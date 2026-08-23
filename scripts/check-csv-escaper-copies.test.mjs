@@ -12,7 +12,7 @@
  *
  * Run: `node --test scripts/check-csv-escaper-copies.test.mjs`
  */
-import { test, describe, it } from 'node:test';
+import { test, describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
 import * as gate from './check-csv-escaper-copies.mjs';
 
@@ -214,10 +214,6 @@ describe('prose mentions', () => {
   // named assertion instead of six cascading ones, and a bind that survives
   // reordering.
   const ENGINE_MENTION = PROSE_MENTIONS.find((m) => m.file === KNOWN_REMAINING[0]);
-  assert.ok(
-    ENGINE_MENTION,
-    `no PROSE_MENTIONS entry for ${KNOWN_REMAINING[0]}; these cases pin its interaction with the debt ratchet`,
-  );
   const MENTIONS = [MENTION, ENGINE_MENTION];
   // A FIXTURE, not code: this is what `engine.ts` looks like to the scanner, so
   // the `${` has to survive verbatim into the scanned text. oxlint's
@@ -228,15 +224,30 @@ describe('prose mentions', () => {
     // oxlint-disable-next-line no-template-curly-in-string
     '      return `"${str.replace(/"/g, \'""\')}"`;\n';
 
-  // The same paired probe its siblings carry at :252 and :263. Every case below
-  // feeds ENGINE_CODE in as engine.ts's body and then asserts something about
-  // the OTHER file, so an inert ENGINE_CODE would leave all of them green:
-  // neutering it to `return str;` passes 46/46. This makes the fixture prove it
-  // is still an escaper before any of that means anything.
-  assert.ok(
-    scanText(ENGINE_MENTION.file, ENGINE_CODE).length >= 1,
-    'ENGINE_CODE no longer reads as an escaper; every case using it is vacuous',
-  );
+  // Both guards live in `before()`, NOT in the describe body, and that is the
+  // whole point rather than a style choice. On node 22 -- which is what CI runs
+  // -- a throw from a describe BODY is recorded as a failed suite and `node
+  // --test` still exits 0. It prints `not ok` into the log of a green job,
+  // which is precisely the absence-reads-as-success mode this gate exists to
+  // kill. From a `before()` hook the same throw exits 1 and the cases report as
+  // cancelled: one cause, no cascade of six mysteries. Measured on v22.14.0:
+  // describe-body assert -> exit 0, before() hook assert -> exit 1.
+  before(() => {
+    // Guard first: if this entry is missing, the probe below would dereference
+    // `.file` on undefined and report a TypeError instead of the real cause.
+    assert.ok(
+      ENGINE_MENTION,
+      `no PROSE_MENTIONS entry for ${KNOWN_REMAINING[0]}; these cases pin its interaction with the debt ratchet`,
+    );
+    // The same paired probe its siblings carry below. Every case here feeds
+    // ENGINE_CODE in as engine.ts's body and then asserts something about the
+    // OTHER file, so an inert ENGINE_CODE would leave all of them green:
+    // neutering it to `return str;` passed 46/46 before this existed.
+    assert.ok(
+      scanText(ENGINE_MENTION.file, ENGINE_CODE).length >= 1,
+      'ENGINE_CODE no longer reads as an escaper; every case using it is vacuous',
+    );
+  });
 
   it('the registered line, in its registered file, does not red', () => {
     const { violations, staleMentions } = repoWith({

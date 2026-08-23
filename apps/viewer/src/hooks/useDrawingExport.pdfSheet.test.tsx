@@ -53,10 +53,15 @@ import {
   DEFAULT_NORTH_ARROW,
   calculateViewportBounds,
   calculateOptimalScaleBarLength,
+  calculateDrawingTransformForAxis,
   type Drawing2D,
   type DrawingSheet,
 } from '@ifc-lite/drawing-2d';
 import useDrawingExport from './useDrawingExport.js';
+import { sheetTransformCacheKeyOf, type CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key.js';
+
+/** The preview's placement-cache ref, as this file passes it in. */
+type CacheRef = { current: CachedSheetTransform | null };
 
 // happy-dom has no `window.alert` — the production error path calls it on
 // failure, which would otherwise throw `ReferenceError: alert is not
@@ -156,13 +161,59 @@ function buildDrawing(): Drawing2D {
   };
 }
 
+/** A 10m x 6m plan ('down') section whose Y bounds are NOT symmetric about
+ *  zero (y: 2..8, matching the #2940 report of a 10x6m plan section landing
+ *  120mm off-centre) — the case `calculateDrawingTransformForAxis`'s
+ *  unflipped correction exists for. `buildDrawing()` above is deliberately
+ *  degenerate on Y (a single y=0 line) and cannot exercise this: the
+ *  correction term `(maxY + minY) * scaleFactor` is zero whenever minY ===
+ *  maxY, so a composition bug that dropped the correction would still pass
+ *  every existing assertion in this file. */
+function buildPlanDrawing(): Drawing2D {
+  return {
+    config: {
+      plane: { axis: 'y', position: 0, flipped: false },
+      projectionDepth: 10,
+      includeHiddenLines: true,
+      creaseAngle: 30,
+      scale: 100,
+    },
+    lines: [
+      {
+        line: { start: { x: 0, y: 2 }, end: { x: 10, y: 8 } },
+        category: 'projection',
+        visibility: 'visible',
+        entityId: 1,
+        ifcType: 'IfcWall',
+        modelIndex: 0,
+        depth: 0,
+      },
+    ],
+    cutPolygons: [],
+    projectionPolygons: [],
+    bounds: { min: { x: 0, y: 2 }, max: { x: 10, y: 8 } },
+    stats: {
+      cutLineCount: 0,
+      projectionLineCount: 1,
+      hiddenLineCount: 0,
+      silhouetteLineCount: 0,
+      polygonCount: 0,
+      totalTriangles: 0,
+      processingTimeMs: 0,
+    },
+  };
+}
+
 interface HarnessProps {
   activeSheet: DrawingSheet;
   drawing: Drawing2D;
+  axis: 'down' | 'front' | 'side';
+  isPinned: boolean;
+  cachedSheetTransformRef: CacheRef;
   onReady: (fn: (scaleFactor?: number) => void) => void;
 }
 
-function Harness({ activeSheet, drawing, onReady }: HarnessProps): null {
+function Harness({ activeSheet, drawing, axis, isPinned, cachedSheetTransformRef, onReady }: HarnessProps): null {
   const { handleExportPDF } = useDrawingExport({
     drawing,
     displayOptions: {
@@ -172,7 +223,7 @@ function Harness({ activeSheet, drawing, onReady }: HarnessProps): null {
       scanSectionOpacity: 0,
       scanSectionIncludeInExport: false,
     },
-    sectionPlane: { axis: 'down', position: 50, flipped: false },
+    sectionPlane: { axis, position: 50, flipped: false },
     activePresetId: null,
     entityColorMap: new Map(),
     overridesEnabled: false,
@@ -187,6 +238,8 @@ function Harness({ activeSheet, drawing, onReady }: HarnessProps): null {
     ifcDataStore: null,
     coordinateInfo: undefined,
     scanSection: { points: [] },
+    isPinned,
+    cachedSheetTransformRef,
   });
   onReady(handleExportPDF);
   return null;
@@ -249,10 +302,28 @@ function stubRasterization(): {
   };
 }
 
-async function exportPdfForSheet(sheet: DrawingSheet): Promise<{
+interface ExportOptions {
+  /** Section axis the hook is mounted with. Defaults to 'down' — the axis
+   *  every pre-existing case in this file used. */
+  axis?: 'down' | 'front' | 'side';
+  /** Pin View state, and the preview's placement cache the export must read
+   *  through while pinned. */
+  isPinned?: boolean;
+  cached?: CachedSheetTransform | null;
+}
+
+async function exportPdfForSheet(
+  sheet: DrawingSheet,
+  drawing: Drawing2D = buildDrawing(),
+  options: ExportOptions = {},
+): Promise<{
   addImageArgs: unknown[];
   svg: string;
+  /** The cache entry AFTER the export — export must never write to it. */
+  cacheAfter: CachedSheetTransform | null;
 }> {
+  const { axis = 'down', isPinned = false, cached = null } = options;
+  const cachedSheetTransformRef: CacheRef = { current: cached };
   const rasterStub = stubRasterization();
   const container = document.createElement('div');
   document.body.appendChild(container);
@@ -286,7 +357,10 @@ async function exportPdfForSheet(sheet: DrawingSheet): Promise<{
       root.render(
         <Harness
           activeSheet={sheet}
-          drawing={buildDrawing()}
+          drawing={drawing}
+          axis={axis}
+          isPinned={isPinned}
+          cachedSheetTransformRef={cachedSheetTransformRef}
           onReady={(fn) => {
             exportFn = fn;
           }}
@@ -303,7 +377,7 @@ async function exportPdfForSheet(sheet: DrawingSheet): Promise<{
     if (rasterStub.capturedSvg.value === null) {
       throw new Error('expected the sheet SVG to have been rasterized (Blob spy never fired)');
     }
-    return { addImageArgs, svg: rasterStub.capturedSvg.value };
+    return { addImageArgs, svg: rasterStub.capturedSvg.value, cacheAfter: cachedSheetTransformRef.current };
   } finally {
     jsPDFApi.addImage = originalAddImage;
     rasterStub.restore();
@@ -320,6 +394,15 @@ function measureLineSpanMm(svg: string): number {
   assert.ok(match, `expected a <line> element in the exported sheet svg; got:\n${svg.slice(0, 2000)}`);
   const [, x1, y1, x2, y2] = match.map(Number) as unknown as [never, number, number, number, number];
   return Math.hypot(x2 - x1, y2 - y1);
+}
+
+/** Parse the first `<line x1="..." y1="..." x2="..." y2="...">` inside the
+ *  exported sheet svg and return its endpoints in paper mm. */
+function parseLineEndpoints(svg: string): { x1: number; y1: number; x2: number; y2: number } {
+  const match = svg.match(/<line x1="([-\d.]+)" y1="([-\d.]+)" x2="([-\d.]+)" y2="([-\d.]+)"/);
+  assert.ok(match, `expected a <line> element in the exported sheet svg; got:\n${svg.slice(0, 2000)}`);
+  const [, x1, y1, x2, y2] = match.map(Number) as unknown as [never, number, number, number, number];
+  return { x1, y1, x2, y2 };
 }
 
 describe('handleExportPDF — Drawing Sheet mode (#2941/#2942)', () => {
@@ -362,5 +445,236 @@ describe('handleExportPDF — Drawing Sheet mode (#2941/#2942)', () => {
     // scale" — i.e. the export doesn't move at all when the sheet's scale
     // changes. Assert the two measured spans actually differ.
     assert.notEqual(spanA, spanB, 'changing the sheet scale must change the on-paper span — it must not be stuck at one value');
+  });
+
+  it('centers a plan-axis (down) drawing using the corrected, unflipped transform — the #2940 fix composed with #2941/#2942', async () => {
+    // The PDF path (`handleExportPDF`) delegates to `generateSheetSVG`,
+    // which the #2940 fix rewrote to call `calculateDrawingTransformForAxis`
+    // with `flipY = (axis !== 'down')` instead of the raw, always-flipped
+    // `calculateDrawingTransform`. For a 'down' (plan) section whose Y
+    // bounds are not symmetric about zero, that changes where the drawing
+    // lands on paper. This test proves the PDF export actually inherits
+    // that correction, not just the SVG/print path #2940 shipped with.
+    const sheet = buildSheet('A3_LANDSCAPE', 100, '1:100');
+    const drawing = buildPlanDrawing();
+    const { svg } = await exportPdfForSheet(sheet, drawing);
+    const { x1, y1, x2, y2 } = parseLineEndpoints(svg);
+
+    // Expected transform: same building blocks `generateSheetSVG` uses
+    // (sheet.viewportBounds, sheet.scale), with flipY=false for the 'down'
+    // axis — mirroring useDrawingExport.ts's own
+    // `flipY = currentAxis !== 'down'`.
+    const expected = calculateDrawingTransformForAxis(
+      { minX: drawing.bounds.min.x, minY: drawing.bounds.min.y, maxX: drawing.bounds.max.x, maxY: drawing.bounds.max.y },
+      sheet.viewportBounds,
+      sheet.scale,
+      false
+    );
+    const expectedX1 = drawing.bounds.min.x * expected.scaleFactor + expected.translateX;
+    const expectedY1 = drawing.bounds.min.y * expected.scaleFactor + expected.translateY;
+    const expectedX2 = drawing.bounds.max.x * expected.scaleFactor + expected.translateX;
+    const expectedY2 = drawing.bounds.max.y * expected.scaleFactor + expected.translateY;
+
+    assert.ok(Math.abs(x1 - expectedX1) < 0.01, `x1: expected ${expectedX1}, got ${x1}`);
+    assert.ok(Math.abs(y1 - expectedY1) < 0.01, `y1: expected ${expectedY1}, got ${y1}`);
+    assert.ok(Math.abs(x2 - expectedX2) < 0.01, `x2: expected ${expectedX2}, got ${x2}`);
+    assert.ok(Math.abs(y2 - expectedY2) < 0.01, `y2: expected ${expectedY2}, got ${y2}`);
+
+    // Sanity: prove this fixture actually distinguishes the corrected
+    // transform from the uncorrected one (else the assertions above could
+    // pass by coincidence). The uncorrected translateY differs by
+    // (maxY + minY) * scaleFactor = (8 + 2) * scaleFactor != 0.
+    const uncorrectedTranslateYDelta = (drawing.bounds.max.y + drawing.bounds.min.y) * expected.scaleFactor;
+    assert.ok(
+      Math.abs(uncorrectedTranslateYDelta) > 1,
+      `fixture does not distinguish corrected vs. uncorrected transform (delta ${uncorrectedTranslateYDelta}mm) — strengthen it`
+    );
+  });
+});
+
+/** Viewport centre is exactly (110, 60) mm on paper. A sheet built with
+ *  `calculateViewportBounds` gives fractional bounds, which makes a
+ *  hand-computed expected position unreadable; overriding `viewportBounds`
+ *  with round values is what lets the assertions below be ABSOLUTE numbers
+ *  rather than a second call into the production helper. */
+const ROUND_VIEWPORT = { x: 10, y: 10, width: 200, height: 100 };
+
+function buildSheetWithRoundViewport(id = 'sheet-round'): DrawingSheet {
+  const sheet = buildSheet('A3_LANDSCAPE', 100, '1:100');
+  return { ...sheet, id, viewportBounds: { ...ROUND_VIEWPORT } };
+}
+
+/** A 10m x 6m section at x 2..12, y 5..11 — asymmetric about BOTH axes, so
+ *  neither flip correction can be dropped without moving the drawing. The
+ *  line runs (2,5) -> (12,11), so the svg's first `<line>` reports where
+ *  those two corners land.
+ *
+ *  Y is 5..11 rather than 3..9 because at 3..9 the corrected 'down'
+ *  translateY works out to exactly 0 on `ROUND_VIEWPORT` (120 - (9+3)*10),
+ *  and a zero translate is indistinguishable from no translate at all: an
+ *  implementation returning a hard 0 for the unflipped axis passed this
+ *  file, `sheet-transform.test.ts` and
+ *  `Drawing2DCanvas.section-axis-transform.test.tsx` together — verified by
+ *  mutation. At 5..11 the corrected value is -20mm and has to be computed. */
+function buildAsymmetricDrawing(): Drawing2D {
+  return {
+    ...buildPlanDrawing(),
+    lines: [
+      {
+        line: { start: { x: 2, y: 5 }, end: { x: 12, y: 11 } },
+        category: 'projection',
+        visibility: 'visible',
+        entityId: 1,
+        ifcType: 'IfcWall',
+        modelIndex: 0,
+        depth: 0,
+      },
+    ],
+    bounds: { min: { x: 2, y: 5 }, max: { x: 12, y: 11 } },
+  };
+}
+
+/**
+ * Hand-computed placement for `buildAsymmetricDrawing()` on
+ * `buildSheetWithRoundViewport()` (1:100 -> 10mm per metre):
+ *
+ *   fitScale        = min(200*.95/100, 100*.95/60, 1)  = 1
+ *   scaleFactor     = 10
+ *   base.translateX = 10 + (200-100)/2 - 2*10          = 40
+ *   base.translateY = 10 + (100-60)/2 + 11*10          = 140
+ *
+ *   'down'  (flipX=false, flipY=false): tX 40,  tY -20
+ *   'front' (flipX=false, flipY=true) : tX 40,  tY 140
+ *   'side'  (flipX=true,  flipY=true) : tX 180, tY 140
+ *
+ * so the line's endpoints land at (paper mm):
+ *   'down'  (2,5) -> (60, 30)  ; (12,11) -> (160, 90)
+ *   'front' (2,5) -> (60, 90)  ; (12,11) -> (160, 30)
+ *   'side'  (2,5) -> (160, 90) ; (12,11) -> (60, 30)
+ */
+const EXPECTED_ENDPOINTS: Record<'down' | 'front' | 'side', { x1: number; y1: number; x2: number; y2: number }> = {
+  down: { x1: 60, y1: 30, x2: 160, y2: 90 },
+  front: { x1: 60, y1: 90, x2: 160, y2: 30 },
+  side: { x1: 160, y1: 90, x2: 60, y2: 30 },
+};
+
+function closeTo(actual: number, expected: number, what: string): void {
+  assert.ok(Math.abs(actual - expected) < 0.01, `${what}: expected ${expected}, got ${actual}`);
+}
+
+describe("generateSheetSVG — every section axis, not just 'down' (review gap on the flipX fix)", () => {
+  // Before this block every case in this file mounted the hook with
+  // `axis: 'down'`, where `flipX` is false. Mutating `generateSheetSVG`'s
+  // resolver call to pass a hard `flipX: false` — recreating exactly the
+  // off-centre 'side' section the fix exists to prevent — left all four
+  // green (verified by running the mutation). The 'side' behaviour was
+  // asserted only by reading a one-line pass-through.
+  for (const axis of ['down', 'front', 'side'] as const) {
+    it(`places a '${axis}' section's endpoints at their hand-computed paper mm`, async () => {
+      const sheet = buildSheetWithRoundViewport();
+      const { svg } = await exportPdfForSheet(sheet, buildAsymmetricDrawing(), { axis });
+      const { x1, y1, x2, y2 } = parseLineEndpoints(svg);
+      const expected = EXPECTED_ENDPOINTS[axis];
+      closeTo(x1, expected.x1, `${axis} x1`);
+      closeTo(y1, expected.y1, `${axis} y1`);
+      closeTo(x2, expected.x2, `${axis} x2`);
+      closeTo(y2, expected.y2, `${axis} y2`);
+    });
+  }
+
+  it("keeps 'side' distinct from 'front' — the flipX correction is not a no-op on this fixture", () => {
+    // Guards the fixture, not the code: with bounds symmetric about X=0 the
+    // correction term `(minX + maxX) * scaleFactor` is zero and the 'side'
+    // case above could not fail.
+    assert.notEqual(EXPECTED_ENDPOINTS.side.x1, EXPECTED_ENDPOINTS.front.x1);
+  });
+});
+
+describe('generateSheetSVG — pinned placement, shared with the preview', () => {
+  // The second divergence, on the DEFAULT path: `useDrawingExport` was
+  // never given `isPinned` or the preview's placement cache, so it
+  // recomputed the transform from the CURRENT drawing bounds while a pinned
+  // preview kept the held one. The cache key deliberately excludes
+  // the drawing bounds (bounds are what pinning holds constant), so after a
+  // regenerate at a new elevation the cache stayed valid, the preview kept
+  // the held placement, and the print computed a different one. Pin View
+  // defaults ON.
+  const heldFor = (
+    sheet: DrawingSheet,
+    axis: 'down' | 'front' | 'side' = 'side',
+  ): CachedSheetTransform => ({
+    key: sheetTransformCacheKeyOf(sheet, axis),
+    translateX: 33,
+    translateY: 44,
+    scaleFactor: 5,
+  });
+
+  it('prints at the HELD placement while pinned, not a fresh fit of the current bounds', async () => {
+    const sheet = buildSheetWithRoundViewport();
+    const held = heldFor(sheet);
+    const { svg } = await exportPdfForSheet(sheet, buildAsymmetricDrawing(), {
+      axis: 'side',
+      isPinned: true,
+      cached: held,
+    });
+    const { x1, y1, x2, y2 } = parseLineEndpoints(svg);
+    // 'side' flips both axes, so with the held placement
+    // (2,5)   -> (-2*5 + 33,  -5*5 + 44)  = (23, 19)
+    // (12,11) -> (-12*5 + 33, -11*5 + 44) = (-27, -11)
+    closeTo(x1, 23, 'held x1');
+    closeTo(y1, 19, 'held y1');
+    closeTo(x2, -27, 'held x2');
+    closeTo(y2, -11, 'held y2');
+    // And that is NOT what an unpinned fit of these bounds would produce.
+    assert.notEqual(x1, EXPECTED_ENDPOINTS.side.x1);
+  });
+
+  it('ignores the cache when NOT pinned — the unpinned path still auto-fits', async () => {
+    const sheet = buildSheetWithRoundViewport();
+    const { svg } = await exportPdfForSheet(sheet, buildAsymmetricDrawing(), {
+      axis: 'side',
+      isPinned: false,
+      cached: heldFor(sheet),
+    });
+    const { x1, y1 } = parseLineEndpoints(svg);
+    closeTo(x1, EXPECTED_ENDPOINTS.side.x1, 'unpinned x1');
+    closeTo(y1, EXPECTED_ENDPOINTS.side.y1, 'unpinned y1');
+  });
+
+  it('rejects a cache entry tagged with a DIFFERENT sheet geometry, even when pinned', async () => {
+    const sheet = buildSheetWithRoundViewport();
+    const stale: CachedSheetTransform = {
+      ...heldFor(sheet),
+      key: sheetTransformCacheKeyOf(buildSheetWithRoundViewport('some-other-sheet'), 'side'),
+    };
+    const { svg } = await exportPdfForSheet(sheet, buildAsymmetricDrawing(), {
+      axis: 'side',
+      isPinned: true,
+      cached: stale,
+    });
+    const { x1, y1 } = parseLineEndpoints(svg);
+    closeTo(x1, EXPECTED_ENDPOINTS.side.x1, 'stale-key x1');
+    closeTo(y1, EXPECTED_ENDPOINTS.side.y1, 'stale-key y1');
+  });
+
+  it('NEVER writes the cache — printing must not move what is on screen', async () => {
+    const sheet = buildSheetWithRoundViewport();
+    // Unpinned, so the export computes a fresh placement: the tempting bug
+    // is to write that fresh value back, which would shove the pinned
+    // preview to a new position the moment the user hits Print.
+    const { cacheAfter } = await exportPdfForSheet(sheet, buildAsymmetricDrawing(), {
+      axis: 'side',
+      isPinned: false,
+      cached: null,
+    });
+    assert.equal(cacheAfter, null, 'the export path must not populate the preview cache');
+
+    const held = heldFor(sheet);
+    const { cacheAfter: after } = await exportPdfForSheet(sheet, buildAsymmetricDrawing(), {
+      axis: 'side',
+      isPinned: false,
+      cached: { ...held },
+    });
+    assert.deepEqual(after, held, 'the export path must not overwrite an existing cache entry');
   });
 });

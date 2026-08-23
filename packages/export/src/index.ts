@@ -39,3 +39,12 @@ export { generateLod1, type GenerateLod1Options } from './lod1-generator.js';
 export { parseGLB, extractGlbMapping, parseGLBToMeshData, countGlbMeshes } from './glb.js';
 
 export { columnsToParquet, isParquet } from './columns-to-parquet.js';
+// THE CSV cell escaper for this repo's TypeScript — RFC 4180 quoting plus the
+// CWE-1236 formula-injection guard. Every TS CSV writer (SDK, CLI, MCP, viewer)
+// calls this; `scripts/check-csv-escaper-copies.mjs` fails the build on a
+// re-inlined copy. Rust's half is `rust/export/src/csv_cell.rs`, pinned to the
+// same shared vectors.
+// `INVISIBLE_PREFIX_RE` / `PADDING_RE` are deliberately NOT re-exported: they
+// are the guard's internals, and the parity suite imports them from the module
+// directly. Callers need the two functions and the options type.
+export { escapeCsvCell, guardSpreadsheetFormula, type CsvCellOptions } from './csv-cell.js';

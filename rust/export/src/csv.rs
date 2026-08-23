@@ -5,6 +5,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use crate::csv_cell::{escape_csv_cell, CsvCellOptions};
 use crate::model::{build_export_model, fmt_num, EntityRow, ExportModel};
 
 /// Which CSV view to emit.
@@ -35,18 +36,21 @@ impl Default for CsvOptions {
 }
 
 /// RFC-4180 escape + spreadsheet formula-injection guard.
+///
+/// A thin alias over [`crate::csv_cell::escape_csv_cell`], which is THE escaper
+/// for this crate. This function used to carry its own copy of the guard, and
+/// that copy tested the formula trigger anchored at offset 0 — so a BOM, ZWSP,
+/// LRM, NBSP or U+2028 in front of `=` sailed straight past it. Keep it a
+/// delegation: `scripts/check-csv-escaper-copies.mjs` fails the build if the
+/// guard is re-inlined anywhere.
 fn escape(value: &str, delimiter: &str) -> String {
-    let mut s = value.to_string();
-    if let Some(first) = s.chars().next() {
-        if matches!(first, '=' | '+' | '-' | '@' | '\t' | '\r') {
-            s.insert(0, '\'');
-        }
-    }
-    if s.contains(delimiter) || s.contains('"') || s.contains('\n') || s.contains('\r') {
-        format!("\"{}\"", s.replace('"', "\"\""))
-    } else {
-        s
-    }
+    // Fields spelled out rather than `..Default::default()`: a new option on a
+    // security-relevant guard should force this call site to make a decision,
+    // not silently inherit one.
+    escape_csv_cell(
+        value,
+        &CsvCellOptions { delimiter, exempt_numbers: false, quote_whitespace_padded: false },
+    )
 }
 
 fn join(values: &[String], delimiter: &str) -> String {
@@ -291,5 +295,49 @@ mod tests {
         assert_eq!(escape("a,b", ","), "\"a,b\"");
         assert_eq!(escape("he\"llo", ","), "\"he\"\"llo\"");
         assert_eq!(escape("plain", ","), "plain");
+    }
+
+    /// The four CommandPalette CSV downloads in the viewer come out of this
+    /// module, which makes it the highest-traffic CSV writer in the repo — and
+    /// until the guard moved to `csv_cell`, every one of these inputs was
+    /// exported with a live formula, because the trigger test was anchored at
+    /// offset 0 and each of these hides it behind an invisible.
+    #[test]
+    fn an_invisible_cannot_hide_a_formula_trigger_from_the_entities_writer() {
+        for (label, lead) in [
+            ("BOM", '\u{FEFF}'),
+            ("ZWSP", '\u{200B}'),
+            ("LRM", '\u{200E}'),
+            ("NBSP", '\u{00A0}'),
+            ("LINE SEPARATOR", '\u{2028}'),
+            ("SPACE", ' '),
+        ] {
+            let payload = format!("{lead}=cmd|'/c calc'!A1");
+            assert_eq!(
+                escape(&payload, ","),
+                format!("'{payload}"),
+                "{label} must not hide the trigger"
+            );
+        }
+    }
+
+    /// RFC 4180 §2.4: "Spaces are considered part of a field and should not be
+    /// ignored." The hardened TypeScript copies this crate is now aligned with
+    /// bought their invisible-handling by DELETING the leading run, which threw
+    /// leading spaces away on every benign cell. Looking past without deleting
+    /// is what makes the two compatible.
+    #[test]
+    fn a_benign_cell_keeps_its_leading_whitespace_and_bom() {
+        assert_eq!(escape("   Wall A", ","), "   Wall A");
+        assert_eq!(escape("\u{FEFF}Wall A", ","), "\u{FEFF}Wall A");
+        assert_eq!(escape("\u{200B}\u{200B}Wall", ","), "\u{200B}\u{200B}Wall");
+    }
+
+    /// A configured delimiter must drive the quoting decision — a cell with a
+    /// comma is NOT special when the file is semicolon-separated.
+    #[test]
+    fn quoting_follows_the_configured_delimiter() {
+        assert_eq!(escape("a,b", ";"), "a,b");
+        assert_eq!(escape("a;b", ";"), "\"a;b\"");
     }
 }

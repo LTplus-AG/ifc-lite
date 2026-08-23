@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
+import * as walk from 'acorn-walk';
 import { inferCapabilities, type InferenceResult } from './capability.js';
 
 describe('inferCapabilities — read-only patterns', () => {
@@ -217,5 +218,33 @@ describe('inferCapabilities — deeply nested scripts fail closed', () => {
     expect(deep.parseErrors.map((e) => e.message)).toEqual(
       shallow.parseErrors.map((e) => e.message),
     );
+  });
+});
+
+describe('inferCapabilities — a subtree the walker cannot descend', () => {
+  /** See `validate/code.test.ts`: simulates an acorn/acorn-walk skew. */
+  function withoutBase<T>(type: string, run: () => T): T {
+    const base = walk.base as unknown as Record<string, unknown>;
+    const saved = base[type];
+    expect(saved).toBeTypeOf('function');
+    delete base[type];
+    try {
+      return run();
+    } finally {
+      base[type] = saved;
+    }
+  }
+
+  it('reports a parse error rather than an under-counted capability set', () => {
+    const source = 'bim.viewer.colorize({});\ntry { bim.model.write(); } catch (e) {}';
+    // Unmodified, both calls are seen.
+    expect(inferCapabilities(source).capabilities.length).toBeGreaterThan(1);
+
+    const r = withoutBase('TryStatement', () => inferCapabilities(source));
+    expect(r.parseErrors.some((e) => /cannot traverse/.test(e.message))).toBe(true);
+    expect(r.parseErrors.some((e) => /TryStatement/.test(e.message))).toBe(true);
+    // Fail closed: the floor it did see is discarded, not published.
+    expect(r.capabilities).toEqual([]);
+    expect(r.observations).toEqual([]);
   });
 });

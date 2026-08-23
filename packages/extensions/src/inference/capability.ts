@@ -94,7 +94,7 @@ export function inferCapabilities(source: string): InferenceResult {
   }
 
   const observations: InferenceObservation[] = [];
-  const { depthExceeded } = walkBounded(ast, (node, type) => {
+  const { depthExceeded, unwalkableTypes } = walkBounded(ast, (node, type) => {
     if (type !== 'MemberExpression') return;
     const chain = readMemberChain(node);
     if (!chain || chain[0] !== 'bim') return;
@@ -127,6 +127,19 @@ export function inferCapabilities(source: string): InferenceResult {
   if (depthExceeded) {
     parseErrors.push({
       message: `source is nested more than ${MAX_AST_DEPTH} AST levels deep; capabilities could not be inferred`,
+      line: 0,
+      column: 0,
+    });
+    return { capabilities: [], observations: [], parseErrors };
+  }
+
+  // A subtree the walker could not descend hides `bim.*` calls just as
+  // effectively as the depth bound does, so it goes down the same
+  // channel and the inferred set is discarded rather than published as
+  // if it were complete.
+  if (unwalkableTypes.length > 0) {
+    parseErrors.push({
+      message: `source contains AST node types the walker cannot traverse (${unwalkableTypes.join(', ')}); capabilities could not be inferred`,
       line: 0,
       column: 0,
     });

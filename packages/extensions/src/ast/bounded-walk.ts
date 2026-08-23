@@ -12,10 +12,13 @@
  * `RangeError: Maximum call stack size exceeded` out of the middle of
  * whatever function invoked the walk.
  *
- * This module is the single traversal used by every AST consumer here.
- * It keeps its own stack on the heap and stops at {@link MAX_AST_DEPTH},
- * *reporting* that it stopped rather than throwing. Callers vary the
- * visitor; they do not re-implement the traversal.
+ * This module is the single traversal used by every AST consumer here
+ * — `validateCode`, `inferCapabilities` and the entry-script
+ * banned-construct scan in `host/source-wrap.ts`. It keeps its own
+ * stack on the heap and stops at {@link MAX_AST_DEPTH}, *reporting*
+ * that it stopped rather than throwing. Callers vary the visitor; they
+ * do not re-implement the traversal, and there is exactly one depth
+ * bound for them to disagree about.
  *
  * It descends using `acorn-walk`'s own `base` visitor rather than
  * enumerating object properties generically, so which child positions
@@ -40,11 +43,29 @@ import * as walk from 'acorn-walk';
  * caller reports a validation failure instead of continuing.
  *
  * One `if (1) { … }` source level costs two levels here
- * (`IfStatement` -> `BlockStatement`), and acorn's own parser gives up
- * at roughly 1200 *source* levels ("Not enough stack space to parse
- * input"). That parser limit moves with however much stack the host
- * happens to have left; this one does not, which is the entire point —
- * the accept/reject boundary must not depend on the caller's remaining
+ * (`IfStatement` -> `BlockStatement`), so the bound bites at 500 such
+ * source levels.
+ *
+ * The bound is in AST levels, so its effective *source*-level threshold
+ * varies by construct, and for cheap constructs it is unreachable. An
+ * arrow link (`() => () => …`) costs one level, not two, so this bound
+ * would need ~1000 of them — and acorn runs out of stack parsing that
+ * shape at a few hundred links, well before the walk is ever asked. The
+ * asymmetry is intended: the bound guards the walk's own stack, and a
+ * construct that the parser rejects first never reaches the walk.
+ * `host/source-wrap.test.ts` pins both the 1:2 cost ratio and the fact
+ * that every parseable arrow depth is accepted.
+ *
+ * Do NOT think of this as "well under acorn's own parser limit": acorn
+ * has no fixed limit to be under. The same script, on Node 22, parses
+ * at 1100 source levels and aborts the process at 1200 in a
+ * default-stack run, is rejected at 1200 under this repo's vitest
+ * workers ("Not enough stack space to parse input"), and parses at
+ * 4000 under `node --stack-size=4000`. The parser's give-up point is a
+ * property of the host's remaining stack, not of acorn — and one of
+ * those three failures is a fatal V8 abort (exit 134), not a catchable
+ * error. This bound does not move, which is the entire point: the
+ * accept/reject boundary must not depend on the caller's remaining
  * stack.
  *
  * Catching the `RangeError` instead would reintroduce exactly that
@@ -68,6 +89,21 @@ export interface BoundedWalkResult {
    * never as "nothing found".
    */
   depthExceeded: boolean;
+  /**
+   * Node types `acorn-walk` had no `base` entry for, deduplicated. The
+   * subtree under such a node was NOT descended, so — exactly like
+   * {@link depthExceeded} — the visit is incomplete and the caller MUST
+   * treat a non-empty list as a failure. Every call site here is a
+   * scanner looking for things it must not find, so an unwalkable
+   * subtree is a scan that found nothing because it never looked.
+   *
+   * This is how a walk sees an acorn upgrade that lands a new node type
+   * ahead of `acorn-walk` (class static blocks, import attributes and
+   * `await using` all arrived that way). `acorn-walk` throws on a
+   * missing base for the same reason; we report instead of throwing
+   * because the callers are declared to return a result, not to throw.
+   */
+  unwalkableTypes: readonly string[];
 }
 
 function isAstNode(value: unknown): value is AstNode {
@@ -100,14 +136,17 @@ interface Frame {
  * key. One traversal is therefore shared across sites that care about
  * entirely different node types.
  *
- * Returns `{ depthExceeded: true }` if the bound stopped the walk. The
- * traversal never throws for depth reasons.
+ * Returns `depthExceeded: true` if the bound stopped the walk, and
+ * lists in `unwalkableTypes` any node type it could not descend. The
+ * traversal never throws for either reason — but a caller that ignores
+ * either field is reporting "clean" on a tree it did not finish
+ * reading.
  */
 export function walkBounded(
   root: unknown,
   visit: (node: AstNode, type: string) => void,
 ): BoundedWalkResult {
-  if (!isAstNode(root)) return { depthExceeded: false };
+  if (!isAstNode(root)) return { depthExceeded: false, unwalkableTypes: [] };
 
   const baseVisitor = walk.base as unknown as Record<
     string,
@@ -115,6 +154,7 @@ export function walkBounded(
   >;
 
   const stack: Frame[] = [{ node: root, depth: 0, expanded: false }];
+  const unwalkable = new Set<string>();
 
   while (stack.length > 0) {
     const frame = stack.pop()!;
@@ -125,12 +165,18 @@ export function walkBounded(
       continue;
     }
 
-    if (frame.depth > MAX_AST_DEPTH) return { depthExceeded: true };
+    if (frame.depth > MAX_AST_DEPTH) {
+      return { depthExceeded: true, unwalkableTypes: [...unwalkable] };
+    }
 
     const baseFn = baseVisitor[type];
     if (!baseFn) {
-      // Unknown node type: report it and stop descending, matching
-      // acorn-walk's own behaviour of throwing only on a missing base.
+      // No base for this type: we cannot enumerate its children, so its
+      // whole subtree goes uninspected. Report the node itself and keep
+      // walking its siblings — the rest of the tree is still worth
+      // scanning — but record the type so the caller fails instead of
+      // reading the visitor's silence as "nothing found".
+      unwalkable.add(type);
       visit(frame.node, type);
       continue;
     }
@@ -158,5 +204,5 @@ export function walkBounded(
     }
   }
 
-  return { depthExceeded: false };
+  return { depthExceeded: false, unwalkableTypes: [...unwalkable] };
 }

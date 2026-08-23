@@ -130,6 +130,10 @@
  *
  *   This is a local-developer tool. It is NOT wired into CI or into any
  *   install hook, and it must stay that way.
+ *
+ * @unwired-by-design it reports on the developer's own clone, not the repo.
+ * The hooks it reads are absent on every fresh CI checkout, so a CI run
+ * would be green on every commit regardless of the state it detects.
  */
 
 import { readFileSync, statSync } from 'node:fs';

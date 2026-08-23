@@ -526,6 +526,25 @@ test('export.csv escapeCsv prefixes a leading CR and also quotes it (CR triggers
   assert.equal(cell, '"\'\rstartsWithCR"');
 });
 
+// The adapter used to keep its own copy of the guard, one that anchored the
+// trigger characters at offset 0, while the SDK's `ExportNamespace` had the
+// hardened one
+// that looks PAST leading invisibles (#1944) -- so the same name exported
+// guarded through `bim.export.csv()` and unguarded through this adapter, and
+// deleting this copy's guard outright left the whole file green. Both now call
+// `escapeCsvCell` from `@ifc-lite/export` -- the one canonical TS escaper,
+// reached via `export-adapter.ts:114`. This pins that it is reached.
+test('export.csv guards a trigger hidden behind an invisible character (#1944)', () => {
+  for (const prefix of ['\u{FEFF}', '\u{200B}', '\u{200E}', '\u{00A0}', '\u{2028}']) {
+    const [cell] = csvCellsFor({ 1: `${prefix}=HYPERLINK("http://evil")` });
+    assert.equal(
+      cell.replace(/^"/, '').startsWith("'"),
+      true,
+      `prefix U+${prefix.codePointAt(0)!.toString(16).toUpperCase()} must still be guarded, got ${JSON.stringify(cell)}`,
+    );
+  }
+});
+
 test('export.csv escapeCsv leaves a benign value unprefixed and unquoted', () => {
   const [cell] = csvCellsFor({ 1: 'NormalValue' });
   assert.equal(cell, 'NormalValue');

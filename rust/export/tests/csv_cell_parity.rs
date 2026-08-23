@@ -152,23 +152,22 @@ fn named_bypasses_are_all_covered() {
     assert!(!is_invisible_prefix('\t'), "TAB must stay a trigger, not a skip");
 }
 
-/// `csv.rs::escape` spells its options out rather than using
-/// `..CsvCellOptions::default()`, so that a NEW option on a security-relevant
-/// guard cannot be inherited without someone deciding. The cost of that
-/// guardrail is that the one real Rust CSV caller does NOT follow the shared
-/// default automatically — the "DEFAULT OPTIONS" vectors pin every TypeScript
-/// writer against `escape_csv_cell`'s default, and would not have noticed this
-/// one drifting away from it.
+/// The shared fixture's "DEFAULT OPTIONS" vectors pin the TypeScript default
+/// against `escape_csv_cell`'s default. They cannot see `csv.rs::escape`, which
+/// spells its options out so a NEW option cannot be inherited silently, and so
+/// does NOT follow the shared default automatically.
 ///
-/// So pin the two together directly. If the shared default moves, this fails
-/// and whoever moved it decides what `export_csv` should do, instead of the two
-/// silently disagreeing.
+/// `csv::tests::escape_exempts_a_wholly_numeric_cell_and_guards_everything_else`
+/// pins what that writer does. This pins the value it is hard-coded to, so a
+/// coordinated flip of the product policy -- both language defaults to `false`,
+/// fixture updated -- fails here instead of leaving the Rust exporter exempting
+/// while every TypeScript writer guards.
 #[test]
-fn the_csv_exporter_still_agrees_with_the_shared_default() {
+fn the_csv_exporters_hard_coded_option_still_matches_the_shared_default() {
     assert!(
         CsvCellOptions::default().exempt_numbers,
         "rust/export/src/csv.rs hard-codes `exempt_numbers: true`; the shared \
-         default has moved away from it, so the CSV exporter and every \
-         TypeScript writer no longer agree"
+         default has moved away from it, so that exporter and every TypeScript \
+         writer no longer agree"
     );
 }

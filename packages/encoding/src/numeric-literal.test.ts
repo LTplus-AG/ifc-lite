@@ -62,36 +62,100 @@ describe('isWhollyNumeric accepts exactly the documented language', () => {
 
 describe('deciding it is linear, not backtracking', () => {
   /**
-   * `SPEC_RE` is quadratic on a failing match: `\d+\.?\d*` retries at every
-   * split point before the engine gives up. Its caller is the CSV formula
-   * guard, which reaches it only after a trigger character matched -- so `-`
-   * followed by tens of thousands of digits, an ordinary attacker-controllable
-   * IFC property value, froze an export.
+   * The property is LINEARITY, so measure linearity: quadruple the input and
+   * the time should roughly quadruple, not go up sixteenfold.
    *
-   * Asserted as a RATIO between the two on the same input on the same machine,
-   * so a fast or slow runner moves both ends together and there is no absolute
-   * millisecond bound to re-tune. A ratio alone would be satisfied by 0 vs 0,
-   * so it is paired with a floor proving the slow half took measurable time.
+   * This never runs the regex it replaced. Comparing against it proved only
+   * "faster than that regex", which drags the regex's pathological cost and the
+   * runner's speed into the assertion: it needed an absolute `regexMs > 50`
+   * floor to stay meaningful, and that floor had under 4x of margin, so a
+   * machine a few times faster than this one would have gone red with a message
+   * that made no sense.
+   *
+   * Be clear about the division of labour, because it is not what it looks
+   * like. A quadratic regression is caught by the two ABSOLUTE bounds, which
+   * fire long before any ratio is computed -- they are the fast, blunt half.
+   * The growth ratio is the half that states the actual claim (the cost is
+   * linear in the length) and the half no runner speed can move, but on a
+   * quadratic implementation it is never reached.
+   *
+   * The input sizes are bounded on purpose. A quadratic implementation at
+   * n=200_000 needs about half an hour for ONE call, so a ratio measured there
+   * would HANG rather than fail, and a hang burns the job instead of reporting.
+   * At n=20_000 one such call is ~0.2s, which is why the guard below probes a
+   * single call before it batches anything.
    */
-  const hostile = `-${'1'.repeat(30_000)}x`;
-  const elapsed = (f: () => void): number => {
+  const SMALL = 20_000;
+  const LARGE = 80_000; // 4x SMALL: linear predicts ~4x, quadratic ~16x.
+  const TRIALS = 2; // Best of two batches, so one GC pause cannot inflate a reading.
+  /** A batch has to be clearly above clock noise to divide by. */
+  const MEASURABLE_MS = 2;
+
+  const hostile = (n: number): string => `-${'1'.repeat(n)}x`;
+
+  const once = (n: number): number => {
+    const v = hostile(n);
     const t0 = performance.now();
-    f();
+    isWhollyNumeric(v);
     return performance.now() - t0;
   };
 
-  it('rejects the hostile input, so the timings below measure a real decision', () => {
-    expect(isWhollyNumeric(hostile)).toBe(false);
+  /** Fastest of `TRIALS` batches of `reps` calls, in ms. */
+  const batch = (n: number, reps: number): number => {
+    const v = hostile(n);
+    let best = Infinity;
+    for (let trial = 0; trial < TRIALS; trial++) {
+      const t0 = performance.now();
+      for (let i = 0; i < reps; i++) isWhollyNumeric(v);
+      best = Math.min(best, performance.now() - t0);
+    }
+    return best;
+  };
+
+  it('rejects the hostile input, so the timings measure a real decision', () => {
+    // If this returned early the numbers below would be timing nothing.
+    expect(isWhollyNumeric(hostile(SMALL))).toBe(false);
   });
 
-  it('runs orders of magnitude faster than the regex it replaced', () => {
-    const regexMs = elapsed(() => void SPEC_RE.test(hostile));
-    const scanMs = elapsed(() => void isWhollyNumeric(hostile));
-    // Floor: if the backtracking half finished instantly, the ratio below would
-    // compare two zeroes and pass against any implementation at all.
-    expect(regexMs).toBeGreaterThan(50);
-    // Measured gap is ~10,000x, so 50x is far out of reach of timing noise and
-    // still unreachable for anything that backtracks.
-    expect(scanMs * 50).toBeLessThan(regexMs);
+  it('decides a 20k-character near-number quickly', () => {
+    // The fast, blunt check. 0.32-0.39ms measured here; CI has come in around
+    // 30x slower on this workload, so ~10ms against a 100ms bound. The regex
+    // this replaced took ~180ms at this length.
+    expect(once(SMALL)).toBeLessThan(100);
   });
+
+  it('quadrupling the input roughly quadruples the time', { timeout: 30_000 }, () => {
+    // Guard before batching. A cold call at the larger size is 0.5-0.9ms here
+    // and ~25ms on a runner 30x slower, against a 200ms bound. Without it the
+    // batches below run 400 calls: a quadratic implementation would take about
+    // twenty minutes and a merely slow one several seconds, and a test that
+    // grinds is worse than one that fails, because it burns the job instead of
+    // reporting.
+    expect(once(LARGE)).toBeLessThan(200);
+
+    // CALIBRATE the batch size rather than fixing it. A fixed count is a
+    // hardware-dependent assertion in the fast direction: a quick enough runner
+    // cannot produce a measurable baseline, and the test then fails while the
+    // implementation is perfectly correct. Doubling until the measurement is
+    // comfortably above clock noise makes a faster machine do more work instead
+    // of going red, and a slower one stop at the first batch.
+    let reps = 50;
+    let small = batch(SMALL, reps);
+    while (small < MEASURABLE_MS && reps < 200_000) {
+      reps *= 2;
+      small = batch(SMALL, reps);
+    }
+    // Not a speed bound: this asserts CALIBRATION succeeded. Failing here means
+    // 200k calls still take under 2ms, which is its own thing worth knowing.
+    expect(small).toBeGreaterThanOrEqual(MEASURABLE_MS);
+
+    const growth = batch(LARGE, reps) / small;
+    // Measured over twelve runs at this configuration: the linear scan grows
+    // 3.4x to 4.6x, the quadratic regex 15.6x to 17.0x. 8 sits between them.
+    expect(growth).toBeLessThan(8);
+  });
+
+  // The explicit timeout is a backstop, not a crutch: this test does real work
+  // whose wall time is set by the runner, and CI has twice come in far slower
+  // than this machine. The assertions above are what bound the behaviour.
 });

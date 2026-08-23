@@ -25,11 +25,19 @@ reference or a `(`. `=`, `@`, TAB and CR are never exempted, `-0.35=cmd` is not
 wholly a number and stays guarded, and a leading invisible character defeats the
 exemption rather than the guard, so `<ZWSP>-1` is still prefixed.
 
-**What it costs.** The exemption looks at the value, not the column, so a
-numeric-looking *identifier* held as text is now written as a number: a
-`+`-prefixed phone number becomes `4.1791E+10` in Excel with the `+` gone, and
-`-007` becomes `-7`. Those were previously preserved exactly, as `'`-prefixed
-text. If a writer needs that, pass `exemptNumbers: false`.
+**What it costs.** The default has to guess from the text, because most callers
+hand it a bare string, and guessing gets identifiers wrong: a `+`-prefixed phone
+number is wholly numeric as text, so it is written bare and Excel renders
+`4.1791E+10` with the `+` gone. `-007` becomes `-7`. Both were previously kept
+exactly, as `'`-prefixed text.
+
+The viewer's Lists CSV does not guess, because it has the value itself: it
+exempts a cell when the value really is a number and guards it otherwise, so a
+phone number stays text there and a measure stays summable even in a column that
+also holds text. So this cost applies to the writers that only ever see strings,
+which is the CLI, the SDK, MCP, the compare report, search results, zone tables
+and `@ifc-lite/lists`' own CSV. Pass `exemptNumbers: false` to opt any of them
+out.
 
 **Why the exception exists.** `@ifc-lite/lists` had exempted numbers since #1772
 ("`-0.35` exported as `'-0.35` and broke Excel SUM()") while every other writer

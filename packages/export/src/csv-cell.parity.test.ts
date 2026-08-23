@@ -55,7 +55,11 @@ describe('escapeCsvCell matches the shared cross-language vectors', () => {
       // to the one thing it exists to catch: the two languages' defaults
       // drifting apart. Vectors that name no options at all therefore pin the
       // TS and Rust defaults against each other.
-      const opts: CsvCellOptions = { delimiter: v.delimiter ?? ',' };
+      // Start EMPTY, not `{ delimiter: ',' }`: spelling the delimiter out meant
+      // no vector ever exercised the TypeScript delimiter default, so it could
+      // drift from Rust's unnoticed. Same reasoning as the options below.
+      const opts: CsvCellOptions = {};
+      if (v.delimiter !== undefined) opts.delimiter = v.delimiter;
       if (v.exemptNumbers !== undefined) opts.exemptNumbers = v.exemptNumbers;
       if (v.quoteWhitespacePadded !== undefined) {
         opts.quoteWhitespacePadded = v.quoteWhitespacePadded;

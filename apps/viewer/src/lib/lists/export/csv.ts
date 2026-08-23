@@ -6,11 +6,24 @@ import { escapeCsvCell } from '@ifc-lite/export';
 import type { CellValue } from '@ifc-lite/lists';
 import { displayCell, type ExportColumn, type ExportModel } from './model';
 
-/** CWE-1236 formula guard + RFC 4180 quoting, delegated to `@ifc-lite/export`'s
- *  single escaper. No options: the numeric exemption is the shared default, so
- *  this writer cannot drift away from the other ten. */
-function esc(s: string, delim: string): string {
-  return escapeCsvCell(s, { delimiter: delim });
+/**
+ * CWE-1236 formula guard + RFC 4180 quoting, delegated to `@ifc-lite/export`'s
+ * single escaper.
+ *
+ * `exemptNumbers` is passed EXPLICITLY here, against the shared default, and
+ * this is the one writer entitled to do that: it knows each column's type, so
+ * it does not have to guess from the text. The shared default has to guess,
+ * because most callers hand it a bare string.
+ *
+ * Guessing gets identifiers wrong. `+41791234567` is an `IfcTelecomAddress`
+ * phone number and `-007` is a zero-padded code; both are wholly numeric as
+ * TEXT, so a value-shape test exempts them and a spreadsheet then reads the
+ * first as 4.1791E+10 with the `+` gone. Passing `false` for text keeps them
+ * exactly as written. The numeric path opts back in below, where the value
+ * really is a number.
+ */
+function esc(s: string, delim: string, exemptNumbers = false): string {
+  return escapeCsvCell(s, { delimiter: delim, exemptNumbers });
 }
 
 /**
@@ -30,8 +43,23 @@ function esc(s: string, delim: string): string {
  * test (`1e+21` included), so this path is never prefixed either.
  */
 function cell(v: CellValue, c: ExportColumn, delim: string): string {
-  if (c.numeric && typeof v === 'number' && Number.isFinite(v)) return esc(String(v), delim);
-  return esc(displayCell(v), delim);
+  // TWO decisions, and they are not the same one.
+  //
+  // Whether to FORMAT is a property of the column: only a numeric column skips
+  // the display formatter, because only there is every value a measure.
+  //
+  // Whether to EXEMPT is a property of the value. A real number is a number
+  // wherever it sits, and `detectNumericColumns` marks a whole column as text
+  // if even one sampled value is a string -- which mixed IFC properties are,
+  // routinely. Gating the exemption on the column re-created #1772 in exactly
+  // that case: a summed mixed column exported its grand total as `'-3.35`.
+  const isNumber = typeof v === 'number' && Number.isFinite(v);
+  // `String(v)` on a finite number is always wholly numeric, `1e+21` included.
+  if (c.numeric && isNumber) return esc(String(v), delim, true);
+  // A number in a text column still goes through the formatter, so `-3000`
+  // becomes `-3,000`, which is not wholly numeric and stays guarded either way.
+  // Small values survive it intact and are exempt, as they were before.
+  return esc(displayCell(v), delim, isNumber);
 }
 
 /**

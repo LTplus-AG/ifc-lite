@@ -147,18 +147,45 @@ describe('toCsv numeric columns round-trip as numbers', () => {
     }
   });
 
-  it('a numeric-looking STRING cell is exempt, one that only looks numeric is not', () => {
-    // Same policy, applied to a text column: the exemption is about the value,
-    // not about which column it sits in.
+  it('a real number in a MIXED column is still summable', () => {
+    // `detectNumericColumns` marks a whole column as text if one sampled value
+    // is a string, which mixed IFC properties routinely are. Keying the
+    // exemption off the COLUMN re-created #1772 here: every genuine number in
+    // the column, and the grand total with them, shipped as `'-3.35` text.
+    const rows: ListRow[] = [
+      { entityId: 1, modelId: 'm', values: ['P01', 'W1', -3] },
+      { entityId: 2, modelId: 'm', values: ['P01', 'W2', 'n/a'] },
+      { entityId: 3, modelId: 'm', values: ['P01', 'W3', -0.35] },
+      { entityId: 4, modelId: 'm', values: ['P01', 'W4', '+41791234567'] },
+    ];
+    const csv = toCsv(buildExportModel({
+      ...numBase, rows,
+      numericCols: [false, false, false], // the mixed column reads as text
+      grouping: { columnId: '', sumColumnIds: ['area'] },
+    }));
+    const lines = csv.split('\r\n');
+    assert.strictEqual(lines[1], 'P01,W1,-3');
+    assert.strictEqual(lines[3], 'P01,W3,-0.35');
+    // A string that merely looks numeric is still text.
+    assert.strictEqual(lines[4], "P01,W4,'+41791234567");
+    // The grand total is the assertion that matters: text here breaks SUM().
+    assert.strictEqual(lines[5], 'TOTAL (4),,-3.35');
+  });
+
+  it('a numeric-looking STRING cell stays text', () => {
+    // The exemption is type-aware here: this writer knows the column is not
+    // numeric, so `-1` is an identifier, not a measure. A phone number
+    // (`+41791234567`) is the case that matters -- exempting it would let a
+    // spreadsheet render 4.1791E+10 and drop the `+`.
     const rows: ListRow[] = [
       { entityId: 1, modelId: 'm', values: ['P01', '-1', 1] },
-      { entityId: 2, modelId: 'm', values: ['P01', '-1,000', 2] },
+      { entityId: 2, modelId: 'm', values: ['P01', '+41791234567', 2] },
       { entityId: 3, modelId: 'm', values: ['P01', '=cmd()', 3] },
     ];
     const csv = toCsv(buildExportModel({ ...numBase, rows, grouping: { columnId: '', sumColumnIds: [] } }));
     const lines = csv.split('\r\n');
-    assert.strictEqual(lines[1], 'P01,-1,1');
-    assert.strictEqual(lines[2], 'P01,"\'-1,000",2');
+    assert.strictEqual(lines[1], "P01,'-1,1");
+    assert.strictEqual(lines[2], "P01,'+41791234567,2");
     assert.strictEqual(lines[3], "P01,'=cmd(),3");
   });
 });

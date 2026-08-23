@@ -237,6 +237,32 @@ fn quantities_csv(model: &ExportModel, opts: &CsvOptions) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    /// `escape` spells its options out rather than using
+    /// `..CsvCellOptions::default()`, so a NEW option on a security-relevant
+    /// guard cannot be inherited without someone deciding. The cost is that
+    /// this writer does NOT follow the shared default automatically: the
+    /// "DEFAULT OPTIONS" vectors in the shared fixture pin every TypeScript
+    /// writer against `escape_csv_cell`'s default and would not notice this one
+    /// drifting away from it.
+    ///
+    /// So pin the WRITER, not the default. Asserting
+    /// `CsvCellOptions::default().exempt_numbers` would still pass if this
+    /// function stopped honouring it.
+    #[test]
+    fn escape_exempts_a_wholly_numeric_cell_and_guards_everything_else() {
+        // #1772: a negative measure must reach a spreadsheet as a number, or
+        // the column stops summing.
+        assert_eq!(escape("-0.35", ","), "-0.35");
+        assert_eq!(escape("+1", ","), "+1");
+        // The exemption is for numbers, not for the sign.
+        assert_eq!(escape("-0.35=cmd", ","), "'-0.35=cmd");
+        assert_eq!(escape("=1+1", ","), "'=1+1");
+        assert_eq!(escape("@SUM(A1)", ","), "'@SUM(A1)");
+        // Still RFC 4180 on top of the guard.
+        assert_eq!(escape("a,b", ","), "\"a,b\"");
+    }
+
     use super::*;
 
     #[test]

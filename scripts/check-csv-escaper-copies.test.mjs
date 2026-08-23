@@ -228,6 +228,16 @@ describe('prose mentions', () => {
     // oxlint-disable-next-line no-template-curly-in-string
     '      return `"${str.replace(/"/g, \'""\')}"`;\n';
 
+  // The same paired probe its siblings carry at :252 and :263. Every case below
+  // feeds ENGINE_CODE in as engine.ts's body and then asserts something about
+  // the OTHER file, so an inert ENGINE_CODE would leave all of them green:
+  // neutering it to `return str;` passes 46/46. This makes the fixture prove it
+  // is still an escaper before any of that means anything.
+  assert.ok(
+    scanText(ENGINE_MENTION.file, ENGINE_CODE).length >= 1,
+    'ENGINE_CODE no longer reads as an escaper; every case using it is vacuous',
+  );
+
   it('the registered line, in its registered file, does not red', () => {
     const { violations, staleMentions } = repoWith({
       [MENTION.file]: `const TRIGGERS = ['=', '+'];\n${MENTION.text}\n`,

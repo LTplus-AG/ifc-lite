@@ -49,7 +49,11 @@ fn escape(value: &str, delimiter: &str) -> String {
     // not silently inherit one.
     escape_csv_cell(
         value,
-        &CsvCellOptions { delimiter, exempt_numbers: false, quote_whitespace_padded: false },
+        &CsvCellOptions {
+            delimiter,
+            exempt_numbers: true,
+            quote_whitespace_padded: false,
+        },
     )
 }
 

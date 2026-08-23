@@ -14,7 +14,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { escapeCsvCell, INVISIBLE_PREFIX_RE, PADDING_RE } from './csv-cell.js';
+import { escapeCsvCell, INVISIBLE_PREFIX_RE, PADDING_RE, type CsvCellOptions } from './csv-cell.js';
 
 interface Vector {
   name: string;
@@ -50,11 +50,17 @@ describe('escapeCsvCell matches the shared cross-language vectors', () => {
 
   for (const v of fixture.cases) {
     it(`vector: ${v.name}`, () => {
-      const got = escapeCsvCell(v.input, {
-        delimiter: v.delimiter ?? ',',
-        exemptNumbers: v.exemptNumbers ?? false,
-        quoteWhitespacePadded: v.quoteWhitespacePadded ?? false,
-      });
+      // An ABSENT field means "whatever the library defaults to", not a
+      // hard-coded value. Spelling the defaults out here made the harness blind
+      // to the one thing it exists to catch: the two languages' defaults
+      // drifting apart. Vectors that name no options at all therefore pin the
+      // TS and Rust defaults against each other.
+      const opts: CsvCellOptions = { delimiter: v.delimiter ?? ',' };
+      if (v.exemptNumbers !== undefined) opts.exemptNumbers = v.exemptNumbers;
+      if (v.quoteWhitespacePadded !== undefined) {
+        opts.quoteWhitespacePadded = v.quoteWhitespacePadded;
+      }
+      const got = escapeCsvCell(v.input, opts);
       expect(got).toBe(v.expected);
     });
   }

@@ -140,7 +140,11 @@ const csv = listResultToCSV(result);
 
 ### CSV Safety
 
-`listResultToCSV` guards against spreadsheet formula injection (CWE-1236): any cell that starts with `=`, `+`, `-`, `@`, tab, or carriage return is prefixed with a single quote so Excel and Google Sheets treat it as text rather than a formula. Standard CSV quoting (double quotes, `""` escaping) is applied on top.
+`listResultToCSV` guards against spreadsheet formula injection (CWE-1236): a cell that starts with `=`, `+`, `-`, `@`, tab, or carriage return is prefixed with a single quote so Excel and Google Sheets treat it as text rather than a formula. The trigger is looked for past any leading invisible characters, so a zero-width space in front of `=` does not slip through.
+
+One exception, deliberate: a cell that is **wholly** a number (`-0.35`, `+1`, `-1.5e-3`) is left alone, so a column of negative measures still sums in a spreadsheet. Such a cell cannot carry a formula, since the accepted characters are only `+ - . e E` and the digits. Anything with a trigger and a non-numeric tail (`-0.35=cmd`) is still prefixed. The consequence to know about is that a numeric-looking *identifier* held as text — a `+`-prefixed phone number, a zero-padded code like `-007` — is now written as a number rather than preserved as text.
+
+Standard CSV quoting (double quotes, `""` escaping) is applied on top.
 
 ## Grouping, Aggregation & Schedules
 

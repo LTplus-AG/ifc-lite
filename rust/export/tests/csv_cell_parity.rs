@@ -71,10 +71,19 @@ fn rust_csv_cell_matches_shared_vectors() {
         let name = case["name"].as_str().unwrap_or("<unnamed>");
         let input = case["input"].as_str().expect("input is a string");
         let expected = case["expected"].as_str().expect("expected is a string");
+        // An ABSENT field means "whatever the library defaults to", not a
+        // hard-coded value. Restating the defaults here made the harness blind
+        // to the one thing it exists to catch: the two languages' defaults
+        // drifting apart. Vectors that name no options pin both defaults.
+        let defaults = CsvCellOptions::default();
         let opts = CsvCellOptions {
-            delimiter: case["delimiter"].as_str().unwrap_or(","),
-            exempt_numbers: case["exemptNumbers"].as_bool().unwrap_or(false),
-            quote_whitespace_padded: case["quoteWhitespacePadded"].as_bool().unwrap_or(false),
+            delimiter: case["delimiter"].as_str().unwrap_or(defaults.delimiter),
+            exempt_numbers: case["exemptNumbers"]
+                .as_bool()
+                .unwrap_or(defaults.exempt_numbers),
+            quote_whitespace_padded: case["quoteWhitespacePadded"]
+                .as_bool()
+                .unwrap_or(defaults.quote_whitespace_padded),
         };
 
         let got = escape_csv_cell(input, &opts);
@@ -141,4 +150,25 @@ fn named_bypasses_are_all_covered() {
     // TAB is NOT in the class: it is itself a trigger, so skipping past it
     // would un-guard "\t=cmd" — the exact trap `\s` would have walked into.
     assert!(!is_invisible_prefix('\t'), "TAB must stay a trigger, not a skip");
+}
+
+/// `csv.rs::escape` spells its options out rather than using
+/// `..CsvCellOptions::default()`, so that a NEW option on a security-relevant
+/// guard cannot be inherited without someone deciding. The cost of that
+/// guardrail is that the one real Rust CSV caller does NOT follow the shared
+/// default automatically — the "DEFAULT OPTIONS" vectors pin every TypeScript
+/// writer against `escape_csv_cell`'s default, and would not have noticed this
+/// one drifting away from it.
+///
+/// So pin the two together directly. If the shared default moves, this fails
+/// and whoever moved it decides what `export_csv` should do, instead of the two
+/// silently disagreeing.
+#[test]
+fn the_csv_exporter_still_agrees_with_the_shared_default() {
+    assert!(
+        CsvCellOptions::default().exempt_numbers,
+        "rust/export/src/csv.rs hard-codes `exempt_numbers: true`; the shared \
+         default has moved away from it, so the CSV exporter and every \
+         TypeScript writer no longer agree"
+    );
 }

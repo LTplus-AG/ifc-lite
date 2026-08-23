@@ -4,14 +4,34 @@
 
 import { escapeCsvCell } from '@ifc-lite/export';
 import type { CellValue } from '@ifc-lite/lists';
-import { displayCell, type ExportModel } from './model';
+import { displayCell, type ExportColumn, type ExportModel } from './model';
 
 /** CWE-1236 formula guard + RFC 4180 quoting, delegated to `@ifc-lite/export`'s
- *  single escaper. `exemptNumbers` is left at its default `false`, which is
- *  what `neutralizeSpreadsheetFormula` did here before and what
- *  `injection.test.ts` pins (see the policy note in `model.ts`). */
+ *  single escaper. No options: the numeric exemption is the shared default, so
+ *  this writer cannot drift away from the other ten. */
 function esc(s: string, delim: string): string {
   return escapeCsvCell(s, { delimiter: delim });
+}
+
+/**
+ * CSV is machine-readable output, so a numeric column emits the NUMBER, the
+ * same contract `xlsx.ts` already keeps (`cellValue`) and the opposite of
+ * `pdf.ts`, which is for a human to read.
+ *
+ * `displayCell` is a DISPLAY formatter: it runs `toLocaleString()` on integers.
+ * Routing numbers through it wrote `-1,000` into a CSV under en-US (a quoted
+ * string, so the column stops summing) and `-3.000` under de-DE (bare, so a
+ * spreadsheet in a `,`-grouping locale reads it back as -3 — a silent 1000x
+ * error in a quantity column). Exempting numbers from the formula guard does
+ * not fix either one, because neither string is wholly numeric to the guard in
+ * the locale that produced it. Not formatting is what fixes it.
+ *
+ * `String(v)` on a finite number is always accepted by the guard's numeric
+ * test (`1e+21` included), so this path is never prefixed either.
+ */
+function cell(v: CellValue, c: ExportColumn, delim: string): string {
+  if (c.numeric && typeof v === 'number' && Number.isFinite(v)) return esc(String(v), delim);
+  return esc(displayCell(v), delim);
 }
 
 /**
@@ -32,14 +52,14 @@ export function toCsv(model: ExportModel, delimiter = ','): string {
     const cols = model.schedule.columns;
     const lines = [cols.map((c) => esc(c.label, delimiter)).join(delimiter)];
     for (const row of model.schedule.rows) {
-      lines.push(cols.map((_, i) => esc(displayCell(row[i]), delimiter)).join(delimiter));
+      lines.push(cols.map((c, i) => cell(row[i], c, delimiter)).join(delimiter));
     }
     if (model.sumColumnIds.length > 0) {
       const totalLabel = `TOTAL (${model.totals.count})`;
       lines.push(cols.map((c, i) => {
         if (i === 0) return esc(totalLabel, delimiter);
-        if (c.id === '__count') return esc(displayCell(model.totals.count), delimiter);
-        if (c.summed) return esc(displayCell(model.totals.sums[c.id]), delimiter);
+        if (c.id === '__count') return cell(model.totals.count, c, delimiter);
+        if (c.summed) return cell(model.totals.sums[c.id], c, delimiter);
         return '';
       }).join(delimiter));
     }
@@ -52,7 +72,7 @@ export function toCsv(model: ExportModel, delimiter = ','): string {
 
   const line = (groupLabel: string | null, values: CellValue[]) => {
     const cells = grouped ? [esc(groupLabel ?? '', delimiter)] : [];
-    for (let i = 0; i < model.columns.length; i++) cells.push(esc(displayCell(values[i]), delimiter));
+    for (let i = 0; i < model.columns.length; i++) cells.push(cell(values[i], model.columns[i], delimiter));
     return cells.join(delimiter);
   };
 
@@ -68,7 +88,7 @@ export function toCsv(model: ExportModel, delimiter = ','): string {
     const cells = grouped ? [esc(totalLabel, delimiter)] : [];
     for (let i = 0; i < model.columns.length; i++) {
       const c = model.columns[i];
-      if (c.summed) cells.push(esc(displayCell(model.totals.sums[c.id]), delimiter));
+      if (c.summed) cells.push(cell(model.totals.sums[c.id], c, delimiter));
       else if (!grouped && i === 0) cells.push(esc(totalLabel, delimiter));
       else cells.push('');
     }

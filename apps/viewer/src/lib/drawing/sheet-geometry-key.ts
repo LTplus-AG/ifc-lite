@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { DrawingSheet } from '@ifc-lite/drawing-2d';
+import type { SectionAxis } from '@/hooks/pdfSectionLayout';
 
 /**
  * Everything `Drawing2DCanvas`'s pinned-transform cache is actually derived
@@ -14,11 +15,12 @@ import type { DrawingSheet } from '@ifc-lite/drawing-2d';
  * different id entirely — any of these must be visible here even though the
  * sheet's `id` alone would not change for the first three (PR #2853 review).
  *
- * Shared between `useViewControls` (which clears the cache when this key
- * changes) and `Drawing2DCanvas` (which validates the cache against this key
- * at the READ site, not just the write site — see the module doc on
- * `cachedSheetTransformRef` in Drawing2DCanvas.tsx for why the write-site
- * clear alone is not enough to prevent a stale draw).
+ * Used by `useViewControls` (which clears the cache when this key changes)
+ * and, via {@link sheetTransformCacheKeyOf}, by the READ site in
+ * `resolveSheetTransform`, which validates the cached entry rather than
+ * trusting the write-site clear — see the module doc on
+ * `cachedSheetTransformRef` in Drawing2DCanvas.tsx for why that clear alone
+ * is not enough to prevent a stale draw.
  */
 export function sheetGeometryKeyOf(sheet: DrawingSheet | null | undefined): string | null {
   if (!sheet) return null;
@@ -26,10 +28,32 @@ export function sheetGeometryKeyOf(sheet: DrawingSheet | null | undefined): stri
 }
 
 /**
+ * The key a CACHED TRANSFORM is tagged with: the sheet geometry key plus the
+ * section axis the transform was computed under.
+ *
+ * The axis belongs here even though it is not part of the sheet, because the
+ * cached transform carries the axis's flips: `calculateDrawingTransformForAxis`
+ * folds `flipX`/`flipY` into `translateX`/`translateY`. Keyed on geometry
+ * alone, an entry written under one axis is served to a resolve on another —
+ * a transform corrected for one set of flips, applied with a different set,
+ * which on a 1:100 A3 sheet puts the drawing off the paper entirely.
+ *
+ * `sheetGeometryKeyOf` stays axis-free: `useViewControls` uses it to decide
+ * when the SHEET changed, and clears the cache on an axis change separately.
+ */
+export function sheetTransformCacheKeyOf(
+  sheet: DrawingSheet | null | undefined,
+  axis: SectionAxis,
+): string | null {
+  const geometry = sheetGeometryKeyOf(sheet);
+  return geometry === null ? null : `${geometry}|${axis}`;
+}
+
+/**
  * The pinned-sheet transform cache entry, self-describing: `key` is the
- * `sheetGeometryKeyOf()` of the sheet it was computed FOR, so a reader can
- * reject it on a mismatch instead of trusting that some other effect already
- * cleared it. See {@link sheetGeometryKeyOf}.
+ * `sheetTransformCacheKeyOf()` of the sheet AND axis it was computed FOR, so
+ * a reader can reject it on a mismatch instead of trusting that some other
+ * effect already cleared it. See {@link sheetTransformCacheKeyOf}.
  */
 export interface CachedSheetTransform {
   key: string | null;

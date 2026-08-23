@@ -2747,6 +2747,10 @@ fn pack_glb(json_bytes: &[u8], pos: &[u8], norm: &[u8], idx: &[u8]) -> Vec<u8> {
 mod tests;
 
 #[cfg(test)]
+#[path = "gltf_conformance_tests.rs"]
+mod conformance_tests;
+
+#[cfg(test)]
 mod site_placement_tests {
     use super::*;
 

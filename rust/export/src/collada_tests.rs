@@ -315,3 +315,6 @@ fn composed_orientation_reproduces_ifc_bearing() {
         );
     }
 }
+
+#[path = "collada_conformance_tests.rs"]
+mod conformance;

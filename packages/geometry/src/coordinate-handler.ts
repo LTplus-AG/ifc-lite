@@ -14,6 +14,25 @@
 
 import type { MeshData } from './types.js';
 
+/**
+ * The "normal coordinate" ceiling, in metres: 10 km, a generous campus/site.
+ *
+ * Two separate rules are keyed off it, and they must stay the same number:
+ * `CoordinateHandler` uses it as the validation threshold once WASM RTC has
+ * already shifted the model, and the viewer uses it as a per-vertex corruption
+ * filter when computing bounds to fit the camera to (a vertex further than this
+ * from its local origin is unshifted or garbage, and would blow the fit box out
+ * so the model renders as a speck).
+ *
+ * Exported because the viewer used to carry three unlinked copies of the
+ * literal (`localParsingUtils`, `viewportUtils`, `useGeometryStreaming`), two of
+ * them documented as "matches CoordinateHandler's NORMAL_COORD_THRESHOLD" with
+ * nothing enforcing it. Raising all three to 250 km left the entire viewer suite
+ * (5751 tests) green, so the agreement was prose only. Import this rather than
+ * writing `10000` again.
+ */
+export const NORMAL_COORD_THRESHOLD_M = 10000;
+
 export interface Vec3 {
     x: number;
     y: number;
@@ -58,7 +77,7 @@ export class CoordinateHandler {
     // WASM RTC detection - if WASM already applied RTC, skip TypeScript shift
     private wasmRtcDetected: boolean = false;
     // Threshold for "normal" coordinates when WASM RTC is active (10km = reasonable campus/site size)
-    private readonly NORMAL_COORD_THRESHOLD = 10000;
+    private readonly NORMAL_COORD_THRESHOLD = NORMAL_COORD_THRESHOLD_M;
     // Active threshold for coordinate validation (set based on wasmRtcDetected)
     private activeThreshold: number = 1e7;
 

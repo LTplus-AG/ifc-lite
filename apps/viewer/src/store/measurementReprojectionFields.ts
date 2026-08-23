@@ -57,6 +57,10 @@ export const REPROJECTED_MEASUREMENT_FIELDS = {
   activeAngle: 'nullable',
   /** Finished angle measurements (#2735). */
   angleMeasurements: 'list',
+  /** In-progress radius/diameter sequence (#2737 item 2). */
+  activeRadius: 'nullable',
+  /** Finished radius measurements (#2737 item 2). */
+  radiusMeasurements: 'list',
 } as const satisfies Record<string, ReprojectedFieldKind>;
 
 /** Field names of {@link REPROJECTED_MEASUREMENT_FIELDS}. */

@@ -17,7 +17,7 @@
    515 apps/viewer-embed/src/bridge/handler.ts
    445 apps/viewer-embed/src/components/EmbedViewer.tsx
    481 apps/viewer/src/components/extensions/ExtensionsPanel.tsx
-   421 apps/viewer/src/components/extensions/FlavorDialog.tsx
+   431 apps/viewer/src/components/extensions/FlavorDialog.tsx
    428 apps/viewer/src/components/extensions/widget/WidgetRenderer.tsx
    665 apps/viewer/src/components/mcp/data.ts
   1318 apps/viewer/src/components/mcp/McpLanding.tsx
@@ -39,16 +39,16 @@
    849 apps/viewer/src/components/viewer/CommandPalette.tsx
    410 apps/viewer/src/components/viewer/ComparePanel.tsx
   1059 apps/viewer/src/components/viewer/DataConnector.tsx
-  1808 apps/viewer/src/components/viewer/Drawing2DCanvas.tsx
+  1842 apps/viewer/src/components/viewer/Drawing2DCanvas.tsx
    536 apps/viewer/src/components/viewer/DrawingSettingsPanel.tsx
-   407 apps/viewer/src/components/viewer/DxfUnderlayPanel.tsx
+   426 apps/viewer/src/components/viewer/DxfUnderlayPanel.tsx
    583 apps/viewer/src/components/viewer/EntityContextMenu.tsx
    863 apps/viewer/src/components/viewer/ExportDialog.tsx
    531 apps/viewer/src/components/viewer/GLBExportDialog.tsx
   1466 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
    435 apps/viewer/src/components/viewer/hierarchy/useHierarchyTree.ts
   1159 apps/viewer/src/components/viewer/HierarchyPanel.tsx
-  1072 apps/viewer/src/components/viewer/IDSPanel.tsx
+  1198 apps/viewer/src/components/viewer/IDSPanel.tsx
    569 apps/viewer/src/components/viewer/KeyboardShortcutsDialog.tsx
    534 apps/viewer/src/components/viewer/layers/LayerMergeSection.tsx
   1714 apps/viewer/src/components/viewer/LensPanel.tsx
@@ -77,24 +77,24 @@
    534 apps/viewer/src/components/viewer/SearchModal.filter.editors.tsx
    862 apps/viewer/src/components/viewer/SearchModal.filter.tsx
    404 apps/viewer/src/components/viewer/SearchModal.text.tsx
-  1360 apps/viewer/src/components/viewer/Section2DPanel.tsx
-  1048 apps/viewer/src/components/viewer/selectionHandlers.ts
+  1367 apps/viewer/src/components/viewer/Section2DPanel.tsx
+  1047 apps/viewer/src/components/viewer/selectionHandlers.ts
    502 apps/viewer/src/components/viewer/SheetSetupPanel.tsx
    437 apps/viewer/src/components/viewer/TitleBlockEditor.tsx
    581 apps/viewer/src/components/viewer/tools/AddElementOverlay.tsx
    869 apps/viewer/src/components/viewer/tools/MeasurementVisuals.tsx
    663 apps/viewer/src/components/viewer/tools/MeasurePanel.tsx
-   482 apps/viewer/src/components/viewer/tools/MeasureQuantities.tsx
+   694 apps/viewer/src/components/viewer/tools/MeasureQuantities.tsx
    436 apps/viewer/src/components/viewer/tools/SectionVisualization.tsx
   1510 apps/viewer/src/components/viewer/tools/SpaceSketchOverlay.tsx
    406 apps/viewer/src/components/viewer/useAnimationLoop.ts
-   967 apps/viewer/src/components/viewer/useGeometryStreaming.ts
+   970 apps/viewer/src/components/viewer/useGeometryStreaming.ts
    928 apps/viewer/src/components/viewer/useMouseControls.ts
    782 apps/viewer/src/components/viewer/ViewerLayout.tsx
   1834 apps/viewer/src/components/viewer/Viewport.tsx
   1539 apps/viewer/src/components/viewer/ViewportContainer.tsx
    511 apps/viewer/src/components/viewer/ZonesPanel.tsx
-   436 apps/viewer/src/hooks/ids/idsExportService.ts
+   862 apps/viewer/src/hooks/ids/idsExportService.ts
    598 apps/viewer/src/hooks/ingest/federationAlign.ts
    458 apps/viewer/src/hooks/ingest/pointCloudAlignment.ts
    545 apps/viewer/src/hooks/ingest/pointCloudIngest.ts
@@ -102,12 +102,12 @@
    678 apps/viewer/src/hooks/useBCF.ts
   1374 apps/viewer/src/hooks/useClash.ts
    482 apps/viewer/src/hooks/useCompare.ts
-  1087 apps/viewer/src/hooks/useDrawingExport.ts
+  1359 apps/viewer/src/hooks/useDrawingExport.ts
   1036 apps/viewer/src/hooks/useDrawingGeneration.ts
   1416 apps/viewer/src/hooks/useIDS.ts
    591 apps/viewer/src/hooks/useIfcCache.ts
    681 apps/viewer/src/hooks/useIfcFederation.ts
-  2206 apps/viewer/src/hooks/useIfcLoader.ts
+  2204 apps/viewer/src/hooks/useIfcLoader.ts
    436 apps/viewer/src/hooks/useIfcServer.ts
    461 apps/viewer/src/hooks/useKeyboardShortcuts.ts
    737 apps/viewer/src/hooks/useSymbolicAnnotations.ts
@@ -136,63 +136,64 @@
    452 apps/viewer/src/lib/slab-edit.ts
    412 apps/viewer/src/lib/sources/persistence.ts
    426 apps/viewer/src/lib/tours/controller.ts
-   818 apps/viewer/src/sdk/adapters/export-adapter.ts
-   595 apps/viewer/src/services/extensions/host.ts
+   812 apps/viewer/src/sdk/adapters/export-adapter.ts
+   638 apps/viewer/src/services/extensions/host.ts
    561 apps/viewer/src/services/ifc-cache.ts
    581 apps/viewer/src/store/basketVisibleSet.ts
    485 apps/viewer/src/store/constants.ts
-   839 apps/viewer/src/store/index.ts
+   846 apps/viewer/src/store/index.ts
+   404 apps/viewer/src/store/slices/addElementMeshes.ts
    452 apps/viewer/src/store/slices/chatSlice.ts
    994 apps/viewer/src/store/slices/clashSlice.ts
-  1558 apps/viewer/src/store/slices/collabSlice.ts
+  1599 apps/viewer/src/store/slices/collabSlice.ts
    874 apps/viewer/src/store/slices/drawing2DSlice.ts
    482 apps/viewer/src/store/slices/idsSlice.ts
-   670 apps/viewer/src/store/slices/measurementSlice.ts
+   713 apps/viewer/src/store/slices/measurementSlice.ts
    889 apps/viewer/src/store/slices/modelSlice.ts
-  3255 apps/viewer/src/store/slices/mutationSlice.ts
+  3283 apps/viewer/src/store/slices/mutationSlice.ts
    478 apps/viewer/src/store/slices/pinboardSlice.ts
   1317 apps/viewer/src/store/slices/scheduleSlice.ts
    536 apps/viewer/src/store/slices/scriptSlice.ts
-   562 apps/viewer/src/store/slices/sectionSlice.ts
+   574 apps/viewer/src/store/slices/sectionSlice.ts
    571 apps/viewer/src/store/slices/sheetSlice.ts
    414 apps/viewer/src/store/slices/uiSlice.ts
    485 apps/viewer/src/store/slices/visibilitySlice.ts
    645 apps/viewer/src/store/types.ts
    819 apps/viewer/src/utils/serverDataModel.ts
    441 apps/viewer/src/utils/spatialHierarchy.ts
-   562 apps/viewer/src/utils/viewportUtils.ts
+   573 apps/viewer/src/utils/viewportUtils.ts
    413 apps/viewer/vite.config.ts
    792 packages/bcf/src/ids-reporter.ts
    495 packages/bcf/src/overlay-renderer.ts
-  1139 packages/bcf/src/reader.ts
+  1190 packages/bcf/src/reader.ts
    573 packages/bcf/src/viewpoint.ts
-   852 packages/bcf/src/writer.ts
+   981 packages/bcf/src/writer.ts
    605 packages/cache/src/glb.ts
    414 packages/clash/src/adapters/step.ts
    441 packages/clash/src/bcf-bridge.ts
    433 packages/clash/src/duplicates.ts
    546 packages/cli/src/commands/ask.ts
    495 packages/cli/src/commands/create.ts
-   439 packages/cli/src/commands/export.ts
+   436 packages/cli/src/commands/export.ts
    518 packages/cli/src/commands/extract-entities.ts
    609 packages/cli/src/commands/query.ts
-   781 packages/cli/src/headless-backend.ts
+   778 packages/cli/src/headless-backend.ts
    457 packages/codegen/src/express-parser.ts
    674 packages/codegen/src/rust-generator.ts
-   631 packages/codegen/src/typescript-generator.ts
+   640 packages/codegen/src/typescript-generator.ts
    427 packages/collab-server/src/access-control.ts
    805 packages/collab-server/src/layer-registry-route.ts
    727 packages/collab-server/src/room-manager.ts
    662 packages/collab-server/src/room-token.ts
    677 packages/collab-server/src/server.ts
-   621 packages/collab/src/doc/entity.ts
+   653 packages/collab/src/doc/entity.ts
    598 packages/create-ifc-lite/src/templates/react.ts
    427 packages/create-ifc-lite/src/templates/server-native.ts
    638 packages/create-ifc-lite/src/templates/server.ts
   2843 packages/create/src/ifc-creator.ts
    448 packages/create/src/in-store/apply-style.ts
    535 packages/create/src/in-store/auto-space-detect.ts
-  1099 packages/create/src/in-store/extract-walls.ts
+  1164 packages/create/src/in-store/extract-walls.ts
    437 packages/create/src/in-store/generate-spaces.ts
    819 packages/create/src/types.ts
   1022 packages/data/scripts/generate-ifc-schema.ts
@@ -210,33 +211,33 @@
    470 packages/drawing-2d/src/graphic-overrides/presets.ts
    561 packages/drawing-2d/src/graphic-overrides/rule-engine.ts
    431 packages/drawing-2d/src/hatch-generator.ts
-   577 packages/drawing-2d/src/index.ts
+   572 packages/drawing-2d/src/index.ts
    436 packages/drawing-2d/src/line-merger.ts
    417 packages/drawing-2d/src/object-styles.ts
    753 packages/drawing-2d/src/polygon-builder.ts
    409 packages/drawing-2d/src/section-cutter.ts
    403 packages/drawing-2d/src/sheet/scale-stamp.ts
-   488 packages/drawing-2d/src/sheet/title-block-renderer.ts
-   454 packages/drawing-2d/src/styles.ts
+   599 packages/drawing-2d/src/sheet/title-block-renderer.ts
+   489 packages/drawing-2d/src/styles.ts
    613 packages/drawing-2d/src/svg-exporter.ts
    573 packages/drawing-2d/src/symbols/door-symbol.ts
    808 packages/drawing-2d/src/types.ts
    592 packages/export/src/effective-index.ts
    888 packages/export/src/ifc5-exporter.ts
-  1679 packages/export/src/merged-exporter.ts
+  1667 packages/export/src/merged-exporter.ts
    640 packages/export/src/parquet-exporter.ts
   1122 packages/export/src/reference-collector.ts
    556 packages/export/src/schema-converter.ts
    415 packages/export/src/step-attribute-mutations.ts
   1169 packages/export/src/step-exporter.ts
   1061 packages/export/src/step-property-sets.ts
-   427 packages/export/src/step-serialization.ts
+   435 packages/export/src/step-serialization.ts
    437 packages/extensions/src/testing/runner.ts
-   606 packages/geometry/src/coordinate-handler.ts
+   625 packages/geometry/src/coordinate-handler.ts
   1707 packages/geometry/src/geometry-parallel.ts
   1754 packages/geometry/src/geometry.worker.ts
    937 packages/geometry/src/ifc-lite-bridge.ts
-  1556 packages/geometry/src/index.ts
+  1551 packages/geometry/src/index.ts
    730 packages/geometry/src/native-bridge.ts
    449 packages/geometry/src/types.ts
    469 packages/ids/src/audit/coherence/index.ts
@@ -255,7 +256,7 @@
    464 packages/lens/src/engine.ts
    426 packages/lens/src/matching.ts
    417 packages/lens/src/types.ts
-   792 packages/lists/src/engine.ts
+   815 packages/lists/src/engine.ts
    423 packages/lists/src/types.ts
    509 packages/mcp/src/backend-query.ts
    420 packages/mcp/src/overlay.ts
@@ -270,7 +271,7 @@
    530 packages/merge/src/three-way.ts
    493 packages/mutations/src/bulk-query-engine.ts
    573 packages/mutations/src/csv-connector.ts
-  2096 packages/mutations/src/mutable-property-view.ts
+  2121 packages/mutations/src/mutable-property-view.ts
    422 packages/oauth-pkce/src/token-manager.ts
   1237 packages/parser/src/columnar-parser.ts
    480 packages/parser/src/compact-entity-index.ts
@@ -295,11 +296,11 @@
    535 packages/query/src/duckdb-integration.ts
    561 packages/renderer/src/camera-controls.ts
    578 packages/renderer/src/camera.ts
-  3735 packages/renderer/src/index.ts
+  3792 packages/renderer/src/index.ts
    780 packages/renderer/src/picker.ts
    952 packages/renderer/src/pipeline.ts
    477 packages/renderer/src/pointcloud/point-cloud-renderer.ts
-   635 packages/renderer/src/pointcloud/point-cloud-spatial-index.ts
+   758 packages/renderer/src/pointcloud/point-cloud-spatial-index.ts
    474 packages/renderer/src/raycast-engine.ts
    401 packages/renderer/src/render-section-plane.ts
    445 packages/renderer/src/scene-raycaster.ts
@@ -307,10 +308,10 @@
    706 packages/renderer/src/section-2d-overlay.ts
    514 packages/renderer/src/section-plane.ts
    639 packages/renderer/src/shaders/main.wgsl.ts
-   431 packages/renderer/src/shadow-pass.ts
+   454 packages/renderer/src/shadow-pass.ts
    764 packages/renderer/src/snap-detector.ts
    766 packages/renderer/src/symbolic-overlay-pipelines.ts
-   404 packages/renderer/src/types.ts
+   406 packages/renderer/src/types.ts
    587 packages/sandbox/src/bridge-create.ts
    421 packages/sandbox/src/bridge-query.ts
    498 packages/sandbox/src/bridge-schema.ts

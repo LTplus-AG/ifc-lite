@@ -151,6 +151,20 @@ describe('__internal helpers', () => {
     assert.strictEqual(__internal.escapeCsvCell('Wall A'), 'Wall A');
   });
 
+  it('exports a signed number as a number, not as text', () => {
+    // This writer sets no options, so it takes the shared guard's DEFAULT.
+    // Until that default flipped, every negative value here shipped as
+    // `'-0.35` and the column stopped summing in a spreadsheet (#1772).
+    // Pinned at a CALL SITE, not only in the library: six writers take this
+    // default and not one of them could see it change.
+    assert.strictEqual(__internal.escapeCsvCell('-0.35'), '-0.35');
+    assert.strictEqual(__internal.escapeCsvCell('+1'), '+1');
+    // The exemption is for numbers, not for the sign: anything glued on is
+    // still a formula as far as the guard is concerned.
+    assert.strictEqual(__internal.escapeCsvCell('-0.35=cmd'), "'-0.35=cmd");
+    assert.strictEqual(__internal.escapeCsvCell('@1'), "'@1");
+  });
+
   // Filename sanitisation now lives in lib/export/download.ts (sanitizeFilename),
   // which preserves case and dots — see download.test.ts. downloadResult() routes
   // its stem through it, so there is no module-local helper to test here anymore.

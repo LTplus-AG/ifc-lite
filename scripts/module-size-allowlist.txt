@@ -197,7 +197,7 @@
   1164 packages/create/src/in-store/extract-walls.ts
    437 packages/create/src/in-store/generate-spaces.ts
    819 packages/create/src/types.ts
-  1022 packages/data/scripts/generate-ifc-schema.ts
+  1106 packages/data/scripts/generate-ifc-schema.ts
    907 packages/data/src/ifc-entity-names.ts
    438 packages/data/src/property-table.ts
    459 packages/data/src/step-serializers.ts

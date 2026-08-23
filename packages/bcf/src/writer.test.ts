@@ -321,7 +321,7 @@ describe('BCF Writer', () => {
     expect(readViewpoint?.perspectiveCamera?.fieldOfView).toBe(60);
   });
 
-  // Regression: writer.escapeXml() and reader.extractElement() must be inverses.
+  // Regression: writer.escapeXml() and xml-text.extractElement() must be inverses.
   // Before the fix, extractElement() used a plain "grab text between tags" regex
   // with no entity unescaping, so a title of `A & B` came back as the literal
   // string "A &amp; B" instead of "A & B".

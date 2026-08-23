@@ -77,13 +77,22 @@ async function main(): Promise<void> {
   // `parseArgs` is a pure parser so it can be exercised by tests (and shared
   // with `ifc-lite mcp`); acting on --help/--version stays here, where exiting
   // the process is the caller's business.
+  // `process.exitCode` + return, NOT `process.exit(0)`. Writes to a pipe are
+  // asynchronous in Node, and `process.exit` does not wait for them, so a large
+  // enough piped write can be truncated. This help text is ~2KB and fits the
+  // pipe buffer, so it was NOT being truncated today -- measured, not assumed.
+  // The change is for the shape rather than an observed failure, and it makes
+  // this binary match its sibling `packages/cli/src/index.ts`, which already
+  // returns rather than exits.
   if (opts.help) {
     printHelp();
-    process.exit(0);
+    process.exitCode = 0;
+    return;
   }
   if (opts.version) {
     process.stdout.write(`ifc-lite-mcp ${VERSION}\n`);
-    process.exit(0);
+    process.exitCode = 0;
+    return;
   }
   const scope: AuthScope = opts.readOnly ? readOnlyScope() : fullScope();
 

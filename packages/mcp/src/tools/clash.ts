@@ -168,7 +168,7 @@ const clashCheck: Tool = {
     'Clash detection on a single model. Omit BOTH a and b to detect ALL clashes inside the model '
     + '(every element vs every other — no discipline matrix needed). Give only a TYPE selector for a to '
     + 'self-clash within a group (a="IfcDuct*"), or both a and b for a pairwise check (a="IfcDuct*", b="IfcWall*"). '
-    + 'Meshes the model headlessly and returns a summary plus the top clashes by |distance|.',
+    + 'Meshes the model headlessly and returns a summary plus the top clashes by distance ascending, so deepest penetration first in hard mode and tightest gap first in clearance mode.',
   scope: 'read',
   inputSchema: {
     type: 'object',
@@ -208,7 +208,7 @@ const clashCheck: Tool = {
 
     const settings = { a, b: b ?? null, mode, tolerance: tolerance ?? null, clearance: clearance ?? null };
     const capNote = truncated
-      ? ` Showing top ${truncated.shown} by |distance|; ${truncated.dropped} more not shown.`
+      ? ` Showing top ${truncated.shown} by distance; ${truncated.dropped} more not shown.`
       : '';
     return okResult(
       `Found ${result.summary.total} clash(es) for ${label} (mode=${mode}).${capNote}`,
@@ -228,7 +228,8 @@ const clashMatrix: Tool = {
   name: 'clash_matrix',
   description:
     'Run the standard discipline clash matrix (MEP x STR, HVAC x ARCH, ...) over the whole model. '
-    + 'Returns per-rule and per-severity breakdowns plus a sample of the worst clashes.',
+    + 'Returns per-rule and per-severity breakdowns over EVERY clash, plus a sample of clashes '
+    + 'selected and capped by distance ascending -- so the breakdowns are complete and the sample is not.',
   scope: 'read',
   inputSchema: {
     type: 'object',
@@ -249,7 +250,7 @@ const clashMatrix: Tool = {
     const { rows, truncated } = topClashes(result.clashes, CLASH_DISPLAY_CAP);
 
     const capNote = truncated
-      ? ` Sampling top ${truncated.shown} by |distance|; ${truncated.dropped} more not shown.`
+      ? ` Sampling top ${truncated.shown} by distance; ${truncated.dropped} more not shown.`
       : '';
     return okResult(
       `Discipline matrix (mode=${mode}, ${rules.length} rules): ${result.summary.total} clash(es).${capNote}`,

@@ -9,16 +9,14 @@
  */
 
 import JSZip from 'jszip';
+import { parseComponents } from './reader-components.js';
+import { extractElement, unescapeXml } from './xml-text.js';
 import type {
   BCFProject,
   BCFTopic,
   BCFComment,
   BCFViewpoint,
   BCFVersion,
-  BCFComponents,
-  BCFComponent,
-  BCFVisibility,
-  BCFColoring,
   BCFPerspectiveCamera,
   BCFOrthogonalCamera,
   BCFLine,
@@ -458,33 +456,6 @@ function parseHeaderFiles(markupContent: string): BCFHeaderFile[] {
  */
 function extractAttr(attrsString: string, attrName: string): string | undefined {
   return attrsString.match(new RegExp(`\\b${attrName}="([^"]*)"`))?.[1];
-}
-
-/**
- * Extract a simple element value from XML
- *
- * Values are unescaped so writer.ts's escapeXml() round-trips correctly
- * (see escapeXml/unescapeXml regression: & < > " ' in titles/descriptions/
- * comments must come back exactly as written, not as literal entities).
- */
-function extractElement(content: string, elementName: string): string | undefined {
-  const match = content.match(new RegExp(`<${elementName}>([^<]*)<\\/${elementName}>`));
-  return match?.[1] !== undefined ? unescapeXml(match[1]) : undefined;
-}
-
-/**
- * Unescape XML entities produced by writer.ts's escapeXml()
- *
- * &amp; must be decoded last so a literal "&lt;" written as "&amp;lt;"
- * doesn't get corrupted into "<" by an earlier pass.
- */
-function unescapeXml(str: string): string {
-  return str
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&amp;/g, '&');
 }
 
 /**
@@ -962,136 +933,6 @@ function parsePoint(content: string, elementName: string): BCFPoint | undefined 
  */
 function parseDirection(content: string, elementName: string): BCFDirection | undefined {
   return parsePoint(content, elementName) as BCFDirection | undefined;
-}
-
-/**
- * Parse components (selection/visibility/coloring)
- */
-function parseComponents(content: string): BCFComponents | undefined {
-  const componentsMatch = content.match(/<Components>([\s\S]*?)<\/Components>/);
-  if (!componentsMatch) return undefined;
-
-  const componentsContent = componentsMatch[1];
-
-  // Parse selection
-  const selection = parseComponentList(componentsContent, 'Selection');
-
-  // Parse visibility
-  const visibility = parseVisibility(componentsContent);
-
-  // Parse coloring
-  const coloring = parseColoring(componentsContent);
-
-  if (!selection && !visibility && !coloring) {
-    return undefined;
-  }
-
-  return {
-    selection: selection?.length ? selection : undefined,
-    visibility,
-    coloring: coloring?.length ? coloring : undefined,
-  };
-}
-
-/**
- * Parse a list of components
- */
-function parseComponentList(content: string, elementName: string): BCFComponent[] | undefined {
-  const match = content.match(new RegExp(`<${elementName}>([\\s\\S]*?)<\\/${elementName}>`));
-  if (!match) return undefined;
-
-  const components: BCFComponent[] = [];
-  const componentMatches = match[1].matchAll(/<Component[^>]*(?:\/>|>[\s\S]*?<\/Component>)/g);
-
-  for (const compMatch of componentMatches) {
-    const component = parseComponent(compMatch[0]);
-    if (component) {
-      components.push(component);
-    }
-  }
-
-  return components.length > 0 ? components : undefined;
-}
-
-/**
- * Parse a single component
- */
-function parseComponent(content: string): BCFComponent | undefined {
-  const ifcGuidMatch = content.match(/IfcGuid="([^"]+)"/);
-
-  // Per BCF 2.1 §"Component" (unchanged in 3.0) only `IfcGuid` is an
-  // attribute; `OriginatingSystem` and `AuthoringToolId` are child
-  // ELEMENTS — which is exactly what writeComponent() emits. Reading them
-  // as attributes matched nothing, so both fields were dropped from every
-  // archive, ifc-lite's own included. The attribute spellings are still
-  // accepted as a fallback so files from tools that emit the non-spec form
-  // keep working; the element form wins when both are present.
-  const authoringToolId =
-    extractElement(content, 'AuthoringToolId') ?? content.match(/AuthoringToolId="([^"]+)"/)?.[1];
-  const originatingSystem =
-    extractElement(content, 'OriginatingSystem')
-    ?? content.match(/OriginatingSystem="([^"]+)"/)?.[1];
-
-  // A component needs some identity to be meaningful. `IfcGuid` is optional
-  // in the schema, so `AuthoringToolId` alone is a valid identification —
-  // and used to be discarded here because it was never found.
-  if (!ifcGuidMatch && authoringToolId === undefined) {
-    return undefined;
-  }
-
-  return {
-    ifcGuid: ifcGuidMatch?.[1],
-    authoringToolId,
-    originatingSystem,
-  };
-}
-
-/**
- * Parse visibility settings
- */
-function parseVisibility(content: string): BCFVisibility | undefined {
-  const visibilityMatch = content.match(/<Visibility[^>]*>([\s\S]*?)<\/Visibility>/);
-  if (!visibilityMatch) return undefined;
-
-  const defaultVisMatch = content.match(/DefaultVisibility="([^"]+)"/);
-  const defaultVisibility = defaultVisMatch?.[1] !== 'false';
-
-  const exceptions = parseComponentList(visibilityMatch[1], 'Exceptions');
-
-  return {
-    defaultVisibility,
-    exceptions,
-  };
-}
-
-/**
- * Parse coloring settings
- */
-function parseColoring(content: string): BCFColoring[] | undefined {
-  const coloringMatch = content.match(/<Coloring>([\s\S]*?)<\/Coloring>/);
-  if (!coloringMatch) return undefined;
-
-  const colorings: BCFColoring[] = [];
-  const colorMatches = coloringMatch[1].matchAll(/<Color\s+Color="([^"]+)"[^>]*>([\s\S]*?)<\/Color>/g);
-
-  for (const match of colorMatches) {
-    const color = match[1];
-    const components: BCFComponent[] = [];
-    const componentMatches = match[2].matchAll(/<Component[^>]*(?:\/>|>[\s\S]*?<\/Component>)/g);
-
-    for (const compMatch of componentMatches) {
-      const component = parseComponent(compMatch[0]);
-      if (component) {
-        components.push(component);
-      }
-    }
-
-    if (components.length > 0) {
-      colorings.push({ color, components });
-    }
-  }
-
-  return colorings.length > 0 ? colorings : undefined;
 }
 
 /**

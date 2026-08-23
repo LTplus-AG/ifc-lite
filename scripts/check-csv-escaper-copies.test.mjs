@@ -202,7 +202,22 @@ describe('prose mentions', () => {
     file: 'packages/lists/src/fixture-doc.test.ts',
     text: '// is not a formula to an anchored `/^[=+\\-@\\t\\r]/` but it is one to Excel.',
   };
-  const [ENGINE_MENTION] = PROSE_MENTIONS;
+  // Bound by FILE, not by position, so it says WHICH entry it wants rather than
+  // WHERE it sits. `[ENGINE_MENTION] = PROSE_MENTIONS` binds to index 0, which
+  // means any registry edit re-points it -- and the registry is a ratchet whose
+  // whole job is to change.
+  //
+  // Not claiming this prevents a SILENT failure: a prepended decoy reds the
+  // positional form too (6 tests), and the probe that suggested otherwise was
+  // confounded -- the decoy named an absent file, so both arms were measuring
+  // the stale-mention ratchet rather than the binding. What this buys is one
+  // named assertion instead of six cascading ones, and a bind that survives
+  // reordering.
+  const ENGINE_MENTION = PROSE_MENTIONS.find((m) => m.file === KNOWN_REMAINING[0]);
+  assert.ok(
+    ENGINE_MENTION,
+    `no PROSE_MENTIONS entry for ${KNOWN_REMAINING[0]}; these cases pin its interaction with the debt ratchet`,
+  );
   const MENTIONS = [MENTION, ENGINE_MENTION];
   const ENGINE_CODE =
     '      /^[\\p{Cf}\\p{Z}]*[=+\\-@\\t\\r]/u.test(str) &&\n' +

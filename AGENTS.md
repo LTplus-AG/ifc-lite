@@ -119,9 +119,20 @@ A guard that both ACTS and REPORTS has a two-part contract — bound the work, a
 report that you bounded it. Mutate the halves separately; they fail differently
 (a missing bound hangs, a missing report returns a truncated success).
 
+`scripts/check-refwalk-guards.mjs` (CI) enforces the *presence* of a guard, not
+its choice: it fails when a self- or mutually-recursive function, or a
+cursor-chasing loop, reaches `decode_by_id`/`resolve_ref`/`resolve_ref_list`
+under `rust/geometry/src`, `rust/processing/src` or `rust/wasm-bindings/src`
+with no visited set, path stack or depth cap in scope. Five of the six #2866
+fixes are detected at their parent commit and clear at the fix; the sixth
+(#2870) spans two files and is missed, which is the documented blind spot. Which
+guard is right stays a review question — everything above still applies. The
+allowlist is `scripts/refwalk-guard-allowlist.txt` and is empty.
+
 ## Writing tests
 - A new test must assert behavior through a real fixture or a stated invariant. Don't write: set-state-then-read-it-back store tests, tests that assert a mock's return value (they test the mock), constructor/setter tautologies, or byte-for-byte output pinning unless the byte layout IS the compatibility contract (e.g. signed bundles). Regression tests cite the issue/PR number in the test name or a comment.
 - Every package with test files needs a `test` script in its package.json or `turbo test` silently skips it; `scripts/check-test-wiring.mjs` (CI) enforces this. Packages use vitest OR node:test via `tsx --test`; match the package's existing convention, never mix within a package.
+- **A new gate under `scripts/` must be INVOKED, and a package.json entry is not invocation.** A guard nothing runs is the same absence as a guard that finds nothing, and it is invisible in exactly the same way: #3062 shipped a gate script and its test with no workflow step, no `package.json` script and no turbo task, and nothing flagged it. `scripts/check-test-wiring.mjs` now also audits `scripts/` — every `check-*` / `verify-*` file at **any depth** and in `.mjs`, `.js` or `.cjs` (`verify-npm-publish.js` and `check-benchmark-regression.js` are real gates, and `scripts/ci/` is exactly where the advice "move it to a covered directory" puts a file) — and accepts exactly the wiring this repo actually uses: a `.github/workflows/` step running `node scripts/<gate>.mjs` (the common case — see the `node-tests` job), a root `package.json` script a workflow reaches through `pnpm <name>`, possibly transitively (`check-changesets.mjs` ← `lint` ← the Lint job), a **workspace** package's script reached by a turbo task (`check-tla-chunk-await.mjs` is the viewer `build` script's tail, deliberately, so Vercel runs it too and not only CI), or a file that a script already reached imports or spawns (below the top level a `verify-*` name is as often a module as a gate: `moonshot/diff-spike/verify-common.mjs` is imported by the workflow-wired `verify-trajectory.mjs`, and a file a running gate runs does run). A root `package.json` entry no workflow ever calls executes exactly as often as no entry at all and is rejected. `scripts/*.test.mjs` is audited separately from the gate itself — the `node --test scripts/*.test.mjs scripts/lib/*.test.mjs` catch-all covers those two directories and no others (a shell glob has no `**`), and a gate whose test runs while its script never executes is still the #3062 failure. A script that genuinely should not run in CI declares `@unwired-by-design <reason>` in its own header and is then listed in the checker's OK output rather than hidden; today that is `check-generated.mjs` (a pre-push aggregator of gates CI already runs), `check-git-lfs.mjs` (reports on the developer's own clone), `check-whole-state-reset.mjs` (an unadopted heuristic, issue #2802) and `moonshot/b45-m1-midterm/verify-worker.mjs` (a worker of a hand-run benchmark). The marker is a blanket escape — nothing judges the reason's quality — so its only safeguard is that every declaration is printed and lives in the diff. The check is lexical and does not evaluate workflow expressions: a gate whose only step sits in a job with `if: false` still counts as wired. `audit-*.mjs` reports and does not gate, so it is not demanded.
 - **Never assert on a source file's text.** A test that reads `Thing.tsx` and greps it certifies a string exists, not that the code works: `SearchModal.filter.wiring.test.tsx` asserted the whole body of `handleRowClick` and stayed 5/5 green when `onRowClick={handleRowClick}` was replaced with `onRowClick={() => {}}` — defect #2396 verbatim. `scripts/check-source-text-assertions.mjs` (CI) blocks new ones; the remaining list is in `scripts/source-text-assertion-allowlist.txt` and only ratchets down (#2434).
 - **Testing a viewer component.** It is mountable — including one that reads `useViewerStore`, which is a module-level Zustand store you seed with `setState`. Three test files claimed otherwise for months; the real blockers were two Vite-isms, fixed once in `apps/viewer/src/test/`. The recipe:
   ```tsx
@@ -174,10 +185,76 @@ report that you bounded it. Mutate the halves separately; they fail differently
 Before touching an issue:
 
 1. `gh issue view <n> --json assignees,title` — **if someone else is assigned, it is theirs.** See "Helping on someone else's issue" below for the two ways that changes.
-2. `gh pr list --search "<n>"` — an open PR referencing the issue is a claim even when nobody is assigned.
+2. Look for an open PR on it. `gh pr list --search "<n>"` is a TEXT search: it
+   matches comment bodies, so it both misses linked PRs that never mention the
+   number and returns unrelated ones that happen to contain it. Treat a hit as a
+   reason to look, not as an answer, and confirm by opening the PR. The linked-PR
+   list on the issue page is authoritative where the two disagree.
 3. If both are clear, `gh issue edit <n> --add-assignee <you>` **before** writing code, not when you open the PR. An assignment made at PR time claims nothing; the window it needed to cover has already closed.
 
 Check again immediately before opening the PR. A claim can appear while you work, and the second check is the cheap one.
+
+### Every agent is the same GitHub account
+
+`gh issue edit --add-assignee` cannot tell two agents apart, because they all
+push and assign as the **same account**. An issue assigned to that account
+means *somebody has claimed this*. It does **not** mean *you* claimed it, and
+you cannot tell which from the assignee field.
+
+So an assignment to your own account is a claim by someone else until you can
+show otherwise. **Leave a claim comment as well**, naming the session, so the
+next agent can tell:
+
+    gh issue comment <n> --body "Claiming this. Session <id>, branch <name>."
+
+And when you find the account already assigned with no claim comment, ask on
+the issue before starting rather than reading the field as your own.
+
+Note this is about OUR sessions only. An outside contributor has their own
+account, so the field says what it looks like it says for them.
+
+### The contributor check and the session check are different checks
+
+Doing one does not do the other, and the assignee field cannot cover both.
+
+On #3012 the account was self-assigned at 14:12:52 and a PR for the same issue
+appeared 47 minutes later. The natural reading was another session ignoring the
+claim. It was not: **the PR came from an outside contributor**, who has no
+reason to know or care about an internal assignment, and for whom the repo's
+existing rules already apply (look for their PR before starting, external work
+takes precedence, never push to their branch).
+
+The session that self-assigned never ran `gh pr list --search 3012`. No
+assignee field, however precise about sessions, would have helped: **no session
+held it.** Only the PR search would have.
+
+So run both, every time:
+
+    gh issue view <n> --json assignees      # is one of us on it
+    gh pr list --search "<n>"               # is anyone at all on it
+
+### When you collide mid-flight
+
+The checks above cover noticing **before** you start and noticing **after** you
+finish. The expensive case is neither: **both of you are already half-built when
+the claim appears.** Both have sunk work, both can reasonably feel they should
+be the one to finish, and the race is usually settled by whoever opens a PR
+first, which rewards speed over ownership.
+
+**The session named in the earliest claim comment decides. The other stops
+immediately** rather than racing to open first, and hands over what it has as a
+comment or a patch on that session's PR.
+
+"The assignee decides" is not usable here, because the assignee field holds one
+shared account and cannot name a session. The claim comment can, which is the
+other half of why it is required above. If no claim comment exists, ask on the
+issue rather than inferring from the field.
+
+An outside contributor's PR still takes precedence over any internal claim,
+however early. They cannot see our claims and are not bound by them.
+
+Stopping mid-build is cheap. Two finished implementations of the same thing is
+not, and neither is the conversation about which one lands.
 
 ### Helping on someone else's issue
 

@@ -515,6 +515,7 @@ export {
   // Sheet utilities
   calculateViewportBounds,
   calculateDrawingTransform,
+  calculateDrawingTransformForAxis,
 
   // Scale stamp: the sheet's own record of the scale it was drawn at (#2042).
   // Grows the page around an EXISTING to-scale layout and returns its
@@ -524,8 +525,6 @@ export {
   // Sheet renderers
   renderFrame,
   renderTitleBlock,
-  renderScaleBar,
-  renderNorthArrow,
 } from './sheet/index.js';
 
 export type {
@@ -549,9 +548,6 @@ export type {
   TitleBlockConfig,
 
   // Scale bar types
-  ScaleBarStyle,
-  ScaleBarPosition,
-  ScaleBarUnits,
   ScaleBarConfig,
   NorthArrowStyle,
   NorthArrowConfig,
@@ -573,5 +569,4 @@ export type {
   FrameInnerBounds,
   TitleBlockRenderResult,
   TitleBlockExtras,
-  PositionMm,
 } from './sheet/index.js';

@@ -119,11 +119,21 @@ export function seedFromIfcx(doc: Y.Doc, input: IfcxInput, opts: SeedOptions = {
         classifications: inflated.classifications,
         materials: inflated.materials,
         geometryRef: inflated.geometryRefRecord,
+        // Provenance comes from the node's own `ifclite::meta` carrier
+        // and from nowhere else. The file header describes the FILE —
+        // who serialized it and when — and a snapshot of a collab doc
+        // puts the snapshotter's own name and the write clock there;
+        // copying that onto every node fabricated a `createdBy` /
+        // `createdAt` indistinguishable from real attribution and
+        // overwrote whatever the entity actually carried. A wire that
+        // says nothing leaves the fields unset: absent reads as
+        // "unknown", invented gets trusted. `meta.header` still holds
+        // the file-level record for consumers that want file attribution.
+        stampCreatedAt: false,
         meta: {
           ifcClass,
           schemaVersion: 'ifc5',
-          createdAt: file.header?.timestamp ?? new Date().toISOString(),
-          createdBy: file.header?.author,
+          ...inflated.meta,
         },
       });
     }

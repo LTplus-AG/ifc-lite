@@ -13,7 +13,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import { PointCloudSpatialIndex } from './pointcloud/point-cloud-spatial-index.js';
+import {
+  DEFAULT_MAX_INDEXED_CELLS,
+  DEFAULT_MAX_INDEXED_POINTS,
+  DEFAULT_POINTCLOUD_INDEX_CELL_SIZE,
+  PointCloudSpatialIndex,
+  V8_MAP_MAX_ENTRIES,
+} from './pointcloud/point-cloud-spatial-index.js';
 import type { Vec3 } from './raycaster.js';
 
 /** A ray straight down +Z from the origin. */
@@ -270,6 +276,181 @@ describe('PointCloudSpatialIndex — memory safety cap', () => {
   });
 });
 
+describe('PointCloudSpatialIndex — occupied-cell cap (#3028 diagnosis)', () => {
+  /**
+   * The grid is a `Map<number, number[]>` with ONE ENTRY PER OCCUPIED
+   * CELL, and `insertRange` can create a new cell for every point it
+   * indexes. V8 throws `RangeError: Map maximum size exceeded` at exactly
+   * 2^24 entries (verified by running: an int-keyed `Map` insert loop
+   * throws with `map.size === 16_777_216`).
+   *
+   * So the point cap alone cannot protect the Map. On a SPARSE cloud —
+   * airborne LiDAR or a coarse site scan, roughly one point per 0.5 m cell
+   * — occupied cells track indexed points nearly 1:1, and the point cap
+   * (30M) sits ABOVE the engine ceiling: the Map throws long before the
+   * "safety valve" can bind. Dense terrestrial scans put many points in a
+   * single cell and never approach it, which is why this went unnoticed.
+   */
+  it('cannot create more cells than V8 can hold, even at one point per cell', () => {
+    // `insertRange` adds at most one Map entry per indexed point, so the
+    // worst case (a fully sparse cloud) is cells === points indexed. The
+    // index stops at whichever cap binds first.
+    const worstCaseCells = Math.min(DEFAULT_MAX_INDEXED_POINTS, DEFAULT_MAX_INDEXED_CELLS);
+    assert.ok(
+      worstCaseCells < V8_MAP_MAX_ENTRIES,
+      `a sparse cloud can occupy ${worstCaseCells} cells, at or above V8's ` +
+        `${V8_MAP_MAX_ENTRIES}-entry Map limit — the grid throws before the valve binds`,
+    );
+  });
+
+  it("pins V8's Map entry ceiling at 2**24", () => {
+    // Verified by running against this repo's Node: an int-keyed Map insert
+    // loop throws `RangeError: Map maximum size exceeded` at size 16,777,216.
+    assert.strictEqual(V8_MAP_MAX_ENTRIES, 16_777_216);
+  });
+
+  it('leaves real headroom below the ceiling rather than sitting on it', () => {
+    assert.ok(DEFAULT_MAX_INDEXED_CELLS <= V8_MAP_MAX_ENTRIES - (1 << 20));
+    // ...but binds only where V8 would otherwise have thrown: no cloud that
+    // indexes fully today may lose coverage to the new limb.
+    assert.ok(DEFAULT_MAX_INDEXED_CELLS >= V8_MAP_MAX_ENTRIES / 2);
+  });
+
+  it('stops indexing when the cell cap binds, and reports "cells" as the reason', () => {
+    // Cheap repro of the sparse-cloud shape: points 1 m apart at a 0.5 m
+    // cell size land one per cell, so cells === points. Budget: 4 cells.
+    const idx = new PointCloudSpatialIndex(0.5, 1_000_000, 4);
+    const pts: number[] = [];
+    for (let i = 0; i < 10; i++) pts.push(0, 0, 1 + i);
+    idx.insertRange(new Float32Array(pts), 10);
+
+    assert.strictEqual(idx.cellCount, 4, 'grid must not grow past the cell cap');
+    assert.strictEqual(idx.pointCount, 4, 'points past the cell cap are not indexed');
+    assert.strictEqual(idx.isCapped, true);
+    assert.strictEqual(idx.capReason, 'cells', 'the reported reason must name the limb that bound');
+
+    // The accepted prefix is still queryable — a bound index degrades, it
+    // does not break.
+    const hit = idx.queryRay(FORWARD_RAY.origin, FORWARD_RAY.direction, 100, flatTolerance(0.05));
+    assert.ok(hit);
+    assert.strictEqual(hit!.distance, 1);
+
+    // Bounds cover only what was indexed, so getBounds never advertises a
+    // region queryRay cannot reach.
+    const bounds = idx.getBounds();
+    assert.ok(bounds);
+    assert.strictEqual(bounds!.max.z, 4);
+
+    // Further inserts are no-ops once the index is closed.
+    idx.insertRange(new Float32Array([0, 0, 50]), 1);
+    assert.strictEqual(idx.pointCount, 4);
+    assert.strictEqual(idx.cellCount, 4);
+  });
+
+  it('spends no cell budget on points landing in an already-occupied cell', () => {
+    // Dense shape: 10 points inside ONE 0.5 m cell. One Map entry, so a
+    // 1-cell budget indexes all ten — this limb bounds the Map, not points.
+    const idx = new PointCloudSpatialIndex(0.5, 1_000_000, 1);
+    const pts: number[] = [];
+    for (let i = 0; i < 10; i++) pts.push(0, 0, 0.01 + i * 0.04);
+    idx.insertRange(new Float32Array(pts), 10);
+    assert.strictEqual(idx.cellCount, 1);
+    assert.strictEqual(idx.pointCount, 10);
+    assert.strictEqual(idx.isCapped, false);
+    assert.strictEqual(idx.capReason, null);
+  });
+
+  it('truncates a chunk that crosses the cell cap instead of retaining all of it', () => {
+    // Only the accepted prefix is INDEXED: a one-shot 10-point chunk with
+    // a 3-cell budget must count and bound exactly 3 points. That the
+    // prefix is also the only thing RETAINED — the half of the claim that
+    // makes the cap bound memory rather than bookkeeping — is not visible
+    // here (`pointCount` and `getBounds` read the same either way) and is
+    // pinned separately in "what the index retains of the caller's
+    // buffers" below.
+    const idx = new PointCloudSpatialIndex(0.5, 1_000_000, 3);
+    const pts: number[] = [];
+    for (let i = 0; i < 10; i++) pts.push(i, 0, 0);
+    idx.insertRange(new Float32Array(pts), 10);
+    assert.strictEqual(idx.pointCount, 3);
+    // Point ids stay contiguous with the truncated count, so a later
+    // chunk's ids cannot collide with the dropped tail.
+    const b = idx.getBounds();
+    assert.ok(b);
+    assert.strictEqual(b!.max.x, 2);
+  });
+
+  it('reports "points" when the point cap binds first (dense cloud)', () => {
+    const idx = new PointCloudSpatialIndex(0.5, 3, 1_000_000);
+    idx.insertRange(new Float32Array([0, 0, 1, 0, 0, 2, 0, 0, 3, 0, 0, 4]), 4);
+    assert.strictEqual(idx.pointCount, 3);
+    assert.strictEqual(idx.capReason, 'points');
+  });
+
+  it('clamps a caller-supplied cell cap below the engine ceiling', () => {
+    // A caller asking for more cells than V8 can hold must still get a
+    // bounded grid — the clamp is what makes the guarantee unconditional.
+    const huge = new PointCloudSpatialIndex(0.5, 10, Number.MAX_SAFE_INTEGER);
+    assert.ok(
+      huge.cellCapacity < V8_MAP_MAX_ENTRIES,
+      `effective cell budget ${huge.cellCapacity} must stay under the engine ceiling`,
+    );
+    assert.strictEqual(huge.cellCapacity, V8_MAP_MAX_ENTRIES - 1);
+    huge.insertRange(new Float32Array([0, 0, 1]), 1);
+    assert.strictEqual(huge.pointCount, 1);
+    assert.strictEqual(huge.isCapped, false);
+
+    // An invalid budget falls back to the default, which is itself under
+    // the ceiling — never to "unbounded".
+    for (const bad of [0, -5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const idx = new PointCloudSpatialIndex(0.5, 10, bad);
+      assert.strictEqual(idx.cellCapacity, DEFAULT_MAX_INDEXED_CELLS, `budget ${bad}`);
+      assert.ok(idx.cellCapacity < V8_MAP_MAX_ENTRIES);
+    }
+  });
+
+  it('pins the cell size the sparse worst case is derived from', () => {
+    // The 1:1 cells-per-point worst case assumed above is a property of
+    // the cell size: at 0.5 m, airborne LiDAR (1-20 pts/m^2) puts on the
+    // order of one point in each cell.
+    assert.strictEqual(DEFAULT_POINTCLOUD_INDEX_CELL_SIZE, 0.5);
+  });
+
+  it('announces the truncation exactly once, naming the limb that bound', () => {
+    // A silently truncated index is indistinguishable from a broken measure
+    // tool, so the outcome is reported rather than swallowed — but only
+    // once per index, not once per streamed chunk.
+    const warnings: string[] = [];
+    const original = console.warn;
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args.map(String).join(' '));
+    };
+    try {
+      const idx = new PointCloudSpatialIndex(0.5, 1_000_000, 2);
+      idx.insertRange(new Float32Array([0, 0, 1, 0, 0, 9, 0, 0, 20]), 3);
+      idx.insertRange(new Float32Array([0, 0, 30]), 1);
+      idx.insertRange(new Float32Array([0, 0, 40]), 1);
+    } finally {
+      console.warn = original;
+    }
+    assert.strictEqual(warnings.length, 1, 'exactly one report per index, not one per chunk');
+    assert.ok(warnings[0].includes('PointCloudSpatialIndex'));
+    assert.ok(warnings[0].includes('cells limit'), warnings[0]);
+  });
+
+  it('clears the cap state on dispose so a reused index indexes again', () => {
+    const idx = new PointCloudSpatialIndex(0.5, 1_000_000, 1);
+    idx.insertRange(new Float32Array([0, 0, 1, 0, 0, 9]), 2);
+    assert.strictEqual(idx.capReason, 'cells');
+    idx.dispose();
+    assert.strictEqual(idx.capReason, null);
+    assert.strictEqual(idx.isCapped, false);
+    assert.strictEqual(idx.cellCount, 0);
+    idx.insertRange(new Float32Array([0, 0, 1]), 1);
+    assert.strictEqual(idx.pointCount, 1);
+  });
+});
+
 describe('PointCloudSpatialIndex — dispose', () => {
   it('clears points and bounds so a disposed index behaves like a fresh empty one', () => {
     const idx = new PointCloudSpatialIndex(0.5);
@@ -447,5 +628,97 @@ describe('PointCloudSpatialIndex — LAS class visibility mask (#1783 interplay)
     const hit = idx.queryRay(FORWARD_RAY.origin, FORWARD_RAY.direction, 100, flatTolerance(0.05), m);
     assert.ok(hit);
     assert.strictEqual(hit!.distance, 2);
+  });
+});
+
+describe("PointCloudSpatialIndex — what the index retains of the caller's buffers", () => {
+  // `insertRange`'s contract has two halves, and BOTH are memory claims
+  // rather than picking claims: a chunk that fits is kept BY REFERENCE
+  // (copying it would double the 12 bytes/point this index already
+  // costs), and a chunk that CROSSES a cap keeps only a COPY of the
+  // accepted prefix (keeping the whole array by reference would retain a
+  // 100M-point chunk's 1.2 GB behind a 30M-point cap, so the cap would
+  // bound bookkeeping and not memory).
+  //
+  // Neither half is visible through `pointCount`, `cellCount` or
+  // `getBounds` — all three are folded in at insert time and read the
+  // same whichever array the chunk ended up holding. The only handle on
+  // "which array" is what `queryRay` reads back, so these tests write to
+  // the caller's array after the insert and watch whether the change
+  // shows through.
+  //
+  // Writing to it is exactly what the class doc tells callers NOT to do.
+  // That is deliberate and is not an endorsement: the mutation is the
+  // instrument, the way a spy is, and what is asserted is which storage
+  // the index kept — not that mutating afterwards is supported. The
+  // alternative is a documented memory bound that nothing enforces.
+  // The mechanism relied on is fully specified rather than incidental:
+  // `TypedArray.prototype.slice` allocates a new buffer, while the array
+  // passed in stays a live view over the caller's buffer.
+
+  it('keeps only a copy of the accepted prefix when a chunk crosses the cell cap', () => {
+    // 10 points, one per 0.5 m cell, against a 3-cell budget: the chunk
+    // is truncated to 3 and the other 7 triples must not be retained.
+    const src = new Float32Array(30);
+    for (let i = 0; i < 10; i++) src[i * 3 + 2] = 1 + i;
+    const idx = new PointCloudSpatialIndex(0.5, 1_000_000, 3);
+    idx.insertRange(src, 10);
+    assert.strictEqual(idx.pointCount, 3, 'precondition: the chunk was truncated');
+
+    const before = idx.queryRay(FORWARD_RAY.origin, FORWARD_RAY.direction, 100, flatTolerance(0.05));
+    assert.ok(before);
+    assert.strictEqual(before!.distance, 1);
+
+    // Overwrite the caller's array wholesale. A retained COPY is a
+    // different buffer and cannot see this; a retained REFERENCE would
+    // put every indexed point 999 m down the ray, i.e. out of range.
+    src.fill(999);
+
+    const after = idx.queryRay(FORWARD_RAY.origin, FORWARD_RAY.direction, 100, flatTolerance(0.05));
+    assert.ok(after, "a truncated chunk must be copied, not aliased to the caller's array");
+    assert.strictEqual(after!.distance, 1);
+    assert.strictEqual(after!.position.z, 1);
+  });
+
+  it('keeps only a copy of the accepted classifications when a chunk crosses a cap', () => {
+    // Same claim for the parallel class array — it is sliced on the same
+    // branch, and a retained reference would let a later write change
+    // which points the LAS visibility mask hides.
+    const classes = new Uint8Array([1, 1, 1, 1]);
+    const idx = new PointCloudSpatialIndex(0.5, 2);
+    idx.insertRange(new Float32Array([0, 0, 1, 0, 0, 2, 0, 0, 3, 0, 0, 4]), 4, classes);
+    assert.strictEqual(idx.pointCount, 2, 'precondition: the chunk was truncated');
+
+    classes.fill(9);
+
+    // Class 9 hidden, class 1 visible. A copy still reports both indexed
+    // points as class 1, so the nearest (z=1) wins; a retained reference
+    // would see class 9 everywhere and hide the whole chunk.
+    const mask = new Uint32Array(8).fill(0xffffffff);
+    mask[0] &= ~(1 << 9);
+    const hit = idx.queryRay(FORWARD_RAY.origin, FORWARD_RAY.direction, 100, flatTolerance(0.05), mask);
+    assert.ok(hit, 'truncated classifications must be copied, not aliased');
+    assert.strictEqual(hit!.distance, 1);
+  });
+
+  it('keeps a chunk that fits BY REFERENCE, paying no copy', () => {
+    // The other direction, and the reason the copy above is confined to
+    // the truncating branch: the streaming path inserts whole chunks that
+    // fit, and copying each one would double this index's retained bytes
+    // per point. A copy-always implementation would pass the two tests
+    // above and fail this one.
+    const src = new Float32Array([0, 0, 1, 0, 0, 2, 0, 0, 3]);
+    const idx = new PointCloudSpatialIndex(0.5);
+    idx.insertRange(src, 3);
+    assert.strictEqual(idx.pointCount, 3, 'precondition: nothing was truncated');
+
+    // Nudge the nearest point within its own 0.5 m cell, so the write
+    // changes only the position read back and not the grid the query
+    // walks. Reading it back through `queryRay` == the array was not copied.
+    src[2] = 1.25;
+
+    const hit = idx.queryRay(FORWARD_RAY.origin, FORWARD_RAY.direction, 100, flatTolerance(0.05));
+    assert.ok(hit);
+    assert.strictEqual(hit!.distance, 1.25, 'a chunk that fits must be aliased, not copied');
   });
 });

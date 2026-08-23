@@ -89,14 +89,18 @@ export const NON_IMPLEMENTATION = [
  *
  * `packages/lists/src/engine.ts` — the library's Lists CSV writer. Left here
  * for two reasons, both structural rather than discretionary:
- *   1. `@ifc-lite/lists` does not depend on `@ifc-lite/export`, so it cannot
- *      call the shared escaper without a new package dependency — a maintainer
- *      call, not a mechanical rewire.
- *   2. It carries the #1772 numeric exemption (`-0.35` stays summable), which
- *      the viewer's Lists export deliberately does NOT. That policy split is
- *      unresolved and is a product decision. The shared escaper can express
- *      both (`exemptNumbers`), so adopting it needs no behaviour change — only
- *      the dependency and someone's say-so.
+ *   1. `@ifc-lite/lists` does not depend on `@ifc-lite/export`. There is no
+ *      CYCLE stopping it — `export` never reaches `lists` — but `export` drags
+ *      in parquet-wasm, apache-arrow and jszip, which is a lot to add to a
+ *      package whose only deps are `data` and `encoding`. The way out is to
+ *      move the escaper DOWN into `@ifc-lite/encoding` (zero deps, already a
+ *      dependency of both) and re-export it, the way `isWhollyNumeric` already
+ *      went. That is a maintainer call, not a mechanical rewire.
+ *   2. It carries the #1772 numeric exemption (`-0.35` stays summable). That
+ *      used to be a policy split, because every other writer guarded numbers;
+ *      it is no longer one — the shared escaper exempts them BY DEFAULT, so
+ *      adopting it here is now behaviour-preserving and the only thing left in
+ *      the way is the package dependency.
  */
 export const KNOWN_REMAINING = ['packages/lists/src/engine.ts'];
 

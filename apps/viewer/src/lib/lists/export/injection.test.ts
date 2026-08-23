@@ -87,7 +87,9 @@ describe('neutralizeSpreadsheetFormula — parity with the sibling guards', () =
 
 describe('neutralizeSpreadsheetFormula (#1790 review, CWE-1236)', () => {
   it('prefixes an apostrophe to every formula-trigger lead char', () => {
-    for (const s of ['=1+1', '+1', '-1', '@SUM(A1)', '\tx', '\rx']) {
+    // `+1` / `-1` are NOT here: they are wholly numeric and exempt since the
+    // #1772 policy was applied to this call site too. See the split below.
+    for (const s of ['=1+1', '@SUM(A1)', '\tx', '\rx', '=1', '@1']) {
       assert.strictEqual(neutralizeSpreadsheetFormula(s), `'${s}`);
     }
   });
@@ -95,6 +97,24 @@ describe('neutralizeSpreadsheetFormula (#1790 review, CWE-1236)', () => {
     for (const s of ['Building A', 'A Level 0', 'IfcWall', '3.14', '']) {
       assert.strictEqual(neutralizeSpreadsheetFormula(s), s);
     }
+  });
+
+  // What is unique to THIS call site is that it passes NO options, so it takes
+  // the shared guard's default. The accepted language itself is pinned once, in
+  // `packages/encoding/src/numeric-literal.test.ts`; restating it here would be
+  // a third copy of a table that is already exhaustively swept.
+  it('takes the shared default: a wholly-numeric cell is not guarded', () => {
+    assert.strictEqual(neutralizeSpreadsheetFormula('-0.35'), '-0.35');
+    assert.strictEqual(neutralizeSpreadsheetFormula('+1'), '+1');
+  });
+  it('and a number with a payload glued on still is', () => {
+    assert.strictEqual(neutralizeSpreadsheetFormula('-0.35=cmd'), "'-0.35=cmd");
+  });
+  it('an invisible in front of a number defeats the exemption, not the guard', () => {
+    // The trigger scan looks PAST a leading invisible run; the numeric test does
+    // not, so `\u200b-1` is triggered and not exempt. Failing closed is right.
+    assert.strictEqual(neutralizeSpreadsheetFormula('\u200b-1'), "'\u200b-1");
+    assert.strictEqual(neutralizeSpreadsheetFormula('   -1'), "'   -1");
   });
   it('guards a BOM-hidden marker without consuming the BOM', () => {
     // Was `'=evil` — i.e. the BOM deleted. The guard now looks past it instead,

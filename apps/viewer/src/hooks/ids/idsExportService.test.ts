@@ -555,3 +555,183 @@ describe('buildReportHTML — search matches content, not chrome', () => {
     }
   });
 });
+
+describe('buildReportHTML — a search hit inside the collapsed per-entity table is actually shown', () => {
+  // Grouping by requirement demoted the per-entity table into a
+  // `<details class="entity-table-details">` that ships CLOSED. `filterAll`
+  // only ever toggled a `hidden` class on rows, so a term that exists only in
+  // that table produced "1 of 3 rows shown" over a page showing nothing, with
+  // no cue that the match was behind a disclosure.
+  //
+  // The fixture name below appears ONLY on a PASSING entity, which is
+  // deliberate: a failing entity is rendered twice (once in the requirement
+  // group, which is not inside any `<details>`, and once in the per-entity
+  // table), so a failing-entity fixture would have a visible match either way
+  // and could not tell the two behaviours apart.
+  const PASS_ONLY = 'UNIQUEPASSNAME';
+
+  function buildReport(): string {
+    const req = makeRequirement('req-details');
+    const failing = makeEntity(1, [makeReqResult(req, 'fail', { failureReason: 'bad wall' })], {
+      entityName: 'Failing Wall',
+      globalId: 'GID-FAIL',
+    });
+    const passing = makeEntity(2, [makeReqResult(req, 'pass')], {
+      entityName: PASS_ONLY,
+      globalId: 'GID-PASS',
+    });
+    return buildReportHTML(
+      makeReport([makeSpecResult(makeSpecification('spec-d', 'Spec D', [req]), [failing, passing])]),
+      'en',
+    );
+  }
+
+  function groups(page: ReportPage): HTMLDetailsElement[] {
+    return Array.from(
+      page.document.querySelectorAll('details.entity-table-details'),
+    ) as HTMLDetailsElement[];
+  }
+
+  it('opens the group holding the only surviving row', () => {
+    const page = renderReport(buildReport());
+    try {
+      assert.deepEqual(
+        groups(page).map(d => d.open),
+        [false],
+        'fixture check: the per-entity table must ship collapsed, or this proves nothing',
+      );
+
+      const hit = searchRows(page, PASS_ONLY.toLowerCase());
+      assert.ok(hit.visible.length > 0, 'the search must match the passing entity');
+      assert.deepEqual(
+        groups(page).map(d => d.open),
+        [true],
+        'a counted match the reader cannot see is not a match',
+      );
+    } finally {
+      page.close();
+    }
+  });
+
+  it('leaves a group with no surviving row closed', () => {
+    const page = renderReport(buildReport());
+    try {
+      searchRows(page, 'nothingmatchesthis');
+      assert.deepEqual(
+        groups(page).map(d => d.open),
+        [false],
+        'an empty group must not be forced open — that would be noise, not a result',
+      );
+    } finally {
+      page.close();
+    }
+  });
+
+  it('restores the reader\'s own open/closed state when the search is cleared', () => {
+    const page = renderReport(buildReport());
+    try {
+      searchRows(page, PASS_ONLY.toLowerCase());
+      assert.deepEqual(groups(page).map(d => d.open), [true]);
+
+      searchRows(page, '');
+      assert.deepEqual(
+        groups(page).map(d => d.open),
+        [false],
+        'clearing the search must hand the disclosure back, not leave every group forced open',
+      );
+    } finally {
+      page.close();
+    }
+  });
+});
+
+describe('buildReportHTML — the search also opens the collapsed specification around the hit', () => {
+  // The per-entity <details> is nested inside a `.spec` accordion, and
+  // `.spec-body { display: none }` until that accordion carries the "open"
+  // class — which only a FAILING specification ships with. The suite above
+  // cannot see this: its fixture has a failing entity, so its spec is open
+  // from the start and opening the <details> is enough there.
+  //
+  // The asymmetric case is a spec where EVERY entity passes. Then the spec
+  // ships collapsed, and un-hiding a row plus opening its <details> still
+  // leaves the reader looking at nothing while the counter claims a match.
+  const HIT = 'AAAUNIQUEPASSSPEC';
+
+  function buildAllPassingSpecReport(): string {
+    const req = makeRequirement('req-pass-spec');
+    const hit = makeEntity(1, [makeReqResult(req, 'pass')], { entityName: HIT, globalId: 'GID-1' });
+    const other = makeEntity(2, [makeReqResult(req, 'pass')], { entityName: 'Other Wall', globalId: 'GID-2' });
+    const specResult = makeSpecResult(makeSpecification('spec-p', 'All Passing Spec', [req]), [hit, other]);
+    assert.equal(specResult.status, 'pass', 'fixture check: the spec must PASS, or it ships open and proves nothing');
+    return buildReportHTML(makeReport([specResult]), 'en');
+  }
+
+  function specOpen(page: ReportPage): boolean[] {
+    return Array.from(page.document.querySelectorAll('.spec')).map(s => s.classList.contains('open'));
+  }
+
+  function detailsOpen(page: ReportPage): boolean[] {
+    return Array.from(
+      page.document.querySelectorAll('details.entity-table-details'),
+    ).map(d => (d as HTMLDetailsElement).open);
+  }
+
+  it('opens the passing specification holding the surviving row, and restores it on clear', () => {
+    const page = renderReport(buildAllPassingSpecReport());
+    try {
+      assert.deepEqual(specOpen(page), [false], 'fixture check: a passing spec must ship collapsed');
+
+      const hit = searchRows(page, HIT.toLowerCase());
+      assert.equal(hit.visible.length, 1, 'the search must match exactly the one entity');
+      assert.deepEqual(
+        specOpen(page),
+        [true],
+        'a match inside a collapsed specification is counted but not shown — opening only the <details> is not enough',
+      );
+
+      searchRows(page, '');
+      assert.deepEqual(
+        specOpen(page),
+        [false],
+        'clearing the search must hand the specification accordion back too',
+      );
+    } finally {
+      page.close();
+    }
+  });
+
+  it('leaves a specification with no surviving row collapsed', () => {
+    const page = renderReport(buildAllPassingSpecReport());
+    try {
+      searchRows(page, 'nothingmatchesthis');
+      assert.deepEqual(specOpen(page), [false], 'an empty specification must not be forced open');
+    } finally {
+      page.close();
+    }
+  });
+
+  it('a second search before the first is cleared must not snapshot what the first one forced open', () => {
+    // The restore snapshot is taken once, on the transition into the filtered
+    // state. Re-taking it on every keystroke would record what the PREVIOUS
+    // keystroke forced open, and clearing would then leave the page
+    // reorganised — the exact side effect the restore exists to prevent.
+    const page = renderReport(buildAllPassingSpecReport());
+    try {
+      searchRows(page, HIT.toLowerCase());
+      assert.deepEqual(specOpen(page), [true]);
+      assert.deepEqual(detailsOpen(page), [true]);
+
+      searchRows(page, 'wall'); // second search, first never cleared
+      searchRows(page, '');
+
+      assert.deepEqual(
+        specOpen(page),
+        [false],
+        'refining a search must not bake the forced-open state into what gets restored',
+      );
+      assert.deepEqual(detailsOpen(page), [false]);
+    } finally {
+      page.close();
+    }
+  });
+});

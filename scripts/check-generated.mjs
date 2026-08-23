@@ -163,6 +163,11 @@
  *   pnpm check:generated --full   # + actually run plato/wasm gates (needs their toolchains)
  *
  * Exit code: non-zero if any gate FAILS. INFO/SKIP notices never fail the run.
+ *
+ * @unwired-by-design a pre-push aggregator of gates CI already runs.
+ * Every gate in the list above is a CI step in its own right (that is how
+ * the list is derived), so this exists to move those failures earlier, not
+ * to add coverage: in CI it would re-run them and report nothing new.
  */
 
 import { execFileSync } from 'node:child_process';

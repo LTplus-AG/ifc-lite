@@ -406,3 +406,7 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
 #[cfg(test)]
 #[path = "step_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "step_roundtrip_tests.rs"]
+mod roundtrip_tests;

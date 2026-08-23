@@ -9,6 +9,7 @@
  * grouped sections with per-group count + subtotals, plus grand totals.
  */
 
+import { guardSpreadsheetFormula } from '@ifc-lite/export';
 import { groupingColumnIds, type CellValue, type ColumnDefinition, type ListRow, type ListGrouping } from '@ifc-lite/lists';
 import type { ProjectUnits } from '@ifc-lite/parser';
 import { buildNestedGroupBuckets, type GroupSort } from '@/lib/lists/group-sort';
@@ -117,33 +118,37 @@ export function displayCell(value: CellValue): string {
  * TAB or CR makes a cell execute as a formula in Excel/LibreOffice/Sheets.
  * List-export cells (values, group labels, custom column headers) derive from
  * attacker-controllable IFC values, so any such cell is prefixed with an
- * apostrophe. A leading UTF-8 BOM is treated as file metadata by spreadsheet
- * importers, so a marker hidden behind one still executes; strip the BOM first
- * so the apostrophe guard actually lands in front. Shared by the CSV and XLSX
- * writers so both honour the guideline identically.
+ * apostrophe.
+ *
+ * The trigger is looked for PAST any leading invisibles (BOM, ZWSP, LRM, NBSP,
+ * U+2028/U+2029, ordinary spaces): spreadsheet importers swallow those, so a
+ * marker hidden behind one still executes, while an anchored regex stops
+ * matching. They are looked past, not removed — see `guardSpreadsheetFormula`.
+ *
+ * Shared by the CSV and XLSX writers so both honour the guideline identically.
  */
 export function neutralizeSpreadsheetFormula(s: string): string {
-  // Strip ALL leading invisibles, not just U+FEFF. A zero-width space,
-  // left-to-right mark or non-breaking space in front of `=` does not stop a
-  // spreadsheet reading the cell as a formula, but it does stop an anchored
-  // regex matching, so stripping only the BOM left the others as bypasses.
-  // `packages/sdk/src/namespaces/export.ts` matches past this same class
-  // (#1944); this copy handled the BOM alone.
+  // Delegates to `@ifc-lite/export`'s single guard. The copy that used to live
+  // here bought its invisible-handling by DELETING the leading run of
+  // `\p{Cf}\p{Z}`; `\p{Z}` includes U+0020, so every exported cell silently
+  // lost its leading spaces, against RFC 4180 §2.4 ("Spaces are considered
+  // part of a field and should not be ignored"). The shared guard looks *past*
+  // the run instead of removing it — same payloads guarded, data intact.
   //
-  // `\p{Z}`, not `\p{Zs}`: the separator category also covers `Zl` and `Zp`,
-  // so U+2028 (LINE SEPARATOR) and U+2029 (PARAGRAPH SEPARATOR) would
-  // otherwise remain viable prefixes for hiding a formula trigger.
-  s = s.replace(/^[\p{Cf}\p{Z}]+/u, '');
   // NOTE a deliberate, unresolved divergence from `packages/lists/src/engine.ts`:
   // that copy EXEMPTS a genuine number from the `-`/`+` trigger (#1772, comment:
-  // "`-0.35` exported as `'-0.35` and broke Excel SUM()"), whereas this copy
-  // guards it -- and `injection.test.ts` pins `'+1'` as guarded on purpose. So
-  // the viewer's Lists CSV ships every negative measure as text while the
+  // "`-0.35` exported as `'-0.35` and broke Excel SUM()"), whereas this call
+  // site guards it -- and `injection.test.ts` pins `'+1'` as guarded on purpose.
+  // So the viewer's Lists CSV ships every negative measure as text while the
   // library's does not. Both behaviours are deliberately tested, so they cannot
   // both be right; picking one is a product decision (broken SUM() vs a cell
-  // that a spreadsheet could re-read as a formula) and is NOT bundled into this
-  // hardening change.
-  return /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+  // that a spreadsheet could re-read as a formula) and is a maintainer call.
+  //
+  // What changed is only the MECHANISM: the policy is now an argument to one
+  // shared guard (`exemptNumbers`) rather than a reason to keep two
+  // implementations of it. Passing `false` here preserves this call site's
+  // behaviour exactly.
+  return guardSpreadsheetFormula(s, { exemptNumbers: false });
 }
 
 export function buildExportModel(input: BuildModelInput): ExportModel {

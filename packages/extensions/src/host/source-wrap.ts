@@ -40,6 +40,7 @@
  */
 
 import * as acorn from 'acorn';
+import { MAX_AST_DEPTH, walkBounded } from '../ast/bounded-walk.js';
 import type { ValidationError, ValidationResult } from '../types.js';
 
 export interface SourceWrapOptions {
@@ -140,22 +141,6 @@ if (typeof ${entryFn} === 'function') {
 }
 
 /**
- * Maximum AST nesting depth the banned-construct walk will inspect.
- *
- * Real entry scripts nest a few tens of levels deep; this bound is
- * two orders of magnitude above that. It exists because the AST comes
- * from extension-author-controlled source: past this depth the walk
- * stops and reports a validation error instead of continuing. acorn's
- * own parser gives up at roughly twice this depth in the same process
- * ("Not enough stack space to parse input"), but that limit moves with
- * however much stack the host happens to have left; this one does not.
- *
- * A script nested deeper than this is rejected with an
- * `invalid_value` error naming the limit — never a thrown RangeError.
- */
-const MAX_AST_DEPTH = 1000;
-
-/**
  * Walk the *entire* AST — including nested function bodies, arrow
  * bodies, class methods, and blocks — looking for constructs we do
  * not support in v1. Returns one ValidationError per offending node.
@@ -169,33 +154,27 @@ const MAX_AST_DEPTH = 1000;
  * arrow, a class method, etc. — which is exactly the gap this walk
  * closes: the previous top-level-only scan missed it entirely.
  *
- * The traversal keeps its own stack on the heap instead of recursing
- * the way `acorn-walk` does. `wrapEntrySource` is declared to return a
+ * The traversal is `walkBounded` — the package's one AST walker. It
+ * keeps its own stack on the heap instead of recursing the way
+ * `acorn-walk` does: `wrapEntrySource` is declared to return a
  * ValidationResult, and a recursive walk over a deeply nested script
  * escapes that contract by throwing a RangeError out of the middle of
  * it. Deeply nested input has to come back as a *reported* error, the
- * same way acorn's own depth failure already does.
+ * same way acorn's own depth failure already does. Sharing the walker
+ * is what keeps this scan and `validateCode` from drifting apart on
+ * where "too deep" starts.
+ *
+ * The visitor switches on the type key `walkBounded` supplies, not on
+ * `node.type`: `acorn-walk` re-dispatches statements and expressions
+ * under synthetic keys, so a node reached that way is reported twice,
+ * once under each key, and switching on `node.type` would report every
+ * banned construct twice.
  */
 function checkBannedConstructs(ast: acorn.Node): ValidationError[] {
   const errors: ValidationError[] = [];
-  const stack: Array<{ node: AstNode; depth: number }> = [
-    { node: ast as unknown as AstNode, depth: 0 },
-  ];
 
-  while (stack.length > 0) {
-    const { node, depth } = stack.pop()!;
-
-    if (depth > MAX_AST_DEPTH) {
-      errors.push({
-        path: '',
-        code: 'invalid_value',
-        message: `Entry script is nested more than ${MAX_AST_DEPTH} AST levels deep.`,
-        hint: 'Flatten the script — extract deeply nested blocks into separate helper functions.',
-      });
-      return errors;
-    }
-
-    switch (node.type) {
+  const { depthExceeded, unwalkableTypes } = walkBounded(ast, (_node, type) => {
+    switch (type) {
       case 'ImportDeclaration':
         errors.push({
           path: '',
@@ -218,50 +197,31 @@ function checkBannedConstructs(ast: acorn.Node): ValidationError[] {
         });
         break;
     }
+  });
 
-    // Push children in reverse so the LIFO stack visits them in source
-    // order, matching the order acorn-walk would have reported in.
-    const children = childNodes(node);
-    for (let i = children.length - 1; i >= 0; i--) {
-      stack.push({ node: children[i]!, depth: depth + 1 });
-    }
+  if (depthExceeded) {
+    errors.push({
+      path: '',
+      code: 'invalid_value',
+      message: `Entry script is nested more than ${MAX_AST_DEPTH} AST levels deep.`,
+      hint: 'Flatten the script — extract deeply nested blocks into separate helper functions.',
+    });
+    return errors;
+  }
+
+  // A subtree the walker could not descend was never scanned, so a
+  // clean result would mean "found no `import`" when it means "did not
+  // look". Refuse the script instead of wrapping it.
+  if (unwalkableTypes.length > 0) {
+    errors.push({
+      path: '',
+      code: 'invalid_value',
+      message: `Entry script contains AST node types the validator cannot traverse (${unwalkableTypes.join(', ')}); it was not fully checked.`,
+      hint: 'This usually means the parser is newer than the walker it is paired with — report it rather than working around it.',
+    });
   }
 
   return errors;
-}
-
-interface AstNode {
-  type: string;
-  [key: string]: unknown;
-}
-
-function isAstNode(value: unknown): value is AstNode {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as { type?: unknown }).type === 'string'
-  );
-}
-
-/**
- * Every child node of `node`, in property order. Generic over the AST
- * shape on purpose: an unknown property is either a primitive, a node,
- * or an array of nodes, and anything else (`loc`, `regex`, …) carries
- * no `type` string and is skipped.
- */
-function childNodes(node: AstNode): AstNode[] {
-  const out: AstNode[] = [];
-  for (const key of Object.keys(node)) {
-    const value = node[key];
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        if (isAstNode(item)) out.push(item);
-      }
-    } else if (isAstNode(value)) {
-      out.push(value);
-    }
-  }
-  return out;
 }
 
 function exportError(): ValidationError {

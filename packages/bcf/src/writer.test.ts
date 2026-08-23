@@ -1212,10 +1212,17 @@ describe('BCF Writer', () => {
     for (const version of ['2.1', '3.0'] as const) {
       const markup = await markupFor(topic, version);
 
-      // `topic.labels` has TWO entries, so `<Labels>` appears twice. Checking
-      // only the first occurrence's position (`indexOf`) would miss a second
-      // label written in the wrong place -- e.g. after CreationDate -- since
-      // the first one alone can still land correctly. Collect every
+      // `topic.labels` has TWO entries, and the two versions spell that
+      // differently: 2.1's markup.xsd declares `Labels` maxOccurs="unbounded"
+      // with a string value, so it REPEATS (`<Labels>l1</Labels><Labels>l2
+      // </Labels>`); 3.0's declares a single `Labels` element whose content is
+      // a sequence of `<Label>` children. The ORDER requirement below is the
+      // same in both -- every label element sits after Index and before
+      // CreationDate -- so collect whichever tag carries the values.
+      //
+      // Checking only the first occurrence's position (`indexOf`) would miss a
+      // second label written in the wrong place -- e.g. after CreationDate --
+      // since the first one alone can still land correctly. Collect every
       // occurrence and require ALL of them to sit before CreationDate.
       const allIndicesOf = (tag: string): number[] => {
         const indices: number[] = [];
@@ -1231,7 +1238,8 @@ describe('BCF Writer', () => {
 
       const priority = markup.indexOf('<Priority>');
       const index = markup.indexOf('<Index>');
-      const labelPositions = allIndicesOf('Labels');
+      // The tag that actually carries a label value, per version.
+      const labelPositions = allIndicesOf(version === '3.0' ? 'Label' : 'Labels');
       const creationDate = markup.indexOf('<CreationDate>');
       const stage = markup.indexOf('<Stage>');
       const description = markup.indexOf('<Description>');
@@ -1241,6 +1249,16 @@ describe('BCF Writer', () => {
         expect(p).toBeGreaterThan(-1);
       }
       expect(labelPositions).toHaveLength(2);
+
+      // Containment, not just order: 3.0 must wrap both `<Label>` elements in
+      // exactly ONE `<Labels>` container (its markup.xsd gives `Labels` the
+      // default maxOccurs of 1), while 2.1 must repeat `<Labels>` per value
+      // and must never emit a `<Label>` element at all. Validated end to end
+      // against the published XSDs in `schema-validation.test.ts`.
+      expect(allIndicesOf('Labels')).toHaveLength(version === '3.0' ? 1 : 2);
+      if (version === '2.1') {
+        expect(markup).not.toContain('<Label>');
+      }
 
       expect(priority).toBeLessThan(index);
       expect(index).toBeLessThan(Math.min(...labelPositions));

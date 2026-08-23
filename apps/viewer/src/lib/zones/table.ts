@@ -32,7 +32,7 @@
  * the same call the pset write-back makes. Nothing here recomputes a volume.
  */
 
-import { neutralizeSpreadsheetFormula } from '@/lib/lists/export/model';
+import { escapeCsvCell } from '@ifc-lite/export';
 import { volumeBasisLabel, type VolumeBasis } from './volume-basis.js';
 import type { ElementZoneFacts, WriteBackRefusal } from './writeback.js';
 
@@ -160,12 +160,11 @@ export function toCsv(rows: readonly ZoneTableRow[], delimiter = ','): string {
     // Quoting stops a comma breaking the COLUMNS; it does nothing about a cell
     // a spreadsheet re-reads as a FORMULA. An IFC Name is attacker-controlled
     // in any federated project, and this file exists to be opened in Excel, so
-    // it goes through the viewer's existing neutralizer rather than a second
-    // rule invented here.
-    const text = neutralizeSpreadsheetFormula(raw);
-    return /["\n\r]|^\s|\s$/.test(text) || text.includes(delimiter)
-      ? `"${text.replace(/"/g, '""')}"`
-      : text;
+    // it goes through the repo's ONE escaper rather than a second rule invented
+    // here. `quoteWhitespacePadded` carries this writer's extra rule (a padded
+    // cell is quoted so an importer cannot trim the padding away) into that
+    // escaper, which is what lets the hand-rolled quoting here go.
+    return escapeCsvCell(raw, { delimiter, quoteWhitespacePadded: true });
   };
   const lines = [ZONE_TABLE_COLUMNS.join(delimiter)];
   for (const row of rows) {

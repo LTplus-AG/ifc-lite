@@ -219,8 +219,13 @@ describe('prose mentions', () => {
     `no PROSE_MENTIONS entry for ${KNOWN_REMAINING[0]}; these cases pin its interaction with the debt ratchet`,
   );
   const MENTIONS = [MENTION, ENGINE_MENTION];
+  // A FIXTURE, not code: this is what `engine.ts` looks like to the scanner, so
+  // the `${` has to survive verbatim into the scanned text. oxlint's
+  // no-template-curly-in-string is right about the general case and wrong about
+  // a fixture whose whole job is to be the source text of something else.
   const ENGINE_CODE =
     '      /^[\\p{Cf}\\p{Z}]*[=+\\-@\\t\\r]/u.test(str) &&\n' +
+    // oxlint-disable-next-line no-template-curly-in-string
     '      return `"${str.replace(/"/g, \'""\')}"`;\n';
 
   it('the registered line, in its registered file, does not red', () => {

@@ -2274,10 +2274,15 @@ fn plan_bounded_glb(
     // occurrences of one map clipped differently that land on the same vertex
     // and index counts are a group whose members are not one shape.
     // Sub-bucketing by size hands one of them the other's geometry, silently.
-    // Refusing costs sharing; the other way costs correctness, and the two
-    // paths now answer "which occurrences share a shape" the same way. What it
-    // costs, measured on a 342 MB model: 34.5 MB of glTF instead of 25.0 MB,
-    // against 108 MB with no instancing at all.
+    // Refusing costs sharing; the other way costs correctness. What it costs,
+    // measured on a 342 MB model: 34.5 MB of glTF instead of 25.0 MB, against
+    // 108 MB with no instancing at all.
+    //
+    // This aligns the size rule with the collator, and it does not make the two
+    // paths identical: the in-memory one refuses a whole group where any
+    // occurrence has no instance side-channel, and this one drops that
+    // occurrence and keeps the rest. See
+    // `the_bounded_path_shares_at_least_as_much`, which pins that difference.
     let refused: FxHashSet<u128> = {
         let mut seen: FxHashMap<u128, (u32, u32)> = FxHashMap::default();
         let mut bad: FxHashSet<u128> = FxHashSet::default();

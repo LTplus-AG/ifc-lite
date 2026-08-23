@@ -240,7 +240,8 @@ pub fn export_step_to_writer<W: std::io::Write>(
     use std::io::Write as _;
     let mut buffered = std::io::BufWriter::with_capacity(1 << 20, w);
     let stats = emit(content, opts, &mut buffered)?;
-    // Flushed here: a `BufWriter` dropped unflushed truncates and reports ok.
+    // Flushed here for the error, not for the bytes: `BufWriter::drop` does
+    // flush, it just has nowhere to report a failure and swallows it.
     buffered.flush()?;
     Ok(stats)
 }

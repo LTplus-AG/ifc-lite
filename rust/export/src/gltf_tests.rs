@@ -1546,6 +1546,137 @@ fn streaming_bounded_preserves_world_geometry_on_instanced_model() {
     // pos/norm are 12-byte and idx 4-byte multiples, so the BIN needs no padding
     // and must be exactly the three declared runs.
     assert_eq!(declared as usize, str_bin.len(), "BIN length matches declared runs");
+
+    // And where the triangles actually are. Everything above this line survives
+    // an arbitrary translation of every shared shape: node count, triangle count
+    // and BIN length do not move when a placement is wrong. That is the whole
+    // mechanism this path adds, so it needs an assertion that can see it.
+    let (_, mem_bin) = parse_glb(&in_memory);
+    let mem_w = world_totals(&mem_json, &[&mem_bin]);
+    let str_w = world_totals(&str_json, &[&str_bin]);
+    assert_eq!(mem_w.triangles, str_w.triangles, "placed triangle count");
+    // f32 in world coordinates on one path and f32 in the shape's own frame
+    // placed by an f64 matrix on the other, so the last bits differ by
+    // construction and equality is the wrong test. The tolerance is measured
+    // rather than guessed: on duplex the two agree to ~1e-8 on the centroid
+    // sums and exactly on the bounds, and the smallest displacement this is
+    // meant to catch (one wrongly shared group) moves a centroid sum by
+    // 1.4e-3. 1e-6 sits a thousandfold clear of both.
+    for k in 0..3 {
+        let axis = ["x", "y", "z"][k];
+        assert!(
+            (mem_w.centroid_sum[k] - str_w.centroid_sum[k]).abs() < 1e-6,
+            "centroid sum {axis}: in-memory {} vs bounded {} -- shared shapes are placed differently",
+            mem_w.centroid_sum[k],
+            str_w.centroid_sum[k],
+        );
+        assert!(
+            (mem_w.min[k] - str_w.min[k]).abs() < 1e-6 && (mem_w.max[k] - str_w.max[k]).abs() < 1e-6,
+            "world bounds {axis}: in-memory {:?}..{:?} vs bounded {:?}..{:?}",
+            mem_w.min[k],
+            mem_w.max[k],
+            str_w.min[k],
+            str_w.max[k],
+        );
+    }
+}
+
+/// Where a GLB's triangles are, reduced to numbers that do not depend on
+/// emission order.
+struct WorldTotals {
+    triangles: u64,
+    min: [f64; 3],
+    max: [f64; 3],
+    /// Summed triangle centroids. The discriminating one: an AABB only moves if
+    /// a displaced shape was on the hull, and a triangle count does not move at
+    /// all, but every misplaced triangle shifts this.
+    centroid_sum: [f64; 3],
+}
+
+/// Walk the node tree, compose each placement, and reduce every triangle.
+///
+/// The same reduction `examples/world_check.rs` prints, done where a test can
+/// assert on it. Deliberately a second copy: an example is a separate crate and
+/// reaches only `pub` items, so sharing this would mean putting a test oracle in
+/// the public API. Two copies of a reduction is the cheaper of those.
+fn world_totals(json: &Value, bufs: &[&[u8]]) -> WorldTotals {
+    let empty = vec![];
+    let nodes = json["nodes"].as_array().unwrap_or(&empty);
+    let ident = {
+        let mut m = [0.0; 16];
+        m[0] = 1.0;
+        m[5] = 1.0;
+        m[10] = 1.0;
+        m[15] = 1.0;
+        m
+    };
+    let mut t = WorldTotals {
+        triangles: 0,
+        min: [f64::INFINITY; 3],
+        max: [f64::NEG_INFINITY; 3],
+        centroid_sum: [0.0; 3],
+    };
+    let mut stack: Vec<(usize, [f64; 16])> = json["scenes"][0]["nodes"]
+        .as_array()
+        .unwrap_or(&empty)
+        .iter()
+        .map(|n| (n.as_u64().unwrap() as usize, ident))
+        .collect();
+    while let Some((ni, parent)) = stack.pop() {
+        let node = &nodes[ni];
+        let world = mat_mul(&parent, &node_local(node));
+        if let Some(children) = node.get("children").and_then(Value::as_array) {
+            for c in children {
+                stack.push((c.as_u64().unwrap() as usize, world));
+            }
+        }
+        let Some(mi) = node.get("mesh").and_then(Value::as_u64) else { continue };
+        let prims = json["meshes"][mi as usize]["primitives"].as_array().unwrap();
+        for prim in prims {
+            let pacc = prim["attributes"]["POSITION"].as_u64().unwrap() as usize;
+            let iacc = prim["indices"].as_u64().unwrap() as usize;
+            let pos = decode_positions(json, bufs, pacc);
+            // Read indices here rather than through `decode_indices`, whose
+            // width cross-check assumes one accessor per bufferView. The
+            // bounded path packs every index run into one view at an offset,
+            // which is a different layout and not a defect.
+            let idx = {
+                let acc = &json["accessors"][iacc];
+                let bv = &json["bufferViews"][acc["bufferView"].as_u64().unwrap() as usize];
+                let bin = bufs[bv["buffer"].as_u64().unwrap_or(0) as usize];
+                let base = bv["byteOffset"].as_u64().unwrap_or(0) as usize
+                    + acc["byteOffset"].as_u64().unwrap_or(0) as usize;
+                let count = acc["count"].as_u64().unwrap() as usize;
+                let ct = acc["componentType"].as_u64().unwrap();
+                (0..count)
+                    .map(|i| match ct {
+                        5123 => {
+                            let o = base + i * 2;
+                            u16::from_le_bytes(bin[o..o + 2].try_into().unwrap()) as u64
+                        }
+                        5125 => {
+                            let o = base + i * 4;
+                            u32::from_le_bytes(bin[o..o + 4].try_into().unwrap()) as u64
+                        }
+                        other => panic!("unexpected index componentType {other}"),
+                    })
+                    .collect::<Vec<u64>>()
+            };
+            for tri in idx.chunks_exact(3) {
+                let p: Vec<[f64; 3]> =
+                    tri.iter().map(|&k| transform_point(&world, pos[k as usize])).collect();
+                t.triangles += 1;
+                for k in 0..3 {
+                    t.centroid_sum[k] += (p[0][k] + p[1][k] + p[2][k]) / 3.0;
+                    for v in &p {
+                        t.min[k] = t.min[k].min(v[k]);
+                        t.max[k] = t.max[k].max(v[k]);
+                    }
+                }
+            }
+        }
+    }
+    t
 }
 
 /// The bounded path shares a repeated shape instead of sending it once per

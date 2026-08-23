@@ -127,6 +127,12 @@ jobs:
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
         run: node scripts/fixtures/fetch-fixtures.mjs "ara3d/AC20-FZK-Haus.ifc" "various/01_Snowdon_Towers_Sample_Structural(1).ifc"
 
+      # Unconditional — the fetch above is gated on a cache miss, so on a cache
+      # hit nothing had ever confirmed the restored tree still matches the
+      # manifest. Scoped to the same two paths: this cache holds only those.
+      - name: Verify benchmark fixtures
+        run: node scripts/fixtures/fetch-fixtures.mjs --check "ara3d/AC20-FZK-Haus.ifc" "various/01_Snowdon_Towers_Sample_Structural(1).ifc"
+
       # Production build: `vite preview` (the benchmark's webServer) serves
       # apps/viewer/dist. Turbo builds the workspace deps it needs.
       - name: Build viewer app

@@ -515,6 +515,7 @@ export {
   // Sheet utilities
   calculateViewportBounds,
   calculateDrawingTransform,
+  calculateDrawingTransformForAxis,
 
   // Scale stamp: the sheet's own record of the scale it was drawn at (#2042).
   // Grows the page around an EXISTING to-scale layout and returns its

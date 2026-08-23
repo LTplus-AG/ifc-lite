@@ -13,7 +13,7 @@
 import { writeFile, readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { GeometryProcessor, isNoRenderGeometryError } from '@ifc-lite/geometry';
-import { countGlbMeshes } from '@ifc-lite/export';
+import { countGlbMeshes, escapeCsvCell } from '@ifc-lite/export';
 import { createHeadlessContext } from '../loader.js';
 import { getFlag, hasFlag, fatal, writeOutput, validateLimit } from '../output.js';
 import { logger } from '../logger.js';
@@ -152,17 +152,14 @@ async function rustExportContext(
   return { bytes, gp };
 }
 
+/**
+ * RFC 4180 quoting + the CWE-1236 formula-injection guard, delegated to
+ * `@ifc-lite/export`'s single escaper. The copy that used to live here tested
+ * the trigger anchored at offset 0, so a BOM/ZWSP/LRM/NBSP/U+2028 in front of
+ * `=` walked past it.
+ */
 function escapeCsv(value: string, sep: string): string {
-  // CSV/formula-injection guard (CWE-1236): prefix a leading spreadsheet
-  // formula trigger so Excel/Sheets treat the cell as text, not a formula.
-  let str = value;
-  if (/^[=+\-@\t\r]/.test(str)) {
-    str = `'${str}`;
-  }
-  if (str.includes(sep) || str.includes('"') || str.includes('\n') || str.includes('\r')) {
-    return `"${str.replace(/"/g, '""')}"`;
-  }
-  return str;
+  return escapeCsvCell(value, { delimiter: sep });
 }
 
 export async function exportCommand(args: string[]): Promise<void> {

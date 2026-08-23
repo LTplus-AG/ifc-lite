@@ -471,6 +471,9 @@ export class IfcAPI {
      * `#`-reference closure is added so the subset never dangles a reference.
      * `mutations_json` carries `MutablePropertyView` edits (attribute updates +
      * property-set synthesis); empty ⇒ none. See `export_step_json` for the shape.
+     * A non-empty but malformed `mutations_json` throws rather than silently
+     * exporting the model with none of the caller's edits applied — mirrors
+     * `exportGlb`'s and `exportMerged`'s fail-closed contract on this same API.
      */
     exportStep(content: Uint8Array, schema: string, included: Uint32Array, mutations_json: string): Uint8Array;
     /**

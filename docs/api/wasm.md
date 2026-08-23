@@ -148,6 +148,8 @@ const hbjson = api.exportHbjson(ifcContent, 'my_model');
 
 `exportGlb` fails closed: when the visible mesh set is empty it throws an `Error` whose message starts with `NO_RENDER_GEOMETRY` rather than returning an empty GLB.
 
+`exportStep` also fails closed on `mutationsJson`: an empty string means "no mutations" and exports cleanly, but a non-empty string that fails to parse throws (message prefixed `exportStep:`) instead of silently exporting the model with none of the caller's edits applied.
+
 #### Other Parsing
 
 ```typescript

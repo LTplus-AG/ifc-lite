@@ -105,4 +105,71 @@ describe('walkBounded', () => {
     expect(res.depthExceeded).toBe(false);
     expect(seen).toBe(MAX_AST_DEPTH * 3);
   });
+
+  it('leaves unwalkableTypes empty for ordinary source', () => {
+    const res = walkBounded(
+      parse('async function activate(ctx) { const w = await ctx.bim.query.byType("IfcWall"); return w.length; }'),
+      () => {},
+    );
+    expect(res.unwalkableTypes).toEqual([]);
+  });
+});
+
+/**
+ * The node types acorn can emit are not the node types `acorn-walk`
+ * knows how to descend — the two packages version independently, and
+ * every new syntax (class static blocks, import attributes, `await
+ * using`) lands in the parser first. `withoutBase` reproduces that
+ * skew deliberately instead of waiting for an upgrade to produce it:
+ * it removes one `base` entry for the duration of the callback, so a
+ * node type acorn still emits becomes one the walker cannot descend.
+ */
+function withoutBase<T>(type: string, run: () => T): T {
+  const base = walk.base as unknown as Record<string, unknown>;
+  const saved = base[type];
+  expect(saved).toBeTypeOf('function');
+  delete base[type];
+  try {
+    return run();
+  } finally {
+    base[type] = saved;
+  }
+}
+
+describe('walkBounded — a subtree it cannot descend', () => {
+  it('reports the type instead of silently skipping the subtree', () => {
+    const ast = parse('try { eval("payload"); } catch (e) {}');
+    const seen: string[] = [];
+    const res = withoutBase('TryStatement', () =>
+      walkBounded(ast, (_n, type) => {
+        seen.push(type);
+      }),
+    );
+
+    // The subtree really was skipped — this is the fail-open shape.
+    expect(seen).not.toContain('CallExpression');
+    // …and the result says so, so the caller cannot read the silence
+    // as "nothing found".
+    expect(res.unwalkableTypes).toEqual(['TryStatement']);
+    // Not a depth problem: the two causes stay distinguishable.
+    expect(res.depthExceeded).toBe(false);
+  });
+
+  it('keeps walking the siblings of the subtree it could not descend', () => {
+    const ast = parse('try {} catch (e) {} eval("after");');
+    const seen: string[] = [];
+    const res = withoutBase('TryStatement', () =>
+      walkBounded(ast, (_n, type) => {
+        seen.push(type);
+      }),
+    );
+    expect(seen).toContain('CallExpression');
+    expect(res.unwalkableTypes).toEqual(['TryStatement']);
+  });
+
+  it('deduplicates repeated unwalkable types', () => {
+    const ast = parse('try {} catch (e) {} try {} catch (e) {}');
+    const res = withoutBase('TryStatement', () => walkBounded(ast, () => {}));
+    expect(res.unwalkableTypes).toEqual(['TryStatement']);
+  });
 });

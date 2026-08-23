@@ -34,7 +34,15 @@ export function resolveExpressBase(typeName: string): string | null {
   const seen = new Set<string>();
   while (cursor && !seen.has(cursor)) {
     seen.add(cursor);
-    const underlying: string | undefined = SCHEMA_REGISTRY.types[cursor];
+    // Own-property, not bare bracket access: SCHEMA_REGISTRY.types is a plain
+    // object literal, so `types['constructor']` reaches Object.prototype and
+    // hands back the Object CONSTRUCTOR. That is truthy, so the `!underlying`
+    // check below passes it through and `.replace()` on the next line throws
+    // `TypeError: underlying.replace is not a function` from a function whose
+    // contract is to return null for a type it does not know. Sibling of #3063.
+    const underlying: string | undefined = Object.prototype.hasOwnProperty.call(SCHEMA_REGISTRY.types, cursor)
+      ? SCHEMA_REGISTRY.types[cursor]
+      : undefined;
     if (!underlying) return null;
     // Strip width qualifiers like `STRING(255)` before the primitive test.
     const head = underlying.replace(/\(.*$/, '').trim().toUpperCase();

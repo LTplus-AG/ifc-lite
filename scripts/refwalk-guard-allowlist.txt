@@ -1,0 +1,21 @@
+# Unguarded file-driven entity-reference walks that are allowed to stay
+# unguarded. Enforced by scripts/check-refwalk-guards.mjs (issue #2944).
+#
+# EMPTY, and that is the point: every reference-following walk under
+# rust/geometry/src and rust/processing/src carries a visited set, a path
+# stack or a depth cap today. A row here is a deliberate statement that a
+# walk driven by an uploaded file may recurse without bound, which ends in
+# SIGABRT rather than a load error (#2866). Expect to justify it.
+#
+# Format, one per line:
+#   <path>::<function>::<signal>  # reason, and what would let this be removed
+# where <signal> is `recursion` or `chase`.
+#
+# Adding a row must also raise ALLOWLIST_CEILING in
+# scripts/check-refwalk-guards.mjs in the SAME commit — the gate fails on a
+# mismatch in both directions, so a loosening cannot land invisibly.
+#
+# HOW A ROW GETS REMOVED: give the walk a guard (AGENTS.md, "Bounding walks over
+# file-supplied references"), or delete the walk. The next run then reports the
+# row as stale and FAILS until it is deleted, so entries cannot outlive their
+# reason. Lower ALLOWLIST_CEILING in the same commit.

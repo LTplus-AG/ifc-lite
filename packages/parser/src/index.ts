@@ -51,6 +51,7 @@ export { CompactEntityIndex, CompactEntityIndexBuilder, buildCompactEntityIndex 
 export { scanIfcEntities } from './entity-scanner.js';
 export type { EntityScanPath, EntityScanResult, PreScannedEntityIndex, WasmScanApi } from './entity-scanner.js';
 export { REL_TYPE_MAP, RELATIONSHIP_TYPES, isIfcTypeLikeEntity } from './columnar-parser-indexes.js';
+export { IFC_SUBTYPES, expandTypes, QUERY_REL_TYPE_MAP } from './query-backend-maps.js';
 export { PropertyExtractor } from './property-extractor.js';
 export { QuantityExtractor } from './quantity-extractor.js';
 export { RelationshipExtractor } from './relationship-extractor.js';

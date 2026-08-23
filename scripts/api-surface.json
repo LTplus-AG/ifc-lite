@@ -2301,6 +2301,14 @@
     "isProductType: const",
     "toolError: function"
   ],
+  "@ifc-lite/mcp/cli-args": [
+    "CliOptions: interface",
+    "MCP_BOOLEAN_FLAGS: const",
+    "MCP_SUBCOMMAND_UNSUPPORTED_FLAGS: const",
+    "MCP_VALUE_FLAGS: const",
+    "isMcpValueFlag: function",
+    "parseArgs: function"
+  ],
   "@ifc-lite/mcp/protocol": [
     "CallToolParams: interface",
     "CallToolResult: interface",
@@ -2527,6 +2535,7 @@
     "FederatedParseOptions: interface",
     "GeoreferenceInfo: interface",
     "GroupMember: interface",
+    "IFC_SUBTYPES: const",
     "IfcActionRequest: interface",
     "IfcActionRequestTypeEnum: enum",
     "IfcActionSourceTypeEnum: enum",
@@ -3549,6 +3558,7 @@
     "PropertyExtractor: class",
     "PropertySet: interface",
     "PropertyValue: interface",
+    "QUERY_REL_TYPE_MAP: const",
     "QuantityExtractor: class",
     "RELATIONSHIP_TYPES: const",
     "REL_TYPE_MAP: const",
@@ -3594,6 +3604,7 @@
     "detectFormat: function",
     "deterministicGlobalId: function",
     "enumVal: function",
+    "expandTypes: function",
     "extractAllEntityAttributes: function",
     "extractAllMaterialsOnDemand: function",
     "extractClassificationSystemsOnDemand: function",

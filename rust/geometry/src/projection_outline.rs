@@ -318,15 +318,19 @@ mod tests {
     /// other: any axis permutation moves at least one of the ranges below.
     #[test]
     fn each_projection_axis_picks_its_own_two_drawing_coordinates() {
-        // x ∈ [1,4], y ∈ [0,2], z ∈ [-1,1] — no two extents are equal, and no
-        // extent equals another's negation.
-        let (pos, idx) = box_mesh(1.0, 4.0, 0.0, 2.0, -1.0, 1.0, false);
+        // x ∈ [1,4], y ∈ [0,2], z ∈ [-1,2]. Three properties, and the third is
+        // the one a symmetric range silently destroys: no two extents are
+        // equal; no extent equals ANOTHER's negation; and no extent equals ITS
+        // OWN negation. z was [-1,1], which satisfies the first two and fails
+        // the third, so the mirror assertion below held at 0 == 0 with
+        // flipping deleted entirely.
+        let (pos, idx) = box_mesh(1.0, 4.0, 0.0, 2.0, -1.0, 2.0, false);
 
         // axis = X → (u = z, v = y); the cut axis is x.
         let x = mesh_outline_2d(&pos, &idx, ProjectionAxis::X, false).expect("x outline");
         let (minu, minv, maxu, maxv) = bbox_2d(&x.contours);
         assert!(
-            (minu + 1.0).abs() < 1e-4 && (maxu - 1.0).abs() < 1e-4,
+            (minu + 1.0).abs() < 1e-4 && (maxu - 2.0).abs() < 1e-4,
             "axis=X u must be the z extent, got {minu}..{maxu}"
         );
         assert!(
@@ -352,7 +356,7 @@ mod tests {
             "axis=Z v must be the y extent, got {minv}..{maxv}"
         );
         assert!(
-            (z.axis_min + 1.0).abs() < 1e-4 && (z.axis_max - 1.0).abs() < 1e-4,
+            (z.axis_min + 1.0).abs() < 1e-4 && (z.axis_max - 2.0).abs() < 1e-4,
             "axis=Z band must be the z extent, got {}..{}",
             z.axis_min,
             z.axis_max

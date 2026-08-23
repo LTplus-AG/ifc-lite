@@ -18,21 +18,28 @@
 //! `build_axis2_matrix` leaves all four of those unit tests green, while the
 //! test below fails.
 //!
-//! The crate is NOT completely blind to that mutation, and it is worth naming
-//! the one test that does catch it rather than hiding it behind a count.
-//! `processors::tests::test_polygonal_bounded_half_space_respects_boundary`
-//! fails too: its placement is Location `(0,0,5)` with Axis `(0,1,0)`, so
-//! `R * location` is `(0,5,0)` and the clip plane moves off the top face.
+//! The crate is NOT blind to that mutation. At FULL crate scope six existing
+//! tests also fail:
 //!
-//! It is not a substitute for this test. It reaches `build_axis2_matrix`
-//! through `processors/helpers.rs`'s own attribute-extraction fork, one of
-//! five sharing that matrix builder, and asserts a downstream boolean-clipping
-//! outcome -- so it fails with "the clipped strip should be removed", which
-//! points at a boolean, not at a placement. This test pins `transform.rs`'s
-//! own fork and reads the translation column directly.
+//!   processors::tests::test_polygonal_bounded_half_space_respects_boundary
+//!   tests/voids_inline_matrix_test.rs        inline_void_matrix
+//!   tests/rect_param_gate.rs                 param_fast_path_fires_watertight...
+//!   tests/issue_1167_rotated_wall_opening.rs rotated_wall_opening_is_not_overcut
+//!   tests/issue_1167_rotated_wall_opening.rs rotated_opening_cuts_clean_at_every_angle
+//!   tests/issue_1167_real_wall.rs            rotated_wall_openings_not_overcut_or_fragmented
 //!
-//! This lives in `tests/` rather than beside them because `transform.rs` is at
-//! its module-size ratchet budget.
+//! An earlier version of this header said "the one test that does catch it".
+//! That was measured with `cargo test --lib`, which excludes `tests/` -- the
+//! directory this file is in. Five of the six were invisible to the scope the
+//! claim was made at.
+//!
+//! Every one of them is downstream of a boolean or a cut volume, so each fails
+//! with something like "the clipped strip should be removed" and points at a
+//! CSG result rather than at a placement. This is the only test that reads the
+//! translation column directly, which is the reason to keep it -- not scarcity.
+//!
+//! This lives in `tests/` rather than beside them because the test body would
+//! push `transform.rs` (513 lines) past its 525-line ratchet budget.
 
 use ifc_lite_core::EntityDecoder;
 use ifc_lite_geometry::parse_axis2_placement_3d;

@@ -358,9 +358,12 @@ use super::*;
     /// `contains()` (order-blind), so `mirror_profile_about_y_axis` could be
     /// deleted outright and the test still passed. Verified by mutation:
     /// replacing the outer loop's `p.x = -p.x` with `p.x = p.x` and dropping
-    /// its `reverse()` left the whole `ifc-lite-geometry` lib suite green (718
-    /// passed, 0 failed), and `issue_828_sectioned_solid_horizontal` — the only
-    /// other in-crate `IfcMirroredProfileDef` coverage — green too.
+    /// its `reverse()` left the whole `ifc-lite-geometry` lib suite green, and
+    /// `issue_828_sectioned_solid_horizontal` — the only other in-crate
+    /// `IfcMirroredProfileDef` coverage — green too. Stated as a property
+    /// rather than a pass count on purpose: the count was 718 when first
+    /// measured and is 724 today, so a number here goes stale on the next
+    /// commit while "no other test observes the mirror" stays checkable.
     ///
     /// This L-shaped outer contour with an off-centre hole pins both halves of
     /// the reflection: every point's x negates, and each contour's winding

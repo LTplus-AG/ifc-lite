@@ -16,6 +16,7 @@
 
 import { useCallback, useState } from 'react';
 import { CheckCircle2, RefreshCcw, ShieldAlert, Wrench, X } from 'lucide-react';
+import { needsSdkRepair } from '@ifc-lite/extensions';
 import type { RevalidationItem, RevalidationSummary } from '@ifc-lite/extensions';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -181,7 +182,7 @@ function RepairRow({
             </div>
           )}
         </div>
-        {itemNeedsRepair(item) && (
+        {needsSdkRepair(item) && (
           <Button size="sm" variant="outline" onClick={onRepair}>
             <Wrench className="mr-1 h-3.5 w-3.5" />
             Repair
@@ -189,19 +190,6 @@ function RepairRow({
         )}
       </div>
     </li>
-  );
-}
-
-/**
- * Whether a row should show a Repair button. Mirrors the
- * `needsRepair` filter in `revalidateAgainstSdk` exactly — a failed
- * test OR a skipped extension whose declared range is outdated — so
- * the header count and the actionable rows never disagree.
- */
-function itemNeedsRepair(item: RevalidationItem): boolean {
-  return (
-    item.outcome === 'fail'
-    || (item.outcome === 'skipped' && item.compatibility.status === 'outdated')
   );
 }
 

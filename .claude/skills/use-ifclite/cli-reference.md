@@ -77,7 +77,7 @@ ifc-lite lod model.ifc --level 1 --out model.glb --meta model.lod1.json
 ```
 
 Flags: `--level 0|1` · `--out <file>` (required for LOD1) · `--meta <file>` ·
-`--quality low|medium|high` · `--json`. LOD0 = bbox/transform/centroid/identity
+`--json`. LOD0 = bbox/transform/centroid/identity
 JSON; LOD1 = GLB + metadata (falls back to box geometry if meshing fails).
 
 ## ids

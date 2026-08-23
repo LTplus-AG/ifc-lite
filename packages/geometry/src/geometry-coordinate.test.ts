@@ -55,6 +55,24 @@ describe('getStreamingBatchSize', () => {
     expect(getStreamingBatchSize(new Uint8Array(60 * 1024 * 1024), {})).toBe(300);
   });
 
+  // Regrowth guard for issue #2731: `DynamicBatchConfig` once advertised
+  // `initialBatchSize` / `maxBatchSize` ramp-up hints that nothing ever read.
+  // They are gone from the type; this pins the *behaviour* they claimed —
+  // extra fields on the config cannot move the batch size, so re-adding a
+  // field without also wiring it in is caught here rather than shipping as a
+  // second silent no-op. The cast is deliberate: the fields no longer typecheck.
+  it('ignores every config field except fileSizeMB', () => {
+    const withStrayFields = {
+      fileSizeMB: 60,
+      initialBatchSize: 50,
+      maxBatchSize: 200,
+    } as unknown as Parameters<typeof getStreamingBatchSize>[1];
+
+    // 60 MB alone → 300; neither stray field pulls it toward 50 or 200.
+    expect(getStreamingBatchSize(buffer, withStrayFields)).toBe(300);
+    expect(getStreamingBatchSize(buffer, { fileSizeMB: 60 })).toBe(300);
+  });
+
   it('treats a zero fileSizeMB as absent and measures the buffer', () => {
     // `fileSizeMB: 0` is falsy, so the buffer length decides: 200 MB → 500.
     expect(

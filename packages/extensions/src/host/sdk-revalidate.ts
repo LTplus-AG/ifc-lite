@@ -39,6 +39,29 @@ export interface RevalidationSummary {
   needsRepair: RevalidationItem[];
 }
 
+/**
+ * Whether a revalidation row belongs in the repair queue: a failed
+ * test run, or a row we could not self-verify at all.
+ *
+ * `skipped` only ever arises for 'outdated' or 'permissive' rows (the
+ * 'compatible' branch in `revalidateAgainstSdk` always resolves to
+ * 'pass' without touching the test runner), so any skip means we could
+ * not self-verify a row the compatibility check itself flagged as
+ * needing a re-test. Narrowing to 'outdated' silently dropped
+ * 'permissive' extensions (e.g. wildcard engine ranges) that crossed a
+ * major SDK bump with no declared tests to confirm they still work.
+ *
+ * This is the single definition of that rule. Both the
+ * `RevalidationSummary.needsRepair` bucket and the viewer's repair
+ * panel — which decides per row whether to render a Repair button —
+ * call it, so the queue count and the actionable rows cannot disagree.
+ * They previously each carried their own copy of the predicate, and
+ * updating one of them was exactly how they came apart.
+ */
+export function needsSdkRepair(item: RevalidationItem): boolean {
+  return item.outcome === 'fail' || item.outcome === 'skipped';
+}
+
 export interface RevalidateOptions {
   /** SDK version we're moving TO. */
   sdk: string;
@@ -114,7 +137,7 @@ export async function revalidateAgainstSdk(
     });
   }
 
-  const needsRepair = items.filter((i) => i.outcome === 'fail' || (i.outcome === 'skipped' && i.compatibility.status === 'outdated'));
+  const needsRepair = items.filter(needsSdkRepair);
   return { sdk: opts.sdk, items, needsRepair };
 }
 

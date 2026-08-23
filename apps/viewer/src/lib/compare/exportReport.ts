@@ -16,6 +16,7 @@
  * not O(elements × meshes).
  */
 
+import { escapeCsvCell } from '@ifc-lite/export';
 import type { DiffEntry, DiffState } from '@ifc-lite/diff';
 import type { FederatedModel } from '../../store/types.js';
 import type { CompareResult } from '../../store/slices/compareSlice.js';
@@ -250,21 +251,13 @@ export function buildCompareReport(
  *  tab/CR is evaluated as a formula by Excel/Sheets; prefixing a single quote
  *  forces it to be read as text (model/element names are attacker-influenced). */
 function csvField(value: string | number): string {
-  let s = String(value);
-  // Strip EVERY leading invisible before the trigger test, not just the BOM.
-  // Spreadsheet importers treat a BOM as file metadata, but a zero-width space
-  // (U+200B), an LTR mark (U+200E), a non-breaking space (U+00A0) or a line /
-  // paragraph separator (U+2028/U+2029) in front of `=` likewise does not stop
-  // a spreadsheet reading the cell as a formula -- while it DOES stop the
-  // anchored test below matching, so the apostrophe never gets prepended.
-  // Fixing only the BOM leaves the guard bypassable, which for a CSV-injection
-  // guard means it still fails in the way that matters.
-  //
-  // `\p{Z}`, not `\p{Zs}`: the separator category also covers `Zl` and `Zp`
-  // (U+2028/U+2029). Same class as `lists/export/model.ts`.
-  s = s.replace(/^[\p{Cf}\p{Z}]+/u, '');
-  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
-  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  // Delegates to `@ifc-lite/export`'s single escaper. The copy that used to
+  // live here bought its invisible-handling by DELETING the leading run of
+  // `\p{Cf}\p{Z}`; `\p{Z}` includes U+0020, so every exported cell silently
+  // lost its leading spaces, against RFC 4180 §2.4 ("Spaces are considered
+  // part of a field and should not be ignored"). The shared escaper looks
+  // *past* the run instead of removing it — same payloads guarded, data intact.
+  return escapeCsvCell(String(value), { delimiter: ',' });
 }
 
 /** Serialize the report as RFC-4180 CSV (one element per row). */

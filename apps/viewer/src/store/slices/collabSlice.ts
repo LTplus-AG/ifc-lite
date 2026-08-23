@@ -706,6 +706,15 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       /* cleanup — safe to ignore: presence may not accept the patch in older runtimes */
     }
 
+    /**
+     * This join's own recipient teardown, kept beside the module-level slot it
+     * is published into. The abandoned-join guard below has to be able to run
+     * the teardown THIS join installed and no other: the slot is module-level,
+     * so by the time a stale continuation reaches that guard a newer join may
+     * already own it. (#3016)
+     */
+    let ownLiveTeardown: (() => void) | null = null;
+
     const geomApi: CollabGeomApi = {
       createGeometry: (doc, geomId, opts) => collabMod.createGeometry(doc, geomId, opts),
       hasEntity: (doc, path) => collabMod.hasEntity(doc, path),
@@ -1068,7 +1077,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
           }, 800);
         };
         session.doc.on('update', onDocUpdate);
-        recipientLiveTeardown = () => {
+        ownLiveTeardown = () => {
           if (debounceHandle) clearTimeout(debounceHandle);
           try {
             session.doc.off('update', onDocUpdate);
@@ -1086,6 +1095,18 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
             }
           }
         };
+        // Published into the module-level slot only while this join is still
+        // the live one. A join the user left mid-reconstruct resumes here after
+        // whatever came next — including a NEWER join that has already put its
+        // own teardown in the slot — and an unconditional assignment overwrote
+        // it, so the newer room's model was never removed on the next Leave
+        // while this dead one's was removed twice. The abandoned case is
+        // handled by the guard below, which runs `ownLiveTeardown` directly
+        // rather than through the slot. (#3016)
+        //
+        // Same granularity as every other re-check in this function: it cannot
+        // tell a rejoin of the SAME room from this join still being live.
+        if (get().collabRoomId === roomId) recipientLiveTeardown = ownLiveTeardown;
       } catch (err) {
         // eslint-disable-next-line no-console
         console.error('[collab] model reconstruction failed:', err);
@@ -1104,6 +1125,26 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     // `collabRoomId`-vs-`roomId` re-check earlier in `startCollab`, added
     // for the one block that had none.
     if (get().collabRoomId !== roomId) {
+      // Run the cleanup this join installed after its last guarded await, which
+      // returning here would otherwise skip: the recipient branch registers the
+      // `room:<roomId>` model, then assigns its teardown, then falls through to
+      // this check. A Leave landing in that window left the model in `models`
+      // (and the doc listener attached) until the next `stopCollab` — an orphan
+      // sitting in the store between leaving and rejoining. (#3016)
+      //
+      // This join's OWN closure, never whatever the module-level slot holds:
+      // by the time a stale continuation gets here, a newer join may already
+      // have published its own teardown there, and running THAT one would drop
+      // the room model of the session the user is actually in. The assignment
+      // above is conditional for the same reason, so the slot cannot be
+      // holding this closure here — nothing to clear.
+      if (ownLiveTeardown) {
+        try {
+          ownLiveTeardown();
+        } catch {
+          /* cleanup — safe to ignore */
+        }
+      }
       session.dispose();
       return;
     }

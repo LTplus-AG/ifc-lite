@@ -166,3 +166,156 @@ describe('concurrent refresh de-duplication', () => {
     expect(stored.accessToken).toBe(MOCK_ACCESS_TOKEN);
   });
 });
+
+/**
+ * Sign-out must survive a token refresh that is already on the wire — the
+ * same shape `source-dropbox/test/refresh-race.test.ts` guards (`#2635`),
+ * adapted to this package's extra trigger: the `clientId`/`tenant`
+ * preference changing between the armed manager's creation and `signOut`.
+ *
+ * `TokenManager`'s protections are all PER-INSTANCE (see `token-manager.ts`
+ * in `@ifc-lite/oauth-pkce`): `clear()` swaps `this.session` and a refresh
+ * re-checks `session !== this.session` on its OWN instance before persisting.
+ * `signOut` above builds its manager from freshly-read preferences — if
+ * `clientId`/`tenant` haven't changed since the manager holding the in-flight
+ * refresh was created, that's the same cached instance and `clear()` lands on
+ * it correctly. If they *have* changed (a host config reload landing right as
+ * the user clicks Sign out), `signOut` would resolve to a *different*
+ * `managerCache` entry, and clearing only that one leaves the real, armed
+ * manager's refresh free to write a valid token set back after this deletes
+ * it — resurrecting a session the user explicitly signed out of. Fixed by
+ * clearing every cached manager, not just the one preferences currently name.
+ */
+describe('sign-out vs an in-flight token refresh (mirrors source-dropbox #2635)', () => {
+  interface ResurrectionHarness {
+    readonly ctx: ReturnType<typeof createGraphMockContext>;
+    /** One entry per POST that actually reached the token endpoint. */
+    readonly tokenPosts: string[];
+    /** Lets the held-open token response complete. */
+    release(): void;
+    /** Simulates the `clientId` preference changing (or being cleared) after
+     *  the in-flight refresh's manager was already created. */
+    clearClientIdPreference(): void;
+  }
+
+  /**
+   * A context whose stored access token is already expired, and whose token
+   * endpoint HANGS until `release()` is called — deterministic fault
+   * injection instead of a timing-dependent race, mirroring
+   * `source-dropbox/test/refresh-race.test.ts`'s `createRefreshHarness`.
+   */
+  function createResurrectionHarness(): ResurrectionHarness {
+    const base = createGraphMockContext(WORLD);
+    const tokenPosts: string[] = [];
+    let releaseFn = (): void => {};
+    const gate = new Promise<void>((resolve) => {
+      releaseFn = resolve;
+    });
+    let clientIdPref: string | undefined = 'mock-client-id';
+
+    void base.storage.set(
+      'msgraph:tokens',
+      JSON.stringify({
+        accessToken: 'expired-access-token',
+        refreshToken: 'mock-refresh-token',
+        expiresAt: Date.now() - 1000,
+      }),
+    );
+
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const href = typeof input === 'string' ? input : input.toString();
+      if (!href.includes('/oauth2/v2.0/token')) return base.fetch(input, init);
+
+      tokenPosts.push(href);
+      await gate;
+      return new Response(
+        JSON.stringify({
+          access_token: MOCK_ACCESS_TOKEN,
+          refresh_token: 'refresh-token-v2',
+          expires_in: 3600,
+          token_type: 'Bearer',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    };
+
+    const ctx = {
+      ...base,
+      fetch: fetchImpl,
+      getPreference: (name: string) => {
+        if (name === 'clientId') return Promise.resolve(clientIdPref);
+        if (name === 'tenant') return Promise.resolve('common');
+        return Promise.resolve(undefined);
+      },
+    };
+
+    return {
+      ctx,
+      tokenPosts,
+      release: () => releaseFn(),
+      clearClientIdPreference: () => {
+        clientIdPref = undefined;
+      },
+    };
+  }
+
+  async function waitForTokenPost(posts: readonly string[]): Promise<void> {
+    for (let i = 0; i < 100 && posts.length === 0; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    if (posts.length === 0) {
+      throw new Error('the listing never reached the token endpoint — harness is not exercising the race');
+    }
+  }
+
+  it('does not let a refresh resurrect the tokens sign-out deleted, even if clientId changed first', async () => {
+    const h = createResurrectionHarness();
+
+    // A listing starts and stalls on the token endpoint — the exact state a
+    // user is in when they give up on a spinner and click Sign out.
+    const listing = new MsGraphProvider().listProjects(h.ctx).catch(() => undefined);
+    await waitForTokenPost(h.tokenPosts);
+
+    // The clientId preference is cleared before signOut runs — e.g. a host
+    // config reload landing at the same moment. `signOut` now resolves to a
+    // *different* cache key ('unconfigured|common') than the manager that
+    // actually holds this in-flight refresh ('mock-client-id|common').
+    h.clearClientIdPreference();
+
+    await msGraphAuth.signOut(h.ctx);
+    expect(await h.ctx.storage.get('msgraph:tokens')).toBeUndefined();
+
+    // Now let the refresh land. Before the fix, only the 'unconfigured|common'
+    // manager was cleared — the armed 'mock-client-id|common' manager's
+    // refresh still saw its own (unchanged) session and wrote a fresh, valid
+    // token set back over the deleted key.
+    h.release();
+    await listing;
+    await new Promise((r) => setTimeout(r, 0));
+
+    const after = await h.ctx.storage.get('msgraph:tokens');
+    expect(
+      after,
+      `an in-flight refresh wrote tokens back AFTER sign-out deleted them: ${String(after)}. ` +
+        'The user is silently signed back in on the next mount, with a live refresh token ' +
+        'left in localStorage. Fix: signOut() must clear() every cached TokenManager, not just ' +
+        "the one built from the preferences read at signOut time (see createTokenManager's managerCache).",
+    ).toBeUndefined();
+  });
+
+  it('leaves the session signed out after the race settles, even if clientId changed first', async () => {
+    const h = createResurrectionHarness();
+    const listing = new MsGraphProvider().listProjects(h.ctx).catch(() => undefined);
+    await waitForTokenPost(h.tokenPosts);
+    h.clearClientIdPreference();
+    await msGraphAuth.signOut(h.ctx);
+    h.release();
+    await listing;
+    await new Promise((r) => setTimeout(r, 0));
+
+    // The user-visible consequence, asserted through the storage state rather
+    // than a single read path: the race must not leave a live token set
+    // behind, regardless of which identity-read path a caller happens to use.
+    expect(await h.ctx.storage.get('msgraph:tokens'), 'storage must stay clean after the race settles').toBeUndefined();
+  });
+});

@@ -15,6 +15,10 @@ mod adjacency;
 mod collada;
 mod constructions;
 mod csv;
+/// The single CSV cell escaper for this crate — RFC 4180 quoting plus the
+/// CWE-1236 formula-injection guard, pinned to the TypeScript half by
+/// `tests/csv_cell_parity.rs`.
+pub mod csv_cell;
 mod dfjson;
 mod error;
 mod frame;

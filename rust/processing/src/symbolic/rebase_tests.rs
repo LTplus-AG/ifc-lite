@@ -61,3 +61,23 @@ fn a_single_large_axis_arms_the_whole_rebase() {
     assert!((y - 30.0).abs() < 1e-3, "y2d: {y}");
     assert!((rebase.elevation(0.0) - -7.0).abs() < 1e-3);
 }
+
+/// A zero northing must come out as +0.0, not the -0.0 that writing the flip
+/// as a negation produces. Nothing renders differently, but the overlay's
+/// golden digests record sign of zero deliberately, so leaking -0.0 there
+/// spends a real signal on an artifact of the arithmetic.
+#[test]
+fn plan_does_not_emit_negative_zero_for_a_zero_northing() {
+    let identity = RenderFrameRebase::from_rtc_offset((0.0, 0.0, 0.0));
+    let (_, y) = identity.plan(3.5, 0.0);
+    assert_eq!(y, 0.0);
+    assert!(
+        !y.is_sign_negative(),
+        "a zero northing produced -0.0; the pinned symbolic goldens distinguish it",
+    );
+
+    // The normalisation must not disturb a genuine negative, which is the
+    // failure mode of "fixing" this by taking an absolute value.
+    let (_, flipped) = identity.plan(0.0, 4.0);
+    assert_eq!(flipped, -4.0);
+}

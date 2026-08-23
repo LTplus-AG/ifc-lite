@@ -23,7 +23,7 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '../store/index.js';
-import { __symbolicAnnotationsSourceKeyForTests } from './useSymbolicAnnotations.js';
+import { __symbolicAnnotationsSourceKeyForTests } from './symbolic-parse-cache.js';
 
 /** Same bytes, same content hash — the case the old key could not separate. */
 function store(): IfcDataStore {
@@ -92,5 +92,29 @@ describe('symbolic parse cache key carries the render frame', () => {
     const zero = __symbolicAnnotationsSourceKeyForTests(store());
     useViewerStore.setState({ geometryResult: null } as never);
     assert.equal(zero, __symbolicAnnotationsSourceKeyForTests(store()));
+  });
+});
+
+describe('sourceKey derives the key from the frame it is GIVEN', () => {
+  it('ignores an ambient frame change, so two reads cannot diverge', () => {
+    const s = store();
+    const frame = { primitive: 3, storeyTable: 7 };
+
+    setFrame(10, 0);
+    const before = __symbolicAnnotationsSourceKeyForTests(s, frame);
+    // Re-align. A key built from the passed frame must not move; one built by
+    // reading ambient state would, which is exactly how a result rebased on
+    // one side of an await gets filed under the other side's key.
+    setFrame(99, 0);
+    const after = __symbolicAnnotationsSourceKeyForTests(s, frame);
+
+    assert.equal(after, before, 'the key moved with ambient state despite a fixed frame');
+    // And the frame genuinely reaches the key, or the assertion above is
+    // satisfied by a key that ignores the frame altogether.
+    assert.notEqual(
+      __symbolicAnnotationsSourceKeyForTests(s, { primitive: 4, storeyTable: 7 }),
+      before,
+      'a different frame produced the same key; the frame is not in the key',
+    );
   });
 });

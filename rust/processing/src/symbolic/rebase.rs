@@ -61,7 +61,15 @@ impl RenderFrameRebase {
     /// the handedness the section cutter emits and the viewer's overlay
     /// consumes.
     pub(super) fn plan(self, ifc_x: f32, ifc_y: f32) -> (f32, f32) {
-        (ifc_x - self.x, -(ifc_y - self.y))
+        // The handedness flip negates the northing, and negating a zero
+        // northing gives -0.0 rather than 0.0. The two compare equal and draw
+        // identically, but they are distinct values to anything that inspects
+        // the sign bit - including this overlay's pinned golden digests, which
+        // record sign of zero on purpose to catch representation drift across
+        // the worker boundary. Emitting -0.0 would spend that signal on an
+        // artifact of how the flip is written. Adding 0.0 maps -0.0 to +0.0
+        // and is the identity on every other value, IEEE-754 round-to-nearest.
+        (ifc_x - self.x, -(ifc_y - self.y) + 0.0)
     }
 
     /// IFC elevation → the renderer's `world_y`.

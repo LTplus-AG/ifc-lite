@@ -29,7 +29,7 @@ import {
   __resetSymbolicAnnotationsCacheForTests,
   __symbolicAnnotationsCacheHasForTests,
   __symbolicAnnotationsSourceKeyForTests,
-} from './useSymbolicAnnotations.js';
+} from './symbolic-parse-cache.js';
 
 function makeFailingStore(callCounter: { count: number }): IfcDataStore {
   return {

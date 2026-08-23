@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
+import * as walk from 'acorn-walk';
 import { validateCode, type CodeValidationResult } from './code.js';
 
 describe('validateCode — clean sources pass', () => {
@@ -180,5 +181,52 @@ describe('validateCode — deeply nested sources are bounded, not fatal', () => 
     const deep = recurse(2000);
     expect(deep.ok).toBe(shallow.ok);
     expect(deep.errors.map((e) => e.message)).toEqual(shallow.errors.map((e) => e.message));
+  });
+});
+
+describe('validateCode — a subtree the walker cannot descend', () => {
+  /**
+   * acorn and acorn-walk version independently, and every new syntax
+   * (class static blocks, import attributes, `await using`) reaches
+   * the parser before the walker. Rather than wait for an upgrade to
+   * produce that skew, remove one `base` entry for the duration of the
+   * call: a node type acorn still emits becomes one the walker has no
+   * way to descend.
+   */
+  function withoutBase<T>(type: string, run: () => T): T {
+    const base = walk.base as unknown as Record<string, unknown>;
+    const saved = base[type];
+    expect(saved).toBeTypeOf('function');
+    delete base[type];
+    try {
+      return run();
+    } finally {
+      base[type] = saved;
+    }
+  }
+
+  it('refuses the source instead of passing it as clean', () => {
+    // `eval(...)` is banned and sits inside the subtree the walker
+    // cannot enter. A scan that never looked must not report "clean".
+    const r = withoutBase('TryStatement', () =>
+      validateCode('try { eval("payload"); } catch (e) {}'),
+    );
+    expect(r.ok).toBe(false);
+    expect(r.errors.some((e) => /cannot traverse/.test(e.message))).toBe(true);
+    expect(r.errors.some((e) => /TryStatement/.test(e.message))).toBe(true);
+  });
+
+  it('names the failure even when nothing banned is visible', () => {
+    // The subtler half: no banned construct anywhere, so the only
+    // signal that the scan was incomplete is the walker's own report.
+    const r = withoutBase('TryStatement', () => validateCode('try { const x = 1; } catch (e) {}'));
+    expect(r.ok).toBe(false);
+    expect(r.errors.map((e) => e.code)).toEqual(['invalid_value']);
+  });
+
+  it('still passes the same source once the walker can descend it', () => {
+    // Pins that the rejection comes from the missing base, not from
+    // the source: unmodified, this is a clean script.
+    expect(validateCode('try { const x = 1; } catch (e) {}').ok).toBe(true);
   });
 });

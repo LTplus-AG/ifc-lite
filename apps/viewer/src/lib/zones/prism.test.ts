@@ -203,6 +203,55 @@ describe('prism volume on shapes a box cannot express', () => {
     assert.ok(Math.abs(volume - 0.4 * Math.SQRT2) < 1e-9, `diagonal band took ${volume}`);
   });
 
+  it('takes a trapezoid whose edges are NOT parallel, so the chord width varies with z', () => {
+    // Every other slanted fixture here is a PARALLELOGRAM (the diagonal band's
+    // two edges share a slope), which makes `bHi - bLo` zero and the far
+    // region's z-slope term vanish; the tiling case above asserts a + b = whole,
+    // an identity every divergence-1 field satisfies, so it cannot see the
+    // slope either. Between them the integrator's dependence on z was
+    // unobservable: `cz` could be forced to 0, or read off the Y component,
+    // with the whole suite still green.
+    //
+    // The box is deliberately 2 m tall and 1 m deep, rather than `wall()`, which
+    // is 1 x 1 in (y, z): a square end face has a diagonal triangulation
+    // symmetric under swapping y for z, which hides a `cz` that reads the Y
+    // component. Unequal extents make that swap observable too.
+    //
+    // The wedge has lo(z) = 1 and hi(z) = 2 + 2z, so bLo = 0 but bHi = 2 and the
+    // chord widens from 1 m at z = 0 to 3 m at z = 1. Its area is the trapezoid
+    // (1 + 3)/2 * 1 = 2, and it sits inside the box's x and z range, so the
+    // volume taken is 2 * the box's 2 m height = 4.
+    const tall = extrudeLoop([[0, 0], [6, 0], [6, 1], [0, 1]], 0, 2);
+    const wedge: FootprintPoint[] = [[1, 0], [2, 0], [4, 1], [1, 1]];
+    const traps = trapezoidsOfFootprint(wedge);
+    // Pin the asymmetry itself: if a future edit made this fixture a
+    // parallelogram again the assertion below would go quiet rather than fail.
+    assert.ok(
+      traps.some((t) => Math.abs(t.bHi - t.bLo) > 0.5),
+      `fixture must have non-parallel edges, got ${JSON.stringify(traps)}`,
+    );
+    const volume = clippedVolumeForPrism([tall], compilePrism(wedge, -1, 3));
+    assert.ok(Math.abs(volume - 4) < EPS, `wedge took ${volume}, expected 4`);
+  });
+
+  it('counts a face lying exactly on the hi(z) split plane ONCE', () => {
+    // The split at hi(z) hands a polygon to the inside branch or the far
+    // branch; a polygon lying exactly ON the plane satisfies both keep-tests, so
+    // a Sutherland-Hodgman split that kept it on each side would count that face
+    // twice. `accumulateTrapezoid` avoids that by testing `maxD <= 0` and
+    // `minD >= 0` before it ever splits -- and nothing pinned it, because no
+    // fixture put a face on a zone boundary at all, which is the ordinary case
+    // in a tiling plan rather than an edge case.
+    //
+    // This box ends exactly at x = 3 and the footprint's hi edge is x = 3, so
+    // the box's far face is coplanar with the split. The zone takes x in [1, 3]
+    // of a 3 x 2 x 1 m box: volume 4, and 8 if that face is counted twice.
+    const box = extrudeLoop([[0, 0], [3, 0], [3, 1], [0, 1]], 0, 2);
+    const flush: FootprintPoint[] = [[1, 0], [3, 0], [3, 1], [1, 1]];
+    const volume = clippedVolumeForPrism([box], compilePrism(flush, -1, 3));
+    assert.ok(Math.abs(volume - 4) < EPS, `flush face took ${volume}, expected 4`);
+  });
+
   it('sums to the whole across a footprint tiling, which is the invariant that matters', () => {
     // Two triangles that tile the wall's plan exactly, sharing the diagonal.
     const lower: FootprintPoint[] = [[-1, -1], [8, -1], [8, 2]];

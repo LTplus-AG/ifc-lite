@@ -107,12 +107,23 @@ describe('addElementMeshes: IFC storey-local to renderer frame (#2802)', () => {
 
     // The bottom face is [0, 0, -1] in IFC, so its x and y are BOTH zero and
     // it cannot see the `-face.normal[1]` term at all: flip that sign and the
-    // assertions above still pass. Vertices 8..11 are the first side face,
-    // IFC normal [0, 1, 0], which maps to renderer [0, 0, -1] and is the
-    // component that discriminates.
+    // assertions above still pass. Vertices 8..11 are the first side face, so
+    // that is the component which discriminates.
+    //
+    // That face is corners [0, 4, 5, 1], all four of which sit at y = -Depth/2,
+    // so it is the -Y face of the box and its OUTWARD IFC normal is [0, -1, 0],
+    // mapping to renderer [0, 0, +1].
+    //
+    // This assertion previously read `-1`, pinning [0, +1, 0] — the INWARD
+    // direction. It passed because the side normals were inward at the time,
+    // which is the defect #3039 fixed by orienting each face away from the box
+    // centre. So the expectation was pinned to behaviour that was wrong, and
+    // #3058 and #3039 were each green alone and red together. Computed rather
+    // than re-derived by eye: box centre (0, 0, 1.5), face centre (0, -1, 1.5),
+    // difference (0, -1, 0).
     near(n[24], 0, 'side normal x');
     near(n[25], 0, 'side normal y');
-    near(n[26], -1, 'side normal z (IFC +Y becomes renderer -Z)');
+    near(n[26], 1, 'side normal z (IFC -Y becomes renderer +Z)');
 
     // Every normal is unit length, so none was left un-normalised by the swap.
     // Note this alone cannot see a sign flip, which is why the component

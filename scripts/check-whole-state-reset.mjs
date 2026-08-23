@@ -40,6 +40,10 @@
  * confirmed by reading second.
  *
  * Run via `node scripts/check-whole-state-reset.mjs`.
+ *
+ * @unwired-by-design an unadopted heuristic proposal (issue #2802).
+ * Its hits each need a human read — every CORRECT whole-reset in the repo
+ * matches it too — so as a CI gate it would be red on correct code.
  */
 
 import { readFileSync, readdirSync } from 'node:fs';

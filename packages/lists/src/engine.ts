@@ -10,7 +10,7 @@
  */
 
 import type { PropertySet, Property, QuantitySet, Quantity } from '@ifc-lite/data';
-import { parsePropertyValue } from '@ifc-lite/encoding';
+import { isWhollyNumeric, parsePropertyValue } from '@ifc-lite/encoding';
 import { compileNameMatcher } from './name-pattern.js';
 import type {
   ListDataProvider,
@@ -786,10 +786,7 @@ export function listResultToCSV(result: ListResult, delimiter = ','): string {
     // is itself a trigger, so "\t=cmd" would stop being guarded. `\p{Z}` rather
     // than `\p{Zs}` because the separator category also covers `Zl`/`Zp`, so
     // U+2028/U+2029 would otherwise remain viable hiding prefixes.
-    if (
-      /^[\p{Cf}\p{Z}]*[=+\-@\t\r]/u.test(str) &&
-      !/^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(str)
-    ) {
+    if (/^[\p{Cf}\p{Z}]*[=+\-@\t\r]/u.test(str) && !isWhollyNumeric(str)) {
       str = `'${str}`;
     }
     if (str.includes(delimiter) || str.includes('"') || str.includes('\n') || str.includes('\r')) {

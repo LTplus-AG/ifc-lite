@@ -257,7 +257,7 @@
    464 packages/lens/src/engine.ts
    426 packages/lens/src/matching.ts
    417 packages/lens/src/types.ts
-   815 packages/lists/src/engine.ts
+   812 packages/lists/src/engine.ts
    423 packages/lists/src/types.ts
    509 packages/mcp/src/backend-query.ts
    420 packages/mcp/src/overlay.ts

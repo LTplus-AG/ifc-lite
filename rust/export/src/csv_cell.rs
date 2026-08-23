@@ -101,11 +101,16 @@ pub struct CsvCellOptions<'a> {
     /// from the `+`/`-` trigger, so spreadsheet `SUM()` still works on exported
     /// measures (#1772).
     ///
-    /// A PRODUCT policy, not a security one, and the repo currently disagrees
-    /// with itself about it (`@ifc-lite/lists` exempts, the viewer's Lists
-    /// export guards, both deliberately tested). Carrying it as an option means
-    /// the disagreement no longer requires two implementations of the guard.
-    /// Defaults to `false`, matching every current caller.
+    /// A PRODUCT policy, not a security one. The exemption cannot weaken the
+    /// guard: the accepted language is built from `+ - . e E 0-9` and nothing
+    /// else, which cannot spell a function name, a cell reference or a `(`, so
+    /// every string it exempts is inert in a spreadsheet. `=`, `@`, TAB and CR
+    /// are never exempted.
+    ///
+    /// **Defaults to `true`**, in lockstep with the TypeScript half. The two
+    /// defaults are pinned together by a shared vector that passes NO options
+    /// (see `csv_cell_parity.rs`), because a harness that always sets every
+    /// field explicitly cannot see the defaults drift apart.
     pub exempt_numbers: bool,
     /// Also quote a cell whose first or last character is whitespace, so an
     /// importer that would otherwise trim the padding cannot (RFC 4180 §2.4
@@ -119,7 +124,7 @@ pub struct CsvCellOptions<'a> {
 
 impl Default for CsvCellOptions<'_> {
     fn default() -> Self {
-        Self { delimiter: ",", exempt_numbers: false, quote_whitespace_padded: false }
+        Self { delimiter: ",", exempt_numbers: true, quote_whitespace_padded: false }
     }
 }
 

@@ -66,11 +66,16 @@ export function parseComponents(content: string): BCFComponents | undefined {
   // Parse coloring
   const coloring = parseColoring(componentsContent);
 
-  // ViewSetupHints sits on Components (NOT inside Visibility) per visinfo.xsd,
-  // which is where writer.ts's writeComponents emits it. Nothing read it back,
-  // so every hint was lost on read — including out of our own archives. It was
-  // invisible because no writer fixture set the hints, so the round trip
-  // compared `undefined` to `undefined`.
+  // Nothing read `ViewSetupHints` back, so every hint was lost on read —
+  // including out of our own archives. It was invisible because no writer
+  // fixture set the hints, so the round trip compared `undefined` to
+  // `undefined`.
+  //
+  // Searched across the whole `Components` body on purpose, because the two
+  // schema versions disagree on placement: 2.1 puts the element on
+  // `Components`, 3.0 nests it inside `Visibility`, and `writer.ts` emits
+  // whichever the requested version calls for. Anchoring to either one would
+  // read half the files we produce.
   const viewSetupHints = parseViewSetupHints(componentsContent);
   if (viewSetupHints) {
     // Visibility is required by the schema, but tolerate a file that omits it:

@@ -1561,6 +1561,39 @@ describe('BCF Writer', () => {
     expect(readVp.components?.visibility?.defaultVisibility).toBe(false);
   });
 
+  it('round-trips ViewSetupHints in 3.0, where the element nests inside Visibility', async () => {
+    // The two schema versions disagree on placement: 2.1 puts ViewSetupHints on
+    // Components, 3.0 nests it inside Visibility, and the writer emits whichever
+    // the requested version calls for. The 2.1 case above would stay green if the
+    // reader anchored to Components alone, so without this the 3.0 files we
+    // ourselves produce would read back with every hint dropped.
+    const vp: BCFViewpoint = {
+      guid: generateUuid(),
+      components: {
+        selection: [{ ifcGuid: '0abc123def456789012345' }],
+        visibility: {
+          defaultVisibility: false,
+          viewSetupHints: {
+            spacesVisible: true,
+            spaceBoundariesVisible: false,
+            openingsVisible: true,
+          },
+        },
+      },
+    };
+    const topic = baseTopic({ viewpoints: [vp] });
+    const project: BCFProject = { version: '3.0', topics: new Map([[topic.guid, topic]]) };
+    const blob = await writeBCF(project);
+
+    const readVp = (await readBCF(await blobToArrayBuffer(blob))).topics.get(topic.guid)!
+      .viewpoints[0];
+    const hints = readVp.components?.visibility?.viewSetupHints;
+    expect(hints?.spacesVisible).toBe(true);
+    expect(hints?.spaceBoundariesVisible).toBe(false);
+    expect(hints?.openingsVisible).toBe(true);
+    expect(readVp.components?.visibility?.defaultVisibility).toBe(false);
+  });
+
   it('reads a BimSnippet whose IsExternal attribute precedes SnippetType', async () => {
     // XML attribute order is not semantically significant. Our writer always
     // puts SnippetType first, so a reader regex anchored to that position

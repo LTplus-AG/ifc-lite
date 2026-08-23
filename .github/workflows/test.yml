@@ -691,14 +691,17 @@ jobs:
       # than left beside it: two hand-written JS/TS lexers for one question is
       # the defect the CSV-escaper gate above exists to prevent, and the older
       # one was the less accurate of the two while being the one CI pinned.
-      # Both of the original script's failure modes -- an options bag inside a
-      # test BODY marking the test protected, and an apostrophe in a comment
-      # scanning to EOF and dropping every later call -- are pinned by the
-      # suite below. It resolves it also resolves a timeout INHERITED from an enclosing
+      # Both of the original script's failure modes are pinned by the suite
+      # below: an apostrophe in a comment scanning to EOF and dropping every
+      # later call, and an options bag inside a test BODY marking the test
+      # protected. The second was carried over deliberately -- every other
+      # `timeout:` fixture here sits in an ARGUMENT position, so deleting the
+      # old suite would have left the body position unpinned, and a classifier
+      # matching `timeout:` anywhere in a call passes every other case.
+      # It also resolves a timeout INHERITED from an enclosing
       # `describe(name, { timeout }, fn)` and one set by a package's vitest
       # config, both of which the grep-built at-risk table in #2948 itself
-      # scored as unprotected. Its unit tests pin the parser the same way the
-      # step above pins the older one.
+      # scored as unprotected.
       - name: Check vitest-timeout audit gate regressions
         run: node --test scripts/lib/vitest-timeout-audit.test.mjs
       # ...and run the audit itself over every vitest test file in the repo.

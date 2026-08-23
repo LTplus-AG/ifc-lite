@@ -96,6 +96,38 @@ test('options-object form with other keys before timeout', () => {
   assert.equal(r.value, 7000);
 });
 
+test('an options bag INSIDE the body does not mark a test timed', () => {
+  // Carried over verbatim from scripts/audit-test-timeouts.test.mjs, deleted in
+  // the same change that added this module. Every other `timeout:` fixture here
+  // is in an ARGUMENT position, so nothing pinned the body position -- and a
+  // classifier matching `timeout:` anywhere in a call's text passes all 75 of
+  // the other cases. Verified by mutation: reintroducing exactly that defect
+  // scores this fixture 3 timed / 0 untimed and reds nothing else.
+  //
+  // This is the dangerous direction. A false TIMED hides a gap, and the tests
+  // most likely to carry a body-level `{ timeout: N }` are subprocess and
+  // waitFor tests -- exactly the slow class this audit exists to surface.
+  const src = [
+    "it('spawns a subprocess with its own timeout option', async () => {",
+    "  await execFileAsync('node', ['x.js'], { timeout: 120_000, maxBuffer: 64 * 1024 });",
+    '});',
+    "it('waits with an option bag', async () => {",
+    '  await vi.waitFor(() => ready, { timeout: 1000 });',
+    '});',
+    "it('genuinely timed', { timeout: 30_000 }, async () => { expect(1).toBe(1); });",
+  ].join('\n');
+  const rows = auditSource(src);
+  assert.equal(rows.length, 3);
+  assert.equal(
+    rows.filter((r) => r.protectedBy === 'own').length,
+    1,
+    'only the real per-test timeout counts',
+  );
+  assert.equal(rows[0].protectedBy, null, 'execFileAsync option bag is not a test timeout');
+  assert.equal(rows[1].protectedBy, null, 'vi.waitFor option bag is not a test timeout');
+  assert.equal(rows[2].value, 30000);
+});
+
 // ---- The two #2947 mistakes, reproduced as regression cases.
 
 test('a single-idiom grep for the trailing form would miss the options-object form — this does not', () => {

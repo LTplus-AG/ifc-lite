@@ -20,7 +20,8 @@ import * as Y from 'yjs';
 import { createCollabSession } from '../src/session.js';
 import { forkSession, mergeBranch } from '../src/branch/branch.js';
 import { createEntity, getAttribute, getEntity, setAttribute, setChild } from '../src/doc/entity.js';
-import { ENTITY_KEY, entitiesMap } from '../src/doc/schema.js';
+import { ENTITY_KEY, GEOMETRY_KEY, entitiesMap } from '../src/doc/schema.js';
+import { createGeometry, getGeometry, setGeometryBlobHash } from '../src/doc/geometry.js';
 
 function pset(doc: Y.Doc, path: string, name: string): Y.Map<unknown> | undefined {
   const psets = getEntity(doc, path)?.get(ENTITY_KEY.PSETS) as
@@ -158,6 +159,54 @@ describe("mergeBranch('layer') overlays edits onto pre-existing entities", () =>
       value: true,
     });
     expect(entitiesMap(parent.doc).has('door')).toBe(true);
+
+    branch.session.dispose();
+    parent.dispose();
+  });
+});
+
+describe("mergeBranch('layer') overlays edits onto pre-existing GEOMETRY", () => {
+  it('carries a branch edit to a geometry record the parent already has', async () => {
+    const parent = await createCollabSession({
+      roomId: 'overlay-geom-repro',
+      user: { id: 'louis', name: 'Louis' },
+      provider: 'memory',
+    });
+    parent.transact(() => {
+      createGeometry(parent.doc, 'g1', {
+        type: 'mesh',
+        source: 'mesh-blob',
+        blobHash: 'OLD',
+      });
+      createEntity(parent.doc, 'wall', {
+        ifcClass: 'IfcWall',
+        geometryRef: { geomIds: ['g1'] },
+      });
+    });
+
+    const branch = await forkSession(parent, { name: 'remesh-wall' });
+    // Re-mesh an existing geometry record...
+    branch.session.transact(() => setGeometryBlobHash(branch.session.doc, 'g1', 'NEW'));
+    // ...and add one the parent has never seen, so a merge that drops NOTHING
+    // and a merge that drops only in-place edits are distinguishable.
+    branch.session.transact(() => {
+      createGeometry(branch.session.doc, 'g2', {
+        type: 'mesh',
+        source: 'mesh-blob',
+        blobHash: 'FRESH',
+      });
+      createEntity(branch.session.doc, 'slab', {
+        ifcClass: 'IfcSlab',
+        geometryRef: { geomIds: ['g2'] },
+      });
+    });
+
+    mergeBranch(parent, branch, 'layer');
+
+    // The new record lands either way; it is the in-place edit that used to be
+    // discarded, because `createGeometry` returns an existing record untouched.
+    expect(getGeometry(parent.doc, 'g2')?.get(GEOMETRY_KEY.BLOB_HASH)).toBe('FRESH');
+    expect(getGeometry(parent.doc, 'g1')?.get(GEOMETRY_KEY.BLOB_HASH)).toBe('NEW');
 
     branch.session.dispose();
     parent.dispose();

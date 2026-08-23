@@ -28,7 +28,7 @@ import {
   setPropertyValue,
   setQuantityValue,
 } from '../doc/entity.js';
-import { createGeometry, type GeometryType } from '../doc/geometry.js';
+import { createGeometry, upsertGeometry, type GeometryType } from '../doc/geometry.js';
 import {
   ENTITY_KEY,
   SEED_ORIGIN,
@@ -91,7 +91,7 @@ export function seedFromIfcx(doc: Y.Doc, input: IfcxInput, opts: SeedOptions = {
     for (const node of file.data ?? []) {
       const decoded = decodeNode(node, false);
       if (!decoded) continue;
-      restoreGeometryCarriers(doc, decoded);
+      restoreGeometryCarriers(doc, decoded, createGeometry);
       createNodeEntity(doc, decoded);
     }
   }, opts.origin ?? SEED_ORIGIN);
@@ -188,10 +188,14 @@ function decodeNode(node: IfcxNode, stripTombstone: boolean): DecodedNode | unde
  * entry, so the restored ref is never dangling. Bare-id carriers keep
  * pointing at out-of-band hydrated geometry.
  */
-function restoreGeometryCarriers(doc: Y.Doc, decoded: DecodedNode): void {
+function restoreGeometryCarriers(
+  doc: Y.Doc,
+  decoded: DecodedNode,
+  write: typeof createGeometry,
+): void {
   for (const carrier of decoded.inflated.geometryCarriers) {
     if (typeof carrier.type !== 'string' || typeof carrier.source !== 'string') continue;
-    createGeometry(doc, carrier.geomId, {
+    write(doc, carrier.geomId, {
       type: carrier.type as GeometryType,
       source: carrier.source,
       blobHash: carrier.blobHash,
@@ -246,8 +250,12 @@ export interface OverlayOptions {
  * doc from a snapshot, wrong for merging a layer whose whole purpose is
  * to modify entities that already exist. This applier creates missing
  * entities exactly as the seeder does, and for entities that are already
- * present it writes the node's opinions on top: values overwrite, nulls
- * remove, and anything the node says nothing about is left alone.
+ * present it writes the node's opinions on top: values overwrite, and
+ * anything the node says nothing about is left alone.
+ *
+ * `null` removes a FLAT attribute, child or inherit ONLY: a nulled
+ * pset/quantity property survives, silently. Measured, and pinned with the
+ * reason, in `test/apply-ifcx-overlay.test.ts`.
  *
  * Deliberately NOT part of `seedFromIfcx`'s option surface: the seeder's
  * additive-and-idempotent contract is what `apps/viewer` and
@@ -287,7 +295,7 @@ export function applyIfcxOverlay(
       if (!decoded) continue;
       const opinion = decoded.tombstone;
       if (opinion !== undefined) tombstoned.set(decoded.path, opinion);
-      restoreGeometryCarriers(doc, decoded);
+      restoreGeometryCarriers(doc, decoded, upsertGeometry);
       if (!hasEntity(doc, decoded.path)) {
         createNodeEntity(doc, decoded);
         continue;

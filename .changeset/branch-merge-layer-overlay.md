@@ -18,9 +18,25 @@ A new `applyIfcxOverlay(doc, file)` applies an IFCX file as a layer of
 opinions rather than as a seed, and `mergeBranch('layer')` now uses it. It
 creates entities the doc lacks exactly as the seeder does; for entities
 already present it writes the file's opinions on top — values overwrite,
-`null` removes, an `ifclite::deleted: true` node deletes — and leaves
-untouched anything the file says nothing about, so parent state added after
-the fork survives the merge.
+`null` removes a flat attribute, child or inherit, an `ifclite::deleted:
+true` node deletes — and leaves untouched anything the file says nothing
+about.
+
+Read that last clause narrowly. `mergeBranch('layer')` sends a FULL snapshot,
+so the file has an opinion on nearly everything, and a value the parent
+changed after the fork is overwritten by the branch's fork-time value even
+when the branch never touched it. That is not new — it is how the attribute
+path already behaves — but this release extends it to geometry, so a parent
+re-mesh can be reverted by a branch that says nothing about that geometry.
+One consequence is specific to geometry: blob GC derives its sweep set from
+the live doc, so reverting a `blobHash` also flips which blob is the orphan,
+and a sweep between the re-mesh and the merge can leave the restored
+reference pointing at a deleted blob.
+
+Geometry records go through `upsertGeometry` rather than `createGeometry`,
+which returns an existing record untouched. Without that, a branch that
+re-meshed geometry the parent already had merged "successfully" and left the
+parent on the old blob hash.
 
 `seedFromIfcx` is unchanged in both its behaviour and its options: it stays
 additive and idempotent, because `apps/viewer` and `snapshot/worker.ts` use
@@ -32,5 +48,11 @@ format and not of this fix: a full IFCX snapshot emits only what an entity
 *has*, so an entity or attribute the branch deleted is simply absent rather
 than nulled or tombstoned. `mergeBranch('layer')` therefore still does not
 propagate deletions made on the branch. `applyIfcxOverlay` does honour
-deletions when a layer states them explicitly, as `extractMinimalLayer`
-does.
+deletions when a layer states them explicitly.
+
+A second limit, this one in the code: a nulled pset or quantity property is
+NOT removed. `extractMinimalLayer` flattens those into
+`bsi::ifc::v5a::<Set>::<Prop>` attribute keys, so the removal arrives as an
+attribute null and is looked for in the flat attribute map, where it never
+was. The property survives and the call returns normally. Only flat
+attributes, children and inherits are removed today.

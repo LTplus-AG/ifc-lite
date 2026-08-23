@@ -9,9 +9,13 @@
  *
  * The contract pinned here is the one the rest of the layer machinery
  * (`@ifc-lite/ifcx` composition, `bakeLayers`, the MCP layer store's
- * `seedDraftDoc`) already implements: values overwrite, `null` removes,
- * `ifclite::deleted: true` deletes, and everything the file says nothing
- * about is left exactly as it was.
+ * `seedDraftDoc`) already implements: values overwrite, `null` removes a
+ * flat attribute / child / inherit, `ifclite::deleted: true` deletes, and
+ * everything the file says nothing about is left exactly as it was.
+ *
+ * Structured removals (a pset or quantity property nulled as a flattened
+ * `bsi::ifc::v5a::<Set>::<Prop>` key) are NOT applied — see the note on
+ * `applyIfcxOverlay`. Nothing here should be read as covering them.
  *
  * `seedFromIfcx` deliberately keeps its own, different contract — it is
  * additive and idempotent, because `apps/viewer` and `snapshot/worker.ts`

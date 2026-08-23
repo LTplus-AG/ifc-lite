@@ -54,8 +54,9 @@
  *
  * Blind spot, stated so nobody mistakes its OK for a whole-repo claim: it
  * audits `packages/*` and `apps/*` only. Test files under `scripts/` are
- * enumerated by hand in that workflow, so they are covered by the glob
- * catch-all step there, not by this checker.
+ * covered by the glob catch-all step in that workflow, and that the catch-all
+ * actually reaches each of them is now asserted by
+ * scripts/check-test-wiring.mjs, not by this checker.
  */
 
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';

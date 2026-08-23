@@ -114,6 +114,56 @@ fn attribute_mutation_renames_entity() {
     assert_eq!(reparsed, total, "no entities dropped by the edit");
 }
 
+/// Synthetic twin of [`attribute_mutation_renames_entity`]: that test's
+/// invariant (a root-attribute edit rewrites the targeted line in place,
+/// keeps every entity, and the result re-parses) is pure text/line
+/// manipulation over `export_step_with_stats` — it does not need
+/// duplex.ifc's geometry or property sets, only *an* IFCWALLSTANDARDCASE
+/// line to edit. `fixture_or_skip!` means that invariant is unpinned
+/// on any checkout without the fixture corpus fetched (`pnpm fixtures`).
+/// That is the local case: CI's `rust-tests` job does fetch the corpus
+/// (`.github/workflows/test.yml`, "Fetch fixtures"), so the fixture-backed
+/// original really does execute there on a normal run. This minimal
+/// two-entity model exercises the identical code path without the fixture,
+/// so the invariant is pinned on a fixture-less checkout too.
+#[test]
+fn attribute_mutation_renames_entity_synthetic() {
+    const SRC: &str = "ISO-10303-21;\nHEADER;\n\
+FILE_DESCRIPTION(('test'),'2;1');\n\
+FILE_NAME('','',(''),(''),'','','');\n\
+FILE_SCHEMA(('IFC4'));\n\
+ENDSEC;\nDATA;\n\
+#1=IFCOWNERHISTORY($,$,$,.ADDED.,$,$,$,0);\n\
+#2=IFCWALLSTANDARDCASE('1sCS0nJz90qvRDVAJIGGiy',#1,'Original Wall',$,$,$,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n";
+
+    let step = export_step(
+        SRC.as_bytes(),
+        &StepOptions {
+            attribute_mutations: vec![AttrMutation {
+                express_id: 2,
+                index: 2,
+                value: "'RENAMED_BY_TEST'".to_string(),
+            }],
+            ..StepOptions::default()
+        },
+    );
+
+    let line = step
+        .lines()
+        .find(|l| l.starts_with("#2="))
+        .expect("wall line present");
+    assert!(line.contains("'RENAMED_BY_TEST'"), "name replaced: {line}");
+    assert!(!line.contains("'Original Wall'"), "old name gone: {line}");
+
+    let (reparsed, ids, _schema) = parse_back(&step);
+    assert_eq!(reparsed, 2, "both source entities survive the edit");
+    assert!(
+        ids.contains(&1) && ids.contains(&2),
+        "both ids present: {ids:?}"
+    );
+}
+
 #[test]
 fn property_synthesis_attaches_new_pset() {
     let src = fixture_or_skip!("ara3d/duplex.ifc");

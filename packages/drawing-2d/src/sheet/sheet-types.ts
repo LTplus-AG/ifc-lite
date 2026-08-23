@@ -170,3 +170,67 @@ export function calculateDrawingTransform(
 
   return { translateX, translateY, scaleFactor };
 }
+
+/**
+ * `calculateDrawingTransform` always derives `translateY` assuming the
+ * caller will map model Y to paper Y with a sign flip (`adjustedY = -y`,
+ * matching a plan view drawn with north/Y+ up on paper) — it centers using
+ * `drawingBounds.maxY` for exactly that reason (see the "Flip Y" comment
+ * above).
+ *
+ * Plan ('down') sections do NOT flip Y (see `Drawing2DCanvas.tsx`'s
+ * `flipY = sectionAxis !== 'down'`): they map `adjustedY = y` directly, so
+ * north stays up without a sign flip. Reusing the flipped `translateY`
+ * unmodified in that case still centers the WIDTH but shifts the centered Y
+ * off by `(minY + maxY) * scaleFactor` — the drawing lands off-center on the
+ * sheet, worse the further the section's bounds sit from being symmetric
+ * about Y=0. This offset was found diverging between the sheet PREVIEW
+ * (`Drawing2DCanvas.tsx`, which already carried this correction) and the
+ * sheet PRINT/EXPORT path (`useDrawingExport.ts`'s `generateSheetSVG`, which
+ * did not) — issue #2940.
+ *
+ * Call this instead of `calculateDrawingTransform` directly wherever the
+ * axis's flip behavior is known, so every sheet consumer (screen preview,
+ * print, SVG/PDF export) derives the flip correction from one place rather
+ * than each re-deriving it. Note this function is the geometry only: it
+ * takes no view state, so two callers still agree only insofar as they pass
+ * the same `flipY`/`flipX` AND resolve any cached/pinned placement the same
+ * way. The viewer routes both sheet consumers through one resolver
+ * (`apps/viewer/src/lib/drawing/sheet-transform.ts`) for exactly that
+ * reason.
+ *
+ * `translateX` needs the mirror-image correction, but gated the OPPOSITE
+ * way from `translateY`: `calculateDrawingTransform`'s `translateX` bakes
+ * in the assumption that the caller maps model X to paper X with NO sign
+ * flip (`adjustedX = x`) — unlike `translateY`, which bakes in a flip. So
+ * `translateX` is only wrong when `flipX` is actually true (`adjustedX =
+ * -x`, used for 'side' sections to view from the conventional direction,
+ * see `Drawing2DCanvas.tsx` / `useDrawingExport.ts`'s `flipX = sectionAxis
+ * === 'side'`): flipping negates and reverses the drawing's X extent to
+ * `[-maxX, -minX]`, so the base translate (keyed off `-minX`) shifts the
+ * centered box by `(minX + maxX) * scaleFactor` — the drawing lands off
+ * the left/right edge of the sheet, worse the further the section's bounds
+ * sit from being symmetric about X=0. Confirmed unfixed prior to this
+ * change (issue #2940's X-axis half): a 'side' section with bounds minX=2,
+ * maxX=12 on a 190mm-wide viewport landed 140mm off-center.
+ */
+export function calculateDrawingTransformForAxis(
+  drawingBounds: { minX: number; minY: number; maxX: number; maxY: number },
+  viewportBounds: ViewportBounds,
+  scale: DrawingScale,
+  flipY: boolean,
+  flipX = false
+): {
+  translateX: number;
+  translateY: number;
+  scaleFactor: number;
+} {
+  const base = calculateDrawingTransform(drawingBounds, viewportBounds, scale);
+  const translateY = flipY
+    ? base.translateY
+    : base.translateY - (drawingBounds.maxY + drawingBounds.minY) * base.scaleFactor;
+  const translateX = flipX
+    ? base.translateX + (drawingBounds.minX + drawingBounds.maxX) * base.scaleFactor
+    : base.translateX;
+  return { ...base, translateX, translateY };
+}

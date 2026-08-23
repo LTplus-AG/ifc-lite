@@ -1063,6 +1063,9 @@ importers:
       vitest:
         specifier: ^4.1.0
         version: 4.1.10(@edge-runtime/vm@3.2.0)(@types/node@26.2.0)(happy-dom@20.11.2)(vite@8.2.0(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.12)(yaml@2.9.0))
+      xmllint-wasm:
+        specifier: 5.3.0
+        version: 5.3.0(@types/node@26.2.0)
 
   packages/ifcx:
     dependencies:
@@ -1104,6 +1107,9 @@ importers:
         specifier: workspace:*
         version: link:../encoding
     devDependencies:
+      csv-parse:
+        specifier: 7.0.2
+        version: 7.0.2
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -3901,6 +3907,9 @@ packages:
 
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
+
+  csv-parse@7.0.2:
+    resolution: {integrity: sha512-uKZghv9UmPkMVLYy//KZ9HFAIJsl7wkhoEdIL0+rhuSY9pZQlhaeGEDPIe+/w7eh81MOql8Q/9+inAGWG6ZHYA==}
 
   dataloader@2.2.3:
     resolution: {integrity: sha512-y2krtASINtPFS1rSDjacrFgn1dcUuoREVabwlOGOe4SdxenREqwjwjElAdwvbGM7kgZz9a3KVicWR7vcz8rnzA==}
@@ -7747,6 +7756,8 @@ snapshots:
       css-tree: 2.2.1
 
   csstype@3.2.3: {}
+
+  csv-parse@7.0.2: {}
 
   dataloader@2.2.3: {}
 

@@ -10,6 +10,7 @@
  * entities to include, and delegates to the appropriate exporter.
  */
 
+import { escapeCsvCell } from '@ifc-lite/export';
 import type { BimBackend, EntityRef, EntityData, PropertySetData, QuantitySetData } from '../types.js';
 
 export interface ExportCsvOptions {
@@ -247,27 +248,17 @@ export class ExportNamespace {
     this.backend.export.download(content, filename, mimeType ?? 'text/plain');
   }
 
+  /**
+   * RFC 4180 quoting + the CWE-1236 formula-injection guard, delegated to
+   * `@ifc-lite/export`'s single escaper.
+   *
+   * This method used to carry the repo's reference copy of the guard (#1944).
+   * It was the best of nine, but still its own: its invisible class was
+   * `\p{Zs}`, which leaves U+2028 LINE SEPARATOR and U+2029 PARAGRAPH
+   * SEPARATOR usable as hiding places for a trigger. The shared escaper uses
+   * `\p{Z}`, covering `Zl`/`Zp` too.
+   */
   private escapeCsv(value: string, sep: string): string {
-    // CSV/formula-injection guard (CWE-1236): prefix a leading spreadsheet
-    // formula trigger so Excel/Sheets treat the cell as text, not a formula.
-    //
-    // The trigger is looked for past any leading INVISIBLE characters. A BOM,
-    // zero-width space, left-to-right mark or non-breaking space in front of
-    // `=` does not stop a spreadsheet reading the cell as a formula, but it
-    // does stop an anchored regex matching, so `\uFEFF=HYPERLINK(...)`, a BOM then `=`, used to
-    // sail through. IFC text properties are attacker-controllable and can
-    // carry any of them.
-    //
-    // `\p{Cf}` (format) and `\p{Zs}` (space separator) deliberately, NOT `\s`:
-    // `\s` would swallow a leading tab, and tab is itself a trigger, so
-    // "\thello" would stop being guarded.
-    let str = value;
-    if (/^[\p{Cf}\p{Zs}]*[=+\-@\t\r]/u.test(str)) {
-      str = `'${str}`;
-    }
-    if (str.includes(sep) || str.includes('"') || str.includes('\n') || str.includes('\r')) {
-      return `"${str.replace(/"/g, '""')}"`;
-    }
-    return str;
+    return escapeCsvCell(value, { delimiter: sep });
   }
 }

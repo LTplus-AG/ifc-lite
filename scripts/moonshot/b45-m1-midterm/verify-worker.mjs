@@ -7,6 +7,8 @@
  * Second-process certificate verifier for B4.5 (the M1 midterm as literally
  * worded).
  *
+ * @unwired-by-design a worker of the hand-run B4.5 midterm harness, whose run.mjs has no workflow step (unlike B3.5's).
+ *
  * Same contract as `scripts/moonshot/b35-demo/verify-worker.mjs`, extended
  * with the one thing that demo did not need: `geometry-mesh` payloads. Typed
  * arrays do not survive JSON, so the bundle carries `positions`/`normals`/

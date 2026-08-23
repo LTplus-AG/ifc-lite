@@ -213,6 +213,18 @@ pub fn convert_step_line(line: &str, from: &str, to: &str, express_id: u32) -> S
     let new_type = convert_entity_type(&entity_type, cfrom, cto);
 
     if should_skip_entity(&new_type, cto) {
+        // The proxy carries a MINTED GlobalId, not the source entity's, and the
+        // authored identity is therefore lost on a downgrade. That is
+        // deliberate on the TypeScript twin (`convertStepLine` in
+        // `packages/export/src/schema-converter.ts`), which documents the
+        // counter-example and pins it in `merged-exporter.test.ts`: two
+        // federated models can legitimately carry the SAME alignment GlobalId,
+        // and copying the source id would unify two distinct alignments into
+        // one. The two implementations do not agree on WHAT to mint — this one
+        // derives from the express id, the TypeScript one from the whole source
+        // line — so the same model downgraded by each yields different proxy
+        // ids. Left as found; changing either is a decision for the maintainer,
+        // not a side effect of a round-trip test.
         return format!(
             "{prefix}IFCPROXY('{}',$,'{}',$,$,$,$,.NOTDEFINED.,$);",
             placeholder_guid(express_id),
@@ -248,6 +260,53 @@ mod tests {
         assert_eq!(convert_entity_type("IFCWALL", "IFC2X3", "IFC4"), "IFCWALL"); // unchanged
         // chained 4X3 → 2X3 (via 4): IfcFacility → IfcBuilding
         assert_eq!(convert_entity_type("IFCFACILITY", "IFC4X3", "IFC2X3"), "IFCBUILDING");
+    }
+
+    /// The UPGRADE table (`map_2x3_to_4`) had no test in this crate: the only
+    /// 2X3 → 4 case above is `IFCWALL`, a type that is unchanged in every
+    /// schema, so replacing the whole arm with a pass-through left the entire
+    /// `ifc-lite-export` suite green (confirmed by mutation). The TS twin
+    /// `packages/export/src/schema-converter.test.ts` covers this direction;
+    /// the Rust port is what the CLI, server and wasm actually run.
+    ///
+    /// Concretely, un-renamed output is an INVALID file: none of these three
+    /// type names exists in IFC4.
+    #[test]
+    fn ifc2x3_only_types_are_renamed_on_upgrade() {
+        for (from, want) in [
+            ("IFCELECTRICDISTRIBUTIONPOINT", "IFCELECTRICDISTRIBUTIONBOARD"),
+            ("IFCGASTERMINALTYPE", "IFCBURNERTYPE"),
+            ("IFCEQUIPMENTELEMENT", "IFCBUILDINGELEMENTPROXY"),
+        ] {
+            assert_eq!(convert_entity_type(from, "IFC2X3", "IFC4"), want, "2X3 → 4");
+            // 2X3 → 4X3 and 2X3 → 5 route through the same table.
+            assert_eq!(convert_entity_type(from, "IFC2X3", "IFC4X3"), want, "2X3 → 4X3");
+            assert_eq!(convert_entity_type(from, "IFC2X3", "IFC5"), want, "2X3 → 5");
+        }
+    }
+
+    /// The direct `4X3 → 4` arm was only ever reached by types it does NOT
+    /// rename: `entity_type_renames` chains through it on the way to 2X3, and
+    /// `alignment_becomes_proxy_on_downgrade` hits the proxy branch instead.
+    /// Replacing the arm with a pass-through likewise left the suite green.
+    /// `IFC5 → IFC4` shares the arm, so it is pinned here too — nothing else
+    /// in this crate exercises `canon`'s IFC5 branch at all.
+    #[test]
+    fn ifc4x3_and_ifc5_types_are_renamed_down_to_ifc4() {
+        for (from, want) in [
+            ("IFCBRIDGE", "IFCBUILDING"),
+            ("IFCBRIDGEPART", "IFCBUILDINGSTOREY"),
+            ("IFCPAVEMENT", "IFCSLAB"),
+            ("IFCCAISSONFOUNDATION", "IFCFOOTING"),
+            ("IFCDISTRIBUTIONBOARD", "IFCELECTRICDISTRIBUTIONBOARD"),
+        ] {
+            assert_eq!(convert_entity_type(from, "IFC4X3", "IFC4"), want, "4X3 → 4");
+            assert_eq!(convert_entity_type(from, "IFC5", "IFC4"), want, "5 → 4");
+        }
+        // 4 ↔ 4X3 ↔ 5 carry no renames, and IFCX* canonicalizes to IFC5.
+        assert_eq!(convert_entity_type("IFCWALL", "IFC4", "IFC5"), "IFCWALL");
+        assert_eq!(convert_entity_type("IFCBRIDGE", "IFCX", "IFC4"), "IFCBUILDING");
+        assert!(!needs_conversion("IFC5", "IFCX"));
     }
 
     #[test]

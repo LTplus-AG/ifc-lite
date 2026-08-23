@@ -88,6 +88,7 @@ export type {
 export {
   calculateViewportBounds,
   calculateDrawingTransform,
+  calculateDrawingTransformForAxis,
 } from './sheet-types.js';
 
 // Renderers

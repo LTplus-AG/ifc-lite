@@ -16,8 +16,10 @@ stack the caller happened to have left.
 
 Both now traverse through a new internal `walkBounded`
 (`src/ast/bounded-walk.ts`), which keeps its own stack on the heap and stops at
-`MAX_AST_DEPTH = 1000` (~500 source levels of `if (1) { … }`, below acorn's own
-parse floor of roughly 1200). It descends using `acorn-walk`'s `base` visitor
+`MAX_AST_DEPTH = 1000` (~500 source levels of `if (1) { … }`; acorn's own parser
+gives up somewhere above that, but where depends on the host's remaining stack —
+measured on Node 22 between 1100 and 4000 source levels, so it is not a fixed
+floor to sit under). It descends using `acorn-walk`'s `base` visitor
 and reports nodes in `walk.simple`'s post-order, so which child positions count
 as nodes — non-computed member properties and object keys stay unvisited — and
 the order they arrive in are unchanged. Behaviour below the bound is identical.

@@ -88,7 +88,15 @@ export class EntityTableBuilder {
   rawTypeName: Uint32Array;
 
   private typeStarts: Map<IfcTypeEnum, number> = new Map();
-  private typeCounts: Map<IfcTypeEnum, number> = new Map();
+  /**
+   * Last row index seen per type. `typeRanges` is a SPAN — [firstRow,
+   * lastRow+1] — not a count: IFC streams interleave types freely, and
+   * `start + rowCount` leaves the type's own later rows outside its range
+   * (rows 0/2/4 of one type gave [0, 3), which excludes row 4). It matches a
+   * span only when a type is contiguous, which is why the divergence from
+   * `entityTableFromColumns`'s derivation stayed invisible.
+   */
+  private typeEnds: Map<IfcTypeEnum, number> = new Map();
 
   constructor(capacity: number, strings: StringTable) {
     this.strings = strings;
@@ -136,9 +144,8 @@ export class EntityTableBuilder {
     // Track type ranges
     if (!this.typeStarts.has(typeEnum)) {
       this.typeStarts.set(typeEnum, i);
-      this.typeCounts.set(typeEnum, 0);
     }
-    this.typeCounts.set(typeEnum, this.typeCounts.get(typeEnum)! + 1);
+    this.typeEnds.set(typeEnum, i);
   }
   
   build(): EntityTable {
@@ -147,11 +154,12 @@ export class EntityTableBuilder {
       return arr.subarray(0, this.count) as T;
     };
 
-    // Build type ranges (kept for cache serialization backward compat)
+    // Build type ranges (kept for cache serialization backward compat).
+    // Same [firstRow, lastRow+1] span `entityTableFromColumns` derives when a
+    // caller omits them — see `typeEnds`.
     const typeRanges = new Map<IfcTypeEnum, { start: number; end: number }>();
     for (const [type, start] of this.typeStarts) {
-      const count = this.typeCounts.get(type)!;
-      typeRanges.set(type, { start, end: start + count });
+      typeRanges.set(type, { start, end: this.typeEnds.get(type)! + 1 });
     }
 
     return entityTableFromColumns(

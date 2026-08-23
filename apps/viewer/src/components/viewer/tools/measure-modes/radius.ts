@@ -472,7 +472,17 @@ export function fitRadius(picks: readonly Point3[]): RadiusFitOutcome {
  * number, and a fitted value always carries its provenance so it cannot be
  * mistaken for an exact, parametric reading.
  */
-export function formatRadius(outcome: RadiusFitOutcome): string {
+/**
+ * `formatLength` defaults to a plain metre spelling so callers with no unit
+ * context (tests, the wiring harness) are unchanged. The panel passes
+ * `formatDistance(v, unitDisplayOverrides)`, which is what every sibling
+ * readout in that panel already uses -- without it a user with a LENGTHUNIT
+ * override sees converted distances and metre-only radii side by side.
+ */
+export function formatRadius(
+  outcome: RadiusFitOutcome,
+  formatLength: (meters: number) => string = (m) => `${m.toFixed(3)} m`,
+): string {
   switch (outcome.kind) {
     case 'insufficient-points':
       return `Pick ${MIN_RADIUS_POINTS - outcome.count} more point${MIN_RADIUS_POINTS - outcome.count === 1 ? '' : 's'} on the arc`;
@@ -485,7 +495,7 @@ export function formatRadius(outcome: RadiusFitOutcome): string {
         outcome.source.kind === 'fitted-tessellation'
           ? `fitted from ${outcome.source.pointCount} tessellation points`
           : `read from ${outcome.source.profileType}`;
-      return `R ${r.toFixed(3)} m / D ${d.toFixed(3)} m (${label})`;
+      return `R ${formatLength(r)} / D ${formatLength(d)} (${label})`;
     }
   }
 }

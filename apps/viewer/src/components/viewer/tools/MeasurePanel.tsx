@@ -101,8 +101,11 @@ function formatAngleMeasurement(a: AngleMeasurement): string {
  * wording, so the SAME readout updates live as points are added rather than
  * staying blank until the count is met.
  */
-function formatRadiusPoints(points: readonly RadiusPoint3[]): string {
-  return formatRadius(fitRadius(points));
+function formatRadiusPoints(
+  points: readonly RadiusPoint3[],
+  unitDisplayOverrides: Record<string, string>,
+): string {
+  return formatRadius(fitRadius(points), (m) => formatDistance(m, unitDisplayOverrides));
 }
 
 const ANGLE_KIND_LABELS: ReadonlyArray<readonly [AngleKind, string, string]> = [
@@ -577,7 +580,7 @@ export function MeasureOverlay() {
                           {/* Derived on render, never stored — a correction to
                               the fit retroactively fixes every measurement
                               already listed. */}
-                          {formatRadiusPoints(r.points)}
+                          {formatRadiusPoints(r.points, unitDisplayOverrides)}
                         </span>
                         <Button
                           variant="ghost"
@@ -601,7 +604,7 @@ export function MeasureOverlay() {
                         finish step required to SEE the reading (only to
                         record it). */}
                     Radius in progress · {activeRadius.points.length} pick
-                    {activeRadius.points.length === 1 ? '' : 's'} · {formatRadiusPoints(activeRadius.points)}
+                    {activeRadius.points.length === 1 ? '' : 's'} · {formatRadiusPoints(activeRadius.points, unitDisplayOverrides)}
                   </span>
                   <Button
                     variant="ghost"

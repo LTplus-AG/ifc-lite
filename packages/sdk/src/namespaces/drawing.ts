@@ -144,10 +144,31 @@ export class DrawingNamespace {
   // Scale & paper
   // --------------------------------------------------------------------------
 
-  /** Get recommended scale for a drawing size (in metres). */
-  async getRecommendedScale(drawingSize: number): Promise<unknown> {
+  /**
+   * Get the tightest scale at which a drawing fits the sheet.
+   *
+   * Sizes are metres; paper is millimetres and defaults to A3 landscape.
+   * `height` defaults to `width`, which squares the extent and costs one to
+   * two steps of coarseness on an elongated plan (a 30 x 5 m plan squares to
+   * 1:200 where it fits at 1:100), so pass the real height when you have it.
+   *
+   * `paperWidth` and `paperHeight` are independent, so passing one and not the
+   * other composes a sheet that is no real paper size: `(30, 20, 594)` is 594
+   * wide by A3's 297 tall. Pass both or neither. They are not paired into one
+   * argument because that would change the shape of a published signature for
+   * a hazard a sentence can cover.
+   *
+   * Throws on a non-finite or non-positive size. It previously returned a
+   * scale for those, so a caller relying on that gets an exception now.
+   */
+  async getRecommendedScale(
+    width: number,
+    height: number = width,
+    paperWidth?: number,
+    paperHeight?: number
+  ): Promise<unknown> {
     const mod = await loadDrawing2D();
-    return (mod.getRecommendedScale as AnyFn)(drawingSize);
+    return (mod.getRecommendedScale as AnyFn)(width, height, paperWidth, paperHeight);
   }
 
   /** Get all common scales. */

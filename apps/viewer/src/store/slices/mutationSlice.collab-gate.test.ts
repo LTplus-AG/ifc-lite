@@ -33,6 +33,8 @@ function makeViewSpy() {
       createPropertySet: (..._a: unknown[]) => { calls.push('createPropertySet'); return mutation; },
       setQuantity: (..._a: unknown[]) => { calls.push('setQuantity'); return mutation; },
       createQuantitySet: (..._a: unknown[]) => { calls.push('createQuantitySet'); return mutation; },
+      deletePropertySet: (..._a: unknown[]) => { calls.push('deletePropertySet'); return mutation; },
+      setEntityType: (..._a: unknown[]) => { calls.push('setEntityType'); return mutation; },
     },
   };
 }
@@ -265,5 +267,107 @@ describe('mutationSlice -- quantity mutations are role-gated; mirroring is a kno
     // No `mirror*` action exists for quantities to call, so there is nothing
     // to assert was invoked. That absence IS the gap: a remote peer never
     // sees this edit.
+  });
+});
+
+/**
+ * The rest of the slice's writers, enumerated rather than sampled.
+ *
+ * The gate had been added one call site at a time — `setProperty`, then
+ * `deleteProperty`/`setAttribute`/`createPropertySet`, then
+ * `setQuantity`/`createQuantitySet` ("This was missing here", says that one's
+ * own comment) — and each round left the arms nobody happened to look at open.
+ * `deletePropertySet` sat directly beneath a gated `createPropertySet`, with a
+ * byte-for-byte identical body minus the gate. `setEntityType` sat beneath a
+ * gated `setAttribute`. `duplicateEntity` creates an entity the way `addWall`
+ * does, and that path is gated. The three `split*` tools write the way
+ * `resizeWall` does, and that one is gated.
+ *
+ * So this suite is written as a LIST, and the list is the point: a new writer
+ * added to the slice should be added here, and it will be red until it is
+ * gated. Sampling one or two is what let the gap survive three rounds of
+ * fixing.
+ *
+ * `roleCanEdit(null) === true`, so none of this touches single-user sessions.
+ */
+describe('mutationSlice -- every writer is role-gated, not just the sampled ones', () => {
+  const ROLE_REASON = 'Editing is disabled for your role in this shared session';
+
+  it('viewer role: pset/type writes reject WITHOUT touching the local view', () => {
+    const { spy, state } = buildSlice(false);
+    const s = state();
+
+    assert.strictEqual(
+      s.deletePropertySet('m1', 1, 'Pset_Test'),
+      null,
+      'deletePropertySet must be gated like its createPropertySet sibling',
+    );
+    assert.strictEqual(
+      s.setEntityType('m1', 1, 'IfcSlab'),
+      null,
+      'setEntityType must be gated like its setAttribute sibling',
+    );
+    assert.strictEqual(
+      s.setPositionalAttribute('m1', 1, 3, 'x'),
+      null,
+      'setPositionalAttribute is the rawest write in the slice',
+    );
+
+    // Returning null while having already written locally would be the same
+    // divergence with the symptom hidden, so the view is what is asserted on.
+    assert.deepStrictEqual(spy.calls, [], 'no write may reach the local view');
+    assert.strictEqual((state() as unknown as { mutationVersion: number }).mutationVersion, 0);
+    assert.strictEqual((state() as unknown as { dirtyModels: Set<string> }).dirtyModels.size, 0);
+  });
+
+  /**
+   * These reject for a second reason too in this harness (no model / no store),
+   * so the RETURNED REASON is what is asserted, not merely that they failed.
+   * Asserting "it returned an error" would pass against the ungated code and
+   * pin nothing.
+   */
+  it('viewer role: creation and geometry tools reject FOR THE ROLE REASON', () => {
+    const { state } = buildSlice(false);
+    const s = state();
+
+    assert.deepStrictEqual(
+      s.duplicateEntity('m1', 1),
+      { error: ROLE_REASON },
+      'duplicateEntity creates an entity, like the gated addWall/addColumn',
+    );
+
+    const splits: [string, { ok: boolean; reason?: string }][] = [
+      ['splitWallAtDistance', s.splitWallAtDistance('m1', 1, 0.5)],
+      ['splitLinearElementAtDistance', s.splitLinearElementAtDistance('m1', 1, 0.5)],
+      ['splitSlabByLine', s.splitSlabByLine('m1', 1, [0, 0], [1, 1])],
+    ];
+    for (const [name, res] of splits) {
+      assert.deepStrictEqual(
+        res,
+        { ok: false, reason: ROLE_REASON },
+        `${name} must be gated like its resizeWall sibling, and say so`,
+      );
+    }
+  });
+
+  /**
+   * The gate must be the ONLY thing these tests are sensitive to. An editor
+   * role has to get past it and fail (or succeed) on the real reason instead --
+   * otherwise a gate that rejected everyone would satisfy the suite above.
+   */
+  it('editor role: the same calls get past the gate and fail on their own terms', () => {
+    const { spy, state } = buildSlice(true);
+    const s = state();
+
+    assert.notStrictEqual(s.deletePropertySet('m1', 1, 'Pset_Test'), null);
+    assert.notStrictEqual(s.setEntityType('m1', 1, 'IfcSlab'), null);
+    assert.deepStrictEqual(spy.calls, ['deletePropertySet', 'setEntityType']);
+
+    const dup = s.duplicateEntity('m1', 1) as { error?: string };
+    assert.notStrictEqual(dup.error, ROLE_REASON, 'an editor is past the role gate');
+
+    const split = s.splitWallAtDistance('m1', 1, 0.5) as { ok: boolean; reason?: string };
+    assert.strictEqual(split.ok, false, 'still fails -- there is no model in this harness');
+    assert.notStrictEqual(split.reason, ROLE_REASON, 'but not for the role reason');
   });
 });

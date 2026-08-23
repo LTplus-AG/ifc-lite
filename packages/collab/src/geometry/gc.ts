@@ -114,6 +114,12 @@ export interface SweepDecision {
   drop: BlobHash[];
   /** Bytes that will be reclaimed once `drop` is processed. May be undefined when the store doesn't expose sizes. */
   reclaimBytes: number;
+  /**
+   * Per-hash byte size for every entry in `drop`, so `sweepBlobs` can
+   * report the bytes actually reclaimed rather than the bytes merely
+   * planned — a `store.delete()` failure must not be counted.
+   */
+  dropByteLengths: Record<BlobHash, number>;
 }
 
 /**
@@ -134,6 +140,7 @@ export async function planBlobSweep(
   const now = options.now ? options.now() : Date.now();
   const all = await store.list();
   const drop: BlobHash[] = [];
+  const dropByteLengths: Record<BlobHash, number> = {};
   let reclaim = 0;
   for (const hash of all) {
     if (referenced.has(hash)) continue;
@@ -147,16 +154,18 @@ export async function planBlobSweep(
       // so the grace window keeps protecting in-flight uploads.
       if (!options.sweepUnknownAge) continue;
       drop.push(hash);
+      dropByteLengths[hash] = meta.byteLength;
       reclaim += meta.byteLength;
       continue;
     }
     const ageMs = Math.max(0, now - new Date(meta.uploadedAt).getTime());
     if (ageMs >= epochMs) {
       drop.push(hash);
+      dropByteLengths[hash] = meta.byteLength;
       reclaim += meta.byteLength;
     }
   }
-  return { drop, reclaimBytes: reclaim };
+  return { drop, reclaimBytes: reclaim, dropByteLengths };
 }
 
 async function metaFromGet(store: BlobStore, hash: BlobHash): Promise<BlobMeta | null> {
@@ -177,13 +186,20 @@ async function metaFromGet(store: BlobStore, hash: BlobHash): Promise<BlobMeta |
   };
 }
 
-/** Apply a sweep decision: delete the candidates from `store`. */
+/**
+ * Apply a sweep decision: delete the candidates from `store`.
+ *
+ * Returns the bytes actually reclaimed — i.e. only for hashes whose
+ * `store.delete()` reported success. A failed delete (backend race,
+ * 404, transient error) must not be counted as freed: callers use this
+ * return value for capacity accounting, and overstating it hides a
+ * blob that is still consuming storage.
+ */
 export async function sweepBlobs(store: BlobStore, decision: SweepDecision): Promise<number> {
   let freed = 0;
   for (const hash of decision.drop) {
     const ok = await store.delete(hash);
-    if (ok) freed += 1;
+    if (ok) freed += decision.dropByteLengths[hash] ?? 0;
   }
-  void freed;
-  return decision.reclaimBytes;
+  return freed;
 }

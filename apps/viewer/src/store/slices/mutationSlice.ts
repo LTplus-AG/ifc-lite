@@ -1303,6 +1303,11 @@ export const createMutationSlice: StateCreator<
   },
 
   deletePropertySet: (modelId, entityId, psetName) => {
+    // Collab role gate before the local commit — see setProperty. Removing a
+    // pset is no less of a write than creating one, and this arm was the one
+    // `createPropertySet` and `deleteProperty` were both given the gate and
+    // this one was not.
+    if (!get().canCollabEdit()) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1439,6 +1444,9 @@ export const createMutationSlice: StateCreator<
 
   // Entity retype (reassign class)
   setEntityType: (modelId, entityId, newType, predefinedType) => {
+    // Collab role gate before the local commit — see setProperty. Reclassing an
+    // entity is an attribute write like any other, and `setAttribute` is gated.
+    if (!get().canCollabEdit()) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1480,6 +1488,10 @@ export const createMutationSlice: StateCreator<
 
   // Store-Level Mutations
   setPositionalAttribute: (modelId, entityId, index, value) => {
+    // Collab role gate before the local commit — see setProperty. This is the
+    // rawest write in the slice (a direct STEP slot overwrite); every named
+    // mutation above it is gated, so leaving this one open gated nothing.
+    if (!get().canCollabEdit()) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1888,6 +1900,10 @@ export const createMutationSlice: StateCreator<
   },
 
   splitWallAtDistance: (modelId, expressId, distanceFromStart) => {
+    // Collab role gate — same rule and same return shape as `resizeWall`.
+    if (!get().canCollabEdit()) {
+      return { ok: false, reason: 'Editing is disabled for your role in this shared session' };
+    }
     const ctx = resolveSplitContext(get, set, modelId, expressId, 'Wall is not contained in a building storey');
     if ('ok' in ctx) return ctx;
     const { view, editor, dataStore, storeyExpressId } = ctx;
@@ -2040,6 +2056,10 @@ export const createMutationSlice: StateCreator<
   },
 
   splitLinearElementAtDistance: (modelId, expressId, distanceFromStart) => {
+    // Collab role gate — same rule and same return shape as `resizeWall`.
+    if (!get().canCollabEdit()) {
+      return { ok: false, reason: 'Editing is disabled for your role in this shared session' };
+    }
     const ctx = resolveSplitContext(get, set, modelId, expressId, 'Element is not contained in a building storey');
     if ('ok' in ctx) return ctx;
     const { view, editor, dataStore, storeyExpressId } = ctx;
@@ -2147,6 +2167,10 @@ export const createMutationSlice: StateCreator<
   },
 
   splitSlabByLine: (modelId, expressId, cutA, cutB) => {
+    // Collab role gate — same rule and same return shape as `resizeWall`.
+    if (!get().canCollabEdit()) {
+      return { ok: false, reason: 'Editing is disabled for your role in this shared session' };
+    }
     const ctx = resolveSplitContext(get, set, modelId, expressId, 'Slab is not contained in a building storey');
     if ('ok' in ctx) return ctx;
     const { view, editor, dataStore, storeyExpressId } = ctx;
@@ -2536,6 +2560,10 @@ export const createMutationSlice: StateCreator<
   },
 
   duplicateEntity: (modelId, sourceExpressId, direction = DUPLICATE_DEFAULT_DIRECTION, options) => {
+    // Collab role gate before the local commit — see setProperty. Duplicating
+    // creates an entity exactly as `addWall`/`addColumn` do, and those are
+    // gated inside `addElementViaBuilder`.
+    if (!get().canCollabEdit()) return { error: 'Editing is disabled for your role in this shared session' };
     const state = get();
     const model = state.models.get(modelId);
     const dataStore = model?.ifcDataStore;

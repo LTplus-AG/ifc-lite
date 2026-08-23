@@ -444,20 +444,45 @@ export class MutablePropertyView {
     // Get old value for undo
     const oldValue = this.getPropertyValue(entityId, psetName, propName);
 
-    // Whether the property already existed BEFORE this call — decided up front
-    // because the block below may insert it into `newPsets`. A null value does
-    // NOT mean absent (an unset Boolean is present-but-empty), so existence is
-    // "had a value OR already an in-session property" (issue #1107). This drives
-    // the CREATE vs UPDATE classification so undo reverts an unset edit instead
-    // of deleting the whole property.
-    const propExistedBefore =
-      oldValue !== null ||
-      !!this.newPsets.get(entityId)?.get(psetName)?.properties.some(p => p.name === propName);
-
     // Check if this pset exists in base
     const basePsets = this.getBasePropertiesForEntity(entityId);
     const psetExistsInBase = basePsets.some(p => p.name === psetName);
     const psetExistsInNew = this.newPsets.get(entityId)?.has(psetName);
+
+    // Whether the property already existed BEFORE this call — decided up front
+    // because the block below may insert it into `newPsets`. A null value does
+    // NOT mean absent (an unset Boolean is present-but-empty), so existence is
+    // "had a value OR already an in-session property OR already present in the
+    // base pset (even with a null value)" (issue #1107). This drives the CREATE
+    // vs UPDATE classification so undo reverts an unset edit instead of
+    // deleting the whole property.
+    //
+    // `oldValue !== null` alone under-detects: a base property that already
+    // carries a null value (e.g. an unset Boolean present in the source IFC
+    // file, exactly the #1107 shape) makes `getPropertyValue()` return null on
+    // the very first edit even though the property genuinely exists — mirrors
+    // the `propExistsInBase` check `deleteProperty` below already relies on.
+    //
+    // The base-pset disjunct is qualified by "not currently masked": once the
+    // user has deleted the property (a DELETE marker on this key) or its whole
+    // pset (`deletedPsets`), the base row is no longer visible in
+    // `getForEntity`, so re-setting it is a CREATE and its undo must remove the
+    // property again. Counting the masked base row as present would classify
+    // that re-set as an UPDATE with `oldValue: null`, and the viewer's undo
+    // handler (mutationSlice.ts, "decide by mutation TYPE") would then replay
+    // that null — resurrecting, as a present-but-unset row, the very property
+    // the user had deleted.
+    const maskedInSession =
+      this.deletedPsets.has(`${entityId}:${psetName}`) ||
+      this.propertyMutations.get(key)?.operation === 'DELETE';
+
+    const propExistedBefore =
+      oldValue !== null ||
+      (!maskedInSession &&
+        basePsets.some(
+          p => p.name === psetName && p.properties.some(prop => prop.name === propName),
+        )) ||
+      !!this.newPsets.get(entityId)?.get(psetName)?.properties.some(p => p.name === propName);
 
     // If pset doesn't exist anywhere, create it in newPsets
     if (!psetExistsInBase && !psetExistsInNew) {

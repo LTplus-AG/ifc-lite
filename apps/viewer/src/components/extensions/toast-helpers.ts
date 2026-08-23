@@ -15,6 +15,31 @@ export function flavorSwitched(name: string): string {
   return `Switched to ${name}`;
 }
 
+/**
+ * A switch that moved the extensions and the active pointer but could not put
+ * some of the flavor's saved state in place — a browser that refuses to store
+ * anything is the reachable cause (#3002).
+ *
+ * Deliberately not phrased as a plain success: the parts named here are still
+ * whatever the previous flavor left behind, and "Switched to X" alone told the
+ * user the opposite. The refusal's own message is carried through because it
+ * is the only half that is actionable — "settings cannot be saved in this
+ * browser" is something a user can do something about, silence is not.
+ */
+export function flavorSwitchedPartially(
+  name: string,
+  unapplied: readonly { part: string; message: string }[],
+): string {
+  const labels: Record<string, string> = {
+    lenses: 'saved lenses',
+    clash: 'clash settings',
+    layout: 'panel layout',
+  };
+  const parts = unapplied.map((u) => labels[u.part] ?? u.part).join(', ');
+  const reasons = [...new Set(unapplied.map((u) => u.message))].join(' ');
+  return `Switched to ${name}, but its ${parts} could not be applied — ${reasons}`;
+}
+
 export function flavorExported(filename: string): string {
   return `Exported ${filename}`;
 }

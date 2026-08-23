@@ -1,0 +1,170 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import { describe, it } from 'node:test';
+import assert from 'node:assert';
+
+import { nsToMs, isNegativeDelta, computeDurationStats } from './frame-timing-stats.js';
+
+describe('nsToMs', () => {
+  it('converts an exact 1ms span', () => {
+    assert.strictEqual(nsToMs(0n, 1_000_000n), 1);
+  });
+
+  it('converts a non-round, asymmetric span (catches a dropped /1e6 or a swapped operand order)', () => {
+    // 12_345_678 ns = 12.345678 ms. Non-round and asymmetric: an off-by-one
+    // in the divisor (e.g. /1e3 or /1e9) or a start/end swap both produce a
+    // visibly wrong number, not a coincidentally-passing one.
+    assert.strictEqual(nsToMs(1_000_000_000n, 1_012_345_678n), 12.345678);
+  });
+
+  it('uses (end - start), not the raw start value', () => {
+    // A large absolute start timestamp (as a real GPU clock produces) must
+    // not leak into the result — only the delta (3_500_000 ns = 3.5 ms)
+    // matters, even though the start value alone is ~500 seconds.
+    const start = 500_000_000_000_000n;
+    const end = start + 3_500_000n;
+    assert.strictEqual(nsToMs(start, end), 3.5);
+  });
+
+  it('clamps a negative delta to 0 instead of returning a physically impossible negative duration', () => {
+    // The module's own doc notes GPU timestamps "are not guaranteed
+    // monotonic across a device reset" — end < start is reachable. A
+    // negative duration must never leak downstream (it would poison
+    // frameTotalMs's raw summation before computeDurationStats ever sees
+    // it), so this is the one choke point where the clamp belongs.
+    assert.strictEqual(nsToMs(1_000_000n, 500_000n), 0);
+  });
+
+  it('clamps a large negative delta (asymmetric, non-round) to exactly 0, not a scaled-down negative', () => {
+    assert.strictEqual(nsToMs(9_876_543_210n, 1_234_567n), 0);
+  });
+
+  it('treats a zero delta as a legitimate, unclamped 0 — a pass can measure zero', () => {
+    assert.strictEqual(nsToMs(42n, 42n), 0);
+  });
+
+  it('reports whether a (startNs, endNs) pair is a monotonicity violation', () => {
+    assert.strictEqual(isNegativeDelta(1_000_000n, 500_000n), true);
+    assert.strictEqual(isNegativeDelta(42n, 42n), false);
+    assert.strictEqual(isNegativeDelta(500_000n, 1_000_000n), false);
+  });
+});
+
+describe('computeDurationStats', () => {
+  it('returns the explicit empty-sample shape for zero frames, not zeros', () => {
+    const stats = computeDurationStats([]);
+    assert.deepStrictEqual(stats, {
+      count: 0,
+      min: null,
+      median: null,
+      p95: null,
+      max: null,
+      mean: null,
+    });
+  });
+
+  // The empty-sample result is a module-level constant handed back by
+  // reference to every caller, so one caller writing to the object it got
+  // would rewrite what every LATER empty result reports — a "nothing was
+  // measured" verdict silently turning into a fabricated number for everyone
+  // else in the process. Freezing it makes the write a no-op (and a throw in
+  // strict mode, which every ES module is), so the shared reference stays
+  // honest no matter what a caller does with it.
+  it('an empty result cannot be mutated to poison the next empty result', () => {
+    const first = computeDurationStats([]);
+    // A caller doing exactly what a caller might do: patching the nulls to
+    // zeros for its own display code, in place.
+    assert.throws(
+      () => {
+        (first as { count: number }).count = 99;
+      },
+      TypeError,
+      'the shared empty-sample object must reject a write, not absorb it',
+    );
+
+    const second = computeDurationStats([]);
+    assert.strictEqual(second.count, 0, 'a later empty result must still report count 0');
+    assert.deepStrictEqual(second, {
+      count: 0,
+      min: null,
+      median: null,
+      p95: null,
+      max: null,
+      mean: null,
+    });
+  });
+
+  it('the empty result is frozen, including against added and deleted fields', () => {
+    const stats = computeDurationStats([]);
+    assert.ok(Object.isFrozen(stats), 'the empty-sample constant must be frozen');
+    assert.throws(() => {
+      (stats as unknown as Record<string, unknown>).injected = 1;
+    }, TypeError);
+    assert.throws(() => {
+      delete (stats as unknown as Record<string, unknown>).count;
+    }, TypeError);
+  });
+
+  it('a non-empty result is a fresh object, unaffected by the empty-sample constant', () => {
+    const empty = computeDurationStats([]);
+    const real = computeDurationStats([1, 2, 3]);
+    assert.notStrictEqual(real, empty);
+    assert.strictEqual(real.count, 3);
+  });
+
+  it('computes min/median/p95/max/mean for a single sample', () => {
+    const stats = computeDurationStats([7.25]);
+    assert.deepStrictEqual(stats, {
+      count: 1,
+      min: 7.25,
+      median: 7.25,
+      p95: 7.25,
+      max: 7.25,
+      mean: 7.25,
+    });
+  });
+
+  it('computes exact statistics over a known, non-round, asymmetric sample', () => {
+    // 11 values, deliberately unsorted, non-round, no two equal — every
+    // statistic below has exactly one correct value, so a wrong coefficient
+    // or an off-by-one rank shows up as a wrong number, not a coincidence.
+    const durations = [8.1, 41.7, 3.3, 12.9, 6.6, 22.4, 5.05, 9.9, 15.15, 4.4, 30.3];
+    const stats = computeDurationStats(durations);
+
+    // sorted: 3.3, 4.4, 5.05, 6.6, 8.1, 9.9, 12.9, 15.15, 22.4, 30.3, 41.7
+    assert.strictEqual(stats.count, 11);
+    assert.strictEqual(stats.min, 3.3);
+    assert.strictEqual(stats.max, 41.7);
+    // median: nearest-rank(0.5) over 11 -> ceil(0.5*11)-1 = 5 -> index 5 -> 9.9
+    assert.strictEqual(stats.median, 9.9);
+    // p95: ceil(0.95*11)-1 = ceil(10.45)-1 = 11-1 = 10 -> index 10 -> 41.7
+    assert.strictEqual(stats.p95, 41.7);
+    const sum = 8.1 + 41.7 + 3.3 + 12.9 + 6.6 + 22.4 + 5.05 + 9.9 + 15.15 + 4.4 + 30.3;
+    assert.ok(Math.abs((stats.mean ?? NaN) - sum / 11) < 1e-9);
+  });
+
+  it('p95 picks a mid-sample rank (not always the max) for a larger, unevenly spread sample', () => {
+    // 20 samples: 19 tightly clustered "normal" frames and 1 extreme
+    // outlier. p95's rank (ceil(0.95*20)-1 = 18, i.e. the 19th of 20 sorted
+    // values) lands on the second-highest value, NOT the max outlier — this
+    // is exactly the case that would silently break if p95 were
+    // accidentally implemented as "always index length-1".
+    const normal = [8.0, 8.1, 8.05, 7.95, 8.2, 7.9, 8.15, 8.0, 8.05, 7.85, 8.25, 8.1, 7.9, 8.05, 8.0, 8.1, 7.95, 8.2, 8.0];
+    const outlier = 250.0;
+    const stats = computeDurationStats([...normal, outlier]);
+    assert.strictEqual(stats.count, 20);
+    assert.strictEqual(stats.max, 250.0);
+    // second-highest normal value is 8.25
+    assert.strictEqual(stats.p95, 8.25);
+    assert.notStrictEqual(stats.p95, stats.max);
+  });
+
+  it('does not mutate the input array (sorts a copy)', () => {
+    const input = [3.3, 1.1, 2.2];
+    const originalOrder = [...input];
+    computeDurationStats(input);
+    assert.deepStrictEqual(input, originalOrder);
+  });
+});

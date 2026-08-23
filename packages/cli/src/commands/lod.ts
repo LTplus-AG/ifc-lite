@@ -10,7 +10,7 @@
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { extname } from 'node:path';
-import { generateLod0, generateLod1, type GenerateLod1Options } from '@ifc-lite/export';
+import { generateLod0, generateLod1 } from '@ifc-lite/export';
 import { getFlag, hasFlag, fatal, printJson, writeOutput } from '../output.js';
 
 type LodLevel = '0' | '1';
@@ -29,26 +29,16 @@ function parseLevel(value: string | undefined): LodLevel {
   return level;
 }
 
-function parseQuality(value: string | undefined): GenerateLod1Options['quality'] {
-  if (!value) return undefined;
-  // Keep the CLI's user-facing quality vocabulary while accepting the generator terms too.
-  if (value === 'low' || value === 'fast') return 'fast' as GenerateLod1Options['quality'];
-  if (value === 'medium' || value === 'balanced') return 'balanced' as GenerateLod1Options['quality'];
-  if (value === 'high') return 'high' as GenerateLod1Options['quality'];
-  fatal(`Invalid --quality "${value}". Supported values: low, medium, high, fast, balanced`);
-}
-
 export async function lodCommand(args: string[]): Promise<void> {
   const filePath = args.find(arg => !arg.startsWith('-'));
   if (!filePath) {
-    fatal('Usage: ifc-lite lod <file.ifc> --level 0|1 [--out file] [--meta file] [--quality low|medium|high] [--json]');
+    fatal('Usage: ifc-lite lod <file.ifc> --level 0|1 [--out file] [--meta file] [--json]');
   }
 
   const level = parseLevel(getFlag(args, '--level'));
   const outPath = getFlag(args, '--out');
   const metaPath = getFlag(args, '--meta');
   const jsonOutput = hasFlag(args, '--json');
-  const quality = parseQuality(getFlag(args, '--quality'));
 
   const input = await readFile(filePath);
   const bytes = input.buffer.slice(input.byteOffset, input.byteOffset + input.byteLength) as ArrayBuffer;
@@ -77,7 +67,7 @@ export async function lodCommand(args: string[]): Promise<void> {
     fatal('--out is required for LOD1 output');
   }
 
-  const result = await generateLod1(bytes, { quality });
+  const result = await generateLod1(bytes);
   const resolvedMetaPath = metaPath ?? inferMetaPath(outPath);
 
   await writeFile(outPath, result.glb);

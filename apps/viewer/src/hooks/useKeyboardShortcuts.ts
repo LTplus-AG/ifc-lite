@@ -65,6 +65,10 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
   const activeAngle = useViewerStore((s) => s.activeAngle);
   const cancelAngle = useViewerStore((s) => s.cancelAngle);
   const finishPolyline = useViewerStore((s) => s.finishPolyline);
+  // Radius (unbounded multi-click) mode (#2737 item 2).
+  const activeRadius = useViewerStore((s) => s.activeRadius);
+  const cancelRadius = useViewerStore((s) => s.cancelRadius);
+  const finishRadius = useViewerStore((s) => s.finishRadius);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     // Ignore if typing in an input or textarea
@@ -308,6 +312,14 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
         cancelAngle();
         return;
       }
+      // Same for a part-finished radius sequence (#2737 item 2) — the same
+      // "own branch, mutually exclusive with the others" reasoning as angle
+      // above applies.
+      if (key === 'escape' && activeRadius) {
+        e.preventDefault();
+        cancelRadius();
+        return;
+      }
       // Finish an in-progress polyline as OPEN with Enter (#2199) — reports
       // the sum-of-segments length, not a perimeter. Closing the loop is a
       // click gesture, not a keyboard one (see handlePolylineClick).
@@ -328,6 +340,19 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
           // bundle, same as the addElement branch above.
           import('@/components/ui/toast').then(({ toast }) => {
             toast.error('Polyline needs at least 2 points');
+          });
+        }
+        return;
+      }
+      // Finish an in-progress radius sequence with Enter (#2737 item 2) —
+      // the same explicit-finish gesture polyline uses, for the same reason
+      // (see the ActiveRadius doc comment in store/types.ts): radius has no
+      // fixed pick count for the store to finish itself on.
+      if (key === 'enter' && activeRadius) {
+        e.preventDefault();
+        if (!finishRadius()) {
+          import('@/components/ui/toast').then(({ toast }) => {
+            toast.error('Radius needs at least 3 points');
           });
         }
         return;
@@ -411,6 +436,7 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     activePolyline, activeAngle, cancelAngle,
     cancelPolyline,
     finishPolyline,
+    activeRadius, cancelRadius, finishRadius,
   ]);
 
   useEffect(() => {
@@ -438,6 +464,7 @@ export const KEYBOARD_SHORTCUTS = [
   { key: 'S', description: 'Toggle snapping (Measure tool)', category: 'Tools' },
   { key: 'Esc', description: 'Cancel measurement (Measure tool)', category: 'Tools' },
   { key: 'Enter', description: 'Finish polyline as open length (Measure tool, polyline mode)', category: 'Tools' },
+  { key: 'Enter', description: 'Finish radius/diameter fit (Measure tool, radius mode)', category: 'Tools' },
   { key: 'Ctrl+C', description: 'Clear measurements (Measure tool)', category: 'Tools' },
   { key: 'I', description: 'Isolate (set basket from current context)', category: 'Visibility' },
   { key: '=', description: 'Set basket from current context', category: 'Visibility' },

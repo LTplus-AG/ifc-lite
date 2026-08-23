@@ -114,8 +114,18 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
       // the target flavor, then move the active pointer. Falls back
       // to the bare pointer set on failure so the user can still
       // recover.
-      await host.switchFlavor(id);
-      toast.success(toastText.flavorSwitched(id));
+      const outcome = await host.switchFlavor(id);
+      // The switch can land while parts of the flavor's saved state do not —
+      // a browser that refuses localStorage writes is the reachable cause. The
+      // host used to swallow that into a console.warn and this toasted an
+      // unqualified success over a flavor whose clash config never applied.
+      // `toast.error`, not `info`: something the user asked for did not
+      // happen, and the longer dwell is what gets the reason read. (#3002)
+      if (outcome.unapplied.length > 0) {
+        toast.error(toastText.flavorSwitchedPartially(id, outcome.unapplied));
+      } else {
+        toast.success(toastText.flavorSwitched(id));
+      }
     } catch (err) {
       toast.error(toastText.failed('Activate', err));
     } finally {

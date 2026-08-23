@@ -484,6 +484,13 @@ export function Section2DPanel({
     sheetEnabled, activeSheet, dxfUnderlays: dxfUnderlayData,
     ifcDataStore, coordinateInfo: geometryResult?.coordinateInfo,
     scanSection: scanSectionLayer,
+    // Pin View state and the preview's transform cache: without these the
+    // print/export path recomputed the sheet placement from the CURRENT
+    // bounds while a pinned preview kept the held one, so a regenerate at a
+    // new elevation printed a different layout from the one on screen. Pin
+    // View defaults ON, so this was the default path. The hook only READS
+    // the ref — the preview canvas owns the write.
+    isPinned, cachedSheetTransformRef,
   });
 
   // Scale prompt for the scaled PDF export (issue #2042). A proper

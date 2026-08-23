@@ -1786,6 +1786,7 @@ export const TYPE_NAMES: Record<number, string> = {
 export function getTypeId(name: string): number | undefined {
   // Normalize to IfcXxx format
   const normalized = normalizeTypeName(name);
+  if (!Object.prototype.hasOwnProperty.call(TYPE_IDS, normalized)) return undefined;
   return (TYPE_IDS as Record<string, number>)[normalized];
 }
 

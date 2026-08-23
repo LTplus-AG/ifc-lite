@@ -373,6 +373,38 @@ jobs:
   # knows what good looks like rather than only what broken looked like:
   # 2:29, 2:01, 1:50 against a 25 minute cap.
   #
+  # Shard membership is a hash of the file PATH, not its index in the sorted
+  # list. With `NR % n` every file after an added or removed test moves to a
+  # different shard: measured, adding ONE file reassigned 534 of 534. Two
+  # things that breaks. A flaky file wanders between shards, and "shard 1
+  # passed on PR X" stops being evidence about shard 1 on PR Y, because they
+  # are not the same set of files. I used exactly that cross-PR comparison as
+  # proof while chasing a flake, and it did not hold. With the hash, adding a
+  # file reassigns 0 of 534.
+  #
+  # Parallelism comes from the SHARDS, not from concurrency inside a shard.
+  # `--test-concurrency=1` is deliberate: at 4 a timing-sensitive test races
+  # three neighbours, and `useSandbox.runSupersession.test.tsx` failed on three
+  # unrelated PRs in one hour that way (issue #3060) while passing locally 3/3.
+  # The bump to 4 came from an earlier attempt at this lane that was MEASURED
+  # not to help on CI, and it was carried forward as harmless once sharding
+  # worked. It is not harmless, and its speedup is redundant with sharding.
+  # Cost of going back to 1, measured: ~70s versus ~19s per shard locally,
+  # roughly 8 minutes versus 2 on CI, against a 25 minute cap.
+  #
+  # Correction: dropping to 1 MITIGATED #3060, it did not fix it. The defect
+  # was in that file's fixture, which slept a flat 50ms and then asserted that
+  # a run had reached its host gate. The #1922 tests at the bottom of that file
+  # abort a WASM module, the aborted module is retired, and the next run pays a
+  # fresh `newQuickJSWASMModule()` — measured at 46-72ms on a contended
+  # machine, straddling the sleep. Reproduced locally at 11/30 failures with
+  # the exact reported `0 !== 1, then 2 !== 1`, on Node 22.13.1 AND 22.23.2,
+  # by loading the machine rather than by raising concurrency; the fixture now
+  # waits for the gate instead of predicting it, and the same load gives 30/30.
+  # So concurrency was the exposure, not the cause: this setting is still worth
+  # keeping for the other timing-sensitive tests it protects, but it is no
+  # longer what stands between #3060 and a red shard.
+  #
   # Two earlier explanations in this file were WRONG and are corrected here,
   # because a confident wrong comment is worse than none:
   #
@@ -432,6 +464,13 @@ jobs:
       - name: Fetch fixtures
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
         run: pnpm fixtures
+
+      # Unconditional — this is the point of the step. The fetch above is
+      # gated on a cache miss, so on a cache hit nothing had ever confirmed the
+      # restored tree still matches the manifest. A partial or corrupted cache
+      # then made every fixture-gated test skip silently and report ok.
+      - name: Verify fixtures
+        run: pnpm fixtures:check
       # Run the package script DIRECTLY, not through turbo. Two reasons, both
       # measured rather than assumed:
       #
@@ -508,8 +547,26 @@ jobs:
       - name: Fetch fixtures
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
         run: pnpm fixtures
+
+      # Unconditional — this is the point of the step. The fetch above is
+      # gated on a cache miss, so on a cache hit nothing had ever confirmed the
+      # restored tree still matches the manifest. A partial or corrupted cache
+      # then made every fixture-gated test skip silently and report ok.
+      - name: Verify fixtures
+        run: pnpm fixtures:check
       - name: Check test wiring
         run: node scripts/check-test-wiring.mjs
+      # Executable proof the wiring gate cannot pass vacuously — the failure
+      # mode it exists to catch is exactly the one it could have itself. Its
+      # first fixture reconstructs #3062's pre-wiring state (a gate script and
+      # its test committed with no workflow step and no package.json entry),
+      # which the earlier checker could not see at all because `scripts/` was
+      # outside its `packages`/`apps` scan. The rest pin the two directions
+      # that matter: a package.json entry nobody invokes is NOT wiring, and
+      # the glob catch-all below reaching a gate's TEST does not excuse the
+      # gate SCRIPT never executing.
+      - name: Check test-wiring gate regressions
+        run: node --test scripts/check-test-wiring.test.mjs
       # typecheck-tests.mjs writes the `extends` of every generated test
       # program. A bare (non-`./`-prefixed) value is resolved by tsc as a NODE
       # MODULE, so the base config is not found and the `noEmit` it carries
@@ -525,6 +582,22 @@ jobs:
       # apps/viewer/src/test/, so this ratchets the remaining list down (#2434).
       - name: Check for new source-text assertions
         run: node scripts/check-source-text-assertions.mjs
+      # A walk that follows a file-supplied entity reference with no visited set
+      # and no depth cap overflows the Rust stack on a self-referential
+      # reference, which is SIGABRT rather than a catchable panic -- in the wasm
+      # geometry worker it takes down the instance (#2866). Six sites were fixed
+      # one at a time (#2868-#2874) and #2873 wrote the guard-choice rule into
+      # AGENTS.md, but a convention does not fail CI when a seventh lands (#2944).
+      # Its own tests run first: this check's value is entirely in not passing
+      # vacuously, so a broken detector must fail here, not report a clean tree.
+      # Both files: check-refwalk-guards.test.mjs covers the harness (scan
+      # roots, candidate floor, allowlist ratchet), refwalk-classify.test.mjs
+      # covers the DETECTOR. Running only the first would leave the half that
+      # decides flagged/not-flagged untested in CI.
+      - name: Check refwalk gate's own tests
+        run: node --test scripts/check-refwalk-guards.test.mjs scripts/lib/refwalk-classify.test.mjs
+      - name: Check for unguarded entity-reference walks
+        run: node scripts/check-refwalk-guards.mjs
       # A hidden tab never delivers an animation frame, so an unbounded
       # `await new Promise(r => requestAnimationFrame(r))` in the load pipeline
       # parks finalize / WASM release / setLoading(false) until the user comes
@@ -565,6 +638,25 @@ jobs:
       # real sources in a temp tree and must turn the gate red.
       - name: Check collab room-model targeting gate regressions
         run: node --test scripts/check-collab-room-model-target.test.mjs
+      # tsx's SYNCHRONOUS loader hook (`module.registerHooks`, Node >= 22.15.0)
+      # applies the tsconfig `paths` mapping itself and short-circuits, so an
+      # aliased specifier never reaches an async `register()` hook in any form.
+      # A hook whose only arm is `specifier === '@/lib/collab/geometry-sync'`
+      # therefore never matches, the gate the test parks on never fires, and
+      # the file hangs until the runner's timeout -- CI ONLY, because
+      # `node-version: 22` floats to the newest 22.x while local machines sit
+      # on an older one. That has happened twice
+      # (`collab-session-race-hook.mjs`, then `collab-hydrate-gate-hook.mjs`
+      # written after the first grew a twenty-line comment about it), which is
+      # why this is a gate rather than a third comment.
+      - name: Check loader hook specifier match
+        run: node scripts/check-loader-hook-specifier-match.mjs
+      # Executable proof the guard above still fires: both historical incidents
+      # rebuilt in a temp tree must turn it red, a bare arm on a NON-aliased
+      # specifier must stay green (`cesium` is one, and works), and neutering
+      # the alias table in either direction must change the verdict.
+      - name: Check loader hook specifier match gate regressions
+        run: node --test scripts/check-loader-hook-specifier-match.test.mjs
       # `degenerateReason` crosses the wasm boundary as an untyped string and is
       # cast to `ClashSolidDegenerateReason` on arrival, so TypeScript cannot see
       # a union that has drifted from the kernel -- `'malformed-operand'` was
@@ -579,6 +671,20 @@ jobs:
       # real sources in a temp tree and must turn the gate red.
       - name: Check clash degenerate-reason parity gate regressions
         run: node --test scripts/check-clash-degenerate-reason-parity.test.mjs
+      # The CSV cell escaper reached NINE hand-rolled copies and no two were
+      # identical: some tested the formula trigger anchored at offset 0 (so a
+      # BOM/ZWSP/LRM/NBSP/U+2028 in front of `=` bypassed the CWE-1236 guard),
+      # some hardened it by DELETING the leading invisibles (throwing away
+      # leading spaces, against RFC 4180 2.4), one hard-coded a comma while its
+      # caller had a configurable delimiter. Correcting the copies only resets
+      # the clock; this is what stops a tenth.
+      - name: Check for hand-rolled CSV cell escapers
+        run: node scripts/check-csv-escaper-copies.mjs
+      # Executable proof the gate fires: each of the ten real copies is replanted
+      # in its original shape and must turn the gate red, and a scan that finds
+      # almost no files must fail rather than report clean.
+      - name: Check CSV escaper gate regressions
+        run: node --test scripts/check-csv-escaper-copies.test.mjs
 
       # `audit-test-timeouts.mjs` reports which tests carry an explicit vitest
       # timeout, across all three spellings this repo uses. An audit that
@@ -635,6 +741,42 @@ jobs:
       # through a pipe and asserts the bytes that arrive.
       - name: Check lint gate survives a piped stdout
         run: node --test scripts/check-lint-ran.test.mjs
+      # check-tla-chunk-await.mjs runs inside the viewer build, so it is only
+      # ever exercised against whatever that build happens to emit — the one
+      # bundle shape that cannot demonstrate the gate still has teeth. These
+      # tests drive it over synthetic bundles instead: the #2246 minified
+      # single-line importer and its pretty-printed twin must still turn it
+      # red, a correct bundle (including one whose __tla chunk is only
+      # import()ed) must still pass, and each way of inspecting nothing —
+      # missing assets dir, no chunks, chunks but no __tla-wrapped chunk —
+      # must fail rather than tick.
+      - name: Check the TLA chunk-await gate cannot pass vacuously
+        run: node --test scripts/check-tla-chunk-await.test.mjs
+      # check-coderabbit-review.mjs exists to tell a real CodeRabbit review from
+      # a green tick with nothing behind it, and it got that wrong in BOTH
+      # directions at once: an empty comment list returned "no review" before
+      # the inline thread count was even read (CodeRabbit posts findings while
+      # its summary is absent, deleted, or rewritten in place), and no timestamp
+      # reached the classifier at all, so a review from two pushes ago certified
+      # the commits the bot never saw. The second is the dangerous one -- a
+      # false "not reviewed" is loud and self-correcting, a false "reviewed" is
+      # silent and terminal. Both directions, the freshness comparison, and the
+      # decision that a missing or unparseable timestamp resolves to unreviewed
+      # are pinned here.
+      - name: Check the CodeRabbit review classifier
+        run: node --test scripts/lib/coderabbit-review-state.test.mjs
+      # The same tick hides four MORE shapes, found by a sweep of all 36 open
+      # PRs: a fork's branch we cannot push to; a DIRTY base whose green checks
+      # ran on a merge commit that can no longer be formed (two PRs were in that
+      # state); ZERO workflow runs at the head commit, which leaves an EMPTY
+      # statusCheckRollup that counts up to the same fail=0/pending=0 as a fully
+      # passing one; and a newest run against a superseded commit. The sweep is
+      # a hand-run tool (check-pr-green.mjs, @unwired-by-design -- its verdicts
+      # are transient GitHub state), but the classification it rests on is not,
+      # including the three ways the sweep must refuse to pass vacuously: zero
+      # PRs, an unreachable API, a malformed response.
+      - name: Check the PR-green sweep classifier
+        run: node --test scripts/lib/pr-green-sweep.test.mjs
       # fetch-prebuilt-wasm.mjs read `npm pack`'s trimmed stdout as the tarball
       # path. npm 11 prints its "npm notice" block on STDOUT, so the trim
       # returned twenty lines of prose and the tar two lines down exited 2,
@@ -651,6 +793,46 @@ jobs:
       # crates.io behind npm. This makes that order a PR-visible gate.
       - name: Check the crates publish order matches the dependency graph
         run: node --test scripts/release-crates-order.test.mjs
+      # verify-esm-entrypoints.mjs is the last gate before `pnpm release`
+      # publishes. If its package discovery ever returns nothing — packages/
+      # moved, or the publishable filter stops matching — the smoke loop has
+      # nothing to fail on, the summary reads "0 passed, 0 failed, 0 skipped"
+      # and the run exits 0: success reported for having imported nothing.
+      # Same absence-as-success shape as the unbuilt skip it already fails
+      # closed on. This also pins that a legitimate run still exits 0.
+      - name: Check the ESM smoke test fails on an empty discovery
+        run: node --test scripts/verify-esm-entrypoints.test.mjs
+      # Executable proof for the test-glob-coverage gate, which runs in `lint`:
+      # its fixtures drive the unmodified checker against synthetic packages via
+      # `--root` and assert it goes red for a non-recursive shell glob, for an
+      # unrecognised test-script shape, and for a vitest `include` that misses a
+      # file — the three ways it could otherwise wave a package through.
+      - name: Check test-glob-coverage gate regressions
+        run: node --test scripts/check-test-glob-coverage.test.mjs
+      # `fetch-fixtures.mjs --check` is the step every fixture-consuming job now
+      # runs unconditionally after its cache-gated fetch, so it is a gate about
+      # a gate: if IT can pass over nothing, it is worse than absent, because it
+      # also buys silence. These cases drive the unmodified script against
+      # synthetic corpora and assert it reds — naming the offending path — for a
+      # fixture that is absent, byte-flipped at the same size, or truncated, and
+      # for each way of verifying nothing: no manifest, an unparseable one, one
+      # listing zero files, and a scoped `--check a.ifc b.ifc` naming a path the
+      # manifest no longer lists. Positive controls keep it from being switched
+      # off for redding a healthy tree.
+      - name: Check the fixture-cache verification cannot pass vacuously
+        run: node --test scripts/fixtures/fetch-fixtures.test.mjs
+      # The steps above name each scripts/ test file one by one, which is
+      # itself the trap check-test-glob-coverage.mjs exists to catch: the file
+      # that shipped that gate was the one entry nobody added, so a gate for
+      # unrun test files was itself unrun. Its own audit cannot see the gap —
+      # it walks packages/ and apps/, and scripts/ is neither. This catch-all
+      # closes it by GLOB, so the next script's tests run on the commit that
+      # adds them. The named steps above stay for their comments and for
+      # per-gate attribution; re-running them here costs a few seconds.
+      # scripts/fixtures/ is in the glob because it was NOT: the first test file
+      # under it would have been added, run locally, and then never run again.
+      - name: Run every scripts/ test file (glob catch-all)
+        run: node --test scripts/*.test.mjs scripts/lib/*.test.mjs scripts/fixtures/*.test.mjs
       # The server-parse root-attribute table (attr_indices.rs) is generated
       # from @ifc-lite/parser's SCHEMA_REGISTRY — the SAME table the in-browser
       # parse resolves names against. Guard that the committed file is in sync
@@ -765,6 +947,13 @@ jobs:
       - name: Fetch fixtures
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
         run: pnpm fixtures
+
+      # Unconditional — this is the point of the step. The fetch above is
+      # gated on a cache miss, so on a cache hit nothing had ever confirmed the
+      # restored tree still matches the manifest. A partial or corrupted cache
+      # then made every fixture-gated test skip silently and report ok.
+      - name: Verify fixtures
+        run: pnpm fixtures:check
       # Package dists come from the build artifact; the wasm build
       # soft-skips (no wasm-pack on this runner) and reuses the artifact
       # runtime, so this is just the vite build of the app.
@@ -823,6 +1012,13 @@ jobs:
         # The fixtures script is pure Node (no npm deps) so we skip the
         # pnpm install dance Rust-only jobs don't need.
         run: node scripts/fixtures/fetch-fixtures.mjs
+
+      # Unconditional — this is the point of the step. The fetch above is
+      # gated on a cache miss, so on a cache hit nothing had ever confirmed the
+      # restored tree still matches the manifest. A partial or corrupted cache
+      # then made every fixture-gated test skip silently and report ok.
+      - name: Verify fixtures
+        run: node scripts/fixtures/fetch-fixtures.mjs --check
       # Cheap (resolve only, no compile) and it catches a failure mode that
       # otherwise stays invisible for weeks: a release bumps the manifests but
       # leaves Cargo.lock recording the old member versions, so every `--locked`
@@ -920,6 +1116,13 @@ jobs:
       - name: Fetch fixtures
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
         run: node scripts/fixtures/fetch-fixtures.mjs
+
+      # Unconditional — this is the point of the step. The fetch above is
+      # gated on a cache miss, so on a cache hit nothing had ever confirmed the
+      # restored tree still matches the manifest. A partial or corrupted cache
+      # then made every fixture-gated test skip silently and report ok.
+      - name: Verify fixtures
+        run: node scripts/fixtures/fetch-fixtures.mjs --check
       - name: Census
         run: cargo test -p ifc-lite-geometry --features triangulation-alt --test triangulation_invariance -- --nocapture
       # The per-host rows this run measured, uploaded pass or fail. The census

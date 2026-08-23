@@ -27,6 +27,14 @@ describe('neutralizeSpreadsheetFormula — parity with the sibling guards', () =
    *
    * Reachable: `packages/encoding/src/ifc-string.ts` decodes \\X2\\200B\\X0\\
    * to a literal U+200B, so an IFC Name can carry one.
+   *
+   * Looking past the run is the rule; DELETING it is not. These cases used to
+   * assert `!out.includes(invisible)`, which is the wrong half: stripping is
+   * not what makes the cell safe (the leading apostrophe is), and the strip was
+   * `replace(/^[\p{Cf}\p{Z}]+/u, '')`, whose `\p{Z}` includes U+0020 — so every
+   * exported cell silently lost its leading spaces, against RFC 4180 §2.4
+   * ("Spaces are considered part of a field and should not be ignored").
+   * Both directions are pinned below.
    */
   for (const [label, invisible] of [
     ['BOM', '\uFEFF'],
@@ -44,12 +52,36 @@ describe('neutralizeSpreadsheetFormula — parity with the sibling guards', () =
         out.startsWith("'"),
         `expected the guard in front, got ${JSON.stringify(out)}`,
       );
-      assert.ok(!out.includes(invisible), 'the invisible must not survive into the cell');
+      // The apostrophe is what makes the cell text; the invisible is DATA and
+      // must survive verbatim, in its original position, behind the guard.
+      assert.strictEqual(
+        out,
+        `'${invisible}=HYPERLINK("http://example.invalid","x")`,
+        'the guard must land in front of the whole run without consuming any of it',
+      );
+    });
+
+    it(`preserves a leading ${label} on a value that is NOT a formula`, () => {
+      // The other direction of the same rule: looking past an invisible must
+      // never turn into deleting it. A cell is not made safer by losing data.
+      assert.strictEqual(
+        neutralizeSpreadsheetFormula(`${invisible}Wall A`),
+        `${invisible}Wall A`,
+      );
     });
   }
 
   it('leaves ordinary text alone', () => {
     assert.strictEqual(neutralizeSpreadsheetFormula('Wall A'), 'Wall A');
+  });
+
+  it('preserves leading and trailing spaces (RFC 4180 §2.4)', () => {
+    // The regression the strip caused: `\p{Z}` includes U+0020, so every cell
+    // with leading whitespace was exported with it silently removed.
+    assert.strictEqual(neutralizeSpreadsheetFormula('   Wall A'), '   Wall A');
+    assert.strictEqual(neutralizeSpreadsheetFormula('Wall A   '), 'Wall A   ');
+    // ...and a space still cannot hide a trigger.
+    assert.strictEqual(neutralizeSpreadsheetFormula('   =cmd'), "'   =cmd");
   });
 });
 
@@ -64,8 +96,10 @@ describe('neutralizeSpreadsheetFormula (#1790 review, CWE-1236)', () => {
       assert.strictEqual(neutralizeSpreadsheetFormula(s), s);
     }
   });
-  it('strips a leading BOM so a BOM-hidden marker still gets guarded', () => {
-    assert.strictEqual(neutralizeSpreadsheetFormula('\uFEFF=evil'), `'=evil`);
+  it('guards a BOM-hidden marker without consuming the BOM', () => {
+    // Was `'=evil` — i.e. the BOM deleted. The guard now looks past it instead,
+    // which neutralises the same payload while leaving the cell's data intact.
+    assert.strictEqual(neutralizeSpreadsheetFormula('\uFEFF=evil'), `'\uFEFF=evil`);
   });
 });
 

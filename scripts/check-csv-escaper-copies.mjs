@@ -160,10 +160,6 @@ export const PATTERNS = [
  */
 export const PROSE_MENTIONS = [
   {
-    file: 'packages/lists/src/engine.rfc4180.test.ts',
-    text: '// is not a formula to an anchored `/^[=+\\-@\\t\\r]/` but it is one to Excel.',
-  },
-  {
     file: 'packages/lists/src/engine.ts',
     text: '// anchored `/^[=+\\-@\\t\\r]/` matching, so `\\uFEFF=HYPERLINK(...)` used to',
   },
@@ -235,7 +231,15 @@ export function scanText(relPath, text) {
   return found;
 }
 
-export function scanRepo(files = candidateFiles(), read = (f) => readFileSync(join(REPO_ROOT, f), 'utf8')) {
+export function scanRepo(
+  files = candidateFiles(),
+  read = (f) => readFileSync(join(REPO_ROOT, f), 'utf8'),
+  // Injectable so the behavioural tests build their own fixtures instead of
+  // binding to whatever the live registry happens to hold. A registry entry is
+  // deleted the moment its line is reworded, so tests keyed to it break for a
+  // reason that has nothing to do with the behaviour they cover.
+  mentions = PROSE_MENTIONS,
+) {
   // A tiny file list means the glob or `git ls-files` silently failed, which
   // would make this gate pass vacuously — the one way a grep gate lies.
   if (files.length < 100) {
@@ -259,12 +263,12 @@ export function scanRepo(files = candidateFiles(), read = (f) => readFileSync(jo
   // Excuse registered prose mentions: exact file AND exact trimmed line.
   const usedMentions = new Set();
   const remaining = hits.filter((h) => {
-    const idx = PROSE_MENTIONS.findIndex((m) => m.file === h.file && m.text === h.text);
+    const idx = mentions.findIndex((m) => m.file === h.file && m.text === h.text);
     if (idx === -1) return true;
     usedMentions.add(idx);
     return false;
   });
-  const staleMentions = PROSE_MENTIONS.filter((_, i) => !usedMentions.has(i));
+  const staleMentions = mentions.filter((_, i) => !usedMentions.has(i));
 
   const known = new Set(KNOWN_REMAINING);
   const violations = remaining.filter((h) => !known.has(h.file));

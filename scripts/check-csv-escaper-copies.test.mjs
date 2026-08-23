@@ -22,10 +22,10 @@ const { scanText, scanRepo, CANONICAL, KNOWN_REMAINING, PROSE_MENTIONS, validate
  * Drive scanRepo with synthetic file contents. Real repo files not named in
  * `overrides` read as empty; padding files satisfy the vacuous-scan guard.
  */
-function repoWith(overrides) {
+function repoWith(overrides, mentions) {
   const pad = Array.from({ length: 120 }, (_, i) => `packages/pad/src/p${i}.ts`);
   const files = [...new Set([...Object.keys(overrides), ...pad])];
-  return scanRepo(files, (f) => overrides[f] ?? '');
+  return scanRepo(files, (f) => overrides[f] ?? '', mentions);
 }
 
 /** The ten real copies this gate exists because of, in their original form. */
@@ -192,7 +192,18 @@ describe('no context hides a live escaper', () => {
 // time via PROSE_MENTIONS, ratcheted like KNOWN_REMAINING.
 // ---------------------------------------------------------------------------
 describe('prose mentions', () => {
-  const [MENTION, ENGINE_MENTION] = PROSE_MENTIONS;
+  // Fixtures, NOT the live registry. Binding these to PROSE_MENTIONS by position
+  // coupled every case below to how many entries the registry happened to hold:
+  // #3107 reworded the line one entry pinned, the entry was deleted, and all
+  // seven cases broke for a reason unrelated to what they test. The real
+  // registry is still exercised, by `validateMentions()` and by the
+  // regex-source case at the end of this block.
+  const MENTION = {
+    file: 'packages/lists/src/fixture-doc.test.ts',
+    text: '// is not a formula to an anchored `/^[=+\\-@\\t\\r]/` but it is one to Excel.',
+  };
+  const [ENGINE_MENTION] = PROSE_MENTIONS;
+  const MENTIONS = [MENTION, ENGINE_MENTION];
   const ENGINE_CODE =
     '      /^[\\p{Cf}\\p{Z}]*[=+\\-@\\t\\r]/u.test(str) &&\n' +
     '      return `"${str.replace(/"/g, \'""\')}"`;\n';
@@ -201,7 +212,7 @@ describe('prose mentions', () => {
     const { violations, staleMentions } = repoWith({
       [MENTION.file]: `const TRIGGERS = ['=', '+'];\n${MENTION.text}\n`,
       [ENGINE_MENTION.file]: `    ${ENGINE_MENTION.text}\n${ENGINE_CODE}`,
-    });
+    }, MENTIONS);
     assert.deepEqual(violations, []);
     assert.deepEqual(staleMentions, []);
   });
@@ -211,7 +222,7 @@ describe('prose mentions', () => {
       'packages/export/src/other.ts': `${MENTION.text}\n`,
       [MENTION.file]: `${MENTION.text}\n`,
       [ENGINE_MENTION.file]: `${ENGINE_MENTION.text}\n${ENGINE_CODE}`,
-    });
+    }, MENTIONS);
     assert.equal(violations.length, 1);
     assert.equal(violations[0].file, 'packages/export/src/other.ts');
   });
@@ -222,7 +233,7 @@ describe('prose mentions', () => {
     const { violations } = repoWith({
       [MENTION.file]: `${MENTION.text}\n${copy}\n`,
       [ENGINE_MENTION.file]: `${ENGINE_MENTION.text}\n${ENGINE_CODE}`,
-    });
+    }, MENTIONS);
     assert.equal(violations.length, 1, 'the escaper next to the registered comment must still red');
     assert.equal(violations[0].file, MENTION.file);
   });
@@ -233,7 +244,7 @@ describe('prose mentions', () => {
     const { violations } = repoWith({
       [MENTION.file]: `${MENTION.text}\n${line}\n`,
       [ENGINE_MENTION.file]: `${ENGINE_MENTION.text}\n${ENGINE_CODE}`,
-    });
+    }, MENTIONS);
     assert.equal(violations.length, 1);
   });
 
@@ -242,7 +253,7 @@ describe('prose mentions', () => {
       'packages/export/src/newdoc.ts': '// never hand-roll the anchored `/^[=+\\-@\\t\\r]/` guard\n',
       [MENTION.file]: `${MENTION.text}\n`,
       [ENGINE_MENTION.file]: `${ENGINE_MENTION.text}\n${ENGINE_CODE}`,
-    });
+    }, MENTIONS);
     assert.equal(violations.length, 1, 'a new prose mention must be registered, not silently excused');
   });
 
@@ -250,7 +261,7 @@ describe('prose mentions', () => {
     const { staleMentions } = repoWith({
       [MENTION.file]: 'const nothing = 1;\n',
       [ENGINE_MENTION.file]: `${ENGINE_MENTION.text}\n${ENGINE_CODE}`,
-    });
+    }, MENTIONS);
     assert.deepEqual(staleMentions, [MENTION]);
   });
 
@@ -260,7 +271,7 @@ describe('prose mentions', () => {
     const { staleKnown, staleMentions } = repoWith({
       [MENTION.file]: `${MENTION.text}\n`,
       [ENGINE_MENTION.file]: `${ENGINE_MENTION.text}\nexport const done = escapeCsvCell;\n`,
-    });
+    }, MENTIONS);
     assert.deepEqual(staleKnown, KNOWN_REMAINING, 'comment-only liveness must not keep the debt entry alive');
     assert.deepEqual(staleMentions, []);
   });

@@ -34,6 +34,8 @@
     "check:test-glob-coverage": "node scripts/check-test-glob-coverage.mjs",
     "check:source-text-assertions": "node scripts/check-source-text-assertions.mjs",
     "check:refwalk-guards": "node scripts/check-refwalk-guards.mjs",
+    "check:module-size": "node scripts/check-module-size.mjs",
+    "lint:module-size-baseline": "node scripts/check-module-size.mjs --update",
     "check:unbounded-frame-wait": "node scripts/check-unbounded-frame-wait.mjs",
     "check:wasm-disposal": "node scripts/check-wasm-disposal.mjs",
     "check:collab-placement-sweep": "node scripts/check-collab-placement-sweep.mjs",

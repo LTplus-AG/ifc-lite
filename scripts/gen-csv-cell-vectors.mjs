@@ -60,8 +60,14 @@ const cases = [
   { name: 'semicolon delimiter forces quoting', input: 'a;b', expected: '"a;b"', delimiter: ';' },
 
   { name: 'equals is a formula trigger', input: '=1+1', expected: "'=1+1" },
-  { name: 'plus is a formula trigger', input: '+1', expected: "'+1" },
-  { name: 'minus is a formula trigger', input: '-0.35', expected: "'-0.35" },
+  {
+      name: 'plus is a formula trigger when the exemption is opted out of',
+      input: '+1', expected: "'+1", exemptNumbers: false,
+    },
+  {
+      name: 'minus is a formula trigger when the exemption is opted out of',
+      input: '-0.35', expected: "'-0.35", exemptNumbers: false,
+    },
   { name: 'at is a formula trigger', input: '@SUM(A1)', expected: "'@SUM(A1)" },
   { name: 'leading TAB is a formula trigger', input: '\tcmd', expected: "'\tcmd" },
   {
@@ -110,9 +116,9 @@ const cases = [
   { name: 'a cell of nothing but invisibles is left alone', input: `${BOM}${NBSP}`, expected: `${BOM}${NBSP}` },
 
   {
-    name: 'numeric exemption off (default): a negative measure is guarded',
-    input: '-0.35', expected: "'-0.35",
-  },
+      name: 'numeric exemption opted out: a negative measure is guarded',
+      input: '-0.35', expected: "'-0.35", exemptNumbers: false,
+    },
   {
     name: 'numeric exemption on: a negative measure stays summable',
     input: '-0.35', expected: '-0.35', exemptNumbers: true,
@@ -181,8 +187,67 @@ const cases = [
     name: 'padded quoting on: a guarded cell with trailing padding is still wrapped',
     input: ' =cmd ', expected: '"\' =cmd "', quoteWhitespacePadded: true,
   },
-];
+    // The numeric language's boundaries. Each accepted case is a shape a naive
+    // rewrite of the scan drops; each rejected case is a way it could wrongly
+    // accept. `-1,000` and `-3.000` are what a DISPLAY formatter emits for
+    // -1000 and -3000 under en-US and de-DE, which is why they are here.
+    {
+      name: 'numeric exemption on: a bare decimal point with no integer part',
+      input: '-.5', expected: '-.5', exemptNumbers: true,
+    },
+    {
+      name: 'numeric exemption on: a trailing decimal point with no fraction',
+      input: '-1.', expected: '-1.', exemptNumbers: true,
+    },
+    { name: 'numeric exemption on: an uppercase exponent', input: '-1E5', expected: '-1E5', exemptNumbers: true },
+    {
+      name: 'numeric exemption on: a dot-grouped integer, which de-DE displayCell emits for -3000',
+      input: '-3.000', expected: '-3.000', exemptNumbers: true,
+    },
+    {
+      name: 'numeric exemption on: a sign and a lone decimal point carry no digit',
+      input: '-.', expected: "'-.", exemptNumbers: true,
+    },
+    {
+      name: 'numeric exemption on: an exponent marker with no exponent digits',
+      input: '-1e', expected: "'-1e", exemptNumbers: true,
+    },
+    {
+      name: 'numeric exemption on: an exponent sign with no exponent digits',
+      input: '-1e+', expected: "'-1e+", exemptNumbers: true,
+    },
+    {
+      name: 'numeric exemption on: a comma-grouped integer, which en-US displayCell emits for -1000',
+      input: '-1,000', expected: `"'-1,000"`, exemptNumbers: true,
+    },
+    {
+      name: 'numeric exemption on: a trailing newline is past the end of the number',
+      input: '-1\n', expected: `"'-1\n"`, exemptNumbers: true,
+    },
+    {
+      name: 'numeric exemption on: full-width digits are not ASCII digits',
+      input: '-\uFF11', expected: "'-\uFF11", exemptNumbers: true,
+    },
+    {
+      name: 'numeric exemption on: Arabic-Indic digits are not ASCII digits',
+      input: '-\u0661', expected: "'-\u0661", exemptNumbers: true,
+    },
+    {
+      name: 'numeric exemption on: a space-grouped integer is not one number',
+      input: '-1 000', expected: "'-1 000", exemptNumbers: true,
+    },
 
+    // Vectors that set NO options at all, so they pin the two languages'
+    // DEFAULTS against each other. Without these, both harnesses spell every
+    // option out and a default drifting on one side is invisible.
+    { name: 'DEFAULT OPTIONS: a negative measure is exempt', input: '-0.35', expected: '-0.35' },
+    { name: 'DEFAULT OPTIONS: a signed integer is exempt', input: '+1', expected: '+1' },
+    { name: 'DEFAULT OPTIONS: a real formula trigger is still guarded', input: '=1+1', expected: "'=1+1" },
+    {
+      name: 'DEFAULT OPTIONS: a number with a payload glued on is still guarded',
+      input: '-0.35=cmd', expected: "'-0.35=cmd",
+    },
+];
 const doc = {
   '//': [
     'Shared cross-language CSV-cell vectors. The TypeScript escaper',
@@ -190,7 +255,7 @@ const doc = {
     'escaper (rust/export/src/csv_cell.rs, via tests/csv_cell_parity.rs) are BOTH',
     'pinned to this file, so the two cannot drift unnoticed.',
     'Regenerate the ranges with scripts/gen-csv-cell-vectors.mjs; author cases by hand.',
-    'Case defaults when omitted: delimiter ",", exemptNumbers false, quoteWhitespacePadded false.',
+    'A case that omits an option gets the LIBRARY default for it, not a value spelled out by the harness -- that is what the DEFAULT OPTIONS cases pin.',
   ].join(' '),
   invisiblePrefixNote: [
     'Code points a spreadsheet importer swallows or renders as spacing, yet which do',

@@ -517,13 +517,14 @@ describe('divergence between auditIDSDocument and ids.xsd', () => {
     expect((await auditIDSDocument(control)).issues).toEqual([]);
   });
 
-  it('every divergent document is genuinely rejected by the schema', async () => {
-    for (const [what, xml] of CASES) {
-      expect(
-        (await schemaErrors(xml)).length,
-        `${what} should violate ids.xsd`
-      ).toBeGreaterThan(0);
-    }
+  // One `it` per case rather than one loop over all of them. Two reasons, and
+  // the second is why this changed: a failure now names the document instead of
+  // reporting only that the sweep ran out of time, and each case gets its own
+  // budget. As a single `it` this did N xmllint-wasm parse-and-validate passes
+  // against vitest's default 5000 ms, which is fine unloaded and timed out
+  // twice on CI (#3110), blocking PRs that touch nothing in this package.
+  it.each(CASES)('%s is genuinely rejected by the schema', async (what, xml) => {
+    expect((await schemaErrors(xml)).length, `${what} should violate ids.xsd`).toBeGreaterThan(0);
   });
 
   it('the set the audit still misses is exactly the known list', async () => {
@@ -535,5 +536,14 @@ describe('divergence between auditIDSDocument and ids.xsd', () => {
     // Shrinking this list is the point. If a fix lands, this goes red and the
     // corresponding entry must be deleted from KNOWN_AUDIT_GAPS.
     expect(missed.sort()).toEqual([...KNOWN_AUDIT_GAPS]);
+    // Left whole, and left on the default budget. It never touches xmllint --
+    // `auditIDSDocument` is the pure-TS reimplementation -- so all six cases
+    // together measure ~3 ms. #3110 described this as a second xmllint loop;
+    // that was wrong, and only the loop above ever flaked.
+    //
+    // It COULD be split (per-case `issues.length === 0` matched against
+    // KNOWN_AUDIT_GAPS, plus a check that every gap entry is a real case name),
+    // but there is nothing to buy: the exact-set assertion is the point, and
+    // a 3 ms test does not need its own budget.
   });
 });

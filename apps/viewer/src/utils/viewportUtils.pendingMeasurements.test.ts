@@ -32,6 +32,8 @@ function base(): PendingMeasurementState {
     polylineMeasurements: { length: 0 },
     activeAngle: null,
     angleMeasurements: { length: 0 },
+    activeRadius: null,
+    radiusMeasurements: { length: 0 },
   };
 }
 

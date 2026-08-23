@@ -15,8 +15,21 @@
 //! `R·t == t` when `R` is the identity, and `R·0 == 0` for any `R`.
 //!
 //! Verified by mutation: rotating the translation column in
-//! `build_axis2_matrix` leaves all four of those unit tests green (and 718 of
-//! the crate's 719 other lib tests), while the test below fails.
+//! `build_axis2_matrix` leaves all four of those unit tests green, while the
+//! test below fails.
+//!
+//! The crate is NOT completely blind to that mutation, and it is worth naming
+//! the one test that does catch it rather than hiding it behind a count.
+//! `processors::tests::test_polygonal_bounded_half_space_respects_boundary`
+//! fails too: its placement is Location `(0,0,5)` with Axis `(0,1,0)`, so
+//! `R * location` is `(0,5,0)` and the clip plane moves off the top face.
+//!
+//! It is not a substitute for this test. It reaches `build_axis2_matrix`
+//! through `processors/helpers.rs`'s own attribute-extraction fork, one of
+//! five sharing that matrix builder, and asserts a downstream boolean-clipping
+//! outcome -- so it fails with "the clipped strip should be removed", which
+//! points at a boolean, not at a placement. This test pins `transform.rs`'s
+//! own fork and reads the translation column directly.
 //!
 //! This lives in `tests/` rather than beside them because `transform.rs` is at
 //! its module-size ratchet budget.

@@ -1066,7 +1066,7 @@ describe('listResultToCSV', () => {
 
     const result = executeList(def, provider);
     const csv = listResultToCSV(result);
-    const lines = csv.split('\n');
+    const lines = csv.split('\r\n');
 
     expect(lines[0]).toBe('Name,Fire Rating');
     expect(lines.length).toBe(3); // header + 2 rows
@@ -1132,7 +1132,7 @@ describe('listResultToCSV', () => {
       executionTime: 0,
     });
 
-    const dataLine = csv.split('\n')[1];
+    const dataLine = csv.split('\r\n')[1];
     expect(dataLine).toBe(escaped);
   });
 });

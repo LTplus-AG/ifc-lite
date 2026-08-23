@@ -13,6 +13,7 @@ import { useViewerStore } from '@/store';
 import { fromGlobalIdFromModels, toGlobalIdFromModels } from '@/store/globalId';
 import { pointInPolygon } from '@/lib/polygon-clip';
 import { toast } from '@/components/ui/toast';
+import { notifyWallSplit } from './wallSplitNotice.js';
 import { raycastForPolylinePoint, isNearPolylineStart,
   isDuplicateClickPoint,
 } from './measureHandlers.js';
@@ -158,21 +159,13 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
       if (wallTry.ok) {
         state.clearSplitHover();
         state.setSelectedEntityId(wallTry.right.globalId);
-        // Mention opening reassignment in the toast only when it
-        // happened — silence is preferable to "0 openings moved"
-        // for a wall with no doors / windows.
-        toast.success(`Wall split${formatOpeningReassignSuffix(wallTry.openings)} — Ctrl+Z to undo`);
-        // `openings.skipped` (wall-opening-reassign.ts) counts doors/windows
-        // whose placement we couldn't interpret — they stay attached to the
-        // now-tombstoned source wall rather than either half, so they can
-        // end up orphaned. Computed by `reassignWallOpenings` on every
-        // split; previously only `toLeft`/`toRight` ever reached this
-        // toast, so a skip was silent.
-        if (wallTry.openings.skipped > 0) {
-          toast.info(
-            `${wallTry.openings.skipped} opening${wallTry.openings.skipped === 1 ? '' : 's'} could not be reassigned and may need manual repositioning`,
-          );
-        }
+        // Both wall-split commit paths — here and the Split tool's
+        // numeric-distance panel — announce the split through the same
+        // emitter (`wallSplitNotice.ts`), so a notice added to one cannot
+        // go missing from the other. That is exactly how `openings.skipped`
+        // stayed silent on the typed-distance path after #3023 taught this
+        // one to report it.
+        notifyWallSplit(wallTry.openings);
         return;
       }
       const linearTry = state.splitLinearElementAtDistance(
@@ -956,17 +949,6 @@ async function handleAddElementDrop(
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-/**
- * The "(N openings reassigned)" suffix for the wall-split success toast.
- * Pure so the wording is unit-testable without driving the full split flow
- * through the store. Deliberately silent when nothing moved — see the
- * call site's comment.
- */
-export function formatOpeningReassignSuffix(op: { toLeft: number; toRight: number; skipped: number }): string {
-  const moved = op.toLeft + op.toRight;
-  return moved > 0 ? ` (${moved} opening${moved === 1 ? '' : 's'} reassigned)` : '';
 }
 
 /** Signed 2D polygon area via the shoelace formula. */

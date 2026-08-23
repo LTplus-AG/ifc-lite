@@ -33,6 +33,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
+import { notifyWallSplit } from '../wallSplitNotice.js';
 
 const ACCENT = '#a855f7'; // purple-500
 const PANEL_OFFSET_PX = 32;
@@ -88,12 +89,11 @@ export function SplitNumericInput() {
     if (wallTry.ok) {
       clearSplitHover();
       setSelectedEntityId(wallTry.right.globalId);
-      const op = wallTry.openings;
-      const opSummary =
-        op.toLeft + op.toRight > 0
-          ? ` (${op.toLeft + op.toRight} opening${op.toLeft + op.toRight === 1 ? '' : 's'} reassigned)`
-          : '';
-      toast.success(`Wall split${opSummary} — Ctrl+Z to undo`);
+      // Same notices as the canvas click path — a split committed by typing
+      // a distance is the same edit on the same `splitWallAtDistance` result,
+      // including the warning when openings could not be reassigned
+      // (`openings.skipped`), which this path dropped until #3074.
+      notifyWallSplit(wallTry.openings);
       return;
     }
     const linearTry = splitLinearElementAtDistance(splitTargetModelId, splitTargetExpressId, distance);

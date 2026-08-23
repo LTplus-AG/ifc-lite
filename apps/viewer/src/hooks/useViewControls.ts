@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Drawing2D, DrawingSheet } from '@ifc-lite/drawing-2d';
 import { sheetGeometryKeyOf, type CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key';
+import { axisFlipForSection } from '@/hooks/pdfSectionLayout';
 
 interface UseViewControlsParams {
   drawing: Drawing2D | null;
@@ -135,9 +136,7 @@ function useViewControls({
     // - 'down' (plan view): no Y flip
     // - 'front'/'side': Y flip
     // - 'side': X flip
-    const currentAxis = sectionPlane.axis;
-    const flipY = currentAxis !== 'down';
-    const flipX = currentAxis === 'side';
+    const { flipX, flipY } = axisFlipForSection(sectionPlane.axis);
 
     const centerX = (bounds.min.x + bounds.max.x) / 2;
     const centerY = (bounds.min.y + bounds.max.y) / 2;

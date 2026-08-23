@@ -166,7 +166,7 @@
    413 apps/viewer/vite.config.ts
    792 packages/bcf/src/ids-reporter.ts
    495 packages/bcf/src/overlay-renderer.ts
-  1190 packages/bcf/src/reader.ts
+  1257 packages/bcf/src/reader.ts
    573 packages/bcf/src/viewpoint.ts
    981 packages/bcf/src/writer.ts
    605 packages/cache/src/glb.ts
@@ -253,7 +253,7 @@
    468 packages/ifcx/src/federated-composition.ts
    412 packages/ifcx/src/geometry-extractor.ts
    706 packages/ifcx/src/index.ts
-   404 packages/ifcx/src/writer.ts
+   424 packages/ifcx/src/writer.ts
    464 packages/lens/src/engine.ts
    426 packages/lens/src/matching.ts
    417 packages/lens/src/types.ts
@@ -277,7 +277,7 @@
   1237 packages/parser/src/columnar-parser.ts
    480 packages/parser/src/compact-entity-index.ts
    530 packages/parser/src/data-store-transport.ts
-   584 packages/parser/src/georef-extractor.ts
+   653 packages/parser/src/georef-extractor.ts
    827 packages/parser/src/material-resolver.ts
   1168 packages/parser/src/on-demand-extractors.ts
    523 packages/parser/src/project-units.ts

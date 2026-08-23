@@ -199,34 +199,45 @@ pub fn export_step(content: &[u8], opts: &StepOptions) -> String {
     export_step_with_stats(content, opts).0
 }
 
+/// Like [`export_step`] but also returns coverage stats.
+pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, StepStats) {
+    // One allocation instead of the ~30 a doubling `Vec` does on a gigabyte.
+    let mut buf = Vec::with_capacity(content.len());
+    let stats = export_step_to_writer(content, opts, &mut buf).expect("a Vec accepts every write");
+    // Every byte came from the source by way of `from_utf8_lossy`, or from a
+    // `format!`, so this validates rather than converts.
+    let out = String::from_utf8(buf).expect("the writer emits UTF-8");
+    (out, stats)
+}
+
 /// [`export_step_with_stats`], writing as it goes instead of returning the file.
+/// The two cannot drift: that one is this one writing into a `Vec`.
 ///
-/// The difference is the output. This never holds it: each record goes to `w` as
-/// it is read, so a 1 GB model costs the entity index and one record rather than
-/// the index plus a gigabyte of `String` that doubled its way there. What stays
-/// resident is proportional to record count, not to file size.
+/// The gigabyte of `String` that doubled its way there is gone. What replaces
+/// it is not free, and "proportional to record count" hides how large the
+/// constant is: the entity index measures ~84 bytes a record, so 370 MB on a
+/// 4.4 M-record file and ~1.1 GB on a 16.8 M-record one, before a byte is
+/// written. On a very large model the index outweighs the output it stopped
+/// holding. It is not removable -- source order and the reference closure both
+/// need it.
 ///
-/// [`export_step_with_stats`] is this function writing into a `Vec`, so the two
-/// cannot drift.
+/// `out` is buffered here, so a bare `File` is fine. A record costs two `write`
+/// calls, which unbuffered is two syscalls: measured 15.0 s against 4.3 s on
+/// 4.4 M records. A caller who already buffers pays one memcpy through 1 MiB.
+// The grouped-property-mutation Vec type is explicit by design; aliasing it
+// would hide the (entity, pset) -> [(key, value)] grouping structure.
+#[allow(clippy::type_complexity)]
 pub fn export_step_to_writer<W: std::io::Write>(
     content: &[u8],
     opts: &StepOptions,
     w: &mut W,
 ) -> std::io::Result<StepStats> {
-    emit(content, opts, w)
-}
-
-/// Like [`export_step`] but also returns coverage stats.
-// The grouped-property-mutation Vec type is explicit by design; aliasing it
-// would hide the (entity, pset) -> [(key, value)] grouping structure.
-#[allow(clippy::type_complexity)]
-pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, StepStats) {
-    let mut buf = Vec::new();
-    let stats = emit(content, opts, &mut buf).expect("a Vec accepts every write");
-    // Every byte came from the source by way of `from_utf8_lossy`, or from a
-    // `format!`, so this validates rather than converts.
-    let out = String::from_utf8(buf).expect("the writer emits UTF-8");
-    (out, stats)
+    use std::io::Write as _;
+    let mut buffered = std::io::BufWriter::with_capacity(1 << 20, w);
+    let stats = emit(content, opts, &mut buffered)?;
+    // Flushed here: a `BufWriter` dropped unflushed truncates and reports ok.
+    buffered.flush()?;
+    Ok(stats)
 }
 
 #[allow(clippy::type_complexity)]

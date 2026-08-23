@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Is the geometry in the same place after a change to how it is packed?
 //!
 //! Walks a GLB's node tree, composes each node's placement, and reduces every
@@ -203,7 +204,13 @@ fn totals(path: &str) -> Totals {
             .collect()
     };
 
-    let mut cache: HashMap<usize, (Vec<[f32; 3]>, Vec<u32>)> = HashMap::new();
+    // Keyed on both accessors, because the entry holds both. Two primitives
+    // can share a POSITION accessor and index it differently, and keying on the
+    // positions alone would hand the second one the first one's triangles --
+    // silently, in the tool whose job is to prove two paths agree.
+    /// One primitive's positions and triangle indices, read once.
+    type Geom = (Vec<[f32; 3]>, Vec<u32>);
+    let mut cache: HashMap<(usize, usize), Geom> = HashMap::new();
     let mut t = Totals {
         triangles: 0,
         min: [f64::INFINITY; 3],
@@ -233,7 +240,7 @@ fn totals(path: &str) -> Totals {
             let pacc = prim["attributes"]["POSITION"].as_u64().unwrap() as usize;
             let iacc = prim["indices"].as_u64().unwrap() as usize;
             let entry = cache
-                .entry(pacc)
+                .entry((pacc, iacc))
                 .or_insert_with(|| (read_f32x3(pacc), read_idx(iacc)));
             let (pos, idx) = (&entry.0, &entry.1);
             for tri in idx.chunks_exact(3) {

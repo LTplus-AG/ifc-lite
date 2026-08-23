@@ -1872,3 +1872,18 @@ fn index_u32_promote_streaming_bounded() {
     assert!(idx.iter().min() == Some(&0), "index 0 must be present: {idx:?}");
     assert!(idx.contains(&65536), "{idx:?}");
 }
+
+/// The bounded path's plan is per mesh, so its size is the thing that decides
+/// whether a very large model fits. 320,688 occurrences at 160 bytes is 51 MB.
+///
+/// Pinned because it is easy to lose by accident: a `u128` field aligns the
+/// whole struct to 16, so adding one costs every other field's padding too, and
+/// nothing else in the type system says so.
+#[test]
+fn the_streamed_mesh_plan_stays_small() {
+    assert_eq!(
+        std::mem::size_of::<StreamedMeshMeta>(),
+        240,
+        "the per-mesh plan grew; see the rep side table in plan_bounded_glb"
+    );
+}

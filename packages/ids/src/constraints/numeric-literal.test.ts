@@ -222,8 +222,9 @@ describe('deciding it is linear, not backtracking (#3113)', () => {
       small = batch(SMALL, reps);
     }
     // Not a speed bound: this asserts CALIBRATION succeeded. Failing here
-    // means 200k calls still take under 2ms, which is its own thing worth
-    // knowing.
+    // means 200k calls still take under MEASURABLE_MS, which is its own thing
+    // worth knowing. Named rather than restated so raising the floor cannot
+    // leave a stale number here — it already did once.
     expect(small).toBeGreaterThanOrEqual(MEASURABLE_MS);
 
     // Minimise each SIDE independently, then divide once — not the minimum of

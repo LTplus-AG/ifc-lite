@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { isWhollyNumeric } from '@ifc-lite/encoding';
+
 /**
  * THE CSV cell escaper for this repository's TypeScript.
  *
@@ -48,29 +50,30 @@ export const INVISIBLE_PREFIX_RE = /[\p{Cf}\p{Z}]/u;
  */
 const TRIGGER_RE = /^[\p{Cf}\p{Z}]*[=+\-@\t\r]/u;
 
-/**
- * A cell that is WHOLLY a signed decimal number, optionally in exponent form.
- * Anchored at both ends on purpose: `-0.35=cmd` is not a number and must stay
- * guarded. Applied only when the caller opts in (see `exemptNumbers`).
- */
-const WHOLLY_NUMERIC_RE = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/;
-
 export interface CsvCellOptions {
   /** Column delimiter the cell will be joined with. Default `,`. */
   delimiter?: string;
   /**
    * Exempt a cell that is wholly a signed number (`-0.35`, `+1`, `-1.5e-3`)
    * from the `+`/`-` formula trigger, so spreadsheet `SUM()` still works on
-   * exported measures (#1772).
+   * exported measures (#1772). **Default `true`.**
    *
-   * This is a PRODUCT policy, not a security one, and the repo currently
-   * disagrees with itself about it: `@ifc-lite/lists` exempts numbers while
-   * the viewer's Lists export guards them, and both behaviours are
-   * deliberately tested (see the note at
-   * `apps/viewer/src/lib/lists/export/model.ts`). Resolving that split is a
-   * maintainer call; carrying it as an option means the disagreement no longer
-   * requires two implementations of the guard. Default `false`, matching every
-   * current caller of this module.
+   * A PRODUCT policy, not a security one. The exemption cannot weaken the
+   * guard: the accepted language is built from `+ - . e E 0-9` and nothing
+   * else, which cannot spell a function name, a cell reference or a `(`, so
+   * every string it exempts is inert in a spreadsheet. `=`, `@`, TAB and CR are
+   * never exempted, and a number with anything glued to it (`-0.35=cmd`) is not
+   * wholly numeric and stays guarded.
+   *
+   * The default used to be `false`, which made the repo disagree with itself:
+   * `@ifc-lite/lists` exempted numbers, every other writer guarded them, and
+   * both behaviours were deliberately tested. Exempting is now the default so
+   * the policy lives in ONE place instead of at eleven call sites, where it
+   * would drift. Pass `false` to opt a writer out.
+   *
+   * This flag does NOT make a numeric column sum on its own; a cell that
+   * arrives already display-formatted is not wholly numeric and no setting here
+   * changes that. `apps/viewer/src/lib/lists/export/csv.ts` explains why.
    */
   exemptNumbers?: boolean;
   /**
@@ -108,8 +111,9 @@ export function guardSpreadsheetFormula(
   value: string,
   options: Pick<CsvCellOptions, 'exemptNumbers'> = {},
 ): string {
+  const { exemptNumbers = true } = options;
   if (!TRIGGER_RE.test(value)) return value;
-  if (options.exemptNumbers === true && WHOLLY_NUMERIC_RE.test(value)) return value;
+  if (exemptNumbers && isWhollyNumeric(value)) return value;
   return `'${value}`;
 }
 

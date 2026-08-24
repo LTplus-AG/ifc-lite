@@ -7,6 +7,7 @@
  * Pure functions extracted from Viewport.tsx for reusability and testability
  */
 
+import { NORMAL_COORD_THRESHOLD_M } from '@ifc-lite/geometry';
 import type { MeshData } from '@ifc-lite/geometry';
 import {
   REPROJECTED_MEASUREMENT_FIELDS,
@@ -75,11 +76,12 @@ export interface ViewportStateRefs {
 // ============================================================================
 
 /**
- * Maximum coordinate threshold for valid geometry
- * Matches CoordinateHandler's NORMAL_COORD_THRESHOLD (10km)
- * Coordinates beyond this are likely corrupted or unshifted original coordinates
+ * Maximum coordinate threshold for valid geometry (10km).
+ * Coordinates beyond this are likely corrupted or unshifted original coordinates.
+ * Shared with `CoordinateHandler` and `localParsingUtils` — see
+ * `NORMAL_COORD_THRESHOLD_M`.
  */
-const MAX_VALID_COORD = 10000;
+const MAX_VALID_COORD = NORMAL_COORD_THRESHOLD_M;
 
 /**
  * Check if a vertex coordinate is valid (finite and within reasonable bounds)

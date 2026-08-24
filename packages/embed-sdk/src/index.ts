@@ -254,7 +254,11 @@ export class IFCLiteEmbed {
     return this.request('FIT_TO_VIEW', { ids }) as Promise<void>;
   }
 
-  /** Set camera orientation */
+  /**
+   * Set the camera's absolute orientation, in degrees, around whatever it is
+   * currently looking at. `zoom` is reserved and ignored by the viewer — see
+   * `InboundPayloads['SET_CAMERA']`.
+   */
   setCamera(azimuth: number, elevation: number, zoom?: number): Promise<void> {
     return this.request('SET_CAMERA', { azimuth, elevation, zoom }) as Promise<void>;
   }

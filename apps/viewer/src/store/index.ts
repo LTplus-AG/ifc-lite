@@ -334,6 +334,10 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
       error: null,
       pendingColorUpdates: null,
       pendingMeshColorUpdates: null,
+      // The backup those two restore FROM. Ids collide across models, so
+      // surviving a swap made RESET_COLORS paint the old model's colours onto
+      // the new one; first-write-wins made every later reset wrong too.
+      meshColorBackup: null,
       // Drop any undrained GPU-instancing shards from the previous model so they
       // can't be uploaded into the new scene under a rapid model switch.
       pendingInstancedShards: null,

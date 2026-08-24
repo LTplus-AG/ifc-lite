@@ -1,5 +1,5 @@
 {
-  "//": "Shared cross-language CSV-cell vectors. The TypeScript escaper (packages/export/src/csv-cell.ts, via csv-cell.parity.test.ts) and the Rust escaper (rust/export/src/csv_cell.rs, via tests/csv_cell_parity.rs) are BOTH pinned to this file, so the two cannot drift unnoticed. Regenerate the ranges with scripts/gen-csv-cell-vectors.mjs; author cases by hand. Case defaults when omitted: delimiter \",\", exemptNumbers false, quoteWhitespacePadded false.",
+  "//": "Shared cross-language CSV-cell vectors. The TypeScript escaper (packages/export/src/csv-cell.ts, via csv-cell.parity.test.ts) and the Rust escaper (rust/export/src/csv_cell.rs, via tests/csv_cell_parity.rs) are BOTH pinned to this file, so the two cannot drift unnoticed. Regenerate the ranges with scripts/gen-csv-cell-vectors.mjs; author cases by hand. A case that omits an option gets the LIBRARY default for it, not a value spelled out by the harness -- that is what the DEFAULT OPTIONS cases pin.",
   "invisiblePrefixNote": "Code points a spreadsheet importer swallows or renders as spacing, yet which do NOT stop a following =/+/-/@ from being evaluated as a formula. Exactly Unicode general categories Cf + Z (Zs, Zl, Zp). TypeScript spells this /[\\p{Cf}\\p{Z}]/u; Rust spells it as a const range table. Both suites sweep every code point 0..=0x10FFFF against the ranges below, so an engine/table mismatch fails loudly instead of silently re-opening the bypass.",
   "invisiblePrefixRanges": [
     [
@@ -195,14 +195,16 @@
       "expected": "'=1+1"
     },
     {
-      "name": "plus is a formula trigger",
+      "name": "plus is a formula trigger when the exemption is opted out of",
       "input": "+1",
-      "expected": "'+1"
+      "expected": "'+1",
+      "exemptNumbers": false
     },
     {
-      "name": "minus is a formula trigger",
+      "name": "minus is a formula trigger when the exemption is opted out of",
       "input": "-0.35",
-      "expected": "'-0.35"
+      "expected": "'-0.35",
+      "exemptNumbers": false
     },
     {
       "name": "at is a formula trigger",
@@ -285,9 +287,10 @@
       "expected": "﻿ "
     },
     {
-      "name": "numeric exemption off (default): a negative measure is guarded",
+      "name": "numeric exemption opted out: a negative measure is guarded",
       "input": "-0.35",
-      "expected": "'-0.35"
+      "expected": "'-0.35",
+      "exemptNumbers": false
     },
     {
       "name": "numeric exemption on: a negative measure stays summable",
@@ -383,6 +386,98 @@
       "input": " =cmd ",
       "expected": "\"' =cmd \"",
       "quoteWhitespacePadded": true
+    },
+    {
+      "name": "numeric exemption on: a bare decimal point with no integer part",
+      "input": "-.5",
+      "expected": "-.5",
+      "exemptNumbers": true
+    },
+    {
+      "name": "numeric exemption on: a trailing decimal point with no fraction",
+      "input": "-1.",
+      "expected": "-1.",
+      "exemptNumbers": true
+    },
+    {
+      "name": "numeric exemption on: an uppercase exponent",
+      "input": "-1E5",
+      "expected": "-1E5",
+      "exemptNumbers": true
+    },
+    {
+      "name": "numeric exemption on: a dot-grouped integer, which de-DE displayCell emits for -3000",
+      "input": "-3.000",
+      "expected": "-3.000",
+      "exemptNumbers": true
+    },
+    {
+      "name": "numeric exemption on: a sign and a lone decimal point carry no digit",
+      "input": "-.",
+      "expected": "'-.",
+      "exemptNumbers": true
+    },
+    {
+      "name": "numeric exemption on: an exponent marker with no exponent digits",
+      "input": "-1e",
+      "expected": "'-1e",
+      "exemptNumbers": true
+    },
+    {
+      "name": "numeric exemption on: an exponent sign with no exponent digits",
+      "input": "-1e+",
+      "expected": "'-1e+",
+      "exemptNumbers": true
+    },
+    {
+      "name": "numeric exemption on: a comma-grouped integer, which en-US displayCell emits for -1000",
+      "input": "-1,000",
+      "expected": "\"'-1,000\"",
+      "exemptNumbers": true
+    },
+    {
+      "name": "numeric exemption on: a trailing newline is past the end of the number",
+      "input": "-1\n",
+      "expected": "\"'-1\n\"",
+      "exemptNumbers": true
+    },
+    {
+      "name": "numeric exemption on: full-width digits are not ASCII digits",
+      "input": "-１",
+      "expected": "'-１",
+      "exemptNumbers": true
+    },
+    {
+      "name": "numeric exemption on: Arabic-Indic digits are not ASCII digits",
+      "input": "-١",
+      "expected": "'-١",
+      "exemptNumbers": true
+    },
+    {
+      "name": "numeric exemption on: a space-grouped integer is not one number",
+      "input": "-1 000",
+      "expected": "'-1 000",
+      "exemptNumbers": true
+    },
+    {
+      "name": "DEFAULT OPTIONS: a negative measure is exempt",
+      "input": "-0.35",
+      "expected": "-0.35"
+    },
+    {
+      "name": "DEFAULT OPTIONS: a signed integer is exempt",
+      "input": "+1",
+      "expected": "+1"
+    },
+    {
+      "name": "DEFAULT OPTIONS: a real formula trigger is still guarded",
+      "input": "=1+1",
+      "expected": "'=1+1"
+    },
+    {
+      "name": "DEFAULT OPTIONS: a number with a payload glued on is still guarded",
+      "input": "-0.35=cmd",
+      "expected": "'-0.35=cmd"
     }
   ]
 }

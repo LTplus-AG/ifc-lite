@@ -71,10 +71,19 @@ fn rust_csv_cell_matches_shared_vectors() {
         let name = case["name"].as_str().unwrap_or("<unnamed>");
         let input = case["input"].as_str().expect("input is a string");
         let expected = case["expected"].as_str().expect("expected is a string");
+        // An ABSENT field means "whatever the library defaults to", not a
+        // hard-coded value. Restating the defaults here made the harness blind
+        // to the one thing it exists to catch: the two languages' defaults
+        // drifting apart. Vectors that name no options pin both defaults.
+        let defaults = CsvCellOptions::default();
         let opts = CsvCellOptions {
-            delimiter: case["delimiter"].as_str().unwrap_or(","),
-            exempt_numbers: case["exemptNumbers"].as_bool().unwrap_or(false),
-            quote_whitespace_padded: case["quoteWhitespacePadded"].as_bool().unwrap_or(false),
+            delimiter: case["delimiter"].as_str().unwrap_or(defaults.delimiter),
+            exempt_numbers: case["exemptNumbers"]
+                .as_bool()
+                .unwrap_or(defaults.exempt_numbers),
+            quote_whitespace_padded: case["quoteWhitespacePadded"]
+                .as_bool()
+                .unwrap_or(defaults.quote_whitespace_padded),
         };
 
         let got = escape_csv_cell(input, &opts);
@@ -141,4 +150,24 @@ fn named_bypasses_are_all_covered() {
     // TAB is NOT in the class: it is itself a trigger, so skipping past it
     // would un-guard "\t=cmd" — the exact trap `\s` would have walked into.
     assert!(!is_invisible_prefix('\t'), "TAB must stay a trigger, not a skip");
+}
+
+/// The shared fixture's "DEFAULT OPTIONS" vectors pin the TypeScript default
+/// against `escape_csv_cell`'s default. They cannot see `csv.rs::escape`, which
+/// spells its options out so a NEW option cannot be inherited silently, and so
+/// does NOT follow the shared default automatically.
+///
+/// `csv::tests::escape_exempts_a_wholly_numeric_cell_and_guards_everything_else`
+/// pins what that writer does. This pins the value it is hard-coded to, so a
+/// coordinated flip of the product policy -- both language defaults to `false`,
+/// fixture updated -- fails here instead of leaving the Rust exporter exempting
+/// while every TypeScript writer guards.
+#[test]
+fn the_csv_exporters_hard_coded_option_still_matches_the_shared_default() {
+    assert!(
+        CsvCellOptions::default().exempt_numbers,
+        "rust/export/src/csv.rs hard-codes `exempt_numbers: true`; the shared \
+         default has moved away from it, so that exporter and every TypeScript \
+         writer no longer agree"
+    );
 }

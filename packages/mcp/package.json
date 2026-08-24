@@ -25,6 +25,10 @@
     "./browser": {
       "import": "./dist/browser.js",
       "types": "./dist/browser.d.ts"
+    },
+    "./cli-args": {
+      "import": "./dist/cli-args.js",
+      "types": "./dist/cli-args.d.ts"
     }
   },
   "scripts": {

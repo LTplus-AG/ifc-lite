@@ -606,6 +606,22 @@ jobs:
         run: node --test scripts/check-refwalk-guards.test.mjs scripts/lib/refwalk-classify.test.mjs
       - name: Check for unguarded entity-reference walks
         run: node scripts/check-refwalk-guards.mjs
+      # AGENTS.md has asked for TypeScript modules under ~400 lines since long
+      # before this gate existed, and self-policing left 312 files over the
+      # line. A convention with no gate ratchets the wrong way: the allowlist
+      # is the frozen debt, and anything NEW over 400 lines fails here. The
+      # allowlist is digest-pinned, so editing it to dodge the gate is itself
+      # a failure rather than a silent widening.
+      - name: Check TypeScript module size ratchet
+        run: node scripts/check-module-size.mjs
+      # Executable proof the ratchet cannot pass vacuously: a gate that
+      # measures nothing, or an allowlist whose digest is not actually
+      # enforced, would report the same clean line as a real pass.
+      # check-module-size.test.mjs covers the harness (tree walk, allowlist
+      # ratchet, digest pin); lib/module-size-ratchet.test.mjs covers the
+      # counting and digest logic underneath it.
+      - name: Check module-size ratchet gate regressions
+        run: node --test scripts/check-module-size.test.mjs scripts/lib/module-size-ratchet.test.mjs
       # A hidden tab never delivers an animation frame, so an unbounded
       # `await new Promise(r => requestAnimationFrame(r))` in the load pipeline
       # parks finalize / WASM release / setLoading(false) until the user comes
@@ -694,15 +710,34 @@ jobs:
       - name: Check CSV escaper gate regressions
         run: node --test scripts/check-csv-escaper-copies.test.mjs
 
-      # `audit-test-timeouts.mjs` reports which tests carry an explicit vitest
-      # timeout, across all three spellings this repo uses. An audit that
-      # misreports is worse than no audit -- it turns "nobody checked" into
-      # "someone checked and it was fine" -- and the first version of that
-      # script shipped with both failure modes: an options bag inside a test
-      # BODY marked the test protected, and an apostrophe in a comment made it
-      # scan to EOF and drop the call from every count. This pins both.
-      - name: Check test-timeout audit
-        run: node --test scripts/audit-test-timeouts.test.mjs
+      # `scripts/lib/vitest-timeout-audit.mjs` (#2948) replaced
+      # `audit-test-timeouts.mjs`, which was deleted in the same change rather
+      # than left beside it: two hand-written JS/TS lexers for one question is
+      # the defect the CSV-escaper gate above exists to prevent, and the older
+      # one was the less accurate of the two while being the one CI pinned.
+      # Both of the original script's failure modes are pinned by the suite
+      # below: an apostrophe in a comment scanning to EOF and dropping every
+      # later call, and an options bag inside a test BODY marking the test
+      # protected. The second was carried over deliberately -- every other
+      # `timeout:` fixture here sits in an ARGUMENT position, so deleting the
+      # old suite would have left the body position unpinned, and a classifier
+      # matching `timeout:` anywhere in a call passes every other case.
+      # It also resolves a timeout INHERITED from an enclosing
+      # `describe(name, { timeout }, fn)` and one set by a package's vitest
+      # config, both of which the grep-built at-risk table in #2948 itself
+      # scored as unprotected.
+      - name: Check vitest-timeout audit gate regressions
+        run: node --test scripts/lib/vitest-timeout-audit.test.mjs
+      # ...and run the audit itself over every vitest test file in the repo.
+      # It reports rather than gates on unprotected tests -- the right timeout
+      # for a slow test needs to know what the test does, which no scan can
+      # judge -- but it DOES exit non-zero on a call site its parser cannot
+      # read, and on a run that classified nothing. Those are the two ways this
+      # audit could go quietly blind against the real tree, so running it here
+      # is what keeps the numbers it prints meaningful. `--summary-only` drops
+      # the ~15k-line per-call listing; drop the flag locally to read it.
+      - name: Check vitest-timeout audit reads every test file
+        run: pnpm run check:vitest-timeout-audit
       # Guard the published API surface: the exported names of every
       # non-private packages/* package (read from the dist d.ts in the
       # build artifact downloaded above) must match the committed

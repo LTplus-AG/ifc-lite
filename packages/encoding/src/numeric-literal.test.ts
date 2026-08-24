@@ -88,6 +88,11 @@ describe('deciding it is linear, not backtracking', () => {
   const SMALL = 20_000;
   const LARGE = 80_000; // 4x SMALL: linear predicts ~4x, quadratic ~16x.
   const TRIALS = 2; // Best of two batches, so one GC pause cannot inflate a reading.
+  /** Ratio samples to take, keeping the smallest. Three is enough to drop a
+   *  single preempted batch without materially lengthening the test, since
+   *  each batch is calibrated to only a few milliseconds. */
+  const RATIO_SAMPLES = 3;
+
   /** A batch has to be clearly above clock noise to divide by. */
   const MEASURABLE_MS = 2;
 
@@ -149,7 +154,20 @@ describe('deciding it is linear, not backtracking', () => {
     // 200k calls still take under 2ms, which is its own thing worth knowing.
     expect(small).toBeGreaterThanOrEqual(MEASURABLE_MS);
 
-    const growth = batch(LARGE, reps) / small;
+    // Take the SMALLEST of several ratios rather than one sample. Every noise
+    // source here inflates a reading — a scheduler preemption lands in one
+    // batch and not the other — so the minimum is the closest estimate of the
+    // real ratio, and a single unlucky sample can no longer decide the result.
+    // CI produced a lone 9.30 against this bound on 2026-08-24 while `main`
+    // was green, which is the failure mode this removes.
+    //
+    // The bound itself is unchanged. Raising it to absorb the outlier would
+    // have widened the gap the test exists to detect; re-measuring instead
+    // keeps the same discrimination on a steadier number.
+    let growth = Infinity;
+    for (let sample = 0; sample < RATIO_SAMPLES; sample++) {
+      growth = Math.min(growth, batch(LARGE, reps) / batch(SMALL, reps));
+    }
     // Measured over twelve runs at this configuration: the linear scan grows
     // 3.4x to 4.6x, the quadratic regex 15.6x to 17.0x. 8 sits between them.
     expect(growth).toBeLessThan(8);

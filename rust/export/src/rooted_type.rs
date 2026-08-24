@@ -29,10 +29,11 @@
 //! direction, since assuming rootedness for a genuinely unknown/vendor type
 //! is the same corruption this check exists to prevent.
 
-// This module is a standalone, adoptable unit not yet wired into any
-// merged-export call site in this crate (see module docs) -- everything
-// here is exercised only by its own tests until a caller is added.
-#![allow(dead_code)]
+// Wired into `merged.rs`'s GlobalId reconciliation (`export_merged_with_stats`),
+// which previously carried its own near-identical copy of this same
+// schema-driven check -- exactly the "two lists that must agree" drift shape
+// this module's own doc warns about (see #3015). `extract_leading_guid` is
+// this crate's only sanctioned way to read a STEP line's leading GlobalId.
 
 use ifc_lite_core::IfcType;
 
@@ -162,7 +163,7 @@ pub fn extract_leading_guid(type_name: &str, line: &[u8]) -> Option<String> {
 
 /// True for a 22-character token drawn entirely from the buildingSMART
 /// GlobalId alphabet.
-fn is_global_id_shaped(s: &str) -> bool {
+pub(crate) fn is_global_id_shaped(s: &str) -> bool {
     s.len() == 22
         && s.bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'$')

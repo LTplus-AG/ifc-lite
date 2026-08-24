@@ -119,6 +119,34 @@ function buildFormat3Records(rows: Array<{
   return new Uint8Array(buf);
 }
 
+/**
+ * Format-7 records (LAS 1.4 extended base record + RGB, 36 bytes): the
+ * format-6 30-byte layout (see `buildFormat6Records`) followed by three
+ * uint16 colour channels at bytes 30-35. `rgbOffsetForFormat` maps formats
+ * 7, 8 and 10 to offset 30 — distinct from formats 3/5's offset 28 — but
+ * nothing built a format >= 6 RGB record, so that offset was unverified.
+ */
+function buildFormat7Records(rows: Array<{
+  x: number; y: number; z: number;
+  intensity?: number; classification?: number;
+  r: number; g: number; b: number;
+}>): Uint8Array {
+  const buf = new ArrayBuffer(rows.length * 36);
+  const view = new DataView(buf);
+  for (let i = 0; i < rows.length; i++) {
+    const off = i * 36;
+    view.setInt32(off, rows[i].x, true);
+    view.setInt32(off + 4, rows[i].y, true);
+    view.setInt32(off + 8, rows[i].z, true);
+    view.setUint16(off + 12, rows[i].intensity ?? 0, true);
+    view.setUint8(off + 16, rows[i].classification ?? 0);
+    view.setUint16(off + 30, rows[i].r, true);
+    view.setUint16(off + 32, rows[i].g, true);
+    view.setUint16(off + 34, rows[i].b, true);
+  }
+  return new Uint8Array(buf);
+}
+
 describe('parseLasHeader', () => {
   it('reads format-0 LAS 1.2 header fields', () => {
     const { header } = buildHeader({
@@ -340,6 +368,25 @@ describe('decodeLasPoints', () => {
     expect(chunk.classifications![0]).toBe(200);
     // 40 & 0x1f === 8, so this too separates "masked" from "not masked".
     expect(chunk.classifications![1]).toBe(40);
+  });
+
+  it('decodes format-7 RGB points from byte 30, not byte 28 (format 3/5\'s offset)', () => {
+    const { header } = buildHeader({
+      pointDataFormatId: 7,
+      pointRecordLength: 36,
+      pointCount: 2,
+      scale: [1, 1, 1],
+    });
+    const h = parseLasHeader(header);
+    expect(h.hasRgb).toBe(true);
+    const records = buildFormat7Records([
+      { x: 0, y: 0, z: 0, r: 65535, g: 0, b: 0 },          // pure red
+      { x: 1, y: 2, z: 3, r: 32768, g: 32768, b: 32768 },  // mid gray
+    ]);
+    const chunk = decodeLasPoints(records, h, 2, 36);
+    expect(chunk.colors).toBeDefined();
+    expect(chunk.colors!.slice(0, 3)).toEqual(new Float32Array([1, 0, 0]));
+    expect(chunk.colors![3]).toBeCloseTo(0.5, 2);
   });
 
   it('decodes format-3 RGB points', () => {

@@ -34,12 +34,17 @@ pub(crate) struct GroupedElementRecords<'a> {
 ///
 /// Guarantees pinned here: per-record array lengths must all equal
 /// `express_ids.len()` (`n`); `normals` must be empty or exactly 1:1 with
-/// `positions`; offsets accumulate in `u64` (wasm32 `usize` is 32-bit) and
-/// the running totals must equal `positions.len()` / `indices.len()`
+/// `positions`; the running offset totals must equal
+/// `positions.len()` / `indices.len()`
 /// EXACTLY — no trailing slack tolerated; a record's normals slice reuses
 /// its position offset/length; `localToWorld` is a 16-wide stride gated by
 /// `local_to_world_present`; records sharing an `express_ids` entry must all
 /// carry the same `level`.
+///
+/// Documented but NOT pinned: offsets accumulate in `u64` because wasm32
+/// `usize` is 32-bit. No test here can hold that -- the native test target's
+/// `usize` is already 64-bit, so reverting every `u64` to `usize` keeps the
+/// suite green. It is a wasm32-only property and the tests run natively.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn group_and_slice_records<'a>(
     express_ids: &[u32],

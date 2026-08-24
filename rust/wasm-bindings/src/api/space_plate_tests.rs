@@ -146,6 +146,29 @@ fn build_wall_rects_rejects_too_many_rects() {
     assert_eq!(err, "too many wall rects for the space-plate arrangement");
 }
 
+#[test]
+fn build_segments_accepts_exactly_the_segment_ceiling() {
+    // The reject test above walks one OVER the ceiling. Nothing walked the
+    // accept side, so changing `n > MAX` to `n >= MAX` -- which starts
+    // rejecting a legal 16384-segment input -- kept the suite green. A ceiling
+    // has two sides and only one of them was exercised.
+    let n = 16384;
+    let coords: Vec<f64> = (0..n * 4).map(|i| i as f64).collect();
+    let sources = vec![-1i32; n];
+    let segs = build_segments(&coords, &sources, &[]).expect("exactly the ceiling must be accepted");
+    assert_eq!(segs.len(), n);
+}
+
+#[test]
+fn build_wall_rects_accepts_exactly_the_rect_ceiling() {
+    // Same missing side as the segment ceiling above: `> MAX` -> `>= MAX`
+    // rejects a legal 4096-rect input and no test noticed.
+    let n = 4096;
+    let coords: Vec<f64> = vec![0.0; n * 8];
+    let rects = build_wall_rects(&coords).expect("exactly the ceiling must be accepted");
+    assert_eq!(rects.len(), n);
+}
+
 // ---- edit_error_parts: the cross-language contract with space-edit-error.ts
 
 /// Every `EditError` variant, paired with the EXACT `EditErrorCode` string
@@ -202,5 +225,18 @@ fn edit_error_parts_covers_exactly_seven_variants_no_more_no_less() {
         }
     }
     assert_eq!(assert_exhaustive(EditError::StaleHandle), "covered");
-    assert_eq!(EXPECTED_CODES.len(), 7);
+
+    // The two assertions this test used to carry were both self-referential:
+    // `assert_exhaustive` can only ever return the literal it is compared to,
+    // and `EXPECTED_CODES.len() == 7` compared the table above to a 7 copied
+    // out of it. Neither could fail on a production edit. This one can: it
+    // reads the CODES back out of `edit_error_parts` and requires them to be
+    // distinct. Two variants returning the same code would collapse two
+    // different failures into one on the JS side, and the variant-by-variant
+    // test above cannot see it -- it checks each code in isolation.
+    let mut seen = std::collections::HashSet::new();
+    for (variant, _code) in EXPECTED_CODES {
+        let (code, _msg) = edit_error_parts(variant.clone());
+        assert!(seen.insert(code), "code for {variant:?} duplicates another variant's code: {code:?}");
+    }
 }

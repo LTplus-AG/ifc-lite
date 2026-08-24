@@ -110,6 +110,23 @@ fn call(f: &Fixture) -> Result<Vec<GroupedShape>, String> {
 }
 
 #[test]
+fn first_seen_order_is_not_ascending_id_order() {
+    // The main fixture's ids are [10, 20, 10]: first-seen (10, 20) and
+    // ascending (10, 20) are the SAME sequence, so that test stays green if
+    // grouping is changed to sort by id. Element order is a wire contract --
+    // it decides the order of `SimplifiedMeshes.element_ids` that JS reads
+    // back -- so it needs a fixture where the two rules disagree.
+    // Reversing the ids keeps every level pairing intact: element 20 now holds
+    // records 0 and 2 (whose levels already matched), element 10 holds record 1.
+    let mut f = fixture();
+    f.express_ids = vec![20, 10, 20];
+    let groups = call(&f).expect("well-formed fixture must not error");
+    assert_eq!(groups.len(), 2);
+    assert_eq!(groups[0].0, 20, "first-seen order must put 20 first, not sorted order");
+    assert_eq!(groups[1].0, 10);
+}
+
+#[test]
 fn groups_by_first_seen_element_order_and_slices_each_record() {
     let f = fixture();
     let groups = call(&f).expect("well-formed fixture must not error");
@@ -246,8 +263,16 @@ fn rejects_normals_present_but_not_1to1_with_positions() {
 fn empty_normals_is_allowed() {
     let mut f = fixture();
     f.normals.clear();
-    let groups = call(&f).expect("empty normals must be accepted, not treated as a mismatch");
+    let groups = call_full(&f).expect("empty normals must be accepted, not treated as a mismatch");
     assert_eq!(groups.len(), 2);
+    // Accepting the input is only half of it: every record must come back with
+    // an EMPTY normals slice. `call` projects normals away, so handing the
+    // caller's positions back as normals would pass unnoticed.
+    for g in &groups {
+        for r in &g.records {
+            assert!(r.normals.is_empty(), "element {} record normals must stay empty", g.id);
+        }
+    }
 }
 
 #[test]

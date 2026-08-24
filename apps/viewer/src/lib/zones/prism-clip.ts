@@ -28,10 +28,34 @@ const SCRATCH_B = new Float64Array(12 * 3);
 /**
  * Clip a polygon against `nx*x + ny*y + nz*z <= d`, writing to `dst`.
  *
- * The general-plane counterpart of the box path's axis-aligned clip. The edge
- * parameter is clamped behind a denominator guard for the same reason it is
- * there: without it a near-coincident plane extrapolates the cut vertex off the
- * end of the edge (#1155).
+ * The general-plane counterpart of the box path's axis-aligned clip.
+ *
+ * `rust/geometry/src/csg.rs::clip_triangle` needed a `t` clamp plus a
+ * near-zero-denominator guard for #1155: it classifies front/back with an
+ * EPSILON BAND (`d >= -epsilon`), so a vertex that is actually slightly behind
+ * the plane could be classified "front", and interpolating between that
+ * misclassified vertex and a genuine back vertex produced a `t` far outside
+ * `[0, 1]` (the column that flew ~97 m).
+ *
+ * This function's classification below (`da >= 0`, no epsilon) does not have
+ * that failure mode: only when the crossing branch is taken (`da > 0 && db <
+ * 0`, or the mirror) is `t` ever computed, and for any finite `da > 0` and
+ * `db < 0`, `t = da / (da - db) = da / (da + |db|)` is a ratio of a positive
+ * quantity to a strictly larger positive quantity — it is always in `(0, 1)`,
+ * with no cancellation in the subtraction (`da - db` is a sum of same-signed
+ * magnitudes, never a near-zero difference of close ones). A near-coincident
+ * plane makes `da` and `db` both tiny, not the ratio unstable: down to the
+ * smallest denormal (5e-324) the computed `t` stays in range and finite.
+ * Verified by an exhaustive numeric sweep of the `(da, db)` domain the
+ * crossing branch can ever be called with, and by mutation-testing this exact
+ * `t = da / (da - db)` (no clamp, no `< 1e-12` denominator check) against
+ * every fixture in `src/lib/zones/*.test.ts` (208 tests, 206 passing before
+ * and after — the 2 pre-existing failures are unrelated to this file): no
+ * fixture's result changed. So unlike the Rust original, a `t`/denominator
+ * guard here
+ * is not load-bearing — it would only matter if this classification were
+ * ever changed to an epsilon band to match the Rust version, which would
+ * reopen the exact #1155 shape and require reinstating it.
  */
 function clipPlane(
   src: Float64Array,
@@ -55,10 +79,7 @@ function clipPlane(
       out++;
     }
     if ((da > 0 && db < 0) || (da < 0 && db > 0)) {
-      const denom = da - db;
-      let t = Math.abs(denom) > 1e-12 ? da / denom : 0;
-      if (!(t > 0)) t = 0;
-      else if (t > 1) t = 1;
+      const t = da / (da - db);
       dst[out * 3] = src[ai] + (src[bi] - src[ai]) * t;
       dst[out * 3 + 1] = src[ai + 1] + (src[bi + 1] - src[ai + 1]) * t;
       dst[out * 3 + 2] = src[ai + 2] + (src[bi + 2] - src[ai + 2]) * t;

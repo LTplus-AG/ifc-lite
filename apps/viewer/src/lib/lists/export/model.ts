@@ -9,6 +9,7 @@
  * grouped sections with per-group count + subtotals, plus grand totals.
  */
 
+import { guardSpreadsheetFormula } from '@ifc-lite/export';
 import { groupingColumnIds, type CellValue, type ColumnDefinition, type ListRow, type ListGrouping } from '@ifc-lite/lists';
 import type { ProjectUnits } from '@ifc-lite/parser';
 import { buildNestedGroupBuckets, type GroupSort } from '@/lib/lists/group-sort';
@@ -117,33 +118,32 @@ export function displayCell(value: CellValue): string {
  * TAB or CR makes a cell execute as a formula in Excel/LibreOffice/Sheets.
  * List-export cells (values, group labels, custom column headers) derive from
  * attacker-controllable IFC values, so any such cell is prefixed with an
- * apostrophe. A leading UTF-8 BOM is treated as file metadata by spreadsheet
- * importers, so a marker hidden behind one still executes; strip the BOM first
- * so the apostrophe guard actually lands in front. Shared by the CSV and XLSX
- * writers so both honour the guideline identically.
+ * apostrophe.
+ *
+ * The trigger is looked for PAST any leading invisibles (BOM, ZWSP, LRM, NBSP,
+ * U+2028/U+2029, ordinary spaces): spreadsheet importers swallow those, so a
+ * marker hidden behind one still executes, while an anchored regex stops
+ * matching. They are looked past, not removed — see `guardSpreadsheetFormula`.
+ *
+ * Used by the XLSX writer for its string cells. The CSV writer calls
+ * `escapeCsvCell` directly instead, because it also needs RFC 4180 quoting;
+ * both reach the same guard in `@ifc-lite/export`.
  */
 export function neutralizeSpreadsheetFormula(s: string): string {
-  // Strip ALL leading invisibles, not just U+FEFF. A zero-width space,
-  // left-to-right mark or non-breaking space in front of `=` does not stop a
-  // spreadsheet reading the cell as a formula, but it does stop an anchored
-  // regex matching, so stripping only the BOM left the others as bypasses.
-  // `packages/sdk/src/namespaces/export.ts` matches past this same class
-  // (#1944); this copy handled the BOM alone.
+  // Delegates to `@ifc-lite/export`'s single guard. The copy that used to live
+  // here bought its invisible-handling by DELETING the leading run of
+  // `\p{Cf}\p{Z}`; `\p{Z}` includes U+0020, so every exported cell silently
+  // lost its leading spaces, against RFC 4180 §2.4 ("Spaces are considered
+  // part of a field and should not be ignored"). The shared guard looks *past*
+  // the run instead of removing it — same payloads guarded, data intact.
   //
-  // `\p{Z}`, not `\p{Zs}`: the separator category also covers `Zl` and `Zp`,
-  // so U+2028 (LINE SEPARATOR) and U+2029 (PARAGRAPH SEPARATOR) would
-  // otherwise remain viable prefixes for hiding a formula trigger.
-  s = s.replace(/^[\p{Cf}\p{Z}]+/u, '');
-  // NOTE a deliberate, unresolved divergence from `packages/lists/src/engine.ts`:
-  // that copy EXEMPTS a genuine number from the `-`/`+` trigger (#1772, comment:
-  // "`-0.35` exported as `'-0.35` and broke Excel SUM()"), whereas this copy
-  // guards it -- and `injection.test.ts` pins `'+1'` as guarded on purpose. So
-  // the viewer's Lists CSV ships every negative measure as text while the
-  // library's does not. Both behaviours are deliberately tested, so they cannot
-  // both be right; picking one is a product decision (broken SUM() vs a cell
-  // that a spreadsheet could re-read as a formula) and is NOT bundled into this
-  // hardening change.
-  return /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+  // No options: the numeric exemption is the shared guard's DEFAULT, which is
+  // how the repo stopped disagreeing with itself. `packages/lists/src/engine.ts`
+  // has exempted genuine numbers since #1772 ("`-0.35` exported as `'-0.35` and
+  // broke Excel SUM()"); this call site guarded them, so the same list exported
+  // from the viewer and from the library did not match.
+
+  return guardSpreadsheetFormula(s);
 }
 
 export function buildExportModel(input: BuildModelInput): ExportModel {
@@ -233,14 +233,50 @@ export function buildExportModel(input: BuildModelInput): ExportModel {
       const scheduleCols: ExportColumn[] = [
         ...groupColumnIds.map((id) => {
           const i = columns.findIndex((c) => c.id === id);
-          return { id, label: exportCols[i]?.label ?? id, numeric: false, summed: false, width: exportCols[i]?.width ?? 120 };
+          // `numeric` is INHERITED from the source column, not hard-coded false.
+          // In this presentation the grouping value is a data cell -- it is the
+          // only place the value appears -- so a numeric grouping column has to
+          // reach the writers as numeric or they format it for a human.
+          return {
+            id,
+            label: exportCols[i]?.label ?? id,
+            numeric: exportCols[i]?.numeric ?? false,
+            summed: false,
+            width: exportCols[i]?.width ?? 120,
+          };
         }),
         { id: '__count', label: 'Count', numeric: true, summed: false, width: 80 },
         ...sumIdx.map((s) => exportCols[s.idx]),
       ];
+      // RAW group values, not `g.path`. `path` is built by the shared bucketing
+      // helper from `displayCell`, so it is already locale-formatted text by the
+      // time it gets here: grouping by a quantity wrote `"'-3,000"` as the sole
+      // rendering of -3000, and under a `.`-grouping locale a bare `-3.000` that
+      // a `,`-grouping spreadsheet reads back as -3. Every row in a leaf group
+      // shares the grouping cell by construction, so the first row carries it.
+      const rawGroupValues = (g: (typeof nested)[number]): CellValue[] =>
+        levelIndices.map((idx, level) => {
+          // The bucket's LABEL is true of every member by construction; a raw
+          // value is only true of the members that share it. Prefer the raw
+          // value, fall back to the label whenever it would not be.
+          const label = g.path[level] ?? null;
+          if (idx < 0) return label;
+          const first = g.rows[0]?.values[idx] ?? null;
+          // An empty grouping cell is bucketed under the literal label
+          // `(none)`, and `-1` above means "no column at this level" -- the
+          // same bucket. Writing a blank instead would be indistinguishable
+          // from a missing value.
+          if (first === null || first === undefined || first === '') return label;
+          // `buildGroupBuckets` keys buckets by the FORMATTED label, so two
+          // distinct raw values that format alike land in ONE bucket (12.345671
+          // and 12.345679 both render "12.3457"). Emitting row 0's value would
+          // assert a number only one member actually has.
+          if (g.rows.some((r) => r.values[idx] !== first)) return label;
+          return first;
+        });
       const scheduleRows: CellValue[][] = nested
         .filter((g) => g.level === leafLevel)
-        .map((g) => [...g.path, g.count, ...sumIdx.map((s) => g.sums[s.id])]);
+        .map((g) => [...rawGroupValues(g), g.count, ...sumIdx.map((s) => g.sums[s.id])]);
       schedule = { columns: scheduleCols, rows: scheduleRows };
     }
   }

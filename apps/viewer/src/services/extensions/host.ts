@@ -82,6 +82,28 @@ export interface ExtensionHostServiceOptions {
   sdk: BimContext;
 }
 
+/**
+ * A piece of a flavor's saved state that `switchFlavor` could not put in
+ * place. The switch itself succeeded — the extensions moved and the active
+ * pointer moved — so this is not an error; it is the part of the user's
+ * request that did not happen, and the caller owes them that. (#3002)
+ */
+export interface UnappliedFlavorPart {
+  part: 'lenses' | 'clash' | 'layout';
+  /** The refusal's own message, verbatim, so the user reads the real cause. */
+  message: string;
+}
+
+export interface FlavorSwitchOutcome {
+  /** Empty when every part of the flavor landed. */
+  unapplied: UnappliedFlavorPart[];
+}
+
+/** A thrown value's message, for an `unapplied` entry. */
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 export class ExtensionHostService {
   readonly storage = new IdbExtensionStorage();
   readonly slotRegistry = new SlotRegistry();
@@ -421,10 +443,16 @@ export class ExtensionHostService {
   /**
    * Switch to the named flavor, enabling its declared extensions and
    * disabling anything the previous flavor had that this one doesn't.
-   * Returns the structured switch result so the UI can surface
-   * failures inline.
+   *
+   * A failed extension/pointer switch throws. The saved-state restores that
+   * follow it do not: they are individually refusable (a store write the
+   * browser will not accept) without the switch itself having failed, so each
+   * refusal is returned in `unapplied` instead. The caller must say so — a
+   * flavor whose clash config was refused is not the flavor the user asked
+   * for, and before #3002 the only trace was a `console.warn`.
    */
-  async switchFlavor(targetId: string): Promise<void> {
+  async switchFlavor(targetId: string): Promise<FlavorSwitchOutcome> {
+    const unapplied: UnappliedFlavorPart[] = [];
     const flavors = await this.flavors.list();
     const target = flavors.find((f) => f.id === targetId);
     if (!target) throw new Error(`Unknown flavor: ${targetId}`);
@@ -446,6 +474,12 @@ export class ExtensionHostService {
       setActiveFlavor: async (id) => {
         await this.flavors.activate(id);
       },
+      // Lets the switcher tell a refused pointer write that would have changed
+      // nothing — re-applying the flavor that is already active — from one
+      // that would have moved the pointer. Without it every refusal undoes the
+      // extension toggles that landed and throws below, skipping the lens,
+      // clash and sidebar restores.
+      readActiveFlavor: () => this.flavors.activeId(),
     });
 
     if (!result.ok) {
@@ -472,9 +506,13 @@ export class ExtensionHostService {
       // setSavedLenses does not commit a snapshot it could not persist, so the
       // previous lens set is still in place — say so rather than implying the
       // flavor's lenses are live.
-      if (!saved.ok) console.warn('[ext-host] lens restore on switch not applied:', saved.message);
+      if (!saved.ok) {
+        console.warn('[ext-host] lens restore on switch not applied:', saved.message);
+        unapplied.push({ part: 'lenses', message: saved.message });
+      }
     } catch (err) {
       console.warn('[ext-host] lens restore on switch failed:', err);
+      unapplied.push({ part: 'lenses', message: errorMessage(err) });
     }
     // Restore the flavor's clash config (rule-set + detection settings) from the
     // opaque settings.clash blob, mirroring the lens roundtrip above. Missing /
@@ -484,10 +522,28 @@ export class ExtensionHostService {
       const config = deserializeClashConfig((target.settings as Record<string, unknown> | undefined)?.clash);
       if (config) {
         const { useViewerStore } = await import('@/store');
-        useViewerStore.getState().applyClashFlavorConfig(config);
+        const applied = useViewerStore.getState().applyClashFlavorConfig(config);
+        // The slice leaves the previous clash config in place when the write is
+        // refused, so there is nothing to undo here — only a reason to report.
+        // This service is deliberately free of UI deps (see the late imports
+        // above), and throwing would abort the sidebar restore below and mark
+        // the whole switch as failed, which it was not. So the reason is
+        // returned rather than raised, and the console.warn is kept for the
+        // developer view only. (#3002)
+        //
+        // `applied.ok` is the slice's own verdict and already applies the
+        // no-op rule: a write refused over bytes identical to what is stored
+        // changed nothing and answers `ok`. Reporting anything here would
+        // claim a failure over a state that is exactly what the user asked
+        // for, so this must gate on `ok` and never on "was a write refused".
+        if (!applied.ok) {
+          console.warn('[ext-host] clash config was not persisted on switch:', applied.message);
+          unapplied.push({ part: 'clash', message: applied.message });
+        }
       }
     } catch (err) {
       console.warn('[ext-host] clash restore on switch failed:', err);
+      unapplied.push({ part: 'clash', message: errorMessage(err) });
     }
     // Restore the captured workspace-sidebar layout (#1208) from the opaque
     // layout.state.sidebar blob. localStorage remains the per-browser default;
@@ -501,8 +557,10 @@ export class ExtensionHostService {
       }
     } catch (err) {
       console.warn('[ext-host] sidebar layout restore on switch failed:', err);
+      unapplied.push({ part: 'layout', message: errorMessage(err) });
     }
     this.emit();
+    return { unapplied };
   }
 
   /**

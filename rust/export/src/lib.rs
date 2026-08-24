@@ -15,6 +15,10 @@ mod adjacency;
 mod collada;
 mod constructions;
 mod csv;
+/// The single CSV cell escaper for this crate — RFC 4180 quoting plus the
+/// CWE-1236 formula-injection guard, pinned to the TypeScript half by
+/// `tests/csv_cell_parity.rs`.
+pub mod csv_cell;
 mod dfjson;
 mod error;
 mod frame;
@@ -37,6 +41,8 @@ mod rooted_type;
 mod schema_convert;
 mod shades;
 mod step;
+mod step_cow;
+mod step_header;
 mod step_text;
 mod usd;
 
@@ -90,8 +96,8 @@ pub use obj::{export_obj, export_obj_with_stats, ObjOptions, ObjStats};
 #[cfg(feature = "parquet-bos")]
 pub use parquet_bos::{export_bos, ParquetBosOptions};
 pub use step::{
-    export_step, export_step_json, export_step_with_stats, AttrMutation, PropMutation, StepOptions,
-    StepStats,
+    export_step, export_step_json, export_step_to_writer, export_step_with_stats, AttrMutation,
+    CopyOnWriteMutation, PropMutation, StepOptions, StepStats,
 };
 pub use usd::{export_usd, UsdOptions};
 

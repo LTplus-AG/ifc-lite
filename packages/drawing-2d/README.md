@@ -116,11 +116,10 @@ import {
   createTitleBlock,
   renderTitleBlock,      // returns { svgElements, ... }
   DEFAULT_TITLE_BLOCK_FIELDS,
-  // Scale bar / north arrow
+  // Scale bar / north arrow — drawn inside the title block, via
+  // renderTitleBlock's `extras` argument
   DEFAULT_SCALE_BAR,
   DEFAULT_NORTH_ARROW,
-  renderScaleBar,
-  renderNorthArrow,
 } from '@ifc-lite/drawing-2d';
 ```
 

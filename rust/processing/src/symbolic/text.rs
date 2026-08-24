@@ -2,11 +2,13 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use super::output_cap::SymbolicAccumulator;
+use super::rebase::RenderFrameRebase;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use std::collections::HashMap;
 
 use super::color::resolve_color_via_styles;
-use super::primitives::{SymbolicData, SymbolicText};
+use super::primitives::{SymbolicText};
 use super::transform::{compose_transforms, parse_axis2_placement_2d, Transform2D};
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -22,10 +24,9 @@ pub(super) fn extract_text_literal(
     rep_identifier: &str,
     unit_scale: f32,
     transform: &Transform2D,
-    rtc_x: f32,
-    rtc_z: f32,
+    rebase: RenderFrameRebase,
     styled_items: &HashMap<u32, Vec<u32>>,
-    out: &mut SymbolicData,
+    out: &mut SymbolicAccumulator,
 ) {
     let content = match item.get(0).and_then(|a| a.as_string()) {
         Some(s) => s.to_string(),
@@ -67,6 +68,7 @@ pub(super) fn extract_text_literal(
     };
 
     let (wx, wy) = composed.transform_point(0.0, 0.0);
+    let plan = rebase.plan(wx, wy);
     let raw_scale = composed.scale();
     // Height keeps a ZERO scale (the glyph collapses exactly as the symbol does);
     // only a non-finite scale falls back. The direction below needs the stricter
@@ -86,11 +88,11 @@ pub(super) fn extract_text_literal(
     let color = resolve_color_via_styles(item.id, styled_items, decoder)
         .unwrap_or([0.05, 0.05, 0.05, 1.0]);
 
-    out.texts.push(SymbolicText {
+    out.push_text(SymbolicText {
         express_id,
         ifc_type: ifc_type.to_string(),
-        x: wx - rtc_x,
-        y: -wy + rtc_z,
+        x: plan.0,
+        y: plan.1,
         // Direction must stay UNIT: `composed`'s linear block can carry a
         // mapped-item Scale (#1985), and consumers read this pair as a bare
         // direction vector. Any scale that is not finite and positive (a
@@ -102,7 +104,7 @@ pub(super) fn extract_text_literal(
         height: height_model_units * unit_scale * text_scale,
         content,
         alignment,
-        world_y: composed.tz,
+        world_y: rebase.elevation(composed.tz),
         color,
         target_px: 0.0,
         representation: rep_identifier.to_string(),

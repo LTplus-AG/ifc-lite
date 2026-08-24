@@ -9,6 +9,7 @@
 
 mod batch;
 mod batch_from_source;
+mod batch_partition;
 mod instancing;
 pub(crate) mod prepass;
 mod prepass_discovery;

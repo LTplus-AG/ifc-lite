@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/ids",
-  "version": "1.15.47",
+  "version": "1.15.48",
   "description": "IDS (Information Delivery Specification) support for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
@@ -30,7 +30,8 @@
   "devDependencies": {
     "happy-dom": "^20.11.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "xmllint-wasm": "5.3.0"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

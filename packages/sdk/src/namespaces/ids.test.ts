@@ -13,17 +13,10 @@ import type {
 
 const ids = new IDSNamespace();
 
-// `IDSNamespace` dynamically imports `@ifc-lite/ids` on first use (see
-// `loadIDS` in ids.ts) so that SDK consumers who never touch `bim.ids`
-// don't pay for it. That's the right tradeoff for real callers, who load
-// the module once and then reuse it — but it means whichever test in this
-// file happens to be the first to call `validate`/`parse`/etc. pays the
-// one-time cold-import cost inside its own timer. Under CI's parallel test
-// load that cost alone can approach the default 5s test timeout. Warm the
-// import here, during module collection (unbounded by any per-test or
-// per-hook timeout), so the locale test below only times the logic it
-// exists to check.
-await import('@ifc-lite/ids');
+// `@ifc-lite/ids` is imported lazily by `loadIDS`. It used to be warmed here
+// so the locale test below did not pay the cold import inside its own budget;
+// that cost was vite re-transforming built sibling output, and it is gone --
+// see `vitest.config.ts`.
 
 const sv = (value: string): IDSSimpleValue => ({ type: 'simpleValue', value });
 
@@ -133,9 +126,20 @@ describe('IDSNamespace.summarize', () => {
 
     expect(summary.totalSpecifications).toBe(3);
     expect(summary.failedSpecifications).toBe(1);
-    // Legacy shape invariant: passed + failed = total, so a
-    // not-applicable spec counts as non-failed here.
-    expect(summary.passedSpecifications).toBe(2);
+    // A not_applicable spec is neither pass nor fail — it must not be
+    // folded into either bucket. `packages/ids/src/validation/validator.ts`
+    // `calculateSummary` treats it this way already (only 'pass'/'fail'
+    // increment their respective counters); this namespace's summarize()
+    // used to fold it into `passedSpecifications` via an unconditional
+    // `else`, which made a CLI `--json` run disagree with the CLI's own
+    // text-mode output (`report.summary`) and the validator on any model
+    // whose IDS had a spec matching zero entities with no cardinality
+    // requirement forcing a match.
+    expect(summary.passedSpecifications).toBe(1);
+    expect(summary.notApplicableSpecifications).toBe(1);
+    expect(summary.passedSpecifications + summary.failedSpecifications + summary.notApplicableSpecifications).toBe(
+      summary.totalSpecifications,
+    );
   });
 
   it('prohibited spec violated by passing entities counts as failed when status says so', () => {

@@ -5,7 +5,7 @@
 import type { StoreApi } from './types.js';
 import type { EntityRef, EntityData, PropertySetData, QuantitySetData, ExportBackendMethods } from '@ifc-lite/sdk';
 import { EntityNode } from '@ifc-lite/query';
-import { StepExporter, type StepExportOptions } from '@ifc-lite/export';
+import { escapeCsvCell, StepExporter, type StepExportOptions } from '@ifc-lite/export';
 import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
 import { applyAttributeMutationsToEntityData, getMutationViewForModel } from './mutation-view.js';
 import { serializeScheduleToStep, type ScheduleExtraction, type IfcDataStore } from '@ifc-lite/parser';
@@ -105,19 +105,13 @@ export function resolveVisibilityFilterSets(
 }
 
 /**
- * Escape a CSV cell value — wrap in quotes if it contains the separator,
- * double-quotes, or newlines.
+ * RFC 4180 quoting + the CWE-1236 formula-injection guard, delegated to
+ * `@ifc-lite/export`'s single escaper. The copy that used to live here tested
+ * the trigger anchored at offset 0, so a BOM/ZWSP/LRM/NBSP/U+2028 in front of
+ * `=` walked past it.
  */
 function escapeCsv(value: string, sep: string): string {
-  // Neutralize spreadsheet formula injection (CWE-1236): a leading
-  // =, +, -, @, TAB or CR makes a cell execute as a formula in Excel/
-  // LibreOffice/Sheets. IFC values are attacker-controllable, so prefix
-  // such cells with an apostrophe.
-  if (/^[=+\-@\t\r]/.test(value)) value = `'${value}`;
-  if (value.includes(sep) || value.includes('"') || value.includes('\n') || value.includes('\r')) {
-    return `"${value.replace(/"/g, '""')}"`;
-  }
-  return value;
+  return escapeCsvCell(value, { delimiter: sep });
 }
 
 /**

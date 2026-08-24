@@ -170,7 +170,12 @@ export function getAttributeNamesAcrossSchemas(type: string): string[] {
  *
  * Still a real guard, not a pass-through: a typo (`IfcWal`), a vendor extension
  * and an EXPRESS defined type (`IfcLengthMeasure`, `IfcArcIndex`) are all
- * rejected.
+ * rejected. So are `Object.prototype` member names (`constructor`, `toString`,
+ * `__proto__`, ...): the union lookup is a `Map`, and the pin fallback's
+ * own-property test — added in #3063/#3069, replacing an `in` that walked the
+ * prototype chain and answered `true` for every one of them — keeps the second
+ * lookup from re-admitting them. Callers of this predicate (`ofType()`,
+ * `addEntity`) rely on that; the guard is only as good as `isKnownEntity`.
  *
  * Known-ness, not instantiability: abstract supertypes (`IfcProduct`,
  * `IfcRoot`) answer `true`, as they always have — that is a different
@@ -258,3 +263,27 @@ export function normalizeIfcTypeName(type: string): string {
     // Unknown to registry — preserve as-is (could be a vendor extension).
     return type;
 }
+
+/**
+ * Is this class one an unfiltered entity query should answer with?
+ *
+ * `IfcObjectDefinition` is the exact line: it covers products, type objects,
+ * groups and systems, and `IfcContext`, and excludes the other two `IfcRoot`
+ * branches — `IfcPropertyDefinition` and `IfcRelationship`. Type objects are
+ * then held back, so an unfiltered query answers with occurrences.
+ *
+ * Keying on `IfcTypeEnumFromString` instead — as the CLI and MCP backends both
+ * did — gated on a curated subset of the schema, so every class outside it was
+ * dropped from the result with nothing to say so: on an MEP model, every
+ * `IfcAirTerminal`, `IfcDuctFitting` and `IfcDistributionPort`.
+ *
+ * `IFC_ENTITY_NAMES` is not the oracle either: it carries all ~880 classes, so
+ * keying on "is a known IFC name" floods the same query with every
+ * `IfcCartesianPoint` in the file.
+ */
+export function isQueryableObjectType(type: string): boolean {
+    const chain = getInheritanceChain(type);
+    if (!chain.includes('IfcObjectDefinition')) return false;
+    return !chain.includes('IfcTypeObject');
+}
+

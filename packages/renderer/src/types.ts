@@ -72,6 +72,14 @@ export interface BatchedMesh {
   indexCount: number;
   color: [number, number, number, number];
   expressIds: number[];  // For picking - all expressIds in this batch
+  /** Per-entry modelIndex, parallel to `expressIds` (same index = same source
+   *  piece): batches group by colour (see Scene.bucketBaseKey), NOT by model,
+   *  so two federated models sharing an expressId AND colour can land in the
+   *  SAME batch as distinct entries. Picking must scope each entry by its own
+   *  modelIndex here rather than treating the batch as single-model. Absent
+   *  entries (or `undefined` values) mean "unscoped" for that entry — legacy
+   *  batches built before this field existed, or single-model scenes. */
+  modelIndices?: (number | undefined)[];
   bindGroup?: GPUBindGroup;
   uniformBuffer?: GPUBuffer;
   // Bounding box for frustum culling (optional) — WORLD space.
@@ -204,6 +212,15 @@ export interface RenderOptions {
    * look exactly. See {@link import('./environment.js').LightingEnvironment}.
    */
   environment?: import('./environment.js').LightingEnvironment;
+  /**
+   * Declared but never read. This is the only occurrence of the name in the
+   * package: nothing sets it and nothing consults it, so it is dead on both
+   * ends. Depth testing is decided per pipeline at construction time and is
+   * not configurable through `RenderOptions`; there is no substitute field.
+   * Slated for removal; see issue #2731.
+   *
+   * @deprecated Ignored by the renderer — see above.
+   */
   enableDepthTest?: boolean;
   enableFrustumCulling?: boolean;
   spatialIndex?: import('@ifc-lite/spatial').SpatialIndex;
@@ -325,6 +342,25 @@ export interface RenderOptions {
    * detail. Absent or `screenPx <= 0` = always full detail.
    */
   lod?: { screenPx: number };
+  /**
+   * Sun cast shadows (issue #2670, Phase 2). When `enabled`, the renderer runs
+   * a depth pre-pass from the sun before the colour pass, rasterising every
+   * geometry path (flat / quantized / instanced / textured) into a shadow map,
+   * then samples it in the shading pass with a rotated 12-tap Poisson-disk PCF
+   * kernel to occlude the direct sun term. Absent or `enabled: false` (the
+   * default) skips the pass entirely, so the hot path pays only a boolean check.
+   *
+   * - `resolution`: square shadow-map side in texels. `0` or unset means Auto —
+   *   the renderer picks from the device's texture limit (2048 on a 4096-capped
+   *   iGPU, 4096 on an 8192+ GPU). A manual value is honoured but clamped to the
+   *   device limit so it can't fail texture allocation. A device/Quality dial.
+   * - `sunAngleDeg`: the sun's apparent angular diameter in degrees (default
+   *   ~0.53, the real sun on a clear sky). It sets shadow-edge SOFTNESS, not the
+   *   sun position: larger widens the penumbra. The renderer maps it to the PCF
+   *   kernel radius (`pcfRadius ≈ clamp(sunAngleDeg × 3, 0.75, 8)` texels), so a
+   *   later PCSS swap can consume the same angle without a UI change.
+   */
+  sunShadows?: { enabled: boolean; resolution?: number; sunAngleDeg?: number };
 }
 
 /**

@@ -17,78 +17,19 @@ import type { DrawingLine2D } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { useShallow } from 'zustand/react/shallow';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { hasEntityType } from './has-entity-type.js';
 import {
-  buildParseResult,
-  createEmptyParseResult,
   debugEnabled,
   type AnnotationFill2D,
   type AnnotationText2D,
   type AnnotationsForStorey,
-  type ParseResult,
 } from '../lib/overlay-parse/symbolic-parse.js';
-import { getWholeSourceForWorker, parseSymbolicFlat } from '../lib/overlay-parse/index.js';
+import { ensureParseFor, getParseFor, subscribeToParseCache } from './symbolic-parse-cache.js';
 
 // The parse walk itself lives in `lib/overlay-parse/symbolic-parse.ts` so a
 // worker can import it (a worker module cannot import this React hook file).
 // Re-exported here so existing consumers keep their import paths.
 export type { AnnotationsForStorey, AnnotationText2D, AnnotationFill2D };
 export { polylineToSegments, circleToSegments } from '../lib/overlay-parse/symbolic-parse.js';
-
-/**
- * Stable cache key for one parsed source.
- *
- * Was a sampled hash (head/middle/tail, 96 bytes) chosen to avoid walking the
- * whole file. `IfcSourceBytes.contentKey` is a full-content hash computed once
- * and cached on the source, so this is now both cheaper per call and stronger:
- * the sampled form could alias two files sharing a size and those windows,
- * which showed up as a federated model's annotations silently not rendering
- * because the parse effect skipped it as already cached (#2183).
- */
-function sourceKey(store: IfcDataStore | null | undefined): string | null {
-  return store?.source.contentKey ?? null;
-}
-
-/**
- * Parse one store's symbolic annotations.
- *
- * The WASM walk runs in the overlay worker (`lib/overlay-parse`); this
- * wrapper supplies the entity-index pre-filter, which needs
- * `store.entityIndex`, and reassembles the flat primitive stream into buckets
- * with the storey lookups, which never leave the main thread.
- */
-async function parseAnnotations(
-  store: IfcDataStore,
-): Promise<ParseResult> {
-  const source = store.source;
-  // Skip the full-source WASM scan only when the model has neither IfcAnnotation
-  // nor IfcGridAxis — this parse path ALSO feeds the grid buckets (gridByStorey /
-  // gridLoose*), so gating on IfcAnnotation alone would drop grid-only models.
-  // The scan copies the entire IFC source into the WASM heap on the main thread,
-  // so skipping it when there is nothing to find still matters.
-  //
-  if (source && source.byteLength > 0 && !hasEntityType(store, 'IfcAnnotation', 'IfcGridAxis')) {
-    if (debugEnabled()) console.log('[annotations] skip: no IfcAnnotation/IfcGridAxis entities');
-    return createEmptyParseResult();
-  }
-  if (!source || source.byteLength === 0) {
-    if (debugEnabled()) console.log('[annotations] skip: missing/empty source');
-    return createEmptyParseResult();
-  }
-
-  // The WASM walk runs in the overlay worker and is terminated afterwards;
-  // running it here grew a main-thread WASM heap that never shrinks, worth
-  // ~471 MB on a 342 MB model (#2183). Only the flat primitive stream crosses
-  // back — bucketing stays here, so the storey lookups never leave the main
-  // thread and `ensureBucket` keeps its exact semantics.
-  // `getWholeSourceForWorker` is the single seam for handing a model's bytes
-  // to a worker — see `lib/overlay-parse/source-handoff.ts`.
-  const flat = await parseSymbolicFlat(getWholeSourceForWorker(store), debugEnabled());
-  return buildParseResult(flat, {
-    elementToStorey: store.spatialHierarchy?.elementToStorey,
-    storeyElevations: store.spatialHierarchy?.storeyElevations,
-  });
-}
 
 /**
  * Lift 2D annotation lines (renderer XZ space) to a flat Float32Array of
@@ -131,44 +72,6 @@ export function liftTo3DLineList(
  */
 const EMPTY_F32 = new Float32Array(0);
 
-// ─── Shared parse cache ─────────────────────────────────────────────────────
-// Parsing the whole file's symbolic representations is not cheap (full WASM
-// walk over every product's representations). Cache results module-globally
-// so the line / text / fill hooks share one parse per model source instead
-// of triggering it once per hook.
-const PARSE_CACHE = new Map<string, ParseResult>();
-const PARSE_INFLIGHT = new Map<string, Promise<void>>();
-
-/** Subscribers that want to re-render when a new parse result lands. */
-type CacheListener = () => void;
-const CACHE_LISTENERS = new Set<CacheListener>();
-function notifyCacheChange(): void {
-  for (const fn of CACHE_LISTENERS) fn();
-}
-
-function ensureParseFor(stores: IfcDataStore[]): void {
-  for (const store of stores) {
-    const key = sourceKey(store);
-    if (!key) continue;
-    if (PARSE_CACHE.has(key)) continue;
-    if (PARSE_INFLIGHT.has(key)) continue;
-
-    const promise = (async () => {
-      try {
-        const result = await parseAnnotations(store);
-        PARSE_CACHE.set(key, result);
-        notifyCacheChange();
-      } catch (error) {
-        // eslint-disable-next-line no-console
-        console.warn('[useSymbolicAnnotations] parse failed:', error);
-      } finally {
-        PARSE_INFLIGHT.delete(key);
-      }
-    })();
-    PARSE_INFLIGHT.set(key, promise);
-  }
-}
-
 /** One active model's data store plus the identity needed to map a parsed
  *  primitive's LOCAL express id to the federated global id the visibility
  *  sets are keyed by. `idOffset` is 0 for the legacy single-model path. */
@@ -203,11 +106,7 @@ function useAnnotationParseTrigger(enabled: boolean, stores: ActiveStore[]): num
   useEffect(() => {
     if (!enabled) return undefined;
     ensureParseFor(stores.map((s) => s.store));
-    const listener: CacheListener = () => setVersion((v) => v + 1);
-    CACHE_LISTENERS.add(listener);
-    return () => {
-      CACHE_LISTENERS.delete(listener);
-    };
+    return subscribeToParseCache(() => setVersion((v) => v + 1));
   }, [enabled, stores]);
 
   return version;
@@ -317,11 +216,9 @@ export function useSymbolicAnnotations(params: {
     const verts: number[] = [];
     let storeIdx = 0;
     for (const entry of stores) {
-      const key = sourceKey(entry.store);
-      if (!key) { storeIdx++; continue; }
-      const cached = PARSE_CACHE.get(key);
+      const cached = getParseFor(entry.store);
       if (!cached) {
-        if (debugEnabled()) console.log(`[annotations] store ${storeIdx}: parse not yet ready for key=${key}`);
+        if (debugEnabled()) console.log(`[annotations] store ${storeIdx}: parse not yet ready`);
         storeIdx++;
         continue;
       }
@@ -554,9 +451,7 @@ export function useSymbolicAnnotationsForDrawing(params: {
       : (f: AnnotationFill2D) => fills.push(f);
 
     for (const entry of stores) {
-      const key = sourceKey(entry.store);
-      if (!key) continue;
-      const cached = PARSE_CACHE.get(key);
+      const cached = getParseFor(entry.store);
       if (!cached) continue;
 
       // Drawing-2D pulls BOTH annotation and grid buckets (issue #862
@@ -627,9 +522,7 @@ export function useSymbolicAnnotationsRichData(params: {
     const fills: AnnotationFill3D[] = [];
 
     for (const entry of stores) {
-      const key = sourceKey(entry.store);
-      if (!key) continue;
-      const cached = PARSE_CACHE.get(key);
+      const cached = getParseFor(entry.store);
       if (!cached) continue;
 
       // Per-entity hide: drop text/fills whose owning annotation is hidden.

@@ -27,7 +27,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { IfcCreator } from '@ifc-lite/create';
 import { GeometryProcessor } from '@ifc-lite/geometry';
-import { clashCommand, formatClashRow } from './clash.js';
+import { clashCommand, formatClashRow, worstFirst } from './clash.js';
 import type { Clash } from '@ifc-lite/clash';
 
 const execFileAsync = promisify(execFile);
@@ -215,6 +215,46 @@ function clashOf(distance: number, distanceKind: Clash['distanceKind']): Clash {
     severity: 'major',
   };
 }
+
+describe('the summary "Top N" list is actually the top N', () => {
+  // The engine hands back `result.clashes` in `byKeyThenRule` grouping order.
+  // Both cap sites used to slice that directly while printing a header that
+  // reads "Top N of M clashes", so on any run above the cap the deepest
+  // penetrations could sit past the cut and never be printed at all. The MCP
+  // clash tool had already grown a local sort for exactly this reason; the
+  // ordering now comes from `sortClashes` in @ifc-lite/clash, the one helper
+  // the viewer's clash panel already used, so "top N" means the same N rows
+  // through every surface.
+  function at(id: string, distance: number): Clash {
+    return { ...clashOf(distance, 'mesh'), id };
+  }
+
+  it('puts the deepest penetration first even when it arrives last', () => {
+    const engineOrder = [at('shallow', -0.01), at('gap', 0.5), at('deepest', -2)];
+    expect(worstFirst(engineOrder).map((c) => c.id)).toEqual(['deepest', 'shallow', 'gap']);
+  });
+
+  it('keeps the worst rows when the list is capped', () => {
+    // Two rows survive a cap of 2: it must be the two deepest, not the two the
+    // engine happened to emit first.
+    const engineOrder = [at('a', 0.4), at('b', 0.3), at('c', -1), at('d', -3)];
+    expect(worstFirst(engineOrder).slice(0, 2).map((c) => c.id)).toEqual(['d', 'c']);
+  });
+
+  it('orders equal distances deterministically, so repeated runs agree', () => {
+    // The MCP copy had no tie-break, leaving equal-distance rows in whatever
+    // order the input happened to carry.
+    const forward = worstFirst([at('y', -1), at('x', -1)]).map((c) => c.id);
+    const reversed = worstFirst([at('x', -1), at('y', -1)]).map((c) => c.id);
+    expect(forward).toEqual(reversed);
+  });
+
+  it('leaves the caller array untouched', () => {
+    const engineOrder = [at('a', 0.4), at('b', -3)];
+    worstFirst(engineOrder);
+    expect(engineOrder.map((c) => c.id)).toEqual(['a', 'b']);
+  });
+});
 
 describe('formatClashRow penetration provenance', () => {
   it('prints a mesh-measured depth as a plain penetration', () => {

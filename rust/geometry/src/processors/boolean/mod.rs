@@ -38,6 +38,23 @@ use halfspace_cap::force_cdt_fail_on_ring_for_test;
 /// significant stack space for CSG operations.
 const MAX_BOOLEAN_DEPTH: u32 = 10;
 
+/// Longest chain of nested boolean/CSG operand nodes on one path. Bounds the
+/// stack where `MAX_BOOLEAN_DEPTH` cannot: see `process_with_depth`.
+///
+/// Both boolean AND CSG nodes go into the set, so `len()` is an honest count of
+/// recursion frames on the current path and this number means what it says. An
+/// earlier revision counted booleans only and leaned on `IfcCsgSolid ->
+/// IfcCsgSolid` being rejected elsewhere to keep the ratio bounded; see
+/// `CsgSolidProcessor::process_with_boolean_cycle_guard` for why that was the
+/// wrong trade.
+const MAX_OPERAND_PATH_NODES: usize = 64;
+
+/// Entity ids on the CURRENT operand path — inserted on the way in, removed on
+/// the way out, so `len()` is live recursion depth. The two accumulate-only
+/// sets in this file (`collect_polygonal_chain`'s, and the spine walk's
+/// `spine_seen`) are NOT frame counts and must not be compared to the bound.
+pub(crate) type OperandPath = rustc_hash::FxHashSet<u32>;
+
 /// BooleanResult processor
 /// Handles IfcBooleanResult and IfcBooleanClippingResult - CSG operations
 ///
@@ -140,6 +157,7 @@ impl BooleanClippingProcessor {
         decoder: &mut EntityDecoder,
         depth: u32,
         quality: TessellationQuality,
+        visited: &mut OperandPath,
     ) -> Result<Mesh> {
         match operand.ifc_type {
             IfcType::IfcExtrudedAreaSolid => {
@@ -165,11 +183,32 @@ impl BooleanClippingProcessor {
             IfcType::IfcBlock => {
                 BlockProcessor::new().process(operand, decoder, &self.schema, quality)
             }
-            IfcType::IfcCsgSolid => CsgSolidProcessor::with_skip_small_cuts(self.skip_small_cuts)
-                .process(operand, decoder, &self.schema, quality),
+            // `CsgSolidProcessor::process` builds a FRESH BooleanClippingProcessor
+            // for a boolean TreeRootExpression, so routing through it used to reset
+            // both `depth` and the cycle guard. `#10 IfcBooleanResult -> FirstOperand
+            // #20 IfcCsgSolid -> TreeRootExpression #10` then recursed forever with
+            // depth never passing 1, and a Rust stack overflow ABORTS (#2866).
+            // `depth` restarts at 0 here, as it did before this guard existed
+            // (the hop built a fresh processor). Carrying it would tighten
+            // MAX_BOOLEAN_DEPTH, which #960 calibrated against a per-processor
+            // reset: 8 booleans + a CsgSolid + 8 more is valid, resolves on
+            // main, and would error as "depth 11 exceeds limit 10", dropping
+            // the element. MAX_OPERAND_PATH_NODES bounds the stack across the
+            // hop instead, counting frames of both kinds.
+            IfcType::IfcCsgSolid => CsgSolidProcessor::with_skip_small_cuts(
+                self.skip_small_cuts,
+            )
+            .process_with_boolean_cycle_guard(
+                operand,
+                decoder,
+                &self.schema,
+                0,
+                quality,
+                visited,
+            ),
             IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
                 // Recursive case with depth tracking
-                self.process_with_depth(operand, decoder, &self.schema, depth + 1, quality)
+                self.process_with_depth(operand, decoder, &self.schema, depth + 1, quality, visited)
             }
             _ => Ok(Mesh::new()),
         }
@@ -380,6 +419,7 @@ impl BooleanClippingProcessor {
         decoder: &mut EntityDecoder,
         depth: u32,
         quality: TessellationQuality,
+        visited: &mut OperandPath,
     ) -> Result<Option<Mesh>> {
         let (base_entity, cutters) = self.collect_polygonal_chain(entity.clone(), decoder)?;
         if cutters.len() < 2 {
@@ -390,7 +430,8 @@ impl BooleanClippingProcessor {
         // walked iteratively above, so a 12-cutter chain reaches here at the
         // SAME `depth` as a 2-cutter one — the recursion-depth limit can't drop
         // it.
-        let base_mesh = self.process_operand_with_depth(&base_entity, decoder, depth, quality)?;
+        let base_mesh =
+            self.process_operand_with_depth(&base_entity, decoder, depth, quality, visited)?;
         if base_mesh.is_empty() {
             return Ok(Some(base_mesh));
         }
@@ -581,13 +622,60 @@ impl BooleanClippingProcessor {
     /// Revit exports building-element-part chains up to 42 DIFFERENCE nodes
     /// deep; the recursive walk hit the cap at 10, errored, and the router
     /// dropped the whole element's geometry.
-    fn process_with_depth(
+    pub(crate) fn process_with_depth(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        schema: &IfcSchema,
+        depth: u32,
+        quality: TessellationQuality,
+        visited: &mut OperandPath,
+    ) -> Result<Mesh> {
+        // PATH-scoped, not global: a boolean tree is a DAG and geometry
+        // ACCUMULATES, so one operand legitimately referenced down two
+        // different branches must be processed both times. Removing the id on
+        // the way out breaks cycles without dropping real geometry — the same
+        // choice `router/processing.rs` makes, and the opposite of the colour
+        // resolvers, where the result is a pure function of the id so a global
+        // set is both safe and stronger (#2864).
+        // The set is path-scoped, so its LENGTH is the current operand-nesting
+        // depth -- a chain bound for free, and one that covers the CSG hop.
+        // It is needed because that hop passes `depth` UNCHANGED (a CsgSolid
+        // is not itself a boolean nesting level), so a long ACYCLIC
+        // `Boolean -> Csg -> Boolean` chain never advances MAX_BOOLEAN_DEPTH,
+        // every `visited.insert` succeeds, and the recursion aborts on stack
+        // depth alone. Measured: 4,000 links, SIGABRT (Codex, #2871/#2872
+        // review; the same gap in this file).
+        //
+        // 64 sits well clear of MAX_BOOLEAN_DEPTH (10) so it cannot make that
+        // cap's job harder, and clear of the 42-node Revit chains from #960,
+        // which are FirstOperand SPINE nodes walked iteratively and never
+        // reach here.
+        if visited.len() >= MAX_OPERAND_PATH_NODES {
+            return Err(Error::geometry(format!(
+                "Boolean/CSG operand chain exceeds {MAX_OPERAND_PATH_NODES} nested nodes at #{}",
+                entity.id
+            )));
+        }
+        if !visited.insert(entity.id) {
+            return Err(Error::geometry(format!(
+                "Cyclic boolean/CSG operand reference at #{}",
+                entity.id
+            )));
+        }
+        let out = self.process_with_depth_inner(entity, decoder, schema, depth, quality, visited);
+        visited.remove(&entity.id);
+        out
+    }
+
+    fn process_with_depth_inner(
         &self,
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         _schema: &IfcSchema,
         depth: u32,
         quality: TessellationQuality,
+        visited: &mut OperandPath,
     ) -> Result<Mesh> {
         // Depth limit to prevent stack overflow from nested boolean operands
         if depth > MAX_BOOLEAN_DEPTH {
@@ -605,10 +693,10 @@ impl BooleanClippingProcessor {
         // Walk down the left spine, collecting nodes whose second operands
         // are applied innermost-first once the base mesh exists.
         let mut spine: Vec<DecodedEntity> = Vec::new();
-        let mut visited: std::collections::HashSet<u32> = std::collections::HashSet::new();
+        let mut spine_seen: std::collections::HashSet<u32> = std::collections::HashSet::new();
         let mut current = entity.clone();
         let mut mesh = loop {
-            if !visited.insert(current.id) {
+            if !spine_seen.insert(current.id) {
                 // Cyclic FirstOperand chain (malformed input). The recursive
                 // walk bottomed out on the depth cap; fail the same way with
                 // a reason that names the actual problem.
@@ -622,12 +710,12 @@ impl BooleanClippingProcessor {
                 IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult
             ) {
                 // Bottom of the spine: the base solid.
-                break self.process_operand_with_depth(&current, decoder, depth, quality)?;
+                break self.process_operand_with_depth(&current, decoder, depth, quality, visited)?;
             }
             let operator = Self::boolean_operator(&current);
             if operator == ".DIFFERENCE." || operator == "DIFFERENCE" {
                 if let Some(result) =
-                    self.try_union_polygonal_chain(&current, decoder, depth, quality)?
+                    self.try_union_polygonal_chain(&current, decoder, depth, quality, visited)?
                 {
                     // Batched PBHS resolution handled this node and everything
                     // below it (see the comment on the sequential step).
@@ -652,7 +740,7 @@ impl BooleanClippingProcessor {
                 // per-level early-out (for every operator, UNION included).
                 return Ok(mesh);
             }
-            mesh = self.apply_boolean_step(node, mesh, decoder, depth, quality)?;
+            mesh = self.apply_boolean_step(node, mesh, decoder, depth, quality, visited)?;
         }
         Ok(mesh)
     }
@@ -697,6 +785,7 @@ impl BooleanClippingProcessor {
         decoder: &mut EntityDecoder,
         depth: u32,
         quality: TessellationQuality,
+        visited: &mut OperandPath,
     ) -> Result<Mesh> {
         let operator = Self::boolean_operator(entity);
 
@@ -821,7 +910,7 @@ impl BooleanClippingProcessor {
             // bath, any `IfcCsgSolid` with a solid cutter) silently rendered
             // as the uncut host even when the operands were trivially small.
             let second_mesh =
-                self.process_operand_with_depth(&second_operand, decoder, depth, quality)?;
+                self.process_operand_with_depth(&second_operand, decoder, depth, quality, visited)?;
             if second_mesh.is_empty() {
                 self.record_failure(BoolOp::Difference, BoolFailureReason::EmptyOperand);
                 return Ok(mesh);
@@ -852,7 +941,7 @@ impl BooleanClippingProcessor {
         // Handle UNION operation — a real CSG union (overlap removed) on the
         // pure-Rust exact kernel.
         if operator == ".UNION." || operator == "UNION" {
-            let second_mesh = self.process_operand_with_depth(&second_operand, decoder, depth, quality)?;
+            let second_mesh = self.process_operand_with_depth(&second_operand, decoder, depth, quality, visited)?;
             if second_mesh.is_empty() {
                 self.record_failure(BoolOp::Union, BoolFailureReason::EmptyOperand);
                 return Ok(mesh);
@@ -867,7 +956,7 @@ impl BooleanClippingProcessor {
         // pure-Rust exact kernel.
         if operator == ".INTERSECTION." || operator == "INTERSECTION" {
             let second_mesh =
-                self.process_operand_with_depth(&second_operand, decoder, depth, quality)?;
+                self.process_operand_with_depth(&second_operand, decoder, depth, quality, visited)?;
             if second_mesh.is_empty() {
                 self.record_failure(BoolOp::Intersection, BoolFailureReason::EmptyOperand);
                 return Ok(Mesh::new());
@@ -894,7 +983,8 @@ impl GeometryProcessor for BooleanClippingProcessor {
         schema: &IfcSchema,
         quality: TessellationQuality,
     ) -> Result<Mesh> {
-        self.process_with_depth(entity, decoder, schema, 0, quality)
+        let mut visited = OperandPath::default();
+        self.process_with_depth(entity, decoder, schema, 0, quality, &mut visited)
     }
 
     fn supported_types(&self) -> Vec<IfcType> {

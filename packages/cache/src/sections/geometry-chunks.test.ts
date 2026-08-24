@@ -88,6 +88,35 @@ describe('groupMeshesIntoChunks', () => {
     const groups = groupMeshesIntoChunks(meshes, 10);
     expect(groups.length).toBe(3);
   });
+
+  // Every case above separates its cells along X alone (`[1000, 0, 0]`),
+  // and every mesh() fixture's FIRST VERTEX is the local origin `[0, 0, 0]`
+  // — two symmetries that made half of `cellKeyOf` unobservable. Mutation
+  // testing confirmed both: computing cy and cz from `x` instead of `y`/`z`,
+  // and dropping the first-vertex term from the anchor entirely, each left
+  // the whole `@ifc-lite/cache` suite green at 83/83.
+
+  it('separates cells along Y and Z, not only along X', () => {
+    // Same X for all three; only the Y and Z components can tell them
+    // apart, at 1000 units against a 32-unit cell.
+    const meshes = [mesh(1, [0, 0, 0]), mesh(2, [0, 1000, 0]), mesh(3, [0, 0, 1000])];
+    const groups = groupMeshesIntoChunks(meshes);
+    expect(groups.length).toBe(3);
+    expect(groups.map((g) => g.map((m) => m.expressId)).sort()).toEqual([[1], [2], [3]]);
+  });
+
+  it('anchors on origin PLUS first vertex, so meshes sharing an origin but sitting far apart still split', () => {
+    // Identical origins: only the local first vertex distinguishes them.
+    // This is the case that matters for absolute (origin-less) meshes,
+    // whose whole world position lives in the vertex data.
+    const near = mesh(1, [0, 0, 0]);
+    const far = mesh(2, [0, 0, 0], {
+      positions: new Float32Array([0, 0, 1000, 1, 0, 1000, 0, 1, 1000]),
+    });
+    expect(near.origin).toEqual(far.origin);
+    const groups = groupMeshesIntoChunks([near, far]);
+    expect(groups.length).toBe(2);
+  });
 });
 
 describe('v13 geometry section round-trip', () => {

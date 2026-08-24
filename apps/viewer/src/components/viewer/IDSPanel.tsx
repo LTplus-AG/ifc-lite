@@ -67,15 +67,22 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useIDS } from '@/hooks/useIDS';
+import type { IDSFocusMode } from '@/store/slices/idsSlice';
 import { openGenericFileDialog } from '@/services/file-dialog';
 import type {
   IDSSpecificationResult,
   IDSEntityResult,
   IDSRequirementResult,
 } from '@ifc-lite/ids';
+import {
+  groupRequirementResults,
+  computeCheckStats,
+  type RequirementGroup,
+} from '@/hooks/ids/idsRequirementGrouping';
 import { cn } from '@/lib/utils';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useViewerStore } from '@/store';
+import { endIdsRowFocusPresentation } from '@/lib/ids/visibility-ownership';
 import { IDSAuditSummary } from './IDSAuditSummary';
 import { IDSExportDialog } from './IDSExportDialog';
 import type { IDSBCFExportSettings, IDSExportProgress } from './IDSExportDialog';
@@ -169,6 +176,27 @@ function SpecificationCard({
     );
   }, [result.entityResults, filterMode]);
 
+  // Regroup this specification's entity results by requirement ("check")
+  // rather than by entity. A specification can carry several requirements
+  // (fire rating, certificate ref, width, ...) — grouping first (before any
+  // status filtering) keeps the per-requirement counts aligned across
+  // entities; see idsRequirementGrouping.ts for why that ordering matters.
+  const requirementGroups = useMemo(
+    () => groupRequirementResults(result.entityResults),
+    [result.entityResults]
+  );
+  const checkStats = useMemo(
+    () => computeCheckStats(result.entityResults),
+    [result.entityResults]
+  );
+  const filteredRequirementGroups = useMemo(() => {
+    if (filterMode === 'all') return requirementGroups;
+    return requirementGroups.filter((g) =>
+      filterMode === 'failed' ? g.failedCount > 0 : g.passedCount > 0
+    );
+  }, [requirementGroups, filterMode]);
+  const applicableChecks = checkStats.passedChecks + checkStats.failedChecks;
+
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
       <div
@@ -212,14 +240,43 @@ function SpecificationCard({
                 <div className="mt-2">
                   <PassRateBar passRate={result.passRate} />
                 </div>
+                {/* Check-level rate: an entity is failed by its FIRST failing
+                    requirement while its other requirements still count as
+                    passes here, so this normally reads HIGHER than the
+                    entity-level rate above — both matter and are shown
+                    separately rather than picking one. See computeCheckStats
+                    for the denominator caveat. */}
+                {applicableChecks > 0 && (
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {checkStats.passedChecks}/{applicableChecks} checks passed ({checkStats.checkPassRate}%)
+                    {requirementGroups.length > 1 && ` across ${requirementGroups.length} requirements`}
+                  </div>
+                )}
               </div>
             </div>
           </button>
         </CollapsibleTrigger>
 
+        {/* Requirement Breakdown */}
+        <CollapsibleContent>
+          <Separator />
+          <div className="p-2 space-y-1">
+            {filteredRequirementGroups.length === 0 ? (
+              <div className="p-3 text-sm text-muted-foreground text-center">
+                No {filterMode === 'failed' ? 'failed' : filterMode === 'passed' ? 'passed' : ''} requirements
+              </div>
+            ) : (
+              filteredRequirementGroups.map((group) => (
+                <RequirementGroupRow key={group.key} group={group} onEntityClick={onEntityClick} />
+              ))
+            )}
+          </div>
+        </CollapsibleContent>
+
         {/* Entity Results */}
         <CollapsibleContent>
           <Separator />
+          <div className="p-2 pt-1 text-xs font-medium text-muted-foreground">By entity</div>
           <div className="max-h-64 overflow-auto">
             {filteredEntities.length === 0 ? (
               <div className="p-3 text-sm text-muted-foreground text-center">
@@ -336,6 +393,77 @@ function RequirementResultRow({ result }: RequirementResultRowProps) {
           <div className="text-red-600 mt-0.5">{result.failureReason}</div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Requirement Group Row Component
+// ============================================================================
+
+interface RequirementGroupRowProps {
+  group: RequirementGroup;
+  onEntityClick: (modelId: string, expressId: number) => void;
+}
+
+function RequirementGroupRow({ group, onEntityClick }: RequirementGroupRowProps) {
+  const [showFailures, setShowFailures] = useState(false);
+  const hasFailures = group.failingEntities.length > 0;
+  const status: 'pass' | 'fail' | 'not_applicable' =
+    group.failedCount > 0 ? 'fail' : group.passedCount > 0 ? 'pass' : 'not_applicable';
+
+  return (
+    <div className="rounded-md border border-border/60">
+      <button
+        type="button"
+        className="w-full p-2 text-left flex items-start gap-2 hover:bg-muted/50 rounded-md disabled:hover:bg-transparent"
+        onClick={() => hasFailures && setShowFailures((v) => !v)}
+        disabled={!hasFailures}
+        aria-expanded={hasFailures ? showFailures : undefined}
+      >
+        <StatusIcon status={status} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge variant="outline" className="text-[10px] uppercase">{group.facetType}</Badge>
+            <span className="text-xs truncate">{group.checkedDescription}</span>
+          </div>
+          <div className="text-xs text-muted-foreground mt-0.5">
+            <span className="text-green-600">{group.passedCount} passed</span>
+            {' · '}
+            <span className="text-red-600">{group.failedCount} failed</span>
+            {group.notApplicableCount > 0 && (
+              <>
+                {' · '}
+                <span>{group.notApplicableCount} n/a</span>
+              </>
+            )}
+          </div>
+        </div>
+        {hasFailures && (
+          showFailures ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />
+        )}
+      </button>
+      {showFailures && hasFailures && (
+        <div className="pl-6 pr-2 pb-2 space-y-1">
+          {group.failingEntities.map((entity) => (
+            <button
+              key={`${entity.modelId}:${entity.expressId}`}
+              type="button"
+              className="w-full text-left text-xs p-1.5 rounded hover:bg-muted/50 flex flex-col gap-0.5"
+              onClick={() => onEntityClick(entity.modelId, entity.expressId)}
+            >
+              <span className="truncate">
+                {entity.entityType}
+                {entity.entityName ? ` · ${entity.entityName}` : ''}
+                {entity.globalId ? ` · ${entity.globalId}` : ''}
+              </span>
+              {entity.failureReason && (
+                <span className="text-red-600">{entity.failureReason}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -468,6 +596,8 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
     isolationScope,
     isolateMode,
     isolationActive,
+    visibilityFilterActive,
+    focusMode,
 
     // Actions
     loadIDSFile,
@@ -475,9 +605,10 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
     runValidation,
     clearValidation,
     setActiveSpecification,
-    selectEntity,
+    focusEntity,
     setFilterMode,
     setIsolationScope,
+    setFocusMode,
     applyColors,
     isolateFailed,
     isolatePassed,
@@ -508,6 +639,16 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
   // updates once a run completes. Hold the user's in-flight choice locally so
   // the dropdown keeps showing the model being validated instead of snapping
   // back to the previous one while `loading` (#1702 C3).
+  // Leaving the panel ends the ROW focus presentation (#2867): an isolate- or
+  // ghost-mode focus would otherwise leave the model isolated on, or faded
+  // around, an element whose panel is gone — the same reason `ClashPanel` has
+  // an unmount cleanup. Ownership-scoped, so a presentation belonging to
+  // clash, the spaces X-ray or IDS's own set-level isolate buttons is left
+  // exactly as the user left it.
+  useEffect(() => () => {
+    endIdsRowFocusPresentation(useViewerStore.getState());
+  }, []);
+
   const [pendingModelId, setPendingModelId] = useState<string | null>(null);
   useEffect(() => {
     // Once a run settles (report landed or errored), fall back to the report's
@@ -548,10 +689,13 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
     fileInputRef.current?.click();
   }, [loadIdsFromDialog]);
 
-  // Handle entity click
+  // Handle entity click. The row's focus MODE (highlight / isolate / ghost) is
+  // the user's persistent choice, applied by `focusEntity` — activating a row
+  // used to select, colour nothing extra and frame, which in a dense model
+  // left the element indistinguishable from the failures around it (#2867).
   const handleEntityClick = useCallback((modelId: string, expressId: number) => {
-    selectEntity(modelId, expressId);
-  }, [selectEntity]);
+    focusEntity(modelId, expressId);
+  }, [focusEntity]);
 
   // Active state for the isolate toggle buttons. A button is "active" only
   // when ITS mode is applied AND isolation is still live, so an externally
@@ -889,7 +1033,7 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
                 className="h-8 w-8 p-0"
                 aria-label="Clear isolation (show all)"
                 onClick={clearIsolation}
-                disabled={!isolationActive}
+                disabled={!visibilityFilterActive}
               >
                 <Focus className="h-4 w-4" />
               </Button>
@@ -915,6 +1059,34 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
             bcfExportProgress={bcfExportProgress}
             report={report}
           />
+        </div>
+
+        {/* On-select focus mode (#2867) — the same control, the same wording
+            and the same three modes as the clash panel's, because it is the
+            same action: how the rest of the model is shown when you activate
+            one result row. */}
+        <div className="flex items-center gap-1 px-2 py-1 border-b text-[11px] text-muted-foreground">
+          <span>On select:</span>
+          <div className="inline-flex rounded-md border border-border overflow-hidden">
+            {([
+              ['highlight', 'Highlight', 'Keep the whole model visible'],
+              ['isolate', 'Isolate', 'Hide everything except the selected element'],
+              ['ghost', 'Ghost', 'Fade the rest to translucent context (X-Ray)'],
+            ] as [IDSFocusMode, string, string][]).map(([m, label, tip]) => (
+              <button
+                key={m}
+                title={tip}
+                aria-pressed={focusMode === m}
+                onClick={() => setFocusMode(m)}
+                className={cn(
+                  'px-1.5 py-0.5 transition-colors',
+                  focusMode === m ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Specifications List */}

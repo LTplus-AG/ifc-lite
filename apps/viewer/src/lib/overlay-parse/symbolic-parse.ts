@@ -69,6 +69,8 @@ export interface SymbolicParseInput {
   elementToStorey?: ReadonlyMap<number, number>;
   /** store.spatialHierarchy?.storeyElevations */
   storeyElevations?: ReadonlyMap<number, number>;
+  /** See {@link SymbolicHierarchyInput.elevationRebase}. */
+  elevationRebase?: ElevationRebase;
 }
 
 /** The spatial-hierarchy half of {@link SymbolicParseInput}. Structured-clone
@@ -76,6 +78,35 @@ export interface SymbolicParseInput {
 export interface SymbolicHierarchyInput {
   elementToStorey?: ReadonlyMap<number, number>;
   storeyElevations?: ReadonlyMap<number, number>;
+  /**
+   * The render-frame rebasing this model's elevations still need, as
+   * `{ primitive, storeyTable }` offsets to SUBTRACT.
+   *
+   * The two elevation sources `ensureBucket` picks between arrive in
+   * different frames, and the buckets they feed are lifted into one scene:
+   * `primitive.worldY` comes from the wasm symbolic extractor, which already
+   * subtracts the model RTC offset's Z
+   * (`rust/processing/src/symbolic/rebase.rs`), while
+   * `IfcBuildingStorey.Elevation` is raw unit-scaled IFC Z. The renderer's Y
+   * is `ifcZ - rtc.z - originShift.y` (`lib/geo/ifc-origin.ts`'s
+   * `totalYupOffset`, mirrored in `lib/wall-rects-from-meshes.ts:141-144`),
+   * so the two need different offsets to land in the same frame — hence one
+   * value each, derived together by the caller rather than one shared number
+   * that must be right for both.
+   *
+   * Absent → both zero, which is exactly right for a model with no RTC
+   * offset and no origin shift.
+   */
+  elevationRebase?: ElevationRebase;
+}
+
+/** Render-frame offsets to subtract from each elevation source. See
+ *  {@link SymbolicHierarchyInput.elevationRebase}. */
+export interface ElevationRebase {
+  /** For `primitive.worldY` (wasm already removed the RTC Z). */
+  primitive: number;
+  /** For a raw `IfcBuildingStorey.Elevation`. */
+  storeyTable: number;
 }
 
 /**
@@ -92,6 +123,7 @@ export function buildParseResult(
   const result: ParseResult = createEmptyParseResult();
   const elementToStorey = hierarchy.elementToStorey;
   const storeyElevations = hierarchy.storeyElevations;
+  const rebase = hierarchy.elevationRebase ?? { primitive: 0, storeyTable: 0 };
 
   // Resolve a bucket by elevation rather than by storey id.
   //
@@ -125,12 +157,18 @@ export function buildParseResult(
       // (the 3DEXPERIENCE / IfcPlusPlus exports this priority order was
       // written for) that fallback has nothing to resolve to either, so it
       // landed in the loose bucket instead of its storey (issue #2256).
-      effectiveY = primitiveWorldY;
+      effectiveY = primitiveWorldY - rebase.primitive;
     } else {
       const storeyId = elementToStorey?.get(expressId);
       if (storeyId !== undefined) {
         const elev = storeyElevations?.get(storeyId);
-        if (typeof elev === 'number' && Number.isFinite(elev)) effectiveY = elev;
+        // Raw IFC elevation → the same render frame the primitive branch
+        // above lands in. Both bucket kinds are lifted into one scene by
+        // `useSymbolicAnnotations`, so a bucket's frame must not depend on
+        // which source resolved it.
+        if (typeof elev === 'number' && Number.isFinite(elev)) {
+          effectiveY = elev - rebase.storeyTable;
+        }
       }
     }
     if (effectiveY === null) return null;

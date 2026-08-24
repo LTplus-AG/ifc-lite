@@ -87,6 +87,12 @@ jobs:
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
         run: pnpm fixtures
 
+      # Unconditional — the fetch above is gated on a cache miss, so on a cache
+      # hit nothing had ever confirmed the restored tree still matches the
+      # manifest. A partial cache made fixture-gated tests skip and report ok.
+      - name: Verify fixtures
+        run: pnpm fixtures:check
+
       # exact_predicate_determinism pins exact-predicate signs across
       # platforms; geometry_correctness_harness asserts the committed
       # x86_64-generated .snap files byte-for-byte against the pure-Rust

@@ -13,6 +13,7 @@ import { useViewerStore } from '@/store';
 import { fromGlobalIdFromModels, toGlobalIdFromModels } from '@/store/globalId';
 import { pointInPolygon } from '@/lib/polygon-clip';
 import { toast } from '@/components/ui/toast';
+import { notifyWallSplit } from './wallSplitNotice.js';
 import { raycastForPolylinePoint, isNearPolylineStart,
   isDuplicateClickPoint,
 } from './measureHandlers.js';
@@ -49,6 +50,8 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
       handlePolylineClick(ctx, x, y);
     } else if (mode === 'angle') {
       handleAngleClick(ctx, x, y);
+    } else if (mode === 'radius') {
+      handleRadiusClick(ctx, x, y);
     }
     return;
   }
@@ -158,15 +161,13 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
       if (wallTry.ok) {
         state.clearSplitHover();
         state.setSelectedEntityId(wallTry.right.globalId);
-        // Mention opening reassignment in the toast only when it
-        // happened — silence is preferable to "0 openings moved"
-        // for a wall with no doors / windows.
-        const op = wallTry.openings;
-        const opSummary =
-          op.toLeft + op.toRight > 0
-            ? ` (${op.toLeft + op.toRight} opening${op.toLeft + op.toRight === 1 ? '' : 's'} reassigned)`
-            : '';
-        toast.success(`Wall split${opSummary} — Ctrl+Z to undo`);
+        // Both wall-split commit paths — here and the Split tool's
+        // numeric-distance panel — announce the split through the same
+        // emitter (`wallSplitNotice.ts`), so a notice added to one cannot
+        // go missing from the other. That is exactly how `openings.skipped`
+        // stayed silent on the typed-distance path after #3023 taught this
+        // one to report it.
+        notifyWallSplit(wallTry.openings);
         return;
       }
       const linearTry = state.splitLinearElementAtDistance(
@@ -646,6 +647,37 @@ export function handlePolylineClick(ctx: MouseHandlerContext, x: number, y: numb
 }
 
 /**
+ * Handle a click landing on the scene while the Measure tool's radius mode
+ * is active (#2737 item 2). Same click state machine as
+ * {@link handlePolylineClick} minus the close-the-loop branch — radius has
+ * no "closed" concept, so a click only ever starts a sequence or extends it:
+ *
+ *   - no sequence in progress → start one at the clicked point.
+ *   - otherwise → append the clicked point.
+ *
+ * Finishing is double-click or Enter (`finishRadiusFromDoubleClick`'s call
+ * sites in useMouseControls.ts / useKeyboardShortcuts.ts), the same gesture
+ * polyline uses and for the same reason: with an unbounded pick count there
+ * is no "last pick" for the store to recognise and finish itself on, unlike
+ * angle's fixed count. A miss (no raycast hit) is a no-op.
+ */
+export function handleRadiusClick(ctx: MouseHandlerContext, x: number, y: number): void {
+  const picked = raycastForPolylinePoint(ctx, x, y);
+  if (!picked) return;
+
+  const state = useViewerStore.getState();
+  ctx.setSnapTarget(picked.snapTarget);
+
+  const active = state.activeRadius;
+  if (!active) {
+    state.startRadius(picked.point);
+    return;
+  }
+
+  state.addRadiusPoint(picked.point);
+}
+
+/**
  * Click handler for angle mode (#2735).
  *
  * There is no finish gesture - every angle kind has a FIXED pick count and the
@@ -768,6 +800,20 @@ export function finishPolylineFromDoubleClick(): boolean | null {
   const state = useViewerStore.getState();
   if (state.measureMode !== 'polyline' || !state.activePolyline) return null;
   return state.finishPolyline(false, { fromDoubleClick: true });
+}
+
+/**
+ * The store side of the Measure tool's radius double-click finish (#2737
+ * item 2) — same shape as {@link finishPolylineFromDoubleClick}, for the
+ * same reason (radius is the other unbounded, explicit-finish click
+ * sequence). Returns `null` when the gesture does not apply (not in radius
+ * mode, or no sequence in progress); otherwise whether a measurement was
+ * actually recorded.
+ */
+export function finishRadiusFromDoubleClick(): boolean | null {
+  const state = useViewerStore.getState();
+  if (state.measureMode !== 'radius' || !state.activeRadius) return null;
+  return state.finishRadius({ fromDoubleClick: true });
 }
 
 /**

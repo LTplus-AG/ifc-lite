@@ -18,7 +18,7 @@ import { createVisibilitySlice, type VisibilitySlice } from './slices/visibility
 import { createUISlice, type UISlice } from './slices/uiSlice.js';
 import { createHoverSlice, type HoverSlice } from './slices/hoverSlice.js';
 import { createCameraSlice, type CameraSlice } from './slices/cameraSlice.js';
-import { createSectionSlice, type SectionSlice } from './slices/sectionSlice.js';
+import { createSectionSlice, type SectionSlice, clearLastSectionMode } from './slices/sectionSlice.js';
 export { customPlaneCenter, loadLastSectionMode } from './slices/sectionSlice.js';
 export type { LastSectionMode } from './slices/sectionSlice.js';
 import { createMeasurementSlice, type MeasurementSlice } from './slices/measurementSlice.js';
@@ -59,6 +59,7 @@ import { createSpaceMouseSlice, type SpaceMouseSlice } from './slices/spaceMouse
 import { createLayerStackSlice, type LayerStackSlice } from './slices/layerStackSlice.js';
 import { createZonesSlice, type ZonesSlice } from './slices/zonesSlice.js';
 import { invalidateVisibleBasketCache } from './basketVisibleSet.js';
+import { withVisibilityOwnershipInvalidation } from './visibility-invalidation.js';
 import {
   endClashScenePresentation,
   type ClashSceneTeardown,
@@ -96,7 +97,7 @@ export type { CollabSlice, CollabRole, CollabStatus, StartCollabOptions } from '
 export type { BCFSlice, BCFSliceState } from './slices/bcfSlice.js';
 
 // Re-export IDS types
-export type { IDSSlice, IDSSliceState, IDSDisplayOptions, IDSFilterMode } from './slices/idsSlice.js';
+export type { IDSSlice, IDSSliceState, IDSDisplayOptions, IDSFilterMode, IDSFocusMode } from './slices/idsSlice.js';
 
 // Re-export List types
 export type { ListSlice } from './slices/listSlice.js';
@@ -222,9 +223,16 @@ export type ViewerState = LoadingSlice &
   };
 
 /**
- * Main viewer store combining all slices
+ * Main viewer store combining all slices.
+ *
+ * `withVisibilityOwnershipInvalidation` wraps the store's `set` (and its
+ * `setState`) so that no slice — present or future — can replace
+ * `isolatedEntities` / `ghostExceptEntities` without dropping the
+ * visibility-ownership records that write makes stale. See
+ * `store/visibility-invalidation.ts` for why that is a middleware rather than a
+ * helper each writing action remembers to call.
  */
-const createViewerStore = () => create<ViewerState>()((...args) => ({
+const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInvalidation((...args) => ({
   // Spread all slices
   ...createLoadingSlice(...args),
   ...createSelectionSlice(...args),
@@ -275,6 +283,13 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
   resetViewerState: () => {
     invalidateVisibleBasketCache();
     const [set, get] = args;
+    // Drop the persisted "last section mode" (localStorage, survives closing
+    // the browser) together with the in-memory sectionPlane reset below —
+    // its 'cardinal' axis/position is geometry, meaningful only relative to
+    // the model that was loaded when it was saved. Leaving it in localStorage
+    // past this reset let a NEW model inherit the OLD model's cut position
+    // the next time the section tool was opened (#2939).
+    clearLastSectionMode();
     // Measurements (#2641 review): the slice owns the full list of its own
     // fields to clear on a model switch — see resetAllMeasurementState's doc
     // comment (measurementSlice.ts) for why this must not be a field list
@@ -319,6 +334,10 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       error: null,
       pendingColorUpdates: null,
       pendingMeshColorUpdates: null,
+      // The backup those two restore FROM. Ids collide across models, so
+      // surviving a swap made RESET_COLORS paint the old model's colours onto
+      // the new one; first-write-wins made every later reset wrong too.
+      meshColorBackup: null,
       // Drop any undrained GPU-instancing shards from the previous model so they
       // can't be uploaded into the new scene under a rapid model switch.
       pendingInstancedShards: null,
@@ -469,6 +488,14 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       idsError: null,
       idsActiveSpecificationId: null,
       idsActiveEntityId: null,
+      // The per-row focus's claim on the shared isolate/ghost channels
+      // (#2867) goes with the row it belonged to. Both channels are nulled by
+      // this same `set`, so there is nothing left to release — but the RECORD
+      // must not survive: ownership is tested by value, so a record left
+      // behind starts matching again the moment another owner installs equal
+      // content, and the next release destroys that owner's presentation
+      // (#2654 fourth review).
+      idsFocusVisibilityOwned: null,
       // Keep idsDocument, idsValidationReport, idsLocale - user's work
 
       // Lists - reset result but keep definitions (user's saved lists)
@@ -718,7 +745,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       get().showWorkspacePanel(panel);
     }
   },
-}));
+})));
 
 const STORE_SINGLETON_KEY = '__ifc_lite_viewer_store__';
 const globalStoreRegistry = globalThis as typeof globalThis & {

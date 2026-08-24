@@ -85,6 +85,23 @@ function isMaterialAssignmentShaped(value: unknown): value is MaterialAssignment
   return typeof (value as Record<string, unknown>).materialId === 'string';
 }
 
+/**
+ * Provenance fields that ride on the wire under `IFCLITE_ATTR.META`.
+ *
+ * An allowlist, not `meta` wholesale: `ifcClass` already has a wire home
+ * (`bsi::ifc::class`) and `schemaVersion` is re-derived by the reader, so
+ * carrying them here would give two writers for one fact. Every key
+ * listed is fixed when the entity is created — see the `META` doc
+ * comment in `@ifc-lite/ifcx` for why that matters.
+ */
+export const PROVENANCE_META_KEYS = [
+  'createdBy',
+  'createdAt',
+  'lastEditedBy',
+  'lastEditedAt',
+  'previousPath',
+] as const;
+
 /** The structured branches `entityToJSON` exposes alongside attributes. */
 export interface StructuredBranchesJSON {
   psets: Record<string, Record<string, PropertyValue>>;
@@ -130,7 +147,15 @@ export function structuredAttributeKey(setName: string, name: string): string {
  * branch is the newer write path, so it wins deterministically.
  */
 export function flattenStructuredBranches(
-  json: { attributes: Record<string, unknown> } & StructuredBranchesJSON,
+  json: {
+    attributes: Record<string, unknown>;
+    /**
+     * Per-entity provenance. Optional so a caller assembling only the
+     * structured branches (tests, partial views) need not synthesize an
+     * empty record; `entityToJSON` always supplies it.
+     */
+    meta?: Record<string, unknown>;
+  } & StructuredBranchesJSON,
   options: FlattenOptions = {},
 ): Record<string, unknown> {
   const out: Record<string, unknown> = { ...json.attributes };
@@ -162,10 +187,25 @@ export function flattenStructuredBranches(
     out[IFCLITE_ATTR.GEOMETRY_REF] = entries.length === 1 ? entries[0] : entries;
   }
 
+  // Provenance last, and only when there is some: an entity that knows
+  // nothing about its own origin emits exactly the bytes it did before
+  // this carrier existed, rather than an empty object that every
+  // consumer would have to learn to ignore.
+  const provenance: Record<string, unknown> = {};
+  for (const key of PROVENANCE_META_KEYS) {
+    const value = json.meta?.[key];
+    if (value !== undefined) provenance[key] = value;
+  }
+  if (Object.keys(provenance).length > 0) {
+    out[IFCLITE_ATTR.META] = provenance;
+  }
+
   return out;
 }
 
 export interface InflatedAttributes extends StructuredBranchesJSON {
+  /** Shape-gated provenance read off `IFCLITE_ATTR.META` (strings only). */
+  meta: Record<string, string>;
   /** Whatever didn't inflate — stays in the flat attributes branch. */
   attributes: Record<string, unknown>;
   geometryRefRecord?: GeometryRefRecord;
@@ -189,8 +229,26 @@ export function inflateStructuredAttributes(
   let materials: MaterialAssignment[] = [];
   let geometryRefs: string[] = [];
   const geometryCarriers: GeometryRefCarrier[] = [];
+  const meta: Record<string, string> = {};
 
   for (const [key, value] of Object.entries(attributes)) {
+    if (key === IFCLITE_ATTR.META) {
+      // Shape-gated like every other carrier: a foreign value under this
+      // key stays a flat attribute rather than being read as provenance.
+      if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+        for (const provKey of PROVENANCE_META_KEYS) {
+          const provValue = (value as Record<string, unknown>)[provKey];
+          // Strings only. Every provenance field is a string, and a
+          // foreign wire is not a reason to widen what lands in the doc
+          // — `privacy.ts` writes `null` to mean "redacted", which is
+          // the same statement as "absent" once it reaches a reader.
+          if (typeof provValue === 'string') meta[provKey] = provValue;
+        }
+        continue;
+      }
+      flat[key] = value;
+      continue;
+    }
     if (key === IFCLITE_ATTR.CLASSIFICATIONS) {
       // `[].every(...)` is vacuously true, so an empty array must be
       // excluded explicitly — otherwise it inflates into an empty
@@ -280,6 +338,7 @@ export function inflateStructuredAttributes(
     geometryRefs,
     geometryRefRecord: geometryRefs.length > 0 ? { geomIds: geometryRefs } : undefined,
     geometryCarriers,
+    meta,
   };
 }
 

@@ -321,7 +321,7 @@ describe('BCF Writer', () => {
     expect(readViewpoint?.perspectiveCamera?.fieldOfView).toBe(60);
   });
 
-  // Regression: writer.escapeXml() and reader.extractElement() must be inverses.
+  // Regression: writer.escapeXml() and xml-text.extractElement() must be inverses.
   // Before the fix, extractElement() used a plain "grab text between tags" regex
   // with no entity unescaping, so a title of `A & B` came back as the literal
   // string "A &amp; B" instead of "A & B".
@@ -1116,6 +1116,68 @@ describe('BCF Writer', () => {
     });
   });
 
+  it('nests Comments and Viewpoints INSIDE <Topic> for BCF 3.0, using singular <ViewPoint>', async () => {
+    // BCF 3.0's markup.xsd moves Comments and Viewpoints inside <Topic>
+    // (each wrapped in its own plural container), after RelatedTopics; 2.1
+    // keeps them as top-level <Markup> siblings after </Topic>, using
+    // <Viewpoints Guid="..."> itself as the per-entry element. Confirmed
+    // against buildingSMART/BCF-XML's own release_3_0 conformance fixture
+    // (Test Cases/v3.0/Visualization/Perspective camera/unzipped/.../markup.bcf),
+    // whose markup reads:
+    //   <Topic ...>
+    //     ...
+    //     <Comments> <Comment Guid="...">...</Comment> </Comments>
+    //     <Viewpoints> <ViewPoint Guid="...">...</ViewPoint> </Viewpoints>
+    //   </Topic>
+    // A prior writer emitted the 2.1-shaped flat siblings unconditionally
+    // (Viewpoints then Comment, both after </Topic>) regardless of version --
+    // schema-invalid at 3.0, and undetected because our own reader was
+    // equally unconditional about the flat shape, so a self round-trip
+    // could never see the mismatch against a real 3.0 consumer.
+    const topic = baseTopic({
+      comments: [{ guid: 'c-1', date: '2026-01-01T00:00:00.000Z', author: 'a@x.com', comment: 'hi' }],
+      viewpoints: [{ guid: 'vp-1', snapshot: 'data:image/png;base64,AA==' }],
+    });
+
+    const markup30 = await markupFor(topic, '3.0');
+
+    // Comments/Viewpoints must sit between </RelatedTopics-or-whatever-comes-
+    // last> and </Topic>, not after it.
+    const topicMatch = markup30.match(/<Topic\b[^>]*>([\s\S]*)<\/Topic>/);
+    expect(topicMatch).not.toBeNull();
+    const topicBody = topicMatch![1];
+    expect(topicBody).toContain('<Comments>');
+    expect(topicBody).toContain('Guid="c-1"');
+    expect(topicBody).toContain('<Viewpoints>');
+    expect(topicBody).toContain('<ViewPoint Guid="vp-1">');
+    expect(topicBody).not.toContain('<Viewpoints Guid="vp-1">');
+
+    // Nothing pointing to Comments/Viewpoints should remain outside </Topic>.
+    const afterTopic = markup30.slice(markup30.indexOf('</Topic>'));
+    expect(afterTopic).not.toContain('<Comment ');
+    expect(afterTopic).not.toContain('<Viewpoints');
+
+    // Control: 2.1 keeps the old flat shape, but Comment must now precede
+    // Viewpoints per its own schema sequence (Header, Topic, Comment*,
+    // Viewpoints*) -- the reverse of what a prior writer emitted.
+    const markup21 = await markupFor(topic, '2.1');
+    expect(markup21.indexOf('<Comment Guid="c-1">')).toBeLessThan(
+      markup21.indexOf('<Viewpoints Guid="vp-1">'),
+    );
+    expect(markup21).not.toContain('<ViewPoint ');
+
+    // And it must still round-trip through our own reader for both versions.
+    for (const version of ['2.1', '3.0'] as const) {
+      const project: BCFProject = { version, topics: new Map([[topic.guid, topic]]) };
+      const readTopic = (await readBCF(await (await writeBCF(project)).arrayBuffer()))
+        .topics.get(topic.guid)!;
+      expect(readTopic.comments).toHaveLength(1);
+      expect(readTopic.comments[0].guid).toBe('c-1');
+      expect(readTopic.viewpoints).toHaveLength(1);
+      expect(readTopic.viewpoints[0].guid).toBe('vp-1');
+    }
+  });
+
   it('writes <Topic> children in schema order: Priority, Index, Labels before CreationDate; Description right before BimSnippet', async () => {
     // buildingSMART/BCF-XML markup.xsd's Topic xs:sequence (identical in
     // release_2_1 and release_3_0) is: Title, Priority, Index, Labels,
@@ -1150,10 +1212,17 @@ describe('BCF Writer', () => {
     for (const version of ['2.1', '3.0'] as const) {
       const markup = await markupFor(topic, version);
 
-      // `topic.labels` has TWO entries, so `<Labels>` appears twice. Checking
-      // only the first occurrence's position (`indexOf`) would miss a second
-      // label written in the wrong place -- e.g. after CreationDate -- since
-      // the first one alone can still land correctly. Collect every
+      // `topic.labels` has TWO entries, and the two versions spell that
+      // differently: 2.1's markup.xsd declares `Labels` maxOccurs="unbounded"
+      // with a string value, so it REPEATS (`<Labels>l1</Labels><Labels>l2
+      // </Labels>`); 3.0's declares a single `Labels` element whose content is
+      // a sequence of `<Label>` children. The ORDER requirement below is the
+      // same in both -- every label element sits after Index and before
+      // CreationDate -- so collect whichever tag carries the values.
+      //
+      // Checking only the first occurrence's position (`indexOf`) would miss a
+      // second label written in the wrong place -- e.g. after CreationDate --
+      // since the first one alone can still land correctly. Collect every
       // occurrence and require ALL of them to sit before CreationDate.
       const allIndicesOf = (tag: string): number[] => {
         const indices: number[] = [];
@@ -1169,7 +1238,8 @@ describe('BCF Writer', () => {
 
       const priority = markup.indexOf('<Priority>');
       const index = markup.indexOf('<Index>');
-      const labelPositions = allIndicesOf('Labels');
+      // The tag that actually carries a label value, per version.
+      const labelPositions = allIndicesOf(version === '3.0' ? 'Label' : 'Labels');
       const creationDate = markup.indexOf('<CreationDate>');
       const stage = markup.indexOf('<Stage>');
       const description = markup.indexOf('<Description>');
@@ -1180,6 +1250,16 @@ describe('BCF Writer', () => {
       }
       expect(labelPositions).toHaveLength(2);
 
+      // Containment, not just order: 3.0 must wrap both `<Label>` elements in
+      // exactly ONE `<Labels>` container (its markup.xsd gives `Labels` the
+      // default maxOccurs of 1), while 2.1 must repeat `<Labels>` per value
+      // and must never emit a `<Label>` element at all. Validated end to end
+      // against the published XSDs in `schema-validation.test.ts`.
+      expect(allIndicesOf('Labels')).toHaveLength(version === '3.0' ? 1 : 2);
+      if (version === '2.1') {
+        expect(markup).not.toContain('<Label>');
+      }
+
       expect(priority).toBeLessThan(index);
       expect(index).toBeLessThan(Math.min(...labelPositions));
       for (const labelPos of labelPositions) {
@@ -1188,6 +1268,87 @@ describe('BCF Writer', () => {
       expect(stage).toBeLessThan(description);
       expect(description).toBeLessThan(bimSnippet);
     }
+  });
+
+  it('BCF 3.0: full <Topic> sequence holds end-to-end when Comments/Viewpoints AND reordered fields are both present', async () => {
+    // The two properties above ("children in xs:sequence order" and
+    // "Comments/Viewpoints nested inside Topic, after RelatedTopics") were
+    // fixed in separate changes that both touch writeMarkupFile and were
+    // merged together. Each has its own passing test, but neither one
+    // exercises a topic carrying every reordered field (Priority, Index,
+    // Labels, Description, BimSnippet, DocumentReferences, RelatedTopics)
+    // AND Comments/Viewpoints at once -- so a merge that silently dropped or
+    // mis-sequenced either half would not be caught by either test alone.
+    // This asserts the COMPLETE Topic child sequence per markup.xsd:
+    //   Title, Priority, Index, Labels, CreationDate, CreationAuthor,
+    //   ModifiedDate, ModifiedAuthor, DueDate, AssignedTo, Stage,
+    //   Description, BimSnippet, DocumentReferences, RelatedTopics,
+    //   Comments, Viewpoints
+    const topic = baseTopic({
+      priority: 'High',
+      index: 3,
+      labels: ['l1'],
+      modifiedDate: '2026-01-02T00:00:00.000Z',
+      modifiedAuthor: 'mod@x.com',
+      dueDate: '2026-02-01T00:00:00.000Z',
+      assignedTo: 'assignee@x.com',
+      stage: 'Design',
+      description: 'desc',
+      bimSnippet: {
+        snippetType: 'IFC',
+        isExternal: true,
+        reference: 'https://example.com/snippet.ifc',
+        referenceSchema: 'https://example.com/schema.xsd',
+      },
+      documentReferences: [{ guid: 'dr-1', documentGuid: 'doc-guid-1' }],
+      relatedTopics: ['related-guid-1'],
+      comments: [{ guid: 'c-1', date: '2026-01-01T00:00:00.000Z', author: 'a@x.com', comment: 'hi' }],
+      viewpoints: [{ guid: 'vp-1', snapshot: 'data:image/png;base64,AA==' }],
+    });
+
+    const markup = await markupFor(topic, '3.0');
+
+    const topicMatch = markup.match(/<Topic\b[^>]*>([\s\S]*)<\/Topic>/);
+    expect(topicMatch).not.toBeNull();
+    const topicBody = topicMatch![1];
+
+    const pos = (needle: string) => {
+      const i = topicBody.indexOf(needle);
+      expect(i).toBeGreaterThan(-1);
+      return i;
+    };
+
+    const sequence = [
+      pos('<Title>'),
+      pos('<Priority>'),
+      pos('<Index>'),
+      pos('<Labels>'),
+      pos('<CreationDate>'),
+      pos('<CreationAuthor>'),
+      pos('<ModifiedDate>'),
+      pos('<ModifiedAuthor>'),
+      pos('<DueDate>'),
+      pos('<AssignedTo>'),
+      pos('<Stage>'),
+      pos('<Description>'),
+      pos('<BimSnippet'),
+      pos('<DocumentReferences>'),
+      pos('<RelatedTopic '),
+      pos('<Comments>'),
+      pos('<Viewpoints>'),
+    ];
+    for (let i = 1; i < sequence.length; i++) {
+      expect(sequence[i]).toBeGreaterThan(sequence[i - 1]);
+    }
+
+    // Comments/Viewpoints must be nested inside Topic (before its close),
+    // using the 3.0 singular <ViewPoint> entry tag, not the 2.1 wrapper-as-
+    // entry shape.
+    expect(topicBody).toContain('<ViewPoint Guid="vp-1">');
+    expect(topicBody).not.toContain('<Viewpoints Guid="vp-1">');
+    const afterTopic = markup.slice(markup.indexOf('</Topic>'));
+    expect(afterTopic).not.toContain('<Comment ');
+    expect(afterTopic).not.toContain('<Viewpoints');
   });
 
   it('refuses to write a BCF 3.0 topic missing TopicType or TopicStatus rather than emitting invalid markup', async () => {
@@ -1241,4 +1402,253 @@ describe('BCF Writer', () => {
     };
     await expect(writeBCF(projectStatus)).rejects.toThrow(/TopicStatus/);
   });
+
+  it("round-trips a Component's OriginatingSystem and AuthoringToolId, which the spec puts in child ELEMENTS", async () => {
+    // buildingSMART/BCF-XML visinfo.xsd (2.1 and 3.0) declares Component with
+    // IfcGuid as an ATTRIBUTE but OriginatingSystem and AuthoringToolId as
+    // child ELEMENTS. The writer emits the element form (writer.ts
+    // writeComponent); a reader matching them as attributes can never fire, so
+    // both fields were dropped from every archive read -- ours and every other
+    // tool's. Invisible to the self round-trip because no fixture set either
+    // field: `undefined === undefined` looked faithful.
+    const vp: BCFViewpoint = {
+      guid: generateUuid(),
+      components: {
+        selection: [
+          {
+            ifcGuid: '0abc123def456789012345',
+            originatingSystem: 'Acme Modeller 2026',
+            authoringToolId: 'wall-4711',
+          },
+        ],
+        visibility: {
+          defaultVisibility: true,
+          exceptions: [
+            { ifcGuid: '1abc123def456789012345', originatingSystem: 'Acme Modeller 2026' },
+          ],
+        },
+        coloring: [
+          {
+            color: 'FFFF0000',
+            components: [{ ifcGuid: '2abc123def456789012345', authoringToolId: 'slab-9' }],
+          },
+        ],
+      },
+    };
+    const topic = baseTopic({ viewpoints: [vp] });
+    const project: BCFProject = { version: '2.1', topics: new Map([[topic.guid, topic]]) };
+    const blob = await writeBCF(project);
+
+    // The written form really is the element form, not attributes.
+    const zip = await JSZip.loadAsync(await blobToArrayBuffer(blob));
+    const bcfv = await zip.file(`${topic.guid}/Viewpoint_${vp.guid}.bcfv`)?.async('string');
+    expect(bcfv).toContain('<OriginatingSystem>Acme Modeller 2026</OriginatingSystem>');
+    expect(bcfv).toContain('<AuthoringToolId>wall-4711</AuthoringToolId>');
+
+    const readVp = (await readBCF(await blobToArrayBuffer(blob))).topics.get(topic.guid)!
+      .viewpoints[0];
+    expect(readVp.components?.selection?.[0].originatingSystem).toBe('Acme Modeller 2026');
+    expect(readVp.components?.selection?.[0].authoringToolId).toBe('wall-4711');
+    expect(readVp.components?.visibility?.exceptions?.[0].originatingSystem).toBe(
+      'Acme Modeller 2026'
+    );
+    expect(readVp.components?.coloring?.[0].components[0].authoringToolId).toBe('slab-9');
+  });
+
+  it('keeps a Component identified only by AuthoringToolId, whose IfcGuid the schema makes optional', async () => {
+    // visinfo.xsd marks IfcGuid `use="optional"`: a component the authoring
+    // tool has no IFC GlobalId for is legal and carries only AuthoringToolId
+    // (plus OriginatingSystem). The reader's admission guard tested an
+    // AuthoringToolId match that could never succeed against the element form,
+    // so such a component was discarded whole rather than merely stripped.
+    const vp: BCFViewpoint = {
+      guid: generateUuid(),
+      components: {
+        selection: [{ originatingSystem: 'Acme Modeller 2026', authoringToolId: 'no-guid-42' }],
+      },
+    };
+    const topic = baseTopic({ viewpoints: [vp] });
+    const project: BCFProject = { version: '2.1', topics: new Map([[topic.guid, topic]]) };
+    const blob = await writeBCF(project);
+
+    const readVp = (await readBCF(await blobToArrayBuffer(blob))).topics.get(topic.guid)!
+      .viewpoints[0];
+    expect(readVp.components?.selection).toHaveLength(1);
+    expect(readVp.components?.selection?.[0].ifcGuid).toBeUndefined();
+    expect(readVp.components?.selection?.[0].authoringToolId).toBe('no-guid-42');
+    expect(readVp.components?.selection?.[0].originatingSystem).toBe('Acme Modeller 2026');
+  });
+
+  it('reads a Component authored by a third-party tool, element children and attributes in any order', async () => {
+    // Not a round trip through our own writer: a .bcfv straight into the reader,
+    // in the shape a spec-correct external tool emits -- including a Component
+    // whose child elements appear in the reverse order from ours.
+    const zip = new JSZip();
+    zip.file('bcf.version', '<?xml version="1.0" encoding="UTF-8"?>\n<Version VersionId="2.1"></Version>');
+    const folder = zip.folder('t1')!;
+    folder.file(
+      'markup.bcf',
+      `<?xml version="1.0" encoding="UTF-8"?>
+<Markup>
+  <Topic Guid="t1">
+    <Title>Vendor topic</Title>
+    <CreationDate>2026-01-01T00:00:00Z</CreationDate>
+    <CreationAuthor>vendor@example.com</CreationAuthor>
+  </Topic>
+  <Viewpoints Guid="vp1">
+    <Viewpoint>Viewpoint_vp1.bcfv</Viewpoint>
+  </Viewpoints>
+</Markup>`
+    );
+    folder.file(
+      'Viewpoint_vp1.bcfv',
+      `<?xml version="1.0" encoding="UTF-8"?>
+<VisualizationInfo Guid="vp1">
+  <Components>
+    <Selection>
+      <Component IfcGuid="0abc123def456789012345">
+        <AuthoringToolId>vendor-id-1</AuthoringToolId>
+        <OriginatingSystem>Vendor CAD</OriginatingSystem>
+      </Component>
+      <Component>
+        <AuthoringToolId>vendor-id-2</AuthoringToolId>
+      </Component>
+    </Selection>
+    <Visibility DefaultVisibility="true" />
+  </Components>
+</VisualizationInfo>`
+    );
+    const bytes = await zip.generateAsync({ type: 'uint8array' });
+
+    const readVp = (await readBCF(bytes)).topics.get('t1')!.viewpoints[0];
+    expect(readVp.components?.selection).toHaveLength(2);
+    expect(readVp.components?.selection?.[0].authoringToolId).toBe('vendor-id-1');
+    expect(readVp.components?.selection?.[0].originatingSystem).toBe('Vendor CAD');
+    expect(readVp.components?.selection?.[1].authoringToolId).toBe('vendor-id-2');
+  });
+
+  it('round-trips ViewSetupHints, which the writer emits but nothing read back', async () => {
+    // visinfo.xsd puts ViewSetupHints on Components with three optional
+    // xs:boolean attributes. The writer emits them (writer.ts writeComponents)
+    // and no reader path looked for them, so every hint was lost on read --
+    // including out of our own archives. No fixture set them, so the round trip
+    // compared `undefined` to `undefined`.
+    const vp: BCFViewpoint = {
+      guid: generateUuid(),
+      components: {
+        selection: [{ ifcGuid: '0abc123def456789012345' }],
+        visibility: {
+          defaultVisibility: false,
+          viewSetupHints: {
+            spacesVisible: true,
+            spaceBoundariesVisible: false,
+            openingsVisible: true,
+          },
+        },
+      },
+    };
+    const topic = baseTopic({ viewpoints: [vp] });
+    const project: BCFProject = { version: '2.1', topics: new Map([[topic.guid, topic]]) };
+    const blob = await writeBCF(project);
+
+    const readVp = (await readBCF(await blobToArrayBuffer(blob))).topics.get(topic.guid)!
+      .viewpoints[0];
+    const hints = readVp.components?.visibility?.viewSetupHints;
+    expect(hints?.spacesVisible).toBe(true);
+    expect(hints?.spaceBoundariesVisible).toBe(false);
+    expect(hints?.openingsVisible).toBe(true);
+    // An unset hint stays unset rather than defaulting to false.
+    expect(readVp.components?.visibility?.defaultVisibility).toBe(false);
+  });
+
+  it('round-trips ViewSetupHints in 3.0, where the element nests inside Visibility', async () => {
+    // The two schema versions disagree on placement: 2.1 puts ViewSetupHints on
+    // Components, 3.0 nests it inside Visibility, and the writer emits whichever
+    // the requested version calls for. The 2.1 case above would stay green if the
+    // reader anchored to Components alone, so without this the 3.0 files we
+    // ourselves produce would read back with every hint dropped.
+    const vp: BCFViewpoint = {
+      guid: generateUuid(),
+      components: {
+        selection: [{ ifcGuid: '0abc123def456789012345' }],
+        visibility: {
+          defaultVisibility: false,
+          viewSetupHints: {
+            spacesVisible: true,
+            spaceBoundariesVisible: false,
+            openingsVisible: true,
+          },
+        },
+      },
+    };
+    const topic = baseTopic({ viewpoints: [vp] });
+    const project: BCFProject = { version: '3.0', topics: new Map([[topic.guid, topic]]) };
+    const blob = await writeBCF(project);
+
+    const readVp = (await readBCF(await blobToArrayBuffer(blob))).topics.get(topic.guid)!
+      .viewpoints[0];
+    const hints = readVp.components?.visibility?.viewSetupHints;
+    expect(hints?.spacesVisible).toBe(true);
+    expect(hints?.spaceBoundariesVisible).toBe(false);
+    expect(hints?.openingsVisible).toBe(true);
+    expect(readVp.components?.visibility?.defaultVisibility).toBe(false);
+  });
+
+  it('reads a BimSnippet whose IsExternal attribute precedes SnippetType', async () => {
+    // XML attribute order is not semantically significant. Our writer always
+    // puts SnippetType first, so a reader regex anchored to that position
+    // round-trips our own files perfectly and drops the whole snippet from a
+    // foreign tool's that happens to order the two attributes the other way.
+    const zip = new JSZip();
+    zip.file('bcf.version', '<?xml version="1.0" encoding="UTF-8"?>\n<Version VersionId="3.0"></Version>');
+    zip.folder('t1')!.file(
+      'markup.bcf',
+      `<?xml version="1.0" encoding="UTF-8"?>
+<Markup>
+  <Topic Guid="t1" TopicType="Issue" TopicStatus="Open">
+    <Title>Vendor topic</Title>
+    <CreationDate>2026-01-01T00:00:00Z</CreationDate>
+    <CreationAuthor>vendor@example.com</CreationAuthor>
+    <BimSnippet IsExternal="true" SnippetType="IFC">
+      <Reference>ref.ifc</Reference>
+      <ReferenceSchema>ifcXML</ReferenceSchema>
+    </BimSnippet>
+  </Topic>
+</Markup>`
+    );
+    const bytes = await zip.generateAsync({ type: 'uint8array' });
+
+    const snippet = (await readBCF(bytes)).topics.get('t1')?.bimSnippet;
+    expect(snippet?.snippetType).toBe('IFC');
+    expect(snippet?.isExternal).toBe(true);
+    expect(snippet?.reference).toBe('ref.ifc');
+  });
+
+
+  it('round-trips a project Name containing XML metacharacters', async () => {
+    // writeProjectFile escapes the name with escapeXml, but the project.bcfp
+    // reader pulled <Name> out with a raw regex instead of the shared
+    // extractElement helper, so it never ran the matching unescape: a project
+    // called `A & B <Ltd>` came back with the literal entities in it, and every
+    // re-export then double-escaped them. No fixture used a project name with a
+    // metacharacter, so the round trip only ever compared plain ASCII.
+    const name = 'A & B <Ltd> "quoted" \'apostrophe\'';
+    const topic = baseTopic();
+    const project: BCFProject = {
+      version: '2.1',
+      name,
+      projectId: generateUuid(),
+      topics: new Map([[topic.guid, topic]]),
+    };
+
+    const blob = await writeBCF(project);
+    const zip = await JSZip.loadAsync(await blobToArrayBuffer(blob));
+    const bcfp = await zip.file('project.bcfp')?.async('string');
+    expect(bcfp).toContain('<Name>A &amp; B &lt;Ltd&gt;');
+
+    const readProject = await readBCF(await blobToArrayBuffer(blob));
+    expect(readProject.name).toBe(name);
+    expect(readProject.projectId).toBe(project.projectId);
+  });
+
 });

@@ -73,9 +73,12 @@ pub use simplify_session::{simplify_element, SimplifiedElement, SimplifyRecordIn
 pub use style::{default_color_for_type, Rgba, TRANSPARENCY_ALPHA_THRESHOLD};
 pub use symbolic::{
     extract_symbolic_data, SymbolicCircle, SymbolicData, SymbolicFillArea, SymbolicGridAxis,
-    SymbolicPolyline, SymbolicText,
+    SymbolicPolyline, SymbolicText, SymbolicTruncation, SymbolicTruncationReason,
 };
-pub use types::mesh::{InstanceRecord, MeshData, RawInstanceOccurrence};
+// `MeshTextureData` is the type of `MeshData::texture`, a public field: without
+// this re-export no consumer outside the crate can name it, so a textured
+// `MeshData` can be read but never constructed or matched.
+pub use types::mesh::{InstanceRecord, MeshData, MeshTextureData, RawInstanceOccurrence};
 pub use types::response::{
     CoordinateInfo, ModelMetadata, ParseResponse, ProcessingStats,
     QuickMetadataBootstrap, QuickMetadataEntitySummary, QuickMetadataSpatialNode,

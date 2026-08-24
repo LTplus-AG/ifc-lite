@@ -3,16 +3,19 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useCallback } from 'react';
+import type React from 'react';
 import { posthog } from '@/lib/analytics';
 import { downloadFile, sanitizeFilename } from '@/lib/export/download';
+import { toast } from '@/components/ui/toast';
 import { pdfLineStyleFor } from '@/lib/export/pdf-line-style';
 import {
   GraphicOverrideEngine,
   renderFrame,
   renderTitleBlock,
-  calculateDrawingTransform,
   exportToDXF,
   formatScaleFactorLabel,
+  fitRasterPixels,
+  type RasterFit,
   type Drawing2D,
   type DrawingSheet,
   type ElementData,
@@ -20,6 +23,8 @@ import {
   type PdfScaleLayout,
 } from '@ifc-lite/drawing-2d';
 import { computePdfSectionLayout, makeSectionMapPoint } from '@/hooks/pdfSectionLayout';
+import { resolveSheetTransform } from '@/lib/drawing/sheet-transform';
+import type { CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key';
 import { getFillColorForType } from '@/components/viewer/Drawing2DCanvas';
 import { formatDistance } from '@/components/viewer/tools/formatDistance';
 import { formatArea, computePolygonCentroid } from '@/components/viewer/tools/computePolygonArea';
@@ -141,6 +146,143 @@ function buildScanSectionSvg(
   return svg;
 }
 
+/**
+ * Dots per inch of paper the sheet raster is built at.
+ *
+ * Fixed, with no UI control anywhere: `handleExportPDF` is a single toolbar
+ * action. That is why the ceiling below CAPS rather than REFUSES — a refusal
+ * would have no setting to send the user to, and the sheet's paper size is
+ * the deliverable, not a preference.
+ */
+export const SHEET_PDF_DPI = 300;
+
+/**
+ * Pixel budget for one sheet raster, taken from WebKit's own canvas cap
+ * rather than picked as a round number: `CanvasBase::maxCanvasArea()`
+ * (Source/WebCore/html/CanvasBase.cpp) returns `8192 * 8192` on the iOS
+ * family and `16384 * 16384` elsewhere. The lower of the two is the one that
+ * has to hold, because a canvas over the cap does not report itself:
+ * `CanvasBase::validateArea()` logs a console warning and returns false, the
+ * canvas gets no backing store, `getContext('2d')` still returns a live
+ * context, the paint calls become no-ops, and `toDataURL()` then returns the
+ * literal string `"data:,"` — `encodeDataURL(RefPtr<ImageBuffer>&&)` in
+ * Source/WebCore/platform/graphics/ImageUtilities.cpp returns `"data:,"_s`
+ * for a null buffer. Nothing throws at any point.
+ *
+ * At {@link SHEET_PDF_DPI} that cap binds from ANSI D upwards. The papers
+ * that need it are the big ones — ARCH E is 14400 x 10800 = 155,520,000 px
+ * and A0 is 14043 x 9933 = 139,489,119 px, both far past even the desktop
+ * cap's memory cost (155.5 Mpx x 4 bytes = 622 MB for the bitmap alone).
+ *
+ * NOT verified in any real browser. The value and the failure mode are read
+ * off WebKit's source; Chrome's and Firefox's caps differ and are not
+ * modelled, and Safari's separate TOTAL canvas-memory limit is a second
+ * ceiling this budget cannot rule out — which is why the raster result is
+ * validated below as well as sized.
+ */
+export const MAX_SHEET_RASTER_PIXELS = 8192 * 8192;
+
+/**
+ * Per-side cap: the side length WebKit's non-iOS area cap is expressed as,
+ * and the same number `@ifc-lite/drawing-2d` already uses for the 3D-view
+ * PDF's shaded underlay (`MAX_SHADING_DIMENSION_PX`). No registry paper
+ * reaches it at {@link SHEET_PDF_DPI} (ARCH E's long side is 14400 px); it
+ * exists for a custom paper size, which `DrawingSheet.paper` permits.
+ */
+export const MAX_SHEET_RASTER_DIMENSION_PX = 16_384;
+
+/** A raster, plus what it cost to fit it inside the budget. */
+interface SheetRaster {
+  dataUrl: string;
+  fit: RasterFit;
+}
+
+/**
+ * Rasterize an SVG string to a PNG data URL, sized to exactly `widthMm` x
+ * `heightMm` on paper (issues #2941/#2942). The sheet frame, title block and
+ * scale bar only exist inside `generateSheetSVG` — SVG, Print and the
+ * DXF-underlay path all render that exact string and the reporter confirmed
+ * those are correct. Rather than re-deriving a second, independent sheet
+ * layout for jsPDF's vector primitives (the "v1" PDF path below did exactly
+ * that and dropped the frame/scale bar entirely, and used
+ * `displayOptions.scale` instead of the sheet's own scale), rasterize the
+ * SAME svg the working exporters use so the PDF cannot drift from them.
+ *
+ * The pixel grid comes from `fitRasterPixels`, the same helper the 3D-view
+ * PDF's shaded underlay uses, so the two raster paths cannot drift into two
+ * different cap policies. It scales BOTH sides by one factor, so a capped
+ * sheet is blurrier and never mis-scaled: the caller still places the image
+ * across the full paper rectangle in millimetres, never at `px / dpi`.
+ *
+ * `fit.capped` is returned rather than swallowed. A user who asked for a
+ * 300 dpi sheet and silently got 104 is the same defect as a blank page, one
+ * step quieter.
+ */
+function rasterizeSvgToPngDataUrl(
+  svgString: string,
+  widthMm: number,
+  heightMm: number,
+  dpi = SHEET_PDF_DPI,
+): Promise<SheetRaster> {
+  return new Promise((resolve, reject) => {
+    const fit = fitRasterPixels(
+      widthMm,
+      heightMm,
+      dpi,
+      MAX_SHEET_RASTER_PIXELS,
+      MAX_SHEET_RASTER_DIMENSION_PX,
+    );
+    const { widthPx, heightPx } = fit;
+
+    const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(svgBlob);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = widthPx;
+        canvas.height = heightPx;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Canvas 2D context unavailable');
+        // The sheet SVG already paints its own white background rect, but a
+        // canvas starts transparent — belt-and-braces against a transparent
+        // PDF page if that rect is ever clipped away.
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, widthPx, heightPx);
+        ctx.drawImage(img, 0, 0, widthPx, heightPx);
+
+        const dataUrl = canvas.toDataURL('image/png');
+        // The pixel budget above is necessary, not sufficient. Safari
+        // enforces a separate TOTAL canvas-memory limit, and any browser can
+        // fail a 100+ MB allocation on a low-memory device; in both cases the
+        // buffer is simply absent and this comes back as `"data:,"` with no
+        // exception raised. Handing that to `jsPDF.addImage` produces a
+        // decoder complaint about a PNG signature, which tells the user
+        // nothing they can act on — and if a browser ever returned a valid
+        // all-white PNG instead, the export would "succeed" with a blank
+        // page. Refuse the result here, naming the way out.
+        if (!dataUrl.startsWith('data:image/png')) {
+          throw new Error(
+            `the browser returned an empty ${widthPx}x${heightPx} px canvas for this ` +
+            `${Math.round(widthMm)}x${Math.round(heightMm)} mm sheet. Try a smaller paper ` +
+            `size, or use the SVG export, which is vector and has no pixel limit.`,
+          );
+        }
+        resolve({ dataUrl, fit });
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error('Failed to rasterize sheet SVG'));
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Failed to load sheet SVG for PDF export'));
+    };
+    img.src = url;
+  });
+}
+
 interface UseDrawingExportParams {
   drawing: Drawing2D | null;
   displayOptions: {
@@ -169,6 +311,14 @@ interface UseDrawingExportParams {
   coordinateInfo: GeometryResult['coordinateInfo'] | undefined;
   /** Point-cloud scan overlay, already in drawing space (issue #1805) */
   scanSection: { points: readonly ScanBandPoint[] };
+  /** Pin View state, shared with the preview canvas. While pinned the sheet
+   *  placement is HELD across a regenerate; print/export must honour the same
+   *  held placement or it silently prints a different layout from the one on
+   *  screen (see `resolveSheetTransform`). */
+  isPinned?: boolean;
+  /** The preview's pinned-transform cache. Read-only here — the preview owns
+   *  the write, so exporting never perturbs what is on screen. */
+  cachedSheetTransformRef?: React.MutableRefObject<CachedSheetTransform | null>;
 }
 
 interface UseDrawingExportResult {
@@ -202,6 +352,8 @@ function useDrawingExport({
   ifcDataStore,
   coordinateInfo,
   scanSection,
+  isPinned = false,
+  cachedSheetTransformRef,
 }: UseDrawingExportParams): UseDrawingExportResult {
   // Georef inputs for the DXF export (PR #1871 review, P1): placement edits
   // applied in CesiumPlacementEditor live in `georefMutations` (per model
@@ -569,22 +721,26 @@ function useDrawingExport({
     const paperHeight = activeSheet.paper.heightMm;
     const viewport = activeSheet.viewportBounds;
 
-    // Calculate transform to fit drawing into viewport
-    const drawingTransform = calculateDrawingTransform(
-      { minX: bounds.min.x, minY: bounds.min.y, maxX: bounds.max.x, maxY: bounds.max.y },
-      viewport,
-      activeSheet.scale
-    );
-
-    const { translateX, translateY, scaleFactor } = drawingTransform;
-
-    // Axis-specific flipping (matching canvas rendering)
-    // - 'down' (plan view): DON'T flip Y so north (Z+) is up
-    // - 'front' and 'side': flip Y so height (Y+) is up
-    // - 'side': also flip X to look from conventional direction
-    const currentAxis = sectionPlane.axis;
-    const flipY = currentAxis !== 'down';
-    const flipX = currentAxis === 'side';
+    // Flips, cache read and the axis-corrected transform all come from the
+    // ONE resolver the preview canvas (`Drawing2DCanvas.tsx`) also calls, so
+    // print/export cannot derive any of the three separately (#2940: print
+    // used the raw, always-Y-flip-assuming transform, which only matched the
+    // preview for axes that flip Y and left plan ('down') sections off-centre
+    // on paper; and print recomputed from current bounds while a PINNED
+    // preview held a cached placement).
+    //
+    // Read-only on the cache by construction: `resolveSheetTransform` never
+    // writes, and this path does not write either — printing must not move
+    // what is on screen.
+    const resolved = resolveSheetTransform({
+      sheet: activeSheet,
+      drawingBounds: { minX: bounds.min.x, minY: bounds.min.y, maxX: bounds.max.x, maxY: bounds.max.y },
+      axis: sectionPlane.axis,
+      isPinned,
+      cached: cachedSheetTransformRef?.current,
+    });
+    const { flipX, flipY } = resolved;
+    const { translateX, translateY, scaleFactor } = resolved.transform;
 
     // Helper: convert model coordinates to paper mm (matching canvas rendering exactly)
     const modelToPaper = (x: number, y: number): { x: number; y: number } => {
@@ -810,7 +966,13 @@ function useDrawingExport({
 
     svg += '</svg>';
     return svg;
-  }, [drawing, activeSheet, displayOptions, activePresetId, entityColorMap, overridesEnabled, overrideEngine, dxfUnderlays, scanSection]);
+    // `sectionPlane.axis` and `isPinned` are read INSIDE this callback (via
+    // `resolveSheetTransform`) and so must be here. Both were previously
+    // held up only by invariants elsewhere — `drawing` happens to change
+    // identity when the axis changes, and the canvas rewrote the cache on
+    // every fresh draw — neither of which this callback controls.
+    // `cachedSheetTransformRef` is a ref: stable identity, read at call time.
+  }, [drawing, activeSheet, displayOptions, activePresetId, entityColorMap, overridesEnabled, overrideEngine, dxfUnderlays, scanSection, sectionPlane.axis, isPinned]);
 
   // Export SVG
   const handleExportSVG = useCallback(() => {
@@ -889,12 +1051,122 @@ function useDrawingExport({
   // v1 scope, deliberately smaller than the SVG export: cut-polygon
   // OUTLINES and drawing LINES only (matching what an engineer actually
   // measures off a printed section). Not yet included: area fills /
-  // hatching, DXF underlays, the drawing-sheet title block/frame/scale
-  // bar, text/cloud annotations, and the point-cloud scan overlay. Those
-  // are straightforward follow-ups once this scale plumbing is reviewed;
-  // see the PR description.
+  // hatching, DXF underlays, text/cloud annotations, and the point-cloud
+  // scan overlay. Those are straightforward follow-ups once this scale
+  // plumbing is reviewed; see the PR description.
+  //
+  // The drawing-sheet frame / title block / scale bar are NOT on that list
+  // any more, and this path is not where they will arrive. It is the
+  // NON-SHEET path: since #2941/#2942 the sheet case returns from the
+  // branch at the top of `handleExportPDF` and never reaches here. This
+  // path is still the only PDF export for the "as displayed" / scaled
+  // drawing (#2042) and is not dead — it is the only true-vector PDF of
+  // the DRAWING the viewer emits, so the branch above is where the raster
+  // trade-off is written down. (Not the only vector PDF in the app:
+  // `lib/lists/export/pdf.ts` writes a Lists/schedule report through
+  // `jspdf-autotable` with no `addImage` at all. That is a table, not a
+  // drawing. The 3D view export, `lib/export/view-pdf/`, IS a raster.)
   const handleExportPDF = useCallback((scaleFactor?: number) => {
     if (!drawing) return;
+
+    // Drawing Sheet mode (#2941: frame/title block/scale bar missing from
+    // the PDF; #2942: nothing in the PDF is to scale). Root cause for both:
+    // this handler never checked `sheetEnabled`/`activeSheet` at all — it
+    // always ran the raw-drawing "v1" path below, which lays the cut
+    // geometry onto a page sized by `computePdfSectionLayout` (fit-to-page)
+    // at `displayOptions.scale` (the on-screen "as displayed" scale), never
+    // the sheet's own paper size (activeSheet.paper, see
+    // generateSheetSVG at line ~567) or its own scale
+    // (activeSheet.scale.factor, generateSheetSVG line ~576). SVG/DXF/Print
+    // all branch on `sheetEnabled && activeSheet` (e.g. handleExportSVG
+    // above); PDF alone didn't. Reuse the already-correct sheet SVG instead
+    // of re-deriving a second sheet layout for jsPDF's vector primitives.
+    //
+    // THE TRADE-OFF THIS BRANCH MAKES, stated so the next reader does not
+    // have to rediscover it by zooming into an exported sheet:
+    //
+    //   A sheet-mode PDF is a RASTER, not vector. It carries one PNG per
+    //   page ({@link SHEET_PDF_DPI}, capped by MAX_SHEET_RASTER_PIXELS),
+    //   so its text and lines are resolution-dependent and will pixelate
+    //   under zoom or on a plotter finer than the effective dpi.
+    //
+    // Before this branch existed, sheet mode fell through to the v1 path
+    // below and produced true-vector output — but of the wrong drawing:
+    // no frame, no title block, no scale bar (#2941) and at
+    // `displayOptions.scale` rather than the sheet's own (#2942). So the
+    // choice was not "vector vs raster", it was "a resolution-independent
+    // PDF that is not the sheet and is not to scale" vs "the correct sheet
+    // at the correct scale, rasterized". Correctness won.
+    //
+    // Vector would require re-deriving the whole sheet — frame, title
+    // block, scale bar, north arrow, and the drawing transform — against
+    // jsPDF's own primitives, because no SVG-import plugin is installed
+    // (apps/viewer depends on `jspdf` and `jspdf-autotable`; there is no
+    // `svg2pdf.js`). That is a second, independent implementation of
+    // `generateSheetSVG` that would then have to be kept in step with it —
+    // exactly the drift the v1 path already demonstrated. It is a real
+    // follow-up, not a hidden cost.
+    //
+    // The route for a user who needs vector today is the SVG export, which
+    // is not an approximation of this: `handleExportSVG` above emits the
+    // SAME `generateSheetSVG()` string, with no raster step at all. The
+    // over-cap toast below already points there; this note records that
+    // the recommendation applies to EVERY sheet PDF, not only capped ones.
+    //
+    // The non-sheet path below is untouched by any of this and stays true
+    // vector — see `useDrawingExport.pdfVectorPaths.test.tsx`, which pins
+    // both halves of that split.
+    if (sheetEnabled && activeSheet) {
+      const svg = generateSheetSVG();
+      if (!svg) return;
+      const { widthMm, heightMm } = activeSheet.paper;
+      void (async () => {
+        try {
+          const { jsPDF } = await import('jspdf');
+          const { dataUrl, fit } = await rasterizeSvgToPngDataUrl(svg, widthMm, heightMm);
+          const doc = new jsPDF({
+            unit: 'mm',
+            format: [widthMm, heightMm],
+            orientation: widthMm >= heightMm ? 'landscape' : 'portrait',
+          });
+          // Full paper rectangle, deliberately NOT `fit.widthPx / dpi`: the
+          // image must span the sheet whatever the raster cost, or a capped
+          // export would print a smaller sheet at the same nominal scale.
+          doc.addImage(dataUrl, 'PNG', 0, 0, widthMm, heightMm);
+
+          if (fit.capped) {
+            // FLOOR, not round: 299.53 dpi renders as "reduced from 300 to
+            // 300" under rounding, which reads as a no-op notice, and
+            // overstating the resolution delivered is the direction that
+            // misleads.
+            toast.info(
+              `Sheet rasterized at ${Math.floor(fit.effectiveDpi)} dpi instead of ` +
+              `${SHEET_PDF_DPI} — a ${Math.round(widthMm)}x${Math.round(heightMm)} mm sheet ` +
+              `exceeds the browser's canvas limit at full resolution. Use the SVG export ` +
+              `for a vector sheet at any size.`,
+            );
+          }
+
+          const stem = `${sanitizeFilename(activeSheet.name, { fallback: 'sheet' })}-${sectionPlane.axis}-${sectionPlane.position}`;
+          downloadFile(doc.output('blob'), `${stem}.pdf`, 'application/pdf');
+          posthog.capture('drawing_exported', {
+            format: 'pdf',
+            axis: sectionPlane.axis,
+            scale_factor: activeSheet.scale.factor,
+            sheet_enabled: true,
+            // What the SHEET got, not what was asked for — the same
+            // distinction `PdfViewExportDialog` records as `shading_dpi`.
+            raster_dpi: Math.floor(fit.effectiveDpi),
+            raster_capped: fit.capped,
+          });
+        } catch (err) {
+          // eslint-disable-next-line no-alert -- matches the raw-drawing PDF path's alert() below; a blocking alert is the existing convention for an export that FAILED, and toast.info here is only used for an export that succeeded in a degraded form.
+          alert(err instanceof Error ? `Could not export PDF: ${err.message}` : 'Could not export PDF.');
+        }
+      })();
+      return;
+    }
+
     const effectiveScale = scaleFactor ?? displayOptions.scale ?? 100;
 
     // Axis-specific flipping, matching the SVG "as displayed" export above.
@@ -909,7 +1181,7 @@ function useDrawingExport({
     try {
       layout = computePdfSectionLayout(drawing.bounds, currentAxis, effectiveScale, 10);
     } catch (err) {
-      // eslint-disable-next-line no-alert -- matches handlePrint's popup-blocked alert below; this hook has no toast wiring.
+      // eslint-disable-next-line no-alert -- matches handlePrint's popup-blocked alert below; a blocking alert is the existing convention for an export that FAILED, and toast.info here is only used for an export that succeeded in a degraded form.
       alert(err instanceof Error ? err.message : 'Could not export PDF: invalid scale.');
       return;
     }
@@ -1004,7 +1276,7 @@ function useDrawingExport({
         alert(err instanceof Error ? `Could not export PDF: ${err.message}` : 'Could not export PDF.');
       }
     })();
-  }, [drawing, displayOptions.scale, displayOptions.showHiddenLines, sectionPlane]);
+  }, [drawing, displayOptions.scale, displayOptions.showHiddenLines, sectionPlane, sheetEnabled, activeSheet, generateSheetSVG]);
 
   // Print handler
   const handlePrint = useCallback(() => {

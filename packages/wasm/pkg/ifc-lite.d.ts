@@ -471,6 +471,9 @@ export class IfcAPI {
      * `#`-reference closure is added so the subset never dangles a reference.
      * `mutations_json` carries `MutablePropertyView` edits (attribute updates +
      * property-set synthesis); empty ⇒ none. See `export_step_json` for the shape.
+     * A non-empty but malformed `mutations_json` throws rather than silently
+     * exporting the model with none of the caller's edits applied — mirrors
+     * `exportGlb`'s and `exportMerged`'s fail-closed contract on this same API.
      */
     exportStep(content: Uint8Array, schema: string, included: Uint32Array, mutations_json: string): Uint8Array;
     /**
@@ -1566,7 +1569,8 @@ export class SymbolicRepresentationCollection {
      */
     readonly fillCount: number;
     /**
-     * Check if collection is empty
+     * Check if collection is empty. A TRUNCATED result never is, even with no
+     * primitives; the reasoning and the parity test are in `symbolic_truncation.rs`.
      */
     readonly isEmpty: boolean;
     /**
@@ -1581,6 +1585,23 @@ export class SymbolicRepresentationCollection {
      * Get total count of all symbolic items
      */
     readonly totalCount: number;
+    /**
+     * Primitive count at which extraction stopped, else `undefined`.
+     */
+    readonly truncatedAt: number | undefined;
+    /**
+     * The bound's numeric value, when the reason has one, else `undefined`.
+     * Absent for the per-item reasons, whose bound is per item and not
+     * comparable with `truncatedAt`.
+     */
+    readonly truncatedLimit: number | undefined;
+    /**
+     * Which bound stopped extraction, else `undefined`. One of
+     * `element-count`, `output-bytes`, `item-depth`, `item-revisits` —
+     * the same kebab-case strings the JSON path emits, so a consumer reading
+     * either surface reads one vocabulary.
+     */
+    readonly truncatedReason: string | undefined;
 }
 
 /**
@@ -2072,6 +2093,9 @@ export interface InitOutput {
     readonly symbolicrepresentationcollection_polylineCount: (a: number) => number;
     readonly symbolicrepresentationcollection_textCount: (a: number) => number;
     readonly symbolicrepresentationcollection_totalCount: (a: number) => number;
+    readonly symbolicrepresentationcollection_truncatedAt: (a: number) => number;
+    readonly symbolicrepresentationcollection_truncatedLimit: (a: number) => number;
+    readonly symbolicrepresentationcollection_truncatedReason: (a: number, b: number) => void;
     readonly symbolictext_alignment: (a: number, b: number) => void;
     readonly symbolictext_colorA: (a: number) => number;
     readonly symbolictext_content: (a: number, b: number) => void;

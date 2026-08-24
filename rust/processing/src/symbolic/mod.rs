@@ -45,8 +45,10 @@
 //!   WCS than Body).
 //! - RTC offset is auto-detected from the first geometry-bearing
 //!   element and subtracted alongside the mesh pipeline.
-//! - The Y-axis is flipped (`y → -y + rtc_z`) to match the renderer's
-//!   section-cut coordinate convention.
+//! - The whole RTC offset is subtracted — easting and northing into the
+//!   plan pair (whose Y axis is flipped to match the renderer's section-cut
+//!   handedness), elevation into `world_y`. `rebase::RenderFrameRebase` is
+//!   the single place that conversion happens.
 //!
 //! Style resolution:
 //!
@@ -61,24 +63,34 @@
 //!   default fill colour.
 
 
+use output_cap::SymbolicAccumulator;
+use rebase::RenderFrameRebase;
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner, IfcType};
 
 mod color;
 mod fill;
 mod grid;
+mod item_walk;
 mod items;
+mod output_cap;
+#[cfg(test)]
+mod items_cycle_tests;
+#[cfg(test)]
+mod output_cap_tests;
 mod primitives;
+mod rebase;
 mod text;
 mod transform;
 mod trimmed_curve;
 
+pub use output_cap::{SymbolicTruncation, SymbolicTruncationReason};
 pub use primitives::{
     SymbolicCircle, SymbolicData, SymbolicFillArea, SymbolicGridAxis, SymbolicPolyline, SymbolicText,
 };
 
 use color::build_styled_item_index;
 use grid::extract_grid;
-use items::extract_symbolic_item;
+use item_walk::extract_symbolic_item;
 use transform::{compose_transforms, parse_axis2_placement_2d, resolve_object_placement, Transform2D};
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -95,6 +107,21 @@ pub fn extract_symbolic_data<T>(content: &T) -> SymbolicData
 where
     T: AsRef<[u8]> + ?Sized,
 {
+    let mut out = SymbolicAccumulator::new();
+    extract_symbolic_data_into(content, &mut out);
+    out.into_data()
+}
+
+/// The extraction itself, writing into a caller-supplied accumulator.
+///
+/// Split out so a test can supply an accumulator with a small injected cap
+/// and exercise the real path, instead of building a fixture that emits two
+/// million primitives to reach `MAX_SYMBOLIC_ELEMENTS`. Production has exactly
+/// one caller, above, which supplies the real cap via `Default`.
+fn extract_symbolic_data_into<T>(content: &T, out: &mut SymbolicAccumulator)
+where
+    T: AsRef<[u8]> + ?Sized,
+{
     let content = content.as_ref();
     let entity_index = build_entity_index(content);
     let mut decoder = EntityDecoder::with_index(content, entity_index);
@@ -108,11 +135,7 @@ where
     // anything smaller is local-coord territory where RTC subtraction
     // would shift things off-screen.
     let rtc_offset = router.detect_rtc_offset_from_first_element(content, &mut decoder);
-    let needs_rtc = rtc_offset.0.abs() > 10_000.0
-        || rtc_offset.1.abs() > 10_000.0
-        || rtc_offset.2.abs() > 10_000.0;
-    let rtc_x = if needs_rtc { rtc_offset.0 as f32 } else { 0.0 };
-    let rtc_z = if needs_rtc { rtc_offset.2 as f32 } else { 0.0 };
+    let rebase = RenderFrameRebase::from_rtc_offset(rtc_offset);
 
     // Pre-pass: build a reverse index from "styled representation-item id"
     // to "list of style refs". Walked once at parse start (O(n)) so per-
@@ -121,10 +144,18 @@ where
     // IfcFillAreaStyle → IfcColourRgb).
     let styled_items = build_styled_item_index(content, &mut decoder);
 
-    let mut out = SymbolicData::default();
     let mut scanner = EntityScanner::new(content);
 
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
+        // Stop the SCAN, not just the innermost item loop. Breaking only the
+        // inner loop still decodes every remaining product, resolves its
+        // placements and composes its transforms, which is not the "stop" this
+        // bound claims. Bounded by file size rather than by the fan-out, so it
+        // was never the DoS lever -- but it is work with a known-useless
+        // result.
+        if out.is_exhausted() {
+            break;
+        }
         let is_grid = type_name == "IFCGRID";
         if !is_grid && !ifc_lite_core::has_geometry_by_name(type_name) {
             // IfcGrid isn't in `has_geometry_by_name` (it's not a building
@@ -144,9 +175,8 @@ where
                 &mut decoder,
                 unit_scale,
                 &grid_transform,
-                rtc_x,
-                rtc_z,
-                &mut out,
+                rebase,
+                out,
             );
             continue;
         }
@@ -244,6 +274,9 @@ where
                 continue;
             };
             for item in items {
+                if out.is_exhausted() {
+                    break;
+                }
                 extract_symbolic_item(
                     &item,
                     &mut decoder,
@@ -252,14 +285,12 @@ where
                     &rep_identifier,
                     unit_scale,
                     &combined_transform,
-                    rtc_x,
-                    rtc_z,
+                    rebase,
                     &styled_items,
-                    &mut out,
+                    out,
                 );
             }
         }
     }
 
-    out
 }

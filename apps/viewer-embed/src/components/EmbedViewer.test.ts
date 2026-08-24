@@ -171,3 +171,99 @@ describe('EmbedViewer: SET_SECTION emits SECTION_CHANGED to the parent', () => {
     });
   });
 });
+
+/**
+ * ENTITY_HOVERED is a declared OutboundEventType with SDK listener plumbing
+ * and SDK tests — and, before #2934, zero `emitEvent('ENTITY_HOVERED', ...)`
+ * call sites anywhere in this app. The SDK's tests pass because they call
+ * `harness.emit('ENTITY_HOVERED', ...)` themselves, which proves the SDK
+ * dispatches an event the viewer never sent.
+ *
+ * The viewer's hover pipeline is: pointermove -> throttled `renderer.pick()`
+ * -> `setHoverState(...)` (apps/viewer/src/components/viewer/useMouseControls.ts
+ * ~703), with that whole branch gated on `hoverTooltipsEnabled`. These tests
+ * enter at `setHoverState` — the store action the pick path calls — and assert
+ * what reaches `window.parent.postMessage`, covering both remaining links: the
+ * gate the embed has to force on, and the emit. Driving `renderer.pick()`
+ * itself needs a real WebGPU device and is out of reach here.
+ */
+describe('EmbedViewer: emits ENTITY_HOVERED from the viewer hover pipeline', () => {
+  afterEach(() => {
+    useViewerStore.getState().clearHover();
+  });
+
+  it('forces hoverTooltipsEnabled on, without which the pick path never runs', () => {
+    // Defaults to false (UI_DEFAULTS.HOVER_TOOLTIPS_ENABLED) — a main-viewer
+    // toolbar toggle the embed has no chrome to offer.
+    useViewerStore.setState({ hoverTooltipsEnabled: false });
+
+    renderEmbedViewer();
+
+    expect(useViewerStore.getState().hoverTooltipsEnabled).toBe(true);
+  });
+
+  it('posts ENTITY_HOVERED to the parent when the pick path reports a hovered entity', () => {
+    const posted: EmbedMessageEnvelope[] = [];
+    Object.defineProperty(window, 'parent', {
+      configurable: true,
+      value: { postMessage: (msg: EmbedMessageEnvelope) => posted.push(msg) },
+    });
+
+    renderEmbedViewer();
+    // emitToParent withholds every non-READY message until a concrete
+    // parentOrigin is captured from a real inbound message — establish that
+    // first, same as the SET_SECTION test above.
+    dispatchInbound({ type: 'SET_THEME', data: { theme: 'light' } });
+
+    act(() => {
+      // Exactly what useMouseControls does with a pick hit.
+      useViewerStore.getState().setHoverState({ entityId: 42, screenX: 10, screenY: 20 });
+    });
+
+    const hovered = posted.find((m) => m.type === 'ENTITY_HOVERED');
+    expect(hovered?.data).toEqual({ id: 42, globalId: undefined, ifcType: undefined });
+  });
+
+  it('does not re-post for the same entity as the pointer drifts across it', () => {
+    const posted: EmbedMessageEnvelope[] = [];
+    Object.defineProperty(window, 'parent', {
+      configurable: true,
+      value: { postMessage: (msg: EmbedMessageEnvelope) => posted.push(msg) },
+    });
+
+    renderEmbedViewer();
+    dispatchInbound({ type: 'SET_THEME', data: { theme: 'light' } });
+
+    act(() => {
+      useViewerStore.getState().setHoverState({ entityId: 42, screenX: 10, screenY: 20 });
+    });
+    act(() => {
+      // Same entity, new screen position — every throttled mousemove within
+      // one mesh produces this.
+      useViewerStore.getState().setHoverState({ entityId: 42, screenX: 11, screenY: 21 });
+    });
+
+    expect(posted.filter((m) => m.type === 'ENTITY_HOVERED').length).toBe(1);
+  });
+
+  it('posts again once the pointer moves onto a different entity', () => {
+    const posted: EmbedMessageEnvelope[] = [];
+    Object.defineProperty(window, 'parent', {
+      configurable: true,
+      value: { postMessage: (msg: EmbedMessageEnvelope) => posted.push(msg) },
+    });
+
+    renderEmbedViewer();
+    dispatchInbound({ type: 'SET_THEME', data: { theme: 'light' } });
+
+    act(() => {
+      useViewerStore.getState().setHoverState({ entityId: 42, screenX: 10, screenY: 20 });
+    });
+    act(() => {
+      useViewerStore.getState().setHoverState({ entityId: 43, screenX: 30, screenY: 40 });
+    });
+
+    expect(posted.filter((m) => m.type === 'ENTITY_HOVERED').map((m) => (m.data as { id: number }).id))
+      .toEqual([42, 43]);
+  });
+});

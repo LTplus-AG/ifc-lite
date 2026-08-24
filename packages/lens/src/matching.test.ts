@@ -645,7 +645,7 @@ describe('matchesCriteria — classification', () => {
     // system+code filter must reject it even though each half independently
     // has a hit somewhere in the entity's classification list.
     const combinedProvider = createMockProvider([{ id: 3, type: 'IfcWall' }]);
-    (combinedProvider as Record<string, unknown>).getClassifications = (id: number) => {
+    combinedProvider.getClassifications = (id: number) => {
       if (id === 3) {
         return [
           { system: 'Uniclass', identification: 'Ss_25_10', name: 'Wrong code' },

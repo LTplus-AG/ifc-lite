@@ -808,3 +808,31 @@ ${body}
     );
   }
 });
+
+test('a quoted string cannot cross a line', () => {
+  // The string state ended only on the matching quote, so ONE unpaired `'` or
+  // `"` kept the lexer inside a string until the next quote anywhere later in
+  // the file. Both views were blanked across that whole span, and every read,
+  // filename literal and predicate inside it disappeared.
+  assert.equal(
+    blankStrings("const bad = ';\nconst keep = 1;\nconst z = ';"),
+    "const bad = ' \nconst keep = 1;\nconst z = ' ",
+    'an unpaired quote swallowed the following lines',
+  );
+  // A template literal MAY span lines, so it must still be blanked across them.
+  assert.equal(blankStrings('const t = `a\nb`;'), 'const t = ` \n `;');
+});
+
+test('a $-leading callback parameter is tainted', () => {
+  // `\b` cannot match in front of a leading `$`, so the arrow-parameter pattern
+  // captured `line` out of `$line` and the real name stayed clean. Same failure
+  // as `valueIdentifiers` and `callRe`, in the third place it appears.
+  assert.equal(
+    flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('Thing.ts', 'utf8');
+assert.ok(source.split('x').some($line => $line.includes('y')));
+`),
+    true,
+  );
+});

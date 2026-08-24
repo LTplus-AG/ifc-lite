@@ -259,6 +259,17 @@ function lexViews(src) {
         i += 2;
         continue;
       }
+      // A `'` or `"` literal CANNOT cross a line. Without this an unpaired
+      // quote kept the lexer in string state until the next quote anywhere
+      // later in the file, blanking both views across that whole span, so every
+      // read, filename literal and predicate inside it disappeared and the file
+      // reported clean. Only a template literal may span lines; a legal line
+      // continuation is a `\` escape and was already consumed above.
+      if (c === '\n' && top.quote !== '`') {
+        stack.pop();
+        i++;
+        continue;
+      }
       if (c !== '\n') blanked[i] = ' ';
       i++;
       continue;
@@ -581,7 +592,7 @@ function computeTainted(blanked) {
       const open = m.index + m[0].length - 1;
       if (!carriesFileBytes(blanked.slice(receiverStart(blanked, m.index), m.index))) continue;
       const args = blanked.slice(open + 1, matchParen(blanked, open));
-      for (const cb of args.matchAll(/(\([^()]*\)|\b[A-Za-z_$][\w$]*)\s*=>/g))
+      for (const cb of args.matchAll(/(\([^()]*\)|(?<![\w$])[A-Za-z_$][\w$]*)\s*=>/g))
         for (const q of valueIdentifiers(cb[1])) tainted.add(q);
       // An anonymous `function (line) { … }` callback is the same flow with a
       // different spelling, and matching only arrows left it undetected.
@@ -640,7 +651,7 @@ function computeTainted(blanked) {
       const open = call.index + call[0].length - 1;
       if (!splitArgs(blanked.slice(open + 1, matchParen(blanked, open))).some(carriesFileBytes))
         continue;
-      for (const m2 of blanked.matchAll(/(\([^()]*\)|\b[A-Za-z_$][\w$]*)\s*=>/g))
+      for (const m2 of blanked.matchAll(/(\([^()]*\)|(?<![\w$])[A-Za-z_$][\w$]*)\s*=>/g))
         for (const p of valueIdentifiers(m2[1])) tainted.add(p);
       for (const fn of fns) for (const p of fn.params) tainted.add(p);
       break;

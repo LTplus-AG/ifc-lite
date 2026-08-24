@@ -1196,3 +1196,53 @@ const source = readFileSync('Thing.tsx', 'utf8');
     'an undecidable callee stopped failing closed',
   );
 });
+
+test('an angle-bracket type assertion is a wrapper too, where unwrap is load-bearing', () => {
+  // `unwrap` handles `TypeAssertionExpression` and nothing exercised it, because
+  // every other fixture parses as TSX and TSX cannot express `<T>value` — it
+  // reads as an unclosed JSX tag (2 parse errors, no assertion node). So the
+  // branch was dead in the suite while looking covered. Reported by CodeRabbit
+  // on #3177 alongside the `?.` guards, which is the other half of the same
+  // mistake: a guard would have swallowed a missing predicate and no test
+  // reached the path to notice.
+  //
+  // THE FIRST VERSION OF THIS TEST DID NOT MEASURE THE ARM. It asserted on
+  // `const s = <string>source` and on a callback nested inside an assertion,
+  // and both stay flagged with the arm deleted — the binding rule and the
+  // callback rule each walk the whole subtree, so they descend through the
+  // wrapper without needing it removed. Deleting the arm scored the same.
+  //
+  // The arm is load-bearing exactly where a node is inspected STRUCTURALLY
+  // rather than walked: resolving a callback passed BY NAME, and walking from
+  // a function up to the name it is bound to. Both of these flip to `false`
+  // with the arm removed, which is what makes them the test.
+  const head = `
+import { readFileSync } from 'node:fs';
+const source = readFileSync('Thing.ts', 'utf8');
+`;
+  const needsUnwrap = {
+    'named callback inside an assertion': `const hit = (line) => line.includes('x');\nassert.ok(source.split('n').some(<(l: string) => boolean>hit));`,
+    'helper declaration wrapped in one': `const chk = <(t: string) => boolean>((t) => t.includes('x'));\nassert.ok(chk(source));`,
+  };
+  for (const [label, body] of Object.entries(needsUnwrap))
+    assert.equal(analyze(head + body, 'a.ts').flagged, true, `unwrap missed: ${label}`);
+
+  // Kept as controls, and labelled as such: these two are covered by the
+  // subtree walks whether or not the arm exists, so they prove the fixtures
+  // parse — not that the arm works.
+  const coveredByWalks = {
+    'binding through an assertion': `const s = <string>source;\nassert.ok(s.includes('x'));`,
+    'callback nested inside one': `assert.ok(source.split('n').some(<(l: string) => boolean>((line) => line.includes('x'))));`,
+  };
+  for (const [label, body] of Object.entries(coveredByWalks))
+    assert.equal(analyze(head + body, 'a.ts').flagged, true, `control failed: ${label}`);
+
+  // And the reason the default fileName is TSX: the SAME source parsed as TSX
+  // is not this program at all, so a fixture that forgot the filename would be
+  // asserting about something else entirely.
+  assert.equal(
+    analyze(head + coveredByWalks['binding through an assertion'], 'a.tsx').flagged,
+    false,
+    'TSX now parses `<string>value` — if TypeScript changed, this test measures the wrong thing',
+  );
+});

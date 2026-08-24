@@ -199,6 +199,14 @@ function walk(node, visit) {
  * Deliberately NOT applied to a call's CALLEE. `(fn)(source)` must stay in the
  * fail-closed branch, which is where the scanning version put it and where an
  * undecidable callee belongs.
+ *
+ * Every predicate is called DIRECTLY, with no `?.` guard. The first version
+ * wrote `ts.isSatisfiesExpression?.(n) ?? false` out of caution about the API
+ * surface, which is a fail-open dressed as defensiveness: a renamed or missing
+ * predicate would answer "not a wrapper" and silently stop unwrapping, instead
+ * of throwing where someone would see it. `typescript@^6.0.3` exports all five
+ * (checked), and if a future version does not, this should break loudly.
+ * Reported by CodeRabbit on #3177.
  */
 function unwrap(node) {
   let n = node;
@@ -206,9 +214,9 @@ function unwrap(node) {
     n &&
     (ts.isParenthesizedExpression(n) ||
       ts.isAsExpression(n) ||
-      (ts.isSatisfiesExpression?.(n) ?? false) ||
+      ts.isSatisfiesExpression(n) ||
       ts.isNonNullExpression(n) ||
-      (ts.isTypeAssertionExpression?.(n) ?? false))
+      ts.isTypeAssertionExpression(n))
   )
     n = n.expression;
   return n;
@@ -320,15 +328,7 @@ function functionName(fn) {
   // the parenthesis, not the declaration, so the helper had no name and its
   // call sites tainted nothing.
   let parent = fn.parent;
-  while (
-    parent &&
-    (ts.isParenthesizedExpression(parent) ||
-      ts.isAsExpression(parent) ||
-      (ts.isSatisfiesExpression?.(parent) ?? false) ||
-      ts.isNonNullExpression(parent) ||
-      (ts.isTypeAssertionExpression?.(parent) ?? false))
-  )
-    parent = parent.parent;
+  while (parent && unwrap(parent) !== parent) parent = parent.parent;
   if (parent && ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)) return parent.name.text;
   if (parent && ts.isPropertyAssignment(parent) && ts.isIdentifier(parent.name)) return parent.name.text;
   if (

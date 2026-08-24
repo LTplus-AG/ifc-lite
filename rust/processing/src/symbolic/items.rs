@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::output_cap::SymbolicAccumulator;
+use super::rebase::RenderFrameRebase;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use std::collections::HashMap;
 
@@ -30,8 +31,7 @@ pub(super) fn extract_symbolic_item_inner(
     rep_identifier: &str,
     unit_scale: f32,
     transform: &Transform2D,
-    rtc_x: f32,
-    rtc_z: f32,
+    rebase: RenderFrameRebase,
     styled_items: &HashMap<u32, Vec<u32>>,
     out: &mut SymbolicAccumulator,
     depth: u32,
@@ -50,8 +50,7 @@ pub(super) fn extract_symbolic_item_inner(
                             rep_identifier,
                             unit_scale,
                             transform,
-                            rtc_x,
-                            rtc_z,
+                            rebase,
                             styled_items,
                             out,
                             depth + 1,
@@ -131,8 +130,7 @@ pub(super) fn extract_symbolic_item_inner(
                     rep_identifier,
                     unit_scale,
                     &composed_transform,
-                    rtc_x,
-                    rtc_z,
+                    rebase,
                     styled_items,
                     out,
                     depth + 1,
@@ -161,8 +159,8 @@ pub(super) fn extract_symbolic_item_inner(
                             first_z = Some(local_z);
                         }
                         let (wx, wy) = transform.transform_point(local_x, local_y);
-                        let x = wx - rtc_x;
-                        let y = -wy + rtc_z; // Y-flip to match section-cut coord system
+                        // Plan pair incl. the Y-flip to match section-cut handedness.
+                        let (x, y) = rebase.plan(wx, wy);
                         if x.is_finite() && y.is_finite() {
                             points.push(x);
                             points.push(y);
@@ -173,7 +171,7 @@ pub(super) fn extract_symbolic_item_inner(
                         let is_closed = n >= 4
                             && (points[0] - points[n - 2]).abs() < 0.001
                             && (points[1] - points[n - 1]).abs() < 0.001;
-                        let world_y = first_z.unwrap_or(0.0) + transform.tz;
+                        let world_y = rebase.elevation(first_z.unwrap_or(0.0) + transform.tz);
                         out.push_polyline(SymbolicPolyline {
                             express_id,
                             ifc_type: ifc_type.to_string(),
@@ -202,8 +200,7 @@ pub(super) fn extract_symbolic_item_inner(
                     first_z = Some(local_z);
                 }
                 let (wx, wy) = transform.transform_point(local_x, local_y);
-                let x = wx - rtc_x;
-                let y = -wy + rtc_z;
+                let (x, y) = rebase.plan(wx, wy);
                 if x.is_finite() && y.is_finite() {
                     points.push(x);
                     points.push(y);
@@ -214,7 +211,7 @@ pub(super) fn extract_symbolic_item_inner(
                 let is_closed = n >= 4
                     && (points[0] - points[n - 2]).abs() < 0.001
                     && (points[1] - points[n - 1]).abs() < 0.001;
-                let world_y = first_z.unwrap_or(0.0) + transform.tz;
+                let world_y = rebase.elevation(first_z.unwrap_or(0.0) + transform.tz);
                 out.push_polyline(SymbolicPolyline {
                     express_id,
                     ifc_type: ifc_type.to_string(),
@@ -234,13 +231,14 @@ pub(super) fn extract_symbolic_item_inner(
                 return;
             }
             let (wx, wy) = transform.transform_point(center_x, center_y);
+            let (px, py) = rebase.plan(wx, wy);
             out.push_circle(SymbolicCircle::full(
                 express_id,
                 ifc_type.to_string(),
-                wx - rtc_x,
-                -wy + rtc_z,
+                px,
+                py,
                 radius,
-                center_z + transform.tz,
+                rebase.elevation(center_z + transform.tz),
                 rep_identifier.to_string(),
             ));
         }
@@ -259,8 +257,7 @@ pub(super) fn extract_symbolic_item_inner(
                 let lx = cx_local + semi_a * t.cos();
                 let ly = cy_local + semi_b * t.sin();
                 let (wx, wy) = transform.transform_point(lx, ly);
-                let x = wx - rtc_x;
-                let y = -wy + rtc_z;
+                let (x, y) = rebase.plan(wx, wy);
                 if x.is_finite() && y.is_finite() {
                     points.push(x);
                     points.push(y);
@@ -272,7 +269,7 @@ pub(super) fn extract_symbolic_item_inner(
                     ifc_type: ifc_type.to_string(),
                     points,
                     closed: true,
-                    world_y: cz_local + transform.tz,
+                    world_y: rebase.elevation(cz_local + transform.tz),
                     representation: rep_identifier.to_string(),
                 });
             }
@@ -286,8 +283,7 @@ pub(super) fn extract_symbolic_item_inner(
                 rep_identifier,
                 unit_scale,
                 transform,
-                rtc_x,
-                rtc_z,
+                rebase,
                 out,
             );
         }
@@ -305,8 +301,7 @@ pub(super) fn extract_symbolic_item_inner(
                                     rep_identifier,
                                     unit_scale,
                                     transform,
-                                    rtc_x,
-                                    rtc_z,
+                                    rebase,
                                     styled_items,
                                     out,
                                     depth + 1,
@@ -330,8 +325,7 @@ pub(super) fn extract_symbolic_item_inner(
                 rep_identifier,
                 unit_scale,
                 transform,
-                rtc_x,
-                rtc_z,
+                rebase,
                 styled_items,
                 out,
             );
@@ -345,8 +339,7 @@ pub(super) fn extract_symbolic_item_inner(
                 rep_identifier,
                 unit_scale,
                 transform,
-                rtc_x,
-                rtc_z,
+                rebase,
                 styled_items,
                 out,
             );

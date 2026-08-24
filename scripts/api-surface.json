@@ -357,6 +357,7 @@
     "Mesh: interface",
     "MountPresenceInViewerOptions: interface",
     "NumericFederationRegistry: interface",
+    "OverlayOptions: interface",
     "PLACEMENT_BASELINE_META: const",
     "PROPERTY_TYPE_NAMES: const",
     "ParametricSource: type",
@@ -422,6 +423,7 @@
     "annotationsMap: function",
     "appendCSGOp: function",
     "applyAwarenessUpdate: function",
+    "applyIfcxOverlay: function",
     "assertSchemaInvariants: function",
     "attachHistorySidecar: function",
     "bindMutationsToCollab: function",
@@ -556,7 +558,8 @@
     "snapshotToIfcx: function",
     "structuredAttributeKey: function",
     "sweepBlobs: function",
-    "updateAnnotation: function"
+    "updateAnnotation: function",
+    "upsertGeometry: function"
   ],
   "@ifc-lite/collab-server": [
     "AccessControl: interface",
@@ -749,6 +752,7 @@
     "GeometryRefCarrier: interface",
     "IfcxInput: type",
     "InflatedAttributes: interface",
+    "OverlayOptions: interface",
     "PublishLayerOptions: interface",
     "PublishedLayer: interface",
     "SeedFromStepOptions: interface",
@@ -762,6 +766,7 @@
     "WorkerRequest: type",
     "WorkerResponse: type",
     "WorkerScopeLike: interface",
+    "applyIfcxOverlay: function",
     "captureBaseline: function",
     "extractMinimalLayer: function",
     "extractUserLayer: function",

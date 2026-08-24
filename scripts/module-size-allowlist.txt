@@ -14,8 +14,8 @@
 # Any edit here moves ALLOWLIST_DIGEST in scripts/check-module-size.mjs, which
 # must be updated in the same commit — that is the point: loosening the ratchet
 # costs a reviewable line.
-   515 apps/viewer-embed/src/bridge/handler.ts
-   445 apps/viewer-embed/src/components/EmbedViewer.tsx
+   522 apps/viewer-embed/src/bridge/handler.ts
+   484 apps/viewer-embed/src/components/EmbedViewer.tsx
    481 apps/viewer/src/components/extensions/ExtensionsPanel.tsx
    431 apps/viewer/src/components/extensions/FlavorDialog.tsx
    428 apps/viewer/src/components/extensions/widget/WidgetRenderer.tsx
@@ -92,7 +92,7 @@
    970 apps/viewer/src/components/viewer/useGeometryStreaming.ts
    946 apps/viewer/src/components/viewer/useMouseControls.ts
    782 apps/viewer/src/components/viewer/ViewerLayout.tsx
-  1834 apps/viewer/src/components/viewer/Viewport.tsx
+  1843 apps/viewer/src/components/viewer/Viewport.tsx
   1539 apps/viewer/src/components/viewer/ViewportContainer.tsx
    511 apps/viewer/src/components/viewer/ZonesPanel.tsx
    862 apps/viewer/src/hooks/ids/idsExportService.ts
@@ -111,7 +111,7 @@
   2204 apps/viewer/src/hooks/useIfcLoader.ts
    436 apps/viewer/src/hooks/useIfcServer.ts
    488 apps/viewer/src/hooks/useKeyboardShortcuts.ts
-   737 apps/viewer/src/hooks/useSymbolicAnnotations.ts
+   601 apps/viewer/src/hooks/useSymbolicAnnotations.ts
    629 apps/viewer/src/lib/analytics-scrub.ts
    651 apps/viewer/src/lib/clash/persistence.ts
    427 apps/viewer/src/lib/collab/geometry-sync.ts
@@ -142,15 +142,16 @@
    561 apps/viewer/src/services/ifc-cache.ts
    581 apps/viewer/src/store/basketVisibleSet.ts
    485 apps/viewer/src/store/constants.ts
-   846 apps/viewer/src/store/index.ts
+   850 apps/viewer/src/store/index.ts
    404 apps/viewer/src/store/slices/addElementMeshes.ts
    452 apps/viewer/src/store/slices/chatSlice.ts
    994 apps/viewer/src/store/slices/clashSlice.ts
   1599 apps/viewer/src/store/slices/collabSlice.ts
+   482 apps/viewer/src/store/slices/dataSlice.ts
    874 apps/viewer/src/store/slices/drawing2DSlice.ts
    482 apps/viewer/src/store/slices/idsSlice.ts
    820 apps/viewer/src/store/slices/measurementSlice.ts
-   889 apps/viewer/src/store/slices/modelSlice.ts
+   914 apps/viewer/src/store/slices/modelSlice.ts
   3283 apps/viewer/src/store/slices/mutationSlice.ts
    478 apps/viewer/src/store/slices/pinboardSlice.ts
   1317 apps/viewer/src/store/slices/scheduleSlice.ts
@@ -159,7 +160,7 @@
    571 apps/viewer/src/store/slices/sheetSlice.ts
    414 apps/viewer/src/store/slices/uiSlice.ts
    485 apps/viewer/src/store/slices/visibilitySlice.ts
-   677 apps/viewer/src/store/types.ts
+   689 apps/viewer/src/store/types.ts
    819 apps/viewer/src/utils/serverDataModel.ts
    441 apps/viewer/src/utils/spatialHierarchy.ts
    573 apps/viewer/src/utils/viewportUtils.ts
@@ -296,7 +297,7 @@
    609 packages/provenance/src/node-hash.ts
    535 packages/query/src/duckdb-integration.ts
    561 packages/renderer/src/camera-controls.ts
-   578 packages/renderer/src/camera.ts
+   657 packages/renderer/src/camera.ts
   3792 packages/renderer/src/index.ts
    780 packages/renderer/src/picker.ts
    952 packages/renderer/src/pipeline.ts

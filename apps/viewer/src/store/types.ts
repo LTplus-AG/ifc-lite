@@ -422,6 +422,18 @@ export interface CameraCallbacks {
    */
   frameClashRegion?: (min: { x: number; y: number; z: number }, max: { x: number; y: number; z: number }) => void;
   orbit?: (deltaX: number, deltaY: number) => void;
+  /**
+   * Place the camera at an ABSOLUTE orientation (degrees, same convention as
+   * `cameraRotation` and the renderer's `Camera.getRotation`), keeping the
+   * current target and orbit distance.
+   *
+   * Every other orientation callback here is relative (`orbit`, `rotateLeft`,
+   * `rotateRight`) or names a direction (`setPresetView`), so a caller holding
+   * an angle pair — the embed API's `SET_CAMERA` — had nothing to call and the
+   * store write went nowhere (#2934). Driven from `setCameraRotation` in
+   * cameraSlice, mirroring how `setProjectionMode` drives its own callback.
+   */
+  setCameraRotation?: (rotation: CameraRotation) => void;
   projectToScreen?: (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null;
   /**
    * Unproject a screen pixel onto the horizontal plane at the

@@ -1075,6 +1075,15 @@ export function Viewport({
           renderCurrent();
           calculateScale();
         },
+        setCameraRotation: ({ azimuth, elevation }) => {
+          // Absolute counterpart to rotateLeft/rotateRight below (which step by
+          // 90° from wherever the camera already is). Snaps rather than
+          // animates: the caller is a host command that may arrive at slider
+          // rate, and a tween per message would queue up behind itself.
+          camera.setRotation(azimuth, elevation);
+          renderCurrent();
+          calculateScale();
+        },
         rotateLeft: () => {
           animateHorizontalRotation(-Math.PI / 2);
         },

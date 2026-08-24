@@ -88,6 +88,7 @@ describe('ModelSlice', () => {
       ...slice,
       ifcDataStore: null,
       geometryResult: null,
+      meshColorBackup: null,
       addElementModelId: null,
       addElementStoreyId: null,
       selectedEntityId: null,

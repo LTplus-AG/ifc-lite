@@ -189,7 +189,16 @@ fn to_render_frame(
     let rz = wz - rtc.2;
     // IFC Z-up → WebGL Y-up: (x, z, -y). Matches MeshDataJs::new so grids land
     // on the same ground as the streamed meshes.
-    [rx as f32, rz as f32, -ry as f32]
+    //
+    // `+ 0.0` folds the -0.0 that negating a zero northing produces back to
+    // +0.0, matching the symbolic overlay's `RenderFrameRebase::plan`
+    // (`rust/processing/src/symbolic/rebase.rs`) on the sign of zero for this
+    // axis. Only that: the two are NOT bit-identical in general, because
+    // `plan` subtracts in f32 while this rounds once after subtracting in
+    // f64, so they can differ by an ulp on the same coordinate. Sign of zero
+    // is the part the symbolic side's pinned goldens record, and the part a
+    // test on each side now holds.
+    [rx as f32, rz as f32, -ry as f32 + 0.0]
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

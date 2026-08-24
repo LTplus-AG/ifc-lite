@@ -46,6 +46,19 @@ export function EmbedViewer() {
     setTheme(urlParams.theme === 'dark' ? 'dark' : 'light');
   }, [urlParams.theme, setTheme]);
 
+  // Force hover picking on. `hoverState` (apps/viewer/src/store/slices/
+  // hoverSlice.ts) is populated by useMouseControls.ts's throttled
+  // renderer.pick() on mousemove — the same pipeline the main viewer uses —
+  // but that whole branch is gated behind `hoverTooltipsEnabled`, which
+  // defaults to false (a toolbar toggle). The embed has no toolbar to flip it,
+  // and the ENTITY_HOVERED effect below needs `hoverState` to ever populate.
+  // Safe to force on here: the embed shell never renders <HoverTooltip> (it
+  // lives in ViewerLayout, which the embed doesn't use), so this activates the
+  // picking pipeline only — no tooltip UI appears.
+  useEffect(() => {
+    useViewerStore.setState({ hoverTooltipsEnabled: true });
+  }, []);
+
   // Initialize the postMessage bridge.
   //
   // Guarded via mountBridgeLifecycle/unmountBridgeLifecycle so a React 19
@@ -236,6 +249,32 @@ export function EmbedViewer() {
       emitEvent('ENTITY_DESELECTED', undefined);
     }
   }, [selectedEntityId]);
+
+  // Emit hover events to parent. ENTITY_HOVERED is declared in the protocol
+  // and exposed by the SDK, but nothing in this app ever emitted it — the
+  // SDK's tests pass because they fabricate the event themselves (#2934).
+  //
+  // Subscribes to `hoverState.entityId` specifically, not the whole
+  // `hoverState` object: screenX/screenY/worldXYZ change on every
+  // hover-throttled mousemove even while the pointer stays on the same mesh,
+  // so selecting the object would re-post the event continuously instead of
+  // only on a hover-target change. The protocol declares no ENTITY_UNHOVERED
+  // counterpart to ENTITY_DESELECTED, so null (nothing hovered) is tracked but
+  // never emitted.
+  const hoveredEntityId = useViewerStore((s) => s.hoverState.entityId);
+  useEffect(() => {
+    if (hoveredEntityId === null) return;
+
+    const state = useViewerStore.getState();
+    const lookup = state.resolveGlobalIdFromModels(hoveredEntityId);
+    const model = lookup ? state.models.get(lookup.modelId) : undefined;
+    const entities = model?.ifcDataStore?.entities;
+    emitEvent('ENTITY_HOVERED', {
+      id: hoveredEntityId,
+      globalId: entities?.getGlobalId(lookup?.expressId ?? hoveredEntityId) ?? undefined,
+      ifcType: entities?.getTypeName(lookup?.expressId ?? hoveredEntityId) ?? undefined,
+    });
+  }, [hoveredEntityId]);
 
   // Emit camera rotation changes to parent (throttled)
   const cameraRotation = useViewerStore((s) => s.cameraRotation);

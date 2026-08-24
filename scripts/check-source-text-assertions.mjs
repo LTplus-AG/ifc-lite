@@ -29,10 +29,29 @@
  *
  * Run via `node scripts/check-source-text-assertions.mjs` (CI node-test job).
  *
- * DETECTION is deliberately lexical, not data-flow: every real instance names
- * its subject in a string literal in the same file, though often through a
- * shared `readSource('Thing.tsx')` helper, so the read and the literal cannot
- * be required to sit near each other.
+ * DETECTION lives in scripts/source-text-assertion-detect.mjs, and REQUIRES THE
+ * PAIRING the sentence above states: the predicate must be applied to the value
+ * a file read produced. It used to check the two halves independently -- "this
+ * file reads something" AND "this file applies a text predicate somewhere" --
+ * which is a proxy, and it broke the way proxies break:
+ * packages/data/scripts/generate-ifc-schema.test.ts reads upstream fixtures only
+ * to copy them into a temp dir, runs the real generator as a child process, and
+ * asserts solely on its stdout/stderr, yet was reported as a source-text
+ * assertion. Narrowing a ratchet is itself a loosening, so both halves of that
+ * change are pinned in scripts/check-source-text-assertions.test.mjs.
+ *
+ * IF YOU ARE HERE BECAUSE A CORRECT TEST IS FLAGGED: the escape hatch is an
+ * `// @source-text-assertion-ok <reason>` comment on the assertion's own line or
+ * above it, in the style of `@unwired-by-design`. It exists for the anchor
+ * guard -- `assert.ok(source.includes(from))` before a
+ * `source.replace(from, to)`, which asserts on file text precisely so a mutation
+ * that silently fails to apply cannot test nothing. Marked sites are counted and
+ * NAMED in this check's output, and a marker that excuses nothing is an error,
+ * so an exemption stays a reviewable line rather than a silent hole. Prefer it
+ * to the allowlist, which is for whole files that cannot be converted at all.
+ * An assertion wrapped over several lines counts as one, so the marker may sit
+ * above the line the assertion STARTS on; `markerLineFor` in the detector owns
+ * the exact rule.
  *
  * COMMENTS ARE STRIPPED FIRST, and that is load-bearing rather than tidy: three
  * unrelated tests mention a `.ts` filename in prose ("as per `safe-path.test.ts`",
@@ -40,11 +59,19 @@
  * manifest, and matching those flagged all three. It is the same trap the test
  * this guard was born from fell into -- an assertion that matched its own
  * explanatory comment instead of the code.
+ *
+ * SCAN SCOPE is packages/ and apps/ test files only; scripts/*.test.mjs are not
+ * scanned. That is a deliberate limit, not an oversight: those files run gates
+ * against real repo inputs through indirect mutator callbacks, and the taint
+ * analysis has to fail closed there, so bringing them in scope would demand
+ * markers on assertions that are about a gate's output rather than about source
+ * text. Widening the scope means paying that down first.
  */
 
 import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { analyze } from './source-text-assertion-detect.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SEARCH_DIRS = ['packages', 'apps'];
@@ -77,84 +104,19 @@ const ALLOWLIST_PATH = join(ROOT, 'scripts', 'source-text-assertion-allowlist.tx
  * The cache-hit half of #2388 is NOT covered by that exception and is tested
  * behaviourally against real `posthog.capture` payloads.
  *
- * Raised to 8 for `packages/data/scripts/generate-ifc-schema.test.ts`, and that
- * one is a DIFFERENT kind of entry from every other row: it is not a
- * source-text assertion at all. It trips READS_A_FILE, SOURCE_LITERAL and
- * TEXT_PREDICATE without the three being related -- fixture reads, a
- * copyFileSync of the script under test, and `.indexOf()` splicing fixture
- * text. Separating that from a real hit needs to track which variable holds
- * file contents; two cheaper rules were measured against the rows above and
- * lost coverage (4 of 7 and 3 of 7 caught), so both were rejected rather than
- * shipped for the convenience of one file.
+ * 7 -> 8 (#3018): `packages/data/scripts/generate-ifc-schema.test.ts` is a
+ * different KIND of entry from the rest. Every other row is a genuine
+ * source-text assertion that cannot yet be written behaviourally. This one is
+ * already behavioural — it spawns the generator and asserts on `r.status`,
+ * `r.stderr` and `r.stdout` — and the detector reaches it anyway, because the
+ * file reads files for FIXTURE setup and the taint that starts there arrives at
+ * the process-result assertions. Separating the two needs the analyser to know
+ * that a spawn result is not file bytes; two cheaper file-level rules were
+ * measured against the rows above and lost coverage (4 of 7 and 3 of 7 caught),
+ * so both were rejected rather than shipped for the convenience of one file.
+ * Raised in the same commit as the row, which is what this constant forces.
  */
 const ALLOWLIST_CEILING = 8;
-
-/** Reads a file from disk at all. */
-const READS_A_FILE = /\b(readFileSync|readFile)\s*\(/;
-
-/**
- * Names a SOURCE file as a literal. Fixture formats (.ifc, .json, .csv, …) are
- * deliberately absent: reading a fixture and asserting on it is a normal test.
- */
-const SOURCE_LITERAL = /['"`][^'"`\n]*\.(ts|tsx|mts|rs|css|scss)['"`]/;
-
-/**
- * Asserts on text rather than on behaviour. `test` is in the list because
- * `/re/.test(source)` is how this repo already writes them
- * (export-ui-parity.test.tsx:104, :388) — omitting it left the most likely
- * next instance undetected.
- *
- * `exec` is here for the same reason, and was found the same way (#2434):
- * `packages/geometry/src/prepass-class-spans.test.ts` regexes a `.rs` file with
- * `new RegExp(...).exec(src)`, and this guard did not see it at all. Every
- * other predicate listed has a matching `.exec` spelling, so omitting it left
- * the guard blind to a one-character rewrite of a form it already catches.
- */
-const TEXT_PREDICATE =
-  /(\.(includes|indexOf|match|search|startsWith|endsWith|exec)|\/\s*\.test)\s*\(|\.test\s*\(\s*(source|src|text|body|content|contents)\b|\.(toContain|toMatch)\s*\(/;
-
-/**
- * Assertions on a spawned process's own output are BEHAVIOURAL, not source-text,
- * and stripping them before the predicate runs is what stops this guard firing
- * on a test that merely happens to read files for fixture setup.
- *
- * `packages/data/scripts/generate-ifc-schema.test.ts` is the case that forced
- * this: it copies vendored `.g.cs` data into a temp directory, renames a marker,
- * runs the generator, and asserts `r.status` is non-zero and `r.stderr` names
- * the missing marker. Every `readFileSync` there is fixture setup; not one reads
- * a source file to assert on its text. File-level co-occurrence of
- * `readFileSync` and `.toContain(` was enough to flag it, which is a false
- * positive on exactly the shape this guard wants people to write.
- *
- * `{0,200}` on the receiver runs, not `*`. Two unbounded runs before a required
- * `)` backtrack QUADRATICALLY when the input has no `)` at all. Measured on
- * `'expect(' + '.status'.repeat(n)`:
- *
- *     n=4000    unbounded 41.6ms   newline-excluded 49.4ms   bounded 0.1ms
- *     n=16000   unbounded 657.9ms  newline-excluded 720.1ms  bounded 0.0ms
- *
- * Excluding the newline alone does NOT help -- that input has no newlines, so
- * `[^)\n]*` and `[^)]*` behave identically. Only the length bound flattens it.
- * 200 is far above any real receiver: the longest real one in the tree is 41
- * chars, and the longest `)`-free stretch in any test file is roughly 4.5k --
- * both orders of magnitude past the bound either way. Stated loosely on
- * purpose, because an exact count here is measured on the COMMENT-STRIPPED
- * text this regex actually sees, not on raw source, and goes stale on the next
- * commit regardless. Matcher
- * ARGS do span lines, which is why `[^;]*?` below stays unbounded.
- *
- * Deliberately narrow: only `.status`, `.stdout` and `.stderr` receivers are
- * dropped, so `expect(readFileSync(x)).toContain(y)` is untouched. A test that
- * genuinely asserts on file text cannot hide behind this by renaming a
- * variable, because the receiver property is what is matched, not its name.
- */
-const PROCESS_OUTPUT_ASSERTION =
-  /\bexpect\s*\([^)\n]{0,200}\.(status|stdout|stderr)\b[^)\n]{0,200}\)\s*(\.\s*not)?\s*\.\s*(toContain|toMatch|toBe|toEqual)\s*\([^;]*?\)/g;
-
-/** Blank process-output assertions so only file-text ones reach TEXT_PREDICATE. */
-function stripProcessOutputAssertions(text) {
-  return text.replace(PROCESS_OUTPUT_ASSERTION, '');
-}
 
 function walk(dir, found = []) {
   // Fail closed. Swallowing an unreadable directory would let this guard
@@ -171,15 +133,6 @@ function walk(dir, found = []) {
   return found;
 }
 
-/** Drop `//` and block comments, so prose about a `.ts` file cannot flag a test. */
-function stripComments(source) {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .split('\n')
-    .map((line) => line.replace(/(^|[^:'"`\\])\/\/.*$/, '$1'))
-    .join('\n');
-}
-
 function loadAllowlist() {
   if (!existsSync(ALLOWLIST_PATH)) return new Set();
   return new Set(
@@ -192,21 +145,22 @@ function loadAllowlist() {
 
 const allowlist = loadAllowlist();
 const offenders = [];
+const markedSites = [];
+const deadMarkers = [];
 const staleAllowlistEntries = new Set(allowlist);
 
 for (const dir of SEARCH_DIRS) {
   for (const file of walk(join(ROOT, dir))) {
     const rel = relative(ROOT, file).split('\\').join('/');
-    const source = stripComments(readFileSync(file, 'utf8'));
-    const assertions = stripProcessOutputAssertions(source);
-    const flagged =
-      READS_A_FILE.test(source) && SOURCE_LITERAL.test(source) && TEXT_PREDICATE.test(assertions);
-    if (!flagged) continue;
+    const result = analyze(readFileSync(file, 'utf8'));
+    for (const line of result.unusedMarkers) deadMarkers.push(`${rel}:${line}`);
+    for (const site of result.marked) markedSites.push(`${rel}:${site.line}  ${site.reason}`);
+    if (!result.flagged) continue;
     if (allowlist.has(rel)) {
       staleAllowlistEntries.delete(rel);
       continue;
     }
-    offenders.push(rel);
+    for (const hit of result.hits) offenders.push(`${rel}:${hit.line}  ${hit.text}`);
   }
 }
 
@@ -238,6 +192,28 @@ apps/viewer/src/components/viewer/SearchModal.filter.wiring.test.tsx.
 
 If the behavioural version is genuinely out of reach, add the file to
 scripts/source-text-assertion-allowlist.txt WITH a one-line reason.
+
+If the assertion is an ANCHOR GUARD -- asserting the anchor exists before a
+mutation is built on it, so a mutation that silently stops applying cannot
+leave the test asserting nothing -- mark that line instead:
+
+  // @source-text-assertion-ok mutation anchor guard, not a subject assertion
+  assert.ok(source.includes(anchor), \`anchor drifted: \${anchor}\`);
+
+Marked sites stay named in this check's output; they are not exemptions in
+the dark.
+`);
+}
+
+if (deadMarkers.length > 0) {
+  failed = true;
+  console.error('\n@source-text-assertion-ok markers that excuse nothing:\n');
+  for (const site of deadMarkers) console.error(`  ${site}`);
+  console.error(`
+Either the marker has no reason after it, or the assertion it excused is gone
+or moved. A marker sits on the assertion's own line or above it, and an
+assertion wrapped over several lines counts as one: the marker may sit above
+the line the assertion STARTS on, which is where this message shows it.
 `);
 }
 
@@ -273,6 +249,9 @@ ratcheting.
 
 if (failed) process.exit(1);
 
+for (const site of markedSites) {
+  console.log(`  marked @source-text-assertion-ok: ${site}`);
+}
 console.log(
-  `check-source-text-assertions: OK (${allowlist.size} allowlisted, 0 new)`
+  `check-source-text-assertions: OK (${allowlist.size} allowlisted, ${markedSites.length} marked, 0 new)`
 );

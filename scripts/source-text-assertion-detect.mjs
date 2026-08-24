@@ -102,6 +102,38 @@ const REGEX_PRECEDERS = new Set([
 const REGEX_PRECEDING_WORDS = /(?:^|[^A-Za-z0-9_$])(return|typeof|instanceof|case|in|of|delete|void|new|do|else|yield|await)$/;
 
 /**
+ * TRUE when the `)` at `end` closes an `if (…)` / `for (…)` / `while (…)` style
+ * HEADER rather than a parenthesised expression.
+ *
+ * `)` is not a regex-preceder, because `(a + b) / c` is division. But an
+ * unbraced control body can be a regex expression statement:
+ *
+ *     if (ok) /["']/.test(value);
+ *
+ * There the `/` starts a literal, and reading it as division let the `"` open a
+ * string that never closed, blanking the rest of the file -- the gate then
+ * reported a clean file. Distinguishing the two needs the token before the
+ * MATCHING `(`, so this walks back to it.
+ */
+function closesAControlHeader(back, end) {
+  if (back[end] !== ')') return false;
+  let depth = 0;
+  let j = end;
+  for (; j >= 0; j--) {
+    if (back[j] === ')') depth++;
+    else if (back[j] === '(') {
+      depth--;
+      if (depth === 0) break;
+    }
+  }
+  if (j < 0) return false;
+  let w = j - 1;
+  while (w >= 0 && (back[w] === ' ' || back[w] === '\t')) w--;
+  const span = back.slice(Math.max(0, w - 8), w + 1).join('');
+  return /(?:^|[^A-Za-z0-9_$])(if|for|while|switch|catch|with)$/.test(span);
+}
+
+/**
  * If `src[start]` opens a regex literal, the index just PAST it (flags
  * included); otherwise `start`, meaning "this `/` is division".
  *
@@ -141,7 +173,8 @@ function regexLiteralEnd(src, start, back) {
     !doubled
     && (prev === ''
       || REGEX_PRECEDERS.has(prev)
-      || REGEX_PRECEDING_WORDS.test(wordSpan));
+      || REGEX_PRECEDING_WORDS.test(wordSpan)
+      || closesAControlHeader(back, k));
   if (!isRegex) return start;
 
   let i = start + 1;
@@ -306,7 +339,14 @@ export function stripComments(source) {
 /** Identifiers in `expr` at value position: property names after `.` excluded. */
 function valueIdentifiers(expr) {
   const names = new Set();
-  const re = /(\.?)\s*\b([A-Za-z_$][\w$]*)\b/g;
+  // NOT `\b` before the name. `$` is legal in a JS identifier and is not a word
+  // character, so `\b` never matches in front of a LEADING `$`: `$read(x)`
+  // yielded `read`, which matches nothing in the tainted set, and `a.$b` yielded
+  // `b` with the dot marker lost, so a property was read as a value. Both are
+  // silent. An explicit "not preceded by an identifier character" assertion
+  // handles `$`, and the trailing `\b` is unnecessary because the class is
+  // greedy.
+  const re = /(\.?)\s*(?<![\w$])([A-Za-z_$][\w$]*)/g;
   let m;
   while ((m = re.exec(expr)) !== null) {
     if (m[1] === '.') continue;
@@ -425,6 +465,12 @@ function computeTainted(blanked) {
   const fns = [];
   const fnRe =
     /\bfunction\s*\*?\s*([A-Za-z_$][\w$]*)?\s*\(|\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?(?:function\s*\*?\s*[A-Za-z_$\w$]*\s*)?\(/g;
+  // A single arrow parameter needs no parentheses, and requiring the `(` above
+  // meant `const check = src => src.includes(x)` registered no function at all:
+  // the call site never tainted `src`, and the equivalent `(src) =>` spelling
+  // was caught while this one went silent.
+  const bareArrowRe =
+    /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?([A-Za-z_$][\w$]*)\s*=>/g;
   while ((m = fnRe.exec(blanked)) !== null) {
     const open = blanked.lastIndexOf('(', fnRe.lastIndex);
     const close = matchParen(blanked, open);
@@ -457,8 +503,27 @@ function computeTainted(blanked) {
     }
     fns.push({ name: m[1] || m[2], params, body, concise });
   }
+  while ((m = bareArrowRe.exec(blanked)) !== null) {
+    const arrow = blanked.indexOf('=>', m.index) + 2;
+    const braced = /^\s*\{/.test(blanked.slice(arrow));
+    const bodyStart = braced ? blanked.indexOf('{', arrow) : arrow;
+    fns.push({
+      name: m[1],
+      params: [m[2]],
+      body: braced
+        ? blanked.slice(bodyStart, matchParen(blanked, bodyStart) + 1)
+        : blanked.slice(arrow, statementEnd(blanked, arrow)),
+      concise: !braced,
+    });
+  }
 
-  for (let pass = 0; pass < 8; pass++) {
+  // Each pass that changes anything adds at least one name, and names come from
+  // the file, so `bindings.length + fns.length + 2` is an upper bound the loop
+  // cannot need to exceed -- it is a runaway guard, not a policy. The old fixed
+  // 8 WAS reachable: a chain declared in reverse order resolves one link per
+  // pass, so eight links exhausted it and `analyze` reported a clean file.
+  const maxPasses = bindings.length + fns.length + 2;
+  for (let pass = 0; pass < maxPasses; pass++) {
     const before = tainted.size;
     for (const b of bindings) {
       if (carriesFileBytes(b.rhs)) for (const n of b.names) tainted.add(n);
@@ -472,7 +537,10 @@ function computeTainted(blanked) {
       }
       // A tainted argument taints the parameter it lands in.
       if (!fn.name || fn.params.length === 0) continue;
-      const callRe = new RegExp(`\\b${fn.name}\\s*\\(`, 'g');
+      // `$` is legal in a JS identifier AND is a regex anchor, so `$read` built
+      // a pattern that could never match and the helper's parameter taint was
+      // lost with no signal. Escape before interpolating.
+      const callRe = new RegExp(`\\b${fn.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\(`, 'g');
       let call;
       while ((call = callRe.exec(blanked)) !== null) {
         const open = callRe.lastIndex - 1;

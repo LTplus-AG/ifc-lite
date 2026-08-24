@@ -662,3 +662,72 @@ for (const line of other.split(sep) || src) { assert.ok(line.includes('y')); }
     true,
   );
 });
+
+// ---------------------------------------------------------------------------
+// 7. Review-bot findings on #3116. All four were silent under-detection, and
+//    each has a control that behaved correctly before the fix, so the fixture
+//    distinguishes the bug from the shape.
+
+test('a single arrow parameter needs no parentheses', () => {
+  // `fnRe` required a `(`, so `const check = src => …` registered no function
+  // and the call site never tainted `src`, while `(src) => …` was caught.
+  assert.equal(
+    flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('Thing.ts', 'utf8');
+const check = src => src.includes('x');
+assert.ok(check(source));
+`),
+    true,
+  );
+});
+
+test('a regex as an unbraced control body is not division', () => {
+  // `)` is not a regex-preceder, because `(a + b) / c` IS division. But an
+  // unbraced `if` body can be a regex expression statement, and reading that as
+  // division let the `"` open a string that never closed.
+  assert.equal(
+    flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('Thing.ts', 'utf8');
+if (ok) /["']/.test(value);
+assert.ok(source.includes('tok'));
+`),
+    true,
+  );
+  // The control: a genuine division after `)` must stay division.
+  assert.equal(blankStrings('const q = (1 + 2) / 3;'), 'const q = (1 + 2) / 3;');
+});
+
+test('a helper whose name contains $ is still followed', () => {
+  // `$` is legal in a JS identifier and is NOT a word character, so `\b` never
+  // matched in front of a leading `$`: `$read(x)` yielded `read`, which is not
+  // in the tainted set. `a.$b` lost its dot marker the same way, turning a
+  // property into a value.
+  assert.equal(
+    flagged(`
+import { readFileSync } from 'node:fs';
+function $read(p) { return readFileSync(p, 'utf8'); }
+const s2 = $read('a.ts');
+assert.ok(s2.includes('x'));
+`),
+    true,
+  );
+});
+
+test('taint propagation is not cut short by a fixed pass cap', () => {
+  // Bindings declared in REVERSE order resolve one link per pass, so a fixed
+  // cap of 8 stopped an eight-link chain and reported a clean file. The bound
+  // is now derived from the input, which it cannot need to exceed.
+  const links = 12;
+  const chain = Array.from({ length: links }, (_, i) => `const v${links - i} = v${links - i - 1};`);
+  assert.equal(
+    flagged(`
+import { readFileSync } from 'node:fs';
+${chain.join('\n')}
+const v0 = readFileSync('a.ts', 'utf8');
+assert.ok(v${links}.includes('x'));
+`),
+    true,
+  );
+});

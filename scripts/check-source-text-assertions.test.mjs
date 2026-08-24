@@ -486,3 +486,97 @@ test('division after ++ is not read as a regex', () => {
   const line = 'const r = (a++ / b) / c;';
   assert.equal(blankStrings(stripComments(line)), line);
 });
+
+// ---------------------------------------------------------------------------
+// 6. Fail-open holes CodeRabbit found on the PR head, and their siblings.
+//    All five are the dangerous direction: the gate going SILENT on a real
+//    source-text assertion, which is indistinguishable from a clean file.
+
+test('a `//` inside a STRING does not blank the rest of the file', () => {
+  // Comments were stripped by a regex that could not see strings, so
+  // `'see // the docs'` truncated to an unterminated quote and the string
+  // lexer blanked everything after it. No marker involved: the assertion two
+  // lines down simply became invisible and the file reported clean.
+  assert.equal(
+    flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('a/b.ts', 'utf8');
+const doc = 'see // the docs';
+assert.ok(source.includes('token'));
+`),
+    true,
+  );
+});
+
+test('a marker inside a STRING LITERAL excuses nothing', () => {
+  // Markers were matched against RAW lines, so any string containing the
+  // marker text suppressed a real finding. A string is not a comment.
+  const r = analyze(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('a/b.ts', 'utf8');
+const doc = 'write @source-text-assertion-ok fake to suppress';
+assert.ok(source.includes('token'));
+`);
+  assert.equal(r.flagged, true, 'a string suppressed a real finding');
+  assert.deepEqual(r.marked, [], 'a string was accepted as a marker');
+});
+
+test('a REAL comment marker still excuses, so the fix is not a blanket refusal', () => {
+  // The control for the two above. Without it, deleting marker support
+  // entirely would pass them both.
+  const r = analyze(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('a/b.ts', 'utf8');
+// @source-text-assertion-ok anchor guard
+assert.ok(source.includes('token'));
+`);
+  assert.equal(r.flagged, false);
+  assert.equal(r.marked.length, 1);
+});
+
+test('an iteration callback carries the bytes one element at a time', () => {
+  // `source.split('\n').some((line) => line.includes(x))` reads a file and
+  // asserts on its text, but no tainted NAME appears inside the callback, so
+  // the predicate looked like it applied to a clean parameter.
+  for (const body of [
+    "assert.ok(source.split('\\n').some((line) => line.includes('x')));",
+    "const hit = (line) => line.includes('x');\nassert.ok(source.split('\\n').some(hit));",
+    "for (const line of source.split('\\n')) { assert.ok(line.includes('x')); }",
+  ]) {
+    assert.equal(
+      flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('a/b.ts', 'utf8');
+${body}
+`),
+      true,
+      `this shape escaped the detector: ${body}`,
+    );
+  }
+});
+
+test('a path loop is not tainted just because the path list is', () => {
+  // The bound on the rule above. `files` IS tainted here -- it is derived from
+  // a tainted value, and this analysis has no way to know the derivation
+  // produced PATHS rather than contents. Tainting every `for..of` whose
+  // iterable carries file bytes therefore also taints `file`, and
+  // `file.endsWith('.ts')` becomes a false hit: measured as 4 of them in
+  // apps/viewer/src/components/viewer/toolbar-parity.test.ts, whose line 323
+  // is exactly `for (const file of files)`.
+  //
+  // Nothing lexical separates a tainted array of lines from a tainted array of
+  // filenames, so the rule takes only the `.split(` it can prove. Widen it and
+  // this reds.
+  assert.equal(
+    flagged(`
+import { readFileSync } from 'node:fs';
+const root = readFileSync('cfg.json', 'utf8');
+const files = walk(root);
+for (const file of files) {
+  assert.ok(file.endsWith('.test.ts'));
+}
+`),
+    false,
+    'a loop over PATHS derived from file bytes was read as a source-text assertion',
+  );
+});

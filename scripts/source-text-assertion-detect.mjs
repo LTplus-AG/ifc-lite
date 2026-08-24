@@ -155,21 +155,52 @@ function regexLiteralEnd(src, start) {
 }
 
 /**
- * Blank out string and template-literal CONTENT, preserving length, newlines,
- * and `${…}` interpolations. Length preservation is load-bearing: every index
- * computed on the blanked text is used against the original.
+ * ONE pass over `src` producing three length- and line-preserving views.
+ *
+ * Comments and strings cannot be lexed separately, because each can contain
+ * the other. Doing comments first (the old `stripComments`) truncated
+ * `const doc = 'see // the docs';` to an unterminated quote, and the string
+ * lexer then blanked the REST OF THE FILE, so every assertion after it went
+ * invisible and the gate reported nothing to see. Doing strings first fails
+ * the mirror case, a quote inside a comment. So both happen here, together.
+ *
+ *   text      comments blanked, string CONTENT intact -- for the pattern tests
+ *             that must still see a filename literal
+ *   blanked   comments AND string content blanked -- the code skeleton every
+ *             index-based read walks
+ *   comments  ONLY comment interiors kept -- markers are read from this, so a
+ *             `@source-text-assertion-ok` sitting inside a STRING can no
+ *             longer excuse a real finding
+ *
+ * Blanking to spaces rather than deleting keeps every index and line number
+ * equal to the original, which every caller here relies on.
  */
-export function blankStrings(src) {
-  const out = src.split('');
+function lexViews(src) {
+  const text = src.split('');
+  const blanked = src.split('');
+  const comments = src.split('');
+  for (let k = 0; k < src.length; k++) if (src[k] !== '\n') comments[k] = ' ';
+
+  const blankBoth = (k) => {
+    if (src[k] === '\n') return;
+    text[k] = ' ';
+    blanked[k] = ' ';
+  };
+  const keepComment = (k) => {
+    blankBoth(k);
+    comments[k] = src[k];
+  };
+
   const stack = [];
   let i = 0;
   while (i < src.length) {
     const c = src[i];
     const top = stack[stack.length - 1];
+
     if (top && top.kind === 'str') {
       if (c === '\\') {
-        if (src[i] !== '\n') out[i] = ' ';
-        if (src[i + 1] !== undefined && src[i + 1] !== '\n') out[i + 1] = ' ';
+        if (src[i] !== '\n') blanked[i] = ' ';
+        if (src[i + 1] !== undefined && src[i + 1] !== '\n') blanked[i + 1] = ' ';
         i += 2;
         continue;
       }
@@ -183,29 +214,44 @@ export function blankStrings(src) {
         i += 2;
         continue;
       }
-      if (c !== '\n') out[i] = ' ';
+      if (c !== '\n') blanked[i] = ' ';
       i++;
       continue;
     }
+
+    // COMMENTS ARE TESTED BEFORE REGEX. `//` would otherwise be offered to
+    // `regexLiteralEnd` as an empty literal and could swallow code up to the
+    // next slash on the line.
+    if (c === '/' && src[i + 1] === '/') {
+      while (i < src.length && src[i] !== '\n') keepComment(i++);
+      continue;
+    }
+    if (c === '/' && src[i + 1] === '*') {
+      keepComment(i++);
+      keepComment(i++);
+      while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) keepComment(i++);
+      if (i < src.length) {
+        keepComment(i++);
+        keepComment(i++);
+      }
+      continue;
+    }
+
     if (c === "'" || c === '"' || c === '`') {
       stack.push({ kind: 'str', quote: c });
       i++;
       continue;
     }
-    // A REGEX LITERAL is the third thing that can hold a quote. Without this,
-    // `/["']/` opened a string that never closed and blanked the rest of the
-    // FILE, so every assertion after it became invisible and the gate reported
-    // "no source-text assertion" for a file that still had several. That is
-    // silent UNDER-detection, the opposite of the direction this detector's
-    // docblock says it errs in.
+
     if (c === '/') {
       const end = regexLiteralEnd(src, i);
       if (end > i) {
-        for (let k = i; k < end; k++) if (src[k] !== '\n') out[k] = ' ';
+        for (let k = i; k < end; k++) if (src[k] !== '\n') blanked[k] = ' ';
         i = end;
         continue;
       }
     }
+
     if (top && top.kind === 'interp') {
       if (OPENERS.includes(c)) top.depth++;
       else if (c === '}' && top.depth === 0) {
@@ -216,21 +262,31 @@ export function blankStrings(src) {
     }
     i++;
   }
-  return out.join('');
+  return { text: text.join(''), blanked: blanked.join(''), comments: comments.join('') };
 }
 
 /**
- * Drop `//` and block comments, PRESERVING LINE NUMBERS so a marker can be
- * matched against the line of the predicate it excuses. Stripping is
- * load-bearing rather than tidy: three unrelated tests mention a `.ts` filename
+ * Blank string and template-literal CONTENT, preserving length, newlines and
+ * `${…}` interpolations. Length preservation is load-bearing: every index
+ * computed on the blanked text is used against the original. One view of
+ * {@link lexViews} rather than a second scanner.
+ */
+export function blankStrings(src) {
+  return lexViews(src).blanked;
+}
+
+/**
+ * Comments blanked, string content INTACT, line numbers and length preserved,
+ * so a marker can be matched against the line of the predicate it excuses.
+ * Load-bearing rather than tidy: three unrelated tests mention a `.ts` filename
  * in prose while reading a wasm binary or a JSON manifest.
+ *
+ * One view of {@link lexViews}. It used to be a pair of regexes that truncated
+ * a line at `//` with no idea whether that `//` was inside a STRING, which is
+ * what made the gate go silent from `const doc = 'see // the docs';` onward.
  */
 export function stripComments(source) {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
-    .split('\n')
-    .map((line) => line.replace(/(^|[^:'"`\\])\/\/.*$/, '$1'))
-    .join('\n');
+  return lexViews(source).text;
 }
 
 /** Identifiers in `expr` at value position: property names after `.` excluded. */
@@ -412,6 +468,43 @@ function computeTainted(blanked) {
         });
       }
     }
+    // An ITERATION CALLBACK receives the bytes one ELEMENT at a time, so no
+    // tainted NAME ever appears inside it. `source.split('\n').some((line) =>
+    // line.includes(needle))` reads the file and asserts on its text, and the
+    // detector saw a predicate applied to `line`, a parameter it believed was
+    // clean. Same for `.filter`, `.map`, `.every`, `.forEach`, `.find`. Taint
+    // flows from the RECEIVER to the callback's parameters.
+    for (const m of blanked.matchAll(/\.\s*[A-Za-z_$][\w$]*\s*\(/g)) {
+      const dot = m.index;
+      const open = m.index + m[0].length - 1;
+      if (!carriesFileBytes(blanked.slice(receiverStart(blanked, dot), dot))) continue;
+      const args = blanked.slice(open + 1, matchParen(blanked, open));
+      for (const cb of args.matchAll(/(\([^()]*\)|\b[A-Za-z_$][\w$]*)\s*=>/g))
+        for (const q of valueIdentifiers(cb[1])) tainted.add(q);
+      // A HOISTED callback is passed by name, so its parameters are declared
+      // somewhere else entirely: `.some(hit)` with `const hit = (line) => …`.
+      for (const arg of splitArgs(args)) {
+        const named = fns.find((f) => f.name && f.name === arg.trim());
+        if (named) for (const q of named.params) tainted.add(q);
+      }
+    }
+    // `for (const line of source.split('\n'))` binds the ELEMENT. `bindRe`
+    // requires an `=`, so this shape bound nothing and the loop body read as
+    // clean.
+    for (const m of blanked.matchAll(
+      /\bfor\s*\(\s*(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s+of\s+([^)]*)\)/g,
+    )) {
+      // Deliberately narrow to a SPLIT of tainted text. Tainting on
+      // `carriesFileBytes` alone also catches `for (const file of files)`
+      // where the elements are PATHS, not contents -- measured as 4 false hits
+      // in toolbar-parity.test.ts, because a list of paths is tainted too.
+      // Nothing lexical separates a tainted array of lines from a tainted
+      // array of filenames, so this takes the shape it can prove and leaves
+      // `for (const line of lines)` (split bound to a name first) uncovered
+      // rather than paying for it in false flags on every path loop.
+      const iter = m[2].trim();
+      if (/\.\s*split\s*\(/.test(iter) && carriesFileBytes(iter)) tainted.add(m[1]);
+    }
     // FAIL CLOSED on flow this analysis cannot follow. When file bytes are
     // handed to a callee it cannot name — `mutators[key](real[key])`, or
     // anything returned by a call — the value lands in a parameter no lexical
@@ -513,12 +606,17 @@ function markerLineFor(markerLines, codeLines, line) {
  *             unusedMarkers: number[] }}
  */
 export function analyze(original) {
-  const stripped = stripComments(original);
+  const views = lexViews(original);
+  const stripped = views.text;
   const strippedLines = stripped.split('\n');
   const empty = { flagged: false, hits: [], marked: [], unusedMarkers: [] };
   const rawLines = original.split('\n');
   const markerLines = new Map();
-  rawLines.forEach((line, idx) => {
+  // Markers are read from the COMMENT view, never the raw line. A raw-line
+  // scan accepted `const doc = 'write @source-text-assertion-ok fake';` as a
+  // genuine marker, so a STRING could excuse a real finding -- a silent
+  // fail-open in the direction this gate exists to prevent.
+  views.comments.split('\n').forEach((line, idx) => {
     const m = MARKER.exec(line);
     if (m) markerLines.set(idx + 1, (m[1] || '').trim());
   });

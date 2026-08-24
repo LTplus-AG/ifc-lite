@@ -215,6 +215,38 @@ function unwrap(node) {
 }
 
 /**
+ * The expressions a callback slot can actually evaluate to, looking through the
+ * operators that SELECT between callbacks without being one: `?:`, `&&`, `||`,
+ * `??`, the comma operator, and a spread.
+ *
+ * Only used to resolve a callback passed BY NAME. Function expressions are
+ * found by walking the argument instead, which needs no enumeration.
+ */
+function callbackCandidates(node, out = []) {
+  const n = unwrap(node);
+  if (!n) return out;
+  if (ts.isConditionalExpression(n)) {
+    callbackCandidates(n.whenTrue, out);
+    callbackCandidates(n.whenFalse, out);
+    return out;
+  }
+  const SELECTORS = new Set([
+    ts.SyntaxKind.AmpersandAmpersandToken,
+    ts.SyntaxKind.BarBarToken,
+    ts.SyntaxKind.QuestionQuestionToken,
+    ts.SyntaxKind.CommaToken,
+  ]);
+  if (ts.isBinaryExpression(n) && SELECTORS.has(n.operatorToken.kind)) {
+    callbackCandidates(n.left, out);
+    callbackCandidates(n.right, out);
+    return out;
+  }
+  if (ts.isSpreadElement(n)) return callbackCandidates(n.expression, out);
+  out.push(n);
+  return out;
+}
+
+/**
  * The name a callee resolves to, for `f(…)`, `fs.readFileSync(…)` and
  * `a.b.c(…)` alike — the rightmost identifier, which is the one that says what
  * is being called. `null` when the callee is anything else, which is the
@@ -460,19 +492,25 @@ function computeTainted(sourceFile) {
       if (!ts.isPropertyAccessExpression(call.expression)) continue;
       if (!carriesFileBytes(call.expression.expression)) continue;
       for (const rawArg of args) {
-        // UNWRAPPED first. `some(((line) => …))` and
-        // `some(((line) => …) as Predicate)` hand this loop a
-        // ParenthesizedExpression / AsExpression, so a bare `isFunctionLike`
-        // answered no, `line` stayed clean and the whole callback body read as
-        // clean with it. The scanning version caught these -- its callback
-        // pattern matched the arrow wherever it sat in the argument text --
-        // so shipping without this would have been a REGRESSION into the one
-        // direction this gate must never move. Reported by Codex on #3177.
-        const arg = unwrap(rawArg);
-        if (ts.isFunctionLike(arg) && arg.parameters) taintAll(parameterNames(arg));
+        // ANYWHERE inside the argument, not just at its root. The scanning
+        // version matched arrows and `function` expressions wherever they sat
+        // in the argument TEXT, so testing only the root node was a REGRESSION
+        // into the one direction this gate must never move -- measured against
+        // main on `((line) => …)`, `… as any`, `… satisfies unknown`,
+        // `(function (line) {…})`, `flag ? (line) => … : other`,
+        // `cb || ((line) => …)`, `(noop(), (line) => …)`,
+        // `...[(line) => …]` and `wrapCb((line) => …)`, all of which main
+        // flagged and the root-only test did not. Reported by Codex on #3177.
+        walk(rawArg, (n) => {
+          if (ts.isFunctionLike(n) && n.parameters) taintAll(parameterNames(n));
+        });
         // A HOISTED callback is passed by name, so its parameters are declared
         // somewhere else entirely: `.some(hit)` with `const hit = (line) => …`.
-        if (ts.isIdentifier(arg)) for (const fn of byName.get(arg.text) ?? []) taintAll(fn.params);
+        // Resolved through the operators that SELECT a callback, so
+        // `.some(flag ? hit : other)` reaches `hit` -- a hole main had too.
+        for (const candidate of callbackCandidates(rawArg))
+          if (ts.isIdentifier(candidate))
+            for (const fn of byName.get(candidate.text) ?? []) taintAll(fn.params);
       }
     }
 

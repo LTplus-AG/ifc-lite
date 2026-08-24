@@ -1145,6 +1145,43 @@ const source = readFileSync('Thing.tsx', 'utf8');
   for (const [label, body] of Object.entries(wrapped))
     assert.equal(flagged(head + body), true, `a wrapped callback went untainted via: ${label}`);
 
+  // The SECOND round of the same finding, also from Codex on #3177: unwrapping
+  // a fixed list of wrappers is not enough, because an expression can SELECT a
+  // callback without being one. The scanning version found arrows anywhere in
+  // the argument text, so each of these was green on main and red here until
+  // the argument is walked rather than root-tested.
+  const selected = {
+    'ternary': `assert.ok(source.split('n').some(flag ? (line) => line.includes('TODO') : other));`,
+    'logical ||': `assert.ok(source.split('n').some(cb || ((line) => line.includes('TODO'))));`,
+    'comma operator': `assert.ok(source.split('n').some((noop(), (line) => line.includes('TODO'))));`,
+    'spread of a literal': `assert.ok(source.split('n').some(...[(line) => line.includes('TODO')]));`,
+    'nested inside a call': `assert.ok(source.split('n').some(wrapCb((line) => line.includes('TODO'))));`,
+  };
+  for (const [label, body] of Object.entries(selected))
+    assert.equal(flagged(head + body), true, `a selected callback went untainted via: ${label}`);
+
+  // A callback passed BY NAME through a selector. Main did NOT catch this one,
+  // so it is not a regression -- it is closed here because resolving the
+  // selector's branches costs nothing once they are already being walked.
+  assert.equal(
+    flagged(head + `const hit = (line) => line.includes('TODO');\nassert.ok(source.split('n').some(flag ? hit : other));`),
+    true,
+    'a named callback behind a ternary went untainted',
+  );
+
+  // DEFERRED, and recorded so it is a known hole rather than an assumed one: a
+  // callback FACTORY, `some(makeCheck())`, where no function expression appears
+  // in the argument at all. Main misses it too, so this PR regresses nothing.
+  // Closing it means treating any unresolvable argument as fail-closed, and
+  // nothing lexically marks "callback position" -- `source.includes(getAnchor())`
+  // has the same shape and is an ordinary assertion, so that rule would taint
+  // every parameter in a large share of real test files.
+  assert.equal(
+    flagged(head + `function makeCheck() { return (line) => line.includes('TODO'); }\nassert.ok(source.split('n').some(makeCheck()));`),
+    false,
+    'the callback-factory hole closed -- update this test and the docblock if that was deliberate',
+  );
+
   // A wrapped RECEIVER is a different path -- it is read by subtree walk, which
   // descends through the wrapper -- and must keep working.
   assert.equal(flagged(head + `assert.ok((source).includes('x'));`), true);

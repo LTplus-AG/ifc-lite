@@ -7,7 +7,9 @@
  * indirectly — dropping `yield* deferred` fails four exporter tests — but its
  * `size` is not: reporting only the primary index's size left the whole suite
  * green, and `size` is what `StepExporter`/`MergedExporter` report as the
- * export's entity total (`step-exporter.ts:1069`, `merged-exporter.ts:611`).
+ * export's entity total -- `entityCount: pass.entities.length` in
+ * `step-header.ts`'s `assembleExportResult`, and the matching count in
+ * `merged-exporter.ts`.
  *
  * A user with a `deferPropertyAtomIndex` parse sees an export summary that
  * undercounts by every deferred property atom — thousands on a real file —

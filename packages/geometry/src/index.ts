@@ -87,6 +87,7 @@ import { IfcLiteBridge } from './ifc-lite-bridge.js';
 import { notifyIfWasmAssetUnavailable } from './wasm-asset-error.js';
 import { BufferBuilder } from './buffer-builder.js';
 import { CoordinateHandler } from './coordinate-handler.js';
+import { GEOM_CLASS_OCCURRENCE, geometryClassOf } from './geometry-class.js';
 import { createPlatformBridge, isTauri, type GeometryStats as PlatformGeometryStats, type IPlatformBridge } from './platform-bridge.js';
 import type { GeometryResult, MeshData, CoordinateInfo, GridAxis, TessellationQuality, KmzAltitudeMode, SimplifyMeshesResult } from './types.js';
 
@@ -1262,11 +1263,10 @@ export class GeometryProcessor {
    * Demesher: simplify already-produced element meshes at per-element levels
    * (1-4 = cavity removal + clustering at 0.5/0.25/0.10/0.03 triangle ratio,
    * 5 = bounding box). Pass ALL of the target elements' MeshData records
-   * (per-material submeshes included); records with `geometryClass !== 0`
-   * (type-library shapes) are ignored. Returns render-ready replacement
-   * meshes (swap into the scene via `removeMeshesForEntities` + `addMeshes`)
-   * plus each element's geometry in its IFC object-placement frame in file
-   * units, for the tessellated IFC re-export (`applySimplifiedGeometry`).
+   * (per-material submeshes included); non-occurrence records (type-library
+   * shapes) are ignored. Returns replacement meshes (swap into the scene via
+   * `removeMeshesForEntities` + `addMeshes`) plus each element's geometry in
+   * its IFC object-placement frame in file units, for `applySimplifiedGeometry`.
    *
    * `originShift` is `coordinateInfo.originShift` (IFC Z-up metres);
    * `unitScale` is metres per project length unit (defaults to 1 = metres).
@@ -1279,7 +1279,7 @@ export class GeometryProcessor {
   ): SimplifyMeshesResult | null {
     if (!this.bridge?.isInitialized()) return null;
     const records = meshes.filter(
-      (m) => (m.geometryClass ?? 0) === 0 && levels.has(m.expressId) && m.indices.length >= 3,
+      (m) => geometryClassOf(m) === GEOM_CLASS_OCCURRENCE && levels.has(m.expressId) && m.indices.length >= 3,
     );
     const requested = new Set([...levels.keys()]);
     const covered = new Set(records.map((m) => m.expressId));

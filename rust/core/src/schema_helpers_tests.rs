@@ -333,7 +333,7 @@ fn nth_attribute_reversed_boundary_is_false() {
 #[test]
 fn legacy_ifc2x3_products_resolve_to_their_own_supertype() {
     for (name, expected) in [
-        ("IFCELECTRICALELEMENT", IfcType::IfcDistributionElement),
+        ("IFCELECTRICALELEMENT", IfcType::IfcElement),
         ("IFCELECTRICDISTRIBUTIONPOINT", IfcType::IfcFlowController),
         ("IFCCHAMFEREDGEFEATURE", IfcType::IfcFeatureElementSubtraction),
         ("IFCROUNDEDEDGEFEATURE", IfcType::IfcFeatureElementSubtraction),

@@ -117,8 +117,8 @@ where
         // from `type_name`, NOT `entity.ifc_type`: the decoder sets that with a
         // bare `from_str`, so a legacy keyword arrives as `Unknown` (a subtype
         // of nothing) and `IFCOPENINGSTANDARDCASE` emitted a profile (#3172).
-        let feature_aware = ifc_lite_core::legacy_aware_ifc_type(type_name);
-        if feature_aware.is_subtype_of(IfcType::IfcFeatureElement) {
+        let resolved_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
+        if resolved_type.is_subtype_of(IfcType::IfcFeatureElement) {
             continue;
         }
 
@@ -148,7 +148,7 @@ where
             Err(_) => continue,
         };
 
-        let ifc_type_name = entity.ifc_type.name().to_string();
+        let ifc_type_name = resolved_type.name().to_string();
 
         for shape_rep in representations {
             if shape_rep.ifc_type != IfcType::IfcShapeRepresentation {

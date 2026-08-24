@@ -1,5 +1,6 @@
 ---
 "@ifc-lite/parser": patch
+"@ifc-lite/wasm": patch
 ---
 
 Stop dropping six concrete IFC2X3 products from mesh and attribute export, and remove an alias row that named no entity.

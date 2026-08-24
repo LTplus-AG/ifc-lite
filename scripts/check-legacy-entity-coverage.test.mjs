@@ -81,7 +81,7 @@ test('the extractors are not vacuous on the real tree', () => {
 });
 
 test('an arm deleted from the table is reported', () => {
-  const anchor = '"IFCELECTRICALELEMENT" => Some(LegacyEntityInfo {\n            base_type: IfcType::IfcDistributionElement,\n            has_geometry: true,\n        }),';
+  const anchor = '"IFCELECTRICALELEMENT" => Some(LegacyEntityInfo {\n            base_type: IfcType::IfcElement,\n            has_geometry: true,\n        }),';
   assert.ok(real.get(LEGACY_REL).includes(anchor), 'mutation anchor drifted');
   const { status, out } = runOn({ [LEGACY_REL]: real.get(LEGACY_REL).replace(anchor, '') });
   assert.equal(status, 1, out);

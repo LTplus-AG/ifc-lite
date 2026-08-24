@@ -123,3 +123,49 @@ fn legacy_opening_spellings_emit_no_profiles_either() {
     // two empty vectors.
     assert!(!baseline.is_empty(), "AC20 must yield structural profiles");
 }
+
+/// #3172 follow-up, reported by Codex on #3178: the profile's `ifc_type` label
+/// was read from `entity.ifc_type` -- the decoder's bare `from_str` -- so every
+/// legacy keyword that DOES emit a profile was labelled `"Unknown"`, while the
+/// mesh and attribute exports labelled the same entity properly.
+///
+/// That is not cosmetic. `rust/export/src/openings.rs`, `rooms.rs` and
+/// `shades.rs` each select profiles by EXACT string equality on this field, so
+/// an IFC2X3 slab authored as `IFCSLABSTANDARDCASE` matched none of them --
+/// the same silent loss this issue is about, one layer further on.
+///
+/// The respelled keyword is `IFCSLAB`, chosen because AC20's slabs actually
+/// PRODUCE profiles (four of them). The first version of this test respelled
+/// `IFCDOOR`, and AC20's doors emit no extruded-area-solid profile at all, so
+/// it compared two door-free lists and passed with the fix reverted.
+#[test]
+fn legacy_spellings_are_labelled_with_their_resolved_type() {
+    let Some(content) = fixture("tests/models/ara3d/AC20-FZK-Haus.ifc") else {
+        eprintln!("AC20-FZK-Haus.ifc fixture missing — skipping");
+        return;
+    };
+    let baseline = extract_profiles(&content, 0);
+    let slab_profiles = baseline.iter().filter(|p| p.ifc_type == "IfcSlab").count();
+    assert!(
+        slab_profiles > 0,
+        "AC20 must yield IfcSlab profiles, or the respelling below moves nothing"
+    );
+
+    let respelled = content.replace("IFCSLAB(", "IFCSLABSTANDARDCASE(");
+    assert_ne!(respelled, content, "the respelling matched nothing");
+    let profiles = extract_profiles(&respelled, 0);
+
+    assert!(
+        !profiles.iter().any(|p| p.ifc_type == "Unknown"),
+        "a legacy keyword was labelled Unknown: {:?}",
+        profiles.iter().map(|p| p.ifc_type.as_str()).collect::<Vec<_>>()
+    );
+
+    // And the label is the RESOLVED type, not merely non-Unknown: the consumers
+    // above ask for exactly "IfcSlab", so the whole multiset must be unchanged.
+    let mut want: Vec<&str> = baseline.iter().map(|p| p.ifc_type.as_str()).collect();
+    let mut got: Vec<&str> = profiles.iter().map(|p| p.ifc_type.as_str()).collect();
+    want.sort_unstable();
+    got.sort_unstable();
+    assert_eq!(got, want, "respelling IFCSLAB changed the profile labels");
+}

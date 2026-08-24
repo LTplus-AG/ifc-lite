@@ -124,9 +124,17 @@ pub fn get_legacy_entity_info(entity_name: &str) -> Option<LegacyEntityInfo> {
             base_type: IfcType::IfcFlowController,
             has_geometry: true,
         }),
-        // Deprecated by IFC4 in favour of the distribution-element family.
+        // Its own IFC2X3 parent, which survives into IFC4X3. This said
+        // `IfcDistributionElement` on the reasoning that IFC4 deprecated it in
+        // favour of that family -- a claim that was asserted and never
+        // measured, and that contradicted the rule every other arm here
+        // follows. The bundled IFC2X3 table declares the parent as `IfcElement`
+        // (entities-ifc2x3.ts:559) and the entity carries no distribution
+        // attribute, so the wider mapping would also have relabelled it in the
+        // public `ifcType` and moved it to secondary render priority via
+        // `compute_is_simple`. Reported by Codex on #3178.
         "IFCELECTRICALELEMENT" => Some(LegacyEntityInfo {
-            base_type: IfcType::IfcDistributionElement,
+            base_type: IfcType::IfcElement,
             has_geometry: true,
         }),
         // The two concrete `IfcEdgeFeature` leaves, dropped by IFC4. They are

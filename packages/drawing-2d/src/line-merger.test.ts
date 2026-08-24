@@ -147,12 +147,24 @@ describe('mergeCollinearLines', () => {
       expect(lengthOf(merged[0])).toBeCloseTo(2, 9);
     });
 
-    it('does NOT bridge a gap one step beyond the tolerance', () => {
-      // The other side of the same boundary, at the smallest separation that
-      // should still fail. Without this, a change from `<=` to `<` would be
-      // caught but a change to `<= tolerance * 2` would not.
+    it('does NOT bridge a gap one representable step beyond the tolerance', () => {
+      // The other side of the same boundary, at the smallest separation a
+      // double can express. Without this, a change from `<=` to `<` would be
+      // caught but a widening of the tolerance itself would not.
+      //
+      // `Number.EPSILON` is exactly one ULP here, not an approximation: 1.25
+      // lies in the binade [1, 2), where the spacing between representable
+      // doubles is exactly 2^-52 — which is what `Number.EPSILON` is. So
+      // `1.25 + Number.EPSILON` is the very next double after the boundary,
+      // and this case fails the moment the comparison admits anything above it.
+      //
+      // It survives the parametric projection, which was the real question —
+      // `t0` is a projection onto the reference direction, not the literal, so
+      // an epsilon could have been rounded away in transit. Measured: it is
+      // not. An earlier draft used `1e-9`, roughly 4.5 million ULPs out, which
+      // pinned the boundary far more loosely than the wording implied.
       const merged = mergeCollinearLines(
-        [seg(0, 0, 1, 0), seg(1.25 + 1e-9, 0, 2, 0)],
+        [seg(0, 0, 1, 0), seg(1.25 + Number.EPSILON, 0, 2, 0)],
         { gapTolerance: 0.25 },
       );
       expect(merged).toHaveLength(2);

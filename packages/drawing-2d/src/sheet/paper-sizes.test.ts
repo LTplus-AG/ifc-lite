@@ -31,9 +31,11 @@ import { PAPER_SIZES } from '../styles.js';
  *     checked as `inches * 25.4` -- writing 215.9 next to 215.9 would prove
  *     nothing, while 8.5 x 11 in is the actual definition;
  *   - the ISO sheets are defined in millimetres by ISO 216, so those are
- *     stated exactly, and then cross-checked against the standard's two
- *     structural rules (halving, and a 1:sqrt(2) ratio) which no transcription
- *     error survives.
+ *     stated exactly, and then cross-checked against the halving rule, which
+ *     no transcription error survives. (A 1:sqrt(2) ratio check was tried and
+ *     removed: at toBeCloseTo(SQRT2, 2) a 2 mm error in A0's short edge still
+ *     passes it and 3 mm is the first that fails, so every mutation that
+ *     reddened it reddened a sharper test first.)
  *
  * Never regenerate these numbers from what the registry currently holds.
  */

@@ -261,11 +261,38 @@ async function main(): Promise<number> {
   return 1;
 }
 
+/**
+ * Is this file the process entry point?
+ *
+ * Compare REAL paths on both sides. `import.meta.url` is already resolved
+ * through symlinks; `process.argv[1]` is not, so a plain `path.resolve`
+ * comparison returns false whenever the script is reached through a link —
+ * and the failure is silent, because `main()` simply never runs and the
+ * process exits 0. `pnpm verify:epsg` would report success having checked
+ * nothing, which is worse than the problem this guard solves.
+ *
+ * On macOS that is not hypothetical: `os.tmpdir()` is `/var/folders`,
+ * symlinked to `/private/var/folders`. Same reasoning and same shape as
+ * `isMainEntry()` in `scripts/check-refwalk-guards.mjs`. The `resolve`
+ * fallback covers a path that has since been removed, where `realpathSync`
+ * throws.
+ */
+function isMainEntry(): boolean {
+  const invoked = process.argv[1];
+  if (!invoked) return false;
+  const self = fileURLToPath(import.meta.url);
+  try {
+    return fs.realpathSync(self) === fs.realpathSync(invoked);
+  } catch {
+    return self === path.resolve(invoked);
+  }
+}
+
 // Only run the CLI report when this file is the entry point. The fixtures and
 // `verifyFixture` are also imported by `verify-epsg-roundtrip.test.ts`, which
 // runs the same checks as part of `pnpm test`; without this guard that import
 // would print the whole report and set a failing `process.exitCode` from
 // inside the test run.
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainEntry()) {
   process.exitCode = await main();
 }

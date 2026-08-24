@@ -3,6 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect } from 'vitest';
+import { execFileSync } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { loadFixtures, verifyFixture } from './verify-epsg-roundtrip.js';
 
 /**
@@ -74,4 +79,40 @@ describe('bundled EPSG definitions place published control points correctly', ()
       expect(result.pass, `EPSG:${fixture.epsg} ${result.reason ?? 'failed verification'}`).toBe(true);
     });
   }
+});
+
+describe('the CLI entry point still fires when reached through a symlink', () => {
+  // The cases above import the module, where the entry-point guard is always
+  // false by construction — so they cannot see it break. Only spawning the
+  // file as a real process can.
+  //
+  // The guard compares REAL paths because `import.meta.url` is resolved
+  // through symlinks and `process.argv[1]` is not. Comparing them with a
+  // plain `path.resolve` makes the guard silently false whenever the script
+  // is reached through a link: `main()` never runs, nothing prints, and the
+  // process exits 0. `pnpm verify:epsg` would then report success having
+  // verified nothing, which is worse than having no gate.
+  //
+  // macOS makes this the DEFAULT rather than an edge case: `os.tmpdir()` is
+  // `/var/folders`, itself a symlink to `/private/var/folders`.
+  const scriptPath = fileURLToPath(new URL('./verify-epsg-roundtrip.ts', import.meta.url));
+  const tsxBin = fileURLToPath(new URL('../../../node_modules/.bin/tsx', import.meta.url));
+
+  it.skipIf(!fs.existsSync(tsxBin))('runs the fixtures and exits 0 via a symlink', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'epsg-entry-'));
+    const link = path.join(dir, 'linked-verify.ts');
+    try {
+      fs.symlinkSync(scriptPath, link);
+      const stdout = execFileSync(tsxBin, [link], {
+        cwd: path.dirname(scriptPath),
+        encoding: 'utf8',
+        timeout: 60_000,
+      });
+      // The report only exists if `main()` actually ran. An empty stdout with
+      // a 0 exit is exactly the silent failure being guarded against.
+      expect(stdout).toMatch(/fixtures passed/);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

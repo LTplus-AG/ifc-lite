@@ -273,9 +273,15 @@ async function main(): Promise<number> {
  *
  * On macOS that is not hypothetical: `os.tmpdir()` is `/var/folders`,
  * symlinked to `/private/var/folders`. Same reasoning and same shape as
- * `isMainEntry()` in `scripts/check-refwalk-guards.mjs`. The `resolve`
- * fallback covers a path that has since been removed, where `realpathSync`
- * throws.
+ * `isMainEntry()` in `scripts/check-refwalk-guards.mjs`.
+ *
+ * The `resolve` fallback covers a path that has since been removed, where
+ * `realpathSync` throws. It is best-effort by construction and does NOT
+ * handle symlinks — nothing can, once realpath is unavailable — so it can
+ * still answer false for a linked invocation. That is deliberate: the shape
+ * is kept identical to `check-refwalk-guards.mjs` rather than "improved"
+ * here, because two entry-point guards that drift apart is a worse problem
+ * than a fallback that degrades on a path that no longer exists.
  */
 function isMainEntry(): boolean {
   const invoked = process.argv[1];

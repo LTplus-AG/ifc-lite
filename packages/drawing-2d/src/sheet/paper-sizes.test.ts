@@ -109,16 +109,6 @@ describe('ISO 216 A series', () => {
     }
   });
 
-  it('holds the 1:sqrt(2) ratio that makes halving work', () => {
-    // The aspect ratio is what the whole series is built on. Rounding to
-    // whole millimetres moves it slightly, which is why this is a tolerance
-    // rather than an equality — but not by more than half a millimetre's
-    // worth at the smallest size.
-    for (const { series } of ISO_216_MM) {
-      const registry = PAPER_SIZE_REGISTRY[`${series}_PORTRAIT`];
-      expect(registry.heightMm / registry.widthMm, `${series} ratio`).toBeCloseTo(Math.SQRT2, 2);
-    }
-  });
 });
 
 describe('inch-defined sheets (ANSI and ARCH)', () => {

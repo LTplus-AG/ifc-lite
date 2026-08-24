@@ -69,6 +69,35 @@ describe('dockSlice (#1201)', () => {
     assert.strictEqual(s.getState().floatingPanels.at(-1)?.id, 'compare');
   });
 
+  it('is a no-op (array identity preserved) when the panel is already on top', () => {
+    // Non-default state: two panels floating, target already at the front.
+    // A mutant that always rebuilds+persists on every call passes the
+    // "raises it" test above (order is unaffected either way) but would
+    // still trigger an unconditional localStorage write on every
+    // pointer-down, even when nothing about the order changed.
+    const s = makeStore();
+    s.getState().floatPanel('bcf');
+    s.getState().floatPanel('compare');
+    const before = s.getState().floatingPanels;
+
+    s.getState().bringFloatingPanelToFront('compare');
+
+    assert.strictEqual(s.getState().floatingPanels, before, 'already-on-top must not allocate a new array');
+  });
+
+  it('does nothing when the given id is not currently floating', () => {
+    // Guards against pushing an `undefined` entry onto floatingPanels when
+    // `find` misses — a real crash risk in the renderer, not just a no-op.
+    const s = makeStore();
+    s.getState().floatPanel('bcf');
+    const before = s.getState().floatingPanels;
+
+    s.getState().bringFloatingPanelToFront('compare');
+
+    assert.strictEqual(s.getState().floatingPanels, before);
+    assert.ok(s.getState().floatingPanels.every((p) => p !== undefined && typeof p.id === 'string'));
+  });
+
   it('resetDockLayout drops every floating panel', () => {
     const s = makeStore();
     s.getState().floatPanel('lens');

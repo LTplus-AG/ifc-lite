@@ -137,13 +137,21 @@ pub fn get_legacy_entity_info(entity_name: &str) -> Option<LegacyEntityInfo> {
             base_type: IfcType::IfcElement,
             has_geometry: true,
         }),
-        // The two concrete `IfcEdgeFeature` leaves, dropped by IFC4. They are
-        // boolean subtraction operands that carry their own placement and
-        // representation, so they map to the surviving abstract base rather
-        // than to `IfcOpeningElement`: that keeps them out of the void/CSG
-        // path (which matches `IfcType::IfcOpeningElement` exactly) while
-        // still excluding them from construction-projection profiles, which
-        // gate on `is_subtype_of(IfcFeatureElement)` (#979).
+        // The two concrete `IfcEdgeFeature` leaves, dropped by IFC4.
+        //
+        // `IfcFeatureElementSubtraction` is not merely AN ancestor that happens
+        // to work. It is the NEAREST SURVIVING one, and that is why these two
+        // need an arm at all: walking outward, their own parent is the first
+        // casualty and the very next link is the first survivor.
+        //
+        //     IfcEdgeFeature                 in ifc2x3, NOT in ifc4x3
+        //     IfcFeatureElementSubtraction   in ifc2x3, in ifc4x3   <- nearest
+        //
+        // Mapping there rather than to `IfcOpeningElement` also keeps them out
+        // of the void/CSG path, which matches `IfcType::IfcOpeningElement`
+        // exactly rather than by inheritance, while still excluding them from
+        // construction-projection profiles, which gate on
+        // `is_subtype_of(IfcFeatureElement)` -- the link directly above (#979).
         "IFCCHAMFEREDGEFEATURE" => Some(LegacyEntityInfo {
             base_type: IfcType::IfcFeatureElementSubtraction,
             has_geometry: true,

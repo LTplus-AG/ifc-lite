@@ -168,10 +168,13 @@ describe('convexHull2 degenerate inputs', () => {
     expect(convexHull2([[0, 0], [1, 1]])).toEqual([[0, 0], [1, 1]]);
   });
 
-  it('copies its input rather than aliasing it', () => {
-    // The early-return path maps to fresh tuples. If it returned the caller's
-    // array, a downstream mutation of the hull would reach back into the
-    // boundary points `shared-faces.ts` still holds.
+  it('does not alias the caller array on the early-return path', () => {
+    // Scoped to that path on purpose. For length >= 3 the hull DOES alias the
+    // caller's point tuples -- they are pushed into the chains and returned as
+    // they are -- so a general "copies its input" claim would be false. What
+    // stops that mattering is `Point2` being a readonly tuple, not a copy.
+    // If it returned the caller's array itself, a downstream mutation of the
+    // hull would reach back into the boundary points `shared-faces.ts` holds.
     const input: Point2[] = [[0, 0], [1, 1]];
     const hull = convexHull2(input);
     expect(hull).not.toBe(input);
@@ -182,6 +185,16 @@ describe('convexHull2 degenerate inputs', () => {
     const hull = convexHull2([[0, 0], [1, 0], [0, 1]]);
     expect(hull).toHaveLength(3);
     expect(asSet(hull)).toEqual(new Set(['0,0', '1,0', '0,1']));
+  });
+
+  it('runs the hull on three points rather than passing them through', () => {
+    // The triangle case above cannot tell these apart: its fixture is already
+    // CCW, so widening the `< 3` early return to `< 4` returns the same three
+    // points and the test stays green. Three COLLINEAR points separate them --
+    // the early return would hand back all three, the hull keeps two. This is
+    // also the above side of the `< 3` boundary; the case above it walks only
+    // the below side (0, 1 and 2 points).
+    expect(convexHull2([[0, 0], [1, 0], [2, 0]])).toHaveLength(2);
   });
 });
 
@@ -206,7 +219,7 @@ describe('convexHull2 invariants hold across shapes', () => {
       expect(hasCollinearRun(convexHull2(points))).toBe(false);
     });
 
-    it(`${name}: the result is convex and not self-crossing`, () => {
+    it(`${name}: no interior vertex turns the wrong way`, () => {
       expect(isConvex(convexHull2(points))).toBe(true);
     });
 

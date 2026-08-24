@@ -32,6 +32,8 @@
 import { describe, expect, it } from 'vitest';
 import { IfcParser, asSourceBytes, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { PropertyValueType } from '@ifc-lite/data';
+import { extractPropertiesOnDemand } from '@ifc-lite/parser';
 import { StepExporter } from './step-exporter.js';
 
 /** Decode Uint8Array content to string for test assertions */
@@ -769,5 +771,95 @@ describe('a georeferencing edit is the same site with the same signal', () => {
 
     expect(text).toContain(`#${MAP_CONVERSION_ID}=IFCMAPCONVERSION($,#${CRS_ID},1500.`);
     expect(result.stats.modifiedEntityCount).toBe(1);
+  });
+});
+
+/**
+ * Every `#N=` in an export must be defined exactly once.
+ *
+ * `findDanglingRefs` above answers the other half of referential integrity —
+ * "is every reference satisfied" — and cannot answer this one, by
+ * construction: it collects defined ids into a `Set`, so a second definition
+ * of the same id is absorbed silently rather than flagged. Fed an export that
+ * defines `#76` twice, it returns `[]`.
+ *
+ * The failure this guards against is a refactor of the express-id counter.
+ * `StepExporter` mints new ids from ONE instance field, through two closures —
+ * `allocateExpressId: () => this.nextExpressId++` in `georefContext()` and
+ * again in `propertySetContext()`. Capturing that counter's VALUE instead of
+ * closing over the field gives each builder its own sequence starting from the
+ * same base, and the two paths then mint the same ids. The output stays
+ * well-formed STEP and every reference still resolves — it just means two
+ * different entities now, which is why nothing else in the suite notices.
+ *
+ * That is why #2475 left both of those builders on the class while moving the
+ * forwarding ones out; see `step-export-contexts.ts`.
+ */
+function duplicateDefinedIds(content: string): number[] {
+  // Anchored to start-of-line: every entity is written on its own line, so a
+  // `#N` appearing mid-line is a REFERENCE inside another entity's argument
+  // list and must not be counted as a definition.
+  const seen = new Set<number>();
+  const dupes = new Set<number>();
+  for (const m of content.matchAll(/^#(\d+)\s*=/gm)) {
+    const id = Number(m[1]);
+    if (seen.has(id)) dupes.add(id);
+    seen.add(id);
+  }
+  return [...dupes].sort((a, b) => a - b);
+}
+
+describe('express ids are unique across an export that allocates on both paths', () => {
+  it('mints distinct ids for generated psets and for created georeferencing', async () => {
+    // Both allocating paths must run in ONE export or this pins nothing: the
+    // georef path mints IfcProjectedCRS/IfcMapConversion, the property path
+    // mints the pset trio. A fixture exercising only one cannot collide.
+    const store = await new IfcParser().parseColumnar(
+      new TextEncoder().encode(SIMPLE_TYPE_INHERITANCE_IFC).buffer,
+    );
+    const view = new MutablePropertyView(null, 'm');
+    view.setOnDemandExtractor((id: number) => extractPropertiesOnDemand(store, id));
+    view.setProperty(74, 'Pset_WallCommon', 'IsExternal', true, PropertyValueType.Boolean);
+
+    const result = new StepExporter(store, view).export({
+      schema: 'IFC4',
+      applyMutations: true,
+      georefMutations: {
+        projectedCRS: {
+          name: 'EPSG:2056',
+          description: 'CH1903+ / LV95',
+          geodeticDatum: 'CH1903+',
+          mapProjection: 'Swiss Oblique Mercator 1995',
+          mapUnit: 'METRE',
+        },
+        mapConversion: {
+          eastings: 2600000,
+          northings: 1200000,
+          orthogonalHeight: 500,
+          xAxisAbscissa: 0,
+          xAxisOrdinate: 1,
+          scale: 1,
+        },
+      },
+    });
+
+    const content = decode(result.content);
+
+    // The fixture is only meaningful if both paths actually emitted.
+    expect(content).toContain('IFCPROJECTEDCRS(');
+    expect(content).toContain('IFCMAPCONVERSION(');
+    expect(content).toContain('IFCPROPERTYSET(');
+
+    expect(duplicateDefinedIds(content)).toEqual([]);
+    // The other half of integrity still holds, so a "fix" that removed a
+    // duplicate by dropping a definition would not pass either.
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
+  it('counts a repeated definition as a duplicate, so the check can fail', () => {
+    // The check itself has to be falsifiable, and has to tell a definition
+    // from a reference — otherwise the assertion above is decoration.
+    expect(duplicateDefinedIds('#7=IFCWALL($);\n#8=IFCSLAB($);\n#7=IFCBEAM($);\n')).toEqual([7]);
+    expect(duplicateDefinedIds('#7=IFCWALL($);\n#9=IFCREL(#7,#7);\n')).toEqual([]);
   });
 });

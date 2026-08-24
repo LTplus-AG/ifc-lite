@@ -296,8 +296,9 @@ export function evaluateOmissionPredicates(
    *
    * `allowedEntityIds !== null`, not `options.visibleOnly === true`. Not the
    * same test: the closure is built under `if (options.visibleOnly &&
-   * ctx.dataStore.source)` (`step-collection.ts:69`), which is TRUTHY rather
-   * than `=== true`, and which
+   * ctx.dataStore.source)` in `step-collection.ts` — quoted rather than cited
+   * by line, because the line moved by three in the very commit that added
+   * this reference — which is TRUTHY rather than `=== true`, and which
    * is a SECOND read of the caller's object. A plain-JS caller of this
    * published package passing `visibleOnly: 1` — or a `get visibleOnly()` that
    * answers `true` once — built the closure while the gate read false and

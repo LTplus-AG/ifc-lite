@@ -185,9 +185,11 @@ fn edit_error_parts_messages_are_non_empty_and_distinct_per_variant() {
 
 #[test]
 fn edit_error_parts_covers_exactly_seven_variants_no_more_no_less() {
-    // A compile-time exhaustiveness proof: if EditError grows an eighth
-    // variant, this match becomes non-exhaustive and the crate fails to
-    // build, which is the intended alarm for an uncovered new variant.
+    // Production's `edit_error_parts` already matches all seven variants with
+    // no wildcard, so an eighth variant fails the build there first -- this
+    // match does NOT add that alarm. What it adds is the case where someone
+    // silences that build failure by giving `edit_error_parts` a `_ =>` arm:
+    // production would compile again, and this match would not.
     fn assert_exhaustive(e: EditError) -> &'static str {
         match e {
             EditError::StaleHandle

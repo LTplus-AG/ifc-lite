@@ -2,16 +2,28 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! The `JsValue`-free core of [`super::space_plate`]: input decoding, option
-//! resolution, and the `EditError` -> stable-code table.
+//! The `JsValue`-free core of [`super::space_plate`]: the build/edit entry
+//! points' input decoding, option resolution, and the `EditError` ->
+//! stable-code table.
+//!
+//! Not everything that decodes a wire buffer for space-plate lives here.
+//! `add_face` still decodes its own coords inline in `space_plate.rs`, inside
+//! the `#[wasm_bindgen]` method, and is untested. Moving it is a separate
+//! change; this doc says so rather than letting the module name imply a
+//! coverage it does not have.
 //!
 //! Split out of `space_plate.rs` because extracting these for direct testing
-//! pushed that file to 408 lines, past the 400-line module-size ratchet. The
-//! ratchet's rule is split, never add an allowlist row, so this is the split.
+//! pushed that file past the 400-line module-size ratchet. The ratchet's rule
+//! is split, never add an allowlist row, so this is the split. (No line count
+//! is quoted here on purpose: it would be stale by the next commit.)
 //! Everything here is plain Rust that runs on the native test target; the
 //! `#[wasm_bindgen]` entry points stay next door as thin wrappers.
 
 use ifc_lite_geometry::space_dcel::{BuildOptions, EditError, InputSegment};
+
+#[cfg(test)]
+#[path = "space_plate_tests.rs"]
+mod tests;
 
 /// Hard DoS ceiling on arrangement input size. The T-junction resolve is ~O(n^2)
 /// after the per-sweep-splits fix; these bounds keep even adversarial input to a
@@ -78,10 +90,11 @@ pub(crate) fn build_wall_rects(rect_coords: &[f64]) -> Result<Vec<[[f64; 2]; 4]>
         return Err("rectCoords length must be a multiple of 8 (4 corners × x,y per wall)".to_string());
     }
     // Count from the wire length and refuse BEFORE collecting. Checking
-    // `rects.len()` after `.collect()` still returns the same error, but only
-    // once the oversized allocation has already happened — which is the thing
-    // the ceiling exists to prevent. `build_segments` above already derives
-    // `n` from the length and checks first; this now matches it.
+    // `rects.len()` after `.collect()` returns the same error for the same
+    // inputs; the only difference is that the rejected allocation never
+    // happens. At the ceiling that allocation is ~262 KB, so this is
+    // consistency with `build_segments` above (which already derives `n` from
+    // the length and checks first), not a meaningful DoS win.
     if rect_coords.len() / 8 > MAX_INPUT_RECTS {
         return Err("too many wall rects for the space-plate arrangement".to_string());
     }

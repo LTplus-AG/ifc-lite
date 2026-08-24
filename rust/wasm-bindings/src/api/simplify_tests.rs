@@ -126,19 +126,7 @@ fn groups_by_first_seen_element_order_and_slices_each_record() {
 #[test]
 fn slices_positions_at_the_exact_record_window() {
     let f = fixture();
-    let groups = group_and_slice_records(
-        &f.express_ids,
-        &f.levels,
-        &f.positions,
-        &f.normals,
-        &f.indices,
-        &f.vertex_counts,
-        &f.index_counts,
-        &f.origins,
-        &f.local_to_world,
-        &f.local_to_world_present,
-    )
-    .unwrap();
+    let groups = call_full(&f).unwrap();
     // Element 10's second record (record index 2) must read positions
     // [9..18), not the record-0 window [0..6) or the record-1 window [6..9).
     let elem10 = &groups[0];

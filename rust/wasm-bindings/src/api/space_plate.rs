@@ -40,10 +40,6 @@ use super::space_plate_input::{
 use wasm_bindgen::prelude::*;
 
 
-#[cfg(test)]
-#[path = "space_plate_tests.rs"]
-mod tests;
-
 /// One face returned to JS after a build or an edit.
 #[derive(Serialize)]
 struct FacePatchJs {

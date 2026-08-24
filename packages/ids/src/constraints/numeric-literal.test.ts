@@ -147,6 +147,11 @@ describe('deciding it is linear, not backtracking (#3113)', () => {
   /** A batch has to be clearly above clock noise to divide by. */
   const MEASURABLE_MS = 2;
 
+  /** Ratio samples to take, keeping the smallest. Three is enough to drop a
+   *  single preempted batch without materially lengthening the test, since
+   *  each batch is calibrated to only a few milliseconds. */
+  const RATIO_SAMPLES = 3;
+
   /** A long digit run plus one character that cannot be part of a number.
    *  The trailing non-digit is the whole point: an all-digit string of any
    *  length matches immediately, which is why plausible fixtures miss this. */
@@ -207,7 +212,21 @@ describe('deciding it is linear, not backtracking (#3113)', () => {
     // knowing.
     expect(small).toBeGreaterThanOrEqual(MEASURABLE_MS);
 
-    const growth = batch(LARGE, reps) / small;
+    // Take the SMALLEST of several ratios rather than one sample. Every noise
+    // source here inflates a reading — a scheduler preemption lands in one
+    // batch and not the other — so the minimum is the closest estimate of the
+    // real ratio, and one unlucky sample can no longer decide the result.
+    // The sibling benchmark on this exact shape (packages/encoding, #3159)
+    // produced a lone 9.30 against this same bound on CI while `main` was
+    // green; this is that fix, applied before it happens here too.
+    //
+    // The bound itself is unchanged. Raising it to absorb an outlier would
+    // widen the very gap the test exists to detect; re-measuring instead
+    // keeps the same discrimination on a steadier number.
+    let growth = Infinity;
+    for (let sample = 0; sample < RATIO_SAMPLES; sample++) {
+      growth = Math.min(growth, batch(LARGE, reps) / batch(SMALL, reps));
+    }
     // The linear scan grows ~3.3x-4.5x across repeated runs on this machine;
     // the quadratic regex grew ~9x at these sizes and far more at larger ones.
     // 8 sits between them.

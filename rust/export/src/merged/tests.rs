@@ -1034,3 +1034,38 @@ ENDSEC;\nEND-ISO-10303-21;\n"
         "shared IFC2X3-only-rooted GlobalId {shared_style} must be emitted exactly once, not duplicated across federated models -- got:\n{merged}"
     );
 }
+
+/// `IfcElectricalCircuit` is a rooted IFC2X3 type (parent chain `IfcSystem` →
+/// `IfcGroup` → … → `IfcRoot`, leading with a GlobalId) that was dropped from
+/// IFC4X3 AND is absent from `legacy_entities.rs`, so it resolves to
+/// `IfcType::Unknown` and the schema check alone classifies it as non-rooted.
+/// This is exactly the 38-type gap #2952 measured: without the legacy rooted
+/// fallback its shared GlobalId would duplicate across models. Unlike the
+/// `IFCDOORSTYLE` case above (which maps to `IfcDoorType` via `legacy_entities`
+/// and passes through the schema path), this one only passes through the
+/// fallback, so it pins the fallback end to end.
+#[test]
+fn merge_reconciles_a_shared_globalid_on_a_legacy_rooted_type_absent_from_schema() {
+    let shared = "00000000000000000000E1";
+    let model = |proj: &str| {
+        format!(
+            "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n\
+#1=IFCPROJECT('{proj}',$,$,$,$,$,$,$,$);\n\
+#2=IFCELECTRICALCIRCUIT('{shared}',$,'Circuit',$,$,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n"
+        )
+    };
+    let a = model("proja0");
+    let b = model("projb0");
+    let (merged, _stats) =
+        export_merged_with_stats(&[a.as_bytes(), b.as_bytes()], &MergedOptions::default());
+
+    assert_eq!(
+        merged.matches(shared).count(),
+        1,
+        "shared legacy-rooted GlobalId {shared} must be emitted exactly once -- got:\n{merged}"
+    );
+    // The circuit itself is unified (not a relationship type), so exactly one survives.
+    assert_eq!(type_count(&merged, "=IFCELECTRICALCIRCUIT("), 1);
+    assert_no_dangling(&merged);
+}

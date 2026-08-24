@@ -682,7 +682,7 @@ export function filterHiddenRefsFromRelationshipLine(
  * AdditionalConditions, SupportedLength, ConditionCoordinateSystem`) is
  * declared `OPTIONAL IfcAxis2Placement3D` in both IFC4 (`IFC4_ADD2_TC1.exp`
  * line 8523) and IFC4X3 (`IFC4X3.exp` line 9774), and `IFCAXIS2PLACEMENT3D`
- * is the one entry in {@link StepExporter.isGeometryEntity}'s allowlist an
+ * is the one entry in {@link isGeometryEntity}'s allowlist (`@ifc-lite/export`'s `step-geometry-types.ts`) an
  * `IFCREL*` line can name in a single-valued slot — re-derived by scanning
  * every `IFCREL*` attribute in both schema files against that allowlist
  * (`scripts/` has no permanent copy of this scan; it was run ad hoc against

@@ -15,14 +15,8 @@ import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { needsConversion, type IfcSchemaVersion } from './schema-converter.js';
 import { getCompleteEntityIndex, getMaxExpressId } from './entity-iteration.js';
 import { createSourceRefReader } from './source-ref-bounds.js';
-import {
-  writeSourceEntityLines,
-  type SourceIterationContext,
-} from './step-source-iteration.js';
-import {
-  writeOverlayCreatedEntities,
-  type OverlayEntitiesContext,
-} from './step-overlay-entities.js';
+import { writeSourceEntityLines } from './step-source-iteration.js';
+import { writeOverlayCreatedEntities } from './step-overlay-entities.js';
 import {
   generatePropertyAndQuantitySetEntities,
   type OwnerHistoryCache,
@@ -31,10 +25,7 @@ import {
 import { type GeorefContext } from './step-georeferencing.js';
 import { collectModifications, type CollectionContext } from './step-collection.js';
 import { assembleExportResult } from './step-header.js';
-import {
-  applySourceLineMutations,
-  applyOverlayEntityOverrides,
-} from './step-attribute-mutations.js';
+import { applySourceLineMutations } from './step-attribute-mutations.js';
 
 /**
  * The export vocabulary lives in `step-export-types.ts` (#2475). Re-exported
@@ -53,9 +44,13 @@ export type {
 // `SourceLineMutations` are re-exported above but never referenced here, and
 // importing them too raises TS6196 under --noUnusedLocals.
 import type { StepExportOptions, StepExportResult, ExportPass } from './step-export-types.js';
-import { relationshipWithheldWarning } from './step-export-types.js';
 import { buildExportPass } from './step-pass-builder.js';
 import { evaluateOmissionPredicates } from './step-omission-predicates.js';
+import { isGeometryEntity } from './step-geometry-types.js';
+import {
+  buildSourceIterationContext,
+  buildOverlayEntitiesContext,
+} from './step-export-contexts.js';
 
 
 /**
@@ -170,7 +165,7 @@ export class StepExporter {
     const pass: ExportPass = buildExportPass({
       dataStore: this.dataStore,
       mutationView: this.mutationView,
-      isGeometryEntity: (type) => this.isGeometryEntity(type),
+      isGeometryEntity,
       options,
       schema,
       sourceSchema,
@@ -205,7 +200,7 @@ export class StepExporter {
     // Write every source-backed record this export keeps (#2475 step 2d),
     // preceded — inside that call — by the shared-atom retention that decides
     // which member atoms the skip sets may still drop.
-    writeSourceEntityLines(pass, options, mayNameOmittedRefs, isOmittedFromOutput, this.sourceIterationContext());
+    writeSourceEntityLines(pass, options, mayNameOmittedRefs, isOmittedFromOutput, buildSourceIterationContext(this.dataStore, this.mutationView, () => this.propertySetContext()));
 
     // Generated property/quantity sets and the type-object `HasPropertySets`
     // rewrite that resolves against them, in that one order (#2475 steps 2b
@@ -231,7 +226,7 @@ export class StepExporter {
       applyMutations,
       mayNameOmittedRefs,
       isOmittedFromOutput,
-      this.overlayEntitiesContext(),
+      buildOverlayEntitiesContext(this.mutationView),
     );
 
     // Settle the ledger, build the header, assemble the finished bytes —
@@ -349,89 +344,7 @@ export class StepExporter {
     };
   }
 
-  /**
-   * The state `step-source-iteration.ts` cannot read off the pass (#2475 2d).
-   *
-   * No `allocateExpressId`: that phase never allocates an id, it only rewrites
-   * lines that already have one. `applySourceLineMutations` (#2475, remaining
-   * private helpers: now a free function in `step-attribute-mutations.ts`,
-   * closed over `this.mutationView` here) and `isGeometryEntity` are injected
-   * rather than read off the pass because each has readers outside this
-   * phase — the mutation pipeline is shared with the type-object
-   * `HasPropertySets` rewrite (see {@link propertySetContext}) and with the
-   * overlay-created-entities block in `export()`; `isGeometryEntity` with the
-   * visible-only setup closure and that same block.
-   */
-  private sourceIterationContext(): SourceIterationContext {
-    return {
-      dataStore: this.dataStore,
-      applySourceLineMutations: (expressId, entityText, recordType, attributeMutations, sourceSchema, overlayActive, onRejected) =>
-        applySourceLineMutations(this.mutationView, expressId, entityText, recordType, attributeMutations, sourceSchema, overlayActive, onRejected),
-      isGeometryEntity: (type) => this.isGeometryEntity(type),
-      propertySetContext: () => this.propertySetContext(),
-      relationshipWithheldWarning,
-    };
-  }
 
-  /**
-   * The state `step-overlay-entities.ts` cannot read off the pass (#2475
-   * step 2e). `applyOverlayEntityOverrides` is now the free function
-   * `step-attribute-mutations.ts` exports (#2475, remaining private
-   * helpers) — it and its two `serializeNamedAttribute` /
-   * `serializePositionalOverride` helpers moved together, since those two
-   * have no reader outside this cluster; `isGeometryEntity` and
-   * `relationshipWithheldWarning` are the same shared readers
-   * {@link sourceIterationContext} already injects into the other output
-   * pass.
-   */
-  private overlayEntitiesContext(): OverlayEntitiesContext {
-    return {
-      mutationView: this.mutationView,
-      applyOverlayEntityOverrides,
-      isGeometryEntity: (type) => this.isGeometryEntity(type),
-      relationshipWithheldWarning,
-    };
-  }
-
-  /**
-   * Check if an entity type is a geometry-related type
-   */
-  private isGeometryEntity(type: string): boolean {
-    const geometryTypes = new Set([
-      'IFCCARTESIANPOINT',
-      'IFCDIRECTION',
-      'IFCAXIS2PLACEMENT2D',
-      'IFCAXIS2PLACEMENT3D',
-      'IFCLOCALPLACEMENT',
-      'IFCSHAPEREPRESENTATION',
-      'IFCPRODUCTDEFINITIONSHAPE',
-      'IFCGEOMETRICREPRESENTATIONCONTEXT',
-      'IFCGEOMETRICREPRESENTATIONSUBCONTEXT',
-      'IFCEXTRUDEDAREASOLID',
-      'IFCFACETEDBREP',
-      'IFCPOLYLOOP',
-      'IFCFACE',
-      'IFCFACEOUTERBOUND',
-      'IFCCLOSEDSHELL',
-      'IFCRECTANGLEPROFILEDEF',
-      'IFCCIRCLEPROFILEDEF',
-      'IFCARBITRARYCLOSEDPROFILEDEF',
-      'IFCPOLYLINE',
-      'IFCTRIMMEDCURVE',
-      'IFCBSPLINECURVE',
-      'IFCBSPLINESURFACE',
-      'IFCTRIANGULATEDFACESET',
-      'IFCPOLYGONALFACE',
-      'IFCINDEXEDPOLYGONALFACE',
-      'IFCPOLYGONALFACESET',
-      'IFCSTYLEDITEM',
-      'IFCPRESENTATIONSTYLEASSIGNMENT',
-      'IFCSURFACESTYLE',
-      'IFCSURFACESTYLERENDERING',
-      'IFCCOLOURRGB',
-    ]);
-    return geometryTypes.has(type);
-  }
 
 }
 

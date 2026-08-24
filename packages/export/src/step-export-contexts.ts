@@ -41,7 +41,8 @@ import type { PropertySetContext } from './step-property-sets.js';
    * closed over `this.mutationView` here) and `isGeometryEntity` are injected
    * rather than read off the pass because each has readers outside this
    * phase — the mutation pipeline is shared with the type-object
-   * `HasPropertySets` rewrite (see {@link propertySetContext}) and with the
+   * `HasPropertySets` rewrite (see `StepExporter`'s `propertySetContext`, which
+   * stays a method because it mints express ids) and with the
    * overlay-created-entities block in `export()`; `isGeometryEntity` with the
    * visible-only setup closure and that same block.
    */
@@ -68,7 +69,7 @@ propertySetContext: () => PropertySetContext,
    * `serializePositionalOverride` helpers moved together, since those two
    * have no reader outside this cluster; `isGeometryEntity` and
    * `relationshipWithheldWarning` are the same shared readers
-   * {@link sourceIterationContext} already injects into the other output
+   * {@link buildSourceIterationContext} already injects into the other output
    * pass.
    */
 export function buildOverlayEntitiesContext(

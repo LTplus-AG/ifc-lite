@@ -214,10 +214,11 @@ export type SourceLineMutations = SourceLineDelivery & { text: string };
  * 2. **`allowedEntityIds` and `hiddenProductIds` are mutable, and the
  *    predicates close over the pass rather than over a snapshot.** Both are
  *    assigned AFTER construction, in `step-collection.ts`, and the order there
- *    matters more than it looks: `hiddenProductIds` is set first (:76), and
+ *    matters more than it looks: `hiddenProductIds` is set first, and
  *    `allowedEntityIds` is the value the closure walk on the next line is
  *    computing — so `isRefExcludedDuringClosureWalk` is handed to that walk
- *    (:82) while `allowedEntityIds`, and only it, is still null. The
+ *    as one of that call's own arguments — while `allowedEntityIds`, and only
+ *    it, is still null. The
  *    output-line filter reads both later, through `isOmittedFromOutput` ->
  *    `willBeEmitted`, so neither can be a snapshot taken before the walk ran —
  *    that is the invariant the #2637 regression broke.

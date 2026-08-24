@@ -312,7 +312,8 @@ export class StepExporter {
    *
    * Rebuilt per call, as `georefContext` is: every call site runs once per
    * export bar `retainSharedAtoms`, which hoists it out of its loop — hence
-   * {@link sourceIterationContext} takes this as a thunk rather than a value.
+   * `buildSourceIterationContext` (`step-export-contexts.ts`) takes this as a
+   * thunk rather than a value.
    */
   private propertySetContext(): PropertySetContext {
     return {

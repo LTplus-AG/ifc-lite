@@ -1,5 +1,19 @@
 # @ifc-lite/viewer-core
 
+## 0.2.14
+
+### Patch Changes
+
+- [#3001](https://github.com/LTplus-AG/ifc-lite/pull/3001) [`24c0d75`](https://github.com/LTplus-AG/ifc-lite/commit/24c0d75c5e5f1f162737e82e1ff24f7958b9f9b6) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Build the entity-picking panel with `textContent` instead of string-concatenated `innerHTML`.
+  
+  `showPickInfo` in the generated viewer HTML wrote the picked entity's IFC type into `#pick-info` by concatenating it straight into `.innerHTML` — the one interpolation site in the file that did this; every other dynamic value (model stats, the command log, the loading text) is written via `.textContent`. `showPickInfo` now builds the panel's rows with `document.createElement` and `.textContent`, matching the pattern used everywhere else.
+  
+  This is hardening, not a fix for a reachable escape. `info.ifcType` is not attacker-controlled today: it reaches the panel only through `addMeshBatch`, which is fed exclusively by `parseMeshesViaPrePass` → the WASM parser, where the value is `IfcType::name()` — a closed set of generated `"Ifc…"` literals, with any unrecognised keyword collapsing to `Unknown(hash)` whose `name()` is the literal `"Unknown"`. No IFC file and no `/api/create` payload can put `<` or `&` into it. What the change buys is that the panel no longer depends on that guarantee holding: the last interpolation site that would break if the type string ever stopped coming from the enum is gone.
+- Updated dependencies [[`0ea7167`](https://github.com/LTplus-AG/ifc-lite/commit/0ea7167a6bd96d5b5e12e7e5a8c5615ab0b7c3b2), [`7ff31ba`](https://github.com/LTplus-AG/ifc-lite/commit/7ff31ba854671a9ca3ebbf30b15e928e1b52a8b9), [`8ba612f`](https://github.com/LTplus-AG/ifc-lite/commit/8ba612f90d3bb0ad41f756d6fdef6b3250e8d330), [`5781e5c`](https://github.com/LTplus-AG/ifc-lite/commit/5781e5c2998111926683419d27f8efa3519de7c6), [`f76c805`](https://github.com/LTplus-AG/ifc-lite/commit/f76c80511dce5ffc1756365b786042c4bc64808d), [`75867a7`](https://github.com/LTplus-AG/ifc-lite/commit/75867a7e6ebf51b2da47cab14242bcd71787ba3b), [`4a8fe77`](https://github.com/LTplus-AG/ifc-lite/commit/4a8fe77707127d251702610490f53430610e4ef7), [`dec0708`](https://github.com/LTplus-AG/ifc-lite/commit/dec0708ef841c88abea6ec91404419fd7a3d93c6), [`dec0708`](https://github.com/LTplus-AG/ifc-lite/commit/dec0708ef841c88abea6ec91404419fd7a3d93c6), [`dec0708`](https://github.com/LTplus-AG/ifc-lite/commit/dec0708ef841c88abea6ec91404419fd7a3d93c6), [`945c4d7`](https://github.com/LTplus-AG/ifc-lite/commit/945c4d7a773614dd664feb9490e13372782a543b), [`75867a7`](https://github.com/LTplus-AG/ifc-lite/commit/75867a7e6ebf51b2da47cab14242bcd71787ba3b), [`78d85dc`](https://github.com/LTplus-AG/ifc-lite/commit/78d85dcd4c59ee5b3b3b7857a454113c4911bc36), [`147693a`](https://github.com/LTplus-AG/ifc-lite/commit/147693a7a8fd0778ddb71839199b75bf1d622327), [`bea50bd`](https://github.com/LTplus-AG/ifc-lite/commit/bea50bd7bca7fdf69f01076ebb96a31b8e797a46), [`3969c52`](https://github.com/LTplus-AG/ifc-lite/commit/3969c523063d02e501f421e6b42d1a9a516dc2e4), [`bb734da`](https://github.com/LTplus-AG/ifc-lite/commit/bb734da27afbea4b6e595714950cdb195cddeb1f), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`00f6e79`](https://github.com/LTplus-AG/ifc-lite/commit/00f6e79c22641ff59bfb3327d910b04f9a164d8b), [`e43582b`](https://github.com/LTplus-AG/ifc-lite/commit/e43582b069007c6c2c932f6981743a80630fe217)]:
+  - @ifc-lite/wasm@6.0.0
+  - @ifc-lite/sdk@3.0.0
+  - @ifc-lite/create@2.2.0
+
 ## 0.2.13
 
 ### Patch Changes

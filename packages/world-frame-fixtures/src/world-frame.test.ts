@@ -15,6 +15,7 @@ import { describe, expect, it } from 'vitest';
 import {
   WORLD_FRAME_CASES,
   WORLD_FRAME_OFFSET_M,
+  bakedWorldPositions,
   boxTriangles,
   normalProjectedNoiseBound,
   placeWorldFrame,
@@ -112,5 +113,51 @@ describe('world-frame corpus placements', () => {
       expect(quad.positions[i]).toBe(0.4);
     }
     expect(quad.indices).toHaveLength(6);
+  });
+
+  it('normalProjectedNoiseBound is invariant under negating a normal component (the |n_i| in the formula matters)', () => {
+    // Both prior normal cases here (zNormal, xNormal) use only non-negative
+    // components, so a mutant that drops Math.abs() around each n_i term
+    // survives them undetected. The doc comment is explicit that the sum is
+    // over |n_i|, not n_i: a negative-component normal must give the SAME
+    // bound as its positive mirror, never a smaller (or negative) one.
+    const far = placeWorldFrame(LOCAL_BOX.positions, { frameCase: 'far-baked' });
+    const posX: [number, number, number] = [1, 0, 0];
+    const negX: [number, number, number] = [-1, 0, 0];
+    const bound = normalProjectedNoiseBound(posX, [far]);
+    expect(normalProjectedNoiseBound(negX, [far])).toBe(bound);
+    expect(bound).toBeGreaterThan(0);
+  });
+
+  it('bakedWorldPositions folds origin into each axis without shifting axes', () => {
+    // Exercises the axis-indexed fold directly: this is the buffer a
+    // consumer with no origin concept (e.g. the clash Mesh, in a sibling
+    // package) actually ingests, and this corpus's own suite never called
+    // it before — an axis-misindexed fold (origin[x] added to position.y,
+    // etc.) passed every other test here undetected.
+    const local = placeWorldFrame(LOCAL_BOX.positions, { frameCase: 'at-origin' });
+    const placed = placeWorldFrame(LOCAL_BOX.positions, {
+      frameCase: 'far-local-frame',
+      offsetAxis: 'x',
+    });
+    const baked = bakedWorldPositions(placed);
+    const bakedMin: [number, number, number] = [Infinity, Infinity, Infinity];
+    const bakedMax: [number, number, number] = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < baked.length; i += 3) {
+      for (let a = 0 as 0 | 1 | 2; a < 3; a++) {
+        const c = baked[i + a]!;
+        if (c < bakedMin[a]) bakedMin[a] = c;
+        if (c > bakedMax[a]) bakedMax[a] = c;
+      }
+    }
+    const bakedAabb = { min: bakedMin, max: bakedMax };
+    const reference = worldAabb(local);
+    // X carries both the far offset and rebase noise; Y and Z must fold
+    // exactly (rebase noise only, no offset — the offset axis is X).
+    for (const a of [1, 2] as const) {
+      expect(Math.abs(bakedAabb.min[a]! - reference.min[a]!)).toBeLessThanOrEqual(1e-6);
+      expect(Math.abs(bakedAabb.max[a]! - reference.max[a]!)).toBeLessThanOrEqual(1e-6);
+    }
+    expect(bakedAabb.min[0]!).toBeGreaterThanOrEqual(WORLD_FRAME_OFFSET_M);
   });
 });

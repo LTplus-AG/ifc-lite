@@ -69,9 +69,16 @@ fn fixture() -> Fixture {
     }
 }
 
-fn call(f: &Fixture) -> Result<Vec<(u32, u8, Vec<(usize, usize)>)>, String> {
-    // Returns (id, level, [(positions_len, indices_len) per record]) so
-    // assertions don't need to hold borrowed slices alongside the Result.
+/// `(positions_len, indices_len)` for one record of a grouped element.
+type RecordShape = (usize, usize);
+/// One grouped element as the tests observe it: `(id, level, per-record shapes)`.
+/// Named rather than spelled inline so `call`'s signature stays readable and
+/// clippy's `type_complexity` gate stays satisfied.
+type GroupedShape = (u32, u8, Vec<RecordShape>);
+
+fn call(f: &Fixture) -> Result<Vec<GroupedShape>, String> {
+    // Shapes rather than slices, so assertions don't need to hold borrowed
+    // slices alongside the Result.
     group_and_slice_records(
         &f.express_ids,
         &f.levels,

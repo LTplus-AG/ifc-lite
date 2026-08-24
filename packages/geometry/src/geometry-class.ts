@@ -15,12 +15,13 @@
  * there too.
  *
  * This module exists so the TypeScript half of that contract is stated once.
- * Before it, five files across three packages compared `geometryClass`
+ * Before it, six files across three packages compared `geometryClass`
  * against bare integers -- `apps/viewer/src/lib/type-view-visibility.ts`,
  * `apps/viewer/src/lib/geo/kmz-exporter.ts`,
  * `apps/viewer/src/components/viewer/GLBExportDialog.tsx`,
+ * `apps/viewer/src/components/viewer/ViewportContainer.tsx`,
  * `packages/export/src/demesh-session.ts` and `packages/geometry/src/index.ts`
- * -- so a renumbering meant finding all five, and missing one was invisible.
+ * -- so a renumbering meant finding all six, and missing one was invisible.
  *
  * What this does NOT do is verify the values against Rust. Only an assertion
  * at the real boundary can do that -- see the note in `geometry-class.test.ts`.

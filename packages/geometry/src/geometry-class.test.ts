@@ -20,7 +20,7 @@ import {
  * It CAN pin the TypeScript half of the contract: the four ordinals are
  * distinct, and every class lands on exactly one side of the placed /
  * type-library split. Before this module those numbers were bare literals in
- * five files across three packages, so adding a class meant finding all five
+ * six files across three packages, so adding a class meant finding all six
  * and missing one was silent.
  *
  * It CANNOT verify the numbers against Rust, which is where they are decided

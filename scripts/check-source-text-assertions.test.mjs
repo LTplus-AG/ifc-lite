@@ -32,7 +32,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { analyze } from './source-text-assertion-detect.mjs';
+import { analyze, blankStrings, stripComments } from './source-text-assertion-detect.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const GATE = join(ROOT, 'scripts', 'check-source-text-assertions.mjs');
@@ -290,7 +290,17 @@ const x = 1;`);
 // 4. End to end against the real repo.
 
 test('the gate passes on the repo and states its counts', () => {
-  const r = spawnSync(process.execPath, [GATE], { encoding: 'utf8', cwd: ROOT });
+  // A spawn that never starts, or one that hangs, must not be readable as a
+  // gate failure with nothing to say. Without `error`, a failed spawn gives
+  // `status: null` and empty stdout/stderr, so the assertion below prints an
+  // empty message and the real cause is invisible; without `timeout` a hung
+  // gate holds the job until CI kills it.
+  const r = spawnSync(process.execPath, [GATE], {
+    encoding: 'utf8',
+    cwd: ROOT,
+    timeout: 120_000,
+  });
+  assert.equal(r.error, undefined, `the gate failed to run: ${r.error?.message}`);
   const output = `${r.stdout}${r.stderr}`;
   assert.equal(r.status, 0, output);
   assert.match(
@@ -317,6 +327,550 @@ test('the narrowing kept every file the flat detector flagged', () => {
     assert.ok(
       analyze(readFileSync(join(ROOT, rel), 'utf8')).flagged,
       `${rel} was detected by the flat check and must still be detected`,
+    );
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Two silent UNDER-detections, both found by review of the narrowing above.
+// A gate that stops seeing is worse than one that never looked: it reports
+// "no source-text assertion here" for a file that still has one, and the next
+// person deletes its allowlist row.
+// ---------------------------------------------------------------------------
+
+test('a quote inside a REGEX LITERAL does not blank the rest of the file', () => {
+  // `blankStrings` knew about strings and template interpolation but not about
+  // regex literals, so the `"` in `/["']/` opened a string that never closed
+  // and every assertion after it became invisible. Both halves are asserted:
+  // the assertion BEFORE the regex, which always worked, and the one AFTER it.
+  assert.equal(flagged(`
+    import { readFileSync } from 'node:fs';
+    const src = readFileSync('a/b.ts', 'utf8');
+    const QUOTED = /["']/;
+    it('x', () => { expect(src).toContain('token'); });
+  `), true);
+});
+
+test('a regex literal holding a quote is still blanked, not read as code', () => {
+  // The other direction of the regex fix. This file DOES read a source file and
+  // DOES contain a predicate spelling, so it reaches `blankStrings` and would be
+  // flagged if the regex body were scanned as code -- the earlier version of
+  // this test had no read, so `analyze` returned at the `READS_A_FILE` guard
+  // before `blankStrings` ran, and it passed for three unrelated reasons.
+  //
+  // And then a FOURTH: the body was spelled `source\.includes\(`, which does not
+  // contain the `.includes(` that `PREDICATE_METHOD` looks for, so scanning it as
+  // code found nothing either way. Disabling regex blanking outright left the
+  // whole 64-test suite green. The token below is unescaped on purpose, so the
+  // body really is a predicate on a tainted receiver if it is ever read as code.
+  assert.equal(flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('a/b.ts', 'utf8');
+const RE = /source.includes()["']/;
+it('x', () => { expect(RE.source).toBe('literal'); });
+`), false);
+});
+
+test('a DOTTED read starts taint, like a bare one', () => {
+  // `valueIdentifiers` drops any name preceded by `.`, so `fs.readFileSync(p)`
+  // yielded `{fs, p}` and taint never started. `READS_A_FILE` still matched, so
+  // the file was ANALYSED rather than skipped and the answer was a confident
+  // `flagged: false`. Namespaced reads are the ordinary spelling in this repo.
+  assert.equal(flagged(`
+    import fs from 'node:fs';
+    const src = fs.readFileSync('a/b.ts', 'utf8');
+    it('x', () => { expect(src).toContain('token'); });
+  `), true);
+});
+
+test('an awaited namespaced read starts taint too', () => {
+  assert.equal(flagged(`
+    import fsp from 'node:fs/promises';
+    const src = await fsp.readFile('a/b.ts', 'utf8');
+    it('x', () => { expect(src).toContain('token'); });
+  `), true);
+});
+
+test('a file with no read at all is still not flagged', () => {
+  // The control for both fixes above. Neither may be satisfiable by flagging
+  // everything: a predicate applied to a literal is not a source-text
+  // assertion, and that is the whole point of the narrowing.
+  assert.equal(flagged(`
+    const src = 'a literal, not a file';
+    it('x', () => { expect(src).toContain('token'); });
+  `), false);
+});
+
+test('a marker excuses a WRAPPED assertion, written as the gate prints it', () => {
+  // The remedy `check-source-text-assertions.mjs` prints puts the marker above
+  // `assert.ok(...)`. On a wrapped call the predicate is two lines below it, so
+  // the marker excused nothing AND was reported unused: CI failed twice and the
+  // printed fix did not work. A remedy an instrument prints must be one the
+  // instrument accepts.
+  const r = analyze(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('a/b.ts', 'utf8');
+// @source-text-assertion-ok anchor guard, not a subject assertion
+assert.ok(
+  source.includes(anchor),
+  \`anchor drifted\`,
+);
+`);
+  assert.equal(r.flagged, false);
+  assert.equal(r.marked.length, 1);
+  assert.deepEqual(r.unusedMarkers, []);
+});
+
+test('a marker that excuses nothing is still an unused marker', () => {
+  // The control for the widening above. Reaching further up must not turn the
+  // marker into a blanket exemption: one attached to unrelated code still has
+  // to be reported, or "marked sites stay named" stops being true.
+  // The separator matters. `const unrelated = 1;` ends in `;`, which the walk
+  // already rejects, so it certified nothing. A COMMENT is the case that broke
+  // it: `CONTINUES` contains `*`, `/`, `:` and `-`, so an ordinary `// Arrange:`
+  // or this repo's own `// -----` separator read as a continuation and let a
+  // stale marker reach an unrelated predicate -- while ALSO marking it used, so
+  // the dead-marker check went quiet.
+  //
+  // The last two are why the walk reads `stripComments` output rather than a
+  // per-line stripper of its own: a TRAILING block comment leaves the line
+  // ending in `/`, and truncating at the `//` of a URL leaves it ending in `:`.
+  // Both are accepted by `CONTINUES`, so both let the marker reach further --
+  // a per-line stripper made the gate WORSE on them, not merely no better.
+  // Those two are also the only entries that DISCRIMINATE: restore the old
+  // per-line stripper and only they go red. The other four stay green under
+  // that mutation and are here as coverage, not as a pin.
+  //
+  // A bare ` */` used to be in this list and was REMOVED, which is a loosening
+  // and so belongs on the record rather than in a commit message. An orphan
+  // `*/` has no opener, so `stripComments` leaves it whole, it ends in `/`,
+  // and the marker now reaches ACROSS it -- excusing a predicate and marking
+  // itself used, both halves silent. It is dropped because no valid JS puts a
+  // bare `*/` on the walk path (a real one always has an opener above, and the
+  // balanced case below is handled), not because the gate holds there. If
+  // `stripComments` ever learns to handle unbalanced blocks, this is open.
+  for (const separator of [
+    '// Arrange:',
+    '// ------------------',
+    '// see https://x/',
+    '/** a balanced block */',
+    'const unrelated = 1; /* trailing block */',
+    'const url = "http://x";',
+  ]) {
+    const r = analyze(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('a/b.ts', 'utf8');
+// @source-text-assertion-ok nothing here to excuse
+${separator}
+it('x', () => { expect(source).toContain('token'); });
+`);
+    assert.equal(r.flagged, true, `separator ${separator} let a stale marker through`);
+    assert.equal(r.unusedMarkers.length, 1, `separator ${separator} hid the unused marker`);
+  }
+});
+
+test('a JSX closing tag does not open a regex', () => {
+  // `</Foo>` puts `<` directly before the slash. Accepting `<` as a regex
+  // preceder made every closing tag open one, and on a line with a second `/`
+  // the span swallowed an opening quote and blanked the rest of the FILE --
+  // the exact whole-file desync the regex handling was added to remove.
+  assert.equal(flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('a/b.ts', 'utf8');
+render(<Foo trigger={<button>Open</button>} src="img/x.png" />);
+assert.ok(source.includes('handleRowClick'));
+`), true);
+});
+
+test('division after ++ is not read as a regex', () => {
+  // Asserted on the BLANKING, not on `flagged`. The first version of this test
+  // checked `flagged` with the assertion on a different line, so the corruption
+  // never reached the verdict and it passed with the bug live: `a++ / b) / c`
+  // blanked to `(a++        c;`, eating the `)` and unbalancing every
+  // paren-matching read downstream. Two slashes on one line, so the
+  // unterminated-literal fallback does not save it.
+  const line = 'const r = (a++ / b) / c;';
+  assert.equal(blankStrings(stripComments(line)), line);
+});
+
+// ---------------------------------------------------------------------------
+// 6. Fail-open holes CodeRabbit found on the PR head, and their siblings.
+//    All five are the dangerous direction: the gate going SILENT on a real
+//    source-text assertion, which is indistinguishable from a clean file.
+
+test('a `//` inside a STRING does not blank the rest of the file', () => {
+  // Comments were stripped by a regex that could not see strings, so
+  // `'see // the docs'` truncated to an unterminated quote and the string
+  // lexer blanked everything after it. No marker involved: the assertion two
+  // lines down simply became invisible and the file reported clean.
+  assert.equal(
+    flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('a/b.ts', 'utf8');
+const doc = 'see // the docs';
+assert.ok(source.includes('token'));
+`),
+    true,
+  );
+});
+
+test('a marker inside a STRING LITERAL excuses nothing', () => {
+  // Markers were matched against RAW lines, so any string containing the
+  // marker text suppressed a real finding. A string is not a comment.
+  const r = analyze(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('a/b.ts', 'utf8');
+const doc = 'write @source-text-assertion-ok fake to suppress';
+assert.ok(source.includes('token'));
+`);
+  assert.equal(r.flagged, true, 'a string suppressed a real finding');
+  assert.deepEqual(r.marked, [], 'a string was accepted as a marker');
+});
+
+test('a REAL comment marker still excuses, so the fix is not a blanket refusal', () => {
+  // The control for the two above. Without it, deleting marker support
+  // entirely would pass them both.
+  const r = analyze(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('a/b.ts', 'utf8');
+// @source-text-assertion-ok anchor guard
+assert.ok(source.includes('token'));
+`);
+  assert.equal(r.flagged, false);
+  assert.equal(r.marked.length, 1);
+});
+
+test('an iteration callback carries the bytes one element at a time', () => {
+  // `source.split('\n').some((line) => line.includes(x))` reads a file and
+  // asserts on its text, but no tainted NAME appears inside the callback, so
+  // the predicate looked like it applied to a clean parameter.
+  for (const body of [
+    "assert.ok(source.split('\\n').some((line) => line.includes('x')));",
+    "const hit = (line) => line.includes('x');\nassert.ok(source.split('\\n').some(hit));",
+    "for (const line of source.split('\\n')) { assert.ok(line.includes('x')); }",
+  ]) {
+    assert.equal(
+      flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('a/b.ts', 'utf8');
+${body}
+`),
+      true,
+      `this shape escaped the detector: ${body}`,
+    );
+  }
+});
+
+test('a path loop is not tainted just because the path list is', () => {
+  // The bound on the rule above. `files` IS tainted here -- it is derived from
+  // a tainted value, and this analysis has no way to know the derivation
+  // produced PATHS rather than contents. Tainting every `for..of` whose
+  // iterable carries file bytes therefore also taints `file`, and
+  // `file.endsWith('.ts')` becomes a false hit: measured as 4 of them in
+  // apps/viewer/src/components/viewer/toolbar-parity.test.ts, whose line 323
+  // is exactly `for (const file of files)`.
+  //
+  // Nothing lexical separates a tainted array of lines from a tainted array of
+  // filenames, so the rule takes only the `.split(` it can prove. Widen it and
+  // this reds.
+  assert.equal(
+    flagged(`
+import { readFileSync } from 'node:fs';
+const root = readFileSync('cfg.json', 'utf8');
+const files = walk(root);
+for (const file of files) {
+  assert.ok(file.endsWith('.test.ts'));
+}
+`),
+    false,
+    'a loop over PATHS derived from file bytes was read as a source-text assertion',
+  );
+});
+
+test('a regex directly after a block comment does not blank the file', () => {
+  // `regexLiteralEnd` decides regex-vs-division from the previous significant
+  // character. Reading that from RAW text puts the `/` of a preceding `*/` in
+  // front of the literal, so `/["']/` read as division, the `"` opened a
+  // string that never closed, and everything below went invisible. The
+  // backward scan therefore reads the output-so-far, where comments are
+  // already spaces. Route the lookback back through raw text and this reds.
+  assert.equal(
+    flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('a/b.ts', 'utf8');
+const a = 1; /* c */ /["']/.test(z);
+assert.ok(source.includes('tok'));
+`),
+    true,
+  );
+});
+
+test('a call chained before .split does not hide the loop', () => {
+  // The iterable is read to the `)` MATCHING the for-header's `(`. Capturing
+  // it with `[^)]*` stopped inside `source.trim().split('\n')` at the `)` of
+  // `trim(`, so the `.split(` was never seen.
+  assert.equal(
+    flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('a/b.ts', 'utf8');
+for (const line of source.trim().split('\\n')) { assert.ok(line.includes('x')); }
+`),
+    true,
+  );
+});
+
+test('an anonymous function callback carries taint like an arrow', () => {
+  // Same flow, different spelling. Matching only `=>` left it undetected.
+  assert.equal(
+    flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('a/b.ts', 'utf8');
+assert.ok(source.split('\\n').some(function (line) { return line.includes('x'); }));
+`),
+    true,
+  );
+});
+
+test('division BY a regex literal does not desync the lexer', () => {
+  // The blanked view keeps a regex's opening `/`. Blanking the literal whole
+  // made the following division look back PAST it to the `=`, call itself a
+  // regex, run forward into the next string for its "closing" slash, and blank
+  // the rest of the file. Nonsense code, but the failure is silence, and the
+  // guard costs one character.
+  assert.equal(
+    flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('a/b.ts', 'utf8');
+const n = /a/ / b; const s = 'q/w';
+assert.ok(source.includes('tok'));
+`),
+    true,
+  );
+});
+
+test('the for-of iterable keeps its last character', () => {
+  // `matchParen` returns the index OF the `)`, not just past it -- its
+  // docstring said the opposite and this code trusted the docstring, so an
+  // extra `- 1` chopped the iterable's final character.
+  //
+  // The tainted name is LAST here on purpose. The first version of this test
+  // used `(src).split('\\n')`, where chopping the trailing `)` still left
+  // `src` in the slice, so it passed with the bug live -- a fixture that could
+  // not fail. Chopping `|| src` to `|| sr` loses the only tainted name.
+  assert.equal(
+    flagged(`
+import { readFileSync } from 'node:fs';
+const src = readFileSync('a/b.ts', 'utf8');
+const sep = 'x';
+const other = '';
+for (const line of other.split(sep) || src) { assert.ok(line.includes('y')); }
+`),
+    true,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 7. Review-bot findings on #3116. All four were silent under-detection, and
+//    each has a control that behaved correctly before the fix, so the fixture
+//    distinguishes the bug from the shape.
+
+test('a single arrow parameter needs no parentheses', () => {
+  // `fnRe` required a `(`, so `const check = src => …` registered no function
+  // and the call site never tainted `src`, while `(src) => …` was caught.
+  assert.equal(
+    flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('Thing.ts', 'utf8');
+const check = src => src.includes('x');
+assert.ok(check(source));
+`),
+    true,
+  );
+});
+
+test('a regex as an unbraced control body is not division', () => {
+  // `)` is not a regex-preceder, because `(a + b) / c` IS division. But an
+  // unbraced `if` body can be a regex expression statement, and reading that as
+  // division let the `"` open a string that never closed.
+  assert.equal(
+    flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('Thing.ts', 'utf8');
+if (ok) /["']/.test(value);
+assert.ok(source.includes('tok'));
+`),
+    true,
+  );
+  // The control: a genuine division after `)` must stay division.
+  assert.equal(blankStrings('const q = (1 + 2) / 3;'), 'const q = (1 + 2) / 3;');
+});
+
+test('a helper whose name contains $ is still followed', () => {
+  // `$` is legal in a JS identifier and is NOT a word character, so `\b` never
+  // matched in front of a leading `$`: `$read(x)` yielded `read`, which is not
+  // in the tainted set. `a.$b` lost its dot marker the same way, turning a
+  // property into a value.
+  assert.equal(
+    flagged(`
+import { readFileSync } from 'node:fs';
+function $read(p) { return readFileSync(p, 'utf8'); }
+const s2 = $read('a.ts');
+assert.ok(s2.includes('x'));
+`),
+    true,
+  );
+});
+
+test('taint propagation is not cut short by a fixed pass cap', () => {
+  // Bindings declared in REVERSE order resolve one link per pass, so a fixed
+  // cap of 8 stopped an eight-link chain and reported a clean file. The bound
+  // is now derived from the input, which it cannot need to exceed.
+  const links = 12;
+  const chain = Array.from({ length: links }, (_, i) => `const v${links - i} = v${links - i - 1};`);
+  assert.equal(
+    flagged(`
+import { readFileSync } from 'node:fs';
+${chain.join('\n')}
+const v0 = readFileSync('a.ts', 'utf8');
+assert.ok(v${links}.includes('x'));
+`),
+    true,
+  );
+});
+
+test('a $-named helper propagates taint into its PARAMETER', () => {
+  // Distinct from the `$read` test above, which reaches the verdict through the
+  // helper's RETURN value. This one goes through `callRe`, where `$` broke the
+  // pattern twice: as a regex anchor (needs escaping) and as a non-word
+  // character (so a leading `\b` can never match). Fixing only the anchor left
+  // this silent, and nothing pinned it.
+  assert.equal(
+    flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('Thing.ts', 'utf8');
+function $check(text) { assert.ok(text.includes('x')); }
+$check(source);
+`),
+    true,
+  );
+});
+
+test('the pass bound covers names no binding declares', () => {
+  // A `for..of` element is not a binding and not a function, so a cap derived
+  // from `bindings.length + fns.length` was SMALLER than the chain it had to
+  // resolve -- four reverse-ordered links gave a cap of 3 and reported a clean
+  // file, which the fixed 8 it replaced had caught. The bound now counts the
+  // distinct identifiers, which is what the loop can actually add.
+  const links = 6;
+  const chain = Array.from(
+    { length: links },
+    (_, i) => `for (const v${links - i} of v${links - i - 1}.split('x')) { use(v${links - i}); }`,
+  );
+  assert.equal(
+    flagged(`
+import { readFileSync } from 'node:fs';
+${chain.join('\n')}
+const v0 = readFileSync('a.ts', 'utf8');
+assert.ok(v${links}.includes('y'));
+`),
+    true,
+  );
+});
+
+test('a control keyword and its ( may sit on different lines', () => {
+  // `closesAControlHeader` skipped only spaces and tabs, so a newline between
+  // `if` and `(` made the header read as an ordinary parenthesised expression.
+  // The regex after it became division and its quote desynced the lexer.
+  assert.equal(
+    flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('Thing.ts', 'utf8');
+if
+(ok) /["']/.test(value);
+assert.ok(source.includes('tok'));
+`),
+    true,
+  );
+});
+
+test('an optional call is still a call', () => {
+  // `?.(` bypassed all three call patterns, including the FAIL-CLOSED rule for
+  // flow this analysis cannot follow -- a guard that exists to catch the
+  // unfollowable was itself sidestepped by two characters. `?.` can also sit on
+  // either side of a method name.
+  for (const body of [
+    "function check(text) { assert.ok(text.includes('x')); }\ncheck?.(source);",
+    "assert.ok(source.split('x')?.some((line) => line.includes('y')));",
+    "mutators[key]?.(source);\nconst cb = (t) => assert.ok(t.includes('x'));",
+  ]) {
+    assert.equal(
+      flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('Thing.ts', 'utf8');
+${body}
+`),
+      true,
+      `optional call escaped: ${body}`,
+    );
+  }
+});
+
+test('a quoted string cannot cross a line', () => {
+  // The string state ended only on the matching quote, so ONE unpaired `'` or
+  // `"` kept the lexer inside a string until the next quote anywhere later in
+  // the file. Both views were blanked across that whole span, and every read,
+  // filename literal and predicate inside it disappeared.
+  assert.equal(
+    blankStrings("const bad = ';\nconst keep = 1;\nconst z = ';"),
+    "const bad = ' \nconst keep = 1;\nconst z = ' ",
+    'an unpaired quote swallowed the following lines',
+  );
+  // A template literal MAY span lines, so it must still be blanked across them.
+  assert.equal(blankStrings('const t = `a\nb`;'), 'const t = ` \n `;');
+});
+
+test('a $-leading callback parameter is tainted', () => {
+  // `\b` cannot match in front of a leading `$`, so the arrow-parameter pattern
+  // captured `line` out of `$line` and the real name stayed clean. Same failure
+  // as `valueIdentifiers` and `callRe`, in the third place it appears.
+  assert.equal(
+    flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('Thing.ts', 'utf8');
+assert.ok(source.split('x').some($line => $line.includes('y')));
+`),
+    true,
+  );
+});
+
+test('every path that names a value survives a leading $', () => {
+  // `$` is legal in a JS identifier and is NOT a word character, so `\b` can
+  // never match in front of a leading one. That single language fact produced
+  // three separate silent bugs in this module, each found independently rather
+  // than by looking for siblings after the first: `valueIdentifiers`, `callRe`,
+  // and both arrow-parameter patterns.
+  //
+  // This pins the FAMILY. Reintroduce `\b` in front of an identifier class
+  // anywhere in the taint analysis and one of these reds, instead of the gate
+  // going quiet until someone happens to name a variable `$source`.
+  const cases = {
+    'binding': "const $src = readFileSync('a.ts', 'utf8');\nassert.ok($src.includes('x'));",
+    'let then assign': "let $s;\n$s = readFileSync('a.ts', 'utf8');\nassert.ok($s.includes('x'));",
+    'helper return': "function $load(p) { return readFileSync(p, 'utf8'); }\nconst s = $load('a.ts');\nassert.ok(s.includes('x'));",
+    'helper parameter': "function $check(t) { assert.ok(t.includes('x')); }\nconst s = readFileSync('a.ts', 'utf8');\n$check(s);",
+    'bare arrow helper': "const $chk = $t => $t.includes('x');\nconst s = readFileSync('a.ts', 'utf8');\nassert.ok($chk(s));",
+    'for-of element': "const s = readFileSync('a.ts', 'utf8');\nfor (const $line of s.split('n')) { assert.ok($line.includes('x')); }",
+    'arrow callback param': "const s = readFileSync('a.ts', 'utf8');\nassert.ok(s.split('n').some($l => $l.includes('x')));",
+    'function callback param': "const s = readFileSync('a.ts', 'utf8');\nassert.ok(s.split('n').some(function ($l) { return $l.includes('x'); }));",
+  };
+  for (const [name, body] of Object.entries(cases)) {
+    assert.equal(
+      flagged(`
+import { readFileSync } from 'node:fs';
+${body}
+`),
+      true,
+      `a $-leading name went undetected via: ${name}`,
     );
   }
 });

@@ -55,7 +55,7 @@ class CountingBlobStore implements BlobStore {
   async put(_bytes: Uint8Array, _contentType?: string): Promise<BlobMeta> {
     this.attempts++;
     if (this.attempts <= this.failFirst) throw new Error(`synthetic failure #${this.attempts}`);
-    return { hash: `hash-${this.attempts}`, size: 0, contentType: 'application/octet-stream' };
+    return { hash: `hash-${this.attempts}`, byteLength: 0, contentType: 'application/octet-stream' };
   }
   get(): Promise<Uint8Array | null> {
     return Promise.resolve(null);
@@ -63,8 +63,8 @@ class CountingBlobStore implements BlobStore {
   has(): Promise<boolean> {
     return Promise.resolve(false);
   }
-  delete(): Promise<void> {
-    return Promise.resolve();
+  delete(): Promise<boolean> {
+    return Promise.resolve(false);
   }
   list(): Promise<string[]> {
     return Promise.resolve([]);

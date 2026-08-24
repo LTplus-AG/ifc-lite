@@ -37,6 +37,12 @@ const COLUMN_IFC = join(FIXTURES_DIR, 'buildingsmart/column-straight-rectangle-t
 const GEOREF_IFC = join(FIXTURES_DIR, 'ifc5/Georeferencing_georeferenced-bridge-deck.ifc');
 // Carries IfcSpace volumes, so the energy-model exporters have something to emit.
 const SPACES_IFC = join(FIXTURES_DIR, 'buildingsmart/Building-Architecture.ifc');
+// Carries IfcMaterialLayerSetUsage on its walls, so the layer-slice branch of
+// `produce_element_geometry` actually runs and tags meshes GEOM_CLASS_LAYER_SLICE.
+// None of the fixtures above has a multi-layer wall: the two Building-* models
+// have no IFCMATERIALLAYERSET at all, and wall-with-opening-and-window.ifc has a
+// single-layer set, which Rust classifies NotSliceable on purpose.
+const LAYERED_IFC = join(FIXTURES_DIR, 'ara3d/duplex.ifc');
 
 console.log('🧪 WASM API Contract Tests\n');
 
@@ -54,6 +60,10 @@ if (!existsSync(COLUMN_IFC)) {
 const GEOREF_AVAILABLE = existsSync(GEOREF_IFC);
 if (!GEOREF_AVAILABLE) {
   console.log('⚠️  georef fixture missing — run `pnpm fixtures`. Georef tests will be skipped.');
+}
+const LAYERED_AVAILABLE = existsSync(LAYERED_IFC);
+if (!LAYERED_AVAILABLE) {
+  console.log('⚠️  layered-wall fixture missing — run `pnpm fixtures`. geometryClass pin will be skipped.');
 }
 const SPACES_AVAILABLE = existsSync(SPACES_IFC);
 if (!SPACES_AVAILABLE) {
@@ -820,6 +830,51 @@ test('exportGlbFromMeshes output is spec-conformant glTF 2.0 (0 errors, 0 warnin
   assertClean(fromMeshesReport, 'exportGlbFromMeshes');
   assert.equal(fromMeshesReport.info.totalTriangleCount, 1, 'the one triangle handed in');
 });
+
+// ===== geometryClass ordinals, pinned at the real boundary =====
+//
+// `packages/geometry/src/geometry-class.ts` names these ordinals for the
+// TypeScript side, and its own test asserts them against literals. That test
+// cannot fail if Rust starts emitting different numbers — both halves would
+// simply agree with themselves, which is the self-round-trip trap.
+//
+// This is the other half: it reads what Rust ACTUALLY emits across the wasm
+// boundary and pins the literal. `meshFingerprint` above also reads
+// `geometryClass`, but only to compare two code paths against each other, so
+// it is satisfied by any value as long as both paths produce the same one.
+//
+// A wrong ordinal is silent: geometry is reclassified rather than rejected, so
+// a layered wall drops out of Model view, or a type-library duplicate renders
+// as real building geometry, with nothing thrown anywhere.
+if (LAYERED_AVAILABLE) {
+  console.log('\n📋 geometryClass ordinals (Rust → TS contract)');
+  const layeredContent = readFileSync(LAYERED_IFC, 'utf-8');
+
+  test('a layered wall emits GEOM_CLASS_LAYER_SLICE === 3', () => {
+    const collection = parseMeshesViaPrePass(api, layeredContent);
+    const classes = new Set();
+    for (let i = 0; i < collection.length; i++) {
+      const m = collection.get(i);
+      if (!m) continue;
+      classes.add(m.geometryClass);
+      m.free();
+    }
+    collection.free();
+
+    // The literal 3 is the point. Deriving it from the TS constant would make
+    // this agree with the thing it is supposed to be checking.
+    assert.ok(
+      classes.has(3),
+      `expected a material-layer slice tagged 3; saw classes ${[...classes].sort().join(', ')}`,
+    );
+    // Placed occurrences must still be class 0 alongside them — if everything
+    // came back 3, the assertion above would pass while the tagging was broken.
+    assert.ok(
+      classes.has(0),
+      `expected placed occurrences tagged 0; saw classes ${[...classes].sort().join(', ')}`,
+    );
+  });
+}
 
 // ===== energy-model boundary (exportHbjson / exportDfjson) =====
 //

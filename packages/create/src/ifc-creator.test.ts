@@ -993,3 +993,113 @@ describe('IfcCreator dimension validation', () => {
       .toThrow(/zero-length vector/);
   });
 });
+
+/**
+ * computeRefDirection() has a world-X fallback so a near-vertical Axis does
+ * not produce a degenerate (zero-length) cross product:
+ *   up = |axis[2]| < 0.9 ? [0,0,1] : [1,0,0]
+ * Pin both branches — vertical (up flips to world-X) and horizontal (up
+ * stays world-Z) — for two structurally different call sites so the
+ * branches cannot silently collapse into one another.
+ */
+describe('IfcCreator — computeRefDirection vertical-axis branch', () => {
+  // Resolve the raw attribute string of a STEP entity line, e.g.
+  // "#12=IFCDIRECTION((0.,-1.,0.));" -> "(0.,-1.,0.)" is inside — we return
+  // the args between the outer parens as written by stepLine().
+  function entityLine(content: string, id: number): string {
+    const re = new RegExp(`^#${id}=\\w+\\(([\\s\\S]*?)\\);$`, 'm');
+    const m = content.match(re);
+    if (!m) throw new Error(`Entity #${id} not found in content`);
+    return m[1];
+  }
+
+  // Numeric #refs referenced by an entity, in the order they appear —
+  // this mirrors the constructor-argument order used when the line was
+  // built, regardless of exact id numbering.
+  function refIdsOf(content: string, id: number): number[] {
+    return [...entityLine(content, id).matchAll(/#(\d+)/g)].map((m) => Number(m[1]));
+  }
+
+  function directionValueOf(content: string, id: number): number[] {
+    const line = entityLine(content, id); // e.g. "(0.,-1.,0.)" — already the single-paren group
+    const m = line.match(/^\(([^)]+)\)$/);
+    if (!m) throw new Error(`Entity #${id} is not an IFCDIRECTION: ${line}`);
+    return m[1].split(',').map(Number);
+  }
+
+  // addIfcBeam: RefDirection flows through addLocalPlacement's
+  // {Axis, RefDirection} -> IFCLOCALPLACEMENT -> IFCAXIS2PLACEMENT3D chain.
+  function beamRefDirection(content: string, beamId: number): number[] {
+    const [, placementId] = refIdsOf(content, beamId); // [ownerHistory, placement, prodShape]
+    const [, axis2Id] = refIdsOf(content, placementId); // IFCLOCALPLACEMENT(relativeTo, axis2)
+    const [, , refDirId] = refIdsOf(content, axis2Id); // IFCAXIS2PLACEMENT3D(origin, axis, refDir)
+    return directionValueOf(content, refDirId);
+  }
+
+  // addIfcRailing: the outer ObjectPlacement carries no Axis/RefDirection
+  // (identity orientation, so posts extrude along world Z). The
+  // RefDirection instead lands on the rail *solid*'s own
+  // IfcAxis2Placement3D, reached via Representation -> ShapeRepresentation
+  // -> first Item (the rail; posts are items 2 and 3).
+  function railingRefDirection(content: string, railingId: number): number[] {
+    const [, , prodShapeId] = refIdsOf(content, railingId); // [ownerHistory, placement, prodShape]
+    const [shapeId] = refIdsOf(content, prodShapeId); // IFCPRODUCTDEFINITIONSHAPE($,$,(shape))
+    const [, railSolidId] = refIdsOf(content, shapeId); // IFCSHAPEREPRESENTATION(context, item1, ...)
+    const [, railAxis2Id] = refIdsOf(content, railSolidId); // IFCEXTRUDEDAREASOLID(profile, position, dir, depth)
+    const [, , refDirId] = refIdsOf(content, railAxis2Id); // IFCAXIS2PLACEMENT3D(origin, axis, refDir)
+    return directionValueOf(content, refDirId);
+  }
+
+  // Derived directly from computeRefDirection's own formula, not copied
+  // from the sibling in-store tests: up=[1,0,0] when |axis.z|>=0.9,
+  // cross([1,0,0],[0,0,1]) = (0,-1,0), already unit length.
+  const VERTICAL_REF = [0, -1, 0];
+  // up=[0,0,1] when |axis.z|<0.9, cross([0,0,1],[1,0,0]) = (0,1,0).
+  const HORIZONTAL_REF = [0, 1, 0];
+
+  it('addIfcBeam: vertical axis does not throw and yields the world-X-fallback RefDirection', () => {
+    const creator = new IfcCreator();
+    const storey = creator.addIfcBuildingStorey({ Name: 'GF', Elevation: 0 });
+    let beamId!: number;
+    expect(() => {
+      beamId = creator.addIfcBeam(storey, {
+        Start: [0, 0, 0], End: [0, 0, 5], Width: 0.2, Height: 0.4,
+      });
+    }).not.toThrow();
+    const result = creator.toIfc();
+    expect(beamRefDirection(result.content, beamId)).toEqual(VERTICAL_REF);
+  });
+
+  it('addIfcBeam: horizontal axis stays on the world-Z branch', () => {
+    const creator = new IfcCreator();
+    const storey = creator.addIfcBuildingStorey({ Name: 'GF', Elevation: 0 });
+    const beamId = creator.addIfcBeam(storey, {
+      Start: [0, 0, 0], End: [5, 0, 0], Width: 0.2, Height: 0.4,
+    });
+    const result = creator.toIfc();
+    expect(beamRefDirection(result.content, beamId)).toEqual(HORIZONTAL_REF);
+  });
+
+  it('addIfcRailing: vertical axis does not throw and yields the world-X-fallback RefDirection', () => {
+    const creator = new IfcCreator();
+    const storey = creator.addIfcBuildingStorey({ Name: 'GF', Elevation: 0 });
+    let railingId!: number;
+    expect(() => {
+      railingId = creator.addIfcRailing(storey, {
+        Start: [0, 0, 0], End: [0, 0, 5], Height: 1.1,
+      });
+    }).not.toThrow();
+    const result = creator.toIfc();
+    expect(railingRefDirection(result.content, railingId)).toEqual(VERTICAL_REF);
+  });
+
+  it('addIfcRailing: horizontal axis stays on the world-Z branch', () => {
+    const creator = new IfcCreator();
+    const storey = creator.addIfcBuildingStorey({ Name: 'GF', Elevation: 0 });
+    const railingId = creator.addIfcRailing(storey, {
+      Start: [0, 0, 0], End: [5, 0, 0], Height: 1.1,
+    });
+    const result = creator.toIfc();
+    expect(railingRefDirection(result.content, railingId)).toEqual(HORIZONTAL_REF);
+  });
+});

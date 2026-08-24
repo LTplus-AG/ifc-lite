@@ -208,7 +208,7 @@ describe('the relationship filter runs when the overlay is active', () => {
  *
  * IFC4 `IfcRelConnectsStructuralMember.ConditionCoordinateSystem` is an
  * optional `IfcAxis2Placement3D`, and `IFCAXIS2PLACEMENT3D` is in
- * `StepExporter.isGeometryEntity`'s set — so a schema-valid file has an
+ * `isGeometryEntity`'s set (`step-geometry-types.ts`) — so a schema-valid file has an
  * `IFCREL*` line naming an entity `includeGeometry: false` omits. Nothing
  * contrived is needed to reach it.
  */

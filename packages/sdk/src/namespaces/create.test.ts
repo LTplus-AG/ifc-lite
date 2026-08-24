@@ -18,14 +18,31 @@ import { describe, expect, it, vi } from 'vitest';
 import { CreateNamespace } from './create.js';
 import type { BimBackend } from '../types.js';
 
+/**
+ * The `Elevation` attribute off the emitted IFCBUILDINGSTOREY line. Read from
+ * the STEP text rather than from the creator, so the assertion is on what the
+ * file actually carries.
+ */
+function storeyElevationOf(content: string): number {
+  const line = content.split('\n').find((l) => l.includes('IFCBUILDINGSTOREY'));
+  if (!line) throw new Error('no IFCBUILDINGSTOREY line in the emitted STEP');
+  const args = line.slice(line.indexOf('(') + 1, line.lastIndexOf(')'));
+  const last = args.split(',').at(-1)?.trim() ?? '';
+  const n = Number(last);
+  if (!Number.isFinite(n)) throw new Error(`elevation not numeric: ${last} (line: ${line})`);
+  return n;
+}
+
 describe('CreateNamespace.building()', () => {
   it('defaults StoreyName and StoreyElevation when omitted', () => {
     const ns = new CreateNamespace();
     const { creator } = ns.building({ Name: 'My Building' });
     const { content } = creator.toIfc();
     expect(content).toContain('Ground Floor');
-    // Elevation 0 is written as a real coordinate on the storey placement.
-    expect(content).toMatch(/IFCBUILDINGSTOREY/);
+    // The default elevation must be asserted, not just the storey's existence:
+    // a regression that dropped or changed `Elevation: params?.StoreyElevation
+    // ?? 0` would still emit an IFCBUILDINGSTOREY line.
+    expect(storeyElevationOf(content)).toBe(0);
   });
 
   it('forwards an explicit StoreyName and StoreyElevation instead of the defaults', () => {
@@ -38,6 +55,9 @@ describe('CreateNamespace.building()', () => {
     const { content } = creator.toIfc();
     expect(content).toContain('Level 2');
     expect(content).not.toContain('Ground Floor');
+    // The name and the elevation are forwarded by two separate expressions, so
+    // asserting only the name leaves the elevation unpinned.
+    expect(storeyElevationOf(content)).toBe(3.2);
   });
 });
 

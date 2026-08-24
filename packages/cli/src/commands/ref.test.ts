@@ -41,16 +41,21 @@ describe('createRef', () => {
     const entry = createRef(store, 'feature', 'main');
     expect(entry.layers).toEqual([baseId]);
 
-    // Moving the new ref forward must not retroactively change "main".
+    // Move "main" forward, NOT "feature". This is the direction the test is
+    // named for, and the only one that can observe a shared list: moveRef
+    // REPLACES the moved ref's entry, so moving "feature" would overwrite its
+    // list wholesale and an implementation that handed it "main"'s own array
+    // would still pass. Advancing "main" and asserting "feature" is unmoved
+    // is what actually pins independence.
     const second = publishLayer(store, {
       delta: makeDelta([{ path: 'wall-1', attributes: {} }]),
-      baseRef: 'feature',
+      baseRef: 'main',
       intent: 'change',
       principal: 'bob',
     });
-    moveRef(store, 'feature', second.layerId);
-    expect(getRef(store, 'feature')?.layers).toEqual([second.layerId]);
-    expect(getRef(store, 'main')?.layers).toEqual([baseId]);
+    moveRef(store, 'main', second.layerId);
+    expect(getRef(store, 'main')?.layers).toEqual([second.layerId]);
+    expect(getRef(store, 'feature')?.layers).toEqual([baseId]);
   });
 });
 

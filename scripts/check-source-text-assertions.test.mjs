@@ -290,7 +290,17 @@ const x = 1;`);
 // 4. End to end against the real repo.
 
 test('the gate passes on the repo and states its counts', () => {
-  const r = spawnSync(process.execPath, [GATE], { encoding: 'utf8', cwd: ROOT });
+  // A spawn that never starts, or one that hangs, must not be readable as a
+  // gate failure with nothing to say. Without `error`, a failed spawn gives
+  // `status: null` and empty stdout/stderr, so the assertion below prints an
+  // empty message and the real cause is invisible; without `timeout` a hung
+  // gate holds the job until CI kills it.
+  const r = spawnSync(process.execPath, [GATE], {
+    encoding: 'utf8',
+    cwd: ROOT,
+    timeout: 120_000,
+  });
+  assert.equal(r.error, undefined, `the gate failed to run: ${r.error?.message}`);
   const output = `${r.stdout}${r.stderr}`;
   assert.equal(r.status, 0, output);
   assert.match(

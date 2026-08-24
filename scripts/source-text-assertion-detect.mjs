@@ -517,12 +517,20 @@ function computeTainted(blanked) {
     });
   }
 
-  // Each pass that changes anything adds at least one name, and names come from
-  // the file, so `bindings.length + fns.length + 2` is an upper bound the loop
-  // cannot need to exceed -- it is a runaway guard, not a policy. The old fixed
-  // 8 WAS reachable: a chain declared in reverse order resolves one link per
-  // pass, so eight links exhausted it and `analyze` reported a clean file.
-  const maxPasses = bindings.length + fns.length + 2;
+  // Every name this loop adds is an identifier that appears LEXICALLY in the
+  // file -- a binding name, a parameter, a for-of element, a callback
+  // parameter -- and every pass that changes anything adds at least one. So the
+  // count of distinct identifiers bounds the productive passes, and the loop
+  // cannot need more.
+  //
+  // Two earlier versions were both wrong in the SILENT direction. A fixed 8 was
+  // reachable: bindings declared in reverse order resolve one link per pass, so
+  // eight links exhausted it. Replacing it with `bindings.length + fns.length`
+  // was worse, and its comment claimed a proof it did not have -- neither term
+  // counts for-of names or callback parameters, so four reverse-ordered
+  // `for (const vN of vN-1.split(…))` links gave a cap of 3 and returned a
+  // clean file, which even the fixed 8 had caught.
+  const maxPasses = valueIdentifiers(blanked).size + 2;
   for (let pass = 0; pass < maxPasses; pass++) {
     const before = tainted.size;
     for (const b of bindings) {
@@ -537,10 +545,12 @@ function computeTainted(blanked) {
       }
       // A tainted argument taints the parameter it lands in.
       if (!fn.name || fn.params.length === 0) continue;
-      // `$` is legal in a JS identifier AND is a regex anchor, so `$read` built
-      // a pattern that could never match and the helper's parameter taint was
-      // lost with no signal. Escape before interpolating.
-      const callRe = new RegExp(`\\b${fn.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\(`, 'g');
+      // `$` is legal in a JS identifier and breaks this pattern TWICE: it is a
+      // regex anchor, so the name must be escaped, and it is not a word
+      // character, so a leading `\b` can never match in front of it. Fixing
+      // only the anchor still lost the helper's parameter taint silently.
+      const literalName = fn.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const callRe = new RegExp(`(?<![\\w$])${literalName}\\s*\\(`, 'g');
       let call;
       while ((call = callRe.exec(blanked)) !== null) {
         const open = callRe.lastIndex - 1;

@@ -731,3 +731,42 @@ assert.ok(v${links}.includes('x'));
     true,
   );
 });
+
+test('a $-named helper propagates taint into its PARAMETER', () => {
+  // Distinct from the `$read` test above, which reaches the verdict through the
+  // helper's RETURN value. This one goes through `callRe`, where `$` broke the
+  // pattern twice: as a regex anchor (needs escaping) and as a non-word
+  // character (so a leading `\b` can never match). Fixing only the anchor left
+  // this silent, and nothing pinned it.
+  assert.equal(
+    flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('Thing.ts', 'utf8');
+function $check(text) { assert.ok(text.includes('x')); }
+$check(source);
+`),
+    true,
+  );
+});
+
+test('the pass bound covers names no binding declares', () => {
+  // A `for..of` element is not a binding and not a function, so a cap derived
+  // from `bindings.length + fns.length` was SMALLER than the chain it had to
+  // resolve -- four reverse-ordered links gave a cap of 3 and reported a clean
+  // file, which the fixed 8 it replaced had caught. The bound now counts the
+  // distinct identifiers, which is what the loop can actually add.
+  const links = 6;
+  const chain = Array.from(
+    { length: links },
+    (_, i) => `for (const v${links - i} of v${links - i - 1}.split('x')) { use(v${links - i}); }`,
+  );
+  assert.equal(
+    flagged(`
+import { readFileSync } from 'node:fs';
+${chain.join('\n')}
+const v0 = readFileSync('a.ts', 'utf8');
+assert.ok(v${links}.includes('y'));
+`),
+    true,
+  );
+});

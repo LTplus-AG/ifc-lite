@@ -357,10 +357,16 @@ test('a regex literal holding a quote is still blanked, not read as code', () =>
   // flagged if the regex body were scanned as code -- the earlier version of
   // this test had no read, so `analyze` returned at the `READS_A_FILE` guard
   // before `blankStrings` ran, and it passed for three unrelated reasons.
+  //
+  // And then a FOURTH: the body was spelled `source\.includes\(`, which does not
+  // contain the `.includes(` that `PREDICATE_METHOD` looks for, so scanning it as
+  // code found nothing either way. Disabling regex blanking outright left the
+  // whole 64-test suite green. The token below is unescaped on purpose, so the
+  // body really is a predicate on a tainted receiver if it is ever read as code.
   assert.equal(flagged(`
 import { readFileSync } from 'node:fs';
 const source = readFileSync('a/b.ts', 'utf8');
-const RE = /source\\.includes\\(['"]/;
+const RE = /source.includes()["']/;
 it('x', () => { expect(RE.source).toBe('literal'); });
 `), false);
 });

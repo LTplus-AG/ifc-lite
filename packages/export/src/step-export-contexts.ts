@@ -15,12 +15,20 @@
  * `allocateExpressId: () => this.nextExpressId++` — two closures over ONE
  * instance counter. Moving them would mean re-establishing that shared
  * identity through a parameter, and capturing the counter's value instead of
- * its closure gives each builder its own sequence and silently emits two
- * entities with the same `#N`. Nothing in the suite currently catches a
- * duplicate express id (`findDanglingRefs` collects ids into a `Set`, which
- * absorbs the duplicate), so the cost of getting it wrong is invisible.
+ * its closure gives each builder its own sequence, silently emitting two
+ * entities with the same `#N` — well-formed STEP in which every reference
+ * still resolves, and two different entities.
  *
- * That is the whole reason this module holds two functions rather than five.
+ * That failure used to be invisible: `findDanglingRefs` collects defined ids
+ * into a `Set`, which absorbs a duplicate rather than reporting it. It is now
+ * caught — `step-georeferencing.test.ts`'s "mints distinct ids for generated
+ * psets and for created georeferencing" drives both allocating paths in one
+ * export and asserts no id is defined twice. Freezing both closures fails that
+ * test and only that test.
+ *
+ * So the reason this module holds two functions rather than five is written
+ * down here AND checkable, which is the only reason it is safe to leave the
+ * other three where they are.
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -33,50 +41,52 @@ import type { OverlayEntitiesContext } from './step-overlay-entities.js';
 import type { PropertySetContext } from './step-property-sets.js';
 
 /**
-   * The state `step-source-iteration.ts` cannot read off the pass (#2475 2d).
-   *
-   * No `allocateExpressId`: that phase never allocates an id, it only rewrites
-   * lines that already have one. `applySourceLineMutations` (#2475, remaining
-   * private helpers: now a free function in `step-attribute-mutations.ts`,
-   * closed over `this.mutationView` here) and `isGeometryEntity` are injected
-   * rather than read off the pass because each has readers outside this
-   * phase — the mutation pipeline is shared with the type-object
-   * `HasPropertySets` rewrite (see `StepExporter`'s `propertySetContext`, which
-   * stays a method because it mints express ids) and with the
-   * overlay-created-entities block in `export()`; `isGeometryEntity` with the
-   * visible-only setup closure and that same block.
-   */
+ * The state `step-source-iteration.ts` cannot read off the pass (#2475 2d).
+ *
+ * No `allocateExpressId`: that phase never allocates an id, it only rewrites
+ * lines that already have one. `applySourceLineMutations` (a free function in
+ * `step-attribute-mutations.ts`, closed over `mutationView` here) and
+ * `isGeometryEntity` are injected rather than read off the pass because each
+ * has readers outside this phase — the mutation pipeline is shared with the
+ * type-object `HasPropertySets` rewrite (see `StepExporter`'s
+ * `propertySetContext`, which stays a method because it mints express ids) and
+ * with the overlay-created-entities block in `export()`; `isGeometryEntity`
+ * with the visible-only setup closure and that same block.
+ *
+ * `propertySetContext` arrives as a THUNK, not a value: the phase calls it
+ * per use and the original method rebuilt it per call, which is the behaviour
+ * being preserved.
+ */
 export function buildSourceIterationContext(
-dataStore: IfcDataStore,
-mutationView: MutablePropertyView | null,
-propertySetContext: () => PropertySetContext,
+  dataStore: IfcDataStore,
+  mutationView: MutablePropertyView | null,
+  propertySetContext: () => PropertySetContext,
 ): SourceIterationContext {
   return {
-  dataStore,
+    dataStore,
     applySourceLineMutations: (expressId, entityText, recordType, attributeMutations, sourceSchema, overlayActive, onRejected) =>
       applySourceLineMutations(mutationView, expressId, entityText, recordType, attributeMutations, sourceSchema, overlayActive, onRejected),
     isGeometryEntity,
-  propertySetContext,
+    propertySetContext,
     relationshipWithheldWarning,
   };
 }
 
 /**
-   * The state `step-overlay-entities.ts` cannot read off the pass (#2475
-   * step 2e). `applyOverlayEntityOverrides` is now the free function
-   * `step-attribute-mutations.ts` exports (#2475, remaining private
-   * helpers) — it and its two `serializeNamedAttribute` /
-   * `serializePositionalOverride` helpers moved together, since those two
-   * have no reader outside this cluster; `isGeometryEntity` and
-   * `relationshipWithheldWarning` are the same shared readers
-   * {@link buildSourceIterationContext} already injects into the other output
-   * pass.
-   */
+ * The state `step-overlay-entities.ts` cannot read off the pass (#2475
+ * step 2e). `applyOverlayEntityOverrides` is the free function
+ * `step-attribute-mutations.ts` exports — it and its two
+ * `serializeNamedAttribute` / `serializePositionalOverride` helpers moved
+ * together, since those two have no reader outside this cluster;
+ * `isGeometryEntity` and `relationshipWithheldWarning` are the same shared
+ * readers {@link buildSourceIterationContext} already injects into the other
+ * output pass.
+ */
 export function buildOverlayEntitiesContext(
-mutationView: MutablePropertyView | null,
+  mutationView: MutablePropertyView | null,
 ): OverlayEntitiesContext {
   return {
-  mutationView,
+    mutationView,
     applyOverlayEntityOverrides,
     isGeometryEntity,
     relationshipWithheldWarning,

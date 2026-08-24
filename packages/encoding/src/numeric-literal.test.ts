@@ -170,13 +170,18 @@ describe('deciding it is linear, not backtracking', () => {
     //   time — which is exactly why `batch()` already does `Math.min` over
     //   TRIALS internally. This is that same composition one level up.
     //
-    // Two independent simulations of these three estimators, under one-sided
-    // noise against a genuinely regressed implementation that must fail this
-    // bound, agreed on the ORDERING and disagreed on the magnitudes (they are
-    // sensitive to the assumed noise model, so no figure is quoted here):
-    // min-of-ratios missed the regression MORE often than a single sample,
-    // while ratio-of-minima missed it least and was no flakier. Only
-    // ratio-of-minima improved both directions at once.
+    // This is not a statistical preference, it is an inequality. For any
+    // positive samples, min(Lᵢ)/min(Sᵢ) ≥ min(Lᵢ/Sᵢ), ALWAYS: take i* = the
+    // index minimising L, then min(Lᵢ/Sᵢ) ≤ L_i*/S_i* ≤ L_i*/min(S), and the
+    // right-hand side is exactly min(L)/min(S) because L_i* IS min(L). So the
+    // form below can never report a smaller growth than the one it replaces,
+    // and therefore can never be the one that slips a regression under the
+    // bound. Nothing about the noise distribution is assumed.
+    //
+    // It reduces the low bias rather than removing it: min(L) and min(S) are
+    // each still inflated by whatever noise survives TRIALS, and the ratio is
+    // only unbiased if that inflation is proportionally equal on both sides.
+    // Worth knowing before tuning MEASURABLE_MS, TRIALS or RATIO_SAMPLES.
     //
     // The bound itself is unchanged. Raising it to absorb the outlier would
     // have widened the very gap the test exists to detect.

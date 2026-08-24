@@ -1,5 +1,54 @@
 # @ifc-lite/query
 
+## 2.0.0
+
+### Major Changes
+
+- [#3009](https://github.com/LTplus-AG/ifc-lite/pull/3009) [`131e3dc`](https://github.com/LTplus-AG/ifc-lite/commit/131e3dc84244d9dd24859a5923ef0aef4d6119c4) Thanks [@BIMvoice](https://github.com/BIMvoice)! - **Breaking:** `IfcQuery.ofType()` now throws for a type string that is not an IFC entity name, instead of silently querying the `Unknown` bucket.
+  
+  `ofType()` maps each type string through `IfcTypeEnumFromString`, which falls back to `IfcTypeEnum.Unknown` for any name it does not recognize. A typo — `ofType('IfcWal')` — therefore returned every entity whose type the store could not classify: neither the caller's walls nor an empty result, but some other, unrelated set of entities. `ofType()` now rejects such a string with an error naming it.
+  
+  What still works unchanged:
+  
+  - **Standard IFC types that this build's enum table does not map.** `TYPE_STRING_TO_ENUM` (`@ifc-lite/data`) is a curated subset of IFC, so standard buildingSMART types such as `IfcChiller`, `IfcActuator`, `IfcElectricAppliance` — and IFC2X3's `IfcDoorStyle`, `IfcWindowStyle` and `IfcElectricalDistributionPoint` — resolve to `Unknown`. These are **not** rejected: they keep falling through to the `Unknown` bucket exactly as before, which is the only representation this build has for them and which answers the query correctly in a file whose unclassified entities are of that type.
+  
+    The oracle deciding this is `isKnownType()` (`@ifc-lite/parser`), the predicate that already guards `@ifc-lite/sdk`'s `addEntity`: the bundled **IFC2X3 + IFC4 + IFC4X3** schema union, minus EXPRESS defined types (`IfcLengthMeasure`, `IfcArcIndex`), with the IFC4_ADD2_TC1 codegen pin as a fallback, plus the parser's alias table for IFC2X3 leaves the bundled EXPRESS exports omit. Reusing it rather than adding a second name table keeps one source of truth for "is this a real IFC class". The suite asserts the coverage exhaustively — every entity in `SCHEMA_REGISTRY` and in all three per-version tables must pass `ofType()` — rather than by sampling names.
+  - **The `Unknown` bucket itself**, still reachable by passing the literal string `'Unknown'`.
+  
+  Surrounding whitespace is trimmed once, and the trimmed name feeds both the enum lookup and the acceptance check. `IfcTypeEnumFromString` only uppercases, so before this a padded `ofType(' IfcWall ')` missed the enum table and resolved to `Unknown` while the check — which did trim — found `IfcWall` known and let it through: the query then ran against the `Unknown` bucket and returned entities that are not walls, with no error. For a name with no surrounding whitespace the trim is the identity, so nothing that resolved correctly before resolves differently now.
+  
+  What breaks: a call passing a name that is not an IFC entity name in any of those schemas — a typo, or a genuine vendor-specific type name — previously returned an `EntityQuery` over the `Unknown` bucket and now throws. Callers relying on a vendor-specific name to reach unclassified entities must pass `'Unknown'` instead. Hence the major bump: this is a behaviour change on a published SDK export, not a bug fix that is invisible to correct callers.
+  
+  The error text says which schemas were searched rather than assuming a misspelling, because a rejected name may well be spelled correctly:
+  
+  > `ofType(): "IfcWal" is not an entity name in any IFC schema this build reads (IFC2X3, IFC4, IFC4X3). Check the spelling; for a vendor-specific type name, pass 'Unknown' to query entities whose type could not be classified.`
+
+### Minor Changes
+
+- [#3034](https://github.com/LTplus-AG/ifc-lite/pull/3034) [`75867a7`](https://github.com/LTplus-AG/ifc-lite/commit/75867a7e6ebf51b2da47cab14242bcd71787ba3b) Thanks [@louistrue](https://github.com/louistrue)! - Stop dropping entities from an unfiltered query, and stop reporting their class as `Unknown`, when the curated `IfcTypeEnum` does not carry it.
+  
+  **`isProductType` now keys on the inheritance chain.** It gated on `IfcTypeEnumFromString(type) !== Unknown`, and `TYPE_STRING_TO_ENUM` is a curated 138-entry subset — the same table PR [#3009](https://github.com/LTplus-AG/ifc-lite/issues/3009) found rejecting standard buildingSMART classes. An unfiltered `bim.query()` walks `store.entityIndex.byType` and keeps only entries this predicate accepts, so every class outside those 138 was absent from the result with nothing to say so. On a 176k-entity MEP model that was every `IfcAirTerminal` (139), every `IfcDuctFitting` (383) and every `IfcDistributionPort` (2,053): 2,575 real elements, reported as not present rather than as unclassified.
+  
+  The gate is now `isQueryableObjectType` in `@ifc-lite/parser`: `getInheritanceChain(type).includes('IfcObjectDefinition')`, minus `IfcTypeObject` descendants. It lives in the parser rather than in each backend because `isProductType` was a verbatim copy in `packages/cli` and `packages/mcp` and only the CLI copy had tests — a predicate that had just diverged once should not be left in two places to diverge again. Both backends now alias the single implementation and keep publishing it under the old name. That is the exact line the four prefix tests were approximating: `IfcObjectDefinition` covers products, type objects, groups, systems and `IfcContext`, and excludes the other two `IfcRoot` branches, `IfcPropertyDefinition` and `IfcRelationship`. The chain resolves across the bundled schema union, so it answers for classes the pin omits. `IFC_ENTITY_NAMES` alone would not work here: it carries all ~880 classes, so keying on "is a known IFC name" floods the same query with that model's 42,024 `IfcCartesianPoint`.
+  
+  The MCP `dataQuality` audit counts the same set, so its score moves for an unchanged file: ports, groups, systems and annotations now enter the naming denominator that the 138-entry table kept out, and most of them are unnamed.
+  
+  **Behaviour change worth planning for:** on that model an unfiltered `bim.query()` returns 3,090 entities where it returned 515. The growth is real elements that were missing, and it is dominated by ports on MEP models. Callers that want the narrower set should filter with `byType`.
+  
+  **`EntityNode.type` no longer answers `Unknown` for an entity the product table does not index.** `store.entities` indexes products, so `getTypeName` has no row for `IfcPropertySet`, `IfcElementQuantity`, `IfcRelDefinesByProperties` or `IfcRelAssociatesMaterial` and answered `'Unknown'` for all four, while `entityIndex.byId` carried the class the whole time as the raw uppercase STEP token. `type` is what callers key passes on, so iterating a model's classes by it skipped 8,928 entities on that same model. It now falls back to the index and canonicalises through `normalizeIfcTypeName`, which resolves against the bundled schema union. `IFC_ENTITY_NAMES` would have been the same curated-subset trap one file over: it is ~880 hand-maintained entries whose generator script no longer exists, so an `IfcMove` on an IFC2X3 model came back as the raw `IFCMOVE` token — a second wrong answer.
+  
+  `QueryResultEntity.type`, which is what `EntityQuery.execute()` returns, carried the identical getter and is fixed with it. Both now call one `resolveEntityTypeName`; fixing only `EntityNode` would have left the two disagreeing on the same entity.
+  
+  Verified against the real columnar parser, not only against the query package's mock store. With both changes reverted, 3 of the 5 new CLI tests fail and 1 of the 4 new query tests fails; the two CLI tests that still pass are the ones asserting what stays excluded.
+
+### Patch Changes
+
+- Updated dependencies [[`93b450c`](https://github.com/LTplus-AG/ifc-lite/commit/93b450c1cc0c3cee811625989edb82cf522c70c4), [`9359bc4`](https://github.com/LTplus-AG/ifc-lite/commit/9359bc488173585b2b90e124cc66dcf8292c4be9), [`8571d70`](https://github.com/LTplus-AG/ifc-lite/commit/8571d70270d072170fc4e204e8b0d11a424d2330), [`f6febcc`](https://github.com/LTplus-AG/ifc-lite/commit/f6febcc2d4986e79b3c44d63853bb72a16475c65), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`063a140`](https://github.com/LTplus-AG/ifc-lite/commit/063a1408e4c54ebc874618f8d68fe298ed3f3a6f), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`f7e26e4`](https://github.com/LTplus-AG/ifc-lite/commit/f7e26e4200e1475728d4976142b49cb408400a8e), [`f76c805`](https://github.com/LTplus-AG/ifc-lite/commit/f76c80511dce5ffc1756365b786042c4bc64808d), [`75867a7`](https://github.com/LTplus-AG/ifc-lite/commit/75867a7e6ebf51b2da47cab14242bcd71787ba3b), [`f449776`](https://github.com/LTplus-AG/ifc-lite/commit/f4497765cb4e17828ff6ca6b52fb8a96caa2f81f), [`932f043`](https://github.com/LTplus-AG/ifc-lite/commit/932f0439fc1625419aae3cf2d9f81a614fb2273c), [`754837b`](https://github.com/LTplus-AG/ifc-lite/commit/754837b066172dad8afcdf1a0104f1a021b5f6e5), [`2273a73`](https://github.com/LTplus-AG/ifc-lite/commit/2273a73127d03ec36d667544da6237479737881a), [`fdd6121`](https://github.com/LTplus-AG/ifc-lite/commit/fdd61211e41d3e563a7604ac5e0630a9daae2de1), [`00f6e79`](https://github.com/LTplus-AG/ifc-lite/commit/00f6e79c22641ff59bfb3327d910b04f9a164d8b), [`116a3e9`](https://github.com/LTplus-AG/ifc-lite/commit/116a3e94de753b95fa94b2d6c41a0171cd254729), [`147693a`](https://github.com/LTplus-AG/ifc-lite/commit/147693a7a8fd0778ddb71839199b75bf1d622327), [`043e06a`](https://github.com/LTplus-AG/ifc-lite/commit/043e06a05c6625fef91bb17d84e3a3447f1379e3)]:
+  - @ifc-lite/parser@4.3.0
+  - @ifc-lite/data@3.4.1
+  - @ifc-lite/geometry@4.0.0
+  - @ifc-lite/spatial@1.14.15
+
 ## 1.14.17
 
 ### Patch Changes

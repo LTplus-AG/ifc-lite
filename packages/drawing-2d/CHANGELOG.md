@@ -1,5 +1,193 @@
 # @ifc-lite/drawing-2d
 
+## 3.0.0
+
+### Major Changes
+
+- [#3055](https://github.com/LTplus-AG/ifc-lite/pull/3055) [`65d19dd`](https://github.com/LTplus-AG/ifc-lite/commit/65d19ddd305b00dd6cdd8a815e3e9749dee5949b) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Removed the standalone `renderScaleBar` / `renderNorthArrow` sheet renderers
+  and shrank `ScaleBarConfig` / `NorthArrowConfig` to the fields that are
+  actually read.
+  
+  `sheet/scale-bar-renderer.ts` exported a second, richer pair of scale-bar and
+  north-arrow renderers that no code in this repository called — only the barrel
+  re-exports and two documentation snippets referred to them. Sheets are drawn by
+  the private pair inside `title-block-renderer.ts` (`renderScaleBarInTitleBlock`,
+  `renderNorthArrowInTitleBlock`), reached through `renderTitleBlock`'s `extras`
+  argument, and mirrored on screen by the viewer's `Drawing2DCanvas`. Those two
+  live renderers draw one alternating-segment metric bar with `0`/end labels and
+  a fixed-position north glyph; they ignore most of the configuration the deleted
+  file honoured.
+  
+  Verified by running: a sample sheet export — 1458 sheets covering three paper
+  sizes, three frame styles, three title-block layouts and all three title-block
+  positions, each rendered with `renderFrame` + `renderTitleBlock(..., extras)`
+  exactly as the viewer's SVG sheet export composes it, and with the removed
+  config fields deliberately varied — is byte-identical before and after this
+  change (13,656,906 bytes, sha256
+  `a2a2ce27b6d17474b6a8f4d7e16184c52a16385698dd5cf343151903743034c5`). Every one
+  of those sheets contains a `title-block-scale-bar` and a
+  `title-block-north-arrow` group, so the sample does exercise the live path.
+  
+  Removed exports:
+  
+  - `renderScaleBar`, `renderNorthArrow` — the dead renderers.
+  - `PositionMm` — a parameter type used only by those two functions.
+  - `ScaleBarStyle`, `ScaleBarPosition`, `ScaleBarUnits` — enum aliases whose only
+    purpose was typing `ScaleBarConfig` fields that are also removed here. Judged
+    part of the same cut rather than left as orphans; they had no other referent.
+  - `ScaleBarConfig.style`, `.position`, `.customOffset`, `.units`,
+    `.subdivisions`, `.labelFontSize`, `.showUnitLabel` — the live renderer draws
+    alternating metric segments at a fixed title-block position with a hard-coded
+    1.8mm label size and no unit label, so none of these were consulted.
+  - `NorthArrowConfig.positionMm` — the arrow is placed at a fixed offset in the
+    title block.
+  
+  `NorthArrowStyle` and `NorthArrowConfig.style` are kept: the live path reads
+  `style` to decide whether to draw the arrow at all (`'none'` suppresses it), and
+  the viewer's north-arrow toggle writes it.
+  
+  Major rather than patch because published exports and interface fields are
+  removed: a consumer that imported `renderScaleBar` or set one of the dropped
+  config fields now gets a compile error. Consumers spreading `DEFAULT_SCALE_BAR`
+  or `DEFAULT_NORTH_ARROW` are unaffected.
+  
+  No test coverage is lost — neither renderer had any test. Note that this leaves
+  the surviving title-block scale bar and north arrow untested, as they already
+  were.
+
+- [#3072](https://github.com/LTplus-AG/ifc-lite/pull/3072) [`945c4d7`](https://github.com/LTplus-AG/ifc-lite/commit/945c4d7a773614dd664feb9490e13372782a543b) Thanks [@louistrue](https://github.com/louistrue)! - Fix `getRecommendedScale`, which returned a wrong scale on every call.
+  
+  Two independent defects, producing opposite wrong answers:
+  
+  - The bounds are metres and the paper is millimetres, and nothing converted
+    between them. Every model smaller than 378 m fitted at 1:1.
+  - The SDK wrapper passed one argument to a function taking two, so the height
+    arrived `undefined`. Every `<=` against NaN is false, so the loop fell
+    through the whole table and returned the coarsest entry: 1:1000 for every
+    drawing, whatever its size.
+  
+  `bim.drawing.getRecommendedScale` now accepts the height and an optional paper
+  size, all optional, so existing single-argument calls keep working. Passing
+  only a width squares the extent and costs one to two steps of coarseness on an
+  elongated plan, so pass the height when you have it. Paper size was previously
+  unreachable through the SDK, which meant A1 and A4 could not be asked for.
+  
+  A non-finite or non-positive input now throws instead of silently returning
+  the coarsest scale. That narrows the accepted input domain of a published
+  API, which is why this is major: a caller passing 0 from a degenerate
+  bounding box used to get 1:1000 back and now gets an exception, and the SDK
+  wrapper forwards the throw with no catch. Adding the optional height and
+  paper-size arguments is additive on its own, but the narrowed domain is the
+  biggest change here and sets the level.
+  
+  Not changed, and worth knowing: the scale table stops at 1:1000, so a model
+  larger than roughly 378 x 267 m still gets 1:1000 even though it does not fit.
+
+### Minor Changes
+
+- [#2960](https://github.com/LTplus-AG/ifc-lite/pull/2960) [`be74930`](https://github.com/LTplus-AG/ifc-lite/commit/be74930b383a189ac61c5f8ef5bc8b5f4579dda3) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix a 2D-Section drawing sheet's print/export showing the drawing at a different, wrongly-centered position than the on-screen preview.
+  
+  `calculateDrawingTransform` always derives `translateY` assuming the caller flips Y when mapping model coordinates onto the paper (matching cardinal axes other than plan/'down'). The sheet preview (`Drawing2DCanvas.tsx` in `@ifc-lite/viewer`) already corrected `translateY` for plan sections, which don't flip Y, but the print/export path (`generateSheetSVG` in the same app) reused the raw, always-flipped transform — for a plan section whose bounds weren't symmetric about Y=0, the printed sheet centered the drawing at a different point than the preview, or pushed it outside the viewport's clip entirely.
+  
+  Added `calculateDrawingTransformForAxis(drawingBounds, viewportBounds, scale, flipY)`, which wraps `calculateDrawingTransform` and applies the flip correction for a caller-supplied `flipY`. Both the preview and the print/export path now call this one function, so neither derives the correction on its own.
+
+### Patch Changes
+
+- [#2975](https://github.com/LTplus-AG/ifc-lite/pull/2975) [`8571d70`](https://github.com/LTplus-AG/ifc-lite/commit/8571d70270d072170fc4e204e8b0d11a424d2330) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Seven public option fields that nothing reads are now marked `@deprecated`,
+  with JSDoc that says what actually happens instead of what the old comment
+  promised. No behaviour changes and no export is removed or renamed — the
+  values were already ignored at runtime; only the type-level documentation
+  changes, so editors now warn at the point a caller sets one.
+  
+  - `SVGExportOptions.units` (`drawing-2d`) — `export()` never destructures it;
+    the exporter emits no dimension annotations and always sizes the sheet in
+    millimetres.
+  - `OpeningFilterOptions.keepBoundarySegments` (`drawing-2d`) — merged into the
+    filter's options object but never consulted; `tolerance` is the only field
+    that governs how segments near an opening edge are treated.
+  - `DoorSymbolConfig.showThreshold` (`drawing-2d`) — no threshold-rendering code
+    exists, so `true` and `false` produce identical geometry.
+  - `SnapOptions.snapRadius` (`renderer`) — documented as a world-units snap
+    distance, but every proximity check reads `screenSnapRadius` (pixels).
+    Snapping is screen-space and zoom-dependent; set `screenSnapRadius` instead.
+  - `SectionPlaneRenderOptions.flipped` (`renderer`) — the gizmo renderer never
+    reads it. The GPU clip plane flips correctly through separate state, so
+    cutting behaviour is unaffected; only the gizmo option is inert.
+  - `RenderOptions.enableDepthTest` (`renderer`) — dead on both ends: nothing
+    sets it and nothing reads it. Depth comparison is fixed per pipeline at
+    construction time and is not configurable through `RenderOptions`.
+  - `StreamingOptions.onMetadataBootstrap` (`geometry`) — an unfinished stub. Its
+    siblings `onBatch`, `onColorUpdate`, `onComplete` and `onError` are all
+    dispatched by the bridge; this one never is, so a callback passed here is
+    never called.
+  
+  Deprecating rather than deleting is deliberate: removing an optional field an
+  embedder already passes converts a silent no-op into a TypeScript compile
+  error, which is a worse first contact with the problem than a deprecation
+  warning that explains it. Removal is left as a separate, explicitly versioned
+  decision. See issue [#2731](https://github.com/LTplus-AG/ifc-lite/issues/2731) for the full audit; the findings that carry a
+  behaviour decision (the streaming batch ramp-up, `GeometryQuality`, and the
+  scale-bar / north-arrow renderer divergence) are deliberately untouched here.
+
+- [#2984](https://github.com/LTplus-AG/ifc-lite/pull/2984) [`b1d7a4d`](https://github.com/LTplus-AG/ifc-lite/commit/b1d7a4d832557e6961aef82102f423b07742c385) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix DXF import treating $INSUNITS codes 17-24 (gigametres, astronomical units, light years, parsecs, and US Survey feet/inch/yard/mile) as unknown and falling back to metres.
+  
+  The most consequential of these is 21 (US Survey Feet): a civil/survey DXF authored in that unit previously came in at roughly 3.28x its true size — a large, visible error — even though the fallback correctly warned about the unknown code. US Survey Feet is now converted using its exact legal definition, 1200/3937 m (≈0.3048006096012192 m), not the international foot (0.3048 m exactly); the ~2 parts-per-million difference between the two is the entire reason US Survey Feet is a distinct $INSUNITS code, so Survey inch/yard/mile are derived from the survey foot rather than from international units.
+
+- [#3056](https://github.com/LTplus-AG/ifc-lite/pull/3056) [`6095fe0`](https://github.com/LTplus-AG/ifc-lite/commit/6095fe0c19072e9a97edefb2be95dde66f514f6b) Thanks [@louistrue](https://github.com/louistrue)! - The title block's scale bar was labelled wrong on every export, at every scale.
+  
+  `effectiveScaleFactor` is millimetres per metre and `scale.factor` is the N of 1:N. They are reciprocal, the renderer divided by whichever it was handed, and `useDrawingExport` hands it the former on every export. A 5 m bar read 0.5 m at 1:100, and 0.1 m at 1:500 where 25 m is right.
+  
+  A bar too big for its title block now shrinks to a round distance it can honestly span, rather than being clamped to the cell and having its label rounded afterwards — a 120mm preset capped a 5m bar at 3.6m and printed "4m".
+  
+  One behaviour worth knowing about: on a sheet whose drawing is shrunk to fit by roughly 1000x or more (a ~500 m model at 1:1), no round distance both fits the title-block cell and draws segments wide enough to survive rounding, so the scale bar is omitted. Previously that case drew a cell-filling bar labelled with a nonsense distance, so omitting it is the better outcome — but it is a bar disappearing where one used to be.
+  
+  Also: a degenerate division count no longer overflows the bar or emits an 11MB group; a NaN or negative `heightMm` no longer reaches the emitted `height=` attribute; and a non-positive, NaN or infinite length or scale draws nothing instead of `<rect width="-10.00">`.
+
+- [#2960](https://github.com/LTplus-AG/ifc-lite/pull/2960) [`be74930`](https://github.com/LTplus-AG/ifc-lite/commit/be74930b383a189ac61c5f8ef5bc8b5f4579dda3) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix a 'side' section's drawing sheet — preview, print and export alike — landing off-center on the sheet along X.
+  
+  `calculateDrawingTransformForAxis` (added to fix the analogous Y-axis issue) only corrected `translateY` for the caller's Y-flip; `translateX` was passed through unmodified regardless of the caller's X-flip. 'side' sections flip X (`adjustedX = -x`, to view from the conventional direction) but `calculateDrawingTransform`'s `translateX` bakes in the assumption of no X-flip, so a 'side' section whose bounds weren't symmetric about X=0 was centered at a point shifted by `(minX + maxX) * scaleFactor` — up to the full width of the viewport for a section far from X=0.
+  
+  `calculateDrawingTransformForAxis` now takes an optional `flipX` parameter (default `false`, preserving prior behavior for callers that don't pass it) and applies the mirror-image correction to `translateX` when it is true. Both the preview (`Drawing2DCanvas.tsx`) and the print/export path (`useDrawingExport.ts`'s `generateSheetSVG`) reach it through one shared resolver that derives the flips from the section axis, so a 'side' section centers correctly and neither path derives the flips separately.
+
+- [#3091](https://github.com/LTplus-AG/ifc-lite/pull/3091) [`af48854`](https://github.com/LTplus-AG/ifc-lite/commit/af488542a19a8559065cfd450d0eaad5ba2f7489) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Check the glTF, COLLADA and DXF exporters against the formats, not against our
+  own readers.
+  
+  Test-only; no exporter behaviour changed. Three export formats had no external
+  validator and no third-party fixture anywhere in the repo: the only reader of a
+  GLB we write was our own `parseGLB`, the only reader of a DXF we write was our
+  own `parser.ts`, and COLLADA had no reader at all — every assertion was a
+  substring of the output. A writer and a reader that agree with each other prove
+  they share a convention, not that the convention is the format.
+  
+  - **glTF** — `scripts/test-wasm-contract.mjs` now runs the Khronos
+    glTF-Validator (`gltf-validator`, the reference implementation, pinned exact)
+    over the GLBs the real wasm exporter produces on both entry points, failing on
+    errors *and* warnings, plus a guard that the validator saw actual geometry so
+    a silently-empty export cannot pass vacuously. It reports 0 errors and 0
+    warnings on today's output. `rust/export/src/gltf_conformance_tests.rs` adds
+    the spec rules that lane cannot reach (`quantize`, the bounded/streaming
+    assembler and the multi-buffer path have no wasm binding): accessor TOTAL
+    byteOffset alignment, declared `min`/`max` recomputed from the bytes actually
+    written, index values against the primitive's own vertex count,
+    `mode`/`componentType` legality, and the GLB chunk framing and padding bytes.
+  - **COLLADA** — `rust/export/src/collada_conformance_tests.rs` checks the
+    document's internal agreement: `count=` attributes against the data they
+    introduce, every `#reference` resolving to a declared `id`, `<p>` indices
+    inside the accessor they index, and `<input offset>` against the `<p>` stride.
+    An out-of-range `<p>` index leaves all eleven pre-existing COLLADA tests green.
+  - **DXF** — `packages/drawing-2d/src/dxf/writer-interop.test.ts` reads the
+    writer's output back with `dxf-parser` (npm, MIT), an unrelated third-party
+    reader, and separately pins the raw group codes against the R12 rules a
+    lenient reader never needs: POLYLINE's `66` vertices-follow flag, the TEXT
+    alignment point `11/21/31` that must accompany a non-zero `72`/`73`, section
+    balance, and the absence of any post-R12 group code. Dropping the alignment
+    point leaves all 74 other DXF tests green.
+  
+  Every check was mutation-proved: the writer was broken, the check was confirmed
+  to fail, and the writer was restored.
+- Updated dependencies [[`8571d70`](https://github.com/LTplus-AG/ifc-lite/commit/8571d70270d072170fc4e204e8b0d11a424d2330), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`063a140`](https://github.com/LTplus-AG/ifc-lite/commit/063a1408e4c54ebc874618f8d68fe298ed3f3a6f), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`f76c805`](https://github.com/LTplus-AG/ifc-lite/commit/f76c80511dce5ffc1756365b786042c4bc64808d), [`932f043`](https://github.com/LTplus-AG/ifc-lite/commit/932f0439fc1625419aae3cf2d9f81a614fb2273c), [`754837b`](https://github.com/LTplus-AG/ifc-lite/commit/754837b066172dad8afcdf1a0104f1a021b5f6e5), [`2273a73`](https://github.com/LTplus-AG/ifc-lite/commit/2273a73127d03ec36d667544da6237479737881a), [`fdd6121`](https://github.com/LTplus-AG/ifc-lite/commit/fdd61211e41d3e563a7604ac5e0630a9daae2de1)]:
+  - @ifc-lite/geometry@4.0.0
+
 ## 2.1.1
 
 ### Patch Changes

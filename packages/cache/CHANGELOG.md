@@ -1,5 +1,20 @@
 # @ifc-lite/cache
 
+## 3.0.6
+
+### Patch Changes
+
+- [#3120](https://github.com/LTplus-AG/ifc-lite/pull/3120) [`3bef19b`](https://github.com/LTplus-AG/ifc-lite/commit/3bef19b13d303029b87e862660e3730c06852687) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Derive `EntityTable.typeRanges` from the type column when hydrating a cache, instead of trusting the serialized triples.
+  
+  `typeRanges` changed meaning from `start + count` to a `[firstRow, lastRow + 1]` span. `FORMAT_VERSION` was not bumped, and correctly so — `readHeader` throws only on `version > FORMAT_VERSION`, so caches at the current version are accepted by design and a bump would change nothing for them. The consequence is that the stored triples carry either meaning with nothing to tell them apart, and `readEntities` passed them straight to the public `EntityTable.typeRanges`. For a type whose rows are interleaved with another's — the ordinary case in IFC — the old form named a range that stopped short of the type's own later rows; the two forms coincide only when a type happens to be contiguous, which is what kept the divergence out of sight.
+  
+  `readEntities` already built per-type index arrays for `getByType()`, which is why that path was never affected. The spans are now derived from those same arrays, so one structure feeds both. The serialized field is still written, and still read to keep the byte layout unchanged, but its value no longer reaches the table.
+  
+  This closes the window for caches already on disk rather than fixing a regression: the mixed meaning existed before the semantics changed and is not damage that change caused.
+- Updated dependencies [[`9359bc4`](https://github.com/LTplus-AG/ifc-lite/commit/9359bc488173585b2b90e124cc66dcf8292c4be9), [`8571d70`](https://github.com/LTplus-AG/ifc-lite/commit/8571d70270d072170fc4e204e8b0d11a424d2330), [`f6febcc`](https://github.com/LTplus-AG/ifc-lite/commit/f6febcc2d4986e79b3c44d63853bb72a16475c65), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`063a140`](https://github.com/LTplus-AG/ifc-lite/commit/063a1408e4c54ebc874618f8d68fe298ed3f3a6f), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`f76c805`](https://github.com/LTplus-AG/ifc-lite/commit/f76c80511dce5ffc1756365b786042c4bc64808d), [`932f043`](https://github.com/LTplus-AG/ifc-lite/commit/932f0439fc1625419aae3cf2d9f81a614fb2273c), [`754837b`](https://github.com/LTplus-AG/ifc-lite/commit/754837b066172dad8afcdf1a0104f1a021b5f6e5), [`2273a73`](https://github.com/LTplus-AG/ifc-lite/commit/2273a73127d03ec36d667544da6237479737881a), [`fdd6121`](https://github.com/LTplus-AG/ifc-lite/commit/fdd61211e41d3e563a7604ac5e0630a9daae2de1), [`00f6e79`](https://github.com/LTplus-AG/ifc-lite/commit/00f6e79c22641ff59bfb3327d910b04f9a164d8b), [`116a3e9`](https://github.com/LTplus-AG/ifc-lite/commit/116a3e94de753b95fa94b2d6c41a0171cd254729)]:
+  - @ifc-lite/data@3.4.1
+  - @ifc-lite/geometry@4.0.0
+
 ## 3.0.5
 
 ### Patch Changes

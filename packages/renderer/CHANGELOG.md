@@ -1,5 +1,221 @@
 # @ifc-lite/renderer
 
+## 1.50.0
+
+### Minor Changes
+
+- [#2978](https://github.com/LTplus-AG/ifc-lite/pull/2978) [`f64ecdc`](https://github.com/LTplus-AG/ifc-lite/commit/f64ecdc2129074d2d3def676d6ddd69dffdd785e) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Three embed API commands that reported success while doing nothing now work
+  ([#2934](https://github.com/LTplus-AG/ifc-lite/issues/2934)). Each was broken at a different link in the chain.
+  
+  `SET_CAMERA` had no actuator. The handler called the store's
+  `setCameraRotation`, which was `set({ cameraRotation })` and nothing more —
+  every orientation entry point on the camera was either relative (`orbit`, the
+  90° rotate steppers) or named a direction (`setPresetView`), so an absolute
+  azimuth/elevation pair had nothing to reach. The host got a `requestId` ack
+  *and* a `CAMERA_CHANGED` echo of its own numbers back, while the view never
+  moved. `Camera.setRotation(azimuth, elevation)` is new on `@ifc-lite/renderer`
+  — the exact inverse of `Camera.getRotation`, absolute and idempotent, keeping
+  the target and orbit distance, with the same pole clamp `orbit` uses — and the
+  store action now drives it the way `setProjectionMode` drives its own callback.
+  
+  `RESET_COLORS` cleared the wrong channel, in both directions at once.
+  `SET_COLORS` bakes into the mesh colors, while `clearPendingColorUpdates`
+  empties the transient overlay channel the lens, IDS, clash and schedule
+  overlays own: the host's own override survived the reset, and another
+  subsystem's state was destroyed by it. `SET_COLORS` now marks its writes as an
+  override, which captures the colors it displaces, and `RESET_COLORS` restores
+  those and leaves the overlay channel alone. The loader's own IFC style pass is
+  deliberately not treated as an override, so a reset restores the model's IFC
+  colors rather than stripping them.
+  
+  For integrators, that second half is a behaviour change on a published surface
+  and not only a fix: `RESET_COLORS` no longer clears `pendingColorUpdates`. A
+  host that had been sending it to clear a lens, IDS, clash or schedule overlay
+  was relying on a side effect that is now gone, and must clear that overlay
+  through the command that owns it. `RESET_COLORS` only undoes `SET_COLORS`.
+  
+  Also worth knowing before you rely on it: `RESET_COLORS` restores the entities
+  the viewer holds in its primary `geometryResult`, which is the FIRST loaded
+  model. In a federated embed with more than one model, `SET_COLORS` still
+  colours entities in the later models and `RESET_COLORS` does not restore them,
+  while both commands ack success. Single-model embeds — the common case — are
+  unaffected.
+  
+  `ENTITY_HOVERED` was declared, exposed by the SDK, and never emitted — the SDK
+  tests passed because they fabricated the event themselves. The viewer's hover
+  pipeline was already there but gated behind a toolbar toggle the embed has no
+  chrome to offer; the embed now enables it and emits on each hover-target
+  change.
+  
+  `SET_CAMERA`'s `zoom` field remains unapplied and is now documented as
+  reserved rather than silently dropped: it has no defined meaning on the viewer
+  side, and guessing one is worse than saying so.
+  
+  **RESET_COLORS restored the previous model's colours onto the current one.** `meshColorBackup` holds each element's ORIGINAL colour so the reset can put it back, and it was cleared in exactly one place, `resetMeshColors` itself, and in no teardown path. Its keys are global express ids and those are reused across a model swap, so a backup that outlived its model did not go inert: it named live elements of the next one, and `resetMeshColors` queued the departed model's colours into `pendingMeshColorUpdates` for the renderer to upload.
+  
+  Reproduced against the real store before fixing: load A with entity 12 red, override it, `resetViewerState()`, load B with entity 12 blue, reset. Entity 12 came back A's red.
+  
+  The map is also first-write-wins, so one leaked entry was permanent. A later override on the new model declined to record that element's real colour, because the id was already present, and every reset from then on restored the wrong one. It corrupted the feature for the rest of the session rather than for one reset.
+  
+  Cleared now in `resetViewerState`, `removeModel` and `clearAllModels`, and the three are not the same clear.
+  
+  `resetViewerState` and `clearAllModels` drop the map whole, because both restart the id space: `clearAllModels` calls `federationRegistry.clear()`, offsets go back to 0, and the next model genuinely is handed the ids the last one used.
+  
+  `removeModel` purges only the removed model's entries, via `resolveGlobalIdInModel`, the owner-scoped resolver this slice already provides for exactly this question. Dropping the map whole there would take the SURVIVING models' undo with it, and it is not needed for them: `unregisterModel` BURNS the removed range rather than reclaiming it, so no later model can be handed those ids. An earlier draft of this fix did drop it whole, and the effect was worse than the bug in one respect: with a live override on a model that was not the one removed, `resetMeshColors` then had nothing to restore from, leaving the store and the GPU out of step with no action left to reconcile them.
+  
+  **Module-size budgets, recorded deliberately and with the reason.** The gate that landed in [#3045](https://github.com/LTplus-AG/ifc-lite/issues/3045) requires either a split or a written justification for a raise, so here is the justification.
+  
+  Seven files are raised and one row is added. Two of the raises are this fix's own lines, four in `store/index.ts` and thirteen in `store/slices/modelSlice.ts`; the other five and the new row are this PR's feature growth (`camera.ts` +71, `dataSlice.ts` +81, `EmbedViewer.tsx` +39, `types.ts` +12, `Viewport.tsx` +9, `handler.ts` +7).
+  
+  Splitting was considered and rejected for `dataSlice.ts`, which is the one that matters: it crosses 400 for the first time, at 471. It is a Zustand `StateCreator` returning a single object literal, so dividing it is a restructure of the slice's shape rather than a file move, and doing that inside a bug-fix PR trades a contained change for a broad one. **That is debt, not a resolution**, and it should be split on its own.
+  
+  One hazard worth naming for whoever resolves the next conflict here: `--update` re-records EVERY row that changed, not only the ones a PR touches. It silently pulled two rows for `packages/cli` and `packages/mcp` into this diff, packages this change never opens. Both are restored and the pin recomputed by hand, so the allowlist diff names only files this PR actually grows.
+  
+  Worth stating for whoever tunes this gate next: **312 of its 314 rows sit at exactly their measured size on main.** A one-line fix to any of them trips it. This PR's two-line teardown fix did, and every future fix to an allowlisted file will arrive needing a split or a raise.
+  
+  
+  **One thing left standing, deliberately.** `pendingMeshRemovals`, `pendingMeshTranslations` and `pendingMeshRotations` are id-keyed exactly like `meshColorBackup` and are cleared in no teardown path either. `pendingMeshRemovals` is worse than the others, because it ACCUMULATES (`new Set(state.pendingMeshRemovals ?? [])`) rather than being overwritten, so a survivor merges into the next model's removals. `clearAllModels` also clears the backup but not `pendingMeshColorUpdates`, on the one path where offsets really do restart. All of that is pre-existing and none of it is what this PR broke, so it is named here rather than folded in.
+  
+  **A fourth path leaked the backup, and it is the one an embed host hits.** The three teardown clears above do not cover `setGeometryResult` REPLACING geometry, and `useIfcFederation` calls exactly that on an ACTIVE-MODEL SWITCH: no reset, no removal. So switching models left the backup pointing at the model you came from. Reproduced, then fixed by clearing when the geometry's identity changes; a redundant set of the same object keeps a live undo, which is the mistake the `removeModel` clear made in its first draft.
+  
+  That one was found by review on 2026-08-22, before this round started, and it is worth saying plainly that the three clears alone would have shipped looking complete.
+  
+  **`SET_CAMERA` acked before the renderer existed.** `setCameraRotation` calls the actuator optionally and then records the pose, and `setCameraCallbacks` only stored the callbacks. An embed host sending SET_CAMERA before `Viewport`'s effect registers gets a success ack and a camera that never moves: success reported for something that did not happen. A rotation accepted with no actuator is now held and replayed on registration, and an already-applied one is not replayed, so registering a second renderer cannot re-fire it.
+  
+  **`Camera.setRotation` propagated a non-finite TARGET.** The existing guard rejects non-finite ANGLES, and `isUsableDistance` rescues the radius, but every position component is `target.<axis> + ...` and `setTarget` accepts non-finite coordinates. One NaN there made the whole pose NaN, in a method whose contract is that it RECOVERS a pose. It now refuses, the same way it refuses non-finite angles.
+  
+  **Two review findings are deferred rather than fixed, with reasons.** `dataSlice.test.ts` carries 19 `as any` casts on its mesh fixtures; typing the fixture properly is the right fix and is test-hygiene work on this PR's own suite rather than anything the fixes above touch. And the `ENTITY_HOVERED` tests cover only model-free ids, so the single-model and N-model federation cases are genuinely uncovered. Both are real; neither is a correctness defect, and folding either in would grow a change that has already grown three times.
+
+- [#2959](https://github.com/LTplus-AG/ifc-lite/pull/2959) [`6e51909`](https://github.com/LTplus-AG/ifc-lite/commit/6e519094bb69dff4c550c383bbc89b889a5fcafa) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Add opt-in frame/pass GPU timing instrumentation, so a perf-sensitive rendering feature (e.g. the sun-shadow work gated on an end-to-end perf verdict) can actually be measured instead of eyeballed.
+  
+  The renderer had no frame-time or pass-time instrumentation at all — the existing `tests/benchmark/*` suite measures load and streaming KPIs, not per-frame GPU cost. `GpuFrameTimingRecorder` wraps WebGPU timestamp queries (`GPUQuerySet` of type `'timestamp'`, `timestampWrites` on a render pass, resolved into a buffer and read back) to time individual passes and whole frames. Timestamp queries require the `'timestamp-query'` adapter feature, which is not always available: `WebGPUDevice` now requests it opportunistically (only when the adapter already advertises it — never as a hard requirement) and exposes `hasTimestampQueryFeature()`, and `decideTimingMode()` degrades cleanly to a CPU-side frame-delta fallback (`createCpuFrameTicker`, explicitly labelled `'cpu-fallback'` so it is never confused with a GPU number) or to `'disabled'`, rather than throwing or reporting a silent zero.
+  
+  Statistics (`computeDurationStats`: min/median/p95/max/mean, with an explicit `count: 0` / all-`null` shape for an empty sample) and aggregation (`aggregateFrameTimings`, `passDurationsMs`, `frameTotalMs`) are pure functions with no GPU or clock dependency, so they are fully unit-testable; only query-set creation, pass attachment, and buffer readback touch the GPU, and that surface is kept as thin as possible.
+  
+  Nothing in the renderer constructs a recorder or requests the feature as required — this is entirely opt-in. A caller creates `GpuFrameTimingRecorder.create(device.getDevice())` (returns `null` when unsupported), attaches `recorder.beginPass(label)` to each render pass's `timestampWrites`, calls `recorder.endFrame(encoder)` before `queue.submit`, and awaits `recorder.readback()` for that frame's samples — see `frame-timing-gpu.ts`'s module doc for the full pattern. Sampling every frame is not recommended for a shipped build (query resolution and the readback have their own cost); sample intermittently.
+  
+  Producing an actual perf verdict for [#2670](https://github.com/LTplus-AG/ifc-lite/issues/2670) still needs a WebGPU-capable test harness with the `'timestamp-query'` feature (this repo's current Chromium test environment exposes no WebGPU adapter at all), a representative model, and a defined shadows-off-vs-on comparison at a stated shadow-map resolution — none of that is included here.
+  
+  `nsToMs` now clamps a negative `(endNs - startNs)` delta to `0` instead of returning a physically impossible negative duration — GPU timestamps are not guaranteed monotonic across a device reset, and one such sample used to be able to drag `min`/`mean` negative across an otherwise-healthy stat window. `aggregateFrameTimings`'s `FrameTimingReport` gains an `invalidSampleCount` field so a caller can see when that clamp fired instead of a clamped-0 reading as an ordinary fast frame; `isNegativeDelta` is exported alongside `nsToMs` for callers that want the same check. `frame-timing-gpu.ts`'s query-index allocation, buffer-size arithmetic, and readback timestamp/label pairing — the parts of that file decidable without a live device — are now extracted as pure, unit-tested functions (`queryBufferSizeBytes`, `allocatePassQueryIndices`, `pairTimestampsWithLabels`); only `GpuFrameTimingRecorder`'s actual WebGPU calls remain unverified in this environment.
+  
+  `pairTimestampsWithLabels` now guards against a `timestamps` buffer shorter than `labels.length * 2` — not reachable through `GpuFrameTimingRecorder.readback()` today (it sizes the readback slice from the same cursor `beginPass` pushed each label against), but the function is exported to be called standalone, and a short buffer used to produce a sample with an `undefined` `startNs`/`endNs` where the type says `bigint`: summing it in `frameTotalMs` either threw a `TypeError` mixing `BigInt` and `undefined`, or silently computed `NaN`, depending on exactly how short the buffer was. A label whose pair does not fully fit is now dropped instead, so the function holds the same "never throws, never fabricates" contract as its siblings for any input shape.
+  
+  `WebGPUDevice.init()` degrades its `requestDevice()` call in stages rather than surrendering everything at once. The request carries two asks that are not equally important: `requiredLimits` raises `maxBufferSize`/`maxStorageBufferBindingSize` to what the adapter advertises, without which a large model's vertex buffer exceeds the 256 MiB default and nothing renders at all, while `requiredFeatures` asks for the purely opt-in `'timestamp-query'` diagnostic. Sharing one `try`/`catch` between them meant a rejection caused by the newly-requested feature also silently gave up the buffer limits — an opt-in diagnostic costing a user their render. A rejection of the full request is now retried with the limits alone, and only a rejection of *that* reaches the bare `requestDevice()` last resort (still reachable, for the drivers that reject limits they nominally advertise); each degradation is logged rather than silent. The retry is skipped when no feature was requested, where it would be identical to the request that just failed. Covered by tests in both directions against a stubbed adapter: one that accepts everything must still receive both asks, and one that rejects the feature must still end up with the limits.
+  
+  `passDurationsMs` and `aggregateFrameTimings`'s `report.passes` accumulate into null-prototype maps. Pass labels are caller-chosen free text used directly as keys, so on a plain object literal a label of `__proto__` was silently dropped (the assignment hit the prototype setter and created no own property, losing the pass from the report) and a label of `constructor` read the inherited `Object` function as its running total, string-concatenating instead of summing.
+  
+  `computeDurationStats([])`'s empty-sample result is frozen. It is a module-level constant returned by reference to every caller, so one caller mutating the object it received would have rewritten what every later empty result reported — turning an honest "nothing was measured" into a fabricated number for the rest of the process.
+
+- [#2930](https://github.com/LTplus-AG/ifc-lite/pull/2930) [`1823d70`](https://github.com/LTplus-AG/ifc-lite/commit/1823d70a581429fb6a7df2272b31d426e0cf2149) Thanks [@Blogbotana](https://github.com/Blogbotana)! - Add sun-cast shadows to the standalone WebGPU viewer ([#2670](https://github.com/LTplus-AG/ifc-lite/issues/2670), Phase 2).
+  
+  The standalone path had no cast shadows — surfaces were lit as if nothing
+  occluded them, reading flat next to a tool like Blender. This adds classic sun
+  shadow mapping end to end:
+  
+  - a depth pre-pass (`ShadowPass`) renders every occluder from the sun into a
+    shadow map, fitted with an orthographic light-view-projection
+    (`fitSunLightMatrix`) whose lateral extent tracks the camera frustum clipped
+    to the model (`cameraFrustumFocusCorners`) while the depth range spans the
+    whole model, so a small building on a large site keeps sharp shadows instead
+    of spending the whole map on distant terrain;
+  - the shared main-family fragment shader samples it with a rotated 12-tap
+    Poisson-disk PCF kernel and a slope-scaled bias (normal-offset plus a
+    grazing-angle depth term, so a flat ground under a low sun does not ring with
+    acne), occluding only the direct sun term — ambient/fill/rim stay lit;
+  - the penumbra width follows the sun's angular size (physical, ~0.53° like
+    Blender's Sun lamp Angle), exposed as `sunShadows.sunAngleDeg`.
+  
+  All four geometry paths — flat, lattice-quantized, GPU-instanced and
+  surface-textured — both cast (`collectShadowOccluders`) and receive (the shared
+  shader / textured derivation), so no part of the model silently stops
+  shadowing; a test drives the real `ShadowPass.render` and asserts each path
+  issues a depth draw through its own pipeline. Transparent geometry (glass
+  windows, and the virtual IfcSpace / IfcOpeningElement volumes) is excluded from
+  casting by its material alpha, so daylight passes through windows and openings
+  instead of the glass throwing a solid shadow into the void the wall already
+  carries.
+  
+  The shadow map rides the existing environment bind group (group 1), so no
+  pipeline-layout churn. Additive and off by default: `RenderOptions.sunShadows`
+  (`{ enabled, resolution?, sunAngleDeg? }`) — absent/`enabled: false` skips the
+  pass entirely and the shader's `enabled` gate returns fully lit, so the hot
+  path pays only a boolean check. The viewer drives it from a Sun & Sky panel
+  section (cast-shadows toggle, sun-angle softness, resolution, and a manual
+  time-of-day sun for models without georeference).
+
+### Patch Changes
+
+- [#2975](https://github.com/LTplus-AG/ifc-lite/pull/2975) [`8571d70`](https://github.com/LTplus-AG/ifc-lite/commit/8571d70270d072170fc4e204e8b0d11a424d2330) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Seven public option fields that nothing reads are now marked `@deprecated`,
+  with JSDoc that says what actually happens instead of what the old comment
+  promised. No behaviour changes and no export is removed or renamed — the
+  values were already ignored at runtime; only the type-level documentation
+  changes, so editors now warn at the point a caller sets one.
+  
+  - `SVGExportOptions.units` (`drawing-2d`) — `export()` never destructures it;
+    the exporter emits no dimension annotations and always sizes the sheet in
+    millimetres.
+  - `OpeningFilterOptions.keepBoundarySegments` (`drawing-2d`) — merged into the
+    filter's options object but never consulted; `tolerance` is the only field
+    that governs how segments near an opening edge are treated.
+  - `DoorSymbolConfig.showThreshold` (`drawing-2d`) — no threshold-rendering code
+    exists, so `true` and `false` produce identical geometry.
+  - `SnapOptions.snapRadius` (`renderer`) — documented as a world-units snap
+    distance, but every proximity check reads `screenSnapRadius` (pixels).
+    Snapping is screen-space and zoom-dependent; set `screenSnapRadius` instead.
+  - `SectionPlaneRenderOptions.flipped` (`renderer`) — the gizmo renderer never
+    reads it. The GPU clip plane flips correctly through separate state, so
+    cutting behaviour is unaffected; only the gizmo option is inert.
+  - `RenderOptions.enableDepthTest` (`renderer`) — dead on both ends: nothing
+    sets it and nothing reads it. Depth comparison is fixed per pipeline at
+    construction time and is not configurable through `RenderOptions`.
+  - `StreamingOptions.onMetadataBootstrap` (`geometry`) — an unfinished stub. Its
+    siblings `onBatch`, `onColorUpdate`, `onComplete` and `onError` are all
+    dispatched by the bridge; this one never is, so a callback passed here is
+    never called.
+  
+  Deprecating rather than deleting is deliberate: removing an optional field an
+  embedder already passes converts a silent no-op into a TypeScript compile
+  error, which is a worse first contact with the problem than a deprecation
+  warning that explains it. Removal is left as a separate, explicitly versioned
+  decision. See issue [#2731](https://github.com/LTplus-AG/ifc-lite/issues/2731) for the full audit; the findings that carry a
+  behaviour decision (the streaming batch ramp-up, `GeometryQuality`, and the
+  scale-bar / north-arrow renderer divergence) are deliberately untouched here.
+
+- [#3042](https://github.com/LTplus-AG/ifc-lite/pull/3042) [`8b9bc5a`](https://github.com/LTplus-AG/ifc-lite/commit/8b9bc5a0b2d6541f6a0ec45c10e41b005059e06b) Thanks [@louistrue](https://github.com/louistrue)! - Fix `RangeError: Map maximum size exceeded` when building LOD for a very large batch ([#3028](https://github.com/LTplus-AG/ifc-lite/issues/3028)).
+  
+  `simplifyIndicesByClustering` memoized cluster representatives in a `Map` keyed per vertex. V8 caps a `Map` at 2^24 - 1 entries, so a batch referencing more than ~16.7 million distinct vertices threw, which rejected the whole geometry finalize and left the viewer showing streaming fragments.
+  
+  That is reachable from a legitimate file rather than needing a hostile one. Bucket size is bounded in bytes against the GPU's `maxBufferSize`, which is deliberately requested at the adapter maximum so multi-GB models render, and buckets group by spatial cell and colour rather than by model, so a dense federated load co-batches.
+  
+  The memo is now an `Int32Array` keyed by vertex index: the same lookup, 4 bytes per vertex flat instead of the Map's per-entry overhead, and no ceiling below the index space. The cell map, which is bounded by occupied cells rather than vertices, now bails through the function's existing "simplification does not pay" contract if it ever approaches the same cap, so callers fall back to full-detail LOD0 instead of losing the batch.
+
+- [#3041](https://github.com/LTplus-AG/ifc-lite/pull/3041) [`5ea5f99`](https://github.com/LTplus-AG/ifc-lite/commit/5ea5f9969f3a4a3f8b21eb2a90a1df2be48eb7b0) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Bound the point-cloud spatial index by occupied cells, not just by points, so a sparse cloud cannot outgrow V8's `Map` limit.
+  
+  `PointCloudSpatialIndex` stores its voxel grid as a `Map<number, number[]>` with one entry per occupied cell, and `insertRange` can create a new cell for every point it indexes. V8 throws `RangeError: Map maximum size exceeded` at exactly 2^24 = 16,777,216 entries, but the only limb of the "memory safety valve" was `DEFAULT_MAX_INDEXED_POINTS = 30_000_000` — above that ceiling. On a sparse cloud (airborne LiDAR, a coarse site scan) roughly one point falls in each 0.5 m cell, so occupied cells track indexed points almost 1:1 and the grid would hit the engine limit around 16.8M points, well before the valve could bind. Dense terrestrial scans put many points in one cell and never approach it, which is why the gap went unnoticed.
+  
+  The two limbs bound different resources and neither implies the other, so both are now enforced: `DEFAULT_MAX_INDEXED_POINTS` still bounds retained position memory, and the new `DEFAULT_MAX_INDEXED_CELLS` (2^24 − 2^20 = 15,728,640) bounds the `Map`. It is set high enough to bind only where V8 would otherwise have thrown, so no cloud that indexes fully today loses coverage, and a caller-supplied budget is clamped below the ceiling regardless. Points landing in an already-occupied cell cost no budget.
+  
+  Whichever limb binds first closes the index; a chunk that crosses it is truncated to the prefix actually indexed, so the cap bounds retained memory rather than just stopping bookkeeping. Truncation is no longer silent: the index reports it once via `console.warn`, naming which limb bound and the point/cell counts, and exposes `capReason` (`'points' | 'cells' | null`), `cellCount` and `cellCapacity` so callers can explain why the measure tool stops snapping. Points past the cap still render normally.
+
+- [#2981](https://github.com/LTplus-AG/ifc-lite/pull/2981) [`b1f4335`](https://github.com/LTplus-AG/ifc-lite/commit/b1f4335f3bf3c379f4a2afa4f96e5fe1fc3bc97d) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix cross-model geometry picking: clicking near a batched mesh could select an element from a different federated model than the one actually under the ray.
+  
+  `RaycastEngine.collectVisibleMeshData`'s batched-mesh loop looked up candidate geometry with `getMeshDataPieces(expressId)` and no model scope, so when two federated models shared an expressId (a routine occurrence — expressIds are only unique within their own IFC file), the candidate set for a pick silently included every model's pieces for that id, not just the one the batch entry actually belonged to. Batches group by colour, not by model, so two models sharing an expressId and colour can land in the very same batch as distinct entries.
+  
+  `BatchedMesh` now carries `modelIndices`, parallel to its existing `expressIds` array, populated per entry when `Scene.createBatchedMesh` builds the batch. The raycast engine's batched-mesh loop scopes each entry to its own model index the same way the regular-mesh loop already did, so a pick can only ever resolve to geometry that entry's own model actually owns.
+
+- [#3006](https://github.com/LTplus-AG/ifc-lite/pull/3006) [`50d9f91`](https://github.com/LTplus-AG/ifc-lite/commit/50d9f91af0b49c2b503e5cf8abd0aa83adfd8c34) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix a GPU buffer leak when `Scene.createBatchedMesh` fails partway through allocating a color batch.
+  
+  The batch path allocates a run of GPU buffers per color batch — vertex, then index, then uniform, plus an optional LOD1 index buffer — with no cleanup if a later `device.createBuffer` call in the run throws. `device.createBuffer` genuinely throws in production (already documented elsewhere in this file as a real "createBuffer failed, size (...) is too large" `RangeError`), so a throw on, say, the index buffer left the vertex buffer created just before it allocated, written, and never referenced again: an orphaned GPU buffer per failed batch key, repeating on every retry through `rebuildPendingBatches`.
+  
+  `appendChunkToNode` and `DeviationPipeline.uploadBvh` already guard this exact shape for their own paired allocations. `createBatchedMesh` now tracks every buffer it creates in the run and destroys all of them before propagating a later throw.
+
+- [#2983](https://github.com/LTplus-AG/ifc-lite/pull/2983) [`c7c8207`](https://github.com/LTplus-AG/ifc-lite/commit/c7c820772ccdf99ecf45032b714b80249fbbc767) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `IfcTextLiteralWithExtent` annotation text with a `"top-middle"` or `"bottom-middle"` `BoxAlignment` rendering left-aligned (and `"bottom-middle"` also rendering vertically mid-height) instead of horizontally centered.
+  
+  The IFC4 `IfcBoxAlignment` WHERE rule pins the enum to `'top-left', 'top-middle', 'top-right', 'middle-left', 'center', 'middle-right', 'bottom-left', 'bottom-middle', 'bottom-right'`. The word `"middle"` is overloaded in that set: it's the vertical qualifier in `"middle-left"`/`"middle-right"` but the *horizontal* qualifier in `"top-middle"`/`"bottom-middle"`. `parseBoxAlignment` in `symbolic-overlay-pipelines.ts` checked `includes('middle')` without regard to position, so it read every `"*-middle"` value as vertical-middle instead of horizontal-center, and never treated `"middle"` as a horizontal signal at all. Compound values are now split on the hyphen so the first token decides vertical and the second decides horizontal, matching the row-then-column order the enum itself uses.
+- Updated dependencies [[`8571d70`](https://github.com/LTplus-AG/ifc-lite/commit/8571d70270d072170fc4e204e8b0d11a424d2330), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`063a140`](https://github.com/LTplus-AG/ifc-lite/commit/063a1408e4c54ebc874618f8d68fe298ed3f3a6f), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`f76c805`](https://github.com/LTplus-AG/ifc-lite/commit/f76c80511dce5ffc1756365b786042c4bc64808d), [`932f043`](https://github.com/LTplus-AG/ifc-lite/commit/932f0439fc1625419aae3cf2d9f81a614fb2273c), [`754837b`](https://github.com/LTplus-AG/ifc-lite/commit/754837b066172dad8afcdf1a0104f1a021b5f6e5), [`2273a73`](https://github.com/LTplus-AG/ifc-lite/commit/2273a73127d03ec36d667544da6237479737881a), [`fdd6121`](https://github.com/LTplus-AG/ifc-lite/commit/fdd61211e41d3e563a7604ac5e0630a9daae2de1)]:
+  - @ifc-lite/geometry@4.0.0
+  - @ifc-lite/spatial@1.14.15
+
 ## 1.49.1
 
 ### Patch Changes

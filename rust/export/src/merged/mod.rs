@@ -114,6 +114,10 @@ pub struct MergedStats {
     /// Models federated as their own `IfcProject` (incompatible units under
     /// `Auto` / `Normalize`).
     pub federated_model_count: usize,
+    /// Models left unmerged because placing them would overflow the u32 EXPRESS-id
+    /// space. Non-zero means the merge stopped early to avoid wrapping ids; the
+    /// caller should route the whole set to a wider-id path if this is hit.
+    pub unmerged_model_count: usize,
     /// True when a `Normalize` export encountered an incompatible-unit model
     /// that was federated rather than rescaled — the caller should route that
     /// case to the JS path if true single-project normalization is required.
@@ -161,6 +165,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
         models: models.len(),
         written: 0,
         federated_model_count: 0,
+        unmerged_model_count: 0,
         unit_rescale_required: false,
         warnings: Vec::new(),
     };
@@ -203,6 +208,18 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     for (i, model) in models.iter().enumerate() {
         let is_first = i == 0;
         let index = ModelIndex::build(model.content);
+        // Placing this model would push the merged EXPRESS-id space past u32::MAX.
+        // Wrapping the offset would silently duplicate ids and rewrite references
+        // to the wrong entities (CR #2952), so stop here instead: the file emitted
+        // so far is valid, and the unmerged tail is reported for the caller to gate.
+        let Some(next_offset) = offset.checked_add(index.max_id) else {
+            stats.unmerged_model_count = models.len() - i;
+            stats.warnings.push(format!(
+                "merged EXPRESS id space would exceed u32::MAX; stopped after {i} model(s), {} model(s) not merged.",
+                models.len() - i
+            ));
+            break;
+        };
         let included = plan::resolve_included(&index, &model.included);
 
         // Unit mode.
@@ -211,7 +228,13 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
             (true, primary_scale)
         } else {
             match opts.unit_reconciliation {
-                UnitReconciliation::AssumeShared => (true, this_scale),
+                // AssumeShared unifies regardless of the declared unit, so the
+                // model's entities join the FIRST model's unit space: store
+                // `primary_scale`, not the model's own. Storing `this_scale` would
+                // make a later model's duplicate GlobalId fail the
+                // `units_compatible(scale, primary_scale)` gate and be re-stamped
+                // instead of unified (CR #2952).
+                UnitReconciliation::AssumeShared => (true, primary_scale),
                 _ if units_compatible(this_scale, primary_scale) => (true, this_scale),
                 UnitReconciliation::Normalize => {
                     stats.federated_model_count += 1;
@@ -225,6 +248,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
             }
         };
 
+        let salt = model_salt(model, i);
         let plan = build_plan(&index, is_first, compatible, PlanCtx {
             canonical_project,
             first_infra: &first_infra,
@@ -236,7 +260,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
             guid_to_final: &guid_to_final,
             emitted_guids: &emitted_guids,
             minter: &mut minter,
-            salt: model_salt(model, i),
+            salt: salt.clone(),
         });
 
         // Emit.
@@ -256,7 +280,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                 Some(g) => replace_global_id(&remapped, g),
                 None => remapped,
             };
-            let final_text = if converting {
+            let mut final_text = if converting {
                 // Pass the GLOBAL id (offset applied): a schema downgrade with no
                 // target type falls back to IFCPROXY with a `placeholder_guid(id)`
                 // GlobalId, so two models sharing a source-local id must not seed the
@@ -266,17 +290,28 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                     &after_guid,
                     &source_schema,
                     &schema,
-                    id.wrapping_add(offset),
+                    id.saturating_add(offset),
                 )
             } else {
                 after_guid
             };
 
             if let Some(local_guid) = plan.local_guids.get(&id) {
-                let emitted = read_leading_guid(&final_text)
+                let mut emitted = read_leading_guid(&final_text)
                     .or_else(|| plan.guid_rewrite.get(&id).cloned())
                     .unwrap_or_else(|| local_guid.clone());
-                guid_to_final.insert(emitted.clone(), (id.wrapping_add(offset), effective_scale));
+                // A schema-conversion placeholder (an alignment/linear entity
+                // downgraded to IFCPROXY) is minted at emit time, AFTER GlobalId
+                // reconciliation, so it can still collide with a rooted GlobalId an
+                // earlier model already emitted. Reconciliation never saw it —
+                // re-stamp it here so the merged file keeps no duplicate GlobalIds
+                // (Greptile P1 #2952).
+                if emitted_guids.contains(&emitted) {
+                    let minted = minter.mint(&emitted, &salt, &emitted_guids, &HashSet::new());
+                    final_text = replace_global_id(&final_text, &minted);
+                    emitted = minted;
+                }
+                guid_to_final.insert(emitted.clone(), (id.saturating_add(offset), effective_scale));
                 emitted_guids.insert(emitted);
             }
 
@@ -285,7 +320,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
             stats.written += 1;
         }
 
-        offset = offset.wrapping_add(index.max_id);
+        offset = next_offset;
     }
 
     if stats.federated_model_count > 0 {

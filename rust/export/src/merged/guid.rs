@@ -2,10 +2,12 @@
 //! GlobalId reconciliation for merged export. Ports the GUID machinery of
 //! `merged-exporter.ts`: a deterministic 22-char IfcGloballyUniqueId minter
 //! (byte-identical to `@ifc-lite/parser`'s `deterministicGlobalId`), the
-//! rooted-entity detection denylist, and the read/replace helpers used to
+//! schema-derived rooted-entity check, and the read/replace helpers used to
 //! unify or re-stamp a duplicated GlobalId across federated models.
 
 use std::collections::HashSet;
+
+use ifc_lite_core::{legacy_aware_ifc_type, IfcType};
 
 /// buildingSMART base64 alphabet (64 chars) used by IfcGloballyUniqueId.
 const GLOBAL_ID_CHARS: &[u8; 64] =
@@ -72,78 +74,25 @@ pub fn is_relationship_type(type_upper: &str) -> bool {
     type_upper.starts_with("IFCREL")
 }
 
-/// Non-IfcRoot resource types whose first attribute is (or can be) a
-/// Name/Identifier string that could itself be 22 charset chars. They must NOT
-/// be treated as rooted by GlobalId. Mirrors `NON_ROOTED_STRING_TYPES` in
-/// `merged-exporter.ts` (property SETS / element quantities are absent on
-/// purpose — they ARE rooted and carry a real GlobalId at attribute 0).
-pub fn is_non_rooted_string_type(type_upper: &str) -> bool {
-    matches!(
-        type_upper,
-        // IfcSimpleProperty / IfcComplexProperty (IfcPropertyAbstraction)
-        "IFCPROPERTYSINGLEVALUE"
-            | "IFCPROPERTYENUMERATEDVALUE"
-            | "IFCPROPERTYLISTVALUE"
-            | "IFCPROPERTYBOUNDEDVALUE"
-            | "IFCPROPERTYTABLEVALUE"
-            | "IFCPROPERTYREFERENCEVALUE"
-            | "IFCCOMPLEXPROPERTY"
-            // IfcPhysicalQuantity
-            | "IFCQUANTITYLENGTH"
-            | "IFCQUANTITYAREA"
-            | "IFCQUANTITYVOLUME"
-            | "IFCQUANTITYCOUNT"
-            | "IFCQUANTITYWEIGHT"
-            | "IFCQUANTITYTIME"
-            | "IFCQUANTITYNUMBER"
-            | "IFCPHYSICALCOMPLEXQUANTITY"
-            // Materials & their constituents (lead with a Name; IfcMaterialLayer/Usage
-            // lead with a #ref, so they can't be misread, but list them for clarity)
-            | "IFCMATERIAL"
-            | "IFCMATERIALPROFILE"
-            | "IFCMATERIALPROFILESET"
-            | "IFCMATERIALCONSTITUENT"
-            | "IFCMATERIALCONSTITUENTSET"
-            | "IFCMATERIALLAYER"
-            | "IFCMATERIALLAYERSET"
-            | "IFCMATERIALLAYERSETUSAGE"
-            // Colours & presentation resources (IfcColourRgb leads with an optional
-            // Name that can be 22 charset chars; IfcColourSpecification likewise)
-            | "IFCCOLOURRGB"
-            | "IFCCOLOURSPECIFICATION"
-            // Classification, library & document refs
-            | "IFCCLASSIFICATION"
-            | "IFCCLASSIFICATIONREFERENCE"
-            | "IFCLIBRARYINFORMATION"
-            | "IFCLIBRARYREFERENCE"
-            | "IFCEXTERNALREFERENCE"
-            | "IFCDOCUMENTINFORMATION"
-            | "IFCDOCUMENTREFERENCE"
-            // Constraints & approvals
-            | "IFCMETRIC"
-            | "IFCOBJECTIVE"
-            | "IFCAPPROVAL"
-            | "IFCTABLE"
-            // Actors (lead with an Identification string)
-            | "IFCPERSON"
-            | "IFCORGANIZATION"
-            // Presentation layers, styles & text literals
-            | "IFCPRESENTATIONLAYERASSIGNMENT"
-            | "IFCPRESENTATIONLAYERWITHSTYLE"
-            | "IFCSURFACESTYLE"
-            | "IFCCURVESTYLE"
-            | "IFCTEXTSTYLE"
-            | "IFCFILLAREASTYLE"
-            | "IFCTEXTLITERAL"
-            | "IFCTEXTLITERALWITHEXTENT"
-    )
+/// True when `type_upper` is a **rooted** entity (an `IfcRoot` subtype), decided
+/// from the EXPRESS inheritance graph rather than a hand-maintained denylist, so
+/// a non-rooted resource that happens to lead with a 22-char Name/Identifier
+/// string — `IfcColourRgb`, `IfcMaterialLayer`, `IfcRegularTimeSeries`, an
+/// `IfcSimpleProperty` — is never misread as carrying a GlobalId. Mirrors the JS
+/// exporter's `getInheritanceChainAcrossSchemas(type).includes('IfcRoot')` so the
+/// two sides agree on what "rooted" means. `legacy_aware_ifc_type` maps IFC2X3
+/// legacy names onto their modern base type, so 2x3 / IFC4 inputs classify the
+/// same way. An entity type unknown to the schema is treated as NOT rooted (its
+/// GlobalId is left untouched — the safe direction, matching the JS path).
+pub fn is_rooted_entity_type(type_upper: &str) -> bool {
+    legacy_aware_ifc_type(type_upper).is_subtype_of(IfcType::IfcRoot)
 }
 
 /// The leading 22-char GlobalId of a rooted entity's raw STEP line, or `None` if
-/// the type cannot be rooted or the first attribute is not a GlobalId string.
+/// the type is not rooted or the first attribute is not a GlobalId string.
 /// Only inspects the first 128 bytes (a GlobalId is always the first attribute).
 pub fn extract_global_id_fast(type_upper: &str, line: &[u8]) -> Option<String> {
-    if is_non_rooted_string_type(type_upper) {
+    if !is_rooted_entity_type(type_upper) {
         return None;
     }
     let window = &line[..line.len().min(128)];
@@ -336,6 +285,31 @@ mod guid_tests {
     }
 
     #[test]
+    fn schema_check_rejects_non_rooted_name_carrying_types() {
+        // Every one of these is a non-rooted resource whose FIRST attribute is a
+        // Name/Identifier string that can be 22 charset chars. A shape-only check
+        // would misread it as a GlobalId; the schema (IfcRoot-subtype) check must
+        // not (CR regression #2952). `IfcRegularTimeSeries` is the headline case:
+        // its first inherited attribute is `Name`, while `IfcRoot` leads with
+        // `GlobalId`.
+        let cases: [(&str, &[u8]); 4] = [
+            ("IFCREGULARTIMESERIES", b"#1=IFCREGULARTIMESERIES('AAAAAAAAAAAAAAAAAAAAAA',$,$,$,$,$,$,(#2));"),
+            ("IFCPROPERTYSINGLEVALUE", b"#2=IFCPROPERTYSINGLEVALUE('AAAAAAAAAAAAAAAAAAAAAA',$,IFCLABEL('x'),$);"),
+            ("IFCCOLOURSPECIFICATION", b"#3=IFCCOLOURSPECIFICATION('AAAAAAAAAAAAAAAAAAAAAA');"),
+            ("IFCMATERIAL", b"#4=IFCMATERIAL('AAAAAAAAAAAAAAAAAAAAAA',$,$);"),
+        ];
+        for (ty, line) in cases {
+            assert!(!is_rooted_entity_type(ty), "{ty} is not rooted");
+            assert_eq!(extract_global_id_fast(ty, line), None, "{ty} not read as a GlobalId");
+            assert_eq!(leading_rooted_global_id(line), None, "{ty} not read as a GlobalId");
+        }
+        // Positive control: rooted entities ARE classified as such.
+        assert!(is_rooted_entity_type("IFCWALL"));
+        assert!(is_rooted_entity_type("IFCPROPERTYSET"), "IfcPropertySet is rooted");
+        assert!(is_rooted_entity_type("IFCRELAGGREGATES"), "objectified relationships are rooted");
+    }
+
+    #[test]
     fn entity_type_upper_tolerates_spacing_and_case() {
         assert_eq!(entity_type_upper(b"#1=IFCWALL('g',$);").as_deref(), Some("IFCWALL"));
         assert_eq!(entity_type_upper(b"#1= IfcProject('g',$);").as_deref(), Some("IFCPROJECT"));
@@ -354,11 +328,11 @@ mod guid_tests {
         assert_ne!(first, second);
         assert!(is_global_id(&second));
         // A candidate already emitted by THIS model (passed via `also`) is avoided
-        // even though it is absent from `emitted`.
+        // even though it is absent from `emitted`. Seed `also` with the *exact*
+        // deterministic id that minting "y#m2" would otherwise return, so the mint
+        // is forced off its first candidate specifically by the `also` guard.
         let mut also = HashSet::new();
-        also.insert(minter.mint("x", "m2", &empty, &empty));
-        // Re-run the same seed: the pending set from the previous mint already
-        // forces a fresh value, and `also` is an extra guard the loop honours.
+        also.insert(deterministic_global_id("y#m2"));
         let third = minter.mint("y", "m2", &empty, &also);
         assert!(!also.contains(&third));
     }

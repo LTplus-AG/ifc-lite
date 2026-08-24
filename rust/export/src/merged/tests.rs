@@ -329,10 +329,11 @@ fn detect_schema_un_doubles_backslash_before_escape_re_doubles_it() {
 // and unit federation. All fixtures are inline STEP (no external fixtures).
 
 /// A minimal but structurally complete IFC model: project + unit + site +
-/// building + storey + wall + the two spatial relationships. `tag` makes every
-/// GlobalId unique per model (identical `tag` ⇒ identical GlobalIds); `mm`
-/// selects millimetre vs metre length units; `site_name`/`storey_name` drive
-/// spatial name-matching.
+/// building + storey + wall + the full spatial aggregation chain
+/// (project→site→building→storey) plus the wall's spatial containment. `tag`
+/// makes every GlobalId unique per model (identical `tag` ⇒ identical
+/// GlobalIds); `mm` selects millimetre vs metre length units;
+/// `site_name`/`storey_name` drive spatial name-matching.
 fn build_model(tag: &str, mm: bool, site_name: &str, storey_name: &str) -> String {
     let prefix = if mm { ".MILLI." } else { "$" };
     let g = |base: &str| -> String {
@@ -352,6 +353,8 @@ fn build_model(tag: &str, mm: bool, site_name: &str, storey_name: &str) -> Strin
 #11=IFCBUILDING('{bldg}',$,'Building',$,$,$,$,$,$,$,$);\n\
 #12=IFCBUILDINGSTOREY('{storey}',$,'{storey_name}',$,$,$,$,$,.ELEMENT.,0.);\n\
 #20=IFCWALL('{wall}',$,'Wall',$,$,$,$,$);\n\
+#28=IFCRELAGGREGATES('{rprj}',$,$,$,#1,(#10));\n\
+#29=IFCRELAGGREGATES('{rbld}',$,$,$,#11,(#12));\n\
 #30=IFCRELAGGREGATES('{ragg}',$,$,$,#10,(#11));\n\
 #31=IFCRELCONTAINEDINSPATIALSTRUCTURE('{rcon}',$,$,$,(#20),#12);\n\
 ENDSEC;\nEND-ISO-10303-21;\n",
@@ -360,6 +363,8 @@ ENDSEC;\nEND-ISO-10303-21;\n",
         bldg = g("BLDG"),
         storey = g("STOR"),
         wall = g("WALL"),
+        rprj = g("RPRJ"),
+        rbld = g("RBLD"),
         ragg = g("RAGG"),
         rcon = g("RCON"),
     )
@@ -410,6 +415,171 @@ fn assert_no_dangling(step: &str) {
             i += 1;
         }
     }
+}
+
+/// Every `#N` reference in a line's attribute list (after `=`), skipping the
+/// leading express id and any `#` inside a quoted string. In source order.
+fn refs_in_line(line: &str) -> Vec<u32> {
+    let after_eq = line.find('=').map(|e| &line[e..]).unwrap_or(line);
+    let bytes = after_eq.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0;
+    let mut in_str = false;
+    while i < bytes.len() {
+        let c = bytes[i];
+        if c == b'\'' {
+            in_str = !in_str;
+        } else if !in_str && c == b'#' {
+            let mut j = i + 1;
+            let mut n = 0u32;
+            let mut any = false;
+            while j < bytes.len() && bytes[j].is_ascii_digit() {
+                n = n * 10 + (bytes[j] - b'0') as u32;
+                j += 1;
+                any = true;
+            }
+            if any {
+                out.push(n);
+                i = j;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    out
+}
+
+/// The express id of a `#123=…` line.
+fn leading_id(line: &str) -> Option<u32> {
+    line.strip_prefix('#')?.split('=').next()?.trim().parse().ok()
+}
+
+/// The express id of the single line whose text contains `needle` (panics unless
+/// exactly one matches) — e.g. the sole surviving `=IFCSITE(` after a unify.
+fn sole_id_of_type(step: &str, needle: &str) -> u32 {
+    let ids: Vec<u32> =
+        step.lines().filter(|l| l.contains(needle)).filter_map(leading_id).collect();
+    assert_eq!(ids.len(), 1, "expected exactly one {needle}, found {ids:?}");
+    ids[0]
+}
+
+#[test]
+fn spatial_hierarchy_endpoints_remapped_after_merge() {
+    // Two models with an identical named spatial tree unify into one
+    // project→site→building→storey chain. The surviving aggregations must connect
+    // the *single* unified containers, and both walls' containment must be
+    // remapped onto the one storey — not left dangling (CR #2952).
+    let a = build_model("A", true, "Terrain", "Level 1");
+    let b = build_model("B", true, "Terrain", "Level 1");
+    let (merged, _) =
+        export_merged_with_stats(&[a.as_bytes(), b.as_bytes()], &MergedOptions::default());
+
+    assert_no_dangling(&merged);
+    let project = sole_id_of_type(&merged, "=IFCPROJECT(");
+    let site = sole_id_of_type(&merged, "=IFCSITE(");
+    let building = sole_id_of_type(&merged, "=IFCBUILDING(");
+    let storey = sole_id_of_type(&merged, "=IFCBUILDINGSTOREY(");
+
+    // The full aggregation chain survives, each hop pointing at the unified ids.
+    let aggs: Vec<(u32, Vec<u32>)> = merged
+        .lines()
+        .filter(|l| l.contains("=IFCRELAGGREGATES("))
+        .map(|l| {
+            let r = refs_in_line(l);
+            (r[0], r[1..].to_vec())
+        })
+        .collect();
+    assert!(aggs.iter().any(|(rel, sub)| *rel == project && sub.as_slice() == [site]), "project→site");
+    assert!(aggs.iter().any(|(rel, sub)| *rel == site && sub.as_slice() == [building]), "site→building");
+    assert!(aggs.iter().any(|(rel, sub)| *rel == building && sub.as_slice() == [storey]), "building→storey");
+
+    // Both walls' spatial containment (RelatingStructure is the last #ref) remaps
+    // onto the one unified storey.
+    let contain_storeys: Vec<u32> = merged
+        .lines()
+        .filter(|l| l.contains("=IFCRELCONTAINEDINSPATIALSTRUCTURE("))
+        .map(|l| *refs_in_line(l).last().expect("a relating structure"))
+        .collect();
+    assert_eq!(contain_storeys.len(), 2, "both walls kept their containment");
+    assert!(contain_storeys.iter().all(|&s| s == storey), "remapped onto the unified storey");
+}
+
+#[test]
+fn within_model_duplicate_globalids_are_restamped() {
+    // A single (first) model with two rooted entities carrying the SAME GlobalId
+    // — a defective source. The cross-model map cannot see this (nothing is
+    // registered until emit time), so reconciliation must track within-model
+    // duplicates and re-stamp the second occurrence (CR #2952).
+    let dup = "SAMEGUID00000000000000"; // 22 charset chars
+    let model = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#1=IFCPROJECT('PROJ000000000000000000',$,$,$,$,$,$,$,$);\n\
+#20=IFCWALL('{dup}',$,'Wall A',$,$,$,$,$);\n\
+#21=IFCWALL('{dup}',$,'Wall B',$,$,$,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n"
+    );
+    let (merged, _) = export_merged_with_stats(&[model.as_bytes()], &MergedOptions::default());
+
+    // Both distinct walls survive, but no GlobalId is emitted twice.
+    assert_eq!(type_count(&merged, "=IFCWALL("), 2, "both walls survive");
+    let guids = leading_guids(&merged);
+    let mut unique = guids.clone();
+    unique.sort();
+    unique.dedup();
+    assert_eq!(unique.len(), guids.len(), "within-model duplicate GlobalId re-stamped");
+    // Exactly one wall kept the original GlobalId; the other was minted fresh.
+    assert_eq!(guids.iter().filter(|g| g.as_str() == dup).count(), 1);
+    assert_no_dangling(&merged);
+}
+
+#[test]
+fn assume_shared_reconciles_guids_across_incompatible_declared_units() {
+    // Regression for the AssumeShared effective-scale (CR #2952): a later model
+    // introduces a GlobalId under a declared unit incompatible with the first,
+    // and a still-later model shares it. AssumeShared must unify the two — which
+    // only holds if the introduced entity is recorded under the FIRST model's
+    // scale, not its own. With the old `this_scale`, the third model's duplicate
+    // would fail the units-compatible gate and be re-stamped instead of unified.
+    let a = build_model("A", true, "Terrain", "Level 1"); // mm, primary
+    let b = build_model("B", false, "Terrain", "Level 1"); // metre, distinct guids
+    let c = build_model("B", false, "Terrain", "Level 1"); // metre, shares B's guids
+    let opts = MergedOptions {
+        unit_reconciliation: UnitReconciliation::AssumeShared,
+        ..Default::default()
+    };
+    let (merged, stats) =
+        export_merged_with_stats(&[a.as_bytes(), b.as_bytes(), c.as_bytes()], &opts);
+
+    assert_eq!(stats.federated_model_count, 0, "AssumeShared never federates");
+    // A's wall (WALLA…) plus the single unified B/C wall (WALLB…) = 2. If C's wall
+    // were re-stamped rather than unified, there would be 3.
+    assert_eq!(type_count(&merged, "=IFCWALL("), 2, "shared guid unified across the metre models");
+    let guids = leading_guids(&merged);
+    let mut unique = guids.clone();
+    unique.sort();
+    unique.dedup();
+    assert_eq!(unique.len(), guids.len(), "no duplicate GlobalIds");
+    assert_no_dangling(&merged);
+}
+
+#[test]
+fn express_id_overflow_stops_merge_without_wrapping() {
+    // A model whose max express id sits just below u32::MAX: a second model cannot
+    // be placed without wrapping the cumulative offset, which would silently
+    // duplicate ids and mis-point references. The merge must stop and report the
+    // unmerged tail instead (CR #2952).
+    let big = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#4294967290=IFCWALL('WALLBIG0000000000000A',$,'W',$,$,$,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n";
+    let small = build_model("S", true, "Terrain", "Level 1");
+    let (merged, stats) =
+        export_merged_with_stats(&[big.as_bytes(), small.as_bytes()], &MergedOptions::default());
+
+    assert_eq!(stats.unmerged_model_count, 1, "second model would overflow the id space");
+    assert!(stats.warnings.iter().any(|w| w.contains("u32::MAX")), "overflow reported");
+    // The first model still emitted validly — no wrapped ids, no dangling refs.
+    assert_no_dangling(&merged);
+    assert_eq!(type_count(&merged, "=IFCWALL("), 1, "only the first model's wall");
 }
 
 #[test]
@@ -526,6 +696,12 @@ fn incompatible_units_federate_and_flag_under_normalize() {
     let (merged, stats) = export_merged_with_stats(&[mm.as_bytes(), m.as_bytes()], &opts);
 
     assert_eq!(type_count(&merged, "=IFCPROJECT("), 2, "incompatible model federated");
+    // Federation keeps the metre model wholly separate: none of its spatial
+    // containers or elements are unified into the millimetre model's.
+    assert_eq!(type_count(&merged, "=IFCSITE("), 2, "federated site kept separate");
+    assert_eq!(type_count(&merged, "=IFCBUILDING("), 2, "federated building kept separate");
+    assert_eq!(type_count(&merged, "=IFCBUILDINGSTOREY("), 2, "federated storey kept separate");
+    assert_eq!(type_count(&merged, "=IFCWALL("), 2, "federated wall kept separate");
     assert_eq!(stats.federated_model_count, 1);
     assert!(stats.unit_rescale_required, "caller should gate to the JS path");
     assert!(!stats.warnings.is_empty());
@@ -550,6 +726,18 @@ fn assume_shared_unifies_across_declared_units() {
     let (merged, stats) = export_merged_with_stats(&[mm.as_bytes(), m.as_bytes()], &opts);
 
     assert_eq!(type_count(&merged, "=IFCPROJECT("), 1, "unified despite unit mismatch");
+    // Identical GlobalIds + names across the two models: every matching rooted
+    // entity unifies into exactly one instance despite the declared-unit mismatch.
+    assert_eq!(type_count(&merged, "=IFCSITE("), 1, "site unified");
+    assert_eq!(type_count(&merged, "=IFCBUILDING("), 1, "building unified");
+    assert_eq!(type_count(&merged, "=IFCBUILDINGSTOREY("), 1, "storey unified");
+    assert_eq!(type_count(&merged, "=IFCWALL("), 1, "wall unified");
+    // And no duplicate rooted GlobalIds survive.
+    let guids = leading_guids(&merged);
+    let mut unique = guids.clone();
+    unique.sort();
+    unique.dedup();
+    assert_eq!(unique.len(), guids.len(), "unique rooted GlobalIds after AssumeShared unify");
     assert_eq!(stats.federated_model_count, 0);
     assert!(!stats.unit_rescale_required);
     assert_no_dangling(&merged);

@@ -139,12 +139,15 @@ pub fn rewrite_refs(line: &[u8], offset: u32, remap: &impl Fn(u32) -> Option<u32
             let mut n: u32 = 0;
             let mut any = false;
             while j < line.len() && line[j].is_ascii_digit() {
-                n = n.wrapping_mul(10).wrapping_add((line[j] - b'0') as u32);
+                // Saturate rather than wrap: a malformed reference number wider than
+                // u32 must not silently wrap onto a small, valid id (CR #2952). A
+                // clamped id stays dangling (caught downstream), never mis-pointed.
+                n = n.saturating_mul(10).saturating_add((line[j] - b'0') as u32);
                 j += 1;
                 any = true;
             }
             if any {
-                let target = remap(n).unwrap_or(n.wrapping_add(offset));
+                let target = remap(n).unwrap_or_else(|| n.saturating_add(offset));
                 out.push(b'#');
                 out.extend_from_slice(target.to_string().as_bytes());
                 i = j;
@@ -321,23 +324,35 @@ pub(super) fn build_plan(
         skip_redundant_rel_aggregates(index, &plan.shared_remap, &mut plan.skip);
     }
 
-    if !is_first {
-        reconcile_global_ids(index, compatible, &mut plan, &mut ctx);
-    }
+    // Reconcile GlobalIds for every model — including the first, whose two rooted
+    // entities can share a GlobalId (a defective source) and must not both survive.
+    reconcile_global_ids(index, compatible, &mut plan, &mut ctx);
 
     plan
 }
 
-/// Unify or re-stamp each rooted entity whose GlobalId already appeared.
+/// Unify or re-stamp each rooted entity whose GlobalId already appeared — either
+/// in an earlier model (cross-model, via `guid_to_final`) or earlier in THIS
+/// model (within-model, via `seen_local`).
 fn reconcile_global_ids(index: &ModelIndex, compatible: bool, plan: &mut ModelPlan, ctx: &mut PlanCtx) {
     // Collect first so the mutable `minter` borrow does not overlap the read of
     // `plan.local_guids` / `plan.skip`.
     let mut restamp: Vec<(u32, String)> = Vec::new();
+    // GlobalIds this model has already emitted unchanged. The cross-model map
+    // (`guid_to_final`) cannot see a duplicate *within* this model, because the
+    // first occurrence is not registered until emit time — so two rooted entities
+    // in one model sharing a GlobalId would both bypass unify/restamp and emit
+    // duplicate identifiers. Keep the first, re-stamp every later one.
+    let mut seen_local: HashSet<String> = HashSet::new();
     for &id in &index.order {
         if plan.skip.contains(&id) {
             continue;
         }
         let Some(guid) = plan.local_guids.get(&id) else { continue };
+        if !seen_local.insert(guid.clone()) {
+            restamp.push((id, guid.clone()));
+            continue;
+        }
         let Some(&(final_id, scale)) = ctx.guid_to_final.get(guid) else { continue };
         let ty = index.type_of.get(&id).map(String::as_str).unwrap_or("");
         let can_unify =

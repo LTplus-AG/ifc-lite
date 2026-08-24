@@ -208,11 +208,16 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     for (i, model) in models.iter().enumerate() {
         let is_first = i == 0;
         let index = ModelIndex::build(model.content);
+        let included = plan::resolve_included(&index, &model.included);
         // Placing this model would push the merged EXPRESS-id space past u32::MAX.
         // Wrapping the offset would silently duplicate ids and rewrite references
         // to the wrong entities (CR #2952), so stop here instead: the file emitted
         // so far is valid, and the unmerged tail is reported for the caller to gate.
-        let Some(next_offset) = offset.checked_add(index.max_id) else {
+        // Bound by the largest VISIBLE id, not `index.max_id`: an excluded high id
+        // is never emitted, so it must not consume id space or omit a later model
+        // that would actually fit (CR #2952).
+        let max_visible_id = included.iter().copied().max().unwrap_or(0);
+        let Some(next_offset) = offset.checked_add(max_visible_id) else {
             stats.unmerged_model_count = models.len() - i;
             stats.warnings.push(format!(
                 "merged EXPRESS id space would exceed u32::MAX; stopped after {i} model(s), {} model(s) not merged.",
@@ -220,7 +225,6 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
             ));
             break;
         };
-        let included = plan::resolve_included(&index, &model.included);
 
         // Unit mode.
         let this_scale = resolve_length_scale(model.content);
@@ -311,8 +315,17 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                     final_text = replace_global_id(&final_text, &minted);
                     emitted = minted;
                 }
-                guid_to_final.insert(emitted.clone(), (id.saturating_add(offset), effective_scale));
+                let final_id = id.saturating_add(offset);
+                guid_to_final.insert(emitted.clone(), (final_id, effective_scale));
                 emitted_guids.insert(emitted);
+                // Also key reconciliation on the SOURCE GlobalId: schema conversion
+                // may have replaced this rooted entity's GlobalId with a proxy
+                // placeholder, so `emitted` is no longer the id a later compatible
+                // model would carry. Without this, that later model could not unify
+                // and would emit a second proxy for the same entity (CR #2952).
+                // `or_insert` never overwrites — a re-stamped duplicate keeps
+                // pointing at its first instance.
+                guid_to_final.entry(local_guid.clone()).or_insert((final_id, effective_scale));
             }
 
             out.push_str(&final_text);

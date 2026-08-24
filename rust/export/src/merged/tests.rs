@@ -583,6 +583,64 @@ ENDSEC;\nEND-ISO-10303-21;\n";
 }
 
 #[test]
+fn excluded_high_id_does_not_block_a_fitting_later_model() {
+    // The first model carries a near-max express id that visibility EXCLUDES, so
+    // it is never emitted. The capacity bound must be the largest VISIBLE id, not
+    // `index.max_id` — otherwise a later model that would comfortably fit is
+    // wrongly omitted as an overflow (CR #2952).
+    let big_excluded = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#1=IFCWALL('WALLLOW00000000000000A',$,'Low',$,$,$,$,$);\n\
+#4294967295=IFCWALL('WALLMAX00000000000000A',$,'Max',$,$,$,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n";
+    let second = build_model("S", true, "Terrain", "Level 1");
+    let models = [
+        // Only the low-id wall is visible; the max-id wall is excluded.
+        MergedModel { content: big_excluded.as_bytes(), id: "a".to_string(), included: Some(vec![1]) },
+        MergedModel { content: second.as_bytes(), id: "b".to_string(), included: None },
+    ];
+    let (merged, stats) = export_merged_models(&models, &MergedOptions::default());
+
+    assert_eq!(stats.unmerged_model_count, 0, "the later model fits and must merge");
+    assert!(stats.warnings.iter().all(|w| !w.contains("u32::MAX")), "no false overflow");
+    // The first model's single visible wall plus the second model's wall.
+    assert_eq!(type_count(&merged, "=IFCWALL("), 2);
+    assert_eq!(type_count(&merged, "=IFCPROJECT("), 1, "second model's project survives");
+    assert_no_dangling(&merged);
+}
+
+#[test]
+fn converted_rooted_entity_keeps_source_globalid_for_later_unify() {
+    // Two IFC4X3 models sharing one IfcAlignmentSegment (a rooted entity) GlobalId,
+    // exported to IFC4 where the segment has no counterpart and is downgraded to a
+    // proxy with a generated placeholder GlobalId. The first model must still
+    // register the SOURCE GlobalId, so the second model's copy unifies with it
+    // instead of emitting a second proxy (CR #2952).
+    let shared = "0aBcDeFgHiJkLmNoPqRsT1"; // 22 charset chars
+    let model = |proj: &str| {
+        format!(
+            "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_SCHEMA(('IFC4X3'));\nENDSEC;\nDATA;\n\
+#1=IFCPROJECT('{proj}',$,'P',$,$,$,$,$,$);\n\
+#5=IFCALIGNMENTSEGMENT('{shared}',$,'Seg',$,$,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n"
+        )
+    };
+    let a = model("PROJA000000000000000AA");
+    let b = model("PROJB000000000000000BB");
+    let opts = MergedOptions { schema: Some("IFC4".to_string()), ..Default::default() };
+    let (merged, _) = export_merged_with_stats(&[a.as_bytes(), b.as_bytes()], &opts);
+
+    // The shared segment became exactly one proxy (the second unified with the
+    // first), and no rooted GlobalId is emitted twice.
+    assert_eq!(type_count(&merged, "=IFCPROXY("), 1, "shared converted entity unified, not duplicated");
+    let guids = leading_guids(&merged);
+    let mut unique = guids.clone();
+    unique.sort();
+    unique.dedup();
+    assert_eq!(unique.len(), guids.len(), "no duplicate GlobalIds after conversion");
+    assert_no_dangling(&merged);
+}
+
+#[test]
 fn duplicate_globalids_are_reconciled_no_dupes() {
     // Two identical millimetre models. The old id-offset-only merge would emit
     // every GlobalId twice; reconciliation must unify same-unit roots and

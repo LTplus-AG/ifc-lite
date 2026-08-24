@@ -580,3 +580,47 @@ for (const file of files) {
     'a loop over PATHS derived from file bytes was read as a source-text assertion',
   );
 });
+
+test('a regex directly after a block comment does not blank the file', () => {
+  // `regexLiteralEnd` decides regex-vs-division from the previous significant
+  // character. Reading that from RAW text puts the `/` of a preceding `*/` in
+  // front of the literal, so `/["']/` read as division, the `"` opened a
+  // string that never closed, and everything below went invisible. The
+  // backward scan therefore reads the output-so-far, where comments are
+  // already spaces. Route the lookback back through raw text and this reds.
+  assert.equal(
+    flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('a/b.ts', 'utf8');
+const a = 1; /* c */ /["']/.test(z);
+assert.ok(source.includes('tok'));
+`),
+    true,
+  );
+});
+
+test('a call chained before .split does not hide the loop', () => {
+  // The iterable is read to the `)` MATCHING the for-header's `(`. Capturing
+  // it with `[^)]*` stopped inside `source.trim().split('\n')` at the `)` of
+  // `trim(`, so the `.split(` was never seen.
+  assert.equal(
+    flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('a/b.ts', 'utf8');
+for (const line of source.trim().split('\\n')) { assert.ok(line.includes('x')); }
+`),
+    true,
+  );
+});
+
+test('an anonymous function callback carries taint like an arrow', () => {
+  // Same flow, different spelling. Matching only `=>` left it undetected.
+  assert.equal(
+    flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('a/b.ts', 'utf8');
+assert.ok(source.split('\\n').some(function (line) { return line.includes('x'); }));
+`),
+    true,
+  );
+});

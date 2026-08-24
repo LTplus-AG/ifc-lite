@@ -106,19 +106,25 @@ const REGEX_PRECEDING_WORDS = /(?:^|[^A-Za-z0-9_$])(return|typeof|instanceof|cas
  * included); otherwise `start`, meaning "this `/` is division".
  *
  * The division-vs-regex question is decided by the previous significant
- * character. That is the standard heuristic and it is APPROXIMATE, not sound:
- * `stripComments` runs first but is string-unaware, so a `//` inside a string
- * literal (`'file:///x'`) truncates the line and can leave this looking at the
- * wrong character. Measured against the TypeScript parser over the scanned
- * corpus, it disagrees on a handful of lines, none of which currently changes a
- * verdict. A `[...]` class is tracked, since `/` inside one is literal, and an
+ * character. That is the standard heuristic and it is APPROXIMATE, not sound;
+ * measured against the TypeScript parser over the scanned corpus it disagrees
+ * on a handful of lines, none of which currently changes a verdict. The
+ * lookback reads `back` rather than raw source precisely so that comments,
+ * already blanked by the single pass, cannot supply that previous character.
+ * A `[...]` class is tracked, since `/` inside one is literal, and an
  * unterminated literal (no closing `/` before the line ends) is treated as
  * division rather than swallowing the rest of the file.
  */
-function regexLiteralEnd(src, start) {
+function regexLiteralEnd(src, start, back = src) {
+  // The BACKWARD scan reads `back`, which is the output-so-far with comments
+  // already blanked, while the forward scan reads raw `src`. They must differ:
+  // looking back over raw text puts the `/` of a preceding `*/` in front of
+  // the literal, so `const a = 1; /* c */ /["']/.test(z)` reads as DIVISION,
+  // the `"` opens a string that never closes, and the rest of the file is
+  // blanked -- a silent fail-open. Comments blank to spaces, which this skips.
   let k = start - 1;
-  while (k >= 0 && (src[k] === ' ' || src[k] === '\t')) k--;
-  const prev = k >= 0 ? src[k] : '';
+  while (k >= 0 && (back[k] === ' ' || back[k] === '\t')) k--;
+  const prev = k >= 0 ? back[k] : '';
   // `<` is deliberately NOT a preceder. `</Foo>` puts one directly before the
   // slash, and these files are `.tsx`: accepting it made every JSX closing tag
   // open a "regex", which on a line with a second `/` swallowed the opening
@@ -128,12 +134,15 @@ function regexLiteralEnd(src, start) {
   //
   // `a++ / b` and `a-- / b` are division, so a doubled `+`/`-` is excluded even
   // though a single one is a legitimate preceder (`a + /re/.test(b)`).
-  const doubled = (prev === '+' || prev === '-') && src[k - 1] === prev;
+  const doubled = (prev === '+' || prev === '-') && back[k - 1] === prev;
+  const wordSpan = Array.from({ length: k + 1 - Math.max(0, k - 12) }, (_, n) =>
+    back[Math.max(0, k - 12) + n],
+  ).join('');
   const isRegex =
     !doubled
     && (prev === ''
       || REGEX_PRECEDERS.has(prev)
-      || REGEX_PRECEDING_WORDS.test(src.slice(Math.max(0, k - 12), k + 1)));
+      || REGEX_PRECEDING_WORDS.test(wordSpan));
   if (!isRegex) return start;
 
   let i = start + 1;
@@ -244,7 +253,7 @@ function lexViews(src) {
     }
 
     if (c === '/') {
-      const end = regexLiteralEnd(src, i);
+      const end = regexLiteralEnd(src, i, blanked);
       if (end > i) {
         for (let k = i; k < end; k++) if (src[k] !== '\n') blanked[k] = ' ';
         i = end;
@@ -481,6 +490,10 @@ function computeTainted(blanked) {
       const args = blanked.slice(open + 1, matchParen(blanked, open));
       for (const cb of args.matchAll(/(\([^()]*\)|\b[A-Za-z_$][\w$]*)\s*=>/g))
         for (const q of valueIdentifiers(cb[1])) tainted.add(q);
+      // An anonymous `function (line) { … }` callback is the same flow with a
+      // different spelling, and matching only arrows left it undetected.
+      for (const cb of args.matchAll(/\bfunction\s*[A-Za-z_$][\w$]*?\s*\(([^()]*)\)|\bfunction\s*\(([^()]*)\)/g))
+        for (const q of valueIdentifiers(cb[1] ?? cb[2] ?? '')) tainted.add(q);
       // A HOISTED callback is passed by name, so its parameters are declared
       // somewhere else entirely: `.some(hit)` with `const hit = (line) => …`.
       for (const arg of splitArgs(args)) {
@@ -492,8 +505,15 @@ function computeTainted(blanked) {
     // requires an `=`, so this shape bound nothing and the loop body read as
     // clean.
     for (const m of blanked.matchAll(
-      /\bfor\s*\(\s*(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s+of\s+([^)]*)\)/g,
+      /\bfor\s*\(\s*(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s+of\s+/g,
     )) {
+      // The iterable runs to the `)` MATCHING the for-header's `(`, not to the
+      // first one. A `[^)]*` capture stopped inside `source.trim().split('\n')`
+      // at the `)` of `trim(`, so the `.split(` below was never seen and the
+      // loop body read as clean -- the silent direction.
+      const header = blanked.indexOf('(', m.index);
+      const iterEnd = matchParen(blanked, header) - 1;
+      if (iterEnd <= m.index + m[0].length) continue;
       // Deliberately narrow to a SPLIT of tainted text. Tainting on
       // `carriesFileBytes` alone also catches `for (const file of files)`
       // where the elements are PATHS, not contents -- measured as 4 false hits
@@ -502,7 +522,7 @@ function computeTainted(blanked) {
       // array of filenames, so this takes the shape it can prove and leaves
       // `for (const line of lines)` (split bound to a name first) uncovered
       // rather than paying for it in false flags on every path loop.
-      const iter = m[2].trim();
+      const iter = blanked.slice(m.index + m[0].length, iterEnd).trim();
       if (/\.\s*split\s*\(/.test(iter) && carriesFileBytes(iter)) tainted.add(m[1]);
     }
     // FAIL CLOSED on flow this analysis cannot follow. When file bytes are
@@ -565,19 +585,12 @@ const CONTINUES = /(?:[([,]|=>|&&|\|\||[-+*/%?:]|=)\s*$/;
  * predicate AND is recorded as used, so the dead-marker check goes quiet too:
  * both halves of the gate wrong at once.
  *
- * Stripping NARROWS that class, it does not close it, and the walk inherits
- * `stripComments`'s string-unawareness (see its own note above). Its guard
- * covers only the FIRST slash pair, so a third slash is preceded by `/` and
- * still truncates: `name: '///'` becomes a line ending in `/`, which
- * `CONTINUES` accepts, and the walk continues where it should stop. Measured
- * over the scanned corpus the trade is heavily favourable -- 300 lines where
- * stripping SHORTENS marker reach (mostly `'https://…'` in strings, which the
- * old per-line stripper left ending in `:`) against 8 where it lengthens it,
- * and 7 of those 8 genuinely end in `,` and so SHOULD continue. The one that
- * should not is the `'///'` line. No verdict on a real file changes either
- * way, because such a line also leaves an unterminated quote and `blankStrings`
- * desyncs first, which hides the predicate entirely. Both are the same root cause:
- * comments cannot be stripped without lexing strings.
+ * `stripComments` is now string-aware (it is one view of the single lexing
+ * pass), so a `//` inside a string no longer truncates the line: measured
+ * across the scanned corpus, NO file's stripped view differs in length from
+ * the original. `name: '///'`, `'https://x/y'` and `'see // docs'` all keep
+ * their trailing `;` and correctly stop the walk. The earlier per-line
+ * stripper got each of those wrong in the fail-open direction.
  *
  * The 24-line bound is a POLICY cap on how far a marker may reach, not a
  * runaway guard -- the walk terminates on its own, because `codeLines[top - 2]`
@@ -625,7 +638,12 @@ export function analyze(original) {
     return { ...empty, unusedMarkers: [...markerLines.keys()] };
   }
 
-  const blanked = blankStrings(stripped);
+  // The SAME pass that produced `stripped`, not a second lex of it. Re-lexing
+  // comment-blanked text is not equivalent: blanking a comment changes the
+  // character `regexLiteralEnd` looks back at, so `x = (/* c */ /re/.test(y))`
+  // loses the whole regex on the two-pass route. Keeping one pass is the point
+  // of `lexViews`.
+  const blanked = views.blanked;
   const tainted = computeTainted(blanked);
 
   const lineOf = (index) => blanked.slice(0, index).split('\n').length;

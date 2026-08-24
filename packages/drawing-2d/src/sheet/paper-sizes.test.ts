@@ -80,14 +80,26 @@ describe('ISO 216 A series', () => {
   it('each size halves the one above it, as ISO 216 defines', () => {
     // A(n+1) is A(n) cut across its long edge: the short edge becomes the new
     // long edge, and the new short edge is half the old long one (rounded down
-    // to a whole millimetre by the standard). A single mistyped digit anywhere
-    // in the table breaks this chain even when the number still looks
-    // plausible on its own.
+    // to a whole millimetre by the standard). A single mistyped digit breaks
+    // this chain even when the number still looks plausible on its own.
+    //
+    // Walked over the REGISTRY, not over ISO_216_MM. Reading the oracle table
+    // and comparing its rows to each other would assert the test file against
+    // itself: no edit to paper-sizes.ts could fail it, so it would report a
+    // guarantee about production that it never touches. The portrait entries
+    // carry the standard's own orientation (width = short edge), so the chain
+    // reads directly off them.
     for (let i = 1; i < ISO_216_MM.length; i++) {
-      const bigger = ISO_216_MM[i - 1];
-      const smaller = ISO_216_MM[i];
-      expect(smaller.longMm, `${smaller.series} long edge`).toBe(bigger.shortMm);
-      expect(smaller.shortMm, `${smaller.series} short edge`).toBe(Math.floor(bigger.longMm / 2));
+      const biggerKey = `${ISO_216_MM[i - 1].series}_PORTRAIT`;
+      const smallerKey = `${ISO_216_MM[i].series}_PORTRAIT`;
+      const bigger = PAPER_SIZE_REGISTRY[biggerKey];
+      const smaller = PAPER_SIZE_REGISTRY[smallerKey];
+      expect(bigger, `${biggerKey} missing from the registry`).toBeDefined();
+      expect(smaller, `${smallerKey} missing from the registry`).toBeDefined();
+      expect(smaller.heightMm, `${smallerKey} long edge`).toBe(bigger.widthMm);
+      expect(smaller.widthMm, `${smallerKey} short edge`).toBe(
+        Math.floor(bigger.heightMm / 2),
+      );
     }
   });
 
@@ -128,9 +140,14 @@ describe('inch-defined sheets (ANSI and ARCH)', () => {
 
 describe('registry shape', () => {
   it('every entry is self-consistent', () => {
-    // `id` is used as a lookup key by the sheet UI and the PDF exporter, so an
-    // entry whose `id` disagrees with its registry key resolves to nothing at
-    // one of the two call sites and silently falls back.
+    // `id` is NOT a lookup key: every production read of the registry indexes by
+    // the registry KEY (SheetSetupPanel.tsx:111 Object.entries, :217-218
+    // `id in PAPER_SIZE_REGISTRY`, sheetSlice.ts:111 and :207), and the only
+    // read of the `id` FIELD is the tie-break `paper.id < best.id` at
+    // view-pdf-scale.ts:176. So a mismatch cannot "resolve to nothing" — it
+    // would mis-order which sheet name a page reports. Keeping the two in step
+    // is still worth asserting, because the field exists to name the entry and
+    // a disagreement makes every downstream report ambiguous.
     for (const [key, def] of Object.entries(PAPER_SIZE_REGISTRY)) {
       expect(def.id, `${key} has a mismatched id`).toBe(key);
       expect(def.widthMm, `${key} width`).toBeGreaterThan(0);
@@ -144,8 +161,12 @@ describe('registry shape', () => {
   });
 
   it('orientation matches the dimensions it describes', () => {
-    // A landscape entry taller than it is wide would rotate every drawing
-    // placed on it, and nothing downstream re-derives this from the numbers.
+    // Nothing rotates a drawing from this field. Its only production consumer is
+    // view-pdf-scale.ts:174, `(p.orientation === 'landscape') === pageIsLandscape`,
+    // which biases WHICH registry entry a page is reported as; sheet transforms
+    // and the PDF path use widthMm/heightMm directly. A landscape entry taller
+    // than it is wide therefore mislabels a sheet rather than rotating it —
+    // still worth pinning, because the label is what a user reads back.
     for (const [key, def] of Object.entries(PAPER_SIZE_REGISTRY)) {
       if (def.orientation === 'landscape') {
         expect(def.widthMm, `${key} is landscape but taller than wide`).toBeGreaterThanOrEqual(def.heightMm);

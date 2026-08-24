@@ -34,6 +34,8 @@ import {
   getAttribute,
   getEntity,
   setAttribute,
+  setChild,
+  setInherit,
 } from '../src/doc/entity.js';
 import { applyIfcxOverlay, seedFromIfcx } from '../src/snapshot/from-ifcx.js';
 
@@ -84,6 +86,34 @@ describe('applyIfcxOverlay', () => {
 
     const attrs = getEntity(doc, 'wall')?.get(ENTITY_KEY.ATTRIBUTES) as Y.Map<unknown> | undefined;
     expect(attrs?.has('ifclite::name')).toBe(false);
+  });
+
+  it('treats a null child/inherit target as a removal opinion', () => {
+    const doc = createCollabDoc();
+    doc.transact(() => {
+      createEntity(doc, 'storey', { ifcClass: 'IfcBuildingStorey' });
+      createEntity(doc, 'wall', { ifcClass: 'IfcWall' });
+      createEntity(doc, 'type-wall', { ifcClass: 'IfcWallType' });
+      setChild(doc, 'storey', 'wall', 'wall');
+      setInherit(doc, 'wall', 'type', 'type-wall');
+    });
+
+    applyIfcxOverlay(
+      doc,
+      layer([
+        { path: 'storey', children: { wall: null } },
+        { path: 'wall', inherits: { type: null } },
+      ]),
+    );
+
+    const children = getEntity(doc, 'storey')?.get(ENTITY_KEY.CHILDREN) as
+      | Y.Map<string>
+      | undefined;
+    const inherits = getEntity(doc, 'wall')?.get(ENTITY_KEY.INHERITS) as
+      | Y.Map<string>
+      | undefined;
+    expect(children?.has('wall')).toBe(false);
+    expect(inherits?.has('type')).toBe(false);
   });
 
   // `extractMinimalLayer` expresses a deletion as this tombstone node.

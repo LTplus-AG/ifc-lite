@@ -30,12 +30,17 @@ import {
  * walls dropping out of Model view, or type-library duplicates rendering as
  * real building geometry. Neither throws.
  *
- * Closing that half needs an assertion at the real boundary: load a fixture
- * with a layered wall through WASM in `scripts/test-wasm-contract.mjs` and
- * assert the emitted class is GEOM_CLASS_LAYER_SLICE. That script already
- * reads `geometryClass`, but only inside `meshFingerprint()` for a
- * both-code-paths-agree check, which is satisfied by any value as long as
- * both sides produce the same one -- a self-round-trip, not a pin.
+ * That half is closed elsewhere, and deliberately not here:
+ * `scripts/test-wasm-contract.mjs` loads a layered-wall fixture
+ * (`ara3d/duplex.ifc`) through real WASM and asserts the emitted class is 3,
+ * alongside 0 -- so a Rust-side renumbering fails a test rather than passing
+ * silently. Keep the two apart: this file must stay runnable without a wasm
+ * build, which is why it cannot make that assertion itself.
+ *
+ * Note what does NOT count as that check. The contract script also reads
+ * `geometryClass` inside `meshFingerprint()`, but only to compare two code
+ * paths against each other -- satisfied by any value as long as both sides
+ * produce the same one. That is a self-round-trip, not a pin.
  */
 
 describe('geometry class ordinals', () => {

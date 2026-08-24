@@ -197,6 +197,98 @@ describe('DataSlice', () => {
     });
   });
 
+  /**
+   * `resetMeshColors` is what the embed API's `RESET_COLORS` undoes
+   * `SET_COLORS` with (#2934). It used to call `clearPendingColorUpdates`,
+   * which is a DIFFERENT channel: `SET_COLORS` bakes into
+   * `geometryResult.meshes[].color`, while `pendingColorUpdates` belongs to the
+   * lens / IDS / clash / schedule overlays. So the reset both failed to undo
+   * the override and destroyed a claim it did not own — the two directions
+   * asserted separately below.
+   */
+  describe('resetMeshColors', () => {
+    it('restores the pre-override mesh color and re-queues it for the renderer', () => {
+      const mesh = createMockMesh(1, [1, 0, 0, 1]); // original: red
+      state.appendGeometryBatch([mesh] as any);
+
+      const updates = new Map<number, [number, number, number, number]>([[1, [0, 1, 0, 1]]]);
+      state.updateMeshColors(updates, { override: true }); // SET_COLORS: green
+      assert.deepStrictEqual(state.geometryResult?.meshes[0].color, [0, 1, 0, 1]);
+
+      state.resetMeshColors();
+
+      assert.deepStrictEqual(state.geometryResult?.meshes[0].color, [1, 0, 0, 1]);
+      assert.deepStrictEqual(state.pendingMeshColorUpdates?.get(1), [1, 0, 0, 1]);
+      assert.strictEqual(state.meshColorBackup, null);
+    });
+
+    it('restores the ORIGINAL color across repeated overrides, not the last one', () => {
+      const mesh = createMockMesh(1, [1, 0, 0, 1]); // original: red
+      state.appendGeometryBatch([mesh] as any);
+
+      state.updateMeshColors(new Map([[1, [0, 1, 0, 1] as [number, number, number, number]]]), { override: true });
+      state.updateMeshColors(new Map([[1, [0, 0, 1, 1] as [number, number, number, number]]]), { override: true });
+
+      state.resetMeshColors();
+
+      assert.deepStrictEqual(state.geometryResult?.meshes[0].color, [1, 0, 0, 1]);
+    });
+
+    it('leaves the loader\'s IFC style colors alone — they are the model, not an override', () => {
+      // The deferred style/material pass in useIfcLoader goes through
+      // updateMeshColors WITHOUT `override`. If it were backed up, a host's
+      // RESET_COLORS would strip the model's own IFC colors back to the
+      // pre-style default.
+      const mesh = createMockMesh(1, [0.5, 0.5, 0.5, 1]); // pre-style default
+      state.appendGeometryBatch([mesh] as any);
+
+      state.updateMeshColors(new Map([[1, [0.8, 0.6, 0.4, 1] as [number, number, number, number]]]));
+
+      state.resetMeshColors();
+
+      assert.deepStrictEqual(state.geometryResult?.meshes[0].color, [0.8, 0.6, 0.4, 1]);
+      assert.strictEqual(state.meshColorBackup, null);
+    });
+
+    it('restores to the IFC style color, not to the pre-style default', () => {
+      const mesh = createMockMesh(1, [0.5, 0.5, 0.5, 1]);
+      state.appendGeometryBatch([mesh] as any);
+      // Load-time style pass, then a host override on top of it.
+      state.updateMeshColors(new Map([[1, [0.8, 0.6, 0.4, 1] as [number, number, number, number]]]));
+      state.updateMeshColors(new Map([[1, [1, 0, 0, 1] as [number, number, number, number]]]), { override: true });
+
+      state.resetMeshColors();
+
+      assert.deepStrictEqual(state.geometryResult?.meshes[0].color, [0.8, 0.6, 0.4, 1]);
+    });
+
+    it('does not touch pendingColorUpdates — the lens/IDS/clash overlay channel', () => {
+      const mesh = createMockMesh(1, [1, 0, 0, 1]);
+      state.appendGeometryBatch([mesh] as any);
+
+      // Another subsystem's claim on the overlay channel.
+      state.setPendingColorUpdates(new Map([[1, [1, 1, 0, 1] as [number, number, number, number]]]));
+      state.updateMeshColors(new Map([[1, [0, 1, 0, 1] as [number, number, number, number]]]), { override: true });
+
+      state.resetMeshColors();
+
+      assert.deepStrictEqual(state.pendingColorUpdates?.get(1), [1, 1, 0, 1]);
+    });
+
+    it('is a no-op when nothing was ever overridden', () => {
+      const mesh = createMockMesh(1, [1, 0, 0, 1]);
+      state.appendGeometryBatch([mesh] as any);
+      // A load-time style bake still queued for the renderer must survive: a
+      // reset that clears it would drop the model's colors mid-load.
+      state.updateMeshColors(new Map([[1, [0.8, 0.6, 0.4, 1] as [number, number, number, number]]]));
+
+      state.resetMeshColors();
+
+      assert.deepStrictEqual(state.geometryResult?.meshes[0].color, [0.8, 0.6, 0.4, 1]);
+      assert.deepStrictEqual(state.pendingMeshColorUpdates?.get(1), [0.8, 0.6, 0.4, 1]);
+    });
+  });
+
   describe('setPendingColorUpdates', () => {
     it('should clone pending color updates map', () => {
       const updates = new Map<number, [number, number, number, number]>();

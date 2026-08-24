@@ -582,6 +582,14 @@ jobs:
       # apps/viewer/src/test/, so this ratchets the remaining list down (#2434).
       - name: Check for new source-text assertions
         run: node scripts/check-source-text-assertions.mjs
+      # That gate shipped untested and then acquired a NARROWING: a predicate
+      # counts only when applied to a value a file read produced, which is what
+      # the docblock always claimed and what the flat version never checked.
+      # A narrowing can only ever flag less, so both halves are executable --
+      # every taint shape it must still catch, and the subprocess-output shape
+      # it must not.
+      - name: Check the source-text detector's own regressions
+        run: node --test scripts/check-source-text-assertions.test.mjs
       # A walk that follows a file-supplied entity reference with no visited set
       # and no depth cap overflows the Rust stack on a self-referential
       # reference, which is SIGABRT rather than a catchable panic -- in the wasm

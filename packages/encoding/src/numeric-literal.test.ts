@@ -88,8 +88,28 @@ describe('deciding it is linear, not backtracking', () => {
   const SMALL = 20_000;
   const LARGE = 80_000; // 4x SMALL: linear predicts ~4x, quadratic ~16x.
   const TRIALS = 2; // Best of two batches, so one GC pause cannot inflate a reading.
-  /** A batch has to be clearly above clock noise to divide by. */
-  const MEASURABLE_MS = 2;
+  /** Ratio samples to take, keeping the smallest. Combined with TRIALS above,
+   *  each side of the ratio draws its minimum from 2 x 3 = 6 independent batch
+   *  timings — `min` over a partition is `min` over the union, exactly. */
+  const RATIO_SAMPLES = 3;
+
+  /** A batch has to be clearly above clock noise to divide by.
+   *
+   *  Raised from 2 to 5. A longer batch dilutes a fixed scheduler preemption:
+   *  simulated over 15k runs with one-sided noise, false failures on a HEALTHY
+   *  implementation drop from 0.38% to 0.04% at moderate contention and from
+   *  4.93% to 3.70% at heavy contention, while the false-pass rate against a
+   *  genuinely regressed implementation stays ~0%.
+   *
+   *  This file has the strongest claim on that change: it is the one that
+   *  actually flaked, at 9.30 against a bound of 8 — close enough to the bound
+   *  that noise around a 2ms floor is a plausible contributor. Measured cost
+   *  here is about +130-150ms.
+   *
+   *  It composes with RATIO_SAMPLES rather than replacing it. Raising the
+   *  floor while dropping back to a single ratio sample measures WORSE than
+   *  either alone. */
+  const MEASURABLE_MS = 5;
 
   const hostile = (n: number): string => `-${'1'.repeat(n)}x`;
 
@@ -146,10 +166,49 @@ describe('deciding it is linear, not backtracking', () => {
       small = batch(SMALL, reps);
     }
     // Not a speed bound: this asserts CALIBRATION succeeded. Failing here means
-    // 200k calls still take under 2ms, which is its own thing worth knowing.
+    // 200k calls still take under MEASURABLE_MS, which is its own thing worth
+    // knowing. Named rather than restated so raising the floor cannot leave a
+    // stale number here — it already did once.
     expect(small).toBeGreaterThanOrEqual(MEASURABLE_MS);
 
-    const growth = batch(LARGE, reps) / small;
+    // Minimise each SIDE independently, then divide once. CI produced a lone
+    // 9.30 against this bound on 2026-08-24 while `main` was green, and one
+    // sample should not decide the result — but the composition matters, and
+    // the obvious version of this fix (which #3159 shipped) is wrong:
+    //
+    //   min(Aᵢ/Bᵢ) picks the sample where the numerator happened to be clean
+    //   AND the denominator happened to be inflated. Those two flukes are
+    //   selected for independently, so the estimator is biased LOW: it hunts
+    //   for the most flattering pairing and hands a real regression a route
+    //   under the bound.
+    //
+    //   min(Aᵢ)/min(Bᵢ) takes the cleanest measurement of each side and
+    //   divides those. Noise here is one-sided — a preemption only ever adds
+    //   time — which is exactly why `batch()` already does `Math.min` over
+    //   TRIALS internally. This is that same composition one level up.
+    //
+    // This is not a statistical preference, it is an inequality. For any
+    // positive samples, min(Lᵢ)/min(Sᵢ) ≥ min(Lᵢ/Sᵢ), ALWAYS: take i* = the
+    // index minimising L, then min(Lᵢ/Sᵢ) ≤ L_i*/S_i* ≤ L_i*/min(S), and the
+    // right-hand side is exactly min(L)/min(S) because L_i* IS min(L). So the
+    // form below can never report a smaller growth than the one it replaces,
+    // and therefore can never be the one that slips a regression under the
+    // bound. Nothing about the noise distribution is assumed.
+    //
+    // It reduces the low bias rather than removing it: min(L) and min(S) are
+    // each still inflated by whatever noise survives TRIALS, and the ratio is
+    // only unbiased if that inflation is proportionally equal on both sides.
+    // Worth knowing before tuning MEASURABLE_MS, TRIALS or RATIO_SAMPLES.
+    //
+    // The bound itself is unchanged. Raising it to absorb the outlier would
+    // have widened the very gap the test exists to detect.
+    let bestLarge = Infinity;
+    let bestSmall = Infinity;
+    for (let sample = 0; sample < RATIO_SAMPLES; sample++) {
+      bestLarge = Math.min(bestLarge, batch(LARGE, reps));
+      bestSmall = Math.min(bestSmall, batch(SMALL, reps));
+    }
+    const growth = bestLarge / bestSmall;
     // Measured over twelve runs at this configuration: the linear scan grows
     // 3.4x to 4.6x, the quadratic regex 15.6x to 17.0x. 8 sits between them.
     expect(growth).toBeLessThan(8);

@@ -376,7 +376,8 @@ export type SymbolicTruncationReason =
   | 'element-count'
   | 'output-bytes'
   | 'item-depth'
-  | 'item-revisits';
+  | 'item-revisits'
+  | 'item-cycle';
 
 export interface SymbolicTruncation {
   /** Which bound fired. */
@@ -386,10 +387,9 @@ export interface SymbolicTruncation {
   /**
    * The bound's numeric value, when the reason has one.
    *
-   * ABSENT for `item-depth` and `item-revisits`: those bounds are per
-   * representation item, so there is no file-level number to compare `emitted`
-   * against, and rendering "showing {emitted} of {limit}" for them would
-   * invent a relationship that does not exist.
+   * ABSENT for `item-depth`, `item-revisits` and `item-cycle`: those bounds are
+   * per representation item, so there is no file-level number to compare
+   * `emitted` against, and "showing {emitted} of {limit}" would invent one.
    */
   limit?: number;
 }

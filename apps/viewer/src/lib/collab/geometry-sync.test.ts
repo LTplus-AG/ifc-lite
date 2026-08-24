@@ -437,6 +437,27 @@ describe('geometry-sync seed resilience', () => {
     assert.equal(seeded.seeded, 0);
     assert.equal(seeded.skipped.empty, 2);
   });
+
+  it('also skips a mesh with positions but no triangles (indices released independently)', async () => {
+    // The pre-flight guard is `positions.length === 0 || indices.length === 0`
+    // — an OR of two independently-checked arrays. A mesh can plausibly carry
+    // vertex data with no index buffer (e.g. only the position side of
+    // bounded-geometry release ran, or an upstream tessellation produced a
+    // degenerate/empty index list for a non-empty point set). Every existing
+    // "empty mesh" fixture zeroed BOTH arrays together, so a mutant that
+    // checked only `positions.length === 0` passed the whole suite.
+    const { session, pathFor } = docWithEntities(1);
+    const blobStore = new MemoryBlobStore();
+    const indexlessMesh: MeshData = { ...sampleMesh(0), indices: new Uint32Array(0) };
+
+    const seeded = await seedGeometryToRoom(api, session, blobStore, [indexlessMesh], pathFor, {
+      concurrency: 1,
+    });
+
+    assert.equal(seeded.attempted, 0, 'a mesh with no triangles must not be uploaded');
+    assert.equal(seeded.seeded, 0);
+    assert.equal(seeded.skipped.empty, 1);
+  });
 });
 
 describe('retry backoff bounds', () => {

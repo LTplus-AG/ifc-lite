@@ -42,6 +42,12 @@ describe('collab session draft publishing (#1717)', () => {
       const manifest = getProvenance(store.loadLayer(result.layerId));
       assert.strictEqual(manifest?.author.kind, 'hybrid');
       assert.strictEqual(manifest?.intent, 'Session fire-rating pass');
+      // No stack behind this publish (`stackFiles: []`): the manifest must
+      // record no base at all, not a fabricated `{kind: 'stack', ...}` —
+      // the later publishes below (`stackFiles: [result.file]`) are the
+      // only ones this suite otherwise checks, and they all take the
+      // non-empty branch.
+      assert.strictEqual(manifest?.base, null);
       // The delta carries ONLY the post-baseline edit, on the GUID path.
       const state = extractStackState([result.file]);
       assert.strictEqual(state.get('wall-guid-1')?.components.get('pset:Pset_FireSafety')?.[FIRE], 'REI90');

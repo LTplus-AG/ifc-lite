@@ -2,13 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import {
   parseWhereFilter,
   parseSetArg,
   coerceValue,
   matchesFilter,
   splitStepArgs,
+  applyAttributeMutations,
+  entitiesWithObjectType,
 } from './mutate.js';
 import { PropertyValueType } from '@ifc-lite/data';
 
@@ -290,5 +292,111 @@ describe('splitStepArgs', () => {
     expect(result[2]).toBe("'Wall-001'");
     expect(result[3]).toBe("'An external wall'");
     expect(result[4]).toBe('$');
+  });
+});
+
+describe('applyAttributeMutations', () => {
+  /** A minimal STEP body with one entity line of the given type. */
+  const stepFile = (expressId: number, type: string, args: string): string =>
+    ['ISO-10303-21;', 'DATA;', `#${expressId}=${type}(${args});`, 'ENDSEC;'].join('\n');
+
+  const mutation = (expressId: number, propName: string, value: string) => ({
+    entity: { ref: { expressId } },
+    propName,
+    value,
+  });
+
+  /** The arguments of the single entity line, after mutation. */
+  const argsOf = (content: string): string[] => {
+    const line = content.split('\n').find((l) => l.startsWith('#'))!;
+    return splitStepArgs(line.slice(line.indexOf('(') + 1, line.lastIndexOf(')')));
+  };
+
+  // IfcRoot fixes GlobalId(0), OwnerHistory(1), Name(2), Description(3), and
+  // IfcObject adds ObjectType(4). Those positions come from the schema, not
+  // from us, and this writer edits STEP text BY INDEX — so an off-by-one
+  // silently rewrites a different attribute instead of failing. Nothing
+  // asserted them before.
+  let objectTypeEntities: ReadonlySet<string>;
+  beforeAll(async () => {
+    objectTypeEntities = await entitiesWithObjectType('IFC4');
+  });
+
+  it('writes Name into slot 2, leaving its neighbours untouched', () => {
+    const before = stepFile(1, 'IFCWALL', "'guid',$,'Old',$,$,$,$,$,$");
+    const args = argsOf(applyAttributeMutations(before, [mutation(1, 'Name', 'New')], objectTypeEntities));
+    expect(args[2]).toBe("'New'");
+    expect(args[0]).toBe("'guid'"); // GlobalId must not move
+    expect(args[3]).toBe('$'); // Description must not be clobbered
+  });
+
+  it('writes Description into slot 3 and ObjectType into slot 4', () => {
+    const before = stepFile(1, 'IFCWALL', "'guid',$,'Name',$,$,$,$,$,$");
+    const withDesc = applyAttributeMutations(before, [mutation(1, 'Description', 'D')], objectTypeEntities);
+    expect(argsOf(withDesc)[3]).toBe("'D'");
+    expect(argsOf(withDesc)[2]).toBe("'Name'");
+
+    const withType = applyAttributeMutations(before, [mutation(1, 'ObjectType', 'T')], objectTypeEntities);
+    expect(argsOf(withType)[4]).toBe("'T'");
+    expect(argsOf(withType)[3]).toBe('$');
+  });
+
+  it('applies ObjectType to entities the old hand-written list omitted', () => {
+    // IfcFurniture declares ObjectType, but was not among the 29 names the
+    // previous allowlist happened to contain, so this was refused outright
+    // with a "not applicable" warning. 189 of IFC4's 218 such entities sat
+    // in that position.
+    const before = stepFile(7, 'IFCFURNITURE', "'guid',$,'Desk',$,$,$,$,$,$");
+    const args = argsOf(
+      applyAttributeMutations(before, [mutation(7, 'ObjectType', 'Workstation')], objectTypeEntities),
+    );
+    expect(args[4]).toBe("'Workstation'");
+  });
+
+  it('still refuses ObjectType on entities that genuinely lack it', () => {
+    // The other direction of the same rule, and the one worth guarding: the
+    // fix must not become "write it anywhere". A relationship and a type
+    // object have no ObjectType slot, so slot 4 there is a different
+    // attribute entirely and writing to it would corrupt the file.
+    for (const type of ['IFCRELAGGREGATES', 'IFCWALLTYPE', 'IFCPROPERTYSET']) {
+      expect(objectTypeEntities.has(type), `${type} must not be treated as having ObjectType`).toBe(false);
+      const before = stepFile(3, type, "'guid',$,'N',$,$,$,$,$,$");
+      const after = applyAttributeMutations(before, [mutation(3, 'ObjectType', 'X')], objectTypeEntities);
+      expect(argsOf(after)[4], `${type} slot 4 must be untouched`).toBe('$');
+    }
+  });
+
+  it('leaves an unrecognised attribute name alone', () => {
+    const before = stepFile(1, 'IFCWALL', "'guid',$,'Name',$,$,$,$,$,$");
+    const after = applyAttributeMutations(before, [mutation(1, 'NotAnAttribute', 'X')], objectTypeEntities);
+    expect(after).toBe(before);
+  });
+
+  it('escapes quotes and backslashes so a value cannot break out of the STEP string', () => {
+    const before = stepFile(1, 'IFCWALL', "'guid',$,'Name',$,$,$,$,$,$");
+    const args = argsOf(
+      applyAttributeMutations(before, [mutation(1, 'Name', "O'Brien\\x")], objectTypeEntities),
+    );
+    expect(args[2]).toBe("'O''Brien\\\\x'");
+  });
+});
+
+describe('entitiesWithObjectType', () => {
+  it('reads the bundled schema rather than a hand-kept list', async () => {
+    // The size is the point: a hand-written list drifts behind the schema,
+    // a derived one cannot.
+    const ifc4 = await entitiesWithObjectType('IFC4');
+    expect(ifc4.size).toBeGreaterThan(100);
+    expect(ifc4.has('IFCFURNITURE')).toBe(true);
+    expect(ifc4.has('IFCWALL')).toBe(true);
+    expect(ifc4.has('IFCRELAGGREGATES')).toBe(false);
+  });
+
+  it('falls back to IFC4 for a schema version it has no table for', async () => {
+    // StepExporter accepts 'IFC5', which has no attribute table here.
+    // Throwing would break `mutate` outright on such a file; falling back
+    // preserves the old hand-written list's behaviour, which was schema-blind.
+    const ifc5 = await entitiesWithObjectType('IFC5');
+    expect(ifc5.has('IFCWALL')).toBe(true);
   });
 });

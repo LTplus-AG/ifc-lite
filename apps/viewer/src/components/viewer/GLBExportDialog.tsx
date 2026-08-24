@@ -44,6 +44,7 @@ import { buildHiddenIfcTypes } from '@/store/typeVisibilityFilter';
 import { posthog } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
 import { GeometryProcessor, isNoRenderGeometryError, type MeshData } from '@ifc-lite/geometry';
+import { GEOM_CLASS_INSTANCED_TYPE } from '@ifc-lite/geometry/geometry-class';
 import { classifyLoadError } from '@/lib/load-errors';
 import { formatLoadError } from '@/lib/load-error-message';
 import { exportGlbFromGeometry } from '@/lib/export/glb';
@@ -294,10 +295,9 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
 
         const meshes = (exportGeometry.meshes as MeshData[])
           .filter((m) => {
-            // Instanced type-library duplicates (geometryClass 2) duplicate
-            // occurrence geometry at the origin; the from-bytes assembler
-            // excludes them (mesh_visible) and so must this path.
-            if (m.geometryClass === 2) return false;
+            // Instanced type-library duplicates repeat occurrence geometry at the
+            // origin; the from-bytes assembler excludes them (mesh_visible), as must this.
+            if (m.geometryClass === GEOM_CLASS_INSTANCED_TYPE) return false;
             if (!visibleOnly) return true;
             if (hiddenIfcTypes && m.ifcType && hiddenIfcTypes.has(m.ifcType)) return false;
             if (hasIsolation && !globalIsolated!.has(m.expressId)) return false;

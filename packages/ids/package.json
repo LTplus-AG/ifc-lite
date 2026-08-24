@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@ifc-lite/data": "workspace:*",
+    "@ifc-lite/encoding": "workspace:*",
     "@ifc-lite/parser": "workspace:*",
     "@xmldom/xmldom": "^0.9.11"
   },

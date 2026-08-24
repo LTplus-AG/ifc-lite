@@ -77,6 +77,22 @@ describe('saveJson — quota vs. unavailable DOMException discrimination', () =>
     assert.ok(!result.ok && result.message.includes('full'), 'quota message must say storage is full');
   });
 
+  it('reports "quota" for Firefox\'s legacy NS_ERROR_DOM_QUOTA_REACHED name', () => {
+    // Mutation-sweep finding: nothing exercised the second QUOTA_ERROR_NAMES
+    // entry — dropping it (leaving only "QuotaExceededError") survived the
+    // full suite. Firefox throws this legacy name instead of the standard
+    // one, so without it a full-storage Firefox user was told storage is
+    // merely "unavailable", not full.
+    (globalThis as unknown as { localStorage: Storage }).localStorage = {
+      ...(globalThis as unknown as { localStorage: Storage }).localStorage,
+      setItem: () => { throw new DOMException('quota', 'NS_ERROR_DOM_QUOTA_REACHED'); },
+    } as Storage;
+    const result = saveJson('k', { a: 1 }, 'lens changes');
+    assert.equal(result.ok, false);
+    assert.equal(!result.ok && result.reason, 'quota');
+    assert.ok(!result.ok && result.message.includes('full'), 'quota message must say storage is full');
+  });
+
   it('reports "unavailable", not "quota", for a SecurityError DOMException (e.g. Safari private mode)', () => {
     // Safari's private-mode `setItem` throws a `SecurityError` DOMException,
     // not a quota error. Misreporting this as "quota" tells the user their

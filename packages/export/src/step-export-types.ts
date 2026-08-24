@@ -15,15 +15,16 @@
  */
 
 import type { IfcAttributeValue, IfcSourceHeader, MapConversion, ProjectedCRS } from '@ifc-lite/parser';
-import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { PropertySet, QuantitySet } from '@ifc-lite/data';
 import type { RandomSource } from '@ifc-lite/encoding';
 import type { IfcSchemaVersion } from './schema-converter.js';
 import type { ModificationLedger, SourceLineDelivery } from './delta-modification-ledger.js';
 import type { EffectiveEntityIndex } from './effective-index.js';
-// A value, not a type: `ExportPass.isReadableSourceRef` is typed as
-// `ReturnType<typeof createSourceRefReader>` rather than restating the shape,
-// so the reader and its consumers cannot drift apart.
+// A function, referenced only in type position: `ExportPass.isReadableSourceRef`
+// is `ReturnType<typeof createSourceRefReader>` rather than a restatement of the
+// shape, so the reader and its consumers cannot drift apart. `import type` is
+// therefore correct and deliberate -- nothing here calls it, and the import
+// erases.
 import type { createSourceRefReader } from './source-ref-bounds.js';
 
 /**

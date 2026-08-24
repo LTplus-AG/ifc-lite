@@ -10,22 +10,11 @@
  */
 
 import type { IfcDataStore, IfcAttributeValue, IfcSourceHeader } from '@ifc-lite/parser';
-import {
-  EntityExtractor,
-  parseSourceHeader,
-  type MapConversion,
-  type ProjectedCRS,
-} from '@ifc-lite/parser';
+import { EntityExtractor, parseSourceHeader } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import type { PropertySet, QuantitySet } from '@ifc-lite/data';
-import type { RandomSource } from '@ifc-lite/encoding';
 import { needsConversion, type IfcSchemaVersion } from './schema-converter.js';
 import { getCompleteEntityIndex, getMaxExpressId } from './entity-iteration.js';
-import {
-  createModificationLedger,
-  type ModificationLedger,
-  type SourceLineDelivery,
-} from './delta-modification-ledger.js';
+import { createModificationLedger } from './delta-modification-ledger.js';
 import { createSourceRefReader } from './source-ref-bounds.js';
 import {
   writeSourceEntityLines,
@@ -42,7 +31,7 @@ import {
 } from './step-property-sets.js';
 import { type GeorefContext } from './step-georeferencing.js';
 import { collectModifications, type CollectionContext } from './step-collection.js';
-import { getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
+import { getEffectiveEntityIndex } from './effective-index.js';
 import { buildStepHeader, assembleExportResult } from './step-header.js';
 import {
   applySourceLineMutations,

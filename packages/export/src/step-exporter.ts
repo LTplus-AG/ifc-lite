@@ -51,13 +51,10 @@ export type {
   SourceLineMutations,
   ExportPass,
 } from './step-export-types.js';
-import type {
-  StepExportOptions,
-  StepExportProgress,
-  StepExportResult,
-  SourceLineMutations,
-  ExportPass,
-} from './step-export-types.js';
+// Only the three this file's own body still names. `StepExportProgress` and
+// `SourceLineMutations` are re-exported above but never referenced here, and
+// importing them too raises TS6196 under --noUnusedLocals.
+import type { StepExportOptions, StepExportResult, ExportPass } from './step-export-types.js';
 import { relationshipWithheldWarning } from './step-export-types.js';
 
 

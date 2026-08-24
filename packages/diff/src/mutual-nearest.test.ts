@@ -7,10 +7,10 @@ import { mutualNearestPairs } from './mutual-nearest.js';
 
 describe('mutualNearestPairs', () => {
   it('never produces a pairing with a repeated base or head index (mutation-sweep finding)', () => {
-    // A is closer to X than to anything else, but X's OWN nearest neighbour is
-    // B, not A (B sits even closer to X than A does). Meanwhile B's nearest is
-    // Y (farther than X, but still B's best option) and Y's nearest is B too —
-    // so B-Y is mutual and A-X is NOT (A's chosen head, X, prefers B instead).
+    // A's nearest head is X (dist 1), but X's OWN nearest base is B (dist 0.5),
+    // so A-X is NOT mutual. B's nearest head is also X — and X agrees — so
+    // B-X is the mutual pair, and it retires in the first round. Only then
+    // does A pair with the head left over, Y (dist 3).
     //
     // A greedy "does `from` have SOME nearest counterpart" check (dropping the
     // `nearestBase[h] === b` half of the mutuality test) accepts A-X purely
@@ -25,7 +25,7 @@ describe('mutualNearestPairs', () => {
     ];
     const head: [number, number, number][] = [
       [1, 0, 0], // X — B's true nearest (dist 0.5), not A's (dist 1)
-      [3, 0, 0], // Y — B's fallback once X is taken
+      [3, 0, 0], // Y — what A is left with once B-X retires
     ];
 
     const pairs = mutualNearestPairs(base, head, 10, () => true);

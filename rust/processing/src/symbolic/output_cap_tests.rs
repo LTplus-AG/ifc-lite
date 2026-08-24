@@ -517,6 +517,139 @@ fn a_per_item_reason_omits_limit_on_the_wire_rather_than_sending_null() {
     assert_eq!(json["truncated"]["limit"], 200);
 }
 
+/// N top-level items, each a flat `IfcGeometricCurveSet` of `leaves` DISTINCT
+/// polylines -- no shared ids anywhere, so no id is ever visited twice and no
+/// revisit is ever charged, however many items or leaves there are. Companion
+/// to `hostile_dag`, which is the opposite shape (few ids, deliberately
+/// revisited); this one exists to prove the shared revisit pool does NOT
+/// start charging FIRST visits just because they belong to a later item.
+fn flat_multi_item_dag(top_items: usize, leaves: usize) -> String {
+    let mut s = String::from("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n");
+    let mut id = 1000u32;
+    let mut tops = Vec::new();
+    for _ in 0..top_items {
+        let set = id;
+        id += 1;
+        let mut elems = Vec::new();
+        for _ in 0..leaves {
+            let pl = id;
+            id += 1;
+            let p1 = id;
+            id += 1;
+            let p2 = id;
+            id += 1;
+            s.push_str(&format!("#{pl}=IFCPOLYLINE((#{p1},#{p2}));\n"));
+            s.push_str(&format!("#{p1}=IFCCARTESIANPOINT((0.,0.));\n"));
+            s.push_str(&format!("#{p2}=IFCCARTESIANPOINT((1.,1.));\n"));
+            elems.push(pl);
+        }
+        let refs = elems.iter().map(|q| format!("#{q}")).collect::<Vec<_>>().join(",");
+        s.push_str(&format!("#{set}=IFCGEOMETRICCURVESET(({refs}));\n"));
+        tops.push(set);
+    }
+    let list = tops.iter().map(|t| format!("#{t}")).collect::<Vec<_>>().join(",");
+    let prod = id;
+    let shp = id + 1;
+    let rep = id + 2;
+    s.push_str(&format!(
+        "#{prod}=IFCANNOTATION('x',$,$,$,$,$,#{shp});\n\
+         #{shp}=IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep}));\n\
+         #{rep}=IFCSHAPEREPRESENTATION($,'Annotation','Annotation',({list}));\n"
+    ));
+    s.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
+    s
+}
+
+#[test]
+fn the_revisit_budget_is_shared_once_across_the_whole_extraction_not_reset_per_item() {
+    // #2937: `extract_symbolic_item` builds a fresh `ItemWalk` for every
+    // top-level item, and before this fix that walk owned its OWN revisit
+    // budget, initialised to the full constant on every call. N items shared
+    // nothing, so the bound was `N x MAX_ITEM_REVISITS` -- it scaled with item
+    // count instead of bounding the file.
+    //
+    // `hostile_dag(k)` places k independent 24-level fan-out DAGs as k
+    // top-level items of ONE shape representation; each one alone can exhaust
+    // a revisit budget many times over. That is the shape that tells "one
+    // pool per item" apart from "one pool for the file": if the second item
+    // gets its own fresh pool, it contributes roughly as much as the first;
+    // if the pool is a single shared one and the first item already spent it,
+    // the second item can barely contribute at all.
+    const BUDGET: u32 = 50;
+
+    let mut one = SymbolicAccumulator::with_revisit_budget(BUDGET);
+    super::extract_symbolic_data_into(&hostile_dag(1).into_bytes(), &mut one);
+    let one_data = one.into_data();
+    let one_item_total = one_data.len();
+    assert_eq!(
+        one_data.truncated.as_ref().map(|t| t.reason),
+        Some(SymbolicTruncationReason::ItemRevisits),
+        "a budget of {BUDGET} must be nowhere near enough for a single 24-level \
+         fan-out DAG, so this item alone must already be truncated: {:?}",
+        one_data.truncated
+    );
+
+    let mut two = SymbolicAccumulator::with_revisit_budget(BUDGET);
+    super::extract_symbolic_data_into(&hostile_dag(2).into_bytes(), &mut two);
+    let two_data = two.into_data();
+    let two_item_total = two_data.len();
+    assert_eq!(
+        two_data.truncated.as_ref().map(|t| t.reason),
+        Some(SymbolicTruncationReason::ItemRevisits),
+        "the second item must also end up truncated once the shared pool is \
+         spent: {:?}",
+        two_data.truncated
+    );
+
+    assert!(
+        two_item_total <= one_item_total + 200,
+        "a SECOND top-level item sharing the same tiny revisit budget as the \
+         first must contribute almost nothing once the first item has spent \
+         the pool -- got {one_item_total} primitives for one item and \
+         {two_item_total} for two, which is only possible if each item is \
+         still getting its OWN {BUDGET}-revisit budget instead of sharing a \
+         single one across the extraction"
+    );
+}
+
+#[test]
+fn the_shared_revisit_budget_does_not_charge_legitimate_first_visits_across_items() {
+    // The other direction, so "share the pool" cannot be satisfied by "charge
+    // every visit, first or not" -- that would also make a second item
+    // contribute nothing, for the wrong reason, and would truncate a
+    // perfectly well-formed multi-product file.
+    //
+    // Two top-level items below are flat, non-cyclic curve sets of DISTINCT
+    // entities: by construction every visit inside them is a first visit, and
+    // none should ever be charged against the revisit pool, however small
+    // that pool is set. `leaves` is deliberately far larger than `BUDGET` so
+    // an implementation that (even partially) charges first visits fails
+    // here.
+    const BUDGET: u32 = 5;
+    const LEAVES: usize = 200;
+
+    let mut acc = SymbolicAccumulator::with_revisit_budget(BUDGET);
+    super::extract_symbolic_data_into(
+        &flat_multi_item_dag(2, LEAVES).into_bytes(),
+        &mut acc,
+    );
+    let out = acc.into_data();
+
+    assert_eq!(
+        out.polylines.len(),
+        2 * LEAVES,
+        "every element of two well-formed, non-cyclic flat sets must be \
+         emitted regardless of how small the shared revisit budget is -- \
+         first visits are never charged"
+    );
+    assert!(
+        out.truncated.is_none(),
+        "a file that never needed a single revisit must not be reported as \
+         truncated just because the shared pool is tiny: {:?}",
+        out.truncated
+    );
+}
+
 #[test]
 fn the_wire_spellings_match_serde() {
     // `as_wire_str` exists because the WASM boundary cannot pass a serde enum

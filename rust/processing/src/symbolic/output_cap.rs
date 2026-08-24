@@ -82,7 +82,6 @@ const PRIMITIVE_OVERHEAD_BYTES: usize = 64;
 /// Charged per `f32` coordinate or per byte of text.
 const BYTES_PER_COORD: usize = 8;
 
-
 /// Which bound stopped an extraction early.
 ///
 /// `SymbolicData` had no diagnostics channel at all (#2938), so a drawing that
@@ -149,8 +148,6 @@ pub struct SymbolicTruncation {
     pub limit: Option<usize>,
 }
 
-
-
 /// The extraction's accumulator: a `SymbolicData` under construction, plus the
 /// bound it is being built under.
 ///
@@ -178,6 +175,8 @@ pub(super) struct SymbolicAccumulator {
     bytes: usize,
     /// Byte bound for this extraction, injectable alongside `limit`.
     byte_limit: usize,
+    /// Revisits the WHOLE extraction may still charge, shared across items (#2937).
+    revisit_budget: u32,
     /// The most severe bound that fired, if any. See [`SymbolicAccumulator::record`].
     reason: Option<SymbolicTruncationReason>,
     /// Set only by the EXTRACTION bounds, never by a per-item one.
@@ -198,6 +197,7 @@ impl SymbolicAccumulator {
             limit: MAX_SYMBOLIC_ELEMENTS,
             bytes: 0,
             byte_limit: MAX_SYMBOLIC_BYTES,
+            revisit_budget: super::item_walk::MAX_ITEM_REVISITS,
             reason: None,
             exhausted: false,
             #[cfg(test)]
@@ -219,6 +219,12 @@ impl SymbolicAccumulator {
         Self { limit, ..Self::new() }
     }
 
+    /// Accumulator with a small injected revisit budget (skips 200,000 real revisits).
+    #[cfg(test)]
+    pub(super) fn with_revisit_budget(revisit_budget: u32) -> Self {
+        Self { revisit_budget, ..Self::new() }
+    }
+
     /// Is the accumulator itself full? The walk and the product scan read THIS
     /// to stop early. A per-item bound marks the result truncated WITHOUT setting
     /// this, so one deep item does not abandon every later product.
@@ -231,6 +237,14 @@ impl SymbolicAccumulator {
     /// the same event and would report the wrong reason.
     pub(super) fn note_item_bound(&mut self, reason: SymbolicTruncationReason) {
         self.record(reason);
+    }
+
+    /// Charge one revisit against the extraction-wide pool (#2937); `false` means spent.
+    pub(super) fn charge_revisit(&mut self) -> bool {
+        self.revisit_budget
+            .checked_sub(1)
+            .map(|left| self.revisit_budget = left)
+            .is_some()
     }
 
     /// Keep the MOST SEVERE reason, not the first.

@@ -32,7 +32,8 @@ use std::collections::HashMap;
 /// `geometry/src/router/processing.rs`, which walk the same mapped-item chain.
 pub(super) const MAX_ITEM_DEPTH: u32 = 32;
 
-/// Number of times this extraction may re-enter an id it has already visited.
+/// Number of times the WHOLE EXTRACTION may re-enter an id it has already
+/// visited, shared across every top-level item.
 ///
 /// A depth cap bounds a path's LENGTH and not its BREADTH: `k` items that each
 /// lead back into a cycle cost `O(k^depth)`, so a cap alone converts an abort
@@ -47,6 +48,16 @@ pub(super) const MAX_ITEM_DEPTH: u32 = 32;
 /// legitimately. First visits are bounded by the file itself (an entity must
 /// exist to be reached), so they cannot be the exponential; only revisits can,
 /// and an acyclic DAG reaching one node down 2^levels paths is exactly that.
+///
+/// The BUDGET this bounds lives on `SymbolicAccumulator`
+/// (`output_cap::SymbolicAccumulator::charge_revisit`), not on [`ItemWalk`],
+/// and that placement is the fix for #2937: `extract_symbolic_item` builds a
+/// fresh `ItemWalk` for every top-level item, so a budget stored there reset
+/// on every item and a file of N items got `N x MAX_ITEM_REVISITS` instead of
+/// one bound governing the file. The accumulator is threaded through the
+/// whole extraction, so charging it once per revisit -- wherever in the file
+/// that revisit happens -- is what makes this a FILE bound rather than an
+/// ITEM bound.
 pub(super) const MAX_ITEM_REVISITS: u32 = 200_000;
 
 /// State threaded through the walk: the ancestors on the current path, and the
@@ -83,9 +94,16 @@ pub(super) struct ItemWalk {
     /// Only used to tell a FIRST visit from a REVISIT. See
     /// [`MAX_ITEM_REVISITS`] for why that distinction is what makes the budget
     /// safe to have at all.
+    ///
+    /// Deliberately still scoped to ONE top-level item, unlike the budget
+    /// itself (#2937): a node reached for the first time under THIS item's
+    /// own walk is a first visit regardless of whether some earlier,
+    /// unrelated top-level item also reached it, and charging that would
+    /// punish ordinary multi-product files (many placements of the same
+    /// library block) for the crime of existing. Only a REVISIT within one
+    /// item's own walk can be part of the exponential fan-out this budget
+    /// guards against; see [`MAX_ITEM_REVISITS`].
     seen: FxHashSet<u32>,
-    /// Charged on REVISITS only. See [`MAX_ITEM_REVISITS`].
-    revisit_budget: u32,
 }
 
 impl ItemWalk {
@@ -127,38 +145,6 @@ pub(super) fn extract_symbolic_item(
     let mut walk = ItemWalk {
         path: FxHashSet::default(),
         seen: FxHashSet::default(),
-        revisit_budget: MAX_ITEM_REVISITS,
-    };
-    extract_symbolic_item_at(
-        item, decoder, express_id, ifc_type, rep_identifier, unit_scale, transform, rebase,
-        styled_items, out, 0, &mut walk,
-    );
-}
-
-/// Same walk with a caller-chosen revisit budget, so a test can pin the
-/// "first visits are never charged" property against a budget of 50 instead of
-/// building a 23.8 MB fixture to exceed the real one. The mechanism under test
-/// is identical; only the scale differs. Measured: the full-size version cost
-/// 4.24s of the crate's 4.79s lib suite.
-#[cfg(test)]
-#[allow(clippy::too_many_arguments)]
-pub(super) fn extract_symbolic_item_with_revisit_budget(
-    item: &DecodedEntity,
-    decoder: &mut EntityDecoder,
-    express_id: u32,
-    ifc_type: &str,
-    rep_identifier: &str,
-    unit_scale: f32,
-    transform: &Transform2D,
-    rebase: RenderFrameRebase,
-    styled_items: &HashMap<u32, Vec<u32>>,
-    out: &mut SymbolicAccumulator,
-    revisit_budget: u32,
-) {
-    let mut walk = ItemWalk {
-        path: FxHashSet::default(),
-        seen: FxHashSet::default(),
-        revisit_budget,
     };
     extract_symbolic_item_at(
         item, decoder, express_id, ifc_type, rep_identifier, unit_scale, transform, rebase,
@@ -197,20 +183,19 @@ pub(super) fn extract_symbolic_item_at(
     // A first visit is free: their number is bounded by the file. Only a
     // REVISIT can be part of an exponential fan-out, so only a revisit is
     // charged.
-    if !walk.seen.insert(item.id) {
-        match walk.revisit_budget.checked_sub(1) {
-            Some(left) => walk.revisit_budget = left,
-            None => {
-                // #2938's LEAD case: a well-formed nested block import
-                // (2,000 inserts of a 250-curve symbol) loses 60% of its
-                // curves here while emitting only 200,250 primitives -- far
-                // under both extraction bounds. A diagnostic that reported
-                // only those bounds would say nothing about the scenario the
-                // issue is actually about.
-                out.note_item_bound(SymbolicTruncationReason::ItemRevisits);
-                return;
-            }
-        }
+    if !walk.seen.insert(item.id) && !out.charge_revisit() {
+        // #2938's LEAD case: a well-formed nested block import (2,000
+        // inserts of a 250-curve symbol) loses 60% of its curves here while
+        // emitting only 200,250 primitives -- far under both extraction
+        // bounds. A diagnostic that reported only those bounds would say
+        // nothing about the scenario the issue is actually about.
+        //
+        // The charge itself is against `out` (the accumulator), not a field
+        // on `walk` -- see `MAX_ITEM_REVISITS` for why the budget must live
+        // where it survives across top-level items rather than resetting
+        // with each new `ItemWalk` (#2937).
+        out.note_item_bound(SymbolicTruncationReason::ItemRevisits);
+        return;
     }
     if !walk.enter_node(item.id) {
         return;

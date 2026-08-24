@@ -32,7 +32,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { analyze } from './source-text-assertion-detect.mjs';
+import { analyze, blankStrings, stripComments } from './source-text-assertion-detect.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const GATE = join(ROOT, 'scripts', 'check-source-text-assertions.mjs');
@@ -319,4 +319,135 @@ test('the narrowing kept every file the flat detector flagged', () => {
       `${rel} was detected by the flat check and must still be detected`,
     );
   }
+});
+
+// ---------------------------------------------------------------------------
+// Two silent UNDER-detections, both found by review of the narrowing above.
+// A gate that stops seeing is worse than one that never looked: it reports
+// "no source-text assertion here" for a file that still has one, and the next
+// person deletes its allowlist row.
+// ---------------------------------------------------------------------------
+
+test('a quote inside a REGEX LITERAL does not blank the rest of the file', () => {
+  // `blankStrings` knew about strings and template interpolation but not about
+  // regex literals, so the `"` in `/["']/` opened a string that never closed
+  // and every assertion after it became invisible. Both halves are asserted:
+  // the assertion BEFORE the regex, which always worked, and the one AFTER it.
+  assert.equal(flagged(`
+    import { readFileSync } from 'node:fs';
+    const src = readFileSync('a/b.ts', 'utf8');
+    const QUOTED = /["']/;
+    it('x', () => { expect(src).toContain('token'); });
+  `), true);
+});
+
+test('a regex literal holding a quote is still blanked, not read as code', () => {
+  // The other direction of the regex fix. This file DOES read a source file and
+  // DOES contain a predicate spelling, so it reaches `blankStrings` and would be
+  // flagged if the regex body were scanned as code -- the earlier version of
+  // this test had no read, so `analyze` returned at the `READS_A_FILE` guard
+  // before `blankStrings` ran, and it passed for three unrelated reasons.
+  assert.equal(flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('a/b.ts', 'utf8');
+const RE = /source\\.includes\\(['"]/;
+it('x', () => { expect(RE.source).toBe('literal'); });
+`), false);
+});
+
+test('a DOTTED read starts taint, like a bare one', () => {
+  // `valueIdentifiers` drops any name preceded by `.`, so `fs.readFileSync(p)`
+  // yielded `{fs, p}` and taint never started. `READS_A_FILE` still matched, so
+  // the file was ANALYSED rather than skipped and the answer was a confident
+  // `flagged: false`. Namespaced reads are the ordinary spelling in this repo.
+  assert.equal(flagged(`
+    import fs from 'node:fs';
+    const src = fs.readFileSync('a/b.ts', 'utf8');
+    it('x', () => { expect(src).toContain('token'); });
+  `), true);
+});
+
+test('an awaited namespaced read starts taint too', () => {
+  assert.equal(flagged(`
+    import fsp from 'node:fs/promises';
+    const src = await fsp.readFile('a/b.ts', 'utf8');
+    it('x', () => { expect(src).toContain('token'); });
+  `), true);
+});
+
+test('a file with no read at all is still not flagged', () => {
+  // The control for both fixes above. Neither may be satisfiable by flagging
+  // everything: a predicate applied to a literal is not a source-text
+  // assertion, and that is the whole point of the narrowing.
+  assert.equal(flagged(`
+    const src = 'a literal, not a file';
+    it('x', () => { expect(src).toContain('token'); });
+  `), false);
+});
+
+test('a marker excuses a WRAPPED assertion, written as the gate prints it', () => {
+  // The remedy `check-source-text-assertions.mjs` prints puts the marker above
+  // `assert.ok(...)`. On a wrapped call the predicate is two lines below it, so
+  // the marker excused nothing AND was reported unused: CI failed twice and the
+  // printed fix did not work. A remedy an instrument prints must be one the
+  // instrument accepts.
+  const r = analyze(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('a/b.ts', 'utf8');
+// @source-text-assertion-ok anchor guard, not a subject assertion
+assert.ok(
+  source.includes(anchor),
+  \`anchor drifted\`,
+);
+`);
+  assert.equal(r.flagged, false);
+  assert.equal(r.marked.length, 1);
+  assert.deepEqual(r.unusedMarkers, []);
+});
+
+test('a marker that excuses nothing is still an unused marker', () => {
+  // The control for the widening above. Reaching further up must not turn the
+  // marker into a blanket exemption: one attached to unrelated code still has
+  // to be reported, or "marked sites stay named" stops being true.
+  // The separator matters. `const unrelated = 1;` ends in `;`, which the walk
+  // already rejects, so it certified nothing. A COMMENT is the case that broke
+  // it: `CONTINUES` contains `*`, `/`, `:` and `-`, so an ordinary `// Arrange:`
+  // or this repo's own `// -----` separator read as a continuation and let a
+  // stale marker reach an unrelated predicate -- while ALSO marking it used, so
+  // the dead-marker check went quiet.
+  for (const separator of ['// Arrange:', '// ------------------', '// see https://x/', ' */']) {
+    const r = analyze(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('a/b.ts', 'utf8');
+// @source-text-assertion-ok nothing here to excuse
+${separator}
+it('x', () => { expect(source).toContain('token'); });
+`);
+    assert.equal(r.flagged, true, `separator ${separator} let a stale marker through`);
+    assert.equal(r.unusedMarkers.length, 1, `separator ${separator} hid the unused marker`);
+  }
+});
+
+test('a JSX closing tag does not open a regex', () => {
+  // `</Foo>` puts `<` directly before the slash. Accepting `<` as a regex
+  // preceder made every closing tag open one, and on a line with a second `/`
+  // the span swallowed an opening quote and blanked the rest of the FILE --
+  // the exact whole-file desync the regex handling was added to remove.
+  assert.equal(flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('a/b.ts', 'utf8');
+render(<Foo trigger={<button>Open</button>} src="img/x.png" />);
+assert.ok(source.includes('handleRowClick'));
+`), true);
+});
+
+test('division after ++ is not read as a regex', () => {
+  // Asserted on the BLANKING, not on `flagged`. The first version of this test
+  // checked `flagged` with the assertion on a different line, so the corruption
+  // never reached the verdict and it passed with the bug live: `a++ / b) / c`
+  // blanked to `(a++        c;`, eating the `)` and unbalancing every
+  // paren-matching read downstream. Two slashes on one line, so the
+  // unterminated-literal fallback does not save it.
+  const line = 'const r = (a++ / b) / c;';
+  assert.equal(blankStrings(stripComments(line)), line);
 });

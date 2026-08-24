@@ -57,8 +57,10 @@
  *     // @source-text-assertion-ok mutation anchor guard, not a subject assertion
  *     assert.ok(source.includes(from), `anchor not found: ${from}`);
  *
- * The marker suppresses the predicate on its own line or the line immediately
- * below, must carry a reason, and a marker that suppresses nothing is an error
+ * The marker suppresses the predicate on its own line, or anywhere from the
+ * first line of the enclosing assertion upward by one -- a wrapped
+ * `assert.ok(\n  source.includes(x),\n)` puts the predicate below the line the
+ * marker sits above, and the remedy this gate prints assumes that works
  * — same ratchet discipline as the allowlist. The decision stays a grep-able
  * line in the diff, which a structural carve-out never would be.
  */
@@ -96,6 +98,67 @@ const CLOSERS = ')]}';
  * and `${…}` interpolations. Length preservation is load-bearing: every index
  * computed on the blanked text is used against the original.
  */
+/** Characters after which a `/` begins a REGEX rather than a division. */
+const REGEX_PRECEDERS = new Set([
+  '(', ',', '=', ':', '[', '!', '&', '|', '?', '{', '}', ';', '+', '-', '*', '%', '~', '^', '>', '\n',
+]);
+
+/** Keywords after which a `/` begins a regex (`return /re/.test(x)`). */
+const REGEX_PRECEDING_WORDS = /(?:^|[^A-Za-z0-9_$])(return|typeof|instanceof|case|in|of|delete|void|new|do|else|yield|await)$/;
+
+/**
+ * If `src[start]` opens a regex literal, the index just PAST it (flags
+ * included); otherwise `start`, meaning "this `/` is division".
+ *
+ * The division-vs-regex question is decided by the previous significant
+ * character. That is the standard heuristic and it is APPROXIMATE, not sound:
+ * `stripComments` runs first but is string-unaware, so a `//` inside a string
+ * literal (`'file:///x'`) truncates the line and can leave this looking at the
+ * wrong character. Measured against the TypeScript parser over the scanned
+ * corpus, it disagrees on a handful of lines, none of which currently changes a
+ * verdict. A `[...]` class is tracked, since `/` inside one is literal, and an
+ * unterminated literal (no closing `/` before the line ends) is treated as
+ * division rather than swallowing the rest of the file.
+ */
+function regexLiteralEnd(src, start) {
+  let k = start - 1;
+  while (k >= 0 && (src[k] === ' ' || src[k] === '\t')) k--;
+  const prev = k >= 0 ? src[k] : '';
+  // `<` is deliberately NOT a preceder. `</Foo>` puts one directly before the
+  // slash, and these files are `.tsx`: accepting it made every JSX closing tag
+  // open a "regex", which on a line with a second `/` swallowed the opening
+  // quote and desynced the scanner for the rest of the FILE. That is the exact
+  // whole-file blanking this function exists to prevent, reintroduced by the
+  // fix for it. `>` has to stay, because it carries `=>`.
+  //
+  // `a++ / b` and `a-- / b` are division, so a doubled `+`/`-` is excluded even
+  // though a single one is a legitimate preceder (`a + /re/.test(b)`).
+  const doubled = (prev === '+' || prev === '-') && src[k - 1] === prev;
+  const isRegex =
+    !doubled
+    && (prev === ''
+      || REGEX_PRECEDERS.has(prev)
+      || REGEX_PRECEDING_WORDS.test(src.slice(Math.max(0, k - 12), k + 1)));
+  if (!isRegex) return start;
+
+  let i = start + 1;
+  let inClass = false;
+  while (i < src.length) {
+    const c = src[i];
+    if (c === '\n') return start; // unterminated: it was division after all
+    if (c === '\\') { i += 2; continue; }
+    if (c === '[') inClass = true;
+    else if (c === ']') inClass = false;
+    else if (c === '/' && !inClass) {
+      i++;
+      while (i < src.length && /[a-z]/.test(src[i])) i++; // flags
+      return i;
+    }
+    i++;
+  }
+  return start;
+}
+
 export function blankStrings(src) {
   const out = src.split('');
   const stack = [];
@@ -128,6 +191,20 @@ export function blankStrings(src) {
       stack.push({ kind: 'str', quote: c });
       i++;
       continue;
+    }
+    // A REGEX LITERAL is the third thing that can hold a quote. Without this,
+    // `/["']/` opened a string that never closed and blanked the rest of the
+    // FILE, so every assertion after it became invisible and the gate reported
+    // "no source-text assertion" for a file that still had several. That is
+    // silent UNDER-detection, the opposite of the direction this detector's
+    // docblock says it errs in.
+    if (c === '/') {
+      const end = regexLiteralEnd(src, i);
+      if (end > i) {
+        for (let k = i; k < end; k++) if (src[k] !== '\n') out[k] = ' ';
+        i = end;
+        continue;
+      }
     }
     if (top && top.kind === 'interp') {
       if (OPENERS.includes(c)) top.depth++;
@@ -244,6 +321,15 @@ function receiverStart(blanked, dot) {
 function computeTainted(blanked) {
   const tainted = new Set(['readFileSync', 'readFile']);
   const refersToTainted = (expr) => {
+    // A READ is a read however it is spelled. `valueIdentifiers` drops any name
+    // preceded by `.`, so `fs.readFileSync(p)` yielded `{fs, p}` and taint never
+    // started -- `READS_A_FILE` still matched, so the file was ANALYSED rather
+    // than skipped, the taint set stayed empty, and the answer was
+    // `flagged: false`. Namespaced reads are the ordinary spelling in this repo
+    // and `await fsp.readFile(...)` failed the same way, so the gate was blind
+    // to both. Seeding from the same pattern that decides whether to analyse at
+    // all stops the two from disagreeing.
+    if (READS_A_FILE.test(expr)) return true;
     for (const name of valueIdentifiers(expr)) if (tainted.has(name)) return true;
     return false;
   };
@@ -369,6 +455,62 @@ function splitArgs(text) {
  *             marked: Array<{line: number, reason: string}>,
  *             unusedMarkers: number[] }}
  */
+/** A line is a continuation of the one below it when it ends mid-expression. */
+const CONTINUES = /(?:[([,]|=>|&&|\|\||[-+*/%?:]|=)\s*$/;
+
+/**
+ * `line` with any trailing `//` comment removed, so {@link CONTINUES} is asked
+ * about CODE rather than prose.
+ *
+ * Without this the walk was defeated by an ordinary comment: `CONTINUES`
+ * contains `*`, `/`, `:` and `-`, so `// Arrange:`, `// see https://x/`, a
+ * JSDoc ` *` line and this repo's own `// ------` separators all read as
+ * continuations. A stale marker then reached across them to excuse an unrelated
+ * predicate AND was recorded as used, so the dead-marker check went quiet too:
+ * both halves of the gate wrong at once.
+ *
+ * A `//` inside a string (`'file:///x'`) is truncated here as well, which makes
+ * the line look like a NON-continuation. That direction is safe: the marker is
+ * not accepted, so the predicate is reported rather than silently excused.
+ */
+function codeOf(line) {
+  const at = line.indexOf('//');
+  const code = (at === -1 ? line : line.slice(0, at)).trim();
+  // A BLOCK-comment fragment carries no code either, and ` */` is the one that
+  // bites: it ends in `/`, which `CONTINUES` accepts, so a JSDoc block above a
+  // stale marker read as one long continuation.
+  if (code.startsWith('*') || code.startsWith('/*')) return '';
+  return code;
+}
+
+/**
+ * The line carrying the marker that excuses a predicate on `line`, or `null`.
+ *
+ * A marker sits immediately above the ASSERTION, and the assertion may be
+ * wrapped over several lines, so the predicate is not always on the line the
+ * marker is above. This walks up over continuation lines to the statement's
+ * first line and allows the marker anywhere from just above that down to the
+ * predicate itself.
+ *
+ * The 24-line bound is a runaway guard, not a policy: a statement longer than
+ * that is already unreadable, and the previous bound of 8 was small enough that
+ * a legitimately long wrapped assertion fell out the other side and hit the
+ * double failure this exists to remove.
+ */
+function markerLineFor(markerLines, rawLines, line) {
+  if (markerLines.has(line)) return line;
+  let top = line;
+  for (let n = 0; n < 24; n++) {
+    const above = codeOf(rawLines[top - 2] ?? '');
+    if (!CONTINUES.test(above)) break;
+    top -= 1;
+  }
+  for (let candidate = line - 1; candidate >= top - 1; candidate--) {
+    if (markerLines.has(candidate)) return candidate;
+  }
+  return null;
+}
+
 export function analyze(original) {
   const stripped = stripComments(original);
   const empty = { flagged: false, hits: [], marked: [], unusedMarkers: [] };
@@ -408,8 +550,23 @@ export function analyze(original) {
     }
     if (!hit) continue;
     const line = lineOf(dot);
-    // A marker excuses the predicate on its own line or the line below it.
-    const markerLine = markerLines.has(line) ? line : markerLines.has(line - 1) ? line - 1 : null;
+    // A marker excuses the predicate on its own line, or on any line from the
+    // start of the enclosing statement to just above it.
+    //
+    // "The line above" alone was wrong for a WRAPPED assertion, which is the
+    // prevailing style in the files this gate actually reports. Written exactly
+    // as `check-source-text-assertions.mjs` prints the remedy:
+    //
+    //     // @source-text-assertion-ok anchor guard
+    //     assert.ok(
+    //       source.includes(anchor),
+    //     );
+    //
+    // the predicate is on the THIRD line and the marker on the first, so the
+    // marker excused nothing AND was then reported as unused: CI failed twice
+    // and the printed fix did not work. A remedy an instrument prints has to be
+    // one the instrument accepts.
+    const markerLine = markerLineFor(markerLines, rawLines, line);
     if (markerLine !== null && markerLines.get(markerLine)) {
       usedMarkers.add(markerLine);
       marked.push({ line, reason: markerLines.get(markerLine) });

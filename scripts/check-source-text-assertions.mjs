@@ -196,8 +196,9 @@ if (deadMarkers.length > 0) {
   for (const site of deadMarkers) console.error(`  ${site}`);
   console.error(`
 Either the marker has no reason after it, or the assertion it excused is gone
-or moved. A marker must sit on the assertion's own line or the line directly
-above it -- an unattached one is an exemption nobody can see the scope of.
+or moved. A marker sits on the assertion's own line or above it, and an
+assertion wrapped over several lines counts as one: the marker may sit above
+the line the assertion STARTS on, which is where this message shows it.
 `);
 }
 

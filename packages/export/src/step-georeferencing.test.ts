@@ -848,7 +848,12 @@ describe('express ids are unique across an export that allocates on both paths',
     // The fixture is only meaningful if both paths actually emitted.
     expect(content).toContain('IFCPROJECTEDCRS(');
     expect(content).toContain('IFCMAPCONVERSION(');
-    expect(content).toContain('IFCPROPERTYSET(');
+    // Not `IFCPROPERTYSET(`: this fixture already defines four of those and a
+    // full export ships them verbatim, so that assertion would hold even if
+    // the generated-pset path emitted nothing -- leaving the duplicate check
+    // covering the georef path alone. `IsExternal` appears nowhere in the
+    // source, so it can only have come from the path this test needs to run.
+    expect(content).toContain("IFCPROPERTYSINGLEVALUE('IsExternal'");
 
     expect(duplicateDefinedIds(content)).toEqual([]);
     // The other half of integrity still holds, so a "fix" that removed a

@@ -135,7 +135,12 @@ export function evaluateOmissionPredicates(
   // Georef-only deltas (newGeorefLines populated but no entity changes) must
   // still produce a non-empty DATA section.
   if (
-    options.deltaOnly
+    // `=== true`, matching `step-pass-builder.ts`'s two reads of the same
+    // option. A plain-JS caller passing `deltaOnly: 1` would otherwise have
+    // this module call the export a delta while the predicates there call it
+    // a full export -- the same divergence this file argues against for
+    // `visibleOnly` a few paragraphs down.
+    options.deltaOnly === true
     && pass.modifiedEntities.size === 0
     && overlayNewEntityCount === 0
     && pass.newGeorefLines.length === 0

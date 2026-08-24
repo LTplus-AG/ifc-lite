@@ -433,17 +433,25 @@ function checkPattern(
 
 /**
  * Validate that `value` matches the lexical space of the supplied XSD
- * primitive base. Mirrors upstream `XsTypes.IsValid` — same regexes,
- * just expressed in JS. Used by the enumeration coherence check to
+ * primitive base. Mirrors upstream `XsTypes.IsValid` — the same
+ * accepted languages, expressed in JS. (The numeric ones are not
+ * character-for-character copies any more; see the note on the table.)
+ * Used by the enumeration coherence check to
  * flag entries like `<xs:enumeration value="12,0"/>` under a
  * `<xs:restriction base="xs:double">`.
  */
 const XS_VALUE_REGEX: Record<string, RegExp> = {
-  // Lifted from upstream `XmlRegex.cs` static fields.
+  // Lifted from upstream `XmlRegex.cs` static fields, except where a
+  // note below says the spelling was changed (the language was not).
   'xs:integer': /^[+-]?(\d+)$/,
-  'xs:double': /^([-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?|NaN|\+INF|-INF)$/,
-  'xs:float': /^([-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?|NaN|\+INF|-INF)$/,
-  'xs:decimal': /^([-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?|NaN|\+INF|-INF)$/,
+  // `[0-9]*(?:\.[0-9]*)?` rather than upstream's `[0-9]*\.?[0-9]*`: the
+  // latter is two adjacent digit runs, so a failing lexeme (a long digit
+  // run and one stray character, out of an untrusted IDS file) makes the
+  // engine retry every split — quadratic, the #3113 shape. The accepted
+  // language is identical; only the number of parses per prefix changes.
+  'xs:double': /^([-+]?[0-9]*(?:\.[0-9]*)?([eE][-+]?[0-9]+)?|NaN|\+INF|-INF)$/,
+  'xs:float': /^([-+]?[0-9]*(?:\.[0-9]*)?([eE][-+]?[0-9]+)?|NaN|\+INF|-INF)$/,
+  'xs:decimal': /^([-+]?[0-9]*(?:\.[0-9]*)?([eE][-+]?[0-9]+)?|NaN|\+INF|-INF)$/,
   'xs:boolean': /^(true|false|0|1)$/,
   'xs:date': /^\d{4}-\d{2}-\d{2}(Z|([+-]\d{2}:\d{2}))?$/,
   'xs:dateTime':

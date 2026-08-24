@@ -375,13 +375,20 @@ async function handleCommand(type: InboundCommandType, data: unknown, requestId?
       for (const [key, color] of Object.entries(payload.colorMap)) {
         updates.set(Number(key), color);
       }
-      state.updateMeshColors(updates);
+      // `override` so the displaced colors are captured and RESET_COLORS can
+      // put them back.
+      state.updateMeshColors(updates, { override: true });
       if (requestId) emitToParent(createResponse(requestId));
       return;
     }
 
     case 'RESET_COLORS': {
-      state.clearPendingColorUpdates();
+      // Undo SET_COLORS: restore the colors it baked into
+      // geometryResult.meshes[].color. Deliberately NOT
+      // clearPendingColorUpdates() — that is the separate lens/IDS/clash/
+      // schedule overlay channel, which SET_COLORS never writes to and this
+      // command has no claim on.
+      state.resetMeshColors();
       if (requestId) emitToParent(createResponse(requestId));
       return;
     }

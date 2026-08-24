@@ -29,10 +29,26 @@
  *
  * Run via `node scripts/check-source-text-assertions.mjs` (CI node-test job).
  *
- * DETECTION is deliberately lexical, not data-flow: every real instance names
- * its subject in a string literal in the same file, though often through a
- * shared `readSource('Thing.tsx')` helper, so the read and the literal cannot
- * be required to sit near each other.
+ * DETECTION lives in scripts/source-text-assertion-detect.mjs, and REQUIRES THE
+ * PAIRING the sentence above states: the predicate must be applied to the value
+ * a file read produced. It used to check the two halves independently -- "this
+ * file reads something" AND "this file applies a text predicate somewhere" --
+ * which is a proxy, and it broke the way proxies break:
+ * packages/data/scripts/generate-ifc-schema.test.ts reads upstream fixtures only
+ * to copy them into a temp dir, runs the real generator as a child process, and
+ * asserts solely on its stdout/stderr, yet was reported as a source-text
+ * assertion. Narrowing a ratchet is itself a loosening, so both halves of that
+ * change are pinned in scripts/check-source-text-assertions.test.mjs.
+ *
+ * IF YOU ARE HERE BECAUSE A CORRECT TEST IS FLAGGED: the escape hatch is an
+ * `// @source-text-assertion-ok <reason>` comment on the assertion's own line or
+ * the line above it, in the style of `@unwired-by-design`. It exists for the
+ * anchor guard -- `assert.ok(source.includes(from))` before a
+ * `source.replace(from, to)`, which asserts on file text precisely so a mutation
+ * that silently fails to apply cannot test nothing. Marked sites are counted and
+ * NAMED in this check's output, and a marker that excuses nothing is an error,
+ * so an exemption stays a reviewable line rather than a silent hole. Prefer it
+ * to the allowlist, which is for whole files that cannot be converted at all.
  *
  * COMMENTS ARE STRIPPED FIRST, and that is load-bearing rather than tidy: three
  * unrelated tests mention a `.ts` filename in prose ("as per `safe-path.test.ts`",
@@ -40,11 +56,19 @@
  * manifest, and matching those flagged all three. It is the same trap the test
  * this guard was born from fell into -- an assertion that matched its own
  * explanatory comment instead of the code.
+ *
+ * SCAN SCOPE is packages/ and apps/ test files only; scripts/*.test.mjs are not
+ * scanned. That is a deliberate limit, not an oversight: those files run gates
+ * against real repo inputs through indirect mutator callbacks, and the taint
+ * analysis has to fail closed there, so bringing them in scope would demand
+ * markers on assertions that are about a gate's output rather than about source
+ * text. Widening the scope means paying that down first.
  */
 
 import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { analyze } from './source-text-assertion-detect.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SEARCH_DIRS = ['packages', 'apps'];
@@ -79,30 +103,6 @@ const ALLOWLIST_PATH = join(ROOT, 'scripts', 'source-text-assertion-allowlist.tx
  */
 const ALLOWLIST_CEILING = 7;
 
-/** Reads a file from disk at all. */
-const READS_A_FILE = /\b(readFileSync|readFile)\s*\(/;
-
-/**
- * Names a SOURCE file as a literal. Fixture formats (.ifc, .json, .csv, …) are
- * deliberately absent: reading a fixture and asserting on it is a normal test.
- */
-const SOURCE_LITERAL = /['"`][^'"`\n]*\.(ts|tsx|mts|rs|css|scss)['"`]/;
-
-/**
- * Asserts on text rather than on behaviour. `test` is in the list because
- * `/re/.test(source)` is how this repo already writes them
- * (export-ui-parity.test.tsx:104, :388) — omitting it left the most likely
- * next instance undetected.
- *
- * `exec` is here for the same reason, and was found the same way (#2434):
- * `packages/geometry/src/prepass-class-spans.test.ts` regexes a `.rs` file with
- * `new RegExp(...).exec(src)`, and this guard did not see it at all. Every
- * other predicate listed has a matching `.exec` spelling, so omitting it left
- * the guard blind to a one-character rewrite of a form it already catches.
- */
-const TEXT_PREDICATE =
-  /(\.(includes|indexOf|match|search|startsWith|endsWith|exec)|\/\s*\.test)\s*\(|\.test\s*\(\s*(source|src|text|body|content|contents)\b|\.(toContain|toMatch)\s*\(/;
-
 function walk(dir, found = []) {
   // Fail closed. Swallowing an unreadable directory would let this guard
   // report success while never having looked at the file that broke the rule
@@ -118,15 +118,6 @@ function walk(dir, found = []) {
   return found;
 }
 
-/** Drop `//` and block comments, so prose about a `.ts` file cannot flag a test. */
-function stripComments(source) {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .split('\n')
-    .map((line) => line.replace(/(^|[^:'"`\\])\/\/.*$/, '$1'))
-    .join('\n');
-}
-
 function loadAllowlist() {
   if (!existsSync(ALLOWLIST_PATH)) return new Set();
   return new Set(
@@ -139,20 +130,22 @@ function loadAllowlist() {
 
 const allowlist = loadAllowlist();
 const offenders = [];
+const markedSites = [];
+const deadMarkers = [];
 const staleAllowlistEntries = new Set(allowlist);
 
 for (const dir of SEARCH_DIRS) {
   for (const file of walk(join(ROOT, dir))) {
     const rel = relative(ROOT, file).split('\\').join('/');
-    const source = stripComments(readFileSync(file, 'utf8'));
-    const flagged =
-      READS_A_FILE.test(source) && SOURCE_LITERAL.test(source) && TEXT_PREDICATE.test(source);
-    if (!flagged) continue;
+    const result = analyze(readFileSync(file, 'utf8'));
+    for (const line of result.unusedMarkers) deadMarkers.push(`${rel}:${line}`);
+    for (const site of result.marked) markedSites.push(`${rel}:${site.line}  ${site.reason}`);
+    if (!result.flagged) continue;
     if (allowlist.has(rel)) {
       staleAllowlistEntries.delete(rel);
       continue;
     }
-    offenders.push(rel);
+    for (const hit of result.hits) offenders.push(`${rel}:${hit.line}  ${hit.text}`);
   }
 }
 
@@ -184,6 +177,27 @@ apps/viewer/src/components/viewer/SearchModal.filter.wiring.test.tsx.
 
 If the behavioural version is genuinely out of reach, add the file to
 scripts/source-text-assertion-allowlist.txt WITH a one-line reason.
+
+If the assertion is an ANCHOR GUARD -- asserting the anchor exists before a
+mutation is built on it, so a mutation that silently stops applying cannot
+leave the test asserting nothing -- mark that line instead:
+
+  // @source-text-assertion-ok mutation anchor guard, not a subject assertion
+  assert.ok(source.includes(anchor), \`anchor drifted: \${anchor}\`);
+
+Marked sites stay named in this check's output; they are not exemptions in
+the dark.
+`);
+}
+
+if (deadMarkers.length > 0) {
+  failed = true;
+  console.error('\n@source-text-assertion-ok markers that excuse nothing:\n');
+  for (const site of deadMarkers) console.error(`  ${site}`);
+  console.error(`
+Either the marker has no reason after it, or the assertion it excused is gone
+or moved. A marker must sit on the assertion's own line or the line directly
+above it -- an unattached one is an exemption nobody can see the scope of.
 `);
 }
 
@@ -219,6 +233,9 @@ ratcheting.
 
 if (failed) process.exit(1);
 
+for (const site of markedSites) {
+  console.log(`  marked @source-text-assertion-ok: ${site}`);
+}
 console.log(
-  `check-source-text-assertions: OK (${allowlist.size} allowlisted, 0 new)`
+  `check-source-text-assertions: OK (${allowlist.size} allowlisted, ${markedSites.length} marked, 0 new)`
 );

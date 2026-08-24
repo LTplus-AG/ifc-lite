@@ -17,7 +17,7 @@
  *                 of CRDT docs; concurrent parent edits LWW-merge with
  *                 the branch's edits per Yjs semantics.
  *   - `'layer'` : extract the branch contents as an IFCX layer and
- *                 re-seed the parent with parent + branch composed.
+ *                 apply it over the parent as a layer of opinions.
  *                 Useful when the branch was edited by tools that only
  *                 speak IFCX, not the live Y.Doc.
  *
@@ -34,7 +34,7 @@ import {
 } from '../session.js';
 import { metaMap } from '../doc/schema.js';
 import { snapshotToIfcx } from '../snapshot/to-ifcx.js';
-import { seedFromIfcx } from '../snapshot/from-ifcx.js';
+import { applyIfcxOverlay } from '../snapshot/from-ifcx.js';
 
 export interface ForkOptions {
   /** New room id for the branch. Defaults to `<parent.roomId>/branches/<name>`. */
@@ -134,13 +134,22 @@ export function mergeBranch(
     };
   }
 
-  // 'layer' strategy: snapshot the branch as IFCX, then re-seed the
-  // parent with reset:false so existing parent state is preserved and
-  // branch nodes overlay (composition is left to the caller's IFCX
-  // layer stack — for now we fall back to "set everything we have").
+  // 'layer' strategy: snapshot the branch as IFCX, then apply it to the
+  // parent as a layer of opinions. `seedFromIfcx` cannot do this job —
+  // its `createEntity` no-ops on a path the doc already has, and since a
+  // branch forks from its parent, essentially every entity the branch
+  // *modified* is already there, so seeding landed only the branch's
+  // brand-new entities and dropped every edit. Regression coverage lives
+  // in test/branch-merge-layer-overlay.test.ts.
+  //
+  // `applyIfcxOverlay` creates what is missing and writes the branch's
+  // opinions on top of what is not, leaving parent state the branch
+  // snapshot says nothing about untouched. Deletions made on the branch
+  // still do not propagate: an IFCX snapshot emits only what an entity
+  // has, so a removal is indistinguishable from "no opinion" on the wire.
   const ifcx = snapshotToIfcx(branch.session.doc);
   const before = Y.encodeStateAsUpdate(parent.doc);
-  seedFromIfcx(parent.doc, ifcx, { reset: false });
+  applyIfcxOverlay(parent.doc, ifcx);
   const after = Y.encodeStateAsUpdate(parent.doc);
   return {
     strategy,

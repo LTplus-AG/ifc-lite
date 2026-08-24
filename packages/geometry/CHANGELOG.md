@@ -1,5 +1,230 @@
 # @ifc-lite/geometry
 
+## 4.0.0
+
+### Major Changes
+
+- [#3057](https://github.com/LTplus-AG/ifc-lite/pull/3057) [`fdd6121`](https://github.com/LTplus-AG/ifc-lite/commit/fdd61211e41d3e563a7604ac5e0630a9daae2de1) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Remove two advertised-but-unread option surfaces, and with them the `--quality`
+  CLI flag. Both were found by the issue [#2731](https://github.com/LTplus-AG/ifc-lite/issues/2731) audit; an earlier changeset marked
+  the audit's inert *fields* `@deprecated` and deliberately left these two out,
+  because each carries a behaviour decision rather than only a doc fix. This is
+  that decision, taken as removal.
+  
+  **`DynamicBatchConfig.initialBatchSize` / `.maxBatchSize` (`geometry`,
+  breaking).** The interface promised a ramp-up — small first batches for a fast
+  first frame, larger ones later. No ramp-up exists.
+  `getStreamingBatchSize` reads `fileSizeMB` alone (falling back to the buffer's
+  own length when it is absent or zero) and returns a fixed value off a size
+  ladder; the two size fields were never read on any path. `DynamicBatchConfig`
+  is now `{ fileSizeMB?: number }`. Streaming behaviour is unchanged for every
+  caller — the values were already ignored — but an object literal that still
+  sets either field is now an excess-property error. Delete the fields; the
+  resulting batch sizes are identical.
+  
+  **`GeometryProcessorOptions.quality` and the `GeometryQuality` enum
+  (`geometry`, breaking).** The constructor discarded the value (`void
+  options.quality;`) and nothing downstream consulted it, so `Fast`, `Balanced`
+  and `High` selected exactly the same geometry. The field and the exported
+  `GeometryQuality` enum are both gone. Callers wanting a real detail-level
+  control want `tessellationQuality` (`'lowest' | 'low' | 'medium' | 'high' |
+  'highest'`), which is honoured by the WASM pipeline.
+  
+  **`GenerateLod1Options.quality` (`export`, breaking).** It existed only to
+  forward into the discard above. Removed.
+  
+  **`ifc-lite lod --quality` (`cli`, user-visible removal).** The flag accepted
+  `low | medium | high | fast | balanced`, validated the value, rejected anything
+  else with a non-zero exit — and then fed the result into the discarded field.
+  Every accepted value produced byte-identical LOD1 output. The flag is removed
+  rather than left validating into nothing: a command that still fails on
+  `--quality gorgeous` while ignoring `--quality low` misleads more than an
+  unknown-flag path does. Scripts passing it need the flag dropped; the generated
+  GLB and metadata are unchanged.
+  
+  `geometry` and `export` take `major` because a public export is removed and
+  optional fields disappear from published types — the repo's own API-surface
+  guard puts a removed export at `major` for a package at or past 1.0. `cli` is
+  `0.x` and takes `minor` for the flag removal.
+
+### Minor Changes
+
+- [#3161](https://github.com/LTplus-AG/ifc-lite/pull/3161) [`063a140`](https://github.com/LTplus-AG/ifc-lite/commit/063a1408e4c54ebc874618f8d68fe298ed3f3a6f) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Name the `geometryClass` ordinals once, in a new `@ifc-lite/geometry/geometry-class` entry point.
+  
+  Every mesh carries a `geometryClass` tag decided in Rust and read here: 0 occurrence, 1 orphan type, 2 instanced type, 3 material-layer slice. It crosses the WASM boundary as a bare `u8`, so nothing in the type system connects the two sides — and until now the TypeScript half compared against bare integers in six files across three packages (`type-view-visibility.ts`, `kmz-exporter.ts`, `GLBExportDialog.tsx`, `ViewportContainer.tsx`, `demesh-session.ts` and `geometry/src/index.ts`). Renumbering a class meant finding all six, and missing one was silent: geometry is reclassified, not rejected, so a layered wall drops out of Model view or a type-library duplicate renders as real building geometry with nothing thrown.
+  
+  The new module exports the four ordinals, a `geometryClassOf(mesh)` reader carrying the `?? 0` default every call site already applied, and the two predicates the visibility rule is built from. All six call sites now go through it, with no behaviour change — the comparisons are the same, spelled differently.
+  
+  Both halves of the contract are now pinned. The TypeScript side asserts the ordinals are distinct and that placed / type-library partition them, and `scripts/test-wasm-contract.mjs` asserts what Rust **actually emits** across the WASM boundary — a layered-wall fixture must produce class 3 alongside class 0, so the ordinals cannot be renumbered on the Rust side without a test failing.
+  
+  That second half matters because the script's existing `geometryClass` read lives inside `meshFingerprint()`, comparing two code paths against each other — satisfied by any value provided both sides agree, which is a self-round-trip rather than a pin. The occurrence-class assertion is there so that a build tagging *everything* 3 would fail too, instead of passing the layer-slice check.
+
+- [#3086](https://github.com/LTplus-AG/ifc-lite/pull/3086) [`932f043`](https://github.com/LTplus-AG/ifc-lite/commit/932f0439fc1625419aae3cf2d9f81a614fb2273c) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Make the 10 km "normal coordinate" ceiling one exported constant (`NORMAL_COORD_THRESHOLD_M`) instead of four unlinked copies of the literal. `CoordinateHandler`'s `NORMAL_COORD_THRESHOLD` is the validation threshold once WASM RTC has shifted the model; the viewer keyed three separate `MAX_VALID_COORD = 10000` off the same rule — `localParsingUtils.updateBoundsFromPositions`, `viewportUtils.isValidCoord` and `useGeometryStreaming.computeBounds` — two of them carrying a comment that they "match CoordinateHandler's NORMAL_COORD_THRESHOLD". Nothing enforced that: raising all three viewer copies 25x, to 250 km, left the entire viewer suite (5751 tests) green. The three now import the constant, so a change to the ceiling moves every consumer at once. Behaviour is unchanged — the value is still 10000. One agreement remains unshareable and is now pinned by a test instead: `rust/geometry/tests/issue_859_railway_renders_in_view.rs` declares its own `MAX_VALID_COORD: f32 = 10_000.0` and asserts welded railway geometry lands inside "the JS-side renderer's" threshold, so a new test fails if the TypeScript side moves away from 10 km without that fixture being updated too.
+
+### Patch Changes
+
+- [#2975](https://github.com/LTplus-AG/ifc-lite/pull/2975) [`8571d70`](https://github.com/LTplus-AG/ifc-lite/commit/8571d70270d072170fc4e204e8b0d11a424d2330) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Seven public option fields that nothing reads are now marked `@deprecated`,
+  with JSDoc that says what actually happens instead of what the old comment
+  promised. No behaviour changes and no export is removed or renamed — the
+  values were already ignored at runtime; only the type-level documentation
+  changes, so editors now warn at the point a caller sets one.
+  
+  - `SVGExportOptions.units` (`drawing-2d`) — `export()` never destructures it;
+    the exporter emits no dimension annotations and always sizes the sheet in
+    millimetres.
+  - `OpeningFilterOptions.keepBoundarySegments` (`drawing-2d`) — merged into the
+    filter's options object but never consulted; `tolerance` is the only field
+    that governs how segments near an opening edge are treated.
+  - `DoorSymbolConfig.showThreshold` (`drawing-2d`) — no threshold-rendering code
+    exists, so `true` and `false` produce identical geometry.
+  - `SnapOptions.snapRadius` (`renderer`) — documented as a world-units snap
+    distance, but every proximity check reads `screenSnapRadius` (pixels).
+    Snapping is screen-space and zoom-dependent; set `screenSnapRadius` instead.
+  - `SectionPlaneRenderOptions.flipped` (`renderer`) — the gizmo renderer never
+    reads it. The GPU clip plane flips correctly through separate state, so
+    cutting behaviour is unaffected; only the gizmo option is inert.
+  - `RenderOptions.enableDepthTest` (`renderer`) — dead on both ends: nothing
+    sets it and nothing reads it. Depth comparison is fixed per pipeline at
+    construction time and is not configurable through `RenderOptions`.
+  - `StreamingOptions.onMetadataBootstrap` (`geometry`) — an unfinished stub. Its
+    siblings `onBatch`, `onColorUpdate`, `onComplete` and `onError` are all
+    dispatched by the bridge; this one never is, so a callback passed here is
+    never called.
+  
+  Deprecating rather than deleting is deliberate: removing an optional field an
+  embedder already passes converts a silent no-op into a TypeScript compile
+  error, which is a worse first contact with the problem than a deprecation
+  warning that explains it. Removal is left as a separate, explicitly versioned
+  decision. See issue [#2731](https://github.com/LTplus-AG/ifc-lite/issues/2731) for the full audit; the findings that carry a
+  behaviour decision (the streaming batch ramp-up, `GeometryQuality`, and the
+  scale-bar / north-arrow renderer divergence) are deliberately untouched here.
+
+- [#2958](https://github.com/LTplus-AG/ifc-lite/pull/2958) [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81) Thanks [@BIMvoice](https://github.com/BIMvoice)! - A Boolean/CSG operand cycle no longer aborts the process.
+  `IfcCsgSolid.TreeRootExpression` may be an `IfcBooleanResult` whose operands
+  may in turn be `IfcCsgSolid`, so the two recurse into each other over
+  file-supplied references. The `IfcCsgSolid` arm built a fresh
+  `BooleanClippingProcessor`, resetting both the depth counter and the cycle
+  guard, so three entities were enough to recurse forever with depth never
+  passing 1. The result was `fatal runtime error: stack overflow, aborting` —
+  an abort, not a catchable panic, so nothing downstream could report it. Both
+  entity types appear in the Body representations of ordinary files, so an
+  exporter bug is enough to trigger it.
+  
+  A path-scoped visited set is now threaded through the whole operand path,
+  inserted on the way in and removed on the way out, so an operand legitimately
+  reached from two branches of an acyclic tree is still processed both times.
+  Its length is the current nesting depth, which also bounds chain length:
+  `MAX_OPERAND_PATH_NODES = 64`. That sits well clear of `MAX_BOOLEAN_DEPTH`
+  (10), so it cannot make that cap's job harder. The 42-node `DIFFERENCE` chains
+  real exporters produce are FirstOperand spine nodes, walked iteratively, and
+  never reach this guard.
+  
+  Unlike the sibling fixes in this series, this one reports: hitting either bound
+  returns a catchable geometry error naming the entity — `Cyclic boolean/CSG
+  operand reference at #N` or `Boolean/CSG operand chain exceeds 64 nested nodes
+  at #N`. The offending element is dropped with that error; the rest of the file
+  loads.
+
+- [#2958](https://github.com/LTplus-AG/ifc-lite/pull/2958) [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Layer slicing no longer aborts the process on a self-referential
+  `IfcBooleanResult`. `item_has_identity_position` chased
+  `IfcBooleanResult.FirstOperand` recursively, and that reference comes from the
+  file, so a single entity referring to itself
+  (`[#10](https://github.com/LTplus-AG/ifc-lite/issues/10)=IFCBOOLEANRESULT(.DIFFERENCE.,[#10](https://github.com/LTplus-AG/ifc-lite/issues/10),[#20](https://github.com/LTplus-AG/ifc-lite/issues/20))`) overflowed the stack. A Rust
+  stack overflow aborts the process rather than raising a catchable panic, so no
+  caller could turn it into a load error — the whole load died on raw uploaded
+  bytes.
+  
+  The chase is now an iterative walk with a visited set that stops at the first
+  repeated node. There is deliberately no length cap: Revit exports chains up to
+  42 `DIFFERENCE` nodes deep, and a cap would drop layer slicing on files that
+  render correctly today.
+  
+  Note what happens at the guard, because nothing catchable surfaces. On a
+  repeat the probe returns `false`, so `element_is_single_unshifted_item` returns
+  `false` and the element renders as a single un-sliced mesh with one material
+  instead of per-layer sub-meshes. That is a visible loss of layer materials for
+  the offending element. It is not unreported: the router records a
+  `skip:not-single-unshifted-item` diagnostic, which the viewer's batch path
+  drains into a `console.warn` naming the element id and that reason. But a
+  console warning is not an error a caller can handle, so no downstream code can
+  react to it. The rest of the file loads normally.
+
+- [#2958](https://github.com/LTplus-AG/ifc-lite/pull/2958) [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81) Thanks [@BIMvoice](https://github.com/BIMvoice)! - A self-referential `IfcTrimmedCurve` no longer aborts the process.
+  `sample_curve_polyline` followed `IfcTrimmedCurve.BasisCurve` recursively, and
+  that reference comes from the file, so one entity naming itself as its own
+  basis overflowed the stack — an abort rather than a catchable panic, so nothing
+  downstream could turn it into a load error. The sampler is reached by any
+  `IfcAdvancedBrep` with a composite edge curve and by the surface-of-revolution
+  generator profile, so ordinary geometry paths were exposed.
+  
+  Two guards now, because they bound different things: a visited set stops cycles
+  (and any fan-out a later change introduces — the single tail call here has none
+  today, but nothing enforces that), and `MAX_BASIS_CURVE_DEPTH = 32` stops a
+  long acyclic chain, where every id is distinct so the set never fires and the
+  recursion aborts on stack depth alone. Real trimming nests one or two levels.
+  
+  At either bound the sampler returns an empty polyline rather than an error, so
+  the offending curve contributes no points and the edge or face built from it is
+  missing from the mesh. Legitimate trimmed-on-trimmed chains ending at a real
+  curve are still sampled in full.
+
+- [#2958](https://github.com/LTplus-AG/ifc-lite/pull/2958) [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Composite-curve profiles on `IfcSurfaceOfLinearExtrusion` produce geometry
+  again, and can no longer abort the process.
+  
+  The silent half: `extract_composite_curve_points` handed each segment's
+  `ParentCurve` id to the profile dispatcher, which reads attribute 2 as "the
+  profile's curve". An `IfcPolyline` has no attribute 2, so every segment
+  errored, the caller swallowed it, and the function returned an empty point set
+  as `Ok` — indistinguishable from a legitimately empty profile. Every
+  `IfcSurfaceOfLinearExtrusion` with a composite-curve profile lost its geometry
+  this way. Curve dispatch is now separate from profile dispatch, so a
+  `ParentCurve` is sampled as the curve it is. Two further defects that only
+  became observable once points started flowing are fixed with it:
+  `IfcCompositeCurveSegment.SameSense = .F.` now reverses the segment as the
+  schema requires, and the joint point between segments is dropped only when it
+  actually coincides, so a `.DISCONTINUOUS.` joint or a real gap keeps the point
+  it used to lose.
+  
+  The fatal half: a composite curve whose segment's `ParentCurve` is that same
+  composite curve re-entered the sampler and overflowed the stack — an abort, not
+  a catchable panic. Three bounds now travel together, each blind to what the
+  others catch: a path-scoped visited set for cycles, a nesting cap of 32 for a
+  long acyclic chain where every insert succeeds, and a budget of 100,000 curve
+  visits for an acyclic DAG that doubles its work per level while nothing is
+  cyclic and nothing exceeds the depth cap.
+  
+  The two kinds of bound behave differently, deliberately. A cycle or the depth
+  cap yields no points for that nested curve and reports nothing. Budget
+  exhaustion returns a catchable error (`Curve traversal exceeded 100000 nested
+  curves`) rather than a truncated point list, because a short profile returned
+  as if it were complete is a wrong shape; the element is dropped instead.
+
+- [#2990](https://github.com/LTplus-AG/ifc-lite/pull/2990) [`f76c805`](https://github.com/LTplus-AG/ifc-lite/commit/f76c80511dce5ffc1756365b786042c4bc64808d) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix: `exportGlbFromMeshes` (the viewer's from-meshes GLB path, e.g. exporting
+  the current selection) now fails closed with `NO_RENDER_GEOMETRY` when the
+  visible mesh set is empty, instead of returning a "successful" GLB.
+  
+  That GLB was structurally invalid per the glTF 2.0 schema: `accessors`,
+  `bufferViews`, `meshes` and `nodes` were emitted as empty arrays (the schema
+  requires `minItems: 1` on each when present) and the single buffer's
+  `byteLength` was `0` (schema `minimum: 1`) — confirmed against the reference
+  `gltf-validator`. A consumer that enforces the schema (many glTF tools do)
+  rejected the file outright.
+  
+  `exportGlb` (the from-bytes path) already guarded this case
+  (`NO_RENDER_GEOMETRY`, [#1438](https://github.com/LTplus-AG/ifc-lite/issues/1438)/[#1516](https://github.com/LTplus-AG/ifc-lite/issues/1516)); `exportGlbFromMeshes` was the one
+  sibling entry point that did not, and it is reachable directly from the
+  viewer whenever a caller's filtered mesh list — or a filtered list where
+  every mesh fails the minimum-geometry check (fewer than 3 vertices, or no
+  indices) — comes back empty.
+
+- [#2969](https://github.com/LTplus-AG/ifc-lite/pull/2969) [`754837b`](https://github.com/LTplus-AG/ifc-lite/commit/754837b066172dad8afcdf1a0104f1a021b5f6e5) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Raise the mesh path's `IfcLocalPlacement.PlacementRelTo` depth cap from 32 to 100, matching the 2D drawing path, and make the two share one constant (`ifc_lite_core::limits::MAX_PLACEMENT_DEPTH`). The two walks follow the same attribute of the same entity and both return the IDENTITY on exceeding their cap, so an element on a 33-to-101-link placement chain was composed in full by the 2D profile extractor and flattened by the router — the same element drawn in two different places, with no error from either side. The cap's stated basis for 32 ("keep low for WASM — each frame uses ~2KB+ of stack") does not hold against the linked stack budget: every wasm bundle is built with `-zstack-size=8388608`, and the walk's frames measure ~1KB in an unoptimised native build, so the deeper cap's worst case is around 1% of the 8MiB stack; `PlacementRelTo` is a single reference, so the walk has fan-out 1 and costs O(depth). Chains beyond the cap are still truncated silently, exactly as before — only the depth at which that happens changes, and it now happens at the same depth on both paths. No file in the `tests/models` corpus has a chain deeper than 7 links, so no fixture's geometry moves. New tests pin each site's cap to the shared constant and require both walks to return the same transform for a chain past it.
+
+- [#3043](https://github.com/LTplus-AG/ifc-lite/pull/3043) [`2273a73`](https://github.com/LTplus-AG/ifc-lite/commit/2273a73127d03ec36d667544da6237479737881a) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Stop the placement-transform memo from caching a depth-truncated result. The router's `PlacementRelTo` walk returns the identity for a node above `MAX_PLACEMENT_DEPTH`, so the node sitting AT the cap composed `identity * local` — a partial chain — and wrote it to the per-decoder memo, as did every node above it. A later query for one of those placements was served that partial value instead of walking its own chain, which fits the cap comfortably. On a 120-link chain the node at the cap resolved to X = 21 from a fresh decoder and X = 1 from one that had resolved the leaf first: the same placement, the same file, two positions, decided by traversal order, with the wrong answer sticky. The walk now carries a `truncated` flag that propagates upward through the `IfcLocalPlacement`, `IfcLinearPlacement` and `IfcGridPlacement` branches, and only untruncated results are memoised; the truncated transform is still returned to its caller, exactly as before, so nothing that resolves within the cap changes. Recording the truncation in the entry was the alternative the issue offered: it was not taken because a truncated entry is not servable to anyone — what it composed depends on the depth the walk was entered at, not on the placement id — so a reader would have to recompute anyway, and the memo's value type is hoisted across workers through the public `take/set_placement_transform_cache` API. No corpus file has a chain deeper than 7 links against a cap of 100, so no fixture's geometry moves. The comment claiming a truncated result could never reach a cache write is gone; it was false when written.
+  
+  The memo lookup now runs BEFORE the depth guard rather than after it. The guard was refusing a node whose complete transform was already in the memo, throwing that value away and handing back a shorter chain in its place: on a 109-placement chain, warming the decoder at the node the walk reaches at `MAX_PLACEMENT_DEPTH + 1` left the leaf still reporting the truncated 101 links, when the cached value was in hand and would have carried it to the full 109. A memo hit returns instead of recursing, so it replaces the rejected frame rather than adding one and costs no stack — an atomic max-depth probe over that chain measures the same maximum recursion depth, 101, cold and warm. This does not make over-cap chains order-independent in general: a warm ancestor lets a walk compose past the cap, so the same leaf can legitimately report 101 or 109 depending on what was resolved first, and both are legal under a cap that stops rather than one that promises an answer. What is excluded is the narrower and worse case — a short answer served from the memo as though it were whole.
+- Updated dependencies [[`0ea7167`](https://github.com/LTplus-AG/ifc-lite/commit/0ea7167a6bd96d5b5e12e7e5a8c5615ab0b7c3b2), [`7ff31ba`](https://github.com/LTplus-AG/ifc-lite/commit/7ff31ba854671a9ca3ebbf30b15e928e1b52a8b9), [`8ba612f`](https://github.com/LTplus-AG/ifc-lite/commit/8ba612f90d3bb0ad41f756d6fdef6b3250e8d330), [`9359bc4`](https://github.com/LTplus-AG/ifc-lite/commit/9359bc488173585b2b90e124cc66dcf8292c4be9), [`f6febcc`](https://github.com/LTplus-AG/ifc-lite/commit/f6febcc2d4986e79b3c44d63853bb72a16475c65), [`5781e5c`](https://github.com/LTplus-AG/ifc-lite/commit/5781e5c2998111926683419d27f8efa3519de7c6), [`f76c805`](https://github.com/LTplus-AG/ifc-lite/commit/f76c80511dce5ffc1756365b786042c4bc64808d), [`dec0708`](https://github.com/LTplus-AG/ifc-lite/commit/dec0708ef841c88abea6ec91404419fd7a3d93c6), [`dec0708`](https://github.com/LTplus-AG/ifc-lite/commit/dec0708ef841c88abea6ec91404419fd7a3d93c6), [`dec0708`](https://github.com/LTplus-AG/ifc-lite/commit/dec0708ef841c88abea6ec91404419fd7a3d93c6), [`00f6e79`](https://github.com/LTplus-AG/ifc-lite/commit/00f6e79c22641ff59bfb3327d910b04f9a164d8b), [`116a3e9`](https://github.com/LTplus-AG/ifc-lite/commit/116a3e94de753b95fa94b2d6c41a0171cd254729), [`78d85dc`](https://github.com/LTplus-AG/ifc-lite/commit/78d85dcd4c59ee5b3b3b7857a454113c4911bc36), [`147693a`](https://github.com/LTplus-AG/ifc-lite/commit/147693a7a8fd0778ddb71839199b75bf1d622327), [`bea50bd`](https://github.com/LTplus-AG/ifc-lite/commit/bea50bd7bca7fdf69f01076ebb96a31b8e797a46), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`00f6e79`](https://github.com/LTplus-AG/ifc-lite/commit/00f6e79c22641ff59bfb3327d910b04f9a164d8b), [`e43582b`](https://github.com/LTplus-AG/ifc-lite/commit/e43582b069007c6c2c932f6981743a80630fe217)]:
+  - @ifc-lite/wasm@6.0.0
+  - @ifc-lite/data@3.4.1
+
 ## 3.8.4
 
 ### Patch Changes

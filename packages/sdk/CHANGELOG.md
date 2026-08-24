@@ -1,5 +1,193 @@
 # @ifc-lite/sdk
 
+## 3.0.0
+
+### Major Changes
+
+- [#3115](https://github.com/LTplus-AG/ifc-lite/pull/3115) [`8ba612f`](https://github.com/LTplus-AG/ifc-lite/commit/8ba612f90d3bb0ad41f756d6fdef6b3250e8d330) Thanks [@louistrue](https://github.com/louistrue)! - CSV: numeric cells export as numbers. **The formula guard's default changed.**
+  Pass `exemptNumbers: false` to `escapeCsvCell` / `guardSpreadsheetFormula` to
+  keep the old behaviour.
+  
+  **Read this first if you consume `@ifc-lite/export`.** The CWE-1236 guard
+  prefixes a leading `=`, `+`, `-`, `@`, TAB or CR with `'` so a spreadsheet reads
+  the cell as text. It now makes one exception by default: a cell that is *wholly*
+  a signed number is left alone. Nothing in your code has to change for the
+  behaviour to change, which is why this is called out here rather than in a
+  footnote.
+  
+  The exception cannot weaken the guard. The exempted language contains only
+  `+ - . e E` and the digits `0-9`, which cannot spell a function name, a cell
+  reference or a `(`. `=`, `@`, TAB and CR are never exempted, `-0.35=cmd` is not
+  wholly a number and stays guarded, and a leading invisible character defeats the
+  exemption rather than the guard, so `<ZWSP>-1` is still prefixed.
+  
+  **What it costs.** The default has to guess from the text, because most callers
+  hand it a bare string, and guessing gets identifiers wrong: a `+`-prefixed phone
+  number is wholly numeric as text, so it is written bare and Excel renders
+  `4.1791E+10` with the `+` gone. `-007` becomes `-7`. Both were previously kept
+  exactly, as `'`-prefixed text.
+  
+  The viewer's Lists CSV does not guess, because it has the value itself: it
+  exempts a cell when the value really is a number and guards it otherwise, so a
+  phone number stays text there and a measure stays summable even in a column that
+  also holds text. So this cost applies to the writers that only ever see strings,
+  which is the CLI, the SDK, MCP, the compare report, search results, zone tables
+  and `@ifc-lite/lists`' own CSV. Pass `exemptNumbers: false` to opt any of them
+  out.
+  
+  **Why the exception exists.** `@ifc-lite/lists` had exempted numbers since [#1772](https://github.com/LTplus-AG/ifc-lite/issues/1772)
+  ("`-0.35` exported as `'-0.35` and broke Excel SUM()") while every other writer
+  guarded them, so the same list exported two ways did not match. The policy is
+  now one default rather than eleven call-site decisions that drift.
+  
+  **The viewer's Lists CSV stopped formatting numbers before writing them.** It
+  ran every value through the display formatter, which calls `toLocaleString()` on
+  integers. Under en-US that wrote `"-1,000"`, quoted because of the comma, so the
+  column stopped summing. Under a locale that groups with `.` it wrote a bare
+  `-3.000`, which a spreadsheet in a `,`-grouping locale reads back as **-3**, a
+  silent 1000x error in a quantity column. Exempting numbers fixes neither, since
+  neither string is wholly numeric in the locale that produced it. CSV is
+  machine-readable output, so it now writes the number, matching what the XLSX
+  writer always did. PDF, which a human reads, is unchanged.
+  
+  Two consequences of that, both deliberate. Unit-converted values now show their
+  full double precision (3 ft in metres is `0.9144000000000001`, not `0.9144`),
+  which is the same value the XLSX export already carried, so the two agree. And grouping a
+  list by a numeric column used to hard-code that column as non-numeric in the
+  schedule/pivot export, where the grouping value is the *only* place the value
+  appears; it wrote `"'-3,000"` and nothing else for -3000. Schedule grouping
+  columns now inherit `numeric` and carry the raw value, falling back to the group
+  label where a bucket holds values that merely format alike.
+  
+  **The numeric test no longer backtracks.** It was
+  `/^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/`, quadratic on a failing match and
+  reached only after a trigger matched, so `-` plus 60k digits took ~1.8s. IFC
+  property text is attacker-controllable, which made that a denial of service on
+  an export. It is a linear scan now, and lives in `@ifc-lite/encoding` (no
+  dependencies, already depended on by both callers) as the new `isWhollyNumeric`
+  export, so there is one copy per language rather than one per package. The
+  accepted language is unchanged, checked by sweeping every string up to four
+  characters over the alphabet it is built from against the old regex.
+
+- [#3072](https://github.com/LTplus-AG/ifc-lite/pull/3072) [`945c4d7`](https://github.com/LTplus-AG/ifc-lite/commit/945c4d7a773614dd664feb9490e13372782a543b) Thanks [@louistrue](https://github.com/louistrue)! - Fix `getRecommendedScale`, which returned a wrong scale on every call.
+  
+  Two independent defects, producing opposite wrong answers:
+  
+  - The bounds are metres and the paper is millimetres, and nothing converted
+    between them. Every model smaller than 378 m fitted at 1:1.
+  - The SDK wrapper passed one argument to a function taking two, so the height
+    arrived `undefined`. Every `<=` against NaN is false, so the loop fell
+    through the whole table and returned the coarsest entry: 1:1000 for every
+    drawing, whatever its size.
+  
+  `bim.drawing.getRecommendedScale` now accepts the height and an optional paper
+  size, all optional, so existing single-argument calls keep working. Passing
+  only a width squares the extent and costs one to two steps of coarseness on an
+  elongated plan, so pass the height when you have it. Paper size was previously
+  unreachable through the SDK, which meant A1 and A4 could not be asked for.
+  
+  A non-finite or non-positive input now throws instead of silently returning
+  the coarsest scale. That narrows the accepted input domain of a published
+  API, which is why this is major: a caller passing 0 from a degenerate
+  bounding box used to get 1:1000 back and now gets an exception, and the SDK
+  wrapper forwards the throw with no catch. Adding the optional height and
+  paper-size arguments is additive on its own, but the narrowed domain is the
+  biggest change here and sets the level.
+  
+  Not changed, and worth knowing: the scale table stops at 1:1000, so a model
+  larger than roughly 378 x 267 m still gets 1:1000 even though it does not fit.
+
+### Minor Changes
+
+- [#3034](https://github.com/LTplus-AG/ifc-lite/pull/3034) [`75867a7`](https://github.com/LTplus-AG/ifc-lite/commit/75867a7e6ebf51b2da47cab14242bcd71787ba3b) Thanks [@louistrue](https://github.com/louistrue)! - Make `bim.mutate.*` persist in the headless CLI and MCP backends instead of silently discarding every edit.
+  
+  `HeadlessBackend.createMutateAdapter` answered `setProperty`, `setAttribute` and `deleteProperty` with no-ops in both `packages/cli` and `packages/mcp`. Nothing threw and nothing returned a failure, so an `ifc-lite run` script could call `bim.mutate.setProperty` six thousand times, report six thousand edits, and get an export back byte-for-byte identical to its input. The write path that does persist was already present — `MutablePropertyView`, which `StepExporter` reads when `applyMutations` is on, and which `bim.store.*` and `bim.spaces.*` already routed into — nothing connected `bim.mutate` to it.
+  
+  Both backends now share `createHeadlessMutateAdapter` from `@ifc-lite/sdk`, which owns `MutateBackendMethods` and already depends on `@ifc-lite/mutations`. The adapter takes a thunk rather than a view so the overlay is still built on first write and a read-only session pays nothing.
+  
+  Values are classified before they are stored. `MutablePropertyView.setProperty` defaults to `PropertyValueType.String`, so forwarding a raw JavaScript value wrote `IFCLABEL('true')` where the caller passed `true`; `propertyValueTypeOf` maps boolean to `IFCBOOLEAN`, whole numbers to `IFCINTEGER` and the rest to `IFCREAL`.
+  
+  `undo` and `redo` still answer `false` and `batchBegin`/`batchEnd` are still accepted and ignored: the mutation history they would walk belongs to the viewer's store, and a headless session has none. That is now documented at the adapter rather than implied by a bare stub.
+  
+  The browser viewer's adapter had the same defect from the other direction: it forwarded the raw value to `mutationSlice.setProperty`, whose `valueType` also defaults to `String`, so `bim.mutate.setProperty(ref, pset, prop, true)` wrote `IFCLABEL('true')` there too. It now passes `propertyValueTypeOf`, which is also why that helper is exported. The two other character-identical copies of the classifier — `detectValueType` in the MCP mutation tool and `inferValueType` in the CLI gym ops — now alias it, so the paths cannot diverge on a future correction.
+  
+  Verified on the export, not on the overlay — reading the view back passes against the broken adapter too. With the original no-ops restored, 5 of the 6 new CLI tests fail; the sixth is the control that asserts an unmutated re-export still contains the original name.
+
+- [#2982](https://github.com/LTplus-AG/ifc-lite/pull/2982) [`4a8fe77`](https://github.com/LTplus-AG/ifc-lite/commit/4a8fe77707127d251702610490f53430610e4ef7) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `bim.ids.summarize()` counting a `not_applicable` specification as passed. A specification whose applicability matches zero entities and whose cardinality does not require a match (no `minOccurs`) is neither a pass nor a fail — `@ifc-lite/ids`'s own `validateIDS` report already treats it that way — but `summarize()` had no `not_applicable` bucket, so its unconditional `else` folded every such specification into `passedSpecifications`. That inflated the spec-level pass rate returned by the CLI's `ids --json` output relative to the CLI's own text-mode output (both should read from the same validation, but text mode reads `report.summary` directly while `--json` goes through `summarize()`).
+  
+  `IDSValidationSummary` gains a `notApplicableSpecifications` field so `passedSpecifications + failedSpecifications + notApplicableSpecifications === totalSpecifications` always holds, matching the validator's own accounting.
+
+- [#3034](https://github.com/LTplus-AG/ifc-lite/pull/3034) [`75867a7`](https://github.com/LTplus-AG/ifc-lite/commit/75867a7e6ebf51b2da47cab14242bcd71787ba3b) Thanks [@louistrue](https://github.com/louistrue)! - Add `bim.style`, colour that ends up in the exported IFC.
+  
+  `bim.viewer.colorize` paints the current view. The colour is an overlay and is gone the moment the model is written out, so a script that wanted a coloured file had to hand-build the `IfcColourRgb → IfcSurfaceStyleShading → IfcSurfaceStyle → IfcStyledItem` chain itself and walk `IfcProductDefinitionShape → IfcShapeRepresentation → Items` to find something to attach it to. `StepExporter` already builds that chain internally for demeshed output; nothing exposed it.
+  
+  `bim.style.apply(refs, color)` and `bim.style.applyAll(batches)` take any hex form `bim.viewer.colorize` takes — they share its `hexToRgba` — or channels in 0..1. The one deliberate difference is the failure mode: `hexToRgba` degrades an unparseable string to black, which is right for a transient overlay and wrong for something written into the file, so a non-hex string throws instead of being baked in as black.
+  
+  The work lives in `applyStylesInStore` in `@ifc-lite/create`, beside the other in-store builders, and writes through the same `StoreEditor` overlay as `bim.spaces.generate`. Both headless backends implement it; a backend without direct store access, including the browser viewer's, throws.
+  
+  Four things the call site no longer has to get right:
+  
+  **Mapped geometry.** An `IfcMappedItem` is followed through to the `IfcRepresentationMap` and the mapped representation's items are styled, so one style covers every occurrence of a type. On a real MEP model, 139 air terminals share 63 geometry items; styling per occurrence would write a second `IfcStyledItem` on geometry that already had one, which IFC does not allow.
+  
+  **Geometry that already has a style, including geometry this session styled.** IFC permits at most one `IfcStyledItem` per representation item. The index of existing styles covers both the source file and the overlay: `StoreEditor.addEntity` does not insert into `store.entityIndex`, so a source-only check could not see the session's own writes and a second `apply` over the same products emitted two styled items on one solid — a schema-invalid file, from the very machinery meant to prevent it. That index is also built once per pass rather than per batch, which was 87 ms per batch on a 92k-styled-item model, about two thirds of a colour-by-class run.
+  
+  **Entities created in the same session.** Reads fall back to the overlay, so `bim.store.addWall(...)` followed by `bim.style.apply` colours the new wall instead of reporting it as geometry-less and leaving an orphan `IfcSurfaceStyle` in the file.
+  
+  **Schema differences.** `Representation` is resolved by attribute name rather than by a hardcoded index 6, because that slot is `RepresentationMaps` on `IfcTypeProduct` — a list, so a constant index turned a type object into a silent no-op. IFC2X3 gets the `IfcPresentationStyleAssignment` wrapper that IFC4 deprecated. Transparency is rounded, since `1 - 0.9` otherwise reaches the STEP text as `0.09999999999999998`.
+  
+  A style chain is only left in the file while something references it. Colour a wall red and recolour it green — in a later batch or a later call — and the red chain goes with the styled item it belonged to. What gets swept is tracked as it is authored, per editor, rather than inferred from the overlay: inference could not see `setPositionalAttribute` edits (`getNewEntities` reports attributes as created, while the exporter applies positional mutations on top), so it removed live styles and left the real garbage; it took a chain's shading and colour without checking whether anything else used them; and it collected any overlay `IfcSurfaceStyle` at all, including one a caller had authored with `bim.store.addEntity` and not yet attached. Only chains `bim.style` created are its to remove, and a chain whose styled items were repointed elsewhere is kept rather than risked. A batch that styles nothing writes nothing at all: `surfaceStyleId` is `null`. A caller colouring by IFC class hands in one batch per class, and most classes in a real model — types, ports, spatial structure — reach no geometry, so emitting the style up front left an orphan `IfcColourRgb` / `IfcSurfaceStyleShading` / `IfcSurfaceStyle` per such batch. Found by using the API for a colour-by-class pass: 16 styles in the file where 5 were referenced.
+  
+  `productsWithoutGeometry` counts a product only when its own walk reached nothing. Deciding it from the growth of the shared item set instead would report every occurrence after the first as geometry-less whenever a type's occurrences share one mapped representation — which is most of them, and was wrong in the first cut of this.
+  
+  `followMappedItems: false` styles the `IfcMappedItem` per occurrence instead. Following the representation map is right for colouring by IFC class and wrong for any other grouping — by system, storey or property value, shared geometry takes whichever colour ran last and drags unrelated occurrences with it.
+  
+  `schema` names the schema the chain is built for, defaulting to the store's. The style shape is decided when the style is authored and the export schema is chosen later, so an IFC4 model exported as IFC2X3 otherwise emits `IfcStyledItem.Styles` pointing straight at an `IfcSurfaceStyle`, which that schema does not allow. Converting existing style records during a schema change is a separate job for `StepExporter` and is not attempted here.
+  
+  An `#rrggbbaa` string's alpha pair is honoured. `hexToRgba` discards those digits and takes alpha from its own argument, which is right for the viewer; here they are the only way the string form can ask for transparency, and dropping them silently wrote an opaque style.
+  
+  Verified on the export rather than on the overlay, against a fixture carrying direct geometry, two occurrences behind one representation map, a product with no representation, and geometry that already carries a style.
+
+### Patch Changes
+
+- [#3102](https://github.com/LTplus-AG/ifc-lite/pull/3102) [`7ff31ba`](https://github.com/LTplus-AG/ifc-lite/commit/7ff31ba854671a9ca3ebbf30b15e928e1b52a8b9) Thanks [@BIMvoice](https://github.com/BIMvoice)! - CSV cell escaping now has one implementation per language
+  
+  `@ifc-lite/export` gains `escapeCsvCell` and `guardSpreadsheetFormula`. Every
+  CSV writer in the SDK, CLI and MCP now calls them instead of carrying its own
+  copy of the RFC 4180 quoting and the CWE-1236 spreadsheet formula-injection
+  guard.
+  
+  Two behaviour changes come with that, in the copies that were behind:
+  
+  - The formula trigger is looked for **past** any leading invisible characters
+    (Unicode `Cf` + `Z`: BOM, zero-width space, LTR mark, non-breaking space,
+    U+2028/U+2029, ordinary spaces). The copies in the CLI, MCP and the SDK's
+    CSV export tested it anchored at offset 0, so a crafted IFC value such as
+    `﻿=HYPERLINK(...)` was exported unguarded.
+  - Those invisibles are looked past, not deleted. The one hardened copy removed
+    them, and its character class included U+0020, so leading spaces were stripped
+    from exported cells — RFC 4180 §2.4 says spaces are part of the field.
+  
+  Cells with no leading invisible and no formula trigger are unchanged.
+  
+  The Rust exporter (`ifc_lite_export::csv_cell`) carries the matching
+  implementation, and both are pinned to one shared table of test vectors so the
+  two languages cannot drift apart.
+- Updated dependencies [[`93b450c`](https://github.com/LTplus-AG/ifc-lite/commit/93b450c1cc0c3cee811625989edb82cf522c70c4), [`ddf9f1d`](https://github.com/LTplus-AG/ifc-lite/commit/ddf9f1da830cef5f941ea09e8aee19624e9def3a), [`f7e26e4`](https://github.com/LTplus-AG/ifc-lite/commit/f7e26e4200e1475728d4976142b49cb408400a8e), [`e19aa0e`](https://github.com/LTplus-AG/ifc-lite/commit/e19aa0ef271eccc7f2f6862b8580e9f98dbd1a66), [`7ff31ba`](https://github.com/LTplus-AG/ifc-lite/commit/7ff31ba854671a9ca3ebbf30b15e928e1b52a8b9), [`8ba612f`](https://github.com/LTplus-AG/ifc-lite/commit/8ba612f90d3bb0ad41f756d6fdef6b3250e8d330), [`9359bc4`](https://github.com/LTplus-AG/ifc-lite/commit/9359bc488173585b2b90e124cc66dcf8292c4be9), [`8571d70`](https://github.com/LTplus-AG/ifc-lite/commit/8571d70270d072170fc4e204e8b0d11a424d2330), [`65d19dd`](https://github.com/LTplus-AG/ifc-lite/commit/65d19ddd305b00dd6cdd8a815e3e9749dee5949b), [`b1d7a4d`](https://github.com/LTplus-AG/ifc-lite/commit/b1d7a4d832557e6961aef82102f423b07742c385), [`f6febcc`](https://github.com/LTplus-AG/ifc-lite/commit/f6febcc2d4986e79b3c44d63853bb72a16475c65), [`bc2e5e5`](https://github.com/LTplus-AG/ifc-lite/commit/bc2e5e56d7324f605b15b6e6f939849859a5d0ad), [`063a140`](https://github.com/LTplus-AG/ifc-lite/commit/063a1408e4c54ebc874618f8d68fe298ed3f3a6f), [`f7e26e4`](https://github.com/LTplus-AG/ifc-lite/commit/f7e26e4200e1475728d4976142b49cb408400a8e), [`75867a7`](https://github.com/LTplus-AG/ifc-lite/commit/75867a7e6ebf51b2da47cab14242bcd71787ba3b), [`4a8fe77`](https://github.com/LTplus-AG/ifc-lite/commit/4a8fe77707127d251702610490f53430610e4ef7), [`ffcc9e6`](https://github.com/LTplus-AG/ifc-lite/commit/ffcc9e6f048cd263a5b70946417c9b6aceec1bec), [`0146f0a`](https://github.com/LTplus-AG/ifc-lite/commit/0146f0a3b2ed36313f7f91236bcc95587cdcc8d3), [`f449776`](https://github.com/LTplus-AG/ifc-lite/commit/f4497765cb4e17828ff6ca6b52fb8a96caa2f81f), [`40cd43c`](https://github.com/LTplus-AG/ifc-lite/commit/40cd43ce29cce6c71671e07abde00b41c8886e37), [`56ad58c`](https://github.com/LTplus-AG/ifc-lite/commit/56ad58cc8d1d8d54fdb996606f667c0c170d74aa), [`5ea5f99`](https://github.com/LTplus-AG/ifc-lite/commit/5ea5f9969f3a4a3f8b21eb2a90a1df2be48eb7b0), [`412f78c`](https://github.com/LTplus-AG/ifc-lite/commit/412f78c1bf4907f8c230fc149bbb00e0711b6689), [`487866d`](https://github.com/LTplus-AG/ifc-lite/commit/487866dac131bf50a0b3008ddce5db933768dca2), [`131e3dc`](https://github.com/LTplus-AG/ifc-lite/commit/131e3dc84244d9dd24859a5923ef0aef4d6119c4), [`a8587cc`](https://github.com/LTplus-AG/ifc-lite/commit/a8587cc21c309ebd6c87119cb0d1cd6d1005c281), [`945c4d7`](https://github.com/LTplus-AG/ifc-lite/commit/945c4d7a773614dd664feb9490e13372782a543b), [`fdd6121`](https://github.com/LTplus-AG/ifc-lite/commit/fdd61211e41d3e563a7604ac5e0630a9daae2de1), [`6095fe0`](https://github.com/LTplus-AG/ifc-lite/commit/6095fe0c19072e9a97edefb2be95dde66f514f6b), [`be74930`](https://github.com/LTplus-AG/ifc-lite/commit/be74930b383a189ac61c5f8ef5bc8b5f4579dda3), [`be74930`](https://github.com/LTplus-AG/ifc-lite/commit/be74930b383a189ac61c5f8ef5bc8b5f4579dda3), [`00f6e79`](https://github.com/LTplus-AG/ifc-lite/commit/00f6e79c22641ff59bfb3327d910b04f9a164d8b), [`116a3e9`](https://github.com/LTplus-AG/ifc-lite/commit/116a3e94de753b95fa94b2d6c41a0171cd254729), [`75867a7`](https://github.com/LTplus-AG/ifc-lite/commit/75867a7e6ebf51b2da47cab14242bcd71787ba3b), [`147693a`](https://github.com/LTplus-AG/ifc-lite/commit/147693a7a8fd0778ddb71839199b75bf1d622327), [`af48854`](https://github.com/LTplus-AG/ifc-lite/commit/af488542a19a8559065cfd450d0eaad5ba2f7489), [`3969c52`](https://github.com/LTplus-AG/ifc-lite/commit/3969c523063d02e501f421e6b42d1a9a516dc2e4), [`bb734da`](https://github.com/LTplus-AG/ifc-lite/commit/bb734da27afbea4b6e595714950cdb195cddeb1f), [`043e06a`](https://github.com/LTplus-AG/ifc-lite/commit/043e06a05c6625fef91bb17d84e3a3447f1379e3)]:
+  - @ifc-lite/bcf@2.0.0
+  - @ifc-lite/parser@4.3.0
+  - @ifc-lite/export@3.0.0
+  - @ifc-lite/encoding@2.1.0
+  - @ifc-lite/lists@2.0.0
+  - @ifc-lite/data@3.4.1
+  - @ifc-lite/drawing-2d@3.0.0
+  - @ifc-lite/query@2.0.0
+  - @ifc-lite/ids@1.15.49
+  - @ifc-lite/lens@1.19.0
+  - @ifc-lite/clash@1.9.1
+  - @ifc-lite/mutations@1.27.0
+  - @ifc-lite/create@2.2.0
+  - @ifc-lite/spatial@1.14.15
+
 ## 2.1.3
 
 ### Patch Changes

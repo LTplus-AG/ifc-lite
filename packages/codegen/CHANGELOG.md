@@ -1,5 +1,34 @@
 # @ifc-lite/codegen
 
+## 1.15.11
+
+### Patch Changes
+
+- [#3069](https://github.com/LTplus-AG/ifc-lite/pull/3069) [`f449776`](https://github.com/LTplus-AG/ifc-lite/commit/f4497765cb4e17828ff6ca6b52fb8a96caa2f81f) Thanks [@louistrue](https://github.com/louistrue)! - Stop the generated schema registry answering for `Object.prototype` members.
+  
+  `SCHEMA_REGISTRY.entities` is a plain object literal, so `in` and `obj[key]`
+  both reach the prototype chain. `getEntityMetadata('constructor')` returned
+  the `Object` constructor. Two exported guards were wrong as a result:
+  
+  - `isInstantiable('constructor')` was `true`. Its own docblock says it exists
+    to stop authoring code writing an abstract class into an exported file.
+  - `normalizeIfcTypeName` returned the string `"Object"` for `constructor`, and
+    `undefined` for `__proto__` from a signature declaring `string`.
+  
+  `isKnownType('constructor')` was already `false` and is unchanged. It is worth
+  naming, because the guard that reads as looser was the one answering correctly,
+  and the guard documented as the strict authoring boundary was the one letting
+  it through.
+  
+  `isKnownEntity` had the same defect and now delegates to `getEntityMetadata`
+  rather than repeating the lookup.
+  
+  The same generator emits a second registry with the same defect, also fixed:
+  `getTypeId('constructor')` returned the `Object` constructor from a signature
+  declaring `number | undefined`.
+- Updated dependencies [[`9359bc4`](https://github.com/LTplus-AG/ifc-lite/commit/9359bc488173585b2b90e124cc66dcf8292c4be9), [`f6febcc`](https://github.com/LTplus-AG/ifc-lite/commit/f6febcc2d4986e79b3c44d63853bb72a16475c65), [`00f6e79`](https://github.com/LTplus-AG/ifc-lite/commit/00f6e79c22641ff59bfb3327d910b04f9a164d8b), [`116a3e9`](https://github.com/LTplus-AG/ifc-lite/commit/116a3e94de753b95fa94b2d6c41a0171cd254729)]:
+  - @ifc-lite/data@3.4.1
+
 ## 1.15.10
 
 ### Patch Changes

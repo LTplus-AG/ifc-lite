@@ -71,7 +71,7 @@ function sanitizeBundledProj4(def: string, datumName?: string | null): string {
   return def.replace(/\+nadgrids=\S+/g, '').replace(/\s+/g, ' ').trim() + ' ' + towgs84;
 }
 
-interface ControlPointFixture {
+export interface ControlPointFixture {
   epsg: string;
   name: string;
   control_point: {
@@ -91,7 +91,7 @@ const FIXTURES_PATH = path.resolve(
   'fixtures/epsg-control-points.json',
 );
 
-function loadFixtures(): ControlPointFixture[] {
+export function loadFixtures(): ControlPointFixture[] {
   const raw = fs.readFileSync(FIXTURES_PATH, 'utf8');
   const parsed = JSON.parse(raw) as FixturesFile;
   if (!Array.isArray(parsed.fixtures)) {
@@ -113,7 +113,7 @@ function degreesToMeters(latDeg: number, lonDeg: number, atLatDeg: number): numb
   return Math.sqrt((latDeg * mPerDegLat) ** 2 + (lonDeg * mPerDegLon) ** 2);
 }
 
-interface FixtureResult {
+export interface FixtureResult {
   fixture: ControlPointFixture;
   pass: boolean;
   forwardErrorM: number | null;
@@ -121,7 +121,7 @@ interface FixtureResult {
   reason?: string;
 }
 
-async function verifyFixture(fixture: ControlPointFixture): Promise<FixtureResult> {
+export async function verifyFixture(fixture: ControlPointFixture): Promise<FixtureResult> {
   const entry = await lookupEpsgByCode(fixture.epsg);
   if (!entry) {
     return {
@@ -261,4 +261,11 @@ async function main(): Promise<number> {
   return 1;
 }
 
-process.exitCode = await main();
+// Only run the CLI report when this file is the entry point. The fixtures and
+// `verifyFixture` are also imported by `verify-epsg-roundtrip.test.ts`, which
+// runs the same checks as part of `pnpm test`; without this guard that import
+// would print the whole report and set a failing `process.exitCode` from
+// inside the test run.
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  process.exitCode = await main();
+}

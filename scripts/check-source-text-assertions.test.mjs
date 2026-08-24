@@ -836,3 +836,35 @@ assert.ok(source.split('x').some($line => $line.includes('y')));
     true,
   );
 });
+
+test('every path that names a value survives a leading $', () => {
+  // `$` is legal in a JS identifier and is NOT a word character, so `\b` can
+  // never match in front of a leading one. That single language fact produced
+  // three separate silent bugs in this module, each found independently rather
+  // than by looking for siblings after the first: `valueIdentifiers`, `callRe`,
+  // and both arrow-parameter patterns.
+  //
+  // This pins the FAMILY. Reintroduce `\b` in front of an identifier class
+  // anywhere in the taint analysis and one of these reds, instead of the gate
+  // going quiet until someone happens to name a variable `$source`.
+  const cases = {
+    'binding': "const $src = readFileSync('a.ts', 'utf8');\nassert.ok($src.includes('x'));",
+    'let then assign': "let $s;\n$s = readFileSync('a.ts', 'utf8');\nassert.ok($s.includes('x'));",
+    'helper return': "function $load(p) { return readFileSync(p, 'utf8'); }\nconst s = $load('a.ts');\nassert.ok(s.includes('x'));",
+    'helper parameter': "function $check(t) { assert.ok(t.includes('x')); }\nconst s = readFileSync('a.ts', 'utf8');\n$check(s);",
+    'bare arrow helper': "const $chk = $t => $t.includes('x');\nconst s = readFileSync('a.ts', 'utf8');\nassert.ok($chk(s));",
+    'for-of element': "const s = readFileSync('a.ts', 'utf8');\nfor (const $line of s.split('n')) { assert.ok($line.includes('x')); }",
+    'arrow callback param': "const s = readFileSync('a.ts', 'utf8');\nassert.ok(s.split('n').some($l => $l.includes('x')));",
+    'function callback param': "const s = readFileSync('a.ts', 'utf8');\nassert.ok(s.split('n').some(function ($l) { return $l.includes('x'); }));",
+  };
+  for (const [name, body] of Object.entries(cases)) {
+    assert.equal(
+      flagged(`
+import { readFileSync } from 'node:fs';
+${body}
+`),
+      true,
+      `a $-leading name went undetected via: ${name}`,
+    );
+  }
+});

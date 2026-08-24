@@ -276,6 +276,38 @@ describe('corrupt geometry is refused, not measured', () => {
     assert.ok(Number.isFinite(out.distance), `distance ${out.distance}`);
   });
 
+  it('reports the dropped count when a discarded submesh was the NEARER one', () => {
+    // The quieter half of the same bug. Entity 2's nearest submesh is corrupt
+    // and gets discarded, so the measurement lands on its far submesh: 99
+    // instead of roughly 5. Unlike "Infinity m" that is a plausible number,
+    // and nothing about the value reveals the problem — so the count must.
+    const meshes = [
+      tri(1, [[0, 0, 0], [1, 0, 0], [0, 1, 0]]),
+      tri(2, [[NaN, 0, 0], [6, 0, 0], [5, 1, 0]]),
+      tri(2, [[0, 0, 0], [1, 0, 0], [0, 1, 0]], [100, 0, 0]),
+    ];
+    const out = minDistanceBetweenEntities(meshes, { entityId: 1 }, { entityId: 2 });
+    assert.equal(out.kind, 'ok');
+    if (out.kind !== 'ok') return;
+    assert.ok(out.distance > 90, `measured against the surviving submesh: ${out.distance}`);
+    assert.equal(out.dropped.b, 1, 'the discarded submesh must be reported');
+    assert.equal(out.dropped.a, 0, 'entity a lost nothing');
+  });
+
+  it('reports zero dropped when nothing was discarded', () => {
+    // The counter-example to the test above: an ordinary measurement must not
+    // look partial, or a readout that flags `dropped` would flag everything.
+    const meshes = [
+      tri(1, [[0, 0, 0], [1, 0, 0], [0, 1, 0]]),
+      tri(2, [[0, 0, 0], [1, 0, 0], [0, 1, 0]], [10, 0, 0]),
+    ];
+    const out = minDistanceBetweenEntities(meshes, { entityId: 1 }, { entityId: 2 });
+    assert.equal(out.kind, 'ok');
+    if (out.kind !== 'ok') return;
+    assert.equal(out.dropped.a, 0);
+    assert.equal(out.dropped.b, 0);
+  });
+
   it('still refuses when every submesh of an entity is corrupt', () => {
     const meshes = [
       tri(1, [[0, 0, 0], [1, 0, 0], [0, 1, 0]]),

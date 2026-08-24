@@ -62,6 +62,15 @@
  *    a measurement. The half-metre answer becomes "Infinity m", tagged `ok`.
  *    Both guards below exist for that: reject the geometry going in, and
  *    refuse a non-finite result coming out.
+ *
+ *    Rejection is per submesh, so an entity can lose part of itself and still
+ *    be measurable. That is deliberate — refusing outright would discard
+ *    geometry the user can legitimately measure — but it leaves a quieter
+ *    version of the same problem: the discarded submesh may have been the
+ *    NEARER one, making the reported distance arbitrarily too large while
+ *    looking entirely plausible. So the counts are reported (`dropped`)
+ *    rather than swallowed. This module cannot force a readout to show them,
+ *    but it can refuse to pretend they are zero.
  */
 
 import { minDistanceBetweenMeshes } from '@ifc-lite/clash/contact';
@@ -146,6 +155,21 @@ export interface MinDistanceOk {
   readonly distance: number;
   readonly pointA: MeasurePoint3;
   readonly pointB: MeasurePoint3;
+  /**
+   * Submeshes discarded as corrupt before measuring, per side.
+   *
+   * Either count being non-zero means `distance` is the closest approach of
+   * WHAT SURVIVED, not of the whole entity — and it can be arbitrarily larger
+   * than the truth, because the discarded submesh may have been the nearer
+   * one. Unlike the `Infinity` this module also refuses, that is a plausible
+   * number, so nothing about the value itself reveals the problem.
+   *
+   * Measuring what survives is still the right call — refusing an entity
+   * outright because one submesh is bad would throw away geometry the user
+   * can legitimately measure. Reporting it silently is not. A readout that
+   * ignores this renders a clearance the user may act on.
+   */
+  readonly dropped: { readonly a: number; readonly b: number };
 }
 
 export type MinDistanceResult = MinDistanceOk | MinDistanceRefusal;
@@ -164,8 +188,14 @@ export function meshForEntity(
   meshes: readonly MeshData[],
   entityId: number,
   modelIndex?: number,
-): { id: string; positions: Float64Array; indices: Uint32Array } | null {
-  const parts = meshes.filter(
+): {
+  id: string;
+  positions: Float64Array;
+  indices: Uint32Array;
+  /** Submeshes matched but discarded as corrupt. See `MinDistanceOk.dropped`. */
+  dropped: number;
+} | null {
+  const candidates = meshes.filter(
     (m) =>
       m.expressId === entityId &&
       // A federated scene reuses express ids across models, so an id alone is
@@ -173,9 +203,12 @@ export function meshForEntity(
       // not, fall back to id-only rather than silently matching nothing.
       (modelIndex === undefined || (m.modelIndex ?? 0) === modelIndex) &&
       m.indices.length >= 3 &&
-      m.positions.length >= 9 &&
-      hasUsableCoords(m),
+      m.positions.length >= 9,
   );
+  // Split rather than filter in one pass, because the COUNT is reportable:
+  // measuring against what survives is right, but doing it silently is not.
+  const parts = candidates.filter(hasUsableCoords);
+  const dropped = candidates.length - parts.length;
   if (parts.length === 0) return null;
 
   let vertexCount = 0;
@@ -210,7 +243,7 @@ export function meshForEntity(
     vBase += part.positions.length / 3;
   }
 
-  return { id: `${modelIndex ?? 0}:${entityId}`, positions, indices };
+  return { id: `${modelIndex ?? 0}:${entityId}`, positions, indices, dropped };
 }
 
 /**
@@ -254,5 +287,6 @@ export function minDistanceBetweenEntities(
     distance: result.distance,
     pointA: [result.pointA[0], result.pointA[1], result.pointA[2]],
     pointB: [result.pointB[0], result.pointB[1], result.pointB[2]],
+    dropped: { a: meshA.dropped, b: meshB.dropped },
   };
 }

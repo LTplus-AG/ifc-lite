@@ -3,12 +3,19 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Native (non-wasm) tests for [`group_and_slice_records`], the pure core of
-//! `simplifyMeshes` extracted from behind the `JsValue` boundary. Every
-//! guarantee documented on that function is pinned by a mutation-resistant
-//! fixture here: several *differently-sized* records (never one — a single
-//! record cannot observe a stride), a deliberately non-exact total, and
-//! records at distinct index positions so an off-by-one or swapped index is
-//! observable rather than accidentally correct.
+//! `simplifyMeshes` extracted from behind the `JsValue` boundary.
+//!
+//! The fixture is built so a mutation is observable rather than accidentally
+//! correct: several *differently-sized* records (never one — a single record
+//! cannot observe a stride), a deliberately non-exact total, and records at
+//! distinct index positions so an off-by-one or a swapped index shows up.
+//!
+//! A fixture that CAN observe a stride is not the same as an assertion that
+//! DOES. Element 10's first record starts at offset 0, which is also where an
+//! `i * 16` -> `0` mutant lands, so asserting only that record left the
+//! `local_to_world` stride unpinned; the second record's window (200..=215) is
+//! what actually kills it. Say what a test pins, not what its fixture could
+//! in principle detect.
 
 use super::group_and_slice_records;
 
@@ -160,6 +167,21 @@ fn local_to_world_present_flag_gates_the_decode() {
         m
     };
     assert_eq!(elem10.records[0].local_to_world, Some(expected));
+
+    // Record 0 alone cannot pin the STRIDE: its window starts at 0, which is
+    // where a `wire_index * 16` -> `0` mutant also lands, so that assertion
+    // passes with the stride arithmetic deleted. Element 10's SECOND record is
+    // wire record 2, and the fixture fills it with `r * 100 + k`, so a correct
+    // stride reads 200..=215 and any other offset reads something else.
+    let expected_third: [f64; 16] = {
+        let mut m = [0.0f64; 16];
+        for (k, slot) in m.iter_mut().enumerate() {
+            *slot = (2 * 100 + k) as f64;
+        }
+        m
+    };
+    assert_eq!(elem10.records[1].local_to_world, Some(expected_third));
+
     // element 20's only record has present=0: None, even though the wire
     // array carries non-zero bytes at that offset.
     let elem20 = &groups[1];
@@ -183,10 +205,45 @@ fn call_full<'a>(f: &'a Fixture) -> Result<Vec<super::GroupedElementRecords<'a>>
 
 #[test]
 fn rejects_mismatched_per_record_array_lengths() {
-    let mut f = fixture();
-    f.levels.pop(); // now len 2, express_ids len 3
-    let err = call(&f).unwrap_err();
-    assert_eq!(err, "simplifyMeshes: per-record array lengths disagree");
+    // The guard is SIX independent clauses, not one. Popping only `levels`
+    // exercised the first and left the other five free: deleting any of
+    // `vertex_counts`, `index_counts`, `origins`, `local_to_world` or
+    // `local_to_world_present` from the condition kept this suite green.
+    // Each arm below is one clause, so a deleted clause now reds this test.
+    /// One clause of the guard: the array to shorten, by name.
+    type ShortenOne = (&'static str, fn(&mut Fixture));
+    let cases: [ShortenOne; 6] = [
+        ("levels", |f| {
+            f.levels.pop();
+        }),
+        ("vertex_counts", |f| {
+            f.vertex_counts.pop();
+        }),
+        ("index_counts", |f| {
+            f.index_counts.pop();
+        }),
+        ("origins", |f| {
+            f.origins.pop();
+        }),
+        ("local_to_world", |f| {
+            f.local_to_world.pop();
+        }),
+        ("local_to_world_present", |f| {
+            f.local_to_world_present.pop();
+        }),
+    ];
+    for (name, break_one) in cases {
+        let mut f = fixture();
+        break_one(&mut f);
+        let err = match call(&f) {
+            Ok(_) => panic!("{name}: a short array was accepted"),
+            Err(e) => e,
+        };
+        assert_eq!(
+            err, "simplifyMeshes: per-record array lengths disagree",
+            "{name}: wrong rejection reason"
+        );
+    }
 }
 
 #[test]

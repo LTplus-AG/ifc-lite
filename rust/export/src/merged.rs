@@ -69,7 +69,7 @@ fn replace_leading_guid(line: &str, new_guid: &str) -> String {
 /// ids is not required (the two exporters mint independently, never for the
 /// same collision), but porting the well-specified, already-hardened
 /// algorithm avoids re-deriving a weaker one from scratch.
-fn deterministic_global_id(seed: &str) -> String {
+pub fn deterministic_global_id(seed: &str) -> String {
     let mut h0: u32 = 0x811c_9dc5;
     let mut h1: u32 = 0x9e37_79b9;
     let mut h2: u32 = 0x6c07_8965;

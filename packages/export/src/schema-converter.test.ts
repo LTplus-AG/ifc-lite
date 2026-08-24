@@ -327,5 +327,37 @@ describe('schema-converter', () => {
       const bare = convertStepLine(seg, 'IFC4X3', 'IFC4');
       expect(a, 'seeded source was ignored').not.toBe(bare);
     });
+
+    it('placeholder_guid_diverges_from_the_rust_mint_pinned_not_fixed', () => {
+      // PINS the schema-downgrade proxy-GlobalId divergence between the two
+      // exporters (#3015) AS divergence -- it does not fix it. Which side
+      // wins is a maintainer decision, not something a test should resolve
+      // unilaterally.
+      //
+      // This side derives the id from `deterministicGlobalId` of the WHOLE
+      // source line (`ifcproxy:{prefix}{entityType}({attrs})`). The Rust
+      // twin (`rust/export/src/schema_convert.rs::placeholder_guid`) derives
+      // it purely from the express id -- a different algorithm entirely, not
+      // just a different seed to the same one. Verified by actually running
+      // both on the byte-identical input line below;
+      // `schema_convert::tests::placeholder_guid_diverges_from_the_typescript_mint_pinned_not_fixed`
+      // pins the Rust side of the same pair.
+      //
+      // If this test ever starts failing because the values converged, that
+      // is good news -- update the doc here (and the Rust twin) to say so,
+      // don't just delete the assertion.
+      const guid = /IFCPROXY\('([^']*)'/.exec(convertStepLine(seg, 'IFC4X3', 'IFC4'))?.[1];
+      expect(
+        guid,
+        "TS's minted value for this input line changed -- update this pin (and check whether \
+it now agrees with the Rust twin, in which case update both docs to say so)",
+      ).toBe('3m5OyAyREn46dEymqijDwc');
+      expect(
+        guid,
+        'this is the Rust side\'s minted value for express id 42 on the byte-identical input \
+line -- if TS now matches it, the divergence has been resolved; update both tests\' docs \
+instead of silently dropping this assertion',
+      ).not.toBe('00000000000000000G000g');
+    });
   });
 });

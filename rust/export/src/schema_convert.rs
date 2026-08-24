@@ -338,6 +338,43 @@ mod tests {
         assert!(out.contains("'IFCALIGNMENTHORIZONTAL'"), "original type recorded as name");
     }
 
+    /// PINS the schema-downgrade proxy-GlobalId divergence between the two
+    /// exporters (#3015) AS divergence -- it does not fix it. Which side wins
+    /// is a maintainer decision, not something a test should resolve
+    /// unilaterally.
+    ///
+    /// `placeholder_guid` here derives the id purely from the express id
+    /// (`id as u64 + 0x1000_0000`, base64-stamped). The TypeScript twin
+    /// (`convertStepLine` in `packages/export/src/schema-converter.ts`)
+    /// derives it from `deterministicGlobalId` of the WHOLE source line
+    /// (`ifcproxy:{prefix}{entityType}({attrs})`) -- a different algorithm
+    /// entirely, not just a different seed to the same one. Verified by
+    /// actually running both on the byte-identical input line below;
+    /// `packages/export/src/schema-converter.test.ts`'s
+    /// `placeholder_guid_diverges_from_the_rust_mint_pinned_not_fixed` pins
+    /// the TS side of the same pair.
+    ///
+    /// If this test ever starts failing because the values converged, that
+    /// is good news -- update the doc here (and the TS twin) to say so,
+    /// don't just delete the assertion.
+    #[test]
+    fn placeholder_guid_diverges_from_the_typescript_mint_pinned_not_fixed() {
+        let line = "#42=IFCALIGNMENTSEGMENT('2K5H1$Zs9CQuKQFQKQFQKQ',#1,'A',$,$,#7,#9,$);";
+        let out = convert_step_line(line, "IFC4X3", "IFC4", 42);
+        let guid = out.split('\'').nth(1).expect("IFCPROXY line has a quoted GlobalId");
+        assert_eq!(
+            guid, "00000000000000000G000g",
+            "Rust's placeholder_guid(42) output changed -- update this pin (and check whether \
+             it now agrees with the TS twin, in which case update both docs to say so)"
+        );
+        assert_ne!(
+            guid, "3m5OyAyREn46dEymqijDwc",
+            "this is the TS side's minted value for the byte-identical input line -- if Rust \
+             now matches it, the divergence has been resolved; update both tests' docs instead \
+             of silently dropping this assertion"
+        );
+    }
+
     #[test]
     fn no_conversion_is_identity() {
         let line = "#1=IFCWALL('g',$,$);";

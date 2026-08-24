@@ -11,9 +11,16 @@ import { convexHull2, type Point2, type Polygon2 } from './polygon-clip.js';
  *
  * Measured: changing the pruning comparison from `cross2(a, b, p) <= 0` to
  * `< 0` — so exactly-collinear points stop being discarded — left
- * `packages/clash` at 425/425 passing. A coarser mutation (reversing the
- * inequality) IS caught by `contact.test.ts`, so the module is not blind in
- * general; the collinear rule specifically is.
+ * `packages/clash` at 425/425 passing.
+ *
+ * An earlier version of this note claimed that reversing the inequality IS
+ * caught by `contact.test.ts`, "so the module is not blind in general". That
+ * was wrong. Reversing both comparisons to `>= 0` leaves this file AND
+ * `contact.test.ts` at 34/34 passing — measured on this branch with the vitest
+ * transform cache cleared. The tests added here kill the `< 0` mutant (6 of 16
+ * fail) and do not kill the reversal. So the pruning comparison is unpinned in
+ * BOTH directions by everything outside this file, and pinned in one direction
+ * by it.
  *
  * That matters here because building geometry is overwhelmingly axis-aligned,
  * so collinear boundary points are the ordinary case rather than an edge case,
@@ -61,7 +68,17 @@ function hasCollinearRun(poly: Polygon2): boolean {
   return false;
 }
 
-/** Every turn the same way round, i.e. genuinely convex and not self-crossing. */
+/**
+ * True when every non-collinear turn goes the same way round.
+ *
+ * That is NOT the same as "convex and not self-crossing", which an earlier
+ * version of this comment claimed. Collinear triples are skipped (`c === 0`),
+ * and a monotone-chain result always shares one turn sign, so this returns
+ * true for the two degenerate outputs the collinear tests below produce — the
+ * walk-out-and-back line and the duplicated-corner square. It is a weak
+ * invariant that catches a hull with a genuinely inverted turn, and it is not
+ * evidence that a self-crossing result would be rejected.
+ */
 function isConvex(poly: Polygon2): boolean {
   if (poly.length < 3) return true;
   let sign = 0;

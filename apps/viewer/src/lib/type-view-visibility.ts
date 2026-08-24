@@ -28,6 +28,7 @@
  */
 import {
   GEOM_CLASS_INSTANCED_TYPE,
+  GEOM_CLASS_OCCURRENCE,
   GEOM_CLASS_ORPHAN_TYPE,
   geometryClassOf,
   isPlacedGeometryClass,
@@ -47,6 +48,20 @@ export type TypeViewMode = 'model' | 'types';
  */
 export function meshClassIsPlaced(geometryClass: number): boolean {
   return isPlacedGeometryClass(geometryClass);
+}
+
+/**
+ * Is this mesh anything OTHER than a placed occurrence?
+ *
+ * Deliberately not `isTypeLibraryGeometryClass`, which is orphan + instanced
+ * type geometry only. This is the broader `!== occurrence`, so a
+ * material-layer slice counts too — which is the existing behaviour of the
+ * Model/Types toggle gate in `ViewportContainer`, preserved exactly rather
+ * than tightened here. Whether a layered wall alone should offer that toggle
+ * is a separate question from naming the ordinal.
+ */
+export function meshIsNonOccurrence(mesh: { geometryClass?: number }): boolean {
+  return geometryClassOf(mesh) !== GEOM_CLASS_OCCURRENCE;
 }
 
 export function isMeshVisibleInViewMode(

@@ -61,6 +61,36 @@ describe('TokenManager.getValidAccessToken', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('refreshes when the token sits exactly on the skew boundary (expiresAt - skew === now)', async () => {
+    // A fixture well inside or well outside the skew window can't tell `>` from
+    // `>=` apart. This one lands exactly on the boundary: `expiresAt - skew`
+    // equals `now` to the millisecond, so it only distinguishes the two if the
+    // comparison is strict. The freshness check must treat "exactly at the
+    // skew boundary" as needing a refresh, not as still fresh — that's what
+    // the skew buffer is *for*: absorbing the refresh request's own latency,
+    // which a token already sitting exactly `skew` ms from expiry has none of
+    // left.
+    const storage = createMemoryStorage();
+    const fetchMock = vi.fn(async () => jsonResponse({ access_token: 'refreshed', refresh_token: 'r2', expires_in: 3600 }));
+    const now = 1_000_000;
+    const skew = 60_000;
+    const manager = new TokenManager({
+      storageKey: 'acct-1',
+      storage,
+      tokenEndpoint: 'https://auth.example.com/token',
+      clientId: 'client-1',
+      fetch: fetchMock as unknown as typeof fetch,
+      now: () => now,
+      refreshSkewMs: skew,
+    });
+    await manager.setTokens({ accessToken: 'on-the-boundary', refreshToken: 'r1', expiresAt: now + skew });
+
+    const token = await manager.getValidAccessToken();
+
+    expect(token).toBe('refreshed');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('refreshes when the stored token is within the skew window of expiry', async () => {
     const storage = createMemoryStorage();
     const fetchMock = vi.fn(async () => jsonResponse({ access_token: 'refreshed', refresh_token: 'r2', expires_in: 3600 }));

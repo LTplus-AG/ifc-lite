@@ -68,3 +68,20 @@ describe('workspacePanelForShortcutCode (Alt+digit routing #1200/#1208)', () => 
     }
   });
 });
+
+// `isBottomPanel` gates `usePanelControls`' toggle routing (script / gantt /
+// lists go through `toggleBottomPanel`, everything else through the sidebar
+// dock). The test above only exercises 'script' (Digit8) and 'lists'
+// (Digit0) via the shortcut map — 'gantt' (Digit9) was never checked here,
+// so dropping it from `isBottomPanel`'s own condition went unnoticed.
+describe('isBottomPanel', () => {
+  it('is true for exactly script, gantt and lists — the bottom-strip trio', () => {
+    for (const id of WORKSPACE_PANELS.map((p) => p.id)) {
+      assert.strictEqual(
+        isBottomPanel(id),
+        id === 'script' || id === 'gantt' || id === 'lists',
+        `isBottomPanel('${id}')`,
+      );
+    }
+  });
+});

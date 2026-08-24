@@ -60,7 +60,7 @@ import { createBlankIfcFile } from '@/utils/createBlankIfc';
 import type { MeshData, CoordinateInfo, GeometryResult, PointCloudAsset } from '@ifc-lite/geometry';
 import { type IfcDataStore, type MapConversion } from '@ifc-lite/parser';
 import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
-import { isMeshVisibleInViewMode, meshClassIsPlaced } from '@/lib/type-view-visibility';
+import { isMeshVisibleInViewMode, meshClassIsPlaced, meshIsNonOccurrence } from '@/lib/type-view-visibility';
 
 const ZERO_VEC3 = { x: 0, y: 0, z: 0 };
 const DEFAULT_COORDINATE_INFO: CoordinateInfo = {
@@ -816,7 +816,7 @@ export function ViewportContainer() {
     }
     if (!sawTypeGeometryRef.current) {
       for (let i = typeGeoScanLenRef.current; i < meshes.length; i++) {
-        if ((meshes[i].geometryClass ?? 0) !== 0) { sawTypeGeometryRef.current = true; break; }
+        if (meshIsNonOccurrence(meshes[i])) { sawTypeGeometryRef.current = true; break; }
       }
     }
     typeGeoScanLenRef.current = meshes.length;

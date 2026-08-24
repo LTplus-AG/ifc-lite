@@ -81,7 +81,7 @@ export interface SourceIterationContext {
     overlayActive: boolean,
     onRejected?: (attrName: string, value: string) => void,
   ) => SourceLineMutations;
-  /** `StepExporter.isGeometryEntity`, also read by the setup closure and by
+  /** `isGeometryEntity` (`step-geometry-types.ts`), also read by the setup closure and by
    *  the overlay-created-entities block. */
   readonly isGeometryEntity: (type: string) => boolean;
   /** `StepExporter.propertySetContext`, for the byte readers

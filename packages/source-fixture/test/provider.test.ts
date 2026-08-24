@@ -159,6 +159,25 @@ describe('interactive auth gate', () => {
   });
 });
 
+describe('paginate() limit clamping', () => {
+  // `paginate`'s `request?.limit && request.limit > 0 ? ... : maxPageSize`
+  // treats a `0` (or negative) limit as "not really a limit" and falls back
+  // to the fixture's own page size, the same as `undefined` — distinct from
+  // a fractional sub-1 limit, which clamps *up* to 1 instead. No existing
+  // fixture across this package's tests passes `limit: 0` itself, so a
+  // `limit >= 0` mutation (clamping zero down to a single-item page instead
+  // of falling back to the default) would pass every one of them unnoticed.
+  it('falls back to the default page size for limit: 0, rather than a single-item page', async () => {
+    const provider = createFixtureSourceProvider({ world: buildTestWorldSpec() }); // default pageSize 25
+    const ctx = createFixtureContext();
+    // `sub1` has exactly 2 files (see world.ts) — well within the default
+    // page size, so a correct fallback returns both in one page.
+    const page = await provider.listFiles(ctx, 'proj-1', 'sub1', undefined, { limit: 0 });
+    expect(page.items.map((f) => f.id)).toEqual(['structural-model', 'structural-notes']);
+    expect(page.cursor).toBeUndefined();
+  });
+});
+
 describe('cursor scoping', () => {
   it('rejects a malformed cursor', async () => {
     const provider = createFixtureSourceProvider({ world: buildTestWorldSpec() });

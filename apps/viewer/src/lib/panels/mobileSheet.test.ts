@@ -61,6 +61,22 @@ describe('mobile bottom sheet occupant', () => {
     );
   });
 
+  it('lets Add Element outrank the bottom-strip panels, not just the docked side panel', () => {
+    // The precedence doc claims Add Element beats the bottom strip too, not
+    // only the docked side panel covered by the test above — assert that
+    // directly so reordering the two checks against each other is caught.
+    assert.deepEqual(
+      resolveMobileSheet({
+        ...IDLE,
+        activeTool: 'addElement',
+        ganttVisible: true,
+        scriptVisible: true,
+        listVisible: true,
+      }),
+      { kind: 'addElement' },
+    );
+  });
+
   it('reports the EXTENSION, not the panel behind it', () => {
     assert.deepEqual(
       resolveMobileSheet({ ...IDLE, hasAnalysisExtension: true, sidebarActivePanel: 'clash' }),

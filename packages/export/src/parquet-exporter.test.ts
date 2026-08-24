@@ -438,8 +438,9 @@ function buildDataStoreWithById(): MockDataStore {
 
 describe('ParquetExporter overlay retypes', () => {
   // StepExporter/Ifc5Exporter resolve `effective.typeOf(id)` before emitting
-  // an entity's class (step-exporter.ts:961, `effectiveType = typeMut?.newType
-  // ?? entity.type`), so a `setEntityType` retype changes what those two
+  // an entity's class (`const effectiveType = typeMut?.newType ?? entity.type`
+  // in `step-overlay-entities.ts`), so a `setEntityType` retype changes what
+  // those two
   // exporters write. `writeEntities` filters rows by `effective.isDeleted`
   // (the #2046 fix); before this fix it still read `Type` straight off
   // `entities.typeEnum` — the SOURCE class — never consulting the same

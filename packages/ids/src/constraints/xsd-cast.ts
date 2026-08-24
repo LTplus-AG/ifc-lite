@@ -12,8 +12,9 @@
  * `xs:double` accepts either, etc.
  */
 
+import { isWhollyNumeric } from '@ifc-lite/encoding';
+
 const INTEGER_RE = /^[+-]?\d+$/;
-const DOUBLE_RE = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}(Z|[+-]\d{2}:\d{2})?$/;
 const DATETIME_RE =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/;
@@ -39,7 +40,12 @@ export function literalCastsUnder(value: string, xsdType: string): boolean {
     case 'xs:integer':
       return INTEGER_RE.test(value);
     case 'xs:double':
-      return DOUBLE_RE.test(value);
+      // Same language the local `DOUBLE_RE` decided, via the shared
+      // linear scan. That regex was
+      // `/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/` — the #3113 shape,
+      // quadratic on a failing match — and an IDS literal is as
+      // untrusted as the file it came out of.
+      return isWhollyNumeric(value);
     case 'xs:boolean':
       return value === 'true' || value === 'false';
     case 'xs:date':

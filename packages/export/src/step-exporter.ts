@@ -9,32 +9,14 @@
  * Supports applying property and root attribute mutations before export.
  */
 
-import type { IfcDataStore, IfcAttributeValue, IfcSourceHeader } from '@ifc-lite/parser';
-import {
-  EntityExtractor,
-  parseSourceHeader,
-  type MapConversion,
-  type ProjectedCRS,
-} from '@ifc-lite/parser';
+import type { IfcDataStore, IfcSourceHeader } from '@ifc-lite/parser';
+import { EntityExtractor, parseSourceHeader } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import type { PropertySet, QuantitySet } from '@ifc-lite/data';
-import type { RandomSource } from '@ifc-lite/encoding';
 import { needsConversion, type IfcSchemaVersion } from './schema-converter.js';
 import { getCompleteEntityIndex, getMaxExpressId } from './entity-iteration.js';
-import {
-  createModificationLedger,
-  type ModificationLedger,
-  type SourceLineDelivery,
-} from './delta-modification-ledger.js';
 import { createSourceRefReader } from './source-ref-bounds.js';
-import {
-  writeSourceEntityLines,
-  type SourceIterationContext,
-} from './step-source-iteration.js';
-import {
-  writeOverlayCreatedEntities,
-  type OverlayEntitiesContext,
-} from './step-overlay-entities.js';
+import { writeSourceEntityLines } from './step-source-iteration.js';
+import { writeOverlayCreatedEntities } from './step-overlay-entities.js';
 import {
   generatePropertyAndQuantitySetEntities,
   type OwnerHistoryCache,
@@ -42,259 +24,34 @@ import {
 } from './step-property-sets.js';
 import { type GeorefContext } from './step-georeferencing.js';
 import { collectModifications, type CollectionContext } from './step-collection.js';
-import { getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
-import { buildStepHeader, assembleExportResult } from './step-header.js';
+import { assembleExportResult } from './step-header.js';
+import { applySourceLineMutations } from './step-attribute-mutations.js';
+
+/**
+ * The export vocabulary lives in `step-export-types.ts` (#2475). Re-exported
+ * here, unchanged, so that the package entry point and the seven sibling
+ * modules that import `ExportPass` / `SourceLineMutations` from this file
+ * carry on doing exactly that -- the split moved declarations, not call sites.
+ */
+export type {
+  StepExportOptions,
+  StepExportProgress,
+  StepExportResult,
+  SourceLineMutations,
+  ExportPass,
+} from './step-export-types.js';
+// Only the three this file's own body still names. `StepExportProgress` and
+// `SourceLineMutations` are re-exported above but never referenced here, and
+// importing them too raises TS6196 under --noUnusedLocals.
+import type { StepExportOptions, StepExportResult, ExportPass } from './step-export-types.js';
+import { buildExportPass } from './step-pass-builder.js';
+import { evaluateOmissionPredicates } from './step-omission-predicates.js';
+import { isGeometryEntity } from './step-geometry-types.js';
 import {
-  applySourceLineMutations,
-  applyOverlayEntityOverrides,
-} from './step-attribute-mutations.js';
+  buildSourceIterationContext,
+  buildOverlayEntitiesContext,
+} from './step-export-contexts.js';
 
-/**
- * Options for STEP export
- */
-export interface StepExportOptions {
-  /** IFC schema version for the output file (any version, will convert if needed) */
-  schema: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
-  /** File description */
-  description?: string;
-  /** Author name */
-  author?: string;
-  /** Organization name */
-  organization?: string;
-  /** Application name (defaults to 'ifc-lite') */
-  application?: string;
-  /** Output filename */
-  filename?: string;
-
-  /** Include original geometry entities (default: true) */
-  includeGeometry?: boolean;
-  /** Include property sets (default: true) */
-  includeProperties?: boolean;
-  /** Include quantity sets (default: true) */
-  includeQuantities?: boolean;
-  /** Include relationships (default: true) */
-  includeRelationships?: boolean;
-
-  /** Apply mutations from MutablePropertyView (default: true if provided) */
-  applyMutations?: boolean;
-  /** Only export entities with mutations (delta export) */
-  deltaOnly?: boolean;
-
-  /** Only export entities currently visible in the viewer */
-  visibleOnly?: boolean;
-  /** Hidden entity IDs (local expressIds) — required when visibleOnly is true */
-  hiddenEntityIds?: Set<number>;
-  /** Isolated entity IDs (local expressIds, null = no isolation active) */
-  isolatedEntityIds?: Set<number> | null;
-
-  /** Georeferencing mutations to apply (IfcProjectedCRS / IfcMapConversion edits) */
-  georefMutations?: {
-    projectedCRS?: Partial<ProjectedCRS>;
-    mapConversion?: Partial<MapConversion>;
-  };
-
-  /**
-   * Seeded randomness for the GlobalIds this exporter SYNTHESIZES:
-   * the `IfcPropertySet` / `IfcElementQuantity` roots regenerated for
-   * mutated (or overlay-created) property and quantity sets, their
-   * `IfcRelDefinesByProperties` links. Without it those come from the platform
-   * CSPRNG, so two exports of the same model differ in exactly those bytes -
-   * which breaks byte-reproducibility for in-store builds that call
-   * `addPropertySet` / `addQuantitySet` (the sets themselves live in the
-   * mutation overlay and only become IFC roots here). Pass the same seeded
-   * source used for `SpatialAnchor.guidRandom` to close that gap. Default
-   * (omitted) behaviour for THESE ids is unchanged: random.
-   *
-   * NOT the `IFCPROXY` placeholders any more (#2733). Those used to be minted
-   * from this source too, so an omitted `guidRandom` made every downgraded
-   * IFC4X3 entity differ on re-export. They are now derived from the source
-   * line when this is omitted, and only fall back to this source when it is
-   * supplied - so passing a seeded source still pins them, but NOT passing one
-   * no longer makes them random. See `convertStepLine`.
-   */
-  guidRandom?: RandomSource;
-  /**
-   * Pin the STEP header `FILE_NAME` timestamp (STEP format, e.g.
-   * `20240101T000000`). Omitted = the wall clock, as before. Required for
-   * genuinely byte-identical exports, since the header otherwise carries the
-   * export instant.
-   */
-  timeStamp?: string;
-
-  /** Progress callback for async export */
-  onProgress?: (progress: StepExportProgress) => void;
-}
-
-/**
- * Progress information during STEP export
- */
-export interface StepExportProgress {
-  /** Current phase of export */
-  phase: 'preparing' | 'entities' | 'assembling';
-  /** Progress 0-1 */
-  percent: number;
-  /** Number of entities processed so far */
-  entitiesProcessed: number;
-  /** Total entities to process */
-  entitiesTotal: number;
-}
-
-/**
- * Result of STEP export
- */
-export interface StepExportResult {
-  /** STEP file content as bytes (avoids V8 string length limit for large files) */
-  content: Uint8Array;
-  /** Statistics about the export */
-  stats: {
-    /** Total entities exported */
-    entityCount: number;
-    /** New entities created for mutations */
-    newEntityCount: number;
-    /** Entities modified by mutations */
-    modifiedEntityCount: number;
-    /** File size in bytes */
-    fileSize: number;
-    /**
-     * Non-fatal refusals: things the caller asked for that this export could
-     * not write. Empty when the export did everything it was asked to do.
-     *
-     * A requested `georefMutations.mapConversion` is one case: with no
-     * `IfcGeometricRepresentationContext` to reference as `SourceCRS`, the
-     * `IfcMapConversion` is skipped (writing it would produce a dangling
-     * reference) while the `IfcProjectedCRS` is still written — so the output
-     * is indistinguishable from "no map conversion was requested" unless the
-     * caller reads this (#2067).
-     *
-     * A WITHHELD RELATIONSHIP is the other: when a relationship names an
-     * entity this export is not writing, in a slot with no spelling for an
-     * omitted reference, the whole relationship line is dropped rather than
-     * shipped dangling — see {@link relationshipWithheldWarning}. This can
-     * happen on a plain full export with no options set at all, so it is
-     * reported rather than left to be discovered by a diff.
-     *
-     * Same `string[]` shape as `MergeExportResult.stats.warnings`.
-     */
-    warnings: string[];
-  };
-}
-
-/**
- * Message for a relationship this export DROPPED rather than rewrote.
- *
- * `filterHiddenRefsFromRelationshipLine` removes an omitted `#N` from a
- * SET/LIST attribute, but a single-valued attribute has no STEP spelling for
- * "omitted" and an empty SET is not the same statement as the original — so in
- * both of those cases it withholds the whole line and the relationship simply
- * is not in the output. Withholding beats shipping a dangling `#N`, but it is
- * not free: every OTHER entity that relationship named loses the association.
- * A visible element can therefore come out of a plain full export with one
- * fewer pset than it went in with, and before this warning existed nothing in
- * the result said so (adversarial review of #2668).
- *
- * Deliberately reports the relationship rather than the omitted target: the
- * target's own omission is already the caller's own doing in every reason but
- * the unreadable-ref one, whereas the lost association is the surprise.
- */
-const relationshipWithheldWarning = (expressId: number, type: string): string =>
-  `Relationship #${expressId} (${type}) was withheld from the export: it names at least one entity that has no line in this export, in a slot with no spelling for an omitted reference (a single-valued attribute, or a set whose every member is omitted). Anything else that relationship associated is no longer associated in the output.`;
-
-/**
- * What `step-attribute-mutations.ts`'s `applySourceLineMutations` produced: the rewritten
- * line, plus which edit kinds that rewrite actually delivered. The delivery
- * half is {@link SourceLineDelivery} rather than three loose booleans so that
- * the pipeline and the ledger cannot disagree about what a source line carries
- * — an added kind has one place to be added.
- */
-export type SourceLineMutations = SourceLineDelivery & { text: string };
-
-/**
- * The state one `export()` call shares across its seven phases.
- *
- * Introduced by step 1 of #2475: `export()` is ~1267 lines and the phases a
- * split would separate are held together by ~30 local bindings, most of which
- * are read in three or more phases. Naming that set once — as an interface
- * with a single construction site at the top of `export()` — is what lets a
- * later phase extraction take one parameter instead of fifteen.
- *
- * Two properties of this object are load-bearing and must survive every later
- * move:
- *
- * 1. **The predicates are members, not duplicated expressions.** Six of them
- *    (`isOverlayCreated`, `isReadableSourceRef`, `isGeometryExcluded`,
- *    `hasEmittableHostBytes`, `willBeEmitted`,
- *    `isRefExcludedDuringClosureWalk`) exist precisely so two phases cannot
- *    disagree about a gate — see the comments at their construction sites for
- *    the corrupt files the earlier, per-phase versions let through (#2491,
- *    #2414, #2398, #2637). A phase that reimplements one of these instead of
- *    reading it off the pass reintroduces exactly that class of defect.
- * 2. **`allowedEntityIds` and `hiddenProductIds` are mutable, and the
- *    predicates close over the pass rather than over a snapshot.** The
- *    visible-only closure walk assigns both AFTER construction, and
- *    `isRefExcludedDuringClosureWalk` is handed to that walk while they are
- *    still null. The output-line filter reads them too, through
- *    `isOmittedFromOutput` -> `willBeEmitted`, so neither can be a snapshot
- *    taken before the walk ran — that is the invariant the #2637 regression
- *    broke.
- *
- * Deliberately NOT on the pass, and why: `isOmittedFromOutput`,
- * `mayNameOmittedRefs` and
- * `overlayNewEntityCount` are eagerly-computed values whose value is only
- * defined after work that runs past this construction site, so hoisting them
- * would change what they compute rather than where they are named;
- * `generatedTypeOwnedPsetIds` is read in one phase only — a local inside
- * `step-property-sets.ts:generatePropertyAndQuantitySetEntities`, which holds
- * both the loop that writes it and the loop that reads it (#2475).
- */
-export interface ExportPass {
-  /** Output accumulator: every DATA-section line this export will write. */
-  readonly entities: string[];
-  /** Lines contributed by entities that have no source record. */
-  newEntityCount: number;
-
-  // ---- resolved options / schema ----
-  readonly schema: IfcSchemaVersion;
-  readonly sourceSchema: IfcSchemaVersion;
-  readonly converting: boolean;
-  readonly sourceHeader: IfcSourceHeader | undefined;
-  readonly schemaToken: string;
-  readonly overlayActive: boolean;
-
-  // ---- indexes and ledgers ----
-  readonly effective: EffectiveEntityIndex;
-  readonly modifications: ModificationLedger;
-  /** Widened from the imported `InPlaceNominees` (whose sets are readonly)
-   *  because the collection passes below add to them. */
-  readonly inPlaceNominees: { attribute: Set<number>; georeferencing: Set<number> };
-
-  // ---- visible-only closure results (assigned after construction) ----
-  allowedEntityIds: Set<number> | null;
-  hiddenProductIds: ReadonlySet<number> | null;
-
-  // ---- the collection passes' output ----
-  readonly modifiedEntities: Set<number>;
-  readonly modifiedAttributes: Map<number, Map<string, string>>;
-  readonly newPropertySets: Array<{ entityId: number; psets: PropertySet[] }>;
-  readonly newQuantitySets: Array<{ entityId: number; qsets: QuantitySet[] }>;
-  readonly typeOwnedPsetNamesByEntity: Map<number, Set<string>>;
-  readonly typeOwnedPsetIdsByEntity: Map<number, number[]>;
-  readonly rewrittenEntityIds: Set<number>;
-  readonly rewrittenEntityLines: Map<number, string>;
-  readonly overlayTypeOwnedPsets: Map<number, IfcAttributeValue>;
-  readonly skipPropertySetIds: Set<number>;
-  readonly skipRelationshipIds: Set<number>;
-  readonly newGeorefLines: string[];
-  readonly warnings: string[];
-
-  // ---- the shared predicates (see item 1 above) ----
-  readonly buildHeader: (modifications: number) => string;
-  readonly isOverlayCreated: (entityId: number) => boolean;
-  readonly isReadableSourceRef: ReturnType<typeof createSourceRefReader>;
-  readonly isGeometryExcluded: (entityId: number, recordType: string) => boolean;
-  readonly hasEmittableHostBytes: (entityId: number) => boolean;
-  readonly willBeEmitted: (entityId: number) => boolean;
-  readonly isRefExcludedDuringClosureWalk: (id: number) => boolean;
-}
 
 /**
  * IFC STEP file exporter
@@ -397,531 +154,53 @@ export class StepExporter {
         : schema;
 
     // The one construction site for the state this export shares across its
-    // seven phases. See `ExportPass` above for what belongs here, what
-    // deliberately does not, and why every predicate reads `pass` rather than
-    // a value captured at construction time.
-    const pass: ExportPass = {
-      entities: [],
-      newEntityCount: 0,
+    // seven phases, built in `step-pass-builder.ts` (#2475). `ExportPass` in
+    // `step-export-types.ts` says what belongs on it and what deliberately
+    // does not.
+    //
+    // What comes back is the object the phases below MUTATE -- notably
+    // `collectModifications`, which fills in the `allowedEntityIds` /
+    // `hiddenProductIds` that the pass's own predicates close over. Do not
+    // copy it; `step-pass-builder.test.ts` is what stops that.
+    const pass: ExportPass = buildExportPass({
+      dataStore: this.dataStore,
+      mutationView: this.mutationView,
+      isGeometryEntity,
+      options,
       schema,
       sourceSchema,
       converting,
+      applyMutations,
+      excludeGeometry,
       sourceHeader,
       schemaToken,
-      overlayActive: !!this.mutationView && applyMutations,
-
-      // Built once entity counts are known, so the provenance item can report the
-      // actual modification count. See the two call sites (empty delta + final).
-      // Body lives in `step-header.ts` (#2475 header/assembly tail): the
-      // closure still has to be built here, because it closes over this
-      // call's own `options`/`sourceHeader`/`schemaToken`, and both call
-      // sites still read it as `pass.buildHeader`.
-      buildHeader: (modifications: number): string =>
-        buildStepHeader(options, sourceHeader, schemaToken, modifications),
-
-      // The one authority for exists / class / deleted, overlay first and source
-      // buffer second. Every pass below asks this instead of `this.dataStore`,
-      // which answers only for the file as parsed (#2012).
-      effective: getEffectiveEntityIndex(
-        this.dataStore,
-        this.mutationView,
-        applyMutations,
-      ),
-
-      // Does this id belong to an entity the OVERLAY created (`createEntity` /
-      // `store.addEntity`) rather than to a record in the source buffer? Such an
-      // entity has no source bytes, so the source-iteration pass below never sees
-      // it and the new-entities pass at the end owns its line entirely (#2006).
-      isOverlayCreated: (entityId: number): boolean => pass.effective.isOverlayCreated(entityId),
-
-      // Does this record describe a line this export can actually READ out of the
-      // source? One predicate for every byte-range gate below, so they cannot
-      // disagree — see `source-ref-bounds.ts` for the corrupt file the weaker
-      // "is there a source / does the ref claim bytes" pair let through (#2491).
-      isReadableSourceRef: createSourceRefReader(this.dataStore.source),
-
-      // Build visible-only closure if requested. Classification, the closure walk
-      // and the style pass all run over the EFFECTIVE index: an overlay-created
-      // product becomes a root by the same type rules as a parsed one, the walk
-      // follows its authored references into the geometry it alone owns, and a
-      // tombstoned entity is simply not there. Run over the source buffer, a
-      // created wall could never be a root and nothing referenced it, so
-      // `visibleOnly` wrote a file without it and said nothing (#2012).
-      //
-      // Computed here, ahead of the modification-count passes below, because
-      // `hasEmittableHostBytes` needs it: a source-backed host EXCLUDED by
-      // `visibleOnly` never gets its line written by the source-iteration pass
-      // either, so counting it as "modified" would make the header claim a
-      // change the DATA section does not contain (CodeRabbit finding on #2414).
-      allowedEntityIds: null,
-
-      // Populated alongside `allowedEntityIds` below. `getVisibleEntityIds`
-      // excludes a hidden PRODUCT's own line from the closure, but `IFCREL*` is
-      // an unconditional root a few lines down and its bytes are copied verbatim
-      // by the source-iteration pass — nothing there filters a `#N` the closure
-      // just excluded out of the relationship's own attribute list. Kept because
-      // the closure walk's `isRefExcludedDuringClosureWalk` needs a notion of
-      // "hidden" that does not read `allowedEntityIds` — the set that walk is
-      // producing (#2398). The two OUTPUT passes no longer read this directly:
-      // they filter on `isOmittedFromOutput`, which subsumes it via
-      // `allowedEntityIds`.
-      hiddenProductIds: null,
-
-      // A relationship can name an excluded entity two ways that have nothing
-      // to do with each other: a `visibleOnly` hidden PRODUCT (`hiddenProductIds`,
-      // below), and a TOMBSTONED one — `editor.removeEntity` on a related object
-      // named by a relationship the deletion sweep below does not reach (that
-      // sweep only withholds an `IfcRelDefinesByProperties` when EVERY related
-      // object is gone, and only for that one relationship class). Left alone, a
-      // relationship still naming a deleted entity ships the identical `#N` with
-      // no `#N=` line, on a path with no `visibleOnly` involved at all (#2398).
-      // `effective.isDeleted` answers for every id, not just a precomputed set,
-      // so this predicate covers both sources without a second exclusion set.
-      //
-      // Declared here, ahead of the closure walk below, and passed into
-      // `collectReferencedEntityIds` as its `isRefExcluded` — rather than the
-      // walk inventing its own `!entityIndex.has` proxy for "deleted" that could
-      // disagree on an id that never existed in the file at all
-      // (maintainer-found regression on #2637: such an id blocked the bridge but
-      // did not stop the relationship's own line from shipping, dropping a
-      // VISIBLE sibling's pset while adding a fresh dangling ref). A closure over
-      // `pass.hiddenProductIds`, not a value snapshot — correct because nothing
-      // reads it before the closure walk assigns it just below.
-      //
-      // ## Why this is NOT the predicate the OUTPUT-line filter uses
-      //
-      // The name says walk, and only walk. The two passes that write a
-      // relationship's line ask `isOmittedFromOutput` (further below, derived
-      // from `pass.willBeEmitted`), which is strictly stronger — it also answers
-      // for the closure, for an unreadable source ref and for a geometry
-      // exclusion.
-      //
-      // This one CANNOT be `willBeEmitted`, and the difference is structural
-      // rather than stylistic: `willBeEmitted`'s first act is to consult
-      // `allowedEntityIds`, and `allowedEntityIds` is precisely what the call
-      // below is computing. Wiring it in here is circular: it would answer "not
-      // in the closure" as `false` while the closure is still being built and
-      // `true` for the same id afterwards.
-      //
-      // That is a genuine departure from the contract #2637 was closed on —
-      // `reference-collector.ts` still documents the bridge as taking the
-      // caller's OWN output predicate, "not two expressions that happened to
-      // agree". It has an OBSERVABLE consequence, not just a naming one: for an
-      // unreadable source ref this admits, the walk bridges through a
-      // relationship the output then withholds, leaving the relationship's other
-      // target in the closure with nothing naming it — an orphan, pinned by
-      // `unreadable-ref-dangling.test.ts` ("walk and output predicates diverge").
-      // The reverse direction is closed: every id this excludes,
-      // `isOmittedFromOutput` excludes too, so the #2548 leak cannot return.
-      isRefExcludedDuringClosureWalk: (id: number): boolean =>
-        (pass.hiddenProductIds !== null && pass.hiddenProductIds.has(id))
-        || pass.effective.isDeleted(id),
-
-      // Will THIS entity's own line ever land in the file? The same byte-range
-      // test `willBeEmitted` uses (defined further below) and the source-
-      // iteration pass's own skip at `entityRef.byteLength === 0` — a source
-      // entity with no bytes (a point-cloud / GLB "entity" from
-      // `createSyntheticDataStore`, not an overlay-created one) never gets a
-      // defining line written, source-iteration or otherwise, so a pset/attribute
-      // edit against it must not count as a modification either: the header
-      // would describe a change the file does not contain (out-of-scope finding
-      // in #2398). Also excludes a source-backed host the visible-only closure
-      // above drops — same reasoning, different reason the line never lands.
-      //
-      // And, like `willBeEmitted` below, excludes a geometry-classified SOURCE
-      // host under `includeGeometry: false`: the source-iteration pass's own
-      // `isGeometryEntity` skip (further below) drops that line too, so this
-      // predicate must agree or a geometry entity's attribute edit inflates the
-      // count over an omitted line (CodeRabbit finding on #2414). Guarded by
-      // `!deltaOnly` for the same reason `willBeEmitted` is: under `deltaOnly`
-      // the source-iteration pass — and its geometry skip — never runs at all,
-      // so a source entity's line is assumed to already exist in the file being
-      // patched, geometry or not.
-      isGeometryExcluded: (entityId: number, recordType: string): boolean =>
-        excludeGeometry
-        && this.isGeometryEntity(pass.effective.effectiveType(entityId, recordType)),
-      hasEmittableHostBytes: (entityId: number): boolean => {
-        if (pass.allowedEntityIds !== null && !pass.allowedEntityIds.has(entityId)) return false;
-        const ref = pass.effective.get(entityId);
-        // The ref must be READABLE, not merely non-empty: a range this source
-        // cannot address decodes to the empty string, which used to be pushed
-        // into the file as a blank line while everything generated FOR the host
-        // still named it (#2491).
-        if (!ref || !pass.isReadableSourceRef(ref)) return false;
-        if (options.deltaOnly !== true && pass.isGeometryExcluded(entityId, ref.type)) return false;
-        return true;
-      },
-
-      /**
-       * Will this id have a defining STEP line in the output at all?
-       *
-       * The predicate is #2030's, and it is the right one: the pset, quantity and
-       * type-owned passes below are built from unfiltered mutation history, and
-       * what each of them needs to know before emitting an
-       * `IFCRELDEFINESBYPROPERTIES` is not "was this deleted" or "is this hidden"
-       * but the general question those are two answers to. A relation naming an
-       * expressId that never gets written is a dangling reference and an invalid
-       * file, whichever route dropped the line.
-       *
-       * #2030 had to reach for four things to answer it — a tombstone probe, a
-       * visibility set, a byte-range test on `completeIndex`, and a `getNewEntity`
-       * fallback whose stated purpose was that `deleteEntity` FORGOT an
-       * overlay-created entity instead of tombstoning it, so `isDeleted` could not
-       * answer for one. That fallback was documented on main as a workaround for
-       * exactly the model-level defect this branch fixes: `deleteEntity` now
-       * tombstones as well as forgets, so the effective index answers existence
-       * for source and overlay ids alike and the workaround collapses into it.
-       *
-       * The overlay branch does NOT disappear with it, and the distinction matters:
-       * `isOverlayCreated` is still load-bearing here, because a live
-       * overlay-created entity has no source bytes and would fail the byte-range
-       * test that a source record passes. What the tombstone fix removed is the
-       * need for that branch to double as a deletion detector.
-       *
-       * Deliberately unchanged from #2030 for source records under `deltaOnly` /
-       * `exportPropertiesOnly`: the source-iteration pass is skipped wholesale in
-       * those modes, yet a source entity still answers true here. A delta is a
-       * patch against a file that already has the line, not a standalone model.
-       */
-      willBeEmitted: (entityId: number): boolean => {
-        if (pass.allowedEntityIds !== null && !pass.allowedEntityIds.has(entityId)) return false;
-        // Undefined for a tombstoned id and for one neither the file nor the
-        // session ever had — a stale mutation must not conjure a relation either.
-        const ref = pass.effective.get(entityId);
-        if (!ref) return false;
-        // An overlay-created record carries the placeholder byte range and is
-        // written by the new-entities pass; a source record needs real bytes.
-        if (pass.effective.isOverlayCreated(entityId)) {
-          // The overlay new-entities pass applies its OWN `isGeometryEntity`
-          // filter unconditionally — deltaOnly or not (see the comment at that
-          // loop, further below) — so this branch mirrors it without the
-          // deltaOnly carve-out the source branch gets.
-          return !pass.isGeometryExcluded(entityId, ref.type);
-        }
-        // Same readability test as `hasEmittableHostBytes`, and for the reason
-        // that predicate names: a ref this source cannot address is not a line
-        // this export can write, so nothing may be generated naming it (#2491).
-        if (!pass.isReadableSourceRef(ref)) return false;
-        // Mirrors `hasEmittableHostBytes`: under `deltaOnly` the source-
-        // iteration pass — and its geometry skip — never runs, so a source
-        // entity's line is assumed to already exist in the file being patched.
-        if (options.deltaOnly === true) return true;
-        return !pass.isGeometryExcluded(entityId, ref.type);
-      },
-
-      // Under `deltaOnly` a nomination only becomes a count once some pass has
-      // actually written content that delivers THAT KIND of edit for the host —
-      // see `delta-modification-ledger.ts` for why the two are not the same event
-      // in that mode, and why the pair is (entity, kind) rather than the entity
-      // (#2462).
-      modifications: createModificationLedger(options.deltaOnly === true),
-
-      /**
-       * Hosts whose in-place named-attribute edits a FULL export may count, per
-       * kind. Filled by the collection passes below and read by the two passes
-       * that write a rewritten source line — see `in-place-nomination.ts` for why
-       * the nomination waits for the rewrite in this mode and not under
-       * `deltaOnly` (#2483).
-       */
-      inPlaceNominees: {
-        attribute: new Set<number>(),
-        georeferencing: new Set<number>(),
-      },
-
-      // Collect entities that need to be modified or created
-      modifiedEntities: new Set<number>(),
-      modifiedAttributes: new Map<number, Map<string, string>>(),
-      newPropertySets: [],
-      newQuantitySets: [],
-      typeOwnedPsetNamesByEntity: new Map<number, Set<string>>(),
-      typeOwnedPsetIdsByEntity: new Map<number, number[]>(),
-      rewrittenEntityIds: new Set<number>(),
-      rewrittenEntityLines: new Map<number, string>(),
-      /** HasPropertySets slot value for an OVERLAY-CREATED type object, applied
-       *  by the new-entities pass (there is no source line to rewrite). */
-      overlayTypeOwnedPsets: new Map<number, IfcAttributeValue>(),
-
-      // Track property set IDs and relationship IDs to skip
-      skipPropertySetIds: new Set<number>(),
-      skipRelationshipIds: new Set<number>(),
-
-      // Written by the georeferencing pass and read again by the final
-      // assembly, which is why they are pass state and not phase locals.
-      newGeorefLines: [],
-      warnings: [],
-    };
+    });
 
     // Visible-only closure, overlay mutation grouping, and georeferencing
-    // edits — everything `pass` needs before the output passes below can run
-    // (#2475, the collection block). See `step-collection.ts` for why
-    // `hasAnyUnreadableSourceRef` and the predicates just past it stay here
-    // instead of moving with it.
+    // edits — everything `pass` needs before the omission predicates below,
+    // and before the output passes that consume them, can run (#2475, the
+    // collection block).
     collectModifications(pass, options, applyMutations, this.collectionContext());
 
-    /**
-     * "Does this model hold a record whose bytes this export cannot read?" —
-     * the one disjunct of {@link mayNameOmittedRefs} that is not already a
-     * value in hand, so it is a function and called last, behind `||`.
-     *
-     * Scans the EFFECTIVE index, and that is a requirement rather than an
-     * implementation detail: it has to cover the id space
-     * `isOmittedFromOutput` answers over, and an unreadable record can live in
-     * `deferredEntityIndex` — the secondary index `getCompleteEntityIndex`
-     * exists to merge — and nowhere in `entityIndex.byId`. Scanning `byId`,
-     * the obvious cheaper source, was measured to leave the gate false and
-     * ship the dangling ref; `relationship-filter-gate.test.ts` pins the
-     * merged scan behaviourally so that shortcut cannot come back as an
-     * optimisation.
-     *
-     * Reads the ref ITERATION yields — what the source-iteration pass's own
-     * skip reads — rather than re-asking `effective.get(id)` per id as
-     * `willBeEmitted` does, which on the largest files would cost a binary
-     * search and an allocation per entity and defeat the point of the gate.
-     * Every index here keeps the two in step by construction:
-     * `CompactEntityIndex` serves `get`, `has` and iteration from one pair of
-     * `Uint32Array`s, a `Map` trivially agrees, the merged deferred view is
-     * `byId.get ?? deferred.get` over `yield* byId; yield* deferred`, and
-     * `OverlayIndex` filters both by one tombstone set. An index whose `has`
-     * accepted an id its iteration never yields would defeat this — and would
-     * equally defeat the source-iteration pass's skip, so that file is broken
-     * either way; nothing in the repo builds one.
-     *
-     * Not short-circuited on `overlayActive`: an overlay-created record carries
-     * `(OVERLAY_BYTE_OFFSET, 0)` and so counts as unreadable here, which would
-     * make this always answer true once an overlay exists. Harmless —
-     * `overlayActive` is an earlier disjunct, so this never runs then — and
-     * correct if it ever did.
-     *
-     * ## Why a standalone pass rather than a value off the index
-     *
-     * Measured: 12.0 ms of a 470 ms export at 714,485 entities (2.55%), one
-     * call, whole index walked because a well-formed model gives it nothing to
-     * short-circuit on. The cheaper shape was prototyped and is 13x faster —
-     * `min(byteLength)` and `max(byteOffset + byteLength)` over
-     * `CompactEntityIndex`'s own `Uint32Array`s answer "is every ref readable
-     * within `extent`" exactly and allocation-free in 0.74 ms — and was not
-     * taken, because 11 ms does not buy what it costs.
-     *
-     * It could only stand in FRONT of this loop, never replace it:
-     * `EntityByIdIndex` is a structural type and plain `Map`s satisfy it
-     * (`synthetic-data-store.ts` builds one), so the walk stays for those. That
-     * makes it a second implementation of one predicate across a package
-     * boundary — the defect class #2637, #2668 and this gate are all instances
-     * of. And storing it at construction is the invariant
-     * `source-ref-bounds.ts` exists to delete: `CompactEntityIndex` is built by
-     * its builder, by `compactEntityIndexFromColumns` in the transport, and by
-     * embedders, so a value one producer writes is a value the next can skip,
-     * whereas testing the ref where it is READ cannot be bypassed. If 2.5% ever
-     * has to go, the safe shape is a memoized derivation the index computes
-     * from its own arrays on demand — not a field set at build time.
-     */
-    const hasAnyUnreadableSourceRef = (): boolean => {
-      for (const [, ref] of pass.effective) {
-        if (!pass.isReadableSourceRef(ref)) return true;
-      }
-      return false;
-    };
-
-    // If delta only, only export modified entities. Overlay-created entities
-    // also count — without this, `createEntity()`-only edits would silently
-    // drop out of delta exports.
-    const overlayNewEntityCount = (
-      this.mutationView
-      && applyMutations
-      && typeof this.mutationView.getNewEntities === 'function'
-    ) ? this.mutationView.getNewEntities().length : 0;
-    // Georef-only deltas (newGeorefLines populated but no entity changes) must
-    // still produce a non-empty DATA section.
-    if (
-      options.deltaOnly
-      && pass.modifiedEntities.size === 0
-      && overlayNewEntityCount === 0
-      && pass.newGeorefLines.length === 0
-    ) {
-      const emptyContent = new TextEncoder().encode(pass.buildHeader(0) + 'DATA;\nENDSEC;\nEND-ISO-10303-21;\n');
-      return {
-        content: emptyContent,
-        stats: {
-          entityCount: 0,
-          newEntityCount: 0,
-          modifiedEntityCount: 0,
-          fileSize: emptyContent.byteLength,
-          warnings: pass.warnings,
-        },
-      };
-    }
-
-
-    /**
-     * "May a line this export writes name `#id`?" — the single predicate both
-     * relationship-line filter sites consume, derived from `willBeEmitted`
-     * rather than from a second list kept in step with it by hand.
-     *
-     * DERIVED, not identical, and the gaps are named below rather than glossed:
-     * a scope qualifier for ids the file never had, and `deltaOnly`, where
-     * `willBeEmitted` answers `true` for a source record whose line this export
-     * does not write at all (the source-iteration pass is skipped wholesale in
-     * that mode). Nor does this make the CLOSURE WALK agree with either: the
-     * walk keeps `isRefExcludedDuringClosureWalk` and diverges from this
-     * predicate for an unreadable source ref — see the note on that predicate,
-     * and the "walk and output predicates diverge" test.
-     *
-     * The hand-kept second list is the bug this replaces. `willBeEmitted` recognises
-     * seven reasons a line never lands — outside the closure, hidden product,
-     * tombstoned, never existed, unreadable source ref (#2491), geometry
-     * excluded by options, and the `deltaOnly` carve-out — while the filter
-     * used to consume `(hiddenProductIds !== null && hiddenProductIds.has(id))
-     * || effective.isDeleted(id)`, which answered for two: hidden product, and
-     * tombstoned. Notably NOT "never existed" — that one is deliberately out of
-     * scope for the filter even now, for the reason under the qualifier heading
-     * below. The gap was live: on a PLAIN full export, with no `visibleOnly`,
-     * no deletions and no overlay, an unreadable ref made the source-iteration
-     * pass skip an entity's line while an `IFCREL*` naming it shipped verbatim,
-     * dangling.
-     *
-     * Deriving the filter from `willBeEmitted` is also what fixed the
-     * `mayNameExcludedRefs` gate that stands in front of both call sites. That
-     * gate used to be a SECOND, shorter enumeration of the same reasons
-     * (hidden products exist, or an overlay is active) and answered `false` for
-     * exactly the unreadable-ref export above, so the filter never ran at all.
-     * It is now {@link mayNameOmittedRefs} — see there for why a gate is kept
-     * at all (running the filter on every `IFCREL*` line costs +13% of a
-     * 714k-entity export) and for the enumeration it has to cover.
-     *
-     * ## The one qualifier on top of `willBeEmitted`
-     *
-     * `willBeEmitted` answers NO for an id neither the file nor the session
-     * ever had, which is right for its own job — nothing GENERATED may name an
-     * id that does not exist. It is the wrong answer for rewriting a SOURCE
-     * line, and the difference is whose bug it is. A `#999` already sitting in
-     * a relationship's `OwnerHistory` slot in the input file is a dangling ref
-     * this export did not create and cannot repair; `filterHiddenRefsFromRelationshipLine`
-     * withholds a whole relationship when an excluded id is in a bare scalar,
-     * so treating it as an exclusion would DELETE a visible element's pset over
-     * somebody else's corrupt file. That is the harm #2637 was about, and
-     * `step-exporter.test.ts` states the position out loud: a pre-existing
-     * dangling ref is out of scope and ships as it arrived.
-     *
-     * So the filter asks the narrower question: is `#id` an entity this model
-     * HAS, that this export is nonetheless not writing? `effective.has` is
-     * false for a tombstone, hence the explicit `isDeleted` arm — deleting an
-     * entity IS this session's doing and must be filtered.
-     *
-     * This is a scope qualifier, not a second enumeration of omission reasons:
-     * an eighth reason added to `willBeEmitted` still reaches the filter with
-     * no edit here.
-     *
-     * ## What the filter can and cannot reach
-     *
-     * Only `IFCREL*` lines. A `#N` named from a product's `Representation` or
-     * `ObjectPlacement` slot is not touched, so `includeGeometry:false` — a
-     * reason `willBeEmitted` does answer for — produces the same dangling refs
-     * with this predicate as without it. Measured on `tests/models/AB22.ifc`:
-     * 80 dangling refs before and after, output byte-identical but for the
-     * header timestamp.
-     *
-     * ## Withholding is not free
-     *
-     * When the omitted id sits in a single-valued slot, or is a set's only
-     * member, `filterHiddenRefsFromRelationshipLine` withholds the WHOLE
-     * relationship — so an entity that relationship also named loses the
-     * association, on a plain full export with no options set. That is why the
-     * call sites push {@link relationshipWithheldWarning}.
-     *
-     * See `unreadable-ref-dangling.test.ts` for the reproduction. #2637 is the
-     * prior instance of this class, which took seven rounds because the same
-     * decision was recomputed per call site.
-     */
-    const isOmittedFromOutput = (id: number): boolean =>
-      (pass.effective.has(id) || pass.effective.isDeleted(id)) && !pass.willBeEmitted(id);
-
-    /**
-     * "Can ANY id be omitted from this export at all?" — the precondition both
-     * `IFCREL*` filter sites are gated on, so the common export pays nothing.
-     *
-     * ## Why a gate exists
-     *
-     * Running `filterHiddenRefsFromRelationshipLine` on every `IFCREL*` line
-     * costs a re-parse of that line's attribute list, and a large model is
-     * mostly relationships. Measured on `tests/models/ara3d/schependomlaan.ifc`
-     * (714,485 entities, 21 interleaved reps in randomised order): 463 ms
-     * median with this gate false versus 523 ms filtering unconditionally,
-     * **+13%**. That is a real price paid on every export to protect a state
-     * most exports are not in. With the gate, the same export is 475 ms, +2.7%,
-     * all of it the fourth disjunct's one pass.
-     *
-     * ## Why THIS gate, and not the one that shipped before
-     *
-     * The gate this replaces was a second, hand-kept enumeration of "reasons an
-     * entity might be excluded", and it went stale exactly as such lists do: it
-     * named hidden products and the overlay and knew nothing about an unreadable
-     * source ref, so the bug this branch fixes reached the output with the
-     * filter switched off. A cheap gate is safe only as an OVER-APPROXIMATION of
-     * `isOmittedFromOutput` that can be checked against `willBeEmitted` branch
-     * by branch — so every branch is listed, with the disjunct that covers it:
-     *
-     * | `willBeEmitted` answers NO at                | covered by                    |
-     * |----------------------------------------------|-------------------------------|
-     * | `allowedEntityIds !== null && !has(id)`      | `allowedEntityIds !== null`   |
-     * | `!ref`, because the overlay tombstoned `id`  | `overlayActive`               |
-     * | overlay-created, geometry excluded           | `overlayActive`               |
-     * | `!isReadableSourceRef(ref)`                  | `hasAnyUnreadableSourceRef()` |
-     * | source-backed, geometry excluded             | `excludeGeometry`             |
-     * | `!ref`, because `id` never existed           | out of scope (below)          |
-     * | `!ref` while `has(id)` is TRUE               | nothing (below)               |
-     *
-     * "Never existed" needs no disjunct: `isOmittedFromOutput`'s own
-     * `(has || isDeleted)` qualifier already drops it, deliberately — a
-     * pre-existing dangling ref in somebody else's file is not this export's to
-     * repair (see that predicate's note).
-     *
-     * The last row is a real hole and is stated rather than hidden: an index
-     * that answers `has(id)` for an id its iteration never yields makes
-     * `isOmittedFromOutput` true with no disjunct true. It needs an index whose
-     * `has`, `get` and iteration disagree, which nothing in the repo builds and
-     * which would already break the source-iteration pass's own skip — see
-     * {@link hasAnyUnreadableSourceRef}, which rests on the same agreement.
-     *
-     * Three of the four disjuncts are reads of values this export already
-     * computed. Only the fourth costs anything, and it short-circuits: `||`
-     * evaluates it solely when the other three are false, i.e. only for an
-     * export that has nothing else to filter for.
-     *
-     * ## The two spellings that are deliberately NOT the obvious ones
-     *
-     * `allowedEntityIds !== null`, not `options.visibleOnly === true`. Not the
-     * same test: the closure is built under `if (options.visibleOnly &&
-     * this.dataStore.source)`, which is TRUTHY rather than `=== true`, and which
-     * is a SECOND read of the caller's object. A plain-JS caller of this
-     * published package passing `visibleOnly: 1` — or a `get visibleOnly()` that
-     * answers `true` once — built the closure while the gate read false and
-     * shipped a relationship naming an entity outside it. Executed, not
-     * reasoned: 192 of an 800-case sweep over `visibleOnly`/`hidden`/`isolated`
-     * combinations shipped a dangling ref against the `=== true` spelling, 0
-     * against this one. Reading the state the walk PRODUCED cannot disagree with
-     * the walk, whatever `options` says afterwards.
-     *
-     * It is also wider than the `hiddenProductIds.size > 0` the old gate used: a
-     * closure exists whenever `visibleOnly` was requested, even with nothing
-     * hidden, and can exclude an entity the roots simply never reach. No fixture
-     * has produced that case, so the widening is defensive — but a gate that is
-     * true too often costs speed on a rare path, while one that is false too
-     * rarely ships a corrupt file, and this one costs nothing.
-     *
-     * `overlayActive` and `excludeGeometry` are the SAME consts the effective
-     * index and `isGeometryExcluded` are built from — one read of `options` per
-     * question, shared — so those two cannot disagree with the predicate either.
-     */
-    const mayNameOmittedRefs =
-      pass.allowedEntityIds !== null
-      || pass.overlayActive
-      || excludeGeometry
-      || hasAnyUnreadableSourceRef();
+    // Which ids this export may still NAME, now that the collection phase has
+    // decided which ids it is WRITING (#2475). Must stay here, between those
+    // two -- see `step-omission-predicates.ts` for why the position is load
+    // bearing rather than stylistic.
+    const omission = evaluateOmissionPredicates(
+      pass,
+      options,
+      applyMutations,
+      excludeGeometry,
+      this.mutationView,
+    );
+    // A deltaOnly export with nothing to say is already finished.
+    if (omission.kind === 'short-circuit') return omission.result;
+    const { isOmittedFromOutput, mayNameOmittedRefs } = omission;
 
     // Write every source-backed record this export keeps (#2475 step 2d),
     // preceded — inside that call — by the shared-atom retention that decides
     // which member atoms the skip sets may still drop.
-    writeSourceEntityLines(pass, options, mayNameOmittedRefs, isOmittedFromOutput, this.sourceIterationContext());
+    writeSourceEntityLines(pass, options, mayNameOmittedRefs, isOmittedFromOutput, buildSourceIterationContext(this.dataStore, this.mutationView, () => this.propertySetContext()));
 
     // Generated property/quantity sets and the type-object `HasPropertySets`
     // rewrite that resolves against them, in that one order (#2475 steps 2b
@@ -947,7 +226,7 @@ export class StepExporter {
       applyMutations,
       mayNameOmittedRefs,
       isOmittedFromOutput,
-      this.overlayEntitiesContext(),
+      buildOverlayEntitiesContext(this.mutationView),
     );
 
     // Settle the ledger, build the header, assemble the finished bytes —
@@ -1033,7 +312,8 @@ export class StepExporter {
    *
    * Rebuilt per call, as `georefContext` is: every call site runs once per
    * export bar `retainSharedAtoms`, which hoists it out of its loop — hence
-   * {@link sourceIterationContext} takes this as a thunk rather than a value.
+   * `buildSourceIterationContext` (`step-export-contexts.ts`) takes this as a
+   * thunk rather than a value.
    */
   private propertySetContext(): PropertySetContext {
     return {
@@ -1065,89 +345,7 @@ export class StepExporter {
     };
   }
 
-  /**
-   * The state `step-source-iteration.ts` cannot read off the pass (#2475 2d).
-   *
-   * No `allocateExpressId`: that phase never allocates an id, it only rewrites
-   * lines that already have one. `applySourceLineMutations` (#2475, remaining
-   * private helpers: now a free function in `step-attribute-mutations.ts`,
-   * closed over `this.mutationView` here) and `isGeometryEntity` are injected
-   * rather than read off the pass because each has readers outside this
-   * phase — the mutation pipeline is shared with the type-object
-   * `HasPropertySets` rewrite (see {@link propertySetContext}) and with the
-   * overlay-created-entities block in `export()`; `isGeometryEntity` with the
-   * visible-only setup closure and that same block.
-   */
-  private sourceIterationContext(): SourceIterationContext {
-    return {
-      dataStore: this.dataStore,
-      applySourceLineMutations: (expressId, entityText, recordType, attributeMutations, sourceSchema, overlayActive, onRejected) =>
-        applySourceLineMutations(this.mutationView, expressId, entityText, recordType, attributeMutations, sourceSchema, overlayActive, onRejected),
-      isGeometryEntity: (type) => this.isGeometryEntity(type),
-      propertySetContext: () => this.propertySetContext(),
-      relationshipWithheldWarning,
-    };
-  }
 
-  /**
-   * The state `step-overlay-entities.ts` cannot read off the pass (#2475
-   * step 2e). `applyOverlayEntityOverrides` is now the free function
-   * `step-attribute-mutations.ts` exports (#2475, remaining private
-   * helpers) — it and its two `serializeNamedAttribute` /
-   * `serializePositionalOverride` helpers moved together, since those two
-   * have no reader outside this cluster; `isGeometryEntity` and
-   * `relationshipWithheldWarning` are the same shared readers
-   * {@link sourceIterationContext} already injects into the other output
-   * pass.
-   */
-  private overlayEntitiesContext(): OverlayEntitiesContext {
-    return {
-      mutationView: this.mutationView,
-      applyOverlayEntityOverrides,
-      isGeometryEntity: (type) => this.isGeometryEntity(type),
-      relationshipWithheldWarning,
-    };
-  }
-
-  /**
-   * Check if an entity type is a geometry-related type
-   */
-  private isGeometryEntity(type: string): boolean {
-    const geometryTypes = new Set([
-      'IFCCARTESIANPOINT',
-      'IFCDIRECTION',
-      'IFCAXIS2PLACEMENT2D',
-      'IFCAXIS2PLACEMENT3D',
-      'IFCLOCALPLACEMENT',
-      'IFCSHAPEREPRESENTATION',
-      'IFCPRODUCTDEFINITIONSHAPE',
-      'IFCGEOMETRICREPRESENTATIONCONTEXT',
-      'IFCGEOMETRICREPRESENTATIONSUBCONTEXT',
-      'IFCEXTRUDEDAREASOLID',
-      'IFCFACETEDBREP',
-      'IFCPOLYLOOP',
-      'IFCFACE',
-      'IFCFACEOUTERBOUND',
-      'IFCCLOSEDSHELL',
-      'IFCRECTANGLEPROFILEDEF',
-      'IFCCIRCLEPROFILEDEF',
-      'IFCARBITRARYCLOSEDPROFILEDEF',
-      'IFCPOLYLINE',
-      'IFCTRIMMEDCURVE',
-      'IFCBSPLINECURVE',
-      'IFCBSPLINESURFACE',
-      'IFCTRIANGULATEDFACESET',
-      'IFCPOLYGONALFACE',
-      'IFCINDEXEDPOLYGONALFACE',
-      'IFCPOLYGONALFACESET',
-      'IFCSTYLEDITEM',
-      'IFCPRESENTATIONSTYLEASSIGNMENT',
-      'IFCSURFACESTYLE',
-      'IFCSURFACESTYLERENDERING',
-      'IFCCOLOURRGB',
-    ]);
-    return geometryTypes.has(type);
-  }
 
 }
 

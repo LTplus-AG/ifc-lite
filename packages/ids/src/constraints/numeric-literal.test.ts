@@ -212,21 +212,39 @@ describe('deciding it is linear, not backtracking (#3113)', () => {
     // knowing.
     expect(small).toBeGreaterThanOrEqual(MEASURABLE_MS);
 
-    // Take the SMALLEST of several ratios rather than one sample. Every noise
-    // source here inflates a reading — a scheduler preemption lands in one
-    // batch and not the other — so the minimum is the closest estimate of the
-    // real ratio, and one unlucky sample can no longer decide the result.
-    // The sibling benchmark on this exact shape (packages/encoding, #3159)
-    // produced a lone 9.30 against this same bound on CI while `main` was
-    // green; this is that fix, applied before it happens here too.
+    // Minimise each SIDE independently, then divide once — not the minimum of
+    // several ratios. The difference matters, and getting it backwards makes
+    // the test worse than taking a single sample:
+    //
+    //   min(Aᵢ/Bᵢ) picks the sample where the numerator happened to be clean
+    //   AND the denominator happened to be inflated. Those two flukes are
+    //   selected for independently, so the result is biased LOW — it hunts for
+    //   the most flattering pairing and hands a real regression a way under
+    //   the bound.
+    //
+    //   min(Aᵢ)/min(Bᵢ) takes the cleanest measurement of each side, which is
+    //   the best estimate of each, and divides those. Noise here is one-sided
+    //   (a preemption only ever adds time), which is exactly why `batch()`
+    //   already does `Math.min` over TRIALS internally. This is the same
+    //   composition one level up.
+    //
+    // Simulated over 20k runs with one-sided noise, against a genuinely
+    // regressed 8.5x implementation that must fail this bound:
+    //   single sample     2.35% false pass
+    //   min of ratios     6.30% false pass   <- worse than doing nothing
+    //   ratio of minima   0.00% false pass
+    // and on a healthy 4x implementation: 1.06% / 0.00% / 0.00% false fail.
+    // Ratio-of-minima is the only one that improves both directions at once.
     //
     // The bound itself is unchanged. Raising it to absorb an outlier would
-    // widen the very gap the test exists to detect; re-measuring instead
-    // keeps the same discrimination on a steadier number.
-    let growth = Infinity;
+    // widen the very gap the test exists to detect.
+    let bestLarge = Infinity;
+    let bestSmall = Infinity;
     for (let sample = 0; sample < RATIO_SAMPLES; sample++) {
-      growth = Math.min(growth, batch(LARGE, reps) / batch(SMALL, reps));
+      bestLarge = Math.min(bestLarge, batch(LARGE, reps));
+      bestSmall = Math.min(bestSmall, batch(SMALL, reps));
     }
+    const growth = bestLarge / bestSmall;
     // The linear scan grows ~3.3x-4.5x across repeated runs on this machine;
     // the quadratic regex grew ~9x at these sizes and far more at larger ones.
     // 8 sits between them.

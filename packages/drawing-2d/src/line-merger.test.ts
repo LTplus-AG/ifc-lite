@@ -130,10 +130,15 @@ describe('mergeCollinearLines', () => {
       // segments where the drawing should show one continuous line -- a
       // hairline break in the exported DXF or SVG, not an error.
       //
-      // 0.25 and 1.25 are used rather than 0.01/1.01 so the comparison is
-      // exact in binary floating point: `1 + 0.25` IS `1.25`, whereas
-      // `1 + 0.01` and the literal `1.01` differ by an ulp and the test would
-      // be asserting something subtler than it appears to.
+      // 0.25 and 1.25 are used because both are exactly representable in
+      // binary, so `1 + 0.25 === 1.25` holds structurally and this case really
+      // does sit ON the boundary rather than near it.
+      //
+      // 0.01/1.01 would in fact also work here -- `1 + 0.01 === 1.01` is true,
+      // the rounding happens to land on the same double -- but only by
+      // coincidence of this particular pair, and a test whose exactness rests
+      // on a rounding coincidence is one nobody can safely edit. Powers of two
+      // make the property independent of the arithmetic.
       const merged = mergeCollinearLines(
         [seg(0, 0, 1, 0), seg(1.25, 0, 2, 0)],
         { gapTolerance: 0.25 },

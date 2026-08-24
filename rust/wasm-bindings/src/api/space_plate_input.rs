@@ -77,14 +77,18 @@ pub(crate) fn build_wall_rects(rect_coords: &[f64]) -> Result<Vec<[[f64; 2]; 4]>
     if !rect_coords.len().is_multiple_of(8) {
         return Err("rectCoords length must be a multiple of 8 (4 corners × x,y per wall)".to_string());
     }
-    let rects: Vec<[[f64; 2]; 4]> = rect_coords
-        .chunks_exact(8)
-        .map(|c| [[c[0], c[1]], [c[2], c[3]], [c[4], c[5]], [c[6], c[7]]])
-        .collect();
-    if rects.len() > MAX_INPUT_RECTS {
+    // Count from the wire length and refuse BEFORE collecting. Checking
+    // `rects.len()` after `.collect()` still returns the same error, but only
+    // once the oversized allocation has already happened — which is the thing
+    // the ceiling exists to prevent. `build_segments` above already derives
+    // `n` from the length and checks first; this now matches it.
+    if rect_coords.len() / 8 > MAX_INPUT_RECTS {
         return Err("too many wall rects for the space-plate arrangement".to_string());
     }
-    Ok(rects)
+    Ok(rect_coords
+        .chunks_exact(8)
+        .map(|c| [[c[0], c[1]], [c[2], c[3]], [c[4], c[5]], [c[6], c[7]]])
+        .collect())
 }
 
 /// Pure core of [`edit_err`]: the `EditError` variant's stable code (matches

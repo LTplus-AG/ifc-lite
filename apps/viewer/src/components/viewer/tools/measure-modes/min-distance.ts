@@ -4,7 +4,7 @@
 
 /**
  * Minimum distance between two picked entities — the geometry half of #2737's
- * third item.
+ * second item, "minimum distance between two elements".
  *
  * The hard part already exists: `minDistanceBetweenMeshes` in
  * `@ifc-lite/clash/contact` is an exact branch-and-bound BVH traversal over
@@ -13,8 +13,9 @@
  * write). What was missing is the bridge: the viewer holds `MeshData[]`, and
  * that predicate wants one `Mesh` per entity.
  *
- * Three things make that bridge worth its own tested module rather than a few
- * lines at a call site.
+ * Four things make that bridge worth its own tested module rather than a few
+ * lines at a call site. The fourth arrived from review after the first three
+ * were written, which is why it reads as an afterthought — it is one.
  *
  * 1. AN ENTITY IS USUALLY SEVERAL SUBMESHES, each with its own `origin`. The
  *    world position of a vertex is `origin + position` (per-element local

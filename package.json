@@ -88,16 +88,16 @@
   },
   "devDependencies": {
     "@changesets/changelog-github": "^1.0.0",
-    "@changesets/cli": "^3.0.0",
+    "@changesets/cli": "^3.0.1",
     "@changesets/parse": "1.0.0",
     "@playwright/test": "^1.62.1",
-    "@posthog/cli": "0.11.1",
+    "@posthog/cli": "0.13.3",
     "@types/node": "^26.2.0",
     "gltf-validator": "2.0.0-dev.3.10",
     "knip": "^6.32.2",
-    "oxlint": "^1.42.0",
+    "oxlint": "^1.79.0",
     "tsx": "^4.23.12",
-    "turbo": "^2.10.9",
+    "turbo": "^2.10.11",
     "typescript": "^6.0.3"
   },
   "engines": {

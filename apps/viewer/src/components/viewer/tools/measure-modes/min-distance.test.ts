@@ -157,14 +157,20 @@ describe('minDistanceBetweenEntities', () => {
     const meshes = [tri(1, [[0, 0, 0], [1, 0, 0], [0, 1, 0]])];
     const missingB = minDistanceBetweenEntities(meshes, { entityId: 1 }, { entityId: 42 });
     assert.equal(missingB.kind, 'refused');
-    if (missingB.kind !== 'refused') return;
+    if (missingB.kind !== 'refused' || missingB.reason !== 'no-usable-geometry') return;
     assert.equal(missingB.missing, 'b');
 
     const missingA = minDistanceBetweenEntities(meshes, { entityId: 42 }, { entityId: 1 });
-    assert.equal(missingA.kind === 'refused' && missingA.missing, 'a');
+    assert.equal(
+      missingA.kind === 'refused' && missingA.reason === 'no-usable-geometry' && missingA.missing,
+      'a',
+    );
 
     const both = minDistanceBetweenEntities(meshes, { entityId: 42 }, { entityId: 43 });
-    assert.equal(both.kind === 'refused' && both.missing, 'both');
+    assert.equal(
+      both.kind === 'refused' && both.reason === 'no-usable-geometry' && both.missing,
+      'both',
+    );
   });
 
   it('gives witness points that lie on their own entity', () => {
@@ -196,5 +202,88 @@ describe('minDistanceBetweenEntities', () => {
     assert.equal(ba.kind, 'ok');
     if (ab.kind !== 'ok' || ba.kind !== 'ok') return;
     assert.ok(Math.abs(ab.distance - ba.distance) < 1e-12);
+  });
+});
+
+describe('corrupt geometry is refused, not measured', () => {
+  /**
+   * The failure these pin is not a wrong number, it is a wrong KIND.
+   *
+   * `minDistanceBetweenBvhs` seeds `best.distance` with `Infinity` and lowers
+   * it only on `r.dist < best.distance`. Every comparison against NaN is
+   * false, so the seed survives and the traversal returns it as though it had
+   * measured something. Tagged `ok`, that renders as "Infinity m" -- the same
+   * class of lie as `distance ?? 0` showing "0.000 m", which is the whole
+   * reason this module returns a union.
+   */
+
+  it('refuses an entity whose only submesh has a NaN vertex', () => {
+    const meshes = [
+      tri(1, [[0, 0, 0], [1, 0, 0], [0, 1, 0]]),
+      tri(2, [[NaN, NaN, NaN], [11, 4, 5], [10, 5, 5]]),
+    ];
+    const out = minDistanceBetweenEntities(meshes, { entityId: 1 }, { entityId: 2 });
+    // Before the guard this returned { kind: 'ok', distance: Infinity }.
+    assert.equal(out.kind, 'refused');
+    if (out.kind !== 'refused' || out.reason !== 'no-usable-geometry') return;
+    assert.equal(out.missing, 'b');
+  });
+
+  it('refuses a vertex past the shared 10 km ceiling', () => {
+    // Unshifted survey/UTM coordinates, the case NORMAL_COORD_THRESHOLD_M
+    // exists for. The distance would be arithmetically fine and physically
+    // meaningless.
+    const meshes = [
+      tri(1, [[0, 0, 0], [1, 0, 0], [0, 1, 0]]),
+      tri(2, [[500000, 0, 0], [500001, 0, 0], [500000, 1, 0]]),
+    ];
+    const out = minDistanceBetweenEntities(meshes, { entityId: 1 }, { entityId: 2 });
+    assert.equal(out.kind, 'refused');
+  });
+
+  it('judges the ceiling in WORLD space, so a big origin alone is not corrupt', () => {
+    // THE COUNTER-EXAMPLE. A guard that tested raw positions would pass
+    // corrupt data; one that tested the origin alone would reject this, which
+    // is ordinary off-origin geometry well inside the ceiling. Both entities
+    // sit near x = 9000 via their origins and must still measure.
+    const meshes = [
+      tri(1, [[0, 0, 0], [1, 0, 0], [0, 1, 0]], [9000, 0, 0]),
+      tri(2, [[0, 0, 0], [1, 0, 0], [0, 1, 0]], [9005, 0, 0]),
+    ];
+    const out = minDistanceBetweenEntities(meshes, { entityId: 1 }, { entityId: 2 });
+    assert.equal(out.kind, 'ok');
+    if (out.kind !== 'ok') return;
+    assert.ok(Number.isFinite(out.distance), `distance ${out.distance}`);
+    assert.ok(Math.abs(out.distance - 4) < 1e-6, `distance ${out.distance}`);
+  });
+
+  it('drops only the corrupt submesh, keeping an entity that still has good ones', () => {
+    // Rejection is per submesh, matching the degenerate-submesh filter beside
+    // it. Refusing the whole entity would throw away geometry we can measure.
+    const meshes = [
+      tri(1, [[0, 0, 0], [1, 0, 0], [0, 1, 0]]),
+      tri(2, [[NaN, 0, 0], [1, 0, 0], [0, 1, 0]], [50, 0, 0]),
+      tri(2, [[0, 0, 0], [1, 0, 0], [0, 1, 0]], [10, 0, 0]),
+    ];
+    const mesh = meshForEntity(meshes, 2);
+    assert.ok(mesh, 'the clean submesh must survive');
+    assert.equal(mesh.positions.length, 9, 'exactly one submesh, not two');
+    assert.equal(mesh.positions[0], 10, 'the surviving submesh is the clean one');
+
+    const out = minDistanceBetweenEntities(meshes, { entityId: 1 }, { entityId: 2 });
+    assert.equal(out.kind, 'ok');
+    if (out.kind !== 'ok') return;
+    assert.ok(Number.isFinite(out.distance), `distance ${out.distance}`);
+  });
+
+  it('still refuses when every submesh of an entity is corrupt', () => {
+    const meshes = [
+      tri(1, [[0, 0, 0], [1, 0, 0], [0, 1, 0]]),
+      tri(2, [[NaN, 0, 0], [1, 0, 0], [0, 1, 0]]),
+      tri(2, [[0, 0, 0], [Infinity, 0, 0], [0, 1, 0]]),
+    ];
+    assert.equal(meshForEntity(meshes, 2), null);
+    const out = minDistanceBetweenEntities(meshes, { entityId: 1 }, { entityId: 2 });
+    assert.equal(out.kind, 'refused');
   });
 });

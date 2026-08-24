@@ -47,10 +47,74 @@
  *    this" into "these are touching", which is worse than showing nothing.
  *    The result type below makes that unrepresentable rather than merely
  *    discouraged.
+ *
+ * 4. CORRUPT VERTICES ARE THE VIEWER'S PROBLEM, NOT THE PREDICATE'S. Point (1)
+ *    says this mirrors `boundsFromMeshes`; that rule has a second half, which
+ *    an earlier draft of this module replicated the arithmetic of and dropped.
+ *    `boundsFromMeshes` also discards non-finite and beyond-10 km vertices,
+ *    and the ceiling is shared (`NORMAL_COORD_THRESHOLD_M`) precisely because
+ *    three files had each grown their own copy of it.
+ *
+ *    It matters here more than for a bounding box. `minDistanceBetweenBvhs`
+ *    starts `best.distance` at `Infinity` and lowers it only on
+ *    `r.dist < best.distance`; NaN loses every comparison, so a single NaN
+ *    vertex makes the traversal return its own initialiser as though it were
+ *    a measurement. The half-metre answer becomes "Infinity m", tagged `ok`.
+ *    Both guards below exist for that: reject the geometry going in, and
+ *    refuse a non-finite result coming out.
  */
 
 import { minDistanceBetweenMeshes } from '@ifc-lite/clash/contact';
+import { NORMAL_COORD_THRESHOLD_M } from '@ifc-lite/geometry';
 import type { MeshData } from '@ifc-lite/geometry';
+
+/**
+ * The same vertex test `boundsFromMeshes` applies, against the same shared
+ * ceiling -- `viewportUtils.ts`'s `isValidCoord` is module-private, so this
+ * mirrors it rather than importing it, exactly as `localParsingUtils.ts` and
+ * `useGeometryStreaming.ts` already do.
+ *
+ * Judged in WORLD space, after the origin is added: a real RTC-shifted model
+ * carries a large origin and small positions and stays well inside the
+ * ceiling, so testing raw positions would pass corrupt data and testing the
+ * origin alone would reject good data.
+ */
+function isUsableWorldCoord(x: number, y: number, z: number): boolean {
+  return (
+    Number.isFinite(x) &&
+    Number.isFinite(y) &&
+    Number.isFinite(z) &&
+    Math.abs(x) < NORMAL_COORD_THRESHOLD_M &&
+    Math.abs(y) < NORMAL_COORD_THRESHOLD_M &&
+    Math.abs(z) < NORMAL_COORD_THRESHOLD_M
+  );
+}
+
+/**
+ * Whether every vertex of one submesh survives that test.
+ *
+ * Rejection is per SUBMESH, never per vertex, and that is forced rather than
+ * chosen: `boundsFromMeshes` may skip an individual bad vertex because it only
+ * accumulates a bounding box, whereas dropping one vertex here would shift
+ * every subsequent index and silently corrupt the rebasing below.
+ */
+function hasUsableCoords(part: MeshData): boolean {
+  const ox = part.origin ? part.origin[0] : 0;
+  const oy = part.origin ? part.origin[1] : 0;
+  const oz = part.origin ? part.origin[2] : 0;
+  for (let i = 0; i < part.positions.length; i += 3) {
+    if (
+      !isUsableWorldCoord(
+        (part.positions[i] as number) + ox,
+        (part.positions[i + 1] as number) + oy,
+        (part.positions[i + 2] as number) + oz,
+      )
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
 
 /** A point in the viewer's render frame, the same frame `MeshData` uses. */
 export type MeasurePoint3 = readonly [number, number, number];
@@ -59,11 +123,22 @@ export type MeasurePoint3 = readonly [number, number, number];
  * Why a pair could not be measured. Kept as a reason rather than a bare
  * `null` so the readout can say which entity was the problem.
  */
-export interface MinDistanceRefusal {
-  readonly kind: 'refused';
-  /** Which of the two picks had no usable geometry, or 'both'. */
-  readonly missing: 'a' | 'b' | 'both';
-}
+export type MinDistanceRefusal =
+  | {
+      readonly kind: 'refused';
+      readonly reason: 'no-usable-geometry';
+      /** Which of the two picks had no usable geometry, or 'both'. */
+      readonly missing: 'a' | 'b' | 'both';
+    }
+  | {
+      /**
+       * The traversal returned, but not with a real measurement. Carries no
+       * `missing`, because neither pick is the thing at fault -- see the
+       * backstop in `minDistanceBetweenEntities` for what this catches.
+       */
+      readonly kind: 'refused';
+      readonly reason: 'non-finite-distance';
+    };
 
 export interface MinDistanceOk {
   readonly kind: 'ok';
@@ -79,9 +154,11 @@ export type MinDistanceResult = MinDistanceOk | MinDistanceRefusal;
  * Collect one entity's submeshes into a single triangle soup in render-frame
  * world coordinates.
  *
- * Returns `null` when the entity contributes no triangles — either it has no
- * submeshes at all, or every one of them is degenerate. That is the case the
- * caller must not confuse with a distance of zero.
+ * Returns `null` when the entity contributes no USABLE triangles — it has no
+ * submeshes at all, or every one of them is degenerate, or every one of them
+ * carries a vertex the viewer already treats as corrupt (see
+ * `hasUsableCoords`). All three are the case the caller must not confuse with
+ * a distance of zero.
  */
 export function meshForEntity(
   meshes: readonly MeshData[],
@@ -96,7 +173,8 @@ export function meshForEntity(
       // not, fall back to id-only rather than silently matching nothing.
       (modelIndex === undefined || (m.modelIndex ?? 0) === modelIndex) &&
       m.indices.length >= 3 &&
-      m.positions.length >= 9,
+      m.positions.length >= 9 &&
+      hasUsableCoords(m),
   );
   if (parts.length === 0) return null;
 
@@ -152,13 +230,24 @@ export function minDistanceBetweenEntities(
 
   if (meshA === null || meshB === null) {
     const missing = meshA === null && meshB === null ? 'both' : meshA === null ? 'a' : 'b';
-    return { kind: 'refused', missing };
+    return { kind: 'refused', reason: 'no-usable-geometry', missing };
   }
 
   const result = minDistanceBetweenMeshes(meshA, meshB);
   // The predicate's own `null` — reachable only for an empty mesh, which the
   // guard above already excludes, but propagated rather than assumed away.
-  if (result === null) return { kind: 'refused', missing: 'both' };
+  if (result === null) return { kind: 'refused', reason: 'no-usable-geometry', missing: 'both' };
+
+  // A traversal that never completed a comparison still RETURNS, carrying its
+  // `Infinity` initialiser. `minDistanceBetweenBvhs` only overwrites `best` on
+  // `r.dist < best.distance`, and every comparison against NaN is false, so a
+  // non-finite vertex leaves the sentinel in place — and `kind: 'ok'` would
+  // then promise a measurement that was never made. The entry guard above
+  // should make this unreachable; it is asserted rather than assumed because
+  // the cost of being wrong is a readout saying "Infinity m".
+  if (!Number.isFinite(result.distance)) {
+    return { kind: 'refused', reason: 'non-finite-distance' };
+  }
 
   return {
     kind: 'ok',

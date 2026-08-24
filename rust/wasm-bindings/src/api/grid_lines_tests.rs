@@ -235,3 +235,26 @@ fn millimetre_axis_endpoint_composes_with_a_translated_placement() {
     assert!((end[1] - 9.0).abs() < 1e-3, "end renderer y = 9, got {}", end[1]);
     assert!((end[2] + 10.0).abs() < 1e-3, "end renderer z = -10, got {}", end[2]);
 }
+
+/// The 3D grid overlay and the symbolic overlay are two written-out copies of
+/// one conversion, and both modules' docs claim they agree axis for axis. A
+/// zero northing is where that is easiest to break: negating it yields -0.0,
+/// which compares equal to 0.0 and so slips past every assertion here, while
+/// the symbolic side's pinned goldens record sign of zero deliberately. Pin
+/// the sign so the two cannot drift apart unnoticed.
+#[test]
+fn to_render_frame_does_not_emit_negative_zero_for_a_zero_northing() {
+    let identity = [
+        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+    ];
+    let out = to_render_frame([3.0, 0.0, 2.0], 1.0, &identity, (0.0, 0.0, 0.0));
+    assert_eq!(out[2], 0.0);
+    assert!(
+        !out[2].is_sign_negative(),
+        "a zero northing produced -0.0, so this no longer matches RenderFrameRebase::plan",
+    );
+
+    // A genuine negative northing must still flip, ruling out an abs() mis-fix.
+    let flipped = to_render_frame([0.0, 4.0, 0.0], 1.0, &identity, (0.0, 0.0, 0.0));
+    assert_eq!(flipped[2], -4.0);
+}

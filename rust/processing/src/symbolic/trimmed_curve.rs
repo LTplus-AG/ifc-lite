@@ -6,6 +6,7 @@
 //! module's dispatch table under the module-size ratchet (#2256 follow-up).
 
 use super::output_cap::SymbolicAccumulator;
+use super::rebase::RenderFrameRebase;
 use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 
 use super::primitives::{SymbolicPolyline};
@@ -30,8 +31,7 @@ pub(super) fn extract_trimmed_curve(
     rep_identifier: &str,
     unit_scale: f32,
     transform: &Transform2D,
-    rtc_x: f32,
-    rtc_z: f32,
+    rebase: RenderFrameRebase,
     out: &mut SymbolicAccumulator,
 ) {
     let Some(basis_ref) = item.get_ref(0) else { return };
@@ -59,7 +59,7 @@ pub(super) fn extract_trimmed_curve(
     if !basis.tx.is_finite() || !basis.ty.is_finite() {
         return;
     }
-    let world_y = basis.tz + transform.tz;
+    let world_y = rebase.elevation(basis.tz + transform.tz);
 
     let angle_scale = decoder.plane_angle_to_radians() as f32;
     // MasterRepresentation (attr 4) picks the form when the SET carries both.
@@ -138,7 +138,9 @@ pub(super) fn extract_trimmed_curve(
     if is_near_collinear {
         let (wsx, wsy) = transform.transform_point(start_x, start_y);
         let (wex, wey) = transform.transform_point(end_x, end_y);
-        let points = vec![wsx - rtc_x, -wsy + rtc_z, wex - rtc_x, -wey + rtc_z];
+        let (sx, sy) = rebase.plan(wsx, wsy);
+        let (ex, ey) = rebase.plan(wex, wey);
+        let points = vec![sx, sy, ex, ey];
         out.push_polyline(SymbolicPolyline {
             express_id,
             ifc_type: ifc_type.to_string(),
@@ -156,8 +158,7 @@ pub(super) fn extract_trimmed_curve(
             let angle = start_angle + t * (end_angle - start_angle);
             let (local_x, local_y) = point_at(angle);
             let (wx, wy) = transform.transform_point(local_x, local_y);
-            let x = wx - rtc_x;
-            let y = -wy + rtc_z;
+            let (x, y) = rebase.plan(wx, wy);
             if x.is_finite() && y.is_finite() {
                 points.push(x);
                 points.push(y);

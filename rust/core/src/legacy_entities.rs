@@ -100,13 +100,59 @@ pub fn get_legacy_entity_info(entity_name: &str) -> Option<LegacyEntityInfo> {
         }),
 
         // IFC2x3 names that have no IFC4x3 enum variant. They map to the
-        // closest modern equivalent; both carry geometry.
+        // closest modern equivalent; all of them carry geometry.
+        //
+        // This block is the set `scripts/check-legacy-entity-coverage.mjs`
+        // derives: every CONCRETE `IfcProduct` subtype in `@ifc-lite/data`'s
+        // IFC2X3/IFC4 tables that `IfcType::from_str` resolves to `Unknown`.
+        // Anything missing here is dropped from BOTH the attribute export
+        // (`rust/export/src/model.rs` keeps only `is_subtype_of(IfcProduct)`,
+        // and `Unknown` is a subtype of nothing) and from meshing
+        // (`has_geometry_by_name` refuses `Unknown`) -- silent data loss, not
+        // a visible inconsistency (#3172).
         "IFCEQUIPMENTELEMENT" => Some(LegacyEntityInfo {
             base_type: IfcType::IfcDistributionElement,
             has_geometry: true,
         }),
-        "IFCELECTRICALDISTRIBUTIONPOINT" => Some(LegacyEntityInfo {
+        // Spelled IFCELECTRICALDISTRIBUTIONPOINT until #3172. There is no such
+        // IFC2X3 entity -- the real one has no "AL" -- so that arm matched no
+        // file that has ever existed. `IfcFlowController` is this entity's own
+        // IFC2X3 supertype and is still in IFC4X3, so it is the closest
+        // equivalent rather than a guess; it remains a subtype of
+        // `IfcDistributionElement`, which is what the misspelt arm intended.
+        "IFCELECTRICDISTRIBUTIONPOINT" => Some(LegacyEntityInfo {
+            base_type: IfcType::IfcFlowController,
+            has_geometry: true,
+        }),
+        // Deprecated by IFC4 in favour of the distribution-element family.
+        "IFCELECTRICALELEMENT" => Some(LegacyEntityInfo {
             base_type: IfcType::IfcDistributionElement,
+            has_geometry: true,
+        }),
+        // The two concrete `IfcEdgeFeature` leaves, dropped by IFC4. They are
+        // boolean subtraction operands that carry their own placement and
+        // representation, so they map to the surviving abstract base rather
+        // than to `IfcOpeningElement`: that keeps them out of the void/CSG
+        // path (which matches `IfcType::IfcOpeningElement` exactly) while
+        // still excluding them from construction-projection profiles, which
+        // gate on `is_subtype_of(IfcFeatureElement)` (#979).
+        "IFCCHAMFEREDGEFEATURE" => Some(LegacyEntityInfo {
+            base_type: IfcType::IfcFeatureElementSubtraction,
+            has_geometry: true,
+        }),
+        "IFCROUNDEDEDGEFEATURE" => Some(LegacyEntityInfo {
+            base_type: IfcType::IfcFeatureElementSubtraction,
+            has_geometry: true,
+        }),
+        // IFC4 folded the "Varying" structural actions into their base types,
+        // which carry the varying load on an attribute instead. Each maps to
+        // its own IFC2X3 supertype, both of which survive into IFC4X3.
+        "IFCSTRUCTURALLINEARACTIONVARYING" => Some(LegacyEntityInfo {
+            base_type: IfcType::IfcStructuralLinearAction,
+            has_geometry: true,
+        }),
+        "IFCSTRUCTURALPLANARACTIONVARYING" => Some(LegacyEntityInfo {
+            base_type: IfcType::IfcStructuralPlanarAction,
             has_geometry: true,
         }),
 

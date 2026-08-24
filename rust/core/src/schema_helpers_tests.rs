@@ -115,7 +115,13 @@ fn building_bears_geometry() {
 fn legacy_ifc2x3_distribution_names_have_geometry() {
     // Routed through legacy_entities now (was an inline match arm).
     assert!(has_geometry_by_name("IFCEQUIPMENTELEMENT"));
-    assert!(has_geometry_by_name("IFCELECTRICALDISTRIBUTIONPOINT"));
+    assert!(has_geometry_by_name("IFCELECTRICDISTRIBUTIONPOINT"));
+    // The name this line carried until #3172 was `IFCELECTRICALDISTRIBUTIONPOINT`,
+    // which is not an IFC2X3 entity — the real one has no "AL". The assertion
+    // was green because the table it read carried the same misspelling, so the
+    // pair certified each other and neither described a file. Pinned as a
+    // negative so a respelling cannot quietly come back.
+    assert!(!has_geometry_by_name("IFCELECTRICALDISTRIBUTIONPOINT"));
 }
 
 #[test]
@@ -309,4 +315,126 @@ fn nth_attribute_reversed_boundary_is_false() {
     // `)` appears before `(` — must not panic or index out of bounds.
     assert!(!nth_attribute_is_present(b")(", 0));
     assert!(!nth_attribute_is_present(b"garbage)stuff(more", 0));
+}
+
+/// The five IFC2X3 products #3172 added to `legacy_entities.rs`.
+///
+/// Each one is CONCRETE and carries both `ObjectPlacement` and
+/// `Representation` in `@ifc-lite/data`'s IFC2X3 table, and each one resolved
+/// to `IfcType::Unknown` before the fix. `Unknown` is a subtype of nothing,
+/// so an IFC2X3 file containing them lost them from the attribute export
+/// (`rust/export/src/model.rs` keeps only `is_subtype_of(IfcProduct)`) AND
+/// from meshing (`has_geometry_by_name` refuses `Unknown`) — the two passes
+/// agreed, on dropping the entity from both.
+///
+/// The mapping targets are asserted, not just "is a product": a mapping that
+/// resolved every one of them to `IfcBuildingElementProxy` would satisfy the
+/// product check while throwing the semantics away.
+#[test]
+fn legacy_ifc2x3_products_resolve_to_their_own_supertype() {
+    for (name, expected) in [
+        ("IFCELECTRICALELEMENT", IfcType::IfcDistributionElement),
+        ("IFCELECTRICDISTRIBUTIONPOINT", IfcType::IfcFlowController),
+        ("IFCCHAMFEREDGEFEATURE", IfcType::IfcFeatureElementSubtraction),
+        ("IFCROUNDEDEDGEFEATURE", IfcType::IfcFeatureElementSubtraction),
+        (
+            "IFCSTRUCTURALLINEARACTIONVARYING",
+            IfcType::IfcStructuralLinearAction,
+        ),
+        (
+            "IFCSTRUCTURALPLANARACTIONVARYING",
+            IfcType::IfcStructuralPlanarAction,
+        ),
+    ] {
+        let resolved = legacy_aware_ifc_type(name);
+        assert_eq!(resolved, expected, "{name} resolved to {resolved:?}");
+        assert!(
+            resolved.is_subtype_of(IfcType::IfcProduct),
+            "{name} must reach IfcProduct or the attribute exporter drops it"
+        );
+        assert!(
+            has_geometry_by_name(name),
+            "{name} must reach the geometry pass"
+        );
+    }
+}
+
+/// `IfcFlowController` replaced the misspelt arm's `IfcDistributionElement`,
+/// and the comment in `legacy_entities.rs` claims that is a NARROWING rather
+/// than a change of answer. Claimed is not measured, so it is measured here:
+/// anything keying on the old target still sees the same verdict.
+#[test]
+fn the_electric_distribution_point_remap_only_narrows() {
+    let t = legacy_aware_ifc_type("IFCELECTRICDISTRIBUTIONPOINT");
+    assert_eq!(t, IfcType::IfcFlowController);
+    assert!(
+        t.is_subtype_of(IfcType::IfcDistributionElement),
+        "the arm used to answer IfcDistributionElement; IfcFlowController must still be one"
+    );
+}
+
+/// The two edge features are subtraction operands, and that has to survive the
+/// mapping: `IfcFeatureElementSubtraction` keeps them OUT of the void/CSG path
+/// (which matches `IfcType::IfcOpeningElement` exactly, not by inheritance)
+/// while keeping them out of construction-projection profiles, which gate on
+/// `is_subtype_of(IfcFeatureElement)` (#979). Mapping them to
+/// `IfcOpeningElement` would have satisfied every assertion above and fed two
+/// unrelated entities to the boolean cutter.
+#[test]
+fn edge_features_are_subtraction_operands_not_openings() {
+    for name in ["IFCCHAMFEREDGEFEATURE", "IFCROUNDEDEDGEFEATURE"] {
+        let t = legacy_aware_ifc_type(name);
+        assert!(t.is_subtype_of(IfcType::IfcFeatureElement), "{name}");
+        assert_ne!(t, IfcType::IfcOpeningElement, "{name}");
+        assert!(!t.is_subtype_of(IfcType::IfcOpeningElement), "{name}");
+    }
+}
+
+/// Every arm in `legacy_entities.rs` must map onto a type the generated
+/// IFC4X3 enum actually has, and an arm flagged `has_geometry` must reach
+/// `IfcProduct`. A mapping to `Unknown` would leave the entity exactly as
+/// dropped as having no arm at all, while looking handled in the table.
+#[test]
+fn every_legacy_arm_maps_onto_a_known_product() {
+    for name in [
+        "IFCPRESENTATIONSTYLEASSIGNMENT",
+        "IFCBEAMSTANDARDCASE",
+        "IFCCOLUMNSTANDARDCASE",
+        "IFCMEMBERSTANDARDCASE",
+        "IFCPLATESTANDARDCASE",
+        "IFCSLABSTANDARDCASE",
+        "IFCDOORSTANDARDCASE",
+        "IFCWINDOWSTANDARDCASE",
+        "IFCOPENINGSTANDARDCASE",
+        "IFCSLABELEMENTEDCASE",
+        "IFCWALLELEMENTEDCASE",
+        "IFCDOORSTYLE",
+        "IFCWINDOWSTYLE",
+        "IFCPROXY",
+        "IFCBUILDINGELEMENT",
+        "IFCBUILDINGELEMENTTYPE",
+        "IFCEQUIPMENTELEMENT",
+        "IFCELECTRICDISTRIBUTIONPOINT",
+        "IFCELECTRICALELEMENT",
+        "IFCCHAMFEREDGEFEATURE",
+        "IFCROUNDEDEDGEFEATURE",
+        "IFCSTRUCTURALLINEARACTIONVARYING",
+        "IFCSTRUCTURALPLANARACTIONVARYING",
+        "IFCSOLIDSTRATUM",
+        "IFCVOIDSTRATUM",
+        "IFCWATERSTRATUM",
+    ] {
+        let info = crate::legacy_entities::get_legacy_entity_info(name)
+            .unwrap_or_else(|| panic!("{name} has no arm in legacy_entities.rs"));
+        assert!(
+            !matches!(info.base_type, IfcType::Unknown(_)),
+            "{name} maps to Unknown, which is the same as not being in the table"
+        );
+        if info.has_geometry {
+            assert!(
+                info.base_type.is_subtype_of(IfcType::IfcProduct),
+                "{name} claims geometry but its base type is not an IfcProduct"
+            );
+        }
+    }
 }

@@ -73,7 +73,7 @@ where
 ///    [`is_non_geometric_spatial`] for how that exempt set is maintained.
 /// 2. Legacy IFC2x3 / removed-in-IFC4x3 names that aren't in the generated
 ///    enum (e.g. `IFCSLABELEMENTEDCASE`, `IFCBUILDINGELEMENT`, `IFCPROXY`,
-///    `IFCEQUIPMENTELEMENT`, `IFCELECTRICALDISTRIBUTIONPOINT`) resolve through
+///    `IFCEQUIPMENTELEMENT`, `IFCELECTRICDISTRIBUTIONPOINT`) resolve through
 ///    `legacy_entities::get_legacy_entity_info`, which carries a
 ///    `has_geometry` flag.
 /// 3. Reinforcement variants not covered above fall back to a substring

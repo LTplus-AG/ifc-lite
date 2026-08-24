@@ -108,12 +108,24 @@ const ALLOWLIST_PATH = join(ROOT, 'scripts', 'source-text-assertion-allowlist.tx
  * different KIND of entry from the rest. Every other row is a genuine
  * source-text assertion that cannot yet be written behaviourally. This one is
  * already behavioural — it spawns the generator and asserts on `r.status`,
- * `r.stderr` and `r.stdout` — and the detector reaches it anyway, because the
- * file reads files for FIXTURE setup and the taint that starts there arrives at
- * the process-result assertions. Separating the two needs the analyser to know
- * that a spawn result is not file bytes; two cheaper file-level rules were
- * measured against the rows above and lost coverage (4 of 7 and 3 of 7 caught),
- * so both were rejected rather than shipped for the convenience of one file.
+ * `r.stderr` and `r.stdout`.
+ *
+ * It is reported because of the OVER-TAINTING this analyser chooses on purpose
+ * (`source-text-assertion-detect.mjs`: one flat name set, no scoping, stricter
+ * being the safe direction for a ratchet). Bisected rather than guessed: all
+ * three hits trace to the single vendored-fixture read, and de-reading it clears
+ * every one, while the other two reads clear none. Substituting a literal at
+ * each hit site names the carrier — the `.indexOf` pair is carried by `text`,
+ * which genuinely holds file bytes and is splicing fixture data, and the
+ * `toContain` hit is carried by `message`, a string literal from the
+ * parametrised table that shares its name with nothing. NOT by `r.stderr`:
+ * replacing that with a literal leaves the hit standing, so this is not a
+ * spawn-result false positive.
+ *
+ * Nothing here asserts on source text, and the analyser is behaving as
+ * specified. Two cheaper file-level rules were measured against the rows above
+ * and lost coverage (4 of 7 and 3 of 7 caught), so both were rejected rather
+ * than shipped for the convenience of one file.
  * Raised in the same commit as the row, which is what this constant forces.
  */
 const ALLOWLIST_CEILING = 8;

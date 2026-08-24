@@ -118,6 +118,41 @@ describe('mergeCollinearLines', () => {
       expect(merged).toHaveLength(2);
     });
 
+    it('bridges a gap sitting EXACTLY on the tolerance', () => {
+      // The two cases above straddle the boundary without landing on it, so
+      // `next.t0 <= current.t1 + gapTolerance` could become `<` and both would
+      // still pass -- measured: the whole package stays at 425/425.
+      //
+      // The exact-equality case is not exotic here. Extracted 2D lines come
+      // from geometry that shares vertices, so a wall edge split by an opening
+      // boundary produces segments meeting at a gap of precisely zero or
+      // precisely the snapping step. Getting this wrong emits two abutting
+      // segments where the drawing should show one continuous line -- a
+      // hairline break in the exported DXF or SVG, not an error.
+      //
+      // 0.25 and 1.25 are used rather than 0.01/1.01 so the comparison is
+      // exact in binary floating point: `1 + 0.25` IS `1.25`, whereas
+      // `1 + 0.01` and the literal `1.01` differ by an ulp and the test would
+      // be asserting something subtler than it appears to.
+      const merged = mergeCollinearLines(
+        [seg(0, 0, 1, 0), seg(1.25, 0, 2, 0)],
+        { gapTolerance: 0.25 },
+      );
+      expect(merged).toHaveLength(1);
+      expect(lengthOf(merged[0])).toBeCloseTo(2, 9);
+    });
+
+    it('does NOT bridge a gap one step beyond the tolerance', () => {
+      // The other side of the same boundary, at the smallest separation that
+      // should still fail. Without this, a change from `<=` to `<` would be
+      // caught but a change to `<= tolerance * 2` would not.
+      const merged = mergeCollinearLines(
+        [seg(0, 0, 1, 0), seg(1.25 + 1e-9, 0, 2, 0)],
+        { gapTolerance: 0.25 },
+      );
+      expect(merged).toHaveLength(2);
+    });
+
     it('applies the DEFAULT gapTolerance when options are omitted entirely', () => {
       // The default (0.01) is what production passes: `drawing-generator`
       // calls `mergeDrawingLines(allLines)` with no options object, so the

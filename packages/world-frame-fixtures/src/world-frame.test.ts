@@ -122,11 +122,28 @@ describe('world-frame corpus placements', () => {
     // over |n_i|, not n_i: a negative-component normal must give the SAME
     // bound as its positive mirror, never a smaller (or negative) one.
     const far = placeWorldFrame(LOCAL_BOX.positions, { frameCase: 'far-baked' });
-    const posX: [number, number, number] = [1, 0, 0];
-    const negX: [number, number, number] = [-1, 0, 0];
-    const bound = normalProjectedNoiseBound(posX, [far]);
-    expect(normalProjectedNoiseBound(negX, [far])).toBe(bound);
+
+    // A normal with a non-zero component on EVERY axis. Negating only X (the
+    // first version of this test) leaves the Y and Z terms multiplied by
+    // |0| = 0, so dropping Math.abs() from either of those two terms still
+    // passed. Each axis is negated on its own below, so all three terms are
+    // pinned independently rather than only the one that happens to be set.
+    const AXIS: [number, number, number] = [0.5, 0.5, Math.SQRT1_2];
+    const bound = normalProjectedNoiseBound(AXIS, [far]);
     expect(bound).toBeGreaterThan(0);
+
+    for (const axis of [0, 1, 2] as const) {
+      const flipped: [number, number, number] = [...AXIS];
+      flipped[axis] = -flipped[axis];
+      expect(
+        normalProjectedNoiseBound(flipped, [far]),
+        `negating component ${axis} must not change the bound`,
+      ).toBe(bound);
+    }
+
+    // All three at once, so a mutant that drops Math.abs() from every term
+    // (rather than one) cannot hide behind the single-axis cases either.
+    expect(normalProjectedNoiseBound([-AXIS[0], -AXIS[1], -AXIS[2]], [far])).toBe(bound);
   });
 
   it('bakedWorldPositions folds origin into each axis without shifting axes', () => {
@@ -158,6 +175,13 @@ describe('world-frame corpus placements', () => {
       expect(Math.abs(bakedAabb.min[a]! - reference.min[a]!)).toBeLessThanOrEqual(1e-6);
       expect(Math.abs(bakedAabb.max[a]! - reference.max[a]!)).toBeLessThanOrEqual(1e-6);
     }
-    expect(bakedAabb.min[0]!).toBeGreaterThanOrEqual(WORLD_FRAME_OFFSET_M);
+    // X pinned to its exact expected placement, at the same tolerance as Y and
+    // Z above. A `toBeGreaterThanOrEqual(WORLD_FRAME_OFFSET_M)` bound only
+    // proves X is far from the origin, so a doubled or otherwise wrong
+    // positive offset would satisfy it just as well.
+    expect(Math.abs(bakedAabb.min[0]! - (reference.min[0]! + WORLD_FRAME_OFFSET_M)))
+      .toBeLessThanOrEqual(1e-6);
+    expect(Math.abs(bakedAabb.max[0]! - (reference.max[0]! + WORLD_FRAME_OFFSET_M)))
+      .toBeLessThanOrEqual(1e-6);
   });
 });

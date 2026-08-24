@@ -353,7 +353,11 @@ describe('EXPRESS Parser', () => {
       const a = schema.entities.find(e => e.name === 'IfcA')!;
 
       expect(getAllAttributes(a, schema).map(x => x.name).sort()).toEqual(['Bar', 'Foo']);
-      expect(getInheritanceChain(a, schema)).toHaveLength(2);
+      // Length alone would pass on a traversal that returned ['IfcA','IfcA']
+      // or otherwise dropped IfcB, so pin the membership as well as the count.
+      const chain = getInheritanceChain(a, schema);
+      expect(chain).toHaveLength(2);
+      expect([...chain].sort()).toEqual(['IfcA', 'IfcB']);
     });
   });
 

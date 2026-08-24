@@ -1,5 +1,5 @@
 ---
-"@ifc-lite/bcf": patch
+"@ifc-lite/bcf": major
 ---
 
 Validate real `.bcfzip` output against buildingSMART's published BCF XSDs. That check found eleven schema violations in our output; nine are fixed here and two are reported below as needing a decision this change cannot make.

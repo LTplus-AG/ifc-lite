@@ -1,5 +1,6 @@
 ---
 "@ifc-lite/renderer": minor
+"@ifc-lite/viewer": minor
 ---
 
 Add sun-cast shadows to the standalone WebGPU viewer (#2670, Phase 2).

@@ -1,11 +1,12 @@
 ---
 "@ifc-lite/encoding": minor
 "@ifc-lite/export": minor
-"@ifc-lite/lists": patch
+"@ifc-lite/lists": major
 "@ifc-lite/viewer": patch
-"@ifc-lite/sdk": patch
-"@ifc-lite/cli": patch
-"@ifc-lite/mcp": patch
+"@ifc-lite/sdk": major
+"@ifc-lite/cli": minor
+"@ifc-lite/mcp": minor
+"@ifc-lite/wasm": major
 ---
 
 CSV: numeric cells export as numbers. **The formula guard's default changed.**

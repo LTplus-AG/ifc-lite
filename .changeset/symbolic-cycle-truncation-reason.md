@@ -1,5 +1,6 @@
 ---
-"@ifc-lite/server-client": patch
+"@ifc-lite/server-client": minor
+"@ifc-lite/wasm": minor
 ---
 
 Fix a symbolic-extraction cycle silently truncating with no reported reason.

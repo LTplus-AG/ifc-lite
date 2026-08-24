@@ -1,5 +1,5 @@
 ---
-"@ifc-lite/ifcx": patch
+"@ifc-lite/ifcx": major
 ---
 
 Fix `IfcxWriter` discarding every entity's IFC GlobalId.

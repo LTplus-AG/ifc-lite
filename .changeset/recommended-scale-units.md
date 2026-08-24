@@ -1,6 +1,6 @@
 ---
-'@ifc-lite/drawing-2d': minor
-'@ifc-lite/sdk': minor
+'@ifc-lite/drawing-2d': major
+'@ifc-lite/sdk': major
 ---
 
 Fix `getRecommendedScale`, which returned a wrong scale on every call.
@@ -21,9 +21,12 @@ elongated plan, so pass the height when you have it. Paper size was previously
 unreachable through the SDK, which meant A1 and A4 could not be asked for.
 
 A non-finite or non-positive input now throws instead of silently returning
-the coarsest scale. That is a behaviour change on a published API, not a pure
-fix, which is why this is minor rather than patch: a caller passing 0 from a
-degenerate bounding box used to get 1:1000 back and now gets an exception.
+the coarsest scale. That narrows the accepted input domain of a published
+API, which is why this is major: a caller passing 0 from a degenerate
+bounding box used to get 1:1000 back and now gets an exception, and the SDK
+wrapper forwards the throw with no catch. Adding the optional height and
+paper-size arguments is additive on its own, but the narrowed domain is the
+biggest change here and sets the level.
 
 Not changed, and worth knowing: the scale table stops at 1:1000, so a model
 larger than roughly 378 x 267 m still gets 1:1000 even though it does not fit.

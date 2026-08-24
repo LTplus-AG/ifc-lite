@@ -1,6 +1,7 @@
 ---
 "@ifc-lite/parser": minor
 "@ifc-lite/server-client": minor
+"@ifc-lite/wasm": minor
 ---
 
 Bound symbolic extraction by output size, and report every truncation with the reason it happened.

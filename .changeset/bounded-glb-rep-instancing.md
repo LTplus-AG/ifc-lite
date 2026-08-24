@@ -20,6 +20,6 @@ Grouping follows `collate_refs` exactly: a rep identity whose occurrences disagr
 
 f32 output only. A quantized shared mesh carries a non-uniform dequant scale that cannot fold into a rotating placement without breaking `Matrix4.decompose`, so quantized output still goes out flat.
 
-Also adds `export_step_to_writer`, which emits each record as it is read instead of returning the whole file as a `String`. On a 1 GB model that removes a gigabyte of output from the peak. It buffers internally, so a caller passing a bare `File` does not pay two syscalls per record.
+Also adds `export_step_to_writer` to the `ifc-lite-export` Rust crate (it is not exposed through the wasm bindings, so npm consumers cannot call it), which emits each record as it is read instead of returning the whole file as a `String`. On a 1 GB model that removes a gigabyte of output from the peak. It buffers internally, so a caller passing a bare `File` does not pay two syscalls per record.
 
 Output is byte-identical for models with no shareable shapes.

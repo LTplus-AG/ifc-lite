@@ -3,6 +3,8 @@
 "@ifc-lite/sdk": patch
 "@ifc-lite/cli": patch
 "@ifc-lite/mcp": patch
+"@ifc-lite/viewer": patch
+"@ifc-lite/wasm": patch
 ---
 
 CSV cell escaping now has one implementation per language

@@ -1,6 +1,6 @@
 ---
-'@ifc-lite/collab': patch
-'@ifc-lite/ifcx': patch
+'@ifc-lite/collab': minor
+'@ifc-lite/ifcx': minor
 ---
 
 Stop a collab snapshot round trip from inventing per-entity provenance, and carry the real thing on the wire.

@@ -1,5 +1,5 @@
 ---
-'@ifc-lite/wasm': patch
+'@ifc-lite/wasm': major
 ---
 
 Fix `exportStep` silently discarding the caller's edits when `mutationsJson`

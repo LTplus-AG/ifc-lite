@@ -1,5 +1,5 @@
 ---
-'@ifc-lite/collab': patch
+'@ifc-lite/collab': minor
 ---
 
 Fix `mergeBranch(parent, branch, 'layer')` silently dropping every edit the branch made to an entity that already existed in the parent.

@@ -108,20 +108,21 @@ const REGEX_PRECEDING_WORDS = /(?:^|[^A-Za-z0-9_$])(return|typeof|instanceof|cas
  * The division-vs-regex question is decided by the previous significant
  * character. That is the standard heuristic and it is APPROXIMATE, not sound;
  * measured against the TypeScript parser over the scanned corpus it disagrees
- * on a handful of lines, none of which currently changes a verdict. The
- * lookback reads `back` rather than raw source precisely so that comments,
- * already blanked by the single pass, cannot supply that previous character.
+ * on a handful of lines, none of which currently changes a verdict.
  * A `[...]` class is tracked, since `/` inside one is literal, and an
  * unterminated literal (no closing `/` before the line ends) is treated as
  * division rather than swallowing the rest of the file.
  */
-function regexLiteralEnd(src, start, back = src) {
+function regexLiteralEnd(src, start, back) {
   // The BACKWARD scan reads `back`, which is the output-so-far with comments
   // already blanked, while the forward scan reads raw `src`. They must differ:
   // looking back over raw text puts the `/` of a preceding `*/` in front of
   // the literal, so `const a = 1; /* c */ /["']/.test(z)` reads as DIVISION,
   // the `"` opens a string that never closes, and the rest of the file is
   // blanked -- a silent fail-open. Comments blank to spaces, which this skips.
+  // `back` is REQUIRED rather than defaulting to `src`: a default would let a
+  // future two-argument call silently restore that bug, and absence should not
+  // read as success.
   let k = start - 1;
   while (k >= 0 && (back[k] === ' ' || back[k] === '\t')) k--;
   const prev = k >= 0 ? back[k] : '';
@@ -135,9 +136,7 @@ function regexLiteralEnd(src, start, back = src) {
   // `a++ / b` and `a-- / b` are division, so a doubled `+`/`-` is excluded even
   // though a single one is a legitimate preceder (`a + /re/.test(b)`).
   const doubled = (prev === '+' || prev === '-') && back[k - 1] === prev;
-  const wordSpan = Array.from({ length: k + 1 - Math.max(0, k - 12) }, (_, n) =>
-    back[Math.max(0, k - 12) + n],
-  ).join('');
+  const wordSpan = back.slice(Math.max(0, k - 12), k + 1).join('');
   const isRegex =
     !doubled
     && (prev === ''
@@ -518,8 +517,11 @@ function computeTainted(blanked) {
       // at the `)` of `trim(`, so the `.split(` below was never seen and the
       // loop body read as clean -- the silent direction.
       const header = blanked.indexOf('(', m.index);
+      // No emptiness guard here on purpose: an empty or inverted range slices
+      // to '', which fails the `.split(` test below and adds no taint -- the
+      // same outcome, without a line that reads as a guard while guarding
+      // nothing. Verified on `for (const x of ) {}` and an unclosed header.
       const iterEnd = matchParen(blanked, header);
-      if (iterEnd <= m.index + m[0].length) continue;
       // Deliberately narrow to a SPLIT of tainted text. Tainting on
       // `carriesFileBytes` alone also catches `for (const file of files)`
       // where the elements are PATHS, not contents -- measured as 4 false hits
@@ -592,11 +594,13 @@ const CONTINUES = /(?:[([,]|=>|&&|\|\||[-+*/%?:]|=)\s*$/;
  * both halves of the gate wrong at once.
  *
  * `stripComments` is now string-aware (it is one view of the single lexing
- * pass), so a `//` inside a string no longer truncates the line: measured
- * across the scanned corpus, NO file's stripped view differs in length from
- * the original. `name: '///'`, `'https://x/y'` and `'see // docs'` all keep
- * their trailing `;` and correctly stop the walk. The earlier per-line
- * stripper got each of those wrong in the fail-open direction.
+ * pass), so a `//` inside a string no longer truncates the line: `name: '///'`,
+ * `'https://x/y'` and `'see // docs'` all keep their trailing `;` and correctly
+ * stop the walk, where the earlier per-line stripper got each of them wrong in
+ * the fail-open direction. (Do not restate that as "no file's stripped view
+ * differs in LENGTH from the original". That holds for ANY input, because this
+ * pass blanks to spaces and never deletes, so it stays true with the
+ * string-awareness removed. It measures the blanking, not the fix.)
  *
  * The 24-line bound is a POLICY cap on how far a marker may reach, not a
  * runaway guard -- the walk terminates on its own, because `codeLines[top - 2]`
@@ -644,11 +648,12 @@ export function analyze(original) {
     return { ...empty, unusedMarkers: [...markerLines.keys()] };
   }
 
-  // The SAME pass that produced `stripped`, not a second lex of it. Re-lexing
-  // comment-blanked text is not equivalent: blanking a comment changes the
-  // character `regexLiteralEnd` looks back at, so `x = (/* c */ /re/.test(y))`
-  // loses the whole regex on the two-pass route. Keeping one pass is the point
-  // of `lexViews`.
+  // The SAME pass that produced `stripped`, not a second lex of it. The two
+  // routes now agree (they did NOT before the `back` lookback landed, which is
+  // what an earlier version of this comment recorded), so this is duplicated
+  // work rather than a correctness trap -- but one pass is the point of
+  // `lexViews`, and re-lexing its own output invites the ordering hazards it
+  // exists to remove.
   const blanked = views.blanked;
   const tainted = computeTainted(blanked);
 

@@ -11,7 +11,13 @@
  * live at one site's fixtures while the other looked identical. There is one
  * splitter now, in `parseComponentElements`.
  */
-import type { BCFColoring, BCFComponent, BCFComponents, BCFVisibility } from './types.js';
+import type {
+  BCFColoring,
+  BCFComponent,
+  BCFComponents,
+  BCFViewSetupHints,
+  BCFVisibility,
+} from './types.js';
 import { extractElement, unescapeXml } from './xml-text.js';
 
 /**
@@ -55,10 +61,27 @@ export function parseComponents(content: string): BCFComponents | undefined {
   const selection = parseComponentList(componentsContent, 'Selection');
 
   // Parse visibility
-  const visibility = parseVisibility(componentsContent);
+  let visibility = parseVisibility(componentsContent);
 
   // Parse coloring
   const coloring = parseColoring(componentsContent);
+
+  // Nothing read `ViewSetupHints` back, so every hint was lost on read —
+  // including out of our own archives. It was invisible because no writer
+  // fixture set the hints, so the round trip compared `undefined` to
+  // `undefined`.
+  //
+  // Searched across the whole `Components` body on purpose, because the two
+  // schema versions disagree on placement: 2.1 puts the element on
+  // `Components`, 3.0 nests it inside `Visibility`, and `writer.ts` emits
+  // whichever the requested version calls for. Anchoring to either one would
+  // read half the files we produce.
+  const viewSetupHints = parseViewSetupHints(componentsContent);
+  if (viewSetupHints) {
+    // Visibility is required by the schema, but tolerate a file that omits it:
+    // DefaultVisibility's schema default is true.
+    visibility = { ...(visibility ?? { defaultVisibility: true }), viewSetupHints };
+  }
 
   if (!selection && !visibility && !coloring) {
     return undefined;
@@ -188,4 +211,37 @@ function parseColoring(content: string): BCFColoring[] | undefined {
   }
 
   return colorings.length > 0 ? colorings : undefined;
+}
+
+/**
+ * Parse the `<ViewSetupHints>` element that sits directly under `<Components>`.
+ *
+ * All three attributes are optional xs:boolean; an absent one stays `undefined`
+ * rather than collapsing to `false`, because "the author did not say" and "the
+ * author said no" mean different things to a viewer applying the hints.
+ */
+function parseViewSetupHints(content: string): BCFViewSetupHints | undefined {
+  const match = content.match(/<ViewSetupHints\b([^>]*)>/);
+  if (!match) return undefined;
+
+  const attrs = match[1];
+  const flag = (name: string): boolean | undefined => {
+    const raw = attrs.match(new RegExp(`\\b${name}="([^"]*)"`))?.[1];
+    if (raw === undefined) return undefined;
+    return raw === 'true' || raw === '1';
+  };
+
+  const spacesVisible = flag('SpacesVisible');
+  const spaceBoundariesVisible = flag('SpaceBoundariesVisible');
+  const openingsVisible = flag('OpeningsVisible');
+
+  if (
+    spacesVisible === undefined
+    && spaceBoundariesVisible === undefined
+    && openingsVisible === undefined
+  ) {
+    return undefined;
+  }
+
+  return { spacesVisible, spaceBoundariesVisible, openingsVisible };
 }

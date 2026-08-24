@@ -36,9 +36,14 @@ const SI_PREFIX_MULTIPLIERS: Record<string, number> = {
 };
 
 /**
- * Known conversion factors for imperial/conversion-based units to meters
+ * Known conversion factors for imperial/conversion-based units to meters.
+ *
+ * Exported so the georeferencing extractor resolves an `IfcProjectedCRS`
+ * MapUnit through the SAME table this one uses for the project length unit —
+ * two length-unit readers on the same file that disagree would put the model
+ * and its map coordinates on different scales.
  */
-const CONVERSION_BASED_UNIT_FACTORS: Record<string, number> = {
+export const CONVERSION_BASED_UNIT_FACTORS: Record<string, number> = {
   'FOOT': 0.3048,
   'FEET': 0.3048,
   "'FOOT'": 0.3048,

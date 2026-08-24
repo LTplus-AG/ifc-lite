@@ -20,6 +20,7 @@
 
 import type { IfcEntity } from './entity-extractor.js';
 import { getString, getNumber, getReference } from './attribute-helpers.js';
+import { CONVERSION_BASED_UNIT_FACTORS } from './unit-extractor.js';
 import { getAttributeNames } from './ifc-schema.js';
 
 export interface MapConversion {
@@ -410,6 +411,48 @@ const SI_PREFIX_SCALE: Record<string, number> = {
   'MILLI': 0.001, 'CENTI': 0.01, 'DECI': 0.1, 'KILO': 1000,
 };
 
+/**
+ * Resolve an `IfcMeasureWithUnit` reference to metres.
+ *
+ * `IFCMEASUREWITHUNIT: [0] ValueComponent, [1] UnitComponent` — the value is
+ * expressed IN the unit component, so a prefixed SI component multiplies it
+ * (0.3048 expressed in millimetres is not 0.3048 metres).
+ */
+function resolveMeasureWithUnit(
+  ref: unknown,
+  resolveEntity: (id: number) => IfcEntity | undefined,
+): number | undefined {
+  const measureRef = getReference(ref);
+  if (measureRef === undefined) return undefined;
+  const measure = resolveEntity(measureRef);
+  if (!measure) return undefined;
+
+  const valueAttr = measure.attributes?.[0];
+  let value: number | undefined;
+  if (typeof valueAttr === 'number') {
+    value = valueAttr;
+  } else if (Array.isArray(valueAttr) && valueAttr.length === 2 && typeof valueAttr[1] === 'number') {
+    // Typed value, e.g. ['IFCLENGTHMEASURE', 0.3048]
+    value = valueAttr[1];
+  }
+  if (value === undefined || !Number.isFinite(value) || value <= 0) return undefined;
+
+  let componentScale = 1;
+  const componentRef = getReference(measure.attributes?.[1]);
+  if (componentRef !== undefined) {
+    const component = resolveEntity(componentRef);
+    if (component && (component.type ?? '').toUpperCase() === 'IFCSIUNIT') {
+      const prefix = component.attributes?.[2];
+      if (typeof prefix === 'string' && prefix !== '$') {
+        const prefixScale = SI_PREFIX_SCALE[prefix.replace(/\./g, '').toUpperCase()];
+        if (prefixScale !== undefined) componentScale = prefixScale;
+      }
+    }
+  }
+
+  return value * componentScale;
+}
+
 function extractProjectedCRS(
   entity: IfcEntity,
   resolveEntity?: (id: number) => IfcEntity | undefined,
@@ -433,17 +476,43 @@ function extractProjectedCRS(
     if (resolveEntity) {
       const unitEntity = resolveEntity(mapUnitRef);
       if (unitEntity) {
-        // IFCSIUNIT: [0] Dimensions, [1] UnitType, [2] Prefix, [3] Name
-        const prefix = unitEntity.attributes?.[2];
-        if (prefix != null && prefix !== '$' && typeof prefix === 'string') {
-          const prefixStr = prefix.replace(/\./g, '').toUpperCase();
-          const prefixScale = SI_PREFIX_SCALE[prefixStr];
-          if (prefixScale !== undefined) {
-            mapUnitScale = prefixScale;
-            mapUnit = prefixStr === 'MILLI' ? 'MILLIMETRE' : prefixStr + 'METRE';
+        // MapUnit is an IfcNamedUnit, which is IfcSIUnit OR
+        // IfcConversionBasedUnit. Attribute 2 means something different in
+        // each: `Prefix` on the SI unit, `Name` on the conversion-based one.
+        // Reading slot 2 as a prefix unconditionally means a foot-based
+        // MapUnit ('FOOT' is not an SI prefix) misses every lookup and falls
+        // through to the METRE/1.0 default — so a georeference in feet reads
+        // back 3.28x wrong, silently. ifc-lite's own exporter writes exactly
+        // that IFCCONVERSIONBASEDUNIT form for FOOT and US SURVEY FOOT
+        // (packages/export/src/step-georeferencing.ts), and no fixture ever
+        // set a non-metre map unit, so the round trip only ever saw METRE.
+        if ((unitEntity.type ?? '').toUpperCase() === 'IFCCONVERSIONBASEDUNIT') {
+          // IFCCONVERSIONBASEDUNIT: [0] Dimensions, [1] UnitType, [2] Name,
+          // [3] ConversionFactor (IfcMeasureWithUnit)
+          const rawName = getString(unitEntity.attributes?.[2]);
+          const name = rawName?.replace(/^'|'$/g, '').trim().toUpperCase();
+          // The name table first (it carries the exact defined ratios, e.g.
+          // the US survey foot's 1200/3937), then the file's own declared
+          // conversion factor for a unit name we do not know.
+          const scale = (name ? CONVERSION_BASED_UNIT_FACTORS[name] : undefined)
+            ?? resolveMeasureWithUnit(unitEntity.attributes?.[3], resolveEntity);
+          if (scale !== undefined && Number.isFinite(scale) && scale > 0) {
+            mapUnitScale = scale;
+            if (name) mapUnit = name;
           }
+        } else {
+          // IFCSIUNIT: [0] Dimensions, [1] UnitType, [2] Prefix, [3] Name
+          const prefix = unitEntity.attributes?.[2];
+          if (prefix != null && prefix !== '$' && typeof prefix === 'string') {
+            const prefixStr = prefix.replace(/\./g, '').toUpperCase();
+            const prefixScale = SI_PREFIX_SCALE[prefixStr];
+            if (prefixScale !== undefined) {
+              mapUnitScale = prefixScale;
+              mapUnit = prefixStr === 'MILLI' ? 'MILLIMETRE' : prefixStr + 'METRE';
+            }
+          }
+          // No prefix → base METRE → scale = 1
         }
-        // No prefix → base METRE → scale = 1
       }
     }
   }

@@ -260,6 +260,45 @@ impl GeoReference {
 /// Extract georeferencing from IFC content
 pub struct GeoRefExtractor;
 
+/// Resolve an `IfcConversionBasedUnit`'s `ConversionFactor` to metres.
+///
+/// `IFCMEASUREWITHUNIT: [0] ValueComponent, [1] UnitComponent` — the value is
+/// expressed IN the unit component, so a prefixed SI component multiplies it
+/// (0.3048 expressed in millimetres is not 0.3048 metres). Twin of
+/// `resolveMeasureWithUnit` in packages/parser/src/georef-extractor.ts.
+fn resolve_measure_with_unit(
+    decoder: &mut EntityDecoder,
+    conversion_unit: &DecodedEntity,
+) -> Option<f64> {
+    let measure_ref = conversion_unit.get_ref(3)?;
+    let measure = decoder.decode_by_id(measure_ref).ok()?;
+
+    let value_attr = measure.get(0)?;
+    let value = value_attr
+        .as_float()
+        .or_else(|| value_attr.as_int().map(|v| v as f64))?;
+    if !value.is_finite() || value <= 0.0 {
+        return None;
+    }
+
+    let mut component_scale = 1.0_f64;
+    if let Some(component_ref) = measure.get_ref(1) {
+        if let Ok(component) = decoder.decode_by_id(component_ref) {
+            if component.ifc_type == IfcType::IfcSIUnit {
+                if let Some(prefix_attr) = component.get(2) {
+                    if !prefix_attr.is_null() {
+                        if let Some(prefix) = prefix_attr.as_enum() {
+                            component_scale = crate::units::get_si_prefix_multiplier(prefix);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Some(value * component_scale)
+}
+
 impl GeoRefExtractor {
     /// Extract georeferencing from decoder
     ///
@@ -387,33 +426,71 @@ impl GeoRefExtractor {
         if let Some(zone) = entity.get_string(5) {
             georef.map_zone = Some(zone.to_string());
         }
-        // Index 6: MapUnit (IfcNamedUnit ref). Mirrors the TS parser: when a
-        // MapUnit IS authored, default to METRE/1.0 and refine from the
-        // IFCSIUNIT prefix — a millimetre-based conversion must scale by
-        // 0.001 on the server exactly like in the browser. When absent, the
-        // project length unit applies (spec default) and both stay `None`.
+        // Index 6: MapUnit (IfcNamedUnit ref). Mirrors the TS parser
+        // (packages/parser/src/georef-extractor.ts): when a MapUnit IS
+        // authored, default to METRE/1.0 and refine from the unit entity — a
+        // millimetre-based or foot-based conversion must scale the same way on
+        // the server as in the browser. When absent, the project length unit
+        // applies (spec default) and both stay `None`.
+        //
+        // IfcNamedUnit is IfcSIUnit OR IfcConversionBasedUnit, and attribute 2
+        // means something different in each: `Prefix` on the first, `Name` on
+        // the second. Reading slot 2 as a prefix unconditionally meant a
+        // foot-based MapUnit — the exact form ifc-lite's own exporter writes
+        // (packages/export/src/step-georeferencing.ts) — matched no prefix and
+        // fell through to METRE at scale 1, a silent 3.28x error on every
+        // coordinate.
         if let Some(unit_ref) = entity.get_ref(6) {
             let mut unit_name = "METRE".to_string();
             let mut unit_scale = 1.0_f64;
             if let Ok(unit_entity) = decoder.decode_by_id(unit_ref) {
-                if unit_entity.ifc_type == IfcType::IfcSIUnit {
-                    // IFCSIUNIT: [0] Dimensions, [1] UnitType, [2] Prefix, [3] Name
-                    if let Some(prefix_attr) = unit_entity.get(2) {
-                        if !prefix_attr.is_null() {
-                            if let Some(prefix) = prefix_attr.as_enum() {
-                                let multiplier = crate::units::get_si_prefix_multiplier(prefix);
-                                if (multiplier - 1.0).abs() > f64::EPSILON {
-                                    unit_scale = multiplier;
-                                    let prefix_upper = prefix.to_ascii_uppercase();
-                                    unit_name = if prefix_upper == "MILLI" {
-                                        "MILLIMETRE".to_string()
-                                    } else {
-                                        format!("{prefix_upper}METRE")
-                                    };
+                match unit_entity.ifc_type {
+                    IfcType::IfcSIUnit => {
+                        // IFCSIUNIT: [0] Dimensions, [1] UnitType, [2] Prefix, [3] Name
+                        if let Some(prefix_attr) = unit_entity.get(2) {
+                            if !prefix_attr.is_null() {
+                                if let Some(prefix) = prefix_attr.as_enum() {
+                                    let multiplier =
+                                        crate::units::get_si_prefix_multiplier(prefix);
+                                    if (multiplier - 1.0).abs() > f64::EPSILON {
+                                        unit_scale = multiplier;
+                                        let prefix_upper = prefix.to_ascii_uppercase();
+                                        unit_name = if prefix_upper == "MILLI" {
+                                            "MILLIMETRE".to_string()
+                                        } else {
+                                            format!("{prefix_upper}METRE")
+                                        };
+                                    }
                                 }
                             }
                         }
                     }
+                    IfcType::IfcConversionBasedUnit => {
+                        // IFCCONVERSIONBASEDUNIT: [0] Dimensions, [1] UnitType,
+                        // [2] Name, [3] ConversionFactor (IfcMeasureWithUnit)
+                        let name = unit_entity
+                            .get(2)
+                            .and_then(|attr| attr.as_string())
+                            .map(|n| n.trim_matches('\'').trim().to_ascii_uppercase());
+                        // The name table first (it carries the exact defined
+                        // ratios, e.g. the US survey foot's 1200/3937), then
+                        // the file's own declared factor for an unknown name.
+                        let scale = name
+                            .as_deref()
+                            .and_then(crate::units::get_conversion_based_unit_factor)
+                            .or_else(|| {
+                                resolve_measure_with_unit(decoder, &unit_entity)
+                            });
+                        if let Some(scale) = scale {
+                            if scale.is_finite() && scale > 0.0 {
+                                unit_scale = scale;
+                                if let Some(name) = name {
+                                    unit_name = name;
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
                 }
             }
             georef.map_unit = Some(unit_name);

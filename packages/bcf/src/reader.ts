@@ -264,11 +264,15 @@ async function readProjectFile(zip: JSZip, budget: ExpansionBudget): Promise<{
   const content = await readEntryCapped(projectFile, 'string', budget);
 
   const projectIdMatch = content.match(/ProjectId="([^"]+)"/);
-  const nameMatch = content.match(/<Name>([^<]+)<\/Name>/);
+  // extractElement, not a raw regex: writeProjectFile escapes the name with
+  // escapeXml, so a raw match hands back the literal entities (`A &amp; B`) and
+  // the next export escapes them again. Every other element in this reader goes
+  // through extractElement precisely so the escape has an inverse.
+  const name = extractElement(content, 'Name');
 
   return {
     projectId: projectIdMatch?.[1],
-    name: nameMatch?.[1],
+    name,
   };
 }
 
@@ -462,19 +466,28 @@ function extractAttr(attrsString: string, attrName: string): string | undefined 
  * Extract BIM snippet from topic content
  */
 function extractBimSnippet(content: string): BCFBimSnippet | undefined {
-  const match = content.match(/<BimSnippet\s+SnippetType="([^"]+)"[^>]*>([\s\S]*?)<\/BimSnippet>/);
+  // Attributes are captured generically and pulled out with extractAttr rather
+  // than anchoring SnippetType to first position: our own writer always emits
+  // it first, so an anchored regex round-trips our files and silently drops the
+  // entire snippet from a foreign tool's file that orders the two attributes
+  // the other way (see extractAttr's note on attribute order).
+  const match = content.match(/<BimSnippet\b([^>]*)>([\s\S]*?)<\/BimSnippet>/);
   if (!match) return undefined;
+
+  const snippetType = extractAttr(match[1], 'SnippetType');
+  if (!snippetType) return undefined;
 
   // BCF 2.1 spells this `isExternal`, 3.0 `IsExternal` (same rename as the
   // Header `<File>` attribute in reader.ts's parseHeaderFiles); accept either
-  // casing so a spec-correct 3.0 file's flag isn't silently read as false.
-  const isExternalMatch = match[0].match(/\b[Ii]sExternal="([^"]+)"/);
+  // casing so a spec-correct 3.0 file's flag isn't silently read as false, and
+  // the xs:boolean `1`/`0` forms alongside `true`/`false`.
+  const isExternalRaw = match[1].match(/\b[Ii]sExternal="([^"]*)"/)?.[1];
   const reference = extractElement(match[2], 'Reference');
   const referenceSchema = extractElement(match[2], 'ReferenceSchema');
 
   return {
-    snippetType: match[1],
-    isExternal: isExternalMatch?.[1] === 'true',
+    snippetType,
+    isExternal: isExternalRaw === 'true' || isExternalRaw === '1',
     reference: reference || '',
     referenceSchema,
   };

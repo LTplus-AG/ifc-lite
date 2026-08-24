@@ -1113,3 +1113,49 @@ const source = readFileSync('Thing.tsx', 'utf8');
   assert.equal(flagged(head + `assert.ok(source?.includes('x'));`), true, 'an optional-chain predicate escaped');
   assert.equal(flagged(head + `assert.ok(source?.split('n')?.some((l) => l.includes('x')));`), true);
 });
+
+test('a callback wrapped in parentheses or a type wrapper is still a callback', () => {
+  // Reported by Codex on #3177, and it was a REGRESSION rather than a
+  // pre-existing gap: `some(((line) => …))` hands the argument loop a
+  // ParenthesizedExpression, so a bare `isFunctionLike` answered no and `line`
+  // stayed clean. The scanning version caught every one of these, because its
+  // callback pattern matched the arrow wherever it sat in the argument text.
+  //
+  // Shipping without this would have moved the gate in the one direction it
+  // must never move -- quieter -- while the PR claimed the opposite. Each row
+  // below was checked against main's detector, and all but the last were green
+  // there.
+  const head = `
+import { readFileSync } from 'node:fs';
+const source = readFileSync('Thing.tsx', 'utf8');
+`;
+  const wrapped = {
+    'parenthesized arrow': `assert.ok(source.split('n').some(((line) => line.includes('TODO'))));`,
+    'as-cast callback': `assert.ok(source.split('n').some(((line) => line.includes('TODO')) as any));`,
+    'satisfies callback': `assert.ok(source.split('n').some(((line) => line.includes('TODO')) satisfies unknown));`,
+    'parenthesized function expression': `assert.ok(source.split('n').some((function (line) { return line.includes('TODO'); })));`,
+    // Not a regression -- main missed this one too -- but the same root cause,
+    // so it is closed and pinned with the rest rather than left as a sibling
+    // waiting to be found separately.
+    'parenthesized hoisted callback': `const hit = (line) => line.includes('TODO');\nassert.ok(source.split('n').some((hit)));`,
+    // The declaration side of the same blindness: the arrow's parent is the
+    // parenthesis, not the declaration, so the helper had no name at all.
+    'wrapped helper declaration': `const chk = ((t) => t.includes('x'));\nassert.ok(chk(source));`,
+  };
+  for (const [label, body] of Object.entries(wrapped))
+    assert.equal(flagged(head + body), true, `a wrapped callback went untainted via: ${label}`);
+
+  // A wrapped RECEIVER is a different path -- it is read by subtree walk, which
+  // descends through the wrapper -- and must keep working.
+  assert.equal(flagged(head + `assert.ok((source).includes('x'));`), true);
+  assert.equal(flagged(head + `assert.ok((source as string).includes('x'));`), true);
+
+  // And the callee is deliberately NOT unwrapped: `(fn)(source)` is a callee
+  // this analysis cannot name, so it must stay in the fail-closed branch that
+  // taints every parameter, exactly as the scanning version had it.
+  assert.equal(
+    flagged(head + `function opaque(t) { assert.ok(t.includes('x')); }\n(opaque)(source);`),
+    true,
+    'an undecidable callee stopped failing closed',
+  );
+});

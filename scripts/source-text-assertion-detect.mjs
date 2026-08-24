@@ -188,6 +188,33 @@ function walk(node, visit) {
 }
 
 /**
+ * Strip the wrappers that change how an expression is SPELLED and not what it
+ * IS: parentheses, `as`, `satisfies`, `!`, and the angle-bracket assertion.
+ *
+ * Needed wherever a node is inspected STRUCTURALLY — "is this argument a
+ * function?", "is it an identifier naming one?". A subtree walk does not care,
+ * because it descends through the wrapper anyway; a `ts.isFunctionLike` check
+ * on the wrapper answers no and taints nothing.
+ *
+ * Deliberately NOT applied to a call's CALLEE. `(fn)(source)` must stay in the
+ * fail-closed branch, which is where the scanning version put it and where an
+ * undecidable callee belongs.
+ */
+function unwrap(node) {
+  let n = node;
+  while (
+    n &&
+    (ts.isParenthesizedExpression(n) ||
+      ts.isAsExpression(n) ||
+      (ts.isSatisfiesExpression?.(n) ?? false) ||
+      ts.isNonNullExpression(n) ||
+      (ts.isTypeAssertionExpression?.(n) ?? false))
+  )
+    n = n.expression;
+  return n;
+}
+
+/**
  * The name a callee resolves to, for `f(…)`, `fs.readFileSync(…)` and
  * `a.b.c(…)` alike — the rightmost identifier, which is the one that says what
  * is being called. `null` when the callee is anything else, which is the
@@ -257,7 +284,19 @@ function parameterNames(fn) {
  */
 function functionName(fn) {
   if (fn.name && ts.isIdentifier(fn.name)) return fn.name.text;
-  const parent = fn.parent;
+  // Up THROUGH the wrappers: in `const f = ((x) => …)` the arrow's parent is
+  // the parenthesis, not the declaration, so the helper had no name and its
+  // call sites tainted nothing.
+  let parent = fn.parent;
+  while (
+    parent &&
+    (ts.isParenthesizedExpression(parent) ||
+      ts.isAsExpression(parent) ||
+      (ts.isSatisfiesExpression?.(parent) ?? false) ||
+      ts.isNonNullExpression(parent) ||
+      (ts.isTypeAssertionExpression?.(parent) ?? false))
+  )
+    parent = parent.parent;
   if (parent && ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)) return parent.name.text;
   if (parent && ts.isPropertyAssignment(parent) && ts.isIdentifier(parent.name)) return parent.name.text;
   if (
@@ -420,7 +459,16 @@ function computeTainted(sourceFile) {
       // body read as clean in both the arrow and the `function` spelling.
       if (!ts.isPropertyAccessExpression(call.expression)) continue;
       if (!carriesFileBytes(call.expression.expression)) continue;
-      for (const arg of args) {
+      for (const rawArg of args) {
+        // UNWRAPPED first. `some(((line) => …))` and
+        // `some(((line) => …) as Predicate)` hand this loop a
+        // ParenthesizedExpression / AsExpression, so a bare `isFunctionLike`
+        // answered no, `line` stayed clean and the whole callback body read as
+        // clean with it. The scanning version caught these -- its callback
+        // pattern matched the arrow wherever it sat in the argument text --
+        // so shipping without this would have been a REGRESSION into the one
+        // direction this gate must never move. Reported by Codex on #3177.
+        const arg = unwrap(rawArg);
         if (ts.isFunctionLike(arg) && arg.parameters) taintAll(parameterNames(arg));
         // A HOISTED callback is passed by name, so its parameters are declared
         // somewhere else entirely: `.some(hit)` with `const hit = (line) => …`.

@@ -65,6 +65,7 @@ const LAYERED_AVAILABLE = existsSync(LAYERED_IFC);
 if (!LAYERED_AVAILABLE) {
   console.log('⚠️  layered-wall fixture missing — run `pnpm fixtures`. geometryClass pin will be skipped.');
 }
+const COLUMN_AVAILABLE_FOR_LEGACY = existsSync(COLUMN_IFC);
 const SPACES_AVAILABLE = existsSync(SPACES_IFC);
 if (!SPACES_AVAILABLE) {
   console.log('⚠️  spaces fixture missing — run `pnpm fixtures`. Energy-model tests will be skipped.');
@@ -830,6 +831,64 @@ test('exportGlbFromMeshes output is spec-conformant glTF 2.0 (0 errors, 0 warnin
   assertClean(fromMeshesReport, 'exportGlbFromMeshes');
   assert.equal(fromMeshesReport.info.totalTriangleCount, 1, 'the one triangle handed in');
 });
+
+// ===== legacy keywords keep their type across the wasm boundary (#3179) =====
+//
+// The native pipeline resolves a legacy keyword through `legacy_entities.rs`
+// and labels the node with its real base type. The BROWSER path did not: the
+// jobs wire carries only (id, start, end), so `batch.rs` rebuilt the type from
+// `entity.ifc_type` -- the decoder's bare `IfcType::from_str` -- and every
+// keyword IFC4X3 dropped arrived as `Unknown` with the Unknown default colour.
+//
+// It is silent in the same way a wrong geometryClass is: the mesh renders, it
+// is simply mislabelled, and type-exact visibility rules and styling quietly
+// skip it. Nothing throws.
+//
+// This has to be checked HERE rather than in a Rust unit test, because the
+// defect lived in the wasm binding specifically -- the native path was correct
+// the whole time, so any test that did not cross the boundary agreed with the
+// half that already worked.
+if (COLUMN_AVAILABLE_FOR_LEGACY) {
+  console.log('\n📋 legacy keyword labelling (Rust → JS, #3179)');
+
+  test('a legacy keyword crosses as its resolved type, not "Unknown"', () => {
+    // IFCCOLUMN is modern; IFCBEAMSTANDARDCASE is IFC4-removed and sits in
+    // `legacy_entities.rs` mapping to IfcBeam. Respelling the fixture's columns
+    // changes ONE keyword and nothing else, so the label is the only variable.
+    const modern = readFileSync(COLUMN_IFC, 'utf-8');
+    assert.ok(modern.includes('IFCCOLUMN('), 'fixture lost its columns — the respelling would test nothing');
+    const legacy = modern.replace(/IFCCOLUMN\(/g, 'IFCBEAMSTANDARDCASE(');
+
+    const collect = (content) => {
+      const collection = parseMeshesViaPrePass(api, content);
+      const types = [];
+      for (let i = 0; i < collection.length; i++) {
+        const m = collection.get(i);
+        if (!m) continue;
+        types.push(m.ifcType);
+        m.free();
+      }
+      collection.free();
+      return types;
+    };
+
+    const before = collect(modern);
+    const after = collect(legacy);
+
+    assert.ok(before.length > 0, 'the fixture must produce meshes, or this pins nothing');
+    assert.equal(after.length, before.length, 'the respelling changed how many meshes are produced');
+    assert.ok(
+      !after.includes('Unknown'),
+      `a legacy keyword crossed as "Unknown": ${JSON.stringify(after)}`,
+    );
+    // And the RESOLVED type specifically — "not Unknown" would also be
+    // satisfied by any other wrong label.
+    assert.ok(
+      after.every((t) => t === 'IfcBeam'),
+      `expected every mesh to label as IfcBeam, saw ${JSON.stringify([...new Set(after)])}`,
+    );
+  });
+}
 
 // ===== geometryClass ordinals, pinned at the real boundary =====
 //

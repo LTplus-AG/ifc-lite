@@ -438,3 +438,73 @@ fn every_legacy_arm_maps_onto_a_known_product() {
         }
     }
 }
+
+/// `legacy_aware_ifc_type_from_record` — the resolution the wasm mesh batch
+/// needs and did not have (#3179).
+///
+/// The browser path holds a `DecodedEntity` whose `ifc_type` came from a bare
+/// `from_str`, plus the raw record. For a legacy keyword that field is
+/// `Unknown`, and `Unknown` stores a CRC32 hash rather than the name, so the
+/// keyword survives only in the record.
+///
+/// The keywords here are ones `legacy_entities.rs` carries on `main`. The six
+/// #3172 adds are deliberately absent: this branch is cut from `main` and must
+/// not depend on a table that is still in review, or it goes green here and red
+/// on merge in whichever order the two land. The first draft used
+/// `IFCELECTRICALELEMENT` and failed for exactly that reason.
+#[test]
+fn a_legacy_record_resolves_where_the_decoded_type_cannot() {
+    // What the decoder produces for these, and what the browser was emitting.
+    //
+    // The SPACED forms are not padding. STEP permits whitespace around `=` and
+    // buildingSMART's own `column-straight-rectangle-tessellation.ifc` writes
+    // `#71= IFCCOLUMN(` on all 26 of its entity lines. The first draft of this
+    // test used only the tight form, passed, and the end-to-end wasm check then
+    // failed on the real fixture -- `extract_entity_type_name` was returning
+    // `" IFCCOLUMN"` untrimmed and every entity in such a file resolved to
+    // `Unknown`. A hand-written record is a weaker fixture than a real one.
+    for (record, expected) in [
+        (&b"#12=IFCPROXY('guid',$,$,$,$,$,$,$,$);"[..], IfcType::IfcBuildingElementProxy),
+        (&b"#13=IFCSLABSTANDARDCASE('guid',$,$,$,$,$,$,$,$);"[..], IfcType::IfcSlab),
+        (&b"#14=IFCDOORSTANDARDCASE('guid',$,$,$,$,$,$,$,$);"[..], IfcType::IfcDoor),
+        (&b"#15=IFCSOLIDSTRATUM('guid',$,$,$,$,$,$,$,$);"[..], IfcType::IfcGeotechnicalStratum),
+        // Whitespace around `=`, both sides, as real exporters emit it.
+        (&b"#16= IFCPROXY('guid',$,$,$,$,$,$,$,$);"[..], IfcType::IfcBuildingElementProxy),
+        (&b"#17 = IFCSLABSTANDARDCASE('guid',$,$);"[..], IfcType::IfcSlab),
+        (&b"#18=\tIFCDOORSTANDARDCASE('guid',$,$);"[..], IfcType::IfcDoor),
+    ] {
+        let name = crate::fast_parse::extract_entity_type_name(record).unwrap();
+        let decoded = IfcType::from_str(name);
+        assert!(
+            matches!(decoded, IfcType::Unknown(_)),
+            "{name} must be Unknown to the bare decoder, or this test proves nothing"
+        );
+        assert_eq!(legacy_aware_ifc_type_from_record(decoded, record), expected, "{name}");
+    }
+}
+
+/// A type the decoder already knows is returned UNCHANGED and without a scan,
+/// so the cost falls only on the entities that need it -- and, more to the
+/// point, so a malformed record cannot relabel a known entity.
+#[test]
+fn a_known_type_is_returned_untouched_whatever_the_record_says() {
+    let wall = IfcType::from_str("IFCWALL");
+    assert!(!matches!(wall, IfcType::Unknown(_)));
+    // Record deliberately disagrees with the decoded type; the decoded type wins.
+    assert_eq!(
+        legacy_aware_ifc_type_from_record(wall, b"#1=IFCSLABSTANDARDCASE('g');"),
+        IfcType::IfcWall
+    );
+}
+
+/// An unreadable record leaves the answer exactly as the decoder had it, rather
+/// than inventing one. `Unknown` in, `Unknown` out -- the entity is no worse off
+/// than before this function existed.
+#[test]
+fn an_unreadable_record_changes_nothing() {
+    let unknown = IfcType::from_str("IFCNOTAREALENTITY");
+    assert!(matches!(unknown, IfcType::Unknown(_)));
+    for record in [&b""[..], &b"garbage with no equals or paren"[..], &b"#1="[..], &b"#1=("[..]] {
+        assert_eq!(legacy_aware_ifc_type_from_record(unknown, record), unknown);
+    }
+}

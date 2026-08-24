@@ -144,12 +144,26 @@ describe('deciding it is linear, not backtracking (#3113)', () => {
   const SMALL = 20_000;
   const LARGE = 80_000; // 4x SMALL: linear predicts ~4x, quadratic ~16x.
   const TRIALS = 2; // Best of two batches, so one GC pause cannot inflate a reading.
-  /** A batch has to be clearly above clock noise to divide by. */
-  const MEASURABLE_MS = 2;
+  /** A batch has to be clearly above clock noise to divide by.
+   *
+   *  Raised from 2 to 5 on review. A longer batch dilutes a fixed scheduler
+   *  preemption: simulated over 15k runs with one-sided noise, false failures
+   *  on a HEALTHY implementation drop from 0.38% to 0.04% at moderate
+   *  contention, and from 4.93% to 3.70% at heavy contention. The false-pass
+   *  rate against a genuinely regressed implementation stayed ~0% throughout,
+   *  so this buys stability without costing detection.
+   *
+   *  It is not a substitute for RATIO_SAMPLES below, and the review's original
+   *  suggestion — raise the floor and drop back to one ratio sample — measured
+   *  WORSE than what was already here. The two compose; either alone is
+   *  weaker. Cost is about +195ms on this one `it` block. */
+  const MEASURABLE_MS = 5;
 
-  /** Ratio samples to take, keeping the smallest. Three is enough to drop a
-   *  single preempted batch without materially lengthening the test, since
-   *  each batch is calibrated to only a few milliseconds. */
+  /** Ratio samples to take, keeping the smallest. Combined with TRIALS above,
+   *  each side of the ratio draws its minimum from 2 x 3 = 6 independent batch
+   *  timings — `min` over a partition is `min` over the union, exactly. The
+   *  review suggested TRIALS = 3 instead, which would give 3 per side, half of
+   *  this. */
   const RATIO_SAMPLES = 3;
 
   /** A long digit run plus one character that cannot be part of a number.

@@ -433,22 +433,14 @@ function checkPattern(
 
 /**
  * Validate that `value` matches the lexical space of the supplied XSD
- * primitive base. Mirrors upstream `XsTypes.IsValid` — the same
- * accepted languages, expressed in JS. (The numeric ones are not
- * character-for-character copies any more; see the note on the table.)
- * Used by the enumeration coherence check to
- * flag entries like `<xs:enumeration value="12,0"/>` under a
- * `<xs:restriction base="xs:double">`.
+ * primitive base. Mirrors upstream `XsTypes.IsValid` (see the table); flags
+ * `<xs:enumeration value="12,0"/>` under `<xs:restriction base="xs:double">`.
  */
 const XS_VALUE_REGEX: Record<string, RegExp> = {
-  // Lifted from upstream `XmlRegex.cs` static fields, except where a
-  // note below says the spelling was changed (the language was not).
+  // Upstream `XmlRegex.cs`, except the mantissa: `[0-9]*(?:\.[0-9]*)?` not
+  // `[0-9]*\.?[0-9]*`, whose two adjacent digit runs make a failing lexeme
+  // retry every split (quadratic, #3113). Same language, one parse/prefix.
   'xs:integer': /^[+-]?(\d+)$/,
-  // `[0-9]*(?:\.[0-9]*)?` rather than upstream's `[0-9]*\.?[0-9]*`: the
-  // latter is two adjacent digit runs, so a failing lexeme (a long digit
-  // run and one stray character, out of an untrusted IDS file) makes the
-  // engine retry every split — quadratic, the #3113 shape. The accepted
-  // language is identical; only the number of parses per prefix changes.
   'xs:double': /^([-+]?[0-9]*(?:\.[0-9]*)?([eE][-+]?[0-9]+)?|NaN|\+INF|-INF)$/,
   'xs:float': /^([-+]?[0-9]*(?:\.[0-9]*)?([eE][-+]?[0-9]+)?|NaN|\+INF|-INF)$/,
   'xs:decimal': /^([-+]?[0-9]*(?:\.[0-9]*)?([eE][-+]?[0-9]+)?|NaN|\+INF|-INF)$/,

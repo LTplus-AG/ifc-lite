@@ -8,10 +8,15 @@
  *
  * Split out of `step-exporter.ts` for #2475. These are declarations only -- no
  * behaviour lives here beyond one message builder -- which is why they could
- * move without touching a single guard. The seven sibling modules that already
- * import `ExportPass` and `SourceLineMutations` keep importing them from
- * `step-exporter.js`, which re-exports this file, so no call site moved with
- * them and the package's public entry point is untouched.
+ * move without touching a single guard.
+ *
+ * Two ways in, deliberately. The seven sibling modules that already imported
+ * `ExportPass` / `SourceLineMutations` still import them from
+ * `step-exporter.js`, which re-exports this file, so no existing call site
+ * moved and the package's public entry point is untouched. Code written since
+ * the split imports straight from here instead -- `step-pass-builder.ts` does
+ * -- because the re-export exists to avoid churning callers, not as a channel
+ * anything new should be routed through.
  */
 
 import type { IfcAttributeValue, IfcSourceHeader, MapConversion, ProjectedCRS } from '@ifc-lite/parser';
@@ -207,13 +212,15 @@ export type SourceLineMutations = SourceLineDelivery & { text: string };
  *    #2414, #2398, #2637). A phase that reimplements one of these instead of
  *    reading it off the pass reintroduces exactly that class of defect.
  * 2. **`allowedEntityIds` and `hiddenProductIds` are mutable, and the
- *    predicates close over the pass rather than over a snapshot.** The
- *    visible-only closure walk assigns both AFTER construction, and
- *    `isRefExcludedDuringClosureWalk` is handed to that walk while they are
- *    still null. The output-line filter reads them too, through
- *    `isOmittedFromOutput` -> `willBeEmitted`, so neither can be a snapshot
- *    taken before the walk ran — that is the invariant the #2637 regression
- *    broke.
+ *    predicates close over the pass rather than over a snapshot.** Both are
+ *    assigned AFTER construction, in `step-collection.ts`, and the order there
+ *    matters more than it looks: `hiddenProductIds` is set first (:76), and
+ *    `allowedEntityIds` is the value the closure walk on the next line is
+ *    computing — so `isRefExcludedDuringClosureWalk` is handed to that walk
+ *    (:82) while `allowedEntityIds`, and only it, is still null. The
+ *    output-line filter reads both later, through `isOmittedFromOutput` ->
+ *    `willBeEmitted`, so neither can be a snapshot taken before the walk ran —
+ *    that is the invariant the #2637 regression broke.
  *
  * Deliberately NOT on the pass, and why: `isOmittedFromOutput`,
  * `mayNameOmittedRefs` and

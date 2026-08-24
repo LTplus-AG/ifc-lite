@@ -158,13 +158,14 @@ export class StepExporter {
         : schema;
 
     // The one construction site for the state this export shares across its
-    // seven phases. See `ExportPass` above for what belongs here, what
-    // deliberately does not, and why every predicate reads `pass` rather than
-    // a value captured at construction time.
-    // Built in `step-pass-builder.ts` (#2475). It returns the object the
-    // phases below mutate -- notably `collectModifications`, which fills in
-    // `allowedEntityIds` / `hiddenProductIds` that the pass's own predicates
-    // close over. Do not copy what comes back.
+    // seven phases, built in `step-pass-builder.ts` (#2475). `ExportPass` in
+    // `step-export-types.ts` says what belongs on it and what deliberately
+    // does not.
+    //
+    // What comes back is the object the phases below MUTATE -- notably
+    // `collectModifications`, which fills in the `allowedEntityIds` /
+    // `hiddenProductIds` that the pass's own predicates close over. Do not
+    // copy it; `step-pass-builder.test.ts` is what stops that.
     const pass: ExportPass = buildExportPass({
       dataStore: this.dataStore,
       mutationView: this.mutationView,

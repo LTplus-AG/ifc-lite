@@ -231,7 +231,7 @@
   1122 packages/export/src/reference-collector.ts
    556 packages/export/src/schema-converter.ts
    415 packages/export/src/step-attribute-mutations.ts
-  1169 packages/export/src/step-exporter.ts
+   945 packages/export/src/step-exporter.ts
   1061 packages/export/src/step-property-sets.ts
    435 packages/export/src/step-serialization.ts
    437 packages/extensions/src/testing/runner.ts

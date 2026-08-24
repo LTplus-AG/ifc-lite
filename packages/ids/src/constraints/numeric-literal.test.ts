@@ -228,13 +228,13 @@ describe('deciding it is linear, not backtracking (#3113)', () => {
     //   already does `Math.min` over TRIALS internally. This is the same
     //   composition one level up.
     //
-    // Simulated over 20k runs with one-sided noise, against a genuinely
-    // regressed 8.5x implementation that must fail this bound:
-    //   single sample     2.35% false pass
-    //   min of ratios     6.30% false pass   <- worse than doing nothing
-    //   ratio of minima   0.00% false pass
-    // and on a healthy 4x implementation: 1.06% / 0.00% / 0.00% false fail.
-    // Ratio-of-minima is the only one that improves both directions at once.
+    // Two independent simulations of these three estimators, under one-sided
+    // noise against a genuinely regressed implementation that must fail this
+    // bound, agreed on the ORDERING and disagreed on the magnitudes (they are
+    // sensitive to the assumed noise model, so no figure is quoted here):
+    // min-of-ratios missed the regression MORE often than a single sample,
+    // while ratio-of-minima missed it least and was no flakier. Only
+    // ratio-of-minima improved both directions at once.
     //
     // The bound itself is unchanged. Raising it to absorb an outlier would
     // widen the very gap the test exists to detect.

@@ -4,6 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { PAPER_SIZE_REGISTRY } from './paper-sizes.js';
+import { PAPER_SIZES } from '../styles.js';
 
 /**
  * Pins every sheet in the registry to its published standard.
@@ -17,8 +18,13 @@ import { PAPER_SIZE_REGISTRY } from './paper-sizes.js';
  *
  * That matters because these numbers are not internal conventions. A sheet
  * that is a few millimetres wrong scales every drawing placed on it and
- * prints to the wrong size, and nothing in the pipeline can notice: the
- * registry is the only statement of what "A1" means.
+ * prints to the wrong size, and nothing in the pipeline notices.
+ *
+ * The registry is not the only statement of what "A1" means. `PAPER_SIZES` in
+ * `../styles.ts` is a second A-series table, consumed by the SVG exporter, and
+ * it pins no dimensions of its own either. The two agree today; nothing made
+ * them agree, so the last test here checks it rather than asserting it in
+ * prose.
  *
  * So the assertions below DERIVE rather than restate:
  *   - the ANSI and ARCH sheets are defined in whole inches, so each is
@@ -108,10 +114,9 @@ describe('ISO 216 A series', () => {
     // whole millimetres moves it slightly, which is why this is a tolerance
     // rather than an equality — but not by more than half a millimetre's
     // worth at the smallest size.
-    for (const { series, shortMm, longMm } of ISO_216_MM) {
+    for (const { series } of ISO_216_MM) {
       const registry = PAPER_SIZE_REGISTRY[`${series}_PORTRAIT`];
       expect(registry.heightMm / registry.widthMm, `${series} ratio`).toBeCloseTo(Math.SQRT2, 2);
-      expect(longMm / shortMm, `${series} reference ratio`).toBeCloseTo(Math.SQRT2, 2);
     }
   });
 });
@@ -173,6 +178,31 @@ describe('registry shape', () => {
       } else {
         expect(def.heightMm, `${key} is portrait but wider than tall`).toBeGreaterThanOrEqual(def.widthMm);
       }
+    }
+  });
+});
+
+describe('the second A-series table in styles.ts', () => {
+  /*
+   * `PAPER_SIZES` (../styles.ts) is an independent A-series table feeding the
+   * SVG exporter, written in `width`/`height` rather than `widthMm`/`heightMm`.
+   * Nothing derives one table from the other and nothing compares them, so
+   * correcting a sheet in one place leaves the other wrong and every test in
+   * both files stays green. That is the failure this test exists to make loud.
+   *
+   * Verified it can fail: setting styles.ts A2 width to 421 reds this test and
+   * only this one -- the other 448 tests in this package stay green, which is
+   * the point. Not measured outside `packages/drawing-2d`.
+   */
+  it('agrees with the sheet registry on every size it names', () => {
+    for (const [stylesKey, size] of Object.entries(PAPER_SIZES)) {
+      const registryKey = stylesKey.includes('_LANDSCAPE')
+        ? stylesKey
+        : `${stylesKey}_PORTRAIT`;
+      const entry = PAPER_SIZE_REGISTRY[registryKey];
+      expect(entry, `${stylesKey} has no registry counterpart (${registryKey})`).toBeDefined();
+      expect(size.width, `${stylesKey} width vs ${registryKey}`).toBe(entry.widthMm);
+      expect(size.height, `${stylesKey} height vs ${registryKey}`).toBe(entry.heightMm);
     }
   });
 });

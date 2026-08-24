@@ -226,17 +226,25 @@ fn edit_error_parts_covers_exactly_seven_variants_no_more_no_less() {
     }
     assert_eq!(assert_exhaustive(EditError::StaleHandle), "covered");
 
-    // The two assertions this test used to carry were both self-referential:
-    // `assert_exhaustive` can only ever return the literal it is compared to,
-    // and `EXPECTED_CODES.len() == 7` compared the table above to a 7 copied
-    // out of it. Neither could fail on a production edit. This one can: it
-    // reads the CODES back out of `edit_error_parts` and requires them to be
-    // distinct. Two variants returning the same code would collapse two
-    // different failures into one on the JS side, and the variant-by-variant
-    // test above cannot see it -- it checks each code in isolation.
+    // The `assert_eq!` above is self-referential -- `assert_exhaustive` can only
+    // return the literal it is compared to -- and is kept solely so the function
+    // is not dead code. The compile-time `match` is the whole point of it.
+    //
+    // The COUNT below is what carries this test's name. `EXPECTED_CODES` is the
+    // oracle for the TS contract, and deleting a row from it used to be caught
+    // by `assert_eq!(EXPECTED_CODES.len(), 7)`; without a count, a silently
+    // shrunk table leaves every test green, including this one. Measured: drop
+    // the `BridgeEdge` row and the suite passes 127/127 with no count here.
+    //
+    // Distinctness is asserted alongside it, but be clear that it is belt and
+    // braces rather than new power: `edit_error_parts_codes_match_the_ts_contract_variant_by_variant`
+    // already pins every code to a distinct literal, so if that test passes this
+    // insert cannot fail. It earns its place only by making the failure explicit
+    // if that sibling is ever weakened.
     let mut seen = std::collections::HashSet::new();
     for (variant, _code) in EXPECTED_CODES {
         let (code, _msg) = edit_error_parts(variant.clone());
         assert!(seen.insert(code), "code for {variant:?} duplicates another variant's code: {code:?}");
     }
+    assert_eq!(seen.len(), 7, "EXPECTED_CODES must carry exactly the seven EditError variants");
 }

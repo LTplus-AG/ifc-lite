@@ -128,7 +128,11 @@ function closesAControlHeader(back, end) {
   }
   if (j < 0) return false;
   let w = j - 1;
-  while (w >= 0 && (back[w] === ' ' || back[w] === '\t')) w--;
+  // ALL whitespace, not just space and tab. A control keyword and its `(` can
+  // sit on different lines (`if\n(ok) /re/.test(v)`), and stopping at the
+  // newline read the header as an ordinary parenthesised expression, so the
+  // regex became division and its quote desynced the lexer.
+  while (w >= 0 && /\s/.test(back[w])) w--;
   const span = back.slice(Math.max(0, w - 8), w + 1).join('');
   return /(?:^|[^A-Za-z0-9_$])(if|for|while|switch|catch|with)$/.test(span);
 }
@@ -550,7 +554,7 @@ function computeTainted(blanked) {
       // character, so a leading `\b` can never match in front of it. Fixing
       // only the anchor still lost the helper's parameter taint silently.
       const literalName = fn.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const callRe = new RegExp(`(?<![\\w$])${literalName}\\s*\\(`, 'g');
+      const callRe = new RegExp(`(?<![\\w$])${literalName}\\s*(?:\\?\\.)?\\s*\\(`, 'g');
       let call;
       while ((call = callRe.exec(blanked)) !== null) {
         const open = callRe.lastIndex - 1;
@@ -566,10 +570,16 @@ function computeTainted(blanked) {
     // detector saw a predicate applied to `line`, a parameter it believed was
     // clean. Same for `.filter`, `.map`, `.every`, `.forEach`, `.find`. Taint
     // flows from the RECEIVER to the callback's parameters.
-    for (const m of blanked.matchAll(/\.\s*[A-Za-z_$][\w$]*\s*\(/g)) {
-      const dot = m.index;
+    // `?.` can sit on EITHER side of the method name: `xs?.some(cb)` and
+    // `xs.at(0)?.(cb)`. Matching only the trailing form left
+    // `source.split(sep)?.some((line) => …)` undetected.
+    for (const m of blanked.matchAll(/\??\.\s*[A-Za-z_$][\w$]*\s*(?:\?\.)?\s*\(/g)) {
+      // Walk back from the START of the match, which is the `.` in the plain
+      // form and the `?` in the optional one. Handing `receiverStart` the dot
+      // itself makes it stop on that `?` immediately and return an EMPTY
+      // receiver, so every optional call looked untainted.
       const open = m.index + m[0].length - 1;
-      if (!carriesFileBytes(blanked.slice(receiverStart(blanked, dot), dot))) continue;
+      if (!carriesFileBytes(blanked.slice(receiverStart(blanked, m.index), m.index))) continue;
       const args = blanked.slice(open + 1, matchParen(blanked, open));
       for (const cb of args.matchAll(/(\([^()]*\)|\b[A-Za-z_$][\w$]*)\s*=>/g))
         for (const q of valueIdentifiers(cb[1])) tainted.add(q);
@@ -611,6 +621,12 @@ function computeTainted(blanked) {
       const iter = blanked.slice(m.index + m[0].length, iterEnd).trim();
       if (/\.\s*split\s*\(/.test(iter) && carriesFileBytes(iter)) tainted.add(m[1]);
     }
+    // `?.(` is accepted everywhere `(` is. An optional call is still a call,
+    // and omitting it let `check?.(source)` skip the named-call path and
+    // `mutators[key]?.(source)` skip the fail-closed path below -- a rule that
+    // exists to catch what cannot be followed was itself bypassable by two
+    // characters.
+    //
     // FAIL CLOSED on flow this analysis cannot follow. When file bytes are
     // handed to a callee it cannot name — `mutators[key](real[key])`, or
     // anything returned by a call — the value lands in a parameter no lexical
@@ -620,7 +636,7 @@ function computeTainted(blanked) {
     // Named callees (`mutate(real.platform, …)`) and plain dotted ones
     // (`fs.writeFileSync(path, text)`) are followed or ignored precisely and do
     // not trigger this.
-    for (const call of blanked.matchAll(/[)\]]\s*\(/g)) {
+    for (const call of blanked.matchAll(/[)\]]\s*(?:\?\.)?\s*\(/g)) {
       const open = call.index + call[0].length - 1;
       if (!splitArgs(blanked.slice(open + 1, matchParen(blanked, open))).some(carriesFileBytes))
         continue;

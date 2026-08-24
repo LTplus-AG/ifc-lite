@@ -770,3 +770,41 @@ assert.ok(v${links}.includes('y'));
     true,
   );
 });
+
+test('a control keyword and its ( may sit on different lines', () => {
+  // `closesAControlHeader` skipped only spaces and tabs, so a newline between
+  // `if` and `(` made the header read as an ordinary parenthesised expression.
+  // The regex after it became division and its quote desynced the lexer.
+  assert.equal(
+    flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('Thing.ts', 'utf8');
+if
+(ok) /["']/.test(value);
+assert.ok(source.includes('tok'));
+`),
+    true,
+  );
+});
+
+test('an optional call is still a call', () => {
+  // `?.(` bypassed all three call patterns, including the FAIL-CLOSED rule for
+  // flow this analysis cannot follow -- a guard that exists to catch the
+  // unfollowable was itself sidestepped by two characters. `?.` can also sit on
+  // either side of a method name.
+  for (const body of [
+    "function check(text) { assert.ok(text.includes('x')); }\ncheck?.(source);",
+    "assert.ok(source.split('x')?.some((line) => line.includes('y')));",
+    "mutators[key]?.(source);\nconst cb = (t) => assert.ok(t.includes('x'));",
+  ]) {
+    assert.equal(
+      flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('Thing.ts', 'utf8');
+${body}
+`),
+      true,
+      `optional call escaped: ${body}`,
+    );
+  }
+});

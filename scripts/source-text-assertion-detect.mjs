@@ -472,6 +472,20 @@ const CONTINUES = /(?:[([,]|=>|&&|\|\||[-+*/%?:]|=)\s*$/;
  * predicate AND is recorded as used, so the dead-marker check goes quiet too:
  * both halves of the gate wrong at once.
  *
+ * Stripping NARROWS that class, it does not close it, and the walk inherits
+ * `stripComments`'s string-unawareness (see its own note above). Its guard
+ * covers only the FIRST slash pair, so a third slash is preceded by `/` and
+ * still truncates: `name: '///'` becomes a line ending in `/`, which
+ * `CONTINUES` accepts, and the walk continues where it should stop. Measured
+ * over the scanned corpus the trade is heavily favourable -- 300 lines where
+ * stripping SHORTENS marker reach (mostly `'https://…'` in strings, which the
+ * old per-line stripper left ending in `:`) against 8 where it lengthens it,
+ * and 7 of those 8 genuinely end in `,` and so SHOULD continue. The one that
+ * should not is the `'///'` line. No verdict on a real file changes either
+ * way, because such a line also leaves an unterminated quote and `blankStrings`
+ * desyncs first, which hides the predicate entirely. Both are the same root cause:
+ * comments cannot be stripped without lexing strings.
+ *
  * The 24-line bound is a POLICY cap on how far a marker may reach, not a
  * runaway guard -- the walk terminates on its own, because `codeLines[top - 2]`
  * yields `''` at the top of the file and `''` is not a continuation. The

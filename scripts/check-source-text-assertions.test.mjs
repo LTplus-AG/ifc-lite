@@ -421,6 +421,18 @@ test('a marker that excuses nothing is still an unused marker', () => {
   // ending in `/`, and truncating at the `//` of a URL leaves it ending in `:`.
   // Both are accepted by `CONTINUES`, so both let the marker reach further --
   // a per-line stripper made the gate WORSE on them, not merely no better.
+  // Those two are also the only entries that DISCRIMINATE: restore the old
+  // per-line stripper and only they go red. The other four stay green under
+  // that mutation and are here as coverage, not as a pin.
+  //
+  // A bare ` */` used to be in this list and was REMOVED, which is a loosening
+  // and so belongs on the record rather than in a commit message. An orphan
+  // `*/` has no opener, so `stripComments` leaves it whole, it ends in `/`,
+  // and the marker now reaches ACROSS it -- excusing a predicate and marking
+  // itself used, both halves silent. It is dropped because no valid JS puts a
+  // bare `*/` on the walk path (a real one always has an opener above, and the
+  // balanced case below is handled), not because the gate holds there. If
+  // `stripComments` ever learns to handle unbalanced blocks, this is open.
   for (const separator of [
     '// Arrange:',
     '// ------------------',

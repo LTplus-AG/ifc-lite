@@ -49,7 +49,6 @@ function makeViewer(overrides: Partial<SceneStub> = {}) {
     globe: { getHeight: () => undefined },
     ...overrides,
   };
-  if (overrides.globe) scene.globe = overrides.globe;
   return { viewer: { scene } as unknown as Parameters<typeof resolveTerrainElevationDetailed>[1], scene };
 }
 
@@ -204,13 +203,26 @@ describe('globe.getHeight near-zero handling', () => {
     assert.equal(out?.height, 7.25);
   });
 
+  it('rejects a height exactly at the near-zero bound', async () => {
+    // The comparison is `Math.abs(h) <= 1e-3`, so the bound itself is
+    // discarded. Probing at 0.002 alone would leave a 2x margin and say
+    // nothing about which way the boundary falls.
+    for (const h of [1e-3, -1e-3]) {
+      const { viewer } = makeViewer({ globe: { getHeight: () => h } });
+      const out = await resolveTerrainElevationDetailed(CESIUM, viewer, 47.3, 8.5, {
+        cacheNamespace: freshNs(),
+      });
+      assert.equal(out, null, `${h} sits on the bound and must be discarded`);
+    }
+  });
+
   it('accepts a height just outside the near-zero band', async () => {
-    const { viewer } = makeViewer({ globe: { getHeight: () => 0.002 } });
+    const { viewer } = makeViewer({ globe: { getHeight: () => 0.0011 } });
     const out = await resolveTerrainElevationDetailed(CESIUM, viewer, 47.3, 8.5, {
       cacheNamespace: freshNs(),
     });
     assert.equal(out?.source, 'globe.getHeight');
-    assert.equal(out?.height, 0.002);
+    assert.equal(out?.height, 0.0011);
   });
 });
 

@@ -255,7 +255,13 @@ function lexViews(src) {
     if (c === '/') {
       const end = regexLiteralEnd(src, i, blanked);
       if (end > i) {
-        for (let k = i; k < end; k++) if (src[k] !== '\n') blanked[k] = ' ';
+        // Keep the OPENING `/` in the blanked view. Blanking a literal whole
+        // makes the next `/` look back past it to whatever preceded the
+        // literal: in `const n = /a/ / b; const s = 'q/w';` the division saw
+        // `=`, called itself a regex, ran forward into the `'q/w'` string for
+        // its "closing" slash, and blanked the rest of the file. A surviving
+        // `/` is not a regex-preceder, so the division is read as division.
+        for (let k = i + 1; k < end; k++) if (src[k] !== '\n') blanked[k] = ' ';
         i = end;
         continue;
       }
@@ -333,7 +339,7 @@ function statementEnd(blanked, start) {
   return blanked.length;
 }
 
-/** Index just past the `)` matching the `(` at `open`. */
+/** Index OF the `)` matching the `(` at `open`; `blanked.length` if unclosed. */
 function matchParen(blanked, open) {
   let depth = 0;
   for (let i = open; i < blanked.length; i++) {
@@ -512,7 +518,7 @@ function computeTainted(blanked) {
       // at the `)` of `trim(`, so the `.split(` below was never seen and the
       // loop body read as clean -- the silent direction.
       const header = blanked.indexOf('(', m.index);
-      const iterEnd = matchParen(blanked, header) - 1;
+      const iterEnd = matchParen(blanked, header);
       if (iterEnd <= m.index + m[0].length) continue;
       // Deliberately narrow to a SPLIT of tainted text. Tainting on
       // `carriesFileBytes` alone also catches `for (const file of files)`

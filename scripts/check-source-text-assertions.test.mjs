@@ -624,3 +624,41 @@ assert.ok(source.split('\\n').some(function (line) { return line.includes('x'); 
     true,
   );
 });
+
+test('division BY a regex literal does not desync the lexer', () => {
+  // The blanked view keeps a regex's opening `/`. Blanking the literal whole
+  // made the following division look back PAST it to the `=`, call itself a
+  // regex, run forward into the next string for its "closing" slash, and blank
+  // the rest of the file. Nonsense code, but the failure is silence, and the
+  // guard costs one character.
+  assert.equal(
+    flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('a/b.ts', 'utf8');
+const n = /a/ / b; const s = 'q/w';
+assert.ok(source.includes('tok'));
+`),
+    true,
+  );
+});
+
+test('the for-of iterable keeps its last character', () => {
+  // `matchParen` returns the index OF the `)`, not just past it -- its
+  // docstring said the opposite and this code trusted the docstring, so an
+  // extra `- 1` chopped the iterable's final character.
+  //
+  // The tainted name is LAST here on purpose. The first version of this test
+  // used `(src).split('\\n')`, where chopping the trailing `)` still left
+  // `src` in the slice, so it passed with the bug live -- a fixture that could
+  // not fail. Chopping `|| src` to `|| sr` loses the only tainted name.
+  assert.equal(
+    flagged(`
+import { readFileSync } from 'node:fs';
+const src = readFileSync('a/b.ts', 'utf8');
+const sep = 'x';
+const other = '';
+for (const line of other.split(sep) || src) { assert.ok(line.includes('y')); }
+`),
+    true,
+  );
+});

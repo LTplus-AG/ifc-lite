@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/world-frame-fixtures",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "World-frame test fixture corpus: per-element RTC origins, far-from-origin coordinates, and the normal-projected f32 noise bound they demand",
   "type": "module",

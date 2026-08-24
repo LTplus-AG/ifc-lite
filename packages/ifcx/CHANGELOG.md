@@ -1,5 +1,67 @@
 # @ifc-lite/ifcx
 
+## 3.0.0
+
+### Major Changes
+
+- [#3089](https://github.com/LTplus-AG/ifc-lite/pull/3089) [`f7e26e4`](https://github.com/LTplus-AG/ifc-lite/commit/f7e26e4200e1475728d4976142b49cb408400a8e) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `IfcxWriter` discarding every entity's IFC GlobalId.
+  
+  A node's `path` IS its identity in IFCX: `entity-extractor.ts` hands the path straight back as the GlobalId, `packages/export`'s IFC5 exporter keys its nodes by GlobalId for exactly that reason, and the buildingSMART v5a schemas committed under `packages/export/src/__fixtures__/schemas/` define no attribute that could carry a GlobalId instead — there is no other slot for it.
+  
+  `IfcxWriter` read each entity's GlobalId into a local variable, never used it, and synthesized `ifc:<Type>.<expressId>` as the path instead. So a STEP → IFCX export replaced every real IFC GlobalId with an invented one, and expressId is not stable across files, so nothing downstream could re-match or federate the node. The GlobalId is now the path when the entity has one; the synthetic form remains the fallback for an entity without one, and an explicit `idToPath` entry still wins over both so a round-trip preserves the paths the source file authored.
+  
+  Invisible until now because the writer's test helper accepted a `globalId` field that no fixture ever set: every path assertion in the suite only exercised the fallback.
+
+### Minor Changes
+
+- [#3092](https://github.com/LTplus-AG/ifc-lite/pull/3092) [`e6caf11`](https://github.com/LTplus-AG/ifc-lite/commit/e6caf11a8f8d9d8634a6811b6705ab3367cd02e0) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Stop a collab snapshot round trip from inventing per-entity provenance, and carry the real thing on the wire.
+  
+  `snapshotToIfcx` wrote nothing about who created an entity or when, because
+  IFCX nodes had no provenance slot. `seedFromIfcx` then filled both fields in
+  from the file header — which names whoever serialized the *file*, not
+  whoever authored each entity, and for a snapshot of a collab doc that is the
+  snapshotter plus the write clock. An entity carrying `createdBy: 'ada'` /
+  `createdAt: '2019-05-05'` came back claiming a different author and a
+  different date, in a shape indistinguishable from genuine attribution. A
+  missing field reads as "unknown"; a fabricated one gets trusted.
+  
+  Two changes:
+  
+  - **A wire carrier.** `ifclite::meta` (new member of `IFCLITE_ATTR`, the
+    extension namespace that already carries collab's classifications,
+    materials and geometry refs) holds `createdBy`, `createdAt`,
+    `lastEditedBy`, `lastEditedAt` and `previousPath`, so real provenance
+    survives snapshot → seed. Values are shape-gated on the way in: only
+    strings are read, and a foreign value under the key stays an ordinary
+    flat attribute. Every field carried is written once at entity creation
+    and never re-stamped — a per-edit stamp would put this attribute in
+    every minimal layer and give the merge engine a component that conflicts
+    on every concurrent edit.
+  - **No more header defaults.** `seedFromIfcx` and `seedFromStep` no longer
+    copy `header.author` / `header.timestamp` onto every entity, and no longer
+    stamp the read clock as `createdAt`. What the wire does not say now stays
+    unset. The file-level record is still available as `meta.header` /
+    `meta.stepHeader`.
+  
+  `createEntity` also now writes the `bsi::ifc::class` attribute when given an
+  `ifcClass`. `meta.ifcClass` is doc-local bookkeeping with no wire form, so
+  an entity whose class was only ever passed as that option snapshotted
+  without a class and came back classless; the MCP draft path had already
+  open-coded the attribute at its own call site to work around this.
+  
+  Scope: `lastEditedBy` / `lastEditedAt` survive only because nothing
+  re-stamps them today. Relationships (the doc's separate `relationships`
+  map) still do not survive a snapshot — IFCX has no relationship node and
+  no first-party writer populates that map; `snapshot-relationships.test.ts`
+  pins that as a tripwire rather than papering over it.
+
+### Patch Changes
+
+- Updated dependencies [[`9359bc4`](https://github.com/LTplus-AG/ifc-lite/commit/9359bc488173585b2b90e124cc66dcf8292c4be9), [`f6febcc`](https://github.com/LTplus-AG/ifc-lite/commit/f6febcc2d4986e79b3c44d63853bb72a16475c65), [`412f78c`](https://github.com/LTplus-AG/ifc-lite/commit/412f78c1bf4907f8c230fc149bbb00e0711b6689), [`487866d`](https://github.com/LTplus-AG/ifc-lite/commit/487866dac131bf50a0b3008ddce5db933768dca2), [`20264d8`](https://github.com/LTplus-AG/ifc-lite/commit/20264d8b1ee82169a02f9dc588decc45fb8fdc00), [`00f6e79`](https://github.com/LTplus-AG/ifc-lite/commit/00f6e79c22641ff59bfb3327d910b04f9a164d8b), [`116a3e9`](https://github.com/LTplus-AG/ifc-lite/commit/116a3e94de753b95fa94b2d6c41a0171cd254729)]:
+  - @ifc-lite/data@3.4.1
+  - @ifc-lite/mutations@1.27.0
+  - @ifc-lite/pointcloud@0.7.1
+
 ## 2.3.7
 
 ### Patch Changes

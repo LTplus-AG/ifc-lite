@@ -93,11 +93,6 @@ const MARKER = /@source-text-assertion-ok\b[ \t]*(\S[^\n]*)?/;
 const OPENERS = '([{';
 const CLOSERS = ')]}';
 
-/**
- * Blank out string and template-literal CONTENT, preserving length, newlines,
- * and `${…}` interpolations. Length preservation is load-bearing: every index
- * computed on the blanked text is used against the original.
- */
 /** Characters after which a `/` begins a REGEX rather than a division. */
 const REGEX_PRECEDERS = new Set([
   '(', ',', '=', ':', '[', '!', '&', '|', '?', '{', '}', ';', '+', '-', '*', '%', '~', '^', '>', '\n',
@@ -159,6 +154,11 @@ function regexLiteralEnd(src, start) {
   return start;
 }
 
+/**
+ * Blank out string and template-literal CONTENT, preserving length, newlines,
+ * and `${…}` interpolations. Length preservation is load-bearing: every index
+ * computed on the blanked text is used against the original.
+ */
 export function blankStrings(src) {
   const out = src.split('');
   const stack = [];
@@ -320,7 +320,11 @@ function receiverStart(blanked, dot) {
 /** Every name that can hold, or return, bytes that came off the disk. */
 function computeTainted(blanked) {
   const tainted = new Set(['readFileSync', 'readFile']);
-  const refersToTainted = (expr) => {
+  // TRUE when `expr` yields bytes off the disk -- either because it PERFORMS a
+  // read, or because it refers to a name already known to hold one. The two
+  // arms are why this is not called `refersToTainted`: the first answers a
+  // question about the expression itself, not about the `tainted` set.
+  const carriesFileBytes = (expr) => {
     // A READ is a read however it is spelled. `valueIdentifiers` drops any name
     // preceded by `.`, so `fs.readFileSync(p)` yielded `{fs, p}` and taint never
     // started -- `READS_A_FILE` still matched, so the file was ANALYSED rather
@@ -387,14 +391,14 @@ function computeTainted(blanked) {
   for (let pass = 0; pass < 8; pass++) {
     const before = tainted.size;
     for (const b of bindings) {
-      if (refersToTainted(b.rhs)) for (const n of b.names) tainted.add(n);
+      if (carriesFileBytes(b.rhs)) for (const n of b.names) tainted.add(n);
     }
     for (const fn of fns) {
       // A helper that returns file bytes taints its own name, so both
       // `readSource(f).includes(x)` and `const s = readSource(f)` are seen.
       if (fn.name && !tainted.has(fn.name)) {
         const returned = fn.concise ? [fn.body] : fn.body.match(/\breturn\b[^;\n]*/g) || [];
-        if (returned.some(refersToTainted)) tainted.add(fn.name);
+        if (returned.some(carriesFileBytes)) tainted.add(fn.name);
       }
       // A tainted argument taints the parameter it lands in.
       if (!fn.name || fn.params.length === 0) continue;
@@ -404,7 +408,7 @@ function computeTainted(blanked) {
         const open = callRe.lastIndex - 1;
         const args = splitArgs(blanked.slice(open + 1, matchParen(blanked, open)));
         args.forEach((arg, idx) => {
-          if (idx < fn.params.length && refersToTainted(arg)) tainted.add(fn.params[idx]);
+          if (idx < fn.params.length && carriesFileBytes(arg)) tainted.add(fn.params[idx]);
         });
       }
     }
@@ -419,7 +423,7 @@ function computeTainted(blanked) {
     // not trigger this.
     for (const call of blanked.matchAll(/[)\]]\s*\(/g)) {
       const open = call.index + call[0].length - 1;
-      if (!splitArgs(blanked.slice(open + 1, matchParen(blanked, open))).some(refersToTainted))
+      if (!splitArgs(blanked.slice(open + 1, matchParen(blanked, open))).some(carriesFileBytes))
         continue;
       for (const m2 of blanked.matchAll(/(\([^()]*\)|\b[A-Za-z_$][\w$]*)\s*=>/g))
         for (const p of valueIdentifiers(m2[1])) tainted.add(p);
@@ -449,39 +453,8 @@ function splitArgs(text) {
   return args;
 }
 
-/**
- * @param {string} original Raw file text (comments intact — markers live there).
- * @returns {{ flagged: boolean, hits: Array<{line: number, text: string}>,
- *             marked: Array<{line: number, reason: string}>,
- *             unusedMarkers: number[] }}
- */
 /** A line is a continuation of the one below it when it ends mid-expression. */
 const CONTINUES = /(?:[([,]|=>|&&|\|\||[-+*/%?:]|=)\s*$/;
-
-/**
- * `line` with any trailing `//` comment removed, so {@link CONTINUES} is asked
- * about CODE rather than prose.
- *
- * Without this the walk was defeated by an ordinary comment: `CONTINUES`
- * contains `*`, `/`, `:` and `-`, so `// Arrange:`, `// see https://x/`, a
- * JSDoc ` *` line and this repo's own `// ------` separators all read as
- * continuations. A stale marker then reached across them to excuse an unrelated
- * predicate AND was recorded as used, so the dead-marker check went quiet too:
- * both halves of the gate wrong at once.
- *
- * A `//` inside a string (`'file:///x'`) is truncated here as well, which makes
- * the line look like a NON-continuation. That direction is safe: the marker is
- * not accepted, so the predicate is reported rather than silently excused.
- */
-function codeOf(line) {
-  const at = line.indexOf('//');
-  const code = (at === -1 ? line : line.slice(0, at)).trim();
-  // A BLOCK-comment fragment carries no code either, and ` */` is the one that
-  // bites: it ends in `/`, which `CONTINUES` accepts, so a JSDoc block above a
-  // stale marker read as one long continuation.
-  if (code.startsWith('*') || code.startsWith('/*')) return '';
-  return code;
-}
 
 /**
  * The line carrying the marker that excuses a predicate on `line`, or `null`.
@@ -492,16 +465,24 @@ function codeOf(line) {
  * first line and allows the marker anywhere from just above that down to the
  * predicate itself.
  *
- * The 24-line bound is a runaway guard, not a policy: a statement longer than
- * that is already unreadable, and the previous bound of 8 was small enough that
- * a legitimately long wrapped assertion fell out the other side and hit the
- * double failure this exists to remove.
+ * `codeLines` must be COMMENT-STRIPPED (`stripComments`), because `CONTINUES`
+ * contains `*`, `/`, `:` and `-`, so `// Arrange:`, `// see https://x/`, a JSDoc
+ * ` *` line and this repo's own `// ------` separators all read as continuations
+ * of prose. A stale marker then reaches across them to excuse an unrelated
+ * predicate AND is recorded as used, so the dead-marker check goes quiet too:
+ * both halves of the gate wrong at once.
+ *
+ * The 24-line bound is a POLICY cap on how far a marker may reach, not a
+ * runaway guard -- the walk terminates on its own, because `codeLines[top - 2]`
+ * yields `''` at the top of the file and `''` is not a continuation. The
+ * previous bound of 8 was small enough that a legitimately long wrapped
+ * assertion fell out the other side and hit the double failure above.
  */
-function markerLineFor(markerLines, rawLines, line) {
+function markerLineFor(markerLines, codeLines, line) {
   if (markerLines.has(line)) return line;
   let top = line;
   for (let n = 0; n < 24; n++) {
-    const above = codeOf(rawLines[top - 2] ?? '');
+    const above = (codeLines[top - 2] ?? '').trim();
     if (!CONTINUES.test(above)) break;
     top -= 1;
   }
@@ -511,8 +492,15 @@ function markerLineFor(markerLines, rawLines, line) {
   return null;
 }
 
+/**
+ * @param {string} original Raw file text (comments intact — markers live there).
+ * @returns {{ flagged: boolean, hits: Array<{line: number, text: string}>,
+ *             marked: Array<{line: number, reason: string}>,
+ *             unusedMarkers: number[] }}
+ */
 export function analyze(original) {
   const stripped = stripComments(original);
+  const strippedLines = stripped.split('\n');
   const empty = { flagged: false, hits: [], marked: [], unusedMarkers: [] };
   const rawLines = original.split('\n');
   const markerLines = new Map();
@@ -566,7 +554,7 @@ export function analyze(original) {
     // marker excused nothing AND was then reported as unused: CI failed twice
     // and the printed fix did not work. A remedy an instrument prints has to be
     // one the instrument accepts.
-    const markerLine = markerLineFor(markerLines, rawLines, line);
+    const markerLine = markerLineFor(markerLines, strippedLines, line);
     if (markerLine !== null && markerLines.get(markerLine)) {
       usedMarkers.add(markerLine);
       marked.push({ line, reason: markerLines.get(markerLine) });

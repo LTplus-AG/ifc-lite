@@ -415,7 +415,20 @@ test('a marker that excuses nothing is still an unused marker', () => {
   // or this repo's own `// -----` separator read as a continuation and let a
   // stale marker reach an unrelated predicate -- while ALSO marking it used, so
   // the dead-marker check went quiet.
-  for (const separator of ['// Arrange:', '// ------------------', '// see https://x/', ' */']) {
+  //
+  // The last two are why the walk reads `stripComments` output rather than a
+  // per-line stripper of its own: a TRAILING block comment leaves the line
+  // ending in `/`, and truncating at the `//` of a URL leaves it ending in `:`.
+  // Both are accepted by `CONTINUES`, so both let the marker reach further --
+  // a per-line stripper made the gate WORSE on them, not merely no better.
+  for (const separator of [
+    '// Arrange:',
+    '// ------------------',
+    '// see https://x/',
+    '/** a balanced block */',
+    'const unrelated = 1; /* trailing block */',
+    'const url = "http://x";',
+  ]) {
     const r = analyze(`
 import { readFileSync } from 'node:fs';
 const source = readFileSync('a/b.ts', 'utf8');

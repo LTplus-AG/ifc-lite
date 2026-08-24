@@ -42,7 +42,9 @@
  *
  * IF YOU ARE HERE BECAUSE A CORRECT TEST IS FLAGGED: the escape hatch is an
  * `// @source-text-assertion-ok <reason>` comment on the assertion's own line or
- * the line above it, in the style of `@unwired-by-design`. It exists for the
+ * above it, in the style of `@unwired-by-design`. An assertion wrapped over
+ * several lines counts as one, so the marker may sit above the line the
+ * assertion STARTS on; `markerLineFor` in the detector owns the exact rule. It exists for the
  * anchor guard -- `assert.ok(source.includes(from))` before a
  * `source.replace(from, to)`, which asserts on file text precisely so a mutation
  * that silently fails to apply cannot test nothing. Marked sites are counted and

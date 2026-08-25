@@ -534,21 +534,15 @@ fn the_legacy_aware_type_product_gate_widens_by_exactly_three_keywords() {
             && IfcType::from_str(kw).is_subtype_of(IfcType::IfcTypeProduct)
     }
 
-    let legacy = [
-        "IFCPRESENTATIONSTYLEASSIGNMENT", "IFCBEAMSTANDARDCASE", "IFCCOLUMNSTANDARDCASE",
-        "IFCMEMBERSTANDARDCASE", "IFCPLATESTANDARDCASE", "IFCSLABSTANDARDCASE",
-        "IFCDOORSTANDARDCASE", "IFCWINDOWSTANDARDCASE", "IFCOPENINGSTANDARDCASE",
-        "IFCSLABELEMENTEDCASE", "IFCWALLELEMENTEDCASE", "IFCDOORSTYLE", "IFCWINDOWSTYLE",
-        "IFCPROXY", "IFCBUILDINGELEMENT", "IFCBUILDINGELEMENTTYPE", "IFCEQUIPMENTELEMENT",
-        "IFCELECTRICDISTRIBUTIONPOINT", "IFCELECTRICALELEMENT", "IFCCHAMFEREDGEFEATURE",
-        "IFCROUNDEDEDGEFEATURE", "IFCSTRUCTURALLINEARACTIONVARYING",
-        "IFCSTRUCTURALPLANARACTIONVARYING", "IFCSOLIDSTRATUM", "IFCVOIDSTRATUM",
-        "IFCWATERSTRATUM",
-    ];
-    // The list above must BE the legacy table, or the sweep has a blind spot.
-    for kw in legacy {
-        assert!(crate::is_legacy_entity(kw), "{kw} is not in the legacy table");
-    }
+    // The whole legacy table, walked -- not a hand-copy of it. A hand-copied
+    // list can only assert the cheap direction (every listed name is legacy)
+    // and stays green when the table grows a name the list omits, which is
+    // exactly the case that widens these six gates without anyone noticing.
+    // `LEGACY_ENTITY_NAMES` is re-derived from the match arms by
+    // `legacy_entities::legacy_entity_name_tests::legacy_entity_names_match_the_lookup_arms`,
+    // so a new arm reaches this sweep and, if it is a `TYPE`/`STYLE` name,
+    // reds the widening-set assertion below.
+    let legacy = crate::LEGACY_ENTITY_NAMES.iter().copied();
 
     let mut widened: Vec<(&str, IfcType)> = Vec::new();
     let names: Vec<String> = crate::IFC_TYPES
@@ -568,7 +562,12 @@ fn the_legacy_aware_type_product_gate_widens_by_exactly_three_keywords() {
         }
     }
 
-    assert_eq!(widened, EXPECTED_NEW.to_vec(), "unexpected widening set");
+    // Compared as sets (both sides sorted): the sweep's order follows
+    // `LEGACY_ENTITY_NAMES`, and reordering that const is not a defect.
+    widened.sort_by_key(|&(kw, _)| kw);
+    let mut expected = EXPECTED_NEW.to_vec();
+    expected.sort_by_key(|&(kw, _)| kw);
+    assert_eq!(widened, expected, "unexpected widening set");
 
     for (kw, _) in EXPECTED_NEW {
         // No double-render: none of the three is also an ordinary geometry job.

@@ -277,4 +277,83 @@ mod tests {
             discovery.buffered_jobs
         );
     }
+
+    // #3187: an IFC2X3 `IfcDoorStyle` whose RepresentationMap no IfcMappedItem
+    // references. `IfcType::from_str("IFCDOORSTYLE")` is `Unknown` -- the
+    // keyword is one IFC4X3 dropped -- so the flag-setting classifier and the
+    // label this walk attaches must BOTH go through the legacy-aware
+    // resolver, or the span is either never flagged or flagged and then
+    // labelled `Unknown`.
+    const LEGACY_TYPE_FIXTURE: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('t.ifc','',(''),(''),'','','');
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0Project0000000000000A',$,'P',$,$,$,$,(#2),#3);
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
+#3=IFCUNITASSIGNMENT((#6));
+#4=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCAXIS2PLACEMENT3D(#4,$,$);
+#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#8=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(0.,1.,0.),(0.,0.,1.)));
+#10=IFCREPRESENTATIONMAP(#5,#12);
+#12=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#13));
+#13=IFCTRIANGULATEDFACESET(#8,$,.T.,((1,2,3),(1,2,4),(1,4,3),(2,3,4)),$);
+#20=IFCDOORSTYLE('0DoorStyle000000000A',$,'DoorStyle',$,$,$,(#10),$,.NOTDEFINED.,.NOTDEFINED.,.F.,.F.);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+    /// The sharded browser path's own pin for #3187. The serial scan is not
+    /// reachable from a host test (it lives inside a `#[wasm_bindgen]` method
+    /// driven by JS callbacks), but this walk is, and it is the path that
+    /// re-attaches an `IfcType` to a span someone else flagged -- the exact
+    /// place a bare `IfcType::from_str` would put `Unknown` on the wire.
+    #[test]
+    fn sharded_column_discovery_labels_a_legacy_type_candidate_with_its_base_type() {
+        let bytes = LEGACY_TYPE_FIXTURE.as_bytes();
+        assert!(
+            matches!(
+                ifc_lite_core::IfcType::from_str("IFCDOORSTYLE"),
+                ifc_lite_core::IfcType::Unknown(_)
+            ),
+            "sanity: the BARE resolver must not know IFCDOORSTYLE, or this test \
+             cannot tell the legacy-aware label from the literal one"
+        );
+
+        let (records, classes, handoff) =
+            ifc_lite_processing::scan_shard_classified(bytes, 0, bytes.len());
+        assert!(handoff.is_none(), "single shard must cover the whole fixture");
+        let ids: Vec<u32> = records.iter().map(|&(id, _, _)| id).collect();
+        let starts: Vec<u32> = records.iter().map(|&(_, s, _)| s as u32).collect();
+        let lengths: Vec<u32> = records.iter().map(|&(_, s, e)| (e - s) as u32).collect();
+
+        let style_idx = records
+            .iter()
+            .position(|&(_, s, e)| keyword_at(bytes, s, e) == "IFCDOORSTYLE")
+            .expect("fixture must contain the IFCDOORSTYLE");
+        assert!(
+            classes[style_idx] & ifc_lite_processing::PREPASS_CLASS_FLAG_TYPE_CANDIDATE != 0,
+            "IFCDOORSTYLE's shard class byte must carry the type-candidate flag (#3187)"
+        );
+
+        let disabled = rustc_hash::FxHashSet::default();
+        let discovery = discover_from_columns(bytes, &ids, &starts, &lengths, &classes, &disabled);
+        let style_id = records[style_idx].0;
+        let labelled: Vec<_> = discovery
+            .type_candidate_spans
+            .iter()
+            .filter(|&&(id, _, _, _)| id == style_id)
+            .map(|&(_, _, _, ty)| ty)
+            .collect();
+        assert_eq!(
+            labelled,
+            vec![ifc_lite_core::IfcType::IfcDoorType],
+            "the sharded walk must carry the legacy IfcDoorStyle forward as its base \
+             type IfcDoorType, not as Unknown and not dropped; type_candidate_spans = {:?}",
+            discovery.type_candidate_spans
+        );
+    }
 }

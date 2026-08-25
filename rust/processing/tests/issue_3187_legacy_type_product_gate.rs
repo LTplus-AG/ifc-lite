@@ -94,6 +94,17 @@ fn legacy_type_keywords_set_the_shard_type_candidate_flag() {
 /// pre-filter admits only these three entries of the legacy table, and
 /// `IFCPRESENTATIONSTYLEASSIGNMENT` (the only other legacy `*STYLE*` name) does
 /// not end in either suffix.
+///
+/// NOT a guard on the six gates #3187 rewired, and it should not be read as
+/// one. It asserts only over `legacy_aware_ifc_type`, `IfcType::from_str` and
+/// `has_geometry_by_name` -- three functions #3187 leaves untouched -- and it
+/// stays green under the mutation that reds the tests above (maintainer review
+/// of #3190, confirmed by re-running it). What it does guard is
+/// `legacy_entities.rs`: flip `has_geometry` to `true` on any of the three, or
+/// move a base type, and the widened gates would start double-rendering; this
+/// reddens first. The gates themselves are pinned by the other tests in this
+/// file, by `schema_helpers_tests.rs`'s widening sweep, and by the per-site
+/// tests in `export` and `wasm-bindings`.
 #[test]
 fn newly_admitted_legacy_type_candidates_are_never_also_geometry_jobs() {
     let newly_admitted = [

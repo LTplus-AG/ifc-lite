@@ -45,7 +45,7 @@
    583 apps/viewer/src/components/viewer/EntityContextMenu.tsx
    863 apps/viewer/src/components/viewer/ExportDialog.tsx
    531 apps/viewer/src/components/viewer/GLBExportDialog.tsx
-  1419 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
+  1424 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
    435 apps/viewer/src/components/viewer/hierarchy/useHierarchyTree.ts
   1159 apps/viewer/src/components/viewer/HierarchyPanel.tsx
   1198 apps/viewer/src/components/viewer/IDSPanel.tsx

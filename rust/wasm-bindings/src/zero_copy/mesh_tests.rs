@@ -229,3 +229,44 @@ fn new_converts_origin_local_bounds_and_local_to_world_to_yup() {
     ];
     assert_eq!(ltw, expected, "local_to_world must be conjugated as S*M*S^T, not merely translated");
 }
+
+/// `Default` and `new` must agree on every field `new` does not derive from its
+/// arguments. Pinned because the two are separate constructors and the derive
+/// would have disagreed silently: `#[derive(Default)]` gives `false` for the
+/// texture repeat flags while `new` sets them `true`, so a `default()` plus
+/// setters would clamp a texture that should tile. Review caught that; this
+/// stops it coming back as a derive.
+#[test]
+fn default_agrees_with_new_on_the_fields_new_does_not_take() {
+    let from_new = MeshDataJs::new(1, "IfcWall".to_string(), Mesh::default(), [1.0, 1.0, 1.0, 1.0]);
+    let d = MeshDataJs::default();
+
+    assert_eq!(
+        d.texture_repeat_s(), from_new.texture_repeat_s(),
+        "Default and new disagree on textureRepeatS; a default()-built mesh would clamp",
+    );
+    assert_eq!(
+        d.texture_repeat_t(), from_new.texture_repeat_t(),
+        "Default and new disagree on textureRepeatT",
+    );
+    assert_eq!(d.geometry_class(), from_new.geometry_class());
+    assert_eq!(d.geometry_item_id(), from_new.geometry_item_id());
+    assert_eq!(d.material_id(), from_new.material_id());
+    assert_eq!(d.texture_id(), from_new.texture_id());
+    assert_eq!(d.has_texture(), from_new.has_texture());
+    // The rest of the fields `new` does not take. Enumerated rather than
+    // derived because there is no reflection here, so adding a field means
+    // adding a line: an earlier version named seven getters and a divergent
+    // eighth would have passed.
+    //
+    // `uvs` and `texture_rgba` are deliberately absent: their getters build
+    // `js_sys` typed arrays, which panic outside a JS runtime, and this test
+    // runs on the NATIVE host as part of `cargo test --workspace`. Both are
+    // plain `Vec` fields that `Default` and `new` leave empty.
+    assert_eq!(d.texture_width(), from_new.texture_width());
+    assert_eq!(d.texture_height(), from_new.texture_height());
+    assert_eq!(d.texture_url(), from_new.texture_url());
+    assert_eq!(d.shading_color().is_none(), from_new.shading_color().is_none());
+    assert_eq!(d.local_bounds().is_none(), from_new.local_bounds().is_none());
+    assert_eq!(d.local_to_world().is_none(), from_new.local_to_world().is_none());
+}

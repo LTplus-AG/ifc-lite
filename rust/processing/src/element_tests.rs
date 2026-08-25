@@ -7,6 +7,11 @@
 //! `#[path = "element_tests.rs"] mod tests;`.
 
 use super::*;
+// Read back through the module under test, NOT straight from core. Importing it
+// from core here shadows the glob and makes the assertion below compare the
+// constant with itself -- proven by mutation: a private `const
+// MAX_MAPPED_ITEM_DEPTH: u32 = 5;` in element_color.rs left this test green.
+use super::element_color::MAX_MAPPED_ITEM_DEPTH;
 
 fn refs(ids: &[u32]) -> FxHashSet<u32> {
     ids.iter().copied().collect()

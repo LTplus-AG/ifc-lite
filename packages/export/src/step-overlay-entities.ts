@@ -25,8 +25,8 @@
  * `step-source-iteration.ts` already injects, not duplicated here.
  * `applyOverlayEntityOverrides` is injected as `OverlayEntitiesContext`'s
  * field even though, since #2475's "remaining private helpers" step, it is
- * an ordinary export of `step-attribute-mutations.ts` this file could import
- * directly — kept as an injected field for symmetry with the other two and
+ * an ordinary export of `step-overlay-attribute-overrides.ts` this file could
+ * import directly — kept as an injected field for symmetry with the other two and
  * because `StepExporter.overlayEntitiesContext()` is still the one
  * construction site for this context, exactly as before that step.
  *
@@ -52,7 +52,7 @@ import type { ExportPass, StepExportOptions } from './step-exporter.js';
  */
 export interface OverlayEntitiesContext {
   readonly mutationView: MutablePropertyView | null;
-  /** `step-attribute-mutations.ts`'s `applyOverlayEntityOverrides`: resolves
+  /** `step-overlay-attribute-overrides.ts`'s `applyOverlayEntityOverrides`: resolves
    *  named/positional overrides against the overlay-created entity's
    *  EFFECTIVE class. */
   readonly applyOverlayEntityOverrides: (

@@ -942,8 +942,7 @@ if (LAYERED_AVAILABLE) {
 // nothing to warn the caller.
 //
 // These read the RAW `MeshCollection` rather than `parseMeshesViaPrePass`,
-// because `takeMesh` and `get` build their `MeshDataJs` separately and only the
-// raw handle can be read both ways.
+// because only the raw handle can be read both ways.
 //
 // The facade is pinned too, separately and deliberately: it mirrors
 // `convertMeshCollectionToBatch` field by field, and it DID silently drop both
@@ -1193,9 +1192,10 @@ if (LAYERED_AVAILABLE) {
   });
 
   test('takeMesh reports the same ids as get, and stays read-once', () => {
-    // The worker reads meshes with takeMesh and the main thread with get. They
-    // build MeshDataJs separately, so a field added to one and forgotten in the
-    // other is invisible until a browser session disagrees with a node one.
+    // The worker reads meshes with takeMesh and the main thread with get. Both
+    // now go through the derived Clone, so they can no longer disagree by
+    // construction -- what this still pins is that `from_mesh_data` wires the
+    // ids onto the struct at all, which no amount of deriving guarantees.
     const viaGet = layeredRows();
 
     const col = rawCollection(layeredContent);
@@ -1230,21 +1230,28 @@ if (LAYERED_AVAILABLE) {
       }
       assert.ok(viaTake.some((r) => r.vertexCount > 0), 'the first take returned no geometry at all');
 
-      // Read-once: takeMesh MOVES the vertex data out, so a second call for the
-      // same index yields an empty mesh. Pinned because the ids are Copy and
-      // ride along by field assignment today — a switch to `mem::take` on the
-      // whole struct would change what a second call reports, and this suite
-      // should be the thing that notices rather than a viewer that renders a
-      // mesh twice.
+      // Read-once: takeMesh MOVES the whole struct out, so a second call for the
+      // same index yields a DEFAULT mesh -- expressId 0, no ids, no geometry.
+      //
+      // This assertion used to permit either that or the old metadata-bearing
+      // husk, because the ids were Copy and rode along by field assignment. Its
+      // comment said a switch to `mem::take` on the whole struct would change
+      // what a second call reports and that this suite should be the thing that
+      // notices. That switch has now happened, so the permissive form is spent
+      // and the exact behaviour is pinned instead: a test that accepts both
+      // answers cannot report which one it got.
+      // Non-vacuity: `expressId === 0` below only means anything while mesh 0
+      // has a non-zero id to lose. A fixture swap could make it trivially true.
+      assert.notEqual(viaTake[0].expressId, 0, 'fixture mesh 0 has no express id to lose');
       const again = col.takeMesh(0);
       assert.ok(again, 'a second takeMesh returned nothing at all');
       try {
         assert.equal(again.vertexCount, 0, 'a second takeMesh still returned vertex data');
+        assert.equal(again.expressId, 0, 'a second takeMesh should report a default expressId');
         for (const field of ['geometryItemId', 'materialId']) {
-          const first = viaTake[0][field];
-          assert.ok(
-            again[field] === undefined || again[field] === first,
-            `a second takeMesh reported a DIFFERENT ${field} (${again[field]} vs ${first})`,
+          assert.equal(
+            again[field], undefined,
+            `a second takeMesh should report no ${field}, got ${again[field]}`,
           );
         }
       } finally {

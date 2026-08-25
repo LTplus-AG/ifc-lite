@@ -217,7 +217,16 @@ describe('formatQueryResult', () => {
 
   it('singular "entity" really does trigger at count 1', async () => {
     const out = await call('query_entities', { model_id: 'shape', in_storey: guid('STOR'), limit: 1 });
-    expect(text(out)).toMatch(/^Found \d+ matching entit(y|ies)/);
+    // Exact, like the 0- and 26-match cases above and below. This previously
+    // read `/^Found \d+ matching entit(y|ies)/`, which matches BOTH renderings
+    // — so the one test named for the pluralization boundary was the one test
+    // that could not detect crossing it.
+    //
+    // The fixture yields exactly one match: with no `type` filter only product
+    // types are candidates, `SHAPE_MODEL` declares no spatial-containment
+    // relations, so `storey()` returns null for every wall and only the storey
+    // itself (#41, the `guid('STOR')` this queries) resolves to itself.
+    expect(text(out)).toMatch(/^Found 1 matching entity\./);
     // Filter down to a single concrete entity via express id round trip instead:
     const single = await call('get_entity', { model_id: 'shape', express_id: 72 });
     expect(single).toBeDefined();

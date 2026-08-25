@@ -177,9 +177,7 @@ export function toStepReal(v: number): string {
   return formatStepReal(v);
 }
 
-/**
- * Map QuantityType enum to IFC STEP entity type name.
- */
+/** Map QuantityType enum to IFC STEP entity type name. */
 export function quantityTypeToIfcType(type: QuantityType): string {
   switch (type) {
     case QuantityType.Length: return 'IFCQUANTITYLENGTH';

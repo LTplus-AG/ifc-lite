@@ -228,6 +228,41 @@ test('vacuity: a packages/ dir holding no package.json fails instead of reportin
   }
 });
 
+test('an UNREADABLE package is not silently treated as an absent one', () => {
+  // Package DISCOVERY used `existsSync`, which answers false for every
+  // failure, EACCES included -- so a package the gate could not open dropped
+  // out of the audit with no error. Measured before the fix, against a
+  // `chmod 000` package carrying a real test script:
+  //
+  //   check-test-glob-coverage: OK (1 packages audited, 0 unrun test files)
+  //   EXIT=0
+  //
+  // which is this gate's own "absence reads as success" defect, one stage
+  // earlier than the walk it was fixed for.
+  //
+  // The fixture is a FILE where a package directory belongs, so `package.json`
+  // underneath it fails with ENOTDIR. That is deliberate: `chmod 000` does not
+  // stop root, and CI containers routinely run as root, so a permissions-based
+  // fixture would pass here and quietly not test anything on the machine that
+  // matters. ENOTDIR is the same "not ENOENT" branch and is deterministic for
+  // every user.
+  const dir = writeTree({
+    'packages/real-one/package.json': JSON.stringify({ name: 'real-one', scripts: { test: 'vitest run' } }),
+    'packages/real-one/src/a.test.ts': 'x',
+    // Not a directory. Statting `packages/blocked/package.json` gives ENOTDIR.
+    'packages/blocked': 'i am a file, not a package directory\n',
+  });
+  try {
+    const { status, out } = runOn(dir);
+    assert.equal(status, 1, `expected a non-zero exit on an unreadable package, got ${status}: ${out}`);
+    assert.match(out, /cannot read package manifest/);
+    assert.match(out, /Refusing to treat an unreadable path as an absent one/);
+    assert.doesNotMatch(out, /OK \(/, 'must not print a success line at all');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // --- Direct unit tests on the exported glob helpers ---
 
 test('globToRegExp: ** matches zero or more path segments', () => {

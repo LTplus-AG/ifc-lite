@@ -126,7 +126,18 @@ function findSourceFiles(dir, out = []) {
   for (const entry of entries) {
     if (SKIP_DIRS.has(entry) || entry.startsWith('.')) continue;
     const full = join(dir, entry);
-    if (statSync(full).isDirectory()) findSourceFiles(full, out);
+    // A dangling symlink is not a source file, but it is also not a reason to
+    // die with a raw stack trace -- a stale build artifact or a bad checkout
+    // leaves them around. Anything OTHER than "the target is gone" is a broken
+    // scan and stays loud, matching how this walk treats an unreadable dir.
+    let st;
+    try {
+      st = statSync(full);
+    } catch (err) {
+      if (err.code === 'ENOENT') continue;
+      throw err;
+    }
+    if (st.isDirectory()) findSourceFiles(full, out);
     else if (SOURCE_RE.test(entry) && !TEST_RE.test(entry)) out.push(full);
   }
   return out;

@@ -302,16 +302,41 @@ export function auditPackage(pkgDir, pkgJson) {
   return { testLooking, matched, missed };
 }
 
+/**
+ * Does this path exist? Throws if the answer is UNKNOWABLE.
+ *
+ * `existsSync` answers false for every failure, including EACCES, so an
+ * unreadable directory is indistinguishable from an absent one. That is the
+ * same "absence reads as success" defect this gate was fixed for -- one stage
+ * earlier, in DISCOVERY rather than in the walk. Measured before this change:
+ * a `chmod 000` package carrying a real test script reported
+ * `OK (1 packages audited, 0 unrun test files)` and exit 0, with the locked
+ * package silently missing from the count.
+ */
+function existsOrThrow(path, what) {
+  try {
+    statSync(path);
+    return true;
+  } catch (err) {
+    if (err.code === 'ENOENT') return false;
+    fail(
+      `cannot read ${what} ${path}: ${err.code || err.message}. ` +
+        'Refusing to treat an unreadable path as an absent one -- that is how a ' +
+        'package drops out of the audit without anyone noticing.',
+    );
+  }
+}
+
 export function listPackages(root, seenParents = []) {
   const out = [];
   for (const parent of PACKAGE_PARENTS) {
     const parentDir = join(root, parent);
-    if (!existsSync(parentDir)) continue;
+    if (!existsOrThrow(parentDir, 'package parent')) continue;
     seenParents.push(parent);
     for (const name of readdirSync(parentDir).sort()) {
       const pkgDir = join(parentDir, name);
       const pkgJsonPath = join(pkgDir, 'package.json');
-      if (!existsSync(pkgJsonPath)) continue;
+      if (!existsOrThrow(pkgJsonPath, 'package manifest')) continue;
       let pkgJson;
       try {
         pkgJson = JSON.parse(readFileSync(pkgJsonPath, 'utf8'));

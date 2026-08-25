@@ -323,3 +323,54 @@ test('audit(): the same tree passes once both floors are below what it holds', a
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('audit(): a package with tests but no tsconfig.json is a failure, not a silent skip', async () => {
+  // #3201 review finding 3. workspaceDirs skips a directory missing either
+  // tsconfig.json or package.json. Before this check, the tests inside such a
+  // directory were never counted and never mentioned, while the success line
+  // still claimed every test file under packages/ and apps/ was in a program.
+  const root = synthTree({
+    ...appWithOneTest('one'),
+    ...appWithOneTest('two'),
+    'packages/zz-unwired/package.json': JSON.stringify({ name: 'zz-unwired' }),
+    'packages/zz-unwired/src/thing.test.ts': "const x: number = 'not a number';\n",
+  });
+  try {
+    const { code, stderr } = await runAudit({ scanRoot: root, packagesFloor: 1, testFilesFloor: 1 });
+    assert.equal(code, 1, 'a test file in an unauditable directory must fail the gate');
+    assert.match(stderr, /packages\/zz-unwired: 1 test file\(s\) on disk but no tsconfig\.json/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('audit(): a directory missing both files is named for both', async () => {
+  const root = synthTree({
+    ...appWithOneTest('one'),
+    'packages/zz-loose/src/thing.test.ts': 'export const x = 1;\n',
+  });
+  try {
+    const { code, stderr } = await runAudit({ scanRoot: root, packagesFloor: 1, testFilesFloor: 1 });
+    assert.equal(code, 1);
+    assert.match(stderr, /no tsconfig\.json and no package\.json/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('audit(): an unauditable directory with no tests is not a failure', async () => {
+  // The paired probe: the check must fire on stray TESTS, not on every
+  // directory that lacks a tsconfig. packages/wasm and apps/landing are real
+  // examples in this repo today, and neither carries a test file.
+  const root = synthTree({
+    ...appWithOneTest('one'),
+    'packages/zz-nobuild/package.json': JSON.stringify({ name: 'zz-nobuild' }),
+    'packages/zz-nobuild/src/thing.ts': 'export const x = 1;\n',
+  });
+  try {
+    const { code, stderr } = await runAudit({ scanRoot: root, packagesFloor: 1, testFilesFloor: 1 });
+    assert.equal(code, 0, `expected a clean audit, got: ${stderr}`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

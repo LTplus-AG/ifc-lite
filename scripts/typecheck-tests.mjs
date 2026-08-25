@@ -228,7 +228,7 @@ async function checkOnePackage(pkgDir) {
  * @param {string[]} [seenParents] filled with the package parents that exist,
  *   so a caller can tell "no packages here" from "nowhere to look for them".
  */
-function workspaceDirs(seenParents = [], scanRoot = REPO_ROOT) {
+function workspaceDirs(seenParents = [], scanRoot = REPO_ROOT, skipped = []) {
   const dirs = [];
   for (const group of PACKAGE_PARENTS) {
     const base = path.join(scanRoot, group);
@@ -237,8 +237,17 @@ function workspaceDirs(seenParents = [], scanRoot = REPO_ROOT) {
     for (const name of readdirSync(base).sort()) {
       const dir = path.join(base, name);
       if (!statSync(dir).isDirectory()) continue;
-      if (!existsSync(path.join(dir, 'tsconfig.json'))) continue;
-      if (!existsSync(path.join(dir, 'package.json'))) continue;
+      const missing = [];
+      if (!existsSync(path.join(dir, 'tsconfig.json'))) missing.push('tsconfig.json');
+      if (!existsSync(path.join(dir, 'package.json'))) missing.push('package.json');
+      // A directory without both files cannot be audited — there is no program
+      // to resolve and no `typecheck` script to check. But "cannot be audited"
+      // is not "has no tests": the caller has to look inside before the run
+      // may claim it covered this parent. See auditSkipped() below.
+      if (missing.length > 0) {
+        skipped.push({ dir, missing });
+        continue;
+      }
       dirs.push(dir);
     }
   }
@@ -322,7 +331,8 @@ async function audit({
   const rows = [];
   const problems = [];
   const seenParents = [];
-  const dirs = workspaceDirs(seenParents, scanRoot);
+  const skipped = [];
+  const dirs = workspaceDirs(seenParents, scanRoot, skipped);
   const floors = { scanRoot, packagesFloor, testFilesFloor };
 
   // Anti-vacuity, structural. Checked before any tsc runs, because with an
@@ -331,6 +341,23 @@ async function audit({
   if (vacuous) {
     console.error(`\ntypecheck-tests: ${vacuous}`);
     return 1;
+  }
+
+  // #3201 review: the success line said "all N test file(s) ... under
+  // packages/ and apps/ are in a typecheck program", but workspaceDirs skips
+  // any directory missing tsconfig.json or package.json, and those files were
+  // never counted. A package added without a tsconfig.json therefore had its
+  // tests escape silently — the exact #2457 rot this gate exists to stop, one
+  // level up. Look inside every skipped directory before claiming the parent.
+  for (const { dir, missing } of skipped) {
+    const rel = toPosix(path.relative(scanRoot, dir));
+    const stray = findTestFiles(dir);
+    if (stray.length === 0) continue;
+    problems.push(
+      `${rel}: ${stray.length} test file(s) on disk but no ${missing.join(' and no ')}, ` +
+        `so this audit cannot resolve a typecheck program for it and skipped it entirely. ` +
+        `Add the missing file(s), or move the tests into a package that has them.`,
+    );
   }
 
   for (const dir of dirs) {

@@ -863,7 +863,12 @@ jobs:
       # #3181: `verify-npm-publish.js` only ever checked npm, so the v6.0.0
       # partial crates.io publish (#3180) went unreported — npm was complete,
       # and nothing checked the other registry. Covers `verify-crates-publish.js`
-      # reproducing that exact 3-of-7 shape against a stubbed registry.
+      # reproducing that exact 3-of-7 shape against a stubbed registry — and
+      # the EXIT CODE, not just the pure `verifyAll`: the step name claims the
+      # verifier "catches" a partial publish, which is a claim about what the
+      # process returns. `runMain` is driven directly so `if (failed.length >
+      # 0) → if (false)` (a partial publish exiting 0) and an empty crate list
+      # exiting 0 both fail here rather than at the next release.
       - name: Check the crates.io publish verifier catches a partial publish
         run: node --test scripts/verify-crates-publish.test.mjs
       # verify-esm-entrypoints.mjs is the last gate before `pnpm release`

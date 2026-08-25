@@ -120,3 +120,74 @@ test('publishAllCrates skips a crate already on crates.io without calling publis
     clock.restore();
   }
 });
+
+test('a transient crates.io error mid-list does NOT abort the release into a partial publish', async () => {
+  // The exact shape that used to break it: `isPublished` threw on any
+  // non-404 non-ok status and `waitUntilPublished` had no try/catch, so one
+  // 503 while polling the SECOND crate propagated to process.exit(1) with
+  // the first crate already on crates.io — producing the partial-publish
+  // state this script exists to prevent. Reproduced by a checkFn that
+  // throws once during the poll and then recovers.
+  const clock = fakeClock();
+  try {
+    const published = [];
+    const indexed = new Set();
+    let blipsLeft = 2;
+    const publishFn = (crate) => {
+      published.push(crate);
+      indexed.add(crate);
+    };
+    const checkFn = async (crate) => {
+      if (crate === 'ifc-lite-geometry' && blipsLeft > 0) {
+        blipsLeft--;
+        throw new Error('crates.io returned 503 for ifc-lite-geometry@6.0.0');
+      }
+      return indexed.has(crate);
+    };
+
+    await publishAllCrates({
+      crates: ['ifc-lite-core', 'ifc-lite-geometry', 'ifc-lite-clash'],
+      version: '6.0.0',
+      publishFn,
+      checkFn,
+      intervalMs: 5000,
+      timeoutMs: 60000,
+      sleepFn: clock.sleepFn,
+    });
+
+    assert.deepEqual(
+      published,
+      ['ifc-lite-core', 'ifc-lite-geometry', 'ifc-lite-clash'],
+      'a blip must not leave the release stopped part-way down the list'
+    );
+  } finally {
+    clock.restore();
+  }
+});
+
+test('a crates.io outage that outlasts the timeout still FAILS the release, and names the error', async () => {
+  // The other direction of the same rule: swallowing errors must not turn a
+  // dead registry into a green release.
+  const clock = fakeClock();
+  try {
+    const checkFn = async () => {
+      throw new Error('crates.io returned 503 for ifc-lite-core@6.0.0');
+    };
+
+    await assert.rejects(
+      () =>
+        publishAllCrates({
+          crates: ['ifc-lite-core'],
+          version: '6.0.0',
+          publishFn: () => {},
+          checkFn,
+          intervalMs: 5000,
+          timeoutMs: 20000,
+          sleepFn: clock.sleepFn,
+        }),
+      /did not appear in the crates\.io index[\s\S]*Last error from crates\.io: crates\.io returned 503/
+    );
+  } finally {
+    clock.restore();
+  }
+});

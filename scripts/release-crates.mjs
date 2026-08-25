@@ -60,7 +60,22 @@ export async function publishAllCrates({
   sleepFn,
 } = {}) {
   for (const crate of crates) {
-    if (await checkFn(crate, version)) {
+    // The already-published pre-check is an OPTIMISATION, not a gate: a
+    // registry error here (one that outlasted `cratesIoGet`'s retry budget)
+    // must not abort a release part-way down this list. Fall through to the
+    // publish attempt instead — `cargo publish` refuses a duplicate version
+    // loudly and by name, which is a far better failure than exiting with
+    // some crates up and some not.
+    let alreadyPublished = false;
+    try {
+      alreadyPublished = await checkFn(crate, version);
+    } catch (err) {
+      console.warn(
+        `⚠️  Could not ask crates.io whether ${crate}@${version} is already published ` +
+          `(${err.message}) — attempting the publish anyway.`
+      );
+    }
+    if (alreadyPublished) {
       console.log(`⏭️  ${crate}@${version} already on crates.io — skipping`);
       continue;
     }
@@ -68,7 +83,7 @@ export async function publishAllCrates({
     publishFn(crate);
 
     console.log(`⏳ Waiting for ${crate}@${version} to appear in the crates.io index …`);
-    const { ok, waitedMs, attempts } = await waitUntilPublished(crate, version, {
+    const { ok, waitedMs, attempts, lastError } = await waitUntilPublished(crate, version, {
       checkFn,
       intervalMs,
       timeoutMs,
@@ -81,7 +96,11 @@ export async function publishAllCrates({
           `\`cargo publish\` reported success locally, but the index has not caught ` +
           `up — publishing the next crate now would fail to resolve this one. Failing ` +
           `the release rather than racing it; re-running is safe once the index catches up ` +
-          `(already-published crates are skipped).`
+          `(already-published crates are skipped).` +
+          // Distinguishes "the index never caught up" from "crates.io was
+          // erroring the whole time" — the same message for both would send
+          // the operator hunting a propagation problem during an outage.
+          (lastError ? ` Last error from crates.io: ${lastError.message}` : '')
       );
     }
     console.log(`✅ Published and verified ${crate}@${version} in the index (${Math.round(waitedMs / 1000)}s, ${attempts} check(s))`);

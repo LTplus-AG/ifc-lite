@@ -42,6 +42,9 @@ jobs:
     outputs:
       published: ${{ steps.changesets.outputs.published }}
       version: ${{ steps.get-version.outputs.version }}
+      # Should the publish verifiers run for this commit? See the comment on
+      # `version_changed` in the `pre` step, and on `verify-npm-publish`.
+      verify: ${{ steps.changesets.outputs.published == 'true' || steps.pre.outputs.version_changed == 'true' }}
     steps:
       # AUTH for the changesets version PR (`chore: version packages`):
       # we use a fine-grained PAT (`secrets.RELEASE_PAT`), NOT the default
@@ -163,6 +166,33 @@ jobs:
           echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
           echo "sb_version=$(node -p "require('./packages/server-bin/package.json').version")" >> $GITHUB_OUTPUT
           echo "pending=$(find .changeset -maxdepth 1 -name '*.md' ! -name 'README.md' | wc -l | tr -d ' ')" >> $GITHUB_OUTPUT
+
+          # Does THIS commit carry a version bump?
+          #
+          # This is what gates the publish verifiers below, and it answers a
+          # different question from `changesets.outputs.published`. `published`
+          # is "did this RUN publish something", which is false on the re-run
+          # that RECOVERS a partial publish (npm has nothing left to publish
+          # by then) — so the verifier was skipped on exactly the attempt that
+          # needed checking (#3181, v6.0.0 attempt 2). "Is this the release
+          # commit" stays true across every re-run of it, and stays false for
+          # the ~50 ordinary pushes a day that publish nothing, so the
+          # verifiers neither skip a recovery nor fire vacuously.
+          #
+          # Read BEFORE changesets/action, like everything else in this step:
+          # afterwards package.json may already carry a bumped, unpublished
+          # version. An unreadable parent (shallow clone, root commit) yields
+          # an empty string, which differs from any real version — so the
+          # unknown case errs towards verifying.
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          PREVIOUS_VERSION=$(git show HEAD~1:package.json 2>/dev/null | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).version" 2>/dev/null || true)
+          if [ "${CURRENT_VERSION}" != "${PREVIOUS_VERSION}" ]; then
+            echo "version_changed=true" >> $GITHUB_OUTPUT
+            echo "version bump on this commit: ${PREVIOUS_VERSION:-<unknown>} -> ${CURRENT_VERSION}"
+          else
+            echo "version_changed=false" >> $GITHUB_OUTPUT
+            echo "no version bump on this commit (${CURRENT_VERSION})"
+          fi
 
       - name: Create Release Pull Request or Publish
         id: changesets
@@ -361,17 +391,105 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
           SB_VERSION: ${{ steps.release-gate.outputs.sb_version }}
 
-  # npm and crates.io publish verification used to live here as
-  # `needs: release` jobs gated on `needs.release.outputs.published`. #3181
-  # found that shape never actually ran on the v6.0.0 release, on EITHER
-  # attempt: attempt 1's successful npm publish pushed 34 tags (~76 downstream
-  # runs), starving this run's own dependent job of a runner before it was
-  # re-triggered; attempt 2 had nothing left to publish so `published` was
-  # 'false' and the gate correctly-by-its-own-logic skipped it — meaning a
-  # partial publish recovered by a re-run was never checked by either
-  # attempt. See `.github/workflows/verify-release-publish.yml`, which
-  # replaces both jobs with a `workflow_run`-triggered workflow that isn't a
-  # dependent of this run (so this run's own load can't starve it) and
-  # doesn't read this run's `published` output (so a recovery run is checked
-  # too — it just re-derives the expected version from the commit Release
-  # ran on and asks the registries directly).
+  # ── Publish verification ────────────────────────────────────────────────
+  #
+  # Verify every published package/crate is actually reachable on its
+  # registry. Catches a partial publish before users hit it.
+  #
+  # THE GATE, and why it is not `published`:
+  #
+  # These used to be gated `if: always() && needs.release.outputs.published
+  # == 'true'`. That asks "did THIS RUN publish something", which is false on
+  # the re-run that RECOVERS a partial publish — npm has nothing left to
+  # publish by then. #3181: on v6.0.0, attempt 2 was the attempt that fixed
+  # the partial publish, and it is the attempt the gate skipped. A verifier
+  # that cannot run on a recovery is not watching the case it exists for.
+  #
+  # `needs.release.outputs.verify` asks the question that survives a re-run
+  # instead: "is this commit a version bump, or did this run publish?" Both
+  # verifiers re-derive the expected versions from package.json / Cargo.toml
+  # at the checked-out commit, so they never needed to know whether THIS run
+  # is what published them.
+  #
+  # `always()` is the other load-bearing half. A failed `needs:` skips the
+  # dependent whatever the condition says, so the job that exists to confirm
+  # packages reached the registry could not run on the case it exists for: a
+  # PARTIAL publish. On 2026-08-14 nine packages went out, @ifc-lite/
+  # source-dalux 404'd, the release job failed — and this was skipped, so
+  # nothing named the missing package. It was found by hand afterwards.
+  #
+  # These stay JOBS IN THIS RUN rather than a separate `workflow_run`
+  # workflow. #3181's original report argued for moving them out because
+  # attempt 1's verifier had been "starved of a runner by the tag-push
+  # flood"; that was measured afterwards and is false — it queued 7m46s, ran,
+  # and passed, one second before the attempt was cancelled by hand. The
+  # remaining structural argument does not hold either: `concurrency:` above
+  # has no `cancel-in-progress`, which defaults to false, so a newer push
+  # QUEUES behind this run rather than cancelling it — GitHub never cancels
+  # these jobs with their parent. And a separate workflow queues into the
+  # same account-level runner pool, so being separate would confer no
+  # scheduling priority in any case. Staying in-run keeps the verdict on the
+  # Release run itself, keeps the YAML and `scripts/` at one commit, and
+  # cannot fire on the ~50 pushes a day that publish nothing.
+  verify-npm-publish:
+    name: Verify npm publish
+    needs: release
+    if: always() && needs.release.outputs.verify == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+
+      - name: Setup pnpm
+        # v6 reads the version from the `packageManager` field in
+        # package.json (`pnpm@10.8.1`); specifying `with.version` here
+        # would conflict and the action errors with ERR_PNPM_BAD_PM_VERSION.
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Verify all packages on npm
+        # New packages can take longer to appear in npm metadata after publish.
+        # Retry for up to ~4 minutes before failing.
+        run: node scripts/verify-npm-publish.js --retries 12 --delay 20000
+
+  # npm completing tells you NOTHING about crates.io — they are two
+  # independent registries published by `release-all.mjs`. #3181: the v6.0.0
+  # release published all 34 npm packages while only 3 of 7 crates reached
+  # crates.io (#3180), and there was no crates.io-side check at all to catch
+  # it. That absence, not any scheduling problem, is why the half-publish
+  # went unnoticed.
+  verify-crates-publish:
+    name: Verify crates.io publish
+    needs: release
+    if: always() && needs.release.outputs.verify == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          # Deliberately the same 22 as the npm verify job above, not the 24
+          # the `release` job needs. 24 is there for npm ≥ 11.5.1's OIDC
+          # trusted publishing; a verifier publishes nothing, so it has no
+          # such requirement and the two verify lanes are better kept on one
+          # runtime than silently drifting apart.
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Verify all crates on crates.io
+        # Crates.io propagation is normally fast, but give it the same
+        # ~4-minute retry budget as the npm check for a slow moment.
+        run: node scripts/verify-crates-publish.js --retries 12 --delay 20000

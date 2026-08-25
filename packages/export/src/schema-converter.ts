@@ -348,10 +348,10 @@ export function convertStepLine(
   // the wrong, type-invalid slots.
   //
   // Derived from the generated buildingSMART tables, not from a hand-kept count
-  // map. The map this replaced listed 30 entity types and reached only 10 of
-  // the 53 IFC4 → IFC2X3 appends, so IfcWallStandardCase, IfcZone, IfcGrid,
-  // IfcMaterial, IfcClassification and the IfcQuantity* family all carried an
-  // IFC4-only trailing attribute into IFC2X3 output. It also disagreed with the
+  // map. 63 IFC4 types shrink to a strict IFC2X3 prefix; the 30-entry map this
+  // replaced reached 10 of them, leaving 53 uncovered — IfcWallStandardCase,
+  // IfcZone, IfcGrid, IfcMaterial, IfcClassification and the IfcQuantity*
+  // family all carried an IFC4-only trailing attribute into IFC2X3 output. It also disagreed with the
   // schema twice (IfcPile 11 vs 10, IfcDistributionControlElement 8 vs 9).
   // Both schemas need a generated table, so an IFC5 source is left unadjusted.
   let finalAttrs = attrsRaw;

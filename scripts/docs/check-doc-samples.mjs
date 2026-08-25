@@ -26,6 +26,31 @@
  *   - an HTML comment `<!-- docs-check: skip -->` on the line directly
  *     above the opening fence
  *
+ * WHAT THIS GATE PROVES, AND HOW (#3200):
+ *   The compiler's result used to be read for its TEXT only - neither
+ *   `res.error` nor `res.status` was looked at - so "tsc never ran" and "tsc
+ *   ran and said nothing we recognise" both came out as a clean run. Deleting
+ *   `node_modules/.bin/tsc` entirely, with a deliberately broken snippet in
+ *   README.md, printed:
+ *
+ *     ✅ Doc code samples typecheck clean (262 snippets across 41 docs, 5 skipped).
+ *     EXIT=0
+ *
+ *   The printed count could not expose it, because it counted snippets WRITTEN
+ *   to the temp dir, not snippets checked.
+ *
+ *   The exit STATUS alone cannot be the fix. Measured against a healthy tree,
+ *   real tsc exits 2 on this program and always will: it reports ~540
+ *   diagnostics inside imported package SOURCES, which this harness ignores on
+ *   purpose (see the comment on `snippetRe`). Failing on a non-zero status
+ *   would fail every run. So the evidence is positive rather than negative -
+ *   `--listFiles` makes tsc name every file it actually put in the program,
+ *   and every snippet must appear there. That count, not the write count, is
+ *   what the success line reports. A compiler that could not be spawned, was
+ *   killed, or bailed out before building a program (TS5083 "cannot read
+ *   file", TS18003 "no inputs were found") reaches zero confirmed snippets and
+ *   is loud.
+ *
  * Run via `pnpm docs:check-samples`.
  */
 
@@ -205,11 +230,41 @@ try {
   writeFileSync(join(tmp, 'tsconfig.json'), `${JSON.stringify(tsconfig, null, 2)}\n`);
 
   const tsc = join(ROOT, 'node_modules', '.bin', 'tsc');
-  const res = spawnSync(tsc, ['--noEmit', '-p', join(tmp, 'tsconfig.json'), '--pretty', 'false'], {
-    cwd: ROOT,
-    encoding: 'utf-8',
-    maxBuffer: 64 * 1024 * 1024,
-  });
+  // `--listFiles` is what turns this from "tsc said nothing" into "tsc named
+  // the files it compiled". See the header: it is the only signal here that
+  // separates a clean check from a compiler that never got started.
+  const res = spawnSync(
+    tsc,
+    ['--noEmit', '--listFiles', '-p', join(tmp, 'tsconfig.json'), '--pretty', 'false'],
+    {
+      cwd: ROOT,
+      encoding: 'utf-8',
+      maxBuffer: 64 * 1024 * 1024,
+    },
+  );
+
+  // The compiler could not be RUN AT ALL - missing binary, not executable, no
+  // memory to fork. This is the #3194 shape exactly: an absent instrument read
+  // as a clean report. It is distinct from, and louder than, a compiler that
+  // ran and disliked something.
+  if (res.error) {
+    console.error(`\n❌ The doc-samples typecheck could not be RUN: ${res.error.message}\n`);
+    console.error(`   Tried to spawn: ${tsc}`);
+    console.error(
+      '   Refusing a vacuous pass: no snippet was typechecked, so this run has proved\n' +
+        '   nothing about the docs. Run `pnpm install` and try again.\n',
+    );
+    process.exit(1);
+  }
+  if (res.signal) {
+    console.error(`\n❌ The doc-samples typecheck was KILLED by ${res.signal} before it finished.\n`);
+    console.error(
+      '   Refusing a vacuous pass: a compiler that died partway through has not\n' +
+        '   cleared the snippets it never reached (an OOM here looks exactly like a\n' +
+        '   clean run to anything that only reads the output).\n',
+    );
+    process.exit(1);
+  }
 
   const out = `${res.stdout ?? ''}${res.stderr ?? ''}`;
   // Only diagnostics in the snippet files are in scope: a doc snippet's use
@@ -218,11 +273,46 @@ try {
   // concern — it has its own `turbo typecheck` lane — so they are ignored
   // here. Diagnostics in our own support files or the generated tsconfig do
   // fail: they mean this harness is misconfigured.
-  const snippetRe = /(?:^|[/\\])(snippet-\d{3})\.ts\((\d+),(\d+)\):\s*(error\s+TS\d+:\s*.*)$/;
+  // `\d{3,}`, not `\d{3}`, for the same reason `listedSnippet` below carries
+  // it: `padStart(3, '0')` pads TO three digits, it does not cap at three, so
+  // index 1000 is written as `snippet-1000.ts`. This anchor fails in the worse
+  // direction of the two. A diagnostic line matching none of these three
+  // regexes is dropped where the loop below falls off the end, so a real
+  // TS2322 in `snippet-1000.ts` would leave `failures` empty and the gate
+  // would print its ✅ over a snippet tsc had just rejected — a clean report
+  // over broken code, rather than the false alarm the listed-snippet anchor
+  // would have raised. 261 snippets today, so this is latent, not live.
+  const snippetRe = /(?:^|[/\\])(snippet-\d{3,})\.ts\((\d+),(\d+)\):\s*(error\s+TS\d+:\s*.*)$/;
   const supportRe = /(?:^|[/\\])(doc-samples-globals\.d\.ts|doc-samples-externals\.d\.ts|tsconfig\.json)(?:\((\d+),(\d+)\))?:\s*(error\s+TS\d+:\s*.*)$/;
+  // A `--listFiles` line is a bare path with no `(line,col): error` tail. One
+  // per file tsc actually placed in the program - the proof of work.
+  const listedSnippet = (line) => {
+    const t = line.trim();
+    if (!t.startsWith(tmp)) return null;
+    const rest = t.slice(tmp.length).replace(/^[/\\]/, '');
+    return /^snippet-\d{3,}\.ts$/.test(rest) ? rest : null;
+  };
+  // A diagnostic with NO file prefix is tsc talking about the invocation
+  // itself, not about any code: TS5083 (cannot read tsconfig), TS6053 (file
+  // not found), TS18003 (no inputs were found), a bad flag. The program was
+  // never built, so nothing was checked.
+  const configErrorRe = /^error TS(\d+): (.*)$/;
+
   const failures = [];
   const supportFailures = [];
+  const configErrors = [];
+  const confirmed = new Set();
   for (const line of out.split('\n')) {
+    const listed = listedSnippet(line);
+    if (listed) {
+      confirmed.add(listed);
+      continue;
+    }
+    const cfg = line.match(configErrorRe);
+    if (cfg) {
+      configErrors.push(`TS${cfg[1]}: ${cfg[2]}`);
+      continue;
+    }
     const m = line.match(snippetRe);
     if (m) {
       const block = byTmpName.get(`${m[1]}.ts`);
@@ -238,6 +328,20 @@ try {
     }
     const s = line.match(supportRe);
     if (s) supportFailures.push(`${s[1]}: ${s[4]}`);
+  }
+
+  // The compiler RAN and refused the job. Reported before snippet diagnostics
+  // because there are none to report: no program was built.
+  if (configErrors.length > 0) {
+    console.error(
+      `\n❌ The doc-samples typecheck could not be CONFIGURED (tsc exited ${res.status}):\n`,
+    );
+    for (const e of configErrors) console.error(`   ${e}`);
+    console.error(
+      `\n   Refusing a vacuous pass: tsc reported on the invocation rather than on any\n` +
+        `   code, so none of the ${checked.length} snippets was typechecked.\n`,
+    );
+    process.exit(1);
   }
 
   if (supportFailures.length > 0) {
@@ -263,8 +367,31 @@ try {
     process.exit(1);
   }
 
+  // The floor. Not a heuristic threshold: the exact set of snippets written is
+  // known, so the exact set tsc compiled must match it. Anything less means a
+  // snippet silently dropped out of the program, and a clean report over a
+  // snippet nobody compiled is the whole subject of #3200.
+  const missing = [...byTmpName.keys()].filter((n) => !confirmed.has(n));
+  if (missing.length > 0) {
+    console.error(
+      `\n❌ tsc exited ${res.status} but confirmed only ${confirmed.size} of ${checked.length} snippets in its program.\n`,
+    );
+    for (const name of missing.slice(0, 10)) {
+      const block = byTmpName.get(name);
+      console.error(`   never compiled: ${block.file}:${block.startLine} (fence #${block.fenceIndex})`);
+    }
+    if (missing.length > 10) console.error(`   … and ${missing.length - 10} more`);
+    console.error(
+      '\n   Refusing a vacuous pass: this gate reports on snippets tsc actually\n' +
+        '   compiled (`--listFiles`), not on snippets it wrote to a temp dir. A\n' +
+        '   compiler that never ran, was killed, or bailed out before building the\n' +
+        '   program lands here rather than printing a clean tick.\n',
+    );
+    process.exit(1);
+  }
+
   console.log(
-    `✅ Doc code samples typecheck clean (${checked.length} snippet${checked.length === 1 ? '' : 's'} across ${targetDocs().length} docs, ${skippedCount} skipped).`,
+    `✅ Doc code samples typecheck clean (${confirmed.size} snippet${confirmed.size === 1 ? '' : 's'} compiled across ${targetDocs().length} docs, ${skippedCount} skipped).`,
   );
 } finally {
   if (!KEEP) rmSync(tmp, { recursive: true, force: true });

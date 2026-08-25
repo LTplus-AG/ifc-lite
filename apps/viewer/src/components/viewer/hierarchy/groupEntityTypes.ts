@@ -16,6 +16,10 @@ export const GROUP_ENTITY_TYPES = [
   // IfcSystem family (bucketed under Systems).
   'IfcDistributionSystem',
   'IfcDistributionCircuit',
+  // IFC2X3's spelling of a distribution circuit — the class IFC4 renamed to
+  // IfcDistributionCircuit. `byType` is keyed by the raw STEP name, so without
+  // it every electrical circuit in an IFC2X3 file contributes zero rows.
+  'IfcElectricalCircuit',
   'IfcBuiltSystem',
   'IfcBuildingSystem',
   'IfcStructuralAnalysisModel',
@@ -24,6 +28,8 @@ export const GROUP_ENTITY_TYPES = [
   'IfcZone',
   // Remaining concrete IfcGroup descendants (bucketed under Other).
   'IfcAsset',
+  // IFC2X3-only, dropped in IFC4.
+  'IfcCondition',
   'IfcInventory',
   'IfcStructuralLoadGroup',
   'IfcStructuralLoadCase',
@@ -37,6 +43,7 @@ export type GroupSubFilter = 'all' | 'systems' | 'zones' | 'other';
 const SYSTEM_GROUP_TYPES: ReadonlySet<string> = new Set([
   'IfcDistributionSystem',
   'IfcDistributionCircuit',
+  'IfcElectricalCircuit',
   'IfcBuiltSystem',
   'IfcBuildingSystem',
   'IfcStructuralAnalysisModel',
@@ -44,9 +51,10 @@ const SYSTEM_GROUP_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /** Whether a group entity class passes the Groups-tab sub-filter.
- *  Systems = the IfcSystem family (incl. IfcDistributionCircuit and
- *  IfcStructuralAnalysisModel); Zones = IfcZone; Other = IfcGroup, IfcAsset,
- *  IfcInventory, the structural load/result groups and any remaining class. */
+ *  Systems = the IfcSystem family (incl. IfcDistributionCircuit, its IFC2X3
+ *  spelling IfcElectricalCircuit, and IfcStructuralAnalysisModel);
+ *  Zones = IfcZone; Other = IfcGroup, IfcAsset, IfcCondition, IfcInventory,
+ *  the structural load/result groups and any remaining class. */
 export function groupMatchesSubFilter(ifcType: string, filter: GroupSubFilter): boolean {
   switch (filter) {
     case 'all': return true;

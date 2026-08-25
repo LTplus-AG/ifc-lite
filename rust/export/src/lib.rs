@@ -40,6 +40,7 @@ mod rooms;
 pub mod rooted_type;
 mod schema_convert;
 mod shades;
+pub mod source_header;
 mod step;
 mod step_cow;
 mod step_header;

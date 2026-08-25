@@ -904,10 +904,10 @@ ENDSEC;
 END-ISO-10303-21;
 "#;
     let opts = StepOptions {
-        description: "d".into(),
-        author: "a".into(),
-        organization: "o".into(),
-        application: "app".into(),
+        description: Some("d".into()),
+        author: Some("a".into()),
+        organization: Some("o".into()),
+        application: Some("app".into()),
         property_mutations: vec![PropMutation {
             express_id: 2,
             pset_name: "P".into(),

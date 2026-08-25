@@ -80,10 +80,24 @@ pub struct StepOptions {
     pub property_mutations: Vec<PropMutation>,
     /// Copy-then-edit mutations for records other records share.
     pub copy_on_write: Vec<CopyOnWriteMutation>,
-    pub description: String,
-    pub author: String,
-    pub organization: String,
-    pub application: String,
+    /// `FILE_DESCRIPTION` item. `None` ⇒ keep the source file's items, and
+    /// fall back to the generic view-definition default only when the source
+    /// carried none.
+    pub description: Option<String>,
+    /// `FILE_NAME` author. `None` ⇒ keep the source file's.
+    pub author: Option<String>,
+    /// `FILE_NAME` organization. `None` ⇒ keep the source file's.
+    pub organization: Option<String>,
+    /// `FILE_NAME` preprocessor_version — the tool writing this file.
+    /// `None` ⇒ `ifc-lite`.
+    pub application: Option<String>,
+    /// `FILE_NAME` name. `None` ⇒ `export.ifc`.
+    pub filename: Option<String>,
+    /// `FILE_NAME` time_stamp. `None` ⇒ the source file's stamp. There is no
+    /// clock fallback: `SystemTime::now` is unavailable on the
+    /// `wasm32-unknown-unknown` target this exporter ships to, so a caller that
+    /// wants "now" states it.
+    pub time_stamp: Option<String>,
 }
 
 impl Default for StepOptions {
@@ -94,10 +108,12 @@ impl Default for StepOptions {
             attribute_mutations: Vec::new(),
             property_mutations: Vec::new(),
             copy_on_write: Vec::new(),
-            description: "ViewDefinition [CoordinationView]".to_string(),
-            author: "".to_string(),
-            organization: "".to_string(),
-            application: "ifc-lite".to_string(),
+            description: None,
+            author: None,
+            organization: None,
+            application: None,
+            filename: None,
+            time_stamp: None,
         }
     }
 }
@@ -289,6 +305,9 @@ fn emit<W: std::io::Write>(
         }
     };
 
+    // Read the source HEADER once, here, so the writer can carry its
+    // provenance forward instead of blanking it (see `step_header`).
+    let source_header = crate::source_header::parse_source_header(content);
     let source_schema = detect_schema(content);
     let schema = opts.schema.clone().unwrap_or_else(|| source_schema.clone());
     // Only convert entity types/attributes when an explicit target differs from source.
@@ -321,7 +340,7 @@ fn emit<W: std::io::Write>(
     let repointed = resolved.repointed;
 
     // 3. Emit header + filtered entities (source order) + footer.
-    crate::step_header::write_header(out, opts, &schema)?;
+    crate::step_header::write_header(out, opts, source_header.as_ref(), &schema)?;
 
     let mut written = 0usize;
     for id in &order {

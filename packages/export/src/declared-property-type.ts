@@ -90,7 +90,8 @@
 import { PropertyValueType } from '@ifc-lite/data';
 import { SCHEMA_REGISTRY } from '@ifc-lite/parser';
 import { getSelectDefinedLeaves } from './select-qualification.js';
-import { serializePropertyValue, serializeTypedMarker } from './step-serialization.js';
+import { serializeTypedMarker } from './step-serialization.js';
+import { serializePropertyValue } from './property-value-serialization.js';
 
 /** The SELECT `IfcPropertySingleValue.NominalValue` is declared as. */
 const NOMINAL_VALUE_SELECT = 'IfcValue';

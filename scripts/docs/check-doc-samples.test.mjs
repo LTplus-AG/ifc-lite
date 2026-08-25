@@ -49,7 +49,7 @@ const README = ['# Sample', '', '```ts', 'const n: number = 1;', '```', ''].join
  * snippet, and `node_modules/.bin/tsc` written from `tscShim` (pass `null` to
  * leave the binary out entirely).
  */
-function makeTree(tscShim) {
+function makeTree(tscShim, { readme = README } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'doc-samples-'));
   mkdirSync(join(root, 'scripts', 'docs'), { recursive: true });
   mkdirSync(join(root, 'docs', 'guide'), { recursive: true });
@@ -64,7 +64,7 @@ function makeTree(tscShim) {
   ]) {
     copyFileSync(join(HERE, f), join(root, 'scripts', 'docs', f));
   }
-  writeFileSync(join(root, 'README.md'), README, 'utf8');
+  writeFileSync(join(root, 'README.md'), readme, 'utf8');
 
   if (tscShim !== null) {
     const bin = join(root, 'node_modules', '.bin', 'tsc');
@@ -222,6 +222,42 @@ test('the listed-snippet regex still matches once the index reaches 4 digits', (
   assert.ok(re.test('snippet-1000.ts'), 'index 1000 must still match (padStart(3, "0") never truncates)');
   assert.ok(re.test('snippet-000.ts'), 'the common 3-digit case must keep matching');
   assert.ok(!re.test('snippet-00.ts'), 'fewer than 3 digits must still be rejected');
+});
+
+test('a snippet error at a 4-digit index is REPORTED, not silently dropped', () => {
+  // The sibling of the test above, in the same file, on the worse side of the
+  // asymmetry. `listedSnippet` anchoring on exactly 3 digits made a healthy
+  // tree fail; `snippetRe` anchoring on exactly 3 digits made a BROKEN tree
+  // pass — a diagnostic that matches none of the three recovery regexes is
+  // dropped where the loop falls off its end, so `failures` stays empty and
+  // the gate prints its ✅ over a snippet tsc had just rejected.
+  //
+  // Behavioural rather than a regex extraction: 1001 fences, so the last
+  // snippet is genuinely named `snippet-1000.ts` by the gate itself, and the
+  // shim reports an error against it by the name the gate chose. Cheap
+  // because the compiler is a shim.
+  const lines = ['# Sample', ''];
+  for (let i = 0; i <= 1000; i++) lines.push('```ts', 'const n: number = 1;', '```', '');
+  const root = makeTree(
+    workingTsc({
+      extraLines: [
+        "__TMP__/snippet-1000.ts(1,7): error TS2322: Type 'string' is not assignable to type 'number'.",
+      ],
+      status: 2,
+    }),
+    { readme: lines.join('\n') },
+  );
+  try {
+    const { status, out } = run(root);
+    assert.equal(status, 1, `expected exit 1, got ${status}: ${out}`);
+    assert.match(out, /failed to typecheck \(1 error\)/);
+    // Fence #1000's code line: 2 header lines, then 4 lines per fence.
+    assert.match(out, /README\.md:4004 \(fence #1000\)/);
+    assert.match(out, /TS2322/);
+    assert.doesNotMatch(out, /typecheck clean/, 'a rejected snippet must never read as clean');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('a non-zero exit with only out-of-scope diagnostics is still a clean run', () => {

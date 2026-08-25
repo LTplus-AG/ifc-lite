@@ -273,7 +273,16 @@ try {
   // concern — it has its own `turbo typecheck` lane — so they are ignored
   // here. Diagnostics in our own support files or the generated tsconfig do
   // fail: they mean this harness is misconfigured.
-  const snippetRe = /(?:^|[/\\])(snippet-\d{3})\.ts\((\d+),(\d+)\):\s*(error\s+TS\d+:\s*.*)$/;
+  // `\d{3,}`, not `\d{3}`, for the same reason `listedSnippet` below carries
+  // it: `padStart(3, '0')` pads TO three digits, it does not cap at three, so
+  // index 1000 is written as `snippet-1000.ts`. This anchor fails in the worse
+  // direction of the two. A diagnostic line matching none of these three
+  // regexes is dropped where the loop below falls off the end, so a real
+  // TS2322 in `snippet-1000.ts` would leave `failures` empty and the gate
+  // would print its ✅ over a snippet tsc had just rejected — a clean report
+  // over broken code, rather than the false alarm the listed-snippet anchor
+  // would have raised. 261 snippets today, so this is latent, not live.
+  const snippetRe = /(?:^|[/\\])(snippet-\d{3,})\.ts\((\d+),(\d+)\):\s*(error\s+TS\d+:\s*.*)$/;
   const supportRe = /(?:^|[/\\])(doc-samples-globals\.d\.ts|doc-samples-externals\.d\.ts|tsconfig\.json)(?:\((\d+),(\d+)\))?:\s*(error\s+TS\d+:\s*.*)$/;
   // A `--listFiles` line is a bare path with no `(line,col): error` tail. One
   // per file tsc actually placed in the program - the proof of work.

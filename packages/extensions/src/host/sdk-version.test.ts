@@ -69,6 +69,17 @@ describe('sdk-version', () => {
     expect(evaluateCompatibility('x', '>=2.1.0-rc.1', '2.5.0').status).toBe('compatible');
   });
 
+  it('a bare version pin (no comparator prefix) defaults to exact match', () => {
+    // Regression: `parseRange` defaults a missing comparator symbol to
+    // '=' (see COMPARATOR_RE / the `m[1] ?? '='` fallback), but nothing
+    // exercised a pin without an explicit operator — every other test
+    // uses '>=', '^', or '~'. Mutating the default to '>=' left the
+    // full suite green.
+    expect(evaluateCompatibility('x', '2.0.0', '2.0.0').status).toBe('compatible');
+    expect(evaluateCompatibility('x', '2.0.0', '2.5.0').status).toBe('outdated');
+    expect(evaluateCompatibility('x', '2.0.0', '1.9.0').status).toBe('outdated');
+  });
+
   it('findAffected returns one result per installed entry', () => {
     const results = findAffected(
       [

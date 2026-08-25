@@ -1,5 +1,21 @@
 # @ifc-lite/mutations
 
+## 1.27.0
+
+### Minor Changes
+
+- [#3000](https://github.com/LTplus-AG/ifc-lite/pull/3000) [`412f78c`](https://github.com/LTplus-AG/ifc-lite/commit/412f78c1bf4907f8c230fc149bbb00e0711b6689) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Added an opt-in write guard for collaborative/multi-user setups: `BulkQueryEngine` and `CsvConnector` now accept a `canEdit` callback that is checked before any write is applied, throwing a new `MutationGuardError` if it returns false. A `MutationGuard` type is exported for the callback shape. Callers that do not pass `canEdit` see no behaviour change.
+
+### Patch Changes
+
+- [#3032](https://github.com/LTplus-AG/ifc-lite/pull/3032) [`487866d`](https://github.com/LTplus-AG/ifc-lite/commit/487866dac131bf50a0b3008ddce5db933768dca2) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `MutablePropertyView.setProperty()` misclassifying the first edit of an already-present-but-null base property (an unset Boolean parsed from the source IFC file, the same shape as issue [#1107](https://github.com/LTplus-AG/ifc-lite/issues/1107)) as `CREATE_PROPERTY` instead of `UPDATE_PROPERTY`.
+  
+  `propExistedBefore` relied on `oldValue !== null` plus an in-session `newPsets` check, but neither test covers a property that exists in the *base* property table with a null value: `getPropertyValue()` legitimately returns null for it before any edit. `deleteProperty()` already avoids this trap with its own `propExistsInBase` lookup against the base pset's property list; `setProperty()` now checks the same thing, so the mutation is correctly classified as an update — keeping the exported mutation type consistent for any consumer that treats CREATE vs UPDATE differently (e.g. an undo that should restore the prior unset state rather than deleting the property outright).
+  
+  The base-pset lookup only counts a row that is still visible: a property the user has already deleted — directly, or by deleting its whole pset — is masked out of `getForEntity()`, so re-setting it stays a `CREATE_PROPERTY`. Otherwise undoing that re-set would replay `oldValue: null` and bring the deleted property back as a present-but-unset row instead of removing it.
+- Updated dependencies [[`9359bc4`](https://github.com/LTplus-AG/ifc-lite/commit/9359bc488173585b2b90e124cc66dcf8292c4be9), [`f6febcc`](https://github.com/LTplus-AG/ifc-lite/commit/f6febcc2d4986e79b3c44d63853bb72a16475c65), [`00f6e79`](https://github.com/LTplus-AG/ifc-lite/commit/00f6e79c22641ff59bfb3327d910b04f9a164d8b), [`116a3e9`](https://github.com/LTplus-AG/ifc-lite/commit/116a3e94de753b95fa94b2d6c41a0171cd254729)]:
+  - @ifc-lite/data@3.4.1
+
 ## 1.26.1
 
 ### Patch Changes

@@ -42,11 +42,15 @@ const ENTITY_NAME_ALIASES: Record<string, string> = {
     IFCSOLIDSTRATUM: 'IfcGeotechnicalStratum',
     IFCVOIDSTRATUM: 'IfcGeotechnicalStratum',
     IFCWATERSTRATUM: 'IfcGeotechnicalStratum',
-    // IFC2x3 names with no IFC4x3 enum variant in any bundled schema table
-    // (ENTITIES_IFC2X3/IFC4/IFC4X3 all lack them) — mirrors
-    // `rust/core/src/legacy_entities.rs`'s "IFC2x3 names that have no IFC4x3
-    // enum variant" arm, which maps both to `IfcDistributionElement`.
-    IFCELECTRICALDISTRIBUTIONPOINT: 'IfcDistributionElement',
+    // There was a fourth row here, `IFCELECTRICALDISTRIBUTIONPOINT`. The
+    // IFC2X3 entity is `IfcElectricDistributionPoint` — no "AL" — so the key
+    // named nothing and the row could never fire. Removed rather than
+    // respelled (#3172): the correctly spelled name IS in `ENTITIES_IFC2X3`,
+    // so `ENTITY_INFO_BY_UPPER` already resolves it and an alias would be a
+    // second, shadowing answer. This table's mandate is narrower than
+    // `legacy_entities.rs`'s: only names absent from ALL THREE bundled
+    // tables belong here, which is why the five IFC2X3 products that fix
+    // added on the Rust side have no row here either.
 };
 
 /**

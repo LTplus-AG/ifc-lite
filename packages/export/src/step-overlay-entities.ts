@@ -63,7 +63,7 @@ export interface OverlayEntitiesContext {
     schemaVersion: ExportPass['sourceSchema'],
     onRejected?: (attrName: string, value: string) => void,
   ) => string;
-  /** `StepExporter.isGeometryEntity`, also read by the setup closure and by
+  /** `isGeometryEntity` (`step-geometry-types.ts`), also read by the setup closure and by
    *  `step-source-iteration.ts`. */
   readonly isGeometryEntity: (type: string) => boolean;
   /** The `relationshipWithheldWarning` message builder (`step-exporter.ts`):

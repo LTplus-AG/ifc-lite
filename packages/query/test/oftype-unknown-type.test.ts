@@ -94,9 +94,11 @@ const STANDARD_BUT_UNMAPPED = [
   'IfcAudioVisualAppliance',
   'IfcDoorStyle',
   'IfcWindowStyle',
-  // IFC2X3 leaf that no bundled EXPRESS export carries; the parser's
-  // `ENTITY_NAME_ALIASES` is the only table that knows it.
-  'IfcElectricalDistributionPoint',
+  // IFC2X3 flow-controller leaf, carried by `ENTITIES_IFC2X3` and by no enum.
+  // Spelled `IfcElectricalDistributionPoint` here until #3172 -- a name with an
+  // "AL" that IFC2X3 does not have, which reached this list from a misspelt arm
+  // in `rust/core/src/legacy_entities.rs` by way of an alias row mirroring it.
+  'IfcElectricDistributionPoint',
 ] as const;
 
 /**

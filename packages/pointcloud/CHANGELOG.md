@@ -1,5 +1,11 @@
 # @ifc-lite/pointcloud
 
+## 0.7.1
+
+### Patch Changes
+
+- [#3010](https://github.com/LTplus-AG/ifc-lite/pull/3010) [`20264d8`](https://github.com/LTplus-AG/ifc-lite/commit/20264d8b1ee82169a02f9dc588decc45fb8fdc00) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix a decode-worker resource leak: `handleOpen` registered a newly-opened `StreamingPointSource` into the worker's `sources` map before reporting `{ kind: 'opened', sourceId }` back to the main thread. If that report failed to post, the client never learned the source's id and could therefore never send `close`/`abort` for it, leaking the source (its file reader / native buffers) for the life of the worker. The worker now reports success first and only registers the source once that succeeds, releasing it itself if reporting fails.
+
 ## 0.7.0
 
 ### Minor Changes

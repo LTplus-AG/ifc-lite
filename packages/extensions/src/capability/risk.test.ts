@@ -66,6 +66,22 @@ describe('computeRisk', () => {
     const r = computeRisk(p('network.fetch:example.com'));
     expect(r.description).toContain('example.com');
   });
+
+  it('red: a requiresTarget capability with no target is treated as universal', () => {
+    // Regression: command.invoke's catalogue entry sets requiresTarget:
+    // true precisely so an untargeted grant (equivalent to "invoke any
+    // command") escalates past its yellow baseRisk. Disabling the
+    // requiresTarget branch entirely left the full suite green — nothing
+    // else exercises a grammatically-valid but target-missing grant on a
+    // requiresTarget scope/action.
+    const r = computeRisk(p('command.invoke'));
+    expect(r.tier).toBe('red');
+    expect(r.description).toContain('Missing required target');
+  });
+
+  it('red: model.mutate with no target is treated as universal (same rule)', () => {
+    expect(computeRisk(p('model.mutate')).tier).toBe('red');
+  });
 });
 
 describe('computeRisks / overallTier', () => {

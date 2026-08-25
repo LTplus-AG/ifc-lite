@@ -16,6 +16,34 @@ import {
 
 const enc = new TextEncoder();
 
+/**
+ * LSB-first bit packer matching e57-decode.ts's `readBitsLE` (E57 §6.3.4
+ * ScaledInteger bit-pack convention): each value's low bit lands at
+ * `bitOffset`, consecutive values pack contiguously, and a value can
+ * straddle a byte boundary.
+ */
+function packBitsLE(values: number[], bitsPerValue: number): Uint8Array {
+  const totalBits = values.length * bitsPerValue;
+  const bytes = new Uint8Array(Math.ceil(totalBits / 8));
+  let bitPos = 0;
+  for (const value of values) {
+    let remaining = bitsPerValue;
+    let v = value;
+    while (remaining > 0) {
+      const byteIdx = bitPos >>> 3;
+      const bitInByte = bitPos & 7;
+      const avail = 8 - bitInByte;
+      const take = Math.min(avail, remaining);
+      const mask = (1 << take) - 1;
+      bytes[byteIdx] |= (v & mask) << bitInByte;
+      v >>>= take;
+      bitPos += take;
+      remaining -= take;
+    }
+  }
+  return bytes;
+}
+
 /** Build a single-packet, cartesianX/Y/Z-only (Float64) Data3DEntry. */
 function buildF64Entry(
   points: Array<{ x: number; y: number; z: number }>,
@@ -998,6 +1026,89 @@ describe('resolveCompressedVectorDataOffset (E57 §6.4.2)', () => {
     expect(chunk.colors![2]).toBeCloseTo(0.125, 5);
   });
 
+  it('decodes u16-wide Integer colour/intensity/classification (maximum > 255)', () => {
+    // writeColorChannel, readIntensityStream, and readClassificationStream
+    // each pick a 1- or 2-byte element width from the declared range
+    // (`widest > 255 ? 2 : 1`) — every existing Integer-kind test in this
+    // file declares maximum <= 255, so the 2-byte (u16) stride was never
+    // observed: hardcoding stride=1 at all three call sites ran green.
+    // Real E57 producers use u16 for >8-bit colour/intensity per spec, so
+    // this is a real format variant, not a hypothetical one.
+    const points = [
+      { x: 1, y: 2, z: 3, r: 300, g: 10, b: 490, intensityRaw: 400, classRaw: 300 },
+      { x: 4, y: 5, z: 6, r: 5, g: 500, b: 0, intensityRaw: 0, classRaw: 65 },
+    ];
+    const n = points.length;
+    const lenF64 = n * 8;
+    const lenU16 = n * 2;
+    // Order matches prototype: x, y, z, colorRed, colorGreen, colorBlue, intensity, classification.
+    const lengths = [lenF64, lenF64, lenF64, lenU16, lenU16, lenU16, lenU16, lenU16];
+    const headerBytes = 4 + 2 + lengths.length * 2;
+    const packetSize = headerBytes + lengths.reduce((a, b) => a + b, 0);
+    const buf = new ArrayBuffer(packetSize);
+    const view = new DataView(buf);
+    view.setUint8(0, 1);
+    view.setUint8(1, 0);
+    view.setUint16(2, packetSize - 1, true);
+    view.setUint16(4, lengths.length, true);
+    for (let i = 0; i < lengths.length; i++) view.setUint16(6 + i * 2, lengths[i], true);
+
+    let cursor = headerBytes;
+    for (const key of ['x', 'y', 'z'] as const) {
+      for (let i = 0; i < n; i++) view.setFloat64(cursor + i * 8, points[i][key], true);
+      cursor += lenF64;
+    }
+    for (const key of ['r', 'g', 'b'] as const) {
+      for (let i = 0; i < n; i++) view.setUint16(cursor + i * 2, points[i][key], true);
+      cursor += lenU16;
+    }
+    for (let i = 0; i < n; i++) view.setUint16(cursor + i * 2, points[i].intensityRaw, true);
+    cursor += lenU16;
+    for (let i = 0; i < n; i++) view.setUint16(cursor + i * 2, points[i].classRaw, true);
+    cursor += lenU16;
+
+    const entry: Data3DEntry = {
+      guid: 'test',
+      recordCount: n,
+      binaryFileOffset: 0,
+      prototype: [
+        { name: 'cartesianX', kind: 'Float', precision: 'double' },
+        { name: 'cartesianY', kind: 'Float', precision: 'double' },
+        { name: 'cartesianZ', kind: 'Float', precision: 'double' },
+        // minimum 0 / maximum 500 -> widest 500 > 255 -> 2-byte (u16) stride.
+        { name: 'colorRed', kind: 'Integer', minimum: 0, maximum: 500 },
+        { name: 'colorGreen', kind: 'Integer', minimum: 0, maximum: 500 },
+        { name: 'colorBlue', kind: 'Integer', minimum: 0, maximum: 500 },
+        { name: 'intensity', kind: 'Integer', minimum: 0, maximum: 500 },
+        { name: 'classification', kind: 'Integer', minimum: 0, maximum: 500 },
+      ],
+    };
+
+    const chunk = decodeE57Scan(new Uint8Array(buf), entry);
+    expect(chunk.pointCount).toBe(2);
+
+    // A stride=1 mutant reads byte 0 of each u16 LE pair instead of the
+    // full 2-byte value, which for these values (all > 255 or with a
+    // nonzero low byte) produces different numbers than the real 2-byte
+    // read — so this is a genuine, non-equivalent survivor probe.
+    expect(chunk.colors).toBeDefined();
+    expect(chunk.colors![0]).toBeCloseTo(300 / 500, 5);
+    expect(chunk.colors![1]).toBeCloseTo(10 / 500, 5);
+    expect(chunk.colors![2]).toBeCloseTo(490 / 500, 5);
+    expect(chunk.colors![3]).toBeCloseTo(5 / 500, 5);
+    expect(chunk.colors![4]).toBeCloseTo(500 / 500, 5);
+    expect(chunk.colors![5]).toBeCloseTo(0 / 500, 5);
+
+    expect(chunk.intensities).toBeDefined();
+    expect(chunk.intensities![0]).toBe(52428); // round((400/500) * 65535)
+    expect(chunk.intensities![1]).toBe(0);
+
+    expect(chunk.classifications).toBeDefined();
+    // Class IDs clamp into u8 (0..255); 300 raw clamps to 255.
+    expect(chunk.classifications![0]).toBe(255);
+    expect(chunk.classifications![1]).toBe(65);
+  });
+
   it('recovers ScaledInteger classification values through their minimum offset', () => {
     // The ScaledInteger classification branch adds `minimum` back to recover
     // the original value, and no test reached it at all — the Integer branch
@@ -1042,6 +1153,99 @@ describe('resolveCompressedVectorDataOffset (E57 §6.4.2)', () => {
     expect(chunk.classifications).toBeDefined();
     // raw + minimum: 1+5 = 6, 10+5 = 15. A `- minimum` swap clamps to 0 and 5.
     expect(Array.from(chunk.classifications!)).toEqual([6, 15]);
+  });
+
+  it('decodes Float-kind intensity (v * 65535, clamped to u16)', () => {
+    // readIntensityStream's Float branch had zero coverage: every existing
+    // intensity test in this file uses the Integer kind. Mutating the
+    // 65535 multiplier to 255 (a LAS-shaped 8-bit scale instead of E57's
+    // normalised-[0,1]-to-u16 scale) ran green.
+    const points = [
+      { x: 1, y: 2, z: 3, intensity: 0.5 },
+      { x: 4, y: 5, z: 6, intensity: 1.0 },
+    ];
+    const n = points.length;
+    const lenF64 = n * 8;
+    const lenF32 = n * 4;
+    const lengths = [lenF64, lenF64, lenF64, lenF32];
+    const headerBytes = 4 + 2 + lengths.length * 2;
+    const packetSize = headerBytes + lengths.reduce((a, b) => a + b, 0);
+    const buf = new ArrayBuffer(packetSize);
+    const view = new DataView(buf);
+    view.setUint8(0, 1);
+    view.setUint8(1, 0);
+    view.setUint16(2, packetSize - 1, true);
+    view.setUint16(4, lengths.length, true);
+    for (let i = 0; i < lengths.length; i++) view.setUint16(6 + i * 2, lengths[i], true);
+
+    let cursor = headerBytes;
+    for (const key of ['x', 'y', 'z'] as const) {
+      for (let i = 0; i < n; i++) view.setFloat64(cursor + i * 8, points[i][key], true);
+      cursor += lenF64;
+    }
+    for (let i = 0; i < n; i++) view.setFloat32(cursor + i * 4, points[i].intensity, true);
+
+    const entry: Data3DEntry = {
+      guid: 'test',
+      recordCount: n,
+      binaryFileOffset: 0,
+      prototype: [
+        { name: 'cartesianX', kind: 'Float', precision: 'double' },
+        { name: 'cartesianY', kind: 'Float', precision: 'double' },
+        { name: 'cartesianZ', kind: 'Float', precision: 'double' },
+        { name: 'intensity', kind: 'Float', precision: 'single' },
+      ],
+    };
+
+    const chunk = decodeE57Scan(new Uint8Array(buf), entry);
+    expect(chunk.intensities).toBeDefined();
+    expect(chunk.intensities![0]).toBe(32768); // round(0.5 * 65535)
+    expect(chunk.intensities![1]).toBe(65535); // round(1.0 * 65535)
+  });
+
+  it('decodes ScaledInteger-kind intensity through the bit-pack walk', () => {
+    // readIntensityStream's ScaledInteger branch had zero coverage anywhere
+    // in this package — only the Integer kind was ever exercised for
+    // intensity. minimum=0/maximum=1000 -> 10 bits per record, so a
+    // byte-aligned-width mutant (8/16/32) cannot hide here.
+    const rawValues = [400, 1000]; // norm 0.4 and 1.0
+    const n = rawValues.length;
+    const lenF64 = n * 8;
+    const bits = packBitsLE(rawValues, 10);
+    const lengths = [lenF64, lenF64, lenF64, bits.length];
+    const headerBytes = 4 + 2 + lengths.length * 2;
+    const packetSize = headerBytes + lengths.reduce((a, b) => a + b, 0);
+    const buf = new ArrayBuffer(packetSize);
+    const view = new DataView(buf);
+    view.setUint8(0, 1);
+    view.setUint8(1, 0);
+    view.setUint16(2, packetSize - 1, true);
+    view.setUint16(4, lengths.length, true);
+    for (let i = 0; i < lengths.length; i++) view.setUint16(6 + i * 2, lengths[i], true);
+
+    let cursor = headerBytes;
+    for (const v of [[1, 4], [2, 5], [3, 6]]) {
+      for (let i = 0; i < n; i++) view.setFloat64(cursor + i * 8, v[i], true);
+      cursor += lenF64;
+    }
+    new Uint8Array(buf, cursor, bits.length).set(bits);
+
+    const entry: Data3DEntry = {
+      guid: 'test',
+      recordCount: n,
+      binaryFileOffset: 0,
+      prototype: [
+        { name: 'cartesianX', kind: 'Float', precision: 'double' },
+        { name: 'cartesianY', kind: 'Float', precision: 'double' },
+        { name: 'cartesianZ', kind: 'Float', precision: 'double' },
+        { name: 'intensity', kind: 'ScaledInteger', minimum: 0, maximum: 1000 },
+      ],
+    };
+
+    const chunk = decodeE57Scan(new Uint8Array(buf), entry);
+    expect(chunk.intensities).toBeDefined();
+    expect(chunk.intensities![0]).toBe(26214); // round(0.4 * 65535)
+    expect(chunk.intensities![1]).toBe(65535); // round(1.0 * 65535)
   });
 
   it('rejects when the section header runs past end of buffer', () => {

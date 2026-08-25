@@ -213,6 +213,7 @@ pub(super) fn extract_symbolic_item_at(
         }
     }
     if !walk.enter_node(item.id) {
+        out.note_item_bound(SymbolicTruncationReason::ItemCycle);
         return;
     }
     extract_symbolic_item_inner(

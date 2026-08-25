@@ -695,6 +695,21 @@ jobs:
       # real sources in a temp tree and must turn the gate red.
       - name: Check clash degenerate-reason parity gate regressions
         run: node --test scripts/check-clash-degenerate-reason-parity.test.mjs
+      # `legacy_entities.rs` is the table every classification pass is told to
+      # consult instead of a bare `IfcType::from_str`, and nothing checked it
+      # was complete. Six concrete IFC2X3 products were missing (#3172), and a
+      # name it misses resolves to `Unknown` -- a subtype of nothing -- so the
+      # entity is dropped from the attribute export AND from meshing at once.
+      # Nothing disagrees, so nothing looks wrong. Same call as the parity gate
+      # above: reading two sources is banned in test files, so it is a lint.
+      - name: Check legacy entity coverage
+        run: node scripts/check-legacy-entity-coverage.mjs
+      # Executable proof the gate cannot pass vacuously: "nothing is missing" is
+      # equally true of a complete table and of an extractor that found nothing.
+      # Each of the four extractors is broken in turn against mutated copies of
+      # the real sources, plus a deleted arm and the #3172 misspelling itself.
+      - name: Check legacy entity coverage gate regressions
+        run: node --test scripts/check-legacy-entity-coverage.test.mjs
       # The CSV cell escaper reached NINE hand-rolled copies and no two were
       # identical: some tested the formula trigger anchored at offset 0 (so a
       # BOM/ZWSP/LRM/NBSP/U+2028 in front of `=` bypassed the CWE-1236 guard),

@@ -31,6 +31,7 @@ import {
   type MeshData,
   type SimplifiedElementMesh,
 } from '@ifc-lite/geometry';
+import { GEOM_CLASS_OCCURRENCE, geometryClassOf } from '@ifc-lite/geometry/geometry-class';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { StepExporter } from './step-exporter.js';
@@ -198,7 +199,7 @@ export class DemeshSession {
     const meshes = await this.ensureMeshes();
     const byElement = new Map<number, number>();
     for (const m of meshes) {
-      if ((m.geometryClass ?? 0) !== 0) continue;
+      if (geometryClassOf(m) !== GEOM_CLASS_OCCURRENCE) continue;
       byElement.set(m.expressId, (byElement.get(m.expressId) ?? 0) + m.indices.length / 3);
     }
     return [...byElement.entries()]

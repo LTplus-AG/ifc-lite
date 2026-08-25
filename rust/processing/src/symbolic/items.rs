@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use super::output_cap::SymbolicAccumulator;
+use super::output_cap::{SymbolicAccumulator, SymbolicTruncationReason};
 use super::rebase::RenderFrameRebase;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use std::collections::HashMap;
@@ -119,6 +119,7 @@ pub(super) fn extract_symbolic_item_inner(
             // re-enters the walk through something that is not an item, so the
             // item ids alone cannot see the cycle it closes.
             if !walk.enter_node(mapped_rep_id) {
+                out.note_item_bound(SymbolicTruncationReason::ItemCycle);
                 return;
             }
             for sub_item in items {

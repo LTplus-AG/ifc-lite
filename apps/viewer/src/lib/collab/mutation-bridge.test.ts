@@ -12,6 +12,7 @@ import {
   createEntity,
   hasEntity,
   setAttribute,
+  deleteAttribute,
   getAttribute,
   setEntityPlacement,
   getEntityPlacement,
@@ -490,6 +491,29 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
       fn: 'onAttribute',
       args: [1, 'bsi::ifc::prop::Name', 'Wall-A'],
     });
+  });
+
+  it('drops a remote flat attribute DELETE — no onAttribute call, and no delete handler exists to call instead', () => {
+    // There is no `onAttributeDelete` in RemoteApplyHandlers: attribute deletes
+    // are intentionally dropped until a full reconstruct picks them up. Without
+    // the `change.action === 'delete'` guard, the deleted key's value reads
+    // back as `undefined` from Yjs, and `toScalar` stringifies that to the
+    // literal string "undefined" — which `collabSlice`'s onAttribute handler
+    // would then WRITE as the attribute's new local value, corrupting it
+    // instead of leaving it alone.
+    const doc = createCollabDoc();
+    createEntity(doc, '/wallA', { ifcClass: 'IfcWall' });
+    setAttribute(doc, '/wallA', 'bsi::ifc::prop::Name', 'Wall-A');
+    const store = fakeStore(new Map([[1, '/wallA']]));
+    const handlers = recordingHandlers();
+    const teardown = attachRemoteApply(api, fakeSession(doc), store, handlers);
+
+    applyAsRemoteEdit(doc, (remote) => {
+      deleteAttribute(remote, '/wallA', 'bsi::ifc::prop::Name');
+    });
+
+    teardown();
+    assert.strictEqual(handlers.calls.length, 0, 'an attribute delete must not dispatch onAttribute at all');
   });
 
   it('routes a remote usd::xformop write to onPlacement, not onAttribute', () => {

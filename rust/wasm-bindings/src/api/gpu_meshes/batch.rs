@@ -399,7 +399,28 @@ impl IfcAPI {
             let Ok(entity) = decoder.decode_and_cache(id, start, end) else {
                 continue;
             };
-            let ifc_type = entity.ifc_type;
+            // LEGACY-AWARE, like the native pre-pass at
+            // `processing/src/processor/mod.rs:711`. `entity.ifc_type` comes
+            // from the decoder's bare `IfcType::from_str`, so every keyword
+            // IFC4X3 dropped -- IfcProxy, the *StandardCase family, the strata
+            // leaves, the six #3172 added -- arrived here as `Unknown` and was
+            // emitted to the browser with `ifcType: "Unknown"` and the Unknown
+            // default colour, while the CLI and exporters labelled the same
+            // entity correctly (#3179).
+            //
+            // Recomputed from the SOURCE KEYWORD rather than recovered from
+            // `entity.ifc_type`, because it cannot be: `IfcType::Unknown(u32)`
+            // stores a CRC32 hash and `DecodedEntity` keeps no raw name, so
+            // there is nothing to map back from. The bytes are already in hand
+            // -- `content[start..end]` is the record `decode_and_cache` just
+            // parsed -- so this is a ~20-byte scan to the first `(`, not a
+            // re-read. Cheaper than widening the jobs wire, which is 3 u32 per
+            // job across Rust and TS and would have paid marshalling cost on
+            // every job to fix the few that are legacy.
+            let ifc_type = ifc_lite_core::legacy_aware_ifc_type_from_record(
+                entity.ifc_type,
+                content.get(start..end).unwrap_or_default(),
+            );
 
             // Resolve the element-level colour inline (folded from the deleted
             // pre-pass) so the entity is decoded exactly once.

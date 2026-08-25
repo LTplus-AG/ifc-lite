@@ -2,9 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! JavaScript API for IFC-Lite
-//!
-//! Modern async/await API for parsing IFC files.
+//! JavaScript API for IFC-Lite: modern async/await parsing. Kept short: this
+//! file is AT its `module_size_ratchet` budget, so a new `mod` costs a line.
 
 mod alignment_lines;
 mod bool2d;
@@ -26,6 +25,7 @@ mod parsing;
 mod pipeline_diagnostics;
 mod simplify;
 mod space_plate;
+mod space_plate_input;
 pub(crate) mod styling;
 mod symbolic;
 mod zone_split;

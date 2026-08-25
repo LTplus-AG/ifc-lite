@@ -1,5 +1,487 @@
 # @ifc-lite/viewer
 
+## 1.38.0
+
+### Minor Changes
+
+- [#3064](https://github.com/LTplus-AG/ifc-lite/pull/3064) [`610ce20`](https://github.com/LTplus-AG/ifc-lite/commit/610ce2090b76bede9aa040dc0dddb45848e9610c) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Measure: derive a mass from geometry volume × material density, labelled as derived.
+  
+  The Quantities panel reported a weight only when the file declared an `IfcQuantityWeight`. A model with geometry and materials but no declared weight reported nothing, even though everything needed to compute one was present.
+  
+  It now derives a mass from the meshed geometry volume (the same value the "Volume mesh" row reports, after opening cuts) times the material density the file declares in `Pset_MaterialCommon.MassDensity`, and shows it as its own **"Mass derived"** row.
+  
+  **It is a separate row, never the same number.** A declared `Qto` weight, a mass computed from a density the file declared, and a mass estimated from a density the file did not are three different confidence levels. They are totalled separately and labelled separately, the same way the panel already refuses to read a bare `Volume` as a `NetVolume`. The row's tooltip and a footnote both say the figure is calculated and not an IFC-declared quantity.
+  
+  **A declared weight is never derived over.** When the file states a weight, that is the answer and no derivation runs for that element — including when a volume and a density are both available.
+  
+  **An untrusted volume produces no mass at all.** For a model federation alignment re-baked (`'same-crs'` / `'reprojected'`), the proved volume describes a size that is no longer on screen ([#1993](https://github.com/LTplus-AG/ifc-lite/issues/1993)), so no mass is derived from it and the existing note explains why. Likewise, an element whose materials declare *different* densities gets no mass: without each material's share of the volume there is no answer, and the panel says so rather than picking one.
+  
+  Units route through `project_units` as the single source: densities convert from the file's `MASSDENSITYUNIT` and the result renders in `MASSUNIT`, honouring the per-unit-type display override. The row says "Mass" rather than "Weight" because kg/m³ × m³ is a mass; where a file's `MASSUNIT` resolves to a force symbol instead, no mass is derived and the panel reports that rather than guessing between kilograms and kilonewtons.
+  
+  Scope: only the file's own density is wired. There is no project density library in the viewer today, so the "estimated from a library density" basis is modelled and tested but has no configured source yet. IFC2X3's `IfcGeneralMaterialProperties.MassDensity` — a scalar attribute rather than a property set — is still not read by the parser, so IFC2X3 files carrying their density that way are unaffected.
+  
+  Closes [#2736](https://github.com/LTplus-AG/ifc-lite/issues/2736).
+
+- [#2930](https://github.com/LTplus-AG/ifc-lite/pull/2930) [`1823d70`](https://github.com/LTplus-AG/ifc-lite/commit/1823d70a581429fb6a7df2272b31d426e0cf2149) Thanks [@Blogbotana](https://github.com/Blogbotana)! - Add sun-cast shadows to the standalone WebGPU viewer ([#2670](https://github.com/LTplus-AG/ifc-lite/issues/2670), Phase 2).
+  
+  The standalone path had no cast shadows — surfaces were lit as if nothing
+  occluded them, reading flat next to a tool like Blender. This adds classic sun
+  shadow mapping end to end:
+  
+  - a depth pre-pass (`ShadowPass`) renders every occluder from the sun into a
+    shadow map, fitted with an orthographic light-view-projection
+    (`fitSunLightMatrix`) whose lateral extent tracks the camera frustum clipped
+    to the model (`cameraFrustumFocusCorners`) while the depth range spans the
+    whole model, so a small building on a large site keeps sharp shadows instead
+    of spending the whole map on distant terrain;
+  - the shared main-family fragment shader samples it with a rotated 12-tap
+    Poisson-disk PCF kernel and a slope-scaled bias (normal-offset plus a
+    grazing-angle depth term, so a flat ground under a low sun does not ring with
+    acne), occluding only the direct sun term — ambient/fill/rim stay lit;
+  - the penumbra width follows the sun's angular size (physical, ~0.53° like
+    Blender's Sun lamp Angle), exposed as `sunShadows.sunAngleDeg`.
+  
+  All four geometry paths — flat, lattice-quantized, GPU-instanced and
+  surface-textured — both cast (`collectShadowOccluders`) and receive (the shared
+  shader / textured derivation), so no part of the model silently stops
+  shadowing; a test drives the real `ShadowPass.render` and asserts each path
+  issues a depth draw through its own pipeline. Transparent geometry (glass
+  windows, and the virtual IfcSpace / IfcOpeningElement volumes) is excluded from
+  casting by its material alpha, so daylight passes through windows and openings
+  instead of the glass throwing a solid shadow into the void the wall already
+  carries.
+  
+  The shadow map rides the existing environment bind group (group 1), so no
+  pipeline-layout churn. Additive and off by default: `RenderOptions.sunShadows`
+  (`{ enabled, resolution?, sunAngleDeg? }`) — absent/`enabled: false` skips the
+  pass entirely and the shader's `enabled` gate returns fully lit, so the hot
+  path pays only a boolean check. The viewer drives it from a Sun & Sky panel
+  section (cast-shadows toggle, sun-angle softness, resolution, and a manual
+  time-of-day sun for models without georeference).
+
+- [#2980](https://github.com/LTplus-AG/ifc-lite/pull/2980) [`9279987`](https://github.com/LTplus-AG/ifc-lite/commit/927998774b87ebd7763f988447ea0ac63c2f990d) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Show how many physical objects in the loaded model are visible, and how many are not.
+  
+  The viewport now reports "N of M objects visible" whenever a visibility filter is actually holding something back, following the same speak-up-only-when-the-numbers-disagree rule the point-cloud class list uses. An unfiltered model shows no extra chrome, and with no model loaded there is nothing to report rather than a meaningless "0 of 0".
+  
+  The number that matters here is the denominator. `ViewportOverlays` already computed a visible/total pair from `geometryResult.meshes.length` and threw both away without ever rendering them, and that total would have been the wrong thing to show: it counts things that PRODUCED a mesh, so an object present in the file that never generated geometry is absent from both sides of the ratio and can never appear as "not visible". The counter would have read "1203 of 1203 visible" while a wall silently failed to slice. The mesh array is the wrong denominator in three independent ways: one element can produce many `MeshData` entries (per material, per CSG part), a colour-merged batch carries many entities in a single entry via `entityIds`, and a fully instanced entity produces no entry at all.
+  
+  The count is therefore taken from the entity index (`entityIndex.byType`), so the gap between "in the model" and "on screen" is observable instead of definitionally zero.
+  
+  A physical object is an entity whose schema inheritance chain contains `IfcElement`, minus `IfcFeatureElement` and `IfcVirtualElement` subtypes. Everything excluded is excluded so the number does not cry wolf by reporting objects as missing that were never meant to be drawn. Spatial containers (`IfcSite`, `IfcBuilding`, `IfcBuildingStorey`, `IfcSpace`) descend from `IfcSpatialElement` rather than `IfcElement` and drop out with no special case — they have no shape representation by design. `IfcSpace` is the genuine judgement call and lands outside: it is a real object users care about, but it is a spatial element by schema and the viewer ships with spaces hidden, so every model with rooms would otherwise read "N not visible" permanently — an alarm that is never actionable. `IfcOpeningElement` and other feature elements are `IfcElement` subtypes by schema but are voids subtracted from real elements, and are hidden by default; `IfcVirtualElement` is a non-physical clearance volume, hidden for that reason. `IfcAnnotation` and `IfcGrid` are drafting aids and are not `IfcElement` subtypes. Keying on the inheritance chain rather than a leaf list means a schema bump that adds an `IfcElement` subtype is counted without anyone editing a set, and the chain is resolved across schemas because the single-schema walk is pinned to IFC4 and would read IFC4X3 infrastructure classes as non-physical.
+  
+  The visible count mirrors the store's own `isEntityVisible` — hidden set, isolation, class filter — so the badge and the renderer cannot disagree about what "visible" means. Isolation is intersected with the physical set rather than read off `isolatedEntities.size`, which counts the non-physical children an isolated storey drags in. Ghosted objects are reported separately rather than as hidden, because X-Ray renders them translucent, i.e. still drawn.
+
+### Patch Changes
+
+- [#3039](https://github.com/LTplus-AG/ifc-lite/pull/3039) [`deaf4f0`](https://github.com/LTplus-AG/ifc-lite/commit/deaf4f088890effeba3f070a4963175667ce5e82) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix inward-facing normals on the "add element" instant-preview mesh's side faces.
+  
+  `buildBoxFromIfcCorners` draws the instant-preview box the moment a builder tool commits, and is fed by two callers that wind their corner rings in **opposite** directions: `buildAxisBox` (column / door / window) lists its bottom ring counter-clockwise seen from IFC +Z, `buildLinearBox` (wall / beam / member) lists it clockwise. Each side face's normal came from `faceNormal(corners, a, b, c)`, whose sign follows that winding — so one fixed argument order was outward for one family and inward for the other. Columns, doors and windows previewed with all 4 side faces lit backwards until the export+re-parse round-trip replaced the preview with real geometry.
+  
+  Fixed by resolving the side normal's sign against the box centre rather than against the ring order: the cross product still supplies the face's axis, and the direction that points away from the centre is chosen (valid for any winding, since the box is convex). Both families now light correctly, and a future caller gets outward normals whatever ring order it uses. Vertex positions, the index buffer, per-vertex entity ids and the hardcoded top/bottom normals are byte-identical to before for every currently reachable shape.
+
+- [#3086](https://github.com/LTplus-AG/ifc-lite/pull/3086) [`932f043`](https://github.com/LTplus-AG/ifc-lite/commit/932f0439fc1625419aae3cf2d9f81a614fb2273c) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Close seven holes in the collaborative-session role gate. In a shared room only editor/admin may write, and `mutationSlice` enforces that with `canCollabEdit()` before each local commit — but the gate had been added one call site at a time, and each round left the arms nobody happened to look at open. `deletePropertySet` sat directly beneath a gated `createPropertySet` with a byte-for-byte identical body minus the gate; `setEntityType` sat beneath a gated `setAttribute`; `setPositionalAttribute`, the rawest write in the slice, had none; `duplicateEntity` creates an entity the way the gated `addWall`/`addColumn` do; and `splitWallAtDistance`, `splitLinearElementAtDistance` and `splitSlabByLine` write the way the gated `resizeWall` does. So a viewer-role participant could delete a property set, reclass an entity, overwrite a STEP attribute slot, duplicate an element or split a wall, slab or beam: the edit committed to their local view, dirtied the model and entered their undo stack, and — being ungated — never reached the room, which is the silent divergence the gate exists to prevent. All seven now reject with the same message their gated siblings use. `roleCanEdit(null)` is `true`, so single-user sessions are untouched. The regression test is written as an enumeration of the slice's writers rather than a sample of them, since sampling is what let the gap survive three rounds of fixing. Still ungated and reported rather than changed here, because each needs a product call rather than a copied line: `generateSpacesFromWalls` (its `dryRun` mode is a legitimate read for any role), `setGeorefField`/`setGeorefFields`, `setPositionalAttributesBatch` (reached only through gated callers today), `importChangeSet`, `undo`/`redo`, and `clearMutations`/`clearAllMutations` (they discard local mutation history rather than writing, which is the same divergence family as undo/redo).
+
+- [#3102](https://github.com/LTplus-AG/ifc-lite/pull/3102) [`7ff31ba`](https://github.com/LTplus-AG/ifc-lite/commit/7ff31ba854671a9ca3ebbf30b15e928e1b52a8b9) Thanks [@BIMvoice](https://github.com/BIMvoice)! - CSV cell escaping now has one implementation per language
+  
+  `@ifc-lite/export` gains `escapeCsvCell` and `guardSpreadsheetFormula`. Every
+  CSV writer in the SDK, CLI and MCP now calls them instead of carrying its own
+  copy of the RFC 4180 quoting and the CWE-1236 spreadsheet formula-injection
+  guard.
+  
+  Two behaviour changes come with that, in the copies that were behind:
+  
+  - The formula trigger is looked for **past** any leading invisible characters
+    (Unicode `Cf` + `Z`: BOM, zero-width space, LTR mark, non-breaking space,
+    U+2028/U+2029, ordinary spaces). The copies in the CLI, MCP and the SDK's
+    CSV export tested it anchored at offset 0, so a crafted IFC value such as
+    `﻿=HYPERLINK(...)` was exported unguarded.
+  - Those invisibles are looked past, not deleted. The one hardened copy removed
+    them, and its character class included U+0020, so leading spaces were stripped
+    from exported cells — RFC 4180 §2.4 says spaces are part of the field.
+  
+  Cells with no leading invisible and no formula trigger are unchanged.
+  
+  The Rust exporter (`ifc_lite_export::csv_cell`) carries the matching
+  implementation, and both are pinned to one shared table of test vectors so the
+  two languages cannot drift apart.
+
+- [#3115](https://github.com/LTplus-AG/ifc-lite/pull/3115) [`8ba612f`](https://github.com/LTplus-AG/ifc-lite/commit/8ba612f90d3bb0ad41f756d6fdef6b3250e8d330) Thanks [@louistrue](https://github.com/louistrue)! - CSV: numeric cells export as numbers. **The formula guard's default changed.**
+  Pass `exemptNumbers: false` to `escapeCsvCell` / `guardSpreadsheetFormula` to
+  keep the old behaviour.
+  
+  **Read this first if you consume `@ifc-lite/export`.** The CWE-1236 guard
+  prefixes a leading `=`, `+`, `-`, `@`, TAB or CR with `'` so a spreadsheet reads
+  the cell as text. It now makes one exception by default: a cell that is *wholly*
+  a signed number is left alone. Nothing in your code has to change for the
+  behaviour to change, which is why this is called out here rather than in a
+  footnote.
+  
+  The exception cannot weaken the guard. The exempted language contains only
+  `+ - . e E` and the digits `0-9`, which cannot spell a function name, a cell
+  reference or a `(`. `=`, `@`, TAB and CR are never exempted, `-0.35=cmd` is not
+  wholly a number and stays guarded, and a leading invisible character defeats the
+  exemption rather than the guard, so `<ZWSP>-1` is still prefixed.
+  
+  **What it costs.** The default has to guess from the text, because most callers
+  hand it a bare string, and guessing gets identifiers wrong: a `+`-prefixed phone
+  number is wholly numeric as text, so it is written bare and Excel renders
+  `4.1791E+10` with the `+` gone. `-007` becomes `-7`. Both were previously kept
+  exactly, as `'`-prefixed text.
+  
+  The viewer's Lists CSV does not guess, because it has the value itself: it
+  exempts a cell when the value really is a number and guards it otherwise, so a
+  phone number stays text there and a measure stays summable even in a column that
+  also holds text. So this cost applies to the writers that only ever see strings,
+  which is the CLI, the SDK, MCP, the compare report, search results, zone tables
+  and `@ifc-lite/lists`' own CSV. Pass `exemptNumbers: false` to opt any of them
+  out.
+  
+  **Why the exception exists.** `@ifc-lite/lists` had exempted numbers since [#1772](https://github.com/LTplus-AG/ifc-lite/issues/1772)
+  ("`-0.35` exported as `'-0.35` and broke Excel SUM()") while every other writer
+  guarded them, so the same list exported two ways did not match. The policy is
+  now one default rather than eleven call-site decisions that drift.
+  
+  **The viewer's Lists CSV stopped formatting numbers before writing them.** It
+  ran every value through the display formatter, which calls `toLocaleString()` on
+  integers. Under en-US that wrote `"-1,000"`, quoted because of the comma, so the
+  column stopped summing. Under a locale that groups with `.` it wrote a bare
+  `-3.000`, which a spreadsheet in a `,`-grouping locale reads back as **-3**, a
+  silent 1000x error in a quantity column. Exempting numbers fixes neither, since
+  neither string is wholly numeric in the locale that produced it. CSV is
+  machine-readable output, so it now writes the number, matching what the XLSX
+  writer always did. PDF, which a human reads, is unchanged.
+  
+  Two consequences of that, both deliberate. Unit-converted values now show their
+  full double precision (3 ft in metres is `0.9144000000000001`, not `0.9144`),
+  which is the same value the XLSX export already carried, so the two agree. And grouping a
+  list by a numeric column used to hard-code that column as non-numeric in the
+  schedule/pivot export, where the grouping value is the *only* place the value
+  appears; it wrote `"'-3,000"` and nothing else for -3000. Schedule grouping
+  columns now inherit `numeric` and carry the raw value, falling back to the group
+  label where a bucket holds values that merely format alike.
+  
+  **The numeric test no longer backtracks.** It was
+  `/^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/`, quadratic on a failing match and
+  reached only after a trigger matched, so `-` plus 60k digits took ~1.8s. IFC
+  property text is attacker-controllable, which made that a denial of service on
+  an export. It is a linear scan now, and lives in `@ifc-lite/encoding` (no
+  dependencies, already depended on by both callers) as the new `isWhollyNumeric`
+  export, so there is one copy per language rather than one per package. The
+  accepted language is unchanged, checked by sweeping every string up to four
+  characters over the alphabet it is built from against the old regex.
+
+- [#2957](https://github.com/LTplus-AG/ifc-lite/pull/2957) [`1118399`](https://github.com/LTplus-AG/ifc-lite/commit/11183991d9fb042221d20f1ca432dc0b2293c928) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Don't fail a flavor operation on an active-flavor pointer write that changes
+  nothing, and snapshot a same-version reinstall before overwriting its bundle.
+  
+  Four sites wrote in two steps, and treated a refused second write as fatal
+  without first asking whether that write would have stored what was stored
+  already:
+  
+  - **`switchFlavor`** rolled every extension toggle back and reported
+    `'<pointer>'` when `setActiveFlavor` was refused. Re-applying the flavor that
+    is already active writes the id the pointer already holds, so the refusal
+    changed nothing — and the rollback disabled every extension the target
+    declares. `FlavorSwitcherCallbacks` gains an optional `readActiveFlavor()`;
+    when it reports the id `activeFlavorPointer(target)` would have written, the
+    switch stands. Without the callback, or when the read fails, the refusal is
+    still fatal — the behaviour every host had before.
+  - **`activeFlavorPointer(target)`** is now exported: it builds the id the
+    pointer stores for a flavor, so the value compared is the value written by
+    construction rather than a second derivation that can drift.
+  - **`activeFlavorPointerAlreadyStored(read, pointer)`** is now exported and is
+    the single comparison both hosts ask through, so a change to how the pointer
+    is encoded lands once. It answers `false` for a pointer that is not a string,
+    so an absent id can never match an unset pointer and report a refused write
+    with nothing stored as a successful one.
+  - **`ExtensionHostService.switchFlavor`** (viewer) wires that callback through
+    `FlavorService.activeId()`, also new. It turned a failed switch into a thrown
+    error, which skipped the lens, clash and sidebar restores below it.
+  - **`FlavorService.resetToDefaults`** (viewer) threw when `setActiveId` was
+    refused even though the baseline flavor had landed and the pointer already
+    named it — the common case, since resetting is the way back from anything.
+    It now rethrows only when the pointer is not provably already that id.
+  
+  Separately, **`installFromBytes`** (viewer) snapshotted the previous install's
+  bundle bytes only when the incoming version differed. Bundle bytes are keyed by
+  id and version, so a reinstall of the same version overwrote them; a loader
+  rejection then deleted the record and the bundle with nothing to restore,
+  wiping a working extension. The snapshot is now taken for any previous install.
+  The teardown stays gated on a version change.
+  
+  The rollback also restores the previous record under its own guard, independent
+  of the bundle bytes. The record carries the capability grants, the enabled bit,
+  the install time and the source, none of which need bytes and none of which the
+  user can reconstruct, so a previous install whose bytes were already gone no
+  longer has its record deleted by the rollback, and a byte write that fails
+  during the restore — `putBundle` is the step with a storage-quota path — no
+  longer takes the record down with it. A record without its bytes is a state the
+  loader names (`invalid_reference`); reinstalling the same version repairs it and
+  keeps the grants, but the app offers no route to that today — the Repair queue
+  passes an extension whose engine range still matches, so it never reports the
+  missing bytes. Keeping the record is still the better outcome: unloaded *and*
+  deleted is strictly worse than unloaded.
+  
+  The rollback now also checks that the record in storage is still the one this
+  install wrote before undoing anything. `load` is an await point, so a user can
+  uninstall while a slow load is in flight; restoring the previous record after
+  that would undo an explicit uninstall. The check is on record identity, never
+  on whether bytes exist, so it does not reintroduce the gate above.
+  
+  One cost, in the safe direction: because the snapshot is no longer gated on a
+  version change, a transient failure reading the previous bundle bytes now fails
+  a same-version reinstall that previously would have proceeded. Nothing is
+  written or destroyed in that case; the install has to be retried.
+  
+  Each comparison is one-directional: `false` means "not provably a no-op", never
+  a guess, so anything unreadable costs only a refusal that was already the old
+  behaviour. No path reports success while the stored state differs from what a
+  successful operation would have left.
+
+- [#3046](https://github.com/LTplus-AG/ifc-lite/pull/3046) [`f126041`](https://github.com/LTplus-AG/ifc-lite/commit/f126041345b397f48a060a4032a96e44477769fb) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Tell the user when a flavor switch could not apply part of the flavor, instead
+  of warning about it in the console.
+  
+  `ExtensionHostService.switchFlavor` restores three pieces of viewer state after
+  the extension switch itself has landed: saved lenses, the clash rule-set +
+  detection settings, and the sidebar layout. Each of those can be refused on its
+  own — the store commits a config only once it has actually persisted, and a
+  browser that blocks `localStorage` outright refuses every write. The refusals
+  were `console.warn`ed and the method returned `void`, so `FlavorDialog` toasted
+  an unqualified "Switched to X" over a flavor whose clash config had not been
+  applied at all. In a locked-down browser, switching flavor changed nothing the
+  user could see and nothing told them why ([#3002](https://github.com/LTplus-AG/ifc-lite/issues/3002)).
+  
+  `switchFlavor` now returns `{ unapplied }`, one entry per part that did not land
+  (`'lenses' | 'clash' | 'layout'`) carrying the refusal's own message, and the
+  dialog reports those parts and their reason in place of the success toast.
+  
+  The gate is the store's own verdict, not "was a write refused": a write refused
+  over bytes identical to what is already stored changed nothing, and
+  `applyClashFlavorConfig` already answers `ok` for that case. Such a switch keeps
+  reporting a plain success, because the state the user asked for is the state
+  they have.
+  
+  This does not make the config apply in a browser that refuses storage — it
+  cannot, since the flavor's config would silently revert on the next reload. What
+  changes is that the refusal is now visible and names its cause.
+
+- [#3034](https://github.com/LTplus-AG/ifc-lite/pull/3034) [`75867a7`](https://github.com/LTplus-AG/ifc-lite/commit/75867a7e6ebf51b2da47cab14242bcd71787ba3b) Thanks [@louistrue](https://github.com/louistrue)! - Make `bim.mutate.*` persist in the headless CLI and MCP backends instead of silently discarding every edit.
+  
+  `HeadlessBackend.createMutateAdapter` answered `setProperty`, `setAttribute` and `deleteProperty` with no-ops in both `packages/cli` and `packages/mcp`. Nothing threw and nothing returned a failure, so an `ifc-lite run` script could call `bim.mutate.setProperty` six thousand times, report six thousand edits, and get an export back byte-for-byte identical to its input. The write path that does persist was already present — `MutablePropertyView`, which `StepExporter` reads when `applyMutations` is on, and which `bim.store.*` and `bim.spaces.*` already routed into — nothing connected `bim.mutate` to it.
+  
+  Both backends now share `createHeadlessMutateAdapter` from `@ifc-lite/sdk`, which owns `MutateBackendMethods` and already depends on `@ifc-lite/mutations`. The adapter takes a thunk rather than a view so the overlay is still built on first write and a read-only session pays nothing.
+  
+  Values are classified before they are stored. `MutablePropertyView.setProperty` defaults to `PropertyValueType.String`, so forwarding a raw JavaScript value wrote `IFCLABEL('true')` where the caller passed `true`; `propertyValueTypeOf` maps boolean to `IFCBOOLEAN`, whole numbers to `IFCINTEGER` and the rest to `IFCREAL`.
+  
+  `undo` and `redo` still answer `false` and `batchBegin`/`batchEnd` are still accepted and ignored: the mutation history they would walk belongs to the viewer's store, and a headless session has none. That is now documented at the adapter rather than implied by a bare stub.
+  
+  The browser viewer's adapter had the same defect from the other direction: it forwarded the raw value to `mutationSlice.setProperty`, whose `valueType` also defaults to `String`, so `bim.mutate.setProperty(ref, pset, prop, true)` wrote `IFCLABEL('true')` there too. It now passes `propertyValueTypeOf`, which is also why that helper is exported. The two other character-identical copies of the classifier — `detectValueType` in the MCP mutation tool and `inferValueType` in the CLI gym ops — now alias it, so the paths cannot diverge on a future correction.
+  
+  Verified on the export, not on the overlay — reading the view back passes against the broken adapter too. With the original no-ops restored, 5 of the 6 new CLI tests fail; the sixth is the control that asserts an unmutated re-export still contains the original name.
+
+- [#3029](https://github.com/LTplus-AG/ifc-lite/pull/3029) [`fe38b33`](https://github.com/LTplus-AG/ifc-lite/commit/fe38b334c33e507922127168cc7d4055b831190e) Thanks [@louistrue](https://github.com/louistrue)! - Report hidden objects as a count, in the viewport's own style.
+  
+  The overlay added in [#2980](https://github.com/LTplus-AG/ifc-lite/issues/2980) read "1442 of 1446 objects visible" inside a rounded pill with an amber accent. Two things wrong with that.
+  
+  **It reported the wrong number.** The figure a user acts on is what the viewer is withholding. A ratio makes them subtract to find the four objects that matter. It now reads "4 hidden".
+  
+  **It did not follow the viewport's design.** The 3D overlays along the bottom edge are deliberately plain: the scale bar and axis helper are bare text at `text-xs text-foreground/80` with no container. The badge instead used `rounded-full` with a border, a backdrop blur, a shadow and `text-amber-500`, which is neither the bottom-row treatment nor a palette colour. It is now styled as its neighbours are.
+  
+  Counting logic is unchanged; only the reported figure and the presentation.
+
+- [#2979](https://github.com/LTplus-AG/ifc-lite/pull/2979) [`a6cb603`](https://github.com/LTplus-AG/ifc-lite/commit/a6cb603b56d4c8c0edb52a415713cd135ea8a588) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Restructure the IDS HTML report around requirements, and stop emitting an unopenable document for a large model.
+  
+  The report grouped results only by entity: each specification rendered one flat table whose rows were entities, and a requirement appeared only inside a per-entity `<details>` in the last column, and only when it had failed. Answering the question a reader actually brings to the report — *which requirement is failing, and on what?* — meant expanding every row and tallying by hand. Each specification now leads with one block per requirement carrying the facet type, the checked description, the pass/fail check counts, and the failing elements beneath it with type, name, GlobalId, express id and the written failure reason. The per-entity table is still there, moved into a collapsed `<details>` below.
+  
+  Grouping happens before `not_applicable` is filtered out, keyed on `requirement.id` rather than on array position, so an entity whose requirement was not applicable does not shift every later requirement's results onto the wrong requirement.
+  
+  Three pass rates are now reported side by side instead of two, with an explanation of why they legitimately disagree. The check-level rate — one element measured against one requirement — was not computed anywhere before; it is aggregated here from `requirementResults`. The entity-level rate (an entity passes only if all its requirements pass) is `summary.overallPassRate`, read rather than recomputed, and is the figure the report showed before, previously labelled ambiguously as "entity checks". The specification-level rate is the one a compliance deliverable should quote, and the report now says so. Every rate is floored, matching the validator and the in-app panel; the export used to round, so 99.6% could read as 100% while elements were still failing.
+  
+  Nothing is truncated silently. Failing elements are grouped by IFC type, capped at 5 examples per type and 100 elements per requirement, and every cap states its exact hidden count ("Showing 5 of 312 IfcWall failures"). The per-entity table is capped at 100 rows and emits failing entities first, so the cap can never hide every failure behind a wall of passes. Individual text fields are truncated at a 160-character budget — a count of code points, so a surrogate pair is never split in half — with a visible ellipsis and the untruncated text preserved in a `title` attribute, so a shortened field stays readable rather than being destroyed. The summary card states plainly that the HTML is a summary and that the JSON export holds the complete results.
+
+- [#3048](https://github.com/LTplus-AG/ifc-lite/pull/3048) [`9b29946`](https://github.com/LTplus-AG/ifc-lite/commit/9b29946d181b6ad96b9f042ad95cd9ae153bf505) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Remove the reconstructed `room:<id>` model when a collab session is left while
+  its join is still finishing.
+  
+  The recipient join registers a real model record for the room and installs the
+  teardown that removes it only after `await reconstruct()` has returned. The
+  abandoned-join guard sits below that assignment and returned without running the
+  teardown, so a Leave landing in that window left the model in `models` — and the
+  doc `update` listener attached — until the next `stopCollab` ([#3016](https://github.com/LTplus-AG/ifc-lite/issues/3016)).
+  
+  The guard now runs the teardown this join installed before disposing the
+  session. It runs the join's OWN closure, never the module-level slot, because a
+  newer join may already own that slot by then and running its teardown would drop
+  the room model of the session the user is actually in.
+  
+  The publish into that slot is now conditional on this join still being the live
+  one, which fixes the mirror-image leak the fix would otherwise have left open: a
+  stale continuation resuming after a newer join had already published its
+  teardown overwrote it, so the newer room's model was never removed on the next
+  Leave. Both checks read `collabRoomId` against this join's `roomId`, the same
+  granularity as every other re-check in `startCollab` — neither can tell a rejoin
+  of the same room from this join still being live.
+
+- [#2977](https://github.com/LTplus-AG/ifc-lite/pull/2977) [`40cd43c`](https://github.com/LTplus-AG/ifc-lite/commit/40cd43ce29cce6c71671e07abde00b41c8886e37) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Give unclassified elements a real legend entry in classification auto-color mode, instead of silently ghosting them.
+  
+  Previously, `evaluateAutoColorLens` pushed any entity whose `extractAutoColorValues` returned no values into `ghostIds` — a faint gray tint, no legend row, no count, no way to select or isolate it. For `source: "classification"` this meant every unclassified element (and, when a system filter was set, every element classified in a *different* system) disappeared into the ghost mass with no way to see how many there were.
+  
+  `AutoColorSpec` gains an opt-in `includeUnclassified` flag. When set on a `classification` source, value-less entities get real, clickable legend entries instead:
+  
+  - **"No classification"** — the entity has zero classification references.
+  - **"Not in this system"** — it has references, but none in the system named by `psetName`. This bucket only appears when `psetName` names a specific system; with no system filter there is nothing to be "not in", so everything collapses into the single "No classification" bucket.
+  
+  Both buckets get fixed, visually-neutral colors (not drawn from the rank-based palette), so they can never take the most-saturated color just because they're the largest group, and turning `includeUnclassified` on/off never shifts the colors already assigned to real classification values. Each `AutoColorLegendEntry` for one of these buckets carries `isAbsent: true` so a consumer can tell an absence bucket apart from a real classification code.
+  
+  The flag defaults to unset/`false`, which reproduces the exact pre-existing ghosting behavior — this is additive, not a new default, so an existing saved lens or SDK caller relying on unclassified elements being ghosted sees no change. An older `@ifc-lite/lens` build that doesn't know this field simply ignores it and keeps ghosting, which is also the safe fallback if the field is ever malformed on import.
+  
+  The viewer's lens editor now exposes this as a "Show unclassified" toggle, shown only when the auto-color source is set to Classification. It is off by default, matching the flag's default; turning it on persists into saved lenses and JSON export/import exactly like the rest of an auto-color spec.
+
+- [#3024](https://github.com/LTplus-AG/ifc-lite/pull/3024) [`b172462`](https://github.com/LTplus-AG/ifc-lite/commit/b1724626f494c6a9d6c7983fe041ccf7c4fc4bf9) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `loadListDefinitions` returning non-array JSON verbatim, bricking the List panel on a corrupt or hand-edited `localStorage` entry.
+  
+  `loadListDefinitions` parsed the stored value and cast it straight to `ListDefinition[]` without checking it actually was an array. A hand-edited entry, or any well-formed JSON that isn't an array (an object, a stray number, `null`), came back unchanged. `listSlice.addListDefinition` spreads that result (`[...listDefinitions, def]`) on the very first list the user creates, so a non-array value threw `TypeError: ... is not iterable` at that point instead of the panel just starting empty. `loadListDefinitions` now falls back to `[]` for any parsed value that isn't an array, the same way it already does for unparsable JSON.
+
+- [#3065](https://github.com/LTplus-AG/ifc-lite/pull/3065) [`ffe3185`](https://github.com/LTplus-AG/ifc-lite/commit/ffe3185c6320d57a0be76f5d1810a13f43926f57) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Make the Measure tool's relative-coordinate readout distinguishable from an absolute one, and show the datum it is measured from ([#2737](https://github.com/LTplus-AG/ifc-lite/issues/2737) §3).
+  
+  The temporary reference point itself already shipped: a store field and a subtraction feeding one "Rel. ref" row. Two things about how that row read are fixed here.
+  
+  The offset printed as `X 3.000  Y 4.000  Z 4.000` — character for character the shape every absolute coordinate the viewer shows uses (model-local, project/anchor, render-frame world, georeferenced). Only the small label cell beside it said otherwise, and a label cell is what a narrow panel or a screenshot crop loses. It now prints as signed per-axis deltas, `ΔX +3.000  ΔY +4.000  ΔZ +4.000`, so the distinction is carried in the value and survives being read out of context. A zero axis stays unsigned: an offset of nothing has no direction.
+  
+  The datum was also never displayed, only implied by the delta row's existence — an offset whose origin is off-screen or forgotten is a number nobody can act on. A **Datum** row now shows the reference point's own position, in the same frame and the same format as the Model row above it, because that is what it is: a point somebody picked. Both rows are derived from the store on every render, so moving the reference recomputes the offset in place and clearing it removes both rows rather than leaving their last numbers on screen.
+  
+  No change to when the datum is kept or dropped, to the absolute rows when no datum is set, or to the georeferenced projection.
+
+- [#3057](https://github.com/LTplus-AG/ifc-lite/pull/3057) [`fdd6121`](https://github.com/LTplus-AG/ifc-lite/commit/fdd61211e41d3e563a7604ac5e0630a9daae2de1) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Remove two advertised-but-unread option surfaces, and with them the `--quality`
+  CLI flag. Both were found by the issue [#2731](https://github.com/LTplus-AG/ifc-lite/issues/2731) audit; an earlier changeset marked
+  the audit's inert *fields* `@deprecated` and deliberately left these two out,
+  because each carries a behaviour decision rather than only a doc fix. This is
+  that decision, taken as removal.
+  
+  **`DynamicBatchConfig.initialBatchSize` / `.maxBatchSize` (`geometry`,
+  breaking).** The interface promised a ramp-up — small first batches for a fast
+  first frame, larger ones later. No ramp-up exists.
+  `getStreamingBatchSize` reads `fileSizeMB` alone (falling back to the buffer's
+  own length when it is absent or zero) and returns a fixed value off a size
+  ladder; the two size fields were never read on any path. `DynamicBatchConfig`
+  is now `{ fileSizeMB?: number }`. Streaming behaviour is unchanged for every
+  caller — the values were already ignored — but an object literal that still
+  sets either field is now an excess-property error. Delete the fields; the
+  resulting batch sizes are identical.
+  
+  **`GeometryProcessorOptions.quality` and the `GeometryQuality` enum
+  (`geometry`, breaking).** The constructor discarded the value (`void
+  options.quality;`) and nothing downstream consulted it, so `Fast`, `Balanced`
+  and `High` selected exactly the same geometry. The field and the exported
+  `GeometryQuality` enum are both gone. Callers wanting a real detail-level
+  control want `tessellationQuality` (`'lowest' | 'low' | 'medium' | 'high' |
+  'highest'`), which is honoured by the WASM pipeline.
+  
+  **`GenerateLod1Options.quality` (`export`, breaking).** It existed only to
+  forward into the discard above. Removed.
+  
+  **`ifc-lite lod --quality` (`cli`, user-visible removal).** The flag accepted
+  `low | medium | high | fast | balanced`, validated the value, rejected anything
+  else with a non-zero exit — and then fed the result into the discarded field.
+  Every accepted value produced byte-identical LOD1 output. The flag is removed
+  rather than left validating into nothing: a command that still fails on
+  `--quality gorgeous` while ignoring `--quality low` misleads more than an
+  unknown-flag path does. Scripts passing it need the flag dropped; the generated
+  GLB and metadata are unchanged.
+  
+  `geometry` and `export` take `major` because a public export is removed and
+  optional fields disappear from published types — the repo's own API-surface
+  guard puts a removed export at `major` for a package at or past 1.0. `cli` is
+  `0.x` and takes `minor` for the flag removal.
+
+- [#2994](https://github.com/LTplus-AG/ifc-lite/pull/2994) [`a55d13b`](https://github.com/LTplus-AG/ifc-lite/commit/a55d13ba5e0f8659de0a527fb2a9a928e488205a) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Stop a script Run result from one place in the UI silently overwriting a newer script result started from another.
+  
+  `useSandbox()` is instantiated independently in `ScriptPanel`, `ChatPanel`, `CommandPalette` and `ExecutableCodeBlock`, each with its own local sandbox — but all publish to the same shared `scriptLastResult`/`scriptLastError`/`scriptExecutionState` store fields with no check that the completing call was still the one being waited on. Two overlapping runs (a Script Console run racing a chat auto-executed code block) published in FINISH order rather than START order, so a slower, older run could land after a faster, newer one and silently replace its already-displayed result. `useClash`/`useIDS`/`useCompare` already guard the equivalent race with a per-hook run epoch, but that shape cannot cover this case: each `useSandbox()` instance has its own local ref, so two different instances' epochs never compare against each other. `scriptRunEpoch` now lives in the shared store instead, so every `useSandbox()` instance reads and writes the same counter, and a superseded run's terminal store write is skipped.
+  
+  That store-level epoch gates the shared store write only. It does not gate what `execute()` resolves with to its own caller: an unrelated instance's newer run must not turn a script that actually finished successfully into a fabricated failure for the panel that ran it (`ExecutableCodeBlock`/`ChatPanel`'s auto-execute both read a `null` return as "this script failed"). `execute()`'s return value is instead gated by a separate, per-instance run epoch — the same shape `useClash`/`useIDS`/`useCompare` already use — so only that same instance's own newer call, or its own `reset()`, can make an earlier call of its own resolve `null`, matching the existing [#1922](https://github.com/LTplus-AG/ifc-lite/issues/1922) teardown-abort contract for a run that actually died.
+  
+  Also fixes what that guard turned terminal: "Reset sandbox" left the store reporting a successful run with no result and no error. `setScriptResult(null)` moved the execution state to `'success'` unconditionally, so `useSandbox().reset()` — its only caller that passes `null` — cleared the result and then announced a success for it. That used to be overwritten by whatever run completed next; with the supersession epoch, a run the reset itself superseded no longer writes at all, so the incoherent state was the one the panel came to rest in. A `null` result is now reported as `'idle'`, which is what every other "nothing has run" path in the store already uses.
+
+- [#2960](https://github.com/LTplus-AG/ifc-lite/pull/2960) [`be74930`](https://github.com/LTplus-AG/ifc-lite/commit/be74930b383a189ac61c5f8ef5bc8b5f4579dda3) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Key the 2D-Section pinned-placement cache on the section axis as well as the sheet geometry.
+  
+  `resolveSheetTransform` returns the per-axis flips as an output so a consumer cannot pair one axis's transform with another axis's flips. The cached transform, however, is a second carrier of those flips: `calculateDrawingTransformForAxis` folds `flipX`/`flipY` into `translateX`/`translateY`. The cache key covered the sheet's id, paper, viewport and scale only, so an entry written by a resolve on one axis was served to a pinned resolve on another — on a 1:100 A3 fixture that puts the drawing centre 140 mm from the viewport centre, off the paper. In the app the axis change also nulls the cache and forces a re-fit, so the mismatch was at most a single frame rather than a persistent one.
+  
+  The cached entry is now tagged with `sheetTransformCacheKeyOf(sheet, axis)` and validated against it, which makes the pairing unrepresentable at the cache too. Same-axis pinned reads still hit the cache, so pinning is unaffected.
+
+- [#2960](https://github.com/LTplus-AG/ifc-lite/pull/2960) [`be74930`](https://github.com/LTplus-AG/ifc-lite/commit/be74930b383a189ac61c5f8ef5bc8b5f4579dda3) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix a 2D-Section drawing sheet printing at a different position than the preview while Pin View is on.
+  
+  Pin View (on by default) holds the sheet placement steady while the drawing's bounds change underneath it — that is what pinning is for. The preview honoured it by reusing a cached transform; the print/export path (`useDrawingExport`'s `generateSheetSVG`) was never given the pin state or the cache at all, so it re-fitted the drawing from the current bounds. The cache is deliberately keyed on the sheet's geometry (id, paper, viewport, scale) and not on the drawing bounds, so it stayed valid across a regenerate at a new elevation: the preview kept the held placement and the print computed a different one. Same visible symptom as the earlier off-centre print, different cause.
+  
+  Both paths now go through one resolver (`resolveSheetTransform`) that owns the per-axis flip correction and the cache read, with the flips derived from the section axis rather than at each call site. The preview still owns the cache write, and the export path never writes, so printing cannot move what is on screen.
+
+- [#2960](https://github.com/LTplus-AG/ifc-lite/pull/2960) [`be74930`](https://github.com/LTplus-AG/ifc-lite/commit/be74930b383a189ac61c5f8ef5bc8b5f4579dda3) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix a 'side' section's drawing sheet — preview, print and export alike — landing off-center on the sheet along X.
+  
+  `calculateDrawingTransformForAxis` (added to fix the analogous Y-axis issue) only corrected `translateY` for the caller's Y-flip; `translateX` was passed through unmodified regardless of the caller's X-flip. 'side' sections flip X (`adjustedX = -x`, to view from the conventional direction) but `calculateDrawingTransform`'s `translateX` bakes in the assumption of no X-flip, so a 'side' section whose bounds weren't symmetric about X=0 was centered at a point shifted by `(minX + maxX) * scaleFactor` — up to the full width of the viewport for a section far from X=0.
+  
+  `calculateDrawingTransformForAxis` now takes an optional `flipX` parameter (default `false`, preserving prior behavior for callers that don't pass it) and applies the mirror-image correction to `translateX` when it is true. Both the preview (`Drawing2DCanvas.tsx`) and the print/export path (`useDrawingExport.ts`'s `generateSheetSVG`) reach it through one shared resolver that derives the flips from the section axis, so a 'side' section centers correctly and neither path derives the flips separately.
+
+- [#3067](https://github.com/LTplus-AG/ifc-lite/pull/3067) [`55fa1e8`](https://github.com/LTplus-AG/ifc-lite/commit/55fa1e8db07a0461444b787f13f891820bb49e23) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Stop the Drawing Sheet PDF export asking the browser for a canvas it will not allocate, and never let a blank one reach the page.
+  
+  The sheet PDF rasterizes `generateSheetSVG`'s output at a fixed 300 dpi, sized to the sheet's own paper. On the big papers that is far past what WebKit allocates: ARCH E (1219.2 x 914.4 mm) is 14400 x 10800 = 155,520,000 px, A0 is 14043 x 9933 = 139,489,119 px, against `CanvasBase::maxCanvasArea()` — `8192 * 8192` on the iOS family, `16384 * 16384` elsewhere. Nine of the twenty-five registry paper sizes are over the lower cap; ARCH E, not the A0 named in review, is the worst case.
+  
+  Nothing about that failure announces itself. `CanvasBase::validateArea()` logs a console warning and returns false, the canvas gets no backing store, `getContext('2d')` still hands back a live context, the paint calls no-op, and `toDataURL()` returns the literal string `"data:,"` (`encodeDataURL(RefPtr<ImageBuffer>&&)` returns `"data:,"_s` for a null buffer). The export then died inside jsPDF's PNG decoder, so the user got a complaint about a PNG signature with no remedy in it.
+  
+  The pixel grid now comes from `fitRasterPixels` — the same helper the 3D-view PDF's shaded underlay already uses, rather than a second cap policy — budgeted at WebKit's lower cap. It scales both sides by one factor, and the image is still placed across the full paper rectangle in millimetres, so a capped sheet is blurrier and never mis-scaled: A0 lands at 208 dpi and ARCH E at 197, both above the 150 dpi this repo already ships as adequate for a printed PDF raster. Papers inside the cap — ARCH C and everything smaller, including the A3 default — are untouched at the full 300 dpi.
+  
+  Capping is surfaced, not silent: a reduced sheet raises a notice naming the dpi actually delivered and pointing at the SVG export for a vector sheet at any size. And because a pixel budget is necessary but not sufficient — Safari enforces a separate total canvas-memory limit, and any browser can fail a large allocation on a low-memory device — a data URL that is not a PNG is now refused with a message that names the paper size and the way out, instead of being handed to jsPDF.
+  
+  The cap value and the failure mode are read off WebKit's source, not observed in a browser; no Safari, Chrome or Firefox was run, and Chrome's and Firefox's own limits are not modelled.
+
+- [#3095](https://github.com/LTplus-AG/ifc-lite/pull/3095) [`bea50bd`](https://github.com/LTplus-AG/ifc-lite/commit/bea50bd7bca7fdf69f01076ebb96a31b8e797a46) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Put the symbolic annotation/grid overlay in the same coordinate frame as the meshes it is drawn over.
+  
+  The symbolic extractor re-based its plan coordinates by the wrong component of the model RTC offset — the offset's Z (elevation) was subtracted along the northing axis — and never re-based the elevation it reports as `worldY` at all. Both mistakes are invisible for a model near the origin, where the offset is (0,0,0), and neither had test cover. For a georeferenced model the mesh pipeline re-bases every vertex by the whole offset, so annotations, dimension text, fill areas and grid bubbles were drawn a northing away from the building, at an elevation that no longer matched any storey; the plan view's grid section-clip compared that unshifted elevation against a re-based cut band, so the visible grid belonged to the wrong storey or to none.
+  
+  The offset now travels as one `RenderFrameRebase` with private components and two named conversions (`plan`, `elevation`) instead of two loose floats threaded through six modules, so no call site can reach for the wrong axis. The viewer half matches: the storey-table elevation that `buildParseResult` falls back to when a placement carries no Z is re-based to the same frame as the extractor's `worldY`, since both feed one set of buckets lifted into one scene.
+
+- [#2996](https://github.com/LTplus-AG/ifc-lite/pull/2996) [`4797203`](https://github.com/LTplus-AG/ifc-lite/commit/47972034855eca7d2af6ca3cfc358e6c54c59aa9) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `loadFromServer`'s streaming path writing a superseded load's geometry into the model the user just opened.
+  
+  `useIfcCache.ts`'s `isStale` doc claims the same re-check contract as `loadFromServer`'s, but the streaming batch callback passed to `client.parseParquetStream` (and the post-stream/post-parse writes on all three server paths) never re-checked `isStale` after their awaits. A user opening file B while file A was still streaming from the server kept getting A's later batches painted into B's slot, including the trailing progress line reaching `Complete` for a load nobody owned any more. `loadFromServer` now re-checks `isStale` inside the batch callback and after each of the streaming/Parquet/JSON awaits, matching `loadFromCache`'s per-chunk guard, and returns `false` for a superseded load instead of reporting success.
+  
+  Also closes one more post-await window in the same function: a re-check right after `await client.isParquetSupported()` resolves, so a load already superseded during that capability check no longer goes on to issue the (now-pointless) parse request at all.
+
+- [#3011](https://github.com/LTplus-AG/ifc-lite/pull/3011) [`13f0669`](https://github.com/LTplus-AG/ifc-lite/commit/13f06695d35dc20134e75150f7b1b91d2160f502) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix leaving a collaboration room mid-join silently putting the user back in it once the join finished.
+  
+  `startCollab` re-checks `get().collabRoomId === roomId` after each of its own await points, from session creation through model reconstruction, so a `stopCollab()` landing in any of those windows is caught and the half-built session disposed. The final block — wiring the remote-apply and annotation-sync teardowns, then the closing `set({ collabSession: session, collabConnecting: false, ... })` — had no such check and ran unconditionally. `collabRoomId` is set synchronously at the top of `startCollab`, before any await, so `RoomPanel`'s "Leave" button is live while the join is still awaiting `session.whenSynced`: clicking it cleared `collabRoomId`/`collabSession`, and the suspended continuation then resumed and revived the session the user had just left, with remote-apply and annotation-inbound teardown closures installed that the next `stopCollab()` would not match to the session it disposes.
+  
+  `startCollab` now applies the same `collabRoomId` guard before that final block, disposing the session and returning instead.
+
+- [#3074](https://github.com/LTplus-AG/ifc-lite/pull/3074) [`d3bd99a`](https://github.com/LTplus-AG/ifc-lite/commit/d3bd99ac3fae1c6c003141d00b5d269f4904f1f1) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Report openings a wall split could not reassign on the typed-distance path too, not only the click path.
+  
+  A wall split commits from two places, and both call the same `MutationSlice.splitWallAtDistance`, so both receive the same `openings.skipped` count — openings that stay attached to the source wall the split has just tombstoned rather than moving to either half, and can therefore end up orphaned. [#3023](https://github.com/LTplus-AG/ifc-lite/issues/3023) taught only the canvas click handler (`selectionHandlers.ts`) to surface that count. The Split tool's numeric-distance panel (`tools/SplitNumericInput.tsx`) kept its own inlined copy of the "(N openings reassigned)" wording, read only `toLeft`/`toRight`, and never looked at `skipped` at all — so committing the identical split by typing a distance instead of clicking silently dropped the warning that clicking showed.
+  
+  Both notices now come from a single emitter, `notifyWallSplit` in the new `wallSplitNotice.ts`, which both call sites invoke instead of composing toasts themselves. An emitter rather than a shared formatter is the point: a formatter is still something a call site can neglect to call, which is exactly how these two paths came apart. The module imports nothing but the toast surface, so announcing a split does not drag `selectionHandlers.ts`'s store, geometry and measurement imports into the panel. Both paths are now pinned by tests asserting the full toast strings, in both directions — the warning when `skipped > 0`, and silence when it is 0.
+- Updated dependencies [[`93b450c`](https://github.com/LTplus-AG/ifc-lite/commit/93b450c1cc0c3cee811625989edb82cf522c70c4), [`ddf9f1d`](https://github.com/LTplus-AG/ifc-lite/commit/ddf9f1da830cef5f941ea09e8aee19624e9def3a), [`f7e26e4`](https://github.com/LTplus-AG/ifc-lite/commit/f7e26e4200e1475728d4976142b49cb408400a8e), [`e19aa0e`](https://github.com/LTplus-AG/ifc-lite/commit/e19aa0ef271eccc7f2f6862b8580e9f98dbd1a66), [`66697fc`](https://github.com/LTplus-AG/ifc-lite/commit/66697fc57de1de4475a2c5eed4361e0e378e0f7a), [`447f02e`](https://github.com/LTplus-AG/ifc-lite/commit/447f02eefc2933c63c03aea6c7793343df20fcd7), [`0ea7167`](https://github.com/LTplus-AG/ifc-lite/commit/0ea7167a6bd96d5b5e12e7e5a8c5615ab0b7c3b2), [`228bbe7`](https://github.com/LTplus-AG/ifc-lite/commit/228bbe730522148ea797780c5acd08502b18a3a3), [`3bef19b`](https://github.com/LTplus-AG/ifc-lite/commit/3bef19b13d303029b87e862660e3730c06852687), [`e6caf11`](https://github.com/LTplus-AG/ifc-lite/commit/e6caf11a8f8d9d8634a6811b6705ab3367cd02e0), [`2580830`](https://github.com/LTplus-AG/ifc-lite/commit/25808308bbbc63eb0fd8b25e6dd0c08864adb6a8), [`b25b2e7`](https://github.com/LTplus-AG/ifc-lite/commit/b25b2e7387bd365fda02d48095266f16b4f05cd7), [`7ff31ba`](https://github.com/LTplus-AG/ifc-lite/commit/7ff31ba854671a9ca3ebbf30b15e928e1b52a8b9), [`8ba612f`](https://github.com/LTplus-AG/ifc-lite/commit/8ba612f90d3bb0ad41f756d6fdef6b3250e8d330), [`9359bc4`](https://github.com/LTplus-AG/ifc-lite/commit/9359bc488173585b2b90e124cc66dcf8292c4be9), [`8571d70`](https://github.com/LTplus-AG/ifc-lite/commit/8571d70270d072170fc4e204e8b0d11a424d2330), [`65d19dd`](https://github.com/LTplus-AG/ifc-lite/commit/65d19ddd305b00dd6cdd8a815e3e9749dee5949b), [`b1d7a4d`](https://github.com/LTplus-AG/ifc-lite/commit/b1d7a4d832557e6961aef82102f423b07742c385), [`f64ecdc`](https://github.com/LTplus-AG/ifc-lite/commit/f64ecdc2129074d2d3def676d6ddd69dffdd785e), [`f6febcc`](https://github.com/LTplus-AG/ifc-lite/commit/f6febcc2d4986e79b3c44d63853bb72a16475c65), [`5781e5c`](https://github.com/LTplus-AG/ifc-lite/commit/5781e5c2998111926683419d27f8efa3519de7c6), [`bc2e5e5`](https://github.com/LTplus-AG/ifc-lite/commit/bc2e5e56d7324f605b15b6e6f939849859a5d0ad), [`1118399`](https://github.com/LTplus-AG/ifc-lite/commit/11183991d9fb042221d20f1ca432dc0b2293c928), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`063a140`](https://github.com/LTplus-AG/ifc-lite/commit/063a1408e4c54ebc874618f8d68fe298ed3f3a6f), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`f7e26e4`](https://github.com/LTplus-AG/ifc-lite/commit/f7e26e4200e1475728d4976142b49cb408400a8e), [`f76c805`](https://github.com/LTplus-AG/ifc-lite/commit/f76c80511dce5ffc1756365b786042c4bc64808d), [`75867a7`](https://github.com/LTplus-AG/ifc-lite/commit/75867a7e6ebf51b2da47cab14242bcd71787ba3b), [`75867a7`](https://github.com/LTplus-AG/ifc-lite/commit/75867a7e6ebf51b2da47cab14242bcd71787ba3b), [`4a8fe77`](https://github.com/LTplus-AG/ifc-lite/commit/4a8fe77707127d251702610490f53430610e4ef7), [`f135c02`](https://github.com/LTplus-AG/ifc-lite/commit/f135c02624b8a7aa1915068405545d108f55fce4), [`ffcc9e6`](https://github.com/LTplus-AG/ifc-lite/commit/ffcc9e6f048cd263a5b70946417c9b6aceec1bec), [`4a8fe77`](https://github.com/LTplus-AG/ifc-lite/commit/4a8fe77707127d251702610490f53430610e4ef7), [`f7e26e4`](https://github.com/LTplus-AG/ifc-lite/commit/f7e26e4200e1475728d4976142b49cb408400a8e), [`0146f0a`](https://github.com/LTplus-AG/ifc-lite/commit/0146f0a3b2ed36313f7f91236bcc95587cdcc8d3), [`f449776`](https://github.com/LTplus-AG/ifc-lite/commit/f4497765cb4e17828ff6ca6b52fb8a96caa2f81f), [`40cd43c`](https://github.com/LTplus-AG/ifc-lite/commit/40cd43ce29cce6c71671e07abde00b41c8886e37), [`56ad58c`](https://github.com/LTplus-AG/ifc-lite/commit/56ad58cc8d1d8d54fdb996606f667c0c170d74aa), [`8b9bc5a`](https://github.com/LTplus-AG/ifc-lite/commit/8b9bc5a0b2d6541f6a0ec45c10e41b005059e06b), [`dec0708`](https://github.com/LTplus-AG/ifc-lite/commit/dec0708ef841c88abea6ec91404419fd7a3d93c6), [`dec0708`](https://github.com/LTplus-AG/ifc-lite/commit/dec0708ef841c88abea6ec91404419fd7a3d93c6), [`dec0708`](https://github.com/LTplus-AG/ifc-lite/commit/dec0708ef841c88abea6ec91404419fd7a3d93c6), [`5ea5f99`](https://github.com/LTplus-AG/ifc-lite/commit/5ea5f9969f3a4a3f8b21eb2a90a1df2be48eb7b0), [`66f3969`](https://github.com/LTplus-AG/ifc-lite/commit/66f39693ce006a43efb2c156e4f5f8f95f1d1606), [`66f3969`](https://github.com/LTplus-AG/ifc-lite/commit/66f39693ce006a43efb2c156e4f5f8f95f1d1606), [`412f78c`](https://github.com/LTplus-AG/ifc-lite/commit/412f78c1bf4907f8c230fc149bbb00e0711b6689), [`487866d`](https://github.com/LTplus-AG/ifc-lite/commit/487866dac131bf50a0b3008ddce5db933768dca2), [`932f043`](https://github.com/LTplus-AG/ifc-lite/commit/932f0439fc1625419aae3cf2d9f81a614fb2273c), [`f1ee3e8`](https://github.com/LTplus-AG/ifc-lite/commit/f1ee3e88889281af34f0e382cef7ea57ee9d47c1), [`754837b`](https://github.com/LTplus-AG/ifc-lite/commit/754837b066172dad8afcdf1a0104f1a021b5f6e5), [`2273a73`](https://github.com/LTplus-AG/ifc-lite/commit/2273a73127d03ec36d667544da6237479737881a), [`20264d8`](https://github.com/LTplus-AG/ifc-lite/commit/20264d8b1ee82169a02f9dc588decc45fb8fdc00), [`5ea5f99`](https://github.com/LTplus-AG/ifc-lite/commit/5ea5f9969f3a4a3f8b21eb2a90a1df2be48eb7b0), [`131e3dc`](https://github.com/LTplus-AG/ifc-lite/commit/131e3dc84244d9dd24859a5923ef0aef4d6119c4), [`a8587cc`](https://github.com/LTplus-AG/ifc-lite/commit/a8587cc21c309ebd6c87119cb0d1cd6d1005c281), [`b1f4335`](https://github.com/LTplus-AG/ifc-lite/commit/b1f4335f3bf3c379f4a2afa4f96e5fe1fc3bc97d), [`945c4d7`](https://github.com/LTplus-AG/ifc-lite/commit/945c4d7a773614dd664feb9490e13372782a543b), [`fdd6121`](https://github.com/LTplus-AG/ifc-lite/commit/fdd61211e41d3e563a7604ac5e0630a9daae2de1), [`50d9f91`](https://github.com/LTplus-AG/ifc-lite/commit/50d9f91af0b49c2b503e5cf8abd0aa83adfd8c34), [`6e51909`](https://github.com/LTplus-AG/ifc-lite/commit/6e519094bb69dff4c550c383bbc89b889a5fcafa), [`409520e`](https://github.com/LTplus-AG/ifc-lite/commit/409520ee2e940866b126c3433cc10d0fe110d645), [`6095fe0`](https://github.com/LTplus-AG/ifc-lite/commit/6095fe0c19072e9a97edefb2be95dde66f514f6b), [`b59c520`](https://github.com/LTplus-AG/ifc-lite/commit/b59c5206a154728139d1307bf823e5c5d7c4786a), [`be74930`](https://github.com/LTplus-AG/ifc-lite/commit/be74930b383a189ac61c5f8ef5bc8b5f4579dda3), [`be74930`](https://github.com/LTplus-AG/ifc-lite/commit/be74930b383a189ac61c5f8ef5bc8b5f4579dda3), [`870ec9e`](https://github.com/LTplus-AG/ifc-lite/commit/870ec9ee9a35f798196c59ce82e65e210eddd429), [`00f6e79`](https://github.com/LTplus-AG/ifc-lite/commit/00f6e79c22641ff59bfb3327d910b04f9a164d8b), [`116a3e9`](https://github.com/LTplus-AG/ifc-lite/commit/116a3e94de753b95fa94b2d6c41a0171cd254729), [`75867a7`](https://github.com/LTplus-AG/ifc-lite/commit/75867a7e6ebf51b2da47cab14242bcd71787ba3b), [`1823d70`](https://github.com/LTplus-AG/ifc-lite/commit/1823d70a581429fb6a7df2272b31d426e0cf2149), [`c7c8207`](https://github.com/LTplus-AG/ifc-lite/commit/c7c820772ccdf99ecf45032b714b80249fbbc767), [`78d85dc`](https://github.com/LTplus-AG/ifc-lite/commit/78d85dcd4c59ee5b3b3b7857a454113c4911bc36), [`147693a`](https://github.com/LTplus-AG/ifc-lite/commit/147693a7a8fd0778ddb71839199b75bf1d622327), [`bea50bd`](https://github.com/LTplus-AG/ifc-lite/commit/bea50bd7bca7fdf69f01076ebb96a31b8e797a46), [`af48854`](https://github.com/LTplus-AG/ifc-lite/commit/af488542a19a8559065cfd450d0eaad5ba2f7489), [`3969c52`](https://github.com/LTplus-AG/ifc-lite/commit/3969c523063d02e501f421e6b42d1a9a516dc2e4), [`bb734da`](https://github.com/LTplus-AG/ifc-lite/commit/bb734da27afbea4b6e595714950cdb195cddeb1f), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`00f6e79`](https://github.com/LTplus-AG/ifc-lite/commit/00f6e79c22641ff59bfb3327d910b04f9a164d8b), [`e43582b`](https://github.com/LTplus-AG/ifc-lite/commit/e43582b069007c6c2c932f6981743a80630fe217), [`043e06a`](https://github.com/LTplus-AG/ifc-lite/commit/043e06a05c6625fef91bb17d84e3a3447f1379e3)]:
+  - @ifc-lite/bcf@2.0.0
+  - @ifc-lite/parser@4.3.0
+  - @ifc-lite/mcp@0.12.0
+  - @ifc-lite/collab@0.6.0
+  - @ifc-lite/extensions@0.5.0
+  - @ifc-lite/wasm@6.0.0
+  - @ifc-lite/cache@3.0.6
+  - @ifc-lite/ifcx@3.0.0
+  - @ifc-lite/merge@0.4.4
+  - @ifc-lite/export@3.0.0
+  - @ifc-lite/sdk@3.0.0
+  - @ifc-lite/encoding@2.1.0
+  - @ifc-lite/lists@2.0.0
+  - @ifc-lite/data@3.4.1
+  - @ifc-lite/drawing-2d@3.0.0
+  - @ifc-lite/renderer@1.50.0
+  - @ifc-lite/geometry@4.0.0
+  - @ifc-lite/query@2.0.0
+  - @ifc-lite/ids@1.15.49
+  - @ifc-lite/lens@1.19.0
+  - @ifc-lite/clash@1.9.1
+  - @ifc-lite/source-msgraph@0.2.1
+  - @ifc-lite/mutations@1.27.0
+  - @ifc-lite/pointcloud@0.7.1
+  - @ifc-lite/sandbox@2.2.1
+  - @ifc-lite/create@2.2.0
+  - @ifc-lite/server-client@1.23.0
+  - @ifc-lite/spatial@1.14.15
+
 ## 1.37.0
 
 ### Minor Changes

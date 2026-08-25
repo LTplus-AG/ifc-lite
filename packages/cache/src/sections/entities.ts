@@ -26,6 +26,11 @@ import { BufferWriter, BufferReader } from '../utils/buffer-utils.js';
  *   - geometryIndex: Int32Array[count]
  *   - typeRangeCount: uint16
  *   - typeRanges: [type:uint16, start:uint32, end:uint32][]
+ *
+ * The typeRanges triples are vestigial on read: `readEntities` derives the
+ * spans from the typeEnum column instead, because pre-#3101 caches stored
+ * `start + count` here and the format version does not distinguish them.
+ * They are still written so the section layout is unchanged.
  */
 export function writeEntities(writer: BufferWriter, entities: EntityTable): void {
   const count = entities.count;
@@ -74,22 +79,27 @@ export function readEntities(reader: BufferReader, strings: StringTable): Entity
   const definedByType = reader.readInt32Array(count);
   const geometryIndex = reader.readInt32Array(count);
 
-  // Read type ranges
+  // Read (and discard) the stored type-range triples. The bytes must still be
+  // consumed to keep the reader aligned, but their meaning is not trustworthy:
+  // caches written before #3101 hold `start + count`, later ones hold a
+  // `[firstRow, lastRow + 1]` span, and FORMAT_VERSION was deliberately not
+  // bumped (header.ts accepts any version <= FORMAT_VERSION by design), so
+  // both vintages arrive here indistinguishable. The spans are derived from
+  // the live typeEnum column below instead.
   const typeRangeCount = reader.readUint16();
-  const typeRanges = new Map<IfcTypeEnum, { start: number; end: number }>();
 
   for (let i = 0; i < typeRangeCount; i++) {
-    const type = reader.readUint16() as IfcTypeEnum;
-    const start = reader.readUint32();
-    const end = reader.readUint32();
-    typeRanges.set(type, { start, end });
+    reader.readUint16(); // type
+    reader.readUint32(); // start
+    reader.readUint32(); // end (or count, for a pre-#3101 cache)
   }
 
   // Build EntityTable with methods
   const HAS_GEOMETRY = 0b00000001;
 
-  // Build correct per-type index arrays for getByType()
-  // typeRanges assumes contiguous entities per type, which fails with interleaved IFC files
+  // Build correct per-type index arrays. Every row of a type is listed, so
+  // this survives IFC files that interleave types — unlike the serialized
+  // typeRanges, which cannot express more than one contiguous run per type.
   const typeIndices = new Map<IfcTypeEnum, number[]>();
   for (let i = 0; i < count; i++) {
     const t = typeEnum[i] as IfcTypeEnum;
@@ -99,6 +109,13 @@ export function readEntities(reader: BufferReader, strings: StringTable): Entity
       typeIndices.set(t, arr);
     }
     arr.push(i);
+  }
+
+  // Derive the spans from the same index arrays, so the one structure that
+  // survives interleaving feeds both getByType() and the public typeRanges.
+  const typeRanges = new Map<IfcTypeEnum, { start: number; end: number }>();
+  for (const [type, indices] of typeIndices) {
+    typeRanges.set(type, { start: indices[0], end: indices[indices.length - 1] + 1 });
   }
 
   // PRE-BUILD INDEX MAP: O(n) once, then O(1) lookups

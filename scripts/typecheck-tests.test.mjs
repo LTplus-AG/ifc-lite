@@ -23,13 +23,16 @@
  * every package under packages/ happens to get a `../../`-prefixed path that
  * resolves fine — which is exactly why it needs a test rather than a comment.
  *
+ * A second group at the bottom covers anti-vacuity rather than `extends`
+ * semantics: `--audit` used to print a success line after measuring nothing.
+ *
  * Run: node --test scripts/typecheck-tests.test.mjs
  */
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { relativeExtends, parseCliMode } from './typecheck-tests.mjs';
+import { relativeExtends, parseCliMode, auditVacuity } from './typecheck-tests.mjs';
 
 test('a sibling base config is ./-prefixed, not bare', () => {
   // The repo-root case: pkgDir and the base config are the same directory.
@@ -138,4 +141,64 @@ test('every rejection names the offending argument, so the message is actionable
       `error for "${args.join(' ')}" must name ${offender}, got: ${result.error}`,
     );
   }
+});
+
+// --- Anti-vacuity: an audit that measured nothing must not report a clean run ---
+//
+// `--audit` used to print `TOTAL 0 / 0` and `every test file on disk is in a
+// typecheck program.` with exit 0 when it found no packages at all, so CI read
+// "we looked and it was clean" from a run that had looked at nothing. The
+// audit takes no `--root` (REPO_ROOT comes from the script's own location), so
+// the end-to-end reproduction is a copy of the script run from an empty tree;
+// `auditVacuity` is the decision that reproduction exercises, driven directly
+// here so every branch has a case.
+
+test('vacuity: no package parent at all is a refusal, not a clean audit', () => {
+  const msg = auditVacuity({ seenParents: [], packagesWithTests: null, testFiles: null });
+  assert.ok(msg, 'a tree with neither packages/ nor apps/ must be refused');
+  assert.match(msg, /Refusing a vacuous pass/);
+  assert.match(msg, /none of packages\/, apps\/ exists/);
+});
+
+test('vacuity: package parents that hold no tests are a refusal', () => {
+  const msg = auditVacuity({ seenParents: ['packages', 'apps'], packagesWithTests: 0, testFiles: 0 });
+  assert.ok(msg, 'zero packages carrying tests must be refused');
+  assert.match(msg, /Refusing a vacuous pass/);
+  assert.match(msg, /no package with a test file/);
+});
+
+test('vacuity: the structural pass runs before any count exists', () => {
+  // Called once before the walk, when the counts are still unknown: only the
+  // "nowhere to look" branch may fire, and a healthy parent list must not.
+  assert.equal(
+    auditVacuity({ seenParents: ['packages', 'apps'], packagesWithTests: null, testFiles: null }),
+    null,
+  );
+});
+
+test('vacuity: a package count far under the floor is a refusal', () => {
+  const msg = auditVacuity({ seenParents: ['packages', 'apps'], packagesWithTests: 2, testFiles: 40 });
+  assert.ok(msg, 'two packages is a collapsed walk, not a shrunken repo');
+  assert.match(msg, /only 2 package\(s\) carried test files, floor is 30/);
+  // The remedy must name the constant to change, so the fix is not a guess.
+  assert.match(msg, /AUDITED_PACKAGES_FLOOR/);
+});
+
+test('vacuity: a healthy package count with a collapsed test-file count is still a refusal', () => {
+  // The two floors are independent on purpose: the package enumeration can
+  // work while findTestFiles/TEST_FILE_RE stops recognising test files, and
+  // that leaves the package number looking entirely healthy.
+  const msg = auditVacuity({ seenParents: ['packages', 'apps'], packagesWithTests: 46, testFiles: 10 });
+  assert.ok(msg, 'a healthy package count must not excuse an empty test-file count');
+  assert.match(msg, /only 10 test file\(s\) found, floor is 900/);
+  assert.match(msg, /TEST_FILES_FLOOR/);
+});
+
+test('vacuity: the real repo\'s measured counts pass', () => {
+  // 46 packages / 1,434 test files as measured on a healthy tree. If this ever
+  // fails, the floors were raised past what the repo actually has.
+  assert.equal(
+    auditVacuity({ seenParents: ['packages', 'apps'], packagesWithTests: 46, testFiles: 1434 }),
+    null,
+  );
 });

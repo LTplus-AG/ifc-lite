@@ -34,6 +34,27 @@
  * Usage:
  *   node ../../scripts/typecheck-tests.mjs     (cwd = a package; the per-package `typecheck` script)
  *   node scripts/typecheck-tests.mjs --audit   (cwd = repo root; the repo-wide coverage gate)
+ *
+ * ANTI-VACUITY (#3194, #3200). `--audit` used to print
+ * `TOTAL 0 / 0` followed by `every test file on disk is in a typecheck
+ * program.` and exit 0 when it found no packages at all — a scan of nothing
+ * reported as a clean scan. Reproduced by running a copy of this script from
+ * an otherwise-empty tree, and again from a tree where `packages/` and `apps/`
+ * exist but are empty. Four guards now stand between an empty input set and
+ * that success line: neither package parent existing is a failure, no package
+ * carrying tests is a failure, and — against the real repo, where a collapse
+ * would otherwise be invisible — fewer than `AUDITED_PACKAGES_FLOOR` packages
+ * or `TEST_FILES_FLOOR` test files is a failure. A directory the walk cannot
+ * read is loud too, and distinguished from one that is missing: they call for
+ * different fixes, and neither of them means "this package has no tests".
+ *
+ * SCAN SCOPE, stated so nobody mistakes the OK for a whole-repo claim: the
+ * audit walks `packages/*` and `apps/*`. Test files under `tests/` are NOT in
+ * any typecheck program today (`tests/tsconfig.json` extends the root config,
+ * whose `exclude` carries `**\/*.test.ts`, and `tsx --test` transpiles without
+ * checking) — the very #2457 gap this file exists to close, one directory
+ * over, and tracked in #3200. The success line names its scope rather than
+ * claiming every test file on disk.
  */
 
 import { execFile } from 'node:child_process';
@@ -51,13 +72,49 @@ const TEST_FILE_RE = /\.test\.(ts|tsx|mts|cts)$/;
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'pkg', '.git', '.turbo']);
 const GENERATED_CONFIG = 'tsconfig.tests.json';
 
+/**
+ * Package parents the audit walks. Not the whole repo — see SCAN SCOPE above.
+ */
+const PACKAGE_PARENTS = ['packages', 'apps'];
+
+/**
+ * Lower bound on how many workspace packages must actually reach the audit.
+ * Measured on a healthy tree: 46 packages under `packages/` + `apps/` carry
+ * test files. Set to 30 — about a third of headroom, enough that ordinary
+ * churn (a package split, a few merged or retired) never forces an edit here,
+ * while the failure this guards against still trips: every way the audit goes
+ * blind (a wrong scan root, a `readdirSync` that returns nothing, a
+ * package.json read that stops finding files) collapses the count to zero or
+ * near it, not to 29.
+ */
+const AUDITED_PACKAGES_FLOOR = 30;
+
+/**
+ * Lower bound on how many test files the walk must find. A second floor,
+ * because the audit has two independent ways to go blind and each leaves the
+ * other's number looking healthy: the package enumeration can collapse, or the
+ * package walk can succeed while `findTestFiles` stops recognising test files
+ * (a change to TEST_FILE_RE, a new extension). Measured on a healthy tree:
+ * 1,434 test files. Set to 900.
+ */
+const TEST_FILES_FLOOR = 900;
+
 /** Test files on disk under `dir`, sorted, repo-relative-free (absolute). */
 function findTestFiles(dir, out = []) {
   let entries;
   try {
     entries = readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return out;
+  } catch (err) {
+    // A directory that is MISSING and one that cannot be READ are different
+    // events, and neither of them is "this package has no test files". The
+    // previous `catch { return out; }` collapsed both into an empty result,
+    // which is how `--audit` could report a clean tree it never opened.
+    throw new Error(
+      err?.code === 'ENOENT'
+        ? `${dir} does not exist — refusing to treat a missing directory as one containing no test files`
+        : `${dir} could not be read (${err?.code ?? err?.message}) — refusing to treat an unreadable directory as one containing no test files`,
+      { cause: err },
+    );
   }
   for (const entry of entries) {
     if (SKIP_DIRS.has(entry.name)) continue;
@@ -167,11 +224,16 @@ async function checkOnePackage(pkgDir) {
   return 0;
 }
 
-function workspaceDirs() {
+/**
+ * @param {string[]} [seenParents] filled with the package parents that exist,
+ *   so a caller can tell "no packages here" from "nowhere to look for them".
+ */
+function workspaceDirs(seenParents = []) {
   const dirs = [];
-  for (const group of ['packages', 'apps']) {
+  for (const group of PACKAGE_PARENTS) {
     const base = path.join(REPO_ROOT, group);
     if (!existsSync(base)) continue;
+    seenParents.push(group);
     for (const name of readdirSync(base).sort()) {
       const dir = path.join(base, name);
       if (!statSync(dir).isDirectory()) continue;
@@ -184,16 +246,78 @@ function workspaceDirs() {
 }
 
 /**
- * Repo-wide mode: prove every test file on disk is a root file of some
- * typecheck program, and that every package carrying tests actually runs one.
- * This is the part that fails when a test file stops being checked — without
- * it the arrangement rots the next time a package is added.
+ * Does this audit run have enough input to mean anything? Returns the refusal
+ * message, or null when the run is worth trusting.
+ *
+ * Pure and exported so `typecheck-tests.test.mjs` can drive every branch: the
+ * audit itself has no `--root` flag (REPO_ROOT comes from this file's own
+ * location), so the only way to exercise these paths end-to-end is to copy the
+ * script into an empty tree, which is how the defect was reproduced but is not
+ * a shape this repo's harnesses use.
+ *
+ * `packagesWithTests` / `testFiles` are null on the structural pass, which
+ * runs before any tsc invocation; the quantitative floors need counts that
+ * only exist after the walk.
+ *
+ * @param {{seenParents: string[], packagesWithTests: number|null, testFiles: number|null}} counts
+ * @returns {string|null}
+ */
+export function auditVacuity({ seenParents, packagesWithTests, testFiles }) {
+  if (seenParents.length === 0) {
+    return (
+      `none of ${PACKAGE_PARENTS.map((p) => `${p}/`).join(', ')} exists under ${REPO_ROOT}. ` +
+      `Refusing a vacuous pass: this audit exists to prove workspace test files reach a typecheck ` +
+      `program, and it found nowhere to look for them.`
+    );
+  }
+  if (packagesWithTests === null || testFiles === null) return null;
+  if (packagesWithTests === 0) {
+    return (
+      `${seenParents.map((p) => `${p}/`).join(' and ')} contain no package with a test file. ` +
+      `Refusing a vacuous pass: an audit that found zero test files has proved nothing about ` +
+      `typecheck coverage.`
+    );
+  }
+  if (packagesWithTests < AUDITED_PACKAGES_FLOOR) {
+    return (
+      `only ${packagesWithTests} package(s) carried test files, floor is ${AUDITED_PACKAGES_FLOOR}. ` +
+      `Refusing a vacuous pass: this repo has about 46, so a count this low means the package walk ` +
+      `stopped working, not that the packages went away. If packages were genuinely removed, lower ` +
+      `AUDITED_PACKAGES_FLOOR in the same commit.`
+    );
+  }
+  if (testFiles < TEST_FILES_FLOOR) {
+    return (
+      `only ${testFiles} test file(s) found, floor is ${TEST_FILES_FLOOR}. ` +
+      `Refusing a vacuous pass: this repo has about 1,434, so a count this low means the test-file ` +
+      `walk or TEST_FILE_RE stopped matching, not that the tests went away. If tests were genuinely ` +
+      `removed, lower TEST_FILES_FLOOR in the same commit.`
+    );
+  }
+  return null;
+}
+
+/**
+ * Repo-wide mode: prove every test file under `packages/` and `apps/` is a
+ * root file of some typecheck program, and that every package carrying tests
+ * actually runs one. This is the part that fails when a test file stops being
+ * checked — without it the arrangement rots the next time a package is added.
  */
 async function audit() {
   const rows = [];
   const problems = [];
+  const seenParents = [];
+  const dirs = workspaceDirs(seenParents);
 
-  for (const dir of workspaceDirs()) {
+  // Anti-vacuity, structural. Checked before any tsc runs, because with an
+  // empty input set everything below it succeeds by having nothing to do.
+  const vacuous = auditVacuity({ seenParents, packagesWithTests: null, testFiles: null });
+  if (vacuous) {
+    console.error(`\ntypecheck-tests: ${vacuous}`);
+    return 1;
+  }
+
+  for (const dir of dirs) {
     const rel = toPosix(path.relative(REPO_ROOT, dir));
     const onDisk = findTestFiles(dir).sort();
     if (onDisk.length === 0) continue;
@@ -239,6 +363,17 @@ async function audit() {
     rows.push({ pkg: rel, inProgram: onDisk.length - missing.length, onDisk: onDisk.length });
   }
 
+  // No rows means nothing was measured, so there is no table to print and
+  // `Math.max()` over an empty list would be -Infinity. Refuse here rather
+  // than fall through to a success line describing a run that looked at
+  // nothing.
+  if (rows.length === 0) {
+    console.error(
+      `\ntypecheck-tests: ${auditVacuity({ seenParents, packagesWithTests: 0, testFiles: 0 })}`,
+    );
+    return 1;
+  }
+
   const width = Math.max(...rows.map((r) => r.pkg.length));
   for (const row of rows) {
     const flag = row.inProgram === row.onDisk ? ' ' : '!';
@@ -253,7 +388,23 @@ async function audit() {
     for (const p of problems) console.error(`  - ${p}`);
     return 1;
   }
-  console.log('\ntypecheck-tests: every test file on disk is in a typecheck program.');
+
+  // Anti-vacuity, quantitative. After the offenders check: a run that found a
+  // real problem should say so rather than argue about how much it measured.
+  const undersized = auditVacuity({
+    seenParents,
+    packagesWithTests: rows.length,
+    testFiles: totalOn,
+  });
+  if (undersized) {
+    console.error(`\ntypecheck-tests: ${undersized}`);
+    return 1;
+  }
+
+  console.log(
+    `\ntypecheck-tests: all ${totalOn} test file(s) across ${rows.length} package(s) under ` +
+      `${PACKAGE_PARENTS.map((p) => `${p}/`).join(' and ')} are in a typecheck program.`,
+  );
   return 0;
 }
 

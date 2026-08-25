@@ -4,6 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { isValidIfcGuid } from '@ifc-lite/encoding';
+import { ENTITIES_IFC2X3, ENTITIES_IFC4, type IfcEntityInfo } from '@ifc-lite/data';
 import {
   convertEntityType,
   convertStepLine,
@@ -359,5 +360,67 @@ line -- if TS now matches it, the divergence has been resolved; update both test
 instead of silently dropping this assertion',
       ).not.toBe('00000000000000000G000g');
     });
+  });
+});
+
+// ─── Downgrade attribute trimming, derived from the generated schema ───────
+//
+// The IFC2X3 downgrade must drop exactly the attributes IFC4 APPENDED, and
+// only when the IFC2X3 positional list is a strict PREFIX of the IFC4 one —
+// the same safety rule the upconversion padding path already applies in
+// reverse. Both expectations are derived from `@ifc-lite/data`'s generated
+// buildingSMART tables so a schema regeneration cannot leave a hand table
+// behind.
+describe('schema-converter: IFC2X3 downgrade attribute counts (schema-derived)', () => {
+  const byName = (list: readonly IfcEntityInfo[]): Map<string, readonly string[]> => {
+    const m = new Map<string, readonly string[]>();
+    for (const e of list) m.set(e.name.toUpperCase(), e.attributes);
+    return m;
+  };
+  const ATTRS_2X3 = byName(ENTITIES_IFC2X3);
+  const ATTRS_4 = byName(ENTITIES_IFC4);
+
+  const isStrictPrefix = (src: readonly string[], tgt: readonly string[]): boolean =>
+    src.length < tgt.length && src.every((a, i) => a === tgt[i]);
+
+  /** Types the downgrade renames/proxies — attribute counts are not comparable. */
+  const isPassthrough = (type: string): boolean =>
+    convertEntityType(type, 'IFC4', 'IFC2X3') === type &&
+    !convertStepLine(`#1=${type}($);`, 'IFC4', 'IFC2X3').includes('IFCPROXY');
+
+  const roundTrip = (type: string, count: number): number => {
+    const args = Array.from({ length: count }, (_, i) => `'a${i}'`).join(',');
+    const out = convertStepLine(`#1=${type}(${args});`, 'IFC4', 'IFC2X3');
+    const body = out.match(/^#1=\w+\((.*)\);$/)?.[1] ?? '';
+    return body === '' ? 0 : body.split(',').length;
+  };
+
+  it('trims to the IFC2X3 length for every entity IFC4 only APPENDED to', () => {
+    const failures: string[] = [];
+    for (const [type, a23] of ATTRS_2X3) {
+      const a4 = ATTRS_4.get(type);
+      if (!a4 || !isStrictPrefix(a23, a4) || !isPassthrough(type)) continue;
+      const got = roundTrip(type, a4.length);
+      if (got !== a23.length) failures.push(`${type}: IFC4 ${a4.length} → got ${got}, want ${a23.length}`);
+    }
+    expect(failures).toEqual([]);
+  });
+
+  it('never truncates an entity whose attributes were REORDERED, not appended', () => {
+    const failures: string[] = [];
+    for (const [type, a23] of ATTRS_2X3) {
+      const a4 = ATTRS_4.get(type);
+      if (!a4 || a4.length <= a23.length || isStrictPrefix(a23, a4) || !isPassthrough(type)) continue;
+      const got = roundTrip(type, a4.length);
+      if (got !== a4.length) failures.push(`${type}: truncated ${a4.length} → ${got}, shifting values into wrong slots`);
+    }
+    expect(failures).toEqual([]);
+  });
+
+  it('trims IfcWallStandardCase, not just IfcWall', () => {
+    const line = "#5=IFCWALLSTANDARDCASE('guid',$,'Wall 1',$,$,$,$,'tag',.STANDARD.);";
+    expect(convertStepLine(line, 'IFC4', 'IFC2X3')).toBe(
+      "#5=IFCWALLSTANDARDCASE('guid',$,'Wall 1',$,$,$,$,'tag');",
+    );
   });
 });

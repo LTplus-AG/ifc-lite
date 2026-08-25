@@ -124,61 +124,6 @@ const IFC4X3_TO_IFC4: Map<string, string> = new Map([
 ]);
 
 /**
- * IFC2X3 entities that have fewer attributes than IFC4.
- * When converting IFC4 → IFC2X3, trailing attributes must be trimmed.
- *
- * Key: entity type (UPPERCASE)
- * Value: max number of positional attributes allowed in IFC2X3
- *
- * Common differences:
- * - IfcRoot subtypes: IFC4 adds no extra root attrs, but several element
- *   subtypes gained PredefinedType in IFC4 that doesn't exist in IFC2X3.
- * - IfcProject: IFC2X3 has 9 attrs, IFC4 has 9 (same)
- * - IfcSite: IFC2X3 has 14, IFC4 has 14 (same)
- * - IfcBuilding: IFC2X3 has 12, IFC4 has 12 (same)
- * - IfcBuildingStorey: IFC2X3 has 10, IFC4 has 10 (same)
- * - IfcSpace: IFC2X3 has 11 (no LongName), IFC4 has 11 (same count, different attrs)
- * - IfcWall: IFC2X3 has 8, IFC4 has 9 (added PredefinedType)
- * - IfcSlab: IFC2X3 has 9, IFC4 has 9 (same)
- * - IfcDoor: IFC2X3 has 10, IFC4 has 13 (added PredefinedType, OperationType, UserDefinedOperationType)
- * - IfcWindow: IFC2X3 has 10, IFC4 has 13 (added PredefinedType, PartitioningType, UserDefinedPartitioningType)
- * - IfcBeam/Column: IFC2X3 has 8, IFC4 has 9 (added PredefinedType)
- * - IfcOpeningElement: IFC2X3 has 8, IFC4 has 9 (added PredefinedType)
- */
-const IFC2X3_ATTR_COUNTS: Map<string, number> = new Map([
-  ['IFCWALL', 8],
-  ['IFCBEAM', 8],
-  ['IFCCOLUMN', 8],
-  ['IFCROOF', 9],
-  ['IFCSTAIR', 9],
-  ['IFCRAMP', 9],
-  ['IFCRAILING', 9],
-  ['IFCMEMBER', 8],
-  ['IFCPLATE', 8],
-  ['IFCFOOTING', 9],
-  ['IFCPILE', 11],
-  ['IFCCOVERING', 9],
-  ['IFCOPENINGELEMENT', 8],
-  ['IFCDOOR', 10],
-  ['IFCWINDOW', 10],
-  ['IFCFURNISHINGELEMENT', 8],
-  ['IFCBUILDINGELEMENTPROXY', 9],
-  ['IFCCURTAINWALL', 8],
-  ['IFCFLOWSEGMENT', 8],
-  ['IFCFLOWTERMINAL', 8],
-  ['IFCFLOWCONTROLLER', 8],
-  ['IFCFLOWFITTING', 8],
-  ['IFCFLOWMOVINGDEVICE', 8],
-  ['IFCFLOWSTORAGEDEVICE', 8],
-  ['IFCFLOWTREATMENTDEVICE', 8],
-  ['IFCENERGYCONVERSIONDEVICE', 8],
-  ['IFCDISTRIBUTIONELEMENT', 8],
-  ['IFCDISTRIBUTIONFLOWELEMENT', 8],
-  ['IFCDISTRIBUTIONCONTROLELEMENT', 8],
-  ['IFCDISTRIBUTIONCHAMBERELEMENT', 8],
-]);
-
-/**
  * Convert an entity type name from one IFC schema version to another.
  *
  * @param entityType - UPPERCASE entity type name (e.g., 'IFCWALL')
@@ -394,12 +339,28 @@ export function convertStepLine(
     return `${prefix}IFCPROXY('${guid}',$,'${entityType}',$,$,$,$,.NOTDEFINED.,$);`;
   }
 
-  // Adjust attribute count if downgrading to IFC2X3
+  // Trim the attributes a newer schema APPENDED when DOWNGRADING — the exact
+  // mirror of the padding pass below, and guarded the same way: only when the
+  // TARGET's positional name list is a strict PREFIX of the SOURCE's, so the
+  // dropped slots are precisely the appended ones. Entities that inserted or
+  // reordered attributes mid-list (IfcMaterialProperties, IfcApproval, IfcTask,
+  // …) are deliberately left alone; truncating those would shift values into
+  // the wrong, type-invalid slots.
+  //
+  // Derived from the generated buildingSMART tables, not from a hand-kept count
+  // map. The map this replaced listed 30 entity types and reached only 10 of
+  // the 53 IFC4 → IFC2X3 appends, so IfcWallStandardCase, IfcZone, IfcGrid,
+  // IfcMaterial, IfcClassification and the IfcQuantity* family all carried an
+  // IFC4-only trailing attribute into IFC2X3 output. It also disagreed with the
+  // schema twice (IfcPile 11 vs 10, IfcDistributionControlElement 8 vs 9).
+  // Both schemas need a generated table, so an IFC5 source is left unadjusted.
   let finalAttrs = attrsRaw;
-  if (toSchema === 'IFC2X3') {
-    const maxAttrs = IFC2X3_ATTR_COUNTS.get(newType);
-    if (maxAttrs !== undefined) {
-      finalAttrs = trimAttributes(attrsRaw, maxAttrs);
+  if (schemaRank(toSchema) < schemaRank(fromSchema)) {
+    // Source attrs keyed on the ORIGINAL type; target on the (possibly renamed) type.
+    const srcAttrs = attrNameTable(fromSchema)?.get(entityType);
+    const tgtAttrs = attrNameTable(toSchema)?.get(newType);
+    if (srcAttrs && tgtAttrs && isStrictAttrPrefix(tgtAttrs, srcAttrs)) {
+      finalAttrs = trimAttributes(attrsRaw, tgtAttrs.length);
     }
   }
 

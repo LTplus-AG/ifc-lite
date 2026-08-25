@@ -78,7 +78,31 @@ pub fn collect_rs_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>
             )
         });
         let path = entry.path();
-        if path.is_dir() {
+        // `Path::is_dir()` COERCES A METADATA ERROR TO `false`, so a directory
+        // that cannot be inspected reads as "not a directory" and its whole
+        // subtree is skipped in silence — with the file-count floor still
+        // satisfied by everything else. Reproduced: a `chmod 0400` parent lists
+        // fine (`read_dir` needs read, not execute) while every child stat
+        // fails, and a planted `fn get_default_color_PROBE` two levels down was
+        // invisible to a guard whose whole job is finding it.
+        //
+        // This is the `existsSync` hazard that #3197 fixed on the JS side with
+        // `existsOrThrow`, one language over, and I missed it while making
+        // `read_dir` and the entry iteration fail closed around it.
+        //
+        // `metadata` (not `entry.file_type()`) to keep the previous
+        // symlink-FOLLOWING behaviour; a dangling symlink is NotFound, is not a
+        // directory, and falls through to the extension check as before.
+        let is_dir = match std::fs::metadata(&path) {
+            Ok(m) => m.is_dir(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+            Err(e) => panic!(
+                "could not stat {} ({e}); refusing to treat an uninspectable path as \
+                 'not a directory', which silently skips everything under it",
+                path.display()
+            ),
+        };
+        if is_dir {
             let skip = matches!(
                 path.file_name().and_then(|n| n.to_str()),
                 Some("target" | "node_modules" | ".git" | "dist" | "build")

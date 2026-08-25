@@ -113,15 +113,15 @@ fn marine_branch_reaches_the_fast_boot_tree() {
 /// The gate's answer, re-derived from the generated inheritance table.
 ///
 /// `IfcProject` is the tree root and is an `IfcObject`, not a spatial element
-/// at all. `IfcSpatialZone` is an `IfcSpatialElement` but NOT an
-/// `IfcSpatialStructureElement`; it is carried deliberately (#1075, Revit/Dynamo
-/// GFA volumes). Everything else is exactly the `IfcSpatialStructureElement`
-/// closure — the branch of the schema whose `WR41` rule
-/// (`packages/codegen/schemas/IFC4X3.exp:10634-10637`) is what makes an entity
-/// a member of the aggregation hierarchy this tree is built from.
+/// at all. Everything else is the whole `IfcSpatialElement` branch except the
+/// external-spatial sub-branch — the rule #3247 pinned in the unit test beside
+/// the gate, restated here against the same generated table. `IfcSpatialZone`
+/// sits inside that branch and outside `IfcSpatialStructureElement`; it is
+/// carried deliberately (#1075, Revit/Dynamo GFA volumes).
 fn schema_says_spatial(t: IfcType) -> bool {
-    matches!(t, IfcType::IfcProject | IfcType::IfcSpatialZone)
-        || t.is_subtype_of(IfcType::IfcSpatialStructureElement)
+    t == IfcType::IfcProject
+        || (t.is_subtype_of(IfcType::IfcSpatialElement)
+            && !t.is_subtype_of(IfcType::IfcExternalSpatialStructureElement))
 }
 
 #[test]
@@ -196,8 +196,9 @@ fn non_spatial_types_stay_out_of_the_tree() {
         "IFCZONE",
         "IFCEXTERNALSPATIALELEMENT",
         "IFCEXTERNALSPATIALSTRUCTUREELEMENT",
-        // The abstract supertypes themselves.
-        "IFCSPATIALELEMENT",
+        // The abstract supertypes ABOVE the branch. `IfcSpatialElement` itself
+        // is deliberately absent from this list: it is the branch root, so the
+        // rule admits it, and being abstract it never appears as a STEP keyword.
         "IFCPRODUCT",
         "IFCOBJECT",
         "IFCROOT",

@@ -3,9 +3,19 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect } from 'vitest';
-import { collectReferencedEntityIds, getVisibleEntityIds } from './reference-collector.js';
+import {
+  PRODUCT_TYPES,
+  collectReferencedEntityIds,
+  getVisibleEntityIds,
+} from './reference-collector.js';
 import { EMPTY_SOURCE_BYTES, type IfcDataStore } from '@ifc-lite/parser';
 import type { EffectiveEntityIndex } from './effective-index.js';
+import {
+  ENTITIES_IFC2X3,
+  ENTITIES_IFC4,
+  ENTITIES_IFC4X3,
+  type IfcEntityInfo,
+} from '@ifc-lite/data';
 
 /**
  * Helper: encode a set of STEP entity lines into a source buffer + entity index.
@@ -558,5 +568,145 @@ describe('propagateOpeningExclusions without a source (#2339)', () => {
     const store = sourcelessStore();
     const { hiddenProductIds } = getVisibleEntityIds(store, new Set(), null, overlayIndex(store));
     expect(hiddenProductIds.has(OPENING)).toBe(false);
+  });
+});
+
+/**
+ * The product-type classification must agree with the bundled IFC schema
+ * tables, in BOTH directions:
+ *   - every concrete IfcProduct subtype the schema declares is classified as a
+ *     product root (otherwise a visible-only export silently drops it);
+ *   - every name the classifier treats as a product really is an IfcProduct
+ *     subtype in some schema (otherwise the classifier over-roots).
+ *
+ * The expectation is derived from `@ifc-lite/data`'s generated entity tables,
+ * never from a hand-copied list — a hand copy would drift with the table it is
+ * meant to check.
+ */
+describe('product-type classification vs the generated IFC schema', () => {
+  function mockStore(entries: Array<[number, string]>): IfcDataStore {
+    const byId = new Map<number, { expressId: number; type: string; byteOffset: number; byteLength: number; lineNumber: number }>();
+    const byType = new Map<string, number[]>();
+    for (const [id, type] of entries) {
+      byId.set(id, { expressId: id, type, byteOffset: 0, byteLength: 0, lineNumber: 0 });
+      const upper = type.toUpperCase();
+      if (!byType.has(upper)) byType.set(upper, []);
+      byType.get(upper)!.push(id);
+    }
+    return { entityIndex: { byId, byType }, source: new Uint8Array(0) } as unknown as IfcDataStore;
+  }
+
+  /** Concrete (instantiable) IfcProduct subtypes declared by one schema table. */
+  function concreteProducts(table: readonly IfcEntityInfo[]): string[] {
+    const parent = new Map(table.map(e => [e.name, e.parent]));
+    const isProduct = (name: string): boolean => {
+      let cursor: string | null | undefined = name;
+      for (let guard = 0; cursor && guard < 64; guard++) {
+        if (cursor === 'IfcProduct') return true;
+        cursor = parent.get(cursor);
+      }
+      return false;
+    };
+    return table.filter(e => !e.abstract && e.name !== 'IfcProduct' && isProduct(e.name)).map(e => e.name);
+  }
+
+  const SCHEMA_TABLES: Array<[string, readonly IfcEntityInfo[]]> = [
+    ['IFC2X3', ENTITIES_IFC2X3],
+    ['IFC4', ENTITIES_IFC4],
+    ['IFC4X3', ENTITIES_IFC4X3],
+  ];
+
+  /**
+   * Anti-vacuity: named entities that must appear in the derived enumeration.
+   * A count floor would go green on benign growth and stay silent on exactly
+   * the schema whose types went missing, so the guard names them instead.
+   * The IFC2X3-only entries are the ones the hand-written table omitted.
+   */
+  const REQUIRED_IN_ENUMERATION: Record<string, string[]> = {
+    IFC2X3: [
+      'IfcElectricDistributionPoint',
+      'IfcElectricalElement',
+      'IfcEquipmentElement',
+      'IfcChamferEdgeFeature',
+      'IfcRoundedEdgeFeature',
+      'IfcStructuralLinearActionVarying',
+      'IfcStructuralPlanarActionVarying',
+      'IfcWall',
+    ],
+    IFC4: ['IfcWall', 'IfcFurniture', 'IfcShadingDevice'],
+    IFC4X3: ['IfcWall', 'IfcKerb', 'IfcSign'],
+  };
+
+  for (const [version, table] of SCHEMA_TABLES) {
+    it(`enumerates the ${version} products it is about to assert on`, () => {
+      const products = new Set(concreteProducts(table));
+      for (const required of REQUIRED_IN_ENUMERATION[version]) {
+        expect(products.has(required), `${required} missing from the ${version} enumeration`).toBe(true);
+      }
+    });
+
+    it(`roots every concrete ${version} IfcProduct subtype when nothing is hidden`, () => {
+      const products = concreteProducts(table);
+      const entries: Array<[number, string]> = products.map((name, i) => [i + 100, name.toUpperCase()]);
+      const store = mockStore(entries);
+      const { roots } = getVisibleEntityIds(store, new Set(), null);
+
+      const dropped = entries.filter(([id]) => !roots.has(id)).map(([, type]) => type);
+      expect(dropped, `${version} products dropped from a visible-only export`).toEqual([]);
+    });
+  }
+
+  it('classifies nothing the schema does not declare as an IfcProduct subtype', () => {
+    const declared = new Set<string>();
+    for (const [, table] of SCHEMA_TABLES) {
+      const parent = new Map(table.map(e => [e.name, e.parent]));
+      for (const entity of table) {
+        let cursor: string | null | undefined = parent.get(entity.name);
+        for (let guard = 0; cursor && guard < 64; guard++) {
+          if (cursor === 'IfcProduct') {
+            declared.add(entity.name.toUpperCase());
+            break;
+          }
+          cursor = parent.get(cursor);
+        }
+      }
+    }
+
+    expect(declared.size, 'schema enumeration is empty — the diff below would be vacuous').toBeGreaterThan(0);
+    const strays = [...PRODUCT_TYPES].filter(name => !declared.has(name));
+    expect(strays, 'classified as products but not IfcProduct subtypes in any bundled schema').toEqual([]);
+  });
+
+  it('does not root non-product entities (control)', () => {
+    const controls: Array<[number, string]> = [
+      [1, 'IFCCARTESIANPOINT'],
+      [2, 'IFCPROPERTYSET'],
+      [3, 'IFCPROPERTYSINGLEVALUE'],
+      [4, 'IFCMATERIAL'],
+      [5, 'IFCWALLTYPE'],
+      [6, 'IFCLOCALPLACEMENT'],
+      [7, 'IFCSHAPEREPRESENTATION'],
+    ];
+    const { roots } = getVisibleEntityIds(mockStore(controls), new Set(), null);
+    const rooted = controls.filter(([id]) => roots.has(id)).map(([, type]) => type);
+    expect(rooted, 'non-product entities must be reached through the closure, not rooted').toEqual([]);
+  });
+
+  it('drops an IFC2X3 electrical element only when it is actually hidden', () => {
+    const store = mockStore([
+      [1, 'IFCPROJECT'],
+      [2, 'IFCBUILDINGSTOREY'],
+      [3, 'IFCELECTRICDISTRIBUTIONPOINT'],
+      [4, 'IFCELECTRICALELEMENT'],
+    ]);
+
+    const visible = getVisibleEntityIds(store, new Set(), null);
+    expect(visible.roots.has(3)).toBe(true);
+    expect(visible.roots.has(4)).toBe(true);
+
+    const hidden = getVisibleEntityIds(store, new Set([3]), null);
+    expect(hidden.roots.has(3)).toBe(false);
+    expect(hidden.hiddenProductIds.has(3)).toBe(true);
+    expect(hidden.roots.has(4)).toBe(true);
   });
 });

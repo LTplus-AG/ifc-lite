@@ -1,0 +1,1006 @@
+{
+ "_comment": "Shared cross-language pin for STEP schema-conversion attribute padding (#1416 in TypeScript; the Rust port). Both halves run their own converter over every case: rust/export/tests/schema_upconvert_parity.rs and packages/export/src/schema-upconvert-sweep.parity.test.ts. Rows are derived from packages/data/src/ifc-schema/generated/entities-*.ts -- the types whose source attribute NAME list is a strict prefix of the target's -- plus hand-written negative controls. DO NOT hand-edit a row to make a test pass.",
+ "cases": [
+  {
+   "why": "appended attributes are padded (IFCAPPLIEDVALUE 6 -> 10)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCAPPLIEDVALUE($,$,$,$,$,$);",
+   "expect": "#7=IFCAPPLIEDVALUE($,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCBEAM 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCBEAM($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCBEAM($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCBUILDINGELEMENTPART 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCBUILDINGELEMENTPART($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCBUILDINGELEMENTPART($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCCLASSIFICATION 4 -> 7)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCCLASSIFICATION($,$,$,$);",
+   "expect": "#7=IFCCLASSIFICATION($,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCCOLUMN 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCCOLUMN($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCCOLUMN($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCCONTROL 5 -> 6)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCCONTROL($,$,$,$,$);",
+   "expect": "#7=IFCCONTROL($,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCCOSTITEM 5 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCCOSTITEM($,$,$,$,$);",
+   "expect": "#7=IFCCOSTITEM($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCCURTAINWALL 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCCURTAINWALL($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCCURTAINWALL($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCCURVESTYLE 4 -> 5)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCCURVESTYLE($,$,$,$);",
+   "expect": "#7=IFCCURVESTYLE($,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCDISCRETEACCESSORY 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCDISCRETEACCESSORY($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCDISCRETEACCESSORY($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCDISCRETEACCESSORYTYPE 9 -> 10)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCDISCRETEACCESSORYTYPE($,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCDISCRETEACCESSORYTYPE($,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCDISTRIBUTIONCHAMBERELEMENT 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCDISTRIBUTIONCHAMBERELEMENT($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCDISTRIBUTIONCHAMBERELEMENT($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCDISTRIBUTIONPORT 8 -> 10)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCDISTRIBUTIONPORT($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCDISTRIBUTIONPORT($,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCDOOR 10 -> 13)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCDOOR($,$,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCDOOR($,$,$,$,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCDOORLININGPROPERTIES 15 -> 17)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCDOORLININGPROPERTIES($,$,$,$,$,$,$,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCDOORLININGPROPERTIES($,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCEQUIPMENTELEMENT 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCEQUIPMENTELEMENT($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCBUILDINGELEMENTPROXY($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCFASTENER 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCFASTENER($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCFASTENER($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCFASTENERTYPE 9 -> 10)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCFASTENERTYPE($,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCFASTENERTYPE($,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCFILLAREASTYLE 2 -> 3)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCFILLAREASTYLE($,$);",
+   "expect": "#7=IFCFILLAREASTYLE($,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCFURNITURETYPE 10 -> 11)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCFURNITURETYPE($,$,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCFURNITURETYPE($,$,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCGRID 10 -> 11)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCGRID($,$,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCGRID($,$,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCISHAPEPROFILEDEF 8 -> 10)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCISHAPEPROFILEDEF($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCISHAPEPROFILEDEF($,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCMATERIAL 1 -> 3)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCMATERIAL($);",
+   "expect": "#7=IFCMATERIAL($,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCMATERIALLAYER 3 -> 7)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCMATERIALLAYER($,$,$);",
+   "expect": "#7=IFCMATERIALLAYER($,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCMATERIALLAYERSET 2 -> 3)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCMATERIALLAYERSET($,$);",
+   "expect": "#7=IFCMATERIALLAYERSET($,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCMATERIALLAYERSETUSAGE 4 -> 5)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCMATERIALLAYERSETUSAGE($,$,$,$);",
+   "expect": "#7=IFCMATERIALLAYERSETUSAGE($,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCMECHANICALFASTENER 10 -> 11)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCMECHANICALFASTENER($,$,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCMECHANICALFASTENER($,$,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCMECHANICALFASTENERTYPE 9 -> 12)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCMECHANICALFASTENERTYPE($,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCMECHANICALFASTENERTYPE($,$,$,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCMEMBER 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCMEMBER($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCMEMBER($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCMETRIC 10 -> 11)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCMETRIC($,$,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCMETRIC($,$,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCOPENINGELEMENT 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCOPENINGELEMENT($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCOPENINGELEMENT($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCPLATE 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCPLATE($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCPLATE($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCPROCESS 5 -> 7)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCPROCESS($,$,$,$,$);",
+   "expect": "#7=IFCPROCESS($,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCPROJECTIONELEMENT 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCPROJECTIONELEMENT($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCPROJECTIONELEMENT($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCPROPERTYBOUNDEDVALUE 5 -> 6)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCPROPERTYBOUNDEDVALUE($,$,$,$,$);",
+   "expect": "#7=IFCPROPERTYBOUNDEDVALUE($,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCPROPERTYTABLEVALUE 7 -> 8)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCPROPERTYTABLEVALUE($,$,$,$,$,$,$);",
+   "expect": "#7=IFCPROPERTYTABLEVALUE($,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCQUANTITYAREA 4 -> 5)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCQUANTITYAREA($,$,$,$);",
+   "expect": "#7=IFCQUANTITYAREA($,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCQUANTITYCOUNT 4 -> 5)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCQUANTITYCOUNT($,$,$,$);",
+   "expect": "#7=IFCQUANTITYCOUNT($,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCQUANTITYLENGTH 4 -> 5)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCQUANTITYLENGTH($,$,$,$);",
+   "expect": "#7=IFCQUANTITYLENGTH($,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCQUANTITYTIME 4 -> 5)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCQUANTITYTIME($,$,$,$);",
+   "expect": "#7=IFCQUANTITYTIME($,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCQUANTITYVOLUME 4 -> 5)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCQUANTITYVOLUME($,$,$,$);",
+   "expect": "#7=IFCQUANTITYVOLUME($,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCQUANTITYWEIGHT 4 -> 5)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCQUANTITYWEIGHT($,$,$,$);",
+   "expect": "#7=IFCQUANTITYWEIGHT($,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCRAMPFLIGHT 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCRAMPFLIGHT($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCRAMPFLIGHT($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCREINFORCINGMESH 17 -> 18)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCREINFORCINGMESH($,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCREINFORCINGMESH($,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCRELSEQUENCE 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCRELSEQUENCE($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCRELSEQUENCE($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCRESOURCE 5 -> 7)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCRESOURCE($,$,$,$,$);",
+   "expect": "#7=IFCRESOURCE($,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCSPACETYPE 10 -> 11)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCSPACETYPE($,$,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCSPACETYPE($,$,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCSTRUCTURALANALYSISMODEL 9 -> 10)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCSTRUCTURALANALYSISMODEL($,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCSTRUCTURALANALYSISMODEL($,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCSTRUCTURALCURVECONNECTION 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCSTRUCTURALCURVECONNECTION($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCSTRUCTURALCURVECONNECTION($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCSTRUCTURALCURVEMEMBER 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCSTRUCTURALCURVEMEMBER($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCSTRUCTURALCURVEMEMBER($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCSTRUCTURALCURVEMEMBERVARYING 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCSTRUCTURALCURVEMEMBERVARYING($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCSTRUCTURALCURVEMEMBERVARYING($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCSTRUCTURALPOINTCONNECTION 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCSTRUCTURALPOINTCONNECTION($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCSTRUCTURALPOINTCONNECTION($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCSURFACESTYLESHADING 1 -> 2)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCSURFACESTYLESHADING($);",
+   "expect": "#7=IFCSURFACESTYLESHADING($,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCSYSTEMFURNITUREELEMENTTYPE 9 -> 10)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCSYSTEMFURNITUREELEMENTTYPE($,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCSYSTEMFURNITUREELEMENTTYPE($,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCTABLE 2 -> 3)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCTABLE($,$);",
+   "expect": "#7=IFCTABLE($,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCTELECOMADDRESS 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCTELECOMADDRESS($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCTELECOMADDRESS($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCTENDONANCHOR 9 -> 10)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCTENDONANCHOR($,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCTENDONANCHOR($,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCTEXTSTYLE 4 -> 5)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCTEXTSTYLE($,$,$,$);",
+   "expect": "#7=IFCTEXTSTYLE($,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCTEXTURECOORDINATE 0 -> 1)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCTEXTURECOORDINATE($);",
+   "expect": "#7=IFCTEXTURECOORDINATE($);"
+  },
+  {
+   "why": "appended attributes are padded (IFCWALL 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCWALL($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCWALL($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCWALLSTANDARDCASE 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCWALLSTANDARDCASE($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCWALLSTANDARDCASE($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCWINDOW 10 -> 13)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCWINDOW($,$,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCWINDOW($,$,$,$,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCWINDOWLININGPROPERTIES 13 -> 16)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCWINDOWLININGPROPERTIES($,$,$,$,$,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCWINDOWLININGPROPERTIES($,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCZONE 5 -> 6)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCZONE($,$,$,$,$);",
+   "expect": "#7=IFCZONE($,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCANNOTATION 7 -> 8)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCANNOTATION($,$,$,$,$,$,$);",
+   "expect": "#7=IFCANNOTATION($,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCAPPLIEDVALUE 6 -> 10)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCAPPLIEDVALUE($,$,$,$,$,$);",
+   "expect": "#7=IFCAPPLIEDVALUE($,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCBEAM 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCBEAM($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCBEAM($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCBUILDINGELEMENTPART 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCBUILDINGELEMENTPART($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCBUILDINGELEMENTPART($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCCLASSIFICATION 4 -> 7)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCCLASSIFICATION($,$,$,$);",
+   "expect": "#7=IFCCLASSIFICATION($,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCCOLUMN 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCCOLUMN($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCCOLUMN($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCCONTROL 5 -> 6)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCCONTROL($,$,$,$,$);",
+   "expect": "#7=IFCCONTROL($,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCCOSTITEM 5 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCCOSTITEM($,$,$,$,$);",
+   "expect": "#7=IFCCOSTITEM($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCCURTAINWALL 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCCURTAINWALL($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCCURTAINWALL($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCCURVESTYLE 4 -> 5)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCCURVESTYLE($,$,$,$);",
+   "expect": "#7=IFCCURVESTYLE($,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCDERIVEDUNIT 3 -> 4)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCDERIVEDUNIT($,$,$);",
+   "expect": "#7=IFCDERIVEDUNIT($,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCDISCRETEACCESSORY 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCDISCRETEACCESSORY($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCDISCRETEACCESSORY($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCDISCRETEACCESSORYTYPE 9 -> 10)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCDISCRETEACCESSORYTYPE($,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCDISCRETEACCESSORYTYPE($,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCDISTRIBUTIONCHAMBERELEMENT 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCDISTRIBUTIONCHAMBERELEMENT($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCDISTRIBUTIONCHAMBERELEMENT($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCDISTRIBUTIONPORT 8 -> 10)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCDISTRIBUTIONPORT($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCDISTRIBUTIONPORT($,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCDOOR 10 -> 13)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCDOOR($,$,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCDOOR($,$,$,$,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCDOORLININGPROPERTIES 15 -> 17)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCDOORLININGPROPERTIES($,$,$,$,$,$,$,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCDOORLININGPROPERTIES($,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCEQUIPMENTELEMENT 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCEQUIPMENTELEMENT($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCBUILDINGELEMENTPROXY($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCFASTENER 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCFASTENER($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCFASTENER($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCFASTENERTYPE 9 -> 10)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCFASTENERTYPE($,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCFASTENERTYPE($,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCFILLAREASTYLE 2 -> 3)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCFILLAREASTYLE($,$);",
+   "expect": "#7=IFCFILLAREASTYLE($,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCFURNITURETYPE 10 -> 11)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCFURNITURETYPE($,$,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCFURNITURETYPE($,$,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCGRID 10 -> 11)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCGRID($,$,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCGRID($,$,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCISHAPEPROFILEDEF 8 -> 10)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCISHAPEPROFILEDEF($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCISHAPEPROFILEDEF($,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCMATERIAL 1 -> 3)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCMATERIAL($);",
+   "expect": "#7=IFCMATERIAL($,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCMATERIALLAYER 3 -> 7)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCMATERIALLAYER($,$,$);",
+   "expect": "#7=IFCMATERIALLAYER($,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCMATERIALLAYERSET 2 -> 3)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCMATERIALLAYERSET($,$);",
+   "expect": "#7=IFCMATERIALLAYERSET($,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCMATERIALLAYERSETUSAGE 4 -> 5)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCMATERIALLAYERSETUSAGE($,$,$,$);",
+   "expect": "#7=IFCMATERIALLAYERSETUSAGE($,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCMECHANICALFASTENER 10 -> 11)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCMECHANICALFASTENER($,$,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCMECHANICALFASTENER($,$,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCMECHANICALFASTENERTYPE 9 -> 12)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCMECHANICALFASTENERTYPE($,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCMECHANICALFASTENERTYPE($,$,$,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCMEMBER 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCMEMBER($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCMEMBER($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCMETRIC 10 -> 11)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCMETRIC($,$,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCMETRIC($,$,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCOBJECTPLACEMENT 0 -> 1)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCOBJECTPLACEMENT($);",
+   "expect": "#7=IFCOBJECTPLACEMENT($);"
+  },
+  {
+   "why": "appended attributes are padded (IFCOPENINGELEMENT 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCOPENINGELEMENT($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCOPENINGELEMENT($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCPLATE 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCPLATE($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCPLATE($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCPROCESS 5 -> 7)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCPROCESS($,$,$,$,$);",
+   "expect": "#7=IFCPROCESS($,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCPROJECTIONELEMENT 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCPROJECTIONELEMENT($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCPROJECTIONELEMENT($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCQUANTITYAREA 4 -> 5)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCQUANTITYAREA($,$,$,$);",
+   "expect": "#7=IFCQUANTITYAREA($,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCQUANTITYCOUNT 4 -> 5)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCQUANTITYCOUNT($,$,$,$);",
+   "expect": "#7=IFCQUANTITYCOUNT($,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCQUANTITYLENGTH 4 -> 5)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCQUANTITYLENGTH($,$,$,$);",
+   "expect": "#7=IFCQUANTITYLENGTH($,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCQUANTITYTIME 4 -> 5)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCQUANTITYTIME($,$,$,$);",
+   "expect": "#7=IFCQUANTITYTIME($,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCQUANTITYVOLUME 4 -> 5)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCQUANTITYVOLUME($,$,$,$);",
+   "expect": "#7=IFCQUANTITYVOLUME($,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCQUANTITYWEIGHT 4 -> 5)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCQUANTITYWEIGHT($,$,$,$);",
+   "expect": "#7=IFCQUANTITYWEIGHT($,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCRAMPFLIGHT 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCRAMPFLIGHT($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCRAMPFLIGHT($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCREINFORCINGMESH 17 -> 18)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCREINFORCINGMESH($,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCREINFORCINGMESH($,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCRELSEQUENCE 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCRELSEQUENCE($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCRELSEQUENCE($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCRESOURCE 5 -> 7)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCRESOURCE($,$,$,$,$);",
+   "expect": "#7=IFCRESOURCE($,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCSPACETYPE 10 -> 11)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCSPACETYPE($,$,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCSPACETYPE($,$,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCSTRUCTURALANALYSISMODEL 9 -> 10)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCSTRUCTURALANALYSISMODEL($,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCSTRUCTURALANALYSISMODEL($,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCSTRUCTURALCURVECONNECTION 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCSTRUCTURALCURVECONNECTION($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCSTRUCTURALCURVECONNECTION($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCSTRUCTURALCURVEMEMBER 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCSTRUCTURALCURVEMEMBER($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCSTRUCTURALCURVEMEMBER($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCSTRUCTURALCURVEMEMBERVARYING 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCSTRUCTURALCURVEMEMBERVARYING($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCSTRUCTURALCURVEMEMBERVARYING($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCSTRUCTURALPOINTCONNECTION 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCSTRUCTURALPOINTCONNECTION($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCSTRUCTURALPOINTCONNECTION($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCSURFACESTYLESHADING 1 -> 2)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCSURFACESTYLESHADING($);",
+   "expect": "#7=IFCSURFACESTYLESHADING($,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCSYSTEMFURNITUREELEMENTTYPE 9 -> 10)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCSYSTEMFURNITUREELEMENTTYPE($,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCSYSTEMFURNITUREELEMENTTYPE($,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCTABLE 2 -> 3)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCTABLE($,$);",
+   "expect": "#7=IFCTABLE($,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCTELECOMADDRESS 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCTELECOMADDRESS($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCTELECOMADDRESS($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCTENDONANCHOR 9 -> 10)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCTENDONANCHOR($,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCTENDONANCHOR($,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCTEXTSTYLE 4 -> 5)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCTEXTSTYLE($,$,$,$);",
+   "expect": "#7=IFCTEXTSTYLE($,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCTEXTURECOORDINATE 0 -> 1)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCTEXTURECOORDINATE($);",
+   "expect": "#7=IFCTEXTURECOORDINATE($);"
+  },
+  {
+   "why": "appended attributes are padded (IFCVIRTUALELEMENT 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCVIRTUALELEMENT($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCVIRTUALELEMENT($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCWALL 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCWALL($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCWALL($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCWALLSTANDARDCASE 8 -> 9)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCWALLSTANDARDCASE($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCWALLSTANDARDCASE($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCWINDOW 10 -> 13)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCWINDOW($,$,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCWINDOW($,$,$,$,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCWINDOWLININGPROPERTIES 13 -> 16)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCWINDOWLININGPROPERTIES($,$,$,$,$,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCWINDOWLININGPROPERTIES($,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCZONE 5 -> 6)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCZONE($,$,$,$,$);",
+   "expect": "#7=IFCZONE($,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCANNOTATION 7 -> 8)",
+   "from": "IFC4",
+   "to": "IFC4X3",
+   "line": "#7=IFCANNOTATION($,$,$,$,$,$,$);",
+   "expect": "#7=IFCANNOTATION($,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCDERIVEDUNIT 3 -> 4)",
+   "from": "IFC4",
+   "to": "IFC4X3",
+   "line": "#7=IFCDERIVEDUNIT($,$,$);",
+   "expect": "#7=IFCDERIVEDUNIT($,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCOBJECTPLACEMENT 0 -> 1)",
+   "from": "IFC4",
+   "to": "IFC4X3",
+   "line": "#7=IFCOBJECTPLACEMENT($);",
+   "expect": "#7=IFCOBJECTPLACEMENT($);"
+  },
+  {
+   "why": "appended attributes are padded (IFCRELINTERFERESELEMENTS 9 -> 10)",
+   "from": "IFC4",
+   "to": "IFC4X3",
+   "line": "#7=IFCRELINTERFERESELEMENTS($,$,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCRELINTERFERESELEMENTS($,$,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCVIRTUALELEMENT 8 -> 9)",
+   "from": "IFC4",
+   "to": "IFC4X3",
+   "line": "#7=IFCVIRTUALELEMENT($,$,$,$,$,$,$,$);",
+   "expect": "#7=IFCVIRTUALELEMENT($,$,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "mid-list insertion must NOT be padded",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#5=IFCMATERIALPROPERTIES(#6);",
+   "expect": "#5=IFCMATERIALPROPERTIES(#6);"
+  },
+  {
+   "why": "equal counts are left alone",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#11=IFCSLAB('g',$,'S',$,$,#1,#2,'tag',.FLOOR.);",
+   "expect": "#11=IFCSLAB('g',$,'S',$,$,#1,#2,'tag',.FLOOR.);"
+  },
+  {
+   "why": "IFC5 target pads nothing",
+   "from": "IFC2X3",
+   "to": "IFC5",
+   "line": "#10=IFCWALL('g',$,'W',$,$,#1,#2,'tag');",
+   "expect": "#10=IFCWALL('g',$,'W',$,$,#1,#2,'tag');"
+  },
+  {
+   "why": "downgrade trims, never pads",
+   "from": "IFC4",
+   "to": "IFC2X3",
+   "line": "#5=IFCWALL('g',$,'W',$,$,$,$,'tag',.STANDARD.);",
+   "expect": "#5=IFCWALL('g',$,'W',$,$,$,$,'tag');"
+  },
+  {
+   "why": "an attribute-less line is not fabricated into one attribute",
+   "from": "IFC4",
+   "to": "IFC4X3",
+   "line": "#3=IFCOBJECTPLACEMENT();",
+   "expect": "#3=IFCOBJECTPLACEMENT();"
+  },
+  {
+   "why": "a comma inside a string is not an attribute separator",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#8=IFCCLASSIFICATION('BS, 1192','v1',$,'Name');",
+   "expect": "#8=IFCCLASSIFICATION('BS, 1192','v1',$,'Name',$,$,$);"
+  },
+  {
+   "why": "a comma inside a nested list is not an attribute separator",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#9=IFCCLASSIFICATION((1,2,3),'v1',$,'Name');",
+   "expect": "#9=IFCCLASSIFICATION((1,2,3),'v1',$,'Name',$,$,$);"
+  },
+  {
+   "why": "a renamed type is padded to its TARGET type count",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#4=IFCEQUIPMENTELEMENT('g',$,'E',$,$,#1,#2,'tag');",
+   "expect": "#4=IFCBUILDINGELEMENTPROXY('g',$,'E',$,$,#1,#2,'tag',$);"
+  }
+ ]
+}

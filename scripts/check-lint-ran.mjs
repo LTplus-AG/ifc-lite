@@ -32,11 +32,9 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+import { resolve } from 'node:path';
 
 /**
  * Where the source actually is, and how small each place is allowed to get.
@@ -52,56 +50,95 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
  * The floors sit well under today's counts: deleting a genuine chunk of code
  * must not fail the lint lane, but a target dropping out cannot hide.
  */
-const TARGETS = [
+export const TARGETS = [
   { dir: 'apps', min: 900 },
   { dir: 'packages', min: 1200 },
   { dir: 'scripts', min: 100 },
-  // `examples/*` is a pnpm workspace glob, and it was outside this list until
-  // #3200. Nobody had widened an ignore or renamed anything: the directory had
-  // simply never been passed to oxlint, so six error-tier
-  // `eslint(no-inner-declarations)` violations sat in shipped sample code while
-  // the Lint job was green. Measured on a healthy tree: 17 files across four
-  // examples. The floor is 10 - low enough that retiring an example does not
-  // force an edit here, high enough that the whole target dropping out cannot
-  // pass.
-  { dir: 'examples', min: 10 },
+  { dir: 'examples', min: 15 },
 ];
 
 /**
- * Every workspace glob must be lintable through one of the TARGETS above.
+ * The floors above catch a target that SHRANK. They cannot catch a target that
+ * was never in the list — a directory absent from `TARGETS` is not counted low,
+ * it is not counted at all, and the success line still reads "no errors".
  *
- * The floors catch a target that SHRANK. They cannot catch a target that was
- * never in the list, and that is exactly how `examples/*` stayed unlinted:
- * the gate was working perfectly on everything it looked at, and nothing
- * noticed that `pnpm-workspace.yaml` declared a fourth place to look. So the
- * declaration is read at run time and cross-checked, and a workspace member
- * that no target covers fails here rather than going quietly unlinted for
- * however long it takes someone to run oxlint by hand.
+ * That is not hypothetical. `examples/` is a declared `pnpm-workspace.yaml`
+ * member and was never passed to oxlint, so six error-tier
+ * `eslint(no-inner-declarations)` violations sat in `examples/threejs-viewer`
+ * and `examples/babylonjs-viewer` while the Lint job was green (#3200,
+ * finding 3). Adding `examples` to `TARGETS` fixes that instance. This
+ * function is what stops the NEXT one: the workspace file is the declaration of
+ * where first-party source lives, so a glob that appears there and not here is
+ * a gap by construction, and it fails loudly rather than being linted by
+ * nobody.
+ *
+ * Deliberately one-directional. A `TARGETS` entry with no workspace glob
+ * (`scripts/`) is fine and expected — this asks only that nothing DECLARED is
+ * unlinted.
  */
-function workspaceGlobs() {
-  const path = join(ROOT, 'pnpm-workspace.yaml');
-  let text;
+function uncoveredWorkspaceGlobs() {
+  let raw;
   try {
-    text = readFileSync(path, 'utf8');
+    raw = readFileSync('pnpm-workspace.yaml', 'utf8');
   } catch (err) {
-    // A missing or unreadable manifest is not "no workspace globs to check" -
-    // that reading is how an absent input becomes a clean report (#3194).
-    return { error: `could not read ${path}: ${err?.code ?? err?.message}` };
+    console.error(`lint: could not read pnpm-workspace.yaml: ${err.message}`);
+    return null;
   }
-
-  // `packages:` at column 0, then its `- 'glob'` items until the block ends.
-  const lines = text.split('\n');
-  const start = lines.findIndex((l) => /^packages:\s*$/.test(l));
-  if (start === -1) return { error: `${path} has no top-level \`packages:\` key` };
-
-  const globs = [];
-  for (const line of lines.slice(start + 1)) {
-    if (/^\s*(#.*)?$/.test(line)) continue;
-    const item = /^\s+-\s*['"]?([^'"#]+?)['"]?\s*(#.*)?$/.exec(line);
-    if (!item) break; // dedented back to another top-level key
-    globs.push(item[1]);
+  // Only the `packages:` block. Scoping matters: `onlyBuiltDependencies` lists
+  // scoped npm names (`@swc/core`) that also contain a slash, and a whole-file
+  // scan reads those as workspace roots and demands lint targets for `@swc/`.
+  // Stop at the next top-level key — a line with no leading whitespace.
+  const roots = new Set();
+  let inPackages = false;
+  let entryLines = 0;
+  let parsedEntries = 0;
+  for (const line of raw.split('\n')) {
+    // A comment is legal YAML at ANY column, so a `#` at column 0 is not a new
+    // top-level key. Treating it as one ended the parse early and dropped every
+    // entry after it -- and because the count it printed was the count of what
+    // it did read, the log said "all covered". Skip comments before the
+    // block-boundary test, not after.
+    if (/^\s*#/.test(line) || line.trim() === '') continue;
+    if (/^\S/.test(line)) inPackages = /^packages\s*:/.test(line);
+    if (!inPackages) continue;
+    // Every `-` in the block is an entry this function is responsible for. If
+    // one does not parse -- a bare `-` with its value on the next line, or any
+    // shape not yet met -- that is a SHORT read, and a short read is exactly
+    // what makes a missing glob invisible. Counted here, enforced below.
+    if (/^\s*-/.test(line)) entryLines += 1;
+    // Capture the whole entry, THEN take the first segment. Requiring a
+    // trailing slash in the pattern silently dropped a member declared as a
+    // bare directory (`- 'tools'`, `- '.'`, both legal pnpm): it was not
+    // counted, so it was not demanded, and the gate printed "all covered".
+    // That is the absence-reads-as-success failure this function exists to
+    // stop, one shape over. Two further shapes failed open after that fix --
+    // a `#` comment at column 0, and a bare `-` with its value on the next
+    // line -- which is why the entry-count check above exists rather than
+    // another special case per shape.
+    const m = /^\s*-\s*['"]?([^'"\s]+)/.exec(line);
+    if (!m) continue;
+    // `- '!packages/legacy/**'` is an EXCLUSION, not a member. Left in, it
+    // demands a `{ dir: '!packages' }` target that would then be handed to
+    // oxlint -- a failure with no satisfiable remedy.
+    if (m[1].startsWith('!')) { parsedEntries += 1; continue; }
+    parsedEntries += 1;
+    roots.add(m[1].split('/')[0]);
   }
-  return { globs };
+  if (roots.size === 0) {
+    console.error('lint: parsed no globs from pnpm-workspace.yaml — the format changed and this check is now blind.');
+    console.error('      (Flow style `packages: [...]` and dashes at column 0 both land here.)');
+    return null;
+  }
+  if (parsedEntries < entryLines) {
+    console.error(
+      `lint: parsed ${parsedEntries} of ${entryLines} entries in pnpm-workspace.yaml's packages: block.`,
+    );
+    console.error('      An entry this parser cannot read is a glob it cannot demand a lint target for,');
+    console.error('      so refusing rather than reporting on a short read.');
+    return null;
+  }
+  const covered = new Set(TARGETS.map((t) => t.dir));
+  return { missing: [...roots].filter((r) => !covered.has(r)), seen: roots.size };
 }
 
 /** oxlint's summary: "Finished in Xms on N files with M rules using K threads."
@@ -148,36 +185,13 @@ function lint(dir) {
  *  assigned to `process.exitCode` lets Node drain stdout, `process.exit()`
  *  does not. */
 function main() {
-  const ws = workspaceGlobs();
-  if (ws.error) {
-    console.error(`lint: ${ws.error}.`);
-    console.error('      Refusing a vacuous pass: this gate cross-checks its target list against the');
-    console.error('      workspace declaration, and it could not read the declaration.');
-    return 1;
-  }
-  if (ws.globs.length === 0) {
-    console.error('lint: pnpm-workspace.yaml declares no package globs.');
-    console.error('      Refusing a vacuous pass: an empty declaration would make the cross-check');
-    console.error('      below agree with any target list at all, including an empty one.');
-    return 1;
-  }
-  const covered = new Set(TARGETS.map((t) => t.dir));
-  // pnpm supports EXCLUSION globs (a leading `!`, e.g. `!packages/legacy-thing`)
-  // as a documented workspace feature: they narrow an inclusion glob, they do
-  // not declare a new place to lint. Cross-checking them against TARGETS made
-  // a legitimate exclusion fail the gate with a message naming a directory
-  // that does not exist (`!packages/`) - exactly the "gate blocks a
-  // legitimate change" shape this whole line of work exists to prevent.
-  const uncovered = [...new Set(ws.globs.filter((g) => !g.startsWith('!')).map((g) => g.split('/')[0]))].filter(
-    (d) => !covered.has(d),
-  );
-  if (uncovered.length > 0) {
-    console.error('lint: a workspace glob is outside this gate\'s target list, so the code there is');
-    console.error('      never linted and no floor can notice:\n');
-    for (const dir of uncovered) {
-      console.error(`      ${dir}/ is declared in pnpm-workspace.yaml but is not a lint target`);
-    }
-    console.error('\n      Add it to TARGETS with a measured floor (#3200).');
+  const coverage = uncoveredWorkspaceGlobs();
+  if (coverage === null) return 1; // it has already said why
+  if (coverage.missing.length > 0) {
+    console.error('lint: a pnpm-workspace.yaml glob is not in TARGETS, so its source is');
+    console.error('      linted by nobody and this gate would still report "no errors":\n');
+    for (const dir of coverage.missing) console.error(`      ${dir}/`);
+    console.error('\n      Add it to TARGETS with a floor, or remove it from the workspace.');
     return 1;
   }
 
@@ -210,8 +224,27 @@ function main() {
   }
 
   if (failed !== 0) return failed;
-  console.log(`lint: ${totalFiles.toLocaleString()} files across ${TARGETS.length} targets, ${ruleCount} rules, no errors.`);
+  console.log(`lint: ${totalFiles.toLocaleString()} files across ${TARGETS.length} targets (${coverage.seen} workspace globs, all covered), ${ruleCount} rules, no errors.`);
   return 0;
 }
 
-process.exitCode = main();
+/**
+ * Importable so the test can read `TARGETS` as DATA. It previously derived the
+ * count by regexing this file, which is a source-text assertion (AGENTS.md:136)
+ * -- it certifies that a string exists, so a reformat or a comment edit decides
+ * the test result instead of behaviour. Same entry-point shape as
+ * `check-refwalk-guards.mjs`: compare resolved PATHS, and fall back rather than
+ * letting the check take the process down if the path has vanished.
+ */
+function isMainEntry() {
+  const invoked = process.argv[1];
+  if (!invoked) return false;
+  const self = fileURLToPath(import.meta.url);
+  try {
+    return realpathSync(self) === realpathSync(invoked);
+  } catch {
+    return self === resolve(invoked);
+  }
+}
+
+if (isMainEntry()) process.exitCode = main();

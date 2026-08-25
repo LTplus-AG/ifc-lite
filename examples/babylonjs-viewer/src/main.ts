@@ -280,7 +280,7 @@ fileInput.addEventListener('change', async () => {
         }
       }
       hasStreamBounds = true;
-    };
+    }
 
     const getStreamBounds = (): { center: Vector3; maxDim: number } | null => {
       if (!hasStreamBounds) return null;
@@ -295,13 +295,13 @@ fileInput.addEventListener('change', async () => {
       const maxDim = Math.max(sizeX, sizeY, sizeZ);
       if (maxDim <= 0 || !isFinite(maxDim)) return null;
       return { center, maxDim };
-    };
+    }
 
     const fitIfDue = () => {
       const bounds = getStreamBounds();
       if (!bounds) return;
       applyCameraFit(bounds.center, bounds.maxDim, false);
-    };
+    }
 
     streamRoot = new TransformNode('stream-root', scene);
 

@@ -21,6 +21,9 @@ import { join } from 'node:path';
  * would publish no crates and report success.
  */
 
+/** A literal dollar sign, so generated `${...}` never appears in a plain string. */
+const DOLLAR = '$';
+
 /** Stage the helper plus a caller that prints its verdict, and return the dir. */
 function stage(dirPrefix) {
   const dir = mkdtempSync(join(tmpdir(), dirPrefix));
@@ -33,9 +36,13 @@ function stage(dirPrefix) {
     join(dir, 'caller.mjs'),
     [
       "import { isMainEntry } from './lib/is-main-entry.mjs';",
-      // Print BOTH so a failure shows which spelling was consulted.
-      'console.log(`fixed=${isMainEntry(import.meta.url)}`);',
-      'console.log(`naive=${import.meta.url === `file://${process.argv[1]}`}`);',
+      // Print BOTH so a failure shows which spelling was consulted. These are
+      // assembled with an explicit DOLLAR constant rather than written inline:
+      // a plain string containing a literal `${...}` is exactly what
+      // no-template-curly-in-string exists to flag, and here it is deliberate
+      // -- this is source code being GENERATED, not a template gone wrong.
+      `console.log(\`fixed=${DOLLAR}{isMainEntry(import.meta.url)}\`);`,
+      `console.log(\`naive=${DOLLAR}{import.meta.url === \`file://${DOLLAR}{process.argv[1]}\`}\`);`,
       '',
     ].join('\n')
   );

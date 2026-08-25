@@ -142,8 +142,8 @@
  *    would be misread as recursion.
  */
 
-import { readdirSync, readFileSync, existsSync, statSync, realpathSync } from 'node:fs';
-import { join, dirname, relative, resolve } from 'node:path';
+import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
+import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 import { extractFunctions, findWalkCandidates } from './lib/refwalk-classify.mjs';

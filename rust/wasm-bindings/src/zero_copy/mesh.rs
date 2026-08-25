@@ -537,7 +537,7 @@ impl MeshCollection {
     /// data clone `get` pays — one fewer copy of positions/normals/indices/uvs/
     /// texture per mesh (the JS getters still do the single Rust→JS copy). Calling
     /// it twice for the same index yields the second call a DEFAULT mesh:
-    /// express_id 0 and every buffer empty, rather than the metadata-bearing
+    /// `expressId` 0 and every buffer empty, rather than the metadata-bearing
     /// husk the hand-written copy used to leave. The method is read-once by
     /// contract and the wasm-contract test pins this.
     #[wasm_bindgen(js_name = takeMesh)]

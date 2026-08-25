@@ -114,9 +114,38 @@ export function isBooleanXsdBase(base: string | undefined): boolean {
   return baseLocalName(base) === 'boolean';
 }
 
+/**
+ * Measures whose EXPRESS base contradicts the `*MEASURE` / `*RATIO`
+ * suffix heuristic below, or that the heuristic does not reach at all.
+ * Derived from `TYPE <name> = <base>;` in
+ * `packages/codegen/schemas/IFC4_ADD2_TC1.exp` and `IFC4X3.exp`, over
+ * the closure of the `IfcValue` SELECT (the value space an IFC property
+ * can actually carry); `xsd-cast-express.test.ts` re-derives that diff
+ * and fails if this table drifts from the schemas.
+ *
+ * - `IfcDescriptiveMeasure` is `STRING`, not a number, despite the name.
+ * - `IfcIntegerCountRateMeasure` is `INTEGER`, not `REAL`.
+ * - `IfcParameterValue` (`REAL`) and `IfcPositiveInteger` (`INTEGER`)
+ *   end in neither suffix, so they previously got no cast gate at all.
+ * - `IfcTime` and `IfcUriReference` are `STRING`. `xs:string` accepts
+ *   every literal, so naming them changes no verdict; they are listed
+ *   so the re-derivation covers the whole reachable value space rather
+ *   than carrying a second exception list of its own.
+ */
+const MEASURE_XSD_OVERRIDES: ReadonlyMap<string, readonly string[]> = new Map([
+  ['IFCDESCRIPTIVEMEASURE', ['xs:string']],
+  ['IFCINTEGERCOUNTRATEMEASURE', ['xs:integer']],
+  ['IFCPARAMETERVALUE', ['xs:double']],
+  ['IFCPOSITIVEINTEGER', ['xs:integer']],
+  ['IFCTIME', ['xs:string']],
+  ['IFCURIREFERENCE', ['xs:string']],
+]);
+
 export function ifcMeasureToXsdTypes(measure: string | undefined): readonly string[] {
   if (!measure) return [];
   const m = measure.toUpperCase();
+  const override = MEASURE_XSD_OVERRIDES.get(m);
+  if (override) return override;
   if (m === 'IFCINTEGER' || m === 'IFCCOUNTMEASURE') return ['xs:integer'];
   if (m === 'IFCBOOLEAN') return ['xs:boolean'];
   if (m === 'IFCLOGICAL') return ['xs:boolean', 'xs:string'];

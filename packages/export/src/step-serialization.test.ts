@@ -5,7 +5,6 @@
 import { describe, expect, it } from 'vitest';
 import { PropertyValueType } from '@ifc-lite/data';
 import {
-  serializePropertyValue,
   serializeAttributeValue,
   serializeStepValue,
   serializeTypedMarker,
@@ -14,6 +13,7 @@ import {
   toStepReal,
   escapeStepString,
 } from './step-serialization.js';
+import { serializePropertyValue } from './property-value-serialization.js';
 import { toStepRealScaled } from './unit-normalize.js';
 
 describe('resolveExpressBase', () => {

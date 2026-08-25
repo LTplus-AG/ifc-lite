@@ -230,9 +230,6 @@
    640 packages/export/src/parquet-exporter.ts
   1122 packages/export/src/reference-collector.ts
    556 packages/export/src/schema-converter.ts
-   415 packages/export/src/step-attribute-mutations.ts
-  1061 packages/export/src/step-property-sets.ts
-   435 packages/export/src/step-serialization.ts
    437 packages/extensions/src/testing/runner.ts
    625 packages/geometry/src/coordinate-handler.ts
   1707 packages/geometry/src/geometry-parallel.ts

@@ -37,6 +37,10 @@ export const IFC_SUBTYPES: Record<string, string[]> = {
   IFCMEMBER: ['IFCMEMBERSTANDARDCASE'],
   IFCPLATE: ['IFCPLATESTANDARDCASE'],
   IFCOPENINGELEMENT: ['IFCOPENINGSTANDARDCASE'],
+  // Not a `*StandardCase` family, and absent until #3229: IFC4 exporters write
+  // furniture as IFCFURNITURE, so `byType('IfcFurnishingElement')` answered
+  // with nothing on a model that plainly contained furniture.
+  IFCFURNISHINGELEMENT: ['IFCFURNITURE', 'IFCSYSTEMFURNITUREELEMENT'],
 };
 
 /**

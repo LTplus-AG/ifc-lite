@@ -388,9 +388,8 @@ export interface SymbolicTruncation {
    * The bound's numeric value, when the reason has one.
    *
    * ABSENT for `item-depth`, `item-revisits` and `item-cycle`: those bounds
-   * count a different unit from `emitted` -- traversal revisits and nesting
-   * depth, not emitted primitives -- so there is no number to compare
-   * `emitted` against, and "showing {emitted} of {limit}" would invent one.
+   * count traversal revisits and nesting depth, not emitted primitives, so
+   * there is no number to compare `emitted` against without inventing one.
    */
   limit?: number;
 }

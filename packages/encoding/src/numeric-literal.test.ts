@@ -93,7 +93,25 @@ describe('deciding it is linear, not backtracking', () => {
    * What this gives up, stated plainly: an implementation that is linear but
    * several times slower passes. That is the right trade. The regression this
    * exists to catch is catastrophic backtracking, which is orders of magnitude,
-   * not factors -- and the two negative controls below pin exactly that.
+   * not factors -- and the negative controls below pin exactly that.
+   *
+   * The shape that a ratio catches and an absolute bound does not is a
+   * SUPERLINEAR regression with a small enough constant to stay under the
+   * budget (#3226 review). That is why the ladder runs to 2.56M rather than
+   * stopping at 640k: measured, one extra full scan per 4000 characters costs
+   * 143ms at 640k -- inside a 500ms budget, so a six-rung ladder would have
+   * missed it -- and 572ms at 1.28M, where it blows. The third control below
+   * is exactly that implementation, so the claim is pinned rather than
+   * asserted. Two more rungs cost the healthy scan ~2ms (3.70ms at 2.56M
+   * against the 500ms budget, ~135x of headroom), because the extra rungs are
+   * only expensive for an implementation that is already superlinear.
+   *
+   * What remains knowingly out of scope after that: a superlinear regression
+   * whose constant is smaller still, staying inside the budget even at 2.56M.
+   * Nothing here would catch it. That is accepted rather than overlooked --
+   * the function is ~25 lines of straight-line scanning with no regex left in
+   * it, so the shape requires someone adding a nested loop, which is visible in
+   * review. #3113 was dangerous precisely because a regex LOOKED linear.
    */
 
   /** Per-decision budget. Every size below must be decided inside it. */
@@ -110,7 +128,9 @@ describe('deciding it is linear, not backtracking', () => {
    * Either way some rung fails, so the controls below need no hardware-tuned
    * number -- the failure that the old `regexMs > 50` floor could not survive.
    */
-  const SIZES = [20_000, 40_000, 80_000, 160_000, 320_000, 640_000] as const;
+  const SIZES = [
+    20_000, 40_000, 80_000, 160_000, 320_000, 640_000, 1_280_000, 2_560_000,
+  ] as const;
 
   /**
    * Retries only ever taken on the way to FAILING. `Math.min` can only fall, so
@@ -160,7 +180,7 @@ describe('deciding it is linear, not backtracking', () => {
     expect(isWhollyNumeric(`-${'1'.repeat(20_000)}`)).toBe(true);
   });
 
-  it('decides every size up to 640k characters inside the budget', { timeout: 60_000 }, () => {
+  it('decides every size up to 2.56M characters inside the budget', { timeout: 60_000 }, () => {
     expect(firstBlownRung(isWhollyNumeric)).toBeNull();
   });
 
@@ -170,8 +190,8 @@ describe('deciding it is linear, not backtracking', () => {
    * timing test that cannot go red is worse than no timing test, because it
    * reads as protection.
    *
-   * Both run the SAME ladder as the assertion above, so what is demonstrated is
-   * that assertion failing, not a separate one built to fail.
+   * All three run the SAME ladder as the assertion above, so what is
+   * demonstrated is that assertion failing, not a separate one built to fail.
    */
   it('the ladder can fail: the quadratic regex it replaced blows a rung', { timeout: 60_000 }, () => {
     // SPEC_RE is not a strawman -- it is the implementation that shipped, and
@@ -190,6 +210,19 @@ describe('deciding it is linear, not backtracking', () => {
     );
     expect(alsoBacktracks).toBe(true);
     expect(firstBlownRung(isWhollyNumericBacktracking)).not.toBeNull();
+  });
+
+  it('the ladder can fail: a superlinear scan with a small constant blows a rung', { timeout: 60_000 }, () => {
+    // The shape the removed ratio used to catch, and the reason the ladder
+    // runs past 640k (#3226 review). It delegates the DECISION to the real
+    // scan, so the language is identical by construction and the only
+    // difference is wasted work -- which is what makes it a clean probe of
+    // sensitivity rather than of correctness.
+    const blown = firstBlownRung(isWhollyNumericSmallConstantSuperlinear);
+    expect(blown).not.toBeNull();
+    // Named, not just non-null: if a future edit trims the ladder back to
+    // 640k this fails with the reason rather than going quietly vacuous.
+    expect(blown).toBeLessThanOrEqual(2_560_000);
   });
 });
 
@@ -243,4 +276,27 @@ function isWhollyNumericBacktracking(v: string): boolean {
     if (d > 0 && matchExponentAndEnd(i, n)) return true;
   }
   return false;
+}
+
+/**
+ * The same decision, plus one full extra pass over the input per 4000
+ * characters. Superlinear, but with a constant small enough that the cost stays
+ * inside the per-decision budget for a long way -- the shape an absolute bound
+ * alone does not catch, used as the third negative control above.
+ *
+ * It delegates to the real implementation for the verdict, so it decides the
+ * identical language by construction; there is no corpus assertion here because
+ * there is nothing that could diverge.
+ */
+function isWhollyNumericSmallConstantSuperlinear(v: string): boolean {
+  let sink = 0;
+  for (let outer = 0; outer < Math.floor(v.length / 4000) + 1; outer++) {
+    for (let i = 0; i < v.length; i++) {
+      if (v[i] >= '0' && v[i] <= '9') sink += 1;
+    }
+  }
+  // Keeps the loops above observable: without a use of `sink` an optimiser is
+  // free to delete them, and the control would silently become the real scan.
+  if (sink < 0) return false;
+  return isWhollyNumeric(v);
 }

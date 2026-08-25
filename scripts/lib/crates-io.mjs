@@ -151,6 +151,21 @@ export async function fetchVersionRecord(crate, ver, fetchImpl = fetch, opts = {
  * and the one state a record-existence check cannot see. A yank between
  * publish and verify, or a yank of a bad earlier attempt, both read as green
  * without it.
+ *
+ * TRADE, on the PUBLISH side: `release-crates.mjs` uses this as its
+ * "already published, skip it" pre-check, and a YANKED version reads as not
+ * published here — so a re-run after someone yanks a bad attempt tries to
+ * publish that version again. crates.io does not free a version number on a
+ * yank (a yank marks the version unusable for new resolution; it does not
+ * unpublish it), so that attempt is expected to be refused as a duplicate and
+ * the re-run cannot recover. This is reasoned from documented crates.io
+ * behaviour, NOT measured here — no test publishes to a real registry. The
+ * recovery path after a bad crate publish is therefore a NEW version, not a
+ * yank-and-re-run. It is left as one function rather than split into a
+ * separate `versionExists()` for the pre-check because the safe direction is
+ * the current one: a `versionExists()` pre-check would silently SKIP a yanked
+ * crate and let the release finish "green" with a version downstream crates
+ * cannot resolve.
  */
 export async function isPublished(crate, ver, fetchImpl = fetch, opts = {}) {
   const version = await fetchVersionRecord(crate, ver, fetchImpl, opts);

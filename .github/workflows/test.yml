@@ -871,6 +871,18 @@ jobs:
       # exiting 0 both fail here rather than at the next release.
       - name: Check the crates.io publish verifier catches a partial publish
         run: node --test scripts/verify-crates-publish.test.mjs
+      # The gate that decides whether either publish verifier runs at all. It
+      # is read from `release.yml` on main only, so nothing on a PR exercises
+      # it — and its first spelling (root `package.json` version vs `HEAD~1`)
+      # was wrong on this repo's own history: `sync-versions.js` pins the root
+      # version to the HIGHEST workspace version without lockstepping the
+      # rest, so the root version stands still on most release commits and the
+      # gate collapsed back to `published == 'true'`, skipping verification on
+      # exactly the re-run that recovers a partial publish (#3181). These
+      # drive real throwaway git repositories: a root bump, a bump that leaves
+      # the root alone, no bump at all, and a first commit with no parent.
+      - name: Check the release version-bump gate sees non-root bumps
+        run: node --test scripts/release-version-changed.test.mjs
       # verify-esm-entrypoints.mjs is the last gate before `pnpm release`
       # publishes. If its package discovery ever returns nothing — packages/
       # moved, or the publishable filter stops matching — the smoke loop has

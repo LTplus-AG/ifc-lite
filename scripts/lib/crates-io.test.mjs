@@ -301,3 +301,36 @@ test('waitUntilPublished still fails closed, and names the registry error, when 
     clock.restore();
   }
 });
+
+
+test('waitUntilPublished does not report a RECOVERED error on a timeout the registry answered', async () => {
+  // The distinction the failure message draws — "the index never caught up"
+  // vs "crates.io was erroring the whole time" — only holds if a recovered
+  // error is cleared. Here the registry errors once, then answers cleanly for
+  // the rest of the budget with "not there": the crate genuinely never
+  // appeared, and reporting the stale 503 alongside would send the operator
+  // hunting an outage that ended on the first attempt.
+  //
+  // Deleting the `lastError = null;` in the poll's success path leaves every
+  // other case in this file green and breaks only this one.
+  const clock = fakeClock();
+  try {
+    let calls = 0;
+    const checkFn = async () => {
+      calls++;
+      if (calls === 1) throw new Error('crates.io returned 503 for ifc-lite-core@6.0.0');
+      return false;
+    };
+    const result = await waitUntilPublished('ifc-lite-core', '6.0.0', {
+      checkFn,
+      intervalMs: 5000,
+      timeoutMs: 20000,
+      sleepFn: clock.sleepFn,
+    });
+    assert.equal(result.ok, false);
+    assert.ok(calls > 2, 'the poll must keep looking after the error');
+    assert.equal(result.lastError, null, 'an error the poll recovered from is not why this timed out');
+  } finally {
+    clock.restore();
+  }
+});

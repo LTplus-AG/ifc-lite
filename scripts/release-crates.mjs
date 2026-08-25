@@ -66,6 +66,12 @@ export async function publishAllCrates({
     // publish attempt instead — `cargo publish` refuses a duplicate version
     // loudly and by name, which is a far better failure than exiting with
     // some crates up and some not.
+    //
+    // A YANKED version reads as NOT published (see `isPublished`), so this
+    // re-attempts the publish rather than skipping it — and crates.io does not
+    // free a version number on a yank, so that attempt is expected to be
+    // refused as a duplicate. Recovering from a bad crate publish means a new
+    // version, not a yank-and-re-run.
     let alreadyPublished = false;
     try {
       alreadyPublished = await checkFn(crate, version);

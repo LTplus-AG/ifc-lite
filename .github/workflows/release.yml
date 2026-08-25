@@ -74,6 +74,55 @@ jobs:
           # Both must be PAT-authored for the pull_request event to fire.
           token: ${{ secrets.RELEASE_PAT }}
 
+      # Read the release state BEFORE `changesets/action` runs. That step invokes
+      # `pnpm run version` when changesets are pending, which CONSUMES
+      # `.changeset/*.md` and bumps `package.json` in this same working tree. A
+      # gate reading either of those afterwards sees "no changesets pending" and
+      # the NEW, not-yet-released version — and would tag a version whose
+      # packages have not been published, on the very run that only opened the
+      # version PR.
+      #
+      # This sits IMMEDIATELY after the checkout, and must stay there. Its
+      # outputs gate both publish-verification jobs, and an output is unset
+      # when the step never runs: every step placed above it — pnpm/Node
+      # setup, the WASM toolchain, `pnpm install`, the fixtures, `pnpm build`,
+      # the crates.io OIDC exchange — would take `verify` down with it, and
+      # both verifiers would skip DESPITE `always()`, on exactly the broken
+      # release that needs them. It needs no toolchain to do its job: `node`
+      # and `find` only, both present on the runner image before any setup
+      # step, and reading earlier only strengthens the
+      # "before changesets/action mutates the tree" premise above.
+      - name: Capture pre-release state
+        id: pre
+        run: |
+          echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+          echo "sb_version=$(node -p "require('./packages/server-bin/package.json').version")" >> "$GITHUB_OUTPUT"
+          echo "pending=$(find .changeset -maxdepth 1 -name '*.md' ! -name 'README.md' | wc -l | tr -d ' ')" >> "$GITHUB_OUTPUT"
+
+          # Does THIS commit carry a version bump?
+          #
+          # This is what gates the publish verifiers below, and it answers a
+          # different question from `changesets.outputs.published`. `published`
+          # is "did this RUN publish something", which is false on the re-run
+          # that RECOVERS a partial publish (npm has nothing left to publish
+          # by then) — so the verifier was skipped on exactly the attempt that
+          # needed checking (#3181, v6.0.0 attempt 2). "Is this the release
+          # commit" stays true across every re-run of it, and stays false for
+          # the ~50 ordinary pushes a day that publish nothing, so the
+          # verifiers neither skip a recovery nor fire vacuously.
+          #
+          # The comparison lives in a script, not inline here, because the
+          # obvious inline spelling — root `package.json` version vs `HEAD~1` —
+          # is WRONG on this repo and looked right: `sync-versions.js` pins the
+          # root version to the HIGHEST workspace version and does not lockstep
+          # the rest, so the root version only moves when that one top package
+          # is bumped. Replayed over the last 60 `chore: version packages`
+          # commits it opened on 16; the whole-workspace comparison the script
+          # does opens on 60/60, and on 0/40 recent ordinary pushes. See the
+          # header of the script and its test for the measurement.
+          VERSION_CHANGED=$(node scripts/release-version-changed.mjs)
+          echo "version_changed=${VERSION_CHANGED}" >> "$GITHUB_OUTPUT"
+
       - name: Setup pnpm
         # v6 reads the version from the `packageManager` field in
         # package.json (`pnpm@10.8.1`); specifying `with.version` here
@@ -152,47 +201,6 @@ jobs:
       - name: Authenticate to crates.io (OIDC)
         id: crates-auth
         uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
-
-      # Read the release state BEFORE `changesets/action` runs. That step invokes
-      # `pnpm run version` when changesets are pending, which CONSUMES
-      # `.changeset/*.md` and bumps `package.json` in this same working tree. A
-      # gate reading either of those afterwards sees "no changesets pending" and
-      # the NEW, not-yet-released version — and would tag a version whose
-      # packages have not been published, on the very run that only opened the
-      # version PR.
-      - name: Capture pre-release state
-        id: pre
-        run: |
-          echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
-          echo "sb_version=$(node -p "require('./packages/server-bin/package.json').version")" >> $GITHUB_OUTPUT
-          echo "pending=$(find .changeset -maxdepth 1 -name '*.md' ! -name 'README.md' | wc -l | tr -d ' ')" >> $GITHUB_OUTPUT
-
-          # Does THIS commit carry a version bump?
-          #
-          # This is what gates the publish verifiers below, and it answers a
-          # different question from `changesets.outputs.published`. `published`
-          # is "did this RUN publish something", which is false on the re-run
-          # that RECOVERS a partial publish (npm has nothing left to publish
-          # by then) — so the verifier was skipped on exactly the attempt that
-          # needed checking (#3181, v6.0.0 attempt 2). "Is this the release
-          # commit" stays true across every re-run of it, and stays false for
-          # the ~50 ordinary pushes a day that publish nothing, so the
-          # verifiers neither skip a recovery nor fire vacuously.
-          #
-          # Read BEFORE changesets/action, like everything else in this step:
-          # afterwards package.json may already carry a bumped, unpublished
-          # version. An unreadable parent (shallow clone, root commit) yields
-          # an empty string, which differs from any real version — so the
-          # unknown case errs towards verifying.
-          CURRENT_VERSION=$(node -p "require('./package.json').version")
-          PREVIOUS_VERSION=$(git show HEAD~1:package.json 2>/dev/null | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).version" 2>/dev/null || true)
-          if [ "${CURRENT_VERSION}" != "${PREVIOUS_VERSION}" ]; then
-            echo "version_changed=true" >> "$GITHUB_OUTPUT"
-            echo "version bump on this commit: ${PREVIOUS_VERSION:-<unknown>} -> ${CURRENT_VERSION}"
-          else
-            echo "version_changed=false" >> "$GITHUB_OUTPUT"
-            echo "no version bump on this commit (${CURRENT_VERSION})"
-          fi
 
       - name: Create Release Pull Request or Publish
         id: changesets
@@ -436,6 +444,15 @@ jobs:
     needs: release
     if: always() && needs.release.outputs.verify == 'true'
     runs-on: ubuntu-latest
+    # Bounded on purpose. The retry budget below is per PACKAGE and the walk
+    # is sequential: 40-odd packages x 11 waits x 20s is over two hours with
+    # npm down, and without this the job would hold a runner for the 6-hour
+    # default before saying so. The cap has to clear the case this job exists
+    # for, though — a PARTIAL publish, where the missing packages each burn
+    # the full ~3.7-minute budget and the run must survive long enough to name
+    # them — so it is set to allow roughly a dozen missing packages rather
+    # than to the tightest value that fits a healthy run.
+    timeout-minutes: 60
     steps:
       - name: Checkout Repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -471,6 +488,10 @@ jobs:
     needs: release
     if: always() && needs.release.outputs.verify == 'true'
     runs-on: ubuntu-latest
+    # Same reasoning as the npm job: 7 crates x 11 waits x 20s is ~26 minutes
+    # of pure waiting during a registry outage, plus an artifact download per
+    # crate. Cap it rather than holding a runner for the 6-hour default.
+    timeout-minutes: 35
     steps:
       - name: Checkout Repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -25,6 +25,21 @@
  * rustfmt reflowing the single-line arms into multiple lines — no Rust
  * toolchain required in CI (issue #1780).
  *
+ * ANTI-VACUITY (#3200): a stale or half-built `packages/parser/dist` imports
+ * cleanly and exports an empty `SCHEMA_REGISTRY`, and this script used to
+ * cooperate with it in the worst possible way. `--check` correctly went red
+ * (every committed row reads as stale), but the remedy it printed says
+ * "regenerate" — and regenerating against an empty extraction writes a `match`
+ * with no arms at all. `root_attr_indices` then returns `None` for every type,
+ * which per the note above means every KNOWN type falls back to the
+ * unknown-type indices [3,4,7]: exactly the parity break this generator exists
+ * to prevent, with `--check` printing ✓ from then on. The `(0 types, …)` count
+ * in the success line was the only tell.
+ *
+ * So the registry is now checked for emptiness before EITHER mode proceeds,
+ * the way `generate-bim-globals.mjs` already refuses its own empty schema, and
+ * a measured floor stands behind that (see ROW_FLOOR).
+ *
  * Output: apps/server/src/services/data_model/generated/attr_indices.rs
  */
 
@@ -41,6 +56,35 @@ const { SCHEMA_REGISTRY, getAttributeNames } = await import(
 
 const NAMES = ['Description', 'ObjectType', 'Tag', 'PredefinedType'];
 
+/**
+ * Lower bound on how many entity types the registry must yield before this
+ * script will write or bless anything.
+ *
+ * MEASURED, not guessed: a healthy `@ifc-lite/parser` build yields 776 types
+ * from IFC4_ADD2_TC1 (the figure `--check` prints on a clean tree). The floor
+ * is 500 — deep headroom on purpose, since it has to survive the registry
+ * being pointed at a smaller schema one day (IFC2X3 declares roughly 650
+ * entities) while still catching what it is for: every way this extraction can
+ * go blind — a half-built dist, a renamed export, an `entities` map that
+ * stopped being populated — takes the count to zero or single digits, never to
+ * 499.
+ */
+const ROW_FLOOR = 500;
+
+// A stale or half-built dist imports cleanly and still exports nothing. Refuse
+// before either mode runs: in write mode an empty registry emits an armless
+// `match` (every known type silently falls back to the unknown-type indices),
+// and in check mode it would bless that file on the very next run.
+if (!SCHEMA_REGISTRY?.entities || typeof SCHEMA_REGISTRY.entities !== 'object') {
+  console.error(
+    '❌ SCHEMA_REGISTRY.entities is missing or not an object in ' +
+      'packages/parser/dist/index.js — stale or broken build; refusing to ' +
+      'derive an attribute-index table from it.\n' +
+      '   Rebuild with `pnpm turbo build --filter=@ifc-lite/parser` and retry.',
+  );
+  process.exit(1);
+}
+
 const rows = Object.keys(SCHEMA_REGISTRY.entities)
   .map((key) => {
     const names = getAttributeNames(key);
@@ -48,6 +92,19 @@ const rows = Object.keys(SCHEMA_REGISTRY.entities)
     return { upper: key.toUpperCase(), idx };
   })
   .sort((a, b) => (a.upper < b.upper ? -1 : 1));
+
+if (rows.length < ROW_FLOOR) {
+  console.error(
+    `❌ @ifc-lite/parser's SCHEMA_REGISTRY (${SCHEMA_REGISTRY.name}) yielded only ${rows.length} entity ` +
+      `type(s); the floor is ${ROW_FLOOR}. Refusing to ${CHECK ? 'compare against' : 'emit'} an ` +
+      'attribute-index table derived from an extraction this thin — a `match` with no arms (or almost ' +
+      'none) makes every known type fall back to the unknown-type indices [3,4,7], which is the parity ' +
+      'break this generator exists to prevent, and `--check` would report it as in sync forever after.\n' +
+      '   Rebuild with `pnpm turbo build --filter=@ifc-lite/parser` and retry. If the registry genuinely ' +
+      'shrank this far, lower ROW_FLOOR in the same commit.',
+  );
+  process.exit(1);
+}
 
 const arms = rows
   .map(({ upper, idx }) => `        "${upper}" => Some(RootAttrIndices { description: ${idx[0]}, object_type: ${idx[1]}, tag: ${idx[2]}, predefined_type: ${idx[3]} }),`)

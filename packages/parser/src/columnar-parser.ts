@@ -15,6 +15,7 @@ import { EntityExtractor } from './entity-extractor.js';
 import { extractLengthUnitScale } from './unit-extractor.js';
 import { getAttributeNames, getAttributeNamesAcrossSchemas, getInheritanceChain } from './ifc-schema.js';
 import { parsePropertyValue } from './on-demand-extractors.js';
+import { collectQuantitiesFromRefs } from './quantity-collect.js';
 import { buildCompactEntityIndexAsync } from './compact-entity-index.js';
 import { yieldToEventLoop } from './yield-to-event-loop.js';
 import {
@@ -24,7 +25,6 @@ import {
     QuantityTableBuilder,
     RelationshipGraphBuilder,
     RelationshipType,
-    QuantityType,
 } from '@ifc-lite/data';
 import type { SpatialHierarchy, QuantityTable, PropertyValue, PropertySet, QuantitySet, IfcStoreBase, IfcEntity, IfcAttributeValue } from '@ifc-lite/data';
 import { BufferEntitySource } from './entity-source.js';
@@ -32,7 +32,6 @@ import { batchExtractGlobalIdAndName } from './columnar-parser-attributes.js';
 import {
     GEOMETRY_TYPES,
     REL_TYPE_MAP,
-    QUANTITY_TYPE_MAP,
     SPATIAL_TYPES,
     HIERARCHY_REL_TYPES,
     PROPERTY_REL_TYPES,
@@ -880,32 +879,7 @@ export class ColumnarParser {
             const qsetName = typeof qsetAttrs[2] === 'string' ? qsetAttrs[2] : `QuantitySet #${qsetId}`;
             const hasQuantities = qsetAttrs[5];
 
-            const quantities: Array<{ name: string; type: number; value: number }> = [];
-
-            if (Array.isArray(hasQuantities)) {
-                for (const qtyRef of hasQuantities) {
-                    if (typeof qtyRef !== 'number') continue;
-
-                    const qtyEntityRef = getEntityRefFromStore(store, qtyRef);
-                    if (!qtyEntityRef) continue;
-
-                    const qtyEntity = extractor.extractEntity(qtyEntityRef);
-                    if (!qtyEntity) continue;
-
-                    const qtyAttrs = qtyEntity.attributes || [];
-                    const qtyName = typeof qtyAttrs[0] === 'string' ? qtyAttrs[0] : '';
-                    if (!qtyName) continue;
-
-                    // Get quantity type from entity type
-                    const qtyTypeUpper = qtyEntity.type.toUpperCase();
-                    const qtyType = QUANTITY_TYPE_MAP[qtyTypeUpper] ?? QuantityType.Count;
-
-                    // Value is at index 3 for most quantity types
-                    const value = typeof qtyAttrs[3] === 'number' ? qtyAttrs[3] : 0;
-
-                    quantities.push({ name: qtyName, type: qtyType, value });
-                }
-            }
+            const quantities = collectQuantitiesFromRefs(store, extractor, hasQuantities);
 
             if (quantities.length > 0 || qsetName) {
                 result.push({ name: qsetName, quantities });

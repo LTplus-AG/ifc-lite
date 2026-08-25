@@ -282,3 +282,51 @@ describe('prism volume on shapes a box cannot express', () => {
     assert.ok(Math.abs(clippedVolumeForPrism([wall()], compilePrism(over, 10, 12))) < 1e-12);
   });
 });
+
+describe('a face all but coincident with a strip boundary (#1155 regime)', () => {
+  /** `n` ULPs away from `x`, toward +/-Infinity as `n` is signed. */
+  function ulps(x: number, n: number): number {
+    const buf = new Float64Array([x]);
+    const bits = new BigInt64Array(buf.buffer);
+    bits[0] += BigInt(n);
+    return buf[0];
+  }
+
+  // `clipPlane` used to carry a `t` clamp behind a `|da - db| > 1e-12`
+  // denominator guard, ported from the shape of the #1155 fix in
+  // `rust/geometry/src/csg/plane_eps.rs`. Nothing in this suite reached that
+  // guard: instrumenting the crossing branch over every fixture in
+  // `src/lib/zones/*.test.ts` gives 164 crossings whose smallest `|da - db|`
+  // is 1 -- twelve orders above the threshold. So the guard was removed, and
+  // this is the fixture that puts the suite INSIDE the regime it covered:
+  // the far face is tilted across the strip boundary by four ULPs, so
+  // twelve of the twenty-four crossings here run with `|da - db| = 3.6e-15`.
+  //
+  // Removing the guard is safe because `da` and `db` are strictly opposite in
+  // sign in that branch, so `t = da / (da - db)` is a positive quantity over a
+  // strictly larger one. The precondition is the BAND-FREE classification
+  // (`da >= 0`), and this test is what pins it: the box-vs-prism oracle above
+  // cannot -- it calls `clipPlane` against mirrored planes, for which any
+  // deterministic symmetric rule still tiles the polygon, so it accepts a
+  // constant `t` as readily as the real one.
+  const box = () => extrudeLoop([[0, 0], [ulps(3, 4), 0], [ulps(3, -4), 1], [0, 1]], 0, 1);
+  const flush: FootprintPoint[] = [[1, 0], [3, 0], [3, 1], [1, 1]];
+
+  it('stays finite and bounded by the element when the cut is ULPs from the face', () => {
+    const volume = clippedVolumeForPrism([box()], compilePrism(flush, -1, 2));
+    assert.ok(Number.isFinite(volume), `non-finite volume ${volume}`);
+    const whole = meshVolume([box()]);
+    assert.ok(
+      Math.abs(volume) <= Math.abs(whole) + EPS,
+      `took ${volume} of an element whose whole volume is ${whole}`,
+    );
+  });
+
+  it('still takes x in [1, 3] of it, so no vertex was reclassified across the plane', () => {
+    // An epsilon band in the classification -- the #1155 precondition -- puts
+    // the whole far face on the wrong side here and yields 4, more than the
+    // element holds. Exact answer: a 3 x 1 x 1 m box, x from 1 to 3.
+    const volume = clippedVolumeForPrism([box()], compilePrism(flush, -1, 2));
+    assert.ok(Math.abs(volume - 2) < 1e-12, `near-coincident cut took ${volume}, expected 2`);
+  });
+});

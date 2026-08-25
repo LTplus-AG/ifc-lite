@@ -80,7 +80,7 @@ const GLOBAL_ID_RE = /^[0-9A-Za-z_$]{22}$/;
  * empty chain and is treated as non-rooted — the same safe-miss direction the
  * old denylist documented: it just skips one GlobalId reconciliation.
  */
-function isRootedType(type: string): boolean {
+export function isRootedType(type: string): boolean {
   return getInheritanceChainAcrossSchemas(type).includes('IfcRoot');
 }
 

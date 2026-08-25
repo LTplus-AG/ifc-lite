@@ -37,6 +37,7 @@ mod openings;
 #[cfg(feature = "parquet-bos")]
 mod parquet_bos;
 mod rooms;
+pub mod rooted_type;
 mod schema_convert;
 mod shades;
 mod step;
@@ -85,7 +86,9 @@ pub use jsonld::{export_jsonld, JsonLdOptions};
 pub use kmz::{
     export_kmz, export_kmz_collada_from_meshes, ifc_angle_to_kml_heading, AltitudeMode, KmzOptions,
 };
-pub use merged::{export_merged, export_merged_with_stats, MergedOptions, MergedStats};
+pub use merged::{
+    deterministic_global_id, export_merged, export_merged_with_stats, MergedOptions, MergedStats,
+};
 pub use model::{
     build_export_model, build_export_model_with_options, stream_export_model,
     stream_export_model_with_index, stream_export_model_with_options, EntityRow, ExportModel,

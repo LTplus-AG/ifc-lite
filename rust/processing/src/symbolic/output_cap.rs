@@ -82,7 +82,6 @@ const PRIMITIVE_OVERHEAD_BYTES: usize = 64;
 /// Charged per `f32` coordinate or per byte of text.
 const BYTES_PER_COORD: usize = 8;
 
-
 /// Which bound stopped an extraction early.
 ///
 /// `SymbolicData` had no diagnostics channel at all (#2938), so a drawing that
@@ -103,8 +102,14 @@ pub enum SymbolicTruncationReason {
     OutputBytes,
     /// One representation item nested deeper than the walk follows.
     ItemDepth,
-    /// One representation item exhausted its revisit budget: the item was a
-    /// large acyclic fan-out, or a legitimate deeply-nested block import.
+    /// The EXTRACTION exhausted its revisit budget: a large acyclic fan-out,
+    /// or a legitimate deeply-nested block import.
+    ///
+    /// Shared across the whole file since #3114, not per item -- a per-item
+    /// budget reset on every top-level item, so nothing bounded a fan-out
+    /// spread across many items. The name is kept for wire compatibility.
+    /// Note the budget is extraction-wide while `ItemWalk::seen` stays per
+    /// item, so re-placing one library block is not charged as a revisit.
     ItemRevisits,
     /// The walk's path guard (`ItemWalk::enter_node`) refused to re-enter a
     /// node already on the current path -- a genuine cycle in the
@@ -143,12 +148,17 @@ pub struct SymbolicTruncation {
     /// `SymbolicAccumulator::record`.
     pub reason: SymbolicTruncationReason,
     /// Primitives emitted in total. NOT necessarily equal to any limit: a
-    /// per-item bound stops one item's contribution while the file-level
+    /// traversal bound stops content from being produced while the file-level
     /// totals stay far below the extraction bounds.
     pub emitted: usize,
     /// The bound's value, when the reason has a single numeric one. `None` for
-    /// per-item reasons, whose bound is per item and not comparable with
-    /// `emitted`.
+    /// the traversal reasons, whose bounds count a DIFFERENT UNIT from
+    /// `emitted` -- revisits and nesting depth, not primitives -- so there is
+    /// no meaningful "{emitted} of {limit}" to render.
+    ///
+    /// Note this is no longer because those bounds are per item: since #3114
+    /// the revisit budget is extraction-wide. It is the units that do not
+    /// line up, and that is what keeps `limit` absent.
     ///
     /// Skipped rather than serialized as `null`: the TypeScript mirror declares
     /// `limit?: number`, which means the key is ABSENT. Emitting `null` satisfies
@@ -156,8 +166,6 @@ pub struct SymbolicTruncation {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<usize>,
 }
-
-
 
 /// The extraction's accumulator: a `SymbolicData` under construction, plus the
 /// bound it is being built under.
@@ -178,14 +186,16 @@ pub(super) struct SymbolicAccumulator {
     data: SymbolicData,
     /// Cap for this extraction. Injectable so a test can use 500 rather than
     /// building a fixture that emits two million primitives.
-    limit: usize,
+    pub(super) limit: usize,
     /// Refused appends, counted for tests. See [`Self::refusals`].
     #[cfg(test)]
-    refusals: usize,
+    pub(super) refusals: usize,
     /// Estimated heap footprint charged so far. See [`MAX_SYMBOLIC_BYTES`].
     bytes: usize,
     /// Byte bound for this extraction, injectable alongside `limit`.
-    byte_limit: usize,
+    pub(super) byte_limit: usize,
+    /// Revisits the WHOLE extraction may still charge, shared across items (#2937).
+    pub(super) revisit_budget: u32,
     /// The most severe bound that fired, if any. See [`SymbolicAccumulator::record`].
     reason: Option<SymbolicTruncationReason>,
     /// Set only by the EXTRACTION bounds, never by a per-item one.
@@ -206,25 +216,12 @@ impl SymbolicAccumulator {
             limit: MAX_SYMBOLIC_ELEMENTS,
             bytes: 0,
             byte_limit: MAX_SYMBOLIC_BYTES,
+            revisit_budget: super::item_walk::MAX_ITEM_REVISITS,
             reason: None,
             exhausted: false,
             #[cfg(test)]
             refusals: 0,
         }
-    }
-
-    /// Accumulator under caller-chosen bounds. Both are injectable so a test
-    /// can exercise either bound without building a fixture that reaches the
-    /// shipped ones.
-    #[cfg(test)]
-    pub(super) fn with_limits(limit: usize, byte_limit: usize) -> Self {
-        Self { limit, byte_limit, ..Self::new() }
-    }
-
-    /// Accumulator under a caller-chosen count cap and the shipped byte cap.
-    #[cfg(test)]
-    pub(super) fn with_limit(limit: usize) -> Self {
-        Self { limit, ..Self::new() }
     }
 
     /// Is the accumulator itself full? The walk and the product scan read THIS
@@ -239,6 +236,14 @@ impl SymbolicAccumulator {
     /// the same event and would report the wrong reason.
     pub(super) fn note_item_bound(&mut self, reason: SymbolicTruncationReason) {
         self.record(reason);
+    }
+
+    /// Charge one revisit against the extraction-wide pool (#2937); `false` means spent.
+    pub(super) fn charge_revisit(&mut self) -> bool {
+        self.revisit_budget
+            .checked_sub(1)
+            .map(|left| self.revisit_budget = left)
+            .is_some()
     }
 
     /// Keep the MOST SEVERE reason, not the first.
@@ -262,17 +267,6 @@ impl SymbolicAccumulator {
             Some(existing) if severity(existing) >= severity(reason) => {}
             _ => self.reason = Some(reason),
         }
-    }
-
-    /// Refused appends since the last reset, for tests only.
-    ///
-    /// Exists so the early exits can be pinned deterministically. They bound
-    /// WORK, and work is invisible in the output -- a refused append leaves the
-    /// result byte-identical -- but it is visible HERE, and the accumulator is
-    /// already test-injectable. Claiming this was unpinnable was wrong.
-    #[cfg(test)]
-    pub(super) fn refusals(&self) -> usize {
-        self.refusals
     }
 
     /// Total primitives emitted so far, across every collection.
@@ -383,9 +377,9 @@ impl SymbolicAccumulator {
             let limit = match reason {
                 SymbolicTruncationReason::ElementCount => Some(self.limit),
                 SymbolicTruncationReason::OutputBytes => Some(self.byte_limit),
-                // Per-item bounds are per ITEM; reporting one next to a
-                // file-level `emitted` would invite the reader to compare two
-                // numbers that are not comparable.
+                // These count revisits and depth, not primitives, so
+                // reporting one next to a primitive `emitted` would invite
+                // the reader to compare two numbers in different units.
                 SymbolicTruncationReason::ItemDepth
                 | SymbolicTruncationReason::ItemRevisits
                 | SymbolicTruncationReason::ItemCycle => None,

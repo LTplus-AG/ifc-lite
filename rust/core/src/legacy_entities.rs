@@ -209,3 +209,93 @@ pub fn is_legacy_entity(entity_name: &str) -> bool {
 pub fn map_legacy_to_base_type(entity_name: &str) -> Option<IfcType> {
     get_legacy_entity_info(entity_name).map(|info| info.base_type)
 }
+
+/// Every key of [`get_legacy_entity_info`]'s match arms, enumerable.
+///
+/// A `match` on string literals answers "is this name legacy?" but cannot be
+/// walked, and callers need to walk it: the cross-language rooted-type sweep
+/// (`rust/export/examples/dump_rooted_type_sweep.rs`) has to put every legacy
+/// name into its universe, or the gate is structurally blind to exactly the
+/// names the two languages are most likely to disagree on -- which is how the
+/// three stratum leaves stayed divergent (#3124 review). Rather than leave
+/// this as a second hand-maintained list that must agree with the match,
+/// `legacy_entity_names_match_the_lookup_arms` below re-derives the arm keys
+/// from this module's own source text and asserts set equality, so adding an
+/// arm without adding a name here fails the test.
+pub const LEGACY_ENTITY_NAMES: &[&str] = &[
+    "IFCPRESENTATIONSTYLEASSIGNMENT",
+    "IFCBEAMSTANDARDCASE",
+    "IFCCOLUMNSTANDARDCASE",
+    "IFCMEMBERSTANDARDCASE",
+    "IFCPLATESTANDARDCASE",
+    "IFCSLABSTANDARDCASE",
+    "IFCDOORSTANDARDCASE",
+    "IFCWINDOWSTANDARDCASE",
+    "IFCOPENINGSTANDARDCASE",
+    "IFCSLABELEMENTEDCASE",
+    "IFCWALLELEMENTEDCASE",
+    "IFCDOORSTYLE",
+    "IFCWINDOWSTYLE",
+    "IFCPROXY",
+    "IFCBUILDINGELEMENT",
+    "IFCBUILDINGELEMENTTYPE",
+    "IFCEQUIPMENTELEMENT",
+    "IFCELECTRICDISTRIBUTIONPOINT",
+    "IFCELECTRICALELEMENT",
+    "IFCCHAMFEREDGEFEATURE",
+    "IFCROUNDEDEDGEFEATURE",
+    "IFCSTRUCTURALLINEARACTIONVARYING",
+    "IFCSTRUCTURALPLANARACTIONVARYING",
+    "IFCSOLIDSTRATUM",
+    "IFCVOIDSTRATUM",
+    "IFCWATERSTRATUM",
+];
+
+#[cfg(test)]
+mod legacy_entity_name_tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    /// The two-lists-that-must-agree guard for [`LEGACY_ENTITY_NAMES`]: the
+    /// arm keys are recovered from this module's own source text, so a newly
+    /// added arm whose key never reaches the const is caught here rather than
+    /// silently shrinking every caller's universe.
+    ///
+    /// (Deliberately phrased without an example arm: the key pattern is what
+    /// `scripts/check-legacy-entity-coverage.mjs` scans for, and a made-up
+    /// name in a comment reads to it as a real arm naming no entity.)
+    #[test]
+    fn legacy_entity_names_match_the_lookup_arms() {
+        let src = include_str!("legacy_entities.rs");
+        let mut from_source: BTreeSet<&str> = BTreeSet::new();
+        for line in src.lines() {
+            let trimmed = line.trim();
+            let Some(rest) = trimmed.strip_prefix('"') else {
+                continue;
+            };
+            let Some(end) = rest.find('"') else { continue };
+            if !rest[end + 1..].trim_start().starts_with("=>") {
+                continue;
+            }
+            from_source.insert(&rest[..end]);
+        }
+        assert!(
+            !from_source.is_empty(),
+            "arm-key extraction found nothing -- the parser, not the table, is broken"
+        );
+        let from_const: BTreeSet<&str> = LEGACY_ENTITY_NAMES.iter().copied().collect();
+        assert_eq!(
+            from_source, from_const,
+            "LEGACY_ENTITY_NAMES has drifted from get_legacy_entity_info's match arms"
+        );
+    }
+
+    /// Every listed name really is legacy -- the cheap direction, but it also
+    /// pins that the const holds arm keys and not, say, base-type names.
+    #[test]
+    fn every_listed_name_resolves_as_legacy() {
+        for &name in LEGACY_ENTITY_NAMES {
+            assert!(is_legacy_entity(name), "{name} is not a legacy entity");
+        }
+    }
+}

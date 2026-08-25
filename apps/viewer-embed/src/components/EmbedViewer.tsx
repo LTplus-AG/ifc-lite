@@ -22,11 +22,13 @@ import { toGlobalIdFromModels } from '@/store/globalId';
 import { parseUrlParams, assertFetchableUrl } from '../bridge/urlParams.js';
 import { initBridge, destroyBridge, emitEvent } from '../bridge/handler.js';
 import { mountBridgeLifecycle, unmountBridgeLifecycle } from '../bridge/lifecycle.js';
+import { useEmbedBridgeEvents } from './useEmbedBridgeEvents.js';
+import { useEmbedUrlParams, toHiddenTypeSet, isTypeHidden } from './useEmbedUrlParams.js';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 
 export function EmbedViewer() {
   const webgpu = useWebGPU();
-  const { geometryResult, ifcDataStore, loadFile, loading, models, clearAllModels, addModel } = useIfc();
+  const { geometryResult, ifcDataStore, loadFile, loading, addModel } = useIfc();
   const storeModels = useViewerStore((s) => s.models);
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
@@ -219,7 +221,22 @@ export function EmbedViewer() {
       if (urlParams.view) {
         cbs.setPresetView?.(urlParams.view);
       } else if (urlParams.camera) {
-        // ?camera= is handled elsewhere — nothing to do here.
+        // Orientation FIRST, then fit. `setCameraRotation` keeps the current
+        // target and orbit distance (Camera.setRotation), so on its own it
+        // aims an unframed camera at nothing; `fitAll` zooms to the model
+        // "without changing view direction", so it preserves the orientation
+        // we just asked for. The reverse order loses the rotation, because
+        // `home`/`fitAll` animate and the snap would be tweened away.
+        //
+        // The payload's `zoom` is NOT applied: there is no absolute-zoom
+        // actuator (`zoomIn`/`zoomOut` are unitless steppers) and the protocol
+        // gives the field no unit, so any mapping would be invented. Framing
+        // comes from `fitAll` instead. See #2934.
+        useViewerStore.getState().setCameraRotation({
+          azimuth: urlParams.camera.azimuth,
+          elevation: urlParams.camera.elevation,
+        });
+        cbs.fitAll?.();
       } else if (cbs.home) {
         cbs.home();
       } else if (cbs.fitAll) {
@@ -230,80 +247,12 @@ export function EmbedViewer() {
     return () => cancelAnimationFrame(rafId);
   }, [loading, geometryResult, ifcDataStore, urlParams.view, urlParams.camera]);
 
-  // Emit selection events to parent
-  const selectedEntityId = useViewerStore((s) => s.selectedEntityId);
-  useEffect(() => {
-    if (selectedEntityId !== null) {
-      // Resolve metadata for the selected entity
-      const state = useViewerStore.getState();
-      const lookup = state.resolveGlobalIdFromModels(selectedEntityId);
-      const model = lookup ? state.models.get(lookup.modelId) : undefined;
-      const entities = model?.ifcDataStore?.entities;
-      emitEvent('ENTITY_SELECTED', {
-        id: selectedEntityId,
-        globalId: entities?.getGlobalId(lookup?.expressId ?? selectedEntityId) ?? undefined,
-        modelId: lookup?.modelId,
-        ifcType: entities?.getTypeName(lookup?.expressId ?? selectedEntityId) ?? undefined,
-      });
-    } else {
-      emitEvent('ENTITY_DESELECTED', undefined);
-    }
-  }, [selectedEntityId]);
+  // Outbound store-change events (ENTITY_SELECTED / ENTITY_HOVERED /
+  // CAMERA_CHANGED / SECTION_CHANGED) — see useEmbedBridgeEvents.ts.
+  useEmbedBridgeEvents();
 
-  // Emit hover events to parent. ENTITY_HOVERED is declared in the protocol
-  // and exposed by the SDK, but nothing in this app ever emitted it — the
-  // SDK's tests pass because they fabricate the event themselves (#2934).
-  //
-  // Subscribes to `hoverState.entityId` specifically, not the whole
-  // `hoverState` object: screenX/screenY/worldXYZ change on every
-  // hover-throttled mousemove even while the pointer stays on the same mesh,
-  // so selecting the object would re-post the event continuously instead of
-  // only on a hover-target change. The protocol declares no ENTITY_UNHOVERED
-  // counterpart to ENTITY_DESELECTED, so null (nothing hovered) is tracked but
-  // never emitted.
-  const hoveredEntityId = useViewerStore((s) => s.hoverState.entityId);
-  useEffect(() => {
-    if (hoveredEntityId === null) return;
-
-    const state = useViewerStore.getState();
-    const lookup = state.resolveGlobalIdFromModels(hoveredEntityId);
-    const model = lookup ? state.models.get(lookup.modelId) : undefined;
-    const entities = model?.ifcDataStore?.entities;
-    emitEvent('ENTITY_HOVERED', {
-      id: hoveredEntityId,
-      globalId: entities?.getGlobalId(lookup?.expressId ?? hoveredEntityId) ?? undefined,
-      ifcType: entities?.getTypeName(lookup?.expressId ?? hoveredEntityId) ?? undefined,
-    });
-  }, [hoveredEntityId]);
-
-  // Emit camera rotation changes to parent (throttled)
-  const cameraRotation = useViewerStore((s) => s.cameraRotation);
-  const lastCameraEmit = useRef(0);
-  useEffect(() => {
-    const now = Date.now();
-    if (now - lastCameraEmit.current < 100) return; // throttle to 10Hz
-    lastCameraEmit.current = now;
-    emitEvent('CAMERA_CHANGED', {
-      azimuth: cameraRotation.azimuth,
-      elevation: cameraRotation.elevation,
-    });
-  }, [cameraRotation]);
-
-  // Emit section-plane changes to parent. Mirrors the CAMERA_CHANGED effect
-  // above: the bridge's SET_SECTION handler (apps/viewer-embed/src/bridge/
-  // handler.ts) only mutates `sectionPlane` via the store's setters and never
-  // emits an event itself, so this reactive subscription is what turns those
-  // mutations (from SET_SECTION *or* any in-viewer section-tool interaction)
-  // into the outbound SECTION_CHANGED event -- same source of truth as
-  // ENTITY_SELECTED/CAMERA_CHANGED, not a handler.ts-local special case.
-  const sectionPlane = useViewerStore((s) => s.sectionPlane);
-  useEffect(() => {
-    emitEvent('SECTION_CHANGED', {
-      axis: sectionPlane.axis,
-      position: sectionPlane.position,
-      enabled: sectionPlane.enabled,
-    });
-  }, [sectionPlane]);
+  // Apply ?select= / ?isolate= once the first model is on screen.
+  useEmbedUrlParams(urlParams, Boolean(geometryResult?.meshes?.length));
 
   // Multi-model: create mapping from modelId to modelIndex
   const modelIdToIndex = useMemo(() => {
@@ -342,12 +291,18 @@ export function EmbedViewer() {
     return geometryResult;
   }, [storeModels, geometryResult, modelIdToIndex]);
 
-  // Filter by type visibility
+  // Filter by type visibility, plus the host's ?hideTypes= list. The latter
+  // takes ARBITRARY IFC class names (that is what the SDK's `hideTypes?:
+  // string[]` already ships as accepting), so it cannot go through
+  // `typeVisibility`, whose six semantic toggles are a fixed set — it is a
+  // case-folded membership test in this same pass instead.
+  const hiddenTypes = useMemo(() => toHiddenTypeSet(urlParams.hideTypes), [urlParams.hideTypes]);
   const filteredGeometry = useMemo(() => {
     if (!mergedGeometryResult?.meshes) return null;
     let meshes = mergedGeometryResult.meshes;
 
     meshes = meshes.filter(mesh => {
+      if (isTypeHidden(mesh.ifcType, hiddenTypes)) return false;
       if (mesh.ifcType === 'IfcSpace' && !typeVisibility.spaces) return false;
       if (mesh.ifcType === 'IfcOpeningElement' && !typeVisibility.openings) return false;
       if (mesh.ifcType === 'IfcSite' && !typeVisibility.site) return false;
@@ -362,7 +317,7 @@ export function EmbedViewer() {
     });
 
     return meshes;
-  }, [mergedGeometryResult, typeVisibility]);
+  }, [mergedGeometryResult, typeVisibility, hiddenTypes]);
 
   // Compute isolation set
   const computedIsolatedIds = useMemo(() => {

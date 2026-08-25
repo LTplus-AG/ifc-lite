@@ -49,17 +49,21 @@ export interface EmbedOptions {
   theme?: 'light' | 'dark';
   /** Custom background color (hex without #) */
   bg?: string;
-  /** Camera controls mode */
+  /** Camera controls mode. NOT YET IMPLEMENTED — sent, and the viewer ignores it. */
   controls?: 'orbit' | 'pan' | 'all' | 'none';
-  /** Hide the axis helper */
+  /** Hide the axis helper. NOT YET IMPLEMENTED — sent, and the viewer ignores it. */
   hideAxis?: boolean;
-  /** Hide the scale bar */
+  /** Hide the scale bar. NOT YET IMPLEMENTED — sent, and the viewer ignores it. */
   hideScale?: boolean;
-  /** IFC types to hide by default */
+  /** IFC class names to hide, matched case-insensitively (`IFCSPACE` === `IfcSpace`). */
   hideTypes?: string[];
-  /** Preset camera view */
+  /** Preset camera view. Takes precedence over `camera`. */
   view?: ViewPreset;
-  /** Initial camera position */
+  /**
+   * Initial absolute camera orientation in degrees; the model is framed at
+   * that orientation. `zoom` is accepted but NOT applied — the viewer has no
+   * absolute-zoom actuator and the field carries no unit.
+   */
   camera?: { azimuth: number; elevation: number; zoom?: number };
   /** Origin of the hosted embed viewer (defaults to production) */
   origin?: string;

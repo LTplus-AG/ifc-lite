@@ -41,7 +41,13 @@ pub fn get_si_prefix_multiplier(prefix: &str) -> f64 {
 pub fn get_conversion_based_unit_factor(name: &str) -> Option<f64> {
     match name.to_uppercase().as_str() {
         // Length units to meters
-        "FOOT" | "FEET" | "'FOOT'" => Some(0.3048),
+        // The quoted spellings are the doubled-quote STEP escaping: a name
+        // attribute written `''FEET''` in the file decodes to the
+        // four-character string `'FEET'` and is matched here verbatim. Keep
+        // this arm in step with CONVERSION_BASED_UNIT_FACTORS in
+        // packages/parser/src/unit-extractor.ts — two length-unit readers that
+        // disagree put the model and its map coordinates on different scales.
+        "FOOT" | "FEET" | "'FOOT'" | "'FEET'" => Some(0.3048),
         "INCH" | "'INCH'" => Some(0.0254),
         "YARD" | "'YARD'" => Some(0.9144),
         "MILE" | "'MILE'" => Some(1609.344),
@@ -726,6 +732,10 @@ END-ISO-10303-21;
         assert_eq!(get_conversion_based_unit_factor("foot"), Some(0.3048));
         assert_eq!(get_conversion_based_unit_factor("FEET"), Some(0.3048));
         assert_eq!(get_conversion_based_unit_factor("'FOOT'"), Some(0.3048));
+        // A STEP name written `''FEET''` decodes to the four-character string
+        // `'FEET'`; the TypeScript table resolves it, so this one must too, or
+        // the two readers disagree about the same file.
+        assert_eq!(get_conversion_based_unit_factor("'FEET'"), Some(0.3048));
         assert_eq!(get_conversion_based_unit_factor("INCH"), Some(0.0254));
         assert_eq!(get_conversion_based_unit_factor("YARD"), Some(0.9144));
         assert_eq!(get_conversion_based_unit_factor("MILE"), Some(1609.344));

@@ -153,7 +153,10 @@ describe('computeLayerContribution', () => {
   const entries: LayerStackEntry[] = [
     { id: 'L1', name: 'base', file: file([{ path: 'a', attributes: { x: 1 } }]), nodeCount: 1, byteLength: 1 },
     { id: 'L2', name: 'second', file: file([{ path: 'a', attributes: { x: 2 } }]), nodeCount: 1, byteLength: 1 },
-    { id: 'L3', name: 'third', file: file([{ path: 'a', attributes: { x: 3 } }]), nodeCount: 1, byteLength: 1 },
+    // L3 writes a DIFFERENT path on purpose. While all three layers touched
+    // path `a`, the L2 test below could not tell a correct diff from a
+    // whole-stack one -- both report `a` modified, just to a different value.
+    { id: 'L3', name: 'third', file: file([{ path: 'b', attributes: { x: 3 } }]), nodeCount: 1, byteLength: 1 },
   ];
 
   it('returns null for a layer id not present in the stack', async () => {
@@ -162,11 +165,23 @@ describe('computeLayerContribution', () => {
   });
 
   it('diffs the prefix WITHOUT the layer against the prefix WITH it, not the whole stack', async () => {
-    // If the implementation diffed [0, index) vs the FULL stack instead of
-    // [0, index+1), this diff would be empty: L1..L3 vs L1..L3 sees no change
-    // at all, masking L2's own edit entirely.
+    // The bug shape is [0, index) against the FULL stack rather than against
+    // [0, index+1) -- L1 against L1..L3 instead of L1 against L1..L2. Only the
+    // right-hand side is wrong; the left stays [L1].
+    //
+    // An earlier version of this comment said that diff "would be empty:
+    // L1..L3 vs L1..L3 sees no change", which describes a different bug and
+    // overstated what the assertions caught. The whole-stack diff is not empty
+    // -- it still reports path `a` modified, just to L3's value instead of
+    // L2's -- and because this test asserted only the path and never the
+    // value, BOTH implementations satisfied it.
+    //
+    // L3 writing path `b` is what separates them: the correct diff cannot see
+    // L3 at all, so `added` stays empty, while the whole-stack diff surfaces
+    // `b`.
     const result = await computeLayerContribution(entries, 'L2');
     assert.ok(result);
+    assert.deepEqual(result.added, [], 'L3 sits past the layer being diffed and must not appear');
     assert.equal(result.modified.length, 1);
     assert.equal(result.modified[0]?.path, 'a');
   });

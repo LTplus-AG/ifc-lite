@@ -95,6 +95,27 @@ function tree({ entities, resolved, committed, registryName = 'IFC4_ADD2_TC1' })
   return dir;
 }
 
+/**
+ * A tree whose `SCHEMA_REGISTRY.entities` is missing entirely — distinct from
+ * `tree({ entities: 0, ... })`, which still yields `entities: {}` (a real,
+ * empty object) and is caught by ROW_FLOOR instead. This is the case the
+ * empty-registry guard (checked before either floor) exists for: a stale or
+ * broken build whose `entities` key isn't there, or isn't an object, at all.
+ */
+function brokenDist() {
+  const dir = mkdtempSync(join(tmpdir(), 'attr-indices-'));
+  cleanup.push(dir);
+  mkdirSync(join(dir, 'scripts'), { recursive: true });
+  mkdirSync(join(dir, 'packages/parser/dist'), { recursive: true });
+  copyFileSync(GENERATOR, join(dir, 'scripts', 'generate-server-attr-indices.mjs'));
+  writeFileSync(
+    join(dir, 'packages/parser/dist/index.js'),
+    `export const SCHEMA_REGISTRY = { name: 'IFC4_ADD2_TC1' };\n` +
+      `export function getAttributeNames() { return []; }\n`,
+  );
+  return dir;
+}
+
 function run(dir, ...args) {
   const res = spawnSync(process.execPath, [join(dir, 'scripts', 'generate-server-attr-indices.mjs'), ...args], {
     encoding: 'utf8',
@@ -165,9 +186,17 @@ test('the resolved floor sits at 400: 399 refuses, 400 passes', () => {
 });
 
 test('the row floor sits at 700: 699 refuses, 700 passes', () => {
-  const low = run(tree({ entities: 699, resolved: 488 }));
+  // Seed a committed table (from a healthy 700-entity run) so the refusal
+  // path's byte-identity claim is actually pinned, not just asserted for the
+  // RESOLVED_FLOOR and empty-registry cases.
+  const seed = healthyTable(tree({ entities: 700, resolved: 488 }));
+  const dir = tree({ entities: 699, resolved: 488, committed: seed });
+  const before = outHash(dir);
+
+  const low = run(dir);
   assert.equal(low.code, 1, low.out);
   assert.match(low.out, /yielded only 699 entity type\(s\); the floor is 700/);
+  assert.equal(outHash(dir), before, 'refusal must leave the committed table byte-identical');
 
   const ok = run(tree({ entities: 700, resolved: 488 }));
   assert.equal(ok.code, 0, ok.out);
@@ -180,5 +209,19 @@ test('an empty entities map is refused in both modes and writes nothing', () => 
     assert.equal(code, 1, out);
     assert.match(out, /yielded only 0 entity type\(s\)/);
     assert.equal(outHash(dir), null, 'nothing may be written when the registry is empty');
+  }
+});
+
+test('a registry with no entities map at all is refused by the named guard, not ROW_FLOOR', () => {
+  for (const args of [[], ['--check']]) {
+    const dir = brokenDist();
+    const { code, out } = run(dir, ...args);
+    assert.equal(code, 1, out);
+    assert.match(out, /SCHEMA_REGISTRY\.entities is missing or not an object/);
+    // Distinct from the `entities: {}` case: this must NOT be reported as the
+    // row-floor refusal, since that would mean the guard did nothing this
+    // shape didn't already get from ROW_FLOOR.
+    assert.doesNotMatch(out, /yielded only/);
+    assert.equal(outHash(dir), null, 'nothing may be written when entities is missing');
   }
 });

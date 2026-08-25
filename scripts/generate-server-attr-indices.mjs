@@ -82,9 +82,10 @@ const NAMES = ['Description', 'ObjectType', 'Tag', 'PredefinedType'];
  * not true: there is no runtime schema selection here. `SCHEMA_REGISTRY` is a
  * single committed codegen artifact pinned to IFC4_ADD2_TC1, and the
  * multi-schema union lives elsewhere — in `ifc-schema.ts`'s
- * `ENTITY_INFO_BY_UPPER`, reachable only through
- * `getAttributeNamesAcrossSchemas`, which this generator never calls (it calls
- * the pinned `getAttributeNames`). Repinning the codegen would be a
+ * `ENTITY_INFO_BY_UPPER`, read by `getAttributeNamesAcrossSchemas`,
+ * `getEntityInfoAcrossSchemas` and `getInheritanceChainFromSchemaUnion`, none
+ * of which this generator calls (it calls the pinned `getAttributeNames`).
+ * Repinning the codegen would be a
  * regenerate-and-commit event, which is exactly what the failure message below
  * already instructs. Measured on the old value: 499 rows refused and 500 rows
  * WROTE, replacing all 776 committed arms and exiting 0 — so the 500..775 band
@@ -106,10 +107,30 @@ const ROW_FLOOR = 700;
  * MEASURED, not guessed: 488 of today's 776 rows resolve at least one
  * attribute; the other 288 legitimately declare none of the four (IfcCartesianPoint
  * and friends), so this can never be "all rows". The floor is 400 — under the
- * measured 488 with ~18% headroom for schema churn, and comfortably under the
- * 444 that the ROW_FLOOR boundary itself yields, so the two floors cannot
- * contradict each other. Every way this extraction goes blind at the attribute
- * level takes the resolved count to zero, never to 399.
+ * measured 488 with ~18% headroom for schema churn, and under the 412 that the
+ * ROW_FLOOR boundary's worst case yields (a 700-row subset that keeps all 288
+ * non-resolvers still costs only 700 - 288 = 412), so the two floors still
+ * cannot contradict each other, just with a real margin of 12 rows (2.9%), not
+ * the 44 a same-proportion read of 700/776 suggests.
+ *
+ * That margin only has to cover one of this generator's two failure shapes,
+ * not both. At the generator level, `typescript-generator.ts` emits
+ * `allAttributes` for every entity unconditionally, so a failure there is
+ * all-or-nothing — it takes the resolved count to zero (see ANTI-VACUITY
+ * above), never to something in between. One level further down, inside
+ * `getAllAttributes` (`packages/codegen/src/express-parser.ts`), the
+ * inheritance walk silently stops when a supertype name isn't found in
+ * `schema.entities` — no error, no distinction from a legitimate root — so a
+ * PARTIAL loss is reachable there, scoped to whichever ancestor's subtree lost
+ * its parent link, and it is not bounded away from this floor's slack. Today's
+ * registry has no such break, but measuring what one would cost: 201 of the
+ * 488 resolved entities resolve ONLY through an inherited attribute, and the
+ * single costliest ancestor is `IfcRoot` at 70 rows (`IfcRelationship` 47,
+ * `IfcObject` 31, `IfcTypeProduct` 21, `IfcElement` 20) — every one of those
+ * comfortably inside this floor's 88-row slack, so RESOLVED_FLOOR alone would
+ * wave a loss that size through. `--check`'s semantic drift comparison against
+ * the committed table is the actual backstop for this failure mode, not a
+ * floor value.
  */
 const RESOLVED_FLOOR = 400;
 

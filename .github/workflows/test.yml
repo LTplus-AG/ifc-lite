@@ -590,6 +590,20 @@ jobs:
       # it must not.
       - name: Check the source-text detector's own regressions
         run: node --test scripts/check-source-text-assertions.test.mjs
+      # That gate's SCAN SCOPE is packages/ and apps/ only -- `grep -c rust` over
+      # it returns 0 -- so the same AGENTS.md rule was unenforced across the
+      # whole rust/ tree, demonstrated rather than inferred: a genuine
+      # `fs::read_to_string(".../foo.rs")` plus a `contains` planted in a real
+      # Rust test left CI green (#3129, then #3195). This is the sibling gate,
+      # with its own lexer, because the TypeScript one's precision comes from a
+      # real parse tree that a regex pass sharing the file would erode.
+      # Its own tests run FIRST, for the reason the refwalk pair states: this
+      # check's value is entirely in not passing vacuously, so a broken detector
+      # must fail here rather than report a clean tree.
+      - name: Check Rust source-text gate's own tests
+        run: node --test scripts/check-rust-source-text-assertions.test.mjs
+      - name: Check for source-text assertions in Rust tests
+        run: node scripts/check-rust-source-text-assertions.mjs
       # A walk that follows a file-supplied entity reference with no visited set
       # and no depth cap overflows the Rust stack on a self-referential
       # reference, which is SIGABRT rather than a catchable panic -- in the wasm

@@ -50,16 +50,38 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 
-/** Workspace roots, matching `pnpm-workspace.yaml` and `sync-versions.js`. */
+/**
+ * Workspace roots, matching `sync-versions.js`, which walks exactly these two.
+ *
+ * NOT the same list as `pnpm-workspace.yaml`, which carries a third root,
+ * `examples/*`. That omission is deliberate and correct: all four example
+ * packages are `private: true` and publish nothing, so a bump there is not a
+ * release and must not fire the verifiers. Widen this only if an example ever
+ * becomes publishable.
+ *
+ * The walk below is ONE level deep and skips symlinks, so a nested
+ * (`packages/group/pkg/`) or symlinked package would be invisible to it —
+ * while `sync-versions.js` uses `statSync`, which DOES follow symlinks. No
+ * such package exists today (47 flat manifests under these two roots, none
+ * nested, none a symlink), so the two agree; adding one would silently
+ * separate them, and this walk is the side that goes quiet.
+ */
 export const WORKSPACE_PARENTS = ['packages', 'apps'];
 
+/**
+ * The `version` of a package manifest, or `null` when there is no text or no
+ * `version` field.
+ *
+ * THROWS on text that is not JSON, deliberately. In the checked-out tree a
+ * manifest that exists but does not parse is "cannot tell", not "no bump":
+ * returning `null` here would drop that package from the walk, and a release
+ * commit whose only bump was in the corrupt file would answer `false` and
+ * skip verification. `versionAtRev` catches instead, because a manifest that
+ * is unreadable at the PARENT rev already reads as a bump against the tree.
+ */
 function parseVersion(text) {
   if (text == null) return null;
-  try {
-    return JSON.parse(text).version ?? null;
-  } catch {
-    return null;
-  }
+  return JSON.parse(text).version ?? null;
 }
 
 function git(repoRoot, args) {
@@ -122,6 +144,13 @@ export function versionAtRev(repoRoot, rev, relPath) {
  * `previousRev` does not resolve (root commit, shallow clone): unknown must
  * read as CHANGED, because a false `false` skips verification on a real
  * release while a false `true` costs a handful of registry queries.
+ *
+ * THROWS rather than returning a verdict when the tree itself cannot be read
+ * — no root `package.json`, a root or workspace manifest that is not JSON, no
+ * `git` on PATH. There is no honest `{ changed }` for those, and swallowing
+ * them here would put a `false` in front of a caller. Every caller must treat
+ * a throw as "assume a bump"; `main()` below does exactly that, which is what
+ * makes the CLI fail OPEN.
  */
 export function versionChanged(repoRoot, { previousRev = 'HEAD~1' } = {}) {
   const current = currentVersions(repoRoot);
@@ -147,9 +176,12 @@ function main() {
   try {
     result = versionChanged(process.cwd());
   } catch (err) {
-    // Fail OPEN. Any unexpected failure here — no git, an unreadable
-    // package.json — must not quietly answer "no bump": that skips the
-    // publish verifiers on what may well be a release commit.
+    // Fail OPEN. Any unexpected failure here — no `git`, a missing root
+    // `package.json`, a manifest that is not JSON — must not quietly answer
+    // "no bump": that skips the publish verifiers on what may well be a
+    // release commit. `.github/workflows/release.yml` closes the same hole on
+    // its side, where a non-zero exit would kill the step before this line
+    // could be reached at all.
     process.stderr.write(`version gate could not be evaluated (${err.message}) — assuming a bump\n`);
     process.stdout.write('true\n');
     return;

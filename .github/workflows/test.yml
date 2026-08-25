@@ -881,7 +881,15 @@ jobs:
       # exactly the re-run that recovers a partial publish (#3181). These
       # drive real throwaway git repositories: a root bump, a bump that leaves
       # the root alone, no bump at all, and a first commit with no parent.
-      - name: Check the release version-bump gate sees non-root bumps
+      #
+      # They also cover the YAML SEAM, by lifting the `VERSION_CHANGED=` lines
+      # straight out of `release.yml` and running them under the Actions
+      # default shell. The script fails open on its own, but a bare
+      # `VAR=$(node …)` under `bash -eo pipefail` takes the substitution's
+      # exit status: a non-zero exit killed the step, `version_changed` was
+      # never written, and both verifiers skipped DESPITE `always()`. Editing
+      # the workflow back to that spelling reddens these tests.
+      - name: Check the release version-bump gate sees non-root bumps and fails open
         run: node --test scripts/release-version-changed.test.mjs
       # verify-esm-entrypoints.mjs is the last gate before `pnpm release`
       # publishes. If its package discovery ever returns nothing — packages/

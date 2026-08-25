@@ -120,7 +120,19 @@ jobs:
           # commits it opened on 16; the whole-workspace comparison the script
           # does opens on 60/60, and on 0/40 recent ordinary pushes. See the
           # header of the script and its test for the measurement.
-          VERSION_CHANGED=$(node scripts/release-version-changed.mjs)
+          # The script fails OPEN internally, but a bare assignment from a
+          # command substitution takes the substitution's exit status, and the
+          # Actions default shell is `bash --noprofile --norc -eo pipefail`.
+          # So ANY non-zero `node` exit — the script renamed or absent, an
+          # import-time throw, OOM, node failing to start — would abort this
+          # STEP, leaving `version_changed` unwritten; `verify` would then read
+          # `''` and both verifiers would skip DESPITE `always()`, which is the
+          # exact failure the placement above exists to prevent. The `||` keeps
+          # the step alive; the second line makes anything that is not
+          # literally `false` — including the empty string an exit-0 run that
+          # printed nothing would leave — open the gate.
+          VERSION_CHANGED=$(node scripts/release-version-changed.mjs) || VERSION_CHANGED=true
+          [ "${VERSION_CHANGED}" = "false" ] || VERSION_CHANGED=true
           echo "version_changed=${VERSION_CHANGED}" >> "$GITHUB_OUTPUT"
 
       - name: Setup pnpm

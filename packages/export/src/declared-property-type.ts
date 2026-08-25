@@ -50,7 +50,7 @@
  *    display string in a measure token.
  *
  * 4. **The VALUE must satisfy the member's own EXPRESS domain.** The base is not
- *    the whole type: six `IfcValue` members are CONSTRAINED defined types whose
+ *    the whole type: eight `IfcValue` members are CONSTRAINED defined types whose
  *    WHERE rule narrows the primitive they resolve to. `-1` is a fine REAL and
  *    not a fine `IfcPositiveLengthMeasure`; `2` is a fine REAL and not a fine
  *    `IfcNormalisedRatioMeasure`. Since `setProperty` performs no schema
@@ -60,22 +60,33 @@
  *    a valid `IFCREAL(-1.)`. A gate whose purpose is to stop the exporter
  *    writing a type it cannot justify must not itself write one.
  *
- *    A violating value does not fall all the way back to the shape-derived
- *    primitive. It RELAXES to the nearest ancestor that is itself an `IfcValue`
- *    member over the same base and carries no constraint —
+ *    A violating value RELAXES, where it can, to the nearest ancestor that is
+ *    itself an `IfcValue` member over the same base and carries no constraint —
  *    `IfcPositiveLengthMeasure` → `IfcLengthMeasure` — resolved from the
  *    registry's alias chain, not listed. `IFCLENGTHMEASURE(-1.)` is schema-valid
  *    AND keeps the unit semantics, which is the whole thing #2482 is about;
  *    dropping to `IFCREAL(-1.)` would re-inflict this PR's own defect on exactly
  *    the properties whose value went out of range.
  *
+ *    Two members have no such ancestor: `IfcPHMeasure` and
+ *    `IfcHeatingValueMeasure` are declared directly as `REAL`, so their alias
+ *    chain leaves `IfcValue` in one step. For those the relaxation returns
+ *    `null` and the shape-derived `IFCREAL` is the answer — schema-valid, and
+ *    the only valid one available. The relaxation target of every constrained
+ *    member is named in `declared-nominal-value-type.test.ts`, so which of the
+ *    two outcomes each takes is asserted rather than assumed.
+ *
  *    **Where the constraints come from.** `SCHEMA_REGISTRY.types` is a
  *    `name -> underlying type` alias map (plus STRING widths); the generator
- *    does not carry WHERE rules, so there is nothing to read. The six are
+ *    does not carry WHERE rules, so there is nothing to read. The eight are
  *    therefore written out below, which is tolerable only because the set is
- *    CLOSED and small: they are every constrained member of `IfcValue`'s 106
- *    defined-type leaves, and a test walks the live registry to fail if a schema
- *    bump adds one this table has not heard of. String widths, which the
+ *    CLOSED and small: they are every constrained member of `IfcValue`'s
+ *    defined-type leaves, and a test derives that set from the bundled
+ *    `packages/codegen/schemas/*.exp` — the WHERE rules themselves — to fail if
+ *    a schema bump adds one this table has not heard of. That test used to ask
+ *    the question by NAME (`/Positive|NonNegative|Normalised/`), which is how
+ *    `IfcPHMeasure` and `IfcHeatingValueMeasure` sat outside the table for as
+ *    long as they did (#3268). String widths, which the
  *    registry DOES carry (`IfcLabel: 'STRING(255)'`), are deliberately not
  *    gated: every fallback for a string shape is itself `IFCLABEL` /
  *    `IFCIDENTIFIER`, so rejecting an over-long label would emit the identical
@@ -176,6 +187,16 @@ const CONSTRAINED_MEMBERS: ReadonlyMap<string, (value: number) => boolean> = new
   ['IfcNormalisedRatioMeasure', (v: number) => v >= 0 && v <= 1],
   ['IfcPositivePlaneAngleMeasure', (v: number) => v > 0],
   ['IfcPositiveInteger', (v: number) => v > 0],
+  // The two the name-shaped alarm could not see (#3268). Neither carries
+  // `Positive` / `NonNegative` / `Normalised` in its name, so the drift test
+  // that was supposed to keep this table closed stayed green while the
+  // exporter re-declared `IFCPHMEASURE(99.)` and
+  // `IFCHEATINGVALUEMEASURE(-5.)` — schema-invalid lines that a source file
+  // could never have contained, written by the gate whose whole purpose is to
+  // refuse a type it cannot justify. The drift test now derives the set from
+  // the bundled EXPRESS schemas instead of guessing it from names.
+  ['IfcPHMeasure', (v: number) => v >= 0 && v <= 14],
+  ['IfcHeatingValueMeasure', (v: number) => v > 0],
 ]);
 
 /**

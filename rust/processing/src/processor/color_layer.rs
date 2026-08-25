@@ -297,7 +297,7 @@ mod tests {
                 material_name: None,
             },
         );
-        let content = nested_mapped_chain(crate::element::MAX_MAPPED_ITEM_DEPTH);
+        let content = nested_mapped_chain(ifc_lite_core::MAX_MAPPED_ITEM_DEPTH);
         let index = build_entity_index(&content);
         let mut decoder = EntityDecoder::with_index(&content, index);
         assert_eq!(
@@ -319,7 +319,7 @@ mod tests {
                 material_name: None,
             },
         );
-        let content = nested_mapped_chain(crate::element::MAX_MAPPED_ITEM_DEPTH + 1);
+        let content = nested_mapped_chain(ifc_lite_core::MAX_MAPPED_ITEM_DEPTH + 1);
         let index = build_entity_index(&content);
         let mut decoder = EntityDecoder::with_index(&content, index);
         assert_eq!(

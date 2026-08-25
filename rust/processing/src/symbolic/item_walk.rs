@@ -28,7 +28,7 @@ use std::collections::HashMap;
 /// (`apps/server/src/services/streaming.rs`), so unbounded each one aborts the
 /// process with a stack overflow -- an abort, not a catchable panic (#2866).
 ///
-/// Kept in step with `MAX_MAPPED_ITEM_DEPTH` in `element.rs` and in
+/// Kept in step with `MAX_MAPPED_ITEM_DEPTH` in `element/element_color.rs` and in
 /// `geometry/src/router/processing.rs`, which walk the same mapped-item chain.
 pub(super) const MAX_ITEM_DEPTH: u32 = 32;
 

@@ -100,6 +100,12 @@ jobs:
               # whoever touches the frontend next. Add it here when you add it.
               - 'apps/viewer/**'
               - 'apps/viewer-embed/**'
+              # `examples/*` is a pnpm-workspace member and is now a lint target
+              # (scripts/check-lint-ran.mjs). Without it here, an examples-only
+              # PR leaves `frontend` false, the Lint job never runs, and the new
+              # target protects nothing on the PRs that change those files --
+              # the same trap the comment above describes for `apps/`.
+              - 'examples/**'
               - 'packages/**'
               - 'tests/e2e/**'
               - 'playwright.config.ts'

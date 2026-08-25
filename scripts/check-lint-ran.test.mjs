@@ -24,21 +24,20 @@
  */
 
 import { test } from 'node:test';
-import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 
 /**
- * Read the target count out of the gate itself rather than hardcoding it.
- * This test asserted a literal 3 and the literal string "across 3 targets";
- * adding `examples` to TARGETS turned it red (0 pass / 2 fail) with nothing
- * wrong in the gate. A test that must be edited in lockstep with a list it
- * does not own will desync again, and CI runs it (test.yml:829).
+ * Import the gate's TARGETS as DATA. This test asserted a literal 3 and the
+ * literal string "across 3 targets"; adding `examples` turned it red (0 pass /
+ * 2 fail) with nothing wrong in the gate, and CI runs it (test.yml:829).
+ *
+ * The first fix regexed the gate's SOURCE TEXT for the count, which is the
+ * practice AGENTS.md:136 bans: it certifies a string exists, so a reformat or
+ * a comment edit would decide the result instead of behaviour. Importing the
+ * array is the same desync-immunity from the value the gate actually uses.
  */
-const TARGET_COUNT = (
-  readFileSync(new URL('./check-lint-ran.mjs', import.meta.url), 'utf8')
-    .match(/const TARGETS = \[([\s\S]*?)\]/)?.[1]
-    .match(/\{\s*dir:/g) ?? []
-).length;
+const { TARGETS } = await import('./check-lint-ran.mjs');
+const TARGET_COUNT = TARGETS.length;
 assert.ok(TARGET_COUNT > 0, 'could not read TARGETS out of check-lint-ran.mjs — this test is now blind');
 
 /**

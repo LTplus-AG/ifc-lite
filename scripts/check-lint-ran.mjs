@@ -32,7 +32,9 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 
 /**
  * Where the source actually is, and how small each place is allowed to get.
@@ -48,7 +50,7 @@ import { readFileSync } from 'node:fs';
  * The floors sit well under today's counts: deleting a genuine chunk of code
  * must not fail the lint lane, but a target dropping out cannot hide.
  */
-const TARGETS = [
+export const TARGETS = [
   { dir: 'apps', min: 900 },
   { dir: 'packages', min: 1200 },
   { dir: 'scripts', min: 100 },
@@ -226,4 +228,23 @@ function main() {
   return 0;
 }
 
-process.exitCode = main();
+/**
+ * Importable so the test can read `TARGETS` as DATA. It previously derived the
+ * count by regexing this file, which is a source-text assertion (AGENTS.md:136)
+ * -- it certifies that a string exists, so a reformat or a comment edit decides
+ * the test result instead of behaviour. Same entry-point shape as
+ * `check-refwalk-guards.mjs`: compare resolved PATHS, and fall back rather than
+ * letting the check take the process down if the path has vanished.
+ */
+function isMainEntry() {
+  const invoked = process.argv[1];
+  if (!invoked) return false;
+  const self = fileURLToPath(import.meta.url);
+  try {
+    return realpathSync(self) === realpathSync(invoked);
+  } catch {
+    return self === resolve(invoked);
+  }
+}
+
+if (isMainEntry()) process.exitCode = main();

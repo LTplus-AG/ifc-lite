@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { extractProjectUnits } from './project-units.js';
-import { CONVERSION_BASED_UNIT_FACTORS } from './unit-extractor.js';
+import { CONVERSION_BASED_UNIT_FACTORS, extractLengthUnitScale } from './unit-extractor.js';
 import type { EntityIndex, EntityRef } from './types.js';
 
 /**
@@ -35,6 +35,39 @@ import type { EntityIndex, EntityRef } from './types.js';
  * The stronger fix is to extend the shared vector file so BOTH resolvers are
  * pinned at once; that is left to the maintainer, since it is a Rust-side
  * change this branch cannot verify locally.
+ *
+ * Two holes fixed after review (louistrue, PR #3160):
+ *
+ * 1. The quoted-spelling assertions below used to read
+ *    `if (quoted !== undefined) expect(quoted).toBe(metres)`, which any
+ *    MISSING quoted key -- as opposed to a wrong one -- silently skips.
+ *    Measured: deleting all four quoted entries from
+ *    CONVERSION_BASED_UNIT_FACTORS left this file, and the whole parser
+ *    package, exactly as green as before (688/688, no skips added). The
+ *    quoted keys are a real branch, not dead weight: a STEP name attribute
+ *    written as `''FOOT''` in a file decodes -- via STEP's doubled-quote
+ *    escaping -- to the four-character string `'FOOT'`, embedded quote
+ *    marks included, and CONVERSION_BASED_UNIT_FACTORS is looked up with
+ *    that literal string (see georef-extractor.ts and unit-extractor.ts's
+ *    own `nameUpper` lookup for a file that spells its unit name that way).
+ *    'the table holds a quoted spelling of every unit it knows' below
+ *    asserts the key set directly instead of guarding on it, which also
+ *    caught that `'FEET'` never had a quoted entry at all -- unlike every
+ *    other spelling in the table -- so that gap is now filled instead of
+ *    silently skipped.
+ *
+ * 2. This file only ever drove `extractProjectUnits` (the DISPLAY-unit
+ *    resolver in project-units.ts), never `extractLengthUnitScale` (the
+ *    GEOMETRY-scale resolver in unit-extractor.ts, which
+ *    packages/export and packages/create use to scale real coordinates).
+ *    The two keep separate SI_PREFIX_MULTIPLIERS tables. Measured: setting
+ *    unit-extractor.ts's `MICRO` to 1e-3 (from 1e-6) left the whole parser
+ *    package green, 688/688, because nothing called
+ *    `extractLengthUnitScale` with a non-default prefix. The paired mutation
+ *    on project-units.ts's copy of the same entry reds exactly one test,
+ *    which is what shows the two tables are separately reachable. The
+ *    second `describe` block below reuses SI_PREFIX_CASES against
+ *    `extractLengthUnitScale` to pin the geometry table too.
  */
 
 /** Build source bytes + EntityIndex over a complete ISO-10303-21 file. */
@@ -135,6 +168,22 @@ describe('SI prefix scales resolve to their BIPM values', () => {
   });
 });
 
+describe('SI prefixes scale geometry, not only the display unit', () => {
+  // extractLengthUnitScale (unit-extractor.ts) is what packages/export and
+  // packages/create use to scale real coordinates -- a separate SI-prefix
+  // table from the one extractProjectUnits reads above, so pinning that
+  // table does not pin this one. Same fixture, same expected scales.
+  for (const c of SI_PREFIX_CASES) {
+    it(`${c.prefix} metre scales geometry by ${c.scale}`, () => {
+      const { source, entityIndex } = indexIfc(projectWithLengthPrefix(c.prefix));
+      const scale = extractLengthUnitScale(source, entityIndex);
+      // Relative comparison: these span 36 orders of magnitude, so an
+      // absolute epsilon would be meaningless at both ends of the range.
+      expect(scale / c.scale).toBeCloseTo(1, 12);
+    });
+  }
+});
+
 describe('imperial length factors are the exact 1959 agreement values', () => {
   // International yard and pound agreement, 1959: 1 yard = 0.9144 m EXACTLY,
   // from which foot = 0.3048, inch = 0.0254, and mile = 1760 yd = 1609.344 m.
@@ -154,13 +203,22 @@ describe('imperial length factors are the exact 1959 agreement values', () => {
 
     it(`quoted '${name}' matches the bare spelling`, () => {
       // IFC files carry the unit name as a quoted STEP string, so the table
-      // holds both spellings. They are hand-kept in pairs, and only the bare
-      // FOOT spelling is reached by any existing test -- so a typo in a
-      // quoted entry would make exactly one spelling of one unit wrong.
-      const quoted = CONVERSION_BASED_UNIT_FACTORS[`'${name}'`];
-      if (quoted !== undefined) expect(quoted).toBe(metres);
+      // holds both spellings. They are hand-kept in pairs. Asserted
+      // unconditionally -- a MISSING quoted key must fail this, not skip it,
+      // since `CONVERSION_BASED_UNIT_FACTORS[missing]` is `undefined` and
+      // `undefined` is never a correct conversion factor.
+      expect(CONVERSION_BASED_UNIT_FACTORS[`'${name}'`]).toBe(metres);
     });
   }
+
+  it('the table holds a quoted spelling of every unit it knows', () => {
+    // Catches a quoted entry going missing even when its bare-spelling
+    // counterpart above still has a name this loop never derives (e.g. no
+    // ['FEET', ...] iteration would exist to demand `"'FEET'"`).
+    expect(Object.keys(CONVERSION_BASED_UNIT_FACTORS).sort()).toEqual(
+      ["'FEET'", "'FOOT'", "'INCH'", "'MILE'", "'YARD'", 'FEET', 'FOOT', 'INCH', 'MILE', 'YARD'].sort(),
+    );
+  });
 
   it('the derived factors stay consistent with the yard', () => {
     // foot = yard/3 and inch = yard/36 by definition, so a single mistyped

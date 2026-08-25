@@ -7,7 +7,29 @@ use ifc_lite_geometry::Mesh;
 use wasm_bindgen::prelude::*;
 
 /// Individual mesh data with express ID and color (matches MeshData interface)
+///
+/// `Clone` is derived so the three sites that used to enumerate all 21 fields
+/// by hand -- `get`, `takeMesh` and `MeshCollection`'s own `Clone` -- reduce to
+/// `.cloned()`, `mem::take` and `.clone()`. Adding a field to #3199 meant
+/// editing three literals in lockstep; the allowlist row for this file records
+/// exactly that cost.
+///
+/// To be precise about what this does and does not buy, because the obvious
+/// claim is wrong: an exhaustive struct literal that OMITS a field is a compile
+/// error, so those literals were never silently lossy. What they were is three
+/// places to edit for one field, and `..Default::default()` is the shortcut a
+/// hurried author reaches for when the compiler complains -- which WOULD be
+/// silently lossy. `Default` is what makes `takeMesh` a one-liner, so the rule
+/// is: TWO literals remain, `new` and `Default` below (both spelled
+/// `Self { .. }`, which is why a grep for `MeshDataJs {` finds neither). Both
+/// must stay exhaustive AND must agree on every field `new` does not take as an
+/// argument. The compiler catches an omitted field in either; it cannot catch
+/// the two DISAGREEING, which is the failure the pair exists to prevent, so
+/// `default_agrees_with_new_on_the_fields_new_does_not_take` covers that.
+/// Never spread `Default` into `new` -- `new` is the only place a field's
+/// initial value is decided, so a field defaulted there is inert everywhere.
 #[wasm_bindgen]
+#[derive(Clone)]
 pub struct MeshDataJs {
     express_id: u32,
     ifc_type: String, // IFC type name (e.g., "IfcWall", "IfcSpace")
@@ -65,6 +87,41 @@ pub struct MeshDataJs {
     /// The resolved placement (`local_to_world`), row-major, WebGL Y-up (issue
     /// #1474). `None` when not captured. See `Mesh::local_to_world`.
     local_to_world: Option<[f64; 16]>,
+}
+
+/// Hand-written rather than derived, and it must keep agreeing with `new`.
+///
+/// The derive gives `false` for the texture repeat flags while `new` sets them
+/// `true`, so a `MeshDataJs::default()` plus setters would report
+/// `textureRepeatS === false` and clamp a texture that should tile. Inert while
+/// every texture path goes through `set_texture`, but that was enforced by
+/// prose alone; this makes the two constructors agree structurally.
+impl Default for MeshDataJs {
+    fn default() -> Self {
+        Self {
+            express_id: 0,
+            ifc_type: String::new(),
+            positions: Vec::new(),
+            normals: Vec::new(),
+            indices: Vec::new(),
+            color: [0.0; 4],
+            shading_color: None,
+            uvs: Vec::new(),
+            texture_rgba: Vec::new(),
+            texture_width: 0,
+            texture_height: 0,
+            texture_repeat_s: true,
+            texture_repeat_t: true,
+            texture_id: 0,
+            texture_url: None,
+            geometry_class: 0,
+            geometry_item_id: None,
+            material_id: None,
+            origin: [0.0; 3],
+            local_bounds: None,
+            local_to_world: None,
+        }
+    }
 }
 
 #[wasm_bindgen]
@@ -471,29 +528,7 @@ impl MeshCollection {
     /// hot streaming path; this stays for callers that read meshes more than once.
     #[wasm_bindgen]
     pub fn get(&self, index: usize) -> Option<MeshDataJs> {
-        self.meshes.get(index).map(|m| MeshDataJs {
-            express_id: m.express_id,
-            ifc_type: m.ifc_type.clone(),
-            positions: m.positions.clone(),
-            normals: m.normals.clone(),
-            indices: m.indices.clone(),
-            color: m.color,
-            shading_color: m.shading_color,
-            uvs: m.uvs.clone(),
-            texture_rgba: m.texture_rgba.clone(),
-            texture_width: m.texture_width,
-            texture_height: m.texture_height,
-            texture_repeat_s: m.texture_repeat_s,
-            texture_repeat_t: m.texture_repeat_t,
-            texture_id: m.texture_id,
-            texture_url: m.texture_url.clone(),
-            geometry_class: m.geometry_class,
-            geometry_item_id: m.geometry_item_id,
-            material_id: m.material_id,
-            origin: m.origin,
-            local_bounds: m.local_bounds,
-            local_to_world: m.local_to_world,
-        })
+        self.meshes.get(index).cloned()
     }
 
     /// #1097 perf: MOVE the mesh at `index` out of the collection (the Vec
@@ -501,32 +536,13 @@ impl MeshCollection {
     /// worker reads each mesh exactly once, so moving avoids the full vertex-
     /// data clone `get` pays — one fewer copy of positions/normals/indices/uvs/
     /// texture per mesh (the JS getters still do the single Rust→JS copy). Calling
-    /// it twice for the same index yields the second call an empty mesh.
+    /// it twice for the same index yields the second call a DEFAULT mesh:
+    /// express_id 0 and every buffer empty, rather than the metadata-bearing
+    /// husk the hand-written copy used to leave. The method is read-once by
+    /// contract and the wasm-contract test pins this.
     #[wasm_bindgen(js_name = takeMesh)]
     pub fn take_mesh(&mut self, index: usize) -> Option<MeshDataJs> {
-        self.meshes.get_mut(index).map(|m| MeshDataJs {
-            express_id: m.express_id,
-            ifc_type: std::mem::take(&mut m.ifc_type),
-            positions: std::mem::take(&mut m.positions),
-            normals: std::mem::take(&mut m.normals),
-            indices: std::mem::take(&mut m.indices),
-            color: m.color,
-            shading_color: m.shading_color,
-            uvs: std::mem::take(&mut m.uvs),
-            texture_rgba: std::mem::take(&mut m.texture_rgba),
-            texture_width: m.texture_width,
-            texture_height: m.texture_height,
-            texture_repeat_s: m.texture_repeat_s,
-            texture_repeat_t: m.texture_repeat_t,
-            texture_id: m.texture_id,
-            texture_url: m.texture_url.take(),
-            geometry_class: m.geometry_class,
-            geometry_item_id: m.geometry_item_id,
-            material_id: m.material_id,
-            origin: m.origin,
-            local_bounds: m.local_bounds,
-            local_to_world: m.local_to_world,
-        })
+        self.meshes.get_mut(index).map(std::mem::take)
     }
 
     /// Get total vertex count across all meshes
@@ -706,33 +722,7 @@ impl MeshCollection {
 impl Clone for MeshCollection {
     fn clone(&self) -> Self {
         Self {
-            meshes: self
-                .meshes
-                .iter()
-                .map(|m| MeshDataJs {
-                    express_id: m.express_id,
-                    ifc_type: m.ifc_type.clone(),
-                    positions: m.positions.clone(),
-                    normals: m.normals.clone(),
-                    indices: m.indices.clone(),
-                    color: m.color,
-                    shading_color: m.shading_color,
-                    uvs: m.uvs.clone(),
-                    texture_rgba: m.texture_rgba.clone(),
-                    texture_width: m.texture_width,
-                    texture_height: m.texture_height,
-                    texture_repeat_s: m.texture_repeat_s,
-                    texture_repeat_t: m.texture_repeat_t,
-                    texture_id: m.texture_id,
-                    texture_url: m.texture_url.clone(),
-                    geometry_class: m.geometry_class,
-                    geometry_item_id: m.geometry_item_id,
-                    material_id: m.material_id,
-                    origin: m.origin,
-                    local_bounds: m.local_bounds,
-                    local_to_world: m.local_to_world,
-                })
-                .collect(),
+            meshes: self.meshes.clone(),
             rtc_offset_x: self.rtc_offset_x,
             rtc_offset_y: self.rtc_offset_y,
             rtc_offset_z: self.rtc_offset_z,

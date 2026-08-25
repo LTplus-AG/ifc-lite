@@ -891,7 +891,10 @@ export class MeshCollection {
      * worker reads each mesh exactly once, so moving avoids the full vertex-
      * data clone `get` pays — one fewer copy of positions/normals/indices/uvs/
      * texture per mesh (the JS getters still do the single Rust→JS copy). Calling
-     * it twice for the same index yields the second call an empty mesh.
+     * it twice for the same index yields the second call a DEFAULT mesh:
+     * express_id 0 and every buffer empty, rather than the metadata-bearing
+     * husk the hand-written copy used to leave. The method is read-once by
+     * contract and the wasm-contract test pins this.
      */
     takeMesh(index: number): MeshDataJs | undefined;
     /**
@@ -1015,6 +1018,27 @@ export class MeshCollection {
 
 /**
  * Individual mesh data with express ID and color (matches MeshData interface)
+ *
+ * `Clone` is derived so the three sites that used to enumerate all 21 fields
+ * by hand -- `get`, `takeMesh` and `MeshCollection`'s own `Clone` -- reduce to
+ * `.cloned()`, `mem::take` and `.clone()`. Adding a field to #3199 meant
+ * editing three literals in lockstep; the allowlist row for this file records
+ * exactly that cost.
+ *
+ * To be precise about what this does and does not buy, because the obvious
+ * claim is wrong: an exhaustive struct literal that OMITS a field is a compile
+ * error, so those literals were never silently lossy. What they were is three
+ * places to edit for one field, and `..Default::default()` is the shortcut a
+ * hurried author reaches for when the compiler complains -- which WOULD be
+ * silently lossy. `Default` is what makes `takeMesh` a one-liner, so the rule
+ * is: TWO literals remain, `new` and `Default` below (both spelled
+ * `Self { .. }`, which is why a grep for `MeshDataJs {` finds neither). Both
+ * must stay exhaustive AND must agree on every field `new` does not take as an
+ * argument. The compiler catches an omitted field in either; it cannot catch
+ * the two DISAGREEING, which is the failure the pair exists to prevent, so
+ * `default_agrees_with_new_on_the_fields_new_does_not_take` covers that.
+ * Never spread `Default` into `new` -- `new` is the only place a field's
+ * initial value is decided, so a field defaulted there is inert everywhere.
  */
 export class MeshDataJs {
     private constructor();

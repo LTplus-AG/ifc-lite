@@ -447,6 +447,79 @@ describe('checkAttributeFacet — XSD strict-cast gate', () => {
 });
 
 // ============================================================================
+// Property Facet — strict XSD-cast gate against the EXPRESS base
+// ============================================================================
+
+describe('checkPropertyFacet — XSD strict-cast gate follows the EXPRESS base', () => {
+  const accessor = createMockAccessor([
+    {
+      expressId: 1,
+      type: 'IfcWall',
+      properties: [
+        {
+          psetName: 'Pset_Custom',
+          propName: 'Roughness',
+          value: 'Rough',
+          dataType: 'IFCDESCRIPTIVEMEASURE',
+        },
+        {
+          psetName: 'Pset_Custom',
+          propName: 'Rate',
+          value: 3,
+          dataType: 'IFCINTEGERCOUNTRATEMEASURE',
+        },
+        {
+          psetName: 'Pset_Custom',
+          propName: 'Ratio',
+          value: 0.5,
+          dataType: 'IFCPARAMETERVALUE',
+        },
+      ],
+    },
+  ]);
+
+  const check = (propName: string, literal: string) =>
+    checkPropertyFacet(
+      {
+        type: 'property',
+        propertySet: sv('Pset_Custom'),
+        baseName: sv(propName),
+        value: sv(literal),
+      },
+      1,
+      accessor
+    );
+
+  it('accepts a text literal for IfcDescriptiveMeasure — EXPRESS says STRING', () => {
+    // `IfcDescriptiveMeasure` ends in `MEASURE` but is `TYPE
+    // IfcDescriptiveMeasure = STRING;`. Gating it as `xs:double` made a
+    // matching text value report as a failure — a false FAIL.
+    expect(check('Roughness', 'Rough').passed).toBe(true);
+  });
+
+  it('still fails IfcDescriptiveMeasure when the text genuinely differs', () => {
+    // Negative control: the fix must not turn the gate into a blanket pass.
+    const result = check('Roughness', 'Smooth');
+    expect(result.passed).toBe(false);
+    expect(result.failure?.type).toBe('PROPERTY_VALUE_MISMATCH');
+  });
+
+  it('rejects a decimal literal for IfcIntegerCountRateMeasure — EXPRESS says INTEGER', () => {
+    expect(check('Rate', '3.0').passed).toBe(false);
+  });
+
+  it('accepts an integer literal for IfcIntegerCountRateMeasure', () => {
+    expect(check('Rate', '3').passed).toBe(true);
+  });
+
+  it('gates IfcParameterValue, which the MEASURE/RATIO suffix rule never reached', () => {
+    expect(check('Ratio', '0.5').passed).toBe(true);
+    expect(check('Ratio', 'half').passed).toBe(false);
+  });
+});
+
+
+// ============================================================================
 // Property Facet
 // ============================================================================
 

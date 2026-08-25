@@ -18,15 +18,17 @@
  *
  * What is injected rather than moved, and why: the
  * `applySourceLineMutations` pipeline (and its `applyAttributeMutations` /
- * `applyPositionalMutations` / serialize helpers — all now free functions in
- * `step-attribute-mutations.ts`, #2475's "remaining private helpers" step)
- * is shared verbatim with the type-object `HasPropertySets` rewrite in
+ * `applyPositionalMutations` — free functions in `step-attribute-
+ * mutations.ts`, with the two per-slot serialize helpers they share with the
+ * overlay-created path in `step-attribute-serializers.ts` — #2475's
+ * "remaining private helpers" step, split further by #3184) is shared
+ * verbatim with the type-object `HasPropertySets` rewrite in
  * `step-property-sets.ts` and with `step-overlay-entities.ts`, so it belongs
  * to no single phase; `isGeometryEntity` is likewise read by the setup
  * closure and by that module. `applyOverlayEntityOverrides` is NOT a
  * dependency of this phase at all — it is reached only from
  * `step-overlay-entities.ts` — and is injected there instead, though it too
- * now lives in `step-attribute-mutations.ts`.
+ * now lives in its own file, `step-overlay-attribute-overrides.ts`.
  *
  * Unlike `step-georeferencing.ts` this phase needs no `allocateExpressId`
  * callback: it never allocates an id, it only rewrites lines that already have
@@ -55,7 +57,7 @@ import { filterHiddenRefsFromRelationshipLine } from './reference-collector.js';
 import { convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
 import { nominateDeliveredInPlaceEdits } from './in-place-nomination.js';
 import { decodeRange } from './source-ref-bounds.js';
-import { getPropertyIdsInSet, type PropertySetContext } from './step-property-sets.js';
+import { getPropertyIdsInSet, type PropertySetContext } from './step-property-set-readers.js';
 import type { ExportPass, SourceLineMutations, StepExportOptions } from './step-exporter.js';
 
 /**
@@ -114,8 +116,8 @@ function retainSharedAtoms(
 ): void {
   if (skipIds.size === 0) return;
   // Built once for the whole sweep rather than per container: the readers in
-  // `step-property-sets.ts` take the context, and this loop calls one of them
-  // once per IfcPropertySet / IfcElementQuantity in the file.
+  // `step-property-set-readers.ts` take the context, and this loop calls one
+  // of them once per IfcPropertySet / IfcElementQuantity in the file.
   const ctx = ctxOf.propertySetContext();
   const byType = ctxOf.dataStore.entityIndex.byType;
   const containerIds = [

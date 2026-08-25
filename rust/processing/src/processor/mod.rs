@@ -1649,5 +1649,5 @@ pub fn process_geometry_streaming_filtered_with_options(
 // `crate::style::default_color_for_type` (issue #913). Do not reintroduce a
 // per-module table here — see `tests/styling_parity.rs` for the guard.
 //
-// `find_geometry_item_color_follows_mapped_item` lives in `crate::element::tests`,
-// next to the resolver it pins.
+// `find_geometry_item_color_follows_mapped_item` lives in `crate::element::tests`;
+// the resolver it pins moved to `element/element_color.rs`.

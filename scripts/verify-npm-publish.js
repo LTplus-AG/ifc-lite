@@ -17,6 +17,24 @@
  *                   Useful after a fresh publish where npm propagation takes
  *                   a few seconds.
  *   --delay <ms>    Milliseconds to wait between retries (default: 5000).
+ *
+ * ANTI-VACUITY (#3200, finding 7). This runs in release.yml AFTER publish, so
+ * its exit code is the last thing standing between a half-published release
+ * and users. It already refused to find no package.json at all; one level in,
+ * it did not. Two ways it could report a release verified having checked less
+ * than the workspace, both reproduced on a synthetic tree:
+ *
+ *   - every discovered manifest being private printed `No publishable
+ *     packages found.` and exited 0;
+ *   - a `packages/` that could not be LISTED (an ENOTDIR/EACCES rather than an
+ *     ENOENT) printed a warning, verified whatever `apps/` held, and finished
+ *     with `All packages are published. 🎉`.
+ *
+ * Both are closed below. A parent or a manifest path that does not EXIST stays
+ * ordinary; one that cannot be READ is fatal, because those two call for
+ * different fixes and only the second means the set silently shrank. Past
+ * discovery, PUBLISHABLE_FLOOR keeps the count honest against the real
+ * workspace, where no realistic release drops it by a third.
  */
 
 import { execSync } from 'child_process';
@@ -27,6 +45,28 @@ import { dirname, join } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const rootDir = join(__dirname, '..');
+
+/**
+ * Lower bound on how many publishable packages this gate must actually query.
+ * Measured on a healthy tree: `packages/` holds 45 manifests of which 42 are
+ * publishable, `apps/` holds 2 of which 0 are — every published package lives
+ * under `packages/`, so the floor is really a floor on that tree surviving
+ * discovery. Set to 25, a wide margin below 42: ordinary churn (a package
+ * split, a few retired or made private) never forces an edit here, while every
+ * way this script can go blind — a wrong root, a parent that will not list, a
+ * manifest read that stops matching — collapses the count towards zero, not to
+ * 24.
+ *
+ * Deliberately NOT a per-parent floor: `apps/` publishes nothing today, so
+ * `apps: at least 1` would be a floor on a number that is legitimately zero.
+ */
+const PUBLISHABLE_FLOOR = 25;
+
+/** Refuse, loudly, with the exit code release.yml reads as "nothing proved". */
+function refuse(message) {
+  console.error(`❌ ${message}`);
+  process.exit(2);
+}
 
 // ── CLI option parsing ────────────────────────────────────────────────────────
 
@@ -85,18 +125,30 @@ function getWorkspacePackages() {
           statSync(pkgJsonPath);
           packages.push(pkgJsonPath);
         } catch (error) {
-          // A directory with no package.json is ordinary; anything else means
-          // we may be skipping a package we were asked to verify.
+          // A directory with no package.json is ordinary. Anything else means
+          // this path exists in some form we could not classify, and skipping
+          // it drops a package the release may have been supposed to publish.
           if (error.code !== 'ENOENT') {
-            console.warn(`⚠️  Could not stat ${pkgJsonPath}, skipping it (${error.message})`);
+            refuse(
+              `could not stat ${pkgJsonPath} (${error.code || error.message}). ` +
+                'Refusing to treat an unreadable manifest path as an absent one — ' +
+                'that is how a package drops out of a release check unnoticed.',
+            );
           }
         }
       }
     } catch (error) {
-      // Same: an absent `apps/` or `packages/` is ordinary, but an unreadable
-      // one silently shrinks the set this release gate checks.
+      // Same distinction one level up, and it matters more here: an absent
+      // `apps/` or `packages/` is ordinary, but one that will not LIST shrinks
+      // the set this release gate checks by a whole tree while every remaining
+      // package still reports ✅. Warning about that and carrying on was the
+      // #3200 finding.
       if (error.code !== 'ENOENT') {
-        console.warn(`⚠️  Could not list ${parentDir}, skipping it (${error.message})`);
+        refuse(
+          `could not list ${parentDir} (${error.code || error.message}). ` +
+            'Refusing to verify a release against whatever else happened to be readable — ' +
+            'an unreadable workspace parent is not an empty one.',
+        );
       }
     }
   }
@@ -113,8 +165,7 @@ async function main() {
   // means the discovery step itself failed, and exiting 0 there would report a
   // release as verified having checked nothing.
   if (packagePaths.length === 0) {
-    console.error('No package.json found under packages/ or apps/ — nothing was verified.');
-    process.exit(2);
+    refuse('No package.json found under packages/ or apps/ — nothing was verified.');
   }
   const toCheck = [];
 
@@ -124,9 +175,19 @@ async function main() {
     toCheck.push({ name: pkg.name, version: pkg.version });
   }
 
-  if (toCheck.length === 0) {
-    console.log('No publishable packages found.');
-    process.exit(0);
+  // The second floor, and the one the #3200 audit found missing: discovery can
+  // succeed and still hand this loop nothing, or almost nothing, to verify.
+  // Exiting 0 there reports a release as verified on the strength of zero
+  // queries to the registry.
+  if (toCheck.length < PUBLISHABLE_FLOOR) {
+    refuse(
+      `only ${toCheck.length} publishable package(s) found among ${packagePaths.length} ` +
+        `manifest(s) under packages/ and apps/, expected at least ${PUBLISHABLE_FLOOR}. ` +
+        'Refusing a vacuous pass: this gate runs after publish, and a run that queried ' +
+        'npm about almost nothing has proved almost nothing about the release. If the ' +
+        'workspace genuinely shrank this far, lower PUBLISHABLE_FLOOR in this file — ' +
+        'deliberately, in a reviewable diff.',
+    );
   }
 
   console.log(`\nVerifying ${toCheck.length} package(s) on npm (up to ${retries} retries each)…\n`);

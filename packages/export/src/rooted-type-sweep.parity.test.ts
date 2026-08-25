@@ -23,6 +23,16 @@
  * but the test exercises the actual production entry point, so a future
  * change to `isRootedType` that diverges from a bare chain lookup (an added
  * carve-out, a normalisation bug, ...) is still caught.
+ *
+ * WHICH rows the fixture must contain is pinned on the Rust side only
+ * (`rooted_type_parity.rs::fixture_covers_the_whole_type_universe`), because
+ * the universe is re-derived from Rust's own tables and this side has no way
+ * to reconstruct it. The count check below is therefore a smoke test, not the
+ * coverage gate: it would survive dropping dozens of rows. That is also why
+ * the universe now includes the `ENTITY_NAME_ALIASES` keys — three of them
+ * (`IFCSOLIDSTRATUM`, `IFCVOIDSTRATUM`, `IFCWATERSTRATUM`) classified
+ * differently here than in Rust while both halves of this pair were green,
+ * because no row named them (#3124 review).
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';

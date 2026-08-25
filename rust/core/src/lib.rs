@@ -92,6 +92,7 @@ pub use georef::{GeoRefExtractor, GeoRefSource, GeoReference, RtcOffset};
 pub use limits::{MAX_MAPPED_ITEM_DEPTH, MAX_PLACEMENT_DEPTH};
 pub use legacy_entities::{
     get_legacy_entity_info, is_legacy_entity, map_legacy_to_base_type, LegacyEntityInfo,
+    LEGACY_ENTITY_NAMES,
 };
 pub use model_bounds::{scan_model_bounds, scan_placement_bounds, ModelBounds};
 pub use parser::{entity_count, parse_entity, EntityScanner, Token};

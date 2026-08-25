@@ -16,7 +16,18 @@ fn rust_deterministic_global_id_matches_the_shared_vectors() {
     let raw = include_str!("fixtures/deterministic_global_id_vectors.json");
     let doc: serde_json::Value = serde_json::from_str(raw).expect("fixture is valid JSON");
     let cases = doc["cases"].as_array().expect("cases is an array");
-    assert!(!cases.is_empty(), "fixture has at least one case");
+    // Same floor as the TS half (`deterministic-global-id.parity.test.ts`
+    // asserts `> 10`). A parity pair whose two sides accept different fixture
+    // sizes has a hole exactly the width of the difference: a fixture trimmed
+    // to one case would leave this side green while the other side failed --
+    // or, worse, be trimmed on a branch where only this side runs. Every other
+    // parity pair in the repo matches its floors, `csv_cell_parity.rs`
+    // included.
+    assert!(
+        cases.len() > 10,
+        "fixture should carry the full vector set, got {}",
+        cases.len()
+    );
 
     for case in cases {
         let seed = case["seed"].as_str().expect("seed is a string");

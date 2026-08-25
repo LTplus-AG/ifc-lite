@@ -66,9 +66,15 @@ fn replace_leading_guid(line: &str, new_guid: &str) -> String {
 /// (cross-checked against that implementation for identical seeds) -- four
 /// independent 32-bit rolling hashes, cross-mixed, then stamped MSB-first as
 /// a standard IFC GlobalId. Byte-for-byte identity with the JS path's minted
-/// ids is not required (the two exporters mint independently, never for the
-/// same collision), but porting the well-specified, already-hardened
-/// algorithm avoids re-deriving a weaker one from scratch.
+/// ids **is** required and gated: `rust/export/tests/deterministic_global_id_parity.rs`
+/// and `packages/parser/src/deterministic-global-id.parity.test.ts` hold both
+/// implementations to the same committed vectors, and the pin is sharp enough
+/// that swapping `encode_utf16()` for `chars()` here fails on the `🙂🙃` seed.
+/// The comment this replaces said identity "is not required" on the grounds
+/// that the two exporters mint independently and never for the same
+/// collision; that reasoning is still true of the *runtime*, but the golden is
+/// now the contract, so a divergence here is a bug to fix in the code and not
+/// a golden to regenerate.
 pub fn deterministic_global_id(seed: &str) -> String {
     let mut h0: u32 = 0x811c_9dc5;
     let mut h1: u32 = 0x9e37_79b9;

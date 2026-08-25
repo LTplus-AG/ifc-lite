@@ -1,5 +1,5 @@
 {
-  "_comment": "Exhaustive cross-language rooted-type sweep for #3015. Every type name is either drawn from ifc_lite_core::IFC_TYPES (the generated IFC4X3 schema) or rust/export/src/rooted_type.rs's LEGACY_ROOTED_TYPES table, plus two deliberately-unknown vendor names for the safe-miss direction (see rust/export/examples/dump_rooted_type_sweep.rs). `rooted` is the ground truth from the JS side (packages/parser/src/ifc-schema.ts getInheritanceChain(type).includes('IfcRoot')), captured by actually running it, not hand-derived. Both rust/export/src/rooted_type.rs::is_rooted_type and the JS-side isRootedType (packages/export/src/merged-exporter.ts) are pinned to this file so the two classifiers cannot silently drift apart.",
+  "_comment": "Exhaustive cross-language rooted-type sweep for #3015. Every type name is drawn from ifc_lite_core::IFC_TYPES (the generated IFC4X3 schema), rust/export/src/rooted_type.rs's LEGACY_ROOTED_TYPES table, or ifc_lite_core::LEGACY_ENTITY_NAMES (the Rust mirror of the JS ENTITY_NAME_ALIASES table), plus two deliberately-unknown vendor names for the safe-miss direction (see rust/export/examples/dump_rooted_type_sweep.rs). The alias names are in the universe because a name known only to an alias table is invisible to a sweep built from the other lists alone -- which is how IFCSOLIDSTRATUM/IFCVOIDSTRATUM/IFCWATERSTRATUM classified differently in Rust and JS with both halves of the gate green (#3124 review). `rooted` is the ground truth from the JS side (packages/export/src/merged-exporter.ts isRootedType, which walks packages/parser/src/ifc-schema.ts getInheritanceChainAcrossSchemas), captured by actually running it, not hand-derived. Both rust/export/src/rooted_type.rs::is_rooted_type and that JS isRootedType are pinned to this file so the two classifiers cannot silently drift apart. rooted_type_parity.rs additionally asserts that this file covers the whole universe, so rows cannot be dropped to make a disagreement disappear.",
   "cases": [
     {
       "type": "IFCACMEWIDGETPROXY",
@@ -2174,6 +2174,10 @@
       "rooted": false
     },
     {
+      "type": "IFCPRESENTATIONSTYLEASSIGNMENT",
+      "rooted": false
+    },
+    {
       "type": "IFCPROCEDURE",
       "rooted": true
     },
@@ -2966,6 +2970,10 @@
       "rooted": false
     },
     {
+      "type": "IFCSOLIDSTRATUM",
+      "rooted": true
+    },
+    {
       "type": "IFCSOUNDPROPERTIES",
       "rooted": true
     },
@@ -3650,6 +3658,10 @@
       "rooted": true
     },
     {
+      "type": "IFCVOIDSTRATUM",
+      "rooted": true
+    },
+    {
       "type": "IFCWALL",
       "rooted": true
     },
@@ -3671,6 +3683,10 @@
     },
     {
       "type": "IFCWASTETERMINALTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCWATERSTRATUM",
       "rooted": true
     },
     {

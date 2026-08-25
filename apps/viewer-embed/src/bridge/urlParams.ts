@@ -105,13 +105,17 @@ export function parseUrlParams(): EmbedViewerUrlParams {
 
   const select = params.get('select');
   if (select) {
-    const ids = select.split(',').map(Number).filter(n => !isNaN(n));
+    // `Number('')` is `0`, not `NaN` — a plain `!isNaN(n)` filter lets an
+    // empty segment (`?select=,`, a trailing comma, ...) through as express
+    // id 0, which is never a real entity. Express ids are always positive
+    // integers, so require both.
+    const ids = select.split(',').map(Number).filter(n => Number.isInteger(n) && n > 0);
     if (ids.length > 0) result.select = ids;
   }
 
   const isolate = params.get('isolate');
   if (isolate) {
-    const ids = isolate.split(',').map(Number).filter(n => !isNaN(n));
+    const ids = isolate.split(',').map(Number).filter(n => Number.isInteger(n) && n > 0);
     if (ids.length > 0) result.isolate = ids;
   }
 

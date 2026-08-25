@@ -145,6 +145,25 @@ describe('parseUrlParams', () => {
     expect(parseUrlParams()[key]).toBeUndefined();
   });
 
+  it.each(['select', 'isolate'] as const)(
+    '%s ignores empty segments rather than treating them as express id 0',
+    (key) => {
+      // `Number('') === 0`, not `NaN` — a `,` alone, or any empty segment
+      // from a trailing/doubled comma, must not survive as a real id.
+      // `?isolate=,` in particular used to isolate express id 0 (which
+      // matches nothing) and blank the whole model with no error.
+      setSearch(`?${key}=,`);
+      expect(parseUrlParams()[key]).toBeUndefined();
+      setSearch(`?${key}=1,,3`);
+      expect(parseUrlParams()[key]).toEqual([1, 3]);
+    },
+  );
+
+  it.each(['select', 'isolate'] as const)('%s rejects zero and negative ids', (key) => {
+    setSearch(`?${key}=0,-1,2`);
+    expect(parseUrlParams()[key]).toEqual([2]);
+  });
+
   it('splits and trims hideTypes', () => {
     setSearch('?hideTypes=' + encodeURIComponent('IfcSpace, IfcOpeningElement'));
     expect(parseUrlParams().hideTypes).toEqual(['IfcSpace', 'IfcOpeningElement']);

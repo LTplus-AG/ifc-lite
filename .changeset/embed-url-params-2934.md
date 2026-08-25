@@ -12,3 +12,7 @@ embed viewer (they were parsed and never read). `EmbedUrlParams` and the SDK's
 wired. `hideTypes` matches IFC class names case-insensitively, so the
 SCREAMING_CASE spelling the SDK documents by example resolves the same as
 PascalCase.
+
+`select` and `isolate` now ignore empty or non-positive id segments (e.g. a
+bare `?isolate=,`) instead of treating them as express id `0`, which used to
+isolate nothing and blank the whole model with no error.

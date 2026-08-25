@@ -75,22 +75,44 @@ const geometryResult = {
   totalTriangles: 0,
 };
 
+/**
+ * `geometryResult` is normally read straight from `useIfc()` (a static mock
+ * below). The `?isolate=` re-application test needs `modelReady` — derived
+ * in `EmbedViewer` as `Boolean(geometryResult?.meshes?.length)` — to flip
+ * false -> true -> false -> true on an ALREADY-MOUNTED component, mirroring
+ * a model being cleared and another loading. A closed-over object can't do
+ * that: nothing about it changing would cause React to re-render. Routing it
+ * through `React.useState` inside the mock makes it a real reactive value —
+ * `setMockGeometryResult` (below) drives it from test code via `act()`.
+ */
+let setMockGeometryResult: ((value: typeof geometryResult | null) => void) | null = null;
+
 vi.mock('@/hooks/useIfc', () => ({
-  useIfc: () => ({
-    geometryResult,
-    ifcDataStore: null,
-    loadFile: vi.fn(async () => {}),
-    loading: false,
-    models: new Map(),
-    clearAllModels: vi.fn(),
-    addModel: vi.fn(async () => 'stub-model-id'),
-  }),
+  useIfc: () => {
+    const [gr, setGr] = React.useState<typeof geometryResult | null>(geometryResult);
+    setMockGeometryResult = setGr;
+    return {
+      geometryResult: gr,
+      ifcDataStore: null,
+      loadFile: vi.fn(async () => {}),
+      loading: false,
+      models: new Map(),
+      clearAllModels: vi.fn(),
+      addModel: vi.fn(async () => 'stub-model-id'),
+    };
+  },
 }));
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 const { EmbedViewer } = await import('./EmbedViewer.js');
 const { useViewerStore } = await import('@/store');
+
+// Captured once so tests that spy on these actions (wrapping them with
+// `vi.fn(original)`) can restore the unwrapped originals afterward, rather
+// than leaving one test's spy as the next test's "real" implementation.
+const originalIsolateEntities = useViewerStore.getState().isolateEntities;
+const originalSetIsolatedEntities = useViewerStore.getState().setIsolatedEntities;
 
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
 
@@ -151,6 +173,10 @@ afterEach(() => {
   }
   vi.unstubAllGlobals();
   setSearch('');
+  useViewerStore.setState({
+    isolateEntities: originalIsolateEntities,
+    setIsolatedEntities: originalSetIsolatedEntities,
+  });
 });
 
 describe('EmbedViewer: ?select=', () => {
@@ -184,18 +210,52 @@ describe('EmbedViewer: ?isolate=', () => {
     expect([...isolated!].sort()).toEqual([1, 4]);
   });
 
-  it('stays isolated across a re-render — the actuator is a same-set TOGGLE', async () => {
-    // `visibilitySlice.isolateEntities` CLEARS isolation when called twice with
-    // the same ids. An effect that re-ran (or a hook using `isolateEntities`
-    // rather than `setIsolatedEntities`) would silently undo itself, which
-    // reads as "the parameter still does nothing".
+  it('applies isolation with the ASSIGNING actuator, not the same-set TOGGLE', async () => {
+    // `visibilitySlice.isolateEntities` CLEARS isolation when called twice
+    // with the same ids; `setIsolatedEntities` assigns and can never
+    // self-cancel. `useEmbedUrlParams` deliberately uses the latter. Spying
+    // on both catches a swap to the wrong one directly — this does not rely
+    // on the effect ever running a second time (see the guard test below for
+    // that half of the story, which a swapped-but-single-shot actuator
+    // cannot expose).
+    const isolateEntitiesSpy = vi.fn(useViewerStore.getState().isolateEntities);
+    const setIsolatedEntitiesSpy = vi.fn(useViewerStore.getState().setIsolatedEntities);
+    useViewerStore.setState({
+      isolateEntities: isolateEntitiesSpy,
+      setIsolatedEntities: setIsolatedEntitiesSpy,
+    });
+
+    setSearch('?isolate=1,4');
+    renderEmbedViewer();
+    await settle();
+
+    expect(setIsolatedEntitiesSpy).toHaveBeenCalledTimes(1);
+    expect(setIsolatedEntitiesSpy).toHaveBeenCalledWith(new Set([1, 4]));
+    expect(isolateEntitiesSpy).not.toHaveBeenCalled();
+  });
+
+  it('stays isolated across a modelReady false -> true -> false -> true transition', async () => {
+    // This is the reachable production path: `modelReady` is
+    // `Boolean(geometryResult?.meshes?.length)`, which flips exactly this way
+    // when a model is cleared and another loads. The `applied.current` ref
+    // guard exists to stop the effect from re-applying `?isolate=` on that
+    // later flip — without it, this sequence calls the actuator with the
+    // SAME ids a second time, and a same-set TOGGLE actuator would clear
+    // isolation right back out, silently, with no error.
     setSearch('?isolate=1');
     renderEmbedViewer();
     await settle();
+    expect([...useViewerStore.getState().isolatedEntities!]).toEqual([1]);
+
+    // Model cleared...
+    act(() => setMockGeometryResult!(null));
+    await settle();
+    // ...and another one loaded. `modelReady` flips back to true.
+    act(() => setMockGeometryResult!(geometryResult));
     await settle();
 
     const isolated = useViewerStore.getState().isolatedEntities;
-    expect([...isolated!]).toEqual([1]);
+    expect(isolated ? [...isolated].sort() : []).toEqual([1]);
   });
 });
 

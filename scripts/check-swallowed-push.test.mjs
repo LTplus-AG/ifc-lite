@@ -86,6 +86,25 @@ test('`|| true` on `git tag` is NOT caught — idempotency there is the point', 
   assert.ok(!SWALLOWED_PUSH.test('git tag "v1" || true'));
 });
 
+test('a no-op followed by a command-list delimiter is still swallowed', () => {
+  // End-of-line was not the only spelling. Chaining after the no-op discards the
+  // push status just as thoroughly, and an `(?:$|#)` anchor walks past it.
+  // Reported by CodeRabbit on #3208; each of these was verified to flip the
+  // regex from false to true.
+  const forms = {
+    'semicolon': 'git push origin "v1" || true; echo continuing',
+    'background': 'git push origin "v1" || true & ',
+    'subshell close': '(git push origin "v1" || true)',
+    'pipe': 'git push origin "v1" || true | tee log',
+  };
+  for (const [label, line] of Object.entries(forms)) {
+    const { status, out } = runOn({
+      '.github/workflows/release.yml': CLEAN.replace('          git push origin "v1"', `          ${line}`),
+    });
+    assert.equal(status, 1, `${label} was not caught:\n${out}`);
+  }
+});
+
 test('a marked site is excused AND named, not hidden', () => {
   const marked = CLEAN.replace(
     '          git push origin "v1"',

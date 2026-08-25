@@ -53,11 +53,16 @@ export const MARKER = 'allow-swallowed-push';
 /**
  * A `git push` whose failure is discarded.
  *
- * `|| true` and `|| :` are the two spellings that mean "ignore this"; `: ` is a
+ * `|| true` and `|| :` are the two spellings that mean "ignore this"; `:` is a
  * shell no-op and reads as decorative, which is exactly why it is worth naming.
- * A push inside a larger `||` chain that ends in one of those counts too.
+ *
+ * The no-op may be followed by a COMMAND-LIST DELIMITER rather than end of line.
+ * A push chained with `; echo continuing` discards its status just as
+ * thoroughly, and an end-of-line-only rule walks straight past it. `;`, `&`,
+ * `|` and `)` all continue the line while leaving the status discarded.
+ * Reported by CodeRabbit on #3208.
  */
-export const SWALLOWED_PUSH = /\bgit\s+push\b[^\n]*?\|\|\s*(?:true|:)\s*(?:$|#)/;
+export const SWALLOWED_PUSH = /\bgit\s+push\b[^\n]*?\|\|\s*(?:true|:)\s*(?:$|[#;&|)])/;
 
 /** Every `.yml`/`.yaml` under the workflow directory. */
 export function workflowFiles(root) {

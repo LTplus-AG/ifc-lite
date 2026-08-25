@@ -62,7 +62,42 @@ export const MARKER = 'allow-swallowed-push';
  * `|` and `)` all continue the line while leaving the status discarded.
  * Reported by CodeRabbit on #3208.
  */
-export const SWALLOWED_PUSH = /\bgit\s+push\b[^\n]*?\|\|\s*(?:true|:)\s*(?:$|[#;&|)])/;
+export const SWALLOWED_PUSH =
+  /(?:^|[;&|(]|\brun:)\s*git\s+push\b[^\n]*?\|\|\s*(?:true|:)\s*(?:$|[#;&|)])/;
+
+/**
+ * A `git push` whose failure is handled by a command that CANNOT fail the step.
+ *
+ * ```sh
+ * git push origin "$TAG" || echo "push failed, continuing"
+ * ```
+ *
+ * Under `set -e` the `||` handles the failure, `echo` returns 0, and the job
+ * continues. That swallows exactly as thoroughly as `|| true`.
+ *
+ * AN ALLOWLIST, NOT "ANY COMMAND", and the difference is the whole finding.
+ * #3212 proposed widening to any handler. A review of that widening measured
+ * what it does to the idiom this gate PUSHES PEOPLE TOWARD:
+ *
+ * ```sh
+ * git push origin "v1" || exit 1                      # correct, was flagged
+ * git push origin main || { echo "..."; exit 1; }     # correct, was flagged
+ * ```
+ *
+ * Verified in bash: `false || exit 1` exits 1, `false || echo x` exits 0. So
+ * `|| exit 1` is the textbook loud-failure form — the thing an author reaches
+ * for when this gate rejects their `|| true` — and flagging it makes the gate
+ * contradict its own printed remedy. `|| return 1`, `|| false`, `|| exit $?`
+ * and `|| die "msg"` are the same.
+ *
+ * Enumerating every TERMINATING handler is a losing game (`{ …; exit 1; }`,
+ * a shell function, a trap). Enumerating the harmless ones is not: `echo` and
+ * `printf` cannot fail a step, whatever their arguments. So the alternation
+ * only grows when someone shows a real swallow it misses, and it can never
+ * flag a correct one.
+ */
+export const HANDLED_PUSH =
+  /(?:^|[;&|(]|\brun:)\s*git\s+push\b[^\n]*?\|\|\s*(?:true\b|:|echo\b|printf\b)/;
 
 /** Every `.yml`/`.yaml` under the workflow directory. */
 export function workflowFiles(root) {
@@ -74,20 +109,100 @@ export function workflowFiles(root) {
     .filter((f) => statSync(f).isFile());
 }
 
+/**
+ * Fold backslash continuations into LOGICAL lines (#3212).
+ *
+ * The rule has to see what the SHELL sees. Matching per physical line walks
+ * straight past a swallow split across a continuation, because neither half
+ * matches alone:
+ *
+ * ```sh
+ * git push origin "v${VERSION}" \
+ *   || true
+ * ```
+ *
+ * Same family as the `;`/`&`/`|`/`)` chaining gap: the rule seeing less than
+ * the shell does.
+ *
+ * WHERE THIS TECHNIQUE IS KNOWN TO BREAK, because this repo has already paid
+ * for it: `source-text-assertion-detect.mjs` used to walk lines with a
+ * `CONTINUES` regex, an interior comment stripped to blank, the walk stopped
+ * early, and CI failed twice printing a remedy that did not work. It was
+ * replaced by a real parser. This is safe at that same shape only because the
+ * fold is unconditional and the only consumer of `joined` is a regex requiring
+ * `git push` — folding a line that is not shell cannot invent a hit. If this
+ * ever needs to know what IS shell, it needs a parser, not another regex.
+ *
+ * Reports the FIRST physical line number, so the output points at somewhere a
+ * reader can find; a synthetic number over the joined text would be worse than
+ * the gap it closes.
+ */
+function logicalLines(physical) {
+  const out = [];
+  for (let i = 0; i < physical.length; i += 1) {
+    const line = i + 1;
+    let joined = physical[i];
+    // Where each physical line begins inside `joined`, so a match can be
+    // attributed to the push it is about rather than to the group's first line.
+    const starts = [{ line, at: 0 }];
+    // `\\` is an escaped backslash and ends the line for real, so parity is
+    // what decides, not presence.
+    while (/\\*$/.exec(joined)[0].length % 2 === 1 && i + 1 < physical.length) {
+      i += 1;
+      joined = joined.slice(0, -1);
+      starts.push({ line: i + 1, at: joined.length + 1 });
+      joined = `${joined} ${physical[i].trim()}`;
+    }
+    out.push({ line, joined, starts });
+  }
+  return out;
+}
+
 /** `{ line, text }` for every swallowed push, minus marked ones. */
 export function findSwallowedPushes(source) {
-  const lines = source.split('\n');
+  const physical = source.split('\n');
   const hits = [];
   const marked = [];
-  lines.forEach((line, i) => {
-    if (!SWALLOWED_PUSH.test(line)) return;
-    const above = lines[i - 1] ?? '';
-    if (above.includes(MARKER) || line.includes(MARKER)) {
-      marked.push({ line: i + 1, text: line.trim() });
-      return;
+  // Global copies so `lastIndex` can walk every push in one folded group.
+  const scanAll = new RegExp(HANDLED_PUSH.source, 'g');
+  for (const { joined, starts } of logicalLines(physical)) {
+    scanAll.lastIndex = 0;
+    let m;
+    while ((m = scanAll.exec(joined)) !== null) {
+      // ONE ENTRY PER PUSH. Folding makes a chained pair
+      // (`git push mirror … || true; git push origin … || true`) a single
+      // logical line, and one-entry-per-group both under-reported the second
+      // push and let a marker written for the first silently exempt it — the
+      // push vanished from the report rather than being listed as marked.
+      // Offset of the PUSH ITSELF, not of the match: the pattern consumes a
+      // leading command separator (`;`, `&`, `|`, `(`), so `m.index` can sit on
+      // the previous physical line and attribute the hit to the wrong push.
+      const at = m.index + Math.max(0, m[0].search(/\bgit\s+push\b/));
+      // The physical line this push STARTS on, so the report points at it.
+      let line = starts[0].line;
+      for (const s2 of starts) if (s2.at <= at) line = s2.line;
+
+      const above = physical[line - 2] ?? '';
+      const own = physical[line - 1] ?? '';
+      const entry = {
+        line,
+        text: own.trim(),
+        // SWALLOWED_PUSH is a subset of HANDLED_PUSH (see the note on
+        // HANDLED_PUSH), so it only classifies. Re-tested against this push's
+        // own slice, not the whole group, or a `|| true` anywhere in the group
+        // would relabel every push in it.
+        kind: SWALLOWED_PUSH.test(m[0]) ? 'no-op' : 'handled',
+      };
+      // The marker applies to the line above this push or to its own line.
+      // Not to `joined`: a marker is a COMMENT, a comment ends the logical
+      // command, so a group can never carry both a marker and a later live
+      // push — but scanning `joined` would still be the wrong shape, and
+      // per-push attribution above is what actually removes the hazard.
+      if (above.includes(MARKER) || own.includes(MARKER)) marked.push(entry);
+      else hits.push(entry);
+      if (scanAll.lastIndex === at) scanAll.lastIndex += 1;
     }
-    hits.push({ line: i + 1, text: line.trim() });
-  });
+  }
   return { hits, marked };
 }
 
@@ -109,8 +224,8 @@ if (process.argv[1] && process.argv[1].endsWith('check-swallowed-push.mjs')) {
   for (const file of files) {
     const rel = relative(ROOT, file).split('\\').join('/');
     const { hits, marked } = findSwallowedPushes(readFileSync(file, 'utf8'));
-    for (const h of hits) offenders.push(`${rel}:${h.line}  ${h.text}`);
-    for (const m of marked) markedSites.push(`${rel}:${m.line}  ${m.text}`);
+    for (const h of hits) offenders.push(`${rel}:${h.line}  [${h.kind}]  ${h.text}`);
+    for (const m of marked) markedSites.push(`${rel}:${m.line}  [${m.kind}]  ${m.text}`);
   }
 
   if (offenders.length > 0) {
@@ -120,6 +235,11 @@ if (process.argv[1] && process.argv[1].endsWith('check-swallowed-push.mjs')) {
 \`|| true\` on \`git tag\` is fine — a re-run hits an existing tag and idempotency
 is the point. On the PUSH it means a network, auth or ref-lock failure becomes a
 silent no-op and the job continues as though the ref reached the remote.
+
+\`[no-op]\` is \`|| true\` or \`|| :\`, someone meaning to ignore the result.
+\`[handled]\` is \`|| <anything else>\`, usually someone meaning to LOG the failure
+and not realising that under \`set -e\` the \`||\` also silences it — the push fails,
+the handler returns 0, and the job carries on (#3212).
 
 That does not produce "no release". \`gh release create\` creates a missing tag
 itself, from the latest state of the DEFAULT BRANCH when no \`--target\` is given,

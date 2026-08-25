@@ -51,21 +51,33 @@ const ISO_216_MM: ReadonlyArray<{ series: string; shortMm: number; longMm: numbe
 
 /** ANSI and ARCH sheets are defined in inches. */
 const MM_PER_INCH = 25.4;
-const INCH_DEFINED: ReadonlyArray<{ id: string; shortIn: number; longIn: number }> = [
+// `portrait` states whether the registry is EXPECTED to carry an
+// `<id>_PORTRAIT` entry. Only the three US office sizes do; the large ANSI and
+// ARCH sheets are landscape-only. It has to be stated rather than inferred,
+// because the test previously guarded the portrait checks with `if (portrait)`
+// and a guard cannot tell "not expected" from "expected and missing":
+// deleting LETTER_PORTRAIT from the registry outright left all 448 tests green.
+// Measured, not assumed. Reported by CodeRabbit on #3162.
+const INCH_DEFINED: ReadonlyArray<{
+  id: string;
+  shortIn: number;
+  longIn: number;
+  portrait: boolean;
+}> = [
   // ANSI / US office sizes.
-  { id: 'LETTER', shortIn: 8.5, longIn: 11 },
-  { id: 'LEGAL', shortIn: 8.5, longIn: 14 },
-  { id: 'TABLOID', shortIn: 11, longIn: 17 }, // ANSI B
-  { id: 'ANSI_C', shortIn: 17, longIn: 22 },
-  { id: 'ANSI_D', shortIn: 22, longIn: 34 },
-  { id: 'ANSI_E', shortIn: 34, longIn: 44 },
+  { id: 'LETTER', shortIn: 8.5, longIn: 11, portrait: true },
+  { id: 'LEGAL', shortIn: 8.5, longIn: 14, portrait: true },
+  { id: 'TABLOID', shortIn: 11, longIn: 17, portrait: true }, // ANSI B
+  { id: 'ANSI_C', shortIn: 17, longIn: 22, portrait: false },
+  { id: 'ANSI_D', shortIn: 22, longIn: 34, portrait: false },
+  { id: 'ANSI_E', shortIn: 34, longIn: 44, portrait: false },
   // Architectural series.
-  { id: 'ARCH_A', shortIn: 9, longIn: 12 },
-  { id: 'ARCH_B', shortIn: 12, longIn: 18 },
-  { id: 'ARCH_C', shortIn: 18, longIn: 24 },
-  { id: 'ARCH_D', shortIn: 24, longIn: 36 },
-  { id: 'ARCH_E', shortIn: 36, longIn: 48 },
-  { id: 'ARCH_E1', shortIn: 30, longIn: 42 },
+  { id: 'ARCH_A', shortIn: 9, longIn: 12, portrait: false },
+  { id: 'ARCH_B', shortIn: 12, longIn: 18, portrait: false },
+  { id: 'ARCH_C', shortIn: 18, longIn: 24, portrait: false },
+  { id: 'ARCH_D', shortIn: 24, longIn: 36, portrait: false },
+  { id: 'ARCH_E', shortIn: 36, longIn: 48, portrait: false },
+  { id: 'ARCH_E1', shortIn: 30, longIn: 42, portrait: false },
 ];
 
 describe('ISO 216 A series', () => {
@@ -114,7 +126,7 @@ describe('ISO 216 A series', () => {
 });
 
 describe('inch-defined sheets (ANSI and ARCH)', () => {
-  for (const { id, shortIn, longIn } of INCH_DEFINED) {
+  for (const { id, shortIn, longIn, portrait: expectPortrait } of INCH_DEFINED) {
     it(`${id} is ${shortIn}" x ${longIn}"`, () => {
       // Landscape-only ids (ANSI_C..E, ARCH_*) carry no orientation suffix.
       const landscape = PAPER_SIZE_REGISTRY[`${id}_LANDSCAPE`] ?? PAPER_SIZE_REGISTRY[id];
@@ -126,10 +138,17 @@ describe('inch-defined sheets (ANSI and ARCH)', () => {
       expect(landscape.widthMm).toBeCloseTo(longIn * MM_PER_INCH, 6);
       expect(landscape.heightMm).toBeCloseTo(shortIn * MM_PER_INCH, 6);
 
+      // Both directions: an expected portrait entry must EXIST (a bare
+      // `if (portrait)` let its deletion pass), and an unexpected one must not
+      // appear -- adding LETTER-style portrait entries for the large ARCH
+      // sheets would change which sheet `view-pdf-scale` reports for a page.
       const portrait = PAPER_SIZE_REGISTRY[`${id}_PORTRAIT`];
-      if (portrait) {
+      if (expectPortrait) {
+        expect(portrait, `${id}_PORTRAIT must exist in the registry`).toBeDefined();
         expect(portrait.widthMm).toBeCloseTo(shortIn * MM_PER_INCH, 6);
         expect(portrait.heightMm).toBeCloseTo(longIn * MM_PER_INCH, 6);
+      } else {
+        expect(portrait, `${id}_PORTRAIT is not expected to exist`).toBeUndefined();
       }
     });
   }

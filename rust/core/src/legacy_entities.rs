@@ -254,42 +254,21 @@ pub const LEGACY_ENTITY_NAMES: &[&str] = &[
 #[cfg(test)]
 mod legacy_entity_name_tests {
     use super::*;
-    use std::collections::BTreeSet;
 
-    /// The two-lists-that-must-agree guard for [`LEGACY_ENTITY_NAMES`]: the
-    /// arm keys are recovered from this module's own source text, so a newly
-    /// added arm whose key never reaches the const is caught here rather than
-    /// silently shrinking every caller's universe.
+    /// The arm/const parity check that used to live here is now
+    /// `scripts/check-legacy-entity-coverage.mjs`, which already reads this
+    /// file to derive the arm keys and gained a `LEGACY_ENTITY_NAMES`
+    /// comparison to go with it.
     ///
-    /// (Deliberately phrased without an example arm: the key pattern is what
-    /// `scripts/check-legacy-entity-coverage.mjs` scans for, and a made-up
-    /// name in a comment reads to it as a real arm naming no entity.)
-    #[test]
-    fn legacy_entity_names_match_the_lookup_arms() {
-        let src = include_str!("legacy_entities.rs");
-        let mut from_source: BTreeSet<&str> = BTreeSet::new();
-        for line in src.lines() {
-            let trimmed = line.trim();
-            let Some(rest) = trimmed.strip_prefix('"') else {
-                continue;
-            };
-            let Some(end) = rest.find('"') else { continue };
-            if !rest[end + 1..].trim_start().starts_with("=>") {
-                continue;
-            }
-            from_source.insert(&rest[..end]);
-        }
-        assert!(
-            !from_source.is_empty(),
-            "arm-key extraction found nothing -- the parser, not the table, is broken"
-        );
-        let from_const: BTreeSet<&str> = LEGACY_ENTITY_NAMES.iter().copied().collect();
-        assert_eq!(
-            from_source, from_const,
-            "LEGACY_ENTITY_NAMES has drifted from get_legacy_entity_info's match arms"
-        );
-    }
-
+    /// It moved because the only way to state it in-crate was `include_str!`
+    /// of this module's own source, which is a source-text assertion — banned
+    /// by AGENTS.md and flagged by `check-rust-source-text-assertions` (#3195).
+    /// The repo had already made the same call for
+    /// `check-clash-degenerate-reason-parity.mjs`: a claim about two SOURCES
+    /// belongs in a lint. The gate is also strictly stronger here, since it
+    /// fails on drift in BOTH directions and its own harness proves it cannot
+    /// pass by extracting nothing.
+    ///
     /// Every listed name really is legacy -- the cheap direction, but it also
     /// pins that the const holds arm keys and not, say, base-type names.
     #[test]

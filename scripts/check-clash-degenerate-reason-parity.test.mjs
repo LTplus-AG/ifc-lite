@@ -114,6 +114,32 @@ test('RED (vacuity guard) when BOTH extractors find nothing — two empty sets a
   assert.match(out, /no members extracted from ClashSolidDegenerateReason/);
 });
 
+test('the vacuity path does NOT print the update-the-union remedy', () => {
+  // The remedy is destructive for this class: with the kernel set read as
+  // empty, "match exactly, in both directions" means empty the union, which
+  // silences the gate and breaks the type the wasm boundary casts to. The
+  // header must not blame the union either -- nothing drifted between the two
+  // declarations, the gate simply could not read one of them.
+  const { status, out } = runOn({ rust: '// no reasons here at all\n' });
+  assert.equal(status, 1, out);
+  assert.match(out, /this gate could not read one of its inputs/);
+  assert.doesNotMatch(out, /to match .* exactly, in both directions/);
+  assert.doesNotMatch(out, /ClashSolidDegenerateReason has drifted from clash_solid\.rs/);
+  // And it must say plainly that no parity was assessed.
+  assert.match(out, /compared nothing/);
+});
+
+test('a real parity failure still gets the update-the-union remedy', () => {
+  // The other half of the dispatch: narrowing the vacuity path must not have
+  // taken the actual remedy away from the class that needs it.
+  const ts = replaceOnce(realTs, "  | 'malformed-operand'\n", '');
+  const { status, out } = runOn({ ts });
+  assert.equal(status, 1, out);
+  assert.match(out, /ClashSolidDegenerateReason has drifted from clash_solid\.rs/);
+  assert.match(out, /to match .* exactly, in both directions/);
+  assert.doesNotMatch(out, /this gate could not read one of its inputs/);
+});
+
 test('a reason named only in a comment does not count, on either side', () => {
   assert.deepEqual([...kernelReasons('    // - `"invented-reason"` — prose only.\n')], []);
   // Not just FULL-LINE `//`: a trailing comment and a `/* … */` block are prose

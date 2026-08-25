@@ -43,9 +43,16 @@ describe('MEASURABLE_QUANTITY_TYPES', () => {
   });
 
   it('pins the literal values directly, independent of the enum import', () => {
-    // Belt-and-braces: even if `@ifc-lite/data`'s enum itself drifted, these
-    // literals are IFC's own `IfcQuantityWeight`/`IfcQuantityVolume`/etc.
-    // STEP-encoded meaning and do not move.
+    // Belt-and-braces against the enum import drifting: assert the literals
+    // rather than re-deriving them from the thing under test.
+    //
+    // What this does NOT rest on, because an earlier version of this comment
+    // claimed it: these are not IFC's encoding. `QuantityType` is ifc-lite's
+    // own enum (`packages/data/src/types.ts`), and IFC names its quantities
+    // rather than numbering them — `columnar-parser-indexes.ts` maps the STEP
+    // keyword `IFCQUANTITYWEIGHT` onto `QuantityType.Weight`, so the ordinal
+    // is ours to keep stable, not something the format pins for us. That is
+    // the reason to pin it here, not a reason it cannot move.
     assert.strictEqual(MEASURABLE_QUANTITY_TYPES.Length, 0);
     assert.strictEqual(MEASURABLE_QUANTITY_TYPES.Area, 1);
     assert.strictEqual(MEASURABLE_QUANTITY_TYPES.Volume, 2);

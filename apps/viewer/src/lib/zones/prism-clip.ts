@@ -28,10 +28,47 @@ const SCRATCH_B = new Float64Array(12 * 3);
 /**
  * Clip a polygon against `nx*x + ny*y + nz*z <= d`, writing to `dst`.
  *
- * The general-plane counterpart of the box path's axis-aligned clip. The edge
- * parameter is clamped behind a denominator guard for the same reason it is
- * there: without it a near-coincident plane extrapolates the cut vertex off the
- * end of the edge (#1155).
+ * The general-plane counterpart of the box path's axis-aligned clip.
+ *
+ * `clip_triangle_with_epsilon` in `rust/geometry/src/csg/plane_eps.rs` needed a
+ * `t` clamp plus a near-zero-denominator guard for #1155: it classifies
+ * front/back within an EPSILON BAND (`d0 >= -eps`), so a vertex that is
+ * actually slightly behind the plane can be classified "front", and
+ * interpolating between that misclassified vertex and a genuine back vertex
+ * produced a `t` far outside `[0, 1]` (the column that flew ~97 m).
+ *
+ * The classification below (`da >= 0`) has no band, and that is the whole
+ * reason no guard is needed here: the crossing branch runs only when `da` and
+ * `db` have strictly opposite signs, so `denom = da - db` carries `da`'s sign
+ * and, under round-to-nearest, `|denom| >= |da|`. `t = da / denom` is therefore
+ * a magnitude over a no-smaller magnitude — in `[0, 1]` by construction, for
+ * any finite `da` and `db`, with no cancellation in the subtraction (it is a
+ * sum of same-signed magnitudes, never a near-zero difference of close ones).
+ * The ends are reached only by rounding, and harmlessly: `t` underflows to 0
+ * when `|da|` is denormal against a huge `|db|`, and rounds to 1 in the
+ * mirror case — placing the cut vertex on the endpoint that is already within
+ * an ULP of the plane, which is exactly where the old clamp put it. A
+ * near-coincident plane makes `da` and `db` both tiny; it does not make the
+ * ratio unstable.
+ *
+ * The NaN case the Rust guard also covers is unreachable for the same reason:
+ * `da == 0` fails the strict inequality and never enters the branch, and a
+ * non-finite `da` cannot arise because `clippedVolumeForPrism` drops any
+ * triangle with a non-finite vertex before clipping.
+ *
+ * That argument, not a fixture, is what carries the removal. A sampled sweep
+ * of `(da, db)` over every decade magnitude plus the denormal and finite
+ * extremes agrees — no `t` outside `[0, 1]`, none non-finite, and `|denom|`
+ * never below `|da|` — but it is a sample: an exhaustive sweep of a pair of
+ * doubles is not a thing anyone runs, and a claim of one would be false.
+ *
+ * What IS load-bearing is the band-free classification, and that is pinned by
+ * `prism.test.ts`'s "a face all but coincident with a strip boundary (#1155
+ * regime)": planting a band there reclassifies a face and takes more volume
+ * than the element holds. The box-vs-prism oracle cannot pin it — it calls
+ * this function twice against mirrored planes, and for mirrored planes
+ * `t_far == t_near`, so any deterministic symmetric rule (a constant `t`
+ * included) still tiles the polygon and passes.
  */
 function clipPlane(
   src: Float64Array,
@@ -55,10 +92,7 @@ function clipPlane(
       out++;
     }
     if ((da > 0 && db < 0) || (da < 0 && db > 0)) {
-      const denom = da - db;
-      let t = Math.abs(denom) > 1e-12 ? da / denom : 0;
-      if (!(t > 0)) t = 0;
-      else if (t > 1) t = 1;
+      const t = da / (da - db);
       dst[out * 3] = src[ai] + (src[bi] - src[ai]) * t;
       dst[out * 3 + 1] = src[ai + 1] + (src[bi + 1] - src[ai + 1]) * t;
       dst[out * 3 + 2] = src[ai + 2] + (src[bi + 2] - src[ai + 2]) * t;

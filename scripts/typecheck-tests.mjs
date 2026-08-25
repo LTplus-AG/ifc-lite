@@ -228,10 +228,10 @@ async function checkOnePackage(pkgDir) {
  * @param {string[]} [seenParents] filled with the package parents that exist,
  *   so a caller can tell "no packages here" from "nowhere to look for them".
  */
-function workspaceDirs(seenParents = []) {
+function workspaceDirs(seenParents = [], scanRoot = REPO_ROOT) {
   const dirs = [];
   for (const group of PACKAGE_PARENTS) {
-    const base = path.join(REPO_ROOT, group);
+    const base = path.join(scanRoot, group);
     if (!existsSync(base)) continue;
     seenParents.push(group);
     for (const name of readdirSync(base).sort()) {
@@ -249,11 +249,15 @@ function workspaceDirs(seenParents = []) {
  * Does this audit run have enough input to mean anything? Returns the refusal
  * message, or null when the run is worth trusting.
  *
- * Pure and exported so `typecheck-tests.test.mjs` can drive every branch: the
- * audit itself has no `--root` flag (REPO_ROOT comes from this file's own
- * location), so the only way to exercise these paths end-to-end is to copy the
- * script into an empty tree, which is how the defect was reproduced but is not
- * a shape this repo's harnesses use.
+ * Pure and exported so `typecheck-tests.test.mjs` can drive every branch in
+ * isolation. That is NOT sufficient on its own: testing this function only
+ * through direct calls leaves nothing asserting that `audit()` still calls it,
+ * and all four call sites could be deleted with the suite green (#3201
+ * review). `audit()` therefore takes an injectable `scanRoot` and injectable
+ * floors — the `opts.candidateFloor ?? CANDIDATE_FLOOR` seam that
+ * `check-refwalk-guards.mjs` uses — so the same tests drive the refusals END TO
+ * END through `audit()` against a synthetic tree. The CLI exposes no override,
+ * so the gate itself always runs the real root and the real floors.
  *
  * `packagesWithTests` / `testFiles` are null on the structural pass, which
  * runs before any tsc invocation; the quantitative floors need counts that
@@ -262,10 +266,17 @@ function workspaceDirs(seenParents = []) {
  * @param {{seenParents: string[], packagesWithTests: number|null, testFiles: number|null}} counts
  * @returns {string|null}
  */
-export function auditVacuity({ seenParents, packagesWithTests, testFiles }) {
+export function auditVacuity({
+  seenParents,
+  packagesWithTests,
+  testFiles,
+  scanRoot = REPO_ROOT,
+  packagesFloor = AUDITED_PACKAGES_FLOOR,
+  testFilesFloor = TEST_FILES_FLOOR,
+}) {
   if (seenParents.length === 0) {
     return (
-      `none of ${PACKAGE_PARENTS.map((p) => `${p}/`).join(', ')} exists under ${REPO_ROOT}. ` +
+      `none of ${PACKAGE_PARENTS.map((p) => `${p}/`).join(', ')} exists under ${scanRoot}. ` +
       `Refusing a vacuous pass: this audit exists to prove workspace test files reach a typecheck ` +
       `program, and it found nowhere to look for them.`
     );
@@ -278,17 +289,17 @@ export function auditVacuity({ seenParents, packagesWithTests, testFiles }) {
       `typecheck coverage.`
     );
   }
-  if (packagesWithTests < AUDITED_PACKAGES_FLOOR) {
+  if (packagesWithTests < packagesFloor) {
     return (
-      `only ${packagesWithTests} package(s) carried test files, floor is ${AUDITED_PACKAGES_FLOOR}. ` +
+      `only ${packagesWithTests} package(s) carried test files, floor is ${packagesFloor}. ` +
       `Refusing a vacuous pass: this repo has about 46, so a count this low means the package walk ` +
       `stopped working, not that the packages went away. If packages were genuinely removed, lower ` +
       `AUDITED_PACKAGES_FLOOR in the same commit.`
     );
   }
-  if (testFiles < TEST_FILES_FLOOR) {
+  if (testFiles < testFilesFloor) {
     return (
-      `only ${testFiles} test file(s) found, floor is ${TEST_FILES_FLOOR}. ` +
+      `only ${testFiles} test file(s) found, floor is ${testFilesFloor}. ` +
       `Refusing a vacuous pass: this repo has about 1,434, so a count this low means the test-file ` +
       `walk or TEST_FILE_RE stopped matching, not that the tests went away. If tests were genuinely ` +
       `removed, lower TEST_FILES_FLOOR in the same commit.`
@@ -303,22 +314,27 @@ export function auditVacuity({ seenParents, packagesWithTests, testFiles }) {
  * actually runs one. This is the part that fails when a test file stops being
  * checked — without it the arrangement rots the next time a package is added.
  */
-async function audit() {
+async function audit({
+  scanRoot = REPO_ROOT,
+  packagesFloor = AUDITED_PACKAGES_FLOOR,
+  testFilesFloor = TEST_FILES_FLOOR,
+} = {}) {
   const rows = [];
   const problems = [];
   const seenParents = [];
-  const dirs = workspaceDirs(seenParents);
+  const dirs = workspaceDirs(seenParents, scanRoot);
+  const floors = { scanRoot, packagesFloor, testFilesFloor };
 
   // Anti-vacuity, structural. Checked before any tsc runs, because with an
   // empty input set everything below it succeeds by having nothing to do.
-  const vacuous = auditVacuity({ seenParents, packagesWithTests: null, testFiles: null });
+  const vacuous = auditVacuity({ seenParents, packagesWithTests: null, testFiles: null, ...floors });
   if (vacuous) {
     console.error(`\ntypecheck-tests: ${vacuous}`);
     return 1;
   }
 
   for (const dir of dirs) {
-    const rel = toPosix(path.relative(REPO_ROOT, dir));
+    const rel = toPosix(path.relative(scanRoot, dir));
     const onDisk = findTestFiles(dir).sort();
     if (onDisk.length === 0) continue;
 
@@ -353,12 +369,12 @@ async function audit() {
     try {
       rootFiles = (JSON.parse(output).files ?? []).map((f) => path.resolve(dir, f));
     } catch {
-      problems.push(`${rel}: could not read the resolved config for ${toPosix(path.relative(REPO_ROOT, project))}`);
+      problems.push(`${rel}: could not read the resolved config for ${toPosix(path.relative(scanRoot, project))}`);
     }
     const covered = new Set(rootFiles.filter((f) => TEST_FILE_RE.test(f)));
     const missing = onDisk.filter((f) => !covered.has(f));
     for (const f of missing) {
-      problems.push(`${toPosix(path.relative(REPO_ROOT, f))} is in no typecheck program`);
+      problems.push(`${toPosix(path.relative(scanRoot, f))} is in no typecheck program`);
     }
     rows.push({ pkg: rel, inProgram: onDisk.length - missing.length, onDisk: onDisk.length });
   }
@@ -369,7 +385,7 @@ async function audit() {
   // nothing.
   if (rows.length === 0) {
     console.error(
-      `\ntypecheck-tests: ${auditVacuity({ seenParents, packagesWithTests: 0, testFiles: 0 })}`,
+      `\ntypecheck-tests: ${auditVacuity({ seenParents, packagesWithTests: 0, testFiles: 0, ...floors })}`,
     );
     return 1;
   }
@@ -395,6 +411,7 @@ async function audit() {
     seenParents,
     packagesWithTests: rows.length,
     testFiles: totalOn,
+    ...floors,
   });
   if (undersized) {
     console.error(`\ntypecheck-tests: ${undersized}`);
@@ -484,7 +501,7 @@ export function parseCliMode(args) {
   return { error: `expected at most one argument, got ${args.map((a) => JSON.stringify(a)).join(' ')}` };
 }
 
-export { writeTestProgram, GENERATED_CONFIG, relativeExtends };
+export { audit, writeTestProgram, GENERATED_CONFIG, relativeExtends };
 
 // Only run the CLI when invoked as one — importing this must not typecheck the
 // repo and call process.exit.

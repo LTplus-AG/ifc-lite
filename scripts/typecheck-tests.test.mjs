@@ -32,7 +32,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { relativeExtends, parseCliMode, auditVacuity } from './typecheck-tests.mjs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { relativeExtends, parseCliMode, auditVacuity, audit } from './typecheck-tests.mjs';
 
 test('a sibling base config is ./-prefixed, not bare', () => {
   // The repo-root case: pkgDir and the base config are the same directory.
@@ -201,4 +203,123 @@ test('vacuity: the real repo\'s measured counts pass', () => {
     auditVacuity({ seenParents: ['packages', 'apps'], packagesWithTests: 46, testFiles: 1434 }),
     null,
   );
+});
+
+// ---------------------------------------------------------------------------
+// The guards, driven END TO END through audit().
+//
+// Everything above calls `auditVacuity` directly, which proves the function is
+// right and proves NOTHING about whether the gate still calls it. The #3201
+// review demonstrated the gap by deleting the quantitative block from
+// `audit()`: the whole suite stayed green while the gate went back to calling a
+// collapsed two-package walk clean. These tests fail if any of the four call
+// sites is removed, because they exercise the refusals through `audit()`
+// itself against a synthetic tree.
+
+/**
+ * Run `audit()` and return its exit code together with everything it wrote to
+ * stderr. Asserting the exit code alone is not enough: `audit()` also returns 1
+ * from the offenders check, which fires BEFORE the quantitative floors, so a
+ * test that only checked for 1 would pass on a tree that never reached the
+ * guard it claims to exercise. The refusal text is what identifies the branch.
+ */
+async function runAudit(opts) {
+  const stderr = [];
+  const realError = console.error;
+  const realLog = console.log;
+  console.error = (...args) => stderr.push(args.join(' '));
+  console.log = () => {};
+  try {
+    const code = await audit(opts);
+    return { code, stderr: stderr.join('\n') };
+  } finally {
+    console.error = realError;
+    console.log = realLog;
+  }
+}
+
+/** Build a throwaway workspace and return its root. */
+function synthTree(spec) {
+  const root = mkdtempSync(path.join(tmpdir(), 'typecheck-tests-audit-'));
+  for (const [rel, contents] of Object.entries(spec)) {
+    const full = path.join(root, rel);
+    mkdirSync(path.dirname(full), { recursive: true });
+    writeFileSync(full, contents);
+  }
+  return root;
+}
+
+/** One `apps/<name>` package carrying a single test file. */
+function appWithOneTest(name) {
+  return {
+    [`apps/${name}/package.json`]: JSON.stringify({ name, scripts: { typecheck: 'tsc' } }),
+    [`apps/${name}/tsconfig.json`]: JSON.stringify({
+      compilerOptions: { noEmit: true },
+      files: ['./src/a.test.ts'],
+    }),
+    [`apps/${name}/src/a.test.ts`]: 'export const a = 1;\n',
+  };
+}
+
+test('audit(): an empty tree is refused, not reported as a clean scan', async () => {
+  const root = synthTree({ 'README.md': 'no package parents here\n' });
+  try {
+    const { code, stderr } = await runAudit({ scanRoot: root });
+    assert.equal(code, 1);
+    assert.match(stderr, /none of packages\/, apps\/ exists under/);
+    assert.match(stderr, /Refusing a vacuous pass/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('audit(): package parents that exist but hold no tests are refused', async () => {
+  const root = synthTree({ 'apps/.keep': '', 'packages/.keep': '' });
+  try {
+    const { code, stderr } = await runAudit({ scanRoot: root });
+    assert.equal(code, 1);
+    assert.match(stderr, /contain no package with a test file/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('audit(): a partial collapse is refused by the package floor', async () => {
+  // The case the empty-tree guards cannot see, and the one the floors exist
+  // for: the walk works, finds real packages with real tests, and every file
+  // it found IS in a program — but it found two packages instead of 46.
+  const root = synthTree({ ...appWithOneTest('one'), ...appWithOneTest('two') });
+  try {
+    const { code, stderr } = await runAudit({ scanRoot: root });
+    assert.equal(code, 1);
+    assert.match(stderr, /only 2 package\(s\) carried test files, floor is 30/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('audit(): a partial collapse is refused by the test-file floor too', async () => {
+  // Same tree, package floor lowered so it cannot be what fires. The refusal
+  // must still come, from the independent test-file floor.
+  const root = synthTree({ ...appWithOneTest('one'), ...appWithOneTest('two') });
+  try {
+    const { code, stderr } = await runAudit({ scanRoot: root, packagesFloor: 1 });
+    assert.equal(code, 1);
+    assert.match(stderr, /only 2 test file\(s\) found, floor is 900/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('audit(): the same tree passes once both floors are below what it holds', async () => {
+  // The paired probe. Without this, every assertion above could be satisfied
+  // by an audit() that returns 1 unconditionally on a synthetic tree.
+  const root = synthTree({ ...appWithOneTest('one'), ...appWithOneTest('two') });
+  try {
+    const { code, stderr } = await runAudit({ scanRoot: root, packagesFloor: 1, testFilesFloor: 1 });
+    assert.equal(code, 0, `expected a clean audit, got: ${stderr}`);
+    assert.equal(stderr, '');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

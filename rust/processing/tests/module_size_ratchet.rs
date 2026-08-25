@@ -21,6 +21,8 @@
 //! This runs in the required `rust-tests` lane (`cargo test --workspace`), so a
 //! violation blocks merge. Cross-crate file walking mirrors `styling_parity`.
 
+mod scan_floor;
+
 const LIMIT: usize = 400;
 const ALLOWLIST: &str = include_str!("module_size_allowlist.txt");
 
@@ -43,39 +45,7 @@ const ALLOWLIST: &str = include_str!("module_size_allowlist.txt");
 /// would rewrite the digest and fail CI for no reason.
 const ALLOWLIST_DIGEST: u64 = 4241476374134085635;
 
-/// Repo root = first ancestor holding both `rust/` and `apps/`. `None` in a
-/// packaged/standalone context (the test then skips, like `styling_parity`).
-fn repo_root() -> Option<std::path::PathBuf> {
-    let mut dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf();
-    loop {
-        if dir.join("rust").is_dir() && dir.join("apps").is_dir() {
-            return Some(dir);
-        }
-        if !dir.pop() {
-            return None;
-        }
-    }
-}
 
-fn collect_rs_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            let skip = matches!(
-                path.file_name().and_then(|n| n.to_str()),
-                Some("target" | "node_modules" | ".git" | "dist" | "build")
-            );
-            if !skip {
-                collect_rs_files(&path, out);
-            }
-        } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
-            out.push(path);
-        }
-    }
-}
 
 /// Generated code and test/support files are not subject to the split rule.
 fn is_exempt(rel: &str) -> bool {
@@ -115,9 +85,25 @@ fn parse_allowlist() -> std::collections::HashMap<String, usize> {
 }
 
 fn line_count(path: &std::path::Path) -> usize {
-    std::fs::read_to_string(path)
-        .map(|s| s.lines().count())
-        .unwrap_or(0)
+    // PANIC rather than `unwrap_or(0)` (#3200): 0 lines is under every budget,
+    // so an unreadable file used to pass this gate silently.
+    //
+    // EXCEPT NotFound, which the walk itself can produce: `collect_rs_files`
+    // pushes a dangling symlink ending in `.rs` (`is_dir()` is false, the
+    // extension matches) and the read then fails with ENOENT. That is an
+    // ordinary absence, and an earlier version of this comment asserted it
+    // could not happen -- reproduced with `ln -s /nonexistent/nope.rs`. Every
+    // other error (permissions, a filesystem fault) is still a real fault and
+    // still loud.
+    match std::fs::read_to_string(path) {
+        Ok(s) => s.lines().count(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => 0,
+        Err(e) => panic!(
+            "module-size ratchet could not read {} ({e}); refusing to count an unreadable \
+             file as 0 lines, which is under every budget",
+            path.display()
+        ),
+    }
 }
 
 /// Pure ratchet decision: given `(relpath, line_count)` for every non-exempt
@@ -147,27 +133,54 @@ fn evaluate(
 
 #[test]
 fn no_module_grows_past_its_ratchet_budget() {
-    let Some(root) = repo_root() else {
+    let Some(root) = scan_floor::repo_root() else {
         eprintln!("repo root not found (packaged context) - skipping module-size ratchet");
         return;
     };
     let allowlist = parse_allowlist();
 
-    let mut paths = Vec::new();
-    for top in ["rust", "apps"] {
-        collect_rs_files(&root.join(top), &mut paths);
-    }
+    // The walk and its floor live in `scan_floor` (#3200): `styling_parity`
+    // greps the same two trees and needs the same refusal, and two copies of one
+    // measurement drift.
+    let paths = scan_floor::collect_with_floor(&root, "module-size ratchet");
+
     // (relpath, line_count) for every non-exempt file.
+    //
+    // EXEMPT FIRST, then read. The chain used to map-then-filter, which read all
+    // 659 walked files to evaluate 362 of them. That was merely wasteful until
+    // #3200 made `line_count` PANIC on an unreadable file: with the old order an
+    // unreadable file under `tests/` or `generated/` would abort the whole
+    // ratchet while naming a file the gate has no opinion about. The panic now
+    // covers exactly the region the gate examines, and the read halves.
     let files: Vec<(String, usize)> = paths
         .iter()
         .map(|p| {
             (
                 p.strip_prefix(&root).unwrap_or(p).to_string_lossy().replace('\\', "/"),
-                line_count(p),
+                p,
             )
         })
         .filter(|(rel, _)| !is_exempt(rel))
+        .map(|(rel, p)| {
+            let n = line_count(p);
+            (rel, n)
+        })
         .collect();
+
+    // The floor in `collect_with_floor` is on files WALKED; this one is on files
+    // actually EVALUATED, which is the region the verdict below speaks for.
+    // Break `is_exempt` so it exempts everything and the walk floor still passes
+    // over an empty evaluated set -- the same vacuity, one stage later.
+    // Measured on a healthy tree: 362 non-exempt of 659 walked. Floor at 120.
+    // If files were genuinely removed, lower EVALUATED_FLOOR in the same commit.
+    const EVALUATED_FLOOR: usize = 120;
+    assert!(
+        files.len() >= EVALUATED_FLOOR,
+        "module-size ratchet evaluated {} file(s) after exemptions, expected at least \
+         {EVALUATED_FLOOR}. Refusing to report a clean ratchet over an empty set -- the walk \
+         found files but the EXEMPTIONS swallowed them.",
+        files.len()
+    );
 
     // Advisory only (never fails the build, to avoid merge-order coupling): an
     // allowlisted file that dropped to <= LIMIT or vanished should have its row

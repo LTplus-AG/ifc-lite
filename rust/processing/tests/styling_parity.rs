@@ -20,6 +20,8 @@
 //! When Phase 1 deletes the old table bodies, this file is the proof that
 //! the only behavioral change is the four documented entries.
 
+mod scan_floor;
+
 use ifc_lite_core::IfcType;
 use ifc_lite_processing::default_color_for_type;
 
@@ -197,43 +199,12 @@ fn exactly_four_types_change_per_table() {
 // would have caught the server and desktop copies the day they were added.
 // ---------------------------------------------------------------------------
 
-/// Repo root = the first ancestor of this crate that holds both `rust/` and
-/// `apps/`. Returns `None` in a packaged/standalone context (test then skips).
-fn repo_root() -> Option<std::path::PathBuf> {
-    let mut dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf();
-    loop {
-        if dir.join("rust").is_dir() && dir.join("apps").is_dir() {
-            return Some(dir);
-        }
-        if !dir.pop() {
-            return None;
-        }
-    }
-}
 
-fn collect_rs_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            let skip = matches!(
-                path.file_name().and_then(|n| n.to_str()),
-                Some("target" | "node_modules" | ".git" | "dist" | "build")
-            );
-            if !skip {
-                collect_rs_files(&path, out);
-            }
-        } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
-            out.push(path);
-        }
-    }
-}
+
 
 #[test]
 fn no_duplicate_default_color_tables() {
-    let Some(root) = repo_root() else {
+    let Some(root) = scan_floor::repo_root() else {
         eprintln!("repo root not found (packaged context) — skipping guard");
         return;
     };
@@ -242,10 +213,12 @@ fn no_duplicate_default_color_tables() {
     //  - this guard test itself (it names the pattern in prose/snapshots).
     let allow = |rel: &str| rel.ends_with("rust/processing/tests/styling_parity.rs");
 
-    let mut files = Vec::new();
-    collect_rs_files(&root.join("rust"), &mut files);
-    collect_rs_files(&root.join("apps"), &mut files);
+    let files = scan_floor::collect_with_floor(&root, "styling guard");
 
+    // Positive control, tracked INSIDE the loop that already reads each file:
+    // the matcher must still find a declaration known to be present. A count of
+    // files proves the walk read them; only this proves the MATCHER still works.
+    let mut saw_canonical = false;
     let mut offenders = Vec::new();
     for path in files {
         let rel = path
@@ -261,17 +234,25 @@ fn no_duplicate_default_color_tables() {
         };
         // Match actual function declarations only, not prose/strings that
         // happen to mention the name (e.g. this guard's own doc comment).
-        let declares_color_table = src.lines().any(|line| {
-            let line = line.trim_start();
-            line.starts_with("fn get_default_color")
-                || line.starts_with("pub fn get_default_color")
-                || line.starts_with("pub(crate) fn get_default_color")
-        });
+        let mut declares_color_table = false;
+        for name in src.lines().filter_map(scan_floor::declared_fn_name) {
+            if name.starts_with("get_default_color") {
+                declares_color_table = true;
+            }
+            if name == "default_color_for_type" {
+                saw_canonical = true;
+            }
+        }
         if declares_color_table {
             offenders.push(rel);
         }
     }
 
+    assert!(
+        saw_canonical,
+        "the matcher did not find `fn default_color_for_type`, which is known to exist in \
+         processing::style. It is BLIND, so `offenders.is_empty()` below proves nothing (#3200)."
+    );
     assert!(
         offenders.is_empty(),
         "found per-consumer default-color table(s) outside the canonical \
@@ -294,7 +275,7 @@ fn no_duplicate_default_color_tables() {
 
 #[test]
 fn no_duplicate_surface_style_color_extraction() {
-    let Some(root) = repo_root() else {
+    let Some(root) = scan_floor::repo_root() else {
         eprintln!("repo root not found (packaged context) — skipping guard");
         return;
     };
@@ -308,10 +289,8 @@ fn no_duplicate_surface_style_color_extraction() {
             || rel.starts_with("rust/geometry/examples/")
     };
 
-    let mut files = Vec::new();
-    collect_rs_files(&root.join("rust"), &mut files);
-    collect_rs_files(&root.join("apps"), &mut files);
-
+    let files = scan_floor::collect_with_floor(&root, "styling guard");
+    let mut saw_canonical = false;
     let mut offenders = Vec::new();
     for path in files {
         let rel = path
@@ -325,18 +304,33 @@ fn no_duplicate_surface_style_color_extraction() {
         let Ok(src) = std::fs::read_to_string(&path) else {
             continue;
         };
-        let declares = src.lines().any(|line| {
-            let line = line.trim_start();
-            ["fn ", "pub fn ", "pub(crate) fn "].iter().any(|p| {
-                line.starts_with(&format!("{p}extract_color_from_rendering"))
-                    || line.starts_with(&format!("{p}extract_color_rgb"))
-            })
-        });
+        let mut declares = false;
+        for name in src.lines().filter_map(scan_floor::declared_fn_name) {
+            // PREFIX, not equality: that is what this guard had before #3200,
+            // and switching to `==` while extracting the shared matcher would
+            // have let `extract_color_from_rendering_impl` or
+            // `extract_color_rgb_v2` walk straight past a guard that used to
+            // catch them — a loosening inside a hardening change. The
+            // legitimate exemptions are handled by `allow` above, by path.
+            if name.starts_with("extract_color_from_rendering")
+                || name.starts_with("extract_color_rgb")
+            {
+                declares = true;
+            }
+            if name == "extract_surface_style_colors" {
+                saw_canonical = true;
+            }
+        }
         if declares {
             offenders.push(rel);
         }
     }
 
+    assert!(
+        saw_canonical,
+        "the matcher did not find `fn extract_surface_style_colors`, which is known to exist in \
+         processing::style. It is BLIND, so `offenders.is_empty()` below proves nothing (#3200)."
+    );
     assert!(
         offenders.is_empty(),
         "surface-style colour extraction must live only in \

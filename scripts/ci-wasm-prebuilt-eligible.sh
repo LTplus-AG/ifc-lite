@@ -54,6 +54,28 @@ if ! _tag_present; then
   exit 0
 fi
 
+# Every pathspec must actually MATCH something at the tag before its "no diff"
+# answer can be trusted (#3200, finding 10). `git diff --quiet` exits 0 both for
+# "nothing changed" and for "your pathspec matched nothing at either end":
+#
+#   $ git diff --quiet HEAD~1 HEAD -- probe             # EXIT=1  (real path)
+#   $ git diff --quiet HEAD~1 HEAD -- rustXX Cargo.lock # EXIT=0  (typo'd path)
+#
+# so a typo'd entry silently covers nothing AND moves the answer toward `true`
+# — against this file's stated guarantee that the fast path can NEVER cause a
+# stale bundle to be tested. The list must be kept in lock-step with
+# scripts/vercel-install.sh BY HAND, which is exactly where such a typo comes
+# from. Checking at the TAG rather than at HEAD is deliberate: that is the side
+# whose contents the prebuilt bundle was built from.
+for _p in "${WASM_SRC_PATHS[@]}"; do
+  if [ -z "$(git ls-tree -r --name-only "refs/tags/${WASM_TAG}" -- "${_p}" 2>/dev/null | head -1)" ]; then
+    log "🛠  WASM_SRC_PATHS entry '${_p}' matches no file at ${WASM_TAG} — refusing to trust a"
+    log "    no-diff answer over a pathspec that covers nothing. Build from source."
+    echo false
+    exit 0
+  fi
+done
+
 if git diff --quiet "refs/tags/${WASM_TAG}" HEAD -- "${WASM_SRC_PATHS[@]}"; then
   log "🅰  WASM source identical to ${WASM_TAG} — prebuilt npm bundle is valid."
   echo true

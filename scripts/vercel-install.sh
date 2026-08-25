@@ -51,9 +51,28 @@ if [ -n "${WASM_VERSION:-}" ] && command -v git >/dev/null 2>&1; then
     git fetch --depth=1 "${WASM_REPO_URL}" "+refs/tags/${WASM_TAG}:refs/tags/${WASM_TAG}" 2>&1 \
       | sed 's/^/     git-fetch: /' || true
   fi
+  # Every pathspec must actually MATCH something at the tag before its "no diff"
+  # answer can be trusted (#3200). `git diff --quiet` exits 0 both for "nothing
+  # changed" and for "your pathspec matched nothing at either end", so a typo'd
+  # entry silently covers nothing AND moves the answer toward "reuse the
+  # prebuilt bundle". The list is kept in lock-step with
+  # scripts/ci-wasm-prebuilt-eligible.sh BY HAND, which is exactly where such a
+  # typo comes from — and THIS copy is the production half: a stale bundle here
+  # ships to a Vercel build, where the CI twin only costs runner minutes.
+  _pathspecs_all_match() {
+    for _p in "${WASM_SRC_PATHS[@]}"; do
+      if [ -z "$(git ls-tree -r --name-only "refs/tags/${WASM_TAG}" -- "${_p}" 2>/dev/null | head -1)" ]; then
+        echo "🛠  WASM_SRC_PATHS entry '${_p}' matches no file at ${WASM_TAG} — refusing to trust"
+        echo "   a no-diff answer over a pathspec that covers nothing. Building from source."
+        return 1
+      fi
+    done
+    return 0
+  }
+
   if ! _tag_present; then
     echo "🛠  Release tag ${WASM_TAG} not reachable in this clone — building WASM from source."
-  elif git diff --quiet "refs/tags/${WASM_TAG}" HEAD -- "${WASM_SRC_PATHS[@]}"; then
+  elif _pathspecs_all_match && git diff --quiet "refs/tags/${WASM_TAG}" HEAD -- "${WASM_SRC_PATHS[@]}"; then
     echo "🅰  WASM source identical to ${WASM_TAG} — using prebuilt npm bundle,"
     echo "   skipping Rust toolchain + emsdk bootstrap + from-source compile."
     if node scripts/fetch-prebuilt-wasm.mjs; then

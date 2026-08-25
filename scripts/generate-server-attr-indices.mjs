@@ -49,6 +49,61 @@ const rows = Object.keys(SCHEMA_REGISTRY.entities)
   })
   .sort((a, b) => (a.upper < b.upper ? -1 : 1));
 
+/**
+ * Lower bound on the registry's own size (#3200, finding 4).
+ *
+ * Measured on a healthy tree: 776 entity types in `IFC4_ADD2_TC1`. Set to 500,
+ * about a third of headroom, so ordinary schema churn never forces an edit here
+ * while every way this generator can go blind still trips it — a stale or
+ * half-built `packages/parser/dist` that imports cleanly and exports an empty
+ * `entities` collapses the count to 0, not to 499.
+ *
+ * The sibling `generate-bim-globals.mjs` already refuses the identical
+ * condition in as many words ("refusing to emit an empty bim-globals.d.ts");
+ * this is that refusal, applied here.
+ */
+const REGISTRY_FLOOR = 500;
+
+/**
+ * Lower bound on how many rows RESOLVE at least one of `NAMES` (#3200).
+ *
+ * `REGISTRY_FLOOR` alone cannot see the second way this goes blind: a registry
+ * that still enumerates 776 types while `getAttributeNames` returns nothing for
+ * all of them. The row count stays right, every `idx` is `[-1,-1,-1,-1]`, and
+ * the emitted table is fully armed and uniformly wrong.
+ *
+ * Measured on a healthy tree: 488 of the 776 resolve at least one name. The
+ * other 288 legitimately resolve none — they are not `IfcRoot` subtypes — so
+ * this floor is deliberately below the real number rather than equal to it.
+ * Set to 300.
+ */
+const RESOLVED_FLOOR = 300;
+
+if (rows.length < REGISTRY_FLOOR) {
+  console.error(
+    `\u274c SCHEMA_REGISTRY (${SCHEMA_REGISTRY.name}) enumerated ${rows.length} entity types, ` +
+      `expected at least ${REGISTRY_FLOOR} \u2014 stale or broken ` +
+      'packages/parser/dist; refusing to emit or verify an attr_indices.rs against it.\n' +
+      '   Rebuild with `pnpm turbo build --filter=@ifc-lite/parser` and retry.\n' +
+      '   If the schema genuinely shrank, lower REGISTRY_FLOOR in the same commit.',
+  );
+  process.exit(1);
+}
+
+const resolvedRows = rows.filter(({ idx }) => idx.some((i) => i !== -1)).length;
+if (resolvedRows < RESOLVED_FLOOR) {
+  console.error(
+    `\u274c getAttributeNames resolved at least one of [${NAMES.join(', ')}] for only ` +
+      `${resolvedRows} of ${rows.length} types, expected at least ${RESOLVED_FLOOR} \u2014 ` +
+      'the registry enumerates but its attribute lists are empty, so every arm would be ' +
+      '[-1, -1, -1, -1].\n' +
+      '   Rebuild with `pnpm turbo build --filter=@ifc-lite/parser` and retry.\n' +
+      '   If the schema genuinely stopped carrying these attributes, lower RESOLVED_FLOOR in ' +
+      'the same commit.',
+  );
+  process.exit(1);
+}
+
 const arms = rows
   .map(({ upper, idx }) => `        "${upper}" => Some(RootAttrIndices { description: ${idx[0]}, object_type: ${idx[1]}, tag: ${idx[2]}, predefined_type: ${idx[3]} }),`)
   .join('\n');

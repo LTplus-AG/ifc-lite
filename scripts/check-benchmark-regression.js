@@ -147,6 +147,20 @@ function compareResults() {
           increasePct,
           threshold,
           regressed: increasePct !== null && increasePct > threshold,
+          // A metric that stops being EMITTED gives `percentIncrease` a
+          // non-number and therefore `null`, which `regressed` reads as "fine"
+          // (#3200, finding 8). It is not fine — it is an unmeasured metric,
+          // and rendering it with the same ✅ as a measured pass silently
+          // retires it. Renaming one harness field is enough to do that to a
+          // single metric while the other five keep working.
+          unmeasured: increasePct === null,
+          // LOST is the narrower, actionable half: the BASELINE had a number
+          // and this run does not. Absent on both sides is ordinary — two of
+          // the four committed baseline entries carry only 2 of the 6 metrics,
+          // so failing on plain `unmeasured` would hard-fail the lane the
+          // moment either model entered VIEWER_BENCHMARK_FILES. Only `lost`
+          // gates the exit; `unmeasured` still controls the ⚠ in the report.
+          lost: typeof baselineValue === 'number' && typeof currentValue !== 'number',
         });
       }
     }
@@ -183,6 +197,8 @@ function printConsoleReport(models) {
       const line = `  - ${row.metricName}: ${formatMs(row.currentValue)} vs ${formatMs(row.baselineValue)} (${formatPct(row.increasePct)})`;
       if (row.regressed) {
         console.log(`${line}  ❌ threshold +${row.threshold}%`);
+      } else if (row.unmeasured) {
+        console.log(`${line}  ⚠️  NOT MEASURED (no comparable number on one side)`);
       } else {
         console.log(`${line}  ✅`);
       }
@@ -190,7 +206,20 @@ function printConsoleReport(models) {
   }
 }
 
+/** Metrics whose delta could not be computed at all — see `unmeasured`. */
+function unmeasuredCount(models) {
+  return models.reduce((n, m) => n + m.rows.filter((r) => r.unmeasured).length, 0);
+}
+
+/** Metrics the BASELINE had and this run does not — see `lost`. */
+function lostMetrics(models) {
+  return models.flatMap((m) =>
+    m.rows.filter((r) => r.lost).map((r) => `${m.fileName} :: ${r.metricName}`)
+  );
+}
+
 function buildMarkdownReport(models, regressions) {
+  const unmeasured = unmeasuredCount(models);
   const lines = [];
   lines.push('<!-- viewer-benchmark-report -->');
   lines.push('## Viewer benchmark');
@@ -199,6 +228,11 @@ function buildMarkdownReport(models, regressions) {
     lines.push(
       `⚠ **${regressions.length} metric(s) exceeded the regression threshold**` +
         (advisory ? ' (advisory only, not blocking).' : '.')
+    );
+  } else if (unmeasured > 0) {
+    lines.push(
+      `⚠ **No threshold regressions — but ${unmeasured} metric(s) were NOT MEASURED** ` +
+        '(no comparable number on one side), so this is not a clean bill of health.'
     );
   } else {
     lines.push('✅ No threshold regressions detected.');
@@ -235,7 +269,7 @@ function buildMarkdownReport(models, regressions) {
     lines.push('| Metric | Current | Baseline | Delta | Threshold | Status |');
     lines.push('|---|---|---|---|---|---|');
     for (const row of model.rows) {
-      const status = row.regressed ? '❌' : '✅';
+      const status = row.regressed ? '❌' : row.unmeasured ? '⚠️ not measured' : '✅';
       lines.push(
         `| ${row.metricName} | ${formatMs(row.currentValue)} | ${formatMs(row.baselineValue)} | ` +
           `${formatPct(row.increasePct)} | +${row.threshold}% | ${status} |`
@@ -263,6 +297,36 @@ function main() {
 
   printConsoleReport(models);
 
+  // Harness faults are computed and reported BEFORE the regression branch, and
+  // are NOT covered by `--advisory` (#3200). An earlier version of this put them
+  // after, where the advisory `return` on any threshold regression skipped them
+  // entirely -- so the one run most likely to have a broken harness was the one
+  // that never checked. Thresholds are +50% on a shared runner, so that branch
+  // is taken often.
+  //
+  // `--advisory` exists so a NOISY benchmark cannot block a PR. A benchmark that
+  // did not RUN is a different thing, and has no verdict to soften.
+  const unmeasured = unmeasuredCount(models);
+  const lost = lostMetrics(models);
+  const comparable = models.filter((m) => !m.missingBaseline);
+  const harnessFaults = [];
+
+  if (models.length > 0 && comparable.length === 0) {
+    harnessFaults.push(
+      `${models.length} model(s) ran and NOT ONE had a baseline entry to compare against.\n` +
+        "   Baselines are keyed on the result payload's `file` name, so a renamed fixture misses\n" +
+        '   every lookup and this check then reports a clean run having compared nothing.'
+    );
+  }
+  if (lost.length > 0) {
+    harnessFaults.push(
+      `${lost.length} metric(s) the BASELINE had are not produced by this run:\n` +
+        lost.map((l) => `     - ${l}`).join('\n') +
+        '\n   A metric that stops being emitted is not a passing metric. Check the harness field\n' +
+        '   names before reading anything else as green.'
+    );
+  }
+
   console.log('\n' + '='.repeat(80));
   if (missingBaseline.length > 0) {
     console.log(`Missing baseline entries: ${missingBaseline.length}`);
@@ -271,6 +335,7 @@ function main() {
     }
   }
 
+  // Written BEFORE any exit: on a harness fault this report IS the diagnosis.
   if (markdownPath) {
     writeFileSync(markdownPath, buildMarkdownReport(models, regressions));
     console.log(`Markdown report written to ${markdownPath}`);
@@ -284,16 +349,31 @@ function main() {
           `(${reg.currentValue}ms vs ${reg.baselineValue}ms, allowed +${reg.threshold}%)`
       );
     }
-    if (advisory) {
-      console.log('\nAdvisory mode: regressions reported but not failing the run.');
-      return;
-    }
+    if (!advisory) process.exit(1);
+    console.log('\nAdvisory mode: regressions reported but not failing the run.');
+  } else if (harnessFaults.length > 0) {
+    // Say NOTHING clean here. Printing "No threshold regressions detected."
+    // above an ❌ is the mixed signal this gate exists to remove: with no
+    // baseline matched there are no rows, so there are trivially no
+    // regressions, and that sentence is true and useless. A reader skimming
+    // for a verdict finds the reassuring one first.
+    console.log('\nNo verdict: see the harness fault(s) below.');
+  } else if (unmeasured > 0) {
+    console.log('\nNo threshold regressions among the metrics that WERE measured.');
+  } else {
+    console.log('\nNo threshold regressions detected.');
+  }
+
+  if (harnessFaults.length > 0) {
+    for (const f of harnessFaults) console.error(`\n\u274c ${f}`);
+    console.error(
+      '\n   Not softened by --advisory: these say the check did not run, not that it is slow.'
+    );
     process.exit(1);
   }
 
-  console.log('\nNo threshold regressions detected.');
-  if (missingBaseline.length > 0) {
-    console.log('Some models are missing baseline entries (warning only).');
+  if (missingBaseline.length > 0 && missingBaseline.length < models.length) {
+  console.log(`Some models are missing baseline entries (${missingBaseline.length} of ${models.length}).`);
   }
 }
 

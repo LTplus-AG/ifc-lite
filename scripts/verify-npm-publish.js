@@ -22,11 +22,22 @@
 import { execSync } from 'child_process';
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import { dirname, join, resolve } from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const rootDir = join(__dirname, '..');
+
+// `--root <dir>` points the package scan at an alternate tree, the same seam
+// check-test-glob-coverage.mjs and check-server-bin-targets.mjs use. It exists
+// so the regression harness can drive the FLOOR below over a synthetic tree —
+// a floor nobody ever sees fire is the same shape of unexamined instrument this
+// gate was fixed for (#3200). It does NOT affect which registry is queried.
+const rootFlagIdx = process.argv.indexOf('--root');
+if (rootFlagIdx !== -1 && !process.argv[rootFlagIdx + 1]) {
+  console.error('--root requires a directory argument');
+  process.exit(2);
+}
+const rootDir = rootFlagIdx === -1 ? join(__dirname, '..') : resolve(process.argv[rootFlagIdx + 1]);
 
 // ── CLI option parsing ────────────────────────────────────────────────────────
 
@@ -74,30 +85,50 @@ function npmReason(error) {
   return text.split('\n').find((l) => l.trim()) ?? null;
 }
 
+// This gate runs AFTER publish, so a path it cannot read is a release reporting
+// itself verified with a package silently missing from the set (#3200). One
+// helper for both call sites so the two messages cannot drift apart.
+function refuseUnreadable(verb, path, error) {
+  console.error(
+    `❌ Could not ${verb} ${path} (${error.code || error.message}).\n` +
+      '   Refusing to verify a release over a package set this gate could not read.',
+  );
+  process.exit(2);
+}
+
 function getWorkspacePackages() {
   const packages = [];
   for (const parent of ['packages', 'apps']) {
     const parentDir = join(rootDir, parent);
     try {
-      for (const entry of readdirSync(parentDir)) {
-        const pkgJsonPath = join(parentDir, entry, 'package.json');
+      // `withFileTypes`: a plain FILE under packages/ or apps/ -- a `.DS_Store`
+      // on any macOS checkout -- makes `statSync(<file>/package.json)` throw
+      // ENOTDIR, which the refusal below would report as "could not read",
+      // aborting the release verification with a false diagnosis. Nothing was
+      // unreadable; it simply is not a package directory (#3200 review).
+      for (const dirent of readdirSync(parentDir, { withFileTypes: true })) {
+        if (!dirent.isDirectory() && !dirent.isSymbolicLink()) continue;
+        const pkgJsonPath = join(parentDir, dirent.name, 'package.json');
         try {
           statSync(pkgJsonPath);
           packages.push(pkgJsonPath);
         } catch (error) {
-          // A directory with no package.json is ordinary; anything else means
-          // we may be skipping a package we were asked to verify.
-          if (error.code !== 'ENOENT') {
-            console.warn(`⚠️  Could not stat ${pkgJsonPath}, skipping it (${error.message})`);
+          // A directory with no package.json is ordinary. Anything else means we
+          // may be skipping a package we were asked to verify, and this gate
+          // runs AFTER publish — a warning here is a release reporting itself
+          // verified with a package silently missing from the set (#3200).
+          // ENOTDIR reaches here only via a symlink to a non-directory, which
+          // is likewise "not a package", not "unreadable".
+          if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') {
+            refuseUnreadable('stat', pkgJsonPath, error);
           }
         }
       }
     } catch (error) {
-      // Same: an absent `apps/` or `packages/` is ordinary, but an unreadable
-      // one silently shrinks the set this release gate checks.
-      if (error.code !== 'ENOENT') {
-        console.warn(`⚠️  Could not list ${parentDir}, skipping it (${error.message})`);
-      }
+      // Same: an absent `apps/` or `packages/` is ordinary (only one of the two
+      // holds publishable packages today), but an unreadable one silently
+      // shrinks the set this release gate checks (#3200).
+      if (error.code !== 'ENOENT') refuseUnreadable('list', parentDir, error);
     }
   }
   return packages;
@@ -124,9 +155,30 @@ async function main() {
     toCheck.push({ name: pkg.name, version: pkg.version });
   }
 
-  if (toCheck.length === 0) {
-    console.log('No publishable packages found.');
-    process.exit(0);
+  // One level past the discovery floor above, and the one that actually bites
+  // (#3200, finding 7): `packagePaths` can be healthy while every manifest reads
+  // as private or version-less, which is what a half-written or half-read tree
+  // looks like. Exiting 0 there prints "No publishable packages found" and the
+  // release lane goes green having checked nothing.
+  //
+  // Measured on a healthy tree: 42 publishable packages, all under `packages/`
+  // (`scripts/docs/check-package-readmes.mjs` carries a sibling floor over what
+  // is today the same 42)
+  // (`apps/` currently has none, which is why this is a floor on the TOTAL and
+  // not per-parent). Set to 25 — enough headroom that retiring or privatising a
+  // handful never forces an edit, while every way discovery goes blind
+  // collapses the count toward 0 rather than to 24.
+  const PUBLISHABLE_FLOOR = 25;
+  if (toCheck.length < PUBLISHABLE_FLOOR) {
+    console.error(
+      `❌ Only ${toCheck.length} publishable package(s) found among ${packagePaths.length} ` +
+        `manifest(s), expected at least ${PUBLISHABLE_FLOOR}.\n` +
+        '   This gate runs after publish, so reporting a release as verified here would ' +
+        'assert something it never checked.\n' +
+        '   If packages were genuinely removed or privatised, lower PUBLISHABLE_FLOOR in the ' +
+        'same commit.',
+    );
+    process.exit(2);
   }
 
   console.log(`\nVerifying ${toCheck.length} package(s) on npm (up to ${retries} retries each)…\n`);

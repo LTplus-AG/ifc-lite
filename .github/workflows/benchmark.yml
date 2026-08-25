@@ -155,16 +155,28 @@ jobs:
           PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/playwright-benchmark.json
         run: pnpm test:benchmark:viewer:ci
 
+      # The check can now FAIL on a harness fault (#3200) -- a renamed fixture
+      # that matches no baseline, or a metric the baseline had and this run
+      # lost. Those are "the benchmark did not run", not "the benchmark is
+      # slow", so `--advisory` does not cover them.
+      #
+      # The summary is written FIRST, unconditionally: the report is the
+      # DIAGNOSIS of that failure, and a `bash -e` step that dies before the
+      # `cat` would throw away exactly the output someone needs to fix it.
       - name: Check against baseline (advisory)
         run: |
+          set +e
           node scripts/check-benchmark-regression.js --advisory --markdown "$RUNNER_TEMP/benchmark-report.md"
-          cat "$RUNNER_TEMP/benchmark-report.md" >> "$GITHUB_STEP_SUMMARY"
+          status=$?
+          set -e
+          [ -f "$RUNNER_TEMP/benchmark-report.md" ] && cat "$RUNNER_TEMP/benchmark-report.md" >> "$GITHUB_STEP_SUMMARY"
+          exit $status
 
       # Sticky comment: update the existing benchmark comment if present,
       # else create one. Best-effort — fork PRs get a read-only token, and
       # the step summary above already carries the same report.
       - name: Comment benchmark report on PR
-        if: github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -197,12 +209,15 @@ jobs:
       # run's numbers into baseline.json and upload it as an artifact. A human
       # (or agent) commits it via a normal PR so the change is reviewed like
       # any other — this job intentionally has no push access.
+      # `always()`: this dispatch is how a stale baseline gets fixed, so it must
+      # still run when the baseline check failed BECAUSE the baseline is stale
+      # (#3200). Gating it on success deadlocks the only supported repair path.
       - name: Record refreshed baseline
-        if: github.event_name == 'workflow_dispatch' && inputs.record_baseline
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.record_baseline
         run: node scripts/update-benchmark-baseline.mjs --environment "github-actions ubuntu-latest, viewer-benchmark-ci (headless Chrome, SwiftShader ANGLE), production build"
 
       - name: Upload refreshed baseline
-        if: github.event_name == 'workflow_dispatch' && inputs.record_baseline
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.record_baseline
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: benchmark-baseline

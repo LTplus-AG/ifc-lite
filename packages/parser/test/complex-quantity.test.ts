@@ -168,8 +168,11 @@ describe('IfcPhysicalComplexQuantity (#3254)', () => {
 
     const qsets = extractQuantitiesOnDemand(store, 10);
     const byName = new Map(qsets.map((q) => [q.name, q.quantities]));
-    // The all-complex set contributes no quantities at all...
-    expect(byName.get('Qto_AllComplex')).toEqual([]);
+    // The all-complex set contributes no quantities at all, so it walks to an
+    // empty `IfcElementQuantity` and is dropped entirely (#3259): `Quantities`
+    // is `SET [1:?]`, and reporting the name alone would claim the element has
+    // quantities when it has none.
+    expect(byName.has('Qto_AllComplex')).toBe(false);
     // ...while the control set beside it is untouched.
     expect(byName.get('Qto_WallBaseQuantities')).toEqual([
       { name: 'NetWidth', type: QuantityType.Length, value: 0.25 },

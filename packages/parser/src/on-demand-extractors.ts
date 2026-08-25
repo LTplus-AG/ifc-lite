@@ -18,7 +18,7 @@ import {
 } from '@ifc-lite/data';
 import type { PropertyValue } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
-import { collectQuantitiesFromRefs } from './quantity-collect.js';
+import { readQuantitySet } from './quantity-collect.js';
 import { extractGeoreferencing as extractGeorefFromEntities, type GeoreferenceInfo } from './georef-extractor.js';
 
 // Re-export classification and material resolvers
@@ -532,22 +532,12 @@ export function extractQsetsFromIds(
         // Only extract IFCELEMENTQUANTITY entities (skip property sets etc.)
         if (qsetRef.type.toUpperCase() !== 'IFCELEMENTQUANTITY') continue;
 
-        const qsetEntity = extractor.extractEntity(qsetRef);
-        if (!qsetEntity) continue;
-
-        const qsetAttrs = qsetEntity.attributes || [];
-        const qsetName = typeof qsetAttrs[2] === 'string' ? qsetAttrs[2] : `QuantitySet #${qsetId}`;
-        const hasQuantities = qsetAttrs[5];
-
-        const quantities = collectQuantitiesFromRefs(store, extractor, hasQuantities);
-
-        // Only surface sets that actually carry quantities. An empty set would
-        // add nothing to a schedule, and (because `extractTypeQuantitiesOnDemand`
-        // dedups by name) an empty set from one source could otherwise suppress a
-        // populated same-named set from another.
-        if (quantities.length > 0) {
-            result.push({ name: qsetName, quantities });
-        }
+        // A set that walks to zero quantities is dropped — see
+        // {@link readQuantitySet}. Here that also stops an empty set from one
+        // source suppressing a populated same-named set from another, since
+        // `extractTypeQuantitiesOnDemand` dedups by name.
+        const qset = readQuantitySet(store, extractor, qsetRef, qsetId);
+        if (qset) result.push(qset);
     }
 
     return result;

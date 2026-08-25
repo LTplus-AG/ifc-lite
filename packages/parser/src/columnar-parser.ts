@@ -15,7 +15,7 @@ import { EntityExtractor } from './entity-extractor.js';
 import { extractLengthUnitScale } from './unit-extractor.js';
 import { getAttributeNames, getAttributeNamesAcrossSchemas, getInheritanceChain } from './ifc-schema.js';
 import { parsePropertyValue } from './on-demand-extractors.js';
-import { collectQuantitiesFromRefs } from './quantity-collect.js';
+import { readQuantitySet } from './quantity-collect.js';
 import { buildCompactEntityIndexAsync } from './compact-entity-index.js';
 import { yieldToEventLoop } from './yield-to-event-loop.js';
 import {
@@ -872,18 +872,8 @@ export class ColumnarParser {
             const qsetRef = getEntityRefFromStore(store, qsetId);
             if (!qsetRef) continue;
 
-            const qsetEntity = extractor.extractEntity(qsetRef);
-            if (!qsetEntity) continue;
-
-            const qsetAttrs = qsetEntity.attributes || [];
-            const qsetName = typeof qsetAttrs[2] === 'string' ? qsetAttrs[2] : `QuantitySet #${qsetId}`;
-            const hasQuantities = qsetAttrs[5];
-
-            const quantities = collectQuantitiesFromRefs(store, extractor, hasQuantities);
-
-            if (quantities.length > 0 || qsetName) {
-                result.push({ name: qsetName, quantities });
-            }
+            const qset = readQuantitySet(store, extractor, qsetRef, qsetId);
+            if (qset) result.push(qset);
         }
 
         return result;

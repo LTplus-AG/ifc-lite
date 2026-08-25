@@ -61,7 +61,7 @@ fn check_submesh_ids_preserved_and_triangles_removed(
     // meshes would report an IfcMaterial id it does not have.
     for (label, collection) in [("uncut", uncut), ("cut", cut)] {
         assert!(
-            !collection.ids_are_material_layers,
+            !collection.ids_are_materials,
             "[{name}] {label} sub-meshes are IfcExtrudedAreaSolids, not material layers"
         );
     }

@@ -5,7 +5,7 @@
 //! #3199 — which entity a [`MeshData`] names, and how a host can trust it.
 //!
 //! A mesh carries EITHER `geometry_item_id` (the `IfcRepresentationItem` it was
-//! tessellated from) OR `material_layer_id` (the `IfcMaterial` whose layer it is
+//! tessellated from) OR `material_id` (the `IfcMaterial` whose layer it is
 //! a slice of), never both. Before #3199 the material id rode in
 //! `geometry_item_id`, so following the field on a layered wall landed on an
 //! `IfcMaterial` with nothing to warn the caller.
@@ -21,16 +21,13 @@
 use ifc_lite_core::{EntityDecoder, IfcType};
 use ifc_lite_geometry::{GeometryRouter, MaterialLayerIndex};
 use ifc_lite_processing::element::{
+    GEOM_CLASS_LAYER_SLICE,
     produce_element_meshes, ElementJobKind, ElementMeshJob, MeshProductionContext,
     MeshProductionOptions,
 };
 use ifc_lite_processing::{process_geometry, MeshData};
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
-
-/// `GEOM_CLASS_LAYER_SLICE` — the value the mesh producer stamps on any element
-/// whose buildup the layer index calls sliceable.
-const LAYER_SLICE: u8 = 3;
 
 /// A three-layer wall (50 mm finish / 200 mm core / 50 mm finish, materials
 /// #200/#201/#200) whose body representation holds `items`.
@@ -91,6 +88,26 @@ END-ISO-10303-21;
     )
 }
 
+/// The same wall with its MIDDLE layer turned into an AIR GAP: `#211`'s
+/// `Material` reference is `$`, which the schema permits —
+/// `IfcMaterialLayer.Material` is OPTIONAL and a ventilated cavity is the
+/// canonical reason to leave it out.
+///
+/// `material_layer_index.rs` reads it as `layer.get_ref(0).unwrap_or(0)`, so
+/// that layer reaches the slicer with `material_id == 0`. `0` is that
+/// function's "no reference" sentinel, NOT an entity: STEP instance names start
+/// at `#1`. Emitting it would make the slab claim to be a slice of
+/// `IfcMaterial #0` and send a host following the id to nothing at all.
+fn three_layer_wall_with_air_gap(items: &str) -> String {
+    let s = three_layer_wall(items);
+    let with_gap = s.replace(
+        "#211=IFCMATERIALLAYER(#201,0.2,$,'Core',$,$,$);",
+        "#211=IFCMATERIALLAYER($,0.2,$,'AirGap',$,$,$);",
+    );
+    assert_ne!(with_gap, s, "the air-gap substitution did not apply");
+    with_gap
+}
+
 /// Mesh wall #100 through `produce_element_meshes` with the router's
 /// `MaterialLayerIndex` wired — the arming the native pipeline
 /// (`processor/mod.rs`) and the wasm batch path both do. Returns the meshes and
@@ -139,37 +156,37 @@ fn produce_wall(content: &str) -> (Vec<MeshData>, bool) {
 fn assert_ids_disjoint(meshes: &[MeshData], what: &str) {
     for m in meshes {
         assert!(
-            !(m.geometry_item_id.is_some() && m.material_layer_id.is_some()),
-            "[{what}] mesh of #{} carries BOTH geometry_item_id {:?} and material_layer_id {:?}",
+            !(m.geometry_item_id.is_some() && m.material_id.is_some()),
+            "[{what}] mesh of #{} carries BOTH geometry_item_id {:?} and material_id {:?}",
             m.express_id,
             m.geometry_item_id,
-            m.material_layer_id
+            m.material_id
         );
     }
 }
 
-fn geometry_fixture(name: &str) -> Option<String> {
-    let path = format!(
-        "{}/../geometry/tests/fixtures/{name}",
-        env!("CARGO_MANIFEST_DIR")
-    );
-    match std::fs::read_to_string(&path) {
-        Ok(s) => Some(s),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            eprintln!(
-                "skipping #3199 mapped-item id test: fixture missing at {path} — \
-                 it is tracked in git, so restore it with `git checkout -- {path}` \
-                 (`pnpm fixtures` fetches the downloaded corpus, not this file)"
-            );
-            None
-        }
-        Err(e) => panic!("failed to read fixture {path}: {e}"),
-    }
+fn geometry_fixture(name: &str) -> String {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../geometry/tests/fixtures")
+        .join(name);
+    // PANIC rather than skip. These fixtures are TRACKED IN GIT -- `pnpm
+    // fixtures` does not fetch them and nothing else can remove them -- so a
+    // missing one is a broken checkout, not an unavailable corpus. Returning
+    // `Option` and letting the caller `return` turned that into a test that
+    // passed by asserting nothing, in the one file whose whole job is pinning
+    // provenance. Absence must not read as success (#3199).
+    std::fs::read_to_string(&path).unwrap_or_else(|e| {
+        panic!(
+            "fixture {} is tracked in git; restore it with `git checkout -- {}`: {e}",
+            path.display(),
+            path.display()
+        )
+    })
 }
 
 /// Every slab of a sliced layered wall names its `IfcMaterial` and nothing else.
 ///
-/// Regresses to the pre-#3199 lie if `material_layer_id` stops being routed:
+/// Regresses to the pre-#3199 lie if `material_id` stops being routed:
 /// the material ids would reappear in `geometry_item_id`, where a host following
 /// the field to source lands on `IfcMaterial` #200 instead of a geometry item.
 #[test]
@@ -181,7 +198,7 @@ fn layered_wall_slices_name_their_material_not_a_representation_item() {
 
     assert_eq!(meshes.len(), 3, "expected one mesh per layer");
     for m in &meshes {
-        assert_eq!(m.geometry_class, LAYER_SLICE);
+        assert_eq!(m.geometry_class, GEOM_CLASS_LAYER_SLICE);
         assert_eq!(
             m.geometry_item_id, None,
             "a layer slab is not a representation item, got {:?}",
@@ -192,7 +209,7 @@ fn layered_wall_slices_name_their_material_not_a_representation_item() {
     // #200 Finish, #201 Core, #200 Finish — in stack order, the two outer
     // finishes sharing one material. Named, not `is_some()`: a slab pointing at
     // the wrong material is the failure a presence check would pass.
-    let materials: Vec<Option<u32>> = meshes.iter().map(|m| m.material_layer_id).collect();
+    let materials: Vec<Option<u32>> = meshes.iter().map(|m| m.material_id).collect();
     assert_eq!(
         materials,
         vec![Some(200), Some(201), Some(200)],
@@ -228,11 +245,11 @@ fn sliceable_wall_that_did_not_slice_keeps_representation_item_ids() {
     );
     for m in &meshes {
         assert_eq!(
-            m.geometry_class, LAYER_SLICE,
+            m.geometry_class, GEOM_CLASS_LAYER_SLICE,
             "the class is stamped before the geometry runs, so it must still be 3 here"
         );
         assert_eq!(
-            m.material_layer_id, None,
+            m.material_id, None,
             "no layer was cut, so nothing may claim to be a material slice"
         );
     }
@@ -255,9 +272,7 @@ fn sliceable_wall_that_did_not_slice_keeps_representation_item_ids() {
 /// to per-occurrence ids should be deliberate, and this fails when it is not.
 #[test]
 fn mapped_item_meshes_name_the_solid_inside_the_map() {
-    let Some(content) = geometry_fixture("mapped_instances_multi_item.ifc") else {
-        return;
-    };
+    let content = geometry_fixture("mapped_instances_multi_item.ifc");
     let result = process_geometry(&content);
     assert_ids_disjoint(&result.meshes, "mapped_instances_multi_item");
 
@@ -287,7 +302,7 @@ fn mapped_item_meshes_name_the_solid_inside_the_map() {
             m.express_id,
             m.geometry_item_id
         );
-        assert_eq!(m.material_layer_id, None, "no material layers in this file");
+        assert_eq!(m.material_id, None, "no material layers in this file");
     }
 }
 
@@ -297,9 +312,7 @@ fn mapped_item_meshes_name_the_solid_inside_the_map() {
 /// or either `IfcRepresentationMap` (#14, #21).
 #[test]
 fn nested_mapped_item_meshes_name_the_innermost_solids() {
-    let Some(content) = geometry_fixture("nested_mapped_item.ifc") else {
-        return;
-    };
+    let content = geometry_fixture("nested_mapped_item.ifc");
     let result = process_geometry(&content);
     assert_ids_disjoint(&result.meshes, "nested_mapped_item");
 
@@ -323,6 +336,126 @@ fn nested_mapped_item_meshes_name_the_innermost_solids() {
             m.express_id,
             m.geometry_item_id
         );
-        assert_eq!(m.material_layer_id, None, "no material layers in this file");
+        assert_eq!(m.material_id, None, "no material layers in this file");
     }
+}
+
+/// #3199 — the REST wire names, pinned.
+///
+/// `apps/server/src/types/mesh.rs` re-exports this very struct, so whatever
+/// serde spells here is what a REST consumer reads, and
+/// `packages/server-client/src/types.ts` declares those names by hand. Nothing
+/// mechanical holds the two together — the TS mirror is a hand-written copy —
+/// so this test pins the half that a Rust-side rename would silently move.
+///
+/// It also pins the ABSENT encoding, which is the part a `field?: number`
+/// mirror gets wrong most easily: both fields carry
+/// `skip_serializing_if = "Option::is_none"`, so `None` is a MISSING KEY and
+/// never `null`. A TS optional means absent, not nullable, so the two agree
+/// only while that attribute stays on. Drop it and the mirror becomes wrong
+/// without a single line of TS changing.
+#[test]
+fn the_two_id_fields_serialize_under_the_names_the_rest_mirror_declares() {
+    let mut mesh = MeshData::new(
+        1,
+        "IfcWall".to_string(),
+        vec![0.0; 9],
+        vec![0.0; 9],
+        vec![0, 1, 2],
+        [1.0, 1.0, 1.0, 1.0],
+    );
+
+    // Rep-item side: the name is present, the material name is not.
+    mesh = mesh.with_style_metadata(None, Some(42), false);
+    let v = serde_json::to_value(&mesh).expect("MeshData serializes");
+    assert_eq!(
+        v.get("geometry_item_id").and_then(|x| x.as_u64()),
+        Some(42),
+        "the REST mirror declares `geometry_item_id`"
+    );
+    assert!(
+        v.get("material_id").is_none(),
+        "an absent material layer must be a MISSING KEY, not null — \
+         `material_id?: number` in the TS mirror means absent, and a \
+         `null` would type-error there: got {:?}",
+        v.get("material_id")
+    );
+
+    // Material side: the same two names, the other way round.
+    let mesh = mesh.with_style_metadata(None, Some(7), true);
+    let v = serde_json::to_value(&mesh).expect("MeshData serializes");
+    assert_eq!(
+        v.get("material_id").and_then(|x| x.as_u64()),
+        Some(7),
+        "the REST mirror declares `material_id`"
+    );
+    assert!(
+        v.get("geometry_item_id").is_none(),
+        "the setter must CLEAR the other field, or the wire carries both and \
+         the disjointness the mirror documents is false over REST: got {:?}",
+        v.get("geometry_item_id")
+    );
+}
+
+
+/// #3199 follow-up — an AIR GAP layer must not be reported as `IfcMaterial #0`.
+///
+/// The middle layer omits its `Material`, so the slicer receives `material_id
+/// == 0` for it. Before the `source_id.filter(|&id| id != 0)` in
+/// `with_style_metadata`, that slab came back carrying `material_id: Some(0)`.
+/// The disjointness was airtight and the navigability was not: `#0` is not an
+/// entity, and following it is the one thing this field exists for.
+///
+/// This is the pre-#3199 defect one field over — an id that a host cannot
+/// follow, with nothing in the payload to say so — so it is pinned here rather
+/// than left to the reviewer who noticed it.
+#[test]
+fn an_air_gap_layer_reports_no_material_rather_than_material_zero() {
+    let (meshes, sliceable) = produce_wall(&three_layer_wall_with_air_gap("#40"));
+    assert!(
+        sliceable,
+        "the fixture must still slice, or this test proves nothing about the slice path"
+    );
+    assert_ids_disjoint(&meshes, "air_gap_wall");
+
+    // Non-vacuity FIRST: the real materials must still come through, otherwise
+    // "no mesh carries 0" is satisfied by no mesh carrying anything.
+    let materials: Vec<u32> = meshes.iter().filter_map(|m| m.material_id).collect();
+    assert!(
+        materials.contains(&200),
+        "the two Finish layers still name IfcMaterial #200: got {materials:?}"
+    );
+    assert!(
+        !materials.contains(&201),
+        "#201 is no longer referenced by any layer in this fixture: got {materials:?}"
+    );
+
+    // The air-gap slab itself: present as geometry, absent as a material.
+    assert!(
+        !materials.contains(&0),
+        "an air gap reported `IfcMaterial #0`, which is not an entity: got {materials:?}"
+    );
+    for m in &meshes {
+        assert_ne!(
+            m.material_id,
+            Some(0),
+            "mesh of #{} carries material_id 0",
+            m.express_id
+        );
+        assert_ne!(
+            m.geometry_item_id,
+            Some(0),
+            "mesh of #{} carries geometry_item_id 0 — 0 is not a STEP instance name",
+            m.express_id
+        );
+    }
+
+    // And the gap did produce a slab: three layers in, three slabs out. If the
+    // filter had instead DROPPED the mesh, this count would fall to 2 and the
+    // assertions above would pass for the wrong reason.
+    let slabs = meshes.len();
+    assert_eq!(
+        slabs, 3,
+        "the air-gap layer must still be MESHED, only unattributed — got {slabs} slabs"
+    );
 }

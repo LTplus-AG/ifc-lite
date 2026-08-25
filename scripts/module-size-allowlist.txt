@@ -321,7 +321,7 @@
   1082 packages/server-client/src/client.ts
    775 packages/server-client/src/data-model-decoder.ts
    517 packages/server-client/src/parquet-tables.ts
-   772 packages/server-client/src/types.ts
+   627 packages/server-client/src/types.ts
    411 packages/source-dalux/src/http-client.ts
    406 packages/source-dalux/src/provider.ts
    432 packages/source-dropbox/src/provider.ts

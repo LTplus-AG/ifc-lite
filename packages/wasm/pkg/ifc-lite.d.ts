@@ -1036,7 +1036,7 @@ export class MeshDataJs {
     readonly geometryClass: number;
     /**
      * Source `IfcRepresentationItem`, or `undefined` where identity is merged
-     * away. Never set alongside `materialLayerId` (#3199).
+     * away. Never set alongside `materialId` (#3199).
      */
     readonly geometryItemId: number | undefined;
     /**
@@ -1066,7 +1066,7 @@ export class MeshDataJs {
     /**
      * `IfcMaterial` layer sliced, or `undefined` (#3199).
      */
-    readonly materialLayerId: number | undefined;
+    readonly materialId: number | undefined;
     /**
      * Get normals as Float32Array (copy to JS)
      */
@@ -1991,7 +1991,7 @@ export interface InitOutput {
     readonly meshdatajs_indices: (a: number) => number;
     readonly meshdatajs_localBounds: (a: number, b: number) => void;
     readonly meshdatajs_localToWorld: (a: number, b: number) => void;
-    readonly meshdatajs_materialLayerId: (a: number) => number;
+    readonly meshdatajs_materialId: (a: number) => number;
     readonly meshdatajs_normals: (a: number) => number;
     readonly meshdatajs_origin: (a: number) => number;
     readonly meshdatajs_positions: (a: number) => number;

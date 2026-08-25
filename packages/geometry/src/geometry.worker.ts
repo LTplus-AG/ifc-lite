@@ -1003,9 +1003,9 @@ function collectMeshes(
           ...(origin ? { origin } : {}),
           ...(localBounds ? { localBounds } : {}),
           ...(localToWorld ? { localToWorld } : {}),
-          // Model/Types provenance + the two DISJOINT source ids (#3199); older wasm lacks all three getters.
-          geometryClass: mesh.geometryClass ?? 0,
-          ...(mesh.geometryItemId !== undefined ? { geometryItemId: mesh.geometryItemId } : mesh.materialLayerId !== undefined ? { materialLayerId: mesh.materialLayerId } : {}),
+          geometryClass: mesh.geometryClass ?? 0, // 0=occurrence 1=orphan type 2=instanced type; older wasm lacks all three getters here
+          ...(mesh.geometryItemId !== undefined ? { geometryItemId: mesh.geometryItemId } : {}), // #3199: two DISJOINT ids, TWO
+          ...(mesh.materialId !== undefined ? { materialId: mesh.materialId } : {}), // spreads as in convertMeshCollectionToBatch
         };
         session.pendingTransfers.push(positions.buffer, normals.buffer, indices.buffer);
         session.cumulativeMeshBytes += positions.byteLength + normals.byteLength + indices.byteLength;

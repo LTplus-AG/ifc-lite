@@ -2038,7 +2038,7 @@ impl GeometryRouter {
         // items, which is the exact confusion #3199 removes.
         let mut voided = SubMeshCollection {
             sub_meshes: Vec::new(),
-            ids_are_material_layers: sub_meshes.ids_are_material_layers,
+            ids_are_materials: sub_meshes.ids_are_materials,
         };
         for sub in sub_meshes.sub_meshes {
             let geometry_id = sub.geometry_id;

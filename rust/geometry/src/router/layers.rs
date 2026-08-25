@@ -562,7 +562,7 @@ fn slice_mesh_into_layers(
 
     let clipper = ClippingProcessor::new();
     // Material-layer ids, not representation items -- see the flag's doc (#3199).
-    let mut out = SubMeshCollection::of_material_layers();
+    let mut out = SubMeshCollection::of_materials();
 
     // Carve each layer's band off a running REMAINDER at the interface planes,
     // and DO NOT cap the cut. Two design choices, one fix:

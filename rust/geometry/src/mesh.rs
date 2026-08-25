@@ -124,23 +124,23 @@ pub struct SubMeshCollection {
     /// static check made BEFORE the geometry runs, while
     /// `try_layered_sub_meshes` can still return `None` and fall through to the
     /// rep-item path — so rep-item ids can carry class 3 (#3199).
-    pub ids_are_material_layers: bool,
+    /// SCOPE: it decides only which FIELD `emit_sub_meshes` emits the id under —
+    /// five style lookups in `element.rs` still read `geometry_id` as a rep item
+    /// on BOTH paths, safe only by express-id uniqueness (#3211).
+    pub ids_are_materials: bool,
 }
 
 impl SubMeshCollection {
     /// Create a new empty collection
     pub fn new() -> Self {
-        Self {
-            sub_meshes: Vec::new(),
-            ids_are_material_layers: false,
-        }
+        Self::default()
     }
 
     /// `geometry_id`s are `IfcMaterial` ids. Only `layers.rs` builds these.
-    pub fn of_material_layers() -> Self {
+    pub fn of_materials() -> Self {
         Self {
-            sub_meshes: Vec::new(),
-            ids_are_material_layers: true,
+            ids_are_materials: true,
+            ..Self::default()
         }
     }
 

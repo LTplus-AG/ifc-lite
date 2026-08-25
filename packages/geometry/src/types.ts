@@ -56,14 +56,14 @@ export interface MeshData {
   entityIds?: Uint32Array;
   /** The `IfcRepresentationItem` this mesh came from, so a host can drill from
    *  a rendered piece to its entity (#2985). ALWAYS a representation item;
-   *  `materialLayerId` carries the other case and the two are NEVER both set.
+   *  `materialId` carries the other case and the two are NEVER both set.
    *  Absent where identity is merged away (single-mesh fallback, cached
    *  `IfcMappedItem`, GPU instancing) (#3199). */
   geometryItemId?: number;
   /** The `IfcMaterial` layer this mesh slices. DISJOINT from `geometryItemId`,
    *  which used to carry it — so following that field for a layered wall landed
    *  on the wrong entity. `geometryClass === 3` cannot substitute (#3199). */
-  materialLayerId?: number;
+  materialId?: number;
   /** Per-vertex texture coordinates (u, v pairs, 1:1 with positions), present
    *  only for textured meshes (issue #961). */
   uvs?: Float32Array;

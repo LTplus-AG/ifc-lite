@@ -80,12 +80,19 @@ export function writeMeshRecord(writer: BufferWriter, mesh: MeshData): void {
   // this piece was tessellated from, or the material layer it slices. Written
   // unconditionally as two u32 so the record stays fixed-shape.
   //
-  // The absent sentinel is 0xFFFFFFFF, NOT 0. `layers.rs` uses `0` for a layer
-  // with no material — an air gap — so a 0 here is a real value that must round
-  // trip. Treating it as absent is the valid-but-falsy trap, and it would have
-  // silently dropped exactly the layers that are hardest to notice missing.
+  // The absent sentinel is 0xFFFFFFFF, NOT 0, and the reason is worth keeping
+  // straight because it CHANGED during #3199. `layers.rs` decodes a layer with
+  // no material — an air gap — as `material_id = 0`, so 0 reached this writer
+  // and the first draft encoded "absent" as 0, which silently dropped exactly
+  // those layers: the valid-but-falsy trap.
+  //
+  // The producer now filters it instead (`with_style_metadata` maps a source id
+  // of 0 to `None`, because `#0` is not a STEP instance name), so nothing
+  // upstream emits 0 today. This layer does NOT rely on that: an encoding whose
+  // absence marker is a value the domain can produce is one upstream change
+  // away from being wrong again, and 0xFFFFFFFF costs nothing.
   writer.writeUint32(mesh.geometryItemId ?? ABSENT_SOURCE_ID);
-  writer.writeUint32(mesh.materialLayerId ?? ABSENT_SOURCE_ID);
+  writer.writeUint32(mesh.materialId ?? ABSENT_SOURCE_ID);
 
   // Write per-element local-frame origin (v6+, 3×f64): world = origin +
   // position. [0,0,0] for absolute meshes. Without it a cache from a
@@ -109,7 +116,7 @@ export function meshRecordByteLength(mesh: MeshData): number {
     16 +                   // color f32x4
     4 + ifcTypeBytes +     // ifcType string
     1 +                    // geometryClass
-    8 +                    // geometryItemId + materialLayerId u32x2 (v14+)
+    8 +                    // geometryItemId + materialId u32x2 (v14+)
     24 +                   // origin f64x3
     mesh.positions.byteLength + mesh.normals.byteLength + mesh.indices.byteLength
   );
@@ -195,19 +202,20 @@ export function readMeshRecord(reader: BufferReader, version: number, meshIndex:
   // viewer's bumped cache key, so they re-mesh fresh rather than load here.
   const geometryClass = version >= 5 ? reader.readUint8() : 0;
 
-  // Read the two disjoint source ids (version 14+, #3199). 0 means absent.
+  // Read the two disjoint source ids (version 14+, #3199). See
+  // ABSENT_SOURCE_ID for what "absent" is encoded as, and why it is not 0.
   // Older caches predate the fields entirely and leave both undefined, which is
   // the same state the runtime uses where the identity is genuinely merged away
   // -- so a v13 cache degrades to "unknown", never to a WRONG id.
   let geometryItemId: number | undefined;
-  let materialLayerId: number | undefined;
+  let materialId: number | undefined;
   if (version >= 14) {
     const gid = reader.readUint32();
     const mid = reader.readUint32();
     // Compared against the sentinel, never for truthiness: 0 is a real
     // material-layer id (an air gap) and must survive the round trip.
     if (gid !== ABSENT_SOURCE_ID) geometryItemId = gid;
-    if (mid !== ABSENT_SOURCE_ID) materialLayerId = mid;
+    if (mid !== ABSENT_SOURCE_ID) materialId = mid;
   }
 
   // Read per-element local-frame origin (version 6+); world = origin + position.
@@ -234,7 +242,7 @@ export function readMeshRecord(reader: BufferReader, version: number, meshIndex:
     // Spread only the one that is set, so the disjointness the format preserves
     // survives into the object a consumer reads (#3199).
     ...(geometryItemId !== undefined ? { geometryItemId } : {}),
-    ...(materialLayerId !== undefined ? { materialLayerId } : {}),
+    ...(materialId !== undefined ? { materialId } : {}),
     ...(origin ? { origin } : {}),
   };
 }

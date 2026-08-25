@@ -100,7 +100,7 @@ fn window_splits_frame_and_glass_across_submeshes() {
 /// the colour test above still passes, because colour is resolved separately.
 /// If the item/layer split is routed by anything other than what built the
 /// collection, this window (two items, no layer set, no `IfcMaterialLayerSet`
-/// anywhere in the file) is where a stray `material_layer_id` shows up.
+/// anywhere in the file) is where a stray `material_id` shows up.
 #[test]
 fn window_submeshes_name_their_own_face_sets() {
     let result = process_geometry(WINDOW_IFC);
@@ -118,7 +118,7 @@ fn window_submeshes_name_their_own_face_sets() {
 
     for part in &parts {
         assert_eq!(
-            part.material_layer_id, None,
+            part.material_id, None,
             "the window has no material layers, so nothing may carry a layer id"
         );
     }

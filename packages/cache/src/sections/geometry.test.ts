@@ -43,17 +43,17 @@ function roundTrip(m: MeshData, version: number = FORMAT_VERSION): MeshData {
 }
 
 describe('mesh record source ids (#3199)', () => {
-  it('carries geometryItemId back, and leaves materialLayerId absent', () => {
+  it('carries geometryItemId back, and leaves materialId absent', () => {
     // 4638 is a real IfcRepresentationItem id from tests/models/ara3d/duplex.ifc.
     const out = roundTrip(mesh({ geometryItemId: 4638 }));
     expect(out.geometryItemId).toBe(4638);
-    expect(out.materialLayerId).toBeUndefined();
+    expect(out.materialId).toBeUndefined();
   });
 
-  it('carries materialLayerId back, and leaves geometryItemId absent', () => {
+  it('carries materialId back, and leaves geometryItemId absent', () => {
     // 3941 is a real IfcMaterial id from the same fixture's layered walls.
-    const out = roundTrip(mesh({ geometryClass: 3, materialLayerId: 3941 }));
-    expect(out.materialLayerId).toBe(3941);
+    const out = roundTrip(mesh({ geometryClass: 3, materialId: 3941 }));
+    expect(out.materialId).toBe(3941);
     expect(out.geometryItemId).toBeUndefined();
     expect(out.geometryClass).toBe(3);
   });
@@ -61,32 +61,38 @@ describe('mesh record source ids (#3199)', () => {
   it('leaves both absent when the mesh carried neither', () => {
     const out = roundTrip(mesh());
     expect(out.geometryItemId).toBeUndefined();
-    expect(out.materialLayerId).toBeUndefined();
+    expect(out.materialId).toBeUndefined();
   });
 
   it('never invents the other id: a restored mesh carries at most one', () => {
     for (const m of [
       mesh({ geometryItemId: 4638 }),
-      mesh({ geometryClass: 3, materialLayerId: 3941 }),
+      mesh({ geometryClass: 3, materialId: 3941 }),
       mesh(),
     ]) {
       const out = roundTrip(m);
-      expect(out.geometryItemId === undefined || out.materialLayerId === undefined).toBe(true);
+      expect(out.geometryItemId === undefined || out.materialId === undefined).toBe(true);
     }
   });
 
-  it('keeps a 0 materialLayerId, which means an air-gap layer and not "absent"', () => {
-    // IfcMaterialLayer.Material is OPTIONAL. material_layer_index.rs decodes an
-    // absent one as `material_id = 0` ("Zero means no material"), layers.rs
-    // slices a slab for it like any other layer, and the wasm boundary hands
-    // that slice out as materialLayerId === 0 — checked against the built
-    // runtime on a duplex.ifc whose #3876 layer had its material dropped: 12
-    // meshes came back with materialLayerId 0.
+  it('round-trips a 0 materialId rather than reading it as "absent"', () => {
+    // This pins the ENCODING, not a claim about what the producer emits.
     //
-    // So 0 is a value, not a hole, and it is also falsy. A cache that encodes
-    // "absent" as 0 cannot tell the two apart and drops the air gap.
-    const out = roundTrip(mesh({ geometryClass: 3, materialLayerId: 0 }));
-    expect(out.materialLayerId).toBe(0);
+    // History, because the stated reason changed mid-PR and a stale one here
+    // would mislead: `IfcMaterialLayer.Material` is OPTIONAL,
+    // `material_layer_index.rs` decoded an absent one as `material_id = 0`
+    // ("Zero means no material"), and a duplex.ifc with #3876's material
+    // dropped produced 12 meshes carrying `materialId: 0` at the wasm boundary.
+    // #3199 then filtered 0 to `None` at the producer, since `#0` is not a STEP
+    // instance name — so that measurement no longer describes the runtime, and
+    // the air-gap behaviour is pinned where it belongs, in
+    // `scripts/test-wasm-contract.mjs` and `mesh_id_provenance.rs`.
+    //
+    // What survives is the encoding rule: 0 is falsy, and a format that spells
+    // "absent" as 0 cannot distinguish the two. That must hold whatever the
+    // producer decides to send, which is why this test still passes a 0.
+    const out = roundTrip(mesh({ geometryClass: 3, materialId: 0 }));
+    expect(out.materialId).toBe(0);
     expect(out.geometryItemId).toBeUndefined();
   });
 });
@@ -99,8 +105,8 @@ describe('mesh record byte accounting', () => {
     for (const m of [
       mesh(),
       mesh({ geometryItemId: 4638 }),
-      mesh({ materialLayerId: 3941 }),
-      mesh({ materialLayerId: 0 }),
+      mesh({ materialId: 3941 }),
+      mesh({ materialId: 0 }),
       mesh({ ifcType: undefined }),
     ]) {
       const writer = new BufferWriter();
@@ -111,7 +117,7 @@ describe('mesh record byte accounting', () => {
 
   it('the record is longer than a v13 one, which is what the version bump was for', () => {
     // Not pinned to an exact delta: how the ids are encoded is still open (two
-    // bare u32 cannot represent a 0 materialLayerId — see the air-gap test).
+    // bare u32 cannot represent a 0 materialId — see the air-gap test).
     // What must hold is that the record grew at all, because that is what makes
     // a v13 reader misparse a v14 record and what FORMAT_VERSION has to signal.
     const m = mesh({ geometryItemId: 4638 });
@@ -149,7 +155,7 @@ describe('mesh record version gating', () => {
     const out = readMeshRecord(new BufferReader(writer.build()), 13, 0);
 
     expect(out.geometryItemId).toBeUndefined();
-    expect(out.materialLayerId).toBeUndefined();
+    expect(out.materialId).toBeUndefined();
     expect(out.expressId).toBe(4242);
     expect(out.ifcType).toBe('IFCWALL');
     expect(out.origin).toEqual([10, 20, 30]);
@@ -165,6 +171,6 @@ describe('mesh record version gating', () => {
     writeV13Record(writer, mesh({ geometryClass: 3 }));
     const out = readMeshRecord(new BufferReader(writer.build()), 13, 0);
     expect('geometryItemId' in out).toBe(false);
-    expect('materialLayerId' in out).toBe(false);
+    expect('materialId' in out).toBe(false);
   });
 });

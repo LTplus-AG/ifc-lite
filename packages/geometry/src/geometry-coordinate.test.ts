@@ -295,6 +295,51 @@ describe('convertMeshCollectionToBatch', () => {
     expect(batch[1].geometryClass).toBe(1);
   });
 
+  // #3199. These exist because deleting BOTH new spreads from
+  // `convertMeshCollectionToBatch` left this suite at 353/353 green: the
+  // converter is the only path by which the viewer's main thread sees the ids,
+  // and every other test added for #3199 reads the raw `MeshCollection`, which
+  // is upstream of it.
+  it('carries the representation-item id through to the batch', () => {
+    const batch = convertMeshCollectionToBatch(
+      asCollection(
+        fakeCollection([
+          fakeMesh({ expressId: 1, geometryItemId: 4242 } as never),
+          fakeMesh({ expressId: 2 }),
+        ])
+      )
+    );
+
+    expect(batch[0].geometryItemId).toBe(4242);
+    expect(batch[0].materialId).toBeUndefined();
+    // Absent stays ABSENT rather than becoming a key with `undefined`: the
+    // cache writer and the REST mirror both distinguish "no key" from a value,
+    // and a stamped `undefined` reads as present to `'x' in obj`.
+    expect('geometryItemId' in batch[1]).toBe(false);
+    expect('materialId' in batch[1]).toBe(false);
+  });
+
+  it('carries the material id through to the batch, disjoint from the item id', () => {
+    const batch = convertMeshCollectionToBatch(
+      asCollection(fakeCollection([fakeMesh({ expressId: 1, materialId: 3876 } as never)]))
+    );
+
+    expect(batch[0].materialId).toBe(3876);
+    expect('geometryItemId' in batch[0]).toBe(false);
+  });
+
+  it('does not truthiness-gate the ids: a 0 survives the converter', () => {
+    // The producer filters 0 (`#0` is not a STEP instance name), but this
+    // converter must not be the thing enforcing that -- a `? :` on the value
+    // instead of on `!== undefined` would drop a 0 silently, and the two
+    // failures look identical from the viewer.
+    const batch = convertMeshCollectionToBatch(
+      asCollection(fakeCollection([fakeMesh({ expressId: 1, geometryItemId: 0 } as never)]))
+    );
+
+    expect(batch[0].geometryItemId).toBe(0);
+  });
+
   it('carries a four-component shading colour, and drops a mis-sized one', () => {
     const batch = convertMeshCollectionToBatch(
       asCollection(

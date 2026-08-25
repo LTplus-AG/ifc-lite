@@ -235,7 +235,7 @@ fn process_element_with_material_layers_splits_wall_by_material() {
     // it is the only thing that tells a caller whether `geometry_id` is a
     // material or a representation item.
     assert!(
-        layered.ids_are_material_layers,
+        layered.ids_are_materials,
         "the slicer's collection must declare its ids are material layers"
     );
     // Two outer finishes share material #200, core is #201.
@@ -404,9 +404,19 @@ fn layers_compose_with_voids_every_layer_loses_triangles() {
 
 /// #3199: the flag has to survive the entry the mesh producer actually calls
 /// for a voided element (`process_element_with_submeshes_and_voids`), not just
-/// the slicer it wraps. That entry is also the one place a collection gets
-/// rebuilt sub-mesh by sub-mesh, so it is where the flag can be silently
-/// dropped and every layer slab start claiming to be a representation item.
+/// the slicer it wraps.
+///
+/// WHAT THIS DOES NOT COVER, stated because an earlier version of this comment
+/// claimed it did: the sub-mesh-by-sub-mesh REBUILD further down that function.
+/// A layered wall returns at the `try_layered_sub_meshes` early exit and never
+/// reaches it, so the `ids_are_materials` inheritance on the rebuilt collection
+/// is unreachable for a material-layer collection today and no fixture can make
+/// this test distinguish it — replacing that expression with a hard-coded
+/// `false` leaves both `ifc-lite-geometry` and `ifc-lite-processing` green.
+/// It is written as an inheritance anyway, deliberately: hard-coding would let
+/// a future layered producer on that path silently relabel material ids as
+/// representation items. Defensive, and honestly untested rather than
+/// dishonestly claimed.
 #[test]
 fn voided_submesh_entry_reports_layer_ids_as_material_ids() {
     let content = three_layer_wall_with_opening_ifc();
@@ -424,7 +434,7 @@ fn voided_submesh_entry_reports_layer_ids_as_material_ids() {
         .expect("submesh voids path");
 
     assert!(
-        cut.ids_are_material_layers,
+        cut.ids_are_materials,
         "a sliced layered wall must still declare material-layer ids after void subtraction"
     );
     let ids: Vec<u32> = cut.sub_meshes.iter().map(|s| s.geometry_id).collect();

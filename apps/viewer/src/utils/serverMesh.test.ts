@@ -50,3 +50,33 @@ test('keeps an origin that is zero on only some axes', () => {
   const out = convertServerMesh({ ...base, origin: [0, 0, -20] });
   assert.deepEqual(out.origin, [0, 0, -20]);
 });
+
+test('forwards the representation-item id, so a REST-loaded pick can reach source (#3199)', () => {
+  const out = convertServerMesh({ ...base, geometry_item_id: 1234 });
+  assert.equal(out.geometryItemId, 1234);
+  assert.equal('materialId' in out, false);
+});
+
+test('forwards the material id, disjoint from the representation-item id (#3199)', () => {
+  const out = convertServerMesh({ ...base, material_id: 3876 });
+  assert.equal(out.materialId, 3876);
+  assert.equal('geometryItemId' in out, false);
+});
+
+test('omits both source ids when the server sent neither', () => {
+  const out = convertServerMesh(base);
+  assert.equal('geometryItemId' in out, false);
+  assert.equal('materialId' in out, false);
+});
+
+// The other two optionals in this converter are truthiness-gated on purpose: a
+// zero origin and class 0 are both the default, so carrying them would make the
+// same mesh decode differently per transport. A source id is not like that --
+// it is an express instance name, and this converter must not invent a rule
+// about which values are "real". The server already drops 0 (`#0` is not an
+// entity), so if one ever arrives the honest thing is to pass it through and
+// let the id-provenance tests catch it, not to silently swallow it here.
+test('does not truthiness-gate the source ids the way it gates origin and class', () => {
+  const out = convertServerMesh({ ...base, geometry_item_id: 0 });
+  assert.equal(out.geometryItemId, 0, 'a 0 id was dropped by a truthiness check');
+});

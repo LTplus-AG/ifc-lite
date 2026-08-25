@@ -498,7 +498,7 @@ fn emit_sub_meshes(
 ) -> (Vec<MeshData>, Vec<RawInstanceOccurrence>) {
     // Read ONCE, before the loop consumes the collection: what the ids MEAN is
     // a property of the collection, not of any individual sub-mesh (#3199).
-    let ids_are_material_layers = sub_meshes.ids_are_material_layers;
+    let ids_are_materials = sub_meshes.ids_are_materials;
     let mut out: Vec<MeshData> = Vec::with_capacity(sub_meshes.len());
     let mut occurrences: Vec<RawInstanceOccurrence> = Vec::new();
     // Material colours for this element, used when a sub-mesh has no direct
@@ -584,7 +584,7 @@ fn emit_sub_meshes(
                     color,
                     material_name,
                     Some(sub.geometry_id),
-                    ids_are_material_layers,
+                    ids_are_materials,
                     slice_class,
                     ctx,
                     Some(uvs),
@@ -611,7 +611,7 @@ fn emit_sub_meshes(
                         rgba.to_array(),
                         None,
                         Some(sub.geometry_id),
-                        ids_are_material_layers,
+                        ids_are_materials,
                         slice_class,
                         ctx,
                         None,
@@ -627,7 +627,7 @@ fn emit_sub_meshes(
             color,
             material_name,
             Some(sub.geometry_id),
-            ids_are_material_layers,
+            ids_are_materials,
             slice_class,
             ctx,
             None,
@@ -711,9 +711,9 @@ fn build_mesh_data(
     color: [f32; 4],
     material_name: Option<String>,
     // The sub-mesh's source id, plus WHAT IT IS. Routed to `geometry_item_id`
-    // or `material_layer_id` by `with_style_metadata`, never both (#3199).
+    // or `material_id` by `with_style_metadata`, never both (#3199).
     source_id: Option<u32>,
-    id_is_material_layer: bool,
+    id_is_material: bool,
     geometry_class: u8,
     ctx: &MeshProductionContext<'_>,
     // Per-vertex texture coordinates (2 per vertex, 1:1 with `mesh.positions`),
@@ -788,7 +788,7 @@ fn build_mesh_data(
     }
     if material_name.is_some() || source_id.is_some() {
         mesh_data =
-            mesh_data.with_style_metadata(material_name, source_id, id_is_material_layer);
+            mesh_data.with_style_metadata(material_name, source_id, id_is_material);
     }
     if geometry_class != 0 {
         mesh_data = mesh_data.with_geometry_class(geometry_class);

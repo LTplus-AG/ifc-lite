@@ -86,8 +86,14 @@ export const MAGIC = 0x4C434649; // "IFCL" in little-endian
  *   Per-mesh record layout inside a chunk is UNCHANGED from v12.
  *
  * v14: the per-mesh record gains the two DISJOINT source ids (#3199) —
- *   `geometryItemId` (an `IfcRepresentationItem`) and `materialLayerId` (an
- *   `IfcMaterial`), two u32 written unconditionally with 0 meaning absent.
+ *   `geometryItemId` (an `IfcRepresentationItem`) and `materialId` (an
+ *   `IfcMaterial`), two u32 written unconditionally with **0xFFFFFFFF** meaning
+ *   absent. NOT 0, deliberately: `#0` is not a STEP instance name, but
+ *   `router/layers.rs` DOES decode an unreferenced layer (an air gap) as
+ *   `material_id = 0`. The producer filters that to absent as of #3199, so 0
+ *   should never reach this record — the sentinel keeps the encoding correct
+ *   without depending on that, since an absence marker the domain can produce
+ *   is one upstream change from being wrong again.
  *   Bumped rather than read leniently because the record is positional: a v13
  *   reader handed a v14 record would take the origin's first f64 out of the two
  *   new u32 and every field after it would be garbage. A v14 reader still reads

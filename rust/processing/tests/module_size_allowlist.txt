@@ -97,7 +97,7 @@
          438 rust/geometry/src/kernel/retriangulate_recover.rs
 # new row: adds from_spans (build the index from pre-collected IfcRelAssociatesMaterial spans, no re-walk) + the MaterialLayerFlat wire codec (to_flat/from_flat) + round-trip tests, so the streaming pre-pass ships the index to workers once instead of each worker re-scanning the file (perf/single-scan #563).
      563 rust/geometry/src/material_layer_index.rs
-# +14: SubMeshCollection gains `ids_are_material_layers` + `of_material_layers()` so a material-layer id can never be read as a representation item (#3199).
+# +14: SubMeshCollection gains `ids_are_materials` + `of_materials()` so a material-layer id can never be read as a representation item (#3199).
     1543 rust/geometry/src/mesh.rs
 # +86: #2866 — Boolean and CSG are mutually recursive over file references
 # (IfcBooleanResult operand -> IfcCsgSolid -> TreeRootExpression -> that same
@@ -349,7 +349,7 @@
 # +3: #2049 — `set_texture` was the one 8-arg fn in this crate missing the
 # `#[allow(clippy::too_many_arguments)]` its 21 peers carry. The crate's lint
 # has never run in CI (`--exclude ifc-lite-wasm`), which is how it drifted.
-# +37: geometry_item_id/material_layer_id cross the boundary -- 2 fields, 2 getters, a paired setter, and propagation at all THREE MeshDataJs clone sites (defaulting them there would have made the field inert at collection.get(i)) (#3199).
+# +37: geometry_item_id/material_id cross the boundary -- 2 fields, 2 getters, a paired setter, and propagation at all THREE MeshDataJs clone sites (defaulting them there would have made the field inert at collection.get(i)) (#3199).
      764 rust/wasm-bindings/src/zero_copy/mesh.rs
 # symbolic.rs +14 (743 -> 757): carries SymbolicData::truncated across the WASM
 # boundary as `truncatedAt` (#2938). A raise rather than a split because the

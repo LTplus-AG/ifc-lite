@@ -111,13 +111,14 @@ where
         };
 
         // Issue #979: feature elements (IfcOpeningElement and the rest of the
-        // void/feature family) are boolean subtraction/addition operands, not
-        // building structure — they must never emit a construction-projection
-        // profile. `is_subtype_of` walks the supertype chain, so this single
-        // check covers Opening / Voiding / Earthworks / Projection / Surface
-        // features without touching IfcDoor/IfcWindow (which descend from
-        // IfcBuiltElement, not IfcFeatureElement).
-        if entity.ifc_type.is_subtype_of(IfcType::IfcFeatureElement) {
+        // void/feature family) are boolean operands, not building structure —
+        // they must never emit a construction-projection profile, and walking
+        // the supertype chain covers the whole family in one check. Resolved
+        // from `type_name`, NOT `entity.ifc_type`: the decoder sets that with a
+        // bare `from_str`, so a legacy keyword arrives as `Unknown` (a subtype
+        // of nothing) and `IFCOPENINGSTANDARDCASE` emitted a profile (#3172).
+        let resolved_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
+        if resolved_type.is_subtype_of(IfcType::IfcFeatureElement) {
             continue;
         }
 
@@ -147,7 +148,7 @@ where
             Err(_) => continue,
         };
 
-        let ifc_type_name = entity.ifc_type.name().to_string();
+        let ifc_type_name = resolved_type.name().to_string();
 
         for shape_rep in representations {
             if shape_rep.ifc_type != IfcType::IfcShapeRepresentation {

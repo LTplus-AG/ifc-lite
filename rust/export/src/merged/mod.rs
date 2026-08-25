@@ -33,7 +33,7 @@ use std::collections::{HashMap, HashSet};
 use crate::step_text::{detect_schema, escape};
 
 use guid::{read_leading_guid, replace_global_id, GuidMinter};
-pub use guid::leading_rooted_global_id;
+pub use guid::{deterministic_global_id, leading_rooted_global_id};
 use plan::{build_plan, model_salt, ModelIndex, PlanCtx};
 use units::{resolve_length_scale, units_compatible};
 

@@ -1225,3 +1225,67 @@ ENDSEC;\nEND-ISO-10303-21;\n"
         "the colliding GlobalId survives on exactly one entity: {tokens:?}"
     );
 }
+
+/// The user-visible half of the #3124 review's major finding, through the
+/// public `export_merged`: reconciliation must not depend on which name the
+/// IFC4X3 generated enum happens to model.
+///
+/// `IFCSOLIDSTRATUM` is a real IFC4.3 entity that authoring tools emit for
+/// terrain and soil layers, and it is rooted -- but the generated enum
+/// carries only its abstract base `IfcGeotechnicalStratum`, so a bare
+/// `IfcType::from_str` said `Unknown` and the merge skipped it. Two
+/// infrastructure models sharing a stratum then merged to a file with the
+/// same GlobalId twice, an IFC spec violation, while the `IFCWALL` on the
+/// very next line was reconciled correctly. The asymmetry is the assertion:
+/// both types are checked in one merge, so a fix that reconciled nothing at
+/// all could not pass either.
+#[test]
+fn merge_reconciles_a_shared_globalid_on_a_stratum_leaf_as_it_does_on_a_wall() {
+    let shared_stratum = "1SharedGuid0000000000A";
+    let shared_wall = "1SharedGuid0000000000B";
+
+    let model = |project: &str| {
+        format!(
+            "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4X3'));\nENDSEC;\nDATA;\n\
+#1=IFCPROJECT('{project}',$,$,$,$,$,$,$,$);\n\
+#2=IFCSOLIDSTRATUM('{shared_stratum}',$,$,$,$,$,$,.SOLID.);\n\
+#3=IFCWALL('{shared_wall}',$,$,$,$,$,$,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n"
+        )
+    };
+    let model_a = model("proja");
+    let model_b = model("projb");
+
+    let merged = export_merged(
+        &[model_a.as_bytes(), model_b.as_bytes()],
+        &MergedOptions::default(),
+    );
+
+    assert_eq!(
+        merged.matches(shared_wall).count(),
+        1,
+        "control: a shared GlobalId on IFCWALL is reconciled to one occurrence"
+    );
+    assert_eq!(
+        merged.matches(shared_stratum).count(),
+        1,
+        "a shared GlobalId on IFCSOLIDSTRATUM must be reconciled the same way -- \
+         a second occurrence is the duplicate this step exists to prevent"
+    );
+    // Reconciled identically to the wall: a shared GlobalId on a compatible
+    // model's non-relationship rooted entity is unified — the duplicate line is
+    // dropped and its references redirected to the first model's entity — so the
+    // stratum collapses to exactly one occurrence, just as the wall does. The
+    // point of the test is the symmetry (stratum classified and reconciled like
+    // the wall), not the drop-vs-restamp policy.
+    assert_eq!(
+        merged.matches("=IFCSOLIDSTRATUM(").count(),
+        1,
+        "the shared stratum is unified to a single surviving entity, like the wall"
+    );
+    assert_eq!(
+        merged.matches("=IFCWALL(").count(),
+        1,
+        "control: the shared wall is likewise unified to a single surviving entity"
+    );
+}

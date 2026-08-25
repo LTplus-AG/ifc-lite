@@ -22,6 +22,10 @@
  *                   include: ['test/**\/*.test.ts']
  *   zero-tests      "vitest run"                   0 test-looking, 0 matched
  *
+ * Two further cases cover anti-vacuity (#3194) rather than glob semantics: a
+ * root with no package parents at all, and a package parent holding no
+ * package.json. Both used to exit 0 with a success line.
+ *
  * Run: node --test scripts/check-test-glob-coverage.test.mjs
  */
 
@@ -180,6 +184,80 @@ test('a find-based recursive command (apps\\/viewer\'s shape) reaches nested tes
     const { status, out } = runOn(dir);
     assert.equal(status, 0, out);
     assert.match(out, /check-test-glob-coverage: OK \(1 packages audited, 0 unrun test files\)/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- Anti-vacuity: a scan that found nothing must not report a clean audit ---
+//
+// Issue #3194: this checker printed `OK (0 packages audited, 0 unrun test
+// files)` and exited 0 when pointed at a tree with no packages in it, so CI
+// read "we looked and it was clean" from a run that had looked at nothing.
+// Both shapes of nothing get a case, because they fail at different points.
+
+test('vacuity: a root with neither packages/ nor apps/ fails instead of reporting a clean audit', () => {
+  // mkdtemp gives a real, readable, EMPTY directory — the exact input that
+  // used to exit 0.
+  const dir = mkdtempSync(join(tmpdir(), 'test-glob-coverage-empty-'));
+  try {
+    const { status, out } = runOn(dir);
+    assert.equal(status, 1, `expected a non-zero exit on an empty tree, got ${status}: ${out}`);
+    assert.match(out, /Refusing a vacuous pass/);
+    assert.match(out, /none of packages\/, apps\/ exists/);
+    assert.doesNotMatch(out, /OK \(/, 'must not print a success line at all');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('vacuity: a packages/ dir holding no package.json fails instead of reporting a clean audit', () => {
+  const dir = writeTree({
+    // A parent that exists but holds nothing this checker recognises as a
+    // package: the walk succeeds, the package list comes back empty.
+    'packages/not-a-package/README.md': '# no package.json here\n',
+  });
+  try {
+    const { status, out } = runOn(dir);
+    assert.equal(status, 1, `expected a non-zero exit on a package-less tree, got ${status}: ${out}`);
+    assert.match(out, /Refusing a vacuous pass/);
+    assert.match(out, /contain no directory with a package\.json/);
+    assert.doesNotMatch(out, /OK \(/, 'must not print a success line at all');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('an UNREADABLE package is not silently treated as an absent one', () => {
+  // Package DISCOVERY used `existsSync`, which answers false for every
+  // failure, EACCES included -- so a package the gate could not open dropped
+  // out of the audit with no error. Measured before the fix, against a
+  // `chmod 000` package carrying a real test script:
+  //
+  //   check-test-glob-coverage: OK (1 packages audited, 0 unrun test files)
+  //   EXIT=0
+  //
+  // which is this gate's own "absence reads as success" defect, one stage
+  // earlier than the walk it was fixed for.
+  //
+  // The fixture is a FILE where a package directory belongs, so `package.json`
+  // underneath it fails with ENOTDIR. That is deliberate: `chmod 000` does not
+  // stop root, and CI containers routinely run as root, so a permissions-based
+  // fixture would pass here and quietly not test anything on the machine that
+  // matters. ENOTDIR is the same "not ENOENT" branch and is deterministic for
+  // every user.
+  const dir = writeTree({
+    'packages/real-one/package.json': JSON.stringify({ name: 'real-one', scripts: { test: 'vitest run' } }),
+    'packages/real-one/src/a.test.ts': 'x',
+    // Not a directory. Statting `packages/blocked/package.json` gives ENOTDIR.
+    'packages/blocked': 'i am a file, not a package directory\n',
+  });
+  try {
+    const { status, out } = runOn(dir);
+    assert.equal(status, 1, `expected a non-zero exit on an unreadable package, got ${status}: ${out}`);
+    assert.match(out, /cannot read package manifest/);
+    assert.match(out, /Refusing to treat an unreadable path as an absent one/);
+    assert.doesNotMatch(out, /OK \(/, 'must not print a success line at all');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

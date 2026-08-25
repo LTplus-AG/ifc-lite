@@ -7,7 +7,7 @@
 
 use std::collections::HashSet;
 
-use ifc_lite_core::{legacy_aware_ifc_type, IfcType};
+use crate::rooted_type::is_rooted_type;
 
 /// buildingSMART base64 alphabet (64 chars) used by IfcGloballyUniqueId.
 const GLOBAL_ID_CHARS: &[u8; 64] =
@@ -74,95 +74,18 @@ pub fn is_relationship_type(type_upper: &str) -> bool {
     type_upper.starts_with("IFCREL")
 }
 
-/// True when `type_upper` is a **rooted** entity (an `IfcRoot` subtype), decided
-/// from the EXPRESS inheritance graph rather than a hand-maintained denylist, so
-/// a non-rooted resource that happens to lead with a 22-char Name/Identifier
-/// string — `IfcColourRgb`, `IfcMaterialLayer`, `IfcRegularTimeSeries`, an
-/// `IfcSimpleProperty` — is never misread as carrying a GlobalId. Mirrors the JS
-/// exporter's `getInheritanceChainAcrossSchemas(type).includes('IfcRoot')` so the
-/// two sides agree on what "rooted" means. `legacy_aware_ifc_type` maps IFC2X3
-/// legacy names onto their modern base type, so 2x3 / IFC4 inputs classify the
-/// same way.
-///
-/// The generated schema only carries entities that survive into IFC4X3, so a
-/// deprecated IFC2X3 rooted type dropped from the modern schema (and absent from
-/// `legacy_entities.rs`, which maps only geometry/element legacy names) resolves
-/// to `IfcType::Unknown` — which is NOT an `IfcRoot` subtype. Reconciliation
-/// would then miss its GlobalId and let two models emit it twice. So when the
-/// schema does not recognise the type, fall back to the legacy IFC2X3 rooted set
-/// (`is_legacy_rooted_type`) rather than assuming non-rooted (#2952).
+/// True when `type_upper` is a **rooted** entity (an `IfcRoot` subtype). Delegates
+/// to the crate's shared, schema-driven [`crate::rooted_type::is_rooted_type`],
+/// which decides rootedness from the EXPRESS inheritance graph (plus the legacy
+/// IFC2X3/IFC4 rooted set for types the IFC4X3-only generated schema dropped)
+/// rather than a hand-maintained denylist — so a non-rooted resource that happens
+/// to lead with a 22-char Name/Identifier string (`IfcColourRgb`,
+/// `IfcMaterialLayer`, `IfcRegularTimeSeries`, an `IfcSimpleProperty`) is never
+/// misread as carrying a GlobalId. A single source of truth shared with the JS
+/// exporter's `isRootedType` and cross-language parity-gated (#3015/#3124), so the
+/// two sides cannot drift.
 pub fn is_rooted_entity_type(type_upper: &str) -> bool {
-    let ty = legacy_aware_ifc_type(type_upper);
-    match ty {
-        IfcType::Unknown(_) => is_legacy_rooted_type(type_upper),
-        _ => ty.is_subtype_of(IfcType::IfcRoot),
-    }
-}
-
-/// Rooted (`IfcRoot`-subtype) entity types that exist in IFC2X3 but were dropped
-/// from the modern IFC4X3 schema, so `IfcType::from_str` resolves them to
-/// `Unknown`. Each leads with a `GlobalId` (the `IfcRoot` signature) in its
-/// source schema, so a shared one across models must still deduplicate. Kept in
-/// agreement with the JS exporter's IFC2X3 rooted coverage; a type here that
-/// later re-enters the generated schema simply stops reaching this fallback.
-fn is_legacy_rooted_type(upper: &str) -> bool {
-    matches!(
-        upper,
-        "IFCBEAMSTANDARDCASE"
-            | "IFCBUILDINGELEMENT"
-            | "IFCBUILDINGELEMENTCOMPONENT"
-            | "IFCBUILDINGELEMENTTYPE"
-            | "IFCCHAMFEREDGEFEATURE"
-            | "IFCCOLUMNSTANDARDCASE"
-            | "IFCCONDITION"
-            | "IFCCONDITIONCRITERION"
-            | "IFCDOORSTANDARDCASE"
-            | "IFCDOORSTYLE"
-            | "IFCEDGEFEATURE"
-            | "IFCELECTRICDISTRIBUTIONPOINT"
-            | "IFCELECTRICHEATERTYPE"
-            | "IFCELECTRICALBASEPROPERTIES"
-            | "IFCELECTRICALCIRCUIT"
-            | "IFCELECTRICALELEMENT"
-            | "IFCENERGYPROPERTIES"
-            | "IFCEQUIPMENTELEMENT"
-            | "IFCEQUIPMENTSTANDARD"
-            | "IFCFLUIDFLOWPROPERTIES"
-            | "IFCFURNITURESTANDARD"
-            | "IFCGASTERMINALTYPE"
-            | "IFCMEMBERSTANDARDCASE"
-            | "IFCMOVE"
-            | "IFCOPENINGSTANDARDCASE"
-            | "IFCORDERACTION"
-            | "IFCPLATESTANDARDCASE"
-            | "IFCPROJECTORDERRECORD"
-            | "IFCPROXY"
-            | "IFCRELASSIGNSTASKS"
-            | "IFCRELASSIGNSTOPROJECTORDER"
-            | "IFCRELASSOCIATESAPPLIEDVALUE"
-            | "IFCRELASSOCIATESPROFILEPROPERTIES"
-            | "IFCRELCONNECTSSTRUCTURALELEMENT"
-            | "IFCRELINTERACTIONREQUIREMENTS"
-            | "IFCRELOCCUPIESSPACES"
-            | "IFCRELOVERRIDESPROPERTIES"
-            | "IFCRELSCHEDULESCOSTITEMS"
-            | "IFCROUNDEDEDGEFEATURE"
-            | "IFCSCHEDULETIMECONTROL"
-            | "IFCSERVICELIFE"
-            | "IFCSERVICELIFEFACTOR"
-            | "IFCSLABELEMENTEDCASE"
-            | "IFCSLABSTANDARDCASE"
-            | "IFCSOUNDPROPERTIES"
-            | "IFCSOUNDVALUE"
-            | "IFCSPACEPROGRAM"
-            | "IFCSPACETHERMALLOADPROPERTIES"
-            | "IFCSTRUCTURALLINEARACTIONVARYING"
-            | "IFCSTRUCTURALPLANARACTIONVARYING"
-            | "IFCTIMESERIESSCHEDULE"
-            | "IFCWALLELEMENTEDCASE"
-            | "IFCWINDOWSTANDARDCASE"
-            | "IFCWINDOWSTYLE"
-    )
+    is_rooted_type(type_upper)
 }
 
 /// The leading 22-char GlobalId of a rooted entity's raw STEP line, or `None` if

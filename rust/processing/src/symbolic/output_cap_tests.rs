@@ -35,12 +35,15 @@
 //!   179 KB -> 426 ms, 0 emitted      739 KB -> 1661 ms, 0 emitted
 //!   3.0 MB -> 7216 ms, 0 emitted
 //!
-//! Linear at ~2.4 ms/KB. Not a regression -- `main` behaves identically, and
+//! Linear at ~2.4 ms/KB. Not a regression -- `main` behaved identically, and
 //! it is #2937's original per-item-budget complaint in the shape where output
-//! capping cannot reach it. Closing it means hoisting the revisit budget from
-//! per-item to per-extraction, which is now safe BECAUSE truncation is
-//! reported, but changes truncation behaviour for legitimate multi-product
-//! files and wants its own change.
+//! capping cannot reach it.
+//!
+//! CLOSED HERE (#3114): the revisit budget is now hoisted from per-item to
+//! per-extraction, which is safe BECAUSE truncation is reported. `seen` stays
+//! PER ITEM -- the two halves are separate on purpose, and both are pinned:
+//! `re_placing_one_library_block_is_not_charged_as_a_revisit` is the `seen`
+//! half, and hoisting `seen` too leaves every other test in the crate green.
 //!
 //! The two issues pulled in opposite directions -- bounding total work made
 //! the silent truncation fire sooner, on smaller legitimate drawings -- so
@@ -49,6 +52,56 @@
 //!
 use super::output_cap::{SymbolicAccumulator, SymbolicTruncationReason};
 use super::primitives::SymbolicData;
+
+/// Test-only constructors and the refusal counter, kept HERE rather than in
+/// `output_cap.rs`.
+///
+/// They are `#[cfg(test)]` either way, so this changes nothing that ships. It
+/// moves them because the module-size ratchet counts lines, not compiled code:
+/// hoisting the revisit budget onto the accumulator took `output_cap.rs` to
+/// 411, and test scaffolding is what should give way before production logic
+/// or the measured DoS documentation the bounds carry. `*_tests.rs` is exempt
+/// from that gate by name, which is exactly what the exemption is for.
+///
+/// The cost is that four fields widen from module-private to `pub(super)`.
+/// That leaves `data` private, which is the one the accumulator's own doc
+/// comment relies on — during extraction the vectors stay reachable only
+/// through `push_*`, so the seam it describes is still real.
+impl SymbolicAccumulator {
+    /// Accumulator under caller-chosen bounds. Both are injectable so a test
+    /// can exercise either bound without building a fixture that reaches the
+    /// shipped ones.
+    pub(super) fn with_limits(limit: usize, byte_limit: usize) -> Self {
+        let mut acc = Self::new();
+        acc.limit = limit;
+        acc.byte_limit = byte_limit;
+        acc
+    }
+
+    /// Accumulator under a caller-chosen count cap and the shipped byte cap.
+    pub(super) fn with_limit(limit: usize) -> Self {
+        let mut acc = Self::new();
+        acc.limit = limit;
+        acc
+    }
+
+    /// Accumulator with a small injected revisit budget (skips 200,000 real revisits).
+    pub(super) fn with_revisit_budget(revisit_budget: u32) -> Self {
+        let mut acc = Self::new();
+        acc.revisit_budget = revisit_budget;
+        acc
+    }
+
+    /// Refused appends since the last reset.
+    ///
+    /// Exists so the early exits can be pinned deterministically. They bound
+    /// WORK, and work is invisible in the output -- a refused append leaves the
+    /// result byte-identical -- but it is visible HERE, and the accumulator is
+    /// already test-injectable. Claiming this was unpinnable was wrong.
+    pub(super) fn refusals(&self) -> usize {
+        self.refusals
+    }
+}
 
 /// N annotations, each carrying one 24-level fan-out DAG. No cycle, so no path
 /// guard fires; the leaf is reachable down 2^24 paths and only a work bound
@@ -515,6 +568,241 @@ fn a_per_item_reason_omits_limit_on_the_wire_rather_than_sending_null() {
     let json = serde_json::to_value(acc.into_data()).expect("serializes");
     assert_eq!(json["truncated"]["reason"], "element-count");
     assert_eq!(json["truncated"]["limit"], 200);
+}
+
+/// N top-level items, each a flat `IfcGeometricCurveSet` of `leaves` DISTINCT
+/// polylines -- no shared ids anywhere, so no id is ever visited twice and no
+/// revisit is ever charged, however many items or leaves there are. Companion
+/// to `hostile_dag`, which is the opposite shape (few ids, deliberately
+/// revisited); this one exists to prove the shared revisit pool does NOT
+/// start charging FIRST visits just because they belong to a later item.
+/// One curve set, PLACED SEVERAL TIMES as separate top-level items.
+///
+/// The distinction `flat_multi_item_dag` cannot express: there every top-level
+/// item owns private entities, so no id is ever reached twice and the walk's
+/// `seen` set is irrelevant to the outcome. Here every placement re-traverses
+/// the SAME ids, which is what an ordinary library block looks like in a real
+/// file -- and is the only shape that can tell a per-item `seen` from an
+/// extraction-wide one.
+fn shared_map_multi_placement(placements: usize, leaves: usize) -> String {
+    let mut s = String::from("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n");
+    let mut id = 1000u32;
+    let set = id;
+    id += 1;
+    let mut elems = Vec::new();
+    for _ in 0..leaves {
+        let pl = id;
+        id += 1;
+        let p1 = id;
+        id += 1;
+        let p2 = id;
+        id += 1;
+        s.push_str(&format!("#{pl}=IFCPOLYLINE((#{p1},#{p2}));\n"));
+        s.push_str(&format!("#{p1}=IFCCARTESIANPOINT((0.,0.));\n"));
+        s.push_str(&format!("#{p2}=IFCCARTESIANPOINT((1.,1.));\n"));
+        elems.push(pl);
+    }
+    let refs = elems.iter().map(|q| format!("#{q}")).collect::<Vec<_>>().join(",");
+    s.push_str(&format!("#{set}=IFCGEOMETRICCURVESET(({refs}));\n"));
+
+    // The SAME set id, repeated -- N placements of one block.
+    let list = (0..placements).map(|_| format!("#{set}")).collect::<Vec<_>>().join(",");
+    let prod = id;
+    let shp = id + 1;
+    let rep = id + 2;
+    s.push_str(&format!(
+        "#{prod}=IFCANNOTATION('x',$,$,$,$,$,#{shp});\n\
+         #{shp}=IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep}));\n\
+         #{rep}=IFCSHAPEREPRESENTATION($,'Annotation','Annotation',({list}));\n"
+    ));
+    s.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
+    s
+}
+
+fn flat_multi_item_dag(top_items: usize, leaves: usize) -> String {
+    let mut s = String::from("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n");
+    let mut id = 1000u32;
+    let mut tops = Vec::new();
+    for _ in 0..top_items {
+        let set = id;
+        id += 1;
+        let mut elems = Vec::new();
+        for _ in 0..leaves {
+            let pl = id;
+            id += 1;
+            let p1 = id;
+            id += 1;
+            let p2 = id;
+            id += 1;
+            s.push_str(&format!("#{pl}=IFCPOLYLINE((#{p1},#{p2}));\n"));
+            s.push_str(&format!("#{p1}=IFCCARTESIANPOINT((0.,0.));\n"));
+            s.push_str(&format!("#{p2}=IFCCARTESIANPOINT((1.,1.));\n"));
+            elems.push(pl);
+        }
+        let refs = elems.iter().map(|q| format!("#{q}")).collect::<Vec<_>>().join(",");
+        s.push_str(&format!("#{set}=IFCGEOMETRICCURVESET(({refs}));\n"));
+        tops.push(set);
+    }
+    let list = tops.iter().map(|t| format!("#{t}")).collect::<Vec<_>>().join(",");
+    let prod = id;
+    let shp = id + 1;
+    let rep = id + 2;
+    s.push_str(&format!(
+        "#{prod}=IFCANNOTATION('x',$,$,$,$,$,#{shp});\n\
+         #{shp}=IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep}));\n\
+         #{rep}=IFCSHAPEREPRESENTATION($,'Annotation','Annotation',({list}));\n"
+    ));
+    s.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
+    s
+}
+
+#[test]
+fn the_revisit_budget_is_shared_once_across_the_whole_extraction_not_reset_per_item() {
+    // #2937: `extract_symbolic_item` builds a fresh `ItemWalk` for every
+    // top-level item, and before this fix that walk owned its OWN revisit
+    // budget, initialised to the full constant on every call. N items shared
+    // nothing, so the bound was `N x MAX_ITEM_REVISITS` -- it scaled with item
+    // count instead of bounding the file.
+    //
+    // `hostile_dag(k)` places k independent 24-level fan-out DAGs as k
+    // top-level items of ONE shape representation; each one alone can exhaust
+    // a revisit budget many times over. That is the shape that tells "one
+    // pool per item" apart from "one pool for the file": if the second item
+    // gets its own fresh pool, it contributes roughly as much as the first;
+    // if the pool is a single shared one and the first item already spent it,
+    // the second item can barely contribute at all.
+    const BUDGET: u32 = 50;
+
+    let mut one = SymbolicAccumulator::with_revisit_budget(BUDGET);
+    super::extract_symbolic_data_into(&hostile_dag(1).into_bytes(), &mut one);
+    let one_data = one.into_data();
+    let one_item_total = one_data.len();
+    assert_eq!(
+        one_data.truncated.as_ref().map(|t| t.reason),
+        Some(SymbolicTruncationReason::ItemRevisits),
+        "a budget of {BUDGET} must be nowhere near enough for a single 24-level \
+         fan-out DAG, so this item alone must already be truncated: {:?}",
+        one_data.truncated
+    );
+
+    let mut two = SymbolicAccumulator::with_revisit_budget(BUDGET);
+    super::extract_symbolic_data_into(&hostile_dag(2).into_bytes(), &mut two);
+    let two_data = two.into_data();
+    let two_item_total = two_data.len();
+    assert_eq!(
+        two_data.truncated.as_ref().map(|t| t.reason),
+        Some(SymbolicTruncationReason::ItemRevisits),
+        "the second item must also end up truncated once the shared pool is \
+         spent: {:?}",
+        two_data.truncated
+    );
+
+    // The fixture has to emit SOMETHING or every bound below is vacuous.
+    assert!(
+        one_item_total > 0,
+        "one item emitted nothing, so the comparison that follows would hold \
+         for any implementation"
+    );
+
+    // Relative to the one-item total, not an absolute allowance. An earlier
+    // version of this assertion read `two_item_total <= one_item_total + 200`,
+    // which could not fail: the measured totals are 20 and 21, and a reverted
+    // per-item budget would give roughly 40 -- comfortably inside a +200
+    // slack. The bound has to be a MULTIPLE of the one-item total, because the
+    // defect doubles that total rather than adding a constant to it.
+    assert!(
+        two_item_total < 2 * one_item_total,
+        "a SECOND top-level item sharing the same tiny revisit budget as the \
+         first must contribute almost nothing once the first item has spent \
+         the pool -- got {one_item_total} primitives for one item and \
+         {two_item_total} for two. Approaching twice the one-item total is \
+         what a per-item {BUDGET}-revisit budget looks like, which is the \
+         regression this test exists to catch"
+    );
+}
+
+#[test]
+fn re_placing_one_library_block_is_not_charged_as_a_revisit() {
+    // The invariant this PR rests on is a PAIR: the revisit budget is
+    // extraction-wide, while `seen` stays PER ITEM. The budget half is pinned
+    // by the two tests below. This is the `seen` half, and without it the
+    // whole crate stays green when `seen` is hoisted onto the accumulator
+    // alongside the budget -- measured, not assumed: 0 failures across every
+    // test binary under exactly that mutation.
+    //
+    // `flat_multi_item_dag` cannot catch it by construction. Its top-level
+    // items own DISTINCT entities, so no id is ever reached twice and the
+    // scope of `seen` never changes the answer. Only a file that re-places
+    // the SAME representation can tell the two apart.
+    //
+    // That file is not exotic. It is the ordinary case `ItemWalk::seen`'s own
+    // doc calls out -- "many placements of the same library block" -- and the
+    // reason the budget was hoisted while `seen` was not. Under a hoisted
+    // `seen` a 4-placement block collapses to its first placement plus
+    // whatever the budget allows, and reports `ItemRevisits` for a file that
+    // contains no fan-out at all.
+    const BUDGET: u32 = 5;
+    const PLACEMENTS: usize = 4;
+    const LEAVES: usize = 50;
+
+    let mut acc = SymbolicAccumulator::with_revisit_budget(BUDGET);
+    super::extract_symbolic_data_into(
+        &shared_map_multi_placement(PLACEMENTS, LEAVES).into_bytes(),
+        &mut acc,
+    );
+    let out = acc.into_data();
+
+    assert_eq!(
+        out.polylines.len(),
+        PLACEMENTS * LEAVES,
+        "each placement of a shared block is a separate top-level item and \
+         must emit its own geometry in full; a node first reached under THIS \
+         item is a first visit even if an earlier item also reached it"
+    );
+    assert!(
+        out.truncated.is_none(),
+        "re-placing one block is not a revisit fan-out and must not be \
+         reported as truncated: {:?}",
+        out.truncated
+    );
+}
+
+#[test]
+fn the_shared_revisit_budget_does_not_charge_legitimate_first_visits_across_items() {
+    // The other direction, so "share the pool" cannot be satisfied by "charge
+    // every visit, first or not" -- that would also make a second item
+    // contribute nothing, for the wrong reason, and would truncate a
+    // perfectly well-formed multi-product file.
+    //
+    // Two top-level items below are flat, non-cyclic curve sets of DISTINCT
+    // entities: by construction every visit inside them is a first visit, and
+    // none should ever be charged against the revisit pool, however small
+    // that pool is set. `leaves` is deliberately far larger than `BUDGET` so
+    // an implementation that (even partially) charges first visits fails
+    // here.
+    const BUDGET: u32 = 5;
+    const LEAVES: usize = 200;
+
+    let mut acc = SymbolicAccumulator::with_revisit_budget(BUDGET);
+    super::extract_symbolic_data_into(
+        &flat_multi_item_dag(2, LEAVES).into_bytes(),
+        &mut acc,
+    );
+    let out = acc.into_data();
+
+    assert_eq!(
+        out.polylines.len(),
+        2 * LEAVES,
+        "every element of two well-formed, non-cyclic flat sets must be \
+         emitted regardless of how small the shared revisit budget is -- \
+         first visits are never charged"
+    );
+    assert!(
+        out.truncated.is_none(),
+        "a file that never needed a single revisit must not be reported as \
+         truncated just because the shared pool is tiny: {:?}",
+        out.truncated
+    );
 }
 
 #[test]

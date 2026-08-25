@@ -13,10 +13,7 @@
 //! overflow takes the whole test binary down as SIGABRT, which reads as broken
 //! infrastructure instead of a failed assertion.
 
-use super::item_walk::{
-    extract_symbolic_item, extract_symbolic_item_with_revisit_budget, MAX_ITEM_DEPTH,
-    MAX_ITEM_REVISITS,
-};
+use super::item_walk::{extract_symbolic_item, MAX_ITEM_DEPTH, MAX_ITEM_REVISITS};
 use super::output_cap::{SymbolicAccumulator, SymbolicTruncationReason};
 use super::primitives::SymbolicData;
 use super::rebase::RenderFrameRebase;
@@ -52,8 +49,12 @@ fn run_with_budget(step: &str, start_id: u32, budget: u32) -> SymbolicData {
     let mut decoder = EntityDecoder::with_index(content, index);
     let item = decoder.decode_by_id(start_id).expect("fixture entity decodes");
     let styled: HashMap<u32, Vec<u32>> = HashMap::new();
-    let mut out = SymbolicAccumulator::new();
-    extract_symbolic_item_with_revisit_budget(
+    // The revisit budget now lives on the accumulator (#2937), shared across
+    // the whole extraction rather than reset per top-level item -- so
+    // injecting a small budget for a test means constructing the accumulator
+    // with one, not threading a separate parameter into the walk.
+    let mut out = SymbolicAccumulator::with_revisit_budget(budget);
+    extract_symbolic_item(
         &item,
         &mut decoder,
         1,
@@ -64,7 +65,6 @@ fn run_with_budget(step: &str, start_id: u32, budget: u32) -> SymbolicData {
         RenderFrameRebase::default(),
         &styled,
         &mut out,
-        budget,
     );
     out.into_data()
 }

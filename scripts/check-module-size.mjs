@@ -135,7 +135,7 @@ const SOURCE_RE = /\.(ts|tsx|mts|cts)$/;
  * failure message. Either way do it at the moment you finalise the change — it
  * moves if anything else touched the allowlist first.
  */
-const ALLOWLIST_DIGEST = '612142938184938951';
+const ALLOWLIST_DIGEST = '7799359786535412883';
 
 function parseArgs(argv) {
   const out = {

@@ -209,3 +209,72 @@ pub fn is_legacy_entity(entity_name: &str) -> bool {
 pub fn map_legacy_to_base_type(entity_name: &str) -> Option<IfcType> {
     get_legacy_entity_info(entity_name).map(|info| info.base_type)
 }
+
+/// Every key of [`get_legacy_entity_info`]'s match arms, enumerable.
+///
+/// A `match` on string literals answers "is this name legacy?" but cannot be
+/// walked, and callers need to walk it: the cross-language rooted-type sweep
+/// (`rust/export/examples/dump_rooted_type_sweep.rs`) has to put every legacy
+/// name into its universe, or the gate is structurally blind to exactly the
+/// names the two languages are most likely to disagree on -- which is how the
+/// three stratum leaves stayed divergent (#3124 review). Rather than leave
+/// this as a second hand-maintained list that must agree with the match,
+/// `legacy_entity_names_match_the_lookup_arms` below re-derives the arm keys
+/// from this module's own source text and asserts set equality, so adding an
+/// arm without adding a name here fails the test.
+pub const LEGACY_ENTITY_NAMES: &[&str] = &[
+    "IFCPRESENTATIONSTYLEASSIGNMENT",
+    "IFCBEAMSTANDARDCASE",
+    "IFCCOLUMNSTANDARDCASE",
+    "IFCMEMBERSTANDARDCASE",
+    "IFCPLATESTANDARDCASE",
+    "IFCSLABSTANDARDCASE",
+    "IFCDOORSTANDARDCASE",
+    "IFCWINDOWSTANDARDCASE",
+    "IFCOPENINGSTANDARDCASE",
+    "IFCSLABELEMENTEDCASE",
+    "IFCWALLELEMENTEDCASE",
+    "IFCDOORSTYLE",
+    "IFCWINDOWSTYLE",
+    "IFCPROXY",
+    "IFCBUILDINGELEMENT",
+    "IFCBUILDINGELEMENTTYPE",
+    "IFCEQUIPMENTELEMENT",
+    "IFCELECTRICDISTRIBUTIONPOINT",
+    "IFCELECTRICALELEMENT",
+    "IFCCHAMFEREDGEFEATURE",
+    "IFCROUNDEDEDGEFEATURE",
+    "IFCSTRUCTURALLINEARACTIONVARYING",
+    "IFCSTRUCTURALPLANARACTIONVARYING",
+    "IFCSOLIDSTRATUM",
+    "IFCVOIDSTRATUM",
+    "IFCWATERSTRATUM",
+];
+
+#[cfg(test)]
+mod legacy_entity_name_tests {
+    use super::*;
+
+    /// The arm/const parity check that used to live here is now
+    /// `scripts/check-legacy-entity-coverage.mjs`, which already reads this
+    /// file to derive the arm keys and gained a `LEGACY_ENTITY_NAMES`
+    /// comparison to go with it.
+    ///
+    /// It moved because the only way to state it in-crate was `include_str!`
+    /// of this module's own source, which is a source-text assertion — banned
+    /// by AGENTS.md and flagged by `check-rust-source-text-assertions` (#3195).
+    /// The repo had already made the same call for
+    /// `check-clash-degenerate-reason-parity.mjs`: a claim about two SOURCES
+    /// belongs in a lint. The gate is also strictly stronger here, since it
+    /// fails on drift in BOTH directions and its own harness proves it cannot
+    /// pass by extracting nothing.
+    ///
+    /// Every listed name really is legacy -- the cheap direction, but it also
+    /// pins that the const holds arm keys and not, say, base-type names.
+    #[test]
+    fn every_listed_name_resolves_as_legacy() {
+        for &name in LEGACY_ENTITY_NAMES {
+            assert!(is_legacy_entity(name), "{name} is not a legacy entity");
+        }
+    }
+}

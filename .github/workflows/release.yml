@@ -312,13 +312,29 @@ jobs:
         if: steps.release-gate.outputs.run_root == 'true'
         run: |
           # Create the v* tag (changesets creates @scope/package@version tags, not v* tags)
+          #
+          # `|| true` on `git tag` is deliberate: a backfill or a re-run hits an
+          # existing tag and idempotency is the point. It is NOT on the push.
+          # A swallowed push is not "no release" -- `gh release create` CREATES a
+          # missing tag itself, and with no `--target` it does so from the latest
+          # state of the default branch (its own `--help` says so). So the failure
+          # mode was a green release pointing at a DIFFERENT commit than the
+          # packages published from it, which `packages/server-bin/src/binary.ts`
+          # then resolves its download URL against (#3202).
+          #
+          # The backfill path added after 2026-08-12 is the one most exposed to
+          # this: a backfill by definition runs after `main` has moved on.
           git tag "v${VERSION}" || true
-          git push origin "v${VERSION}" || true
+          git push origin "v${VERSION}"
           # Create release, skipping if it already exists
           if gh release view "v${VERSION}" > /dev/null 2>&1; then
             echo "Release v${VERSION} already exists, skipping"
           else
+            # --verify-tag: refuse to invent the tag. The push above is the only
+            # thing allowed to create it, and it is now unguarded, so a failure is
+            # loud where it happens instead of being reasoned about downstream.
             gh release create "v${VERSION}" \
+              --verify-tag \
               --title "v${VERSION}" \
               --notes "See CHANGELOG.md for details"
           fi
@@ -345,9 +361,15 @@ jobs:
           if gh release view "$TAG" > /dev/null 2>&1; then
             echo "Release $TAG already exists, skipping (server binaries already published)"
           else
+            # Same shape as the root release above: idempotent tag, UNGUARDED
+            # push, and `--verify-tag` so `gh` cannot invent the ref at
+            # default-branch head if the push failed (#3202). Getting this wrong
+            # here is worse than above -- server-binaries.yml uploads the
+            # per-platform archives to whatever commit this tag names.
             git tag "$TAG" || true
-            git push origin "$TAG" || true
+            git push origin "$TAG"
             gh release create "$TAG" \
+              --verify-tag \
               --title "$TAG" \
               --notes "Native server binary for @ifc-lite/server-bin v${SB_VERSION}. See CHANGELOG.md."
           fi

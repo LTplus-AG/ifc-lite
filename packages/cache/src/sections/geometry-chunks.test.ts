@@ -13,7 +13,14 @@ import {
   inflateRaw,
   decodeGeometryChunk,
 } from './geometry-chunks.js';
-import { GeometryChunkFlags, type GeometryChunkInfo } from '../types.js';
+import { FORMAT_VERSION, GeometryChunkFlags, type GeometryChunkInfo } from '../types.js';
+
+// These suites all read back what `buildGeometrySectionV13` just wrote, so the
+// reader version is "whatever the writer emits", not a literal. It was pinned
+// to 13 and went stale at the #3199 bump: the writer added 8 bytes per mesh
+// record, a v13 reader skipped them, and every record after the first was
+// misaligned. The on-disk version literal is pinned in header.test.ts, which
+// is where a silent bump should be caught.
 
 const coordInfo = (overrides: Partial<CoordinateInfo> = {}): CoordinateInfo => ({
   originShift: { x: 1.5, y: -2.5, z: 1e6 },
@@ -131,7 +138,7 @@ describe('v13 geometry section round-trip', () => {
   it('round-trips meshes, counts and coordinateInfo (compressed)', async () => {
     const info = coordInfo({ wasmRtcOffset: { x: 1, y: 2, z: 3 }, buildingRotation: 0.25 });
     const section = await buildGeometrySectionV13(meshes, info);
-    const result = await readGeometryV13(section, 0, 13);
+    const result = await readGeometryV13(section, 0, FORMAT_VERSION);
     expectMeshesEqual(result.meshes, meshes);
     expect(result.totalVertices).toBe(12);
     expect(result.totalTriangles).toBe(4);
@@ -140,13 +147,13 @@ describe('v13 geometry section round-trip', () => {
 
   it('round-trips with compression disabled', async () => {
     const section = await buildGeometrySectionV13(meshes, coordInfo(), { compress: false });
-    const result = await readGeometryV13(section, 0, 13);
+    const result = await readGeometryV13(section, 0, FORMAT_VERSION);
     expectMeshesEqual(result.meshes, meshes);
   });
 
   it('exposes a directory with valid AABBs and per-chunk decode', async () => {
     const section = await buildGeometrySectionV13(meshes, coordInfo());
-    const open = openGeometryChunksV13(section, 0, 13);
+    const open = openGeometryChunksV13(section, 0, FORMAT_VERSION);
     expect(open.chunks.length).toBeGreaterThanOrEqual(2);
     let total = 0;
     for (let i = 0; i < open.chunks.length; i++) {
@@ -171,7 +178,7 @@ describe('v13 geometry section round-trip', () => {
   it('small chunks skip compression; a large repetitive chunk compresses', async () => {
     // Small: below the 64KiB floor → raw.
     const small = await buildGeometrySectionV13([mesh(1, [0, 0, 0])], coordInfo());
-    const openSmall = openGeometryChunksV13(small, 0, 13);
+    const openSmall = openGeometryChunksV13(small, 0, FORMAT_VERSION);
     expect(openSmall.chunks[0].flags & GeometryChunkFlags.DeflateRaw).toBe(0);
 
     // Large + repetitive: one 100k-vertex mesh of zeros → compresses well.
@@ -181,7 +188,7 @@ describe('v13 geometry section round-trip', () => {
       indices: new Uint32Array(300_000),
     });
     const section = await buildGeometrySectionV13([big], coordInfo());
-    const open = openGeometryChunksV13(section, 0, 13);
+    const open = openGeometryChunksV13(section, 0, FORMAT_VERSION);
     expect(open.chunks[0].flags & GeometryChunkFlags.DeflateRaw).toBe(GeometryChunkFlags.DeflateRaw);
     expect(open.chunks[0].byteLength).toBeLessThan(open.chunks[0].uncompressedLength / 4);
     const decoded = await open.readChunk(0);
@@ -190,7 +197,7 @@ describe('v13 geometry section round-trip', () => {
 
   it('handles empty mesh lists', async () => {
     const section = await buildGeometrySectionV13([], coordInfo());
-    const result = await readGeometryV13(section, 0, 13);
+    const result = await readGeometryV13(section, 0, FORMAT_VERSION);
     expect(result.meshes).toEqual([]);
     expect(result.totalVertices).toBe(0);
   });
@@ -223,19 +230,19 @@ describe('corrupt geometry chunk directory', () => {
     const meshes = [mesh(1, [0, 0, 0]), mesh(2, [5000, 5000, 5000])]; // forced into separate chunks
     const section = await buildGeometrySectionV13(meshes, coordInfo(), { compress: false });
     const bytes = new Uint8Array(section);
-    const info0 = openGeometryChunksV13(section, 0, 13).chunks[0];
+    const info0 = openGeometryChunksV13(section, 0, FORMAT_VERSION).chunks[0];
     const entry = findDirectoryEntry(bytes, info0.byteOffset, info0.byteLength);
     const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     dv.setUint32(entry + 28, info0.byteLength + 10_000, true); // byteLength: reach past the buffer end
 
-    expect(() => openGeometryChunksV13(section, 0, 13)).toThrow(/not contiguous/);
+    expect(() => openGeometryChunksV13(section, 0, FORMAT_VERSION)).toThrow(/not contiguous/);
   });
 
   it('rejects a chunk whose inflated byteLength/meshCount/uncompressedLength consistently absorb the next chunk', async () => {
     const meshes = [mesh(1, [0, 0, 0]), mesh(2, [5000, 5000, 5000])];
     const section = await buildGeometrySectionV13(meshes, coordInfo(), { compress: false });
     const bytes = new Uint8Array(section);
-    const open = openGeometryChunksV13(section, 0, 13);
+    const open = openGeometryChunksV13(section, 0, FORMAT_VERSION);
     expect(open.chunks.length).toBe(2); // control: the fixture really did split into 2 chunks
     const info0 = open.chunks[0];
     const info1 = open.chunks[1];
@@ -250,13 +257,13 @@ describe('corrupt geometry chunk directory', () => {
     dv.setUint32(entry + 32, absorbedLength, true); // uncompressedLength
     dv.setUint32(entry + 36, info0.meshCount + info1.meshCount, true); // meshCount
 
-    expect(() => openGeometryChunksV13(section, 0, 13)).toThrow(/not contiguous/);
+    expect(() => openGeometryChunksV13(section, 0, FORMAT_VERSION)).toThrow(/not contiguous/);
   });
 
   it('bounding control: a valid multi-chunk directory (ranges reaching exactly to the next chunk) still decodes', async () => {
     const meshes = [mesh(1, [0, 0, 0]), mesh(2, [5000, 5000, 5000])];
     const section = await buildGeometrySectionV13(meshes, coordInfo(), { compress: false });
-    const open = openGeometryChunksV13(section, 0, 13);
+    const open = openGeometryChunksV13(section, 0, FORMAT_VERSION);
     expect(open.chunks.length).toBe(2);
     const decoded0 = await open.readChunk(0);
     const decoded1 = await open.readChunk(1);
@@ -271,7 +278,7 @@ describe('corrupt geometry chunk directory', () => {
     const meshes = [mesh(1, [0, 0, 0]), mesh(2, [5000, 5000, 5000])];
     const section = await buildGeometrySectionV13(meshes, coordInfo(), { compress: false });
     const bytes = new Uint8Array(section);
-    const open = openGeometryChunksV13(section, 0, 13);
+    const open = openGeometryChunksV13(section, 0, FORMAT_VERSION);
     const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 
     // Shift EVERY chunk's byteOffset by the same delta. Relative spacing —
@@ -282,7 +289,7 @@ describe('corrupt geometry chunk directory', () => {
       dv.setUint32(entry + 24, info.byteOffset + SHIFT, true);
     }
 
-    expect(() => openGeometryChunksV13(section, 0, 13)).toThrow(
+    expect(() => openGeometryChunksV13(section, 0, FORMAT_VERSION)).toThrow(
       /chunk 0 byteOffset .* does not start at the end of the head/,
     );
   });
@@ -299,7 +306,7 @@ describe('corrupt geometry chunk directory', () => {
     const section = await buildGeometrySectionV13(meshes, coordInfo(), { compress: false });
     const bytes = new Uint8Array(section);
     const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    const open = openGeometryChunksV13(section, 0, 13);
+    const open = openGeometryChunksV13(section, 0, FORMAT_VERSION);
     const info0 = open.chunks[0];
     const trueHeadLength = dv.getUint32(0, true);
     const entry = findDirectoryEntry(bytes, info0.byteOffset, info0.byteLength);
@@ -310,7 +317,7 @@ describe('corrupt geometry chunk directory', () => {
     dv.setUint32(0, forgedHeadLength, true);
     dv.setUint32(entry + 24, 4 + forgedHeadLength, true);
 
-    expect(() => openGeometryChunksV13(section, 0, 13)).toThrow(/headLength/);
+    expect(() => openGeometryChunksV13(section, 0, FORMAT_VERSION)).toThrow(/headLength/);
   });
 
   // `readChunk`'s own end-of-buffer check was unreachable from the tests
@@ -322,7 +329,7 @@ describe('corrupt geometry chunk directory', () => {
     const meshes = [mesh(1, [0, 0, 0]), mesh(2, [5000, 5000, 5000])];
     const section = await buildGeometrySectionV13(meshes, coordInfo(), { compress: false });
     const bytes = new Uint8Array(section);
-    const open = openGeometryChunksV13(section, 0, 13);
+    const open = openGeometryChunksV13(section, 0, FORMAT_VERSION);
     const last = open.chunks[open.chunks.length - 1];
     const entry = findDirectoryEntry(bytes, last.byteOffset, last.byteLength);
     const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -330,7 +337,7 @@ describe('corrupt geometry chunk directory', () => {
 
     // The directory still validates: chunk 0 is anchored, and the last chunk
     // has no successor for the contiguity loop to compare against.
-    const reopened = openGeometryChunksV13(section, 0, 13);
+    const reopened = openGeometryChunksV13(section, 0, FORMAT_VERSION);
     await expect(reopened.readChunk(open.chunks.length - 1)).rejects.toThrow(
       /exceeds buffer length/,
     );
@@ -348,7 +355,7 @@ describe('decodeGeometryChunk length verification', () => {
   it('throws when the stored bytes decode to a length that disagrees with the directory', async () => {
     const meshes = [mesh(1, [0, 0, 0])];
     const section = await buildGeometrySectionV13(meshes, coordInfo(), { compress: false });
-    const open = openGeometryChunksV13(section, 0, 13);
+    const open = openGeometryChunksV13(section, 0, FORMAT_VERSION);
     const realInfo = open.chunks[0];
     expect(realInfo.flags & GeometryChunkFlags.DeflateRaw).toBe(0); // uncompressed: raw === stored
 
@@ -357,7 +364,7 @@ describe('decodeGeometryChunk length verification', () => {
 
     // Directory claims one more byte than the record actually decodes to.
     const lyingInfo: GeometryChunkInfo = { ...realInfo, uncompressedLength: realInfo.uncompressedLength + 1 };
-    await expect(decodeGeometryChunk(stored, lyingInfo, 13)).rejects.toThrow(
+    await expect(decodeGeometryChunk(stored, lyingInfo, FORMAT_VERSION)).rejects.toThrow(
       /Invalid cache: chunk decoded to \d+ bytes, directory says \d+/,
     );
 
@@ -366,7 +373,7 @@ describe('decodeGeometryChunk length verification', () => {
     // the decoded content itself (mesh count + expressId), not mere
     // truthiness: an empty array is also truthy and would satisfy a
     // `resolves.toBeTruthy()` check whether or not any mesh actually decoded.
-    const decoded = await decodeGeometryChunk(stored, realInfo, 13);
+    const decoded = await decodeGeometryChunk(stored, realInfo, FORMAT_VERSION);
     expectMeshesEqual(decoded, meshes);
   });
 
@@ -383,7 +390,7 @@ describe('decodeGeometryChunk length verification', () => {
   it('throws when a mesh record under-consumes the declared chunk length (meshCount and uncompressedLength are both truthful)', async () => {
     const meshes = [mesh(1, [0, 0, 0])];
     const section = await buildGeometrySectionV13(meshes, coordInfo(), { compress: false });
-    const open = openGeometryChunksV13(section, 0, 13);
+    const open = openGeometryChunksV13(section, 0, FORMAT_VERSION);
     const realInfo = open.chunks[0];
     expect(realInfo.flags & GeometryChunkFlags.DeflateRaw).toBe(0); // uncompressed: raw === stored
     expect(realInfo.meshCount).toBe(1);
@@ -402,14 +409,14 @@ describe('decodeGeometryChunk length verification', () => {
     expect(realVertexCount).toBe(3);
     dv.setUint32(4, realVertexCount - 1, true);
 
-    await expect(decodeGeometryChunk(stored, realInfo, 13)).rejects.toThrow(
+    await expect(decodeGeometryChunk(stored, realInfo, FORMAT_VERSION)).rejects.toThrow(
       /Invalid cache: chunk claims \d+ mesh record\(s\) but consumed \d+ of \d+ bytes/,
     );
 
     // Control: restoring the true vertexCount round-trips fine — the throw
     // above is caused by the corruption, not some unrelated fixture bug.
     dv.setUint32(4, realVertexCount, true);
-    const decoded = await decodeGeometryChunk(stored, realInfo, 13);
+    const decoded = await decodeGeometryChunk(stored, realInfo, FORMAT_VERSION);
     expectMeshesEqual(decoded, meshes);
   });
 });

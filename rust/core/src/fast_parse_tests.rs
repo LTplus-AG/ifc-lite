@@ -161,3 +161,36 @@ fn test_should_use_fast_path() {
     assert!(!should_use_fast_path("IFCWALL"));
     assert!(!should_use_fast_path("IFCEXTRUDEDAREASOLID"));
 }
+
+/// `extract_entity_type_name`'s own contract, next to the function.
+///
+/// Its only production caller is `legacy_aware_ifc_type_from_record`, and the
+/// cases below were exercised only from that caller's tests until now. If the
+/// caller is ever deleted or rerouted, the contract keeps its coverage here.
+///
+/// The spaced forms are the reason this matters: STEP permits whitespace around
+/// `=`, and buildingSMART's own `column-straight-rectangle-tessellation.ifc`
+/// writes `#71= IFCCOLUMN(` on all 26 of its entity lines. Untrimmed, that
+/// yielded `" IFCCOLUMN"` and matched no lookup.
+#[test]
+fn extract_entity_type_name_trims_and_rejects_empty() {
+    for (record, expected) in [
+        (&b"#12=IFCCOLUMN('g');"[..], Some("IFCCOLUMN")),
+        (&b"#12= IFCCOLUMN('g');"[..], Some("IFCCOLUMN")),
+        (&b"#12=\tIFCCOLUMN('g');"[..], Some("IFCCOLUMN")),
+        // Nothing between `=` and `(`: an empty name is None, not Some("").
+        (&b"#12=();"[..], None),
+        (&b"#12= (  );"[..], None),
+        // No `=` and no `(` are both None rather than a panic.
+        (&b"IFCCOLUMN('g');"[..], None),
+        (&b"#12=IFCCOLUMN"[..], None),
+        (&b""[..], None),
+    ] {
+        assert_eq!(
+            extract_entity_type_name(record),
+            expected,
+            "{:?}",
+            std::str::from_utf8(record)
+        );
+    }
+}

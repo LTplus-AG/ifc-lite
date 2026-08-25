@@ -48,8 +48,26 @@ export interface MeshData {
   presentation_layer?: string;
   /** Resolved material name for this (sub-)mesh, when known. */
   material_name?: string;
-  /** Source geometry item id for per-item styled sub-meshes. */
+  /**
+   * The `IfcRepresentationItem` this (sub-)mesh was tessellated from — ALWAYS a
+   * representation item, never a material. Before #3199 the server sent an
+   * `IfcMaterial` id here for material-layered walls, so a consumer following it
+   * to source landed on the wrong entity. Absent where the identity is genuinely
+   * merged away (single-mesh fallback, cached `IfcMappedItem`, instanced).
+   *
+   * Never `0`: `#0` is not a STEP instance name. The same filter applies to
+   * `material_id` below.
+   */
   geometry_item_id?: number;
+  /**
+   * The `IfcMaterial` whose layer this (sub-)mesh slices — ALWAYS a material,
+   * never a representation item. DISJOINT from `geometry_item_id`: the server
+   * never sends both. Never `0` either, and here that is load-bearing rather
+   * than trivially true: an unreferenced layer (an air gap) decodes to
+   * `material_id 0` in the mesher, and is sent as ABSENT rather than as
+   * `IfcMaterial #0`, which is not an entity anyone can navigate to (#3199).
+   */
+  material_id?: number;
   /** Space/zone properties attached to the element, when extracted. */
   properties?: Record<string, string>;
   /**
@@ -240,176 +258,13 @@ export interface GeometryDiagnostics {
 // and would silently invent a datum-level elevation. Anything that buckets or
 // sorts by elevation must exclude the `null`s rather than treat them as zero.
 
-/**
- * A single `IfcGridAxis` tag + axis curve (compact endpoint-pair shape).
- */
-export interface SymbolicGridAxis {
-  express_id: number;
-  grid_express_id: number;
-  tag: string;
-  /** Endpoint pair `[x0, y0, x1, y1]` in metres (plan view). */
-  endpoints: [number, number, number, number];
-  /**
-   * World-Y elevation in metres, or `null` when unresolved. See the
-   * "UNRESOLVED SCALARS" note at the top of this section — `null` is not `0`.
-   */
-  world_y: number | null;
-}
+// The symbolic (2D drawing) wire shapes live in `symbolic-types.ts` and are
+// re-exported here, so this module's public surface is unchanged (#3199).
+// `export *` re-exports without binding locally, so the names this file still
+// REFERENCES are imported too.
+import type { SymbolicData } from './symbolic-types.js';
+export * from './symbolic-types.js';
 
-/**
- * A 2D polyline (`IfcPolyline`, `IfcIndexedPolyCurve`, tessellated ellipses,
- * trimmed-curve arcs, grid axis lines).
- */
-export interface SymbolicPolyline {
-  express_id: number;
-  ifc_type: string;
-  /** Flat `[x0, y0, x1, y1, …]` plan-view coordinates. */
-  points: number[];
-  closed: boolean;
-  /**
-   * World-Y elevation in metres, or `null` when unresolved. See the
-   * "UNRESOLVED SCALARS" note at the top of this section — `null` is not `0`.
-   */
-  world_y: number | null;
-  representation: string;
-}
-
-/**
- * A 2D circle / arc (`IfcCircle`).
- */
-export interface SymbolicCircle {
-  express_id: number;
-  ifc_type: string;
-  center_x: number;
-  center_y: number;
-  radius: number;
-  /**
-   * World-Y elevation in metres, or `null` when unresolved. See the
-   * "UNRESOLVED SCALARS" note at the top of this section — `null` is not `0`.
-   */
-  world_y: number | null;
-  /** Start angle in radians (0 for a full circle). */
-  start_angle: number;
-  /** End angle in radians (`2π` for a full circle). */
-  end_angle: number;
-  representation: string;
-}
-
-/**
- * A 2D text annotation (`IfcTextLiteral` / grid bubble glyphs + tags).
- */
-export interface SymbolicText {
-  express_id: number;
-  ifc_type: string;
-  x: number;
-  y: number;
-  /** Baseline orientation as a `(cos, sin)` pair. */
-  dir_x: number;
-  dir_y: number;
-  /** Font cap height in model units (already unit-scaled). */
-  height: number;
-  content: string;
-  /** IFC `BoxAlignment` (`top-left`, `center`, …). Empty when absent. */
-  alignment: string;
-  /**
-   * World-Y elevation in metres, or `null` when unresolved. See the
-   * "UNRESOLVED SCALARS" note at the top of this section — `null` is not `0`.
-   */
-  world_y: number | null;
-  /** sRGB straight-alpha colour `[r, g, b, a]`. */
-  color: [number, number, number, number];
-  /** Per-instance target screen-pixel cap height (`0` = renderer default). */
-  target_px: number;
-  representation: string;
-}
-
-/**
- * A 2D filled region (`IfcAnnotationFillArea`). Outer ring + optional holes
- * packed into a single `points` buffer; `holes_offsets[i]` is the vertex index
- * where hole `i` begins.
- */
-export interface SymbolicFillArea {
-  express_id: number;
-  ifc_type: string;
-  points: number[];
-  holes_offsets: number[];
-  fill_color: [number, number, number, number];
-  has_hatching: boolean;
-  hatch_spacing: number;
-  hatch_angle: number;
-  /**
-   * Secondary cross-hatch angle. `null` when absent — the Rust model uses
-   * `f32::NAN`, which `serde_json` serializes as JSON `null` (not `NaN`).
-   */
-  hatch_angle_secondary: number | null;
-  hatch_line_width: number;
-  /**
-   * World-Y elevation in metres, or `null` when unresolved. See the
-   * "UNRESOLVED SCALARS" note at the top of this section — `null` is not `0`.
-   */
-  world_y: number | null;
-  representation: string;
-}
-
-/**
- * 2D symbol data extracted from `IfcAnnotation` and `IfcGrid` entities.
- *
- * Returned inline by `POST /api/v1/parse` and the streaming `complete` events,
- * and fetched by cache key from `GET /api/v1/parse/symbolic/{cache_key}` for the
- * binary (Parquet) transports. Arrays may be empty when the model carries no
- * 2D symbols.
- */
-/**
- * Present only when extraction stopped at its bound; absent when the file was
- * emitted in full.
- */
-/**
- * Which bound stopped an extraction early.
- *
- * Mirrors `SymbolicTruncationReason` in `rust/processing/src/symbolic/output_cap.rs`,
- * serialized kebab-case. The extraction bounds (`element-count`, `output-bytes`)
- * are the severe ones and outrank the per-item bounds, which stop one
- * representation item's contribution while the whole-file totals can sit far
- * below either extraction bound.
- */
-export type SymbolicTruncationReason =
-  | 'element-count'
-  | 'output-bytes'
-  | 'item-depth'
-  | 'item-revisits'
-  | 'item-cycle';
-
-export interface SymbolicTruncation {
-  /** Which bound fired. */
-  reason: SymbolicTruncationReason;
-  /** Total primitives emitted. */
-  emitted: number;
-  /**
-   * The bound's numeric value, when the reason has one.
-   *
-   * ABSENT for `item-depth`, `item-revisits` and `item-cycle`: those bounds are
-   * per representation item, so there is no file-level number to compare
-   * `emitted` against, and "showing {emitted} of {limit}" would invent one.
-   */
-  limit?: number;
-}
-
-export interface SymbolicData {
-  grid_axes: SymbolicGridAxis[];
-  polylines: SymbolicPolyline[];
-  circles: SymbolicCircle[];
-  texts: SymbolicText[];
-  fills: SymbolicFillArea[];
-  /**
-   * Set when the server bounded this extraction and returned a partial result.
-   *
-   * Optional because it is omitted for a complete extraction, so an existing
-   * consumer keeps compiling. But a consumer that renders symbolic geometry
-   * without reading this shows a clipped drawing as though it were the whole
-   * drawing, which is the failure this field exists to end.
-   */
-  truncated?: SymbolicTruncation;
-}
 
 /**
  * Full parse response with all meshes.

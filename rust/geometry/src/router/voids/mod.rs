@@ -2031,7 +2031,15 @@ impl GeometryRouter {
         // path targets (multi-layer walls with windows).
         let ctx = self.build_void_context(element, &opening_ids, decoder);
 
-        let mut voided = SubMeshCollection::new();
+        // INHERIT the discriminator rather than assuming rep-item ids. This path
+        // is reached only when `try_layered_sub_meshes` declined above, so the
+        // flag is false today -- but hard-coding that would make a future
+        // layered producer silently relabel material ids as representation
+        // items, which is the exact confusion #3199 removes.
+        let mut voided = SubMeshCollection {
+            sub_meshes: Vec::new(),
+            ids_are_materials: sub_meshes.ids_are_materials,
+        };
         for sub in sub_meshes.sub_meshes {
             let geometry_id = sub.geometry_id;
             let mut voided_mesh = self.apply_void_context(sub.mesh, &ctx, element.id);

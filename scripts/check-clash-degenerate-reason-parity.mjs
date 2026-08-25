@@ -26,7 +26,10 @@
  *
  * VACUITY GUARD: both extractors must come back non-empty. Two empty sets are
  * "equal", so an extractor broken by a refactor would otherwise turn this into
- * a check that passes by finding nothing.
+ * a check that passes by finding nothing. It reports under its OWN header and
+ * remedy: a blind extractor is not drift between the two declarations, and the
+ * parity remedy ("match the other side exactly, in both directions") would tell
+ * the reader to empty the union against a set read as empty.
  *
  * COMMENTS ARE STRIPPED FIRST on both sides, symmetrically: a reason named only
  * in prose must not stand in for a real one, in either language.
@@ -131,14 +134,46 @@ if (process.argv[1] && process.argv[1].endsWith('check-clash-degenerate-reason-p
   const failures = checkParity(rustSource, tsSource);
 
   if (failures.length > 0) {
-    console.error('\nClashSolidDegenerateReason has drifted from clash_solid.rs:\n');
+    // A vacuity failure is NOT drift between the two declarations, and the
+    // header must not say it is. `checkParity` returns early on that class
+    // (nothing is compared once a set is empty), so the two are mutually
+    // exclusive and this dispatch is unambiguous.
+    //
+    // Nor can the message name a culprit side: emptying an input produces the
+    // identical "extractor has drifted" text with the regexes untouched, so a
+    // moved source shape and a genuinely shrunken input are indistinguishable
+    // from here. Blame neither.
+    const drifted = failures.some((f) => f.includes('the extractor has drifted'));
+    console.error(
+      drifted
+        ? '\nthis gate could not read one of its inputs:\n'
+        : '\nClashSolidDegenerateReason has drifted from clash_solid.rs:\n',
+    );
     for (const f of failures) console.error(`  ${f}`);
-    console.error(`
+    if (drifted) {
+      // The update-the-union remedy is actively DESTRUCTIVE here. With the
+      // kernel set read as empty, "match exactly, in both directions" means
+      // empty the union -- which silences this gate and breaks the type every
+      // `as ClashSolidDegenerateReason` cast on the wasm boundary depends on.
+      console.error(`
+An extractor above returned NOTHING, so this gate compared nothing and is not
+reporting on parity at all. Do not touch the union on the strength of this run:
+with a set read as empty, "match the other side exactly" means EMPTY IT, which
+silences this gate and breaks the type the wasm boundary casts to.
+
+Two causes produce this identical message and nothing here can tell them apart:
+the source shape moved under this file's regexes, or the input genuinely shrank
+and the regexes are fine. Read the input named above and decide which, then fix
+that -- the extractor in this script, or the source.
+`);
+    } else {
+      console.error(`
 The reason crosses the wasm boundary as an untyped string and is cast on
 arrival, so TypeScript cannot catch this. Update the union in
 ${TS_REL}
 to match ${RUST_REL} exactly, in both directions.
 `);
+    }
     process.exit(1);
   }
 

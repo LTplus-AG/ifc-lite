@@ -317,7 +317,43 @@ fn nth_attribute_reversed_boundary_is_false() {
     assert!(!nth_attribute_is_present(b"garbage)stuff(more", 0));
 }
 
-/// The five IFC2X3 products #3172 added to `legacy_entities.rs`.
+/// Every key in `legacy_entities.rs`, in one place.
+///
+/// Two tests assert OPPOSITE directions about these names and a second copy
+/// of the list would let them drift apart:
+/// `every_legacy_arm_maps_onto_a_known_product` says each maps to a known base
+/// type; `every_legacy_key_is_unknown_to_the_generated_enum` says none of them
+/// is a name `IfcType::from_str` already knows.
+const LEGACY_KEYS: [&str; 26] = [
+    "IFCPRESENTATIONSTYLEASSIGNMENT",
+    "IFCBEAMSTANDARDCASE",
+    "IFCCOLUMNSTANDARDCASE",
+    "IFCMEMBERSTANDARDCASE",
+    "IFCPLATESTANDARDCASE",
+    "IFCSLABSTANDARDCASE",
+    "IFCDOORSTANDARDCASE",
+    "IFCWINDOWSTANDARDCASE",
+    "IFCOPENINGSTANDARDCASE",
+    "IFCSLABELEMENTEDCASE",
+    "IFCWALLELEMENTEDCASE",
+    "IFCDOORSTYLE",
+    "IFCWINDOWSTYLE",
+    "IFCPROXY",
+    "IFCBUILDINGELEMENT",
+    "IFCBUILDINGELEMENTTYPE",
+    "IFCEQUIPMENTELEMENT",
+    "IFCELECTRICDISTRIBUTIONPOINT",
+    "IFCELECTRICALELEMENT",
+    "IFCCHAMFEREDGEFEATURE",
+    "IFCROUNDEDEDGEFEATURE",
+    "IFCSTRUCTURALLINEARACTIONVARYING",
+    "IFCSTRUCTURALPLANARACTIONVARYING",
+    "IFCSOLIDSTRATUM",
+    "IFCVOIDSTRATUM",
+    "IFCWATERSTRATUM",
+];
+
+/// The six IFC2X3 products #3172 added to `legacy_entities.rs`.
 ///
 /// Each one is CONCRETE and carries both `ObjectPlacement` and
 /// `Representation` in `@ifc-lite/data`'s IFC2X3 table, and each one resolved
@@ -396,34 +432,7 @@ fn edge_features_are_subtraction_operands_not_openings() {
 /// dropped as having no arm at all, while looking handled in the table.
 #[test]
 fn every_legacy_arm_maps_onto_a_known_product() {
-    for name in [
-        "IFCPRESENTATIONSTYLEASSIGNMENT",
-        "IFCBEAMSTANDARDCASE",
-        "IFCCOLUMNSTANDARDCASE",
-        "IFCMEMBERSTANDARDCASE",
-        "IFCPLATESTANDARDCASE",
-        "IFCSLABSTANDARDCASE",
-        "IFCDOORSTANDARDCASE",
-        "IFCWINDOWSTANDARDCASE",
-        "IFCOPENINGSTANDARDCASE",
-        "IFCSLABELEMENTEDCASE",
-        "IFCWALLELEMENTEDCASE",
-        "IFCDOORSTYLE",
-        "IFCWINDOWSTYLE",
-        "IFCPROXY",
-        "IFCBUILDINGELEMENT",
-        "IFCBUILDINGELEMENTTYPE",
-        "IFCEQUIPMENTELEMENT",
-        "IFCELECTRICDISTRIBUTIONPOINT",
-        "IFCELECTRICALELEMENT",
-        "IFCCHAMFEREDGEFEATURE",
-        "IFCROUNDEDEDGEFEATURE",
-        "IFCSTRUCTURALLINEARACTIONVARYING",
-        "IFCSTRUCTURALPLANARACTIONVARYING",
-        "IFCSOLIDSTRATUM",
-        "IFCVOIDSTRATUM",
-        "IFCWATERSTRATUM",
-    ] {
+    for name in LEGACY_KEYS {
         let info = crate::legacy_entities::get_legacy_entity_info(name)
             .unwrap_or_else(|| panic!("{name} has no arm in legacy_entities.rs"));
         assert!(
@@ -447,11 +456,13 @@ fn every_legacy_arm_maps_onto_a_known_product() {
 /// `Unknown`, and `Unknown` stores a CRC32 hash rather than the name, so the
 /// keyword survives only in the record.
 ///
-/// The keywords here are ones `legacy_entities.rs` carries on `main`. The six
-/// #3172 adds are deliberately absent: this branch is cut from `main` and must
-/// not depend on a table that is still in review, or it goes green here and red
-/// on merge in whichever order the two land. The first draft used
-/// `IFCELECTRICALELEMENT` and failed for exactly that reason.
+/// The keywords here all predate #3172, which has since landed and wrote six
+/// arms, one of them replacing a misspelling (the table went 21 -> 26). They
+/// are kept because what this test exercises is the WIRE-UP --
+/// that a record reaches `legacy_entities.rs` at all -- not the table's
+/// contents, which `legacy_ifc2x3_products_resolve_to_their_own_supertype`
+/// above covers directly. Choosing rows that do not move keeps the two tests
+/// from failing together for one cause.
 #[test]
 fn a_legacy_record_resolves_where_the_decoded_type_cannot() {
     // What the decoder produces for these, and what the browser was emitting.
@@ -508,3 +519,36 @@ fn an_unreadable_record_changes_nothing() {
         assert_eq!(legacy_aware_ifc_type_from_record(unknown, record), unknown);
     }
 }
+
+/// The unstated invariant `legacy_aware_ifc_type_from_record` rests on.
+///
+/// That function short-circuits on `!matches!(decoded, IfcType::Unknown(_))`,
+/// which is only equivalent to `legacy_aware_ifc_type` while every key in the
+/// legacy table is a name the generated enum does NOT know. If a schema
+/// regeneration ever emits an arm for one of these keys -- and several are real
+/// IFC2x3/IFC4 entities, `IFCPRESENTATIONSTYLEASSIGNMENT` among them --
+/// `from_str` stops returning `Unknown`, the early return fires, and the wasm
+/// path silently returns the raw variant while the native path still remaps it.
+/// That is exactly the wasm-vs-native divergence #3179 was filed for, and it
+/// would come back in a form no other test here observes.
+///
+/// `every_legacy_arm_maps_onto_a_known_product` asserts the BASE TYPE is known.
+/// This asserts the KEY is not: the opposite direction, and the one the
+/// short-circuit depends on.
+///
+/// This is the BEHAVIOURAL half -- it calls `from_str` for real. The derived
+/// half is in `scripts/check-legacy-entity-coverage.mjs`, which reads both sets
+/// out of the source and so also catches a 27th arm added without touching
+/// `LEGACY_KEYS`, which this test cannot see.
+#[test]
+fn every_legacy_key_is_unknown_to_the_generated_enum() {
+    for key in LEGACY_KEYS {
+        assert!(
+            matches!(IfcType::from_str(key), IfcType::Unknown(_)),
+            "{key} is now known to `IfcType::from_str`, so the `Unknown` \
+             short-circuit in `legacy_aware_ifc_type_from_record` skips its \
+             legacy remap and the browser diverges from the native path again"
+        );
+    }
+}
+

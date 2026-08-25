@@ -88,6 +88,23 @@ export function legacyKeys(rustSource) {
 }
 
 /**
+ * The names in the `LEGACY_ENTITY_NAMES` const — the public mirror of the match
+ * arms, and what `dump_rooted_type_sweep.rs` feeds into the cross-language
+ * rooted-type universe (#3124).
+ *
+ * Bounded to the const's own `&[` … `];` block, so a name appearing only in a
+ * doc comment or in a match arm elsewhere in the file cannot pad it.
+ */
+export function legacyNameConst(rustSource) {
+  const start = rustSource.indexOf('pub const LEGACY_ENTITY_NAMES');
+  if (start === -1) return new Set();
+  const open = rustSource.indexOf('[', start);
+  const close = rustSource.indexOf('];', open);
+  if (open === -1 || close === -1) return new Set();
+  return new Set([...rustSource.slice(open, close).matchAll(/"(IFC[A-Z0-9]+)"/g)].map((m) => m[1]));
+}
+
+/**
  * Uppercase names `IfcType::from_str` resolves to a real variant.
  *
  * Bounded to that ONE function rather than sliced to end of file: the arm shape
@@ -198,6 +215,56 @@ export function checkCoverage({ legacySource, schemaSource, oldTables, tableSize
     );
   }
 
+  // THE CONST MUST MIRROR THE ARMS. `LEGACY_ENTITY_NAMES` is public and feeds
+  // the cross-language rooted-type universe, so an arm that never reaches it
+  // shrinks that universe silently — which is how the three stratum leaves
+  // stayed divergent with both halves of that gate green (#3124 review).
+  //
+  // This lives HERE rather than in a Rust test because the only way to state it
+  // in-crate is `include_str!` of the module's own source — a source-text
+  // assertion, which AGENTS.md bans and `check-rust-source-text-assertions`
+  // (#3195) flags. Same call the repo already made for
+  // `check-clash-degenerate-reason-parity.mjs`: a claim about two SOURCES
+  // belongs in a lint, where reading both is the honest thing rather than the
+  // banned thing.
+  const constNames = legacyNameConst(legacySource);
+  if (constNames.size === 0) {
+    failures.push(
+      `no names extracted from LEGACY_ENTITY_NAMES in ${LEGACY_REL} — the extractor has drifted, and two empty sets would otherwise "agree"`,
+    );
+  } else {
+    const missingFromConst = [...keys].filter((k) => !constNames.has(k)).sort();
+    const extraInConst = [...constNames].filter((k) => !keys.has(k)).sort();
+    if (missingFromConst.length > 0)
+      failures.push(
+        `${LEGACY_REL} has match arms absent from LEGACY_ENTITY_NAMES: ${missingFromConst.join(', ')} — every consumer of that const, the rooted-type sweep's universe included, is blind to them`,
+      );
+    if (extraInConst.length > 0)
+      failures.push(
+        `LEGACY_ENTITY_NAMES lists ${extraInConst.join(', ')}, which is not a match arm in ${LEGACY_REL}`,
+      );
+  }
+
+  // An arm whose key `IfcType::from_str` ALREADY resolves.
+  //
+  // `legacy_aware_ifc_type_from_record` (schema_helpers.rs) short-circuits on
+  // `!matches!(decoded, IfcType::Unknown(_))` and only then consults this
+  // table. That is equivalent to the native path ONLY while every key here is
+  // a name the generated enum does not know. If a schema regeneration ever
+  // emits an arm for one of these keys, the short-circuit fires, the remap is
+  // skipped, and the browser diverges from the native path again -- which is
+  // exactly the defect #3179 was filed for.
+  //
+  // Checked here rather than only in Rust because both sets are DERIVED from
+  // source: a 27th arm added to the table is picked up automatically, where a
+  // hand-written key list in a test would stay green and silently under-cover.
+  for (const key of [...keys].sort()) {
+    if (!known.has(key)) continue;
+    failures.push(
+      `${LEGACY_REL} has an arm for "${key}", which ${SCHEMA_REL}'s from_str already resolves`,
+    );
+  }
+
   for (const key of [...keys].sort()) {
     if (allTableNames.has(key)) continue;
     if (KEYS_ABSENT_FROM_EVERY_BUNDLED_TABLE.has(key)) continue;
@@ -241,9 +308,63 @@ if (process.argv[1] && process.argv[1].endsWith('check-legacy-entity-coverage.mj
   const failures = checkCoverage(tree);
 
   if (failures.length > 0) {
-    console.error(`\n${LEGACY_REL} is out of step with the bundled schema tables:\n`);
-    for (const f of failures) console.error(`  ${f}`);
-    console.error(`
+    // ONE table, read by both the router and the completeness guard below.
+    //
+    // #3204's messages arrived here unrouted because no remedy for that class
+    // existed yet -- not because two lists disagreed. The two-list shape came
+    // later, on this branch, when the guard was added with its own copy of the
+    // keys; unifying them is what stops THAT drift, and a bare
+    // `LEGACY_ENTITY_NAMES` key is what swallowed the const-drift message into
+    // contradictory advice before the keys below were narrowed.
+    //
+    // Keys must be SPECIFIC. A key that matches a sibling class prints TWO
+    // remedies for one failure, one of which tells the reader to fix something
+    // that is not wrong. Which one appears first is table order below, not
+    // failure order -- remedies are not attached to individual failures.
+    const REMEDIES = [
+      {
+        keys: ['the extractor has drifted'],
+        text: `
+An extractor here returned nothing, or implausibly little, so this gate is
+reading a subset of its inputs. Read nothing else above until it is resolved: a
+half-blind gate reports a subset and looks like a pass.
+
+Two causes produce the identical message and none of these checks can tell
+them apart: either the source shape moved under this file's regexes, or the
+input genuinely shrank and the regexes are fine. Check the input reported above
+before editing either.
+`,
+      },
+      {
+        keys: ['from_str already resolves'],
+        text: `
+An arm whose key the generated enum already resolves is not a coverage gap, it
+is a conflict. legacy_aware_ifc_type_from_record short-circuits whenever the
+decoded type is not Unknown, so that arm's remap is skipped on the wasm path
+while the native path still applies it -- the divergence #3179 was filed for.
+
+REMOVE the arm: a name from_str resolves needs no legacy mapping. If the remap
+is still wanted, the short-circuit in rust/core/src/schema_helpers.rs has to go
+first, and that costs a record scan on every entity.
+`,
+      },
+      {
+        keys: ['names no entity'],
+        text: `
+An arm whose key names no entity in any bundled schema table can never match a
+real file, so nothing is missing and nothing resolves to Unknown -- the arm is
+simply dead. The table carried one from 2026-06-29 until #3172 removed it on
+2026-08-25: IFCELECTRICALDISTRIBUTIONPOINT, with an "AL" no IFC2X3 entity has,
+certified all the while by a test asserting the same misspelling.
+
+Check the spelling against the bundled tables first. If the name is deliberate
+and absent from all three, declare it in KEYS_ABSENT_FROM_EVERY_BUNDLED_TABLE
+with the reason. Otherwise remove the arm.
+`,
+      },
+      {
+        keys: ['has no arm in'],
+        text: `
 Every pass that classifies an entity goes through this table, and a name it
 misses resolves to IfcType::Unknown -- a subtype of nothing. The entity is then
 dropped from the attribute export and from meshing at once, so nothing
@@ -252,7 +373,68 @@ disagrees and nothing looks wrong.
 Add an arm mapping each name to its closest surviving IFC4X3 supertype (its own
 parent chain in the older schema is the place to look, not a guess), and pin it
 in rust/core/src/schema_helpers_tests.rs.
+`,
+      },
+      {
+        // Deliberately NOT a bare `LEGACY_ENTITY_NAMES`: that also matches the
+        // const-vacuity message, whose fix is to repair this script's extractor,
+        // not to edit a const that is already complete.
+        keys: ['absent from LEGACY_ENTITY_NAMES', 'which is not a match arm in'],
+        text: `
+LEGACY_ENTITY_NAMES is public and feeds the cross-language rooted-type sweep, so
+an arm the const omits makes that sweep structurally blind to the name -- which
+is how the three stratum leaves stayed divergent with both halves of the
+rooted-type gate green (#3124 review).
+
+Add the missing name to the const, or delete the const entry that no arm
+produces. The two must list exactly the same names; neither direction is the
+safe one.
+`,
+      },
+    ];
+
+    // A drift failure is not necessarily an out-of-step table, and not
+    // necessarily a broken extractor either: emptying an input produces the
+    // identical message with the regexes untouched, and that emptied input may
+    // itself be the table. Name neither side in the header.
+    const drifted = failures.some((f) => f.includes('the extractor has drifted'));
+    console.error(
+      drifted
+        ? `\nthese inputs did not read as expected:\n`
+        : `\n${LEGACY_REL} is out of step with the bundled schema tables:\n`,
+    );
+    for (const f of failures) console.error(`  ${f}`);
+
+    // ONE matcher. The key lists were unified above; leaving the predicate
+    // written twice would let a change to the router (case-folding, a regex)
+    // make every routed failure ALSO land in `unremedied`, printing a correct
+    // remedy and "NO REMEDY MATCHED" for the same line.
+    // ALL matches, not the first. Under first-match an over-broad earlier key
+    // does not print two remedies -- it prints only the earlier, wrong one and
+    // SUPPRESSES the correct one, with `unremedied` staying empty so the guard
+    // never fires. Any-match keeps over-broadness loud: both remedies print,
+    // in table order, and one of them plainly does not fit the failure list
+    // above.
+    const remediesFor = (f) => REMEDIES.filter((r) => r.keys.some((k) => f.includes(k)));
+
+    for (const r of REMEDIES) {
+      if (failures.some((f) => remediesFor(f).includes(r))) console.error(r.text);
+    }
+
+    // A failure matching no remedy prints its line and nothing else, which reads
+    // as "no advice exists" rather than "the router missed it". Substring
+    // dispatch cannot notice its own gaps, so the gap is named instead.
+    const unremedied = failures.filter((f) => remediesFor(f).length === 0);
+    if (unremedied.length > 0) {
+      console.error(`
+NO REMEDY MATCHED the failure(s) below. That is a defect in this script, not in
+the table -- a new failure message was added without a matching remedy block.
+Add one to REMEDIES, or reword the message to match an existing key:
+
+${unremedied.map((f) => `  ${f}`).join('\n')}
 `);
+    }
+
     process.exit(1);
   }
 

@@ -22,6 +22,10 @@
  *                   include: ['test/**\/*.test.ts']
  *   zero-tests      "vitest run"                   0 test-looking, 0 matched
  *
+ * Two further cases cover anti-vacuity (#3194) rather than glob semantics: a
+ * root with no package parents at all, and a package parent holding no
+ * package.json. Both used to exit 0 with a success line.
+ *
  * Run: node --test scripts/check-test-glob-coverage.test.mjs
  */
 
@@ -180,6 +184,45 @@ test('a find-based recursive command (apps\\/viewer\'s shape) reaches nested tes
     const { status, out } = runOn(dir);
     assert.equal(status, 0, out);
     assert.match(out, /check-test-glob-coverage: OK \(1 packages audited, 0 unrun test files\)/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- Anti-vacuity: a scan that found nothing must not report a clean audit ---
+//
+// Issue #3194: this checker printed `OK (0 packages audited, 0 unrun test
+// files)` and exited 0 when pointed at a tree with no packages in it, so CI
+// read "we looked and it was clean" from a run that had looked at nothing.
+// Both shapes of nothing get a case, because they fail at different points.
+
+test('vacuity: a root with neither packages/ nor apps/ fails instead of reporting a clean audit', () => {
+  // mkdtemp gives a real, readable, EMPTY directory — the exact input that
+  // used to exit 0.
+  const dir = mkdtempSync(join(tmpdir(), 'test-glob-coverage-empty-'));
+  try {
+    const { status, out } = runOn(dir);
+    assert.equal(status, 1, `expected a non-zero exit on an empty tree, got ${status}: ${out}`);
+    assert.match(out, /Refusing a vacuous pass/);
+    assert.match(out, /none of packages\/, apps\/ exists/);
+    assert.doesNotMatch(out, /OK \(/, 'must not print a success line at all');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('vacuity: a packages/ dir holding no package.json fails instead of reporting a clean audit', () => {
+  const dir = writeTree({
+    // A parent that exists but holds nothing this checker recognises as a
+    // package: the walk succeeds, the package list comes back empty.
+    'packages/not-a-package/README.md': '# no package.json here\n',
+  });
+  try {
+    const { status, out } = runOn(dir);
+    assert.equal(status, 1, `expected a non-zero exit on a package-less tree, got ${status}: ${out}`);
+    assert.match(out, /Refusing a vacuous pass/);
+    assert.match(out, /contain no directory with a package\.json/);
+    assert.doesNotMatch(out, /OK \(/, 'must not print a success line at all');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

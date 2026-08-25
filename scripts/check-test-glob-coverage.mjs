@@ -52,6 +52,16 @@
  * which is the CI lane that enforces it. Its own regression harness runs in
  * .github/workflows/test.yml.
  *
+ * ANTI-VACUITY (#3194): this checker used to print
+ * `OK (0 packages audited, 0 unrun test files)` and exit 0 when it found no
+ * packages at all — a scan of nothing reported as a clean scan. Three guards
+ * now stand between an empty input set and that success line: neither
+ * `packages/` nor `apps/` existing is a failure, zero packages found is a
+ * failure, and (against the real repo, where a collapse would otherwise be
+ * invisible) fewer than AUDITED_FLOOR packages actually audited is a failure.
+ * A directory that cannot be read is loud too, and distinguished from one that
+ * is missing — they call for different fixes.
+ *
  * Blind spot, stated so nobody mistakes its OK for a whole-repo claim: it
  * audits `packages/*` and `apps/*` only. Test files under `scripts/` are
  * covered by the glob catch-all step in that workflow, and that the catch-all
@@ -87,6 +97,19 @@ const TEST_FILE_RE = /\.(test|spec)\.(ts|tsx|mts|js|mjs)$/;
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'pkg', 'build', 'coverage', '.turbo', 'generated']);
 const PACKAGE_PARENTS = ['packages', 'apps'];
 
+/**
+ * Lower bound on how many packages must actually get audited when this runs
+ * against the real repo. Measured on a healthy tree: 49 directories under
+ * `packages/` + `apps/`, 47 of which carry a `test` script and so reach the
+ * audit. Set to 30 — roughly a third of headroom, enough that ordinary churn
+ * (a package split, a few merged or retired) never forces an edit here, while
+ * the failure this guards against still trips: every way this checker can go
+ * blind (a wrong scan root, a `readdirSync` that returns nothing, a
+ * package.json read that stops finding files) collapses the count to zero or
+ * near it, not to 29.
+ */
+const AUDITED_FLOOR = 30;
+
 /** All test-looking files under `dir`, as paths relative to `dir`, POSIX-separated. */
 export function findTestLookingFiles(dir) {
   const found = [];
@@ -98,10 +121,17 @@ function walk(root, dir, found) {
   let entries;
   try {
     entries = readdirSync(dir);
-  } catch {
-    // Fail closed elsewhere (a missing package dir is a caller bug); an
-    // unreadable subdirectory here is treated as empty rather than crashing
-    // the whole audit over one package.
+  } catch (err) {
+    // A directory that is MISSING and one that cannot be READ are different
+    // events, and neither of them is "this package has no test files". The
+    // previous `catch { return; }` collapsed both into an empty result, which
+    // is how this checker could audit a tree it never opened and still print
+    // OK (#3194). Both are loud now, with the two cases distinguished.
+    fail(
+      err?.code === 'ENOENT'
+        ? `${dir} does not exist — refusing to treat a missing directory as one containing no test files`
+        : `${dir} could not be read (${err?.code ?? err?.message}) — refusing to treat an unreadable directory as one containing no test files`,
+    );
     return;
   }
   for (const entry of entries) {
@@ -110,8 +140,13 @@ function walk(root, dir, found) {
     let st;
     try {
       st = statSync(full);
-    } catch {
-      continue;
+    } catch (err) {
+      // A dangling symlink is a real and benign thing to meet mid-walk, and
+      // it is genuinely not a test file. Anything else (a permissions error,
+      // a filesystem fault) is not something to walk past in silence.
+      if (err?.code === 'ENOENT') continue;
+      fail(`${full} could not be stat'ed (${err?.code ?? err?.message}) — refusing to skip an entry this checker could not classify`);
+      return;
     }
     if (st.isDirectory()) {
       walk(root, full, found);
@@ -267,11 +302,12 @@ export function auditPackage(pkgDir, pkgJson) {
   return { testLooking, matched, missed };
 }
 
-export function listPackages(root) {
+export function listPackages(root, seenParents = []) {
   const out = [];
   for (const parent of PACKAGE_PARENTS) {
     const parentDir = join(root, parent);
     if (!existsSync(parentDir)) continue;
+    seenParents.push(parent);
     for (const name of readdirSync(parentDir).sort()) {
       const pkgDir = join(parentDir, name);
       const pkgJsonPath = join(pkgDir, 'package.json');
@@ -289,7 +325,28 @@ export function listPackages(root) {
 }
 
 function main() {
-  const packages = listPackages(ROOT);
+  const seenParents = [];
+  const packages = listPackages(ROOT, seenParents);
+
+  // Anti-vacuity, structural: true of the real repo AND of every synthetic
+  // fixture tree the regression harness builds, so it costs the harness
+  // nothing while making "the scan root was wrong" impossible to mistake for
+  // "the audit was clean".
+  if (seenParents.length === 0) {
+    fail(
+      `none of ${PACKAGE_PARENTS.map((p) => `${p}/`).join(', ')} exists under ${ROOT}. ` +
+        `Refusing a vacuous pass: this checker exists to audit workspace packages and found nowhere to look for them.`,
+    );
+    return;
+  }
+  if (packages.length === 0) {
+    fail(
+      `${seenParents.map((p) => `${p}/`).join(' and ')} contain no directory with a package.json under ${ROOT}. ` +
+        `Refusing a vacuous pass: a scan that found zero packages has proved nothing about test-glob coverage.`,
+    );
+    return;
+  }
+
   const offenders = [];
   let audited = 0;
 
@@ -314,6 +371,21 @@ Either widen the test script's glob / vitest "include" to reach these files
 if they are dead and should be deleted, delete them. Do not add a skip.
 `);
     process.exitCode = 1;
+    return;
+  }
+
+  // Anti-vacuity, quantitative. Only meaningful against the real repo: the
+  // regression harness drives synthetic trees of a handful of packages
+  // through `--root`, and one of its cases deliberately audits zero (a
+  // package with no `test` script at all is check-test-wiring's business).
+  // So the floor applies exactly where a silent collapse would be invisible.
+  if (rootFlagIdx === -1 && audited < AUDITED_FLOOR) {
+    fail(
+      `only ${audited} package(s) audited, floor is ${AUDITED_FLOOR}. ` +
+        `Refusing a vacuous pass: this repo has about 47 packages with a \`test\` script, so a count this low means the ` +
+        `package walk or the package.json read stopped working, not that the packages went away. ` +
+        `If packages were genuinely removed, lower AUDITED_FLOOR in the same commit.`,
+    );
     return;
   }
 

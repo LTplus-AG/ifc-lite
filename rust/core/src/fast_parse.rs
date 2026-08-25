@@ -270,10 +270,10 @@ pub fn extract_entity_type_name(bytes: &[u8]) -> Option<&str> {
     let type_start = eq_pos + 1;
     let type_end = eq_pos + paren_pos;
 
-    if type_end <= type_start {
-        return None;
-    }
-
+    // No `type_end <= type_start` guard: `bytes[eq_pos]` is `=`, never `(`, so
+    // `paren_pos >= 1` and `type_end >= type_start` always. The one reachable
+    // equality is `#1=(`, which yields an empty slice that the `is_empty` below
+    // rejects. `an_unreadable_record_changes_nothing` covers that input.
     let name = std::str::from_utf8(&bytes[type_start..type_end]).ok()?.trim();
     (!name.is_empty()).then_some(name)
 }

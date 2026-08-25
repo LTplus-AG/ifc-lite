@@ -78,17 +78,66 @@ const DISPOSABLE_CLASSES = new Set(['GeometryProcessor']);
  */
 const ALLOWLIST = new Map([]);
 
+/**
+ * Lower bound on how many source files the walk must reach. Measured on a
+ * healthy tree: 2002 non-test `.ts`/`.tsx`/`.mts` files under
+ * `apps/` + `packages/`. Set to 1200 — deep headroom, because
+ * this number only has to separate "the walk works" from "the walk found
+ * nothing", and every way it breaks (a wrong root, an unreadable directory, a
+ * cwd change) takes it to zero, never to a plausible-looking fraction.
+ */
+const SOURCE_FLOOR = 1200;
+
+/**
+ * Lower bound on how many disposable-handle constructions the AST detector
+ * must still find. Measured on a healthy tree: 27. Set to
+ * 18 — a third of headroom, so the ordinary
+ * arrival and removal of call sites does not force an edit here, while the
+ * failure this guards against (a `ts` API change, a rename in
+ * DISPOSABLE_CLASSES, a visitor that stops recursing) still trips: each of
+ * those drops the count to zero, not to 17.
+ */
+const CONSTRUCTION_FLOOR = 18;
+
+/**
+ * Fails closed on a directory it cannot read. The old `catch { return out; }`
+ * turned a missing scan root, a typo'd path and a permissions error alike into
+ * "no source files here", which let the whole gate print its success line
+ * having opened nothing at all (#3194). The two cases are distinguished
+ * because they call for different fixes: a MISSING directory means SCAN_DIRS
+ * or the working directory is wrong; an UNREADABLE one is an environment
+ * fault. Neither is a clean scan.
+ */
 function findSourceFiles(dir, out = []) {
   let entries;
   try {
     entries = readdirSync(dir);
-  } catch {
-    return out;
+  } catch (err) {
+    const why =
+      err?.code === 'ENOENT'
+        ? `does not exist — SCAN_DIRS in this gate, or the tree it was pointed at, is wrong`
+        : `could not be read (${err?.code ?? err?.message})`;
+    console.error(
+      `\n\u274c check-wasm-disposal: ${relative(ROOT, dir) || dir} ${why}.\n` +
+        `Refusing a vacuous pass: a directory this gate cannot open is a broken scan, not a clean one.\n`,
+    );
+    process.exit(1);
   }
   for (const entry of entries) {
     if (SKIP_DIRS.has(entry) || entry.startsWith('.')) continue;
     const full = join(dir, entry);
-    if (statSync(full).isDirectory()) findSourceFiles(full, out);
+    // A dangling symlink is not a source file, but it is also not a reason to
+    // die with a raw stack trace -- a stale build artifact or a bad checkout
+    // leaves them around. Anything OTHER than "the target is gone" is a broken
+    // scan and stays loud, matching how this walk treats an unreadable dir.
+    let st;
+    try {
+      st = statSync(full);
+    } catch (err) {
+      if (err.code === 'ENOENT') continue;
+      throw err;
+    }
+    if (st.isDirectory()) findSourceFiles(full, out);
     else if (SOURCE_RE.test(entry) && !TEST_RE.test(entry)) out.push(full);
   }
   return out;
@@ -336,9 +385,12 @@ function isFactoryBody(newExpr) {
 const violations = [];
 const accepted = { using: 0, finally: 0, factory: 0, allowlisted: 0, escapes: 0, disposer: 0 };
 let scanned = 0;
+let walked = 0;
 
 for (const scanDir of SCAN_DIRS) {
-  for (const file of findSourceFiles(join(ROOT, scanDir))) {
+  const sources = findSourceFiles(join(ROOT, scanDir));
+  walked += sources.length;
+  for (const file of sources) {
     const text = readFileSync(file, 'utf8');
     if (![...DISPOSABLE_CLASSES].some((c) => text.includes(`new ${c}`))) continue;
     scanned++;
@@ -381,6 +433,30 @@ for (const scanDir of SCAN_DIRS) {
 const total =
   violations.length + accepted.using + accepted.finally + accepted.factory + accepted.allowlisted + accepted.escapes + accepted.disposer;
 
+// Anti-vacuity, checked BEFORE the violation report so a broken scan can never
+// be reported as either a pass or a (differently wrong) small failure. Two
+// independent floors, because this gate has two ways to go blind and each one
+// leaves the other's number looking healthy: the WALK can stop finding source
+// files, or the walk can succeed while the AST detector stops recognising
+// constructions.
+if (walked < SOURCE_FLOOR) {
+  console.error(
+    `\n\u274c check-wasm-disposal: only ${walked} source file(s) walked under ${SCAN_DIRS.join(', ')}, floor is ${SOURCE_FLOOR}.\n` +
+      `Refusing a vacuous pass: the file walk found almost nothing, so this gate has proved nothing about\n` +
+      `WASM-handle disposal. Check the scan roots and the working directory before touching SOURCE_FLOOR.\n`,
+  );
+  process.exit(1);
+}
+if (total < CONSTRUCTION_FLOOR) {
+  console.error(
+    `\n\u274c check-wasm-disposal: only ${total} \`new ${[...DISPOSABLE_CLASSES].join('`/`new ')}\` construction(s) found, floor is ${CONSTRUCTION_FLOOR}.\n` +
+      `Refusing a vacuous pass: the walk saw ${walked} file(s), so the files are there and it is the detector\n` +
+      `that stopped matching. If the constructions were genuinely removed, lower CONSTRUCTION_FLOOR in the\n` +
+      `same commit — that keeps "this PR reduced the gate's reach" a reviewable line in the diff.\n`,
+  );
+  process.exit(1);
+}
+
 if (violations.length > 0) {
   console.error(
     `❌ ${violations.length} WASM-handle construction(s) with no deterministic release:\n`,
@@ -408,5 +484,5 @@ console.log(
   `✅ All ${total} WASM-handle construction(s) release deterministically ` +
     `(${accepted.using} using, ${accepted.finally} try/finally, ${accepted.factory} factory, ` +
     `${accepted.disposer} disposer-owned, ${accepted.escapes} ownership-transferred, ${accepted.allowlisted} allowlisted) ` +
-    `across ${scanned} file(s).`,
+    `across ${scanned} file(s) with a construction, out of ${walked} source file(s) walked.`,
 );

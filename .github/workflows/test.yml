@@ -100,6 +100,12 @@ jobs:
               # whoever touches the frontend next. Add it here when you add it.
               - 'apps/viewer/**'
               - 'apps/viewer-embed/**'
+              # `examples/*` is a pnpm-workspace member and is now a lint target
+              # (scripts/check-lint-ran.mjs). Without it here, an examples-only
+              # PR leaves `frontend` false, the Lint job never runs, and the new
+              # target protects nothing on the PRs that change those files --
+              # the same trap the comment above describes for `apps/`.
+              - 'examples/**'
               - 'packages/**'
               - 'tests/e2e/**'
               - 'playwright.config.ts'
@@ -590,6 +596,20 @@ jobs:
       # it must not.
       - name: Check the source-text detector's own regressions
         run: node --test scripts/check-source-text-assertions.test.mjs
+      # That gate's SCAN SCOPE is packages/ and apps/ only -- `grep -c rust` over
+      # it returns 0 -- so the same AGENTS.md rule was unenforced across the
+      # whole rust/ tree, demonstrated rather than inferred: a genuine
+      # `fs::read_to_string(".../foo.rs")` plus a `contains` planted in a real
+      # Rust test left CI green (#3129, then #3195). This is the sibling gate,
+      # with its own lexer, because the TypeScript one's precision comes from a
+      # real parse tree that a regex pass sharing the file would erode.
+      # Its own tests run FIRST, for the reason the refwalk pair states: this
+      # check's value is entirely in not passing vacuously, so a broken detector
+      # must fail here rather than report a clean tree.
+      - name: Check Rust source-text gate's own tests
+        run: node --test scripts/check-rust-source-text-assertions.test.mjs
+      - name: Check for source-text assertions in Rust tests
+        run: node scripts/check-rust-source-text-assertions.mjs
       # A walk that follows a file-supplied entity reference with no visited set
       # and no depth cap overflows the Rust stack on a self-referential
       # reference, which is SIGABRT rather than a catchable panic -- in the wasm
@@ -710,6 +730,20 @@ jobs:
       # the real sources, plus a deleted arm and the #3172 misspelling itself.
       - name: Check legacy entity coverage gate regressions
         run: node --test scripts/check-legacy-entity-coverage.test.mjs
+      # `|| true` on `git tag` is right (a re-run hits an existing tag);
+      # on the PUSH it made a failed push silent, and `gh release create` then
+      # creates the missing tag ITSELF at default-branch head -- so the run
+      # stayed green with the tag on a different commit than the packages
+      # published from it (#3202). Baseline is zero: this gate landed in the
+      # same change that removed the only two instances.
+      - name: Check for swallowed git push failures
+        run: node scripts/check-swallowed-push.mjs
+      # Executable proof it cannot pass vacuously: a missing or empty workflow
+      # directory must fail rather than report clean, and `|| true` on `git tag`
+      # must NOT be flagged -- a rule that caught both would be suppressed on
+      # its first run.
+      - name: Check swallowed-push gate regressions
+        run: node --test scripts/check-swallowed-push.test.mjs
       # The CSV cell escaper reached NINE hand-rolled copies and no two were
       # identical: some tested the formula trigger anchored at offset 0 (so a
       # BOM/ZWSP/LRM/NBSP/U+2028 in front of `=` bypassed the CWE-1236 guard),

@@ -1,0 +1,3749 @@
+{
+  "_comment": "Exhaustive cross-language rooted-type sweep for #3015. Every type name is drawn from ifc_lite_core::IFC_TYPES (the generated IFC4X3 schema), rust/export/src/rooted_type.rs's LEGACY_ROOTED_TYPES table, or ifc_lite_core::LEGACY_ENTITY_NAMES (the Rust mirror of the JS ENTITY_NAME_ALIASES table), plus two deliberately-unknown vendor names for the safe-miss direction (see rust/export/examples/dump_rooted_type_sweep.rs). The alias names are in the universe because a name known only to an alias table is invisible to a sweep built from the other lists alone -- which is how IFCSOLIDSTRATUM/IFCVOIDSTRATUM/IFCWATERSTRATUM classified differently in Rust and JS with both halves of the gate green (#3124 review). `rooted` is the ground truth from the JS side (packages/export/src/merged-exporter.ts isRootedType, which walks packages/parser/src/ifc-schema.ts getInheritanceChainAcrossSchemas), captured by actually running it, not hand-derived. Both rust/export/src/rooted_type.rs::is_rooted_type and that JS isRootedType are pinned to this file so the two classifiers cannot silently drift apart. rooted_type_parity.rs additionally asserts that this file covers the whole universe, so rows cannot be dropped to make a disagreement disappear.",
+  "cases": [
+    {
+      "type": "IFCACMEWIDGETPROXY",
+      "rooted": false
+    },
+    {
+      "type": "IFCACTIONREQUEST",
+      "rooted": true
+    },
+    {
+      "type": "IFCACTOR",
+      "rooted": true
+    },
+    {
+      "type": "IFCACTORROLE",
+      "rooted": false
+    },
+    {
+      "type": "IFCACTUATOR",
+      "rooted": true
+    },
+    {
+      "type": "IFCACTUATORTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCADDRESS",
+      "rooted": false
+    },
+    {
+      "type": "IFCADVANCEDBREP",
+      "rooted": false
+    },
+    {
+      "type": "IFCADVANCEDBREPWITHVOIDS",
+      "rooted": false
+    },
+    {
+      "type": "IFCADVANCEDFACE",
+      "rooted": false
+    },
+    {
+      "type": "IFCAIRTERMINAL",
+      "rooted": true
+    },
+    {
+      "type": "IFCAIRTERMINALBOX",
+      "rooted": true
+    },
+    {
+      "type": "IFCAIRTERMINALBOXTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCAIRTERMINALTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCAIRTOAIRHEATRECOVERY",
+      "rooted": true
+    },
+    {
+      "type": "IFCAIRTOAIRHEATRECOVERYTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCALARM",
+      "rooted": true
+    },
+    {
+      "type": "IFCALARMTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCALIGNMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCALIGNMENTCANT",
+      "rooted": true
+    },
+    {
+      "type": "IFCALIGNMENTCANTSEGMENT",
+      "rooted": false
+    },
+    {
+      "type": "IFCALIGNMENTHORIZONTAL",
+      "rooted": true
+    },
+    {
+      "type": "IFCALIGNMENTHORIZONTALSEGMENT",
+      "rooted": false
+    },
+    {
+      "type": "IFCALIGNMENTPARAMETERSEGMENT",
+      "rooted": false
+    },
+    {
+      "type": "IFCALIGNMENTSEGMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCALIGNMENTVERTICAL",
+      "rooted": true
+    },
+    {
+      "type": "IFCALIGNMENTVERTICALSEGMENT",
+      "rooted": false
+    },
+    {
+      "type": "IFCANNOTATION",
+      "rooted": true
+    },
+    {
+      "type": "IFCANNOTATIONFILLAREA",
+      "rooted": false
+    },
+    {
+      "type": "IFCAPPLICATION",
+      "rooted": false
+    },
+    {
+      "type": "IFCAPPLIEDVALUE",
+      "rooted": false
+    },
+    {
+      "type": "IFCAPPROVAL",
+      "rooted": false
+    },
+    {
+      "type": "IFCAPPROVALRELATIONSHIP",
+      "rooted": false
+    },
+    {
+      "type": "IFCARBITRARYCLOSEDPROFILEDEF",
+      "rooted": false
+    },
+    {
+      "type": "IFCARBITRARYOPENPROFILEDEF",
+      "rooted": false
+    },
+    {
+      "type": "IFCARBITRARYPROFILEDEFWITHVOIDS",
+      "rooted": false
+    },
+    {
+      "type": "IFCASSET",
+      "rooted": true
+    },
+    {
+      "type": "IFCASYMMETRICISHAPEPROFILEDEF",
+      "rooted": false
+    },
+    {
+      "type": "IFCAUDIOVISUALAPPLIANCE",
+      "rooted": true
+    },
+    {
+      "type": "IFCAUDIOVISUALAPPLIANCETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCAXIS1PLACEMENT",
+      "rooted": false
+    },
+    {
+      "type": "IFCAXIS2PLACEMENT2D",
+      "rooted": false
+    },
+    {
+      "type": "IFCAXIS2PLACEMENT3D",
+      "rooted": false
+    },
+    {
+      "type": "IFCAXIS2PLACEMENTLINEAR",
+      "rooted": false
+    },
+    {
+      "type": "IFCBEAM",
+      "rooted": true
+    },
+    {
+      "type": "IFCBEAMSTANDARDCASE",
+      "rooted": true
+    },
+    {
+      "type": "IFCBEAMTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCBEARING",
+      "rooted": true
+    },
+    {
+      "type": "IFCBEARINGTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCBLOBTEXTURE",
+      "rooted": false
+    },
+    {
+      "type": "IFCBLOCK",
+      "rooted": false
+    },
+    {
+      "type": "IFCBOILER",
+      "rooted": true
+    },
+    {
+      "type": "IFCBOILERTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCBOOLEANCLIPPINGRESULT",
+      "rooted": false
+    },
+    {
+      "type": "IFCBOOLEANRESULT",
+      "rooted": false
+    },
+    {
+      "type": "IFCBOREHOLE",
+      "rooted": true
+    },
+    {
+      "type": "IFCBOUNDARYCONDITION",
+      "rooted": false
+    },
+    {
+      "type": "IFCBOUNDARYCURVE",
+      "rooted": false
+    },
+    {
+      "type": "IFCBOUNDARYEDGECONDITION",
+      "rooted": false
+    },
+    {
+      "type": "IFCBOUNDARYFACECONDITION",
+      "rooted": false
+    },
+    {
+      "type": "IFCBOUNDARYNODECONDITION",
+      "rooted": false
+    },
+    {
+      "type": "IFCBOUNDARYNODECONDITIONWARPING",
+      "rooted": false
+    },
+    {
+      "type": "IFCBOUNDEDCURVE",
+      "rooted": false
+    },
+    {
+      "type": "IFCBOUNDEDSURFACE",
+      "rooted": false
+    },
+    {
+      "type": "IFCBOUNDINGBOX",
+      "rooted": false
+    },
+    {
+      "type": "IFCBOXEDHALFSPACE",
+      "rooted": false
+    },
+    {
+      "type": "IFCBRIDGE",
+      "rooted": true
+    },
+    {
+      "type": "IFCBRIDGEPART",
+      "rooted": true
+    },
+    {
+      "type": "IFCBSPLINECURVE",
+      "rooted": false
+    },
+    {
+      "type": "IFCBSPLINECURVEWITHKNOTS",
+      "rooted": false
+    },
+    {
+      "type": "IFCBSPLINESURFACE",
+      "rooted": false
+    },
+    {
+      "type": "IFCBSPLINESURFACEWITHKNOTS",
+      "rooted": false
+    },
+    {
+      "type": "IFCBUILDING",
+      "rooted": true
+    },
+    {
+      "type": "IFCBUILDINGELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCBUILDINGELEMENTCOMPONENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCBUILDINGELEMENTPART",
+      "rooted": true
+    },
+    {
+      "type": "IFCBUILDINGELEMENTPARTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCBUILDINGELEMENTPROXY",
+      "rooted": true
+    },
+    {
+      "type": "IFCBUILDINGELEMENTPROXYTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCBUILDINGELEMENTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCBUILDINGSTOREY",
+      "rooted": true
+    },
+    {
+      "type": "IFCBUILDINGSYSTEM",
+      "rooted": true
+    },
+    {
+      "type": "IFCBUILTELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCBUILTELEMENTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCBUILTSYSTEM",
+      "rooted": true
+    },
+    {
+      "type": "IFCBURNER",
+      "rooted": true
+    },
+    {
+      "type": "IFCBURNERTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCABLECARRIERFITTING",
+      "rooted": true
+    },
+    {
+      "type": "IFCCABLECARRIERFITTINGTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCABLECARRIERSEGMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCCABLECARRIERSEGMENTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCABLEFITTING",
+      "rooted": true
+    },
+    {
+      "type": "IFCCABLEFITTINGTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCABLESEGMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCCABLESEGMENTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCAISSONFOUNDATION",
+      "rooted": true
+    },
+    {
+      "type": "IFCCAISSONFOUNDATIONTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCARTESIANPOINT",
+      "rooted": false
+    },
+    {
+      "type": "IFCCARTESIANPOINTLIST",
+      "rooted": false
+    },
+    {
+      "type": "IFCCARTESIANPOINTLIST2D",
+      "rooted": false
+    },
+    {
+      "type": "IFCCARTESIANPOINTLIST3D",
+      "rooted": false
+    },
+    {
+      "type": "IFCCARTESIANTRANSFORMATIONOPERATOR",
+      "rooted": false
+    },
+    {
+      "type": "IFCCARTESIANTRANSFORMATIONOPERATOR2D",
+      "rooted": false
+    },
+    {
+      "type": "IFCCARTESIANTRANSFORMATIONOPERATOR2DNONUNIFORM",
+      "rooted": false
+    },
+    {
+      "type": "IFCCARTESIANTRANSFORMATIONOPERATOR3D",
+      "rooted": false
+    },
+    {
+      "type": "IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM",
+      "rooted": false
+    },
+    {
+      "type": "IFCCENTERLINEPROFILEDEF",
+      "rooted": false
+    },
+    {
+      "type": "IFCCHAMFEREDGEFEATURE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCHILLER",
+      "rooted": true
+    },
+    {
+      "type": "IFCCHILLERTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCHIMNEY",
+      "rooted": true
+    },
+    {
+      "type": "IFCCHIMNEYTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCIRCLE",
+      "rooted": false
+    },
+    {
+      "type": "IFCCIRCLEHOLLOWPROFILEDEF",
+      "rooted": false
+    },
+    {
+      "type": "IFCCIRCLEPROFILEDEF",
+      "rooted": false
+    },
+    {
+      "type": "IFCCIVILELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCCIVILELEMENTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCLASSIFICATION",
+      "rooted": false
+    },
+    {
+      "type": "IFCCLASSIFICATIONREFERENCE",
+      "rooted": false
+    },
+    {
+      "type": "IFCCLOSEDSHELL",
+      "rooted": false
+    },
+    {
+      "type": "IFCCLOTHOID",
+      "rooted": false
+    },
+    {
+      "type": "IFCCOIL",
+      "rooted": true
+    },
+    {
+      "type": "IFCCOILTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCOLOURRGB",
+      "rooted": false
+    },
+    {
+      "type": "IFCCOLOURRGBLIST",
+      "rooted": false
+    },
+    {
+      "type": "IFCCOLOURSPECIFICATION",
+      "rooted": false
+    },
+    {
+      "type": "IFCCOLUMN",
+      "rooted": true
+    },
+    {
+      "type": "IFCCOLUMNSTANDARDCASE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCOLUMNTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCOMMUNICATIONSAPPLIANCE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCOMMUNICATIONSAPPLIANCETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCOMPLEXPROPERTY",
+      "rooted": false
+    },
+    {
+      "type": "IFCCOMPLEXPROPERTYTEMPLATE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCOMPOSITECURVE",
+      "rooted": false
+    },
+    {
+      "type": "IFCCOMPOSITECURVEONSURFACE",
+      "rooted": false
+    },
+    {
+      "type": "IFCCOMPOSITECURVESEGMENT",
+      "rooted": false
+    },
+    {
+      "type": "IFCCOMPOSITEPROFILEDEF",
+      "rooted": false
+    },
+    {
+      "type": "IFCCOMPRESSOR",
+      "rooted": true
+    },
+    {
+      "type": "IFCCOMPRESSORTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCONDENSER",
+      "rooted": true
+    },
+    {
+      "type": "IFCCONDENSERTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCONDITION",
+      "rooted": true
+    },
+    {
+      "type": "IFCCONDITIONCRITERION",
+      "rooted": true
+    },
+    {
+      "type": "IFCCONIC",
+      "rooted": false
+    },
+    {
+      "type": "IFCCONNECTEDFACESET",
+      "rooted": false
+    },
+    {
+      "type": "IFCCONNECTIONCURVEGEOMETRY",
+      "rooted": false
+    },
+    {
+      "type": "IFCCONNECTIONGEOMETRY",
+      "rooted": false
+    },
+    {
+      "type": "IFCCONNECTIONPOINTECCENTRICITY",
+      "rooted": false
+    },
+    {
+      "type": "IFCCONNECTIONPOINTGEOMETRY",
+      "rooted": false
+    },
+    {
+      "type": "IFCCONNECTIONSURFACEGEOMETRY",
+      "rooted": false
+    },
+    {
+      "type": "IFCCONNECTIONVOLUMEGEOMETRY",
+      "rooted": false
+    },
+    {
+      "type": "IFCCONSTRAINT",
+      "rooted": false
+    },
+    {
+      "type": "IFCCONSTRUCTIONEQUIPMENTRESOURCE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCONSTRUCTIONEQUIPMENTRESOURCETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCONSTRUCTIONMATERIALRESOURCE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCONSTRUCTIONMATERIALRESOURCETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCONSTRUCTIONPRODUCTRESOURCE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCONSTRUCTIONPRODUCTRESOURCETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCONSTRUCTIONRESOURCE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCONSTRUCTIONRESOURCETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCONTEXT",
+      "rooted": true
+    },
+    {
+      "type": "IFCCONTEXTDEPENDENTUNIT",
+      "rooted": false
+    },
+    {
+      "type": "IFCCONTROL",
+      "rooted": true
+    },
+    {
+      "type": "IFCCONTROLLER",
+      "rooted": true
+    },
+    {
+      "type": "IFCCONTROLLERTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCONVERSIONBASEDUNIT",
+      "rooted": false
+    },
+    {
+      "type": "IFCCONVERSIONBASEDUNITWITHOFFSET",
+      "rooted": false
+    },
+    {
+      "type": "IFCCONVEYORSEGMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCCONVEYORSEGMENTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCOOLEDBEAM",
+      "rooted": true
+    },
+    {
+      "type": "IFCCOOLEDBEAMTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCOOLINGTOWER",
+      "rooted": true
+    },
+    {
+      "type": "IFCCOOLINGTOWERTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCOORDINATEOPERATION",
+      "rooted": false
+    },
+    {
+      "type": "IFCCOORDINATEREFERENCESYSTEM",
+      "rooted": false
+    },
+    {
+      "type": "IFCCOSINESPIRAL",
+      "rooted": false
+    },
+    {
+      "type": "IFCCOSTITEM",
+      "rooted": true
+    },
+    {
+      "type": "IFCCOSTSCHEDULE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCOSTVALUE",
+      "rooted": false
+    },
+    {
+      "type": "IFCCOURSE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCOURSETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCOVERING",
+      "rooted": true
+    },
+    {
+      "type": "IFCCOVERINGTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCREWRESOURCE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCREWRESOURCETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCSGPRIMITIVE3D",
+      "rooted": false
+    },
+    {
+      "type": "IFCCSGSOLID",
+      "rooted": false
+    },
+    {
+      "type": "IFCCSHAPEPROFILEDEF",
+      "rooted": false
+    },
+    {
+      "type": "IFCCURRENCYRELATIONSHIP",
+      "rooted": false
+    },
+    {
+      "type": "IFCCURTAINWALL",
+      "rooted": true
+    },
+    {
+      "type": "IFCCURTAINWALLTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCCURVE",
+      "rooted": false
+    },
+    {
+      "type": "IFCCURVEBOUNDEDPLANE",
+      "rooted": false
+    },
+    {
+      "type": "IFCCURVEBOUNDEDSURFACE",
+      "rooted": false
+    },
+    {
+      "type": "IFCCURVESEGMENT",
+      "rooted": false
+    },
+    {
+      "type": "IFCCURVESTYLE",
+      "rooted": false
+    },
+    {
+      "type": "IFCCURVESTYLEFONT",
+      "rooted": false
+    },
+    {
+      "type": "IFCCURVESTYLEFONTANDSCALING",
+      "rooted": false
+    },
+    {
+      "type": "IFCCURVESTYLEFONTPATTERN",
+      "rooted": false
+    },
+    {
+      "type": "IFCCYLINDRICALSURFACE",
+      "rooted": false
+    },
+    {
+      "type": "IFCDAMPER",
+      "rooted": true
+    },
+    {
+      "type": "IFCDAMPERTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCDEEPFOUNDATION",
+      "rooted": true
+    },
+    {
+      "type": "IFCDEEPFOUNDATIONTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCDERIVEDPROFILEDEF",
+      "rooted": false
+    },
+    {
+      "type": "IFCDERIVEDUNIT",
+      "rooted": false
+    },
+    {
+      "type": "IFCDERIVEDUNITELEMENT",
+      "rooted": false
+    },
+    {
+      "type": "IFCDIMENSIONALEXPONENTS",
+      "rooted": false
+    },
+    {
+      "type": "IFCDIRECTION",
+      "rooted": false
+    },
+    {
+      "type": "IFCDIRECTRIXCURVESWEPTAREASOLID",
+      "rooted": false
+    },
+    {
+      "type": "IFCDIRECTRIXDERIVEDREFERENCESWEPTAREASOLID",
+      "rooted": false
+    },
+    {
+      "type": "IFCDISCRETEACCESSORY",
+      "rooted": true
+    },
+    {
+      "type": "IFCDISCRETEACCESSORYTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCDISTRIBUTIONBOARD",
+      "rooted": true
+    },
+    {
+      "type": "IFCDISTRIBUTIONBOARDTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCDISTRIBUTIONCHAMBERELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCDISTRIBUTIONCHAMBERELEMENTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCDISTRIBUTIONCIRCUIT",
+      "rooted": true
+    },
+    {
+      "type": "IFCDISTRIBUTIONCONTROLELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCDISTRIBUTIONCONTROLELEMENTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCDISTRIBUTIONELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCDISTRIBUTIONELEMENTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCDISTRIBUTIONFLOWELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCDISTRIBUTIONFLOWELEMENTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCDISTRIBUTIONPORT",
+      "rooted": true
+    },
+    {
+      "type": "IFCDISTRIBUTIONSYSTEM",
+      "rooted": true
+    },
+    {
+      "type": "IFCDOCUMENTINFORMATION",
+      "rooted": false
+    },
+    {
+      "type": "IFCDOCUMENTINFORMATIONRELATIONSHIP",
+      "rooted": false
+    },
+    {
+      "type": "IFCDOCUMENTREFERENCE",
+      "rooted": false
+    },
+    {
+      "type": "IFCDOOR",
+      "rooted": true
+    },
+    {
+      "type": "IFCDOORLININGPROPERTIES",
+      "rooted": true
+    },
+    {
+      "type": "IFCDOORPANELPROPERTIES",
+      "rooted": true
+    },
+    {
+      "type": "IFCDOORSTANDARDCASE",
+      "rooted": true
+    },
+    {
+      "type": "IFCDOORSTYLE",
+      "rooted": true
+    },
+    {
+      "type": "IFCDOORTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCDRAUGHTINGPREDEFINEDCOLOUR",
+      "rooted": false
+    },
+    {
+      "type": "IFCDRAUGHTINGPREDEFINEDCURVEFONT",
+      "rooted": false
+    },
+    {
+      "type": "IFCDUCTFITTING",
+      "rooted": true
+    },
+    {
+      "type": "IFCDUCTFITTINGTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCDUCTSEGMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCDUCTSEGMENTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCDUCTSILENCER",
+      "rooted": true
+    },
+    {
+      "type": "IFCDUCTSILENCERTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCEARTHWORKSCUT",
+      "rooted": true
+    },
+    {
+      "type": "IFCEARTHWORKSELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCEARTHWORKSFILL",
+      "rooted": true
+    },
+    {
+      "type": "IFCEDGE",
+      "rooted": false
+    },
+    {
+      "type": "IFCEDGECURVE",
+      "rooted": false
+    },
+    {
+      "type": "IFCEDGEFEATURE",
+      "rooted": true
+    },
+    {
+      "type": "IFCEDGELOOP",
+      "rooted": false
+    },
+    {
+      "type": "IFCELECTRICALBASEPROPERTIES",
+      "rooted": true
+    },
+    {
+      "type": "IFCELECTRICALCIRCUIT",
+      "rooted": true
+    },
+    {
+      "type": "IFCELECTRICALELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCELECTRICAPPLIANCE",
+      "rooted": true
+    },
+    {
+      "type": "IFCELECTRICAPPLIANCETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCELECTRICDISTRIBUTIONBOARD",
+      "rooted": true
+    },
+    {
+      "type": "IFCELECTRICDISTRIBUTIONBOARDTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCELECTRICDISTRIBUTIONPOINT",
+      "rooted": true
+    },
+    {
+      "type": "IFCELECTRICFLOWSTORAGEDEVICE",
+      "rooted": true
+    },
+    {
+      "type": "IFCELECTRICFLOWSTORAGEDEVICETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCELECTRICFLOWTREATMENTDEVICE",
+      "rooted": true
+    },
+    {
+      "type": "IFCELECTRICFLOWTREATMENTDEVICETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCELECTRICGENERATOR",
+      "rooted": true
+    },
+    {
+      "type": "IFCELECTRICGENERATORTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCELECTRICHEATERTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCELECTRICMOTOR",
+      "rooted": true
+    },
+    {
+      "type": "IFCELECTRICMOTORTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCELECTRICTIMECONTROL",
+      "rooted": true
+    },
+    {
+      "type": "IFCELECTRICTIMECONTROLTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCELEMENTARYSURFACE",
+      "rooted": false
+    },
+    {
+      "type": "IFCELEMENTASSEMBLY",
+      "rooted": true
+    },
+    {
+      "type": "IFCELEMENTASSEMBLYTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCELEMENTCOMPONENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCELEMENTCOMPONENTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCELEMENTQUANTITY",
+      "rooted": true
+    },
+    {
+      "type": "IFCELEMENTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCELLIPSE",
+      "rooted": false
+    },
+    {
+      "type": "IFCELLIPSEPROFILEDEF",
+      "rooted": false
+    },
+    {
+      "type": "IFCENERGYCONVERSIONDEVICE",
+      "rooted": true
+    },
+    {
+      "type": "IFCENERGYCONVERSIONDEVICETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCENERGYPROPERTIES",
+      "rooted": true
+    },
+    {
+      "type": "IFCENGINE",
+      "rooted": true
+    },
+    {
+      "type": "IFCENGINETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCEQUIPMENTELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCEQUIPMENTSTANDARD",
+      "rooted": true
+    },
+    {
+      "type": "IFCEVAPORATIVECOOLER",
+      "rooted": true
+    },
+    {
+      "type": "IFCEVAPORATIVECOOLERTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCEVAPORATOR",
+      "rooted": true
+    },
+    {
+      "type": "IFCEVAPORATORTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCEVENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCEVENTTIME",
+      "rooted": false
+    },
+    {
+      "type": "IFCEVENTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCEXTENDEDPROPERTIES",
+      "rooted": false
+    },
+    {
+      "type": "IFCEXTERNALINFORMATION",
+      "rooted": false
+    },
+    {
+      "type": "IFCEXTERNALLYDEFINEDHATCHSTYLE",
+      "rooted": false
+    },
+    {
+      "type": "IFCEXTERNALLYDEFINEDSURFACESTYLE",
+      "rooted": false
+    },
+    {
+      "type": "IFCEXTERNALLYDEFINEDTEXTFONT",
+      "rooted": false
+    },
+    {
+      "type": "IFCEXTERNALREFERENCE",
+      "rooted": false
+    },
+    {
+      "type": "IFCEXTERNALREFERENCERELATIONSHIP",
+      "rooted": false
+    },
+    {
+      "type": "IFCEXTERNALSPATIALELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCEXTERNALSPATIALSTRUCTUREELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCEXTRUDEDAREASOLID",
+      "rooted": false
+    },
+    {
+      "type": "IFCEXTRUDEDAREASOLIDTAPERED",
+      "rooted": false
+    },
+    {
+      "type": "IFCFACE",
+      "rooted": false
+    },
+    {
+      "type": "IFCFACEBASEDSURFACEMODEL",
+      "rooted": false
+    },
+    {
+      "type": "IFCFACEBOUND",
+      "rooted": false
+    },
+    {
+      "type": "IFCFACEOUTERBOUND",
+      "rooted": false
+    },
+    {
+      "type": "IFCFACESURFACE",
+      "rooted": false
+    },
+    {
+      "type": "IFCFACETEDBREP",
+      "rooted": false
+    },
+    {
+      "type": "IFCFACETEDBREPWITHVOIDS",
+      "rooted": false
+    },
+    {
+      "type": "IFCFACILITY",
+      "rooted": true
+    },
+    {
+      "type": "IFCFACILITYPART",
+      "rooted": true
+    },
+    {
+      "type": "IFCFACILITYPARTCOMMON",
+      "rooted": true
+    },
+    {
+      "type": "IFCFAILURECONNECTIONCONDITION",
+      "rooted": false
+    },
+    {
+      "type": "IFCFAN",
+      "rooted": true
+    },
+    {
+      "type": "IFCFANTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCFASTENER",
+      "rooted": true
+    },
+    {
+      "type": "IFCFASTENERTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCFEATUREELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCFEATUREELEMENTADDITION",
+      "rooted": true
+    },
+    {
+      "type": "IFCFEATUREELEMENTSUBTRACTION",
+      "rooted": true
+    },
+    {
+      "type": "IFCFILLAREASTYLE",
+      "rooted": false
+    },
+    {
+      "type": "IFCFILLAREASTYLEHATCHING",
+      "rooted": false
+    },
+    {
+      "type": "IFCFILLAREASTYLETILES",
+      "rooted": false
+    },
+    {
+      "type": "IFCFILTER",
+      "rooted": true
+    },
+    {
+      "type": "IFCFILTERTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCFIRESUPPRESSIONTERMINAL",
+      "rooted": true
+    },
+    {
+      "type": "IFCFIRESUPPRESSIONTERMINALTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCFIXEDREFERENCESWEPTAREASOLID",
+      "rooted": false
+    },
+    {
+      "type": "IFCFLOWCONTROLLER",
+      "rooted": true
+    },
+    {
+      "type": "IFCFLOWCONTROLLERTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCFLOWFITTING",
+      "rooted": true
+    },
+    {
+      "type": "IFCFLOWFITTINGTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCFLOWINSTRUMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCFLOWINSTRUMENTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCFLOWMETER",
+      "rooted": true
+    },
+    {
+      "type": "IFCFLOWMETERTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCFLOWMOVINGDEVICE",
+      "rooted": true
+    },
+    {
+      "type": "IFCFLOWMOVINGDEVICETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCFLOWSEGMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCFLOWSEGMENTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCFLOWSTORAGEDEVICE",
+      "rooted": true
+    },
+    {
+      "type": "IFCFLOWSTORAGEDEVICETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCFLOWTERMINAL",
+      "rooted": true
+    },
+    {
+      "type": "IFCFLOWTERMINALTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCFLOWTREATMENTDEVICE",
+      "rooted": true
+    },
+    {
+      "type": "IFCFLOWTREATMENTDEVICETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCFLUIDFLOWPROPERTIES",
+      "rooted": true
+    },
+    {
+      "type": "IFCFOOTING",
+      "rooted": true
+    },
+    {
+      "type": "IFCFOOTINGTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCFURNISHINGELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCFURNISHINGELEMENTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCFURNITURE",
+      "rooted": true
+    },
+    {
+      "type": "IFCFURNITURESTANDARD",
+      "rooted": true
+    },
+    {
+      "type": "IFCFURNITURETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCGASTERMINALTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCGEOGRAPHICCRS",
+      "rooted": false
+    },
+    {
+      "type": "IFCGEOGRAPHICELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCGEOGRAPHICELEMENTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCGEOMETRICCURVESET",
+      "rooted": false
+    },
+    {
+      "type": "IFCGEOMETRICREPRESENTATIONCONTEXT",
+      "rooted": false
+    },
+    {
+      "type": "IFCGEOMETRICREPRESENTATIONITEM",
+      "rooted": false
+    },
+    {
+      "type": "IFCGEOMETRICREPRESENTATIONSUBCONTEXT",
+      "rooted": false
+    },
+    {
+      "type": "IFCGEOMETRICSET",
+      "rooted": false
+    },
+    {
+      "type": "IFCGEOMODEL",
+      "rooted": true
+    },
+    {
+      "type": "IFCGEOSLICE",
+      "rooted": true
+    },
+    {
+      "type": "IFCGEOTECHNICALASSEMBLY",
+      "rooted": true
+    },
+    {
+      "type": "IFCGEOTECHNICALELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCGEOTECHNICALSTRATUM",
+      "rooted": true
+    },
+    {
+      "type": "IFCGRADIENTCURVE",
+      "rooted": false
+    },
+    {
+      "type": "IFCGRID",
+      "rooted": true
+    },
+    {
+      "type": "IFCGRIDAXIS",
+      "rooted": false
+    },
+    {
+      "type": "IFCGRIDPLACEMENT",
+      "rooted": false
+    },
+    {
+      "type": "IFCGROUP",
+      "rooted": true
+    },
+    {
+      "type": "IFCHALFSPACESOLID",
+      "rooted": false
+    },
+    {
+      "type": "IFCHEATEXCHANGER",
+      "rooted": true
+    },
+    {
+      "type": "IFCHEATEXCHANGERTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCHUMIDIFIER",
+      "rooted": true
+    },
+    {
+      "type": "IFCHUMIDIFIERTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCIMAGETEXTURE",
+      "rooted": false
+    },
+    {
+      "type": "IFCIMPACTPROTECTIONDEVICE",
+      "rooted": true
+    },
+    {
+      "type": "IFCIMPACTPROTECTIONDEVICETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCINDEXEDCOLOURMAP",
+      "rooted": false
+    },
+    {
+      "type": "IFCINDEXEDPOLYCURVE",
+      "rooted": false
+    },
+    {
+      "type": "IFCINDEXEDPOLYGONALFACE",
+      "rooted": false
+    },
+    {
+      "type": "IFCINDEXEDPOLYGONALFACEWITHVOIDS",
+      "rooted": false
+    },
+    {
+      "type": "IFCINDEXEDPOLYGONALTEXTUREMAP",
+      "rooted": false
+    },
+    {
+      "type": "IFCINDEXEDTEXTUREMAP",
+      "rooted": false
+    },
+    {
+      "type": "IFCINDEXEDTRIANGLETEXTUREMAP",
+      "rooted": false
+    },
+    {
+      "type": "IFCINTERCEPTOR",
+      "rooted": true
+    },
+    {
+      "type": "IFCINTERCEPTORTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCINTERSECTIONCURVE",
+      "rooted": false
+    },
+    {
+      "type": "IFCINVENTORY",
+      "rooted": true
+    },
+    {
+      "type": "IFCIRREGULARTIMESERIES",
+      "rooted": false
+    },
+    {
+      "type": "IFCIRREGULARTIMESERIESVALUE",
+      "rooted": false
+    },
+    {
+      "type": "IFCISHAPEPROFILEDEF",
+      "rooted": false
+    },
+    {
+      "type": "IFCJUNCTIONBOX",
+      "rooted": true
+    },
+    {
+      "type": "IFCJUNCTIONBOXTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCKERB",
+      "rooted": true
+    },
+    {
+      "type": "IFCKERBTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCLABORRESOURCE",
+      "rooted": true
+    },
+    {
+      "type": "IFCLABORRESOURCETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCLAGTIME",
+      "rooted": false
+    },
+    {
+      "type": "IFCLAMP",
+      "rooted": true
+    },
+    {
+      "type": "IFCLAMPTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCLIBRARYINFORMATION",
+      "rooted": false
+    },
+    {
+      "type": "IFCLIBRARYREFERENCE",
+      "rooted": false
+    },
+    {
+      "type": "IFCLIGHTDISTRIBUTIONDATA",
+      "rooted": false
+    },
+    {
+      "type": "IFCLIGHTFIXTURE",
+      "rooted": true
+    },
+    {
+      "type": "IFCLIGHTFIXTURETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCLIGHTINTENSITYDISTRIBUTION",
+      "rooted": false
+    },
+    {
+      "type": "IFCLIGHTSOURCE",
+      "rooted": false
+    },
+    {
+      "type": "IFCLIGHTSOURCEAMBIENT",
+      "rooted": false
+    },
+    {
+      "type": "IFCLIGHTSOURCEDIRECTIONAL",
+      "rooted": false
+    },
+    {
+      "type": "IFCLIGHTSOURCEGONIOMETRIC",
+      "rooted": false
+    },
+    {
+      "type": "IFCLIGHTSOURCEPOSITIONAL",
+      "rooted": false
+    },
+    {
+      "type": "IFCLIGHTSOURCESPOT",
+      "rooted": false
+    },
+    {
+      "type": "IFCLINE",
+      "rooted": false
+    },
+    {
+      "type": "IFCLINEARELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCLINEARPLACEMENT",
+      "rooted": false
+    },
+    {
+      "type": "IFCLINEARPOSITIONINGELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCLIQUIDTERMINAL",
+      "rooted": true
+    },
+    {
+      "type": "IFCLIQUIDTERMINALTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCLOCALPLACEMENT",
+      "rooted": false
+    },
+    {
+      "type": "IFCLOOP",
+      "rooted": false
+    },
+    {
+      "type": "IFCLSHAPEPROFILEDEF",
+      "rooted": false
+    },
+    {
+      "type": "IFCMANIFOLDSOLIDBREP",
+      "rooted": false
+    },
+    {
+      "type": "IFCMAPCONVERSION",
+      "rooted": false
+    },
+    {
+      "type": "IFCMAPCONVERSIONSCALED",
+      "rooted": false
+    },
+    {
+      "type": "IFCMAPPEDITEM",
+      "rooted": false
+    },
+    {
+      "type": "IFCMARINEFACILITY",
+      "rooted": true
+    },
+    {
+      "type": "IFCMARINEPART",
+      "rooted": true
+    },
+    {
+      "type": "IFCMATERIAL",
+      "rooted": false
+    },
+    {
+      "type": "IFCMATERIALCLASSIFICATIONRELATIONSHIP",
+      "rooted": false
+    },
+    {
+      "type": "IFCMATERIALCONSTITUENT",
+      "rooted": false
+    },
+    {
+      "type": "IFCMATERIALCONSTITUENTSET",
+      "rooted": false
+    },
+    {
+      "type": "IFCMATERIALDEFINITION",
+      "rooted": false
+    },
+    {
+      "type": "IFCMATERIALDEFINITIONREPRESENTATION",
+      "rooted": false
+    },
+    {
+      "type": "IFCMATERIALLAYER",
+      "rooted": false
+    },
+    {
+      "type": "IFCMATERIALLAYERSET",
+      "rooted": false
+    },
+    {
+      "type": "IFCMATERIALLAYERSETUSAGE",
+      "rooted": false
+    },
+    {
+      "type": "IFCMATERIALLAYERWITHOFFSETS",
+      "rooted": false
+    },
+    {
+      "type": "IFCMATERIALLIST",
+      "rooted": false
+    },
+    {
+      "type": "IFCMATERIALPROFILE",
+      "rooted": false
+    },
+    {
+      "type": "IFCMATERIALPROFILESET",
+      "rooted": false
+    },
+    {
+      "type": "IFCMATERIALPROFILESETUSAGE",
+      "rooted": false
+    },
+    {
+      "type": "IFCMATERIALPROFILESETUSAGETAPERING",
+      "rooted": false
+    },
+    {
+      "type": "IFCMATERIALPROFILEWITHOFFSETS",
+      "rooted": false
+    },
+    {
+      "type": "IFCMATERIALPROPERTIES",
+      "rooted": false
+    },
+    {
+      "type": "IFCMATERIALRELATIONSHIP",
+      "rooted": false
+    },
+    {
+      "type": "IFCMATERIALUSAGEDEFINITION",
+      "rooted": false
+    },
+    {
+      "type": "IFCMEASUREWITHUNIT",
+      "rooted": false
+    },
+    {
+      "type": "IFCMECHANICALFASTENER",
+      "rooted": true
+    },
+    {
+      "type": "IFCMECHANICALFASTENERTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCMEDICALDEVICE",
+      "rooted": true
+    },
+    {
+      "type": "IFCMEDICALDEVICETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCMEMBER",
+      "rooted": true
+    },
+    {
+      "type": "IFCMEMBERSTANDARDCASE",
+      "rooted": true
+    },
+    {
+      "type": "IFCMEMBERTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCMETRIC",
+      "rooted": false
+    },
+    {
+      "type": "IFCMIRROREDPROFILEDEF",
+      "rooted": false
+    },
+    {
+      "type": "IFCMOBILETELECOMMUNICATIONSAPPLIANCE",
+      "rooted": true
+    },
+    {
+      "type": "IFCMOBILETELECOMMUNICATIONSAPPLIANCETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCMONETARYUNIT",
+      "rooted": false
+    },
+    {
+      "type": "IFCMOORINGDEVICE",
+      "rooted": true
+    },
+    {
+      "type": "IFCMOORINGDEVICETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCMOTORCONNECTION",
+      "rooted": true
+    },
+    {
+      "type": "IFCMOTORCONNECTIONTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCMOVE",
+      "rooted": true
+    },
+    {
+      "type": "IFCNAMEDUNIT",
+      "rooted": false
+    },
+    {
+      "type": "IFCNAVIGATIONELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCNAVIGATIONELEMENTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCOBJECT",
+      "rooted": true
+    },
+    {
+      "type": "IFCOBJECTDEFINITION",
+      "rooted": true
+    },
+    {
+      "type": "IFCOBJECTIVE",
+      "rooted": false
+    },
+    {
+      "type": "IFCOBJECTPLACEMENT",
+      "rooted": false
+    },
+    {
+      "type": "IFCOCCUPANT",
+      "rooted": true
+    },
+    {
+      "type": "IFCOFFSETCURVE",
+      "rooted": false
+    },
+    {
+      "type": "IFCOFFSETCURVE2D",
+      "rooted": false
+    },
+    {
+      "type": "IFCOFFSETCURVE3D",
+      "rooted": false
+    },
+    {
+      "type": "IFCOFFSETCURVEBYDISTANCES",
+      "rooted": false
+    },
+    {
+      "type": "IFCOPENCROSSPROFILEDEF",
+      "rooted": false
+    },
+    {
+      "type": "IFCOPENINGELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCOPENINGSTANDARDCASE",
+      "rooted": true
+    },
+    {
+      "type": "IFCOPENSHELL",
+      "rooted": false
+    },
+    {
+      "type": "IFCORDERACTION",
+      "rooted": true
+    },
+    {
+      "type": "IFCORGANIZATION",
+      "rooted": false
+    },
+    {
+      "type": "IFCORGANIZATIONRELATIONSHIP",
+      "rooted": false
+    },
+    {
+      "type": "IFCORIENTEDEDGE",
+      "rooted": false
+    },
+    {
+      "type": "IFCOUTERBOUNDARYCURVE",
+      "rooted": false
+    },
+    {
+      "type": "IFCOUTLET",
+      "rooted": true
+    },
+    {
+      "type": "IFCOUTLETTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCOWNERHISTORY",
+      "rooted": false
+    },
+    {
+      "type": "IFCPARAMETERIZEDPROFILEDEF",
+      "rooted": false
+    },
+    {
+      "type": "IFCPATH",
+      "rooted": false
+    },
+    {
+      "type": "IFCPAVEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCPAVEMENTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCPCURVE",
+      "rooted": false
+    },
+    {
+      "type": "IFCPERFORMANCEHISTORY",
+      "rooted": true
+    },
+    {
+      "type": "IFCPERMEABLECOVERINGPROPERTIES",
+      "rooted": true
+    },
+    {
+      "type": "IFCPERMIT",
+      "rooted": true
+    },
+    {
+      "type": "IFCPERSON",
+      "rooted": false
+    },
+    {
+      "type": "IFCPERSONANDORGANIZATION",
+      "rooted": false
+    },
+    {
+      "type": "IFCPHYSICALCOMPLEXQUANTITY",
+      "rooted": false
+    },
+    {
+      "type": "IFCPHYSICALQUANTITY",
+      "rooted": false
+    },
+    {
+      "type": "IFCPHYSICALSIMPLEQUANTITY",
+      "rooted": false
+    },
+    {
+      "type": "IFCPILE",
+      "rooted": true
+    },
+    {
+      "type": "IFCPILETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCPIPEFITTING",
+      "rooted": true
+    },
+    {
+      "type": "IFCPIPEFITTINGTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCPIPESEGMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCPIPESEGMENTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCPIXELTEXTURE",
+      "rooted": false
+    },
+    {
+      "type": "IFCPLACEMENT",
+      "rooted": false
+    },
+    {
+      "type": "IFCPLANARBOX",
+      "rooted": false
+    },
+    {
+      "type": "IFCPLANAREXTENT",
+      "rooted": false
+    },
+    {
+      "type": "IFCPLANE",
+      "rooted": false
+    },
+    {
+      "type": "IFCPLATE",
+      "rooted": true
+    },
+    {
+      "type": "IFCPLATESTANDARDCASE",
+      "rooted": true
+    },
+    {
+      "type": "IFCPLATETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCPOINT",
+      "rooted": false
+    },
+    {
+      "type": "IFCPOINTBYDISTANCEEXPRESSION",
+      "rooted": false
+    },
+    {
+      "type": "IFCPOINTONCURVE",
+      "rooted": false
+    },
+    {
+      "type": "IFCPOINTONSURFACE",
+      "rooted": false
+    },
+    {
+      "type": "IFCPOLYGONALBOUNDEDHALFSPACE",
+      "rooted": false
+    },
+    {
+      "type": "IFCPOLYGONALFACESET",
+      "rooted": false
+    },
+    {
+      "type": "IFCPOLYLINE",
+      "rooted": false
+    },
+    {
+      "type": "IFCPOLYLOOP",
+      "rooted": false
+    },
+    {
+      "type": "IFCPOLYNOMIALCURVE",
+      "rooted": false
+    },
+    {
+      "type": "IFCPORT",
+      "rooted": true
+    },
+    {
+      "type": "IFCPOSITIONINGELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCPOSTALADDRESS",
+      "rooted": false
+    },
+    {
+      "type": "IFCPREDEFINEDCOLOUR",
+      "rooted": false
+    },
+    {
+      "type": "IFCPREDEFINEDCURVEFONT",
+      "rooted": false
+    },
+    {
+      "type": "IFCPREDEFINEDITEM",
+      "rooted": false
+    },
+    {
+      "type": "IFCPREDEFINEDPROPERTIES",
+      "rooted": false
+    },
+    {
+      "type": "IFCPREDEFINEDPROPERTYSET",
+      "rooted": true
+    },
+    {
+      "type": "IFCPREDEFINEDTEXTFONT",
+      "rooted": false
+    },
+    {
+      "type": "IFCPRESENTATIONITEM",
+      "rooted": false
+    },
+    {
+      "type": "IFCPRESENTATIONLAYERASSIGNMENT",
+      "rooted": false
+    },
+    {
+      "type": "IFCPRESENTATIONLAYERWITHSTYLE",
+      "rooted": false
+    },
+    {
+      "type": "IFCPRESENTATIONSTYLE",
+      "rooted": false
+    },
+    {
+      "type": "IFCPRESENTATIONSTYLEASSIGNMENT",
+      "rooted": false
+    },
+    {
+      "type": "IFCPROCEDURE",
+      "rooted": true
+    },
+    {
+      "type": "IFCPROCEDURETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCPROCESS",
+      "rooted": true
+    },
+    {
+      "type": "IFCPRODUCT",
+      "rooted": true
+    },
+    {
+      "type": "IFCPRODUCTDEFINITIONSHAPE",
+      "rooted": false
+    },
+    {
+      "type": "IFCPRODUCTREPRESENTATION",
+      "rooted": false
+    },
+    {
+      "type": "IFCPROFILEDEF",
+      "rooted": false
+    },
+    {
+      "type": "IFCPROFILEPROPERTIES",
+      "rooted": false
+    },
+    {
+      "type": "IFCPROJECT",
+      "rooted": true
+    },
+    {
+      "type": "IFCPROJECTEDCRS",
+      "rooted": false
+    },
+    {
+      "type": "IFCPROJECTIONELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCPROJECTLIBRARY",
+      "rooted": true
+    },
+    {
+      "type": "IFCPROJECTORDER",
+      "rooted": true
+    },
+    {
+      "type": "IFCPROJECTORDERRECORD",
+      "rooted": true
+    },
+    {
+      "type": "IFCPROPERTY",
+      "rooted": false
+    },
+    {
+      "type": "IFCPROPERTYABSTRACTION",
+      "rooted": false
+    },
+    {
+      "type": "IFCPROPERTYBOUNDEDVALUE",
+      "rooted": false
+    },
+    {
+      "type": "IFCPROPERTYDEFINITION",
+      "rooted": true
+    },
+    {
+      "type": "IFCPROPERTYDEPENDENCYRELATIONSHIP",
+      "rooted": false
+    },
+    {
+      "type": "IFCPROPERTYENUMERATEDVALUE",
+      "rooted": false
+    },
+    {
+      "type": "IFCPROPERTYENUMERATION",
+      "rooted": false
+    },
+    {
+      "type": "IFCPROPERTYLISTVALUE",
+      "rooted": false
+    },
+    {
+      "type": "IFCPROPERTYREFERENCEVALUE",
+      "rooted": false
+    },
+    {
+      "type": "IFCPROPERTYSET",
+      "rooted": true
+    },
+    {
+      "type": "IFCPROPERTYSETDEFINITION",
+      "rooted": true
+    },
+    {
+      "type": "IFCPROPERTYSETTEMPLATE",
+      "rooted": true
+    },
+    {
+      "type": "IFCPROPERTYSINGLEVALUE",
+      "rooted": false
+    },
+    {
+      "type": "IFCPROPERTYTABLEVALUE",
+      "rooted": false
+    },
+    {
+      "type": "IFCPROPERTYTEMPLATE",
+      "rooted": true
+    },
+    {
+      "type": "IFCPROPERTYTEMPLATEDEFINITION",
+      "rooted": true
+    },
+    {
+      "type": "IFCPROTECTIVEDEVICE",
+      "rooted": true
+    },
+    {
+      "type": "IFCPROTECTIVEDEVICETRIPPINGUNIT",
+      "rooted": true
+    },
+    {
+      "type": "IFCPROTECTIVEDEVICETRIPPINGUNITTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCPROTECTIVEDEVICETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCPROXY",
+      "rooted": true
+    },
+    {
+      "type": "IFCPUMP",
+      "rooted": true
+    },
+    {
+      "type": "IFCPUMPTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCQUANTITYAREA",
+      "rooted": false
+    },
+    {
+      "type": "IFCQUANTITYCOUNT",
+      "rooted": false
+    },
+    {
+      "type": "IFCQUANTITYLENGTH",
+      "rooted": false
+    },
+    {
+      "type": "IFCQUANTITYNUMBER",
+      "rooted": false
+    },
+    {
+      "type": "IFCQUANTITYSET",
+      "rooted": true
+    },
+    {
+      "type": "IFCQUANTITYTIME",
+      "rooted": false
+    },
+    {
+      "type": "IFCQUANTITYVOLUME",
+      "rooted": false
+    },
+    {
+      "type": "IFCQUANTITYWEIGHT",
+      "rooted": false
+    },
+    {
+      "type": "IFCRAIL",
+      "rooted": true
+    },
+    {
+      "type": "IFCRAILING",
+      "rooted": true
+    },
+    {
+      "type": "IFCRAILINGTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCRAILTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCRAILWAY",
+      "rooted": true
+    },
+    {
+      "type": "IFCRAILWAYPART",
+      "rooted": true
+    },
+    {
+      "type": "IFCRAMP",
+      "rooted": true
+    },
+    {
+      "type": "IFCRAMPFLIGHT",
+      "rooted": true
+    },
+    {
+      "type": "IFCRAMPFLIGHTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCRAMPTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCRATIONALBSPLINECURVEWITHKNOTS",
+      "rooted": false
+    },
+    {
+      "type": "IFCRATIONALBSPLINESURFACEWITHKNOTS",
+      "rooted": false
+    },
+    {
+      "type": "IFCRECTANGLEHOLLOWPROFILEDEF",
+      "rooted": false
+    },
+    {
+      "type": "IFCRECTANGLEPROFILEDEF",
+      "rooted": false
+    },
+    {
+      "type": "IFCRECTANGULARPYRAMID",
+      "rooted": false
+    },
+    {
+      "type": "IFCRECTANGULARTRIMMEDSURFACE",
+      "rooted": false
+    },
+    {
+      "type": "IFCRECURRENCEPATTERN",
+      "rooted": false
+    },
+    {
+      "type": "IFCREFERENCE",
+      "rooted": false
+    },
+    {
+      "type": "IFCREFERENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCREGULARTIMESERIES",
+      "rooted": false
+    },
+    {
+      "type": "IFCREINFORCEDSOIL",
+      "rooted": true
+    },
+    {
+      "type": "IFCREINFORCEMENTBARPROPERTIES",
+      "rooted": false
+    },
+    {
+      "type": "IFCREINFORCEMENTDEFINITIONPROPERTIES",
+      "rooted": true
+    },
+    {
+      "type": "IFCREINFORCINGBAR",
+      "rooted": true
+    },
+    {
+      "type": "IFCREINFORCINGBARTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCREINFORCINGELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCREINFORCINGELEMENTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCREINFORCINGMESH",
+      "rooted": true
+    },
+    {
+      "type": "IFCREINFORCINGMESHTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELADHERESTOELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELAGGREGATES",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELASSIGNS",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELASSIGNSTASKS",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELASSIGNSTOACTOR",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELASSIGNSTOCONTROL",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELASSIGNSTOGROUP",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELASSIGNSTOGROUPBYFACTOR",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELASSIGNSTOPROCESS",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELASSIGNSTOPRODUCT",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELASSIGNSTOPROJECTORDER",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELASSIGNSTORESOURCE",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELASSOCIATES",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELASSOCIATESAPPLIEDVALUE",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELASSOCIATESAPPROVAL",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELASSOCIATESCLASSIFICATION",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELASSOCIATESCONSTRAINT",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELASSOCIATESDOCUMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELASSOCIATESLIBRARY",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELASSOCIATESMATERIAL",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELASSOCIATESPROFILEDEF",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELASSOCIATESPROFILEPROPERTIES",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELATIONSHIP",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELCONNECTS",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELCONNECTSELEMENTS",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELCONNECTSPATHELEMENTS",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELCONNECTSPORTS",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELCONNECTSPORTTOELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELCONNECTSSTRUCTURALACTIVITY",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELCONNECTSSTRUCTURALELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELCONNECTSSTRUCTURALMEMBER",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELCONNECTSWITHECCENTRICITY",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELCONNECTSWITHREALIZINGELEMENTS",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELCONTAINEDINSPATIALSTRUCTURE",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELCOVERSBLDGELEMENTS",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELCOVERSSPACES",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELDECLARES",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELDECOMPOSES",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELDEFINES",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELDEFINESBYOBJECT",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELDEFINESBYPROPERTIES",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELDEFINESBYTEMPLATE",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELDEFINESBYTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELFILLSELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELFLOWCONTROLELEMENTS",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELINTERACTIONREQUIREMENTS",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELINTERFERESELEMENTS",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELNESTS",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELOCCUPIESSPACES",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELOVERRIDESPROPERTIES",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELPOSITIONS",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELPROJECTSELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELREFERENCEDINSPATIALSTRUCTURE",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELSCHEDULESCOSTITEMS",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELSEQUENCE",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELSERVICESBUILDINGS",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELSPACEBOUNDARY",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELSPACEBOUNDARY1STLEVEL",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELSPACEBOUNDARY2NDLEVEL",
+      "rooted": true
+    },
+    {
+      "type": "IFCRELVOIDSELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCREPARAMETRISEDCOMPOSITECURVESEGMENT",
+      "rooted": false
+    },
+    {
+      "type": "IFCREPRESENTATION",
+      "rooted": false
+    },
+    {
+      "type": "IFCREPRESENTATIONCONTEXT",
+      "rooted": false
+    },
+    {
+      "type": "IFCREPRESENTATIONITEM",
+      "rooted": false
+    },
+    {
+      "type": "IFCREPRESENTATIONMAP",
+      "rooted": false
+    },
+    {
+      "type": "IFCRESOURCE",
+      "rooted": true
+    },
+    {
+      "type": "IFCRESOURCEAPPROVALRELATIONSHIP",
+      "rooted": false
+    },
+    {
+      "type": "IFCRESOURCECONSTRAINTRELATIONSHIP",
+      "rooted": false
+    },
+    {
+      "type": "IFCRESOURCELEVELRELATIONSHIP",
+      "rooted": false
+    },
+    {
+      "type": "IFCRESOURCETIME",
+      "rooted": false
+    },
+    {
+      "type": "IFCREVOLVEDAREASOLID",
+      "rooted": false
+    },
+    {
+      "type": "IFCREVOLVEDAREASOLIDTAPERED",
+      "rooted": false
+    },
+    {
+      "type": "IFCRIGHTCIRCULARCONE",
+      "rooted": false
+    },
+    {
+      "type": "IFCRIGHTCIRCULARCYLINDER",
+      "rooted": false
+    },
+    {
+      "type": "IFCRIGIDOPERATION",
+      "rooted": false
+    },
+    {
+      "type": "IFCROAD",
+      "rooted": true
+    },
+    {
+      "type": "IFCROADPART",
+      "rooted": true
+    },
+    {
+      "type": "IFCROOF",
+      "rooted": true
+    },
+    {
+      "type": "IFCROOFTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCROOT",
+      "rooted": true
+    },
+    {
+      "type": "IFCROUNDEDEDGEFEATURE",
+      "rooted": true
+    },
+    {
+      "type": "IFCROUNDEDRECTANGLEPROFILEDEF",
+      "rooted": false
+    },
+    {
+      "type": "IFCSANITARYTERMINAL",
+      "rooted": true
+    },
+    {
+      "type": "IFCSANITARYTERMINALTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCSCHEDULETIMECONTROL",
+      "rooted": true
+    },
+    {
+      "type": "IFCSCHEDULINGTIME",
+      "rooted": false
+    },
+    {
+      "type": "IFCSEAMCURVE",
+      "rooted": false
+    },
+    {
+      "type": "IFCSECONDORDERPOLYNOMIALSPIRAL",
+      "rooted": false
+    },
+    {
+      "type": "IFCSECTIONEDSOLID",
+      "rooted": false
+    },
+    {
+      "type": "IFCSECTIONEDSOLIDHORIZONTAL",
+      "rooted": false
+    },
+    {
+      "type": "IFCSECTIONEDSPINE",
+      "rooted": false
+    },
+    {
+      "type": "IFCSECTIONEDSURFACE",
+      "rooted": false
+    },
+    {
+      "type": "IFCSECTIONPROPERTIES",
+      "rooted": false
+    },
+    {
+      "type": "IFCSECTIONREINFORCEMENTPROPERTIES",
+      "rooted": false
+    },
+    {
+      "type": "IFCSEGMENT",
+      "rooted": false
+    },
+    {
+      "type": "IFCSEGMENTEDREFERENCECURVE",
+      "rooted": false
+    },
+    {
+      "type": "IFCSENSOR",
+      "rooted": true
+    },
+    {
+      "type": "IFCSENSORTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCSERVICELIFE",
+      "rooted": true
+    },
+    {
+      "type": "IFCSERVICELIFEFACTOR",
+      "rooted": true
+    },
+    {
+      "type": "IFCSEVENTHORDERPOLYNOMIALSPIRAL",
+      "rooted": false
+    },
+    {
+      "type": "IFCSHADINGDEVICE",
+      "rooted": true
+    },
+    {
+      "type": "IFCSHADINGDEVICETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCSHAPEASPECT",
+      "rooted": false
+    },
+    {
+      "type": "IFCSHAPEMODEL",
+      "rooted": false
+    },
+    {
+      "type": "IFCSHAPEREPRESENTATION",
+      "rooted": false
+    },
+    {
+      "type": "IFCSHELLBASEDSURFACEMODEL",
+      "rooted": false
+    },
+    {
+      "type": "IFCSIGN",
+      "rooted": true
+    },
+    {
+      "type": "IFCSIGNAL",
+      "rooted": true
+    },
+    {
+      "type": "IFCSIGNALTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCSIGNTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCSIMPLEPROPERTY",
+      "rooted": false
+    },
+    {
+      "type": "IFCSIMPLEPROPERTYTEMPLATE",
+      "rooted": true
+    },
+    {
+      "type": "IFCSINESPIRAL",
+      "rooted": false
+    },
+    {
+      "type": "IFCSITE",
+      "rooted": true
+    },
+    {
+      "type": "IFCSIUNIT",
+      "rooted": false
+    },
+    {
+      "type": "IFCSLAB",
+      "rooted": true
+    },
+    {
+      "type": "IFCSLABELEMENTEDCASE",
+      "rooted": true
+    },
+    {
+      "type": "IFCSLABSTANDARDCASE",
+      "rooted": true
+    },
+    {
+      "type": "IFCSLABTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCSLIPPAGECONNECTIONCONDITION",
+      "rooted": false
+    },
+    {
+      "type": "IFCSOLARDEVICE",
+      "rooted": true
+    },
+    {
+      "type": "IFCSOLARDEVICETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCSOLIDMODEL",
+      "rooted": false
+    },
+    {
+      "type": "IFCSOLIDSTRATUM",
+      "rooted": true
+    },
+    {
+      "type": "IFCSOUNDPROPERTIES",
+      "rooted": true
+    },
+    {
+      "type": "IFCSOUNDVALUE",
+      "rooted": true
+    },
+    {
+      "type": "IFCSPACE",
+      "rooted": true
+    },
+    {
+      "type": "IFCSPACEHEATER",
+      "rooted": true
+    },
+    {
+      "type": "IFCSPACEHEATERTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCSPACEPROGRAM",
+      "rooted": true
+    },
+    {
+      "type": "IFCSPACETHERMALLOADPROPERTIES",
+      "rooted": true
+    },
+    {
+      "type": "IFCSPACETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCSPATIALELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCSPATIALELEMENTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCSPATIALSTRUCTUREELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCSPATIALSTRUCTUREELEMENTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCSPATIALZONE",
+      "rooted": true
+    },
+    {
+      "type": "IFCSPATIALZONETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCSPHERE",
+      "rooted": false
+    },
+    {
+      "type": "IFCSPHERICALSURFACE",
+      "rooted": false
+    },
+    {
+      "type": "IFCSPIRAL",
+      "rooted": false
+    },
+    {
+      "type": "IFCSTACKTERMINAL",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTACKTERMINALTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTAIR",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTAIRFLIGHT",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTAIRFLIGHTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTAIRTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTRUCTURALACTION",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTRUCTURALACTIVITY",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTRUCTURALANALYSISMODEL",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTRUCTURALCONNECTION",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTRUCTURALCONNECTIONCONDITION",
+      "rooted": false
+    },
+    {
+      "type": "IFCSTRUCTURALCURVEACTION",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTRUCTURALCURVECONNECTION",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTRUCTURALCURVEMEMBER",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTRUCTURALCURVEMEMBERVARYING",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTRUCTURALCURVEREACTION",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTRUCTURALITEM",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTRUCTURALLINEARACTION",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTRUCTURALLINEARACTIONVARYING",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTRUCTURALLOAD",
+      "rooted": false
+    },
+    {
+      "type": "IFCSTRUCTURALLOADCASE",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTRUCTURALLOADCONFIGURATION",
+      "rooted": false
+    },
+    {
+      "type": "IFCSTRUCTURALLOADGROUP",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTRUCTURALLOADLINEARFORCE",
+      "rooted": false
+    },
+    {
+      "type": "IFCSTRUCTURALLOADORRESULT",
+      "rooted": false
+    },
+    {
+      "type": "IFCSTRUCTURALLOADPLANARFORCE",
+      "rooted": false
+    },
+    {
+      "type": "IFCSTRUCTURALLOADSINGLEDISPLACEMENT",
+      "rooted": false
+    },
+    {
+      "type": "IFCSTRUCTURALLOADSINGLEDISPLACEMENTDISTORTION",
+      "rooted": false
+    },
+    {
+      "type": "IFCSTRUCTURALLOADSINGLEFORCE",
+      "rooted": false
+    },
+    {
+      "type": "IFCSTRUCTURALLOADSINGLEFORCEWARPING",
+      "rooted": false
+    },
+    {
+      "type": "IFCSTRUCTURALLOADSTATIC",
+      "rooted": false
+    },
+    {
+      "type": "IFCSTRUCTURALLOADTEMPERATURE",
+      "rooted": false
+    },
+    {
+      "type": "IFCSTRUCTURALMEMBER",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTRUCTURALPLANARACTION",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTRUCTURALPLANARACTIONVARYING",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTRUCTURALPOINTACTION",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTRUCTURALPOINTCONNECTION",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTRUCTURALPOINTREACTION",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTRUCTURALREACTION",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTRUCTURALRESULTGROUP",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTRUCTURALSURFACEACTION",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTRUCTURALSURFACECONNECTION",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTRUCTURALSURFACEMEMBER",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTRUCTURALSURFACEMEMBERVARYING",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTRUCTURALSURFACEREACTION",
+      "rooted": true
+    },
+    {
+      "type": "IFCSTYLEDITEM",
+      "rooted": false
+    },
+    {
+      "type": "IFCSTYLEDREPRESENTATION",
+      "rooted": false
+    },
+    {
+      "type": "IFCSTYLEMODEL",
+      "rooted": false
+    },
+    {
+      "type": "IFCSUBCONTRACTRESOURCE",
+      "rooted": true
+    },
+    {
+      "type": "IFCSUBCONTRACTRESOURCETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCSUBEDGE",
+      "rooted": false
+    },
+    {
+      "type": "IFCSURFACE",
+      "rooted": false
+    },
+    {
+      "type": "IFCSURFACECURVE",
+      "rooted": false
+    },
+    {
+      "type": "IFCSURFACECURVESWEPTAREASOLID",
+      "rooted": false
+    },
+    {
+      "type": "IFCSURFACEFEATURE",
+      "rooted": true
+    },
+    {
+      "type": "IFCSURFACEOFLINEAREXTRUSION",
+      "rooted": false
+    },
+    {
+      "type": "IFCSURFACEOFREVOLUTION",
+      "rooted": false
+    },
+    {
+      "type": "IFCSURFACEREINFORCEMENTAREA",
+      "rooted": false
+    },
+    {
+      "type": "IFCSURFACESTYLE",
+      "rooted": false
+    },
+    {
+      "type": "IFCSURFACESTYLELIGHTING",
+      "rooted": false
+    },
+    {
+      "type": "IFCSURFACESTYLEREFRACTION",
+      "rooted": false
+    },
+    {
+      "type": "IFCSURFACESTYLERENDERING",
+      "rooted": false
+    },
+    {
+      "type": "IFCSURFACESTYLESHADING",
+      "rooted": false
+    },
+    {
+      "type": "IFCSURFACESTYLEWITHTEXTURES",
+      "rooted": false
+    },
+    {
+      "type": "IFCSURFACETEXTURE",
+      "rooted": false
+    },
+    {
+      "type": "IFCSWEPTAREASOLID",
+      "rooted": false
+    },
+    {
+      "type": "IFCSWEPTDISKSOLID",
+      "rooted": false
+    },
+    {
+      "type": "IFCSWEPTDISKSOLIDPOLYGONAL",
+      "rooted": false
+    },
+    {
+      "type": "IFCSWEPTSURFACE",
+      "rooted": false
+    },
+    {
+      "type": "IFCSWITCHINGDEVICE",
+      "rooted": true
+    },
+    {
+      "type": "IFCSWITCHINGDEVICETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCSYSTEM",
+      "rooted": true
+    },
+    {
+      "type": "IFCSYSTEMFURNITUREELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCSYSTEMFURNITUREELEMENTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCTABLE",
+      "rooted": false
+    },
+    {
+      "type": "IFCTABLECOLUMN",
+      "rooted": false
+    },
+    {
+      "type": "IFCTABLEROW",
+      "rooted": false
+    },
+    {
+      "type": "IFCTANK",
+      "rooted": true
+    },
+    {
+      "type": "IFCTANKTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCTASK",
+      "rooted": true
+    },
+    {
+      "type": "IFCTASKTIME",
+      "rooted": false
+    },
+    {
+      "type": "IFCTASKTIMERECURRING",
+      "rooted": false
+    },
+    {
+      "type": "IFCTASKTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCTELECOMADDRESS",
+      "rooted": false
+    },
+    {
+      "type": "IFCTENDON",
+      "rooted": true
+    },
+    {
+      "type": "IFCTENDONANCHOR",
+      "rooted": true
+    },
+    {
+      "type": "IFCTENDONANCHORTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCTENDONCONDUIT",
+      "rooted": true
+    },
+    {
+      "type": "IFCTENDONCONDUITTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCTENDONTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCTESSELLATEDFACESET",
+      "rooted": false
+    },
+    {
+      "type": "IFCTESSELLATEDITEM",
+      "rooted": false
+    },
+    {
+      "type": "IFCTEXTLITERAL",
+      "rooted": false
+    },
+    {
+      "type": "IFCTEXTLITERALWITHEXTENT",
+      "rooted": false
+    },
+    {
+      "type": "IFCTEXTSTYLE",
+      "rooted": false
+    },
+    {
+      "type": "IFCTEXTSTYLEFONTMODEL",
+      "rooted": false
+    },
+    {
+      "type": "IFCTEXTSTYLEFORDEFINEDFONT",
+      "rooted": false
+    },
+    {
+      "type": "IFCTEXTSTYLETEXTMODEL",
+      "rooted": false
+    },
+    {
+      "type": "IFCTEXTURECOORDINATE",
+      "rooted": false
+    },
+    {
+      "type": "IFCTEXTURECOORDINATEGENERATOR",
+      "rooted": false
+    },
+    {
+      "type": "IFCTEXTURECOORDINATEINDICES",
+      "rooted": false
+    },
+    {
+      "type": "IFCTEXTURECOORDINATEINDICESWITHVOIDS",
+      "rooted": false
+    },
+    {
+      "type": "IFCTEXTUREMAP",
+      "rooted": false
+    },
+    {
+      "type": "IFCTEXTUREVERTEX",
+      "rooted": false
+    },
+    {
+      "type": "IFCTEXTUREVERTEXLIST",
+      "rooted": false
+    },
+    {
+      "type": "IFCTHIRDORDERPOLYNOMIALSPIRAL",
+      "rooted": false
+    },
+    {
+      "type": "IFCTIMEPERIOD",
+      "rooted": false
+    },
+    {
+      "type": "IFCTIMESERIES",
+      "rooted": false
+    },
+    {
+      "type": "IFCTIMESERIESSCHEDULE",
+      "rooted": true
+    },
+    {
+      "type": "IFCTIMESERIESVALUE",
+      "rooted": false
+    },
+    {
+      "type": "IFCTOPOLOGICALREPRESENTATIONITEM",
+      "rooted": false
+    },
+    {
+      "type": "IFCTOPOLOGYREPRESENTATION",
+      "rooted": false
+    },
+    {
+      "type": "IFCTOROIDALSURFACE",
+      "rooted": false
+    },
+    {
+      "type": "IFCTRACKELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCTRACKELEMENTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCTRANSFORMER",
+      "rooted": true
+    },
+    {
+      "type": "IFCTRANSFORMERTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCTRANSPORTATIONDEVICE",
+      "rooted": true
+    },
+    {
+      "type": "IFCTRANSPORTATIONDEVICETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCTRANSPORTELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCTRANSPORTELEMENTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCTRAPEZIUMPROFILEDEF",
+      "rooted": false
+    },
+    {
+      "type": "IFCTRIANGULATEDFACESET",
+      "rooted": false
+    },
+    {
+      "type": "IFCTRIANGULATEDIRREGULARNETWORK",
+      "rooted": false
+    },
+    {
+      "type": "IFCTRIMMEDCURVE",
+      "rooted": false
+    },
+    {
+      "type": "IFCTSHAPEPROFILEDEF",
+      "rooted": false
+    },
+    {
+      "type": "IFCTUBEBUNDLE",
+      "rooted": true
+    },
+    {
+      "type": "IFCTUBEBUNDLETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCTYPEOBJECT",
+      "rooted": true
+    },
+    {
+      "type": "IFCTYPEPROCESS",
+      "rooted": true
+    },
+    {
+      "type": "IFCTYPEPRODUCT",
+      "rooted": true
+    },
+    {
+      "type": "IFCTYPERESOURCE",
+      "rooted": true
+    },
+    {
+      "type": "IFCUNITARYCONTROLELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCUNITARYCONTROLELEMENTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCUNITARYEQUIPMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCUNITARYEQUIPMENTTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCUNITASSIGNMENT",
+      "rooted": false
+    },
+    {
+      "type": "IFCUSHAPEPROFILEDEF",
+      "rooted": false
+    },
+    {
+      "type": "IFCVALVE",
+      "rooted": true
+    },
+    {
+      "type": "IFCVALVETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCVECTOR",
+      "rooted": false
+    },
+    {
+      "type": "IFCVEHICLE",
+      "rooted": true
+    },
+    {
+      "type": "IFCVEHICLETYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCVENDOREXTENSIONFOO",
+      "rooted": false
+    },
+    {
+      "type": "IFCVERTEX",
+      "rooted": false
+    },
+    {
+      "type": "IFCVERTEXLOOP",
+      "rooted": false
+    },
+    {
+      "type": "IFCVERTEXPOINT",
+      "rooted": false
+    },
+    {
+      "type": "IFCVIBRATIONDAMPER",
+      "rooted": true
+    },
+    {
+      "type": "IFCVIBRATIONDAMPERTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCVIBRATIONISOLATOR",
+      "rooted": true
+    },
+    {
+      "type": "IFCVIBRATIONISOLATORTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCVIRTUALELEMENT",
+      "rooted": true
+    },
+    {
+      "type": "IFCVIRTUALGRIDINTERSECTION",
+      "rooted": false
+    },
+    {
+      "type": "IFCVOIDINGFEATURE",
+      "rooted": true
+    },
+    {
+      "type": "IFCVOIDSTRATUM",
+      "rooted": true
+    },
+    {
+      "type": "IFCWALL",
+      "rooted": true
+    },
+    {
+      "type": "IFCWALLELEMENTEDCASE",
+      "rooted": true
+    },
+    {
+      "type": "IFCWALLSTANDARDCASE",
+      "rooted": true
+    },
+    {
+      "type": "IFCWALLTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCWASTETERMINAL",
+      "rooted": true
+    },
+    {
+      "type": "IFCWASTETERMINALTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCWATERSTRATUM",
+      "rooted": true
+    },
+    {
+      "type": "IFCWELLKNOWNTEXT",
+      "rooted": false
+    },
+    {
+      "type": "IFCWINDOW",
+      "rooted": true
+    },
+    {
+      "type": "IFCWINDOWLININGPROPERTIES",
+      "rooted": true
+    },
+    {
+      "type": "IFCWINDOWPANELPROPERTIES",
+      "rooted": true
+    },
+    {
+      "type": "IFCWINDOWSTANDARDCASE",
+      "rooted": true
+    },
+    {
+      "type": "IFCWINDOWSTYLE",
+      "rooted": true
+    },
+    {
+      "type": "IFCWINDOWTYPE",
+      "rooted": true
+    },
+    {
+      "type": "IFCWORKCALENDAR",
+      "rooted": true
+    },
+    {
+      "type": "IFCWORKCONTROL",
+      "rooted": true
+    },
+    {
+      "type": "IFCWORKPLAN",
+      "rooted": true
+    },
+    {
+      "type": "IFCWORKSCHEDULE",
+      "rooted": true
+    },
+    {
+      "type": "IFCWORKTIME",
+      "rooted": false
+    },
+    {
+      "type": "IFCZONE",
+      "rooted": true
+    },
+    {
+      "type": "IFCZSHAPEPROFILEDEF",
+      "rooted": false
+    }
+  ]
+}

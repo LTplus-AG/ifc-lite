@@ -89,6 +89,10 @@ export function convertMeshCollectionToBatch(
           originArr && originArr.length === 3 && (originArr[0] || originArr[1] || originArr[2])
             ? [originArr[0], originArr[1], originArr[2]]
             : undefined;
+        // #3199: the two DISJOINT source ids. Read ONCE each, like `origin`
+        // above -- every access crosses the wasm boundary and copies.
+        const sourceGeometryItemId = (mesh as { geometryItemId?: number }).geometryItemId;
+        const sourceMaterialId = (mesh as { materialId?: number }).materialId;
         // Local (pre-placement) AABB + placement transform (issue #1474);
         // absent on older bundles (no getter) or when not captured (e.g. an
         // instancing template).
@@ -117,6 +121,13 @@ export function convertMeshCollectionToBatch(
           // #957 follow-up: carry the Model/Types geometry class so the viewer's
           // view-mode filter can show/hide type-library geometry.
           geometryClass: (mesh as { geometryClass?: number }).geometryClass ?? 0,
+          // #3199: the representation item this piece came from, or the
+          // material layer it slices. DISJOINT -- the wasm getters return
+          // `undefined` for whichever does not apply, and spreading only the
+          // defined one keeps them from both landing on the object. Older wasm
+          // bundles lack both getters, so both spread to nothing.
+          ...(sourceGeometryItemId !== undefined ? { geometryItemId: sourceGeometryItemId } : {}),
+          ...(sourceMaterialId !== undefined ? { materialId: sourceMaterialId } : {}),
         };
 
         // #961: copy the Rust-decoded surface texture + per-vertex UVs (the

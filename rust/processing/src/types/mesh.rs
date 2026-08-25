@@ -92,9 +92,28 @@ pub struct MeshData {
     /// Optional material/style name resolved from per-item IFC styling.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub material_name: Option<String>,
-    /// Optional source geometry item id for submesh outputs.
+    /// The `IfcRepresentationItem` this mesh was tessellated from.
+    ///
+    /// ALWAYS a representation item, and never a material — a host can follow
+    /// it to source and land on the entity that produced the geometry. Before
+    /// #3199 this field also carried the `IfcMaterial` id for material-layered
+    /// walls and slabs, so following it landed on the wrong entity with nothing
+    /// to warn the caller.
+    ///
+    /// `None` where the identity is genuinely merged away: the single-mesh
+    /// fallback, the cached `IfcMappedItem` path, and GPU-instanced
+    /// occurrences. A boolean result reports the `IfcBooleanResult` id, which
+    /// is a real entity.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub geometry_item_id: Option<u32>,
+    /// The `IfcMaterial` whose layer this mesh is a slice of.
+    ///
+    /// ALWAYS a material, and never a representation item. Set only on the
+    /// material-layer path (`router/layers.rs`), and DISJOINT from
+    /// [`Self::geometry_item_id`] — never both, so a consumer that ignores the
+    /// distinction still cannot read one as the other (#3199).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub material_id: Option<u32>,
     /// Optional IFC property set values keyed by IFC property names.
     /// Primarily attached for IfcSpace/IfcZone so downstream tools can build room attribute UIs.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -172,6 +191,7 @@ impl MeshData {
             color,
             material_name: None,
             geometry_item_id: None,
+            material_id: None,
             properties: None,
             uvs: None,
             texture: None,
@@ -226,14 +246,40 @@ impl MeshData {
         self
     }
 
-    /// Set material name and source geometry item id metadata.
+    /// Set material name and the source id, routed to whichever of the two
+    /// disjoint fields the id actually IS.
+    ///
+    /// Takes the discriminator rather than the destination field so a caller
+    /// cannot put a material id in `geometry_item_id` by picking the wrong
+    /// setter — the confusion #3199 removes is exactly that, and a two-setter
+    /// API would leave it one typo away.
+    ///
+    /// **A source id of `0` becomes `None`, on BOTH fields.** STEP instance
+    /// names start at `#1`, so `0` is never an entity; every producer that
+    /// hands one here is passing its own "no reference" sentinel through.
+    /// `material_layer_index.rs` is the live case: `IfcMaterialLayer.Material`
+    /// is OPTIONAL and the layer's `material_id` is `get_ref(0).unwrap_or(0)`,
+    /// so an air gap or ventilated cavity arrives as `0`. Storing that would
+    /// make `material_id` say "a slice of `IfcMaterial #0`", and a host that
+    /// followed it — the one thing this field exists for — would land on
+    /// nothing. That is the defect #3199 fixes, one field over, so the filter
+    /// lives HERE rather than at each producer, where the next producer would
+    /// have to remember it.
     pub fn with_style_metadata(
         mut self,
         material_name: Option<String>,
-        geometry_item_id: Option<u32>,
+        source_id: Option<u32>,
+        id_is_material: bool,
     ) -> Self {
         self.material_name = material_name;
-        self.geometry_item_id = geometry_item_id;
+        let source_id = source_id.filter(|&id| id != 0);
+        if id_is_material {
+            self.material_id = source_id;
+            self.geometry_item_id = None;
+        } else {
+            self.geometry_item_id = source_id;
+            self.material_id = None;
+        }
         self
     }
 

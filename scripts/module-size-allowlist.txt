@@ -237,7 +237,6 @@
    937 packages/geometry/src/ifc-lite-bridge.ts
   1551 packages/geometry/src/index.ts
    730 packages/geometry/src/native-bridge.ts
-   449 packages/geometry/src/types.ts
    469 packages/ids/src/audit/coherence/index.ts
    904 packages/ids/src/audit/ifc-schema/index.ts
    566 packages/ids/src/audit/structural/index.ts
@@ -319,7 +318,7 @@
   1082 packages/server-client/src/client.ts
    775 packages/server-client/src/data-model-decoder.ts
    517 packages/server-client/src/parquet-tables.ts
-   772 packages/server-client/src/types.ts
+   627 packages/server-client/src/types.ts
    411 packages/source-dalux/src/http-client.ts
    406 packages/source-dalux/src/provider.ts
    432 packages/source-dropbox/src/provider.ts

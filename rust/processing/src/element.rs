@@ -455,6 +455,7 @@ fn produce_inner(
                         color.to_array(),
                         None,
                         Some(geometry_id),
+                        false,
                         0,
                         ctx,
                         None,
@@ -474,7 +475,7 @@ fn produce_inner(
         h.add_oriented_mesh(&mesh.positions, &mesh.indices, mesh.origin, verdict);
     }
     (
-        vec![build_mesh_data(job, mesh, element_color, None, None, 0, ctx, None)],
+        vec![build_mesh_data(job, mesh, element_color, None, None, false, 0, ctx, None)],
         Vec::new(),
     )
 }
@@ -495,6 +496,9 @@ fn emit_sub_meshes(
     // wall renders as one solid) but the 2D/section cut consumes.
     slice_class: u8,
 ) -> (Vec<MeshData>, Vec<RawInstanceOccurrence>) {
+    // Read ONCE, before the loop consumes the collection: what the ids MEAN is
+    // a property of the collection, not of any individual sub-mesh (#3199).
+    let ids_are_materials = sub_meshes.ids_are_materials;
     let mut out: Vec<MeshData> = Vec::with_capacity(sub_meshes.len());
     let mut occurrences: Vec<RawInstanceOccurrence> = Vec::new();
     // Material colours for this element, used when a sub-mesh has no direct
@@ -580,6 +584,7 @@ fn emit_sub_meshes(
                     color,
                     material_name,
                     Some(sub.geometry_id),
+                    ids_are_materials,
                     slice_class,
                     ctx,
                     Some(uvs),
@@ -606,6 +611,7 @@ fn emit_sub_meshes(
                         rgba.to_array(),
                         None,
                         Some(sub.geometry_id),
+                        ids_are_materials,
                         slice_class,
                         ctx,
                         None,
@@ -621,6 +627,7 @@ fn emit_sub_meshes(
             color,
             material_name,
             Some(sub.geometry_id),
+            ids_are_materials,
             slice_class,
             ctx,
             None,
@@ -680,7 +687,7 @@ fn produce_type_geometry(
             // `None` and get the full position+normal weld.
             let part_uvs = if texture.is_some() { Some(uvs) } else { None };
             let mut mesh_data =
-                build_mesh_data(job, mesh, color, None, None, geometry_class, ctx, part_uvs);
+                build_mesh_data(job, mesh, color, None, None, false, geometry_class, ctx, part_uvs);
             if let Some(tex) = texture {
                 // UVs were already welded onto `mesh_data`; attach only the
                 // texture (decoded image or #1781 external reference) here.
@@ -703,7 +710,10 @@ fn build_mesh_data(
     mut mesh: Mesh,
     color: [f32; 4],
     material_name: Option<String>,
-    geometry_item_id: Option<u32>,
+    // The sub-mesh's source id, plus WHAT IT IS. Routed to `geometry_item_id`
+    // or `material_id` by `with_style_metadata`, never both (#3199).
+    source_id: Option<u32>,
+    id_is_material: bool,
     geometry_class: u8,
     ctx: &MeshProductionContext<'_>,
     // Per-vertex texture coordinates (2 per vertex, 1:1 with `mesh.positions`),
@@ -776,8 +786,9 @@ fn build_mesh_data(
             )
             .with_properties(meta.space_zone_properties.clone());
     }
-    if material_name.is_some() || geometry_item_id.is_some() {
-        mesh_data = mesh_data.with_style_metadata(material_name, geometry_item_id);
+    if material_name.is_some() || source_id.is_some() {
+        mesh_data =
+            mesh_data.with_style_metadata(material_name, source_id, id_is_material);
     }
     if geometry_class != 0 {
         mesh_data = mesh_data.with_geometry_class(geometry_class);

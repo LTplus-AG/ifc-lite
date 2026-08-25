@@ -4,6 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
+import { QuantityType } from '@ifc-lite/data';
 import {
   classifyBasis,
   pickElementQuantities,
@@ -24,6 +25,54 @@ const qset = (
   name: string,
   quantities: Array<{ name: string; type: number; value: number }>,
 ): QuantitySetLike => ({ name, quantities });
+
+describe('MEASURABLE_QUANTITY_TYPES', () => {
+  // This table is the whole reason `pickElementQuantities` can trust a
+  // quantity's TYPE rather than its name (see the module doc). Every other
+  // test in this file destructures its members symbolically, which proves
+  // the code is internally consistent but never that the numbers it uses
+  // are the ones the parser actually emits — a fixture built from the
+  // source it checks proves nothing. These pin the raw literals against
+  // `@ifc-lite/data`'s `QuantityType`, the parser's own enum, independently.
+
+  it('matches the parser QuantityType enum value for each measurable type', () => {
+    assert.strictEqual(MEASURABLE_QUANTITY_TYPES.Length, QuantityType.Length);
+    assert.strictEqual(MEASURABLE_QUANTITY_TYPES.Area, QuantityType.Area);
+    assert.strictEqual(MEASURABLE_QUANTITY_TYPES.Volume, QuantityType.Volume);
+    assert.strictEqual(MEASURABLE_QUANTITY_TYPES.Weight, QuantityType.Weight);
+  });
+
+  it('pins the literal values directly, independent of the enum import', () => {
+    // Belt-and-braces against the enum import drifting: assert the literals
+    // rather than re-deriving them from the thing under test.
+    //
+    // What this does NOT rest on, because an earlier version of this comment
+    // claimed it: these are not IFC's encoding. `QuantityType` is ifc-lite's
+    // own enum (`packages/data/src/types.ts`), and IFC names its quantities
+    // rather than numbering them — `columnar-parser-indexes.ts` maps the STEP
+    // keyword `IFCQUANTITYWEIGHT` onto `QuantityType.Weight`, so the ordinal
+    // is ours to keep stable, not something the format pins for us. That is
+    // the reason to pin it here, not a reason it cannot move.
+    assert.strictEqual(MEASURABLE_QUANTITY_TYPES.Length, 0);
+    assert.strictEqual(MEASURABLE_QUANTITY_TYPES.Area, 1);
+    assert.strictEqual(MEASURABLE_QUANTITY_TYPES.Volume, 2);
+    assert.strictEqual(MEASURABLE_QUANTITY_TYPES.Weight, 4);
+  });
+
+  it('excludes Count and Time, and has no duplicate values', () => {
+    const values: readonly number[] = Object.values(MEASURABLE_QUANTITY_TYPES);
+    assert.strictEqual(new Set(values).size, values.length, 'duplicate quantity-type value');
+    assert.ok(!values.includes(QuantityType.Count), 'Count must stay excluded');
+    assert.ok(!values.includes(QuantityType.Time), 'Time must stay excluded');
+  });
+
+  it('is complete: exactly the four measurement kinds, nothing added or dropped', () => {
+    assert.deepStrictEqual(
+      Object.keys(MEASURABLE_QUANTITY_TYPES).sort(),
+      ['Area', 'Length', 'Volume', 'Weight'],
+    );
+  });
+});
 
 describe('classifyBasis', () => {
   it('reads the openings-included/excluded distinction off the name prefix', () => {

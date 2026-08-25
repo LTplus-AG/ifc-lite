@@ -15,8 +15,15 @@ The parser now builds every family present. The first stays the constraint
 itself, so the `pattern` / `enumeration` / `bounds` switches in the auditor, the
 translation layer and the facet checkers see the shape they already handle; the
 rest ride along in a new optional `and` list that `matchConstraint` requires as
-well. A restriction declaring a single family is unchanged, `and` unset. The
-expected-value display and the mismatch reason now name every facet, so a
-failure caused by a bound is no longer reported as a pattern expectation.
+well. A restriction declaring a single family is unchanged, `and` unset.
 
-`xs:totalDigits`, `xs:fractionDigits` and `xs:whiteSpace` are still not read.
+Both report paths follow: `formatConstraint`'s expected-value display and
+`describeConstraint`'s human-readable text now name every facet, joined by a new
+`constraints.conjunction` string in each locale, and the mismatch reason points
+at the facet that actually rejected the value. Describing only the primary would
+state a weaker requirement than the one being enforced.
+
+Still unchanged: `xs:totalDigits`, `xs:fractionDigits` and `xs:whiteSpace` are
+not read at all, and the IDS-document auditors under `audit/` inspect only the
+primary family, so a malformed regex or an inverted bound in a sibling facet is
+not linted.

@@ -52,6 +52,8 @@ export const en = {
   constraints: {
     simpleValue: '"{value}"',
     pattern: 'matching pattern "{pattern}"',
+    /** Joins facets declared in the same `<xs:restriction>`, which are conjunctive. */
+    conjunction: '{first} and {second}',
     enumeration: {
       single: '"{value}"',
       multiple: 'one of [{values}]',

@@ -15,6 +15,7 @@
 
 import { parseIDS } from './xml-parser.js';
 import { matchConstraint, formatConstraint } from '../constraints/index.js';
+import { createTranslationService } from '../translation/service.js';
 import type { IDSConstraint, IDSPropertyFacet } from '../types.js';
 
 function constraintFrom(restriction: string): IDSConstraint {
@@ -121,6 +122,29 @@ describe('an xs:restriction with several facets enforces all of them', () => {
     // `@base` survives onto the primary, which the auditor reads.
     if (c.type !== 'pattern') throw new Error('expected a pattern constraint');
     expect(c.base).toBe('xs:double');
+  });
+
+  it('describes every facet in the human-readable report text', () => {
+    // `describeConstraint` feeds the viewer, the MCP tools and the SDK.
+    // Naming only the primary would tell the reader a weaker requirement
+    // than the one being enforced.
+    const c = constraintFrom(
+      `<xs:restriction base="xs:double">
+         <xs:minInclusive value="10"/>
+         <xs:maxInclusive value="20"/>
+         <xs:pattern value="\\d+"/>
+       </xs:restriction>`
+    );
+    const described = createTranslationService('en').describeConstraint(c);
+    expect(described).toContain('pattern');
+    expect(described).toContain('between 10 and 20');
+    // A single-family restriction keeps its old wording, unjoined.
+    const single = constraintFrom(
+      `<xs:restriction base="xs:string"><xs:pattern value="[A-Z]+"/></xs:restriction>`
+    );
+    expect(createTranslationService('en').describeConstraint(single)).toBe(
+      'matching pattern "[A-Z]+"'
+    );
   });
 
   it('names every facet in the expected-value display', () => {

@@ -30,6 +30,14 @@ import type {
   PartOfRelation,
 } from '../types.js';
 
+import {
+  getChildElement,
+  getChildElements,
+  getChildElementNS,
+  getChildElementsNS,
+  getChildText,
+} from './dom.js';
+
 const IDS_NAMESPACE = 'http://standards.buildingsmart.org/IDS';
 const XS_NAMESPACE = 'http://www.w3.org/2001/XMLSchema';
 
@@ -732,65 +740,4 @@ function parseRestrictionFamilies(el: Element): IDSConstraint[] {
   return [
     { type: 'enumeration', values: [], base } satisfies IDSEnumerationConstraint,
   ];
-}
-
-// ============================================================================
-// DOM Helper Functions
-// ============================================================================
-
-function getChildElement(parent: Element, localName: string): Element | null {
-  for (const child of Array.from(parent.children)) {
-    if (child.localName.toLowerCase() === localName.toLowerCase()) {
-      return child;
-    }
-  }
-  return null;
-}
-
-function getChildElements(parent: Element, localName: string): Element[] {
-  const elements: Element[] = [];
-  for (const child of Array.from(parent.children)) {
-    if (child.localName.toLowerCase() === localName.toLowerCase()) {
-      elements.push(child);
-    }
-  }
-  return elements;
-}
-
-function getChildElementNS(
-  parent: Element,
-  localName: string,
-  namespace: string
-): Element | null {
-  for (const child of Array.from(parent.children)) {
-    if (
-      child.localName.toLowerCase() === localName.toLowerCase() &&
-      child.namespaceURI === namespace
-    ) {
-      return child;
-    }
-  }
-  return null;
-}
-
-function getChildElementsNS(
-  parent: Element,
-  localName: string,
-  namespace: string
-): Element[] {
-  const elements: Element[] = [];
-  for (const child of Array.from(parent.children)) {
-    if (
-      child.localName.toLowerCase() === localName.toLowerCase() &&
-      child.namespaceURI === namespace
-    ) {
-      elements.push(child);
-    }
-  }
-  return elements;
-}
-
-function getChildText(parent: Element, localName: string): string | undefined {
-  const child = getChildElement(parent, localName);
-  return child?.textContent?.trim() || undefined;
 }

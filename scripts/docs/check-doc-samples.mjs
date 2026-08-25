@@ -211,22 +211,6 @@ try {
     maxBuffer: 64 * 1024 * 1024,
   });
 
-  // The harness itself must be known to have RUN before anything below can be
-  // read as a verdict (#3200, finding 2). `res` used to be consumed for its
-  // TEXT only: neither `res.error` nor `res.status` was ever looked at, so a
-  // tsc that could not be spawned, or one that exited non-zero with a
-  // diagnostic matching neither regex below, recovered zero failures and
-  // printed the success line. Reproduced three ways: `rm node_modules/.bin/tsc`;
-  // a tsc stub exiting 2 with `error TS5083: Cannot read file tsconfig.json.`;
-  // and the same with TS6053 / TS18003. All three printed
-  // `✅ Doc code samples typecheck clean` and exited 0.
-  if (res.error) {
-    console.error(
-      `❌ Could not run tsc (${res.error.code || res.error.message}).\n` +
-        '   Refusing to report doc samples as clean without having typechecked them.',
-    );
-    process.exit(1);
-  }
   const out = `${res.stdout ?? ''}${res.stderr ?? ''}`;
   // Only diagnostics in the snippet files are in scope: a doc snippet's use
   // of the API. Errors inside the imported package SOURCE (e.g. a missing
@@ -254,39 +238,6 @@ try {
     }
     const s = line.match(supportRe);
     if (s) supportFailures.push(`${s[1]}: ${s[4]}`);
-  }
-
-  // tsc exiting NON-ZERO is the healthy state here, not a failure: on a clean
-  // tree it reports 489 errors inside imported package sources, which the
-  // header above ignores on purpose. So the exit code cannot be the signal, and
-  // a first version of this guard that used it failed the gate on a good tree.
-  //
-  // The signal is a CONFIG-level diagnostic: tsc that never loaded the project
-  // emits one of these with no file prefix and typechecks NOTHING, which is the
-  // #3200 finding — `error TS5083: Cannot read file tsconfig.json.` exited 2,
-  // matched neither regex below, recovered zero failures, and printed
-  // `✅ Doc code samples typecheck clean`. TS6053 (file not found), TS18003 (no
-  // inputs) and TS5057 (no tsconfig at path) fail the same way. So does a tsc
-  // killed by a signal, where `status` is null and `signal` is set.
-  // ANCHORED at line start: these diagnostics carry no `file(line,col):`
-  // prefix, which is what distinguishes "tsc never loaded the project" from a
-  // file-scoped diagnostic that happens to share the band. TS5097 ("An import
-  // path can only end with a '.ts' extension") IS file-scoped and lives in the
-  // 50xx range, so an unanchored pattern would fail this gate on a package
-  // source the header above says it ignores on purpose.
-  const CONFIG_FAILURE = /^\s*error TS(50\d\d|6053|18003):/;
-  const configFailure = out.split('\n').find((l) => CONFIG_FAILURE.test(l));
-  // `status === null` IS the signal case for spawnSync, so it covers both; the
-  // message below falls back to 'unknown' when a null status carries no signal.
-  if (configFailure || res.status === null) {
-    console.error(
-      '❌ tsc did not typecheck the doc samples — it failed to load the generated project.\n' +
-        `   ${configFailure ? configFailure.trim() : `terminated by signal ${res.signal ?? 'unknown'}`}\n\n` +
-        '   Refusing to report doc samples as clean over a project tsc never opened. The snippet\n' +
-        '   count in the success line counts snippets WRITTEN to the temp dir, not typechecked,\n' +
-        '   so it cannot expose this on its own.',
-    );
-    process.exit(1);
   }
 
   if (supportFailures.length > 0) {

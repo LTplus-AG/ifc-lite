@@ -3,8 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * `step-property-sets.ts:entityLineText` — the byte range the incidental line
- * readers (`getPropertySetName`, `getPropertyIdsInSet`, …) decode.
+ * `step-property-set-readers.ts:entityLineText` — the byte range the
+ * incidental line readers (`getPropertySetName`, `getPropertyIdsInSet`, …)
+ * decode.
  *
  * Two things were unpinned here, and they are different failures:
  *
@@ -39,7 +40,7 @@ import {
   getPropertyIdsInSet,
   getPropertySetName,
   type PropertySetContext,
-} from './step-property-sets.js';
+} from './step-property-set-readers.js';
 
 /**
  * The line readers, named. These are the unit under test: no PUBLIC path is

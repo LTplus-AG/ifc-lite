@@ -3,45 +3,27 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The attribute-mutation serialization cluster StepExporter's private
- * helpers used to be (#2475, remaining private helpers). One pipeline,
- * `applySourceLineMutations`, and the overlay-created sibling that shares its
- * two serialize helpers, `applyOverlayEntityOverrides` — both were already
- * class-bound closures injected into `SourceIterationContext`,
- * `PropertySetContext` and `OverlayEntitiesContext` rather than called
- * directly from `export()`, so moving them out from under `StepExporter`
- * changes nothing any of those three contexts see.
+ * THE source-buffer attribute-mutation pipeline: retype, then named
+ * attribute edits, then positional edits, applied to a line read out of the
+ * STEP source. Both {@link applySourceLineMutations}'s call sites — the
+ * source-iteration pass and the type-object `HasPropertySets` rewrite that
+ * REPLACES it — are documented on the function itself.
  *
- * `applyAttributeMutations`, `serializeNamedAttribute`,
- * `applyPositionalMutations` and `serializePositionalOverride` are pure —
- * no `this` in their bodies — and have no reader outside this cluster, so
- * they move as ordinary module-private functions. Only
- * `applySourceLineMutations` touched `this`, and only for
- * `this.mutationView`'s two optional methods
- * (`getEntityTypeMutation` / `getPositionalMutationsForEntity`); it now
- * takes the mutation view as its first parameter instead.
+ * This file used to also hold the overlay-created sibling pipeline and the
+ * two per-slot serialize helpers both pipelines share; #3184 split those out
+ * along the line this module's own doc already drew — the overlay-created
+ * pipeline is now `step-overlay-attribute-overrides.ts`, and the shared
+ * serializers are `step-attribute-serializers.ts`.
  */
 
-import type { IfcAttributeValue } from '@ifc-lite/parser';
+import { splitTopLevelArgs } from './step-argument-parser.js';
+import { getRealTypedSlots } from './attribute-real-slots.js';
+import { retypeStepLine } from './retype.js';
 import { getAttributeNamesAcrossSchemas } from '@ifc-lite/parser';
+import type { IfcAttributeValue } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcSchemaVersion } from './schema-converter.js';
-import { retypeStepLine } from './retype.js';
-import { splitTopLevelArgs } from './step-argument-parser.js';
-import { getRealTypedSlots, isTypedMarker } from './attribute-real-slots.js';
-import {
-  getEnumTypedSlots,
-  getStringTypedSlots,
-  serializeEnumToken,
-  serializeStringSlot,
-} from './attribute-slot-types.js';
-import { serializeQualifiedSelectSlot } from './select-qualification.js';
-import {
-  toStepReal,
-  serializeAttributeValue,
-  serializeStepValue,
-  tokenIsRealLiteral,
-} from './step-serialization.js';
+import { serializeNamedAttribute, serializePositionalOverride } from './step-attribute-serializers.js';
 import type { SourceLineMutations } from './step-exporter.js';
 
 /**
@@ -214,156 +196,6 @@ function applyAttributeMutations(
 }
 
 /**
- * Serialize one NAMED attribute override into its slot — the single point
- * both the source-buffer rewrite and the overlay-created rewrite go through.
- *
- * `serializeAttributeValue` decides the STEP form by reading the token being
- * replaced, which is sound only while that token carries type information. A
- * `$` slot carries none, and both paths have plenty: a source record's
- * optional attributes are `$`, and overlay-created records pad missing slots
- * with `$`. So the declared type decides first, and inference is the fallback
- * for slots the schema does not classify (references, SELECTs, numerics),
- * where reading the old token is exactly the right heuristic.
- *
- * Before this REAL check existed, "the declared type decides first" was true
- * for enum/string slots only — a REAL-backed slot (`IfcMapConversion.
- * OrthogonalHeight`, any other `IfcLengthMeasure`/`IfcReal`-typed attribute)
- * fell straight to `serializeAttributeValue`'s token inference, which quotes
- * anything it cannot recognize as numeric. A schema-legal `$` placeholder
- * carries no digits to recognize, so setting such a field for the first time
- * wrote `'12345'` in a slot ISO 10303-21 requires to be an unquoted REAL —
- * silently invalid output (#2724, LTplus-AG/ifc-lite#2475).
- */
-function serializeNamedAttribute(
-  entityType: string,
-  index: number,
-  value: string,
-  currentToken: string,
-  realSlots: ReadonlySet<number>,
-): string | null {
-  if (getEnumTypedSlots(entityType).has(index)) return serializeEnumToken(value);
-  if (getStringTypedSlots(entityType).has(index)) return serializeStringSlot(value);
-  if (realSlots.has(index)) {
-    const trimmed = value.trim();
-    if (trimmed === '') return '$';
-    const numberValue = Number(trimmed);
-    if (Number.isFinite(numberValue)) return toStepReal(numberValue);
-    // A non-numeric value in a REAL slot used to fall through and be QUOTED,
-    // producing the same ISO 10303-21 violation #2725 exists to prevent
-    // (#2741). `StoreEditor.setAttribute` takes a string, so any UI text
-    // field bound to a georeferencing REAL can deliver one; it does not need
-    // a corrupt file.
-    //
-    // `null` means "leave the slot as the file had it". Simply returning
-    // `currentToken` here would stop the invalid output but SILENTLY DISCARD
-    // the edit - the exporter would then claim a modification it did not
-    // carry, which is the exact misreport #2723/#2724/#2726 were written to
-    // pin. The caller turns this into a warning, so a dropped edit is visible
-    // rather than inferred from absence.
-    return null;
-  }
-  return serializeAttributeValue(value, currentToken);
-}
-
-/**
- * Apply overlay attribute + positional overrides to an OVERLAY-CREATED
- * entity's argument list (#2006).
- *
- * Distinct from {@link applyAttributeMutations} / {@link applyPositionalMutations},
- * which rewrite a line read out of the source buffer. Here the whole line is
- * ours: it was serialized moments ago from the creation payload, so the
- * argument list is the authoring payload's, not the file's. That difference
- * is why this PADS — `entity_create` takes whatever positional list the
- * caller passes, so a wall authored with three arguments still has a real
- * `Tag` slot at index 7, and dropping the edit because the payload was short
- * would be the very data loss this fixes. The source-buffer path must not
- * pad: there a short line means a different schema, and growing a record we
- * did not author would corrupt it.
- *
- * Named and positional overrides resolve to a slot index up front and share
- * ONE padding rule. Two padding rules on one record is how the next bug
- * starts, and the argument for padding — the class is fixed at creation time,
- * so a short payload is partial authoring — never depended on which of the
- * two APIs queued the edit.
- */
-export function applyOverlayEntityOverrides(
-  argsText: string,
-  entityType: string,
-  attributeOverrides: Map<string, string> | null,
-  positionalOverrides: Map<number, IfcAttributeValue> | null,
-  schemaVersion: IfcSchemaVersion,
-  onRejected?: (attrName: string, value: string) => void,
-): string {
-  const args = argsText.length > 0 ? splitTopLevelArgs(argsText) : [];
-  const attrNames = getAttributeNamesAcrossSchemas(entityType);
-
-  const named: Array<[number, string]> = [];
-  for (const [attrName, value] of attributeOverrides ?? []) {
-    const index = attrNames.indexOf(attrName);
-    if (index >= 0) named.push([index, value]);
-  }
-
-  // Grow to the class's FULL declared arity as soon as any override names a
-  // declared slot the creation payload never reached. Growing only as far as
-  // the edited slot would emit eight arguments for an IfcWall that declares
-  // nine: this parser tolerates the truncated record, a schema-validating
-  // consumer rejects the file.
-  //
-  // An index PAST the declared layout is not a slot at all, so it cannot
-  // justify growing the record and stays dropped — as does any override on a
-  // class neither schema source knows, where there is no arity to grow to.
-  let needsPad = named.some(([index]) => index >= args.length);
-  if (!needsPad && positionalOverrides) {
-    for (const [index] of positionalOverrides) {
-      if (index >= args.length && index < attrNames.length) {
-        needsPad = true;
-        break;
-      }
-    }
-  }
-  if (needsPad) {
-    while (args.length < attrNames.length) args.push('$');
-  }
-
-  // Every `named` index is < attrNames.length by construction, and padding
-  // has taken args.length to at least that, so each one lands.
-  const realSlots = getRealTypedSlots(entityType, schemaVersion);
-  for (const [index, value] of named) {
-    const serialized = serializeNamedAttribute(
-      entityType,
-      index,
-      value,
-      args[index],
-      realSlots,
-    );
-    // Overlay-created entities take the same rejection: a non-numeric REAL is
-    // invalid STEP whoever authored the record. The slot keeps the `$` this
-    // path padded it with, rather than gaining a quoted string.
-    if (serialized === null) {
-      onRejected?.(attrNames[index] ?? `#${index}`, value);
-      continue;
-    }
-    args[index] = serialized;
-  }
-
-  if (positionalOverrides && positionalOverrides.size > 0) {
-    for (const [index, value] of positionalOverrides) {
-      if (index < 0 || index >= args.length) continue;
-      args[index] = serializePositionalOverride(
-        entityType,
-        index,
-        value,
-        args[index],
-        realSlots,
-        schemaVersion,
-      );
-    }
-  }
-
-  return args.join(',');
-}
-
-/**
  * Apply positional STEP argument overrides to an entity line.
  * Used for non-IfcRoot edits (e.g. profile dimensions) where attributes
  * have no symbolic names. Indexes that fall outside the existing arg list
@@ -389,27 +221,4 @@ function applyPositionalMutations(
   }
   if (!changed) return entityText;
   return `${entityText.slice(0, openParen + 1)}${args.join(',')}${entityText.slice(closeParen)}`;
-}
-
-/**
- * Serialize one positional override, composing the schema-aware passes:
- * explicit `{ real }`/`{ typed }` marker → SELECT auto-qualification
- * (`IFCBOOLEAN(.T.)`) → REAL forcing. For REAL forcing the current source
- * token is a secondary signal: replacing a value that was already a REAL
- * (`0.4`, `1.5E-7`) keeps it REAL even for entities the XSD index doesn't
- * cover, so a whole-number edit can't silently downgrade the slot.
- */
-function serializePositionalOverride(
-  entityType: string,
-  index: number,
-  value: IfcAttributeValue,
-  currentToken: string,
-  realSlots: ReadonlySet<number>,
-  schemaVersion: IfcSchemaVersion,
-): string {
-  if (isTypedMarker(value)) return serializeStepValue(value);
-  const qualified = serializeQualifiedSelectSlot(entityType, index, value);
-  if (qualified !== null) return qualified;
-  const forceReal = realSlots.has(index) || tokenIsRealLiteral(currentToken);
-  return serializeStepValue(value, forceReal);
 }

@@ -94,9 +94,15 @@ const STANDARD_BUT_UNMAPPED = [
   'IfcAudioVisualAppliance',
   'IfcDoorStyle',
   'IfcWindowStyle',
-  // IFC2X3 leaf that no bundled EXPRESS export carries; the parser's
-  // `ENTITY_NAME_ALIASES` is the only table that knows it.
-  'IfcElectricalDistributionPoint',
+  // IFCELECTRIC-, not IFCELECTRICAL-. This entry named the latter, and said
+  // no bundled EXPRESS export carries it and that `ENTITY_NAME_ALIASES` was
+  // "the only table that knows it". Both halves were wrong for the same
+  // reason: that name is not an IFC entity at all, so the only thing that
+  // "knew" it was an alias key misspelled to match. The real entity is in
+  // ENTITIES_IFC2X3 (`IfcFlowController`), which is why it does not throw —
+  // it is genuinely unmapped by `TYPE_STRING_TO_ENUM`, which is what this
+  // list is for.
+  'IfcElectricDistributionPoint',
 ] as const;
 
 /**

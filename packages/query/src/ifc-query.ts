@@ -120,9 +120,16 @@ export class IfcQuery {
     // because it doubles as a name canonicalizer and an alias maps a leaf to
     // its nearest schema-known *supertype*. For a pure known-ness question the
     // alias table is exactly the right thing to consult: it lists names real
-    // STEP files carry that the bundled EXPRESS exports omit, such as IFC2X3's
-    // `IfcElectricalDistributionPoint`. Hence the second lookup - it is the
-    // difference between accepting and rejecting those names.
+    // STEP files carry that the bundled EXPRESS exports omit. Hence the second
+    // lookup - it is the difference between accepting and rejecting those
+    // names.
+    //
+    // The example that used to sit here was `IfcElectricalDistributionPoint`,
+    // which is not an IFC entity in any schema -- IFCELECTRIC-, not
+    // IFCELECTRICAL-. It read as a real one because the alias table carried
+    // the same misspelling. The real `IfcElectricDistributionPoint` is in the
+    // bundled IFC2X3 export, so it is not even an example of what this
+    // paragraph describes.
     //
     // A genuine query for the Unknown bucket is still made by passing the
     // literal string `'Unknown'`.

@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { PLUGIN_API_VERSION, satisfiesCaretRange } from '@ifc-lite/plugin-api';
 
 import { MsGraphProvider } from '../src/provider.js';
-import { clampPageSize } from '../src/mapping.js';
+import { clampPageSize, searchEndpoint } from '../src/mapping.js';
 import {
   GRAPH_MOCK_DOWNLOAD_HOST,
   GRAPH_MOCK_DOWNLOAD_SECRET,
@@ -173,6 +173,26 @@ describe('MsGraphProvider', () => {
       const page = await provider.searchFiles!(ctx, 'me', 'MODEL');
       expect(page.items.map((f) => f.id)).toEqual(['file-1']);
       expect(page.items[0].containerId).toBe('f-alpha');
+    });
+  });
+
+  describe('searchEndpoint', () => {
+    // The query text sits inside a single-quoted OData string literal
+    // embedded directly in the URL *path* (`search(q='...')`), so a literal
+    // `'` in the user's search text must be doubled (OData's own
+    // string-literal escaping) before `encodeURIComponent` runs — otherwise
+    // it closes the literal early and Graph parses the remainder of the
+    // query as OData syntax rather than search text. No existing fixture's
+    // search text contains a quote, so a mutation that skips the doubling
+    // entirely (`escaped = query`) still passes the whole suite; this pins
+    // the doubling directly against the built path.
+    it('doubles a literal single quote in the query before percent-encoding it', () => {
+      const path = searchEndpoint("O'Brien's model");
+      // OData escaping doubles each `'` to `''` first; `encodeURIComponent`
+      // does not touch `'` itself (it isn't in its escape set), so the
+      // doubled quotes survive verbatim into the URL and only the space
+      // gets percent-encoded.
+      expect(path).toBe("/me/drive/root/search(q='O''Brien''s%20model')");
     });
   });
 
@@ -389,6 +409,18 @@ describe('MsGraphProvider', () => {
     // one item" — the same shape that package's clamp already guards against.
     it('never floors a fractional sub-1 limit to 0', () => {
       expect(clampPageSize(0.5)).toBe('1');
+    });
+
+    // `limit && limit > 0 ? ... : DEFAULT_PAGE_SIZE` treats a `0` (or
+    // negative) limit as "not really a limit" and falls back to the
+    // default, the same as `undefined` — distinct from the sub-1 fractional
+    // case just above, which clamps *up* to 1 instead. No existing fixture
+    // passed exactly `0`, so a `limit >= 0` mutation (accepting zero as a
+    // real request, which then clamps down to `1` instead of falling back
+    // to `200`) would pass unnoticed.
+    it('falls back to the default page size for a zero or negative limit, not clamped up to 1', () => {
+      expect(clampPageSize(0)).toBe('200');
+      expect(clampPageSize(-5)).toBe('200');
     });
   });
 });

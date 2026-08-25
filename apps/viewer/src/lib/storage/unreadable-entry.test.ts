@@ -84,4 +84,25 @@ describe('preserveUnreadableEntry', () => {
     forgetEntryAndBackups(st, 'K');
     assert.deepStrictEqual([...st.map.keys()], []);
   });
+
+  it('forgetEntryAndBackups sweeps a genuine counter-suffixed backup but leaves an unrelated key that only shares the prefix STRING', () => {
+    // Real counter-suffixed backups always look like "K:unreadable:2",
+    // "K:unreadable:3" — matched via `startsWith(`${prefix}:`)`. A stray key
+    // that merely starts with "K:unreadable" (no colon separator before
+    // whatever follows) is not one of ours and must survive: matching by
+    // substring rather than by the colon-delimited prefix would delete
+    // unrelated stored data that happens to share that string, the same
+    // "a"/"ab" cascade-delete shape this module's cousins were bitten by.
+    const st = stubStorage();
+    st.map.set('K', 'a');
+    preserveUnreadableEntry(st, 'K', new Error('x'));
+    st.map.set('K', 'b');
+    preserveUnreadableEntry(st, 'K', new Error('x')); // creates "K:unreadable:2"
+    st.map.set('K:unreadableButNotOurs', 'unrelated data');
+
+    forgetEntryAndBackups(st, 'K');
+
+    assert.deepStrictEqual([...st.map.keys()], ['K:unreadableButNotOurs']);
+    assert.strictEqual(st.map.get('K:unreadableButNotOurs'), 'unrelated data');
+  });
 });

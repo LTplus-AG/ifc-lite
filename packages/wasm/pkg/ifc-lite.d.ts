@@ -1597,9 +1597,9 @@ export class SymbolicRepresentationCollection {
     readonly truncatedLimit: number | undefined;
     /**
      * Which bound stopped extraction, else `undefined`. One of
-     * `element-count`, `output-bytes`, `item-depth`, `item-revisits` —
-     * the same kebab-case strings the JSON path emits, so a consumer reading
-     * either surface reads one vocabulary.
+     * `element-count`, `output-bytes`, `item-depth`, `item-revisits`,
+     * `item-cycle` — the same kebab-case strings the JSON path emits, so a
+     * consumer reading either surface reads one vocabulary.
      */
     readonly truncatedReason: string | undefined;
 }

@@ -1,5 +1,17 @@
 # @ifc-lite/merge
 
+## 0.4.4
+
+### Patch Changes
+
+- [#3127](https://github.com/LTplus-AG/ifc-lite/pull/3127) [`b25b2e7`](https://github.com/LTplus-AG/ifc-lite/commit/b25b2e7387bd365fda02d48095266f16b4f05cd7) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Close a live divergence between `applyNode` and `applyNodeCow` in component-state extraction: `applyNodeCow` silently omitted the `ifclite::deleted` tombstone branch that `applyNode` has, so a `DELETED` opinion reaching it fell through into an ordinary component write instead of setting the entity's `deleted`/`explicitDeleted` flags.
+  
+  This was safe today only because `projectStackStates` bails to the `extractStackState` fallback (never reaching `applyNodeCow`) whenever any layer in the stack carries a `DELETED` opinion — a behavioural delta held safe by a caller's guard rather than by anything structural, and invisible through the public API.
+  
+  Both functions now delegate to one shared `applyNodeToEntity` core, parameterised only by whether a touched component is copied before mutation (the one real difference: `applyNodeCow`'s clone-on-write entities may still alias untouched ancestor state). No other branch can drift between the two. No public API change.
+- Updated dependencies [[`e6caf11`](https://github.com/LTplus-AG/ifc-lite/commit/e6caf11a8f8d9d8634a6811b6705ab3367cd02e0), [`f7e26e4`](https://github.com/LTplus-AG/ifc-lite/commit/f7e26e4200e1475728d4976142b49cb408400a8e)]:
+  - @ifc-lite/ifcx@3.0.0
+
 ## 0.4.3
 
 ### Patch Changes

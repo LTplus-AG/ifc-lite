@@ -11,21 +11,30 @@
  * `parseFloat` path that silently equated date-shaped strings.
  */
 
-/**
- * A "clean" numeric literal: optional sign, digits, optional decimal,
- * optional scientific exponent. Anchored end-to-end so trailing garbage
- * (`'2022-01-01'`) doesn't smuggle through.
- */
-const NUMERIC_RE = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+import { isWhollyNumeric } from '@ifc-lite/encoding';
 
 /**
  * Whether an IDS literal could ever match through `compareNumeric` —
- * i.e. it is a strict numeric literal. Lets constraint matchers decide
- * ONCE per constraint instead of running the regex inside per-entity
- * hot loops.
+ * i.e. it is a strict numeric literal: optional sign, digits, optional
+ * decimal, optional scientific exponent, anchored end-to-end so
+ * trailing garbage (`'2022-01-01'`) doesn't smuggle through.
+ *
+ * Delegates to the shared scan in `@ifc-lite/encoding` rather than
+ * keeping a local regex. The regex it replaces —
+ * `/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/` — decides the same
+ * language but is QUADRATIC on a failing match, because `\d+\.?\d*`
+ * retries at every split of the digit run before the engine gives up
+ * (#3113). That is reachable: `compareNumeric` runs the check on the
+ * model side, so a property value that is a long digit run followed by
+ * one non-numeric character costs the same per entity. The scan is
+ * linear, allocates nothing, and one implementation cannot drift from
+ * the other.
+ *
+ * Constraint matchers still call this ONCE per constraint rather than
+ * inside per-entity hot loops.
  */
 export function isStrictNumericLiteral(value: string): boolean {
-  return NUMERIC_RE.test(value);
+  return isWhollyNumeric(value);
 }
 
 /** Whether an IDS literal could ever match through `compareBoolean`. */
@@ -63,16 +72,16 @@ export function numericEpsilon(castValue: number, actual?: number): number {
  *
  * Strictness is the whole point: `parseFloat('2022-01-01')` returns
  * `2022`, which would silently equate dates with their year. Requiring
- * `NUMERIC_RE.test(...)` on both sides keeps date-like strings opaque.
+ * `isWhollyNumeric(...)` on both sides keeps date-like strings opaque.
  */
 export function compareNumeric(
   expected: string,
   actual: string | number | boolean
 ): boolean | undefined {
   const actualStr = String(actual);
-  const expectedIsNumeric = NUMERIC_RE.test(expected);
+  const expectedIsNumeric = isWhollyNumeric(expected);
   const actualIsNumeric =
-    typeof actual === 'number' || NUMERIC_RE.test(actualStr);
+    typeof actual === 'number' || isWhollyNumeric(actualStr);
   if (!expectedIsNumeric || !actualIsNumeric) return undefined;
 
   const expectedNum = parseFloat(expected);

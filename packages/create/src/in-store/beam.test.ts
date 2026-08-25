@@ -44,9 +44,45 @@ describe('addBeamToStore', () => {
     const axisDir = byId.get(Number(axisDirRef.replace('#', '')));
     expect(axisDir?.attributes[0]).toEqual([1, 0, 0]); // direction Start→End
 
+    // RefDirection = a stable perpendicular to the axis, computed via
+    // cross(worldUp, axis) for a non-near-vertical beam (|axis.z| < 0.9).
+    const refDirRef = axisPlacement?.attributes[2] as string;
+    const refDir = byId.get(Number(refDirRef.replace('#', '')));
+    expect(refDir?.attributes[0]).toEqual([0, 1, 0]);
+
     // Solid extrusion = beam length along local Z.
     const solid = byId.get(result.solidId);
     expect(solid?.attributes[3]).toBe(4);
+  });
+
+  it('falls back to world X for a near-vertical beam instead of degenerating', () => {
+    // A vertical axis ([0,0,1], |axis.z| = 1 >= 0.9) is parallel to the
+    // default worldUp = [0,0,1] used for other beams: cross(worldUp, axis)
+    // would be the zero vector, and vecNorm() throws on a zero-length
+    // vector. computeRefDirection falls back to worldUp = [1,0,0] for this
+    // case specifically to avoid that degenerate cross product. No existing
+    // fixture used a vertical beam, so this whole branch — and the crash it
+    // exists to prevent — was unexercised.
+    const store = makeStore(60);
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(store, view);
+
+    let result!: ReturnType<typeof addBeamToStore>;
+    expect(() => {
+      result = addBeamToStore(
+        editor,
+        { ownerHistoryId: 5, bodyContextId: 14, axisContextId: 15, storeyId: 43, storeyPlacementId: 54 },
+        { Start: [0, 0, 0], End: [0, 0, 5], Width: 0.3, Height: 0.5 },
+      );
+    }).not.toThrow();
+
+    const byId = new Map(view.getNewEntities().map((e) => [e.expressId, e]));
+    const placement = byId.get(result.placementId);
+    const axisPlacement = byId.get(Number((placement?.attributes[1] as string).replace('#', '')));
+    const refDirRef = axisPlacement?.attributes[2] as string;
+    const refDir = byId.get(Number(refDirRef.replace('#', '')));
+    // cross([1,0,0], [0,0,1]) normalised = [0,-1,0].
+    expect(refDir?.attributes[0]).toEqual([0, -1, 0]);
   });
 
   it('rejects coincident Start/End and non-positive section', () => {

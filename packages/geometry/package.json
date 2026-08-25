@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/geometry",
-  "version": "3.8.4",
+  "version": "4.0.0",
   "description": "Geometry processing bridge for IFC-Lite - exact-arithmetic CSG, streamed across workers",
   "type": "module",
   "main": "./dist/index.js",
@@ -10,6 +10,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./geometry-class": {
+      "types": "./dist/geometry-class.d.ts",
+      "import": "./dist/geometry-class.js",
+      "default": "./dist/geometry-class.js"
     }
   },
   "scripts": {

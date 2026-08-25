@@ -351,6 +351,29 @@ describe('downloadBinary - checksum verification gates extraction (PR #2650)', (
     }
   });
 
+  it('verifies against the ALTERNATE URL that actually succeeded, not the primary one that failed', async () => {
+    // The primary v${version} URL 404s; the server-v${version} alternate
+    // succeeds. `resolvedAssetUrl` exists specifically so the checksum
+    // sidecar is fetched from the release that produced the bytes on disk -
+    // fetching it from the primary (failed) URL would 404 the sidecar too
+    // and fail the whole install closed on an otherwise-good binary.
+    const { platform } = getBinaryInfo();
+    const primaryUrl = `https://github.com/LTplus-AG/ifc-lite/releases/download/v${PKG_VERSION}/${platform.archiveName}`;
+    const altUrl = `https://github.com/LTplus-AG/ifc-lite/releases/download/server-v${PKG_VERSION}/${platform.archiveName}`;
+
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === primaryUrl) throw new Error('ENOTFOUND (primary)');
+      return fakeDownloadResponse();
+    }));
+
+    await downloadBinary();
+
+    expect(verifyChecksumMock).toHaveBeenCalledTimes(1);
+    const [, assetUrl] = verifyChecksumMock.mock.calls[0];
+    expect(assetUrl).toBe(altUrl);
+    expect(assetUrl).not.toBe(primaryUrl);
+  });
+
   it('extracts, chmods and persists NOTHING when verification fails', async () => {
     verifyChecksumMock.mockRejectedValueOnce(new Error('checksum mismatch (test)'));
 

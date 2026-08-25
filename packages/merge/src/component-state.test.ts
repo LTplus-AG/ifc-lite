@@ -16,8 +16,15 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { IfcxFile } from '@ifc-lite/ifcx';
-import { componentKeyForAttribute, extractStackState, projectStackStates } from './component-state.js';
+import type { IfcxFile, IfcxNode } from '@ifc-lite/ifcx';
+import {
+  applyNode,
+  applyNodeCow,
+  componentKeyForAttribute,
+  extractStackState,
+  projectStackStates,
+} from './component-state.js';
+import type { EntityState } from './component-state.js';
 import { planThreeWayMerge } from './three-way.js';
 
 describe('componentKeyForAttribute', () => {
@@ -195,5 +202,52 @@ describe('projectSide folds a multi-layer suffix weakest-first, per attribute', 
       [FIRE]: { type: 'IfcLabel', value: 'REI120' },
       [SMOKE]: { type: 'IfcLabel', value: 'S30' },
     });
+  });
+});
+
+/**
+ * RED-first pin for the applyNode / applyNodeCow divergence reported by a
+ * prior sweep (PR #3099): `applyNodeCow` omitted the `IFCLITE_ATTR.DELETED`
+ * branch that `applyNode` has. `projectStackStates` currently bails to
+ * `null` (forcing the `extractStackState` fallback) on ANY layer carrying
+ * a `DELETED` opinion, so `applyNodeCow` is never reached with one through
+ * the public API — the delta is real but currently unobservable from
+ * outside this module. This suite calls `applyNodeCow` directly (exported
+ * for exactly this purpose) to pin the two functions against each other at
+ * the level where the divergence WAS observable, sidestepping the caller's
+ * bail.
+ */
+describe('applyNode / applyNodeCow parity on IFCLITE_ATTR.DELETED', () => {
+  function freshEntity(path: string): EntityState {
+    return {
+      path,
+      components: new Map(),
+      children: new Map(),
+      inherits: new Map(),
+      deleted: false,
+      explicitDeleted: false,
+    };
+  }
+
+  const deleteNode: IfcxNode = {
+    path: 'wall-guid-1',
+    attributes: { 'ifclite::deleted': true },
+  } as unknown as IfcxNode;
+
+  it('applyNode sets deleted/explicitDeleted on a DELETED opinion (reference behaviour)', () => {
+    const entity = freshEntity('wall-guid-1');
+    applyNode(entity, deleteNode);
+    expect(entity.deleted).toBe(true);
+    expect(entity.explicitDeleted).toBe(true);
+    // The tombstone must not leak into components as an ordinary attribute.
+    expect(entity.components.size).toBe(0);
+  });
+
+  it('applyNodeCow must agree with applyNode on a DELETED opinion', () => {
+    const entity = freshEntity('wall-guid-1');
+    applyNodeCow(entity, deleteNode);
+    expect(entity.deleted).toBe(true);
+    expect(entity.explicitDeleted).toBe(true);
+    expect(entity.components.size).toBe(0);
   });
 });

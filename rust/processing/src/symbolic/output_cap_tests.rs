@@ -664,7 +664,8 @@ fn the_wire_spellings_match_serde() {
         SymbolicTruncationReason::ElementCount
         | SymbolicTruncationReason::OutputBytes
         | SymbolicTruncationReason::ItemDepth
-        | SymbolicTruncationReason::ItemRevisits => {}
+        | SymbolicTruncationReason::ItemRevisits
+        | SymbolicTruncationReason::ItemCycle => {}
     }
 
     for reason in [
@@ -672,6 +673,7 @@ fn the_wire_spellings_match_serde() {
         SymbolicTruncationReason::OutputBytes,
         SymbolicTruncationReason::ItemDepth,
         SymbolicTruncationReason::ItemRevisits,
+        SymbolicTruncationReason::ItemCycle,
     ] {
         let via_serde = serde_json::to_value(reason).expect("serializes");
         assert_eq!(

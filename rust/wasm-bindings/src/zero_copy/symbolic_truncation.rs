@@ -30,9 +30,9 @@ impl SymbolicRepresentationCollection {
     }
 
     /// Which bound stopped extraction, else `undefined`. One of
-    /// `element-count`, `output-bytes`, `item-depth`, `item-revisits` —
-    /// the same kebab-case strings the JSON path emits, so a consumer reading
-    /// either surface reads one vocabulary.
+    /// `element-count`, `output-bytes`, `item-depth`, `item-revisits`,
+    /// `item-cycle` — the same kebab-case strings the JSON path emits, so a
+    /// consumer reading either surface reads one vocabulary.
     #[wasm_bindgen(getter, js_name = truncatedReason)]
     pub fn truncated_reason(&self) -> Option<String> {
         self.truncated

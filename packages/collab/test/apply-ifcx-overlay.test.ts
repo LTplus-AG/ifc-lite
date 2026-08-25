@@ -27,7 +27,16 @@ import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import { IFCLITE_ATTR, type IfcxFile } from '@ifc-lite/ifcx';
 import { createCollabDoc, entitiesMap, ENTITY_KEY } from '../src/doc/schema.js';
-import { createEntity, getAttribute, getEntity, setAttribute } from '../src/doc/entity.js';
+import {
+  addClassification,
+  addMaterial,
+  createEntity,
+  getAttribute,
+  getEntity,
+  setAttribute,
+  setChild,
+  setInherit,
+} from '../src/doc/entity.js';
 import { applyIfcxOverlay, seedFromIfcx } from '../src/snapshot/from-ifcx.js';
 
 function layer(data: IfcxFile['data']): IfcxFile {
@@ -77,6 +86,34 @@ describe('applyIfcxOverlay', () => {
 
     const attrs = getEntity(doc, 'wall')?.get(ENTITY_KEY.ATTRIBUTES) as Y.Map<unknown> | undefined;
     expect(attrs?.has('ifclite::name')).toBe(false);
+  });
+
+  it('treats a null child/inherit target as a removal opinion', () => {
+    const doc = createCollabDoc();
+    doc.transact(() => {
+      createEntity(doc, 'storey', { ifcClass: 'IfcBuildingStorey' });
+      createEntity(doc, 'wall', { ifcClass: 'IfcWall' });
+      createEntity(doc, 'type-wall', { ifcClass: 'IfcWallType' });
+      setChild(doc, 'storey', 'wall', 'wall');
+      setInherit(doc, 'wall', 'type', 'type-wall');
+    });
+
+    applyIfcxOverlay(
+      doc,
+      layer([
+        { path: 'storey', children: { wall: null } },
+        { path: 'wall', inherits: { type: null } },
+      ]),
+    );
+
+    const children = getEntity(doc, 'storey')?.get(ENTITY_KEY.CHILDREN) as
+      | Y.Map<string>
+      | undefined;
+    const inherits = getEntity(doc, 'wall')?.get(ENTITY_KEY.INHERITS) as
+      | Y.Map<string>
+      | undefined;
+    expect(children?.has('wall')).toBe(false);
+    expect(inherits?.has('type')).toBe(false);
   });
 
   // `extractMinimalLayer` expresses a deletion as this tombstone node.
@@ -143,6 +180,33 @@ describe('applyIfcxOverlay', () => {
     expect(getAttribute(doc, 'wall', 'ifclite::name')).toBe('back');
     // Base state the resurrecting node never mentions must still be there.
     expect(getAttribute(doc, 'wall', 'ifclite::tag')).toBe('from-base');
+  });
+
+  // Classifications, materials and geometry refs are "single-valued
+  // opinions" per the comment in `overlayEntity`: a node that carries a
+  // list replaces the doc's list wholesale, and a node that carries none
+  // must say nothing, not clear it. Nothing exercised the "says nothing"
+  // half before this.
+  it('leaves classifications and materials untouched when the overlay node carries none', () => {
+    const doc = createCollabDoc();
+    doc.transact(() => {
+      createEntity(doc, 'wall', { ifcClass: 'IfcWall' });
+      addClassification(doc, 'wall', { system: 'Uniclass', code: 'Pr_20_93_88' });
+      addMaterial(doc, 'wall', { materialId: 'concrete' });
+    });
+
+    // A node that only touches an unrelated attribute — no classification
+    // or material opinion at all.
+    applyIfcxOverlay(doc, layer([{ path: 'wall', attributes: { 'ifclite::name': 'Wall B' } }]));
+
+    const classifications = getEntity(doc, 'wall')?.get(ENTITY_KEY.CLASSIFICATIONS) as
+      | Y.Array<unknown>
+      | undefined;
+    const materials = getEntity(doc, 'wall')?.get(ENTITY_KEY.MATERIALS) as
+      | Y.Array<unknown>
+      | undefined;
+    expect(classifications?.toArray()).toEqual([{ system: 'Uniclass', code: 'Pr_20_93_88' }]);
+    expect(materials?.toArray()).toEqual([{ materialId: 'concrete' }]);
   });
 
   // The overlay applier and the seeder share a node decoder, so the

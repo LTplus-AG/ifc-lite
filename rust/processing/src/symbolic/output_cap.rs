@@ -105,6 +105,13 @@ pub enum SymbolicTruncationReason {
     /// One representation item exhausted its revisit budget: the item was a
     /// large acyclic fan-out, or a legitimate deeply-nested block import.
     ItemRevisits,
+    /// The walk's path guard (`ItemWalk::enter_node`) refused to re-enter a
+    /// node already on the current path -- a genuine cycle in the
+    /// representation graph, not merely a large fan-out. Distinct from
+    /// [`Self::ItemRevisits`], whose budget can also be exhausted by an
+    /// acyclic file (#2938's lead case); this reason is a cycle and nothing
+    /// else (#3108).
+    ItemCycle,
 }
 
 impl SymbolicTruncationReason {
@@ -120,6 +127,7 @@ impl SymbolicTruncationReason {
             Self::OutputBytes => "output-bytes",
             Self::ItemDepth => "item-depth",
             Self::ItemRevisits => "item-revisits",
+            Self::ItemCycle => "item-cycle",
         }
     }
 }
@@ -260,7 +268,9 @@ impl SymbolicAccumulator {
     fn record(&mut self, reason: SymbolicTruncationReason) {
         let severity = |r: SymbolicTruncationReason| match r {
             SymbolicTruncationReason::ElementCount | SymbolicTruncationReason::OutputBytes => 1,
-            SymbolicTruncationReason::ItemDepth | SymbolicTruncationReason::ItemRevisits => 0,
+            SymbolicTruncationReason::ItemDepth
+            | SymbolicTruncationReason::ItemRevisits
+            | SymbolicTruncationReason::ItemCycle => 0,
         };
         match self.reason {
             Some(existing) if severity(existing) >= severity(reason) => {}
@@ -391,7 +401,8 @@ impl SymbolicAccumulator {
                 // file-level `emitted` would invite the reader to compare two
                 // numbers that are not comparable.
                 SymbolicTruncationReason::ItemDepth
-                | SymbolicTruncationReason::ItemRevisits => None,
+                | SymbolicTruncationReason::ItemRevisits
+                | SymbolicTruncationReason::ItemCycle => None,
             };
             self.data.truncated = Some(SymbolicTruncation { reason, emitted, limit });
         }

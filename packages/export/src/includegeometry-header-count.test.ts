@@ -9,8 +9,9 @@
  * (and, since the sibling fix in this PR, by the `visibleOnly` closure) but
  * never consult `options.includeGeometry`. The source-iteration pass, and
  * the overlay new-entities pass, both separately skip a geometry-classified
- * entity when `includeGeometry === false` (`isGeometryEntity` checks at
- * step-exporter.ts:840 and :1004) — so a geometry entity carrying an
+ * entity when `includeGeometry === false` (the `isGeometryEntity` checks in
+ * `step-pass-builder.ts`'s `isGeometryExcluded` and in
+ * `step-overlay-entities.ts`) — so a geometry entity carrying an
  * attribute edit had its line dropped from `DATA` while the header still
  * counted it as a modification, the exact class of mismatch the rest of
  * this file guards.

@@ -275,3 +275,50 @@ test('a crate SKIPPED as already-published still gates the next crate on its ind
     clock.restore();
   }
 });
+
+test('the DEFAULT wiring polls the sparse index and pre-checks the API — not one endpoint twice', async () => {
+  // Every other test in this file injects BOTH `preCheckFn` and
+  // `indexCheckFn`, so none of them observes the wiring a real release runs.
+  // That left the v6.0.1 defect itself unpinned: putting the `indexCheckFn`
+  // default back to `isPublished` — the exact regression this file exists to
+  // prevent — keeps every other test here green. This one drives the real
+  // defaults through a stubbed global `fetch` and asserts on the URLs they
+  // reach, so the two endpoints cannot be collapsed into one again.
+  const clock = fakeClock();
+  const realFetch = globalThis.fetch;
+  const urls = [];
+  try {
+    globalThis.fetch = async (url) => {
+      urls.push(String(url));
+      if (String(url).startsWith('https://index.crates.io/')) {
+        const line = JSON.stringify({ name: 'ifc-lite-core', vers: '6.0.1', yanked: false });
+        return new Response(`${line}\n`, { status: 200 });
+      }
+      // The API record says "not uploaded yet", so the publish runs.
+      return new Response('{"errors":[{"detail":"Not Found"}]}', { status: 404 });
+    };
+
+    const published = [];
+    await publishAllCrates({
+      crates: ['ifc-lite-core'],
+      version: '6.0.1',
+      publishFn: (crate) => published.push(crate),
+      intervalMs: 5000,
+      timeoutMs: 20000,
+      sleepFn: clock.sleepFn,
+    });
+
+    assert.deepEqual(published, ['ifc-lite-core']);
+    assert.ok(
+      urls.includes('https://crates.io/api/v1/crates/ifc-lite-core/6.0.1'),
+      `the pre-check must read the API version record; saw ${JSON.stringify(urls)}`
+    );
+    assert.ok(
+      urls.includes('https://index.crates.io/if/c-/ifc-lite-core'),
+      `the poll must read the sparse index cargo resolves from; saw ${JSON.stringify(urls)}`
+    );
+  } finally {
+    globalThis.fetch = realFetch;
+    clock.restore();
+  }
+});

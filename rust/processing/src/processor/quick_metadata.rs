@@ -3,7 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::types::response::{QuickMetadataEntitySummary, QuickMetadataSpatialNode};
+use ifc_lite_core::{IfcType, IFC_TYPES};
 use std::collections::{HashMap, HashSet};
+use std::sync::LazyLock;
 
 #[derive(Clone)]
 pub(super) struct QuickSpatialNodeEntry {
@@ -16,23 +18,58 @@ pub(super) struct QuickSpatialNodeEntry {
     pub(super) parent: Option<u32>,
 }
 
+/// Which types the schema calls members of the spatial *structure* hierarchy.
+///
+/// `IfcProject` is the tree root and is an `IfcObject`, not a spatial element
+/// at all. `IfcSpatialZone` is an `IfcSpatialElement` but NOT an
+/// `IfcSpatialStructureElement`; it is carried deliberately since #1075 (Revit
+/// / Dynamo GFA volumes attached with `IfcRelContainedInSpatialStructure`).
+/// Everything else is exactly the `IfcSpatialStructureElement` closure -- the
+/// branch whose `WR41` rule requires membership in the `IfcRelAggregates`
+/// decomposition this tree is built from.
+///
+/// `IfcExternalSpatialElement` is deliberately NOT here even though it is an
+/// `IfcSpatialElement`: it descends from `IfcExternalSpatialStructureElement`,
+/// carries no `WR41`, and models a space *boundary* volume (external air,
+/// ground) rather than a container. Admitting it would put a permanently
+/// parentless node in the tree. The TypeScript half excludes it for the same
+/// reason.
+fn is_quick_spatial_type(ifc_type: IfcType) -> bool {
+    matches!(ifc_type, IfcType::IfcProject | IfcType::IfcSpatialZone)
+        || ifc_type.is_subtype_of(IfcType::IfcSpatialStructureElement)
+}
+
+/// The uppercase STEP keywords [`is_quick_spatial_type`] accepts, derived once
+/// from the generated schema catalog.
+///
+/// This used to be fourteen names typed out by hand, and it was missing
+/// `IfcMarineFacility`, `IfcMarinePart` and `IfcFacilityPartCommon` -- an IFC4.3
+/// harbour lost its entire branch from the tree shown during load, while the
+/// TypeScript builder (working from its own, differently-wrong hand list) kept
+/// part of it, so the panel visibly gained a branch part-way through (#3275).
+/// A hand list can only ever be as complete as whoever last audited the schema,
+/// and `rooted_type.rs` made exactly this move for `IfcRoot` for exactly this
+/// reason (#3015).
+///
+/// Materialised as a name slice rather than resolved per call: the gate runs
+/// once for every entity in the scan loop, and `IfcType::from_str` normalises
+/// to uppercase first, which allocates. A linear `eq_ignore_ascii_case` sweep
+/// over ~17 short names is what the hand-written chain already cost, so the
+/// derivation is free at the call site.
+static QUICK_SPATIAL_TYPE_NAMES: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
+    IFC_TYPES
+        .iter()
+        .filter(|ifc_type| is_quick_spatial_type(**ifc_type))
+        .map(|ifc_type| ifc_type.as_str())
+        .collect()
+});
+
 /// Case-insensitive spatial-type check that avoids to_ascii_uppercase() allocation.
 #[inline]
-pub(super) fn is_quick_spatial_type_ci(type_name: &str) -> bool {
-    type_name.eq_ignore_ascii_case("IFCPROJECT")
-        || type_name.eq_ignore_ascii_case("IFCSITE")
-        || type_name.eq_ignore_ascii_case("IFCBUILDING")
-        || type_name.eq_ignore_ascii_case("IFCBUILDINGSTOREY")
-        || type_name.eq_ignore_ascii_case("IFCSPACE")
-        || type_name.eq_ignore_ascii_case("IFCSPATIALZONE")
-        || type_name.eq_ignore_ascii_case("IFCFACILITY")
-        || type_name.eq_ignore_ascii_case("IFCFACILITYPART")
-        || type_name.eq_ignore_ascii_case("IFCBRIDGE")
-        || type_name.eq_ignore_ascii_case("IFCBRIDGEPART")
-        || type_name.eq_ignore_ascii_case("IFCROAD")
-        || type_name.eq_ignore_ascii_case("IFCROADPART")
-        || type_name.eq_ignore_ascii_case("IFCRAILWAY")
-        || type_name.eq_ignore_ascii_case("IFCRAILWAYPART")
+pub fn is_quick_spatial_type_ci(type_name: &str) -> bool {
+    QUICK_SPATIAL_TYPE_NAMES
+        .iter()
+        .any(|candidate| type_name.eq_ignore_ascii_case(candidate))
 }
 
 pub(super) fn parse_step_arguments(entity_bytes: &[u8]) -> Vec<&[u8]> {

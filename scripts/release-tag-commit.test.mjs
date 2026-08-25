@@ -211,7 +211,7 @@ for (const [label, varName, manifest, versionVar] of [
   ['server-bin', 'SB_COMMIT', 'packages/server-bin/package.json', 'SB_VERSION'],
 ]) {
   /** A repo carrying the script, a 6.0.1 bump, and a LATER unrelated HEAD. */
-  function seamRepo(t) {
+  const seamRepo = (t) => {
     const repo = newRepo(t);
     mkdirSync(join(repo, 'scripts'), { recursive: true });
     copyFileSync(scriptPath, join(repo, 'scripts', 'release-tag-commit.mjs'));
@@ -222,7 +222,7 @@ for (const [label, varName, manifest, versionVar] of [
     assert.notEqual(bump, head, 'precondition: HEAD is a later, unrelated commit');
     writeFileSync(join(repo, 'step.sh'), `${taggingFragment(varName)}\n`);
     return { repo, bump, head };
-  }
+  };
 
   const runStep = (repo) =>
     execFileSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', join(repo, 'step.sh')], {

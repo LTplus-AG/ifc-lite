@@ -32,6 +32,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 
 /**
  * Where the source actually is, and how small each place is allowed to get.
@@ -51,7 +52,53 @@ const TARGETS = [
   { dir: 'apps', min: 900 },
   { dir: 'packages', min: 1200 },
   { dir: 'scripts', min: 100 },
+  { dir: 'examples', min: 10 },
 ];
+
+/**
+ * The floors above catch a target that SHRANK. They cannot catch a target that
+ * was never in the list — a directory absent from `TARGETS` is not counted low,
+ * it is not counted at all, and the success line still reads "no errors".
+ *
+ * That is not hypothetical. `examples/` is a declared `pnpm-workspace.yaml`
+ * member and was never passed to oxlint, so six error-tier
+ * `eslint(no-inner-declarations)` violations sat in `examples/threejs-viewer`
+ * and `examples/babylonjs-viewer` while the Lint job was green (#3200,
+ * finding 3). Adding `examples` to `TARGETS` fixes that instance. This
+ * function is what stops the NEXT one: the workspace file is the declaration of
+ * where first-party source lives, so a glob that appears there and not here is
+ * a gap by construction, and it fails loudly rather than being linted by
+ * nobody.
+ *
+ * Deliberately one-directional. A `TARGETS` entry with no workspace glob
+ * (`scripts/`) is fine and expected — this asks only that nothing DECLARED is
+ * unlinted.
+ */
+function uncoveredWorkspaceGlobs() {
+  let raw;
+  try {
+    raw = readFileSync('pnpm-workspace.yaml', 'utf8');
+  } catch (err) {
+    return { error: `could not read pnpm-workspace.yaml: ${err.message}` };
+  }
+  // Only the `packages:` block. Scoping matters: `onlyBuiltDependencies` lists
+  // scoped npm names (`@swc/core`) that also contain a slash, and a whole-file
+  // scan reads those as workspace roots and demands lint targets for `@swc/`.
+  // Stop at the next top-level key — a line with no leading whitespace.
+  const roots = new Set();
+  let inPackages = false;
+  for (const line of raw.split('\n')) {
+    if (/^\S/.test(line)) inPackages = /^packages\s*:/.test(line);
+    if (!inPackages) continue;
+    const m = /^\s*-\s*['"]?([^'"\s/]+)\//.exec(line);
+    if (m) roots.add(m[1]);
+  }
+  if (roots.size === 0) {
+    return { error: 'parsed no globs from pnpm-workspace.yaml — the format changed and this check is now blind' };
+  }
+  const covered = new Set(TARGETS.map((t) => t.dir));
+  return { missing: [...roots].filter((r) => !covered.has(r)), seen: roots.size };
+}
 
 /** oxlint's summary: "Finished in Xms on N files with M rules using K threads."
  *  Anchored on "Finished in", and the LAST match wins: the pattern alone can
@@ -97,6 +144,19 @@ function lint(dir) {
  *  assigned to `process.exitCode` lets Node drain stdout, `process.exit()`
  *  does not. */
 function main() {
+  const coverage = uncoveredWorkspaceGlobs();
+  if (coverage.error) {
+    console.error(`lint: ${coverage.error}`);
+    return 1;
+  }
+  if (coverage.missing.length > 0) {
+    console.error('lint: a pnpm-workspace.yaml glob is not in TARGETS, so its source is');
+    console.error('      linted by nobody and this gate would still report "no errors":\n');
+    for (const dir of coverage.missing) console.error(`      ${dir}/`);
+    console.error('\n      Add it to TARGETS with a floor, or remove it from the workspace.');
+    return 1;
+  }
+
   let totalFiles = 0;
   let ruleCount = 0;
   let failed = 0;
@@ -126,7 +186,7 @@ function main() {
   }
 
   if (failed !== 0) return failed;
-  console.log(`lint: ${totalFiles.toLocaleString()} files across ${TARGETS.length} targets, ${ruleCount} rules, no errors.`);
+  console.log(`lint: ${totalFiles.toLocaleString()} files across ${TARGETS.length} targets (${coverage.seen} workspace globs, all covered), ${ruleCount} rules, no errors.`);
   return 0;
 }
 

@@ -127,6 +127,18 @@ describe('convertStepLine downgrade trim — worked examples', () => {
     expect(convertStepLine(line, 'IFC4', 'IFC2X3')).toBe("#8=IFCQUANTITYAREA('NetArea',$,$,12.5);");
   });
 
+  it('IFC4 IfcWallStandardCase drops PredefinedType, like IfcWall', () => {
+    const line = "#5=IFCWALLSTANDARDCASE('guid',$,'Wall 1',$,$,$,$,'tag',.STANDARD.);";
+    expect(convertStepLine(line, 'IFC4', 'IFC2X3')).toBe(
+      "#5=IFCWALLSTANDARDCASE('guid',$,'Wall 1',$,$,$,$,'tag');",
+    );
+  });
+
+  it('IFC4X3 IfcAnnotation drops the PredefinedType IFC4X3 appended', () => {
+    const line = "#6=IFCANNOTATION('guid',$,'Note',$,$,$,$,.USERDEFINED.);";
+    expect(convertStepLine(line, 'IFC4X3', 'IFC4')).toBe("#6=IFCANNOTATION('guid',$,'Note',$,$,$,$);");
+  });
+
   it('IFC4 IfcApproval is left alone — IFC2X3 inserted its extra attributes mid-list', () => {
     const line = "#9=IFCAPPROVAL('desc',$,'name',$,$,$,$,$,'id');";
     expect(convertStepLine(line, 'IFC4', 'IFC2X3')).toBe(line);

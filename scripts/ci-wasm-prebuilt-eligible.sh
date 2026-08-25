@@ -54,23 +54,28 @@ if ! _tag_present; then
   exit 0
 fi
 
-# Every pathspec must actually MATCH something at the tag before its "no diff"
-# answer can be trusted (#3200, finding 10). `git diff --quiet` exits 0 both for
-# "nothing changed" and for "your pathspec matched nothing at either end":
+# ANTI-VACUITY (#3200, finding 10). `git diff --quiet` exits 0 for two very
+# different answers: "these paths are unchanged" and "your pathspec matched
+# nothing at either end". A single typo'd entry above therefore covers nothing,
+# silently, and moves this probe towards `true` — against the guarantee stated
+# at the top of this file that the fast path can NEVER cause a stale bundle to
+# be tested. Demonstrated on this repo:
 #
-#   $ git diff --quiet HEAD~1 HEAD -- probe             # EXIT=1  (real path)
-#   $ git diff --quiet HEAD~1 HEAD -- rustXX Cargo.lock # EXIT=0  (typo'd path)
+#   $ git diff --quiet HEAD~1 HEAD -- rust Cargo.lock;      echo $?   # 1
+#   $ git diff --quiet HEAD~1 HEAD -- rustXX CargoXX.lock;  echo $?   # 0
 #
-# so a typo'd entry silently covers nothing AND moves the answer toward `true`
-# — against this file's stated guarantee that the fast path can NEVER cause a
-# stale bundle to be tested. The list must be kept in lock-step with
-# scripts/vercel-install.sh BY HAND, which is exactly where such a typo comes
-# from. Checking at the TAG rather than at HEAD is deliberate: that is the side
-# whose contents the prebuilt bundle was built from.
+# So every entry is required to name something real. "Real" means matching at
+# EITHER end — a path deleted since the tag still matches at the tag, and one
+# added since still matches at HEAD; only a name that exists at neither end is
+# a typo. A failure here is not fatal: it takes the same `false` route as every
+# other uncertainty, which costs a from-source build and nothing else.
 for _p in "${WASM_SRC_PATHS[@]}"; do
-  if [ -z "$(git ls-tree -r --name-only "refs/tags/${WASM_TAG}" -- "${_p}" 2>/dev/null | head -1)" ]; then
-    log "🛠  WASM_SRC_PATHS entry '${_p}' matches no file at ${WASM_TAG} — refusing to trust a"
-    log "    no-diff answer over a pathspec that covers nothing. Build from source."
+  _at_tag="$(git ls-tree -r --name-only "refs/tags/${WASM_TAG}" -- "${_p}" 2>/dev/null | head -1 || true)"
+  _at_head="$(git ls-tree -r --name-only HEAD -- "${_p}" 2>/dev/null | head -1 || true)"
+  if [ -z "${_at_tag}" ] && [ -z "${_at_head}" ]; then
+    log "🛠  WASM_SRC_PATHS entry '${_p}' matches no file at ${WASM_TAG} or at HEAD —"
+    log "    it can only ever compare nothing, so the diff below would under-report."
+    log "    Build from source, and fix the list (keep it in lock-step with scripts/vercel-install.sh)."
     echo false
     exit 0
   fi

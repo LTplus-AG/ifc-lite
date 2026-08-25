@@ -264,7 +264,7 @@ fileInput.addEventListener('change', async () => {
     let streamMaxX = -Infinity, streamMaxY = -Infinity, streamMaxZ = -Infinity;
     let hasStreamBounds = false;
 
-    function expandStreamBoundsFromMeshes(meshes: MeshData[]) {
+    const expandStreamBoundsFromMeshes = (meshes: MeshData[]) => {
       for (const m of meshes) {
         const p = m.positions;
         for (let i = 0; i < p.length; i += 3) {
@@ -282,7 +282,7 @@ fileInput.addEventListener('change', async () => {
       hasStreamBounds = true;
     }
 
-    function getStreamBounds(): { center: Vector3; maxDim: number } | null {
+    const getStreamBounds = (): { center: Vector3; maxDim: number } | null => {
       if (!hasStreamBounds) return null;
       const center = new Vector3(
         (streamMinX + streamMaxX) / 2,
@@ -297,7 +297,7 @@ fileInput.addEventListener('change', async () => {
       return { center, maxDim };
     }
 
-    function fitIfDue() {
+    const fitIfDue = () => {
       const bounds = getStreamBounds();
       if (!bounds) return;
       applyCameraFit(bounds.center, bounds.maxDim, false);

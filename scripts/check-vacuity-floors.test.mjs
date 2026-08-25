@@ -54,10 +54,10 @@ test('check-package-readmes: an empty packages/ is a FAILURE, not "all 0 have a 
   try {
     const { code, out } = run('docs/check-package-readmes.mjs', ['--root', dir]);
     assert.equal(code, 1, `expected a refusal, got ${code}:\n${out}`);
-    assert.match(out, /Only 0 published package/);
+    assert.match(out, /only 0 published package\(s\) reached the README check/);
     // The remedy must name the constant. A message that says only "the SCAN is
     // wrong" is actively misleading to someone who really did retire packages.
-    assert.match(out, /lower PUBLISHED_FLOOR in the same commit/);
+    assert.match(out, /lower CHECKED_FLOOR in this file/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -76,7 +76,7 @@ test('check-package-readmes: a healthy tree still PASSES — the floor is not fi
 
 test('check-package-readmes: a REAL missing README still fails, above the floor', () => {
   // The floor must not have swallowed the gate's actual job. 30 packages clears
-  // PUBLISHED_FLOOR, so the only thing that can fail here is the README check.
+  // CHECKED_FLOOR, so the only thing that can fail here is the README check.
   const dir = tree(30);
   try {
     mkdirSync(join(dir, 'packages', 'bare'), { recursive: true });
@@ -104,8 +104,8 @@ test('verify-npm-publish: all-private is a REFUSAL, not "no publishable packages
     const { code, out } = run('verify-npm-publish.js', ['--root', dir]);
     // Exit 2 is this gate's existing "verified nothing" code, not a new one.
     assert.equal(code, 2, `expected a refusal, got ${code}:\n${out}`);
-    assert.match(out, /Only 0 publishable package/);
-    assert.match(out, /lower PUBLISHABLE_FLOOR in the same commit/);
+    assert.match(out, /only 0 publishable package\(s\) found among/);
+    assert.match(out, /lower PUBLISHABLE_FLOOR in this file/);
     assert.doesNotMatch(
       out,
       /No publishable packages found/,
@@ -127,8 +127,8 @@ test('verify-npm-publish: an unreadable parent is fatal, not a warning', () => {
     writeFileSync(join(dir, 'packages'), 'not a directory');
     const { code, out } = run('verify-npm-publish.js', ['--root', dir]);
     assert.equal(code, 2, `expected a refusal, got ${code}:\n${out}`);
-    assert.match(out, /Could not list/);
-    assert.match(out, /could not read/);
+    assert.match(out, /could not list .*\/packages \(/);
+    assert.match(out, /an unreadable workspace parent is not an empty one/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -17,12 +17,30 @@
  *                   Useful after a fresh publish where npm propagation takes
  *                   a few seconds.
  *   --delay <ms>    Milliseconds to wait between retries (default: 5000).
+ *
+ * ANTI-VACUITY (#3200, finding 7). This runs in release.yml AFTER publish, so
+ * its exit code is the last thing standing between a half-published release
+ * and users. It already refused to find no package.json at all; one level in,
+ * it did not. Two ways it could report a release verified having checked less
+ * than the workspace, both reproduced on a synthetic tree:
+ *
+ *   - every discovered manifest being private printed `No publishable
+ *     packages found.` and exited 0;
+ *   - a `packages/` that could not be LISTED (an ENOTDIR/EACCES rather than an
+ *     ENOENT) printed a warning, verified whatever `apps/` held, and finished
+ *     with `All packages are published. 🎉`.
+ *
+ * Both are closed below. A parent or a manifest path that does not EXIST stays
+ * ordinary; one that cannot be READ is fatal, because those two call for
+ * different fixes and only the second means the set silently shrank. Past
+ * discovery, PUBLISHABLE_FLOOR keeps the count honest against the real
+ * workspace, where no realistic release drops it by a third.
  */
 
 import { execSync } from 'child_process';
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { fileURLToPath } from 'url';
-import { dirname, join, resolve } from 'path';
+import { dirname, join, resolve as resolvePath } from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -37,7 +55,30 @@ if (rootFlagIdx !== -1 && !process.argv[rootFlagIdx + 1]) {
   console.error('--root requires a directory argument');
   process.exit(2);
 }
-const rootDir = rootFlagIdx === -1 ? join(__dirname, '..') : resolve(process.argv[rootFlagIdx + 1]);
+const rootDir =
+  rootFlagIdx === -1 ? join(__dirname, '..') : resolvePath(process.argv[rootFlagIdx + 1]);
+
+/**
+ * Lower bound on how many publishable packages this gate must actually query.
+ * Measured on a healthy tree: `packages/` holds 45 manifests of which 42 are
+ * publishable, `apps/` holds 2 of which 0 are — every published package lives
+ * under `packages/`, so the floor is really a floor on that tree surviving
+ * discovery. Set to 25, a wide margin below 42: ordinary churn (a package
+ * split, a few retired or made private) never forces an edit here, while every
+ * way this script can go blind — a wrong root, a parent that will not list, a
+ * manifest read that stops matching — collapses the count towards zero, not to
+ * 24.
+ *
+ * Deliberately NOT a per-parent floor: `apps/` publishes nothing today, so
+ * `apps: at least 1` would be a floor on a number that is legitimately zero.
+ */
+const PUBLISHABLE_FLOOR = 25;
+
+/** Refuse, loudly, with the exit code release.yml reads as "nothing proved". */
+function refuse(message) {
+  console.error(`❌ ${message}`);
+  process.exit(2);
+}
 
 // ── CLI option parsing ────────────────────────────────────────────────────────
 
@@ -85,50 +126,45 @@ function npmReason(error) {
   return text.split('\n').find((l) => l.trim()) ?? null;
 }
 
-// This gate runs AFTER publish, so a path it cannot read is a release reporting
-// itself verified with a package silently missing from the set (#3200). One
-// helper for both call sites so the two messages cannot drift apart.
-function refuseUnreadable(verb, path, error) {
-  console.error(
-    `❌ Could not ${verb} ${path} (${error.code || error.message}).\n` +
-      '   Refusing to verify a release over a package set this gate could not read.',
-  );
-  process.exit(2);
-}
-
 function getWorkspacePackages() {
   const packages = [];
   for (const parent of ['packages', 'apps']) {
     const parentDir = join(rootDir, parent);
     try {
-      // `withFileTypes`: a plain FILE under packages/ or apps/ -- a `.DS_Store`
-      // on any macOS checkout -- makes `statSync(<file>/package.json)` throw
-      // ENOTDIR, which the refusal below would report as "could not read",
-      // aborting the release verification with a false diagnosis. Nothing was
-      // unreadable; it simply is not a package directory (#3200 review).
-      for (const dirent of readdirSync(parentDir, { withFileTypes: true })) {
-        if (!dirent.isDirectory() && !dirent.isSymbolicLink()) continue;
-        const pkgJsonPath = join(parentDir, dirent.name, 'package.json');
+      for (const entry of readdirSync(parentDir)) {
+        const pkgJsonPath = join(parentDir, entry, 'package.json');
         try {
           statSync(pkgJsonPath);
           packages.push(pkgJsonPath);
         } catch (error) {
-          // A directory with no package.json is ordinary. Anything else means we
-          // may be skipping a package we were asked to verify, and this gate
-          // runs AFTER publish — a warning here is a release reporting itself
-          // verified with a package silently missing from the set (#3200).
-          // ENOTDIR reaches here only via a symlink to a non-directory, which
-          // is likewise "not a package", not "unreadable".
+          // A directory with no package.json is ordinary, and so is a plain
+          // file sitting under packages/ — joining 'package.json' onto it
+          // yields ENOTDIR, which likewise means "not a package". Anything
+          // else means this path exists in some form we could not classify,
+          // and skipping it drops a package the release may have been
+          // supposed to publish.
           if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') {
-            refuseUnreadable('stat', pkgJsonPath, error);
+            refuse(
+              `could not stat ${pkgJsonPath} (${error.code || error.message}). ` +
+                'Refusing to treat an unreadable manifest path as an absent one — ' +
+                'that is how a package drops out of a release check unnoticed.',
+            );
           }
         }
       }
     } catch (error) {
-      // Same: an absent `apps/` or `packages/` is ordinary (only one of the two
-      // holds publishable packages today), but an unreadable one silently
-      // shrinks the set this release gate checks (#3200).
-      if (error.code !== 'ENOENT') refuseUnreadable('list', parentDir, error);
+      // Same distinction one level up, and it matters more here: an absent
+      // `apps/` or `packages/` is ordinary, but one that will not LIST shrinks
+      // the set this release gate checks by a whole tree while every remaining
+      // package still reports ✅. Warning about that and carrying on was the
+      // #3200 finding.
+      if (error.code !== 'ENOENT') {
+        refuse(
+          `could not list ${parentDir} (${error.code || error.message}). ` +
+            'Refusing to verify a release against whatever else happened to be readable — ' +
+            'an unreadable workspace parent is not an empty one.',
+        );
+      }
     }
   }
   return packages;
@@ -144,8 +180,7 @@ async function main() {
   // means the discovery step itself failed, and exiting 0 there would report a
   // release as verified having checked nothing.
   if (packagePaths.length === 0) {
-    console.error('No package.json found under packages/ or apps/ — nothing was verified.');
-    process.exit(2);
+    refuse('No package.json found under packages/ or apps/ — nothing was verified.');
   }
   const toCheck = [];
 
@@ -155,30 +190,19 @@ async function main() {
     toCheck.push({ name: pkg.name, version: pkg.version });
   }
 
-  // One level past the discovery floor above, and the one that actually bites
-  // (#3200, finding 7): `packagePaths` can be healthy while every manifest reads
-  // as private or version-less, which is what a half-written or half-read tree
-  // looks like. Exiting 0 there prints "No publishable packages found" and the
-  // release lane goes green having checked nothing.
-  //
-  // Measured on a healthy tree: 42 publishable packages, all under `packages/`
-  // (`scripts/docs/check-package-readmes.mjs` carries a sibling floor over what
-  // is today the same 42)
-  // (`apps/` currently has none, which is why this is a floor on the TOTAL and
-  // not per-parent). Set to 25 — enough headroom that retiring or privatising a
-  // handful never forces an edit, while every way discovery goes blind
-  // collapses the count toward 0 rather than to 24.
-  const PUBLISHABLE_FLOOR = 25;
+  // The second floor, and the one the #3200 audit found missing: discovery can
+  // succeed and still hand this loop nothing, or almost nothing, to verify.
+  // Exiting 0 there reports a release as verified on the strength of zero
+  // queries to the registry.
   if (toCheck.length < PUBLISHABLE_FLOOR) {
-    console.error(
-      `❌ Only ${toCheck.length} publishable package(s) found among ${packagePaths.length} ` +
-        `manifest(s), expected at least ${PUBLISHABLE_FLOOR}.\n` +
-        '   This gate runs after publish, so reporting a release as verified here would ' +
-        'assert something it never checked.\n' +
-        '   If packages were genuinely removed or privatised, lower PUBLISHABLE_FLOOR in the ' +
-        'same commit.',
+    refuse(
+      `only ${toCheck.length} publishable package(s) found among ${packagePaths.length} ` +
+        `manifest(s) under packages/ and apps/, expected at least ${PUBLISHABLE_FLOOR}. ` +
+        'Refusing a vacuous pass: this gate runs after publish, and a run that queried ' +
+        'npm about almost nothing has proved almost nothing about the release. If the ' +
+        'workspace genuinely shrank this far, lower PUBLISHABLE_FLOOR in this file — ' +
+        'deliberately, in a reviewable diff.',
     );
-    process.exit(2);
   }
 
   console.log(`\nVerifying ${toCheck.length} package(s) on npm (up to ${retries} retries each)…\n`);

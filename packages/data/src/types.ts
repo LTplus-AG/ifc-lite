@@ -22,6 +22,15 @@ export enum IfcTypeEnum {
   IfcRailway = 65,
   IfcRailwayPart = 66,
   IfcMarineFacility = 67,
+  // The two remaining concrete IfcFacilityPart subtypes. IfcMarinePart is the
+  // part of an IfcMarineFacility (berth, quay, approach channel) and
+  // IfcFacilityPartCommon the part of a generic IfcFacility — the exact
+  // counterparts of IfcBridgePart / IfcRoadPart / IfcRailwayPart above, which
+  // were listed while these two were not. Ids continue the #1075 block above
+  // the platform-variant max rather than filling the 68/69 gap, for the reason
+  // spelled out on IfcSpatialZone below.
+  IfcMarinePart = 321,
+  IfcFacilityPartCommon = 322,
   // IfcSpatialZone is a spatial structure element (modelled GFA volumes);
   // IfcZone is a grouping (IfcSystem) of spaces/zones. Ids are above the
   // current max to avoid colliding with platform-variant func_elem indices
@@ -297,6 +306,8 @@ const TYPE_STRING_TO_ENUM = new Map<string, IfcTypeEnum>([
   ['IFCRAILWAY', IfcTypeEnum.IfcRailway],
   ['IFCRAILWAYPART', IfcTypeEnum.IfcRailwayPart],
   ['IFCMARINEFACILITY', IfcTypeEnum.IfcMarineFacility],
+  ['IFCMARINEPART', IfcTypeEnum.IfcMarinePart],
+  ['IFCFACILITYPARTCOMMON', IfcTypeEnum.IfcFacilityPartCommon],
   // Building elements
   ['IFCWALL', IfcTypeEnum.IfcWall],
   ['IFCWALLSTANDARDCASE', IfcTypeEnum.IfcWallStandardCase],
@@ -449,6 +460,8 @@ const TYPE_ENUM_TO_STRING = new Map<IfcTypeEnum, string>([
   [IfcTypeEnum.IfcRailway, 'IfcRailway'],
   [IfcTypeEnum.IfcRailwayPart, 'IfcRailwayPart'],
   [IfcTypeEnum.IfcMarineFacility, 'IfcMarineFacility'],
+  [IfcTypeEnum.IfcMarinePart, 'IfcMarinePart'],
+  [IfcTypeEnum.IfcFacilityPartCommon, 'IfcFacilityPartCommon'],
   // Building elements
   [IfcTypeEnum.IfcWall, 'IfcWall'],
   [IfcTypeEnum.IfcWallStandardCase, 'IfcWallStandardCase'],

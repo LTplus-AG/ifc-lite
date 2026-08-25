@@ -31,7 +31,8 @@ export function elevationKey(elevation: number): string {
 }
 
 /** "Level" rows the browser sorts: building storeys plus their IFC4.3
- *  facility-part equivalents (facility / bridge / road / railway parts). These
+ *  facility-part equivalents — every concrete IfcFacilityPart subtype, plus the
+ *  abstract base itself for a defensively-typed entity. These
  *  are the elevation-bearing leaf containers under a building or facility, so
  *  they share the storey sort; other spatial children (Site, Building, Space)
  *  keep their document order. `isStoreyLikeSpatialType` covers only
@@ -42,7 +43,9 @@ function isLevelLikeSpatialType(type: IfcTypeEnum): boolean {
     type === IfcTypeEnum.IfcFacilityPart ||
     type === IfcTypeEnum.IfcBridgePart ||
     type === IfcTypeEnum.IfcRoadPart ||
-    type === IfcTypeEnum.IfcRailwayPart
+    type === IfcTypeEnum.IfcRailwayPart ||
+    type === IfcTypeEnum.IfcMarinePart ||
+    type === IfcTypeEnum.IfcFacilityPartCommon
   );
 }
 
@@ -123,6 +126,8 @@ export function getNodeType(ifcType: IfcTypeEnum): NodeType {
     case IfcTypeEnum.IfcBridgePart: return 'IfcBridgePart';
     case IfcTypeEnum.IfcRoadPart: return 'IfcRoadPart';
     case IfcTypeEnum.IfcRailwayPart: return 'IfcRailwayPart';
+    case IfcTypeEnum.IfcMarinePart: return 'IfcMarinePart';
+    case IfcTypeEnum.IfcFacilityPartCommon: return 'IfcFacilityPartCommon';
     case IfcTypeEnum.IfcSpace: return 'IfcSpace';
     case IfcTypeEnum.IfcSpatialZone: return 'IfcSpatialZone';
     default: return 'element';

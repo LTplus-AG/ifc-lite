@@ -55,6 +55,21 @@ export function isTypeHidden(ifcType: string | undefined, hidden: Set<string> | 
   return hidden.has(ifcType.toLowerCase());
 }
 
+/**
+ * `modelReady` must be true for BOTH load paths, which is easy to get wrong
+ * because only one of them writes `geometryResult`.
+ *
+ * Every `setGeometryResult` in the loader sits under `target.kind ===
+ * 'primary'`, and the federation hook carries an explicit "Do NOT call
+ * setGeometryResult() here!" -- federated geometry arrives through the models
+ * map instead. So deriving readiness from `geometryResult` alone leaves a host
+ * that mounts the iframe with `?select=` and no `modelUrl`, then calls
+ * `addModel()`, with meshes on screen and a selection that silently never
+ * applies. Callers pass `geometryResult?.meshes?.length || storeModels.size`.
+ *
+ * `?hideTypes=` is unaffected either way: it filters `mergedGeometryResult`,
+ * which already reads the models map.
+ */
 export function useEmbedUrlParams(urlParams: EmbedViewerUrlParams, modelReady: boolean): void {
   const applied = useRef(false);
 

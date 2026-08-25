@@ -242,10 +242,20 @@ describe('EmbedViewer: ?isolate=', () => {
     // later flip — without it, this sequence calls the actuator with the
     // SAME ids a second time, and a same-set TOGGLE actuator would clear
     // isolation right back out, silently, with no error.
+    // The assertion has to count ACTUATOR CALLS, not inspect the end state.
+    // `setIsolatedEntities` ASSIGNS, so isolation is `{1}` at the end whether
+    // the effect ran once or twice -- an earlier version of this test checked
+    // only the end state and stayed green with the ref guard deleted, which
+    // is the exact thing it is named for. The spy is held across the whole
+    // sequence for that reason.
+    const setIsolatedEntitiesSpy = vi.fn(useViewerStore.getState().setIsolatedEntities);
+    useViewerStore.setState({ setIsolatedEntities: setIsolatedEntitiesSpy });
+
     setSearch('?isolate=1');
     renderEmbedViewer();
     await settle();
     expect([...useViewerStore.getState().isolatedEntities!]).toEqual([1]);
+    expect(setIsolatedEntitiesSpy).toHaveBeenCalledTimes(1);
 
     // Model cleared...
     act(() => setMockGeometryResult!(null));
@@ -256,6 +266,9 @@ describe('EmbedViewer: ?isolate=', () => {
 
     const isolated = useViewerStore.getState().isolatedEntities;
     expect(isolated ? [...isolated].sort() : []).toEqual([1]);
+    // STILL once. A second call here is the guard being gone; with a toggling
+    // actuator that second call is what silently clears isolation.
+    expect(setIsolatedEntitiesSpy).toHaveBeenCalledTimes(1);
   });
 });
 

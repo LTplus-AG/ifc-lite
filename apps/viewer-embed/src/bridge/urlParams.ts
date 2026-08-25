@@ -124,7 +124,16 @@ export function parseUrlParams(): EmbedViewerUrlParams {
 
   const camera = params.get('camera');
   if (camera) {
-    const parts = camera.split(',').map(Number);
+    // A BLANK segment is rejected before `Number` sees it, for the same
+    // reason as `select`/`isolate` above and with the opposite conclusion
+    // about zero: `Number('')` is 0, so `?camera=,` would otherwise read as
+    // a legitimate azimuth 0 / elevation 0 and silently snap the view rather
+    // than falling back to `home`. The SDK joins [azimuth, elevation], so a
+    // host that omits azimuth emits exactly that.
+    //
+    // Zero itself stays valid -- `camera: {0,0,0}` is a real pose the SDK
+    // ships -- so the guard is on the segment being empty, never on the value.
+    const parts = camera.split(',').map(s => (s.trim() === '' ? NaN : Number(s)));
     if (parts.length >= 2 && parts.every(n => !isNaN(n))) {
       result.camera = { azimuth: parts[0], elevation: parts[1], zoom: parts[2] };
     }

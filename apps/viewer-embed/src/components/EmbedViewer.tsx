@@ -252,7 +252,7 @@ export function EmbedViewer() {
   useEmbedBridgeEvents();
 
   // Apply ?select= / ?isolate= once the first model is on screen.
-  useEmbedUrlParams(urlParams, Boolean(geometryResult?.meshes?.length));
+  useEmbedUrlParams(urlParams, Boolean(geometryResult?.meshes?.length || storeModels.size));
 
   // Multi-model: create mapping from modelId to modelIndex
   const modelIdToIndex = useMemo(() => {

@@ -219,7 +219,22 @@ export function extractStackState(layers: readonly IfcxFile[]): StackState {
   return state;
 }
 
-function applyNode(entity: EntityState, node: IfcxNode): void {
+/**
+ * Shared node-application core for both `applyNode` and `applyNodeCow`.
+ *
+ * A prior sweep (PR #3099) found the two had drifted: `applyNodeCow`
+ * silently omitted the `IFCLITE_ATTR.DELETED` branch that `applyNode` has,
+ * safe only because `projectStackStates` bails to `null` (forcing the
+ * `extractStackState` fallback) whenever any layer carries a `DELETED`
+ * opinion — a live behavioural delta held safe by a caller's guard rather
+ * than by anything structural. Parameterising the ONE difference between
+ * the two call sites (whether a component object is copied before mutation
+ * — required only when the entity may be aliased with another side's
+ * untouched state, as in `projectSide`'s clone-on-write fold) makes every
+ * other branch — including this one — impossible to omit from just one of
+ * them; there is now only one place either could drift from.
+ */
+function applyNodeToEntity(entity: EntityState, node: IfcxNode, options: { cow: boolean }): void {
   if (node.children) {
     for (const [name, child] of Object.entries(node.children)) {
       if (child === null) entity.children.delete(name);
@@ -241,7 +256,8 @@ function applyNode(entity: EntityState, node: IfcxNode): void {
     }
     if (key.startsWith(IFCLITE_ATTR.DERIVED)) continue;
     const componentKey = resolveComponentKey(entity, key, value);
-    const component = entity.components.get(componentKey) ?? {};
+    const existing = entity.components.get(componentKey) ?? {};
+    const component: ComponentAttributes = options.cow ? { ...existing } : existing;
     if (value === null) {
       delete component[key];
       if (Object.keys(component).length === 0) {
@@ -253,6 +269,10 @@ function applyNode(entity: EntityState, node: IfcxNode): void {
     }
     entity.components.set(componentKey, component);
   }
+}
+
+export function applyNode(entity: EntityState, node: IfcxNode): void {
+  applyNodeToEntity(entity, node, { cow: false });
 }
 
 // ---------------------------------------------------------------------------
@@ -383,36 +403,13 @@ function dropEmptyShells(state: StackState): void {
  * `applyNode` for cloned side entities: component objects are copied
  * before mutation so ancestor-shared references are never written through
  * — reference equality stays a valid "unchanged" signal in the matrix.
+ * Delegates to `applyNodeToEntity` (see its docstring) so every other
+ * branch — the DELETED tombstone, the DERIVED skip, child/inherit slot
+ * handling — stays structurally identical to `applyNode`, not merely
+ * copy-pasted and hoped to stay in sync.
  */
-function applyNodeCow(entity: EntityState, node: IfcxNode): void {
-  if (node.children) {
-    for (const [name, child] of Object.entries(node.children)) {
-      if (child === null) entity.children.delete(name);
-      else entity.children.set(name, child);
-    }
-  }
-  if (node.inherits) {
-    for (const [role, target] of Object.entries(node.inherits)) {
-      if (target === null) entity.inherits.delete(role);
-      else entity.inherits.set(role, target);
-    }
-  }
-  if (!node.attributes) return;
-  for (const [key, value] of Object.entries(node.attributes)) {
-    if (key.startsWith(IFCLITE_ATTR.DERIVED)) continue;
-    const componentKey = resolveComponentKey(entity, key, value);
-    const component: ComponentAttributes = { ...(entity.components.get(componentKey) ?? {}) };
-    if (value === null) {
-      delete component[key];
-      if (Object.keys(component).length === 0) {
-        entity.components.delete(componentKey);
-        continue;
-      }
-    } else {
-      component[key] = value;
-    }
-    entity.components.set(componentKey, component);
-  }
+export function applyNodeCow(entity: EntityState, node: IfcxNode): void {
+  applyNodeToEntity(entity, node, { cow: true });
 }
 
 /** Hash + value snapshot for conflict records and fold detection. */

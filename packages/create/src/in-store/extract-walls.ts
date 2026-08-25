@@ -422,7 +422,7 @@ function extractWallAxisFromSource(
   store: IfcDataStore,
   extractor: EntityExtractor,
   wallId: number,
-  storeyChain: ReadonlySet<number> | null,
+  storeyChain: ReadonlyMap<number, number> | null,
   log: Logger,
 ): ExtractAttempt {
   const ref = store.entityIndex.byId.get(wallId);
@@ -447,7 +447,7 @@ function extractWallAxisFromOverlay(
   extractor: EntityExtractor,
   overlay: OverlayWallReader,
   wall: { expressId: number; attributes: IfcAttributeValue[] },
-  storeyChain: ReadonlySet<number> | null,
+  storeyChain: ReadonlyMap<number, number> | null,
   log: Logger,
 ): ExtractAttempt {
   const placementId = numericAttr(wall.attributes[5]);
@@ -471,7 +471,7 @@ function computeWallSegment(
   representationId: number,
   overlay: OverlayWallReader | undefined,
   wallId: number,
-  storeyChain: ReadonlySet<number> | null,
+  storeyChain: ReadonlyMap<number, number> | null,
   log: Logger,
 ): ExtractAttempt {
   const frame = frameInStoreyFrame(store, extractor, overlay, placementId, storeyChain);
@@ -798,14 +798,16 @@ function readOwnPlacementFrame(
 }
 
 /**
- * The set of placement ids that make up the storey's OWN placement chain:
- * the storey's `ObjectPlacement` and every ancestor reachable from it via
- * `IfcLocalPlacement.PlacementRelTo`. Composition stops when it reaches one
- * of these — see `frameInStoreyFrame`.
+ * The storey's OWN placement chain: its `ObjectPlacement` and every ancestor
+ * reachable from it via `IfcLocalPlacement.PlacementRelTo`, mapped to the
+ * number of hops from the storey's own placement (`0` for that placement
+ * itself). Composition stops when it reaches one of these, and the hop count
+ * says how much of the storey's own chain still separates the stopping point
+ * from the storey frame — see `frameInStoreyFrame`.
  *
- * Returns `null` — NOT an empty set — when the storey has no resolvable
+ * Returns `null` — NOT an empty map — when the storey has no resolvable
  * placement, which `IfcProduct.ObjectPlacement` being OPTIONAL makes a
- * well-formed possibility. An empty set is not "no storey frame", it is
+ * well-formed possibility. An empty map is not "no storey frame", it is
  * "a storey frame the walk can never reach": the walk would find nothing to
  * stop on and compose every hop up to the world root, labelling world
  * coordinates storey-local. `frameInStoreyFrame` treats `null` as "compose
@@ -816,19 +818,65 @@ function storeyPlacementChain(
   extractor: EntityExtractor,
   overlay: OverlayWallReader | undefined,
   storeyId: number,
-): Set<number> | null {
-  const chain = new Set<number>();
+): Map<number, number> | null {
+  const chain = new Map<number, number>();
   const storey = readEntity(store, extractor, overlay, storeyId);
   if (!storey) return null;
   let id = numericAttr(storey.attributes[5]); // ObjectPlacement
   if (id === null) return null;
   while (id !== null && !chain.has(id)) {
-    chain.add(id);
+    chain.set(id, chain.size);
     const placement = readEntity(store, extractor, overlay, id);
     if (!placement) break;
     id = numericAttr(placement.attributes[0]); // PlacementRelTo
   }
   return chain;
+}
+
+/**
+ * The storey's frame expressed in the frame of the chain entry `hops` steps
+ * above its own placement: compose the storey's first `hops` placements, the
+ * innermost one first. `hops === 0` is the storey's own placement, whose frame
+ * relative to itself is the identity.
+ *
+ * Returns `null` when any of those placements has no readable frame — the
+ * caller must then leave the element where it is rather than move it by a
+ * partial chain.
+ */
+function storeyFrameAboveBy(
+  store: IfcDataStore,
+  extractor: EntityExtractor,
+  overlay: OverlayWallReader | undefined,
+  storeyChain: ReadonlyMap<number, number>,
+  hops: number,
+): PlacementFrame | null {
+  let frame: PlacementFrame = { origin: [0, 0], axisX: [1, 0] };
+  let composed = 0;
+  for (const id of storeyChain.keys()) {
+    if (composed >= hops) break;
+    const own = readOwnPlacementFrame(store, extractor, overlay, id);
+    if (!own) return null;
+    frame = composeFrames(own, frame);
+    composed += 1;
+  }
+  return composed === hops ? frame : null;
+}
+
+/**
+ * The inverse of a planar rigid frame: `invertFrame(f)` maps a point expressed
+ * in `f`'s parent frame back into `f`'s own frame, so
+ * `composeFrames(invertFrame(f), g)` re-expresses `g` — a sibling of `f` in
+ * that parent frame — relative to `f`.
+ *
+ * With `axisX = (c, s)` the frame applies `p ↦ R·p + origin`, `R = [[c,−s],
+ * [s,c]]`. The inverse applies `p ↦ Rᵀ·(p − origin)`, and `Rᵀ` is the rotation
+ * whose `axisX` is `(c, −s)`, which is why only the Y component flips.
+ */
+function invertFrame(frame: PlacementFrame): PlacementFrame {
+  const c = frame.axisX[0];
+  const s = frame.axisX[1];
+  const [ox, oy] = frame.origin;
+  return { origin: [-(c * ox + s * oy), -(-s * ox + c * oy)], axisX: [c, -s] };
 }
 
 /**
@@ -880,7 +928,7 @@ function frameInStoreyFrame(
   extractor: EntityExtractor,
   overlay: OverlayWallReader | undefined,
   placementId: number,
-  storeyChain: ReadonlySet<number> | null,
+  storeyChain: ReadonlyMap<number, number> | null,
 ): PlacementFrame | null {
   let frame = readOwnPlacementFrame(store, extractor, overlay, placementId);
   if (!frame) return null;
@@ -899,10 +947,27 @@ function frameInStoreyFrame(
   for (;;) {
     const placement = readEntity(store, extractor, overlay, currentId);
     const relToId = placement ? numericAttr(placement.attributes[0]) : null;
-    // Stop at the storey's own placement (or any of its ancestors): the
-    // frame is already storey-local. Also stops at the root, at a cycle,
-    // and at an unresolvable parent (best effort with what we have).
-    if (relToId === null || storeyChain.has(relToId) || visited.has(relToId)) return frame;
+    // The walk joins the storey's own chain (or runs out of parents at the
+    // root, where the storey's chain also ends). `frame` is now expressed in
+    // that shared ancestor's frame, and the storey sits `hops` placements
+    // below it — `hops === 0` when the ancestor IS the storey's placement,
+    // the common shape, where the frame is already storey-local.
+    if (relToId === null || storeyChain.has(relToId)) {
+      const hops = relToId === null ? storeyChain.size : (storeyChain.get(relToId) as number);
+      if (hops === 0) return frame;
+      // #3003: the wall joined the chain ABOVE the storey, so the storey's own
+      // hops are in `frame` and every caller reads the result as storey-local.
+      // Divide them out — the INVERSE of the storey's frame in the shared
+      // ancestor, applied to the wall's frame in that same ancestor. Applying
+      // the storey frame itself instead would double the offset rather than
+      // remove it, so the two directions land on different coordinates and the
+      // #3003 fixture pins which one this is.
+      const storeyFrame = storeyFrameAboveBy(store, extractor, overlay, storeyChain, hops);
+      return storeyFrame ? composeFrames(invertFrame(storeyFrame), frame) : frame;
+    }
+    // A cycle in a malformed `PlacementRelTo`: nothing above is trustworthy,
+    // so stop with what has been composed so far.
+    if (visited.has(relToId)) return frame;
     const parent = readOwnPlacementFrame(store, extractor, overlay, relToId);
     if (!parent) return frame;
     frame = composeFrames(parent, frame);

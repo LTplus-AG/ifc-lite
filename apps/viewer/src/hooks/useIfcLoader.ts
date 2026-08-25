@@ -25,7 +25,6 @@ import { WorkerParser } from '@ifc-lite/parser/browser';
 import { memoryAccounting } from '../lib/perf/memoryAccounting.js';
 import {
   GeometryProcessor,
-  GeometryQuality,
   geometryAabbAt,
   geometryVolumeAt,
   getGeometryStreamWatchdogMs as getGeometryStreamWatchdogMsImpl,
@@ -1267,7 +1266,6 @@ export function useIfcLoader() {
       // Reuses the merge-layers snapshot taken above for the cache key so the
       // key and the WASM tessellation always agree (issues #540, #1107).
       const geometryProcessor = new GeometryProcessor({
-        quality: GeometryQuality.Balanced,
         // Auto-low vertex density for heavy models (or `?geomTier=` override);
         // `undefined` keeps the engine default (medium, full-density curves).
         // Must match the tier folded into `cacheKey` above so the cached bytes

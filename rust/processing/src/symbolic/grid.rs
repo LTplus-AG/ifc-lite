@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::output_cap::SymbolicAccumulator;
+use super::rebase::RenderFrameRebase;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
 use super::primitives::{SymbolicGridAxis, SymbolicPolyline, SymbolicText};
@@ -25,8 +26,7 @@ pub(super) fn extract_grid(
     decoder: &mut EntityDecoder,
     unit_scale: f32,
     transform: &Transform2D,
-    rtc_x: f32,
-    rtc_z: f32,
+    rebase: RenderFrameRebase,
     out: &mut SymbolicAccumulator,
 ) {
     for axis_attr_idx in [7usize, 8, 9] {
@@ -46,9 +46,9 @@ pub(super) fn extract_grid(
                 continue;
             };
 
-            let a = (p0.0 - rtc_x, -p0.1 + rtc_z);
-            let b = (p1.0 - rtc_x, -p1.1 + rtc_z);
-            let world_y = transform.tz;
+            let a = rebase.plan(p0.0, p0.1);
+            let b = rebase.plan(p1.0, p1.1);
+            let world_y = rebase.elevation(transform.tz);
 
             // Compact server-friendly entry — keeps the existing endpoint-pair shape.
             out.push_grid_axis(SymbolicGridAxis {

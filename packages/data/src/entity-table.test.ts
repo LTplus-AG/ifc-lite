@@ -187,6 +187,39 @@ describe('EntityTable typeRanges derived from interleaved columns', () => {
     expect(rebuilt.typeRanges.get(IfcTypeEnum.IfcWall)).toEqual({ start: 7, end: 9 });
   });
 
+  // The builder produces `typeRanges` too, and NOTHING made the two producers
+  // agree: `entityTableFromColumns` derives [firstRow, lastRow+1] (pinned
+  // above) while `EntityTableBuilder.build()` used `start + count`, which is
+  // the row COUNT, not the span. They coincide for every contiguous type —
+  // which every other fixture in this file is — so only an interleaved one
+  // can tell them apart, and the same interleaved fixture was only ever read
+  // back through the derived path (its `typeRanges` deleted first).
+  it('builder typeRanges match the derived ones for an interleaved type', () => {
+    const { strings, table } = interleaved();
+    const columns = entityTableToColumns(table);
+    delete (columns as { typeRanges?: unknown }).typeRanges;
+    const derived = entityTableFromColumns(columns, strings);
+
+    for (const [type, range] of derived.typeRanges) {
+      expect(table.typeRanges.get(type)).toEqual(range);
+    }
+  });
+
+  // The invariant behind that agreement, asserted directly against the
+  // BUILDER's map: a type's range must contain every row of that type.
+  // `start + count` put IfcWall's last row (4) outside [0, 3).
+  it('builder typeRanges contain every row of that type', () => {
+    const { table } = interleaved();
+    for (const [type, range] of table.typeRanges) {
+      for (let row = 0; row < table.count; row++) {
+        if (table.typeEnum[row] === type) {
+          expect(row).toBeGreaterThanOrEqual(range.start);
+          expect(row).toBeLessThan(range.end);
+        }
+      }
+    }
+  });
+
   it('getByType stays exact for interleaved types (index, not range, decides)', () => {
     const { strings, table } = interleaved();
     const columns = entityTableToColumns(table);

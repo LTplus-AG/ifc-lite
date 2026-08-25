@@ -60,6 +60,22 @@ describe('iframe URL construction', () => {
     expect(p.has('hideScale')).toBe(false);
   });
 
+  it('maps hideAxis and hideScale to their own distinct params, not each other', () => {
+    // Setting only one flag distinguishes a key swap: both prior tests set
+    // hideAxis and hideScale to the SAME value together, so `params.set(
+    // 'hideScale', ...)` under `if (opts.hideAxis)` (and vice versa) would
+    // still satisfy them. Verified by reverting the swap in isolation: with
+    // only hideAxis:true, that mutant sets `hideScale` and leaves `hideAxis`
+    // unset.
+    const axisOnly = urlOf({ hideAxis: true }).searchParams;
+    expect(axisOnly.get('hideAxis')).toBe('true');
+    expect(axisOnly.has('hideScale')).toBe(false);
+
+    const scaleOnly = urlOf({ hideScale: true }).searchParams;
+    expect(scaleOnly.get('hideScale')).toBe('true');
+    expect(scaleOnly.has('hideAxis')).toBe(false);
+  });
+
   it('joins hideTypes with commas', () => {
     const p = urlOf({ hideTypes: ['IFCSPACE', 'IFCOPENINGELEMENT'] }).searchParams;
     expect(p.get('hideTypes')).toBe('IFCSPACE,IFCOPENINGELEMENT');

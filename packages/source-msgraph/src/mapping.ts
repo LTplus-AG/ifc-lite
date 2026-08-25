@@ -157,10 +157,14 @@ const DEFAULT_PAGE_SIZE = 200;
 const MAX_PAGE_SIZE = 999;
 
 /** Clamps `ListOptions.limit` ("Hint only; providers clamp to whatever their
- *  API allows" per the contract) to a value Graph's `$top` will accept. */
+ *  API allows" per the contract) to a value Graph's `$top` will accept.
+ *  Floors at 1 — a fractional `limit` between 0 and 1 (e.g. `0.5`) survives
+ *  the `limit > 0` guard above but floors to `0`, which would send Graph a
+ *  literal `$top=0` rather than "at least one item". Mirrors
+ *  `source-dropbox`'s `clampPageSize`, which floors the same way. */
 export function clampPageSize(limit: number | undefined): string {
   const requested = limit && limit > 0 ? Math.floor(limit) : DEFAULT_PAGE_SIZE;
-  return String(Math.min(requested, MAX_PAGE_SIZE));
+  return String(Math.max(1, Math.min(requested, MAX_PAGE_SIZE)));
 }
 
 /**

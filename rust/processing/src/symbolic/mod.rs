@@ -45,8 +45,10 @@
 //!   WCS than Body).
 //! - RTC offset is auto-detected from the first geometry-bearing
 //!   element and subtracted alongside the mesh pipeline.
-//! - The Y-axis is flipped (`y → -y + rtc_z`) to match the renderer's
-//!   section-cut coordinate convention.
+//! - The whole RTC offset is subtracted — easting and northing into the
+//!   plan pair (whose Y axis is flipped to match the renderer's section-cut
+//!   handedness), elevation into `world_y`. `rebase::RenderFrameRebase` is
+//!   the single place that conversion happens.
 //!
 //! Style resolution:
 //!
@@ -62,6 +64,7 @@
 
 
 use output_cap::SymbolicAccumulator;
+use rebase::RenderFrameRebase;
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner, IfcType};
 
 mod color;
@@ -75,6 +78,7 @@ mod items_cycle_tests;
 #[cfg(test)]
 mod output_cap_tests;
 mod primitives;
+mod rebase;
 mod text;
 mod transform;
 mod trimmed_curve;
@@ -131,11 +135,7 @@ where
     // anything smaller is local-coord territory where RTC subtraction
     // would shift things off-screen.
     let rtc_offset = router.detect_rtc_offset_from_first_element(content, &mut decoder);
-    let needs_rtc = rtc_offset.0.abs() > 10_000.0
-        || rtc_offset.1.abs() > 10_000.0
-        || rtc_offset.2.abs() > 10_000.0;
-    let rtc_x = if needs_rtc { rtc_offset.0 as f32 } else { 0.0 };
-    let rtc_z = if needs_rtc { rtc_offset.2 as f32 } else { 0.0 };
+    let rebase = RenderFrameRebase::from_rtc_offset(rtc_offset);
 
     // Pre-pass: build a reverse index from "styled representation-item id"
     // to "list of style refs". Walked once at parse start (O(n)) so per-
@@ -175,8 +175,7 @@ where
                 &mut decoder,
                 unit_scale,
                 &grid_transform,
-                rtc_x,
-                rtc_z,
+                rebase,
                 out,
             );
             continue;
@@ -286,8 +285,7 @@ where
                     &rep_identifier,
                     unit_scale,
                     &combined_transform,
-                    rtc_x,
-                    rtc_z,
+                    rebase,
                     &styled_items,
                     out,
                 );

@@ -46,7 +46,7 @@ import {
 } from '@ifc-lite/drawing-2d';
 import type { Drawing2D, DrawingSheet } from '@ifc-lite/drawing-2d';
 import { Drawing2DCanvas } from './Drawing2DCanvas.js';
-import { sheetGeometryKeyOf, type CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key.js';
+import { sheetTransformCacheKeyOf, type CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key.js';
 
 installLayout();
 
@@ -131,7 +131,7 @@ const SHEET_B = sheet('sheet-b', 'A0_LANDSCAPE', 100); // different id, paper AN
 /** A cached transform that is obviously wrong for either sheet — reused only
  *  if the read site trusts presence alone. */
 const STALE_SENTINEL: CachedSheetTransform = {
-  key: sheetGeometryKeyOf(SHEET_A),
+  key: sheetTransformCacheKeyOf(SHEET_A, 'down'),
   translateX: 999,
   translateY: 999,
   scaleFactor: 999,
@@ -180,7 +180,7 @@ describe('Drawing2DCanvas rejects a pinned cache entry tagged with a DIFFERENT s
       );
       assert.equal(
         after!.key,
-        sheetGeometryKeyOf(SHEET_B),
+        sheetTransformCacheKeyOf(SHEET_B, 'down'),
         `the cached entry must be tagged with sheet B's OWN geometry key; got ${JSON.stringify(after)}`,
       );
     } finally {

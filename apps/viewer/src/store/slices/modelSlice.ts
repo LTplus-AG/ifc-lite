@@ -34,6 +34,10 @@ import {
 export interface ModelCrossSliceState {
   ifcDataStore: IfcDataStore | null;
   geometryResult: GeometryResult | null;
+  /** `dataSlice`'s per-element ORIGINAL colours, keyed by global express id.
+   *  Both teardown paths clear it: those ids are REUSED, so a survivor names
+   *  live elements of a model it was never taken from. */
+  meshColorBackup: Map<number, [number, number, number, number]> | null;
   /** AddElement panel's target-model pin (addElementSlice) — cleared here on
    *  full teardown for the same reason `removeModel` clears it when it names
    *  the one model being removed. See that call site's comment. */
@@ -388,9 +392,26 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
       compareCross.clearCompare?.();
     }
 
+    // Purge only THIS model's entries from `dataSlice`'s mesh-colour backup.
+    // Dropping the map whole would take the SURVIVING models' undo with it, and
+    // it is not needed for them: `unregisterModel` below burns the removed
+    // range rather than reclaiming it, so no later model is handed these ids.
+    // (`clearAllModels` is the opposite case -- it calls `federationRegistry
+    // .clear()`, offsets restart at 0, and ids genuinely are reused -- which is
+    // why the clear there is unconditional.)
+    //
+    // `resolveGlobalIdInModel` is the owner-scoped resolver this file already
+    // provides for exactly this question; it shares its range and overlay
+    // predicates with the unscoped one, so the two cannot drift.
+    const priorBackup = get().meshColorBackup;
+    const keptBackup = priorBackup
+      ? new Map([...priorBackup].filter(([id]) => get().resolveGlobalIdInModel(modelId, id) === null))
+      : null;
+
     set((state) => {
       const newModels = new Map(state.models);
       newModels.delete(modelId);
+
 
       // Unregister from federation registry
       federationRegistry.unregisterModel(modelId);
@@ -538,6 +559,7 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
         activeModelId: newActiveId,
         ifcDataStore: activeModel?.ifcDataStore ?? null,
         geometryResult: activeModel?.geometryResult ?? null,
+        meshColorBackup: keptBackup && keptBackup.size > 0 ? keptBackup : null,
         ...(selectionTouchedRemoved
           ? {
               selectedEntity:
@@ -750,6 +772,9 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
       activeModelId: null,
       ifcDataStore: null,
       geometryResult: null,
+      // Goes with the geometry it describes: first-write-wins, so a survivor
+      // repaints a departed model's colour onto whatever takes that id next.
+      meshColorBackup: null,
       addElementModelId: null,
       addElementStoreyId: null,
       selectedEntityId: null,

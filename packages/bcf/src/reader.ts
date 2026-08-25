@@ -9,16 +9,14 @@
  */
 
 import JSZip from 'jszip';
+import { parseComponents } from './reader-components.js';
+import { extractElement, unescapeXml } from './xml-text.js';
 import type {
   BCFProject,
   BCFTopic,
   BCFComment,
   BCFViewpoint,
   BCFVersion,
-  BCFComponents,
-  BCFComponent,
-  BCFVisibility,
-  BCFColoring,
   BCFPerspectiveCamera,
   BCFOrthogonalCamera,
   BCFLine,
@@ -266,11 +264,15 @@ async function readProjectFile(zip: JSZip, budget: ExpansionBudget): Promise<{
   const content = await readEntryCapped(projectFile, 'string', budget);
 
   const projectIdMatch = content.match(/ProjectId="([^"]+)"/);
-  const nameMatch = content.match(/<Name>([^<]+)<\/Name>/);
+  // extractElement, not a raw regex: writeProjectFile escapes the name with
+  // escapeXml, so a raw match hands back the literal entities (`A &amp; B`) and
+  // the next export escapes them again. Every other element in this reader goes
+  // through extractElement precisely so the escape has an inverse.
+  const name = extractElement(content, 'Name');
 
   return {
     projectId: projectIdMatch?.[1],
-    name: nameMatch?.[1],
+    name,
   };
 }
 
@@ -461,49 +463,31 @@ function extractAttr(attrsString: string, attrName: string): string | undefined 
 }
 
 /**
- * Extract a simple element value from XML
- *
- * Values are unescaped so writer.ts's escapeXml() round-trips correctly
- * (see escapeXml/unescapeXml regression: & < > " ' in titles/descriptions/
- * comments must come back exactly as written, not as literal entities).
- */
-function extractElement(content: string, elementName: string): string | undefined {
-  const match = content.match(new RegExp(`<${elementName}>([^<]*)<\\/${elementName}>`));
-  return match?.[1] !== undefined ? unescapeXml(match[1]) : undefined;
-}
-
-/**
- * Unescape XML entities produced by writer.ts's escapeXml()
- *
- * &amp; must be decoded last so a literal "&lt;" written as "&amp;lt;"
- * doesn't get corrupted into "<" by an earlier pass.
- */
-function unescapeXml(str: string): string {
-  return str
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&amp;/g, '&');
-}
-
-/**
  * Extract BIM snippet from topic content
  */
 function extractBimSnippet(content: string): BCFBimSnippet | undefined {
-  const match = content.match(/<BimSnippet\s+SnippetType="([^"]+)"[^>]*>([\s\S]*?)<\/BimSnippet>/);
+  // Attributes are captured generically and pulled out with extractAttr rather
+  // than anchoring SnippetType to first position: our own writer always emits
+  // it first, so an anchored regex round-trips our files and silently drops the
+  // entire snippet from a foreign tool's file that orders the two attributes
+  // the other way (see extractAttr's note on attribute order).
+  const match = content.match(/<BimSnippet\b([^>]*)>([\s\S]*?)<\/BimSnippet>/);
   if (!match) return undefined;
+
+  const snippetType = extractAttr(match[1], 'SnippetType');
+  if (!snippetType) return undefined;
 
   // BCF 2.1 spells this `isExternal`, 3.0 `IsExternal` (same rename as the
   // Header `<File>` attribute in reader.ts's parseHeaderFiles); accept either
-  // casing so a spec-correct 3.0 file's flag isn't silently read as false.
-  const isExternalMatch = match[0].match(/\b[Ii]sExternal="([^"]+)"/);
+  // casing so a spec-correct 3.0 file's flag isn't silently read as false, and
+  // the xs:boolean `1`/`0` forms alongside `true`/`false`.
+  const isExternalRaw = match[1].match(/\b[Ii]sExternal="([^"]*)"/)?.[1];
   const reference = extractElement(match[2], 'Reference');
   const referenceSchema = extractElement(match[2], 'ReferenceSchema');
 
   return {
-    snippetType: match[1],
-    isExternal: isExternalMatch?.[1] === 'true',
+    snippetType,
+    isExternal: isExternalRaw === 'true' || isExternalRaw === '1',
     reference: reference || '',
     referenceSchema,
   };
@@ -862,7 +846,31 @@ function parsePerspectiveCamera(content: string): BCFPerspectiveCamera | undefin
     cameraDirection: direction,
     cameraUpVector: upVector,
     fieldOfView: fov,
+    ...parseAspectRatio(cameraContent),
   };
+}
+
+/**
+ * Parse the optional `<AspectRatio>` of either camera type.
+ *
+ * BCF 3.0's visinfo.xsd makes `AspectRatio` (a `PositiveDouble`) a REQUIRED
+ * child of both camera types; BCF 2.1 has no such element. It is read here for
+ * both, since the element's presence — not the archive's declared version — is
+ * what says whether there is a value to keep.
+ *
+ * Reading it matters beyond fidelity: the writer refuses to emit a 3.0 camera
+ * without one, so a 3.0 archive from another tool could otherwise be read and
+ * then not written back. Returned as a spread-able partial so an absent or
+ * unusable value leaves the property off entirely rather than setting it to
+ * `undefined`, and a non-positive value is dropped rather than carried into
+ * output the schema would reject.
+ */
+function parseAspectRatio(cameraContent: string): { aspectRatio?: number } {
+  const raw = extractElement(cameraContent, 'AspectRatio');
+  if (!raw) return {};
+  const value = parseFiniteFloat(raw);
+  if (value === undefined || !(value > 0)) return {};
+  return { aspectRatio: value };
 }
 
 /**
@@ -894,6 +902,7 @@ function parseOrthogonalCamera(content: string): BCFOrthogonalCamera | undefined
     cameraDirection: direction,
     cameraUpVector: upVector,
     viewToWorldScale: scale,
+    ...parseAspectRatio(cameraContent),
   };
 }
 
@@ -940,122 +949,6 @@ function parseDirection(content: string, elementName: string): BCFDirection | un
 }
 
 /**
- * Parse components (selection/visibility/coloring)
- */
-function parseComponents(content: string): BCFComponents | undefined {
-  const componentsMatch = content.match(/<Components>([\s\S]*?)<\/Components>/);
-  if (!componentsMatch) return undefined;
-
-  const componentsContent = componentsMatch[1];
-
-  // Parse selection
-  const selection = parseComponentList(componentsContent, 'Selection');
-
-  // Parse visibility
-  const visibility = parseVisibility(componentsContent);
-
-  // Parse coloring
-  const coloring = parseColoring(componentsContent);
-
-  if (!selection && !visibility && !coloring) {
-    return undefined;
-  }
-
-  return {
-    selection: selection?.length ? selection : undefined,
-    visibility,
-    coloring: coloring?.length ? coloring : undefined,
-  };
-}
-
-/**
- * Parse a list of components
- */
-function parseComponentList(content: string, elementName: string): BCFComponent[] | undefined {
-  const match = content.match(new RegExp(`<${elementName}>([\\s\\S]*?)<\\/${elementName}>`));
-  if (!match) return undefined;
-
-  const components: BCFComponent[] = [];
-  const componentMatches = match[1].matchAll(/<Component[^>]*(?:\/>|>[\s\S]*?<\/Component>)/g);
-
-  for (const compMatch of componentMatches) {
-    const component = parseComponent(compMatch[0]);
-    if (component) {
-      components.push(component);
-    }
-  }
-
-  return components.length > 0 ? components : undefined;
-}
-
-/**
- * Parse a single component
- */
-function parseComponent(content: string): BCFComponent | undefined {
-  const ifcGuidMatch = content.match(/IfcGuid="([^"]+)"/);
-  const authoringToolIdMatch = content.match(/AuthoringToolId="([^"]+)"/);
-  const originatingSystemMatch = content.match(/OriginatingSystem="([^"]+)"/);
-
-  if (!ifcGuidMatch && !authoringToolIdMatch) {
-    return undefined;
-  }
-
-  return {
-    ifcGuid: ifcGuidMatch?.[1],
-    authoringToolId: authoringToolIdMatch?.[1],
-    originatingSystem: originatingSystemMatch?.[1],
-  };
-}
-
-/**
- * Parse visibility settings
- */
-function parseVisibility(content: string): BCFVisibility | undefined {
-  const visibilityMatch = content.match(/<Visibility[^>]*>([\s\S]*?)<\/Visibility>/);
-  if (!visibilityMatch) return undefined;
-
-  const defaultVisMatch = content.match(/DefaultVisibility="([^"]+)"/);
-  const defaultVisibility = defaultVisMatch?.[1] !== 'false';
-
-  const exceptions = parseComponentList(visibilityMatch[1], 'Exceptions');
-
-  return {
-    defaultVisibility,
-    exceptions,
-  };
-}
-
-/**
- * Parse coloring settings
- */
-function parseColoring(content: string): BCFColoring[] | undefined {
-  const coloringMatch = content.match(/<Coloring>([\s\S]*?)<\/Coloring>/);
-  if (!coloringMatch) return undefined;
-
-  const colorings: BCFColoring[] = [];
-  const colorMatches = coloringMatch[1].matchAll(/<Color\s+Color="([^"]+)"[^>]*>([\s\S]*?)<\/Color>/g);
-
-  for (const match of colorMatches) {
-    const color = match[1];
-    const components: BCFComponent[] = [];
-    const componentMatches = match[2].matchAll(/<Component[^>]*(?:\/>|>[\s\S]*?<\/Component>)/g);
-
-    for (const compMatch of componentMatches) {
-      const component = parseComponent(compMatch[0]);
-      if (component) {
-        components.push(component);
-      }
-    }
-
-    if (components.length > 0) {
-      colorings.push({ color, components });
-    }
-  }
-
-  return colorings.length > 0 ? colorings : undefined;
-}
-
-/**
  * Parse lines
  */
 function parseLines(content: string): BCFLine[] {
@@ -1097,20 +990,31 @@ function parseClippingPlanes(content: string): BCFClippingPlane[] {
 
 /**
  * Parse bitmaps
+ *
+ * The two BCF versions diverge in shape (see writer.ts's writeBitmap/
+ * writeViewpointFiles for the write side of this):
+ * - BCF 3.0: entries sit inside a `<Bitmaps>` wrapper, and the per-entry
+ *   format element is named `<Format>`. No tag inside an entry shares the
+ *   entry's own name, so a plain non-greedy `<Bitmap>...</Bitmap>` match
+ *   is unambiguous.
+ * - BCF 2.1: entries sit DIRECTLY under `<VisualizationInfo>` (no wrapper),
+ *   and the format element is confusingly also named `<Bitmap>`, nested one
+ *   level inside the entry (`<Bitmap><Bitmap>PNG</Bitmap><Reference>...`).
+ *   A naive non-greedy `<Bitmap>...</Bitmap>` match on that shape terminates
+ *   at the FIRST `</Bitmap>` it sees -- the inner format tag's closing tag,
+ *   not the entry's -- and silently drops the rest of the entry. It must be
+ *   matched with an explicit two-level pattern instead.
  */
 function parseBitmaps(content: string): BCFBitmap[] {
   const bitmaps: BCFBitmap[] = [];
   const bitmapsMatch = content.match(/<Bitmaps>([\s\S]*?)<\/Bitmaps>/);
-  if (!bitmapsMatch) return bitmaps;
 
-  const bitmapMatches = bitmapsMatch[1].matchAll(/<Bitmap>([\s\S]*?)<\/Bitmap>/g);
-  for (const match of bitmapMatches) {
-    const format = extractElement(match[1], 'Format') || extractElement(match[1], 'Bitmap');
-    const reference = extractElement(match[1], 'Reference');
-    const location = parsePoint(match[1], 'Location');
-    const normal = parseDirection(match[1], 'Normal');
-    const up = parseDirection(match[1], 'Up');
-    const height = extractElement(match[1], 'Height');
+  const pushBitmap = (format: string | undefined, body: string) => {
+    const reference = extractElement(body, 'Reference');
+    const location = parsePoint(body, 'Location');
+    const normal = parseDirection(body, 'Normal');
+    const up = parseDirection(body, 'Up');
+    const height = extractElement(body, 'Height');
 
     if (format && reference && location && normal && up && height) {
       bitmaps.push({
@@ -1121,6 +1025,21 @@ function parseBitmaps(content: string): BCFBitmap[] {
         up,
         height: parseFloat(height),
       });
+    }
+  };
+
+  if (bitmapsMatch) {
+    // BCF 3.0 shape: <Bitmaps><Bitmap><Format>...</Format>...</Bitmap>...</Bitmaps>
+    for (const match of bitmapsMatch[1].matchAll(/<Bitmap>([\s\S]*?)<\/Bitmap>/g)) {
+      pushBitmap(extractElement(match[1], 'Format'), match[1]);
+    }
+  } else {
+    // BCF 2.1 shape: <Bitmap><Bitmap>PNG</Bitmap>...</Bitmap>, unwrapped,
+    // directly under VisualizationInfo.
+    for (const match of content.matchAll(
+      /<Bitmap>\s*<Bitmap>([\s\S]*?)<\/Bitmap>([\s\S]*?)<\/Bitmap>/g,
+    )) {
+      pushBitmap(match[1], match[2]);
     }
   }
 

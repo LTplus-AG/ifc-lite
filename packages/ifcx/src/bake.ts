@@ -21,9 +21,9 @@ import { composeIfcx } from './composition.js';
 /**
  * `ifclite::` keys that are layer bookkeeping (resolved or meaningless
  * once baked) as opposed to data carriers: classifications, materials,
- * and geometry refs (#1031) are persistent content and must survive a
- * bake or the round-trip back through `seedFromIfcx` silently loses
- * those structured branches.
+ * geometry refs (#1031) and per-entity provenance (`META`) are
+ * persistent content and must survive a bake or the round-trip back
+ * through `seedFromIfcx` silently loses them.
  */
 const BAKE_STRIPPED_PREFIXES = [IFCLITE_ATTR.DELETED, IFCLITE_ATTR.DERIVED];
 

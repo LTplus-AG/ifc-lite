@@ -151,17 +151,25 @@ struct MutationsJson {
 /// `MutablePropertyView` diff). `mutations_json` shape:
 /// `{ "attributeUpdates": [{expressId,index,value}], "propertyMutations":
 /// [{expressId,psetName,propName,value}] }` where `value` is already STEP-serialized
-/// (`'Name'`, `IFCLABEL('x')`, `IFCREAL(1.)`). Empty/invalid JSON ⇒ no mutations.
+/// (`'Name'`, `IFCLABEL('x')`, `IFCREAL(1.)`). An empty string means "no mutations" —
+/// a legitimate, common case (plain re-export). A non-empty string that fails to
+/// parse is a caller bug (a malformed payload, a version mismatch across the wasm
+/// boundary) and must not be treated the same way: silently falling back to "no
+/// mutations" would export a file that LOOKS like a successful re-export of the
+/// user's edits but silently contains none of them. Callers get an `Err` instead,
+/// matching `exportGlb`'s and `exportMerged`'s fail-closed contract at this same
+/// wasm boundary.
 pub fn export_step_json(
     content: &[u8],
     schema: Option<String>,
     included: Option<Vec<u32>>,
     mutations_json: &str,
-) -> String {
+) -> Result<String, String> {
     let muts: MutationsJson = if mutations_json.trim().is_empty() {
         MutationsJson::default()
     } else {
-        serde_json::from_str(mutations_json).unwrap_or_default()
+        serde_json::from_str(mutations_json)
+            .map_err(|e| format!("invalid mutations_json: {e}"))?
     };
     let opts = StepOptions {
         schema,
@@ -183,7 +191,7 @@ pub fn export_step_json(
             .collect(),
         ..StepOptions::default()
     };
-    export_step(content, &opts)
+    Ok(export_step(content, &opts))
 }
 
 /// Export the parsed model in `content` as a STEP/IFC string.
@@ -192,10 +200,58 @@ pub fn export_step(content: &[u8], opts: &StepOptions) -> String {
 }
 
 /// Like [`export_step`] but also returns coverage stats.
+pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, StepStats) {
+    // Presized for a full re-export, where the output is within a small factor
+    // of the source. Not for a subset: 200 MB filtered to a few records would
+    // reserve 200 MB, and on wasm that linear memory never comes back.
+    let mut buf = match opts.included {
+        None => Vec::with_capacity(content.len()),
+        Some(_) => Vec::new(),
+    };
+    // `emit`, not `export_step_to_writer`: a `Vec` needs no buffering, and
+    // wrapping one memcpys the whole output through a 1 MiB window for nothing.
+    let stats = emit(content, opts, &mut buf).expect("a Vec accepts every write");
+    // Every byte came from the source by way of `from_utf8_lossy`, or from a
+    // `format!`, so this validates rather than converts.
+    let out = String::from_utf8(buf).expect("the writer emits UTF-8");
+    (out, stats)
+}
+
+/// [`export_step_with_stats`], writing as it goes instead of returning the file.
+/// The two cannot drift: that one is this one writing into a `Vec`.
+///
+/// The gigabyte of `String` that doubled its way there is gone. What replaces
+/// it is not free: the entity index measures ~84 bytes a record, so 370 MB on
+/// 4.4 M records and ~1.1 GB on 16.8 M, before a byte is written. On a very
+/// large model it outweighs the output it stopped holding, and it is not
+/// removable -- source order and the reference closure both need it.
+///
+/// `out` is buffered here, so a bare `File` is fine. A record costs two `write`
+/// calls, which unbuffered is two syscalls: measured 15.0 s against 4.3 s on
+/// 4.4 M records. A caller who already buffers pays one memcpy through 1 MiB.
 // The grouped-property-mutation Vec type is explicit by design; aliasing it
 // would hide the (entity, pset) -> [(key, value)] grouping structure.
 #[allow(clippy::type_complexity)]
-pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, StepStats) {
+pub fn export_step_to_writer<W: std::io::Write>(
+    content: &[u8],
+    opts: &StepOptions,
+    w: &mut W,
+) -> std::io::Result<StepStats> {
+    use std::io::Write as _;
+    let mut buffered = std::io::BufWriter::with_capacity(1 << 20, w);
+    let stats = emit(content, opts, &mut buffered)?;
+    // Flushed here for the error, not for the bytes: `BufWriter::drop` does
+    // flush, it just has nowhere to report a failure and swallows it.
+    buffered.flush()?;
+    Ok(stats)
+}
+
+#[allow(clippy::type_complexity)]
+fn emit<W: std::io::Write>(
+    content: &[u8],
+    opts: &StepOptions,
+    out: &mut W,
+) -> std::io::Result<StepStats> {
     // 1. Index every entity line (preserve source order).
     let mut order: Vec<u32> = Vec::new();
     let mut line_of: HashMap<u32, (usize, usize)> = HashMap::new();
@@ -265,17 +321,7 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
     let repointed = resolved.repointed;
 
     // 3. Emit header + filtered entities (source order) + footer.
-    let mut out = String::new();
-    out.push_str("ISO-10303-21;\nHEADER;\n");
-    out.push_str(&format!("FILE_DESCRIPTION(('{}'),'2;1');\n", escape(&opts.description)));
-    out.push_str(&format!(
-        "FILE_NAME('','',('{}'),('{}'),'{}','ifc-lite-export','');\n",
-        escape(&opts.author),
-        escape(&opts.organization),
-        escape(&opts.application),
-    ));
-    out.push_str(&format!("FILE_SCHEMA(('{}'));\n", escape(&schema)));
-    out.push_str("ENDSEC;\nDATA;\n");
+    crate::step_header::write_header(out, opts, &schema)?;
 
     let mut written = 0usize;
     for id in &order {
@@ -288,16 +334,19 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
                     None => raw.into_owned(),
                 };
                 if converting {
-                    out.push_str(&crate::schema_convert::convert_step_line(
-                        &edited,
-                        &source_schema,
-                        &schema,
-                        *id,
-                    ));
+                    out.write_all(
+                        crate::schema_convert::convert_step_line(
+                            &edited,
+                            &source_schema,
+                            &schema,
+                            *id,
+                        )
+                        .as_bytes(),
+                    )?;
                 } else {
-                    out.push_str(&edited);
+                    out.write_all(edited.as_bytes())?;
                 }
-                out.push('\n');
+                out.write_all(b"\n")?;
                 written += 1;
             }
         }
@@ -317,16 +366,19 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
             let edited = apply_attr_mutations(&raw, &muts);
             let renumbered = renumber(&edited, *copy_id);
             if converting {
-                out.push_str(&crate::schema_convert::convert_step_line(
-                    &renumbered,
-                    &source_schema,
-                    &schema,
-                    *copy_id,
-                ));
+                out.write_all(
+                    crate::schema_convert::convert_step_line(
+                        &renumbered,
+                        &source_schema,
+                        &schema,
+                        *copy_id,
+                    )
+                    .as_bytes(),
+                )?;
             } else {
-                out.push_str(&renumbered);
+                out.write_all(renumbered.as_bytes())?;
             }
-            out.push('\n');
+            out.write_all(b"\n")?;
             written += 1;
         }
     }
@@ -352,8 +404,8 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
         // Same exhaustion, same answer: inventing ids on a full file would
         // duplicate real records.
         let Some(mut next) = next_id else {
-            out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
-            return (out, StepStats { total: order.len(), written, copies_refused });
+            out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
+            return Ok(StepStats { total: order.len(), written, copies_refused });
         };
         for ((express_id, pset_name), props) in &groups {
             // One property set costs one id per property plus one for the set
@@ -369,11 +421,12 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
             }
             let mut prop_refs: Vec<u32> = Vec::with_capacity(props.len());
             for (pname, value) in props {
-                out.push_str(&format!(
-                    "#{next}=IFCPROPERTYSINGLEVALUE('{}',$,{},$);\n",
+                writeln!(
+                    out,
+                    "#{next}=IFCPROPERTYSINGLEVALUE('{}',$,{},$);",
                     escape(pname),
                     value
-                ));
+                )?;
                 prop_refs.push(next);
                 next += 1;
                 written += 1;
@@ -381,28 +434,34 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
             let psid = next;
             next += 1;
             let refs_str = prop_refs.iter().map(|r| format!("#{r}")).collect::<Vec<_>>().join(",");
-            out.push_str(&format!(
-                "#{psid}=IFCPROPERTYSET('{}',$,'{}',$,({}));\n",
+            writeln!(
+                out,
+                "#{psid}=IFCPROPERTYSET('{}',$,'{}',$,({}));",
                 crate::schema_convert::placeholder_guid(psid),
                 escape(pset_name),
                 refs_str
-            ));
+            )?;
             written += 1;
             let rid = next;
             next += 1;
-            out.push_str(&format!(
-                "#{rid}=IFCRELDEFINESBYPROPERTIES('{}',$,$,$,(#{express_id}),#{psid});\n",
+            writeln!(
+                out,
+                "#{rid}=IFCRELDEFINESBYPROPERTIES('{}',$,$,$,(#{express_id}),#{psid});",
                 crate::schema_convert::placeholder_guid(rid),
-            ));
+            )?;
             written += 1;
         }
     }
 
-    out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
+    out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
 
-    (out, StepStats { total: order.len(), written, copies_refused })
+    Ok(StepStats { total: order.len(), written, copies_refused })
 }
 
 #[cfg(test)]
 #[path = "step_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "step_roundtrip_tests.rs"]
+mod roundtrip_tests;

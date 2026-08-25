@@ -27,6 +27,7 @@ import {
   ruleHadNoMatch,
   type Clash,
   type ClashMode,
+  sortClashes,
   type ClashResult,
   type ClashRule,
 } from '@ifc-lite/clash';
@@ -38,6 +39,21 @@ import { writeBCF } from '@ifc-lite/bcf';
 const JSON_CLASH_CAP = 1000;
 /** Maximum number of clash rows shown in the human summary. */
 const HUMAN_CLASH_CAP = 20;
+
+/**
+ * Order clashes worst-first before capping.
+ *
+ * Both cap sites below print a "top N" list, but the engine hands back
+ * `result.clashes` in `byKeyThenRule` grouping order — so slicing it directly
+ * showed an ARBITRARY N, not the worst N, and a run with more than the cap hid
+ * its deepest penetrations behind shallow ones. The MCP `clash_check` tool had
+ * already hit this and grown its own local sort; the viewer's panel uses
+ * `sortClashes` from `@ifc-lite/clash`. This routes all three through that one
+ * helper so "top N" means the same N rows on every surface.
+ */
+export function worstFirst(clashes: readonly Clash[]): Clash[] {
+  return sortClashes(clashes, 'distance');
+}
 
 /**
  * Mesh a model once and cache the meshes by model id so repeated clash runs
@@ -227,7 +243,7 @@ function printHumanSummary(result: ClashResult, isMatrix: boolean): void {
   printCoverageWarning(result, isMatrix);
 
   if (summary.total > 0) {
-    const shown = result.clashes.slice(0, HUMAN_CLASH_CAP);
+    const shown = worstFirst(result.clashes).slice(0, HUMAN_CLASH_CAP);
     process.stdout.write(`\n  Top ${shown.length} of ${summary.total} clashes:\n`);
     for (const clash of shown) {
       process.stdout.write(`${formatClashRow(clash)}\n`);
@@ -319,7 +335,7 @@ export async function clashCommand(args: string[]): Promise<void> {
 
     if (jsonOutput) {
       const total = result.clashes.length;
-      const clashes = result.clashes.slice(0, JSON_CLASH_CAP);
+      const clashes = worstFirst(result.clashes).slice(0, JSON_CLASH_CAP);
       const truncated = total > clashes.length
         ? { reason: `capped at ${JSON_CLASH_CAP} clashes for display`, dropped: total - clashes.length }
         : null;

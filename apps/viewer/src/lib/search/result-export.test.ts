@@ -95,12 +95,16 @@ describe('__internal helpers', () => {
 
   /**
    * A leading BOM is treated as file metadata by spreadsheet importers, so a
-   * formula trigger hidden behind one still executes -- while the apostrophe
-   * guard, applied without stripping it, lands in front of the BOM rather than
-   * the `=`. The Lists exporter (lib/lists/export/model.ts) already strips it
-   * and its comment explains why; this exporter and the compare-report one did
-   * not, so the same crafted IFC value was neutralised in one CSV and live in
-   * the other two.
+   * formula trigger hidden behind one still executes while an anchored regex
+   * fails to match it. The guard must therefore look PAST the invisible run.
+   *
+   * It must not DELETE it. This block used to assert `!out.includes(invisible)`
+   * -- that the invisible was stripped -- which is the wrong half of the rule:
+   * stripping is not what makes the cell safe (the leading apostrophe is), and
+   * the strip was implemented as `replace(/^[\p{Cf}\p{Z}]+/u, '')`, whose
+   * `\p{Z}` includes U+0020, so every exported cell silently lost its leading
+   * spaces. RFC 4180 §2.4: "Spaces are considered part of a field and should
+   * not be ignored." Both directions are pinned below.
    */
   for (const [label, invisible] of [
     ['BOM', '\uFEFF'],
@@ -118,14 +122,47 @@ describe('__internal helpers', () => {
         out.startsWith("'"),
         `expected the guard to land in front, got ${JSON.stringify(out)}`,
       );
-      assert.ok(!out.includes(invisible), 'the invisible itself must not survive into the cell');
+      // The apostrophe is what makes the cell text; the invisible is DATA and
+      // must survive verbatim, in its original position.
+      assert.strictEqual(
+        out,
+        `'${invisible}=cmd|'/c calc'!A1`,
+        'the guard must land in front of the run without consuming any of it',
+      );
+    });
+
+    it(`preserves a leading ${label} on a value that is NOT a formula`, () => {
+      // The other direction of the same rule: looking past an invisible must
+      // never turn into deleting it. A cell is not made safer by losing data.
+      assert.strictEqual(__internal.escapeCsvCell(`${invisible}Wall A`), `${invisible}Wall A`);
     });
   }
+
+  it('preserves leading spaces on a benign cell (RFC 4180 §2.4)', () => {
+    // The regression the strip caused: `\p{Z}` includes U+0020, so every cell
+    // with leading whitespace was exported with it silently removed.
+    assert.strictEqual(__internal.escapeCsvCell('   Wall A'), '   Wall A');
+    assert.strictEqual(__internal.escapeCsvCell('Wall A   '), 'Wall A   ');
+  });
 
   it('still neutralises a bare trigger, and leaves ordinary text alone', () => {
     // Control: the fix must not be satisfiable by prefixing everything.
     assert.ok(__internal.escapeCsvCell('=1+1').startsWith("'"));
     assert.strictEqual(__internal.escapeCsvCell('Wall A'), 'Wall A');
+  });
+
+  it('exports a signed number as a number, not as text', () => {
+    // This writer sets no options, so it takes the shared guard's DEFAULT.
+    // Until that default flipped, every negative value here shipped as
+    // `'-0.35` and the column stopped summing in a spreadsheet (#1772).
+    // Pinned at a CALL SITE, not only in the library: six writers take this
+    // default and not one of them could see it change.
+    assert.strictEqual(__internal.escapeCsvCell('-0.35'), '-0.35');
+    assert.strictEqual(__internal.escapeCsvCell('+1'), '+1');
+    // The exemption is for numbers, not for the sign: anything glued on is
+    // still a formula as far as the guard is concerned.
+    assert.strictEqual(__internal.escapeCsvCell('-0.35=cmd'), "'-0.35=cmd");
+    assert.strictEqual(__internal.escapeCsvCell('@1'), "'@1");
   });
 
   // Filename sanitisation now lives in lib/export/download.ts (sanitizeFilename),

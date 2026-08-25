@@ -6,6 +6,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { PLUGIN_API_VERSION, satisfiesCaretRange } from '@ifc-lite/plugin-api';
 
 import { MsGraphProvider } from '../src/provider.js';
+import { clampPageSize, searchEndpoint } from '../src/mapping.js';
 import {
   GRAPH_MOCK_DOWNLOAD_HOST,
   GRAPH_MOCK_DOWNLOAD_SECRET,
@@ -122,6 +123,26 @@ describe('MsGraphProvider', () => {
       });
     });
 
+    // Every other paged method here (`listContainers`, `searchFiles`,
+    // `listRevisions`) shares this same `@odata.nextLink` cursor plumbing —
+    // this is the one place it's driven across a real page boundary rather
+    // than only ever returning everything on page one, mirroring
+    // `source-dropbox`'s "paginates across a real page boundary" test.
+    it('paginates across a real page boundary via @odata.nextLink, with no duplicate or dropped rows', async () => {
+      const ctx = createGraphMockContext(WORLD);
+
+      // `listFiles` always sends an explicit `$top` (`clampPageSize`'s
+      // default is 200), so it's `limit` — not the mock's own
+      // `defaultPageSize` — that has to force the small page here.
+      const first = await provider.listFiles(ctx, 'me', 'f-alpha', undefined, { limit: 1 });
+      expect(first.items.map((f) => f.id)).toEqual(['file-1']);
+      expect(first.cursor).toBeDefined();
+
+      const second = await provider.listFiles(ctx, 'me', 'f-alpha', undefined, { cursor: first.cursor });
+      expect(second.items.map((f) => f.id)).toEqual(['file-2']);
+      expect(second.cursor).toBeUndefined();
+    });
+
     /**
      * A `@microsoft.graph.downloadUrl` is *pre-authenticated*: whoever holds
      * the URL downloads the bytes with no credential at all, which is the
@@ -152,6 +173,26 @@ describe('MsGraphProvider', () => {
       const page = await provider.searchFiles!(ctx, 'me', 'MODEL');
       expect(page.items.map((f) => f.id)).toEqual(['file-1']);
       expect(page.items[0].containerId).toBe('f-alpha');
+    });
+  });
+
+  describe('searchEndpoint', () => {
+    // The query text sits inside a single-quoted OData string literal
+    // embedded directly in the URL *path* (`search(q='...')`), so a literal
+    // `'` in the user's search text must be doubled (OData's own
+    // string-literal escaping) before `encodeURIComponent` runs — otherwise
+    // it closes the literal early and Graph parses the remainder of the
+    // query as OData syntax rather than search text. No existing fixture's
+    // search text contains a quote, so a mutation that skips the doubling
+    // entirely (`escaped = query`) still passes the whole suite; this pins
+    // the doubling directly against the built path.
+    it('doubles a literal single quote in the query before percent-encoding it', () => {
+      const path = searchEndpoint("O'Brien's model");
+      // OData escaping doubles each `'` to `''` first; `encodeURIComponent`
+      // does not touch `'` itself (it isn't in its escape set), so the
+      // doubled quotes survive verbatim into the URL and only the space
+      // gets percent-encoded.
+      expect(path).toBe("/me/drive/root/search(q='O''Brien''s%20model')");
     });
   });
 
@@ -350,6 +391,36 @@ describe('MsGraphProvider', () => {
       const ctx = createGraphMockContext(WORLD);
       const noClientCtx = { ...ctx, getPreference: () => Promise.resolve(undefined) };
       await expect(provider.listProjects(noClientCtx)).rejects.toThrow('no Azure AD application (client) ID');
+    });
+  });
+
+  describe('clampPageSize', () => {
+    it('clamps a requested limit above the $top ceiling', () => {
+      expect(clampPageSize(10_000)).toBe('999');
+    });
+
+    it('defaults when no limit is given', () => {
+      expect(clampPageSize(undefined)).toBe('200');
+    });
+
+    // Mirrors `source-dropbox`'s own `clampPageSize(0.5)` test (`provider.test.ts`):
+    // a fractional limit under 1 floors to 0 with no floor clamp, which would
+    // send Graph a literal `$top=0` rather than "use the default"/"at least
+    // one item" — the same shape that package's clamp already guards against.
+    it('never floors a fractional sub-1 limit to 0', () => {
+      expect(clampPageSize(0.5)).toBe('1');
+    });
+
+    // `limit && limit > 0 ? ... : DEFAULT_PAGE_SIZE` treats a `0` (or
+    // negative) limit as "not really a limit" and falls back to the
+    // default, the same as `undefined` — distinct from the sub-1 fractional
+    // case just above, which clamps *up* to 1 instead. No existing fixture
+    // passed exactly `0`, so a `limit >= 0` mutation (accepting zero as a
+    // real request, which then clamps down to `1` instead of falling back
+    // to `200`) would pass unnoticed.
+    it('falls back to the default page size for a zero or negative limit, not clamped up to 1', () => {
+      expect(clampPageSize(0)).toBe('200');
+      expect(clampPageSize(-5)).toBe('200');
     });
   });
 });

@@ -11,6 +11,7 @@
 
 use super::items::extract_symbolic_item_inner;
 use super::output_cap::{SymbolicAccumulator, SymbolicTruncationReason};
+use super::rebase::RenderFrameRebase;
 use super::transform::Transform2D;
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use rustc_hash::FxHashSet;
@@ -119,8 +120,7 @@ pub(super) fn extract_symbolic_item(
     rep_identifier: &str,
     unit_scale: f32,
     transform: &Transform2D,
-    rtc_x: f32,
-    rtc_z: f32,
+    rebase: RenderFrameRebase,
     styled_items: &HashMap<u32, Vec<u32>>,
     out: &mut SymbolicAccumulator,
 ) {
@@ -130,7 +130,7 @@ pub(super) fn extract_symbolic_item(
         revisit_budget: MAX_ITEM_REVISITS,
     };
     extract_symbolic_item_at(
-        item, decoder, express_id, ifc_type, rep_identifier, unit_scale, transform, rtc_x, rtc_z,
+        item, decoder, express_id, ifc_type, rep_identifier, unit_scale, transform, rebase,
         styled_items, out, 0, &mut walk,
     );
 }
@@ -150,8 +150,7 @@ pub(super) fn extract_symbolic_item_with_revisit_budget(
     rep_identifier: &str,
     unit_scale: f32,
     transform: &Transform2D,
-    rtc_x: f32,
-    rtc_z: f32,
+    rebase: RenderFrameRebase,
     styled_items: &HashMap<u32, Vec<u32>>,
     out: &mut SymbolicAccumulator,
     revisit_budget: u32,
@@ -162,7 +161,7 @@ pub(super) fn extract_symbolic_item_with_revisit_budget(
         revisit_budget,
     };
     extract_symbolic_item_at(
-        item, decoder, express_id, ifc_type, rep_identifier, unit_scale, transform, rtc_x, rtc_z,
+        item, decoder, express_id, ifc_type, rep_identifier, unit_scale, transform, rebase,
         styled_items, out, 0, &mut walk,
     );
 }
@@ -176,8 +175,7 @@ pub(super) fn extract_symbolic_item_at(
     rep_identifier: &str,
     unit_scale: f32,
     transform: &Transform2D,
-    rtc_x: f32,
-    rtc_z: f32,
+    rebase: RenderFrameRebase,
     styled_items: &HashMap<u32, Vec<u32>>,
     out: &mut SymbolicAccumulator,
     depth: u32,
@@ -215,10 +213,11 @@ pub(super) fn extract_symbolic_item_at(
         }
     }
     if !walk.enter_node(item.id) {
+        out.note_item_bound(SymbolicTruncationReason::ItemCycle);
         return;
     }
     extract_symbolic_item_inner(
-        item, decoder, express_id, ifc_type, rep_identifier, unit_scale, transform, rtc_x, rtc_z,
+        item, decoder, express_id, ifc_type, rep_identifier, unit_scale, transform, rebase,
         styled_items, out, depth, walk,
     );
     walk.exit_node(item.id);

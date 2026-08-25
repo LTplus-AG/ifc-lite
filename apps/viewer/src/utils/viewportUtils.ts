@@ -7,7 +7,13 @@
  * Pure functions extracted from Viewport.tsx for reusability and testability
  */
 
+import { NORMAL_COORD_THRESHOLD_M } from '@ifc-lite/geometry';
 import type { MeshData } from '@ifc-lite/geometry';
+import {
+  REPROJECTED_MEASUREMENT_FIELDS,
+  REPROJECTED_MEASUREMENT_FIELD_NAMES,
+  type ReprojectedMeasurementField,
+} from '../store/measurementReprojectionFields.js';
 
 // ============================================================================
 // Types
@@ -70,11 +76,12 @@ export interface ViewportStateRefs {
 // ============================================================================
 
 /**
- * Maximum coordinate threshold for valid geometry
- * Matches CoordinateHandler's NORMAL_COORD_THRESHOLD (10km)
- * Coordinates beyond this are likely corrupted or unshifted original coordinates
+ * Maximum coordinate threshold for valid geometry (10km).
+ * Coordinates beyond this are likely corrupted or unshifted original coordinates.
+ * Shared with `CoordinateHandler` and `localParsingUtils` — see
+ * `NORMAL_COORD_THRESHOLD_M`.
  */
-const MAX_VALID_COORD = 10000;
+const MAX_VALID_COORD = NORMAL_COORD_THRESHOLD_M;
 
 /**
  * Check if a vertex coordinate is valid (finite and within reasonable bounds)
@@ -519,44 +526,48 @@ export function unionEntityBounds(
 /**
  * The subset of measurement-slice state that decides whether the animation
  * loop's per-frame reprojection pass (`updateMeasurementScreenCoords`) needs
- * to run at all. Kept as a plain shape (not imported from the store) so this
- * stays a pure function callable from a test with a minimal fixture.
+ * to run at all.
+ *
+ * DERIVED from `REPROJECTED_MEASUREMENT_FIELDS` rather than listed here: that
+ * registry is the one place the reprojected field set is written down, and
+ * the reprojection pass is typed against it too. Structural, not imported
+ * from the store, so this stays a pure function callable from a test with a
+ * minimal fixture — while the live `useViewerStore.getState()` at
+ * Viewport.tsx's call site still has to satisfy it, which is what catches a
+ * field registered under the wrong kind.
  */
-export interface PendingMeasurementState {
-  measurements: { length: number };
-  activeMeasurement: unknown;
-  /** In-progress multi-click polyline sequence (#2199), or null. */
-  activePolyline: unknown;
-  /** Finished multi-click polylines (#2199) — their placed vertices still
-   *  need reprojecting on every camera move, same as drag measurements. */
-  polylineMeasurements: { length: number };
-  /** In-progress angle sequence (#2735), or null. */
-  activeAngle: unknown;
-  /** Finished angle measurements (#2735) - their picks are reprojected too. */
-  angleMeasurements: { length: number };
-}
+export type PendingMeasurementState = {
+  [K in ReprojectedMeasurementField]: (typeof REPROJECTED_MEASUREMENT_FIELDS)[K] extends 'list'
+    ? { length: number }
+    : unknown;
+};
 
 /**
  * True when there is any measurement state whose screen coordinates could
- * be stale after a camera move - drag-mode measurements/gesture,
+ * be stale after a camera move — drag-mode measurements/gesture,
  * polyline-mode sequences/finished polylines (#2641 review defect: this used
  * to check only `measurements`/`activeMeasurement`, so with polyline-only
  * state the reprojection pass never ran and placed points, segments and
  * labels froze at their click-time screen position while orbiting), or angle
  * sequences/measurements (#2735, the same defect a third time).
  *
- * This gate and `updateMeasurementScreenCoords` are a PAIR. Reprojection logic
- * added there without an arm here is dead code for any state this gate does
- * not recognise, and the symptom is identical to having written no
- * reprojection at all.
+ * This gate and `updateMeasurementScreenCoords` are a PAIR: reprojection
+ * logic added there without an arm here is dead code, and the symptom is
+ * identical to having written no reprojection at all. Neither side spells
+ * the pair out by hand any more — both read `REPROJECTED_MEASUREMENT_FIELDS`,
+ * so a new measurement kind reaches this gate as soon as it is registered,
+ * and cannot be reprojected without being registered.
  */
 export function hasPendingMeasurementState(state: PendingMeasurementState): boolean {
-  return (
-    state.measurements.length > 0 ||
-    state.activeMeasurement !== null ||
-    state.activePolyline !== null ||
-    state.polylineMeasurements.length > 0 ||
-    state.activeAngle !== null ||
-    state.angleMeasurements.length > 0
-  );
+  for (const field of REPROJECTED_MEASUREMENT_FIELD_NAMES) {
+    // The mapped type above ties each field's shape to its registered kind,
+    // so these two reads are the only ones the registry can produce.
+    const value: unknown = state[field];
+    if (REPROJECTED_MEASUREMENT_FIELDS[field] === 'list') {
+      if ((value as { length: number }).length > 0) return true;
+    } else if (value !== null) {
+      return true;
+    }
+  }
+  return false;
 }

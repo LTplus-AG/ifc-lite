@@ -113,12 +113,23 @@ function parse(content: string): IfcxFile {
   return JSON.parse(content) as IfcxFile;
 }
 
+/**
+ * The GlobalIds `buildTable` gives its two entities. These are also the node
+ * paths the writer emits for them: an IFCX node's path IS its identity, so an
+ * entity that has a GlobalId is keyed by it (see the "uses the entity's IFC
+ * GlobalId as the node path" test). Tests below look nodes up by these rather
+ * than by a substring of the synthetic `ifc:<Type>.<expressId>` fallback,
+ * which only applies to an entity with no GlobalId at all.
+ */
+const BUILT_WALL_GUID = '0YvCT2_$X3_xJG3rzD8L_8';
+const BUILT_DOOR_GUID = '1abCT2_$X3_xJG3rzD8L_8';
+
 /** Real StringTable + EntityTableBuilder rather than a structural stub. */
 function buildTable() {
   const strings = new StringTable();
   const builder = new EntityTableBuilder(2, strings);
-  builder.add(101, 'IFCWALL', '0YvCT2_$X3_xJG3rzD8L_8', 'Wall-A', 'desc', 'Standard', true, false);
-  builder.add(102, 'IFCDOOR', '1abCT2_$X3_xJG3rzD8L_8', 'Door-A', '', '', true, false);
+  builder.add(101, 'IFCWALL', BUILT_WALL_GUID, 'Wall-A', 'desc', 'Standard', true, false);
+  builder.add(102, 'IFCDOOR', BUILT_DOOR_GUID, 'Door-A', '', '', true, false);
   return { strings, table: builder.build() };
 }
 
@@ -366,6 +377,43 @@ describe('IfcxWriter — node attributes and paths', () => {
     assert.strictEqual(file.data[1].path, 'ifc:IfcBuildingStorey.43');
   });
 
+  it('uses the entity\'s IFC GlobalId as the node path, since IFCX has nowhere else to carry it', () => {
+    // A node's `path` IS the entity's identity in IFCX: entity-extractor.ts
+    // hands it straight back as the GlobalId, packages/export's IFC5 exporter
+    // keys nodes by GlobalId for that reason, and the buildingSMART v5a
+    // schemas committed under packages/export/src/__fixtures__/schemas/ define
+    // no attribute that could carry a GlobalId instead. Synthesizing
+    // `ifc:<Type>.<expressId>` for an entity that HAS one therefore threw the
+    // real IFC identity away and invented a replacement that is not stable
+    // across files. Invisible until now because no fixture in this file ever
+    // set `globalId`, so every path assertion only ever saw the fallback.
+    const { entities, strings } = makeEntities([
+      { expressId: 42, typeEnum: TYPE_WALL, globalId: '0YvCT2_$X3_xJG3rzD8L_8' },
+      { expressId: 43, typeEnum: TYPE_STOREY },
+    ]);
+    const file = parse(new IfcxWriter({ entities, strings }).export().content);
+
+    assert.strictEqual(file.data[0].path, '0YvCT2_$X3_xJG3rzD8L_8');
+    // An entity with no GlobalId still gets the synthetic fallback.
+    assert.strictEqual(file.data[1].path, 'ifc:IfcBuildingStorey.43');
+  });
+
+  it('references a child by its GlobalId path, the same path the child node itself carries', () => {
+    // The child-reference path and the child's own node path are derived
+    // twice; letting only one of them learn about GlobalId would leave every
+    // containment link dangling for exactly the entities that have one.
+    const { entities, strings } = makeEntities([
+      { expressId: 1, typeEnum: TYPE_STOREY, globalId: '2StoreyGuid_______0000' },
+      { expressId: 101, typeEnum: TYPE_WALL, globalId: '3WallGuid_________0000' },
+    ]);
+    const spatialHierarchy = makeSpatialHierarchy({ byStorey: new Map([[1, [101]]]) });
+    const file = parse(new IfcxWriter({ entities, strings, spatialHierarchy }).export().content);
+
+    const allPaths = new Set(file.data.map((n) => n.path));
+    assert.deepStrictEqual(file.data[0].children, { element_101: '3WallGuid_________0000' });
+    assert.ok(allPaths.has('3WallGuid_________0000'), 'child reference must resolve to a real node');
+  });
+
   it('falls back to IfcElement in the path for an unmapped type', () => {
     const { entities, strings } = makeEntities([{ expressId: 42, typeEnum: TYPE_UNMAPPED }]);
     const file = parse(new IfcxWriter({ entities, strings }).export().content);
@@ -512,8 +560,8 @@ describe('IfcxWriter.export', () => {
     const result = writer.export({ includeProperties: false });
     const file = JSON.parse(result.content);
 
-    const wallNode = file.data.find((n: { path: string }) => n.path.includes('101'));
-    const doorNode = file.data.find((n: { path: string }) => n.path.includes('102'));
+    const wallNode = file.data.find((n: { path: string }) => n.path === BUILT_WALL_GUID);
+    const doorNode = file.data.find((n: { path: string }) => n.path === BUILT_DOOR_GUID);
     assert.strictEqual(wallNode.attributes['bsi::ifc::class'].code, 'IfcWall');
     assert.strictEqual(doorNode.attributes['bsi::ifc::class'].code, 'IfcDoor');
   });
@@ -532,8 +580,8 @@ describe('IfcxWriter.export', () => {
     const result = writer.export({ includeProperties: false });
     const file = JSON.parse(result.content);
 
-    const wallNode = file.data.find((n: { path: string }) => n.path.includes('101'));
-    assert.deepStrictEqual(wallNode.children, { element_102: 'ifc:IfcDoor.102' });
+    const wallNode = file.data.find((n: { path: string }) => n.path === BUILT_WALL_GUID);
+    assert.deepStrictEqual(wallNode.children, { element_102: BUILT_DOOR_GUID });
   });
 
   it('falls back to bySite when the id is absent from byStorey and byBuilding', () => {
@@ -545,8 +593,8 @@ describe('IfcxWriter.export', () => {
     const result = writer.export({ includeProperties: false });
     const file = JSON.parse(result.content);
 
-    const wallNode = file.data.find((n: { path: string }) => n.path.includes('101'));
-    assert.deepStrictEqual(wallNode.children, { element_102: 'ifc:IfcDoor.102' });
+    const wallNode = file.data.find((n: { path: string }) => n.path === BUILT_WALL_GUID);
+    assert.deepStrictEqual(wallNode.children, { element_102: BUILT_DOOR_GUID });
   });
 
   it('requests the IFC prop schema import only for bsi::ifc::prop:: keys, not presentation keys', () => {

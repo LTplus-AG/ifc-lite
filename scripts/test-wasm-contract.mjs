@@ -13,6 +13,7 @@ import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import assert from 'node:assert/strict';
+import gltfValidator from 'gltf-validator';
 import {
   initSync,
   IfcAPI,
@@ -36,6 +37,12 @@ const COLUMN_IFC = join(FIXTURES_DIR, 'buildingsmart/column-straight-rectangle-t
 const GEOREF_IFC = join(FIXTURES_DIR, 'ifc5/Georeferencing_georeferenced-bridge-deck.ifc');
 // Carries IfcSpace volumes, so the energy-model exporters have something to emit.
 const SPACES_IFC = join(FIXTURES_DIR, 'buildingsmart/Building-Architecture.ifc');
+// Carries IfcMaterialLayerSetUsage on its walls, so the layer-slice branch of
+// `produce_element_geometry` actually runs and tags meshes GEOM_CLASS_LAYER_SLICE.
+// None of the fixtures above has a multi-layer wall: the two Building-* models
+// have no IFCMATERIALLAYERSET at all, and wall-with-opening-and-window.ifc has a
+// single-layer set, which Rust classifies NotSliceable on purpose.
+const LAYERED_IFC = join(FIXTURES_DIR, 'ara3d/duplex.ifc');
 
 console.log('🧪 WASM API Contract Tests\n');
 
@@ -53,6 +60,10 @@ if (!existsSync(COLUMN_IFC)) {
 const GEOREF_AVAILABLE = existsSync(GEOREF_IFC);
 if (!GEOREF_AVAILABLE) {
   console.log('⚠️  georef fixture missing — run `pnpm fixtures`. Georef tests will be skipped.');
+}
+const LAYERED_AVAILABLE = existsSync(LAYERED_IFC);
+if (!LAYERED_AVAILABLE) {
+  console.log('⚠️  layered-wall fixture missing — run `pnpm fixtures`. geometryClass pin will be skipped.');
 }
 const SPACES_AVAILABLE = existsSync(SPACES_IFC);
 if (!SPACES_AVAILABLE) {
@@ -700,18 +711,18 @@ test('exportGlb returns a binary glTF (GLB magic "glTF") with real meshes', () =
 // exportGlbFromMeshes assembles a GLB straight from flattened mesh arrays (the viewer's
 // GPU meshes) and fails closed on malformed counts — exercised HERE through the real wasm
 // boundary, since the Rust-level tests can't prove the JS throw contract.
+const fromMeshesGlb = api.exportGlbFromMeshes(
+  new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+  new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+  new Uint32Array([0, 1, 2]),
+  new Uint32Array([3]), new Uint32Array([3]),
+  new Float32Array([0.5, 0.5, 0.5, 1]), new Float64Array([0, 0, 0]), new Uint32Array([1]),
+  false, true, false,
+);
+
 test('exportGlbFromMeshes returns a GLB for valid flattened meshes', () => {
-  const positions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
-  const normals = new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]);
-  const indices = new Uint32Array([0, 1, 2]);
-  const glb = api.exportGlbFromMeshes(
-    positions, normals, indices,
-    new Uint32Array([3]), new Uint32Array([3]),
-    new Float32Array([0.5, 0.5, 0.5, 1]), new Float64Array([0, 0, 0]), new Uint32Array([1]),
-    false, true, false,
-  );
-  assert.ok(glb instanceof Uint8Array && glb.length > 20, 'valid meshes produce a GLB');
-  assert.deepEqual(Array.from(glb.slice(0, 4)), [0x67, 0x6c, 0x54, 0x46]); // "glTF"
+  assert.ok(fromMeshesGlb instanceof Uint8Array && fromMeshesGlb.length > 20, 'valid meshes produce a GLB');
+  assert.deepEqual(Array.from(fromMeshesGlb.slice(0, 4)), [0x67, 0x6c, 0x54, 0x46]); // "glTF"
 });
 
 test('exportGlbFromMeshes fails closed on malformed inputs (MALFORMED_MESH_INPUT)', () => {
@@ -744,6 +755,126 @@ test('exportGlbFromMeshes fails closed on malformed inputs (MALFORMED_MESH_INPUT
     'missing index_counts must throw MALFORMED_MESH_INPUT',
   );
 });
+
+// ===== glTF spec conformance (Khronos glTF-Validator) =====
+//
+// Until this block existed, nothing anywhere in the repo checked our glTF
+// against the *format*: the only reader of a GLB we write is our own
+// `parseGLB` (`packages/export/src/glb.ts`), and a writer and a reader that
+// agree with each other prove nothing about the spec — the same self-round-trip
+// shape that hid live defects in other formats. `rust/export/src/gltf_tests.rs`
+// even NAMES glTF-Validator in a comment describing what it would report,
+// without ever invoking it.
+//
+// `gltf-validator` is the Khronos reference implementation, shipped as a
+// self-contained Dart-to-JS bundle (~400 KB, no native deps, no network at
+// runtime), so it runs right here on the bytes the REAL wasm exporter just
+// produced. It is deliberately pinned to an exact version: the validator's
+// output IS the assertion, and a floating range would let a new rule turn this
+// lane red on unchanged output — or silently stop enforcing one.
+console.log('\n📋 glTF conformance (Khronos glTF-Validator)');
+
+async function validateGlb(bytes, uri) {
+  return gltfValidator.validateBytes(new Uint8Array(bytes), {
+    uri,
+    maxIssues: 100,
+    // Every buffer we emit is GLB-embedded. A request for an external resource
+    // would itself be the defect (a URI the artifact cannot satisfy), so reject
+    // rather than resolve one and let it surface as an unresolved-reference issue.
+    externalResourceFunction: (u) =>
+      Promise.reject(new Error(`unexpected external resource request: ${u}`)),
+  });
+}
+
+/** Fail on ERROR (severity 0) *and* WARNING (severity 1), quoting the validator verbatim. */
+function assertClean(report, label) {
+  const { numErrors, numWarnings, messages } = report.issues;
+  const detail = messages
+    .filter((m) => m.severity <= 1)
+    .map((m) => `\n       [${m.severity === 0 ? 'ERROR' : 'WARNING'}] ${m.code} ${m.pointer} :: ${m.message}`)
+    .join('');
+  assert.equal(
+    numErrors + numWarnings,
+    0,
+    `${label}: glTF-Validator reported ${numErrors} error(s), ${numWarnings} warning(s):${detail}`,
+  );
+}
+
+const glbReport = await validateGlb(glbBytes, 'exportGlb.glb');
+const fromMeshesReport = await validateGlb(fromMeshesGlb, 'exportGlbFromMeshes.glb');
+
+test('exportGlb output is spec-conformant glTF 2.0 (0 errors, 0 warnings)', () => {
+  assertClean(glbReport, 'exportGlb');
+});
+
+// A clean report over an EMPTY artifact is the "check that cannot fail" trap:
+// the validator is perfectly happy with a GLB that declares no geometry, so a
+// silently-empty export would read as a pass above. Pin what it actually saw.
+test('the validator saw real geometry, not a vacuously clean empty GLB', () => {
+  assert.equal(glbReport.info.version, '2.0', 'asset.version');
+  assert.ok(glbReport.info.drawCallCount > 0, `drawCallCount was ${glbReport.info.drawCallCount}`);
+  assert.ok(
+    glbReport.info.totalTriangleCount > 0,
+    `totalTriangleCount was ${glbReport.info.totalTriangleCount}`,
+  );
+  assert.ok(
+    glbReport.info.totalVertexCount >= 3,
+    `totalVertexCount was ${glbReport.info.totalVertexCount}`,
+  );
+});
+
+// The from-meshes entry point is a SEPARATE assembler (rust/export/src/gltf/from_meshes.rs)
+// reachable from the viewer's `exportGlbFromMeshes`; validating only the
+// from-bytes path would leave it as unvalidated as before.
+test('exportGlbFromMeshes output is spec-conformant glTF 2.0 (0 errors, 0 warnings)', () => {
+  assertClean(fromMeshesReport, 'exportGlbFromMeshes');
+  assert.equal(fromMeshesReport.info.totalTriangleCount, 1, 'the one triangle handed in');
+});
+
+// ===== geometryClass ordinals, pinned at the real boundary =====
+//
+// `packages/geometry/src/geometry-class.ts` names these ordinals for the
+// TypeScript side, and its own test asserts them against literals. That test
+// cannot fail if Rust starts emitting different numbers — both halves would
+// simply agree with themselves, which is the self-round-trip trap.
+//
+// This is the other half: it reads what Rust ACTUALLY emits across the wasm
+// boundary and pins the literal. `meshFingerprint` above also reads
+// `geometryClass`, but only to compare two code paths against each other, so
+// it is satisfied by any value as long as both paths produce the same one.
+//
+// A wrong ordinal is silent: geometry is reclassified rather than rejected, so
+// a layered wall drops out of Model view, or a type-library duplicate renders
+// as real building geometry, with nothing thrown anywhere.
+if (LAYERED_AVAILABLE) {
+  console.log('\n📋 geometryClass ordinals (Rust → TS contract)');
+  const layeredContent = readFileSync(LAYERED_IFC, 'utf-8');
+
+  test('a layered wall emits GEOM_CLASS_LAYER_SLICE === 3', () => {
+    const collection = parseMeshesViaPrePass(api, layeredContent);
+    const classes = new Set();
+    for (let i = 0; i < collection.length; i++) {
+      const m = collection.get(i);
+      if (!m) continue;
+      classes.add(m.geometryClass);
+      m.free();
+    }
+    collection.free();
+
+    // The literal 3 is the point. Deriving it from the TS constant would make
+    // this agree with the thing it is supposed to be checking.
+    assert.ok(
+      classes.has(3),
+      `expected a material-layer slice tagged 3; saw classes ${[...classes].sort().join(', ')}`,
+    );
+    // Placed occurrences must still be class 0 alongside them — if everything
+    // came back 3, the assertion above would pass while the tagging was broken.
+    assert.ok(
+      classes.has(0),
+      `expected placed occurrences tagged 0; saw classes ${[...classes].sort().join(', ')}`,
+    );
+  });
+}
 
 // ===== energy-model boundary (exportHbjson / exportDfjson) =====
 //

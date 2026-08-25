@@ -191,6 +191,47 @@ describe('PinboardSlice', () => {
     });
   });
 
+  describe('removeBasketView', () => {
+    it('removes the view and clears activeBasketViewId when it was the active one', () => {
+      state.setBasket([{ modelId: 'legacy', expressId: 100 }]);
+      const id = state.saveCurrentBasketView();
+      assert.strictEqual(state.activeBasketViewId, id);
+
+      state.removeBasketView(id!);
+
+      assert.strictEqual(state.basketViews.length, 0);
+      assert.strictEqual(state.activeBasketViewId, null);
+    });
+
+    it('leaves activeBasketViewId untouched when removing a DIFFERENT (non-active) view', () => {
+      // Non-default state: two saved views, and the active one is NOT the
+      // one being removed. A mutant that unconditionally nulls
+      // activeBasketViewId on every removal passes any test that only
+      // removes the active view — this pins the other direction.
+      state.setBasket([{ modelId: 'legacy', expressId: 100 }]);
+      const firstId = state.saveCurrentBasketView();
+      state.setBasket([{ modelId: 'legacy', expressId: 200 }]);
+      const secondId = state.saveCurrentBasketView();
+      assert.strictEqual(state.activeBasketViewId, secondId);
+
+      state.removeBasketView(firstId!);
+
+      assert.strictEqual(state.basketViews.length, 1);
+      assert.strictEqual(state.basketViews[0].id, secondId);
+      assert.strictEqual(state.activeBasketViewId, secondId, 'removing an inactive view must not clear the active one');
+    });
+
+    it('removing an unknown id is a no-op for activeBasketViewId', () => {
+      state.setBasket([{ modelId: 'legacy', expressId: 100 }]);
+      const id = state.saveCurrentBasketView();
+
+      state.removeBasketView('does-not-exist');
+
+      assert.strictEqual(state.basketViews.length, 1);
+      assert.strictEqual(state.activeBasketViewId, id);
+    });
+  });
+
   describe('clearBasket', () => {
     it('resets activeBasketViewId', () => {
       state.setBasket([{ modelId: 'legacy', expressId: 100 }]);

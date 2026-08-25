@@ -250,4 +250,22 @@ describe('displacement checks', () => {
 
     expect(fw.listenerCount()).toBe(0);
   });
+
+  it('resets the guard BEFORE calling destroy, so a throwing destroy still leaves the guard unlatched', () => {
+    // Pins the ordering documented in lifecycle.ts's comment: if `destroy`
+    // itself throws, the guard must already be false so a later mount can
+    // still recover instead of being permanently stuck "already mounted".
+    // Swapping the two statements (destroy() then ref.current = false)
+    // is equivalent for every OTHER test in this file -- they all call
+    // unmount() to completion before the next mount() -- so only a
+    // throwing destroy distinguishes the order.
+    installWindow(); // satisfies afterEach's unconditional destroyBridge()
+    const ref: MountGuardRef = { current: true };
+
+    expect(() => unmountBridgeLifecycle(ref, () => {
+      throw new Error('destroy failed');
+    })).toThrow('destroy failed');
+
+    expect(ref.current).toBe(false);
+  });
 });

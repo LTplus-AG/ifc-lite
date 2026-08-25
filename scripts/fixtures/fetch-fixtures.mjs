@@ -58,7 +58,16 @@ if (!existsSync(MANIFEST_PATH)) {
   process.exit(2);
 }
 
-const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'));
+// Read and parse defensively: an unreadable or truncated manifest must fail
+// with a message that names the file, not with a raw JSON.parse stack trace
+// that a CI reader has to decode.
+let manifest;
+try {
+  manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'));
+} catch (err) {
+  console.error(`error: ${MANIFEST_PATH} could not be read as JSON: ${err.message}`);
+  process.exit(2);
+}
 if (!manifest || typeof manifest !== 'object') {
   console.error(`error: ${MANIFEST_PATH} is not a JSON object`);
   process.exit(2);
@@ -69,6 +78,14 @@ if (manifest.version !== 1) {
 }
 if (!Array.isArray(manifest.files)) {
   console.error(`error: ${MANIFEST_PATH} is missing a "files" array`);
+  process.exit(2);
+}
+// An empty corpus would make --check succeed vacuously ("all 0 fixtures
+// present"), which is exactly the silence this script exists to break: every
+// fixture_or_skip! test would then no-op and still report ok. A manifest that
+// lists nothing is a broken manifest, not an empty-but-valid one.
+if (manifest.files.length === 0) {
+  console.error(`error: ${MANIFEST_PATH} lists no files — the manifest is empty or truncated`);
   process.exit(2);
 }
 
@@ -96,12 +113,24 @@ function resolveFixturePath(relPath) {
 
 let entries = manifest.files;
 if (ONLY.length) {
-  const wanted = new Set(ONLY.map((p) => p.replace(/^tests\/models\//, '')));
-  entries = entries.filter((f) => wanted.has(f.path));
-  if (!entries.length) {
-    console.error(`error: none of the requested paths are in the manifest`);
+  const wanted = ONLY.map((p) => p.replace(/^tests\/models\//, ''));
+  const known = new Set(manifest.files.map((f) => f.path));
+  // A requested path the manifest does not list is a hard error, not a silent
+  // narrowing. Filtering it away made `--check a.ifc b.ifc` report "all 1
+  // fixtures present and verified" after a rename dropped `b.ifc` from the
+  // manifest — a green gate over a corpus the caller never actually got. The
+  // fetch form was worse: it downloaded nothing for the renamed path and still
+  // exited 0, so the job ran against whatever the cache happened to hold.
+  const unknown = wanted.filter((p) => !known.has(p));
+  if (unknown.length) {
+    for (const p of unknown) {
+      console.error(`error: ${p} is not listed in ${MANIFEST_PATH}`);
+    }
+    console.error(`requested paths not in the manifest: ${unknown.length} of ${wanted.length}`);
     process.exit(2);
   }
+  const wantedSet = new Set(wanted);
+  entries = entries.filter((f) => wantedSet.has(f.path));
 }
 
 async function sha256OfFile(path) {
@@ -112,18 +141,27 @@ async function sha256OfFile(path) {
 
 function classify(entry) {
   const abs = resolveFixturePath(entry.path);
-  if (!existsSync(abs)) return { state: 'missing', abs };
+  if (!existsSync(abs)) {
+    return { state: 'missing', abs, reason: 'missing from tests/models/' };
+  }
   const st = statSync(abs);
   // LFS pointer files are always small; skip the hash if size mismatches.
-  if (st.size !== entry.size) return { state: 'mismatch', abs };
+  if (st.size !== entry.size) {
+    return {
+      state: 'mismatch',
+      abs,
+      reason: `size mismatch: manifest says ${entry.size} bytes, on disk ${st.size}`,
+    };
+  }
   return { state: 'unchecked', abs };
 }
 
 async function fetchOne(entry) {
   let abs;
   let state;
+  let reason;
   try {
-    ({ abs, state } = classify(entry));
+    ({ abs, state, reason } = classify(entry));
   } catch (err) {
     return { entry, action: 'error', error: err };
   }
@@ -132,10 +170,11 @@ async function fetchOne(entry) {
     if (got === entry.sha256) {
       return { entry, action: 'skip' };
     }
+    reason = `sha256 mismatch: manifest says ${entry.sha256}, on disk ${got}`;
   }
 
   if (CHECK_ONLY || LIST_ONLY) {
-    return { entry, action: 'needed' };
+    return { entry, action: 'needed', reason };
   }
 
   mkdirSync(dirname(abs), { recursive: true });
@@ -235,6 +274,14 @@ if (LIST_ONLY) {
 
 if (CHECK_ONLY) {
   if (needed || errors.length) {
+    // Name every offender. "verification failed: 3 of 164" sends the reader
+    // back to the manifest to work out which three; a CI log that names the
+    // path and says missing / wrong size / wrong hash does not.
+    for (const r of results) {
+      if (r.action === 'needed') {
+        console.error(`error: tests/models/${r.entry.path}: ${r.reason}`);
+      }
+    }
     if (needed) {
       console.error(`fixtures missing or out of date: ${needed} of ${entries.length}`);
       console.error('run: pnpm fixtures');

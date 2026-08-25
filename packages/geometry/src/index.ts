@@ -43,8 +43,7 @@ export { geometryAabbAt, geometryVolumeAt } from './geometry-fingerprints.js';
 
 // Support components
 export { BufferBuilder } from './buffer-builder.js';
-export { CoordinateHandler } from './coordinate-handler.js';
-export { GeometryQuality } from './progressive-loader.js';
+export { CoordinateHandler, NORMAL_COORD_THRESHOLD_M } from './coordinate-handler.js';
 export { computeWorkerCount, pickWorkerCount, type WorkerCountInputs, type WorkerCountResult } from './worker-count.js';
 export { getGeometryStreamWatchdogMs, type WatchdogInputs } from './watchdog.js';
 // Cold-start prewarm: start the shared wasm fetch+compile before a file is
@@ -88,7 +87,7 @@ import { IfcLiteBridge } from './ifc-lite-bridge.js';
 import { notifyIfWasmAssetUnavailable } from './wasm-asset-error.js';
 import { BufferBuilder } from './buffer-builder.js';
 import { CoordinateHandler } from './coordinate-handler.js';
-import { GeometryQuality } from './progressive-loader.js';
+import { GEOM_CLASS_OCCURRENCE, geometryClassOf } from './geometry-class.js';
 import { createPlatformBridge, isTauri, type GeometryStats as PlatformGeometryStats, type IPlatformBridge } from './platform-bridge.js';
 import type { GeometryResult, MeshData, CoordinateInfo, GridAxis, TessellationQuality, KmzAltitudeMode, SimplifyMeshesResult } from './types.js';
 
@@ -125,7 +124,6 @@ interface ByteStreamingPrePassResult {
 }
 
 export interface GeometryProcessorOptions {
-  quality?: GeometryQuality; // Default: Balanced
   preferNative?: boolean; // Default: true in Tauri
   /**
    * When true, the underlying IFC-Lite WASM API merges Revit-style
@@ -180,15 +178,15 @@ function acquireWasmStreamingOperation(operation: string): () => void {
 }
 
 /**
- * Dynamic batch configuration for ramp-up streaming
- * Starts with small batches for fast first frame, ramps up for throughput
+ * Dynamic batch configuration for streaming.
+ *
+ * The batch size is a function of the model's size alone: `getStreamingBatchSize`
+ * reads `fileSizeMB` (falling back to the buffer's own length when it is absent
+ * or zero) and picks a fixed value from a size ladder. There is no ramp-up, and
+ * no other field on this object is consulted.
  */
 export interface DynamicBatchConfig {
-  /** Initial batch size for first 3 batches (default: 50) */
-  initialBatchSize?: number;
-  /** Maximum batch size for batches 11+ (default: 500) */
-  maxBatchSize?: number;
-  /** File size in MB for adaptive sizing (optional) */
+  /** File size in MB for adaptive sizing; omitted ⇒ measured from the buffer. */
   fileSizeMB?: number;
 }
 
@@ -280,8 +278,6 @@ export class GeometryProcessor {
     this.enableInstancing = options.enableInstancing !== false;
     this.tessellationQuality = options.tessellationQuality ?? null;
     this.skipSmallCuts = options.skipSmallCuts === true;
-    // Note: options accepted for API compatibility
-    void options.quality;
 
     if (!this.isNative) {
       this.bridge = new IfcLiteBridge();
@@ -1267,11 +1263,10 @@ export class GeometryProcessor {
    * Demesher: simplify already-produced element meshes at per-element levels
    * (1-4 = cavity removal + clustering at 0.5/0.25/0.10/0.03 triangle ratio,
    * 5 = bounding box). Pass ALL of the target elements' MeshData records
-   * (per-material submeshes included); records with `geometryClass !== 0`
-   * (type-library shapes) are ignored. Returns render-ready replacement
-   * meshes (swap into the scene via `removeMeshesForEntities` + `addMeshes`)
-   * plus each element's geometry in its IFC object-placement frame in file
-   * units, for the tessellated IFC re-export (`applySimplifiedGeometry`).
+   * (per-material submeshes included); non-occurrence records (type-library
+   * shapes) are ignored. Returns replacement meshes (swap into the scene via
+   * `removeMeshesForEntities` + `addMeshes`) plus each element's geometry in
+   * its IFC object-placement frame in file units, for `applySimplifiedGeometry`.
    *
    * `originShift` is `coordinateInfo.originShift` (IFC Z-up metres);
    * `unitScale` is metres per project length unit (defaults to 1 = metres).
@@ -1284,7 +1279,7 @@ export class GeometryProcessor {
   ): SimplifyMeshesResult | null {
     if (!this.bridge?.isInitialized()) return null;
     const records = meshes.filter(
-      (m) => (m.geometryClass ?? 0) === 0 && levels.has(m.expressId) && m.indices.length >= 3,
+      (m) => geometryClassOf(m) === GEOM_CLASS_OCCURRENCE && levels.has(m.expressId) && m.indices.length >= 3,
     );
     const requested = new Set([...levels.keys()]);
     const covered = new Set(records.map((m) => m.expressId));

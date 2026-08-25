@@ -1514,9 +1514,10 @@ fn streaming_bounded_is_byte_identical_on_flat_models() {
 
 #[test]
 fn streaming_bounded_preserves_world_geometry_on_instanced_model() {
-    // duplex has rep-identity groups the streaming path deliberately skips
-    // (bounded memory cannot hold every occurrence). World geometry must be
-    // identical anyway: same element nodes, same total placed triangles.
+    // duplex has rep-identity groups. Both paths share them now, so both emit
+    // one element node per occurrence and the same total placed triangles; what
+    // differs is how many meshes those nodes point at, which
+    // `streaming_bounded_shares_a_repeated_shape` pins.
     let Some(content) = crate::test_support::fixture_opt("ara3d/duplex.ifc") else { return };
     let opts = GltfOptions::default();
     let (in_memory, _) = export_glb_from_result(process_geometry(&content), &opts);
@@ -1545,6 +1546,201 @@ fn streaming_bounded_preserves_world_geometry_on_instanced_model() {
     // pos/norm are 12-byte and idx 4-byte multiples, so the BIN needs no padding
     // and must be exactly the three declared runs.
     assert_eq!(declared as usize, str_bin.len(), "BIN length matches declared runs");
+
+    // And where the triangles actually are. Everything above this line survives
+    // an arbitrary translation of every shared shape: node count, triangle count
+    // and BIN length do not move when a placement is wrong. That is the whole
+    // mechanism this path adds, so it needs an assertion that can see it.
+    let (_, mem_bin) = parse_glb(&in_memory);
+    let mem_w = world_totals(&mem_json, &[&mem_bin]);
+    let str_w = world_totals(&str_json, &[&str_bin]);
+    assert_eq!(mem_w.triangles, str_w.triangles, "placed triangle count");
+    // f32 in world coordinates on one path and f32 in the shape's own frame
+    // placed by an f64 matrix on the other, so the last bits differ by
+    // construction and equality is the wrong test. The tolerance is measured
+    // rather than guessed: on duplex the two agree to ~1e-8 on the centroid
+    // sums and exactly on the bounds, and the smallest displacement this is
+    // meant to catch (one wrongly shared group) moves a centroid sum by
+    // 1.4e-3. 1e-6 sits a thousandfold clear of both.
+    for k in 0..3 {
+        let axis = ["x", "y", "z"][k];
+        assert!(
+            (mem_w.centroid_sum[k] - str_w.centroid_sum[k]).abs() < 1e-6,
+            "centroid sum {axis}: in-memory {} vs bounded {} -- shared shapes are placed differently",
+            mem_w.centroid_sum[k],
+            str_w.centroid_sum[k],
+        );
+        assert!(
+            (mem_w.min[k] - str_w.min[k]).abs() < 1e-6 && (mem_w.max[k] - str_w.max[k]).abs() < 1e-6,
+            "world bounds {axis}: in-memory {:?}..{:?} vs bounded {:?}..{:?}",
+            mem_w.min[k],
+            mem_w.max[k],
+            str_w.min[k],
+            str_w.max[k],
+        );
+    }
+}
+
+/// Where a GLB's triangles are, reduced to numbers that do not depend on
+/// emission order.
+struct WorldTotals {
+    triangles: u64,
+    min: [f64; 3],
+    max: [f64; 3],
+    /// Summed triangle centroids. The discriminating one: an AABB only moves if
+    /// a displaced shape was on the hull, and a triangle count does not move at
+    /// all, but every misplaced triangle shifts this.
+    centroid_sum: [f64; 3],
+}
+
+/// Walk the node tree, compose each placement, and reduce every triangle.
+///
+/// The same reduction `examples/world_check.rs` prints, done where a test can
+/// assert on it. Deliberately a second copy: an example is a separate crate and
+/// reaches only `pub` items, so sharing this would mean putting a test oracle in
+/// the public API. Two copies of a reduction is the cheaper of those.
+fn world_totals(json: &Value, bufs: &[&[u8]]) -> WorldTotals {
+    let empty = vec![];
+    let nodes = json["nodes"].as_array().unwrap_or(&empty);
+    let ident = {
+        let mut m = [0.0; 16];
+        m[0] = 1.0;
+        m[5] = 1.0;
+        m[10] = 1.0;
+        m[15] = 1.0;
+        m
+    };
+    let mut t = WorldTotals {
+        triangles: 0,
+        min: [f64::INFINITY; 3],
+        max: [f64::NEG_INFINITY; 3],
+        centroid_sum: [0.0; 3],
+    };
+    let mut stack: Vec<(usize, [f64; 16])> = json["scenes"][0]["nodes"]
+        .as_array()
+        .unwrap_or(&empty)
+        .iter()
+        .map(|n| (n.as_u64().unwrap() as usize, ident))
+        .collect();
+    while let Some((ni, parent)) = stack.pop() {
+        let node = &nodes[ni];
+        let world = mat_mul(&parent, &node_local(node));
+        if let Some(children) = node.get("children").and_then(Value::as_array) {
+            for c in children {
+                stack.push((c.as_u64().unwrap() as usize, world));
+            }
+        }
+        let Some(mi) = node.get("mesh").and_then(Value::as_u64) else { continue };
+        let prims = json["meshes"][mi as usize]["primitives"].as_array().unwrap();
+        for prim in prims {
+            let pacc = prim["attributes"]["POSITION"].as_u64().unwrap() as usize;
+            let iacc = prim["indices"].as_u64().unwrap() as usize;
+            let pos = decode_positions(json, bufs, pacc);
+            // Read indices here rather than through `decode_indices`, whose
+            // width cross-check assumes one accessor per bufferView. The
+            // bounded path packs every index run into one view at an offset,
+            // which is a different layout and not a defect.
+            let idx = {
+                let acc = &json["accessors"][iacc];
+                let bv = &json["bufferViews"][acc["bufferView"].as_u64().unwrap() as usize];
+                let bin = bufs[bv["buffer"].as_u64().unwrap_or(0) as usize];
+                let base = bv["byteOffset"].as_u64().unwrap_or(0) as usize
+                    + acc["byteOffset"].as_u64().unwrap_or(0) as usize;
+                let count = acc["count"].as_u64().unwrap() as usize;
+                let ct = acc["componentType"].as_u64().unwrap();
+                (0..count)
+                    .map(|i| match ct {
+                        5123 => {
+                            let o = base + i * 2;
+                            u16::from_le_bytes(bin[o..o + 2].try_into().unwrap()) as u64
+                        }
+                        5125 => {
+                            let o = base + i * 4;
+                            u32::from_le_bytes(bin[o..o + 4].try_into().unwrap()) as u64
+                        }
+                        other => panic!("unexpected index componentType {other}"),
+                    })
+                    .collect::<Vec<u64>>()
+            };
+            for tri in idx.chunks_exact(3) {
+                let p: Vec<[f64; 3]> =
+                    tri.iter().map(|&k| transform_point(&world, pos[k as usize])).collect();
+                t.triangles += 1;
+                for k in 0..3 {
+                    t.centroid_sum[k] += (p[0][k] + p[1][k] + p[2][k]) / 3.0;
+                    for v in &p {
+                        t.min[k] = t.min[k].min(v[k]);
+                        t.max[k] = t.max[k].max(v[k]);
+                    }
+                }
+            }
+        }
+    }
+    t
+}
+
+/// The bounded path shares a repeated shape instead of sending it once per
+/// occurrence.
+///
+/// It used to skip this, on the reasoning that grouping "needs every occurrence
+/// co-resident". The geometry does; the decision does not, and that is the whole
+/// change: grouping reads a representation identity, so what the plan has to
+/// carry is that and a placement.
+///
+/// Pinned as an inequality rather than a count, because the number moves with
+/// the fixture. What must hold is that occurrences outnumber meshes at all,
+/// which is false for every version that baked each one.
+#[test]
+fn streaming_bounded_shares_a_repeated_shape() {
+    let Some(content) = crate::test_support::fixture_opt("ara3d/duplex.ifc") else { return };
+    let opts = GltfOptions::default();
+    let (streamed, stats) = export_glb_streaming_bounded(&content, &opts);
+    let (json, _) = parse_glb(&streamed);
+    let nodes = json["nodes"].as_array().unwrap().len();
+    assert!(stats.meshes > 0, "the fixture has geometry");
+    assert!(
+        stats.meshes < nodes - 1,
+        "{} meshes for {} element nodes: nothing was shared",
+        stats.meshes,
+        nodes - 1,
+    );
+    // A shared shape is placed by a node matrix, because occurrences of one
+    // shape differ by rotation as often as by translation.
+    assert!(
+        json["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|n| n.get("matrix").is_some()),
+        "shared shapes are placed, and not by translation",
+    );
+}
+
+/// The bounded path shares at least as much as the in-memory one.
+///
+/// Not necessarily the same amount: both refuse a group that disagrees about
+/// vertex count, but the in-memory path also refuses one where any occurrence
+/// has no instance side-channel, and this one drops that occurrence and keeps
+/// the rest. The world geometry either path produces is pinned by
+/// `streaming_bounded_preserves_world_geometry_on_instanced_model`.
+#[test]
+fn the_bounded_path_shares_at_least_as_much() {
+    let Some(content) = crate::test_support::fixture_opt("ara3d/duplex.ifc") else { return };
+    let opts = GltfOptions::default();
+    let (_, mem) = export_glb_from_result(process_geometry(&content), &opts);
+    let (_, streamed) = export_glb_streaming_bounded(&content, &opts);
+    assert!(
+        streamed.meshes <= mem.meshes,
+        "in-memory emitted {} meshes, bounded {} — bounded found less sharing",
+        mem.meshes,
+        streamed.meshes,
+    );
+    assert!(
+        streamed.vertices <= mem.vertices,
+        "vertices follow meshes: in-memory {}, bounded {}",
+        mem.vertices,
+        streamed.vertices,
+    );
 }
 
 #[test]
@@ -1804,4 +2000,24 @@ fn index_u32_promote_streaming_bounded() {
     let idx = decode_indices(&json, &bin, idx_acc);
     assert!(idx.iter().min() == Some(&0), "index 0 must be present: {idx:?}");
     assert!(idx.contains(&65536), "{idx:?}");
+}
+
+/// The bounded path's plan is per mesh, so its size is the thing that decides
+/// whether a very large model fits: 320,688 occurrences at 240 bytes is 77 MB,
+/// and it was 400 (128 MB) before the shape identity moved to a side table.
+///
+/// Pinned because it is easy to lose by accident: a `u128` field aligns the
+/// whole struct to 16, so adding one costs every other field's padding too, and
+/// nothing else in the type system says so.
+///
+/// 64-bit only. `Arc<str>` and `Option<String>` are narrower on wasm32, so the
+/// number there is a different (also correct) one.
+#[test]
+#[cfg(target_pointer_width = "64")]
+fn the_streamed_mesh_plan_stays_small() {
+    assert_eq!(
+        std::mem::size_of::<StreamedMeshMeta>(),
+        240,
+        "the per-mesh plan grew; see the rep side table in plan_bounded_glb"
+    );
 }

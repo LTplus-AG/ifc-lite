@@ -18,6 +18,14 @@
 #
 # Each line: path, then why it is still here.
 
+# ── NOT source-text: the guard's three conditions co-occur by accident ──
+# These trip READS_A_FILE, SOURCE_LITERAL and TEXT_PREDICATE without the three
+# being related to each other. That is a limitation of a file-level heuristic,
+# not a property of the test. Separating them needs to track which variable
+# holds file contents, which is real static analysis; two cheaper rules were
+# measured and both lost coverage on entries above (4 of 7 and 3 of 7 caught).
+packages/data/scripts/generate-ifc-schema.test.ts                          # behavioural, and carefully so: spawns the generator against a temp copy of the vendored .g.cs data with one marker renamed, then asserts `r.status` is non-zero BEFORE the stderr message, and that stdout lacks "Done.". Its rename/edit helpers assert the mutation changed something, so a no-op edit cannot make a case vacuous. What trips the guard: reads are fixture setup, the .ts literal is a copyFileSync of the script under test, and the .indexOf() calls splice fixture text. Not one assertion touches source text.
+
 # ── Genuinely source-text, and genuinely blocked ──
 apps/viewer/src/components/viewer/toolbar/export-ui-parity.test.tsx         # narrowed to ONE assertion: the CSV success toast. That exporter loads the wasm over a file:// URL, which fetch refuses, so its click cannot be driven in node. JSON -- same code path, same note -- IS driven, in the same test.
 apps/viewer/src/components/viewer/colorful-popover-opacity.test.ts          # a CSS `!important` cascade-order contract. Tailwind utilities are not materialised in the test env, so getComputedStyle would agree with whatever the file said: the "behavioural" form is strictly weaker here, not stronger.
@@ -26,9 +34,14 @@ apps/viewer/src/hooks/modelLoadedGeometryProps.test.ts                    # wiri
 apps/viewer/src/utils/aggregation.test.ts                                   # TWO assertions (was one; #2680 added the shared-bounds-lookup guard for the same reason) (the SearchModal.text.tsx half converted behaviourally). Viewport.tsx's `setCameraCallbacks({ frameSelection, resolveHighlightIds })` sits inside `renderer.init().then(...)`, and `renderer.init()` REJECTS under happy-dom even with `navigator.gpu` stubbed (no real adapter/device, no WebGPU canvas context) -- confirmed empirically, not asserted -- so the callbacks this test pins are never registered in-harness.
 
 # ── Detector false positives: listed so the ratchet passes, not to be converted ──
-# The detector is deliberately lexical rather than data-flow (see the script
-# header), so it cannot tell "read a production module and assert on its text"
-# from "read the artifact this tool just GENERATED and assert on it", nor a text
-# predicate applied to source from one applied to a path.
-apps/viewer/src/components/viewer/toolbar-parity.test.ts                    # every assertion is on the TypeScript AST. The hits are an ARRAY `.includes` and two PATH checks (`file.endsWith('.tsx')`) -- no assertion reads text.
+# The detector now requires the PAIRING (a predicate applied to the value a read
+# produced), which retired the whole "reads somewhere, asserts somewhere" class
+# of false positive. What survives is the price of the remaining approximation:
+# taint is tracked over one flat, unscoped name set, so a name that happens to
+# be reused elsewhere is tainted everywhere. Over-tainting is the deliberate
+# direction -- it makes the gate stricter, and under-tainting is how a ratchet
+# turns into decoration. It still cannot tell "read a production module and
+# assert on its text" from "read the artifact this tool just GENERATED and
+# assert on it".
+apps/viewer/src/components/viewer/toolbar-parity.test.ts                    # every assertion is on the TypeScript AST. The surviving hits are PATH checks (`spec.startsWith('@/')`, `base.endsWith('.js')`) and an array-key `.startsWith`, on names the flat taint set reaches from an unrelated read -- no assertion reads source text.
 packages/create-ifc-lite/test/config-fixers.test.ts                         # asserts on the `vite.config.ts` the scaffolder writes into a temp dir, i.e. on its OUTPUT. Nothing here reads a production source file.

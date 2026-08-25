@@ -351,31 +351,179 @@ use super::*;
         assert!(profile.outer.contains(&Point2::new(6.0, 18.0)));
     }
 
-    #[test]
-    fn test_mirrored_profile_uses_derived_operator() {
-        let content = r#"
-#1=IFCDIRECTION((-1.0,0.0));
-#2=IFCDIRECTION((0.0,1.0));
-#3=IFCCARTESIANPOINT((0.0,0.0));
-#4=IFCCARTESIANTRANSFORMATIONOPERATOR2D(#1,#2,#3,1.0);
-#5=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,2.0,4.0);
-#6=IFCMIRROREDPROFILEDEF(.AREA.,$,#5,#4,$);
+    /// An ASYMMETRIC parent, so the mirror is observable at all.
+    ///
+    /// The previous fixture here mirrored a `2.0 x 4.0` rectangle about its own
+    /// Y-axis: the corner SET maps onto itself, and the assertions were
+    /// `contains()` (order-blind), so `mirror_profile_about_y_axis` could be
+    /// deleted outright and the test still passed. Verified by mutation:
+    /// replacing the outer loop's `p.x = -p.x` with `p.x = p.x` and dropping
+    /// its `reverse()` left the whole `ifc-lite-geometry` lib suite green, and
+    /// `issue_828_sectioned_solid_horizontal` — the only other in-crate
+    /// `IfcMirroredProfileDef` coverage — green too. Stated as a property
+    /// rather than a pass count on purpose: the count was 718 when first
+    /// measured and is 724 today, so a number here goes stale on the next
+    /// commit while "no other test observes the mirror" stays checkable.
+    ///
+    /// This L-shaped outer contour with an off-centre hole pins both halves of
+    /// the reflection: every point's x negates, and each contour's winding
+    /// reverses so an orientation-reversing reflection still hands the earcut
+    /// tessellator a CCW outer loop.
+    const L_WITH_HOLE_IFC: &str = r#"
+#1=IFCCARTESIANPOINT((0.0,0.0));
+#2=IFCCARTESIANPOINT((6.0,0.0));
+#3=IFCCARTESIANPOINT((6.0,2.0));
+#4=IFCCARTESIANPOINT((2.0,2.0));
+#5=IFCCARTESIANPOINT((2.0,5.0));
+#6=IFCCARTESIANPOINT((0.0,5.0));
+#7=IFCPOLYLINE((#1,#2,#3,#4,#5,#6,#1));
+#8=IFCCARTESIANPOINT((3.0,0.5));
+#9=IFCCARTESIANPOINT((5.0,0.5));
+#10=IFCCARTESIANPOINT((5.0,1.5));
+#11=IFCPOLYLINE((#8,#9,#10,#8));
+#12=IFCARBITRARYPROFILEDEFWITHVOIDS(.AREA.,$,#7,(#11));
+#13=IFCMIRROREDPROFILEDEF(.AREA.,$,#12,$,$);
 "#;
 
-        let mut decoder = EntityDecoder::new(content);
+    /// Twice the signed area of a closed contour (shoelace). Positive is CCW.
+    fn signed_area2(points: &[Point2<f64>]) -> f64 {
+        let n = points.len();
+        (0..n)
+            .map(|i| {
+                let a = points[i];
+                let b = points[(i + 1) % n];
+                a.x * b.y - b.x * a.y
+            })
+            .sum()
+    }
+
+    #[test]
+    fn test_mirrored_profile_negates_x_and_reverses_winding() {
+        let mut decoder = EntityDecoder::new(L_WITH_HOLE_IFC);
         let schema = IfcSchema::new();
         let processor = ProfileProcessor::new(schema);
 
-        let profile_entity = decoder.decode_by_id(6).unwrap();
-        let profile = processor
-            .process(&profile_entity, &mut decoder, TessellationQuality::Medium)
+        let parent = processor
+            .process(
+                &decoder.decode_by_id(12).unwrap(),
+                &mut decoder,
+                TessellationQuality::Medium,
+            )
+            .unwrap();
+        let mirrored = processor
+            .process(
+                &decoder.decode_by_id(13).unwrap(),
+                &mut decoder,
+                TessellationQuality::Medium,
+            )
             .unwrap();
 
-        assert_eq!(profile.outer.len(), 4);
-        assert!(profile.outer.contains(&Point2::new(1.0, -2.0)));
-        assert!(profile.outer.contains(&Point2::new(-1.0, -2.0)));
-        assert!(profile.outer.contains(&Point2::new(-1.0, 2.0)));
-        assert!(profile.outer.contains(&Point2::new(1.0, 2.0)));
+        // Sanity: the parent really is asymmetric about x, so a dropped
+        // negation cannot hide, and it is authored CCW with a hole.
+        assert!(
+            parent.outer.iter().any(|p| p.x != 0.0),
+            "fixture must be off the mirror axis"
+        );
+        assert!(
+            signed_area2(&parent.outer) > 0.0,
+            "fixture outer contour must be authored CCW"
+        );
+        assert_eq!(parent.holes.len(), 1, "fixture must carry a hole");
+
+        // x -> -x, and the point order reverses.
+        let n = parent.outer.len();
+        assert_eq!(mirrored.outer.len(), n);
+        for i in 0..n {
+            let src = parent.outer[n - 1 - i];
+            let got = mirrored.outer[i];
+            assert!(
+                (got.x + src.x).abs() < 1e-9 && (got.y - src.y).abs() < 1e-9,
+                "outer[{i}]: expected ({}, {}), got ({}, {})",
+                -src.x,
+                src.y,
+                got.x,
+                got.y
+            );
+        }
+
+        // The hole travels with it — same negation, same reversal.
+        assert_eq!(mirrored.holes.len(), 1);
+        let (ph, mh) = (&parent.holes[0], &mirrored.holes[0]);
+        assert_eq!(mh.len(), ph.len());
+        for i in 0..ph.len() {
+            let src = ph[ph.len() - 1 - i];
+            let got = mh[i];
+            assert!(
+                (got.x + src.x).abs() < 1e-9 && (got.y - src.y).abs() < 1e-9,
+                "hole[{i}]: expected ({}, {}), got ({}, {})",
+                -src.x,
+                src.y,
+                got.x,
+                got.y
+            );
+        }
+
+        // The reflection is orientation-reversing; the compensating `reverse()`
+        // must hand the tessellator the SAME chirality it started with, or
+        // downstream earcut emits inside-out triangles.
+        assert!(
+            signed_area2(&mirrored.outer) > 0.0,
+            "mirrored outer must stay CCW, got area2 {}",
+            signed_area2(&mirrored.outer)
+        );
+        assert!(
+            signed_area2(mh).signum() == signed_area2(ph).signum(),
+            "mirrored hole must keep the parent's chirality"
+        );
+    }
+
+    /// `IfcMirroredProfileDef` redeclares `Operator` as derived (`*`) in IFC4,
+    /// so `process_derived_with_depth` short-circuits on the subtype and never
+    /// reads attribute 3. Pin that with an Operator that WOULD move the profile
+    /// if it were applied: the result must be the bare mirror.
+    #[test]
+    fn test_mirrored_profile_ignores_any_supplied_operator() {
+        let content = r#"
+#1=IFCCARTESIANPOINT((0.0,0.0));
+#2=IFCCARTESIANPOINT((6.0,0.0));
+#3=IFCCARTESIANPOINT((6.0,2.0));
+#4=IFCCARTESIANPOINT((2.0,2.0));
+#5=IFCCARTESIANPOINT((2.0,5.0));
+#6=IFCCARTESIANPOINT((0.0,5.0));
+#7=IFCPOLYLINE((#1,#2,#3,#4,#5,#6,#1));
+#12=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#7);
+#14=IFCDIRECTION((0.0,1.0));
+#15=IFCCARTESIANPOINT((100.0,200.0));
+#16=IFCCARTESIANTRANSFORMATIONOPERATOR2D(#14,$,#15,3.0);
+#17=IFCMIRROREDPROFILEDEF(.AREA.,$,#12,#16,$);
+"#;
+        let mut decoder = EntityDecoder::new(content);
+        let schema = IfcSchema::new();
+        let processor = ProfileProcessor::new(schema);
+        let mirrored = processor
+            .process(
+                &decoder.decode_by_id(17).unwrap(),
+                &mut decoder,
+                TessellationQuality::Medium,
+            )
+            .unwrap();
+
+        // Bare mirror of (6,0) is (-6,0). Had the operator (rotate +90 deg,
+        // scale 3, translate (100,200)) been applied on top, no point would
+        // sit anywhere near it.
+        assert!(
+            mirrored
+                .outer
+                .iter()
+                .any(|p| (p.x + 6.0).abs() < 1e-9 && p.y.abs() < 1e-9),
+            "expected the bare mirror; got {:?}",
+            mirrored.outer
+        );
+        assert!(
+            mirrored.outer.iter().all(|p| p.x <= 1e-9 && p.y <= 5.0 + 1e-9),
+            "no point may be displaced by the ignored operator; got {:?}",
+            mirrored.outer
+        );
     }
 
     // ── trim_polyline / SweptDiskSolid trim-param coverage ────────────────────

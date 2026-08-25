@@ -102,4 +102,31 @@ describe('node stamping is scoped to the relay', () => {
     await client.getBinary('https://node1.field.dalux.com/service/api/2.0/x/content');
     expect(seen[2]).toContain('daluxNode=node2');
   });
+
+  it('does not stamp a URL whose origin merely has the relay origin as a string prefix', async () => {
+    // Both `stampNode` and `nodeSelectorFor` gate on `url.origin !== <relay
+    // origin>`, which is correct exact-origin equality. A same-origin check
+    // implemented instead as `!origin.startsWith(relayOrigin)` would still
+    // reject a wholly different host (the `cdn.dalux.com` cases above), but
+    // would accept "https://node1.field.dalux.com.evil.com" — a different,
+    // attacker-controlled registrable domain whose origin string literally
+    // starts with the relay's. Nothing above exercises that shape.
+    const seen: string[] = [];
+    const ctx = {
+      fetch: async (url: string) => {
+        seen.push(url);
+        return new Response(new ArrayBuffer(2), { status: 200 });
+      },
+      log: { debug() {}, error() {}, info() {}, warn() {} },
+    } as unknown as ConstructorParameters<typeof BrowserDaluxApiClient>[1];
+
+    const client = new BrowserDaluxApiClient(
+      { baseUrl: 'https://node1.field.dalux.com/service/api', apiKey: 'k', node: 'node2' },
+      ctx,
+    );
+
+    const lookalike = 'https://node1.field.dalux.com.evil.com/service/api/2.0/x/content';
+    await client.getBinary(lookalike);
+    expect(seen[0]).toBe(lookalike);
+  });
 });

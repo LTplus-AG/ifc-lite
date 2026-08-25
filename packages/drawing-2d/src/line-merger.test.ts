@@ -118,6 +118,58 @@ describe('mergeCollinearLines', () => {
       expect(merged).toHaveLength(2);
     });
 
+    it('bridges a gap sitting EXACTLY on the tolerance', () => {
+      // The two cases above straddle the boundary without landing on it, so
+      // `next.t0 <= current.t1 + gapTolerance` could become `<` and both would
+      // still pass -- measured: the whole package stays at 425/425.
+      //
+      // The exact-equality case is not exotic here. Extracted 2D lines come
+      // from geometry that shares vertices, so a wall edge split by an opening
+      // boundary produces segments meeting at a gap of precisely zero or
+      // precisely the snapping step. Getting this wrong emits two abutting
+      // segments where the drawing should show one continuous line -- a
+      // hairline break in the exported DXF or SVG, not an error.
+      //
+      // 0.25 and 1.25 are used because both are exactly representable in
+      // binary, so `1 + 0.25 === 1.25` holds structurally and this case really
+      // does sit ON the boundary rather than near it.
+      //
+      // 0.01/1.01 would in fact also work here -- `1 + 0.01 === 1.01` is true,
+      // the rounding happens to land on the same double -- but only by
+      // coincidence of this particular pair, and a test whose exactness rests
+      // on a rounding coincidence is one nobody can safely edit. Powers of two
+      // make the property independent of the arithmetic.
+      const merged = mergeCollinearLines(
+        [seg(0, 0, 1, 0), seg(1.25, 0, 2, 0)],
+        { gapTolerance: 0.25 },
+      );
+      expect(merged).toHaveLength(1);
+      expect(lengthOf(merged[0])).toBeCloseTo(2, 9);
+    });
+
+    it('does NOT bridge a gap one representable step beyond the tolerance', () => {
+      // The other side of the same boundary, at the smallest separation a
+      // double can express. Without this, a change from `<=` to `<` would be
+      // caught but a widening of the tolerance itself would not.
+      //
+      // `Number.EPSILON` is exactly one ULP here, not an approximation: 1.25
+      // lies in the binade [1, 2), where the spacing between representable
+      // doubles is exactly 2^-52 — which is what `Number.EPSILON` is. So
+      // `1.25 + Number.EPSILON` is the very next double after the boundary,
+      // and this case fails the moment the comparison admits anything above it.
+      //
+      // It survives the parametric projection, which was the real question —
+      // `t0` is a projection onto the reference direction, not the literal, so
+      // an epsilon could have been rounded away in transit. Measured: it is
+      // not. An earlier draft used `1e-9`, roughly 4.5 million ULPs out, which
+      // pinned the boundary far more loosely than the wording implied.
+      const merged = mergeCollinearLines(
+        [seg(0, 0, 1, 0), seg(1.25 + Number.EPSILON, 0, 2, 0)],
+        { gapTolerance: 0.25 },
+      );
+      expect(merged).toHaveLength(2);
+    });
+
     it('applies the DEFAULT gapTolerance when options are omitted entirely', () => {
       // The default (0.01) is what production passes: `drawing-generator`
       // calls `mergeDrawingLines(allLines)` with no options object, so the

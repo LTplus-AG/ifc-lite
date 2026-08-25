@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { GeometryQuality, GeometryResult, MeshData } from '@ifc-lite/geometry';
+import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { GeometryProcessor } from '@ifc-lite/geometry';
 import { extractGlbMapping } from './glb.js';
 import { generateLod0 } from './lod0-generator.js';
@@ -10,7 +10,6 @@ import type { GenerateLod1Result, Lod1MetaJson, Lod0Json, LodInput, Vec3 } from 
 import { toIfcArrayBuffer } from './lod-geometry-utils.js';
 
 export type GenerateLod1Options = {
-  quality?: GeometryQuality;
   /**
    * Test-only hook to simulate meshing failure and force fallback.
    * Not intended for production use.
@@ -136,7 +135,7 @@ export async function generateLod1(input: LodInput, options: GenerateLod1Options
     }
 
     const buffer = toIfcArrayBuffer(input);
-    const gp = new GeometryProcessor({ quality: options.quality });
+    const gp = new GeometryProcessor();
     let glb: Uint8Array;
     let mapping: ReturnType<typeof extractGlbMapping>;
     try {

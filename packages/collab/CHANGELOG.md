@@ -1,5 +1,133 @@
 # @ifc-lite/collab
 
+## 0.6.0
+
+### Minor Changes
+
+- [#3090](https://github.com/LTplus-AG/ifc-lite/pull/3090) [`228bbe7`](https://github.com/LTplus-AG/ifc-lite/commit/228bbe730522148ea797780c5acd08502b18a3a3) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `mergeBranch(parent, branch, 'layer')` silently dropping every edit the branch made to an entity that already existed in the parent.
+  
+  The `'layer'` strategy snapshotted the branch as IFCX and fed the result to
+  `seedFromIfcx`. That seeder routes every node through `createEntity`, which
+  is a deliberate no-op on a path the doc already holds — right for seeding a
+  doc from a snapshot, wrong for merging. Since a branch forks from its
+  parent, essentially every entity the branch *modified* was already present
+  in the merge target, so the merge landed only the branch's brand-new
+  entities and discarded all of the modifications: attributes, children,
+  inherits, psets, quantities, classifications, materials and geometry refs
+  alike.
+  
+  A new `applyIfcxOverlay(doc, file)` applies an IFCX file as a layer of
+  opinions rather than as a seed, and `mergeBranch('layer')` now uses it. It
+  creates entities the doc lacks exactly as the seeder does; for entities
+  already present it writes the file's opinions on top — values overwrite,
+  `null` removes a flat attribute, child or inherit, an `ifclite::deleted:
+  true` node deletes — and leaves untouched anything the file says nothing
+  about.
+  
+  Read that last clause narrowly. `mergeBranch('layer')` sends a FULL snapshot,
+  so the file has an opinion on nearly everything: a value the parent changed
+  after the fork is overwritten by the branch's fork-time value even when the
+  branch never edited it. This is the trade the release makes: previously a
+  layer merge dropped the branch's edits, now it applies them, and the price is
+  that the branch's fork-time value can win over a newer parent one. Attributes
+  and geometry behave the same way here; geometry is not a special case.
+  
+  One consequence is specific to geometry. Blob GC derives the set it RETAINS
+  from the live doc and sweeps the complement, so reverting a `blobHash` flips
+  which blob counts as an orphan; a sweep between the parent's re-mesh and the
+  merge can leave the restored reference pointing at a blob that has been
+  deleted.
+  
+  Geometry records go through `upsertGeometry` rather than `createGeometry`,
+  which returns an existing record untouched. Without that, a branch that
+  re-meshed geometry the parent already had merged "successfully" and left the
+  parent on the old blob hash.
+  
+  `seedFromIfcx` is unchanged in both its behaviour and its options: it stays
+  additive and idempotent, because `apps/viewer` and `snapshot/worker.ts` use
+  it to seed live session docs, where overlaying a snapshot onto live edits
+  would be the worse bug on the more common path.
+  
+  One limit is worth stating plainly, since it is a property of the wire
+  format and not of this fix: a full IFCX snapshot emits only what an entity
+  *has*, so an entity or attribute the branch deleted is simply absent rather
+  than nulled or tombstoned. `mergeBranch('layer')` therefore still does not
+  propagate deletions made on the branch. `applyIfcxOverlay` does honour
+  deletions when a layer states them explicitly.
+  
+  A second limit, this one in the code: a nulled pset or quantity property is
+  NOT removed. `extractMinimalLayer` flattens those into
+  `bsi::ifc::v5a::<Set>::<Prop>` attribute keys, so the removal arrives as an
+  attribute null and is looked for in the flat attribute map, where it never
+  was. The property survives and the call returns normally. Only flat
+  attributes, children and inherits are removed today.
+
+- [#3092](https://github.com/LTplus-AG/ifc-lite/pull/3092) [`e6caf11`](https://github.com/LTplus-AG/ifc-lite/commit/e6caf11a8f8d9d8634a6811b6705ab3367cd02e0) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Stop a collab snapshot round trip from inventing per-entity provenance, and carry the real thing on the wire.
+  
+  `snapshotToIfcx` wrote nothing about who created an entity or when, because
+  IFCX nodes had no provenance slot. `seedFromIfcx` then filled both fields in
+  from the file header — which names whoever serialized the *file*, not
+  whoever authored each entity, and for a snapshot of a collab doc that is the
+  snapshotter plus the write clock. An entity carrying `createdBy: 'ada'` /
+  `createdAt: '2019-05-05'` came back claiming a different author and a
+  different date, in a shape indistinguishable from genuine attribution. A
+  missing field reads as "unknown"; a fabricated one gets trusted.
+  
+  Two changes:
+  
+  - **A wire carrier.** `ifclite::meta` (new member of `IFCLITE_ATTR`, the
+    extension namespace that already carries collab's classifications,
+    materials and geometry refs) holds `createdBy`, `createdAt`,
+    `lastEditedBy`, `lastEditedAt` and `previousPath`, so real provenance
+    survives snapshot → seed. Values are shape-gated on the way in: only
+    strings are read, and a foreign value under the key stays an ordinary
+    flat attribute. Every field carried is written once at entity creation
+    and never re-stamped — a per-edit stamp would put this attribute in
+    every minimal layer and give the merge engine a component that conflicts
+    on every concurrent edit.
+  - **No more header defaults.** `seedFromIfcx` and `seedFromStep` no longer
+    copy `header.author` / `header.timestamp` onto every entity, and no longer
+    stamp the read clock as `createdAt`. What the wire does not say now stays
+    unset. The file-level record is still available as `meta.header` /
+    `meta.stepHeader`.
+  
+  `createEntity` also now writes the `bsi::ifc::class` attribute when given an
+  `ifcClass`. `meta.ifcClass` is doc-local bookkeeping with no wire form, so
+  an entity whose class was only ever passed as that option snapshotted
+  without a class and came back classless; the MCP draft path had already
+  open-coded the attribute at its own call site to work around this.
+  
+  Scope: `lastEditedBy` / `lastEditedAt` survive only because nothing
+  re-stamps them today. Relationships (the doc's separate `relationships`
+  map) still do not survive a snapshot — IFCX has no relationship node and
+  no first-party writer populates that map; `snapshot-relationships.test.ts`
+  pins that as a tripwire rather than papering over it.
+
+### Patch Changes
+
+- [#3022](https://github.com/LTplus-AG/ifc-lite/pull/3022) [`66697fc`](https://github.com/LTplus-AG/ifc-lite/commit/66697fc57de1de4475a2c5eed4361e0e378e0f7a) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `sweepBlobs` reporting a blob as reclaimed even when the underlying `store.delete()` call failed.
+  
+  `sweepBlobs` computed how many deletes actually succeeded but then discarded that count and returned `decision.reclaimBytes` unconditionally — the full byte total `planBlobSweep` had planned to free, regardless of whether any individual `delete()` call reported failure (a remote backend 404, a race with another sweep, a transient error). A caller using the return value for storage-capacity accounting would believe more space was freed than actually was, while the undeleted blob kept consuming storage. `planBlobSweep` now records each dropped hash's byte length on the `SweepDecision`, and `sweepBlobs` sums only the bytes for hashes whose `delete()` actually returned `true`.
+
+- [#3004](https://github.com/LTplus-AG/ifc-lite/pull/3004) [`2580830`](https://github.com/LTplus-AG/ifc-lite/commit/25808308bbbc63eb0fd8b25e6dd0c08864adb6a8) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `snapshotToIfcx` writing a literal `null` for a flat attribute value that its own counterpart, `seedFromIfcx`, treats as an IFCX removal opinion and silently drops.
+  
+  A doc attribute can legitimately hold `null` (e.g. a user clearing a root
+  attribute like `Description` through the viewer's mutation bridge). Before
+  this fix, `snapshotToIfcx` serialized that value verbatim, so a
+  snapshot -> seed -> snapshot cycle was not idempotent: the first snapshot
+  carried `"Description": null`, the intervening seed dropped the key per
+  `from-ifcx.ts`'s documented contract, and the second snapshot of the
+  re-seeded doc omitted the key entirely - two snapshots of "the same" doc
+  state disagreeing with each other.
+  
+  `snapshotToIfcx` now drops null-valued attributes on the way out, matching
+  the reader's contract instead of handing it a value it is guaranteed to
+  discard on the next round-trip.
+- Updated dependencies [[`e6caf11`](https://github.com/LTplus-AG/ifc-lite/commit/e6caf11a8f8d9d8634a6811b6705ab3367cd02e0), [`9359bc4`](https://github.com/LTplus-AG/ifc-lite/commit/9359bc488173585b2b90e124cc66dcf8292c4be9), [`f6febcc`](https://github.com/LTplus-AG/ifc-lite/commit/f6febcc2d4986e79b3c44d63853bb72a16475c65), [`f7e26e4`](https://github.com/LTplus-AG/ifc-lite/commit/f7e26e4200e1475728d4976142b49cb408400a8e), [`412f78c`](https://github.com/LTplus-AG/ifc-lite/commit/412f78c1bf4907f8c230fc149bbb00e0711b6689), [`487866d`](https://github.com/LTplus-AG/ifc-lite/commit/487866dac131bf50a0b3008ddce5db933768dca2), [`00f6e79`](https://github.com/LTplus-AG/ifc-lite/commit/00f6e79c22641ff59bfb3327d910b04f9a164d8b), [`116a3e9`](https://github.com/LTplus-AG/ifc-lite/commit/116a3e94de753b95fa94b2d6c41a0171cd254729)]:
+  - @ifc-lite/ifcx@3.0.0
+  - @ifc-lite/data@3.4.1
+  - @ifc-lite/mutations@1.27.0
+
 ## 0.5.0
 
 ### Minor Changes

@@ -173,6 +173,23 @@ describe('parseAuthorizationCallback', () => {
     ).toThrow(OAuthRedirectOriginError);
   });
 
+  it('rejects an origin that merely has the expected origin as a string prefix', () => {
+    // A same-origin check implemented as `origin.startsWith(expected)` (or
+    // `.includes(...)`) instead of exact equality would accept this: the
+    // string "https://app.example.com.evil.com" literally starts with
+    // "https://app.example.com", but it is a *different* origin — a
+    // registrable domain the attacker controls. This is the redirect-URI
+    // check matching "too loosely" (prefix rather than exact) that the
+    // origin check exists to rule out; nothing above exercises a callback
+    // whose origin shares that prefix relationship with the expected one.
+    expect(() =>
+      parseAuthorizationCallback(
+        `https://app.example.com.evil.com/callback?code=x&state=${expectedState}`,
+        options,
+      ),
+    ).toThrow(OAuthRedirectOriginError);
+  });
+
   it('surfaces a provider-returned error before checking state', () => {
     expect(() =>
       parseAuthorizationCallback(

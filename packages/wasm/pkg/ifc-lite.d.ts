@@ -471,6 +471,9 @@ export class IfcAPI {
      * `#`-reference closure is added so the subset never dangles a reference.
      * `mutations_json` carries `MutablePropertyView` edits (attribute updates +
      * property-set synthesis); empty ⇒ none. See `export_step_json` for the shape.
+     * A non-empty but malformed `mutations_json` throws rather than silently
+     * exporting the model with none of the caller's edits applied — mirrors
+     * `exportGlb`'s and `exportMerged`'s fail-closed contract on this same API.
      */
     exportStep(content: Uint8Array, schema: string, included: Uint32Array, mutations_json: string): Uint8Array;
     /**
@@ -1594,9 +1597,9 @@ export class SymbolicRepresentationCollection {
     readonly truncatedLimit: number | undefined;
     /**
      * Which bound stopped extraction, else `undefined`. One of
-     * `element-count`, `output-bytes`, `item-depth`, `item-revisits` —
-     * the same kebab-case strings the JSON path emits, so a consumer reading
-     * either surface reads one vocabulary.
+     * `element-count`, `output-bytes`, `item-depth`, `item-revisits`,
+     * `item-cycle` — the same kebab-case strings the JSON path emits, so a
+     * consumer reading either surface reads one vocabulary.
      */
     readonly truncatedReason: string | undefined;
 }

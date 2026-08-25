@@ -162,4 +162,15 @@ describe('decodeAsciiPoints — PTS', () => {
     expect(chunk.intensities).toBeDefined();
     expect(chunk.intensities![0]).toBeCloseTo(Math.round(0.5 * 65535), 0);
   });
+
+  // The observed max sits exactly ON the 0..1/needs-scaling boundary, not
+  // merely near it: `intensityMax > 1.0` must stay a strict `>`, since at
+  // exactly 1.0 the source is already normalised (scale 65535) — treating
+  // 1.0 as "needs 0..255 rescaling" (`>=`) divides the result by ~255.
+  it('treats an intensity max of exactly 1.0 as already-normalised, not 0..255', () => {
+    const buf = enc.encode('1 2 3 1.0\n4 5 6 0.25\n');
+    const chunk = decodeAsciiPoints(buf, 'pts');
+    expect(chunk.intensities![0]).toBe(65535);
+    expect(chunk.intensities![1]).toBeCloseTo(Math.round(0.25 * 65535), 0);
+  });
 });

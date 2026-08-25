@@ -350,8 +350,10 @@ export interface RenderOptions {
    * kernel to occlude the direct sun term. Absent or `enabled: false` (the
    * default) skips the pass entirely, so the hot path pays only a boolean check.
    *
-   * - `resolution`: square shadow-map side in texels (default 2048). A
-   *   device/Quality dial, clamped to a minimum of 256.
+   * - `resolution`: square shadow-map side in texels. `0` or unset means Auto —
+   *   the renderer picks from the device's texture limit (2048 on a 4096-capped
+   *   iGPU, 4096 on an 8192+ GPU). A manual value is honoured but clamped to the
+   *   device limit so it can't fail texture allocation. A device/Quality dial.
    * - `sunAngleDeg`: the sun's apparent angular diameter in degrees (default
    *   ~0.53, the real sun on a clear sky). It sets shadow-edge SOFTNESS, not the
    *   sun position: larger widens the penumbra. The renderer maps it to the PCF

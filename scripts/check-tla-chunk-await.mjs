@@ -66,6 +66,12 @@
  * checking only "on the sync path today" is exactly the gate that stays
  * green until the next chunk reshuffle moves a latent pair onto that path.
  *
+ * The check also refuses to report success when it had nothing to inspect: a
+ * missing assets directory, a directory with no `.js` chunks, and chunks
+ * among which not one is `__tla`-wrapped each exit 1. In all three every scan
+ * below runs over an empty set, so "0 violations" would mean "0 chunks
+ * examined". Its own behaviour is pinned by check-tla-chunk-await.test.mjs.
+ *
  * Run via `pnpm check:tla-chunk-await` (wired into the viewer-e2e CI job,
  * right after the viewer build it inspects). Requires a built viewer
  * (`pnpm turbo build --filter=@ifc-lite/viewer`).
@@ -75,7 +81,15 @@ import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+// `--root <dir>` points the check at an alternative repo root, matching the
+// convention the other gate scripts use so their companion tests can drive
+// them over a synthetic tree (see check-collab-room-model-target.mjs). CI and
+// `pnpm check:tla-chunk-await` pass no argument and get the real repo.
+const rootArgIndex = process.argv.indexOf('--root');
+const ROOT =
+  rootArgIndex !== -1 && process.argv[rootArgIndex + 1]
+    ? process.argv[rootArgIndex + 1]
+    : join(dirname(fileURLToPath(import.meta.url)), '..');
 const ASSETS_DIR = join(ROOT, 'apps', 'viewer', 'dist', 'assets');
 
 if (!existsSync(ASSETS_DIR)) {
@@ -88,6 +102,18 @@ if (!existsSync(ASSETS_DIR)) {
 }
 
 const files = readdirSync(ASSETS_DIR).filter((f) => f.endsWith('.js'));
+
+if (files.length === 0) {
+  console.error(
+    `❌ ${relative(ROOT, ASSETS_DIR)} exists but contains no .js chunks -- this is\n` +
+      `not a clean build, it is an INTERRUPTED or misconfigured one. Nothing was\n` +
+      `inspected: an empty chunk list is not the same as zero violations, and\n` +
+      `reporting "0 chunks checked" as success would silently stop guarding the\n` +
+      `moment the build tool changes where it emits chunks. Rebuild the viewer:\n\n` +
+      `    pnpm turbo build --filter=@ifc-lite/viewer\n`,
+  );
+  process.exit(1);
+}
 
 /** entry: "name" | "local as exported" -> the EXPORTED (public) name. */
 function exportedNameOf(entry) {
@@ -118,6 +144,50 @@ for (const file of files) {
       break;
     }
   }
+}
+
+// A build that emitted chunks but not one `__tla`-wrapped chunk has not been
+// checked -- it has been walked past. Every loop below is keyed off
+// `tlaExporters`, so with the set empty they iterate over nothing and
+// `violations` is empty because nothing was examined, not because nothing was
+// wrong. That is the same vacuous pass the empty-`files` guard above closes,
+// one level deeper, and the old success line advertised it in its own numbers
+// (`0 static import(s) ... (0 __tla-wrapped chunk(s) among 2 emitted
+// chunk(s))`) while exiting 0.
+//
+// Zero wrapped chunks is not a state a healthy viewer build reaches.
+// `vite-plugin-top-level-await` is registered for both the app build and the
+// worker build (apps/viewer/vite.config.ts), and it wraps every chunk it
+// flags for transformation -- which includes any chunk containing a dynamic
+// `import()`, of which this code-split app emits many. So an empty set means
+// the plugin is gone or renamed, its `__tla` fingerprint changed shape, or the
+// build now emits its chunks somewhere this check does not look. In all three
+// the check is inert, and an inert gate must say so rather than tick.
+//
+// Deliberately NOT extended to `staticTlaImports === 0`: a `__tla`-wrapped
+// chunk that is only ever `import()`ed dynamically is a perfectly ordinary
+// lazy route, and the plugin makes that shape safe by construction.
+if (tlaExporters.size === 0) {
+  console.error(
+    `❌ ${relative(ROOT, ASSETS_DIR)} has ${files.length} .js chunk(s) but NOT ONE of\n` +
+      `them exports a \`__tla\` binding, so this check examined nothing. Zero\n` +
+      `violations here means zero chunks inspected, not a clean bundle -- every\n` +
+      `scan in this gate is keyed off the set of __tla-wrapped chunks, and that\n` +
+      `set is empty.\n\n` +
+      `A viewer build reaches this state only if something changed underneath the\n` +
+      `check:\n\n` +
+      `  * vite-plugin-top-level-await was removed from apps/viewer/vite.config.ts,\n` +
+      `    or is no longer applied to the build that produced these chunks;\n` +
+      `  * the plugin was upgraded and no longer emits the literal \`__tla\` export\n` +
+      `    this check fingerprints (see the header of this file);\n` +
+      `  * the build emits its chunks somewhere other than the directory above.\n\n` +
+      `If the plugin was removed ON PURPOSE, this gate guards nothing any more:\n` +
+      `delete it and its CI wiring in the same change rather than leaving it\n` +
+      `green and inert. Otherwise restore the plugin, or update this check's\n` +
+      `fingerprint to whatever the new plugin version emits, and re-run:\n\n` +
+      `    pnpm turbo build --filter=@ifc-lite/viewer\n`,
+  );
+  process.exit(1);
 }
 
 const violations = [];

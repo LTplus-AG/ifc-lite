@@ -63,7 +63,7 @@ import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { recordSourceLineDelivery } from './delta-modification-ledger.js';
 import { nominateDeliveredInPlaceEdits } from './in-place-nomination.js';
 import { createSourceRefReader, decodeRange } from './source-ref-bounds.js';
-import { findLengthUnitReference, normalizeMapUnitName } from './step-georeferencing.js';
+import { findLengthUnitReference, normalizeMapUnitName } from './step-map-unit.js';
 import { authoredEntityRefs, type EffectiveEntityIndex } from './effective-index.js';
 import {
   HAS_PROPERTY_SETS_SLOT,

@@ -1003,9 +1003,9 @@ function collectMeshes(
           ...(origin ? { origin } : {}),
           ...(localBounds ? { localBounds } : {}),
           ...(localToWorld ? { localToWorld } : {}),
-          // Provenance for the Model/Types switch (0=occurrence, 1=orphan type,
-          // 2=instanced type). Older wasm bundles lack the getter → default 0.
-          geometryClass: mesh.geometryClass ?? 0,
+          geometryClass: mesh.geometryClass ?? 0, // 0=occurrence 1=orphan type 2=instanced type; older wasm lacks all three getters here
+          ...(mesh.geometryItemId !== undefined ? { geometryItemId: mesh.geometryItemId } : {}), // #3199: two DISJOINT ids, TWO
+          ...(mesh.materialId !== undefined ? { materialId: mesh.materialId } : {}), // spreads as in convertMeshCollectionToBatch
         };
         session.pendingTransfers.push(positions.buffer, normals.buffer, indices.buffer);
         session.cumulativeMeshBytes += positions.byteLength + normals.byteLength + indices.byteLength;

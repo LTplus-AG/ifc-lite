@@ -233,6 +233,25 @@ describe('CoordinateHandler', () => {
     });
   });
 
+  describe('calculateCentroid', () => {
+    // Distinct, non-palindromic per-axis ranges: an x/y/z component swap or
+    // wrong-axis read (e.g. z computed from min.x instead of min.z) changes
+    // the result here but is invisible on a fixture where two axes share a
+    // range or straddle zero symmetrically.
+    it('averages min/max independently per axis', () => {
+      const bounds = {
+        min: { x: 10, y: 200, z: 3000 },
+        max: { x: 50, y: 600, z: 3800 },
+      };
+
+      expect(handler.calculateCentroid(bounds)).toEqual({
+        x: 30,
+        y: 400,
+        z: 3400,
+      });
+    });
+  });
+
   describe('needsShift', () => {
     it('should return false for small coordinates', () => {
       const bounds = {

@@ -129,6 +129,109 @@ function buildLazFileWithBbox(
   return new Blob([buf], { type: 'application/octet-stream' });
 }
 
+const RECORD_LEN_RGB = 26; // LAS point format 2 (has RGB, no GPS time — rgbOffset 20)
+
+/** Same layout as `buildLazFile` but declares point format 2 (RGB) so
+ *  `open()`'s RGB-probe branch (rgbScale detection) actually runs — the
+ *  plain `buildLazFile` header has `hasRgb: false` and skips it entirely. */
+function buildLazFileWithRgbFormat(pointCount: number): Blob {
+  const headerSize = 227;
+  const buf = new ArrayBuffer(headerSize + pointCount * RECORD_LEN_RGB);
+  const view = new DataView(buf);
+  view.setUint32(0, 0x4653414c, true); // "LASF"
+  view.setUint8(24, 1);
+  view.setUint8(25, 2);
+  view.setUint16(94, headerSize, true);
+  view.setUint32(96, headerSize, true);
+  view.setUint32(100, 0, true);
+  view.setUint8(104, 2); // point data format 2 -> hasRgb
+  view.setUint16(105, RECORD_LEN_RGB, true);
+  view.setUint32(107, pointCount, true);
+  view.setFloat64(131, 1, true);
+  view.setFloat64(139, 1, true);
+  view.setFloat64(147, 1, true);
+  return new Blob([buf], { type: 'application/octet-stream' });
+}
+
+/**
+ * Stand-in for the emscripten module whose `getPoint` writes a fixed RGB
+ * triple (all three channels set to `rgbValue`) at the format-2 RGB
+ * offset (byte 20, u16 LE × 3) on every call, so both the probe pass and
+ * the real read see the same channel value.
+ */
+function stubLazPerfModuleWithRgb(rgbValue: number): LazPerfModule {
+  const heap = new Uint8Array(1 << 16);
+  let next = 8;
+  class StubLasZip implements LasZipInstance {
+    open(): void { /* no-op — the stub never decompresses */ }
+    getPoint(dest: number): void {
+      const view = new DataView(heap.buffer, heap.byteOffset, heap.byteLength);
+      view.setUint16(dest + 20, rgbValue, true);
+      view.setUint16(dest + 22, rgbValue, true);
+      view.setUint16(dest + 24, rgbValue, true);
+    }
+    getCount(): number { return 0; }
+    getPointLength(): number { return RECORD_LEN_RGB; }
+    getPointFormat(): number { return 2; }
+    delete(): void { /* no-op */ }
+  }
+  return {
+    LASZip: StubLasZip,
+    HEAPU8: heap,
+    _malloc: (size: number) => {
+      const ptr = next;
+      next += size;
+      return ptr;
+    },
+    _free: () => { /* no-op */ },
+  };
+}
+
+describe('LazStreamingSource RGB rescale (8-bit-stuffed detection)', () => {
+  let restore: (() => void) | null = null;
+
+  afterEach(() => {
+    restore?.();
+    restore = null;
+  });
+
+  it('upscales 8-bit-stuffed RGB (max channel in probe <= 255) by 65535/255', async () => {
+    // Mutation testing found `open()`'s rgbScale computation
+    // (`max > 0 && max <= 255 ? 65535 / 255 : 1`) had zero test coverage:
+    // hard-coding `rgbScale = 1` (i.e. never rescaling) left every test
+    // in this file green. Pin the rescale side of the boundary here, and
+    // the no-rescale side in the sibling test below — a conjunction like
+    // this hides a bug if only one side is ever exercised.
+    restore = setLazPerfLoaderForTesting(async () => stubLazPerfModuleWithRgb(200));
+
+    const src = new LazStreamingSource(buildLazFileWithRgbFormat(8));
+    await src.open();
+    const chunk = await src.next(8);
+    expect(chunk).not.toBeNull();
+    expect(chunk!.colors).toBeDefined();
+    // raw channel = 200 (<=255) -> rescaled to (200 * 65535/255) / 65535 = 200/255.
+    for (let i = 0; i < chunk!.pointCount; i++) {
+      expect(chunk!.colors![i * 3]).toBeCloseTo(200 / 255, 5);
+      expect(chunk!.colors![i * 3 + 1]).toBeCloseTo(200 / 255, 5);
+      expect(chunk!.colors![i * 3 + 2]).toBeCloseTo(200 / 255, 5);
+    }
+  });
+
+  it('leaves true 16-bit RGB (max channel in probe > 255) unscaled', async () => {
+    restore = setLazPerfLoaderForTesting(async () => stubLazPerfModuleWithRgb(60000));
+
+    const src = new LazStreamingSource(buildLazFileWithRgbFormat(8));
+    await src.open();
+    const chunk = await src.next(8);
+    expect(chunk).not.toBeNull();
+    expect(chunk!.colors).toBeDefined();
+    // raw channel = 60000 (>255) -> no rescale: 60000/65535.
+    for (let i = 0; i < chunk!.pointCount; i++) {
+      expect(chunk!.colors![i * 3]).toBeCloseTo(60000 / 65535, 5);
+    }
+  });
+});
+
 describe('LazStreamingSource downsampling', () => {
   let restore: (() => void) | null = null;
 

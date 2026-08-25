@@ -146,7 +146,7 @@ export function EmbedViewer() {
   // Auto-load model from URL param
   useEffect(() => {
     if (autoLoadAttempted.current) return;
-    if (!urlParams.modelUrl || !webgpu.supported || loading) return;
+    if (!urlParams.modelUrl || urlParams.autoLoad === false || !webgpu.supported || loading) return;
     if (storeModels.size > 0 || geometryResult?.meshes?.length) return;
 
     autoLoadAttempted.current = true;
@@ -169,7 +169,7 @@ export function EmbedViewer() {
         });
       }
     })();
-  }, [urlParams.modelUrl, webgpu.supported, loading, loadFile, storeModels.size, geometryResult?.meshes?.length]);
+  }, [urlParams.modelUrl, urlParams.autoLoad, webgpu.supported, loading, loadFile, storeModels.size, geometryResult?.meshes?.length]);
 
   // Emit progress events to parent
   useEffect(() => {

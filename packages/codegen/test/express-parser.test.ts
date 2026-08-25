@@ -326,6 +326,39 @@ describe('EXPRESS Parser', () => {
 
       expect(chain).toEqual(['IfcRoot', 'IfcObject', 'IfcProduct']);
     });
+
+    it('terminates on a cyclic SUBTYPE OF chain instead of looping forever', () => {
+      // Nothing in the real schemas is cyclic, so removing the `seen` guard
+      // in getAllAttributes/getInheritanceChain never fails an existing test
+      // — it only fails on a malformed schema, which no fixture provides.
+      // Without the guard this hangs (and eventually throws
+      // `RangeError: Invalid array length` once the unbounded levels array
+      // overflows) instead of returning.
+      const schema = parseExpressSchema(`
+        SCHEMA TEST;
+
+        ENTITY IfcA
+          SUBTYPE OF (IfcB);
+          Foo : IfcLabel;
+        END_ENTITY;
+
+        ENTITY IfcB
+          SUBTYPE OF (IfcA);
+          Bar : IfcLabel;
+        END_ENTITY;
+
+        END_SCHEMA;
+      `);
+
+      const a = schema.entities.find(e => e.name === 'IfcA')!;
+
+      expect(getAllAttributes(a, schema).map(x => x.name).sort()).toEqual(['Bar', 'Foo']);
+      // Length alone would pass on a traversal that returned ['IfcA','IfcA']
+      // or otherwise dropped IfcB, so pin the membership as well as the count.
+      const chain = getInheritanceChain(a, schema);
+      expect(chain).toHaveLength(2);
+      expect([...chain].sort()).toEqual(['IfcA', 'IfcB']);
+    });
   });
 
   describe('Attribute section boundary', () => {

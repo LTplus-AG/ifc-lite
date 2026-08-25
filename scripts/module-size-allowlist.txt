@@ -231,7 +231,6 @@
   1122 packages/export/src/reference-collector.ts
    556 packages/export/src/schema-converter.ts
    415 packages/export/src/step-attribute-mutations.ts
-  1169 packages/export/src/step-exporter.ts
   1061 packages/export/src/step-property-sets.ts
    435 packages/export/src/step-serialization.ts
    437 packages/extensions/src/testing/runner.ts
@@ -241,7 +240,6 @@
    937 packages/geometry/src/ifc-lite-bridge.ts
   1551 packages/geometry/src/index.ts
    730 packages/geometry/src/native-bridge.ts
-   449 packages/geometry/src/types.ts
    469 packages/ids/src/audit/coherence/index.ts
    904 packages/ids/src/audit/ifc-schema/index.ts
    566 packages/ids/src/audit/structural/index.ts
@@ -323,7 +321,7 @@
   1082 packages/server-client/src/client.ts
    775 packages/server-client/src/data-model-decoder.ts
    517 packages/server-client/src/parquet-tables.ts
-   772 packages/server-client/src/types.ts
+   627 packages/server-client/src/types.ts
    411 packages/source-dalux/src/http-client.ts
    406 packages/source-dalux/src/provider.ts
    432 packages/source-dropbox/src/provider.ts

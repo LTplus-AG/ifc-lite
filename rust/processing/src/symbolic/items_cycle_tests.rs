@@ -13,11 +13,8 @@
 //! overflow takes the whole test binary down as SIGABRT, which reads as broken
 //! infrastructure instead of a failed assertion.
 
-use super::item_walk::{
-    extract_symbolic_item, extract_symbolic_item_with_revisit_budget, MAX_ITEM_DEPTH,
-    MAX_ITEM_REVISITS,
-};
-use super::output_cap::SymbolicAccumulator;
+use super::item_walk::{extract_symbolic_item, MAX_ITEM_DEPTH, MAX_ITEM_REVISITS};
+use super::output_cap::{SymbolicAccumulator, SymbolicTruncationReason};
 use super::primitives::SymbolicData;
 use super::rebase::RenderFrameRebase;
 use super::transform::Transform2D;
@@ -52,8 +49,12 @@ fn run_with_budget(step: &str, start_id: u32, budget: u32) -> SymbolicData {
     let mut decoder = EntityDecoder::with_index(content, index);
     let item = decoder.decode_by_id(start_id).expect("fixture entity decodes");
     let styled: HashMap<u32, Vec<u32>> = HashMap::new();
-    let mut out = SymbolicAccumulator::new();
-    extract_symbolic_item_with_revisit_budget(
+    // The revisit budget now lives on the accumulator (#2937), shared across
+    // the whole extraction rather than reset per top-level item -- so
+    // injecting a small budget for a test means constructing the accumulator
+    // with one, not threading a separate parameter into the walk.
+    let mut out = SymbolicAccumulator::with_revisit_budget(budget);
+    extract_symbolic_item(
         &item,
         &mut decoder,
         1,
@@ -64,7 +65,6 @@ fn run_with_budget(step: &str, start_id: u32, budget: u32) -> SymbolicData {
         RenderFrameRebase::default(),
         &styled,
         &mut out,
-        budget,
     );
     out.into_data()
 }
@@ -439,6 +439,99 @@ fn a_large_flat_set_is_not_truncated() {
         out.polylines.len(),
         n,
         "a well-formed flat set must emit every element; charging first visits truncates it"
+    );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// #3108: a cycle-truncated `SymbolicData` must be distinguishable on the wire
+// from a complete one, and by a NAMED reason -- not merely "something was
+// dropped". Each pair below holds the shape fixed and only breaks (cyclic) or
+// keeps (acyclic) the one edge that closes the loop, so the two inputs are
+// otherwise equivalent and any difference in `truncated` is attributable to
+// the cycle guard, not to some other divergence between the fixtures.
+// ────────────────────────────────────────────────────────────────────────────
+
+/// Site 1: `item_walk.rs`'s `enter_node(item.id)` -- the SAME item id revisited
+/// on the current path. #30 is a mapped item whose representation's own Items
+/// list points back at #30 itself.
+#[test]
+fn item_walk_cycle_is_reported_with_the_cycle_reason() {
+    let cyclic = run(
+        &wrap("#30=IFCMAPPEDITEM(#40,$);\n#40=IFCREPRESENTATIONMAP($,#50);\n#50=IFCSHAPEREPRESENTATION($,$,$,(#30));\n"),
+        30,
+    );
+    // Otherwise-equivalent acyclic input: #50's Items list points at a
+    // distinct leaf polyline (#31) instead of back at #30. Same shape --
+    // one mapped item, one representation map, one representation -- with
+    // only the closing edge changed.
+    let acyclic = run(
+        &wrap(
+            "#30=IFCMAPPEDITEM(#40,$);\n#40=IFCREPRESENTATIONMAP($,#50);\n\
+             #50=IFCSHAPEREPRESENTATION($,$,$,(#31));\n\
+             #31=IFCPOLYLINE((#60,#61));\n\
+             #60=IFCCARTESIANPOINT((0.,0.));\n#61=IFCCARTESIANPOINT((1.,1.));\n",
+        ),
+        30,
+    );
+
+    assert!(
+        acyclic.truncated.is_none(),
+        "the acyclic control must be a complete result: {:?}",
+        acyclic.truncated
+    );
+    assert_eq!(
+        cyclic.truncated.as_ref().map(|t| t.reason),
+        Some(SymbolicTruncationReason::ItemCycle),
+        "a cycle closed through item_walk's enter_node(item.id) must be reported \
+         with the cycle reason, not left indistinguishable from the acyclic \
+         control above: {:?}",
+        cyclic.truncated
+    );
+}
+
+/// Site 2: `items.rs`'s `enter_node(mapped_rep_id)` -- the SAME representation
+/// re-entered through a DIFFERENT item id, so the item-id guard above never
+/// fires. Two distinct mapped items (#30, #31) both resolve to representation
+/// #50; #50's own Items list holds #31, so walking #30 enters #50 once
+/// directly and once again while resolving #31.
+#[test]
+fn items_rs_representation_cycle_is_reported_with_the_cycle_reason() {
+    let cyclic = run(
+        &wrap(
+            "#30=IFCMAPPEDITEM(#40,$);\n#31=IFCMAPPEDITEM(#41,$);\n\
+             #40=IFCREPRESENTATIONMAP($,#50);\n#41=IFCREPRESENTATIONMAP($,#50);\n\
+             #50=IFCSHAPEREPRESENTATION($,$,$,(#31));\n",
+        ),
+        30,
+    );
+    // Otherwise-equivalent acyclic input: #41 resolves to a DIFFERENT
+    // representation (#51) that terminates in a real leaf polyline instead of
+    // looping back through #50. Same two-mapped-item shape, only the closing
+    // edge changed.
+    let acyclic = run(
+        &wrap(
+            "#30=IFCMAPPEDITEM(#40,$);\n#31=IFCMAPPEDITEM(#41,$);\n\
+             #40=IFCREPRESENTATIONMAP($,#50);\n#41=IFCREPRESENTATIONMAP($,#51);\n\
+             #50=IFCSHAPEREPRESENTATION($,$,$,(#31));\n\
+             #51=IFCSHAPEREPRESENTATION($,$,$,(#32));\n\
+             #32=IFCPOLYLINE((#60,#61));\n\
+             #60=IFCCARTESIANPOINT((0.,0.));\n#61=IFCCARTESIANPOINT((1.,1.));\n",
+        ),
+        30,
+    );
+
+    assert!(
+        acyclic.truncated.is_none(),
+        "the acyclic control must be a complete result: {:?}",
+        acyclic.truncated
+    );
+    assert_eq!(
+        cyclic.truncated.as_ref().map(|t| t.reason),
+        Some(SymbolicTruncationReason::ItemCycle),
+        "a cycle closed through items.rs's enter_node(mapped_rep_id) must be \
+         reported with the cycle reason, not left indistinguishable from the \
+         acyclic control above: {:?}",
+        cyclic.truncated
     );
 }
 

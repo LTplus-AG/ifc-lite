@@ -50,15 +50,22 @@
  * so an exemption stays a reviewable line rather than a silent hole. Prefer it
  * to the allowlist, which is for whole files that cannot be converted at all.
  * An assertion wrapped over several lines counts as one, so the marker may sit
- * above the line the assertion STARTS on; `markerLineFor` in the detector owns
- * the exact rule.
+ * anywhere from one line above the ENCLOSING STATEMENT down to the predicate,
+ * and may also be written after the assertion on the same line. That range is
+ * the statement's own range in the parse tree, so a comment INSIDE the
+ * assertion does not break it -- which it did until #3174, and the run then
+ * failed twice over: once for the assertion, once for the marker it said
+ * excused nothing. A remedy an instrument prints has to be one it accepts.
  *
- * COMMENTS ARE STRIPPED FIRST, and that is load-bearing rather than tidy: three
- * unrelated tests mention a `.ts` filename in prose ("as per `safe-path.test.ts`",
- * "apache-arrow hides the `.d.ts`") while reading a wasm binary or a JSON
- * manifest, and matching those flagged all three. It is the same trap the test
- * this guard was born from fell into -- an assertion that matched its own
- * explanatory comment instead of the code.
+ * PROSE IS NOT CODE, and that separation is load-bearing rather than tidy:
+ * three unrelated tests mention a `.ts` filename in a comment ("as per
+ * `safe-path.test.ts`", "apache-arrow hides the `.d.ts`") while reading a wasm
+ * binary or a JSON manifest, and matching those flagged all three. It is the
+ * same trap the test this guard was born from fell into -- an assertion that
+ * matched its own explanatory comment instead of the code. The detector reads
+ * filenames from string and template literals in the tree, so a comment can no
+ * longer stand in for one, and a marker is read from comment trivia, so a
+ * string can no longer forge one.
  *
  * SCAN SCOPE is packages/ and apps/ test files only; scripts/*.test.mjs are not
  * scanned. That is a deliberate limit, not an oversight: those files run gates
@@ -164,7 +171,11 @@ const staleAllowlistEntries = new Set(allowlist);
 for (const dir of SEARCH_DIRS) {
   for (const file of walk(join(ROOT, dir))) {
     const rel = relative(ROOT, file).split('\\').join('/');
-    const result = analyze(readFileSync(file, 'utf8'));
+    // The PATH, not just the text: `analyze` parses with TypeScript, and TS
+    // and TSX are different grammars -- `<T>(x)` is a type assertion in one and
+    // an unclosed JSX tag in the other. Handing it the real name is what makes
+    // the parse match the file.
+    const result = analyze(readFileSync(file, 'utf8'), rel);
     for (const line of result.unusedMarkers) deadMarkers.push(`${rel}:${line}`);
     for (const site of result.marked) markedSites.push(`${rel}:${site.line}  ${site.reason}`);
     if (!result.flagged) continue;

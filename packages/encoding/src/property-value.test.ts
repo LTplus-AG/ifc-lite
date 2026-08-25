@@ -23,6 +23,19 @@ describe('parsePropertyValue', () => {
     expect(result.ifcType).toBe('Identifier');
   });
 
+  it('strips the IFC prefix as a fallback tooltip name for a type absent from IFC_TYPE_DISPLAY_NAMES (array branch)', () => {
+    // IFCELEMENTQUANTITY is not in the friendly-name map, so this exercises
+    // the `typeName.replace(/^IFC/, '')` fallback rather than the map hit
+    // every other array-branch test uses.
+    const result = parsePropertyValue(['IFCELEMENTQUANTITY', 'foo']);
+    expect(result.ifcType).toBe('ELEMENTQUANTITY');
+  });
+
+  it('strips the IFC prefix as a fallback tooltip name for a type absent from IFC_TYPE_DISPLAY_NAMES (string-pattern branch)', () => {
+    const result = parsePropertyValue('IFCELEMENTQUANTITY,foo');
+    expect(result.ifcType).toBe('ELEMENTQUANTITY');
+  });
+
   it('resolves typed boolean arrays', () => {
     const result = parsePropertyValue(['IFCBOOLEAN', '.T.']);
     expect(result.displayValue).toBe('True');

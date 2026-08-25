@@ -288,15 +288,23 @@ describe('normalizeIfcTypeName across the bundled schema union (#2003)', () => {
     }
   });
 
-  it('resolves the IFC2X3 leaves rust/core/src/legacy_entities.rs maps but no bundled TS schema carries', () => {
-    // `IfcElectricalDistributionPoint` is real, deprecated IFC2X3 syntax with
-    // no IFC4x3 equivalent in ENTITIES_IFC2X3/IFC4/IFC4X3. The Rust core's
-    // `legacy_entities.rs` resolves it to `IfcDistributionElement` (comment:
-    // "IFC2x3 names that have no IFC4x3 enum variant"). The TS
-    // `ENTITY_NAME_ALIASES` table in `ifc-schema.ts` claims to mirror that
-    // file "so the two sides stay in lockstep", but only carries the three
-    // IFC4.3 stratum leaves -- this class is silently unknown here while the
-    // Rust parser resolves it with geometry.
-    expect(getInheritanceChain('IfcElectricalDistributionPoint')).toContain('IfcDistributionElement');
+  it('resolves the IFC2X3 distribution-point leaf, and only under the name IFC2X3 gives it', () => {
+    // This test asserted on `IfcElectricalDistributionPoint` until #3172, on
+    // the stated premise that it was "real, deprecated IFC2X3 syntax". It is
+    // not: the IFC2X3 entity has no "AL". The name came from a misspelt arm in
+    // `rust/core/src/legacy_entities.rs`, was mirrored into
+    // `ENTITY_NAME_ALIASES` to make the two sides agree, and this assertion
+    // then passed by reading the mirror -- three artifacts agreeing with each
+    // other about an entity that does not exist.
+    //
+    // The correctly spelled leaf IS in `ENTITIES_IFC2X3`, so it needs no alias
+    // at all; the chain below comes straight from the bundled table and matches
+    // what `legacy_aware_ifc_type` answers in Rust.
+    expect(getInheritanceChain('IfcElectricDistributionPoint')).toContain('IfcFlowController');
+    expect(getInheritanceChain('IfcElectricDistributionPoint')).toContain('IfcDistributionElement');
+    // And the misspelling resolves to nothing, which is the correct answer for
+    // a name no schema carries. Pinned so a future "fix" cannot restore the
+    // alias and make the pair agree again.
+    expect(getInheritanceChain('IfcElectricalDistributionPoint')).toEqual([]);
   });
 });

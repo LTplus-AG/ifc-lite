@@ -1,5 +1,78 @@
 # @ifc-lite/ids
 
+## 1.15.50
+
+### Patch Changes
+
+- Updated dependencies [[`224386a`](https://github.com/LTplus-AG/ifc-lite/commit/224386ac9cb1c2d94eca50808cdfdb7e8a3121e5)]:
+  - @ifc-lite/parser@4.3.1
+
+## 1.15.49
+
+### Patch Changes
+
+- [#3121](https://github.com/LTplus-AG/ifc-lite/pull/3121) [`ffcc9e6`](https://github.com/LTplus-AG/ifc-lite/commit/ffcc9e6f048cd263a5b70946417c9b6aceec1bec) Thanks [@BIMvoice](https://github.com/BIMvoice)! - IDS numeric comparison no longer takes seconds per entity on a crafted property
+  value.
+  
+  `packages/ids/src/constraints/comparators.ts` decided "is this a strict numeric
+  literal?" with `/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/`. On a string that
+  **fails** the match, `\d+\.?\d*` retries at every split of the digit run before
+  the engine gives up, so the cost is quadratic in the length. Measured here on
+  `'-' + '9'.repeat(n) + 'X'`: 26 ms at n=5,000, 413 ms at n=20,000, 3,701 ms at
+  n=60,000 — 4x the input for 16x the time.
+  
+  That input is reachable. `compareNumeric` runs the check on the model side, and
+  `matchSimpleValue` / `matchEnumeration` call it once per entity, so an IFC
+  property whose value is a long digit run followed by any non-numeric character
+  costs that much per entity for the whole model. A validation run against an
+  uploaded file could be stalled by the file. Note that a long digit run *without*
+  the trailing character matches immediately, which is why this never showed up in
+  ordinary use.
+  
+  Both call sites now use `isWhollyNumeric` from `@ifc-lite/encoding` — the
+  hand-written linear scan that already decides this exact language for the CSV
+  formula guard. Same three inputs: 0.008 ms, 0.031 ms, 0.090 ms. The scan is also
+  cheaper on ordinary values, which matters because this is a per-entity path
+  (1e6 calls on `'2022-01-01'`: 42 ms with the regex, 13 ms with the scan), and it
+  allocates nothing.
+  
+  The accepted language is unchanged. `.5`, `5.`, `+.5`, `-5.`, `5.e3` and `1e+5`
+  are still numeric literals; `1e`, a lone `+`/`-`/`.`, the empty string,
+  whitespace-padded digits, `Infinity`, `NaN`, `0x10`, `1_000` and `2022-01-01`
+  are still not. That is pinned by running the removed regex as the oracle over
+  every string up to four characters from the alphabet the language is built from
+  (69,905 of them), not by a hand-written table. `@ifc-lite/encoding` is a new
+  dependency of `@ifc-lite/ids`; it has no dependencies of its own.
+  
+  Two more copies of the same shape inside this package are bounded the same way,
+  on IDS-file literals rather than model values — lower reach, since they run once
+  per literal rather than once per entity, but the same cost curve on an uploaded
+  IDS file:
+  
+  - `constraints/xsd-cast.ts` used a byte-identical regex for the `xs:double`
+    strict cast; it now calls `isWhollyNumeric` too. 439 ms → under 1 ms at
+    n=20,000.
+  - `audit/coherence`'s lexical-space table spelled the `xs:double` / `xs:float` /
+    `xs:decimal` mantissa `[0-9]*\.?[0-9]*`, two adjacent digit runs with the same
+    problem. It is now `[0-9]*(?:\.[0-9]*)?` — the same accepted language,
+    including `NaN` / `+INF` / `-INF`, one parse per prefix. 415 ms → under 1 ms at
+    the same length.
+  
+  The IDS numeric tolerance rules and every other comparator are untouched, and
+  the buildingSMART IDS corpus stays at 334/334 parity.
+
+- [#3094](https://github.com/LTplus-AG/ifc-lite/pull/3094) [`a8587cc`](https://github.com/LTplus-AG/ifc-lite/commit/a8587cc21c309ebd6c87119cb0d1cd6d1005c281) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Compare a `partOf` parent's `predefinedType` case-sensitively, as the entity facet already does
+  
+  The IDS XSD gives the `partOf` facet's nested `<entity>` the same complex type an entity facet uses, but the two checkers each wrote out their own copy of the `<predefinedType>` matching rule and the copies had drifted: `entity-facet.ts` compared case-sensitively (enum tokens are uppercase by the IFC schema, and the buildingSMART corpus case `entity/fail-user_defined_types_are_checked_case_sensitively` requires an `IfcWall` carrying `ObjectType = 'waldo'` to fail a facet asking for `WALDO`), while `partof-facet.ts` passed a case-insensitive option on every branch. One and the same (raw enum token, user-defined name, IDS literal) triple therefore got opposite verdicts depending on which facet asked, and a `partOf` requirement whose literal differed from the model only in casing wrongly PASSED.
+  
+  The rule now lives once, in `facets/predefined-type-match.ts`, and both facets consume its verdict; each still owns only its own failure wording. The diagnostics-free applicability twin `entityFacetPasses`, which held a third copy, calls it too.
+  
+  No public API change.
+- Updated dependencies [[`93b450c`](https://github.com/LTplus-AG/ifc-lite/commit/93b450c1cc0c3cee811625989edb82cf522c70c4), [`8ba612f`](https://github.com/LTplus-AG/ifc-lite/commit/8ba612f90d3bb0ad41f756d6fdef6b3250e8d330), [`9359bc4`](https://github.com/LTplus-AG/ifc-lite/commit/9359bc488173585b2b90e124cc66dcf8292c4be9), [`f6febcc`](https://github.com/LTplus-AG/ifc-lite/commit/f6febcc2d4986e79b3c44d63853bb72a16475c65), [`f7e26e4`](https://github.com/LTplus-AG/ifc-lite/commit/f7e26e4200e1475728d4976142b49cb408400a8e), [`75867a7`](https://github.com/LTplus-AG/ifc-lite/commit/75867a7e6ebf51b2da47cab14242bcd71787ba3b), [`f449776`](https://github.com/LTplus-AG/ifc-lite/commit/f4497765cb4e17828ff6ca6b52fb8a96caa2f81f), [`00f6e79`](https://github.com/LTplus-AG/ifc-lite/commit/00f6e79c22641ff59bfb3327d910b04f9a164d8b), [`116a3e9`](https://github.com/LTplus-AG/ifc-lite/commit/116a3e94de753b95fa94b2d6c41a0171cd254729), [`147693a`](https://github.com/LTplus-AG/ifc-lite/commit/147693a7a8fd0778ddb71839199b75bf1d622327), [`043e06a`](https://github.com/LTplus-AG/ifc-lite/commit/043e06a05c6625fef91bb17d84e3a3447f1379e3)]:
+  - @ifc-lite/parser@4.3.0
+  - @ifc-lite/encoding@2.1.0
+  - @ifc-lite/data@3.4.1
+
 ## 1.15.48
 
 ### Patch Changes

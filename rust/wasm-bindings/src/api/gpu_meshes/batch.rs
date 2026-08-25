@@ -399,7 +399,38 @@ impl IfcAPI {
             let Ok(entity) = decoder.decode_and_cache(id, start, end) else {
                 continue;
             };
-            let ifc_type = entity.ifc_type;
+            // LEGACY-AWARE, like the native pre-pass at
+            // `processing/src/processor/mod.rs:711`. Without this, a legacy
+            // keyword reaching this path arrived as `ifcType: "Unknown"` with
+            // the Unknown default colour, while the CLI and exporters labelled
+            // the same entity correctly (#3179).
+            //
+            // Not every dropped keyword reaches this line: the four arms with
+            // `has_geometry: false` are refused by `has_geometry_by_name` in
+            // all three element producers, so this fix misses them. #3187 has
+            // the trace, including the type-geometry gate that would make
+            // THREE of the four eligible -- eligible, not certain.
+            //
+            // Recomputed from the SOURCE KEYWORD rather than recovered from
+            // `entity.ifc_type` -- why it cannot be recovered is on
+            // `legacy_aware_ifc_type_from_record` itself. What is specific to
+            // HERE: the bytes are already in hand -- `content[start..end]` is
+            // the span THIS JOB carries, so this is a ~20-byte scan to the
+            // first `(`, not a re-read. Note it is the job's span, not
+            // necessarily what `decode_and_cache` parsed: on a cache hit
+            // (`core/src/decoder.rs:443`) it returns the cached `Arc` without
+            // reading `start`/`end` at all, so only the miss path bounds-checks
+            // them. `content.get(..)` is fail-soft for that reason -- an
+            // out-of-range span yields an empty slice and `decoded` is returned
+            // unchanged.
+            //
+            // Cheaper than widening the jobs wire, which is 3 u32 per job
+            // across Rust and TS and would have paid marshalling cost on every
+            // job to fix the few that are legacy.
+            let ifc_type = ifc_lite_core::legacy_aware_ifc_type_from_record(
+                entity.ifc_type,
+                content.get(start..end).unwrap_or_default(),
+            );
 
             // Resolve the element-level colour inline (folded from the deleted
             // pre-pass) so the entity is decoded exactly once.

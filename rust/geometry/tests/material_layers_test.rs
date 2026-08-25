@@ -231,6 +231,13 @@ fn process_element_with_material_layers_splits_wall_by_material() {
         3,
         "expected one sub-mesh per layer"
     );
+    // #3199: the ids below are IfcMaterials, and the collection has to SAY so —
+    // it is the only thing that tells a caller whether `geometry_id` is a
+    // material or a representation item.
+    assert!(
+        layered.ids_are_materials,
+        "the slicer's collection must declare its ids are material layers"
+    );
     // Two outer finishes share material #200, core is #201.
     let ids: Vec<u32> = layered.sub_meshes.iter().map(|s| s.geometry_id).collect();
     assert_eq!(ids, vec![200, 201, 200]);
@@ -393,6 +400,45 @@ fn layers_compose_with_voids_every_layer_loses_triangles() {
         uncut_total,
         cut_total
     );
+}
+
+/// #3199: the flag has to survive the entry the mesh producer actually calls
+/// for a voided element (`process_element_with_submeshes_and_voids`), not just
+/// the slicer it wraps.
+///
+/// WHAT THIS DOES NOT COVER, stated because an earlier version of this comment
+/// claimed it did: the sub-mesh-by-sub-mesh REBUILD further down that function.
+/// A layered wall returns at the `try_layered_sub_meshes` early exit and never
+/// reaches it, so the `ids_are_materials` inheritance on the rebuilt collection
+/// is unreachable for a material-layer collection today and no fixture can make
+/// this test distinguish it — replacing that expression with a hard-coded
+/// `false` leaves both `ifc-lite-geometry` and `ifc-lite-processing` green.
+/// It is written as an inheritance anyway, deliberately: hard-coding would let
+/// a future layered producer on that path silently relabel material ids as
+/// representation items. Defensive, and honestly untested rather than
+/// dishonestly claimed.
+#[test]
+fn voided_submesh_entry_reports_layer_ids_as_material_ids() {
+    let content = three_layer_wall_with_opening_ifc();
+    let mut decoder = EntityDecoder::new(&content);
+    let mut router = GeometryRouter::with_units(&content, &mut decoder);
+    let index = MaterialLayerIndex::from_content(&content, &mut decoder);
+    router.set_material_layer_index(std::sync::Arc::new(index));
+
+    let wall = decoder.decode_by_id(100).expect("decode wall");
+    let mut void_index: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
+    void_index.insert(100, vec![150]);
+
+    let cut = router
+        .process_element_with_submeshes_and_voids(&wall, &mut decoder, &void_index)
+        .expect("submesh voids path");
+
+    assert!(
+        cut.ids_are_materials,
+        "a sliced layered wall must still declare material-layer ids after void subtraction"
+    );
+    let ids: Vec<u32> = cut.sub_meshes.iter().map(|s| s.geometry_id).collect();
+    assert_eq!(ids, vec![200, 201, 200], "slabs must name their IfcMaterials");
 }
 
 #[test]

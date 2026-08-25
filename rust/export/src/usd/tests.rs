@@ -431,6 +431,7 @@ fn mesh_emittable_rejects_bad_index_and_origin() {
         color: [0.5, 0.5, 0.5, 1.0],
         material_name: None,
         geometry_item_id: None,
+        material_id: None,
         properties: None,
         uvs: None,
         texture: None,

@@ -1944,6 +1944,15 @@
     "pickWorkerCount: function",
     "prewarmSharedWasmModule: function"
   ],
+  "@ifc-lite/geometry/geometry-class": [
+    "GEOM_CLASS_INSTANCED_TYPE: const",
+    "GEOM_CLASS_LAYER_SLICE: const",
+    "GEOM_CLASS_OCCURRENCE: const",
+    "GEOM_CLASS_ORPHAN_TYPE: const",
+    "geometryClassOf: function",
+    "isPlacedGeometryClass: function",
+    "isTypeLibraryGeometryClass: function"
+  ],
   "@ifc-lite/ids": [
     "ClassificationInfo: interface",
     "FacetCheckResult: interface",

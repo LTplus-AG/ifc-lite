@@ -1,5 +1,15 @@
 # @ifc-lite/sandbox
 
+## 2.2.1
+
+### Patch Changes
+
+- [#2992](https://github.com/LTplus-AG/ifc-lite/pull/2992) [`409520e`](https://github.com/LTplus-AG/ifc-lite/commit/409520ee2e940866b126c3433cc10d0fe110d645) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `bim.export.ifc()` (and any other `returns: 'value'` bridge method) handing a sandboxed script `{ "0": …, "1": … }` instead of a real array when the SDK returns a `Uint8Array`.
+  
+  `marshalValue` walked non-array objects with `Object.entries`, and a typed array's own enumerable properties are its indices — so the marshalled value had no `.length`, failed `Array.isArray()`, and was not iterable. `sdk.export.ifc()` returns `Uint8Array` chunks once STEP output exceeds V8's string-length limit, so this only showed up on large exports: a script that worked fine against a small model silently got junk on a large one. `marshalValue` now detects any `ArrayBuffer`-backed view and converts it with `Array.from()` before marshalling, the same fix already applied to the sandbox's other value-marshalling path. `DataView` (no index keys to begin with) and `BigInt64Array` / `BigUint64Array` (bigint elements have no representation here and would marshal to an array of `null`s indistinguishable from real data) are excluded and keep their previous object shape, and a view whose `ArrayBuffer` has been detached — what transferring it to a worker leaves behind — degrades to `{}` instead of throwing out of the whole `bim.*` call.
+- Updated dependencies [[`7ff31ba`](https://github.com/LTplus-AG/ifc-lite/commit/7ff31ba854671a9ca3ebbf30b15e928e1b52a8b9), [`8ba612f`](https://github.com/LTplus-AG/ifc-lite/commit/8ba612f90d3bb0ad41f756d6fdef6b3250e8d330), [`75867a7`](https://github.com/LTplus-AG/ifc-lite/commit/75867a7e6ebf51b2da47cab14242bcd71787ba3b), [`4a8fe77`](https://github.com/LTplus-AG/ifc-lite/commit/4a8fe77707127d251702610490f53430610e4ef7), [`945c4d7`](https://github.com/LTplus-AG/ifc-lite/commit/945c4d7a773614dd664feb9490e13372782a543b), [`75867a7`](https://github.com/LTplus-AG/ifc-lite/commit/75867a7e6ebf51b2da47cab14242bcd71787ba3b)]:
+  - @ifc-lite/sdk@3.0.0
+
 ## 2.2.0
 
 ### Minor Changes

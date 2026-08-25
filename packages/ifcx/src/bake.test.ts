@@ -5,6 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import type { IfcxFile } from './types.js';
+import { IFCLITE_ATTR } from './types.js';
 import { bakeLayers } from './bake.js';
 
 function makeFile(
@@ -49,5 +50,41 @@ describe('bakeLayers import/schema merge precedence', () => {
     assert.strictEqual(baked.imports.length, 1);
     assert.strictEqual(baked.imports[0].integrity, 'strong-hash');
     assert.strictEqual((baked.schemas['shared-schema'] as any).version, 'strong');
+  });
+});
+
+describe('bakeLayers strips namespaced derived-cache attributes', () => {
+  // BAKE_STRIPPED_PREFIXES matches by prefix (`key.startsWith(...)`), not
+  // exact equality, because derived-cache content is namespaced under
+  // `ifclite::derived::<kind>` (canonical.ts's `canonicalizeLayer` strips
+  // the same namespaced shape, and `computeLayerId` pins a
+  // `${IFCLITE_ATTR.DERIVED}::bvh` fixture as ignored there). Nothing here
+  // pinned bakeLayers against the same shape: an exact-match comparison
+  // that only strips the bare `ifclite::derived` key would leave a
+  // namespaced derived attribute in the baked output undetected.
+  it('drops an `ifclite::derived::<kind>` attribute, not just the bare key', () => {
+    const file: IfcxFile = {
+      header: {
+        id: 'src',
+        ifcxVersion: 'ifcx-alpha',
+        dataVersion: '1',
+        author: 'test',
+        timestamp: '2026-06-09T00:00:00Z',
+      },
+      imports: [],
+      schemas: {},
+      data: [
+        {
+          path: 'wall-1',
+          attributes: { Name: 'W1', [`${IFCLITE_ATTR.DERIVED}::bvh`]: 'cached-hash' },
+        },
+      ],
+    };
+
+    const baked = bakeLayers([file]);
+    const node = baked.data.find((n) => n.path === 'wall-1');
+
+    assert.strictEqual(node?.attributes?.Name, 'W1');
+    assert.strictEqual(node?.attributes?.[`${IFCLITE_ATTR.DERIVED}::bvh`], undefined);
   });
 });

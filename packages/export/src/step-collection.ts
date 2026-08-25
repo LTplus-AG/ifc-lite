@@ -18,10 +18,13 @@
  * `collectPropertyAndQuantitySetMutations`) it was already handing them to.
  *
  * `hasAnyUnreadableSourceRef` and the `mayNameOmittedRefs` /
- * `isOmittedFromOutput` predicates it feeds stay in `step-exporter.ts`:
- * they read `pass.effective` and this phase's OUTPUT (`allowedEntityIds`,
- * `overlayActive`), but nothing here reads them back, so moving them here
- * would not shrink a dependency, only relocate it.
+ * `isOmittedFromOutput` predicates it feeds do NOT live here: they read
+ * `pass.effective` and this phase's OUTPUT (`allowedEntityIds`,
+ * `overlayActive`), but nothing in THIS module reads them back, so moving them
+ * here would not shrink a dependency, only relocate it. That argument was
+ * always about this module specifically. They live in
+ * `step-omission-predicates.ts`, called from `export()` immediately after this
+ * phase returns (#2475).
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';

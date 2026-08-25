@@ -115,13 +115,32 @@ impl SubMesh {
 #[derive(Debug, Clone, Default)]
 pub struct SubMeshCollection {
     pub sub_meshes: Vec<SubMesh>,
+    /// What `SubMesh::geometry_id` MEANS here: `false` (default) an
+    /// `IfcRepresentationItem`, `true` an `IfcMaterial` (only `layers.rs` builds
+    /// those). Uniform across the collection, which is why it lives on it.
+    ///
+    /// Deliberately NOT `geometry_class == GEOM_CLASS_LAYER_SLICE`, which cannot
+    /// answer it: that class is stamped from `is_material_layer_sliceable`, a
+    /// static check made BEFORE the geometry runs, while
+    /// `try_layered_sub_meshes` can still return `None` and fall through to the
+    /// rep-item path — so rep-item ids can carry class 3 (#3199).
+    /// SCOPE: it decides only which FIELD `emit_sub_meshes` emits the id under —
+    /// five style lookups in `element.rs` still read `geometry_id` as a rep item
+    /// on BOTH paths, safe only by express-id uniqueness (#3211).
+    pub ids_are_materials: bool,
 }
 
 impl SubMeshCollection {
     /// Create a new empty collection
     pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// `geometry_id`s are `IfcMaterial` ids. Only `layers.rs` builds these.
+    pub fn of_materials() -> Self {
         Self {
-            sub_meshes: Vec::new(),
+            ids_are_materials: true,
+            ..Self::default()
         }
     }
 

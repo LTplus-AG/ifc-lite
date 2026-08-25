@@ -115,9 +115,19 @@ describe('matchCapability — wildcards', () => {
 });
 
 describe('matchCapability — target requirements', () => {
-  it('no-target grant does not cover targeted request', () => {
+  it('no-target grant matches a no-target request of the same scope+action', () => {
     expect(matchCapability(parse('model.create'), parse('model.create'))).toBe(true);
-    // a fictional "with target" against "without target" — make sure asymmetry holds
+  });
+
+  it('no-target grant does NOT cover a targeted request of the same scope+action', () => {
+    // Regression: a grant of "model.create" (no target) must not be
+    // treated as "covers everything" once the scope/action matches. The
+    // grammar allows any scope.action to carry a target
+    // (`model.create:foo` parses fine even though the doc calls
+    // model.create untargeted by convention), so this is reachable, not
+    // hypothetical. Mutating the no-target branch to `return true`
+    // survived the full suite before this test existed.
+    expect(matchCapability(parse('model.create'), parse('model.create:foo'))).toBe(false);
   });
 
   it('with-target grant does not cover no-target request', () => {

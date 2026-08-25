@@ -21,7 +21,20 @@
  * definitions with geometry; those are type-library content and should NOT
  * clutter the Model view — they belong in the Types view. So an orphan type is
  * shown in Model view ONLY when the model has no placed occurrences at all.
+ *
+ * The ordinals themselves come from Rust and are named in
+ * `@ifc-lite/geometry/geometry-class`, so this file no longer spells them out
+ * as bare integers.
  */
+import {
+  GEOM_CLASS_INSTANCED_TYPE,
+  GEOM_CLASS_OCCURRENCE,
+  GEOM_CLASS_ORPHAN_TYPE,
+  geometryClassOf,
+  isPlacedGeometryClass,
+  isTypeLibraryGeometryClass,
+} from '@ifc-lite/geometry/geometry-class';
+
 export type TypeViewMode = 'model' | 'types';
 
 /**
@@ -29,9 +42,26 @@ export type TypeViewMode = 'model' | 'types';
  * Class 0 (occurrence) AND class 3 (material-layer slice) are both placed —
  * a model whose layered walls/slabs are emitted as slices still "has
  * occurrences", so orphan type-library geometry must hide in Model view. (#1353)
+ *
+ * Kept as this module's name for its several callers; the rule itself lives
+ * with the ordinals it depends on.
  */
 export function meshClassIsPlaced(geometryClass: number): boolean {
-  return geometryClass === 0 || geometryClass === 3;
+  return isPlacedGeometryClass(geometryClass);
+}
+
+/**
+ * Is this mesh anything OTHER than a placed occurrence?
+ *
+ * Deliberately not `isTypeLibraryGeometryClass`, which is orphan + instanced
+ * type geometry only. This is the broader `!== occurrence`, so a
+ * material-layer slice counts too — which is the existing behaviour of the
+ * Model/Types toggle gate in `ViewportContainer`, preserved exactly rather
+ * than tightened here. Whether a layered wall alone should offer that toggle
+ * is a separate question from naming the ordinal.
+ */
+export function meshIsNonOccurrence(mesh: { geometryClass?: number }): boolean {
+  return geometryClassOf(mesh) !== GEOM_CLASS_OCCURRENCE;
 }
 
 export function isMeshVisibleInViewMode(
@@ -40,12 +70,12 @@ export function isMeshVisibleInViewMode(
   hasOccurrenceGeometry: boolean,
 ): boolean {
   if (viewMode === 'types') {
-    // Type library only: orphan (1) + instanced (2) type geometry.
-    return geometryClass === 1 || geometryClass === 2;
+    // Type library only: orphan + instanced type geometry.
+    return isTypeLibraryGeometryClass(geometryClass);
   }
   // Model view.
-  if (geometryClass === 2) return false; // instanced-type duplicates never show here
-  if (geometryClass === 1) {
+  if (geometryClass === GEOM_CLASS_INSTANCED_TYPE) return false; // duplicates never show here
+  if (geometryClass === GEOM_CLASS_ORPHAN_TYPE) {
     // Orphan type-library geometry: hide it once the model has real placed
     // geometry (it lives in the Types view); keep it only for pure type-library
     // files so the Model view isn't empty.
@@ -68,9 +98,9 @@ export function isMeshVisibleInViewMode(
  * Model view does.
  */
 export function selectModelMeshes<T extends { geometryClass?: number }>(meshes: readonly T[]): T[] {
-  const hasOccurrenceGeometry = meshes.some((m) => meshClassIsPlaced(m.geometryClass ?? 0));
+  const hasOccurrenceGeometry = meshes.some((m) => meshClassIsPlaced(geometryClassOf(m)));
   return meshes.filter((m) =>
-    isMeshVisibleInViewMode(m.geometryClass ?? 0, 'model', hasOccurrenceGeometry),
+    isMeshVisibleInViewMode(geometryClassOf(m), 'model', hasOccurrenceGeometry),
   );
 }
 
@@ -97,13 +127,13 @@ export function selectModelMeshes<T extends { geometryClass?: number }>(meshes: 
 export function buildModelViewIdFilter(
   meshes: readonly { expressId: number; geometryClass?: number }[],
 ): (expressId: number) => boolean {
-  const hasOccurrenceGeometry = meshes.some((m) => meshClassIsPlaced(m.geometryClass ?? 0));
+  const hasOccurrenceGeometry = meshes.some((m) => meshClassIsPlaced(geometryClassOf(m)));
   const classById = new Map<number, number>();
   for (const m of meshes) {
     // An express id's geometryClass is consistent across its own mesh
     // entries (e.g. material-layer slices are all class 3), so first-write
     // is as good as any.
-    if (!classById.has(m.expressId)) classById.set(m.expressId, m.geometryClass ?? 0);
+    if (!classById.has(m.expressId)) classById.set(m.expressId, geometryClassOf(m));
   }
   return (expressId: number) => {
     const geometryClass = classById.get(expressId);

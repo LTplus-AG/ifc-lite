@@ -314,6 +314,23 @@ describe('conflictPredicate: spatial conflicts', () => {
     expect(withZeroEpsilon.conflict).toBe(false);
   });
 
+  // Every other spatial fixture sits on one side of the boundary (a real gap,
+  // or an overlap of a whole metre) — never exactly on it. That left each
+  // axis's `<=`/`>=` free to narrow to `<`/`>` without failing a single test:
+  // confirmed live by mutating `a.min[0] <= b.max[0]` to `a.min[0] <
+  // b.max[0]` in footprint.ts and re-running this file — all 30 tests still
+  // passed. Two boxes that share a face exactly (B's min face == A's max
+  // face, epsilon 0) must still count as touching/intersecting.
+  it('boxes that share a face exactly (epsilon 0) conflict spatially', async () => {
+    const dag = buildFixedDag();
+    await dag.build();
+    const fpA = computeFootprint(dag, geometryEdit('opA', ['meshA'], { min: [0, 0, 0], max: [1, 1, 1] }));
+    const fpB = computeFootprint(dag, geometryEdit('opB', ['meshC'], { min: [1, 0, 0], max: [2, 1, 1] }));
+    const result = conflictPredicate(fpA, fpB, { epsilonMm: 0 });
+    expect(result.spatial).toBe(true);
+    expect(result.conflict).toBe(true);
+  });
+
   it('DEFAULT_EPSILON_MM is 50 (the M1 clearance-to-structure tolerance)', () => {
     expect(DEFAULT_EPSILON_MM).toBe(50);
   });

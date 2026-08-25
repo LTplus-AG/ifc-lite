@@ -5,7 +5,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import { isMeshVisibleInViewMode, meshClassIsPlaced, selectModelMeshes } from './type-view-visibility.js';
+import {
+  isMeshVisibleInViewMode,
+  meshClassIsPlaced,
+  meshIsNonOccurrence,
+  selectModelMeshes,
+} from './type-view-visibility.js';
 
 describe('meshClassIsPlaced (#1353 layer-slice follow-up)', () => {
   it('counts occurrences (0) AND material-layer slices (3) as placed geometry', () => {
@@ -16,6 +21,35 @@ describe('meshClassIsPlaced (#1353 layer-slice follow-up)', () => {
     // else a pure type-library file would wrongly think it has occurrences.
     assert.equal(meshClassIsPlaced(1), false);
     assert.equal(meshClassIsPlaced(2), false);
+  });
+});
+
+describe('meshIsNonOccurrence — the Model/Types toggle gate', () => {
+  it('treats a missing class as an occurrence, so it does not offer the toggle', () => {
+    // `?? occurrence` is the long-standing default at every call site: a mesh
+    // predating the tag is real geometry. Getting this wrong would offer the
+    // Types toggle on a model that has no type geometry at all.
+    assert.equal(meshIsNonOccurrence({}), false);
+    assert.equal(meshIsNonOccurrence({ geometryClass: undefined }), false);
+    assert.equal(meshIsNonOccurrence({ geometryClass: 0 }), false);
+  });
+
+  it('counts orphan, instanced AND layer-slice geometry as non-occurrence', () => {
+    // Deliberately broader than `isTypeLibraryGeometryClass` (orphan +
+    // instanced only): class 3 is placed geometry, yet this gate has always
+    // counted it. That is the shipped behaviour of the toggle and is
+    // preserved exactly here rather than quietly tightened — whether a
+    // layered wall alone should offer the toggle is a separate question.
+    assert.equal(meshIsNonOccurrence({ geometryClass: 1 }), true);
+    assert.equal(meshIsNonOccurrence({ geometryClass: 2 }), true);
+    assert.equal(meshIsNonOccurrence({ geometryClass: 3 }), true);
+  });
+
+  it('disagrees with meshClassIsPlaced exactly on the layer slice', () => {
+    // The two predicates are NOT complements, and the one place they differ is
+    // the one worth pinning: class 3 is both "placed" and "non-occurrence".
+    assert.equal(meshClassIsPlaced(3), true);
+    assert.equal(meshIsNonOccurrence({ geometryClass: 3 }), true);
   });
 });
 

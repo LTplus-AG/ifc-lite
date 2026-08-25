@@ -637,6 +637,30 @@ describe('matchesCriteria — classification', () => {
     const basicProvider = createMockProvider([{ id: 1, type: 'IfcWall' }]);
     expect(matchesCriteria({ type: 'classification', classificationSystem: 'x' }, 1, basicProvider)).toBe(false);
   });
+
+  it('requires system AND code together — a system-only or code-only hit on a DIFFERENT reference must not satisfy a combined filter', () => {
+    // id=3 has a classification whose system matches but whose code does not,
+    // and a separate classification whose code matches but whose system does
+    // not. Neither single reference satisfies BOTH constraints, so a combined
+    // system+code filter must reject it even though each half independently
+    // has a hit somewhere in the entity's classification list.
+    const combinedProvider = createMockProvider([{ id: 3, type: 'IfcWall' }]);
+    combinedProvider.getClassifications = (id: number) => {
+      if (id === 3) {
+        return [
+          { system: 'Uniclass', identification: 'Ss_25_10', name: 'Wrong code' },
+          { system: 'OtherSystem', identification: 'Pr_60_10_32', name: 'Wrong system' },
+        ];
+      }
+      return [];
+    };
+    const c: LensCriteria = {
+      type: 'classification',
+      classificationSystem: 'Uniclass',
+      classificationCode: 'Pr_60_10_32',
+    };
+    expect(matchesCriteria(c, 3, combinedProvider)).toBe(false);
+  });
 });
 
 describe('matchesCriteria — material', () => {

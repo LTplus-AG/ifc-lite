@@ -166,6 +166,17 @@ describe('encodeIfcString', () => {
     expect(encodeIfcString('Ä')).toBe('\\X\\C4');
   });
 
+  it('encodes a literal reverse solidus as \\X\\5C instead of passing it through raw', () => {
+    // A raw backslash falls inside the printable-ASCII range (32-126), so the
+    // range check alone would keep it as-is. But an unescaped '\' in the
+    // output is exactly what a STEP reader (see step-string-literal.ts's
+    // "writer's half of the contract") would misread as the start of a
+    // directive or an unterminated pair — the encoder must route it through
+    // the \X\HH directive form instead, same as any other 8-bit value.
+    expect(encodeIfcString('\\')).toBe('\\X\\5C');
+    expect(decodeIfcString(encodeIfcString('\\'))).toBe('\\');
+  });
+
   it('encodes BMP chars as \\X2\\....\\X0\\', () => {
     expect(encodeIfcString('Ω')).toBe('\\X2\\03A9\\X0\\');
   });

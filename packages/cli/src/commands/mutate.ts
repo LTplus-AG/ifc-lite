@@ -15,7 +15,7 @@ import { getFlag, getAllFlags, hasFlag, fatal, printJson } from '../output.js';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
 import { extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
-import { PropertyValueType } from '@ifc-lite/data';
+import { PropertyValueType, findAttribute, type IfcSchemaVersion } from '@ifc-lite/data';
 
 /**
  * Parse a --where filter string.
@@ -232,7 +232,11 @@ export async function mutateCommand(args: string[]): Promise<void> {
   // Apply attribute mutations via STEP text post-processing
   if (attributeMutations.length > 0) {
     const textContent = new TextDecoder().decode(result.content);
-    const outputContent = applyAttributeMutations(textContent, attributeMutations);
+    const outputContent = applyAttributeMutations(
+      textContent,
+      attributeMutations,
+      await entitiesWithObjectType(schema),
+    );
     await writeFile(outPath, outputContent, 'utf-8');
   } else {
     await writeFile(outPath, result.content);
@@ -272,26 +276,37 @@ const ATTRIBUTE_INDEX: Record<string, number> = {
 };
 
 /**
- * IFC types that have an ObjectType attribute at index 4.
- * Only IfcObject subtypes (building elements, spatial elements) define ObjectType.
- * Relationship types (IfcRelAggregates, etc.) and type objects do NOT.
+ * IFC types that define an ObjectType attribute, read from the bundled
+ * buildingSMART schema for the file's own version.
+ *
+ * This used to be a hand-written list of 29 type names. Every entry in it was
+ * correct, but IFC4 declares ObjectType on **218** entities, so 189 were
+ * missing — `--set ObjectType=...` on an IfcFurniture, IfcStairFlight,
+ * IfcPipeSegment or IfcSanitaryTerminal was refused with a "not applicable"
+ * warning that was simply wrong. Deriving the set means it cannot fall behind
+ * the schema again, and it is schema-aware: IFC2X3 and IFC4 do not declare
+ * ObjectType on the same entities.
  */
-const OBJECTTYPE_TYPES = new Set([
-  'IFCWALL', 'IFCWALLSTANDARDCASE', 'IFCSLAB', 'IFCCOLUMN', 'IFCBEAM',
-  'IFCDOOR', 'IFCWINDOW', 'IFCROOF', 'IFCSTAIR', 'IFCRAILING', 'IFCMEMBER',
-  'IFCPLATE', 'IFCCOVERING', 'IFCFOOTING', 'IFCPILE', 'IFCCURTAINWALL',
-  'IFCRAMP', 'IFCSPACE', 'IFCBUILDINGELEMENTPROXY', 'IFCFURNISHINGELEMENT',
-  'IFCFLOWSEGMENT', 'IFCFLOWTERMINAL', 'IFCFLOWFITTING', 'IFCDISTRIBUTIONELEMENT',
-  'IFCOPENINGELEMENT', 'IFCSITE', 'IFCBUILDING', 'IFCBUILDINGSTOREY', 'IFCPROJECT',
-]);
+export async function entitiesWithObjectType(schema: string): Promise<ReadonlySet<string>> {
+  // `findAttribute` only knows the versions it has tables for; anything else
+  // (notably IFC5, which StepExporter accepts) falls back to IFC4 rather than
+  // throwing, which is what the hand-written list effectively did.
+  const known = new Set(['IFC2X3', 'IFC4', 'IFC4X3', 'IFC4X3_ADD2']);
+  const version = (known.has(schema) ? schema : 'IFC4') as IfcSchemaVersion;
+  const attr = await findAttribute(version, 'ObjectType');
+  // An attribute can be declared on an entity as a simple value or as part of
+  // a complex type; both mean the slot exists on that entity.
+  return new Set([...(attr?.simpleValueEntities ?? []), ...(attr?.complexEntities ?? [])]);
+}
 
 /**
  * Apply attribute mutations to STEP content via text replacement.
  * For each target entity, finds its STEP line and replaces the attribute at the known index.
  */
-function applyAttributeMutations(
+export function applyAttributeMutations(
   content: string,
   mutations: { entity: any; propName: string; value: string }[],
+  objectTypeEntities: ReadonlySet<string>,
 ): string {
   // Group mutations by expressId for efficient single-pass replacement
   const mutationsByEntity = new Map<number, { propName: string; value: string }[]>();
@@ -325,7 +340,7 @@ function applyAttributeMutations(
       const attrIdx = ATTRIBUTE_INDEX[mut.propName.toLowerCase()];
       if (attrIdx !== undefined && attrIdx < args.length) {
         // Validate ObjectType is only written to entities that define it
-        if (mut.propName.toLowerCase() === 'objecttype' && !OBJECTTYPE_TYPES.has(entityType)) {
+        if (mut.propName.toLowerCase() === 'objecttype' && !objectTypeEntities.has(entityType)) {
           process.stderr.write(`Warning: attribute "ObjectType" not applicable to ${entityType} #${expressId}, skipping\n`);
           continue;
         }

@@ -73,7 +73,7 @@ where
 ///    [`is_non_geometric_spatial`] for how that exempt set is maintained.
 /// 2. Legacy IFC2x3 / removed-in-IFC4x3 names that aren't in the generated
 ///    enum (e.g. `IFCSLABELEMENTEDCASE`, `IFCBUILDINGELEMENT`, `IFCPROXY`,
-///    `IFCEQUIPMENTELEMENT`, `IFCELECTRICALDISTRIBUTIONPOINT`) resolve through
+///    `IFCEQUIPMENTELEMENT`, `IFCELECTRICDISTRIBUTIONPOINT`) resolve through
 ///    `legacy_entities::get_legacy_entity_info`, which carries a
 ///    `has_geometry` flag.
 /// 3. Reinforcement variants not covered above fall back to a substring
@@ -283,6 +283,32 @@ pub fn legacy_aware_ifc_type(type_name: &str) -> IfcType {
     match get_legacy_entity_info(upper.as_ref()) {
         Some(info) => info.base_type,
         None => IfcType::from_str(upper.as_ref()),
+    }
+}
+
+/// The legacy-aware type for an entity, recovered from its RAW STEP RECORD.
+///
+/// For callers that hold a `DecodedEntity` and its source bytes but no keyword.
+/// `DecodedEntity.ifc_type` comes from a bare [`IfcType::from_str`], and for a
+/// name IFC4X3 dropped that is `IfcType::Unknown` — which stores a **CRC32
+/// hash, not the name**, so the keyword cannot be recovered from it. The record
+/// is the only place it still exists.
+///
+/// `decoded` is returned unchanged when it is already a known type, so the
+/// scan is paid only by entities that need it, and when the record is
+/// malformed enough that no keyword can be read.
+///
+/// Exists because the wasm mesh batch had exactly this shape and got it wrong:
+/// every legacy keyword reached the browser labelled `"Unknown"` while the
+/// native pipeline, which still has the keyword in hand, labelled it correctly
+/// (#3179).
+pub fn legacy_aware_ifc_type_from_record(decoded: IfcType, record: &[u8]) -> IfcType {
+    if !matches!(decoded, IfcType::Unknown(_)) {
+        return decoded;
+    }
+    match crate::fast_parse::extract_entity_type_name(record) {
+        Some(name) => legacy_aware_ifc_type(name),
+        None => decoded,
     }
 }
 

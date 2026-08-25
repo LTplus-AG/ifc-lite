@@ -32,7 +32,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { analyze, blankStrings, stripComments } from './source-text-assertion-detect.mjs';
+import { analyze } from './source-text-assertion-detect.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const GATE = join(ROOT, 'scripts', 'check-source-text-assertions.mjs');
@@ -483,14 +483,30 @@ assert.ok(source.includes('handleRowClick'));
 });
 
 test('division after ++ is not read as a regex', () => {
-  // Asserted on the BLANKING, not on `flagged`. The first version of this test
-  // checked `flagged` with the assertion on a different line, so the corruption
-  // never reached the verdict and it passed with the bug live: `a++ / b) / c`
-  // blanked to `(a++        c;`, eating the `)` and unbalancing every
-  // paren-matching read downstream. Two slashes on one line, so the
-  // unterminated-literal fallback does not save it.
-  const line = 'const r = (a++ / b) / c;';
-  assert.equal(blankStrings(stripComments(line)), line);
+  // This used to assert on the BLANKING, because the hand-rolled lexer read
+  // `a++ / b) / c` as a regex, blanked it to `(a++        c;`, and ate the `)`
+  // -- and an earlier version that checked `flagged` with the assertion on a
+  // different line passed with that bug live, because the corruption never
+  // reached the verdict.
+  //
+  // There is no blanking to assert on now (#3174): TypeScript decides regex
+  // versus division in the parser. So the property is stated where it is
+  // observable, in BOTH directions on the same input, which is what the
+  // earlier one-sided version lacked -- a rewrite that only checked the
+  // flagged case would pass on a detector that flags everything.
+  const hazard = 'const r = (a++ / b) / c;';
+  assert.equal(flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('Thing.ts', 'utf8');
+${hazard}
+assert.ok(source.includes('tok'));
+`), true, 'a division after ++ swallowed the assertion below it');
+  assert.equal(flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('Thing.ts', 'utf8');
+${hazard}
+assert.ok(other.includes('tok'));
+`), false, 'the same file with an UNTAINTED subject must stay clean');
 });
 
 // ---------------------------------------------------------------------------
@@ -701,8 +717,16 @@ assert.ok(source.includes('tok'));
 `),
     true,
   );
-  // The control: a genuine division after `)` must stay division.
-  assert.equal(blankStrings('const q = (1 + 2) / 3;'), 'const q = (1 + 2) / 3;');
+  // The control: a genuine division after `)` must stay division. Stated on
+  // the verdict now rather than on a blanked view (#3174) -- if that `/ 3;`
+  // opened a regex, everything to the next `/` would be one token and the
+  // assertion below would vanish with it.
+  assert.equal(flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('Thing.ts', 'utf8');
+const q = (1 + 2) / 3;
+assert.ok(source.includes('tok'));
+`), true, 'a genuine division was read as a regex and ate the assertion');
 });
 
 test('a helper whose name contains $ is still followed', () => {
@@ -816,17 +840,28 @@ ${body}
 });
 
 test('a quoted string cannot cross a line', () => {
-  // The string state ended only on the matching quote, so ONE unpaired `'` or
-  // `"` kept the lexer inside a string until the next quote anywhere later in
-  // the file. Both views were blanked across that whole span, and every read,
-  // filename literal and predicate inside it disappeared.
-  assert.equal(
-    blankStrings("const bad = ';\nconst keep = 1;\nconst z = ';"),
-    "const bad = ' \nconst keep = 1;\nconst z = ' ",
-    'an unpaired quote swallowed the following lines',
-  );
-  // A template literal MAY span lines, so it must still be blanked across them.
-  assert.equal(blankStrings('const t = `a\nb`;'), 'const t = ` \n `;');
+  // The hand-rolled string state ended only on the matching quote, so ONE
+  // unpaired `'` or `"` kept the lexer inside a string until the next quote
+  // anywhere later in the file, and every read, filename literal and predicate
+  // in that span disappeared -- a whole file silently unscanned.
+  //
+  // Stated on the verdict now rather than on a blanked view (#3174). A quoted
+  // string cannot cross a newline, so the assertion two lines down must still
+  // be seen; a TEMPLATE literal may, so a predicate written INSIDE one is
+  // string content and must not be.
+  assert.equal(flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('Thing.ts', 'utf8');
+const bad = ';
+assert.ok(source.includes('tok'));
+`), true, 'an unpaired quote swallowed the following lines');
+  assert.equal(flagged(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('Thing.ts', 'utf8');
+const t = \`a
+assert.ok(source.includes('tok'));
+b\`;
+`), false, 'a predicate inside a multi-line template is string content, not code');
 });
 
 test('a $-leading callback parameter is tainted', () => {
@@ -873,4 +908,341 @@ ${body}
       `a $-leading name went undetected via: ${name}`,
     );
   }
+});
+
+// ---------------------------------------------------------------------------
+// 8. What parsing bought, and what it must not have cost (#3174).
+//
+// The three gaps below were found and measured while working on #3116 and left
+// in place because each needed more than that PR's scope. They were recorded
+// only in a commit message and a PR body, which is the failure shape this repo
+// keeps paying for. Here they are, executable.
+
+test('gap 1: a comment inside a wrapped assertion no longer kills the marker', () => {
+  // `markerLineFor` walked up over lines a regex called continuations. An
+  // interior comment strips to blank, which is not a continuation, so the walk
+  // stopped there and the marker above the assertion never reached the
+  // predicate. The gate then failed TWICE in the same run -- "source-text
+  // assertion found" and "marker that excuses nothing" -- and the remedy it
+  // prints in its own error text did not clear it.
+  const result = analyze(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('Thing.tsx', 'utf8');
+// @source-text-assertion-ok anchor guard
+assert.ok(
+  // the anchor must exist before we replace it
+  source.includes(anchor),
+);
+`);
+  assert.equal(result.flagged, false, 'the marker still does not reach past an interior comment');
+  assert.equal(result.marked.length, 1);
+  assert.deepEqual(result.unusedMarkers, [], 'the marker must not also be reported as dead');
+});
+
+test('gap 1: the fix must NOT be the fail-open one that was measured and rejected', () => {
+  // Making blank lines transparent to the walk closes gap 1 and opens a hole:
+  // a marker whose guard was deleted then reaches DOWN across blank lines to an
+  // unrelated predicate, turning a dead marker (loud) into a silent exemption.
+  // The marker's reach is the ENCLOSING STATEMENT, and a different statement is
+  // a different range, so no amount of blank line brings this one into scope.
+  const result = analyze(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('Thing.tsx', 'utf8');
+// @source-text-assertion-ok anchor guard
+
+
+
+assert.ok(source.includes('handleRowClick'));
+`);
+  assert.equal(result.flagged, true, 'a marker reached across blank lines and excused a real finding');
+  assert.equal(result.marked.length, 0);
+  assert.equal(result.unusedMarkers.length, 1, 'the orphaned marker must still be reported');
+});
+
+test('gap 3: a default parameter containing a call no longer hides the callback parameter', () => {
+  // Callback parameter lists were captured with `[^()]*`, which cannot cross
+  // the nested parens of `(line = pad(1))`. The parameter was never tainted, so
+  // the entire callback body read as clean -- in BOTH spellings. The plain
+  // forms are here as the control: they passed before, and a rewrite that
+  // flagged everything would satisfy the defaulted cases alone.
+  const head = `
+import { readFileSync } from 'node:fs';
+const source = readFileSync('Thing.tsx', 'utf8');
+`;
+  const bodies = {
+    'function (line)': `assert.ok(source.split('\\n').some(function (line) { return line.includes('TODO'); }));`,
+    'function (line = pad(1))': `assert.ok(source.split('\\n').some(function (line = pad(1)) { return line.includes('TODO'); }));`,
+    '(line) =>': `assert.ok(source.split('\\n').some((line) => line.includes('TODO')));`,
+    '(line = pad(1)) =>': `assert.ok(source.split('\\n').some((line = pad(1)) => line.includes('TODO')));`,
+    '({ text: line = pad(1) }) =>': `assert.ok(source.split('\\n').some(({ text: line = pad(1) }) => line.includes('TODO')));`,
+  };
+  for (const [label, body] of Object.entries(bodies))
+    assert.equal(flagged(head + body), true, `callback parameter went untainted via: ${label}`);
+});
+
+test('gap 2 stays open, and says so out loud', () => {
+  // Not a defect being tolerated silently. Widening the for-of rule to "any
+  // iterable carrying file bytes" also taints `for (const file of files)` where
+  // the elements are PATHS -- measured as 4 new hits in toolbar-parity.test.ts.
+  // Nothing in the SYNTAX separates a tainted array of lines from a tainted
+  // array of filenames, so parsing does not close this one either. If a future
+  // change makes the bound form flag, this test is the place that says the
+  // question was reopened rather than a rule quietly widening.
+  const head = `
+import { readFileSync } from 'node:fs';
+const source = readFileSync('Thing.tsx', 'utf8');
+`;
+  assert.equal(
+    flagged(head + `for (const line of source.split('\\n')) { assert.ok(!line.includes('TODO')); }`),
+    true,
+    'the inline split must still be caught, or this test is measuring nothing',
+  );
+  assert.equal(
+    flagged(head + `const lines = source.split('\\n');\nfor (const line of lines) { assert.ok(!line.includes('TODO')); }`),
+    false,
+    'gap 2 closed -- if that was deliberate, update this test and the docblock',
+  );
+});
+
+test('a TYPE ANNOTATION is not a parameter name', () => {
+  // The scanning version read parameter names out of the raw text between the
+  // parens, so `function rename(file: string, from: RegExp, to: string)`
+  // registered `string` and `RegExp` as parameters. Both really were in the
+  // taint set of packages/data/scripts/generate-ifc-schema.test.ts on main, and
+  // the index misalignment they caused is what tainted a subprocess-output
+  // assertion there -- the one false positive the pairing rule exists to
+  // prevent.
+  //
+  // The fixture asserts on a bare `string` on purpose, which no real test would
+  // write. That is what makes it DISCRIMINATING: `string` is a name only if the
+  // annotation was read as one. An earlier version of this test put the
+  // annotation in a slot no tainted argument reached, so it passed on the old
+  // detector too and measured nothing.
+  const src = `
+import { readFileSync } from 'node:fs';
+function load(p: string, kind: string) { return kind; }
+const s = readFileSync('a.ts', 'utf8');
+load('literal', s);
+`;
+  assert.equal(
+    flagged(src + `assert.ok(string.includes('nope'));`),
+    false,
+    'the annotation `string` was read as a parameter name and got tainted',
+  );
+  // The control: the parameter that argument REALLY lands in is tainted, so the
+  // assertion above is not passing because the call propagated nothing.
+  assert.equal(flagged(src + `assert.ok(kind.includes('yes'));`), true);
+});
+
+test('an argument taints the parameter it actually lands in', () => {
+  // Same root cause as the annotation case: a flat name list has no positions,
+  // so argument 1 could taint whatever name happened to sit at index 1 of a
+  // list that included annotations. Positional alignment means the SECOND
+  // parameter is tainted by the SECOND argument and by nothing else.
+  const src = (call) => `
+import { readFileSync } from 'node:fs';
+function check(clean: string, dirty: string) { assert.ok(dirty.includes('x')); }
+const s = readFileSync('a.ts', 'utf8');
+${call}
+`;
+  assert.equal(flagged(src(`check('literal', s);`)), true, 'the tainted argument reached its parameter');
+  assert.equal(flagged(src(`check(s, 'literal');`)), false, 'taint landed in the wrong parameter');
+});
+
+test('a marker written after the assertion on the same line still excuses it', () => {
+  // TypeScript attaches a same-line trailing comment to the PRECEDING token, so
+  // it is trailing trivia and not leading trivia of anything. A comment walk
+  // that reads only leading ranges loses every marker written this way -- and
+  // this is a documented spelling of the escape hatch, so losing it turns a
+  // marked site into a hard failure with no way to clear it.
+  const result = analyze(`
+import { readFileSync } from 'node:fs';
+const source = readFileSync('Thing.tsx', 'utf8');
+assert.ok(source.includes(anchor), 'drifted'); // @source-text-assertion-ok anchor guard
+`);
+  assert.equal(result.flagged, false);
+  assert.equal(result.marked.length, 1);
+  assert.deepEqual(result.unusedMarkers, []);
+});
+
+test('TypeScript-only syntax between the read and the predicate does not hide it', () => {
+  // The scanner had no notion of TS syntax at all -- it saw characters, and a
+  // type annotation was only ever "text that happens to sit between parens".
+  // These are the spellings a real test file reaches for around a file read,
+  // and each one has to leave the taint intact.
+  const head = `
+import { readFileSync } from 'node:fs';
+const source = readFileSync('Thing.tsx', 'utf8');
+`;
+  const shapes = {
+    'as cast': `const s = source as string;\nassert.ok(s.includes('x'));`,
+    'satisfies': `const s = source satisfies string;\nassert.ok(s.includes('x'));`,
+    'non-null': `const s = source!;\nassert.ok(s.includes('x'));`,
+    'generic helper': `function id<T>(v: T): T { return v; }\nassert.ok(id(source).includes('x'));`,
+    'jsx in the file': `render(<div>{source}</div>);\nassert.ok(source.includes('x'));`,
+  };
+  for (const [label, body] of Object.entries(shapes))
+    assert.equal(flagged(head + body), true, `taint was lost across: ${label}`);
+});
+
+test('two fail-opens the rewrite closed on the way past, named so they stay closed', () => {
+  // Neither is in #3174's list. Both were live on main, both are silent, and
+  // both are gone because the tree answers the question the regexes were
+  // approximating -- which is the argument for parsing, stated as two facts
+  // instead of as a preference.
+  const head = `
+import { readFileSync } from 'node:fs';
+const source = readFileSync('Thing.tsx', 'utf8');
+`;
+
+  // A CLASS METHOD as the helper. The function-shape regex matched
+  // `function name(` and `const name = (` and nothing else, so a method's
+  // parameter was never registered and the call site tainted nothing.
+  assert.equal(
+    flagged(head + `class C { check(t: string) { return t.includes('x'); } }\nassert.ok(new C().check(source));`),
+    true,
+    'a class method helper hid the assertion',
+  );
+
+  // An OPTIONAL-CHAIN predicate. `\.` matches the dot of `?.`, so the walk back
+  // for the receiver started on the `?`, stopped immediately and returned an
+  // empty receiver -- `source` was never part of the subject. The detector's
+  // own comments describe this exact trap being fixed for the iteration-callback
+  // rule; the predicate scan had the same bug and was never revisited. Two
+  // characters bought a clean file.
+  assert.equal(flagged(head + `assert.ok(source?.includes('x'));`), true, 'an optional-chain predicate escaped');
+  assert.equal(flagged(head + `assert.ok(source?.split('n')?.some((l) => l.includes('x')));`), true);
+});
+
+test('a callback wrapped in parentheses or a type wrapper is still a callback', () => {
+  // Reported by Codex on #3177, and it was a REGRESSION rather than a
+  // pre-existing gap: `some(((line) => …))` hands the argument loop a
+  // ParenthesizedExpression, so a bare `isFunctionLike` answered no and `line`
+  // stayed clean. The scanning version caught every one of these, because its
+  // callback pattern matched the arrow wherever it sat in the argument text.
+  //
+  // Shipping without this would have moved the gate in the one direction it
+  // must never move -- quieter -- while the PR claimed the opposite. Each row
+  // below was checked against main's detector, and all but the last were green
+  // there.
+  const head = `
+import { readFileSync } from 'node:fs';
+const source = readFileSync('Thing.tsx', 'utf8');
+`;
+  const wrapped = {
+    'parenthesized arrow': `assert.ok(source.split('n').some(((line) => line.includes('TODO'))));`,
+    'as-cast callback': `assert.ok(source.split('n').some(((line) => line.includes('TODO')) as any));`,
+    'satisfies callback': `assert.ok(source.split('n').some(((line) => line.includes('TODO')) satisfies unknown));`,
+    'parenthesized function expression': `assert.ok(source.split('n').some((function (line) { return line.includes('TODO'); })));`,
+    // Not a regression -- main missed this one too -- but the same root cause,
+    // so it is closed and pinned with the rest rather than left as a sibling
+    // waiting to be found separately.
+    'parenthesized hoisted callback': `const hit = (line) => line.includes('TODO');\nassert.ok(source.split('n').some((hit)));`,
+    // The declaration side of the same blindness: the arrow's parent is the
+    // parenthesis, not the declaration, so the helper had no name at all.
+    'wrapped helper declaration': `const chk = ((t) => t.includes('x'));\nassert.ok(chk(source));`,
+  };
+  for (const [label, body] of Object.entries(wrapped))
+    assert.equal(flagged(head + body), true, `a wrapped callback went untainted via: ${label}`);
+
+  // The SECOND round of the same finding, also from Codex on #3177: unwrapping
+  // a fixed list of wrappers is not enough, because an expression can SELECT a
+  // callback without being one. The scanning version found arrows anywhere in
+  // the argument text, so each of these was green on main and red here until
+  // the argument is walked rather than root-tested.
+  const selected = {
+    'ternary': `assert.ok(source.split('n').some(flag ? (line) => line.includes('TODO') : other));`,
+    'logical ||': `assert.ok(source.split('n').some(cb || ((line) => line.includes('TODO'))));`,
+    'comma operator': `assert.ok(source.split('n').some((noop(), (line) => line.includes('TODO'))));`,
+    'spread of a literal': `assert.ok(source.split('n').some(...[(line) => line.includes('TODO')]));`,
+    'nested inside a call': `assert.ok(source.split('n').some(wrapCb((line) => line.includes('TODO'))));`,
+  };
+  for (const [label, body] of Object.entries(selected))
+    assert.equal(flagged(head + body), true, `a selected callback went untainted via: ${label}`);
+
+  // A callback passed BY NAME through a selector. Main did NOT catch this one,
+  // so it is not a regression -- it is closed here because resolving the
+  // selector's branches costs nothing once they are already being walked.
+  assert.equal(
+    flagged(head + `const hit = (line) => line.includes('TODO');\nassert.ok(source.split('n').some(flag ? hit : other));`),
+    true,
+    'a named callback behind a ternary went untainted',
+  );
+
+  // DEFERRED, and recorded so it is a known hole rather than an assumed one: a
+  // callback FACTORY, `some(makeCheck())`, where no function expression appears
+  // in the argument at all. Main misses it too, so this PR regresses nothing.
+  // Closing it means treating any unresolvable argument as fail-closed, and
+  // nothing lexically marks "callback position" -- `source.includes(getAnchor())`
+  // has the same shape and is an ordinary assertion, so that rule would taint
+  // every parameter in a large share of real test files.
+  assert.equal(
+    flagged(head + `function makeCheck() { return (line) => line.includes('TODO'); }\nassert.ok(source.split('n').some(makeCheck()));`),
+    false,
+    'the callback-factory hole closed -- update this test and the docblock if that was deliberate',
+  );
+
+  // A wrapped RECEIVER is a different path -- it is read by subtree walk, which
+  // descends through the wrapper -- and must keep working.
+  assert.equal(flagged(head + `assert.ok((source).includes('x'));`), true);
+  assert.equal(flagged(head + `assert.ok((source as string).includes('x'));`), true);
+
+  // And the callee is deliberately NOT unwrapped: `(fn)(source)` is a callee
+  // this analysis cannot name, so it must stay in the fail-closed branch that
+  // taints every parameter, exactly as the scanning version had it.
+  assert.equal(
+    flagged(head + `function opaque(t) { assert.ok(t.includes('x')); }\n(opaque)(source);`),
+    true,
+    'an undecidable callee stopped failing closed',
+  );
+});
+
+test('an angle-bracket type assertion is a wrapper too, where unwrap is load-bearing', () => {
+  // `unwrap` handles `TypeAssertionExpression` and nothing exercised it, because
+  // every other fixture parses as TSX and TSX cannot express `<T>value` — it
+  // reads as an unclosed JSX tag (2 parse errors, no assertion node). So the
+  // branch was dead in the suite while looking covered. Reported by CodeRabbit
+  // on #3177 alongside the `?.` guards, which is the other half of the same
+  // mistake: a guard would have swallowed a missing predicate and no test
+  // reached the path to notice.
+  //
+  // THE FIRST VERSION OF THIS TEST DID NOT MEASURE THE ARM. It asserted on
+  // `const s = <string>source` and on a callback nested inside an assertion,
+  // and both stay flagged with the arm deleted — the binding rule and the
+  // callback rule each walk the whole subtree, so they descend through the
+  // wrapper without needing it removed. Deleting the arm scored the same.
+  //
+  // The arm is load-bearing exactly where a node is inspected STRUCTURALLY
+  // rather than walked: resolving a callback passed BY NAME, and walking from
+  // a function up to the name it is bound to. Both of these flip to `false`
+  // with the arm removed, which is what makes them the test.
+  const head = `
+import { readFileSync } from 'node:fs';
+const source = readFileSync('Thing.ts', 'utf8');
+`;
+  const needsUnwrap = {
+    'named callback inside an assertion': `const hit = (line) => line.includes('x');\nassert.ok(source.split('n').some(<(l: string) => boolean>hit));`,
+    'helper declaration wrapped in one': `const chk = <(t: string) => boolean>((t) => t.includes('x'));\nassert.ok(chk(source));`,
+  };
+  for (const [label, body] of Object.entries(needsUnwrap))
+    assert.equal(analyze(head + body, 'a.ts').flagged, true, `unwrap missed: ${label}`);
+
+  // Kept as controls, and labelled as such: these two are covered by the
+  // subtree walks whether or not the arm exists, so they prove the fixtures
+  // parse — not that the arm works.
+  const coveredByWalks = {
+    'binding through an assertion': `const s = <string>source;\nassert.ok(s.includes('x'));`,
+    'callback nested inside one': `assert.ok(source.split('n').some(<(l: string) => boolean>((line) => line.includes('x'))));`,
+  };
+  for (const [label, body] of Object.entries(coveredByWalks))
+    assert.equal(analyze(head + body, 'a.ts').flagged, true, `control failed: ${label}`);
+
+  // And the reason the default fileName is TSX: the SAME source parsed as TSX
+  // is not this program at all, so a fixture that forgot the filename would be
+  // asserting about something else entirely.
+  assert.equal(
+    analyze(head + coveredByWalks['binding through an assertion'], 'a.tsx').flagged,
+    false,
+    'TSX now parses `<string>value` — if TypeScript changed, this test measures the wrong thing',
+  );
 });

@@ -52,8 +52,10 @@ const ISO_216_MM: ReadonlyArray<{ series: string; shortMm: number; longMm: numbe
 /** ANSI and ARCH sheets are defined in inches. */
 const MM_PER_INCH = 25.4;
 // `portrait` states whether the registry is EXPECTED to carry an
-// `<id>_PORTRAIT` entry. Only the three US office sizes do; the large ANSI and
-// ARCH sheets are landscape-only. It has to be stated rather than inferred,
+// `<id>_PORTRAIT` entry. Only the three US office sizes do; the ANSI and ARCH
+// sheets carry a single bare key with no orientation suffix. (Not a size
+// distinction -- ARCH_A at 228.6 x 304.8 mm is smaller than LEGAL, which has
+// one. It is which series the registry models in both orientations.) It has to be stated rather than inferred,
 // because the test previously guarded the portrait checks with `if (portrait)`
 // and a guard cannot tell "not expected" from "expected and missing":
 // deleting LETTER_PORTRAIT from the registry outright left all 448 tests green.
@@ -140,8 +142,17 @@ describe('inch-defined sheets (ANSI and ARCH)', () => {
 
       // Both directions: an expected portrait entry must EXIST (a bare
       // `if (portrait)` let its deletion pass), and an unexpected one must not
-      // appear -- adding LETTER-style portrait entries for the large ARCH
-      // sheets would change which sheet `view-pdf-scale` reports for a page.
+      // appear. The second direction is NOT about `view-pdf-scale`: that file
+      // reads the registry once (view-pdf-scale.ts:162) and skips every
+      // non-ISO entry on the next line, so an added ANSI or ARCH portrait is
+      // unreachable from it -- measured by adding all nine and diffing
+      // `describePage` over 130 page sizes, output byte-identical. Nor does it
+      // reach the sheet dropdown, which gates on the hardcoded
+      // `PAPER_SIZE_GROUPS` rather than on the registry. What it does change is
+      // the public surface: `getPaperSizesByCategory` (paper-sizes.ts:273) is
+      // exported from the package root and the SDK returns both it and the raw
+      // registry (sdk/src/namespaces/drawing.ts:187-192). An unexpected key is
+      // a silent addition to what the registry claims exists.
       const portrait = PAPER_SIZE_REGISTRY[`${id}_PORTRAIT`];
       if (expectPortrait) {
         expect(portrait, `${id}_PORTRAIT must exist in the registry`).toBeDefined();

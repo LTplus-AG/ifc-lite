@@ -45,7 +45,7 @@
    583 apps/viewer/src/components/viewer/EntityContextMenu.tsx
    863 apps/viewer/src/components/viewer/ExportDialog.tsx
    531 apps/viewer/src/components/viewer/GLBExportDialog.tsx
-  1466 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
+  1419 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
    435 apps/viewer/src/components/viewer/hierarchy/useHierarchyTree.ts
   1159 apps/viewer/src/components/viewer/HierarchyPanel.tsx
   1198 apps/viewer/src/components/viewer/IDSPanel.tsx
@@ -270,12 +270,12 @@
    573 packages/mutations/src/csv-connector.ts
   2121 packages/mutations/src/mutable-property-view.ts
    422 packages/oauth-pkce/src/token-manager.ts
-  1237 packages/parser/src/columnar-parser.ts
+  1211 packages/parser/src/columnar-parser.ts
    480 packages/parser/src/compact-entity-index.ts
    530 packages/parser/src/data-store-transport.ts
    653 packages/parser/src/georef-extractor.ts
    827 packages/parser/src/material-resolver.ts
-  1168 packages/parser/src/on-demand-extractors.ts
+  1145 packages/parser/src/on-demand-extractors.ts
    523 packages/parser/src/project-units.ts
    594 packages/parser/src/schedule-extractor.ts
    494 packages/parser/src/source-bytes.ts

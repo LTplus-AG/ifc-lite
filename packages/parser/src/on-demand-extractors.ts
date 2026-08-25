@@ -15,11 +15,10 @@ import { EntityExtractor } from './entity-extractor.js';
 import {
     RelationshipType,
     PropertyValueType,
-    QuantityType,
 } from '@ifc-lite/data';
 import type { PropertyValue } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
-import { QUANTITY_TYPE_MAP } from './columnar-parser-indexes.js';
+import { collectQuantitiesFromRefs } from './quantity-collect.js';
 import { extractGeoreferencing as extractGeorefFromEntities, type GeoreferenceInfo } from './georef-extractor.js';
 
 // Re-export classification and material resolvers
@@ -540,29 +539,7 @@ export function extractQsetsFromIds(
         const qsetName = typeof qsetAttrs[2] === 'string' ? qsetAttrs[2] : `QuantitySet #${qsetId}`;
         const hasQuantities = qsetAttrs[5];
 
-        const quantities: Array<{ name: string; type: number; value: number }> = [];
-
-        if (Array.isArray(hasQuantities)) {
-            for (const qtyRef of hasQuantities) {
-                if (typeof qtyRef !== 'number') continue;
-
-                const qtyEntityRef = store.entityIndex.byId.get(qtyRef);
-                if (!qtyEntityRef) continue;
-
-                const qtyEntity = extractor.extractEntity(qtyEntityRef);
-                if (!qtyEntity) continue;
-
-                const qtyAttrs = qtyEntity.attributes || [];
-                const qtyName = typeof qtyAttrs[0] === 'string' ? qtyAttrs[0] : '';
-                if (!qtyName) continue;
-
-                const qtyType = QUANTITY_TYPE_MAP[qtyEntity.type.toUpperCase()] ?? QuantityType.Count;
-                // Value is at index 3 for the simple IfcQuantity* subtypes.
-                const value = typeof qtyAttrs[3] === 'number' ? qtyAttrs[3] : 0;
-
-                quantities.push({ name: qtyName, type: qtyType, value });
-            }
-        }
+        const quantities = collectQuantitiesFromRefs(store, extractor, hasQuantities);
 
         // Only surface sets that actually carry quantities. An empty set would
         // add nothing to a schedule, and (because `extractTypeQuantitiesOnDemand`

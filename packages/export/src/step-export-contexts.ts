@@ -33,12 +33,13 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { applySourceLineMutations, applyOverlayEntityOverrides } from './step-attribute-mutations.js';
+import { applySourceLineMutations } from './step-attribute-mutations.js';
+import { applyOverlayEntityOverrides } from './step-overlay-attribute-overrides.js';
 import { relationshipWithheldWarning } from './step-export-types.js';
 import { isGeometryEntity } from './step-geometry-types.js';
 import type { SourceIterationContext } from './step-source-iteration.js';
 import type { OverlayEntitiesContext } from './step-overlay-entities.js';
-import type { PropertySetContext } from './step-property-sets.js';
+import type { PropertySetContext } from './step-property-set-readers.js';
 
 /**
  * The state `step-source-iteration.ts` cannot read off the pass (#2475 2d).
@@ -75,12 +76,10 @@ export function buildSourceIterationContext(
 /**
  * The state `step-overlay-entities.ts` cannot read off the pass (#2475
  * step 2e). `applyOverlayEntityOverrides` is the free function
- * `step-attribute-mutations.ts` exports — it and its two
- * `serializeNamedAttribute` / `serializePositionalOverride` helpers moved
- * together, since those two have no reader outside this cluster;
- * `isGeometryEntity` and `relationshipWithheldWarning` are the same shared
- * readers {@link buildSourceIterationContext} already injects into the other
- * output pass.
+ * `step-overlay-attribute-overrides.ts` exports; `isGeometryEntity` and
+ * `relationshipWithheldWarning` are the same shared readers
+ * {@link buildSourceIterationContext} already injects into the other output
+ * pass.
  */
 export function buildOverlayEntitiesContext(
   mutationView: MutablePropertyView | null,

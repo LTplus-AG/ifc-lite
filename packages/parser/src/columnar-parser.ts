@@ -43,8 +43,7 @@ import {
     isIfcTypeLikeEntity,
 } from './columnar-parser-indexes.js';
 import { extractRelFast, extractPropertyRelFast } from './columnar-parser-relationships.js';
-import { safeUtf8Decode } from '@ifc-lite/data';
-import { parseSourceHeader } from './source-header.js';
+import { detectSchemaVersion, parseSourceHeader } from './source-header.js';
 
 import type { SpatialIndex, EntityByIdIndex } from './columnar-parser-indexes.js';
 
@@ -123,19 +122,6 @@ export interface IfcDataStore extends IfcStoreBase {
     lengthUnitScale?: number;
 }
 
-
-function detectSchemaVersion(buffer: Uint8Array): IfcDataStore['schemaVersion'] {
-    const headerEnd = Math.min(buffer.length, 2000);
-    const headerText = safeUtf8Decode(buffer, 0, headerEnd).toUpperCase();
-
-    if (headerText.includes('IFC5')) return 'IFC5';
-    if (headerText.includes('IFC4X3')) return 'IFC4X3';
-    if (headerText.includes('IFC4')) return 'IFC4';
-    if (headerText.includes('IFC2X3')) return 'IFC2X3';
-
-    return 'IFC4'; // Default fallback
-}
-
 export class ColumnarParser {
     /**
      * Parse IFC file into columnar data store
@@ -174,14 +160,16 @@ export class ColumnarParser {
 
         options.onProgress?.({ phase: 'building', percent: 0 });
 
-        // Detect schema version from FILE_SCHEMA header
-        const schemaVersion = detectSchemaVersion(uint8Buffer);
-
         // Capture verbatim HEADER fields so a round-trip export can reproduce
         // the source FILE_DESCRIPTION items + exact FILE_SCHEMA token instead
-        // of regenerating a fresh ifc-lite header. Cheap: only the header
-        // (first ~2 KB, already decoded above) is scanned.
+        // of regenerating a fresh ifc-lite header. Cheap: the scan stops at the
+        // header's ENDSEC, so the DATA section is never touched.
         const sourceHeader = parseSourceHeader(uint8Buffer);
+
+        // Schema version comes from that header's FILE_SCHEMA declaration, not
+        // from a substring scan of the raw bytes — exporter product names in
+        // FILE_NAME free text carry schema tokens too (issue #3278).
+        const schemaVersion = detectSchemaVersion(uint8Buffer, sourceHeader);
 
         // Initialize builders (entity table capacity set after categorization below)
         const strings = new StringTable();

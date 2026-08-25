@@ -13,7 +13,7 @@
  * splitter that ignores quote state would mis-split.
  */
 
-import type { IfcSourceHeader } from '@ifc-lite/data';
+import type { IfcSourceHeader, IfcStoreBase } from '@ifc-lite/data';
 import { decodeStepStringLiteral } from '@ifc-lite/encoding';
 
 import { asSourceBytes, type IfcSourceBytes } from './source-bytes.js';
@@ -226,4 +226,64 @@ export function parseSourceHeader(
     authorization,
     schemaIdentifiers,
   };
+}
+
+/**
+ * Resolve one `FILE_SCHEMA` identifier to the schema version a store carries.
+ *
+ * Matched by PREFIX, longest first: the spellings that reach us in the wild
+ * carry addendum/corrigendum suffixes (`IFC4X3_ADD2`, `IFC4X1`, `IFC2X3_TC1`),
+ * and `IFC4X3` itself begins with `IFC4`, so the `IFC4X3` branch has to be
+ * tried before the `IFC4` one. Returns `undefined` for an identifier naming no
+ * schema we model, so the caller can keep looking.
+ */
+function schemaFromIdentifier(identifier: string): IfcStoreBase['schemaVersion'] | undefined {
+  const token = identifier.trim().toUpperCase();
+  if (token.startsWith('IFC5')) return 'IFC5';
+  if (token.startsWith('IFC4X3')) return 'IFC4X3';
+  if (token.startsWith('IFC4')) return 'IFC4';
+  if (token.startsWith('IFC2X3')) return 'IFC2X3';
+  return undefined;
+}
+
+/**
+ * Determine which IFC schema a STEP buffer declares (issue #3278).
+ *
+ * The `FILE_SCHEMA` declaration is authoritative and is read from the
+ * already-parsed {@link IfcSourceHeader}; free text elsewhere in the header is
+ * not. That distinction is the whole point. `FILE_DESCRIPTION` and `FILE_NAME`
+ * carry author, organisation, preprocessor and originating-system strings, and
+ * exporters routinely stamp a schema token into their product name ("SomeApp
+ * IFC4 Exporter") — which a raw substring scan of the header bytes cannot tell
+ * apart from a declaration. Reading the record also reaches declarations that
+ * sit past the first 2 KB: ISO 10303-21 puts `FILE_SCHEMA` *after* `FILE_NAME`,
+ * and a long author or organisation list pushes it out of a small fixed window.
+ *
+ * Free on the hot path: {@link parseSourceHeader} already runs on every parse,
+ * so nothing extra is scanned. The raw decode below now happens only for a file
+ * that declares no schema at all.
+ *
+ * When no `FILE_SCHEMA` identifier resolves, fall back to the historical raw
+ * scan of the first 2000 bytes rather than refusing, so every file that
+ * resolves today keeps resolving the same way.
+ */
+export function detectSchemaVersion(
+  buffer: Uint8Array | IfcSourceBytes,
+  header: IfcSourceHeader | undefined,
+): IfcStoreBase['schemaVersion'] {
+  for (const identifier of header?.schemaIdentifiers ?? []) {
+    const version = schemaFromIdentifier(identifier);
+    if (version !== undefined) return version;
+  }
+
+  const src = asSourceBytes(buffer);
+  const headerEnd = Math.min(src.byteLength, 2000);
+  const headerText = src.decodeUtf8(0, headerEnd).toUpperCase();
+
+  if (headerText.includes('IFC5')) return 'IFC5';
+  if (headerText.includes('IFC4X3')) return 'IFC4X3';
+  if (headerText.includes('IFC4')) return 'IFC4';
+  if (headerText.includes('IFC2X3')) return 'IFC2X3';
+
+  return 'IFC4'; // Default fallback
 }

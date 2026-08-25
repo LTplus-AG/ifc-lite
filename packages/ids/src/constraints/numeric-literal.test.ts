@@ -214,11 +214,14 @@ describe('deciding it is linear, not backtracking (#3113)', () => {
    *
    * Why the budget survives what the ratio could not: CONSECUTIVE READINGS, not
    * headroom. The old ratio put a healthy reading at ~4 against a bound of 8,
-   * so one 2x hiccup was a failure. The largest rung here decides 640k
-   * characters in ~1.2ms against a 500ms budget, but that ~400x is NOT what
-   * protects the test, and saying so would be false under the very load this
-   * docblock invokes: measured worst-rung readings reached 117ms at 160 busy
-   * processes and 303.9ms at 480 -- a ~1.6x margin at the extreme tail. What
+   * so one 2x hiccup was a failure. The 640k rung decides in ~1.2ms against a
+   * 500ms budget, and the largest rung, 2.56M, in ~3.7ms -- but that headroom
+   * is NOT what protects the test, and saying so would be false under the very
+   * load this docblock invokes: readings at the 640k rung reached 117ms at 160
+   * busy processes and 303.9ms at 480 -- a ~1.6x margin at the extreme tail.
+   * Those two tail figures are the 640k rung's, measured while 640k was still
+   * the top of the ladder; they are deliberately NOT restated as the largest
+   * rung's, which has not been measured under that load. What
    * protects it is ATTEMPTS: a rung is blown only after 3 CONSECUTIVE
    * over-budget readings. Contention arrives in bursts, which is what defeated
    * the ratio, and is what three consecutive readings are chosen to survive: a

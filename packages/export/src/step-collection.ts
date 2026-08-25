@@ -30,11 +30,9 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { collectReferencedEntityIds, getVisibleEntityIds, collectStyleEntities } from './reference-collector.js';
-import {
-  buildRelDefinesByPropertiesIndex,
-  collectPropertyAndQuantitySetMutations,
-  type PropertySetContext,
-} from './step-property-sets.js';
+import { buildRelDefinesByPropertiesIndex } from './step-property-set-index.js';
+import { collectPropertyAndQuantitySetMutations } from './step-property-set-collection.js';
+import { type PropertySetContext } from './step-property-set-readers.js';
 import { applyGeoreferencingMutations, type GeorefContext } from './step-georeferencing.js';
 import type { ExportPass, StepExportOptions } from './step-exporter.js';
 

@@ -33,7 +33,7 @@ import { describe, expect, it } from 'vitest';
 import { PropertyValueType } from '@ifc-lite/data';
 import { IfcParser, extractPropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { serializePropertyValue } from './step-serialization.js';
+import { serializePropertyValue } from './property-value-serialization.js';
 import { StepExporter } from './step-exporter.js';
 
 describe('every PropertyValueType maps to the IFC primitive it was authored as', () => {

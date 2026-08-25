@@ -17,11 +17,11 @@ import { getCompleteEntityIndex, getMaxExpressId } from './entity-iteration.js';
 import { createSourceRefReader } from './source-ref-bounds.js';
 import { writeSourceEntityLines } from './step-source-iteration.js';
 import { writeOverlayCreatedEntities } from './step-overlay-entities.js';
+import { generatePropertyAndQuantitySetEntities } from './step-property-sets.js';
 import {
-  generatePropertyAndQuantitySetEntities,
   type OwnerHistoryCache,
   type PropertySetContext,
-} from './step-property-sets.js';
+} from './step-property-set-readers.js';
 import { type GeorefContext } from './step-georeferencing.js';
 import { collectModifications, type CollectionContext } from './step-collection.js';
 import { assembleExportResult } from './step-header.js';

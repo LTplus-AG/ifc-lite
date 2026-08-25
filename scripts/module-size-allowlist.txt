@@ -179,7 +179,7 @@
    436 packages/cli/src/commands/export.ts
    518 packages/cli/src/commands/extract-entities.ts
    609 packages/cli/src/commands/query.ts
-   778 packages/cli/src/headless-backend.ts
+   752 packages/cli/src/headless-backend.ts
    457 packages/codegen/src/express-parser.ts
    674 packages/codegen/src/rust-generator.ts
    640 packages/codegen/src/typescript-generator.ts
@@ -230,9 +230,6 @@
    640 packages/export/src/parquet-exporter.ts
   1122 packages/export/src/reference-collector.ts
    556 packages/export/src/schema-converter.ts
-   415 packages/export/src/step-attribute-mutations.ts
-  1061 packages/export/src/step-property-sets.ts
-   435 packages/export/src/step-serialization.ts
    437 packages/extensions/src/testing/runner.ts
    625 packages/geometry/src/coordinate-handler.ts
   1707 packages/geometry/src/geometry-parallel.ts
@@ -259,7 +256,7 @@
    417 packages/lens/src/types.ts
    812 packages/lists/src/engine.ts
    423 packages/lists/src/types.ts
-   509 packages/mcp/src/backend-query.ts
+   485 packages/mcp/src/backend-query.ts
    420 packages/mcp/src/overlay.ts
    544 packages/mcp/src/server.ts
    477 packages/mcp/src/tools/diff-fingerprints.ts
@@ -268,7 +265,7 @@
    627 packages/mcp/src/tools/query.ts
    699 packages/mcp/src/tools/viewer.ts
    413 packages/mcp/src/transport/http.ts
-   468 packages/merge/src/component-state.ts
+   465 packages/merge/src/component-state.ts
    530 packages/merge/src/three-way.ts
    493 packages/mutations/src/bulk-query-engine.ts
    573 packages/mutations/src/csv-connector.ts

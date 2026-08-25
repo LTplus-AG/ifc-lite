@@ -49,7 +49,8 @@
  * different fixes, and neither of them means "this package has no tests".
  *
  * SCAN SCOPE, stated so nobody mistakes the OK for a whole-repo claim: the
- * audit walks `packages/*` and `apps/*`. Test files under `tests/` are NOT in
+ * audit walks every parent `pnpm-workspace.yaml` declares — `packages/*`,
+ * `apps/*` and `examples/*`. Test files under `tests/` are NOT in
  * any typecheck program today (`tests/tsconfig.json` extends the root config,
  * whose `exclude` carries `**\/*.test.ts`, and `tsx --test` transpiles without
  * checking) — the very #2457 gap this file exists to close, one directory
@@ -69,23 +70,54 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 const SCRIPT_NAME = 'typecheck-tests.mjs';
 const TSC = path.join(REPO_ROOT, 'node_modules', 'typescript', 'bin', 'tsc');
 const TEST_FILE_RE = /\.test\.(ts|tsx|mts|cts)$/;
-const SKIP_DIRS = new Set(['node_modules', 'dist', 'pkg', '.git', '.turbo']);
+// `target` is Rust's build directory (apps/server is a crate). Nothing under
+// it matches TEST_FILE_RE, so skipping it fixes no false positive — it stops
+// the walk descending through a whole Rust build tree on every local run. CI
+// checkouts are clean, so this is a local-speed change only. Safe to skip
+// unconditionally: `.gitignore` carries a repo-wide `target/`, so no directory
+// of that name can hold a tracked test file.
+const SKIP_DIRS = new Set(['node_modules', 'dist', 'pkg', '.git', '.turbo', 'target']);
 const GENERATED_CONFIG = 'tsconfig.tests.json';
 
 /**
  * Package parents the audit walks. Not the whole repo — see SCAN SCOPE above.
+ *
+ * All three of the parents `pnpm-workspace.yaml` declares. `examples` was
+ * missing until the #3201 review, and that gap was the same shape as the
+ * skipped-directory bug fixed below, one level further out and strictly worse:
+ * an unwatched PARENT is never a skipped DIRECTORY, so the "look inside every
+ * skipped directory" check could not reach it either. `examples/*` members are
+ * real TypeScript workspace packages with their own tsconfigs, so a test at
+ * `examples/collab-demo/src/foo.test.ts` escaped in silence. Adding the parent
+ * changed no count on a healthy tree — `find examples -name '*.test.*'` returns
+ * 0 today, so the audit still reports 1,434 files across 46 packages — which is
+ * exactly why only a regression test keeps it closed (typecheck-tests.test.mjs).
  */
-const PACKAGE_PARENTS = ['packages', 'apps'];
+const PACKAGE_PARENTS = ['packages', 'apps', 'examples'];
+
+/** `packages/`; `packages/ and apps/`; `packages/, apps/ and examples/`. */
+function parentList(names) {
+  const parts = names.map((p) => `${p}/`);
+  if (parts.length <= 1) return parts.join('');
+  return `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`;
+}
 
 /**
  * Lower bound on how many workspace packages must actually reach the audit.
- * Measured on a healthy tree: 46 packages under `packages/` + `apps/` carry
- * test files. Set to 30 — about a third of headroom, enough that ordinary
+ * Measured on a healthy tree: 46 packages carry test files, all of them under
+ * `packages/` and `apps/` — no `examples/*` member has one today. Set to 30 — about a third of headroom, enough that ordinary
  * churn (a package split, a few merged or retired) never forces an edit here,
- * while the failure this guards against still trips: every way the audit goes
- * blind (a wrong scan root, a `readdirSync` that returns nothing, a
- * package.json read that stops finding files) collapses the count to zero or
- * near it, not to 29.
+ * while the failure this guards against still trips: it is the WHOLESALE
+ * blindings this floor is sized for — a wrong scan root, a `readdirSync` that
+ * returns nothing, a package.json read that stops finding files — and each of
+ * those collapses the count to zero or near it, not to 29.
+ *
+ * It is deliberately not the guard for a PARTIAL drop, and this PR's own change
+ * supplies the counter-example: a package that loses its `tsconfig.json` stops
+ * being audited and the count falls by one. That case is caught earlier and by
+ * name — if the package carries test files the skipped-directory check in
+ * `audit()` fails the run before these counts are consulted, and if it carries
+ * none, no coverage was lost by dropping it.
  */
 const AUDITED_PACKAGES_FLOOR = 30;
 
@@ -285,7 +317,7 @@ export function auditVacuity({
 }) {
   if (seenParents.length === 0) {
     return (
-      `none of ${PACKAGE_PARENTS.map((p) => `${p}/`).join(', ')} exists under ${scanRoot}. ` +
+      `none of ${parentList(PACKAGE_PARENTS)} exists under ${scanRoot}. ` +
       `Refusing a vacuous pass: this audit exists to prove workspace test files reach a typecheck ` +
       `program, and it found nowhere to look for them.`
     );
@@ -293,7 +325,7 @@ export function auditVacuity({
   if (packagesWithTests === null || testFiles === null) return null;
   if (packagesWithTests === 0) {
     return (
-      `${seenParents.map((p) => `${p}/`).join(' and ')} contain no package with a test file. ` +
+      `${parentList(seenParents)} contain no package with a test file. ` +
       `Refusing a vacuous pass: an audit that found zero test files has proved nothing about ` +
       `typecheck coverage.`
     );
@@ -318,7 +350,7 @@ export function auditVacuity({
 }
 
 /**
- * Repo-wide mode: prove every test file under `packages/` and `apps/` is a
+ * Repo-wide mode: prove every test file under the workspace parents is a
  * root file of some typecheck program, and that every package carrying tests
  * actually runs one. This is the part that fails when a test file stops being
  * checked — without it the arrangement rots the next time a package is added.
@@ -356,7 +388,13 @@ async function audit({
     problems.push(
       `${rel}: ${stray.length} test file(s) on disk but no ${missing.join(' and no ')}, ` +
         `so this audit cannot resolve a typecheck program for it and skipped it entirely. ` +
-        `Add the missing file(s), or move the tests into a package that has them.`,
+        `Add the missing file(s), or move the tests into a package that has them. ` +
+        // Both reds are correct and precise, but they arrive one CI run apart:
+        // adding the tsconfig.json this asks for promotes the directory into
+        // the walk below, which then fails it for having no "typecheck"
+        // script. Name both here so the fix is one round trip, not two.
+        `A directory promoted this way also needs a "typecheck" script — under packages/ that must be ` +
+        `"node ../../scripts/${SCRIPT_NAME}" — or the next run fails on that instead.`,
     );
   }
 
@@ -387,7 +425,11 @@ async function audit({
     }
 
     // Which project is supposed to cover this package's tests? Packages use
-    // the generated test program; the two apps typecheck their own tsconfig.
+    // the generated test program; apps and examples typecheck their own
+    // tsconfig. That is right for examples/*: unlike packages/*, their
+    // tsconfigs are standalone (no `extends` of the root config), so they
+    // never inherit the `**/*.test.ts` exclude that makes the generated
+    // program necessary — `"include": ["src"]` already reaches their tests.
     const generated = rel.startsWith('packages/') ? writeTestProgram(dir) : null;
     const project = generated?.config ?? path.join(dir, 'tsconfig.json');
 
@@ -447,7 +489,7 @@ async function audit({
 
   console.log(
     `\ntypecheck-tests: all ${totalOn} test file(s) across ${rows.length} package(s) under ` +
-      `${PACKAGE_PARENTS.map((p) => `${p}/`).join(' and ')} are in a typecheck program.`,
+      `${parentList(PACKAGE_PARENTS)} are in a typecheck program.`,
   );
   return 0;
 }

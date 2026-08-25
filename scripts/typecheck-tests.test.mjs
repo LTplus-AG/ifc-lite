@@ -157,9 +157,9 @@ test('every rejection names the offending argument, so the message is actionable
 
 test('vacuity: no package parent at all is a refusal, not a clean audit', () => {
   const msg = auditVacuity({ seenParents: [], packagesWithTests: null, testFiles: null });
-  assert.ok(msg, 'a tree with neither packages/ nor apps/ must be refused');
+  assert.ok(msg, 'a tree with none of the workspace parents must be refused');
   assert.match(msg, /Refusing a vacuous pass/);
-  assert.match(msg, /none of packages\/, apps\/ exists/);
+  assert.match(msg, /none of packages\/, apps\/ and examples\/ exists/);
 });
 
 test('vacuity: package parents that hold no tests are a refusal', () => {
@@ -249,16 +249,25 @@ function synthTree(spec) {
   return root;
 }
 
-/** One `apps/<name>` package carrying a single test file. */
-function appWithOneTest(name) {
+/**
+ * One `<parent>/<name>` workspace member carrying a single test file, wired so
+ * the audit can resolve a program for it: a package.json with the `scripts` it
+ * is given, and a tsconfig whose `files` already lists the test.
+ */
+function memberWithOneTest(parent, name, scripts = { typecheck: 'tsc' }) {
   return {
-    [`apps/${name}/package.json`]: JSON.stringify({ name, scripts: { typecheck: 'tsc' } }),
-    [`apps/${name}/tsconfig.json`]: JSON.stringify({
+    [`${parent}/${name}/package.json`]: JSON.stringify({ name, scripts }),
+    [`${parent}/${name}/tsconfig.json`]: JSON.stringify({
       compilerOptions: { noEmit: true },
       files: ['./src/a.test.ts'],
     }),
-    [`apps/${name}/src/a.test.ts`]: 'export const a = 1;\n',
+    [`${parent}/${name}/src/a.test.ts`]: 'export const a = 1;\n',
   };
+}
+
+/** One `apps/<name>` package carrying a single test file. */
+function appWithOneTest(name) {
+  return memberWithOneTest('apps', name);
 }
 
 test('audit(): an empty tree is refused, not reported as a clean scan', async () => {
@@ -266,7 +275,7 @@ test('audit(): an empty tree is refused, not reported as a clean scan', async ()
   try {
     const { code, stderr } = await runAudit({ scanRoot: root });
     assert.equal(code, 1);
-    assert.match(stderr, /none of packages\/, apps\/ exists under/);
+    assert.match(stderr, /none of packages\/, apps\/ and examples\/ exists under/);
     assert.match(stderr, /Refusing a vacuous pass/);
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -339,6 +348,12 @@ test('audit(): a package with tests but no tsconfig.json is a failure, not a sil
     const { code, stderr } = await runAudit({ scanRoot: root, packagesFloor: 1, testFilesFloor: 1 });
     assert.equal(code, 1, 'a test file in an unauditable directory must fail the gate');
     assert.match(stderr, /packages\/zz-unwired: 1 test file\(s\) on disk but no tsconfig\.json/);
+    // #3201 review finding 4: adding the tsconfig.json this message asks for
+    // promotes the directory into the walk, which then reds for a missing
+    // "typecheck" script — two CI runs for one fix. The remedy has to name
+    // both, so the message is asserted to mention the second one.
+    assert.match(stderr, /also needs a "typecheck" script/);
+    assert.match(stderr, /typecheck-tests\.mjs/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -360,8 +375,19 @@ test('audit(): a directory missing both files is named for both', async () => {
 
 test('audit(): an unauditable directory with no tests is not a failure', async () => {
   // The paired probe: the check must fire on stray TESTS, not on every
-  // directory that lacks a tsconfig. packages/wasm and apps/landing are real
-  // examples in this repo today, and neither carries a test file.
+  // directory that lacks a tsconfig. `packages/wasm` and `apps/landing` are
+  // real examples in this repo today, and neither carries a file this audit's
+  // TEST_FILE_RE matches.
+  //
+  // The two are not the same case, and the distinction matters. `apps/landing`
+  // has no test file at all. `packages/wasm` carries FIVE — package.test.mjs,
+  // styling-indexed-colour-split.test.mjs, tessellation-quality.test.mjs,
+  // textures.test.mjs, type-only-geometry.test.mjs — run by its own
+  // `"test": "node --test test/*.test.mjs"`. They are outside this gate's
+  // remit rather than absent: TEST_FILE_RE is /\.test\.(ts|tsx|mts|cts)$/, and
+  // .mjs needs no typechecking. That they are genuinely executed is asserted
+  // elsewhere — check-test-glob-coverage.mjs audits 47 packages to this gate's
+  // 46 and reports zero unrun test files.
   const root = synthTree({
     ...appWithOneTest('one'),
     'packages/zz-nobuild/package.json': JSON.stringify({ name: 'zz-nobuild' }),
@@ -370,6 +396,63 @@ test('audit(): an unauditable directory with no tests is not a failure', async (
   try {
     const { code, stderr } = await runAudit({ scanRoot: root, packagesFloor: 1, testFilesFloor: 1 });
     assert.equal(code, 0, `expected a clean audit, got: ${stderr}`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// --- examples/* is a package parent too (#3201 review finding 3) ---
+//
+// pnpm-workspace.yaml lists THREE parents — `packages/*`, `apps/*` and
+// `examples/*` — and PACKAGE_PARENTS covered the first two. That gap is the
+// same shape as the skipped-directory bug this PR fixes, one level further
+// out and strictly worse: an unwatched PARENT is not a skipped DIRECTORY, so
+// the "look inside every skipped directory" check never reached it either.
+// `examples/babylonjs-viewer` and `examples/collab-demo` are full TypeScript
+// workspace members; a test at `examples/collab-demo/src/foo.test.ts` was
+// invisible to this gate rather than reported by it. (`find examples -name
+// '*.test.*'` returns 0 today, so there was no live offender — which is
+// exactly why only a test can keep it closed.)
+
+test('audit(): a test file under examples/ is audited, not invisible', async () => {
+  const root = synthTree({
+    ...appWithOneTest('one'),
+    // A real examples member as they exist today: no `typecheck` script.
+    ...memberWithOneTest('examples', 'demo', { dev: 'vite' }),
+  });
+  try {
+    const { code, stderr } = await runAudit({ scanRoot: root, packagesFloor: 1, testFilesFloor: 1 });
+    assert.equal(code, 1, 'a test file under examples/ with no typecheck script must fail the gate');
+    assert.match(stderr, /examples\/demo: 1 test file\(s\) on disk but no "typecheck" script/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('audit(): a wired examples member passes and is counted', async () => {
+  // The paired probe. Without it the assertion above is satisfied by any
+  // audit() that refuses everything under examples/, and the widened scope
+  // would be a new way to go red rather than a new thing to see.
+  const root = synthTree({ ...appWithOneTest('one'), ...memberWithOneTest('examples', 'demo') });
+  try {
+    const { code, stderr } = await runAudit({ scanRoot: root, packagesFloor: 2, testFilesFloor: 2 });
+    // packagesFloor 2 / testFilesFloor 2 are the load-bearing part: they pass
+    // only if examples/demo was walked and COUNTED, not merely tolerated.
+    assert.equal(code, 0, `expected a clean audit, got: ${stderr}`);
+    assert.equal(stderr, '');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('audit(): an empty tree names every parent it looked for', async () => {
+  // The refusal has to be actionable, and it is the only place the scanned
+  // parents are spelled out for a reader. If PACKAGE_PARENTS grows again,
+  // this fails until the message follows.
+  const root = synthTree({ 'README.md': 'no package parents here\n' });
+  try {
+    const { stderr } = await runAudit({ scanRoot: root });
+    assert.match(stderr, /none of packages\/, apps\/ and examples\/ exists under/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -237,6 +237,17 @@ export interface IDSPatternConstraint {
    * without inferring the base from the constraint shape.
    */
   base?: string;
+  /**
+   * Facets of the SAME `<xs:restriction>` beyond this one. XSD facets in
+   * a single restriction are conjunctive — a value must satisfy every
+   * one — but one `IDSConstraint` expresses only one family, so
+   * `parseRestriction` keeps the first here and hangs the rest off this
+   * list for `matchConstraint` to require as well. Unset for the
+   * overwhelmingly common single-family restriction. Consumers that
+   * describe or audit a constraint switch on `type` and may ignore it;
+   * only matching must not.
+   */
+  and?: readonly IDSConstraint[];
 }
 
 /** Enumeration constraint - one of a list of values */
@@ -251,6 +262,17 @@ export interface IDSEnumerationConstraint {
    * here so the auditor doesn't false-positive a string-base mismatch.
    */
   base?: string;
+  /**
+   * Facets of the SAME `<xs:restriction>` beyond this one. XSD facets in
+   * a single restriction are conjunctive — a value must satisfy every
+   * one — but one `IDSConstraint` expresses only one family, so
+   * `parseRestriction` keeps the first here and hangs the rest off this
+   * list for `matchConstraint` to require as well. Unset for the
+   * overwhelmingly common single-family restriction. Consumers that
+   * describe or audit a constraint switch on `type` and may ignore it;
+   * only matching must not.
+   */
+  and?: readonly IDSConstraint[];
 }
 
 /** Bounds constraint - numeric range or string length */
@@ -277,6 +299,17 @@ export interface IDSBoundsConstraint {
    * dataType's backing type directly.
    */
   base?: string;
+  /**
+   * Facets of the SAME `<xs:restriction>` beyond this one. XSD facets in
+   * a single restriction are conjunctive — a value must satisfy every
+   * one — but one `IDSConstraint` expresses only one family, so
+   * `parseRestriction` keeps the first here and hangs the rest off this
+   * list for `matchConstraint` to require as well. Unset for the
+   * overwhelmingly common single-family restriction. Consumers that
+   * describe or audit a constraint switch on `type` and may ignore it;
+   * only matching must not.
+   */
+  and?: readonly IDSConstraint[];
 }
 
 // ============================================================================

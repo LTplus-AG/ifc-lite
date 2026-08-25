@@ -53,6 +53,38 @@ export function matchConstraint(
 
   const ci = options?.caseInsensitive ?? false;
 
+  if (!matchOneFamily(constraint, actualValue, ci)) return false;
+
+  // XSD facets declared in the same `<xs:restriction>` are conjunctive.
+  // `parseRestriction` keeps the first family as the constraint itself
+  // and hangs the others here; a value has to satisfy all of them. The
+  // overwhelmingly common restriction declares one family and leaves
+  // `and` undefined, so this costs one property read.
+  const siblings = conjunctiveFacetsOf(constraint);
+  if (siblings === undefined) return true;
+  for (const sibling of siblings) {
+    if (!matchOneFamily(sibling, actualValue, ci)) return false;
+  }
+  return true;
+}
+
+/**
+ * The conjunctive facets `parseRestriction` attached to this constraint
+ * from the same `<xs:restriction>`, or `undefined` when it declared one
+ * facet family (the common case). `simpleValue` never carries any: it
+ * does not come from a restriction.
+ */
+function conjunctiveFacetsOf(
+  constraint: IDSConstraint
+): readonly IDSConstraint[] | undefined {
+  return constraint.type === 'simpleValue' ? undefined : constraint.and;
+}
+
+function matchOneFamily(
+  constraint: IDSConstraint,
+  actualValue: string | number | boolean,
+  ci: boolean
+): boolean {
   switch (constraint.type) {
     case 'simpleValue':
       return matchSimpleValue(constraint, actualValue, ci);
@@ -375,6 +407,18 @@ export function getConstraintMismatchReason(
     return 'value is missing';
   }
 
+  // Report the facet that actually rejected the value, not the primary
+  // one. With conjunctive facets the primary often matched and a
+  // sibling is what failed.
+  const siblings = conjunctiveFacetsOf(constraint);
+  if (siblings !== undefined && matchOneFamily(constraint, actualValue, false)) {
+    for (const sibling of siblings) {
+      if (!matchOneFamily(sibling, actualValue, false)) {
+        return getConstraintMismatchReason(sibling, actualValue);
+      }
+    }
+  }
+
   switch (constraint.type) {
     case 'simpleValue':
       return `expected "${constraint.value}", got "${actualValue}"`;
@@ -450,6 +494,15 @@ export function formatConstraint(constraint: IDSConstraint): string {
 }
 
 function formatConstraintUncached(constraint: IDSConstraint): string {
+  const own = formatOneFamily(constraint);
+  const siblings = conjunctiveFacetsOf(constraint);
+  if (siblings === undefined) return own;
+  // Conjunctive facets from the same restriction. Naming only the
+  // primary would report an expectation narrower than the one enforced.
+  return [own, ...siblings.map(formatOneFamily)].join(' and ');
+}
+
+function formatOneFamily(constraint: IDSConstraint): string {
   switch (constraint.type) {
     case 'simpleValue':
       return `"${constraint.value}"`;

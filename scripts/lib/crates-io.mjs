@@ -99,7 +99,7 @@ const REQUEST_RETRY_DELAY_MS = 2000;
  * returned to the caller on the first try.
  *
  * Before this existed a single 503 propagated out of `isPublished` into
- * `waitUntilPublished`, which had no try/catch, and out to `process.exit(1)`
+ * `waitUntilInIndex`, which had no try/catch, and out to `process.exit(1)`
  * — aborting a release with some crates already published, i.e. producing
  * exactly the partial-publish state #3180/#3181 are about.
  */
@@ -173,6 +173,85 @@ export async function isPublished(crate, ver, fetchImpl = fetch, opts = {}) {
 }
 
 /**
+ * The sparse-index path for a crate name, per the registry index layout
+ * (https://doc.rust-lang.org/cargo/reference/registry-index.html): 1-char
+ * names under `1/`, 2-char under `2/`, 3-char under `3/<first letter>/`,
+ * everything else under `<chars 1-2>/<chars 3-4>/`. Index paths are
+ * lowercase; crate names are case-insensitive on crates.io.
+ */
+export function sparseIndexPath(crate) {
+  const name = crate.toLowerCase();
+  if (name.length === 1) return `1/${name}`;
+  if (name.length === 2) return `2/${name}`;
+  if (name.length === 3) return `3/${name[0]}/${name}`;
+  return `${name.slice(0, 2)}/${name.slice(2, 4)}/${name}`;
+}
+
+/**
+ * Is `crate@ver` visible in the SPARSE INDEX — the thing `cargo` actually
+ * resolves dependencies against?
+ *
+ * crates.io is two systems, and the difference is the v6.0.1 incident (run
+ * 32867366010). The publish request writes the version to the registry
+ * DATABASE before returning success, and `/api/v1/crates/...` — what
+ * `isPublished` reads — answers from that database. The index at
+ * index.crates.io is what `cargo publish` consults when resolving the next
+ * crate's requirements.
+ *
+ * The lag is NOT index regeneration. That takes seconds: in the same job,
+ * `ifc-lite-clash` was confirmed in the index 1.3s after upload, and all five
+ * crates of the recovery run in 1.3-1.5s. The index object for
+ * `ifc-lite-core` carries `last-modified: 15:46:38`, i.e. the ORIGIN held
+ * 6.0.1 sixty-three seconds before `ifc-lite-geometry` failed to resolve
+ * `ifc-lite-core = ^6.0.1` at 15:47:41.
+ *
+ * The lag was the CDN edge. The object is served `cache-control:
+ * public,max-age=600` via Varnish, and `ifc-lite-core` is the one crate whose
+ * index file the runner had already fetched — everything depends on it, so
+ * cargo pulled it for resolution BEFORE the publish and the edge cached the
+ * pre-publish copy for up to ten minutes. `clash`, with no dependents fetched
+ * ahead of it, propagated in 1.3s.
+ *
+ * This function issues a plain unconditioned GET on that same URL ON PURPOSE.
+ * Fastly ignores a request `Cache-Control: no-cache` here (measured: `x-cache:
+ * HIT` either way, `MISS` only with a cache-busting query), so busting the
+ * cache would make this gate read the ORIGIN while cargo still reads the
+ * stale edge — it would pass and then cargo would fail. Reading the same
+ * cached view cargo reads is what makes it predictive. A publish-side poll
+ * against the API passes during exactly that
+ * window; only a poll against this URL — the same URL cargo reads — observes
+ * the fact the next publish depends on.
+ *
+ * 404 means the index FILE does not exist, which is the normal state before
+ * a crate's first-ever publish: "not visible yet", not an error. A yanked
+ * entry reads as not visible — cargo will not resolve a yanked version. An
+ * unparseable index line THROWS rather than being skipped: the file is
+ * machine-generated, a corrupt one means cargo is about to choke on it too,
+ * and the polls in this module treat a throw as one failed look and fail
+ * closed naming the error, never as "not published".
+ */
+export async function isInSparseIndex(crate, ver, fetchImpl = fetch, opts = {}) {
+  const url = `https://index.crates.io/${sparseIndexPath(crate)}`;
+  const res = await cratesIoGet(url, { fetchImpl, ...opts });
+  if (res.status === 404) return false;
+  if (!res.ok) {
+    throw new Error(`crates.io index returned ${res.status} for ${crate}`);
+  }
+  const text = await res.text();
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue;
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch (err) {
+      throw new Error(`unparseable index line for ${crate}: ${err.message}`);
+    }
+    if (entry.vers === ver) return entry.yanked !== true;
+  }
+  return false;
+}
+
+/**
  * Fetch the `.crate` artifact itself and confirm it has bytes.
  *
  * A version record existing and the tarball being downloadable are different
@@ -194,14 +273,24 @@ export async function isArtifactFetchable(crate, ver, { fetchImpl = fetch, dlPat
 
 /**
  * The full "this release is really out" check: the version record exists, is
- * not yanked, and its artifact downloads with a non-empty body. Used by
- * `verify-crates-publish.js`. The publish-side poll deliberately uses the
- * cheaper `isPublished` — it runs up to ~36 times per crate, and downloading
- * a multi-megabyte tarball on each poll would be the wrong trade there.
+ * not yanked, is visible in the sparse index, and its artifact downloads
+ * with a non-empty body. Used by `verify-crates-publish.js`. The index
+ * clause is not redundant with the record: a version that is API-visible but
+ * index-absent (the v6.0.1 window — see `isInSparseIndex`) is unreachable by
+ * every consumer running `cargo add`/`cargo update`, so a verifier without
+ * it goes green on exactly the state that broke the release. The
+ * publish-side poll deliberately uses only the cheaper `isInSparseIndex` —
+ * it runs many times per crate, and re-downloading the `.crate` on each poll
+ * would be the wrong trade. Measured at 6.0.1 against the index entries
+ * (113-142KB): core 217KB is 1.9x, wasm 179KB is 1.3x, and geometry 1.35MB is
+ * 10x. The small crates are close; geometry is the one that decides it. At
+ * this bound the poll can run ~132 times per crate, so adding the artifact
+ * fetch would pull roughly 178MB for geometry alone.
  */
 export async function isFullyPublished(crate, ver, fetchImpl = fetch, opts = {}) {
   const version = await fetchVersionRecord(crate, ver, fetchImpl, opts);
   if (version?.yanked !== false) return false;
+  if (!(await isInSparseIndex(crate, ver, fetchImpl, opts))) return false;
   return isArtifactFetchable(crate, ver, { fetchImpl, dlPath: version.dl_path, ...opts });
 }
 
@@ -214,6 +303,10 @@ export function sleep(ms) {
  * elapses, instead of trusting `cargo publish` to have blocked until it was
  * visible (it doesn't — see #3180). `checkFn`/`sleepFn` are injectable so
  * this can be driven by a fake clock in tests without a real 2-minute wait.
+ *
+ * The default `checkFn` is `isInSparseIndex`, NOT `isPublished`: the poll
+ * exists so the NEXT dependent `cargo publish` can resolve this version, and
+ * cargo resolves from the index, which lags the API (see `isInSparseIndex`).
  *
  * Returns `{ ok, waitedMs, attempts, lastError }`. `ok: false` after the
  * timeout means the caller must fail loudly, not silently move on — a version
@@ -228,10 +321,10 @@ export function sleep(ms) {
  * keep polling until the timeout, and surface the last error in the failure
  * so the operator sees "registry was erroring", not "crate never appeared".
  */
-export async function waitUntilPublished(
+export async function waitUntilInIndex(
   crate,
   ver,
-  { checkFn = isPublished, intervalMs = 5000, timeoutMs = 120000, sleepFn = sleep } = {}
+  { checkFn = isInSparseIndex, intervalMs = 5000, timeoutMs = 120000, sleepFn = sleep } = {}
 ) {
   const start = Date.now();
   let attempts = 0;

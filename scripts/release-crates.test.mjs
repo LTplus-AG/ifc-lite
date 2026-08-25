@@ -43,7 +43,7 @@ test('publishAllCrates FAILS when a published crate never appears in the index (
       published.add(crate);
       if (crate !== 'ifc-lite-geometry') indexed.add(crate);
     };
-    const checkFn = async (crate, ver) => indexed.has(crate) && ver === '6.0.0';
+    const indexCheckFn = async (crate, ver) => indexed.has(crate) && ver === '6.0.0';
 
     await assert.rejects(
       () =>
@@ -51,7 +51,8 @@ test('publishAllCrates FAILS when a published crate never appears in the index (
           crates: ['ifc-lite-core', 'ifc-lite-geometry', 'ifc-lite-processing'],
           version: '6.0.0',
           publishFn,
-          checkFn,
+          preCheckFn: async () => false,
+          indexCheckFn,
           intervalMs: 5000,
           timeoutMs: 20000,
           sleepFn: clock.sleepFn,
@@ -76,13 +77,14 @@ test('publishAllCrates succeeds end-to-end when every crate appears in the index
       published.push(crate);
       indexed.add(crate); // index catches up instantly in this scenario
     };
-    const checkFn = async (crate) => indexed.has(crate);
+    const indexCheckFn = async (crate) => indexed.has(crate);
 
     await publishAllCrates({
       crates: ['ifc-lite-core', 'ifc-lite-geometry', 'ifc-lite-clash'],
       version: '6.0.0',
       publishFn,
-      checkFn,
+      preCheckFn: async () => false,
+      indexCheckFn,
       intervalMs: 5000,
       timeoutMs: 20000,
       sleepFn: clock.sleepFn,
@@ -103,13 +105,17 @@ test('publishAllCrates skips a crate already on crates.io without calling publis
       published.push(crate);
       indexed.add(crate);
     };
-    const checkFn = async (crate) => indexed.has(crate);
+    // The pre-check (API record) and the index agree here: core was
+    // published long enough ago that both see it.
+    const preCheckFn = async (crate) => indexed.has(crate);
+    const indexCheckFn = async (crate) => indexed.has(crate);
 
     await publishAllCrates({
       crates: ['ifc-lite-core', 'ifc-lite-geometry'],
       version: '6.0.0',
       publishFn,
-      checkFn,
+      preCheckFn,
+      indexCheckFn,
       intervalMs: 5000,
       timeoutMs: 20000,
       sleepFn: clock.sleepFn,
@@ -123,7 +129,7 @@ test('publishAllCrates skips a crate already on crates.io without calling publis
 
 test('a transient crates.io error mid-list does NOT abort the release into a partial publish', async () => {
   // The exact shape that used to break it: `isPublished` threw on any
-  // non-404 non-ok status and `waitUntilPublished` had no try/catch, so one
+  // non-404 non-ok status and `waitUntilInIndex` had no try/catch, so one
   // 503 while polling the SECOND crate propagated to process.exit(1) with
   // the first crate already on crates.io — producing the partial-publish
   // state this script exists to prevent. Reproduced by a checkFn that
@@ -137,7 +143,7 @@ test('a transient crates.io error mid-list does NOT abort the release into a par
       published.push(crate);
       indexed.add(crate);
     };
-    const checkFn = async (crate) => {
+    const indexCheckFn = async (crate) => {
       if (crate === 'ifc-lite-geometry' && blipsLeft > 0) {
         blipsLeft--;
         throw new Error('crates.io returned 503 for ifc-lite-geometry@6.0.0');
@@ -149,7 +155,8 @@ test('a transient crates.io error mid-list does NOT abort the release into a par
       crates: ['ifc-lite-core', 'ifc-lite-geometry', 'ifc-lite-clash'],
       version: '6.0.0',
       publishFn,
-      checkFn,
+      preCheckFn: async () => false,
+      indexCheckFn,
       intervalMs: 5000,
       timeoutMs: 60000,
       sleepFn: clock.sleepFn,
@@ -170,7 +177,7 @@ test('a crates.io outage that outlasts the timeout still FAILS the release, and 
   // dead registry into a green release.
   const clock = fakeClock();
   try {
-    const checkFn = async () => {
+    const indexCheckFn = async () => {
       throw new Error('crates.io returned 503 for ifc-lite-core@6.0.0');
     };
 
@@ -180,13 +187,90 @@ test('a crates.io outage that outlasts the timeout still FAILS the release, and 
           crates: ['ifc-lite-core'],
           version: '6.0.0',
           publishFn: () => {},
-          checkFn,
+          preCheckFn: async () => false,
+          indexCheckFn,
           intervalMs: 5000,
           timeoutMs: 20000,
           sleepFn: clock.sleepFn,
         }),
       /did not appear in the crates\.io index[\s\S]*Last error from crates\.io: crates\.io returned 503/
     );
+  } finally {
+    clock.restore();
+  }
+});
+
+test('the API reporting a version does NOT satisfy the poll while the index lags (the v6.0.1 race)', async () => {
+  // Run 32867366010: `ifc-lite-core`'s upload succeeded — which writes the
+  // API record — while the index cargo resolves against lagged over a
+  // minute, and `ifc-lite-geometry` failed on `ifc-lite-core = ^6.0.1`.
+  // A poll wired to the API record (the pre-check) instead of the index
+  // returns true inside exactly that window and lets geometry race ahead;
+  // this test fails under that wiring.
+  const clock = fakeClock();
+  try {
+    const published = [];
+    const apiVisible = new Set(); // what the publish request writes, immediately
+    const publishFn = (crate) => {
+      published.push(crate);
+      apiVisible.add(crate); // the upload's DB write — the API sees it at once
+      // …but the index never catches up for anything in this scenario.
+    };
+    const preCheckFn = async (crate) => apiVisible.has(crate);
+    const indexCheckFn = async () => false;
+
+    await assert.rejects(
+      () =>
+        publishAllCrates({
+          crates: ['ifc-lite-core', 'ifc-lite-clash', 'ifc-lite-geometry'],
+          version: '6.0.1',
+          publishFn,
+          preCheckFn,
+          indexCheckFn,
+          intervalMs: 5000,
+          timeoutMs: 20000,
+          sleepFn: clock.sleepFn,
+        }),
+      /ifc-lite-core@6\.0\.1 did not appear in the crates\.io index/
+    );
+
+    assert.deepEqual(
+      published,
+      ['ifc-lite-core'],
+      'the release must stop at the index-stuck crate, not publish past it on the API record'
+    );
+  } finally {
+    clock.restore();
+  }
+});
+
+test('a crate SKIPPED as already-published still gates the next crate on its index visibility', async () => {
+  // The resume shape: a re-run shortly after a failure sees the stuck crate
+  // "already published" via the API record. Skipping straight past it while
+  // its index entry is still absent re-creates the original failure at its
+  // first dependent — the skip path must poll the index too.
+  const clock = fakeClock();
+  try {
+    const published = [];
+    const preCheckFn = async (crate) => crate === 'ifc-lite-core'; // API has it
+    const indexCheckFn = async () => false; // the index still does not
+
+    await assert.rejects(
+      () =>
+        publishAllCrates({
+          crates: ['ifc-lite-core', 'ifc-lite-geometry'],
+          version: '6.0.1',
+          publishFn: (crate) => published.push(crate),
+          preCheckFn,
+          indexCheckFn,
+          intervalMs: 5000,
+          timeoutMs: 20000,
+          sleepFn: clock.sleepFn,
+        }),
+      /ifc-lite-core@6\.0\.1 did not appear in the crates\.io index/
+    );
+
+    assert.deepEqual(published, [], 'neither crate may be published: core is up already, geometry cannot resolve it yet');
   } finally {
     clock.restore();
   }

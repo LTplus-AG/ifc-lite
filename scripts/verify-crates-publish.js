@@ -5,8 +5,10 @@
 
 /**
  * Verifies that every crate in `scripts/lib/crates-io.mjs`'s `CRATES` list is
- * published on crates.io at the workspace version, is NOT yanked, and has a
- * downloadable `.crate` artifact. Run this after a release
+ * published on crates.io at the workspace version, is NOT yanked, is visible
+ * in the sparse index that `cargo` resolves against (which lags the API —
+ * see `isInSparseIndex`), and has a downloadable `.crate` artifact. Run this
+ * after a release
  * to catch a partial crates.io publish that `verify-npm-publish.js` cannot
  * see — npm and crates.io are two independent registries (`release-all.mjs`),
  * and npm completing tells you nothing about crates.io (#3181: the v6.0.0

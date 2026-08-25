@@ -33,9 +33,10 @@ import { buildStepHeader } from './step-header.js';
 /**
  * Everything the pass literal reads that is not its own field.
  *
- * The first three are the exporter's, injected rather than reached for.
- * `isGeometryEntity` is passed as a bound callback for the same reason it is a
- * method there: it closes over the exporter's own type set.
+ * `dataStore` and `mutationView` are the exporter's, injected rather than
+ * reached for. `isGeometryEntity` arrives as a parameter for a different
+ * reason: it is the free function in `step-geometry-types.ts`, so taking it
+ * here keeps this builder independent of the exporter AND of that module.
  */
 export interface PassBuildInput {
   readonly dataStore: IfcDataStore;

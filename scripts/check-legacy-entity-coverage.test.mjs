@@ -102,6 +102,44 @@ test("an arm whose key names no entity is reported — the #3172 misspelling", (
   assert.match(out, /IfcElectricDistributionPoint .*has no arm in/);
 });
 
+test('a match arm absent from LEGACY_ENTITY_NAMES is reported', () => {
+  // The const is public and feeds the cross-language rooted-type universe
+  // (dump_rooted_type_sweep.rs), so an arm that never reaches it makes that
+  // sweep structurally blind to the name -- which is how the three stratum
+  // leaves stayed divergent with both halves of that gate green (#3124 review).
+  const real = readFileSync(join(ROOT, LEGACY_REL), 'utf8');
+  const i = real.indexOf('pub const LEGACY_ENTITY_NAMES');
+  assert.notEqual(i, -1, 'const anchor drifted');
+  const target = '"IFCPRESENTATIONSTYLEASSIGNMENT",';
+  const j = real.indexOf(target, i);
+  assert.notEqual(j, -1, 'mutation anchor drifted');
+  const { status, out } = runOn({ [LEGACY_REL]: real.slice(0, j) + real.slice(j + target.length) });
+  assert.equal(status, 1, out);
+  assert.match(out, /match arms absent from LEGACY_ENTITY_NAMES.*IFCPRESENTATIONSTYLEASSIGNMENT/);
+});
+
+test('a LEGACY_ENTITY_NAMES entry with no match arm is reported', () => {
+  // The other direction. A name in the const that no arm produces would put a
+  // phantom into the sweep's universe and read as a real legacy entity.
+  const real = readFileSync(join(ROOT, LEGACY_REL), 'utf8');
+  const i = real.indexOf('pub const LEGACY_ENTITY_NAMES');
+  const j = real.indexOf('[', i) + 1;
+  const { status, out } = runOn({ [LEGACY_REL]: real.slice(0, j) + '\n    "IFCPHANTOMENTITY",' + real.slice(j) });
+  assert.equal(status, 1, out);
+  assert.match(out, /IFCPHANTOMENTITY, which is not a match arm/);
+});
+
+test('a broken LEGACY_ENTITY_NAMES extractor fails instead of passing vacuously', () => {
+  // Two empty sets agree about everything. If the const is renamed or the
+  // block shape changes, this must fail rather than silently compare nothing.
+  const real = readFileSync(join(ROOT, LEGACY_REL), 'utf8');
+  const { status, out } = runOn({
+    [LEGACY_REL]: real.replace('pub const LEGACY_ENTITY_NAMES', 'pub const RENAMED_CONST'),
+  });
+  assert.equal(status, 1, out);
+  assert.match(out, /no names extracted from LEGACY_ENTITY_NAMES/);
+});
+
 test('a broken legacy-arm extractor fails instead of passing vacuously', () => {
   const { status, out } = runOn({ [LEGACY_REL]: '// every arm gone\n' });
   assert.equal(status, 1, out);

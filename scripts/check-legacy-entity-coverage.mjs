@@ -88,6 +88,23 @@ export function legacyKeys(rustSource) {
 }
 
 /**
+ * The names in the `LEGACY_ENTITY_NAMES` const — the public mirror of the match
+ * arms, and what `dump_rooted_type_sweep.rs` feeds into the cross-language
+ * rooted-type universe (#3124).
+ *
+ * Bounded to the const's own `&[` … `];` block, so a name appearing only in a
+ * doc comment or in a match arm elsewhere in the file cannot pad it.
+ */
+export function legacyNameConst(rustSource) {
+  const start = rustSource.indexOf('pub const LEGACY_ENTITY_NAMES');
+  if (start === -1) return new Set();
+  const open = rustSource.indexOf('[', start);
+  const close = rustSource.indexOf('];', open);
+  if (open === -1 || close === -1) return new Set();
+  return new Set([...rustSource.slice(open, close).matchAll(/"(IFC[A-Z0-9]+)"/g)].map((m) => m[1]));
+}
+
+/**
  * Uppercase names `IfcType::from_str` resolves to a real variant.
  *
  * Bounded to that ONE function rather than sliced to end of file: the arm shape
@@ -196,6 +213,36 @@ export function checkCoverage({ legacySource, schemaSource, oldTables, tableSize
         `and has no arm in ${LEGACY_REL} — a file containing it loses it from the attribute export` +
         (p.bearsGeometry ? ' and from meshing' : ' (it carries no representation, so meshing loses nothing)'),
     );
+  }
+
+  // THE CONST MUST MIRROR THE ARMS. `LEGACY_ENTITY_NAMES` is public and feeds
+  // the cross-language rooted-type universe, so an arm that never reaches it
+  // shrinks that universe silently — which is how the three stratum leaves
+  // stayed divergent with both halves of that gate green (#3124 review).
+  //
+  // This lives HERE rather than in a Rust test because the only way to state it
+  // in-crate is `include_str!` of the module's own source — a source-text
+  // assertion, which AGENTS.md bans and `check-rust-source-text-assertions`
+  // (#3195) flags. Same call the repo already made for
+  // `check-clash-degenerate-reason-parity.mjs`: a claim about two SOURCES
+  // belongs in a lint, where reading both is the honest thing rather than the
+  // banned thing.
+  const constNames = legacyNameConst(legacySource);
+  if (constNames.size === 0) {
+    failures.push(
+      `no names extracted from LEGACY_ENTITY_NAMES in ${LEGACY_REL} — the extractor has drifted, and two empty sets would otherwise "agree"`,
+    );
+  } else {
+    const missingFromConst = [...keys].filter((k) => !constNames.has(k)).sort();
+    const extraInConst = [...constNames].filter((k) => !keys.has(k)).sort();
+    if (missingFromConst.length > 0)
+      failures.push(
+        `${LEGACY_REL} has match arms absent from LEGACY_ENTITY_NAMES: ${missingFromConst.join(', ')} — every consumer of that const, the rooted-type sweep's universe included, is blind to them`,
+      );
+    if (extraInConst.length > 0)
+      failures.push(
+        `LEGACY_ENTITY_NAMES lists ${extraInConst.join(', ')}, which is not a match arm in ${LEGACY_REL}`,
+      );
   }
 
   for (const key of [...keys].sort()) {

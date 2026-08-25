@@ -1,5 +1,63 @@
 # @ifc-lite/wasm
 
+## 6.0.1
+
+### Patch Changes
+
+- [#3178](https://github.com/LTplus-AG/ifc-lite/pull/3178) [`224386a`](https://github.com/LTplus-AG/ifc-lite/commit/224386ac9cb1c2d94eca50808cdfdb7e8a3121e5) Thanks [@louistrue](https://github.com/louistrue)! - Stop dropping six concrete IFC2X3 products from mesh and attribute export, and remove an alias row that named no entity.
+  
+  `rust/core/src/legacy_entities.rs` is the table every classification pass is told to consult instead of a bare `IfcType::from_str`. It held 21 arms. Diffing `@ifc-lite/data`'s IFC2X3/IFC4 tables against the generated IFC4X3 enum — the method `merged.rs` already documents — turns up six concrete `IfcProduct` subtypes that carry both a placement and a representation and were in neither: `IfcElectricalElement`, `IfcElectricDistributionPoint`, `IfcChamferEdgeFeature`, `IfcRoundedEdgeFeature`, `IfcStructuralLinearActionVarying`, `IfcStructuralPlanarActionVarying`.
+  
+  A name the table misses resolves to `IfcType::Unknown`, and `Unknown` is a subtype of nothing. The attribute exporter keeps a row only if the type reaches `IfcProduct`, and `has_geometry_by_name` refuses `Unknown` outright, so an IFC2X3 file containing one of these lost it from the attribute export and from meshing at once. The two passes agreed, on dropping it — which is why nothing looked wrong. Each new arm maps to its own supertype from the older schema rather than to a generic proxy.
+  
+  The `IfcElectricDistributionPoint` arm was spelled `IFCELECTRICALDISTRIBUTIONPOINT`, with an "AL" no IFC2X3 entity has. It could never match a real file, and a Rust test asserted `has_geometry_by_name` on the same misspelling, so the table and its test certified each other while describing nothing.
+  
+  That misspelling had spread. [#2883](https://github.com/LTplus-AG/ifc-lite/issues/2883) mirrored it into `@ifc-lite/parser`'s `ENTITY_NAME_ALIASES` on the stated premise that it was "real, deprecated IFC2X3 syntax", and two tests plus a comment in `@ifc-lite/query` were then written against the mirror — five artifacts agreeing with each other about an entity that does not exist. The alias row is removed rather than respelled, because the correctly spelled name is in `ENTITIES_IFC2X3` and already resolves through `IfcFlowController` to `IfcDistributionElement` with no alias at all; that is also exactly what the new Rust arm answers. The dependents now assert the real name, plus a negative on the misspelling so restoring the alias turns them red.
+  
+  Fixing the table exposed a second live defect. The construction-projection filter from [#979](https://github.com/LTplus-AG/ifc-lite/issues/979) read `entity.ifc_type`, which the decoder fills with a bare `from_str` — so every legacy spelling of a feature element arrived as `Unknown` and passed straight through. Measured on AC20-FZK-Haus with its 17 openings respelled to `IFCOPENINGSTANDARDCASE`: 33 spurious void cross-sections in the floor plan before, none after.
+  
+  `scripts/check-legacy-entity-coverage.mjs` now runs that diff on every PR, in both directions: a concrete legacy product with no arm fails, and so does an arm whose key names no entity in any bundled schema.
+
+- [#3124](https://github.com/LTplus-AG/ifc-lite/pull/3124) [`cf84055`](https://github.com/LTplus-AG/ifc-lite/commit/cf840556aa529ba220ee1121a4c943ce05c3713b) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Stop merged STEP export from leaving duplicate GlobalIds on IFC4.3 stratum entities.
+  
+  `export_merged` reconciles GlobalIds so that two federated models sharing an element emit that element's 22-character id once, not twice — a duplicate GlobalId is an IFC spec violation. Deciding whether a line's first attribute *is* a GlobalId means asking whether the entity type derives from `IfcRoot`, and the Rust side asked with a bare `IfcType::from_str`.
+  
+  The generated enum is derived from IFC4X3 alone and models the three stratum leaves only by their abstract base: `IfcSolidStratum`, `IfcVoidStratum` and `IfcWaterStratum` are all folded into `IfcGeotechnicalStratum`. `from_str` therefore answered `Unknown` for the names authoring tools actually write, and `Unknown` is a subtype of nothing, so reconciliation skipped them. Merging two infrastructure models that share a terrain or soil layer produced a file with the same GlobalId twice — while the `IfcWall` on the next line was reconciled correctly. The lookup now goes through `legacy_aware_ifc_type`, the same resolution every other classifying pass in the workspace is required to use.
+  
+  The JS classifier in `@ifc-lite/export` never had the bug: it resolves those names through `ENTITY_NAME_ALIASES`, the mirror of `rust/core/src/legacy_entities.rs`, and answered rooted all along. So this was a live cross-language disagreement, and both halves of the parity gate added in [#3015](https://github.com/LTplus-AG/ifc-lite/issues/3015) were green throughout — because the sweep's universe was built from Rust's own two tables, and a name known only to an alias table appears in neither. A universe that cannot name a type cannot compare it.
+  
+  Two structural changes close that, rather than three rows being added by hand. The sweep's universe now includes `ifc_lite_core::LEGACY_ENTITY_NAMES`, a newly enumerable form of the legacy table whose contents are re-derived from the lookup's own source text and asserted equal, so an arm added without a name fails the test. And `rooted_type_parity.rs` now asserts WHICH rows the fixture holds, not just how many: previously 31 rows could be deleted — including the three the unit tests call load-bearing — and both languages stayed green on the remainder at `901 > 900`, so a disagreement could be made to disappear by deleting the row that carried it.
+  
+  Measured across the whole 936-name universe, Rust and JS disagreed on 3 names before and 0 after.
+
+- [#3123](https://github.com/LTplus-AG/ifc-lite/pull/3123) [`cf0ad86`](https://github.com/LTplus-AG/ifc-lite/commit/cf0ad86deae6e7411dde42806be424c218d2e76c) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Bound the symbolic revisit budget across the whole extraction instead of resetting it per representation item.
+  
+  A drawing whose repeated traversal was spread across many top-level items was
+  previously unbounded: each item got a fresh budget, so a file of N items could
+  spend N times the intended limit. The budget now lives on the extraction and is
+  charged once per revisit wherever it happens.
+  
+  Two consequences worth knowing before upgrading:
+  
+  - `truncated` can now appear on files that did not report it before, with
+    reason `item-revisits`. Nothing is dropped silently — that is the point of
+    reporting it — but a consumer that treats any `truncated` as an error will
+    see it more often. The bound's value was not re-sized for its wider scope, so
+    a large nested block import spread over many products can truncate where it
+    previously completed.
+  - First visits are still never charged, and the "seen" set stays per item, so
+    re-placing one library block many times is not counted as revisiting it.
+
+- [#3182](https://github.com/LTplus-AG/ifc-lite/pull/3182) [`5b89621`](https://github.com/LTplus-AG/ifc-lite/commit/5b89621c048e1a6bd1e121038ea2f14e82938372) Thanks [@louistrue](https://github.com/louistrue)! - Label legacy IFC keywords with their resolved type in the browser, not `"Unknown"`.
+  
+  The native pipeline resolves a legacy keyword through `legacy_entities.rs` and labels the node with its real base type. The browser path did not: the jobs wire carries only `(id, start, end)`, so `batch.rs` rebuilt the type from `entity.ifc_type` — the decoder's bare `IfcType::from_str` — and a legacy keyword that reached that path arrived as `Unknown` with the Unknown default colour. The 22 `legacy_entities.rs` arms that carry geometry are fixed here, among them `IfcProxy`, the eight `*StandardCase` variants, both `*ElementedCase`, `IfcEquipmentElement`, the three IFC4X3 strata leaves and the six [#3172](https://github.com/LTplus-AG/ifc-lite/issues/3172) added. Type-exact visibility rules and styling consumers skipped them, and nothing threw.
+  
+  `IfcDoorStyle` and `IfcWindowStyle` are NOT fixed by this change. The pre-passes gate type-geometry candidates on a bare `IfcType::from_str(name).is_subtype_of(IfcTypeProduct)`, which is false for any keyword IFC4X3 dropped, so both are discarded before a geometry job exists and never reach the corrected line. That is the same defect one layer up; [#3187](https://github.com/LTplus-AG/ifc-lite/issues/3187) enumerates the sites.
+  
+  It cannot be recovered from the decoded value: `IfcType::Unknown` stores a CRC32 hash, not the name. It is recomputed from the record instead, which the batch already holds — a short scan to the first `(`, paid only by entities the decoder could not name.
+  
+  Fixing it surfaced a second defect. `extract_entity_type_name` did not trim, so `[#71](https://github.com/LTplus-AG/ifc-lite/issues/71)= IFCCOLUMN(` — legal STEP, and what buildingSMART's own `column-straight-rectangle-tessellation.ifc` writes on all 26 of its entity lines — yielded `" IFCCOLUMN"` with a leading space, matching no lookup. The function had no production caller, so its broken contract had never been exercised. `extract_entity_type_name` is `pub` in `ifc-lite-core`, so that is a behaviour change on a published Rust surface: it now returns the trimmed name, and `None` rather than `Some(" ")` for a record with only whitespace between `=` and `(`.
+
 ## 6.0.0
 
 ### Major Changes

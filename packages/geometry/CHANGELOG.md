@@ -1,5 +1,15 @@
 # @ifc-lite/geometry
 
+## 4.0.1
+
+### Patch Changes
+
+- [#3176](https://github.com/LTplus-AG/ifc-lite/pull/3176) [`66923ee`](https://github.com/LTplus-AG/ifc-lite/commit/66923eefb514e66bff637f43b44d2151723ffb4b) Thanks [@louistrue](https://github.com/louistrue)! - Correct the call-site count in `geometry-class.ts`'s docblock and its test's: six files across three packages compared `geometryClass` against bare integers before the module existed, not five.
+  
+  The sixth is `apps/viewer/src/components/viewer/ViewportContainer.tsx:819`, which read `(meshes[i].geometryClass ?? 0) !== 0` and now goes through `meshIsNonOccurrence`. It was converted on [#3161](https://github.com/LTplus-AG/ifc-lite/issues/3161) and named in that PR's changeset and merge subject, but the two doc comments kept the pre-audit number — and they are what a reader lands on when opening the module. Comment-only; the enumeration now lists all six.
+- Updated dependencies [[`224386a`](https://github.com/LTplus-AG/ifc-lite/commit/224386ac9cb1c2d94eca50808cdfdb7e8a3121e5), [`cf84055`](https://github.com/LTplus-AG/ifc-lite/commit/cf840556aa529ba220ee1121a4c943ce05c3713b), [`cf0ad86`](https://github.com/LTplus-AG/ifc-lite/commit/cf0ad86deae6e7411dde42806be424c218d2e76c), [`5b89621`](https://github.com/LTplus-AG/ifc-lite/commit/5b89621c048e1a6bd1e121038ea2f14e82938372)]:
+  - @ifc-lite/wasm@6.0.1
+
 ## 4.0.0
 
 ### Major Changes

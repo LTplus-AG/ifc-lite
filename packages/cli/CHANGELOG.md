@@ -1,5 +1,20 @@
 # @ifc-lite/cli
 
+## 0.25.1
+
+### Patch Changes
+
+- [#3143](https://github.com/LTplus-AG/ifc-lite/pull/3143) [`22f4a1a`](https://github.com/LTplus-AG/ifc-lite/commit/22f4a1a5f40701ad5ef21f99bf1acf3aa19d742d) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix the CLI `stats` command's window-area total to sum every matching quantity, not silently drop to the first.
+  
+  `sumQuantity` in `stats-aggregation.ts` (introduced when `stats.ts` was refactored to share aggregation logic across window area, floor area and material volumes) has no `break` after adding a match — it sums every `Area`/`GrossArea`/`NetArea` etc. quantity across every quantity set on a ref. The original window-area loop it replaced had a `break` after the first `Area` match inside each quantity set, so the two disagreed whenever a quantity set held more than one same-named quantity.
+  
+  Kept sum-all rather than adding a first-match flag: a quantity set with two same-named quantities is not valid IFC — `IfcElementQuantity` carries the `UniqueQuantityNames` WHERE rule — so the divergence is only reachable on schema-non-compliant files, and four of the five call sites that fed the old loop already summed every match rather than taking the first.
+- Updated dependencies [[`66923ee`](https://github.com/LTplus-AG/ifc-lite/commit/66923eefb514e66bff637f43b44d2151723ffb4b), [`224386a`](https://github.com/LTplus-AG/ifc-lite/commit/224386ac9cb1c2d94eca50808cdfdb7e8a3121e5), [`cf84055`](https://github.com/LTplus-AG/ifc-lite/commit/cf840556aa529ba220ee1121a4c943ce05c3713b), [`cf0ad86`](https://github.com/LTplus-AG/ifc-lite/commit/cf0ad86deae6e7411dde42806be424c218d2e76c), [`5b89621`](https://github.com/LTplus-AG/ifc-lite/commit/5b89621c048e1a6bd1e121038ea2f14e82938372)]:
+  - @ifc-lite/geometry@4.0.1
+  - @ifc-lite/parser@4.3.1
+  - @ifc-lite/wasm@6.0.1
+  - @ifc-lite/ids@1.15.50
+
 ## 0.25.0
 
 ### Minor Changes

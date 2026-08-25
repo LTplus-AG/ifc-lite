@@ -26,6 +26,7 @@
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { CRATES, readWorkspaceVersion, isPublished, sleep } from './lib/crates-io.mjs';
+import { isMainEntry } from './lib/is-main-entry.mjs';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -95,7 +96,7 @@ async function main() {
   console.log('All crates are published. 🎉');
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMainEntry(import.meta.url)) {
   main().catch((err) => {
     console.error('Unexpected error:', err);
     process.exit(1);

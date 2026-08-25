@@ -36,6 +36,7 @@ import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { CRATES, readWorkspaceVersion, isPublished, waitUntilPublished } from './lib/crates-io.mjs';
+import { isMainEntry } from './lib/is-main-entry.mjs';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -94,7 +95,7 @@ async function main() {
 
 // Only run when invoked directly (`node scripts/release-crates.mjs`), not
 // when imported by a test.
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMainEntry(import.meta.url)) {
   main().catch((err) => {
     console.error(`❌ ${err.message}`);
     process.exit(1);

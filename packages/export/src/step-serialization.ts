@@ -188,6 +188,7 @@ export function quantityTypeToIfcType(type: QuantityType): string {
     case QuantityType.Count: return 'IFCQUANTITYCOUNT';
     case QuantityType.Weight: return 'IFCQUANTITYWEIGHT';
     case QuantityType.Time: return 'IFCQUANTITYTIME';
+    case QuantityType.Number: return 'IFCQUANTITYNUMBER';
     default: return 'IFCQUANTITYCOUNT';
   }
 }

@@ -189,6 +189,8 @@ export enum QuantityType {
   Count = 3,
   Weight = 4,
   Time = 5,
+  /** `IfcQuantityNumber` — a dimensionless count-like value, IFC4X3+ only. */
+  Number = 6,
 }
 
 export enum RelationshipType {

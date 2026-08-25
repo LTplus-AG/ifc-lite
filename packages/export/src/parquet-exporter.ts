@@ -612,6 +612,7 @@ export function QuantityTypeToString(type: QuantityType): string {
         [QuantityType.Count]: 'Count',
         [QuantityType.Weight]: 'Weight',
         [QuantityType.Time]: 'Time',
+        [QuantityType.Number]: 'Number',
     };
     return names[type] || 'Unknown';
 }

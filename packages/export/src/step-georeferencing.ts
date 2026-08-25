@@ -177,7 +177,10 @@ export function applyGeoreferencingMutations(
     const proj = crs.mapProjection ? `'${escapeStepString(String(crs.mapProjection))}'` : '$';
     const zone = crs.mapZone ? `'${escapeStepString(String(crs.mapZone))}'` : '$';
     let mapUnitRef = '$';
-    if (crs.mapUnit) {
+    // `!== undefined`, matching the existing-CRS path above: an empty MapUnit is
+    // a unit this exporter cannot express, not an absent request, and the caller
+    // has to be told so rather than quietly getting `$`.
+    if (crs.mapUnit !== undefined) {
       const resolved = resolveMapUnitReference(String(crs.mapUnit), pass.newGeorefLines, pass.effective, ctx);
       if (resolved === null) reportMapUnitUnsupported(pass.warnings, String(crs.mapUnit));
       else mapUnitRef = `#${resolved}`;

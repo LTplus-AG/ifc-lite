@@ -959,6 +959,21 @@ describe('IfcProjectedCRS.MapUnit carries the unit that was asked for (#3274)', 
     }
   });
 
+  it('warns on an empty MapUnit on the create path, as the existing-CRS path does', () => {
+    // Both paths take the SAME supplied value. The existing-CRS branch tested
+    // `!== undefined`, the create branch tested truthiness, so `mapUnit: ''`
+    // was refused-with-a-warning on one and silently `$` on the other. The
+    // file cannot say a unit was dropped, so the silent half lost the only
+    // signal the caller had.
+    const result = exportWithMapUnit('');
+    const content = decode(result.content);
+    expect(crsMapUnitLine(content)).toBe('$');
+    expect(result.stats.warnings.join('\n')).toContain('Cannot express map unit');
+    // Anti-vacuity: the CRS was written, so `$` is a refused MapUnit and not a
+    // missing IfcProjectedCRS.
+    expect(content).toContain("IFCPROJECTEDCRS('EPSG:2056'");
+  });
+
   it('still writes FOOT and US SURVEY FOOT, with distinct conversion factors', () => {
     // Negative control for the refusal above: the two non-metric units the
     // exporter DOES know are unaffected, so a refusal is about the unit and

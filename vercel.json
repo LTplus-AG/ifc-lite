@@ -26,6 +26,10 @@
       "destination": "/oauth/msgraph/callback.html"
     },
     {
+      "source": "/oauth/bcf/callback",
+      "destination": "/oauth/bcf/callback.html"
+    },
+    {
       "source": "/mcp",
       "destination": "/index.html"
     },

@@ -21,6 +21,7 @@ import {
   Download,
   User,
   MapPin,
+  Cloud,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
@@ -40,6 +41,7 @@ import { useBCF } from '@/hooks/useBCF';
 import { BCFTopicList } from './bcf/BCFTopicList';
 import { BCFTopicDetail } from './bcf/BCFTopicDetail';
 import { BCFCreateTopicForm } from './bcf/BCFCreateTopicForm';
+import { BCFServerDialog } from './bcf/BCFServerDialog';
 import { openGenericFileDialog } from '@/services/file-dialog';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 
@@ -100,6 +102,7 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
   // Editing the active topic's fields in place (reuses the create form). (#1461)
   const [showEditForm, setShowEditForm] = useState(false);
   const [showAuthorDialog, setShowAuthorDialog] = useState(false);
+  const [showServerDialog, setShowServerDialog] = useState(false);
   const [tempAuthor, setTempAuthor] = useState(bcfAuthor);
   // Viewpoint previewed in the create form and attached to the new topic.
   const [createViewpoint, setCreateViewpoint] = useState<BCFViewpoint | null>(null);
@@ -420,6 +423,15 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
             <Download className="h-4 w-4" />
           </Button>
           <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => setShowServerDialog(true)}
+            title="BCF server"
+          >
+            <Cloud className="h-4 w-4" />
+          </Button>
+          <Button
             variant={bcfOverlayVisible ? 'secondary' : 'ghost'}
             size="icon"
             className="h-7 w-7"
@@ -502,6 +514,9 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
             onSetAuthor={setBcfAuthor}
           />
         )}
+
+        {/* BCF server connection */}
+        <BCFServerDialog open={showServerDialog} onOpenChange={setShowServerDialog} />
 
         {/* Author Dialog */}
         {showAuthorDialog && (

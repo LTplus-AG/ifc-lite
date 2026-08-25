@@ -1,0 +1,458 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * BCF server connection state.
+ *
+ * Persists the server URL, signed-in user, and OAuth2 token set in
+ * localStorage (unencrypted, like other BYOK values — revocable, not
+ * secret). The password is sent once to the server's token endpoint for the
+ * OAuth2 password grant and never stored. `@ifc-lite/bcf-api` is loaded via
+ * dynamic import so the connector code stays out of the entry bundle until
+ * a user actually connects.
+ */
+
+import type { BcfApiClient, BcfProjectDto, BcfProjectFetchResult, BcfSyncProgress } from '@ifc-lite/bcf-api';
+
+export interface BcfServerConfig {
+  /** Normalized base URL, e.g. https://host/bcf (no version segment). */
+  serverUrl: string;
+  /** Signed-in user id (email) from `current-user`. */
+  userId: string;
+  accessToken: string;
+  refreshToken: string;
+  /** Epoch ms when the access token expires; 0 when the server didn't say. */
+  tokenExpiresAt: number;
+  /**
+   * OAuth app credentials, kept only for client-credentials connections so
+   * an expired access token can be re-granted without user interaction.
+   */
+  clientId: string;
+  clientSecret: string;
+  /** Last-selected project, so reconnects re-sync without re-picking. */
+  projectId: string;
+  projectName: string;
+}
+
+const STORAGE_KEY = 'ifc-lite:bcf-server:v1';
+const CHANGED_EVENT = 'ifc-lite:bcf-server-changed';
+/** Refresh the access token this many ms before its recorded expiry. */
+const EXPIRY_SKEW_MS = 60_000;
+
+function loadApi() {
+  return import('@ifc-lite/bcf-api');
+}
+
+function sanitize(value: unknown): BcfServerConfig | null {
+  if (!value || typeof value !== 'object') return null;
+  const parsed = value as Partial<BcfServerConfig>;
+  if (typeof parsed.serverUrl !== 'string' || parsed.serverUrl.length === 0) return null;
+  if (typeof parsed.accessToken !== 'string' || parsed.accessToken.length === 0) return null;
+  return {
+    serverUrl: parsed.serverUrl,
+    userId: typeof parsed.userId === 'string' ? parsed.userId : '',
+    accessToken: parsed.accessToken,
+    refreshToken: typeof parsed.refreshToken === 'string' ? parsed.refreshToken : '',
+    tokenExpiresAt: typeof parsed.tokenExpiresAt === 'number' ? parsed.tokenExpiresAt : 0,
+    clientId: typeof parsed.clientId === 'string' ? parsed.clientId : '',
+    clientSecret: typeof parsed.clientSecret === 'string' ? parsed.clientSecret : '',
+    projectId: typeof parsed.projectId === 'string' ? parsed.projectId : '',
+    projectName: typeof parsed.projectName === 'string' ? parsed.projectName : '',
+  };
+}
+
+export function loadBcfServerConfig(): BcfServerConfig | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? sanitize(JSON.parse(raw)) : null;
+  } catch (error) {
+    // Storage blocked or corrupted entry: treat as signed out.
+    console.warn('[bcf-server] failed to read saved connection', error);
+    return null;
+  }
+}
+
+export function saveBcfServerConfig(config: BcfServerConfig): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+  } catch (error) {
+    // Storage blocked or full: the in-memory session still works for this
+    // page; only reconnect-after-reload is lost. Never fail the caller's
+    // operation (a completed pull) over bookkeeping.
+    console.warn('[bcf-server] failed to persist connection', error);
+  }
+  window.dispatchEvent(new Event(CHANGED_EVENT));
+}
+
+export function clearBcfServerConfig(): void {
+  localStorage.removeItem(STORAGE_KEY);
+  window.dispatchEvent(new Event(CHANGED_EVENT));
+}
+
+export function subscribeBcfServer(listener: () => void): () => void {
+  window.addEventListener(CHANGED_EVENT, listener);
+  return () => window.removeEventListener(CHANGED_EVENT, listener);
+}
+
+/**
+ * BCF servers hold real project data, so require TLS for anything that is
+ * not local development.
+ */
+export function validateBcfServerUrl(input: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(input.trim());
+  } catch {
+    return 'Enter the full server URL, e.g. https://example.com/bcf';
+  }
+  const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+  if (url.protocol !== 'https:' && !isLocalhost) {
+    return 'BCF server URLs must use https://';
+  }
+  return null;
+}
+
+/**
+ * The token endpoint comes from the server's /auth discovery document, not
+ * from the user — it receives the password and refresh token, so it must
+ * pass the same TLS rule or the https guarantee on the server URL is
+ * meaningless. (A different host is legitimate: OAuth servers often live on
+ * their own domain.)
+ */
+function requireSecureTokenUrl(tokenUrl: string | undefined): string {
+  if (!tokenUrl) {
+    throw new Error('This BCF server does not advertise an OAuth2 token endpoint');
+  }
+  const problem = validateBcfServerUrl(tokenUrl);
+  if (problem) {
+    throw new Error(`This BCF server advertises an insecure token endpoint (${problem})`);
+  }
+  return tokenUrl;
+}
+
+/**
+ * Resolve the signed-in identity for a fresh token set, persist the
+ * connection, and hand it back. Shared tail of every sign-in flow.
+ */
+async function completeSignIn(
+  baseUrl: string,
+  token: { access_token: string; refresh_token?: string; expires_in?: number },
+  appCredentials?: { clientId: string; clientSecret: string },
+): Promise<BcfServerConfig> {
+  const api = await loadApi();
+  const client = new api.BcfApiClient({ baseUrl, getAccessToken: () => token.access_token });
+  const user = await client.getCurrentUser();
+  const config: BcfServerConfig = {
+    serverUrl: baseUrl,
+    userId: user.id,
+    accessToken: token.access_token,
+    refreshToken: token.refresh_token ?? '',
+    tokenExpiresAt: token.expires_in ? Date.now() + token.expires_in * 1000 : 0,
+    clientId: appCredentials?.clientId ?? '',
+    clientSecret: appCredentials?.clientSecret ?? '',
+    projectId: '',
+    projectName: '',
+  };
+  saveBcfServerConfig(config);
+  return config;
+}
+
+/**
+ * Sign in with the OAuth2 resource-owner password grant: discover the token
+ * endpoint from the server's `/auth` document, exchange the credentials for
+ * a token set, resolve the user identity, and persist the connection.
+ */
+export async function signInToBcfServer(
+  serverUrl: string,
+  username: string,
+  password: string,
+): Promise<BcfServerConfig> {
+  const api = await loadApi();
+  const baseUrl = api.normalizeBcfBaseUrl(serverUrl);
+  const anonymous = new api.BcfApiClient({ baseUrl });
+  const authInfo = await anonymous.getAuthInfo();
+  const token = await api.requestPasswordToken({
+    tokenUrl: requireSecureTokenUrl(authInfo.oauth2_token_url),
+    username,
+    password,
+  });
+  return completeSignIn(baseUrl, token);
+}
+
+/**
+ * Sign in with a user-supplied access token (obtained from the server's own
+ * UI or OAuth tooling). Works against servers that only offer the
+ * authorization-code flow; there is no refresh material, so the session
+ * ends when the token expires.
+ */
+export async function signInWithToken(
+  serverUrl: string,
+  accessToken: string,
+): Promise<BcfServerConfig> {
+  const api = await loadApi();
+  const baseUrl = api.normalizeBcfBaseUrl(serverUrl);
+  return completeSignIn(baseUrl, { access_token: accessToken.trim() });
+}
+
+/** Path the popup returns to; must match what OAuth apps register. */
+export const BCF_OAUTH_REDIRECT_PATH = '/oauth/bcf/callback';
+
+/** Absolute redirect URI for this deployment, shown to users for app registration. */
+export function bcfOAuthRedirectUri(): string {
+  return `${window.location.origin}${BCF_OAUTH_REDIRECT_PATH}`;
+}
+
+/** Everything one browser sign-in attempt needs across the popup round-trip. */
+export interface BcfOAuthPreparation {
+  serverUrl: string;
+  tokenUrl: string;
+  /** Full authorization URL to navigate the popup to. */
+  authorizeUrl: string;
+  state: string;
+  codeVerifier: string;
+  clientId: string;
+  clientSecret: string;
+}
+
+/**
+ * First half of the browser OAuth sign-in: discover the server's endpoints,
+ * resolve a client id — the caller's own, or one minted on the spot where
+ * the server offers dynamic client registration — and build the
+ * authorization URL (with PKCE; servers that ignore the challenge still
+ * accept the exchange).
+ */
+export async function prepareBcfOAuth(
+  serverUrl: string,
+  options: { clientId?: string; clientSecret?: string; scope?: string } = {},
+): Promise<BcfOAuthPreparation> {
+  const api = await loadApi();
+  const baseUrl = api.normalizeBcfBaseUrl(serverUrl);
+  const authInfo = await new api.BcfApiClient({ baseUrl }).getAuthInfo();
+  const tokenUrl = requireSecureTokenUrl(authInfo.oauth2_token_url);
+  const authEndpoint = authInfo.oauth2_auth_url;
+  if (!authEndpoint) {
+    throw new Error('This BCF server does not advertise an OAuth2 authorization endpoint');
+  }
+  const endpointProblem = validateBcfServerUrl(authEndpoint);
+  if (endpointProblem) {
+    throw new Error(`This BCF server advertises an insecure authorization endpoint (${endpointProblem})`);
+  }
+
+  let clientId = options.clientId?.trim() ?? '';
+  let clientSecret = options.clientSecret?.trim() ?? '';
+  if (!clientId) {
+    if (!authInfo.oauth2_dynamic_client_reg_url) {
+      throw new Error(
+        'This server needs a Client ID: register an OAuth application with the vendor and enter its client id.',
+      );
+    }
+    const registered = await api.registerBcfClient({
+      registrationUrl: authInfo.oauth2_dynamic_client_reg_url,
+      clientName: 'IFClite viewer',
+      clientUrl: window.location.origin,
+      redirectUrl: bcfOAuthRedirectUri(),
+    });
+    clientId = registered.client_id;
+    clientSecret = registered.client_secret ?? '';
+  }
+
+  const { createAuthorizationRequest } = await import('@ifc-lite/oauth-pkce');
+  const request = await createAuthorizationRequest({
+    authorizationEndpoint: authEndpoint,
+    clientId,
+    redirectUri: bcfOAuthRedirectUri(),
+    scope: options.scope,
+  });
+  return {
+    serverUrl: baseUrl,
+    tokenUrl,
+    authorizeUrl: request.url,
+    state: request.state,
+    codeVerifier: request.codeVerifier,
+    clientId,
+    clientSecret,
+  };
+}
+
+/**
+ * Second half of the browser OAuth sign-in: validate the popup's callback
+ * URL (origin, provider error, state, code), exchange the code, resolve
+ * the identity, and persist the session. The client id/secret are stored
+ * so token refreshes can authenticate.
+ */
+export async function completeBcfOAuth(
+  preparation: BcfOAuthPreparation,
+  callbackUrl: string,
+): Promise<BcfServerConfig> {
+  const api = await loadApi();
+  const { parseAuthorizationCallback } = await import('@ifc-lite/oauth-pkce');
+  const redirectUri = bcfOAuthRedirectUri();
+  const { code } = parseAuthorizationCallback(callbackUrl, {
+    expectedRedirectOrigin: new URL(redirectUri).origin,
+    expectedState: preparation.state,
+  });
+  const token = await api.exchangeAuthorizationCode({
+    tokenUrl: preparation.tokenUrl,
+    code,
+    redirectUri,
+    codeVerifier: preparation.codeVerifier,
+    clientId: preparation.clientId,
+    clientSecret: preparation.clientSecret || undefined,
+  });
+  return completeSignIn(preparation.serverUrl, token, {
+    clientId: preparation.clientId,
+    clientSecret: preparation.clientSecret,
+  });
+}
+
+/**
+ * Sign in with an OAuth application's client-credentials grant (e.g. an
+ * OpenProject OAuth app). The id/secret are persisted so an expired access
+ * token re-grants without user interaction.
+ */
+export async function signInWithClientCredentials(
+  serverUrl: string,
+  clientId: string,
+  clientSecret: string,
+): Promise<BcfServerConfig> {
+  const api = await loadApi();
+  const baseUrl = api.normalizeBcfBaseUrl(serverUrl);
+  const anonymous = new api.BcfApiClient({ baseUrl });
+  const authInfo = await anonymous.getAuthInfo();
+  const token = await api.requestClientCredentialsToken({
+    tokenUrl: requireSecureTokenUrl(authInfo.oauth2_token_url),
+    clientId,
+    clientSecret,
+  });
+  return completeSignIn(baseUrl, token, { clientId, clientSecret });
+}
+
+/** Single-flight token refresh so concurrent requests share one round-trip. */
+let refreshInFlight: Promise<string> | null = null;
+
+/** Whether a stored connection has any material to re-authenticate with. */
+function canReauthenticate(config: BcfServerConfig): boolean {
+  return config.refreshToken.length > 0 || (config.clientId.length > 0 && config.clientSecret.length > 0);
+}
+
+async function refreshStoredToken(config: BcfServerConfig): Promise<string> {
+  if (!refreshInFlight) {
+    refreshInFlight = (async () => {
+      const api = await loadApi();
+      const anonymous = new api.BcfApiClient({ baseUrl: config.serverUrl });
+      const authInfo = await anonymous.getAuthInfo();
+      if (!canReauthenticate(config)) {
+        throw new api.BcfAuthenticationError('Session expired — sign in again', {
+          status: 401,
+          url: config.serverUrl,
+        });
+      }
+      const tokenUrl = requireSecureTokenUrl(authInfo.oauth2_token_url);
+      // OAuth-app sessions must present the app credentials on the refresh
+      // grant too; token servers that never issued a client ignore them.
+      const token = config.refreshToken
+        ? await api.refreshAccessToken({
+            tokenUrl,
+            refreshToken: config.refreshToken,
+            clientId: config.clientId || undefined,
+            clientSecret: config.clientSecret || undefined,
+          })
+        : await api.requestClientCredentialsToken({
+            tokenUrl,
+            clientId: config.clientId,
+            clientSecret: config.clientSecret,
+          });
+      // Persist only when the stored connection is still THIS one. If the
+      // user disconnected (sign-out is their revocation gesture) or switched
+      // servers while the refresh was in flight, re-saving would resurrect
+      // the session or write this server's tokens under the other server's
+      // URL. The in-flight caller still gets the fresh token either way.
+      const current = loadBcfServerConfig();
+      if (current && current.serverUrl === config.serverUrl) {
+        saveBcfServerConfig({
+          ...current,
+          accessToken: token.access_token,
+          refreshToken: token.refresh_token ?? config.refreshToken,
+          tokenExpiresAt: token.expires_in ? Date.now() + token.expires_in * 1000 : 0,
+        });
+      }
+      return token.access_token;
+    })().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
+/**
+ * Client bound to the saved connection. Its token provider transparently
+ * refreshes the access token shortly before expiry, and a 401 answer gets
+ * one refresh-and-retry (covers servers that omit expires_in); a failed
+ * refresh surfaces as a BcfAuthenticationError from the request that
+ * needed it.
+ */
+export async function createConnectedClient(): Promise<BcfApiClient> {
+  const api = await loadApi();
+  const config = loadBcfServerConfig();
+  if (!config) throw new Error('Not connected to a BCF server');
+  // Storage can change mid-pull (another tab disconnects or connects to a
+  // different server). This client is bound to config.serverUrl, so only a
+  // stored config for the SAME server may feed it tokens — anything else
+  // would send the new server's token to the old server's host.
+  const boundConfig = (): BcfServerConfig => {
+    const current = loadBcfServerConfig();
+    return current && current.serverUrl === config.serverUrl ? current : config;
+  };
+  return new api.BcfApiClient({
+    baseUrl: config.serverUrl,
+    getAccessToken: async () => {
+      const current = boundConfig();
+      const expiring =
+        current.tokenExpiresAt > 0 && Date.now() > current.tokenExpiresAt - EXPIRY_SKEW_MS;
+      if (expiring && canReauthenticate(current)) {
+        return refreshStoredToken(current);
+      }
+      return current.accessToken;
+    },
+    fetchFn: async (input, init) => {
+      const response = await fetch(input, init);
+      if (response.status !== 401) return response;
+      const current = boundConfig();
+      if (!canReauthenticate(current)) return response;
+      let freshToken: string;
+      try {
+        freshToken = await refreshStoredToken(current);
+      } catch (error) {
+        console.warn('[bcf-server] token refresh after 401 failed', error);
+        return response;
+      }
+      const headers = new Headers(init?.headers);
+      headers.set('Authorization', `Bearer ${freshToken}`);
+      return fetch(input, { ...init, headers });
+    },
+  });
+}
+
+export async function listBcfServerProjects(): Promise<BcfProjectDto[]> {
+  const client = await createConnectedClient();
+  return client.getProjects();
+}
+
+/**
+ * Pull one project's topics into a `BCFProject` and remember it as the
+ * connection's active project.
+ */
+export async function pullBcfServerProject(
+  projectId: string,
+  projectName: string,
+  onProgress?: (progress: BcfSyncProgress) => void,
+): Promise<BcfProjectFetchResult> {
+  const api = await loadApi();
+  const client = await createConnectedClient();
+  const result = await api.fetchProjectAsBCF(client, projectId, { onProgress });
+  if (!result.project.name) result.project.name = projectName;
+  const config = loadBcfServerConfig();
+  if (config) saveBcfServerConfig({ ...config, projectId, projectName });
+  return result;
+}

@@ -283,6 +283,8 @@ export default defineConfig({
       '@ifc-lite/lens': path.resolve(__dirname, '../../packages/lens/src'),
       '@ifc-lite/mutations': path.resolve(__dirname, '../../packages/mutations/src'),
       '@ifc-lite/bcf': path.resolve(__dirname, '../../packages/bcf/src'),
+      '@ifc-lite/bcf-api': path.resolve(__dirname, '../../packages/bcf-api/src'),
+      '@ifc-lite/oauth-pkce': path.resolve(__dirname, '../../packages/oauth-pkce/src'),
       '@ifc-lite/drawing-2d': path.resolve(__dirname, '../../packages/drawing-2d/src'),
       '@ifc-lite/encoding': path.resolve(__dirname, '../../packages/encoding/src'),
       '@ifc-lite/ids': path.resolve(__dirname, '../../packages/ids/src'),
@@ -348,6 +350,7 @@ export default defineConfig({
           if (id.includes('/packages/sandbox/')) return 'sandbox';
           if (id.includes('/packages/export/')) return 'exporters';
           if (id.includes('/packages/server-client/')) return 'server-client';
+          if (id.includes('/packages/bcf-api/')) return 'bcf-api';
           if (id.includes('/packages/bcf/')) return 'bcf';
           if (id.includes('/packages/ids/')) return 'ids';
           if (id.includes('/packages/lens/')) return 'lens';

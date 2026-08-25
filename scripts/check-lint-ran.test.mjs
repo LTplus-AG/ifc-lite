@@ -24,7 +24,22 @@
  */
 
 import { test } from 'node:test';
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
+
+/**
+ * Read the target count out of the gate itself rather than hardcoding it.
+ * This test asserted a literal 3 and the literal string "across 3 targets";
+ * adding `examples` to TARGETS turned it red (0 pass / 2 fail) with nothing
+ * wrong in the gate. A test that must be edited in lockstep with a list it
+ * does not own will desync again, and CI runs it (test.yml:829).
+ */
+const TARGET_COUNT = (
+  readFileSync(new URL('./check-lint-ran.mjs', import.meta.url), 'utf8')
+    .match(/const TARGETS = \[([\s\S]*?)\]/)?.[1]
+    .match(/\{\s*dir:/g) ?? []
+).length;
+assert.ok(TARGET_COUNT > 0, 'could not read TARGETS out of check-lint-ran.mjs — this test is now blind');
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -97,18 +112,18 @@ test('a failing lint keeps its whole output when stdout is a pipe', () => {
     // One summary per target. This is what vanished: the truncated log ended
     // roughly 1% in, so a reader saw diagnostics and no verdict.
     const summaries = stdout.match(/Finished in [^\n]*? on [\d,]+ files with \d+ rules/g) ?? [];
-    assert.equal(summaries.length, 3, `expected 3 oxlint summaries, got ${summaries.length}`);
+    assert.equal(summaries.length, TARGET_COUNT, `expected ${TARGET_COUNT} oxlint summaries, got ${summaries.length}`);
 
     // And the last line before each summary, so this cannot pass on a log that
     // dropped the middle and happened to keep the tail.
     const markers = stdout.match(new RegExp(TAIL_MARKER, 'g')) ?? [];
-    assert.equal(markers.length, 3, `expected 3 tail markers, got ${markers.length}`);
+    assert.equal(markers.length, TARGET_COUNT, `expected ${TARGET_COUNT} tail markers, got ${markers.length}`);
 
     // Byte-exact: every diagnostic line of every target arrived. Asserting the
     // count rather than "more than a pipe buffer" keeps the test honest if the
     // output grows or the buffer size differs between platforms.
     const diagnostics = stdout.match(/eslint\(no-control-regex\)/g) ?? [];
-    assert.equal(diagnostics.length, LINES_PER_TARGET * 3);
+    assert.equal(diagnostics.length, LINES_PER_TARGET * TARGET_COUNT);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -120,7 +135,10 @@ test('a clean lint still reports its own summary line through a pipe', () => {
     const run = runGate(bin);
     assert.equal(run.status, 0, `expected exit 0, got ${run.status}\n${run.stderr}`);
     // 2,000 files per target from the shim, three targets.
-    assert.match(run.stdout, /lint: 6,000 files across 3 targets, 300 rules, no errors\./);
+    assert.match(
+      run.stdout,
+      /lint: [\d,]+ files across \d+ targets \(\d+ workspace globs, all covered\), \d+ rules, no errors\./,
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

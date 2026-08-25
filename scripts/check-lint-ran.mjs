@@ -52,7 +52,7 @@ const TARGETS = [
   { dir: 'apps', min: 900 },
   { dir: 'packages', min: 1200 },
   { dir: 'scripts', min: 100 },
-  { dir: 'examples', min: 10 },
+  { dir: 'examples', min: 14 },
 ];
 
 /**
@@ -79,7 +79,8 @@ function uncoveredWorkspaceGlobs() {
   try {
     raw = readFileSync('pnpm-workspace.yaml', 'utf8');
   } catch (err) {
-    return { error: `could not read pnpm-workspace.yaml: ${err.message}` };
+    console.error(`lint: could not read pnpm-workspace.yaml: ${err.message}`);
+    return null;
   }
   // Only the `packages:` block. Scoping matters: `onlyBuiltDependencies` lists
   // scoped npm names (`@swc/core`) that also contain a slash, and a whole-file
@@ -90,11 +91,24 @@ function uncoveredWorkspaceGlobs() {
   for (const line of raw.split('\n')) {
     if (/^\S/.test(line)) inPackages = /^packages\s*:/.test(line);
     if (!inPackages) continue;
-    const m = /^\s*-\s*['"]?([^'"\s/]+)\//.exec(line);
-    if (m) roots.add(m[1]);
+    // Capture the whole entry, THEN take the first segment. Requiring a
+    // trailing slash in the pattern silently dropped a member declared as a
+    // bare directory (`- 'tools'`, `- '.'`, both legal pnpm): it was not
+    // counted, so it was not demanded, and the gate printed "all covered".
+    // That is the absence-reads-as-success failure this function exists to
+    // stop, one shape over. Measured: it was the only one of 29 yaml shapes
+    // tried that failed OPEN rather than closed.
+    const m = /^\s*-\s*['"]?([^'"\s]+)/.exec(line);
+    if (!m) continue;
+    // `- '!packages/legacy/**'` is an EXCLUSION, not a member. Left in, it
+    // demands a `{ dir: '!packages' }` target that would then be handed to
+    // oxlint -- a failure with no satisfiable remedy.
+    if (m[1].startsWith('!')) continue;
+    roots.add(m[1].split('/')[0]);
   }
   if (roots.size === 0) {
-    return { error: 'parsed no globs from pnpm-workspace.yaml — the format changed and this check is now blind' };
+    console.error('lint: parsed no globs from pnpm-workspace.yaml — the format changed and this check is now blind');
+    return null;
   }
   const covered = new Set(TARGETS.map((t) => t.dir));
   return { missing: [...roots].filter((r) => !covered.has(r)), seen: roots.size };
@@ -145,10 +159,7 @@ function lint(dir) {
  *  does not. */
 function main() {
   const coverage = uncoveredWorkspaceGlobs();
-  if (coverage.error) {
-    console.error(`lint: ${coverage.error}`);
-    return 1;
-  }
+  if (coverage === null) return 1; // it has already said why
   if (coverage.missing.length > 0) {
     console.error('lint: a pnpm-workspace.yaml glob is not in TARGETS, so its source is');
     console.error('      linted by nobody and this gate would still report "no errors":\n');

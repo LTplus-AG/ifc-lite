@@ -175,16 +175,16 @@ pub(super) struct SymbolicAccumulator {
     data: SymbolicData,
     /// Cap for this extraction. Injectable so a test can use 500 rather than
     /// building a fixture that emits two million primitives.
-    limit: usize,
+    pub(super) limit: usize,
     /// Refused appends, counted for tests. See [`Self::refusals`].
     #[cfg(test)]
-    refusals: usize,
+    pub(super) refusals: usize,
     /// Estimated heap footprint charged so far. See [`MAX_SYMBOLIC_BYTES`].
     bytes: usize,
     /// Byte bound for this extraction, injectable alongside `limit`.
-    byte_limit: usize,
+    pub(super) byte_limit: usize,
     /// Revisits the WHOLE extraction may still charge, shared across items (#2937).
-    revisit_budget: u32,
+    pub(super) revisit_budget: u32,
     /// The most severe bound that fired, if any. See [`SymbolicAccumulator::record`].
     reason: Option<SymbolicTruncationReason>,
     /// Set only by the EXTRACTION bounds, never by a per-item one.
@@ -211,26 +211,6 @@ impl SymbolicAccumulator {
             #[cfg(test)]
             refusals: 0,
         }
-    }
-
-    /// Accumulator under caller-chosen bounds. Both are injectable so a test
-    /// can exercise either bound without building a fixture that reaches the
-    /// shipped ones.
-    #[cfg(test)]
-    pub(super) fn with_limits(limit: usize, byte_limit: usize) -> Self {
-        Self { limit, byte_limit, ..Self::new() }
-    }
-
-    /// Accumulator under a caller-chosen count cap and the shipped byte cap.
-    #[cfg(test)]
-    pub(super) fn with_limit(limit: usize) -> Self {
-        Self { limit, ..Self::new() }
-    }
-
-    /// Accumulator with a small injected revisit budget (skips 200,000 real revisits).
-    #[cfg(test)]
-    pub(super) fn with_revisit_budget(revisit_budget: u32) -> Self {
-        Self { revisit_budget, ..Self::new() }
     }
 
     /// Is the accumulator itself full? The walk and the product scan read THIS
@@ -276,17 +256,6 @@ impl SymbolicAccumulator {
             Some(existing) if severity(existing) >= severity(reason) => {}
             _ => self.reason = Some(reason),
         }
-    }
-
-    /// Refused appends since the last reset, for tests only.
-    ///
-    /// Exists so the early exits can be pinned deterministically. They bound
-    /// WORK, and work is invisible in the output -- a refused append leaves the
-    /// result byte-identical -- but it is visible HERE, and the accumulator is
-    /// already test-injectable. Claiming this was unpinnable was wrong.
-    #[cfg(test)]
-    pub(super) fn refusals(&self) -> usize {
-        self.refusals
     }
 
     /// Total primitives emitted so far, across every collection.

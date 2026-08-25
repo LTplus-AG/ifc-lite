@@ -50,6 +50,56 @@
 use super::output_cap::{SymbolicAccumulator, SymbolicTruncationReason};
 use super::primitives::SymbolicData;
 
+/// Test-only constructors and the refusal counter, kept HERE rather than in
+/// `output_cap.rs`.
+///
+/// They are `#[cfg(test)]` either way, so this changes nothing that ships. It
+/// moves them because the module-size ratchet counts lines, not compiled code:
+/// hoisting the revisit budget onto the accumulator took `output_cap.rs` to
+/// 411, and test scaffolding is what should give way before production logic
+/// or the measured DoS documentation the bounds carry. `*_tests.rs` is exempt
+/// from that gate by name, which is exactly what the exemption is for.
+///
+/// The cost is that four fields widen from module-private to `pub(super)`.
+/// That leaves `data` private, which is the one the accumulator's own doc
+/// comment relies on — during extraction the vectors stay reachable only
+/// through `push_*`, so the seam it describes is still real.
+impl SymbolicAccumulator {
+    /// Accumulator under caller-chosen bounds. Both are injectable so a test
+    /// can exercise either bound without building a fixture that reaches the
+    /// shipped ones.
+    pub(super) fn with_limits(limit: usize, byte_limit: usize) -> Self {
+        let mut acc = Self::new();
+        acc.limit = limit;
+        acc.byte_limit = byte_limit;
+        acc
+    }
+
+    /// Accumulator under a caller-chosen count cap and the shipped byte cap.
+    pub(super) fn with_limit(limit: usize) -> Self {
+        let mut acc = Self::new();
+        acc.limit = limit;
+        acc
+    }
+
+    /// Accumulator with a small injected revisit budget (skips 200,000 real revisits).
+    pub(super) fn with_revisit_budget(revisit_budget: u32) -> Self {
+        let mut acc = Self::new();
+        acc.revisit_budget = revisit_budget;
+        acc
+    }
+
+    /// Refused appends since the last reset.
+    ///
+    /// Exists so the early exits can be pinned deterministically. They bound
+    /// WORK, and work is invisible in the output -- a refused append leaves the
+    /// result byte-identical -- but it is visible HERE, and the accumulator is
+    /// already test-injectable. Claiming this was unpinnable was wrong.
+    pub(super) fn refusals(&self) -> usize {
+        self.refusals
+    }
+}
+
 /// N annotations, each carrying one 24-level fan-out DAG. No cycle, so no path
 /// guard fires; the leaf is reachable down 2^24 paths and only a work bound
 /// stops it. This is the shape that measured 2.73 GB.

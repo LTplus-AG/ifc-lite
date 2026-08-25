@@ -29,6 +29,12 @@
 
 import type { IfcDataStore, IfcSourceBytes } from '@ifc-lite/parser';
 import { asSourceBytes } from '@ifc-lite/parser';
+import {
+  ENTITIES_IFC2X3,
+  ENTITIES_IFC4,
+  ENTITIES_IFC4X3,
+  type IfcEntityInfo,
+} from '@ifc-lite/data';
 import type { EffectiveEntityIndex } from './effective-index.js';
 import { splitTopLevelArgs } from './step-argument-parser.js';
 
@@ -90,120 +96,54 @@ const SPATIAL_STRUCTURE_TYPES = new Set([
 ]);
 
 /**
- * Complete set of all IfcProduct subtypes from the IFC4 + IFC4X3 schemas,
- * excluding spatial structure types (handled above). Generated from the
- * schema registry's inheritanceChain metadata.
+ * Every IfcProduct subtype in every schema this package can export, derived
+ * from `@ifc-lite/data`'s generated entity tables rather than hand-listed.
  *
- * 202 types — full IFC schema coverage. The hiddenIds fallback below
- * catches any types that may exist in future schema versions.
+ * A product type missing from this set is not classified as a product, so under
+ * `visibleOnly` it never becomes a root: the element — and the geometry only it
+ * references — is silently absent from the exported file even though the user
+ * never hid it. The hand-written predecessor was derived from IFC4 + IFC4X3
+ * alone and therefore dropped every IFC2X3-only product
+ * (`IfcElectricDistributionPoint`, `IfcElectricalElement`,
+ * `IfcEquipmentElement`, the edge features, the varying structural actions)
+ * from a visible-only export of a legacy model.
+ *
+ * Deriving it means a schema-table regeneration cannot leave this classifier
+ * behind. Spatial structure and infrastructure are matched before this set, so
+ * its overlap with `SPATIAL_STRUCTURE_TYPES` is harmless. The `hiddenIds`
+ * fallback below still catches types no bundled schema declares.
  */
-const PRODUCT_TYPES = new Set([
-  // IfcElement > IfcBuildingElement
-  'IFCBEAM', 'IFCBEAMSTANDARDCASE', 'IFCBUILDINGELEMENT',
-  'IFCBUILDINGELEMENTPART', 'IFCBUILDINGELEMENTPROXY', 'IFCBUILTELEMENT',
-  'IFCCHIMNEY', 'IFCCOLUMN', 'IFCCOLUMNSTANDARDCASE',
-  'IFCCOVERING', 'IFCCURTAINWALL',
-  'IFCDEEPFOUNDATION', 'IFCDOOR', 'IFCDOORSTANDARDCASE',
-  'IFCFOOTING', 'IFCMEMBER', 'IFCMEMBERSTANDARDCASE',
-  'IFCPILE', 'IFCPLATE', 'IFCPLATESTANDARDCASE',
-  'IFCRAILING', 'IFCRAMP', 'IFCRAMPFLIGHT',
-  'IFCROOF', 'IFCSHADINGDEVICE',
-  'IFCSLAB', 'IFCSLABELEMENTEDCASE', 'IFCSLABSTANDARDCASE',
-  'IFCSTAIR', 'IFCSTAIRFLIGHT',
-  'IFCWALL', 'IFCWALLELEMENTEDCASE', 'IFCWALLSTANDARDCASE',
-  'IFCWINDOW', 'IFCWINDOWSTANDARDCASE',
-  // IfcElement > IfcDistributionElement
-  'IFCDISTRIBUTIONELEMENT', 'IFCDISTRIBUTIONCONTROLELEMENT',
-  'IFCDISTRIBUTIONFLOWELEMENT', 'IFCDISTRIBUTIONCHAMBERELEMENT',
-  'IFCDISTRIBUTIONPORT', 'IFCDISTRIBUTIONBOARD',
-  // IfcDistributionControlElement subtypes
-  'IFCACTUATOR', 'IFCALARM', 'IFCCONTROLLER',
-  'IFCFLOWINSTRUMENT', 'IFCPROTECTIVEDEVICETRIPPINGUNIT',
-  'IFCSENSOR', 'IFCUNITARYCONTROLELEMENT',
-  // IfcFlowController subtypes
-  'IFCAIRTERMINALBOX', 'IFCDAMPER', 'IFCELECTRICDISTRIBUTIONBOARD',
-  'IFCELECTRICTIMECONTROL', 'IFCFLOWCONTROLLER', 'IFCFLOWMETER',
-  'IFCPROTECTIVEDEVICE', 'IFCSWITCHINGDEVICE', 'IFCVALVE',
-  // IfcFlowFitting subtypes
-  'IFCCABLECARRIERFITTING', 'IFCCABLEFITTING',
-  'IFCDUCTFITTING', 'IFCFLOWFITTING', 'IFCJUNCTIONBOX', 'IFCPIPEFITTING',
-  // IfcFlowMovingDevice subtypes
-  'IFCCOMPRESSOR', 'IFCFAN', 'IFCFLOWMOVINGDEVICE', 'IFCPUMP',
-  // IfcFlowSegment subtypes
-  'IFCCABLECARRIERSEGMENT', 'IFCCABLESEGMENT', 'IFCCONVEYORSEGMENT',
-  'IFCDUCTSEGMENT', 'IFCFLOWSEGMENT', 'IFCPIPESEGMENT',
-  // IfcFlowStorageDevice subtypes
-  'IFCELECTRICFLOWSTORAGEDEVICE', 'IFCFLOWSTORAGEDEVICE', 'IFCTANK',
-  // IfcFlowTerminal subtypes
-  'IFCAIRTERMINAL', 'IFCAUDIOVISUALAPPLIANCE', 'IFCCOMMUNICATIONSAPPLIANCE',
-  'IFCELECTRICAPPLIANCE', 'IFCFIRESUPPRESSIONTERMINAL', 'IFCFLOWTERMINAL',
-  'IFCLAMP', 'IFCLIGHTFIXTURE', 'IFCLIQUIDTERMINAL',
-  'IFCMEDICALDEVICE', 'IFCMOBILETELECOMMUNICATIONSAPPLIANCE',
-  'IFCOUTLET', 'IFCSANITARYTERMINAL', 'IFCSPACEHEATER',
-  'IFCSTACKTERMINAL', 'IFCWASTETERMINAL',
-  // IfcFlowTreatmentDevice subtypes
-  'IFCDUCTSILENCER', 'IFCELECTRICFLOWTREATMENTDEVICE',
-  'IFCFILTER', 'IFCFLOWTREATMENTDEVICE', 'IFCINTERCEPTOR',
-  // IfcEnergyConversionDevice subtypes
-  'IFCAIRTOAIRHEATRECOVERY', 'IFCBOILER', 'IFCBURNER',
-  'IFCCHILLER', 'IFCCOIL', 'IFCCONDENSER',
-  'IFCCOOLEDBEAM', 'IFCCOOLINGTOWER',
-  'IFCELECTRICGENERATOR', 'IFCELECTRICMOTOR',
-  'IFCENERGYCONVERSIONDEVICE', 'IFCENGINE',
-  'IFCEVAPORATIVECOOLER', 'IFCEVAPORATOR',
-  'IFCHEATEXCHANGER', 'IFCHUMIDIFIER', 'IFCMOTORCONNECTION',
-  'IFCSOLARDEVICE', 'IFCTRANSFORMER', 'IFCTUBEBUNDLE',
-  'IFCUNITARYEQUIPMENT',
-  // IfcElement > IfcElementAssembly
-  'IFCELEMENT', 'IFCELEMENTASSEMBLY',
-  // IfcElement > IfcElementComponent
-  'IFCELEMENTCOMPONENT', 'IFCFASTENER',
-  'IFCMECHANICALFASTENER', 'IFCDISCRETEACCESSORY',
-  'IFCVIBRATIONDAMPER', 'IFCVIBRATIONISOLATOR',
-  'IFCIMPACTPROTECTIONDEVICE',
-  // IfcElement > IfcFeatureElement
-  'IFCFEATUREELEMENT', 'IFCFEATUREELEMENTADDITION', 'IFCFEATUREELEMENTSUBTRACTION',
-  'IFCOPENINGELEMENT', 'IFCOPENINGSTANDARDCASE',
-  'IFCPROJECTIONELEMENT', 'IFCSURFACEFEATURE', 'IFCVOIDINGFEATURE',
-  // IfcElement > IfcFurnishingElement
-  'IFCFURNISHINGELEMENT', 'IFCFURNITURE', 'IFCSYSTEMFURNITUREELEMENT',
-  // IfcElement > IfcGeographicElement / IfcCivilElement
-  'IFCGEOGRAPHICELEMENT', 'IFCCIVILELEMENT',
-  // IfcElement > IfcTransportElement / IfcTransportationDevice / IfcVehicle
-  'IFCTRANSPORTELEMENT', 'IFCTRANSPORTATIONDEVICE', 'IFCVEHICLE',
-  // IfcElement > IfcReinforcingElement
-  'IFCREINFORCINGELEMENT', 'IFCREINFORCINGBAR', 'IFCREINFORCINGMESH',
-  'IFCTENDON', 'IFCTENDONANCHOR', 'IFCTENDONCONDUIT',
-  // IfcElement > IFC4X3 additions
-  'IFCBEARING', 'IFCCAISSONFOUNDATION', 'IFCCOURSE',
-  'IFCEARTHWORKSCUT', 'IFCEARTHWORKSELEMENT', 'IFCEARTHWORKSFILL',
-  'IFCKERB', 'IFCMOORINGDEVICE', 'IFCNAVIGATIONELEMENT',
-  'IFCPAVEMENT', 'IFCRAIL', 'IFCREINFORCEDSOIL', 'IFCSIGN', 'IFCSIGNAL',
-  'IFCTRACKELEMENT',
-  // IFC4X3 alignment and positioning
-  'IFCALIGNMENT', 'IFCALIGNMENTCANT', 'IFCALIGNMENTHORIZONTAL',
-  'IFCALIGNMENTSEGMENT', 'IFCALIGNMENTVERTICAL',
-  'IFCLINEARELEMENT', 'IFCLINEARPOSITIONINGELEMENT',
-  'IFCPOSITIONINGELEMENT', 'IFCREFERENT',
-  // IFC4X3 geotechnical
-  'IFCBOREHOLE', 'IFCGEOMODEL', 'IFCGEOSLICE',
-  'IFCGEOTECHNICALASSEMBLY', 'IFCGEOTECHNICALELEMENT', 'IFCGEOTECHNICALSTRATUM',
-  // IfcProduct (non-element)
-  'IFCANNOTATION', 'IFCGRID', 'IFCPORT', 'IFCPROXY',
-  'IFCSPACE', 'IFCVIRTUALELEMENT',
-  // IfcStructuralItem / IfcStructuralActivity
-  'IFCSTRUCTURALACTION', 'IFCSTRUCTURALACTIVITY',
-  'IFCSTRUCTURALCONNECTION', 'IFCSTRUCTURALCURVEACTION',
-  'IFCSTRUCTURALCURVECONNECTION', 'IFCSTRUCTURALCURVEMEMBER',
-  'IFCSTRUCTURALCURVEMEMBERVARYING', 'IFCSTRUCTURALCURVEREACTION',
-  'IFCSTRUCTURALITEM', 'IFCSTRUCTURALLINEARACTION',
-  'IFCSTRUCTURALMEMBER', 'IFCSTRUCTURALPLANARACTION',
-  'IFCSTRUCTURALPOINTACTION', 'IFCSTRUCTURALPOINTCONNECTION',
-  'IFCSTRUCTURALPOINTREACTION', 'IFCSTRUCTURALREACTION',
-  'IFCSTRUCTURALSURFACEACTION', 'IFCSTRUCTURALSURFACECONNECTION',
-  'IFCSTRUCTURALSURFACEMEMBER', 'IFCSTRUCTURALSURFACEMEMBERVARYING',
-  'IFCSTRUCTURALSURFACEREACTION',
-]);
+/** Exported for the drift test that diffs it against the schema tables. */
+export const PRODUCT_TYPES: ReadonlySet<string> = buildProductTypes();
+
+function buildProductTypes(): Set<string> {
+  const products = new Set<string>();
+  for (const table of [ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3]) {
+    collectProductNames(table, products);
+  }
+  return products;
+}
+
+/** Add the upper-cased name of every `IfcProduct` descendant declared in `table`. */
+function collectProductNames(table: readonly IfcEntityInfo[], out: Set<string>): void {
+  const parentOf = new Map<string, string | null | undefined>();
+  for (const entity of table) parentOf.set(entity.name, entity.parent);
+
+  for (const entity of table) {
+    // The walk starts at the parent, so `IfcProduct` itself — abstract, and
+    // never instantiated — is not added, while every descendant is.
+    let cursor = parentOf.get(entity.name) ?? null;
+    // Depth-bounded so a malformed table cannot spin here; the deepest IFC
+    // inheritance chain is far under this bound.
+    for (let depth = 0; cursor !== null && depth < 64; depth++) {
+      if (cursor === 'IfcProduct') {
+        out.add(entity.name.toUpperCase());
+        break;
+      }
+      cursor = parentOf.get(cursor) ?? null;
+    }
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Byte-level #ID reference extraction

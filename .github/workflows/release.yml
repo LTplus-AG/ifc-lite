@@ -361,44 +361,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
           SB_VERSION: ${{ steps.release-gate.outputs.sb_version }}
 
-  # Verify every published package is actually reachable on npm.
-  # Catches packages accidentally skipped during release before users hit them.
-  verify-npm-publish:
-    name: Verify npm publish
-    needs: release
-    # `always()` is the load-bearing part. A failed `needs:` skips the dependent
-    # whatever the condition says, so the job that exists to confirm packages
-    # reached npm could not run on the case it exists for: a PARTIAL publish.
-    # On 2026-08-14 nine packages went out, @ifc-lite/source-dalux 404'd, the
-    # release job failed — and this was skipped, so nothing named the missing
-    # package. It was found by hand afterwards.
-    #
-    # `published` is still the right gate: changesets/action sets it true
-    # whenever any package published, INCLUDING the partial-failure path, and
-    # false on a run that merely opened the version PR. So this now runs exactly
-    # when something was published and never on the PR-opening runs.
-    if: always() && needs.release.outputs.published == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repo
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          lfs: false
-          persist-credentials: false
-
-      - name: Setup pnpm
-        # v6 reads the version from the `packageManager` field in
-        # package.json (`pnpm@10.8.1`); specifying `with.version` here
-        # would conflict and the action errors with ERR_PNPM_BAD_PM_VERSION.
-        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: Verify all packages on npm
-        # New packages can take longer to appear in npm metadata after publish.
-        # Retry for up to ~4 minutes before failing.
-        run: node scripts/verify-npm-publish.js --retries 12 --delay 20000
+  # npm and crates.io publish verification used to live here as
+  # `needs: release` jobs gated on `needs.release.outputs.published`. #3181
+  # found that shape never actually ran on the v6.0.0 release, on EITHER
+  # attempt: attempt 1's successful npm publish pushed 34 tags (~76 downstream
+  # runs), starving this run's own dependent job of a runner before it was
+  # re-triggered; attempt 2 had nothing left to publish so `published` was
+  # 'false' and the gate correctly-by-its-own-logic skipped it — meaning a
+  # partial publish recovered by a re-run was never checked by either
+  # attempt. See `.github/workflows/verify-release-publish.yml`, which
+  # replaces both jobs with a `workflow_run`-triggered workflow that isn't a
+  # dependent of this run (so this run's own load can't starve it) and
+  # doesn't read this run's `published` output (so a recovery run is checked
+  # too — it just re-derives the expected version from the commit Release
+  # ran on and asks the registries directly).

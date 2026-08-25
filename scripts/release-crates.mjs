@@ -14,86 +14,89 @@
  *
  * Behaviour per crate:
  *   - version already on crates.io  → skip (expected, logged)
- *   - version missing               → `cargo publish`; any failure FAILS the release
+ *   - version missing               → `cargo publish`, then POLL crates.io
+ *                                      until the version is visible in the
+ *                                      index before moving to the next crate;
+ *                                      any publish failure OR a poll timeout
+ *                                      FAILS the release.
  *
- * Crates are listed in dependency order: `cargo publish` (≥1.66) blocks
- * until the new version is visible in the index, so no sleep is needed
- * between dependent publishes.
+ * Crates are listed in dependency order (see `scripts/lib/crates-io.mjs`).
+ * `cargo publish` does NOT block until the new version is visible in the
+ * index — it waits up to its own internal timeout (~60s) and then prints a
+ * `warning: timed out waiting for … to be available` and carries on
+ * regardless. #3180 is exactly that: `ifc-lite-geometry` published fine,
+ * cargo's wait timed out before the index caught up, and the next crate
+ * (`ifc-lite-processing`, which depends on it) failed to resolve it — 4 of 7
+ * crates were left unpublished on a release that otherwise looked clean up
+ * to that point. So this script does its own polling explicitly, with a
+ * timeout that FAILS the release rather than warning and continuing.
  */
 
 import { execSync } from 'child_process';
-import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { CRATES, readWorkspaceVersion, isPublished, waitUntilPublished } from './lib/crates-io.mjs';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-// Dependency order: geometry depends on core; clash is dependency-free;
-// processing depends on core+geometry; ffi (cdylib C bindings) depends on
-// processing; wasm depends on core+geometry+clash+processing.
-const CRATES = [
-  'ifc-lite-core',
-  // ifc-lite-clash must precede ifc-lite-geometry. geometry carries a
-  // dev-dependency on clash (`ifc-lite-clash.workspace = true`, added with the
-  // intersection-solid oracle in #2574) and a workspace dep resolves to
-  // `{ version = "x.y.z", path = ... }` — so it carries a VERSION, and
-  // `cargo publish` resolves versioned dev-dependencies against crates.io even
-  // though they add nothing to a shipping build. Publishing geometry first
-  // therefore fails with "failed to select a version for the requirement
-  // `ifc-lite-clash = ^x.y.z`" until clash is already up.
-  //
-  // Contrast rust/core, whose geometry dev-dep is written `{ path = "../geometry" }`
-  // with no version: cargo strips that one at publish time, which is why core
-  // publishes cleanly despite the same shape of cycle. Either form works; what
-  // must not happen is a versioned dev-dep on a crate published later.
-  //
-  // clash has zero dependencies and zero dev-dependencies, so it is safe at the
-  // front.
-  'ifc-lite-clash',
-  'ifc-lite-geometry',
-  'ifc-lite-processing',
-  // ifc-lite-export must precede ffi/wasm: wasm-bindings pins it by version
-  // (HBJSON/KMZ exporters, #1235) and cargo resolves that against crates.io
-  // at publish time. NOTE: the crate's FIRST publish cannot go through
-  // trusted publishing (new crates need a personal token) - bootstrap it
-  // manually once, then configure its trusted publisher, like every other
-  // crate in this list was bootstrapped.
-  'ifc-lite-export',
-  'ifc-lite-ffi',
-  'ifc-lite-wasm',
-];
+// How long to wait for a just-published crate to appear in the crates.io
+// index before failing the release outright. crates.io propagation is
+// normally seconds; cargo's own (silently-abandoned) wait is ~60s, so 3
+// minutes gives real headroom over an ordinary slow moment without letting a
+// stuck release hang indefinitely.
+const PUBLISH_POLL_INTERVAL_MS = 5000;
+const PUBLISH_POLL_TIMEOUT_MS = 180_000;
 
-const cargoToml = readFileSync(join(rootDir, 'Cargo.toml'), 'utf8');
-const versionMatch = cargoToml.match(
-  /\[workspace\.package\][^[]*?version\s*=\s*"([^"]+)"/
-);
-if (!versionMatch) {
-  console.error('❌ Could not read [workspace.package] version from Cargo.toml');
-  process.exit(1);
-}
-const version = versionMatch[1];
+export async function publishAllCrates({
+  crates = CRATES,
+  version,
+  cwd = rootDir,
+  publishFn = (crate) =>
+    execSync(`cargo publish -p ${crate} --allow-dirty`, { cwd, stdio: 'inherit' }),
+  checkFn = isPublished,
+  intervalMs = PUBLISH_POLL_INTERVAL_MS,
+  timeoutMs = PUBLISH_POLL_TIMEOUT_MS,
+  sleepFn,
+} = {}) {
+  for (const crate of crates) {
+    if (await checkFn(crate, version)) {
+      console.log(`⏭️  ${crate}@${version} already on crates.io — skipping`);
+      continue;
+    }
+    console.log(`📦 Publishing ${crate}@${version} …`);
+    publishFn(crate);
 
-async function isPublished(crate, ver) {
-  const res = await fetch(`https://crates.io/api/v1/crates/${crate}/${ver}`, {
-    headers: { 'User-Agent': 'ifc-lite-release (github.com/LTplus-AG/ifc-lite)' },
-  });
-  if (res.status === 404) return false;
-  if (!res.ok) {
-    throw new Error(`crates.io returned ${res.status} for ${crate}@${ver}`);
+    console.log(`⏳ Waiting for ${crate}@${version} to appear in the crates.io index …`);
+    const { ok, waitedMs, attempts } = await waitUntilPublished(crate, version, {
+      checkFn,
+      intervalMs,
+      timeoutMs,
+      ...(sleepFn ? { sleepFn } : {}),
+    });
+    if (!ok) {
+      throw new Error(
+        `${crate}@${version} did not appear in the crates.io index within ` +
+          `${Math.round(timeoutMs / 1000)}s of publishing (${attempts} checks). ` +
+          `\`cargo publish\` reported success locally, but the index has not caught ` +
+          `up — publishing the next crate now would fail to resolve this one. Failing ` +
+          `the release rather than racing it; re-running is safe once the index catches up ` +
+          `(already-published crates are skipped).`
+      );
+    }
+    console.log(`✅ Published and verified ${crate}@${version} in the index (${Math.round(waitedMs / 1000)}s, ${attempts} check(s))`);
   }
-  const body = await res.json();
-  return !body.errors;
 }
 
-for (const crate of CRATES) {
-  if (await isPublished(crate, version)) {
-    console.log(`⏭️  ${crate}@${version} already on crates.io — skipping`);
-    continue;
-  }
-  console.log(`📦 Publishing ${crate}@${version} …`);
-  execSync(`cargo publish -p ${crate} --allow-dirty`, {
-    cwd: rootDir,
-    stdio: 'inherit',
+async function main() {
+  const version = readWorkspaceVersion(rootDir);
+  await publishAllCrates({ version, cwd: rootDir });
+}
+
+// Only run when invoked directly (`node scripts/release-crates.mjs`), not
+// when imported by a test.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((err) => {
+    console.error(`❌ ${err.message}`);
+    process.exit(1);
   });
-  console.log(`✅ Published ${crate}@${version}`);
 }

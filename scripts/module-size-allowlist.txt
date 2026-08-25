@@ -45,7 +45,7 @@
    583 apps/viewer/src/components/viewer/EntityContextMenu.tsx
    863 apps/viewer/src/components/viewer/ExportDialog.tsx
    531 apps/viewer/src/components/viewer/GLBExportDialog.tsx
-  1466 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
+  1419 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
    435 apps/viewer/src/components/viewer/hierarchy/useHierarchyTree.ts
   1159 apps/viewer/src/components/viewer/HierarchyPanel.tsx
   1198 apps/viewer/src/components/viewer/IDSPanel.tsx
@@ -228,7 +228,7 @@
    888 packages/export/src/ifc5-exporter.ts
   1667 packages/export/src/merged-exporter.ts
    639 packages/export/src/parquet-exporter.ts
-  1122 packages/export/src/reference-collector.ts
+  1062 packages/export/src/reference-collector.ts
    556 packages/export/src/schema-converter.ts
    437 packages/extensions/src/testing/runner.ts
    625 packages/geometry/src/coordinate-handler.ts

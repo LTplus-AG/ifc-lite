@@ -32,6 +32,11 @@
  */
 
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 /**
  * Where the source actually is, and how small each place is allowed to get.
@@ -51,7 +56,53 @@ const TARGETS = [
   { dir: 'apps', min: 900 },
   { dir: 'packages', min: 1200 },
   { dir: 'scripts', min: 100 },
+  // `examples/*` is a pnpm workspace glob, and it was outside this list until
+  // #3200. Nobody had widened an ignore or renamed anything: the directory had
+  // simply never been passed to oxlint, so six error-tier
+  // `eslint(no-inner-declarations)` violations sat in shipped sample code while
+  // the Lint job was green. Measured on a healthy tree: 17 files across four
+  // examples. The floor is 10 - low enough that retiring an example does not
+  // force an edit here, high enough that the whole target dropping out cannot
+  // pass.
+  { dir: 'examples', min: 10 },
 ];
+
+/**
+ * Every workspace glob must be lintable through one of the TARGETS above.
+ *
+ * The floors catch a target that SHRANK. They cannot catch a target that was
+ * never in the list, and that is exactly how `examples/*` stayed unlinted:
+ * the gate was working perfectly on everything it looked at, and nothing
+ * noticed that `pnpm-workspace.yaml` declared a fourth place to look. So the
+ * declaration is read at run time and cross-checked, and a workspace member
+ * that no target covers fails here rather than going quietly unlinted for
+ * however long it takes someone to run oxlint by hand.
+ */
+function workspaceGlobs() {
+  const path = join(ROOT, 'pnpm-workspace.yaml');
+  let text;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch (err) {
+    // A missing or unreadable manifest is not "no workspace globs to check" -
+    // that reading is how an absent input becomes a clean report (#3194).
+    return { error: `could not read ${path}: ${err?.code ?? err?.message}` };
+  }
+
+  // `packages:` at column 0, then its `- 'glob'` items until the block ends.
+  const lines = text.split('\n');
+  const start = lines.findIndex((l) => /^packages:\s*$/.test(l));
+  if (start === -1) return { error: `${path} has no top-level \`packages:\` key` };
+
+  const globs = [];
+  for (const line of lines.slice(start + 1)) {
+    if (/^\s*(#.*)?$/.test(line)) continue;
+    const item = /^\s+-\s*['"]?([^'"#]+?)['"]?\s*(#.*)?$/.exec(line);
+    if (!item) break; // dedented back to another top-level key
+    globs.push(item[1]);
+  }
+  return { globs };
+}
 
 /** oxlint's summary: "Finished in Xms on N files with M rules using K threads."
  *  Anchored on "Finished in", and the LAST match wins: the pattern alone can
@@ -97,6 +148,31 @@ function lint(dir) {
  *  assigned to `process.exitCode` lets Node drain stdout, `process.exit()`
  *  does not. */
 function main() {
+  const ws = workspaceGlobs();
+  if (ws.error) {
+    console.error(`lint: ${ws.error}.`);
+    console.error('      Refusing a vacuous pass: this gate cross-checks its target list against the');
+    console.error('      workspace declaration, and it could not read the declaration.');
+    return 1;
+  }
+  if (ws.globs.length === 0) {
+    console.error('lint: pnpm-workspace.yaml declares no package globs.');
+    console.error('      Refusing a vacuous pass: an empty declaration would make the cross-check');
+    console.error('      below agree with any target list at all, including an empty one.');
+    return 1;
+  }
+  const covered = new Set(TARGETS.map((t) => t.dir));
+  const uncovered = [...new Set(ws.globs.map((g) => g.split('/')[0]))].filter((d) => !covered.has(d));
+  if (uncovered.length > 0) {
+    console.error('lint: a workspace glob is outside this gate\'s target list, so the code there is');
+    console.error('      never linted and no floor can notice:\n');
+    for (const dir of uncovered) {
+      console.error(`      ${dir}/ is declared in pnpm-workspace.yaml but is not a lint target`);
+    }
+    console.error('\n      Add it to TARGETS with a measured floor (#3200).');
+    return 1;
+  }
+
   let totalFiles = 0;
   let ruleCount = 0;
   let failed = 0;

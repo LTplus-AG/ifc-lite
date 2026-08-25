@@ -26,7 +26,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -39,6 +39,12 @@ const ROOT = join(HERE, '..');
  *  past any pipe buffer (~64KiB on Linux and macOS). 40k lines per target is
  *  ~3MiB, the order of magnitude a failing oxlint run over this repo produces. */
 const LINES_PER_TARGET = 40_000;
+
+/** How many directories the gate lints, read from the gate itself rather than
+ *  hard-coded: adding a target (as #3200 added `examples`) must not require
+ *  editing arithmetic in this file, and a test that silently expected the old
+ *  count would assert on a run that had stopped covering a directory. */
+const TARGET_COUNT = (readFileSync(GATE, 'utf8').match(/^\s*\{ dir: '/gm) ?? []).length;
 const TAIL_MARKER = 'LAST-DIAGNOSTIC-LINE';
 
 /**
@@ -97,18 +103,18 @@ test('a failing lint keeps its whole output when stdout is a pipe', () => {
     // One summary per target. This is what vanished: the truncated log ended
     // roughly 1% in, so a reader saw diagnostics and no verdict.
     const summaries = stdout.match(/Finished in [^\n]*? on [\d,]+ files with \d+ rules/g) ?? [];
-    assert.equal(summaries.length, 3, `expected 3 oxlint summaries, got ${summaries.length}`);
+    assert.equal(summaries.length, TARGET_COUNT, `expected ${TARGET_COUNT} oxlint summaries, got ${summaries.length}`);
 
     // And the last line before each summary, so this cannot pass on a log that
     // dropped the middle and happened to keep the tail.
     const markers = stdout.match(new RegExp(TAIL_MARKER, 'g')) ?? [];
-    assert.equal(markers.length, 3, `expected 3 tail markers, got ${markers.length}`);
+    assert.equal(markers.length, TARGET_COUNT, `expected ${TARGET_COUNT} tail markers, got ${markers.length}`);
 
     // Byte-exact: every diagnostic line of every target arrived. Asserting the
     // count rather than "more than a pipe buffer" keeps the test honest if the
     // output grows or the buffer size differs between platforms.
     const diagnostics = stdout.match(/eslint\(no-control-regex\)/g) ?? [];
-    assert.equal(diagnostics.length, LINES_PER_TARGET * 3);
+    assert.equal(diagnostics.length, LINES_PER_TARGET * TARGET_COUNT);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -119,9 +125,107 @@ test('a clean lint still reports its own summary line through a pipe', () => {
   try {
     const run = runGate(bin);
     assert.equal(run.status, 0, `expected exit 0, got ${run.status}\n${run.stderr}`);
-    // 2,000 files per target from the shim, three targets.
-    assert.match(run.stdout, /lint: 6,000 files across 3 targets, 300 rules, no errors\./);
+    // 2,000 files per target from the shim, one line per target.
+    const total = (2_000 * TARGET_COUNT).toLocaleString('en-US');
+    assert.match(
+      run.stdout,
+      new RegExp(`lint: ${total} files across ${TARGET_COUNT} targets, 300 rules, no errors\\.`),
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- #3200: a workspace glob outside the target list must be loud ---
+//
+// The floors catch a target that shrank. They could not catch `examples/*`,
+// which was declared in pnpm-workspace.yaml and simply never passed to oxlint:
+// six error-tier `eslint(no-inner-declarations)` violations sat in shipped
+// sample code while `node scripts/check-lint-ran.mjs` exited 0. Measured on
+// upstream/main before the fix:
+//
+//   $ npx oxlint examples | grep -c ": error "
+//   6
+//   $ node scripts/check-lint-ran.mjs ; echo $?
+//   0
+//
+// The cross-check runs BEFORE any oxlint spawn, so these cases need no shim:
+// a copy of the gate beside a synthetic pnpm-workspace.yaml is the whole
+// reproduction, exactly as the gate derives its ROOT from its own location.
+
+/** A throwaway repo root holding `scripts/check-lint-ran.mjs` and the given
+ *  `pnpm-workspace.yaml` body (omit it to leave the file out entirely). */
+function fakeRoot(workspaceYaml) {
+  const dir = mkdtempSync(join(tmpdir(), 'check-lint-ran-ws-'));
+  mkdirSync(join(dir, 'scripts'));
+  writeFileSync(join(dir, 'scripts', 'check-lint-ran.mjs'), readFileSync(GATE, 'utf8'), 'utf8');
+  if (workspaceYaml !== null) writeFileSync(join(dir, 'pnpm-workspace.yaml'), workspaceYaml, 'utf8');
+  return dir;
+}
+
+function runIn(root) {
+  return spawnSync(process.execPath, [join(root, 'scripts', 'check-lint-ran.mjs')], {
+    cwd: root,
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+  });
+}
+
+test('a workspace glob with no lint target fails instead of going quietly unlinted', () => {
+  const root = fakeRoot("packages:\n  - 'packages/*'\n  - 'apps/*'\n  - 'plugins/*'\n");
+  try {
+    const run = runIn(root);
+    const out = `${run.stdout}${run.stderr}`;
+    assert.equal(run.status, 1, `expected exit 1, got ${run.status}: ${out}`);
+    assert.match(out, /plugins\/ is declared in pnpm-workspace\.yaml but is not a lint target/);
+    assert.doesNotMatch(out, /no errors\./, 'must not print a success line at all');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('an unreadable pnpm-workspace.yaml is loud, not treated as nothing to cross-check', () => {
+  const root = fakeRoot(null);
+  try {
+    const run = runIn(root);
+    const out = `${run.stdout}${run.stderr}`;
+    assert.equal(run.status, 1, `expected exit 1, got ${run.status}: ${out}`);
+    assert.match(out, /Refusing a vacuous pass/);
+    assert.match(out, /could not read .*pnpm-workspace\.yaml: ENOENT/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('an empty package glob list is refused rather than agreeing with any target list', () => {
+  // `packages:` present, no items under it — the shape that would make the
+  // cross-check trivially satisfied by an empty TARGETS.
+  const root = fakeRoot('packages:\n\nonlyBuiltDependencies:\n  - esbuild\n');
+  try {
+    const run = runIn(root);
+    const out = `${run.stdout}${run.stderr}`;
+    assert.equal(run.status, 1, `expected exit 1, got ${run.status}: ${out}`);
+    assert.match(out, /declares no package globs/);
+    assert.match(out, /Refusing a vacuous pass/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('the real pnpm-workspace.yaml parses to the globs it actually declares', () => {
+  // Guards the hand-rolled YAML reader against the block below `packages:`
+  // bleeding in: `onlyBuiltDependencies` items are list entries too, and a
+  // reader that swallowed them would demand lint targets named `@clerk` etc.
+  const root = fakeRoot(readFileSync(join(ROOT, 'pnpm-workspace.yaml'), 'utf8'));
+  try {
+    // Every declared glob is covered by a target, so the cross-check passes and
+    // the gate goes on to spawn oxlint — which is absent from this tree, so it
+    // fails LATER, with a different message. That distinction is the assertion.
+    const run = runIn(root);
+    const out = `${run.stdout}${run.stderr}`;
+    assert.doesNotMatch(out, /is not a lint target/);
+    assert.doesNotMatch(out, /declares no package globs/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });

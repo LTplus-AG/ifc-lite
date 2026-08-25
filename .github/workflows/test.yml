@@ -101,6 +101,11 @@ jobs:
               - 'apps/viewer/**'
               - 'apps/viewer-embed/**'
               - 'packages/**'
+              # `examples/*` is a workspace glob and, since #3200, a lint
+              # target. Without it here a PR touching only an example skips the
+              # one job that lints it - the same "guard exists and never fires"
+              # shape the two comments above warn about.
+              - 'examples/**'
               - 'tests/e2e/**'
               - 'playwright.config.ts'
               # The relay handlers and their tests. `pnpm test:api` runs in this

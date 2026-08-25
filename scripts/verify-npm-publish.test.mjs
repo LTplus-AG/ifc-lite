@@ -52,7 +52,9 @@ function stubNpm(root, { missing = null } = {}) {
   if (missing) {
     lines.push(`if [ "$spec" = "${missing}" ]; then echo "npm error code E404" >&2; exit 1; fi`);
   }
-  lines.push('echo "${spec##*@}"', '');
+  // `sed` rather than a `${spec##*@}` expansion: the literal `${` in a
+  // JavaScript single-quoted string trips eslint(no-template-curly-in-string).
+  lines.push('echo "$spec" | sed "s/.*@//"', '');
   writeFileSync(npm, lines.join('\n'));
   chmodSync(npm, 0o755);
   return bin;

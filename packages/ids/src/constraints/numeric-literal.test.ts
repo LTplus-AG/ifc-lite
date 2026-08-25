@@ -129,7 +129,7 @@ describe('isStrictNumericLiteral accepts exactly the language it always did', ()
 
 /**
  * The ladder every timing assertion in this file runs, module-scoped because
- * three separate call sites use it: the scan itself, the per-entity
+ * four separate call sites use it: the scan itself, the per-entity
  * `compareNumeric` path, and the two IDS-file literal paths at the bottom of
  * the file. One ladder means one budget and one retry policy, so a hardening
  * applied here cannot miss a caller.

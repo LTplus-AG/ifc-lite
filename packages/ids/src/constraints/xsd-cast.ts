@@ -122,7 +122,18 @@ export function ifcMeasureToXsdTypes(measure: string | undefined): readonly stri
   if (m === 'IFCLOGICAL') return ['xs:boolean', 'xs:string'];
   if (m === 'IFCDATE') return ['xs:date'];
   if (m === 'IFCDATETIME') return ['xs:dateTime'];
-  if (m === 'IFCDURATION' || m === 'IFCTIMESTAMP') return ['xs:duration'];
+  if (m === 'IFCDURATION') return ['xs:duration'];
+  // `TYPE IfcTimeStamp = INTEGER;` — a UNIX epoch second, not an ISO-8601
+  // duration. It was bundled onto the `IFCDURATION` row above on the strength
+  // of the name, which made this gate reject every value a timestamp property
+  // can legally hold. The generated `xsdTypesByEntity` table — the SAME
+  // question, answered from upstream `SchemaInfo.Attributes.g.cs`, and what
+  // the attribute facet gates on — carries `xs:integer` (IFC2X3) and
+  // `{xs:dateTime, xs:integer}` (IFC4, IFC4X3) for the two IfcTimeStamp
+  // attributes, `IfcOwnerHistory.CreationDate` and `.LastModifiedDate`. Return
+  // that union: a strict-cast gate that disagrees with the attribute facet on
+  // one file is the failure this mirrors it to avoid.
+  if (m === 'IFCTIMESTAMP') return ['xs:integer', 'xs:dateTime'];
   // All numeric measures (REAL, *MEASURE, *RATIO) accept doubles.
   if (m === 'IFCREAL' || m.endsWith('MEASURE') || m.endsWith('RATIO')) {
     return ['xs:double'];

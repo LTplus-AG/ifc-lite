@@ -50,11 +50,12 @@ import { getInheritanceChainAcrossSchemas, isIfcTypeLikeEntity } from '@ifc-lite
  * ever consider real building elements. (#1464)
  *
  * Spatial containers are handled separately by {@link isSpatialContainerTag},
- * which derives them from the schema rather than from a list.
+ * and voids by {@link isVoidFeatureTag} — both derive from the schema rather
+ * than from a list. `IfcOpeningElement` / `IfcOpeningStandardCase` were
+ * listed here by hand and are now covered by that walk, which also catches
+ * the subtraction classes the list had never heard of.
  */
 export const NON_CLASHABLE_TAGS: ReadonlySet<string> = new Set([
-  'IfcOpeningElement',
-  'IfcOpeningStandardCase',
   'IfcVirtualElement',
   'IfcGrid',
   'IfcGridAxis',
@@ -95,6 +96,34 @@ export function isSpatialContainerTag(tag: string): boolean {
   return spatial;
 }
 
+/** Memoizes the void-feature walk below, like `spatialContainerByTag`. */
+const voidFeatureByTag = new Map<string, boolean>();
+
+/**
+ * True for SUBTRACTION features — the classes whose geometry describes a hole
+ * rather than material: `IfcOpeningElement`, `IfcOpeningStandardCase`,
+ * `IfcVoidingFeature` and IFC4.3's `IfcEarthworksCut`. A void is meshed like
+ * any other product, so every one that reached the candidate set clashed with
+ * the very element it cuts — the phantom-clash symptom of #1464, under a class
+ * name the hand-written list did not carry.
+ *
+ * Derived, not enumerated: `getInheritanceChainAcrossSchemas` walks the
+ * bundled IFC2X3 + IFC4 + IFC4X3 union, so a subtraction class added by a
+ * later schema is covered the day the bundled schemas learn it.
+ *
+ * Deliberately the SUBTRACTION branch and not the whole `IfcFeatureElement`
+ * tree: `IfcFeatureElementAddition` (`IfcProjectionElement`, a corbel) and
+ * `IfcSurfaceFeature` are physical material that occupies space, so a clash
+ * against them is a real coordination problem and must keep being reported.
+ */
+export function isVoidFeatureTag(tag: string): boolean {
+  const cached = voidFeatureByTag.get(tag);
+  if (cached !== undefined) return cached;
+  const isVoid = getInheritanceChainAcrossSchemas(tag).includes('IfcFeatureElementSubtraction');
+  voidFeatureByTag.set(tag, isVoid);
+  return isVoid;
+}
+
 /**
  * Whether an element carrying this IFC class `tag` should never become a
  * clash candidate: non-physical/reference geometry, a spatial container, or
@@ -105,6 +134,7 @@ export function isSpatialContainerTag(tag: string): boolean {
 export function isNonClashableTag(tag: string): boolean {
   return (
     NON_CLASHABLE_TAGS.has(tag) ||
+    isVoidFeatureTag(tag) ||
     isSpatialContainerTag(tag) ||
     isIfcTypeLikeEntity(tag.toUpperCase())
   );

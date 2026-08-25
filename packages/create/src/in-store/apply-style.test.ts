@@ -99,7 +99,11 @@ function byId(editor: StoreEditor) {
 describe('applyStylesInStore', () => {
   it('colours a direct (non-mapped) leaf item and replaces its existing style by default', async () => {
     const store = await parseFixture();
-    const editor = makeEditor(store);
+    // Built inline rather than via makeEditor because the tombstone assertion
+    // below needs the view: `isDeleted` lives on MutablePropertyView, and
+    // StoreEditor does not re-expose it.
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(store, view);
 
     const [result] = applyStylesInStore(editor, store, [
       { products: [100], color: { red: 1, green: 0, blue: 0, alpha: 1 } },
@@ -115,6 +119,11 @@ describe('applyStylesInStore', () => {
     const styledItem = entities.get(result.styledItemIds[0]!);
     expect(styledItem?.type).toBe('IfcStyledItem');
     expect(styledItem?.attributes[0]).toBe('#112');
+    // Styles, on the DEFAULT (IFC4) path, references the IfcSurfaceStyle
+    // directly. IFC2X3 instead wraps it in an IfcPresentationStyleAssignment,
+    // and nothing here asserted which of the two we emitted -- forcing the
+    // wrapper on unconditionally left the suite fully green.
+    expect(styledItem?.attributes[1]).toEqual([`#${result.surfaceStyleId}`]);
 
     const style = entities.get(result.surfaceStyleId!);
     expect(style?.type).toBe('IfcSurfaceStyle');
@@ -128,7 +137,11 @@ describe('applyStylesInStore', () => {
 
     // The old chain (#151/#152/#153) is untouched — only the styled item is
     // tombstoned, per the documented "detached, not deleted" contract.
-    expect(editor.getNewEntity(150)).toBeNull(); // tombstoned
+    // `getNewEntity` reads the newEntities map, and #150 is a SOURCE entity
+    // that was never added to it -- so it returned null whether or not the
+    // removal happened, and the assertion could not fail. `isDeleted` reads
+    // the tombstone itself.
+    expect(view.isDeleted(150)).toBe(true);
   });
 
   it('leaves an already-styled item alone when replaceExisting is false (the do-nothing path)', async () => {

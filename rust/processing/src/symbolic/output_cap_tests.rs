@@ -651,14 +651,27 @@ fn the_revisit_budget_is_shared_once_across_the_whole_extraction_not_reset_per_i
         two_data.truncated
     );
 
+    // The fixture has to emit SOMETHING or every bound below is vacuous.
     assert!(
-        two_item_total <= one_item_total + 200,
+        one_item_total > 0,
+        "one item emitted nothing, so the comparison that follows would hold \
+         for any implementation"
+    );
+
+    // Relative to the one-item total, not an absolute allowance. An earlier
+    // version of this assertion read `two_item_total <= one_item_total + 200`,
+    // which could not fail: the measured totals are 20 and 21, and a reverted
+    // per-item budget would give roughly 40 -- comfortably inside a +200
+    // slack. The bound has to be a MULTIPLE of the one-item total, because the
+    // defect doubles that total rather than adding a constant to it.
+    assert!(
+        two_item_total < 2 * one_item_total,
         "a SECOND top-level item sharing the same tiny revisit budget as the \
          first must contribute almost nothing once the first item has spent \
          the pool -- got {one_item_total} primitives for one item and \
-         {two_item_total} for two, which is only possible if each item is \
-         still getting its OWN {BUDGET}-revisit budget instead of sharing a \
-         single one across the extraction"
+         {two_item_total} for two. Approaching twice the one-item total is \
+         what a per-item {BUDGET}-revisit budget looks like, which is the \
+         regression this test exists to catch"
     );
 }
 

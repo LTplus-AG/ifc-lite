@@ -172,13 +172,7 @@ pub(crate) fn collect_type_geometry_jobs(
                     referenced.insert(source_id);
                 }
             }
-        } else if type_name.ends_with("TYPE") || type_name.ends_with("STYLE") {
-            // Cheap suffix pre-filter keeps the is_subtype_of check off the hot
-            // path for the all-non-type majority of entities.
-            let ifc_type = IfcType::from_str(type_name);
-            if !ifc_type.is_subtype_of(IfcType::IfcTypeProduct) {
-                continue;
-            }
+        } else if let Some(ifc_type) = ifc_lite_core::type_product_ifc_type(type_name) {
             if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
                 // IfcTypeProduct.RepresentationMaps = attr 6.
                 let rep_maps: Vec<u32> = entity
@@ -379,11 +373,8 @@ mod orphan_type_from_spans_tests {
         while let Some((id, tn, st, en)) = sc.next_entity() {
             if tn == "IFCMAPPEDITEM" {
                 mapped.push((id, st, en));
-            } else if tn.ends_with("TYPE") || tn.ends_with("STYLE") {
-                let t = IfcType::from_str(tn);
-                if t.is_subtype_of(IfcType::IfcTypeProduct) {
-                    cands.push((id, st, en, t));
-                }
+            } else if let Some(t) = ifc_lite_core::type_product_ifc_type(tn) {
+                cands.push((id, st, en, t));
             }
         }
         let mut d2 = EntityDecoder::with_arc_index(content, index);

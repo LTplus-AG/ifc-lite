@@ -103,6 +103,7 @@ pub use schema_gen::{AttributeValue, DecodedEntity, GeometryCategory, IfcSchema,
 pub use schema_helpers::{
     has_geometry_by_name, is_representationless_spatial_container_by_name, is_simple_geometry_type,
     legacy_aware_ifc_type, legacy_aware_ifc_type_from_record, nth_attribute_is_present,
+    type_product_ifc_type,
 };
 pub use step_encoding::{decode_ifc_string, encode_ifc_string};
 pub use streaming::{parse_stream, ParseEvent, StreamConfig};

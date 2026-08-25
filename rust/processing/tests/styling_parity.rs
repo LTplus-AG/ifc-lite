@@ -28,7 +28,11 @@
 //! (and the two are told apart), a file that cannot be read is a hard error
 //! rather than a skip, the walk must reach `SCANNED_FLOOR` files, and the
 //! detectors themselves are exercised against known-positive inputs - a file
-//! count shows the walk is alive, not that the detector still detects.
+//! count shows the walk is alive, not that the detector still detects. A fifth
+//! now closes the way around all four: under CI the no-repo-root skip at the
+//! top of each guard is refused outright (`common::refuse_to_skip_in_ci`).
+
+mod common;
 
 use ifc_lite_core::IfcType;
 use ifc_lite_processing::default_color_for_type;
@@ -368,6 +372,7 @@ fn the_detectors_still_fire_on_a_known_violation() {
 #[test]
 fn no_duplicate_default_color_tables() {
     let Some(root) = repo_root() else {
+        common::refuse_to_skip_in_ci("styling parity guard");
         eprintln!("repo root not found (packaged context) — skipping guard");
         return;
     };
@@ -430,6 +435,7 @@ fn no_duplicate_default_color_tables() {
 #[test]
 fn no_duplicate_surface_style_color_extraction() {
     let Some(root) = repo_root() else {
+        common::refuse_to_skip_in_ci("styling parity guard");
         eprintln!("repo root not found (packaged context) — skipping guard");
         return;
     };

@@ -23,12 +23,16 @@
 //!
 //! ANTI-VACUITY (#3200): every offender this gate reports is produced by
 //! iterating the walked file list, so an empty walk produced an empty message
-//! and a green test - success reported over a tree that was never opened. Three
+//! and a green test - success reported over a tree that was never opened. Four
 //! guards now stand between an empty walk and that pass: a missing or unreadable
 //! scan root is a hard error instead of an empty result (and the two are told
 //! apart, because they call for different fixes), a file that cannot be read is
-//! a hard error instead of 0 lines, and the walk must reach at least
-//! `FILE_FLOOR` non-exempt files before any verdict below it counts.
+//! a hard error instead of 0 lines, the walk must reach at least `FILE_FLOOR`
+//! non-exempt files before any verdict below it counts, and under CI the
+//! no-repo-root skip is refused outright (`common::refuse_to_skip_in_ci`) - that
+//! skip returns before the walk, so it bypassed all three of the others at once.
+
+mod common;
 
 const LIMIT: usize = 400;
 const ALLOWLIST: &str = include_str!("module_size_allowlist.txt");
@@ -212,6 +216,7 @@ fn evaluate(
 #[test]
 fn no_module_grows_past_its_ratchet_budget() {
     let Some(root) = repo_root() else {
+        common::refuse_to_skip_in_ci("module-size ratchet");
         eprintln!("repo root not found (packaged context) - skipping module-size ratchet");
         return;
     };

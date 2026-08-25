@@ -66,6 +66,16 @@ describe('sumQuantity', () => {
     expect(total).toBe(5);
     expect(Number.isNaN(total)).toBe(false);
   });
+
+  it('sums every match within a single quantity set, not just the first', () => {
+    // Two same-named quantities in one qset is not valid IFC (IfcElementQuantity's
+    // UniqueQuantityNames WHERE rule forbids it), but sumQuantity does not guess
+    // intent for non-compliant data — it sums whatever is present: 2 + 3 = 5.
+    const bim = fakeBim({
+      1: [{ name: 'Qto_WindowBaseQuantities', quantities: [{ name: 'Area', value: 2 }, { name: 'Area', value: 3 }] }],
+    });
+    expect(sumQuantity(bim, [1], ['Area'])).toBe(5);
+  });
 });
 
 describe('getPropertyValue', () => {

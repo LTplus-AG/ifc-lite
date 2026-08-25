@@ -29,11 +29,15 @@ export interface PropertyBim<R = unknown> {
 }
 
 /**
- * Sum a named quantity (first match wins per quantity set, "Gross" and "Net"
- * names given as alternatives — Gross/Net are two names for slots the model
- * only ever fills one of, not two quantities to add) across a list of
- * element refs. Returns 0 for an empty list — the caller decides what an
- * empty aggregate means (e.g. a GFA fallback).
+ * Sum a named quantity across every quantity set on every element ref,
+ * adding up all matches ("Gross" and "Net" names given as alternatives —
+ * Gross/Net are two names for a slot the model only ever fills one of, not
+ * two quantities to add). A quantity set holding two quantities with the
+ * same name is not valid IFC — IfcElementQuantity's UniqueQuantityNames
+ * WHERE rule forbids it — so this function does not try to guess intent
+ * for non-compliant data; it just sums whatever is present. Returns 0 for
+ * an empty list — the caller decides what an empty aggregate means (e.g. a
+ * GFA fallback).
  */
 export function sumQuantity<R>(bim: QuantityBim<R>, refs: R[], quantityNames: string[]): number {
   let total = 0;

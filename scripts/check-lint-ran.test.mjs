@@ -40,6 +40,25 @@ const TARGET_COUNT = (
     .match(/\{\s*dir:/g) ?? []
 ).length;
 assert.ok(TARGET_COUNT > 0, 'could not read TARGETS out of check-lint-ran.mjs — this test is now blind');
+
+/**
+ * A floor, not a mirror. Deriving the count from the gate makes this test
+ * desync-proof, but on its own it also makes it BLIND: delete
+ * `{ dir: 'scripts' }` and both the gate and the derived count drop to 3
+ * together, the assertions still agree, and ~140 files including this gate go
+ * unlinted with the suite green. Measured — that mutation passed 2/2 with the
+ * derived count alone, and reds 2/2 with this line.
+ *
+ * `uncoveredWorkspaceGlobs()` only protects targets that are ALSO workspace
+ * globs, so `scripts/` has no other guard. Ratchets up only: adding a target is
+ * a deliberate edit here, removing one has to be.
+ */
+const MIN_TARGETS = 4;
+assert.ok(
+  TARGET_COUNT >= MIN_TARGETS,
+  `check-lint-ran.mjs has ${TARGET_COUNT} lint targets, expected at least ${MIN_TARGETS} — ` +
+    'a target was removed, so its directory is now linted by nobody',
+);
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -137,7 +156,10 @@ test('a clean lint still reports its own summary line through a pipe', () => {
     // 2,000 files per target from the shim, three targets.
     assert.match(
       run.stdout,
-      /lint: [\d,]+ files across \d+ targets \(\d+ workspace globs, all covered\), \d+ rules, no errors\./,
+      new RegExp(
+        `lint: ${(2000 * TARGET_COUNT).toLocaleString()} files across ${TARGET_COUNT} targets ` +
+          '\\(\\d+ workspace globs, all covered\\), 300 rules, no errors\\.',
+      ),
     );
   } finally {
     rmSync(dir, { recursive: true, force: true });

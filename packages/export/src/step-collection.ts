@@ -11,7 +11,7 @@
  * `step-property-sets.ts`, `step-georeferencing.ts`'s own new-entity lines,
  * `step-overlay-entities.ts`) that reads what this phase left on `pass`.
  *
- * `PropertyMutationGroups` (`step-property-sets.ts`) already names the
+ * `PropertyMutationGroups` (`step-property-set-collection.ts`) already names the
  * boundary this module sits behind: "the mutation groupings `export()`
  * builds before the collection phase runs." This is that builder, plus the
  * two collection calls (`buildRelDefinesByPropertiesIndex` /

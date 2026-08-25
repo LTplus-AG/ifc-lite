@@ -64,7 +64,7 @@ export class StepExporter {
   /**
    * The owner-history memos the property-set and quantity-set generators read.
    *
-   * Owned here and handed to `step-property-sets.ts` BY REFERENCE rather than
+   * Owned here and handed to `step-property-set-readers.ts` BY REFERENCE rather than
    * stored on its context: the reset below is an `export()`-level statement,
    * and the comment there is where "per export, not per exporter" is argued.
    * Moving the storage into a per-export context would make that reset
@@ -284,7 +284,7 @@ export class StepExporter {
    *
    * `allocateExpressId` hands out ids from THIS exporter's `nextExpressId`,
    * which the property-set and quantity-set generators in
-   * `step-property-sets.ts` increment at six further sites through the same
+   * `step-property-set-generators.ts` increment at six further sites through the same
    * callback — hoisting the counter onto the pass would change what it
    * computes, not merely where it is named, so both phases get a callback
    * instead (#2475 step 2a).
@@ -299,7 +299,7 @@ export class StepExporter {
   }
 
   /**
-   * The state `step-property-sets.ts` cannot read off the pass (#2475 2b/2c).
+   * The state the property-set phase cannot read off the pass (#2475 2b/2c).
    *
    * `allocateExpressId` is the same callback `georefContext` hands out, over
    * the same counter, so the ids the two phases allocate stay in one sequence.

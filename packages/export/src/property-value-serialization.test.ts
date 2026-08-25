@@ -65,6 +65,23 @@ describe('every PropertyValueType maps to the IFC primitive it was authored as',
     });
   }
 
+  it('a non-integer Integer ROUNDS, it does not truncate', () => {
+    // Every case in the table above is already whole, so the rounding MODE was
+    // unpinned: swapping `Math.round` for `Math.trunc` left all 860 tests in
+    // this package green. Truncation is the plausible wrong choice -- it is
+    // what a cast does in most languages -- and it is silently lossy in one
+    // direction only, which is the shape that survives review.
+    //
+    // A non-integer reaching a property DECLARED as Integer is not exotic: it
+    // is what a unit conversion or an authoring tool's rounding leaves behind,
+    // and the exported file has no way to say "about 3".
+    expect(serializePropertyValue(2.7, PropertyValueType.Integer)).toBe('IFCINTEGER(3)');
+    expect(serializePropertyValue(2.4, PropertyValueType.Integer)).toBe('IFCINTEGER(2)');
+    // Half-way, and negative, where round and trunc disagree most visibly.
+    expect(serializePropertyValue(2.5, PropertyValueType.Integer)).toBe('IFCINTEGER(3)');
+    expect(serializePropertyValue(-2.7, PropertyValueType.Integer)).toBe('IFCINTEGER(-3)');
+  });
+
   it('a null value is an omitted attribute for every type but Logical', () => {
     expect(serializePropertyValue(null, PropertyValueType.Text)).toBe('$');
     expect(serializePropertyValue(undefined, PropertyValueType.Real)).toBe('$');

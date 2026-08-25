@@ -77,7 +77,7 @@ const COMMAND_POSITION =
   '(?:^|[;&|(){}!]|\\brun:|\\b(?:if|then|else|elif|do|while|until)\\b|\\b[A-Za-z_][A-Za-z0-9_]*=\\S*)\\s*';
 
 /**
- * The push's OWN arguments — no command separator may be crossed.
+ * The push's OWN arguments: everything up to its FIRST `||`, and no further.
  *
  * With `[^\n]*?` the match could run past this push's handler and adopt a LATER
  * command's one, so
@@ -87,9 +87,25 @@ const COMMAND_POSITION =
  * ```
  *
  * was reported even though the push exits loudly and only the independent
- * `cleanup` is swallowed — the gate rejecting a correct workflow.
+ * `cleanup` is swallowed.
+ *
+ * A first attempt at that excluded `;`, `&` and `|` outright, and review found
+ * it FAILED OPEN on the most ordinary thing in a workflow:
+ *
+ * ```sh
+ * git push origin main 2>&1 || true              # missed
+ * git push origin main >/dev/null 2>&1 || true   # missed
+ * git push origin "a|b" || true                  # missed
+ * ```
+ *
+ * The `&` in `2>&1` is a redirection, not a separator, and a `|` inside quotes
+ * is not a pipe. Character classes cannot tell those apart. So this stops at
+ * the two things that genuinely end a command's handler chain -- a `;` and the
+ * `||` itself -- and lets everything else through, which keeps the miss
+ * direction closed at the cost of over-flagging a backgrounded push. That is
+ * the right way round for a release-safety gate.
  */
-const OWN_ARGS = '[^\\n;&|]*?';
+const OWN_ARGS = '(?:(?!\\|\\||;)[^\\n])*?';
 
 /**
  * A `git push` whose failure is discarded.

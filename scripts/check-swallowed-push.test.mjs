@@ -336,3 +336,29 @@ test('a push in ARGUMENT position is not a command and is not flagged', () => {
   const { hits } = findSwallowedPushes(`          echo "hello" ${PUSH} origin v2 || true`);
   assert.equal(hits.length, 0, 'flagged a push that is an argument to echo');
 });
+
+test('a redirection does not hide a swallowed push', () => {
+  // `2>&1` contains `&`, and a first version of OWN_ARGS excluded `&` as a
+  // separator — so the most ordinary shape in a workflow stopped matching and
+  // the gate reported clean. Same fail-open direction as the command-position
+  // anchor: a character class cannot tell a redirection from a separator, so
+  // the arg run stops only at `;` and at the `||` itself.
+  const cases = [
+    `          ${PUSH} origin main 2>&1 || true`,
+    `          ${PUSH} origin main >/dev/null 2>&1 || true`,
+    `          ${PUSH} origin "a|b" || true`,
+  ];
+  for (const line of cases) {
+    const { hits } = findSwallowedPushes(line);
+    assert.equal(hits.length, 1, `a redirection or quoted pipe hid a swallow: ${line}`);
+  }
+});
+
+test('the handler must still be the push’s own, across a semicolon', () => {
+  // The other direction of the same rule: widening OWN_ARGS must not re-open
+  // the case it was introduced for.
+  const { hits } = findSwallowedPushes(
+    `          ${PUSH} origin "$T" || exit 1; cleanup || echo cleanup-failed`,
+  );
+  assert.equal(hits.length, 0, 'adopted a later command’s handler again');
+});

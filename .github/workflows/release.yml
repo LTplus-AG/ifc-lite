@@ -324,7 +324,23 @@ jobs:
           #
           # The backfill path added after 2026-08-12 is the one most exposed to
           # this: a backfill by definition runs after `main` has moved on.
-          git tag "v${VERSION}" || true
+          #
+          # THE COMMIT IS NAMED EXPLICITLY (#3209). `git tag <name>` with no
+          # commit-ish tags the current checkout HEAD, and this job checks out
+          # with no `ref:` — so HEAD is the commit that TRIGGERED the run. Every
+          # push to `main` triggers a Release run, so a correct tag was only ever
+          # a coincidence: it held when the trigger happened to be the version
+          # commit. On v6.0.1 it did not, and the tag landed on an unrelated
+          # test-only commit fourteen minutes later, green and unreported.
+          #
+          # The resolver also REFUSES when the tag already exists on a different
+          # commit, which is why `|| true` below is still safe: by the time it
+          # runs, any existing tag has been proven to name this same commit. The
+          # `$( )` assignment carries the script's exit status under the Actions
+          # default shell (`bash --noprofile --norc -eo pipefail`), so a refusal
+          # kills the step before anything is pushed.
+          VERSION_COMMIT=$(node scripts/release-tag-commit.mjs package.json "${VERSION}" "v${VERSION}")
+          git tag "v${VERSION}" "${VERSION_COMMIT}" || true
           git push origin "v${VERSION}"
           # Create release, skipping if it already exists
           if gh release view "v${VERSION}" > /dev/null 2>&1; then
@@ -366,7 +382,17 @@ jobs:
             # default-branch head if the push failed (#3202). Getting this wrong
             # here is worse than above -- server-binaries.yml uploads the
             # per-platform archives to whatever commit this tag names.
-            git tag "$TAG" || true
+            #
+            # Resolved from server-bin's OWN manifest, independently of the root
+            # version: the two are usually different versions and therefore
+            # different commits. `v1.16.7` is the standing proof — it points at
+            # db35b4a6, 35 commits after 44c4201e where server-bin's version was
+            # actually set, and both commits report 1.16.7, so nothing noticed
+            # for nine days (#3209). The resolver refuses rather than reusing a
+            # tag that names a different commit, which turns that damage into a
+            # red job the next time a run touches it.
+            SB_COMMIT=$(node scripts/release-tag-commit.mjs packages/server-bin/package.json "${SB_VERSION}" "$TAG")
+            git tag "$TAG" "${SB_COMMIT}" || true
             git push origin "$TAG"
             gh release create "$TAG" \
               --verify-tag \

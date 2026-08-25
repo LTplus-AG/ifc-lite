@@ -48,11 +48,35 @@ pub fn repo_root() -> Option<std::path::PathBuf> {
     }
 }
 
+/// Walk `dir` for `.rs` files, FAILING CLOSED on anything it cannot read.
+///
+/// The original swallowed both a failed `read_dir` and each failed entry
+/// (`.flatten()`). The per-tree floors below cannot cover for that: an
+/// unreadable NESTED directory still leaves enough files elsewhere to clear
+/// them, so both guards report a clean result having never opened it. A floor
+/// answers "did the scan find enough", not "did the scan see everything".
+///
+/// A MISSING directory is still ordinary and still silent -- `MIN_RS_FILES` is
+/// what catches a wrong scan root, and panicking here would make a legitimately
+/// absent `apps/` fatal.
 pub fn collect_rs_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
+        Err(e) => panic!(
+            "could not read {} ({e}); refusing to report a clean scan over a directory this \
+             walk could not open",
+            dir.display()
+        ),
     };
-    for entry in entries.flatten() {
+    for entry in entries {
+        let entry = entry.unwrap_or_else(|e| {
+            panic!(
+                "could not read a directory entry under {} ({e}); refusing to skip an entry \
+                 this walk could not classify",
+                dir.display()
+            )
+        });
         let path = entry.path();
         if path.is_dir() {
             let skip = matches!(

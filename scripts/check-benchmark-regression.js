@@ -218,13 +218,33 @@ function lostMetrics(models) {
   );
 }
 
-function buildMarkdownReport(models, regressions) {
+function buildMarkdownReport(models, regressions, harnessFaults = []) {
   const unmeasured = unmeasuredCount(models);
   const lines = [];
   lines.push('<!-- viewer-benchmark-report -->');
   lines.push('## Viewer benchmark');
   lines.push('');
-  if (regressions.length > 0) {
+  // THE MARKDOWN IS THE PRIMARY ARTEFACT: `benchmark.yml` publishes it to the
+  // step summary and the sticky PR comment, and that is what a human actually
+  // reads. An earlier version of this change refused a clean verdict on the
+  // CONSOLE only, so on a renamed fixture the console said "no verdict" while
+  // the PR comment said `✅ No threshold regressions detected.` — with no rows,
+  // `unmeasured` is 0 and that headline is trivially true and entirely
+  // misleading. Fixing one and not the other reproduces the mixed signal this
+  // change exists to remove, in the louder of the two channels.
+  if (harnessFaults.length > 0) {
+    lines.push(
+      `❌ **No verdict: the benchmark did not run.** ${harnessFaults.length} harness fault(s):`
+    );
+    lines.push('');
+    for (const f of harnessFaults) {
+      lines.push(`- ${f.split('\n')[0].trim()}`);
+    }
+    lines.push('');
+    lines.push(
+      'Threshold results below (if any) are reported for completeness and are NOT a pass.'
+    );
+  } else if (regressions.length > 0) {
     lines.push(
       `⚠ **${regressions.length} metric(s) exceeded the regression threshold**` +
         (advisory ? ' (advisory only, not blocking).' : '.')
@@ -337,7 +357,7 @@ function main() {
 
   // Written BEFORE any exit: on a harness fault this report IS the diagnosis.
   if (markdownPath) {
-    writeFileSync(markdownPath, buildMarkdownReport(models, regressions));
+    writeFileSync(markdownPath, buildMarkdownReport(models, regressions, harnessFaults));
     console.log(`Markdown report written to ${markdownPath}`);
   }
 

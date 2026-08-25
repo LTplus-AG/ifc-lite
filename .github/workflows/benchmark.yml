@@ -145,6 +145,7 @@ jobs:
         run: rm -f tests/benchmark/benchmark-results/viewer-*.json tests/benchmark/benchmark-results/viewer-*.console.log
 
       - name: Run viewer benchmark
+        id: benchmark
         env:
           VIEWER_BENCHMARK_FILES: 'tests/models/ara3d/AC20-FZK-Haus.ifc,tests/models/various/01_Snowdon_Towers_Sample_Structural(1).ifc'
           # Advisory: the spec logs threshold violations instead of failing;
@@ -209,15 +210,28 @@ jobs:
       # run's numbers into baseline.json and upload it as an artifact. A human
       # (or agent) commits it via a normal PR so the change is reviewed like
       # any other — this job intentionally has no push access.
-      # `always()`: this dispatch is how a stale baseline gets fixed, so it must
-      # still run when the baseline check failed BECAUSE the baseline is stale
-      # (#3200). Gating it on success deadlocks the only supported repair path.
+      # `always()` so this still runs when the baseline COMPARISON failed --
+      # that failure is often exactly why the dispatch was sent, and gating on
+      # job success deadlocks the only supported repair path (#3200).
+      #
+      # But gated on the BENCHMARK step itself succeeding. The spec writes each
+      # result JSON BEFORE asserting `streamCompleteMs` is present and
+      # `totalMeshes > 0`, so a failed load leaves a JSON on disk that
+      # `update-benchmark-baseline.mjs` would happily accept -- refreshing the
+      # baseline from a run that did not load the model. That is a worse
+      # outcome than a stale baseline, and it would look like a successful
+      # refresh.
       - name: Record refreshed baseline
-        if: always() && github.event_name == 'workflow_dispatch' && inputs.record_baseline
+        id: record
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.record_baseline && steps.benchmark.outcome == 'success'
         run: node scripts/update-benchmark-baseline.mjs --environment "github-actions ubuntu-latest, viewer-benchmark-ci (headless Chrome, SwiftShader ANGLE), production build"
 
+      # Gated on the RECORD step, not on the dispatch inputs: a bare `always()`
+      # here would upload the COMMITTED baseline.json unchanged when the record
+      # step failed or was skipped, publishing it as a `benchmark-baseline`
+      # artifact that looks like a refresh of numbers never written.
       - name: Upload refreshed baseline
-        if: always() && github.event_name == 'workflow_dispatch' && inputs.record_baseline
+        if: always() && steps.record.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: benchmark-baseline

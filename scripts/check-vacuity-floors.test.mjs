@@ -272,3 +272,31 @@ test('benchmark: the markdown report is written BEFORE the gate exits', () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('benchmark: the MARKDOWN refuses a verdict too, not just the console', () => {
+  // The markdown is the primary artefact -- benchmark.yml publishes it to the
+  // step summary and the sticky PR comment, and that is what a human reads.
+  // Refusing on the console alone left the PR comment saying
+  // `✅ No threshold regressions detected.` on a renamed fixture, which with no
+  // rows is trivially true and entirely misleading: the same mixed signal, in
+  // the louder channel.
+  const dir = benchTree({ current: ALL_METRICS, baseline: ALL_METRICS, baselineKey: 'RENAMED.ifc' });
+  const md = join(dir, 'report.md');
+  try {
+    const res = spawnSync(
+      process.execPath,
+      [join(dir, 'scripts', 'check-benchmark-regression.js'), '--advisory', '--markdown', md],
+      { encoding: 'utf-8', cwd: dir },
+    );
+    assert.equal(res.status, 1, 'guard: this input must be a harness fault');
+    const report = readFileSync(md, 'utf-8');
+    assert.match(report, /No verdict: the benchmark did not run/);
+    assert.doesNotMatch(
+      report,
+      /✅ No threshold regressions detected/,
+      'the PR comment must not claim a clean run the console just refused',
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

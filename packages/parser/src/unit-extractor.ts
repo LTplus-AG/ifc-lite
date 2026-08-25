@@ -53,6 +53,12 @@ export const CONVERSION_BASED_UNIT_FACTORS: Record<string, number> = {
   "'YARD'": 0.9144,
   'MILE': 1609.344,
   "'MILE'": 1609.344,
+  // The quoted spelling is a real, if rare, branch: a STEP name attribute
+  // written as `''FEET''` in the file decodes (doubled-quote escaping) to
+  // the four-character string `'FEET'`, complete with embedded quote
+  // characters, and is looked up here verbatim. FEET was missing this entry
+  // even though every other spelling in the table has one.
+  "'FEET'": 0.3048,
 };
 
 /**

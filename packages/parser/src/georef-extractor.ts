@@ -20,7 +20,7 @@
 
 import type { IfcEntity } from './entity-extractor.js';
 import { getString, getNumber, getReference } from './attribute-helpers.js';
-import { CONVERSION_BASED_UNIT_FACTORS } from './unit-extractor.js';
+import { CONVERSION_BASED_UNIT_FACTORS, SI_PREFIX_MULTIPLIERS } from './unit-extractor.js';
 import { getAttributeNames } from './ifc-schema.js';
 
 export interface MapConversion {
@@ -406,11 +406,6 @@ function extractMapConversion(entity: IfcEntity): MapConversion {
   };
 }
 
-/** SI prefix → scale factor */
-const SI_PREFIX_SCALE: Record<string, number> = {
-  'MILLI': 0.001, 'CENTI': 0.01, 'DECI': 0.1, 'KILO': 1000,
-};
-
 /**
  * Resolve an `IfcMeasureWithUnit` reference to metres.
  *
@@ -444,7 +439,7 @@ function resolveMeasureWithUnit(
     if (component && (component.type ?? '').toUpperCase() === 'IFCSIUNIT') {
       const prefix = component.attributes?.[2];
       if (typeof prefix === 'string' && prefix !== '$') {
-        const prefixScale = SI_PREFIX_SCALE[prefix.replace(/\./g, '').toUpperCase()];
+        const prefixScale = SI_PREFIX_MULTIPLIERS[prefix.replace(/\./g, '').toUpperCase()];
         if (prefixScale !== undefined) componentScale = prefixScale;
       }
     }
@@ -505,7 +500,7 @@ function extractProjectedCRS(
           const prefix = unitEntity.attributes?.[2];
           if (prefix != null && prefix !== '$' && typeof prefix === 'string') {
             const prefixStr = prefix.replace(/\./g, '').toUpperCase();
-            const prefixScale = SI_PREFIX_SCALE[prefixStr];
+            const prefixScale = SI_PREFIX_MULTIPLIERS[prefixStr];
             if (prefixScale !== undefined) {
               mapUnitScale = prefixScale;
               mapUnit = prefixStr === 'MILLI' ? 'MILLIMETRE' : prefixStr + 'METRE';

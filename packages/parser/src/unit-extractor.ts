@@ -14,9 +14,18 @@ import { EntityExtractor } from './entity-extractor.js';
 import type { IfcSourceBytes } from './source-bytes.js';
 
 /**
- * SI Prefix multipliers as defined in IFC specification
+ * SI Prefix multipliers, keyed by the members of the `IfcSIPrefix` EXPRESS
+ * enumeration — that enumeration is the authority for which prefixes a unit
+ * can carry, so a reader that knows only a subset silently reports the base
+ * unit and is wrong by the missing prefix's own factor.
+ *
+ * Exported for the same reason as {@link CONVERSION_BASED_UNIT_FACTORS}: the
+ * georeferencing extractor resolves an `IfcProjectedCRS` MapUnit through the
+ * SAME table this one uses for the project length unit. It previously carried
+ * a private four-entry copy (MILLI/CENTI/DECI/KILO), so a MapUnit in any
+ * other prefix read back as plain metres.
  */
-const SI_PREFIX_MULTIPLIERS: Record<string, number> = {
+export const SI_PREFIX_MULTIPLIERS: Record<string, number> = {
   'ATTO': 1e-18,
   'FEMTO': 1e-15,
   'PICO': 1e-12,

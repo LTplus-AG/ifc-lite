@@ -915,17 +915,24 @@ function computeGeoreferencingOnDemand(store: IfcDataStore): GeoreferenceInfo | 
     const entityMap = new Map<number, { expressId: number; attributes: unknown[] }>();
     const typeMap = new Map<string, number[]>();
 
-    for (const typeName of ['IFCMAPCONVERSION', 'IFCPROJECTEDCRS', 'IFCSITE']) {
+    // `byType` is keyed by the RAW STEP type name, so asking for a supertype
+    // alone misses every file written with a concrete subtype spelling.
+    // IFC4X3's IfcMapConversionScaled is such a subtype: without it a file
+    // georeferenced that way produced no mapConversion at all — and therefore
+    // no transformMatrix — and was placed at its local origin. Both spellings
+    // fold onto the same mixed-case key the georef extractor reads.
+    const GEOREF_TYPES: ReadonlyArray<readonly [string, string]> = [
+        ['IFCMAPCONVERSION', 'IfcMapConversion'],
+        ['IFCMAPCONVERSIONSCALED', 'IfcMapConversion'],
+        ['IFCPROJECTEDCRS', 'IfcProjectedCRS'],
+        ['IFCSITE', 'IfcSite'],
+    ];
+    for (const [typeName, displayName] of GEOREF_TYPES) {
         const ids = byType.get(typeName);
         if (!ids?.length) continue;
 
-        // Use mixed-case for the georef extractor's type lookup
-        const displayName = typeName === 'IFCMAPCONVERSION'
-            ? 'IfcMapConversion'
-            : typeName === 'IFCPROJECTEDCRS'
-                ? 'IfcProjectedCRS'
-                : 'IfcSite';
-        typeMap.set(displayName, ids);
+        const existing = typeMap.get(displayName);
+        typeMap.set(displayName, existing ? [...existing, ...ids] : ids);
 
         for (const id of ids) {
             const ref = byId.get(id);

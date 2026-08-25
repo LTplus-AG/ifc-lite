@@ -78,6 +78,18 @@ export interface GeoreferenceInfo {
 }
 
 /**
+ * Every concrete class that carries an IfcMapConversion's attributes, in the
+ * mixed-case spelling `entitiesByType` is keyed by. `IfcMapConversionScaled`
+ * is IFC4X3's scaled variant and the only subtype in any bundled schema; it is
+ * listed here rather than folded into the caller so that every consumer of the
+ * exported `extractGeoreferencing` widens identically.
+ */
+export const MAP_CONVERSION_TYPE_NAMES: readonly string[] = [
+  'IfcMapConversion',
+  'IfcMapConversionScaled',
+];
+
+/**
  * Extract georeferencing information from IFC entities
  */
 export function extractGeoreferencing(
@@ -88,8 +100,18 @@ export function extractGeoreferencing(
     hasGeoreference: false,
   };
 
-  // Extract IfcMapConversion
-  const mapConversionIds = entitiesByType.get('IfcMapConversion') || [];
+  // Extract IfcMapConversion — including IFC4X3's concrete subtype
+  // IfcMapConversionScaled, which a type-keyed lookup for the supertype alone
+  // never sees. Its first eight attributes ARE IfcMapConversion's (SourceCRS,
+  // TargetCRS, Eastings, Northings, OrthogonalHeight, XAxisAbscissa,
+  // XAxisOrdinate, Scale); the three it adds (FactorX/Y/Z) sit after them, so
+  // reading it as its supertype is well-defined. Missing it did not merely
+  // omit a field: with no mapConversion there is no `transformMatrix`, so a
+  // file georeferenced this way was placed at its local origin instead of its
+  // map position.
+  const mapConversionIds = MAP_CONVERSION_TYPE_NAMES.flatMap(
+    (typeName) => entitiesByType.get(typeName) ?? [],
+  );
   if (mapConversionIds.length > 0) {
     const entity = entities.get(mapConversionIds[0]);
     if (entity) {

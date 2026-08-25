@@ -281,7 +281,7 @@ try {
     const t = line.trim();
     if (!t.startsWith(tmp)) return null;
     const rest = t.slice(tmp.length).replace(/^[/\\]/, '');
-    return /^snippet-\d{3}\.ts$/.test(rest) ? rest : null;
+    return /^snippet-\d{3,}\.ts$/.test(rest) ? rest : null;
   };
   // A diagnostic with NO file prefix is tsc talking about the invocation
   // itself, not about any code: TS5083 (cannot read tsconfig), TS6053 (file

@@ -162,7 +162,15 @@ function main() {
     return 1;
   }
   const covered = new Set(TARGETS.map((t) => t.dir));
-  const uncovered = [...new Set(ws.globs.map((g) => g.split('/')[0]))].filter((d) => !covered.has(d));
+  // pnpm supports EXCLUSION globs (a leading `!`, e.g. `!packages/legacy-thing`)
+  // as a documented workspace feature: they narrow an inclusion glob, they do
+  // not declare a new place to lint. Cross-checking them against TARGETS made
+  // a legitimate exclusion fail the gate with a message naming a directory
+  // that does not exist (`!packages/`) - exactly the "gate blocks a
+  // legitimate change" shape this whole line of work exists to prevent.
+  const uncovered = [...new Set(ws.globs.filter((g) => !g.startsWith('!')).map((g) => g.split('/')[0]))].filter(
+    (d) => !covered.has(d),
+  );
   if (uncovered.length > 0) {
     console.error('lint: a workspace glob is outside this gate\'s target list, so the code there is');
     console.error('      never linted and no floor can notice:\n');

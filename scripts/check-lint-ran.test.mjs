@@ -212,6 +212,26 @@ test('an empty package glob list is refused rather than agreeing with any target
   }
 });
 
+test('an exclusion glob is not treated as a workspace member needing its own target', () => {
+  // pnpm supports `!`-prefixed exclusion globs (documented workspace
+  // feature) that narrow an inclusion glob rather than declare a new place
+  // to lint. Before the fix, `!packages/legacy-thing` failed the cross-check
+  // with a message naming `!packages/` - a directory that does not exist -
+  // which is exactly the "gate blocks a legitimate change" shape this line
+  // of work exists to prevent.
+  const root = fakeRoot(
+    "packages:\n  - 'packages/*'\n  - 'apps/*'\n  - 'scripts'\n  - 'examples/*'\n  - '!packages/legacy-thing'\n",
+  );
+  try {
+    const run = runIn(root);
+    const out = `${run.stdout}${run.stderr}`;
+    assert.doesNotMatch(out, /is not a lint target/, `exclusion glob must not be flagged: ${out}`);
+    assert.doesNotMatch(out, /declares no package globs/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('the real pnpm-workspace.yaml parses to the globs it actually declares', () => {
   // Guards the hand-rolled YAML reader against the block below `packages:`
   // bleeding in: `onlyBuiltDependencies` items are list entries too, and a

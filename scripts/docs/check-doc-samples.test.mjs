@@ -34,7 +34,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, chmodSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, chmodSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -108,6 +108,36 @@ process.exitCode = ${status};
 `;
 }
 
+test('a compiler killed by a signal AFTER listing every file is loud, not a clean tick', () => {
+  // The dangerous case, and the reason `res.signal` is checked before
+  // `missing` is computed: a compiler that emits the full `--listFiles`
+  // program and is THEN killed (OOM, a CI timeout's SIGKILL) leaves
+  // `confirmed` fully populated and `missing` empty. Without the signal
+  // check, that reads as every snippet compiled clean - a tick over a
+  // compiler that died. This shim lists the program's files exactly like a
+  // healthy tsc, then kills itself with SIGKILL before it can print
+  // anything else (no exit code, no diagnostics), so `missing.length === 0`
+  // and only `res.signal` distinguishes this from a real pass.
+  const root = makeTree(`#!/usr/bin/env node
+const fs = require('node:fs');
+const i = process.argv.indexOf('-p');
+const cfg = JSON.parse(fs.readFileSync(process.argv[i + 1], 'utf8'));
+let out = '';
+if (process.argv.includes('--listFiles')) for (const f of cfg.files) out += f + '\\n';
+fs.writeSync(1, out);
+process.kill(process.pid, 'SIGKILL');
+`);
+  try {
+    const { status, out } = run(root);
+    assert.equal(status, 1, `expected exit 1, got ${status}: ${out}`);
+    assert.match(out, /KILLED by SIGKILL/);
+    assert.match(out, /Refusing a vacuous pass/);
+    assert.doesNotMatch(out, /typecheck clean/, 'must not print a success line at all');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('a compiler that cannot be spawned is loud, not a clean tick', () => {
   const root = makeTree(null);
   try {
@@ -173,6 +203,25 @@ test('a real snippet error is reported against the DOC line, not the temp file',
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('the listed-snippet regex still matches once the index reaches 4 digits', () => {
+  // Snippet files are named with `String(idx).padStart(3, '0')`, so index
+  // 1000 (261 snippets today, but the count only grows) is named
+  // `snippet-1000.ts`. A regex anchored on exactly 3 digits does not match
+  // that name, so every snippet from 1000 on would fail to confirm and the
+  // gate would fail a healthy tree - the exact "clean report over untested
+  // code" shape #3200 exists to close, just triggered by count rather than
+  // by a dead compiler. Extracted straight from the source rather than
+  // duplicated here, so this fails if the regex regresses even if nobody
+  // remembers this test exists.
+  const src = readFileSync(join(HERE, 'check-doc-samples.mjs'), 'utf8');
+  const m = src.match(/return (\/\^snippet-[^)]+?\$\/)\.test\(rest\)/);
+  assert.ok(m, 'could not locate the listedSnippet regex in check-doc-samples.mjs');
+  const re = new RegExp(m[1].slice(1, -1));
+  assert.ok(re.test('snippet-1000.ts'), 'index 1000 must still match (padStart(3, "0") never truncates)');
+  assert.ok(re.test('snippet-000.ts'), 'the common 3-digit case must keep matching');
+  assert.ok(!re.test('snippet-00.ts'), 'fewer than 3 digits must still be rejected');
 });
 
 test('a non-zero exit with only out-of-scope diagnostics is still a clean run', () => {

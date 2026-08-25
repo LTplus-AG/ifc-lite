@@ -187,10 +187,10 @@ jobs:
           CURRENT_VERSION=$(node -p "require('./package.json').version")
           PREVIOUS_VERSION=$(git show HEAD~1:package.json 2>/dev/null | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).version" 2>/dev/null || true)
           if [ "${CURRENT_VERSION}" != "${PREVIOUS_VERSION}" ]; then
-            echo "version_changed=true" >> $GITHUB_OUTPUT
+            echo "version_changed=true" >> "$GITHUB_OUTPUT"
             echo "version bump on this commit: ${PREVIOUS_VERSION:-<unknown>} -> ${CURRENT_VERSION}"
           else
-            echo "version_changed=false" >> $GITHUB_OUTPUT
+            echo "version_changed=false" >> "$GITHUB_OUTPUT"
             echo "no version bump on this commit (${CURRENT_VERSION})"
           fi
 

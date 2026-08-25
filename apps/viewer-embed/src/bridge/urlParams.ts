@@ -133,8 +133,12 @@ export function parseUrlParams(): EmbedViewerUrlParams {
     //
     // Zero itself stays valid -- `camera: {0,0,0}` is a real pose the SDK
     // ships -- so the guard is on the segment being empty, never on the value.
+    //
+    // The acceptance test is FINITENESS, not just "not NaN":
+    // `Number('Infinity')` is `Infinity`, so `?camera=Infinity,0` would clear
+    // an `isNaN` filter and hand a non-finite azimuth to the camera.
     const parts = camera.split(',').map(s => (s.trim() === '' ? NaN : Number(s)));
-    if (parts.length >= 2 && parts.every(n => !isNaN(n))) {
+    if (parts.length >= 2 && parts.every(n => Number.isFinite(n))) {
       result.camera = { azimuth: parts[0], elevation: parts[1], zoom: parts[2] };
     }
   }

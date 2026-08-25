@@ -35,43 +35,11 @@ import {
   type EntityProperties,
   type ModelInfo,
 } from '@ifc-lite/embed-protocol';
+import { embedUrlSearchParams, type EmbedOptions } from './options.js';
 
 // ============================================================================
 // Public types
 // ============================================================================
-
-export interface EmbedOptions {
-  /** CSS selector or DOM element to mount the iframe into */
-  container: string | HTMLElement;
-  /** URL of the model to load on initialization */
-  modelUrl?: string;
-  /** Color theme */
-  theme?: 'light' | 'dark';
-  /** Custom background color (hex without #) */
-  bg?: string;
-  /** Camera controls mode. NOT YET IMPLEMENTED — sent, and the viewer ignores it. */
-  controls?: 'orbit' | 'pan' | 'all' | 'none';
-  /** Hide the axis helper. NOT YET IMPLEMENTED — sent, and the viewer ignores it. */
-  hideAxis?: boolean;
-  /** Hide the scale bar. NOT YET IMPLEMENTED — sent, and the viewer ignores it. */
-  hideScale?: boolean;
-  /** IFC class names to hide, matched case-insensitively (`IFCSPACE` === `IfcSpace`). */
-  hideTypes?: string[];
-  /** Preset camera view. Takes precedence over `camera`. */
-  view?: ViewPreset;
-  /**
-   * Initial absolute camera orientation in degrees; the model is framed at
-   * that orientation. `zoom` is accepted but NOT applied — the viewer has no
-   * absolute-zoom actuator and the field carries no unit.
-   */
-  camera?: { azimuth: number; elevation: number; zoom?: number };
-  /** Origin of the hosted embed viewer (defaults to production) */
-  origin?: string;
-  /** Auth token (sent via postMessage, not URL) */
-  token?: string;
-  /** Handshake timeout in ms (default: 15000) */
-  timeout?: number;
-}
 
 export interface EventMap {
   'ready': { version: string };
@@ -88,6 +56,7 @@ export interface EventMap {
 type EventCallback<T> = (data: T) => void;
 
 // Re-export types consumers might need
+export type { EmbedOptions };
 export type { ViewPreset, SectionAxis, ModelStats, EntityProperties, ModelInfo };
 
 // ============================================================================
@@ -129,20 +98,7 @@ export class IFCLiteEmbed {
     this.expectedOrigin = new URL(this.origin).origin;
 
     // Build URL with non-sensitive params
-    const params = new URLSearchParams();
-    if (opts.modelUrl) params.set('modelUrl', opts.modelUrl);
-    if (opts.theme) params.set('theme', opts.theme);
-    if (opts.bg) params.set('bg', opts.bg);
-    if (opts.controls) params.set('controls', opts.controls);
-    if (opts.hideAxis) params.set('hideAxis', 'true');
-    if (opts.hideScale) params.set('hideScale', 'true');
-    if (opts.hideTypes?.length) params.set('hideTypes', opts.hideTypes.join(','));
-    if (opts.view) params.set('view', opts.view);
-    if (opts.camera) {
-      const parts = [opts.camera.azimuth, opts.camera.elevation];
-      if (opts.camera.zoom !== undefined) parts.push(opts.camera.zoom);
-      params.set('camera', parts.join(','));
-    }
+    const params = embedUrlSearchParams(opts);
 
     // Create iframe
     this.iframe = document.createElement('iframe');

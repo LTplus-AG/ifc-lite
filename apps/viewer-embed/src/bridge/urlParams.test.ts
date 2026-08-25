@@ -193,6 +193,23 @@ describe('parseUrlParams', () => {
     expect(parseUrlParams().camera).toEqual({ azimuth: 0, elevation: 0, zoom: 0 });
   });
 
+  it('rejects a NON-FINITE camera segment instead of steering to Infinity', () => {
+    // `Number('Infinity')` is `Infinity`, not `NaN`, so an `!isNaN` filter
+    // lets `?camera=Infinity,0` through and hands a non-finite azimuth to
+    // `setCameraRotation`. The blank-segment guard does not catch it either:
+    // the segment is non-empty. Only a finiteness test rejects it.
+    setSearch('?camera=Infinity,0');
+    expect(parseUrlParams().camera).toBeUndefined();
+    setSearch('?camera=0,-Infinity');
+    expect(parseUrlParams().camera).toBeUndefined();
+    // The optional zoom is subject to the same rule.
+    setSearch('?camera=30,-10,Infinity');
+    expect(parseUrlParams().camera).toBeUndefined();
+    // ... while a finite pose with the same shape still parses.
+    setSearch('?camera=30,-10,2');
+    expect(parseUrlParams().camera).toEqual({ azimuth: 30, elevation: -10, zoom: 2 });
+  });
+
   it('rejects a NON-INTEGER id rather than passing it through as an express id', () => {
     // The `Number.isInteger` half of the id filter had no covering case: both
     // existing ones (`?select=,` and `?select=0,-1,2`) are decided entirely

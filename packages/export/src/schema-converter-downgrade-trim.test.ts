@@ -103,11 +103,17 @@ describe.each([
     expect(wrong).toEqual([]);
   });
 
-  it('never trims an entity that did not shrink', () => {
+  // Only SAME-LENGTH entities. An entity whose source (newer-schema) list is
+  // strictly SHORTER than the older target's is padded, not left alone — the
+  // older schema really does take more arguments there (IFC2X3 IfcRelDecomposes
+  // takes 6 against IFC4's 4), and emitting the short IFC4 form into a file
+  // declaring IFC2X3 is the same defect this file exists for, mirrored. That
+  // growth corpus is covered in `schema-converter-upgrade-trim.test.ts`.
+  it('never trims an entity that is the same length in both schemas', () => {
     const wrong: string[] = [];
     for (const [type, tgtAttrs] of tgt) {
       const srcAttrs = src.get(type);
-      if (!srcAttrs || srcAttrs.length === 0 || srcAttrs.length > tgtAttrs.length) continue;
+      if (!srcAttrs || srcAttrs.length === 0 || srcAttrs.length !== tgtAttrs.length) continue;
       if (isDivertedByConversion(type, from, to)) continue;
       const got = argCount(convertStepLine(makeLine(type, srcAttrs.length), from, to));
       if (got !== srcAttrs.length) wrong.push(`${type}: expected ${srcAttrs.length} args, got ${got}`);

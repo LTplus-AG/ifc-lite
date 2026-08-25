@@ -18,41 +18,49 @@
  */
 
 /**
- * Check if an entity type is a geometry-related type
+ * The set itself, at module scope rather than rebuilt per call.
+ *
+ * `isGeometryEntity` runs once per entity, through `isGeometryExcluded`, the
+ * source-iteration skip and `step-overlay-entities.ts` — so constructing this
+ * inside the function allocated a 31-string `Set` per entity on every export.
+ * It was written that way as a private method and moved here verbatim; being a
+ * free function is what makes hoisting it trivial and obviously safe.
  */
+const GEOMETRY_TYPES: ReadonlySet<string> = new Set([
+  'IFCCARTESIANPOINT',
+  'IFCDIRECTION',
+  'IFCAXIS2PLACEMENT2D',
+  'IFCAXIS2PLACEMENT3D',
+  'IFCLOCALPLACEMENT',
+  'IFCSHAPEREPRESENTATION',
+  'IFCPRODUCTDEFINITIONSHAPE',
+  'IFCGEOMETRICREPRESENTATIONCONTEXT',
+  'IFCGEOMETRICREPRESENTATIONSUBCONTEXT',
+  'IFCEXTRUDEDAREASOLID',
+  'IFCFACETEDBREP',
+  'IFCPOLYLOOP',
+  'IFCFACE',
+  'IFCFACEOUTERBOUND',
+  'IFCCLOSEDSHELL',
+  'IFCRECTANGLEPROFILEDEF',
+  'IFCCIRCLEPROFILEDEF',
+  'IFCARBITRARYCLOSEDPROFILEDEF',
+  'IFCPOLYLINE',
+  'IFCTRIMMEDCURVE',
+  'IFCBSPLINECURVE',
+  'IFCBSPLINESURFACE',
+  'IFCTRIANGULATEDFACESET',
+  'IFCPOLYGONALFACE',
+  'IFCINDEXEDPOLYGONALFACE',
+  'IFCPOLYGONALFACESET',
+  'IFCSTYLEDITEM',
+  'IFCPRESENTATIONSTYLEASSIGNMENT',
+  'IFCSURFACESTYLE',
+  'IFCSURFACESTYLERENDERING',
+  'IFCCOLOURRGB',
+]);
+
+/** Check if an entity type is a geometry-related type. */
 export function isGeometryEntity(type: string): boolean {
-  const geometryTypes = new Set([
-    'IFCCARTESIANPOINT',
-    'IFCDIRECTION',
-    'IFCAXIS2PLACEMENT2D',
-    'IFCAXIS2PLACEMENT3D',
-    'IFCLOCALPLACEMENT',
-    'IFCSHAPEREPRESENTATION',
-    'IFCPRODUCTDEFINITIONSHAPE',
-    'IFCGEOMETRICREPRESENTATIONCONTEXT',
-    'IFCGEOMETRICREPRESENTATIONSUBCONTEXT',
-    'IFCEXTRUDEDAREASOLID',
-    'IFCFACETEDBREP',
-    'IFCPOLYLOOP',
-    'IFCFACE',
-    'IFCFACEOUTERBOUND',
-    'IFCCLOSEDSHELL',
-    'IFCRECTANGLEPROFILEDEF',
-    'IFCCIRCLEPROFILEDEF',
-    'IFCARBITRARYCLOSEDPROFILEDEF',
-    'IFCPOLYLINE',
-    'IFCTRIMMEDCURVE',
-    'IFCBSPLINECURVE',
-    'IFCBSPLINESURFACE',
-    'IFCTRIANGULATEDFACESET',
-    'IFCPOLYGONALFACE',
-    'IFCINDEXEDPOLYGONALFACE',
-    'IFCPOLYGONALFACESET',
-    'IFCSTYLEDITEM',
-    'IFCPRESENTATIONSTYLEASSIGNMENT',
-    'IFCSURFACESTYLE',
-    'IFCSURFACESTYLERENDERING',
-    'IFCCOLOURRGB',
-  ]);
-  return geometryTypes.has(type);
+  return GEOMETRY_TYPES.has(type);
 }

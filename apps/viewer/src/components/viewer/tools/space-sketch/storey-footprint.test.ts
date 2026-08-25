@@ -46,6 +46,38 @@ describe('exteriorPerimeter', () => {
     }
   });
 
+  it('DROPS corners that fall inside the hull, and returns the loop in order', () => {
+    // The test above asserts only that the result CONTAINS each extreme
+    // corner, which the raw unhulled corner list also does -- deleting the
+    // `convexHull` call and returning `rects.flatMap(r => r.corners)` left the
+    // whole file at 9 passed, 0 failed. Containment cannot fail; exclusion
+    // can, so that is what this pins.
+    //
+    // An inner rect wholly inside an outer one: all four of its corners are
+    // interior and none may survive. Asserting the exact array also pins the
+    // winding and the starting vertex, which `perimeterWalls` depends on --
+    // it walks the result as a closed loop, so a correct SET in a wrong ORDER
+    // would emit walls across the diagonal.
+    const outer = rect([
+      [0, 0],
+      [10, 0],
+      [10, 10],
+      [0, 10],
+    ]);
+    const inner = rect([
+      [4, 4],
+      [6, 4],
+      [6, 6],
+      [4, 6],
+    ]);
+    assert.deepStrictEqual(exteriorPerimeter([outer, inner]), [
+      [0, 0],
+      [10, 0],
+      [10, 10],
+      [0, 10],
+    ]);
+  });
+
   it('returns fewer than 3 points when there are not enough distinct corners', () => {
     assert.deepStrictEqual(exteriorPerimeter([]), []);
   });

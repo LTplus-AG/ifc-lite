@@ -964,6 +964,14 @@ jobs:
       # paths). Keep the docs in lockstep with the code they describe.
       - name: Check package READMEs
         run: node scripts/docs/check-package-readmes.mjs
+      # That gate printed `✅ All 0 published packages have a README.md.` over
+      # an empty packages/, and dropped an unreadable package directory out of
+      # the count in silence (#3200, finding 9). Its floors are executable, so
+      # they are run rather than trusted — and named here rather than left to
+      # the catch-all glob below, which is per-DIRECTORY and did not reach
+      # scripts/docs/ when this was written.
+      - name: Check the README gate cannot pass vacuously
+        run: node --test scripts/docs/check-package-readmes.test.mjs
       - name: Check doc code samples
         run: node scripts/docs/check-doc-samples.mjs
       - name: Check generated doc sections

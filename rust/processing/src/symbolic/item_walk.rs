@@ -58,6 +58,23 @@ pub(super) const MAX_ITEM_DEPTH: u32 = 32;
 /// whole extraction, so charging it once per revisit -- wherever in the file
 /// that revisit happens -- is what makes this a FILE bound rather than an
 /// ITEM bound.
+///
+/// THE VALUE HAS NOT BEEN RE-SIZED FOR ITS NEW SCOPE, and that is a deliberate
+/// choice rather than an oversight. 200,000 was picked as a per-item number
+/// and is now spent across the whole file, so a file whose revisits are spread
+/// over many top-level items can truncate where `main` did not: a 12-product
+/// nested block import (306 KB) emits 202,400 of its 240,000 curves here and
+/// all 240,000 on `main`.
+///
+/// It is kept because the alternative is worse and the loss is REPORTED. The
+/// same 240,000 curves already truncate on `main` at 200,200 when they sit
+/// under ONE top-level item -- so the mis-sizing predates this change; what
+/// this widens is which arrangements of the same file hit it. Raising the
+/// constant trades directly against the hole this bound exists to close (a
+/// fan-out spread thinly across items, which nothing bounded before), and that
+/// trade wants a corpus measurement rather than a guess. Until then, a file
+/// that loses content says so via `truncated`, which is the property that
+/// makes the current value tolerable.
 pub(super) const MAX_ITEM_REVISITS: u32 = 200_000;
 
 /// State threaded through the walk: the ancestors on the current path, and the

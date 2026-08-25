@@ -35,12 +35,15 @@
 //!   179 KB -> 426 ms, 0 emitted      739 KB -> 1661 ms, 0 emitted
 //!   3.0 MB -> 7216 ms, 0 emitted
 //!
-//! Linear at ~2.4 ms/KB. Not a regression -- `main` behaves identically, and
+//! Linear at ~2.4 ms/KB. Not a regression -- `main` behaved identically, and
 //! it is #2937's original per-item-budget complaint in the shape where output
-//! capping cannot reach it. Closing it means hoisting the revisit budget from
-//! per-item to per-extraction, which is now safe BECAUSE truncation is
-//! reported, but changes truncation behaviour for legitimate multi-product
-//! files and wants its own change.
+//! capping cannot reach it.
+//!
+//! CLOSED HERE (#3114): the revisit budget is now hoisted from per-item to
+//! per-extraction, which is safe BECAUSE truncation is reported. `seen` stays
+//! PER ITEM -- the two halves are separate on purpose, and both are pinned:
+//! `re_placing_one_library_block_is_not_charged_as_a_revisit` is the `seen`
+//! half, and hoisting `seen` too leaves every other test in the crate green.
 //!
 //! The two issues pulled in opposite directions -- bounding total work made
 //! the silent truncation fire sooner, on smaller legitimate drawings -- so
@@ -573,6 +576,49 @@ fn a_per_item_reason_omits_limit_on_the_wire_rather_than_sending_null() {
 /// to `hostile_dag`, which is the opposite shape (few ids, deliberately
 /// revisited); this one exists to prove the shared revisit pool does NOT
 /// start charging FIRST visits just because they belong to a later item.
+/// One curve set, PLACED SEVERAL TIMES as separate top-level items.
+///
+/// The distinction `flat_multi_item_dag` cannot express: there every top-level
+/// item owns private entities, so no id is ever reached twice and the walk's
+/// `seen` set is irrelevant to the outcome. Here every placement re-traverses
+/// the SAME ids, which is what an ordinary library block looks like in a real
+/// file -- and is the only shape that can tell a per-item `seen` from an
+/// extraction-wide one.
+fn shared_map_multi_placement(placements: usize, leaves: usize) -> String {
+    let mut s = String::from("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n");
+    let mut id = 1000u32;
+    let set = id;
+    id += 1;
+    let mut elems = Vec::new();
+    for _ in 0..leaves {
+        let pl = id;
+        id += 1;
+        let p1 = id;
+        id += 1;
+        let p2 = id;
+        id += 1;
+        s.push_str(&format!("#{pl}=IFCPOLYLINE((#{p1},#{p2}));\n"));
+        s.push_str(&format!("#{p1}=IFCCARTESIANPOINT((0.,0.));\n"));
+        s.push_str(&format!("#{p2}=IFCCARTESIANPOINT((1.,1.));\n"));
+        elems.push(pl);
+    }
+    let refs = elems.iter().map(|q| format!("#{q}")).collect::<Vec<_>>().join(",");
+    s.push_str(&format!("#{set}=IFCGEOMETRICCURVESET(({refs}));\n"));
+
+    // The SAME set id, repeated -- N placements of one block.
+    let list = (0..placements).map(|_| format!("#{set}")).collect::<Vec<_>>().join(",");
+    let prod = id;
+    let shp = id + 1;
+    let rep = id + 2;
+    s.push_str(&format!(
+        "#{prod}=IFCANNOTATION('x',$,$,$,$,$,#{shp});\n\
+         #{shp}=IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep}));\n\
+         #{rep}=IFCSHAPEREPRESENTATION($,'Annotation','Annotation',({list}));\n"
+    ));
+    s.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
+    s
+}
+
 fn flat_multi_item_dag(top_items: usize, leaves: usize) -> String {
     let mut s = String::from("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n");
     let mut id = 1000u32;
@@ -672,6 +718,52 @@ fn the_revisit_budget_is_shared_once_across_the_whole_extraction_not_reset_per_i
          {two_item_total} for two. Approaching twice the one-item total is \
          what a per-item {BUDGET}-revisit budget looks like, which is the \
          regression this test exists to catch"
+    );
+}
+
+#[test]
+fn re_placing_one_library_block_is_not_charged_as_a_revisit() {
+    // The invariant this PR rests on is a PAIR: the revisit budget is
+    // extraction-wide, while `seen` stays PER ITEM. The budget half is pinned
+    // by the two tests below. This is the `seen` half, and without it the
+    // whole crate stays green when `seen` is hoisted onto the accumulator
+    // alongside the budget -- measured, not assumed: 0 failures across every
+    // test binary under exactly that mutation.
+    //
+    // `flat_multi_item_dag` cannot catch it by construction. Its top-level
+    // items own DISTINCT entities, so no id is ever reached twice and the
+    // scope of `seen` never changes the answer. Only a file that re-places
+    // the SAME representation can tell the two apart.
+    //
+    // That file is not exotic. It is the ordinary case `ItemWalk::seen`'s own
+    // doc calls out -- "many placements of the same library block" -- and the
+    // reason the budget was hoisted while `seen` was not. Under a hoisted
+    // `seen` a 4-placement block collapses to its first placement plus
+    // whatever the budget allows, and reports `ItemRevisits` for a file that
+    // contains no fan-out at all.
+    const BUDGET: u32 = 5;
+    const PLACEMENTS: usize = 4;
+    const LEAVES: usize = 50;
+
+    let mut acc = SymbolicAccumulator::with_revisit_budget(BUDGET);
+    super::extract_symbolic_data_into(
+        &shared_map_multi_placement(PLACEMENTS, LEAVES).into_bytes(),
+        &mut acc,
+    );
+    let out = acc.into_data();
+
+    assert_eq!(
+        out.polylines.len(),
+        PLACEMENTS * LEAVES,
+        "each placement of a shared block is a separate top-level item and \
+         must emit its own geometry in full; a node first reached under THIS \
+         item is a first visit even if an earlier item also reached it"
+    );
+    assert!(
+        out.truncated.is_none(),
+        "re-placing one block is not a revisit fan-out and must not be \
+         reported as truncated: {:?}",
+        out.truncated
     );
 }
 

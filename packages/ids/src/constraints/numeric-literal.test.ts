@@ -36,7 +36,9 @@ import type { IDSDocument } from '../types.js';
 const SPEC_RE = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
 
 /** Every string up to 4 characters over the alphabet the language is built
- *  from, plus the characters most likely to be wrongly accepted. */
+ *  from, plus the characters most likely to be wrongly accepted. That is
+ *  69,905 distinct strings; the count is asserted below rather than trusted
+ *  from this comment. */
 function corpus(): string[] {
   const alpha = ['', '+', '-', '.', '0', '1', '9', 'e', 'E', ',', '_', ' ', '\t', '\n', 'x', '１', '١'];
   const out = new Set<string>();
@@ -51,6 +53,10 @@ describe('isStrictNumericLiteral accepts exactly the language it always did', ()
 
   it('the corpus is actually populated (an empty sweep proves nothing)', () => {
     expect(all.length).toBeGreaterThan(50_000);
+    // Exact, so the size quoted in the docblock and in any write-up of this
+    // sweep is a recorded figure and not an estimate. Changing the alphabet
+    // is meant to red here, forcing the new count to be re-recorded.
+    expect(all.length).toBe(69_905);
   });
 
   it('agrees with the spec regex on every string in it', () => {
@@ -121,6 +127,72 @@ describe('isStrictNumericLiteral accepts exactly the language it always did', ()
   });
 });
 
+/**
+ * The ladder every timing assertion in this file runs, module-scoped because
+ * three separate call sites use it: the scan itself, the per-entity
+ * `compareNumeric` path, and the two IDS-file literal paths at the bottom of
+ * the file. One ladder means one budget and one retry policy, so a hardening
+ * applied here cannot miss a caller.
+ */
+/** Per-decision budget. Every size below must be decided inside it. */
+const BUDGET_MS = 500;
+
+/**
+ * Ascending, doubling. Ascending is what makes a quadratic implementation
+ * REPORT instead of HANG: cost rises 4x per rung, so the first rung it blows
+ * costs at most ~4x the budget, and the ladder stops there rather than
+ * carrying on to 640k where the same implementation would grind for minutes.
+ *
+ * It self-adapts to the runner in both directions. A slower machine blows a
+ * quadratic implementation at a lower rung; a faster one at a higher rung.
+ * Either way some rung fails, so the controls below need no hardware-tuned
+ * number -- the failure that the old `regexMs > 50` floor could not survive.
+ */
+const SIZES = [
+  20_000, 40_000, 80_000, 160_000, 320_000, 640_000, 1_280_000, 2_560_000,
+] as const;
+
+/**
+ * Retries only ever taken on the way to FAILING. `Math.min` can only fall, so
+ * a reading already inside the budget is final and no repeat is made -- the
+ * healthy path is one call per rung. A rung is only declared blown after
+ * ATTEMPTS consecutive readings over the budget, which a single descheduling
+ * cannot fake. This does not soften detection: the minimum of several
+ * quadratic timings is still quadratic.
+ */
+const ATTEMPTS = 3;
+
+/** A long digit run plus one character that cannot be part of a number.
+ *  The trailing non-digit is the whole point: an all-digit string of any
+ *  length matches immediately, which is why plausible fixtures miss this. */
+const hostile = (n: number): string => `-${'9'.repeat(n)}X`;
+
+type Decide = (v: string) => boolean;
+
+/** Fastest of up to ATTEMPTS decisions, stopping as soon as one is in budget. */
+const fastestMs = (decide: Decide, n: number): number => {
+  const v = hostile(n);
+  let best = Infinity;
+  for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
+    const t0 = performance.now();
+    const verdict = decide(v);
+    best = Math.min(best, performance.now() - t0);
+    // A decision that says "number" would mean the timing measured an early
+    // return rather than a full scan, so the reading would prove nothing.
+    expect(verdict).toBe(false);
+    if (best < BUDGET_MS) break;
+  }
+  return best;
+};
+
+/** The first size at which `decide` blew the budget, or null if it cleared them all. */
+const firstBlownRung = (decide: Decide): number | null => {
+  for (const n of SIZES) {
+    if (fastestMs(decide, n) >= BUDGET_MS) return n;
+  }
+  return null;
+};
+
 describe('deciding it is linear, not backtracking (#3113)', () => {
   /**
    * The property is "this decision does not blow up on a long hostile input".
@@ -140,21 +212,40 @@ describe('deciding it is linear, not backtracking (#3113)', () => {
    * also why minimising over batches (#3159, #3165) narrowed the distribution
    * without fixing it.
    *
-   * Why the budget survives what the ratio could not: MARGIN. The old ratio put
-   * a healthy reading at ~4 against a bound of 8, so a 2x hiccup was a failure.
-   * The largest rung here decides 640k characters in ~1.2ms against a 500ms
-   * budget -- over 400x of headroom, which no scheduler noise reaches. The same
-   * 160-process load that broke the ratio 12 times in 20 leaves this green 20
-   * times in 20, and the whole ladder costs ~5ms instead of the ~500ms of
-   * batching it replaces.
+   * Why the budget survives what the ratio could not: CONSECUTIVE READINGS, not
+   * headroom. The old ratio put a healthy reading at ~4 against a bound of 8,
+   * so one 2x hiccup was a failure. The largest rung here decides 640k
+   * characters in ~1.2ms against a 500ms budget, but that ~400x is NOT what
+   * protects the test, and saying so would be false under the very load this
+   * docblock invokes: measured worst-rung readings reached 117ms at 160 busy
+   * processes and 303.9ms at 480 -- a ~1.6x margin at the extreme tail. What
+   * protects it is ATTEMPTS: a rung is blown only after 3 CONSECUTIVE
+   * over-budget readings. Contention arrives in bursts, which is what defeated
+   * the ratio, and is what three consecutive readings are chosen to survive: a
+   * burst has to cover all three. Under the same 160-process load that broke
+   * the ratio 12 times in 20, this is green 20 times in 20.
+   *
+   * The price is real and it is not a saving. Each negative control climbs to
+   * the rung it blows and then spends ATTEMPTS readings there, so the controls
+   * are the whole cost: 5334ms, 3999ms and 2068ms in one verbose run of the ids
+   * copy, against 8ms for the healthy ladder sitting next to them. Measured on
+   * one machine the file costs 8.7-12.9s in @ifc-lite/encoding and 8.1-12.1s
+   * in @ifc-lite/ids, against the ~500ms per assertion of the batching
+   * it replaces. Net CI cost went UP an order of magnitude. That is the price
+   * of a timing assertion that holds; the cheaper one reddened three unrelated
+   * PRs.
    *
    * The bound the old test used is not carried over and not raised; the
    * quantity it bounded is simply not measured any more.
    *
-   * What this gives up, stated plainly: an implementation that is linear but
-   * several times slower passes. That is the right trade. The regression this
-   * exists to catch is catastrophic backtracking, which is orders of magnitude,
-   * not factors -- and the negative controls below pin exactly that.
+   * Nothing is given up against the ratio on the axis that was thought to cost
+   * it. A linear-but-slower implementation passed the OLD test too: a ratio of
+   * two timings cancels constant factors by construction, so it never bounded
+   * absolute speed at all. The absolute budget does bound it, if loosely --
+   * anything ~135x slower than the current scan at 2.56M now reds, where the
+   * ratio would not have noticed. What both forms exist to catch first is
+   * catastrophic backtracking, which is orders of magnitude rather than
+   * factors, and the negative controls below pin exactly that.
    *
    * The shape that a ratio catches and an absolute bound does not is a
    * SUPERLINEAR regression with a small enough constant to stay under the
@@ -174,65 +265,6 @@ describe('deciding it is linear, not backtracking (#3113)', () => {
    * it, so the shape requires someone adding a nested loop, which is visible in
    * review. #3113 was dangerous precisely because a regex LOOKED linear.
    */
-
-  /** Per-decision budget. Every size below must be decided inside it. */
-  const BUDGET_MS = 500;
-
-  /**
-   * Ascending, doubling. Ascending is what makes a quadratic implementation
-   * REPORT instead of HANG: cost rises 4x per rung, so the first rung it blows
-   * costs at most ~4x the budget, and the ladder stops there rather than
-   * carrying on to 640k where the same implementation would grind for minutes.
-   *
-   * It self-adapts to the runner in both directions. A slower machine blows a
-   * quadratic implementation at a lower rung; a faster one at a higher rung.
-   * Either way some rung fails, so the controls below need no hardware-tuned
-   * number -- the failure that the old `regexMs > 50` floor could not survive.
-   */
-  const SIZES = [
-    20_000, 40_000, 80_000, 160_000, 320_000, 640_000, 1_280_000, 2_560_000,
-  ] as const;
-
-  /**
-   * Retries only ever taken on the way to FAILING. `Math.min` can only fall, so
-   * a reading already inside the budget is final and no repeat is made -- the
-   * healthy path is one call per rung. A rung is only declared blown after
-   * ATTEMPTS consecutive readings over the budget, which a single descheduling
-   * cannot fake. This does not soften detection: the minimum of several
-   * quadratic timings is still quadratic.
-   */
-  const ATTEMPTS = 3;
-
-  /** A long digit run plus one character that cannot be part of a number.
-   *  The trailing non-digit is the whole point: an all-digit string of any
-   *  length matches immediately, which is why plausible fixtures miss this. */
-  const hostile = (n: number): string => `-${'9'.repeat(n)}X`;
-
-  type Decide = (v: string) => boolean;
-
-  /** Fastest of up to ATTEMPTS decisions, stopping as soon as one is in budget. */
-  const fastestMs = (decide: Decide, n: number): number => {
-    const v = hostile(n);
-    let best = Infinity;
-    for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
-      const t0 = performance.now();
-      const verdict = decide(v);
-      best = Math.min(best, performance.now() - t0);
-      // A decision that says "number" would mean the timing measured an early
-      // return rather than a full scan, so the reading would prove nothing.
-      expect(verdict).toBe(false);
-      if (best < BUDGET_MS) break;
-    }
-    return best;
-  };
-
-  /** The first size at which `decide` blew the budget, or null if it cleared them all. */
-  const firstBlownRung = (decide: Decide): number | null => {
-    for (const n of SIZES) {
-      if (fastestMs(decide, n) >= BUDGET_MS) return n;
-    }
-    return null;
-  };
 
   it('rejects the hostile input, so the ladder times a real decision', () => {
     expect(isStrictNumericLiteral(hostile(20_000))).toBe(false);
@@ -353,8 +385,6 @@ function isStrictNumericLiteralBacktracking(v: string): boolean {
  * are pinned against the regex each one replaced, generated the same way.
  */
 describe('the same shape elsewhere in @ifc-lite/ids', () => {
-  const hostile = (n: number): string => `-${'9'.repeat(n)}X`;
-
   describe('xs:double strict cast (constraints/xsd-cast.ts)', () => {
     /** The `DOUBLE_RE` that `literalCastsUnder` used to test against. */
     const DOUBLE_RE = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
@@ -374,14 +404,15 @@ describe('the same shape elsewhere in @ifc-lite/ids', () => {
       expect(literalCastsUnder('anything', 'xs:string')).toBe(true);
     });
 
-    it('decides a 20k-character near-number quickly', () => {
-      // ~440ms with DOUBLE_RE at this length, measured before the change.
-      const v = hostile(20_000);
-      const t0 = performance.now();
-      const cast = literalCastsUnder(v, 'xs:double');
-      const elapsed = performance.now() - t0;
-      expect(cast).toBe(false);
-      expect(elapsed).toBeLessThan(100);
+    it('decides every size up to 2.56M characters inside the budget', { timeout: 60_000 }, () => {
+      // ~440ms with DOUBLE_RE at 20k, measured before the change. This used to
+      // be a single 20k reading against a 100ms bound, which is the construct
+      // the ladder above exists to replace: one reading has no retry, so a
+      // single descheduling reds it. Measured under 187-process load, 24 of
+      // 12,000 single 20k readings here exceeded 100ms (max 265ms) against a
+      // median of 0.058ms -- ~0.2% flake per assertion. The ladder needs
+      // ATTEMPTS consecutive over-budget readings instead.
+      expect(firstBlownRung((v) => literalCastsUnder(v, 'xs:double'))).toBeNull();
     });
   });
 
@@ -454,14 +485,14 @@ describe('the same shape elsewhere in @ifc-lite/ids', () => {
       }
     );
 
-    it('audits a 20k-character near-number enumeration quickly', () => {
-      // ~415ms in the regex alone at this length, measured before the change.
-      const doc = docWith([hostile(20_000)], 'xs:double');
-      const t0 = performance.now();
-      const issues = runCoherenceAudit(doc);
-      const elapsed = performance.now() - t0;
-      expect(issues.some((i) => i.code === 'E_RESTRICTION_VALUE_MISMATCH')).toBe(true);
-      expect(elapsed).toBeLessThan(100);
+    it('audits every size up to 2.56M characters inside the budget', { timeout: 60_000 }, () => {
+      // ~415ms in the regex alone at 20k, measured before the change. Same
+      // migration as the cast above, and for the same reason: the lone 20k
+      // reading against a 100ms bound was flaky under load by construction.
+      // `accepts` returning false IS the E_RESTRICTION_VALUE_MISMATCH the old
+      // assertion checked for, so the verdict is still pinned -- `fastestMs`
+      // reds if any rung ever decides the hostile input is a number.
+      expect(firstBlownRung((v) => accepts(v, 'xs:double'))).toBeNull();
     });
   });
 });

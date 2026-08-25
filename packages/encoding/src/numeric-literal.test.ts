@@ -23,7 +23,9 @@ import { isWhollyNumeric } from './numeric-literal.js';
 const SPEC_RE = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/;
 
 /** Every string up to 4 characters over the alphabet the language is built
- *  from, plus the characters most likely to be wrongly accepted. */
+ *  from, plus the characters most likely to be wrongly accepted. That is
+ *  54,241 distinct strings; the count is asserted below rather than trusted
+ *  from this comment. */
 function corpus(): string[] {
   const alpha = ['', '+', '-', '.', '0', '1', '9', 'e', 'E', ',', ' ', '\t', '\n', 'x', '１', '١'];
   const out = new Set<string>();
@@ -38,6 +40,10 @@ describe('isWhollyNumeric accepts exactly the documented language', () => {
 
   it('the corpus is actually populated (an empty sweep proves nothing)', () => {
     expect(all.length).toBeGreaterThan(50_000);
+    // Exact, so the size quoted in the docblock and in any write-up of this
+    // sweep is a recorded figure and not an estimate. Changing the alphabet
+    // is meant to red here, forcing the new count to be re-recorded.
+    expect(all.length).toBe(54_241);
   });
 
   it('agrees with the spec regex on every string in it', () => {
@@ -79,21 +85,40 @@ describe('deciding it is linear, not backtracking', () => {
    * also why minimising over batches (#3159, #3165) narrowed the distribution
    * without fixing it.
    *
-   * Why the budget survives what the ratio could not: MARGIN. The old ratio put
-   * a healthy reading at ~4 against a bound of 8, so a 2x hiccup was a failure.
-   * The largest rung here decides 640k characters in ~1.2ms against a 500ms
-   * budget -- over 400x of headroom, which no scheduler noise reaches. The same
-   * 160-process load that broke the ratio 12 times in 20 leaves this green 20
-   * times in 20, and the whole ladder costs ~5ms instead of the ~500ms of
-   * batching it replaces.
+   * Why the budget survives what the ratio could not: CONSECUTIVE READINGS, not
+   * headroom. The old ratio put a healthy reading at ~4 against a bound of 8,
+   * so one 2x hiccup was a failure. The largest rung here decides 640k
+   * characters in ~1.2ms against a 500ms budget, but that ~400x is NOT what
+   * protects the test, and saying so would be false under the very load this
+   * docblock invokes: measured worst-rung readings reached 117ms at 160 busy
+   * processes and 303.9ms at 480 -- a ~1.6x margin at the extreme tail. What
+   * protects it is ATTEMPTS: a rung is blown only after 3 CONSECUTIVE
+   * over-budget readings. Contention arrives in bursts, which is what defeated
+   * the ratio, and is what three consecutive readings are chosen to survive: a
+   * burst has to cover all three. Under the same 160-process load that broke
+   * the ratio 12 times in 20, this is green 20 times in 20.
+   *
+   * The price is real and it is not a saving. Each negative control climbs to
+   * the rung it blows and then spends ATTEMPTS readings there, so the controls
+   * are the whole cost: 5334ms, 3999ms and 2068ms in one verbose run of the ids
+   * copy, against 8ms for the healthy ladder sitting next to them. Measured on
+   * one machine the file costs 8.7-12.9s in @ifc-lite/encoding and 8.1-12.1s
+   * in @ifc-lite/ids, against the ~500ms per assertion of the batching
+   * it replaces. Net CI cost went UP an order of magnitude. That is the price
+   * of a timing assertion that holds; the cheaper one reddened three unrelated
+   * PRs.
    *
    * The bound the old test used is not carried over and not raised; the
    * quantity it bounded is simply not measured any more.
    *
-   * What this gives up, stated plainly: an implementation that is linear but
-   * several times slower passes. That is the right trade. The regression this
-   * exists to catch is catastrophic backtracking, which is orders of magnitude,
-   * not factors -- and the negative controls below pin exactly that.
+   * Nothing is given up against the ratio on the axis that was thought to cost
+   * it. A linear-but-slower implementation passed the OLD test too: a ratio of
+   * two timings cancels constant factors by construction, so it never bounded
+   * absolute speed at all. The absolute budget does bound it, if loosely --
+   * anything ~135x slower than the current scan at 2.56M now reds, where the
+   * ratio would not have noticed. What both forms exist to catch first is
+   * catastrophic backtracking, which is orders of magnitude rather than
+   * factors, and the negative controls below pin exactly that.
    *
    * The shape that a ratio catches and an absolute bound does not is a
    * SUPERLINEAR regression with a small enough constant to stay under the

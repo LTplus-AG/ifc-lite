@@ -270,12 +270,12 @@
    573 packages/mutations/src/csv-connector.ts
   2121 packages/mutations/src/mutable-property-view.ts
    422 packages/oauth-pkce/src/token-manager.ts
-  1237 packages/parser/src/columnar-parser.ts
+  1211 packages/parser/src/columnar-parser.ts
    480 packages/parser/src/compact-entity-index.ts
    530 packages/parser/src/data-store-transport.ts
-   653 packages/parser/src/georef-extractor.ts
+   564 packages/parser/src/georef-extractor.ts
    827 packages/parser/src/material-resolver.ts
-  1145 packages/parser/src/on-demand-extractors.ts
+  1014 packages/parser/src/on-demand-extractors.ts
    523 packages/parser/src/project-units.ts
    594 packages/parser/src/schedule-extractor.ts
    494 packages/parser/src/source-bytes.ts

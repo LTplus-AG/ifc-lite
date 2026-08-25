@@ -383,6 +383,131 @@ const DEADLINE_FLOOR_MS = 120;
  */
 const MEASURABLE_MS = DEADLINE_FLOOR_MS * 4;
 
+/**
+ * The cancelled run must settle inside this fraction of the natural cost. It is
+ * the whole assertion, so it is named once and shared with the sampling tests
+ * below rather than restated as a literal in each.
+ */
+const CANCELLED_FRACTION = 0.75;
+
+/**
+ * #3225 — how many times the natural cost is measured before it is believed.
+ *
+ * A single reading is not a cost, it is a cost plus whatever else the machine
+ * was doing. Contention can only ever INFLATE it, and `naturalMs` sits on the
+ * loosening side of `< CANCELLED_FRACTION * naturalMs`: an inflated reading
+ * widens the bound and lets a run that was never cancelled slip under it. That
+ * is a false pass, which is invisible, and it needs only
+ * `inflation > 1 / CANCELLED_FRACTION` — about 1.34x.
+ *
+ * Measured on a 12-core host, twelve consecutive readings of this exact
+ * workload: 1076..1366ms idle (1.27x, just short of the threshold) and
+ * 1354..4237ms under a full-core load (3.13x, far past it). So the false pass
+ * is reachable in practice on a machine running other work, which is the
+ * machine this suite actually runs on.
+ *
+ * Taking the minimum of several readings is what the numeric-literal harness in
+ * `@ifc-lite/encoding` already does (`ATTEMPTS = 3` there) and for the same
+ * reason. The minimum can only fall towards the uncontended cost, so it
+ * TIGHTENS the bound — the safe direction. Against the readings above it turns
+ * 3.13x into 1.35x.
+ */
+const NATURAL_ATTEMPTS = 3;
+
+/**
+ * The uncontended cost of `runOnce`, as the least of `attempts` readings.
+ *
+ * `runOnce` is injected so the policy can be exercised against recorded
+ * readings, deterministically, without running the workload at all.
+ */
+async function uncontendedMs(
+  runOnce: () => Promise<number>,
+  attempts: number,
+): Promise<number> {
+  let best = Infinity;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    best = Math.min(best, await runOnce());
+  }
+  return best;
+}
+
+/**
+ * Readings of the natural workload cost recorded on one host, in order:
+ * `IDLE_READINGS` with the machine quiet, `CONTENDED_READINGS` with all twelve
+ * cores busy. Real data, kept as data so the sampling tests below reason about
+ * the distribution that actually occurs rather than an invented one.
+ */
+const IDLE_READINGS = [1145, 1366, 1103, 1088, 1116, 1090, 1095, 1090, 1108, 1098, 1076, 1082];
+const CONTENDED_READINGS = [4237, 1605, 1471, 2223, 1801, 1536, 1395, 1449, 1557, 1408, 1431, 1354];
+
+/** Feeds recorded readings to `uncontendedMs`, and counts how many it consumed. */
+function replay(readings: readonly number[]): { runOnce: () => Promise<number>; taken: () => number } {
+  let i = 0;
+  return {
+    runOnce: () => {
+      const value = readings[i];
+      if (value === undefined) throw new Error(`replay ran out of readings after ${i}`);
+      i += 1;
+      return Promise.resolve(value);
+    },
+    taken: () => i,
+  };
+}
+
+describe('#3225 — the natural cost is sampled, not guessed from one reading', () => {
+  // Anti-vacuity: the whole argument rests on these two properties of the
+  // recorded data. If a future edit replaces the readings with a flat sequence,
+  // the scenarios below would prove nothing and this fails first, by name.
+  it('the recorded contended readings really do span the false-pass threshold', () => {
+    const spread = Math.max(...CONTENDED_READINGS) / Math.min(...CONTENDED_READINGS);
+    expect(spread).toBeGreaterThan(1 / CANCELLED_FRACTION);
+    // ...and the idle ones do not, so the two sets are genuinely different
+    // conditions rather than two names for the same noise.
+    const idleSpread = Math.max(...IDLE_READINGS) / Math.min(...IDLE_READINGS);
+    expect(idleSpread).toBeLessThan(1 / CANCELLED_FRACTION);
+  });
+
+  it('takes every attempt it is given, and more than one', async () => {
+    expect(NATURAL_ATTEMPTS).toBeGreaterThan(1);
+    const feed = replay(CONTENDED_READINGS);
+    await uncontendedMs(feed.runOnce, NATURAL_ATTEMPTS);
+    expect(feed.taken()).toBe(NATURAL_ATTEMPTS);
+  });
+
+  it('refuses the false pass a single contended reading would have allowed', async () => {
+    // The first reading is the one the old code kept. A run that was never
+    // cancelled costs about what an uncontended run costs, so this is the cost
+    // of the defect this suite exists to catch, still present.
+    const singleReading = CONTENDED_READINGS[0]!;
+    const uncancelledRunMs = Math.min(...CONTENDED_READINGS);
+
+    // The defect, stated as arithmetic: under the old one-reading policy a run
+    // that finished the workload in full passed the cancellation assertion.
+    expect(uncancelledRunMs).toBeLessThan(singleReading * CANCELLED_FRACTION);
+
+    // Under the sampled policy it does not.
+    const sampled = await uncontendedMs(replay(CONTENDED_READINGS).runOnce, NATURAL_ATTEMPTS);
+    expect(uncancelledRunMs).toBeGreaterThanOrEqual(sampled * CANCELLED_FRACTION);
+  });
+
+  it('still passes a genuinely cancelled run, so the tightening costs no true positive', async () => {
+    // A working cancellation settles at about the deadline, a quarter of the
+    // run. Both directions of the rule, not just the one the fix tightened.
+    const sampled = await uncontendedMs(replay(CONTENDED_READINGS).runOnce, NATURAL_ATTEMPTS);
+    const cancelledRunMs = Math.round(sampled / 4);
+    expect(cancelledRunMs).toBeLessThan(sampled * CANCELLED_FRACTION);
+  });
+
+  it('leaves the quiet host alone: sampling barely moves an uncontended reading', async () => {
+    // Negative control. With no contention there is nothing to correct, so the
+    // policy must not be quietly changing the bound on a healthy machine.
+    const feed = replay(IDLE_READINGS);
+    const sampled = await uncontendedMs(feed.runOnce, NATURAL_ATTEMPTS);
+    expect(sampled).toBeLessThanOrEqual(IDLE_READINGS[0]!);
+    expect(sampled).toBeGreaterThan(IDLE_READINGS[0]! * CANCELLED_FRACTION);
+  });
+});
+
 describe('#2419 — the real clash engine stops when the run does', () => {
   it('leaves a run that completes normally untouched', async () => {
     const probe = timedClashSdk();
@@ -415,18 +540,23 @@ describe('#2419 — the real clash engine stops when the run does', () => {
   it('stops the engine mid-run rather than letting it finish unobserved', async (ctx) => {
     // The whole point of the issue: on timeout the engine used to keep
     // intersecting triangles to completion for a result nobody would read.
-    const complete = timedClashSdk();
-    let naturalMs: number;
-    const generous = await createSandbox(complete.sdk, { limits: { timeoutMs: 60_000 } });
-    try {
-      await generous.eval(WORKLOAD_SCRIPT);
-      const run = await complete.settled(60_000);
-      expect(run.outcome).toBe('completed');
-      expect(run.total).toBeGreaterThan(0);
-      naturalMs = run.ms;
-    } finally {
-      generous.dispose();
-    }
+    // One full, uninterrupted run of the workload, timed. Repeated below: a
+    // single reading is a cost plus contention, and contention only inflates
+    // it — see `NATURAL_ATTEMPTS`.
+    const naturalRunOnce = async (): Promise<number> => {
+      const complete = timedClashSdk();
+      const generous = await createSandbox(complete.sdk, { limits: { timeoutMs: 60_000 } });
+      try {
+        await generous.eval(WORKLOAD_SCRIPT);
+        const run = await complete.settled(60_000);
+        expect(run.outcome).toBe('completed');
+        expect(run.total).toBeGreaterThan(0);
+        return run.ms;
+      } finally {
+        generous.dispose();
+      }
+    };
+    const naturalMs = await uncontendedMs(naturalRunOnce, NATURAL_ATTEMPTS);
     if (naturalMs <= MEASURABLE_MS) {
       ctx.skip(`workload ran in ${naturalMs}ms on this host — too fast to place a deadline inside it`);
       return;
@@ -445,7 +575,7 @@ describe('#2419 — the real clash engine stops when the run does', () => {
       // `AbortError`, and it did so well before it would have finished.
       expect(run.name).toBe('AbortError');
       expect(run.outcome).toContain('aborted');
-      expect(run.ms).toBeLessThan(naturalMs * 0.75);
+      expect(run.ms).toBeLessThan(naturalMs * CANCELLED_FRACTION);
     } finally {
       isolated.dispose();
     }

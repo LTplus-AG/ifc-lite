@@ -440,153 +440,20 @@ const TYPE_STRING_TO_ENUM = new Map<string, IfcTypeEnum>([
   ['IFCBUILDINGELEMENTPROXYTYPE', IfcTypeEnum.IfcBuildingElementProxyType],
 ]);
 
-const TYPE_ENUM_TO_STRING = new Map<IfcTypeEnum, string>([
-  // Spatial
-  [IfcTypeEnum.IfcProject, 'IfcProject'],
-  [IfcTypeEnum.IfcSite, 'IfcSite'],
-  [IfcTypeEnum.IfcBuilding, 'IfcBuilding'],
-  [IfcTypeEnum.IfcBuildingStorey, 'IfcBuildingStorey'],
-  [IfcTypeEnum.IfcSpace, 'IfcSpace'],
-  [IfcTypeEnum.IfcSpatialZone, 'IfcSpatialZone'],
-  [IfcTypeEnum.IfcZone, 'IfcZone'],
-  [IfcTypeEnum.IfcSystem, 'IfcSystem'],
-  [IfcTypeEnum.IfcDistributionSystem, 'IfcDistributionSystem'],
-  [IfcTypeEnum.IfcFacility, 'IfcFacility'],
-  [IfcTypeEnum.IfcFacilityPart, 'IfcFacilityPart'],
-  [IfcTypeEnum.IfcBridge, 'IfcBridge'],
-  [IfcTypeEnum.IfcBridgePart, 'IfcBridgePart'],
-  [IfcTypeEnum.IfcRoad, 'IfcRoad'],
-  [IfcTypeEnum.IfcRoadPart, 'IfcRoadPart'],
-  [IfcTypeEnum.IfcRailway, 'IfcRailway'],
-  [IfcTypeEnum.IfcRailwayPart, 'IfcRailwayPart'],
-  [IfcTypeEnum.IfcMarineFacility, 'IfcMarineFacility'],
-  [IfcTypeEnum.IfcMarinePart, 'IfcMarinePart'],
-  [IfcTypeEnum.IfcFacilityPartCommon, 'IfcFacilityPartCommon'],
-  // Building elements
-  [IfcTypeEnum.IfcWall, 'IfcWall'],
-  [IfcTypeEnum.IfcWallStandardCase, 'IfcWallStandardCase'],
-  [IfcTypeEnum.IfcDoor, 'IfcDoor'],
-  [IfcTypeEnum.IfcWindow, 'IfcWindow'],
-  [IfcTypeEnum.IfcSlab, 'IfcSlab'],
-  [IfcTypeEnum.IfcColumn, 'IfcColumn'],
-  [IfcTypeEnum.IfcBeam, 'IfcBeam'],
-  [IfcTypeEnum.IfcStair, 'IfcStair'],
-  [IfcTypeEnum.IfcStairFlight, 'IfcStairFlight'],
-  [IfcTypeEnum.IfcRamp, 'IfcRamp'],
-  [IfcTypeEnum.IfcRampFlight, 'IfcRampFlight'],
-  [IfcTypeEnum.IfcRoof, 'IfcRoof'],
-  [IfcTypeEnum.IfcCovering, 'IfcCovering'],
-  [IfcTypeEnum.IfcCurtainWall, 'IfcCurtainWall'],
-  [IfcTypeEnum.IfcRailing, 'IfcRailing'],
-  [IfcTypeEnum.IfcPile, 'IfcPile'],
-  [IfcTypeEnum.IfcMember, 'IfcMember'],
-  [IfcTypeEnum.IfcPlate, 'IfcPlate'],
-  [IfcTypeEnum.IfcFooting, 'IfcFooting'],
-  [IfcTypeEnum.IfcBuildingElementProxy, 'IfcBuildingElementProxy'],
-  [IfcTypeEnum.IfcChimney, 'IfcChimney'],
-  [IfcTypeEnum.IfcShadingDevice, 'IfcShadingDevice'],
-  [IfcTypeEnum.IfcBuildingElementPart, 'IfcBuildingElementPart'],
-  // Openings
-  [IfcTypeEnum.IfcOpeningElement, 'IfcOpeningElement'],
-  // Assemblies and structural
-  [IfcTypeEnum.IfcElementAssembly, 'IfcElementAssembly'],
-  [IfcTypeEnum.IfcReinforcingBar, 'IfcReinforcingBar'],
-  [IfcTypeEnum.IfcReinforcingMesh, 'IfcReinforcingMesh'],
-  [IfcTypeEnum.IfcTendon, 'IfcTendon'],
-  [IfcTypeEnum.IfcDiscreteAccessory, 'IfcDiscreteAccessory'],
-  [IfcTypeEnum.IfcMechanicalFastener, 'IfcMechanicalFastener'],
-  // MEP
-  [IfcTypeEnum.IfcDistributionElement, 'IfcDistributionElement'],
-  [IfcTypeEnum.IfcFlowTerminal, 'IfcFlowTerminal'],
-  [IfcTypeEnum.IfcFlowSegment, 'IfcFlowSegment'],
-  [IfcTypeEnum.IfcFlowFitting, 'IfcFlowFitting'],
-  [IfcTypeEnum.IfcFlowController, 'IfcFlowController'],
-  [IfcTypeEnum.IfcFlowMovingDevice, 'IfcFlowMovingDevice'],
-  [IfcTypeEnum.IfcFlowStorageDevice, 'IfcFlowStorageDevice'],
-  [IfcTypeEnum.IfcFlowTreatmentDevice, 'IfcFlowTreatmentDevice'],
-  [IfcTypeEnum.IfcEnergyConversionDevice, 'IfcEnergyConversionDevice'],
-  [IfcTypeEnum.IfcDuctSegment, 'IfcDuctSegment'],
-  [IfcTypeEnum.IfcPipeSegment, 'IfcPipeSegment'],
-  [IfcTypeEnum.IfcCableSegment, 'IfcCableSegment'],
-  // Furnishing
-  [IfcTypeEnum.IfcFurnishingElement, 'IfcFurnishingElement'],
-  [IfcTypeEnum.IfcFurniture, 'IfcFurniture'],
-  // Other products
-  [IfcTypeEnum.IfcProxy, 'IfcProxy'],
-  [IfcTypeEnum.IfcAnnotation, 'IfcAnnotation'],
-  [IfcTypeEnum.IfcTransportElement, 'IfcTransportElement'],
-  [IfcTypeEnum.IfcCivilElement, 'IfcCivilElement'],
-  [IfcTypeEnum.IfcGeographicElement, 'IfcGeographicElement'],
-  // IFC4x3 infrastructure leaves
-  [IfcTypeEnum.IfcCourse, 'IfcCourse'],
-  [IfcTypeEnum.IfcPavement, 'IfcPavement'],
-  [IfcTypeEnum.IfcKerb, 'IfcKerb'],
-  [IfcTypeEnum.IfcMooringDevice, 'IfcMooringDevice'],
-  [IfcTypeEnum.IfcNavigationElement, 'IfcNavigationElement'],
-  [IfcTypeEnum.IfcTrackElement, 'IfcTrackElement'],
-  [IfcTypeEnum.IfcVehicle, 'IfcVehicle'],
-  [IfcTypeEnum.IfcEarthworksElement, 'IfcEarthworksElement'],
-  [IfcTypeEnum.IfcEarthworksFill, 'IfcEarthworksFill'],
-  [IfcTypeEnum.IfcEarthworksCut, 'IfcEarthworksCut'],
-  [IfcTypeEnum.IfcReferent, 'IfcReferent'],
-  [IfcTypeEnum.IfcSign, 'IfcSign'],
-  [IfcTypeEnum.IfcSignal, 'IfcSignal'],
-  [IfcTypeEnum.IfcGeotechnicalStratum, 'IfcGeotechnicalStratum'],
-  [IfcTypeEnum.IfcGeotechnicalAssembly, 'IfcGeotechnicalAssembly'],
-  [IfcTypeEnum.IfcSolidStratum, 'IfcSolidStratum'],
-  [IfcTypeEnum.IfcVoidStratum, 'IfcVoidStratum'],
-  [IfcTypeEnum.IfcWaterStratum, 'IfcWaterStratum'],
-  [IfcTypeEnum.IfcPositioningElement, 'IfcPositioningElement'],
-  [IfcTypeEnum.IfcAlignment, 'IfcAlignment'],
-  // Relationships
-  [IfcTypeEnum.IfcRelContainedInSpatialStructure, 'IfcRelContainedInSpatialStructure'],
-  [IfcTypeEnum.IfcRelAggregates, 'IfcRelAggregates'],
-  [IfcTypeEnum.IfcRelDefinesByProperties, 'IfcRelDefinesByProperties'],
-  [IfcTypeEnum.IfcRelDefinesByType, 'IfcRelDefinesByType'],
-  [IfcTypeEnum.IfcRelAssociatesMaterial, 'IfcRelAssociatesMaterial'],
-  [IfcTypeEnum.IfcRelAssociatesClassification, 'IfcRelAssociatesClassification'],
-  [IfcTypeEnum.IfcRelVoidsElement, 'IfcRelVoidsElement'],
-  [IfcTypeEnum.IfcRelFillsElement, 'IfcRelFillsElement'],
-  [IfcTypeEnum.IfcRelConnectsPathElements, 'IfcRelConnectsPathElements'],
-  [IfcTypeEnum.IfcRelSpaceBoundary, 'IfcRelSpaceBoundary'],
-  // Properties
-  [IfcTypeEnum.IfcPropertySet, 'IfcPropertySet'],
-  [IfcTypeEnum.IfcPropertySingleValue, 'IfcPropertySingleValue'],
-  [IfcTypeEnum.IfcPropertyEnumeratedValue, 'IfcPropertyEnumeratedValue'],
-  [IfcTypeEnum.IfcPropertyBoundedValue, 'IfcPropertyBoundedValue'],
-  [IfcTypeEnum.IfcPropertyListValue, 'IfcPropertyListValue'],
-  [IfcTypeEnum.IfcElementQuantity, 'IfcElementQuantity'],
-  [IfcTypeEnum.IfcQuantityLength, 'IfcQuantityLength'],
-  [IfcTypeEnum.IfcQuantityArea, 'IfcQuantityArea'],
-  [IfcTypeEnum.IfcQuantityVolume, 'IfcQuantityVolume'],
-  [IfcTypeEnum.IfcQuantityCount, 'IfcQuantityCount'],
-  [IfcTypeEnum.IfcQuantityWeight, 'IfcQuantityWeight'],
-  // Type definitions
-  [IfcTypeEnum.IfcWallType, 'IfcWallType'],
-  [IfcTypeEnum.IfcDoorType, 'IfcDoorType'],
-  [IfcTypeEnum.IfcWindowType, 'IfcWindowType'],
-  [IfcTypeEnum.IfcSlabType, 'IfcSlabType'],
-  [IfcTypeEnum.IfcColumnType, 'IfcColumnType'],
-  [IfcTypeEnum.IfcBeamType, 'IfcBeamType'],
-  [IfcTypeEnum.IfcPileType, 'IfcPileType'],
-  [IfcTypeEnum.IfcMemberType, 'IfcMemberType'],
-  [IfcTypeEnum.IfcPlateType, 'IfcPlateType'],
-  [IfcTypeEnum.IfcFootingType, 'IfcFootingType'],
-  [IfcTypeEnum.IfcCoveringType, 'IfcCoveringType'],
-  [IfcTypeEnum.IfcRailingType, 'IfcRailingType'],
-  [IfcTypeEnum.IfcStairType, 'IfcStairType'],
-  [IfcTypeEnum.IfcRampType, 'IfcRampType'],
-  [IfcTypeEnum.IfcRoofType, 'IfcRoofType'],
-  [IfcTypeEnum.IfcCurtainWallType, 'IfcCurtainWallType'],
-  [IfcTypeEnum.IfcBuildingElementProxyType, 'IfcBuildingElementProxyType'],
-]);
 
 export function IfcTypeEnumFromString(str: string): IfcTypeEnum {
   return TYPE_STRING_TO_ENUM.get(str.toUpperCase()) ?? IfcTypeEnum.Unknown;
 }
 
 export function IfcTypeEnumToString(type: IfcTypeEnum): string {
-  return TYPE_ENUM_TO_STRING.get(type) ?? 'Unknown';
+  // TypeScript's reverse mapping on a numeric enum: `IfcTypeEnum[67]` is the
+  // MEMBER NAME, 'IfcMarineFacility'. Every member name in this enum already
+  // spells the IFC class exactly, so a hand-written enum->string table would
+  // be a second copy of the member list with nothing keeping the two in step
+  // — the drift that puts a class in one direction and not the other. An id
+  // no member holds reverse-maps to undefined, which is the same 'Unknown'
+  // the table's `.get()` miss produced.
+  return IfcTypeEnum[type] ?? 'Unknown';
 }
 
 /**

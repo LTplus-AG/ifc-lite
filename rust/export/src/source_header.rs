@@ -137,29 +137,49 @@ fn decode_string_list(arg: &str) -> Vec<String> {
 }
 
 /// Find `needle` (ASCII) in `haystack`, ignoring ASCII case, returning a byte
-/// offset into `haystack` itself.
+/// offset into `haystack` itself, optionally skipping matches inside a
+/// single-quoted STEP string literal.
 ///
 /// Not `to_uppercase().find(..)`: that builds a copy whose byte offsets can
 /// drift from the original (`'ß'` uppercases to two bytes), and slicing the
 /// original with an offset taken from the copy is how a header value comes back
 /// mangled. Case-folding ASCII in place keeps every offset the caller's.
-fn find_ascii_ci(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+///
+/// Quote state toggles on every `'`; a literal apostrophe is written doubled
+/// (ISO 10303-21 6.3.2.4), so a doubled pair toggles twice and nets to a no-op
+/// — the same technique `step_text::find_unquoted` and `refs_in_line` use.
+fn find_ascii_ci_from(haystack: &[u8], needle: &[u8], skip_quoted: bool) -> Option<usize> {
     if needle.is_empty() || needle.len() > haystack.len() {
         return None;
     }
-    (0..=haystack.len() - needle.len()).find(|&i| {
-        haystack[i..i + needle.len()]
-            .iter()
-            .zip(needle)
-            .all(|(a, b)| a.eq_ignore_ascii_case(b))
-    })
+    let mut in_quote = false;
+    for i in 0..=haystack.len() - needle.len() {
+        if skip_quoted {
+            if haystack[i] == b'\'' {
+                in_quote = !in_quote;
+                continue;
+            }
+            if in_quote {
+                continue;
+            }
+        }
+        if haystack[i..i + needle.len()].iter().zip(needle).all(|(a, b)| a.eq_ignore_ascii_case(b))
+        {
+            return Some(i);
+        }
+    }
+    None
 }
 
 /// Extract the argument substring inside the parentheses of `KEYWORD( ... )`.
 /// Quote- and nesting-aware, so a quoted `)` never closes the record early.
+///
+/// The keyword search itself skips quoted text: a `FILE_DESCRIPTION` item that
+/// mentions `FILE_NAME` in prose is not the `FILE_NAME` record, and matching it
+/// drops the real one (the character after it is not `(`).
 fn extract_record_args(text: &str, keyword: &str) -> Option<String> {
     let bytes = text.as_bytes();
-    let at = find_ascii_ci(bytes, keyword.as_bytes())?;
+    let at = find_ascii_ci_from(bytes, keyword.as_bytes(), true)?;
     let mut i = at + keyword.len();
     while i < bytes.len() && (bytes[i] as char).is_whitespace() {
         i += 1;
@@ -208,9 +228,14 @@ fn extract_record_args(text: &str, keyword: &str) -> Option<String> {
 pub fn parse_source_header(content: &[u8]) -> Option<SourceHeader> {
     let cap = content.len().min(MAX_HEADER_BYTES);
     let raw = String::from_utf8_lossy(&content[..cap]);
-    // Truncate at the first `ENDSEC` so the DATA section is never scanned; the
-    // offset comes from the string itself, so it is already a char boundary.
-    let text = match find_ascii_ci(raw.as_bytes(), b"ENDSEC") {
+    // Truncate at the section terminator so the DATA section is never scanned.
+    // The search skips quoted text, for the reason `step_text::detect_schema`
+    // gives at its own `ENDSEC;` search: a header field's plain-text VALUE can
+    // carry the literal `ENDSEC`, and a raw byte search cannot tell that from
+    // the terminator — it would cut the header short and drop every record
+    // after it. The offset comes from the string itself, so it is already a
+    // char boundary.
+    let text = match find_ascii_ci_from(raw.as_bytes(), b"ENDSEC", true) {
         Some(end) => raw[..end].to_string(),
         None => raw.to_string(),
     };

@@ -287,3 +287,52 @@ test('a comment ending in a backslash cannot smuggle a push into command positio
   assert.equal(hits.length, 0, 'a commented-out push must not be reported');
   assert.equal(marked.length, 0, 'nor silently counted as an exemption');
 });
+
+// ---------------------------------------------------------------------------
+// Command position, both directions. Review found the first version of the
+// anchor MISSED four genuine shapes — and for a release-safety gate a miss is
+// far worse than a false positive: it defeats the gate silently, while a false
+// positive is visible and has the marker as an escape hatch.
+
+const PUSH = 'git' + ' push';
+
+test('a swallowed push is caught in every genuine command position', () => {
+  const cases = [
+    [`          ${PUSH} origin "$T" || true`, 'plain'],
+    [`          { ${PUSH} origin "$T" || true; }`, 'brace group'],
+    [`          if ${PUSH} origin "$T" || true; then echo x; fi`, 'if condition'],
+    [`          ! ${PUSH} origin "$T" || true`, 'negation'],
+    [`          FOO=1 ${PUSH} origin "$T" || true`, 'env assignment'],
+    [`          cmd; ${PUSH} origin "$T" || true`, 'after a separator'],
+    [`      - run: ${PUSH} origin "$T" || true`, 'inline run:'],
+  ];
+  for (const [line, what] of cases) {
+    const { hits } = findSwallowedPushes(line);
+    assert.equal(hits.length, 1, `missed a swallowed push in ${what}: ${line}`);
+  }
+});
+
+test('a push that fails LOUDLY is not flagged, whatever follows it', () => {
+  // `|| exit 1` is the idiom this gate's own message tells you to switch to.
+  // Flagging it makes the gate contradict its remedy.
+  const cases = [
+    `          ${PUSH} origin "$T" || exit 1`,
+    `          ${PUSH} origin "$T" || { echo a; exit 1; }`,
+    `          ${PUSH} origin "$T" || return 1`,
+    `          ${PUSH} origin "$T" || false`,
+    // The handler must be THIS push's: an unscoped match ran past `exit 1` and
+    // adopted the independent `cleanup` command's `echo`.
+    `          ${PUSH} origin "$T" || exit 1; cleanup || echo cleanup-failed`,
+  ];
+  for (const line of cases) {
+    const { hits } = findSwallowedPushes(line);
+    assert.equal(hits.length, 0, `flagged a correctly-handled push: ${line}`);
+  }
+});
+
+test('a push in ARGUMENT position is not a command and is not flagged', () => {
+  // The false positive the command-position anchor exists for: after folding,
+  // `echo` consumes the rest and nothing is pushed.
+  const { hits } = findSwallowedPushes(`          echo "hello" ${PUSH} origin v2 || true`);
+  assert.equal(hits.length, 0, 'flagged a push that is an argument to echo');
+});

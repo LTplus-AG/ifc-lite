@@ -51,6 +51,47 @@ const WORKFLOW_DIR = '.github/workflows';
 export const MARKER = 'allow-swallowed-push';
 
 /**
+ * What may precede a `git push` for it to be a COMMAND rather than an ARGUMENT.
+ *
+ * Without this, folding a continuation makes
+ *
+ * ```sh
+ * echo "hello" \
+ * git push origin "v2" || true
+ * ```
+ *
+ * look like a swallowed push, when the shell sees `echo` consuming the rest and
+ * pushes nothing.
+ *
+ * PERMISSIVE ON PURPOSE. A first version accepted only start-of-line, a few
+ * separators and `run:`, and review found it missed `{ git push … || true; }`,
+ * `if git push … || true; then`, `! git push …` and `FOO=1 git push …` — all
+ * genuine command position. For a release-safety gate a MISS is far worse than
+ * a false positive: a miss defeats the gate's whole purpose silently, while a
+ * false positive is visible and has the `allow-swallowed-push` marker as its
+ * escape hatch. So this errs toward matching, and only rejects a push sitting
+ * after a plain word or quote, which is the one shape that provably is not a
+ * command.
+ */
+const COMMAND_POSITION =
+  '(?:^|[;&|(){}!]|\\brun:|\\b(?:if|then|else|elif|do|while|until)\\b|\\b[A-Za-z_][A-Za-z0-9_]*=\\S*)\\s*';
+
+/**
+ * The push's OWN arguments — no command separator may be crossed.
+ *
+ * With `[^\n]*?` the match could run past this push's handler and adopt a LATER
+ * command's one, so
+ *
+ * ```sh
+ * git push origin "$TAG" || exit 1; cleanup || echo cleanup-failed
+ * ```
+ *
+ * was reported even though the push exits loudly and only the independent
+ * `cleanup` is swallowed — the gate rejecting a correct workflow.
+ */
+const OWN_ARGS = '[^\\n;&|]*?';
+
+/**
  * A `git push` whose failure is discarded.
  *
  * `|| true` and `|| :` are the two spellings that mean "ignore this"; `:` is a
@@ -63,7 +104,7 @@ export const MARKER = 'allow-swallowed-push';
  * Reported by CodeRabbit on #3208.
  */
 export const SWALLOWED_PUSH =
-  /(?:^|[;&|(]|\brun:)\s*git\s+push\b[^\n]*?\|\|\s*(?:true|:)\s*(?:$|[#;&|)])/;
+  new RegExp(`${COMMAND_POSITION}git\\s+push\\b${OWN_ARGS}\\|\\|\\s*(?:true|:)\\s*(?:$|[#;&|)])`);
 
 /**
  * A `git push` whose failure is handled by a command that CANNOT fail the step.
@@ -97,7 +138,7 @@ export const SWALLOWED_PUSH =
  * flag a correct one.
  */
 export const HANDLED_PUSH =
-  /(?:^|[;&|(]|\brun:)\s*git\s+push\b[^\n]*?\|\|\s*(?:true\b|:|echo\b|printf\b)/;
+  new RegExp(`${COMMAND_POSITION}git\\s+push\\b${OWN_ARGS}\\|\\|\\s*(?:true\\b|:|echo\\b|printf\\b)`);
 
 /** Every `.yml`/`.yaml` under the workflow directory. */
 export function workflowFiles(root) {

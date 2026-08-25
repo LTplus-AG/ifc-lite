@@ -37,7 +37,7 @@ import { describe, expect, it } from 'vitest';
 import { PropertyValueType } from '@ifc-lite/data';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { serializePropertyValue } from './step-serialization.js';
+import { serializePropertyValue } from './property-value-serialization.js';
 import { StepExporter } from './step-exporter.js';
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {

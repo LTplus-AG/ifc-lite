@@ -923,8 +923,10 @@ jobs:
       # per-gate attribution; re-running them here costs a few seconds.
       # scripts/fixtures/ is in the glob because it was NOT: the first test file
       # under it would have been added, run locally, and then never run again.
+      # scripts/docs/ joined it for the same reason in #3200 - the catch-all is
+      # per-DIRECTORY, so it goes blind on the next subdirectory anyone adds.
       - name: Run every scripts/ test file (glob catch-all)
-        run: node --test scripts/*.test.mjs scripts/lib/*.test.mjs scripts/fixtures/*.test.mjs
+        run: node --test scripts/*.test.mjs scripts/lib/*.test.mjs scripts/fixtures/*.test.mjs scripts/docs/*.test.mjs
       # The server-parse root-attribute table (attr_indices.rs) is generated
       # from @ifc-lite/parser's SCHEMA_REGISTRY — the SAME table the in-browser
       # parse resolves names against. Guard that the committed file is in sync

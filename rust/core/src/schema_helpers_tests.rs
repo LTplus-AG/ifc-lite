@@ -115,7 +115,16 @@ fn building_bears_geometry() {
 fn legacy_ifc2x3_distribution_names_have_geometry() {
     // Routed through legacy_entities now (was an inline match arm).
     assert!(has_geometry_by_name("IFCEQUIPMENTELEMENT"));
-    assert!(has_geometry_by_name("IFCELECTRICALDISTRIBUTIONPOINT"));
+    // IFCELECTRIC-, not IFCELECTRICAL-. This assertion previously named the
+    // latter, which is not an entity in any IFC schema — so it passed against a
+    // table key that was misspelled the same way, and proved nothing about the
+    // real `IfcElectricDistributionPoint`, which was meanwhile getting no
+    // geometry at all. A test and a table agreeing on a typo is not coverage.
+    assert!(has_geometry_by_name("IFCELECTRICDISTRIBUTIONPOINT"));
+    assert!(
+        !has_geometry_by_name("IFCELECTRICALDISTRIBUTIONPOINT"),
+        "no IFC schema defines this name; recognising it would mean the typo came back",
+    );
 }
 
 #[test]

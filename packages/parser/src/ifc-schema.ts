@@ -42,11 +42,20 @@ const ENTITY_NAME_ALIASES: Record<string, string> = {
     IFCSOLIDSTRATUM: 'IfcGeotechnicalStratum',
     IFCVOIDSTRATUM: 'IfcGeotechnicalStratum',
     IFCWATERSTRATUM: 'IfcGeotechnicalStratum',
-    // IFC2x3 names with no IFC4x3 enum variant in any bundled schema table
-    // (ENTITIES_IFC2X3/IFC4/IFC4X3 all lack them) — mirrors
-    // `rust/core/src/legacy_entities.rs`'s "IFC2x3 names that have no IFC4x3
-    // enum variant" arm, which maps both to `IfcDistributionElement`.
-    IFCELECTRICALDISTRIBUTIONPOINT: 'IfcDistributionElement',
+    // Mirrors `rust/core/src/legacy_entities.rs`'s "IFC2x3 names that have no
+    // IFC4x3 enum variant" arm, which maps this to `IfcDistributionElement`.
+    //
+    // Belt and braces on this side: unlike the Rust core, whose generated enum
+    // is IFC4X3-only, the bundled ENTITIES_IFC2X3 table does carry
+    // `IfcElectricDistributionPoint`, so `getInheritanceChain` reaches
+    // `IfcDistributionElement` through its real parents without this alias.
+    // Kept so the two files stay in lockstep, which is what the Rust side
+    // needs.
+    // IFCELECTRIC-, not IFCELECTRICAL-. This key was spelled with an "AL"
+    // the real IFC2X3 entity does not have, mirroring the same typo in
+    // `legacy_entities.rs` -- so both sides agreed, and both missed
+    // `IfcElectricDistributionPoint` entirely.
+    IFCELECTRICDISTRIBUTIONPOINT: 'IfcDistributionElement',
 };
 
 /**

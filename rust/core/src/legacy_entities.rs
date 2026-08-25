@@ -105,7 +105,7 @@ pub fn get_legacy_entity_info(entity_name: &str) -> Option<LegacyEntityInfo> {
             base_type: IfcType::IfcDistributionElement,
             has_geometry: true,
         }),
-        "IFCELECTRICALDISTRIBUTIONPOINT" => Some(LegacyEntityInfo {
+        "IFCELECTRICDISTRIBUTIONPOINT" => Some(LegacyEntityInfo {
             base_type: IfcType::IfcDistributionElement,
             has_geometry: true,
         }),
@@ -146,4 +146,52 @@ pub fn is_legacy_entity(entity_name: &str) -> bool {
 /// Get the IFC4x3 base type for a legacy entity, or None if not legacy
 pub fn map_legacy_to_base_type(entity_name: &str) -> Option<IfcType> {
     get_legacy_entity_info(entity_name).map(|info| info.base_type)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A key here is a STEP keyword, and a keyword no file can contain is an
+    /// arm that never runs.
+    ///
+    /// This one was spelled `IFCELECTRICALDISTRIBUTIONPOINT`, with an "AL" the
+    /// real IFC2X3 entity does not have. `IfcElectricDistributionPoint` — an
+    /// `IfcFlowController`, carrying `ObjectPlacement` and `Representation` —
+    /// therefore missed the table, fell through to `IfcType::from_str` →
+    /// `Unknown`, and lost the `has_geometry: true` this arm exists to give it.
+    /// Nothing failed loudly: the entity was classified as not-geometry and
+    /// dropped from the meshing pass.
+    ///
+    /// The misspelling is asserted ABSENT as well as the real name present, so
+    /// re-adding it as an extra arm cannot quietly satisfy this test.
+    #[test]
+    fn electric_distribution_point_is_spelled_as_the_step_keyword() {
+        let info = get_legacy_entity_info("IFCELECTRICDISTRIBUTIONPOINT")
+            .expect("IFCELECTRICDISTRIBUTIONPOINT is a real IFC2X3 keyword and must resolve");
+        assert!(
+            info.has_geometry,
+            "IfcElectricDistributionPoint carries ObjectPlacement and Representation",
+        );
+
+        assert!(
+            get_legacy_entity_info("IFCELECTRICALDISTRIBUTIONPOINT").is_none(),
+            "IFCELECTRICALDISTRIBUTIONPOINT is not an IFC entity in any schema; \
+             an arm under that key can never match a file",
+        );
+    }
+
+    /// This table exists only for names the generated IFC4X3 schema does not
+    /// know. A key `from_str` already resolves would be dead weight at best and
+    /// a silent disagreement at worst, so pin that this one is still absent.
+    #[test]
+    fn the_repaired_key_is_absent_from_the_generated_schema() {
+        assert!(
+            matches!(
+                IfcType::from_str("IFCELECTRICDISTRIBUTIONPOINT"),
+                IfcType::Unknown(_)
+            ),
+            "if IFC4X3 ever gains this type, this arm should be deleted rather than shadow it",
+        );
+    }
 }

@@ -289,14 +289,18 @@ describe('normalizeIfcTypeName across the bundled schema union (#2003)', () => {
   });
 
   it('resolves the IFC2X3 leaves rust/core/src/legacy_entities.rs maps but no bundled TS schema carries', () => {
-    // `IfcElectricalDistributionPoint` is real, deprecated IFC2X3 syntax with
-    // no IFC4x3 equivalent in ENTITIES_IFC2X3/IFC4/IFC4X3. The Rust core's
-    // `legacy_entities.rs` resolves it to `IfcDistributionElement` (comment:
-    // "IFC2x3 names that have no IFC4x3 enum variant"). The TS
-    // `ENTITY_NAME_ALIASES` table in `ifc-schema.ts` claims to mirror that
-    // file "so the two sides stay in lockstep", but only carries the three
-    // IFC4.3 stratum leaves -- this class is silently unknown here while the
-    // Rust parser resolves it with geometry.
-    expect(getInheritanceChain('IfcElectricalDistributionPoint')).toContain('IfcDistributionElement');
+    // `IfcElectricDistributionPoint` — IFCELECTRIC-, not IFCELECTRICAL-.
+    //
+    // This assertion used to name the latter and called it "real, deprecated
+    // IFC2X3 syntax". It is not syntax at all: no IFC schema defines it. It
+    // passed because `ENTITY_NAME_ALIASES` carried the same misspelling, so
+    // the test and the table agreed with each other rather than with IFC.
+    //
+    // The real entity reaches `IfcDistributionElement` through the bundled
+    // IFC2X3 table on its own — `IfcFlowController` ->
+    // `IfcDistributionFlowElement` -> `IfcDistributionElement` — so this holds
+    // via the schema rather than via the alias, which is the stronger place
+    // for it to hold.
+    expect(getInheritanceChain('IfcElectricDistributionPoint')).toContain('IfcDistributionElement');
   });
 });

@@ -97,7 +97,8 @@
          438 rust/geometry/src/kernel/retriangulate_recover.rs
 # new row: adds from_spans (build the index from pre-collected IfcRelAssociatesMaterial spans, no re-walk) + the MaterialLayerFlat wire codec (to_flat/from_flat) + round-trip tests, so the streaming pre-pass ships the index to workers once instead of each worker re-scanning the file (perf/single-scan #563).
      563 rust/geometry/src/material_layer_index.rs
-    1529 rust/geometry/src/mesh.rs
+# +14: SubMeshCollection gains `ids_are_material_layers` + `of_material_layers()` so a material-layer id can never be read as a representation item (#3199).
+    1543 rust/geometry/src/mesh.rs
 # +86: #2866 — Boolean and CSG are mutually recursive over file references
 # (IfcBooleanResult operand -> IfcCsgSolid -> TreeRootExpression -> that same
 # IfcBooleanResult). CsgSolidProcessor built a FRESH BooleanClippingProcessor,
@@ -172,7 +173,8 @@
 # A repeat returns false, which is this function's existing "anything exotic
 # bails safely" contract rather than a new special case. Tests are in a sibling
 # layers_cycle_tests.rs.
-     685 rust/geometry/src/router/layers.rs
+# +1: the layered builder now marks its collection as carrying material ids (#3199).
+     686 rust/geometry/src/router/layers.rs
 # +1: unify body-rep predicate — added is_direct_body_representation + docs; net removes ~60 lines from processing.rs and ~12 from layers.rs (crate trends down).
 # +65: promote the per-router IfcMappedItem source cache to a model-wide SharedMappedItemCache (type alias + field + new_/enable_ setters + unique-count diagnostic), meshing each source once model-wide (#1623).
 # +38: #1623 Phase 2 don't-bake — MappedInstancePlan type alias + output_instancing_plan field + enable_/getter + `mod instancing` decl.
@@ -203,7 +205,8 @@
 # call site with residual composition and cut-effect diagnostics parity.
 # +27: #129 coaxial-union prepass wiring — module decl + feature-gated stats
 # re-export + the pre-batch `coaxial_union_prepass` call and its consumed-skip.
-     2054 rust/geometry/src/router/voids/mod.rs
+# +6: the voided rebuild INHERITS the id discriminator instead of hard-coding rep-item, so a future layered producer cannot be silently relabelled (#3199).
+     2060 rust/geometry/src/router/voids/mod.rs
 # NEW: analytic prism (stepped-extrusion) subtraction on the host mesh — the
 # CSG-heavy-corpus lever (ISSUE_098/129: exact void booleans are ~75-82% of
 # geometry time; rebated masonry openings on brep/clipped hosts had no fast
@@ -295,7 +298,8 @@
 # the DEPTH of each visit: a plain set combined with the cap silently LOSES a
 # colour, because an item first reached near the limit is cut before its
 # subtree is searched yet stays marked, so a later shorter branch is skipped.
-     961 rust/processing/src/element.rs
+# +5: thread the discriminator into build_mesh_data so the source id is routed to whichever of the two disjoint MeshData fields it actually is (#3199).
+     966 rust/processing/src/element.rs
 # +9: #2019 — canonicalise each host's opening order so the world geometry
 # hash stops depending on IFCRELVOIDSELEMENT statement order (sequential void
 # cuts are not associative). Three lines of code plus the why.
@@ -345,7 +349,8 @@
 # +3: #2049 — `set_texture` was the one 8-arg fn in this crate missing the
 # `#[allow(clippy::too_many_arguments)]` its 21 peers carry. The crate's lint
 # has never run in CI (`--exclude ifc-lite-wasm`), which is how it drifted.
-     727 rust/wasm-bindings/src/zero_copy/mesh.rs
+# +37: geometry_item_id/material_layer_id cross the boundary -- 2 fields, 2 getters, a paired setter, and propagation at all THREE MeshDataJs clone sites (defaulting them there would have made the field inert at collection.get(i)) (#3199).
+     764 rust/wasm-bindings/src/zero_copy/mesh.rs
 # symbolic.rs +14 (743 -> 757): carries SymbolicData::truncated across the WASM
 # boundary as `truncatedAt` (#2938). A raise rather than a split because the
 # addition is one field, one assignment in `from_data` and one getter -- the

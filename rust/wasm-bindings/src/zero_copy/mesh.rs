@@ -48,6 +48,10 @@ pub struct MeshDataJs {
     /// via IfcRelDefinesByType — the type-library shape, hidden in Model mode to
     /// avoid double-rendering, shown in Types mode). See #957 follow-up.
     geometry_class: u8,
+    /// Source ids, DISJOINT — never both. See `ifc_lite_processing::MeshData`
+    /// for what each means and when each is absent (#3199).
+    geometry_item_id: Option<u32>,
+    material_layer_id: Option<u32>,
     /// Per-element local-frame origin (f64), in the SAME (WebGL Y-up) frame as
     /// `positions`: world position of vertex i = `origin + positions[3i..]`.
     /// Default `[0,0,0]` means positions are absolute (legacy). Carries the
@@ -185,6 +189,19 @@ impl MeshDataJs {
         self.geometry_class
     }
 
+    /// Source `IfcRepresentationItem`, or `undefined` where identity is merged
+    /// away. Never set alongside `materialLayerId` (#3199).
+    #[wasm_bindgen(getter, js_name = geometryItemId)]
+    pub fn geometry_item_id(&self) -> Option<u32> {
+        self.geometry_item_id
+    }
+
+    /// `IfcMaterial` layer sliced, or `undefined` (#3199).
+    #[wasm_bindgen(getter, js_name = materialLayerId)]
+    pub fn material_layer_id(&self) -> Option<u32> {
+        self.material_layer_id
+    }
+
     /// Per-element local-frame origin (Float64Array[3], WebGL Y-up, metres):
     /// world position of vertex i = `origin + positions[3i..3i+3]`. Returns
     /// [0,0,0] when positions are absolute (legacy / local frame off).
@@ -273,6 +290,8 @@ impl MeshDataJs {
             texture_id: 0,
             texture_url: None,
             geometry_class: 0,
+            geometry_item_id: None,
+            material_layer_id: None,
             origin,
             local_bounds,
             local_to_world,
@@ -283,6 +302,17 @@ impl MeshDataJs {
     /// (0 = occurrence, 1 = orphan type, 2 = instanced type). Call after `new`.
     pub fn set_geometry_class(&mut self, class: u8) {
         self.geometry_class = class;
+    }
+
+    /// Both DISJOINT ids at once, so a caller cannot set one without
+    /// considering the other (#3199).
+    pub fn set_source_ids(&mut self, geometry_item_id: Option<u32>, material_layer_id: Option<u32>) {
+        debug_assert!(
+            geometry_item_id.is_none() || material_layer_id.is_none(),
+            "disjoint; never both"
+        );
+        self.geometry_item_id = geometry_item_id;
+        self.material_layer_id = material_layer_id;
     }
 
     /// Attach an optional SurfaceColour for the GLB exporter's "Shading"
@@ -362,6 +392,7 @@ impl MeshDataJs {
         };
         let mut js = Self::new(m.express_id, m.ifc_type, mesh, m.color);
         js.set_geometry_class(m.geometry_class);
+        js.set_source_ids(m.geometry_item_id, m.material_layer_id);
         if let (Some(uvs), Some(tex)) = (m.uvs, m.texture) {
             if let Some(rgba) = tex.rgba {
                 // Rust-decoded blob/pixel texture (#961): the Arc is shared
@@ -457,6 +488,8 @@ impl MeshCollection {
             texture_id: m.texture_id,
             texture_url: m.texture_url.clone(),
             geometry_class: m.geometry_class,
+            geometry_item_id: m.geometry_item_id,
+            material_layer_id: m.material_layer_id,
             origin: m.origin,
             local_bounds: m.local_bounds,
             local_to_world: m.local_to_world,
@@ -488,6 +521,8 @@ impl MeshCollection {
             texture_id: m.texture_id,
             texture_url: m.texture_url.take(),
             geometry_class: m.geometry_class,
+            geometry_item_id: m.geometry_item_id,
+            material_layer_id: m.material_layer_id,
             origin: m.origin,
             local_bounds: m.local_bounds,
             local_to_world: m.local_to_world,
@@ -691,6 +726,8 @@ impl Clone for MeshCollection {
                     texture_id: m.texture_id,
                     texture_url: m.texture_url.clone(),
                     geometry_class: m.geometry_class,
+                    geometry_item_id: m.geometry_item_id,
+                    material_layer_id: m.material_layer_id,
                     origin: m.origin,
                     local_bounds: m.local_bounds,
                     local_to_world: m.local_to_world,

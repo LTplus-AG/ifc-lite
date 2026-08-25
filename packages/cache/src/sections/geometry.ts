@@ -76,6 +76,17 @@ export function writeMeshRecord(writer: BufferWriter, mesh: MeshData): void {
   // type-library geometry reappears in Model mode and the switch disappears.
   writer.writeUint8(mesh.geometryClass ?? 0);
 
+  // Write the two DISJOINT source ids (v14+, #3199): the representation item
+  // this piece was tessellated from, or the material layer it slices. Written
+  // unconditionally as two u32 so the record stays fixed-shape.
+  //
+  // The absent sentinel is 0xFFFFFFFF, NOT 0. `layers.rs` uses `0` for a layer
+  // with no material — an air gap — so a 0 here is a real value that must round
+  // trip. Treating it as absent is the valid-but-falsy trap, and it would have
+  // silently dropped exactly the layers that are hardest to notice missing.
+  writer.writeUint32(mesh.geometryItemId ?? ABSENT_SOURCE_ID);
+  writer.writeUint32(mesh.materialLayerId ?? ABSENT_SOURCE_ID);
+
   // Write per-element local-frame origin (v6+, 3×f64): world = origin +
   // position. [0,0,0] for absolute meshes. Without it a cache from a
   // local-frame load restores small local positions with no origin → every
@@ -98,6 +109,7 @@ export function meshRecordByteLength(mesh: MeshData): number {
     16 +                   // color f32x4
     4 + ifcTypeBytes +     // ifcType string
     1 +                    // geometryClass
+    8 +                    // geometryItemId + materialLayerId u32x2 (v14+)
     24 +                   // origin f64x3
     mesh.positions.byteLength + mesh.normals.byteLength + mesh.indices.byteLength
   );
@@ -142,6 +154,11 @@ function writeAABB(writer: BufferWriter, aabb: AABB): void {
   writeVec3(writer, aabb.max);
 }
 
+/** Absent marker for the v14 source ids. Not 0 — `layers.rs` uses 0 for a
+ *  material-free layer, so 0 is a real value (#3199). No STEP express id can
+ *  reach 0xFFFFFFFF. */
+const ABSENT_SOURCE_ID = 0xffffffff;
+
 // Maximum reasonable values for sanity checking
 const MAX_VERTEX_COUNT = 100_000_000; // 100M vertices max per mesh
 const MAX_INDEX_COUNT = 300_000_000; // 300M indices max per mesh
@@ -178,6 +195,21 @@ export function readMeshRecord(reader: BufferReader, version: number, meshIndex:
   // viewer's bumped cache key, so they re-mesh fresh rather than load here.
   const geometryClass = version >= 5 ? reader.readUint8() : 0;
 
+  // Read the two disjoint source ids (version 14+, #3199). 0 means absent.
+  // Older caches predate the fields entirely and leave both undefined, which is
+  // the same state the runtime uses where the identity is genuinely merged away
+  // -- so a v13 cache degrades to "unknown", never to a WRONG id.
+  let geometryItemId: number | undefined;
+  let materialLayerId: number | undefined;
+  if (version >= 14) {
+    const gid = reader.readUint32();
+    const mid = reader.readUint32();
+    // Compared against the sentinel, never for truthiness: 0 is a real
+    // material-layer id (an air gap) and must survive the round trip.
+    if (gid !== ABSENT_SOURCE_ID) geometryItemId = gid;
+    if (mid !== ABSENT_SOURCE_ID) materialLayerId = mid;
+  }
+
   // Read per-element local-frame origin (version 6+); world = origin + position.
   let origin: [number, number, number] | undefined;
   if (version >= 6) {
@@ -199,6 +231,10 @@ export function readMeshRecord(reader: BufferReader, version: number, meshIndex:
     color,
     ifcType,
     geometryClass,
+    // Spread only the one that is set, so the disjointness the format preserves
+    // survives into the object a consumer reads (#3199).
+    ...(geometryItemId !== undefined ? { geometryItemId } : {}),
+    ...(materialLayerId !== undefined ? { materialLayerId } : {}),
     ...(origin ? { origin } : {}),
   };
 }

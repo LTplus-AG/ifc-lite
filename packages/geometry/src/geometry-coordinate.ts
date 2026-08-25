@@ -117,6 +117,17 @@ export function convertMeshCollectionToBatch(
           // #957 follow-up: carry the Model/Types geometry class so the viewer's
           // view-mode filter can show/hide type-library geometry.
           geometryClass: (mesh as { geometryClass?: number }).geometryClass ?? 0,
+          // #3199: the representation item this piece came from, or the
+          // material layer it slices. DISJOINT -- the wasm getters return
+          // `undefined` for whichever does not apply, and spreading only the
+          // defined one keeps them from both landing on the object. Older wasm
+          // bundles lack both getters, so both spread to nothing.
+          ...((mesh as { geometryItemId?: number }).geometryItemId !== undefined
+            ? { geometryItemId: (mesh as { geometryItemId?: number }).geometryItemId }
+            : {}),
+          ...((mesh as { materialLayerId?: number }).materialLayerId !== undefined
+            ? { materialLayerId: (mesh as { materialLayerId?: number }).materialLayerId }
+            : {}),
         };
 
         // #961: copy the Rust-decoded surface texture + per-vertex UVs (the

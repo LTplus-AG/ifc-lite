@@ -40,6 +40,19 @@
  * the way `generate-bim-globals.mjs` already refuses its own empty schema, and
  * a measured floor stands behind that (see ROW_FLOOR).
  *
+ * A row count alone does not close that hole, though — it only moves it one
+ * level down. `allAttributes` is OPTIONAL on the registry's `EntityMetadata`
+ * (`allAttributes?: AttributeMetadata[]`) and `getAllAttributesForEntity`
+ * returns `metadata?.allAttributes || []`, so a registry whose `entities` map
+ * is fully populated while `allAttributes` stops being emitted yields a
+ * healthy-looking 776 rows in which EVERY row is `[-1,-1,-1,-1]`. Measured on
+ * exactly that shape: 776 arms written, exit 0, and `--check` blessing the
+ * result from the next run on. Per the generated header, -1 means "known type
+ * that does not declare the attribute (never fall back)", so the server-parse
+ * path would report Description / ObjectType / Tag / PredefinedType as absent
+ * for every entity while the browser resolves them normally — the same parity
+ * break, reached by a different route. RESOLVED_FLOOR guards that level.
+ *
  * Output: apps/server/src/services/data_model/generated/attr_indices.rs
  */
 
@@ -62,14 +75,43 @@ const NAMES = ['Description', 'ObjectType', 'Tag', 'PredefinedType'];
  *
  * MEASURED, not guessed: a healthy `@ifc-lite/parser` build yields 776 types
  * from IFC4_ADD2_TC1 (the figure `--check` prints on a clean tree). The floor
- * is 500 — deep headroom on purpose, since it has to survive the registry
- * being pointed at a smaller schema one day (IFC2X3 declares roughly 650
- * entities) while still catching what it is for: every way this extraction can
- * go blind — a half-built dist, a renamed export, an `entities` map that
- * stopped being populated — takes the count to zero or single digits, never to
- * 499.
+ * is 700.
+ *
+ * It used to be 500, justified by needing headroom in case the registry were
+ * pointed at a smaller schema (IFC2X3, ~650 entities). That justification was
+ * not true: there is no runtime schema selection here. `SCHEMA_REGISTRY` is a
+ * single committed codegen artifact pinned to IFC4_ADD2_TC1, and the
+ * multi-schema union lives elsewhere — in `ifc-schema.ts`'s
+ * `ENTITY_INFO_BY_UPPER`, reachable only through
+ * `getAttributeNamesAcrossSchemas`, which this generator never calls (it calls
+ * the pinned `getAttributeNames`). Repinning the codegen would be a
+ * regenerate-and-commit event, which is exactly what the failure message below
+ * already instructs. Measured on the old value: 499 rows refused and 500 rows
+ * WROTE, replacing all 776 committed arms and exiting 0 — so the 500..775 band
+ * was unguarded slack that bought nothing. 700 keeps ~10% headroom under
+ * today's 776 for ordinary schema churn while shrinking that band.
  */
-const ROW_FLOOR = 500;
+const ROW_FLOOR = 700;
+
+/**
+ * Lower bound on how many of those rows must actually RESOLVE at least one of
+ * the four attributes.
+ *
+ * The row count is necessary but not sufficient (see ANTI-VACUITY above): a
+ * registry with a full `entities` map and no `allAttributes` produces 776 rows
+ * that are every one of them `[-1,-1,-1,-1]` — a table that says "no known type
+ * declares Description, ObjectType, Tag or PredefinedType", which is garbage
+ * the row floor waves through.
+ *
+ * MEASURED, not guessed: 488 of today's 776 rows resolve at least one
+ * attribute; the other 288 legitimately declare none of the four (IfcCartesianPoint
+ * and friends), so this can never be "all rows". The floor is 400 — under the
+ * measured 488 with ~18% headroom for schema churn, and comfortably under the
+ * 444 that the ROW_FLOOR boundary itself yields, so the two floors cannot
+ * contradict each other. Every way this extraction goes blind at the attribute
+ * level takes the resolved count to zero, never to 399.
+ */
+const RESOLVED_FLOOR = 400;
 
 // A stale or half-built dist imports cleanly and still exports nothing. Refuse
 // before either mode runs: in write mode an empty registry emits an armless
@@ -102,6 +144,30 @@ if (rows.length < ROW_FLOOR) {
       'break this generator exists to prevent, and `--check` would report it as in sync forever after.\n' +
       '   Rebuild with `pnpm turbo build --filter=@ifc-lite/parser` and retry. If the registry genuinely ' +
       'shrank this far, lower ROW_FLOOR in the same commit.',
+  );
+  process.exit(1);
+}
+
+// Rows are cheap; RESOLVED rows are the payload. A registry that kept its
+// `entities` map but lost `allAttributes` clears ROW_FLOOR with 776 rows of
+// `[-1,-1,-1,-1]` — see RESOLVED_FLOOR.
+const resolved = rows.filter((r) => r.idx.some((i) => i >= 0)).length;
+
+if (resolved < RESOLVED_FLOOR) {
+  console.error(
+    `❌ @ifc-lite/parser's SCHEMA_REGISTRY (${SCHEMA_REGISTRY.name}) yielded ${rows.length} entity type(s), ` +
+      `but only ${resolved} of them resolve ANY of ${NAMES.join('/')} — the floor is ${RESOLVED_FLOOR} ` +
+      `(a healthy build resolves 488 of 776). Refusing to ${CHECK ? 'compare against' : 'emit'} an ` +
+      'attribute-index table this blind.\n' +
+      '   A row count alone cannot catch this: `allAttributes` is optional on the registry\'s entity ' +
+      'metadata and `getAllAttributesForEntity` returns `metadata?.allAttributes || []`, so an `entities` ' +
+      'map that is fully populated while `allAttributes` stopped being emitted writes one arm per type ' +
+      'with every index -1. Per this table\'s own contract -1 means "known type, does not declare that ' +
+      'attribute, never fall back" — so the server-parse path would report Description/ObjectType/Tag/' +
+      'PredefinedType as absent for EVERY entity while the browser resolves them normally, and `--check` ' +
+      'would report it as in sync forever after.\n' +
+      '   Rebuild with `pnpm turbo build --filter=@ifc-lite/parser` and retry. If the registry genuinely ' +
+      'stopped declaring these attributes, lower RESOLVED_FLOOR in the same commit.',
   );
   process.exit(1);
 }

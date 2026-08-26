@@ -50,6 +50,34 @@
  * being true. `process.cpuUsage()` also counts V8's background GC and compiler
  * threads, which can only push a reading up.
  *
+ * ## What `process.cpuUsage()` counts, and why that is safe HERE
+ *
+ * It is a PROCESS-wide counter, not a per-thread one: it sums every thread in
+ * the process, so a sibling `worker_threads` worker burning CPU alongside the
+ * decision is added to the decision's reading. Measured on the same machine,
+ * this exact linear scan over the 2.56M rung, 15 readings each: p50 4.57ms
+ * alone, p50 30.40ms with eight sibling workers spinning -- a 6.6x inflation
+ * of a number the ladder compares against a fixed budget.
+ *
+ * That does not bite today because the decision does not share a process with
+ * anything. Vitest runs each test file in a forked CHILD PROCESS, and the
+ * ladder runs on that child's MAIN thread -- probed in both consuming packages
+ * (`@ifc-lite/encoding`, `@ifc-lite/ids`): `isMainThread` true, `threadId` 0,
+ * and a pid distinct from the runner's. Sibling test files are separate
+ * processes, so their CPU is invisible to this counter. Neither package pins
+ * `pool` at all; `packages/parser/vitest.config.ts` is the one place in the
+ * repo that spells `pool: 'forks'` out.
+ *
+ * The dependency is on the POOL, not on anything in this file. Switching a
+ * consuming package to `pool: 'threads'` would put sibling test files in one
+ * process as workers, and every one of their busy scans would be charged to
+ * this reading -- turning a bound that has 50x of margin into a flake, with
+ * nothing in the failure message pointing at the pool. Anyone making that
+ * switch has to move this ladder's consumers back to `forks` or move the
+ * measurement to a per-thread counter. The inflation is one-directional
+ * (readings can only go up, never down), so it can produce a false RED but
+ * never a false GREEN.
+ *
  * What is knowingly given up: a regression that made the decision BLOCK --
  * sleep, or wait on I/O -- would burn wall time without burning CPU and would
  * no longer red. The decisions this ladder is pointed at are synchronous

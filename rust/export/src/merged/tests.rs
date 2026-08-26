@@ -1070,81 +1070,61 @@ ENDSEC;\nEND-ISO-10303-21;\n"
     assert_no_dangling(&merged);
 }
 
-/// Every fixture above that merges two models gives both of them an
-/// `IfcProject` at the SAME express id (`#1`, or literally the same file
-/// twice) -- so `canonical_project` and the current model's own
-/// `model_project` are always equal, and the redirect in `remap` cannot be
-/// observed to pick the right one of the two. Confirmed by mutation:
-/// rewriting `return Some(cp)` to `return Some(mp)` in
-/// `export_merged_with_stats` left all of the above green.
+/// Every two-model fixture elsewhere gives both models an `IfcProject` at the
+/// SAME express id (`#1`, or literally the same file twice) -- so
+/// `canonical_project` and the current model's own project id are always equal,
+/// and the redirect that unifies the project cannot be observed to pick the
+/// FIRST model's id over the current model's (the #3083 blind spot).
 ///
-/// Here the two models' projects sit at DIFFERENT express ids (`#1` in model
-/// A, `#7` in model B) and each model has a rooted entity that references its
-/// own project, so the redirect has a distinguishable right and wrong answer:
-/// model B's reference must land on model A's `#1`, not on the dropped `#7`
-/// (which no longer exists at all after the merge) and not on the offset
-/// `#7 + offset` either.
+/// Here the two projects sit at DIFFERENT express ids (`#1` in model A, `#7` in
+/// model B), and model B's kept `IfcRelAggregates` relates its project to a
+/// DISTINCT wall -- so our redundant-aggregation pruning keeps it (only fully
+/// unified aggregations are dropped, #2952) and its relating reference stays
+/// observable. That reference must land on model A's project, not on B's own
+/// `#7` (unified away) nor its offset image.
+///
+/// NB #3083's original fixture related the project to ITSELF (`#7,(#7)`); after
+/// unification both endpoints point at the unified project, so pruning correctly
+/// drops that degenerate row -- which reads as the redirect "disappearing". The
+/// distinct related wall below keeps the redirect visible.
 #[test]
-fn merge_redirects_a_later_models_project_ref_to_the_first_models_project_id() {
-    // Model A: project at #1, max id 5. Model B: project at #7, max id 9 --
-    // deliberately different ids, and #7 is past model A's maximum so a
-    // remap that returns the model's OWN project id produces a reference to
-    // an express id that exists nowhere in the merged output.
+fn later_models_project_ref_redirects_to_the_first_models_project() {
     let model_a = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
 #1=IFCPROJECT('11111111111111111111P1',$,'ProjectA',$,$,$,$,$,$);\n\
-#5=IFCRELAGGREGATES('11111111111111111111R1',$,$,$,#1,(#1));\n\
+#2=IFCWALL('11111111111111111111W1',$,'WallA',$,$,$,$,$);\n\
+#3=IFCRELAGGREGATES('11111111111111111111R1',$,$,$,#1,(#2));\n\
 ENDSEC;\nEND-ISO-10303-21;\n";
     let model_b = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
 #7=IFCPROJECT('22222222222222222222P2',$,'ProjectB',$,$,$,$,$,$);\n\
-#9=IFCRELAGGREGATES('22222222222222222222R2',$,$,$,#7,(#7));\n\
+#8=IFCWALL('22222222222222222222W2',$,'WallB',$,$,$,$,$);\n\
+#9=IFCRELAGGREGATES('22222222222222222222R2',$,$,$,#7,(#8));\n\
 ENDSEC;\nEND-ISO-10303-21;\n";
 
-    let (merged, stats) = export_merged_with_stats(
+    let (merged, _stats) = export_merged_with_stats(
         &[model_a.as_bytes(), model_b.as_bytes()],
         &MergedOptions::default(),
     );
 
-    // Model B's project line is dropped; 4 source entities minus 1 = 3.
-    assert_eq!(stats.written, 3, "later model's IfcProject line is dropped");
+    assert_no_dangling(&merged);
+    // Exactly one project survives -- model A's, at its own id (offset 0).
+    let project = sole_id_of_type(&merged, "=IFCPROJECT(");
+    let project_line = merged.lines().find(|l| l.contains("=IFCPROJECT(")).unwrap();
+    assert!(project_line.contains("'ProjectA'"), "surviving project is model A's: {project_line:?}");
+    assert!(!merged.contains("22222222222222222222P2"), "model B's project is unified away:\n{merged}");
 
-    // The surviving project is model A's, at its original express id.
-    let project_lines: Vec<&str> =
-        merged.lines().filter(|l| l.contains("=IFCPROJECT(")).collect();
-    assert_eq!(project_lines.len(), 1, "single unified project, got {project_lines:?}");
-    assert!(
-        project_lines[0].starts_with("#1=IFCPROJECT("),
-        "the first model's project keeps its own id: {:?}",
-        project_lines[0]
-    );
-    assert!(
-        project_lines[0].contains("'ProjectA'"),
-        "the surviving project is model A's, not model B's: {:?}",
-        project_lines[0]
-    );
-
-    // Model B's offset is model A's max (5) + 1 = 6, so its #9 becomes #15.
-    // Both of its project references must have been redirected to #1 --
-    // NOT left at #7 (the model's own project id, which is gone) and NOT
-    // offset to #13.
+    // Model B's kept aggregation now relates the UNIFIED project (model A's id),
+    // NOT B's own #7 nor its offset image.
     let b_rel = merged
         .lines()
         .find(|l| l.contains("'22222222222222222222R2'"))
-        .expect("model B's IfcRelAggregates line");
-    assert_eq!(
-        b_rel, "#15=IFCRELAGGREGATES('22222222222222222222R2',$,$,$,#1,(#1));",
-        "model B's references to its own project must be redirected to model A's project id"
-    );
-
-    // Model A's own reference is untouched (offset 0, no redirect needed).
+        .expect("model B's IfcRelAggregates survives (its related wall is not unified)");
+    let refs = refs_in_line(b_rel);
+    assert_eq!(refs[0], project, "B's project ref redirected to model A's project: {b_rel:?}");
+    // Model A's own aggregation is untouched (offset 0, no redirect needed).
     assert!(
-        merged.contains("#5=IFCRELAGGREGATES('11111111111111111111R1',$,$,$,#1,(#1));"),
-        "model A's project references are unchanged:\n{merged}"
+        merged.contains("#3=IFCRELAGGREGATES('11111111111111111111R1',$,$,$,#1,(#2));"),
+        "model A's aggregation is unchanged:\n{merged}"
     );
-
-    // And nothing dangles: neither the model's own project id nor its
-    // offset image may appear anywhere in the merged text.
-    assert!(!merged.contains("#7"), "the dropped project id must not survive:\n{merged}");
-    assert!(!merged.contains("#13"), "the dropped project id must not be offset:\n{merged}");
 }
 
 /// Collect the leading 22-char GlobalId-shaped token of every DATA-section
@@ -1163,25 +1143,16 @@ fn leading_guid_tokens(step: &str) -> Vec<String> {
         .collect()
 }
 
-/// `mint_unique_guid` seeds from `{original}#{model_index}`, so two entities
-/// in the SAME model that both carry the SAME already-emitted GlobalId mint
-/// from an IDENTICAL seed. Two guards keep their fresh ids apart, and they
-/// are redundant with each other: `pending.insert(candidate.clone())` inside
-/// `mint_unique_guid`, and `emitted_guids.insert(fresh)` at the call site.
-/// Every fixture above collides at most ONE entity per model, so neither
-/// guard is exercised at all -- confirmed by mutation: deleting either one
-/// individually, and deleting BOTH, all left the pre-existing tests green,
-/// and the both-deleted case emits the same minted GlobalId three times.
-/// (Because the guards are redundant, this test dies only when both are
-/// gone; it is pinning the observable invariant, not either line.)
-///
-/// Duplicated GlobalIds inside a single file are a real-world authoring
-/// defect, and a merge that "fixes" them by minting the same replacement
-/// twice has simply moved the spec violation rather than removed it. The
-/// assertion is on the emitted STEP text (every leading GlobalId distinct),
+/// A model carrying the SAME GlobalId on THREE rooted entities is an authoring
+/// defect the merge must not carry through as duplicates (the #3083 concern:
+/// the same-seed mint guards keeping fresh ids apart). Under our reconciliation
+/// the first cross-model occurrence UNIFIES with model A's entity (same unit
+/// space), and the two remaining within-model duplicates are each re-stamped
+/// with a distinct fresh GlobalId -- so no GlobalId is ever emitted twice.
+/// The assertion is on the emitted STEP text (every leading GlobalId distinct),
 /// not on an intermediate map.
 #[test]
-fn merge_mints_distinct_ids_for_two_collisions_within_the_same_model() {
+fn merge_mints_distinct_ids_for_collisions_within_the_same_model() {
     let shared = "00000000000000000000E1";
     let model_a = format!(
         "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
@@ -1205,25 +1176,26 @@ ENDSEC;\nEND-ISO-10303-21;\n"
         &MergedOptions::default(),
     );
 
-    // 5 rooted entities survive (model B's project is dropped): 1 project,
-    // 1 original door, 3 doors that each needed a fresh id.
+    // Every emitted GlobalId is distinct: same-model collisions minting the same
+    // replacement would just relocate the duplicate rather than remove it.
     let tokens = leading_guid_tokens(&merged);
-    assert_eq!(tokens.len(), 5, "five rooted entities in the merged output: {tokens:?}");
-
     let unique: std::collections::HashSet<&String> = tokens.iter().collect();
     assert_eq!(
         unique.len(),
         tokens.len(),
-        "every emitted GlobalId must be distinct -- same-model collisions minting the same replacement just relocates the duplicate: {tokens:?}"
+        "every emitted GlobalId must be distinct: {tokens:?}"
     );
 
-    // The original is kept exactly once (model A's), and the three
-    // replacements are all fresh.
+    // The shared GlobalId survives on exactly one entity (model A's door, which
+    // B's first door unified into); the other two B doors were re-stamped fresh.
     assert_eq!(
         tokens.iter().filter(|t| *t == shared).count(),
         1,
         "the colliding GlobalId survives on exactly one entity: {tokens:?}"
     );
+    // Model A's door plus B's two re-stamped doors: three distinct doors survive.
+    assert_eq!(type_count(&merged, "=IFCDOOR("), 3, "one unified door + two re-stamped");
+    assert_no_dangling(&merged);
 }
 
 /// The user-visible half of the #3124 review's major finding, through the

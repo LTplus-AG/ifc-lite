@@ -114,3 +114,58 @@ export function collectQuantitiesFromRefs(
 
     return quantities;
 }
+
+/**
+ * `Quantities` slot on `IfcElementQuantity`: GlobalId[0], OwnerHistory[1],
+ * Name[2], Description[3] inherited from `IfcRoot`, then MethodOfMeasurement[4]
+ * and Quantities[5].
+ */
+const QUANTITIES_SLOT = 5;
+
+/** One extracted quantity set, in the shape both call sites report. */
+export interface CollectedQuantitySet {
+    name: string;
+    quantities: CollectedQuantity[];
+}
+
+/**
+ * Read one `IfcElementQuantity` into a reportable quantity set, or `null` when
+ * it carries nothing worth reporting.
+ *
+ * `IFC4_ADD2_TC1.exp` (identically `IFC4X3.exp`):
+ *
+ *     ENTITY IfcElementQuantity
+ *      SUBTYPE OF (IfcQuantitySet);
+ *         MethodOfMeasurement : OPTIONAL IfcLabel;
+ *         Quantities : SET [1:?] OF IfcPhysicalQuantity;
+ *
+ * `SET [1:?]` admits no empty set, so a set that walks to zero quantities —
+ * written empty, or filled only with members this reader cannot report, such as
+ * an unresolvable reference or an `IfcPhysicalComplexQuantity` (#3254) — is
+ * non-conformant data. Reporting it anyway would assert "this element has
+ * quantities" on the strength of a name alone, and the consumers act on exactly
+ * that: `validate` counts the element as quantified in its quantity-completeness
+ * figure, an IDS quantity-set existence check passes, and the viewer's fallback
+ * to the element's TYPE quantities is suppressed by the phantom occurrence set,
+ * hiding the real numbers the type carries. So it is dropped (#3259).
+ *
+ * The instance path and the type path both go through here, so the drop cannot
+ * come apart between them again: it used to be inlined at each site, and the
+ * type site dropped while the instance site kept.
+ */
+export function readQuantitySet(
+    store: QuantityLookupStore,
+    extractor: EntityExtractor,
+    qsetRef: EntityRef,
+    qsetId: number,
+): CollectedQuantitySet | null {
+    const qsetEntity = extractor.extractEntity(qsetRef);
+    if (!qsetEntity) return null;
+
+    const qsetAttrs = qsetEntity.attributes || [];
+    const qsetName = typeof qsetAttrs[2] === 'string' ? qsetAttrs[2] : `QuantitySet #${qsetId}`;
+    const quantities = collectQuantitiesFromRefs(store, extractor, qsetAttrs[QUANTITIES_SLOT]);
+
+    if (quantities.length === 0) return null;
+    return { name: qsetName, quantities };
+}

@@ -124,61 +124,6 @@ const IFC4X3_TO_IFC4: Map<string, string> = new Map([
 ]);
 
 /**
- * IFC2X3 entities that have fewer attributes than IFC4.
- * When converting IFC4 → IFC2X3, trailing attributes must be trimmed.
- *
- * Key: entity type (UPPERCASE)
- * Value: max number of positional attributes allowed in IFC2X3
- *
- * Common differences:
- * - IfcRoot subtypes: IFC4 adds no extra root attrs, but several element
- *   subtypes gained PredefinedType in IFC4 that doesn't exist in IFC2X3.
- * - IfcProject: IFC2X3 has 9 attrs, IFC4 has 9 (same)
- * - IfcSite: IFC2X3 has 14, IFC4 has 14 (same)
- * - IfcBuilding: IFC2X3 has 12, IFC4 has 12 (same)
- * - IfcBuildingStorey: IFC2X3 has 10, IFC4 has 10 (same)
- * - IfcSpace: IFC2X3 has 11 (no LongName), IFC4 has 11 (same count, different attrs)
- * - IfcWall: IFC2X3 has 8, IFC4 has 9 (added PredefinedType)
- * - IfcSlab: IFC2X3 has 9, IFC4 has 9 (same)
- * - IfcDoor: IFC2X3 has 10, IFC4 has 13 (added PredefinedType, OperationType, UserDefinedOperationType)
- * - IfcWindow: IFC2X3 has 10, IFC4 has 13 (added PredefinedType, PartitioningType, UserDefinedPartitioningType)
- * - IfcBeam/Column: IFC2X3 has 8, IFC4 has 9 (added PredefinedType)
- * - IfcOpeningElement: IFC2X3 has 8, IFC4 has 9 (added PredefinedType)
- */
-const IFC2X3_ATTR_COUNTS: Map<string, number> = new Map([
-  ['IFCWALL', 8],
-  ['IFCBEAM', 8],
-  ['IFCCOLUMN', 8],
-  ['IFCROOF', 9],
-  ['IFCSTAIR', 9],
-  ['IFCRAMP', 9],
-  ['IFCRAILING', 9],
-  ['IFCMEMBER', 8],
-  ['IFCPLATE', 8],
-  ['IFCFOOTING', 9],
-  ['IFCPILE', 11],
-  ['IFCCOVERING', 9],
-  ['IFCOPENINGELEMENT', 8],
-  ['IFCDOOR', 10],
-  ['IFCWINDOW', 10],
-  ['IFCFURNISHINGELEMENT', 8],
-  ['IFCBUILDINGELEMENTPROXY', 9],
-  ['IFCCURTAINWALL', 8],
-  ['IFCFLOWSEGMENT', 8],
-  ['IFCFLOWTERMINAL', 8],
-  ['IFCFLOWCONTROLLER', 8],
-  ['IFCFLOWFITTING', 8],
-  ['IFCFLOWMOVINGDEVICE', 8],
-  ['IFCFLOWSTORAGEDEVICE', 8],
-  ['IFCFLOWTREATMENTDEVICE', 8],
-  ['IFCENERGYCONVERSIONDEVICE', 8],
-  ['IFCDISTRIBUTIONELEMENT', 8],
-  ['IFCDISTRIBUTIONFLOWELEMENT', 8],
-  ['IFCDISTRIBUTIONCONTROLELEMENT', 8],
-  ['IFCDISTRIBUTIONCHAMBERELEMENT', 8],
-]);
-
-/**
  * Convert an entity type name from one IFC schema version to another.
  *
  * @param entityType - UPPERCASE entity type name (e.g., 'IFCWALL')
@@ -277,15 +222,19 @@ function attrNameTable(schema: IfcSchemaVersion): Map<string, readonly string[]>
 }
 
 /**
- * True when `src` is a STRICT prefix of `tgt` by attribute name — i.e. the
- * target only *appended* attributes. Trailing-`$` padding is only safe then;
- * many entities insert/reorder attributes mid-list (e.g. IfcMaterialProperties,
- * IfcApproval, IfcTask), where padding would shift values into the wrong slots.
+ * True when `shorter` is a STRICT prefix of `longer` by attribute name — i.e.
+ * the longer form only *appended* attributes to the shorter one. Both the
+ * trailing-`$` padding (upgrade) and the tail trim (downgrade) are only safe
+ * then; many entities insert/reorder attributes mid-list (e.g.
+ * IfcMaterialProperties, IfcApproval, IfcTask), where padding or trimming would
+ * shift values into the wrong slots.
+ *
+ * Callers pass the shorter schema's list first, whichever direction they run in.
  */
-function isStrictAttrPrefix(src: readonly string[], tgt: readonly string[]): boolean {
-  if (src.length >= tgt.length) return false;
-  for (let i = 0; i < src.length; i++) {
-    if (src[i] !== tgt[i]) return false;
+function isStrictAttrPrefix(shorter: readonly string[], longer: readonly string[]): boolean {
+  if (shorter.length >= longer.length) return false;
+  for (let i = 0; i < shorter.length; i++) {
+    if (shorter[i] !== longer[i]) return false;
   }
   return true;
 }
@@ -394,12 +343,27 @@ export function convertStepLine(
     return `${prefix}IFCPROXY('${guid}',$,'${entityType}',$,$,$,$,.NOTDEFINED.,$);`;
   }
 
-  // Adjust attribute count if downgrading to IFC2X3
+  // Trim trailing attributes when DOWNGRADING to a schema where the entity is
+  // shorter (e.g. IFC4 → IFC2X3 drops the PredefinedType IFC4 added to
+  // IfcWall / IfcBeam / IfcOpeningElement / …). Derived from the same generated
+  // buildingSMART tables as the padding pass below, under the same strict
+  // attribute-NAME prefix rule — a hand-maintained count list covered 30 types,
+  // 20 of which were no-ops, and missed 63 entities whose IFC2X3 form really is
+  // shorter (`IFCMATERIAL('Concrete',$,$)` was written into a file declaring
+  // IFC2X3, where IfcMaterial takes exactly one argument).
+  //
+  // The prefix rule is what makes trimming safe: many entities INSERTED
+  // attributes mid-list rather than appending them (IFC2X3 IfcApproval is
+  // [Description, ApprovalDateTime, …, Identifier] against IFC4's
+  // [Identifier, Name, Description, …]), and cutting the tail there would leave
+  // values sitting in the wrong, type-invalid slots. Those types are left alone.
   let finalAttrs = attrsRaw;
-  if (toSchema === 'IFC2X3') {
-    const maxAttrs = IFC2X3_ATTR_COUNTS.get(newType);
-    if (maxAttrs !== undefined) {
-      finalAttrs = trimAttributes(attrsRaw, maxAttrs);
+  if (schemaRank(toSchema) < schemaRank(fromSchema)) {
+    // Source attrs keyed on the ORIGINAL type; target on the (possibly renamed) type.
+    const srcAttrs = attrNameTable(fromSchema)?.get(entityType);
+    const tgtAttrs = attrNameTable(toSchema)?.get(newType);
+    if (srcAttrs && tgtAttrs && isStrictAttrPrefix(tgtAttrs, srcAttrs)) {
+      finalAttrs = trimAttributes(attrsRaw, tgtAttrs.length);
     }
   }
 
@@ -464,6 +428,10 @@ function shouldSkipEntity(entityType: string, toSchema: IfcSchemaVersion): boole
  */
 function trimAttributes(attrsRaw: string, maxCount: number): string {
   if (!attrsRaw.trim()) return attrsRaw;
+  // The scan below only tests its budget AFTER pushing an attribute, so a zero
+  // budget would keep the first one. An entity with no attributes in the target
+  // schema keeps none.
+  if (maxCount <= 0) return '';
 
   const attrs: string[] = [];
   let depth = 0;

@@ -229,7 +229,7 @@
   1667 packages/export/src/merged-exporter.ts
    639 packages/export/src/parquet-exporter.ts
   1062 packages/export/src/reference-collector.ts
-   556 packages/export/src/schema-converter.ts
+   524 packages/export/src/schema-converter.ts
    437 packages/extensions/src/testing/runner.ts
    625 packages/geometry/src/coordinate-handler.ts
   1707 packages/geometry/src/geometry-parallel.ts

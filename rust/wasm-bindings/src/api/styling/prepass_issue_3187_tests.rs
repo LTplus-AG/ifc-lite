@@ -76,3 +76,46 @@ fn legacy_keywords_are_not_scheduled_as_unknown() {
         );
     }
 }
+
+/// Why the OTHER sites in these scan loops are not pinned by a legacy-keyword
+/// test: no legacy keyword can reach them. That is a property of the tables,
+/// not a fact about the tests, so it is asserted here rather than assumed.
+///
+/// Each scan loop has three arms that attach a job label: the `IFCSITE` arm,
+/// the `has_geometry_by_name` arm, and the representationless-spatial-container
+/// exception. Every one of the 22 legacy keywords the bare resolver gets wrong
+/// takes the SECOND. The first and third are therefore changed for consistency
+/// and cannot be exercised by this defect's inputs.
+///
+/// If a schema revision ever puts a legacy keyword into one of those arms, this
+/// test fails and tells the next person that those sites now need real coverage
+/// -- which is the thing a reader would otherwise have to rediscover.
+#[test]
+fn every_legacy_keyword_reaches_the_geometry_arm_and_no_other() {
+    let mut geometry = 0;
+    let mut other = Vec::new();
+    for name in ifc_lite_core::LEGACY_ENTITY_NAMES.iter() {
+        let name: &str = name;
+        if !matches!(IfcType::from_str(name), IfcType::Unknown(_)) {
+            continue;
+        }
+        if name == "IFCSITE" || ifc_lite_core::is_representationless_spatial_container_by_name(name)
+        {
+            other.push(name);
+        } else if ifc_lite_core::has_geometry_by_name(name) {
+            geometry += 1;
+        }
+    }
+    assert!(
+        geometry > 0,
+        "anti-vacuity: the geometry arm must carry legacy keywords, or this test \
+         asserts nothing about the partition"
+    );
+    assert_eq!(
+        other,
+        Vec::<&str>::new(),
+        "a legacy keyword now reaches the IFCSITE or spatial-container arm; those \
+         sites are only untested because nothing could reach them, so they now \
+         need a job-label test of their own"
+    );
+}

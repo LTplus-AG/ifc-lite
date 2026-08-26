@@ -70,16 +70,28 @@ const SIMPLE_QUANTITY_VALUE_SLOT = 3;
  * `quantity-extractor.ts` already does for a type it does not recognise, so all
  * three quantity readers now agree.
  *
- * The nested quantities stay invisible, exactly as they are today; surfacing
- * them is tracked separately, because flattening them into this list would feed
- * new names to a dozen name-keyed consumers and — via the mutable property view
- * that re-writes a touched `IfcElementQuantity` from these records — would
- * flatten the complex structure out of the file on the next export.
+ * **Its nested quantities are dropped with it, and that is a known gap with no
+ * tracking issue behind it.** Not "tracked separately" — an earlier version of
+ * this comment said so and nothing tracked it. A set whose only member is a
+ * complex quantity therefore reports no quantities at all: on the fixture in
+ * #3254, two `IfcQuantityArea` children totalling 26 m² read back as nothing.
+ *
+ * The gap is deliberate rather than overlooked. Flattening the children into
+ * this list would feed new names to a dozen name-keyed consumers, and — via the
+ * mutable property view that re-writes a touched `IfcElementQuantity` from these
+ * records, and `step-property-sets.ts` which emits them as flat siblings — would
+ * permanently destroy the complex structure on the next export. Surfacing them
+ * safely needs a representation these records do not have: one that read-side
+ * consumers can see and the write-back path provably skips. Until that exists,
+ * under-reporting is the lesser harm, and this paragraph is the whole of what
+ * anyone is doing about it.
  *
  * An entity of a type absent from {@link QUANTITY_TYPE_MAP} still reports as a
- * `Count`, which keeps `IfcQuantityNumber` (IFC4X3) surfacing its correct value
- * under a wrong label rather than vanishing; labelling it needs a new
- * `QuantityType` member and is tracked separately.
+ * `Count`, keeping its value under a wrong label rather than vanishing. No
+ * `IfcPhysicalSimpleQuantity` subtype relies on that fallback today —
+ * `IfcQuantityNumber` (IFC4X3) did until #3266 gave it `QuantityType.Number`,
+ * and `test/quantity-type-map-coverage.test.ts` now reds if a schema declares a
+ * subtype the map has not gained.
  */
 export function collectQuantitiesFromRefs(
     store: QuantityLookupStore,

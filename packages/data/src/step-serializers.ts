@@ -176,10 +176,16 @@ export function serializeValue(value: StepValue): string {
  * Escape a string for STEP format.
  *
  * Backslash and single-quote are doubled per ISO-10303-21. Control characters
- * (CR/LF and other C0 codes plus DEL) are collapsed to a single space so a
- * value can never inject a physical line break into the line-oriented STEP
- * output (matching the export package's escaper) — a raw newline in a header
- * or attribute value would otherwise split one record across two lines.
+ * (CR/LF and other C0 codes plus DEL) are replaced by a space — ONE space per
+ * control character, not one per run — so a value can never inject a physical
+ * line break into the line-oriented STEP output (matching the export package's
+ * escaper and `ifc_lite_export::step_text::escape`) — a raw newline in a
+ * header or attribute value would otherwise split one record across two
+ * lines. A run collapsed to a single space (`/[...]+/`, which this did until
+ * #3284) silently loses length the Rust half preserves, so the same value
+ * written by the two halves differed; neither is mandated by ISO 10303-21
+ * 6.3.3.4, but preserving the count is the more faithful of the two and the
+ * doc claim of parity below has to be true of one of them.
  *
  * ISO 10303-21 6.3.3.4 restricts a string literal's plain-text bytes to the
  * "basic graphic" range 32-126; every other character is a control directive
@@ -196,7 +202,7 @@ function escapeStepString(str: string): string {
     .replace(/\\/g, '\\\\')  // Backslash
     .replace(/'/g, "''")     // Single quote
     // eslint-disable-next-line no-control-regex
-    .replace(/[\x00-\x1F\x7F]+/g, ' '); // Collapse control chars
+    .replace(/[\x00-\x1F\x7F]/g, ' '); // One space per control char (#3284)
   // Non-ASCII directive encoding, one character at a time. Must run AFTER
   // backslash-doubling above: the directive's own backslashes are literal
   // syntax the reader expects undoubled.

@@ -230,3 +230,48 @@ describe('toStepLineWithRegistry / generateStepFileWithRegistry', () => {
     expect(ids).toEqual([10, 20, 30]);
   });
 });
+
+
+/**
+ * The `@ifc-lite/data` serializer's escaper is the second TS copy of the rule
+ * pinned in `@ifc-lite/export`'s `step-serialization.test.ts` and in
+ * `ifc_lite_export::step_text::escape`: ONE SPACE PER CONTROL CHARACTER, not
+ * one per run (#3284 item 2). `escapeStepString` is module-private here, so a
+ * run reaches it through the two public funnels that use it — `serializeValue`
+ * for an attribute value and `generateHeader` for a header field. The expected
+ * strings are the Rust half's observed output for the same inputs.
+ */
+describe('control-character runs are one space each (#3284, parity with the Rust escape)', () => {
+  const RUST_VECTORS: ReadonlyArray<readonly [string, string, string]> = [
+    ['tab run', 'a\t\t\tb', 'a   b'],
+    ['crlf', 'a\r\nb', 'a  b'],
+    ['mixed C0 + DEL', 'a\u0000\u000B\u001F\u007Fb', 'a    b'],
+    ['single control char', 'a\tb', 'a b'],
+    ['quote doubling around a run', "O'Brien\t\tx", "O''Brien  x"],
+    // Negative control: nothing to replace, byte-identical output.
+    ['no control chars', 'plain text 123', 'plain text 123'],
+  ];
+
+  it.each(RUST_VECTORS)('serializeValue escapes %s as the Rust half does', (_l, input, expected) => {
+    expect(serializeValue(input)).toBe(`'${expected}'`);
+  });
+
+  it.each(RUST_VECTORS)('generateHeader escapes %s as the Rust half does', (_l, input, expected) => {
+    const line = generateHeader({ schema: 'IFC4', author: [input], timeStamp: 'TS' })
+      .split('\n')
+      .find((l) => l.startsWith('FILE_NAME'));
+    expect(line).toContain(`('${expected}')`);
+  });
+
+  it('keeps the run length and still emits no control byte, at every length', () => {
+    // Both directions: same length as the input (one space per control char),
+    // and no control character survives — a run left intact would also keep
+    // its length, so neither assertion alone would fail the old collapse.
+    for (const n of [1, 2, 3, 8]) {
+      const serialized = serializeValue(`a${'\n'.repeat(n)}b`);
+      expect(serialized).toBe(`'a${' '.repeat(n)}b'`);
+      // eslint-disable-next-line no-control-regex
+      expect(serialized).not.toMatch(/[\u0000-\u001F\u007F]/);
+    }
+  });
+});

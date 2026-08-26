@@ -119,9 +119,15 @@ export function serializeTypedMarker(type: string, value: string | number | bool
  * Escape a string for STEP format: backslash and single-quote doubling, plus
  * non-ASCII directive encoding.
  *
- * Control characters (CR/LF and other C0 codes) are collapsed to a single
- * space so every generated STEP entity stays on one physical line and
- * round-trips through the line-oriented merge/convert paths.
+ * Control characters (CR/LF and other C0 codes, plus DEL) are each replaced by
+ * ONE space — a run of n control characters becomes n spaces, not one — so
+ * every generated STEP entity stays on one physical line and round-trips
+ * through the line-oriented merge/convert paths without losing length.
+ * Collapsing a run (`/[...]+/`, which this did until #3284) disagreed with
+ * `ifc_lite_export::step_text::escape`, which has always mapped each control
+ * character to its own space: the same value written by the two halves came
+ * out different. ISO 10303-21 6.3.3.4 mandates neither, but preserving the
+ * count loses no information.
  *
  * ISO 10303-21 6.3.3.4 restricts a string literal's plain-text bytes to the
  * "basic graphic" range 32-126; every other character is a control directive
@@ -142,7 +148,7 @@ export function escapeStepString(str: string): string {
     .replace(/\\/g, '\\\\')
     .replace(/'/g, "''")
     // eslint-disable-next-line no-control-regex
-    .replace(/[\x00-\x1F\x7F]+/g, ' ');
+    .replace(/[\x00-\x1F\x7F]/g, ' ');
   return encodeNonAsciiStepDirectives(escaped);
 }
 

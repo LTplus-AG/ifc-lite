@@ -43,6 +43,7 @@ import {
   parseWorkflowPrPaths,
   deriveInputs,
   dropSubsumed,
+  gitignoreToGlobs,
 } from './lib/ci-path-coverage.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -391,8 +392,13 @@ function mirrorRepo() {
   const root = mkdtempSync(join(tmpdir(), 'ci-path-coverage-mirror-'));
   for (const entry of readdirSync(REPO)) {
     if (entry === '.git' || entry === 'node_modules') continue;
-    if (entry === '.github') cpSync(join(REPO, entry), join(root, entry), { recursive: true });
-    else symlinkSync(join(REPO, entry), join(root, entry));
+    // `.github` is copied because the hole tests mutate test.yml. `tests` is
+    // copied because the fixture-cache test plants a fetched `.ifc` under
+    // `tests/models`, and writing through a symlink would land it in the real
+    // tree. Both are small; everything else stays a symlink.
+    if (entry === '.github' || entry === 'tests') {
+      cpSync(join(REPO, entry), join(root, entry), { recursive: true });
+    } else symlinkSync(join(REPO, entry), join(root, entry));
   }
   return root;
 }
@@ -436,3 +442,101 @@ for (const [glob, expected] of [
     }
   });
 }
+
+
+// ---------------------------------------------------------------------------
+// The verdict is a function of the COMMIT, not of the working tree.
+// ---------------------------------------------------------------------------
+
+test('gitignoreToGlobs: a bare name is ignored at every depth, and so is its subtree', () => {
+  const g = gitignoreToGlobs('node_modules\n');
+  for (const p of ['node_modules', 'node_modules/x/a.js', 'packages/cli/node_modules/y.js']) {
+    assert.ok(matchesAny(p, g), `${p} must be ignored`);
+  }
+  assert.equal(matchesAny('packages/cli/src/node_modules_helper.ts', g), false);
+});
+
+test('gitignoreToGlobs: a slash anywhere but the end anchors the pattern to the root', () => {
+  const g = gitignoreToGlobs('tests/models/local\n');
+  assert.ok(matchesAny('tests/models/local', g));
+  assert.ok(matchesAny('tests/models/local/a.ifc', g));
+  // Anchored: the same name deeper in the tree is NOT covered.
+  assert.equal(matchesAny('packages/tests/models/local', g), false);
+});
+
+test('gitignoreToGlobs: `a/**/b` covers ZERO intervening directories, as git does', () => {
+  // The case that let the fetched corpus stay visible: `tests/models/AB22.ifc`
+  // sits directly under the directory, with no directory between the `**` and
+  // the file, and a `**` rendered as `.*` needs the separators on both sides.
+  const g = gitignoreToGlobs('tests/models/**/*.ifc\n');
+  assert.ok(matchesAny('tests/models/AB22.ifc', g), 'zero-directory case');
+  assert.ok(matchesAny('tests/models/ara3d/duplex.ifc', g), 'one-directory case');
+  assert.equal(matchesAny('tests/models/manifest.json', g), false);
+});
+
+test('gitignoreToGlobs: a trailing slash still names the directory itself', () => {
+  const g = gitignoreToGlobs('dist/\n');
+  assert.ok(matchesAny('packages/cli/dist', g));
+  assert.ok(matchesAny('packages/cli/dist/loader.js', g));
+});
+
+test('gitignoreToGlobs: a negation is REFUSED rather than silently dropped', () => {
+  // A dropped `!` line means the walk wanders back into a tree the union said
+  // was excluded -- the failure this whole exclusion exists to prevent.
+  assert.throws(() => gitignoreToGlobs('dist/\n!dist/keep.js\n'), /negation/);
+});
+
+test('the real ignore file is translatable -- the exclusion cannot go silently empty', () => {
+  const globs = gitignoreToGlobs(readFileSync(join(REPO, '.gitignore'), 'utf8'));
+  assert.ok(globs.length > 0);
+  // Spot-check the three trees whose presence in CI, and absence on a clean
+  // checkout, made this check disagree with itself on one commit.
+  assert.ok(matchesAny('node_modules', globs));
+  assert.ok(matchesAny('packages/cli/dist/loader.js', globs));
+  assert.ok(matchesAny('tests/models/ara3d/duplex.ifc', globs));
+  // And the committed inputs under the same roots must SURVIVE it.
+  assert.equal(matchesAny('tests/models/manifest.json', globs), false);
+  assert.equal(matchesAny('packages/data/src/step-serializers.ts', globs), false);
+});
+
+test('an installed node_modules does not change the verdict -- the live #3314 CI failure', () => {
+  // Ran green on a clean checkout and red in CI on the IDENTICAL commit: the
+  // walk's skip set filtered a walk's CHILDREN but never the ROOT it was asked
+  // about, so `node_modules` as a derived input enumerated the whole install
+  // and reported it, once per gate, as a path outside its own trigger.
+  const root = mirrorRepo();
+  const before = run(root);
+  assert.equal(before.status, 0, before.out);
+
+  mkdirSync(join(root, 'node_modules/some-package'), { recursive: true });
+  writeFileSync(join(root, 'node_modules/some-package/index.js'), 'export default 1;\n');
+  const after = run(root);
+
+  assert.equal(after.status, before.status, after.out);
+  assert.equal(
+    after.out,
+    before.out,
+    'the report must be byte-identical: an install is not a change to the commit',
+  );
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('a warmed fixture cache does not change the verdict either', () => {
+  // `tests/models` holds two COMMITTED files and, after the fixture step runs,
+  // several hundred fetched `.ifc` files that git ignores. The walk is asked
+  // about the directory (which is a real input -- `manifest.json` lives there),
+  // so the exclusion has to hold on the walk's CHILDREN, not only on the node
+  // it was asked about.
+  const root = mirrorRepo();
+  const before = run(root);
+  assert.equal(before.status, 0, before.out);
+
+  mkdirSync(join(root, 'tests/models/ara3d'), { recursive: true });
+  writeFileSync(join(root, 'tests/models/ara3d/duplex.ifc'), 'ISO-10303-21;\n');
+  writeFileSync(join(root, 'tests/models/AB22.ifc'), 'ISO-10303-21;\n');
+  const after = run(root);
+
+  assert.equal(after.status, before.status, after.out);
+  assert.equal(after.out, before.out, 'a fetched corpus is not a change to the commit');
+  rmSync(root, { recursive: true, force: true });
+});

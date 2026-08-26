@@ -294,3 +294,74 @@ export function dropSubsumed(paths) {
     .filter((p) => !sorted.some((q) => q !== p && p.startsWith(`${q}/`)))
     .sort();
 }
+
+/**
+ * Translate a `.gitignore` into globs over repo-relative POSIX paths.
+ *
+ * WHY THIS EXISTS. The gate derives a job's inputs by walking the tree. A walk
+ * over the WORKING tree sees whatever happens to be on disk: `node_modules`
+ * after an install, a package's `dist` after a build, the `.ifc` corpus under
+ * `tests/models` after the fixture cache warms. None of those are committed, so none of them
+ * can ever be what a `paths:` filter matches -- but their presence changed the
+ * VERDICT. The check passed on a developer's clean checkout and failed in CI
+ * on the identical commit, which makes it not a check at all. Restricting the
+ * walk to what git tracks makes the answer a function of the commit alone.
+ *
+ * Read from the committed `.gitignore` rather than by shelling out to
+ * `git check-ignore`, so the synthetic trees in the harness -- which are not
+ * git repositories -- run the SAME exclusion the real repository runs. A
+ * fallback path for "not a repo" would be a second behaviour nothing tests.
+ *
+ * The supported subset is exactly what this repository's `.gitignore` uses.
+ * Anything else THROWS: a pattern silently dropped is a tree the walk wanders
+ * back into, which is the defect this function exists to remove.
+ *
+ * @param {string} text
+ * @returns {string[]} globs consumable by {@link matchesAny}.
+ */
+export function gitignoreToGlobs(text) {
+  const out = [];
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (line === '' || line.startsWith('#')) continue;
+    if (line.startsWith('!')) {
+      // A re-inclusion means the ignore set is no longer a plain union and
+      // ordering starts to matter. Refusing is the honest answer.
+      throw new Error(`gitignoreToGlobs: negation is not supported: ${JSON.stringify(line)}`);
+    }
+    if (line.includes('\\')) {
+      throw new Error(`gitignoreToGlobs: escapes are not supported: ${JSON.stringify(line)}`);
+    }
+
+    const trailingSlash = line.endsWith('/');
+    let body = trailingSlash ? line.slice(0, -1) : line;
+    const anchored = body.startsWith('/');
+    if (anchored) body = body.slice(1);
+    if (body === '') {
+      throw new Error(`gitignoreToGlobs: empty pattern: ${JSON.stringify(line)}`);
+    }
+
+    // git anchors a pattern to the repo root as soon as it contains a slash
+    // anywhere but the end; otherwise it matches at every depth.
+    const rooted = anchored || body.includes('/');
+    const bases = rooted ? [body] : [body, `**/${body}`];
+    for (const base of bases) {
+      // Both the node itself and everything under it: git ignoring a directory
+      // ignores its whole subtree, and the walk must be able to ask either
+      // question.
+      out.push(base, `${base}/**`);
+      // `a/**/b` in git matches ZERO or more intervening directories, so
+      // `tests/models/**/*.ifc` covers `tests/models/AB22.ifc`. `globToRegExp`
+      // renders `**` as `.*`, which needs the separators on both sides and so
+      // would miss the zero-directory case -- and missing it is what left the
+      // corpus visible to the walk in the first place. Emit the collapsed form
+      // alongside rather than loosening the shared translator, which decides a
+      // different question for the filter globs.
+      if (base.includes('/**/')) {
+        const collapsed = base.replaceAll('/**/', '/');
+        out.push(collapsed, `${collapsed}/**`);
+      }
+    }
+  }
+  return out;
+}

@@ -81,6 +81,7 @@ import {
   parseWorkflowPrPaths,
   deriveInputs,
   matchesAny,
+  gitignoreToGlobs,
 } from './lib/ci-path-coverage.mjs';
 
 const rootFlag = process.argv.indexOf('--root');
@@ -117,6 +118,22 @@ function fail(reason) {
 
 const abs = (p) => join(ROOT, p);
 const exists = (p) => existsSync(abs(p));
+
+/**
+ * Everything `.gitignore` excludes, as globs.
+ *
+ * The walk must see COMMITTED content and nothing else. Untracked output --
+ * `node_modules` after an install, a package's `dist` after a build, the
+ * fetched `.ifc` corpus under `tests/models` -- can never be what a `paths:`
+ * filter matches, but while the walk could see it the verdict moved with the
+ * state of the working tree: this check passed on a clean checkout and failed
+ * in CI on the identical commit. A check whose answer depends on what was
+ * built last is not evidence about the commit.
+ */
+const IGNORED = exists('.gitignore')
+  ? gitignoreToGlobs(readFileSync(abs('.gitignore'), 'utf8'))
+  : [];
+const isIgnored = (rel) => IGNORED.length > 0 && matchesAny(rel, IGNORED);
 
 // ---------------------------------------------------------------------------
 // 1. The filter block.
@@ -253,7 +270,11 @@ for (const [gate, info] of gates) {
     );
     process.exit(1);
   }
-  const derived = deriveInputs(readFileSync(abs(gate), 'utf8'), exists);
+  // An ignored path is not a source input: it cannot be committed, so it can
+  // never be what a `paths:` filter matches. Dropping it HERE as well as in
+  // the walk keeps the reported input COUNT a function of the commit too --
+  // otherwise a warmed fixture cache silently moves the number in the summary.
+  const derived = deriveInputs(readFileSync(abs(gate), 'utf8'), (q) => exists(q) && !isIgnored(q));
   // A gate's own source file is trivially an input; keep it, it is the
   // self-coverage case and it must hold for every gate, not just this one.
   const inputs = [...new Set([gate, ...derived])].sort();
@@ -307,6 +328,14 @@ function filesUnder(rel) {
 }
 
 function walkUncached(rel) {
+  // Asked about an ignored node directly: it is not committed, so it
+  // contributes no files. Belt and braces -- the derivation above already
+  // declines to hand an ignored path to the walk, so nothing observable
+  // depends on this line today. It is here because the old skip set filtered
+  // only a walk's CHILDREN and never the root it was asked about, which is the
+  // shape that let `node_modules` be enumerated once the derivation admitted
+  // it; a future change to the derivation must not be able to reopen it.
+  if (isIgnored(rel)) return [];
   const target = abs(rel);
   let st;
   try {
@@ -316,14 +345,14 @@ function walkUncached(rel) {
   }
   if (!st.isDirectory()) return [rel];
   const out = [];
-  const skip = new Set(['node_modules', 'dist', 'pkg', 'build', 'coverage', '.turbo', 'target']);
   const walk = (dir) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       if (entry.name.startsWith('.') && dir === target && rel !== WORKFLOW_DIR) continue;
-      if (skip.has(entry.name)) continue;
       const full = join(dir, entry.name);
+      const child = relative(ROOT, full).split(sep).join('/');
+      if (isIgnored(child)) continue;
       if (entry.isDirectory()) walk(full);
-      else out.push(relative(ROOT, full).split(sep).join('/'));
+      else out.push(child);
     }
   };
   walk(target);

@@ -12,7 +12,9 @@
 # +8: add set_entity_index setter so the processor can install its inline-built index (perf/single-scan).
 # +50: add the per-worker placement-transform memo (field + take/set/get/cache methods), mirroring point_cache (perf/placement-cache).
     1064 rust/core/src/decoder.rs
-     793 rust/core/src/georef.rs
+# -35: the ePSet MapUnit label rules moved to unit_labels.rs, next to the unit
+# tables they resolve through (#3292); 793 -> 758.
+     758 rust/core/src/georef.rs
      445 rust/core/src/model_bounds.rs
      601 rust/core/src/parser/scanner.rs
      463 rust/core/src/parser/tokenizer.rs
@@ -23,7 +25,9 @@
 # same as the tree main converged on independently.
 # -416: the inline #[cfg(test)] mod moved VERBATIM to units_tests.rs (ratchet-exempt)
 # so the quoted 'FEET' arm and its two cross-reader comments fit; 990 -> 574.
-    574 rust/core/src/units.rs
+# -38: the SI-prefix and conversion-based tables moved to unit_labels.rs, shared
+# verbatim with the georeferencing MapUnit reader (#3292); 574 -> 536.
+    536 rust/core/src/units.rs
 # +4: build the index once in parallel on the fail-closed try_/project_glb_size large-model GLB paths (perf/parallel-scan).
 # +81: emissive-material knob for KMZ/Google Earth (#1427) - make_material lit/unlit/emissive branch + emissive param threaded through build_gltf/export_glb_from_meshes and their tests.
     4028 rust/export/src/gltf.rs

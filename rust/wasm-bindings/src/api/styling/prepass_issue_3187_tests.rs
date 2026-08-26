@@ -81,15 +81,29 @@ fn legacy_keywords_are_not_scheduled_as_unknown() {
 /// test: no legacy keyword can reach them. That is a property of the tables,
 /// not a fact about the tests, so it is asserted here rather than assumed.
 ///
-/// Each scan loop has three arms that attach a job label: the `IFCSITE` arm,
-/// the `has_geometry_by_name` arm, and the representationless-spatial-container
-/// exception. Every one of the 22 legacy keywords the bare resolver gets wrong
-/// takes the SECOND. The first and third are therefore changed for consistency
-/// and cannot be exercised by this defect's inputs.
+/// EXACTLY WHAT THIS ASSERTS, because the raw counts invite a wrong reading:
+/// the bare resolver returns `Unknown` for all **26** names in
+/// `LEGACY_ENTITY_NAMES`. Of those, 22 reach the `has_geometry_by_name` arm,
+/// **0** reach the `IFCSITE` arm, and **0** reach the representationless-
+/// spatial-container arm. The remaining 4 reach NONE of the three and are
+/// never scheduled as geometry jobs at all; three of them
+/// (`IFCDOORSTYLE`, `IFCWINDOWSTYLE`, `IFCBUILDINGELEMENTTYPE`) are picked up
+/// by a fourth arm, `type_product_ifc_type`, which already resolves
+/// legacy-aware. So this test deliberately does NOT compare the geometry count
+/// to the Unknown total: 22 against 26 is correct, not a discrepancy.
 ///
-/// If a schema revision ever puts a legacy keyword into one of those arms, this
-/// test fails and tells the next person that those sites now need real coverage
-/// -- which is the thing a reader would otherwise have to rediscover.
+/// The two zeroes are the load-bearing claim. They are what makes
+/// `styling/prepass.rs:68`/`:94` and `gpu_meshes/prepass.rs:349`/`:416`
+/// unreachable by an input where the two resolvers disagree, and therefore
+/// impossible to pin with a legacy-keyword test rather than merely untested.
+///
+/// WHAT ACTUALLY TRIPS THIS, stated precisely because an earlier draft
+/// promised coverage it does not have. `compute_is_representationless_spatial_container`
+/// returns false as its first statement for any name in the legacy table, and
+/// that table is lint-enforced against the match arms, so regenerating the
+/// schema cannot route a legacy keyword into the container arm. What trips it
+/// is deleting that early return, or adding `IFCSITE` to the legacy table.
+/// Narrow, but both are edits a person could make without seeing these sites.
 #[test]
 fn every_legacy_keyword_reaches_the_geometry_arm_and_no_other() {
     let mut geometry = 0;
@@ -110,6 +124,15 @@ fn every_legacy_keyword_reaches_the_geometry_arm_and_no_other() {
         geometry > 0,
         "anti-vacuity: the geometry arm must carry legacy keywords, or this test \
          asserts nothing about the partition"
+    );
+    // The OTHER half of anti-vacuity, and the one a `geometry > 0` floor misses.
+    // If the container predicate ever regressed to always-false, the two
+    // container sites would become dead code -- a real defect -- and the
+    // `other` bucket would still be empty, so this test would still pass.
+    assert!(
+        ifc_lite_core::is_representationless_spatial_container_by_name("IFCBUILDINGSTOREY"),
+        "anti-vacuity: the container predicate must return true for something, \
+         or an empty `other` bucket proves nothing about legacy keywords"
     );
     assert_eq!(
         other,

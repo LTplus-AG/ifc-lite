@@ -145,9 +145,81 @@ describe('parseUrlParams', () => {
     expect(parseUrlParams()[key]).toBeUndefined();
   });
 
+  it.each(['select', 'isolate'] as const)(
+    '%s ignores empty segments rather than treating them as express id 0',
+    (key) => {
+      // `Number('') === 0`, not `NaN` — a `,` alone, or any empty segment
+      // from a trailing/doubled comma, must not survive as a real id.
+      // `?isolate=,` in particular used to isolate express id 0 (which
+      // matches nothing) and blank the whole model with no error.
+      setSearch(`?${key}=,`);
+      expect(parseUrlParams()[key]).toBeUndefined();
+      setSearch(`?${key}=1,,3`);
+      expect(parseUrlParams()[key]).toEqual([1, 3]);
+    },
+  );
+
+  it.each(['select', 'isolate'] as const)('%s rejects zero and negative ids', (key) => {
+    setSearch(`?${key}=0,-1,2`);
+    expect(parseUrlParams()[key]).toEqual([2]);
+  });
+
   it('splits and trims hideTypes', () => {
     setSearch('?hideTypes=' + encodeURIComponent('IfcSpace, IfcOpeningElement'));
     expect(parseUrlParams().hideTypes).toEqual(['IfcSpace', 'IfcOpeningElement']);
+  });
+
+  it('rejects an EMPTY camera segment instead of steering to azimuth 0', () => {
+    // `Number('')` is 0, so a plain `!isNaN` filter reads `?camera=,` as a
+    // legitimate azimuth 0 / elevation 0 and SNAPS the view, instead of
+    // leaving the camera on its `home` fallback. On main the `?camera=`
+    // branch was inert, so the bad parse never bit; applying the parameter
+    // is what makes it reachable.
+    //
+    // The guard cannot be "reject 0" -- the SDK ships `camera: {0,0,0}` as a
+    // legitimate pose. It has to reject a BLANK SEGMENT before `Number` sees
+    // it, which is the same shape as the fix already applied to
+    // `select`/`isolate`.
+    setSearch('?camera=,');
+    expect(parseUrlParams().camera).toBeUndefined();
+    // The SDK joins [azimuth, elevation], so a host that omits azimuth emits
+    // exactly this.
+    setSearch('?camera=,30');
+    expect(parseUrlParams().camera).toBeUndefined();
+    setSearch('?camera=45,');
+    expect(parseUrlParams().camera).toBeUndefined();
+    // ... while a real all-zero pose still parses.
+    setSearch('?camera=0,0,0');
+    expect(parseUrlParams().camera).toEqual({ azimuth: 0, elevation: 0, zoom: 0 });
+  });
+
+  it('rejects a NON-FINITE camera segment instead of steering to Infinity', () => {
+    // `Number('Infinity')` is `Infinity`, not `NaN`, so an `!isNaN` filter
+    // lets `?camera=Infinity,0` through and hands a non-finite azimuth to
+    // `setCameraRotation`. The blank-segment guard does not catch it either:
+    // the segment is non-empty. Only a finiteness test rejects it.
+    setSearch('?camera=Infinity,0');
+    expect(parseUrlParams().camera).toBeUndefined();
+    setSearch('?camera=0,-Infinity');
+    expect(parseUrlParams().camera).toBeUndefined();
+    // The optional zoom is subject to the same rule.
+    setSearch('?camera=30,-10,Infinity');
+    expect(parseUrlParams().camera).toBeUndefined();
+    // ... while a finite pose with the same shape still parses.
+    setSearch('?camera=30,-10,2');
+    expect(parseUrlParams().camera).toEqual({ azimuth: 30, elevation: -10, zoom: 2 });
+  });
+
+  it('rejects a NON-INTEGER id rather than passing it through as an express id', () => {
+    // The `Number.isInteger` half of the id filter had no covering case: both
+    // existing ones (`?select=,` and `?select=0,-1,2`) are decided entirely
+    // by `n > 0`, so dropping the integer check left the suite green.
+    // A fractional id matches no entity, so isolation blanks the model --
+    // the exact failure the filter was added to prevent.
+    setSearch('?isolate=1.5');
+    expect(parseUrlParams().isolate).toBeUndefined();
+    setSearch('?select=1.5,2');
+    expect(parseUrlParams().select).toEqual([2]);
   });
 
   it('parses camera with an optional zoom and rejects partial or non-numeric input', () => {

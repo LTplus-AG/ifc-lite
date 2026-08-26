@@ -23,7 +23,7 @@
     "@ifc-lite/spatial": "workspace:^"
   },
   "devDependencies": {
-    "@webgpu/types": "^0.1.71",
+    "@webgpu/types": "^0.1.72",
     "tsx": "^4.23.12",
     "typescript": "^6.0.3"
   },

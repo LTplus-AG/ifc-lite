@@ -22,9 +22,9 @@
     "@ifc-lite/embed-protocol": "workspace:^"
   },
   "devDependencies": {
-    "happy-dom": "^20.11.2",
+    "happy-dom": "^20.11.6",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "license": "MPL-2.0",
   "repository": {

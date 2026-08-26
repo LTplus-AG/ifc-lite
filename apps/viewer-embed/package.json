@@ -49,12 +49,12 @@
   "devDependencies": {
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
-    "@vitejs/plugin-react": "^6.0.5",
-    "happy-dom": "^20.11.2",
+    "@vitejs/plugin-react": "^6.1.0",
+    "happy-dom": "^20.11.6",
     "typescript": "^6.0.3",
-    "vite": "^8.2.1",
+    "vite": "^8.2.2",
     "vite-plugin-top-level-await": "^1.6.0",
     "vite-plugin-wasm": "^3.6.0",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   }
 }

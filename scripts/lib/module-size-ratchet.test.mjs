@@ -27,6 +27,7 @@ import {
   isExempt,
   parseAllowlist,
   allowlistDigest,
+  allowlistDigests,
   evaluate,
   staleRows,
 } from './module-size-ratchet.mjs';
@@ -240,7 +241,24 @@ test('the digest agrees with the Rust ratchet, byte for byte', () => {
   // does — and this is the only place that would notice.
   const rustAllowlist = join(ROOT, 'rust', 'processing', 'tests', 'module_size_allowlist.txt');
   const rustSource = readFileSync(join(ROOT, 'rust', 'processing', 'tests', 'module_size_ratchet.rs'), 'utf8');
-  const pinned = /const ALLOWLIST_DIGEST: u64 = (\d+);/.exec(rustSource);
-  assert.ok(pinned, 'could not find ALLOWLIST_DIGEST in module_size_ratchet.rs');
-  assert.equal(allowlistDigest(parseAllowlist(readFileSync(rustAllowlist, 'utf8'))), pinned[1]);
+  // Both sides are sharded by scope now (#3291), so the parity claim is
+  // per-scope: every entry of the Rust `ALLOWLIST_DIGESTS` table must equal
+  // what the JS `allowlistDigests` computes for that scope over the SAME file.
+  const block = /const ALLOWLIST_DIGESTS: &\[\(&str, u64\)\] = &\[([\s\S]*?)\];/.exec(rustSource);
+  assert.ok(block, 'could not find ALLOWLIST_DIGESTS in module_size_ratchet.rs');
+  const pinned = new Map(
+    [...block[1].matchAll(/\("([^"]+)",\s*(\d+)\)/g)].map(([, scope, d]) => [scope, d]),
+  );
+  const computed = allowlistDigests(parseAllowlist(readFileSync(rustAllowlist, 'utf8')));
+
+  // Anti-vacuity: a regex that matched nothing would give two empty maps and a
+  // passing deepEqual, which is the shape this repo keeps rediscovering.
+  assert.ok(pinned.size > 0, 'the Rust pin table parsed to zero entries');
+  assert.equal(pinned.size, computed.size, 'the two sides must cover the same scopes');
+  assert.deepEqual([...computed].sort(), [...pinned].sort());
+
+  // And the SCOPING itself must agree, not just the hashes: a JS scope rule
+  // that differed from the Rust one could still produce matching digests if
+  // every row happened to land in one bucket.
+  assert.ok(computed.size > 1, 'the Rust allowlist must span more than one scope');
 });

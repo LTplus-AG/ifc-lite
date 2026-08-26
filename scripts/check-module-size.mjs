@@ -42,7 +42,8 @@
  *
  * What the step breaks on afterwards, by design: any PR adding a TS/TSX file
  * over 400 lines, any PR growing a listed file past its recorded budget, and
- * any PR editing the allowlist without moving ALLOWLIST_DIGEST — including a
+ * any PR editing the allowlist without moving that scope's ALLOWLIST_DIGESTS
+ * entry — including a
  * rebase that lands after someone else's shrink, which requires recomputing
  * the pin. It does NOT break on a file shrinking or disappearing; those are
  * advisory notes.
@@ -73,7 +74,8 @@
  * Flags (development and the test harness only; CI would pass none):
  *   --root <dir>       scan this tree instead of the repo
  *   --allowlist <path> read this allowlist instead of the committed one
- *   --digest <value>   compare against this pin instead of ALLOWLIST_DIGEST
+ *   --digests <json>   compare against this scope->digest object instead of
+ *                      ALLOWLIST_DIGESTS
  *   --update           rewrite the allowlist and the digest pin from the tree
  *   --allow-raise      with --update, permit budget raises and new exemptions
  */
@@ -127,8 +129,19 @@ const SOURCE_RE = /\.(ts|tsx|mts|cts)$/;
  * is born with it.
  *
  * A plain SUM is not enough: raising one budget by 100 while lowering another
- * by 100 leaves the total unchanged. The digest moves for ANY change to ANY
- * row, so loosening the ratchet always costs one reviewable line here.
+ * by 100 leaves the total unchanged. A scope's digest moves for ANY change to
+ * ANY of its rows, so loosening the ratchet always costs one reviewable line
+ * here.
+ *
+ * SHARDED BY SCOPE, one entry per `packages/<name>` / `apps/<name>` /
+ * `rust/<crate>` (#3291). A single repo-wide digest had the same visibility but
+ * coupled every PR touching any budget to every other one: they all rewrote the
+ * same pinned line, so they conflicted by construction whatever they changed.
+ * Measured on one 90-minute batch: eight PRs, 18 conflict resolutions to land
+ * four, none of them from the PRs disagreeing about anything. With one line per
+ * scope, two PRs in different scopes edit different lines and git merges them.
+ * Verified by running the same two-branch probe both ways — old scheme:
+ * `CONFLICT (content) in scripts/check-module-size.mjs`; sharded: clean.
  *
  * TO RECOMPUTE: `pnpm lint:module-size-baseline`, which rewrites the allowlist
  * and this constant together. By hand: set this to '0', run
@@ -331,7 +344,7 @@ if (args.update) {
 
   writeFileSync(args.allowlist, renderAllowlist(allowlistText, next));
 
-  // The pin lives in this script, not in the allowlist (see ALLOWLIST_DIGEST):
+  // The pin lives in this script, not in the allowlist (see ALLOWLIST_DIGESTS):
   // a digest stored beside the rows it guards is circular. Rewrite it here so
   // the regeneration is one command, not one command plus a hand edit that the
   // next reader has to remember.
@@ -427,7 +440,7 @@ ${newOffenders.join('\n')}
 
 Split them (AGENTS.md house rule), or — only with a written justification in
 the PR — add a row to scripts/module-size-allowlist.txt and update
-ALLOWLIST_DIGEST in the same commit.
+the affected ALLOWLIST_DIGESTS entries in the same commit.
 `);
 }
 

@@ -33,6 +33,7 @@
 //! skip returns before the walk, so it bypassed all three of the others at once.
 
 mod common;
+use std::collections::BTreeMap;
 
 const LIMIT: usize = 400;
 const ALLOWLIST: &str = include_str!("module_size_allowlist.txt");
@@ -54,7 +55,14 @@ const ALLOWLIST: &str = include_str!("module_size_allowlist.txt");
 /// FNV-1a over the sorted rows rather than `DefaultHasher`, whose output is
 /// explicitly NOT guaranteed stable across Rust releases - a toolchain bump
 /// would rewrite the digest and fail CI for no reason.
-const ALLOWLIST_DIGEST: u64 = 17309351053416166866;
+const ALLOWLIST_DIGESTS: &[(&str, u64)] = &[
+    ("apps/server", 12409080334009393247),
+    ("rust/core", 12232964975882622813),
+    ("rust/export", 15791359419451037914),
+    ("rust/geometry", 4605843127520592792),
+    ("rust/processing", 3593499704459643831),
+    ("rust/wasm-bindings", 17342606281136646666),
+];
 
 /// Lower bound on how many non-exempt `.rs` files the walk must reach before
 /// its verdict means anything. Every offender this gate can report is pushed
@@ -341,29 +349,83 @@ fn allowlist_is_well_formed_and_over_limit() {
 /// changes it, where a reviewer sees it.
 #[test]
 fn allowlist_digest_is_pinned() {
-    let actual = allowlist_digest();
+    let actual = allowlist_digests();
+    let pinned: BTreeMap<String, u64> = ALLOWLIST_DIGESTS
+        .iter()
+        .map(|(s, d)| ((*s).to_string(), *d))
+        .collect();
     let total: usize = parse_allowlist().values().sum();
-    assert_eq!(
-        actual, ALLOWLIST_DIGEST,
-        "module_size_allowlist.txt digest is {actual} (budgets total {total}), but \
-         ALLOWLIST_DIGEST in module_size_ratchet.rs reads {ALLOWLIST_DIGEST}.\n\n\
-         Raising a budget loosens the ratchet, so it must be visible: set \
-         ALLOWLIST_DIGEST to {actual} in the SAME commit and say in the PR why \
-         the module cannot be split. Lowering one, or deleting a row, is welcome \
-         and must update the digest too so it keeps stating the real allowlist."
+
+    let drifted: Vec<String> = actual
+        .iter()
+        .filter(|(scope, d)| pinned.get(*scope) != Some(*d))
+        .map(|(scope, d)| format!("    (\"{scope}\", {d}),"))
+        .collect();
+    // A pinned scope with no rows left is drift too: without this, deleting
+    // every row of a scope leaves a pin describing nothing and the gate stays
+    // silent -- the vacuity shape this repo keeps rediscovering (#3200).
+    let orphaned: Vec<&str> = pinned
+        .keys()
+        .filter(|s| !actual.contains_key(*s))
+        .map(String::as_str)
+        .collect();
+
+    assert!(
+        drifted.is_empty() && orphaned.is_empty(),
+        "module_size_allowlist.txt has {} rows, budgets total {total}, and {} scope(s) \
+         disagree with ALLOWLIST_DIGESTS in module_size_ratchet.rs.\n\n\
+         Raising a budget loosens the ratchet, so it must be visible. Set these entries \
+         in the SAME commit and say in the PR why the module cannot be split:\n\n{}\n\n\
+         Orphaned pins (no rows left, delete them): {:?}\n\n\
+         Only the scopes listed moved; every other entry stays as it is.",
+        parse_allowlist().len(),
+        drifted.len(),
+        drifted.join("\n"),
+        orphaned
     );
+}
+
+/// The SCOPE a row's digest belongs to: `rust/<crate>`, `apps/<name>`, or the
+/// first path segment for anything else. Mirrors `allowlistScope` in
+/// `scripts/lib/module-size-ratchet.mjs` (#3291).
+fn allowlist_scope(path: &str) -> String {
+    let parts: Vec<&str> = path.split('/').collect();
+    if parts.len() >= 2 && matches!(parts[0], "packages" | "apps" | "rust") {
+        return format!("{}/{}", parts[0], parts[1]);
+    }
+    parts
+        .first()
+        .map_or_else(|| "other".to_string(), |p| (*p).to_string())
 }
 
 /// FNV-1a over `path budget` rows, sorted by path so the digest is a function
 /// of the allowlist's CONTENT and not of its line order.
-fn allowlist_digest() -> u64 {
-    let map = parse_allowlist();
-    let mut rows: Vec<String> = map.iter().map(|(p, b)| format!("{p} {b}")).collect();
-    rows.sort();
+fn digest_rows(rows: &BTreeMap<String, usize>) -> u64 {
+    let mut lines: Vec<String> = rows.iter().map(|(p, b)| format!("{p} {b}")).collect();
+    lines.sort();
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for byte in rows.join("\n").bytes() {
+    for byte in lines.join("\n").bytes() {
         hash ^= u64::from(byte);
         hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
     }
     hash
+}
+
+/// Per-scope digests. Sharded for the same reason the TypeScript twin is: one
+/// repo-wide pin made every PR touching ANY budget conflict with every other,
+/// because they all rewrote the same line. This allowlist is touched far more
+/// often than the TS one -- 69 of the last 200 commits on main against 8 --
+/// so the coupling costs more here, not less.
+fn allowlist_digests() -> BTreeMap<String, u64> {
+    let mut by_scope: BTreeMap<String, BTreeMap<String, usize>> = BTreeMap::new();
+    for (path, budget) in parse_allowlist() {
+        by_scope
+            .entry(allowlist_scope(&path))
+            .or_default()
+            .insert(path, budget);
+    }
+    by_scope
+        .into_iter()
+        .map(|(scope, rows)| (scope, digest_rows(&rows)))
+        .collect()
 }

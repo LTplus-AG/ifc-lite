@@ -7,6 +7,7 @@
 
 use super::*;
 // Exercised directly here; `step.rs` reaches it through `step_cow`.
+use crate::step_json::export_step_json;
 use crate::step_text::substitute_ref_in_attr;
 
 /// Count `#id=` entity lines in a STEP DATA section + grab the FILE_SCHEMA label.
@@ -904,10 +905,10 @@ ENDSEC;
 END-ISO-10303-21;
 "#;
     let opts = StepOptions {
-        description: "d".into(),
-        author: "a".into(),
-        organization: "o".into(),
-        application: "app".into(),
+        description: Some("d".into()),
+        author: Some("a".into()),
+        organization: Some("o".into()),
+        application: Some("app".into()),
         property_mutations: vec![PropMutation {
             express_id: 2,
             pset_name: "P".into(),

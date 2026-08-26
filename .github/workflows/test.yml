@@ -885,6 +885,46 @@ jobs:
       # crates.io behind npm. This makes that order a PR-visible gate.
       - name: Check the crates publish order matches the dependency graph
         run: node --test scripts/release-crates-order.test.mjs
+      # #3180: `cargo publish` does not block until a crate is visible in the
+      # crates.io index (the comment that used to claim it did was false —
+      # v6.0.0 left 4 of 7 crates unpublished when the index lagged past
+      # cargo's own internal wait). release-crates.mjs now polls the index
+      # itself with a bounded timeout instead of trusting cargo's wait; these
+      # cover that poll (and the underlying crates.io query helper) against a
+      # stubbed registry and a fake clock, never a real network call.
+      - name: Check the crates.io publish poll fails closed on a stuck index
+        run: node --test scripts/lib/crates-io.test.mjs scripts/release-crates.test.mjs
+      # #3181: `verify-npm-publish.js` only ever checked npm, so the v6.0.0
+      # partial crates.io publish (#3180) went unreported — npm was complete,
+      # and nothing checked the other registry. Covers `verify-crates-publish.js`
+      # reproducing that exact 3-of-7 shape against a stubbed registry — and
+      # the EXIT CODE, not just the pure `verifyAll`: the step name claims the
+      # verifier "catches" a partial publish, which is a claim about what the
+      # process returns. `runMain` is driven directly so `if (failed.length >
+      # 0) → if (false)` (a partial publish exiting 0) and an empty crate list
+      # exiting 0 both fail here rather than at the next release.
+      - name: Check the crates.io publish verifier catches a partial publish
+        run: node --test scripts/verify-crates-publish.test.mjs
+      # The gate that decides whether either publish verifier runs at all. It
+      # is read from `release.yml` on main only, so nothing on a PR exercises
+      # it — and its first spelling (root `package.json` version vs `HEAD~1`)
+      # was wrong on this repo's own history: `sync-versions.js` pins the root
+      # version to the HIGHEST workspace version without lockstepping the
+      # rest, so the root version stands still on most release commits and the
+      # gate collapsed back to `published == 'true'`, skipping verification on
+      # exactly the re-run that recovers a partial publish (#3181). These
+      # drive real throwaway git repositories: a root bump, a bump that leaves
+      # the root alone, no bump at all, and a first commit with no parent.
+      #
+      # They also cover the YAML SEAM, by lifting the `VERSION_CHANGED=` lines
+      # straight out of `release.yml` and running them under the Actions
+      # default shell. The script fails open on its own, but a bare
+      # `VAR=$(node …)` under `bash -eo pipefail` takes the substitution's
+      # exit status: a non-zero exit killed the step, `version_changed` was
+      # never written, and both verifiers skipped DESPITE `always()`. Editing
+      # the workflow back to that spelling reddens these tests.
+      - name: Check the release version-bump gate sees non-root bumps and fails open
+        run: node --test scripts/release-version-changed.test.mjs
       # verify-esm-entrypoints.mjs is the last gate before `pnpm release`
       # publishes. If its package discovery ever returns nothing — packages/
       # moved, or the publishable filter stops matching — the smoke loop has

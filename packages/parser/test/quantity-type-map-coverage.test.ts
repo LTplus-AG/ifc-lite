@@ -24,7 +24,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { QuantityType } from '@ifc-lite/data';
-import { QUANTITY_TYPE_MAP } from '../src/columnar-parser-indexes.js';
+import { QUANTITY_TYPE_MAP, PROPERTY_ENTITY_TYPES } from '../src/columnar-parser-indexes.js';
 
 const SCHEMA_DIR = fileURLToPath(new URL('../../codegen/schemas/', import.meta.url));
 
@@ -108,6 +108,37 @@ describe('QUANTITY_TYPE_MAP covers the IfcPhysicalSimpleQuantity family (#3254)'
         // renumbering of the enum cannot make this vacuously true.
         expect(QUANTITY_TYPE_MAP['IFCQUANTITYNUMBER']).toBe(QuantityType.Number);
         expect(QUANTITY_TYPE_MAP['IFCQUANTITYNUMBER']).not.toBe(QuantityType.Count);
+    });
+
+    it('PROPERTY_ENTITY_TYPES admits every declared subtype, or it is never parsed', () => {
+        // The OTHER hand-written set, and the earlier one: `getCategory` in
+        // columnar-parser.ts consults PROPERTY_ENTITY_TYPES to decide whether
+        // an entity is a property entity AT ALL. A subtype missing there is
+        // never retained, so QUANTITY_TYPE_MAP is never consulted for it and a
+        // map row for it is unreachable — the quantity simply does not exist.
+        //
+        // This is not hypothetical: removing 'IFCQUANTITYNUMBER' from
+        // PROPERTY_ENTITY_TYPES alone left every parser test green while
+        // IFC4X3's IfcQuantityNumber became silently unparseable. Two sets that
+        // must agree, with only one of them guarded, is how the first gap got
+        // here.
+        const union = [...new Set(schemaFiles.flatMap(simpleQuantitySubtypes))].sort();
+
+        const unadmitted = union.filter((kw) => !PROPERTY_ENTITY_TYPES.has(kw));
+        expect(
+            unadmitted,
+            `these IfcPhysicalSimpleQuantity subtypes are declared by a bundled schema but are ` +
+                `not in PROPERTY_ENTITY_TYPES, so the parser discards the entity before any ` +
+                `quantity is read from it: ${unadmitted.join(', ')}`,
+        ).toEqual([]);
+
+        // The two sets must agree on the quantity family in BOTH directions:
+        // a PROPERTY_ENTITY_TYPES row for a quantity keyword with no
+        // QUANTITY_TYPE_MAP entry parses the entity and then relabels it Count.
+        const admittedQuantities = [...PROPERTY_ENTITY_TYPES]
+            .filter((kw) => kw.startsWith('IFCQUANTITY'))
+            .sort();
+        expect(admittedQuantities).toEqual(union);
     });
 
     it('negative control: non-simple and unknown keywords are absent', () => {

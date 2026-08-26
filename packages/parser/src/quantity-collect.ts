@@ -74,8 +74,9 @@ const SIMPLE_QUANTITY_VALUE_SLOT = 3;
  * tracking issue behind it.** Not "tracked separately" — an earlier version of
  * this comment said so and nothing tracked it. The children are lost in every
  * case — #3254's fixture nests two `IfcQuantityArea` totalling 26 m² that read
- * back as nothing — and a set whose ONLY member is a complex quantity therefore
- * reports no quantities at all.
+ * back as nothing — and a set whose ONLY member is a complex quantity collects
+ * nothing, so since #3261 {@link readQuantitySet} drops the whole
+ * `IfcElementQuantity` rather than reporting an empty one.
  *
  * The gap is deliberate rather than overlooked. Flattening the children into
  * this list would feed new names to a dozen name-keyed consumers, and — via the
@@ -92,7 +93,10 @@ const SIMPLE_QUANTITY_VALUE_SLOT = 3;
  * `IfcPhysicalSimpleQuantity` subtype relies on that fallback today —
  * `IfcQuantityNumber` (IFC4X3) did until #3266 gave it `QuantityType.Number`,
  * and `test/quantity-type-map-coverage.test.ts` now reds if a schema declares a
- * subtype the map has not gained.
+ * subtype the map has not gained. That test guards the OTHER hand-written set
+ * too: `PROPERTY_ENTITY_TYPES` in `columnar-parser-indexes.ts` decides whether
+ * the entity is retained at all, so a subtype missing THERE never reaches this
+ * map and the quantity does not exist rather than being mislabelled.
  */
 export function collectQuantitiesFromRefs(
     store: QuantityLookupStore,

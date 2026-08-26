@@ -8,13 +8,17 @@
  * `IfcTypeEnum` — a 128-member subset of the schema. Everything outside that
  * subset could go missing unnoticed, and 282 entries had.
  *
- * It is now built at load from `ifc-schema/generated/entities-*.ts`, so the
- * transcription that drifted is gone. This file re-derives the same expectation
- * independently of `buildEntityNames` and checks it in BOTH directions, so a
- * derivation that starts dropping entities (an `abstract` filter, a schema list
- * left out of the loop) or inventing them fails here rather than degrading
- * display names silently. The named list below is what keeps that honest when
- * both sides move together.
+ * `scripts/emit-entity-names.ts` now writes it from the same
+ * `ifc-schema/generated/entities-*.ts` tables that `generate:ifc-schema`
+ * produces, so the transcription that drifted is gone. What replaces it is a
+ * committed artefact, and its failure mode is staleness: a schema bump that
+ * regenerates `entities-*.ts` while `entity-names.ts` is left behind, or an
+ * emit that starts dropping entities (an `abstract` filter, a version left out
+ * of the loop) or inventing them. This file re-derives the expectation from
+ * `entities-*.ts` — the same source, read independently of the emitter — and
+ * checks it in BOTH directions, so any of those fails here rather than
+ * degrading display names silently. The named list below is what keeps that
+ * honest when both sides move together.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -33,8 +37,9 @@ for (const list of [ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3]) {
  * Map keys with no entity of that name in any generated schema. These three
  * are reachable through `IfcTypeEnum` / `IfcTypeEnumToString` (see
  * `ifc-entity-names.test.ts`) but are absent from the buildingSMART schema
- * dumps the generator reads, so they cannot be derived. Listed by name, never
- * as a tolerance — a fourth one appearing must fail this file.
+ * dumps the generator reads, so they cannot be derived — `ENUM_ONLY_NAMES` in
+ * `scripts/emit-entity-names.ts` adds them to the emit by hand. Listed by name
+ * here too, never as a tolerance — a fourth one appearing must fail this file.
  */
 const ENUM_ONLY_KEYS = ['IFCSOLIDSTRATUM', 'IFCVOIDSTRATUM', 'IFCWATERSTRATUM'] as const;
 

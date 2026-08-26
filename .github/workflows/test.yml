@@ -134,8 +134,8 @@ jobs:
               # EVERY workflow, not just this one and server-binaries.yml.
               # `scripts/check-swallowed-push.mjs` declares its SCOPE to be
               # `.github/workflows/**` and runs in the Node tests job, so with
-              # only two workflows named here the gate was unreachable on 11 of
-              # the 13 files it guards -- PR #3118 edited release.yml and
+              # only two workflows named here the gate was unreachable on 13 of
+              # the 15 files it guards -- PR #3118 edited release.yml and
               # docker.yml and Node tests SKIPPED. `server-binaries.yml` (the
               # server-bin platform-parity check's input, issue #2619) and
               # `test.yml` are subsumed by this glob; test.yml stays named

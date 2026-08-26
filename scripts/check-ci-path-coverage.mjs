@@ -15,7 +15,7 @@
  * written:
  *
  *   - `scripts/check-swallowed-push.mjs` declares its SCOPE to be
- *     `.github/workflows/**` and ran in a job that only 2 of the 13 workflow
+ *     `.github/workflows/**` and ran in a job that only 2 of the 15 workflow
  *     files could trigger. PR #3118 edited `release.yml` and `docker.yml`;
  *     Node tests SKIPPED.
  *   - `pnpm test:integration` runs `tests/integration.test.ts`, which was in no
@@ -37,6 +37,18 @@
  *       source (path literals and `join(ROOT, ...)` chains that resolve to
  *       something real).
  * Then it reports every file that a gate reads and no glob can trigger it on.
+ *
+ * WHAT THE CENSUS DOES NOT SEE, STATED PLAINLY. Step (a) matches only a literal
+ * `node scripts/*.mjs` in a step's `run:`, so a gate invoked through a package
+ * script is invisible to it: `pnpm lint` runs four gates
+ * (`check-changesets`, `check-test-glob-coverage`, `check-unused-locals`,
+ * `check-lint-ran`), and `check:vitest-timeout-audit` and `fixtures:check` each
+ * run one more. All six were walked by hand when this check was written and
+ * none is outside its own trigger today, so this is a KNOWN LIMIT of the
+ * census, not a hole it is hiding: those six are not covered by anything here,
+ * and a future path filter change could open a hole in one without this check
+ * noticing. Teaching it to resolve `pnpm <script>` through package.json is the
+ * fix, and is deliberately not part of this change.
  *
  * FAILS CLOSED. No workflows, no jobs, no gates, a filter block that parses to
  * nothing, an unreadable workflow, zero derived inputs, or an allowlist entry

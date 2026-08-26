@@ -178,7 +178,7 @@ const ALLOWLIST_DIGESTS = {
   'packages/extensions': '8156044843525017433',
   'packages/geometry': '11660269484074160622',
   'packages/ids': '9562546445799669442',
-  'packages/ifcx': '1612726670485322764',
+  'packages/ifcx': '1615700849439065844',
   'packages/lens': '14019022785021391214',
   'packages/lists': '3649993370543459600',
   'packages/mcp': '5906442248422039423',

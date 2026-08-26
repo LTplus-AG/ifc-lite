@@ -251,7 +251,7 @@
    468 packages/ifcx/src/federated-composition.ts
    412 packages/ifcx/src/geometry-extractor.ts
    706 packages/ifcx/src/index.ts
-   424 packages/ifcx/src/writer.ts
+   415 packages/ifcx/src/writer.ts
    464 packages/lens/src/engine.ts
    426 packages/lens/src/matching.ts
    417 packages/lens/src/types.ts

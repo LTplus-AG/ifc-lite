@@ -250,15 +250,38 @@ function optimizedFixture(extra: Record<string, ArrayLike<number>> = {}) {
 describe('source ids on the standard format (#3215)', () => {
   it('decodes both disjoint ids when their columns are present', () => {
     const meshes = buildMeshesFromTables(
-      meshTable(1, { geometry_item_id: new Uint32Array([501]), material_id: new Uint32Array([0]) }),
+      meshTable(1, {
+        geometry_item_id: new Uint32Array([501]),
+        // The writer's absent marker. Non-nullable column, explicit sentinel:
+        // a NULLABLE column's values buffer is undefined at null rows and
+        // parquet-wasm 0.7.x leaks the neighbouring row's id into it, so a
+        // material-less mesh decoded as a real-looking id for another entity.
+        material_id: new Uint32Array([0xffffffff]),
+      }),
       vertexTable,
       indexTable
     );
     expect(meshes[0].geometry_item_id).toBe(501);
-    // 0 is ABSENT, not a drillable reference to entity #0. Arrow surfaces a
-    // null UInt32 as 0 in the plain typed-array view, so without the zero check
-    // every mesh with no material would claim to slice IfcMaterial #0.
     expect('material_id' in meshes[0]).toBe(false);
+  });
+
+  it('a LEAKED neighbour id is still rejected — the sentinel, not truthiness', () => {
+    // The failure the sentinel exists for: on parquet-wasm 0.7.x a null row's
+    // slot held the NEXT row's real id (902 in the measured case). Truthiness
+    // alone passes that straight through as a drill target for the wrong
+    // entity. With the non-nullable sentinel there is no null row to leak into,
+    // and a decoder seeing the marker rejects it whatever its numeric value.
+    const meshes = buildMeshesFromTables(
+      meshTable(2, {
+        // Row 0 absent, row 1 real. Under the old nullable encoding row 0's
+        // slot would have read 902.
+        material_id: new Uint32Array([0xffffffff, 902]),
+      }),
+      vertexTable,
+      indexTable
+    );
+    expect('material_id' in meshes[0]).toBe(false);
+    expect(meshes[1].material_id).toBe(902);
   });
 
   it('decodes to the pre-#3215 shape when neither column is present', () => {

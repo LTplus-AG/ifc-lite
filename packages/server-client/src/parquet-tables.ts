@@ -32,6 +32,24 @@ export interface ArrowTableLike {
 }
 
 /** Read a numeric column, or `undefined` when the table does not carry it. */
+/**
+ * Absent marker for the two source ids. Mirrors `ABSENT_SOURCE_ID` in
+ * `apps/server/src/services/parquet_schema.rs` and the identical constant in
+ * `packages/cache/src/sections/geometry.ts`. No STEP express id reaches it.
+ */
+const ABSENT_SOURCE_ID = 0xffffffff;
+
+/** One source-id column at one row, or undefined when absent or unusable. */
+function readSourceId(
+  column: ArrayLike<number> | undefined,
+  usable: boolean,
+  index: number
+): number | undefined {
+  if (!usable) return undefined;
+  const v = column![index];
+  return v && v !== ABSENT_SOURCE_ID ? v : undefined;
+}
+
 function numericColumn(table: ArrowTableLike, name: string): ArrayLike<number> | undefined {
   return table.getChild(name)?.toArray();
 }
@@ -99,20 +117,23 @@ function transformFields(
   const geometry_class =
     hasGeometryClass && geometryClass![index] ? geometryClass![index] : undefined;
 
-  // The two disjoint source ids (#3215). 0 decodes as ABSENT, not as a
-  // drillable reference to entity #0 -- Arrow surfaces a null UInt32 as 0 in
-  // the plain typed-array view, so a decoder that trusted the raw value would
-  // have every material-less mesh claim to slice IfcMaterial #0.
+  // The two disjoint source ids (#3215), absent-marked with an explicit
+  // sentinel rather than a null.
   //
-  // That behaviour is enforced by the truthiness check in the RETURN spread
-  // below, not by the one here. The two are the same test on the same value,
-  // so this one is redundant -- measured: removing it leaves all 21 tests
-  // green. It is kept only to mirror `geometry_class` two lines up, which has
-  // the identical pair. An earlier version of this comment claimed the check
-  // here was what made 0 mean absent; it is not.
-  const geometry_item_id =
-    hasGeometryItemId && geometryItemId![index] ? geometryItemId![index] : undefined;
-  const material_id = hasMaterialId && materialId![index] ? materialId![index] : undefined;
+  // The first version of this used a NULLABLE column and read the plain typed
+  // array. That is wrong on parquet-wasm 0.7.x, which leaks the NEIGHBOURING
+  // row's value into a null row's slot: a mesh with no material decoded as
+  // `material_id: 902` -- a real-looking id belonging to a different entity,
+  // which is the wrong-drill-target defect #3199 and this issue exist to stop.
+  // The column is non-nullable now, so there is no validity bitmap and nothing
+  // to leak, and this reads a value that is always meaningful.
+  //
+  // 0 is also treated as absent, but that is belt-and-braces rather than the
+  // contract: `MeshData::with_style_metadata` already filters 0 to None,
+  // because `IfcMaterialLayer.Material` is OPTIONAL and an air gap arrives as
+  // 0, and STEP instance names start at #1 so 0 is never an entity.
+  const geometry_item_id = readSourceId(geometryItemId, hasGeometryItemId, index);
+  const material_id = readSourceId(materialId, hasMaterialId, index);
 
   return {
     ...(origin ? { origin } : {}),

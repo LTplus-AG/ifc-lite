@@ -10,7 +10,7 @@
 //! - Parquet: ~2KB per mesh (15x smaller)
 
 use crate::services::axis::{zup_to_yup, zup_to_yup_f64};
-use crate::services::parquet_schema::{index_schema, mesh_schema, vertex_schema};
+use crate::services::parquet_schema::{index_schema, mesh_schema, vertex_schema, ABSENT_SOURCE_ID};
 use crate::types::MeshData;
 use arrow::array::{Float32Array, Float64Array, StringArray, UInt8Array, UInt32Array};
 use arrow::datatypes::{DataType, Schema};
@@ -197,8 +197,8 @@ fn build_mesh_tables(
     let mut origin_y = Vec::with_capacity(mesh_count);
     let mut origin_z = Vec::with_capacity(mesh_count);
     let mut geometry_class = Vec::with_capacity(mesh_count);
-    let mut geometry_item_ids: Vec<Option<u32>> = Vec::with_capacity(mesh_count);
-    let mut material_ids: Vec<Option<u32>> = Vec::with_capacity(mesh_count);
+    let mut geometry_item_ids: Vec<u32> = Vec::with_capacity(mesh_count);
+    let mut material_ids: Vec<u32> = Vec::with_capacity(mesh_count);
 
     for (
         eid,
@@ -228,8 +228,8 @@ fn build_mesh_tables(
         origin_y.push(origin[1]);
         origin_z.push(origin[2]);
         geometry_class.push(geo_class);
-        geometry_item_ids.push(geo_item_id);
-        material_ids.push(mat_id);
+        geometry_item_ids.push(geo_item_id.unwrap_or(ABSENT_SOURCE_ID));
+        material_ids.push(mat_id.unwrap_or(ABSENT_SOURCE_ID));
     }
 
     // Phase 3: Extract vertex and index data in parallel chunks

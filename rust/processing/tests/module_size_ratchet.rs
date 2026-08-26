@@ -349,12 +349,13 @@ fn allowlist_is_well_formed_and_over_limit() {
 /// changes it, where a reviewer sees it.
 #[test]
 fn allowlist_digest_is_pinned() {
+    let rows = parse_allowlist();
     let actual = allowlist_digests();
     let pinned: BTreeMap<String, u64> = ALLOWLIST_DIGESTS
         .iter()
         .map(|(s, d)| ((*s).to_string(), *d))
         .collect();
-    let total: usize = parse_allowlist().values().sum();
+    let total: usize = rows.values().sum();
 
     let drifted: Vec<String> = actual
         .iter()
@@ -378,23 +379,70 @@ fn allowlist_digest_is_pinned() {
          in the SAME commit and say in the PR why the module cannot be split:\n\n{}\n\n\
          Orphaned pins (no rows left, delete them): {:?}\n\n\
          Only the scopes listed moved; every other entry stays as it is.",
-        parse_allowlist().len(),
-        drifted.len(),
+        rows.len(),
+        drifted.len() + orphaned.len(),
         drifted.join("\n"),
         orphaned
     );
 }
 
-/// The SCOPE a row's digest belongs to: `rust/<crate>`, `apps/<name>`, or the
-/// first path segment for anything else. Mirrors `allowlistScope` in
+#[test]
+fn allowlist_scope_matches_the_shared_vectors() {
+    // The digest-table parity test in scripts/lib/module-size-ratchet.test.mjs
+    // CANNOT see a scope-rule divergence on its own. It runs the shared rule
+    // only over THIS allowlist, which holds zero `packages/` rows, so the
+    // `packages` branch is dead on that input: deleting it leaves every digest
+    // byte-identical and every gate green. Measured, not assumed -- that
+    // mutation passed everything before this test existed.
+    //
+    // So both halves are held to the same vectors instead, the pattern this
+    // repo already uses for csv_cell_vectors.json and unit_scale_vectors.json.
+    let raw = include_str!("fixtures/module_size_scope_vectors.json");
+    let doc: serde_json::Value = serde_json::from_str(raw).expect("fixture is valid JSON");
+    let cases = doc["cases"].as_array().expect("fixture has a cases array");
+    // Anti-vacuity: a fixture that parsed to nothing would pass this test
+    // silently, which is the shape the vectors exist to stop.
+    assert!(
+        cases.len() >= 10,
+        "expected the full vector set, got {}",
+        cases.len()
+    );
+    for case in cases {
+        let path = case["path"].as_str().expect("case.path is a string");
+        let want = case["scope"].as_str().expect("case.scope is a string");
+        assert_eq!(
+            allowlist_scope(path),
+            want,
+            "scope rule disagrees with the shared vectors for {path:?}; the JS twin \
+             (allowlistScope in scripts/lib/module-size-ratchet.mjs) is held to the same file"
+        );
+    }
+}
+
+/// The SCOPE a row's digest belongs to: `packages/<name>`, `apps/<name>`,
+/// `rust/<crate>`, or the first path segment for anything else ("other" when
+/// that segment is empty). Mirrors `allowlistScope` in
 /// `scripts/lib/module-size-ratchet.mjs` (#3291).
+///
+/// `packages/` IS listed here on purpose even though this allowlist holds no
+/// `packages/` row: an earlier version of this doc omitted it, which is exactly
+/// the edit that silently desyncs the two halves, because the digest comparison
+/// cannot reach a branch its input never exercises. The shared vectors in
+/// `fixtures/module_size_scope_vectors.json` are what catch it.
 fn allowlist_scope(path: &str) -> String {
     let parts: Vec<&str> = path.split('/').collect();
     if parts.len() >= 2 && matches!(parts[0], "packages" | "apps" | "rust") {
         return format!("{}/{}", parts[0], parts[1]);
     }
+    // `.filter(|p| !p.is_empty())`, not just `.first()`: `str::split` never
+    // yields an empty iterator, so the fallback was unreachable and an empty or
+    // leading-slash path returned "" here while the JS twin returned "other".
+    // Two mirror functions that already were not mirrors -- caught by the
+    // shared vectors in fixtures/module_size_scope_vectors.json, which is why
+    // they exist rather than being tested against production data alone.
     parts
         .first()
+        .filter(|p| !p.is_empty())
         .map_or_else(|| "other".to_string(), |p| (*p).to_string())
 }
 
@@ -413,9 +461,15 @@ fn digest_rows(rows: &BTreeMap<String, usize>) -> u64 {
 
 /// Per-scope digests. Sharded for the same reason the TypeScript twin is: one
 /// repo-wide pin made every PR touching ANY budget conflict with every other,
-/// because they all rewrote the same line. This allowlist is touched far more
-/// often than the TS one -- 69 of the last 200 commits on main against 8 --
-/// so the coupling costs more here, not less.
+/// because they all rewrote the same line.
+///
+/// This half is sharded because the two gates are twins and a twin that drifts
+/// is worse than either shape -- NOT because this file is the busier one. An
+/// earlier draft of this comment claimed it was, on a miscount: `git log -200
+/// -- <path>` limits to 200 commits TOUCHING that path, so it returned each
+/// file's whole history and compared seven weeks of this file against three
+/// days of the TS one. Counting properly, of the last 200 commits on main, 6
+/// touch this allowlist and 18 touch the TS one.
 fn allowlist_digests() -> BTreeMap<String, u64> {
     let mut by_scope: BTreeMap<String, BTreeMap<String, usize>> = BTreeMap::new();
     for (path, budget) in parse_allowlist() {

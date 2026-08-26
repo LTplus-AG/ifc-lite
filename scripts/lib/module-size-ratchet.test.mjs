@@ -28,6 +28,7 @@ import {
   parseAllowlist,
   allowlistDigest,
   allowlistDigests,
+  allowlistScope,
   evaluate,
   staleRows,
 } from './module-size-ratchet.mjs';
@@ -232,6 +233,32 @@ test('the digest is a function of content, not of line order', () => {
     ['a.ts', 500],
   ]);
   assert.equal(allowlistDigest(a), allowlistDigest(b));
+});
+
+test('the SCOPE RULE agrees with the Rust twin, on vectors production data does not contain', () => {
+  // The digest-table parity test below cannot see a scope-rule divergence. It
+  // exercises the shared rule only over the RUST allowlist, which holds zero
+  // `packages/` rows, so that branch is dead on its only input: deleting it
+  // from the Rust side leaves every digest byte-identical and every gate green.
+  // Measured -- that mutation passed everything before these vectors existed.
+  //
+  // Same shared-fixture pattern as csv_cell_vectors.json / unit_scale_vectors.json.
+  const vectors = JSON.parse(
+    readFileSync(
+      join(ROOT, 'rust', 'processing', 'tests', 'fixtures', 'module_size_scope_vectors.json'),
+      'utf8',
+    ),
+  );
+  // Anti-vacuity: an empty or mis-shaped fixture would pass a bare for-loop.
+  assert.ok(Array.isArray(vectors.cases) && vectors.cases.length >= 10, 'fixture must carry the full vector set');
+  for (const { path, scope } of vectors.cases) {
+    assert.equal(allowlistScope(path), scope, `scope rule disagrees for ${JSON.stringify(path)}`);
+  }
+  // The cases that matter most are the ones neither allowlist contains, since
+  // those are exactly what a digest comparison cannot reach.
+  const paths = vectors.cases.map((c) => c.path);
+  assert.ok(paths.some((p) => p.startsWith('packages/')), 'must cover packages/, absent from the Rust allowlist');
+  assert.ok(paths.some((p) => p === '' || p.startsWith('/')), 'must cover the falsy-first-segment fallback');
 });
 
 test('the digest agrees with the Rust ratchet, byte for byte', () => {

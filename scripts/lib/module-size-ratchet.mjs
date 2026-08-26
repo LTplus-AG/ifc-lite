@@ -114,16 +114,27 @@ export function allowlistDigest(map) {
  *
  * This is the whole point of sharding (#3291). One repo-wide digest made every
  * open PR touching ANY budget conflict with every other one, because they all
- * rewrote the same pinned line. Measured on one 90-minute batch: eight PRs, 18
- * conflict resolutions to land four of them, and not one of the conflicts came
- * from the PRs disagreeing about anything -- georeferencing, marine spatial
- * parts, material tables, graphic overrides and schema-downgrade trimming share
+ * rewrote the same pinned line -- regardless of whether they touched the same
+ * code. The batch that prompted this was georeferencing, marine spatial parts,
+ * material tables, graphic overrides and schema-downgrade trimming: they shared
  * this file and nothing else.
  *
- * Two levels, not one. `packages` alone would still couple every package to
- * every other, which is most of the contention; `packages/export/src` would
- * shard so finely that the pin stops being readable and a moved file silently
- * changes which shard it lands in.
+ * What it buys, on that batch's four PRs and their six pairs: four pairs become
+ * independent, two still collide because they share `apps/viewer` and
+ * `packages/parser`. So this removes CROSS-scope coupling, not within-scope,
+ * and both allowlists are concentrated (48% of rows here are `apps/viewer`).
+ * The residual is one line and `pnpm lint:module-size-baseline` resolves it.
+ *
+ * Two levels, not one, and not three. `packages` alone would still couple every
+ * package to every other, which is most of the contention.
+ *
+ * Three is not "too fine" -- it is a NO-OP, which is a better reason to stop
+ * here and the one an earlier draft of this comment got wrong. Segment 3 is
+ * `src` for 307 of 309 rows in this allowlist and 65 of 65 in the Rust one, so
+ * `packages/export/src` is the same partition with `/src` appended to every
+ * key. Four levels would genuinely split the dominant scopes, at the cost of a
+ * pin nobody reads and a file that silently changes shard when it moves between
+ * directories.
  */
 export function allowlistScope(path) {
   const parts = String(path).split('/');

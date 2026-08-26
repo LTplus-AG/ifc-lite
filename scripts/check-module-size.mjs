@@ -137,14 +137,15 @@ const SOURCE_RE = /\.(ts|tsx|mts|cts)$/;
  * `rust/<crate>` (#3291). A single repo-wide digest had the same visibility but
  * coupled every PR touching any budget to every other one: they all rewrote the
  * same pinned line, so they conflicted by construction whatever they changed.
- * Measured on one 90-minute batch: eight PRs, 18 conflict resolutions to land
- * four, none of them from the PRs disagreeing about anything. With one line per
- * scope, two PRs in different scopes edit different lines and git merges them.
- * Verified by running the same two-branch probe both ways — old scheme:
- * `CONFLICT (content) in scripts/check-module-size.mjs`; sharded: clean.
+ * With one line per scope, two PRs in DIFFERENT scopes edit different lines and
+ * git merges them. Verified by running the same two-branch probe three ways —
+ * old scheme: `CONFLICT (content) in scripts/check-module-size.mjs`; sharded
+ * across scopes: clean; sharded within ONE scope: still conflicts. That last
+ * one is the honest limit of this change.
  *
  * TO RECOMPUTE: `pnpm lint:module-size-baseline`, which rewrites the allowlist
- * and this constant together. By hand: set this to '0', run
+ * and this constant together. By hand: replace the object with a single
+ * placeholder entry, run
  * `node scripts/check-module-size.mjs`, and read the true value out of the
  * failure message. Either way do it at the moment you finalise the change — it
  * moves if anything else touched the allowlist first.
@@ -288,8 +289,10 @@ if (
 ) {
   fail(
     'no digest pin. ALLOWLIST_DIGESTS in scripts/check-module-size.mjs must be a non-empty ' +
-      'object of scope -> decimal u64 string; empty it and run this script to read the true ' +
-      'values from the failure.',
+      "object of scope -> decimal u64 string. To read the true values, set it to a single " +
+      "placeholder entry such as { x: '0' } and run this script; the failure then prints every " +
+      'real value. EMPTYING it lands here instead, which reports nothing — the remedy this ' +
+      'message used to give.',
   );
 }
 
@@ -359,7 +362,12 @@ if (args.update) {
   try {
     const selfText = readFileSync(selfPath, 'utf8');
     if (PIN_RE.test(selfText)) {
-      writeFileSync(selfPath, selfText.replace(PIN_RE, nextBlock));
+      // A replacer FUNCTION, not a string: `$&` and friends are substitution
+      // patterns in a string replacement, so a scope containing `$&` would
+      // splice the matched block back into itself. Needs a directory named
+      // with `$&`, so it is unlikely rather than impossible -- and free to rule
+      // out. (The old code passed a pure-digit string, which had no such hazard.)
+      writeFileSync(selfPath, selfText.replace(PIN_RE, () => nextBlock));
       pinned = true;
     }
   } catch {
@@ -389,8 +397,7 @@ let failed = false;
 // reported, and only their lines need re-pinning -- which is the whole point:
 // two PRs touching different scopes now edit different lines of the object
 // above and git merges them, where one repo-wide pin made them conflict by
-// construction. Eight PRs in one 90-minute batch cost 18 conflict resolutions
-// to land four, none of them from the PRs disagreeing about anything.
+// construction whatever they changed.
 const actualDigests = allowlistDigests(allowlist);
 const pinnedScopes = new Set(Object.keys(args.digests));
 const drifted = [];
@@ -406,7 +413,7 @@ if (drifted.length > 0 || orphaned.length > 0) {
   const total = [...allowlist.values()].reduce((a, b) => a + b, 0);
   const lines = drifted.map(([scope, d]) => `  '${scope}': '${d}',`).join('\n');
   console.error(`
-The allowlist has ${allowlist.size} rows, budgets total ${total}, and ${drifted.length} scope(s)
+The allowlist has ${allowlist.size} rows, budgets total ${total}, and ${drifted.length + orphaned.length} scope(s)
 disagree with ALLOWLIST_DIGESTS in scripts/check-module-size.mjs.
 
 Raising a budget loosens this ratchet, so it must be visible in review. Set these

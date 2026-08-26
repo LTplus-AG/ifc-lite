@@ -354,11 +354,31 @@ test('--update re-pins ALLOWLIST_DIGESTS in the same run, one line per scope', (
   assert.match(out, /ALLOWLIST_DIGESTS re-pinned in .* \(2 scopes\)/);
 });
 
+test('a pinned scope whose rows all vanished is drift, not silence', () => {
+  // The orphan branch carries an explicit anti-vacuity rationale citing #3200,
+  // and nothing was checking that it fires. Without it, deleting every row of a
+  // scope leaves a pin describing nothing and the gate says OK — a pin that has
+  // stopped meaning anything, reported as agreement.
+  const dir = tree({ 'packages/a/big.ts': 450 });
+  const text = '500 packages/a/big.ts\n';
+  const pin = Object.fromEntries(allowlistDigests(parseAllowlist(text, 'x')));
+  pin['packages/ghost'] = '123';
+  const { code, out } = run(dir, text, { digest: pin });
+  assert.equal(code, 1, out);
+  assert.match(out, /packages\/ghost/);
+  assert.match(out, /no rows left/);
+  // The headline must COUNT it. It read "0 scope(s) disagree" while listing an
+  // orphan underneath, so anything reading the first line concluded the digest
+  // gate was clean.
+  assert.match(out, /and 1 scope\(s\)/);
+  assert.doesNotMatch(out, /and 0 scope\(s\)/);
+});
+
 test('a budget change in one scope leaves every OTHER scope pinned as it was', () => {
   // The property the sharding exists for (#3291), asserted directly rather
   // than inferred from the failure text. One repo-wide digest moved for a
-  // change to ANY row, so eight PRs opened in one 90-minute batch were mutually
-  // exclusive by construction: 18 conflict resolutions to land four of them.
+  // change to ANY row, so PRs touching unrelated budgets were mutually
+  // exclusive by construction.
   const before = parseAllowlist(
     '500 packages/export/a.ts\n600 packages/parser/b.ts\n700 apps/viewer/c.ts\n',
     'x',

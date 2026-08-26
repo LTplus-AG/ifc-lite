@@ -26,6 +26,7 @@ import {
   parseWorkflowJobs,
   rollupSettled,
   staleReviews,
+  flattenCheckRunPages,
   STALE_REVIEW_POLICIES,
   SETTLE_HOLD_SECONDS,
 } from './pr-review-signal.mjs';
@@ -729,6 +730,9 @@ const AUTHORS = [
 /** The status #3276's head actually carried. */
 const COMPLETED = [{ name: 'CodeRabbit', state: 'success', description: 'Review completed' }];
 
+/** The shipped default. Adjudicates nothing — see the config's premise note. */
+const OFF = { headSha: SHA.head, policy: 'off', authors: AUTHORS, checks: COMPLETED };
+
 const stale = (reviews, over = {}) =>
   staleReviews(reviews, {
     headSha: SHA.head,
@@ -808,10 +812,76 @@ test('NO NAG: an author with NO review event is never reported, and that is the 
   assert.deepEqual(stale([]), []);
 });
 
-test('DEDUPE: a context part 2 already flagged is not reported twice', () => {
-  assert.deepEqual(stale(REVIEWS_3276, { alreadyFlagged: ['CodeRabbit'] }), []);
+test('DEDUPE: a flagged context is SUPPRESSED, not dropped — an empty list means clean', () => {
+  // RED before the fix: this returned `[]`, so the caller could not tell
+  // "clean" from "found, but already said" and printed the part 3 tick over a
+  // finding it had made, with `staleReviewSeverity` inoperative.
+  const deduped = stale(REVIEWS_3276, { alreadyFlagged: ['CodeRabbit'] });
+  assert.equal(deduped.length, 1, 'the finding survives; only the sentence is redundant');
+  assert.equal(deduped[0].suppressedBy, 'CodeRabbit');
+  assert.equal(deduped[0].reviewedSha, SHA.c26e453d);
   // …and the dedupe is scoped to the context named, not to everything.
-  assert.equal(stale(REVIEWS_3276, { alreadyFlagged: ['Cursor Bugbot'] }).length, 1);
+  const other = stale(REVIEWS_3276, { alreadyFlagged: ['Cursor Bugbot'] });
+  assert.equal(other.length, 1);
+  assert.equal(other[0].suppressedBy, null, 'an unrelated context suppresses nothing');
+  // The genuinely clean case is the ONLY one that is empty, which is what makes
+  // an empty list readable as a pass.
+  assert.deepEqual(stale([], { alreadyFlagged: ['CodeRabbit'] }), []);
+});
+
+test('OFF: the shipped default adjudicates nothing, and refuses nothing either', () => {
+  // #3276's own fixture, the shape the rule was built for, under `off`.
+  assert.deepEqual(staleReviews(REVIEWS_3276, { ...OFF }), []);
+  // And `off` is INERT rather than merely silent: the fail-closed guards exist
+  // to stop a bad read printing a pass, and `off` prints no pass, so an
+  // unreadable head or an unreadable review list must not take the gate down
+  // over a question this policy never asks. Each of these throws under
+  // `claimed-verdict` — asserted in the fail-closed tests below.
+  assert.deepEqual(staleReviews(REVIEWS_3276, { ...OFF, headSha: 'HEAD' }), []);
+  assert.deepEqual(staleReviews(null, { ...OFF }), []);
+  assert.deepEqual(staleReviews(REVIEWS_3276, { ...OFF, authors: [] }), []);
+  const broken = REVIEWS_3276.map((r) => (r.id === 5030520937 ? { ...r, commit_id: 'nope' } : r));
+  assert.deepEqual(staleReviews(broken, { ...OFF }), []);
+  // MUTATION GUARD: `off` must be inert, not a synonym for "never fires". An
+  // unrecognised policy is still BAD_CONFIG, so the early return cannot be
+  // reached by a typo.
+  assert.throws(
+    () => staleReviews(REVIEWS_3276, { ...OFF, policy: 'Off' }),
+    (e) => e instanceof ReviewSignalError && e.reason === 'BAD_CONFIG',
+  );
+});
+
+test('ORDERING: `id` alone — a head review with no `submitted_at` is not masked', () => {
+  // RED before the fix: the key was `(submitted_at, id)`, so a review with no
+  // timestamp sorted to `''` and lost to EVERY dated review. Here the NEWEST
+  // review names the head and carries no `submitted_at`, and the older dated
+  // one names `c26e453d`. Under the old key this reported a CURRENT PR as
+  // stale — the finding the JSDoc says cannot be invented.
+  const undated = [
+    {
+      id: 5030520937,
+      user: { login: 'coderabbitai[bot]' },
+      state: 'COMMENTED',
+      commit_id: SHA.c26e453d,
+      submitted_at: '2026-08-26T12:46:19Z',
+    },
+    {
+      id: 5030999999,
+      user: { login: 'coderabbitai[bot]' },
+      state: 'COMMENTED',
+      commit_id: SHA.head,
+    },
+  ];
+  assert.deepEqual(stale(undated), []);
+  // ANTI-VACUITY: flip which of the two names the head and it IS stale, so the
+  // clean result above is the ordering speaking and not a swallowed row.
+  const flipped = [
+    { ...undated[0], commit_id: SHA.head },
+    { ...undated[1], commit_id: SHA.c26e453d },
+  ];
+  assert.equal(stale(flipped).length, 1);
+  assert.equal(stale(flipped)[0].reviewedSha, SHA.c26e453d);
+  assert.equal(stale(flipped)[0].submittedAt, null, 'the timestamp is printed, not compared');
 });
 
 test('POLICY: the three policies scope differently, and each is exercised', () => {
@@ -955,7 +1025,11 @@ test('FAIL CLOSED: a review with no usable id has no defensible "newest"', () =>
 
 test('the shipped config is a valid part 3 config, and its policy is the stated default', () => {
   // Pins the DEFAULT itself, once, so moving it is a deliberate edit here.
-  assert.equal(CFG.staleReviewPolicy, 'claimed-verdict');
+  // `off`, and the premise defect that put it there is in the config's own
+  // note: CodeRabbit submits no review event when a run finds nothing
+  // actionable, so 2 of `claimed-verdict`'s 4 live fires (#3276, #3288) are
+  // false and no structured field separates them from the 2 real ones.
+  assert.equal(CFG.staleReviewPolicy, 'off');
   assert.equal(CFG.staleReviewSeverity, 'warn');
   assert.ok(STALE_REVIEW_POLICIES.has(CFG.staleReviewPolicy));
   // The two identity spaces really are different, which is why `reviewAuthors`
@@ -1006,6 +1080,32 @@ test('FAIL CLOSED: an unreadable pagination result is NO_REVIEWS', () => {
     assert.throws(
       () => flattenReviewPages(bad, 'reviews'),
       (e) => e instanceof ReviewSignalError && e.reason === 'NO_REVIEWS',
+      `pages ${JSON.stringify(bad)}`,
+    );
+  }
+});
+
+test('CHECK-RUN PAGINATION: an object-paged walk is flattened in order', () => {
+  // The check-runs endpoint pages an OBJECT, not a bare array, so the shape
+  // check is on `check_runs`. A truncated walk here drops a reviewer CONTEXT,
+  // and part 2 adjudicates a missing context by SILENCE — a false negative, not
+  // a failure, which is why this refuses rather than using what arrived.
+  const pages = [
+    { total_count: 3, check_runs: [{ name: 'a' }, { name: 'b' }] },
+    { total_count: 3, check_runs: [{ name: 'CodeRabbit' }] },
+  ];
+  assert.deepEqual(
+    flattenCheckRunPages(pages, 'check runs').map((c) => c.name),
+    ['a', 'b', 'CodeRabbit'],
+  );
+  assert.deepEqual(flattenCheckRunPages([], 'check runs'), []);
+});
+
+test('FAIL CLOSED: a check-run walk that did not complete is NO_CHECK_RUNS', () => {
+  for (const bad of [null, undefined, {}, 'oops', [null], [{ total_count: 1 }], [{ check_runs: 1 }]]) {
+    assert.throws(
+      () => flattenCheckRunPages(bad, 'check runs'),
+      (e) => e instanceof ReviewSignalError && e.reason === 'NO_CHECK_RUNS',
       `pages ${JSON.stringify(bad)}`,
     );
   }

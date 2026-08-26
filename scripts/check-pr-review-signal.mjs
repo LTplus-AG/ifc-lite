@@ -107,12 +107,23 @@
  *     WHICH REVIEWS COUNT IS A POLICY CALL AND IS DELIBERATELY NOT SETTLED HERE.
  *     It is `staleReviewPolicy` in the config, validated like
  *     `reviewVerdictSeverity` — an unrecognised value is `BAD_CONFIG`, never a
- *     silent downgrade. The shipped default `claimed-verdict` is the narrowest
- *     rule that still catches #3276. The lib documents the measurements that
- *     rule out the two obvious alternatives, both of which are wrong against
- *     this repository's data: dropping `COMMENTED` makes the check a no-op, and
- *     treating "no review at the head" as staleness fires on PRs where the
- *     reviewer never submitted a review object at all.
+ *     silent downgrade. `claimed-verdict` is the narrowest rule that still
+ *     catches #3276. The lib documents the measurements that rule out the two
+ *     obvious alternatives, both of which are wrong against this repository's
+ *     data: dropping `COMMENTED` makes the check a no-op, and treating "no
+ *     review at the head" as staleness fires on PRs where the reviewer never
+ *     submitted a review object at all.
+ *
+ *     AND THE SHIPPED DEFAULT IS `off`, BECAUSE THE PREMISE IS FALSE FOR THIS
+ *     REPO'S PRIMARY REVIEWER. CodeRabbit submits NO REVIEW EVENT when a run
+ *     finds nothing actionable, so "no review object naming the head" is not
+ *     "the head was not reviewed": #3276 and #3288 each show a real 155 s /
+ *     181 s review cycle ON THE HEAD and a walkthrough naming the head, and
+ *     they are false fires; #3227 and #2952 are genuine ("Reviews paused"). No
+ *     structured field separates the two pairs — see the lib and the config for
+ *     the measurements and for why the obvious narrowing deletes the rule
+ *     instead. So it ships OFF, it NEVER prints a pass while off, and the knob
+ *     opts back in. #3227 and #2952 stay catchable for whoever sets it.
  *
  *     SEVERITY `warn`, same `@unwired-by-design` ruling as part 2: whether a bot
  *     has re-reviewed the newest push is transient GitHub state, not a fact
@@ -147,6 +158,7 @@ import {
   expandJobNames,
   flattenReviewPages,
   missingLanes,
+  flattenCheckRunPages,
   noVerdictReviews,
   pollForLanes,
   staleReviews,
@@ -436,22 +448,21 @@ function fetchStatusDescriptions(opts) {
  * @param {{ repo: string, sha: string }} opts
  */
 function fetchCheckRunDescriptions(opts) {
-  const data = gh(
+  // `--paginate --slurp`, for the same reason as the reviews walk and one that
+  // is worse here: a truncated check-run read drops a reviewer CONTEXT, and a
+  // dropped context is adjudicated by silence, not by a failure. `--jq` is not
+  // available alongside `--slurp`, so the `.check_runs` projection moves into
+  // `flattenCheckRunPages`, where the partial-walk refusal is testable.
+  const pages = gh(
     [
       'api',
+      '--paginate',
+      '--slurp',
       `repos/${opts.repo}/commits/${opts.sha}/check-runs?per_page=100`,
-      '--jq',
-      '.check_runs',
     ],
     `check runs for ${opts.sha}`,
   );
-  if (!Array.isArray(data)) {
-    throw new ReviewSignalError(
-      'NO_CHECK_RUNS',
-      `The check-runs API returned a non-array for ${opts.sha}. Refusing to read that as ` +
-        '"no reviewer said anything".',
-    );
-  }
+  const data = flattenCheckRunPages(pages, `check runs for ${opts.sha}`);
   return data.map((c) => ({
     name: c.name ?? '',
     state: String(c.conclusion ?? '').toLowerCase(),
@@ -598,7 +609,28 @@ export function evaluate({ required, lanes, reviewChecks, reviews, headSha, isFo
     // specific of the two. Saying it twice is noise, not diligence.
     alreadyFlagged: findings.map((f) => f.name),
   });
-  if (stale.length === 0) {
+  // THREE STATES, NOT TWO. `clean`, `found`, and `not adjudicated` -- and only
+  // the first of them may print a tick. An empty finding list used to mean both
+  // "nobody is stale" and "the finding was deduped away", so a suppressed
+  // finding rendered as a pass the gate had not earned. That is the exact
+  // defect class this file exists to remove, so a suppressed finding now prints
+  // its own line and still moves the exit code.
+  const reported = stale.filter((f) => f.suppressedBy === null);
+  const suppressed = stale.filter((f) => f.suppressedBy !== null);
+  if (cfg.staleReviewPolicy === 'off') {
+    // NOT a tick. `off` means this question was not asked; saying "no reviewer
+    // claims a verdict from an older review" would be an answer nobody
+    // computed. See the config for why `off` is the shipped default.
+    lines.push(
+      '➖ STALE_REVIEW not adjudicated: `staleReviewPolicy` is "off", so this gate does NOT ' +
+        'tell you whether a',
+      '   review of an older commit is standing in for a review of the head. That is a hole, ' +
+        'stated rather than',
+      '   papered over with a tick — see the config for the measured premise defect that turned ' +
+        'it off, and the',
+      '   knob that opts back in.',
+    );
+  } else if (stale.length === 0) {
     lines.push(
       `✅ No reviewer claims a verdict on ${headSha.slice(0, 8)} from a review of an older commit ` +
         `(policy: ${cfg.staleReviewPolicy}).`,
@@ -607,7 +639,7 @@ export function evaluate({ required, lanes, reviewChecks, reviews, headSha, isFo
     const fatal = cfg.staleReviewSeverity === 'fail';
     if (fatal) ok = false;
     const mark = fatal ? '❌' : '⚠️ ';
-    for (const f of stale) {
+    for (const f of reported) {
       lines.push(
         `${mark} STALE_REVIEW: \`${f.context ?? f.login}\` reads as having reviewed this PR, but ` +
           `${f.login}'s newest review is of ${f.reviewedSha.slice(0, 8)}` +
@@ -615,6 +647,25 @@ export function evaluate({ required, lanes, reviewChecks, reviews, headSha, isFo
           `${headSha.slice(0, 8)}.`,
       );
     }
+    // The SENTENCE is the duplicate, not the finding. Part 2 has already
+    // quoted this reviewer verbatim and the remedy is identical, so this says
+    // so in one line rather than repeating the whole paragraph — and the
+    // severity knob above has already been applied to it.
+    for (const f of suppressed) {
+      lines.push(
+        `${mark} STALE_REVIEW: \`${f.context ?? f.login}\` is ALSO stale — its newest review is ` +
+          `of ${f.reviewedSha.slice(0, 8)}, not ${headSha.slice(0, 8)} — reported above as ` +
+          `\`${f.suppressedBy}\`; same remedy, so it is not restated.`,
+      );
+    }
+    if (reported.length === 0) {
+      lines.push(
+        '   Re-run the reviewer on the head. Everything pushed since that commit is unreviewed ' +
+          'code under a passing signal.',
+      );
+    }
+  }
+  if (reported.length > 0) {
     lines.push(
       '   A review whose `commit_id` is not the PR head has not reviewed the PR (#3312). ' +
         'Everything pushed since',
@@ -719,12 +770,20 @@ function main() {
     ...fetchStatusDescriptions({ repo, sha: state.sha }),
     ...fetchCheckRunDescriptions({ repo, sha: state.sha }),
   ];
-  const reviews = fetchReviews({ repo, pr: args.pr });
+  // `off` READS NOTHING. The policy adjudicates nothing, so paying for a
+  // paginated walk — and, worse, letting its REVIEWS_TRUNCATED refusal take the
+  // gate down — over a question this run does not ask would be noise. Parts 1
+  // and 2 are untouched.
+  const reviews = cfg.staleReviewPolicy === 'off' ? [] : fetchReviews({ repo, pr: args.pr });
 
   console.log(`PR #${args.pr} @ ${state.sha}${state.isFork ? ' (fork)' : ''}`);
   console.log(`Required lanes derived from ${args.workflow}: ${required.length}`);
   console.log(`Rollup lanes seen: ${state.lanes.length}`);
-  console.log(`Review events read: ${reviews.length}`);
+  console.log(
+    cfg.staleReviewPolicy === 'off'
+      ? 'Review events read: none (staleReviewPolicy is "off")'
+      : `Review events read: ${reviews.length}`,
+  );
   console.log('');
 
   const { ok, lines } = evaluate({

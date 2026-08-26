@@ -549,9 +549,47 @@ export function pollForLanes({
  * file's: `configured-authors` drops (b), and `all-authors` drops (a) too --
  * the latter is the one that would flag a human `APPROVED` predating a rebase.
  *
+ * AND THE SHIPPED DEFAULT IS `off`, BECAUSE THE PREMISE IS FALSE FOR THIS
+ * REPOSITORY'S PRIMARY REVIEWER. Measured live 2026-08-26 on all four PRs the
+ * paragraph above claims as fires. CodeRabbit submits NO REVIEW EVENT AT ALL
+ * when a run finds nothing actionable, so "no review object at the head" does
+ * not mean "not reviewed":
+ *
+ *   #3276, head `1305f778`: `Review queued 14:09:52 -> in progress 14:09:55 ->
+ *   success/Review completed 14:12:27`. A real 155 s cycle ON THE HEAD, and the
+ *   walkthrough comment updated 14:12:25Z reads "No actionable comments were
+ *   generated in the recent review" over "changes between c26e453d and
+ *   1305f778" -- the head, including the commit this gate called unreviewed.
+ *   #3288 is the same shape (181 s cycle, head named). BOTH ARE FALSE FIRES.
+ *
+ *   #3227 (14 s) and #2952 (9 s) are genuine: their walkthrough comments read
+ *   "Reviews paused ... this branch is under active development", and CodeRabbit
+ *   published `success / Review completed` anyway.
+ *
+ * SO 2 OF THE 4 FIRES ARE WRONG, AND NOTHING IN THE STRUCTURED DATA SEPARATES
+ * THEM. The status text is byte-identical across all four (`success` /
+ * `Review completed`); CodeRabbit publishes no CHECK RUN at all on any of these
+ * heads, so there is no `conclusion` or `output.title` to read; and the
+ * narrowing "a completed review cycle on this head counts as review" deletes
+ * the rule rather than narrowing it -- clause (b) already requires `success` on
+ * the head, and a `success` on the head IS a completed cycle on the head, so it
+ * silences #3227 and #2952 too. The only signal that separates them is cycle
+ * DURATION (155/181 s against 14/9 s), which is an unversioned timing heuristic
+ * on a third party -- the same "transient GitHub state" input this repo already
+ * ruled out for gating -- and the only other one is the reviewer's PROSE, which
+ * the config note rules out on purpose.
+ *
+ * A gate cannot be shipped on a premise that is wrong half the time, and this
+ * one cannot be repaired without a discriminator that does not exist. So the
+ * machinery, the three scopings and the four worked examples all ship, and the
+ * default is `off`: the rule is not adjudicated unless a maintainer opts in,
+ * and `off` NEVER prints a pass -- see the caller. #3227 and #2952 remain
+ * catchable by anyone who sets it.
+ *
  * @type {ReadonlySet<string>}
  */
 export const STALE_REVIEW_POLICIES = new Set([
+  'off',
   'claimed-verdict',
   'configured-authors',
   'all-authors',
@@ -564,13 +602,26 @@ const NON_VERDICT_REVIEW_STATES = new Set(['dismissed', 'pending']);
  * Reviews whose `commit_id` is not the PR head, under the configured policy.
  *
  * THE ASSUMPTION THIS RESTS ON, STATED RATHER THAN LEFT IMPLICIT: for one
- * author, a review with a larger `(submitted_at, id)` is the later review. `id`
- * is GitHub's globally increasing review id and is the tie-break, so two
- * reviews sharing a timestamp still order deterministically. If that ever fails
- * the effect is bounded: this compares the WRONG review's `commit_id` against
- * the head, which can only mis-rank reviews an author left on the same PR -- it
- * cannot invent a finding on a PR whose every review names the head, because
- * then every candidate compares equal.
+ * author, a review with a larger `id` is the later review. `id` is GitHub's
+ * globally increasing review id, it is present on every review event, and this
+ * function refuses a review without one (`UNREADABLE_REVIEW_ID`), so the order
+ * is total on exactly the rows it compares.
+ *
+ * IT USED TO BE `(submitted_at, id)`, AND THAT WAS STRICTLY WORSE. The primary
+ * key was the one field that can be absent: a review with no `submitted_at`
+ * sorted to `''` and lost to EVERY dated review, so a review AT THE HEAD with a
+ * missing timestamp would be masked by an older dated one and this would report
+ * a current PR as stale -- the one direction the paragraph below promises is
+ * impossible. `id` alone removes that class outright rather than bounding it,
+ * and it costs nothing: the composite key's only extra information was that
+ * missing field. `submitted_at` is still carried into the finding, where it is
+ * printed rather than compared.
+ *
+ * The bound on the remaining assumption: if id order ever disagreed with real
+ * order, this compares the WRONG review's `commit_id` against the head, which
+ * can only mis-rank reviews an author left on the same PR -- it cannot invent a
+ * finding on a PR whose every review names the head, because then every
+ * candidate compares equal.
  *
  * FAIL-CLOSED, like everything else in this file: `NO_HEAD_SHA`, `NO_REVIEWS`,
  * `REVIEWS_TRUNCATED`, `EMPTY_REVIEW_AUTHORS`, `UNREADABLE_COMMIT_ID` and
@@ -588,11 +639,36 @@ const NON_VERDICT_REVIEW_STATES = new Set(['dismissed', 'pending']);
  * @param {Iterable<string>} [cfg.alreadyFlagged] - contexts part 2 already
  *   reported. The remedy is identical (re-run the reviewer) and the part 2
  *   finding quotes the reviewer verbatim, so saying it twice is pure noise.
+ *
+ * A DEDUPED FINDING IS RETURNED WITH `suppressedBy` SET, NOT DROPPED. Dropping
+ * it made the returned list mean two different things -- "clean" and "found,
+ * but not worth repeating" -- and the caller could only see the length, so it
+ * printed the part 3 pass line over a finding it had made, and the
+ * `staleReviewSeverity` knob became inoperative on exactly the PRs where both
+ * halves fired. A gate printing a tick it did not earn is the defect class this
+ * whole file exists to remove; the caller now suppresses the SENTENCE and keeps
+ * the VERDICT.
+ *
  * @returns {Array<{ login: string, context: string | null, reviewedSha: string,
- *                   submittedAt: string | null }>}
+ *                   submittedAt: string | null, suppressedBy: string | null }>}
  */
 export function staleReviews(reviews, cfg) {
   const { headSha, policy, authors, checks = [], alreadyFlagged = [] } = cfg ?? {};
+
+  if (!STALE_REVIEW_POLICIES.has(policy)) {
+    throw new ReviewSignalError(
+      'BAD_CONFIG',
+      `\`staleReviewPolicy\` must be one of ${[...STALE_REVIEW_POLICIES].join(', ')}; found ` +
+        `${JSON.stringify(policy)}. It is not defaulted on purpose: an unrecognised value ` +
+        'silently selecting a rule nobody chose is a change nobody would notice.',
+    );
+  }
+  // `off` ADJUDICATES NOTHING, so it refuses nothing either. The fail-closed
+  // guards below all exist to stop a bad read printing a pass; under `off`
+  // there is no pass to print -- the caller renders "not adjudicated" -- so
+  // taking the gate down over reviews this policy never reads would be noise.
+  // Validated FIRST, above the head check, so that is true of every input.
+  if (policy === 'off') return [];
 
   if (typeof headSha !== 'string' || !/^[0-9a-f]{40}$/.test(headSha)) {
     throw new ReviewSignalError(
@@ -600,14 +676,6 @@ export function staleReviews(reviews, cfg) {
       `Staleness is defined against the PR head, and the head came back as ` +
         `${JSON.stringify(headSha)}. Every review would compare unequal to an unreadable head, ` +
         'so this refuses rather than reporting every review stale.',
-    );
-  }
-  if (!STALE_REVIEW_POLICIES.has(policy)) {
-    throw new ReviewSignalError(
-      'BAD_CONFIG',
-      `\`staleReviewPolicy\` must be one of ${[...STALE_REVIEW_POLICIES].join(', ')}; found ` +
-        `${JSON.stringify(policy)}. It is not defaulted on purpose: an unrecognised value ` +
-        'silently selecting the narrowest rule is a downgrade nobody would notice.',
     );
   }
   if (!Array.isArray(reviews)) {
@@ -648,7 +716,7 @@ export function staleReviews(reviews, cfg) {
   );
   const flagged = new Set(alreadyFlagged);
 
-  /** @type {Map<string, { key: string, id: number, sha: string, at: string | null }>} */
+  /** @type {Map<string, { id: number, sha: string, at: string | null }>} */
   const newest = new Map();
   for (const r of scoped) {
     if (typeof r.commit_id !== 'string' || !/^[0-9a-f]{40}$/.test(r.commit_id)) {
@@ -668,21 +736,29 @@ export function staleReviews(reviews, cfg) {
       );
     }
     const at = typeof r.submitted_at === 'string' ? r.submitted_at : null;
-    const key = `${at ?? ''}#${String(r.id).padStart(20, '0')}`;
     const prev = newest.get(r.login);
-    if (!prev || key > prev.key) newest.set(r.login, { key, id: r.id, sha: r.commit_id, at });
+    if (!prev || r.id > prev.id) newest.set(r.login, { id: r.id, sha: r.commit_id, at });
   }
 
   const findings = [];
   for (const [login, review] of newest) {
     const context = scopedAuthors.get(login) ?? null;
+    let suppressedBy = null;
     if (policy === 'claimed-verdict') {
       // (b): only when something ON THIS HEAD claims the code is reviewed.
       if (context === null || !passing.has(context)) continue;
-      if (flagged.has(context)) continue;
+      // NOT `continue`. See the `alreadyFlagged` note: the sentence is
+      // redundant, the finding is not.
+      if (flagged.has(context)) suppressedBy = context;
     }
     if (review.sha === headSha) continue;
-    findings.push({ login, context, reviewedSha: review.sha, submittedAt: review.at });
+    findings.push({
+      login,
+      context,
+      reviewedSha: review.sha,
+      submittedAt: review.at,
+      suppressedBy,
+    });
   }
   return findings.sort((a, b) => a.login.localeCompare(b.login));
 }
@@ -725,6 +801,50 @@ export function flattenReviewPages(pages, where) {
       );
     }
     out.push(...page);
+  }
+  return out;
+}
+
+/**
+ * Flatten `gh api --paginate --slurp` check-run pages into one list.
+ *
+ * WHY IT IS NOT ENOUGH TO ASK FOR `per_page=100`. This read feeds part 2, and
+ * part 2's default under `claimed-verdict` is SILENCE: a reviewer context that
+ * is not in the list is simply not adjudicated. So a walk that stopped after
+ * one page does not fail loudly, it drops the finding -- a silent false
+ * negative, and the one failure mode a gate must never have. It was not live
+ * (the largest head measured 2026-08-26 carried 21 check runs against a 100
+ * page size), and it was one commit away from being live.
+ *
+ * The check-runs endpoint pages an OBJECT rather than a bare array, so each
+ * `--slurp` page is `{ total_count, check_runs: [...] }` and the shape check is
+ * on `check_runs`. Same refusal as the reviews walk, same reason: a partial
+ * read is not a short read.
+ *
+ * @param {unknown} pages - the `--slurp` result.
+ * @param {string} where - what was being read, for the error text.
+ * @returns {Array<object>}
+ */
+export function flattenCheckRunPages(pages, where) {
+  if (!Array.isArray(pages)) {
+    throw new ReviewSignalError(
+      'NO_CHECK_RUNS',
+      `${where} returned no readable array of pages. Refusing to read that as "no reviewer said ` +
+        'anything".',
+    );
+  }
+  const out = [];
+  for (const page of pages) {
+    const runs = page?.check_runs;
+    if (!Array.isArray(runs)) {
+      throw new ReviewSignalError(
+        'NO_CHECK_RUNS',
+        `One page of ${where} carried no \`check_runs\` array, so the pagination walk did not ` +
+          'complete. A partial walk drops reviewer contexts, and a dropped context is silence, ' +
+          'not a failure.',
+      );
+    }
+    out.push(...runs);
   }
   return out;
 }

@@ -113,6 +113,18 @@ jobs:
       # because the fan-out boundary produces a ~1 s window in which every
       # published lane is terminal and more are still coming -- so the
       # genuine-absence path costs 60 s, not the whole budget.
+      # THE GATE'S OWN UNIT TESTS, RUN BEFORE THE GATE. Neither
+      # `scripts/check-pr-review-signal.test.mjs` nor
+      # `scripts/lib/pr-review-signal.test.mjs` was reached by any workflow: the
+      # test.yml lanes name their script files one by one and this pair was
+      # never added, and `check-test-glob-coverage` audits package globs, not
+      # `scripts/`. A gate whose fail-closed refusals, severity knobs and
+      # policy scopings are asserted only on a developer's machine is a gate
+      # nobody is checking, which is the shape this whole workflow exists to
+      # reject. Same job, no `pnpm install` -- node builtins only, like the gate.
+      - name: Unit-test the gate itself
+        run: node --test scripts/check-pr-review-signal.test.mjs scripts/lib/pr-review-signal.test.mjs
+
       - name: Check required lanes ran and reviews produced a verdict
         env:
           GH_TOKEN: ${{ github.token }}

@@ -42,6 +42,7 @@ mod schema_convert;
 mod schema_pad;
 pub use schema_pad::padded_type_universe;
 mod shades;
+mod schema_detect;
 pub mod source_header;
 mod step;
 mod step_cow;

@@ -12,7 +12,8 @@
 use crate::rooted_type::extract_leading_guid;
 #[cfg(test)]
 use crate::rooted_type::is_global_id_shaped;
-use crate::step_text::{detect_schema, escape};
+use crate::schema_detect::detect_schema;
+use crate::step_text::escape;
 use ifc_lite_core::EntityScanner;
 use std::collections::HashSet;
 

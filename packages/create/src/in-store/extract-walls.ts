@@ -154,18 +154,13 @@ export function extractWallSegmentsForStorey(
       // tolerance). Mirrors resolve-anchor.ts / resolve-source.ts.
       //
       // Deliberately NOT claiming the case is covered: extractLengthUnitScale
-      // returns 1.0 in band for most failures rather than throwing, so no
-      // missing IFCPROJECT, no UnitsInContext, and no malformed unit
-      // declaration reaches this catch at all — this `catch` sees only a
-      // THROWN failure.
-      //
-      // Those in-band paths are no longer silent: #2104 was closed by
-      // `warnUnknownUnit` in `packages/parser/src/unit-extractor.ts`, which
-      // warns once per model on each of them. What is still NOT supported is
-      // this caller telling "unknown" apart from "genuinely metres" — both
-      // arrive here as 1.0, and a console warning is not something code can
-      // branch on. Distinguishing them means returning null for "unknown"
-      // from a function with 7+ callers; that is not done, here or anywhere.
+      // returns 1.0 in band rather than throwing, so a missing IFCPROJECT or
+      // UnitsInContext, or a malformed unit declaration, never reaches this
+      // catch — it sees only a THROWN failure. Those paths are no longer silent
+      // (#2104: `warnUnknownUnit` in parser/src/unit-extractor.ts warns once
+      // per model). Still NOT supported: telling "unknown" from "genuinely
+      // metres" here — both arrive as 1.0, and a warning is not branchable.
+      // That needs null from a function with 7+ callers; not done, anywhere.
       console.warn(
         'extractWallSegmentsForStorey: failed to extract length unit scale; defaulting to metres',
         error,

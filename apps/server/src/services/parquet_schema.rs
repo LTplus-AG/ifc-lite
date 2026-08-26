@@ -69,9 +69,14 @@ pub(super) fn index_schema() -> Arc<Schema> {
 ///
 /// A struct, not the 11-element tuple this was. That tuple was POSITIONAL and
 /// several slots share a type -- the four `u32` offsets/counts, and the two
-/// `Option<u32>` source ids. Measured: swapping the two ids compiled and left
-/// 202/202 green, writing every representation-item id into the material
-/// column and back. Named fields make that swap impossible rather than caught.
+/// `Option<u32>` source ids. Measured BEFORE this branch grew its tests:
+/// swapping the two ids compiled and left 202/202 green, writing every
+/// representation-item id into the material column and back.
+///
+/// It is caught now -- `mesh_table_carries_both_source_ids_on_the_right_columns`
+/// fails on that swap. Named fields make it unreachable at the construction
+/// site as well, which is belt and braces, not a reason to drop the test: the
+/// RecordBatch arrays are still positional against the schema.
 pub(super) struct MeshRow<'a> {
     pub express_id: u32,
     pub ifc_type: &'a str,

@@ -255,9 +255,9 @@
             .map(|f| f.name().clone())
             .collect();
 
-        // The instance schema is built inline, so reach it through a real
-        // serialization rather than re-declaring it here -- a re-declaration
-        // would be a FOURTH copy and would pass while the real one drifted.
+        // Reach the instance schema through a real serialization rather than
+        // re-declaring it -- a re-declaration would be another copy and would
+        // pass while the real one drifted.
         let mesh = MeshData::new(
             1,
             "IfcWall".to_string(),
@@ -307,13 +307,13 @@
     /// The two source ids must reach the wire on the RIGHT columns, with the
     /// absent marker where a mesh has neither (#3215).
     ///
-    /// The writer had no Rust test at all, and the two ids are adjacent
-    /// `Option<u32>` positions in the same metadata tuple this file already
-    /// warns about for `vertex_start`/`index_start`. Measured before writing
-    /// this: swapping `geo_item_id` and `mat_id` in the destructure compiles
-    /// and leaves 202/202 green — every mesh's representation-item id written
-    /// into the material column and back, which is exactly the wrong-entity
-    /// drill target #3199 removed.
+    /// The writer had no Rust test at all, and the two ids were adjacent
+    /// `Option<u32>` slots in the metadata tuple this file already warns about
+    /// for `vertex_start`/`index_start`. Measured then: swapping them compiled
+    /// and left 202/202 green — every representation-item id written into the
+    /// material column and back, the wrong-entity drill target #3199 removed.
+    /// That tuple is a `MeshRow` struct now, but the RecordBatch arrays are
+    /// still positional against the schema, so this still earns its place.
     ///
     /// So the fixture puts a DIFFERENT id on each field and a third mesh with
     /// neither: a swap moves both values and this fails on the first assert.
@@ -367,8 +367,10 @@
 
     /// Mesh-table offset/count columns must carry the ACTUAL per-mesh values,
     /// not just decode as "some" table. `vertex_start`/`index_start` are both
-    /// `u32` and sit next to each other in the metadata tuple — an easy
-    /// accidental swap. Uses meshes with DIFFERENT vertex counts and triangle
+    /// `u32` and sit next to each other in `MeshRow` and in the positional
+    /// RecordBatch arrays — an easy accidental swap. (They were adjacent tuple
+    /// slots when this was written; #3215 made that a struct, which removes the
+    /// construction-site half of the hazard but not the batch-order half.) Uses meshes with DIFFERENT vertex counts and triangle
     /// counts per mesh (4 verts/1 tri, then 3 verts/2 tris) so vertex_start and
     /// index_start can never coincide by accident, unlike same-size fixtures
     /// elsewhere in this file.

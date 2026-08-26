@@ -32,7 +32,6 @@ export interface ArrowTableLike {
   getChild(name: string): ArrowColumnLike | null | undefined;
 }
 
-
 /**
  * The canonical per-mesh transform metadata, spread into the `MeshData` literal.
  *

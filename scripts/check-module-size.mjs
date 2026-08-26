@@ -160,7 +160,7 @@ const SOURCE_RE = /\.(ts|tsx|mts|cts)$/;
  * moves if anything else touched the allowlist first.
  */
 const ALLOWLIST_DIGESTS = {
-  'apps/viewer': '6170762814286880387',
+  'apps/viewer': '3248385113093449015',
   'apps/viewer-embed': '4565652428901906968',
   'packages/bcf': '9733284863521991257',
   'packages/cache': '14926850005686407910',
@@ -171,7 +171,7 @@ const ALLOWLIST_DIGESTS = {
   'packages/collab-server': '6370800919640161263',
   'packages/create': '1037353628699503261',
   'packages/create-ifc-lite': '2641290854733608547',
-  'packages/data': '1654294465700203357',
+  'packages/data': '2280337694940862970',
   'packages/diff': '935169126877539347',
   'packages/drawing-2d': '1289794388881750973',
   'packages/export': '8294779133777308773',

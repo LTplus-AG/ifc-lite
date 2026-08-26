@@ -151,6 +151,23 @@ export interface OutboundPayloads {
   ENTITY_SELECTED: { id: number; globalId?: string; modelId?: string; ifcType?: string };
   ENTITY_DESELECTED: void;
   ENTITY_HOVERED: { id: number; globalId?: string; ifcType?: string };
+  /**
+   * A change of camera ORIENTATION -- `azimuth`/`elevation`, the direction from
+   * the camera's target to the camera. Fires for an orbit drag, the keyboard
+   * orbit keys, the ViewCube and the preset views, and for a programmatic
+   * SET_CAMERA.
+   *
+   * It does NOT fire for a pan or for a zoom/dolly: panning translates the
+   * camera and its target by the same offset and zooming changes only the
+   * distance between them, so in both cases the orientation this event reports
+   * is unchanged, and an unchanged pose is not re-sent. A host that needs to
+   * follow a pan or a zoom cannot use this event -- `zoom` below is optional
+   * and the embed viewer does not currently populate it.
+   *
+   * Cadence: at most one event per 100ms while the orientation keeps changing,
+   * plus one trailing event carrying the orientation it settled on -- never one
+   * per animation frame. The same pose is never reported twice in a row.
+   */
   CAMERA_CHANGED: { azimuth: number; elevation: number; zoom?: number };
   SECTION_CHANGED: { axis: SectionAxis; position: number; enabled: boolean };
 }

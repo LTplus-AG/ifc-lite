@@ -59,20 +59,39 @@ if [ -n "${WASM_VERSION:-}" ] && command -v git >/dev/null 2>&1; then
   # scripts/ci-wasm-prebuilt-eligible.sh BY HAND, which is exactly where such a
   # typo comes from — and THIS copy is the production half: a stale bundle here
   # ships to a Vercel build, where the CI twin only costs runner minutes.
+  # EITHER end, matching the twin. A path DELETED since the tag still matches at
+  # the tag, and one ADDED since still matches at HEAD; only a name that exists
+  # at neither is a typo. Checking the tag alone (as this did) refuses on every
+  # newly added source path -- safe direction, wrong predicate, and it silently
+  # diverged from ci-wasm-prebuilt-eligible.sh, which the comment above claims
+  # it is kept in lock-step with. Two twins implementing one guard differently
+  # is how the next person syncing them has to rediscover which was meant.
   _pathspecs_all_match() {
     for _p in "${WASM_SRC_PATHS[@]}"; do
-      if [ -z "$(git ls-tree -r --name-only "refs/tags/${WASM_TAG}" -- "${_p}" 2>/dev/null | head -1)" ]; then
-        echo "🛠  WASM_SRC_PATHS entry '${_p}' matches no file at ${WASM_TAG} — refusing to trust"
-        echo "   a no-diff answer over a pathspec that covers nothing. Building from source."
+      _at_tag="$(git ls-tree -r --name-only "refs/tags/${WASM_TAG}" -- "${_p}" 2>/dev/null | head -1 || true)"
+      _at_head="$(git ls-tree -r --name-only HEAD -- "${_p}" 2>/dev/null | head -1 || true)"
+      if [ -z "${_at_tag}" ] && [ -z "${_at_head}" ]; then
+        echo "🛠  WASM_SRC_PATHS entry '${_p}' matches no file at ${WASM_TAG} or at HEAD —"
+        echo "   it can only ever compare nothing, so a no-diff answer would under-report."
+        echo "   Building from source, and fix the list (lock-step with ci-wasm-prebuilt-eligible.sh)."
         return 1
       fi
     done
     return 0
   }
 
+  # Evaluated BEFORE the branch so the refusal is not followed by the `else`
+  # arm's "Rust sources changed" line plus an empty changed-file list, which is
+  # what happened when this was inlined into the `elif`: the correct message was
+  # contradicted by a wrong one on the only path that matters.
+  _pathspecs_ok=1
+  _tag_present && { _pathspecs_all_match || _pathspecs_ok=0; }
+
   if ! _tag_present; then
     echo "🛠  Release tag ${WASM_TAG} not reachable in this clone — building WASM from source."
-  elif _pathspecs_all_match && git diff --quiet "refs/tags/${WASM_TAG}" HEAD -- "${WASM_SRC_PATHS[@]}"; then
+  elif [ "${_pathspecs_ok}" = "0" ]; then
+    : # already explained by _pathspecs_all_match; fall through to from-source
+  elif git diff --quiet "refs/tags/${WASM_TAG}" HEAD -- "${WASM_SRC_PATHS[@]}"; then
     echo "🅰  WASM source identical to ${WASM_TAG} — using prebuilt npm bundle,"
     echo "   skipping Rust toolchain + emsdk bootstrap + from-source compile."
     if node scripts/fetch-prebuilt-wasm.mjs; then

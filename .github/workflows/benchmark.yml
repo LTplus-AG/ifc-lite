@@ -5,8 +5,13 @@
 # Advisory viewer performance benchmark. Runs the real viewer (production
 # build + real WASM pipeline) against the two small fixtures and reports
 # per-metric deltas vs tests/benchmark/baseline.json as a PR comment + step
-# summary. It never fails the PR — regressions are surfaced, not blocking
-# (promote to blocking only once the runner-to-runner noise is understood).
+# summary. A regression is still ADVISORY — surfaced, not blocking (promote to
+# blocking only once the runner-to-runner noise is understood). A HARNESS FAULT
+# is not: if the baseline cannot be read, or a model in VIEWER_BENCHMARK_FILES
+# has no baseline entry, this job goes RED. That distinction is the point --
+# "no regressions" over a model that was never compared is not a result. This
+# header used to say the job could never fail, which stopped being true in the
+# same PR that added the refusal (#3200).
 #
 # The committed baseline is CI-recorded so this job diffs like-for-like:
 # dispatch this workflow with `record_baseline` to produce a refreshed
@@ -164,7 +169,7 @@ jobs:
       # The summary is written FIRST, unconditionally: the report is the
       # DIAGNOSIS of that failure, and a `bash -e` step that dies before the
       # `cat` would throw away exactly the output someone needs to fix it.
-      - name: Check against baseline (advisory)
+      - name: Check against baseline (regressions advisory, harness faults fatal)
         run: |
           set +e
           node scripts/check-benchmark-regression.js --advisory --markdown "$RUNNER_TEMP/benchmark-report.md"

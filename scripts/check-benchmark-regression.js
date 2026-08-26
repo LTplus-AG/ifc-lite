@@ -374,6 +374,16 @@ function main() {
     console.log(`Markdown report written to ${markdownPath}`);
   }
 
+  /** Print every harness fault and exit 1. Never softened by --advisory. */
+  function reportHarnessFaults() {
+    if (harnessFaults.length === 0) return;
+    for (const f of harnessFaults) console.error(`\n\u274c ${f}`);
+    console.error(
+      '\n   Not softened by --advisory: these say the check did not run, not that it is slow.'
+    );
+    process.exit(1);
+  }
+
   if (regressions.length > 0) {
     console.error(`\nFound ${regressions.length} regression(s):`);
     for (const reg of regressions) {
@@ -382,7 +392,17 @@ function main() {
           `(${reg.currentValue}ms vs ${reg.baselineValue}ms, allowed +${reg.threshold}%)`
       );
     }
-    if (!advisory) process.exit(1);
+    if (!advisory) {
+      // Harness faults FIRST, then exit. They used to be printed after this
+      // `process.exit(1)`, so a run with both a regression and a lost metric
+      // printed only "Found 1 regression(s)" on the console -- the ❌ lines and
+      // "Not softened by --advisory" went to the markdown and nowhere else. CI
+      // always passes --advisory so the lane never saw it; a local
+      // `pnpm benchmark:check` did. Reporting the SOFTER of two problems and
+      // hiding the harder one is the shape this gate exists to remove.
+      reportHarnessFaults();
+      process.exit(1);
+    }
     console.log('\nAdvisory mode: regressions reported but not failing the run.');
   } else if (harnessFaults.length > 0) {
     // Say NOTHING clean here. Printing "No threshold regressions detected."
@@ -403,13 +423,9 @@ function main() {
     console.log('\nNo threshold regressions detected.');
   }
 
-  if (harnessFaults.length > 0) {
-    for (const f of harnessFaults) console.error(`\n\u274c ${f}`);
-    console.error(
-      '\n   Not softened by --advisory: these say the check did not run, not that it is slow.'
-    );
-    process.exit(1);
-  }
+  reportHarnessFaults();
+
+
 }
 
 try {

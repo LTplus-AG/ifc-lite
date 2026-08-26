@@ -158,6 +158,30 @@ test('a stray FILE under packages/ is ordinary, not fatal', () => {
   rmSync(root, { recursive: true, force: true });
 });
 
+test('a non-directory under packages/ is NAMED, so a clobbered package leaves a trace', () => {
+  // ENOTDIR proves only that the entry is not a directory, so a stray file and
+  // a package directory replaced by a file are indistinguishable here. Treating
+  // it as ordinary is right; treating it as SILENT is not. The only backstop is
+  // PUBLISHABLE_FLOOR, and against 42 real publishable packages with a floor of
+  // 25, up to 17 could vanish this way and the gate would still report green.
+  //
+  // So the run must NAME them. `.DS_Store` is the ordinary case and `p26` is a
+  // package directory clobbered into a file; both appear, because the gate
+  // genuinely cannot tell them apart and should not pretend to.
+  const root = makeTree();
+  fillToFloor(root);
+  writeFileSync(join(root, 'packages', '.DS_Store'), 'stray');
+  writeFileSync(join(root, 'packages', 'p26'), 'a package directory, clobbered');
+  const { status, out } = run(root, { bin: stubNpm(root) });
+  assert.equal(status, 0, out);
+  assert.match(out, /are not directories and hold no package/);
+  assert.match(out, /p26/, `a clobbered package directory must be named:\n${out}`);
+  assert.match(out, /\.DS_Store/);
+  // Still verifies the real ones -- the note is not a substitute for the work.
+  assert.match(out, /Verifying 25 package\(s\)/);
+  rmSync(root, { recursive: true, force: true });
+});
+
 test('a manifest path that cannot be STATed is fatal, not skipped', (t) => {
   // EACCES, not ENOTDIR: a path that exists in some form the gate could not
   // classify. Skipping it would drop a package the release was supposed to

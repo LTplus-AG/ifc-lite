@@ -68,14 +68,39 @@ function benchTree({ current, baseline, baselineKey = 'x.ifc' }) {
   return dir;
 }
 
-function runBench(dir) {
+function runBench(dir, { advisory = true } = {}) {
   const res = spawnSync(
     process.execPath,
-    [join(dir, 'scripts', 'check-benchmark-regression.js'), '--advisory'],
+    [join(dir, 'scripts', 'check-benchmark-regression.js'), ...(advisory ? ['--advisory'] : [])],
     { encoding: 'utf-8', cwd: dir },
   );
   return { code: res.status, out: `${res.stdout ?? ''}${res.stderr ?? ''}` };
 }
+
+test('benchmark: a harness fault is reported even when a REGRESSION exits first', () => {
+  // Without --advisory a regression took `process.exit(1)` before the harness
+  // faults were printed, so a run with both reported only the SOFTER problem.
+  // CI always passes --advisory so the lane never showed it; a local
+  // `pnpm benchmark:check` did.
+  //
+  // Fixture carries both at once: `totalWallClockMs` regresses 100 -> 200, and
+  // `firstBatchWaitMs` is in the baseline but absent from the current run,
+  // which is a lost metric — the check did not run, not "it is slow".
+  const dir = benchTree({
+    current: { totalWallClockMs: 200 },
+    baseline: { totalWallClockMs: 100, firstBatchWaitMs: 100 },
+  });
+  try {
+    const { code, out } = runBench(dir, { advisory: false });
+    assert.equal(code, 1, out);
+    assert.match(out, /regression/i, `the regression must still be reported:\n${out}`);
+    // The point of the test: the HARDER problem must survive the early exit.
+    assert.match(out, /firstBatchWaitMs/, `the lost metric must be named:\n${out}`);
+    assert.match(out, /Not softened by --advisory/, `the harness verdict must print:\n${out}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test('benchmark: a metric absent from BOTH sides is ordinary, not a failure', () => {
   // Two of the four committed baseline entries carry only 2 of the 6 metrics.

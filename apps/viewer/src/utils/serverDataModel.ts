@@ -291,6 +291,11 @@ function buildEntityTable(
   // Tag / PredefinedType from the v4 data-model payload (issue #1765).
   const tagArr = new Uint32Array(entityCount);
   const predefinedTypeArr = new Uint32Array(entityCount);
+  // Raw IFC class name per row, interned. `IfcTypeEnum` covers only a subset of
+  // the schema, so `getTypeName` falls back to this exactly as
+  // `entityTableFromColumns` (packages/data/src/entity-table.ts) does — without
+  // it an IfcPump loaded from the server reports 'Unknown'.
+  const rawTypeNameArr = new Uint32Array(entityCount);
   const flagsArr = new Uint8Array(entityCount);
   const containedInStoreyArr = new Int32Array(entityCount).fill(-1);
   const definedByTypeArr = new Int32Array(entityCount).fill(-1);
@@ -312,6 +317,9 @@ function buildEntityTable(
     const typeName = cols.typeName[idx] ?? '';
     const typeVal = IfcTypeEnumFromString(typeName);
     typeEnumArr[idx] = typeVal;
+    // Same canonicalisation as `EntityTableBuilder.add` and `setTypeOverride`
+    // below, so all three EntityTable implementations spell a class the same way.
+    rawTypeNameArr[idx] = strings.intern(IFC_ENTITY_NAMES[typeName.toUpperCase()] ?? typeName);
     const globalIdString = cols.globalId[idx] || '';
     globalIdArr[idx] = strings.intern(globalIdString);
     if (globalIdString) {
@@ -342,6 +350,12 @@ function buildEntityTable(
   // Additive display-class overrides (UI retype). See entity-table.ts.
   const typeOverrides = new Map<number, string>();
 
+  /** One interned-string column accessor, shared by every string getter. */
+  const strCol = (col: Uint32Array) => (id: number) => {
+    const i = indexOfId(id);
+    return i >= 0 ? strings.get(col[i]) : '';
+  };
+
   const entities: EntityTable = {
     count: entityCount,
     expressId,
@@ -350,40 +364,26 @@ function buildEntityTable(
     name: nameArr,
     description: descriptionArr,
     objectType: objectTypeArr,
+    rawTypeName: rawTypeNameArr,
     flags: flagsArr,
     containedInStorey: containedInStoreyArr,
     definedByType: definedByTypeArr,
     geometryIndex: geometryIndexArr,
     typeRanges: new Map(), // Deprecated - use getByType which uses typeGroups directly
-    getGlobalId: (id) => {
-      const i = indexOfId(id);
-      return i >= 0 ? strings.get(globalIdArr[i]) : '';
-    },
-    getName: (id) => {
-      const i = indexOfId(id);
-      return i >= 0 ? strings.get(nameArr[i]) : '';
-    },
-    getDescription: (id) => {
-      const i = indexOfId(id);
-      return i >= 0 ? strings.get(descriptionArr[i]) : '';
-    },
-    getObjectType: (id) => {
-      const i = indexOfId(id);
-      return i >= 0 ? strings.get(objectTypeArr[i]) : '';
-    },
-    getTag: (id) => {
-      const i = indexOfId(id);
-      return i >= 0 ? strings.get(tagArr[i]) : '';
-    },
-    getPredefinedType: (id) => {
-      const i = indexOfId(id);
-      return i >= 0 ? strings.get(predefinedTypeArr[i]) : '';
-    },
+    getGlobalId: strCol(globalIdArr),
+    getName: strCol(nameArr),
+    getDescription: strCol(descriptionArr),
+    getObjectType: strCol(objectTypeArr),
+    getTag: strCol(tagArr),
+    getPredefinedType: strCol(predefinedTypeArr),
     getTypeName: (id) => {
       const override = typeOverrides.get(id);
       if (override !== undefined) return override;
       const i = indexOfId(id);
-      return i >= 0 ? IfcTypeEnumToString(typeEnumArr[i]) : 'Unknown';
+      if (i < 0) return 'Unknown';
+      const enumName = IfcTypeEnumToString(typeEnumArr[i]);
+      if (enumName !== 'Unknown') return enumName;
+      return strings.get(rawTypeNameArr[i]) || 'Unknown';
     },
     hasGeometry: (id) => {
       const i = indexOfId(id);

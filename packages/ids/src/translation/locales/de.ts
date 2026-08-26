@@ -52,6 +52,7 @@ export const de = {
   constraints: {
     simpleValue: '"{value}"',
     pattern: 'entsprechend Muster "{pattern}"',
+    conjunction: '{first} und {second}',
     enumeration: {
       single: '"{value}"',
       multiple: 'eines von [{values}]',

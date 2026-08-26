@@ -152,26 +152,38 @@ async function fetchViewpointComponents(
   if (viewpoint.components && componentsFromApi(viewpoint.components)) {
     return viewpoint.components;
   }
-  try {
-    const [selection, coloring, visibility] = await Promise.all([
-      client.getViewpointSelection(projectId, topicGuid, viewpoint.guid),
-      client.getViewpointColoring(projectId, topicGuid, viewpoint.guid),
-      client.getViewpointVisibility(projectId, topicGuid, viewpoint.guid),
-    ]);
-    return {
-      selection: selection.selection,
-      coloring: coloring.coloring,
-      visibility: visibility.visibility,
-    };
-  } catch (error) {
-    // An expired session is fatal everywhere (matching fetchTopicDetails);
-    // only genuine per-item failures degrade to warnings.
-    if (error instanceof BcfApiError && error.isAuthError) throw error;
+  // allSettled rather than all: with all, a fast non-auth failure would be
+  // the only rejection this code ever sees, masking a concurrent 401 — and
+  // an expired session is fatal everywhere (matching fetchTopicDetails),
+  // while only genuine per-item failures degrade to warnings.
+  const [selectionResult, coloringResult, visibilityResult] = await Promise.allSettled([
+    client.getViewpointSelection(projectId, topicGuid, viewpoint.guid),
+    client.getViewpointColoring(projectId, topicGuid, viewpoint.guid),
+    client.getViewpointVisibility(projectId, topicGuid, viewpoint.guid),
+  ]);
+  if (
+    selectionResult.status === 'rejected' ||
+    coloringResult.status === 'rejected' ||
+    visibilityResult.status === 'rejected'
+  ) {
+    const reasons = [selectionResult, coloringResult, visibilityResult]
+      .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+      .map((result) => result.reason as unknown);
+    const authFailure = reasons.find(
+      (reason) => reason instanceof BcfApiError && reason.isAuthError,
+    );
+    if (authFailure) throw authFailure;
+    const first = reasons[0];
     warnings.push(
-      `Components unavailable for viewpoint ${viewpoint.guid}: ${error instanceof Error ? error.message : String(error)}`,
+      `Components unavailable for viewpoint ${viewpoint.guid}: ${first instanceof Error ? first.message : String(first)}`,
     );
     return undefined;
   }
+  return {
+    selection: selectionResult.value.selection,
+    coloring: coloringResult.value.coloring,
+    visibility: visibilityResult.value.visibility,
+  };
 }
 
 async function fetchTopicDetails(

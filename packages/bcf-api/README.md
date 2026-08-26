@@ -61,7 +61,7 @@ Errors are `BcfApiError` (with `status`, `url` and `isAuthError`); token endpoin
 
 ## Other auth flows
 
-Not every server offers the password grant. For the browser authorization-code flow every BCF vendor advertises, `exchangeAuthorizationCode({ tokenUrl, code, redirectUri, codeVerifier?, clientId, clientSecret? })` completes a sign-in whose authorization step you drive yourself (PKCE supported), and `registerBcfClient({ registrationUrl, clientName, redirectUrl })` mints a client on servers that advertise dynamic client registration. `requestClientCredentialsToken({ tokenUrl, clientId, clientSecret })` covers servers with OAuth application credentials (e.g. OpenProject), and a token obtained elsewhere plugs straight into `getAccessToken`.
+Not every server offers the password grant — each advertises its flows in `/auth`'s `supported_oauth2_flows`. For servers that support the authorization-code flow, `exchangeAuthorizationCode({ tokenUrl, code, redirectUri, codeVerifier?, clientId, clientSecret? })` completes a sign-in whose authorization step you drive yourself (PKCE supported), and `registerBcfClient({ registrationUrl, clientName, redirectUrl })` mints a client on servers that advertise dynamic client registration. `requestClientCredentialsToken({ tokenUrl, clientId, clientSecret })` covers servers with OAuth application credentials (e.g. OpenProject), and a token obtained elsewhere plugs straight into `getAccessToken`.
 
 ## License
 

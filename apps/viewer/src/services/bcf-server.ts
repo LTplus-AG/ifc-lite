@@ -329,13 +329,22 @@ export async function signInWithClientCredentials(
 }
 
 /**
- * Single-flight token refresh PER SERVER. One unkeyed slot let a client
+ * Single-flight token refresh PER SESSION. One unkeyed slot let a client
  * bound to server B join server A's in-flight refresh and send A's bearer
- * token to B's host; keying by serverUrl keeps each server's refresh (and
- * its token) to clients of that server while still deduplicating
- * concurrent refreshes against the same server.
+ * token to B's host — and keying by server alone would still let account
+ * B's request on the same server join account A's refresh and run under
+ * A's token. Keying by the full session identity keeps every refresh (and
+ * its token) to the session that started it while still deduplicating
+ * concurrent refreshes of the same session.
  */
 const refreshInFlight = new Map<string, Promise<string>>();
+
+/** Identity of the session a refresh belongs to, not just its server. */
+function refreshSessionKey(config: BcfServerConfig): string {
+  // The NUL escape below cannot appear in a URL, user id, client id, or
+  // token, so joined parts cannot collide across field boundaries.
+  return [config.serverUrl, config.userId, config.clientId, config.refreshToken].join('\u0000');
+}
 
 /** Whether a stored connection has any material to re-authenticate with. */
 function canReauthenticate(config: BcfServerConfig): boolean {
@@ -360,7 +369,8 @@ function isSameSession(current: BcfServerConfig, config: BcfServerConfig): boole
 }
 
 async function refreshStoredToken(config: BcfServerConfig): Promise<string> {
-  const pending = refreshInFlight.get(config.serverUrl);
+  const key = refreshSessionKey(config);
+  const pending = refreshInFlight.get(key);
   if (pending) return pending;
   const started = (async () => {
     const api = await loadApi();
@@ -405,9 +415,9 @@ async function refreshStoredToken(config: BcfServerConfig): Promise<string> {
     }
     return token.access_token;
   })().finally(() => {
-    refreshInFlight.delete(config.serverUrl);
+    refreshInFlight.delete(key);
   });
-  refreshInFlight.set(config.serverUrl, started);
+  refreshInFlight.set(key, started);
   return started;
 }
 

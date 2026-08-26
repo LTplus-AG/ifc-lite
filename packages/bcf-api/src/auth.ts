@@ -162,8 +162,8 @@ export function requestClientCredentialsToken(
 
 /**
  * OAuth2 authorization-code exchange (RFC 6749 §4.1.3), the second half of
- * the browser sign-in every BCF vendor advertises
- * (`authorization_code_grant`). Sends the PKCE verifier when one is given;
+ * the browser sign-in on servers whose `/auth` discovery advertises
+ * `authorization_code_grant`. Sends the PKCE verifier when one is given;
  * servers that never saw a challenge ignore it.
  */
 export function exchangeAuthorizationCode(

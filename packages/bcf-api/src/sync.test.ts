@@ -19,6 +19,8 @@ interface FakeServerOptions {
   brokenComments?: { guids: string[]; status: number };
   /** When set, every /selection subresource fails with this HTTP status. */
   brokenSelectionStatus?: number;
+  /** When set, every /coloring subresource fails with this HTTP status. */
+  brokenColoringStatus?: number;
 }
 
 /** Minimal in-memory BCF 2.1 server: one project, one viewpoint per topic. */
@@ -69,7 +71,12 @@ function fakeBcfServer(options: FakeServerOptions): FetchLike {
       }
       return json({ selection: [{ ifc_guid: 'guid_selection_000000A' }] });
     }
-    if (path.endsWith('/coloring')) return json({ coloring: [] });
+    if (path.endsWith('/coloring')) {
+      if (options.brokenColoringStatus) {
+        return json({ message: 'coloring broken' }, options.brokenColoringStatus);
+      }
+      return json({ coloring: [] });
+    }
     if (path.endsWith('/visibility')) return json({ visibility: { default_visibility: true } });
     if (path.endsWith('/snapshot')) {
       const viewpointGuid = /viewpoints\/([^/]+)\/snapshot$/.exec(path)?.[1];
@@ -231,7 +238,25 @@ describe('fetchProjectAsBCF', () => {
       'p1',
       { includeSnapshots: false },
     );
-    expect(warnings.some((w) => w.includes('Components unavailable'))).toBe(true);
+    expect(warnings).toHaveLength(1);
+  });
+
+  it('does not let a concurrent 500 mask a 401 among the component subresources', async () => {
+    // With Promise.all, whichever rejection settles first would be the only
+    // one seen; a fast 500 could bury the session-expiry 401.
+    await expect(
+      fetchProjectAsBCF(
+        makeClient(
+          fakeBcfServer({
+            topics: makeTopics(1),
+            brokenSelectionStatus: 500,
+            brokenColoringStatus: 401,
+          }),
+        ),
+        'p1',
+        { includeSnapshots: false },
+      ),
+    ).rejects.toMatchObject({ status: 401 });
   });
 
   it('fails the whole pull when a snapshot fails with 401 (unlike a missing snapshot)', async () => {

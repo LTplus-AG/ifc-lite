@@ -32,24 +32,6 @@ export interface ArrowTableLike {
   getChild(name: string): ArrowColumnLike | null | undefined;
 }
 
-/**
- * True when all three origin components are present AND parallel to `rowCount`.
- *
- * A short or partial set (truncated payload, or a server predating the columns)
- * must fall back to "no origin" rather than index past the end into `undefined`
- * -> NaN. Shared by both decoders so the standard and instanced paths can never
- * disagree about when the origin is trustworthy.
- */
-function originIsUsable(
-  x: ArrayLike<number> | undefined,
-  y: ArrayLike<number> | undefined,
-  z: ArrayLike<number> | undefined,
-  rowCount: number
-): boolean {
-  return (
-    !!x && !!y && !!z && x.length === rowCount && y.length === rowCount && z.length === rowCount
-  );
-}
 
 /**
  * The canonical per-mesh transform metadata, spread into the `MeshData` literal.

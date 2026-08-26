@@ -58,6 +58,52 @@ pub(super) fn index_schema() -> Arc<Schema> {
     ]))
 }
 
+/// One mesh's row across the three tables, in the order `mesh_schema()` lists.
+///
+/// A struct, not the 11-element tuple this was. That tuple was POSITIONAL and
+/// several slots share a type -- the four `u32` offsets/counts, and the two
+/// `Option<u32>` source ids. Measured: swapping the two ids compiled and left
+/// 202/202 green, writing every representation-item id into the material
+/// column and back. Named fields make that swap impossible rather than caught.
+pub(super) struct MeshRow<'a> {
+    pub express_id: u32,
+    pub ifc_type: &'a str,
+    pub v_start: u32,
+    pub vert_count: u32,
+    pub i_start: u32,
+    pub index_count: u32,
+    pub color: [f32; 4],
+    /// In the SAME Y-up frame as the emitted positions. The swap is linear, so
+    /// swap(origin + position) = swap(origin) + swap(position); see
+    /// `services::axis` for the one definition.
+    pub origin: [f64; 3],
+    pub geometry_class: u8,
+    pub geometry_item_id: Option<u32>,
+    pub material_id: Option<u32>,
+}
+
+impl<'a> MeshRow<'a> {
+    /// Build one row from a mesh and its precomputed buffer offsets.
+    ///
+    /// Here rather than at the call site so the field order is stated once,
+    /// next to the schema whose column order it feeds.
+    pub fn new(mesh: &'a crate::types::MeshData, v_start: u32, i_start: u32) -> Self {
+        Self {
+            express_id: mesh.express_id,
+            ifc_type: mesh.ifc_type.as_str(),
+            v_start,
+            vert_count: (mesh.positions.len() / 3) as u32,
+            i_start,
+            index_count: mesh.indices.len() as u32,
+            color: mesh.color,
+            origin: crate::services::axis::zup_to_yup_f64(mesh.origin),
+            geometry_class: mesh.geometry_class,
+            geometry_item_id: mesh.geometry_item_id,
+            material_id: mesh.material_id,
+        }
+    }
+}
+
 /// The trailing per-mesh columns both transports carry, in order.
 ///
 /// A FUNCTION both schemas call, not a list a test compares them against.
@@ -105,4 +151,24 @@ pub(super) fn shared_trailing_fields() -> Vec<Field> {
         Field::new("geometry_item_id", DataType::UInt32, false),
         Field::new("material_id", DataType::UInt32, false),
     ]
+}
+
+/// The optimized transport's instance table.
+///
+/// Lives here, beside `mesh_schema()`, because the two share their trailing
+/// block and differ only in the leading identity columns (`entity_id` vs
+/// `express_id`). It was inline in `parquet_optimized.rs`, which is how the
+/// pair drifted by hand in the first place.
+pub(super) fn instance_schema() -> Arc<Schema> {
+    Arc::new(Schema::new(
+        vec![
+            Field::new("entity_id", DataType::UInt32, false),
+            Field::new("ifc_type", DataType::Utf8, false),
+            Field::new("mesh_index", DataType::UInt32, false),
+            Field::new("material_index", DataType::UInt32, false),
+        ]
+        .into_iter()
+        .chain(shared_trailing_fields())
+        .collect::<Vec<_>>(),
+    ))
 }

@@ -9,8 +9,10 @@
 //! - JSON: ~30KB per mesh with ~500 vertices
 //! - Parquet: ~2KB per mesh (15x smaller)
 
-use crate::services::axis::{zup_to_yup, zup_to_yup_f64};
-use crate::services::parquet_schema::{index_schema, mesh_schema, vertex_schema, ABSENT_SOURCE_ID};
+use crate::services::axis::zup_to_yup;
+use crate::services::parquet_schema::{
+    index_schema, mesh_schema, vertex_schema, MeshRow, ABSENT_SOURCE_ID,
+};
 use crate::types::MeshData;
 use arrow::array::{Float32Array, Float64Array, StringArray, UInt8Array, UInt32Array};
 use arrow::datatypes::{DataType, Schema};
@@ -160,25 +162,7 @@ fn build_mesh_tables(
         .zip(vertex_offsets.par_iter())
         .zip(index_offsets.par_iter())
         .map(|((mesh, &v_start), &i_start)| {
-            let vert_count = mesh.positions.len() / 3;
-            // Emit the per-mesh origin in the SAME frame as positions; the swap
-            // is linear, so swap(origin + position) = swap(origin) +
-            // swap(position) and the client reconstructs world = origin +
-            // position in Y-up. See services::axis for the one definition.
-            let origin_yup = zup_to_yup_f64(mesh.origin);
-            (
-                mesh.express_id,
-                mesh.ifc_type.as_str(),
-                v_start,
-                vert_count as u32,
-                i_start,
-                mesh.indices.len() as u32,
-                mesh.color,
-                origin_yup,
-                mesh.geometry_class,
-                mesh.geometry_item_id,
-                mesh.material_id,
-            )
+            MeshRow::new(mesh, v_start, i_start)
         })
         .collect();
 
@@ -200,36 +184,23 @@ fn build_mesh_tables(
     let mut geometry_item_ids: Vec<u32> = Vec::with_capacity(mesh_count);
     let mut material_ids: Vec<u32> = Vec::with_capacity(mesh_count);
 
-    for (
-        eid,
-        itype,
-        vstart,
-        vcount,
-        istart,
-        icount,
-        color,
-        origin,
-        geo_class,
-        geo_item_id,
-        mat_id,
-    ) in metadata
-    {
-        express_ids.push(eid);
-        ifc_types.push(itype);
-        vertex_starts.push(vstart);
-        vertex_counts.push(vcount);
-        index_starts.push(istart);
-        index_counts.push(icount);
-        color_r.push(color[0]);
-        color_g.push(color[1]);
-        color_b.push(color[2]);
-        color_a.push(color[3]);
-        origin_x.push(origin[0]);
-        origin_y.push(origin[1]);
-        origin_z.push(origin[2]);
-        geometry_class.push(geo_class);
-        geometry_item_ids.push(geo_item_id.unwrap_or(ABSENT_SOURCE_ID));
-        material_ids.push(mat_id.unwrap_or(ABSENT_SOURCE_ID));
+    for m in metadata {
+        express_ids.push(m.express_id);
+        ifc_types.push(m.ifc_type);
+        vertex_starts.push(m.v_start);
+        vertex_counts.push(m.vert_count);
+        index_starts.push(m.i_start);
+        index_counts.push(m.index_count);
+        color_r.push(m.color[0]);
+        color_g.push(m.color[1]);
+        color_b.push(m.color[2]);
+        color_a.push(m.color[3]);
+        origin_x.push(m.origin[0]);
+        origin_y.push(m.origin[1]);
+        origin_z.push(m.origin[2]);
+        geometry_class.push(m.geometry_class);
+        geometry_item_ids.push(m.geometry_item_id.unwrap_or(ABSENT_SOURCE_ID));
+        material_ids.push(m.material_id.unwrap_or(ABSENT_SOURCE_ID));
     }
 
     // Phase 3: Extract vertex and index data in parallel chunks

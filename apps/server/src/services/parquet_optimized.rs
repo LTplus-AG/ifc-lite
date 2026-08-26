@@ -14,7 +14,7 @@
 //! Typical additional compression: 3-5x over basic Parquet format.
 
 use crate::services::axis::{zup_to_yup, zup_to_yup_f64};
-use crate::services::parquet_schema::{shared_trailing_fields, ABSENT_SOURCE_ID};
+use crate::services::parquet_schema::{instance_schema, ABSENT_SOURCE_ID};
 use crate::types::MeshData;
 use arrow::array::{Float32Array, Float64Array, Int32Array, StringArray, UInt32Array, UInt8Array};
 use arrow::datatypes::{DataType, Field, Schema};
@@ -142,15 +142,8 @@ pub fn serialize_to_parquet_optimized(
     let mut instance_origin_y: Vec<f64> = Vec::with_capacity(meshes.len());
     let mut instance_origin_z: Vec<f64> = Vec::with_capacity(meshes.len());
     let mut instance_geometry_class: Vec<u8> = Vec::with_capacity(meshes.len());
-    // PER INSTANCE, not per template. Two meshes that dedupe to one geometry
-    // template can still come from different `IfcRepresentationItem`s -- the
-    // dedup key is the vertex data, and identical geometry from two different
-    // source items is exactly what dedup is for. Hanging these off the template
-    // would hand every instance the first one's id (#3215).
-    //
-    // Note these are NOT `instance_material_indices` above: that is an index
-    // into this file's own material table, while `material_id` is the
-    // `IfcMaterial` express id. Same word, different spaces.
+    // PER INSTANCE, not per template (#3215): the dedup key is vertex data, so
+    // two instances sharing a template can come from different source items.
     let mut instance_geometry_item_ids: Vec<u32> = Vec::with_capacity(meshes.len());
     let mut instance_material_ids: Vec<u32> = Vec::with_capacity(meshes.len());
 
@@ -293,19 +286,7 @@ pub fn serialize_to_parquet_optimized(
     // Phase 3: Create Parquet tables
 
     // Instance table schema
-    // Trailing columns come from the SHARED builder so the two schemas
-    // cannot drift; only the leading ones differ (entity_id vs express_id).
-    let instance_schema = Arc::new(Schema::new(
-        vec![
-            Field::new("entity_id", DataType::UInt32, false),
-            Field::new("ifc_type", DataType::Utf8, false),
-            Field::new("mesh_index", DataType::UInt32, false),
-            Field::new("material_index", DataType::UInt32, false),
-        ]
-        .into_iter()
-        .chain(shared_trailing_fields())
-        .collect::<Vec<_>>(),
-    ));
+    let instance_schema = instance_schema();
 
     let instance_batch = RecordBatch::try_new(
         instance_schema,

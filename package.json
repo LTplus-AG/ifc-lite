@@ -36,6 +36,7 @@
     "check:rust-source-text-assertions": "node scripts/check-rust-source-text-assertions.mjs",
     "check:refwalk-guards": "node scripts/check-refwalk-guards.mjs",
     "check:module-size": "node scripts/check-module-size.mjs",
+    "check:rust-major-offset": "node scripts/check-rust-major-offset.mjs",
     "lint:module-size-baseline": "node scripts/check-module-size.mjs --update",
     "check:unbounded-frame-wait": "node scripts/check-unbounded-frame-wait.mjs",
     "check:wasm-disposal": "node scripts/check-wasm-disposal.mjs",

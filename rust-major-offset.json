@@ -1,0 +1,6 @@
+{
+  "$comment": "How many MAJOR versions ahead of the npm packages the published Rust crates run. scripts/sync-versions.js applies it when writing the Rust manifests; scripts/check-rust-major-offset.mjs fails CI when the manifests and this file disagree. See scripts/lib/rust-major-offset.mjs for why an offset and not an absolute override, and docs/contributing/release.md for how to raise it. A non-zero offset MUST carry `reason` and `refs`.",
+  "majorOffset": 0,
+  "reason": "",
+  "refs": []
+}

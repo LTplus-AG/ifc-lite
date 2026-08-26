@@ -171,7 +171,7 @@ const ALLOWLIST_DIGESTS = {
   'packages/collab-server': '6370800919640161263',
   'packages/create': '1037353628699503261',
   'packages/create-ifc-lite': '2641290854733608547',
-  'packages/data': '2280337694940862970',
+  'packages/data': '7334937001846380278',
   'packages/diff': '935169126877539347',
   'packages/drawing-2d': '1289794388881750973',
   'packages/export': '8294779133777308773',

@@ -111,7 +111,11 @@ fn the_accepted_whitespace_set_is_exactly_the_ascii_one() {
 
     // And nothing outside it. U+00A0 is not whitespace in ISO 10303-21, so the
     // record is malformed and both halves decline it.
+    //
+    // Asserted as `is_none()` rather than "none OR an empty list". The looser
+    // form passed whether the reader REJECTED the record or ACCEPTED it and
+    // came back with nothing, so it could not tell those apart, and the
+    // comment above it claims the first. It returns None today; pin that.
     let nbsp = header("FILE_SCHEMA\u{00A0}(('IFC2X3'));");
-    let h = parse_source_header(&nbsp);
-    assert!(h.is_none() || h.unwrap().schema_identifiers.is_empty());
+    assert!(parse_source_header(&nbsp).is_none());
 }

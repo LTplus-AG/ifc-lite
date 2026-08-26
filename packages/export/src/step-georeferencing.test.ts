@@ -1081,4 +1081,88 @@ describe('IfcProjectedCRS.MapUnit carries the unit that was asked for (#3274)', 
     // rewritten into something the exporter happens to be able to write.
     expect(normalizeMapUnitName('inch')).toBe('INCH');
   });
+
+  it('reads the whole FOOT name too, not a substring of it', () => {
+    // The `METRE` half of the rule was fixed in #3274 while the foot half was
+    // left as `includes('FOOT') || includes('FEET')`. Every label below merely
+    // CONTAINS a foot token, and every one of them was written into the file
+    // as a `FOOT` conversion unit at 0.3048 m — an area, an illuminance, an
+    // energy and four different national feet all handed the international
+    // foot's ratio, in the one attribute that scales the whole CRS.
+    for (const label of [
+      'SQUARE FOOT', 'CUBIC FEET', 'FOOTCANDLE', 'FOOT-POUND',
+      'FOOTPRINT', 'FOOTBALL FIELD', 'FEETLESS', 'VENDOR FOOT', 'BANANAFOOT',
+    ]) {
+      expect(normalizeMapUnitName(label), label).not.toBe('FOOT');
+      expect(normalizeMapUnitName(label), label).not.toBe('US SURVEY FOOT');
+    }
+
+    // A survey foot with no nationality is REFUSED, not guessed: Clarke's foot
+    // is 0.3047972654 m and the Indian foot 0.304799514 m, so the qualifier
+    // alone does not identify a ratio. `includes('FOOT')` gave all of them
+    // 0.3048.
+    for (const label of [
+      'SURVEY FOOT', 'SURVEY FEET', 'CLARKE FOOT', "CLARKE'S FOOT", 'INDIAN FOOT',
+      'SEARS FOOT', 'BRITISH FOOT (1936)', 'GOLD COAST FOOT',
+    ]) {
+      expect(normalizeMapUnitName(label), label).not.toBe('FOOT');
+      expect(normalizeMapUnitName(label), label).not.toBe('US SURVEY FOOT');
+    }
+
+    // The other direction of the same substring test: `US SURVEY FOOT` was
+    // reached by `includes`, so a label that says it is NOT the US survey foot
+    // was resolved as one, and so was an area built on it.
+    expect(normalizeMapUnitName('NON-US SURVEY FOOT')).not.toBe('US SURVEY FOOT');
+    expect(normalizeMapUnitName('SQUARE US SURVEY FOOT')).not.toBe('US SURVEY FOOT');
+
+    // An area or a volume is the worse half of this: not a wrong magnitude but
+    // a wrong DIMENSION, which no length scale can be right for. `MapUnit` is
+    // constrained to `UnitType = LENGTHUNIT`, so these are refused outright,
+    // the same way the georef reader refuses `SQUARE METRE`.
+    for (const label of ['SQUARE FOOT', 'SQUARE FEET', 'CUBIC FOOT', 'CUBIC FEET', 'SQUARE METRE', 'SQUARE METRES', 'CUBIC METRE']) {
+      const answer = normalizeMapUnitName(label);
+      expect(answer, label).not.toBe('FOOT');
+      expect(answer, label).not.toBe('US SURVEY FOOT');
+      expect(answer, label).not.toBe('METRE');
+    }
+
+    // Over-refusal is the opposite failure and is just as wrong: case,
+    // separators, word order and one plural suffix are NORMALISATION, not
+    // approximation, so every recognisable spelling still resolves.
+    expect(normalizeMapUnitName('FOOT')).toBe('FOOT');
+    expect(normalizeMapUnitName('Feet')).toBe('FOOT');
+    expect(normalizeMapUnitName('foot (US survey)')).toBe('US SURVEY FOOT');
+    expect(normalizeMapUnitName('SURVEY FEET (US)')).toBe('US SURVEY FOOT');
+    expect(normalizeMapUnitName('us survey foot')).toBe('US SURVEY FOOT');
+    expect(normalizeMapUnitName('USSURVEYFT')).toBe('US SURVEY FOOT');
+    expect(normalizeMapUnitName('FTUS')).toBe('US SURVEY FOOT');
+    expect(normalizeMapUnitName('METRES')).toBe('METRE');
+    expect(normalizeMapUnitName('MILLIMETERS')).toBe('MILLIMETRE');
+    expect(normalizeMapUnitName('MILLI-METRE')).toBe('MILLIMETRE');
+
+    // EPSG 9003 is the only US foot, so `US FOOT`/`USFOOT` is the US survey
+    // foot and NOT the international one — the substring test answered
+    // `FOOT`, i.e. 0.3048 for a 0.3048006096 unit.
+    expect(normalizeMapUnitName('US FOOT')).toBe('US SURVEY FOOT');
+    expect(normalizeMapUnitName('USFOOT')).toBe('US SURVEY FOOT');
+  });
+
+  it('leaves MapUnit unset for a label that merely contains a foot token', () => {
+    // End to end, past the predicate: the refusal reaches the written file and
+    // the caller, rather than a `FOOT` conversion unit at 0.3048 m.
+    for (const unit of ['SQUARE FOOT', 'FOOTCANDLE', 'SURVEY FOOT']) {
+      const result = exportWithMapUnit(unit);
+      const content = decode(result.content);
+      expect(crsMapUnitLine(content), `${unit} MapUnit`).toBe('$');
+      expect(content, `${unit} conversion unit`).not.toContain('IFCLENGTHMEASURE(0.3048)');
+      expect(result.stats.warnings.join('\n'), `${unit} warning`).toContain('Cannot express map unit');
+      // Anti-vacuity: the CRS itself was still written.
+      expect(content).toContain("IFCPROJECTEDCRS('EPSG:2056'");
+    }
+
+    // Negative control: the accepted spelling still writes its unit, so `$`
+    // above is a decision about the label and not a dead MapUnit path.
+    const survey = decode(exportWithMapUnit('foot (US survey)').content);
+    expect(crsMapUnitLine(survey)).toMatch(/IFCCONVERSIONBASEDUNIT\(#\d+,\.LENGTHUNIT\.,'US SURVEY FOOT',#\d+\);$/);
+  });
 });

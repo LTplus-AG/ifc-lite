@@ -285,7 +285,9 @@ export interface SpatialHierarchy {
   getPath(elementId: number): SpatialNode[]; // Project → ... → Element
 }
 
-// Type conversion helpers
+// Type conversion helpers. A row may coalesce onto an ANCESTOR
+// (IFCDOORSTANDARDCASE -> IfcDoor) but never a sibling or child, which renames
+// the element to a different IFC class; `type-enum-ancestry.test.ts` sweeps it.
 const TYPE_STRING_TO_ENUM = new Map<string, IfcTypeEnum>([
   // Spatial
   ['IFCPROJECT', IfcTypeEnum.IfcProject],
@@ -347,10 +349,8 @@ const TYPE_STRING_TO_ENUM = new Map<string, IfcTypeEnum>([
   ['IFCREINFORCINGBAR', IfcTypeEnum.IfcReinforcingBar],
   ['IFCREINFORCINGMESH', IfcTypeEnum.IfcReinforcingMesh],
   ['IFCTENDON', IfcTypeEnum.IfcTendon],
-  ['IFCTENDONANCHOR', IfcTypeEnum.IfcTendon],
   ['IFCDISCRETEACCESSORY', IfcTypeEnum.IfcDiscreteAccessory],
   ['IFCMECHANICALFASTENER', IfcTypeEnum.IfcMechanicalFastener],
-  ['IFCFASTENER', IfcTypeEnum.IfcMechanicalFastener],
   // MEP
   ['IFCDISTRIBUTIONELEMENT', IfcTypeEnum.IfcDistributionElement],
   ['IFCDISTRIBUTIONFLOWELEMENT', IfcTypeEnum.IfcDistributionElement],
@@ -366,7 +366,6 @@ const TYPE_STRING_TO_ENUM = new Map<string, IfcTypeEnum>([
   ['IFCDUCTSEGMENT', IfcTypeEnum.IfcDuctSegment],
   ['IFCPIPESEGMENT', IfcTypeEnum.IfcPipeSegment],
   ['IFCCABLESEGMENT', IfcTypeEnum.IfcCableSegment],
-  ['IFCCABLECARRIERSEGMENT', IfcTypeEnum.IfcCableSegment],
   // Furnishing
   ['IFCFURNISHINGELEMENT', IfcTypeEnum.IfcFurnishingElement],
   ['IFCFURNITURE', IfcTypeEnum.IfcFurniture],

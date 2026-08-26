@@ -152,6 +152,19 @@ function syncVersions() {
   const cargoTomlPath = join(rootDir, 'Cargo.toml');
   let cargoToml = readFileSync(cargoTomlPath, 'utf8');
 
+  // `String.prototype.replace` returns the input UNCHANGED when the pattern
+  // does not match, so a `[workspace.package]` this pattern cannot reach would
+  // be written back byte-identical and still reported as synced below — and
+  // the crates would then publish at the stale version. The gate half of this
+  // pair already refuses with NO_WORKSPACE_VERSION (see
+  // scripts/check-rust-major-offset.mjs); the writer has to refuse on the same
+  // condition or the two halves disagree about the same manifest.
+  if (!WORKSPACE_VERSION_PATTERN.test(cargoToml)) {
+    throw new Error(
+      `NO_WORKSPACE_VERSION: ${cargoTomlPath} has no [workspace.package] version literal to rewrite. That literal is what every crate publishes at, so reporting a successful sync here would publish the crates at the stale version.`
+    );
+  }
+
   cargoToml = cargoToml.replace(WORKSPACE_VERSION_PATTERN, `$1${crateVersion}$3`);
 
   cargoToml = rewriteInternalDeps('Cargo.toml', cargoToml, crateVersion);

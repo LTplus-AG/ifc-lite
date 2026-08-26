@@ -35,7 +35,7 @@ function run(script, root) {
 
 /** A tree standing at the PREVIOUS release (`stale`), with npm already bumped
  * to `npmVersion` by changesets — i.e. what `pnpm run version` sees. */
-function makeTree(t, { npmVersion = '6.1.0', stale = '6.0.1', offsetFile } = {}) {
+function makeTree(t, { npmVersion = '6.1.0', stale = '6.0.1', offsetFile, packageBody } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'sync-versions-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
 
@@ -53,7 +53,7 @@ function makeTree(t, { npmVersion = '6.1.0', stale = '6.0.1', offsetFile } = {})
   const members = MEMBERS.map((m) => `"rust/${m}"`).join(', ');
   writeFileSync(
     join(root, 'Cargo.toml'),
-    `[workspace]\nmembers = [${members}]\n\n[workspace.package]\nversion = "${stale}"\n\n[workspace.dependencies]\n${deps}\n`
+    `[workspace]\nmembers = [${members}]\n\n[workspace.package]\n${packageBody ?? `version = "${stale}"`}\n\n[workspace.dependencies]\n${deps}\n`
   );
   mkdirSync(join(root, 'rust'));
   for (const member of MEMBERS) {
@@ -138,6 +138,49 @@ test('the writer rewrites a reordered literal too, and both halves see the same 
 
   const after = run(GATE, root);
   assert.equal(after.code, 0, after.out);
+});
+
+test('an array value before the version key does not hide it from the writer', (t) => {
+  // TOML permits arrays in `[workspace.package]`. While the section bound
+  // rejected the `[` CHARACTER rather than a table HEADER, `authors` declared
+  // before `version` made the literal invisible to both halves — and invisible
+  // in the worst way: `replace` returned the input, so sync-versions wrote the
+  // same bytes back and still logged `✅ Updated Cargo.toml workspace version`,
+  // leaving the crates to publish at the previous release.
+  const root = makeTree(t, {
+    offsetFile: OFFSET_1,
+    packageBody: 'authors = ["IFC-Lite Contributors"]\nkeywords = ["ifc", "bim"]\nversion = "6.0.1"\nedition = "2021"',
+  });
+
+  const { code, out } = run(SYNC, root);
+  assert.equal(code, 0, out);
+
+  const cargoToml = readFileSync(join(root, 'Cargo.toml'), 'utf8');
+  assert.match(cargoToml, /^version = "7\.1\.0"$/m, 'the version key itself is rewritten');
+  assert.match(cargoToml, /^authors = \["IFC-Lite Contributors"\]$/m, 'the array value is left alone');
+  assert.match(cargoToml, /^keywords = \["ifc", "bim"\]$/m);
+  assert.match(cargoToml, /^edition = "2021"$/m);
+  assert.equal(cargoToml.includes('"6.0.1"'), false, 'no stale literal may survive');
+
+  const after = run(GATE, root);
+  assert.equal(after.code, 0, after.out);
+});
+
+test('a workspace.package with no version literal stops the release instead of reporting success', (t) => {
+  // The refusal that makes the case above safe in general: `replace` cannot
+  // tell "rewrote it" from "matched nothing", so the writer checks the pattern
+  // rather than trusting the result. The gate refuses on the same condition
+  // (NO_WORKSPACE_VERSION); a writer that logged success here would hand the
+  // release a manifest still on the previous version.
+  const root = makeTree(t, {
+    offsetFile: OFFSET_1,
+    packageBody: 'edition = "2021"\nrust-version = "1.80"',
+  });
+
+  const { code, out } = run(SYNC, root);
+  assert.equal(code, 1, `expected a refusal, got:\n${out}`);
+  assert.match(out, /NO_WORKSPACE_VERSION/);
+  assert.equal(/✅ Updated Cargo\.toml workspace version/.test(out), false, 'it must not claim a successful sync');
 });
 
 test('a missing offset file stops the release rather than assuming 0', (t) => {

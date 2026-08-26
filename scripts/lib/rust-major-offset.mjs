@@ -154,16 +154,26 @@ export function rewriteInternalDeps(label, text, version) {
  * (#3274): one valid token contains another, so a containment test answers
  * about the wrong key.
  *
- * `[^[]*?` keeps the search inside the section. A `[\s\S]*?` run is not
- * section-bounded, so a manifest whose `[workspace.package]` has no `version`
- * would match a `version` line in some LATER table and report that instead of
- * failing. `NO_WORKSPACE_VERSION` must fire there: a missing literal is a gate
- * with nothing to check, not a gate that goes looking elsewhere.
+ * The search stays inside the section, and the bound is a table HEADER — a
+ * line whose first non-blank character is `[` — not the `[` character itself.
+ * A `[\s\S]*?` run is not section-bounded at all, so a manifest whose
+ * `[workspace.package]` has no `version` would match a `version` line in some
+ * LATER table and report that instead of failing; `NO_WORKSPACE_VERSION` must
+ * fire there, because a missing literal is a gate with nothing to check rather
+ * than a gate that goes looking elsewhere. But the narrower `[^[]*?` this
+ * carried until #3305 rejected the `[` character, and TOML permits array
+ * values here — `authors`, `keywords`, `categories`, `exclude`. A manifest
+ * declaring any of those BEFORE `version` matched nothing, which is silent on
+ * both sides: the gate reports NO_WORKSPACE_VERSION for a manifest that does
+ * declare a version, and `sync-versions.js` performs a no-op `replace`. The
+ * root manifest happens to order `version` first, so nothing shipped wrong,
+ * and nothing enforced that ordering either.
  *
  * The `[ \t]*` allows the leading whitespace TOML permits on an indented key,
  * which a bare `^version` would refuse.
  */
-export const WORKSPACE_VERSION_PATTERN = /(\[workspace\.package\][^[]*?^[ \t]*version\s*=\s*")([^"]+)(")/m;
+export const WORKSPACE_VERSION_PATTERN =
+  /(\[workspace\.package\][^\n]*\n(?:(?![ \t]*\[)[^\n]*\n)*?[ \t]*version\s*=\s*")([^"]+)(")/;
 
 /** An error carrying a machine-readable reason, so a caller can print WHY it
  * refused rather than a bare stack. */

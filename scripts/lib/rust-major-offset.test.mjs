@@ -175,6 +175,31 @@ test('the workspace version is not sought outside its own section', () => {
   assert.equal(readWorkspaceVersion(text), null);
 });
 
+/**
+ * TOML permits array values in `[workspace.package]` — `authors`, `keywords`,
+ * `categories`, `exclude`. A section bound that rejects the `[` CHARACTER
+ * rather than a table HEADER stops at the first such array, so a manifest that
+ * declares its arrays before `version` reads as having no version at all. The
+ * real root manifest happens to put `version` first, which is why nothing has
+ * shipped wrong; nothing enforces that ordering, and both halves fail silently
+ * when it changes — the gate reports NO_WORKSPACE_VERSION for a manifest that
+ * does declare a version, and `sync-versions.js` performs a no-op `replace`
+ * and still logs success. Ordering is pinned here for that reason.
+ */
+test('the workspace version is read past an array value in either order', () => {
+  assert.equal(readWorkspaceVersion(workspacePackage('version = "6.0.1"', 'authors = ["IFC-Lite Contributors"]')), '6.0.1');
+  assert.equal(readWorkspaceVersion(workspacePackage('authors = ["IFC-Lite Contributors"]', 'version = "6.0.1"')), '6.0.1');
+  assert.equal(
+    readWorkspaceVersion(workspacePackage('keywords = ["ifc", "bim"]', 'categories = ["parser-implementations"]', 'version = "6.0.1"')),
+    '6.0.1'
+  );
+});
+
+test('an array value does not let the search escape the section', () => {
+  const text = '[workspace.package]\nauthors = ["a"]\nrust-version = "1.80"\n\n[package]\nversion = "9.9.9"\n';
+  assert.equal(readWorkspaceVersion(text), null);
+});
+
 test('an indented version key is still the workspace version', () => {
   assert.equal(readWorkspaceVersion('[workspace.package]\n  version = "6.0.1"\n  rust-version = "1.80"\n'), '6.0.1');
 });
@@ -184,6 +209,19 @@ test('sync-versions rewrites the version key and leaves rust-version alone', () 
   const after = before.replace(WORKSPACE_VERSION_PATTERN, '$17.0.0$3');
   assert.match(after, /^version = "7\.0\.0"$/m);
   assert.match(after, /^rust-version = "1\.80"$/m);
+});
+
+/**
+ * The writer half's hazard, pinned directly: `replace` on a non-matching
+ * pattern returns the input, so `sync-versions.js` used to write the same
+ * bytes back and log `✅ Updated Cargo.toml workspace version`. That is why
+ * the script now refuses on this same condition instead of trusting the
+ * replace — a silent no-op here publishes the crates at the stale version.
+ */
+test('a non-matching manifest makes the sync-versions replace a silent no-op', () => {
+  const before = workspacePackage('rust-version = "1.80"', 'edition = "2021"');
+  assert.equal(readWorkspaceVersion(before), null);
+  assert.equal(before.replace(WORKSPACE_VERSION_PATTERN, '$17.0.0$3'), before);
 });
 
 test('the real root Cargo.toml still yields its workspace version', () => {

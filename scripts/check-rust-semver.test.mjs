@@ -26,32 +26,26 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, dirname, delimiter } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import {
-  parseCrateList,
-  parseWorkspaceVersion,
+  readVersionOrNull,
   bumpLevel,
   interpretRun,
   checkRustSemver,
   CRATE_FLOOR,
 } from './check-rust-semver.mjs';
+import { CRATES } from './lib/crates-io.mjs';
 
 const SCRIPTS = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(SCRIPTS, '..');
 
-/** Seven names, so a case that is not about the crate list clears CRATE_FLOOR. */
-const SEVEN = [
-  'ifc-lite-core',
-  'ifc-lite-clash',
-  'ifc-lite-geometry',
-  'ifc-lite-processing',
-  'ifc-lite-export',
-  'ifc-lite-ffi',
-  'ifc-lite-wasm',
-];
+/** The real published list, so a case that is not about the crate list clears
+ *  CRATE_FLOOR and stays honest about how many crates a release touches. */
+const SEVEN = CRATES;
 
 /** `cargo semver-checks` output for each verdict, copied from a real run. */
 const COMPATIBLE = {
@@ -219,58 +213,60 @@ test('a crate already published at this exact version is counted, not skipped si
 
 /* ----------------------------- the pieces it parses ---------------------------- */
 
-test('the crate list is read from the real release-crates.mjs', () => {
-  const crates = parseCrateList(readFileSync(join(SCRIPTS, 'release-crates.mjs'), 'utf8'));
-  assert.notEqual(crates, null, 'release-crates.mjs no longer declares a CRATES array');
+test('the crate list is the one the release actually publishes', () => {
+  // Shared with release-crates.mjs and verify-crates-publish.js via
+  // scripts/lib/crates-io.mjs (#3181) — imported, not re-typed, so a crate
+  // added to the release cannot be missing from the gate.
   assert.ok(
-    crates.length >= CRATE_FLOOR,
-    `parsed ${crates.length} crates, below the floor of ${CRATE_FLOOR}`
+    CRATES.length >= CRATE_FLOOR,
+    `the release publishes ${CRATES.length} crates, below this gate's floor of ${CRATE_FLOOR}`
   );
-  for (const crate of crates) {
+  for (const crate of CRATES) {
     assert.match(crate, /^ifc-lite-/, `unexpected entry ${crate}`);
   }
 });
 
 test('every crate the gate would check exists under rust/', () => {
-  const crates = parseCrateList(readFileSync(join(SCRIPTS, 'release-crates.mjs'), 'utf8'));
   const names = new Set();
-  for (const dir of ['core', 'clash', 'geometry', 'processing', 'export', 'ffi', 'wasm-bindings']) {
+  for (const dir of readdirSync(join(ROOT, 'rust'))) {
     const manifest = join(ROOT, 'rust', dir, 'Cargo.toml');
     if (!existsSync(manifest)) continue;
     const name = readFileSync(manifest, 'utf8').match(/^name\s*=\s*"([^"]+)"/m)?.[1];
     if (name) names.add(name);
   }
-  for (const crate of crates) {
-    assert.ok(names.has(crate), `${crate} is in CRATES but has no manifest under rust/`);
+  for (const crate of CRATES) {
+    assert.ok(names.has(crate), `${crate} is published but has no manifest under rust/`);
   }
 });
 
-test('the crate list is null, never [], when the array cannot be found', () => {
-  assert.equal(parseCrateList('const OTHER = ["ifc-lite-core"];'), null);
-});
-
-test('CRATE_FLOOR catches a CRATES entry the parser cannot see', () => {
-  // One entry rewritten with double quotes: the parser drops it silently, and
-  // without the floor the gate would check six crates and report success.
-  const mangled =
-    'const CRATES = [\n' +
-    SEVEN.map((c, i) => (i === 0 ? `  "${c}",` : `  '${c}',`)).join('\n') +
-    '\n];';
-  const crates = parseCrateList(mangled);
-  assert.equal(crates.length, SEVEN.length - 1);
-  const result = run({ crates });
+test('CRATE_FLOOR catches a crate list that shrank on the way in', () => {
+  // Importing the list rules out a stale copy, not a filtered or truncated
+  // one. Without the floor a six-crate list would report success over seven
+  // crates' worth of release.
+  const result = run({ crates: CRATES.slice(0, CRATES.length - 1) });
   assert.equal(result.ok, false);
   assert.match(result.failures[0], /^CRATE_FLOOR/);
 });
 
 test('the workspace version is read from the real Cargo.toml', () => {
-  const version = parseWorkspaceVersion(readFileSync(join(ROOT, 'Cargo.toml'), 'utf8'));
-  assert.match(version, /^\d+\.\d+\.\d+$/);
+  assert.match(readVersionOrNull(ROOT), /^\d+\.\d+\.\d+$/);
 });
 
-test('a non-semver workspace version reads as absent, not as a version', () => {
-  assert.equal(parseWorkspaceVersion('[workspace.package]\nversion = "nightly"\n'), null);
-  assert.equal(parseWorkspaceVersion('[package]\nversion = "1.2.3"\n'), null);
+test('a missing or non-semver workspace version reads as absent, not as a version', () => {
+  // readWorkspaceVersion throws on a Cargo.toml with no [workspace.package]
+  // version, and returns the raw string when it is not a semver triple.
+  // Neither may reach the comparison.
+  const dir = mkdtempSync(join(tmpdir(), 'rust-semver-'));
+  try {
+    writeFileSync(join(dir, 'Cargo.toml'), '[package]\nversion = "1.2.3"\n');
+    assert.equal(readVersionOrNull(dir), null);
+    writeFileSync(join(dir, 'Cargo.toml'), '[workspace.package]\nversion = "nightly"\n');
+    assert.equal(readVersionOrNull(dir), null);
+    writeFileSync(join(dir, 'Cargo.toml'), '[workspace.package]\nversion = "1.2.3"\n');
+    assert.equal(readVersionOrNull(dir), '1.2.3');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('bumpLevel names the bump the version carries', () => {

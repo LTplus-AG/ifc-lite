@@ -53,53 +53,54 @@
  * VACUITY. Every way this gate could report success over nothing is an
  * explicit failure with a named reason (#3194/#3200): an empty crate list, a
  * crate list that shrank below CRATE_FLOOR, a crate with no release on
- * crates.io to compare against, a missing `cargo-semver-checks` binary, and a
- * run that produced no verdict line. None of those is a skip.
+ * crates.io to compare against, a missing `cargo-semver-checks` binary, an
+ * unreadable workspace version, and a run that produced no verdict line. None
+ * of those is a skip.
  *
  * Run: `node scripts/check-rust-semver.mjs`  (`pnpm check:rust-semver`)
  * Self-test: `node --test scripts/check-rust-semver.test.mjs`
  */
 
-import { readFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { CRATES, readWorkspaceVersion } from './lib/crates-io.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 /**
- * The gate must cover EVERY crate the release publishes, so the list is read
- * from the one place that decides that — the `CRATES` array in
- * `scripts/release-crates.mjs` — instead of being retyped here. A second copy
- * would go stale exactly when a crate is added, which is the moment this gate
- * is most needed.
- *
- * Read textually rather than by `import`, because importing that module
- * EXECUTES it, and it publishes to crates.io at top level.
- *
- * Returns null (not []) when the array cannot be found, so "the list moved"
- * cannot be mistaken for "there are no crates".
+ * The gate must cover EVERY crate the release publishes, so the list is the
+ * one the release itself uses — `CRATES` from `scripts/lib/crates-io.mjs`,
+ * which `release-crates.mjs` and `verify-crates-publish.js` already share
+ * (#3181). A second copy here would go stale exactly when a crate is added,
+ * which is the moment this gate is most needed.
  */
-export function parseCrateList(source) {
-  const block = source.match(/const CRATES = \[([\s\S]*?)\n\];/);
-  if (!block) return null;
-  return [...block[1].matchAll(/^\s*'([^']+)',/gm)].map((m) => m[1]);
-}
 
 /**
- * Floor on the crate count. A regex that half-matches (the array reformatted,
- * an entry rewritten with double quotes) yields a short list, and a gate that
- * checked two crates prints the same success line as one that checked all of
- * them. If a crate is genuinely dropped from the release, lower this in the
- * same commit.
+ * Floor on the crate count. Importing the list rather than re-typing it rules
+ * out one drift, not all of them: a filter, a conditional entry, or a partial
+ * edit still yields a short list, and a gate that checked two crates prints
+ * the same success line as one that checked all seven. If a crate is genuinely
+ * dropped from the release, lower this in the same commit.
  */
 export const CRATE_FLOOR = 7;
 
-/** `[workspace.package] version` — the version this release would publish. */
-export function parseWorkspaceVersion(cargoToml) {
-  const m = cargoToml.match(/\[workspace\.package\][^[]*?version\s*=\s*"([^"]+)"/);
-  if (!m) return null;
-  return /^\d+\.\d+\.\d+$/.test(m[1]) ? m[1] : null;
+/**
+ * The version this release would publish, or null.
+ *
+ * `readWorkspaceVersion` (shared with release-crates.mjs) THROWS when the key
+ * is missing and otherwise returns whatever string is there, semver or not.
+ * Both have to become "no usable version" here rather than a crash or a value
+ * the comparison silently mishandles.
+ */
+export function readVersionOrNull(rootDir) {
+  let version;
+  try {
+    version = readWorkspaceVersion(rootDir);
+  } catch {
+    return null;
+  }
+  return /^\d+\.\d+\.\d+$/.test(version) ? version : null;
 }
 
 /** The bump `current` carries over `baseline`: major | minor | patch | none. */
@@ -150,7 +151,7 @@ export function checkRustSemver({ crates, workspaceVersion, latestPublished, run
   const failures = [];
   const checked = [];
 
-  // The SHAPE is checked here, not only in parseWorkspaceVersion: a version
+  // The SHAPE is checked here, not only in readVersionOrNull: a version
   // that is a string but not a semver triple makes every `bumpLevel`
   // comparison NaN, which reads as "no change", which reads as "already
   // published, nothing to gate" — a vacuous pass over every crate at once.
@@ -285,23 +286,6 @@ function realRunSemverChecks(crate, baseline) {
 }
 
 function main() {
-  const listSource = join(REPO_ROOT, 'scripts', 'release-crates.mjs');
-  if (!existsSync(listSource)) {
-    console.error(
-      '❌ MISSING_LIST: scripts/release-crates.mjs is gone; nothing names the published crates'
-    );
-    process.exit(2);
-  }
-  const crates = parseCrateList(readFileSync(listSource, 'utf8'));
-  if (crates === null) {
-    console.error(
-      '❌ NO_CRATES: scripts/release-crates.mjs no longer declares a `const CRATES = [...]` ' +
-        'array. Point this gate at wherever the published crate list moved to — do not let it ' +
-        'read an empty list.'
-    );
-    process.exit(2);
-  }
-
   const probe = spawnSync('cargo', [`+${SEMVER_TOOLCHAIN}`, 'semver-checks', '--version'], {
     encoding: 'utf8',
   });
@@ -315,12 +299,9 @@ function main() {
     process.exit(2);
   }
 
-  const workspaceVersion = parseWorkspaceVersion(
-    readFileSync(join(REPO_ROOT, 'Cargo.toml'), 'utf8')
-  );
   const result = checkRustSemver({
-    crates,
-    workspaceVersion,
+    crates: CRATES,
+    workspaceVersion: readVersionOrNull(REPO_ROOT),
     latestPublished: realLatestPublished,
     runSemverChecks: realRunSemverChecks,
   });
@@ -332,7 +313,8 @@ function main() {
     process.exit(1);
   }
   console.log(
-    `✅ ${result.checked.length} crate(s) checked; every Rust API change fits ${workspaceVersion}`
+    `✅ ${result.checked.length} crate(s) checked; every Rust API change fits ` +
+      `${readVersionOrNull(REPO_ROOT)}`
   );
 }
 

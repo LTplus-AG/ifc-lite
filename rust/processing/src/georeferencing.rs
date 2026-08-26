@@ -134,7 +134,19 @@ pub fn extract_georeferencing_with_index(
     let mut scanner = EntityScanner::new(content);
     while let Some((id, type_name, _start, _end)) = scanner.next_entity() {
         match type_name {
-            "IFCMAPCONVERSION" => entity_types.push((id, IfcType::IfcMapConversion)),
+            // IFC4X3's concrete subtype of IfcMapConversion. The scanner
+            // classifies by the RAW STEP type name, so matching the supertype
+            // spelling alone found nothing in a file written this way and the
+            // extractor fell through to the ePSet / legacy-IfcSite fallbacks —
+            // reporting no map conversion, hence no transform, for a file that
+            // carries one. Its first eight attributes ARE IfcMapConversion's,
+            // and `GeoRefExtractor` reads them positionally, so classifying it
+            // as the supertype is exactly right; the FactorX/Y/Z it adds sit
+            // after them and are ignored. Same widening as the TS reader's
+            // `MAP_CONVERSION_TYPE_NAMES`.
+            "IFCMAPCONVERSION" | "IFCMAPCONVERSIONSCALED" => {
+                entity_types.push((id, IfcType::IfcMapConversion))
+            }
             "IFCPROJECTEDCRS" => entity_types.push((id, IfcType::IfcProjectedCRS)),
             "IFCPROPERTYSET" => entity_types.push((id, IfcType::IfcPropertySet)),
             // Legacy IfcSite RefLatitude/RefLongitude fallback (TS parity).

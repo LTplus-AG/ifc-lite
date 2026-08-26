@@ -69,7 +69,7 @@ async fn parquet_cache_hit_does_not_swap_body_and_metadata() {
     let content = b"not-a-real-ifc-file-cache-hit-probe";
     let query = ParseQuery::default();
     let cache_key = request_cache_key(content, &query, TessellationQuality::default());
-    let parquet_key = format!("{cache_key}-parquet-v4");
+    let parquet_key = format!("{cache_key}-parquet-v5");
     let metadata_key = format!("{cache_key}-parquet-metadata-v4");
 
     state

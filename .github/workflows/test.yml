@@ -1392,9 +1392,58 @@ jobs:
   # for the branch protection rule so we don't have to retouch settings.
   # Succeeds if every dependency succeeded or was skipped (path-filtered
   # out); fails the moment any dependency fails or is cancelled.
+  # The crate semver gate (issue #3216). It runs at release time as the
+  # crates.io half's precondition, but a release-only gate is exactly the shape
+  # `release-crates-order.test.mjs` argues against in its own header: the
+  # Release workflow runs only on main, and only on an actual publish, so a
+  # breaking API change sits latent until it fails after npm has already gone
+  # out. This runs it on every PR instead.
+  #
+  # It is cheap on an ordinary PR and expensive only where it has signal. Each
+  # crate whose version is already live on crates.io is skipped BEFORE
+  # cargo-semver-checks is invoked, which on an ordinary PR is all of them: the
+  # job is seven registry lookups and a message saying plainly that no API was
+  # compared. On the `chore: version packages` PR, where `sync-versions.js` has
+  # moved the workspace version, it does the real comparison — and that is the
+  # commit whose version the whole issue is about, reviewed before it merges
+  # and publishes.
+  rust-semver:
+    name: Rust crate semver
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+
+      # A stable toolchain, not the dated nightly in rust-toolchain.toml:
+      # cargo-semver-checks refuses a nightly outright ("rustc version is not
+      # high enough: >=1.93.0 needed, got 1.93.0-nightly"). The gate invokes it
+      # as `cargo +stable semver-checks`, so this only has to exist.
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master 2026-05
+        with:
+          toolchain: stable
+
+      # Prebuilt binary. `cargo install cargo-semver-checks --locked` compiles
+      # it from source (~5 min).
+      - name: Install cargo-semver-checks
+        uses: taiki-e/install-action@4f5ee4a4759116abc6b10af05f20374e179d8ca3 # cargo-semver-checks (snapshot pinned 2026-08)
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          prefix-key: ci-rust-semver
+
+      # No `pnpm install`: the gate imports only node builtins and
+      # scripts/lib/crates-io.mjs, which does the same.
+      - name: Check crate semver against crates.io
+        run: node scripts/check-rust-semver.mjs
+
   test:
     name: Build + WASM + Rust + Node
-    needs: [changes, build, typecheck, lint, node-tests, viewer-tests, viewer-e2e, rust-tests, geometry-census, plato-check, docs-checks]
+    needs: [changes, build, typecheck, lint, node-tests, viewer-tests, viewer-e2e, rust-tests, rust-semver, geometry-census, plato-check, docs-checks]
     if: always()
     # Free runner — the gate just inspects upstream job results.
     runs-on: ubuntu-latest
@@ -1409,6 +1458,7 @@ jobs:
             [viewer-tests]="${{ needs.viewer-tests.result }}"
             [viewer-e2e]="${{ needs.viewer-e2e.result }}"
             [rust-tests]="${{ needs.rust-tests.result }}"
+            [rust-semver]="${{ needs.rust-semver.result }}"
             [geometry-census]="${{ needs.geometry-census.result }}"
             [plato-check]="${{ needs.plato-check.result }}"
             [docs-checks]="${{ needs.docs-checks.result }}"

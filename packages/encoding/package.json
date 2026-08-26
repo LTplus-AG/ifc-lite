@@ -19,6 +19,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
+    "@ifc-lite/timing-ladder": "workspace:^",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10"
   },

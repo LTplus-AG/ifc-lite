@@ -11,9 +11,12 @@
 # prints a note telling you to); a stale exemption is permanent slack.
 # Only ADD a row with a written justification in the PR.
 #
-# Any edit here moves ALLOWLIST_DIGEST in scripts/check-module-size.mjs, which
-# must be updated in the same commit — that is the point: loosening the ratchet
-# costs a reviewable line.
+# Any edit here moves that row's SCOPE entry in ALLOWLIST_DIGESTS in
+# scripts/check-module-size.mjs, which must be updated in the same commit —
+# that is the point: loosening the ratchet costs a reviewable line. The pin is
+# sharded per packages/<name>, apps/<name> and rust/<crate>, so an edit here
+# moves ONE of its entries. Two PRs in different scopes then merge cleanly
+# unless their entries sit on ADJACENT lines, which git cannot auto-merge.
    522 apps/viewer-embed/src/bridge/handler.ts
    439 apps/viewer-embed/src/components/EmbedViewer.tsx
    481 apps/viewer/src/components/extensions/ExtensionsPanel.tsx
@@ -45,7 +48,7 @@
    583 apps/viewer/src/components/viewer/EntityContextMenu.tsx
    863 apps/viewer/src/components/viewer/ExportDialog.tsx
    531 apps/viewer/src/components/viewer/GLBExportDialog.tsx
-  1419 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
+  1424 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
    435 apps/viewer/src/components/viewer/hierarchy/useHierarchyTree.ts
   1159 apps/viewer/src/components/viewer/HierarchyPanel.tsx
   1198 apps/viewer/src/components/viewer/IDSPanel.tsx
@@ -202,7 +205,7 @@
    907 packages/data/src/ifc-entity-names.ts
    438 packages/data/src/property-table.ts
    459 packages/data/src/step-serializers.ts
-   628 packages/data/src/types.ts
+   508 packages/data/src/types.ts
    440 packages/diff/src/fingerprint.ts
    550 packages/drawing-2d/src/drawing-generator.ts
    507 packages/drawing-2d/src/dxf/convert.ts
@@ -272,7 +275,7 @@
   1189 packages/parser/src/columnar-parser.ts
    480 packages/parser/src/compact-entity-index.ts
    530 packages/parser/src/data-store-transport.ts
-   564 packages/parser/src/georef-extractor.ts
+   539 packages/parser/src/georef-extractor.ts
    827 packages/parser/src/material-resolver.ts
   1004 packages/parser/src/on-demand-extractors.ts
    523 packages/parser/src/project-units.ts
@@ -316,7 +319,7 @@
    875 packages/sdk/src/types.ts
   1082 packages/server-client/src/client.ts
    775 packages/server-client/src/data-model-decoder.ts
-   517 packages/server-client/src/parquet-tables.ts
+   466 packages/server-client/src/parquet-tables.ts
    627 packages/server-client/src/types.ts
    411 packages/source-dalux/src/http-client.ts
    406 packages/source-dalux/src/provider.ts

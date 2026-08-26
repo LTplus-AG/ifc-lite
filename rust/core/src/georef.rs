@@ -28,38 +28,6 @@ fn pset_value_string(prop: &DecodedEntity) -> Option<String> {
     }
 }
 
-/// Map an IFC unit label (e.g. "MILLIMETRE", "FOOT") to its metre scale.
-/// Mirrors the TS parser's `inferMapUnitScaleFromLabel` and the viewer's
-/// `inferMapUnitScale` so an ePSet_ProjectedCRS.MapUnit yields the same scale
-/// the native IfcProjectedCRS path resolves from the unit entity. Returns
-/// `None` for an absent/unknown unit (the ePSet convention then defers to the
-/// project length unit downstream).
-fn infer_map_unit_scale(label: &str) -> Option<f64> {
-    let n = label.to_uppercase();
-    if n.contains("US") && (n.contains("SURVEY") || n.contains("FTUS")) {
-        return Some(0.3048006096);
-    }
-    if n.contains("FOOT") || n.contains("FEET") {
-        return Some(0.3048);
-    }
-    if n.contains("MILLI") {
-        return Some(0.001);
-    }
-    if n.contains("CENTI") {
-        return Some(0.01);
-    }
-    if n.contains("DECI") {
-        return Some(0.1);
-    }
-    if n.contains("KILO") {
-        return Some(1000.0);
-    }
-    if n.contains("METRE") || n.contains("METER") {
-        return Some(1.0);
-    }
-    None
-}
-
 /// Where the georeferencing data was authored in the file.
 ///
 /// Single discriminator shared (string-for-string) with the TS parser's
@@ -657,7 +625,7 @@ impl GeoRefExtractor {
                     // Parity with the native IfcProjectedCRS path: derive the
                     // metre scale from the unit label so consumers don't default
                     // explicit non-metre ePSet offsets to metres.
-                    georef.map_unit_scale = value.as_deref().and_then(infer_map_unit_scale);
+                    georef.map_unit_scale = value.as_deref().and_then(crate::unit_labels::infer_map_unit_scale);
                     georef.map_unit = value;
                 }
                 _ => {}

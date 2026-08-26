@@ -19,11 +19,14 @@ import { fileURLToPath } from 'node:url';
 import {
   ReviewSignalError,
   expandJobNames,
+  flattenReviewPages,
   missingLanes,
   noVerdictReviews,
   pollForLanes,
   parseWorkflowJobs,
   rollupSettled,
+  staleReviews,
+  STALE_REVIEW_POLICIES,
   SETTLE_HOLD_SECONDS,
 } from './pr-review-signal.mjs';
 
@@ -677,4 +680,333 @@ test('THE ASSUMPTION, PINNED: a fan-out gap wider than the hold would defeat it'
   // The failure direction is the safe one: a violated assumption produces a
   // false FAIL carrying the missing-lane remedy, never a false PASS.
   assert.equal(beyondHold.timedOut, false);
+});
+
+// ------------------------------------------------ PART 3: review staleness
+
+/**
+ * PR #3276, louistrue's own example in #3312, from
+ * `repos/LTplus-AG/ifc-lite/pulls/3276/reviews` on 2026-08-26.
+ *
+ * Head `1305f778`; CodeRabbit's newest review names `c26e453d`, three commits
+ * back. NOTE THAT EVERY ONE OF THESE IS `COMMENTED` — that is not fixture
+ * convenience, it is what the API returns for this repository's reviewers, and
+ * it is why the scoping rule cannot drop `COMMENTED`. (The SHAs of the older
+ * commits are padded to 40 hex here; the head is verbatim.)
+ */
+const SHA = {
+  head: '1305f778c0dc817bb344e23f881c2a30963c14c2',
+  c26e453d: 'c26e453d00000000000000000000000000000000',
+  x7e500b34: '7e500b3400000000000000000000000000000000',
+};
+const REVIEWS_3276 = [
+  {
+    id: 5030129859,
+    user: { login: 'BIMvoice' },
+    state: 'COMMENTED',
+    commit_id: SHA.x7e500b34,
+    submitted_at: '2026-08-26T12:04:59Z',
+  },
+  {
+    id: 5030166378,
+    user: { login: 'coderabbitai[bot]' },
+    state: 'COMMENTED',
+    commit_id: SHA.x7e500b34,
+    submitted_at: '2026-08-26T12:09:08Z',
+  },
+  {
+    id: 5030520937,
+    user: { login: 'coderabbitai[bot]' },
+    state: 'COMMENTED',
+    commit_id: SHA.c26e453d,
+    submitted_at: '2026-08-26T12:46:19Z',
+  },
+];
+const AUTHORS = [
+  { login: 'coderabbitai[bot]', context: 'CodeRabbit' },
+  { login: 'cursor[bot]', context: 'Cursor Bugbot' },
+];
+/** The status #3276's head actually carried. */
+const COMPLETED = [{ name: 'CodeRabbit', state: 'success', description: 'Review completed' }];
+
+const stale = (reviews, over = {}) =>
+  staleReviews(reviews, {
+    headSha: SHA.head,
+    policy: 'claimed-verdict',
+    authors: AUTHORS,
+    checks: COMPLETED,
+    ...over,
+  });
+
+test('RED, #3276: `Review completed` on a head whose newest review is three commits back', () => {
+  const found = stale(REVIEWS_3276);
+  assert.equal(found.length, 1);
+  assert.equal(found[0].login, 'coderabbitai[bot]');
+  assert.equal(found[0].context, 'CodeRabbit');
+  // The NEWEST review is the one compared. `7e500b34` is older and also stale,
+  // but reporting it would mean the ordering is not being applied at all.
+  assert.equal(found[0].reviewedSha, SHA.c26e453d);
+});
+
+test('ANTI-VACUITY: the same shape with the newest review AT the head reports nothing', () => {
+  // Without this, an implementation that always reports stale passes the test
+  // above. #3315, #3309 and #2931 are this case live.
+  const current = REVIEWS_3276.map((r) =>
+    r.id === 5030520937 ? { ...r, commit_id: SHA.head } : r,
+  );
+  assert.deepEqual(stale(current), []);
+});
+
+test('ORDERING: a later review of an OLDER commit still leaves the PR stale', () => {
+  // Mutating ORDER rather than values: shuffling the array must not change the
+  // answer, and the tie-break must be exercised rather than assumed.
+  const shuffled = [...REVIEWS_3276].reverse();
+  assert.equal(shuffled[0].id, 5030520937, 'the fixture really is reordered');
+  assert.equal(stale(shuffled).length, 1);
+  assert.equal(stale(shuffled)[0].reviewedSha, SHA.c26e453d);
+
+  const tie = [
+    {
+      id: 1,
+      user: { login: 'coderabbitai[bot]' },
+      state: 'COMMENTED',
+      commit_id: SHA.head,
+      submitted_at: '2026-08-26T12:00:00Z',
+    },
+    {
+      id: 2,
+      user: { login: 'coderabbitai[bot]' },
+      state: 'COMMENTED',
+      commit_id: SHA.c26e453d,
+      submitted_at: '2026-08-26T12:00:00Z',
+    },
+  ];
+  // Same timestamp: the id breaks the tie, and the larger id is the later
+  // review. It names an older commit, so the PR IS stale. Reverse the ids and
+  // the same two rows must come back clean — that is the assumption, made
+  // falsifiable rather than left implicit.
+  assert.equal(stale(tie).length, 1, 'the id tie-break decides, and it decides stale');
+  const flipped = [
+    { ...tie[0], id: 2 },
+    { ...tie[1], id: 1 },
+  ];
+  assert.deepEqual(stale(flipped), []);
+});
+
+test('NO NAG: a reviewer still working is not stale — the head status is not `success`', () => {
+  // Clause (b) of the default policy. A bot mid-review has a `pending` context,
+  // so a stale `commit_id` under it is a race, not a defect.
+  assert.deepEqual(stale(REVIEWS_3276, { checks: [{ name: 'CodeRabbit', state: 'pending' }] }), []);
+  assert.deepEqual(stale(REVIEWS_3276, { checks: [] }), []);
+});
+
+test('NO NAG: an author with NO review event is never reported, and that is the stated hole', () => {
+  // #3316 and #3205 carry `CodeRabbit :: success / Review completed` and ZERO
+  // review events of any kind. Absence of a review is not evidence of
+  // staleness, and no `commit_id` comparison can see a reviewer that leaves no
+  // review object.
+  assert.deepEqual(stale([]), []);
+});
+
+test('DEDUPE: a context part 2 already flagged is not reported twice', () => {
+  assert.deepEqual(stale(REVIEWS_3276, { alreadyFlagged: ['CodeRabbit'] }), []);
+  // …and the dedupe is scoped to the context named, not to everything.
+  assert.equal(stale(REVIEWS_3276, { alreadyFlagged: ['Cursor Bugbot'] }).length, 1);
+});
+
+test('POLICY: the three policies scope differently, and each is exercised', () => {
+  const humanApproved = [
+    {
+      id: 10,
+      user: { login: 'louistrue' },
+      state: 'APPROVED',
+      commit_id: SHA.c26e453d,
+      submitted_at: '2026-08-26T12:46:19Z',
+    },
+  ];
+  const base = { headSha: SHA.head, authors: AUTHORS, checks: [] };
+
+  // `claimed-verdict`: no configured context claims a verdict, so nothing.
+  assert.deepEqual(staleReviews(humanApproved, { ...base, policy: 'claimed-verdict' }), []);
+  // `configured-authors`: drops clause (b) but keeps the identity scope, and
+  // `louistrue` is not a configured identity.
+  assert.deepEqual(staleReviews(humanApproved, { ...base, policy: 'configured-authors' }), []);
+  // `all-authors`: this is the policy that flags a human approval predating a
+  // rebase. It is NOT the default, and which of the three ships is the choice
+  // left to the maintainer.
+  const all = staleReviews(humanApproved, { ...base, policy: 'all-authors' });
+  assert.equal(all.length, 1);
+  assert.equal(all[0].login, 'louistrue');
+  assert.equal(all[0].context, null);
+
+  // And `configured-authors` DOES fire on a configured identity with no passing
+  // context — otherwise the two `deepEqual([])` above would prove nothing.
+  const cr = staleReviews(REVIEWS_3276, { ...base, policy: 'configured-authors' });
+  assert.equal(cr.length, 1, 'clause (b) is genuinely dropped by this policy');
+});
+
+test('DISMISSED and PENDING reviews are not verdicts on a commit', () => {
+  const dismissed = REVIEWS_3276.map((r) =>
+    r.id === 5030520937 ? { ...r, state: 'DISMISSED' } : r,
+  );
+  // The newest SURVIVING review is `7e500b34`, still stale — so the filter is
+  // shown to change WHICH review is compared, not merely to shrink the list.
+  assert.equal(stale(dismissed)[0].reviewedSha, SHA.x7e500b34);
+
+  const pending = REVIEWS_3276.map((r) => (r.id === 5030520937 ? { ...r, state: 'PENDING' } : r));
+  assert.equal(stale(pending)[0].reviewedSha, SHA.x7e500b34);
+});
+
+// --------------------------------------------- fail-closed, one test each
+
+test('FAIL CLOSED: an unreadable head SHA refuses rather than reporting every review stale', () => {
+  for (const bad of [undefined, null, '', 'HEAD', SHA.head.slice(0, 39), SHA.head.toUpperCase()]) {
+    assert.throws(
+      () => stale(REVIEWS_3276, { headSha: bad }),
+      (e) => e instanceof ReviewSignalError && e.reason === 'NO_HEAD_SHA',
+      `head ${JSON.stringify(bad)}`,
+    );
+  }
+});
+
+test('FAIL CLOSED: an unrecognised policy is BAD_CONFIG, never a silent narrowing', () => {
+  for (const bad of [undefined, null, '', 'strict', 'CLAIMED-VERDICT']) {
+    assert.throws(
+      () => stale(REVIEWS_3276, { policy: bad }),
+      (e) => e instanceof ReviewSignalError && e.reason === 'BAD_CONFIG',
+      `policy ${JSON.stringify(bad)}`,
+    );
+  }
+});
+
+test('FAIL CLOSED: a non-array reviews read is NO_REVIEWS, not "everything is current"', () => {
+  for (const bad of [undefined, null, '', {}, 'nope']) {
+    assert.throws(
+      () => stale(bad),
+      (e) => e instanceof ReviewSignalError && e.reason === 'NO_REVIEWS',
+      `reviews ${JSON.stringify(bad)}`,
+    );
+  }
+});
+
+test('FAIL CLOSED: an empty reviewer identity list examines nothing, so it refuses', () => {
+  for (const policy of ['claimed-verdict', 'configured-authors']) {
+    assert.throws(
+      () => stale(REVIEWS_3276, { policy, authors: [] }),
+      (e) => e instanceof ReviewSignalError && e.reason === 'EMPTY_REVIEW_AUTHORS',
+      policy,
+    );
+    assert.throws(
+      () => stale(REVIEWS_3276, { policy, authors: undefined }),
+      (e) => e instanceof ReviewSignalError && e.reason === 'EMPTY_REVIEW_AUTHORS',
+      `${policy} / undefined`,
+    );
+  }
+  // `all-authors` does not scope by identity, so an empty list is meaningful
+  // there and must NOT throw — the guard is tied to what actually reads it.
+  assert.equal(
+    staleReviews(REVIEWS_3276, {
+      headSha: SHA.head,
+      policy: 'all-authors',
+      authors: [],
+      checks: COMPLETED,
+    }).length,
+    2,
+  );
+});
+
+test('FAIL CLOSED: an unreadable `commit_id` on a counted review refuses', () => {
+  for (const bad of [undefined, null, '', 'c26e453d', 12345]) {
+    const broken = REVIEWS_3276.map((r) => (r.id === 5030520937 ? { ...r, commit_id: bad } : r));
+    assert.throws(
+      () => stale(broken),
+      (e) => e instanceof ReviewSignalError && e.reason === 'UNREADABLE_COMMIT_ID',
+      `commit_id ${JSON.stringify(bad)}`,
+    );
+  }
+});
+
+test('FAIL CLOSED: a review this policy does NOT count may be malformed without blinding the gate', () => {
+  // The mirror of the test above, and the reason scoping happens BEFORE
+  // validation: a third party's broken review must not stop the gate seeing
+  // CodeRabbit's stale one…
+  const broken = [
+    ...REVIEWS_3276,
+    { id: 999, user: { login: 'somebody' }, state: 'COMMENTED', commit_id: null },
+  ];
+  assert.equal(stale(broken).length, 1);
+  // …but under `all-authors`, which DOES count it, the same input refuses.
+  assert.throws(
+    () => stale(broken, { policy: 'all-authors' }),
+    (e) => e instanceof ReviewSignalError && e.reason === 'UNREADABLE_COMMIT_ID',
+  );
+});
+
+test('FAIL CLOSED: a review with no usable id has no defensible "newest"', () => {
+  for (const bad of [undefined, null, 'abc', Number.NaN]) {
+    const broken = REVIEWS_3276.map((r) => (r.id === 5030520937 ? { ...r, id: bad } : r));
+    assert.throws(
+      () => stale(broken),
+      (e) => e instanceof ReviewSignalError && e.reason === 'UNREADABLE_REVIEW_ID',
+      `id ${JSON.stringify(bad)}`,
+    );
+  }
+});
+
+test('the shipped config is a valid part 3 config, and its policy is the stated default', () => {
+  // Pins the DEFAULT itself, once, so moving it is a deliberate edit here.
+  assert.equal(CFG.staleReviewPolicy, 'claimed-verdict');
+  assert.equal(CFG.staleReviewSeverity, 'warn');
+  assert.ok(STALE_REVIEW_POLICIES.has(CFG.staleReviewPolicy));
+  // The two identity spaces really are different, which is why `reviewAuthors`
+  // exists at all rather than reusing `reviewers`.
+  const logins = CFG.reviewAuthors.map((a) => a.login);
+  assert.ok(logins.includes('coderabbitai[bot]'));
+  assert.ok(!CFG.reviewers.includes('coderabbitai[bot]'), 'a login is not a check context');
+  for (const a of CFG.reviewAuthors) {
+    assert.ok(CFG.reviewers.includes(a.context), `${a.context} must also be a part 2 reviewer`);
+  }
+});
+
+test('PAGINATION: pages are concatenated in order, so the NEWEST review survives the walk', () => {
+  // The newest review is on the LAST page. Order matters, so this asserts the
+  // sequence rather than the length.
+  const pages = [
+    [REVIEWS_3276[0], REVIEWS_3276[1]],
+    [REVIEWS_3276[2]],
+  ];
+  const flat = flattenReviewPages(pages, 'reviews');
+  assert.deepEqual(
+    flat.map((r) => r.id),
+    [5030129859, 5030166378, 5030520937],
+  );
+  // …and the flattened list is what produces the #3276 finding, so a walk that
+  // lost the last page would report the WRONG commit rather than nothing.
+  assert.equal(stale(flat)[0].reviewedSha, SHA.c26e453d);
+  // An empty walk is a legitimate answer (a PR with no reviews at all), and it
+  // is NOT the same as an unreadable one.
+  assert.deepEqual(flattenReviewPages([], 'reviews'), []);
+  assert.deepEqual(flattenReviewPages([[]], 'reviews'), []);
+});
+
+test('FAIL CLOSED: a pagination walk that did not complete is REVIEWS_TRUNCATED', () => {
+  // Dropping the last page would compare an older review and report a CURRENT
+  // PR as stale — a false finding, the one direction a gate must never fail.
+  for (const bad of [null, undefined, {}, 'oops', 42]) {
+    assert.throws(
+      () => flattenReviewPages([[REVIEWS_3276[0]], bad], 'reviews'),
+      (e) => e instanceof ReviewSignalError && e.reason === 'REVIEWS_TRUNCATED',
+      `page ${JSON.stringify(bad)}`,
+    );
+  }
+});
+
+test('FAIL CLOSED: an unreadable pagination result is NO_REVIEWS', () => {
+  for (const bad of [null, undefined, {}, 'oops']) {
+    assert.throws(
+      () => flattenReviewPages(bad, 'reviews'),
+      (e) => e instanceof ReviewSignalError && e.reason === 'NO_REVIEWS',
+      `pages ${JSON.stringify(bad)}`,
+    );
+  }
 });

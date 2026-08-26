@@ -64,6 +64,39 @@
     "this diff, not about GitHub."
   ],
   "reviewVerdictSeverity": "warn",
+  "$reviewAuthorsComment": [
+    "PART 3 (issue #3312, louistrue: 'A review whose commit_id is not the PR head has not",
+    "reviewed the PR'). `reviewAuthors` maps a REVIEW AUTHOR's GitHub login to the CHECK",
+    "CONTEXT that same reviewer publishes under. The two identity spaces are different --",
+    "the login is `coderabbitai[bot]`, the context is `CodeRabbit` -- and the default policy",
+    "needs both: it fires only when the CONTEXT claims a passing verdict on the head while",
+    "the LOGIN's newest review names an older commit.",
+    "`staleReviewPolicy` IS A POLICY CALL AND IS DELIBERATELY LEFT OPEN FOR THE MAINTAINER.",
+    "The two obvious scopings are both wrong against this repository's own data, measured",
+    "2026-08-26:",
+    "  - 'ignore COMMENTED' would make this a no-op. Every review event on #3276, #3288 and",
+    "    #3227 is COMMENTED -- CodeRabbit's, cursor[bot]'s, greptile's, codex's and the",
+    "    humans'. Not one APPROVED. It would drop #3276, the example the issue is about.",
+    "  - 'an author with no review at head is stale' would nag constantly. #3316, #3205 and",
+    "    #3290 carry ZERO review events, and #3316 and #3205 still carry",
+    "    `CodeRabbit :: success / Review completed` on their heads. Absence of a review is not",
+    "    evidence of staleness, and part 3 never reports it. That is a STATED HOLE.",
+    "So the shipped default `claimed-verdict` is the NARROWEST rule that still catches #3276:",
+    "configured author, AND its context reports success on the head, AND its newest review",
+    "names a different commit. Over the 12 open PRs of 2026-08-26 it fires on #3288, #3227",
+    "and #2952 and stays silent on #3315, #3309 and #2931, whose newest CodeRabbit review",
+    "names the head exactly. `configured-authors` drops the context clause; `all-authors`",
+    "drops the identity scope too and is the one that flags a human APPROVED across a rebase.",
+    "`staleReviewSeverity` is `warn` for the SAME @unwired-by-design reason as",
+    "`reviewVerdictSeverity`: whether a bot has re-reviewed the newest push is transient",
+    "GitHub state, not a fact about the diff. Like that key it is not defaulted in code."
+  ],
+  "reviewAuthors": [
+    { "login": "coderabbitai[bot]", "context": "CodeRabbit" },
+    { "login": "cursor[bot]", "context": "Cursor Bugbot" }
+  ],
+  "staleReviewPolicy": "claimed-verdict",
+  "staleReviewSeverity": "warn",
   "excludeJobKeys": ["test"],
   "forkLanesAreAdvisory": true
 }

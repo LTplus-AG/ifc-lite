@@ -30,14 +30,34 @@ const TEST_YML = join(REPO_ROOT, '.github/workflows/test.yml');
 const TMP = mkdtempSync(join(tmpdir(), 'pr-review-signal-'));
 let seq = 0;
 
-/** Run the gate over a synthetic rollup. */
-function run(state, extra = []) {
+/**
+ * A head SHA for the state files that are not about part 3. It is a real
+ * 40-hex string because `staleReviews` refuses anything else — see the
+ * NO_HEAD_SHA test below, which drives that refusal deliberately.
+ */
+const ANY_HEAD = '0'.repeat(40);
+
+/** Run the gate over a state file EXACTLY as written — no defaults injected. */
+function runRaw(state, extra = []) {
   const path = join(TMP, `state-${(seq += 1)}.json`);
   writeFileSync(path, JSON.stringify(state));
   const r = spawnSync(process.execPath, [GATE, '--state-file', path, ...extra], {
     encoding: 'utf8',
   });
   return { code: r.status, output: `${r.stdout}${r.stderr}` };
+}
+
+/**
+ * Run the gate over a synthetic rollup.
+ *
+ * The part 3 inputs are defaulted HERE, in the harness, and NOT in the gate:
+ * `main()` passes `state.reviews` and `state.headSha` straight through, so a
+ * state file that omits them fails closed with NO_REVIEWS / NO_HEAD_SHA. That
+ * refusal is asserted by `runRaw` below; defaulting inside the gate would have
+ * made it print a part 3 success line over a question nobody answered.
+ */
+function run(state, extra = []) {
+  return runRaw({ reviews: [], headSha: ANY_HEAD, ...state }, extra);
 }
 
 /** Write a config variant and return its path. */
@@ -564,4 +584,225 @@ test('the gate and the workflow it derives lanes from carry the SAME base-branch
     theirs,
     'the gate must run on exactly the base branches whose lanes it requires',
   );
+});
+
+// ------------------------------------ PART 3: review staleness, as a process
+
+/**
+ * PR #3276 as the gate sees it: louistrue's example in #3312.
+ *
+ * Head `1305f778`, `CodeRabbit :: success / Review completed` on that head, and
+ * CodeRabbit's newest review event naming `c26e453d`. Parts 1 and 2 are
+ * deliberately CLEAN here — that is the whole point: this PR passed everything
+ * the gate could previously ask, which is why staleness needed building.
+ */
+const HEAD_3276 = '1305f778c0dc817bb344e23f881c2a30963c14c2';
+const OLD_3276 = 'c26e453d00000000000000000000000000000000';
+const REVIEW_3276 = (commitId) => ({
+  id: 5030520937,
+  user: { login: 'coderabbitai[bot]' },
+  state: 'COMMENTED',
+  commit_id: commitId,
+  submitted_at: '2026-08-26T12:46:19Z',
+});
+const COMPLETED_3276 = [
+  { name: 'CodeRabbit', state: 'success', description: 'Review completed' },
+];
+const STATE_3276 = (commitId) => ({
+  required: HEALTHY,
+  lanes: HEALTHY.map((n) => LANE(n)),
+  reviewChecks: COMPLETED_3276,
+  reviews: [REVIEW_3276(commitId)],
+  headSha: HEAD_3276,
+});
+
+/** The staleness knob forced to `fail`, as `FATAL` does for part 2. */
+const FATAL_STALE = () => ['--config', cfgWith({ staleReviewSeverity: 'fail' }, 'fatal-stale')];
+
+test('the #3276 shape: lanes clean, no-verdict clean, and the review still names an older commit', () => {
+  const r = run(STATE_3276(OLD_3276));
+  assert.match(r.output, /All 3 required lane\(s\)/);
+  assert.match(r.output, /none reports a passing state over a review it did not perform/);
+  assert.match(r.output, /STALE_REVIEW: `CodeRabbit`/);
+  assert.match(r.output, /newest review is of c26e453d/);
+  assert.match(r.output, /not of the head 1305f778/);
+  // `warn` is the shipped default, so the PR is not held red on it.
+  assert.equal(r.code, 0, r.output);
+});
+
+test('ANTI-VACUITY: the identical PR with the review AT the head reports no staleness', () => {
+  // #3315, #3309 and #2931 live. Without this, an implementation that always
+  // reports stale passes the test above.
+  const r = run(STATE_3276(HEAD_3276));
+  assert.doesNotMatch(r.output, /STALE_REVIEW/);
+  assert.match(r.output, /No reviewer claims a verdict on 1305f778 from a review of an older commit/);
+  assert.match(r.output, /policy: claimed-verdict/);
+  assert.equal(r.code, 0, r.output);
+});
+
+test('ESCALATION: `staleReviewSeverity: fail` turns the same finding red', () => {
+  const red = run(STATE_3276(OLD_3276), FATAL_STALE());
+  assert.equal(red.code, 1, red.output);
+  assert.match(red.output, /❌ STALE_REVIEW/);
+  // …and the escalated config still passes the current-review case, so the
+  // exit code is tracking the finding rather than the flag.
+  const green = run(STATE_3276(HEAD_3276), FATAL_STALE());
+  assert.equal(green.code, 0, green.output);
+});
+
+test('the SHIPPED default for part 3 is `warn`, asserted once', () => {
+  const cfg = JSON.parse(readFileSync(CONFIG, 'utf8'));
+  assert.equal(cfg.staleReviewSeverity, 'warn');
+  assert.equal(cfg.staleReviewPolicy, 'claimed-verdict');
+});
+
+test('NO NAG: a reviewer with no review event and a `Review completed` status is silent', () => {
+  // #3316 and #3205 verbatim: `CodeRabbit :: success / Review completed` and
+  // zero review events. A stated hole, not an oversight.
+  const r = run({ ...STATE_3276(OLD_3276), reviews: [] });
+  assert.doesNotMatch(r.output, /STALE_REVIEW/);
+  assert.equal(r.code, 0, r.output);
+});
+
+test('DEDUPE: a rate-limited CodeRabbit is reported by part 2 only, not twice', () => {
+  const r = run(
+    {
+      ...STATE_3276(OLD_3276),
+      reviewChecks: [
+        { name: 'CodeRabbit', state: 'success', description: 'Review rate limited' },
+      ],
+    },
+    FATAL_STALE(),
+  );
+  assert.match(r.output, /NO_VERDICT: `CodeRabbit`/);
+  assert.doesNotMatch(r.output, /STALE_REVIEW/);
+  // Part 2 is `warn` by default, part 3 was forced to `fail` — so a leaked
+  // duplicate would have shown up as a non-zero exit as well as a second line.
+  assert.equal(r.code, 0, r.output);
+});
+
+// ------------------------------------------------- fail-closed, as a process
+
+test('FAIL CLOSED: a state file that omits `reviews` gets NO_REVIEWS, not a success line', () => {
+  // THE BRANCH IT IS TEMPTING TO SKIP. `--state-file` mode is the harness's own
+  // path, and the last defect in this file was exactly that path quietly
+  // supplying a value (`timedOut: false`) the real path computes. Defaulting
+  // `reviews` to `[]` inside the gate would repeat it.
+  const r = runRaw({ required: HEALTHY, lanes: HEALTHY.map((n) => LANE(n)), headSha: HEAD_3276 });
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /NO_REVIEWS/);
+  assert.doesNotMatch(r.output, /No reviewer claims a verdict/);
+});
+
+test('FAIL CLOSED: a state file that omits `headSha` gets NO_HEAD_SHA', () => {
+  const r = runRaw({ required: HEALTHY, lanes: HEALTHY.map((n) => LANE(n)), reviews: [] });
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /NO_HEAD_SHA/);
+  assert.doesNotMatch(r.output, /No reviewer claims a verdict/);
+});
+
+test('FAIL CLOSED: an unreadable `commit_id` refuses instead of comparing an older review', () => {
+  const r = run({ ...STATE_3276(OLD_3276), reviews: [REVIEW_3276('c26e453d')] });
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /UNREADABLE_COMMIT_ID/);
+});
+
+test('FAIL CLOSED: an unrecognised `staleReviewPolicy` is BAD_CONFIG, never a silent downgrade', () => {
+  for (const bad of [undefined, 'strict', '']) {
+    const cfg = cfgWith({ staleReviewPolicy: bad }, `policy-${JSON.stringify(bad)}`);
+    const r = run(STATE_3276(HEAD_3276), ['--config', cfg]);
+    assert.equal(r.code, 1, r.output);
+    assert.match(r.output, /BAD_CONFIG/);
+    assert.match(r.output, /staleReviewPolicy/);
+  }
+});
+
+test('FAIL CLOSED: an unrecognised `staleReviewSeverity` is BAD_CONFIG', () => {
+  for (const bad of [undefined, 'advisory']) {
+    const cfg = cfgWith({ staleReviewSeverity: bad }, `sev-${JSON.stringify(bad)}`);
+    const r = run(STATE_3276(HEAD_3276), ['--config', cfg]);
+    assert.equal(r.code, 1, r.output);
+    assert.match(r.output, /staleReviewSeverity/);
+  }
+});
+
+test('FAIL CLOSED: an empty or malformed `reviewAuthors` refuses', () => {
+  const empty = cfgWith({ reviewAuthors: [] }, 'authors-empty');
+  const e = run(STATE_3276(HEAD_3276), ['--config', empty]);
+  assert.equal(e.code, 1, e.output);
+  assert.match(e.output, /EMPTY_REVIEW_AUTHORS/);
+
+  // A `context`-less entry is inert under the default policy, which is the
+  // shape that would quietly stop covering a reviewer somebody configured.
+  const noContext = cfgWith(
+    { reviewAuthors: [{ login: 'coderabbitai[bot]' }] },
+    'authors-no-context',
+  );
+  const n = run(STATE_3276(HEAD_3276), ['--config', noContext]);
+  assert.equal(n.code, 1, n.output);
+  assert.match(n.output, /needs a non-empty `context`/);
+
+  const noLogin = cfgWith({ reviewAuthors: [{ context: 'CodeRabbit' }] }, 'authors-no-login');
+  const l = run(STATE_3276(HEAD_3276), ['--config', noLogin]);
+  assert.equal(l.code, 1, l.output);
+  assert.match(l.output, /needs a non-empty `login`/);
+});
+
+test('POLICY: `all-authors` is reachable through the config and changes the answer', () => {
+  // Proves the knob is wired end to end rather than merely validated: the same
+  // state file, clean under the default, is a finding under `all-authors`.
+  const state = {
+    required: HEALTHY,
+    lanes: HEALTHY.map((n) => LANE(n)),
+    reviewChecks: [],
+    reviews: [
+      {
+        id: 10,
+        user: { login: 'louistrue' },
+        state: 'APPROVED',
+        commit_id: OLD_3276,
+        submitted_at: '2026-08-26T12:46:19Z',
+      },
+    ],
+    headSha: HEAD_3276,
+  };
+  const dflt = run(state);
+  assert.doesNotMatch(dflt.output, /STALE_REVIEW/);
+
+  const all = run(state, ['--config', cfgWith({ staleReviewPolicy: 'all-authors' }, 'all')]);
+  assert.match(all.output, /STALE_REVIEW: `louistrue`/);
+  // The finding names the scoping rule that produced it — a staleness warning
+  // read without its policy is a policy nobody can argue with.
+  assert.match(all.output, /Scoping policy: `all-authors`/);
+});
+
+test('FAIL CLOSED: a bad `staleReviewPolicy` is caught EAGERLY, not masked by the PR state', () => {
+  // `staleReviews` validates the policy too, so a test that only drives the
+  // happy-path state file passes with the config-read guard deleted — a
+  // mutation check caught exactly that. The guard's job is to reject a config
+  // TYPO as a config typo, before anything else about the PR can throw first.
+  // An empty rollup makes part 1 throw NO_ROLLUP, so the lazy path can no
+  // longer be the one producing the message.
+  const cfg = cfgWith({ staleReviewPolicy: 'strict' }, 'policy-eager');
+  const r = runRaw({ required: HEALTHY, lanes: [] }, ['--config', cfg]);
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /BAD_CONFIG/);
+  assert.match(r.output, /staleReviewPolicy/);
+  assert.doesNotMatch(r.output, /NO_ROLLUP/, 'the config is read before the rollup is judged');
+
+  // Same for the severity knob, and same reason.
+  const sev = cfgWith({ staleReviewSeverity: 'advisory' }, 'sev-eager');
+  const s = runRaw({ required: HEALTHY, lanes: [] }, ['--config', sev]);
+  assert.equal(s.code, 1, s.output);
+  assert.match(s.output, /staleReviewSeverity/);
+  assert.doesNotMatch(s.output, /NO_ROLLUP/);
+
+  // …and for an empty `reviewAuthors`, which `staleReviews` also rejects — so
+  // without the empty rollup this assertion would pass with the config-read
+  // guard deleted. The mutation sweep caught exactly that.
+  const authors = cfgWith({ reviewAuthors: [] }, 'authors-eager');
+  const a = runRaw({ required: HEALTHY, lanes: [] }, ['--config', authors]);
+  assert.equal(a.code, 1, a.output);
+  assert.match(a.output, /EMPTY_REVIEW_AUTHORS/);
+  assert.doesNotMatch(a.output, /NO_ROLLUP/);
 });

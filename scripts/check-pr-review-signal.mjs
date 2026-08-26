@@ -3,10 +3,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 /**
- * Guard: a PR may not read as reviewed and tested over lanes that never ran
- * and reviews that never happened (issue #3312).
+ * Guard: a PR may not read as reviewed and tested over lanes that never ran,
+ * reviews that never happened, and reviews of a commit that is not this one
+ * (issue #3312).
  *
- * Two questions, both about ABSENCE. See scripts/lib/pr-review-signal.mjs for
+ * Three questions, all about ABSENCE. See scripts/lib/pr-review-signal.mjs for
  * the measured evidence behind each; this file is the I/O half.
  *
  *   PART 1 -- REQUIRED LANE PRESENCE, BY NAME.
@@ -92,9 +93,35 @@
  *     of 19 open PRs on 2026-08-26. The finding is still PRINTED and still
  *     quotes the reviewer verbatim; it just does not hold the PR red on a quota.
  *
+ *   PART 3 -- A REVIEW OF AN OLDER COMMIT HAS NOT REVIEWED THIS PR.
+ *     louistrue, #3312: "A review whose `commit_id` is not the PR head has not
+ *     reviewed the PR." His example is #3276: head `1305f778`, `CodeRabbit ::
+ *     success / Review completed` sitting on it, and CodeRabbit's newest review
+ *     event pointing at `c26e453d` — three commits back, the last of which
+ *     ("stop writing an express-id index as a sparse array") is real code
+ *     nothing reviewed. Parts 1 and 2 both pass on that PR: the lanes ran, and
+ *     "Review completed" matches no no-verdict phrase. Nothing in the free text
+ *     of a status links back to a review EVENT, so this needs the one API that
+ *     carries the linkage — `repos/{o}/{r}/pulls/{N}/reviews`, paginated.
+ *
+ *     WHICH REVIEWS COUNT IS A POLICY CALL AND IS DELIBERATELY NOT SETTLED HERE.
+ *     It is `staleReviewPolicy` in the config, validated like
+ *     `reviewVerdictSeverity` — an unrecognised value is `BAD_CONFIG`, never a
+ *     silent downgrade. The shipped default `claimed-verdict` is the narrowest
+ *     rule that still catches #3276. The lib documents the measurements that
+ *     rule out the two obvious alternatives, both of which are wrong against
+ *     this repository's data: dropping `COMMENTED` makes the check a no-op, and
+ *     treating "no review at the head" as staleness fires on PRs where the
+ *     reviewer never submitted a review object at all.
+ *
+ *     SEVERITY `warn`, same `@unwired-by-design` ruling as part 2: whether a bot
+ *     has re-reviewed the newest push is transient GitHub state, not a fact
+ *     about the diff.
+ *
  * FAIL-CLOSED, EVERY PATH. `gh` missing, `gh` erroring, unparseable JSON, an
  * empty rollup, a head SHA that will not resolve, a reviewer that passed with no
- * description, a job name this parser cannot expand -- each exits non-zero with
+ * description, a job name this parser cannot expand, a reviews walk that did not
+ * complete, a review whose `commit_id` is unreadable -- each exits non-zero with
  * its own named reason. There is no branch that prints a success line over
  * something it did not read.
  *
@@ -118,9 +145,12 @@ import { fileURLToPath } from 'node:url';
 import {
   ReviewSignalError,
   expandJobNames,
+  flattenReviewPages,
   missingLanes,
   noVerdictReviews,
   pollForLanes,
+  staleReviews,
+  STALE_REVIEW_POLICIES,
 } from './lib/pr-review-signal.mjs';
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
@@ -223,6 +253,52 @@ function readConfig(path) {
         `${JSON.stringify(cfg.reviewVerdictSeverity)}. It is not defaulted on purpose: a typo ` +
         'silently downgrading a gate to advisory is the failure this whole file is about.',
     );
+  }
+  if (!STALE_REVIEW_POLICIES.has(cfg.staleReviewPolicy)) {
+    throw new ReviewSignalError(
+      'BAD_CONFIG',
+      `\`staleReviewPolicy\` in \`${path}\` must be one of ` +
+        `${[...STALE_REVIEW_POLICIES].map((p) => `"${p}"`).join(', ')}; found ` +
+        `${JSON.stringify(cfg.staleReviewPolicy)}. Like \`reviewVerdictSeverity\` it is not ` +
+        'defaulted on purpose: an unrecognised value quietly selecting the narrowest rule is a ' +
+        'downgrade nobody would notice, and part 3 is the half whose scoping is still a policy ' +
+        'call.',
+    );
+  }
+  if (cfg.staleReviewSeverity !== 'fail' && cfg.staleReviewSeverity !== 'warn') {
+    throw new ReviewSignalError(
+      'BAD_CONFIG',
+      `\`staleReviewSeverity\` in \`${path}\` must be "fail" or "warn"; found ` +
+        `${JSON.stringify(cfg.staleReviewSeverity)}.`,
+    );
+  }
+  if (!Array.isArray(cfg.reviewAuthors) || cfg.reviewAuthors.length === 0) {
+    throw new ReviewSignalError(
+      'EMPTY_REVIEW_AUTHORS',
+      `\`reviewAuthors\` in \`${path}\` must be a non-empty array. Every policy except ` +
+        '"all-authors" scopes staleness to it, and an empty identity list examines nothing and ' +
+        'reports success.',
+    );
+  }
+  for (const a of cfg.reviewAuthors) {
+    // BOTH halves are required, and `context` is required even under the
+    // policies that do not read it: a `reviewAuthors` entry that is silently
+    // inert under `claimed-verdict` is how the default rule quietly stops
+    // covering a reviewer somebody thought they had configured.
+    if (typeof a?.login !== 'string' || a.login.trim() === '') {
+      throw new ReviewSignalError(
+        'BAD_CONFIG',
+        `Every \`reviewAuthors\` entry needs a non-empty \`login\`; found ${JSON.stringify(a)}.`,
+      );
+    }
+    if (typeof a?.context !== 'string' || a.context.trim() === '') {
+      throw new ReviewSignalError(
+        'BAD_CONFIG',
+        `\`reviewAuthors\` entry \`${a.login}\` needs a non-empty \`context\`: the review author ` +
+          'login and the check context are different identity spaces (`coderabbitai[bot]` vs ' +
+          '`CodeRabbit`), and the default policy needs both.',
+      );
+    }
   }
   for (const p of cfg.phrases) {
     if (typeof p?.startsWith !== 'string' || p.startsWith.trim() === '') {
@@ -383,6 +459,33 @@ function fetchCheckRunDescriptions(opts) {
   }));
 }
 
+/**
+ * Every review EVENT on the PR, across every page.
+ *
+ * PAGINATION IS NOT OPTIONAL HERE and is not left to a `per_page` guess. Part 3
+ * asks which review is NEWEST, and the newest review is on the LAST page: a
+ * single unpaginated read of a busy PR returns the oldest 30 and would compare
+ * a stale `commit_id` on a PR whose newest review names the head exactly --
+ * a false finding, in the one direction a gate must never fail. `--paginate`
+ * follows the Link headers; `--slurp` keeps the page boundaries visible so a
+ * short page cannot be mistaken for the end of a truncated walk.
+ *
+ * @param {{ repo: string, pr: string }} opts
+ * @returns {Array<object>}
+ */
+function fetchReviews(opts) {
+  const pages = gh(
+    [
+      'api',
+      '--paginate',
+      '--slurp',
+      `repos/${opts.repo}/pulls/${opts.pr}/reviews?per_page=100`,
+    ],
+    `reviews for PR #${opts.pr}`,
+  );
+  return flattenReviewPages(pages, `\`repos/${opts.repo}/pulls/${opts.pr}/reviews\``);
+}
+
 /** @param {number} ms */
 function sleepSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -395,7 +498,7 @@ function sleepSync(ms) {
  *
  * @returns {{ ok: boolean, lines: string[] }}
  */
-export function evaluate({ required, lanes, reviewChecks, isFork, cfg, timedOut }) {
+export function evaluate({ required, lanes, reviewChecks, reviews, headSha, isFork, cfg, timedOut }) {
   const lines = [];
   let ok = true;
 
@@ -479,6 +582,53 @@ export function evaluate({ required, lanes, reviewChecks, isFork, cfg, timedOut 
     );
   }
 
+  // PART 3 -- a review of an older commit has not reviewed this PR (#3312).
+  // The scoping rule lives in the config (`staleReviewPolicy`) and is a policy
+  // call for the maintainer; see the lib for the data that rules out the two
+  // obvious answers.
+  const stale = staleReviews(reviews, {
+    headSha,
+    policy: cfg.staleReviewPolicy,
+    authors: cfg.reviewAuthors,
+    checks: reviewChecks,
+    // The default policy fires on "a context claims a verdict on this head".
+    // Part 2 fires on "a context claims a verdict it did not produce". When
+    // both hit the same context the remedy is identical — re-run the reviewer —
+    // and part 2's finding quotes the reviewer verbatim, so it is the more
+    // specific of the two. Saying it twice is noise, not diligence.
+    alreadyFlagged: findings.map((f) => f.name),
+  });
+  if (stale.length === 0) {
+    lines.push(
+      `✅ No reviewer claims a verdict on ${headSha.slice(0, 8)} from a review of an older commit ` +
+        `(policy: ${cfg.staleReviewPolicy}).`,
+    );
+  } else {
+    const fatal = cfg.staleReviewSeverity === 'fail';
+    if (fatal) ok = false;
+    const mark = fatal ? '❌' : '⚠️ ';
+    for (const f of stale) {
+      lines.push(
+        `${mark} STALE_REVIEW: \`${f.context ?? f.login}\` reads as having reviewed this PR, but ` +
+          `${f.login}'s newest review is of ${f.reviewedSha.slice(0, 8)}` +
+          `${f.submittedAt ? ` (${f.submittedAt})` : ''}, not of the head ` +
+          `${headSha.slice(0, 8)}.`,
+      );
+    }
+    lines.push(
+      '   A review whose `commit_id` is not the PR head has not reviewed the PR (#3312). ' +
+        'Everything pushed since',
+      '   that commit is unreviewed code sitting under a passing review signal. Re-run the ' +
+        'reviewer on the head.',
+      // WHICH reviews were even considered is a config decision, so the finding
+      // names it. Reading a staleness warning without knowing the scoping rule
+      // that produced it is how a policy nobody chose becomes a policy nobody
+      // can argue with.
+      `   Scoping policy: \`${cfg.staleReviewPolicy}\` (staleReviewPolicy). ` +
+        'Which reviews count is a policy call — see the config.',
+    );
+  }
+
   return { ok, lines };
 }
 
@@ -504,6 +654,13 @@ function main() {
       required: state.required ?? required,
       lanes: state.lanes,
       reviewChecks: state.reviewChecks ?? [],
+      // NOT `?? []`. A state file that omits `reviews` has told this gate
+      // nothing about staleness, and defaulting that to "no reviews" would
+      // print the part 3 success line over a question nobody answered — the
+      // exact vacuity the rest of this file rejects. `staleReviews` refuses a
+      // non-array with `NO_REVIEWS`, and `headSha` likewise with `NO_HEAD_SHA`.
+      reviews: state.reviews,
+      headSha: state.headSha,
       isFork: state.isFork === true,
       cfg,
       timedOut: false,
@@ -562,16 +719,20 @@ function main() {
     ...fetchStatusDescriptions({ repo, sha: state.sha }),
     ...fetchCheckRunDescriptions({ repo, sha: state.sha }),
   ];
+  const reviews = fetchReviews({ repo, pr: args.pr });
 
   console.log(`PR #${args.pr} @ ${state.sha}${state.isFork ? ' (fork)' : ''}`);
   console.log(`Required lanes derived from ${args.workflow}: ${required.length}`);
   console.log(`Rollup lanes seen: ${state.lanes.length}`);
+  console.log(`Review events read: ${reviews.length}`);
   console.log('');
 
   const { ok, lines } = evaluate({
     required,
     lanes: state.lanes,
     reviewChecks,
+    reviews,
+    headSha: state.sha,
     isFork: state.isFork,
     cfg,
     timedOut,

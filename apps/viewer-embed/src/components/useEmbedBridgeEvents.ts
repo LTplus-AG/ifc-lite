@@ -17,6 +17,11 @@ import { useEffect, useRef } from 'react';
 import { useViewerStore } from '@/store';
 import { emitEvent } from '../bridge/handler.js';
 
+/** Minimum spacing between two outbound CAMERA_CHANGED events (10Hz). */
+const CAMERA_EMIT_INTERVAL_MS = 100;
+
+type CameraRotationLike = { azimuth: number; elevation: number };
+
 export function useEmbedBridgeEvents(): void {
   // Emit selection events to parent
   const selectedEntityId = useViewerStore((s) => s.selectedEntityId);
@@ -64,18 +69,91 @@ export function useEmbedBridgeEvents(): void {
     });
   }, [hoveredEntityId]);
 
-  // Emit camera rotation changes to parent (throttled)
-  const cameraRotation = useViewerStore((s) => s.cameraRotation);
-  const lastCameraEmit = useRef(0);
+  // Emit camera rotation changes to parent.
+  //
+  // Cadence contract: at most one CAMERA_CHANGED per CAMERA_EMIT_INTERVAL_MS
+  // (10Hz) while the camera keeps moving, plus exactly one trailing event
+  // carrying the pose the camera settled on. Never two events for the same
+  // pose.
+  //
+  // Why not just subscribe to the store's `cameraRotation`: only
+  // `setCameraRotation` writes it, and real navigation — orbit/pan drag
+  // (useMouseControls.ts), keyboard (useKeyboardControls.ts), the ViewCube and
+  // the animation loop (useAnimationLoop.ts) — deliberately bypasses store
+  // state for performance and reports through `updateCameraRotationRealtime`.
+  // So the store subscription could only ever echo a pose the host itself had
+  // just sent, and a host watching a live drag heard nothing (#2934 item 2).
+  //
+  // Why not emit on every `updateCameraRotationRealtime`: that feed is
+  // per-animation-frame while anything is moving AND a ~2Hz heartbeat while
+  // the camera is perfectly still (useAnimationLoop.ts re-reports every 500ms
+  // when idle). Hence both the throttle and the equality check — an unchanged
+  // pose is not a change and must not be posted.
+  //
+  // The previous throttle *dropped* anything arriving inside the window
+  // instead of deferring it, so the last pose of a gesture — the one the host
+  // actually needs — was the one most likely to be lost. The trailing flush
+  // below is what replaces that dropped event; the old leading-edge emit is
+  // still the first branch here, and the mount-time emit of the initial pose
+  // still happens. The ONE case the old code posted and this does not: a
+  // `setCameraRotation` writing the pose already emitted, which used to
+  // re-post an identical CAMERA_CHANGED. That is the deliberate half of the
+  // change -- with the realtime feed now wired in, an unchanged pose would
+  // arrive as a heartbeat rather than as news.
+  const subscribeCameraRotation = useViewerStore((s) => s.subscribeCameraRotation);
+  const storeCameraRotation = useViewerStore((s) => s.cameraRotation);
+  const reportCamera = useRef<(rotation: CameraRotationLike) => void>(() => {});
   useEffect(() => {
-    const now = Date.now();
-    if (now - lastCameraEmit.current < 100) return; // throttle to 10Hz
-    lastCameraEmit.current = now;
-    emitEvent('CAMERA_CHANGED', {
-      azimuth: cameraRotation.azimuth,
-      elevation: cameraRotation.elevation,
-    });
-  }, [cameraRotation]);
+    let lastEmitAt = 0;
+    let lastSent: CameraRotationLike | null = null;
+    let pending: CameraRotationLike | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const flush = () => {
+      timer = null;
+      const next = pending;
+      pending = null;
+      if (!next) return;
+      lastEmitAt = Date.now();
+      lastSent = next;
+      emitEvent('CAMERA_CHANGED', { azimuth: next.azimuth, elevation: next.elevation });
+    };
+
+    const report = (rotation: CameraRotationLike) => {
+      const previous = pending ?? lastSent;
+      if (previous && previous.azimuth === rotation.azimuth && previous.elevation === rotation.elevation) {
+        return;
+      }
+      pending = { azimuth: rotation.azimuth, elevation: rotation.elevation };
+      const waited = Date.now() - lastEmitAt;
+      if (waited >= CAMERA_EMIT_INTERVAL_MS) {
+        if (timer !== null) clearTimeout(timer);
+        flush();
+      } else if (timer === null) {
+        timer = setTimeout(flush, CAMERA_EMIT_INTERVAL_MS - waited);
+      }
+    };
+
+    reportCamera.current = report;
+    report(useViewerStore.getState().cameraRotation);
+    const unsubscribe = subscribeCameraRotation(report);
+    return () => {
+      unsubscribe();
+      reportCamera.current = () => {};
+      if (timer !== null) clearTimeout(timer);
+      timer = null;
+      pending = null;
+    };
+  }, [subscribeCameraRotation]);
+
+  // The programmatic path. `setCameraRotation` actuates the renderer, but
+  // whether that actuation round-trips back through the realtime feed depends
+  // on a renderer being registered at all, so SET_CAMERA is reported here too
+  // -- through the SAME throttle, whose equality check collapses the duplicate
+  // if the realtime feed does echo it back.
+  useEffect(() => {
+    reportCamera.current(storeCameraRotation);
+  }, [storeCameraRotation]);
 
   // Emit section-plane changes to parent. Mirrors the CAMERA_CHANGED effect
   // above: the bridge's SET_SECTION handler (apps/viewer-embed/src/bridge/

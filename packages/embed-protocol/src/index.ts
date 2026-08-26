@@ -151,6 +151,13 @@ export interface OutboundPayloads {
   ENTITY_SELECTED: { id: number; globalId?: string; modelId?: string; ifcType?: string };
   ENTITY_DESELECTED: void;
   ENTITY_HOVERED: { id: number; globalId?: string; ifcType?: string };
+  /**
+   * Sent for BOTH user navigation (orbit/pan drag, keyboard, ViewCube) and a
+   * programmatic SET_CAMERA. Cadence: at most one event per 100ms while the
+   * camera keeps moving, plus one trailing event carrying the pose it settled
+   * on -- never one per animation frame. A pose identical to the last one
+   * reported is not re-sent.
+   */
   CAMERA_CHANGED: { azimuth: number; elevation: number; zoom?: number };
   SECTION_CHANGED: { axis: SectionAxis; position: number; enabled: boolean };
 }

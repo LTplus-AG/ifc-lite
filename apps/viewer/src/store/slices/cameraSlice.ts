@@ -27,6 +27,11 @@ export interface CameraSlice {
   setProjectionMode: (mode: ProjectionMode) => void;
   toggleProjectionMode: () => void;
   setOnCameraRotationChange: (callback: ((rotation: CameraRotation) => void) | null) => void;
+  /** Additional (multi-)listeners on the same live-navigation feed as
+   *  {@link onCameraRotationChange}, whose single slot is owned by the
+   *  ViewCube. Returns an unsubscribe function. */
+  cameraRotationListeners: Set<(rotation: CameraRotation) => void>;
+  subscribeCameraRotation: (listener: (rotation: CameraRotation) => void) => () => void;
   updateCameraRotationRealtime: (rotation: CameraRotation) => void;
   setOnScaleChange: (callback: ((scale: number) => void) | null) => void;
   updateScaleRealtime: (scale: number) => void;
@@ -42,6 +47,7 @@ export const createCameraSlice: StateCreator<CameraSlice, [], [], CameraSlice> =
   cameraCallbacks: {},
   projectionMode: 'perspective',
   onCameraRotationChange: null,
+  cameraRotationListeners: new Set(),
   onScaleChange: null,
 
   // Actions
@@ -77,11 +83,28 @@ export const createCameraSlice: StateCreator<CameraSlice, [], [], CameraSlice> =
   },
   setOnCameraRotationChange: (onCameraRotationChange) => set({ onCameraRotationChange }),
 
+  // `onCameraRotationChange` is a single slot and the ViewCube owns it
+  // (ViewportOverlays.tsx), so anything else that needs the live feed — the
+  // embed's outbound CAMERA_CHANGED, which otherwise only ever saw
+  // programmatic `setCameraRotation` (#2934) — needs its own channel. The Set
+  // is created once and mutated in place: it is never handed to a React
+  // selector, so add/remove must not (and does not) trigger a re-render.
+  subscribeCameraRotation: (listener) => {
+    const listeners = get().cameraRotationListeners;
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  },
+
   updateCameraRotationRealtime: (rotation) => {
     const callback = get().onCameraRotationChange;
     if (callback) {
       // Use direct callback - no React state update, no re-renders
       callback(rotation);
+    }
+    for (const listener of get().cameraRotationListeners) {
+      listener(rotation);
     }
     // Don't update store state during real-time updates
   },

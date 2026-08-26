@@ -10,50 +10,12 @@
 use crate::decoder::EntityDecoder;
 use crate::error::Result;
 
-/// SI Prefix multipliers as defined in IFC specification
-/// Maps IfcSIPrefix enum values to their numeric multipliers
-#[inline]
-pub fn get_si_prefix_multiplier(prefix: &str) -> f64 {
-    match prefix {
-        "ATTO" => 1e-18,
-        "FEMTO" => 1e-15,
-        "PICO" => 1e-12,
-        "NANO" => 1e-9,
-        "MICRO" => 1e-6,
-        "MILLI" => 1e-3, // Most common: millimeters
-        "CENTI" => 1e-2, // Centimeters
-        "DECI" => 1e-1,  // Decimeters
-        "DECA" => 1e1,   // Dekameters
-        "HECTO" => 1e2,  // Hectometers
-        "KILO" => 1e3,   // Kilometers
-        "MEGA" => 1e6,
-        "GIGA" => 1e9,
-        "TERA" => 1e12,
-        "PETA" => 1e15,
-        "EXA" => 1e18,
-        _ => 1.0, // No prefix or unknown = base unit (meters)
-    }
-}
-
-/// Known conversion factors for imperial/conversion-based units to meters
-/// These are the standard conversions defined in IFC specification
-#[inline]
-pub fn get_conversion_based_unit_factor(name: &str) -> Option<f64> {
-    match name.to_uppercase().as_str() {
-        // Length units to meters
-        // The quoted spellings are the doubled-quote STEP escaping: a name
-        // attribute written `''FEET''` in the file decodes to the
-        // four-character string `'FEET'` and is matched here verbatim. Keep
-        // this arm in step with CONVERSION_BASED_UNIT_FACTORS in
-        // packages/parser/src/unit-extractor.ts — two length-unit readers that
-        // disagree put the model and its map coordinates on different scales.
-        "FOOT" | "FEET" | "'FOOT'" | "'FEET'" => Some(0.3048),
-        "INCH" | "'INCH'" => Some(0.0254),
-        "YARD" | "'YARD'" => Some(0.9144),
-        "MILE" | "'MILE'" => Some(1609.344),
-        _ => None,
-    }
-}
+/// The unit-label tables live in [`crate::unit_labels`], shared with the
+/// georeferencing MapUnit reader; re-exported here so the `units::` paths
+/// callers already use keep working.
+pub use crate::unit_labels::{
+    get_conversion_based_unit_factor, get_si_prefix_multiplier, try_si_prefix_multiplier,
+};
 
 /// Extract length unit scale factor from IFC file
 ///

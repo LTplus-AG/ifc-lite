@@ -275,7 +275,7 @@
   1189 packages/parser/src/columnar-parser.ts
    480 packages/parser/src/compact-entity-index.ts
    530 packages/parser/src/data-store-transport.ts
-   564 packages/parser/src/georef-extractor.ts
+   539 packages/parser/src/georef-extractor.ts
    827 packages/parser/src/material-resolver.ts
   1004 packages/parser/src/on-demand-extractors.ts
    523 packages/parser/src/project-units.ts

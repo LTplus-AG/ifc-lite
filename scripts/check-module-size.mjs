@@ -185,7 +185,7 @@ const ALLOWLIST_DIGESTS = {
   'packages/merge': '4328451182457757363',
   'packages/mutations': '17485196327897850153',
   'packages/oauth-pkce': '6839945177005186906',
-  'packages/parser': '3992009610386008960',
+  'packages/parser': '7685419337675914966',
   'packages/plugin-api': '4189476804863450436',
   'packages/pointcloud': '9060606210189352091',
   'packages/provenance': '17691750269289291288',

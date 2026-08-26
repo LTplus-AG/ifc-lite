@@ -29,7 +29,8 @@ export {
 
 import type { IfcEntity } from './entity-extractor.js';
 import { getString, getNumber, getReference } from './attribute-helpers.js';
-import { CONVERSION_BASED_UNIT_FACTORS } from './unit-extractor.js';
+import { CONVERSION_BASED_UNIT_FACTORS, SI_PREFIX_MULTIPLIERS } from './unit-extractor.js';
+import { inferMapUnitScaleFromLabel } from './map-unit-label.js';
 import { getAttributeNames } from './ifc-schema.js';
 
 export interface MapConversion {
@@ -248,27 +249,6 @@ function asNumber(value: string | number | undefined): number | undefined {
 }
 
 /**
- * Map an IFC unit label (e.g. "MILLIMETRE", "FOOT") to its metre scale.
- * Mirrors the viewer's `inferMapUnitScale` and the native `IfcProjectedCRS`
- * path so direct parser/MCP consumers of `ProjectedCRS.mapUnitScale` see the
- * same scale regardless of whether the CRS came from a native entity or an
- * ePSet. Returns `undefined` for an absent/unknown unit (the ePSet convention
- * then defers to the project length unit downstream).
- */
-function inferMapUnitScaleFromLabel(mapUnit: string | undefined): number | undefined {
-  if (!mapUnit) return undefined;
-  const n = mapUnit.toUpperCase();
-  if (n.includes('US') && (n.includes('SURVEY') || n.includes('FTUS'))) return 0.3048006096;
-  if (n.includes('FOOT') || n.includes('FEET')) return 0.3048;
-  if (n.includes('MILLI')) return 0.001;
-  if (n.includes('CENTI')) return 0.01;
-  if (n.includes('DECI')) return 0.1;
-  if (n.includes('KILO')) return 1000;
-  if (n.includes('METRE') || n.includes('METER')) return 1;
-  return undefined;
-}
-
-/**
  * IFC2x3 fallback: a property set named `ePSet_MapConversion` (any casing)
  * carrying Eastings/Northings/OrthogonalHeight (+ optional
  * XAxisAbscissa/XAxisOrdinate/Scale/TargetCRS), optionally paired with an
@@ -437,11 +417,6 @@ function extractMapConversion(entity: IfcEntity): MapConversion {
   };
 }
 
-/** SI prefix → scale factor */
-const SI_PREFIX_SCALE: Record<string, number> = {
-  'MILLI': 0.001, 'CENTI': 0.01, 'DECI': 0.1, 'KILO': 1000,
-};
-
 /**
  * Resolve an `IfcMeasureWithUnit` reference to metres.
  *
@@ -475,7 +450,7 @@ function resolveMeasureWithUnit(
     if (component && (component.type ?? '').toUpperCase() === 'IFCSIUNIT') {
       const prefix = component.attributes?.[2];
       if (typeof prefix === 'string' && prefix !== '$') {
-        const prefixScale = SI_PREFIX_SCALE[prefix.replace(/\./g, '').toUpperCase()];
+        const prefixScale = SI_PREFIX_MULTIPLIERS[prefix.replace(/\./g, '').toUpperCase()];
         if (prefixScale !== undefined) componentScale = prefixScale;
       }
     }
@@ -536,7 +511,7 @@ function extractProjectedCRS(
           const prefix = unitEntity.attributes?.[2];
           if (prefix != null && prefix !== '$' && typeof prefix === 'string') {
             const prefixStr = prefix.replace(/\./g, '').toUpperCase();
-            const prefixScale = SI_PREFIX_SCALE[prefixStr];
+            const prefixScale = SI_PREFIX_MULTIPLIERS[prefixStr];
             if (prefixScale !== undefined) {
               mapUnitScale = prefixScale;
               mapUnit = prefixStr === 'MILLI' ? 'MILLIMETRE' : prefixStr + 'METRE';

@@ -40,12 +40,42 @@ const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
  *  for the published-package list. */
 const STEPS = [
   { name: 'npm', script: 'release:npm' },
-  { name: 'crates.io', script: 'release:crates' },
+  // `check:rust-semver` (issue #3216) is the crates.io half's precondition, not
+  // the release's. The Cargo version is derived from the highest npm package
+  // version, so a change that is additive in TypeScript and breaking in Rust
+  // reaches crates.io under a minor or a patch. The gate refuses THAT publish.
+  //
+  // It deliberately does not gate npm: the npm bump is not the thing that is
+  // wrong, and making npm a hostage of the Rust half is the exact defect this
+  // file exists to remove — read the header. So a semver violation strands the
+  // crates half on purpose, with a named reason, and npm goes out as versioned.
+  { name: 'crates.io', script: 'release:crates', precondition: 'check:rust-semver' },
 ];
 
 const failed = [];
 
 for (const step of STEPS) {
+  if (step.precondition) {
+    console.log(`\n🔎 release: ${step.name} precondition (pnpm ${step.precondition})`);
+    const gate = spawnSync('pnpm', [step.precondition], {
+      cwd: rootDir,
+      stdio: 'inherit',
+      shell: process.platform === 'win32',
+    });
+    const gateCode = gate.status ?? 1;
+    if (gateCode !== 0) {
+      failed.push({
+        name: `${step.name} (precondition ${step.precondition})`,
+        code: gateCode,
+        error: gate.error,
+      });
+      console.error(
+        `❌ release: ${step.name} SKIPPED — its precondition \`pnpm ${step.precondition}\` ` +
+          `failed (exit ${gateCode}). Nothing was published to ${step.name}.`
+      );
+      continue;
+    }
+  }
   console.log(`\n▶️  release: ${step.name} (pnpm ${step.script})`);
   const result = spawnSync('pnpm', [step.script], {
     cwd: rootDir,

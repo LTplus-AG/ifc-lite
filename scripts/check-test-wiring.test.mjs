@@ -440,6 +440,29 @@ test('a scripts/ test in a subdirectory the single-level glob cannot reach is fl
   });
 });
 
+// The remedy line tells the developer WHICH directories the catch-all reaches.
+// It used to name `scripts/` and `scripts/lib/` as a hard-coded pair, written
+// when those were the only two; `scripts/fixtures/` (#3038 follow-up) and
+// `scripts/docs/` (#3200) were later added to the workflow glob and the advice
+// was not. Advice that lags the thing it describes sends the developer to the
+// wrong directory — so the message is DERIVED from the same `globDirs` the
+// verdict is derived from, and this pins that the two cannot drift apart.
+test('the remedy names every directory the catch-all actually covers, not a hard-coded pair', () => {
+  withTree({
+    extraSteps:
+      '      - name: Wider catch-all\n' +
+      '        run: node --test scripts/fixtures/*.test.mjs scripts/docs/*.test.mjs\n',
+  }, (root) => {
+    write(root, 'scripts/perf/bench.test.mjs', '// in none of the covered directories\n');
+    const { status, out } = run(root);
+    assert.equal(status, 1, out);
+    assert.match(out, /scripts\/perf\/bench\.test\.mjs/);
+    for (const dir of ['scripts/', 'scripts/lib/', 'scripts/fixtures/', 'scripts/docs/']) {
+      assert.ok(out.includes(`\`${dir}*.test.mjs\``), `remedy must name ${dir}, got:\n${out}`);
+    }
+  });
+});
+
 test('the same test named literally by a `node --test` step is wired', () => {
   withTree({
     extraSteps: '      - name: Doc samples\n        run: node --test scripts/docs/check-doc-samples.test.mjs\n',

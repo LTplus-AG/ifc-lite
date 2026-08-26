@@ -32,12 +32,15 @@
  *
  *   2b. GATE TESTS. Every `*.test.mjs` under `scripts/` must be named by a
  *       workflow `node --test` invocation, literally or through a
- *       single-level `<dir>/*.test.mjs` glob. #3038 added such a catch-all
- *       for `scripts/*.test.mjs` and `scripts/lib/*.test.mjs`, so tests in
- *       those two directories are wired by construction — but only those two:
- *       a bare shell glob has no `**` behaviour, so a test landing in any
- *       other subdirectory of `scripts/` is unrun and unreported, and this is
- *       what notices. It is checked SEPARATELY from 2a on purpose: #3038's
+ *       single-level `<dir>/*.test.mjs` glob. #3038 added such a catch-all,
+ *       which has since grown to `scripts/`, `scripts/lib/`,
+ *       `scripts/fixtures/` and `scripts/docs/`, so tests in those
+ *       directories are wired by construction — but only those: a bare shell
+ *       glob has no `**` behaviour, so a test landing in any other
+ *       subdirectory of `scripts/` is unrun and unreported, and this is what
+ *       notices. The directory list is not restated in the failure message —
+ *       that message is derived from the workflow text, because the list here
+ *       drifted once already. It is checked SEPARATELY from 2a on purpose: #3038's
  *       catch-all would otherwise let a gate whose test runs, but whose
  *       script never executes, pass as "wired" — still the #3062 failure.
  *
@@ -608,7 +611,7 @@ export function auditScriptTests(root, workflows) {
     if (literals.has(rel)) return false;
     return !globDirs.has(rel.slice(0, rel.lastIndexOf('/')));
   });
-  return { offenders, examined: tests.length };
+  return { offenders, examined: tests.length, globDirs: [...globDirs].sort() };
 }
 
 /* ------------------------------------------------------------------ */
@@ -661,10 +664,20 @@ function main(root) {
     failed = true;
     console.error('\n❌ scripts/ test files no workflow runs (these NEVER execute):\n');
     for (const rel of gateTests.offenders) console.error(`   ${rel}`);
+    // Derived, not restated. This advice named `scripts/` and `scripts/lib/`
+    // as a fixed pair from #3038; the workflow glob later grew
+    // `scripts/fixtures/` and `scripts/docs/` and the sentence did not, so it
+    // was sending developers to two of the four directories that would have
+    // worked. Reading the same `globDirs` the verdict above is computed from
+    // makes the two structurally incapable of disagreeing.
+    const covered = gateTests.globDirs.map((d) => `\`${d}/*.test.mjs\``);
     console.error(
-      '\nThe glob catch-all in .github/workflows/test.yml covers `scripts/*.test.mjs` and\n' +
-        '`scripts/lib/*.test.mjs` only — a shell glob has no `**`. Move the file into one of\n' +
-        'those directories, or add a `node --test` step naming it.',
+      covered.length === 0
+        ? '\nNo workflow runs a `<dir>/*.test.mjs` catch-all at all, so every scripts/ test\n' +
+            'must be named by its own `node --test` step. Add one.'
+        : `\nThe glob catch-alls in .github/workflows/ cover ${covered.join(', ')}\n` +
+            'only — a shell glob has no `**`. Move the file into one of those directories, or\n' +
+            'add a `node --test` step naming it.',
     );
   }
 

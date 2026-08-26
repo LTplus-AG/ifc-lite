@@ -448,7 +448,7 @@ describe('the quote-aware scan does not lose the header to its own state (#3284)
     expect(h?.authorization).toBe('auth');
   });
 
-  it('an unterminated comment ends the scan instead of restarting it', () => {
+  it('an unterminated comment terminates the scan rather than restarting it', () => {
     // The skip must always ADVANCE the caller's index. Returning the `*/`
     // offset and using -1 for "unterminated" turns into 0 at the caller, so the
     // scan restarts at the top, finds the same comment, and never terminates.
@@ -457,6 +457,18 @@ describe('the quote-aware scan does not lose the header to its own state (#3284)
       header(`FILE_DESCRIPTION(('d'),'2;1');\n${NAME_AND_SCHEMA}\n/* never closed`),
     );
     expect(h?.name).toBe('a.ifc');
+  });
+
+  it('an unterminated comment does not swallow the records after it', () => {
+    // An unterminated `/*` is not a comment, so it costs one stray character
+    // and nothing else. Treating it as one that runs to end-of-text would lose
+    // every record below it, which is a worse answer than the older
+    // comment-blind scan gave for the same input.
+    const h = parseSourceHeader(
+      header(`/* never closed\nFILE_DESCRIPTION(('d'),'2;1');\n${NAME_AND_SCHEMA}`),
+    );
+    expect(h?.name).toBe('a.ifc');
+    expect(h?.schemaIdentifiers).toEqual(['IFC4']);
   });
 
   it('a long s is not folded to S, so it cannot fake a keyword', () => {

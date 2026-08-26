@@ -77,16 +77,19 @@ fn find_unquoted(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     if needle.is_empty() || needle.len() > haystack.len() {
         return None;
     }
-    let mut in_quote = false;
-    let mut i = 0;
     let last_start = haystack.len() - needle.len();
-    while i < haystack.len() {
-        if haystack[i] == b'\'' {
-            in_quote = !in_quote;
-            i += 1;
+    let mut i = 0;
+    while i <= last_start {
+        // One rule for literals and comments, shared with the header reader.
+        // `detect_schema` drives schema CONVERSION on export, so a comment read
+        // as structure here does not lose a field, it converts the file to the
+        // wrong schema: `/* was FILE_SCHEMA(('IFC2X3')); */` in a commented-out
+        // line answered IFC2X3 for an IFC4X3 file.
+        if let Some(end) = crate::source_header::skip_lexical_at(haystack, i) {
+            i = end;
             continue;
         }
-        if !in_quote && i <= last_start && haystack[i..i + needle.len()] == *needle {
+        if haystack[i..i + needle.len()] == *needle {
             return Some(i);
         }
         i += 1;

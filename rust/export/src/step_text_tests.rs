@@ -27,6 +27,25 @@ fn detect_schema_finds_file_schema_past_the_old_4096_byte_cutoff() {
 }
 
 #[test]
+fn detect_schema_does_not_read_a_commented_out_declaration() {
+    // `detect_schema` drives schema CONVERSION on export, so reading a comment
+    // as structure does not lose a field, it converts the file to the wrong
+    // schema. A commented-out old declaration is exactly how a file picks up a
+    // second FILE_SCHEMA line, and the commented one comes first.
+    let content = "ISO-10303-21;\nHEADER;\n/* was FILE_SCHEMA(('IFC2X3')); */\nFILE_SCHEMA(('IFC4X3'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n";
+    assert_eq!(detect_schema(content.as_bytes()), "IFC4X3");
+}
+
+#[test]
+fn detect_schema_survives_an_apostrophe_in_a_comment() {
+    // An odd apostrophe count inside a comment inverts quote state for the rest
+    // of the file, so the real FILE_SCHEMA reads as quoted and the schema falls
+    // back to the default -- IFC4 for a file that says IFC2X3.
+    let content = "ISO-10303-21;\nHEADER;\n/* John's export */\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n";
+    assert_eq!(detect_schema(content.as_bytes()), "IFC2X3");
+}
+
+#[test]
 fn detect_schema_ignores_endsec_literal_text_inside_a_quoted_string() {
     // Bug: the header-end scan for `ENDSEC;` was a raw byte search with
     // no quote awareness. A header field whose string VALUE happens to

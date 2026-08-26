@@ -45,51 +45,107 @@ pub struct SourceHeader {
     pub schema_identifiers: Vec<String>,
 }
 
+/// If a STEP string literal or a `/* ... */` comment starts at `bytes[i]`,
+/// return the index just past it. Otherwise `None`.
+///
+/// Neither carries structure: a keyword, a comma or a bracket inside one is
+/// text. Every scan in this file has to agree on that, so it is one function
+/// rather than a copy per loop.
+///
+/// The TypeScript counterpart is `source-header.ts::skipLexicalAt`, and the two
+/// must stay in step. This file and that one read the same headers, and #3284
+/// is the shape of what happens when they drift: each half documented itself as
+/// matching the other while they disagreed.
+///
+/// The two unterminated cases are deliberately not symmetric. An unterminated
+/// literal runs to end-of-text, because a lone `'` cannot be read as ordinary
+/// text. An unterminated `/*` is simply not a comment, because it can: running
+/// it to the end would lose every record after it.
+pub(crate) fn skip_lexical_at(bytes: &[u8], i: usize) -> Option<usize> {
+    match *bytes.get(i)? {
+        b'\'' => {
+            let mut p = i + 1;
+            while p < bytes.len() {
+                if bytes[p] != b'\'' {
+                    p += 1;
+                } else if bytes.get(p + 1) == Some(&b'\'') {
+                    p += 2; // `''` is an escaped apostrophe, not the end
+                } else {
+                    return Some(p + 1);
+                }
+            }
+            Some(bytes.len())
+        }
+        b'/' if bytes.get(i + 1) == Some(&b'*') => {
+            let close = bytes[i + 2..].windows(2).position(|w| w == b"*/")?;
+            Some(i + 2 + close + 2)
+        }
+        _ => None,
+    }
+}
+
+/// Advance past whitespace and comments. ISO 10303-21 allows a comment wherever
+/// whitespace is allowed, including between a record keyword and its `(`.
+fn skip_trivia(bytes: &[u8], mut i: usize) -> usize {
+    loop {
+        while i < bytes.len() && (bytes[i] as char).is_whitespace() {
+            i += 1;
+        }
+        if bytes.get(i) == Some(&b'\'') {
+            return i;
+        }
+        match skip_lexical_at(bytes, i) {
+            Some(end) => i = end, // only a comment can match here
+            None => return i,
+        }
+    }
+}
+
 /// Split STEP record arguments at top-level commas, respecting paren/bracket
 /// nesting and single-quoted strings (with `''` escapes). Returns the raw,
 /// still-escaped argument substrings, trimmed.
 fn split_top_level(inner: &str) -> Vec<String> {
+    let bytes = inner.as_bytes();
     let mut args: Vec<String> = Vec::new();
     let mut depth: i32 = 0;
-    let mut in_string = false;
     let mut current = String::new();
-    let chars: Vec<char> = inner.chars().collect();
     let mut i = 0;
-    while i < chars.len() {
-        let ch = chars[i];
-        if in_string {
-            current.push(ch);
-            if ch == '\'' {
-                if chars.get(i + 1) == Some(&'\'') {
-                    current.push('\'');
-                    i += 1;
-                } else {
-                    in_string = false;
-                }
+    while i < bytes.len() {
+        if let Some(end) = skip_lexical_at(bytes, i) {
+            // A literal is part of the argument's text; a comment is not.
+            if bytes[i] == b'\'' {
+                current.push_str(&inner[i..end]);
             }
-            i += 1;
+            i = end;
             continue;
         }
-        match ch {
-            '\'' => {
-                in_string = true;
-                current.push(ch);
-            }
-            '(' | '[' => {
+        match bytes[i] {
+            b'(' | b'[' => {
                 depth += 1;
-                current.push(ch);
+                current.push(bytes[i] as char);
+                i += 1;
             }
-            ')' | ']' => {
+            b')' | b']' => {
                 depth -= 1;
-                current.push(ch);
+                current.push(bytes[i] as char);
+                i += 1;
             }
-            ',' if depth == 0 => {
+            b',' if depth == 0 => {
                 args.push(current.trim().to_string());
                 current.clear();
+                i += 1;
             }
-            _ => current.push(ch),
+            _ => {
+                // Copy one whole UTF-8 character. Delimiters are all ASCII, so a
+                // continuation byte can never be one and is safe to run over.
+                let start = i;
+                i += 1;
+                while i < bytes.len() && (bytes[i] & 0xC0) == 0x80 {
+                    i += 1;
+                }
+                current.push_str(&inner[start..i]);
+            }
         }
-        i += 1;
     }
     if !current.trim().is_empty() || !args.is_empty() {
         args.push(current.trim().to_string());
@@ -152,14 +208,12 @@ fn find_ascii_ci_from(haystack: &[u8], needle: &[u8], skip_quoted: bool) -> Opti
     if needle.is_empty() || needle.len() > haystack.len() {
         return None;
     }
-    let mut in_quote = false;
-    for i in 0..=haystack.len() - needle.len() {
+    let last_start = haystack.len() - needle.len();
+    let mut i = 0;
+    while i <= last_start {
         if skip_quoted {
-            if haystack[i] == b'\'' {
-                in_quote = !in_quote;
-                continue;
-            }
-            if in_quote {
+            if let Some(end) = skip_lexical_at(haystack, i) {
+                i = end;
                 continue;
             }
         }
@@ -167,6 +221,7 @@ fn find_ascii_ci_from(haystack: &[u8], needle: &[u8], skip_quoted: bool) -> Opti
         {
             return Some(i);
         }
+        i += 1;
     }
     None
 }
@@ -180,31 +235,18 @@ fn find_ascii_ci_from(haystack: &[u8], needle: &[u8], skip_quoted: bool) -> Opti
 fn extract_record_args(text: &str, keyword: &str) -> Option<String> {
     let bytes = text.as_bytes();
     let at = find_ascii_ci_from(bytes, keyword.as_bytes(), true)?;
-    let mut i = at + keyword.len();
-    while i < bytes.len() && (bytes[i] as char).is_whitespace() {
-        i += 1;
-    }
+    let mut i = skip_trivia(bytes, at + keyword.len());
     if bytes.get(i) != Some(&b'(') {
         return None;
     }
     let start = i;
     let mut depth: i32 = 0;
-    let mut in_string = false;
     while i < bytes.len() {
-        let ch = bytes[i];
-        if in_string {
-            if ch == b'\'' {
-                if bytes.get(i + 1) == Some(&b'\'') {
-                    i += 1;
-                } else {
-                    in_string = false;
-                }
-            }
-            i += 1;
+        if let Some(end) = skip_lexical_at(bytes, i) {
+            i = end;
             continue;
         }
-        match ch {
-            b'\'' => in_string = true,
+        match bytes[i] {
             b'(' => depth += 1,
             b')' => {
                 depth -= 1;

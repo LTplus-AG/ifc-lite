@@ -126,11 +126,16 @@ function decodeStringList(arg: string): string[] {
  * rather than a copy per loop. #3284 was one file holding two rules for the
  * same thing; three private copies of this loop is that shape again.
  *
- * An unterminated literal or comment runs to the end of the text, as a reader
- * would take it. That is not a detail: it is what makes the result always
- * ADVANCE the caller's index. An earlier form returned the `*\/` offset and
- * left `-1` to mean unterminated, which a caller adding 1 to turns into 0, so
- * the scan restarts at the top, finds the same comment, and never terminates.
+ * The result always ADVANCES the caller's index. An earlier form returned the
+ * `*\/` offset and left `-1` to mean unterminated, which a caller adding 1 to
+ * turns into 0: the scan restarts at the top, finds the same comment, and never
+ * terminates.
+ *
+ * The two unterminated cases are deliberately not symmetric. An unterminated
+ * literal runs to end-of-text, because a lone `'` cannot be read as ordinary
+ * text. An unterminated `/*` is simply not a comment, because it can: running
+ * it to the end would lose every record after it, and a malformed comment
+ * should not cost more than the two characters it is written with.
  *
  * The rule itself is owned by `step-lexing.ts`, which applies it over bytes for
  * the tokenizer. This is the decoded-string counterpart. Folding the two
@@ -149,7 +154,11 @@ function skipLexicalAt(text: string, i: number): number {
   }
   if (text[i] === '/' && text[i + 1] === '*') {
     const close = text.indexOf('*/', i + 2);
-    return close < 0 ? text.length : close + 2;
+    // An UNTERMINATED `/*` is not a comment. Running it to end-of-text would
+    // swallow every record after it and lose the whole header, which is worse
+    // than the malformed input deserves and worse than doing nothing. Treating
+    // it as ordinary text costs only that one `/`, and the scan still advances.
+    return close < 0 ? -1 : close + 2;
   }
   return -1;
 }
@@ -161,7 +170,10 @@ function skipLexicalAt(text: string, i: number): number {
 function skipTrivia(text: string, i: number): number {
   for (;;) {
     while (i < text.length && /\s/.test(text[i])) i++;
-    if (text[i] === '/' && text[i + 1] === '*') { i = skipLexicalAt(text, i); continue; }
+    if (text[i] !== "'") {
+      const skip = skipLexicalAt(text, i); // only a comment can match here
+      if (skip >= 0) { i = skip; continue; }
+    }
     return i;
   }
 }

@@ -239,17 +239,6 @@ function isStrictAttrPrefix(shorter: readonly string[], longer: readonly string[
   return true;
 }
 
-/** Ordinal rank of a schema version (older → newer) for direction checks. */
-function schemaRank(schema: IfcSchemaVersion): number {
-  switch (schema) {
-    case 'IFC2X3': return 0;
-    case 'IFC4': return 1;
-    case 'IFC4X3': return 2;
-    case 'IFC5': return 3;
-    default: return 0;
-  }
-}
-
 /** Count top-level (comma-separated) STEP attributes, respecting nested
  *  parentheses and single-quoted strings. Empty list → 0. */
 function countTopLevelAttributes(attrsRaw: string): number {
@@ -343,48 +332,36 @@ export function convertStepLine(
     return `${prefix}IFCPROXY('${guid}',$,'${entityType}',$,$,$,$,.NOTDEFINED.,$);`;
   }
 
-  // Trim trailing attributes when DOWNGRADING to a schema where the entity is
-  // shorter (e.g. IFC4 → IFC2X3 drops the PredefinedType IFC4 added to
-  // IfcWall / IfcBeam / IfcOpeningElement / …). Derived from the same generated
-  // buildingSMART tables as the padding pass below, under the same strict
-  // attribute-NAME prefix rule — a hand-maintained count list covered 30 types,
-  // 20 of which were no-ops, and missed 63 entities whose IFC2X3 form really is
-  // shorter (`IFCMATERIAL('Concrete',$,$)` was written into a file declaring
-  // IFC2X3, where IfcMaterial takes exactly one argument).
+  // Reconcile the attribute list against the target schema. WHICH WAY it moves
+  // is decided by the strict attribute-NAME prefix relation alone, never by the
+  // direction of travel — rank and shrinkage are independent. A newer schema can
+  // REMOVE attributes: 10 entities have an IFC4 list that is a strict prefix of
+  // their IFC2X3 one, and 4 more for IFC4 → IFC4X3. IFC4 dropped
+  // `ControlElementId` from IfcDistributionControlElement and both
+  // `CentreOfGravity*` from IfcLShapeProfileDef; IFC4X3 dropped IfcReferent's
+  // `PredefinedType`. Gating the trim on the rank comparison left every one of
+  // those upgrades untouched, so 6-argument `IFCRELDECOMPOSES` lines — the
+  // entity takes 4 in IFC4 — went into files whose header declares IFC4.
   //
-  // The prefix rule is what makes trimming safe: many entities INSERTED
+  // The prefix rule is what makes either adjustment safe: many entities INSERT
   // attributes mid-list rather than appending them (IFC2X3 IfcApproval is
   // [Description, ApprovalDateTime, …, Identifier] against IFC4's
-  // [Identifier, Name, Description, …]), and cutting the tail there would leave
-  // values sitting in the wrong, type-invalid slots. Those types are left alone.
-  let finalAttrs = attrsRaw;
-  if (schemaRank(toSchema) < schemaRank(fromSchema)) {
-    // Source attrs keyed on the ORIGINAL type; target on the (possibly renamed) type.
-    const srcAttrs = attrNameTable(fromSchema)?.get(entityType);
-    const tgtAttrs = attrNameTable(toSchema)?.get(newType);
-    if (srcAttrs && tgtAttrs && isStrictAttrPrefix(tgtAttrs, srcAttrs)) {
-      finalAttrs = trimAttributes(attrsRaw, tgtAttrs.length);
-    }
-  }
-
-  // Pad trailing optional attributes when UPGRADING to a newer schema that
-  // APPENDED attributes (e.g. IFC2X3 → IFC4 added PredefinedType to IfcWall /
-  // IfcBeam / IfcOpeningElement / …). Without this the upgraded entity is short
-  // an attribute and invalid under the new schema, which strict readers reject.
+  // [Identifier, Name, Description, …]; IfcMaterialProperties [Material] →
+  // [Name, Description, Properties, Material]), and trimming the tail or
+  // appending `$` there would leave values in the wrong, type-invalid slots.
+  // Those types are left alone. The appended attributes are optional, so `$` is
+  // a valid pad.
   //
-  // CRITICAL: only pad when the source attribute name-list is a strict PREFIX of
-  // the target's. Many entities insert/reorder attributes mid-list (e.g.
-  // IfcMaterialProperties [Material] → [Name, Description, Properties, Material],
-  // IfcApproval, IfcTask); blindly appending `$` there would shift values into the
-  // wrong (and type-invalid) slots. A prefix check distinguishes a safe append
-  // from a corrupting insertion — the headline targets are all prefix-safe. The
-  // appended attributes are optional, so `$` is valid. Scoped to upconversion so
-  // it never touches the downconversion trim path above.
-  if (schemaRank(toSchema) > schemaRank(fromSchema)) {
-    // Source attrs keyed on the ORIGINAL type; target on the (possibly renamed) type.
-    const srcAttrs = attrNameTable(fromSchema)?.get(entityType);
-    const tgtAttrs = attrNameTable(toSchema)?.get(newType);
-    if (srcAttrs && tgtAttrs && isStrictAttrPrefix(srcAttrs, tgtAttrs)) {
+  // The two branches cannot both apply: each requires ITS OWN list to be
+  // strictly shorter than the other, which no pair of lists can satisfy at once.
+  // Source attrs keyed on the ORIGINAL type; target on the (possibly renamed) type.
+  let finalAttrs = attrsRaw;
+  const srcAttrs = attrNameTable(fromSchema)?.get(entityType);
+  const tgtAttrs = attrNameTable(toSchema)?.get(newType);
+  if (srcAttrs && tgtAttrs) {
+    if (isStrictAttrPrefix(tgtAttrs, srcAttrs)) {
+      finalAttrs = trimAttributes(attrsRaw, tgtAttrs.length);
+    } else if (isStrictAttrPrefix(srcAttrs, tgtAttrs)) {
       const currentCount = countTopLevelAttributes(finalAttrs);
       if (currentCount > 0 && currentCount < tgtAttrs.length) {
         finalAttrs = `${finalAttrs}${',$'.repeat(tgtAttrs.length - currentCount)}`;

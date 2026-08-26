@@ -44,6 +44,10 @@ import { dirname, join } from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+// Derived from this file's own location, with no argv override: the regression
+// harness (verify-npm-publish.test.mjs) copies this one file into a synthetic
+// tree, so the floors below are driven over real input without this release-lane
+// gate growing a scan-root flag anyone could point somewhere else (#3200).
 const rootDir = join(__dirname, '..');
 
 /**
@@ -116,6 +120,8 @@ function npmReason(error) {
 
 function getWorkspacePackages() {
   const packages = [];
+  /** Non-directory entries under a workspace parent, reported rather than hidden. */
+  const notDirectories = [];
   for (const parent of ['packages', 'apps']) {
     const parentDir = join(rootDir, parent);
     try {
@@ -125,10 +131,24 @@ function getWorkspacePackages() {
           statSync(pkgJsonPath);
           packages.push(pkgJsonPath);
         } catch (error) {
-          // A directory with no package.json is ordinary. Anything else means
-          // this path exists in some form we could not classify, and skipping
-          // it drops a package the release may have been supposed to publish.
-          if (error.code !== 'ENOENT') {
+          // A directory with no package.json is ordinary, and so is a plain
+          // file sitting under packages/ — joining 'package.json' onto it
+          // yields ENOTDIR, which likewise means "not a package". Anything
+          // else means this path exists in some form we could not classify,
+          // and skipping it drops a package the release may have been
+          // supposed to publish.
+          if (error.code === 'ENOTDIR') {
+            // ENOTDIR is information-theoretically ambiguous: it proves only
+            // that `entry` is not a directory, so a stray .DS_Store and a
+            // package directory clobbered into a file are indistinguishable
+            // from here. Treating it as ordinary is right (the repo carries
+            // packages/.DS_Store today), but treating it as SILENT is not --
+            // the only backstop is PUBLISHABLE_FLOOR, and with 42 real
+            // publishable packages against a floor of 25 up to 17 could vanish
+            // this way and still report green. Narrowing a gate to kill a false
+            // positive opens a miss; the miss just has to be visible.
+            notDirectories.push(join(parentDir, entry));
+          } else if (error.code !== 'ENOENT') {
             refuse(
               `could not stat ${pkgJsonPath} (${error.code || error.message}). ` +
                 'Refusing to treat an unreadable manifest path as an absent one — ' +
@@ -151,6 +171,17 @@ function getWorkspacePackages() {
         );
       }
     }
+  }
+  if (notDirectories.length > 0) {
+    // A note, not a refusal. Every entry here is legitimately not a package
+    // most of the time, so failing would fire on a Finder artefact. But saying
+    // nothing is how a clobbered package directory leaves no trace at all.
+    console.log(
+      `note: ${notDirectories.length} entr${notDirectories.length === 1 ? 'y' : 'ies'} under a ` +
+        'workspace parent are not directories and hold no package (ordinary for stray files; ' +
+        'a package directory replaced by a file would look identical here):',
+    );
+    for (const d of notDirectories) console.log(`  - ${d}`);
   }
   return packages;
 }

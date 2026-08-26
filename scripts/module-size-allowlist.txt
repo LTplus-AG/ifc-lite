@@ -15,7 +15,7 @@
 # must be updated in the same commit — that is the point: loosening the ratchet
 # costs a reviewable line.
    522 apps/viewer-embed/src/bridge/handler.ts
-   484 apps/viewer-embed/src/components/EmbedViewer.tsx
+   439 apps/viewer-embed/src/components/EmbedViewer.tsx
    481 apps/viewer/src/components/extensions/ExtensionsPanel.tsx
    431 apps/viewer/src/components/extensions/FlavorDialog.tsx
    428 apps/viewer/src/components/extensions/widget/WidgetRenderer.tsx
@@ -269,12 +269,12 @@
    573 packages/mutations/src/csv-connector.ts
   2121 packages/mutations/src/mutable-property-view.ts
    422 packages/oauth-pkce/src/token-manager.ts
-  1211 packages/parser/src/columnar-parser.ts
+  1189 packages/parser/src/columnar-parser.ts
    480 packages/parser/src/compact-entity-index.ts
    530 packages/parser/src/data-store-transport.ts
-   564 packages/parser/src/georef-extractor.ts
+   539 packages/parser/src/georef-extractor.ts
    827 packages/parser/src/material-resolver.ts
-  1014 packages/parser/src/on-demand-extractors.ts
+  1004 packages/parser/src/on-demand-extractors.ts
    523 packages/parser/src/project-units.ts
    594 packages/parser/src/schedule-extractor.ts
    494 packages/parser/src/source-bytes.ts

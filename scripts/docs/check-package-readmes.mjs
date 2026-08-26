@@ -29,6 +29,10 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// Derived from this file's own location, with no argv override: the regression
+// harness (check-package-readmes.test.mjs) copies this one file into a synthetic
+// tree, so the floor below is driven over real input without this gate growing a
+// scan-root flag (#3200).
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const packagesDir = join(ROOT, 'packages');
 

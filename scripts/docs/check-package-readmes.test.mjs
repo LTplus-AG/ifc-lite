@@ -64,6 +64,9 @@ test('an empty packages/ is refused, not reported as every package having a READ
   assert.equal(status, 1, out);
   assert.match(out, /only 0 published package\(s\) reached the README check/);
   assert.match(out, /expected at least 25/);
+  // The remedy must NAME the constant. A message that says only "the SCAN is
+  // wrong" is actively misleading to someone who really did retire packages.
+  assert.match(out, /lower CHECKED_FLOOR in this file/);
   assert.doesNotMatch(out, /✅/);
   rmSync(root, { recursive: true, force: true });
 });
@@ -121,6 +124,9 @@ test('negative control: the missing-README verdict still fires, and before the f
   assert.equal(status, 1, out);
   assert.match(out, /Published packages without a README\.md \(1\)/);
   assert.match(out, /@x\/no-readme/);
+  // The floor must not have swallowed the gate's actual job: 26 packages clears
+  // CHECKED_FLOOR, so the only thing that can fail here is the README check.
+  assert.doesNotMatch(out, /expected at least/, 'failed on the floor, not on the README');
   rmSync(root, { recursive: true, force: true });
 });
 

@@ -86,15 +86,18 @@ const SCHEMA_DIVERGENT = new Set(['IFCCOUNTMEASURE']);
  * alone implies, because a second gate over the same slot accepts more.
  *
  * `TYPE IfcTimeStamp = INTEGER;` in every schema, so the sweep below would
- * settle for `xs:integer`. The cast gate returns the wider union on
- * purpose: the generated `xsdTypesByEntity` table — the same question
- * answered from upstream, and what the ATTRIBUTE facet gates on — carries
- * `["xs:integer"]` for IFC2X3 and `["xs:dateTime","xs:integer"]` for IFC4
- * and IFC4X3 on `IfcOwnerHistory.CreationDate`, `.LastModifiedDate` and the
- * `IfcWorkControl` family. Two gates that disagree over one file is the
- * failure this mirrors it to avoid, so the property facet accepts the same
- * union. Narrowing this to `xs:integer` would make the property facet
- * reject a `dateTime` literal the attribute facet accepts.
+ * settle for `xs:integer`. The cast gate returns the wider union on purpose,
+ * because this map is keyed by MEASURE while the generated `xsdTypesByEntity`
+ * table — the same question answered from upstream, and what the ATTRIBUTE
+ * facet gates on — is keyed by SLOT, and the slots disagree with each other:
+ * `CreationDate` carries `["xs:integer"]` in IFC2X3 but
+ * `["xs:dateTime","xs:integer"]` in IFC4 and IFC4X3 (on `IfcOwnerHistory`,
+ * `IfcWorkControl`, `IfcWorkPlan` and `IfcWorkSchedule`), while
+ * `IfcOwnerHistory.LastModifiedDate` carries `["xs:integer"]` in all three.
+ * One measure-keyed answer must therefore be the union over those slots, and
+ * only the union avoids rejecting a `dateTime` literal that IFC4
+ * `CreationDate` accepts. Every slot accepts `xs:integer`, so no slot loses a
+ * literal it would have taken.
  */
 const SUPERSET_OVERRIDES: Record<string, readonly string[]> = {
   IFCTIMESTAMP: ['xs:integer', 'xs:dateTime'],

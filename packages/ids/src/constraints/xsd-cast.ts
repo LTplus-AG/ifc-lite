@@ -157,11 +157,14 @@ export function ifcMeasureToXsdTypes(measure: string | undefined): readonly stri
   // of the name, which made this gate reject every value a timestamp property
   // can legally hold. The generated `xsdTypesByEntity` table — the SAME
   // question, answered from upstream `SchemaInfo.Attributes.g.cs`, and what
-  // the attribute facet gates on — carries `xs:integer` (IFC2X3) and
-  // `{xs:dateTime, xs:integer}` (IFC4, IFC4X3) for the two IfcTimeStamp
-  // attributes, `IfcOwnerHistory.CreationDate` and `.LastModifiedDate`. Return
-  // that union: a strict-cast gate that disagrees with the attribute facet on
-  // one file is the failure this mirrors it to avoid.
+  // the attribute facet gates on — answers per SLOT, and the slots differ:
+  // `CreationDate` carries `xs:integer` in IFC2X3 and `{xs:dateTime,
+  // xs:integer}` in IFC4 and IFC4X3, while `IfcOwnerHistory.LastModifiedDate`
+  // carries `xs:integer` in all three. This map answers per MEASURE, so it
+  // returns the union over those slots: a strict-cast gate that rejects a
+  // literal the attribute facet accepts on the same file is the failure this
+  // mirrors it to avoid. Every slot accepts `xs:integer`, so the union costs
+  // no slot a literal it would otherwise have taken.
   if (m === 'IFCTIMESTAMP') return ['xs:integer', 'xs:dateTime'];
   // All numeric measures (REAL, *MEASURE, *RATIO) accept doubles.
   if (m === 'IFCREAL' || m.endsWith('MEASURE') || m.endsWith('RATIO')) {

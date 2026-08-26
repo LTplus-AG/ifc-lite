@@ -18,37 +18,33 @@ import { decodeStepStringLiteral } from '@ifc-lite/encoding';
 
 import { asSourceBytes, type IfcSourceBytes } from './source-bytes.js';
 
+import { matchesKeywordAt, StepTextScan } from './step-lexing.js';
 /** Headers are tiny; cap the decode so a huge file's body is never scanned. */
 const MAX_HEADER_BYTES = 64 * 1024;
 
 /**
  * Split STEP record arguments at top-level commas, respecting paren/bracket
- * nesting and single-quoted strings (with `''` escapes). Returns the raw,
- * still-escaped argument substrings (trimmed).
+ * nesting, single-quoted strings (with `''` escapes) and comments. Returns the
+ * raw, still-escaped argument substrings (trimmed).
+ *
+ * A comment is dropped rather than copied through: it is not part of the
+ * argument's value, and its commas are not separators.
  */
 function splitTopLevel(inner: string): string[] {
   const args: string[] = [];
   let depth = 0;
-  let inString = false;
   let current = '';
+  const scan = new StepTextScan(inner);
   for (let i = 0; i < inner.length; i++) {
-    const ch = inner[i];
-    if (inString) {
-      current += ch;
-      if (ch === "'") {
-        if (inner[i + 1] === "'") {
-          current += "'";
-          i++;
-        } else {
-          inString = false;
-        }
-      }
+    const skip = scan.skipLexicalAt(i);
+    if (skip >= 0) {
+      // A literal is part of the argument's text; a comment is not.
+      if (inner[i] === "'") current += inner.slice(i, skip);
+      i = skip - 1;
       continue;
     }
-    if (ch === "'") {
-      inString = true;
-      current += ch;
-    } else if (ch === '(' || ch === '[') {
+    const ch = inner[i];
+    if (ch === '(' || ch === '[') {
       depth++;
       current += ch;
     } else if (ch === ')' || ch === ']') {
@@ -123,10 +119,10 @@ function decodeStringList(arg: string): string[] {
     .filter((v): v is string => v !== undefined);
 }
 
+
 /**
- * Index of `keyword` occurring as a RECORD -- outside any quoted string -- or
- * -1. `fromIndex` must be a position outside a string; the scan starts its
- * quote tracking there.
+ * Index of `keyword` occurring as a RECORD, outside any string or comment, or
+ * -1.
  *
  * A plain `indexOf` is not enough here and the reason is the same one #3278 is
  * about, one level down: header FREE TEXT is not a declaration. STEP strings
@@ -138,51 +134,35 @@ function decodeStringList(arg: string): string[] {
  * `ENDSEC`: a quoted one would truncate the header before the real
  * `FILE_SCHEMA` record, losing the declaration entirely.
  */
-function indexOfRecord(upper: string, keyword: string, fromIndex = 0): number {
-  let inString = false;
-  for (let i = fromIndex; i < upper.length; i++) {
-    const ch = upper[i];
-    if (inString) {
-      if (ch === "'") {
-        if (upper[i + 1] === "'") i++;
-        else inString = false;
-      }
-      continue;
-    }
-    if (ch === "'") inString = true;
-    else if (upper.startsWith(keyword, i)) return i;
+function indexOfRecord(text: string, keyword: string): number {
+  const scan = new StepTextScan(text);
+  for (let i = 0; i < text.length; i++) {
+    const skip = scan.skipLexicalAt(i);
+    if (skip >= 0) { i = skip - 1; continue; }
+    if (matchesKeywordAt(text, i, keyword)) return i;
   }
   return -1;
 }
 
 /**
- * Extract the argument substring inside the parentheses of `KEYWORD( ... )`,
- * starting the search at `fromIndex`. Quote- and nesting-aware so a quoted
+ * Extract the argument substring inside the parentheses of `KEYWORD( ... )`.
+ * Quote-, comment- and nesting-aware so a quoted
  * `)` never closes the record early, and so a quoted KEYWORD is never mistaken
  * for the record itself. Returns `null` if not found.
  */
-function extractRecordArgs(text: string, keyword: string, fromIndex = 0): string | null {
-  const upper = text.toUpperCase();
-  const at = indexOfRecord(upper, keyword, fromIndex);
+function extractRecordArgs(text: string, keyword: string): string | null {
+  const at = indexOfRecord(text, keyword);
   if (at < 0) return null;
-  let i = at + keyword.length;
-  while (i < text.length && /\s/.test(text[i])) i++;
+  const scan = new StepTextScan(text);
+  let i = scan.skipTrivia(at + keyword.length);
   if (text[i] !== '(') return null;
   const start = i;
   let depth = 0;
-  let inString = false;
   for (; i < text.length; i++) {
+    const skip = scan.skipLexicalAt(i);
+    if (skip >= 0) { i = skip - 1; continue; }
     const ch = text[i];
-    if (inString) {
-      if (ch === "'") {
-        if (text[i + 1] === "'") i++;
-        else inString = false;
-      }
-      continue;
-    }
-    if (ch === "'") {
-      inString = true;
-    } else if (ch === '(') {
+    if (ch === '(') {
       depth++;
     } else if (ch === ')') {
       depth--;
@@ -204,7 +184,7 @@ export function parseSourceHeader(
   const src = asSourceBytes(buffer);
   const cap = Math.min(src.byteLength, MAX_HEADER_BYTES);
   let text = src.decodeUtf8(0, cap);
-  const endSec = indexOfRecord(text.toUpperCase(), 'ENDSEC');
+  const endSec = indexOfRecord(text, 'ENDSEC');
   if (endSec >= 0) text = text.slice(0, endSec);
 
   const descRecord = extractRecordArgs(text, 'FILE_DESCRIPTION');

@@ -143,7 +143,8 @@ const hostile = (n: number): string => `-${'9'.repeat(n)}X`;
  * Budget, rungs and retry policy come from @ifc-lite/timing-ladder, shared with
  * the twin suite in @ifc-lite/encoding, which used to carry a line-for-line
  * copy of them (#3224). It refuses -- loudly -- any decision that ACCEPTS the
- * hostile fixture, so a reading can never be timing an early return.
+ * hostile fixture, so the early-ACCEPT path -- the one that would make a
+ * reading meaningless -- cannot pass silently.
  */
 const firstBlownRung = (decide: (v: string) => boolean): number | null =>
   ladderFirstBlownRung(decide, { hostile });

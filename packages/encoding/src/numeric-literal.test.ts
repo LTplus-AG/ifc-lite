@@ -158,10 +158,11 @@ describe('deciding it is linear, not backtracking', () => {
 
   /**
    * The shared ladder, bound to this suite's fixture. Budget, rungs and retry
-   * policy come from @ifc-lite/timing-ladder so this suite and its twin in
-   * @ifc-lite/ids cannot drift apart again (#3224); it refuses -- loudly --
-   * any decision that ACCEPTS the hostile fixture, so a reading can never be
-   * timing an early return.
+   * policy come from @ifc-lite/timing-ladder, so the LADDER cannot drift
+   * between this suite and its twin in @ifc-lite/ids again (#3224). It is one
+   * implementation, not two agreeing ones. It refuses -- loudly --
+   * any decision that ACCEPTS the hostile fixture, so the early-ACCEPT path --
+   * the one that would make a reading meaningless -- cannot pass silently.
    */
   const ladder = (decide: (v: string) => boolean): number | null =>
     firstBlownRung(decide, { hostile });

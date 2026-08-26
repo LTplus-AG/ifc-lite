@@ -11,56 +11,44 @@
  *
  * This does not rewrite individual workspace package versions. Changesets
  * owns those versions directly so packages can version independently.
+ *
+ * TWO VERSIONS, NOT ONE (#3216). The npm side — the root `package.json` and
+ * the `v*` release tag — keeps the version changesets chose. The Rust side
+ * gets that version with `rust-major-offset.json`'s `majorOffset` added to its
+ * major, which is the only way this repo can express a break that is a major
+ * in Rust and a minor or a patch in TypeScript. At `majorOffset` 0 the two are
+ * the same string and this script writes exactly what it always wrote.
+ * `scripts/check-rust-major-offset.mjs` fails CI when the manifests and that
+ * file disagree; both read the version through the same library, so the
+ * writer and the checker cannot drift.
  */
 
-import { readFileSync, writeFileSync, readdirSync, statSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
+import {
+  computeReleaseVersions,
+  rewriteInternalDeps,
+  OFFSET_FILE_NAME,
+  RUST_MEMBER_DIRS,
+  WORKSPACE_VERSION_PATTERN,
+} from './lib/rust-major-offset.mjs';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const rootDir = join(__dirname, '..');
 
-/** Compare two semver strings. Returns >0 if a > b, <0 if a < b, 0 if equal. */
-function compareSemver(a, b) {
-  const pa = a.split('.').map(Number);
-  const pb = b.split('.').map(Number);
-  for (let i = 0; i < 3; i++) {
-    if (pa[i] !== pb[i]) return pa[i] - pb[i];
-  }
-  return 0;
+// `--root <dir>` retargets every read and write, like the `--root` flag on the
+// gate scripts. It exists so `scripts/sync-versions.test.mjs` can run this
+// unmodified file over a synthetic tree — the alternative is asserting what
+// this script "would" write, which is how a writer and its checker end up
+// agreeing on paper and disagreeing in the release.
+const rootArgIndex = process.argv.indexOf('--root');
+if (rootArgIndex !== -1 && !process.argv[rootArgIndex + 1]) {
+  console.error('❌ --root needs a directory');
+  process.exit(2);
 }
-
-function getWorkspacePackages() {
-  const packages = [];
-  for (const parent of ['packages', 'apps']) {
-    const parentDir = join(rootDir, parent);
-    try {
-      for (const entry of readdirSync(parentDir)) {
-        const pkgJsonPath = join(parentDir, entry, 'package.json');
-        try {
-          statSync(pkgJsonPath);
-          packages.push(pkgJsonPath);
-        } catch (error) {
-          // A directory with no package.json is ordinary. Anything else means
-          // a package is missing from the max-version scan below, which would
-          // sync the whole release to a version LOWER than what was published.
-          if (error.code !== 'ENOENT') {
-            console.warn(`⚠️  Could not stat ${pkgJsonPath}, excluding it from the version scan (${error.message})`);
-          }
-        }
-      }
-    } catch (error) {
-      // Same, one level up: an unreadable `packages/`/`apps/` silently shrinks
-      // the scan to nothing and the sync then reports success at the wrong
-      // version.
-      if (error.code !== 'ENOENT') {
-        console.warn(`⚠️  Could not list ${parentDir}, excluding it from the version scan (${error.message})`);
-      }
-    }
-  }
-  return packages;
-}
+const rootDir = rootArgIndex === -1 ? join(__dirname, '..') : process.argv[rootArgIndex + 1];
 
 /**
  * Rewrite the workspace members' own `version` entries in Cargo.lock.
@@ -144,51 +132,52 @@ function syncCargoLock(version) {
 }
 
 function syncVersions() {
-  const packagePaths = getWorkspacePackages();
+  // The npm version (highest workspace package, root package.json included)
+  // and the crate version it maps to under the declared major offset. This
+  // throws — rather than inventing a version — when the package scan comes
+  // back below its floor, when the offset file is missing or malformed, or
+  // when a version is not a plain `major.minor.patch`. See
+  // scripts/lib/rust-major-offset.mjs.
+  const { npmVersion, crateVersion, majorOffset, rootPkg: rootPackageJson, rootPkgPath: rootPackageJsonPath } =
+    computeReleaseVersions(rootDir);
 
-  // Find the highest version across all non-private workspace packages.
-  let maxVersion = '0.0.0';
-  for (const pkgPath of packagePaths) {
-    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
-    if (pkg.private) continue;
-    if (pkg.version && compareSemver(pkg.version, maxVersion) > 0) {
-      maxVersion = pkg.version;
-    }
+  console.log(`📦 Syncing root release version to: ${npmVersion}`);
+  if (majorOffset > 0) {
+    console.log(
+      `📦 Rust crates run ${majorOffset} major(s) ahead per ${OFFSET_FILE_NAME}: publishing them at ${crateVersion}`
+    );
   }
-
-  // Also consider root package.json
-  const rootPackageJsonPath = join(rootDir, 'package.json');
-  const rootPackageJson = JSON.parse(readFileSync(rootPackageJsonPath, 'utf8'));
-  if (rootPackageJson.version && compareSemver(rootPackageJson.version, maxVersion) > 0) {
-    maxVersion = rootPackageJson.version;
-  }
-
-  const version = maxVersion;
-  console.log(`📦 Syncing root release version to: ${version}`);
 
   // Update workspace Cargo.toml
   const cargoTomlPath = join(rootDir, 'Cargo.toml');
   let cargoToml = readFileSync(cargoTomlPath, 'utf8');
 
-  cargoToml = cargoToml.replace(
-    /(\[workspace\.package\][^\[]*version\s*=\s*")[^"]+(")/,
-    `$1${version}$2`
-  );
+  // `String.prototype.replace` returns the input UNCHANGED when the pattern
+  // does not match, so a `[workspace.package]` this pattern cannot reach would
+  // be written back byte-identical and still reported as synced below — and
+  // the crates would then publish at the stale version. The gate half of this
+  // pair already refuses with NO_WORKSPACE_VERSION (see
+  // scripts/check-rust-major-offset.mjs); the writer has to refuse on the same
+  // condition or the two halves disagree about the same manifest.
+  if (!WORKSPACE_VERSION_PATTERN.test(cargoToml)) {
+    throw new Error(
+      `NO_WORKSPACE_VERSION: ${cargoTomlPath} has no [workspace.package] version literal to rewrite. That literal is what every crate publishes at, so reporting a successful sync here would publish the crates at the stale version.`
+    );
+  }
 
-  cargoToml = cargoToml.replace(
-    /(ifc-lite-(?:core|geometry|processing|clash|export|wasm)\s*=\s*\{\s*version\s*=\s*")[^"]+(")/g,
-    `$1${version}$2`
-  );
+  cargoToml = cargoToml.replace(WORKSPACE_VERSION_PATTERN, `$1${crateVersion}$3`);
+
+  cargoToml = rewriteInternalDeps('Cargo.toml', cargoToml, crateVersion);
 
   writeFileSync(cargoTomlPath, cargoToml);
-  console.log(`✅ Updated Cargo.toml workspace version to ${version}`);
+  console.log(`✅ Updated Cargo.toml workspace version to ${crateVersion}`);
 
   // Crate manifests carry `version = "…"` on their internal `path`
   // dependencies so they are publishable to crates.io (cargo strips the
   // path and keeps the version requirement on publish). Those literals
   // must track the workspace version or every workspace build breaks with
   // a version/path mismatch after a bump.
-  for (const member of ['core', 'geometry', 'processing', 'clash', 'export', 'ffi', 'wasm-bindings']) {
+  for (const member of RUST_MEMBER_DIRS) {
     const memberTomlPath = join(rootDir, 'rust', member, 'Cargo.toml');
     let memberToml;
     try {
@@ -204,23 +193,23 @@ function syncVersions() {
       );
       continue;
     }
-    const updated = memberToml.replace(
-      /(ifc-lite-(?:core|geometry|processing|clash|export|wasm)\s*=\s*\{\s*version\s*=\s*")[^"]+(")/g,
-      `$1${version}$2`
-    );
+    const updated = rewriteInternalDeps(`rust/${member}/Cargo.toml`, memberToml, crateVersion);
     if (updated !== memberToml) {
       writeFileSync(memberTomlPath, updated);
-      console.log(`✅ Updated rust/${member}/Cargo.toml internal dep versions to ${version}`);
+      console.log(`✅ Updated rust/${member}/Cargo.toml internal dep versions to ${crateVersion}`);
     }
   }
 
-  syncCargoLock(version);
+  // The lock records the MEMBERS' own versions, which are the crate versions —
+  // not the npm one.
+  syncCargoLock(crateVersion);
 
-  // Update root package.json
-  if (rootPackageJson.version !== version) {
-    rootPackageJson.version = version;
+  // Update root package.json. This is the npm/tag side, so it takes the npm
+  // version: the major offset moves the crates, never the packages.
+  if (rootPackageJson.version !== npmVersion) {
+    rootPackageJson.version = npmVersion;
     writeFileSync(rootPackageJsonPath, JSON.stringify(rootPackageJson, null, 2) + '\n');
-    console.log(`✅ Updated root package.json version to ${version}`);
+    console.log(`✅ Updated root package.json version to ${npmVersion}`);
   }
 }
 

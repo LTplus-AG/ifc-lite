@@ -131,6 +131,18 @@ jobs:
               - 'turbo.json'
               - 'tsconfig*.json'
               - 'scripts/**'
+              # The offset file itself. `node-tests` carries the Rust
+              # major-offset gate, and `scripts/**` above already brings the
+              # gate's own sources into this lane -- but the ONE file whose
+              # contents that gate exists to check sat in no filter at all, so
+              # a PR editing only `rust-major-offset.json` skipped the job and
+              # the gate could not fire on the change that declares the offset.
+              # Same trap this block warns about for `apps/`, `examples/` and
+              # `.oxlintrc.json` above. It goes here rather than under `rust:`
+              # because the gate is a Node step and `rust:` would additionally
+              # spin the paid Depot compile lane for a one-line JSON edit
+              # (scripts/README-vercel-cost.md).
+              - 'rust-major-offset.json'
               - 'tests/models/manifest.json'
               - '.github/workflows/test.yml'
             geometry:
@@ -642,6 +654,22 @@ jobs:
       # counting and digest logic underneath it.
       - name: Check module-size ratchet gate regressions
         run: node --test scripts/check-module-size.test.mjs scripts/lib/module-size-ratchet.test.mjs
+      # The version every Rust crate is published at is the npm version with
+      # `rust-major-offset.json`'s major offset applied (#3216). That offset is
+      # applied by `scripts/sync-versions.js`, which runs ONCE per release
+      # inside `pnpm run version` -- so between releases the file and the
+      # manifests can disagree with nothing to notice, and the first symptom
+      # would be a `cargo publish` at a version meaning something other than
+      # what the file claims. Running it here, on every PR, is what makes the
+      # `chore: version packages` PR (the one commit that actually moves these
+      # literals) reviewable before it publishes.
+      # Its own tests run FIRST, for the reason the pairs above state: this
+      # gate's value is entirely in not passing over a tree it never read, so a
+      # broken detector must fail here rather than report agreement.
+      - name: Check Rust major-offset gate's own tests
+        run: node --test scripts/check-rust-major-offset.test.mjs scripts/lib/rust-major-offset.test.mjs scripts/sync-versions.test.mjs
+      - name: Check Rust crate version matches the declared major offset
+        run: node scripts/check-rust-major-offset.mjs
       # A hidden tab never delivers an animation frame, so an unbounded
       # `await new Promise(r => requestAnimationFrame(r))` in the load pipeline
       # parks finalize / WASM release / setLoading(false) until the user comes

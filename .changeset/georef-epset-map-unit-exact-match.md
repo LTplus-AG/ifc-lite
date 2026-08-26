@@ -23,3 +23,15 @@ The Rust twin (`ifc_lite_core::GeoRefExtractor`) carried the identical
 substring bug and is fixed the same way, so both halves were wrong together;
 the shared cross-language fixture now pins the behaviour to the enumeration
 rather than to either implementation.
+
+The exact match runs on a NORMALISED label, not the raw one: `MapUnit` is
+exporter free text, so case, separators, the English plural and the several
+word orders of the US survey foot are all ordinary real spellings. `METRES`,
+`Meters`, `MILLIMETRES`, `KILOMETERS`, `INCHES`, `foot (US survey)` and
+`SURVEY FEET (US)` therefore resolve; refusing them would have been a new
+defect of the opposite kind, silently handing the model back to the project
+length unit. `DECAMETRES` resolves to `10`, not to `1` — the normalisation
+strips one plural suffix and re-matches EXACTLY, it never collapses a prefixed
+spelling onto the base. Still refused: `SQUARE METRE(S)`, `BANANAMETRE`, bare
+abbreviations (`M`, `MM`, `MTR`) and a survey foot with no nationality
+(`SURVEY FOOT` — the Indian and Clarke feet are different ratios).

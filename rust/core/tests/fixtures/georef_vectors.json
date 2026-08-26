@@ -58,7 +58,21 @@
     "epset_map_unit_label_FOOT",
     "epset_map_unit_label_US_SURVEY_FOOT",
     "epset_map_unit_label_SQUARE_METRE_REFUSED",
-    "epset_map_unit_label_UNKNOWN_REFUSED"
+    "epset_map_unit_label_UNKNOWN_REFUSED",
+    "epset_map_unit_label_METRES_PLURAL",
+    "epset_map_unit_label_METERS_PLURAL",
+    "epset_map_unit_label_metres_lowercase",
+    "epset_map_unit_label_Meters_MIXED_CASE",
+    "epset_map_unit_label_MILLIMETRES_PLURAL",
+    "epset_map_unit_label_MILLIMETERS_PLURAL",
+    "epset_map_unit_label_KILOMETERS_PLURAL",
+    "epset_map_unit_label_DECAMETRES_PLURAL",
+    "epset_map_unit_label_INCHES_PLURAL",
+    "epset_map_unit_label_US_SURVEY_FOOT_PARENTHESISED",
+    "epset_map_unit_label_US_SURVEY_FEET_WORD_ORDER",
+    "epset_map_unit_label_SQUARE_METRES_REFUSED",
+    "epset_map_unit_label_SURVEY_FOOT_NO_NATION_REFUSED",
+    "epset_map_unit_label_ABBREVIATION_M_REFUSED"
   ],
   "cases": [
     {
@@ -540,6 +554,216 @@
         "source": "ePSetMapConversion",
         "crsName": "EPSG:2056",
         "mapUnit": "BANANAMETRE",
+        "mapUnitScale": null,
+        "eastings": 1000.0,
+        "northings": 2000.0,
+        "orthogonalHeight": 3.0
+      }
+    },
+    {
+      "name": "epset_map_unit_label_METRES_PLURAL",
+      "_note": "MapUnit is exporter free text and the plural is an ordinary real spelling. An exact-match table keyed on the EXPRESS singular refuses it unless one plural suffix is stripped first.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#10=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCREAL(1000.),$);\n#11=IFCPROPERTYSINGLEVALUE('Northings',$,IFCREAL(2000.),$);\n#12=IFCPROPERTYSINGLEVALUE('OrthogonalHeight',$,IFCREAL(3.),$);\n#16=IFCPROPERTYSET('0aaaaaaaaaaaaaaaaaaaaa',$,'ePSet_MapConversion',$,(#10,#11,#12));\n#20=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL('EPSG:2056'),$);\n#22=IFCPROPERTYSINGLEVALUE('MapUnit',$,IFCLABEL('METRES'),$);\n#21=IFCPROPERTYSET('0bbbbbbbbbbbbbbbbbbbbb',$,'ePSet_ProjectedCRS',$,(#20,#22));\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "ePSetMapConversion",
+        "crsName": "EPSG:2056",
+        "mapUnit": "METRES",
+        "mapUnitScale": 1.0,
+        "eastings": 1000.0,
+        "northings": 2000.0,
+        "orthogonalHeight": 3.0
+      }
+    },
+    {
+      "name": "epset_map_unit_label_METERS_PLURAL",
+      "_note": "The US spelling, pluralised. METER and METRE are the same unit, so both must carry the plural.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#10=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCREAL(1000.),$);\n#11=IFCPROPERTYSINGLEVALUE('Northings',$,IFCREAL(2000.),$);\n#12=IFCPROPERTYSINGLEVALUE('OrthogonalHeight',$,IFCREAL(3.),$);\n#16=IFCPROPERTYSET('0aaaaaaaaaaaaaaaaaaaaa',$,'ePSet_MapConversion',$,(#10,#11,#12));\n#20=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL('EPSG:2056'),$);\n#22=IFCPROPERTYSINGLEVALUE('MapUnit',$,IFCLABEL('METERS'),$);\n#21=IFCPROPERTYSET('0bbbbbbbbbbbbbbbbbbbbb',$,'ePSet_ProjectedCRS',$,(#20,#22));\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "ePSetMapConversion",
+        "crsName": "EPSG:2056",
+        "mapUnit": "METERS",
+        "mapUnitScale": 1.0,
+        "eastings": 1000.0,
+        "northings": 2000.0,
+        "orthogonalHeight": 3.0
+      }
+    },
+    {
+      "name": "epset_map_unit_label_metres_lowercase",
+      "_note": "Case-folded AND singularised: exporters write free text, not the EXPRESS enumeration casing.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#10=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCREAL(1000.),$);\n#11=IFCPROPERTYSINGLEVALUE('Northings',$,IFCREAL(2000.),$);\n#12=IFCPROPERTYSINGLEVALUE('OrthogonalHeight',$,IFCREAL(3.),$);\n#16=IFCPROPERTYSET('0aaaaaaaaaaaaaaaaaaaaa',$,'ePSet_MapConversion',$,(#10,#11,#12));\n#20=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL('EPSG:2056'),$);\n#22=IFCPROPERTYSINGLEVALUE('MapUnit',$,IFCLABEL('metres'),$);\n#21=IFCPROPERTYSET('0bbbbbbbbbbbbbbbbbbbbb',$,'ePSet_ProjectedCRS',$,(#20,#22));\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "ePSetMapConversion",
+        "crsName": "EPSG:2056",
+        "mapUnit": "metres",
+        "mapUnitScale": 1.0,
+        "eastings": 1000.0,
+        "northings": 2000.0,
+        "orthogonalHeight": 3.0
+      }
+    },
+    {
+      "name": "epset_map_unit_label_Meters_MIXED_CASE",
+      "_note": "Mixed case plus plural, the shape a GIS exporter writes.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#10=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCREAL(1000.),$);\n#11=IFCPROPERTYSINGLEVALUE('Northings',$,IFCREAL(2000.),$);\n#12=IFCPROPERTYSINGLEVALUE('OrthogonalHeight',$,IFCREAL(3.),$);\n#16=IFCPROPERTYSET('0aaaaaaaaaaaaaaaaaaaaa',$,'ePSet_MapConversion',$,(#10,#11,#12));\n#20=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL('EPSG:2056'),$);\n#22=IFCPROPERTYSINGLEVALUE('MapUnit',$,IFCLABEL('Meters'),$);\n#21=IFCPROPERTYSET('0bbbbbbbbbbbbbbbbbbbbb',$,'ePSet_ProjectedCRS',$,(#20,#22));\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "ePSetMapConversion",
+        "crsName": "EPSG:2056",
+        "mapUnit": "Meters",
+        "mapUnitScale": 1.0,
+        "eastings": 1000.0,
+        "northings": 2000.0,
+        "orthogonalHeight": 3.0
+      }
+    },
+    {
+      "name": "epset_map_unit_label_MILLIMETRES_PLURAL",
+      "_note": "A prefixed spelling, pluralised: must resolve to the MILLI factor, never to 1.0 and never be refused.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#10=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCREAL(1000.),$);\n#11=IFCPROPERTYSINGLEVALUE('Northings',$,IFCREAL(2000.),$);\n#12=IFCPROPERTYSINGLEVALUE('OrthogonalHeight',$,IFCREAL(3.),$);\n#16=IFCPROPERTYSET('0aaaaaaaaaaaaaaaaaaaaa',$,'ePSet_MapConversion',$,(#10,#11,#12));\n#20=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL('EPSG:2056'),$);\n#22=IFCPROPERTYSINGLEVALUE('MapUnit',$,IFCLABEL('MILLIMETRES'),$);\n#21=IFCPROPERTYSET('0bbbbbbbbbbbbbbbbbbbbb',$,'ePSet_ProjectedCRS',$,(#20,#22));\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "ePSetMapConversion",
+        "crsName": "EPSG:2056",
+        "mapUnit": "MILLIMETRES",
+        "mapUnitScale": 0.001,
+        "eastings": 1000.0,
+        "northings": 2000.0,
+        "orthogonalHeight": 3.0
+      }
+    },
+    {
+      "name": "epset_map_unit_label_MILLIMETERS_PLURAL",
+      "_note": "US spelling of the same, pluralised.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#10=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCREAL(1000.),$);\n#11=IFCPROPERTYSINGLEVALUE('Northings',$,IFCREAL(2000.),$);\n#12=IFCPROPERTYSINGLEVALUE('OrthogonalHeight',$,IFCREAL(3.),$);\n#16=IFCPROPERTYSET('0aaaaaaaaaaaaaaaaaaaaa',$,'ePSet_MapConversion',$,(#10,#11,#12));\n#20=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL('EPSG:2056'),$);\n#22=IFCPROPERTYSINGLEVALUE('MapUnit',$,IFCLABEL('MILLIMETERS'),$);\n#21=IFCPROPERTYSET('0bbbbbbbbbbbbbbbbbbbbb',$,'ePSet_ProjectedCRS',$,(#20,#22));\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "ePSetMapConversion",
+        "crsName": "EPSG:2056",
+        "mapUnit": "MILLIMETERS",
+        "mapUnitScale": 0.001,
+        "eastings": 1000.0,
+        "northings": 2000.0,
+        "orthogonalHeight": 3.0
+      }
+    },
+    {
+      "name": "epset_map_unit_label_KILOMETERS_PLURAL",
+      "_note": "Plural, US spelling and an SI prefix at once.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#10=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCREAL(1000.),$);\n#11=IFCPROPERTYSINGLEVALUE('Northings',$,IFCREAL(2000.),$);\n#12=IFCPROPERTYSINGLEVALUE('OrthogonalHeight',$,IFCREAL(3.),$);\n#16=IFCPROPERTYSET('0aaaaaaaaaaaaaaaaaaaaa',$,'ePSet_MapConversion',$,(#10,#11,#12));\n#20=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL('EPSG:2056'),$);\n#22=IFCPROPERTYSINGLEVALUE('MapUnit',$,IFCLABEL('KILOMETERS'),$);\n#21=IFCPROPERTYSET('0bbbbbbbbbbbbbbbbbbbbb',$,'ePSet_ProjectedCRS',$,(#20,#22));\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "ePSetMapConversion",
+        "crsName": "EPSG:2056",
+        "mapUnit": "KILOMETERS",
+        "mapUnitScale": 1000.0,
+        "eastings": 1000.0,
+        "northings": 2000.0,
+        "orthogonalHeight": 3.0
+      }
+    },
+    {
+      "name": "epset_map_unit_label_DECAMETRES_PLURAL",
+      "_note": "The regression guard for the plural rule itself: stripping the plural must land on DECAMETRE (10), NOT collapse the prefixed spelling onto the bare metre (1.0) the way the substring test did.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#10=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCREAL(1000.),$);\n#11=IFCPROPERTYSINGLEVALUE('Northings',$,IFCREAL(2000.),$);\n#12=IFCPROPERTYSINGLEVALUE('OrthogonalHeight',$,IFCREAL(3.),$);\n#16=IFCPROPERTYSET('0aaaaaaaaaaaaaaaaaaaaa',$,'ePSet_MapConversion',$,(#10,#11,#12));\n#20=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL('EPSG:2056'),$);\n#22=IFCPROPERTYSINGLEVALUE('MapUnit',$,IFCLABEL('DECAMETRES'),$);\n#21=IFCPROPERTYSET('0bbbbbbbbbbbbbbbbbbbbb',$,'ePSet_ProjectedCRS',$,(#20,#22));\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "ePSetMapConversion",
+        "crsName": "EPSG:2056",
+        "mapUnit": "DECAMETRES",
+        "mapUnitScale": 10.0,
+        "eastings": 1000.0,
+        "northings": 2000.0,
+        "orthogonalHeight": 3.0
+      }
+    },
+    {
+      "name": "epset_map_unit_label_INCHES_PLURAL",
+      "_note": "An -ES plural whose singular is not reachable by dropping a single S.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#10=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCREAL(1000.),$);\n#11=IFCPROPERTYSINGLEVALUE('Northings',$,IFCREAL(2000.),$);\n#12=IFCPROPERTYSINGLEVALUE('OrthogonalHeight',$,IFCREAL(3.),$);\n#16=IFCPROPERTYSET('0aaaaaaaaaaaaaaaaaaaaa',$,'ePSet_MapConversion',$,(#10,#11,#12));\n#20=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL('EPSG:2056'),$);\n#22=IFCPROPERTYSINGLEVALUE('MapUnit',$,IFCLABEL('INCHES'),$);\n#21=IFCPROPERTYSET('0bbbbbbbbbbbbbbbbbbbbb',$,'ePSet_ProjectedCRS',$,(#20,#22));\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "ePSetMapConversion",
+        "crsName": "EPSG:2056",
+        "mapUnit": "INCHES",
+        "mapUnitScale": 0.0254,
+        "eastings": 1000.0,
+        "northings": 2000.0,
+        "orthogonalHeight": 3.0
+      }
+    },
+    {
+      "name": "epset_map_unit_label_US_SURVEY_FOOT_PARENTHESISED",
+      "_note": "US survey foot with the qualifier trailing and parenthesised. Gluing the alphanumerics gives FOOTUSSURVEY, which no glued-alias list contains: the tokens must be matched without regard to order.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#10=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCREAL(1000.),$);\n#11=IFCPROPERTYSINGLEVALUE('Northings',$,IFCREAL(2000.),$);\n#12=IFCPROPERTYSINGLEVALUE('OrthogonalHeight',$,IFCREAL(3.),$);\n#16=IFCPROPERTYSET('0aaaaaaaaaaaaaaaaaaaaa',$,'ePSet_MapConversion',$,(#10,#11,#12));\n#20=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL('EPSG:2056'),$);\n#22=IFCPROPERTYSINGLEVALUE('MapUnit',$,IFCLABEL('foot (US survey)'),$);\n#21=IFCPROPERTYSET('0bbbbbbbbbbbbbbbbbbbbb',$,'ePSet_ProjectedCRS',$,(#20,#22));\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "ePSetMapConversion",
+        "crsName": "EPSG:2056",
+        "mapUnit": "foot (US survey)",
+        "mapUnitScale": 0.3048006096,
+        "eastings": 1000.0,
+        "northings": 2000.0,
+        "orthogonalHeight": 3.0
+      }
+    },
+    {
+      "name": "epset_map_unit_label_US_SURVEY_FEET_WORD_ORDER",
+      "_note": "The same unit in a third word order, with the FEET spelling. 1200/3937, not the international 0.3048.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#10=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCREAL(1000.),$);\n#11=IFCPROPERTYSINGLEVALUE('Northings',$,IFCREAL(2000.),$);\n#12=IFCPROPERTYSINGLEVALUE('OrthogonalHeight',$,IFCREAL(3.),$);\n#16=IFCPROPERTYSET('0aaaaaaaaaaaaaaaaaaaaa',$,'ePSet_MapConversion',$,(#10,#11,#12));\n#20=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL('EPSG:2056'),$);\n#22=IFCPROPERTYSINGLEVALUE('MapUnit',$,IFCLABEL('SURVEY FEET (US)'),$);\n#21=IFCPROPERTYSET('0bbbbbbbbbbbbbbbbbbbbb',$,'ePSet_ProjectedCRS',$,(#20,#22));\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "ePSetMapConversion",
+        "crsName": "EPSG:2056",
+        "mapUnit": "SURVEY FEET (US)",
+        "mapUnitScale": 0.3048006096,
+        "eastings": 1000.0,
+        "northings": 2000.0,
+        "orthogonalHeight": 3.0
+      }
+    },
+    {
+      "name": "epset_map_unit_label_SQUARE_METRES_REFUSED",
+      "_note": "Negative control for the plural rule: stripping a plural must not turn an area unit into a length. SQUARE METRE is already pinned; its plural must decline too.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#10=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCREAL(1000.),$);\n#11=IFCPROPERTYSINGLEVALUE('Northings',$,IFCREAL(2000.),$);\n#12=IFCPROPERTYSINGLEVALUE('OrthogonalHeight',$,IFCREAL(3.),$);\n#16=IFCPROPERTYSET('0aaaaaaaaaaaaaaaaaaaaa',$,'ePSet_MapConversion',$,(#10,#11,#12));\n#20=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL('EPSG:2056'),$);\n#22=IFCPROPERTYSINGLEVALUE('MapUnit',$,IFCLABEL('SQUARE METRES'),$);\n#21=IFCPROPERTYSET('0bbbbbbbbbbbbbbbbbbbbb',$,'ePSet_ProjectedCRS',$,(#20,#22));\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "ePSetMapConversion",
+        "crsName": "EPSG:2056",
+        "mapUnit": "SQUARE METRES",
+        "mapUnitScale": null,
+        "eastings": 1000.0,
+        "northings": 2000.0,
+        "orthogonalHeight": 3.0
+      }
+    },
+    {
+      "name": "epset_map_unit_label_SURVEY_FOOT_NO_NATION_REFUSED",
+      "_note": "Negative control for the US-survey token rule: other national survey feet exist (Indian, Clarke) at different ratios, so the qualifier without US does not identify the value. Decline rather than guess.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#10=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCREAL(1000.),$);\n#11=IFCPROPERTYSINGLEVALUE('Northings',$,IFCREAL(2000.),$);\n#12=IFCPROPERTYSINGLEVALUE('OrthogonalHeight',$,IFCREAL(3.),$);\n#16=IFCPROPERTYSET('0aaaaaaaaaaaaaaaaaaaaa',$,'ePSet_MapConversion',$,(#10,#11,#12));\n#20=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL('EPSG:2056'),$);\n#22=IFCPROPERTYSINGLEVALUE('MapUnit',$,IFCLABEL('SURVEY FOOT'),$);\n#21=IFCPROPERTYSET('0bbbbbbbbbbbbbbbbbbbbb',$,'ePSet_ProjectedCRS',$,(#20,#22));\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "ePSetMapConversion",
+        "crsName": "EPSG:2056",
+        "mapUnit": "SURVEY FOOT",
+        "mapUnitScale": null,
+        "eastings": 1000.0,
+        "northings": 2000.0,
+        "orthogonalHeight": 3.0
+      }
+    },
+    {
+      "name": "epset_map_unit_label_ABBREVIATION_M_REFUSED",
+      "_note": "Negative control: a bare abbreviation is not in the derived set. m/mm/mtr are guesses, and a wrong MapUnit relocates the model.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#10=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCREAL(1000.),$);\n#11=IFCPROPERTYSINGLEVALUE('Northings',$,IFCREAL(2000.),$);\n#12=IFCPROPERTYSINGLEVALUE('OrthogonalHeight',$,IFCREAL(3.),$);\n#16=IFCPROPERTYSET('0aaaaaaaaaaaaaaaaaaaaa',$,'ePSet_MapConversion',$,(#10,#11,#12));\n#20=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL('EPSG:2056'),$);\n#22=IFCPROPERTYSINGLEVALUE('MapUnit',$,IFCLABEL('m'),$);\n#21=IFCPROPERTYSET('0bbbbbbbbbbbbbbbbbbbbb',$,'ePSet_ProjectedCRS',$,(#20,#22));\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "ePSetMapConversion",
+        "crsName": "EPSG:2056",
+        "mapUnit": "m",
         "mapUnitScale": null,
         "eastings": 1000.0,
         "northings": 2000.0,

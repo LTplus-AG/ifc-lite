@@ -10,60 +10,12 @@
 use crate::decoder::EntityDecoder;
 use crate::error::Result;
 
-/// SI Prefix multiplier for a member of the `IfcSIPrefix` EXPRESS
-/// enumeration, or `None` when the string is not one of its sixteen members.
-///
-/// The checked form exists because callers that need to tell "no prefix" from
-/// "a prefix I do not recognise" cannot use [`get_si_prefix_multiplier`],
-/// which collapses both onto 1.0. Resolving an `ePSet_ProjectedCRS.MapUnit`
-/// label is one such caller: answering 1.0 for an unrecognised spelling is a
-/// silent wrong answer, where declining to answer defers to the project
-/// length unit, which is the documented convention.
-#[inline]
-pub fn try_si_prefix_multiplier(prefix: &str) -> Option<f64> {
-    match prefix {
-        "ATTO" => Some(1e-18),
-        "FEMTO" => Some(1e-15),
-        "PICO" => Some(1e-12),
-        "NANO" => Some(1e-9),
-        "MICRO" => Some(1e-6),
-        "MILLI" => Some(1e-3), // Most common: millimeters
-        "CENTI" => Some(1e-2), // Centimeters
-        "DECI" => Some(1e-1),  // Decimeters
-        "DECA" => Some(1e1),   // Dekameters
-        "HECTO" => Some(1e2),  // Hectometers
-        "KILO" => Some(1e3),   // Kilometers
-        "MEGA" => Some(1e6),
-        "GIGA" => Some(1e9),
-        "TERA" => Some(1e12),
-        "PETA" => Some(1e15),
-        "EXA" => Some(1e18),
-        _ => None,
-    }
-}
-
-/// SI Prefix multipliers as defined in IFC specification.
-/// Maps IfcSIPrefix enum values to their numeric multipliers; an absent or
-/// unrecognised prefix means the base unit (metres), i.e. 1.0. Callers that
-/// must distinguish those two cases want [`try_si_prefix_multiplier`].
-#[inline]
-pub fn get_si_prefix_multiplier(prefix: &str) -> f64 {
-    try_si_prefix_multiplier(prefix).unwrap_or(1.0)
-}
-
-/// Known conversion factors for imperial/conversion-based units to meters
-/// These are the standard conversions defined in IFC specification
-#[inline]
-pub fn get_conversion_based_unit_factor(name: &str) -> Option<f64> {
-    match name.to_uppercase().as_str() {
-        // Length units to meters
-        "FOOT" | "FEET" | "'FOOT'" => Some(0.3048),
-        "INCH" | "'INCH'" => Some(0.0254),
-        "YARD" | "'YARD'" => Some(0.9144),
-        "MILE" | "'MILE'" => Some(1609.344),
-        _ => None,
-    }
-}
+/// The unit-label tables live in [`crate::unit_labels`], shared with the
+/// georeferencing MapUnit reader; re-exported here so the `units::` paths
+/// callers already use keep working.
+pub use crate::unit_labels::{
+    get_conversion_based_unit_factor, get_si_prefix_multiplier, try_si_prefix_multiplier,
+};
 
 /// Extract length unit scale factor from IFC file
 ///

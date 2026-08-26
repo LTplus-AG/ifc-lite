@@ -28,68 +28,6 @@ fn pset_value_string(prop: &DecodedEntity) -> Option<String> {
     }
 }
 
-/// Resolve an `ePSet_ProjectedCRS.MapUnit` free-text label to its metre scale.
-///
-/// EXACT match against a set derived from the `IfcSIPrefix` EXPRESS
-/// enumeration (all sixteen members, each crossed with the METRE/METER
-/// spellings) plus the conversion-based length units, after folding the label
-/// to its alphanumerics. `None` for anything else, including an absent label:
-/// the ePSet convention then defers to the project length unit downstream.
-///
-/// This deliberately does NOT substring-match. A `contains("METRE")` test is
-/// satisfied by MILLIMETRE, CENTIMETRE, KILOMETRE, DECAMETRE, HECTOMETRE and
-/// every other prefixed spelling, so a decametre map unit answered 1.0 — a
-/// silent 10x error in the CRS scale. The same shape scaled a projected CRS
-/// by 1000x in #3274. Where no exact answer exists, decline rather than
-/// approximate: an absent MapUnit is honest and has a defined meaning, a
-/// wrong one relocates the model.
-///
-/// Twin of `inferMapUnitScaleFromLabel` in
-/// packages/parser/src/georef-extractor.ts; both are pinned to the shared
-/// vectors in rust/core/tests/fixtures/georef_vectors.json.
-fn infer_map_unit_scale(label: &str) -> Option<f64> {
-    let key: String = label
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric())
-        .map(|c| c.to_ascii_uppercase())
-        .collect();
-    if key.is_empty() {
-        return None;
-    }
-
-    // The US survey foot is a different ratio from the international foot
-    // (1200/3937 vs 0.3048), and is spelled several ways in the wild. These
-    // are the accepted spellings, matched exactly rather than sniffed for.
-    if matches!(
-        key.as_str(),
-        "USSURVEYFOOT" | "USSURVEYFEET" | "USSURVEYFT" | "USFOOT" | "USFEET" | "USFT" | "FTUS"
-    ) {
-        return Some(0.3048006096);
-    }
-
-    // Conversion-based length units (FOOT/FEET/INCH/YARD/MILE), from the same
-    // table the native IfcConversionBasedUnit path uses.
-    if let Some(factor) = crate::units::get_conversion_based_unit_factor(&key) {
-        return Some(factor);
-    }
-
-    // SI: strip the base-unit spelling, then resolve what remains as an
-    // IfcSIPrefix member. An empty remainder is the unprefixed metre.
-    for spelling in ["METRE", "METER"] {
-        if let Some(prefix) = key.strip_suffix(spelling) {
-            if prefix.is_empty() {
-                return Some(1.0);
-            }
-            // `try_`, not `get_`: the infallible form answers 1.0 for an
-            // unrecognised prefix, which is the very approximation this
-            // function exists to refuse.
-            return crate::units::try_si_prefix_multiplier(prefix);
-        }
-    }
-
-    None
-}
-
 /// Where the georeferencing data was authored in the file.
 ///
 /// Single discriminator shared (string-for-string) with the TS parser's
@@ -687,7 +625,7 @@ impl GeoRefExtractor {
                     // Parity with the native IfcProjectedCRS path: derive the
                     // metre scale from the unit label so consumers don't default
                     // explicit non-metre ePSet offsets to metres.
-                    georef.map_unit_scale = value.as_deref().and_then(infer_map_unit_scale);
+                    georef.map_unit_scale = value.as_deref().and_then(crate::unit_labels::infer_map_unit_scale);
                     georef.map_unit = value;
                 }
                 _ => {}

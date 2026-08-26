@@ -182,6 +182,21 @@ describe.skipIf(!existsSync(fixturePath))('extractGeoreferencing shared parity v
       'epset_map_unit_label_MICROMETRE',
       'epset_map_unit_label_SQUARE_METRE_REFUSED',
       'epset_map_unit_label_UNKNOWN_REFUSED',
+      // MapUnit is exporter FREE TEXT, so the plural, the US spelling and the
+      // separated US-survey word orders are ordinary real values. Refusing a
+      // recognisable spelling is its own defect: it silently hands the model
+      // back to the project length unit.
+      'epset_map_unit_label_METRES_PLURAL',
+      'epset_map_unit_label_MILLIMETRES_PLURAL',
+      'epset_map_unit_label_DECAMETRES_PLURAL',
+      'epset_map_unit_label_INCHES_PLURAL',
+      'epset_map_unit_label_metres_lowercase',
+      'epset_map_unit_label_US_SURVEY_FOOT_PARENTHESISED',
+      'epset_map_unit_label_US_SURVEY_FEET_WORD_ORDER',
+      // ...and the controls proving the normalisation did not become a
+      // sniffer: an area unit and an unqualified survey foot still decline.
+      'epset_map_unit_label_SQUARE_METRES_REFUSED',
+      'epset_map_unit_label_SURVEY_FOOT_NO_NATION_REFUSED',
     ]) {
       expect(present.has(want), `ePSet MapUnit label vector \`${want}\` is missing`).toBe(true);
     }

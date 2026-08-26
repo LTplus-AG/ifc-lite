@@ -77,6 +77,7 @@ pub mod schema_gen;
 pub(crate) mod schema_helpers;
 pub mod step_encoding;
 pub mod streaming;
+pub(crate) mod unit_labels;
 pub mod units;
 
 pub use columnar_index::ColumnarEntityIndex;

@@ -51,6 +51,11 @@ interface StepOptions {
   schemaLine?: string;
   /** Lands in the two free-text `FILE_NAME` slots exporters stamp. */
   originatingSystem?: string;
+  /**
+   * The single `FILE_DESCRIPTION` item, spliced verbatim BETWEEN the quotes.
+   * A `'` inside it must be written `''`, as STEP requires.
+   */
+  descriptionItem?: string;
   /** Inflates the author list, pushing the later `FILE_SCHEMA` further in. */
   authorPad?: string;
   dataLines?: string[];
@@ -61,13 +66,14 @@ function buildStep(opts: StepOptions): string {
   const {
     schemaLine = "FILE_SCHEMA(('IFC2X3'));",
     originatingSystem = 'SomeApp Exporter',
+    descriptionItem = 'ViewDefinition [CoordinationView_V2.0]',
     authorPad = '',
     dataLines = [],
   } = opts;
   return [
     'ISO-10303-21;',
     'HEADER;',
-    "FILE_DESCRIPTION(('ViewDefinition [CoordinationView_V2.0]'),'2;1');",
+    `FILE_DESCRIPTION(('${descriptionItem}'),'2;1');`,
     `FILE_NAME('model.ifc','2026-01-01T00:00:00',('${authorPad}Jane Doe'),('Acme'),` +
       `'${originatingSystem}','${originatingSystem}','');`,
     schemaLine,
@@ -130,6 +136,49 @@ describe('schema detection reads FILE_SCHEMA, not free header text', () => {
     // window this case would pass for the wrong reason.
     expect(text.indexOf('FILE_SCHEMA')).toBeGreaterThan(2000);
     const store = await parseStep(text);
+    expect(store.schemaVersion).toBe('IFC2X3');
+  });
+
+  /**
+   * The same rule as every case above -- free text is not a declaration -- but
+   * one level down, where the free text is a verbatim copy of the RECORD
+   * rather than a loose token. A file that has been round-tripped through a
+   * tool which quotes the header it read carries `FILE_SCHEMA(('IFC2X3'))`
+   * inside a `FILE_DESCRIPTION` string, ahead of the real declaration. A
+   * keyword search that does not track quotes takes the copy.
+   */
+  it('a FILE_DESCRIPTION containing a quoted FILE_SCHEMA record does not win', async () => {
+    const store = await parse({
+      descriptionItem: "round-tripped from FILE_SCHEMA((''IFC2X3''))",
+      schemaLine: "FILE_SCHEMA(('IFC4X3_ADD2'));",
+    });
+    expect(store.schemaVersion).toBe('IFC4X3');
+  });
+
+  /**
+   * The other half of the same defect. The header is truncated at `ENDSEC` so
+   * the DATA section is never scanned; a quoted `ENDSEC` in free text would cut
+   * the header BEFORE the real `FILE_SCHEMA` record, losing the declaration and
+   * dropping detection back to the raw-byte fallback.
+   */
+  it('a FILE_DESCRIPTION containing a quoted ENDSEC does not truncate the header', async () => {
+    const store = await parse({
+      descriptionItem: 'exported up to ENDSEC; and beyond',
+      schemaLine: "FILE_SCHEMA(('IFC4X3_ADD2'));",
+    });
+    expect(store.schemaVersion).toBe('IFC4X3');
+  });
+
+  /**
+   * Control for the two cases above: the SAME hostile description with a
+   * DIFFERENT real declaration. Without this, a detector that had regressed to
+   * answering IFC4X3 unconditionally would satisfy both of them.
+   */
+  it('the hostile description does not decide the answer either way', async () => {
+    const store = await parse({
+      descriptionItem: "round-tripped from FILE_SCHEMA((''IFC4X3_ADD2'')) up to ENDSEC;",
+      schemaLine: "FILE_SCHEMA(('IFC2X3'));",
+    });
     expect(store.schemaVersion).toBe('IFC2X3');
   });
 

@@ -124,13 +124,46 @@ function decodeStringList(arg: string): string[] {
 }
 
 /**
+ * Index of `keyword` occurring as a RECORD -- outside any quoted string -- or
+ * -1. `fromIndex` must be a position outside a string; the scan starts its
+ * quote tracking there.
+ *
+ * A plain `indexOf` is not enough here and the reason is the same one #3278 is
+ * about, one level down: header FREE TEXT is not a declaration. STEP strings
+ * are single-quoted with `''` as the escape, and a `FILE_DESCRIPTION` item is
+ * free to contain the literal text `FILE_SCHEMA(('IFC2X3'))` -- an exporter
+ * stamping its own header into a description, a file round-tripped through a
+ * tool that quotes what it read. `indexOf` would take that quoted copy as the
+ * declaration and answer IFC2X3 for an IFC4X3 file. The same applies to
+ * `ENDSEC`: a quoted one would truncate the header before the real
+ * `FILE_SCHEMA` record, losing the declaration entirely.
+ */
+function indexOfRecord(upper: string, keyword: string, fromIndex = 0): number {
+  let inString = false;
+  for (let i = fromIndex; i < upper.length; i++) {
+    const ch = upper[i];
+    if (inString) {
+      if (ch === "'") {
+        if (upper[i + 1] === "'") i++;
+        else inString = false;
+      }
+      continue;
+    }
+    if (ch === "'") inString = true;
+    else if (upper.startsWith(keyword, i)) return i;
+  }
+  return -1;
+}
+
+/**
  * Extract the argument substring inside the parentheses of `KEYWORD( ... )`,
  * starting the search at `fromIndex`. Quote- and nesting-aware so a quoted
- * `)` never closes the record early. Returns `null` if not found.
+ * `)` never closes the record early, and so a quoted KEYWORD is never mistaken
+ * for the record itself. Returns `null` if not found.
  */
 function extractRecordArgs(text: string, keyword: string, fromIndex = 0): string | null {
   const upper = text.toUpperCase();
-  const at = upper.indexOf(keyword, fromIndex);
+  const at = indexOfRecord(upper, keyword, fromIndex);
   if (at < 0) return null;
   let i = at + keyword.length;
   while (i < text.length && /\s/.test(text[i])) i++;
@@ -171,7 +204,7 @@ export function parseSourceHeader(
   const src = asSourceBytes(buffer);
   const cap = Math.min(src.byteLength, MAX_HEADER_BYTES);
   let text = src.decodeUtf8(0, cap);
-  const endSec = text.toUpperCase().indexOf('ENDSEC');
+  const endSec = indexOfRecord(text.toUpperCase(), 'ENDSEC');
   if (endSec >= 0) text = text.slice(0, endSec);
 
   const descRecord = extractRecordArgs(text, 'FILE_DESCRIPTION');

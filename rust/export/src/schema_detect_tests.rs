@@ -57,11 +57,13 @@ fn detect_schema_does_not_take_a_quote_inside_a_comment_as_the_label() {
 
     // Worse than a wrong schema: the label goes into the exported header
     // through `escape()`, so this one shipped `s */ ((` as the schema name.
-    let apostrophe = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA /* Jane's */ (('IFC4X3'));\nENDSEC;\nDATA;\nENDSEC;\n";
+    let apostrophe =
+        "ISO-10303-21;\nHEADER;\nFILE_SCHEMA /* Jane's */ (('IFC4X3'));\nENDSEC;\nDATA;\nENDSEC;\n";
     assert_eq!(detect_schema(apostrophe.as_bytes()), "IFC4X3");
 
     // Inside the argument list rather than before it.
-    let inside = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA((/* 'IFC2X3' */'IFC4X3'));\nENDSEC;\nDATA;\nENDSEC;\n";
+    let inside =
+        "ISO-10303-21;\nHEADER;\nFILE_SCHEMA((/* 'IFC2X3' */'IFC4X3'));\nENDSEC;\nDATA;\nENDSEC;\n";
     assert_eq!(detect_schema(inside.as_bytes()), "IFC4X3");
 }
 

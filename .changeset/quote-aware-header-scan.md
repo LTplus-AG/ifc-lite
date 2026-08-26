@@ -7,10 +7,25 @@ STEP header scanning now treats a `/* ... */` comment as trivia, in both halves.
 
 Three things were wrong, and each lost more than the comment it came from. An apostrophe inside a comment (`/* John's export */`) inverted quote state for the rest of the file, so no record was found and the whole header was lost. A comment between a keyword and its `(` dropped that record. A comma inside a comment read as an argument separator and shifted every later field along, so `originatingSystem` came back holding the preprocessor version.
 
-On the Rust side the same three cost more, because `parse_source_header` returning nothing makes `export_step` fall back to its own defaults: the source file's author, organization and authorization were silently replaced with `ifc-lite`.
+On the Rust side the cost is the exported file, because `export_step` falls back to its own defaults whenever `parse_source_header` returns nothing. One comment in a header was enough to turn this:
 
-`detect_schema` decides which schema a file is CONVERTED to on export, and had four separate ways to answer wrongly. A commented-out declaration (`/* was FILE_SCHEMA(('IFC2X3')); */`) was read as the real one. A comment after the keyword put its first apostrophe forward as the label, so `FILE_SCHEMA /* Jane's */ (('IFC4X3'))` reported `s */ ((` and wrote that into the exported header. A record with no label at all borrowed the next record's first string, so `FILE_SCHEMA(()); FILE_NAME('leak.ifc',...)` reported `leak.ifc`. And a label containing a doubled apostrophe came back still escaped, so the escaping compounded on every pass through the merge path.
+```
+FILE_NAME('export.ifc','2024-01-01T00:00:00',('Ann'),('Acme Ltd'),'ifc-lite','TheirSystem','contract-77');
+FILE_SCHEMA(('IFC4X3'));
+```
+
+into this:
+
+```
+FILE_DESCRIPTION(('Exported from ifc-lite'),'2;1');
+FILE_NAME('export.ifc','',(''),(''),'ifc-lite','ifc-lite','');
+FILE_SCHEMA(('IFC4'));
+```
+
+Author, organization, authorization and time stamp are emptied, the description is overwritten, `originatingSystem` becomes `ifc-lite`, and the file is converted to the wrong schema.
+
+`detect_schema` decides which schema a file is converted to on export, and had four separate ways to answer wrongly. A commented-out declaration (`/* was FILE_SCHEMA(('IFC2X3')); */`) was read as the real one. A comment after the keyword put its first apostrophe forward as the label, so `FILE_SCHEMA /* Jane's */ (('IFC4X3'))` reported `s */ ((` and wrote that into the exported header. A record with no label at all borrowed the next record's first string, so `FILE_SCHEMA(()); FILE_NAME('leak.ifc',...)` reported `leak.ifc`. And a label containing a doubled apostrophe came back still escaped, so the escaping compounded on every pass through the merge path.
 
 Keyword matching now folds ASCII case per character rather than uppercasing a copy of the text. Indexing a copy shifted every offset after a value whose uppercase is longer (`ß` uppercases to `SS`), and a full Unicode fold read `ENDſEC` as `ENDSEC` and truncated the header.
 
-Whitespace is ASCII on both sides, which is what ISO 10303-21 means. The two halves previously disagreed about `U+00A0` and about vertical tab.
+One behaviour is now stricter, in the TypeScript reader only. Whitespace between a record keyword and its `(` is ASCII, which is what ISO 10303-21 means, where it previously accepted any Unicode space separator. A header written with `U+00A0` there resolved before and does not now. That is the answer the Rust half already gave, so the two agree rather than one being widened to match the other.

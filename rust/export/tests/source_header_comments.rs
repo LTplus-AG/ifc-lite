@@ -102,7 +102,11 @@ fn the_accepted_whitespace_set_is_exactly_the_ascii_one() {
         let src = header(&format!("FILE_SCHEMA{sep}(('IFC2X3'));"));
         let h = parse_source_header(&src)
             .unwrap_or_else(|| panic!("{sep:?} should separate a keyword from its paren"));
-        assert_eq!(h.schema_identifiers, vec!["IFC2X3".to_string()], "separator {sep:?}");
+        assert_eq!(
+            h.schema_identifiers,
+            vec!["IFC2X3".to_string()],
+            "separator {sep:?}"
+        );
     }
 
     // And nothing outside it. U+00A0 is not whitespace in ISO 10303-21, so the

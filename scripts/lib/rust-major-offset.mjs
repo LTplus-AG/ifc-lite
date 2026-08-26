@@ -136,8 +136,34 @@ export function rewriteInternalDeps(label, text, version) {
   );
 }
 
-/** The `[workspace.package] version = "…"` literal. */
-export const WORKSPACE_VERSION_PATTERN = /(\[workspace\.package\][^[]*version\s*=\s*")([^"]+)(")/;
+/**
+ * The `[workspace.package] version = "…"` literal.
+ *
+ * Two constraints, and dropping either one reads the wrong number:
+ *
+ * `^[ \t]*version` anchors the key to the start of its line. Without the
+ * anchor, `rust-version = "1.80"` — the ordinary way to declare an MSRV —
+ * satisfies `version\s*=\s*"` on its own tail, and because the run before it
+ * was greedy the pattern preferred the LAST such key in the section. With
+ * `version` first and `rust-version` after it, `sync-versions.js` wrote the
+ * release version into the MSRV field and left the workspace version stale;
+ * with only `rust-version` present the gate read `1.80` as the crate version
+ * instead of refusing. `[workspace.package]` carries no `rust-version` today,
+ * so nothing has shipped wrong — the key simply had to be added once. This is
+ * the same defect shape as `.includes('METRE')` swallowing `MILLIMETRE`
+ * (#3274): one valid token contains another, so a containment test answers
+ * about the wrong key.
+ *
+ * `[^[]*?` keeps the search inside the section. A `[\s\S]*?` run is not
+ * section-bounded, so a manifest whose `[workspace.package]` has no `version`
+ * would match a `version` line in some LATER table and report that instead of
+ * failing. `NO_WORKSPACE_VERSION` must fire there: a missing literal is a gate
+ * with nothing to check, not a gate that goes looking elsewhere.
+ *
+ * The `[ \t]*` allows the leading whitespace TOML permits on an indented key,
+ * which a bare `^version` would refuse.
+ */
+export const WORKSPACE_VERSION_PATTERN = /(\[workspace\.package\][^[]*?^[ \t]*version\s*=\s*")([^"]+)(")/m;
 
 /** An error carrying a machine-readable reason, so a caller can print WHY it
  * refused rather than a bare stack. */

@@ -12,7 +12,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -23,6 +23,7 @@ import {
   parseSemver,
   readMajorOffset,
   scanWorkspaceVersions,
+  WORKSPACE_VERSION_PATTERN,
 } from './rust-major-offset.mjs';
 
 /** A tree with `count` public workspace packages, the highest at `maxVersion`. */
@@ -139,4 +140,53 @@ test('a private package cannot drag the release version up', (t) => {
   mkdirSync(dir);
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'secret', private: true, version: '99.0.0' }));
   assert.equal(computeReleaseVersions(root).npmVersion, '6.0.1');
+});
+
+/**
+ * `rust-version` contains the substring `version`, so a `[workspace.package]`
+ * that declares an MSRV — the ordinary thing to do — offers the pattern two
+ * candidate keys. Every ordering is pinned here because the failure is silent:
+ * `sync-versions.js` writes through this same pattern, so reading the MSRV
+ * means WRITING the release version into the MSRV field and publishing the
+ * crates at the stale one. Same shape as `.includes('METRE')` swallowing
+ * `MILLIMETRE` (#3274).
+ */
+function workspacePackage(...lines) {
+  return `[workspace]\nmembers = ["rust/core"]\n\n[workspace.package]\n${lines.join('\n')}\n\n[workspace.dependencies]\nifc-lite-core = { version = "6.0.1", path = "rust/core" }\n`;
+}
+
+function readWorkspaceVersion(text) {
+  const m = WORKSPACE_VERSION_PATTERN.exec(text);
+  return m ? m[2] : null;
+}
+
+test('the workspace version is read past a rust-version MSRV in either order', () => {
+  assert.equal(readWorkspaceVersion(workspacePackage('version = "6.0.1"', 'rust-version = "1.80"')), '6.0.1');
+  assert.equal(readWorkspaceVersion(workspacePackage('rust-version = "1.80"', 'version = "6.0.1"')), '6.0.1');
+  assert.equal(readWorkspaceVersion(workspacePackage('version = "6.0.1"', 'edition = "2021"')), '6.0.1');
+});
+
+test('a rust-version with no version at all is no match, so NO_WORKSPACE_VERSION fires', () => {
+  assert.equal(readWorkspaceVersion(workspacePackage('rust-version = "1.80"', 'edition = "2021"')), null);
+});
+
+test('the workspace version is not sought outside its own section', () => {
+  const text = '[workspace.package]\nrust-version = "1.80"\n\n[package]\nversion = "9.9.9"\n';
+  assert.equal(readWorkspaceVersion(text), null);
+});
+
+test('an indented version key is still the workspace version', () => {
+  assert.equal(readWorkspaceVersion('[workspace.package]\n  version = "6.0.1"\n  rust-version = "1.80"\n'), '6.0.1');
+});
+
+test('sync-versions rewrites the version key and leaves rust-version alone', () => {
+  const before = workspacePackage('version = "6.0.1"', 'rust-version = "1.80"');
+  const after = before.replace(WORKSPACE_VERSION_PATTERN, '$17.0.0$3');
+  assert.match(after, /^version = "7\.0\.0"$/m);
+  assert.match(after, /^rust-version = "1\.80"$/m);
+});
+
+test('the real root Cargo.toml still yields its workspace version', () => {
+  const cargo = readFileSync(join(import.meta.dirname, '..', '..', 'Cargo.toml'), 'utf8');
+  assert.match(readWorkspaceVersion(cargo) ?? '', /^\d+\.\d+\.\d+$/);
 });

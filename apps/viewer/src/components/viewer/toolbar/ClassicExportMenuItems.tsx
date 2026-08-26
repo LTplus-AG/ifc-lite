@@ -9,7 +9,7 @@
  */
 
 import React from 'react';
-import { Camera, Download, FileJson, FileSpreadsheet, FileText, Globe2 } from 'lucide-react';
+import { Camera, Download, EyeOff, FileJson, FileSpreadsheet, FileText, Globe2 } from 'lucide-react';
 import {
   DropdownMenuItem,
   DropdownMenuSeparator,
@@ -23,6 +23,7 @@ import { useExportCommands, type ResolvedExportCommand } from './useExportComman
 /** Lucide icon per format — exhaustive, so a new registry entry breaks the build here. */
 export const CLASSIC_EXPORT_ICONS: ExportIconSet = {
   ifc: FileText,
+  anonymized: EyeOff,
   glb: Download,
   kmz: Globe2,
   usd: Download,

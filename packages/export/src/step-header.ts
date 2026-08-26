@@ -52,7 +52,8 @@ import type { ExportPass, StepExportOptions, StepExportResult } from './step-exp
  */
 export type StepHeaderOptions = Pick<
   StepExportOptions,
-  'description' | 'author' | 'organization' | 'application' | 'filename' | 'timeStamp'
+  | 'description' | 'author' | 'organization' | 'authorization' | 'originatingSystem'
+  | 'application' | 'filename' | 'timeStamp'
 >;
 
 export function buildStepHeader(
@@ -85,8 +86,8 @@ export function buildStepHeader(
     // preprocessor_version = the tool that WROTE this file (ifc-lite);
     // originating_system keeps the source authoring tool so it isn't erased.
     preprocessorVersion: options.application ?? 'ifc-lite',
-    originatingSystem: sourceHeader?.originatingSystem,
-    authorization: sourceHeader?.authorization,
+    originatingSystem: options.originatingSystem ?? sourceHeader?.originatingSystem,
+    authorization: options.authorization ?? sourceHeader?.authorization,
     application: options.application ?? 'ifc-lite',
     filename: options.filename ?? 'export.ifc',
     timeStamp: options.timeStamp,

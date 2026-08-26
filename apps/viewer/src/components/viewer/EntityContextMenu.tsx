@@ -20,6 +20,7 @@ import {
   Save,
   Trash2,
   CopyPlus,
+  ShieldQuestion,
 } from 'lucide-react';
 import { useViewerStore, resolveEntityRef, resolveGlobalId } from '@/store';
 import type { DuplicateDirection } from '@/store/slices/mutationSlice';
@@ -44,6 +45,7 @@ export function EntityContextMenu() {
   const hideEntity = useViewerStore((s) => s.hideEntity);
   const setSelectedEntityId = useViewerStore((s) => s.setSelectedEntityId);
   const setSelectedEntityIds = useViewerStore((s) => s.setSelectedEntityIds);
+  const setAnonymizedExportRequested = useViewerStore((s) => s.setAnonymizedExportRequested);
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
   // Store-level mutations
   const removeEntity = useViewerStore((s) => s.removeEntity);
@@ -220,6 +222,25 @@ export function EntityContextMenu() {
     closeContextMenu();
   }, [resolvedExpressId, activeDataStore, setSelectedEntityIds, closeContextMenu]);
 
+  // "Export anonymized…" (#2934): make sure the right-clicked entity seeds
+  // `AnonymizedExportDialog`, whose `useAnonymizedExportSet` reads
+  // `selectedEntityIds` (the multi-select GLOBAL-id set, not the scalar —
+  // `apps/viewer/AGENTS.md` "Selection has two channels"). Right-clicking
+  // something already inside a multi-selection keeps that whole selection as
+  // the seed set (matching `handleSetBasket`'s "act on the right-clicked
+  // context, not a silently narrowed one" for an existing selection);
+  // right-clicking outside it replaces the selection with just this entity,
+  // same as a plain left-click would. Then flip the store flag the dialog
+  // (mounted trigger-less in `ViewerLayout.tsx`) watches.
+  const handleExportAnonymized = useCallback(() => {
+    const id = contextMenu.entityId;
+    if (id !== null && !useViewerStore.getState().selectedEntityIds.has(id)) {
+      setSelectedEntityIds([id]);
+    }
+    setAnonymizedExportRequested(true);
+    closeContextMenu();
+  }, [contextMenu.entityId, setSelectedEntityIds, setAnonymizedExportRequested, closeContextMenu]);
+
   const handleCopyId = useCallback(() => {
     if (contextMenu.entityId !== null) {
       const globalId = resolveGlobalId(contextMenu.entityId);
@@ -382,6 +403,7 @@ export function EntityContextMenu() {
           <div className="h-px bg-border my-1" />
 
           <MenuItem icon={Copy} label="Copy GlobalId" onClick={handleCopyId} />
+          <MenuItem icon={ShieldQuestion} label="Export anonymized…" onClick={handleExportAnonymized} />
 
           {/* Store-level mutations (bim.store.*). Only surfaced when there's
               a live mutation view on the model — otherwise these would

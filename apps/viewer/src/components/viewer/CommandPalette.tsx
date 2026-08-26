@@ -50,6 +50,7 @@ import {
   Camera,
   Download,
   FileJson,
+  ShieldQuestion,
   Sun,
   Info,
   Orbit,
@@ -587,6 +588,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d || d.source.byteLength <= 0) return; try { downloadFile(await exportCsvFromBytes(d.source.materialize(), 'quantities'), 'quantities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
       { id: 'export:csv-spatial', label: 'Export CSV: Spatial', keywords: 'hierarchy spreadsheet download', category: 'Export', icon: FileSpreadsheet,
         action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d || d.source.byteLength <= 0) return; try { downloadFile(await exportCsvFromBytes(d.source.materialize(), 'spatial'), 'spatial-hierarchy.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+      { id: 'export:anonymized', label: 'Export Anonymized Subset…', keywords: 'anonymize obfuscate isolate scrub redact bug report reproduction privacy scrub-safe', category: 'Export', icon: ShieldQuestion,
+        action: () => { useViewerStore.getState().setAnonymizedExportRequested(true); } },
       { id: 'export:json', label: 'Export JSON', keywords: 'data entities all download', category: 'Export', icon: FileJson,
         action: () => {
           const d = useViewerStore.getState().ifcDataStore; if (!d) return;

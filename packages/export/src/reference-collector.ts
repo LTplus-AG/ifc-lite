@@ -55,8 +55,13 @@ const ZERO = 0x30;  // '0'
 const NINE = 0x39;  // '9'
 const QUOTE = 0x27; // "'"
 
-/** Entity types that form the shared file infrastructure and must always be included. */
-const INFRASTRUCTURE_TYPES = new Set([
+/**
+ * Entity types that form the shared file infrastructure and must always be
+ * included. Exported for `subset-roots.ts` (`getSubsetEntityIds`), which
+ * needs the same "always a root" set the `visibleOnly` closure uses — see
+ * `reference-collector.ts`'s own doc for why these can never be excluded.
+ */
+export const INFRASTRUCTURE_TYPES = new Set([
   'IFCOWNERHISTORY',
   'IFCAPPLICATION',
   'IFCPERSON',
@@ -119,24 +124,34 @@ export const PRODUCT_TYPES: ReadonlySet<string> = buildProductTypes();
 function buildProductTypes(): Set<string> {
   const products = new Set<string>();
   for (const table of [ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3]) {
-    collectProductNames(table, products);
+    collectDescendantNames(table, 'IfcProduct', products);
   }
   return products;
 }
 
-/** Add the upper-cased name of every `IfcProduct` descendant declared in `table`. */
-function collectProductNames(table: readonly IfcEntityInfo[], out: Set<string>): void {
+/**
+ * Add the upper-cased name of every `ancestor` descendant declared in
+ * `table`. Generalised from a product-only `collectProductNames` (#2934) so
+ * `subset-roots.ts` can derive `IFC_ROOT_TYPES` — every `IfcRoot` descendant
+ * — from the same walk instead of a second, hand-maintained copy; behaviour
+ * for the existing `'IfcProduct'` caller (`buildProductTypes`) is unchanged.
+ */
+export function collectDescendantNames(
+  table: readonly IfcEntityInfo[],
+  ancestor: string,
+  out: Set<string>,
+): void {
   const parentOf = new Map<string, string | null | undefined>();
   for (const entity of table) parentOf.set(entity.name, entity.parent);
 
   for (const entity of table) {
-    // The walk starts at the parent, so `IfcProduct` itself — abstract, and
+    // The walk starts at the parent, so `ancestor` itself — abstract, and
     // never instantiated — is not added, while every descendant is.
     let cursor = parentOf.get(entity.name) ?? null;
     // Depth-bounded so a malformed table cannot spin here; the deepest IFC
     // inheritance chain is far under this bound.
     for (let depth = 0; cursor !== null && depth < 64; depth++) {
-      if (cursor === 'IfcProduct') {
+      if (cursor === ancestor) {
         out.add(entity.name.toUpperCase());
         break;
       }
@@ -473,11 +488,8 @@ export function collectReferencedEntityIds(
       // at all). Gated on the cheap `hasSourceMutation` check so an entity
       // with nothing queued — the overwhelming majority — still takes the
       // plain byte scan below with no decode/parse cost.
-      const generalGroups = relationshipRefGroupsFromSourceLine(
-        entityIndex,
-        entityId,
-        decodeRange(src, ref.byteOffset, ref.byteOffset + ref.byteLength),
-      );
+      const decodedLine = decodeRange(src, ref.byteOffset, ref.byteOffset + ref.byteLength);
+      const generalGroups = relationshipRefGroupsFromSourceLine(entityIndex, entityId, decodedLine);
       for (const group of generalGroups) {
         if (Array.isArray(group)) refs.push(...group);
         else refs.push(group as number);
@@ -494,8 +506,47 @@ export function collectReferencedEntityIds(
       // union can only ADD ids already missed by the positional parse — the
       // walk de-dupes via `visited`, so re-adding an id the parse already
       // found costs nothing beyond the duplicate push.
+      //
+      // BUT the scan reads the entity's ORIGINAL, pre-override bytes — it has
+      // no notion that a queued positional/named-attribute mutation REPLACED
+      // one parsed slot's value. Left unguarded, that resurrects the exact id
+      // an override retargeted AWAY from (e.g. `anonymize-placement.ts`
+      // repointing `IfcLocalPlacement.RelativePlacement` off the original,
+      // real-coordinate axis onto a freshly cloned zeroed one): the old axis
+      // id is absent from `generalGroups` (correctly superseded) but the raw
+      // scan still finds `#<oldAxis>` sitting right there in the unmutated
+      // bytes and pushes it straight back in, so the un-anonymized axis and
+      // its `IfcCartesianPoint` survive in the export, orphaned but present
+      // with the real coordinate in plaintext (blocker found in review: the
+      // two predicates — "was this slot overridden" and "is this id still
+      // referenced" — disagreed again, the same defect class as #2637).
+      //
+      // Fix: an id only belongs in `removedByOverride` when it was captured
+      // at a slot `extractRelationshipRefGroupsIndexed` COULD parse (i.e. it
+      // is present in `originalGroups`) and the effective, post-override
+      // answer (`generalGroups`, already flattened into `refs` above) no
+      // longer contains it. A doubly-nested-list ref was never parseable in
+      // the first place — its slot yields `undefined` in `originalGroups` —
+      // so it can never land in this set and the union still rescues it,
+      // exactly as before. An id genuinely still referenced from some OTHER,
+      // un-overridden slot of the same entity stays out of this set too
+      // (set membership, not per-slot bookkeeping), so it is never wrongly
+      // dropped.
+      const originalGroups = extractRelationshipRefGroupsIndexed(decodedLine);
+      const effectiveFlat = new Set(refs);
+      const removedByOverride = new Set<number>();
+      for (const group of originalGroups) {
+        if (group === undefined) continue;
+        for (const id of Array.isArray(group) ? group : [group]) {
+          if (!effectiveFlat.has(id)) removedByOverride.add(id);
+        }
+      }
       const mutatedSpan = src.slice(ref.byteOffset, ref.byteOffset + ref.byteLength);
-      extractRefsFromBytes(mutatedSpan, 0, mutatedSpan.length, refs);
+      const scanned: number[] = [];
+      extractRefsFromBytes(mutatedSpan, 0, mutatedSpan.length, scanned);
+      for (const id of scanned) {
+        if (!removedByOverride.has(id)) refs.push(id);
+      }
     } else {
       // Hand the byte scanner an already-narrowed record. `slice` is a
       // `subarray` on a contiguous source, so this is the same zero-copy read.
@@ -716,29 +767,45 @@ export function relationshipRefsSurviveExclusion(
  * #2637: this used to collapse a mixed list to "every remaining id
  * excluded" and block on it).
  */
+/**
+ * Classify ONE already-split top-level STEP argument token as a
+ * `relationshipRefsSurviveExclusion` group: a parenthesised SET/LIST becomes
+ * a `number[]` of the `#N` members it holds (or `undefined` when it mixes in
+ * a non-reference item — see {@link extractRelationshipRefGroupsIndexed}'s
+ * doc for why a mixed list can never be the reason a line is withheld), a
+ * bare `#N` becomes that `number`, and anything else (`$`, a literal, an
+ * enum token) becomes `undefined`.
+ *
+ * Factored out of {@link extractRelationshipRefGroupsIndexed} so a caller
+ * that already has an entity's arguments split (`subset-entity-reader.ts`'s
+ * `readEntityArgs`, used by `anonymize-export.ts` to pre-prune an
+ * unresolvable relationship ahead of the closure walk) can classify each one
+ * without re-deriving this same char-by-char grouping rule a second time —
+ * exactly the class of duplicated STEP-line parsing this module's own
+ * comments (#2637) call out as a defect source.
+ */
+export function refGroupFromArg(attr: string): number | number[] | undefined {
+  if (attr.length >= 2 && attr.charCodeAt(0) === 0x28 /* '(' */ && attr.charCodeAt(attr.length - 1) === 0x29 /* ')' */) {
+    const inner = attr.slice(1, -1);
+    const items = inner.trim() === '' ? [] : splitTopLevelArgs(inner);
+    const ids: number[] = [];
+    let hasNonRefItem = false;
+    for (const item of items) {
+      const refMatch = item.match(/^#(\d+)$/);
+      if (refMatch) ids.push(Number(refMatch[1]));
+      else hasNonRefItem = true;
+    }
+    return hasNonRefItem ? undefined : ids;
+  }
+  const refMatch = attr.match(/^#(\d+)$/);
+  return refMatch ? Number(refMatch[1]) : undefined;
+}
+
 function extractRelationshipRefGroupsIndexed(line: string): Array<number | number[] | undefined> {
   const match = line.match(/^(#\d+\s*=\s*\w+\()([\s\S]*)(\)\s*;)\s*$/);
   if (!match) return [];
   const attrs = splitTopLevelArgs(match[2]);
-  const groups: Array<number | number[] | undefined> = [];
-  for (const attr of attrs) {
-    if (attr.length >= 2 && attr.charCodeAt(0) === 0x28 /* '(' */ && attr.charCodeAt(attr.length - 1) === 0x29 /* ')' */) {
-      const inner = attr.slice(1, -1);
-      const items = inner.trim() === '' ? [] : splitTopLevelArgs(inner);
-      const ids: number[] = [];
-      let hasNonRefItem = false;
-      for (const item of items) {
-        const refMatch = item.match(/^#(\d+)$/);
-        if (refMatch) ids.push(Number(refMatch[1]));
-        else hasNonRefItem = true;
-      }
-      groups.push(hasNonRefItem ? undefined : ids);
-      continue;
-    }
-    const refMatch = attr.match(/^#(\d+)$/);
-    groups.push(refMatch ? Number(refMatch[1]) : undefined);
-  }
-  return groups;
+  return attrs.map(refGroupFromArg);
 }
 
 /**

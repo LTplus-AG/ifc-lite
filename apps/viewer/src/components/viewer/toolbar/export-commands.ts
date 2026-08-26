@@ -25,6 +25,7 @@
 
 import type React from 'react';
 import { ExportDialog } from '../ExportDialog';
+import { AnonymizedExportDialog } from '../anonymized-export/AnonymizedExportDialog';
 import { GLBExportDialog } from '../GLBExportDialog';
 import { KmzExportDialog } from '../KmzExportDialog';
 import { EnergyModelExportDialog } from '../EnergyModelExportDialog';
@@ -108,6 +109,23 @@ export const EXPORT_COMMANDS = [
     requires: 'model',
     group: 0,
     emphasis: 'large',
+  },
+  {
+    // Own group (a fractional number between 'ifc' and 'glb' — group numbers
+    // only need to differ from their neighbours, not be sequential integers):
+    // sharing group 0 with 'ifc' would put the ribbon's headline `large`
+    // button inside the same small-button stack as this `small` one (the
+    // group-of-1-large special case in `RibbonExportGroup` no longer
+    // applies once the group has two members).
+    id: 'anonymized',
+    kind: 'dialog',
+    Dialog: AnonymizedExportDialog,
+    label: 'Anonymized',
+    menuLabel: 'Export anonymized subset (selection)',
+    tooltip: 'Export selected objects as an anonymized IFC',
+    requires: 'model',
+    group: 0.5,
+    emphasis: 'small',
   },
   {
     id: 'glb',

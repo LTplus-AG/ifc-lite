@@ -27,6 +27,7 @@ import { isCollabEnabled } from '@/lib/collab/config';
 import { toast } from '@/components/ui/toast';
 import { parseRoleFromToken } from '@/lib/collab/share-link';
 import { EntityContextMenu } from './EntityContextMenu';
+import { AnonymizedExportDialog } from './anonymized-export/AnonymizedExportDialog';
 import { useDuplicateShortcut } from './useDuplicateShortcut';
 import { HoverTooltip } from './HoverTooltip';
 import { ListPanel } from './lists/ListPanel';
@@ -387,6 +388,14 @@ export function ViewerLayout() {
         <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
         <SearchModal />
         <TourHost />
+        {/* Trigger-less: this instance exists so the entity context menu's
+            "Export anonymized…" and the Command Palette's "export:anonymized"
+            (both of which only set `anonymizedExportRequested`, never render a
+            trigger of their own) have a mounted dialog to open regardless of
+            whether the export toolbar dropdown is open. Same host pattern as
+            `FlavorDialog` in `StatusBar.tsx`. The toolbar-registered instance
+            (`toolbar/export-commands.ts`) is the one with a `trigger`. */}
+        <AnonymizedExportDialog />
 
         {/* Main Toolbar — compact MobileToolbar on mobile; on desktop the
             user picks classic strip vs tabbed ribbon (issue #1686). */}

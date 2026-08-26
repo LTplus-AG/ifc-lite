@@ -118,7 +118,7 @@ pub fn classify_type_name_with_content(type_name: &str, entity_bytes: &[u8]) -> 
 /// every other named/flag arm here stays byte-identical to what it was
 /// before #1910 -- the only new code path is the explicit OR-in above.
 pub fn classify_type_name(type_name: &str) -> u8 {
-    use ifc_lite_core::{has_geometry_by_name, IfcType};
+    use ifc_lite_core::{has_geometry_by_name, type_product_ifc_type};
     let named = match type_name {
         "IFCPROJECT" => PREPASS_CLASS_PROJECT,
         "IFCSITE" => return PREPASS_CLASS_SITE, // site is job + site-record; flags implied
@@ -140,11 +140,8 @@ pub fn classify_type_name(type_name: &str) -> u8 {
         return named;
     }
     let mut class = PREPASS_CLASS_NONE;
-    if type_name.ends_with("TYPE") || type_name.ends_with("STYLE") {
-        let ty = IfcType::from_str(type_name);
-        if ty.is_subtype_of(IfcType::IfcTypeProduct) {
-            class |= PREPASS_CLASS_FLAG_TYPE_CANDIDATE;
-        }
+    if type_product_ifc_type(type_name).is_some() {
+        class |= PREPASS_CLASS_FLAG_TYPE_CANDIDATE;
     }
     if has_geometry_by_name(type_name) {
         class |= PREPASS_CLASS_FLAG_GEOMETRY_JOB;

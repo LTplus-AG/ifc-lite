@@ -5,8 +5,13 @@
 # Advisory viewer performance benchmark. Runs the real viewer (production
 # build + real WASM pipeline) against the two small fixtures and reports
 # per-metric deltas vs tests/benchmark/baseline.json as a PR comment + step
-# summary. It never fails the PR — regressions are surfaced, not blocking
-# (promote to blocking only once the runner-to-runner noise is understood).
+# summary. A regression is still ADVISORY — surfaced, not blocking (promote to
+# blocking only once the runner-to-runner noise is understood). A HARNESS FAULT
+# is not: if the baseline cannot be read, or a model in VIEWER_BENCHMARK_FILES
+# has no baseline entry, this job goes RED. That distinction is the point --
+# "no regressions" over a model that was never compared is not a result. This
+# header used to say the job could never fail, which stopped being true in the
+# same PR that added the refusal (#3200).
 #
 # The committed baseline is CI-recorded so this job diffs like-for-like:
 # dispatch this workflow with `record_baseline` to produce a refreshed
@@ -145,6 +150,7 @@ jobs:
         run: rm -f tests/benchmark/benchmark-results/viewer-*.json tests/benchmark/benchmark-results/viewer-*.console.log
 
       - name: Run viewer benchmark
+        id: benchmark
         env:
           VIEWER_BENCHMARK_FILES: 'tests/models/ara3d/AC20-FZK-Haus.ifc,tests/models/various/01_Snowdon_Towers_Sample_Structural(1).ifc'
           # Advisory: the spec logs threshold violations instead of failing;
@@ -155,16 +161,28 @@ jobs:
           PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/playwright-benchmark.json
         run: pnpm test:benchmark:viewer:ci
 
-      - name: Check against baseline (advisory)
+      # The check can now FAIL on a harness fault (#3200) -- a renamed fixture
+      # that matches no baseline, or a metric the baseline had and this run
+      # lost. Those are "the benchmark did not run", not "the benchmark is
+      # slow", so `--advisory` does not cover them.
+      #
+      # The summary is written FIRST, unconditionally: the report is the
+      # DIAGNOSIS of that failure, and a `bash -e` step that dies before the
+      # `cat` would throw away exactly the output someone needs to fix it.
+      - name: Check against baseline (regressions advisory, harness faults fatal)
         run: |
+          set +e
           node scripts/check-benchmark-regression.js --advisory --markdown "$RUNNER_TEMP/benchmark-report.md"
-          cat "$RUNNER_TEMP/benchmark-report.md" >> "$GITHUB_STEP_SUMMARY"
+          status=$?
+          set -e
+          [ -f "$RUNNER_TEMP/benchmark-report.md" ] && cat "$RUNNER_TEMP/benchmark-report.md" >> "$GITHUB_STEP_SUMMARY"
+          exit $status
 
       # Sticky comment: update the existing benchmark comment if present,
       # else create one. Best-effort — fork PRs get a read-only token, and
       # the step summary above already carries the same report.
       - name: Comment benchmark report on PR
-        if: github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -172,6 +190,16 @@ jobs:
         run: |
           marker='<!-- viewer-benchmark-report -->'
           body_file="$RUNNER_TEMP/benchmark-report.md"
+          # If the benchmark died before writing a report, `-F body=@` fails,
+          # continue-on-error swallows it, and the PREVIOUS run's comment is
+          # left standing -- a crashed run presenting as the last green one.
+          # Say what happened instead. The marker must stay in the body or the
+          # next run creates a second comment rather than updating this one.
+          if [ ! -s "$body_file" ]; then
+            printf '%s\n\n%s\n' "$marker" \
+              '⚠ The benchmark job produced no report — it failed or was cancelled before the check step. This replaces a stale result rather than leaving one standing; see the job log.' \
+              > "$body_file"
+          fi
           # --paginate applies --jq per page, so a multi-page comment list can
           # emit one line per page — keep only the first id.
           existing=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" --paginate \
@@ -197,12 +225,28 @@ jobs:
       # run's numbers into baseline.json and upload it as an artifact. A human
       # (or agent) commits it via a normal PR so the change is reviewed like
       # any other — this job intentionally has no push access.
+      # `always()` so this still runs when the baseline COMPARISON failed --
+      # that failure is often exactly why the dispatch was sent, and gating on
+      # job success deadlocks the only supported repair path (#3200).
+      #
+      # But gated on the BENCHMARK step itself succeeding. The spec writes each
+      # result JSON BEFORE asserting `streamCompleteMs` is present and
+      # `totalMeshes > 0`, so a failed load leaves a JSON on disk that
+      # `update-benchmark-baseline.mjs` would happily accept -- refreshing the
+      # baseline from a run that did not load the model. That is a worse
+      # outcome than a stale baseline, and it would look like a successful
+      # refresh.
       - name: Record refreshed baseline
-        if: github.event_name == 'workflow_dispatch' && inputs.record_baseline
+        id: record
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.record_baseline && steps.benchmark.outcome == 'success'
         run: node scripts/update-benchmark-baseline.mjs --environment "github-actions ubuntu-latest, viewer-benchmark-ci (headless Chrome, SwiftShader ANGLE), production build"
 
+      # Gated on the RECORD step, not on the dispatch inputs: a bare `always()`
+      # here would upload the COMMITTED baseline.json unchanged when the record
+      # step failed or was skipped, publishing it as a `benchmark-baseline`
+      # artifact that looks like a refresh of numbers never written.
       - name: Upload refreshed baseline
-        if: github.event_name == 'workflow_dispatch' && inputs.record_baseline
+        if: always() && steps.record.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: benchmark-baseline

@@ -193,7 +193,7 @@ const ALLOWLIST_DIGESTS = {
   'packages/renderer': '10548485518942557631',
   'packages/sandbox': '7650074321748792699',
   'packages/sdk': '885187935350689181',
-  'packages/server-client': '713850551357101674',
+  'packages/server-client': '7638729328149367977',
   'packages/source-dalux': '11927553717016520308',
   'packages/source-dropbox': '13897585807232807340',
   'packages/viewer': '17290688824834287099',

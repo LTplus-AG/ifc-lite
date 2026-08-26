@@ -719,3 +719,56 @@ fn inheritance_survives_the_streaming_path_identically() {
 
     assert_eq!(built.entities, streamed);
 }
+
+/// #3187: the same #1518 join, for an IFC2X3 type product IFC4X3 dropped.
+///
+/// `IfcDoorStyle` is an `IfcTypeProduct` in IFC2X3, so a real IFC2X3 file can
+/// hang its door geometry off one. Both this pass and the geometry pass gated
+/// on a bare `IfcType::from_str`, which answers `Unknown` for it, so BOTH
+/// dropped it and the join was vacuously satisfied by rendering nothing. Now
+/// that both resolve legacy-aware they must still agree: a mesh and a row, or
+/// neither.
+#[test]
+fn a_legacy_ifc2x3_type_product_gets_both_a_mesh_and_a_row() {
+    let ifc = "ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('issue-3187'),'2;1');
+FILE_NAME('t.ifc','2026-08-25T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0$ScRe4drECQ4DMSqUjd6d',$,'P',$,$,$,$,(#2),#3);
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
+#3=IFCUNITASSIGNMENT((#6));
+#4=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCAXIS2PLACEMENT3D(#4,$,$);
+#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#43=IFCDOORSTYLE('2n5ASfQfT84eP9h$zLLJ4A',$,'Door',$,$,$,(#44),$,.NOTDEFINED.,.NOTDEFINED.,.F.,.F.);
+#44=IFCREPRESENTATIONMAP(#45,#46);
+#45=IFCAXIS2PLACEMENT3D(#4,$,$);
+#46=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#48));
+#48=IFCTRIANGULATEDFACESET(#49,$,.T.,((1,2,3),(1,2,4),(1,4,3),(2,3,4)),$);
+#49=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(0.,1.,0.),(0.,0.,1.)));
+ENDSEC;
+END-ISO-10303-21;
+";
+    let meshed = ifc_lite_processing::process_geometry(ifc)
+        .meshes
+        .iter()
+        .filter(|m| m.express_id == 43)
+        .count();
+    assert_eq!(meshed, 1, "the geometry pass must mesh the IfcDoorStyle's orphan map");
+
+    let mut rows = Vec::new();
+    stream_export_model(ifc.as_bytes(), |r| rows.push(r));
+    let row = rows
+        .iter()
+        .find(|r| r.express_id == 43)
+        .expect("the meshed IfcDoorStyle must get an attribute row, not an orphan GLB node");
+    assert_eq!(
+        row.ifc_type, "IfcDoorType",
+        "the row carries the legacy-resolved name, matching the mesh's ifcType"
+    );
+    assert_eq!(row.global_id.as_deref(), Some("2n5ASfQfT84eP9h$zLLJ4A"));
+    assert_eq!(row.name.as_deref(), Some("Door"));
+}

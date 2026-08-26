@@ -113,6 +113,30 @@ export function bumpLevel(baseline, current) {
   return 'none';
 }
 
+/**
+ * Is `current` strictly AHEAD of `baseline`?
+ *
+ * [[bumpLevel]] answers which component differs, never in which direction, so
+ * a release carrying 6.0.2 against a crates.io baseline of 7.0.0 reads as a
+ * `major` — the top rank, which no `required` verdict can exceed. Every
+ * comparison for that crate would then pass without examining anything, and
+ * the checked line would read `7.0.0 -> 6.0.2 (major; requires major)`.
+ *
+ * This is HARDENING, not a fixed live defect: the Cargo version is derived
+ * from the highest npm package version by scripts/sync-versions.js, and
+ * changesets never walk a version backwards, so no route that reaches it is
+ * known. The gate refuses it anyway — a comparison whose direction is
+ * unchecked is exactly the shape this file exists to refuse.
+ */
+export function isVersionAdvanced(baseline, current) {
+  const b = baseline.split('.').map(Number);
+  const c = current.split('.').map(Number);
+  for (let i = 0; i < 3; i += 1) {
+    if (c[i] !== b[i]) return c[i] > b[i];
+  }
+  return false;
+}
+
 const RANK = { none: 0, patch: 1, minor: 2, major: 3 };
 
 /**
@@ -203,12 +227,37 @@ export function checkRustSemver({ crates, workspaceVersion, latestPublished, run
       continue;
     }
 
+    // Every version comparison below is arithmetic on three integers, so a
+    // baseline that is not a semver triple makes each one NaN — and a NaN
+    // comparison reads as "no change", which reads as a pass.
+    if (!/^\d+\.\d+\.\d+$/.test(baseline)) {
+      failures.push(
+        `BAD_BASELINE: ${crate}'s latest release on crates.io reads ` +
+          `${JSON.stringify(baseline)}, which is not a semver triple, so there is no ` +
+          'comparable baseline to judge this release against.'
+      );
+      continue;
+    }
+
     const carried = bumpLevel(baseline, workspaceVersion);
     if (RANK[carried] === 0) {
       // Same version as the one already on crates.io: release-crates.mjs skips
       // publishing it, so there is no new version whose bump could be wrong.
       checked.push(`${crate} ${baseline} — already published at this version, not republished`);
       skipped += 1;
+      continue;
+    }
+
+    // Direction, which `bumpLevel` cannot see. Checked BEFORE the expensive
+    // run: there is nothing useful to compare a backwards version against.
+    if (!isVersionAdvanced(baseline, workspaceVersion)) {
+      failures.push(
+        `VERSION_NOT_ADVANCED: ${crate} is on crates.io at ${baseline}, but this release ` +
+          `carries ${workspaceVersion}, which is not ahead of it. \`bumpLevel\` reports which ` +
+          'component differs, not in which direction, so a backwards version reads as the ' +
+          'largest bump there is and no required verdict could ever exceed it — the crate ' +
+          'would pass this gate without its API being judged at all.'
+      );
       continue;
     }
 

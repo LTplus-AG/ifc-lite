@@ -35,6 +35,7 @@ import {
   readVersionOrNull,
   bumpLevel,
   interpretRun,
+  isVersionAdvanced,
   checkRustSemver,
   CRATE_FLOOR,
 } from './check-rust-semver.mjs';
@@ -214,14 +215,89 @@ test('a crate already published at this exact version is reported, and NOT count
   assert.match(result.checked[0], /already published at this version/);
 });
 
-test('the CLI says plainly that nothing was compared when nothing is republished', () => {
+test('the CLI never reports a compatibility result it did not compute', () => {
+  // This test used to `return` before asserting whenever the CLI exited
+  // non-zero or printed anything other than "nothing to gate" — which is
+  // EVERY run on a machine without cargo-semver-checks, i.e. every CI runner
+  // but release.yml's. It executed no assertion at all and still reported a
+  // pass. It now classifies the outcome and asserts in each branch, and an
+  // outcome it cannot classify is a failure rather than a silent skip.
   const res = spawnSync(process.execPath, [join(SCRIPTS, 'check-rust-semver.mjs')], {
     encoding: 'utf8',
     env: { ...process.env, IFC_LITE_SEMVER_TOOLCHAIN: 'stable' },
   });
-  if (res.status !== 0) return; // a real comparison ran, or the tool is absent
-  if (!/nothing to gate/.test(res.stdout)) return;
-  assert.match(res.stdout, /No API was compared/);
+  const out = `${res.stdout || ''}${res.stderr || ''}`;
+  const CLAIMS_A_RESULT = /every Rust API change fits/;
+
+  if (res.status === 2) {
+    // cargo-semver-checks absent: refuse, and do not claim a result.
+    assert.match(out, /TOOL_MISSING/);
+    assert.doesNotMatch(out, CLAIMS_A_RESULT);
+    return;
+  }
+  if (res.status === 0 && /nothing to gate/.test(out)) {
+    assert.match(out, /No API was compared/);
+    assert.doesNotMatch(out, CLAIMS_A_RESULT);
+    return;
+  }
+  if (res.status === 0) {
+    // A real comparison ran; the success line must say how many crates it
+    // actually compared, not merely that something passed.
+    assert.match(out, /\d+ of \d+ crate\(s\) compared against crates\.io/);
+    return;
+  }
+  if (res.status === 1) {
+    assert.match(out, /Rust crate semver gate failed/);
+    return;
+  }
+  assert.fail(`the gate exited ${res.status} with output this test cannot classify:\n${out}`);
+});
+
+test('VACUITY: a release version BEHIND crates.io fails with VERSION_NOT_ADVANCED', () => {
+  // The construction that showed `bumpLevel` is direction-blind: a baseline of
+  // 7.0.0 against a release carrying 6.0.2 is reported as a `major`, the top
+  // rank, so `RANK[required] > RANK[carried]` can never fire — all seven
+  // crates requiring a major passed, printing `7.0.0 -> 6.0.2 (major;
+  // requires major)`. HARDENING, not a fixed live defect: changesets never
+  // walk a version backwards, and no route that reaches this is known.
+  const result = run({
+    workspaceVersion: '6.0.2',
+    latestPublished: () => '7.0.0',
+    runSemverChecks: () => NEEDS_MAJOR,
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.failures.length, SEVEN.length);
+  for (const f of result.failures) assert.match(f, /^VERSION_NOT_ADVANCED: /);
+  // And it must not have printed the reassuring comparison line for any of them.
+  assert.deepEqual(
+    result.checked.filter((line) => /7\.0\.0 -> 6\.0\.2/.test(line)),
+    []
+  );
+});
+
+test('VERSION_NOT_ADVANCED catches a single-component regression too', () => {
+  const result = run({ workspaceVersion: '6.0.1', latestPublished: () => '6.0.2' });
+  assert.equal(result.ok, false);
+  assert.match(result.failures[0], /^VERSION_NOT_ADVANCED: /);
+});
+
+test('bumpLevel is direction-blind BY DESIGN; the direction is checked separately', () => {
+  // Pinned so the two halves of the judgement stay separable: bumpLevel names
+  // the component, isVersionAdvanced names the direction.
+  assert.equal(bumpLevel('7.0.0', '6.0.2'), 'major');
+  assert.equal(bumpLevel('6.0.2', '7.0.0'), 'major');
+  assert.equal(isVersionAdvanced('7.0.0', '6.0.2'), false);
+  assert.equal(isVersionAdvanced('6.0.2', '7.0.0'), true);
+  assert.equal(isVersionAdvanced('6.0.1', '6.0.1'), false);
+});
+
+test('VACUITY: a baseline that is not a semver triple fails with BAD_BASELINE', () => {
+  // Every comparison against it is NaN, and a NaN comparison reads as
+  // "no change", which reads as a pass.
+  const result = run({ latestPublished: () => '6.0.1-alpha.1' });
+  assert.equal(result.ok, false);
+  assert.equal(result.failures.length, SEVEN.length);
+  assert.match(result.failures[0], /^BAD_BASELINE: /);
 });
 
 test('a mixed run counts only the crates actually compared', () => {

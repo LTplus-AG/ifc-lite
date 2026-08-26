@@ -1,0 +1,69 @@
+{
+  "$comment": [
+    "Config for scripts/check-pr-review-signal.mjs (issue #3312).",
+    "This file lives under scripts/, and .github/workflows/pr-review-signal.yml carries NO",
+    "path filter, so the job that reads it fires on every pull_request event regardless of",
+    "which files changed. That is deliberate: #3305's gate could not fire on the file it",
+    "guarded because that file was in no path filter, and a presence check that can itself be",
+    "filtered out is the same defect.",
+    "`reviewers` are the check CONTEXTS whose descriptions are adjudicated. Adding an",
+    "unrelated context here would make this gate opine on free text it has no business",
+    "reading; keep it to bot reviewers that claim a verdict on the code.",
+    "`phrases` are matched as case-insensitive PREFIXES of the description, and only against",
+    "a `success` state. `neutral` and `failure` already communicate 'no verdict'.",
+    "`excludeJobKeys` drops `test` -- the `Build + WASM + Rust + Node` aggregate. It is",
+    "`needs:` twelve jobs and publishes NO check run until every one of them finishes, so",
+    "waiting for it means waiting out the whole matrix. Measured by `created_at` -- when a",
+    "lane becomes PRESENT, which is what this gate polls for, not `started_at` -- from each",
+    "run's own creation, over the 68 completed test.yml PR runs of 2026-08-25/26 that",
+    "published it: the aggregate appeared at min 509, median 894, max 2067 seconds, with 33",
+    "of the 68 past the 900 s budget. The last NON-aggregate lane appeared at min 161,",
+    "median 190, p95 522, max 845 seconds: 0 of the 68 past it. Requiring the aggregate makes",
+    "the wait a function of the SUITE's total runtime, which grows, and would false-fail half",
+    "of every green PR; requiring only the lanes makes it a function of how fast GitHub",
+    "creates check runs. Nothing is lost: the aggregate is one of only two contexts in main's ruleset, so",
+    "branch protection already blocks on it, and the #3294 total-absence shape still fails",
+    "here naming all fifteen lanes. Asserted in check-pr-review-signal.test.mjs.",
+    "`reviewVerdictSeverity` is `warn`, and that is a considered downgrade rather than a",
+    "retreat -- see the note on the key itself."
+  ],
+  "reviewers": ["CodeRabbit", "Cursor Bugbot", "cursor[bot]", "Vercel Agent Review"],
+  "phrases": [
+    {
+      "startsWith": "Review rate limited",
+      "means": "the reviewer hit its quota and read none of this diff",
+      "observedOn": ["#3296", "#3301", "#3302", "#3304", "#3305", "#3307", "#3251", "#3311"]
+    },
+    {
+      "startsWith": "Review skipped",
+      "means": "the reviewer declined to run at all",
+      "observedOn": ["#3294"]
+    },
+    {
+      "startsWith": "Bugbot couldn't run",
+      "means": "the reviewer was out of quota",
+      "observedOn": []
+    },
+    {
+      "startsWith": "Bugbot could not run",
+      "means": "the reviewer was out of quota",
+      "observedOn": []
+    }
+  ],
+  "$reviewVerdictSeverityComment": [
+    "WARN, NOT FAIL, AND THE EVIDENCE IS THAT A RATE-LIMITED STATUS NEVER SELF-HEALS.",
+    "The full status history on such a SHA is `queued -> in progress -> success/Review rate",
+    "limited`, and then nothing, forever. The quota recovers; the status on that commit does",
+    "not. So `fail` means red until a human pushes a commit or triggers an on-demand review --",
+    "on 8 of the 19 open PRs measured the day this shipped. That is exactly the class this repo",
+    "already ruled on when it marked check-coderabbit-review.mjs and check-pr-green.mjs",
+    "`@unwired-by-design`: 'a required check built on transient GitHub state fails for reasons",
+    "unrelated to the diff under test'. The finding is still printed and still quotes the",
+    "reviewer verbatim, so nothing is hidden -- it just does not hold the PR red on a quota.",
+    "The LANE half has no knob and cannot be downgraded: a missing test lane is a fact about",
+    "this diff, not about GitHub."
+  ],
+  "reviewVerdictSeverity": "warn",
+  "excludeJobKeys": ["test"],
+  "forkLanesAreAdvisory": true
+}

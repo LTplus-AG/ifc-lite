@@ -1,0 +1,124 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: PR review signal
+
+# NO `paths:` FILTER, DELIBERATELY, AND FOR TWO SEPARATE REASONS.
+#
+# 1. This gate's question is "did the other lanes run at all". A path filter
+#    would make it skip on exactly the changes whose lanes are missing.
+# 2. It reads scripts/pr-review-signal.config.json. #3305's gate could not fire
+#    on the file it guarded because that file was in no path filter, so the gate
+#    existed, was correct, and was unreachable on its own input. With no filter
+#    here, no edit to the script or its config can dodge the job that runs them
+#    ON THE PATH THAT MERGES IT. Asserted in
+#    scripts/check-pr-review-signal.test.mjs.
+#
+#    THE SCOPE OF THAT CLAIM, stated rather than left to be discovered: the
+#    `branches: [main]` filter below means a PR based on a FEATURE branch does
+#    not run this job, so both files can change on such a PR with no gate run.
+#    That is not a hole to close by widening the filter -- the required lane set
+#    is derived from test.yml, which carries the same `branches: [main]`, so on
+#    a feature-targeted PR every required lane is legitimately absent and this
+#    gate would fail every stacked PR for a reason that is not a defect. The
+#    residue is bounded by the retarget rule the next paragraph describes:
+#    pointing such a PR at main fires `edited`, which runs this job, and it must
+#    then pass before the change reaches main.
+#
+# `edited` IS THE POINT OF THE TYPES LIST. GitHub's default `pull_request`
+# activity types are opened/synchronize/reopened. Retargeting a PR's base branch
+# fires `edited` and nothing else -- and it does NOT re-fire the workflows that
+# a `branches: [main]` filter had excluded while the PR pointed at a feature
+# branch. That is the deterministic, reproducible mechanism behind #3294 merging
+# with 8 checks and leaving main's module-size gate red. Without `edited` here,
+# this detector would miss the one case it was built for.
+#
+# `ready_for_review` covers the draft->ready transition for the same reason.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+  # The two reads this gate is made of. `checks: read` for the check runs,
+  # `statuses: read` for the commit statuses -- the reviewers publish as one or
+  # the other, and the free-text description only exists on the raw APIs.
+  checks: read
+  statuses: read
+
+env:
+  ACTIONS_RUNNER_FORCE_ACTIONS_NODE_VERSION: node24
+
+jobs:
+  review-signal:
+    # This name is passed to the gate as `--self-name` so it can drop its own
+    # lane from the rollup. It is `in_progress` for as long as it is asking the
+    # question, and leaving it in would mean the rollup never reads as settled.
+    name: PR review signal
+    # Free runner: two API reads and a poll, not compute-bound.
+    runs-on: ubuntu-latest
+    # Above the poll budget below, so a run that exhausts the budget still gets
+    # to PRINT its verdict rather than being killed mid-wait with no output.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+
+      # No `pnpm install`: the gate imports only node builtins plus its own lib,
+      # and shells out to `gh`, which is preinstalled on GitHub runners. A gate
+      # whose job is to run when other jobs did not should depend on as little
+      # as possible.
+      #
+      # THE BUDGET IS MEASURED, NOT GUESSED -- AND THE MEASUREMENT ITSELF WAS
+      # WRONG ONCE. The first version of this comment quoted `started_at`, i.e.
+      # when a runner picked each job up. This gate never waits for that: it
+      # polls for PRESENCE in the rollup, which is `created_at`, and the two
+      # diverge hard: on run 32930088375, `Lint` was CREATED 416 s into the run
+      # and STARTED 1037 s into it. Every figure below is `created_at`,
+      # measured from each run's own creation, over the 68 completed `test.yml`
+      # PR runs of 2026-08-25/26 that published the aggregate.
+      #
+      # The fix is TWO changes, because either alone still false-fails.
+      #   1. `excludeJobKeys: ["test"]` in the config drops the aggregate, and
+      #      this is the load-bearing half. It `needs:` twelve jobs and
+      #      publishes no check run until all finish, so requiring it ties this
+      #      budget to the SUITE's total runtime, which grows with the suite. It
+      #      appeared at min 509 / median 894 / max 2067 s -- 33 OF THE 68 PAST
+      #      900 s. Requiring it would false-fail roughly half of every green
+      #      PR. Nothing is lost: the aggregate is one of only two contexts in
+      #      main's ruleset, so branch protection already blocks on it, and the
+      #      #3294 total-absence shape still fails under this config naming all
+      #      fifteen lanes.
+      #   2. 900 s, not 420 s. Excluding the aggregate is not enough on its own:
+      #      the last non-aggregate lane appeared at min 161 / median 190 /
+      #      p95 522 / max 845 s, so 420 s would still have false-failed 8 of
+      #      the 68. 900 s covers all 68 -- but the tail margin is 900/845 =
+      #      1.07x, NOT the 1.33x this comment used to claim off the `started_at`
+      #      numbers. It is thin, and measuring from run creation is the
+      #      conservative direction (this job's own deadline starts later still,
+      #      after its pickup and checkout), so the margin is worth stating
+      #      plainly rather than rounding up.
+      # The poll normally returns in seconds via the settle rule; the budget is
+      # the ceiling, not the expected cost. A settled-but-incomplete rollup is
+      # confirmed across SETTLE_HOLD_SECONDS (60 s) before its absence counts,
+      # because the fan-out boundary produces a ~1 s window in which every
+      # published lane is terminal and more are still coming -- so the
+      # genuine-absence path costs 60 s, not the whole budget.
+      - name: Check required lanes ran and reviews produced a verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          node scripts/check-pr-review-signal.mjs \
+            --pr "${{ github.event.pull_request.number }}" \
+            --self-name 'PR review signal' \
+            --timeout-seconds 900

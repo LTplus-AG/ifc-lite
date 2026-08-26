@@ -279,12 +279,27 @@ function gh(args, what) {
 /**
  * The PR's head SHA, fork flag, and rollup lane names.
  *
- * @param {{ pr: string, repo: string | null }} opts
+ * `repo` is REQUIRED, and is the same resolved value the commit-status reads
+ * use. Leaving it optional is what let this read fall back to `gh`'s cwd remote
+ * while the status reads used `--repo`: two reads, two repositories, one
+ * verdict. There is no caller that legitimately wants that, so there is no
+ * longer a way to ask for it.
+ *
+ * @param {{ pr: string, repo: string, selfName: string }} opts
  */
 function fetchPrState(opts) {
-  const base = ['pr', 'view', opts.pr, '--json', 'headRefOid,isCrossRepository,statusCheckRollup'];
-  if (opts.repo) base.push('--repo', opts.repo);
-  const data = gh(base, `PR #${opts.pr}`);
+  const data = gh(
+    [
+      'pr',
+      'view',
+      opts.pr,
+      '--json',
+      'headRefOid,isCrossRepository,statusCheckRollup',
+      '--repo',
+      opts.repo,
+    ],
+    `PR #${opts.pr}`,
+  );
 
   const sha = data.headRefOid;
   if (typeof sha !== 'string' || !/^[0-9a-f]{40}$/.test(sha)) {
@@ -532,7 +547,7 @@ function main() {
   //
   // Self-exclusion is structural: the required set is derived from test.yml and
   // this job lives in a different workflow file, so it never waits on itself.
-  const readState = () => fetchPrState({ pr: args.pr, repo: args.repo, selfName: args.selfName });
+  const readState = () => fetchPrState({ pr: args.pr, repo, selfName: args.selfName });
   const { state, timedOut } = pollForLanes({
     required,
     initialState: readState(),

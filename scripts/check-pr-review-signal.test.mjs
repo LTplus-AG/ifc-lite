@@ -14,7 +14,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -465,4 +465,76 @@ test('the two diagnoses are mutually exclusive — no rollup gets both', () => {
     const partial = /test\.yml DID fire for this head/.test(r.output);
     assert.ok(total !== partial, `exactly one diagnosis, got total=${total} partial=${partial}`);
   }
+});
+
+// ---------------------------------------------------- one repository, two reads
+
+/**
+ * A stand-in `gh` that records every argv it is handed and answers the three
+ * reads the live path makes. Placed first on PATH, so the gate spawns it
+ * instead of the real client and no network is touched.
+ */
+function fakeGh(tag) {
+  const dir = join(TMP, `gh-${tag}`);
+  mkdirSync(dir, { recursive: true });
+  const log = join(dir, 'argv.log');
+  const sha = 'a'.repeat(40);
+  writeFileSync(
+    join(dir, 'gh'),
+    [
+      '#!/bin/sh',
+      `printf '%s\\n' "$*" >> ${JSON.stringify(log)}`,
+      'case "$1 $2" in',
+      `  "pr view") printf '%s' '{"headRefOid":"${sha}","isCrossRepository":false,` +
+        '"statusCheckRollup":[{"name":"Only Lane","conclusion":"success"}]}\' ;;',
+      "  *) printf '%s' '[]' ;;",
+      'esac',
+    ].join('\n'),
+    { mode: 0o755 },
+  );
+  return { dir, log, sha };
+}
+
+test('the resolved repo reaches the PR read, not just the commit-status reads', () => {
+  // The bug: `repo` was resolved from `--repo` ?? GITHUB_REPOSITORY and handed
+  // to the status reads, while the PR read got the raw `--repo` flag — null
+  // whenever only the environment variable is set, which is exactly CI. `gh pr
+  // view` then resolved the repository from the checked-out git remote, so the
+  // rollup and the review descriptions could describe two different
+  // repositories, and the PR read failed outright outside a git checkout.
+  const { dir, log, sha } = fakeGh('resolved');
+  const workflow = join(TMP, 'one-lane.yml');
+  writeFileSync(workflow, 'jobs:\n  only:\n    name: Only Lane\n');
+
+  const env = { ...process.env, PATH: `${dir}:${process.env.PATH}` };
+  env.GITHUB_REPOSITORY = 'owner/from-env';
+  delete env.PR_REVIEW_SIGNAL_SELF_NAME;
+
+  const r = spawnSync(
+    process.execPath,
+    [GATE, '--pr', '7', '--self-name', 'PR review signal', '--workflow', workflow],
+    { encoding: 'utf8', env, cwd: TMP },
+  );
+  assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+
+  const calls = readFileSync(log, 'utf8').trim().split('\n');
+  const prRead = calls.filter((c) => c.startsWith('pr view'));
+  assert.equal(prRead.length, 1, `expected exactly one PR read, got:\n${calls.join('\n')}`);
+  // Every read names the SAME repository, and names it explicitly. `gh` must
+  // never be left to infer one from the cwd remote.
+  for (const c of calls) {
+    assert.ok(
+      c.includes('owner/from-env'),
+      `\`gh ${c}\` does not carry the resolved repository — it would resolve one from the cwd`,
+    );
+  }
+  assert.ok(prRead[0].includes('--repo owner/from-env'), prRead[0]);
+  assert.ok(
+    calls.some((c) => c.includes(`repos/owner/from-env/commits/${sha}/status`)),
+    `commit-status read missing from:\n${calls.join('\n')}`,
+  );
+  assert.ok(
+    calls.some((c) => c.includes(`repos/owner/from-env/commits/${sha}/check-runs`)),
+    `check-runs read missing from:\n${calls.join('\n')}`,
+  );
 });

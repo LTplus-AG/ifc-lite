@@ -189,14 +189,24 @@ export function serializeValue(value: StepValue): string {
  * the byte encoding the base standard and most real consumers assume — turns
  * a raw UTF-8 multi-byte sequence into mojibake or a broken parse (reported,
  * reproduced in real IFC tooling: IfcOpenShell#699/#1016, files rejected by
- * Solibri). Matches `@ifc-lite/export`'s `escapeStepString`.
+ * Solibri). Matches `@ifc-lite/export`'s `escapeStepString` and the Rust
+ * `step_text::escape` -- all three, checked in `packages/export/src/step-escaper-parity.test.ts` via `serializeValue`.
+ *
+ * Control characters map ONE space each rather than collapsing a run to a
+ * single space. The `+` this used to carry made `"a\t\t\tb"` serialise as
+ * `'a b'` here and `'a   b'` in the Rust half, which is a real disagreement
+ * between two halves whose doc comments each claim to match the other (#3284).
+ * ISO 10303-21 6.3.3.4 mandates neither -- it only requires the plain-text
+ * bytes 32-126 -- so the tie-break is that preserving the count keeps
+ * information the collapse throws away, and per-character is what Rust's
+ * `step_text::escape` already did.
  */
 function escapeStepString(str: string): string {
   const escaped = str
     .replace(/\\/g, '\\\\')  // Backslash
     .replace(/'/g, "''")     // Single quote
     // eslint-disable-next-line no-control-regex
-    .replace(/[\x00-\x1F\x7F]+/g, ' '); // Collapse control chars
+    .replace(/[\x00-\x1F\x7F]/g, ' '); // One space PER control char
   // Non-ASCII directive encoding, one character at a time. Must run AFTER
   // backslash-doubling above: the directive's own backslashes are literal
   // syntax the reader expects undoubled.

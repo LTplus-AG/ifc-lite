@@ -96,6 +96,23 @@ describe('generateHeader control-char handling', () => {
     expect(fileNameLine).toContain("('Line1 Line2')");
     expect(fileNameLine).not.toContain('Line2\n');
   });
+
+  it('maps ONE space per control character, matching the Rust escaper (#3284)', () => {
+    // The escaper used to collapse a RUN to a single space (`[...]+`), while
+    // `rust/export/src/step_text.rs::escape` pushed one space each. Same input,
+    // two outputs, from two functions whose doc comments each claim to match the
+    // other. ISO 10303-21 6.3.3.4 mandates neither, so the tie-break is that a
+    // collapse loses information the count preserves.
+    const header = generateHeader({
+      schema: 'IFC4',
+      author: ['a\t\t\tb'],
+      timeStamp: 'TS',
+    });
+    const fileNameLine = header.split('\n').find((l) => l.startsWith('FILE_NAME'));
+    expect(fileNameLine).toContain("('a   b')");
+    // The collapsed form is what the Rust half never produced.
+    expect(fileNameLine).not.toContain("('a b')");
+  });
 });
 
 describe('generateHeader non-ASCII encoding (ISO 10303-21 6.3.3.4)', () => {

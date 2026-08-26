@@ -124,13 +124,68 @@ function decodeStringList(arg: string): string[] {
 }
 
 /**
+ * Index of `needle` in `text`, ignoring any occurrence inside a quoted STEP
+ * string or a `/* ... *\/` comment. `needle` is matched case-insensitively;
+ * callers pass it upper-case.
+ *
+ * A raw `indexOf` cannot tell a record keyword or a section terminator from the
+ * same text sitting inside a header field's VALUE, and header values carry
+ * arbitrary prose: a DESCRIPTION mentioning `ENDSEC;`, or an AUTHOR string
+ * containing `FILE_NAME`, both read as structure (#3284).
+ *
+ * Three details, each of which cost a defect to learn:
+ *
+ * - Quote state toggles on every `'`. A doubled `''` -- STEP's escape for a
+ *   literal apostrophe -- toggles twice and nets to a no-op, so it needs no
+ *   special case.
+ * - COMMENTS must be skipped too. ISO 10303-21 allows `/* ... *\/` anywhere
+ *   whitespace is allowed, and an apostrophe inside one (`/* John's export *\/`)
+ *   would otherwise leave the quote state inverted for the rest of the file, so
+ *   every following keyword is scanned in the wrong state and NO record is
+ *   found. That turns a comment into total header loss.
+ * - The scan runs over `text` directly and compares per character. Uppercasing
+ *   the haystack first is not safe: `'ß'.toUpperCase()` is `'SS'`, so a single
+ *   German header value shifts every later index by one and the caller's
+ *   `text[at + keyword.length]` lands in the wrong place.
+ */
+function indexOfOutsideQuotes(text: string, needle: string, fromIndex = 0): number {
+  const last = text.length - needle.length;
+  let inString = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (ch === "'") inString = false;
+      continue;
+    }
+    if (ch === "'") {
+      inString = true;
+      continue;
+    }
+    if (ch === '/' && text[i + 1] === '*') {
+      const close = text.indexOf('*/', i + 2);
+      // An unterminated comment swallows the rest, which is what a reader does.
+      if (close < 0) return -1;
+      i = close + 1;
+      continue;
+    }
+    if (i >= fromIndex && i <= last) {
+      let hit = true;
+      for (let k = 0; k < needle.length; k++) {
+        if (text[i + k].toUpperCase() !== needle[k]) { hit = false; break; }
+      }
+      if (hit) return i;
+    }
+  }
+  return -1;
+}
+
+/**
  * Extract the argument substring inside the parentheses of `KEYWORD( ... )`,
  * starting the search at `fromIndex`. Quote- and nesting-aware so a quoted
  * `)` never closes the record early. Returns `null` if not found.
  */
 function extractRecordArgs(text: string, keyword: string, fromIndex = 0): string | null {
-  const upper = text.toUpperCase();
-  const at = upper.indexOf(keyword, fromIndex);
+  const at = indexOfOutsideQuotes(text, keyword, fromIndex);
   if (at < 0) return null;
   let i = at + keyword.length;
   while (i < text.length && /\s/.test(text[i])) i++;
@@ -171,7 +226,7 @@ export function parseSourceHeader(
   const src = asSourceBytes(buffer);
   const cap = Math.min(src.byteLength, MAX_HEADER_BYTES);
   let text = src.decodeUtf8(0, cap);
-  const endSec = text.toUpperCase().indexOf('ENDSEC');
+  const endSec = indexOfOutsideQuotes(text, 'ENDSEC');
   if (endSec >= 0) text = text.slice(0, endSec);
 
   const descRecord = extractRecordArgs(text, 'FILE_DESCRIPTION');

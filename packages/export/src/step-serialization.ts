@@ -141,8 +141,14 @@ export function escapeStepString(str: string): string {
   const escaped = str
     .replace(/\\/g, '\\\\')
     .replace(/'/g, "''")
+    // One space PER control character, not one per run. This is the DATA-section
+    // escaper; `@ifc-lite/data`'s writes the header. Both must agree with
+    // `rust/export/src/step_text.rs::escape` or one output file carries two
+    // rules -- and `serializeAttributeValue` below picks between the two
+    // escapers by whether the source token was already quoted, so the split was
+    // reachable within a single entity (#3284).
     // eslint-disable-next-line no-control-regex
-    .replace(/[\x00-\x1F\x7F]+/g, ' ');
+    .replace(/[\x00-\x1F\x7F]/g, ' ');
   return encodeNonAsciiStepDirectives(escaped);
 }
 

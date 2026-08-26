@@ -15,7 +15,7 @@
 # must be updated in the same commit — that is the point: loosening the ratchet
 # costs a reviewable line.
    522 apps/viewer-embed/src/bridge/handler.ts
-   484 apps/viewer-embed/src/components/EmbedViewer.tsx
+   439 apps/viewer-embed/src/components/EmbedViewer.tsx
    481 apps/viewer/src/components/extensions/ExtensionsPanel.tsx
    431 apps/viewer/src/components/extensions/FlavorDialog.tsx
    428 apps/viewer/src/components/extensions/widget/WidgetRenderer.tsx

@@ -11,7 +11,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use ifc_lite_core::EntityScanner;
-use serde::Deserialize;
 
 /// A single root-attribute edit: replace the top-level attribute at `index` of entity
 /// `express_id` with `value` (already STEP-serialized, e.g. `'New Name'` or `$`).
@@ -67,6 +66,7 @@ pub struct CopyOnWriteMutation {
 }
 
 /// Options for STEP export.
+#[derive(Default)]
 pub struct StepOptions {
     /// FILE_SCHEMA label to write (e.g. `IFC4`). `None` ⇒ preserve the source schema.
     /// When `Some` and the target differs, entity types/attributes are converted (P2).
@@ -80,26 +80,24 @@ pub struct StepOptions {
     pub property_mutations: Vec<PropMutation>,
     /// Copy-then-edit mutations for records other records share.
     pub copy_on_write: Vec<CopyOnWriteMutation>,
-    pub description: String,
-    pub author: String,
-    pub organization: String,
-    pub application: String,
-}
-
-impl Default for StepOptions {
-    fn default() -> Self {
-        Self {
-            schema: None,
-            included: None,
-            attribute_mutations: Vec::new(),
-            property_mutations: Vec::new(),
-            copy_on_write: Vec::new(),
-            description: "ViewDefinition [CoordinationView]".to_string(),
-            author: "".to_string(),
-            organization: "".to_string(),
-            application: "ifc-lite".to_string(),
-        }
-    }
+    /// `FILE_DESCRIPTION` item. `None` ⇒ keep the source file's items, and
+    /// fall back to the generic view-definition default only when the source
+    /// carried none.
+    pub description: Option<String>,
+    /// `FILE_NAME` author. `None` ⇒ keep the source file's.
+    pub author: Option<String>,
+    /// `FILE_NAME` organization. `None` ⇒ keep the source file's.
+    pub organization: Option<String>,
+    /// `FILE_NAME` preprocessor_version — the tool writing this file.
+    /// `None` ⇒ `ifc-lite`.
+    pub application: Option<String>,
+    /// `FILE_NAME` name. `None` ⇒ `export.ifc`.
+    pub filename: Option<String>,
+    /// `FILE_NAME` time_stamp. `None` ⇒ the source file's stamp. There is no
+    /// clock fallback: `SystemTime::now` is unavailable on the
+    /// `wasm32-unknown-unknown` target this exporter ships to, so a caller that
+    /// wants "now" states it.
+    pub time_stamp: Option<String>,
 }
 
 /// Coverage stats for a STEP export.
@@ -117,82 +115,6 @@ pub struct StepStats {
 use crate::step_text::{
     apply_attr_mutations, detect_schema, escape, merge_edits, refs_in_line, renumber,
 };
-
-// ── Mutation JSON bridge (the wasm-facing contract) ─────────────────────────
-
-#[derive(Deserialize)]
-struct AttrMutJson {
-    #[serde(rename = "expressId")]
-    express_id: u32,
-    index: usize,
-    value: String,
-}
-
-#[derive(Deserialize)]
-struct PropMutJson {
-    #[serde(rename = "expressId")]
-    express_id: u32,
-    #[serde(rename = "psetName")]
-    pset_name: String,
-    #[serde(rename = "propName")]
-    prop_name: String,
-    value: String,
-}
-
-#[derive(Deserialize, Default)]
-struct MutationsJson {
-    #[serde(default, rename = "attributeUpdates")]
-    attribute_updates: Vec<AttrMutJson>,
-    #[serde(default, rename = "propertyMutations")]
-    property_mutations: Vec<PropMutJson>,
-}
-
-/// Export STEP from raw bytes + a JSON mutation payload (the wasm bridge form of a
-/// `MutablePropertyView` diff). `mutations_json` shape:
-/// `{ "attributeUpdates": [{expressId,index,value}], "propertyMutations":
-/// [{expressId,psetName,propName,value}] }` where `value` is already STEP-serialized
-/// (`'Name'`, `IFCLABEL('x')`, `IFCREAL(1.)`). An empty string means "no mutations" —
-/// a legitimate, common case (plain re-export). A non-empty string that fails to
-/// parse is a caller bug (a malformed payload, a version mismatch across the wasm
-/// boundary) and must not be treated the same way: silently falling back to "no
-/// mutations" would export a file that LOOKS like a successful re-export of the
-/// user's edits but silently contains none of them. Callers get an `Err` instead,
-/// matching `exportGlb`'s and `exportMerged`'s fail-closed contract at this same
-/// wasm boundary.
-pub fn export_step_json(
-    content: &[u8],
-    schema: Option<String>,
-    included: Option<Vec<u32>>,
-    mutations_json: &str,
-) -> Result<String, String> {
-    let muts: MutationsJson = if mutations_json.trim().is_empty() {
-        MutationsJson::default()
-    } else {
-        serde_json::from_str(mutations_json)
-            .map_err(|e| format!("invalid mutations_json: {e}"))?
-    };
-    let opts = StepOptions {
-        schema,
-        included,
-        attribute_mutations: muts
-            .attribute_updates
-            .into_iter()
-            .map(|a| AttrMutation { express_id: a.express_id, index: a.index, value: a.value })
-            .collect(),
-        property_mutations: muts
-            .property_mutations
-            .into_iter()
-            .map(|p| PropMutation {
-                express_id: p.express_id,
-                pset_name: p.pset_name,
-                prop_name: p.prop_name,
-                value: p.value,
-            })
-            .collect(),
-        ..StepOptions::default()
-    };
-    Ok(export_step(content, &opts))
-}
 
 /// Export the parsed model in `content` as a STEP/IFC string.
 pub fn export_step(content: &[u8], opts: &StepOptions) -> String {
@@ -289,6 +211,9 @@ fn emit<W: std::io::Write>(
         }
     };
 
+    // Read the source HEADER once, here, so the writer can carry its
+    // provenance forward instead of blanking it (see `step_header`).
+    let source_header = crate::source_header::parse_source_header(content);
     let source_schema = detect_schema(content);
     let schema = opts.schema.clone().unwrap_or_else(|| source_schema.clone());
     // Only convert entity types/attributes when an explicit target differs from source.
@@ -321,7 +246,7 @@ fn emit<W: std::io::Write>(
     let repointed = resolved.repointed;
 
     // 3. Emit header + filtered entities (source order) + footer.
-    crate::step_header::write_header(out, opts, &schema)?;
+    crate::step_header::write_header(out, opts, source_header.as_ref(), &schema)?;
 
     let mut written = 0usize;
     for id in &order {

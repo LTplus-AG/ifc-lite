@@ -155,16 +155,15 @@ fn escape_maps_every_ascii_control_char_to_a_space() {
 #[test]
 fn escape_preserves_the_length_of_a_control_char_run() {
     // The single-char cases above pass identically whether `escape` replaces
-    // per character or collapses a run, so they cannot see the difference that
-    // #3284 is about. Until this test existed, the three-way agreement on RUN
-    // handling rested on prose: `packages/export/src/step-escaper-parity.test.ts`
-    // pins the literal "a   b" for the two TypeScript escapers and says in a
-    // comment that Rust produces the same, without ever running Rust.
+    // per character or collapses a run, so they cannot see the difference
+    // #3284 is about, and this side's rule was never actually asserted.
     //
-    // The TypeScript half carried `[\x00-\x1F\x7F]+` for a while, which
-    // collapses "a\t\t\tb" to "a b" while this side produced "a   b" -- one
-    // file, two rules, and every assertion green because none of them used a
-    // run. Pin the count here so the halves cannot drift apart again silently.
+    // That mattered: the two TypeScript escapers carried `[\x00-\x1F\x7F]+`,
+    // so `"a\t\t\tb"` was written as `'a b'` there and `'a   b'` here, one
+    // nominal rule with two behaviours, and every test on both sides stayed
+    // green because none of them used a run. #3294 fixes the TypeScript half.
+    // This pins the half it is being made to agree with, so the agreement
+    // rests on a test rather than on two doc comments citing each other.
     assert_eq!(escape("a\t\t\tb"), "a   b");
     assert_eq!(escape("\0\0\0"), "   ");
     // Mixed kinds in one run: still one space each, not one for the run.

@@ -309,6 +309,10 @@ test('the gate actually runs from a path containing a space', () => {
       readFileSync(new URL('./lib/refwalk-classify.mjs', import.meta.url))
     );
     writeFileSync(
+      join(dir, 'lib', 'is-main-entry.mjs'),
+      readFileSync(new URL('./lib/is-main-entry.mjs', import.meta.url))
+    );
+    writeFileSync(
       join(dir, 'refwalk-guard-allowlist.txt'),
       readFileSync(new URL('./refwalk-guard-allowlist.txt', import.meta.url))
     );

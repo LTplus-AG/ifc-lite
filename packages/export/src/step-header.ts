@@ -41,8 +41,22 @@ import type { ExportPass, StepExportOptions, StepExportResult } from './step-exp
  * {@link assembleExportResult} below) — so the provenance item it appends
  * reflects what this export actually wrote, not a guess made at setup time.
  */
+/**
+ * The subset of {@link StepExportOptions} the header actually reads.
+ *
+ * `schema` is deliberately NOT part of it: the token written into FILE_SCHEMA
+ * arrives separately as `schemaToken`, so requiring it here would force every
+ * caller — and every parity vector, which supplies the token from its own
+ * field — to spell out a value this function never consults. Spelled-out
+ * values are how two implementations' defaults drift apart unnoticed.
+ */
+export type StepHeaderOptions = Pick<
+  StepExportOptions,
+  'description' | 'author' | 'organization' | 'application' | 'filename' | 'timeStamp'
+>;
+
 export function buildStepHeader(
-  options: StepExportOptions,
+  options: StepHeaderOptions,
   sourceHeader: IfcSourceHeader | undefined,
   schemaToken: string,
   modifications: number,

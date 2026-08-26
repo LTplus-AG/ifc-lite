@@ -24,7 +24,18 @@ import { BasepointOverlay } from './BasepointOverlay';
 import { PointCloudPanel } from './PointCloudPanel';
 import { Crosshair } from 'lucide-react';
 
-export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: boolean } = {}) {
+/**
+ * Overlay chrome drawn on top of the 3D viewport.
+ *
+ * The three `hide*` props exist for the embed (`?hideViewCube=`, `?hideAxis=`,
+ * `?hideScale=`): a host iframe is often too small for the full chrome. They
+ * default to `false`, so the standalone viewer is unaffected.
+ */
+export function ViewportOverlays({
+  hideViewCube = false,
+  hideAxis = false,
+  hideScale = false,
+}: { hideViewCube?: boolean; hideAxis?: boolean; hideScale?: boolean } = {}) {
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
@@ -263,18 +274,26 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
         </div>
       )}
 
-      {/* Basepoint toggle + Axis Helper + Scale Bar — desktop only; mobile keeps the viewport unobstructed */}
+      {/* Basepoint toggle + Axis Helper + Scale Bar — desktop only; mobile keeps the viewport unobstructed.
+          `hideScale`/`hideAxis` drop their own item only: the BasepointToggleButton stays reachable
+          even with both set, so hiding the scene-reference readouts never hides the toggle too. */}
       {!isMobile && (
         <div className="absolute bottom-4 left-4 flex flex-col-reverse items-start gap-3">
-          <div className="flex flex-col items-start gap-1">
-            <div className="h-1 w-24 bg-foreground/80 rounded-full" />
-            <span className="text-xs text-foreground/80">{formatScale(scale)}</span>
-          </div>
-          <AxisHelper
-            ref={axisHelperRef}
-            rotationX={initialRotationX}
-            rotationY={initialRotationY}
-          />
+          {!hideScale && (
+            <div className="flex flex-col items-start gap-1" data-testid="viewport-scale-readout">
+              <div className="h-1 w-24 bg-foreground/80 rounded-full" />
+              <span className="text-xs text-foreground/80">{formatScale(scale)}</span>
+            </div>
+          )}
+          {!hideAxis && (
+            <div data-testid="viewport-axis-helper">
+              <AxisHelper
+                ref={axisHelperRef}
+                rotationX={initialRotationX}
+                rotationY={initialRotationY}
+              />
+            </div>
+          )}
           <BasepointToggleButton />
         </div>
       )}

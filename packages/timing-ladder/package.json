@@ -1,7 +1,8 @@
 {
-  "name": "@ifc-lite/encoding",
-  "version": "2.1.0",
-  "description": "IFC string encoding/decoding and property value parsing for IFC-Lite",
+  "name": "@ifc-lite/timing-ladder",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The shared doubling-size timing ladder used to pin that a decision stays linear on hostile input, measured in CPU time so contention on the runner cannot fake a failure",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -19,7 +20,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@ifc-lite/timing-ladder": "workspace:^",
+    "@types/node": "^26.2.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10"
   },
@@ -28,22 +29,15 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/LTplus-AG/ifc-lite.git",
-    "directory": "packages/encoding"
+    "directory": "packages/timing-ladder"
   },
   "homepage": "https://ifclite.dev/docs/",
   "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
   "keywords": [
     "ifc",
-    "bim",
-    "encoding",
-    "step",
-    "aec"
-  ],
-  "publishConfig": {
-    "access": "public"
-  },
-  "files": [
-    "dist",
-    "README.md"
+    "test-fixture",
+    "timing",
+    "linearity",
+    "backtracking"
   ]
 }

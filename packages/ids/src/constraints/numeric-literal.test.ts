@@ -17,6 +17,7 @@
  * opaque).
  */
 import { describe, it, expect } from 'vitest';
+import { firstBlownRung as ladderFirstBlownRung, SIZES } from '@ifc-lite/timing-ladder';
 import { compareNumeric, isStrictNumericLiteral } from './comparators.js';
 import { literalCastsUnder } from './xsd-cast.js';
 import { runCoherenceAudit } from '../audit/coherence/index.js';
@@ -127,71 +128,25 @@ describe('isStrictNumericLiteral accepts exactly the language it always did', ()
   });
 });
 
+/** A long digit run plus one character that cannot be part of a number.
+ *  The trailing non-digit is the whole point: an all-digit string of any
+ *  length matches immediately, which is why plausible fixtures miss this. */
+const hostile = (n: number): string => `-${'9'.repeat(n)}X`;
+
 /**
  * The ladder every timing assertion in this file runs, module-scoped because
  * four separate call sites use it: the scan itself, the per-entity
  * `compareNumeric` path, and the two IDS-file literal paths at the bottom of
  * the file. One ladder means one budget and one retry policy, so a hardening
  * applied here cannot miss a caller.
- */
-/** Per-decision budget. Every size below must be decided inside it. */
-const BUDGET_MS = 500;
-
-/**
- * Ascending, doubling. Ascending is what makes a quadratic implementation
- * REPORT instead of HANG: cost rises 4x per rung, so the first rung it blows
- * costs at most ~4x the budget, and the ladder stops there rather than
- * carrying on to 640k where the same implementation would grind for minutes.
  *
- * It self-adapts to the runner in both directions. A slower machine blows a
- * quadratic implementation at a lower rung; a faster one at a higher rung.
- * Either way some rung fails, so the controls below need no hardware-tuned
- * number -- the failure that the old `regexMs > 50` floor could not survive.
+ * Budget, rungs and retry policy come from @ifc-lite/timing-ladder, shared with
+ * the twin suite in @ifc-lite/encoding, which used to carry a line-for-line
+ * copy of them (#3224). It refuses -- loudly -- any decision that ACCEPTS the
+ * hostile fixture, so a reading can never be timing an early return.
  */
-const SIZES = [
-  20_000, 40_000, 80_000, 160_000, 320_000, 640_000, 1_280_000, 2_560_000,
-] as const;
-
-/**
- * Retries only ever taken on the way to FAILING. `Math.min` can only fall, so
- * a reading already inside the budget is final and no repeat is made -- the
- * healthy path is one call per rung. A rung is only declared blown after
- * ATTEMPTS consecutive readings over the budget, which a single descheduling
- * cannot fake. This does not soften detection: the minimum of several
- * quadratic timings is still quadratic.
- */
-const ATTEMPTS = 3;
-
-/** A long digit run plus one character that cannot be part of a number.
- *  The trailing non-digit is the whole point: an all-digit string of any
- *  length matches immediately, which is why plausible fixtures miss this. */
-const hostile = (n: number): string => `-${'9'.repeat(n)}X`;
-
-type Decide = (v: string) => boolean;
-
-/** Fastest of up to ATTEMPTS decisions, stopping as soon as one is in budget. */
-const fastestMs = (decide: Decide, n: number): number => {
-  const v = hostile(n);
-  let best = Infinity;
-  for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
-    const t0 = performance.now();
-    const verdict = decide(v);
-    best = Math.min(best, performance.now() - t0);
-    // A decision that says "number" would mean the timing measured an early
-    // return rather than a full scan, so the reading would prove nothing.
-    expect(verdict).toBe(false);
-    if (best < BUDGET_MS) break;
-  }
-  return best;
-};
-
-/** The first size at which `decide` blew the budget, or null if it cleared them all. */
-const firstBlownRung = (decide: Decide): number | null => {
-  for (const n of SIZES) {
-    if (fastestMs(decide, n) >= BUDGET_MS) return n;
-  }
-  return null;
-};
+const firstBlownRung = (decide: (v: string) => boolean): number | null =>
+  ladderFirstBlownRung(decide, { hostile });
 
 describe('deciding it is linear, not backtracking (#3113)', () => {
   /**
@@ -212,21 +167,20 @@ describe('deciding it is linear, not backtracking (#3113)', () => {
    * also why minimising over batches (#3159, #3165) narrowed the distribution
    * without fixing it.
    *
-   * Why the budget survives what the ratio could not: CONSECUTIVE READINGS, not
-   * headroom. The old ratio put a healthy reading at ~4 against a bound of 8,
-   * so one 2x hiccup was a failure. The 640k rung decides in ~1.2ms against a
-   * 500ms budget, and the largest rung, 2.56M, in ~3.7ms -- but that headroom
-   * is NOT what protects the test, and saying so would be false under the very
-   * load this docblock invokes: readings at the 640k rung reached 117ms at 160
-   * busy processes and 303.9ms at 480 -- a ~1.6x margin at the extreme tail.
-   * Those two tail figures are the 640k rung's, measured while 640k was still
-   * the top of the ladder; they are deliberately NOT restated as the largest
-   * rung's, which has not been measured under that load. What
-   * protects it is ATTEMPTS: a rung is blown only after 3 CONSECUTIVE
-   * over-budget readings. Contention arrives in bursts, which is what defeated
-   * the ratio, and is what three consecutive readings are chosen to survive: a
-   * burst has to cover all three. Under the same 160-process load that broke
-   * the ratio 12 times in 20, this is green 20 times in 20.
+   * Why the budget survives what the ratio could not: it is measured on the CPU
+   * clock, in @ifc-lite/timing-ladder. Headroom on the WALL clock was never
+   * what protected this test, and the version of this paragraph that said
+   * ATTEMPTS protected it was wrong (#3224). Three attempts are taken
+   * back-to-back and span ~11ms of real work at the largest rung, so a
+   * contention burst longer than that covers all three. Measured: this exact
+   * linear scan, unmodified, running the real ladder 100 times under 900 busy
+   * processes on 12 cores, blew the 2.56M rung 3 times -- readings
+   * `812.5, 968.1, 549.9` and `1226.1, 1168.2, 1137.6` against a 500ms budget.
+   * `2560000` is the value CI reported against an unrelated parser PR. On the
+   * CPU clock the same 200 readings under the same load ran p50 5.67ms, p99
+   * 8.88ms, max 9.93ms, against 7.13ms idle. ATTEMPTS is kept as a second line
+   * of defence and costs nothing on the healthy path, because `Math.min` can
+   * only fall and a reading already inside the budget is final.
    *
    * The price is real and it is not a saving. Each negative control climbs to
    * the rung it blows and then spends ATTEMPTS readings there, so the controls
@@ -238,6 +192,12 @@ describe('deciding it is linear, not backtracking (#3113)', () => {
    * of a timing assertion that holds; the cheaper one reddened three unrelated
    * PRs.
    *
+   * The ladder itself -- budget, rungs, retry policy and the CPU-clock reading
+   * -- lives in @ifc-lite/timing-ladder and is shared with the twin suite in
+   * @ifc-lite/encoding, which used to carry a line-for-line copy of it (#3224).
+   * Its own tests pin that it still blows a rung on a quadratic decision, still
+   * refuses a decision that accepts the fixture, and still reads the CPU clock.
+   *
    * The bound the old test used is not carried over and not raised; the
    * quantity it bounded is simply not measured any more.
    *
@@ -245,8 +205,9 @@ describe('deciding it is linear, not backtracking (#3113)', () => {
    * it. A linear-but-slower implementation passed the OLD test too: a ratio of
    * two timings cancels constant factors by construction, so it never bounded
    * absolute speed at all. The absolute budget does bound it, if loosely --
-   * anything ~135x slower than the current scan at 2.56M now reds, where the
-   * ratio would not have noticed. What both forms exist to catch first is
+   * anything ~135x more WORK than the current scan at 2.56M now reds, where the
+   * ratio would not have noticed. "Work" and not "wall time" since #3224: the
+   * budget is spent against the CPU clock. What both forms exist to catch first is
    * catastrophic backtracking, which is orders of magnitude rather than
    * factors, and the negative controls below pin exactly that.
    *
@@ -259,7 +220,9 @@ describe('deciding it is linear, not backtracking (#3113)', () => {
    * is exactly that implementation, so the claim is pinned rather than
    * asserted. Two more rungs cost the healthy scan ~2ms (3.70ms at 2.56M
    * against the 500ms budget, ~135x of headroom), because the extra rungs are
-   * only expensive for an implementation that is already superlinear.
+   * only expensive for an implementation that is already superlinear. That
+   * headroom is now real rather than nominal: on the CPU clock the same rung
+   * stayed at 9.93ms worst-of-200 under 900 busy processes.
    *
    * What remains knowingly out of scope after that: a superlinear regression
    * whose constant is smaller still, staying inside the budget even at 2.56M.
@@ -420,9 +383,10 @@ describe('the same shape elsewhere in @ifc-lite/ids', () => {
       // be a single 20k reading against a 100ms bound, which is the construct
       // the ladder above exists to replace: one reading has no retry, so a
       // single descheduling reds it. Measured under 187-process load, 24 of
-      // 12,000 single 20k readings here exceeded 100ms (max 265ms) against a
-      // median of 0.058ms -- ~0.2% flake per assertion. The ladder needs
-      // ATTEMPTS consecutive over-budget readings instead.
+      // 12,000 single 20k WALL-CLOCK readings here exceeded 100ms (max 265ms)
+      // against a median of 0.058ms -- ~0.2% flake per assertion. The ladder
+      // spends its budget against the CPU clock instead, which does not tick
+      // while the operating system has chosen not to run us (#3224).
       expect(firstBlownRung((v) => literalCastsUnder(v, 'xs:double'))).toBeNull();
     });
   });
@@ -501,8 +465,8 @@ describe('the same shape elsewhere in @ifc-lite/ids', () => {
       // migration as the cast above, and for the same reason: the lone 20k
       // reading against a 100ms bound was flaky under load by construction.
       // `accepts` returning false IS the E_RESTRICTION_VALUE_MISMATCH the old
-      // assertion checked for, so the verdict is still pinned -- `fastestMs`
-      // reds if any rung ever decides the hostile input is a number.
+      // assertion checked for, so the verdict is still pinned -- the shared
+      // ladder throws if any rung ever decides the hostile input is a number.
       expect(firstBlownRung((v) => accepts(v, 'xs:double'))).toBeNull();
     });
   });

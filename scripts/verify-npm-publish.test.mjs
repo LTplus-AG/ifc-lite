@@ -97,20 +97,32 @@ test('discovery that finds only private packages is refused, naming the floor it
   // verified on zero registry queries.
   assert.match(out, /only 0 publishable package\(s\) found among 1 manifest\(s\)/);
   assert.match(out, /expected at least 25/);
+  assert.doesNotMatch(
+    out,
+    /No publishable packages found/,
+    'the pre-#3200 success line must be gone, not merely accompanied',
+  );
+  // The remedy must NAME the constant. A message that says only "discovery is
+  // wrong" is actively misleading to someone who really did retire packages.
+  assert.match(out, /lower PUBLISHABLE_FLOOR in this file/);
   rmSync(root, { recursive: true, force: true });
 });
 
 test('a workspace parent that cannot be LISTED is fatal, not a warning', () => {
   const root = makeTree();
-  // ENOTDIR rather than a chmod: `chmod 000` does not stop root and CI
-  // containers run as root, so a permissions fixture would silently test
-  // nothing on the machine that matters. A file where a directory belongs
-  // takes the same branch for every user.
+  // ENOTDIR rather than a chmod, because it takes the same branch for EVERY
+  // user including root, so this case cannot be reduced to a skip on any
+  // machine. (An earlier version of this comment claimed the CI lane runs as
+  // root and that a chmod fixture would therefore test nothing there. Checked:
+  // .github/workflows/test.yml declares no `container:` and its jobs run on
+  // ubuntu-latest / depot-ubuntu-24.04-4 as the non-root `runner` user, so a
+  // chmod fixture does bite in CI — see the EACCES case below, which needs it.)
   writeFileSync(join(root, 'packages'), 'not a directory');
   addPackage(root, 'apps', 'pub', { name: '@x/pub', version: '2.0.0' });
   const { status, out } = run(root, { bin: stubNpm(root) });
   assert.equal(status, 2, out);
   assert.match(out, /could not list .*packages \(ENOTDIR\)/);
+  assert.match(out, /an unreadable workspace parent is not an empty one/);
   assert.doesNotMatch(out, /All packages are published/);
   rmSync(root, { recursive: true, force: true });
 });

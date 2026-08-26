@@ -26,22 +26,14 @@
  */
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, dirname, resolve } from 'node:path';
+import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// `--root <dir>` points the scan at an alternate tree, the same seam
-// check-test-glob-coverage.mjs and check-server-bin-targets.mjs use, so the
-// regression harness can drive the FLOOR below over a synthetic tree instead of
-// nobody ever seeing it fire (#3200).
-const rootFlagIdx = process.argv.indexOf('--root');
-if (rootFlagIdx !== -1 && !process.argv[rootFlagIdx + 1]) {
-  console.error('--root requires a directory argument');
-  process.exit(2);
-}
-const ROOT =
-  rootFlagIdx === -1
-    ? join(dirname(fileURLToPath(import.meta.url)), '..', '..')
-    : resolve(process.argv[rootFlagIdx + 1]);
+// Derived from this file's own location, with no argv override: the regression
+// harness (check-package-readmes.test.mjs) copies this one file into a synthetic
+// tree, so the floor below is driven over real input without this gate growing a
+// scan-root flag (#3200).
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const packagesDir = join(ROOT, 'packages');
 
 /**

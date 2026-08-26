@@ -40,23 +40,15 @@
 import { execSync } from 'child_process';
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { fileURLToPath } from 'url';
-import { dirname, join, resolve as resolvePath } from 'path';
+import { dirname, join } from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-
-// `--root <dir>` points the package scan at an alternate tree, the same seam
-// check-test-glob-coverage.mjs and check-server-bin-targets.mjs use. It exists
-// so the regression harness can drive the FLOOR below over a synthetic tree —
-// a floor nobody ever sees fire is the same shape of unexamined instrument this
-// gate was fixed for (#3200). It does NOT affect which registry is queried.
-const rootFlagIdx = process.argv.indexOf('--root');
-if (rootFlagIdx !== -1 && !process.argv[rootFlagIdx + 1]) {
-  console.error('--root requires a directory argument');
-  process.exit(2);
-}
-const rootDir =
-  rootFlagIdx === -1 ? join(__dirname, '..') : resolvePath(process.argv[rootFlagIdx + 1]);
+// Derived from this file's own location, with no argv override: the regression
+// harness (verify-npm-publish.test.mjs) copies this one file into a synthetic
+// tree, so the floors below are driven over real input without this release-lane
+// gate growing a scan-root flag anyone could point somewhere else (#3200).
+const rootDir = join(__dirname, '..');
 
 /**
  * Lower bound on how many publishable packages this gate must actually query.

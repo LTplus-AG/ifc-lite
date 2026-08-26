@@ -220,6 +220,7 @@ function lostMetrics(models) {
 
 function buildMarkdownReport(models, regressions, harnessFaults = []) {
   const unmeasured = unmeasuredCount(models);
+  const uncompared = models.filter((m) => m.missingBaseline).length;
   const lines = [];
   lines.push('<!-- viewer-benchmark-report -->');
   lines.push('## Viewer benchmark');
@@ -248,6 +249,18 @@ function buildMarkdownReport(models, regressions, harnessFaults = []) {
     lines.push(
       `⚠ **${regressions.length} metric(s) exceeded the regression threshold**` +
         (advisory ? ' (advisory only, not blocking).' : '.')
+    );
+  } else if (uncompared > 0) {
+    // The `comparable.length === 0` harness fault above only fires when EVERY
+    // model missed its baseline. `VIEWER_BENCHMARK_FILES` lists TWO models, so
+    // renaming ONE fixture — the likelier accident — left this headline saying
+    // `✅ No threshold regressions detected.` over a model that was never
+    // compared at all. Some models were compared, so there IS a partial verdict
+    // and this stays non-blocking; it just must not read as a clean bill of
+    // health (#3200).
+    lines.push(
+      `⚠ **No threshold regressions — but ${uncompared} of ${models.length} model(s) had NO ` +
+        'baseline entry** and were never compared, so this is not a clean bill of health.'
     );
   } else if (unmeasured > 0) {
     lines.push(
@@ -378,6 +391,12 @@ function main() {
     // regressions, and that sentence is true and useless. A reader skimming
     // for a verdict finds the reassuring one first.
     console.log('\nNo verdict: see the harness fault(s) below.');
+  } else if (missingBaseline.length > 0) {
+    // Same reason as the markdown branch: a PARTIAL miss is not a clean run.
+    console.log(
+      `\nNo threshold regressions among the ${comparable.length} model(s) that HAD a baseline — ` +
+        `${missingBaseline.length} of ${models.length} were never compared.`
+    );
   } else if (unmeasured > 0) {
     console.log('\nNo threshold regressions among the metrics that WERE measured.');
   } else {
@@ -390,10 +409,6 @@ function main() {
       '\n   Not softened by --advisory: these say the check did not run, not that it is slow.'
     );
     process.exit(1);
-  }
-
-  if (missingBaseline.length > 0 && missingBaseline.length < models.length) {
-  console.log(`Some models are missing baseline entries (${missingBaseline.length} of ${models.length}).`);
   }
 }
 

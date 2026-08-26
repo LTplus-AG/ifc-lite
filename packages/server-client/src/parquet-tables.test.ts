@@ -247,6 +247,111 @@ function optimizedFixture(extra: Record<string, ArrayLike<number>> = {}) {
   };
 }
 
+describe('source ids on the standard format (#3215)', () => {
+  it('decodes both disjoint ids when their columns are present', () => {
+    const meshes = buildMeshesFromTables(
+      meshTable(1, {
+        geometry_item_id: new Uint32Array([501]),
+        // The writer's absent marker. Non-nullable column, explicit sentinel:
+        // a NULLABLE column's values buffer is undefined at null rows and
+        // parquet-wasm 0.7.x leaks the neighbouring row's id into it, so a
+        // material-less mesh decoded as a real-looking id for another entity.
+        material_id: new Uint32Array([0xffffffff]),
+      }),
+      vertexTable,
+      indexTable
+    );
+    expect(meshes[0].geometry_item_id).toBe(501);
+    expect('material_id' in meshes[0]).toBe(false);
+  });
+
+  it('a LEAKED neighbour id is still rejected — the sentinel, not truthiness', () => {
+    // The failure the sentinel exists for: on parquet-wasm 0.7.x a null row's
+    // slot held the NEXT row's real id (902 in the measured case). Truthiness
+    // alone passes that straight through as a drill target for the wrong
+    // entity. With the non-nullable sentinel there is no null row to leak into,
+    // and a decoder seeing the marker rejects it whatever its numeric value.
+    const meshes = buildMeshesFromTables(
+      meshTable(2, {
+        // Row 0 absent, row 1 real. Under the old nullable encoding row 0's
+        // slot would have read 902.
+        material_id: new Uint32Array([0xffffffff, 902]),
+      }),
+      vertexTable,
+      indexTable
+    );
+    expect('material_id' in meshes[0]).toBe(false);
+    expect(meshes[1].material_id).toBe(902);
+  });
+
+  it('decodes to the pre-#3215 shape when neither column is present', () => {
+    // The compatibility property: a payload written before these columns
+    // existed decodes exactly as it did, with no key added.
+    const meshes = buildMeshesFromTables(meshTable(1), vertexTable, indexTable);
+    expect('geometry_item_id' in meshes[0]).toBe(false);
+    expect('material_id' in meshes[0]).toBe(false);
+  });
+
+  it('adding the columns perturbs NOTHING else — the additive-safety property', () => {
+    // The compatibility question #3215 asks, answered rather than assumed.
+    //
+    // NEW decoder + OLD payload: getChild returns null, the guard is false, no
+    // key appears. OLD decoder + NEW payload needs no test and cannot be
+    // written here, because `numericColumn` selects BY NAME — a decoder that
+    // never asks for a column cannot be perturbed by its presence.
+    //
+    // An earlier version of this comment went on to say no format-version bump
+    // was needed and there was none to bump. Both halves were wrong. The server
+    // keys its cached geometry blob `{cache_key}-parquet-v4`, and the optimized
+    // blob carries a `[version:u8]` header. Without a bump a model parsed
+    // before this deploy replays its old blob and the columns never appear —
+    // the decoder handles that correctly and silently, which is the problem.
+    // The key is v5 now.
+    //
+    // What IS worth pinning is that the new columns do not disturb the old
+    // fields on the way past.
+    const withIds = buildMeshesFromTables(
+      meshTable(1, {
+        origin_x: new Float64Array([1000.5]),
+        origin_y: new Float64Array([2]),
+        origin_z: new Float64Array([3]),
+        geometry_class: new Uint8Array([2]),
+        geometry_item_id: new Uint32Array([501]),
+      }),
+      vertexTable,
+      indexTable
+    );
+    const withoutIds = buildMeshesFromTables(
+      meshTable(1, {
+        origin_x: new Float64Array([1000.5]),
+        origin_y: new Float64Array([2]),
+        origin_z: new Float64Array([3]),
+        geometry_class: new Uint8Array([2]),
+      }),
+      vertexTable,
+      indexTable
+    );
+    expect(withIds[0].origin).toEqual(withoutIds[0].origin);
+    expect(withIds[0].geometry_class).toBe(withoutIds[0].geometry_class);
+    expect(Array.from(withIds[0].positions)).toEqual(Array.from(withoutIds[0].positions));
+    expect(Array.from(withIds[0].indices)).toEqual(Array.from(withoutIds[0].indices));
+    // The only difference is the id itself.
+    expect(withIds[0].geometry_item_id).toBe(501);
+    expect('geometry_item_id' in withoutIds[0]).toBe(false);
+  });
+
+  it('ignores a source-id column that is not parallel to the mesh rows', () => {
+    // Same structural guard the origin columns carry: a short column is a
+    // malformed payload, and trusting it would hand row 1's id to row 0.
+    const meshes = buildMeshesFromTables(
+      meshTable(2, { geometry_item_id: new Uint32Array([501]) }),
+      vertexTable,
+      indexTable
+    );
+    expect('geometry_item_id' in meshes[0]).toBe(false);
+  });
+});
+
 describe('buildMeshesFromOptimizedTables (instanced format)', () => {
   it('places each instance by its OWN origin even though geometry is shared', () => {
     const meshes = buildMeshesFromOptimizedTables(
@@ -264,6 +369,20 @@ describe('buildMeshesFromOptimizedTables (instanced format)', () => {
     expect('origin' in meshes[0]).toBe(false); // all-zero origin is omitted
     expect(meshes[1].origin).toEqual([5000, 3, -1000]);
     expect(meshes[1].geometry_class).toBe(2);
+  });
+
+  it('carries each instance OWN source ids, not the shared template first one', () => {
+    // The per-instance question #3215 asks, answered where it can actually be
+    // wrong: two instances that dedupe to ONE geometry template can still come
+    // from different IfcRepresentationItems -- the dedup key is the vertex data,
+    // and identical geometry from two source items is what dedup exists for.
+    // Hanging these off the template would hand instance 1 instance 0's id.
+    const meshes = buildMeshesFromOptimizedTables(
+      optimizedFixture({ geometry_item_id: new Uint32Array([501, 502]) })
+    );
+    expect(Array.from(meshes[0].positions)).toEqual(Array.from(meshes[1].positions));
+    expect(meshes[0].geometry_item_id).toBe(501);
+    expect(meshes[1].geometry_item_id).toBe(502);
   });
 
   it('omits origin / geometry_class when the columns are absent', () => {

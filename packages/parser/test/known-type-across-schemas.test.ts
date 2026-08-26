@@ -225,10 +225,13 @@ describe('isKnownType across the bundled schema union (#2003)', () => {
   it('answers known-ness, not instantiability: abstract classes stay accepted (#2035)', () => {
     // Pre-existing and deliberately unchanged here. `main` accepts 123 abstract
     // classes through the pin; the union adds 19 more. Rejecting them is a
-    // different predicate, belongs at the authoring boundary rather than in a
-    // name-registry check, and is tracked separately — this test exists so the
-    // split is a recorded decision rather than an oversight, and it fails the
-    // day someone changes it without changing the contract.
+    // different predicate and belongs at the authoring boundary rather than in
+    // a name-registry check — and that is where it now lives: #2035 was closed
+    // by `isInstantiable` in `ifc-schema.ts` plus the `addEntity` guard in
+    // `packages/sdk/src/namespaces/store.ts`, which throws on an abstract type.
+    // So this is not deferred work: the split is settled, and this test exists
+    // so it stays a recorded decision rather than an oversight — it fails the
+    // day someone makes `isKnownType` answer instantiability instead.
     for (const type of ['IfcProduct', 'IfcRoot', 'IfcRelationship', 'IfcObjectDefinition']) {
       expect(getEntityMetadata(type)?.isAbstract, type).toBe(true);
       expect(isKnownType(type), type).toBe(true);

@@ -23,32 +23,26 @@ const MAX_HEADER_BYTES = 64 * 1024;
 
 /**
  * Split STEP record arguments at top-level commas, respecting paren/bracket
- * nesting and single-quoted strings (with `''` escapes). Returns the raw,
- * still-escaped argument substrings (trimmed).
+ * nesting, single-quoted strings (with `''` escapes) and comments. Returns the
+ * raw, still-escaped argument substrings (trimmed).
+ *
+ * A comment is dropped rather than copied through: it is not part of the
+ * argument's value, and its commas are not separators.
  */
 function splitTopLevel(inner: string): string[] {
   const args: string[] = [];
   let depth = 0;
-  let inString = false;
   let current = '';
   for (let i = 0; i < inner.length; i++) {
-    const ch = inner[i];
-    if (inString) {
-      current += ch;
-      if (ch === "'") {
-        if (inner[i + 1] === "'") {
-          current += "'";
-          i++;
-        } else {
-          inString = false;
-        }
-      }
+    const skip = skipLexicalAt(inner, i);
+    if (skip >= 0) {
+      // A literal is part of the argument's text; a comment is not.
+      if (inner[i] === "'") current += inner.slice(i, skip);
+      i = skip - 1;
       continue;
     }
-    if (ch === "'") {
-      inString = true;
-      current += ch;
-    } else if (ch === '(' || ch === '[') {
+    const ch = inner[i];
+    if (ch === '(' || ch === '[') {
       depth++;
       current += ch;
     } else if (ch === ')' || ch === ']') {
@@ -124,9 +118,79 @@ function decodeStringList(arg: string): string[] {
 }
 
 /**
- * Index of `keyword` occurring as a RECORD -- outside any quoted string -- or
- * -1. `fromIndex` must be a position outside a string; the scan starts its
- * quote tracking there.
+ * If a STEP string literal or a `/* ... *\/` comment starts at `text[i]`, return
+ * the index just past it. Otherwise -1.
+ *
+ * Neither carries structure: a keyword, a comma or a bracket inside one is
+ * text. Every scan in this file has to agree on that, so it is one function
+ * rather than a copy per loop. #3284 was one file holding two rules for the
+ * same thing; three private copies of this loop is that shape again.
+ *
+ * An unterminated literal or comment runs to the end of the text, as a reader
+ * would take it. That is not a detail: it is what makes the result always
+ * ADVANCE the caller's index. An earlier form returned the `*\/` offset and
+ * left `-1` to mean unterminated, which a caller adding 1 to turns into 0, so
+ * the scan restarts at the top, finds the same comment, and never terminates.
+ *
+ * The rule itself is owned by `step-lexing.ts`, which applies it over bytes for
+ * the tokenizer. This is the decoded-string counterpart. Folding the two
+ * together means moving the whole header read onto bytes, since these callers
+ * slice with character offsets; that is a larger change than #3284 and belongs
+ * on its own.
+ */
+function skipLexicalAt(text: string, i: number): number {
+  if (text[i] === "'") {
+    for (let p = i + 1; p < text.length; p++) {
+      if (text[p] !== "'") continue;
+      if (text[p + 1] === "'") { p++; continue; } // `''` is an escaped quote, not the end
+      return p + 1;
+    }
+    return text.length;
+  }
+  if (text[i] === '/' && text[i + 1] === '*') {
+    const close = text.indexOf('*/', i + 2);
+    return close < 0 ? text.length : close + 2;
+  }
+  return -1;
+}
+
+/**
+ * Advance past whitespace and comments. ISO 10303-21 allows a comment wherever
+ * whitespace is allowed, including between a record keyword and its `(`.
+ */
+function skipTrivia(text: string, i: number): number {
+  for (;;) {
+    while (i < text.length && /\s/.test(text[i])) i++;
+    if (text[i] === '/' && text[i + 1] === '*') { i = skipLexicalAt(text, i); continue; }
+    return i;
+  }
+}
+
+/**
+ * Case-insensitive ASCII compare of `keyword` against `text` at `i`. Callers
+ * pass upper-case keywords.
+ *
+ * Compares character by character instead of uppercasing a copy of `text`,
+ * because a copy cannot be indexed into. `'ß'.toUpperCase()` is two characters,
+ * so one of them shifts every later offset, and the caller then slices the
+ * ORIGINAL text with an offset measured in the copy.
+ *
+ * ASCII-only on purpose. That is what ISO 10303-21 case-insensitivity means,
+ * and it declines the matches a full Unicode fold accepts: `'ſ'` (long s)
+ * uppercases to `'S'`, so a full fold reads ` ENDſEC` as `ENDSEC`.
+ */
+function matchesKeywordAt(text: string, i: number, keyword: string): boolean {
+  for (let k = 0; k < keyword.length; k++) {
+    let c = text.charCodeAt(i + k); // NaN past the end, and NaN !== anything
+    if (c >= 97 && c <= 122) c -= 32;
+    if (c !== keyword.charCodeAt(k)) return false;
+  }
+  return true;
+}
+
+/**
+ * Index of `keyword` occurring as a RECORD, outside any string or comment, or
+ * -1.
  *
  * A plain `indexOf` is not enough here and the reason is the same one #3278 is
  * about, one level down: header FREE TEXT is not a declaration. STEP strings
@@ -139,39 +203,10 @@ function decodeStringList(arg: string): string[] {
  * `FILE_SCHEMA` record, losing the declaration entirely.
  */
 function indexOfRecord(text: string, keyword: string, fromIndex = 0): number {
-  let inString = false;
   for (let i = fromIndex; i < text.length; i++) {
-    const ch = text[i];
-    if (inString) {
-      if (ch === "'") {
-        if (text[i + 1] === "'") i++;
-        else inString = false;
-      }
-      continue;
-    }
-    if (ch === "'") {
-      inString = true;
-      continue;
-    }
-    // STEP comments are not structure either. ISO 10303-21 allows `/* ... */`
-    // wherever whitespace is allowed, and an apostrophe inside one --
-    // `/* John's export */` -- otherwise leaves quote state inverted for the
-    // whole rest of the file, so every later keyword is scanned in the wrong
-    // state and NO record is found. A comment then costs the entire header,
-    // which is the same total loss the quote-awareness above exists to prevent
-    // (#3284).
-    if (ch === '/' && text[i + 1] === '*') {
-      const close = text.indexOf('*/', i + 2);
-      if (close < 0) return -1; // unterminated: swallows the rest, as a reader would
-      i = close + 1;
-      continue;
-    }
-    let hit = true;
-    for (let k = 0; k < keyword.length; k++) {
-      const c = text[i + k];
-      if (c === undefined || c.toUpperCase() !== keyword[k]) { hit = false; break; }
-    }
-    if (hit) return i;
+    const skip = skipLexicalAt(text, i);
+    if (skip >= 0) { i = skip - 1; continue; }
+    if (matchesKeywordAt(text, i, keyword)) return i;
   }
   return -1;
 }
@@ -185,24 +220,15 @@ function indexOfRecord(text: string, keyword: string, fromIndex = 0): number {
 function extractRecordArgs(text: string, keyword: string, fromIndex = 0): string | null {
   const at = indexOfRecord(text, keyword, fromIndex);
   if (at < 0) return null;
-  let i = at + keyword.length;
-  while (i < text.length && /\s/.test(text[i])) i++;
+  let i = skipTrivia(text, at + keyword.length);
   if (text[i] !== '(') return null;
   const start = i;
   let depth = 0;
-  let inString = false;
   for (; i < text.length; i++) {
+    const skip = skipLexicalAt(text, i);
+    if (skip >= 0) { i = skip - 1; continue; }
     const ch = text[i];
-    if (inString) {
-      if (ch === "'") {
-        if (text[i + 1] === "'") i++;
-        else inString = false;
-      }
-      continue;
-    }
-    if (ch === "'") {
-      inString = true;
-    } else if (ch === '(') {
+    if (ch === '(') {
       depth++;
     } else if (ch === ')') {
       depth--;

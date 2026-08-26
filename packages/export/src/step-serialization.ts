@@ -124,6 +124,12 @@ export function serializeTypedMarker(type: string, value: string | number | bool
  * on one physical line and round-trips through the line-oriented
  * merge/convert paths, without a run of them losing its length (#3284).
  *
+ * This is the DATA-section escaper; `@ifc-lite/data`'s writes the header. Both
+ * must agree with `rust/export/src/step_text.rs::escape` or one output file
+ * carries two rules, and `serializeAttributeValue` below picks between the two
+ * escapers by whether the source token was already quoted, so the split was
+ * reachable inside a single entity. Pinned in `step-escaper-parity.test.ts`.
+ *
  * ISO 10303-21 6.3.3.4 restricts a string literal's plain-text bytes to the
  * "basic graphic" range 32-126; every other character is a control directive
  * (`\X\HH`, `\X2\HHHH\X0\`, `\X4\HHHHHHHH\X0\`), never a raw byte — and
@@ -142,12 +148,7 @@ export function escapeStepString(str: string): string {
   const escaped = str
     .replace(/\\/g, '\\\\')
     .replace(/'/g, "''")
-    // One space PER control character, not one per run. This is the DATA-section
-    // escaper; `@ifc-lite/data`'s writes the header. Both must agree with
-    // `rust/export/src/step_text.rs::escape` or one output file carries two
-    // rules -- and `serializeAttributeValue` below picks between the two
-    // escapers by whether the source token was already quoted, so the split was
-    // reachable within a single entity (#3284).
+    // One space PER control character, not one per run (#3284).
     // eslint-disable-next-line no-control-regex
     .replace(/[\x00-\x1F\x7F]/g, ' ');
   return encodeNonAsciiStepDirectives(escaped);

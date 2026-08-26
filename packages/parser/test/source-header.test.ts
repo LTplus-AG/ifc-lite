@@ -344,14 +344,14 @@ describe('parseSourceHeader reads a RANGE, never the whole source (#2183)', () =
  * The Rust half already guarded this in `step_text::find_unquoted`; these pin
  * that the two halves now agree rather than each deciding where the header ends.
  */
+const NAME_AND_SCHEMA =
+  "FILE_NAME('a.ifc','ts',('Jane'),('Acme'),'pp','Revit','auth');\nFILE_SCHEMA(('IFC4'));";
+
 describe('quoted header values are not mistaken for structure (#3284)', () => {
   it('an ENDSEC inside a FILE_DESCRIPTION value does not truncate the header', () => {
-    const text =
-      "ISO-10303-21;\nHEADER;\n" +
-      "FILE_DESCRIPTION(('note: the ENDSEC; marker is described here'),'2;1');\n" +
-      "FILE_NAME('a.ifc','ts',('Jane'),('Acme'),'pp','Revit','auth');\n" +
-      "FILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n";
-    const h = parseSourceHeader(enc(text));
+    const h = parseSourceHeader(
+      header(`FILE_DESCRIPTION(('note: the ENDSEC; marker is described here'),'2;1');\n${NAME_AND_SCHEMA}`),
+    );
     // Before the fix this whole header read as `undefined`: the quoted ENDSEC
     // truncated the text before any record could be found.
     expect(h).toBeDefined();
@@ -361,12 +361,9 @@ describe('quoted header values are not mistaken for structure (#3284)', () => {
   });
 
   it('a FILE_NAME mentioned inside a FILE_DESCRIPTION value does not shadow the real record', () => {
-    const text =
-      "ISO-10303-21;\nHEADER;\n" +
-      "FILE_DESCRIPTION(('per the FILE_NAME convention'),'2;1');\n" +
-      "FILE_NAME('a.ifc','ts',('Jane'),('Acme'),'pp','Revit','auth');\n" +
-      "FILE_SCHEMA(('IFC4'));\nENDSEC;\n";
-    const h = parseSourceHeader(enc(text));
+    const h = parseSourceHeader(
+      header(`FILE_DESCRIPTION(('per the FILE_NAME convention'),'2;1');\n${NAME_AND_SCHEMA}`),
+    );
     // Before the fix `indexOf('FILE_NAME')` matched the quoted prose; the next
     // character is not `(`, so extraction bailed and every field was lost.
     expect(h?.name).toBe('a.ifc');
@@ -379,20 +376,17 @@ describe('quoted header values are not mistaken for structure (#3284)', () => {
     // STEP escapes a literal apostrophe as ''. That toggles quote state twice,
     // which must leave the scanner exactly where it started -- otherwise every
     // keyword after an apostrophe is read with the quote state inverted.
-    const text =
-      "ISO-10303-21;\nHEADER;\n" +
-      "FILE_DESCRIPTION(('O''Brien mentions ENDSEC; here'),'2;1');\n" +
-      "FILE_NAME('b.ifc','ts',('Ann'),('Co'),'pp','Sys','auth');\n" +
-      "FILE_SCHEMA(('IFC4'));\nENDSEC;\n";
-    const h = parseSourceHeader(enc(text));
+    const h = parseSourceHeader(
+      header(`FILE_DESCRIPTION(('O''Brien mentions ENDSEC; here'),'2;1');\n${NAME_AND_SCHEMA}`),
+    );
     expect(h?.description).toEqual(["O'Brien mentions ENDSEC; here"]);
-    expect(h?.name).toBe('b.ifc');
+    expect(h?.name).toBe('a.ifc');
   });
 });
 
 /**
- * Two ways the quote-aware scan itself can go wrong, both found by review of
- * the #3284 fix rather than by the original report.
+ * Ways the quote-aware scan itself can go wrong, all found by review of the
+ * #3284 fix rather than by the original report.
  *
  * Each produces the SAME total-loss outcome the fix exists to prevent, which is
  * why they are pinned here: a scan that mis-tracks its own state loses the whole
@@ -403,12 +397,9 @@ describe('the quote-aware scan does not lose the header to its own state (#3284)
     // ISO 10303-21 allows /* ... */ wherever whitespace is allowed. A comment
     // carrying an apostrophe has an odd quote count, so a scan that toggles on
     // it reads every later keyword in the wrong state and finds no record.
-    const text =
-      "ISO-10303-21;\nHEADER;\n/* John's export */\n" +
-      "FILE_DESCRIPTION(('d'),'2;1');\n" +
-      "FILE_NAME('a.ifc','ts',('Jane'),('Acme'),'pp','Revit','auth');\n" +
-      "FILE_SCHEMA(('IFC4'));\nENDSEC;\n";
-    const h = parseSourceHeader(enc(text));
+    const h = parseSourceHeader(
+      header(`/* John's export */\nFILE_DESCRIPTION(('d'),'2;1');\n${NAME_AND_SCHEMA}`),
+    );
     expect(h).toBeDefined();
     expect(h?.name).toBe('a.ifc');
     expect(h?.originatingSystem).toBe('Revit');
@@ -419,15 +410,61 @@ describe('the quote-aware scan does not lose the header to its own state (#3284)
     // the original puts every later offset one character out, so the FILE_NAME
     // record is read from the wrong position and every field is lost. German
     // header values are ordinary, not exotic.
-    const text =
-      "ISO-10303-21;\nHEADER;\n" +
-      "FILE_DESCRIPTION(('Straße'),'2;1');\n" +
-      "FILE_NAME('a.ifc','ts',('Jane'),('Acme'),'pp','Revit','auth');\n" +
-      "FILE_SCHEMA(('IFC4'));\nENDSEC;\n";
-    const h = parseSourceHeader(enc(text));
+    const h = parseSourceHeader(header(`FILE_DESCRIPTION(('Straße'),'2;1');\n${NAME_AND_SCHEMA}`));
     expect(h?.description).toEqual(['Straße']);
     expect(h?.name).toBe('a.ifc');
     expect(h?.author).toEqual(['Jane']);
     expect(h?.originatingSystem).toBe('Revit');
+  });
+
+  it('a comment between a keyword and its ( does not lose the record', () => {
+    // 10303-21 allows a comment wherever whitespace is allowed, so this sits
+    // between FILE_SCHEMA and its argument list. A scan that skips whitespace
+    // only sees `/` where it wants `(` and drops the schema declaration.
+    const h = parseSourceHeader(
+      header(
+        "FILE_DESCRIPTION(('d'),'2;1');\n" +
+          "FILE_NAME('a.ifc','ts',('Jane'),('Acme'),'pp','Revit','auth');\n" +
+          "FILE_SCHEMA /* the real one */ (('IFC4'));",
+      ),
+    );
+    expect(h?.schemaIdentifiers).toEqual(['IFC4']);
+    expect(h?.name).toBe('a.ifc');
+  });
+
+  it('a comma inside a comment does not split one argument into two', () => {
+    // The argument splitter tracks quotes and nesting. A comment is neither, so
+    // its comma reads as a top-level separator and shifts every later argument
+    // by one slot: originatingSystem comes back holding the preprocessor field.
+    const h = parseSourceHeader(
+      header(
+        "FILE_DESCRIPTION(('d'),'2;1');\n" +
+          "FILE_NAME('a.ifc','ts',('Jane'),('Acme'),/* pp, then sys */'pp','Revit','auth');\n" +
+          "FILE_SCHEMA(('IFC4'));",
+      ),
+    );
+    expect(h?.originatingSystem).toBe('Revit');
+    expect(h?.preprocessorVersion).toBe('pp');
+    expect(h?.authorization).toBe('auth');
+  });
+
+  it('an unterminated comment ends the scan instead of restarting it', () => {
+    // The skip must always ADVANCE the caller's index. Returning the `*/`
+    // offset and using -1 for "unterminated" turns into 0 at the caller, so the
+    // scan restarts at the top, finds the same comment, and never terminates.
+    // A timeout here rather than a wrong value is the failure being pinned.
+    const h = parseSourceHeader(
+      header(`FILE_DESCRIPTION(('d'),'2;1');\n${NAME_AND_SCHEMA}\n/* never closed`),
+    );
+    expect(h?.name).toBe('a.ifc');
+  });
+
+  it('a long s is not folded to S, so it cannot fake a keyword', () => {
+    // 'ſ'.toUpperCase() is 'S', so a full Unicode fold reads ENDſEC as ENDSEC
+    // and truncates the header before FILE_SCHEMA. 10303-21 case-insensitivity
+    // is ASCII, and the compare is ASCII-only to match.
+    const h = parseSourceHeader(header(`ENDſEC;\nFILE_DESCRIPTION(('d'),'2;1');\n${NAME_AND_SCHEMA}`));
+    expect(h?.schemaIdentifiers).toEqual(['IFC4']);
+    expect(h?.name).toBe('a.ifc');
   });
 });

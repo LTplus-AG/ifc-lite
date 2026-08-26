@@ -19,6 +19,7 @@
 import { describe, it, expect } from 'vitest';
 import { IFC_SUBTYPES, expandTypes, QUERY_REL_TYPE_MAP } from '../src/query-backend-maps.js';
 import { RelationshipType } from '@ifc-lite/data';
+import { SCHEMA_REGISTRY } from '../src/generated/schema-registry.js';
 
 describe('expandTypes', () => {
   it('includes both IFC4 case subtypes of IfcWall', () => {
@@ -75,6 +76,66 @@ describe('IFC_SUBTYPES', () => {
     for (const [parent, subtypes] of Object.entries(IFC_SUBTYPES)) {
       expect(subtypes).not.toContain(parent);
     }
+  });
+});
+
+/**
+ * `IFC_SUBTYPES` states by hand a relation the generated `SCHEMA_REGISTRY`
+ * already states exactly. Two paths that must agree — and they did not: the map
+ * carried the nine `*StandardCase` families and no `IFCFURNISHINGELEMENT`, so
+ * `byType('IfcFurnishingElement')` answered with nothing on an IFC4 model whose
+ * furniture is `IfcFurniture` (#3229). This pins the hand-written map to the
+ * generated schema so it cannot fall behind again.
+ */
+describe('IFC_SUBTYPES agrees with the generated schema registry', () => {
+  /** Transitive descendants of `type`, read off the registry's inheritance chains. */
+  function registryDescendants(type: string): string[] {
+    const upper = type.toUpperCase();
+    const out: string[] = [];
+    for (const entity of Object.values(SCHEMA_REGISTRY.entities)) {
+      const self = entity.name.toUpperCase();
+      if (self === upper) continue;
+      if ((entity.inheritanceChain ?? []).some(a => a.toUpperCase() === upper)) out.push(self);
+    }
+    return out.sort();
+  }
+
+  it('has a supertype to check, and the registry declares subtypes for each', () => {
+    // Anti-vacuity. Both halves of every assertion below are derived — an empty
+    // map, or a registry that stopped reporting inheritance chains, would make
+    // the per-supertype cases pass by finding nothing to compare.
+    expect(Object.keys(IFC_SUBTYPES).length).toBeGreaterThan(0);
+    for (const supertype of Object.keys(IFC_SUBTYPES)) {
+      expect(registryDescendants(supertype).length, supertype).toBeGreaterThan(0);
+    }
+  });
+
+  it('lists every subtype the registry declares, for every supertype in the map', () => {
+    for (const supertype of Object.keys(IFC_SUBTYPES)) {
+      const expanded = expandTypes([supertype]);
+      for (const sub of registryDescendants(supertype)) {
+        expect(expanded, `${supertype} -> ${sub}`).toContain(sub);
+      }
+    }
+  });
+
+  it('lists no subtype the registry does not declare', () => {
+    // The other direction: a typo'd or retired class name in the map is a
+    // lookup that can never hit, and nothing else would notice it.
+    for (const [supertype, subtypes] of Object.entries(IFC_SUBTYPES)) {
+      const declared = registryDescendants(supertype);
+      for (const sub of subtypes) {
+        expect(declared, `${supertype} -> ${sub}`).toContain(sub);
+      }
+    }
+  });
+
+  it('expands IfcFurnishingElement to IfcFurniture and IfcSystemFurnitureElement', () => {
+    // The #3229 instance, named so the regression is legible without rerunning
+    // the derivation above.
+    const expanded = expandTypes(['IfcFurnishingElement']);
+    expect(expanded).toContain('IFCFURNITURE');
+    expect(expanded).toContain('IFCSYSTEMFURNITUREELEMENT');
   });
 });
 

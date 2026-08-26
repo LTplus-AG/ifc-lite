@@ -65,12 +65,12 @@ pub(crate) fn combined_pre_pass(
                 if site_position.is_none() {
                     site_position = Some((id, start, end));
                 }
-                let ifc_type = ifc_lite_core::IfcType::from_str(type_name);
+                let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
                 complex_jobs.push((id, start, end, ifc_type));
             }
             _ => {
                 if ifc_lite_core::has_geometry_by_name(type_name) {
-                    let ifc_type = ifc_lite_core::IfcType::from_str(type_name);
+                    let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
                     if ifc_lite_core::is_simple_geometry_type(type_name) {
                         simple_jobs.push((id, start, end, ifc_type));
                     } else {
@@ -91,7 +91,7 @@ pub(crate) fn combined_pre_pass(
                     // routed through this one-shot path keep rendering
                     // nothing. Filed as complex (not simple) — it is never
                     // one of the named simple element types.
-                    let ifc_type = ifc_lite_core::IfcType::from_str(type_name);
+                    let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
                     complex_jobs.push((id, start, end, ifc_type));
                 }
             }
@@ -172,13 +172,7 @@ pub(crate) fn collect_type_geometry_jobs(
                     referenced.insert(source_id);
                 }
             }
-        } else if type_name.ends_with("TYPE") || type_name.ends_with("STYLE") {
-            // Cheap suffix pre-filter keeps the is_subtype_of check off the hot
-            // path for the all-non-type majority of entities.
-            let ifc_type = IfcType::from_str(type_name);
-            if !ifc_type.is_subtype_of(IfcType::IfcTypeProduct) {
-                continue;
-            }
+        } else if let Some(ifc_type) = ifc_lite_core::type_product_ifc_type(type_name) {
             if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
                 // IfcTypeProduct.RepresentationMaps = attr 6.
                 let rep_maps: Vec<u32> = entity
@@ -362,166 +356,13 @@ pub(crate) fn build_instantiated_type_ids_from_spans(
 // `ifc_lite_geometry::rotation_angle_about_z`.)
 
 #[cfg(test)]
-mod orphan_type_from_spans_tests {
-    use super::{collect_type_geometry_jobs, collect_type_geometry_jobs_from_spans};
-    use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner, IfcType};
-
-    /// Build the mapped-item + type-candidate spans exactly as the streaming
-    /// pre-pass scan does, then assert the span-based orphan-type collector
-    /// matches the full-scan one byte-for-byte.
-    fn assert_match(content: &[u8]) -> usize {
-        let index = std::sync::Arc::new(build_entity_index(content));
-        let mut d1 = EntityDecoder::with_arc_index(content, index.clone());
-        let old = collect_type_geometry_jobs(content, &mut d1);
-        let mut mapped: Vec<(u32, usize, usize)> = Vec::new();
-        let mut cands: Vec<(u32, usize, usize, IfcType)> = Vec::new();
-        let mut sc = EntityScanner::new(content);
-        while let Some((id, tn, st, en)) = sc.next_entity() {
-            if tn == "IFCMAPPEDITEM" {
-                mapped.push((id, st, en));
-            } else if tn.ends_with("TYPE") || tn.ends_with("STYLE") {
-                let t = IfcType::from_str(tn);
-                if t.is_subtype_of(IfcType::IfcTypeProduct) {
-                    cands.push((id, st, en, t));
-                }
-            }
-        }
-        let mut d2 = EntityDecoder::with_arc_index(content, index);
-        let new = collect_type_geometry_jobs_from_spans(&mapped, &cands, &mut d2);
-        assert_eq!(old, new, "orphan type jobs diverged");
-        old.len()
-    }
-
-    // An IfcColumnType carrying a RepresentationMap that NO IfcMappedItem
-    // references — the #957 orphan-type-geometry case (renders the type's map
-    // directly). RepresentationMaps is IfcTypeProduct attr 6.
-    const ORPHAN: &str = r#"ISO-10303-21;
-HEADER;
-FILE_DESCRIPTION((''),'2;1');
-FILE_NAME('t.ifc','',(''),(''),'','','');
-FILE_SCHEMA(('IFC4'));
-ENDSEC;
-DATA;
-#1=IFCPROJECT('0Project0000000000000A',$,'P',$,$,$,$,(#2),#3);
-#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
-#3=IFCUNITASSIGNMENT((#6));
-#4=IFCCARTESIANPOINT((0.,0.,0.));
-#5=IFCAXIS2PLACEMENT3D(#4,$,$);
-#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
-#8=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(0.,1.,0.),(0.,0.,1.)));
-#10=IFCREPRESENTATIONMAP(#5,#12);
-#12=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#13));
-#13=IFCTRIANGULATEDFACESET(#8,$,.T.,((1,2,3),(1,2,4),(1,4,3),(2,3,4)),$);
-#20=IFCCOLUMNTYPE('0ColType00000000000A',$,'ColType',$,$,$,(#10),$,$,.COLUMN.);
-ENDSEC;
-END-ISO-10303-21;
-"#;
-
-    // Same, but an IfcMappedItem references the map — the map is drawn through
-    // the occurrence, so the type yields NO orphan job (filtered out).
-    const REFERENCED: &str = r#"ISO-10303-21;
-HEADER;
-FILE_DESCRIPTION((''),'2;1');
-FILE_NAME('t.ifc','',(''),(''),'','','');
-FILE_SCHEMA(('IFC4'));
-ENDSEC;
-DATA;
-#1=IFCPROJECT('0Project0000000000000A',$,'P',$,$,$,$,(#2),#3);
-#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
-#3=IFCUNITASSIGNMENT((#6));
-#4=IFCCARTESIANPOINT((0.,0.,0.));
-#5=IFCAXIS2PLACEMENT3D(#4,$,$);
-#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
-#8=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(0.,1.,0.),(0.,0.,1.)));
-#10=IFCREPRESENTATIONMAP(#5,#12);
-#12=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#13));
-#13=IFCTRIANGULATEDFACESET(#8,$,.T.,((1,2,3),(1,2,4),(1,4,3),(2,3,4)),$);
-#20=IFCCOLUMNTYPE('0ColType00000000000A',$,'ColType',$,$,$,(#10),$,$,.COLUMN.);
-#30=IFCMAPPEDITEM(#10,#31);
-#31=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#4,$,$);
-ENDSEC;
-END-ISO-10303-21;
-"#;
-
-    #[test]
-    fn from_spans_matches_full_scan_orphan_case() {
-        let n = assert_match(ORPHAN.as_bytes());
-        assert_eq!(n, 1, "the orphan IfcColumnType should yield one type job");
-    }
-
-    #[test]
-    fn from_spans_matches_full_scan_referenced_case() {
-        let n = assert_match(REFERENCED.as_bytes());
-        assert_eq!(n, 0, "a referenced RepresentationMap yields no orphan type job");
-    }
-}
+#[path = "prepass_orphan_type_tests.rs"]
+mod orphan_type_from_spans_tests;
 
 #[cfg(test)]
-mod combined_pre_pass_issue_1910_tests {
-    use super::combined_pre_pass;
-    use ifc_lite_core::EntityDecoder;
+#[path = "prepass_issue_1910_tests.rs"]
+mod combined_pre_pass_issue_1910_tests;
 
-    // #1910 (third instance, Greptile-flagged displaced-path gap):
-    // `buildPrePassOnce`'s single-shot `combined_pre_pass` had the same
-    // `has_geometry_by_name` gap as the serial + sharded scans: a container
-    // like `IfcBuildingStorey` with an exceptional non-null Representation
-    // was dropped from both `simple_jobs` and `complex_jobs`. Uses the storey
-    // fixture, not `IfcBuilding`: post-#1969 `has_geometry_by_name` is
-    // unconditionally `true` for `IFCBUILDING`, so a building job would pass
-    // via the by-name branch whether or not the exception fires.
-    const FIXTURE: &str = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../geometry/tests/fixtures/issue_1910_storey_shell_geometry.ifc"
-    );
-
-    // Injected here rather than added to the fixture file: it has four
-    // consumers and this second storey is only meaningful to the two
-    // exception tests. `rfind`, not `find` -- the fixture has two `ENDSEC;`
-    // markers (HEADER and DATA) and this must land inside DATA.
-    const NULL_REPR_STOREY: &str =
-        "#42=IFCBUILDINGSTOREY('7777777777777777770108',$,'Level 2',$,$,#18,$,$,.ELEMENT.,0.);\n";
-
-    fn storey_jobs(content: &[u8], global_id: &str) -> bool {
-        let index = std::sync::Arc::new(ifc_lite_core::build_entity_index(content));
-        let mut decoder = EntityDecoder::with_arc_index(content, index);
-        let pre_pass = combined_pre_pass(content, &mut decoder);
-        pre_pass
-            .simple_jobs
-            .iter()
-            .chain(pre_pass.complex_jobs.iter())
-            .any(|&(_, start, end, _)| {
-                let span = &content[start..end];
-                let eq = span.iter().position(|&b| b == b'=').map(|p| p + 1).unwrap_or(0);
-                span[eq..].starts_with(b"IFCBUILDINGSTOREY(")
-                    && span.windows(global_id.len()).any(|w| w == global_id.as_bytes())
-            })
-    }
-
-    #[test]
-    fn combined_pre_pass_schedules_storey_geometry_job() {
-        let raw = std::fs::read_to_string(FIXTURE).expect("issue_1910 storey fixture must be present");
-        assert!(
-            !ifc_lite_core::has_geometry_by_name("IFCBUILDINGSTOREY"),
-            "sanity: must stay blocked by name, else this test never reaches the exception"
-        );
-        // A second storey with a NULL Representation, so that forcing the
-        // instance-level check to always report "present" fails this test
-        // instead of leaving it vacuous in the other direction (#1910).
-        let mut content = raw.clone();
-        content.insert_str(
-            content.rfind("ENDSEC;").expect("fixture must have an ENDSEC;"),
-            NULL_REPR_STOREY,
-        );
-        let bytes = content.as_bytes();
-        assert!(
-            storey_jobs(bytes, "7777777777777777770103"),
-            "combined_pre_pass must schedule a geometry job for the storey whose \
-             Representation is non-null, via the instance-level exception (#1910)"
-        );
-        assert!(
-            !storey_jobs(bytes, "7777777777777777770108"),
-            "combined_pre_pass must NOT schedule a geometry job for a storey whose \
-             Representation is null (#1910 negative case)"
-        );
-    }
-}
+#[cfg(test)]
+#[path = "prepass_issue_3187_tests.rs"]
+mod combined_pre_pass_issue_3187_tests;

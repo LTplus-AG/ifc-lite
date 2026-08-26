@@ -214,19 +214,51 @@ export interface ModelInfo {
 // URL Parameter Types
 // ============================================================================
 
-/** Parameters that can be passed via URL to the embed viewer */
+/**
+ * Parameters that can be passed via URL to the embed viewer.
+ *
+ * Every field here is parsed by the viewer. Three are parsed and NOT yet
+ * applied, and they are marked as such below rather than left to look
+ * implemented: presence in this type is not a behaviour guarantee, and
+ * pretending otherwise is what #2934 was about.
+ */
 export interface EmbedUrlParams {
+  /** Model to fetch on load. http(s) only; other schemes are rejected. */
   modelUrl?: string;
   theme?: 'light' | 'dark';
+  /** Background colour, hex digits without the leading `#`. */
   bg?: string;
+  /**
+   * NOT YET IMPLEMENTED — parsed and ignored. There is no interaction gate in
+   * the camera controller to restrict orbit/pan/zoom against; wheel and pinch
+   * zoom in particular bypass the orbit/pan entry points entirely. Tracked
+   * separately from #2934 so it is not mistaken for wiring work.
+   */
   controls?: 'orbit' | 'pan' | 'all' | 'none';
+  /** `false` suppresses the automatic fetch of `modelUrl`. Default: load. */
   autoLoad?: boolean;
+  /** NOT YET IMPLEMENTED — parsed and ignored; the axis triad renders regardless. */
   hideAxis?: boolean;
+  /** NOT YET IMPLEMENTED — parsed and ignored; the scale bar renders regardless. */
   hideScale?: boolean;
+  /** Entity ids to select once the first model is on screen. */
   select?: number[];
+  /** Entity ids to isolate once the first model is on screen. */
   isolate?: number[];
+  /**
+   * IFC class names to hide, e.g. `IfcSpace`. Arbitrary class names are
+   * accepted and matched case-insensitively, so `IFCSPACE`, `ifcspace` and
+   * `IfcSpace` all name the same class.
+   */
   hideTypes?: string[];
+  /**
+   * Initial absolute camera orientation in degrees; the model is framed at
+   * that orientation. `zoom` is accepted for backwards compatibility and is
+   * NOT applied — the viewer has no absolute-zoom actuator and the field
+   * carries no unit, so framing comes from a fit instead.
+   */
   camera?: { azimuth: number; elevation: number; zoom?: number };
+  /** Preset view direction. Takes precedence over `camera`. */
   view?: ViewPreset;
 }
 

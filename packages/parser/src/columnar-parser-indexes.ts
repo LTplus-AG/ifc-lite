@@ -104,6 +104,8 @@ export const QUANTITY_TYPE_MAP: Record<string, QuantityType> = {
     'IFCQUANTITYCOUNT': QuantityType.Count,
     'IFCQUANTITYWEIGHT': QuantityType.Weight,
     'IFCQUANTITYTIME': QuantityType.Time,
+    // IFC4X3 added IfcQuantityNumber; older schemas never emit it.
+    'IFCQUANTITYNUMBER': QuantityType.Number,
 };
 
 // Types needed for spatial hierarchy (small subset)
@@ -158,6 +160,7 @@ export const PROPERTY_ENTITY_TYPES = new Set([
     'IFCPROPERTYLISTVALUE', 'IFCPROPERTYREFERENCEVALUE',
     'IFCQUANTITYLENGTH', 'IFCQUANTITYAREA', 'IFCQUANTITYVOLUME',
     'IFCQUANTITYCOUNT', 'IFCQUANTITYWEIGHT', 'IFCQUANTITYTIME',
+    'IFCQUANTITYNUMBER',
 ]);
 
 export const PROPERTY_CONTAINER_TYPES = new Set([

@@ -885,6 +885,46 @@ jobs:
       # crates.io behind npm. This makes that order a PR-visible gate.
       - name: Check the crates publish order matches the dependency graph
         run: node --test scripts/release-crates-order.test.mjs
+      # #3180: `cargo publish` does not block until a crate is visible in the
+      # crates.io index (the comment that used to claim it did was false —
+      # v6.0.0 left 4 of 7 crates unpublished when the index lagged past
+      # cargo's own internal wait). release-crates.mjs now polls the index
+      # itself with a bounded timeout instead of trusting cargo's wait; these
+      # cover that poll (and the underlying crates.io query helper) against a
+      # stubbed registry and a fake clock, never a real network call.
+      - name: Check the crates.io publish poll fails closed on a stuck index
+        run: node --test scripts/lib/crates-io.test.mjs scripts/release-crates.test.mjs
+      # #3181: `verify-npm-publish.js` only ever checked npm, so the v6.0.0
+      # partial crates.io publish (#3180) went unreported — npm was complete,
+      # and nothing checked the other registry. Covers `verify-crates-publish.js`
+      # reproducing that exact 3-of-7 shape against a stubbed registry — and
+      # the EXIT CODE, not just the pure `verifyAll`: the step name claims the
+      # verifier "catches" a partial publish, which is a claim about what the
+      # process returns. `runMain` is driven directly so `if (failed.length >
+      # 0) → if (false)` (a partial publish exiting 0) and an empty crate list
+      # exiting 0 both fail here rather than at the next release.
+      - name: Check the crates.io publish verifier catches a partial publish
+        run: node --test scripts/verify-crates-publish.test.mjs
+      # The gate that decides whether either publish verifier runs at all. It
+      # is read from `release.yml` on main only, so nothing on a PR exercises
+      # it — and its first spelling (root `package.json` version vs `HEAD~1`)
+      # was wrong on this repo's own history: `sync-versions.js` pins the root
+      # version to the HIGHEST workspace version without lockstepping the
+      # rest, so the root version stands still on most release commits and the
+      # gate collapsed back to `published == 'true'`, skipping verification on
+      # exactly the re-run that recovers a partial publish (#3181). These
+      # drive real throwaway git repositories: a root bump, a bump that leaves
+      # the root alone, no bump at all, and a first commit with no parent.
+      #
+      # They also cover the YAML SEAM, by lifting the `VERSION_CHANGED=` lines
+      # straight out of `release.yml` and running them under the Actions
+      # default shell. The script fails open on its own, but a bare
+      # `VAR=$(node …)` under `bash -eo pipefail` takes the substitution's
+      # exit status: a non-zero exit killed the step, `version_changed` was
+      # never written, and both verifiers skipped DESPITE `always()`. Editing
+      # the workflow back to that spelling reddens these tests.
+      - name: Check the release version-bump gate sees non-root bumps and fails open
+        run: node --test scripts/release-version-changed.test.mjs
       # verify-esm-entrypoints.mjs is the last gate before `pnpm release`
       # publishes. If its package discovery ever returns nothing — packages/
       # moved, or the publishable filter stops matching — the smoke loop has
@@ -923,8 +963,10 @@ jobs:
       # per-gate attribution; re-running them here costs a few seconds.
       # scripts/fixtures/ is in the glob because it was NOT: the first test file
       # under it would have been added, run locally, and then never run again.
+      # scripts/docs/ joined it for the same reason in #3200 - the catch-all is
+      # per-DIRECTORY, so it goes blind on the next subdirectory anyone adds.
       - name: Run every scripts/ test file (glob catch-all)
-        run: node --test scripts/*.test.mjs scripts/lib/*.test.mjs scripts/fixtures/*.test.mjs
+        run: node --test scripts/*.test.mjs scripts/lib/*.test.mjs scripts/fixtures/*.test.mjs scripts/docs/*.test.mjs
       # The server-parse root-attribute table (attr_indices.rs) is generated
       # from @ifc-lite/parser's SCHEMA_REGISTRY — the SAME table the in-browser
       # parse resolves names against. Guard that the committed file is in sync
@@ -964,6 +1006,14 @@ jobs:
       # paths). Keep the docs in lockstep with the code they describe.
       - name: Check package READMEs
         run: node scripts/docs/check-package-readmes.mjs
+      # That gate printed `✅ All 0 published packages have a README.md.` over
+      # an empty packages/, and dropped an unreadable package directory out of
+      # the count in silence (#3200, finding 9). Its floors are executable, so
+      # they are run rather than trusted — and named here rather than left to
+      # the catch-all glob below, which is per-DIRECTORY and did not reach
+      # scripts/docs/ when this was written.
+      - name: Check the README gate cannot pass vacuously
+        run: node --test scripts/docs/check-package-readmes.test.mjs
       - name: Check doc code samples
         run: node scripts/docs/check-doc-samples.mjs
       - name: Check generated doc sections
@@ -1314,9 +1364,58 @@ jobs:
   # for the branch protection rule so we don't have to retouch settings.
   # Succeeds if every dependency succeeded or was skipped (path-filtered
   # out); fails the moment any dependency fails or is cancelled.
+  # The crate semver gate (issue #3216). It runs at release time as the
+  # crates.io half's precondition, but a release-only gate is exactly the shape
+  # `release-crates-order.test.mjs` argues against in its own header: the
+  # Release workflow runs only on main, and only on an actual publish, so a
+  # breaking API change sits latent until it fails after npm has already gone
+  # out. This runs it on every PR instead.
+  #
+  # It is cheap on an ordinary PR and expensive only where it has signal. Each
+  # crate whose version is already live on crates.io is skipped BEFORE
+  # cargo-semver-checks is invoked, which on an ordinary PR is all of them: the
+  # job is seven registry lookups and a message saying plainly that no API was
+  # compared. On the `chore: version packages` PR, where `sync-versions.js` has
+  # moved the workspace version, it does the real comparison — and that is the
+  # commit whose version the whole issue is about, reviewed before it merges
+  # and publishes.
+  rust-semver:
+    name: Rust crate semver
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+
+      # A stable toolchain, not the dated nightly in rust-toolchain.toml:
+      # cargo-semver-checks refuses a nightly outright ("rustc version is not
+      # high enough: >=1.93.0 needed, got 1.93.0-nightly"). The gate invokes it
+      # as `cargo +stable semver-checks`, so this only has to exist.
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master 2026-05
+        with:
+          toolchain: stable
+
+      # Prebuilt binary. `cargo install cargo-semver-checks --locked` compiles
+      # it from source (~5 min).
+      - name: Install cargo-semver-checks
+        uses: taiki-e/install-action@4f5ee4a4759116abc6b10af05f20374e179d8ca3 # cargo-semver-checks (snapshot pinned 2026-08)
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          prefix-key: ci-rust-semver
+
+      # No `pnpm install`: the gate imports only node builtins and
+      # scripts/lib/crates-io.mjs, which does the same.
+      - name: Check crate semver against crates.io
+        run: node scripts/check-rust-semver.mjs
+
   test:
     name: Build + WASM + Rust + Node
-    needs: [changes, build, typecheck, lint, node-tests, viewer-tests, viewer-e2e, rust-tests, geometry-census, plato-check, docs-checks]
+    needs: [changes, build, typecheck, lint, node-tests, viewer-tests, viewer-e2e, rust-tests, rust-semver, geometry-census, plato-check, docs-checks]
     if: always()
     # Free runner — the gate just inspects upstream job results.
     runs-on: ubuntu-latest
@@ -1331,6 +1430,7 @@ jobs:
             [viewer-tests]="${{ needs.viewer-tests.result }}"
             [viewer-e2e]="${{ needs.viewer-e2e.result }}"
             [rust-tests]="${{ needs.rust-tests.result }}"
+            [rust-semver]="${{ needs.rust-semver.result }}"
             [geometry-census]="${{ needs.geometry-census.result }}"
             [plato-check]="${{ needs.plato-check.result }}"
             [docs-checks]="${{ needs.docs-checks.result }}"

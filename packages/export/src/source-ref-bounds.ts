@@ -65,7 +65,7 @@
  * over a plain-`Map` index, which can hold one.
  *
  * The readers are therefore gated on this predicate too (`entityLineText` in
- * `step-property-sets.ts`), which also makes them agree with the source-iteration
+ * `step-property-set-readers.ts`), which also makes them agree with the source-iteration
  * pass: that pass already skips a record whose ref fails this test, so an
  * exempt reader was answering questions about a record the same export had
  * decided not to write.
@@ -83,8 +83,8 @@ import type { ExportEntityRef } from './entity-iteration.js';
  *
  * Lives beside {@link createSourceRefReader} because the two are always used
  * together: the predicate decides whether a range may be read, this performs
- * the read. Both `step-exporter.ts` and `step-property-sets.ts` need them, and
- * one decode with one doc comment is what keeps the two files agreeing about
+ * the read. `step-exporter.ts` and the property-set readers need them, and
+ * one decode with one doc comment is what keeps every caller agreeing about
  * what a clamped range means (#2475 step 2b).
  */
 export function decodeRange(src: Uint8Array | IfcSourceBytes, start: number, end: number): string {

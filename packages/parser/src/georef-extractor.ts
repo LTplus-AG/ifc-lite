@@ -2,6 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { computeTransformMatrix } from './georef-transform.js';
+// The transform side lives in ./georef-transform.ts; re-exported here so
+// every existing `from './georef-extractor.js'` import keeps resolving.
+export {
+  transformToWorld,
+  transformToLocal,
+  getCoordinateSystemDescription,
+} from './georef-transform.js';
+
 /**
  * Georeferencing Extractor
  *
@@ -20,7 +29,8 @@
 
 import type { IfcEntity } from './entity-extractor.js';
 import { getString, getNumber, getReference } from './attribute-helpers.js';
-import { CONVERSION_BASED_UNIT_FACTORS } from './unit-extractor.js';
+import { CONVERSION_BASED_UNIT_FACTORS, SI_PREFIX_MULTIPLIERS } from './unit-extractor.js';
+import { inferMapUnitScaleFromLabel } from './map-unit-label.js';
 import { getAttributeNames } from './ifc-schema.js';
 
 export interface MapConversion {
@@ -78,6 +88,18 @@ export interface GeoreferenceInfo {
 }
 
 /**
+ * Every concrete class that carries an IfcMapConversion's attributes, in the
+ * mixed-case spelling `entitiesByType` is keyed by. `IfcMapConversionScaled`
+ * is IFC4X3's scaled variant and the only subtype in any bundled schema; it is
+ * listed here rather than folded into the caller so that every consumer of the
+ * exported `extractGeoreferencing` widens identically.
+ */
+export const MAP_CONVERSION_TYPE_NAMES: readonly string[] = [
+  'IfcMapConversion',
+  'IfcMapConversionScaled',
+];
+
+/**
  * Extract georeferencing information from IFC entities
  */
 export function extractGeoreferencing(
@@ -88,8 +110,18 @@ export function extractGeoreferencing(
     hasGeoreference: false,
   };
 
-  // Extract IfcMapConversion
-  const mapConversionIds = entitiesByType.get('IfcMapConversion') || [];
+  // Extract IfcMapConversion — including IFC4X3's concrete subtype
+  // IfcMapConversionScaled, which a type-keyed lookup for the supertype alone
+  // never sees. Its first eight attributes ARE IfcMapConversion's (SourceCRS,
+  // TargetCRS, Eastings, Northings, OrthogonalHeight, XAxisAbscissa,
+  // XAxisOrdinate, Scale); the three it adds (FactorX/Y/Z) sit after them, so
+  // reading it as its supertype is well-defined. Missing it did not merely
+  // omit a field: with no mapConversion there is no `transformMatrix`, so a
+  // file georeferenced this way was placed at its local origin instead of its
+  // map position.
+  const mapConversionIds = MAP_CONVERSION_TYPE_NAMES.flatMap(
+    (typeName) => entitiesByType.get(typeName) ?? [],
+  );
   if (mapConversionIds.length > 0) {
     const entity = entities.get(mapConversionIds[0]);
     if (entity) {
@@ -214,27 +246,6 @@ function asString(value: string | number | undefined): string | undefined {
 
 function asNumber(value: string | number | undefined): number | undefined {
   return typeof value === 'number' ? value : getNumber(value);
-}
-
-/**
- * Map an IFC unit label (e.g. "MILLIMETRE", "FOOT") to its metre scale.
- * Mirrors the viewer's `inferMapUnitScale` and the native `IfcProjectedCRS`
- * path so direct parser/MCP consumers of `ProjectedCRS.mapUnitScale` see the
- * same scale regardless of whether the CRS came from a native entity or an
- * ePSet. Returns `undefined` for an absent/unknown unit (the ePSet convention
- * then defers to the project length unit downstream).
- */
-function inferMapUnitScaleFromLabel(mapUnit: string | undefined): number | undefined {
-  if (!mapUnit) return undefined;
-  const n = mapUnit.toUpperCase();
-  if (n.includes('US') && (n.includes('SURVEY') || n.includes('FTUS'))) return 0.3048006096;
-  if (n.includes('FOOT') || n.includes('FEET')) return 0.3048;
-  if (n.includes('MILLI')) return 0.001;
-  if (n.includes('CENTI')) return 0.01;
-  if (n.includes('DECI')) return 0.1;
-  if (n.includes('KILO')) return 1000;
-  if (n.includes('METRE') || n.includes('METER')) return 1;
-  return undefined;
 }
 
 /**
@@ -406,11 +417,6 @@ function extractMapConversion(entity: IfcEntity): MapConversion {
   };
 }
 
-/** SI prefix → scale factor */
-const SI_PREFIX_SCALE: Record<string, number> = {
-  'MILLI': 0.001, 'CENTI': 0.01, 'DECI': 0.1, 'KILO': 1000,
-};
-
 /**
  * Resolve an `IfcMeasureWithUnit` reference to metres.
  *
@@ -444,7 +450,7 @@ function resolveMeasureWithUnit(
     if (component && (component.type ?? '').toUpperCase() === 'IFCSIUNIT') {
       const prefix = component.attributes?.[2];
       if (typeof prefix === 'string' && prefix !== '$') {
-        const prefixScale = SI_PREFIX_SCALE[prefix.replace(/\./g, '').toUpperCase()];
+        const prefixScale = SI_PREFIX_MULTIPLIERS[prefix.replace(/\./g, '').toUpperCase()];
         if (prefixScale !== undefined) componentScale = prefixScale;
       }
     }
@@ -505,7 +511,7 @@ function extractProjectedCRS(
           const prefix = unitEntity.attributes?.[2];
           if (prefix != null && prefix !== '$' && typeof prefix === 'string') {
             const prefixStr = prefix.replace(/\./g, '').toUpperCase();
-            const prefixScale = SI_PREFIX_SCALE[prefixStr];
+            const prefixScale = SI_PREFIX_MULTIPLIERS[prefixStr];
             if (prefixScale !== undefined) {
               mapUnitScale = prefixScale;
               mapUnit = prefixStr === 'MILLI' ? 'MILLIMETRE' : prefixStr + 'METRE';
@@ -530,124 +536,4 @@ function extractProjectedCRS(
     mapUnit,
     mapUnitScale,
   };
-}
-
-/**
- * Compute 4x4 transformation matrix from local to world coordinates
- */
-function computeTransformMatrix(mapConversion: MapConversion): number[] {
-  const { eastings, northings, orthogonalHeight, xAxisAbscissa, xAxisOrdinate, scale } = mapConversion;
-
-  // Default scale to 1.0 if not specified
-  const s = scale || 1.0;
-
-  // Compute rotation angle from X-axis direction
-  let angle = 0;
-  if (xAxisAbscissa !== undefined && xAxisOrdinate !== undefined) {
-    angle = Math.atan2(xAxisOrdinate, xAxisAbscissa);
-  }
-
-  const cos = Math.cos(angle);
-  const sin = Math.sin(angle);
-
-  // Build 4x4 transformation matrix (IfcMapConversion applies the one
-  // Scale equally to x, y AND z, then rotates about z, then translates):
-  // [scale*cos  -scale*sin  0      eastings  ]
-  // [scale*sin   scale*cos  0      northings ]
-  // [0           0          scale  height    ]
-  // [0           0          0      1         ]
-
-  return [
-    s * cos,  s * sin,  0,  0,
-    -s * sin, s * cos,  0,  0,
-    0,        0,        s,  0,
-    eastings, northings, orthogonalHeight, 1,
-  ];
-}
-
-/**
- * Transform a point from local to world coordinates
- */
-export function transformToWorld(
-  localPoint: [number, number, number],
-  georef: GeoreferenceInfo
-): [number, number, number] | null {
-  if (!georef.transformMatrix) {
-    return null;
-  }
-
-  const [x, y, z] = localPoint;
-  const m = georef.transformMatrix;
-
-  // Apply transformation: [x', y', z', 1] = [x, y, z, 1] * M
-  const xWorld = m[0] * x + m[4] * y + m[8] * z + m[12];
-  const yWorld = m[1] * x + m[5] * y + m[9] * z + m[13];
-  const zWorld = m[2] * x + m[6] * y + m[10] * z + m[14];
-
-  return [xWorld, yWorld, zWorld];
-}
-
-/**
- * Transform a point from world to local coordinates
- */
-export function transformToLocal(
-  worldPoint: [number, number, number],
-  georef: GeoreferenceInfo
-): [number, number, number] | null {
-  if (!georef.transformMatrix) {
-    return null;
-  }
-
-  // Compute inverse transformation
-  const m = georef.transformMatrix;
-  const [xWorld, yWorld, zWorld] = worldPoint;
-
-  // Extract rotation and scale
-  const scale = georef.mapConversion?.scale || 1.0;
-  const angle = Math.atan2(m[1], m[0]);
-  const cos = Math.cos(-angle);
-  const sin = Math.sin(-angle);
-  const invScale = 1.0 / scale;
-
-  // Apply inverse translation
-  const xTrans = xWorld - m[12];
-  const yTrans = yWorld - m[13];
-  const zTrans = zWorld - m[14];
-
-  // Apply inverse rotation and scale
-  const x = invScale * (cos * xTrans - sin * yTrans);
-  const y = invScale * (sin * xTrans + cos * yTrans);
-  // Scale applies to z too (IfcMapConversion scales all three axes).
-  const z = invScale * zTrans;
-
-  return [x, y, z];
-}
-
-/**
- * Get coordinate system description
- */
-export function getCoordinateSystemDescription(georef: GeoreferenceInfo): string {
-  if (!georef.hasGeoreference) {
-    return 'Local Engineering Coordinates';
-  }
-
-  const parts: string[] = [];
-
-  if (georef.projectedCRS) {
-    parts.push(georef.projectedCRS.name);
-    if (georef.projectedCRS.mapProjection) {
-      parts.push(`(${georef.projectedCRS.mapProjection})`);
-    }
-    if (georef.projectedCRS.geodeticDatum) {
-      parts.push(`Datum: ${georef.projectedCRS.geodeticDatum}`);
-    }
-  }
-
-  if (georef.mapConversion) {
-    const { eastings, northings, orthogonalHeight } = georef.mapConversion;
-    const originLabel = georef.source === 'siteLocation' ? 'Site' : 'Origin';
-    parts.push(`${originLabel}: (${eastings.toFixed(2)}, ${northings.toFixed(2)}, ${orthogonalHeight.toFixed(2)})`);
-  }
-
-  return parts.join(' ');
 }

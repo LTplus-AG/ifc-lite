@@ -3,7 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::types::response::{QuickMetadataEntitySummary, QuickMetadataSpatialNode};
+use ifc_lite_core::{IfcType, IFC_TYPES};
 use std::collections::{HashMap, HashSet};
+use std::sync::LazyLock;
 
 #[derive(Clone)]
 pub(super) struct QuickSpatialNodeEntry {
@@ -16,23 +18,56 @@ pub(super) struct QuickSpatialNodeEntry {
     pub(super) parent: Option<u32>,
 }
 
-/// Case-insensitive spatial-type check that avoids to_ascii_uppercase() allocation.
+/// Which types the schema calls nodes of the quick-metadata spatial tree.
+///
+/// `IfcProject` is the tree root and is an `IfcObject`, not a spatial element at
+/// all. Everything else is the whole `IfcSpatialElement` branch EXCEPT the
+/// external-spatial sub-branch (`IfcExternalSpatialElement` and friends), which
+/// models a space *boundary* volume -- external air, ground -- rather than a
+/// container, carries no `WR41`, and would sit permanently parentless in a tree
+/// built from `IfcRelAggregates`. The TypeScript half excludes it for the same
+/// reason. `IfcSpatialZone` is inside the branch and outside
+/// `IfcSpatialStructureElement`; it is carried deliberately since #1075 (Revit /
+/// Dynamo GFA volumes attached with `IfcRelContainedInSpatialStructure`).
+fn is_quick_spatial_type(ifc_type: IfcType) -> bool {
+    ifc_type == IfcType::IfcProject
+        || (ifc_type.is_subtype_of(IfcType::IfcSpatialElement)
+            && !ifc_type.is_subtype_of(IfcType::IfcExternalSpatialStructureElement))
+}
+
+/// The uppercase STEP keywords [`is_quick_spatial_type`] accepts, derived once
+/// from the generated schema catalog.
+///
+/// This used to be a name list typed out by hand, and it had already been caught
+/// missing `IfcMarineFacility`, `IfcMarinePart` and `IfcFacilityPartCommon`
+/// (#3245): an IFC4.3 harbour lost its entire branch from the tree shown during
+/// load. A hand list can only ever be as complete as whoever last audited the
+/// schema, so the list is no longer written down -- it is derived from the rule,
+/// the same move `rooted_type.rs` made for `IfcRoot` for the same reason (#3015).
+///
+/// Materialised as a name slice rather than resolved per call: the gate runs
+/// once for every entity in the scan loop, and `IfcType::from_str` normalises to
+/// uppercase first, which allocates. A linear `eq_ignore_ascii_case` sweep over
+/// ~18 short names is what the hand-written chain already cost, so the
+/// derivation is free at the call site.
+static QUICK_SPATIAL_TYPE_NAMES: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
+    IFC_TYPES
+        .iter()
+        .filter(|ifc_type| is_quick_spatial_type(**ifc_type))
+        .map(|ifc_type| ifc_type.as_str())
+        .collect()
+});
+
+/// Is this STEP keyword a node of the quick-metadata spatial tree?
+///
+/// Case-insensitive without allocating an uppercase copy. A name this predicate
+/// misses is not just skipped -- every `IfcRelAggregates` edge into or out of it
+/// is dropped too, so its entire subtree is severed from the tree.
 #[inline]
-pub(super) fn is_quick_spatial_type_ci(type_name: &str) -> bool {
-    type_name.eq_ignore_ascii_case("IFCPROJECT")
-        || type_name.eq_ignore_ascii_case("IFCSITE")
-        || type_name.eq_ignore_ascii_case("IFCBUILDING")
-        || type_name.eq_ignore_ascii_case("IFCBUILDINGSTOREY")
-        || type_name.eq_ignore_ascii_case("IFCSPACE")
-        || type_name.eq_ignore_ascii_case("IFCSPATIALZONE")
-        || type_name.eq_ignore_ascii_case("IFCFACILITY")
-        || type_name.eq_ignore_ascii_case("IFCFACILITYPART")
-        || type_name.eq_ignore_ascii_case("IFCBRIDGE")
-        || type_name.eq_ignore_ascii_case("IFCBRIDGEPART")
-        || type_name.eq_ignore_ascii_case("IFCROAD")
-        || type_name.eq_ignore_ascii_case("IFCROADPART")
-        || type_name.eq_ignore_ascii_case("IFCRAILWAY")
-        || type_name.eq_ignore_ascii_case("IFCRAILWAYPART")
+pub fn is_quick_spatial_type_ci(type_name: &str) -> bool {
+    QUICK_SPATIAL_TYPE_NAMES
+        .iter()
+        .any(|candidate| type_name.eq_ignore_ascii_case(candidate))
 }
 
 pub(super) fn parse_step_arguments(entity_bytes: &[u8]) -> Vec<&[u8]> {
@@ -260,5 +295,85 @@ mod tests {
             Some(7.25),
             "index 9 (the real Elevation attribute) must win over index 8"
         );
+    }
+
+    /// DRIFT GUARD. `is_quick_spatial_type_ci` decides which entities become
+    /// nodes of the quick-metadata spatial tree. Since #3275 the name list is no
+    /// longer written by hand — it is derived from the rule below against the
+    /// GENERATED schema: `IfcProject`, plus everything in the `IfcSpatialElement`
+    /// branch except the external-spatial (air volume) sub-branch, which is not
+    /// part of the containment hierarchy. This test therefore no longer catches a
+    /// typo in a list; it catches the derivation being rewritten back into one,
+    /// and it is the place the rule itself is stated in reviewable form.
+    ///
+    /// Checked in BOTH directions over every generated `IfcType`: a name the rule
+    /// admits and the predicate rejects severs that subtree from the tree; a name
+    /// the predicate admits and the rule rejects invents a spatial node.
+    #[test]
+    fn quick_spatial_predicate_matches_the_generated_spatial_branch() {
+        use ifc_lite_core::{IfcType, IFC_TYPES};
+
+        fn rule(ty: IfcType) -> bool {
+            ty == IfcType::IfcProject
+                || (ty.is_subtype_of(IfcType::IfcSpatialElement)
+                    && !ty.is_subtype_of(IfcType::IfcExternalSpatialStructureElement))
+        }
+
+        let mut expected_true = 0usize;
+        let mut missing = Vec::new();
+        let mut extra = Vec::new();
+        for ty in IFC_TYPES {
+            let name = ty.as_str();
+            let want = rule(*ty);
+            if want {
+                expected_true += 1;
+            }
+            let got = is_quick_spatial_type_ci(name);
+            if want && !got {
+                missing.push(name);
+            }
+            if !want && got {
+                extra.push(name);
+            }
+        }
+
+        // Anti-vacuity: the enumeration really ran over the whole schema, and the
+        // rule really selects a non-trivial slice of it. A `IFC_TYPES` that came
+        // back empty, or a rule that matched nothing, would otherwise pass.
+        assert!(
+            IFC_TYPES.len() > 800,
+            "generated IFC_TYPES looks truncated: {} entries",
+            IFC_TYPES.len()
+        );
+        assert!(
+            expected_true >= 17,
+            "the spatial branch should cover at least 17 types, got {expected_true}"
+        );
+
+        assert!(
+            missing.is_empty() && extra.is_empty(),
+            "quick-metadata spatial predicate has drifted from the generated schema\n  \
+             missing (severed from the spatial tree): {missing:?}\n  \
+             extra (invented spatial nodes): {extra:?}"
+        );
+    }
+
+    /// Control fixture for the drift guard above. A regression that made the
+    /// predicate answer `true` for everything, or that dropped its
+    /// case-insensitivity, would still satisfy a one-directional check.
+    #[test]
+    fn quick_spatial_predicate_controls() {
+        // Non-spatial products and relationships are NOT tree nodes.
+        for name in ["IFCWALL", "IFCRELAGGREGATES", "IFCPROJECTLIBRARY", "IFCZONE"] {
+            assert!(!is_quick_spatial_type_ci(name), "{name} must not be a spatial node");
+        }
+        // External spatial elements are air volumes, deliberately excluded.
+        for name in ["IFCEXTERNALSPATIALELEMENT", "IFCEXTERNALSPATIALSTRUCTUREELEMENT"] {
+            assert!(!is_quick_spatial_type_ci(name), "{name} must not be a spatial node");
+        }
+        // Both spellings a STEP file may use resolve identically.
+        for name in ["IfcMarineFacility", "IFCMARINEFACILITY", "ifcmarinefacility"] {
+            assert!(is_quick_spatial_type_ci(name), "{name} must be a spatial node");
+        }
     }
 }

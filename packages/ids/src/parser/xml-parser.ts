@@ -30,6 +30,14 @@ import type {
   PartOfRelation,
 } from '../types.js';
 
+import {
+  getChildElement,
+  getChildElements,
+  getChildElementNS,
+  getChildElementsNS,
+  getChildText,
+} from './dom.js';
+
 const IDS_NAMESPACE = 'http://standards.buildingsmart.org/IDS';
 const XS_NAMESPACE = 'http://www.w3.org/2001/XMLSchema';
 
@@ -591,9 +599,32 @@ function parseConstraintElement(el: Element): IDSConstraint {
 }
 
 /**
- * Parse XSD restriction element
+ * Parse XSD restriction element.
+ *
+ * XSD facets inside one `<xs:restriction>` are conjunctive — a value
+ * must satisfy every one. `parseRestrictionFamilies` yields one
+ * `IDSConstraint` per facet family present (pattern, enumeration,
+ * bounds/length); this joins them, keeping the first as the primary so
+ * every existing `switch (constraint.type)` in `audit/`, `translation/`
+ * and the facet checkers keeps seeing the shape it already handles, and
+ * hanging the rest off `and` for `matchConstraint` to require as well.
  */
 function parseRestriction(el: Element): IDSConstraint {
+  const [primary, ...rest] = parseRestrictionFamilies(el);
+  if (!primary) {
+    // `parseRestrictionFamilies` always returns at least one family.
+    return { type: 'enumeration', values: [] } satisfies IDSEnumerationConstraint;
+  }
+  if (rest.length === 0) return primary;
+  // Only a restriction-derived family can have siblings, and
+  // `simpleValue` is never one — it is the text-content fallback, which
+  // is returned alone.
+  if (primary.type === 'simpleValue') return primary;
+  return { ...primary, and: rest };
+}
+
+function parseRestrictionFamilies(el: Element): IDSConstraint[] {
+  const out: IDSConstraint[] = [];
   // Capture the `@base` attribute so the auditor can compare against
   // an IFC dataType's backing XSD type without inferring from the
   // restriction shape (which is ambiguous for numeric enumerations).
@@ -616,11 +647,11 @@ function parseRestriction(el: Element): IDSConstraint {
       parts.length === 1
         ? parts[0]
         : parts.map((p) => `(?:${p})`).join('|');
-    return {
+    out.push({
       type: 'pattern',
       pattern,
       base,
-    } satisfies IDSPatternConstraint;
+    } satisfies IDSPatternConstraint);
   }
 
   // Check for enumeration
@@ -629,22 +660,22 @@ function parseRestriction(el: Element): IDSConstraint {
     // Try without namespace
     const enumElsNoNS = getChildElements(el, 'enumeration');
     if (enumElsNoNS.length > 0) {
-      return {
+      out.push({
         type: 'enumeration',
         values: enumElsNoNS.map(
           (e) => e.getAttribute('value') || e.textContent || ''
         ),
         base,
-      } satisfies IDSEnumerationConstraint;
+      } satisfies IDSEnumerationConstraint);
     }
   } else {
-    return {
+    out.push({
       type: 'enumeration',
       values: enumEls.map(
         (e) => e.getAttribute('value') || e.textContent || ''
       ),
       base,
-    } satisfies IDSEnumerationConstraint;
+    } satisfies IDSEnumerationConstraint);
   }
 
   // Check for bounds (minInclusive, maxInclusive, minExclusive,
@@ -683,8 +714,10 @@ function parseRestriction(el: Element): IDSConstraint {
     bounds.length = readInt(facetEls.length);
     bounds.minLength = readInt(facetEls.minLength);
     bounds.maxLength = readInt(facetEls.maxLength);
-    return bounds;
+    out.push(bounds);
   }
+
+  if (out.length > 0) return out;
 
   // No recognised pattern/enumeration/bounds child. If the element only
   // carries a `base` attribute (the common "empty restriction" authoring
@@ -693,75 +726,18 @@ function parseRestriction(el: Element): IDSConstraint {
   // fall through to text content.
   const text = el.textContent?.trim() || '';
   if (base && text === '') {
-    return {
-      type: 'enumeration',
-      values: [],
-      base,
-    } satisfies IDSEnumerationConstraint;
+    return [
+      {
+        type: 'enumeration',
+        values: [],
+        base,
+      } satisfies IDSEnumerationConstraint,
+    ];
   }
   if (text) {
-    return { type: 'simpleValue', value: text };
+    return [{ type: 'simpleValue', value: text }];
   }
-  return { type: 'enumeration', values: [], base } satisfies IDSEnumerationConstraint;
-}
-
-// ============================================================================
-// DOM Helper Functions
-// ============================================================================
-
-function getChildElement(parent: Element, localName: string): Element | null {
-  for (const child of Array.from(parent.children)) {
-    if (child.localName.toLowerCase() === localName.toLowerCase()) {
-      return child;
-    }
-  }
-  return null;
-}
-
-function getChildElements(parent: Element, localName: string): Element[] {
-  const elements: Element[] = [];
-  for (const child of Array.from(parent.children)) {
-    if (child.localName.toLowerCase() === localName.toLowerCase()) {
-      elements.push(child);
-    }
-  }
-  return elements;
-}
-
-function getChildElementNS(
-  parent: Element,
-  localName: string,
-  namespace: string
-): Element | null {
-  for (const child of Array.from(parent.children)) {
-    if (
-      child.localName.toLowerCase() === localName.toLowerCase() &&
-      child.namespaceURI === namespace
-    ) {
-      return child;
-    }
-  }
-  return null;
-}
-
-function getChildElementsNS(
-  parent: Element,
-  localName: string,
-  namespace: string
-): Element[] {
-  const elements: Element[] = [];
-  for (const child of Array.from(parent.children)) {
-    if (
-      child.localName.toLowerCase() === localName.toLowerCase() &&
-      child.namespaceURI === namespace
-    ) {
-      elements.push(child);
-    }
-  }
-  return elements;
-}
-
-function getChildText(parent: Element, localName: string): string | undefined {
-  const child = getChildElement(parent, localName);
-  return child?.textContent?.trim() || undefined;
+  return [
+    { type: 'enumeration', values: [], base } satisfies IDSEnumerationConstraint,
+  ];
 }

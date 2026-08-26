@@ -339,3 +339,64 @@ export function rollupSettled(lanes) {
   if (!Array.isArray(lanes) || lanes.length === 0) return false;
   return lanes.every((l) => TERMINAL.has(String(l.state ?? '').toLowerCase()));
 }
+
+/**
+ * The poll loop, as a pure function over injected time and I/O.
+ *
+ * WHY THIS IS NOT INLINE IN `main()`. It used to be, and that made it the one
+ * branch of this gate with no test: `--state-file` mode hardcodes
+ * `timedOut: false` and jumps straight to `evaluate`, so the harness drove the
+ * verdict and never the wait. The wait is where the budget defect lived -- the
+ * 420 s default could not cover a `Build + WASM + Rust + Node` measured 670 to
+ * 1312 s behind `Detect changes` across twelve runs -- so the untested branch
+ * was the broken one. The clock, the sleep and the re-read are all parameters,
+ * so the harness drives the timeout path in microseconds.
+ *
+ * The three stopping conditions, in the order they are checked:
+ *   1. every required lane has appeared -- the question is answered `yes`;
+ *   2. the rollup has SETTLED, i.e. every lane that has appeared is terminal,
+ *      so a name still absent is absent for good -- answered `no`, fast;
+ *   3. the deadline passed -- answered `unknown`, which the caller renders as a
+ *      FAILURE. A timeout is never a pass.
+ *
+ * @param {object} opts
+ * @param {string[]} opts.required - lane names that must appear.
+ * @param {{ lanes: Array<{ name: string, state: string }>, sha: string }} opts.initialState
+ * @param {() => { lanes: Array<{ name: string, state: string }>, sha: string }} opts.fetchState
+ * @param {number} opts.deadline - epoch ms after which the wait is over.
+ * @param {number} opts.pollSeconds - seconds between re-reads.
+ * @param {() => number} [opts.now] - injected clock.
+ * @param {(ms: number) => void} opts.sleep - injected wait.
+ * @param {(line: string) => void} [opts.log]
+ * @returns {{ state: object, timedOut: boolean }}
+ */
+export function pollForLanes({
+  required,
+  initialState,
+  fetchState,
+  deadline,
+  pollSeconds,
+  now = Date.now,
+  sleep,
+  log = () => {},
+}) {
+  let state = initialState;
+  for (;;) {
+    let stillMissing;
+    try {
+      stillMissing = missingLanes(required, state.lanes);
+    } catch {
+      stillMissing = required; // NO_ROLLUP: treat as "nothing has appeared yet".
+    }
+    if (stillMissing.length === 0) return { state, timedOut: false };
+    if (rollupSettled(state.lanes)) return { state, timedOut: false };
+    if (now() >= deadline) return { state, timedOut: true };
+    log(
+      `… ${stillMissing.length}/${required.length} required lane(s) not yet published for ` +
+        `${state.sha}; re-reading in ${pollSeconds}s ` +
+        `(${Math.round((deadline - now()) / 1000)}s of budget left).`,
+    );
+    sleep(pollSeconds * 1000);
+    state = fetchState();
+  }
+}

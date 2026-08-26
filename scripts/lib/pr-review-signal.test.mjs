@@ -21,6 +21,7 @@ import {
   expandJobNames,
   missingLanes,
   noVerdictReviews,
+  pollForLanes,
   parseWorkflowJobs,
   rollupSettled,
 } from './pr-review-signal.mjs';
@@ -278,4 +279,134 @@ test('the shipped config lists a reviewer and a phrase for every observed instan
   assert.ok(prefixes.includes('Review rate limited'));
   assert.ok(prefixes.includes('Review skipped'));
   for (const p of CFG.phrases) assert.ok(p.means && p.means.length > 10, `${p.startsWith} needs a \`means\``);
+});
+
+// ------------------------------------------------------- the poll loop itself
+//
+// This is the branch that had NO coverage while it was inline in `main()`:
+// `--state-file` mode hardcodes `timedOut: false` and jumps straight to
+// `evaluate`, so the process harness drove the verdict and never the wait. The
+// wait is where the 420 s budget defect lived, so the untested branch was the
+// broken one. Clock, sleep and re-read are all injected, so the timeout path
+// below runs in microseconds rather than in fifteen real minutes.
+
+const POLL_REQUIRED = ['Typecheck', 'Lint', 'Node tests'];
+const POLL_MOVING = [{ name: 'Typecheck', state: 'in_progress' }];
+const POLL_COMPLETE = POLL_REQUIRED.map((n) => ({ name: n, state: 'success' }));
+
+/**
+ * A scripted poll over a fake clock.
+ *
+ * `readsAt(ms)` returns the rollup as of that many ms into the run, so a test
+ * says WHEN the lanes appear and the loop discovers it by polling, exactly as
+ * it does against the real API.
+ */
+function driver(readsAt, { pollMs = 15_000 } = {}) {
+  let clock = 0;
+  const slept = [];
+  const logs = [];
+  const state = () => ({ sha: 'deadbeef', lanes: readsAt(clock) });
+  return {
+    state,
+    now: () => clock,
+    sleep: (ms) => {
+      slept.push(ms);
+      clock += pollMs;
+    },
+    log: (l) => logs.push(l),
+    slept,
+    logs,
+  };
+}
+
+/** Lanes that are `in_progress` until `atMs`, complete from then on. */
+const completesAt = (atMs) => (clock) => (clock >= atMs ? POLL_COMPLETE : POLL_MOVING);
+
+function poll(d, { deadline = 900_000, pollSeconds = 15 } = {}) {
+  return pollForLanes({
+    required: POLL_REQUIRED,
+    initialState: d.state(),
+    fetchState: d.state,
+    deadline,
+    pollSeconds,
+    now: d.now,
+    sleep: d.sleep,
+    log: d.log,
+  });
+}
+
+test('the poll RETURNS as soon as every required lane has appeared, without sleeping', () => {
+  const d = driver(completesAt(0));
+  const r = poll(d);
+  assert.equal(r.timedOut, false);
+  assert.deepEqual(d.slept, [], 'a complete rollup must not cost a single poll interval');
+});
+
+test('the poll KEEPS WAITING while lanes are still appearing, then succeeds', () => {
+  // Complete at t=30 s, polling every 15 s: exactly the `opened` spawn race.
+  const d = driver(completesAt(30_000));
+  const r = poll(d);
+  assert.equal(r.timedOut, false);
+  assert.deepEqual(r.state.lanes, POLL_COMPLETE);
+  assert.deepEqual(d.slept, [15_000, 15_000], 'it must actually have waited, at --poll-seconds');
+  assert.match(d.logs[0], /2\/3 required lane\(s\) not yet published/);
+  assert.match(d.logs[0], /s of budget left/);
+});
+
+test('the poll STOPS EARLY once the rollup has settled — #3294 must not burn the budget', () => {
+  const settled = [{ name: 'CodeRabbit', state: 'success' }];
+  const d = driver(() => settled);
+  const r = poll(d);
+  assert.equal(r.timedOut, false, 'settled is an ANSWER, not a timeout');
+  assert.deepEqual(d.slept, [], 'a settled rollup is decided on the first read');
+});
+
+test('THE TIMEOUT PATH: a rollup that never settles and never completes returns timedOut', () => {
+  // Never settles (always `in_progress`) and never completes, so only the
+  // deadline can stop it. 900 s of budget at 15 s a poll is 60 sleeps.
+  const d = driver(() => POLL_MOVING);
+  const r = poll(d);
+  assert.equal(r.timedOut, true, 'the budget ran out; that is not a pass');
+  assert.equal(d.slept.length, 60, '900 s of budget at 15 s a poll');
+});
+
+test('THE TIMEOUT PATH: a deadline already in the past times out on the FIRST read', () => {
+  // The deadline must be checked BEFORE sleeping, or an expired budget still
+  // buys one more interval and a zero budget never terminates at all.
+  const d = driver(() => POLL_MOVING);
+  const r = poll(d, { deadline: -1 });
+  assert.equal(r.timedOut, true);
+  assert.deepEqual(d.slept, [], 'an expired budget must not buy another poll');
+});
+
+test('the poll treats an EMPTY rollup as "nothing has appeared yet", never as settled', () => {
+  // NO_ROLLUP out of `missingLanes` must not escape the loop as a crash, and an
+  // empty rollup is never settled — so this is the pure race. It times out
+  // rather than reporting a clean verdict over a rollup it could not read.
+  const d = driver(() => []);
+  const r = poll(d, { deadline: 30_000 });
+  assert.equal(r.timedOut, true);
+  assert.match(d.logs[0], /3\/3 required lane\(s\) not yet published/);
+});
+
+test('MEASURED: 900 s covers every observed lane pickup and 420 s did not', () => {
+  // `Detect changes` start to LAST NON-AGGREGATE lane start, over the twelve
+  // most recent non-cancelled test.yml PR runs (2026-08-25/26), in seconds.
+  // The aggregate itself was 670..1312 s behind `Detect changes`, which is why
+  // `excludeJobKeys` drops it; THESE are what the budget must actually cover.
+  // Pinned because the shipped budget is a claim about these numbers and
+  // nothing else re-checks it.
+  const OBSERVED_PICKUP_SECONDS = [159, 159, 168, 213, 238, 245, 252, 315, 336, 343, 535, 678];
+
+  for (const s of OBSERVED_PICKUP_SECONDS) {
+    const d = driver(completesAt(s * 1000));
+    assert.equal(poll(d, { deadline: 900_000 }).timedOut, false, `${s}s pickup must fit in 900s`);
+  }
+
+  // The regression itself, kept as an assertion rather than as prose: under the
+  // old 420 s budget two of those twelve runs time out over a green PR.
+  const falseFailures = OBSERVED_PICKUP_SECONDS.filter(
+    (s) => poll(driver(completesAt(s * 1000)), { deadline: 420_000 }).timedOut,
+  );
+  assert.deepEqual(falseFailures, [535, 678], '420 s false-failed exactly these two');
 });

@@ -19,6 +19,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { expandJobNames } from './lib/pr-review-signal.mjs';
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..');
 const GATE = join(HERE, 'check-pr-review-signal.mjs');
@@ -37,6 +39,27 @@ function run(state, extra = []) {
   });
   return { code: r.status, output: `${r.stdout}${r.stderr}` };
 }
+
+/** Write a config variant and return its path. */
+function cfgWith(patch, tag) {
+  const cfg = { ...JSON.parse(readFileSync(CONFIG, 'utf8')), ...patch };
+  const path = join(TMP, `cfg-${tag}.json`);
+  writeFileSync(path, JSON.stringify(cfg));
+  return path;
+}
+
+/**
+ * The severity knob forced to `fail`.
+ *
+ * The SHIPPED default is `warn` (a rate-limited status never self-heals, so a
+ * required check on it stays red until a human pushes — see the config's own
+ * note). The tests that assert a review finding turns the PR RED therefore pass
+ * this explicitly: they are about the DETECTION and the escalation path, not
+ * about which default ships, and pinning them to the default would have made
+ * them silently change meaning when it moved. Which default ships is asserted
+ * on its own, once, below.
+ */
+const FATAL = () => ['--config', cfgWith({ reviewVerdictSeverity: 'fail' }, 'fatal')];
 
 const LANE = (name, state = 'success') => ({ name, state });
 const HEALTHY = ['Typecheck', 'Lint', 'Node tests'];
@@ -75,14 +98,32 @@ test('RED, the #3294 shape: a rollup with no compile lanes fails and NAMES each 
 });
 
 test('RED, the #3305 shape: CodeRabbit passing while rate limited fails and quotes it', () => {
+  const r = run(
+    {
+      required: HEALTHY,
+      lanes: HEALTHY.map((n) => LANE(n)),
+      reviewChecks: [{ name: 'CodeRabbit', state: 'success', description: 'Review rate limited' }],
+    },
+    FATAL(),
+  );
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /NO_VERDICT: `CodeRabbit` reports a PASSING state/);
+  assert.match(r.output, /"Review rate limited"/);
+});
+
+test('the #3305 shape is REPORTED AND QUOTED under the shipped default too', () => {
+  // The downgrade to `warn` must not become a deletion. Same input, shipped
+  // config: the finding still names the reviewer and still quotes it verbatim,
+  // it just does not hold the PR red on a quota that will never clear itself.
   const r = run({
     required: HEALTHY,
     lanes: HEALTHY.map((n) => LANE(n)),
     reviewChecks: [{ name: 'CodeRabbit', state: 'success', description: 'Review rate limited' }],
   });
-  assert.equal(r.code, 1, r.output);
+  assert.equal(r.code, 0, r.output);
   assert.match(r.output, /NO_VERDICT: `CodeRabbit` reports a PASSING state/);
   assert.match(r.output, /"Review rate limited"/);
+  assert.match(r.output, /merging on it means merging unreviewed/);
 });
 
 test('one lane missing out of many still fails — this is not a count floor', () => {
@@ -119,7 +160,7 @@ test('the fork carve-out does NOT excuse a review that passed without reviewing'
     lanes: [LANE('CodeRabbit')],
     reviewChecks: [{ name: 'CodeRabbit', state: 'success', description: 'Review rate limited' }],
     isFork: true,
-  });
+  }, FATAL());
   assert.equal(r.code, 1, r.output);
   assert.match(r.output, /NO_VERDICT/);
 });
@@ -245,16 +286,20 @@ test('the gate workflow carries NO `paths:` filter, so its own config cannot dod
 
 // ------------------------------------------------------------- severity knob
 
-/** Write a config variant and return its path. */
-function cfgWith(patch, tag) {
-  const cfg = { ...JSON.parse(readFileSync(CONFIG, 'utf8')), ...patch };
-  const path = join(TMP, `cfg-${tag}.json`);
-  writeFileSync(path, JSON.stringify(cfg));
-  return path;
-}
 
-test('the shipped config ships `fail`, as requested on #3312', () => {
-  assert.equal(JSON.parse(readFileSync(CONFIG, 'utf8')).reviewVerdictSeverity, 'fail');
+test('the shipped config ships `warn`, and says why next to the value', () => {
+  // Not a retreat, and pinned so it cannot drift back silently. A rate-limited
+  // CodeRabbit status NEVER self-heals -- the complete history on such a SHA is
+  // `queued -> in progress -> success/Review rate limited` and then nothing --
+  // so `fail` means red until a human pushes, on 8 of 19 open PRs the day this
+  // shipped. That is the `@unwired-by-design` class this repo already ruled on.
+  const cfg = JSON.parse(readFileSync(CONFIG, 'utf8'));
+  assert.equal(cfg.reviewVerdictSeverity, 'warn');
+  assert.ok(
+    Array.isArray(cfg.$reviewVerdictSeverityComment) &&
+      cfg.$reviewVerdictSeverityComment.join(' ').includes('@unwired-by-design'),
+    'the downgrade must carry its reasoning in the file that carries the value',
+  );
 });
 
 test('severity "warn" downgrades the REVIEW half to advisory but still reports it', () => {
@@ -288,5 +333,103 @@ test('FAIL CLOSED: an unrecognised severity exits 1 rather than defaulting to ad
     );
     assert.equal(r.code, 1, `severity ${JSON.stringify(bad)} must be rejected: ${r.output}`);
     assert.match(r.output, /BAD_CONFIG/);
+  }
+});
+
+
+// -------------------------------------------- the aggregate, and the budget
+
+test('the shipped config EXCLUDES the `test` aggregate, and the exclusion is the only one', () => {
+  // `Build + WASM + Rust + Node` is `needs:` twelve jobs and publishes no check
+  // run until every one finishes. Measured over the twelve most recent
+  // non-cancelled test.yml PR runs, it started 670..1312 s after `Detect
+  // changes`, against a budget of 420 s -- not one run fit. Requiring it ties
+  // the poll budget to the SUITE's total runtime; excluding it ties the budget
+  // to runner pickup, which is what the gate is actually racing.
+  const cfg = JSON.parse(readFileSync(CONFIG, 'utf8'));
+  assert.deepEqual(cfg.excludeJobKeys, ['test'], 'exactly one job is excluded, and it is the aggregate');
+});
+
+test('excluding the aggregate removes THAT lane and nothing else from the required set', () => {
+  // The risk of an exclusion list is that it quietly swallows a real lane.
+  const yml = readFileSync(TEST_YML, 'utf8');
+  const all = expandJobNames(yml, { exclude: [] });
+  const shipped = expandJobNames(yml, { exclude: ['test'] });
+  assert.deepEqual(
+    all.filter((n) => !shipped.includes(n)),
+    ['Build + WASM + Rust + Node'],
+  );
+  for (const n of ['Node tests', 'Rust tests', 'Lint', 'Typecheck', 'Build packages + WASM']) {
+    assert.ok(shipped.includes(n), `${n} must still be required`);
+  }
+});
+
+test('THE #3294 SHAPE STILL FAILS under the shipped exclusion, naming every lane', () => {
+  // The exclusion must not blunt the detector it was added to. Total absence of
+  // test.yml is still total absence with the aggregate out of the set.
+  const r = run({
+    // No `required`: this drives the REAL derived set from the REAL test.yml
+    // through the REAL shipped config, exclusion included.
+    lanes: [
+      LANE('parity (in-tree fixtures, committed reference)'),
+      LANE('full corpus (pinned reference engine)', 'skipped'),
+      LANE('Vercel Agent Review', 'neutral'),
+      LANE('CodeRabbit'),
+      LANE('Vercel Preview Comments'),
+      LANE('Vercel – ifc-lite'),
+      LANE('Vercel – ifc-lite-dev'),
+      LANE('Vercel – ifc-lite-viewer-embed'),
+    ],
+    reviewChecks: [],
+  });
+  assert.equal(r.code, 1, r.output);
+  const expected = expandJobNames(readFileSync(TEST_YML, 'utf8'), { exclude: ['test'] });
+  assert.match(r.output, new RegExp(`MISSING_LANES: ${expected.length} of ${expected.length}`));
+  for (const n of expected) assert.ok(r.output.includes(n), `must name the missing lane ${n}`);
+  assert.ok(
+    !r.output.includes('Build + WASM + Rust + Node'),
+    'the excluded aggregate must not be named as missing',
+  );
+});
+
+// ------------------------------------------- WHICH absence, and which remedy
+
+test('TOTAL absence gets the RETARGET remedy: push an empty commit', () => {
+  const r = run({ required: HEALTHY, lanes: [LANE('CodeRabbit')], reviewChecks: [] });
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /NOT ONE lane from test\.yml appeared/);
+  assert.match(r.output, /retargeted to main does NOT fire test\.yml retroactively/);
+  assert.match(r.output, /Push an empty commit/);
+});
+
+test('PARTIAL absence must NOT be diagnosed as a retarget — the live #3301 misdiagnosis', () => {
+  // #3301 was named `MISSING_LANES: Rust crate semver` and told to push an
+  // empty commit. There was no retarget: #3298 added `rust-semver` to test.yml
+  // AFTER that head, so the lane could not exist there and re-firing the same
+  // workflow file would produce the same absence. The verdict was defensible;
+  // the remedy was advice that cannot work.
+  const r = run({
+    required: [...HEALTHY, 'Rust crate semver'],
+    lanes: HEALTHY.map((n) => LANE(n)),
+    reviewChecks: [],
+  });
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /MISSING_LANES: 1 of 4/);
+  assert.match(r.output, /test\.yml DID fire for this head — 3 of 4 lanes are present/);
+  assert.match(r.output, /NOT the #3294 retarget/);
+  assert.match(r.output, /can be NEWER than your PR head/);
+  assert.ok(
+    !/Push an empty commit/.test(r.output),
+    'the retarget remedy must not appear on a partial absence: it cannot work',
+  );
+  assert.ok(!/close and reopen/.test(r.output));
+});
+
+test('the two diagnoses are mutually exclusive — no rollup gets both', () => {
+  for (const lanes of [[LANE('CodeRabbit')], HEALTHY.slice(0, 2).map((n) => LANE(n))]) {
+    const r = run({ required: HEALTHY, lanes, reviewChecks: [] });
+    const total = /NOT ONE lane from test\.yml appeared/.test(r.output);
+    const partial = /test\.yml DID fire for this head/.test(r.output);
+    assert.ok(total !== partial, `exactly one diagnosis, got total=${total} partial=${partial}`);
   }
 });

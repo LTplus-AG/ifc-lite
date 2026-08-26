@@ -10,7 +10,20 @@
     "unrelated context here would make this gate opine on free text it has no business",
     "reading; keep it to bot reviewers that claim a verdict on the code.",
     "`phrases` are matched as case-insensitive PREFIXES of the description, and only against",
-    "a `success` state. `neutral` and `failure` already communicate 'no verdict'."
+    "a `success` state. `neutral` and `failure` already communicate 'no verdict'.",
+    "`excludeJobKeys` drops `test` -- the `Build + WASM + Rust + Node` aggregate. It is",
+    "`needs:` twelve jobs and publishes NO check run until every one of them finishes, so",
+    "waiting for it means waiting out the whole matrix. Measured over the twelve most recent",
+    "non-cancelled test.yml PR runs, `Detect changes` start to aggregate start: 670, 732,",
+    "756, 761, 776, 777, 778, 780, 782, 933, 1163, 1312 seconds. The last non-aggregate lane",
+    "to start, over the same runs: 159, 159, 168, 213, 238, 245, 252, 315, 336, 343, 535,",
+    "678. Requiring the aggregate makes the wait a function of the SUITE's total runtime,",
+    "which grows; requiring only the lanes makes it a function of RUNNER PICKUP, which does",
+    "not. Nothing is lost: the aggregate is one of only two contexts in main's ruleset, so",
+    "branch protection already blocks on it, and the #3294 total-absence shape still fails",
+    "here naming all fifteen lanes. Asserted in check-pr-review-signal.test.mjs.",
+    "`reviewVerdictSeverity` is `warn`, and that is a considered downgrade rather than a",
+    "retreat -- see the note on the key itself."
   ],
   "reviewers": ["CodeRabbit", "Cursor Bugbot", "cursor[bot]", "Vercel Agent Review"],
   "phrases": [
@@ -35,7 +48,20 @@
       "observedOn": []
     }
   ],
-  "reviewVerdictSeverity": "fail",
-  "excludeJobKeys": [],
+  "$reviewVerdictSeverityComment": [
+    "WARN, NOT FAIL, AND THE EVIDENCE IS THAT A RATE-LIMITED STATUS NEVER SELF-HEALS.",
+    "The full status history on such a SHA is `queued -> in progress -> success/Review rate",
+    "limited`, and then nothing, forever. The quota recovers; the status on that commit does",
+    "not. So `fail` means red until a human pushes a commit or triggers an on-demand review --",
+    "on 8 of the 19 open PRs measured the day this shipped. That is exactly the class this repo",
+    "already ruled on when it marked check-coderabbit-review.mjs and check-pr-green.mjs",
+    "`@unwired-by-design`: 'a required check built on transient GitHub state fails for reasons",
+    "unrelated to the diff under test'. The finding is still printed and still quotes the",
+    "reviewer verbatim, so nothing is hidden -- it just does not hold the PR red on a quota.",
+    "The LANE half has no knob and cannot be downgraded: a missing test lane is a fact about",
+    "this diff, not about GitHub."
+  ],
+  "reviewVerdictSeverity": "warn",
+  "excludeJobKeys": ["test"],
   "forkLanesAreAdvisory": true
 }

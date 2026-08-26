@@ -33,6 +33,22 @@
  *     rather than burning the whole budget. A timeout is a FAILURE, never a
  *     pass.
  *
+ *     AND THAT IS WHY THE AGGREGATE IS EXCLUDED. Waiting for a job that
+ *     `needs:` twelve others makes the budget cover the whole matrix: measured
+ *     670-1312 s behind `Detect changes` over twelve runs, against a first
+ *     budget of 420 s that not one run fit -- a gate printing "the workflow
+ *     never fired" over a green PR. `excludeJobKeys: ["test"]` ties the wait to
+ *     runner PICKUP (159-678 s over the same runs) instead of to suite runtime,
+ *     and nothing is lost: branch protection blocks on the aggregate anyway, it
+ *     being one of only two contexts in main's ruleset. The budget is 900 s
+ *     because 420 still false-failed 2 of those 12 even with the aggregate out.
+ *     Full measurement in .github/workflows/pr-review-signal.yml.
+ *
+ *     THE LOOP ITSELF IS `pollForLanes`, in the lib, over an injected clock and
+ *     sleep. Inline in `main()` it was the one branch with no test --
+ *     `--state-file` mode hardcodes `timedOut: false` and jumps to `evaluate` --
+ *     and the untested branch was the broken one.
+ *
  *     CHICKEN AND EGG. This job lives in a different workflow file from the one
  *     it derives names from, so it can never require itself. Asserted in
  *     scripts/check-pr-review-signal.test.mjs rather than merely intended.
@@ -52,7 +68,18 @@
  *     check built on transient GitHub state fails for reasons unrelated to the
  *     diff under test". A rate limit IS that. A missing `Node tests` lane is
  *     NOT -- it is a fact about this diff -- so part 1 has no knob and cannot
- *     be downgraded. `reviewVerdictSeverity` ships as `fail`, per #3312.
+ *     be downgraded.
+ *
+ *     SO IT SHIPS AS `warn`, AND THE DOCBLOCK FOLLOWS THE RULING IT QUOTES.
+ *     The first revision of this file quoted `@unwired-by-design` and then
+ *     shipped `fail` anyway. What settles it is that a rate-limited status
+ *     NEVER SELF-HEALS: the complete history on such a SHA is `queued -> in
+ *     progress -> success/Review rate limited` and then nothing, forever
+ *     (`repos/{o}/{r}/statuses/{sha}`, verbatim, on #3296's head). The quota
+ *     recovers; the status on that commit does not. `fail` would therefore mean
+ *     red until a human pushes or triggers an on-demand review -- measured on 8
+ *     of 19 open PRs on 2026-08-26. The finding is still PRINTED and still
+ *     quotes the reviewer verbatim; it just does not hold the PR red on a quota.
  *
  * FAIL-CLOSED, EVERY PATH. `gh` missing, `gh` erroring, unparseable JSON, an
  * empty rollup, a head SHA that will not resolve, a reviewer that passed with no
@@ -82,7 +109,7 @@ import {
   expandJobNames,
   missingLanes,
   noVerdictReviews,
-  rollupSettled,
+  pollForLanes,
 } from './lib/pr-review-signal.mjs';
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
@@ -337,11 +364,36 @@ export function evaluate({ required, lanes, reviewChecks, isFork, cfg, timedOut 
     lines.push(
       '   A lane that never ran contributes no failing check, so `fail=0` is true over code ' +
         'nothing examined.',
-      '   The usual cause is that the workflow never fired for this head: a PR opened against a ' +
-        'feature branch and',
-      '   retargeted to main does NOT fire test.yml retroactively (#3294). Push an empty commit, ' +
-        'or close and reopen the PR.',
     );
+    // TWO CAUSES, AND THE REMEDIES ARE OPPOSITES. Telling a stale-base PR to
+    // push an empty commit is advice that cannot work: re-firing test.yml at
+    // the same head re-runs the same, older workflow file and the lane is
+    // absent again. Measured on #3301, where `Rust crate semver` was named
+    // missing because #3298 added it to test.yml AFTER that head — not a
+    // retarget at all. The discriminator is whether test.yml fired here AT ALL:
+    // the #3294 retarget shape is TOTAL absence, because the workflow never ran.
+    if (missing.length === required.length) {
+      lines.push(
+        '   NOT ONE lane from test.yml appeared, so the workflow never fired for this head. A PR ' +
+          'opened against a',
+        '   feature branch and retargeted to main does NOT fire test.yml retroactively (#3294). ' +
+          'Push an empty commit,',
+        '   or close and reopen the PR.',
+      );
+    } else {
+      lines.push(
+        `   test.yml DID fire for this head — ${required.length - missing.length} of ` +
+          `${required.length} lanes are present — so this is NOT the #3294 retarget, and pushing ` +
+          'an empty',
+        '   commit would re-run the same workflow file to the same result. The required set is ' +
+          'derived from the',
+        '   test.yml in THIS checkout, which can be NEWER than your PR head: a lane added to ' +
+          'test.yml after your',
+        '   head is required here and cannot exist there. Rebase onto main to pick it up. If the ' +
+          'lane does exist',
+        '   at your head, it failed to spawn — re-run the workflow.',
+      );
+    }
   }
 
   const findings = noVerdictReviews(reviewChecks, cfg);
@@ -435,42 +487,22 @@ function main() {
     );
   }
 
-  const deadline = Date.now() + args.timeoutSeconds * 1000;
-  let state = fetchPrState({ pr: args.pr, repo: args.repo, selfName: args.selfName });
-  let timedOut = false;
-
-  // Poll while an absence could still be a race rather than a fact.
-  //
-  // Two stopping conditions, and the second is the one that matters: a
-  // downstream job publishes no check run until its `needs` complete, so the
-  // aggregate lane is legitimately missing mid-run. Waiting for the rollup to
-  // SETTLE — every lane that has appeared now terminal — is what separates
-  // "has not appeared yet" from "will never appear", and it is why this cannot
-  // false-fail on the `opened`/`synchronize` spawn race.
+  // Poll while an absence could still be a race rather than a fact. The loop
+  // itself lives in the lib, over an injected clock and sleep, so the harness
+  // can drive its timeout path — see `pollForLanes` for the stopping rules.
   //
   // Self-exclusion is structural: the required set is derived from test.yml and
   // this job lives in a different workflow file, so it never waits on itself.
-  for (;;) {
-    let stillMissing;
-    try {
-      stillMissing = missingLanes(required, state.lanes);
-    } catch {
-      stillMissing = required; // NO_ROLLUP: treat as "nothing has appeared yet".
-    }
-    if (stillMissing.length === 0) break;
-    if (rollupSettled(state.lanes)) break;
-    if (Date.now() >= deadline) {
-      timedOut = true;
-      break;
-    }
-    console.log(
-      `… ${stillMissing.length}/${required.length} required lane(s) not yet published for ` +
-        `${state.sha}; re-reading in ${args.pollSeconds}s ` +
-        `(${Math.round((deadline - Date.now()) / 1000)}s of budget left).`,
-    );
-    sleepSync(args.pollSeconds * 1000);
-    state = fetchPrState({ pr: args.pr, repo: args.repo, selfName: args.selfName });
-  }
+  const readState = () => fetchPrState({ pr: args.pr, repo: args.repo, selfName: args.selfName });
+  const { state, timedOut } = pollForLanes({
+    required,
+    initialState: readState(),
+    fetchState: readState,
+    deadline: Date.now() + args.timeoutSeconds * 1000,
+    pollSeconds: args.pollSeconds,
+    sleep: sleepSync,
+    log: (l) => console.log(l),
+  });
 
   const reviewChecks = [
     ...fetchStatusDescriptions({ repo, sha: state.sha }),

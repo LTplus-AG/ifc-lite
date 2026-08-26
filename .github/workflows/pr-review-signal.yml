@@ -52,7 +52,9 @@ jobs:
     name: PR review signal
     # Free runner: two API reads and a poll, not compute-bound.
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Above the poll budget below, so a run that exhausts the budget still gets
+    # to PRINT its verdict rather than being killed mid-wait with no output.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -63,6 +65,33 @@ jobs:
       # and shells out to `gh`, which is preinstalled on GitHub runners. A gate
       # whose job is to run when other jobs did not should depend on as little
       # as possible.
+      #
+      # THE BUDGET IS MEASURED, NOT GUESSED, AND THE FIRST ONE WAS NOT.
+      # 420 s could not cover what it waited for. Over the twelve most recent
+      # non-cancelled `test.yml` PR runs, `Detect changes` start to
+      # `Build + WASM + Rust + Node` start was 670/732/756/761/776/777/778/780/
+      # 782/933/1163/1312 s -- not one run fit, so the gate's own green run was
+      # luck (test.yml happened to pick up runners 147 s ahead of it). A gate
+      # that prints "the workflow never fired -- push an empty commit" over a
+      # green PR is a false-alarm generator, which is the defect it exists to
+      # catch, in itself.
+      #
+      # The fix is TWO changes, because either alone still false-fails.
+      #   1. `excludeJobKeys: ["test"]` in the config drops the aggregate. It
+      #      `needs:` twelve jobs and publishes no check run until all finish,
+      #      so requiring it ties this budget to the SUITE's total runtime,
+      #      which grows with the suite. Over the same twelve runs the last
+      #      NON-aggregate lane started at 159..678 s. Nothing is lost: the
+      #      aggregate is one of only two contexts in main's ruleset, so branch
+      #      protection already blocks on it, and the #3294 total-absence shape
+      #      still fails under this config naming all fifteen lanes.
+      #   2. 900 s, not 420 s. Excluding the aggregate is not enough on its own:
+      #      678 s and 535 s were both observed, so 420 would still have
+      #      false-failed 2 of the 12. 900 s is 1.33x the observed maximum for
+      #      what is left, and that maximum is runner PICKUP, which does not
+      #      grow with the test suite.
+      # The poll normally returns in seconds via the settle rule; the budget is
+      # the ceiling, not the expected cost.
       - name: Check required lanes ran and reviews produced a verdict
         env:
           GH_TOKEN: ${{ github.token }}
@@ -71,4 +100,4 @@ jobs:
           node scripts/check-pr-review-signal.mjs \
             --pr "${{ github.event.pull_request.number }}" \
             --self-name 'PR review signal' \
-            --timeout-seconds 420
+            --timeout-seconds 900

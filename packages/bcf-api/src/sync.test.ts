@@ -13,8 +13,12 @@ interface FakeServerOptions {
   ignorePaging?: boolean;
   /** Viewpoint guids whose snapshot endpoint should fail. */
   brokenSnapshots?: string[];
+  /** HTTP status for broken snapshots; defaults to 404. */
+  brokenSnapshotStatus?: number;
   /** Topic guids whose /comments endpoint fails with this HTTP status. */
   brokenComments?: { guids: string[]; status: number };
+  /** When set, every /selection subresource fails with this HTTP status. */
+  brokenSelectionStatus?: number;
 }
 
 /** Minimal in-memory BCF 2.1 server: one project, one viewpoint per topic. */
@@ -59,13 +63,18 @@ function fakeBcfServer(options: FakeServerOptions): FetchLike {
         },
       ]);
     }
-    if (path.endsWith('/selection')) return json({ selection: [{ ifc_guid: 'guid_selection_000000A' }] });
+    if (path.endsWith('/selection')) {
+      if (options.brokenSelectionStatus) {
+        return json({ message: 'selection broken' }, options.brokenSelectionStatus);
+      }
+      return json({ selection: [{ ifc_guid: 'guid_selection_000000A' }] });
+    }
     if (path.endsWith('/coloring')) return json({ coloring: [] });
     if (path.endsWith('/visibility')) return json({ visibility: { default_visibility: true } });
     if (path.endsWith('/snapshot')) {
       const viewpointGuid = /viewpoints\/([^/]+)\/snapshot$/.exec(path)?.[1];
       if (viewpointGuid && options.brokenSnapshots?.includes(viewpointGuid)) {
-        return json({ message: 'snapshot missing' }, 404);
+        return json({ message: 'snapshot missing' }, options.brokenSnapshotStatus ?? 404);
       }
       return new Response(new Uint8Array([1, 2, 3]), {
         status: 200,
@@ -206,6 +215,47 @@ describe('fetchProjectAsBCF', () => {
     await expect(
       fetchProjectAsBCF(client, 'p1', { includeSnapshots: false }),
     ).rejects.toMatchObject({ status: 401 });
+  });
+
+  it('fails the whole pull when viewpoint components fail with 401, but warns on a 500', async () => {
+    // 401 anywhere means the session died; only genuine per-item failures warn.
+    await expect(
+      fetchProjectAsBCF(
+        makeClient(fakeBcfServer({ topics: makeTopics(1), brokenSelectionStatus: 401 })),
+        'p1',
+        { includeSnapshots: false },
+      ),
+    ).rejects.toMatchObject({ status: 401 });
+    const { warnings } = await fetchProjectAsBCF(
+      makeClient(fakeBcfServer({ topics: makeTopics(1), brokenSelectionStatus: 500 })),
+      'p1',
+      { includeSnapshots: false },
+    );
+    expect(warnings.some((w) => w.includes('Components unavailable'))).toBe(true);
+  });
+
+  it('fails the whole pull when a snapshot fails with 401 (unlike a missing snapshot)', async () => {
+    await expect(
+      fetchProjectAsBCF(
+        makeClient(
+          fakeBcfServer({
+            topics: makeTopics(1),
+            brokenSnapshots: ['vp-topic-0'],
+            brokenSnapshotStatus: 401,
+          }),
+        ),
+        'p1',
+      ),
+    ).rejects.toMatchObject({ status: 401 });
+  });
+
+  it('floors a fractional maxTopics instead of admitting an extra topic', async () => {
+    const client = makeClient(fakeBcfServer({ topics: makeTopics(5) }));
+    const { project } = await fetchProjectAsBCF(client, 'p1', {
+      maxTopics: 1.5,
+      includeSnapshots: false,
+    });
+    expect(project.topics.size).toBe(1);
   });
 
   it('degrades a failed snapshot to a warning and keeps the viewpoint', async () => {

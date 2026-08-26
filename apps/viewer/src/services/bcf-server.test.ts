@@ -307,6 +307,46 @@ describe('createConnectedClient token refresh', () => {
     assert.deepEqual(server.grants, ['refresh_token']);
   });
 
+  it('does not write a stale refresh over a different account on the same server', async () => {
+    const server = installFakeServer();
+    let openGate = () => {};
+    server.tokenGate = new Promise((resolve) => {
+      openGate = resolve;
+    });
+    saveBcfServerConfig({
+      serverUrl: 'https://fake.example/bcf',
+      userId: 'old-account@example.com',
+      accessToken: 'expired-token',
+      refreshToken: 'refresh-1',
+      tokenExpiresAt: Date.now() - 1000,
+      clientId: '',
+      clientSecret: '',
+      projectId: '',
+      projectName: '',
+    });
+    const client = await createConnectedClient();
+    const pending = client.getProjects();
+    // A different account signs in on the SAME server while the old
+    // account's refresh is still in flight.
+    saveBcfServerConfig({
+      serverUrl: 'https://fake.example/bcf',
+      userId: 'new-account@example.com',
+      accessToken: 'token-1',
+      refreshToken: 'refresh-other',
+      tokenExpiresAt: Date.now() + 3_600_000,
+      clientId: '',
+      clientSecret: '',
+      projectId: '',
+      projectName: '',
+    });
+    openGate();
+    await pending;
+    const stored = loadBcfServerConfig();
+    assert.equal(stored?.userId, 'new-account@example.com');
+    assert.equal(stored?.accessToken, 'token-1', 'replacement session must keep its own tokens');
+    assert.equal(stored?.refreshToken, 'refresh-other');
+  });
+
   it('does not resurrect the session when the user disconnects during a refresh', async () => {
     const server = installFakeServer();
     let openGate = () => {};

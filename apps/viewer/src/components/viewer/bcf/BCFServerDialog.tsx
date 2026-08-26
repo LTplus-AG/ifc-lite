@@ -64,15 +64,23 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
   // user must confirm before we overwrite them (they may be unexported).
   const [replaceCount, setReplaceCount] = useState<number | null>(null);
 
+  // A project-list request can outlive the connection it was issued for
+  // (disconnect, or sign-in to another server, mid-flight). Results carrying
+  // a stale generation are dropped so they can never pair the new
+  // connection with the old server's project list.
+  const projectsGenerationRef = useRef(0);
   const loadProjects = useCallback(async () => {
+    const generation = ++projectsGenerationRef.current;
     try {
       const list = await listBcfServerProjects();
+      if (generation !== projectsGenerationRef.current) return;
       setProjects(list);
       setSelectedProjectId((current) => {
         if (current && list.some((p) => p.project_id === current)) return current;
         return list[0]?.project_id ?? '';
       });
     } catch (err) {
+      if (generation !== projectsGenerationRef.current) return;
       setProjects([]);
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -111,6 +119,7 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
   );
 
   const handleDisconnect = useCallback(() => {
+    projectsGenerationRef.current += 1;
     clearBcfServerConfig();
     setConfig(null);
     setProjects(null);

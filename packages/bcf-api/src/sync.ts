@@ -89,8 +89,10 @@ async function fetchAllTopics(
   options: FetchProjectOptions,
   warnings: string[],
 ): Promise<BcfTopicDto[]> {
-  const pageSize = options.pageSize ?? 100;
-  const maxTopics = options.maxTopics ?? 1000;
+  // Normalize caller-supplied sizes: a fractional maxTopics would let
+  // `topics.length < maxTopics` admit one topic past the documented cap.
+  const pageSize = Math.max(1, Math.floor(options.pageSize ?? 100));
+  const maxTopics = Math.max(0, Math.floor(options.maxTopics ?? 1000));
   const topics: BcfTopicDto[] = [];
   const seen = new Set<string>();
   let skippedNoGuid = 0;
@@ -162,6 +164,9 @@ async function fetchViewpointComponents(
       visibility: visibility.visibility,
     };
   } catch (error) {
+    // An expired session is fatal everywhere (matching fetchTopicDetails);
+    // only genuine per-item failures degrade to warnings.
+    if (error instanceof BcfApiError && error.isAuthError) throw error;
     warnings.push(
       `Components unavailable for viewpoint ${viewpoint.guid}: ${error instanceof Error ? error.message : String(error)}`,
     );
@@ -209,6 +214,7 @@ async function fetchTopicDetails(
         const blob = await client.getViewpointSnapshot(projectId, dto.guid, viewpointDto.guid);
         viewpoint.snapshot = await blobToDataUrl(blob);
       } catch (error) {
+        if (error instanceof BcfApiError && error.isAuthError) throw error;
         warnings.push(
           `Snapshot unavailable for viewpoint ${viewpointDto.guid}: ${error instanceof Error ? error.message : String(error)}`,
         );

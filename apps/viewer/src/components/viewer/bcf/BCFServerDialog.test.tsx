@@ -193,6 +193,17 @@ describe('BCFServerDialog', () => {
     assert.equal(document.body.querySelector('#bcf-server-oauth-client-id'), null);
   });
 
+  it('clears the URL when switching from a fixed preset to a tenant-hosted one', () => {
+    installFakeServer();
+    render(<BCFServerDialog open onOpenChange={() => {}} />);
+    chooseOption('bcf-server-preset', 'BIMData.io');
+    assert.equal(input('bcf-server-url').value, 'https://api.bimdata.io/bcf');
+    // BIMcollab is per-space: carrying BIMData's URL over would label one
+    // server while connecting to another.
+    chooseOption('bcf-server-preset', 'BIMcollab');
+    assert.equal(input('bcf-server-url').value, '');
+  });
+
   it('connects with a pasted access token', async () => {
     installFakeServer();
     render(<BCFServerDialog open onOpenChange={() => {}} />);
@@ -269,14 +280,22 @@ describe('BCFServerDialog', () => {
 
   it('rejects a plain-http server URL before contacting it', async () => {
     installFakeServer();
+    const requested: string[] = [];
+    const fakeServer = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      requested.push(String(input));
+      return fakeServer(input, init);
+    }) as typeof fetch;
     render(<BCFServerDialog open onOpenChange={() => {}} />);
     type(input('bcf-server-url'), 'http://insecure.example/bcf');
     type(input('bcf-server-user'), 'tester@example.com');
     type(input('bcf-server-password'), 'right');
     click(button('Connect'));
     await waitFor(
-      () => document.body.textContent?.includes('https://') ?? false,
-      'https requirement message',
+      () =>
+        document.body.textContent?.includes('BCF server URLs must use https://') ?? false,
+      'the validateBcfServerUrl message',
     );
+    assert.deepEqual(requested, [], 'no request may reach an http server');
   });
 });

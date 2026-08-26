@@ -33,6 +33,7 @@ import {
 import {
   AUTH_METHOD_LABELS,
   BCF_SERVER_PRESETS,
+  CUSTOM_PRESET_ID,
   findBcfServerPreset,
   presetForServerUrl,
   type BcfAuthMethod,
@@ -67,7 +68,11 @@ export function BCFServerConnectForm({
   const handlePresetChange = useCallback((id: string) => {
     const next = findBcfServerPreset(id);
     setPresetId(next.id);
-    if (next.baseUrl) setServerUrl(next.baseUrl);
+    // Every named preset owns the URL field: fixed servers fill it, and
+    // tenant-hosted ones (BIMcollab, OpenProject) CLEAR it — carrying the
+    // previous preset's URL over would label one server while connecting
+    // to another. Only Custom keeps whatever the user typed.
+    if (next.id !== CUSTOM_PRESET_ID) setServerUrl(next.baseUrl);
     setAuthMethod((current) =>
       next.authMethods.includes(current) ? current : next.authMethods[0],
     );
@@ -86,6 +91,13 @@ export function BCFServerConnectForm({
       authMethod === 'oauth'
         ? window.open('about:blank', 'ifc-lite-bcf-oauth', 'width=500,height=700')
         : null;
+    // A blocked popup fails the attempt before any network work — running
+    // discovery and dynamic client registration for a sign-in that cannot
+    // complete would mint throwaway clients on the server.
+    if (authMethod === 'oauth' && (!popup || popup.closed)) {
+      setError('Sign-in popup was blocked — allow popups for this site and try again.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -95,14 +107,14 @@ export function BCFServerConnectForm({
       } else if (authMethod === 'token') {
         config = await signInWithToken(serverUrl, accessToken);
       } else if (authMethod === 'oauth') {
+        if (!popup) {
+          throw new Error('Sign-in popup was blocked — allow popups for this site and try again.');
+        }
         const preparation = await prepareBcfOAuth(serverUrl, {
           clientId,
           clientSecret,
           scope: preset.oauthScope,
         });
-        if (!popup || popup.closed) {
-          throw new Error('Sign-in popup was blocked — allow popups for this site and try again.');
-        }
         // Subscribe before navigating: BroadcastChannel does not buffer.
         const { waitForOAuthCallback } = await import('@ifc-lite/oauth-pkce');
         const callback = waitForOAuthCallback({

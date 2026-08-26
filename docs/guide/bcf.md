@@ -194,14 +194,14 @@ const { project, warnings } = await fetchProjectAsBCF(client, projects[0].projec
 console.log(`Pulled ${project.topics.size} topics (${warnings.length} warnings)`);
 ```
 
-The client implements the BCF API 2.1 routes (projects, extensions, topics with OData paging, comments, viewpoints, component subresources, snapshots). Per-item failures — a missing snapshot, an unreadable components resource — degrade to `warnings` entries instead of failing the pull.
+The client implements the BCF API 2.1 routes (projects, extensions, topics with OData paging, comments, viewpoints, component subresources, snapshots). Non-authentication per-item failures — a missing snapshot, an unreadable components resource — degrade to `warnings` entries; authentication failures (401) and an unreachable topics collection reject the whole pull.
 
 ## Viewer Integration
 
 In the IFClite viewer, BCF is integrated through the BCF panel:
 
 1. **Load BCF** - Drag and drop a `.bcf` or `.bcfzip` file or use the BCF panel to import
-2. **Connect to a BCF server** - The cloud button in the panel header connects to a BCF API server — pick a known server (Aconex regions, BIMcollab, BIMData.io, BIM Track/Newforma Konekt, Catenda Hub, Dalux Field, OpenProject, StreamBIM) or enter a custom URL, sign in with email & password, a pasted access token, or OAuth client credentials — then list its projects and load topics, viewpoints, and snapshots straight into the panel
+2. **Connect to a BCF server** - The cloud button in the panel header connects to a BCF API server — pick a known server (Aconex regions, BIMcollab, BIMData.io, BIM Track/Newforma Konekt, Catenda Hub, Dalux Field, OpenProject, StreamBIM) or enter a custom URL, sign in via the browser OAuth popup (authorization code + PKCE, with dynamic client registration where the server offers it), email & password, a pasted access token, or OAuth client credentials — then list its projects and load topics, viewpoints, and snapshots straight into the panel
 3. **Browse Topics** - View all issues with status, priority, and labels
 4. **Navigate Viewpoints** - Click a viewpoint to restore camera and visibility
 5. **Add Comments** - Discuss issues directly in the viewer

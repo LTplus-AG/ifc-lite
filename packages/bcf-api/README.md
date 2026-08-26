@@ -41,7 +41,7 @@ const { project, warnings } = await fetchProjectAsBCF(client, projects[0].projec
 // (cameras, selection, coloring, visibility) and snapshots as data URLs.
 ```
 
-`fetchProjectAsBCF` pages the topics collection (`$top`/`$skip`), fetches each topic's comments and viewpoints concurrently, resolves viewpoint components (inline or via the `/selection`, `/coloring`, `/visibility` subresources), and downloads snapshots. Per-item failures degrade to entries in `warnings` instead of failing the pull.
+`fetchProjectAsBCF` pages the topics collection (`$top`/`$skip`), fetches each topic's comments and viewpoints concurrently, resolves viewpoint components (inline or via the `/selection`, `/coloring`, `/visibility` subresources), and downloads snapshots. Non-authentication per-item failures (one topic's details, a components resource, a snapshot) degrade to entries in `warnings`; authentication failures (401) and an unreachable topics collection reject the whole pull.
 
 ## Direct endpoint access
 
@@ -61,7 +61,7 @@ Errors are `BcfApiError` (with `status`, `url` and `isAuthError`); token endpoin
 
 ## Other auth flows
 
-Not every server offers the password grant. `requestClientCredentialsToken({ tokenUrl, clientId, clientSecret })` covers servers with OAuth application credentials (e.g. OpenProject), and a token obtained elsewhere (a server's own UI, an authorization-code flow you run yourself) plugs straight into `getAccessToken`.
+Not every server offers the password grant. For the browser authorization-code flow every BCF vendor advertises, `exchangeAuthorizationCode({ tokenUrl, code, redirectUri, codeVerifier?, clientId, clientSecret? })` completes a sign-in whose authorization step you drive yourself (PKCE supported), and `registerBcfClient({ registrationUrl, clientName, redirectUrl })` mints a client on servers that advertise dynamic client registration. `requestClientCredentialsToken({ tokenUrl, clientId, clientSecret })` covers servers with OAuth application credentials (e.g. OpenProject), and a token obtained elsewhere plugs straight into `getAccessToken`.
 
 ## License
 

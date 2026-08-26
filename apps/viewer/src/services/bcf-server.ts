@@ -328,61 +328,87 @@ export async function signInWithClientCredentials(
   return completeSignIn(baseUrl, token, { clientId, clientSecret });
 }
 
-/** Single-flight token refresh so concurrent requests share one round-trip. */
-let refreshInFlight: Promise<string> | null = null;
+/**
+ * Single-flight token refresh PER SERVER. One unkeyed slot let a client
+ * bound to server B join server A's in-flight refresh and send A's bearer
+ * token to B's host; keying by serverUrl keeps each server's refresh (and
+ * its token) to clients of that server while still deduplicating
+ * concurrent refreshes against the same server.
+ */
+const refreshInFlight = new Map<string, Promise<string>>();
 
 /** Whether a stored connection has any material to re-authenticate with. */
 function canReauthenticate(config: BcfServerConfig): boolean {
   return config.refreshToken.length > 0 || (config.clientId.length > 0 && config.clientSecret.length > 0);
 }
 
+/**
+ * Whether the stored connection is still the SESSION this refresh started
+ * from. Server URL alone is not enough: signing in as a different account
+ * on the same server would otherwise get the previous account's refreshed
+ * tokens written into its record. The refresh material must be unchanged
+ * too, so a re-login as the same user (new refresh token) is not clobbered
+ * by the older session's rotation.
+ */
+function isSameSession(current: BcfServerConfig, config: BcfServerConfig): boolean {
+  return (
+    current.serverUrl === config.serverUrl &&
+    current.userId === config.userId &&
+    current.refreshToken === config.refreshToken &&
+    current.clientId === config.clientId
+  );
+}
+
 async function refreshStoredToken(config: BcfServerConfig): Promise<string> {
-  if (!refreshInFlight) {
-    refreshInFlight = (async () => {
-      const api = await loadApi();
-      const anonymous = new api.BcfApiClient({ baseUrl: config.serverUrl });
-      const authInfo = await anonymous.getAuthInfo();
-      if (!canReauthenticate(config)) {
-        throw new api.BcfAuthenticationError('Session expired — sign in again', {
-          status: 401,
-          url: config.serverUrl,
+  const pending = refreshInFlight.get(config.serverUrl);
+  if (pending) return pending;
+  const started = (async () => {
+    const api = await loadApi();
+    // Fail before the discovery round-trip when there is nothing to
+    // re-authenticate with.
+    if (!canReauthenticate(config)) {
+      throw new api.BcfAuthenticationError('Session expired — sign in again', {
+        status: 401,
+        url: config.serverUrl,
+      });
+    }
+    const anonymous = new api.BcfApiClient({ baseUrl: config.serverUrl });
+    const authInfo = await anonymous.getAuthInfo();
+    const tokenUrl = requireSecureTokenUrl(authInfo.oauth2_token_url);
+    // OAuth-app sessions must present the app credentials on the refresh
+    // grant too; token servers that never issued a client ignore them.
+    const token = config.refreshToken
+      ? await api.refreshAccessToken({
+          tokenUrl,
+          refreshToken: config.refreshToken,
+          clientId: config.clientId || undefined,
+          clientSecret: config.clientSecret || undefined,
+        })
+      : await api.requestClientCredentialsToken({
+          tokenUrl,
+          clientId: config.clientId,
+          clientSecret: config.clientSecret,
         });
-      }
-      const tokenUrl = requireSecureTokenUrl(authInfo.oauth2_token_url);
-      // OAuth-app sessions must present the app credentials on the refresh
-      // grant too; token servers that never issued a client ignore them.
-      const token = config.refreshToken
-        ? await api.refreshAccessToken({
-            tokenUrl,
-            refreshToken: config.refreshToken,
-            clientId: config.clientId || undefined,
-            clientSecret: config.clientSecret || undefined,
-          })
-        : await api.requestClientCredentialsToken({
-            tokenUrl,
-            clientId: config.clientId,
-            clientSecret: config.clientSecret,
-          });
-      // Persist only when the stored connection is still THIS one. If the
-      // user disconnected (sign-out is their revocation gesture) or switched
-      // servers while the refresh was in flight, re-saving would resurrect
-      // the session or write this server's tokens under the other server's
-      // URL. The in-flight caller still gets the fresh token either way.
-      const current = loadBcfServerConfig();
-      if (current && current.serverUrl === config.serverUrl) {
-        saveBcfServerConfig({
-          ...current,
-          accessToken: token.access_token,
-          refreshToken: token.refresh_token ?? config.refreshToken,
-          tokenExpiresAt: token.expires_in ? Date.now() + token.expires_in * 1000 : 0,
-        });
-      }
-      return token.access_token;
-    })().finally(() => {
-      refreshInFlight = null;
-    });
-  }
-  return refreshInFlight;
+    // Persist only when the stored connection is still THIS session. If the
+    // user disconnected (sign-out is their revocation gesture), switched
+    // servers, or switched accounts while the refresh was in flight,
+    // re-saving would resurrect or hijack the replacement session. The
+    // in-flight caller still gets the fresh token either way.
+    const current = loadBcfServerConfig();
+    if (current && isSameSession(current, config)) {
+      saveBcfServerConfig({
+        ...current,
+        accessToken: token.access_token,
+        refreshToken: token.refresh_token ?? config.refreshToken,
+        tokenExpiresAt: token.expires_in ? Date.now() + token.expires_in * 1000 : 0,
+      });
+    }
+    return token.access_token;
+  })().finally(() => {
+    refreshInFlight.delete(config.serverUrl);
+  });
+  refreshInFlight.set(config.serverUrl, started);
+  return started;
 }
 
 /**

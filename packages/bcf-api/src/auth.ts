@@ -56,7 +56,10 @@ export interface RegisteredClient {
 
 function resolveFetch(fetchFn: FetchLike | undefined): FetchLike {
   if (fetchFn) return fetchFn;
-  if (typeof fetch === 'function') return fetch;
+  // Wrapped, not returned bare: browsers brand-check fetch's receiver, so a
+  // detached reference can throw "Illegal invocation" (same guard as
+  // BcfApiClient's constructor).
+  if (typeof fetch === 'function') return (input, init) => fetch(input, init);
   throw new Error('No fetch implementation available; pass fetchFn explicitly.');
 }
 

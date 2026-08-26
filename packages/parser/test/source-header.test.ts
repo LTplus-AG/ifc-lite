@@ -3,7 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Direct coverage for {@link parseSourceHeader}.
+ * Direct coverage for {@link parseSourceHeader}, and for
+ * {@link detectSchemaVersion}'s last-resort scan, which the ladder in
+ * `schema-version-detection.test.ts` reaches only through its `IFC2X2` case.
  *
  * The header is read on every parse (`columnar-parser`) and written back out on
  * every STEP export (`step-exporter`), so a decoding error here silently

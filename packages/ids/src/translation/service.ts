@@ -17,6 +17,10 @@ import type {
   RequirementOptionality,
 } from '../types.js';
 
+import {
+  describeConstraint as renderConstraint,
+  interpolate as interpolateTemplate,
+} from './describe-constraint.js';
 import { en } from './locales/en.js';
 import { de } from './locales/de.js';
 import { fr } from './locales/fr.js';
@@ -83,12 +87,14 @@ class IDSTranslationServiceImpl implements TranslationService {
     template: string,
     params: Record<string, string | number>
   ): string {
-    return template.replace(/\{(\w+)\}/g, (match, key) => {
-      if (key in params) {
-        return String(params[key]);
-      }
-      return match;
-    });
+    return interpolateTemplate(template, params);
+  }
+
+  /**
+   * Describe a constraint value in human-readable form
+   */
+  describeConstraint(constraint: IDSConstraint): string {
+    return renderConstraint(constraint, this.translations);
   }
 
   /**
@@ -359,72 +365,6 @@ class IDSTranslationServiceImpl implements TranslationService {
     }
   }
 
-  /**
-   * Describe a constraint value in human-readable form
-   */
-  describeConstraint(constraint: IDSConstraint): string {
-    const t = this.translations;
-
-    switch (constraint.type) {
-      case 'simpleValue':
-        return this.interpolate(t.constraints.simpleValue, {
-          value: constraint.value,
-        });
-
-      case 'pattern':
-        return this.interpolate(t.constraints.pattern, {
-          pattern: constraint.pattern,
-        });
-
-      case 'enumeration':
-        if (constraint.values.length === 1) {
-          return this.interpolate(t.constraints.enumeration.single, {
-            value: constraint.values[0],
-          });
-        }
-        return this.interpolate(t.constraints.enumeration.multiple, {
-          values: constraint.values.map((v) => `"${v}"`).join(', '),
-        });
-
-      case 'bounds':
-        return this.describeBounds(constraint);
-
-      default:
-        return 'unknown constraint';
-    }
-  }
-
-  private describeBounds(constraint: IDSConstraint & { type: 'bounds' }): string {
-    const t = this.translations.constraints.bounds;
-
-    if (
-      constraint.minInclusive !== undefined &&
-      constraint.maxInclusive !== undefined
-    ) {
-      return this.interpolate(t.between, {
-        min: constraint.minInclusive,
-        max: constraint.maxInclusive,
-      });
-    }
-
-    if (constraint.minInclusive !== undefined) {
-      return this.interpolate(t.atLeast, { min: constraint.minInclusive });
-    }
-
-    if (constraint.maxInclusive !== undefined) {
-      return this.interpolate(t.atMost, { max: constraint.maxInclusive });
-    }
-
-    if (constraint.minExclusive !== undefined) {
-      return this.interpolate(t.greaterThan, { min: constraint.minExclusive });
-    }
-
-    if (constraint.maxExclusive !== undefined) {
-      return this.interpolate(t.lessThan, { max: constraint.maxExclusive });
-    }
-
-    return 'any value';
-  }
 
   /**
    * Describe a failure in human-readable form

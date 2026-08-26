@@ -105,13 +105,17 @@ export function parseUrlParams(): EmbedViewerUrlParams {
 
   const select = params.get('select');
   if (select) {
-    const ids = select.split(',').map(Number).filter(n => !isNaN(n));
+    // `Number('')` is `0`, not `NaN` — a plain `!isNaN(n)` filter lets an
+    // empty segment (`?select=,`, a trailing comma, ...) through as express
+    // id 0, which is never a real entity. Express ids are always positive
+    // integers, so require both.
+    const ids = select.split(',').map(Number).filter(n => Number.isInteger(n) && n > 0);
     if (ids.length > 0) result.select = ids;
   }
 
   const isolate = params.get('isolate');
   if (isolate) {
-    const ids = isolate.split(',').map(Number).filter(n => !isNaN(n));
+    const ids = isolate.split(',').map(Number).filter(n => Number.isInteger(n) && n > 0);
     if (ids.length > 0) result.isolate = ids;
   }
 
@@ -120,8 +124,21 @@ export function parseUrlParams(): EmbedViewerUrlParams {
 
   const camera = params.get('camera');
   if (camera) {
-    const parts = camera.split(',').map(Number);
-    if (parts.length >= 2 && parts.every(n => !isNaN(n))) {
+    // A BLANK segment is rejected before `Number` sees it, for the same
+    // reason as `select`/`isolate` above and with the opposite conclusion
+    // about zero: `Number('')` is 0, so `?camera=,` would otherwise read as
+    // a legitimate azimuth 0 / elevation 0 and silently snap the view rather
+    // than falling back to `home`. The SDK joins [azimuth, elevation], so a
+    // host that omits azimuth emits exactly that.
+    //
+    // Zero itself stays valid -- `camera: {0,0,0}` is a real pose the SDK
+    // ships -- so the guard is on the segment being empty, never on the value.
+    //
+    // The acceptance test is FINITENESS, not just "not NaN":
+    // `Number('Infinity')` is `Infinity`, so `?camera=Infinity,0` would clear
+    // an `isNaN` filter and hand a non-finite azimuth to the camera.
+    const parts = camera.split(',').map(s => (s.trim() === '' ? NaN : Number(s)));
+    if (parts.length >= 2 && parts.every(n => Number.isFinite(n))) {
       result.camera = { azimuth: parts[0], elevation: parts[1], zoom: parts[2] };
     }
   }

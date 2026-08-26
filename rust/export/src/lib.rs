@@ -39,10 +39,14 @@ mod parquet_bos;
 mod rooms;
 pub mod rooted_type;
 mod schema_convert;
+mod schema_pad;
+pub use schema_pad::padded_type_universe;
 mod shades;
+pub mod source_header;
 mod step;
 mod step_cow;
 mod step_header;
+mod step_json;
 mod step_text;
 mod usd;
 
@@ -98,9 +102,10 @@ pub use obj::{export_obj, export_obj_with_stats, ObjOptions, ObjStats};
 #[cfg(feature = "parquet-bos")]
 pub use parquet_bos::{export_bos, ParquetBosOptions};
 pub use step::{
-    export_step, export_step_json, export_step_to_writer, export_step_with_stats, AttrMutation,
-    CopyOnWriteMutation, PropMutation, StepOptions, StepStats,
+    export_step, export_step_to_writer, export_step_with_stats, AttrMutation, CopyOnWriteMutation,
+    PropMutation, StepOptions, StepStats,
 };
+pub use step_json::export_step_json;
 pub use usd::{export_usd, UsdOptions};
 
 use ifc_lite_geometry::extract_profiles;

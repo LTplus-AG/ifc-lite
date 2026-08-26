@@ -85,6 +85,21 @@ describe('iframe URL construction', () => {
     expect(urlOf({ hideTypes: [] }).searchParams.has('hideTypes')).toBe(false);
   });
 
+  it('joins select and isolate with commas, on separate params', () => {
+    // `EmbedUrlParams` carries both and the viewer applies them once the
+    // first model is on screen, so an SDK that cannot emit them leaves an
+    // initial selection reachable only by hand-writing the iframe URL.
+    const p = urlOf({ select: [42, 43], isolate: [7] }).searchParams;
+    expect(p.get('select')).toBe('42,43');
+    expect(p.get('isolate')).toBe('7');
+  });
+
+  it('omits select and isolate for empty arrays', () => {
+    const p = urlOf({ select: [], isolate: [] }).searchParams;
+    expect(p.has('select')).toBe(false);
+    expect(p.has('isolate')).toBe(false);
+  });
+
   it('serialises camera as azimuth,elevation when zoom is absent', () => {
     const p = urlOf({ camera: { azimuth: 45, elevation: 30 } }).searchParams;
     expect(p.get('camera')).toBe('45,30');

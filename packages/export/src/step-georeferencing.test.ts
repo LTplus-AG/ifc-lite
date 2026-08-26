@@ -868,3 +868,77 @@ describe('express ids are unique across an export that allocates on both paths',
     expect(duplicateDefinedIds('#7=IFCWALL($);\n#9=IFCREL(#7,#7);\n')).toEqual([]);
   });
 });
+
+/**
+ * `EffectiveEntityIndex.byType` is keyed by the RAW STEP type name, so asking
+ * for `IFCMAPCONVERSION` alone does not find IFC4X3's concrete subtype
+ * `IfcMapConversionScaled`. A file carrying one then looked to the exporter
+ * like a file with no map conversion at all, and a create branch emitted a
+ * SECOND coordinate operation against the same source CRS while the file's own
+ * one stayed put. Same defect shape as #3229 / #3232.
+ */
+describe('StepExporter georeferencing — IfcMapConversionScaled', () => {
+  /** The georeferenced fixture, but with the IFC4X3 scaled spelling at `#41`. */
+  function buildScaledGeoreferencedMockDataStore(): IfcDataStore {
+    return buildMockDataStore([
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g',$,'Project',$,$,$,$,(#20),#30);"],
+      [2, 'IFCSIUNIT', '#2=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+      [20, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#20=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#21,$);"],
+      [21, 'IFCAXIS2PLACEMENT3D', '#21=IFCAXIS2PLACEMENT3D(#22,#23,#24);'],
+      [22, 'IFCCARTESIANPOINT', '#22=IFCCARTESIANPOINT((0.,0.,0.));'],
+      [23, 'IFCDIRECTION', '#23=IFCDIRECTION((0.,0.,1.));'],
+      [24, 'IFCDIRECTION', '#24=IFCDIRECTION((1.,0.,0.));'],
+      [30, 'IFCUNITASSIGNMENT', '#30=IFCUNITASSIGNMENT((#2));'],
+      [40, 'IFCPROJECTEDCRS', "#40=IFCPROJECTEDCRS('EPSG:2056',$,'CH1903+',$,$,$,#2);"],
+      [41, 'IFCMAPCONVERSIONSCALED', '#41=IFCMAPCONVERSIONSCALED(#20,#40,1.,2.,3.,1.,0.,1.,1.,1.,1.);'],
+    ]);
+  }
+
+  it('edits the scaled record in place instead of emitting a second conversion', () => {
+    const exporter = new StepExporter(buildScaledGeoreferencedMockDataStore());
+    const result = exporter.export({
+      schema: 'IFC4',
+      applyMutations: true,
+      georefMutations: { mapConversion: { eastings: 9999, northings: 8888 } },
+    });
+    const content = decode(result.content);
+
+    // The file's own record carries the edit — applied by attribute NAME,
+    // which the subtype inherits unchanged — and its FactorX/Y/Z tail is
+    // untouched.
+    expect(content).toContain('#41=IFCMAPCONVERSIONSCALED(#20,#40,9999.,8888.,3.,1.,0.,1.,1.,1.,1.);');
+
+    // And no rival conversion was invented beside it. The open paren keeps
+    // this from matching the scaled spelling.
+    expect(content).not.toMatch(/=IFCMAPCONVERSION\(/);
+    expect(findDanglingRefs(content)).toEqual([]);
+    expect(duplicateDefinedIds(content)).toEqual([]);
+  });
+
+  it('still creates a conversion when the file genuinely has none', () => {
+    // The control. Widening the lookup must not disable the create path for a
+    // file that really is missing a map conversion — otherwise the assertion
+    // above could be satisfied by an exporter that stopped creating anything.
+    const dataStore = buildMockDataStore([
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g',$,'Project',$,$,$,$,(#20),#30);"],
+      [2, 'IFCSIUNIT', '#2=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+      [20, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#20=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#21,$);"],
+      [21, 'IFCAXIS2PLACEMENT3D', '#21=IFCAXIS2PLACEMENT3D(#22,#23,#24);'],
+      [22, 'IFCCARTESIANPOINT', '#22=IFCCARTESIANPOINT((0.,0.,0.));'],
+      [23, 'IFCDIRECTION', '#23=IFCDIRECTION((0.,0.,1.));'],
+      [24, 'IFCDIRECTION', '#24=IFCDIRECTION((1.,0.,0.));'],
+      [30, 'IFCUNITASSIGNMENT', '#30=IFCUNITASSIGNMENT((#2));'],
+      [40, 'IFCPROJECTEDCRS', "#40=IFCPROJECTEDCRS('EPSG:2056',$,'CH1903+',$,$,$,#2);"],
+    ]);
+    const result = new StepExporter(dataStore).export({
+      schema: 'IFC4',
+      applyMutations: true,
+      georefMutations: { mapConversion: { eastings: 9999, northings: 8888 } },
+    });
+    const content = decode(result.content);
+
+    expect(content).toMatch(/=IFCMAPCONVERSION\(/);
+    expect(findDanglingRefs(content)).toEqual([]);
+    expect(duplicateDefinedIds(content)).toEqual([]);
+  });
+});

@@ -238,6 +238,37 @@ test('FAIL CLOSED: an unknown flag exits 1 rather than being ignored', () => {
   assert.match(r.output, /BAD_ARGS/);
 });
 
+test('FAIL CLOSED: an unreadable --timeout-seconds exits 1 as BAD_DURATION', () => {
+  // `Number('soon')` is NaN, and `now() >= NaN` is false forever: the poll would
+  // spin silently until the job's own 20-minute timeout killed it, leaving the
+  // PR with no verdict at all. Unreachable from the shipped workflow, which
+  // passes a literal, but a gate about absent output must not have a mode that
+  // produces none.
+  for (const bad of ['soon', '', '0', '-5', 'NaN', 'Infinity']) {
+    const r = run({ required: HEALTHY, lanes: HEALTHY.map((n) => LANE(n)), reviewChecks: [] }, [
+      '--timeout-seconds',
+      bad,
+    ]);
+    assert.equal(r.code, 1, `--timeout-seconds ${JSON.stringify(bad)} must exit 1: ${r.output}`);
+    assert.match(r.output, /BAD_DURATION/);
+  }
+  // A readable one still runs, so the guard is not simply rejecting the flag.
+  const ok = run({ required: HEALTHY, lanes: HEALTHY.map((n) => LANE(n)), reviewChecks: [] }, [
+    '--timeout-seconds',
+    '900',
+  ]);
+  assert.equal(ok.code, 0, ok.output);
+});
+
+test('FAIL CLOSED: an unreadable --poll-seconds exits 1 too — a 0 s poll is a busy loop', () => {
+  const r = run({ required: HEALTHY, lanes: HEALTHY.map((n) => LANE(n)), reviewChecks: [] }, [
+    '--poll-seconds',
+    '0',
+  ]);
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /BAD_DURATION/);
+});
+
 test('FAIL CLOSED: live mode with no --repo and no GITHUB_REPOSITORY exits 1', () => {
   const env = { ...process.env };
   delete env.GITHUB_REPOSITORY;
@@ -341,11 +372,13 @@ test('FAIL CLOSED: an unrecognised severity exits 1 rather than defaulting to ad
 
 test('the shipped config EXCLUDES the `test` aggregate, and the exclusion is the only one', () => {
   // `Build + WASM + Rust + Node` is `needs:` twelve jobs and publishes no check
-  // run until every one finishes. Measured over the twelve most recent
-  // non-cancelled test.yml PR runs, it started 670..1312 s after `Detect
-  // changes`, against a budget of 420 s -- not one run fit. Requiring it ties
-  // the poll budget to the SUITE's total runtime; excluding it ties the budget
-  // to runner pickup, which is what the gate is actually racing.
+  // run until every one finishes. Measured by `created_at` -- which is when a
+  // lane becomes PRESENT, the thing this gate polls for -- from each run's own
+  // creation, over the 68 completed test.yml PR runs of 2026-08-25/26 that
+  // published it: min 509 s, median 894 s, max 2067 s, and 33 of the 68 past
+  // the 900 s budget. Requiring it would false-fail half of every green PR.
+  // The last NON-aggregate lane appeared at 161..845 s over the same runs: 0 of
+  // 68 past the budget. Full numbers in scripts/lib/pr-review-signal.test.mjs.
   const cfg = JSON.parse(readFileSync(CONFIG, 'utf8'));
   assert.deepEqual(cfg.excludeJobKeys, ['test'], 'exactly one job is excluded, and it is the aggregate');
 });

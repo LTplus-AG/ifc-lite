@@ -26,22 +26,33 @@
  *     publishes no check run at all until its `needs` complete -- measured
  *     mid-run on PR #3305: 15 of the 16 derived names present, the aggregate
  *     absent purely because the census was still going. So it polls until
- *     either every required name has appeared, or the rollup has SETTLED
- *     (every lane that has appeared is now terminal), or `--timeout-seconds`
- *     runs out. The settle rule is what separates "has not appeared yet" from
- *     "will never appear", and it is why the #3294 shape fails in seconds
- *     rather than burning the whole budget. A timeout is a FAILURE, never a
- *     pass.
+ *     either every required name has appeared, or the rollup has SETTLED AND
+ *     STAYED SETTLED for `SETTLE_HOLD_SECONDS`, or `--timeout-seconds` runs
+ *     out. The settle rule is what separates "has not appeared yet" from "will
+ *     never appear", and it is why the #3294 shape fails in a minute rather
+ *     than burning the whole budget. A timeout is a FAILURE, never a pass.
+ *
+ *     THE HOLD IS NOT DECORATION. Because a downstream job's check run is
+ *     created only when its `needs` complete, EVERY fan-out boundary has an
+ *     instant where every published lane is terminal and more are still
+ *     coming. Replaying all 71 completed `test.yml` PR runs of 2026-08-25/26
+ *     second by second, 31 contain such an instant -- 36 windows, every one
+ *     exactly 1 s wide. Unheld, a read landing in one calls a green run
+ *     permanently missing its lanes; see `SETTLE_HOLD_SECONDS` in the lib for
+ *     the rule and the assumption it rests on.
  *
  *     AND THAT IS WHY THE AGGREGATE IS EXCLUDED. Waiting for a job that
- *     `needs:` twelve others makes the budget cover the whole matrix: measured
- *     670-1312 s behind `Detect changes` over twelve runs, against a first
- *     budget of 420 s that not one run fit -- a gate printing "the workflow
- *     never fired" over a green PR. `excludeJobKeys: ["test"]` ties the wait to
- *     runner PICKUP (159-678 s over the same runs) instead of to suite runtime,
- *     and nothing is lost: branch protection blocks on the aggregate anyway, it
- *     being one of only two contexts in main's ruleset. The budget is 900 s
- *     because 420 still false-failed 2 of those 12 even with the aggregate out.
+ *     `needs:` twelve others makes the budget cover the whole matrix: over the
+ *     68 completed `test.yml` PR runs of 2026-08-25/26 that published it, the
+ *     aggregate APPEARED (`created_at`, from each run's own creation) at 509 to
+ *     2067 s, 33 of the 68 past even the current 900 s budget -- a gate
+ *     printing "the workflow never fired" over half of every green PR.
+ *     `excludeJobKeys: ["test"]` ties the wait to how fast GitHub creates check
+ *     runs (161-845 s over the same runs, 0 of 68 past 900 s) instead of to
+ *     suite runtime, and nothing is lost: branch protection blocks on the
+ *     aggregate anyway, it being one of only two contexts in main's ruleset.
+ *     The budget is 900 s because 420 still false-failed 8 of those 68 even
+ *     with the aggregate out; the tail margin is 900/845 = 1.07x.
  *     Full measurement in .github/workflows/pr-review-signal.yml.
  *
  *     THE LOOP ITSELF IS `pollForLanes`, in the lib, over an injected clock and
@@ -118,6 +129,34 @@ const REPO_ROOT = join(SCRIPTS_DIR, '..');
 const DEFAULT_WORKFLOW = join(REPO_ROOT, '.github/workflows/test.yml');
 const DEFAULT_CONFIG = join(SCRIPTS_DIR, 'pr-review-signal.config.json');
 
+/**
+ * A duration flag, or a named failure.
+ *
+ * `Number(undefined)` and `Number('soon')` are both `NaN`, and a NaN deadline
+ * makes `now() >= deadline` false forever: the poll would spin until the job's
+ * own 20-minute timeout killed it, printing nothing at all. That is the exact
+ * "no output, no verdict" shape this gate exists to reject, so an unreadable
+ * duration is an error rather than a silently infinite one. Zero and negatives
+ * go the same way: a zero budget is a gate that never waits, and a zero poll
+ * interval is a busy loop against the API.
+ *
+ * @param {string} flag
+ * @param {string | undefined} raw
+ * @returns {number}
+ */
+function positiveSeconds(flag, raw) {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new ReviewSignalError(
+      'BAD_DURATION',
+      `\`${flag}\` needs a positive finite number of seconds; got ${JSON.stringify(raw)}. ` +
+        'Refusing to run with an unreadable budget: a NaN deadline never expires, so the poll ' +
+        'would spin until the job timeout and the PR would get no verdict at all.',
+    );
+  }
+  return n;
+}
+
 /** @param {string[]} argv */
 function parseArgs(argv) {
   const out = {
@@ -137,8 +176,8 @@ function parseArgs(argv) {
     else if (a === '--repo') out.repo = next();
     else if (a === '--workflow') out.workflow = next();
     else if (a === '--config') out.config = next();
-    else if (a === '--timeout-seconds') out.timeoutSeconds = Number(next());
-    else if (a === '--poll-seconds') out.pollSeconds = Number(next());
+    else if (a === '--timeout-seconds') out.timeoutSeconds = positiveSeconds(a, next());
+    else if (a === '--poll-seconds') out.pollSeconds = positiveSeconds(a, next());
     else if (a === '--state-file') out.stateFile = next();
     else if (a === '--self-name') out.selfName = next();
     else if (a.startsWith('--')) {

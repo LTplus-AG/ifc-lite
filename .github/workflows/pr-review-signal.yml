@@ -66,32 +66,41 @@ jobs:
       # whose job is to run when other jobs did not should depend on as little
       # as possible.
       #
-      # THE BUDGET IS MEASURED, NOT GUESSED, AND THE FIRST ONE WAS NOT.
-      # 420 s could not cover what it waited for. Over the twelve most recent
-      # non-cancelled `test.yml` PR runs, `Detect changes` start to
-      # `Build + WASM + Rust + Node` start was 670/732/756/761/776/777/778/780/
-      # 782/933/1163/1312 s -- not one run fit, so the gate's own green run was
-      # luck (test.yml happened to pick up runners 147 s ahead of it). A gate
-      # that prints "the workflow never fired -- push an empty commit" over a
-      # green PR is a false-alarm generator, which is the defect it exists to
-      # catch, in itself.
+      # THE BUDGET IS MEASURED, NOT GUESSED -- AND THE MEASUREMENT ITSELF WAS
+      # WRONG ONCE. The first version of this comment quoted `started_at`, i.e.
+      # when a runner picked each job up. This gate never waits for that: it
+      # polls for PRESENCE in the rollup, which is `created_at`, and the two
+      # diverge hard: on run 32930088375, `Lint` was CREATED 416 s into the run
+      # and STARTED 1037 s into it. Every figure below is `created_at`,
+      # measured from each run's own creation, over the 68 completed `test.yml`
+      # PR runs of 2026-08-25/26 that published the aggregate.
       #
       # The fix is TWO changes, because either alone still false-fails.
-      #   1. `excludeJobKeys: ["test"]` in the config drops the aggregate. It
-      #      `needs:` twelve jobs and publishes no check run until all finish,
-      #      so requiring it ties this budget to the SUITE's total runtime,
-      #      which grows with the suite. Over the same twelve runs the last
-      #      NON-aggregate lane started at 159..678 s. Nothing is lost: the
-      #      aggregate is one of only two contexts in main's ruleset, so branch
-      #      protection already blocks on it, and the #3294 total-absence shape
-      #      still fails under this config naming all fifteen lanes.
+      #   1. `excludeJobKeys: ["test"]` in the config drops the aggregate, and
+      #      this is the load-bearing half. It `needs:` twelve jobs and
+      #      publishes no check run until all finish, so requiring it ties this
+      #      budget to the SUITE's total runtime, which grows with the suite. It
+      #      appeared at min 509 / median 894 / max 2067 s -- 33 OF THE 68 PAST
+      #      900 s. Requiring it would false-fail roughly half of every green
+      #      PR. Nothing is lost: the aggregate is one of only two contexts in
+      #      main's ruleset, so branch protection already blocks on it, and the
+      #      #3294 total-absence shape still fails under this config naming all
+      #      fifteen lanes.
       #   2. 900 s, not 420 s. Excluding the aggregate is not enough on its own:
-      #      678 s and 535 s were both observed, so 420 would still have
-      #      false-failed 2 of the 12. 900 s is 1.33x the observed maximum for
-      #      what is left, and that maximum is runner PICKUP, which does not
-      #      grow with the test suite.
+      #      the last non-aggregate lane appeared at min 161 / median 190 /
+      #      p95 522 / max 845 s, so 420 s would still have false-failed 8 of
+      #      the 68. 900 s covers all 68 -- but the tail margin is 900/845 =
+      #      1.07x, NOT the 1.33x this comment used to claim off the `started_at`
+      #      numbers. It is thin, and measuring from run creation is the
+      #      conservative direction (this job's own deadline starts later still,
+      #      after its pickup and checkout), so the margin is worth stating
+      #      plainly rather than rounding up.
       # The poll normally returns in seconds via the settle rule; the budget is
-      # the ceiling, not the expected cost.
+      # the ceiling, not the expected cost. A settled-but-incomplete rollup is
+      # confirmed across SETTLE_HOLD_SECONDS (60 s) before its absence counts,
+      # because the fan-out boundary produces a ~1 s window in which every
+      # published lane is terminal and more are still coming -- so the
+      # genuine-absence path costs 60 s, not the whole budget.
       - name: Check required lanes ran and reviews produced a verdict
         env:
           GH_TOKEN: ${{ github.token }}

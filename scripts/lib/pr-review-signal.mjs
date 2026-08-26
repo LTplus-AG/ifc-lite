@@ -313,8 +313,20 @@ export function noVerdictReviews(checks, cfg) {
  *
  * That is why presence alone cannot decide the question. The settle rule is:
  * while any lane that HAS appeared is still moving, more lanes may yet appear,
- * so absence proves nothing. Once every present lane is terminal, a name still
- * missing is missing for good.
+ * so absence proves nothing.
+ *
+ * BUT "EVERY PRESENT LANE IS TERMINAL" IS NOT, ON ITS OWN, PROOF OF ABSENCE,
+ * AND THAT WAS A REAL DEFECT IN THIS FILE. A downstream job's check run is
+ * created only when its `needs` complete, so at EVERY fan-out boundary there is
+ * an instant where every published lane is terminal and more are still coming.
+ * Replaying all 71 completed `test.yml` PR runs of 2026-08-25/26 at one-second
+ * resolution, 31 of them contain such an instant -- 36 windows in total, EVERY
+ * ONE EXACTLY 1 s WIDE. Run 32930088375 (green) has three, at t=266/415/1386 s
+ * from run creation; a single read at t=266 s sees `Detect changes` alone,
+ * terminal, and the un-held rule reads that as "13 of the 14 required lanes
+ * will never appear" on a run that went on to pass everything.
+ *
+ * SO THE VERDICT MUST HOLD, NOT MERELY OCCUR: see `SETTLE_HOLD_SECONDS`.
  */
 const TERMINAL = new Set([
   'success',
@@ -341,21 +353,77 @@ export function rollupSettled(lanes) {
 }
 
 /**
+ * How long a settled-but-incomplete rollup must STAY settled, unchanged, before
+ * its absence is accepted as proof.
+ *
+ * WHY AN ELAPSED INTERVAL AND NOT "TWO CONSECUTIVE READS". Two reads is really
+ * "one `--poll-seconds`", so the guarantee it buys is whatever that flag
+ * happens to be -- `--poll-seconds 1` silently shrinks it back to the width of
+ * the race, and `--poll-seconds 0` deletes it. An interval in seconds is
+ * denominated in the same unit as the thing being raced, so it stays a fixed
+ * guarantee no matter how the poll cadence is tuned; the cadence then only
+ * decides how many reads land inside it.
+ *
+ * THE ASSUMPTION IT RESTS ON, STATED RATHER THAN LEFT IMPLICIT: the gap between
+ * the last already-published lane of a `test.yml` run reaching a terminal state
+ * and GitHub creating the check run for the next fan-out wave never exceeds
+ * SETTLE_HOLD_SECONDS. Measured maximum over the 36 windows found in those 71
+ * runs: 1 s. 60 s is a 60x margin on that maximum.
+ *
+ * WHAT HAPPENS IF THE ASSUMPTION IS EVER VIOLATED. The window becomes visible
+ * again and the gate false-FAILS with the missing-lane remedy -- exactly what it
+ * does today, only 60x rarer. There is no configuration of this rule under which
+ * a violation turns into a false PASS, because the hold only ever DELAYS the
+ * "absent for good" verdict; it never manufactures one.
+ *
+ * WHY NOT RELY ON THE MASKING. In practice unrelated in-flight workflows in the
+ * same rollup (`Viewer benchmark (advisory)`, the Vercel deploys) usually keep
+ * one lane non-terminal across the window. That safety is INCIDENTAL -- it rests
+ * on an advisory benchmark being slow, and nothing pins it -- so it is not a
+ * reason to leave the rule un-held.
+ *
+ * COST. 60 s off a 900 s budget, paid only on the genuine-absence path (#3294's
+ * shape), which otherwise decides on the first read. The lane-presence path is
+ * unaffected: it returns the moment the last required name appears.
+ */
+export const SETTLE_HOLD_SECONDS = 60;
+
+/**
+ * Identity of a rollup for hold purposes: any lane appearing, disappearing or
+ * changing state restarts the hold, because each of those is the rollup moving.
+ *
+ * @param {Array<{ name?: string, state?: string }>} lanes
+ * @returns {string}
+ */
+function laneSignature(lanes) {
+  return lanes
+    .map((l) => `${String(l.name ?? '')} ${String(l.state ?? '').toLowerCase()}`)
+    .sort()
+    .join('');
+}
+
+/**
  * The poll loop, as a pure function over injected time and I/O.
  *
  * WHY THIS IS NOT INLINE IN `main()`. It used to be, and that made it the one
  * branch of this gate with no test: `--state-file` mode hardcodes
  * `timedOut: false` and jumps straight to `evaluate`, so the harness drove the
  * verdict and never the wait. The wait is where the budget defect lived -- the
- * 420 s default could not cover a `Build + WASM + Rust + Node` measured 670 to
- * 1312 s behind `Detect changes` across twelve runs -- so the untested branch
- * was the broken one. The clock, the sleep and the re-read are all parameters,
- * so the harness drives the timeout path in microseconds.
+ * 420 s default could not cover a `Build + WASM + Rust + Node` that APPEARED
+ * (`created_at`, from its own run's creation -- NOT `started_at`, which is not
+ * what a presence poll waits for) 509 to 2067 s in, across 68 runs -- so the
+ * untested branch was the broken one. The clock, the sleep and the re-read are
+ * all parameters, so the harness drives the timeout path in microseconds, and
+ * the fan-out race below is replayed from a real run's timestamps rather than
+ * argued about.
  *
  * The three stopping conditions, in the order they are checked:
  *   1. every required lane has appeared -- the question is answered `yes`;
- *   2. the rollup has SETTLED, i.e. every lane that has appeared is terminal,
- *      so a name still absent is absent for good -- answered `no`, fast;
+ *   2. the rollup has SETTLED AND STAYED SETTLED, unchanged, for
+ *      `settleHoldSeconds` -- every lane that has appeared is terminal and no
+ *      new one arrived in that window, so a name still absent is absent for
+ *      good -- answered `no`, fast. The HOLD is what keeps a 1 s fan-out window
+ *      from being read as proof; see `SETTLE_HOLD_SECONDS`;
  *   3. the deadline passed -- answered `unknown`, which the caller renders as a
  *      FAILURE. A timeout is never a pass.
  *
@@ -365,6 +433,8 @@ export function rollupSettled(lanes) {
  * @param {() => { lanes: Array<{ name: string, state: string }>, sha: string }} opts.fetchState
  * @param {number} opts.deadline - epoch ms after which the wait is over.
  * @param {number} opts.pollSeconds - seconds between re-reads.
+ * @param {number} [opts.settleHoldSeconds] - how long a settled rollup must stay
+ *   settled and unchanged before absence counts as proof.
  * @param {() => number} [opts.now] - injected clock.
  * @param {(ms: number) => void} opts.sleep - injected wait.
  * @param {(line: string) => void} [opts.log]
@@ -376,11 +446,18 @@ export function pollForLanes({
   fetchState,
   deadline,
   pollSeconds,
+  settleHoldSeconds = SETTLE_HOLD_SECONDS,
   now = Date.now,
   sleep,
   log = () => {},
 }) {
   let state = initialState;
+  // A non-finite hold falls back to the shipped default rather than to the
+  // weaker rule: an unreadable guard must never be a disabled guard.
+  const hold = Number.isFinite(settleHoldSeconds) ? settleHoldSeconds : SETTLE_HOLD_SECONDS;
+  /** When the current unchanged settled rollup was first seen, or null. */
+  let settledSince = null;
+  let settledSignature = null;
   for (;;) {
     let stillMissing;
     try {
@@ -389,7 +466,30 @@ export function pollForLanes({
       stillMissing = required; // NO_ROLLUP: treat as "nothing has appeared yet".
     }
     if (stillMissing.length === 0) return { state, timedOut: false };
-    if (rollupSettled(state.lanes)) return { state, timedOut: false };
+
+    if (rollupSettled(state.lanes)) {
+      // `hold <= 0` is the PRE-FIX rule: accept the first settled read as proof.
+      // It exists only so the regression test can drive the old behaviour and
+      // show it getting run 32930088375 wrong; nothing ships it.
+      if (hold <= 0) return { state, timedOut: false };
+      const signature = laneSignature(state.lanes);
+      if (settledSince === null || signature !== settledSignature) {
+        // First sighting, or the rollup moved under us: restart the hold.
+        settledSince = now();
+        settledSignature = signature;
+        log(
+          `… every one of the ${state.lanes.length} published lane(s) is terminal but ` +
+            `${stillMissing.length}/${required.length} required lane(s) are still absent; ` +
+            `confirming across ${hold}s before calling that absence final.`,
+        );
+      } else if (now() - settledSince >= hold * 1000) {
+        return { state, timedOut: false };
+      }
+    } else {
+      settledSince = null;
+      settledSignature = null;
+    }
+
     if (now() >= deadline) return { state, timedOut: true };
     log(
       `… ${stillMissing.length}/${required.length} required lane(s) not yet published for ` +

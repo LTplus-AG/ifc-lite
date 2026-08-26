@@ -24,6 +24,7 @@ import {
   pollForLanes,
   parseWorkflowJobs,
   rollupSettled,
+  SETTLE_HOLD_SECONDS,
 } from './pr-review-signal.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -301,8 +302,8 @@ const POLL_COMPLETE = POLL_REQUIRED.map((n) => ({ name: n, state: 'success' }));
  * says WHEN the lanes appear and the loop discovers it by polling, exactly as
  * it does against the real API.
  */
-function driver(readsAt, { pollMs = 15_000 } = {}) {
-  let clock = 0;
+function driver(readsAt, { pollMs = 15_000, startMs = 0 } = {}) {
+  let clock = startMs;
   const slept = [];
   const logs = [];
   const state = () => ({ sha: 'deadbeef', lanes: readsAt(clock) });
@@ -322,13 +323,14 @@ function driver(readsAt, { pollMs = 15_000 } = {}) {
 /** Lanes that are `in_progress` until `atMs`, complete from then on. */
 const completesAt = (atMs) => (clock) => (clock >= atMs ? POLL_COMPLETE : POLL_MOVING);
 
-function poll(d, { deadline = 900_000, pollSeconds = 15 } = {}) {
+function poll(d, { deadline = 900_000, pollSeconds = 15, required, settleHoldSeconds } = {}) {
   return pollForLanes({
-    required: POLL_REQUIRED,
+    required: required ?? POLL_REQUIRED,
     initialState: d.state(),
     fetchState: d.state,
     deadline,
     pollSeconds,
+    settleHoldSeconds,
     now: d.now,
     sleep: d.sleep,
     log: d.log,
@@ -358,7 +360,13 @@ test('the poll STOPS EARLY once the rollup has settled — #3294 must not burn t
   const d = driver(() => settled);
   const r = poll(d);
   assert.equal(r.timedOut, false, 'settled is an ANSWER, not a timeout');
-  assert.deepEqual(d.slept, [], 'a settled rollup is decided on the first read');
+  // It costs the HOLD and not one interval more. The first read cannot decide
+  // this — see the fan-out replay below — but 60 s out of a 900 s budget still
+  // leaves #3294's total-absence shape decided in seconds, not in fifteen
+  // minutes, which is the property this test was written for.
+  assert.deepEqual(d.slept, [15_000, 15_000, 15_000, 15_000], 'exactly SETTLE_HOLD_SECONDS');
+  assert.equal(d.slept.length * 15, SETTLE_HOLD_SECONDS, 'the hold is what bounds the cost');
+  assert.match(d.logs[0], /confirming across 60s before calling that absence final/);
 });
 
 test('THE TIMEOUT PATH: a rollup that never settles and never completes returns timedOut', () => {
@@ -389,24 +397,284 @@ test('the poll treats an EMPTY rollup as "nothing has appeared yet", never as se
   assert.match(d.logs[0], /3\/3 required lane\(s\) not yet published/);
 });
 
-test('MEASURED: 900 s covers every observed lane pickup and 420 s did not', () => {
-  // `Detect changes` start to LAST NON-AGGREGATE lane start, over the twelve
-  // most recent non-cancelled test.yml PR runs (2026-08-25/26), in seconds.
-  // The aggregate itself was 670..1312 s behind `Detect changes`, which is why
-  // `excludeJobKeys` drops it; THESE are what the budget must actually cover.
-  // Pinned because the shipped budget is a claim about these numbers and
-  // nothing else re-checks it.
-  const OBSERVED_PICKUP_SECONDS = [159, 159, 168, 213, 238, 245, 252, 315, 336, 343, 535, 678];
+test('MEASURED: 900 s covers every observed lane APPEARANCE, and 420 s did not', () => {
+  // THE METHODOLOGY HERE WAS WRONG ONCE, AND THE NUMBERS MOVED WHEN IT WAS
+  // FIXED. The first version of this constant measured `started_at` — when a
+  // runner picked the job up. The gate does not wait for that. It polls for
+  // PRESENCE in the rollup, which is `created_at`, and the two diverge hard:
+  // on run 32930088375 `Lint` was created at 416 s and started at 1037 s.
+  // Measured from each run's own `created_at` over the 68 completed `test.yml`
+  // PR runs of 2026-08-25/26 that published the aggregate, here is when the
+  // LAST NON-AGGREGATE lane appeared, in seconds:
+  const LANE_APPEARED_SECONDS = [
+    161, 162, 162, 162, 163, 164, 164, 165, 165, 165, 166, 166, 167, 167, 167, 167, 167, 169, 169,
+    170, 170, 170, 170, 171, 171, 171, 172, 172, 175, 176, 177, 187, 188, 189, 190, 193, 198, 204,
+    210, 221, 235, 237, 237, 241, 244, 276, 289, 290, 290, 297, 299, 310, 322, 334, 349, 362, 386,
+    388, 403, 416, 423, 426, 450, 451, 522, 523, 542, 845,
+  ];
+  assert.equal(LANE_APPEARED_SECONDS.length, 68);
 
-  for (const s of OBSERVED_PICKUP_SECONDS) {
+  for (const s of LANE_APPEARED_SECONDS) {
     const d = driver(completesAt(s * 1000));
-    assert.equal(poll(d, { deadline: 900_000 }).timedOut, false, `${s}s pickup must fit in 900s`);
+    assert.equal(poll(d, { deadline: 900_000 }).timedOut, false, `${s}s must fit in 900 s`);
   }
+  assert.equal(
+    LANE_APPEARED_SECONDS.filter((s) => s > 900).length,
+    0,
+    '900 s holds: 0 of 68 runs breach it',
+  );
 
-  // The regression itself, kept as an assertion rather than as prose: under the
-  // old 420 s budget two of those twelve runs time out over a green PR.
-  const falseFailures = OBSERVED_PICKUP_SECONDS.filter(
+  // THE TRUE TAIL MARGIN IS 1.07x, NOT THE 1.33x THIS FILE ONCE CLAIMED. That
+  // figure came from the `started_at` numbers; against the max this budget
+  // actually has to cover it is 900/845. Measuring from RUN CREATION is the
+  // conservative direction — the gate's own deadline starts later still, after
+  // its runner pickup and checkout — but a margin this thin is a fact worth
+  // stating rather than rounding up.
+  const max = Math.max(...LANE_APPEARED_SECONDS);
+  assert.equal(max, 845);
+  assert.equal(Number((900 / max).toFixed(2)), 1.07, 'tail margin, stated honestly');
+
+  // AND THE AGGREGATE EXCLUSION IS MORE LOAD-BEARING THAN 420-vs-900 EVER WAS.
+  // Same 68 runs, when `Build + WASM + Rust + Node` itself appeared: min 509,
+  // median 894, max 2067 s. Requiring it would false-fail 33 of the 68 at a
+  // 900 s budget — half of every green PR — which is why `excludeJobKeys`
+  // carries the fix and the budget merely finishes it.
+  const AGGREGATE_APPEARED_SECONDS = [
+    509, 524, 528, 563, 579, 629, 667, 669, 669, 675, 697, 701, 702, 716, 721, 740, 743, 746, 750,
+    756, 765, 773, 773, 776, 790, 800, 806, 809, 823, 853, 863, 865, 868, 887, 894, 926, 944, 964,
+    970, 973, 983, 1006, 1006, 1020, 1105, 1109, 1132, 1175, 1177, 1226, 1230, 1246, 1261, 1272,
+    1276, 1335, 1387, 1420, 1441, 1461, 1519, 1554, 1601, 1897, 1950, 1987, 2022, 2067,
+  ];
+  assert.equal(AGGREGATE_APPEARED_SECONDS.length, 68);
+  assert.equal(
+    AGGREGATE_APPEARED_SECONDS.filter((s) => s > 900).length,
+    33,
+    'keeping the aggregate in the required set would false-fail 33 of 68 green runs',
+  );
+
+  // The original regression, kept as an assertion rather than as prose: under
+  // the first 420 s budget, eight of these 68 runs time out over a green PR.
+  const falseFailures = LANE_APPEARED_SECONDS.filter(
     (s) => poll(driver(completesAt(s * 1000)), { deadline: 420_000 }).timedOut,
   );
-  assert.deepEqual(falseFailures, [535, 678], '420 s false-failed exactly these two');
+  assert.deepEqual(falseFailures, [423, 426, 450, 451, 522, 523, 542, 845], '420 s false-failed 8');
+});
+
+// ------------------------------------- THE FAN-OUT RACE, REPLAYED FROM A RUN
+//
+// `rollupSettled` alone answers "has everything published so far finished",
+// which is NOT the same question as "will anything else publish". A downstream
+// job's check run is created only once its `needs` complete, so at every fan-out
+// boundary there is an instant where every published lane is terminal and the
+// next wave has not been created yet. The un-held rule reads that instant as
+// proof of absence.
+//
+// Below is `test.yml` run 32930088375 (branch fix/schema-detect-file-schema-3278,
+// conclusion SUCCESS), verbatim from
+// `repos/LTplus-AG/ifc-lite/actions/runs/32930088375/jobs`, as offsets in
+// seconds from the run's own `created_at` (2026-08-26T04:24:15Z). `created` is
+// the field that decides PRESENCE — the thing this gate polls for. Skipped jobs
+// really do report `completed_at` one second BEFORE `created_at`; that is
+// GitHub's data, left exactly as measured.
+const RUN_32930088375 = [
+  { name: 'Detect changes', created: 159, completed: 266, conclusion: 'success' },
+  { name: 'Build packages + WASM', created: 267, completed: 415, conclusion: 'success' },
+  { name: 'Plato clash-math freshness', created: 267, completed: 266, conclusion: 'skipped' },
+  { name: 'Geometry watertightness census', created: 267, completed: 266, conclusion: 'skipped' },
+  { name: 'Rust tests', created: 267, completed: 266, conclusion: 'skipped' },
+  { name: 'Docs checks (docs-only PRs)', created: 267, completed: 266, conclusion: 'skipped' },
+  { name: 'Viewer E2E smoke', created: 416, completed: 863, conclusion: 'success' },
+  { name: 'Node tests', created: 416, completed: 1278, conclusion: 'success' },
+  { name: 'Lint', created: 416, completed: 1269, conclusion: 'success' },
+  { name: 'Viewer tests (shard 2)', created: 416, completed: 966, conclusion: 'success' },
+  { name: 'Viewer tests (shard 1)', created: 416, completed: 1338, conclusion: 'success' },
+  { name: 'Viewer tests (shard 0)', created: 416, completed: 1386, conclusion: 'success' },
+  { name: 'Viewer tests (shard 3)', created: 416, completed: 1022, conclusion: 'success' },
+  { name: 'Typecheck', created: 416, completed: 1208, conclusion: 'success' },
+  // The aggregate, dropped from the required set by `excludeJobKeys` and so
+  // absent from REPLAY_REQUIRED — kept here because it is part of the rollup.
+  { name: 'Build + WASM + Rust + Node', created: 1387, completed: 1396, conclusion: 'success' },
+];
+
+/** The 14 lanes the shipped config actually requires from that run. */
+const REPLAY_REQUIRED = RUN_32930088375.filter((j) => j.name !== 'Build + WASM + Rust + Node')
+  .map((j) => j.name)
+  .sort();
+
+/** That run's rollup exactly as the API would have returned it at time `ms`. */
+const replayAt = (ms) => {
+  const t = ms / 1000;
+  return RUN_32930088375.filter((j) => j.created <= t).map((j) => ({
+    name: j.name,
+    state: j.completed <= t ? j.conclusion : 'in_progress',
+  }));
+};
+
+// Every second of that run replayed against the un-held rule: t=266 and t=415
+// are the two instants at which it would have declared lanes permanently
+// absent. (t=1386 is a third such instant in the raw rollup, harmless only
+// because by then every REQUIRED lane has appeared and the loop has returned.)
+const FALSE_SETTLE_SECONDS = [266, 415];
+
+test('RED: the un-held settle rule calls a GREEN run permanently missing 13 of 14 lanes', () => {
+  // Not a paraphrase of the old rule — this IS it: `rollupSettled` true while
+  // required names are still absent was the entire stopping condition.
+  const at266 = replayAt(266_000);
+  assert.equal(rollupSettled(at266), true, 'every published lane is terminal at t=266 s');
+  assert.deepEqual(
+    at266.map((l) => l.name),
+    ['Detect changes'],
+    'and exactly one lane has been published',
+  );
+  assert.equal(missingLanes(REPLAY_REQUIRED, at266).length, 13, '13 of 14 still to come');
+
+  // Driven through the loop with the hold disabled, that is the shipped verdict
+  // — on a run whose own conclusion was `success`, with the wrong remedy
+  // ("rebase onto main") printed underneath it.
+  const d = driver((c) => replayAt(c), { startMs: 266_000 });
+  const r = poll(d, {
+    required: REPLAY_REQUIRED,
+    deadline: 266_000 + 900_000,
+    settleHoldSeconds: 0,
+  });
+  assert.equal(r.timedOut, false, 'it does not time out — it answers, wrongly');
+  assert.equal(missingLanes(REPLAY_REQUIRED, r.state.lanes).length, 13);
+});
+
+test('GREEN: holding the settle verdict gets run 32930088375 right at every fan-out edge', () => {
+  for (const t of FALSE_SETTLE_SECONDS) {
+    const d = driver((c) => replayAt(c), { startMs: t * 1000 });
+    const r = poll(d, { required: REPLAY_REQUIRED, deadline: t * 1000 + 900_000 });
+    assert.equal(r.timedOut, false, `t=${t} s must not time out`);
+    assert.deepEqual(
+      missingLanes(REPLAY_REQUIRED, r.state.lanes),
+      [],
+      `t=${t} s: every required lane appeared; the absence was the fan-out gap, not a fact`,
+    );
+  }
+});
+
+test('and it is right at EVERY second of that run, not just at the two known edges', () => {
+  // The sweep the fix was derived from, kept as an assertion. Starting the poll
+  // at any second of the run must reach "all lanes present"; `settleHoldSeconds:
+  // 0` is the mutation, and it must produce the wrong answer on exactly the
+  // start seconds whose 15 s polling schedule LANDS on one of those 1 s windows.
+  //
+  // Note how much bigger that set is than the windows themselves. The window is
+  // 1 s wide, but every start phase congruent to it mod `--poll-seconds` hits
+  // it, so a run with two windows exposes roughly 2 in 15 start phases — which
+  // is why "the window is only a second wide" was never a defence.
+  const expectedWrong = [];
+  for (let t = 0; t <= 500; t += 1) {
+    if (FALSE_SETTLE_SECONDS.some((w) => t <= w && (w - t) % 15 === 0)) expectedWrong.push(t);
+  }
+
+  const wrongUnderShippedRule = [];
+  for (let t = 0; t <= 500; t += 1) {
+    const held = poll(driver((c) => replayAt(c), { startMs: t * 1000 }), {
+      required: REPLAY_REQUIRED,
+      deadline: t * 1000 + 900_000,
+    });
+    assert.deepEqual(missingLanes(REPLAY_REQUIRED, held.state.lanes), [], `held rule at t=${t} s`);
+
+    const unheld = poll(driver((c) => replayAt(c), { startMs: t * 1000 }), {
+      required: REPLAY_REQUIRED,
+      deadline: t * 1000 + 900_000,
+      settleHoldSeconds: 0,
+    });
+    if (missingLanes(REPLAY_REQUIRED, unheld.state.lanes).length > 0) wrongUnderShippedRule.push(t);
+  }
+  assert.deepEqual(wrongUnderShippedRule, expectedWrong, 'the mutation fires, and only here');
+  assert.equal(wrongUnderShippedRule.length, 46, '46 of 501 start seconds, not 2');
+});
+
+test('a wave that arrives ALREADY TERMINAL restarts the hold rather than extending it', () => {
+  // The hold is on an UNCHANGED settled rollup, not on wall-clock time since
+  // the first settled read, and the difference is load-bearing. A fan-out wave
+  // made entirely of skipped jobs (a docs-only PR does exactly this) lands
+  // terminal, so the rollup goes settled -> settled with the previous hold
+  // still part-elapsed. Counting that as continuous would let the verdict fire
+  // on a rollup that had just visibly moved.
+  const waves = (clock) =>
+    clock < 45_000
+      ? [{ name: 'Typecheck', state: 'success' }]
+      : clock < 90_000
+        ? [
+            { name: 'Typecheck', state: 'success' },
+            { name: 'Lint', state: 'skipped' },
+          ]
+        : POLL_COMPLETE;
+
+  const r = poll(driver(waves), { deadline: 900_000 });
+  assert.equal(r.timedOut, false);
+  assert.deepEqual(
+    missingLanes(POLL_REQUIRED, r.state.lanes),
+    [],
+    'the second wave restarts the hold, so the poll is still there when the third arrives',
+  );
+});
+
+test('a rollup that starts MOVING again drops the hold, even if it lands back where it was', () => {
+  // The other half of the same rule. A lane that is re-run goes terminal ->
+  // in_progress -> terminal, and can land on the identical conclusion, so the
+  // signature check alone would see two settled reads that "match" across a
+  // period in which the rollup plainly moved. Time already served must be
+  // forfeited the moment anything is non-terminal.
+  const rerun = (clock) =>
+    clock < 15_000
+      ? [{ name: 'Typecheck', state: 'success' }]
+      : clock < 60_000
+        ? [{ name: 'Typecheck', state: 'in_progress' }]
+        : clock < 120_000
+          ? [{ name: 'Typecheck', state: 'success' }]
+          : POLL_COMPLETE;
+
+  const r = poll(driver(rerun), { deadline: 900_000 });
+  assert.equal(r.timedOut, false);
+  assert.deepEqual(
+    missingLanes(POLL_REQUIRED, r.state.lanes),
+    [],
+    'the hold restarts at t=60 s, so the poll is still there at t=120 s',
+  );
+});
+
+test('an UNREADABLE hold falls back to the default, never to the weaker rule', () => {
+  // A guard nobody can read must not be a guard nobody applies. NaN here would
+  // make every comparison against it false, which reads as "hold forever" in
+  // one direction and "no hold at all" in the other depending on how it is
+  // written; neither is a decision anyone made.
+  // Read against the #3294 shape, where the two candidate misreadings are
+  // distinguishable: a hold of NaN never elapses, so the gate would burn the
+  // whole budget and report a TIMEOUT instead of naming the missing lanes.
+  const settled = [{ name: 'CodeRabbit', state: 'success' }];
+  const d = driver(() => settled);
+  const r = poll(d, { deadline: 900_000, settleHoldSeconds: Number('not a number') });
+  assert.equal(r.timedOut, false, 'a timeout here would be the wrong verdict AND the wrong remedy');
+  assert.deepEqual(d.slept, [15_000, 15_000, 15_000, 15_000], 'exactly the 60 s default');
+});
+
+test('THE ASSUMPTION, PINNED: a fan-out gap wider than the hold would defeat it', () => {
+  // The hold is not magic — it buys exactly SETTLE_HOLD_SECONDS of tolerance,
+  // and the claim it rests on is that GitHub never takes longer than that to
+  // create the next wave of check runs after the last published one goes
+  // terminal. Measured maximum over the 36 such windows found in 71 completed
+  // `test.yml` PR runs (2026-08-25/26): 1 s — every single window exactly 1 s
+  // wide, i.e. a 60x margin. This test makes the assumption FALSIFIABLE rather
+  // than implicit: widen the gap past the hold and the wrong answer comes back,
+  // which is what would happen if GitHub's fan-out latency ever grew that far.
+  const gap = (seconds) => (clock) =>
+    clock < seconds * 1000 ? [{ name: 'Typecheck', state: 'success' }] : POLL_COMPLETE;
+
+  const withinHold = poll(driver(gap(SETTLE_HOLD_SECONDS - 15)), { deadline: 900_000 });
+  assert.deepEqual(missingLanes(POLL_REQUIRED, withinHold.state.lanes), [], 'a 45 s gap is covered');
+
+  const beyondHold = poll(driver(gap(SETTLE_HOLD_SECONDS * 2)), { deadline: 900_000 });
+  assert.equal(
+    missingLanes(POLL_REQUIRED, beyondHold.state.lanes).length,
+    2,
+    'a 120 s gap is NOT covered — that is the stated assumption, not an oversight',
+  );
+  // The failure direction is the safe one: a violated assumption produces a
+  // false FAIL carrying the missing-lane remedy, never a false PASS.
+  assert.equal(beyondHold.timedOut, false);
 });

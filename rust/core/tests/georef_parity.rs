@@ -220,4 +220,24 @@ fn fixture_carries_every_required_case() {
             "IfcSIPrefix.{prefix} has no vector: `{want}` is missing"
         );
     }
+
+    // The ePSet free-text label path is where BOTH halves were wrong the same
+    // way, so a harness that only diffs the two could not see it. These are
+    // the labels a `contains("METRE")` test silently collapses onto 1.0, plus
+    // the two refusal cases that prove the reader declines instead of
+    // approximating. Named individually: dropping any one of them is exactly
+    // how this defect would come back.
+    for want in [
+        "epset_map_unit_label_DECAMETRE",
+        "epset_map_unit_label_HECTOMETRE",
+        "epset_map_unit_label_KILOMETRE",
+        "epset_map_unit_label_MICROMETRE",
+        "epset_map_unit_label_SQUARE_METRE_REFUSED",
+        "epset_map_unit_label_UNKNOWN_REFUSED",
+    ] {
+        assert!(
+            present.contains(&want),
+            "ePSet MapUnit label vector `{want}` is missing from the shared fixture"
+        );
+    }
 }

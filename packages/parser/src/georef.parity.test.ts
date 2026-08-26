@@ -171,6 +171,20 @@ describe.skipIf(!existsSync(fixturePath))('extractGeoreferencing shared parity v
       const want = `projected_crs_si_prefix_${prefix}`;
       expect(present.has(want), `IfcSIPrefix.${prefix} has no vector: \`${want}\` is missing`).toBe(true);
     }
+    // The ePSet free-text label path is where BOTH halves were wrong the same
+    // way, so a harness that only diffs the two could not see it. These are the
+    // labels a substring test for METRE silently collapses onto 1, plus the two
+    // refusal cases that prove the reader declines instead of approximating.
+    for (const want of [
+      'epset_map_unit_label_DECAMETRE',
+      'epset_map_unit_label_HECTOMETRE',
+      'epset_map_unit_label_KILOMETRE',
+      'epset_map_unit_label_MICROMETRE',
+      'epset_map_unit_label_SQUARE_METRE_REFUSED',
+      'epset_map_unit_label_UNKNOWN_REFUSED',
+    ]) {
+      expect(present.has(want), `ePSet MapUnit label vector \`${want}\` is missing`).toBe(true);
+    }
   });
 
   for (const c of doc.cases) {

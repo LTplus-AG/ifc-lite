@@ -216,25 +216,63 @@ function asNumber(value: string | number | undefined): number | undefined {
   return typeof value === 'number' ? value : getNumber(value);
 }
 
+/** Fold a free-text unit label to its alphanumerics, upper-cased. */
+function foldUnitLabel(label: string): string {
+  return label.toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
 /**
- * Map an IFC unit label (e.g. "MILLIMETRE", "FOOT") to its metre scale.
- * Mirrors the viewer's `inferMapUnitScale` and the native `IfcProjectedCRS`
- * path so direct parser/MCP consumers of `ProjectedCRS.mapUnitScale` see the
- * same scale regardless of whether the CRS came from a native entity or an
- * ePSet. Returns `undefined` for an absent/unknown unit (the ePSet convention
- * then defers to the project length unit downstream).
+ * Exact-match table for an `ePSet_ProjectedCRS.MapUnit` free-text label,
+ * DERIVED rather than hand-written: every member of the `IfcSIPrefix` EXPRESS
+ * enumeration crossed with the METRE/METER spellings, the unprefixed base,
+ * and the conversion-based length units from the shared table.
+ *
+ * A `Map` rather than an object literal so a label like `CONSTRUCTOR` cannot
+ * resolve through `Object.prototype`.
+ */
+const MAP_UNIT_LABEL_SCALE: Map<string, number> = (() => {
+  const table = new Map<string, number>();
+  for (const spelling of ['METRE', 'METER']) {
+    table.set(foldUnitLabel(spelling), 1);
+    for (const [prefix, factor] of Object.entries(SI_PREFIX_MULTIPLIERS)) {
+      table.set(foldUnitLabel(prefix + spelling), factor);
+    }
+  }
+  for (const [name, factor] of Object.entries(CONVERSION_BASED_UNIT_FACTORS)) {
+    table.set(foldUnitLabel(name), factor);
+  }
+  // The US survey foot is a different ratio from the international foot
+  // (1200/3937 vs 0.3048) and is spelled several ways in the wild. These are
+  // the accepted spellings, matched exactly rather than sniffed for.
+  for (const alias of ['USSURVEYFOOT', 'USSURVEYFEET', 'USSURVEYFT', 'USFOOT', 'USFEET', 'USFT', 'FTUS']) {
+    table.set(alias, 0.3048006096);
+  }
+  return table;
+})();
+
+/**
+ * Resolve an `ePSet_ProjectedCRS.MapUnit` free-text label to its metre scale.
+ *
+ * EXACT match against {@link MAP_UNIT_LABEL_SCALE}. `undefined` for anything
+ * else, including an absent label: the ePSet convention then defers to the
+ * project length unit downstream.
+ *
+ * This deliberately does NOT substring-match. An `includes('METRE')` test is
+ * satisfied by MILLIMETRE, CENTIMETRE, KILOMETRE, DECAMETRE, HECTOMETRE and
+ * every other prefixed spelling, so a decametre map unit answered 1 — a
+ * silent 10x error in the CRS scale. The same shape scaled a projected CRS by
+ * 1000x in #3274. Where no exact answer exists, decline rather than
+ * approximate: an absent MapUnit is honest and has a defined meaning, a wrong
+ * one relocates the model.
+ *
+ * Twin of `infer_map_unit_scale` in rust/core/src/georef.rs; both are pinned
+ * to the shared vectors in rust/core/tests/fixtures/georef_vectors.json.
  */
 function inferMapUnitScaleFromLabel(mapUnit: string | undefined): number | undefined {
   if (!mapUnit) return undefined;
-  const n = mapUnit.toUpperCase();
-  if (n.includes('US') && (n.includes('SURVEY') || n.includes('FTUS'))) return 0.3048006096;
-  if (n.includes('FOOT') || n.includes('FEET')) return 0.3048;
-  if (n.includes('MILLI')) return 0.001;
-  if (n.includes('CENTI')) return 0.01;
-  if (n.includes('DECI')) return 0.1;
-  if (n.includes('KILO')) return 1000;
-  if (n.includes('METRE') || n.includes('METER')) return 1;
-  return undefined;
+  const key = foldUnitLabel(mapUnit);
+  if (!key) return undefined;
+  return MAP_UNIT_LABEL_SCALE.get(key);
 }
 
 /**

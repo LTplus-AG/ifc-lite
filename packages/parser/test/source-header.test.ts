@@ -17,7 +17,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { parseSourceHeader } from '../src/source-header.js';
+import { detectSchemaVersion, parseSourceHeader } from '../src/source-header.js';
 import { StepTextScan } from '../src/step-lexing.js';
 import { contiguousSourceBytes, type IfcSourceBytes } from '../src/source-bytes.js';
 
@@ -532,5 +532,52 @@ describe('the comment scan stays linear on hostile input (#3284)', () => {
     }
     expect(skipped).toBe(500);
     expect(scan.searches).toBe(500);
+  });
+});
+
+describe('the last-resort schema scan folds ASCII only (#3284)', () => {
+  it('a dotless i in header prose does not select a schema', () => {
+    // `'ı'.toUpperCase()` is `'I'`, so uppercasing the whole header made
+    // `ıFC5` in a description read as `IFC5`. This scan only runs when no
+    // FILE_SCHEMA identifier resolved, and it is already a loose substring
+    // match, but a fold ISO 10303-21 does not use is not one of the ways it is
+    // allowed to be loose.
+    const before =
+      'ISO-10303-21;\nHEADER;\n' +
+      "FILE_DESCRIPTION(('exported by ıFC5 Studio'),'2;1');\n" +
+      'ENDSEC;\nDATA;\nENDSEC;\n';
+    expect(detectSchemaVersion(enc(before), parseSourceHeader(enc(before)))).toBe('IFC4');
+
+    // And INSIDE the token, which is the harder direction. Dropping a
+    // non-ASCII character instead of passing it through joins the fragments
+    // either side of it, so `IFCı5` would become `IFC5` -- a false match built
+    // out of a character that was never part of the word. Folding correctly
+    // and deleting incorrectly agree on the case above and disagree here.
+    const inside =
+      'ISO-10303-21;\nHEADER;\n' +
+      "FILE_DESCRIPTION(('exported by IFCı5 Studio'),'2;1');\n" +
+      'ENDSEC;\nDATA;\nENDSEC;\n';
+    expect(detectSchemaVersion(enc(inside), parseSourceHeader(enc(inside)))).toBe('IFC4');
+  });
+
+  it('lower-case prose still resolves, which is what the fold is FOR', () => {
+    // The other two cases here pass even if `asciiUpper` folds nothing: one
+    // asserts the IFC4 default, and the other feeds input that is already
+    // upper-case. This is the one that dies if the fold stops folding, and it
+    // is the direction the doc comment promises -- every file that resolved
+    // before keeps resolving the same way.
+    const text =
+      'ISO-10303-21;\nHEADER;\n' +
+      "FILE_DESCRIPTION(('exported by acme ifc4x3 exporter'),'2;1');\n" +
+      'ENDSEC;\nDATA;\nENDSEC;\n';
+    expect(detectSchemaVersion(enc(text), parseSourceHeader(enc(text)))).toBe('IFC4X3');
+  });
+
+  it('still finds a real identifier in the same position', () => {
+    const text =
+      'ISO-10303-21;\nHEADER;\n' +
+      "FILE_DESCRIPTION(('exported by IFC5 Studio'),'2;1');\n" +
+      'ENDSEC;\nDATA;\nENDSEC;\n';
+    expect(detectSchemaVersion(enc(text), parseSourceHeader(enc(text)))).toBe('IFC5');
   });
 });

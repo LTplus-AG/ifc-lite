@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Coverage for `detectSchemaVersion()` (columnar-parser.ts), which reads the
+ * Coverage for `detectSchemaVersion()` (source-header.ts), which reads the
  * `FILE_SCHEMA` token out of the STEP header and classifies it via an
  * ordered ladder of `.includes()` checks:
  *
@@ -22,10 +22,17 @@
  * entity-dictionary tables, not header detection. Swapping the IFC4X3/IFC4
  * lines survives the full test suite before this file.
  *
- * `detectSchemaVersion` is module-private; this exercises it exclusively
- * through the public `ColumnarParser.parseLite()` entry point rather than
- * exporting it, since the whole point of the ladder is what schemaVersion
- * a real caller observes on the resulting store.
+ * This file drives `detectSchemaVersion` exclusively through the public
+ * `ColumnarParser.parseLite()` entry point, because the whole point of the
+ * ladder is what schemaVersion a real caller observes on the resulting store.
+ * That is a choice, not a constraint: the function is exported, and
+ * `source-header.test.ts` calls it directly.
+ *
+ * `buildStep()` always emits a FILE_SCHEMA record, but not always a RESOLVABLE
+ * one: the `IFC2X2` case below declares a token no prefix matches, so it falls
+ * through the identifier loop and its `IFC4` answer comes from the last-resort
+ * scan's trailing default rather than from the declaration. That case is
+ * therefore sensitive to changes in the scan, which the others are not.
  */
 
 import { describe, it, expect } from 'vitest';

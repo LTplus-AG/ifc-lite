@@ -101,8 +101,21 @@ export const MAGIC = 0x4C434649; // "IFCL" in little-endian
  *   `undefined`, which is the same state the runtime uses where the identity is
  *   genuinely merged away, so an old cache degrades to "unknown" and never to a
  *   WRONG id.
+ *
+ * v15: the Entities section gains a trailing `rawTypeName: Uint32Array[count]`
+ *   of interned-string indices, appended after the typeRanges triples. Only
+ *   ~1/4 of the concrete IFC product classes in the generated schema registry
+ *   have an `IfcTypeEnum` member, so the enum column alone cannot name the
+ *   rest; the live parser table has carried a raw-name column for that
+ *   fallback all along and the cache did not, which turned every such element
+ *   into 'Unknown' on a cache load. Bumped rather than sniffed because the
+ *   section is positional: a v14 section has nothing after the triples, so a
+ *   reader that read the column unconditionally would consume whatever
+ *   follows. A v15 reader still reads v14 sections — the column is
+ *   version-gated and degrades to the enum-only name, exactly the pre-v15
+ *   behaviour.
  */
-export const FORMAT_VERSION = 14;
+export const FORMAT_VERSION = 15;
 
 /** Geometry chunking parameters (v13+). Grouping is a WRITE-side layout
  *  policy: readers only trust the directory, so these can change without a

@@ -1,0 +1,41 @@
+{
+  "$comment": [
+    "Config for scripts/check-pr-review-signal.mjs (issue #3312).",
+    "This file lives under scripts/, and .github/workflows/pr-review-signal.yml carries NO",
+    "path filter, so the job that reads it fires on every pull_request event regardless of",
+    "which files changed. That is deliberate: #3305's gate could not fire on the file it",
+    "guarded because that file was in no path filter, and a presence check that can itself be",
+    "filtered out is the same defect.",
+    "`reviewers` are the check CONTEXTS whose descriptions are adjudicated. Adding an",
+    "unrelated context here would make this gate opine on free text it has no business",
+    "reading; keep it to bot reviewers that claim a verdict on the code.",
+    "`phrases` are matched as case-insensitive PREFIXES of the description, and only against",
+    "a `success` state. `neutral` and `failure` already communicate 'no verdict'."
+  ],
+  "reviewers": ["CodeRabbit", "Cursor Bugbot", "cursor[bot]", "Vercel Agent Review"],
+  "phrases": [
+    {
+      "startsWith": "Review rate limited",
+      "means": "the reviewer hit its quota and read none of this diff",
+      "observedOn": ["#3296", "#3301", "#3302", "#3304", "#3305", "#3307", "#3251", "#3311"]
+    },
+    {
+      "startsWith": "Review skipped",
+      "means": "the reviewer declined to run at all",
+      "observedOn": ["#3294"]
+    },
+    {
+      "startsWith": "Bugbot couldn't run",
+      "means": "the reviewer was out of quota",
+      "observedOn": []
+    },
+    {
+      "startsWith": "Bugbot could not run",
+      "means": "the reviewer was out of quota",
+      "observedOn": []
+    }
+  ],
+  "reviewVerdictSeverity": "fail",
+  "excludeJobKeys": [],
+  "forkLanesAreAdvisory": true
+}

@@ -1,0 +1,74 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: PR review signal
+
+# NO `paths:` FILTER, DELIBERATELY, AND FOR TWO SEPARATE REASONS.
+#
+# 1. This gate's question is "did the other lanes run at all". A path filter
+#    would make it skip on exactly the changes whose lanes are missing.
+# 2. It reads scripts/pr-review-signal.config.json. #3305's gate could not fire
+#    on the file it guarded because that file was in no path filter, so the gate
+#    existed, was correct, and was unreachable on its own input. With no filter
+#    here, neither the script nor its config can be edited without the job that
+#    runs them firing. Asserted in scripts/check-pr-review-signal.test.mjs.
+#
+# `edited` IS THE POINT OF THE TYPES LIST. GitHub's default `pull_request`
+# activity types are opened/synchronize/reopened. Retargeting a PR's base branch
+# fires `edited` and nothing else -- and it does NOT re-fire the workflows that
+# a `branches: [main]` filter had excluded while the PR pointed at a feature
+# branch. That is the deterministic, reproducible mechanism behind #3294 merging
+# with 8 checks and leaving main's module-size gate red. Without `edited` here,
+# this detector would miss the one case it was built for.
+#
+# `ready_for_review` covers the draft->ready transition for the same reason.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+  # The two reads this gate is made of. `checks: read` for the check runs,
+  # `statuses: read` for the commit statuses -- the reviewers publish as one or
+  # the other, and the free-text description only exists on the raw APIs.
+  checks: read
+  statuses: read
+
+env:
+  ACTIONS_RUNNER_FORCE_ACTIONS_NODE_VERSION: node24
+
+jobs:
+  review-signal:
+    # This name is passed to the gate as `--self-name` so it can drop its own
+    # lane from the rollup. It is `in_progress` for as long as it is asking the
+    # question, and leaving it in would mean the rollup never reads as settled.
+    name: PR review signal
+    # Free runner: two API reads and a poll, not compute-bound.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+
+      # No `pnpm install`: the gate imports only node builtins plus its own lib,
+      # and shells out to `gh`, which is preinstalled on GitHub runners. A gate
+      # whose job is to run when other jobs did not should depend on as little
+      # as possible.
+      - name: Check required lanes ran and reviews produced a verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          node scripts/check-pr-review-signal.mjs \
+            --pr "${{ github.event.pull_request.number }}" \
+            --self-name 'PR review signal' \
+            --timeout-seconds 420

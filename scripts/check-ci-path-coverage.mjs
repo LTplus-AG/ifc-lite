@@ -197,10 +197,22 @@ for (const file of workflowFiles) {
     process.exit(1);
   }
 
-  const { triggersOnPr, paths: prPaths } = parseWorkflowPrPaths(text);
-  if (!triggersOnPr) continue; // release/cron-only workflows gate nothing on a PR
+  // Named, with the workflow that caused it. These parsers throw on a shape
+  // they cannot read rather than returning a wider answer, so the throw IS the
+  // check firing -- reporting it as an uncaught stack trace would leave the
+  // reader to work out which of 26 workflows it came from.
+  let triggersOnPr;
+  let prPaths;
+  let jobs;
+  try {
+    ({ triggersOnPr, paths: prPaths } = parseWorkflowPrPaths(text));
+    if (!triggersOnPr) continue; // release/cron-only workflows gate nothing on a PR
+    jobs = splitJobs(text);
+  } catch (err) {
+    console.error(`❌ check-ci-path-coverage: cannot read the triggers of ${rel} -- ${err.message}`);
+    process.exit(1);
+  }
 
-  const jobs = splitJobs(text);
   if (jobs.length === 0) {
     console.error(`❌ check-ci-path-coverage: ${rel} triggers on PRs but parsed to zero jobs.`);
     process.exit(1);

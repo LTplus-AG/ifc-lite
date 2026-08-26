@@ -540,3 +540,63 @@ test('a warmed fixture cache does not change the verdict either', () => {
   assert.equal(after.out, before.out, 'a fetched corpus is not a change to the commit');
   rmSync(root, { recursive: true, force: true });
 });
+
+
+// ---------------------------------------------------------------------------
+// The trigger parser fails closed on shapes it cannot read.
+// ---------------------------------------------------------------------------
+
+const PR_BLOCK = "on:\n  pull_request:\n    paths:\n      - 'rust/**'\n";
+
+test('parseWorkflowPrPaths still reads the block form it was written for', () => {
+  // The refusals below must not have been bought by refusing everything.
+  assert.deepEqual(parseWorkflowPrPaths(PR_BLOCK), { triggersOnPr: true, paths: ['rust/**'] });
+  assert.deepEqual(parseWorkflowPrPaths("on:\n  pull_request:\n    paths-ignore:\n      - 'docs/**'\n"), {
+    triggersOnPr: true,
+    paths: null,
+  });
+  // No `paths:` at all is genuinely "every path", and must stay null.
+  assert.deepEqual(parseWorkflowPrPaths('on:\n  pull_request:\n'), {
+    triggersOnPr: true,
+    paths: null,
+  });
+});
+
+test('an INLINE paths list is refused, not read as "triggers on everything"', () => {
+  // The dangerous direction: the block matcher required an empty tail after
+  // the colon, so `paths: ['rust/**']` fell through and left paths at null --
+  // the widest coverage claim there is, asserted about a workflow that is in
+  // fact narrowly filtered. Every gate input under it would look reachable.
+  assert.throws(
+    () => parseWorkflowPrPaths("on:\n  pull_request:\n    paths: ['rust/**']\n"),
+    /written inline/,
+  );
+  assert.throws(
+    () => parseWorkflowPrPaths("on:\n  pull_request:\n    paths-ignore: ['docs/**']\n"),
+    /written inline/,
+  );
+});
+
+test('an unquoted list entry is refused, not silently dropped', () => {
+  // Errs the safe way -- a short trigger list over-reports violations -- but a
+  // finding derived from a truncated list is indistinguishable from a real one.
+  assert.throws(
+    () => parseWorkflowPrPaths('on:\n  pull_request:\n    paths:\n      - rust/**\n'),
+    /unparseable entry/,
+  );
+});
+
+test('the checker NAMES the workflow it could not parse, rather than throwing a stack', () => {
+  const root = mirrorRepo();
+  writeFileSync(
+    join(root, '.github/workflows/zz-inline-paths.yml'),
+    "name: Inline\non:\n  pull_request:\n    paths: ['rust/**']\njobs:\n  a:\n    name: A\n" +
+      '    runs-on: ubuntu-latest\n    steps:\n      - run: node scripts/check-module-size.mjs\n',
+  );
+  const r = run(root);
+  assert.equal(r.status, 1, r.out);
+  assert.match(r.out, /zz-inline-paths\.yml/, 'the report must name the workflow');
+  assert.match(r.out, /written inline/);
+  assert.doesNotMatch(r.out, /at parseWorkflowPrPaths/, 'not an uncaught stack trace');
+  rmSync(root, { recursive: true, force: true });
+});

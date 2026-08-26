@@ -176,7 +176,24 @@ export function gatingFilters(jobText) {
   return positives;
 }
 
-/** `on.pull_request.paths` for a workflow, or `null` when it has none (= all paths). */
+/**
+ * `on.pull_request.paths` for a workflow, or `null` when it has none (= all
+ * paths).
+ *
+ * FAILS CLOSED ON SHAPES IT DOES NOT PARSE. `null` here means "this workflow
+ * triggers on everything", which is the widest possible coverage claim -- so a
+ * `paths:` block quietly parsed as absent is not a degraded answer, it is the
+ * opposite answer, and it hides exactly the uncovered gate input this module
+ * exists to find. Two shapes therefore throw rather than return:
+ *
+ *   - an INLINE list (`paths: ['rust/**']`). The block-scalar matcher requires
+ *     an empty tail after the colon, so an inline list fell through to the
+ *     "some other key" branch and left `paths` at `null`.
+ *   - an UNQUOTED or otherwise unrecognised entry inside a block list. That one
+ *     errs the safe way -- a short list under-claims coverage and over-reports
+ *     violations -- but a finding derived from a silently truncated trigger
+ *     list is noise a reader cannot distinguish from a real hole.
+ */
 export function parseWorkflowPrPaths(text) {
   const lines = text.split('\n');
   const onAt = lines.findIndex((l) => /^on:\s*$/.test(l));
@@ -198,10 +215,20 @@ export function parseWorkflowPrPaths(text) {
       continue;
     }
     if (!inPr) continue;
-    if (/^ {4}paths(-ignore)?:\s*$/.test(raw)) {
+    const pathsKey = raw.match(/^ {4}(paths(?:-ignore)?):(.*)$/);
+    if (pathsKey) {
+      const tail = pathsKey[2].trim();
+      if (tail !== '' && !tail.startsWith('#')) {
+        throw new Error(
+          `parseWorkflowPrPaths: on.pull_request.${pathsKey[1]} is written inline ` +
+            `(${JSON.stringify(raw.trim())}). Only the block-list form is parsed, and reading ` +
+            'this as "no path filter" would claim the workflow triggers on everything. ' +
+            'Rewrite it as a block list, or teach this parser the inline form.',
+        );
+      }
       // `paths-ignore` is an exclusion list, not an inclusion list; a workflow
       // using it triggers on everything else, which is full coverage.
-      if (raw.includes('paths-ignore')) return { triggersOnPr: true, paths: null };
+      if (pathsKey[1] === 'paths-ignore') return { triggersOnPr: true, paths: null };
       inPaths = true;
       paths = [];
       continue;
@@ -211,8 +238,17 @@ export function parseWorkflowPrPaths(text) {
       continue;
     }
     if (inPaths) {
-      const entry = raw.trim().match(/^-\s*'([^']+)'$/) || raw.trim().match(/^-\s*"([^"]+)"$/);
-      if (entry) paths.push(entry[1]);
+      const trimmed = raw.trim();
+      if (trimmed === '') continue;
+      const entry = trimmed.match(/^-\s*'([^']+)'$/) || trimmed.match(/^-\s*"([^"]+)"$/);
+      if (!entry) {
+        throw new Error(
+          `parseWorkflowPrPaths: unparseable entry in on.pull_request.paths: ` +
+            `${JSON.stringify(trimmed)}. Dropping it silently would shorten the trigger list ` +
+            'and turn a covered gate input into a reported violation.',
+        );
+      }
+      paths.push(entry[1]);
     }
   }
   return { triggersOnPr: inPrSeen(lines, onAt), paths };

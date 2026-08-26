@@ -72,9 +72,10 @@ const SIMPLE_QUANTITY_VALUE_SLOT = 3;
  *
  * **Its nested quantities are dropped with it, and that is a known gap with no
  * tracking issue behind it.** Not "tracked separately" — an earlier version of
- * this comment said so and nothing tracked it. A set whose only member is a
- * complex quantity therefore reports no quantities at all: on the fixture in
- * #3254, two `IfcQuantityArea` children totalling 26 m² read back as nothing.
+ * this comment said so and nothing tracked it. The children are lost in every
+ * case — #3254's fixture nests two `IfcQuantityArea` totalling 26 m² that read
+ * back as nothing — and a set whose ONLY member is a complex quantity therefore
+ * reports no quantities at all.
  *
  * The gap is deliberate rather than overlooked. Flattening the children into
  * this list would feed new names to a dozen name-keyed consumers, and — via the

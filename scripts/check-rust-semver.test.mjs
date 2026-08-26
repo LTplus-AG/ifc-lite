@@ -339,6 +339,20 @@ test('the release workflow installs what the gate needs', () => {
   assert.match(workflow, /Install stable Rust for the crate semver gate/);
 });
 
+test('the gate runs on PRs, not only at release time', () => {
+  // A release-only gate is the shape release-crates-order.test.mjs argues
+  // against in its own header: the Release workflow runs only on main, and
+  // only on an actual publish, so a breaking change sits latent until it fails
+  // after npm has already gone out.
+  const workflow = readFileSync(join(ROOT, '.github', 'workflows', 'test.yml'), 'utf8');
+  assert.match(workflow, /run: node scripts\/check-rust-semver\.mjs/);
+  assert.match(workflow, /taiki-e\/install-action@[0-9a-f]{40} # cargo-semver-checks/);
+  // …and it must be one of the jobs the required check actually gates on. A
+  // job nobody depends on is a job whose red is invisible.
+  assert.match(workflow, /needs: \[[^\]]*\brust-semver\b[^\]]*\]/);
+  assert.match(workflow, /\[rust-semver\]="\$\{\{ needs\.rust-semver\.result \}\}"/);
+});
+
 /* ------------------------------- the real CLI ------------------------------- */
 
 test('VACUITY: the CLI fails with TOOL_MISSING when cargo-semver-checks is absent', () => {

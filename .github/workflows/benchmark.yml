@@ -190,6 +190,16 @@ jobs:
         run: |
           marker='<!-- viewer-benchmark-report -->'
           body_file="$RUNNER_TEMP/benchmark-report.md"
+          # If the benchmark died before writing a report, `-F body=@` fails,
+          # continue-on-error swallows it, and the PREVIOUS run's comment is
+          # left standing -- a crashed run presenting as the last green one.
+          # Say what happened instead. The marker must stay in the body or the
+          # next run creates a second comment rather than updating this one.
+          if [ ! -s "$body_file" ]; then
+            printf '%s\n\n%s\n' "$marker" \
+              '⚠ The benchmark job produced no report — it failed or was cancelled before the check step. This replaces a stale result rather than leaving one standing; see the job log.' \
+              > "$body_file"
+          fi
           # --paginate applies --jq per page, so a multi-page comment list can
           # emit one line per page — keep only the first id.
           existing=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" --paginate \

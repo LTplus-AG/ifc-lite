@@ -13,7 +13,7 @@
  * splitter that ignores quote state would mis-split.
  */
 
-import type { IfcSourceHeader } from '@ifc-lite/data';
+import type { IfcSourceHeader, IfcStoreBase } from '@ifc-lite/data';
 import { decodeStepStringLiteral } from '@ifc-lite/encoding';
 
 import { asSourceBytes, type IfcSourceBytes } from './source-bytes.js';
@@ -124,57 +124,54 @@ function decodeStringList(arg: string): string[] {
 }
 
 /**
- * Index of `needle` in `text`, ignoring any occurrence inside a quoted STEP
- * string or a `/* ... *\/` comment. `needle` is matched case-insensitively;
- * callers pass it upper-case.
+ * Index of `keyword` occurring as a RECORD -- outside any quoted string -- or
+ * -1. `fromIndex` must be a position outside a string; the scan starts its
+ * quote tracking there.
  *
- * A raw `indexOf` cannot tell a record keyword or a section terminator from the
- * same text sitting inside a header field's VALUE, and header values carry
- * arbitrary prose: a DESCRIPTION mentioning `ENDSEC;`, or an AUTHOR string
- * containing `FILE_NAME`, both read as structure (#3284).
- *
- * Three details, each of which cost a defect to learn:
- *
- * - Quote state toggles on every `'`. A doubled `''` -- STEP's escape for a
- *   literal apostrophe -- toggles twice and nets to a no-op, so it needs no
- *   special case.
- * - COMMENTS must be skipped too. ISO 10303-21 allows `/* ... *\/` anywhere
- *   whitespace is allowed, and an apostrophe inside one (`/* John's export *\/`)
- *   would otherwise leave the quote state inverted for the rest of the file, so
- *   every following keyword is scanned in the wrong state and NO record is
- *   found. That turns a comment into total header loss.
- * - The scan runs over `text` directly and compares per character. Uppercasing
- *   the haystack first is not safe: `'ß'.toUpperCase()` is `'SS'`, so a single
- *   German header value shifts every later index by one and the caller's
- *   `text[at + keyword.length]` lands in the wrong place.
+ * A plain `indexOf` is not enough here and the reason is the same one #3278 is
+ * about, one level down: header FREE TEXT is not a declaration. STEP strings
+ * are single-quoted with `''` as the escape, and a `FILE_DESCRIPTION` item is
+ * free to contain the literal text `FILE_SCHEMA(('IFC2X3'))` -- an exporter
+ * stamping its own header into a description, a file round-tripped through a
+ * tool that quotes what it read. `indexOf` would take that quoted copy as the
+ * declaration and answer IFC2X3 for an IFC4X3 file. The same applies to
+ * `ENDSEC`: a quoted one would truncate the header before the real
+ * `FILE_SCHEMA` record, losing the declaration entirely.
  */
-function indexOfOutsideQuotes(text: string, needle: string, fromIndex = 0): number {
-  const last = text.length - needle.length;
+function indexOfRecord(text: string, keyword: string, fromIndex = 0): number {
   let inString = false;
-  for (let i = 0; i < text.length; i++) {
+  for (let i = fromIndex; i < text.length; i++) {
     const ch = text[i];
     if (inString) {
-      if (ch === "'") inString = false;
+      if (ch === "'") {
+        if (text[i + 1] === "'") i++;
+        else inString = false;
+      }
       continue;
     }
     if (ch === "'") {
       inString = true;
       continue;
     }
+    // STEP comments are not structure either. ISO 10303-21 allows `/* ... */`
+    // wherever whitespace is allowed, and an apostrophe inside one --
+    // `/* John's export */` -- otherwise leaves quote state inverted for the
+    // whole rest of the file, so every later keyword is scanned in the wrong
+    // state and NO record is found. A comment then costs the entire header,
+    // which is the same total loss the quote-awareness above exists to prevent
+    // (#3284).
     if (ch === '/' && text[i + 1] === '*') {
       const close = text.indexOf('*/', i + 2);
-      // An unterminated comment swallows the rest, which is what a reader does.
-      if (close < 0) return -1;
+      if (close < 0) return -1; // unterminated: swallows the rest, as a reader would
       i = close + 1;
       continue;
     }
-    if (i >= fromIndex && i <= last) {
-      let hit = true;
-      for (let k = 0; k < needle.length; k++) {
-        if (text[i + k].toUpperCase() !== needle[k]) { hit = false; break; }
-      }
-      if (hit) return i;
+    let hit = true;
+    for (let k = 0; k < keyword.length; k++) {
+      const c = text[i + k];
+      if (c === undefined || c.toUpperCase() !== keyword[k]) { hit = false; break; }
     }
+    if (hit) return i;
   }
   return -1;
 }
@@ -182,10 +179,11 @@ function indexOfOutsideQuotes(text: string, needle: string, fromIndex = 0): numb
 /**
  * Extract the argument substring inside the parentheses of `KEYWORD( ... )`,
  * starting the search at `fromIndex`. Quote- and nesting-aware so a quoted
- * `)` never closes the record early. Returns `null` if not found.
+ * `)` never closes the record early, and so a quoted KEYWORD is never mistaken
+ * for the record itself. Returns `null` if not found.
  */
 function extractRecordArgs(text: string, keyword: string, fromIndex = 0): string | null {
-  const at = indexOfOutsideQuotes(text, keyword, fromIndex);
+  const at = indexOfRecord(text, keyword, fromIndex);
   if (at < 0) return null;
   let i = at + keyword.length;
   while (i < text.length && /\s/.test(text[i])) i++;
@@ -226,7 +224,7 @@ export function parseSourceHeader(
   const src = asSourceBytes(buffer);
   const cap = Math.min(src.byteLength, MAX_HEADER_BYTES);
   let text = src.decodeUtf8(0, cap);
-  const endSec = indexOfOutsideQuotes(text, 'ENDSEC');
+  const endSec = indexOfRecord(text, 'ENDSEC');
   if (endSec >= 0) text = text.slice(0, endSec);
 
   const descRecord = extractRecordArgs(text, 'FILE_DESCRIPTION');
@@ -281,4 +279,64 @@ export function parseSourceHeader(
     authorization,
     schemaIdentifiers,
   };
+}
+
+/**
+ * Resolve one `FILE_SCHEMA` identifier to the schema version a store carries.
+ *
+ * Matched by PREFIX, longest first: the spellings that reach us in the wild
+ * carry addendum/corrigendum suffixes (`IFC4X3_ADD2`, `IFC4X1`, `IFC2X3_TC1`),
+ * and `IFC4X3` itself begins with `IFC4`, so the `IFC4X3` branch has to be
+ * tried before the `IFC4` one. Returns `undefined` for an identifier naming no
+ * schema we model, so the caller can keep looking.
+ */
+function schemaFromIdentifier(identifier: string): IfcStoreBase['schemaVersion'] | undefined {
+  const token = identifier.trim().toUpperCase();
+  if (token.startsWith('IFC5')) return 'IFC5';
+  if (token.startsWith('IFC4X3')) return 'IFC4X3';
+  if (token.startsWith('IFC4')) return 'IFC4';
+  if (token.startsWith('IFC2X3')) return 'IFC2X3';
+  return undefined;
+}
+
+/**
+ * Determine which IFC schema a STEP buffer declares (issue #3278).
+ *
+ * The `FILE_SCHEMA` declaration is authoritative and is read from the
+ * already-parsed {@link IfcSourceHeader}; free text elsewhere in the header is
+ * not. That distinction is the whole point. `FILE_DESCRIPTION` and `FILE_NAME`
+ * carry author, organisation, preprocessor and originating-system strings, and
+ * exporters routinely stamp a schema token into their product name ("SomeApp
+ * IFC4 Exporter") — which a raw substring scan of the header bytes cannot tell
+ * apart from a declaration. Reading the record also reaches declarations that
+ * sit past the first 2 KB: ISO 10303-21 puts `FILE_SCHEMA` *after* `FILE_NAME`,
+ * and a long author or organisation list pushes it out of a small fixed window.
+ *
+ * Free on the hot path: {@link parseSourceHeader} already runs on every parse,
+ * so nothing extra is scanned. The raw decode below now happens only for a file
+ * that declares no schema at all.
+ *
+ * When no `FILE_SCHEMA` identifier resolves, fall back to the historical raw
+ * scan of the first 2000 bytes rather than refusing, so every file that
+ * resolves today keeps resolving the same way.
+ */
+export function detectSchemaVersion(
+  buffer: Uint8Array | IfcSourceBytes,
+  header: IfcSourceHeader | undefined,
+): IfcStoreBase['schemaVersion'] {
+  for (const identifier of header?.schemaIdentifiers ?? []) {
+    const version = schemaFromIdentifier(identifier);
+    if (version !== undefined) return version;
+  }
+
+  const src = asSourceBytes(buffer);
+  const headerEnd = Math.min(src.byteLength, 2000);
+  const headerText = src.decodeUtf8(0, headerEnd).toUpperCase();
+
+  if (headerText.includes('IFC5')) return 'IFC5';
+  if (headerText.includes('IFC4X3')) return 'IFC4X3';
+  if (headerText.includes('IFC4')) return 'IFC4';
+  if (headerText.includes('IFC2X3')) return 'IFC2X3';
+
+  return 'IFC4'; // Default fallback
 }

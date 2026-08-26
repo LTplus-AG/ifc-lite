@@ -246,11 +246,19 @@ describe('deciding it is linear, not backtracking', () => {
     // scan, so the language is identical by construction and the only
     // difference is wasted work -- which is what makes it a clean probe of
     // sensitivity rather than of correctness.
+    // The precondition this control rests on, asserted BEFORE the ladder runs
+    // so a trimmed ladder fails with THIS reason instead of as a null `blown`
+    // below. What stood here -- `expect(blown).toBeLessThanOrEqual(2_560_000)`
+    // -- could not fail (#3285): `firstBlownRung` returns a member of SIZES or
+    // null, 2_560_000 IS the largest member, and null is already caught by the
+    // line above it. The property that assertion was reaching for is about the
+    // LADDER, not about `blown`: this control still decides 640k inside the
+    // budget, so a ladder that stops there would report `null` and prove
+    // nothing about sensitivity.
+    const DECIDED_INSIDE_BUDGET = 640_000;
+    expect(SIZES[SIZES.length - 1]).toBeGreaterThan(DECIDED_INSIDE_BUDGET);
     const blown = firstBlownRung(isWhollyNumericSmallConstantSuperlinear);
     expect(blown).not.toBeNull();
-    // Named, not just non-null: if a future edit trims the ladder back to
-    // 640k this fails with the reason rather than going quietly vacuous.
-    expect(blown).toBeLessThanOrEqual(2_560_000);
   });
 });
 

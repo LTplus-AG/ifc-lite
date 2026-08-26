@@ -82,15 +82,29 @@ const LEXICAL_OVERRIDES: Record<string, readonly string[]> = {
 const SCHEMA_DIVERGENT = new Set(['IFCCOUNTMEASURE']);
 
 /**
- * `IfcTimeStamp` (`INTEGER`, mapped to `xs:duration`) is corrected by a
- * separate change already in review for #3250. It is excluded here only
- * so the two do not collide in the same lines; delete this set once
- * that lands and the sweep below covers it like every other measure.
+ * Measures whose no-version answer is deliberately a SUPERSET of what the
+ * EXPRESS base alone implies.
+ *
+ * `TYPE IfcTimeStamp = INTEGER;` in every schema, so this sweep — which calls
+ * `ifcMeasureToXsdTypes` with no schema version — would settle for
+ * `xs:integer`. The mapper's versionless answer is the union across versions
+ * instead, because the authoritative attribute table splits:
+ * `IfcOwnerHistory.CreationDate` is `["xs:integer"]` under IFC2X3 and
+ * `["xs:dateTime","xs:integer"]` under IFC4 and IFC4X3. A caller that cannot
+ * say which schema it is reading should defer rather than reject a value some
+ * schema allows.
+ *
+ * The per-version answers are NOT policed here — `xsd-cast-measure-map.test.ts`
+ * pins each one against that table directly, which is the check that would
+ * catch the union being handed back for IFC2X3.
  */
-const PENDING_ELSEWHERE = new Set(['IFCTIMESTAMP']);
+const SUPERSET_OVERRIDES: Record<string, readonly string[]> = {
+  IFCTIMESTAMP: ['xs:integer', 'xs:dateTime'],
+};
 
 function expectedFor(name: string, base: string): readonly string[] | null {
   if (name in LEXICAL_OVERRIDES) return LEXICAL_OVERRIDES[name]!;
+  if (name in SUPERSET_OVERRIDES) return SUPERSET_OVERRIDES[name]!;
   switch (base) {
     case 'INTEGER':
       return ['xs:integer'];
@@ -153,7 +167,7 @@ describe('ifcMeasureToXsdTypes vs the EXPRESS schemas', () => {
   it('maps every reachable scalar measure to the XSD types its EXPRESS base implies', () => {
     const disagreements: string[] = [];
     for (const [name, base] of [...measures].sort()) {
-      if (SCHEMA_DIVERGENT.has(name) || PENDING_ELSEWHERE.has(name)) continue;
+      if (SCHEMA_DIVERGENT.has(name)) continue;
       const expected = expectedFor(name, base);
       if (expected === null) continue;
       const actual = [...ifcMeasureToXsdTypes(name)];

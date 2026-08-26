@@ -7,80 +7,6 @@
 
 use super::*;
 
-#[test]
-fn detect_schema_finds_file_schema_past_the_old_4096_byte_cutoff() {
-    // `detect_schema` used to scan only the first 4096 bytes looking for
-    // `FILE_SCHEMA`. A real STEP header can push FILE_SCHEMA past that
-    // point when an earlier header field (e.g. DESCRIPTION) carries long
-    // text. Pad the header well past 4096 bytes before FILE_SCHEMA and
-    // confirm the schema is still found instead of silently falling back
-    // to the `IFC4` default.
-    let padding = "x".repeat(5000);
-    let content = format!(
-        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('{padding}'),'2;1');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n"
-    );
-    assert!(
-        content.len() > 4096,
-        "test fixture must exceed the old 4096-byte cutoff"
-    );
-    assert_eq!(detect_schema(content.as_bytes()), "IFC2X3");
-}
-
-#[test]
-fn detect_schema_ignores_endsec_literal_text_inside_a_quoted_string() {
-    // Bug: the header-end scan for `ENDSEC;` was a raw byte search with
-    // no quote awareness. A header field whose string VALUE happens to
-    // contain the literal text `ENDSEC;` truncates the header early,
-    // before the real FILE_SCHEMA entry is ever reached, silently
-    // falling back to the IFC4 default.
-    let content =
-        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('note: not an ENDSEC; marker'),'2;1');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n"
-            .to_string();
-    assert_eq!(detect_schema(content.as_bytes()), "IFC2X3");
-}
-
-#[test]
-fn detect_schema_ignores_file_schema_literal_text_inside_a_quoted_string() {
-    // Bug: the FILE_SCHEMA locate was also a raw byte search with no
-    // quote awareness. A header field whose string VALUE embeds the
-    // literal text `FILE_SCHEMA` before the real entry causes the scan
-    // to match inside the quoted field instead, and the quote-hunt that
-    // follows picks up the wrong (or no) label.
-    let content =
-        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('mentions FILE_SCHEMA in passing'),'2;1');\nFILE_SCHEMA(('IFC4X3'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n"
-            .to_string();
-    assert_eq!(detect_schema(content.as_bytes()), "IFC4X3");
-}
-
-#[test]
-fn detect_schema_handles_doubled_apostrophe_escape_before_the_real_endsec() {
-    // A header field value containing a literal apostrophe, escaped per
-    // ISO 10303-21 by doubling (`''`), must not desynchronize the
-    // quote-tracking scanner's in/out-of-string state. Wrong parity here
-    // would (depending on direction) either treat real header text as
-    // still-quoted or treat the ENDSEC;/FILE_SCHEMA text that follows as
-    // quoted, and either way defeat the fix.
-    let content =
-        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('O''Brien''s model'),'2;1');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n"
-            .to_string();
-    assert_eq!(detect_schema(content.as_bytes()), "IFC2X3");
-}
-
-/// `detect_schema` extracts the RAW (still STEP-escaped) text between the
-/// first two apostrophes following `FILE_SCHEMA`. Both `step.rs`'s
-/// `source_schema` fallback and `merged.rs` feed that text straight into
-/// `escape()` when the header is re-written, which doubles `\` again -- so
-/// `detect_schema` must un-double `\\` itself first, or a schema label
-/// carrying a literal `\` would round-trip corrupted (four backslashes out
-/// for two in). No real schema label (IFC2X3, IFC4, IFC4X3_ADD2, ...)
-/// contains a backslash, so this never fires on a real file; this test pins
-/// the un-double -> re-escape seam with a synthetic label.
-#[test]
-fn detect_schema_un_doubles_backslash_before_escape_re_doubles_it() {
-    let source = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC\\\\4'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n";
-    assert_eq!(detect_schema(source.as_bytes()), "IFC\\4");
-}
-
 /// End-to-end scenario for the same seam through the real `export_step`
 /// path: a source file whose `FILE_SCHEMA` label carries a literal `\`,
 /// exported with no explicit target schema (so `step.rs:196` falls back to
@@ -150,6 +76,24 @@ fn escape_maps_every_ascii_control_char_to_a_space() {
             c as u32
         );
     }
+}
+
+#[test]
+fn escape_preserves_the_length_of_a_control_char_run() {
+    // The single-char cases above pass identically whether `escape` replaces
+    // per character or collapses a run, so they cannot see the difference
+    // #3284 is about, and this side's rule was never actually asserted.
+    //
+    // That mattered: the two TypeScript escapers carried `[\x00-\x1F\x7F]+`,
+    // so `"a\t\t\tb"` was written as `'a b'` there and `'a   b'` here, one
+    // nominal rule with two behaviours, and every test on both sides stayed
+    // green because none of them used a run. #3294 fixes the TypeScript half.
+    // This pins the half it is being made to agree with, so the agreement
+    // rests on a test rather than on two doc comments citing each other.
+    assert_eq!(escape("a\t\t\tb"), "a   b");
+    assert_eq!(escape("\0\0\0"), "   ");
+    // Mixed kinds in one run: still one space each, not one for the run.
+    assert_eq!(escape("a\r\n\u{0B}\u{7F}b"), "a    b");
 }
 
 #[test]

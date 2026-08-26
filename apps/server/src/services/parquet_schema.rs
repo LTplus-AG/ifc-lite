@@ -43,6 +43,19 @@ pub(super) fn mesh_schema() -> Arc<Schema> {
         // class 0 and instanced type templates render as duplicate overlapping
         // geometry (issue #1841).
         Field::new("geometry_class", DataType::UInt8, false),
+        // The two DISJOINT source ids `MeshData` carries: `geometry_item_id` is
+        // the `IfcRepresentationItem` a mesh was tessellated from, `material_id`
+        // is the `IfcMaterial` whose layer it slices. Never both, never 0 --
+        // the same contract the wasm, cache (v14) and JSON REST transports
+        // carry. Nullable because most meshes have neither, and because a
+        // present-but-zero id is the one value the contract forbids: encoding
+        // "absent" as 0 would make a host believe it can drill to entity #0.
+        //
+        // Parquet omitted both, so drill-to-source worked over /api/v1/parse
+        // and not over the binary transport, with nothing in either payload
+        // saying which one you were on (#3215).
+        Field::new("geometry_item_id", DataType::UInt32, true),
+        Field::new("material_id", DataType::UInt32, true),
     ]))
 }
 

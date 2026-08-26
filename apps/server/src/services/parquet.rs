@@ -176,6 +176,8 @@ fn build_mesh_tables(
                 mesh.color,
                 origin_yup,
                 mesh.geometry_class,
+                mesh.geometry_item_id,
+                mesh.material_id,
             )
         })
         .collect();
@@ -195,8 +197,23 @@ fn build_mesh_tables(
     let mut origin_y = Vec::with_capacity(mesh_count);
     let mut origin_z = Vec::with_capacity(mesh_count);
     let mut geometry_class = Vec::with_capacity(mesh_count);
+    let mut geometry_item_ids: Vec<Option<u32>> = Vec::with_capacity(mesh_count);
+    let mut material_ids: Vec<Option<u32>> = Vec::with_capacity(mesh_count);
 
-    for (eid, itype, vstart, vcount, istart, icount, color, origin, geo_class) in metadata {
+    for (
+        eid,
+        itype,
+        vstart,
+        vcount,
+        istart,
+        icount,
+        color,
+        origin,
+        geo_class,
+        geo_item_id,
+        mat_id,
+    ) in metadata
+    {
         express_ids.push(eid);
         ifc_types.push(itype);
         vertex_starts.push(vstart);
@@ -211,6 +228,8 @@ fn build_mesh_tables(
         origin_y.push(origin[1]);
         origin_z.push(origin[2]);
         geometry_class.push(geo_class);
+        geometry_item_ids.push(geo_item_id);
+        material_ids.push(mat_id);
     }
 
     // Phase 3: Extract vertex and index data in parallel chunks
@@ -336,6 +355,8 @@ fn build_mesh_tables(
             Arc::new(Float64Array::from(origin_y)),
             Arc::new(Float64Array::from(origin_z)),
             Arc::new(UInt8Array::from(geometry_class)),
+            Arc::new(UInt32Array::from(geometry_item_ids)),
+            Arc::new(UInt32Array::from(material_ids)),
         ],
     )?;
 

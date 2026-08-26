@@ -141,6 +141,17 @@ pub fn serialize_to_parquet_optimized(
     let mut instance_origin_y: Vec<f64> = Vec::with_capacity(meshes.len());
     let mut instance_origin_z: Vec<f64> = Vec::with_capacity(meshes.len());
     let mut instance_geometry_class: Vec<u8> = Vec::with_capacity(meshes.len());
+    // PER INSTANCE, not per template. Two meshes that dedupe to one geometry
+    // template can still come from different `IfcRepresentationItem`s -- the
+    // dedup key is the vertex data, and identical geometry from two different
+    // source items is exactly what dedup is for. Hanging these off the template
+    // would hand every instance the first one's id (#3215).
+    //
+    // Note these are NOT `instance_material_indices` above: that is an index
+    // into this file's own material table, while `material_id` is the
+    // `IfcMaterial` express id. Same word, different spaces.
+    let mut instance_geometry_item_ids: Vec<Option<u32>> = Vec::with_capacity(meshes.len());
+    let mut instance_material_ids: Vec<Option<u32>> = Vec::with_capacity(meshes.len());
 
     for mesh in meshes {
         // Compute geometry hash for deduplication
@@ -178,6 +189,8 @@ pub fn serialize_to_parquet_optimized(
         instance_origin_y.push(origin_yup[1]);
         instance_origin_z.push(origin_yup[2]);
         instance_geometry_class.push(mesh.geometry_class);
+        instance_geometry_item_ids.push(mesh.geometry_item_id);
+        instance_material_ids.push(mesh.material_id);
     }
 
     // Phase 2: Build vertex and index buffers from unique meshes
@@ -288,6 +301,9 @@ pub fn serialize_to_parquet_optimized(
         Field::new("origin_y", DataType::Float64, false),
         Field::new("origin_z", DataType::Float64, false),
         Field::new("geometry_class", DataType::UInt8, false),
+        // Mirrors mesh_schema(); see parquet_schema.rs for the contract (#3215).
+        Field::new("geometry_item_id", DataType::UInt32, true),
+        Field::new("material_id", DataType::UInt32, true),
     ]));
 
     let instance_batch = RecordBatch::try_new(
@@ -301,6 +317,8 @@ pub fn serialize_to_parquet_optimized(
             Arc::new(Float64Array::from(instance_origin_y)),
             Arc::new(Float64Array::from(instance_origin_z)),
             Arc::new(UInt8Array::from(instance_geometry_class)),
+            Arc::new(UInt32Array::from(instance_geometry_item_ids)),
+            Arc::new(UInt32Array::from(instance_material_ids)),
         ],
     )?;
 

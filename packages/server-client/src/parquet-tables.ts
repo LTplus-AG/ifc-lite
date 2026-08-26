@@ -70,7 +70,11 @@ function transformFields(
   originZ: ArrayLike<number> | undefined,
   hasOrigin: boolean,
   geometryClass: ArrayLike<number> | undefined,
-  hasGeometryClass: boolean
+  hasGeometryClass: boolean,
+  geometryItemId: ArrayLike<number> | undefined,
+  hasGeometryItemId: boolean,
+  materialId: ArrayLike<number> | undefined,
+  hasMaterialId: boolean
 ): Partial<MeshData> {
   // A column set can be structurally usable (present, parallel to the rows)
   // yet still carry a non-finite VALUE at this row — origin_x/y/z are Float64
@@ -95,9 +99,26 @@ function transformFields(
   const geometry_class =
     hasGeometryClass && geometryClass![index] ? geometryClass![index] : undefined;
 
+  // The two disjoint source ids (#3215). 0 decodes as ABSENT, not as a
+  // drillable reference to entity #0 -- Arrow surfaces a null UInt32 as 0 in
+  // the plain typed-array view, so a decoder that trusted the raw value would
+  // have every material-less mesh claim to slice IfcMaterial #0.
+  //
+  // That behaviour is enforced by the truthiness check in the RETURN spread
+  // below, not by the one here. The two are the same test on the same value,
+  // so this one is redundant -- measured: removing it leaves all 21 tests
+  // green. It is kept only to mirror `geometry_class` two lines up, which has
+  // the identical pair. An earlier version of this comment claimed the check
+  // here was what made 0 mean absent; it is not.
+  const geometry_item_id =
+    hasGeometryItemId && geometryItemId![index] ? geometryItemId![index] : undefined;
+  const material_id = hasMaterialId && materialId![index] ? materialId![index] : undefined;
+
   return {
     ...(origin ? { origin } : {}),
     ...(geometry_class ? { geometry_class } : {}),
+    ...(geometry_item_id ? { geometry_item_id } : {}),
+    ...(material_id ? { material_id } : {}),
   };
 }
 
@@ -130,6 +151,8 @@ export function buildMeshesFromTables(
   const originY = numericColumn(meshArrow, 'origin_y');
   const originZ = numericColumn(meshArrow, 'origin_z');
   const geometryClass = numericColumn(meshArrow, 'geometry_class');
+  const geometryItemId = numericColumn(meshArrow, 'geometry_item_id');
+  const materialId = numericColumn(meshArrow, 'material_id');
 
   if (!expressIds || !vertexStarts || !vertexCounts || !indexStarts || !indexCounts) {
     throw new Error('Malformed Parquet geometry: missing required mesh column');
@@ -179,6 +202,12 @@ export function buildMeshesFromTables(
   // partial set (malformed/truncated payload) must not read `undefined` → NaN.
   const hasOrigin = originIsUsable(originX, originY, originZ, meshCount);
   const hasGeometryClass = !!geometryClass && geometryClass.length === meshCount;
+  // Same structural guard as the columns above: present AND parallel to the
+  // rows. A payload written before #3215 has neither column, and decodes to
+  // exactly the shape it did before -- which is the compatibility property
+  // this file's own header calls for.
+  const hasGeometryItemId = !!geometryItemId && geometryItemId.length === meshCount;
+  const hasMaterialId = !!materialId && materialId.length === meshCount;
 
   for (let i = 0; i < meshCount; i++) {
     const vertexStart = vertexStarts[i];
@@ -250,7 +279,11 @@ export function buildMeshesFromTables(
         originZ,
         hasOrigin,
         geometryClass,
-        hasGeometryClass
+        hasGeometryClass,
+        geometryItemId,
+        hasGeometryItemId,
+        materialId,
+        hasMaterialId
       ),
     };
   }
@@ -302,6 +335,8 @@ export function buildMeshesFromOptimizedTables(tables: OptimizedTables): MeshDat
   const instOriginY = numericColumn(instanceArrow, 'origin_y');
   const instOriginZ = numericColumn(instanceArrow, 'origin_z');
   const instGeometryClass = numericColumn(instanceArrow, 'geometry_class');
+  const instGeometryItemId = numericColumn(instanceArrow, 'geometry_item_id');
+  const instMaterialId = numericColumn(instanceArrow, 'material_id');
 
   // Extract mesh columns
   const meshVertexOffsets = numericColumn(meshArrow, 'vertex_offset');
@@ -366,6 +401,9 @@ export function buildMeshesFromOptimizedTables(tables: OptimizedTables): MeshDat
   // only when present AND parallel to the instance rows.
   const hasInstOrigin = originIsUsable(instOriginX, instOriginY, instOriginZ, instanceCount);
   const hasInstGeometryClass = !!instGeometryClass && instGeometryClass.length === instanceCount;
+  const hasInstGeometryItemId =
+    !!instGeometryItemId && instGeometryItemId.length === instanceCount;
+  const hasInstMaterialId = !!instMaterialId && instMaterialId.length === instanceCount;
 
   for (let i = 0; i < instanceCount; i++) {
     const meshIdx = meshIndices[i];
@@ -457,7 +495,11 @@ export function buildMeshesFromOptimizedTables(tables: OptimizedTables): MeshDat
         instOriginZ,
         hasInstOrigin,
         instGeometryClass,
-        hasInstGeometryClass
+        hasInstGeometryClass,
+        instGeometryItemId,
+        hasInstGeometryItemId,
+        instMaterialId,
+        hasInstMaterialId
       ),
     };
   }

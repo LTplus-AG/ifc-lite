@@ -142,9 +142,10 @@
  *    would be misread as recursion.
  */
 
-import { readdirSync, readFileSync, existsSync, statSync, realpathSync } from 'node:fs';
-import { join, dirname, relative, resolve } from 'node:path';
+import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
+import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isMainEntry } from './lib/is-main-entry.mjs';
 import { extractFunctions, findWalkCandidates } from './lib/refwalk-classify.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -304,43 +305,7 @@ export function runCheck(base, opts = {}) {
   return { ok: errors.length === 0 && unguarded.length === 0, errors, candidates, unguarded, files };
 }
 
-/**
- * Is this module the process entry point?
- *
- * The obvious spelling, `import.meta.url === \`file://${process.argv[1]}\``, is
- * wrong twice over, and BOTH failures are silent: this gate would exit 0
- * having scanned nothing while the CI step went green and an unguarded walk
- * shipped past it. That is the same absence-reads-as-success shape the gate
- * exists to catch, one level up in the gate itself.
- *
- *  1. ENCODING. `import.meta.url` is percent-encoded, `process.argv[1]` is a
- *     raw path. One space in the checkout path is enough; Windows separators
- *     do it too. Measured: a directory named `dir with space` gives
- *     `file:///...dir%20with%20space/...` against `file:///...dir with
- *     space/...`, so the comparison is false and the module falls through.
- *  2. SYMLINKS. Node resolves a module's URL to its REAL path, while
- *     `process.argv[1]` keeps the path as invoked. `pathToFileURL(argv[1])`
- *     fixes (1) but NOT this -- verified on macOS, where `os.tmpdir()` is
- *     `/var/folders/...` symlinked to `/private/var/folders/...`: the
- *     percent-encoded comparison still comes out false.
- *
- * Comparing resolved PATHS rather than URLs closes both at once, with no
- * encoding step to get wrong. `realpathSync` throws if the path has vanished
- * between spawn and now, so fall back to a plain resolve rather than letting
- * an entry-point check take the process down.
- */
-function isMainEntry() {
-  const invoked = process.argv[1];
-  if (!invoked) return false;
-  const self = fileURLToPath(import.meta.url);
-  try {
-    return realpathSync(self) === realpathSync(invoked);
-  } catch {
-    return self === resolve(invoked);
-  }
-}
-
-const isMain = isMainEntry();
+const isMain = isMainEntry(import.meta.url);
 if (isMain) {
   const result = runCheck(ROOT);
   if (result.unguarded.length > 0) {

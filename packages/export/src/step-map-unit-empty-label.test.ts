@@ -37,7 +37,9 @@ describe('an empty map-unit label matches nothing (#3274)', () => {
       },
     } as never;
     const extracted: unknown[] = [
-      { type: 'IFCPROJECT', attributes: [, , , , , , , , 2] },
+      // UnitsInContext is attribute 8; a sparse array reads as a lint error
+      // and, worse, as a typo. Build it explicitly.
+      { type: 'IFCPROJECT', attributes: [...Array<unknown>(8).fill(null), 2] },
       { type: 'IFCUNITASSIGNMENT', attributes: [[3]] },
       // A conversion-based unit whose Name is not a string, so it folds to ''.
       { type: 'IFCCONVERSIONBASEDUNIT', attributes: [null, '.LENGTHUNIT.', 42] },

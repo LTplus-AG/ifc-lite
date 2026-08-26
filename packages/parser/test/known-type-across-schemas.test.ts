@@ -227,7 +227,7 @@ describe('isKnownType across the bundled schema union (#2003)', () => {
     // classes through the pin; the union adds 19 more. Rejecting them is a
     // different predicate and belongs at the authoring boundary rather than in
     // a name-registry check — and that is where it now lives: #2035 was closed
-    // by `isInstantiableType` in `ifc-schema.ts` plus the `addEntity` guard in
+    // by `isInstantiable` in `ifc-schema.ts` plus the `addEntity` guard in
     // `packages/sdk/src/namespaces/store.ts`, which throws on an abstract type.
     // So this is not deferred work: the split is settled, and this test exists
     // so it stays a recorded decision rather than an oversight — it fails the

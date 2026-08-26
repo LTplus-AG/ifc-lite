@@ -131,6 +131,18 @@ jobs:
               - 'turbo.json'
               - 'tsconfig*.json'
               - 'scripts/**'
+              # The offset file itself. `node-tests` carries the Rust
+              # major-offset gate, and `scripts/**` above already brings the
+              # gate's own sources into this lane -- but the ONE file whose
+              # contents that gate exists to check sat in no filter at all, so
+              # a PR editing only `rust-major-offset.json` skipped the job and
+              # the gate could not fire on the change that declares the offset.
+              # Same trap this block warns about for `apps/`, `examples/` and
+              # `.oxlintrc.json` above. It goes here rather than under `rust:`
+              # because the gate is a Node step and `rust:` would additionally
+              # spin the paid Depot compile lane for a one-line JSON edit
+              # (scripts/README-vercel-cost.md).
+              - 'rust-major-offset.json'
               - 'tests/models/manifest.json'
               - '.github/workflows/test.yml'
             geometry:

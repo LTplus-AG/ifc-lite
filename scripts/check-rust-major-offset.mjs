@@ -61,7 +61,7 @@ import { dirname, join } from 'node:path';
 
 import {
   computeReleaseVersions,
-  internalDepPattern,
+  scanInternalDeps,
   MIN_TOTAL_DEP_LITERALS,
   MIN_WORKSPACE_DEP_LITERALS,
   OFFSET_FILE_NAME,
@@ -126,13 +126,23 @@ let workspaceLiterals = 0;
 let totalLiterals = 0;
 
 function checkLiterals(label, text, onCount) {
-  const pattern = internalDepPattern();
-  let m;
+  let deps;
+  try {
+    deps = scanInternalDeps(label, text);
+  } catch (error) {
+    fail(error.code ?? 'UNPARSED_DEP', error.message);
+    onCount?.(0);
+    return;
+  }
   let count = 0;
-  while ((m = pattern.exec(text)) !== null) {
+  for (const dep of deps) {
+    // A declaration with no `version` requirement (`{ workspace = true }`, a
+    // bare `{ path = "…" }`) pins nothing, so there is nothing to agree with
+    // and nothing to count.
+    if (dep.version === null) continue;
     count++;
-    if (m[2] !== crateVersion) {
-      fail('DRIFT', `${label} pins an internal dependency at ${m[2]}; the crate version for this release is ${crateVersion}.`);
+    if (dep.version !== crateVersion) {
+      fail('DRIFT', `${label} pins ${dep.name} at ${dep.version}; the crate version for this release is ${crateVersion}.`);
     }
   }
   totalLiterals += count;

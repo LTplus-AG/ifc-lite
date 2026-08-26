@@ -119,6 +119,27 @@ test('the writer and the gate agree over one tree, not just over their own tests
   assert.match(after.out, /7\.1\.0/);
 });
 
+test('the writer rewrites a reordered literal too, and both halves see the same tree', (t) => {
+  // The writer and the gate share one scan for exactly this reason: while the
+  // pattern demanded `version` first, `{ path = "…", version = "…" }` was
+  // invisible to BOTH — sync-versions left it on the previous release and the
+  // gate counted one fewer literal and called the rest agreement.
+  const root = makeTree(t, { offsetFile: OFFSET_1 });
+  writeFileSync(
+    join(root, 'rust', 'clash', 'Cargo.toml'),
+    `[package]\nname = "ifc-lite-clash"\nversion.workspace = true\n\n[dependencies]\nifc-lite-core = { path = "../core", version = "6.0.1" }\n`
+  );
+
+  assert.equal(run(SYNC, root).code, 0);
+
+  const clash = readFileSync(join(root, 'rust', 'clash', 'Cargo.toml'), 'utf8');
+  assert.match(clash, /ifc-lite-core = \{ path = "\.\.\/core", version = "7\.1\.0" \}/, 'rewritten in place, key order preserved');
+  assert.equal(clash.includes('6.0.1'), false, 'the stale literal must not survive');
+
+  const after = run(GATE, root);
+  assert.equal(after.code, 0, after.out);
+});
+
 test('a missing offset file stops the release rather than assuming 0', (t) => {
   const root = makeTree(t, {});
   const { code, out } = run(SYNC, root);

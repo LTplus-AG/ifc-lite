@@ -62,10 +62,78 @@ export const MIN_TOTAL_DEP_LITERALS = 10;
  * drift apart into "the writer skipped a file the checker never looked at". */
 export const RUST_MEMBER_DIRS = ['core', 'geometry', 'processing', 'clash', 'export', 'ffi', 'wasm-bindings'];
 
+/** The internal crate names that carry a `version = "…"` requirement. */
+const INTERNAL_CRATE = '(?:core|geometry|processing|clash|export|wasm)';
+
 /** A fresh `/g` regex each call — a shared one carries `lastIndex` between
- * callers and silently skips matches. */
+ * callers and silently skips matches.
+ *
+ * Matches the WHOLE inline table, not `name = { version = "…"` — key order in
+ * a TOML inline table is free, and a pattern that demanded `version` first
+ * read `{ path = "../core", version = "1.2.3" }` as no declaration at all.
+ * That was invisible to BOTH halves the same way: `sync-versions.js` left the
+ * literal at the previous release and `check-rust-major-offset.mjs` printed a
+ * count of the literals it HAD seen as though it were the whole set. Cargo
+ * catches the resulting mismatch, so nothing shipped wrong — but a gate
+ * reporting agreement over a region it never examined is the vacuity shape
+ * this repo has been clearing, and it is the reason the count is now
+ * cross-checked below. */
 export function internalDepPattern() {
-  return /(ifc-lite-(?:core|geometry|processing|clash|export|wasm)\s*=\s*\{\s*version\s*=\s*")([^"]+)(")/g;
+  return new RegExp(`(ifc-lite-${INTERNAL_CRATE})\\s*=\\s*\\{([^{}]*)\\}`, 'g');
+}
+
+/** Just the `name = {` opener. Every opener MUST turn into a parsed
+ * declaration; the gap between the two counts is what a nested inline table
+ * (which `internalDepPattern`'s `[^{}]*` body cannot span) would open, and
+ * silently dropping such a declaration is the same defect by another route. */
+export function internalDepOpenerPattern() {
+  return new RegExp(`ifc-lite-${INTERNAL_CRATE}\\s*=\\s*\\{`, 'g');
+}
+
+/** The `version = "…"` requirement inside an inline-table body, at any
+ * position among the other keys. */
+export function versionInDepBodyPattern() {
+  return /(version\s*=\s*")([^"]+)(")/;
+}
+
+/**
+ * Every internal dependency declaration in one manifest, in source order.
+ *
+ * `version` is `null` for a declaration that carries none — `{ workspace =
+ * true }` and a bare `{ path = "…" }` are legitimate and are neither counted
+ * nor rewritten. Throws `UNPARSED_DEP` rather than returning a short list if
+ * any declaration could not be parsed, so the checker's count and the writer's
+ * rewrite always cover the same set.
+ */
+export function scanInternalDeps(label, text) {
+  const openers = text.match(internalDepOpenerPattern())?.length ?? 0;
+  const deps = [];
+  const pattern = internalDepPattern();
+  let m;
+  while ((m = pattern.exec(text)) !== null) {
+    const version = versionInDepBodyPattern().exec(m[2]);
+    deps.push({ name: m[1], body: m[2], version: version ? version[2] : null });
+  }
+  if (deps.length !== openers) {
+    throw offsetError(
+      'UNPARSED_DEP',
+      `${label} declares ${openers} internal dependenc(ies) but only ${deps.length} could be parsed. An inline table with a nested \`{…}\` is the usual cause; both the writer and this scan would otherwise skip it silently.`
+    );
+  }
+  return deps;
+}
+
+/** Rewrite every internal dependency's `version = "…"` to `version`, leaving
+ * key order and every other key untouched. The writer's half of
+ * {@link scanInternalDeps}, so a declaration the checker counts is a
+ * declaration the writer updates. */
+export function rewriteInternalDeps(label, text, version) {
+  scanInternalDeps(label, text);
+  return text.replace(internalDepPattern(), (whole, name, body) =>
+    versionInDepBodyPattern().test(body)
+      ? `${name} = {${body.replace(versionInDepBodyPattern(), `$1${version}$3`)}}`
+      : whole
+  );
 }
 
 /** The `[workspace.package] version = "…"` literal. */

@@ -29,7 +29,7 @@ import { dirname, join } from 'path';
 
 import {
   computeReleaseVersions,
-  internalDepPattern,
+  rewriteInternalDeps,
   OFFSET_FILE_NAME,
   RUST_MEMBER_DIRS,
   WORKSPACE_VERSION_PATTERN,
@@ -154,7 +154,7 @@ function syncVersions() {
 
   cargoToml = cargoToml.replace(WORKSPACE_VERSION_PATTERN, `$1${crateVersion}$3`);
 
-  cargoToml = cargoToml.replace(internalDepPattern(), `$1${crateVersion}$3`);
+  cargoToml = rewriteInternalDeps('Cargo.toml', cargoToml, crateVersion);
 
   writeFileSync(cargoTomlPath, cargoToml);
   console.log(`✅ Updated Cargo.toml workspace version to ${crateVersion}`);
@@ -180,7 +180,7 @@ function syncVersions() {
       );
       continue;
     }
-    const updated = memberToml.replace(internalDepPattern(), `$1${crateVersion}$3`);
+    const updated = rewriteInternalDeps(`rust/${member}/Cargo.toml`, memberToml, crateVersion);
     if (updated !== memberToml) {
       writeFileSync(memberTomlPath, updated);
       console.log(`✅ Updated rust/${member}/Cargo.toml internal dep versions to ${crateVersion}`);

@@ -186,6 +186,62 @@ test('vacuous: member manifests that contribute no literals at all', (t) => {
   assert.match(out, /DEP_FLOOR/);
 });
 
+test('a reordered literal is still checked, not counted as absent', (t) => {
+  // TOML inline-table key order is free, so `{ path = "…", version = "…" }` is
+  // the same declaration as `{ version = "…", path = "…" }`. A pattern that
+  // demanded `version` first saw no declaration at all: the gate printed one
+  // fewer literal and called the rest agreement, and `sync-versions.js` never
+  // rewrote it either. Cargo catches the resulting mismatch, so nothing ships
+  // wrong — but a count over a region the scan never examined is the vacuity
+  // shape, not a report.
+  const root = makeTree(t, { npmVersion: '6.1.0', crateVersion: '7.1.0', offsetFile: OFFSET_1 });
+  writeFileSync(
+    join(root, 'rust', 'clash', 'Cargo.toml'),
+    `[package]\nname = "ifc-lite-clash"\nversion.workspace = true\n\n[dependencies]\nifc-lite-core = { path = "../core", version = "1.2.3" }\n`
+  );
+  const { code, out } = run(root);
+  assert.equal(code, 1, out);
+  assert.match(out, /DRIFT/);
+  assert.match(out, /rust\/clash\/Cargo\.toml/);
+  assert.match(out, /1\.2\.3/);
+});
+
+test('a reordered literal that AGREES is counted, so the total stays honest', (t) => {
+  const root = makeTree(t, { npmVersion: '6.1.0', crateVersion: '7.1.0', offsetFile: OFFSET_1 });
+  writeFileSync(
+    join(root, 'rust', 'clash', 'Cargo.toml'),
+    `[package]\nname = "ifc-lite-clash"\nversion.workspace = true\n\n[dependencies]\nifc-lite-core = { path = "../core", version = "7.1.0" }\n`
+  );
+  const { code, out } = run(root);
+  assert.equal(code, 0, out);
+  // 6 in the root table + one per member manifest, the reordered one included.
+  assert.match(out, /13 internal dependency literal\(s\)/);
+});
+
+test('a declaration carrying no version requirement is not counted as a literal', (t) => {
+  // `{ workspace = true }` pins nothing, so there is nothing to agree with.
+  // Counting it would inflate the total the gate reports.
+  const root = makeTree(t, { npmVersion: '6.1.0', crateVersion: '7.1.0', offsetFile: OFFSET_1 });
+  writeFileSync(
+    join(root, 'rust', 'clash', 'Cargo.toml'),
+    `[package]\nname = "ifc-lite-clash"\nversion.workspace = true\n\n[dependencies]\nifc-lite-core = { workspace = true }\n`
+  );
+  const { code, out } = run(root);
+  assert.equal(code, 0, out);
+  assert.match(out, /12 internal dependency literal\(s\)/);
+});
+
+test('vacuous: a declaration the scan cannot parse is named, not skipped', (t) => {
+  const root = makeTree(t, { npmVersion: '6.1.0', crateVersion: '7.1.0', offsetFile: OFFSET_1 });
+  writeFileSync(
+    join(root, 'rust', 'clash', 'Cargo.toml'),
+    `[package]\nname = "ifc-lite-clash"\nversion.workspace = true\n\n[dependencies]\nifc-lite-core = { version = "7.1.0", path = "../core", meta = { nested = true } }\n`
+  );
+  const { code, out } = run(root);
+  assert.equal(code, 1, out);
+  assert.match(out, /UNPARSED_DEP/);
+});
+
 test('vacuous: the crate directory list points nowhere', (t) => {
   const root = makeTree(t, { offsetFile: OFFSET_0 });
   rmSync(join(root, 'rust'), { recursive: true });

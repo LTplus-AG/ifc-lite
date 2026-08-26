@@ -25,6 +25,39 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+
+/**
+ * Import the gate's TARGETS as DATA. This test asserted a literal 3 and the
+ * literal string "across 3 targets"; adding `examples` turned it red (0 pass /
+ * 2 fail) with nothing wrong in the gate, and CI runs it (test.yml:829).
+ *
+ * The first fix regexed the gate's SOURCE TEXT for the count, which is the
+ * practice AGENTS.md:136 bans: it certifies a string exists, so a reformat or
+ * a comment edit would decide the result instead of behaviour. Importing the
+ * array is the same desync-immunity from the value the gate actually uses.
+ */
+const { TARGETS } = await import('./check-lint-ran.mjs');
+const TARGET_COUNT = TARGETS.length;
+assert.ok(TARGET_COUNT > 0, 'could not read TARGETS out of check-lint-ran.mjs — this test is now blind');
+
+/**
+ * A floor, not a mirror. Deriving the count from the gate makes this test
+ * desync-proof, but on its own it also makes it BLIND: delete
+ * `{ dir: 'scripts' }` and both the gate and the derived count drop to 3
+ * together, the assertions still agree, and ~140 files including this gate go
+ * unlinted with the suite green. Measured — that mutation passed 2/2 with the
+ * derived count alone, and reds 2/2 with this line.
+ *
+ * `uncoveredWorkspaceGlobs()` only protects targets that are ALSO workspace
+ * globs, so `scripts/` has no other guard. Ratchets up only: adding a target is
+ * a deliberate edit here, removing one has to be.
+ */
+const MIN_TARGETS = 4;
+assert.ok(
+  TARGET_COUNT >= MIN_TARGETS,
+  `check-lint-ran.mjs has ${TARGET_COUNT} lint targets, expected at least ${MIN_TARGETS} — ` +
+    'a target was removed, so its directory is now linted by nobody',
+);
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -97,18 +130,18 @@ test('a failing lint keeps its whole output when stdout is a pipe', () => {
     // One summary per target. This is what vanished: the truncated log ended
     // roughly 1% in, so a reader saw diagnostics and no verdict.
     const summaries = stdout.match(/Finished in [^\n]*? on [\d,]+ files with \d+ rules/g) ?? [];
-    assert.equal(summaries.length, 3, `expected 3 oxlint summaries, got ${summaries.length}`);
+    assert.equal(summaries.length, TARGET_COUNT, `expected ${TARGET_COUNT} oxlint summaries, got ${summaries.length}`);
 
     // And the last line before each summary, so this cannot pass on a log that
     // dropped the middle and happened to keep the tail.
     const markers = stdout.match(new RegExp(TAIL_MARKER, 'g')) ?? [];
-    assert.equal(markers.length, 3, `expected 3 tail markers, got ${markers.length}`);
+    assert.equal(markers.length, TARGET_COUNT, `expected ${TARGET_COUNT} tail markers, got ${markers.length}`);
 
     // Byte-exact: every diagnostic line of every target arrived. Asserting the
     // count rather than "more than a pipe buffer" keeps the test honest if the
     // output grows or the buffer size differs between platforms.
     const diagnostics = stdout.match(/eslint\(no-control-regex\)/g) ?? [];
-    assert.equal(diagnostics.length, LINES_PER_TARGET * 3);
+    assert.equal(diagnostics.length, LINES_PER_TARGET * TARGET_COUNT);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -120,7 +153,13 @@ test('a clean lint still reports its own summary line through a pipe', () => {
     const run = runGate(bin);
     assert.equal(run.status, 0, `expected exit 0, got ${run.status}\n${run.stderr}`);
     // 2,000 files per target from the shim, three targets.
-    assert.match(run.stdout, /lint: 6,000 files across 3 targets, 300 rules, no errors\./);
+    assert.match(
+      run.stdout,
+      new RegExp(
+        `lint: ${(2000 * TARGET_COUNT).toLocaleString()} files across ${TARGET_COUNT} targets ` +
+          '\\(\\d+ workspace globs, all covered\\), 300 rules, no errors\\.',
+      ),
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

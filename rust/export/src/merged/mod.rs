@@ -30,7 +30,8 @@ mod units;
 
 use std::collections::{HashMap, HashSet};
 
-use crate::step_text::{detect_schema, escape};
+use crate::schema_detect::detect_schema;
+use crate::step_text::escape;
 
 use guid::{read_leading_guid, replace_global_id, GuidMinter};
 pub use guid::{deterministic_global_id, leading_rooted_global_id};

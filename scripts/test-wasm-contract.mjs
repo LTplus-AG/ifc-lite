@@ -933,6 +933,336 @@ if (LAYERED_AVAILABLE) {
   });
 }
 
+// ===== source ids: representation item vs material layer (#3199) =====
+//
+// A mesh carries EITHER the `IfcRepresentationItem` it was tessellated from
+// (`geometryItemId`) OR the `IfcMaterial` whose layer it slices
+// (`materialId`), never both. Before #3199 both arrived in one field, so
+// following it to source landed on an IfcMaterial for layered walls with
+// nothing to warn the caller.
+//
+// These read the RAW `MeshCollection` rather than `parseMeshesViaPrePass`,
+// because only the raw handle can be read both ways.
+//
+// The facade is pinned too, separately and deliberately: it mirrors
+// `convertMeshCollectionToBatch` field by field, and it DID silently drop both
+// ids when they were added — my first probe read zeros through it and reported
+// the boundary broken when the boundary was fine. A field the real converter
+// carries and that facade drops is invisible to every script that reads through
+// it, so one test below reads through the facade on purpose.
+//
+// Wrong ids here are silent in the usual way: geometry renders identically and
+// only a host that follows the id to source sees it land on the wrong entity.
+if (LAYERED_AVAILABLE) {
+  console.log('\n📋 source ids: representation item vs material layer (#3199)');
+  const layeredContent = readFileSync(LAYERED_IFC, 'utf-8');
+
+  // The real `MeshCollection`, handles and all. Callers must free.
+  const rawCollection = (content) => {
+    const bytes = new TextEncoder().encode(content);
+    const pre = api.buildPrePassOnce(bytes);
+    const rtc = (pre && pre.rtcOffset) || [0, 0, 0];
+    try {
+      return api.processGeometryBatch(
+        bytes, pre.jobs, pre.unitScale, rtc[0] || 0, rtc[1] || 0, rtc[2] || 0, pre.needsShift,
+        pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
+      );
+    } finally {
+      if (api.clearPrePassCache) api.clearPrePassCache();
+    }
+  };
+
+  /** Read every mesh's ids out of a fresh collection, freeing as we go. */
+  const readIds = (content) => {
+    const col = rawCollection(content);
+    const rows = [];
+    try {
+      for (let i = 0; i < col.length; i++) {
+        const m = col.get(i);
+        if (!m) continue;
+        try {
+          rows.push({
+            expressId: m.expressId,
+            geometryClass: m.geometryClass,
+            geometryItemId: m.geometryItemId,
+            materialId: m.materialId,
+          });
+        } finally {
+          m.free();
+        }
+      }
+    } finally {
+      col.free();
+    }
+    return rows;
+  };
+
+  // The unedited fixture is read ONCE and shared: `readIds` is deterministic
+  // and every test below that passes `layeredContent` was re-running the whole
+  // pre-pass + geometry batch over a 2.4 MB file to get the same rows back.
+  // Tests that MUTATE the fixture still take their own run, since that is the
+  // variable they are measuring.
+  let layeredRowsMemo = null;
+  const layeredRows = () => (layeredRowsMemo ??= readIds(layeredContent));
+
+  test('every mesh carries exactly one source id, never both and never neither', () => {
+    const rows = layeredRows();
+    assert.ok(rows.length > 0, 'the fixture produced no meshes, so nothing below is pinned');
+    const both = rows.filter((r) => r.geometryItemId !== undefined && r.materialId !== undefined);
+    const neither = rows.filter((r) => r.geometryItemId === undefined && r.materialId === undefined);
+    assert.equal(both.length, 0, `${both.length} mesh(es) carry BOTH ids, e.g. #${both[0]?.expressId}`);
+    // "Neither" is a legitimate state elsewhere (the single-mesh fallback, the
+    // cached mapped-item path). It must not happen on THIS fixture, whose
+    // elements all go through the submesh channel — if it starts happening,
+    // the ids stopped crossing the boundary and the checks below go vacuous.
+    assert.equal(neither.length, 0, `${neither.length} mesh(es) carry NO id, e.g. #${neither[0]?.expressId}`);
+  });
+
+  test('a two-item element carries a distinct geometryItemId per piece, and no material id', () => {
+    const rows = layeredRows();
+    const byElement = new Map();
+    for (const r of rows) {
+      if (r.geometryItemId === undefined) continue;
+      let ids = byElement.get(r.expressId);
+      if (!ids) byElement.set(r.expressId, (ids = new Set()));
+      ids.add(r.geometryItemId);
+    }
+    const multi = [...byElement.entries()].filter(([, ids]) => ids.size >= 2);
+    assert.ok(
+      multi.length > 0,
+      'no element produced two distinct geometryItemIds — either the fixture stopped ' +
+        'producing multi-item elements, or every piece is being stamped with the same id',
+    );
+    // An express id, not a slot index: 0 is never a valid STEP instance name.
+    for (const [, ids] of byElement) {
+      for (const id of ids) {
+        assert.ok(Number.isInteger(id) && id > 0, `geometryItemId ${id} is not a plausible express id`);
+      }
+    }
+    // The pieces of a multi-item element are representation items, so none of
+    // them may also claim to be a material layer.
+    const multiIds = new Set(multi.map(([expressId]) => expressId));
+    const stray = rows.filter((r) => multiIds.has(r.expressId) && r.materialId !== undefined);
+    assert.equal(stray.length, 0, `a multi-item element also reported a materialId: #${stray[0]?.expressId}`);
+  });
+
+  test('a material-layered wall reports materialId, and geometryItemId undefined', () => {
+    const rows = layeredRows();
+    const sliced = rows.filter((r) => r.materialId !== undefined);
+    assert.ok(sliced.length > 0, 'no mesh carried a materialId — the layer slicer did not run');
+    for (const r of sliced) {
+      assert.equal(
+        r.geometryItemId, undefined,
+        `#${r.expressId} carries a materialId AND a geometryItemId`,
+      );
+      // A slice is layer geometry, so it must also be tagged class 3.
+      assert.equal(r.geometryClass, 3, `#${r.expressId} carries a materialId at class ${r.geometryClass}`);
+    }
+  });
+
+  test('geometryClass 3 does NOT imply a material id: a bailed slice keeps its item id', () => {
+    // The contract clause most likely to be "simplified" away later, so it gets
+    // its own executable pin.
+    //
+    // geometryClass is stamped from `is_material_layer_sliceable`, a STATIC
+    // check on the material index made before any geometry runs.
+    // `try_layered_sub_meshes` can still bail at runtime (the cut produced
+    // fewer than two slabs, a void CSG errored) and fall through to the
+    // representation-item path — under class 3. Deriving which id a mesh
+    // carries from geometryClass would therefore hand back an IfcMaterial id
+    // for meshes whose id is an IfcRepresentationItem: the exact confusion
+    // #3199 removed, reintroduced one refactor later.
+    const rows = layeredRows();
+    const classThree = rows.filter((r) => r.geometryClass === 3);
+    assert.ok(classThree.length > 0, 'no class-3 meshes at all — this pins nothing');
+    const bailed = classThree.filter((r) => r.geometryItemId !== undefined);
+    assert.ok(
+      bailed.length > 0,
+      'every class-3 mesh carried a materialId, so this fixture can no longer ' +
+        'distinguish "the flag comes from the collection" from "the flag is derived ' +
+        'from geometryClass" — find a fixture whose layer slicing bails at runtime',
+    );
+    for (const r of bailed) {
+      assert.equal(r.materialId, undefined, `#${r.expressId} carries both ids`);
+    }
+  });
+
+  test('an air-gap layer reports NO material, not IfcMaterial #0', () => {
+    // `IfcMaterialLayer.Material` is OPTIONAL, and `material_layer_index.rs`
+    // decodes an absent one as `get_ref(0).unwrap_or(0)` -- so 0 is that
+    // function's "no reference" SENTINEL, not an entity. STEP instance names
+    // start at #1, so `#0` is not navigable, and following it is the one thing
+    // this field exists for.
+    //
+    // Dropping the Material ref from one layer of the real fixture changes ONE
+    // token and nothing else, so the id is the only variable.
+    //
+    // The first version of #3199 shipped this as `materialId: 0` on the theory
+    // that 0 was a real value which must round trip. It is not; preserving a
+    // producer's absence sentinel as data is the same defect the change exists
+    // to remove, one field over.
+    const withMaterial = /IFCMATERIALLAYER\(#3876,/g;
+    assert.ok(
+      withMaterial.test(layeredContent),
+      'the fixture no longer has the layer this test edits — pick another IFCMATERIALLAYER',
+    );
+    const airGap = layeredContent.replace(withMaterial, 'IFCMATERIALLAYER($,');
+
+    const before = layeredRows().filter((r) => r.materialId === 3876);
+    assert.ok(before.length > 0, 'material #3876 sliced no layers, so the edit below proves nothing');
+
+    const after = readIds(airGap).filter((r) => r.geometryClass === 3);
+
+    // 1. The removed material is gone.
+    assert.ok(
+      !after.some((r) => r.materialId === 3876),
+      'a slice still reports the material id that was removed from the file',
+    );
+
+    // 2. It did not come back as 0. This is the assertion the fix is about, and
+    //    it fails loudly against the pre-fix build: those same slices carried
+    //    `materialId: 0` there.
+    const zeros = after.filter((r) => r.materialId === 0);
+    assert.equal(
+      zeros.length, 0,
+      `${zeros.length} air-gap slice(s) reported IfcMaterial #0, which is not an entity ` +
+        `(e.g. #${zeros[0]?.expressId})`,
+    );
+
+    // 3. And the slices still EXIST, unattributed rather than dropped —
+    //    otherwise 1 and 2 are satisfied by the geometry disappearing, which
+    //    would be a far worse bug wearing this test as cover.
+    const unattributed = after.filter(
+      (r) => r.materialId === undefined && r.geometryItemId === undefined,
+    );
+    assert.ok(
+      unattributed.length >= before.length,
+      `dropping the material ref should leave ${before.length} slice(s) present but ` +
+        `unattributed, saw ${unattributed.length}`,
+    );
+
+    // 4. And nothing silently migrated to the other field.
+    for (const r of unattributed) {
+      assert.equal(
+        r.geometryItemId, undefined,
+        `air-gap slice #${r.expressId} adopted a geometryItemId instead of reporting nothing`,
+      );
+    }
+  });
+
+  test('the prepass FACADE carries both ids, not just the raw collection', () => {
+    // This is the test the block header promises, and it exists because the
+    // facade is where this actually went wrong: `scripts/lib/mesh-via-prepass.mjs`
+    // mirrors `convertMeshCollectionToBatch` field by field, it did NOT copy the
+    // new ids, and my first probe read zeros through it and reported the wasm
+    // boundary broken when the boundary was fine.
+    //
+    // Every other test in this block reads the raw `MeshCollection`, which is
+    // UPSTREAM of the facade — so without this one the facade edit ships with no
+    // coverage at all, and a future field dropped there is invisible to every
+    // script that reads through it.
+    const meshes = parseMeshesViaPrePass(api, layeredContent);
+    let items = 0, materials = 0, both = 0;
+    for (let i = 0; i < meshes.length; i++) {
+      const m = meshes.get(i);
+      if (!m) continue;
+      const hasItem = m.geometryItemId !== undefined && m.geometryItemId !== null;
+      const hasMaterial = m.materialId !== undefined && m.materialId !== null;
+      if (hasItem && hasMaterial) both++;
+      else if (hasItem) items++;
+      else if (hasMaterial) materials++;
+      if (m.free) m.free();
+    }
+    if (meshes.free) meshes.free();
+
+    // Cross-check against the raw collection rather than against a fixed number:
+    // this asserts the facade agrees with the boundary, which is the actual
+    // contract, and it cannot go vacuous if the fixture changes.
+    const raw = layeredRows();
+    assert.equal(
+      items, raw.filter((r) => r.geometryItemId !== undefined).length,
+      'the facade dropped or invented geometryItemId relative to the raw collection',
+    );
+    assert.equal(
+      materials, raw.filter((r) => r.materialId !== undefined).length,
+      'the facade dropped or invented materialId relative to the raw collection',
+    );
+    assert.equal(both, 0, `${both} mesh(es) carried BOTH ids through the facade`);
+    assert.ok(items > 0 && materials > 0, `non-vacuity: items=${items} materials=${materials}`);
+  });
+
+  test('takeMesh reports the same ids as get, and stays read-once', () => {
+    // The worker reads meshes with takeMesh and the main thread with get. Both
+    // now go through the derived Clone, so they can no longer disagree by
+    // construction -- what this still pins is that `from_mesh_data` wires the
+    // ids onto the struct at all, which no amount of deriving guarantees.
+    const viaGet = layeredRows();
+
+    const col = rawCollection(layeredContent);
+    const viaTake = [];
+    try {
+      for (let i = 0; i < col.length; i++) {
+        const m = col.takeMesh(i);
+        if (!m) continue;
+        try {
+          viaTake.push({
+            expressId: m.expressId,
+            geometryItemId: m.geometryItemId,
+            materialId: m.materialId,
+            vertexCount: m.vertexCount,
+          });
+        } finally {
+          m.free();
+        }
+      }
+
+      assert.equal(viaTake.length, viaGet.length, 'takeMesh and get disagree on how many meshes there are');
+      for (let i = 0; i < viaTake.length; i++) {
+        assert.equal(viaTake[i].expressId, viaGet[i].expressId, `mesh ${i}: express ids diverged`);
+        assert.equal(
+          viaTake[i].geometryItemId, viaGet[i].geometryItemId,
+          `mesh ${i} (#${viaGet[i].expressId}): takeMesh geometryItemId disagrees with get`,
+        );
+        assert.equal(
+          viaTake[i].materialId, viaGet[i].materialId,
+          `mesh ${i} (#${viaGet[i].expressId}): takeMesh materialId disagrees with get`,
+        );
+      }
+      assert.ok(viaTake.some((r) => r.vertexCount > 0), 'the first take returned no geometry at all');
+
+      // Read-once: takeMesh MOVES the whole struct out, so a second call for the
+      // same index yields a DEFAULT mesh -- expressId 0, no ids, no geometry.
+      //
+      // This assertion used to permit either that or the old metadata-bearing
+      // husk, because the ids were Copy and rode along by field assignment. Its
+      // comment said a switch to `mem::take` on the whole struct would change
+      // what a second call reports and that this suite should be the thing that
+      // notices. That switch has now happened, so the permissive form is spent
+      // and the exact behaviour is pinned instead: a test that accepts both
+      // answers cannot report which one it got.
+      // Non-vacuity: `expressId === 0` below only means anything while mesh 0
+      // has a non-zero id to lose. A fixture swap could make it trivially true.
+      assert.notEqual(viaTake[0].expressId, 0, 'fixture mesh 0 has no express id to lose');
+      const again = col.takeMesh(0);
+      assert.ok(again, 'a second takeMesh returned nothing at all');
+      try {
+        assert.equal(again.vertexCount, 0, 'a second takeMesh still returned vertex data');
+        assert.equal(again.expressId, 0, 'a second takeMesh should report a default expressId');
+        for (const field of ['geometryItemId', 'materialId']) {
+          assert.equal(
+            again[field], undefined,
+            `a second takeMesh should report no ${field}, got ${again[field]}`,
+          );
+        }
+      } finally {
+        again.free();
+      }
+    } finally {
+      col.free();
+    }
+  });
+}
+
 // ===== energy-model boundary (exportHbjson / exportDfjson) =====
 //
 // The TypeScript suites mock `GeometryProcessor`, so they cannot catch a

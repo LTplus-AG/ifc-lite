@@ -114,15 +114,81 @@ export function isBooleanXsdBase(base: string | undefined): boolean {
   return baseLocalName(base) === 'boolean';
 }
 
-export function ifcMeasureToXsdTypes(measure: string | undefined): readonly string[] {
+/**
+ * Measures whose EXPRESS base contradicts the `*MEASURE` / `*RATIO`
+ * suffix heuristic below, or that the heuristic does not reach at all.
+ * Derived from `TYPE <name> = <base>;` in
+ * `packages/codegen/schemas/IFC4_ADD2_TC1.exp` and `IFC4X3.exp`, over
+ * the closure of the `IfcValue` SELECT (the value space an IFC property
+ * can actually carry); `xsd-cast-express.test.ts` re-derives that diff
+ * and fails if this table drifts from the schemas.
+ *
+ * - `IfcDescriptiveMeasure` is `STRING`, not a number, despite the name.
+ * - `IfcIntegerCountRateMeasure` is `INTEGER`, not `REAL`.
+ * - `IfcParameterValue` (`REAL`) and `IfcPositiveInteger` (`INTEGER`)
+ *   end in neither suffix, so they previously got no cast gate at all.
+ * - `IfcTime` and `IfcUriReference` are `STRING`. `xs:string` accepts
+ *   every literal, so naming them changes no verdict; they are listed
+ *   so the re-derivation covers the whole reachable value space rather
+ *   than carrying a second exception list of its own.
+ */
+const MEASURE_XSD_OVERRIDES: ReadonlyMap<string, readonly string[]> = new Map([
+  ['IFCDESCRIPTIVEMEASURE', ['xs:string']],
+  ['IFCINTEGERCOUNTRATEMEASURE', ['xs:integer']],
+  ['IFCPARAMETERVALUE', ['xs:double']],
+  ['IFCPOSITIVEINTEGER', ['xs:integer']],
+  ['IFCTIME', ['xs:string']],
+  ['IFCURIREFERENCE', ['xs:string']],
+]);
+
+/**
+ * `IfcTimeStamp`'s XSD types are the one answer here that depends on the
+ * schema version, so the mapper takes it rather than returning a union that
+ * is wrong somewhere. See the `IFCTIMESTAMP` branch below.
+ *
+ * Callers that genuinely have no version pass `undefined` and get the union
+ * across versions — permissive, which for a cast GATE means it defers rather
+ * than rejecting a value some schema allows.
+ */
+export function ifcMeasureToXsdTypes(
+  measure: string | undefined,
+  schemaVersion?: string | undefined
+): readonly string[] {
   if (!measure) return [];
   const m = measure.toUpperCase();
+  const override = MEASURE_XSD_OVERRIDES.get(m);
+  if (override) return override;
   if (m === 'IFCINTEGER' || m === 'IFCCOUNTMEASURE') return ['xs:integer'];
   if (m === 'IFCBOOLEAN') return ['xs:boolean'];
   if (m === 'IFCLOGICAL') return ['xs:boolean', 'xs:string'];
   if (m === 'IFCDATE') return ['xs:date'];
   if (m === 'IFCDATETIME') return ['xs:dateTime'];
-  if (m === 'IFCDURATION' || m === 'IFCTIMESTAMP') return ['xs:duration'];
+  if (m === 'IFCDURATION') return ['xs:duration'];
+  // `TYPE IfcTimeStamp = INTEGER;` — a UNIX epoch second, not an ISO-8601
+  // duration. It was bundled onto the `IFCDURATION` row above on the strength
+  // of the name, which made this gate reject every value a timestamp property
+  // can legally hold. The generated `xsdTypesByEntity` table — the SAME
+  // question, answered from upstream `SchemaInfo.Attributes.g.cs`, and what
+  // the attribute facet gates on — answers PER SCHEMA VERSION, and it splits:
+  // `IfcOwnerHistory.CreationDate` carries `["xs:integer"]` under IFC2X3 and
+  // `["xs:dateTime","xs:integer"]` under IFC4 and IFC4X3.
+  //
+  // So there is no single correct answer to give, and taking the union ACROSS
+  // versions would recreate the disagreement in the other direction: under
+  // IFC2X3 an ISO-8601 date-time literal would pass this gate and be rejected
+  // by the attribute facet, on the same file. Swapping a total false-REJECT
+  // for a narrower false-ACCEPT is not a fix for "the two gates must agree",
+  // so answer per version instead and let the caller supply it.
+  //
+  // With no version the union is returned: a caller that cannot say which
+  // schema it is reading gets the permissive answer, which for a gate means
+  // deferring rather than rejecting a value some schema allows.
+  if (m === 'IFCTIMESTAMP') {
+    if (schemaVersion === undefined) return ['xs:integer', 'xs:dateTime'];
+    return schemaVersion.toUpperCase() === 'IFC2X3'
+      ? ['xs:integer']
+      : ['xs:integer', 'xs:dateTime'];
+  }
   // All numeric measures (REAL, *MEASURE, *RATIO) accept doubles.
   if (m === 'IFCREAL' || m.endsWith('MEASURE') || m.endsWith('RATIO')) {
     return ['xs:double'];

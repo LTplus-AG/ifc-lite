@@ -109,6 +109,60 @@ export function allowlistDigest(map) {
 }
 
 /**
+ * The SCOPE a row's digest belongs to: `packages/<name>`, `apps/<name>`,
+ * `rust/<crate>`, or the first path segment for anything else.
+ *
+ * This is the whole point of sharding (#3291). One repo-wide digest made every
+ * open PR touching ANY budget conflict with every other one, because they all
+ * rewrote the same pinned line -- regardless of whether they touched the same
+ * code. The batch that prompted this was georeferencing, marine spatial parts,
+ * material tables, graphic overrides and schema-downgrade trimming: they shared
+ * this file and nothing else.
+ *
+ * What it buys, on that batch's four PRs and their six pairs: four pairs become
+ * independent, two still collide because they share `apps/viewer` and
+ * `packages/parser`. So this removes CROSS-scope coupling, not within-scope,
+ * and both allowlists are concentrated (48% of rows here are `apps/viewer`).
+ * The residual is one line and `pnpm lint:module-size-baseline` resolves it.
+ *
+ * Two levels, not one, and not three. `packages` alone would still couple every
+ * package to every other, which is most of the contention.
+ *
+ * Three is not "too fine" -- it is a NO-OP, which is a better reason to stop
+ * here and the one an earlier draft of this comment got wrong. Segment 3 is
+ * `src` for 307 of 309 rows in this allowlist and 65 of 65 in the Rust one, so
+ * `packages/export/src` is the same partition with `/src` appended to every
+ * key. Four levels would genuinely split the dominant scopes, at the cost of a
+ * pin nobody reads and a file that silently changes shard when it moves between
+ * directories.
+ */
+export function allowlistScope(path) {
+  const parts = String(path).split('/');
+  if (parts.length >= 2 && (parts[0] === 'packages' || parts[0] === 'apps' || parts[0] === 'rust')) {
+    return `${parts[0]}/${parts[1]}`;
+  }
+  return parts[0] || 'other';
+}
+
+/**
+ * Per-scope digests: `Map<scope, digest>`, each computed by `allowlistDigest`
+ * over that scope's rows alone.
+ *
+ * Deliberately reuses `allowlistDigest` rather than re-deriving the hash, so a
+ * single-scope allowlist produces the same value both ways and the Rust parity
+ * pin keeps meaning what it meant.
+ */
+export function allowlistDigests(map) {
+  const byScope = new Map();
+  for (const [path, budget] of map.entries()) {
+    const scope = allowlistScope(path);
+    if (!byScope.has(scope)) byScope.set(scope, new Map());
+    byScope.get(scope).set(path, budget);
+  }
+  return new Map([...byScope.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([s, m]) => [s, allowlistDigest(m)]));
+}
+
+/**
  * The ratchet decision. `files` is `[{ rel, lines }]` for every non-exempt
  * file found; `allowlist` is the parsed Map.
  *

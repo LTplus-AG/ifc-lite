@@ -1,6 +1,6 @@
 {
   "name": "ifc-lite",
-  "version": "6.0.0",
+  "version": "6.0.1",
   "description": "High-performance browser IFC parser & renderer",
   "private": true,
   "type": "module",
@@ -36,6 +36,7 @@
     "check:rust-source-text-assertions": "node scripts/check-rust-source-text-assertions.mjs",
     "check:refwalk-guards": "node scripts/check-refwalk-guards.mjs",
     "check:module-size": "node scripts/check-module-size.mjs",
+    "check:rust-major-offset": "node scripts/check-rust-major-offset.mjs",
     "lint:module-size-baseline": "node scripts/check-module-size.mjs --update",
     "check:unbounded-frame-wait": "node scripts/check-unbounded-frame-wait.mjs",
     "check:wasm-disposal": "node scripts/check-wasm-disposal.mjs",
@@ -46,6 +47,7 @@
     "check:csv-escapers": "node scripts/check-csv-escaper-copies.mjs",
     "check:vitest-timeout-audit": "git ls-files -z '*.test.ts' '*.test.tsx' | xargs -0 node scripts/lib/vitest-timeout-audit.mjs --summary-only",
     "check:api-surface": "node scripts/check-api-surface.mjs",
+    "check:rust-semver": "node scripts/check-rust-semver.mjs",
     "api-surface:update": "node scripts/check-api-surface.mjs --update",
     "check:git-lfs": "node scripts/check-git-lfs.mjs",
     "check:server-bin-targets": "node scripts/check-server-bin-targets.mjs",

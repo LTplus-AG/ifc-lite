@@ -69,8 +69,9 @@ describe('writeHeader', () => {
     expect(view.getUint32(0, true)).toBe(0x4c434649);
     expect(Array.from(buf.subarray(0, 4))).toEqual([0x49, 0x46, 0x43, 0x4c]);
 
-    // version: uint16 LE at byte 4.
-    expect(view.getUint16(4, true)).toBe(13);
+    // version: uint16 LE at byte 4. Moved 13 -> 14 with the #3199 mesh-record
+    // change; update this literal only alongside a types.ts ledger entry.
+    expect(view.getUint16(4, true)).toBe(14);
   });
 
   it('writes each section-table entry field at its documented byte offset within the 16-byte entry', () => {

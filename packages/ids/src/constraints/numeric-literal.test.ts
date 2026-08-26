@@ -17,6 +17,7 @@
  * opaque).
  */
 import { describe, it, expect } from 'vitest';
+import { firstBlownRung as ladderFirstBlownRung, SIZES } from '@ifc-lite/timing-ladder';
 import { compareNumeric, isStrictNumericLiteral } from './comparators.js';
 import { literalCastsUnder } from './xsd-cast.js';
 import { runCoherenceAudit } from '../audit/coherence/index.js';
@@ -36,7 +37,9 @@ import type { IDSDocument } from '../types.js';
 const SPEC_RE = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
 
 /** Every string up to 4 characters over the alphabet the language is built
- *  from, plus the characters most likely to be wrongly accepted. */
+ *  from, plus the characters most likely to be wrongly accepted. That is
+ *  69,905 distinct strings; the count is asserted below rather than trusted
+ *  from this comment. */
 function corpus(): string[] {
   const alpha = ['', '+', '-', '.', '0', '1', '9', 'e', 'E', ',', '_', ' ', '\t', '\n', 'x', '１', '١'];
   const out = new Set<string>();
@@ -51,6 +54,10 @@ describe('isStrictNumericLiteral accepts exactly the language it always did', ()
 
   it('the corpus is actually populated (an empty sweep proves nothing)', () => {
     expect(all.length).toBeGreaterThan(50_000);
+    // Exact, so the size quoted in the docblock and in any write-up of this
+    // sweep is a recorded figure and not an estimate. Changing the alphabet
+    // is meant to red here, forcing the new count to be re-recorded.
+    expect(all.length).toBe(69_905);
   });
 
   it('agrees with the spec regex on every string in it', () => {
@@ -121,167 +128,231 @@ describe('isStrictNumericLiteral accepts exactly the language it always did', ()
   });
 });
 
+/** A long digit run plus one character that cannot be part of a number.
+ *  The trailing non-digit is the whole point: an all-digit string of any
+ *  length matches immediately, which is why plausible fixtures miss this. */
+const hostile = (n: number): string => `-${'9'.repeat(n)}X`;
+
+/**
+ * The ladder every timing assertion in this file runs, module-scoped because
+ * four separate call sites use it: the scan itself, the per-entity
+ * `compareNumeric` path, and the two IDS-file literal paths at the bottom of
+ * the file. One ladder means one budget and one retry policy, so a hardening
+ * applied here cannot miss a caller.
+ *
+ * Budget, rungs and retry policy come from @ifc-lite/timing-ladder, shared with
+ * the twin suite in @ifc-lite/encoding, which used to carry a line-for-line
+ * copy of them (#3224). It refuses -- loudly -- any decision that ACCEPTS the
+ * hostile fixture, so the early-ACCEPT path -- the one that would make a
+ * reading meaningless -- cannot pass silently.
+ */
+const firstBlownRung = (decide: (v: string) => boolean): number | null =>
+  ladderFirstBlownRung(decide, { hostile });
+
 describe('deciding it is linear, not backtracking (#3113)', () => {
   /**
-   * The property is LINEARITY, so linearity is what gets measured: quadruple
-   * the input and the time should roughly quadruple, not go up sixteenfold.
+   * The property is "this decision does not blow up on a long hostile input".
+   * What follows asserts that DIRECTLY, with an absolute budget per input size,
+   * instead of measuring how the wall clock grows between two sizes.
    *
-   * Division of labour, because it is not what it looks like. A quadratic
-   * regression is caught by the two ABSOLUTE bounds, which fire long before
-   * any ratio is computed — they are the blunt, fast half. The growth ratio is
-   * the half that states the actual claim (cost is linear in the length) and
-   * the half no runner speed can move; on a quadratic implementation it is
-   * never reached, because the absolute bound has already failed.
+   * Why the growth ratio had to go. It measured the runner, not the scan. On
+   * 2026-08-23 it failed on three unrelated PRs that touch none of this code
+   * (13.33, 8.42, 8.37 against a bound of 8) while `main` stayed green, and
+   * 13.33 is inside the band the old comment called quadratic. Reproduced
+   * deliberately: this exact scan, unmodified, run 20 times under 160 busy
+   * processes on 12 cores, produced ratios from 3.68 to 18.81 with 12 of 20
+   * over the bound. Unloaded on the same machine the 20 readings spanned
+   * 3.90-4.24. The implementation never changed; only the load did. A ratio of
+   * two timings taken at different moments cannot cancel contention, because
+   * contention arrives in bursts rather than as a constant factor -- which is
+   * also why minimising over batches (#3159, #3165) narrowed the distribution
+   * without fixing it.
    *
-   * Nothing here times the old regex. Comparing against it would drag its
-   * pathological cost and the runner's speed into the assertion.
+   * Why the budget survives what the ratio could not: it is measured on the CPU
+   * clock, in @ifc-lite/timing-ladder. Headroom on the WALL clock was never
+   * what protected this test, and the version of this paragraph that said
+   * ATTEMPTS protected it was wrong (#3224). Three attempts are taken
+   * back-to-back and span ~11ms of real work at the largest rung, so a
+   * contention burst longer than that covers all three. Measured: this exact
+   * linear scan, unmodified, running the real ladder 100 times under 900 busy
+   * processes on 12 cores, blew the 2.56M rung 3 times -- readings
+   * `812.5, 968.1, 549.9` and `1226.1, 1168.2, 1137.6` against a 500ms budget.
+   * `2560000` is the value CI reported against an unrelated parser PR. On the
+   * CPU clock the same 200 readings under the same load ran p50 5.67ms, p99
+   * 8.88ms, max 9.93ms, against 7.13ms idle. ATTEMPTS is kept as a second line
+   * of defence and costs nothing on the healthy path, because `Math.min` can
+   * only fall and a reading already inside the budget is final.
    *
-   * The sizes are bounded on purpose. Quadratic cost at n=200_000 is minutes
-   * for ONE call, so a ratio measured there would HANG rather than fail, and a
-   * hang burns the job instead of reporting. Hence the single-call probe before
-   * anything is batched.
+   * The price is real and it is not a saving. Each negative control climbs to
+   * the rung it blows and then spends ATTEMPTS readings there, so the controls
+   * are the whole cost: 5334ms, 3999ms and 2068ms in one verbose run of the ids
+   * copy, against 8ms for the healthy ladder sitting next to them. Measured on
+   * one machine the file costs 8.7-12.9s in @ifc-lite/encoding and 8.1-12.1s
+   * in @ifc-lite/ids, against the ~500ms per assertion of the batching
+   * it replaces. Net CI cost went UP an order of magnitude. That is the price
+   * of a timing assertion that holds; the cheaper one reddened three unrelated
+   * PRs.
+   *
+   * The ladder itself -- budget, rungs, retry policy and the CPU-clock reading
+   * -- lives in @ifc-lite/timing-ladder and is shared with the twin suite in
+   * @ifc-lite/encoding, which used to carry a line-for-line copy of it (#3224).
+   * Its own tests pin that it still blows a rung on a quadratic decision, still
+   * refuses a decision that accepts the fixture, and still reads the CPU clock.
+   *
+   * The bound the old test used is not carried over and not raised; the
+   * quantity it bounded is simply not measured any more.
+   *
+   * Nothing is given up against the ratio on the axis that was thought to cost
+   * it. A linear-but-slower implementation passed the OLD test too: a ratio of
+   * two timings cancels constant factors by construction, so it never bounded
+   * absolute speed at all. The absolute budget does bound it, if loosely --
+   * anything ~135x more WORK than the current scan at 2.56M now reds, where the
+   * ratio would not have noticed. "Work" and not "wall time" since #3224: the
+   * budget is spent against the CPU clock. What both forms exist to catch first is
+   * catastrophic backtracking, which is orders of magnitude rather than
+   * factors, and the negative controls below pin exactly that.
+   *
+   * The shape that a ratio catches and an absolute bound does not is a
+   * SUPERLINEAR regression with a small enough constant to stay under the
+   * budget (#3226 review). That is why the ladder runs to 2.56M rather than
+   * stopping at 640k: measured, one extra full scan per 4000 characters costs
+   * 143ms at 640k -- inside a 500ms budget, so a six-rung ladder would have
+   * missed it -- and 572ms at 1.28M, where it blows. The third control below
+   * is exactly that implementation, so the claim is pinned rather than
+   * asserted. Two more rungs cost the healthy scan ~2ms (3.70ms at 2.56M
+   * against the 500ms budget, ~135x of headroom), because the extra rungs are
+   * only expensive for an implementation that is already superlinear. That
+   * headroom is now real rather than nominal: on the CPU clock the same rung
+   * stayed at 9.93ms worst-of-200 under 900 busy processes.
+   *
+   * What remains knowingly out of scope after that: a superlinear regression
+   * whose constant is smaller still, staying inside the budget even at 2.56M.
+   * Nothing here would catch it. That is accepted rather than overlooked --
+   * the function is ~25 lines of straight-line scanning with no regex left in
+   * it, so the shape requires someone adding a nested loop, which is visible in
+   * review. #3113 was dangerous precisely because a regex LOOKED linear.
    */
-  const SMALL = 20_000;
-  const LARGE = 80_000; // 4x SMALL: linear predicts ~4x, quadratic ~16x.
-  const TRIALS = 2; // Best of two batches, so one GC pause cannot inflate a reading.
-  /** A batch has to be clearly above clock noise to divide by.
-   *
-   *  Raised from 2 to 5 on review. A longer batch dilutes a fixed scheduler
-   *  preemption: simulated over 15k runs with one-sided noise, false failures
-   *  on a HEALTHY implementation drop from 0.38% to 0.04% at moderate
-   *  contention, and from 4.93% to 3.70% at heavy contention. The false-pass
-   *  rate against a genuinely regressed implementation stayed ~0% throughout,
-   *  so this buys stability without costing detection.
-   *
-   *  It is not a substitute for RATIO_SAMPLES below, and the review's original
-   *  suggestion — raise the floor and drop back to one ratio sample — measured
-   *  WORSE than what was already here. The two compose; either alone is
-   *  weaker. Cost is about +195ms on this one `it` block. */
-  const MEASURABLE_MS = 5;
 
-  /** Ratio samples to take, keeping the smallest. Combined with TRIALS above,
-   *  each side of the ratio draws its minimum from 2 x 3 = 6 independent batch
-   *  timings — `min` over a partition is `min` over the union, exactly. The
-   *  review suggested TRIALS = 3 instead, which would give 3 per side, half of
-   *  this. */
-  const RATIO_SAMPLES = 3;
-
-  /** A long digit run plus one character that cannot be part of a number.
-   *  The trailing non-digit is the whole point: an all-digit string of any
-   *  length matches immediately, which is why plausible fixtures miss this. */
-  const hostile = (n: number): string => `-${'9'.repeat(n)}X`;
-
-  const once = (n: number): number => {
-    const v = hostile(n);
-    const t0 = performance.now();
-    isStrictNumericLiteral(v);
-    return performance.now() - t0;
-  };
-
-  /** Fastest of `TRIALS` batches of `reps` calls, in ms. */
-  const batch = (n: number, reps: number): number => {
-    const v = hostile(n);
-    let best = Infinity;
-    for (let trial = 0; trial < TRIALS; trial++) {
-      const t0 = performance.now();
-      for (let i = 0; i < reps; i++) isStrictNumericLiteral(v);
-      best = Math.min(best, performance.now() - t0);
-    }
-    return best;
-  };
-
-  it('rejects the hostile input, so the timings measure a real decision', () => {
-    // If this returned early the numbers below would be timing nothing.
-    expect(isStrictNumericLiteral(hostile(SMALL))).toBe(false);
+  it('rejects the hostile input, so the ladder times a real decision', () => {
+    expect(isStrictNumericLiteral(hostile(20_000))).toBe(false);
+    // ...and accepts the same digits without the trailing character, so the
+    // fixture is hostile by one character rather than malformed some other way.
+    expect(isStrictNumericLiteral(`-${'9'.repeat(20_000)}`)).toBe(true);
   });
 
-  it('decides a 20k-character near-number quickly', () => {
-    // The blunt check. ~0.03ms measured on the dev machine; the regex this
-    // replaced took ~420ms at this length, so the 100ms bound has three
-    // orders of magnitude of headroom for a slow runner and still fails
-    // outright on the quadratic form.
-    expect(once(SMALL)).toBeLessThan(100);
+  it('decides every size up to 2.56M characters inside the budget', { timeout: 60_000 }, () => {
+    expect(firstBlownRung(isStrictNumericLiteral)).toBeNull();
   });
 
-  it('quadrupling the input roughly quadruples the time', { timeout: 30_000 }, () => {
-    // Guard before batching. A cold call at the larger size is ~0.1ms here.
-    // Without this the batches below run hundreds of calls, and a quadratic
-    // implementation would grind for many minutes instead of reporting.
-    expect(once(LARGE)).toBeLessThan(200);
-
-    // CALIBRATE the batch size rather than fixing it. A fixed count is a
-    // hardware-dependent assertion in the fast direction: a quick enough
-    // runner cannot produce a measurable baseline and the test goes red while
-    // the implementation is perfectly correct. Doubling until the measurement
-    // clears clock noise makes a faster machine do more work instead of
-    // failing, and a slower one stop at the first batch.
-    let reps = 50;
-    let small = batch(SMALL, reps);
-    while (small < MEASURABLE_MS && reps < 200_000) {
-      reps *= 2;
-      small = batch(SMALL, reps);
-    }
-    // Not a speed bound: this asserts CALIBRATION succeeded. Failing here
-    // means 200k calls still take under MEASURABLE_MS, which is its own thing
-    // worth knowing. Named rather than restated so raising the floor cannot
-    // leave a stale number here — it already did once.
-    expect(small).toBeGreaterThanOrEqual(MEASURABLE_MS);
-
-    // Minimise each SIDE independently, then divide once — not the minimum of
-    // several ratios. The difference matters, and getting it backwards makes
-    // the test worse than taking a single sample:
-    //
-    //   min(Aᵢ/Bᵢ) picks the sample where the numerator happened to be clean
-    //   AND the denominator happened to be inflated. Those two flukes are
-    //   selected for independently, so the result is biased LOW — it hunts for
-    //   the most flattering pairing and hands a real regression a way under
-    //   the bound.
-    //
-    //   min(Aᵢ)/min(Bᵢ) takes the cleanest measurement of each side, which is
-    //   the best estimate of each, and divides those. Noise here is one-sided
-    //   (a preemption only ever adds time), which is exactly why `batch()`
-    //   already does `Math.min` over TRIALS internally. This is the same
-    //   composition one level up.
-    //
-    // This is not a statistical preference, it is an inequality. For any
-    // positive samples, min(Lᵢ)/min(Sᵢ) ≥ min(Lᵢ/Sᵢ), ALWAYS: take i* = the
-    // index minimising L, then min(Lᵢ/Sᵢ) ≤ L_i*/S_i* ≤ L_i*/min(S), and the
-    // right-hand side is exactly min(L)/min(S) because L_i* IS min(L). So the
-    // form below can never report a smaller growth than the one it replaces,
-    // and therefore can never be the one that slips a regression under the
-    // bound. Nothing about the noise distribution is assumed.
-    //
-    // It reduces the low bias rather than removing it: min(L) and min(S) are
-    // each still inflated by whatever noise survives TRIALS, and the ratio is
-    // only unbiased if that inflation is proportionally equal on both sides.
-    // Worth knowing before tuning MEASURABLE_MS, TRIALS or RATIO_SAMPLES.
-    //
-    // The bound itself is unchanged. Raising it to absorb an outlier would
-    // widen the very gap the test exists to detect.
-    let bestLarge = Infinity;
-    let bestSmall = Infinity;
-    for (let sample = 0; sample < RATIO_SAMPLES; sample++) {
-      bestLarge = Math.min(bestLarge, batch(LARGE, reps));
-      bestSmall = Math.min(bestSmall, batch(SMALL, reps));
-    }
-    const growth = bestLarge / bestSmall;
-    // The linear scan grows ~3.3x-4.5x across repeated runs on this machine;
-    // the quadratic regex grew ~9x at these sizes and far more at larger ones.
-    // 8 sits between them.
-    expect(growth).toBeLessThan(8);
-  });
-
-  it('bounds the per-entity path too, not just the literal check', () => {
+  it('bounds the per-entity path too, not just the literal check', { timeout: 60_000 }, () => {
     // This is the reachable one: `compareNumeric` runs the check on the model
-    // side (`actualStr`) once per entity, from constraints/index.ts.
-    const v = hostile(SMALL);
-    const t0 = performance.now();
-    const result = compareNumeric('1000', v);
-    const elapsed = performance.now() - t0;
-    expect(result).toBeUndefined();
-    expect(elapsed).toBeLessThan(100);
+    // side (`actualStr`) once per entity, from constraints/index.ts. It gets
+    // the same ladder rather than a lone 20k probe, so the path an uploaded
+    // model actually reaches carries the same margin as the check beneath it.
+    expect(firstBlownRung((v) => compareNumeric('1000', v) !== undefined)).toBeNull();
+  });
+
+  /**
+   * The controls. Without these the tests above would pass on an empty ladder,
+   * a budget nothing can exceed, or a `decide` that returns early -- and a
+   * timing test that cannot go red is worse than no timing test, because it
+   * reads as protection.
+   *
+   * All three run the SAME ladder as the assertions above, so what is
+   * demonstrated is those assertions failing, not a separate one built to fail.
+   */
+  it('the ladder can fail: the quadratic regex it replaced blows a rung', { timeout: 60_000 }, () => {
+    // SPEC_RE is not a strawman -- it is the implementation that shipped, and
+    // the one #3113 was filed against. `\d+\.?\d*` retries at every split of
+    // the digit run before the engine gives up.
+    expect(firstBlownRung((v) => SPEC_RE.test(v))).not.toBeNull();
+  });
+
+  it('the ladder can fail: a hand-written backtracking scan blows a rung', { timeout: 60_000 }, () => {
+    // Pins the property rather than the mechanism. The control above could be
+    // dismissed as "regexes are slow"; this one is a plain loop that decides
+    // the IDENTICAL language (asserted below, not assumed) and differs from the
+    // real scan only in that it re-scans the tail at each split point.
+    const alsoBacktracks = corpus().every(
+      (v) => isStrictNumericLiteralBacktracking(v) === isStrictNumericLiteral(v)
+    );
+    expect(alsoBacktracks).toBe(true);
+    expect(firstBlownRung(isStrictNumericLiteralBacktracking)).not.toBeNull();
+  });
+
+  it('the ladder can fail: a superlinear scan with a small constant blows a rung', { timeout: 60_000 }, () => {
+    // The shape the removed ratio used to catch, and the reason the ladder
+    // runs past 640k (#3226 review). It delegates the DECISION to the real
+    // scan, so the language is identical by construction and the only
+    // difference is wasted work -- which is what makes it a clean probe of
+    // sensitivity rather than of correctness.
+    // The precondition this control rests on, asserted BEFORE the ladder runs
+    // so a trimmed ladder fails with THIS reason instead of as a null `blown`
+    // below. What stood here -- `expect(blown).toBeLessThanOrEqual(2_560_000)`
+    // -- could not fail (#3285): `firstBlownRung` returns a member of SIZES or
+    // null, 2_560_000 IS the largest member, and null is already caught by the
+    // line above it. The property that assertion was reaching for is about the
+    // LADDER, not about `blown`: this control still decides 640k inside the
+    // budget, so a ladder that stops there would report `null` and prove
+    // nothing about sensitivity.
+    const DECIDED_INSIDE_BUDGET = 640_000;
+    expect(SIZES[SIZES.length - 1]).toBeGreaterThan(DECIDED_INSIDE_BUDGET);
+    const blown = firstBlownRung(isStrictNumericLiteralSmallConstantSuperlinear);
+    expect(blown).not.toBeNull();
   });
 });
+
+/**
+ * A deliberately backtracking implementation of the same matcher, used only as
+ * the negative control above. It mirrors what a regex engine does for
+ * `\d+\.?\d*`: pick a split point for the leading `\d+`, match `\.?` then `\d*`
+ * from there, and on failure back the split up one digit and try the tail
+ * again. The `\d*` re-scan is what costs O(n^2) on a failing input.
+ *
+ * A first draft of this omitted that re-scan and was accidentally LINEAR -- it
+ * cleared the whole ladder in 9ms and would have made the control vacuous. The
+ * timing is therefore load-bearing and is asserted, not described.
+ */
+function isStrictNumericLiteralBacktracking(v: string): boolean {
+  const isDigit = (c: string): boolean => c >= '0' && c <= '9';
+
+  const matchExponentAndEnd = (i: number, n: number): boolean => {
+    if (i < n && (v[i] === 'e' || v[i] === 'E')) {
+      let j = i + 1;
+      if (j < n && (v[j] === '+' || v[j] === '-')) j++;
+      let d = 0;
+      while (j < n && isDigit(v[j])) { j++; d++; }
+      if (d > 0 && j === n) return true;
+      // The exponent failed to match, so the optional group matches empty.
+    }
+    return i === n;
+  };
+
+  const n = v.length;
+  let start = 0;
+  if (start < n && (v[start] === '+' || v[start] === '-')) start++;
+
+  let run = start;
+  while (run < n && isDigit(v[run])) run++;
+
+  // `\d+\.?\d*`, greedy split first, then backing off one digit at a time.
+  for (let take = run - start; take >= 1; take--) {
+    let i = start + take;
+    if (i < n && v[i] === '.') i++;
+    while (i < n && isDigit(v[i])) i++; // the re-scan: O(n) per split point
+    if (matchExponentAndEnd(i, n)) return true;
+  }
+
+  // The `\.\d+` alternative.
+  let i = start;
+  if (i < n && v[i] === '.') {
+    i++;
+    let d = 0;
+    while (i < n && isDigit(v[i])) { i++; d++; }
+    if (d > 0 && matchExponentAndEnd(i, n)) return true;
+  }
+  return false;
+}
 
 /**
  * The same shape lived twice more inside this package, on IDS-file literals
@@ -289,8 +360,6 @@ describe('deciding it is linear, not backtracking (#3113)', () => {
  * are pinned against the regex each one replaced, generated the same way.
  */
 describe('the same shape elsewhere in @ifc-lite/ids', () => {
-  const hostile = (n: number): string => `-${'9'.repeat(n)}X`;
-
   describe('xs:double strict cast (constraints/xsd-cast.ts)', () => {
     /** The `DOUBLE_RE` that `literalCastsUnder` used to test against. */
     const DOUBLE_RE = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
@@ -310,14 +379,16 @@ describe('the same shape elsewhere in @ifc-lite/ids', () => {
       expect(literalCastsUnder('anything', 'xs:string')).toBe(true);
     });
 
-    it('decides a 20k-character near-number quickly', () => {
-      // ~440ms with DOUBLE_RE at this length, measured before the change.
-      const v = hostile(20_000);
-      const t0 = performance.now();
-      const cast = literalCastsUnder(v, 'xs:double');
-      const elapsed = performance.now() - t0;
-      expect(cast).toBe(false);
-      expect(elapsed).toBeLessThan(100);
+    it('decides every size up to 2.56M characters inside the budget', { timeout: 60_000 }, () => {
+      // ~440ms with DOUBLE_RE at 20k, measured before the change. This used to
+      // be a single 20k reading against a 100ms bound, which is the construct
+      // the ladder above exists to replace: one reading has no retry, so a
+      // single descheduling reds it. Measured under 187-process load, 24 of
+      // 12,000 single 20k WALL-CLOCK readings here exceeded 100ms (max 265ms)
+      // against a median of 0.058ms -- ~0.2% flake per assertion. The ladder
+      // spends its budget against the CPU clock instead, which does not tick
+      // while the operating system has chosen not to run us (#3224).
+      expect(firstBlownRung((v) => literalCastsUnder(v, 'xs:double'))).toBeNull();
     });
   });
 
@@ -390,14 +461,37 @@ describe('the same shape elsewhere in @ifc-lite/ids', () => {
       }
     );
 
-    it('audits a 20k-character near-number enumeration quickly', () => {
-      // ~415ms in the regex alone at this length, measured before the change.
-      const doc = docWith([hostile(20_000)], 'xs:double');
-      const t0 = performance.now();
-      const issues = runCoherenceAudit(doc);
-      const elapsed = performance.now() - t0;
-      expect(issues.some((i) => i.code === 'E_RESTRICTION_VALUE_MISMATCH')).toBe(true);
-      expect(elapsed).toBeLessThan(100);
+    it('audits every size up to 2.56M characters inside the budget', { timeout: 60_000 }, () => {
+      // ~415ms in the regex alone at 20k, measured before the change. Same
+      // migration as the cast above, and for the same reason: the lone 20k
+      // reading against a 100ms bound was flaky under load by construction.
+      // `accepts` returning false IS the E_RESTRICTION_VALUE_MISMATCH the old
+      // assertion checked for, so the verdict is still pinned -- the shared
+      // ladder throws if any rung ever decides the hostile input is a number.
+      expect(firstBlownRung((v) => accepts(v, 'xs:double'))).toBeNull();
     });
   });
 });
+
+/**
+ * The same decision, plus one full extra pass over the input per 4000
+ * characters. Superlinear, but with a constant small enough that the cost stays
+ * inside the per-decision budget for a long way -- the shape an absolute bound
+ * alone does not catch, used as the third negative control above.
+ *
+ * It delegates to the real implementation for the verdict, so it decides the
+ * identical language by construction; there is no corpus assertion here because
+ * there is nothing that could diverge.
+ */
+function isStrictNumericLiteralSmallConstantSuperlinear(v: string): boolean {
+  let sink = 0;
+  for (let outer = 0; outer < Math.floor(v.length / 4000) + 1; outer++) {
+    for (let i = 0; i < v.length; i++) {
+      if (v[i] >= '0' && v[i] <= '9') sink += 1;
+    }
+  }
+  // Keeps the loops above observable: without a use of `sink` an optimiser is
+  // free to delete them, and the control would silently become the real scan.
+  if (sink < 0) return false;
+  return isStrictNumericLiteral(v);
+}

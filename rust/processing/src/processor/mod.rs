@@ -30,6 +30,7 @@ mod properties;
 mod quick_metadata;
 mod site_local;
 
+pub use quick_metadata::is_quick_spatial_type_ci;
 pub use site_local::convert_mesh_to_site_local;
 
 use jobs::{build_color_updates_for_jobs, process_entity_job};
@@ -42,8 +43,7 @@ use opening_filter::apply_opening_filter;
 use properties::resolve_space_zone_properties_lazy;
 use quick_metadata::{
     build_quick_spatial_tree_node, extract_name_from_args, extract_storey_elevation_from_args,
-    is_quick_spatial_type_ci, parse_step_arguments, parse_step_ref, parse_step_ref_list,
-    QuickSpatialNodeEntry,
+    parse_step_arguments, parse_step_ref, parse_step_ref_list, QuickSpatialNodeEntry,
 };
 use site_local::{
     translation_is_nonidentity, MODEL_RTC_MESH_COORDINATE_SPACE, RAW_IFC_MESH_COORDINATE_SPACE,
@@ -798,9 +798,7 @@ pub fn process_geometry_streaming_filtered_with_options(
             if let Some(type_id) = args.get(5).and_then(|token| parse_step_ref(token)) {
                 instantiated_type_ids.insert(type_id);
             }
-        } else if (type_name.ends_with("TYPE") || type_name.ends_with("STYLE"))
-            && IfcType::from_str(type_name).is_subtype_of(IfcType::IfcTypeProduct)
-        {
+        } else if let Some(type_ty) = ifc_lite_core::type_product_ifc_type(type_name) {
             let args = parse_step_arguments(&content[start..end]);
             // IfcTypeProduct.RepresentationMaps is attribute index 6.
             let rep_map_ids = args
@@ -808,13 +806,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                 .map(|token| parse_step_ref_list(token))
                 .unwrap_or_default();
             if !rep_map_ids.is_empty() {
-                type_product_geometry.push((
-                    id,
-                    start,
-                    end,
-                    IfcType::from_str(type_name),
-                    rep_map_ids,
-                ));
+                type_product_geometry.push((id, start, end, type_ty, rep_map_ids));
             }
         }
     }
@@ -1657,5 +1649,5 @@ pub fn process_geometry_streaming_filtered_with_options(
 // `crate::style::default_color_for_type` (issue #913). Do not reintroduce a
 // per-module table here — see `tests/styling_parity.rs` for the guard.
 //
-// `find_geometry_item_color_follows_mapped_item` lives in `crate::element::tests`,
-// next to the resolver it pins.
+// `find_geometry_item_color_follows_mapped_item` lives in `crate::element::tests`;
+// the resolver it pins moved to `element/element_color.rs`.

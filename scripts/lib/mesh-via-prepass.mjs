@@ -53,6 +53,12 @@ export function parseMeshesViaPrePass(api, content) {
             vertexCount: m.vertexCount,
             triangleCount: m.triangleCount,
             geometryClass: m.geometryClass,
+            // #3199: the two DISJOINT source ids. Copied here because this
+            // facade mirrors `convertMeshCollectionToBatch` field by field --
+            // a field the real converter carries and this one drops is
+            // invisible to every script that reads through it.
+            geometryItemId: m.geometryItemId,
+            materialId: m.materialId,
             // Per-element local-frame origin (world = origin + position). Present
             // on the wasm local-frame path; consumers fold it to recover world.
             origin: m.origin ? Array.from(m.origin) : undefined,

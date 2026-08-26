@@ -2,9 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * Parquet exporter for ara3d BOS-compatible format
- */
+/** Parquet exporter for ara3d BOS-compatible format */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
@@ -612,6 +610,7 @@ export function QuantityTypeToString(type: QuantityType): string {
         [QuantityType.Count]: 'Count',
         [QuantityType.Weight]: 'Weight',
         [QuantityType.Time]: 'Time',
+        [QuantityType.Number]: 'Number',
     };
     return names[type] || 'Unknown';
 }

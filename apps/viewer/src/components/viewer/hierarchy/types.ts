@@ -19,6 +19,8 @@ export type NodeType =
   | 'IfcBridgePart'       // IFC4.3 bridge part
   | 'IfcRoadPart'         // IFC4.3 road part
   | 'IfcRailwayPart'      // IFC4.3 railway part
+  | 'IfcMarinePart'       // IFC4.3 marine facility part
+  | 'IfcFacilityPartCommon' // IFC4.3 generic facility part
   | 'IfcSpace'            // Space node (net room area)
   | 'IfcSpatialZone'      // Spatial zone node (modelled gross area / GFA)
   | 'type-group'          // IFC class grouping header (e.g., "IfcWall (47)")
@@ -137,5 +139,7 @@ const SPATIAL_CONTAINER_TYPES: Set<NodeType> = new Set([
   'IfcBridgePart',
   'IfcRoadPart',
   'IfcRailwayPart',
+  'IfcMarinePart',
+  'IfcFacilityPartCommon',
 ]);
 export const isSpatialContainer = (type: NodeType): boolean => SPATIAL_CONTAINER_TYPES.has(type);

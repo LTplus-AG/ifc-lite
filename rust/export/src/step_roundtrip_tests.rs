@@ -102,7 +102,7 @@ fn snapshot(content: &[u8]) -> Snapshot {
     let b = scan_model_bounds(content);
 
     Snapshot {
-        schema: crate::step_text::detect_schema(content),
+        schema: crate::schema_detect::detect_schema(content),
         census,
         model,
         georef: extract_georeferencing(content),

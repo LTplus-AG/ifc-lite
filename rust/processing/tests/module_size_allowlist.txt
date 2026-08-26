@@ -12,7 +12,9 @@
 # +8: add set_entity_index setter so the processor can install its inline-built index (perf/single-scan).
 # +50: add the per-worker placement-transform memo (field + take/set/get/cache methods), mirroring point_cache (perf/placement-cache).
     1064 rust/core/src/decoder.rs
-     793 rust/core/src/georef.rs
+# -35: the ePSet MapUnit label rules moved to unit_labels.rs, next to the unit
+# tables they resolve through (#3292); 793 -> 758.
+     758 rust/core/src/georef.rs
      445 rust/core/src/model_bounds.rs
      601 rust/core/src/parser/scanner.rs
      463 rust/core/src/parser/tokenizer.rs
@@ -21,7 +23,11 @@
 # schema_helpers.rs row removed: the merged upstream #1969 split its tests into
 # schema_helpers_tests.rs, dropping the file to 305 lines (under the 400 budget),
 # same as the tree main converged on independently.
-    990 rust/core/src/units.rs
+# -416: the inline #[cfg(test)] mod moved VERBATIM to units_tests.rs (ratchet-exempt)
+# so the quoted 'FEET' arm and its two cross-reader comments fit; 990 -> 574.
+# -38: the SI-prefix and conversion-based tables moved to unit_labels.rs, shared
+# verbatim with the georeferencing MapUnit reader (#3292); 574 -> 536.
+    536 rust/core/src/units.rs
 # +4: build the index once in parallel on the fail-closed try_/project_glb_size large-model GLB paths (perf/parallel-scan).
 # +81: emissive-material knob for KMZ/Google Earth (#1427) - make_material lit/unlit/emissive branch + emissive param threaded through build_gltf/export_glb_from_meshes and their tests.
     4028 rust/export/src/gltf.rs
@@ -37,7 +43,6 @@
 # budget. step_text.rs's own #[cfg(test)] block was further split into
 # step_text_tests.rs (ratchet-exempt via the _tests.rs suffix), leaving
 # step_text.rs at 196 lines of production code (under 400, no row needed).
-     471 rust/export/src/step.rs
 # +45: reject non-positive SegmentLength/HorizontalLength (malformed-input NaN guard) + regression test.
     1170 rust/geometry/src/alignment.rs
 # +19: split_on_edge now sets a failed flag and bails to the ear-clip fallback instead of the lone .expect() panic.
@@ -97,7 +102,9 @@
          438 rust/geometry/src/kernel/retriangulate_recover.rs
 # new row: adds from_spans (build the index from pre-collected IfcRelAssociatesMaterial spans, no re-walk) + the MaterialLayerFlat wire codec (to_flat/from_flat) + round-trip tests, so the streaming pre-pass ships the index to workers once instead of each worker re-scanning the file (perf/single-scan #563).
      563 rust/geometry/src/material_layer_index.rs
-    1529 rust/geometry/src/mesh.rs
+# +14: SubMeshCollection gains `ids_are_materials` + `of_materials()` so a material-layer id can never be read as a representation item (#3199).
+# -531: the 535-line `#[cfg(test)] mod tests` moved to the sibling mesh_tests.rs, which the ratchet exempts. Production code is unchanged (#3199 follow-up).
+    1012 rust/geometry/src/mesh.rs
 # +86: #2866 — Boolean and CSG are mutually recursive over file references
 # (IfcBooleanResult operand -> IfcCsgSolid -> TreeRootExpression -> that same
 # IfcBooleanResult). CsgSolidProcessor built a FRESH BooleanClippingProcessor,
@@ -172,7 +179,9 @@
 # A repeat returns false, which is this function's existing "anything exotic
 # bails safely" contract rather than a new special case. Tests are in a sibling
 # layers_cycle_tests.rs.
-     685 rust/geometry/src/router/layers.rs
+# +1: the layered builder now marks its collection as carrying material ids (#3199).
+# -49: the inline `mod tests` moved to layers_tests.rs, matching the layers_cycle_tests.rs include this file already used (#3199 follow-up).
+     637 rust/geometry/src/router/layers.rs
 # +1: unify body-rep predicate — added is_direct_body_representation + docs; net removes ~60 lines from processing.rs and ~12 from layers.rs (crate trends down).
 # +65: promote the per-router IfcMappedItem source cache to a model-wide SharedMappedItemCache (type alias + field + new_/enable_ setters + unique-count diagnostic), meshing each source once model-wide (#1623).
 # +38: #1623 Phase 2 don't-bake — MappedInstancePlan type alias + output_instancing_plan field + enable_/getter + `mod instancing` decl.
@@ -203,7 +212,8 @@
 # call site with residual composition and cut-effect diagnostics parity.
 # +27: #129 coaxial-union prepass wiring — module decl + feature-gated stats
 # re-export + the pre-batch `coaxial_union_prepass` call and its consumed-skip.
-     2054 rust/geometry/src/router/voids/mod.rs
+# +6: the voided rebuild INHERITS the id discriminator instead of hard-coding rep-item, so a future layered producer cannot be silently relabelled (#3199).
+     2060 rust/geometry/src/router/voids/mod.rs
 # NEW: analytic prism (stepped-extrusion) subtraction on the host mesh — the
 # CSG-heavy-corpus lever (ISSUE_098/129: exact void booleans are ~75-82% of
 # geometry time; rebated masonry openings on brep/clipped hosts had no fast
@@ -295,7 +305,9 @@
 # the DEPTH of each visit: a plain set combined with the cap silently LOSES a
 # colour, because an item first reached near the limit is cut before its
 # subtree is searched yet stays marked, so a later shorter branch is skipped.
-     961 rust/processing/src/element.rs
+# +5: thread the discriminator into build_mesh_data so the source id is routed to whichever of the two disjoint MeshData fields it actually is (#3199).
+# -154: colour and material-name resolution moved to element/element_color.rs -- a pure function of (geometry id, style map) with its own bounded walk (#3199 follow-up).
+     812 rust/processing/src/element.rs
 # +9: #2019 — canonicalise each host's opening order so the world geometry
 # hash stops depending on IFCRELVOIDSELEMENT statement order (sequential void
 # cuts are not associative). Three lines of code plus the why.
@@ -345,7 +357,9 @@
 # +3: #2049 — `set_texture` was the one 8-arg fn in this crate missing the
 # `#[allow(clippy::too_many_arguments)]` its 21 peers carry. The crate's lint
 # has never run in CI (`--exclude ifc-lite-wasm`), which is how it drifted.
-     727 rust/wasm-bindings/src/zero_copy/mesh.rs
+# +37: geometry_item_id/material_id cross the boundary -- 2 fields, 2 getters, a paired setter, and propagation at all THREE MeshDataJs clone sites (defaulting them there would have made the field inert at collection.get(i)) (#3199).
+# -14: the three hand-written 21-field MeshDataJs copies collapsed to a derived Clone; a hand-written Default (which must agree with new) costs some of it back (#3199 follow-up).
+     754 rust/wasm-bindings/src/zero_copy/mesh.rs
 # symbolic.rs +14 (743 -> 757): carries SymbolicData::truncated across the WASM
 # boundary as `truncatedAt` (#2938). A raise rather than a split because the
 # addition is one field, one assignment in `from_data` and one getter -- the
@@ -354,12 +368,3 @@
 # the bug being fixed: geometry is client-side only, so that path is the only
 # way a viewer learns its drawing was clipped.
      757 rust/wasm-bindings/src/zero_copy/symbolic.rs
-# +65: #1910 follow-up — buildPrePassOnce's combined_pre_pass is a third
-# geometry-job discovery path with the same has_geometry_by_name gap as the
-# serial/sharded scans; adds the instance-level exception plus its regression
-# test (combined_pre_pass_issue_1910_tests).
-# +22: #1910 review follow-up — the exception test only proved a storey WITH a
-# Representation gets a job, so forcing nth_attribute_is_present to always
-# report "present" left it passing (demonstrated by mutation). Adds the null-
-# Representation negative case and the shared storey_jobs helper it needs.
-     527 rust/wasm-bindings/src/api/styling/prepass.rs

@@ -62,7 +62,12 @@ pub(crate) fn parquet_cache_key(
     quality: TessellationQuality,
 ) -> String {
     format!(
-        "{}-{}{}-parquet-v4",
+        // v5, not v4: #3215 added the two source-id columns to the mesh
+        // schema. Without a bump a model parsed before that deploy replays its
+        // OLD blob verbatim, the columns are absent, the decoder correctly omits
+        // them, and drill-to-source stays dead over the binary transport with
+        // nothing saying so -- absence reading exactly like success.
+        "{}-{}{}-parquet-v5",
         hash,
         opening_filter.cache_key_suffix(),
         quality_cache_suffix(quality)
@@ -138,15 +143,15 @@ mod tests {
     use crate::services::streaming::detect_schema_version;
 
     /// Regression test for #587: the reader (`check_cache`) used to look up
-    /// `{hash}-parquet-v4`, while the writer (`parse_parquet`) stored
-    /// `{hash}-{opening_filter}-parquet-v4`, so the check always returned 404.
+    /// `{hash}-parquet-v5`, while the writer (`parse_parquet`) stored
+    /// `{hash}-{opening_filter}-parquet-v5`, so the check always returned 404.
     /// The shared helper must produce the same key the writer stores under.
     #[test]
     fn parquet_cache_key_matches_writer_format() {
         let hash = "0ab20f4e4014";
 
         // The writer composes `cache_key = format!("{hash}-{suffix}")` and then
-        // `format!("{cache_key}-parquet-v4")`. The helper must produce the same string.
+        // `format!("{cache_key}-parquet-v5")`. The helper must produce the same string.
         for mode in [
             OpeningFilterMode::Default,
             OpeningFilterMode::IgnoreAll,
@@ -163,7 +168,7 @@ mod tests {
                     mode.cache_key_suffix(),
                     quality_cache_suffix(quality)
                 );
-                let writer_parquet_key = format!("{}-parquet-v4", writer_cache_key);
+                let writer_parquet_key = format!("{}-parquet-v5", writer_cache_key);
                 let writer_metadata_key = format!("{}-parquet-metadata-v4", writer_cache_key);
 
                 assert_eq!(parquet_cache_key(hash, mode, quality), writer_parquet_key);
@@ -180,9 +185,9 @@ mod tests {
     #[test]
     fn parquet_cache_key_default_filter_uses_default_suffix() {
         let key = parquet_cache_key("abc", OpeningFilterMode::Default, TessellationQuality::Medium);
-        assert_eq!(key, "abc-default-parquet-v4");
+        assert_eq!(key, "abc-default-parquet-v5");
         let key = parquet_cache_key("abc", OpeningFilterMode::Default, TessellationQuality::High);
-        assert_eq!(key, "abc-default-qhigh-parquet-v4");
+        assert_eq!(key, "abc-default-qhigh-parquet-v5");
     }
 
     /// The JSON `ParseResponse` cache must NOT be keyed by the bare request key

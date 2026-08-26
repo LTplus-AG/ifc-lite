@@ -89,3 +89,37 @@ fn window_splits_frame_and_glass_across_submeshes() {
         parts.iter().map(|m| m.color).collect::<Vec<_>>()
     );
 }
+
+/// Discussion #2985 / #3199: a host that gets two sub-meshes for one window has
+/// to be able to tell which item each came from. The two parts must name the
+/// two `IfcTriangulatedFaceSet`s, #14 and #16, and neither may claim to be a
+/// material-layer slice.
+///
+/// Catches two regressions. If `geometry_item_id` stops being stamped on the
+/// sub-mesh path, both ids go `None` and the parts become indistinguishable —
+/// the colour test above still passes, because colour is resolved separately.
+/// If the item/layer split is routed by anything other than what built the
+/// collection, this window (two items, no layer set, no `IfcMaterialLayerSet`
+/// anywhere in the file) is where a stray `material_id` shows up.
+#[test]
+fn window_submeshes_name_their_own_face_sets() {
+    let result = process_geometry(WINDOW_IFC);
+
+    let parts: Vec<&_> = result.meshes.iter().filter(|m| m.express_id == 10).collect();
+    assert_eq!(parts.len(), 2, "expected one sub-mesh per window item");
+
+    let mut ids: Vec<Option<u32>> = parts.iter().map(|m| m.geometry_item_id).collect();
+    ids.sort();
+    assert_eq!(
+        ids,
+        vec![Some(14), Some(16)],
+        "sub-meshes must name the frame and glass face sets"
+    );
+
+    for part in &parts {
+        assert_eq!(
+            part.material_id, None,
+            "the window has no material layers, so nothing may carry a layer id"
+        );
+    }
+}

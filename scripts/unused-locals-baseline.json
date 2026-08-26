@@ -1,6 +1,6 @@
 {
   "apps/viewer": 345,
-  "apps/viewer-embed": 348,
+  "apps/viewer-embed": 346,
   "examples/babylonjs-viewer": 1,
   "examples/collab-demo": 1,
   "examples/threejs-collab": 1,
@@ -47,6 +47,7 @@
   "packages/source-fixture": 0,
   "packages/source-msgraph": 0,
   "packages/spatial": 0,
+  "packages/timing-ladder": 0,
   "packages/viewer": 0,
   "packages/world-frame-fixtures": 0
 }

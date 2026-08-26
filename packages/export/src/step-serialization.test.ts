@@ -5,7 +5,6 @@
 import { describe, expect, it } from 'vitest';
 import { PropertyValueType } from '@ifc-lite/data';
 import {
-  serializePropertyValue,
   serializeAttributeValue,
   serializeStepValue,
   serializeTypedMarker,
@@ -14,6 +13,7 @@ import {
   toStepReal,
   escapeStepString,
 } from './step-serialization.js';
+import { serializePropertyValue } from './property-value-serialization.js';
 import { toStepRealScaled } from './unit-normalize.js';
 
 describe('resolveExpressBase', () => {
@@ -218,5 +218,47 @@ describe('escapeStepString non-ASCII encoding (ISO 10303-21 6.3.3.4)', () => {
 
   it('leaves printable ASCII untouched', () => {
     expect(escapeStepString('plain text 123')).toBe('plain text 123');
+  });
+});
+
+
+/**
+ * A run of control characters becomes ONE SPACE PER CHARACTER (#3284 item 2).
+ *
+ * The expectations below are not invented: they are the observed output of the
+ * Rust half, `ifc_lite_export::step_text::escape`, over the same six inputs —
+ * the doc comment on each escaper claims it "matches" the other, and until
+ * this fix the TS `/[\x00-\x1F\x7F]+/g` collapsed `"a\t\t\tb"` to `'a b'`
+ * while Rust wrote `'a   b'`. ISO 10303-21 6.3.3.4 mandates neither (it only
+ * bars the control byte from the literal), so the tie is broken by the parity
+ * claim and by information loss: collapsing discards the run's length.
+ */
+describe('escapeStepString control-character runs (#3284, parity with the Rust escape)', () => {
+  // label, input, and the output the Rust half printed for that input.
+  const RUST_VECTORS: ReadonlyArray<readonly [string, string, string]> = [
+    ['tab run', 'a\t\t\tb', 'a   b'],
+    ['crlf', 'a\r\nb', 'a  b'],
+    ['mixed C0 + DEL', 'a\u0000\u000B\u001F\u007Fb', 'a    b'],
+    ['single control char', 'a\tb', 'a b'],
+    ['quote doubling around a run', "O'Brien\t\tx", "O''Brien  x"],
+    // Negative control: no control characters at all, byte-identical output.
+    ['no control chars', 'plain text 123', 'plain text 123'],
+  ];
+
+  it.each(RUST_VECTORS)('%s escapes exactly as the Rust half does', (_label, input, expected) => {
+    expect(escapeStepString(input)).toBe(expected);
+  });
+
+  it('preserves the length of every control run and emits no control byte', () => {
+    // Both directions of the rule in one place: the output must have the same
+    // length as the input (one space per control character), and must contain
+    // no control character (a run left intact would also keep its length, so
+    // neither half alone is sufficient).
+    for (const n of [1, 2, 3, 8]) {
+      const escaped = escapeStepString(`a${'\n'.repeat(n)}b`);
+      expect(escaped).toBe(`a${' '.repeat(n)}b`);
+      // eslint-disable-next-line no-control-regex
+      expect(escaped).not.toMatch(/[\u0000-\u001F\u007F]/);
+    }
   });
 });

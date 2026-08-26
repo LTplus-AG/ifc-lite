@@ -17,12 +17,17 @@
  * (`scripts/test-wasm-contract.mjs`, the e2e export specs).
  *
  * What these tests pin, stated precisely: that `dispose()` is REACHED on the
- * init-failure path. They do not pin that a WASM handle is freed, and on
- * today's code it is not — `IfcLiteBridge.init()` catches its own failures and
- * calls `reset()`, which nulls `ifcApi` without `free()`, so the recovered
- * `dispose()` optional-chains to a no-op. That leak lives in the bridge's error
- * path and is tracked separately; do not read a green run here as evidence the
- * handle was released.
+ * init-failure path. They do not pin that a WASM handle is freed here, and
+ * they cannot: `IfcLiteBridge.init()` frees its own handle on its catch path
+ * (`disposeBestEffort()` -> `dispose()` -> `ifcApi?.free()`), so by the time
+ * the recovered `gp.dispose()` runs there is no handle left and it
+ * optional-chains to a no-op. That freeing is covered where it happens, in
+ * `packages/geometry/src/ifc-lite-bridge.test.ts` ("init() failing AFTER
+ * `new IfcAPI()` must free the handle it built").
+ *
+ * So a green run here is evidence that `dispose()` was reached, and nothing
+ * more. Not supported by these tests, and not deferred to anything either:
+ * whether the handle was released. Read the bridge's own suite for that.
  */
 
 import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';

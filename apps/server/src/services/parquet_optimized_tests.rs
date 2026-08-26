@@ -9,6 +9,7 @@
 //! items, so the tests moved here verbatim.
 
     use super::*;
+    use crate::services::parquet_schema::ABSENT_SOURCE_ID;
 
     #[test]
     fn test_optimized_parquet_serialization() {
@@ -137,6 +138,81 @@
     /// Uses two DISTINCT (non-deduplicated) meshes with different vertex vs.
     /// triangle counts so a vertex_offset/index_offset swap changes a value,
     /// not just a row count.
+    /// The optimized transport must put each id on its OWN column, and must not
+    /// confuse `material_id` with `material_index` (#3215).
+    ///
+    /// The standard transport has this assertion; this one had none — grepping
+    /// this file for `material_id`, `geometry_item_id` or `material_index`
+    /// returned zero. The only marker of the hazard was a comment, and I
+    /// deleted it compressing that file under its size budget.
+    ///
+    /// The hazard is concrete: `instance_material_indices` and
+    /// `instance_material_ids` are both `Vec<u32>`, their columns sit five
+    /// apart in the same batch, and swapping them compiles. `material_index`
+    /// indexes this file's own material table; `material_id` is an
+    /// `IfcMaterial` express id. Same word, different spaces.
+    #[test]
+    fn instance_table_keeps_source_ids_and_material_index_apart() {
+        use arrow::array::UInt32Array;
+        use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+
+        let base = |eid: u32, x: f32| {
+            MeshData::new(
+                eid,
+                "IfcWall".to_string(),
+                vec![x, 0.0, 0.0, x + 1.0, 0.0, 0.0, x + 1.0, 1.0, 0.0],
+                vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+                vec![0, 1, 2],
+                [0.5, 0.5, 0.5, 1.0],
+            )
+        };
+        // Distinct values on the two fields so a swap cannot pass, and a third
+        // instance with neither.
+        let geo = base(10, 0.0).with_style_metadata(None, Some(501), false);
+        let mat = base(11, 5.0).with_style_metadata(None, Some(902), true);
+        let neither = base(12, 9.0);
+
+        let (data, _) =
+            serialize_to_parquet_optimized_with_stats(&[geo, mat, neither], false).unwrap();
+        let instance_len = u32::from_le_bytes(data[2..6].try_into().unwrap()) as usize;
+        let header = 2 + 5 * 4;
+        let instance_bytes = Bytes::copy_from_slice(&data[header..header + instance_len]);
+        let batch = ParquetRecordBatchReaderBuilder::try_new(instance_bytes)
+            .unwrap()
+            .build()
+            .unwrap()
+            .map(|b| b.unwrap())
+            .next()
+            .unwrap();
+
+        let col = |name: &str| batch.schema().index_of(name).expect(name);
+        let u32col = |name: &str| {
+            batch
+                .column(col(name))
+                .as_any()
+                .downcast_ref::<UInt32Array>()
+                .unwrap()
+                .clone()
+        };
+        let gi = u32col("geometry_item_id");
+        let mi = u32col("material_id");
+        let mx = u32col("material_index");
+
+        assert_eq!(gi.value(0), 501, "representation-item id on its own column");
+        assert_eq!(mi.value(0), ABSENT_SOURCE_ID, "and NOT on the material one");
+        assert_eq!(mi.value(1), 902, "material id on its own column");
+        assert_eq!(gi.value(1), ABSENT_SOURCE_ID, "and NOT on the geometry one");
+        assert_eq!(gi.value(2), ABSENT_SOURCE_ID);
+        assert_eq!(mi.value(2), ABSENT_SOURCE_ID);
+
+        // material_index is a table offset, never an express id: all three
+        // meshes share one colour, so it is 0 everywhere while material_id is
+        // not. That difference is what a swap would destroy.
+        for i in 0..3 {
+            assert_eq!(mx.value(i), 0, "material_index is an offset into this file");
+        }
+    }
+
     #[test]
     fn mesh_table_offsets_and_counts_match_actual_mesh_sizes() {
         use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;

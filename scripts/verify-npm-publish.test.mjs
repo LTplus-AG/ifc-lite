@@ -115,17 +115,52 @@ test('a workspace parent that cannot be LISTED is fatal, not a warning', () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-test('a manifest path that cannot be STATed is fatal, not skipped', () => {
+test('a stray FILE under packages/ is ordinary, not fatal', () => {
+  // This asserted the opposite and was wrong. A plain file under packages/
+  // makes packages/<file>/package.json ENOTDIR, and the gate deliberately
+  // treats that as "not a package" rather than as an unreadable path.
+  //
+  // Checked against the real tree rather than argued: this repo carries
+  // `packages/.DS_Store` and `apps/.DS_Store` right now. Had ENOTDIR been
+  // fatal here, the release gate would refuse on every macOS checkout -- a
+  // guard that fires on a Finder artefact is worse than the hole it closes.
+  //
+  // The genuinely-unclassifiable case is the test below. ENOTDIR one level UP
+  // (packages/ itself being a file) stays fatal and is covered separately,
+  // because that one really does shrink the verified set by a whole tree.
   const root = makeTree();
-  mkdirSync(join(root, 'packages'), { recursive: true });
-  // packages/broken is a FILE, so packages/broken/package.json is ENOTDIR —
-  // a path we could not classify, distinct from a directory that simply has
-  // no manifest (ENOENT), which stays ordinary.
-  writeFileSync(join(root, 'packages', 'broken'), 'not a directory');
-  const { status, out } = run(root);
-  assert.equal(status, 2, out);
-  assert.match(out, /could not stat .*broken[/\\]package\.json \(ENOTDIR\)/);
+  fillToFloor(root);
+  writeFileSync(join(root, 'packages', '.DS_Store'), 'not a directory');
+  const { status, out } = run(root, { bin: stubNpm(root) });
+  assert.equal(status, 0, out);
+  assert.match(out, /Verifying 25 package\(s\)/);
+  assert.doesNotMatch(out, /could not stat/);
   rmSync(root, { recursive: true, force: true });
+});
+
+test('a manifest path that cannot be STATed is fatal, not skipped', (t) => {
+  // EACCES, not ENOTDIR: a path that exists in some form the gate could not
+  // classify. Skipping it would drop a package the release was supposed to
+  // publish, and every remaining package would still report a tick.
+  if (process.getuid?.() === 0) {
+    // Say so out loud. A permission fixture is meaningless as root, and a
+    // guard test that quietly passes because its fixture did not bite is the
+    // exact shape #3200 is about.
+    t.skip('running as root: chmod 000 does not deny access, fixture cannot bite');
+    return;
+  }
+  const root = makeTree();
+  const denied = join(root, 'packages', 'broken');
+  mkdirSync(denied, { recursive: true });
+  chmodSync(denied, 0o000);
+  try {
+    const { status, out } = run(root);
+    assert.equal(status, 2, out);
+    assert.match(out, /could not stat .*broken[/\\]package\.json \(EACCES\)/);
+  } finally {
+    chmodSync(denied, 0o755);
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('a directory with no package.json is still ordinary and skipped in silence', () => {

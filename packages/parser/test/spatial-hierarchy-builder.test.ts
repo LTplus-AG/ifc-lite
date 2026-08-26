@@ -70,6 +70,70 @@ describe('SpatialHierarchyBuilder', () => {
     expect(hierarchy.byBuilding.get(2)).toEqual([]);
   });
 
+  it('builds an IFC4.3 marine facility down through its IfcMarinePart berths', () => {
+    // `IfcMarineFacility` was a recognised spatial structure type while
+    // `IfcMarinePart` — its only part type, the exact counterpart of
+    // IfcBridgePart above — was not. `addSpatialChild` recurses only into a
+    // child `isSpatialStructureType` accepts, so the berth node and the
+    // mooring device it contained were dropped from the tree entirely: the
+    // Hierarchy panel showed the facility with nothing under it.
+    const strings = new StringTable();
+    const entities = new EntityTableBuilder(4, strings);
+    entities.add(1, 'IFCPROJECT', '0', 'Port Project', '', '');
+    entities.add(2, 'IFCMARINEFACILITY', '1', 'Harbour', '', '');
+    entities.add(3, 'IFCMARINEPART', '2', 'Berth 4', '', '');
+    entities.add(4, 'IFCMOORINGDEVICE', '3', 'Bollard', '', '', true);
+
+    const relationships = new RelationshipGraphBuilder();
+    relationships.addEdge(1, 2, RelationshipType.Aggregates, 10);
+    relationships.addEdge(2, 3, RelationshipType.Aggregates, 11);
+    relationships.addEdge(3, 4, RelationshipType.ContainsElements, 12);
+
+    const hierarchy = new SpatialHierarchyBuilder().build(
+      entities.build(),
+      relationships.build(),
+      strings,
+      new Uint8Array(),
+      { byId: { get: () => undefined } },
+    );
+
+    const facility = hierarchy.project.children[0];
+    expect(facility.type).toBe(IfcTypeEnum.IfcMarineFacility);
+    expect(facility.children.map((c) => c.type)).toEqual([IfcTypeEnum.IfcMarinePart]);
+    expect(facility.children[0].elements).toEqual([4]);
+    expect(hierarchy.getPath(4).map((node) => node.expressId)).toEqual([1, 2, 3]);
+  });
+
+  it('builds a generic IFC4.3 facility down through its IfcFacilityPartCommon segments', () => {
+    // Same drop, the other missing IfcFacilityPart subtype. `IfcFacilityPart`
+    // itself is ABSTRACT in IFC4X3, so a real file never carries one — the
+    // concrete leaf is what has to be recognised.
+    const strings = new StringTable();
+    const entities = new EntityTableBuilder(4, strings);
+    entities.add(1, 'IFCPROJECT', '0', 'Campus Project', '', '');
+    entities.add(2, 'IFCFACILITY', '1', 'Terminal', '', '');
+    entities.add(3, 'IFCFACILITYPARTCOMMON', '2', 'Segment A', '', '');
+    entities.add(4, 'IFCWALL', '3', 'Partition', '', '', true);
+
+    const relationships = new RelationshipGraphBuilder();
+    relationships.addEdge(1, 2, RelationshipType.Aggregates, 10);
+    relationships.addEdge(2, 3, RelationshipType.Aggregates, 11);
+    relationships.addEdge(3, 4, RelationshipType.ContainsElements, 12);
+
+    const hierarchy = new SpatialHierarchyBuilder().build(
+      entities.build(),
+      relationships.build(),
+      strings,
+      new Uint8Array(),
+      { byId: { get: () => undefined } },
+    );
+
+    const facility = hierarchy.project.children[0];
+    expect(facility.children.map((c) => c.type)).toEqual([IfcTypeEnum.IfcFacilityPartCommon]);
+    expect(facility.children[0].elements).toEqual([4]);
+    expect(hierarchy.getPath(4).map((node) => node.expressId)).toEqual([1, 2, 3]);
+  });
+
   it('keeps contained elements whose type was not categorized into the EntityTable', () => {
     // Reporter scenario: linear-placement-of-signal.ifc has an IfcRailway whose
     // IfcRelContainedInSpatialStructure names 26 IfcReferent / IfcSignal /

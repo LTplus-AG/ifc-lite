@@ -42,7 +42,8 @@
  *
  * What the step breaks on afterwards, by design: any PR adding a TS/TSX file
  * over 400 lines, any PR growing a listed file past its recorded budget, and
- * any PR editing the allowlist without moving ALLOWLIST_DIGEST — including a
+ * any PR editing the allowlist without moving that scope's ALLOWLIST_DIGESTS
+ * entry — including a
  * rebase that lands after someone else's shrink, which requires recomputing
  * the pin. It does NOT break on a file shrinking or disappearing; those are
  * advisory notes.
@@ -73,7 +74,8 @@
  * Flags (development and the test harness only; CI would pass none):
  *   --root <dir>       scan this tree instead of the repo
  *   --allowlist <path> read this allowlist instead of the committed one
- *   --digest <value>   compare against this pin instead of ALLOWLIST_DIGEST
+ *   --digests <json>   compare against this scope->digest object instead of
+ *                      ALLOWLIST_DIGESTS
  *   --update           rewrite the allowlist and the digest pin from the tree
  *   --allow-raise      with --update, permit budget raises and new exemptions
  */
@@ -86,7 +88,7 @@ import {
   countLines,
   isExempt,
   parseAllowlist,
-  allowlistDigest,
+  allowlistDigests,
   evaluate,
   staleRows,
   planUpdate,
@@ -126,31 +128,99 @@ const SOURCE_RE = /\.(ts|tsx|mts|cts)$/;
  * is born with it.
  *
  * A plain SUM is not enough: raising one budget by 100 while lowering another
- * by 100 leaves the total unchanged. The digest moves for ANY change to ANY
- * row, so loosening the ratchet always costs one reviewable line here.
+ * by 100 leaves the total unchanged. A scope's digest moves for ANY change to
+ * ANY of its rows, so loosening the ratchet always costs one reviewable line
+ * here.
+ *
+ * SHARDED BY SCOPE, one entry per `packages/<name>` / `apps/<name>` /
+ * `rust/<crate>` (#3291). A single repo-wide digest had the same visibility but
+ * coupled every PR touching any budget to every other one: they all rewrote the
+ * same pinned line, so they conflicted by construction whatever they changed.
+ * With one line per scope, two PRs in different scopes usually edit different
+ * lines and git merges them. THE RESIDUAL IS LARGER THAN "same scope", which is
+ * all an earlier draft of this comment admitted to. Measured with a two-branch
+ * probe, one budget raised per side:
+ *
+ *   old scheme, any two scopes      CONFLICT
+ *   same scope                      CONFLICT
+ *   ADJACENT pin lines              CONFLICT  <- git needs one unchanged line
+ *   two or more lines apart         clean
+ *
+ * So the residual is same-scope PLUS adjacent-scope: 36 of the 666 cross-scope
+ * pairs here (5.4%), and 5 of 15 (33%) in the 6-entry Rust table, where a small
+ * table makes adjacency likely. Still a large improvement on 100%, and the
+ * remedy is one line either way, but it is not "PRs in other scopes are
+ * unaffected".
  *
  * TO RECOMPUTE: `pnpm lint:module-size-baseline`, which rewrites the allowlist
- * and this constant together. By hand: set this to '0', run
+ * and this constant together. By hand: replace the object with a single
+ * placeholder entry, run
  * `node scripts/check-module-size.mjs`, and read the true value out of the
  * failure message. Either way do it at the moment you finalise the change — it
  * moves if anything else touched the allowlist first.
  */
-const ALLOWLIST_DIGEST = '11408322420949397170';
+const ALLOWLIST_DIGESTS = {
+  'apps/viewer': '3248385113093449015',
+  'apps/viewer-embed': '4565652428901906968',
+  'packages/bcf': '9733284863521991257',
+  'packages/cache': '14926850005686407910',
+  'packages/clash': '781065910217740673',
+  'packages/cli': '11939142867866651937',
+  'packages/codegen': '18074740064258807121',
+  'packages/collab': '10345031293646670667',
+  'packages/collab-server': '6370800919640161263',
+  'packages/create': '1037353628699503261',
+  'packages/create-ifc-lite': '2641290854733608547',
+  'packages/data': '2280337694940862970',
+  'packages/diff': '935169126877539347',
+  'packages/drawing-2d': '1289794388881750973',
+  'packages/export': '8294779133777308773',
+  'packages/extensions': '8156044843525017433',
+  'packages/geometry': '11660269484074160622',
+  'packages/ids': '9562546445799669442',
+  'packages/ifcx': '1612726670485322764',
+  'packages/lens': '14019022785021391214',
+  'packages/lists': '3649993370543459600',
+  'packages/mcp': '5906442248422039423',
+  'packages/merge': '4328451182457757363',
+  'packages/mutations': '17485196327897850153',
+  'packages/oauth-pkce': '6839945177005186906',
+  'packages/parser': '7685419337675914966',
+  'packages/plugin-api': '4189476804863450436',
+  'packages/pointcloud': '9060606210189352091',
+  'packages/provenance': '17691750269289291288',
+  'packages/query': '10617410983412679617',
+  'packages/renderer': '10548485518942557631',
+  'packages/sandbox': '7650074321748792699',
+  'packages/sdk': '885187935350689181',
+  'packages/server-client': '7638729328149367977',
+  'packages/source-dalux': '11927553717016520308',
+  'packages/source-dropbox': '13897585807232807340',
+  'packages/viewer': '17290688824834287099',
+};
 
 function parseArgs(argv) {
   const out = {
     root: REPO_ROOT,
     allowlist: null,
-    digest: ALLOWLIST_DIGEST,
+    digests: ALLOWLIST_DIGESTS,
     update: false,
     allowRaise: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const flag = argv[i];
     const value = argv[i + 1];
-    if (flag === '--root' || flag === '--allowlist' || flag === '--digest') {
+    if (flag === '--root' || flag === '--allowlist') {
       if (value === undefined) fail(`${flag} needs a value`);
       out[flag.slice(2)] = value;
+      i += 1;
+    } else if (flag === '--digests') {
+      if (value === undefined) fail(`${flag} needs a value`);
+      try {
+        out.digests = JSON.parse(value);
+      } catch {
+        fail('--digests needs a JSON object of scope -> decimal digest');
+      }
       i += 1;
     } else if (flag === '--update') {
       out.update = true;
@@ -220,10 +290,18 @@ try {
   fail(err.message);
 }
 
-if (!/^\d+$/.test(String(args.digest))) {
+if (
+  args.digests === null ||
+  typeof args.digests !== 'object' ||
+  Object.keys(args.digests).length === 0 ||
+  Object.values(args.digests).some((d) => !/^\d+$/.test(String(d)))
+) {
   fail(
-    'no digest pin. ALLOWLIST_DIGEST in scripts/check-module-size.mjs must be a decimal ' +
-      'u64 string; set it to 0 and run this script to read the true value from the failure.',
+    'no digest pin. ALLOWLIST_DIGESTS in scripts/check-module-size.mjs must be a non-empty ' +
+      "object of scope -> decimal u64 string. To read the true values, set it to a single " +
+      "placeholder entry such as { x: '0' } and run this script; the failure then prints every " +
+      'real value. EMPTYING it lands here instead, which reports nothing — the remedy this ' +
+      'message used to give.',
   );
 }
 
@@ -278,18 +356,27 @@ if (args.update) {
 
   writeFileSync(args.allowlist, renderAllowlist(allowlistText, next));
 
-  // The pin lives in this script, not in the allowlist (see ALLOWLIST_DIGEST):
+  // The pin lives in this script, not in the allowlist (see ALLOWLIST_DIGESTS):
   // a digest stored beside the rows it guards is circular. Rewrite it here so
   // the regeneration is one command, not one command plus a hand edit that the
   // next reader has to remember.
-  const nextDigest = allowlistDigest(next);
+  const nextDigests = allowlistDigests(next);
+  const nextBlock = `const ALLOWLIST_DIGESTS = {\n${[...nextDigests]
+    .map(([scope, d]) => `  '${scope}': '${d}',`)
+    .join('\n')}\n};`;
+  const nextDigest = [...nextDigests].map(([s2, d]) => `${s2}=${d}`).join(' ');
   const selfPath = join(args.root, 'scripts', 'check-module-size.mjs');
-  const PIN_RE = /^const ALLOWLIST_DIGEST = '\d+';$/m;
+  const PIN_RE = /^const ALLOWLIST_DIGESTS = \{[\s\S]*?^\};$/m;
   let pinned = false;
   try {
     const selfText = readFileSync(selfPath, 'utf8');
     if (PIN_RE.test(selfText)) {
-      writeFileSync(selfPath, selfText.replace(PIN_RE, `const ALLOWLIST_DIGEST = '${nextDigest}';`));
+      // A replacer FUNCTION, not a string: `$&` and friends are substitution
+      // patterns in a string replacement, so a scope containing `$&` would
+      // splice the matched block back into itself. Needs a directory named
+      // with `$&`, so it is unlikely rather than impossible -- and free to rule
+      // out. (The old code passed a pure-digit string, which had no such hazard.)
+      writeFileSync(selfPath, selfText.replace(PIN_RE, () => nextBlock));
       pinned = true;
     }
   } catch {
@@ -307,26 +394,45 @@ if (args.update) {
   );
   console.log(
     pinned
-      ? `check-module-size: ALLOWLIST_DIGEST re-pinned to ${nextDigest} in ${selfPath}. Commit both.`
-      : `check-module-size: no ALLOWLIST_DIGEST pin found under ${args.root}; the new digest is ${nextDigest}.`,
+      ? `check-module-size: ALLOWLIST_DIGESTS re-pinned in ${selfPath} (${nextDigests.size} scopes). Commit both.`
+      : `check-module-size: no ALLOWLIST_DIGESTS pin found under ${args.root}; the new digests are ${nextDigest}.`,
   );
   process.exit(0);
 }
 
 let failed = false;
 
-const actualDigest = allowlistDigest(allowlist);
-if (actualDigest !== String(args.digest)) {
+// Per SCOPE, not repo-wide (#3291). Only the scopes that actually moved are
+// reported, and only their lines need re-pinning -- which is the whole point:
+// two PRs touching different scopes now edit different lines of the object
+// above and git merges them, where one repo-wide pin made them conflict by
+// construction whatever they changed.
+const actualDigests = allowlistDigests(allowlist);
+const pinnedScopes = new Set(Object.keys(args.digests));
+const drifted = [];
+for (const [scope, digest] of actualDigests) {
+  if (String(args.digests[scope] ?? '') !== digest) drifted.push([scope, digest]);
+}
+// A scope that VANISHED from the allowlist but is still pinned is drift too --
+// otherwise deleting every row of a scope leaves a pin describing nothing and
+// the gate says nothing, which is the vacuity this repo keeps rediscovering.
+const orphaned = [...pinnedScopes].filter((s) => !actualDigests.has(s));
+if (drifted.length > 0 || orphaned.length > 0) {
   failed = true;
   const total = [...allowlist.values()].reduce((a, b) => a + b, 0);
+  const lines = drifted.map(([scope, d]) => `  '${scope}': '${d}',`).join('\n');
   console.error(`
-The allowlist digest is ${actualDigest} (${allowlist.size} rows, budgets total ${total}),
-but ALLOWLIST_DIGEST in scripts/check-module-size.mjs reads ${args.digest}.
+The allowlist has ${allowlist.size} rows, budgets total ${total}, and ${drifted.length + orphaned.length} scope(s)
+disagree with ALLOWLIST_DIGESTS in scripts/check-module-size.mjs.
 
-Raising a budget loosens this ratchet, so it must be visible in review: set
-ALLOWLIST_DIGEST to ${actualDigest} in the SAME commit and say in the PR why the
-module cannot be split. Lowering a budget or deleting a row is welcome and must
-update the digest too, so the pin keeps stating the real allowlist.
+Raising a budget loosens this ratchet, so it must be visible in review. Set these
+lines in the SAME commit and say in the PR why the module cannot be split:
+
+${lines || '  (none)'}
+${orphaned.length > 0 ? `\nPinned scopes with no rows left -- delete these lines:\n${orphaned.map((s) => `  '${s}'`).join('\n')}\n` : ''}
+Lowering a budget or deleting a row is welcome and must re-pin its scope too, so
+the pin keeps stating the real allowlist. Only the scopes listed above moved;
+every other line stays as it is.
 `);
 }
 
@@ -350,7 +456,7 @@ ${newOffenders.join('\n')}
 
 Split them (AGENTS.md house rule), or — only with a written justification in
 the PR — add a row to scripts/module-size-allowlist.txt and update
-ALLOWLIST_DIGEST in the same commit.
+the affected ALLOWLIST_DIGESTS entries in the same commit.
 `);
 }
 

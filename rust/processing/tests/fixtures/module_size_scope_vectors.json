@@ -1,0 +1,65 @@
+{
+  "_comment": "Shared scope-rule vectors for the module-size ratchet's two halves: allowlist_scope in rust/processing/tests/module_size_ratchet.rs and allowlistScope in scripts/lib/module-size-ratchet.mjs (#3291). Both must return the same scope for every path here. The digest-table parity test cannot see a scope-rule divergence on its own: it runs the shared rule only over the RUST allowlist, which contains zero packages/ rows, so the packages branch is dead on that input and deleting it leaves every digest byte-identical. These vectors include the paths production data does not.",
+  "cases": [
+    {
+      "path": "packages/export/src/step.ts",
+      "scope": "packages/export"
+    },
+    {
+      "path": "packages/export/src/deep/nested/a.ts",
+      "scope": "packages/export"
+    },
+    {
+      "path": "packages/parser/src/b.ts",
+      "scope": "packages/parser"
+    },
+    {
+      "path": "apps/viewer/src/components/c.tsx",
+      "scope": "apps/viewer"
+    },
+    {
+      "path": "apps/server/src/d.rs",
+      "scope": "apps/server"
+    },
+    {
+      "path": "rust/geometry/src/e.rs",
+      "scope": "rust/geometry"
+    },
+    {
+      "path": "rust/core/src/f.rs",
+      "scope": "rust/core"
+    },
+    {
+      "path": "scripts/g.ts",
+      "scope": "scripts"
+    },
+    {
+      "path": "tools/h/i.ts",
+      "scope": "tools"
+    },
+    {
+      "path": "top-level.ts",
+      "scope": "top-level.ts"
+    },
+    {
+      "path": "packages",
+      "scope": "packages"
+    },
+    {
+      "path": "packages/",
+      "scope": "packages/"
+    },
+    {
+      "path": "",
+      "scope": "other"
+    },
+    {
+      "path": "/packages/a/src/x.ts",
+      "scope": "other"
+    },
+    {
+      "path": "//a/b",
+      "scope": "other"
+    }
+  ]
+}

@@ -387,11 +387,8 @@ impl IfcAPI {
                     // orphan-type pass; the RepresentationMaps attr-6 decode +
                     // referenced-filter happens later in
                     // `collect_type_geometry_jobs_from_spans`.
-                    if type_name.ends_with("TYPE") || type_name.ends_with("STYLE") {
-                        let type_ty = IfcType::from_str(type_name);
-                        if type_ty.is_subtype_of(IfcType::IfcTypeProduct) {
-                            type_candidate_spans.push((id, start, end, type_ty));
-                        }
+                    if let Some(type_ty) = ifc_lite_core::type_product_ifc_type(type_name) {
+                        type_candidate_spans.push((id, start, end, type_ty));
                     }
                     if has_geometry_by_name(type_name) && !disabled_types.contains(type_name) {
                         let ifc_type = IfcType::from_str(type_name);

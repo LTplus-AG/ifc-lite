@@ -230,12 +230,20 @@ pub fn stream_export_model_with_options(
                         }
                     }
                 }
-                // An IfcTypeProduct subtype carrying RepresentationMaps (attr 6). The
-                // cheap suffix pre-filter mirrors the geometry pass and keeps the
-                // is_subtype_of check off the hot path for the non-type majority.
-                _ if (type_name.ends_with("TYPE") || type_name.ends_with("STYLE"))
-                    && IfcType::from_str(type_name).is_subtype_of(IfcType::IfcTypeProduct) =>
-                {
+                "IFCPROJECT" => project_id = project_id.or(Some(id)),
+                // An IfcTypeProduct subtype carrying RepresentationMaps (attr 6).
+                // `type_product_ifc_type` keeps its own cheap suffix pre-filter, so
+                // the non-type majority still pays only that.
+                //
+                // Asked once, in the arm body rather than in a match guard: a guard
+                // cannot bind, so guarding on `.is_some()` forced a second identical
+                // call to get the value. Shares `type_product_ifc_type` with the
+                // processor's type-geometry gate, so this pass cannot admit a
+                // different set than the one that gets meshed (#1518, #3187).
+                _ => {
+                    let Some(type_ty) = ifc_lite_core::type_product_ifc_type(type_name) else {
+                        continue;
+                    };
                     let t = match decoder.decode_at_uncached(start, end) {
                         Ok(e) => e,
                         Err(_) => continue,
@@ -246,7 +254,7 @@ pub fn stream_export_model_with_options(
                     }
                     type_product_candidates.push(TypeProductCandidate {
                         express_id: id,
-                        ifc_type: IfcType::from_str(type_name),
+                        ifc_type: type_ty,
                         global_id: opt_string(t.get(0)),
                         name: opt_string(t.get(2)),
                         description: opt_string(t.get(3)),
@@ -254,8 +262,6 @@ pub fn stream_export_model_with_options(
                         pset_def_ids: ref_list(t.get(5)),
                     });
                 }
-                "IFCPROJECT" => project_id = project_id.or(Some(id)),
-                _ => {}
             }
         }
     }

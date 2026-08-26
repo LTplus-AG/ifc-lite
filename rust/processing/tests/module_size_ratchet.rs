@@ -464,7 +464,13 @@ fn digest_rows(rows: &BTreeMap<String, usize>) -> u64 {
 /// because they all rewrote the same line.
 ///
 /// This half is sharded because the two gates are twins and a twin that drifts
-/// is worse than either shape -- NOT because this file is the busier one. An
+/// is worse than either shape -- NOT because this file is the busier one.
+///
+/// Note the residual is WORSE here than on the TS side, for a reason that has
+/// nothing to do with how often the file changes: git cannot auto-merge two
+/// edits on adjacent lines, and this table has 6 entries against the TS table's
+/// 37, so 5 of its 15 cross-scope pairs (33%) are adjacent versus 36 of 666
+/// (5.4%) there. Sharding takes both from 100%; it does not take either to 0. An
 /// earlier draft of this comment claimed it was, on a miscount: `git log -200
 /// -- <path>` limits to 200 commits TOUCHING that path, so it returned each
 /// file's whole history and compared seven weeks of this file against three

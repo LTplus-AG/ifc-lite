@@ -15,7 +15,8 @@
 # scripts/check-module-size.mjs, which must be updated in the same commit —
 # that is the point: loosening the ratchet costs a reviewable line. The pin is
 # sharded per packages/<name>, apps/<name> and rust/<crate>, so an edit here
-# only ever moves ONE of its entries and PRs in other scopes are unaffected.
+# moves ONE of its entries. Two PRs in different scopes then merge cleanly
+# unless their entries sit on ADJACENT lines, which git cannot auto-merge.
    522 apps/viewer-embed/src/bridge/handler.ts
    439 apps/viewer-embed/src/components/EmbedViewer.tsx
    481 apps/viewer/src/components/extensions/ExtensionsPanel.tsx

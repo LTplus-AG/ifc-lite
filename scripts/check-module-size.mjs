@@ -88,7 +88,6 @@ import {
   countLines,
   isExempt,
   parseAllowlist,
-  allowlistDigest,
   allowlistDigests,
   evaluate,
   staleRows,
@@ -137,11 +136,21 @@ const SOURCE_RE = /\.(ts|tsx|mts|cts)$/;
  * `rust/<crate>` (#3291). A single repo-wide digest had the same visibility but
  * coupled every PR touching any budget to every other one: they all rewrote the
  * same pinned line, so they conflicted by construction whatever they changed.
- * With one line per scope, two PRs in DIFFERENT scopes edit different lines and
- * git merges them. Verified by running the same two-branch probe three ways —
- * old scheme: `CONFLICT (content) in scripts/check-module-size.mjs`; sharded
- * across scopes: clean; sharded within ONE scope: still conflicts. That last
- * one is the honest limit of this change.
+ * With one line per scope, two PRs in different scopes usually edit different
+ * lines and git merges them. THE RESIDUAL IS LARGER THAN "same scope", which is
+ * all an earlier draft of this comment admitted to. Measured with a two-branch
+ * probe, one budget raised per side:
+ *
+ *   old scheme, any two scopes      CONFLICT
+ *   same scope                      CONFLICT
+ *   ADJACENT pin lines              CONFLICT  <- git needs one unchanged line
+ *   two or more lines apart         clean
+ *
+ * So the residual is same-scope PLUS adjacent-scope: 36 of the 666 cross-scope
+ * pairs here (5.4%), and 5 of 15 (33%) in the 6-entry Rust table, where a small
+ * table makes adjacency likely. Still a large improvement on 100%, and the
+ * remedy is one line either way, but it is not "PRs in other scopes are
+ * unaffected".
  *
  * TO RECOMPUTE: `pnpm lint:module-size-baseline`, which rewrites the allowlist
  * and this constant together. By hand: replace the object with a single

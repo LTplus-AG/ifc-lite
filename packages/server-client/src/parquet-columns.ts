@@ -18,9 +18,27 @@ import type { ArrowTableLike } from './parquet-tables.js';
 /**
  * Absent marker for the two source ids; mirrors the constants in
  * `apps/server/src/services/parquet_schema.rs` and
- * `packages/cache/src/sections/geometry.ts`. `#4294967295` is a legal STEP
- * instance name, so this collision is practically unreachable rather than
- * impossible — chosen over `0`, which IS reachable.
+ * `packages/cache/src/sections/geometry.ts`.
+ *
+ * IT IS A REAL COLLISION, not a theoretical one, and the trade is deliberate.
+ * `#4294967295` is a legal STEP instance name: `fast_parse_tests.rs:57` asserts
+ * u32::MAX parses as a valid express id, and `step_tests.rs:436` writes one. A
+ * mesh whose source item is exactly that id decodes here as ABSENT and loses
+ * its drill target.
+ *
+ * Taken anyway, because the alternative is worse in the direction that matters.
+ * The realistic encodings are: `0` (reachable — `IfcMaterialLayer.Material` is
+ * OPTIONAL and an air gap arrives as 0, which is why `with_style_metadata`
+ * filters it), a nullable column (whose values buffer parquet-wasm 0.7.x fills
+ * with the NEIGHBOURING row's id — a wrong drill target, worse than none), or
+ * a parallel presence column per id (two more columns on every mesh row to
+ * disambiguate one value in 4.29 billion). This loses provenance for one
+ * unreachable id; the others corrupt it or cost every row.
+ *
+ * Note `packages/cache/src/sections/geometry.ts:165` states the stronger claim
+ * — "No STEP express id can reach 0xFFFFFFFF" — which is false for the same
+ * reason. That is pre-existing and out of scope here, but it is the same
+ * assumption and should be corrected there too.
  */
 export const ABSENT_SOURCE_ID = 0xffffffff;
 

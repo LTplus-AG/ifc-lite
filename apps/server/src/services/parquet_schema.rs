@@ -15,7 +15,14 @@
 use arrow::datatypes::{DataType, Field, Schema};
 
 /// Absent marker for the two source ids. Mirrors `ABSENT_SOURCE_ID` in
-/// `packages/cache/src/sections/geometry.ts`; no STEP express id can reach it.
+/// `packages/cache/src/sections/geometry.ts`.
+///
+/// A REAL collision, taken deliberately: `#4294967295` is a legal instance name
+/// (`fast_parse_tests.rs:57` asserts u32::MAX parses; `step_tests.rs:436`
+/// writes one), so a mesh sourced from exactly that id loses its drill target.
+/// The alternatives are worse: `0` is reachable, a nullable column leaks the
+/// neighbouring row's id on parquet-wasm 0.7.x, and presence columns cost two
+/// per row to disambiguate one value in 4.29 billion.
 pub(super) const ABSENT_SOURCE_ID: u32 = 0xFFFF_FFFF;
 use std::sync::Arc;
 

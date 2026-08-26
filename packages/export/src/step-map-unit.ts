@@ -255,6 +255,12 @@ export function normalizeMapUnitName(unitName: string): string {
  */
 export function findLengthUnitReference(preferredUnitName: string, effective: EffectiveEntityIndex, ctx: GeorefLookupContext): number | null {
   if (!ctx.entityExtractor) return null;
+  // An empty label is not a unit name, and it is reachable: the caller guards
+  // `crs.mapUnit !== undefined`, not `!== ''`, and `normalizeMapUnitName('')`
+  // is `''`. Both comparisons below fold a non-string Name attribute to `''`
+  // too, so without this an empty MapUnit binds to whichever unit happens to
+  // have a malformed name rather than to nothing.
+  if (preferredUnitName === '') return null;
 
   // Only source records carry the bytes `extractEntity` reads, so an
   // overlay-created project is skipped rather than shadowing the file's own.

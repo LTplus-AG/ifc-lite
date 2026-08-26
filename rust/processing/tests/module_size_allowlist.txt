@@ -365,12 +365,3 @@
 # the bug being fixed: geometry is client-side only, so that path is the only
 # way a viewer learns its drawing was clipped.
      757 rust/wasm-bindings/src/zero_copy/symbolic.rs
-# +65: #1910 follow-up — buildPrePassOnce's combined_pre_pass is a third
-# geometry-job discovery path with the same has_geometry_by_name gap as the
-# serial/sharded scans; adds the instance-level exception plus its regression
-# test (combined_pre_pass_issue_1910_tests).
-# +22: #1910 review follow-up — the exception test only proved a storey WITH a
-# Representation gets a job, so forcing nth_attribute_is_present to always
-# report "present" left it passing (demonstrated by mutation). Adds the null-
-# Representation negative case and the shared storey_jobs helper it needs.
-     430 rust/wasm-bindings/src/api/styling/prepass.rs

@@ -346,7 +346,7 @@ impl IfcAPI {
                     if site_position.is_none() {
                         site_position = Some((id, start, end));
                     }
-                    let ifc_type = IfcType::from_str(type_name);
+                    let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
                     buffered_jobs.push((id, start, end, ifc_type));
                     total_jobs += 1;
                 }
@@ -391,7 +391,7 @@ impl IfcAPI {
                         type_candidate_spans.push((id, start, end, type_ty));
                     }
                     if has_geometry_by_name(type_name) && !disabled_types.contains(type_name) {
-                        let ifc_type = IfcType::from_str(type_name);
+                        let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
                         // We don't bucket by simple/complex here — the host
                         // distributes work across N geometry workers anyway,
                         // and the simple/complex split was a heuristic for
@@ -413,7 +413,7 @@ impl IfcAPI {
                         // with no `IfcBuildingElement` children at all) must
                         // still be scheduled for meshing, or the browser
                         // viewer renders nothing despite a correct scene tree.
-                        let ifc_type = IfcType::from_str(type_name);
+                        let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
                         buffered_jobs.push((id, start, end, ifc_type));
                         total_jobs += 1;
                     }

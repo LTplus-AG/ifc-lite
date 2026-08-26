@@ -240,11 +240,10 @@
    469 packages/ids/src/audit/coherence/index.ts
    904 packages/ids/src/audit/ifc-schema/index.ts
    566 packages/ids/src/audit/structural/index.ts
-   497 packages/ids/src/constraints/index.ts
    467 packages/ids/src/facets/property-facet.ts
-   767 packages/ids/src/parser/xml-parser.ts
-   684 packages/ids/src/translation/service.ts
-   697 packages/ids/src/types.ts
+   743 packages/ids/src/parser/xml-parser.ts
+   624 packages/ids/src/translation/service.ts
+   639 packages/ids/src/types.ts
    842 packages/ids/src/validation/validator.ts
    468 packages/ifcx/src/federated-composition.ts
    412 packages/ifcx/src/geometry-extractor.ts

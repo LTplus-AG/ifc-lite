@@ -2,9 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * Core types for columnar data structures
- */
+/** Core types for columnar data structures */
 
 export enum IfcTypeEnum {
   // Spatial structure
@@ -189,6 +187,8 @@ export enum QuantityType {
   Count = 3,
   Weight = 4,
   Time = 5,
+  /** `IfcQuantityNumber` — a dimensionless count-like value, IFC4X3+ only. */
+  Number = 6,
 }
 
 export enum RelationshipType {

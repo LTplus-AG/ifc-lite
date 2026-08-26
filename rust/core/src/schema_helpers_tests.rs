@@ -521,6 +521,77 @@ fn an_unreadable_record_changes_nothing() {
     }
 }
 
+/// #3187 -- the COMPLETE set of keywords whose type-product classification the
+/// legacy-aware predicate changes, enumerated rather than sampled.
+///
+/// `type_product_ifc_type` replaced a bare
+/// `IfcType::from_str(kw).is_subtype_of(IfcTypeProduct)` at six gates at once,
+/// so the honest question is not "does IfcDoorStyle work now" but "what ELSE
+/// did those gates start admitting". Sweeping the whole generated catalog plus
+/// the whole legacy table answers it: the two expressions agree everywhere
+/// except the three IFC2X3 type products IFC4X3 dropped. `legacy_aware_ifc_type`
+/// falls through to `from_str` for anything the legacy table does not name, so
+/// a schema entity's answer cannot change; only a legacy keyword's can.
+#[test]
+fn the_legacy_aware_type_product_gate_widens_by_exactly_three_keywords() {
+    const EXPECTED_NEW: [(&str, IfcType); 3] = [
+        ("IFCDOORSTYLE", IfcType::IfcDoorType),
+        ("IFCWINDOWSTYLE", IfcType::IfcWindowType),
+        ("IFCBUILDINGELEMENTTYPE", IfcType::IfcBuiltElementType),
+    ];
+
+    // The pre-fix expression, kept verbatim so the two can be compared.
+    fn bare_gate(kw: &str) -> bool {
+        (kw.ends_with("TYPE") || kw.ends_with("STYLE"))
+            && IfcType::from_str(kw).is_subtype_of(IfcType::IfcTypeProduct)
+    }
+
+    // The whole legacy table, walked -- not a hand-copy of it. A hand-copied
+    // list can only assert the cheap direction (every listed name is legacy)
+    // and stays green when the table grows a name the list omits, which is
+    // exactly the case that widens these six gates without anyone noticing.
+    // `LEGACY_ENTITY_NAMES` is re-derived from the match arms by
+    // `legacy_entities::legacy_entity_name_tests::legacy_entity_names_match_the_lookup_arms`,
+    // so a new arm reaches this sweep and, if it is a `TYPE`/`STYLE` name,
+    // reds the widening-set assertion below.
+    let legacy = crate::LEGACY_ENTITY_NAMES.iter().copied();
+
+    let mut widened: Vec<(&str, IfcType)> = Vec::new();
+    let names: Vec<String> = crate::IFC_TYPES
+        .iter()
+        .map(|t: &IfcType| t.name().to_uppercase())
+        .collect();
+    for kw in names.iter().map(String::as_str).chain(legacy) {
+        match (bare_gate(kw), type_product_ifc_type(kw)) {
+            (false, Some(ty)) => widened.push((kw, ty)),
+            (true, Some(ty)) => assert_eq!(
+                ty,
+                IfcType::from_str(kw),
+                "{kw} was already admitted; its resolved type must not have moved"
+            ),
+            (true, None) => panic!("{kw}: the legacy-aware gate NARROWED, dropping geometry"),
+            (false, None) => {}
+        }
+    }
+
+    // Compared as sets (both sides sorted): the sweep's order follows
+    // `LEGACY_ENTITY_NAMES`, and reordering that const is not a defect.
+    widened.sort_by_key(|&(kw, _)| kw);
+    let mut expected = EXPECTED_NEW.to_vec();
+    expected.sort_by_key(|&(kw, _)| kw);
+    assert_eq!(widened, expected, "unexpected widening set");
+
+    for (kw, _) in EXPECTED_NEW {
+        // No double-render: none of the three is also an ordinary geometry job.
+        assert!(!has_geometry_by_name(kw), "{kw} would render twice");
+        // Nor an ordinary product row in the attribute export's pass 2.
+        assert!(
+            !legacy_aware_ifc_type(kw).is_subtype_of(IfcType::IfcProduct),
+            "{kw} would get both a product row and a type-product row"
+        );
+    }
+}
+
 /// The unstated invariant `legacy_aware_ifc_type_from_record` rests on.
 ///
 /// That function short-circuits on `!matches!(decoded, IfcType::Unknown(_))`,

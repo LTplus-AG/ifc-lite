@@ -30,6 +30,7 @@ mod properties;
 mod quick_metadata;
 mod site_local;
 
+pub use quick_metadata::is_quick_spatial_type_ci;
 pub use site_local::convert_mesh_to_site_local;
 
 use jobs::{build_color_updates_for_jobs, process_entity_job};
@@ -42,8 +43,7 @@ use opening_filter::apply_opening_filter;
 use properties::resolve_space_zone_properties_lazy;
 use quick_metadata::{
     build_quick_spatial_tree_node, extract_name_from_args, extract_storey_elevation_from_args,
-    is_quick_spatial_type_ci, parse_step_arguments, parse_step_ref, parse_step_ref_list,
-    QuickSpatialNodeEntry,
+    parse_step_arguments, parse_step_ref, parse_step_ref_list, QuickSpatialNodeEntry,
 };
 use site_local::{
     translation_is_nonidentity, MODEL_RTC_MESH_COORDINATE_SPACE, RAW_IFC_MESH_COORDINATE_SPACE,

@@ -10,6 +10,7 @@
 import type { StringTable } from './string-table.js';
 import { IfcTypeEnum, EntityFlags, IfcTypeEnumFromString, IfcTypeEnumToString } from './types.js';
 import { IFC_ENTITY_NAMES } from './ifc-entity-names.js';
+import { exactNameOfRow } from './exact-type-name.js';
 
 /** Convert UPPERCASE IFC type name to PascalCase using the generated schema name map */
 function normalizeIfcUpperCase(upper: string): string {
@@ -45,6 +46,12 @@ export interface EntityTable {
   getDescription(expressId: number): string;
   getObjectType(expressId: number): string;
   getTypeName(expressId: number): string;
+  /** The class the file actually declares — what an EXPORT needs, where
+   *  {@link getTypeName} answers what GROUPING needs. `exact-type-name.ts`
+   *  documents the difference and holds the one fallback for table shapes
+   *  that cannot answer (hence optional, as with {@link rawTypeName}); read
+   *  it through `exactTypeName()`, never directly. */
+  getExactTypeName?(expressId: number): string;
   /** Element Tag (IfcElement/IfcTypeProduct layouts), '' when absent. Optional:
    *  populated by server-parsed stores (issue #1765); the WASM path resolves
    *  Tag on demand from source instead. */
@@ -325,6 +332,11 @@ export function entityTableFromColumns(
       if (enumName !== 'Unknown') return enumName;
       return strings.get(rawTypeName[idx]) || 'Unknown';
     },
+    // A retype is a deliberate restatement of the class, so it outranks the
+    // parsed one here exactly as it does in `getTypeName` above — and
+    // `setTypeOverride` already stored it PascalCase-canonicalised.
+    getExactTypeName: (id) =>
+      typeOverrides.get(id) ?? exactNameOfRow(strings, rawTypeName, typeEnum, indexOfId(id)),
     hasGeometry: (id) => {
       const idx = indexOfId(id);
       return idx >= 0 ? (flags[idx] & EntityFlags.HAS_GEOMETRY) !== 0 : false;

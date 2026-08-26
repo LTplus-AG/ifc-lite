@@ -110,3 +110,81 @@ describe('ifcMeasureToXsdTypes agrees with the generated attribute XSD table', (
     expect(literalCastsUnderAnyType(EPOCH_LITERAL, date)).toBe(false);
   });
 });
+
+/**
+ * The union across schema versions was itself a disagreement, in the
+ * opposite direction from the one #3250 fixed.
+ *
+ * `IfcOwnerHistory.CreationDate` carries `["xs:integer"]` under IFC2X3 but
+ * `["xs:dateTime","xs:integer"]` under IFC4 and IFC4X3. A measure-keyed
+ * answer of `['xs:integer','xs:dateTime']` for EVERY version therefore let an
+ * ISO-8601 date-time literal pass the property facet's strict-cast gate on an
+ * IFC2X3 file while the attribute facet rejected it — the exact split the
+ * mapping is supposed to mirror away. `ifcMeasureToXsdTypes` now takes the
+ * schema version, so these pin the per-version answer rather than a union
+ * that is wrong somewhere.
+ */
+describe('ifcMeasureToXsdTypes answers IfcTimeStamp per schema version', () => {
+  /** An ISO-8601 date-time — accepted by the IFC4 slot, NOT by the IFC2X3 one. */
+  const DATETIME_LITERAL = '2021-01-01T00:00:00Z';
+
+  it('matches the authoritative CreationDate slot exactly, in every version', () => {
+    for (const version of VERSIONS) {
+      const authTypes = getAttributeXsdTypes(version, 'IfcOwnerHistory', 'CreationDate')!;
+      const handTypes = ifcMeasureToXsdTypes('IFCTIMESTAMP', version);
+      expect(
+        [...handTypes].sort(),
+        `${version}: the property facet's cast gate and the attribute facet's ` +
+          `table disagree on IfcTimeStamp, so one file gets two verdicts`
+      ).toEqual([...authTypes].sort());
+    }
+  });
+
+  it('splits on the date-time literal exactly where the schemas do', () => {
+    // The case that fails against a version-blind union: IFC2X3 must refuse
+    // what IFC4 accepts. Asserted through the same cast helper the facets
+    // use, not by comparing type lists, so it pins the observable verdict.
+    expect(
+      literalCastsUnderAnyType(DATETIME_LITERAL, ifcMeasureToXsdTypes('IFCTIMESTAMP', 'IFC2X3')),
+      `IFC2X3 accepted ${DATETIME_LITERAL}; its CreationDate slot is xs:integer alone, ` +
+        `so the attribute facet rejects it on the same file`
+    ).toBe(false);
+    for (const version of ['IFC4', 'IFC4X3'] as const) {
+      expect(
+        literalCastsUnderAnyType(DATETIME_LITERAL, ifcMeasureToXsdTypes('IFCTIMESTAMP', version)),
+        `${version} refused ${DATETIME_LITERAL}, which its CreationDate slot accepts`
+      ).toBe(true);
+    }
+  });
+
+  it('still accepts the epoch integer in every version — the #3250 regression', () => {
+    // The narrowing above must not walk back the original fix: an epoch
+    // second is the value space of IfcTimeStamp and every schema takes it.
+    for (const version of VERSIONS) {
+      expect(
+        literalCastsUnderAnyType(EPOCH_LITERAL, ifcMeasureToXsdTypes('IFCTIMESTAMP', version)),
+        `${version} rejects ${EPOCH_LITERAL} — the property facet can never pass a timestamp check`
+      ).toBe(true);
+    }
+    // And an ISO duration stays refused everywhere, per-version included.
+    for (const version of VERSIONS) {
+      expect(
+        literalCastsUnderAnyType(DURATION_LITERAL, ifcMeasureToXsdTypes('IFCTIMESTAMP', version))
+      ).toBe(false);
+    }
+  });
+
+  it('an unknown or absent version keeps the permissive union (documented fallback)', () => {
+    // A caller with no version must not silently get IFC2X3's stricter
+    // answer — a gate that cannot tell which schema it is reading should
+    // defer, not reject a value some schema allows.
+    expect([...ifcMeasureToXsdTypes('IFCTIMESTAMP', undefined)].sort()).toEqual([
+      'xs:dateTime',
+      'xs:integer',
+    ]);
+    expect([...ifcMeasureToXsdTypes('IFCTIMESTAMP', 'IFC4X9')].sort()).toEqual([
+      'xs:dateTime',
+      'xs:integer',
+    ]);
+  });
+});

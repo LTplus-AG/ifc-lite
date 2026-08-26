@@ -141,7 +141,19 @@ const MEASURE_XSD_OVERRIDES: ReadonlyMap<string, readonly string[]> = new Map([
   ['IFCURIREFERENCE', ['xs:string']],
 ]);
 
-export function ifcMeasureToXsdTypes(measure: string | undefined): readonly string[] {
+/**
+ * `IfcTimeStamp`'s XSD types are the one answer here that depends on the
+ * schema version, so the mapper takes it rather than returning a union that
+ * is wrong somewhere. See the `IFCTIMESTAMP` branch below.
+ *
+ * Callers that genuinely have no version pass `undefined` and get the union
+ * across versions — permissive, which for a cast GATE means it defers rather
+ * than rejecting a value some schema allows.
+ */
+export function ifcMeasureToXsdTypes(
+  measure: string | undefined,
+  schemaVersion?: string | undefined
+): readonly string[] {
   if (!measure) return [];
   const m = measure.toUpperCase();
   const override = MEASURE_XSD_OVERRIDES.get(m);
@@ -157,15 +169,26 @@ export function ifcMeasureToXsdTypes(measure: string | undefined): readonly stri
   // of the name, which made this gate reject every value a timestamp property
   // can legally hold. The generated `xsdTypesByEntity` table — the SAME
   // question, answered from upstream `SchemaInfo.Attributes.g.cs`, and what
-  // the attribute facet gates on — answers per SLOT, and the slots differ:
-  // `CreationDate` carries `xs:integer` in IFC2X3 and `{xs:dateTime,
-  // xs:integer}` in IFC4 and IFC4X3, while `IfcOwnerHistory.LastModifiedDate`
-  // carries `xs:integer` in all three. This map answers per MEASURE, so it
-  // returns the union over those slots: a strict-cast gate that rejects a
-  // literal the attribute facet accepts on the same file is the failure this
-  // mirrors it to avoid. Every slot accepts `xs:integer`, so the union costs
-  // no slot a literal it would otherwise have taken.
-  if (m === 'IFCTIMESTAMP') return ['xs:integer', 'xs:dateTime'];
+  // the attribute facet gates on — answers PER SCHEMA VERSION, and it splits:
+  // `IfcOwnerHistory.CreationDate` carries `["xs:integer"]` under IFC2X3 and
+  // `["xs:dateTime","xs:integer"]` under IFC4 and IFC4X3.
+  //
+  // So there is no single correct answer to give, and taking the union ACROSS
+  // versions would recreate the disagreement in the other direction: under
+  // IFC2X3 an ISO-8601 date-time literal would pass this gate and be rejected
+  // by the attribute facet, on the same file. Swapping a total false-REJECT
+  // for a narrower false-ACCEPT is not a fix for "the two gates must agree",
+  // so answer per version instead and let the caller supply it.
+  //
+  // With no version the union is returned: a caller that cannot say which
+  // schema it is reading gets the permissive answer, which for a gate means
+  // deferring rather than rejecting a value some schema allows.
+  if (m === 'IFCTIMESTAMP') {
+    if (schemaVersion === undefined) return ['xs:integer', 'xs:dateTime'];
+    return schemaVersion.toUpperCase() === 'IFC2X3'
+      ? ['xs:integer']
+      : ['xs:integer', 'xs:dateTime'];
+  }
   // All numeric measures (REAL, *MEASURE, *RATIO) accept doubles.
   if (m === 'IFCREAL' || m.endsWith('MEASURE') || m.endsWith('RATIO')) {
     return ['xs:double'];

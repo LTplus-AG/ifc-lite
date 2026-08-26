@@ -82,22 +82,21 @@ const LEXICAL_OVERRIDES: Record<string, readonly string[]> = {
 const SCHEMA_DIVERGENT = new Set(['IFCCOUNTMEASURE']);
 
 /**
- * Measures whose gate is deliberately a SUPERSET of what the EXPRESS base
- * alone implies, because a second gate over the same slot accepts more.
+ * Measures whose no-version answer is deliberately a SUPERSET of what the
+ * EXPRESS base alone implies.
  *
- * `TYPE IfcTimeStamp = INTEGER;` in every schema, so the sweep below would
- * settle for `xs:integer`. The cast gate returns the wider union on purpose,
- * because this map is keyed by MEASURE while the generated `xsdTypesByEntity`
- * table — the same question answered from upstream, and what the ATTRIBUTE
- * facet gates on — is keyed by SLOT, and the slots disagree with each other:
- * `CreationDate` carries `["xs:integer"]` in IFC2X3 but
- * `["xs:dateTime","xs:integer"]` in IFC4 and IFC4X3 (on `IfcOwnerHistory`,
- * `IfcWorkControl`, `IfcWorkPlan` and `IfcWorkSchedule`), while
- * `IfcOwnerHistory.LastModifiedDate` carries `["xs:integer"]` in all three.
- * One measure-keyed answer must therefore be the union over those slots, and
- * only the union avoids rejecting a `dateTime` literal that IFC4
- * `CreationDate` accepts. Every slot accepts `xs:integer`, so no slot loses a
- * literal it would have taken.
+ * `TYPE IfcTimeStamp = INTEGER;` in every schema, so this sweep — which calls
+ * `ifcMeasureToXsdTypes` with no schema version — would settle for
+ * `xs:integer`. The mapper's versionless answer is the union across versions
+ * instead, because the authoritative attribute table splits:
+ * `IfcOwnerHistory.CreationDate` is `["xs:integer"]` under IFC2X3 and
+ * `["xs:dateTime","xs:integer"]` under IFC4 and IFC4X3. A caller that cannot
+ * say which schema it is reading should defer rather than reject a value some
+ * schema allows.
+ *
+ * The per-version answers are NOT policed here — `xsd-cast-measure-map.test.ts`
+ * pins each one against that table directly, which is the check that would
+ * catch the union being handed back for IFC2X3.
  */
 const SUPERSET_OVERRIDES: Record<string, readonly string[]> = {
   IFCTIMESTAMP: ['xs:integer', 'xs:dateTime'],

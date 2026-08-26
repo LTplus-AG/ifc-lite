@@ -176,26 +176,20 @@ export function serializeValue(value: StepValue): string {
  * Escape a string for STEP format.
  *
  * Backslash and single-quote are doubled per ISO-10303-21. Control characters
- * (CR/LF and other C0 codes plus DEL) are replaced by a space — ONE space per
- * control character, not one per run — so a value can never inject a physical
- * line break into the line-oriented STEP output (matching the export package's
- * escaper and `ifc_lite_export::step_text::escape`) — a raw newline in a
- * header or attribute value would otherwise split one record across two
- * lines. A run collapsed to a single space (`/[...]+/`, which this did until
- * #3284) silently loses length the Rust half preserves, so the same value
- * written by the two halves differed; neither is mandated by ISO 10303-21
- * 6.3.3.4, but preserving the count is the more faithful of the two and the
- * doc claim of parity below has to be true of one of them.
+ * (CR/LF and other C0 codes plus DEL) become ONE space EACH, not one per run,
+ * so a value cannot inject a line break and split one record across two.
+ * Collapsing a run (`/[...]+/`, which this did until #3284) loses length that
+ * `ifc_lite_export::step_text::escape` preserves, so the two halves wrote the
+ * same value differently. ISO 10303-21 6.3.3.4 mandates neither; per-character
+ * is the more faithful, and the parity claim below must be true of one.
  *
- * ISO 10303-21 6.3.3.4 restricts a string literal's plain-text bytes to the
- * "basic graphic" range 32-126; every other character is a control directive
- * (`\X\HH`, `\X2\HHHH\X0\`, `\X4\HHHHHHHH\X0\`), never a raw byte —
- * buildingSMART's IFC string-encoding guidance states the same for
- * IFC2X3/IFC4/IFC4X3. A reader that treats the file's bytes as ISO-8859-1 —
- * the byte encoding the base standard and most real consumers assume — turns
- * a raw UTF-8 multi-byte sequence into mojibake or a broken parse (reported,
- * reproduced in real IFC tooling: IfcOpenShell#699/#1016, files rejected by
- * Solibri). Matches `@ifc-lite/export`'s `escapeStepString`.
+ * ISO 10303-21 6.3.3.4 restricts a literal's plain-text bytes to the "basic
+ * graphic" range 32-126; anything else is a control directive (`\X\HH`,
+ * `\X2\HHHH\X0\`, `\X4\HHHHHHHH\X0\`), never a raw byte, and buildingSMART
+ * says the same for IFC2X3/IFC4/IFC4X3. A reader decoding as ISO-8859-1 (what
+ * the base standard and most consumers assume) turns raw UTF-8 into mojibake or
+ * a broken parse: IfcOpenShell#699/#1016, files rejected by Solibri. Matches
+ * `@ifc-lite/export`'s `escapeStepString`.
  */
 function escapeStepString(str: string): string {
   const escaped = str

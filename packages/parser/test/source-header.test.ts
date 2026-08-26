@@ -489,7 +489,6 @@ describe('the quote-aware scan does not lose the header to its own state (#3284)
     expect(nbsp?.schemaIdentifiers ?? []).toEqual([]);
   });
 
-
   it('a long s is not folded to S, so it cannot fake a keyword', () => {
     // 'ſ'.toUpperCase() is 'S', so a full Unicode fold reads ENDſEC as ENDSEC
     // and truncates the header before FILE_SCHEMA. 10303-21 case-insensitivity

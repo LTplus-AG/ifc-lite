@@ -146,6 +146,7 @@ pub(crate) fn detect_schema(content: &[u8]) -> String {
         //
         // Scanned as bytes rather than through `from_utf8_lossy`, so an offset
         // here means the same thing it means in `head`.
+        //
         // Bounded to the FILE_SCHEMA record. An unbounded scan takes the
         // first apostrophe anywhere after the keyword, so a record with no
         // label at all borrows the next record's first string:
@@ -173,10 +174,17 @@ pub(crate) fn detect_schema(content: &[u8]) -> String {
                 b'(' => depth += 1,
                 b')' => {
                     depth -= 1;
-                    if depth == 0 {
-                        break; // record closed with no label
+                    // `<= 0` rather than `== 0`: a stray leading `)` puts depth
+                    // at -1, which `== 0` can never bring back, so the scan ran
+                    // on into the next record and the bound did nothing.
+                    if depth <= 0 {
+                        break;
                     }
                 }
+                // A record with no parens at all never raises depth, so without
+                // this the terminator is not a stop and `FILE_SCHEMA;` borrows
+                // the next record's first string just as the unbounded scan did.
+                b';' if depth == 0 => break,
                 _ => {}
             }
             i += 1;
@@ -185,9 +193,17 @@ pub(crate) fn detect_schema(content: &[u8]) -> String {
             // `''` is an escaped apostrophe, not the end of the literal. Taking
             // the first `'` read `FILE_SCHEMA(('IFC''4X3'))` as `IFC`, where
             // both header readers say `IFC'4X3`.
-            if let Some(end) = lex.skip_lexical_at(q1) {
-                let off = end - 1 - (q1 + 1);
-                let label = String::from_utf8_lossy(&tail[q1 + 1..q1 + 1 + off]);
+            //
+            // The `end > q1 + 1` guard is load-bearing. `skip_lexical_at`
+            // answers an UNTERMINATED literal with the buffer length, not
+            // "closing quote + 1", so a file truncated inside its schema label
+            // made `end - 1` an index one short of where the label starts.
+            // That underflowed in debug and panicked on the slice in release,
+            // on the export path, on attacker-supplied bytes. A truncated label
+            // is no label.
+            let end = lex.skip_lexical_at(q1).unwrap_or(q1 + 1);
+            let closed = end > q1 + 1 && tail.get(end - 1) == Some(&b'\'');
+            if let Some(label) = closed.then(|| String::from_utf8_lossy(&tail[q1 + 1..end - 1])) {
                 if !label.is_empty() {
                     // `label` is the RAW, still-STEP-escaped slice between the
                     // quotes. Both call sites (`step.rs`'s `source_schema`
@@ -198,7 +214,10 @@ pub(crate) fn detect_schema(content: &[u8]) -> String {
                     // re-escaped on top of its own escaping. A no-op for every
                     // real schema label (IFC2X3, IFC4, IFC4X3_ADD2, ...), none
                     // of which contain a backslash.
-                    return label.replace("\\\\", "\\");
+                    // `''` gets the same treatment for the same reason. Without
+                    // it the doubling compounds on every pass through the merge
+                    // path: 'IFC''4' -> 'IFC''''4' -> 'IFC''''''''4'.
+                    return label.replace("\\\\", "\\").replace("''", "'");
                 }
             }
         }

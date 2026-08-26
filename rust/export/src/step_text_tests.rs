@@ -73,6 +73,14 @@ fn detect_schema_does_not_borrow_the_next_record_s_first_string() {
     // exported header through `escape()`.
     let leak = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(());\nFILE_NAME('leak.ifc','',(''),(''),'','','');\nENDSEC;\nDATA;\nENDSEC;\n";
     assert_eq!(detect_schema(leak.as_bytes()), "IFC4");
+
+    // A record with no parens never raises depth, and a stray `)` puts depth at
+    // -1 where `== 0` could never bring it back. Both left the scan unbounded,
+    // so the first version of this bound closed neither.
+    let no_parens = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA;\nFILE_NAME('leak.ifc','',(''),(''),'','','');\nENDSEC;\n";
+    assert_eq!(detect_schema(no_parens.as_bytes()), "IFC4");
+    let stray_paren = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA);\nFILE_NAME('leak.ifc','',(''),(''),'','','');\nENDSEC;\n";
+    assert_eq!(detect_schema(stray_paren.as_bytes()), "IFC4");
 }
 
 #[test]
@@ -82,7 +90,21 @@ fn detect_schema_reads_a_doubled_apostrophe_as_part_of_the_label() {
     // give `IFC'4X3`, which is the two halves of one crate disagreeing about
     // the same bytes.
     let doubled = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC''4X3'));\nENDSEC;\nDATA;\nENDSEC;\n";
-    assert_eq!(detect_schema(doubled.as_bytes()), "IFC''4X3");
+    assert_eq!(detect_schema(doubled.as_bytes()), "IFC'4X3");
+
+    // Un-doubled here so `escape()` can re-double it, exactly as the backslash
+    // case above does. Without that the doubling COMPOUNDS every time a file
+    // goes through the merge path. Returning the raw slice also disagreed with
+    // `parse_source_header`, which decodes, so one crate answered two different
+    // things about the same bytes.
+
+    // A file truncated inside its own label has no label. This used to compute
+    // an end index one short of the start: it underflowed in debug and panicked
+    // on the slice in release, on attacker-supplied bytes.
+    let truncated = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4X3";
+    assert_eq!(detect_schema(truncated.as_bytes()), "IFC4");
+    let bare_quote = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('";
+    assert_eq!(detect_schema(bare_quote.as_bytes()), "IFC4");
 }
 
 #[test]

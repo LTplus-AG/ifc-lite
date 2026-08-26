@@ -186,9 +186,13 @@ export function countNewlines(buf: Uint8Array, from: number, to: number): number
  * silently mis-scanned.
  */
 export class StepTextScan {
-  /** `*\/` searches performed. At most one of them can fail; see the class doc. */
-  searches = 0;
+  private searchCount = 0;
   private noCloser = false;
+
+  /** `*\/` searches performed. At most one of them can fail; see the class doc. */
+  get searches(): number {
+    return this.searchCount;
+  }
 
   constructor(private readonly text: string) {}
 
@@ -201,11 +205,11 @@ export class StepTextScan {
    * than the malformed input deserves and worse than doing nothing. Treating it
    * as ordinary text costs only that one `/`, and the scan still advances.
    */
-  skipCommentAt(i: number): number {
+  private skipCommentAt(i: number): number {
     const { text } = this;
     if (text[i] !== '/' || text[i + 1] !== '*') return -1;
     if (this.noCloser) return -1;
-    this.searches++;
+    this.searchCount++;
     const close = text.indexOf('*/', i + 2);
     if (close < 0) {
       this.noCloser = true;

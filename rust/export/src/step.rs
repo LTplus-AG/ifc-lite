@@ -66,6 +66,7 @@ pub struct CopyOnWriteMutation {
 }
 
 /// Options for STEP export.
+#[derive(Default)]
 pub struct StepOptions {
     /// FILE_SCHEMA label to write (e.g. `IFC4`). `None` ⇒ preserve the source schema.
     /// When `Some` and the target differs, entity types/attributes are converted (P2).
@@ -97,24 +98,6 @@ pub struct StepOptions {
     /// `wasm32-unknown-unknown` target this exporter ships to, so a caller that
     /// wants "now" states it.
     pub time_stamp: Option<String>,
-}
-
-impl Default for StepOptions {
-    fn default() -> Self {
-        Self {
-            schema: None,
-            included: None,
-            attribute_mutations: Vec::new(),
-            property_mutations: Vec::new(),
-            copy_on_write: Vec::new(),
-            description: None,
-            author: None,
-            organization: None,
-            application: None,
-            filename: None,
-            time_stamp: None,
-        }
-    }
 }
 
 /// Coverage stats for a STEP export.

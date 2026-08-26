@@ -25,8 +25,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseSourceHeader } from '@ifc-lite/parser';
-import { buildStepHeader } from './step-header.js';
-import type { StepExportOptions } from './step-exporter.js';
+import { buildStepHeader, type StepHeaderOptions } from './step-header.js';
 
 interface Vector {
   name: string;
@@ -109,7 +108,7 @@ describe('the STEP header matches the shared cross-language vectors', () => {
       // field means "whatever this side defaults to", never a spelled-out
       // value: spelling the defaults out is how two implementations' defaults
       // drift apart without a vector noticing.
-      const options: StepExportOptions = {};
+      const options: StepHeaderOptions = {};
       if (v.options.timeStamp !== undefined) options.timeStamp = v.options.timeStamp;
       if (v.options.description !== undefined) options.description = v.options.description;
       if (v.options.author !== undefined) options.author = v.options.author;

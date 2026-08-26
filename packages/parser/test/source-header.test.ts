@@ -18,6 +18,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { parseSourceHeader } from '../src/source-header.js';
+import { StepTextScan } from '../src/step-lexing.js';
 import { contiguousSourceBytes, type IfcSourceBytes } from '../src/source-bytes.js';
 
 const enc = (s: string): Uint8Array => new TextEncoder().encode(s);
@@ -471,15 +472,23 @@ describe('the quote-aware scan does not lose the header to its own state (#3284)
     expect(h?.schemaIdentifiers).toEqual(['IFC4']);
   });
 
-  it('a non-breaking space is not whitespace, so the halves agree', () => {
-    // ISO 10303-21 whitespace is ASCII. `/\s/` also matches U+00A0 and the
-    // other Unicode space separators, while the Rust half tests bytes, so the
-    // two answered differently for this record. Both now decline it, which is
-    // the same answer and the right one: separated by U+00A0 the record is
-    // malformed, not merely unusual.
-    const h = parseSourceHeader(header(`FILE_SCHEMA\u00A0(('IFC2X3'));`));
-    expect(h?.schemaIdentifiers ?? []).toEqual([]);
+  it('the accepted whitespace set is exactly the ASCII one', () => {
+    // One hand-written list against one stdlib helper is how the halves came
+    // apart: Rust's `u8::is_ascii_whitespace` follows the WhatWG set and
+    // EXCLUDES vertical tab, while this list includes it. The set is asserted
+    // byte by byte on both sides rather than delegated. The mirror of this test
+    // is in `rust/export/tests/source_header_comments.rs`.
+    for (const sep of [' ', '\t', '\n', '\r', '\u000B', '\u000C']) {
+      const h = parseSourceHeader(header(`FILE_SCHEMA${sep}(('IFC2X3'));`));
+      expect(h?.schemaIdentifiers, `separator ${JSON.stringify(sep)}`).toEqual(['IFC2X3']);
+    }
+
+    // And nothing outside it. U+00A0 is not whitespace in ISO 10303-21, so the
+    // record is malformed and both halves decline it.
+    const nbsp = parseSourceHeader(header(`FILE_SCHEMA\u00A0(('IFC2X3'));`));
+    expect(nbsp?.schemaIdentifiers ?? []).toEqual([]);
   });
+
 
   it('a long s is not folded to S, so it cannot fake a keyword', () => {
     // 'ſ'.toUpperCase() is 'S', so a full Unicode fold reads ENDſEC as ENDSEC
@@ -488,5 +497,41 @@ describe('the quote-aware scan does not lose the header to its own state (#3284)
     const h = parseSourceHeader(header(`ENDſEC;\nFILE_DESCRIPTION(('d'),'2;1');\n${NAME_AND_SCHEMA}`));
     expect(h?.schemaIdentifiers).toEqual(['IFC4']);
     expect(h?.name).toBe('a.ifc');
+  });
+});
+
+describe('the comment scan stays linear on hostile input (#3284)', () => {
+  it('never searches for a closer more than once after one fails', () => {
+    // The property, not the timing. Searching at every `/*` is quadratic: a
+    // failing search runs to the end of the text, the caller advances one
+    // character, and the next `/*` repeats it. A 64 KiB header with 21000
+    // unterminated `/*` took 5.7 seconds that way.
+    //
+    // One failure proves no closer exists at or after any later position, and
+    // the scan only moves forward, so at most one search can ever fail and no
+    // search after it should happen at all. Asserting the count pins that
+    // without a wall-clock threshold that would flake on a loaded machine.
+    // `/*` repeated would OVERLAP into `*/` and terminate itself, so the
+    // opens are spaced. Caught by this test failing at 999 searches first time.
+    const text = `HEADER;\n${'/* '.repeat(1000)}\nFILE_SCHEMA;`;
+    expect(text).not.toContain('*/');
+    const scan = new StepTextScan(text);
+    for (let i = 0; i < text.length; i++) scan.skipLexicalAt(i);
+    expect(scan.searches).toBe(1);
+  });
+
+  it('still finds every terminated comment when they are packed together', () => {
+    // The memo must not fire early: 500 real comments, none unterminated, so
+    // every search succeeds and each consumes a span the others do not.
+    const text = `HEADER;\n${'/*x*/'.repeat(500)}FILE_SCHEMA;`;
+    const scan = new StepTextScan(text);
+    let i = 0;
+    let skipped = 0;
+    while (i < text.length) {
+      const end = scan.skipLexicalAt(i);
+      if (end >= 0) { skipped++; i = end; } else i++;
+    }
+    expect(skipped).toBe(500);
+    expect(scan.searches).toBe(500);
   });
 });

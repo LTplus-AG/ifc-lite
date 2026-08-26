@@ -66,7 +66,14 @@ pub(crate) fn escape(s: &str) -> String {
 }
 
 /// Index of `needle` in `haystack`, skipping any occurrence that sits inside a
-/// quoted STEP string literal or a `/* ... */` comment. Case-sensitive.
+/// quoted STEP string literal or a `/* ... */` comment.
+///
+/// Case-SENSITIVE, where `source_header::find_ascii_ci_from` is not. ISO
+/// 10303-21 keywords are case-insensitive, so a file spelling `endsec;` in
+/// lower case ends its header in one of these readers and not the other. That
+/// is a real divergence and it predates the comment handling here; it is
+/// tracked in #3303 rather than changed in passing, because widening this match
+/// changes where every header ends and wants its own corpus.
 ///
 /// Neither literals nor comments carry structure, and this drives
 /// `detect_schema`, which drives schema CONVERSION on export. So a comment read
@@ -86,11 +93,11 @@ fn find_unquoted(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     if needle.is_empty() || needle.len() > haystack.len() {
         return None;
     }
-    let last_close = crate::source_header::last_comment_close(haystack);
+    let mut lex = crate::source_header::Lex::new(haystack);
     let last_start = haystack.len() - needle.len();
     let mut i = 0;
     while i <= last_start {
-        if let Some(end) = crate::source_header::skip_lexical_at(haystack, i, last_close) {
+        if let Some(end) = lex.skip_lexical_at(i) {
             i = end;
             continue;
         }
@@ -139,23 +146,47 @@ pub(crate) fn detect_schema(content: &[u8]) -> String {
         //
         // Scanned as bytes rather than through `from_utf8_lossy`, so an offset
         // here means the same thing it means in `head`.
+        // Bounded to the FILE_SCHEMA record. An unbounded scan takes the
+        // first apostrophe anywhere after the keyword, so a record with no
+        // label at all borrows the next record's first string:
+        //
+        //   FILE_SCHEMA(());
+        //   FILE_NAME('leak.ifc', ...);   ->  schema "leak.ifc"
+        //
+        // which is then written into the exported header through `escape()`.
+        // Same failure as the comment case below, one bracket further out.
         let tail = &head[idx..];
-        let last_close = crate::source_header::last_comment_close(tail);
+        let mut lex = crate::source_header::Lex::new(tail);
         let mut i = 0;
+        let mut depth = 0i32;
         let mut open = None;
         while i < tail.len() {
-            if let Some(end) = crate::source_header::skip_comment_at(tail, i, last_close) {
-                i = end;
-                continue;
-            }
             if tail[i] == b'\'' {
                 open = Some(i);
                 break;
             }
+            if let Some(end) = lex.skip_lexical_at(i) {
+                i = end; // a comment: its apostrophes are not the label's
+                continue;
+            }
+            match tail[i] {
+                b'(' => depth += 1,
+                b')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break; // record closed with no label
+                    }
+                }
+                _ => {}
+            }
             i += 1;
         }
         if let Some(q1) = open {
-            if let Some(off) = tail[q1 + 1..].iter().position(|&b| b == b'\'') {
+            // `''` is an escaped apostrophe, not the end of the literal. Taking
+            // the first `'` read `FILE_SCHEMA(('IFC''4X3'))` as `IFC`, where
+            // both header readers say `IFC'4X3`.
+            if let Some(end) = lex.skip_lexical_at(q1) {
+                let off = end - 1 - (q1 + 1);
                 let label = String::from_utf8_lossy(&tail[q1 + 1..q1 + 1 + off]);
                 if !label.is_empty() {
                     // `label` is the RAW, still-STEP-escaped slice between the

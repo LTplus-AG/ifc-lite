@@ -18,12 +18,7 @@ import { decodeStepStringLiteral } from '@ifc-lite/encoding';
 
 import { asSourceBytes, type IfcSourceBytes } from './source-bytes.js';
 
-import {
-  lastCommentClose,
-  matchesKeywordAt,
-  skipLexicalAt,
-  skipTrivia,
-} from './step-lexing.js';
+import { matchesKeywordAt, StepTextScan } from './step-lexing.js';
 /** Headers are tiny; cap the decode so a huge file's body is never scanned. */
 const MAX_HEADER_BYTES = 64 * 1024;
 
@@ -39,9 +34,9 @@ function splitTopLevel(inner: string): string[] {
   const args: string[] = [];
   let depth = 0;
   let current = '';
-  const lastClose = lastCommentClose(inner);
+  const scan = new StepTextScan(inner);
   for (let i = 0; i < inner.length; i++) {
-    const skip = skipLexicalAt(inner, i, lastClose);
+    const skip = scan.skipLexicalAt(i);
     if (skip >= 0) {
       // A literal is part of the argument's text; a comment is not.
       if (inner[i] === "'") current += inner.slice(i, skip);
@@ -140,9 +135,9 @@ function decodeStringList(arg: string): string[] {
  * `FILE_SCHEMA` record, losing the declaration entirely.
  */
 function indexOfRecord(text: string, keyword: string): number {
-  const lastClose = lastCommentClose(text);
+  const scan = new StepTextScan(text);
   for (let i = 0; i < text.length; i++) {
-    const skip = skipLexicalAt(text, i, lastClose);
+    const skip = scan.skipLexicalAt(i);
     if (skip >= 0) { i = skip - 1; continue; }
     if (matchesKeywordAt(text, i, keyword)) return i;
   }
@@ -158,13 +153,13 @@ function indexOfRecord(text: string, keyword: string): number {
 function extractRecordArgs(text: string, keyword: string): string | null {
   const at = indexOfRecord(text, keyword);
   if (at < 0) return null;
-  const lastClose = lastCommentClose(text);
-  let i = skipTrivia(text, at + keyword.length, lastClose);
+  const scan = new StepTextScan(text);
+  let i = scan.skipTrivia(at + keyword.length);
   if (text[i] !== '(') return null;
   const start = i;
   let depth = 0;
   for (; i < text.length; i++) {
-    const skip = skipLexicalAt(text, i, lastClose);
+    const skip = scan.skipLexicalAt(i);
     if (skip >= 0) { i = skip - 1; continue; }
     const ch = text[i];
     if (ch === '(') {

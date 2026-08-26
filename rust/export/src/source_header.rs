@@ -45,83 +45,117 @@ pub struct SourceHeader {
     pub schema_identifiers: Vec<String>,
 }
 
-/// Index of the last `*/` in `bytes`, or `None`. Hoisted out of the scan loops.
+/// ASCII whitespace per ISO 10303-21.
 ///
-/// Without it the scan is quadratic, and reachably so: a failing closer search
-/// runs to the end of the buffer, the caller advances one byte, and the next
-/// `/*` repeats it. A 64 KiB header holding 21000 unterminated `/*` took 5.7
-/// seconds in the TypeScript half, and this half is worse because
-/// `detect_schema` has no header cap at all. With it, a search is attempted
-/// only when a closer exists at or after `i + 2`, so every search succeeds and
-/// successful searches consume disjoint spans.
-pub(crate) fn last_comment_close(bytes: &[u8]) -> Option<usize> {
-    bytes.windows(2).rposition(|w| w == b"*/")
+/// Spelled out rather than `u8::is_ascii_whitespace`, which follows the WhatWG
+/// set and EXCLUDES vertical tab. The TypeScript half's list includes it, so
+/// the stdlib helper made the two halves read `FILE_SCHEMA\x0B(('IFC4X3'))`
+/// differently -- and it was a regression on this side too, since the
+/// `char::is_whitespace` this replaced accepted VT. Reaching for a stdlib
+/// predicate to align two halves is how they came apart: the set has to be the
+/// same set, not two helpers that are nearly the same.
+fn is_step_space(b: u8) -> bool {
+    matches!(b, b' ' | b'\t' | b'\n' | b'\r' | b'\x0B' | b'\x0C')
 }
 
-/// If a `/* ... */` comment starts at `bytes[i]`, return the index just past
-/// it. Otherwise `None`. `last_close` comes from `last_comment_close`, computed
-/// once per scan.
+/// A scan of one byte buffer.
 ///
-/// An UNTERMINATED `/*` is not a comment. Running it to end-of-text would
-/// swallow every record after it and lose the whole header, which is worse than
-/// the malformed input deserves. Treating it as ordinary text costs one `/`.
-pub(crate) fn skip_comment_at(bytes: &[u8], i: usize, last_close: Option<usize>) -> Option<usize> {
-    if bytes.get(i) != Some(&b'/') || bytes.get(i + 1) != Some(&b'*') {
-        return None;
-    }
-    if last_close? < i + 2 {
-        return None;
-    }
-    let close = bytes[i + 2..].windows(2).position(|w| w == b"*/")?;
-    Some(i + 2 + close + 2)
+/// The buffer and the scan state are bound together on purpose. The state is a
+/// memo: once a `*/` search from some `i` fails, no closer exists at or after
+/// any later position either, so no later `/*` can open a comment. Every scan
+/// here moves its index forward monotonically, so AT MOST ONE closer search can
+/// ever fail, and every other one succeeds and consumes a span disjoint from
+/// the rest. That is what keeps the whole thing linear.
+///
+/// Two earlier shapes were both wrong. Searching for the closer at every `/*`
+/// is quadratic: a failing search runs to the end of the buffer, the caller
+/// advances one byte, and the next `/*` repeats it. Hoisting the search to the
+/// top of each scan fixes that but makes every scan pay a full pass even when
+/// the input is well formed and the answer is 100 bytes in, which matters here
+/// more than in the TypeScript half: `detect_schema` is handed whole uncapped
+/// files, where the hoist measured 250ns -> 52ms on 200 MB.
+///
+/// Deferring until a `/*` is actually seen, and remembering the one failure,
+/// costs nothing on well-formed input and stays linear on hostile input.
+///
+/// The TypeScript counterpart is `packages/parser/src/step-lexing.ts`
+/// (`StepTextScan`), and the two must stay in step: this file and that one read
+/// the same headers, and #3284 is the shape of what happens when they drift.
+pub(crate) struct Lex<'a> {
+    bytes: &'a [u8],
+    no_closer: bool,
+    /// `*/` searches performed. At most one can fail; see the type doc.
+    pub(crate) searches: u32,
 }
 
-/// If a STEP string literal or a comment starts at `bytes[i]`, return the index
-/// just past it. Otherwise `None`.
-///
-/// Neither carries structure: a keyword, a comma or a bracket inside one is
-/// text. Every scan in this file has to agree on that, so it is one function
-/// rather than a copy per loop.
-///
-/// The TypeScript counterpart is `source-header.ts::skipLexicalAt`, and the two
-/// must stay in step. This file and that one read the same headers, and #3284
-/// is the shape of what happens when they drift: each half documented itself as
-/// matching the other while they disagreed.
-///
-/// The two unterminated cases are deliberately not symmetric. An unterminated
-/// literal runs to end-of-text, because a lone `'` cannot be read as ordinary
-/// text. An unterminated `/*` is simply not a comment, because it can.
-pub(crate) fn skip_lexical_at(bytes: &[u8], i: usize, last_close: Option<usize>) -> Option<usize> {
-    if bytes.get(i)? == &b'\'' {
-        let mut p = i + 1;
-        while p < bytes.len() {
-            if bytes[p] != b'\'' {
-                p += 1;
-            } else if bytes.get(p + 1) == Some(&b'\'') {
-                p += 2; // `''` is an escaped apostrophe, not the end
-            } else {
-                return Some(p + 1);
+impl<'a> Lex<'a> {
+    pub(crate) fn new(bytes: &'a [u8]) -> Self {
+        Lex { bytes, no_closer: false, searches: 0 }
+    }
+
+    /// If a `/* ... */` comment starts at `bytes[i]`, the index just past it.
+    ///
+    /// An UNTERMINATED `/*` is not a comment. Running it to end-of-text would
+    /// swallow every record after it and lose the whole header, which is worse
+    /// than the malformed input deserves. Treating it as ordinary text costs
+    /// one `/`.
+    fn skip_comment_at(&mut self, i: usize) -> Option<usize> {
+        if self.bytes.get(i) != Some(&b'/') || self.bytes.get(i + 1) != Some(&b'*') {
+            return None;
+        }
+        if self.no_closer {
+            return None;
+        }
+        self.searches += 1;
+        match self.bytes[i + 2..].windows(2).position(|w| w == b"*/") {
+            Some(close) => Some(i + 2 + close + 2),
+            None => {
+                self.no_closer = true;
+                None
             }
         }
-        return Some(bytes.len());
     }
-    skip_comment_at(bytes, i, last_close)
-}
 
-/// Advance past whitespace and comments. ISO 10303-21 allows a comment wherever
-/// whitespace is allowed, including between a record keyword and its `(`.
-///
-/// ASCII whitespace only, which is what 10303-21 means. The TypeScript half
-/// used `/\s/`, which also matches U+00A0 and the other Unicode space
-/// separators, so the two disagreed on `FILE_SCHEMA\u{00A0}(('IFC2X3'))`.
-fn skip_trivia(bytes: &[u8], mut i: usize, last_close: Option<usize>) -> usize {
-    loop {
-        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
-            i += 1;
+    /// If a string literal or a comment starts at `bytes[i]`, the index just
+    /// past it.
+    ///
+    /// Neither carries structure: a keyword, a comma or a bracket inside one is
+    /// text. Every scan in this file has to agree on that, so it is one method
+    /// rather than a copy per loop.
+    ///
+    /// The two unterminated cases are deliberately not symmetric. An
+    /// unterminated literal runs to end-of-text, because a lone `'` cannot be
+    /// read as ordinary text. An unterminated `/*` is simply not a comment,
+    /// because it can.
+    pub(crate) fn skip_lexical_at(&mut self, i: usize) -> Option<usize> {
+        if self.bytes.get(i)? == &b'\'' {
+            let mut p = i + 1;
+            while p < self.bytes.len() {
+                if self.bytes[p] != b'\'' {
+                    p += 1;
+                } else if self.bytes.get(p + 1) == Some(&b'\'') {
+                    p += 2; // `''` is an escaped apostrophe, not the end
+                } else {
+                    return Some(p + 1);
+                }
+            }
+            return Some(self.bytes.len());
         }
-        match skip_comment_at(bytes, i, last_close) {
-            Some(end) => i = end,
-            None => return i,
+        self.skip_comment_at(i)
+    }
+
+    /// Advance past whitespace and comments. ISO 10303-21 allows a comment
+    /// wherever whitespace is allowed, including between a record keyword and
+    /// its `(`.
+    fn skip_trivia(&mut self, mut i: usize) -> usize {
+        loop {
+            while i < self.bytes.len() && is_step_space(self.bytes[i]) {
+                i += 1;
+            }
+            match self.skip_comment_at(i) {
+                Some(end) => i = end,
+                None => return i,
+            }
         }
     }
 }
@@ -131,7 +165,7 @@ fn skip_trivia(bytes: &[u8], mut i: usize, last_close: Option<usize>) -> usize {
 /// still-escaped argument substrings, trimmed.
 fn split_top_level(inner: &str) -> Vec<String> {
     let bytes = inner.as_bytes();
-    let last_close = last_comment_close(bytes);
+    let mut lex = Lex::new(bytes);
     let mut args: Vec<String> = Vec::new();
     let mut depth: i32 = 0;
     let mut current = String::new();
@@ -142,7 +176,7 @@ fn split_top_level(inner: &str) -> Vec<String> {
     let mut run = 0;
     let mut i = 0;
     while i < bytes.len() {
-        if let Some(end) = skip_lexical_at(bytes, i, last_close) {
+        if let Some(end) = lex.skip_lexical_at(i) {
             if bytes[i] != b'\'' {
                 current.push_str(&inner[run..i]); // a comment is not part of the text
                 run = end;
@@ -230,11 +264,11 @@ fn find_ascii_ci_from(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     if needle.is_empty() || needle.len() > haystack.len() {
         return None;
     }
-    let last_close = last_comment_close(haystack);
+    let mut lex = Lex::new(haystack);
     let last_start = haystack.len() - needle.len();
     let mut i = 0;
     while i <= last_start {
-        if let Some(end) = skip_lexical_at(haystack, i, last_close) {
+        if let Some(end) = lex.skip_lexical_at(i) {
             i = end;
             continue;
         }
@@ -255,16 +289,16 @@ fn find_ascii_ci_from(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 /// drops the real one (the character after it is not `(`).
 fn extract_record_args(text: &str, keyword: &str) -> Option<String> {
     let bytes = text.as_bytes();
-    let last_close = last_comment_close(bytes);
     let at = find_ascii_ci_from(bytes, keyword.as_bytes())?;
-    let mut i = skip_trivia(bytes, at + keyword.len(), last_close);
+    let mut lex = Lex::new(bytes);
+    let mut i = lex.skip_trivia(at + keyword.len());
     if bytes.get(i) != Some(&b'(') {
         return None;
     }
     let start = i;
     let mut depth: i32 = 0;
     while i < bytes.len() {
-        if let Some(end) = skip_lexical_at(bytes, i, last_close) {
+        if let Some(end) = lex.skip_lexical_at(i) {
             i = end;
             continue;
         }

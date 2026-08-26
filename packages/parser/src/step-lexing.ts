@@ -2,14 +2,20 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-// ISO 10303-21 lexical skipping for the byte-level scanners: comments, and the
-// string literals that must not be mistaken for them.
+// ISO 10303-21 lexical skipping: comments, and the string literals that must
+// not be mistaken for them. Two representations, one rule -- bytes for the
+// tokenizer, a decoded string for the header reader. See the divider below for
+// the one point where they deliberately differ.
 //
-// Written as line comments, not a JSDoc block, so the delimiters below can be
-// spelled literally. Escaping them with a zero-width space to survive a block
-// comment puts invisible Unicode in the one place that explains how comment
-// termination works, and anyone copying the example into a fixture then gets a
-// string that is not a valid terminator.
+// The BYTE half below is written with line comments, not JSDoc, so the
+// delimiters can be spelled literally. Escaping them with a zero-width space to
+// survive a block comment puts invisible Unicode in the one place that explains
+// how comment termination works, and anyone copying the example into a fixture
+// then gets a string that is not a valid terminator.
+//
+// The string half uses JSDoc, because it is a public class whose methods want
+// hover documentation, and escapes the delimiter as the backslash form instead.
+// Two conventions in one file is not ideal; it is the smaller cost.
 
 const SLASH = 0x2f; // '/'
 const STAR = 0x2a; // '*'
@@ -150,93 +156,119 @@ export function countNewlines(buf: Uint8Array, from: number, to: number): number
 // ---------------------------------------------------------------------------
 
 /**
- * If a `/* ... *\/` comment starts at `text[i]`, return the index just past it.
- * Otherwise -1.
+ * A scan of one decoded string.
  *
- * `lastClose` is `text.lastIndexOf('*\/')`, computed ONCE per scan by the
- * caller. Without it this is quadratic, and reachably so: a failing search runs
- * to the end of the text, the caller advances one character, and the next `/*`
- * repeats it. A 64 KiB header holding 21000 unterminated `/*` took 5.7 seconds.
- * With it, the search is attempted only when a closer exists at or after
- * `i + 2`, so every search succeeds and successful searches consume disjoint
- * spans. Linear, and the bound holds for hostile input rather than typical
+ * The buffer and the scan state are bound together on purpose. The state is a
+ * memo: once a `*\/` search from some `i` fails, no closer exists at or after
+ * any later position either, so no later `/*` can open a comment. Every scan
+ * here moves its index forward monotonically, so AT MOST ONE closer search can
+ * ever fail, and every other one succeeds and consumes a span disjoint from the
+ * rest. That is what keeps the whole thing linear.
+ *
+ * Two earlier shapes were both wrong, and the second was mine:
+ *
+ *   - searching for the closer at every `/*` is QUADRATIC. A failing search
+ *     runs to the end of the text, the caller advances one character, and the
+ *     next `/*` repeats it. A 64 KiB header holding 21000 unterminated `/*`
+ *     took 5.7 seconds.
+ *   - hoisting `lastIndexOf('*\/')` to the top of each scan fixes that but
+ *     makes every scan pay a full pass over the buffer even when the input is
+ *     well formed and the answer is 100 bytes in. The Rust twin is handed whole
+ *     uncapped files, where that measured 250ns -> 52ms on 200 MB.
+ *
+ * Deferring the search until a `/*` is actually seen, and remembering the one
+ * failure, costs nothing on well-formed input and stays linear on hostile
  * input.
  *
- * An UNTERMINATED `/*` is not a comment. Running it to end-of-text would
- * swallow every record after it and lose the whole header, which is worse than
- * the malformed input deserves and worse than doing nothing. Treating it as
- * ordinary text costs only that one `/`, and the scan still advances.
+ * Binding the buffer to the state also removes an invariant that was previously
+ * only checkable by hand: the old free functions took the closer position as an
+ * argument, so passing one derived from a DIFFERENT string compiled and
+ * silently mis-scanned.
  */
-export function skipCommentAt(text: string, i: number, lastClose: number): number {
-  if (text[i] !== '/' || text[i + 1] !== '*' || lastClose < i + 2) return -1;
-  return text.indexOf('*/', i + 2) + 2; // guaranteed to hit, by the lastClose test
-}
+export class StepTextScan {
+  /** `*\/` searches performed. At most one of them can fail; see the class doc. */
+  searches = 0;
+  private noCloser = false;
 
-/**
- * If a STEP string literal or a comment starts at `text[i]`, return the index
- * just past it. Otherwise -1.
- *
- * Neither carries structure: a keyword, a comma or a bracket inside one is
- * text. Every scan in this file has to agree on that, so it is one function
- * rather than a copy per loop. #3284 was one file holding two rules for the
- * same thing; three private copies of this loop is that shape again.
- *
- * The result always ADVANCES the caller's index. An earlier form returned the
- * `*\/` offset and left `-1` to mean unterminated, which a caller adding 1 to
- * turns into 0: the scan restarts at the top, finds the same comment, and never
- * terminates.
- *
- * The two unterminated cases are deliberately not symmetric. An unterminated
- * literal runs to end-of-text, because a lone `'` cannot be read as ordinary
- * text. An unterminated `/*` is simply not a comment, because it can.
- *
- * The lexical rule itself is owned by `step-lexing.ts`, which applies it over
- * bytes for the tokenizer. This is the decoded-string counterpart, and the two
- * differ on exactly one point: `skipLexical` there answers an unterminated
- * comment with `{next: len, stop: true}`, running it to EOF, where this answers
- * "not a comment". That is a deliberate difference and not a drift, because a
- * header prescan that loses every later record has lost the schema, while the
- * tokenizer is already past the point of deciding one. Folding the two together
- * means moving the whole header read onto bytes, since these callers slice with
- * character offsets; that is a larger change than #3284 and belongs on its own.
- */
-export function skipLexicalAt(text: string, i: number, lastClose: number): number {
-  if (text[i] === "'") {
-    for (let p = i + 1; p < text.length; p++) {
-      if (text[p] !== "'") continue;
-      if (text[p + 1] === "'") { p++; continue; } // `''` is an escaped quote, not the end
-      return p + 1;
+  constructor(private readonly text: string) {}
+
+  /**
+   * If a `/* ... *\/` comment starts at `text[i]`, the index just past it.
+   * Otherwise -1.
+   *
+   * An UNTERMINATED `/*` is not a comment. Running it to end-of-text would
+   * swallow every record after it and lose the whole header, which is worse
+   * than the malformed input deserves and worse than doing nothing. Treating it
+   * as ordinary text costs only that one `/`, and the scan still advances.
+   */
+  skipCommentAt(i: number): number {
+    const { text } = this;
+    if (text[i] !== '/' || text[i + 1] !== '*') return -1;
+    if (this.noCloser) return -1;
+    this.searches++;
+    const close = text.indexOf('*/', i + 2);
+    if (close < 0) {
+      this.noCloser = true;
+      return -1;
     }
-    return text.length;
+    return close + 2;
   }
-  return skipCommentAt(text, i, lastClose);
+
+  /**
+   * If a string literal or a comment starts at `text[i]`, the index just past
+   * it. Otherwise -1.
+   *
+   * Neither carries structure: a keyword, a comma or a bracket inside one is
+   * text. Every scan in `source-header.ts` has to agree on that, so it is one
+   * function rather than a copy per loop. #3284 was one file holding two rules
+   * for the same thing; three private copies of this loop is that shape again.
+   *
+   * The result always ADVANCES the caller's index. An earlier form returned the
+   * `*\/` offset and left -1 to mean unterminated, which a caller adding 1 to
+   * turns into 0: the scan restarts at the top, finds the same comment, and
+   * never terminates.
+   *
+   * The two unterminated cases are deliberately not symmetric. An unterminated
+   * literal runs to end-of-text, because a lone `'` cannot be read as ordinary
+   * text. An unterminated `/*` is simply not a comment, because it can. This is
+   * also where this half differs from `skipLexical` above; see the divider.
+   */
+  skipLexicalAt(i: number): number {
+    const { text } = this;
+    if (text[i] === "'") {
+      for (let p = i + 1; p < text.length; p++) {
+        if (text[p] !== "'") continue;
+        if (text[p + 1] === "'") { p++; continue; } // `''` is an escaped quote, not the end
+        return p + 1;
+      }
+      return text.length;
+    }
+    return this.skipCommentAt(i);
+  }
+
+  /**
+   * Advance past whitespace and comments. ISO 10303-21 allows a comment
+   * wherever whitespace is allowed, including between a record keyword and its
+   * `(`.
+   *
+   * ASCII whitespace only, which is what 10303-21 means. `/\s/` also matches
+   * U+00A0 and the other Unicode space separators, while the Rust half tests
+   * bytes, so the two halves disagreed on `FILE_SCHEMA (('IFC2X3'))`.
+   */
+  skipTrivia(i: number): number {
+    const { text } = this;
+    for (;;) {
+      while (i < text.length && isAsciiSpace(text[i])) i++;
+      const skip = this.skipCommentAt(i);
+      if (skip < 0) return i;
+      i = skip;
+    }
+  }
 }
 
-/** Index of the last `*\/`, or -1. Hoisted out of the scan loops; see `skipCommentAt`. */
-export function lastCommentClose(text: string): number {
-  return text.lastIndexOf('*/');
-}
-
-/**
- * ASCII whitespace only, matching ISO 10303-21 rather than `/\s/`, which also
- * matches U+00A0 and the other Unicode space separators. The Rust half tests
- * bytes, so `/\s/` made the two disagree on `FILE_SCHEMA (('IFC2X3'))`.
- */
+/** ASCII whitespace per ISO 10303-21. See `StepTextScan.skipTrivia`. */
 function isAsciiSpace(ch: string | undefined): boolean {
   return ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r' || ch === '\f' || ch === '\v';
-}
-
-/**
- * Advance past whitespace and comments. ISO 10303-21 allows a comment wherever
- * whitespace is allowed, including between a record keyword and its `(`.
- */
-export function skipTrivia(text: string, i: number, lastClose: number): number {
-  for (;;) {
-    while (i < text.length && isAsciiSpace(text[i])) i++;
-    const skip = skipCommentAt(text, i, lastClose);
-    if (skip < 0) return i;
-    i = skip;
-  }
 }
 
 /**

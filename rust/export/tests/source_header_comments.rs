@@ -89,13 +89,25 @@ fn an_unterminated_comment_does_not_swallow_the_records_after_it() {
 }
 
 #[test]
-fn a_non_breaking_space_is_not_whitespace_in_either_half() {
-    // ISO 10303-21 whitespace is ASCII. The TypeScript half used `/\s/`, which
-    // also matches U+00A0 and the other Unicode space separators, so the two
-    // halves answered differently for this record: TS found the schema, Rust
-    // did not. Both now decline it, which is the same answer, and the right
-    // one -- a record separated by U+00A0 is malformed, not merely unusual.
-    let src = header("FILE_SCHEMA\u{00A0}(('IFC2X3'));");
-    let h = parse_source_header(&src);
+fn the_accepted_whitespace_set_is_exactly_the_ascii_one() {
+    // One hand-written list against one stdlib helper is how the halves came
+    // apart: `u8::is_ascii_whitespace` follows the WhatWG set and EXCLUDES
+    // vertical tab, while the TypeScript list includes it, so the two read
+    // `FILE_SCHEMA\x0B(('IFC4X3'))` differently. It was a regression on this
+    // side too, since the `char::is_whitespace` it replaced accepted VT.
+    //
+    // So the set is asserted byte by byte rather than delegated. The mirror of
+    // this test is in `packages/parser/test/source-header.test.ts`.
+    for sep in [' ', '\t', '\n', '\r', '\u{0B}', '\u{0C}'] {
+        let src = header(&format!("FILE_SCHEMA{sep}(('IFC2X3'));"));
+        let h = parse_source_header(&src)
+            .unwrap_or_else(|| panic!("{sep:?} should separate a keyword from its paren"));
+        assert_eq!(h.schema_identifiers, vec!["IFC2X3".to_string()], "separator {sep:?}");
+    }
+
+    // And nothing outside it. U+00A0 is not whitespace in ISO 10303-21, so the
+    // record is malformed and both halves decline it.
+    let nbsp = header("FILE_SCHEMA\u{00A0}(('IFC2X3'));");
+    let h = parse_source_header(&nbsp);
     assert!(h.is_none() || h.unwrap().schema_identifiers.is_empty());
 }

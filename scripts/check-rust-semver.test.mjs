@@ -204,11 +204,32 @@ test('VACUITY: an unreadable workspace version fails with BAD_VERSION', () => {
   }
 });
 
-test('a crate already published at this exact version is counted, not skipped silently', () => {
+test('a crate already published at this exact version is reported, and NOT counted as compared', () => {
+  // The release republishes none of them, so there is nothing to gate — but
+  // the success line must not claim seven crates were compared when zero were.
   const result = run({ workspaceVersion: '6.0.1' });
   assert.equal(result.ok, true);
   assert.equal(result.checked.length, SEVEN.length);
+  assert.equal(result.compared, 0);
   assert.match(result.checked[0], /already published at this version/);
+});
+
+test('the CLI says plainly that nothing was compared when nothing is republished', () => {
+  const res = spawnSync(process.execPath, [join(SCRIPTS, 'check-rust-semver.mjs')], {
+    encoding: 'utf8',
+    env: { ...process.env, IFC_LITE_SEMVER_TOOLCHAIN: 'stable' },
+  });
+  if (res.status !== 0) return; // a real comparison ran, or the tool is absent
+  if (!/nothing to gate/.test(res.stdout)) return;
+  assert.match(res.stdout, /No API was compared/);
+});
+
+test('a mixed run counts only the crates actually compared', () => {
+  const result = run({
+    latestPublished: (crate) => (crate === SEVEN[0] ? '6.0.2' : '6.0.1'),
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.compared, SEVEN.length - 1);
 });
 
 /* ----------------------------- the pieces it parses ---------------------------- */

@@ -150,6 +150,10 @@ export function interpretRun({ status, output }) {
 export function checkRustSemver({ crates, workspaceVersion, latestPublished, runSemverChecks }) {
   const failures = [];
   const checked = [];
+  // Crates the release would NOT republish (their version is already live).
+  // Counted separately so the success line can never say "N crates checked"
+  // about crates whose API was never compared — see the report at the end.
+  let skipped = 0;
 
   // The SHAPE is checked here, not only in readVersionOrNull: a version
   // that is a string but not a semver triple makes every `bumpLevel`
@@ -204,6 +208,7 @@ export function checkRustSemver({ crates, workspaceVersion, latestPublished, run
       // Same version as the one already on crates.io: release-crates.mjs skips
       // publishing it, so there is no new version whose bump could be wrong.
       checked.push(`${crate} ${baseline} — already published at this version, not republished`);
+      skipped += 1;
       continue;
     }
 
@@ -232,7 +237,7 @@ export function checkRustSemver({ crates, workspaceVersion, latestPublished, run
       checked,
     };
   }
-  return { ok: failures.length === 0, failures, checked };
+  return { ok: failures.length === 0, failures, checked, compared: checked.length - skipped };
 }
 
 /* ---------- real-world wiring (the unit tests inject fakes instead) ---------- */
@@ -312,9 +317,17 @@ function main() {
     for (const f of result.failures) console.error(`  - ${f}\n`);
     process.exit(1);
   }
+  if (result.compared === 0) {
+    console.log(
+      `✅ nothing to gate: all ${result.checked.length} crate(s) are already on crates.io at ` +
+        `${readVersionOrNull(REPO_ROOT)}, so this release republishes none of them. ` +
+        'No API was compared — do not read this as a compatibility result.'
+    );
+    return;
+  }
   console.log(
-    `✅ ${result.checked.length} crate(s) checked; every Rust API change fits ` +
-      `${readVersionOrNull(REPO_ROOT)}`
+    `✅ ${result.compared} of ${result.checked.length} crate(s) compared against crates.io; ` +
+      `every Rust API change fits ${readVersionOrNull(REPO_ROOT)}`
   );
 }
 

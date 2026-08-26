@@ -63,17 +63,7 @@ import { GeoreferencingPanel } from './properties/GeoreferencingPanel';
 import { RawStepCard } from './properties/RawStepCard';
 import { UnitDisplayControl } from './properties/UnitDisplayControl';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
-
-/** IFC material *definition* classes selectable from the Materials tab. */
-const MATERIAL_DEF_TYPES = new Set([
-  'IFCMATERIAL',
-  'IFCMATERIALLAYERSET',
-  'IFCMATERIALLAYERSETUSAGE',
-  'IFCMATERIALPROFILESET',
-  'IFCMATERIALPROFILESETUSAGE',
-  'IFCMATERIALCONSTITUENTSET',
-  'IFCMATERIALLIST',
-]);
+import { isMaterialDefinitionType } from '@/utils/materialDefinitionTypes';
 
 type DisplayProperty = { name: string; value: unknown; isMutated: boolean; type?: number; dataType?: string };
 type DisplayPropertySet = {
@@ -505,7 +495,11 @@ export function PropertiesPanel() {
     if (!selectedEntity) return null;
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     const rawType = (dataStore as IfcDataStore | null)?.entityIndex?.byId?.get(selectedEntity.expressId)?.type;
-    return rawType && MATERIAL_DEF_TYPES.has(rawType.toUpperCase()) ? selectedEntity.expressId : null;
+    // Every IfcMaterialSelect member, not just the set-valued ones: the tab
+    // renders a row for any definition the usage index leaves unexpanded (a
+    // bare IfcMaterialConstituent, an IfcMaterialLayerWithOffsets), and a
+    // narrower gate here turns those rows into dead clicks.
+    return isMaterialDefinitionType(rawType) ? selectedEntity.expressId : null;
   }, [selectedEntity, model, ifcDataStore]);
 
   // Unified property/quantity access - EntityNode handles on-demand extraction automatically

@@ -46,6 +46,19 @@ const MAP_CONVERSION_WITHOUT_CRS_WARNING =
   'Cannot create IfcMapConversion: no IfcProjectedCRS was requested and none exists in the file to reference as TargetCRS. Nothing was written.';
 
 /**
+ * Every concrete class carrying an IfcMapConversion's attributes, in the
+ * UPPERCASE spelling `EffectiveEntityIndex.byType` is keyed by. Kept beside
+ * `@ifc-lite/parser`'s `MAP_CONVERSION_TYPE_NAMES`, which is the same list in
+ * the mixed-case spelling the read path uses — the reader and the writer must
+ * agree on what counts as a map conversion, or the exporter duplicates a
+ * record the reader can see.
+ */
+const MAP_CONVERSION_STEP_TYPES: readonly string[] = [
+  'IFCMAPCONVERSION',
+  'IFCMAPCONVERSIONSCALED',
+];
+
+/**
  * The exporter state this phase cannot read off the pass.
  *
  * `allocateExpressId` is `StepExporter`'s own `nextExpressId++`, injected so
@@ -87,7 +100,19 @@ export function applyGeoreferencingMutations(
   // pass applies `modifiedAttributes` to, so both branches agree on which
   // georeferencing entities exist (#2048).
   const existingCrsIds = pass.effective.byType.get('IFCPROJECTEDCRS');
-  const existingMcIds = pass.effective.byType.get('IFCMAPCONVERSION');
+  // `byType` is keyed by the RAW STEP type name, so the supertype key alone
+  // does not see IFC4X3's concrete IfcMapConversionScaled. Missing it left a
+  // file that HAS a map conversion looking like one that has none: the modify
+  // branch below found nothing, and a create branch ran instead — emitting a
+  // SECOND coordinate operation against the same source CRS while the file's
+  // own scaled one stayed put, which is not a file any consumer can read
+  // unambiguously. The six attributes edited below are IfcMapConversion's own
+  // and are edited BY NAME, which the scaled subtype inherits unchanged, so
+  // modifying it in place is well-defined (its extra FactorX/Y/Z sit after
+  // them and are left alone).
+  const existingMcIds = MAP_CONVERSION_STEP_TYPES.flatMap(
+    (typeName) => pass.effective.byType.get(typeName) ?? [],
+  );
 
   // Modify existing IfcProjectedCRS
   if (gm.projectedCRS && existingCrsIds?.length) {

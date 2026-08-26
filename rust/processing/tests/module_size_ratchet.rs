@@ -54,7 +54,7 @@ const ALLOWLIST: &str = include_str!("module_size_allowlist.txt");
 /// FNV-1a over the sorted rows rather than `DefaultHasher`, whose output is
 /// explicitly NOT guaranteed stable across Rust releases - a toolchain bump
 /// would rewrite the digest and fail CI for no reason.
-const ALLOWLIST_DIGEST: u64 = 16950357244468739466;
+const ALLOWLIST_DIGEST: u64 = 6154298320771168927;
 
 /// Lower bound on how many non-exempt `.rs` files the walk must reach before
 /// its verdict means anything. Every offender this gate can report is pushed

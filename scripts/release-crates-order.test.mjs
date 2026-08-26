@@ -41,9 +41,9 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 /** The publish order as the release script actually declares it. */
 function publishOrder() {
-  const src = readFileSync(join(ROOT, 'scripts', 'release-crates.mjs'), 'utf8');
+  const src = readFileSync(join(ROOT, 'scripts', 'lib', 'crates-io.mjs'), 'utf8');
   const block = src.match(/const CRATES = \[([\s\S]*?)\n\];/);
-  assert.ok(block, 'release-crates.mjs no longer declares a CRATES array');
+  assert.ok(block, 'scripts/lib/crates-io.mjs no longer declares a CRATES array');
   return block[1]
     .split('\n')
     .map((line) => line.trim())

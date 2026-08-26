@@ -109,6 +109,49 @@ export function allowlistDigest(map) {
 }
 
 /**
+ * The SCOPE a row's digest belongs to: `packages/<name>`, `apps/<name>`,
+ * `rust/<crate>`, or the first path segment for anything else.
+ *
+ * This is the whole point of sharding (#3291). One repo-wide digest made every
+ * open PR touching ANY budget conflict with every other one, because they all
+ * rewrote the same pinned line. Measured on one 90-minute batch: eight PRs, 18
+ * conflict resolutions to land four of them, and not one of the conflicts came
+ * from the PRs disagreeing about anything -- georeferencing, marine spatial
+ * parts, material tables, graphic overrides and schema-downgrade trimming share
+ * this file and nothing else.
+ *
+ * Two levels, not one. `packages` alone would still couple every package to
+ * every other, which is most of the contention; `packages/export/src` would
+ * shard so finely that the pin stops being readable and a moved file silently
+ * changes which shard it lands in.
+ */
+export function allowlistScope(path) {
+  const parts = String(path).split('/');
+  if (parts.length >= 2 && (parts[0] === 'packages' || parts[0] === 'apps' || parts[0] === 'rust')) {
+    return `${parts[0]}/${parts[1]}`;
+  }
+  return parts[0] || 'other';
+}
+
+/**
+ * Per-scope digests: `Map<scope, digest>`, each computed by `allowlistDigest`
+ * over that scope's rows alone.
+ *
+ * Deliberately reuses `allowlistDigest` rather than re-deriving the hash, so a
+ * single-scope allowlist produces the same value both ways and the Rust parity
+ * pin keeps meaning what it meant.
+ */
+export function allowlistDigests(map) {
+  const byScope = new Map();
+  for (const [path, budget] of map.entries()) {
+    const scope = allowlistScope(path);
+    if (!byScope.has(scope)) byScope.set(scope, new Map());
+    byScope.get(scope).set(path, budget);
+  }
+  return new Map([...byScope.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([s, m]) => [s, allowlistDigest(m)]));
+}
+
+/**
  * The ratchet decision. `files` is `[{ rel, lines }]` for every non-exempt
  * file found; `allowlist` is the parsed Map.
  *

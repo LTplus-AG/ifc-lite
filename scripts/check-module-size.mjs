@@ -87,6 +87,7 @@ import {
   isExempt,
   parseAllowlist,
   allowlistDigest,
+  allowlistDigests,
   evaluate,
   staleRows,
   planUpdate,
@@ -135,22 +136,68 @@ const SOURCE_RE = /\.(ts|tsx|mts|cts)$/;
  * failure message. Either way do it at the moment you finalise the change — it
  * moves if anything else touched the allowlist first.
  */
-const ALLOWLIST_DIGEST = '8122687102913522945';
+const ALLOWLIST_DIGESTS = {
+  'apps/viewer': '6170762814286880387',
+  'apps/viewer-embed': '4565652428901906968',
+  'packages/bcf': '9733284863521991257',
+  'packages/cache': '14926850005686407910',
+  'packages/clash': '781065910217740673',
+  'packages/cli': '11939142867866651937',
+  'packages/codegen': '18074740064258807121',
+  'packages/collab': '10345031293646670667',
+  'packages/collab-server': '6370800919640161263',
+  'packages/create': '1037353628699503261',
+  'packages/create-ifc-lite': '2641290854733608547',
+  'packages/data': '1654294465700203357',
+  'packages/diff': '935169126877539347',
+  'packages/drawing-2d': '1289794388881750973',
+  'packages/export': '8294779133777308773',
+  'packages/extensions': '8156044843525017433',
+  'packages/geometry': '11660269484074160622',
+  'packages/ids': '9562546445799669442',
+  'packages/ifcx': '1612726670485322764',
+  'packages/lens': '14019022785021391214',
+  'packages/lists': '3649993370543459600',
+  'packages/mcp': '5906442248422039423',
+  'packages/merge': '4328451182457757363',
+  'packages/mutations': '17485196327897850153',
+  'packages/oauth-pkce': '6839945177005186906',
+  'packages/parser': '3992009610386008960',
+  'packages/plugin-api': '4189476804863450436',
+  'packages/pointcloud': '9060606210189352091',
+  'packages/provenance': '17691750269289291288',
+  'packages/query': '10617410983412679617',
+  'packages/renderer': '10548485518942557631',
+  'packages/sandbox': '7650074321748792699',
+  'packages/sdk': '885187935350689181',
+  'packages/server-client': '713850551357101674',
+  'packages/source-dalux': '11927553717016520308',
+  'packages/source-dropbox': '13897585807232807340',
+  'packages/viewer': '17290688824834287099',
+};
 
 function parseArgs(argv) {
   const out = {
     root: REPO_ROOT,
     allowlist: null,
-    digest: ALLOWLIST_DIGEST,
+    digests: ALLOWLIST_DIGESTS,
     update: false,
     allowRaise: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const flag = argv[i];
     const value = argv[i + 1];
-    if (flag === '--root' || flag === '--allowlist' || flag === '--digest') {
+    if (flag === '--root' || flag === '--allowlist') {
       if (value === undefined) fail(`${flag} needs a value`);
       out[flag.slice(2)] = value;
+      i += 1;
+    } else if (flag === '--digests') {
+      if (value === undefined) fail(`${flag} needs a value`);
+      try {
+        out.digests = JSON.parse(value);
+      } catch {
+        fail('--digests needs a JSON object of scope -> decimal digest');
+      }
       i += 1;
     } else if (flag === '--update') {
       out.update = true;
@@ -220,10 +267,16 @@ try {
   fail(err.message);
 }
 
-if (!/^\d+$/.test(String(args.digest))) {
+if (
+  args.digests === null ||
+  typeof args.digests !== 'object' ||
+  Object.keys(args.digests).length === 0 ||
+  Object.values(args.digests).some((d) => !/^\d+$/.test(String(d)))
+) {
   fail(
-    'no digest pin. ALLOWLIST_DIGEST in scripts/check-module-size.mjs must be a decimal ' +
-      'u64 string; set it to 0 and run this script to read the true value from the failure.',
+    'no digest pin. ALLOWLIST_DIGESTS in scripts/check-module-size.mjs must be a non-empty ' +
+      'object of scope -> decimal u64 string; empty it and run this script to read the true ' +
+      'values from the failure.',
   );
 }
 
@@ -282,14 +335,18 @@ if (args.update) {
   // a digest stored beside the rows it guards is circular. Rewrite it here so
   // the regeneration is one command, not one command plus a hand edit that the
   // next reader has to remember.
-  const nextDigest = allowlistDigest(next);
+  const nextDigests = allowlistDigests(next);
+  const nextBlock = `const ALLOWLIST_DIGESTS = {\n${[...nextDigests]
+    .map(([scope, d]) => `  '${scope}': '${d}',`)
+    .join('\n')}\n};`;
+  const nextDigest = [...nextDigests].map(([s2, d]) => `${s2}=${d}`).join(' ');
   const selfPath = join(args.root, 'scripts', 'check-module-size.mjs');
-  const PIN_RE = /^const ALLOWLIST_DIGEST = '\d+';$/m;
+  const PIN_RE = /^const ALLOWLIST_DIGESTS = \{[\s\S]*?^\};$/m;
   let pinned = false;
   try {
     const selfText = readFileSync(selfPath, 'utf8');
     if (PIN_RE.test(selfText)) {
-      writeFileSync(selfPath, selfText.replace(PIN_RE, `const ALLOWLIST_DIGEST = '${nextDigest}';`));
+      writeFileSync(selfPath, selfText.replace(PIN_RE, nextBlock));
       pinned = true;
     }
   } catch {
@@ -307,26 +364,46 @@ if (args.update) {
   );
   console.log(
     pinned
-      ? `check-module-size: ALLOWLIST_DIGEST re-pinned to ${nextDigest} in ${selfPath}. Commit both.`
-      : `check-module-size: no ALLOWLIST_DIGEST pin found under ${args.root}; the new digest is ${nextDigest}.`,
+      ? `check-module-size: ALLOWLIST_DIGESTS re-pinned in ${selfPath} (${nextDigests.size} scopes). Commit both.`
+      : `check-module-size: no ALLOWLIST_DIGESTS pin found under ${args.root}; the new digests are ${nextDigest}.`,
   );
   process.exit(0);
 }
 
 let failed = false;
 
-const actualDigest = allowlistDigest(allowlist);
-if (actualDigest !== String(args.digest)) {
+// Per SCOPE, not repo-wide (#3291). Only the scopes that actually moved are
+// reported, and only their lines need re-pinning -- which is the whole point:
+// two PRs touching different scopes now edit different lines of the object
+// above and git merges them, where one repo-wide pin made them conflict by
+// construction. Eight PRs in one 90-minute batch cost 18 conflict resolutions
+// to land four, none of them from the PRs disagreeing about anything.
+const actualDigests = allowlistDigests(allowlist);
+const pinnedScopes = new Set(Object.keys(args.digests));
+const drifted = [];
+for (const [scope, digest] of actualDigests) {
+  if (String(args.digests[scope] ?? '') !== digest) drifted.push([scope, digest]);
+}
+// A scope that VANISHED from the allowlist but is still pinned is drift too --
+// otherwise deleting every row of a scope leaves a pin describing nothing and
+// the gate says nothing, which is the vacuity this repo keeps rediscovering.
+const orphaned = [...pinnedScopes].filter((s) => !actualDigests.has(s));
+if (drifted.length > 0 || orphaned.length > 0) {
   failed = true;
   const total = [...allowlist.values()].reduce((a, b) => a + b, 0);
+  const lines = drifted.map(([scope, d]) => `  '${scope}': '${d}',`).join('\n');
   console.error(`
-The allowlist digest is ${actualDigest} (${allowlist.size} rows, budgets total ${total}),
-but ALLOWLIST_DIGEST in scripts/check-module-size.mjs reads ${args.digest}.
+The allowlist has ${allowlist.size} rows, budgets total ${total}, and ${drifted.length} scope(s)
+disagree with ALLOWLIST_DIGESTS in scripts/check-module-size.mjs.
 
-Raising a budget loosens this ratchet, so it must be visible in review: set
-ALLOWLIST_DIGEST to ${actualDigest} in the SAME commit and say in the PR why the
-module cannot be split. Lowering a budget or deleting a row is welcome and must
-update the digest too, so the pin keeps stating the real allowlist.
+Raising a budget loosens this ratchet, so it must be visible in review. Set these
+lines in the SAME commit and say in the PR why the module cannot be split:
+
+${lines || '  (none)'}
+${orphaned.length > 0 ? `\nPinned scopes with no rows left -- delete these lines:\n${orphaned.map((s) => `  '${s}'`).join('\n')}\n` : ''}
+Lowering a budget or deleting a row is welcome and must re-pin its scope too, so
+the pin keeps stating the real allowlist. Only the scopes listed above moved;
+every other line stays as it is.
 `);
 }
 

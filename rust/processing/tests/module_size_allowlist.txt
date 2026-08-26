@@ -21,7 +21,9 @@
 # schema_helpers.rs row removed: the merged upstream #1969 split its tests into
 # schema_helpers_tests.rs, dropping the file to 305 lines (under the 400 budget),
 # same as the tree main converged on independently.
-    990 rust/core/src/units.rs
+# -416: the inline #[cfg(test)] mod moved VERBATIM to units_tests.rs (ratchet-exempt)
+# so the quoted 'FEET' arm and its two cross-reader comments fit; 990 -> 574.
+    574 rust/core/src/units.rs
 # +4: build the index once in parallel on the fail-closed try_/project_glb_size large-model GLB paths (perf/parallel-scan).
 # +81: emissive-material knob for KMZ/Google Earth (#1427) - make_material lit/unlit/emissive branch + emissive param threaded through build_gltf/export_glb_from_meshes and their tests.
     4028 rust/export/src/gltf.rs
@@ -37,7 +39,6 @@
 # budget. step_text.rs's own #[cfg(test)] block was further split into
 # step_text_tests.rs (ratchet-exempt via the _tests.rs suffix), leaving
 # step_text.rs at 196 lines of production code (under 400, no row needed).
-     409 rust/export/src/step.rs
 # +45: reject non-positive SegmentLength/HorizontalLength (malformed-input NaN guard) + regression test.
     1170 rust/geometry/src/alignment.rs
 # +19: split_on_edge now sets a failed flag and bails to the ear-clip fallback instead of the lone .expect() panic.

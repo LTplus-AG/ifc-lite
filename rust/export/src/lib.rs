@@ -39,6 +39,8 @@ mod parquet_bos;
 mod rooms;
 pub mod rooted_type;
 mod schema_convert;
+mod schema_pad;
+pub use schema_pad::padded_type_universe;
 mod shades;
 pub mod source_header;
 mod step;

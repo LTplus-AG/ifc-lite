@@ -481,3 +481,52 @@ fn the_passed_index_is_the_one_consulted() {
         "an empty index was ignored, so the function built one of its own",
     );
 }
+
+/// IFC4X3's `IfcMapConversionScaled` — a concrete subtype of
+/// `IfcMapConversion` whose first eight attributes ARE its supertype's, with
+/// FactorX/FactorY/FactorZ appended. The scanner classifies by the RAW STEP
+/// type name, so matching only the supertype spelling found nothing here and
+/// the extractor fell through to the ePSet / legacy-IfcSite chain: no map
+/// conversion, hence no transform, for a file that plainly carries one. Same
+/// widening as the TS reader's `MAP_CONVERSION_TYPE_NAMES`
+/// (packages/parser/src/georef-extractor.ts). Byte-for-byte `GEOREF_IFC`
+/// except for line #11.
+const SCALED_MAP_CONVERSION_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('georef scaled fixture'),'2;1');
+FILE_NAME('georef-scaled.ifc','2026-08-25T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4X3_ADD2'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0$ScRe4drECQ4DMSqUjd6d',$,'P',$,$,$,$,(#2),#3);
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
+#3=IFCUNITASSIGNMENT((#6));
+#4=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCAXIS2PLACEMENT3D(#4,$,$);
+#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#10=IFCPROJECTEDCRS('EPSG:32632','WGS84 / UTM zone 32N','WGS84',$,'UTM','32N',$);
+#11=IFCMAPCONVERSIONSCALED(#2,#10,1000.5,2000.25,42.0,0.866025,0.5,1.0,1.0,1.0,1.0);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn reads_ifc4x3_scaled_map_conversion_as_a_map_conversion() {
+    let scaled = extract_georeferencing(SCALED_MAP_CONVERSION_IFC)
+        .expect("IFCMAPCONVERSIONSCALED must yield a georeference");
+    let plain = extract_georeferencing(GEOREF_IFC).expect("control fixture must be georeferenced");
+
+    // Pinned against the control, so a regression breaking BOTH spellings
+    // cannot pass by making them equally empty.
+    assert!(
+        (plain.eastings - 1000.5).abs() < 1e-6,
+        "control fixture drifted"
+    );
+    assert!((scaled.eastings - plain.eastings).abs() < 1e-9);
+    assert!((scaled.northings - plain.northings).abs() < 1e-9);
+    assert!((scaled.orthogonal_height - plain.orthogonal_height).abs() < 1e-9);
+    assert_eq!(scaled.crs_name, plain.crs_name);
+    // The fallback chain must not be what answered.
+    assert_eq!(scaled.source.as_deref(), Some("mapConversion"));
+    assert_eq!(scaled.source, plain.source);
+}

@@ -31,6 +31,7 @@
     "test:wasm-contract": "node scripts/test-wasm-contract.mjs",
     "test:snap-edges": "node scripts/test-snap-edges.mjs",
     "check:test-wiring": "node scripts/check-test-wiring.mjs",
+    "check:ci-path-coverage": "node scripts/check-ci-path-coverage.mjs",
     "check:test-glob-coverage": "node scripts/check-test-glob-coverage.mjs",
     "check:source-text-assertions": "node scripts/check-source-text-assertions.mjs",
     "check:rust-source-text-assertions": "node scripts/check-rust-source-text-assertions.mjs",

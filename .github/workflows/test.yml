@@ -117,14 +117,35 @@ jobs:
               - 'server/**'
               - 'api/**'
               - 'tests/api/**'
+              # `pnpm test:integration` runs THIS EXACT FILE in the Node tests
+              # job. Without it here the test cannot trigger its own execution:
+              # a PR editing only the integration harness skips the only lane
+              # that runs it.
+              - 'tests/integration.test.ts'
+              # The tsconfig BOTH `pnpm test:integration` and `pnpm test:api`
+              # compile against (`tsx --tsconfig tests/tsconfig.json`). Same
+              # trap as `.oxlintrc.json` above: a PR editing only the config a
+              # lane reads must not be able to skip that lane.
+              - 'tests/tsconfig.json'
               # The lint CONFIG, so a PR that only edits it cannot skip the
               # Lint job that reads it. Absent CI reads as green here, and a
               # guard cannot fire in a job that never runs.
               - '.oxlintrc.json'
-              # The server-bin platform-parity check reads this workflow's
-              # release matrix, so a PR that only edits the matrix cannot
-              # skip the job that checks it (issue #2619).
-              - '.github/workflows/server-binaries.yml'
+              # EVERY workflow, not just this one and server-binaries.yml.
+              # `scripts/check-swallowed-push.mjs` declares its SCOPE to be
+              # `.github/workflows/**` and runs in the Node tests job, so with
+              # only two workflows named here the gate was unreachable on 11 of
+              # the 13 files it guards -- PR #3118 edited release.yml and
+              # docker.yml and Node tests SKIPPED. `server-binaries.yml` (the
+              # server-bin platform-parity check's input, issue #2619) and
+              # `test.yml` are subsumed by this glob; test.yml stays named
+              # individually in the OTHER filters below, which this does not
+              # cover. COST: a workflow-only PR now runs the JS lane. Every job
+              # it adds is on a FREE ubuntu-latest runner except `build`, which
+              # only reaches Depot when the WASM source has drifted from the
+              # published release tag -- the same condition every frontend PR
+              # already pays. Workflow-only PRs are rare (dependabot bumps).
+              - '.github/workflows/**'
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
@@ -154,6 +175,19 @@ jobs:
               - 'mkdocs.yml'
               - 'README.md'
               - 'packages/*/README.md'
+              # The two SOURCES `scripts/docs/generate-docs-sections.mjs`
+              # regenerates its sections from. They belong in `docs` rather
+              # than `frontend` on purpose: `docs` reaches the freshness check
+              # through the Docs-checks job -- one free ubuntu-latest runner,
+              # three node scripts, no build artifact and no Depot -- which is
+              # the CHEAPEST job that runs this gate. `frontend` would drag a
+              # landing-copy edit through build + typecheck + lint + the viewer
+              # shards for no added signal. Coverage holds either way: when a
+              # PR also touches frontend/rust, Docs checks skips itself and
+              # Node tests runs the same `--check`. PR #1817 changed only
+              # apps/landing/bench-data.json, and BOTH lanes skipped.
+              - 'apps/landing/**'
+              - 'tests/benchmark/baseline.json'
               - 'scripts/docs/**'
               - '.github/workflows/test.yml'
 
@@ -744,6 +778,19 @@ jobs:
       # its first run.
       - name: Check swallowed-push gate regressions
         run: node --test scripts/check-swallowed-push.test.mjs
+      # The class the swallowed-push gate above was itself an instance of: a
+      # gate is only as good as the job that runs it, and the job only runs
+      # when the path filter says so. This derives each gate's INPUTS from the
+      # gate's own source and fails when one of them cannot trigger the job
+      # that reads it -- an unreachable gate reports success, because a skipped
+      # job counts as success in the aggregate `test` gate below (#3312).
+      - name: Check CI path coverage
+        run: node scripts/check-ci-path-coverage.mjs
+      # Executable proof it cannot pass vacuously: reintroducing a real hole
+      # must name that hole, and an empty workflow dir / unparseable filter
+      # block / zero derived inputs must FAIL rather than report clean.
+      - name: Check CI path-coverage gate regressions
+        run: node --test scripts/check-ci-path-coverage.test.mjs
       # The CSV cell escaper reached NINE hand-rolled copies and no two were
       # identical: some tested the formula trigger anchored at offset 0 (so a
       # BOM/ZWSP/LRM/NBSP/U+2028 in front of `=` bypassed the CWE-1236 guard),

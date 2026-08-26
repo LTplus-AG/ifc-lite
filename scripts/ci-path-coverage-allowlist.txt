@@ -1,0 +1,95 @@
+# Exemptions for scripts/check-ci-path-coverage.mjs.
+#
+# Format:  <gate script>  <path glob>  # <reason>
+#
+# An entry says: this gate names this path, the path cannot trigger the job that
+# runs the gate, AND that is acceptable for the written reason. A REASON IS
+# MANDATORY -- a bare path is refused. Entries that stop matching anything are a
+# FAILURE, not a no-op: a stale exemption is exactly how the next hole hides.
+#
+# Before adding a line, try the other fix first: add the path to the CHEAPEST
+# filter in .github/workflows/test.yml that reaches the job.
+#
+# ---------------------------------------------------------------------------
+# 1. PREFIX FRAGMENTS. The input derivation reads path literals out of a gate's
+#    own source, so `join(ROOT, 'tests', 'benchmark', 'baseline.json')` yields
+#    the composed path AND the bare `'tests'` it was composed from. The bare
+#    segment is a fragment, not a tree the gate walks. The derivation keeps it
+#    on purpose -- over-reporting is the safe direction for a reachability
+#    check, and the alternative (prefer the most specific literal) would have
+#    hidden `apps/landing`, which is the defect that prompted all of this.
+# ---------------------------------------------------------------------------
+scripts/check-test-wiring.mjs .github/* # `.github` is a prefix fragment; the walk is `.github/workflows`, which the frontend filter now carries
+scripts/check-test-wiring.test.mjs .github/* # same fragment, in the harness that mutates a copy of the tree
+scripts/release-version-changed.test.mjs .github/* # same fragment; the gate reads .github/workflows/release.yml only
+scripts/lib/module-size-ratchet.test.mjs tests/* # `tests` fragment from a fixture path; the ratchet walks packages/ and apps/
+scripts/fixtures/fetch-fixtures.test.mjs tests/* # `tests` fragment; the fetcher targets tests/models from its manifest
+scripts/docs/generate-docs-sections.mjs tests/benchmark/* # `tests` prefix fragment; the one input under tests/benchmark is baseline.json, now in the docs filter and pinned by REQUIRED_COVERAGE
+scripts/docs/generate-docs-sections.mjs tests/extensions # `tests` prefix fragment; sdk-canary.yml carries tests/extensions/canaries/** in its own paths
+scripts/docs/generate-docs-sections.mjs tests/models # `tests` prefix fragment; the corpus input tests/models/manifest.json is in the rust, geometry and frontend filters
+scripts/docs/check-package-readmes.test.mjs docs # `docs` fragment; the gate reads packages/*/README.md
+scripts/docs/check-package-readmes.test.mjs README.md # root README fragment; the gate reads per-package READMEs
+scripts/check-swallowed-push.test.mjs README.md # fragment from the harness's fixture root, not an input
+scripts/typecheck-tests.test.mjs README.md # same fragment
+scripts/typecheck-tests.test.mjs demo # `demo` is not a typecheck target; the gate reads tsconfig project references
+scripts/generate-plato-clash.mjs tools/* # `tools` fragment; the generator reads tools/plato, which the plato filter carries
+scripts/moonshot/ci/assert-b35-golden.mjs scripts/build-wasm.sh # named in prose as the build the golden came from, not read
+
+# ---------------------------------------------------------------------------
+# 2. apps/landing AND THE FOUR TREE-WALKERS. `check-module-size`,
+#    `check-wasm-disposal`, `check-source-text-assertions`,
+#    `check-loader-hook-specifier-match` and `check-test-wiring` all walk
+#    `apps/`, and all run in the Node tests job, which only `frontend` and
+#    `rust` reach. THE TRADE, written out rather than silently taken: closing
+#    this would mean `apps/landing/**` in `frontend`, which drags every
+#    landing-copy edit through build + typecheck + lint + the viewer shards +
+#    E2E. The filter block already declines to broaden `apps/**` for exactly
+#    that reason. What is NOT exempted is the input that actually exists today:
+#    `generate-docs-sections` reads apps/landing/app.jsx and bench-data.json,
+#    and those are now in the `docs` filter, which reaches the same check
+#    through the free Docs-checks job. The residue is a tree walk that matches
+#    zero files -- apps/landing ships unbuilt .jsx/.html/.css and contains no
+#    TypeScript, no test file and no WASM handle. If TypeScript ever lands
+#    there, DELETE THESE LINES and pay the frontend cost.
+# ---------------------------------------------------------------------------
+scripts/check-module-size.mjs apps/landing # walks apps/ for .ts/.tsx; apps/landing has none -- see the trade above
+scripts/check-module-size.test.mjs apps/landing # same walk, in the harness
+scripts/check-wasm-disposal.mjs apps/landing # walks apps/ for WASM handles; apps/landing holds none
+scripts/check-source-text-assertions.mjs apps/landing # walks apps/ for test files; apps/landing has none
+scripts/check-loader-hook-specifier-match.mjs apps/landing # walks apps/ for loader hooks; apps/landing has none
+scripts/check-loader-hook-specifier-match.test.mjs apps/landing # same walk, in the harness
+scripts/check-tla-chunk-await.test.mjs apps/landing # same walk, in the harness
+scripts/check-test-wiring.mjs apps/landing # walks apps/ for test suites; apps/landing has none
+scripts/typecheck-tests.test.mjs apps/landing # apps/landing is not a tsconfig project
+
+# ---------------------------------------------------------------------------
+# 3. OTHER WORKFLOWS. Real holes, in workflows this change does not own.
+#    Recorded rather than fixed so they are visible and attributable, and so
+#    the check goes green on the state it actually found.
+# ---------------------------------------------------------------------------
+scripts/moonshot/ci/check-report-numerals.mjs docs/* # moonshot.yml's own paths do not include docs/**; widening a standing-evidence workflow is a separate call
+scripts/moonshot/ci/check-report-numerals.mjs scripts/* # same workflow: moonshot.yml's paths do not include scripts/**
+scripts/fixtures/fetch-fixtures.mjs scripts/fixtures/* # the fetcher runs in rust-tests/geometry-census/benchmark, whose filters carry tests/models/manifest.json but not scripts/**
+scripts/fixtures/fetch-fixtures.mjs tests/models/README.md # the rust/geometry filters pin tests/models/manifest.json, the corpus input; the README is not one
+
+# ---------------------------------------------------------------------------
+# 4. THIS CHECK'S OWN REQUIRED_COVERAGE LITERALS. `check-ci-path-coverage.mjs`
+#    NAMES these files in order to assert about them; it does not read them.
+#    Each is asserted against the globs of the job running the gate that DOES
+#    read it, which is the whole point of REQUIRED_COVERAGE.
+# ---------------------------------------------------------------------------
+scripts/check-ci-path-coverage.mjs apps/landing/app.jsx # asserted about, not read -- REQUIRED_COVERAGE entry
+scripts/check-ci-path-coverage.mjs apps/landing/bench-data.json # asserted about, not read -- REQUIRED_COVERAGE entry
+scripts/check-ci-path-coverage.mjs tests/benchmark/baseline.json # asserted about, not read -- REQUIRED_COVERAGE entry
+
+# ---------------------------------------------------------------------------
+# 5. THIS CHECK'S OWN HARNESS. check-ci-path-coverage.test.mjs quotes real repo
+#    paths in its assertions and its prose; it reads none of them -- its
+#    fixtures are synthetic trees under os.tmpdir().
+# ---------------------------------------------------------------------------
+scripts/check-ci-path-coverage.test.mjs .github/* # `.github` prefix fragment from a fixture path, not read
+scripts/check-ci-path-coverage.test.mjs apps/landing # quoted in an assertion, not read
+scripts/check-ci-path-coverage.test.mjs docs # quoted in an assertion, not read
+scripts/check-ci-path-coverage.test.mjs tests/benchmark # quoted in an assertion, not read
+scripts/check-ci-path-coverage.test.mjs tests/extensions # quoted in an assertion, not read
+scripts/check-ci-path-coverage.test.mjs tests/models # quoted in an assertion, not read

@@ -538,3 +538,30 @@ test('the resolved repo reaches the PR read, not just the commit-status reads', 
     `check-runs read missing from:\n${calls.join('\n')}`,
   );
 });
+
+
+test('the gate and the workflow it derives lanes from carry the SAME base-branch filter', () => {
+  // The self-guard above ("no edit to the script or its config can dodge the
+  // job") holds only for PRs targeting main, because this job carries
+  // `branches: [main]`. That scope is SOUND only while test.yml carries the
+  // same filter: the required lane set is derived from test.yml, so if test.yml
+  // ran on feature-targeted PRs and this gate did not, the gate would be blind
+  // on PRs whose lanes genuinely did run. And if this gate ran where test.yml
+  // did not, every required lane would be legitimately absent and every stacked
+  // PR would fail for a reason that is not a defect.
+  //
+  // Pinned rather than reasoned about in a comment, because the two files are
+  // edited independently and the failure is silent in both directions.
+  const own = readFileSync(join(REPO_ROOT, '.github/workflows/pr-review-signal.yml'), 'utf8');
+  const testYml = readFileSync(TEST_YML, 'utf8');
+  const branchesOf = (text) => /^\s*branches:\s*(\[.*\])\s*$/m.exec(text)?.[1];
+  const mine = branchesOf(own);
+  const theirs = branchesOf(testYml);
+  assert.ok(mine, 'pr-review-signal.yml must declare an explicit base-branch filter');
+  assert.ok(theirs, 'test.yml must declare an explicit base-branch filter');
+  assert.equal(
+    mine,
+    theirs,
+    'the gate must run on exactly the base branches whose lanes it requires',
+  );
+});

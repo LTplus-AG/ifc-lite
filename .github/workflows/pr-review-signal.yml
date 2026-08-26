@@ -11,8 +11,20 @@ name: PR review signal
 # 2. It reads scripts/pr-review-signal.config.json. #3305's gate could not fire
 #    on the file it guarded because that file was in no path filter, so the gate
 #    existed, was correct, and was unreachable on its own input. With no filter
-#    here, neither the script nor its config can be edited without the job that
-#    runs them firing. Asserted in scripts/check-pr-review-signal.test.mjs.
+#    here, no edit to the script or its config can dodge the job that runs them
+#    ON THE PATH THAT MERGES IT. Asserted in
+#    scripts/check-pr-review-signal.test.mjs.
+#
+#    THE SCOPE OF THAT CLAIM, stated rather than left to be discovered: the
+#    `branches: [main]` filter below means a PR based on a FEATURE branch does
+#    not run this job, so both files can change on such a PR with no gate run.
+#    That is not a hole to close by widening the filter -- the required lane set
+#    is derived from test.yml, which carries the same `branches: [main]`, so on
+#    a feature-targeted PR every required lane is legitimately absent and this
+#    gate would fail every stacked PR for a reason that is not a defect. The
+#    residue is bounded by the retarget rule the next paragraph describes:
+#    pointing such a PR at main fires `edited`, which runs this job, and it must
+#    then pass before the change reaches main.
 #
 # `edited` IS THE POINT OF THE TYPES LIST. GitHub's default `pull_request`
 # activity types are opened/synchronize/reopened. Retargeting a PR's base branch

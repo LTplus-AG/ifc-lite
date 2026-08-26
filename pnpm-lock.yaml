@@ -965,6 +965,9 @@ importers:
 
   packages/encoding:
     devDependencies:
+      '@ifc-lite/timing-ladder':
+        specifier: workspace:^
+        version: link:../timing-ladder
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -1066,6 +1069,9 @@ importers:
         specifier: ^0.9.11
         version: 0.9.11
     devDependencies:
+      '@ifc-lite/timing-ladder':
+        specifier: workspace:^
+        version: link:../timing-ladder
       happy-dom:
         specifier: ^20.11.2
         version: 20.11.2
@@ -1525,6 +1531,18 @@ importers:
         specifier: workspace:^
         version: link:../geometry
     devDependencies:
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.0
+        version: 4.1.10(@edge-runtime/vm@3.2.0)(@types/node@26.2.0)(happy-dom@20.11.2)(vite@8.2.0(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.12)(yaml@2.9.0))
+
+  packages/timing-ladder:
+    devDependencies:
+      '@types/node':
+        specifier: ^26.2.0
+        version: 26.2.0
       typescript:
         specifier: ^6.0.3
         version: 6.0.3

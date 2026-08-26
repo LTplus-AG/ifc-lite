@@ -286,6 +286,34 @@ pub fn legacy_aware_ifc_type(type_name: &str) -> IfcType {
     }
 }
 
+/// The `IfcTypeProduct` subtype a STEP keyword names, **legacy-aware**, or
+/// `None` when the keyword is not one.
+///
+/// The single predicate behind every type-geometry candidate gate (#957/#962):
+/// the native processor, the streaming and sharded browser pre-passes, the
+/// styling pre-pass, and the attribute export's pass 3. They MUST agree — a
+/// keyword one admits and another drops is either geometry with no attribute
+/// row or an attribute row with no geometry (#1518).
+///
+/// Keeps the cheap `ends_with` pre-filter that kept the resolve and the
+/// `is_subtype_of` walk off the hot path for the non-type majority, and
+/// resolves LEGACY-AWARE: under a bare [`IfcType::from_str`] the IFC2X3 type
+/// products IFC4X3 dropped (`IFCDOORSTYLE`, `IFCWINDOWSTYLE`,
+/// `IFCBUILDINGELEMENTTYPE`) come back `Unknown`, a subtype of nothing, so
+/// every gate discarded them before they could become jobs — and they carry
+/// `has_geometry: false` in the legacy table, so the ordinary product route
+/// did not reach them either. Their `RepresentationMaps` geometry was dropped
+/// by every path at once (#3187).
+///
+/// `type_name` is the raw STEP keyword, i.e. already uppercase.
+pub fn type_product_ifc_type(type_name: &str) -> Option<IfcType> {
+    if !type_name.ends_with("TYPE") && !type_name.ends_with("STYLE") {
+        return None;
+    }
+    let ty = legacy_aware_ifc_type(type_name);
+    ty.is_subtype_of(IfcType::IfcTypeProduct).then_some(ty)
+}
+
 /// The legacy-aware type for an entity, recovered from its RAW STEP RECORD.
 ///
 /// For callers that hold a `DecodedEntity` and its source bytes but no keyword.

@@ -153,6 +153,25 @@ fn escape_maps_every_ascii_control_char_to_a_space() {
 }
 
 #[test]
+fn escape_preserves_the_length_of_a_control_char_run() {
+    // The single-char cases above pass identically whether `escape` replaces
+    // per character or collapses a run, so they cannot see the difference that
+    // #3284 is about. Until this test existed, the three-way agreement on RUN
+    // handling rested on prose: `packages/export/src/step-escaper-parity.test.ts`
+    // pins the literal "a   b" for the two TypeScript escapers and says in a
+    // comment that Rust produces the same, without ever running Rust.
+    //
+    // The TypeScript half carried `[\x00-\x1F\x7F]+` for a while, which
+    // collapses "a\t\t\tb" to "a b" while this side produced "a   b" -- one
+    // file, two rules, and every assertion green because none of them used a
+    // run. Pin the count here so the halves cannot drift apart again silently.
+    assert_eq!(escape("a\t\t\tb"), "a   b");
+    assert_eq!(escape("\0\0\0"), "   ");
+    // Mixed kinds in one run: still one space each, not one for the run.
+    assert_eq!(escape("a\r\n\u{0B}\u{7F}b"), "a    b");
+}
+
+#[test]
 fn escape_no_special_chars_is_byte_identical() {
     // Bounding control: plain ASCII with no quote/backslash/control chars
     // must pass through unchanged (no spurious allocation-visible diff).

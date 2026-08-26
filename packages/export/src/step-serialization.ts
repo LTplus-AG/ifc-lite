@@ -119,9 +119,10 @@ export function serializeTypedMarker(type: string, value: string | number | bool
  * Escape a string for STEP format: backslash and single-quote doubling, plus
  * non-ASCII directive encoding.
  *
- * Control characters (CR/LF and other C0 codes) are collapsed to a single
- * space so every generated STEP entity stays on one physical line and
- * round-trips through the line-oriented merge/convert paths.
+ * Control characters (CR/LF and other C0 codes, plus DEL) each become ONE
+ * space -- per character, not per run -- so every generated STEP entity stays
+ * on one physical line and round-trips through the line-oriented
+ * merge/convert paths, without a run of them losing its length (#3284).
  *
  * ISO 10303-21 6.3.3.4 restricts a string literal's plain-text bytes to the
  * "basic graphic" range 32-126; every other character is a control directive

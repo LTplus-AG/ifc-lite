@@ -189,7 +189,7 @@ export function serializeValue(value: StepValue): string {
  * `\X4\HHHHHHHH\X0\`), never a raw byte. A reader assuming ISO-8859-1 turns a
  * raw UTF-8 sequence into mojibake or a broken parse (IfcOpenShell#699/#1016;
  * files rejected by Solibri). Matches `@ifc-lite/export`'s `escapeStepString`
- * and Rust's `step_text::escape`, checked in step-escaper-parity.test.ts.
+ * and Rust's `step_text::escape`, checked in export/src/step-escaper-parity.test.ts.
  */
 function escapeStepString(str: string): string {
   const escaped = str

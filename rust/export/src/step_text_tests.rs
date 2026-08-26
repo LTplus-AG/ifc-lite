@@ -46,6 +46,26 @@ fn detect_schema_survives_an_apostrophe_in_a_comment() {
 }
 
 #[test]
+fn detect_schema_does_not_take_a_quote_inside_a_comment_as_the_label() {
+    // With the comment AFTER the keyword, the keyword search is not what is
+    // under test: the label search is, and it was taking the first apostrophe
+    // it saw. The two cases above put the comment on its own line BEFORE
+    // FILE_SCHEMA, which the keyword search handles alone, so they passed with
+    // this defect live and gave false assurance about the whole path.
+    let commented_out = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA /* was 'IFC2X3' */ (('IFC4X3'));\nENDSEC;\nDATA;\nENDSEC;\n";
+    assert_eq!(detect_schema(commented_out.as_bytes()), "IFC4X3");
+
+    // Worse than a wrong schema: the label goes into the exported header
+    // through `escape()`, so this one shipped `s */ ((` as the schema name.
+    let apostrophe = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA /* Jane's */ (('IFC4X3'));\nENDSEC;\nDATA;\nENDSEC;\n";
+    assert_eq!(detect_schema(apostrophe.as_bytes()), "IFC4X3");
+
+    // Inside the argument list rather than before it.
+    let inside = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA((/* 'IFC2X3' */'IFC4X3'));\nENDSEC;\nDATA;\nENDSEC;\n";
+    assert_eq!(detect_schema(inside.as_bytes()), "IFC4X3");
+}
+
+#[test]
 fn detect_schema_ignores_endsec_literal_text_inside_a_quoted_string() {
     // Bug: the header-end scan for `ENDSEC;` was a raw byte search with
     // no quote awareness. A header field whose string VALUE happens to

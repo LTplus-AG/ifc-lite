@@ -65,27 +65,32 @@ pub(crate) fn escape(s: &str) -> String {
     out
 }
 
-/// Find the first occurrence of `needle` in `haystack` that is *not* inside a
-/// STEP single-quoted string literal — i.e. skip matches that fall within a
-/// header field's string value. Quote state is tracked by toggling on every
-/// `'` byte; a literal apostrophe inside a string is escaped by doubling
-/// (`''` per ISO 10303-21 6.3.2.4), so a doubled pair toggles the state twice
-/// and correctly nets to a no-op, the same technique `refs_in_line` already
-/// uses above for `#`-reference scanning. Linear in `haystack.len()` — no
-/// backtracking, no regex.
+/// Index of `needle` in `haystack`, skipping any occurrence that sits inside a
+/// quoted STEP string literal or a `/* ... */` comment. Case-sensitive.
+///
+/// Neither literals nor comments carry structure, and this drives
+/// `detect_schema`, which drives schema CONVERSION on export. So a comment read
+/// as structure here does not lose a field, it converts the file to the wrong
+/// schema: `/* was FILE_SCHEMA(('IFC2X3')); */` on a commented-out line
+/// answered IFC2X3 for an IFC4X3 file.
+///
+/// The rule is `source_header::skip_lexical_at`, shared rather than copied, and
+/// it handles the `''` escape by consuming a literal whole instead of toggling
+/// a flag per apostrophe.
+///
+/// Linear in `haystack.len()`. That is not free here and the reason is in
+/// `last_comment_close`: hoisting the closer search is what keeps an
+/// unterminated `/*` from making this quadratic, and this function has no
+/// header cap, so it can be handed a whole multi-megabyte file.
 fn find_unquoted(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     if needle.is_empty() || needle.len() > haystack.len() {
         return None;
     }
+    let last_close = crate::source_header::last_comment_close(haystack);
     let last_start = haystack.len() - needle.len();
     let mut i = 0;
     while i <= last_start {
-        // One rule for literals and comments, shared with the header reader.
-        // `detect_schema` drives schema CONVERSION on export, so a comment read
-        // as structure here does not lose a field, it converts the file to the
-        // wrong schema: `/* was FILE_SCHEMA(('IFC2X3')); */` in a commented-out
-        // line answered IFC2X3 for an IFC4X3 file.
-        if let Some(end) = crate::source_header::skip_lexical_at(haystack, i) {
+        if let Some(end) = crate::source_header::skip_lexical_at(haystack, i, last_close) {
             i = end;
             continue;
         }
@@ -117,21 +122,51 @@ pub(crate) fn detect_schema(content: &[u8]) -> String {
         .unwrap_or(content.len());
     let head = &content[..head_len];
     if let Some(idx) = find_unquoted(head, b"FILE_SCHEMA") {
-        let rest = String::from_utf8_lossy(&head[idx..]);
-        if let Some(q1) = rest.find('\'') {
-            if let Some(q2) = rest[q1 + 1..].find('\'') {
-                let label = &rest[q1 + 1..q1 + 1 + q2];
+        // The KEYWORD search skips comments, but the label search after it has
+        // to as well, and for a while it did not: the first apostrophe inside a
+        // comment was taken as the label's opening quote. Two ways that showed
+        // up, both with the comment AFTER the keyword, which is why the tests
+        // for this now put it there -- a comment on its own line before
+        // FILE_SCHEMA is handled by the keyword search alone and proves
+        // nothing about this half:
+        //
+        //   FILE_SCHEMA /* was 'IFC2X3' */ (('IFC4X3'));  ->  "IFC2X3"
+        //   FILE_SCHEMA /* Jane's */ (('IFC4X3'));        ->  "s */ (("
+        //
+        // The first converts the file to the wrong schema. The second writes
+        // that garbage into the exported header, since the label goes straight
+        // to `escape()` when the header is re-written.
+        //
+        // Scanned as bytes rather than through `from_utf8_lossy`, so an offset
+        // here means the same thing it means in `head`.
+        let tail = &head[idx..];
+        let last_close = crate::source_header::last_comment_close(tail);
+        let mut i = 0;
+        let mut open = None;
+        while i < tail.len() {
+            if let Some(end) = crate::source_header::skip_comment_at(tail, i, last_close) {
+                i = end;
+                continue;
+            }
+            if tail[i] == b'\'' {
+                open = Some(i);
+                break;
+            }
+            i += 1;
+        }
+        if let Some(q1) = open {
+            if let Some(off) = tail[q1 + 1..].iter().position(|&b| b == b'\'') {
+                let label = String::from_utf8_lossy(&tail[q1 + 1..q1 + 1 + off]);
                 if !label.is_empty() {
-                    // `label` is the RAW, still-STEP-escaped slice between
-                    // the quotes. Both call sites (`step.rs`'s
-                    // `source_schema` fallback and `merged.rs`) feed this
-                    // straight into `escape()` when the header is
-                    // re-written, which doubles `\` again -- un-double it
-                    // here first so a schema label carrying a literal `\`
-                    // round-trips instead of being re-escaped on top of
-                    // its own escaping. A no-op for every real schema
-                    // label (IFC2X3, IFC4, IFC4X3_ADD2, ...), none of
-                    // which contain a backslash.
+                    // `label` is the RAW, still-STEP-escaped slice between the
+                    // quotes. Both call sites (`step.rs`'s `source_schema`
+                    // fallback and `merged.rs`) feed this straight into
+                    // `escape()` when the header is re-written, which doubles
+                    // `\` again -- un-double it here first so a schema label
+                    // carrying a literal `\` round-trips instead of being
+                    // re-escaped on top of its own escaping. A no-op for every
+                    // real schema label (IFC2X3, IFC4, IFC4X3_ADD2, ...), none
+                    // of which contain a backslash.
                     return label.replace("\\\\", "\\");
                 }
             }

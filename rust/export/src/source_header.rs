@@ -45,8 +45,39 @@ pub struct SourceHeader {
     pub schema_identifiers: Vec<String>,
 }
 
-/// If a STEP string literal or a `/* ... */` comment starts at `bytes[i]`,
-/// return the index just past it. Otherwise `None`.
+/// Index of the last `*/` in `bytes`, or `None`. Hoisted out of the scan loops.
+///
+/// Without it the scan is quadratic, and reachably so: a failing closer search
+/// runs to the end of the buffer, the caller advances one byte, and the next
+/// `/*` repeats it. A 64 KiB header holding 21000 unterminated `/*` took 5.7
+/// seconds in the TypeScript half, and this half is worse because
+/// `detect_schema` has no header cap at all. With it, a search is attempted
+/// only when a closer exists at or after `i + 2`, so every search succeeds and
+/// successful searches consume disjoint spans.
+pub(crate) fn last_comment_close(bytes: &[u8]) -> Option<usize> {
+    bytes.windows(2).rposition(|w| w == b"*/")
+}
+
+/// If a `/* ... */` comment starts at `bytes[i]`, return the index just past
+/// it. Otherwise `None`. `last_close` comes from `last_comment_close`, computed
+/// once per scan.
+///
+/// An UNTERMINATED `/*` is not a comment. Running it to end-of-text would
+/// swallow every record after it and lose the whole header, which is worse than
+/// the malformed input deserves. Treating it as ordinary text costs one `/`.
+pub(crate) fn skip_comment_at(bytes: &[u8], i: usize, last_close: Option<usize>) -> Option<usize> {
+    if bytes.get(i) != Some(&b'/') || bytes.get(i + 1) != Some(&b'*') {
+        return None;
+    }
+    if last_close? < i + 2 {
+        return None;
+    }
+    let close = bytes[i + 2..].windows(2).position(|w| w == b"*/")?;
+    Some(i + 2 + close + 2)
+}
+
+/// If a STEP string literal or a comment starts at `bytes[i]`, return the index
+/// just past it. Otherwise `None`.
 ///
 /// Neither carries structure: a keyword, a comma or a bracket inside one is
 /// text. Every scan in this file has to agree on that, so it is one function
@@ -59,43 +90,37 @@ pub struct SourceHeader {
 ///
 /// The two unterminated cases are deliberately not symmetric. An unterminated
 /// literal runs to end-of-text, because a lone `'` cannot be read as ordinary
-/// text. An unterminated `/*` is simply not a comment, because it can: running
-/// it to the end would lose every record after it.
-pub(crate) fn skip_lexical_at(bytes: &[u8], i: usize) -> Option<usize> {
-    match *bytes.get(i)? {
-        b'\'' => {
-            let mut p = i + 1;
-            while p < bytes.len() {
-                if bytes[p] != b'\'' {
-                    p += 1;
-                } else if bytes.get(p + 1) == Some(&b'\'') {
-                    p += 2; // `''` is an escaped apostrophe, not the end
-                } else {
-                    return Some(p + 1);
-                }
+/// text. An unterminated `/*` is simply not a comment, because it can.
+pub(crate) fn skip_lexical_at(bytes: &[u8], i: usize, last_close: Option<usize>) -> Option<usize> {
+    if bytes.get(i)? == &b'\'' {
+        let mut p = i + 1;
+        while p < bytes.len() {
+            if bytes[p] != b'\'' {
+                p += 1;
+            } else if bytes.get(p + 1) == Some(&b'\'') {
+                p += 2; // `''` is an escaped apostrophe, not the end
+            } else {
+                return Some(p + 1);
             }
-            Some(bytes.len())
         }
-        b'/' if bytes.get(i + 1) == Some(&b'*') => {
-            let close = bytes[i + 2..].windows(2).position(|w| w == b"*/")?;
-            Some(i + 2 + close + 2)
-        }
-        _ => None,
+        return Some(bytes.len());
     }
+    skip_comment_at(bytes, i, last_close)
 }
 
 /// Advance past whitespace and comments. ISO 10303-21 allows a comment wherever
 /// whitespace is allowed, including between a record keyword and its `(`.
-fn skip_trivia(bytes: &[u8], mut i: usize) -> usize {
+///
+/// ASCII whitespace only, which is what 10303-21 means. The TypeScript half
+/// used `/\s/`, which also matches U+00A0 and the other Unicode space
+/// separators, so the two disagreed on `FILE_SCHEMA\u{00A0}(('IFC2X3'))`.
+fn skip_trivia(bytes: &[u8], mut i: usize, last_close: Option<usize>) -> usize {
     loop {
-        while i < bytes.len() && (bytes[i] as char).is_whitespace() {
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
             i += 1;
         }
-        if bytes.get(i) == Some(&b'\'') {
-            return i;
-        }
-        match skip_lexical_at(bytes, i) {
-            Some(end) => i = end, // only a comment can match here
+        match skip_comment_at(bytes, i, last_close) {
+            Some(end) => i = end,
             None => return i,
         }
     }
@@ -106,47 +131,40 @@ fn skip_trivia(bytes: &[u8], mut i: usize) -> usize {
 /// still-escaped argument substrings, trimmed.
 fn split_top_level(inner: &str) -> Vec<String> {
     let bytes = inner.as_bytes();
+    let last_close = last_comment_close(bytes);
     let mut args: Vec<String> = Vec::new();
     let mut depth: i32 = 0;
     let mut current = String::new();
+    // Everything except a comment is part of the argument's text, so the scan
+    // copies contiguous runs and cuts only where something is dropped (a
+    // comment) or where an argument ends (a top-level comma). Nothing is
+    // inspected per character, so multi-byte UTF-8 needs no special handling.
+    let mut run = 0;
     let mut i = 0;
     while i < bytes.len() {
-        if let Some(end) = skip_lexical_at(bytes, i) {
-            // A literal is part of the argument's text; a comment is not.
-            if bytes[i] == b'\'' {
-                current.push_str(&inner[i..end]);
+        if let Some(end) = skip_lexical_at(bytes, i, last_close) {
+            if bytes[i] != b'\'' {
+                current.push_str(&inner[run..i]); // a comment is not part of the text
+                run = end;
             }
             i = end;
             continue;
         }
-        match bytes[i] {
-            b'(' | b'[' => {
-                depth += 1;
-                current.push(bytes[i] as char);
-                i += 1;
-            }
-            b')' | b']' => {
-                depth -= 1;
-                current.push(bytes[i] as char);
-                i += 1;
-            }
-            b',' if depth == 0 => {
-                args.push(current.trim().to_string());
-                current.clear();
-                i += 1;
-            }
-            _ => {
-                // Copy one whole UTF-8 character. Delimiters are all ASCII, so a
-                // continuation byte can never be one and is safe to run over.
-                let start = i;
-                i += 1;
-                while i < bytes.len() && (bytes[i] & 0xC0) == 0x80 {
-                    i += 1;
-                }
-                current.push_str(&inner[start..i]);
+        if bytes[i] == b',' && depth == 0 {
+            current.push_str(&inner[run..i]);
+            args.push(current.trim().to_string());
+            current.clear();
+            run = i + 1;
+        } else {
+            match bytes[i] {
+                b'(' | b'[' => depth += 1,
+                b')' | b']' => depth -= 1,
+                _ => {}
             }
         }
+        i += 1;
     }
+    current.push_str(&inner[run..]);
     if !current.trim().is_empty() || !args.is_empty() {
         args.push(current.trim().to_string());
     }
@@ -193,29 +211,32 @@ fn decode_string_list(arg: &str) -> Vec<String> {
 }
 
 /// Find `needle` (ASCII) in `haystack`, ignoring ASCII case, returning a byte
-/// offset into `haystack` itself, optionally skipping matches inside a
-/// single-quoted STEP string literal.
+/// offset into `haystack` itself. Matches inside a string literal or a comment
+/// are not matches: neither carries structure.
 ///
 /// Not `to_uppercase().find(..)`: that builds a copy whose byte offsets can
 /// drift from the original (`'ß'` uppercases to two bytes), and slicing the
 /// original with an offset taken from the copy is how a header value comes back
 /// mangled. Case-folding ASCII in place keeps every offset the caller's.
 ///
-/// Quote state toggles on every `'`; a literal apostrophe is written doubled
-/// (ISO 10303-21 6.3.2.4), so a doubled pair toggles twice and nets to a no-op
-/// — the same technique `step_text::find_unquoted` and `refs_in_line` use.
-fn find_ascii_ci_from(haystack: &[u8], needle: &[u8], skip_quoted: bool) -> Option<usize> {
+/// ASCII case only, which is what ISO 10303-21 means by case-insensitive. A
+/// full Unicode fold maps `'ſ'` to `'S'`, so it would read `ENDſEC` as `ENDSEC`
+/// and truncate the header.
+///
+/// Literals and comments are consumed whole by `skip_lexical_at` rather than
+/// tracked with a toggled flag, which is also how the `''` escape is handled:
+/// a doubled apostrophe is part of the literal, not the end of it.
+fn find_ascii_ci_from(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     if needle.is_empty() || needle.len() > haystack.len() {
         return None;
     }
+    let last_close = last_comment_close(haystack);
     let last_start = haystack.len() - needle.len();
     let mut i = 0;
     while i <= last_start {
-        if skip_quoted {
-            if let Some(end) = skip_lexical_at(haystack, i) {
-                i = end;
-                continue;
-            }
+        if let Some(end) = skip_lexical_at(haystack, i, last_close) {
+            i = end;
+            continue;
         }
         if haystack[i..i + needle.len()].iter().zip(needle).all(|(a, b)| a.eq_ignore_ascii_case(b))
         {
@@ -234,15 +255,16 @@ fn find_ascii_ci_from(haystack: &[u8], needle: &[u8], skip_quoted: bool) -> Opti
 /// drops the real one (the character after it is not `(`).
 fn extract_record_args(text: &str, keyword: &str) -> Option<String> {
     let bytes = text.as_bytes();
-    let at = find_ascii_ci_from(bytes, keyword.as_bytes(), true)?;
-    let mut i = skip_trivia(bytes, at + keyword.len());
+    let last_close = last_comment_close(bytes);
+    let at = find_ascii_ci_from(bytes, keyword.as_bytes())?;
+    let mut i = skip_trivia(bytes, at + keyword.len(), last_close);
     if bytes.get(i) != Some(&b'(') {
         return None;
     }
     let start = i;
     let mut depth: i32 = 0;
     while i < bytes.len() {
-        if let Some(end) = skip_lexical_at(bytes, i) {
+        if let Some(end) = skip_lexical_at(bytes, i, last_close) {
             i = end;
             continue;
         }
@@ -277,7 +299,7 @@ pub fn parse_source_header(content: &[u8]) -> Option<SourceHeader> {
     // the terminator — it would cut the header short and drop every record
     // after it. The offset comes from the string itself, so it is already a
     // char boundary.
-    let text = match find_ascii_ci_from(raw.as_bytes(), b"ENDSEC", true) {
+    let text = match find_ascii_ci_from(raw.as_bytes(), b"ENDSEC") {
         Some(end) => raw[..end].to_string(),
         None => raw.to_string(),
     };

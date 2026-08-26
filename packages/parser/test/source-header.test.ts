@@ -471,6 +471,16 @@ describe('the quote-aware scan does not lose the header to its own state (#3284)
     expect(h?.schemaIdentifiers).toEqual(['IFC4']);
   });
 
+  it('a non-breaking space is not whitespace, so the halves agree', () => {
+    // ISO 10303-21 whitespace is ASCII. `/\s/` also matches U+00A0 and the
+    // other Unicode space separators, while the Rust half tests bytes, so the
+    // two answered differently for this record. Both now decline it, which is
+    // the same answer and the right one: separated by U+00A0 the record is
+    // malformed, not merely unusual.
+    const h = parseSourceHeader(header(`FILE_SCHEMA\u00A0(('IFC2X3'));`));
+    expect(h?.schemaIdentifiers ?? []).toEqual([]);
+  });
+
   it('a long s is not folded to S, so it cannot fake a keyword', () => {
     // 'ſ'.toUpperCase() is 'S', so a full Unicode fold reads ENDſEC as ENDSEC
     // and truncates the header before FILE_SCHEMA. 10303-21 case-insensitivity

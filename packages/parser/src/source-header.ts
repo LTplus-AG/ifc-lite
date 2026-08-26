@@ -18,6 +18,12 @@ import { decodeStepStringLiteral } from '@ifc-lite/encoding';
 
 import { asSourceBytes, type IfcSourceBytes } from './source-bytes.js';
 
+import {
+  lastCommentClose,
+  matchesKeywordAt,
+  skipLexicalAt,
+  skipTrivia,
+} from './step-lexing.js';
 /** Headers are tiny; cap the decode so a huge file's body is never scanned. */
 const MAX_HEADER_BYTES = 64 * 1024;
 
@@ -33,8 +39,9 @@ function splitTopLevel(inner: string): string[] {
   const args: string[] = [];
   let depth = 0;
   let current = '';
+  const lastClose = lastCommentClose(inner);
   for (let i = 0; i < inner.length; i++) {
-    const skip = skipLexicalAt(inner, i);
+    const skip = skipLexicalAt(inner, i, lastClose);
     if (skip >= 0) {
       // A literal is part of the argument's text; a comment is not.
       if (inner[i] === "'") current += inner.slice(i, skip);
@@ -117,88 +124,6 @@ function decodeStringList(arg: string): string[] {
     .filter((v): v is string => v !== undefined);
 }
 
-/**
- * If a STEP string literal or a `/* ... *\/` comment starts at `text[i]`, return
- * the index just past it. Otherwise -1.
- *
- * Neither carries structure: a keyword, a comma or a bracket inside one is
- * text. Every scan in this file has to agree on that, so it is one function
- * rather than a copy per loop. #3284 was one file holding two rules for the
- * same thing; three private copies of this loop is that shape again.
- *
- * The result always ADVANCES the caller's index. An earlier form returned the
- * `*\/` offset and left `-1` to mean unterminated, which a caller adding 1 to
- * turns into 0: the scan restarts at the top, finds the same comment, and never
- * terminates.
- *
- * The two unterminated cases are deliberately not symmetric. An unterminated
- * literal runs to end-of-text, because a lone `'` cannot be read as ordinary
- * text. An unterminated `/*` is simply not a comment, because it can: running
- * it to the end would lose every record after it, and a malformed comment
- * should not cost more than the two characters it is written with.
- *
- * The rule itself is owned by `step-lexing.ts`, which applies it over bytes for
- * the tokenizer. This is the decoded-string counterpart. Folding the two
- * together means moving the whole header read onto bytes, since these callers
- * slice with character offsets; that is a larger change than #3284 and belongs
- * on its own.
- */
-function skipLexicalAt(text: string, i: number): number {
-  if (text[i] === "'") {
-    for (let p = i + 1; p < text.length; p++) {
-      if (text[p] !== "'") continue;
-      if (text[p + 1] === "'") { p++; continue; } // `''` is an escaped quote, not the end
-      return p + 1;
-    }
-    return text.length;
-  }
-  if (text[i] === '/' && text[i + 1] === '*') {
-    const close = text.indexOf('*/', i + 2);
-    // An UNTERMINATED `/*` is not a comment. Running it to end-of-text would
-    // swallow every record after it and lose the whole header, which is worse
-    // than the malformed input deserves and worse than doing nothing. Treating
-    // it as ordinary text costs only that one `/`, and the scan still advances.
-    return close < 0 ? -1 : close + 2;
-  }
-  return -1;
-}
-
-/**
- * Advance past whitespace and comments. ISO 10303-21 allows a comment wherever
- * whitespace is allowed, including between a record keyword and its `(`.
- */
-function skipTrivia(text: string, i: number): number {
-  for (;;) {
-    while (i < text.length && /\s/.test(text[i])) i++;
-    if (text[i] !== "'") {
-      const skip = skipLexicalAt(text, i); // only a comment can match here
-      if (skip >= 0) { i = skip; continue; }
-    }
-    return i;
-  }
-}
-
-/**
- * Case-insensitive ASCII compare of `keyword` against `text` at `i`. Callers
- * pass upper-case keywords.
- *
- * Compares character by character instead of uppercasing a copy of `text`,
- * because a copy cannot be indexed into. `'ß'.toUpperCase()` is two characters,
- * so one of them shifts every later offset, and the caller then slices the
- * ORIGINAL text with an offset measured in the copy.
- *
- * ASCII-only on purpose. That is what ISO 10303-21 case-insensitivity means,
- * and it declines the matches a full Unicode fold accepts: `'ſ'` (long s)
- * uppercases to `'S'`, so a full fold reads ` ENDſEC` as `ENDSEC`.
- */
-function matchesKeywordAt(text: string, i: number, keyword: string): boolean {
-  for (let k = 0; k < keyword.length; k++) {
-    let c = text.charCodeAt(i + k); // NaN past the end, and NaN !== anything
-    if (c >= 97 && c <= 122) c -= 32;
-    if (c !== keyword.charCodeAt(k)) return false;
-  }
-  return true;
-}
 
 /**
  * Index of `keyword` occurring as a RECORD, outside any string or comment, or
@@ -214,9 +139,10 @@ function matchesKeywordAt(text: string, i: number, keyword: string): boolean {
  * `ENDSEC`: a quoted one would truncate the header before the real
  * `FILE_SCHEMA` record, losing the declaration entirely.
  */
-function indexOfRecord(text: string, keyword: string, fromIndex = 0): number {
-  for (let i = fromIndex; i < text.length; i++) {
-    const skip = skipLexicalAt(text, i);
+function indexOfRecord(text: string, keyword: string): number {
+  const lastClose = lastCommentClose(text);
+  for (let i = 0; i < text.length; i++) {
+    const skip = skipLexicalAt(text, i, lastClose);
     if (skip >= 0) { i = skip - 1; continue; }
     if (matchesKeywordAt(text, i, keyword)) return i;
   }
@@ -224,20 +150,21 @@ function indexOfRecord(text: string, keyword: string, fromIndex = 0): number {
 }
 
 /**
- * Extract the argument substring inside the parentheses of `KEYWORD( ... )`,
- * starting the search at `fromIndex`. Quote- and nesting-aware so a quoted
+ * Extract the argument substring inside the parentheses of `KEYWORD( ... )`.
+ * Quote-, comment- and nesting-aware so a quoted
  * `)` never closes the record early, and so a quoted KEYWORD is never mistaken
  * for the record itself. Returns `null` if not found.
  */
-function extractRecordArgs(text: string, keyword: string, fromIndex = 0): string | null {
-  const at = indexOfRecord(text, keyword, fromIndex);
+function extractRecordArgs(text: string, keyword: string): string | null {
+  const at = indexOfRecord(text, keyword);
   if (at < 0) return null;
-  let i = skipTrivia(text, at + keyword.length);
+  const lastClose = lastCommentClose(text);
+  let i = skipTrivia(text, at + keyword.length, lastClose);
   if (text[i] !== '(') return null;
   const start = i;
   let depth = 0;
   for (; i < text.length; i++) {
-    const skip = skipLexicalAt(text, i);
+    const skip = skipLexicalAt(text, i, lastClose);
     if (skip >= 0) { i = skip - 1; continue; }
     const ch = text[i];
     if (ch === '(') {

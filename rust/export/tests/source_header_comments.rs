@@ -6,10 +6,17 @@
 //! a header that carries one is ordinary input, not malformed input.
 //!
 //! These pin the Rust reader against the TypeScript one in
-//! `packages/parser/src/source-header.ts`, case for case with the tests in
-//! `packages/parser/test/source-header.test.ts`. The two halves reading the
-//! same header differently is what #3284 is, and fixing one half alone would
-//! have replaced a shared blind spot with a live disagreement.
+//! `packages/parser/src/source-header.ts`. The two halves reading the same
+//! header differently is what #3284 is, and fixing one half alone would have
+//! replaced a shared blind spot with a live disagreement.
+//!
+//! Not case for case with `packages/parser/test/source-header.test.ts`, and
+//! saying so rather than claiming a parity that is not there. That file has
+//! three cases this one does not, and two of them cannot fail here: the `ß`
+//! offset case and the `ſ` long-s case are both about building an uppercased
+//! COPY and indexing the original with its offsets, which `eq_ignore_ascii_case`
+//! never does. The third is a non-termination guard, which `Option` makes
+//! unrepresentable on this side.
 //!
 //! What each case costs on the export path, which is why they are worth pinning
 //! rather than filing: `export_step` falls back to its own defaults when
@@ -79,4 +86,16 @@ fn an_unterminated_comment_does_not_swallow_the_records_after_it() {
     let h = parse_source_header(&src).expect("header should parse");
     assert_eq!(h.name.as_deref(), Some("a.ifc"));
     assert_eq!(h.schema_identifiers, vec!["IFC4".to_string()]);
+}
+
+#[test]
+fn a_non_breaking_space_is_not_whitespace_in_either_half() {
+    // ISO 10303-21 whitespace is ASCII. The TypeScript half used `/\s/`, which
+    // also matches U+00A0 and the other Unicode space separators, so the two
+    // halves answered differently for this record: TS found the schema, Rust
+    // did not. Both now decline it, which is the same answer, and the right
+    // one -- a record separated by U+00A0 is malformed, not merely unusual.
+    let src = header("FILE_SCHEMA\u{00A0}(('IFC2X3'));");
+    let h = parse_source_header(&src);
+    assert!(h.is_none() || h.unwrap().schema_identifiers.is_empty());
 }

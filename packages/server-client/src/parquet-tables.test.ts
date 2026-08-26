@@ -295,12 +295,18 @@ describe('source ids on the standard format (#3215)', () => {
   it('adding the columns perturbs NOTHING else — the additive-safety property', () => {
     // The compatibility question #3215 asks, answered rather than assumed.
     //
-    // NEW decoder + OLD payload is the test above: getChild returns null, the
-    // guard is false, no key appears. OLD decoder + NEW payload needs no test
-    // and cannot be written here, because `numericColumn` selects BY NAME
-    // (`table.getChild(name)`) — a decoder that never asks for a column cannot
-    // be perturbed by its presence. That is also why no format-version bump is
-    // needed, and there is none on this transport to bump.
+    // NEW decoder + OLD payload: getChild returns null, the guard is false, no
+    // key appears. OLD decoder + NEW payload needs no test and cannot be
+    // written here, because `numericColumn` selects BY NAME — a decoder that
+    // never asks for a column cannot be perturbed by its presence.
+    //
+    // An earlier version of this comment went on to say no format-version bump
+    // was needed and there was none to bump. Both halves were wrong. The server
+    // keys its cached geometry blob `{cache_key}-parquet-v4`, and the optimized
+    // blob carries a `[version:u8]` header. Without a bump a model parsed
+    // before this deploy replays its old blob and the columns never appear —
+    // the decoder handles that correctly and silently, which is the problem.
+    // The key is v5 now.
     //
     // What IS worth pinning is that the new columns do not disturb the old
     // fields on the way past.

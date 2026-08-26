@@ -259,7 +259,7 @@ pub async fn parse_parquet_stream(
 
                     if let Ok(Ok(combined_parquet)) = finish_result {
                         // Cache geometry (same format as non-streaming)
-                        let parquet_cache_key = format!("{}-parquet-v4", key);
+                        let parquet_cache_key = format!("{}-parquet-v5", key);
                         if let Err(e) = cache.set_bytes(&parquet_cache_key, &combined_parquet).await {
                             tracing::error!(error = %e, "Failed to cache geometry from stream");
                         } else {

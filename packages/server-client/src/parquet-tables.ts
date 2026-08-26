@@ -15,6 +15,7 @@
  */
 
 import type { MeshData } from './types.js';
+import { meshColumns, numericColumn, readSourceId } from './parquet-columns.js';
 
 /**
  * Structural view of the bits of `apache-arrow`'s `Table` this module uses.
@@ -29,29 +30,6 @@ export interface ArrowColumnLike {
 
 export interface ArrowTableLike {
   getChild(name: string): ArrowColumnLike | null | undefined;
-}
-
-/** Read a numeric column, or `undefined` when the table does not carry it. */
-/**
- * Absent marker for the two source ids. Mirrors `ABSENT_SOURCE_ID` in
- * `apps/server/src/services/parquet_schema.rs` and the identical constant in
- * `packages/cache/src/sections/geometry.ts`. No STEP express id reaches it.
- */
-const ABSENT_SOURCE_ID = 0xffffffff;
-
-/** One source-id column at one row, or undefined when absent or unusable. */
-function readSourceId(
-  column: ArrayLike<number> | undefined,
-  usable: boolean,
-  index: number
-): number | undefined {
-  if (!usable) return undefined;
-  const v = column![index];
-  return v && v !== ABSENT_SOURCE_ID ? v : undefined;
-}
-
-function numericColumn(table: ArrowTableLike, name: string): ArrayLike<number> | undefined {
-  return table.getChild(name)?.toArray();
 }
 
 /**
@@ -83,57 +61,33 @@ function originIsUsable(
  */
 function transformFields(
   index: number,
-  originX: ArrayLike<number> | undefined,
-  originY: ArrayLike<number> | undefined,
-  originZ: ArrayLike<number> | undefined,
-  hasOrigin: boolean,
-  geometryClass: ArrayLike<number> | undefined,
-  hasGeometryClass: boolean,
-  geometryItemId: ArrayLike<number> | undefined,
-  hasGeometryItemId: boolean,
-  materialId: ArrayLike<number> | undefined,
-  hasMaterialId: boolean
+  cols: {
+    originX?: ArrayLike<number>;
+    originY?: ArrayLike<number>;
+    originZ?: ArrayLike<number>;
+    geometryClass?: ArrayLike<number>;
+    geometryItemId?: ArrayLike<number>;
+    materialId?: ArrayLike<number>;
+  }
 ): Partial<MeshData> {
-  // A column set can be structurally usable (present, parallel to the rows)
-  // yet still carry a non-finite VALUE at this row — origin_x/y/z are Float64
-  // server-side and can legitimately hold NaN/Infinity on a corrupted payload.
-  // `||` alone does not catch this: NaN is falsy, so an all-NaN triplet was
-  // already dropped, but a PARTIAL one (e.g. `[NaN, 5, 0]`) is truthy and the
-  // NaN would ride straight into `MeshData.origin` and poison downstream
-  // bounds/position math. Treat non-finite the same as "column unusable" —
-  // fall back to no origin, exactly like `originIsUsable`'s own structural
-  // fallback — rather than throwing: this file only throws for STRUCTURAL
-  // malformation (missing columns, length mismatch, out-of-bounds index),
-  // never for a value inside an otherwise well-formed float column.
-  const ox = hasOrigin ? originX![index] : undefined;
-  const oy = hasOrigin ? originY![index] : undefined;
-  const oz = hasOrigin ? originZ![index] : undefined;
-  const originFinite =
-    hasOrigin && Number.isFinite(ox) && Number.isFinite(oy) && Number.isFinite(oz);
+  // A usable column can still carry a non-finite VALUE at this row. `||` alone
+  // misses it: an all-NaN triplet is already dropped, but a PARTIAL one
+  // (`[NaN, 5, 0]`) is truthy and the NaN would poison bounds math. Not a
+  // throw -- this file throws only for STRUCTURAL malformation.
+  const ox = cols.originX?.[index];
+  const oy = cols.originY?.[index];
+  const oz = cols.originZ?.[index];
+  const originFinite = Number.isFinite(ox) && Number.isFinite(oy) && Number.isFinite(oz);
   const origin =
-    originFinite && (ox || oy || oz)
-      ? ([ox, oy, oz] as [number, number, number])
-      : undefined;
-  const geometry_class =
-    hasGeometryClass && geometryClass![index] ? geometryClass![index] : undefined;
+    originFinite && (ox || oy || oz) ? ([ox, oy, oz] as [number, number, number]) : undefined;
+  const geometry_class = cols.geometryClass?.[index] || undefined;
 
-  // The two disjoint source ids (#3215), absent-marked with an explicit
-  // sentinel rather than a null.
-  //
-  // The first version of this used a NULLABLE column and read the plain typed
-  // array. That is wrong on parquet-wasm 0.7.x, which leaks the NEIGHBOURING
-  // row's value into a null row's slot: a mesh with no material decoded as
-  // `material_id: 902` -- a real-looking id belonging to a different entity,
-  // which is the wrong-drill-target defect #3199 and this issue exist to stop.
-  // The column is non-nullable now, so there is no validity bitmap and nothing
-  // to leak, and this reads a value that is always meaningful.
-  //
-  // 0 is also treated as absent, but that is belt-and-braces rather than the
-  // contract: `MeshData::with_style_metadata` already filters 0 to None,
-  // because `IfcMaterialLayer.Material` is OPTIONAL and an air gap arrives as
-  // 0, and STEP instance names start at #1 so 0 is never an entity.
-  const geometry_item_id = readSourceId(geometryItemId, hasGeometryItemId, index);
-  const material_id = readSourceId(materialId, hasMaterialId, index);
+  // Sentinel, not null (#3215): a nullable column's values buffer is undefined
+  // at null rows and parquet-wasm 0.7.x leaks the NEIGHBOURING row's id into it
+  // -- a material-less mesh decoded as `material_id: 902`, a real-looking id
+  // for another entity. Non-nullable means no validity bitmap to leak.
+  const geometry_item_id = readSourceId(cols.geometryItemId, index);
+  const material_id = readSourceId(cols.materialId, index);
 
   return {
     ...(origin ? { origin } : {}),
@@ -165,16 +119,6 @@ export function buildMeshesFromTables(
   const colorG = numericColumn(meshArrow, 'color_g');
   const colorB = numericColumn(meshArrow, 'color_b');
   const colorA = numericColumn(meshArrow, 'color_a');
-  // Per-mesh local-frame origin + geometry provenance (issue #1841). Additive
-  // columns — absent on payloads/caches from servers predating this field, in
-  // which case origin defaults to [0,0,0] (world-baked, the prior behaviour).
-  const originX = numericColumn(meshArrow, 'origin_x');
-  const originY = numericColumn(meshArrow, 'origin_y');
-  const originZ = numericColumn(meshArrow, 'origin_z');
-  const geometryClass = numericColumn(meshArrow, 'geometry_class');
-  const geometryItemId = numericColumn(meshArrow, 'geometry_item_id');
-  const materialId = numericColumn(meshArrow, 'material_id');
-
   if (!expressIds || !vertexStarts || !vertexCounts || !indexStarts || !indexCounts) {
     throw new Error('Malformed Parquet geometry: missing required mesh column');
   }
@@ -216,19 +160,15 @@ export function buildMeshesFromTables(
 
   // Reconstruct MeshData array
   const meshCount = expressIds.length;
+  // Additive per-mesh columns (#1841, #3215) — absent on payloads and caches
+  // from servers predating them, where origin defaults to [0,0,0] and the
+  // source ids simply do not appear.
+  const cols = meshColumns(meshArrow, meshCount);
   const meshes: MeshData[] = new Array(meshCount);
 
   // Only consume the additive origin/geometry_class columns when all three
   // origin components are present AND parallel to the mesh rows — a short or
   // partial set (malformed/truncated payload) must not read `undefined` → NaN.
-  const hasOrigin = originIsUsable(originX, originY, originZ, meshCount);
-  const hasGeometryClass = !!geometryClass && geometryClass.length === meshCount;
-  // Same structural guard as the columns above: present AND parallel to the
-  // rows. A payload written before #3215 has neither column, and decodes to
-  // exactly the shape it did before -- which is the compatibility property
-  // this file's own header calls for.
-  const hasGeometryItemId = !!geometryItemId && geometryItemId.length === meshCount;
-  const hasMaterialId = !!materialId && materialId.length === meshCount;
 
   for (let i = 0; i < meshCount; i++) {
     const vertexStart = vertexStarts[i];
@@ -293,19 +233,7 @@ export function buildMeshesFromTables(
       indices,
       color: [colorR[i], colorG[i], colorB[i], colorA[i]],
       // world vertex = origin + position (both Y-up metres).
-      ...transformFields(
-        i,
-        originX,
-        originY,
-        originZ,
-        hasOrigin,
-        geometryClass,
-        hasGeometryClass,
-        geometryItemId,
-        hasGeometryItemId,
-        materialId,
-        hasMaterialId
-      ),
+      ...transformFields(i, cols),
     };
   }
 
@@ -349,16 +277,6 @@ export function buildMeshesFromOptimizedTables(tables: OptimizedTables): MeshDat
   const ifcTypes = instanceArrow.getChild('ifc_type');
   const meshIndices = numericColumn(instanceArrow, 'mesh_index');
   const materialIndices = numericColumn(instanceArrow, 'material_index');
-  // Per-instance placement + provenance (issue #1841). Additive columns —
-  // absent on payloads from servers predating them, where origin defaults to
-  // [0,0,0].
-  const instOriginX = numericColumn(instanceArrow, 'origin_x');
-  const instOriginY = numericColumn(instanceArrow, 'origin_y');
-  const instOriginZ = numericColumn(instanceArrow, 'origin_z');
-  const instGeometryClass = numericColumn(instanceArrow, 'geometry_class');
-  const instGeometryItemId = numericColumn(instanceArrow, 'geometry_item_id');
-  const instMaterialId = numericColumn(instanceArrow, 'material_id');
-
   // Extract mesh columns
   const meshVertexOffsets = numericColumn(meshArrow, 'vertex_offset');
   const meshVertexCounts = numericColumn(meshArrow, 'vertex_count');
@@ -415,16 +333,14 @@ export function buildMeshesFromOptimizedTables(tables: OptimizedTables): MeshDat
 
   // Reconstruct MeshData array from instances
   const instanceCount = entityIds.length;
+  // Per INSTANCE, not per template: two instances sharing one geometry template
+  // can come from different representation items (#3215).
+  const cols = meshColumns(instanceArrow, instanceCount);
   const meshes: MeshData[] = new Array(instanceCount);
   const dequantMultiplier = 1.0 / vertexMultiplier;
 
   // Additive per-instance origin/geometry_class columns (issue #1841): consume
   // only when present AND parallel to the instance rows.
-  const hasInstOrigin = originIsUsable(instOriginX, instOriginY, instOriginZ, instanceCount);
-  const hasInstGeometryClass = !!instGeometryClass && instGeometryClass.length === instanceCount;
-  const hasInstGeometryItemId =
-    !!instGeometryItemId && instGeometryItemId.length === instanceCount;
-  const hasInstMaterialId = !!instMaterialId && instMaterialId.length === instanceCount;
 
   for (let i = 0; i < instanceCount; i++) {
     const meshIdx = meshIndices[i];
@@ -509,19 +425,7 @@ export function buildMeshesFromOptimizedTables(tables: OptimizedTables): MeshDat
         matB[materialIdx] / 255,
         matA[materialIdx] / 255,
       ],
-      ...transformFields(
-        i,
-        instOriginX,
-        instOriginY,
-        instOriginZ,
-        hasInstOrigin,
-        instGeometryClass,
-        hasInstGeometryClass,
-        instGeometryItemId,
-        hasInstGeometryItemId,
-        instMaterialId,
-        hasInstMaterialId
-      ),
+      ...transformFields(i, cols),
     };
   }
 

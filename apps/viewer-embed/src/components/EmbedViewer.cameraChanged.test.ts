@@ -177,6 +177,31 @@ describe('CAMERA_CHANGED reports live navigation', () => {
     expect(payloads.at(-1)).toEqual({ azimuth: 30, elevation: 60 });
   });
 
+  it('does not re-emit a pose that returns to the last-emitted value mid-window', async () => {
+    mount();
+    await settle();
+    posted.length = 0;
+
+    // {5,5} emits on the leading edge; the next two frames land INSIDE that
+    // throttle window, so neither is sent directly -- {6,6} is queued and then
+    // overwritten by {5,5}, the pose the camera came back to. An orbit drag
+    // nudged off its resting pose and released onto it does this, as does a
+    // ViewCube snap that overshoots by a frame.
+    //
+    // `report` compares the incoming pose against the QUEUED one ({6,6}), so
+    // it sees news; only the flush is in a position to notice that what it is
+    // about to send is what the host already has, and it never looked.
+    drag(5, 5);
+    drag(6, 6);
+    drag(5, 5);
+    await settle();
+
+    // The contract is "never two events for the same pose". {6,6} never
+    // reached the host, so a trailing {5,5} would be the same pose twice in a
+    // row with nothing in between.
+    expect(cameraPayloads()).toEqual([{ azimuth: 5, elevation: 5 }]);
+  });
+
   it('stays silent while the camera is idle (the animation loop re-reports an unchanged pose)', async () => {
     mount();
     await settle();

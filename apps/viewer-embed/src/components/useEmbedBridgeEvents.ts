@@ -114,6 +114,16 @@ export function useEmbedBridgeEvents(): void {
       const next = pending;
       pending = null;
       if (!next) return;
+      // Re-check against what was actually SENT, not only against what was
+      // queued. `report` compares an incoming pose to the pending one, so a
+      // camera that moves away and returns to the last-emitted pose inside a
+      // single window queues the return as news -- and the host would hear the
+      // same pose twice in a row, with the intermediate pose it never received
+      // in between. The cadence contract is "never two events for the same
+      // pose"; this is the only place left that can see it.
+      if (lastSent && lastSent.azimuth === next.azimuth && lastSent.elevation === next.elevation) {
+        return;
+      }
       lastEmitAt = Date.now();
       lastSent = next;
       emitEvent('CAMERA_CHANGED', { azimuth: next.azimuth, elevation: next.elevation });

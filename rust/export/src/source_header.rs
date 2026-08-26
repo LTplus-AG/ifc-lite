@@ -327,7 +327,7 @@ pub fn parse_source_header(content: &[u8]) -> Option<SourceHeader> {
     let cap = content.len().min(MAX_HEADER_BYTES);
     let raw = String::from_utf8_lossy(&content[..cap]);
     // Truncate at the section terminator so the DATA section is never scanned.
-    // The search skips quoted text, for the reason `step_text::detect_schema`
+    // The search skips quoted text, for the reason `schema_detect::detect_schema`
     // gives at its own `ENDSEC;` search: a header field's plain-text VALUE can
     // carry the literal `ENDSEC`, and a raw byte search cannot tell that from
     // the terminator — it would cut the header short and drop every record
@@ -377,3 +377,7 @@ pub fn parse_source_header(content: &[u8]) -> Option<SourceHeader> {
 
     Some(header)
 }
+
+#[cfg(test)]
+#[path = "source_header_tests.rs"]
+mod tests;

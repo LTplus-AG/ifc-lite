@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 //! STEP text-level primitives shared by the STEP exporter (`step.rs`): string
-//! escaping, header `FILE_SCHEMA` detection, `#ref` scanning, and the
-//! attribute-list splitting used to apply root-attribute mutations.
+//! escaping, `#ref` scanning, and the attribute-list splitting used to apply
+//! root-attribute mutations.
+//!
+//! Header `FILE_SCHEMA` detection used to live here and is now `schema_detect`.
+//! It left because it is not a text EDIT: it reads one fact out of raw bytes
+//! before anything is parsed, and unlike everything here it runs on whole
+//! uncapped attacker-supplied files.
 //!
 //! Split out of `step.rs` to keep that file under the module-size ratchet
 //! (`rust/processing/tests/module_size_ratchet.rs`). These are self-contained

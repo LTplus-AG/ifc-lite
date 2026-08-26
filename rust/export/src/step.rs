@@ -113,9 +113,7 @@ pub struct StepStats {
 }
 
 use crate::schema_detect::detect_schema;
-use crate::step_text::{
-    apply_attr_mutations, escape, merge_edits, refs_in_line, renumber,
-};
+use crate::step_text::{apply_attr_mutations, escape, merge_edits, refs_in_line, renumber};
 
 /// Export the parsed model in `content` as a STEP/IFC string.
 pub fn export_step(content: &[u8], opts: &StepOptions) -> String {

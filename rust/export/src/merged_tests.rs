@@ -73,7 +73,7 @@ fn merge_two_models_unifies_project_and_offsets_ids() {
 }
 // `escape()` and `detect_schema()` are no longer private forks of this
 // module: `merged.rs` imports both from `step_text.rs` (the same primitives
-// `step.rs` uses), so their unit coverage lives in `step_text_tests.rs`
+// `step.rs` uses), so their unit coverage lives in `step_text_tests.rs` and `schema_detect_tests.rs`
 // (including the control-char mapping and the 4096-byte-cutoff /
 // quote-blind FILE_SCHEMA-scan fixes that this module used to lack). What
 // remains here is `merged.rs`-specific: that the shared primitives are
@@ -269,7 +269,7 @@ fn data_section_string_literal_round_trips_non_ascii_utf8_byte_for_byte() {
     );
 }
 
-/// `detect_schema` (now the shared `step_text::detect_schema`, imported
+/// `detect_schema` (now the shared `schema_detect::detect_schema`, imported
 /// rather than forked in this module) extracts the RAW (still
 /// STEP-escaped) text between the first two apostrophes following
 /// `FILE_SCHEMA`. That text is then fed straight into `escape()` when the

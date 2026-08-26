@@ -342,7 +342,7 @@ describe('parseSourceHeader reads a RANGE, never the whole source (#2183)', () =
  * both were confirmed to fail before the fix: the first returned `undefined`,
  * the second dropped every FILE_NAME field.
  *
- * The Rust half already guarded this in `step_text::find_unquoted`; these pin
+ * The Rust half already guarded this in `schema_detect::find_unquoted`; these pin
  * that the two halves now agree rather than each deciding where the header ends.
  */
 const NAME_AND_SCHEMA =

@@ -121,9 +121,16 @@ test('a stray FILE under packages/ is ordinary, not fatal', () => {
   // treats that as "not a package" rather than as an unreadable path.
   //
   // Checked against the real tree rather than argued: this repo carries
-  // `packages/.DS_Store` and `apps/.DS_Store` right now. Had ENOTDIR been
-  // fatal here, the release gate would refuse on every macOS checkout -- a
-  // guard that fires on a Finder artefact is worse than the hole it closes.
+  // `packages/.DS_Store` and `apps/.DS_Store` right now. Both are gitignored,
+  // so the release lane never sees them -- the run this would break is a local
+  // one on macOS, which is where anyone debugging a release runs it.
+  //
+  // TWO strays on purpose, one dotted and one not. With only the dotfile, a
+  // future `if (entry.startsWith('.')) continue;` upstream of the stat would
+  // make this test pass while child ENOTDIR was fatal again, and the property
+  // would have no coverage left -- measured, that mutation turns all 8 green.
+  // `README.txt` is the case that has no dot to hide behind: an editor backup
+  // or a build turd under packages/ must stay ordinary too.
   //
   // The genuinely-unclassifiable case is the test below. ENOTDIR one level UP
   // (packages/ itself being a file) stays fatal and is covered separately,
@@ -131,6 +138,7 @@ test('a stray FILE under packages/ is ordinary, not fatal', () => {
   const root = makeTree();
   fillToFloor(root);
   writeFileSync(join(root, 'packages', '.DS_Store'), 'not a directory');
+  writeFileSync(join(root, 'packages', 'README.txt'), 'not a directory either');
   const { status, out } = run(root, { bin: stubNpm(root) });
   assert.equal(status, 0, out);
   assert.match(out, /Verifying 25 package\(s\)/);

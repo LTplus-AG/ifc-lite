@@ -12,11 +12,15 @@
  * lets the node test runner render that component.
  */
 
-import { FileCsv, FileGlb, FileHbjson, FileIfc, FileJson, FileKmz, FilePdf, FileUsd, Screenshot } from '@/icons';
+import { FileCsv, FileGlb, FileHbjson, FileIfc, FileJson, FileKmz, FilePdf, FileUsd, HideSelected, Screenshot } from '@/icons';
 import type { ExportIconSet } from '../../toolbar/export-commands';
 
 export const RIBBON_EXPORT_ICONS: ExportIconSet = {
   ifc: FileIfc,
+  // No dedicated anonymized-export glyph exists in `src/icons/`; reused
+  // rather than adding a new SVG asset for one small ribbon button — the
+  // "hide/isolate" mark reads correctly for "export a hidden-away subset".
+  anonymized: HideSelected,
   glb: FileGlb,
   kmz: FileKmz,
   usd: FileUsd,

@@ -197,6 +197,16 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   setRibbonTab: (tab: RibbonTabId) => void;
   /** Turn contextual tab following on/off and persist the choice. */
   setRibbonContextualTabs: (enabled: boolean) => void;
+
+  /**
+   * When true, `AnonymizedExportDialog` should auto-open. Set by the entity
+   * context menu ("Export anonymized…") and the Command Palette
+   * (`export:anonymized`) — the two entry points that are not the export
+   * toolbar dropdown itself. Consumed once then cleared by the dialog
+   * (mirrors `flavorDialogRequested`, `extensionsSlice.ts`).
+   */
+  anonymizedExportRequested: boolean;
+  setAnonymizedExportRequested: (requested: boolean) => void;
 }
 
 /** Apply the correct CSS classes on <html> for the given theme */
@@ -246,6 +256,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   ribbonCollapsed: UI_DEFAULTS.RIBBON_COLLAPSED,
   ribbonTab: UI_DEFAULTS.RIBBON_TAB,
   ribbonContextualTabs: UI_DEFAULTS.RIBBON_CONTEXTUAL_TABS,
+  anonymizedExportRequested: false,
 
   // Actions
   setLeftPanelCollapsed: (leftPanelCollapsed) => set({ leftPanelCollapsed }),
@@ -411,4 +422,6 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
     }
     set({ ribbonContextualTabs });
   },
+
+  setAnonymizedExportRequested: (anonymizedExportRequested) => set({ anonymizedExportRequested }),
 });

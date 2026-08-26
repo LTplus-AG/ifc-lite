@@ -418,6 +418,72 @@ Selectors are unioned. The output carries each selected product's full forward r
 
 ---
 
+### `anonymize` - Anonymized Isolated Export
+
+Pick a seed selection, expand it by relationship context (host walls,
+openings/fillers, type objects, materials, aggregate parents/children, the
+spatial containment chain up to `IfcProject`, and optionally structurally
+connected neighbours), then export exactly that subset as a STEP file with
+every project-identifying signal removed — while the geometry-relevant local
+transformations (rotations in the placement chain, non-orthogonal cuts)
+survive, so a parsing bug keeps reproducing without the source model ever
+leaving your machine. Built on the same `collectRelatedEntities` /
+`exportAnonymizedSubset` functions `@ifc-lite/export` exposes to a
+TypeScript caller (see [Exporting](./exporting.md)).
+
+```bash
+# By type — every IfcWindow plus its host wall, opening, storey/building/site chain
+ifc-lite anonymize model.ifc --type IfcWindow --out anon.ifc
+
+# By express ID or GlobalId (repeatable, or comma-separated)
+ifc-lite anonymize model.ifc --id 42,108 --out anon.ifc
+ifc-lite anonymize model.ifc --guid '2O2Fr$t4X7Zf8NOew3FLKr' --out anon.ifc
+
+# By storey
+ifc-lite anonymize model.ifc --storey "Level 2" --out anon.ifc
+
+# Narrow or widen the relationship context, and save the old->new GlobalId map
+ifc-lite anonymize model.ifc --type IfcWindow --no-materials --connect-depth 1 \
+  --out anon.ifc --guid-map anon.guidmap.json --json
+```
+
+Selectors are unioned, and every one of them fails loudly on zero matches
+(never a silent empty export). Every scrub (names, `GlobalId`s, owner
+history, georeferencing/addresses, property sets, root placement) defaults to
+maximally-scrubbed and is toggled off with a `--keep-*` flag — see
+`AnonymizeOptions` in `@ifc-lite/export` for the exact defaults. The
+GUID map links back to the original, identifying model:
+`--guid-map` writes it to a separate file, never into the exported `.ifc`
+itself, and it should not be shared alongside the export.
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--id <N,...>` | Select specific entities by express ID (repeatable or comma-separated) |
+| `--guid <G,...>` | Select specific entities by GlobalId (repeatable or comma-separated) |
+| `--type <T>` | Select every entity of a type |
+| `--storey <GUID\|name\|id>` | Select every entity contained in a storey |
+| `--keep-psets` | Keep property sets on the selection instead of dropping them |
+| `--keep-names` | Keep `IfcRoot` `Name`/`LongName`/`Description`/`Tag` as authored instead of pseudonymizing them |
+| `--keep-other-names` | Keep `ObjectType`, `IfcProject.Phase`, and non-`IfcRoot` names (materials, surface styles, layers, profiles) as authored |
+| `--keep-currency` | Keep `IfcMonetaryUnit.Currency` as authored instead of rewriting it to USD |
+| `--no-hosts` | Don't expand to a selected opening's host element (`IfcRelVoidsElement`) |
+| `--no-openings` | Don't expand the filler<->opening<->host chain (`IfcRelFillsElement`) |
+| `--no-types` | Don't include a selected object's `IfcTypeObject` |
+| `--no-materials` | Don't include a selected object's material assignment |
+| `--no-aggregates` | Don't walk `IfcRelAggregates`/`IfcRelNests` parents/children |
+| `--connect-depth <N>` | BFS depth for `IfcRelConnectsPathElements` neighbours (default 0) |
+| `--guid-map <file>` | Write the old->new GlobalId mapping to a separate JSON file |
+| `--out <file>` | Output IFC file (required) |
+| `--json` | Machine-readable summary (counts, warnings, pruned/zeroed entities) |
+
+The spatial containment chain (storey -> building -> site -> `IfcProject`) is
+always included and has no disabling flag — a file with no project is not a
+valid reproduction of anything.
+
+---
+
 ### `lod` — Lightweight LOD Artifacts
 
 Generate lightweight geometry artifacts for previews, offline packaging, and
@@ -1207,6 +1273,7 @@ Run `ifc-lite schema` to see the full API before writing eval expressions.
 | `export` | Export data / geometry / energy model |
 | `diagnose-geometry` | CSG / opening diagnostics (failures, classification) |
 | `extract-entities` | Isolate entities into a small, viewable standalone IFC |
+| `anonymize` | Export selected objects + context as an anonymized IFC |
 | `ids` | Validate against IDS rules |
 | `bcf` | Work with BCF collaboration files |
 | `clash` | Detect geometric clashes between elements |

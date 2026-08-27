@@ -1,0 +1,59 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * `modelSlice`'s contribution to the store-wide teardown seam (`store/teardown.ts`).
+ *
+ * Beside the slice rather than inside it: `modelSlice.ts` carries a recorded
+ * budget in `scripts/module-size-allowlist.txt`, and that ratchet only lets a
+ * listed file shrink, never grow. Every slice in this group is split the same
+ * way so the registry imports one shape, not two.
+ *
+ * The federation registry is NOT touched here. `federationRegistry
+ * .unregisterModel` (partial removal, which BURNS the freed offset range) and
+ * `federationRegistry.clear()` (full clear, which resets the offset counter to
+ * 0 and is the reason several other slices clear unconditionally on
+ * `all-models-cleared`) are side effects, and a teardown is pure — they stay in
+ * the entry point, in today's order.
+ */
+
+import { defineSliceTeardown } from '../teardown.js';
+
+export const modelTeardown = defineSliceTeardown(
+  'modelSlice',
+  ['models', 'activeModelId'],
+  (scope, state) => {
+    // `resetViewerState` deliberately does NOT clear models — "use
+    // clearAllModels() for that" (store/index.ts). A file load swaps the
+    // ACTIVE model; the federation itself survives it.
+    if (scope.kind === 'session-reset') return {};
+
+    if (scope.kind === 'all-models-cleared') {
+      return { models: new Map(), activeModelId: null };
+    }
+
+    const models = state.models;
+    // A removal that removes nothing must do nothing. `syncSourceModel` and the
+    // collab room teardown can both re-enter with an id that has already gone,
+    // and every cleanup below is keyed to THIS model (#2654 second review).
+    // This guard is also what makes the whole 'model-removed' composition a
+    // no-op on its second run: `purgeStaleEntityState` runs the SAME scope
+    // immediately after `removeModel` has already removed the model.
+    if (!models?.has(scope.modelId)) return {};
+
+    const nextModels = new Map(models);
+    nextModels.delete(scope.modelId);
+
+    // Reassign the active model only when the removed one held it. Insertion
+    // order decides the successor, exactly as `Array.from(newModels.keys())`
+    // did before this moved behind the seam.
+    const priorActiveId = state.activeModelId;
+    const activeModelId =
+      priorActiveId === scope.modelId
+        ? (Array.from(nextModels.keys())[0] ?? null)
+        : priorActiveId;
+
+    return { models: nextModels, activeModelId };
+  },
+);

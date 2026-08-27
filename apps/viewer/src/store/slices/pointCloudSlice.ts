@@ -12,6 +12,8 @@
 
 import type { StateCreator } from 'zustand';
 
+import { defineSliceTeardown } from '../teardown.js';
+
 export type PointColorModeUi = 'rgb' | 'classification' | 'intensity' | 'height' | 'fixed' | 'deviation';
 export type PointSizeModeUi = 'fixed-px' | 'adaptive-world' | 'attenuated';
 
@@ -251,3 +253,48 @@ export const createPointCloudSlice: StateCreator<PointCloudSlice, [], [], PointC
   setPointCloudAlignmentAvailable: (available) => set({ pointCloudAlignmentAvailable: available }),
   setPointCloudAlignmentEnabled: (enabled) => set({ pointCloudAlignmentEnabled: enabled }),
 });
+
+/**
+ * Point cloud — clear runtime fields so a new file doesn't inherit the
+ * previous file's color mode / size / EDL state.
+ *
+ * The one place in the registry where spreading a shared defaults const IS the
+ * explicit field list Trap A asks for: `POINT_CLOUD_DEFAULTS` is this slice's
+ * own, it is not the slice's whole state (the actions are not in it), and every
+ * field in it is session-scoped — none of them round-trips to localStorage or
+ * outlives a model swap. `owns` still names all 17 by hand, so the reviewable
+ * artefact stays a list.
+ *
+ * `pointCloudDeviationComputed` is ALSO driven to false by `removeModel` and
+ * `clearAllModels` through `setPointCloudDeviationComputed(false)`. That stays
+ * an entry-point side effect: taking it into a `model-removed` arm here as well
+ * would write the field twice on the same path.
+ */
+export const pointCloudTeardown = defineSliceTeardown(
+  'pointCloudSlice',
+  [
+    'pointCloudColorMode',
+    'pointCloudFixedColor',
+    'pointCloudSizeMode',
+    'pointCloudPointSize',
+    'pointCloudWorldRadius',
+    'pointCloudRoundShape',
+    'pointCloudEdlEnabled',
+    'pointCloudEdlStrength',
+    'pointCloudClassMask',
+    'pointCloudClassCounts',
+    'pointCloudPreviewStride',
+    'pointCloudDeviationCenterOffset',
+    'pointCloudDeviationHalfRange',
+    'pointCloudDeviationComputed',
+    'pointCloudAssetCount',
+    'pointCloudAlignmentAvailable',
+    'pointCloudAlignmentEnabled',
+  ],
+  (scope) => scope.kind !== 'session-reset' ? {} : {
+    ...POINT_CLOUD_DEFAULTS,
+    // Re-spread typed-array fields so consumers get fresh references
+    // instead of the readonly literal in POINT_CLOUD_DEFAULTS.
+    pointCloudFixedColor: [...POINT_CLOUD_DEFAULTS.pointCloudFixedColor] as [number, number, number, number],
+  },
+);

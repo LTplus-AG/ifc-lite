@@ -15,6 +15,7 @@ import type { Lens, LensRule, LensCriteria, AutoColorSpec, AutoColorLegendEntry,
 import { BUILTIN_LENSES } from '@ifc-lite/lens';
 import { duplicateLensConfig, mergeImportedLenses, reserveUniqueId } from '@/components/viewer/lens-editor-utils';
 import { saveJson, type SaveResult } from '@/lib/storage/save-result';
+import { defineSliceTeardown } from '../teardown.js';
 
 // Re-export types so existing consumer imports from this file still work
 export type { Lens, LensRule, LensCriteria, AutoColorSpec, AutoColorLegendEntry, DiscoveredLensData };
@@ -348,3 +349,38 @@ export const createLensSlice: StateCreator<LensSlice, [], [], LensSlice> = (set,
     return { savedLenses: next, activeLensId: lensId, lensPanelVisible: true };
   }),
 });
+
+/**
+ * Lens — deactivate but keep saved lenses.
+ *
+ * `savedLenses`, `discoveredLensData`, `lensAppliedColors` and
+ * `lensAutoColorLegend` are absent from both `owns` and the body: the first is
+ * the user's work, and the other three are not part of the session-reset
+ * payload today.
+ *
+ * `clearAllModels` drives most of these same fields through nine setters
+ * guarded on `activeLensId != null`. That block stays where it is until an
+ * `all-models-cleared` arm exists to replace it wholesale.
+ */
+export const lensTeardown = defineSliceTeardown(
+  'lensSlice',
+  [
+    'activeLensId', 'lensPanelVisible', 'lensColorMap', 'lensHiddenIds',
+    'lensAppliedHiddenIds', 'lensRuleIsolation', 'lensRuleCounts', 'lensRuleEntityIds',
+  ],
+  (scope) => scope.kind !== 'session-reset' ? {} : {
+    activeLensId: null,
+    lensPanelVisible: false,
+    lensColorMap: new Map<number, string>(),
+    lensHiddenIds: new Set<number>(),
+    // Ownership bookkeeping for the shared hidden/isolation channels — those
+    // channels are wiped by the same reset, so stale claims must not survive
+    // it: ownership is tested by VALUE, so a record left behind starts
+    // matching again the moment another owner installs equal content, and the
+    // next release destroys that owner's presentation (#2654 fourth review).
+    lensAppliedHiddenIds: [] as number[],
+    lensRuleIsolation: null,
+    lensRuleCounts: new Map<string, number>(),
+    lensRuleEntityIds: new Map<string, number[]>(),
+  },
+);

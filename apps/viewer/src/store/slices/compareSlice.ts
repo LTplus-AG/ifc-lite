@@ -14,6 +14,7 @@
 import type { StateCreator } from 'zustand';
 import type { DiffScope, ModelDiff } from '@ifc-lite/diff';
 import type { CompareRef } from '@/lib/compare/buildFingerprints';
+import { defineSliceTeardown } from '../teardown.js';
 
 /** A completed comparison: the engine result plus the A/B context it ran on. */
 export interface CompareResult {
@@ -183,6 +184,30 @@ export interface CompareSlice {
   clearCompare: () => void;
 }
 
+/**
+ * Compare (#924): drop any stale diff result — it references models by id and
+ * the loaded set is changing. Keep panel visibility + A/B/scope choices (UI
+ * prefs); the user re-runs against the new set.
+ *
+ * This is also the implementation of {@link CompareSlice.clearCompare}, which
+ * delegates to it — the run result and the selection are the same four fields
+ * either way, and one definition is what keeps them from drifting.
+ *
+ * `clearCompare` itself stays an entry-point side effect of `removeModel`
+ * (guarded on the removed model being a side of the pairing) and of
+ * `clearAllModels` (unconditional); neither is a scope arm here.
+ */
+export const compareTeardown = defineSliceTeardown(
+  'compareSlice',
+  ['compareResult', 'compareSelectedKey', 'compareRunning', 'compareError'],
+  (scope) => scope.kind !== 'session-reset' ? {} : {
+    compareResult: null,
+    compareSelectedKey: null,
+    compareRunning: false,
+    compareError: null,
+  },
+);
+
 export const createCompareSlice: StateCreator<CompareSlice, [], [], CompareSlice> = (set) => ({
   comparePanelVisible: false,
   compareBaseModelId: null,
@@ -244,11 +269,5 @@ export const createCompareSlice: StateCreator<CompareSlice, [], [], CompareSlice
   setCompareError: (compareError) => set({ compareError }),
   setCompareSelectedKey: (compareSelectedKey) => set({ compareSelectedKey }),
 
-  clearCompare: () =>
-    set({
-      compareResult: null,
-      compareRunning: false,
-      compareError: null,
-      compareSelectedKey: null,
-    }),
+  clearCompare: () => set(compareTeardown.teardown({ kind: 'session-reset' }, {})),
 });

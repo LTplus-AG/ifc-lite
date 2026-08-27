@@ -25,9 +25,16 @@
  *
  * `Scene` is NOT declared `implements SceneContents`: an `implements` clause
  * would let the class's own surface drift wider without the interface noticing,
- * which is the thing this file exists to stop. The check that the class
- * satisfies this shape is the `return this.scene` in `Renderer.getScene()`,
- * which fails to compile the moment a signature here stops matching.
+ * which is the thing this file exists to stop. The check that the class still
+ * satisfies this shape is the `return this.scene` in `Renderer.getScene()`.
+ *
+ * Be precise about what that catches, because it is less than it looks: a
+ * REMOVED member or an incompatible RETURN type. It does not catch a parameter
+ * turning required, because assignability checks arity rather than optionality,
+ * and method parameters stay bivariant even under `strict`. Five members here
+ * declare optional parameters (`getMeshDataPieces`, `appendToBatches`,
+ * `finalizeStreamingAsync`, `processResidencyRestores`, `addInstancedShard`)
+ * and are unguarded in that direction.
  *
  * `GPUDevice` and `RenderPipeline` stay concrete in these signatures on
  * purpose. Callers never reach into either one; they take the handles from

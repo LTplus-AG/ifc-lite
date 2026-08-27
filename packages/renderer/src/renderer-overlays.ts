@@ -105,7 +105,7 @@ export interface OverlayDrawContext {
  * lines, which then expand the bounds that `grid: false` exists to protect.
  * The table is keyed by channel; the policy really wants to be keyed by
  * content. Routing that lift into the `grid` channel is the fix and is a
- * change of its own.
+ * change of its own, tracked as #3359.
  */
 const CHANNEL_EXPANDS_MODEL_BOUNDS: Record<LineOverlayChannel, boolean> = {
     annotation: true,

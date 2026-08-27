@@ -67,7 +67,6 @@ scripts/check-source-text-assertions.mjs apps/landing # walks apps/ for test fil
 scripts/check-loader-hook-specifier-match.mjs apps/landing # walks apps/ for loader hooks; apps/landing has none
 scripts/check-loader-hook-specifier-match.test.mjs apps/landing # same walk, in the harness
 scripts/check-tla-chunk-await.test.mjs apps/landing # same walk, in the harness
-scripts/check-test-wiring.mjs apps/landing # walks apps/ for test suites; apps/landing has none
 scripts/typecheck-tests.test.mjs apps/landing # apps/landing is not a tsconfig project
 
 # ---------------------------------------------------------------------------

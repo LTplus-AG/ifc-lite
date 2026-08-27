@@ -73,6 +73,7 @@ import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsOrThrow } from './lib/exists-or-throw.mjs';
+import { listWorkspacePackages, PACKAGE_PARENTS } from './lib/list-workspace-packages.mjs';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -96,7 +97,6 @@ export class FailError extends Error {}
 
 const TEST_FILE_RE = /\.(test|spec)\.(ts|tsx|mts|js|mjs)$/;
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'pkg', 'build', 'coverage', '.turbo', 'generated']);
-const PACKAGE_PARENTS = ['packages', 'apps'];
 
 /**
  * Lower bound on how many packages must actually get audited when this runs
@@ -303,42 +303,9 @@ export function auditPackage(pkgDir, pkgJson) {
   return { testLooking, matched, missed };
 }
 
-export function listPackages(root, seenParents = []) {
-  const out = [];
-  for (const parent of PACKAGE_PARENTS) {
-    const parentDir = join(root, parent);
-    if (!existsOrThrow(parentDir, 'package parent', fail)) continue;
-    seenParents.push(parent);
-    for (const name of readdirSync(parentDir).sort()) {
-      // A dotfile is not a candidate package and never was: pnpm-workspace.yaml
-      // globs `packages/*` and `apps/*`, and a bare `*` does not match a
-      // leading dot, so no dotted entry can ever be a workspace package. macOS
-      // drops a `.DS_Store` FILE into any directory Finder has opened, and
-      // statting `.DS_Store/package.json` raises ENOTDIR — which existsOrThrow
-      // below refuses, correctly and by design, failing the whole Lint lane on
-      // a local-only file. The fix is to stop offering a dotfile as a
-      // candidate, NOT to soften that refusal: every entry that could
-      // plausibly be a package still goes through existsOrThrow unchanged.
-      // Same skip walk() already applies one stage later. (#3350)
-      if (name.startsWith('.')) continue;
-      const pkgDir = join(parentDir, name);
-      const pkgJsonPath = join(pkgDir, 'package.json');
-      if (!existsOrThrow(pkgJsonPath, 'package manifest', fail)) continue;
-      let pkgJson;
-      try {
-        pkgJson = JSON.parse(readFileSync(pkgJsonPath, 'utf8'));
-      } catch (err) {
-        fail(`${pkgJsonPath} is not valid JSON: ${err.message}`);
-      }
-      out.push({ rel: `${parent}/${name}`, dir: pkgDir, pkgJson });
-    }
-  }
-  return out;
-}
-
 function main() {
   const seenParents = [];
-  const packages = listPackages(ROOT, seenParents);
+  const packages = listWorkspacePackages(ROOT, fail, PACKAGE_PARENTS, seenParents);
 
   // Anti-vacuity, structural: true of the real repo AND of every synthetic
   // fixture tree the regression harness builds, so it costs the harness

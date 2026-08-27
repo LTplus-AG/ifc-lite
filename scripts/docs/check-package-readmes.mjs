@@ -59,6 +59,16 @@ function fail(message) {
  * so an unreadable path is indistinguishable from an absent one — and here
  * "absent" means "skip this directory", which is how a package leaves the
  * audit without leaving a trace.
+ *
+ * DELIBERATELY NOT the shared `scripts/lib/exists-or-throw.mjs`, and this is
+ * load-bearing rather than an oversight. This gate's regression harness copies
+ * THIS ONE FILE into a synthetic tree and runs it there (see the note on
+ * `packagesDir` above, and `check-package-readmes.test.mjs`'s `makeTree`), so
+ * the file must stay import-free beyond node builtins. Migrating it onto the
+ * lib was tried and turned all 9 of its tests red while the gate itself still
+ * passed against the real repo - the failure only appears in the synthetic
+ * tree, where `../lib/` does not exist. Change the harness first if you want
+ * this deduplicated. (#3347)
  */
 function existsOrFail(path, what) {
   try {

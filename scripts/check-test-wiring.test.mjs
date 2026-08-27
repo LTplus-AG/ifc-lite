@@ -655,7 +655,7 @@ test('--root with no argument is rejected', () => {
  * saying nothing, purely by becoming unreadable.
  *
  * The next three are deliberately a SET, in the shape PR #3350 established for
- * the two sibling gates. Adopting the refusal on its own reintroduces #3350's
+ * the three sibling gates it hardened. Adopting the refusal on its own reintroduces #3350's
  * flake — macOS drops a `.DS_Store` FILE into any Finder-opened directory and
  * statting `.DS_Store/package.json` raises ENOTDIR — and the obvious way to
  * make that flake go away is to catch ENOTDIR and continue, which deletes the

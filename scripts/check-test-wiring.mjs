@@ -10,7 +10,7 @@
  * silently skips it and the suite never runs in CI (this happened to
  * @ifc-lite/ifcx and @ifc-lite/renderer — 13 test files dark for months).
  *
- * Part 2 — the same absence one directory over. `PACKAGE_DIRS` is
+ * Part 2 — the same absence one directory over. `PACKAGE_PARENTS` is
  * `packages` + `apps`, and `scripts/` is neither — yet `scripts/` is where
  * this repo keeps its gates. PR #3062 shipped a gate script AND its test
  * with no workflow step, no package.json script and no turbo task, and
@@ -85,6 +85,7 @@ import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripYamlComments } from './lib/server-bin-targets-parse.mjs';
 import { existsOrThrow } from './lib/exists-or-throw.mjs';
+import { listWorkspacePackages, PACKAGE_PARENTS } from './lib/list-workspace-packages.mjs';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -96,7 +97,6 @@ export function fail(message) {
   throw new FailError(message);
 }
 
-const PACKAGE_DIRS = ['packages', 'apps'];
 const TEST_FILE_RE = /\.(test|spec)\.(ts|tsx|mts|js|mjs)$/;
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'pkg', 'build', 'coverage', '.turbo']);
 
@@ -144,69 +144,10 @@ function findTestFiles(dir, found = []) {
  * Part 1: packages/ and apps/ — and the package discovery Part 2 shares  *
  * ------------------------------------------------------------------ */
 
-/**
- * Every workspace package under `packages/` and `apps/`, with its parsed
- * manifest — the ONE discovery walk both readers below share.
- *
- * There used to be two of these loops, `auditPackages`'s and
- * `readWorkspaceScripts`'s, and the only thing keeping them in agreement was
- * that whoever changed one remembered the other. That is not a property, it is
- * a habit, and #3347 is what it costs: a hardening applied to one loop leaves
- * the other reading an unreadable manifest as an absent one. One walk, two
- * readers, and the two cannot disagree about what a package is.
- *
- * DISCOVERY IS FAIL-CLOSED (#3347). `existsSync` here answered false for every
- * failure — EACCES, ENOTDIR, EIO — so a package whose manifest could not be
- * opened silently left the audit and this gate printed OK with a smaller
- * count. Measured on a two-package fixture, one of them `chmod 000`:
- * `OK (2 packages, ...)` became `OK (1 packages, ...)` at exit 0, and when the
- * locked package was the offender (test files, no `test` script) the run that
- * had exited 1 naming it exited 0 saying nothing. `existsOrThrow` returns false
- * for ENOENT and ONLY for ENOENT.
- *
- * @param {string[]} [seenParents] filled with the parents that exist, so a
- *   caller can tell "no packages here" from "nowhere to look for them".
- */
-export function listPackages(root, seenParents = []) {
-  const out = [];
-  for (const parent of PACKAGE_DIRS) {
-    const parentDir = join(root, parent);
-    if (!existsOrThrow(parentDir, 'package parent', fail)) continue;
-    seenParents.push(parent);
-    for (const name of readdirSync(parentDir).sort()) {
-      // A dotfile is not a candidate package and never was: pnpm-workspace.yaml
-      // globs `packages/*` and `apps/*`, and a bare `*` does not match a
-      // leading dot, so no dotted entry can ever be a workspace package. macOS
-      // drops a `.DS_Store` FILE into any directory Finder has opened, and
-      // statting `.DS_Store/package.json` raises ENOTDIR — which existsOrThrow
-      // below refuses, correctly and by design, failing the whole Lint lane on
-      // a local-only file. So the skip and the refusal ship together or the
-      // refusal is a flake generator: PR #3350 fixed exactly this in two sibling
-      // gates, and adopting existsOrThrow here without the skip would have
-      // reintroduced it. The fix is to stop offering a dotfile as a candidate,
-      // NOT to soften the refusal: every entry that could plausibly be a package
-      // still goes through existsOrThrow unchanged. Same skip findTestFiles and
-      // findScriptFiles already apply one stage later. (#3350, #3347)
-      if (name.startsWith('.')) continue;
-      const pkgDir = join(parentDir, name);
-      const pkgJsonPath = join(pkgDir, 'package.json');
-      if (!existsOrThrow(pkgJsonPath, 'package manifest', fail)) continue;
-      let pkgJson;
-      try {
-        pkgJson = JSON.parse(readFileSync(pkgJsonPath, 'utf-8'));
-      } catch (err) {
-        fail(`${pkgJsonPath} is not valid JSON: ${err.message}`);
-      }
-      out.push({ rel: `${parent}/${name}`, dir: pkgDir, pkgJson });
-    }
-  }
-  return out;
-}
-
 export function auditPackages(root) {
   const offenders = [];
   const seenParents = [];
-  const packages = listPackages(root, seenParents);
+  const packages = listWorkspacePackages(root, fail, PACKAGE_PARENTS, seenParents);
 
   for (const { rel, dir, pkgJson } of packages) {
     if (pkgJson.scripts?.test) continue;
@@ -222,10 +163,10 @@ export function auditPackages(root) {
   // Anti-vacuity: "0 offenders" must mean "looked and found none", never
   // "looked in the wrong tree". Both of these are silent greens otherwise.
   if (seenParents.length === 0) {
-    fail(`no search root found: none of ${PACKAGE_DIRS.map((d) => `${root}/${d}`).join(', ')} exists`);
+    fail(`no search root found: none of ${PACKAGE_PARENTS.map((d) => `${root}/${d}`).join(', ')} exists`);
   }
   if (packages.length === 0) {
-    fail(`found no package.json under ${PACKAGE_DIRS.join('/ or ')}/ in ${root} — the package scan cannot be trusted`);
+    fail(`found no package.json under ${PACKAGE_PARENTS.join('/ or ')}/ in ${root} — the package scan cannot be trusted`);
   }
 
   return { offenders, examined: packages.length };
@@ -346,11 +287,13 @@ export function reachableTaskNames(sources) {
 
 /**
  * `{ [pkgRelPath]: scripts }` for every workspace package under packages/ and
- * apps/. A PROJECTION of `listPackages`, not a second walk — see the note
+ * apps/. A PROJECTION of the same `listWorkspacePackages` function the audit
+ * uses — one discovery FUNCTION with two readers, though it is still called
+ * once per reader, so this is a second walk at run time — see the note
  * there for what the two independent walks used to cost.
  */
 export function readWorkspaceScripts(root) {
-  return listPackages(root).map(({ rel, pkgJson }) => ({ rel, scripts: pkgJson.scripts ?? {} }));
+  return listWorkspacePackages(root, fail).map(({ rel, pkgJson }) => ({ rel, scripts: pkgJson.scripts ?? {} }));
 }
 
 /**

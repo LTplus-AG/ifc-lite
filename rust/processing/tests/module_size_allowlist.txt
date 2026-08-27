@@ -84,7 +84,13 @@
 # anchor (Step 1.5); its regression tests moved to facet_weld_scoped_tests.rs
 # (ratchet-exempt), netting the module below the prior budget; budget refreshed downward.
           907 rust/geometry/src/facet_weld.rs
-     633 rust/geometry/src/kernel/arrangement/classify.rs
+# +87: the #3341 far-endpoint soundness guarantee (`sound_far`) and the argument
+# it rests on, which has to be local because the comment it replaces asserted a
+# safety property that is FALSE for non-convex operands. All +75 is NEW code and
+# doc prose - this file had no inline test module to move out, and the new tests
+# went straight to classify_tests.rs (ratchet-exempt) rather than offsetting the
+# growth. The AABB helper went to broadphase.rs next to `tri_aabb`; 633 -> 720.
+     720 rust/geometry/src/kernel/arrangement/classify.rs
      566 rust/geometry/src/kernel/fixed.rs
 # NEW (#1655): register-resident FixedInt<K> newtype backing the exact predicate cascade; large because it is a drop-in for bnum's I512 and must carry the full num_traits + std::ops trait surface (16 impls) the fixed_impl! macro binds. Its differential fuzz is split into the sibling tests.rs, kept under budget.
      630 rust/geometry/src/kernel/fixed_int/mod.rs

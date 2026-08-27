@@ -27,6 +27,10 @@ import { fileURLToPath } from 'node:url';
 
 const CHECKER = join(dirname(fileURLToPath(import.meta.url)), 'check-test-wiring.mjs');
 
+// Imported for the one case that has to drive a reader `audit()` never reaches
+// on its own; every other case below spawns the unmodified checker via `run`.
+const { readWorkspaceScripts, FailError } = await import('./check-test-wiring.mjs');
+
 /** The catch-all step #3038 added: a bare glob, one directory level only. */
 const GLOB_CATCH_ALL = '      - name: Run every scripts/ test file (glob catch-all)\n' +
   '        run: node --test scripts/*.test.mjs scripts/lib/*.test.mjs\n';
@@ -632,4 +636,109 @@ test('--root with no argument is rejected', () => {
   const r = spawnSync(process.execPath, [CHECKER, '--root'], { encoding: 'utf8' });
   assert.equal(r.status, 1);
   assert.match(r.stderr, /--root requires a directory argument/);
+});
+
+/* ---------------------------------------------------------------- *
+ * Package DISCOVERY is fail-closed, and dotfiles are not candidates. *
+ * ---------------------------------------------------------------- *
+ *
+ * (#3347) Discovery used `existsSync`, which answers false for EVERY failure
+ * and not only ENOENT, so a package whose manifest could not be opened left
+ * the audit with no error at all. Measured on the two-package fixture below,
+ * before the fix:
+ *
+ *   healthy:                 OK (2 packages, ...)   EXIT=0
+ *   packages/beta chmod 000: OK (1 packages, ...)   EXIT=0
+ *
+ * and the same hole hid the offender this gate exists for: a `gamma` carrying
+ * test files and no `test` script went from `EXIT=1` naming it to `EXIT=0`
+ * saying nothing, purely by becoming unreadable.
+ *
+ * The next three are deliberately a SET, in the shape PR #3350 established for
+ * the two sibling gates. Adopting the refusal on its own reintroduces #3350's
+ * flake — macOS drops a `.DS_Store` FILE into any Finder-opened directory and
+ * statting `.DS_Store/package.json` raises ENOTDIR — and the obvious way to
+ * make that flake go away is to catch ENOTDIR and continue, which deletes the
+ * refusal. The last case is the one that catches that fix: one tree carrying
+ * BOTH a dotfile and a non-dotfile ENOTDIR candidate, where the gate must
+ * ignore exactly one of them and refuse the other.
+ */
+
+test('an unreadable package manifest is refused, not silently dropped from the audit (issue 3347)', (t) => {
+  if (process.getuid?.() === 0) return t.skip('root traverses every directory regardless of mode');
+  withTree({}, (root) => {
+    write(root, 'packages/beta/package.json', JSON.stringify({ name: 'beta', scripts: { test: 'vitest run' } }));
+    write(root, 'packages/beta/src/beta.test.ts', 'test');
+    chmodSync(join(root, 'packages/beta'), 0o000);
+    try {
+      const { status, out } = run(root);
+      assert.equal(status, 1, `expected a refusal on an unreadable manifest, got ${status}: ${out}`);
+      assert.match(out, /cannot read package manifest/);
+      assert.match(out, /Refusing to treat an unreadable path as an absent one/);
+      assert.doesNotMatch(out, /OK \(/, 'must not print a success line at all');
+    } finally {
+      chmodSync(join(root, 'packages/beta'), 0o755);
+    }
+  });
+});
+
+test('a `.DS_Store` dotfile in packages/ or apps/ is not a candidate package (issue 3347)', () => {
+  withTree({}, (root) => {
+    write(root, 'apps/real-app/package.json', JSON.stringify({ name: 'real-app', scripts: { test: 'vitest run' } }));
+    write(root, 'apps/real-app/src/b.test.ts', 'test');
+    // Finder's leavings: a FILE, so `<name>/package.json` raises ENOTDIR.
+    write(root, 'packages/.DS_Store', '\x00\x01Bud1');
+    write(root, 'apps/.DS_Store', '\x00\x01Bud1');
+    const { status, out } = run(root);
+    assert.equal(status, 0, out);
+    assert.match(out, /OK \(2 packages,/);
+    assert.doesNotMatch(out, /DS_Store/, 'a dotfile must not appear in the output at all');
+  });
+});
+
+test('skipping dotfiles does not soften the refusal: a non-dotfile ENOTDIR candidate in the SAME tree still fails (issue 3347)', () => {
+  withTree({}, (root) => {
+    write(root, 'packages/.DS_Store', '\x00\x01Bud1');
+    // Not a dotfile, and not a directory: `packages/blocked/package.json`
+    // raises ENOTDIR exactly as `.DS_Store` did. This one must still be
+    // refused — that is the whole point of the guard.
+    write(root, 'packages/blocked', 'i am a file, not a package directory\n');
+    const { status, out } = run(root);
+    assert.equal(status, 1, `expected a refusal on a non-dotfile ENOTDIR candidate, got ${status}: ${out}`);
+    assert.match(out, /cannot read package manifest/);
+    assert.match(out, /packages\/blocked\/package\.json/);
+    assert.match(out, /Refusing to treat an unreadable path as an absent one/);
+    assert.doesNotMatch(out, /DS_Store/, 'the dotfile must not be what tripped it');
+    assert.doesNotMatch(out, /OK \(/, 'must not print a success line at all');
+  });
+});
+
+test('the workspace-script reader shares the hardened walk, so it cannot go soft on its own (issue 3347)', () => {
+  // This file used to carry TWO package-discovery loops, `auditPackages`'s and
+  // `readWorkspaceScripts`'s, kept in agreement only by whoever edited one
+  // remembering the other. `audit()` reaches the first loop first, so a
+  // hardening applied to that one alone looks complete end-to-end while the
+  // second still reads an unreadable manifest as an absent one. Driving the
+  // second reader directly is the only way to see it.
+  const root = baseTree();
+  const previousExitCode = process.exitCode;
+  try {
+    write(root, 'packages/blocked', 'i am a file, not a package directory\n');
+    assert.throws(
+      () => readWorkspaceScripts(root),
+      (err) => err instanceof FailError && /Refusing to treat an unreadable path as an absent one/.test(err.message),
+      'readWorkspaceScripts must refuse an unreadable manifest, not skip it',
+    );
+    // ...and the dotfile skip reaches this reader too, or the refusal above is
+    // a flake generator on every macOS checkout.
+    write(root, 'packages/.DS_Store', '\x00\x01Bud1');
+    rmSync(join(root, 'packages/blocked'));
+    assert.deepEqual(readWorkspaceScripts(root).map((p) => p.rel), ['packages/alpha']);
+  } finally {
+    // `fail()` sets process.exitCode as well as throwing, which would otherwise
+    // red-line this whole test file. Restore rather than zero it: another test
+    // may already have failed and set it.
+    process.exitCode = previousExitCode;
+    rmSync(root, { recursive: true, force: true });
+  }
 });

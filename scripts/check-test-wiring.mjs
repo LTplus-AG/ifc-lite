@@ -84,6 +84,7 @@ import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripYamlComments } from './lib/server-bin-targets-parse.mjs';
+import { existsOrThrow } from './lib/exists-or-throw.mjs';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -140,50 +141,94 @@ function findTestFiles(dir, found = []) {
 }
 
 /* ------------------------------------------------------------------ *
- * Part 1: packages/ and apps/ (unchanged behaviour)                    *
+ * Part 1: packages/ and apps/ — and the package discovery Part 2 shares  *
  * ------------------------------------------------------------------ */
 
-export function auditPackages(root) {
-  const offenders = [];
-  let examined = 0;
-  let parentsSeen = 0;
-
+/**
+ * Every workspace package under `packages/` and `apps/`, with its parsed
+ * manifest — the ONE discovery walk both readers below share.
+ *
+ * There used to be two of these loops, `auditPackages`'s and
+ * `readWorkspaceScripts`'s, and the only thing keeping them in agreement was
+ * that whoever changed one remembered the other. That is not a property, it is
+ * a habit, and #3347 is what it costs: a hardening applied to one loop leaves
+ * the other reading an unreadable manifest as an absent one. One walk, two
+ * readers, and the two cannot disagree about what a package is.
+ *
+ * DISCOVERY IS FAIL-CLOSED (#3347). `existsSync` here answered false for every
+ * failure — EACCES, ENOTDIR, EIO — so a package whose manifest could not be
+ * opened silently left the audit and this gate printed OK with a smaller
+ * count. Measured on a two-package fixture, one of them `chmod 000`:
+ * `OK (2 packages, ...)` became `OK (1 packages, ...)` at exit 0, and when the
+ * locked package was the offender (test files, no `test` script) the run that
+ * had exited 1 naming it exited 0 saying nothing. `existsOrThrow` returns false
+ * for ENOENT and ONLY for ENOENT.
+ *
+ * @param {string[]} [seenParents] filled with the parents that exist, so a
+ *   caller can tell "no packages here" from "nowhere to look for them".
+ */
+export function listPackages(root, seenParents = []) {
+  const out = [];
   for (const parent of PACKAGE_DIRS) {
     const parentDir = join(root, parent);
-    if (!existsSync(parentDir)) continue;
-    parentsSeen++;
-    for (const name of readdirSync(parentDir)) {
+    if (!existsOrThrow(parentDir, 'package parent', fail)) continue;
+    seenParents.push(parent);
+    for (const name of readdirSync(parentDir).sort()) {
+      // A dotfile is not a candidate package and never was: pnpm-workspace.yaml
+      // globs `packages/*` and `apps/*`, and a bare `*` does not match a
+      // leading dot, so no dotted entry can ever be a workspace package. macOS
+      // drops a `.DS_Store` FILE into any directory Finder has opened, and
+      // statting `.DS_Store/package.json` raises ENOTDIR — which existsOrThrow
+      // below refuses, correctly and by design, failing the whole Lint lane on
+      // a local-only file. So the skip and the refusal ship together or the
+      // refusal is a flake generator: PR #3350 fixed exactly this in two sibling
+      // gates, and adopting existsOrThrow here without the skip would have
+      // reintroduced it. The fix is to stop offering a dotfile as a candidate,
+      // NOT to soften the refusal: every entry that could plausibly be a package
+      // still goes through existsOrThrow unchanged. Same skip findTestFiles and
+      // findScriptFiles already apply one stage later. (#3350, #3347)
+      if (name.startsWith('.')) continue;
       const pkgDir = join(parentDir, name);
       const pkgJsonPath = join(pkgDir, 'package.json');
-      if (!existsSync(pkgJsonPath)) continue;
-      examined++;
+      if (!existsOrThrow(pkgJsonPath, 'package manifest', fail)) continue;
       let pkgJson;
       try {
         pkgJson = JSON.parse(readFileSync(pkgJsonPath, 'utf-8'));
       } catch (err) {
         fail(`${pkgJsonPath} is not valid JSON: ${err.message}`);
       }
-      if (pkgJson.scripts?.test) continue;
-      const testFiles = findTestFiles(pkgDir);
-      if (testFiles.length > 0) {
-        offenders.push({
-          name: pkgJson.name ?? `${parent}/${name}`,
-          example: relative(root, testFiles[0]).split('\\').join('/'),
-        });
-      }
+      out.push({ rel: `${parent}/${name}`, dir: pkgDir, pkgJson });
+    }
+  }
+  return out;
+}
+
+export function auditPackages(root) {
+  const offenders = [];
+  const seenParents = [];
+  const packages = listPackages(root, seenParents);
+
+  for (const { rel, dir, pkgJson } of packages) {
+    if (pkgJson.scripts?.test) continue;
+    const testFiles = findTestFiles(dir);
+    if (testFiles.length > 0) {
+      offenders.push({
+        name: pkgJson.name ?? rel,
+        example: relative(root, testFiles[0]).split('\\').join('/'),
+      });
     }
   }
 
   // Anti-vacuity: "0 offenders" must mean "looked and found none", never
   // "looked in the wrong tree". Both of these are silent greens otherwise.
-  if (parentsSeen === 0) {
+  if (seenParents.length === 0) {
     fail(`no search root found: none of ${PACKAGE_DIRS.map((d) => `${root}/${d}`).join(', ')} exists`);
   }
-  if (examined === 0) {
+  if (packages.length === 0) {
     fail(`found no package.json under ${PACKAGE_DIRS.join('/ or ')}/ in ${root} — the package scan cannot be trusted`);
   }
 
-  return { offenders, examined };
+  return { offenders, examined: packages.length };
 }
 
 /* ------------------------------------------------------------------ *
@@ -299,23 +344,13 @@ export function reachableTaskNames(sources) {
   return tasks;
 }
 
-/** `{ [pkgRelPath]: scripts }` for every workspace package under packages/ and apps/. */
+/**
+ * `{ [pkgRelPath]: scripts }` for every workspace package under packages/ and
+ * apps/. A PROJECTION of `listPackages`, not a second walk — see the note
+ * there for what the two independent walks used to cost.
+ */
 export function readWorkspaceScripts(root) {
-  const out = [];
-  for (const parent of PACKAGE_DIRS) {
-    const parentDir = join(root, parent);
-    if (!existsSync(parentDir)) continue;
-    for (const name of readdirSync(parentDir).sort()) {
-      const pkgJsonPath = join(parentDir, name, 'package.json');
-      if (!existsSync(pkgJsonPath)) continue;
-      try {
-        out.push({ rel: `${parent}/${name}`, scripts: JSON.parse(readFileSync(pkgJsonPath, 'utf8')).scripts ?? {} });
-      } catch (err) {
-        fail(`${pkgJsonPath} is not valid JSON: ${err.message}`);
-      }
-    }
-  }
-  return out;
+  return listPackages(root).map(({ rel, pkgJson }) => ({ rel, scripts: pkgJson.scripts ?? {} }));
 }
 
 /**

@@ -72,6 +72,7 @@
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { existsOrThrow } from './lib/exists-or-throw.mjs';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -302,36 +303,11 @@ export function auditPackage(pkgDir, pkgJson) {
   return { testLooking, matched, missed };
 }
 
-/**
- * Does this path exist? Throws if the answer is UNKNOWABLE.
- *
- * `existsSync` answers false for every failure, including EACCES, so an
- * unreadable directory is indistinguishable from an absent one. That is the
- * same "absence reads as success" defect this gate was fixed for -- one stage
- * earlier, in DISCOVERY rather than in the walk. Measured before this change:
- * a `chmod 000` package carrying a real test script reported
- * `OK (1 packages audited, 0 unrun test files)` and exit 0, with the locked
- * package silently missing from the count.
- */
-function existsOrThrow(path, what) {
-  try {
-    statSync(path);
-    return true;
-  } catch (err) {
-    if (err.code === 'ENOENT') return false;
-    fail(
-      `cannot read ${what} ${path}: ${err.code || err.message}. ` +
-        'Refusing to treat an unreadable path as an absent one -- that is how a ' +
-        'package drops out of the audit without anyone noticing.',
-    );
-  }
-}
-
 export function listPackages(root, seenParents = []) {
   const out = [];
   for (const parent of PACKAGE_PARENTS) {
     const parentDir = join(root, parent);
-    if (!existsOrThrow(parentDir, 'package parent')) continue;
+    if (!existsOrThrow(parentDir, 'package parent', fail)) continue;
     seenParents.push(parent);
     for (const name of readdirSync(parentDir).sort()) {
       // A dotfile is not a candidate package and never was: pnpm-workspace.yaml
@@ -347,7 +323,7 @@ export function listPackages(root, seenParents = []) {
       if (name.startsWith('.')) continue;
       const pkgDir = join(parentDir, name);
       const pkgJsonPath = join(pkgDir, 'package.json');
-      if (!existsOrThrow(pkgJsonPath, 'package manifest')) continue;
+      if (!existsOrThrow(pkgJsonPath, 'package manifest', fail)) continue;
       let pkgJson;
       try {
         pkgJson = JSON.parse(readFileSync(pkgJsonPath, 'utf8'));

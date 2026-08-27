@@ -138,3 +138,34 @@ test('positive control: a healthy tree at the floor passes, with its true count'
   assert.match(out, /✅ All 25 published packages have a README\.md/);
   rmSync(root, { recursive: true, force: true });
 });
+
+test('a `.DS_Store` dotfile in packages/ is not a candidate package', () => {
+  const root = makeTree();
+  fillToFloor(root);
+  // macOS drops this into any directory Finder has opened. Before the skip,
+  // statting `.DS_Store/package.json` raised ENOTDIR and existsOrFail refused
+  // it, failing the docs gate on a local-only file.
+  writeFileSync(join(root, 'packages', '.DS_Store'), '\0\0\0');
+  const { status, out } = run(root);
+  assert.equal(status, 0, out);
+  assert.match(out, /All 25 published packages have a README\.md/);
+  assert.doesNotMatch(out, /DS_Store/, 'the dotfile must not appear in the verdict at all');
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('skipping dotfiles does not soften the refusal: a non-dotfile unreadable candidate still fails', () => {
+  const root = makeTree();
+  fillToFloor(root);
+  // Both in the same tree, so this pins that exactly one is ignored and the
+  // other is refused. Catching ENOTDIR and continuing would have satisfied the
+  // test above while destroying the guarantee this gate exists for, and this
+  // is the case that catches it.
+  writeFileSync(join(root, 'packages', '.DS_Store'), '\0\0\0');
+  writeFileSync(join(root, 'packages', 'not-a-dir'), 'this is a file, not a package directory');
+  const { status, out } = run(root);
+  assert.equal(status, 1, out);
+  assert.match(out, /cannot read package manifest/);
+  assert.match(out, /not-a-dir/);
+  assert.doesNotMatch(out, /DS_Store/, 'the dotfile must not be what tripped it');
+  rmSync(root, { recursive: true, force: true });
+});

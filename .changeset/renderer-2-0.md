@@ -2,7 +2,7 @@
 "@ifc-lite/renderer": major
 ---
 
-**BREAKING.** Four changes to what `@ifc-lite/renderer` publishes. `Renderer.getScene()` now returns a measured interface instead of the `Scene` class, and `Scene` itself is no longer exported. The four 3D line-overlay channels collapse from 24 per-channel methods into one `setLineOverlay(channel, vertices)`, and `Section2DOverlayRenderer` is no longer exported either.
+**BREAKING.** Five changes to what `@ifc-lite/renderer` publishes. `Renderer.getScene()` now returns a measured interface instead of the `Scene` class, and `Scene` itself is no longer exported. The four 3D line-overlay channels collapse from 24 per-channel methods into one `setLineOverlay(channel, vertices)`, and `Section2DOverlayRenderer` is no longer exported either. `PickingManager` is unexported as well, for the reason below.
 
 ## `getScene()` returns `SceneContents`
 
@@ -22,7 +22,7 @@ The member list is a measurement, not a design sketch. Every `renderer.getScene(
 
 Narrowing `getScene()` closed the accessor path and left the export path open. `export { Scene }` still stood in the package barrel, so the sentence `SceneContents` exists to falsify, "every method added to `Scene` silently became published API", stayed literally true: `scripts/api-surface.json` still recorded `Scene: class`, and `import { Scene } from '@ifc-lite/renderer'` still handed a consumer the whole 4,429-line class. It is removed, so `SceneContents` is now the only way across the boundary. Nothing outside `packages/renderer/src` imported `Scene` by name: `useGeometryStreaming.ts` was the last one and it moved to `SceneContents` earlier in this same major.
 
-One export is worse off for it, and it is worth saying rather than letting you find it. `PickingManager` is still exported, its constructor still takes the concrete `Scene`, and `Scene` is now unnameable, so a consumer can no longer construct one. It could not be narrowed the way `RaycastEngine` was: it also reaches `raycast`, `selectRect`, `getInstancedTemplates` and `isGeometryDataReleased`, and the `SceneContents` measurement did not find any of those four reached from outside the package, so publishing them would widen the surface to keep alive an export nobody was using. Nothing outside `packages/renderer/src` constructs a `PickingManager`; picking goes through `Renderer.pick` and `Renderer.pickRect`. If you were constructing one directly, open an issue and it gets a stated constructor contract instead of an accidental one.
+`PickingManager` goes with it, and the reasoning is worth stating because it was the one thing unexporting `Scene` forced. Its constructor takes the concrete `Scene`, so once `Scene` is internal a consumer could hold the class and never build one. It could not be narrowed the way `RaycastEngine` was: it also reaches `raycast`, `selectRect`, `getInstancedTemplates` and `isGeometryDataReleased`, and the `SceneContents` measurement found none of those four reached from outside the package. Publishing them would have widened a measured interface into a brand, purely to keep an unused export constructible. So it is unexported instead. Nothing outside `packages/renderer/src` constructs one; picking goes through `Renderer.pick` and `Renderer.pickRect`. If you were constructing one directly, open an issue and it gets a stated constructor contract rather than an accidental one.
 
 ## One `setLineOverlay` for the four line-overlay channels
 

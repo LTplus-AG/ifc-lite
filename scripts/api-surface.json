@@ -3866,7 +3866,6 @@
     "PickOptions: interface",
     "PickResult: interface",
     "Picker: class",
-    "PickingManager: class",
     "PlaneBasis: interface",
     "PointCloudAssetHandle: interface",
     "PointCloudChunkInput: interface",

@@ -64,8 +64,8 @@ export type { LightingEnvironment, ResolvedEnvironment, SkyGradient, Vec3Color }
 export type { Ray, Vec3, Intersection } from './raycaster.js';
 export type { SnapTarget, SnapOptions, EdgeLockInput, MagneticSnapResult } from './snap-detector.js';
 
-// Extracted manager classes
-export { PickingManager } from './picking-manager.js';
+// Extracted manager classes. `PickingManager` is NOT exported: its constructor
+// takes the now-internal `Scene`, so nobody outside could build one anyway.
 export type { PointPickProvider } from './picking-manager.js';
 export { resolveContributionThresholdPx, projectedAabbRadiusPx } from './contribution-cull.js';
 export type { ContributionCullOptions, CullCameraState } from './contribution-cull.js';

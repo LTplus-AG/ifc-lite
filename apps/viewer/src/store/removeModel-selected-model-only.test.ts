@@ -47,7 +47,6 @@ describe('removeModel clears selectedModelId when only the hierarchy selection n
     useViewerStore.getState().removeModel('A');
 
     const after = useViewerStore.getState();
-    console.log('selectedModelId after removeModel:', after.selectedModelId);
     assert.strictEqual(
       after.selectedModelId,
       null,

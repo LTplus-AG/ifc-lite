@@ -347,7 +347,7 @@ export interface Drawing2DSlice extends Drawing2DState {
 
 /**
  * Single source of truth for `drawing2DDisplayOptions` defaults. Both the
- * slice initializer and `resetViewerState` (`store/index.ts`) call this so
+ * slice initializer and `drawing2DSlice.teardown.ts` call this so
  * the two paths can't drift — the same pattern `POINT_CLOUD_DEFAULTS` uses.
  */
 const getDefaultDisplayOptions = (): Drawing2DState['drawing2DDisplayOptions'] => ({

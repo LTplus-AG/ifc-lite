@@ -159,7 +159,7 @@ export interface PointCloudSlice {
 
 /**
  * Single source of truth for the slice's runtime field defaults.
- * Both the slice initializer and `resetViewerState` consume this so
+ * Both the slice initializer and `pointCloudTeardown` consume this so
  * the two paths can't drift.
  */
 const POINT_CLOUD_DEFAULTS = {

@@ -86,6 +86,10 @@ self.onmessage = function(e) {
         }
       }
       if (!hasDigits) continue;
+      // Overflow guard, identical to StepTokenizer.scanEntitiesFast — this
+      // worker is that scan's twin and must reject the same records, or which
+      // scan path ran decides whether an overflowing id is indexed.
+      if (!isFinite(expressId)) continue;
 
       // Skip whitespace
       while (pos < len) {

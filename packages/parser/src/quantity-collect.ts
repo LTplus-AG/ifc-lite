@@ -15,6 +15,7 @@ import { QuantityType } from '@ifc-lite/data';
 import type { EntityRef } from './types.js';
 import type { EntityExtractor } from './entity-extractor.js';
 import { QUANTITY_TYPE_MAP } from './columnar-parser-indexes.js';
+import { isOverflowingNumericLiteral } from './attribute-helpers.js';
 
 /** One extracted quantity, in the shape both call sites report. */
 export interface CollectedQuantity {
@@ -124,6 +125,27 @@ export function collectQuantitiesFromRefs(
 
         const qtyType = QUANTITY_TYPE_MAP[qtyTypeUpper] ?? QuantityType.Count;
         const rawValue = qtyAttrs[SIMPLE_QUANTITY_VALUE_SLOT];
+
+        // A measure the double range cannot hold is dropped with a diagnostic,
+        // not reported as `0`. `CollectedQuantity.value` is `number` and is
+        // consumed by callers that do arithmetic on it, so there is no
+        // in-band way to say "unrepresentable" — and `0` is the worst of the
+        // available lies, because a 0 m^3 volume reads as a measurement
+        // somebody took. An absent quantity is detectable; a zero one is not.
+        //
+        // This matches what the sibling path already does:
+        // `QuantityExtractor.extractQuantity` returns `null` and warns when
+        // slot 3 is not a number. That path and this one walk the same
+        // `Quantities` list, so they must agree.
+        if (isOverflowingNumericLiteral(rawValue)) {
+            console.warn(
+                `[quantity-collect] ${qtyEntity.type} #${qtyEntity.expressId} "${qtyName}" ` +
+                `has a value outside the IEEE-754 double range (${String(rawValue)}); ` +
+                `dropping the quantity rather than reporting it as 0.`,
+            );
+            continue;
+        }
+
         const value = typeof rawValue === 'number' ? rawValue : 0;
 
         quantities.push({ name: qtyName, type: qtyType, value });

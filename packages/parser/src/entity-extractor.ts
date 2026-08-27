@@ -283,10 +283,21 @@ export class EntityExtractor {
     // Falling through preserves the literal as the raw token (the branch
     // below), which is what this function already does for every other token
     // it cannot represent as a number. That keeps the data the file actually
-    // contained — a reader can still see `1.0E400` — while the `typeof x ===
-    // 'number'` guards downstream now correctly decline to use it, instead of
-    // consuming an infinity. Rejecting the attribute outright would drop data
-    // the file did contain; clamping would invent a value.
+    // contained — a reader can still see `1.0E400`. Rejecting the attribute
+    // outright would drop data the file did contain; clamping would invent a
+    // value.
+    //
+    // This is NOT by itself enough to say "nothing is silently dropped".
+    // Preserving the string only helps consumers whose value type admits a
+    // string — the property table's `PropertyValue` union does. A consumer
+    // whose field is typed `number` sees the preserved string fail its
+    // `typeof x === 'number'` test and falls back to whatever default it has,
+    // which is how `quantity-collect` and `georef-extractor` turned an
+    // unreadable value into a plausible `0`. Absence is detectable; a zero
+    // easting is a coordinate. Both now refuse and warn instead of
+    // substituting — see `isOverflowingNumericLiteral` in
+    // `attribute-helpers.ts` and its two call sites. Any NEW `number`-typed
+    // consumer of this function's output owes the same decision.
     const num = parseFloat(value);
     if (Number.isFinite(num)) {
       return num;

@@ -29,6 +29,7 @@ export {
 
 import type { IfcEntity } from './entity-extractor.js';
 import { getString, getNumber, getReference } from './attribute-helpers.js';
+import { extractMapConversion } from './georef-map-conversion.js';
 import { CONVERSION_BASED_UNIT_FACTORS, SI_PREFIX_MULTIPLIERS } from './unit-extractor.js';
 import { inferMapUnitScaleFromLabel } from './map-unit-label.js';
 import { getAttributeNames } from './ifc-schema.js';
@@ -125,8 +126,15 @@ export function extractGeoreferencing(
   if (mapConversionIds.length > 0) {
     const entity = entities.get(mapConversionIds[0]);
     if (entity) {
-      info.mapConversion = extractMapConversion(entity);
-      info.hasGeoreference = true;
+      // A refused conversion leaves the field absent and does not claim
+      // `hasGeoreference`. An IfcProjectedCRS further down may still claim it —
+      // correct: the file does declare a CRS, it just carries no usable
+      // placement.
+      const mapConversion = extractMapConversion(entity);
+      if (mapConversion) {
+        info.mapConversion = mapConversion;
+        info.hasGeoreference = true;
+      }
     }
   }
 
@@ -391,30 +399,6 @@ function extractLegacySiteGeoreference(
   }
 
   return null;
-}
-
-function extractMapConversion(entity: IfcEntity): MapConversion {
-  // IfcMapConversion attributes (IFC4):
-  // [0] SourceCRS (IfcCoordinateReferenceSystem)
-  // [1] TargetCRS (IfcCoordinateReferenceSystem)
-  // [2] Eastings (IfcLengthMeasure)
-  // [3] Northings (IfcLengthMeasure)
-  // [4] OrthogonalHeight (IfcLengthMeasure)
-  // [5] XAxisAbscissa (OPTIONAL IfcReal)
-  // [6] XAxisOrdinate (OPTIONAL IfcReal)
-  // [7] Scale (OPTIONAL IfcReal)
-
-  return {
-    id: entity.expressId,
-    sourceCRS: getReference(entity.attributes[0]) || 0,
-    targetCRS: getReference(entity.attributes[1]) || 0,
-    eastings: getNumber(entity.attributes[2]) || 0,
-    northings: getNumber(entity.attributes[3]) || 0,
-    orthogonalHeight: getNumber(entity.attributes[4]) || 0,
-    xAxisAbscissa: getNumber(entity.attributes[5]),
-    xAxisOrdinate: getNumber(entity.attributes[6]),
-    scale: getNumber(entity.attributes[7]),
-  };
 }
 
 /**

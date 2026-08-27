@@ -17,8 +17,14 @@
 import { describe, it, expect } from 'vitest';
 import { StepTokenizer } from '../src/tokenizer.js';
 import { EntityExtractor } from '../src/entity-extractor.js';
-import { ColumnarParser, extractPropertiesOnDemand } from '../src/columnar-parser.js';
+import {
+  ColumnarParser,
+  extractPropertiesOnDemand,
+  extractQuantitiesOnDemand,
+  extractGeoreferencingOnDemand,
+} from '../src/columnar-parser.js';
 import { getNumber, getReference } from '../src/attribute-helpers.js';
+import { readRefId } from '../src/columnar-parser-attributes.js';
 
 /** Parse one STEP record through the real extractor and return its attributes. */
 function attributesOf(record: string): unknown[] {
@@ -153,5 +159,247 @@ describe('non-finite literals never reach the property table', () => {
         expect(Number.isFinite(prop.value)).toBe(true);
       }
     }
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * A non-finite literal must not become a PLAUSIBLE value either.
+ *
+ * Preserving `1.0E400` as the string `"1.0E400"` is right where the value type
+ * is a union that admits strings (the property table). Where the consumer's
+ * field is typed `number`, the preserved string fails the `typeof x ===
+ * 'number'` test, and the fallback substituted `0` — turning a detectably
+ * missing value into an undetectably wrong one. A null easting is visibly
+ * absent; an easting of `0` is a coordinate.
+ * ------------------------------------------------------------------ */
+
+/** Parse a whole STEP body through `parseLite` and hand back the store. */
+async function storeOf(ifc: string) {
+  const source = new TextEncoder().encode(ifc);
+  const refs = [...new StepTokenizer(source).scanEntitiesFast()].map((r) => ({
+    expressId: r.expressId,
+    type: r.type,
+    byteOffset: r.offset,
+    byteLength: r.length,
+    lineNumber: r.line,
+  }));
+  return await new ColumnarParser().parseLite(source.buffer.slice(0), refs, {});
+}
+
+const OWNER = `#1=IFCOWNERHISTORY($,$,$,$,$,$,$,0);`;
+
+function quantityFile(overflowLiteral: string): string {
+  return `${OWNER}
+#10=IFCWALLSTANDARDCASE('wall-guid',#1,'Wall A',$,$,$,$,$);
+#20=IFCQUANTITYLENGTH('Overflow',$,$,${overflowLiteral},$);
+#21=IFCQUANTITYLENGTH('Finite',$,$,2.5,$);
+#30=IFCELEMENTQUANTITY('qset-guid',#1,'Qto_Test',$,$,(#20,#21));
+#40=IFCRELDEFINESBYPROPERTIES('rel-guid',#1,$,$,(#10),#30);`;
+}
+
+describe('quantities do not substitute 0 for an unrepresentable measure', () => {
+  it('keeps every finite quantity (negative control / anti-vacuity)', async () => {
+    const store = await storeOf(`${OWNER}
+#10=IFCWALLSTANDARDCASE('wall-guid',#1,'Wall A',$,$,$,$,$);
+#20=IFCQUANTITYLENGTH('AlsoFinite',$,$,7.25,$);
+#21=IFCQUANTITYLENGTH('Finite',$,$,2.5,$);
+#30=IFCELEMENTQUANTITY('qset-guid',#1,'Qto_Test',$,$,(#20,#21));
+#40=IFCRELDEFINESBYPROPERTIES('rel-guid',#1,$,$,(#10),#30);`);
+    const qsets = extractQuantitiesOnDemand(store, 10);
+    // Anti-vacuity: the fixture really produces a quantity set with BOTH
+    // entries, so a later assertion that one is missing means something.
+    expect(qsets).toHaveLength(1);
+    expect(qsets[0].quantities.map((q) => q.name)).toEqual(['AlsoFinite', 'Finite']);
+    expect(qsets[0].quantities.map((q) => q.value)).toEqual([7.25, 2.5]);
+  });
+
+  it.each([
+    ['+Infinity', '1.0E400'],
+    ['-Infinity', '-1.0E400'],
+  ])('drops the %s quantity instead of reporting it as 0', async (_label, literal) => {
+    const qsets = extractQuantitiesOnDemand(await storeOf(quantityFile(literal)), 10);
+
+    // Anti-vacuity: the quantity set still exists and still carries the finite
+    // sibling — the overflowing entry is what went, not the whole set.
+    expect(qsets).toHaveLength(1);
+    const byName = new Map(qsets[0].quantities.map((q) => [q.name, q.value]));
+    expect(byName.get('Finite')).toBe(2.5);
+
+    // The point of the fix: absent, not zero. `0` would read as a measurement.
+    expect(byName.has('Overflow')).toBe(false);
+    expect(byName.get('Overflow')).not.toBe(0);
+    for (const q of qsets[0].quantities) expect(Number.isFinite(q.value)).toBe(true);
+  });
+
+  it('keeps a genuine zero quantity — absence must mean unrepresentable', async () => {
+    // The other direction: dropping is reserved for values the double range
+    // cannot hold, and a real 0.0 measure is perfectly representable.
+    const store = await storeOf(`${OWNER}
+#10=IFCWALLSTANDARDCASE('wall-guid',#1,'Wall A',$,$,$,$,$);
+#20=IFCQUANTITYLENGTH('GenuinelyZero',$,$,0.,$);
+#30=IFCELEMENTQUANTITY('qset-guid',#1,'Qto_Test',$,$,(#20));
+#40=IFCRELDEFINESBYPROPERTIES('rel-guid',#1,$,$,(#10),#30);`);
+    const qsets = extractQuantitiesOnDemand(store, 10);
+    expect(qsets[0].quantities).toEqual([
+      expect.objectContaining({ name: 'GenuinelyZero', value: 0 }),
+    ]);
+  });
+});
+
+function georefFile(e: string, n: string, h: string): string {
+  return `${OWNER}
+#5=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,$,$);
+#6=IFCPROJECTEDCRS('EPSG:2056','CH1903+','CH1903+',$,$,$,$);
+#7=IFCMAPCONVERSION(#5,#6,${e},${n},${h},1.,0.,1.);`;
+}
+
+describe('georeferencing does not substitute a 0 origin', () => {
+  it('reads a fully finite map conversion (negative control / anti-vacuity)', async () => {
+    const geo = extractGeoreferencingOnDemand(
+      await storeOf(georefFile('2600000.', '1200000.', '400.')),
+    );
+    // Anti-vacuity: this fixture really does produce a usable georeference, so
+    // `mapConversion` being undefined below is caused by the literal.
+    expect(geo?.mapConversion).toBeDefined();
+    expect(geo!.mapConversion!.eastings).toBe(2600000);
+    expect(geo!.mapConversion!.northings).toBe(1200000);
+    expect(geo!.mapConversion!.orthogonalHeight).toBe(400);
+    expect(geo!.transformMatrix).toBeDefined();
+    expect(geo!.transformMatrix!.every((v) => Number.isFinite(v))).toBe(true);
+  });
+
+  it.each([
+    ['Eastings', '+Infinity', '1.0E400', '1200000.', '400.'],
+    ['Eastings', '-Infinity', '-1.0E400', '1200000.', '400.'],
+    ['Northings', '+Infinity', '2600000.', '1.0E400', '400.'],
+    ['Northings', '-Infinity', '2600000.', '-1.0E400', '400.'],
+    ['OrthogonalHeight', '+Infinity', '2600000.', '1200000.', '1.0E400'],
+    ['OrthogonalHeight', '-Infinity', '2600000.', '1200000.', '-1.0E400'],
+  ])('refuses the map conversion when %s is %s', async (_slot, _sign, e, n, h) => {
+    const geo = extractGeoreferencingOnDemand(await storeOf(georefFile(e, n, h)));
+
+    // Absent, not zero: a 0 easting places the model at the projection origin,
+    // which is a plausible coordinate and therefore undetectable.
+    expect(geo?.mapConversion).toBeUndefined();
+    // No transform either — a matrix built from a substituted origin would
+    // move every element in the file.
+    expect(geo?.transformMatrix).toBeUndefined();
+
+    // Anti-vacuity: the CRS in the same fixture IS still read, so the refusal
+    // is scoped to the placement rather than the whole extractor bailing out.
+    expect(geo?.projectedCRS?.name).toBe('EPSG:2056');
+  });
+
+  it('keeps a genuine zero easting', async () => {
+    // The other direction: 0 is a legal easting and must survive.
+    const geo = extractGeoreferencingOnDemand(
+      await storeOf(georefFile('0.', '1200000.', '400.')),
+    );
+    expect(geo?.mapConversion).toBeDefined();
+    expect(geo!.mapConversion!.eastings).toBe(0);
+  });
+});
+
+describe('getNumber/getReference guard their number branch too', () => {
+  // The string branch was guarded first; a caller handing in an actual
+  // `Infinity`/`NaN` bypassed the guard entirely, so the contract read
+  // "finite, unless you passed a number". NaN, Infinity and -Infinity are
+  // asserted separately: only the infinities survive an `isNaN` guard, so a
+  // mutation back to `isNaN` fails a different subset of these.
+  it.each([
+    ['Infinity', Infinity],
+    ['-Infinity', -Infinity],
+    ['NaN', NaN],
+  ])('getNumber(%s) is undefined', (_label, input) => {
+    expect(getNumber(input)).toBeUndefined();
+  });
+
+  it.each([
+    ['Infinity', Infinity],
+    ['-Infinity', -Infinity],
+    ['NaN', NaN],
+  ])('getReference(%s) is undefined', (_label, input) => {
+    expect(getReference(input)).toBeUndefined();
+  });
+
+  it('finite numbers still pass through both helpers (negative control)', () => {
+    expect(getNumber(0)).toBe(0);
+    expect(getNumber(2.5)).toBe(2.5);
+    expect(getNumber(Number.MAX_VALUE)).toBe(Number.MAX_VALUE);
+    expect(getReference(0)).toBe(0);
+    expect(getReference(42)).toBe(42);
+  });
+});
+
+describe('an overflowing express id is refused before it is indexed', () => {
+  const HUGE_A = '1'.repeat(400);
+  const HUGE_B = '2'.repeat(400);
+
+  it('ordinary ids tokenize on both scan paths (negative control)', () => {
+    const src = new TextEncoder().encode(
+      `#1=IFCWALL('a',$,$,$,$,$,$,$);\n#2=IFCWALL('b',$,$,$,$,$,$,$);`,
+    );
+    expect([...new StepTokenizer(src).scanEntitiesFast()].map((r) => r.expressId)).toEqual([1, 2]);
+    expect([...new StepTokenizer(src).scanEntities()].map((r) => r.expressId)).toEqual([1, 2]);
+  });
+
+  it.each([
+    ['scanEntitiesFast', (s: Uint8Array) => [...new StepTokenizer(s).scanEntitiesFast()]],
+    ['scanEntities', (s: Uint8Array) => [...new StepTokenizer(s).scanEntities()]],
+  ])('%s refuses overflowing ids rather than collapsing them onto Infinity', (_name, scan) => {
+    // Anti-vacuity: these really are the overflowing shape, and the tokenizer's
+    // `id*10+digit` accumulator maps BOTH of them to the SAME Infinity — which
+    // is a collision between two distinct records, not merely one lost record.
+    expect(Number(HUGE_A)).toBe(Infinity);
+    expect(Number(HUGE_B)).toBe(Infinity);
+
+    const src = new TextEncoder().encode(
+      `#${HUGE_A}=IFCWALL('a',$,$,$,$,$,$,$);\n` +
+      `#${HUGE_B}=IFCWALL('b',$,$,$,$,$,$,$);\n` +
+      `#3=IFCWALL('c',$,$,$,$,$,$,$);`,
+    );
+    const ids = scan(src).map((r) => r.expressId);
+    expect(ids).toEqual([3]);
+    expect(ids).not.toContain(Infinity);
+    // No two records share a key.
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('readRefId refuses an overflowing reference on the byte-level path', () => {
+    const read = (text: string) => {
+      const b = new TextEncoder().encode(text);
+      return readRefId(b, 0, b.length);
+    };
+    expect(read('#42,')[0]).toBe(42); // negative control
+    expect(read('#0,')[0]).toBe(0); // negative control: id 0 is a value, not "absent"
+    expect(read(`#${HUGE_A},`)[0]).toBe(-1);
+    // `pos` is still advanced past the digits, so scanning resumes correctly.
+    expect(read(`#${HUGE_A},`)[1]).toBe(HUGE_A.length + 1);
+  });
+
+  it('leaves no half-alive record: the pset is not readable at Infinity', async () => {
+    const store = await storeOf(`${OWNER}
+#${HUGE_A}=IFCWALLSTANDARDCASE('wall-guid',#1,'Wall A',$,$,$,$,$);
+#20=IFCPROPERTYSINGLEVALUE('P',$,IFCREAL(2.5),$);
+#30=IFCPROPERTYSET('pset-guid',#1,'Pset_Test',$,(#20));
+#40=IFCRELDEFINESBYPROPERTIES('rel-guid',#1,$,$,(#${HUGE_A}),#30);`);
+
+    // Before the byte-level `readRefId` was guarded, the entity index refused
+    // the record but `extractPropertiesOnDemand` still served its pset under
+    // the key `Infinity` — present enough to answer a property query, absent
+    // enough that its own GlobalId and Name were unreadable.
+    expect(store.entityIndex.byId.get(Infinity)).toBeUndefined();
+    expect(extractPropertiesOnDemand(store, Infinity)).toEqual([]);
+  });
+
+  it('a normal element still resolves its pset (negative control)', async () => {
+    const store = await storeOf(`${OWNER}
+#10=IFCWALLSTANDARDCASE('wall-guid',#1,'Wall A',$,$,$,$,$);
+#20=IFCPROPERTYSINGLEVALUE('P',$,IFCREAL(2.5),$);
+#30=IFCPROPERTYSET('pset-guid',#1,'Pset_Test',$,(#20));
+#40=IFCRELDEFINESBYPROPERTIES('rel-guid',#1,$,$,(#10),#30);`);
+    const psets = extractPropertiesOnDemand(store, 10);
+    expect(psets).toHaveLength(1);
+    expect(psets[0].properties[0].value).toBe(2.5);
   });
 });

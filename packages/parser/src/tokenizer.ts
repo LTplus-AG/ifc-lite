@@ -162,6 +162,8 @@ export class StepTokenizer {
         }
 
         if (!hasDigits) continue;
+        // Overflow: see `readRefId` in columnar-parser-attributes.ts for why.
+        if (!Number.isFinite(expressId)) continue;
 
         // Skip whitespace (inline)
         while (pos < len) {
@@ -302,6 +304,7 @@ export class StepTokenizer {
     }
 
     if (digits === 0) return null;
+    if (!Number.isFinite(id)) return null; // same overflow as scanEntitiesFast
     this.position = pos;
     return id;
   }

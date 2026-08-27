@@ -296,7 +296,7 @@ impl IfcAPI {
     /// Parse the file and return every `IfcGridAxis` as a flat `Float32Array`
     /// of 3D line-list vertices `[x0,y0,z0, x1,y1,z1, …]` (one segment per
     /// axis) in the renderer's Y-up world space (RTC-subtracted, metres). Feed
-    /// straight to a line pipeline (e.g. `uploadAnnotationLines3D`).
+    /// straight to a line pipeline (e.g. `renderer.setLineOverlay('grid', …)`).
     ///
     /// Returns an empty array when the file has no grids, so the caller can
     /// clear the overlay cheaply.

@@ -3469,6 +3469,7 @@ export class Renderer {
      * one segment per six floats. The vertices are already lifted to world
      * space, so these overlays draw whether or not a section plane is active.
      * A trailing partial segment is dropped rather than rejecting the array.
+     * An empty array clears too, but `null` skips building the pipelines.
      *
      * Every channel is an independent buffer with its own visibility, so
      * setting one leaves the other three untouched. All four share the colour
@@ -3476,16 +3477,15 @@ export class Renderer {
      * `SymbolicTextInput.color` on `uploadAnnotationTexts3D`.
      *
      * The channels differ in exactly one way — whether they grow the scene
-     * bounds:
-     *
-     * - `annotation` (#653) and `alignment` DO. An annotation-only or
-     *   alignment-only file has no IfcProduct meshes to frame, so without this
-     *   Home / fit-to-view has nothing to aim at and the camera's near/far
-     *   range clips the lines away.
-     * - `grid` (IfcGridAxis, #967) and `dxf` (the DXF reference layer, #2043)
-     *   do NOT. Both sit behind their own visibility toggle and routinely
-     *   extend past the model envelope, so growing the bounds would reframe
-     *   the camera every time the toggle was ticked.
+     * bounds. `annotation` (#653) and `alignment` DO: a file holding only them
+     * has no IfcProduct meshes to frame, so Home / fit-to-view would have
+     * nothing to aim at and the near/far range would clip the lines away.
+     * `grid` (IfcGridAxis, #967) and `dxf` (the DXF reference layer, #2043) do
+     * NOT: they are reference layers that routinely extend past the model
+     * envelope, so growing the bounds would reframe the camera whenever one
+     * was ticked on. The rule is "does this content DEFINE the model's
+     * extent", NOT "is it behind a visibility toggle" — annotations sit behind
+     * `ifcAnnotationsVisible` too.
      */
     setLineOverlay(channel: LineOverlayChannel, vertices: Float32Array | null): void {
         this.overlays.setLineOverlay(channel, vertices);
@@ -3556,7 +3556,7 @@ export class Renderer {
 
     /**
      * Get render pipeline (for batching). DELIBERATELY NOT NARROWED, unlike
-     * `getScene()` / `getCamera()`: the measurement found ZERO external
+     * `getScene()`: the measurement found ZERO external
      * `RenderPipeline` members — all 12 call sites pass the handle straight
      * back into a `SceneContents` upload method typed for the real class.
      */
@@ -3604,8 +3604,8 @@ export class Renderer {
      * every call site already has, so a lost device degrades to "stop
      * uploading" rather than an uncaught throw.
      *
-     * DELIBERATELY NOT NARROWED, unlike `getScene()` / `getCamera()`: the one
-     * external `GPUDevice` member measured is `queue`; every other call site
+     * DELIBERATELY NOT NARROWED, unlike `getScene()`: the one external
+     * `GPUDevice` member measured is `queue`; every other call site
      * hands the device back to a `SceneContents` method. See `isDeviceLost()` /
      * `onDeviceLost()` for the recovery contract.
      */

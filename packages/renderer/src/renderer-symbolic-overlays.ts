@@ -119,7 +119,8 @@ export class SymbolicOverlays {
     uploadFills(fills: readonly SymbolicFillInput[]): void {
         if (!this.fillPipeline) return;
         this.fillPipeline.upload(fills);
-        // Contribute fill extents to modelBounds — see uploadAnnotationLines3D.
+        // Contribute fill extents to modelBounds — see the `annotation`
+        // channel in `CHANNEL_EXPANDS_MODEL_BOUNDS` (renderer-overlays.ts).
         for (const fill of fills) {
             const pts = fill.points;
             if (pts.length === 0) continue;

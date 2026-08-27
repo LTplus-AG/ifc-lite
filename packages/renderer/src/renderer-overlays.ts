@@ -89,14 +89,23 @@ export interface OverlayDrawContext {
  * Whether setting a channel grows the scene AABB.
  *
  * The one behavioural difference between the four channels, and the reason
- * `setLineOverlay` is a table lookup rather than a plain forward. Annotation
- * (#653) and alignment overlays expand the bounds so an annotation-only or
- * alignment-only file — no IfcProduct meshes at all, common for separate
- * "annotation sheets" — still gets framed by Home / fit-to-view and still
- * lands inside the camera's near/far range. Grid axes (#967) and the DXF
- * reference layer (#2043) must NOT: both sit behind their own visibility
- * toggle and routinely extend past the model envelope, so growing bounds on
- * upload would reframe the camera every time someone ticked the box.
+ * `setLineOverlay` is a table lookup rather than a plain forward. The
+ * per-channel rationale is on `Renderer.setLineOverlay`, which is what
+ * consumers read in the emitted `.d.ts`; it is not repeated here.
+ *
+ * The rule is "does this content DEFINE the model's extent, so that a file
+ * containing only it must still be framable". It is NOT "is it behind a
+ * visibility toggle" — annotations sit behind `ifcAnnotationsVisible` too and
+ * they DO expand. Anyone adding a fifth channel should answer the first
+ * question, not the second.
+ *
+ * Known gap, pre-dating this table: `useSymbolicAnnotations` lifts IfcGrid
+ * geometry into the SAME buffer as the IfcAnnotation curves, so an
+ * annotations-off / grid-on session reaches `annotation` carrying only grid
+ * lines, which then expand the bounds that `grid: false` exists to protect.
+ * The table is keyed by channel; the policy really wants to be keyed by
+ * content. Routing that lift into the `grid` channel is the fix and is a
+ * change of its own.
  */
 const CHANNEL_EXPANDS_MODEL_BOUNDS: Record<LineOverlayChannel, boolean> = {
     annotation: true,
@@ -169,13 +178,16 @@ export class RendererOverlays {
         // `LINE_OVERLAY_CHANNELS` is in draw order: annotation, alignment,
         // grid, DXF. All four share the overlay colour and the line pipeline,
         // so the order only decides who wins a depth tie.
-        for (const channel of LINE_OVERLAY_CHANNELS) {
-            if (this.section2DOverlayRenderer?.hasLineOverlay(channel)) {
-                this.section2DOverlayRenderer.drawLineOverlay(pass, viewProj, channel);
+        const overlay = this.section2DOverlayRenderer;
+        if (overlay) {
+            for (const channel of LINE_OVERLAY_CHANNELS) {
+                if (overlay.hasLineOverlay(channel)) {
+                    overlay.drawLineOverlay(pass, viewProj, channel);
+                }
             }
-        }
-        if (this.section2DOverlayRenderer?.hasClashBoxLines3D()) {
-            this.section2DOverlayRenderer.drawClashBoxLines3D(pass, viewProj);
+            if (overlay.hasClashBoxLines3D()) {
+                overlay.drawClashBoxLines3D(pass, viewProj);
+            }
         }
         // Drawn after the box/contact lines and — crucially — after every
         // ghosted (depth-non-writing) element in the main pass, so the true

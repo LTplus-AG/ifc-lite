@@ -10,7 +10,7 @@
 //! strip and not the thin LINE users expect (matching IfcGrid axes and
 //! IfcAnnotation curves) — we sample the alignment directrix into a flat
 //! line-list vertex buffer and feed it through the renderer's existing
-//! `uploadAnnotationLines3D` line pipeline.
+//! `setLineOverlay('alignment', …)` line pipeline.
 //!
 //! The output is `[x0,y0,z0, x1,y1,z1, …]` line-list pairs in the renderer's
 //! **Y-up, RTC-subtracted, metres** world space — the exact frame the mesh
@@ -38,7 +38,7 @@ impl IfcAPI {
     /// `Float32Array` of 3D line-list vertices `[x0,y0,z0, x1,y1,z1, …]` in
     /// the renderer's Y-up world space (RTC-subtracted, metres). Consecutive
     /// samples form line segments. Feed straight to
-    /// `renderer.uploadAnnotationLines3D(...)`.
+    /// `renderer.setLineOverlay('alignment', ...)`.
     ///
     /// Returns an empty array when the file has no alignments (or none with a
     /// resolvable Axis curve), so the caller can clear the overlay cheaply.

@@ -56,9 +56,11 @@ export type { CutPolygon2D, DrawingLine2D, SectionCustomPlane } from './section-
  * Each channel is an independent vertex buffer sharing one line pipeline and
  * one shared overlay colour, so the only thing that distinguishes them is
  * which buffer a draw reads and which uniform slot it binds. Naming them
- * rather than growing a method quartet per family is what makes a sixth
- * channel one array entry plus one uniform slot instead of four methods here,
- * two on `RendererOverlays` and two on the published `Renderer`.
+ * rather than growing a method quartet per family is what makes a fifth
+ * channel five table rows instead of eight methods. Four of the five refuse to
+ * compile if skipped; `SECTION_2D_UNIFORM_SLOT_COUNT` is a hand-written literal
+ * that does not, and it sizes the shared uniform buffer, so missing it binds a
+ * dynamic offset past the end.
  *
  * The focused clash's box / contact lines are deliberately NOT a channel: they
  * draw in their own colour, not the shared one, and callers reach them through
@@ -151,7 +153,6 @@ export class Section2DOverlayRenderer {
     grid: new WorldLineBuffer(SECTION_2D_UNIFORM_SLOT_INDEX.grid),
     dxf: new WorldLineBuffer(SECTION_2D_UNIFORM_SLOT_INDEX.dxf),
   };
-
 
   // Standalone 3D clash-overlap-box overlay (#1277): the wireframe AABB of a
   // focused clash, drawn in its OWN distinct colour (not the shared overlay
@@ -435,8 +436,7 @@ export class Section2DOverlayRenderer {
    *
    * `vertices` is a flat line-list, `[x1,y1,z1, x2,y2,z2, …]`, already in world
    * space: unlike the section-cut outline these do not ride the section plane,
-   * so they draw regardless of `sectionPlane.enabled`. An array too short for a
-   * whole segment clears, which is how callers spell "no lines" without a null.
+   * so they draw regardless of `sectionPlane.enabled`. A short array clears too.
    *
    * Every channel gets its own buffer and its own uniform slot, so setting one
    * leaves the other three exactly as they were — that independence is the

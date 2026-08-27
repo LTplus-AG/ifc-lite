@@ -85,6 +85,20 @@ describe('the model-removed teardown scope is idempotent', () => {
     // pass and only then. Without this, a regression in how `notYetASurvivor`
     // interacts with the per-slice gates would leave the file green.
     useViewerStore.setState({
+      // Reset every channel this case reads. The test above leaves
+      // selectedStoreys / hiddenEntitiesByModel / isolatedEntitiesByModel /
+      // pinboardEntities populated, and inheriting them made the patches this
+      // asserts on depend on file order.
+      selectedStoreys: new Set<number>(),
+      hiddenEntitiesByModel: new Map(),
+      isolatedEntitiesByModel: new Map(),
+      pinboardEntities: new Set<string>(),
+      hierarchyBasketSelection: new Set<string>(),
+      selectedEntities: [],
+      selectedEntitiesSet: new Set<string>(),
+      selectedEntity: null,
+      activeStorey: null,
+      selectedModelId: null,
       models: new Map([
         ['old', model('old', 5000, 5100)],
         ['repl', model('repl', 0, 100)],
@@ -102,10 +116,8 @@ describe('the model-removed teardown scope is idempotent', () => {
 
     const before = useViewerStore.getState();
     const lenient = viewerTeardown(modelRemovedScope(before, 'old'), before);
-    console.log('lenient patch keys:', Object.keys(lenient).sort());
 
     const stricter = viewerTeardown(modelRemovedScope(before, 'old', 'repl'), before);
-    console.log('stricter patch keys:', Object.keys(stricter).sort());
 
     // The whole reason both runs exist: the stricter pass must see something the
     // lenient one did not. If these ever match, `notYetASurvivor` has stopped
@@ -114,10 +126,15 @@ describe('the model-removed teardown scope is idempotent', () => {
       (stricter.selectedEntityIds as Set<number> | undefined)?.has(42) === false,
       'the stricter scope must drop an id inside the replacement\'s fresh range',
     );
+    // Measured, not hedged: the lenient scope finds nothing of selection's
+    // stale, so selectionSlice returns {} and the key is absent entirely. An
+    // earlier version of this allowed `undefined || has(42)`, which passed
+    // through the undefined branch and never exercised the path it named.
     assert.ok(
-      (lenient.selectedEntityIds as Set<number> | undefined) === undefined ||
-        (lenient.selectedEntityIds as Set<number>).has(42),
-      'the lenient scope must KEEP it, or the two runs are not different and one is redundant',
+      !('selectedEntityIds' in lenient),
+      'the lenient scope must not touch selectedEntityIds at all: 42 is inside the ' +
+        'replacement range and 1005 belongs to a survivor, so nothing of selection is stale. ' +
+        'If this key appears, the two scopes no longer differ and one run is redundant.',
     );
     assert.ok(
       (stricter.selectedEntityIds as Set<number>).has(1005),

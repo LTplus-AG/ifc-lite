@@ -185,20 +185,11 @@ export interface CompareSlice {
 }
 
 /**
- * Compare (#924): drop any stale diff result — it references models by id and
- * the loaded set is changing. Keep panel visibility + A/B/scope choices (UI
- * prefs); the user re-runs against the new set.
- *
- * This is also the implementation of {@link CompareSlice.clearCompare}, which
- * delegates to it — the run result and the selection are the same four fields
- * either way, and one definition is what keeps them from drifting.
- *
- * `clearCompare` itself stays an entry-point side effect of `removeModel`
- * (guarded on the removed model being a side of the pairing) and of
- * `clearAllModels` (unconditional); neither is a scope arm here.
- */
-/**
  * The fields `clearCompare` and a session reset both drop.
+ *
+ * Compare (#924): a stale diff result references models by id and the loaded
+ * set is changing. Panel visibility and the A/B/scope choices are UI prefs and
+ * stay; the user re-runs against the new set.
  *
  * Named once and consumed by both so neither can drift, the same shape
  * `sheetSlice`'s `getClearedSheetState` uses. `compareRunSeq` is deliberately

@@ -10,6 +10,9 @@ import { dirname, join } from 'node:path';
 import { teardownOwnedKeys } from './teardown.js';
 import { viewerTeardownRegistry } from './teardown-registry.js';
 import { modelRemovedScope } from './teardown-scope.js';
+import { viewerTeardown } from './teardown-registry.js';
+import type { TeardownState } from './teardown.js';
+import { UI_DEFAULTS } from './constants.js';
 import type { FederatedModel } from './types.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -315,6 +318,35 @@ describe('the teardown registry stays complete', () => {
       [],
       `these keys are newly declared owned: ${added.join(', ')}. Widening what a slice is willing ` +
         'to destroy is a deliberate act; add them to PINNED_OWNED_KEYS in the same commit.',
+    );
+  });
+
+  it('keeps both visibility channels in a session-reset patch even when neither value changes', () => {
+    // `withVisibilityOwnershipInvalidation` keys on PRESENCE - it tests
+    // `'isolatedEntities' in patch` - not on value. The hand-written
+    // resetViewerState always carried both, so it fired on every reset.
+    // composeTeardown's Object.is filter would drop them on the common reset
+    // where both are already null, silently ending that. NEVER_DROPPED exempts
+    // them, and this is what fails if the exemption is removed.
+    const bothAlreadyNull = { isolatedEntities: null, ghostExceptEntities: null } as TeardownState;
+    const patch = viewerTeardown({ kind: 'session-reset' }, bothAlreadyNull);
+
+    assert.ok(
+      'isolatedEntities' in patch,
+      'isolatedEntities must stay in the patch or the ownership middleware stops running on a reset',
+    );
+    assert.ok(
+      'ghostExceptEntities' in patch,
+      'ghostExceptEntities must stay in the patch for the same reason',
+    );
+
+    // Non-vacuity: the filter must genuinely be dropping unchanged keys, or the
+    // two assertions above pass for the wrong reason and prove nothing.
+    const unchanged = { activeTool: UI_DEFAULTS.ACTIVE_TOOL } as TeardownState;
+    const filtered = viewerTeardown({ kind: 'session-reset' }, unchanged);
+    assert.ok(
+      !('activeTool' in filtered),
+      'the Object.is filter must drop an ordinary unchanged key, or this test is not testing an exemption',
     );
   });
 

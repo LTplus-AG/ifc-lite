@@ -12,8 +12,8 @@
  * state it didn't set"), and `syncSourceModel`'s post-removal purge. The last
  * one is a hard contract, not a preference:
  *
- *     syncSourceModel.ts:190   removeModel(modelId);
- *     syncSourceModel.ts:217   the same scope again, stricter (viewerTeardown)
+ *     syncSourceModel.ts   removeModel(modelId)
+ *     syncSourceModel.ts   viewerTeardown(modelRemovedScope(..., replacementId))
  *
  * That second run deliberately KEEPS the part of the user's X-ray /
  * isolation that still belongs to a surviving model and drops only the ids
@@ -27,7 +27,7 @@
  *
  * That is only half of `removeModel`'s job on the SAME channels, though.
  * The second purge is chained after `removeModel` on exactly one
- * caller, `syncSourceModel`'s reload path (syncSourceModel.ts:190-217). The
+ * caller, `syncSourceModel`'s reload path. The
  * two direct callers, `HierarchyPanel`'s delete button and the collab room
  * teardown (`collabSlice.ts`), call `removeModel` alone: nothing downstream
  * ever purges the ids the deleted model owned. Left unfiltered, a stale id

@@ -37,9 +37,12 @@ export const modelTeardown = defineSliceTeardown(
     // A removal that removes nothing must do nothing. `syncSourceModel` and the
     // collab room teardown can both re-enter with an id that has already gone,
     // and every cleanup below is keyed to THIS model (#2654 second review).
-    // This guard is also what makes the whole 'model-removed' composition a
-    // no-op on its second run: `syncSourceModel` runs the SAME scope
-    // immediately after `removeModel` has already removed the model.
+    // This guard is what makes THIS slice's contribution a no-op on the second
+    // run: `syncSourceModel` dispatches model-removed again straight after
+    // `removeModel`, and the model is gone from `models` by then. The
+    // COMPOSITION is deliberately not a no-op there - the second scope is
+    // stricter (`notYetASurvivor`) and drops ids the first pass kept, which is
+    // the whole reason both runs exist. See `syncSourceModel`'s call site.
     if (!models?.has(scope.modelId)) return {};
 
     const nextModels = new Map(models);

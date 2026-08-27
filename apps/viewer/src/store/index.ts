@@ -307,10 +307,10 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
     // the two could drift with nothing to notice. Now each value is stated
     // once, beside the initial value it has to agree with.
     //
-    // Through the store's own `set`, but do not over-read that: `composeTeardown`
-    // omits keys equal to live state, so on the usual reset (isolate/ghost already
-    // `null`) the ownership middleware never fires. The records are cleared by
-    // `idsFocusVisibilityOwned: null` and `endClashScenePresentation` below.
+    // Through the store's own `set`, which `withVisibilityOwnershipInvalidation`
+    // wraps. It keys on PRESENCE (`'isolatedEntities' in patch`), and both
+    // channels sit in `NEVER_DROPPED` so the filter cannot remove them, so it
+    // fires on EVERY reset as the hand-written payload did. Keep that exemption.
     set(viewerTeardown({ kind: 'session-reset' }, get()));
 
     // Clash (#2654 review) — same stale-model-reference class as the

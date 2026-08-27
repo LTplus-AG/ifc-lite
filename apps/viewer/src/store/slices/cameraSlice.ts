@@ -9,6 +9,17 @@
 import type { StateCreator } from 'zustand';
 import type { CameraRotation, CameraCallbacks, ProjectionMode } from '../types.js';
 import { CAMERA_DEFAULTS } from '../constants.js';
+import { defineSliceTeardown } from '../teardown.js';
+
+/** The home orientation, in one place: the slice's initial value and the
+ *  session-reset teardown must not be able to drift apart. */
+const defaultCameraRotation = (): CameraRotation => ({
+  azimuth: CAMERA_DEFAULTS.AZIMUTH,
+  elevation: CAMERA_DEFAULTS.ELEVATION,
+});
+
+/** Likewise for the projection: `perspective` is the startup mode. */
+const DEFAULT_PROJECTION_MODE: ProjectionMode = 'perspective';
 
 export interface CameraSlice {
   // State
@@ -39,13 +50,10 @@ export interface CameraSlice {
 
 export const createCameraSlice: StateCreator<CameraSlice, [], [], CameraSlice> = (set, get) => ({
   // Initial state
-  cameraRotation: {
-    azimuth: CAMERA_DEFAULTS.AZIMUTH,
-    elevation: CAMERA_DEFAULTS.ELEVATION,
-  },
+  cameraRotation: defaultCameraRotation(),
   pendingCameraRotation: null,
   cameraCallbacks: {},
-  projectionMode: 'perspective',
+  projectionMode: DEFAULT_PROJECTION_MODE,
   onCameraRotationChange: null,
   cameraRotationListeners: new Set(),
   onScaleChange: null,
@@ -120,3 +128,34 @@ export const createCameraSlice: StateCreator<CameraSlice, [], [], CameraSlice> =
     // Don't update store state during real-time updates
   },
 });
+
+/**
+ * What a session reset clears on the camera slice.
+ *
+ * `resetViewerState`'s "Camera" block (`store/index.ts`): a new file gets the
+ * home orientation and the default projection rather than inheriting the pose
+ * the user left on the outgoing model.
+ *
+ * PURE, like every teardown — and that matches today's behaviour exactly:
+ * `resetViewerState` writes both fields straight into `set()` without going
+ * through `setCameraRotation` / `setProjectionMode`, so the renderer actuators
+ * are NOT driven here. The reframe comes from the load path instead. Calling
+ * an actuator from a teardown would be a behaviour change, not a tidy-up.
+ *
+ * `pendingCameraRotation`, `cameraCallbacks`, the two callback slots and
+ * `cameraRotationListeners` are absent from `owns`: they are renderer/host
+ * wiring that outlives a file swap, and no teardown path touches them today.
+ */
+export const cameraTeardown = defineSliceTeardown(
+  'cameraSlice',
+  ['cameraRotation', 'projectionMode'],
+  (scope) => {
+    // A model removal or a federation clear leaves this slice alone; only a
+    // session reset (a new file taking over the viewer) does.
+    if (scope.kind !== 'session-reset') return {};
+    return {
+      cameraRotation: defaultCameraRotation(),
+      projectionMode: DEFAULT_PROJECTION_MODE,
+    };
+  },
+);

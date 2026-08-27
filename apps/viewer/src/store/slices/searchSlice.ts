@@ -146,7 +146,15 @@ export interface SearchSlice {
   setSearchHighlightIndex: (index: number) => void;
   /** Convenience: close popover and reset highlight (preserves query). */
   closeSearch: () => void;
-  /** Convenience: clear query and close popover. */
+  /**
+   * Convenience: clear query and close popover.
+   *
+   * A STRICT SUBSET of `searchTeardown` (`searchSlice.teardown.ts`), and
+   * deliberately not folded into it: this is the Esc / clear-button path on
+   * the inline field, and it must not throw away the modal's filter rules,
+   * its chip filters or the per-model Tier-1 indexes. A session reset does
+   * clear all of those; pressing Esc does not.
+   */
   resetSearch: () => void;
 
   /** Replace (or insert) the index record for a model. */

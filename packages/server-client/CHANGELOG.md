@@ -1,5 +1,50 @@
 # @ifc-lite/server-client
 
+## 1.24.0
+
+### Minor Changes
+
+- [#3210](https://github.com/LTplus-AG/ifc-lite/pull/3210) [`50895fb`](https://github.com/LTplus-AG/ifc-lite/commit/50895fb5b3d57c95e00daccc1e560f5b619c535d) Thanks [@louistrue](https://github.com/louistrue)! - Carry representation-item identity across the wasm boundary, and stop delivering material ids in the same field.
+  
+  `MeshData` gains two DISJOINT fields. `geometryItemId` is always the `IfcRepresentationItem` a mesh was tessellated from, so a host can drill from a rendered piece into an `IfcWindow`'s pane or frame and navigate to that entity in source. `materialId` is always the `IfcMaterial` whose layer a mesh slices. Never both — a consumer that ignores the distinction still cannot read one as the other.
+  
+  The router already kept each item's STEP id and it already reached the server REST payload; `MeshDataJs::from_mesh_data` did not copy it, so the browser never saw it. And for material-layered walls and slabs the same field carried the layer's `IfcMaterial` id, so following it to source landed on the wrong entity with nothing to warn the caller.
+  
+  `geometryClass === 3` cannot discriminate the two: it is stamped from a static material-index check made before the geometry runs, while the layered path can bail at runtime and emit representation-item submeshes under that class. The discriminator therefore lives on `SubMeshCollection`, set where the layered slabs are built.
+  
+  Neither field is ever `0`. `IfcMaterialLayer.Material` is optional, so an air gap reaches the mesher as `material_id 0` — that is the decoder's "no reference" sentinel, not an entity, and STEP instance names start at `[#1](https://github.com/LTplus-AG/ifc-lite/issues/1)`. Twelve slabs of `duplex.ifc` reported `IfcMaterial #0` before this was filtered at the setter. An air-gap slab is still meshed; it simply reports no material.
+  
+  Both fields cross the boundary, both wasm converters carry them, the REST wire shape and `convertServerMesh` carry them, and the cache format gains them at v14 — without that, a cache-restored session silently lost the identity.
+  
+  BREAKING FOR THE RUST CRATE, and this changeset cannot express it. `ifc-lite-processing` is published to crates.io (`scripts/release-crates.mjs`), `MeshData` gains a public field, and `with_style_metadata(self, material_name, geometry_item_id)` becomes `with_style_metadata(self, material_name, source_id, id_is_material)` — two caller-supplied arguments to three. Both break downstream, and both are demonstrated in-repo: the added field broke the `MeshData` struct literal in `rust/export/src/usd/tests.rs`, and the new argument broke the call in `rust/processing/src/element.rs`. `scripts/sync-versions.js` derives the Cargo workspace version from the highest npm package version, so a `minor` here ships 6.0.1 → 6.1.0 and a consumer pinned to `ifc-lite-processing = "6"` breaks on `cargo update`. This was ungated when the paragraph was written and is not any more. `scripts/check-rust-semver.mjs` ([#3216](https://github.com/LTplus-AG/ifc-lite/issues/3216)) asks `cargo-semver-checks` what bump each crate's API change requires, compares it with the bump the derived version actually carries over the crate's latest crates.io release, and fails when the version is the smaller of the two — and its lint set recognises BOTH breaks named above, a field added to a `pub` struct that callers construct literally and a changed argument count. It runs as the `Rust crate semver` lane on PRs and again before the crates.io publish. The remedy it leaves for a break like this one is `rust-major-offset.json`, which advances the Rust major without inventing an npm major.
+
+### Patch Changes
+
+- [#3307](https://github.com/LTplus-AG/ifc-lite/pull/3307) [`4e30bd1`](https://github.com/LTplus-AG/ifc-lite/commit/4e30bd19ab878d4d42642a77679a1ef5d75b0dad) Thanks [@louistrue](https://github.com/louistrue)! - Decode `geometry_item_id` and `material_id` from the Parquet mesh transport, so drill-to-source works on the binary path and not only on JSON ([#3215](https://github.com/LTplus-AG/ifc-lite/issues/3215)). Both are absent-marked with an explicit `0xFFFFFFFF` sentinel rather than a null, because a nullable UInt32's values buffer is undefined at null rows and parquet-wasm 0.7.x leaks the neighbouring row's id into it.
+
+- [#3280](https://github.com/LTplus-AG/ifc-lite/pull/3280) [`8dd8a9d`](https://github.com/LTplus-AG/ifc-lite/commit/8dd8a9db10a2b2388a4e92f92f0835468ee58a69) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Derive the fast-boot spatial tree's type gate from the generated schema instead of a hand-written list of fourteen names.
+  
+  `is_quick_spatial_type_ci` decides which entities become nodes in the bootstrap
+  spatial tree — the hierarchy the viewer shows while a file is still loading. It
+  hand-listed fourteen entity names, and a hand list is only ever as complete as
+  whoever last audited the schema. It was missing `IfcMarineFacility`,
+  `IfcMarinePart` and `IfcFacilityPartCommon`, so an IFC4.3 harbour or a generic
+  facility with common parts lost its whole branch from that tree: the facility
+  was never inserted as a node, so nothing aggregated beneath it could be
+  reparented either.
+  
+  The gate now asks `ifc_lite_core::IfcType` directly — `IfcProject`, plus
+  `IfcSpatialZone`, plus the whole `IfcSpatialStructureElement` closure — the same
+  move `rooted_type.rs` made for `IfcRoot`. Newly recognised as fast-boot spatial
+  nodes: `IfcMarineFacility`, `IfcMarinePart`, `IfcFacilityPartCommon` and
+  `IfcSpatialStructureElement` itself. Nothing previously recognised is dropped.
+  
+  `IfcExternalSpatialElement` stays out on purpose. It is an `IfcSpatialElement`,
+  but it descends from `IfcExternalSpatialStructureElement`, carries none of the
+  `WR41` aggregation rule that defines the containment hierarchy, and models a
+  space *boundary* volume rather than a container — admitting it would put a
+  permanently parentless node in the tree.
+
 ## 1.23.1
 
 ### Patch Changes

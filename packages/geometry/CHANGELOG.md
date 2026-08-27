@@ -1,5 +1,36 @@
 # @ifc-lite/geometry
 
+## 4.1.0
+
+### Minor Changes
+
+- [#3210](https://github.com/LTplus-AG/ifc-lite/pull/3210) [`50895fb`](https://github.com/LTplus-AG/ifc-lite/commit/50895fb5b3d57c95e00daccc1e560f5b619c535d) Thanks [@louistrue](https://github.com/louistrue)! - Carry representation-item identity across the wasm boundary, and stop delivering material ids in the same field.
+  
+  `MeshData` gains two DISJOINT fields. `geometryItemId` is always the `IfcRepresentationItem` a mesh was tessellated from, so a host can drill from a rendered piece into an `IfcWindow`'s pane or frame and navigate to that entity in source. `materialId` is always the `IfcMaterial` whose layer a mesh slices. Never both — a consumer that ignores the distinction still cannot read one as the other.
+  
+  The router already kept each item's STEP id and it already reached the server REST payload; `MeshDataJs::from_mesh_data` did not copy it, so the browser never saw it. And for material-layered walls and slabs the same field carried the layer's `IfcMaterial` id, so following it to source landed on the wrong entity with nothing to warn the caller.
+  
+  `geometryClass === 3` cannot discriminate the two: it is stamped from a static material-index check made before the geometry runs, while the layered path can bail at runtime and emit representation-item submeshes under that class. The discriminator therefore lives on `SubMeshCollection`, set where the layered slabs are built.
+  
+  Neither field is ever `0`. `IfcMaterialLayer.Material` is optional, so an air gap reaches the mesher as `material_id 0` — that is the decoder's "no reference" sentinel, not an entity, and STEP instance names start at `[#1](https://github.com/LTplus-AG/ifc-lite/issues/1)`. Twelve slabs of `duplex.ifc` reported `IfcMaterial #0` before this was filtered at the setter. An air-gap slab is still meshed; it simply reports no material.
+  
+  Both fields cross the boundary, both wasm converters carry them, the REST wire shape and `convertServerMesh` carry them, and the cache format gains them at v14 — without that, a cache-restored session silently lost the identity.
+  
+  BREAKING FOR THE RUST CRATE, and this changeset cannot express it. `ifc-lite-processing` is published to crates.io (`scripts/release-crates.mjs`), `MeshData` gains a public field, and `with_style_metadata(self, material_name, geometry_item_id)` becomes `with_style_metadata(self, material_name, source_id, id_is_material)` — two caller-supplied arguments to three. Both break downstream, and both are demonstrated in-repo: the added field broke the `MeshData` struct literal in `rust/export/src/usd/tests.rs`, and the new argument broke the call in `rust/processing/src/element.rs`. `scripts/sync-versions.js` derives the Cargo workspace version from the highest npm package version, so a `minor` here ships 6.0.1 → 6.1.0 and a consumer pinned to `ifc-lite-processing = "6"` breaks on `cargo update`. This was ungated when the paragraph was written and is not any more. `scripts/check-rust-semver.mjs` ([#3216](https://github.com/LTplus-AG/ifc-lite/issues/3216)) asks `cargo-semver-checks` what bump each crate's API change requires, compares it with the bump the derived version actually carries over the crate's latest crates.io release, and fails when the version is the smaller of the two — and its lint set recognises BOTH breaks named above, a field added to a `pub` struct that callers construct literally and a changed argument count. It runs as the `Rust crate semver` lane on PRs and again before the crates.io publish. The remedy it leaves for a break like this one is `rust-major-offset.json`, which advances the Rust major without inventing an npm major.
+
+### Patch Changes
+
+- [#3247](https://github.com/LTplus-AG/ifc-lite/pull/3247) [`5e236e2`](https://github.com/LTplus-AG/ifc-lite/commit/5e236e26a33bfc5e41d82ccd742351e743131293) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Quick metadata: stop severing marine facilities and common facility parts from the spatial tree.
+  
+  `is_quick_spatial_type_ci` in `ifc-lite-processing` decides which scanned entities become nodes of the quick-metadata spatial tree (`MetadataBootstrap.spatialTree`). It was a hand-written list of 14 keywords, and it had drifted from the schema it implements: `IFCMARINEFACILITY`, `IFCMARINEPART` and `IFCFACILITYPARTCOMMON` were absent, while their siblings `IFCBRIDGE`/`IFCBRIDGEPART`, `IFCROAD`/`IFCROADPART` and `IFCRAILWAY`/`IFCRAILWAYPART` were all present.
+  
+  The cost is not one missing node. Tree assembly skips an `IfcRelAggregates` edge whose parent OR child is not a known spatial node, so an unrecognised facility severs the edge above it and every edge below it: a port, quay or lock model rooted at `IfcMarineFacility` lost its whole subtree — storeys, spaces and the elements contained in them — from the bootstrap hierarchy, and any element contained directly in the facility was dropped rather than reparented.
+  
+  The predicate now covers exactly the rule it always meant: `IfcProject`, plus the `IfcSpatialElement` branch minus the external-spatial (air volume) sub-branch, which stays excluded. A new test derives that set from the generated `IFC_TYPES` and compares it against the predicate in both directions, with an anti-vacuity floor and a control fixture, so a future schema addition cannot slip past the list again. The predicate is also now a length-keyed dispatch: at most three case-insensitive comparisons per scanned entity instead of up to fourteen.
+- Updated dependencies [[`36350e8`](https://github.com/LTplus-AG/ifc-lite/commit/36350e8439af3c52d62d8bb3f6e2daa7bb8d4fa2), [`329008d`](https://github.com/LTplus-AG/ifc-lite/commit/329008d2324204ff39d2ac4a0423add6a60e8907), [`da266c1`](https://github.com/LTplus-AG/ifc-lite/commit/da266c1138767208f193083eb8b39d48e34b9a5d), [`c1490aa`](https://github.com/LTplus-AG/ifc-lite/commit/c1490aa48037c396d014f1dcb9647934fc16e43d), [`302121a`](https://github.com/LTplus-AG/ifc-lite/commit/302121ac7bc9312b1073738b3bbe0956ce452cf4), [`8dd8a9d`](https://github.com/LTplus-AG/ifc-lite/commit/8dd8a9db10a2b2388a4e92f92f0835468ee58a69), [`c8049a0`](https://github.com/LTplus-AG/ifc-lite/commit/c8049a0bf464cd1fec7a4cd2aad2f08326e04737), [`50895fb`](https://github.com/LTplus-AG/ifc-lite/commit/50895fb5b3d57c95e00daccc1e560f5b619c535d), [`24c7abc`](https://github.com/LTplus-AG/ifc-lite/commit/24c7abc6510f2e469992c0e76554471bf1cfe296), [`d470d76`](https://github.com/LTplus-AG/ifc-lite/commit/d470d768cea3eb18dbb9c1138e128bc23ebfca68), [`c2885ef`](https://github.com/LTplus-AG/ifc-lite/commit/c2885ef575fe57d9bc8e1960bb0ea31cb02f0665), [`ffe80a7`](https://github.com/LTplus-AG/ifc-lite/commit/ffe80a76ab269b6ce8abe52a9ebc7bd16c184db5)]:
+  - @ifc-lite/data@3.5.0
+  - @ifc-lite/wasm@6.1.0
+
 ## 4.0.1
 
 ### Patch Changes

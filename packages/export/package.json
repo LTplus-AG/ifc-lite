@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/export",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Export formats for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",

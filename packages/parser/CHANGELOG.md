@@ -1,5 +1,194 @@
 # @ifc-lite/parser
 
+## 4.3.2
+
+### Patch Changes
+
+- [#3255](https://github.com/LTplus-AG/ifc-lite/pull/3255) [`b456e27`](https://github.com/LTplus-AG/ifc-lite/commit/b456e279831dbde5b2889b788aada9bd06ff32b8) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Stop reading `IfcPhysicalComplexQuantity` as if it were a simple quantity.
+  
+  A complex quantity groups other quantities rather than carrying a measure, so
+  its `HasQuantities`/`Discrimination`/`Quality`/`Usage` attributes sit where a
+  simple quantity keeps `Unit` and its value. Both quantity readers assumed the
+  simple layout: the type fell through to `QuantityType.Count` and slot 3 — a
+  label, not a number — settled at `0`, so every complex quantity surfaced as a
+  phantom `Count = 0` bearing the complex quantity's name. That row satisfied IDS
+  existence requirements, counted as "has quantities" in `validate`, entered the
+  compare fingerprints and rendered as a bogus quantity card.
+  
+  Complex quantities are now skipped, matching what the legacy quantity extractor
+  already did for a type it did not recognise. The walk over
+  `IfcElementQuantity.Quantities` also moved into one shared reader, so the
+  instance path and the type path can no longer drift apart.
+  
+  Quantities nested inside a complex quantity remain unreported, as before.
+
+- [#3261](https://github.com/LTplus-AG/ifc-lite/pull/3261) [`8092522`](https://github.com/LTplus-AG/ifc-lite/commit/80925228ec72aca31d7e9fa3ab4466895c4b1f66) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Drop an `IfcElementQuantity` that carries no quantities, on both read paths.
+  
+  `Quantities` is `SET [1:?] OF IfcPhysicalQuantity` in IFC4 and IFC4X3, so an
+  empty set is non-conformant data. The type path already dropped one; the
+  instance path kept it, because its guard fell back to a synthetic
+  `QuantitySet #<id>` name and so was true for every set. The same broken set
+  therefore read one way if it hung off the occurrence and the other way if it
+  hung off the type — as did a set written non-empty that walks to nothing, such
+  as one holding only unresolvable references or complex quantities.
+  
+  A named set with zero quantities asserts "this element has quantities" on the
+  strength of its name alone. `ifc-lite validate` counted such an element as
+  quantified, so a file whose elements carried only empty sets reported no
+  `quantity-completeness` issue at all; an IDS quantity-set existence check passed
+  on nothing; and a phantom occurrence set suppressed the viewer's fallback to the
+  quantities the element's type carries, hiding real numbers.
+  
+  The per-set read now lives in the shared quantity reader alongside the walk over
+  `Quantities`, so the two paths cannot disagree about it again.
+
+- [#3287](https://github.com/LTplus-AG/ifc-lite/pull/3287) [`98828c4`](https://github.com/LTplus-AG/ifc-lite/commit/98828c4b004506b6d31546ce93b533fa26e808ea) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Exact-match the `ePSet_ProjectedCRS.MapUnit` label instead of substring-sniffing it
+  
+  `inferMapUnitScaleFromLabel` tested `MILLI`/`CENTI`/`DECI`/`KILO` and then fell
+  through to `includes('METRE')`. That substring is satisfied by every prefixed
+  spelling, so a `DECAMETRE` map unit resolved to a scale of `1` instead of `10`,
+  `HECTOMETRE` to `1` instead of `100`, and `MICROMETRE` to `1` instead of `1e-6`
+  — a silent error in the CRS scale by the prefix's own factor. `SQUARE METRE`,
+  an area unit, also resolved to `1`.
+  
+  The label is now folded to its alphanumerics and matched exactly against a set
+  derived from the `IfcSIPrefix` EXPRESS enumeration (all sixteen members crossed
+  with the METRE/METER spellings), the unprefixed base, and the shared
+  conversion-based length units. Labels with no exact answer resolve to
+  `undefined`, which is the documented ePSet convention: the project length unit
+  applies downstream. Declining is deliberate — an absent MapUnit has a defined
+  meaning, a wrong one relocates the model.
+  
+  The Rust twin (`ifc_lite_core::GeoRefExtractor`) carried the identical
+  substring bug and is fixed the same way, so both halves were wrong together;
+  the shared cross-language fixture now pins the behaviour to the enumeration
+  rather than to either implementation.
+  
+  The exact match runs on a NORMALISED label, not the raw one: `MapUnit` is
+  exporter free text, so case, separators, the English plural and the several
+  word orders of the US survey foot are all ordinary real spellings. `METRES`,
+  `Meters`, `MILLIMETRES`, `KILOMETERS`, `INCHES`, `foot (US survey)` and
+  `SURVEY FEET (US)` therefore resolve; refusing them would have been a new
+  defect of the opposite kind, silently handing the model back to the project
+  length unit. `DECAMETRES` resolves to `10`, not to `1` — the normalisation
+  strips one plural suffix and re-matches EXACTLY, it never collapses a prefixed
+  spelling onto the base. Still refused: `SQUARE METRE(S)`, `BANANAMETRE`, bare
+  abbreviations (`M`, `MM`, `MTR`) and a survey foot with no nationality
+  (`SURVEY FOOT` — the Indian and Clarke feet are different ratios).
+
+- [#3287](https://github.com/LTplus-AG/ifc-lite/pull/3287) [`98828c4`](https://github.com/LTplus-AG/ifc-lite/commit/98828c4b004506b6d31546ce93b533fa26e808ea) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Resolve every `IfcSIPrefix` on an `IfcProjectedCRS.MapUnit`, not four of them
+  
+  `extractGeoreferencing` carried a private four-entry SI prefix table
+  (MILLI/CENTI/DECI/KILO), while the project length-unit reader in the same
+  package uses the full `IfcSIPrefix` enumeration. A MapUnit in any other
+  prefix — DECA, HECTO, MICRO, NANO, MEGA, GIGA and the rest — matched no
+  entry and fell through to the base-metre default, so `mapUnitScale` read
+  back as `1` and the georeference was wrong by that prefix's own factor
+  (100x for a hectometre MapUnit). The same private table was used to scale an
+  `IfcMeasureWithUnit` component, so a conversion factor expressed in a
+  prefixed SI unit was mis-scaled the same way.
+  
+  Both call sites now use the shared table, matching the Rust extractor
+  (`ifc_lite_core::GeoRefExtractor`), which already resolved the full set. A
+  new cross-language harness pins both halves to one shared fixture whose
+  expectations come from the EXPRESS schema rather than from either
+  implementation.
+
+- [#3190](https://github.com/LTplus-AG/ifc-lite/pull/3190) [`c1490aa`](https://github.com/LTplus-AG/ifc-lite/commit/c1490aa48037c396d014f1dcb9647934fc16e43d) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Render the type geometry of IFC2X3 `IfcDoorStyle`, `IfcWindowStyle` and `IfcBuildingElementType`, which every pass silently dropped.
+  
+  `schema_helpers.rs` states the rule: a pass that *classifies* a keyword must resolve it through `legacy_aware_ifc_type`, because `DecodedEntity.ifc_type` is a bare `IfcType::from_str` and is deliberately literal. Six type-geometry candidate gates did not — the native processor, the streaming and sharded browser pre-passes, the sharded discovery pass, the styling pre-pass, and the attribute export's type-product pass. Five of the six ran `IfcType::from_str(keyword).is_subtype_of(IfcTypeProduct)` behind an `ends_with("TYPE") || ends_with("STYLE")` pre-filter. The sixth, the sharded discovery pass, ran neither: it re-labels a span some other pass already flagged, so it pushed a bare `IfcType::from_str(keyword)` unconditionally and put `Unknown` on the wire instead of dropping the entity.
+  
+  For the three IFC2X3 type products IFC4X3 dropped, `from_str` answers `Unknown`, `Unknown` is a subtype of nothing, and the entity was discarded before it could become a job. They also carry `has_geometry: false` in `legacy_entities.rs`, so the ordinary product route did not reach them either. An IFC2X3 file that authors its door geometry on an `IfcDoorStyle`'s `RepresentationMaps` — the IFC2X3 spelling of the [#957](https://github.com/LTplus-AG/ifc-lite/issues/957) orphan-type case — rendered nothing at all, in the browser, the CLI and every exporter alike.
+  
+  The six gates now share one predicate, `ifc_lite_core::type_product_ifc_type`, so a keyword one admits and another drops is no longer expressible. Sweeping the generated schema catalog and the whole legacy table shows it widens by exactly those three keywords and narrows nowhere; none of the three is also an ordinary geometry job or an `IfcProduct`, so nothing is double-counted, and no bundled fixture contains one, so no existing mesh or element count moves.
+
+- [#3243](https://github.com/LTplus-AG/ifc-lite/pull/3243) [`38460bd`](https://github.com/LTplus-AG/ifc-lite/commit/38460bd543d6c869db15f867b129db6f965695da) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Read and write IFC4X3's `IfcMapConversionScaled`, not just its supertype.
+  
+  `entityIndex.byType` is keyed by the raw STEP type name, so a georeferencing lookup for `IfcMapConversion` alone never matched a file written with the concrete subtype `IfcMapConversionScaled` — the only subtype it has in any bundled schema, added in IFC4X3.
+  
+  On the read path this did not merely omit a field. `extractGeoreferencing` produced no `mapConversion`, and therefore no `transformMatrix`, so the model was placed at its local origin instead of its map position — while `hasGeoreference` stayed `true` off the `IfcProjectedCRS` alone and `source` was left undefined. The file reported a projected CRS it could not be transformed into.
+  
+  On the write path `StepExporter` saw a file with a map conversion as a file with none: a `georefMutations.mapConversion` edit was not applied to the record in the file, and a second coordinate operation was emitted against the same source CRS beside it.
+  
+  `IfcMapConversionScaled`'s first eight attributes are `IfcMapConversion`'s own (`SourceCRS`, `TargetCRS`, `Eastings`, `Northings`, `OrthogonalHeight`, `XAxisAbscissa`, `XAxisOrdinate`, `Scale`); the three it adds — `FactorX`/`FactorY`/`FactorZ` — sit after them, so reading it as its supertype is well-defined and the exporter's by-name attribute edits leave that tail alone.
+  
+  `MAP_CONVERSION_TYPE_NAMES` is now exported from `@ifc-lite/parser` so any consumer of `extractGeoreferencing` widens identically, and both it and the exporter's uppercase twin are pinned against the generated per-schema entity tables in both directions, so neither can silently fall behind a schema bump. The Rust extractor (`ifc-lite-processing`) classified by the same raw name and had the same gap; it is widened to match.
+
+- [#3160](https://github.com/LTplus-AG/ifc-lite/pull/3160) [`e2c67f0`](https://github.com/LTplus-AG/ifc-lite/commit/e2c67f084bfca20ff82460ae54aa80a383fcb39a) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Add the missing `"'FEET'"` entry to `CONVERSION_BASED_UNIT_FACTORS` in `unit-extractor.ts`, and the matching `"'FEET'"` arm to `get_conversion_based_unit_factor` in `rust/core/src/units.rs`.
+  
+  Every other imperial spelling in the table (`FOOT`, `INCH`, `YARD`, `MILE`) has both a bare and a quoted key; `FEET` only had the bare one, on both sides. The quoted key is a real, reachable lookup: a STEP name attribute written as `''FEET''` in a file decodes, through STEP's doubled-quote escaping, to the four-character string `'FEET'` (embedded quote marks included), and `extractLengthUnitScale` looks that string up verbatim — it upper-cases the name but does not strip quotes. (The georeferencing extractor strips the surrounding quotes before the lookup, so it reached the bare `FEET` key already; it is the length-unit path that was affected.)
+  
+  A file spelling its length unit that way resolved as if the name were unknown. Where the file also carried no usable `ConversionFactor` that meant the `?? 1.0` default and a silent read as metres; where it did carry one, it meant the file's own declared factor was used in place of the defined 0.3048. It now resolves to 0.3048 like every other FEET/FOOT spelling, and identically in both readers.
+
+- [#3266](https://github.com/LTplus-AG/ifc-lite/pull/3266) [`302121a`](https://github.com/LTplus-AG/ifc-lite/commit/302121ac7bc9312b1073738b3bbe0956ce452cf4) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Recognise `IfcQuantityNumber` instead of relabelling it as a count
+  
+  IFC4X3 added `IfcQuantityNumber` to the `IfcPhysicalSimpleQuantity` family,
+  but `QuantityType` stopped at `Time`, so the parser's lookup fell through to
+  its `?? QuantityType.Count` default. The value survived; the type did not. A
+  `Number` quantity was exported to Parquet as `Count`, described to IDS as
+  `IFCCOUNTMEASURE`, and written back out by the STEP exporter as
+  `IFCQUANTITYCOUNT` — a silent entity rewrite on round-trip.
+  
+  `QuantityType.Number` now exists and the parser, the Parquet and STEP
+  exporters, the IDS data-type bridge and the viewer's unit table all carry it.
+  A schema-derived test in `@ifc-lite/data` asserts the enum against the
+  generated per-version entity tables in both directions, so the next subtype a
+  schema regeneration introduces reds rather than falling through.
+
+- [#3230](https://github.com/LTplus-AG/ifc-lite/pull/3230) [`08cbf72`](https://github.com/LTplus-AG/ifc-lite/commit/08cbf72dbb3e375d20f703c8c813d4cd873657c1) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `byType('IfcFurnishingElement')` now returns furniture. `expandTypes` widens a
+  supertype to its subtypes through `IFC_SUBTYPES`, a hand-maintained table that
+  covered the nine `*StandardCase` families and nothing else — so an IFC4 model
+  whose furniture is `IfcFurniture` (which is what exporters write) answered a
+  query for the supertype with no rows at all. `IfcFurniture` and
+  `IfcSystemFurnitureElement` join the table, which fixes the CLI (`ifc-lite query
+  --type IfcFurnishingElement`, the `stats` element counts), the MCP
+  `query_entities` tool and the viewer's query adapter together, since all three
+  call the same shared table. The table is now pinned in tests against the
+  subtypes the generated `SCHEMA_REGISTRY` declares, in both directions, so it
+  cannot fall behind the schema again.
+
+- [#3297](https://github.com/LTplus-AG/ifc-lite/pull/3297) [`c8049a0`](https://github.com/LTplus-AG/ifc-lite/commit/c8049a0bf464cd1fec7a4cd2aad2f08326e04737) Thanks [@louistrue](https://github.com/louistrue)! - STEP header scanning now treats a `/* ... */` comment as trivia, in both halves. ISO 10303-21 allows a comment wherever whitespace is allowed, so a header carrying one is ordinary input rather than malformed input.
+  
+  Three things were wrong, and each lost more than the comment it came from. An apostrophe inside a comment (`/* John's export */`) inverted quote state for the rest of the file, so no record was found and the whole header was lost. A comment between a keyword and its `(` dropped that record. A comma inside a comment read as an argument separator and shifted every later field along, so `originatingSystem` came back holding the preprocessor version.
+  
+  On the Rust side the cost is the exported file, because `export_step` falls back to its own defaults whenever `parse_source_header` returns nothing. One comment in a header was enough to turn this:
+  
+  ```text
+  FILE_DESCRIPTION(('ViewDefinition [CoordinationView_V2.0]'),'2;1');
+  FILE_NAME('export.ifc','2024-01-01T00:00:00',('Ann'),('Acme Ltd'),'ifc-lite','TheirSystem','contract-77');
+  FILE_SCHEMA(('IFC4X3'));
+  ```
+  
+  into this:
+  
+  ```text
+  FILE_DESCRIPTION(('Exported from ifc-lite'),'2;1');
+  FILE_NAME('export.ifc','',(''),(''),'ifc-lite','ifc-lite','');
+  FILE_SCHEMA(('IFC4'));
+  ```
+  
+  Author, organization, authorization and time stamp are emptied, the description is overwritten, `originatingSystem` becomes `ifc-lite`, and the file is converted to the wrong schema.
+  
+  `detect_schema` decides which schema a file is converted to on export, and had four separate ways to answer wrongly. A commented-out declaration (`/* was FILE_SCHEMA(('IFC2X3')); */`) was read as the real one. A comment after the keyword put its first apostrophe forward as the label, so `FILE_SCHEMA /* Jane's */ (('IFC4X3'))` reported `s */ ((` and wrote that into the exported header. A record with no label at all borrowed the next record's first string, so `FILE_SCHEMA(()); FILE_NAME('leak.ifc',...)` reported `leak.ifc`. And a label containing a doubled apostrophe was cut off at the escape, so `FILE_SCHEMA(('IFC''4X3'))` reported `IFC`.
+  
+  Keyword matching in the TypeScript reader now folds ASCII case per character rather than uppercasing a copy of the text. Indexing a copy shifted every offset after a value whose uppercase is longer, so a header describing `Straße` lost its entire `FILE_NAME` record, and a full Unicode fold read an unquoted `ENDſEC` as `ENDSEC` and truncated the header there. The Rust reader already folded per byte.
+  
+  One behaviour is now stricter, in the TypeScript reader only. Whitespace between a record keyword and its `(` is ASCII, which is what ISO 10303-21 means, where it previously accepted any Unicode space separator. A header written with `U+00A0` there resolved before and does not now. That is the answer the Rust half already gave, so the two agree rather than one being widened to match the other.
+  
+  The last-resort schema scan folds ASCII too, for the same reason. It only runs when no `FILE_SCHEMA` identifier resolves at all, and it uppercased the first 2000 bytes before looking for `IFC5` / `IFC4X3` / `IFC4` / `IFC2X3` as substrings. `ı` uppercases to `I`, so a description mentioning `ıFC5` selected IFC5 for a file that never said so. That input now falls through to the IFC4 default instead. Lower-case prose still resolves.
+  
+  The one thing this gives up is a Turkish-locale lowercasing: `ıfc4x3` written in free header prose used to resolve to IFC4X3 and now does not. ISO 10303-21 tokens are ASCII, and this scan only runs for a file that declares no resolvable schema at all, so the trade is one exotic spelling against the false positives above.
+
+- [#3279](https://github.com/LTplus-AG/ifc-lite/pull/3279) [`bb3fc2c`](https://github.com/LTplus-AG/ifc-lite/commit/bb3fc2c5af754a120b98b545e186303de0fb4951) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Read the IFC schema version from the header's `FILE_SCHEMA` declaration instead of substring-scanning the raw header bytes.
+  
+  The old scan looked for `IFC4`, `IFC4X3`, `IFC2X3` anywhere in the first 2000 bytes, which also covers the free-text author, organisation and originating-system fields of `FILE_DESCRIPTION`/`FILE_NAME`. An IFC2X3 file exported by an application whose name contains `IFC4` was reported as IFC4, and because ISO 10303-21 places `FILE_SCHEMA` after `FILE_NAME`, a long author list could push the real declaration past the 2000-byte window so that even an unambiguous file fell through to the IFC4 default. The schema version selects attribute layouts downstream — schedule extraction reads IfcTask fields at IFC4 offsets — so a misdetection shifted output values.
+  
+  The declaration is now read from the already-parsed source header (matched by prefix, so `IFC4X3_ADD2` and `IFC4X1` still resolve correctly), and the previous raw scan remains as the fallback for files that declare no schema.
+- Updated dependencies [[`36350e8`](https://github.com/LTplus-AG/ifc-lite/commit/36350e8439af3c52d62d8bb3f6e2daa7bb8d4fa2), [`329008d`](https://github.com/LTplus-AG/ifc-lite/commit/329008d2324204ff39d2ac4a0423add6a60e8907), [`c658213`](https://github.com/LTplus-AG/ifc-lite/commit/c658213bfa5c17a767c8534e68f2416bac780979), [`da266c1`](https://github.com/LTplus-AG/ifc-lite/commit/da266c1138767208f193083eb8b39d48e34b9a5d), [`c1490aa`](https://github.com/LTplus-AG/ifc-lite/commit/c1490aa48037c396d014f1dcb9647934fc16e43d), [`302121a`](https://github.com/LTplus-AG/ifc-lite/commit/302121ac7bc9312b1073738b3bbe0956ce452cf4), [`8dd8a9d`](https://github.com/LTplus-AG/ifc-lite/commit/8dd8a9db10a2b2388a4e92f92f0835468ee58a69), [`c8049a0`](https://github.com/LTplus-AG/ifc-lite/commit/c8049a0bf464cd1fec7a4cd2aad2f08326e04737), [`50895fb`](https://github.com/LTplus-AG/ifc-lite/commit/50895fb5b3d57c95e00daccc1e560f5b619c535d), [`24c7abc`](https://github.com/LTplus-AG/ifc-lite/commit/24c7abc6510f2e469992c0e76554471bf1cfe296), [`d470d76`](https://github.com/LTplus-AG/ifc-lite/commit/d470d768cea3eb18dbb9c1138e128bc23ebfca68), [`c2885ef`](https://github.com/LTplus-AG/ifc-lite/commit/c2885ef575fe57d9bc8e1960bb0ea31cb02f0665), [`ffe80a7`](https://github.com/LTplus-AG/ifc-lite/commit/ffe80a76ab269b6ce8abe52a9ebc7bd16c184db5)]:
+  - @ifc-lite/data@3.5.0
+  - @ifc-lite/ifcx@3.0.1
+  - @ifc-lite/wasm@6.1.0
+
 ## 4.3.1
 
 ### Patch Changes

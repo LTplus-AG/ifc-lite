@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { statSync } from 'node:fs';
+
 /**
  * `existsSync` with the one answer it refuses to guess.
  *
@@ -34,8 +36,6 @@
  * @param {(message: string) => never} fail the caller's own failure reporter
  * @returns {boolean} true if it exists, false ONLY if it definitely does not
  */
-import { statSync } from 'node:fs';
-
 export function existsOrThrow(path, what, fail) {
   try {
     statSync(path);

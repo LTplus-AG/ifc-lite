@@ -84,8 +84,15 @@ import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripYamlComments } from './lib/server-bin-targets-parse.mjs';
-import { existsOrThrow } from './lib/exists-or-throw.mjs';
-import { listWorkspacePackages, PACKAGE_PARENTS } from './lib/list-workspace-packages.mjs';
+import { listWorkspacePackages } from './lib/list-workspace-packages.mjs';
+
+// Deliberately a literal here rather than imported from the shared walk.
+// `scripts/lib/ci-path-coverage.mjs`'s `deriveInputs` reads only THIS file's own
+// source text and does not follow imports, so these two strings are what put
+// `packages/` and `apps/` into the CI-path-coverage census for this gate. Move
+// them into the lib and the ratchet silently stops checking that this gate can
+// be triggered by the paths it reads. (#3347)
+const PACKAGE_PARENTS = ['packages', 'apps'];
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 

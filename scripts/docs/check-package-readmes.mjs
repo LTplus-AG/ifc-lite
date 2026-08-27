@@ -103,7 +103,7 @@ for (const dir of entries) {
   // `.DS_Store/package.json` raises ENOTDIR, which existsOrFail below refuses
   // by design. Skip the candidate rather than soften the refusal: every entry
   // that could plausibly be a package still goes through it unchanged. Same
-  // shape and same reason as check-test-glob-coverage.mjs's listPackages(). (#3350)
+  // shape and same reason as lib/list-workspace-packages.mjs's walk. (#3350)
   if (dir.startsWith('.')) continue;
   const pkgJsonPath = join(packagesDir, dir, 'package.json');
   if (!existsOrFail(pkgJsonPath, 'package manifest')) continue;

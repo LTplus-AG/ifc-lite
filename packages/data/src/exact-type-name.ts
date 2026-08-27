@@ -35,7 +35,7 @@ export type ExactTypeNameSource = Pick<EntityTable, 'getTypeName'> &
 /**
  * The exact name for one ROW of a built table. Shared by every table builder
  * that keeps its own columns — `entityTableFromColumns` here and the
- * server-hydrated literal in `apps/viewer/src/utils/serverDataModel.ts` — so
+ * server-hydrated literal in `apps/viewer/src/utils/serverEntityTable.ts` — so
  * the two cannot drift apart on what "exact" means, and so the reasoning
  * above lives beside the code that needs it rather than inside a 400-line
  * module.
@@ -61,7 +61,7 @@ export function exactNameOfRow(
  *
  * Every table this repo builds implements `getExactTypeName`: the parser
  * transport and `@ifc-lite/cache`'s reader both construct theirs through
- * `entityTableFromColumns`, and `apps/viewer/src/utils/serverDataModel.ts`
+ * `entityTableFromColumns`, and `apps/viewer/src/utils/serverEntityTable.ts`
  * implements it on its own literal. The member is nonetheless OPTIONAL, for
  * two reasons that outlive that list:
  *

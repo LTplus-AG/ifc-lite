@@ -281,7 +281,12 @@
 # (is_finite guards) so an inf depth can no longer slip past the `> 0.0` / `<= 0.0`
 # gates into the fast path.
      858 rust/geometry/src/router/voids/probe.rs
-    1002 rust/geometry/src/router/voids/synthesis.rs
+# -51: the exit-cap decision (which cutter caps may be pushed through the host)
+# moved to synthesis/exit_cap.rs, a module under the 400 budget, and gained
+# #3219's orientation + footprint conditions there rather than inline here;
+# 1002 -> 950. The move is NOT verbatim - the facing accumulation and the
+# footprint restriction are new.
+     950 rust/geometry/src/router/voids/synthesis.rs
     1472 rust/geometry/src/space_dcel/mod.rs
      525 rust/geometry/src/transform.rs
      782 rust/geometry/src/triangulation.rs

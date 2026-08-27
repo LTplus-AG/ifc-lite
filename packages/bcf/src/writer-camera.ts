@@ -15,6 +15,7 @@
  */
 
 import type { BCFViewpoint, BCFPerspectiveCamera, BCFOrthogonalCamera } from './types.js';
+import { xsdDouble, xsdPointElement } from './numeric.js';
 
 /**
  * Enforce each version's rule for how many cameras a viewpoint may carry.
@@ -53,8 +54,8 @@ export function requireCameraChoice(viewpoint: BCFViewpoint, version: '2.1' | '3
 }
 
 /**
- * Require a positive AspectRatio for a BCF 3.0 camera and return the element
- * to append.
+ * Require a FINITE, positive AspectRatio for a BCF 3.0 camera and return the
+ * element to append.
  *
  * v3_0/visinfo.xsd adds `<AspectRatio>` (type `PositiveDouble`, i.e.
  * `xs:double` with `minExclusive value="0"`) as a REQUIRED, no-minOccurs
@@ -63,15 +64,24 @@ export function requireCameraChoice(viewpoint: BCFViewpoint, version: '2.1' | '3
  * ratio) because that would assert a value the caller never chose; instead
  * we fail the write so the caller supplies one -- same policy as the
  * `Topic/@TopicType`/`Topic/@TopicStatus` checks in `writer.ts`'s `writeMarkupFile`.
+ *
+ * BOTH halves of `PositiveDouble` are checked here, and the positivity test
+ * alone did not cover them: `Infinity > 0` is `true`, so `Infinity` walked
+ * past this guard and was emitted as `<AspectRatio>Infinity</AspectRatio>`,
+ * which xmllint rejects with "'Infinity' is not a valid value of the atomic
+ * type 'PositiveDouble'". `xsdDouble` is what makes the `xs:double` half of
+ * the claim true; the `> 0` below is the `minExclusive` facet.
  */
 function requireAspectRatioElement(aspectRatio: number | undefined, viewpointGuid: string): string {
+  const where = `viewpoint "${viewpointGuid}"`;
   if (aspectRatio === undefined || !(aspectRatio > 0)) {
     throw new Error(
-      `BCF 3.0 requires a positive Camera/AspectRatio (viewpoint "${viewpointGuid}" has none). ` +
+      `BCF 3.0 requires a positive Camera/AspectRatio (${where} has ` +
+        `${aspectRatio === undefined ? 'none' : aspectRatio}). ` +
         `Set the camera's aspectRatio before writing a 3.0 file.`
     );
   }
-  return `\n    <AspectRatio>${aspectRatio}</AspectRatio>`;
+  return `\n    <AspectRatio>${xsdDouble(aspectRatio, 'Camera/AspectRatio', where)}</AspectRatio>`;
 }
 
 /**
@@ -83,23 +93,9 @@ export function writePerspectiveCamera(
   viewpointGuid: string,
 ): string {
   const aspectRatioElement = version === '3.0' ? requireAspectRatioElement(camera.aspectRatio, viewpointGuid) : '';
-  return `\n  <PerspectiveCamera>
-    <CameraViewPoint>
-      <X>${camera.cameraViewPoint.x}</X>
-      <Y>${camera.cameraViewPoint.y}</Y>
-      <Z>${camera.cameraViewPoint.z}</Z>
-    </CameraViewPoint>
-    <CameraDirection>
-      <X>${camera.cameraDirection.x}</X>
-      <Y>${camera.cameraDirection.y}</Y>
-      <Z>${camera.cameraDirection.z}</Z>
-    </CameraDirection>
-    <CameraUpVector>
-      <X>${camera.cameraUpVector.x}</X>
-      <Y>${camera.cameraUpVector.y}</Y>
-      <Z>${camera.cameraUpVector.z}</Z>
-    </CameraUpVector>
-    <FieldOfView>${camera.fieldOfView}</FieldOfView>${aspectRatioElement}
+  const where = `viewpoint "${viewpointGuid}"`;
+  return `\n  <PerspectiveCamera>${cameraVectors(camera, where)}
+    <FieldOfView>${xsdDouble(camera.fieldOfView, 'PerspectiveCamera/FieldOfView', where)}</FieldOfView>${aspectRatioElement}
   </PerspectiveCamera>`;
 }
 
@@ -112,22 +108,28 @@ export function writeOrthogonalCamera(
   viewpointGuid: string,
 ): string {
   const aspectRatioElement = version === '3.0' ? requireAspectRatioElement(camera.aspectRatio, viewpointGuid) : '';
-  return `\n  <OrthogonalCamera>
-    <CameraViewPoint>
-      <X>${camera.cameraViewPoint.x}</X>
-      <Y>${camera.cameraViewPoint.y}</Y>
-      <Z>${camera.cameraViewPoint.z}</Z>
-    </CameraViewPoint>
-    <CameraDirection>
-      <X>${camera.cameraDirection.x}</X>
-      <Y>${camera.cameraDirection.y}</Y>
-      <Z>${camera.cameraDirection.z}</Z>
-    </CameraDirection>
-    <CameraUpVector>
-      <X>${camera.cameraUpVector.x}</X>
-      <Y>${camera.cameraUpVector.y}</Y>
-      <Z>${camera.cameraUpVector.z}</Z>
-    </CameraUpVector>
-    <ViewToWorldScale>${camera.viewToWorldScale}</ViewToWorldScale>${aspectRatioElement}
+  const where = `viewpoint "${viewpointGuid}"`;
+  return `\n  <OrthogonalCamera>${cameraVectors(camera, where)}
+    <ViewToWorldScale>${xsdDouble(camera.viewToWorldScale, 'OrthogonalCamera/ViewToWorldScale', where)}</ViewToWorldScale>${aspectRatioElement}
   </OrthogonalCamera>`;
+}
+
+/**
+ * The three vectors both camera types open with, in the order both schemas'
+ * `xs:sequence` declares them.
+ *
+ * Identical in `OrthogonalCamera` and `PerspectiveCamera` and in 2.1 and 3.0 --
+ * the cameras differ only in the single element that follows (`ViewToWorldScale`
+ * vs `FieldOfView`). Writing them once is what makes "every camera coordinate
+ * is checked" a property of the code rather than of six copied templates.
+ */
+function cameraVectors(
+  camera: BCFPerspectiveCamera | BCFOrthogonalCamera,
+  where: string
+): string {
+  return (
+    xsdPointElement('CameraViewPoint', camera.cameraViewPoint, '    ', where) +
+    xsdPointElement('CameraDirection', camera.cameraDirection, '    ', where) +
+    xsdPointElement('CameraUpVector', camera.cameraUpVector, '    ', where)
+  );
 }

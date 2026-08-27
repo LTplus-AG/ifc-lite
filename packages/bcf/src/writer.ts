@@ -33,6 +33,7 @@ import {
   writeOrthogonalCamera,
   writePerspectiveCamera,
 } from './writer-camera.js';
+import { xsdDouble, xsdInt, xsdPointElement } from './numeric.js';
 import { generateUuid } from '@ifc-lite/encoding';
 
 /**
@@ -296,7 +297,8 @@ function writeMarkupFile(
   }
 
   if (topic.index !== undefined) {
-    content += `\n    <Index>${topic.index}</Index>`;
+    // `Index` is the writer's only xs:int; see xsdInt for what that excludes.
+    content += `\n    <Index>${xsdInt(topic.index, 'Topic/Index', `topic "${topic.guid}"`)}</Index>`;
   }
 
   if (topic.labels && topic.labels.length > 0) {
@@ -482,6 +484,11 @@ async function writeViewpointFiles(
     content += writeComponents(viewpoint.components, version);
   }
 
+  // Every number below reaches an XSD numeric type, so each goes through
+  // `numeric.ts`'s write-side guards; `where` is what puts the offending
+  // viewpoint's guid in the error, as the camera checks already do.
+  const where = `viewpoint "${viewpoint.guid}"`;
+
   // Write the cameras. ORTHOGONAL FIRST -- see requireCameraChoice for why the
   // order is not free, and for the 3.0 cardinality rule enforced here.
   requireCameraChoice(viewpoint, version);
@@ -498,7 +505,7 @@ async function writeViewpointFiles(
   if (viewpoint.lines && viewpoint.lines.length > 0) {
     content += `\n  <Lines>`;
     for (const line of viewpoint.lines) {
-      content += writeLine(line);
+      content += writeLine(line, where);
     }
     content += `\n  </Lines>`;
   }
@@ -507,7 +514,7 @@ async function writeViewpointFiles(
   if (viewpoint.clippingPlanes && viewpoint.clippingPlanes.length > 0) {
     content += `\n  <ClippingPlanes>`;
     for (const plane of viewpoint.clippingPlanes) {
-      content += writeClippingPlane(plane);
+      content += writeClippingPlane(plane, where);
     }
     content += `\n  </ClippingPlanes>`;
   }
@@ -524,12 +531,12 @@ async function writeViewpointFiles(
     if (version === '3.0') {
       content += `\n  <Bitmaps>`;
       for (const bitmap of viewpoint.bitmaps) {
-        content += writeBitmap(bitmap, version);
+        content += writeBitmap(bitmap, version, where);
       }
       content += `\n  </Bitmaps>`;
     } else {
       for (const bitmap of viewpoint.bitmaps) {
-        content += writeBitmap(bitmap, version);
+        content += writeBitmap(bitmap, version, where);
       }
     }
   }
@@ -713,36 +720,16 @@ function writeColoringEntry(coloring: BCFColoring, version: '2.1' | '3.0'): stri
 /**
  * Write line XML
  */
-function writeLine(line: BCFLine): string {
-  return `\n    <Line>
-      <StartPoint>
-        <X>${line.startPoint.x}</X>
-        <Y>${line.startPoint.y}</Y>
-        <Z>${line.startPoint.z}</Z>
-      </StartPoint>
-      <EndPoint>
-        <X>${line.endPoint.x}</X>
-        <Y>${line.endPoint.y}</Y>
-        <Z>${line.endPoint.z}</Z>
-      </EndPoint>
+function writeLine(line: BCFLine, where: string): string {
+  return `\n    <Line>${xsdPointElement('StartPoint', line.startPoint, '      ', where)}${xsdPointElement('EndPoint', line.endPoint, '      ', where)}
     </Line>`;
 }
 
 /**
  * Write clipping plane XML
  */
-function writeClippingPlane(plane: BCFClippingPlane): string {
-  return `\n    <ClippingPlane>
-      <Location>
-        <X>${plane.location.x}</X>
-        <Y>${plane.location.y}</Y>
-        <Z>${plane.location.z}</Z>
-      </Location>
-      <Direction>
-        <X>${plane.direction.x}</X>
-        <Y>${plane.direction.y}</Y>
-        <Z>${plane.direction.z}</Z>
-      </Direction>
+function writeClippingPlane(plane: BCFClippingPlane, where: string): string {
+  return `\n    <ClippingPlane>${xsdPointElement('Location', plane.location, '      ', where)}${xsdPointElement('Direction', plane.direction, '      ', where)}
     </ClippingPlane>`;
 }
 
@@ -761,28 +748,13 @@ function writeClippingPlane(plane: BCFClippingPlane): string {
  *   otherwise. `BCFBitmap.format` stays typed `'PNG' | 'JPG'`; we only
  *   lowercase it on the wire for 3.0.
  */
-function writeBitmap(bitmap: BCFBitmap, version: '2.1' | '3.0'): string {
+function writeBitmap(bitmap: BCFBitmap, version: '2.1' | '3.0', where: string): string {
   const formatTag = version === '3.0' ? 'Format' : 'Bitmap';
   const formatValue = version === '3.0' ? bitmap.format.toLowerCase() : bitmap.format;
   return `\n    <Bitmap>
       <${formatTag}>${formatValue}</${formatTag}>
-      <Reference>${escapeXml(bitmap.reference)}</Reference>
-      <Location>
-        <X>${bitmap.location.x}</X>
-        <Y>${bitmap.location.y}</Y>
-        <Z>${bitmap.location.z}</Z>
-      </Location>
-      <Normal>
-        <X>${bitmap.normal.x}</X>
-        <Y>${bitmap.normal.y}</Y>
-        <Z>${bitmap.normal.z}</Z>
-      </Normal>
-      <Up>
-        <X>${bitmap.up.x}</X>
-        <Y>${bitmap.up.y}</Y>
-        <Z>${bitmap.up.z}</Z>
-      </Up>
-      <Height>${bitmap.height}</Height>
+      <Reference>${escapeXml(bitmap.reference)}</Reference>${xsdPointElement('Location', bitmap.location, '      ', where)}${xsdPointElement('Normal', bitmap.normal, '      ', where)}${xsdPointElement('Up', bitmap.up, '      ', where)}
+      <Height>${xsdDouble(bitmap.height, 'Bitmap/Height', where)}</Height>
     </Bitmap>`;
 }
 

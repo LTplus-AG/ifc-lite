@@ -172,7 +172,7 @@
    495 packages/bcf/src/overlay-renderer.ts
   1058 packages/bcf/src/reader.ts
    573 packages/bcf/src/viewpoint.ts
-   908 packages/bcf/src/writer.ts
+   878 packages/bcf/src/writer.ts
    605 packages/cache/src/glb.ts
    414 packages/clash/src/adapters/step.ts
    441 packages/clash/src/bcf-bridge.ts

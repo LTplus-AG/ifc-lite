@@ -407,6 +407,191 @@ describe('BCF 3.0 AspectRatio', () => {
 });
 
 /**
+ * FINITENESS is the property, not sign and not schema-conformance.
+ *
+ * `AspectRatio` was guarded with `!(aspectRatio > 0)`, and `Infinity > 0` is
+ * `true`, so `Infinity` walked straight through a check whose doc comment
+ * claimed to enforce `PositiveDouble` and was written out verbatim. The same
+ * mistake in its other disguise shipped elsewhere in this repository within
+ * the week — `Number('Infinity')` is not `NaN`, so an `isNaN` guard passes it
+ * too. Neither a positivity test nor a NaN test is a finiteness test;
+ * `Number.isFinite` is, which is why every case below is stated against it
+ * rather than against the value's sign.
+ *
+ * The XSDs punish the three non-finite values in three different ways, so no
+ * single facet catches them and "the schema will reject it" is not a defence:
+ *
+ *  - `Infinity`/`-Infinity` stringify to `"Infinity"`/`"-Infinity"`, which are
+ *    outside `xs:double`'s lexical space altogether (XSD 1.0 spells the
+ *    infinities `INF`/`-INF`). Rejected everywhere.
+ *  - `NaN` stringifies to `"NaN"`, which `xs:double` ACCEPTS. On a facet-bearing
+ *    type it still fails (`PositiveDouble`'s `minExclusive`, `FieldOfView`'s
+ *    range), but on the plain `xs:double` elements — every coordinate,
+ *    `ViewToWorldScale`, `Bitmap/Height` — a validator sees nothing wrong while
+ *    the archive carries a number no consumer can use. Two tests below pin that
+ *    asymmetry so it cannot be mistaken for coverage.
+ *  - `Topic/Index` is `xs:int`, narrower again: `1.5` is invalid there too.
+ *
+ * The sweep is the point. The reported defect was `AspectRatio`; it was the
+ * only one of these fields with any guard at all.
+ */
+describe('non-finite numbers never reach the archive', () => {
+  /**
+   * Every numeric the writer emits under an XSD numeric type, as a mutation
+   * that puts `value` in exactly that position.
+   *
+   * Anti-vacuity for the list itself is the `emits a schema-valid ...` tests
+   * above: `maximalTopic` populates the camera, lines, clipping planes and
+   * bitmaps, so each mutator below lands on markup that is really written.
+   */
+  const NUMERICS: ReadonlyArray<
+    readonly [string, (t: BCFTopic, v: number) => void, number?]
+  > = [
+    ['PerspectiveCamera/AspectRatio', (t, v) => { t.viewpoints[0].perspectiveCamera!.aspectRatio = v; }],
+    ['PerspectiveCamera/FieldOfView', (t, v) => { t.viewpoints[0].perspectiveCamera!.fieldOfView = v; }],
+    ['PerspectiveCamera/CameraViewPoint/X', (t, v) => { t.viewpoints[0].perspectiveCamera!.cameraViewPoint.x = v; }],
+    ['PerspectiveCamera/CameraDirection/Y', (t, v) => { t.viewpoints[0].perspectiveCamera!.cameraDirection.y = v; }],
+    ['PerspectiveCamera/CameraUpVector/Z', (t, v) => { t.viewpoints[0].perspectiveCamera!.cameraUpVector.z = v; }],
+    // The orthogonal camera REPLACES the perspective one: BCF 3.0 admits
+    // exactly one camera per viewpoint (see "BCF camera cardinality and order"),
+    // so setting both here would fail for that reason instead of this one.
+    ['OrthogonalCamera/ViewToWorldScale', (t, v) => { useOrthogonal(t).viewToWorldScale = v; }],
+    ['OrthogonalCamera/AspectRatio', (t, v) => { useOrthogonal(t).aspectRatio = v; }],
+    ['OrthogonalCamera/CameraViewPoint/X', (t, v) => { useOrthogonal(t).cameraViewPoint.x = v; }],
+    ['Line/StartPoint/X', (t, v) => { t.viewpoints[0].lines![0].startPoint.x = v; }],
+    ['Line/EndPoint/Z', (t, v) => { t.viewpoints[0].lines![0].endPoint.z = v; }],
+    ['ClippingPlane/Location/Y', (t, v) => { t.viewpoints[0].clippingPlanes![0].location.y = v; }],
+    ['ClippingPlane/Direction/X', (t, v) => { t.viewpoints[0].clippingPlanes![0].direction.x = v; }],
+    ['Bitmap/Location/Z', (t, v) => { t.viewpoints[0].bitmaps![0].location.z = v; }],
+    ['Bitmap/Normal/X', (t, v) => { t.viewpoints[0].bitmaps![0].normal.x = v; }],
+    ['Bitmap/Up/Y', (t, v) => { t.viewpoints[0].bitmaps![0].up.y = v; }],
+    ['Bitmap/Height', (t, v) => { t.viewpoints[0].bitmaps![0].height = v; }],
+    // The third element is the FINITE value the anti-vacuity case below uses;
+    // `Topic/Index` needs its own because 3.25 is not an xs:int.
+    ['Topic/Index', (t, v) => { t.index = v; }, 3],
+  ];
+
+  /** Swap the fixture's perspective camera for an orthogonal one and return it. */
+  function useOrthogonal(topic: BCFTopic) {
+    delete topic.viewpoints[0].perspectiveCamera;
+    topic.viewpoints[0].orthogonalCamera = {
+      cameraViewPoint: { x: 4.5, y: 5.5, z: 6.5 },
+      cameraDirection: { x: 0, y: -1, z: 0 },
+      cameraUpVector: { x: 0, y: 0, z: 1 },
+      viewToWorldScale: 12.5,
+      aspectRatio: 2.25,
+    };
+    return topic.viewpoints[0].orthogonalCamera;
+  }
+
+  function mutated(mutate: (t: BCFTopic, v: number) => void, value: number): BCFProject {
+    const topic = maximalTopic();
+    mutate(topic, value);
+    return {
+      version: '3.0',
+      projectId: '66666666-6666-4666-8666-666666666666',
+      name: 'Non-finite project',
+      topics: new Map([[TOPIC_GUID, topic]]),
+    };
+  }
+
+  for (const [field, mutate, finite = 3.25] of NUMERICS) {
+    describe(field, () => {
+      it.each([
+        ['Infinity', Infinity],
+        ['-Infinity', -Infinity],
+        ['NaN', NaN],
+      ] as const)('is refused rather than written when it is %s', async (_label, value) => {
+        await expect(writeBCF(mutated(mutate, value))).rejects.toThrow();
+      });
+
+      /**
+       * Anti-vacuity, and the half a `rejects.toThrow()` cannot state: the same
+       * mutation with a FINITE value must still produce a schema-valid archive.
+       * Without this, a guard that rejected every value — or a mutator aimed at
+       * a field the writer never emits — would pass the three cases above.
+       */
+      it('still writes a schema-valid archive for a finite value', async () => {
+        const entries = await writeAndUnzip(mutated(mutate, finite));
+        for (const [name, xml] of entries) {
+          const xsd = SCHEMA_FOR_ENTRY.find(([re]) => re.test(name))![1];
+          const { valid, messages } = await validate('3.0', xsd, xml);
+          expect(messages, `${field} -> ${name}`).toEqual([]);
+          expect(valid).toBe(true);
+        }
+      });
+    });
+  }
+
+  /**
+   * The reported symptom, pinned exactly.
+   *
+   * This is the archive the old guard produced, reconstructed by splicing
+   * `Infinity` back into a good document. It asserts the VALIDATOR's verdict,
+   * not the writer's — so it keeps working as a statement about the format
+   * however the writer is later refactored, and it names the message a
+   * reviewer would see rather than a generic "invalid".
+   */
+  it('would have failed XSD validation had Infinity been emitted (the reported defect)', async () => {
+    const entries = await writeAndUnzip(maximalProject('3.0'));
+    const good = entries.get(`${TOPIC_GUID}/Viewpoint_${VIEWPOINT_GUID}.bcfv`)!;
+    expect((await validate('3.0', 'visinfo.xsd', good)).valid).toBe(true);
+
+    const broken = good.replace(
+      /<AspectRatio>[^<]*<\/AspectRatio>/,
+      '<AspectRatio>Infinity</AspectRatio>'
+    );
+    expect(broken).not.toEqual(good);
+
+    const { valid, messages } = await validate('3.0', 'visinfo.xsd', broken);
+    expect(valid).toBe(false);
+    expect(messages).toEqual([
+      "Schemas validity error : Element 'AspectRatio': 'Infinity' is not a valid value of the atomic type 'PositiveDouble'.",
+    ]);
+  });
+
+  /**
+   * Why the guard is finiteness and not "whatever the schema rejects".
+   *
+   * `"NaN"` IS in `xs:double`'s lexical space, so a `<X>NaN</X>` coordinate
+   * validates cleanly — the XSD cannot see this one at all. It is still
+   * unusable: our own reader routes every number through `parseFiniteFloat`
+   * and drops what is not finite, so a written `NaN` comes back as a camera
+   * that has lost its viewpoint. Schema validity was never the bar.
+   */
+  it('accepts NaN as a schema-valid xs:double, which is exactly why the schema cannot be the guard', async () => {
+    const entries = await writeAndUnzip(maximalProject('3.0'));
+    const good = entries.get(`${TOPIC_GUID}/Viewpoint_${VIEWPOINT_GUID}.bcfv`)!;
+    const withNaN = good.replace('<X>1.5</X>', '<X>NaN</X>');
+    expect(withNaN).not.toEqual(good);
+
+    const { valid, messages } = await validate('3.0', 'visinfo.xsd', withNaN);
+    expect(messages).toEqual([]);
+    expect(valid).toBe(true);
+
+    // ...and the value does not survive the trip back in.
+    const readBack = await readBCF(
+      new Uint8Array(await (await writeBCF(maximalProject('3.0'))).arrayBuffer())
+    );
+    expect(readBack.topics.get(TOPIC_GUID)!.viewpoints[0].perspectiveCamera?.cameraViewPoint.x)
+      .toBe(1.5);
+  });
+
+  /**
+   * `Topic/Index` is `xs:int`, and finiteness alone is not its whole rule.
+   *
+   * A fractional index is finite, so the `Number.isFinite` test every other
+   * field uses would pass it — and `<Index>1.5</Index>` is still rejected
+   * ("'1.5' is not a valid value of the atomic type 'xs:int'"). The one field
+   * with a narrower type gets the narrower check.
+   */
+  it('refuses a fractional Topic/Index, which finiteness alone would let through', async () => {
+    expect(Number.isFinite(1.5)).toBe(true);
+    await expect(writeBCF(mutated((t, v) => { t.index = v; }, 1.5))).rejects.toThrow(/xs:int/);
+  });
+});
+
+/**
  * Schema validity is necessary, not sufficient.
  *
  * `<ViewSetupHints>` is OPTIONAL in both versions, so an archive that drops it

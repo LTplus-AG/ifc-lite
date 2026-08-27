@@ -19,7 +19,7 @@
 import { describe, it, expect } from 'vitest';
 import { firstBlownRung as ladderFirstBlownRung, SIZES } from '@ifc-lite/timing-ladder';
 import { compareNumeric, isStrictNumericLiteral } from './comparators.js';
-import { literalCastsUnder } from './xsd-cast.js';
+import { XSD_NUMERIC_SPECIALS, literalCastsUnder } from './xsd-cast.js';
 import { runCoherenceAudit } from '../audit/coherence/index.js';
 import type { IDSDocument } from '../types.js';
 
@@ -455,18 +455,57 @@ describe('the same shape elsewhere in @ifc-lite/ids', () => {
       return [...out];
     })();
 
+    /** The decision both sites now make, modelled independently of either.
+     *
+     *  The digit must be in the MANTISSA: testing the whole lexeme accepted
+     *  `e5` on the strength of the exponent's digit, which is how the audit and
+     *  the cast came to disagree while both looked right (#3336). The specials
+     *  carry no digit at all and are valid, so they are exempt rather than
+     *  swept up by the same veto. */
+    const decidesValid = (v: string): boolean => {
+      if (!XS_DOUBLE_RE.test(v)) return false;
+      if (XSD_NUMERIC_SPECIALS.has(v)) return true;
+      return /[0-9]/.test(v.split(/[eE]/)[0]);
+    };
+
     it.each(['xs:double', 'xs:float', 'xs:decimal'])(
-      '%s accepts exactly the lexical space it did before',
+      '%s accepts the lexical space, specials included, digitless forms not',
       (base) => {
+        // This used to pin "exactly the lexical space it did before", with
+        // `before = /[0-9]/.test(v) && XS_DOUBLE_RE.test(v)`. That decision was
+        // wrong in two directions at once and #3336 changed it, so the oracle
+        // had to change too -- a characterisation test cannot outlive the
+        // behaviour it characterises without quietly asserting the old bug.
         const disagree = sample
-          .filter((v) => {
-            // The pre-existing "no digit at all" veto sits outside the regex;
-            // model the whole decision, not just the pattern.
-            const before = /[0-9]/.test(v) && XS_DOUBLE_RE.test(v);
-            return before !== accepts(v, base);
-          })
+          .filter((v) => decidesValid(v) !== accepts(v, base))
           .map((v) => JSON.stringify(v));
         expect(disagree).toEqual([]);
+      }
+    );
+
+    it('the audit and the cast decide xs:double identically', () => {
+      // The whole point of #3336: one literal, one answer. The audit judges an
+      // enumeration value and the cast gates a simpleValue -- different
+      // questions about the same language, which used to differ on the three
+      // specials AND on the exponent-only family.
+      const disagree = sample
+        .filter((v) => accepts(v, 'xs:double') !== literalCastsUnder(v, 'xs:double'))
+        .map((v) => `${JSON.stringify(v)} audit=${accepts(v, 'xs:double')} cast=${literalCastsUnder(v, 'xs:double')}`);
+      expect(disagree).toEqual([]);
+    });
+
+    it.each(['NaN', '+INF', '-INF'])('accepts %j, which upstream accepts', (v) => {
+      expect(accepts(v, 'xs:double')).toBe(true);
+      expect(literalCastsUnder(v, 'xs:double')).toBe(true);
+    });
+
+    it.each(['e5', 'E5', '+e5', '.e5', 'INF', 'Infinity'])(
+      'rejects %j in both places',
+      (v) => {
+        // `e5` is the one the audit used to accept on its own: the veto tested
+        // the whole lexeme, and the exponent supplied the digit.
+        expect(accepts(v, 'xs:double')).toBe(false);
+        expect(literalCastsUnder(v, 'xs:double')).toBe(false);
       }
     );
 

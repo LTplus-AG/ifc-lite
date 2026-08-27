@@ -46,11 +46,12 @@ describe('xs:double specials, matching upstream (#3336)', () => {
       // visible: if upstream ever tightens this, the first line fails and the
       // comment stops being true.
       //
-      // REPRESENTATIVES, not the whole family. The exponent-only rows are here
-      // because they are also a live disagreement with our own coherence audit,
-      // which ACCEPTS them: its digit veto (audit/coherence/index.ts:461) is
-      // satisfied by the digit in the exponent. That split predates this change
-      // and is part of what the audit follow-up has to reconcile.
+      // REPRESENTATIVES, not the whole family. The exponent-only rows were
+      // once a disagreement with our own coherence audit, which accepted them
+      // because its digit veto was satisfied by the digit in the exponent.
+      // That is fixed: the audit now requires the digit in the mantissa and
+      // both sites reject these. `numeric-literal.test.ts` sweeps the two for
+      // equality so they cannot part company again.
       expect(UPSTREAM_DOUBLE_RE.test(v)).toBe(true);
       expect(literalCastsUnder(v, 'xs:double')).toBe(false);
     },

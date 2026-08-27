@@ -47,8 +47,6 @@ export const scriptTeardown = defineSliceTeardown(
     'scriptDeleteConfirmId',
   ],
   (scope) => {
-    // A model removal or a federation clear leaves this slice alone; only a
-    // session reset (a new file taking over the viewer) does.
     if (scope.kind !== 'session-reset') return {};
     return {
       scriptExecutionState: 'idle' as const,

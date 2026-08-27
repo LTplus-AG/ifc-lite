@@ -197,15 +197,12 @@ async function doSyncSourceModel({
   //
   // This is the SAME scope `removeModel` just ran, and used to be a
   // hand-written second copy of it (`purgeStaleEntityState`). The one
-  // difference is the third argument: the replacement is already loaded and
-  // holds a fresh offset range, so it must not count as a survivor. Nothing
-  // can legitimately reference it yet, and a stale id — notably an old overlay
-  // id, which range-filtering on the removed model's own range would let
-  // escape — can land inside that new range and silently mis-highlight an
-  // unrelated entity. `removeModel`'s own dispatch a moment ago DID count the
-  // replacement as a survivor and so kept exactly those ids; this stricter run
-  // is what drops them, which is why both runs are needed and neither is
-  // redundant. Drop the third argument and
+  // difference is the third argument, whose reasoning is on
+  // `modelRemovedScope`'s `notYetASurvivor` param rather than repeated here.
+  // The short version: `removeModel`'s own dispatch a moment ago counted the
+  // replacement as a survivor and so KEPT ids pointing into its fresh range;
+  // this stricter run is what drops them, which is why both runs are needed
+  // and neither is redundant. Drop the third argument and
   // `syncSourceModel.test.ts`'s "drops a burned id even when the REPLACEMENT's
   // fresh range covers it" is the one test that goes red — measured.
   //

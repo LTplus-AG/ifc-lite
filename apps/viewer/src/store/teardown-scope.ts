@@ -26,6 +26,13 @@ export type ModelRemovedScope = Extract<TeardownScope, { kind: 'model-removed' }
 /**
  * Build the scope for "this model is going away".
  *
+ * KNOWN DUPLICATION, deliberately left: the survivor predicate below is a third
+ * statement of the ownership rule that `modelSlice`'s `localIdInParseRange` /
+ * `localIdInOverlay` (#2697) and `store/globalId.ts` already carry. It cannot
+ * import `modelSlice` — that file imports this one — and `store/globalId.ts` is
+ * the cycle-free home all three should share. Consolidating them is a change of
+ * its own; until then, a boundary change has to be made in three places.
+ *
  * The predicate mirrors the two-pass resolution in `modelSlice`'s
  * `resolveGlobalIdFromModels`: a global id survives if some SURVIVING model
  * owns it, either inside its parse-time range (`idOffset` ..
@@ -70,5 +77,15 @@ export function modelRemovedScope(
     return true;
   };
 
-  return { kind: 'model-removed', modelId, isStale };
+  // Resolved here, once, because two slices owning different keys both have to
+  // follow it (see `nextActiveModelId` on TeardownScope). Insertion order picks
+  // the successor, exactly as `Array.from(newModels.keys())[0]` did before this
+  // moved behind the seam. `notYetASurvivor` is deliberately NOT excluded: a
+  // resync's replacement is a legitimate active model, it is only barred from
+  // rescuing stale ids.
+  const remaining = [...(state.models?.keys() ?? [])].filter((id) => id !== modelId);
+  const nextActiveModelId =
+    state.activeModelId === modelId ? (remaining[0] ?? null) : (state.activeModelId ?? null);
+
+  return { kind: 'model-removed', modelId, isStale, nextActiveModelId };
 }

@@ -45,15 +45,9 @@ export const modelTeardown = defineSliceTeardown(
     const nextModels = new Map(models);
     nextModels.delete(scope.modelId);
 
-    // Reassign the active model only when the removed one held it. Insertion
-    // order decides the successor, exactly as `Array.from(newModels.keys())`
-    // did before this moved behind the seam.
-    const priorActiveId = state.activeModelId;
-    const activeModelId =
-      priorActiveId === scope.modelId
-        ? (Array.from(nextModels.keys())[0] ?? null)
-        : priorActiveId;
-
-    return { models: nextModels, activeModelId };
+    // The successor is resolved once by `modelRemovedScope`, not here: it is
+    // federation knowledge, and `dataSlice` has to follow the same answer to
+    // keep `ifcDataStore` / `geometryResult` pointing at the model this names.
+    return { models: nextModels, activeModelId: scope.nextActiveModelId };
   },
 );

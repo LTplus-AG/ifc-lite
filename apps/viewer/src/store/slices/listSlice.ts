@@ -96,8 +96,6 @@ export const listTeardown = defineSliceTeardown(
   'listSlice',
   ['listPanelVisible', 'activeListId', 'listResult', 'listExecuting'],
   (scope) => {
-    // A model removal or a federation clear leaves this slice alone; only a
-    // session reset (a new file taking over the viewer) does.
     if (scope.kind !== 'session-reset') return {};
     return {
       listPanelVisible: false,

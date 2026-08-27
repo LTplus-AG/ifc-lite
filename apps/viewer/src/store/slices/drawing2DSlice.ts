@@ -350,7 +350,7 @@ export interface Drawing2DSlice extends Drawing2DState {
  * slice initializer and `resetViewerState` (`store/index.ts`) call this so
  * the two paths can't drift — the same pattern `POINT_CLOUD_DEFAULTS` uses.
  */
-export const getDefaultDisplayOptions = (): Drawing2DState['drawing2DDisplayOptions'] => ({
+const getDefaultDisplayOptions = (): Drawing2DState['drawing2DDisplayOptions'] => ({
   showHiddenLines: true,
   showHatching: true,
   showAnnotations: true,

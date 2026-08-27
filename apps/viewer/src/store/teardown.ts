@@ -18,7 +18,12 @@
  * time, in a file that cannot see the slice. `modelSlice` even declared 16
  * fields it did not own (`ModelCrossSliceState`) purely so its teardown could
  * type-check its reach into five other slices — that interface is gone, and
- * its disappearance is the measure of this change. The four copies were held
+ * its disappearance from PRODUCTION is the measure of this change. Be precise
+ * about the word: the same 16-field list still exists in `modelSlice.test.ts`
+ * as `ModelHarnessCrossState`, and it is the sole reason `TeardownState` below
+ * is `Partial` rather than total, which in turn is why model-removed
+ * contributions carry `?? new Set()` fallbacks. Giving that harness a real
+ * store would delete the list and the fallbacks together. The four copies were held
  * together by prose: "same shape as `purgeStaleEntityState`", twice.
  *
  * This module replaces the prose with a contract. Each slice contributes
@@ -49,6 +54,16 @@
  *
  * Those stay exactly where they are, in the entry point, in the same order.
  * Only the `set()` PAYLOAD moves behind this seam.
+ *
+ * ## Where a contribution lives
+ *
+ * Inline at the bottom of the slice, or in a sibling `<slice>.teardown.ts`. The
+ * rule is the module-size ratchet and nothing else: sibling file iff the slice
+ * plus its contribution would cross ~400 lines, inline otherwise. Two files
+ * (`addElementSlice.teardown.ts` at 341, `annotationsSlice.teardown.ts` at 365)
+ * are split despite fitting, for group uniformity; that reason does not survive
+ * contact with the nine inline contributions on larger hosts, and folding those
+ * two back in would make the rule exceptionless.
  *
  * ## Trap A: a teardown returns an EXPLICIT field list, never a whole state
  *
@@ -108,7 +123,24 @@ import type { ViewerState } from './index.js';
  */
 export type TeardownScope =
   | { kind: 'session-reset' }
-  | { kind: 'model-removed'; modelId: string; isStale: (id: number) => boolean }
+  | {
+      kind: 'model-removed';
+      modelId: string;
+      isStale: (id: number) => boolean;
+      /**
+       * Which model holds `activeModelId` once this one is gone, resolved ONCE
+       * by the entry point. Federation knowledge, so it belongs to whoever
+       * builds the scope rather than to each slice that has to follow it.
+       *
+       * Two slices need it and they own different keys, so the disjointness
+       * proof cannot see them: `modelSlice` writes `activeModelId`, `dataSlice`
+       * writes the `ifcDataStore` / `geometryResult` that must follow it. When
+       * each derived the successor for itself, changing the rule in one file
+       * left the data pointing at a model the active id did not name — a blank
+       * properties panel over a live model list, and no gate would catch it.
+       */
+      nextActiveModelId: string | null;
+    }
   | { kind: 'all-models-cleared' };
 
 /**

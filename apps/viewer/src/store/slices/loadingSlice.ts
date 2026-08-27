@@ -75,8 +75,6 @@ export const loadingTeardown = defineSliceTeardown(
   'loadingSlice',
   ['loading', 'geometryStreamingActive', 'progress', 'geometryProgress', 'metadataProgress', 'error'],
   (scope) => {
-    // A model removal or a federation clear leaves this slice alone; only a
-    // session reset (a new file taking over the viewer) does.
     if (scope.kind !== 'session-reset') return {};
     return {
       loading: false,

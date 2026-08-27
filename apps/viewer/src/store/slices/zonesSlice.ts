@@ -311,7 +311,10 @@ export const createZonesSlice: StateCreator<ZonesSlice, [], [], ZonesSlice> = (s
 
   clearAllZoneSets: () => set(() => {
     savePersistedZoneSets([]);
-    return { zoneSets: [], zoneAssignments: new Map(), zoneAssignmentTiming: null, zoneApportionment: new Map(), editingZone: null };
+    // The zone SETS are this action's own business ("the user deleted their
+    // zones"); everything downstream of them is the session-reset arm's list,
+    // spread rather than restated so a field added there lands in both.
+    return { zoneSets: [], ...zonesTeardown.teardown({ kind: 'session-reset' }, {}) };
   }),
 });
 
@@ -324,11 +327,10 @@ export const createZonesSlice: StateCreator<ZonesSlice, [], [], ZonesSlice> = (s
  * stale-model-reference class as `compareResult`; `useZoneAssignmentSync`
  * recomputes against the new scene.
  *
- * `zoneSets` is therefore absent from both `owns` and the body, and
- * `clearAllZoneSets` — which does destroy them — is NOT wired to this teardown:
- * its field set is a strict superset with a different meaning ("the user
- * deleted their zones"), and one of the two would drift the moment a
- * session-scoped field that is not a zone set is added here.
+ * `zoneSets` is therefore absent from both `owns` and the body. `clearAllZoneSets`
+ * DOES destroy them, and spreads this arm for everything else: its field set is a
+ * strict superset with a different meaning, but the overlap is exact, and a
+ * session-scoped field added here has to reach both.
  */
 export const zonesTeardown = defineSliceTeardown(
   'zonesSlice',

@@ -33,8 +33,6 @@ export const bcfTeardown = defineSliceTeardown(
   'bcfSlice',
   ['bcfPanelVisible', 'bcfLoading', 'bcfError', 'activeTopicId', 'activeViewpointId'],
   (scope) => {
-    // A model removal or a federation clear leaves this slice alone; only a
-    // session reset (a new file taking over the viewer) does.
     if (scope.kind !== 'session-reset') return {};
     return {
       bcfPanelVisible: false,

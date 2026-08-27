@@ -29,12 +29,11 @@ export const sheetTeardown = defineSliceTeardown(
     // leaves it alone. Only a file swap tears it down.
     if (scope.kind !== 'session-reset') return {};
 
-    const cleared = getClearedSheetState();
-    return {
-      activeSheet: cleared.activeSheet,
-      sheetEnabled: cleared.sheetEnabled,
-      sheetPanelVisible: cleared.sheetPanelVisible,
-      titleBlockEditorVisible: cleared.titleBlockEditorVisible,
-    };
+    // `getClearedSheetState()` returns exactly these four keys — it is typed
+    // `Omit<SheetState, 'savedSheetTemplates'>`, which is what keeps the user's
+    // saved templates out of both this and `clearSheet` (#2802's first bug).
+    // Destructuring and rebuilding it here would be a second list to keep in
+    // step with the first.
+    return getClearedSheetState();
   },
 );

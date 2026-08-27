@@ -73,13 +73,9 @@ export const dataTeardown = defineSliceTeardown(
     // immediately after `removeModel`) a no-op.
     if (!models?.has(scope.modelId)) return {};
 
-    // Follow the model that becomes active. Derived from `models` the same way
-    // `modelSlice`'s arm derives it, off the same pre-`set` state, so the two
-    // cannot disagree about which model wins.
-    const remaining = [...models.keys()].filter((id) => id !== scope.modelId);
-    const nextActiveId =
-      state.activeModelId === scope.modelId ? (remaining[0] ?? null) : state.activeModelId;
-    const activeModel = nextActiveId ? models.get(nextActiveId) : null;
+    // Follow the model that becomes active. The scope resolved it once, so this
+    // and `modelSlice`'s `activeModelId` cannot name different models.
+    const activeModel = scope.nextActiveModelId ? models.get(scope.nextActiveModelId) : null;
 
     return {
       ifcDataStore: activeModel?.ifcDataStore ?? null,

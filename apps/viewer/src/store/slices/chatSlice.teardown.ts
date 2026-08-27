@@ -32,8 +32,6 @@ export const chatTeardown = defineSliceTeardown(
   'chatSlice',
   ['chatStatus', 'chatStreamingContent', 'chatError', 'chatAbortController'],
   (scope) => {
-    // A model removal or a federation clear leaves this slice alone; only a
-    // session reset (a new file taking over the viewer) does.
     if (scope.kind !== 'session-reset') return {};
     return {
       chatStatus: 'idle' as const,

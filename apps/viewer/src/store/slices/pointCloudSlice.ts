@@ -162,7 +162,7 @@ export interface PointCloudSlice {
  * Both the slice initializer and `resetViewerState` consume this so
  * the two paths can't drift.
  */
-export const POINT_CLOUD_DEFAULTS = {
+const POINT_CLOUD_DEFAULTS = {
   // Fixed-px is the default so the size slider feels responsive on first
   // contact. `attenuated` is nicer at extreme zooms but its "slider =
   // upper cap" semantic confuses users at typical wide views because the

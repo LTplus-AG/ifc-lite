@@ -197,15 +197,27 @@ export interface CompareSlice {
  * (guarded on the removed model being a side of the pairing) and of
  * `clearAllModels` (unconditional); neither is a scope arm here.
  */
-export const compareTeardown = defineSliceTeardown(
-  'compareSlice',
-  ['compareResult', 'compareSelectedKey', 'compareRunning', 'compareError'],
-  (scope) => scope.kind !== 'session-reset' ? {} : {
+/**
+ * The fields `clearCompare` and a session reset both drop.
+ *
+ * Named once and consumed by both so neither can drift, the same shape
+ * `sheetSlice`'s `getClearedSheetState` uses. `compareRunSeq` is deliberately
+ * absent from both: it is a monotonic guard against a stale async result
+ * landing after a newer run, so resetting it would let exactly that through.
+ */
+function getClearedCompareState() {
+  return {
     compareResult: null,
     compareSelectedKey: null,
     compareRunning: false,
     compareError: null,
-  },
+  } as const;
+}
+
+export const compareTeardown = defineSliceTeardown(
+  'compareSlice',
+  ['compareResult', 'compareSelectedKey', 'compareRunning', 'compareError'],
+  (scope) => scope.kind !== 'session-reset' ? {} : getClearedCompareState(),
 );
 
 export const createCompareSlice: StateCreator<CompareSlice, [], [], CompareSlice> = (set) => ({
@@ -269,5 +281,5 @@ export const createCompareSlice: StateCreator<CompareSlice, [], [], CompareSlice
   setCompareError: (compareError) => set({ compareError }),
   setCompareSelectedKey: (compareSelectedKey) => set({ compareSelectedKey }),
 
-  clearCompare: () => set(compareTeardown.teardown({ kind: 'session-reset' }, {})),
+  clearCompare: () => set(getClearedCompareState()),
 });

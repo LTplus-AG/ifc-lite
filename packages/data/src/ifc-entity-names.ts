@@ -5,41 +5,27 @@
 /**
  * UPPERCASE STEP keyword -> PascalCase entity name.
  *
- * DERIVED AT LOAD from the generated schema, not transcribed. This used to be
- * a hand-maintained literal of 880 entries whose header named a regenerator
- * (`scripts/generate-entity-names.ts`) that has never existed in this
- * repository; 282 entities the schema knows about were missing from it,
- * including `IfcWallElementedCase`, `IfcBuildingElement`, `IfcDoorStyle` and
- * the whole `*StandardCase` family, so every caller doing
- * `IFC_ENTITY_NAMES[upper] ?? upper` displayed the raw UPPERCASE keyword for
- * them. Building the map from `ifc-schema/generated/entities-*.ts` — which
- * `pnpm --filter @ifc-lite/data run generate:ifc-schema` regenerates from the
- * buildingSMART schema dumps — means a schema bump carries the names along and
- * there is no second list to fall behind.
+ * GENERATED, not transcribed. This used to be a hand-maintained literal of 880
+ * entries whose header named a regenerator (`scripts/generate-entity-names.ts`)
+ * that has never existed in this repository; 282 keys the schema knows about
+ * were missing from it, including `IfcWallElementedCase`, `IfcBuildingElement`,
+ * `IfcDoorStyle` and every `*StandardCase` but `IfcWallStandardCase`, so every
+ * caller doing `IFC_ENTITY_NAMES[upper] ?? upper` displayed the raw UPPERCASE
+ * keyword for them. `scripts/emit-entity-names.ts` now writes the map from the
+ * `entities-*.ts` tables that `generate:ifc-schema` produces from the
+ * buildingSMART dumps, in the same command, so a schema bump carries the names
+ * along and there is no second list to fall behind.
+ *
+ * It is emitted as a literal rather than built at load from the `ENTITIES_*`
+ * arrays because a runtime loop over those is not tree-shakable: it would keep
+ * all three — ~630 KB minified, ~57 KB gzipped — in every bundle that touches a
+ * name lookup, and `@ifc-lite/data` is published for browser consumers.
  *
  * `ifc-entity-names.test.ts` pins the result against `IfcTypeEnum`, and
- * `ifc-entity-names.schema-parity.test.ts` pins it against the schema in both
- * directions and by name.
+ * `ifc-entity-names.schema-parity.test.ts` pins it against `entities-*.ts` in
+ * both directions and by name — so a stale generated file, the failure mode a
+ * committed artefact introduces, fails there rather than degrading display
+ * names silently.
  */
 
-import { ENTITIES_IFC2X3 } from './ifc-schema/generated/entities-ifc2x3.js';
-import { ENTITIES_IFC4 } from './ifc-schema/generated/entities-ifc4.js';
-import { ENTITIES_IFC4X3 } from './ifc-schema/generated/entities-ifc4x3.js';
-
-/**
- * Names reachable through `IfcTypeEnum` / `IfcTypeEnumToString` but absent from
- * every generated schema array, so they cannot be derived. Kept by name — a
- * fourth one appearing is a schema question, not a line to add here quietly.
- */
-const ENUM_ONLY_NAMES = ['IfcSolidStratum', 'IfcVoidStratum', 'IfcWaterStratum'];
-
-function buildEntityNames(): Record<string, string> {
-  const map: Record<string, string> = {};
-  for (const list of [ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3]) {
-    for (const entity of list) map[entity.name.toUpperCase()] = entity.name;
-  }
-  for (const name of ENUM_ONLY_NAMES) map[name.toUpperCase()] = name;
-  return map;
-}
-
-export const IFC_ENTITY_NAMES: Record<string, string> = buildEntityNames();
+export { IFC_ENTITY_NAMES } from './ifc-schema/generated/entity-names.js';

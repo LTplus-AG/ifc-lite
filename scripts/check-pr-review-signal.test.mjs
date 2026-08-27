@@ -30,14 +30,34 @@ const TEST_YML = join(REPO_ROOT, '.github/workflows/test.yml');
 const TMP = mkdtempSync(join(tmpdir(), 'pr-review-signal-'));
 let seq = 0;
 
-/** Run the gate over a synthetic rollup. */
-function run(state, extra = []) {
+/**
+ * A head SHA for the state files that are not about part 3. It is a real
+ * 40-hex string because `staleReviews` refuses anything else — see the
+ * NO_HEAD_SHA test below, which drives that refusal deliberately.
+ */
+const ANY_HEAD = '0'.repeat(40);
+
+/** Run the gate over a state file EXACTLY as written — no defaults injected. */
+function runRaw(state, extra = []) {
   const path = join(TMP, `state-${(seq += 1)}.json`);
   writeFileSync(path, JSON.stringify(state));
   const r = spawnSync(process.execPath, [GATE, '--state-file', path, ...extra], {
     encoding: 'utf8',
   });
   return { code: r.status, output: `${r.stdout}${r.stderr}` };
+}
+
+/**
+ * Run the gate over a synthetic rollup.
+ *
+ * The part 3 inputs are defaulted HERE, in the harness, and NOT in the gate:
+ * `main()` passes `state.reviews` and `state.headSha` straight through, so a
+ * state file that omits them fails closed with NO_REVIEWS / NO_HEAD_SHA. That
+ * refusal is asserted by `runRaw` below; defaulting inside the gate would have
+ * made it print a part 3 success line over a question nobody answered.
+ */
+function run(state, extra = []) {
+  return runRaw({ reviews: [], headSha: ANY_HEAD, ...state }, extra);
 }
 
 /** Write a config variant and return its path. */
@@ -564,4 +584,323 @@ test('the gate and the workflow it derives lanes from carry the SAME base-branch
     theirs,
     'the gate must run on exactly the base branches whose lanes it requires',
   );
+});
+
+// ------------------------------------ PART 3: review staleness, as a process
+
+/**
+ * PR #3276 as the gate sees it: louistrue's example in #3312.
+ *
+ * Head `1305f778`, `CodeRabbit :: success / Review completed` on that head, and
+ * CodeRabbit's newest review event naming `c26e453d`. Parts 1 and 2 are
+ * deliberately CLEAN here — that is the whole point: this PR passed everything
+ * the gate could previously ask, which is why staleness needed building.
+ */
+const HEAD_3276 = '1305f778c0dc817bb344e23f881c2a30963c14c2';
+const OLD_3276 = 'c26e453d00000000000000000000000000000000';
+const REVIEW_3276 = (commitId) => ({
+  id: 5030520937,
+  user: { login: 'coderabbitai[bot]' },
+  state: 'COMMENTED',
+  commit_id: commitId,
+  submitted_at: '2026-08-26T12:46:19Z',
+});
+const COMPLETED_3276 = [
+  { name: 'CodeRabbit', state: 'success', description: 'Review completed' },
+];
+const STATE_3276 = (commitId) => ({
+  required: HEALTHY,
+  lanes: HEALTHY.map((n) => LANE(n)),
+  reviewChecks: COMPLETED_3276,
+  reviews: [REVIEW_3276(commitId)],
+  headSha: HEAD_3276,
+});
+
+/**
+ * PART 3 OPTED IN.
+ *
+ * The SHIPPED default is `off` — see the config's premise note: CodeRabbit
+ * submits no review event when a run finds nothing actionable, so 2 of
+ * `claimed-verdict`'s 4 live fires were false. The rule still ships, and every
+ * test below that exercises it therefore says so explicitly rather than
+ * inheriting a default. The `off` behaviour is asserted separately.
+ */
+const ON = (patch = {}, tag = 'part3-on') => [
+  '--config',
+  cfgWith({ staleReviewPolicy: 'claimed-verdict', ...patch }, tag),
+];
+
+/** The staleness knob forced to `fail`, as `FATAL` does for part 2. */
+const FATAL_STALE = () => ON({ staleReviewSeverity: 'fail' }, 'fatal-stale');
+
+test('the #3276 shape: lanes clean, no-verdict clean, and the review still names an older commit', () => {
+  const r = run(STATE_3276(OLD_3276), ON());
+  assert.match(r.output, /All 3 required lane\(s\)/);
+  assert.match(r.output, /none reports a passing state over a review it did not perform/);
+  assert.match(r.output, /STALE_REVIEW: `CodeRabbit`/);
+  assert.match(r.output, /newest review is of c26e453d/);
+  assert.match(r.output, /not of the head 1305f778/);
+  // `warn` is the shipped default, so the PR is not held red on it.
+  assert.equal(r.code, 0, r.output);
+});
+
+test('ANTI-VACUITY: the identical PR with the review AT the head reports no staleness', () => {
+  // #3315, #3309 and #2931 live. Without this, an implementation that always
+  // reports stale passes the test above.
+  const r = run(STATE_3276(HEAD_3276), ON());
+  assert.doesNotMatch(r.output, /STALE_REVIEW/);
+  assert.match(r.output, /No reviewer claims a verdict on 1305f778 from a review of an older commit/);
+  assert.match(r.output, /policy: claimed-verdict/);
+  assert.equal(r.code, 0, r.output);
+});
+
+test('ESCALATION: `staleReviewSeverity: fail` turns the same finding red', () => {
+  const red = run(STATE_3276(OLD_3276), FATAL_STALE());
+  assert.equal(red.code, 1, red.output);
+  assert.match(red.output, /❌ STALE_REVIEW/);
+  // …and the escalated config still passes the current-review case, so the
+  // exit code is tracking the finding rather than the flag.
+  const green = run(STATE_3276(HEAD_3276), FATAL_STALE());
+  assert.equal(green.code, 0, green.output);
+});
+
+test('the SHIPPED default for part 3 is `off`, and `off` NEVER prints a tick', () => {
+  const cfg = JSON.parse(readFileSync(CONFIG, 'utf8'));
+  assert.equal(cfg.staleReviewSeverity, 'warn');
+  assert.equal(cfg.staleReviewPolicy, 'off');
+
+  // #3276's own shape, the one `claimed-verdict` fires on, under the shipped
+  // config. It must say the question was not asked — not answer it.
+  const r = run(STATE_3276(OLD_3276));
+  assert.doesNotMatch(r.output, /No reviewer claims a verdict/, 'a tick nobody earned');
+  assert.doesNotMatch(r.output, /STALE_REVIEW: /);
+  assert.match(r.output, /STALE_REVIEW not adjudicated/);
+  assert.match(r.output, /`staleReviewPolicy` is "off"/);
+  assert.equal(r.code, 0, r.output);
+
+  // MUTATION GUARD: `off` is inert, not merely silent. Under `claimed-verdict`
+  // each of these is a refusal (asserted below); under `off` the gate does not
+  // fall over on a question it never asks.
+  const inert = runRaw({ required: HEALTHY, lanes: HEALTHY.map((n) => LANE(n)) });
+  assert.equal(inert.code, 0, inert.output);
+  assert.match(inert.output, /STALE_REVIEW not adjudicated/);
+  assert.doesNotMatch(inert.output, /NO_REVIEWS|NO_HEAD_SHA/);
+});
+
+test('NO NAG: a reviewer with no review event and a `Review completed` status is silent', () => {
+  // #3316 and #3205 verbatim: `CodeRabbit :: success / Review completed` and
+  // zero review events. A stated hole, not an oversight.
+  const r = run({ ...STATE_3276(OLD_3276), reviews: [] }, ON());
+  assert.doesNotMatch(r.output, /STALE_REVIEW/);
+  assert.equal(r.code, 0, r.output);
+});
+
+test('DEDUPE: a suppressed finding is said ONCE and still moves the exit code', () => {
+  // RED, verbatim, before the fix: this exact input with `staleReviewSeverity`
+  // forced to `fail` printed
+  //   ✅ No reviewer claims a verdict on 1305f778 from a review of an older commit
+  // and exited 0, while the same input under `configured-authors` printed
+  //   ❌ STALE_REVIEW: `CodeRabbit` …
+  // and exited 1. The dedupe made the severity knob inoperative and rendered a
+  // suppressed finding as a clean pass — the defect class this gate exists to
+  // remove.
+  const rateLimited = {
+    ...STATE_3276(OLD_3276),
+    reviewChecks: [{ name: 'CodeRabbit', state: 'success', description: 'Review rate limited' }],
+  };
+  const r = run(rateLimited, FATAL_STALE());
+  assert.match(r.output, /NO_VERDICT: `CodeRabbit`/);
+  // A tick is the one thing it must never print here.
+  assert.doesNotMatch(r.output, /No reviewer claims a verdict/);
+  // Said once: the full three-line staleness paragraph is NOT repeated…
+  assert.doesNotMatch(r.output, /reads as having reviewed this PR/);
+  // …but the finding is stated, and it names what already reported it.
+  assert.match(r.output, /STALE_REVIEW: `CodeRabbit` is ALSO stale/);
+  assert.match(r.output, /reported above as `CodeRabbit`/);
+  assert.match(r.output, /Re-run the reviewer on the head/);
+  // And the knob is operative: `fail` is red.
+  assert.equal(r.code, 1, r.output);
+
+  // ANTI-VACUITY, both ways. Same rate-limited input with the review AT the
+  // head is genuinely clean and prints the tick it earned…
+  const clean = run(
+    { ...rateLimited, reviews: [REVIEW_3276(HEAD_3276)] },
+    FATAL_STALE(),
+  );
+  assert.match(clean.output, /No reviewer claims a verdict/);
+  assert.doesNotMatch(clean.output, /STALE_REVIEW/);
+  assert.equal(clean.code, 0, clean.output);
+  // …and at the shipped `warn` the suppressed finding is a warning, not red,
+  // so the exit code tracks the knob rather than the branch.
+  const warned = run(rateLimited, ON());
+  assert.match(warned.output, /STALE_REVIEW: `CodeRabbit` is ALSO stale/);
+  assert.equal(warned.code, 0, warned.output);
+});
+
+// ------------------------------------------------- fail-closed, as a process
+
+test('FAIL CLOSED: a state file that omits `reviews` gets NO_REVIEWS, not a success line', () => {
+  // THE BRANCH IT IS TEMPTING TO SKIP. `--state-file` mode is the harness's own
+  // path, and the last defect in this file was exactly that path quietly
+  // supplying a value (`timedOut: false`) the real path computes. Defaulting
+  // `reviews` to `[]` inside the gate would repeat it.
+  const r = runRaw(
+    { required: HEALTHY, lanes: HEALTHY.map((n) => LANE(n)), headSha: HEAD_3276 },
+    ON(),
+  );
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /NO_REVIEWS/);
+  assert.doesNotMatch(r.output, /No reviewer claims a verdict/);
+});
+
+test('FAIL CLOSED: a state file that omits `headSha` gets NO_HEAD_SHA', () => {
+  const r = runRaw(
+    { required: HEALTHY, lanes: HEALTHY.map((n) => LANE(n)), reviews: [] },
+    ON(),
+  );
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /NO_HEAD_SHA/);
+  assert.doesNotMatch(r.output, /No reviewer claims a verdict/);
+});
+
+test('FAIL CLOSED: an unreadable `commit_id` refuses instead of comparing an older review', () => {
+  const r = run({ ...STATE_3276(OLD_3276), reviews: [REVIEW_3276('c26e453d')] }, ON());
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /UNREADABLE_COMMIT_ID/);
+});
+
+test('FAIL CLOSED: an unrecognised `staleReviewPolicy` is BAD_CONFIG, never a silent downgrade', () => {
+  for (const bad of [undefined, 'strict', '']) {
+    const cfg = cfgWith({ staleReviewPolicy: bad }, `policy-${JSON.stringify(bad)}`);
+    const r = run(STATE_3276(HEAD_3276), ['--config', cfg]);
+    assert.equal(r.code, 1, r.output);
+    assert.match(r.output, /BAD_CONFIG/);
+    assert.match(r.output, /staleReviewPolicy/);
+  }
+});
+
+test('FAIL CLOSED: an unrecognised `staleReviewSeverity` is BAD_CONFIG', () => {
+  for (const bad of [undefined, 'advisory']) {
+    const cfg = cfgWith({ staleReviewSeverity: bad }, `sev-${JSON.stringify(bad)}`);
+    const r = run(STATE_3276(HEAD_3276), ['--config', cfg]);
+    assert.equal(r.code, 1, r.output);
+    assert.match(r.output, /staleReviewSeverity/);
+  }
+});
+
+test('FAIL CLOSED: an empty or malformed `reviewAuthors` refuses', () => {
+  const empty = cfgWith({ reviewAuthors: [] }, 'authors-empty');
+  const e = run(STATE_3276(HEAD_3276), ['--config', empty]);
+  assert.equal(e.code, 1, e.output);
+  assert.match(e.output, /EMPTY_REVIEW_AUTHORS/);
+
+  // A `context`-less entry is inert under the default policy, which is the
+  // shape that would quietly stop covering a reviewer somebody configured.
+  const noContext = cfgWith(
+    { reviewAuthors: [{ login: 'coderabbitai[bot]' }] },
+    'authors-no-context',
+  );
+  const n = run(STATE_3276(HEAD_3276), ['--config', noContext]);
+  assert.equal(n.code, 1, n.output);
+  assert.match(n.output, /needs a non-empty `context`/);
+
+  const noLogin = cfgWith({ reviewAuthors: [{ context: 'CodeRabbit' }] }, 'authors-no-login');
+  const l = run(STATE_3276(HEAD_3276), ['--config', noLogin]);
+  assert.equal(l.code, 1, l.output);
+  assert.match(l.output, /needs a non-empty `login`/);
+});
+
+test('WIRING: both API walks are paginated AND flattened through the refusing helper', () => {
+  // NOT reachable through `--state-file`, which is exactly why it is asserted
+  // over the source. A mutation that replaced `flattenCheckRunPages(pages, …)`
+  // with an inline `pages.flatMap((p) => p.check_runs ?? [])` survived the
+  // whole suite: the helper's refusal is tested, its USE was not. Both walks
+  // are covered, because the same hole existed on the reviews side.
+  const src = readFileSync(GATE, 'utf8');
+  const fn = (name) => {
+    const at = src.indexOf(`function ${name}(`);
+    assert.ok(at > 0, `${name} exists`);
+    return src.slice(at, src.indexOf('\n}\n', at));
+  };
+  for (const [name, helper] of [
+    ['fetchCheckRunDescriptions', 'flattenCheckRunPages'],
+    ['fetchReviews', 'flattenReviewPages'],
+  ]) {
+    // Comments in these bodies legitimately NAME the fields, so compare code.
+    const body = fn(name)
+      .split('\n')
+      .filter((l) => !l.trim().startsWith('//'))
+      .join('\n');
+    // A truncated walk drops rows silently — a false NEGATIVE for part 2 and a
+    // false POSITIVE for part 3 — so neither may rest on a `per_page` guess.
+    assert.match(body, /'--paginate'/, `${name} must paginate`);
+    // `--slurp` is what keeps the page boundaries visible, and it is the only
+    // reason the helper can tell a short page from a stopped walk.
+    assert.match(body, /'--slurp'/, `${name} must slurp`);
+    assert.match(body, new RegExp(`${helper}\\(`), `${name} must flatten via ${helper}`);
+    // …and must not hand-roll the flatten around it.
+    assert.doesNotMatch(body, /flatMap|\.check_runs\b/, `${name} must not inline the flatten`);
+  }
+});
+
+test('POLICY: `all-authors` is reachable through the config and changes the answer', () => {
+  // Proves the knob is wired end to end rather than merely validated: the same
+  // state file, clean under the default, is a finding under `all-authors`.
+  const state = {
+    required: HEALTHY,
+    lanes: HEALTHY.map((n) => LANE(n)),
+    reviewChecks: [],
+    reviews: [
+      {
+        id: 10,
+        user: { login: 'louistrue' },
+        state: 'APPROVED',
+        commit_id: OLD_3276,
+        submitted_at: '2026-08-26T12:46:19Z',
+      },
+    ],
+    headSha: HEAD_3276,
+  };
+  // Clean under `claimed-verdict` (no configured context claims a verdict) —
+  // compared against `claimed-verdict` explicitly, not against the shipped
+  // `off`, which would make the contrast trivially true for the wrong reason.
+  const dflt = run(state, ON());
+  assert.doesNotMatch(dflt.output, /STALE_REVIEW/);
+
+  const all = run(state, ['--config', cfgWith({ staleReviewPolicy: 'all-authors' }, 'all')]);
+  assert.match(all.output, /STALE_REVIEW: `louistrue`/);
+  // The finding names the scoping rule that produced it — a staleness warning
+  // read without its policy is a policy nobody can argue with.
+  assert.match(all.output, /Scoping policy: `all-authors`/);
+});
+
+test('FAIL CLOSED: a bad `staleReviewPolicy` is caught EAGERLY, not masked by the PR state', () => {
+  // `staleReviews` validates the policy too, so a test that only drives the
+  // happy-path state file passes with the config-read guard deleted — a
+  // mutation check caught exactly that. The guard's job is to reject a config
+  // TYPO as a config typo, before anything else about the PR can throw first.
+  // An empty rollup makes part 1 throw NO_ROLLUP, so the lazy path can no
+  // longer be the one producing the message.
+  const cfg = cfgWith({ staleReviewPolicy: 'strict' }, 'policy-eager');
+  const r = runRaw({ required: HEALTHY, lanes: [] }, ['--config', cfg]);
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /BAD_CONFIG/);
+  assert.match(r.output, /staleReviewPolicy/);
+  assert.doesNotMatch(r.output, /NO_ROLLUP/, 'the config is read before the rollup is judged');
+
+  // Same for the severity knob, and same reason.
+  const sev = cfgWith({ staleReviewSeverity: 'advisory' }, 'sev-eager');
+  const s = runRaw({ required: HEALTHY, lanes: [] }, ['--config', sev]);
+  assert.equal(s.code, 1, s.output);
+  assert.match(s.output, /staleReviewSeverity/);
+  assert.doesNotMatch(s.output, /NO_ROLLUP/);
+
+  // …and for an empty `reviewAuthors`, which `staleReviews` also rejects — so
+  // without the empty rollup this assertion would pass with the config-read
+  // guard deleted. The mutation sweep caught exactly that.
+  const authors = cfgWith({ reviewAuthors: [] }, 'authors-eager');
+  const a = runRaw({ required: HEALTHY, lanes: [] }, ['--config', authors]);
+  assert.equal(a.code, 1, a.output);
+  assert.match(a.output, /EMPTY_REVIEW_AUTHORS/);
+  assert.doesNotMatch(a.output, /NO_ROLLUP/);
 });

@@ -35,10 +35,12 @@ use crate::source_header::Lex;
 /// it handles the `''` escape by consuming a literal whole instead of toggling
 /// a flag per apostrophe.
 ///
-/// Linear in `haystack.len()`. That is not free here and the reason is in
-/// `last_comment_close`: hoisting the closer search is what keeps an
-/// unterminated `/*` from making this quadratic, and this function has no
-/// header cap, so it can be handed a whole multi-megabyte file.
+/// Linear in `haystack.len()`, and that is not free here. An unterminated
+/// `/*` makes the naive form quadratic, and this function has no header cap,
+/// so it can be handed a whole multi-megabyte file. What prevents it is the
+/// `no_closer` memo on `source_header::Lex`: the closer search is deferred
+/// until a `/*` is actually seen, and one failure proves no later `/*` can
+/// open a comment either.
 fn find_unquoted(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     if needle.is_empty() || needle.len() > haystack.len() {
         return None;

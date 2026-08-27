@@ -17,6 +17,8 @@ import {
   QuantityType,
   RelationshipType,
   isSpatialStructureTypeName,
+  IfcTypeEnum,
+  IfcTypeEnumFromString,
 } from '@ifc-lite/data';
 import { BinaryCacheWriter, BinaryCacheReader, xxhash64, SchemaVersion, FORMAT_VERSION } from './index.js';
 import type { CacheDataStore } from './types.js';
@@ -482,6 +484,65 @@ describe('BinaryCacheWriter and BinaryCacheReader', () => {
 
     expect(entities.getTypeName(4)).toBe('IfcBuildingStorey');
     expect(isSpatialStructureTypeName(entities.getTypeName(4))).toBe(true);
+  });
+
+  // Most concrete IFC product classes are absent from the hand-maintained
+  // `IfcTypeEnum` (101 of the 157 concrete `IfcProduct` subtypes in the
+  // generated IFC4 registry). The live parser table carries a `rawTypeName`
+  // string column so `getTypeName` can fall back to the real class for those;
+  // the cache writer/reader pair must carry the same column, or every such
+  // element comes back as 'Unknown' after a cache load.
+  //
+  // Both directions, over a NAMED list rather than a count: classes that are
+  // in the enum must keep working (negative control), and classes that are
+  // not must come back with their real name (the regression).
+  it('preserves the class name of every named IFC4 class through a cache round-trip', async () => {
+    // Every name here is a concrete entity of the generated IFC4 registry.
+    const IN_ENUM = ['IfcWall', 'IfcSpace', 'IfcBuildingStorey'] as const;
+    const NOT_IN_ENUM = [
+      'IfcPump',
+      'IfcValve',
+      'IfcAirTerminal',
+      'IfcSanitaryTerminal',
+      'IfcLightFixture',
+      'IfcSurfaceFeature',
+      'IfcBoiler',
+      'IfcStructuralCurveMember',
+    ] as const;
+
+    // Anti-vacuity, both halves: the split must really be a split, and each
+    // name must really sit on the side of `IfcTypeEnum` this test claims.
+    // If a class is ever added to the enum it moves lists, it is not dropped.
+    expect(IN_ENUM.length).toBeGreaterThan(0);
+    expect(NOT_IN_ENUM.length).toBeGreaterThan(0);
+    for (const n of IN_ENUM) expect([n, IfcTypeEnumFromString(n)]).not.toEqual([n, IfcTypeEnum.Unknown]);
+    for (const n of NOT_IN_ENUM) expect([n, IfcTypeEnumFromString(n)]).toEqual([n, IfcTypeEnum.Unknown]);
+
+    const all = [...IN_ENUM, ...NOT_IN_ENUM];
+    const builder = new EntityTableBuilder(all.length, dataStore.strings);
+    all.forEach((cls, i) => {
+      builder.add(i + 1, cls.toUpperCase(), `guid-${i + 1}`, `Entity ${i + 1}`, '', '', false, false);
+    });
+    const entities = builder.build();
+
+    // Anti-vacuity: the pre-cache table already answers correctly for every
+    // name, so a failure below is the cache losing it and nothing else.
+    const before = all.map((cls, i) => [cls, entities.getTypeName(i + 1)]);
+    expect(before).toEqual(all.map((cls) => [cls, cls]));
+
+    const writer = new BinaryCacheWriter();
+    const cacheBuffer = await writer.write(
+      { ...dataStore, entities, entityCount: entities.count },
+      undefined,
+      sourceBuffer,
+      { includeGeometry: false },
+    );
+
+    const reader = new BinaryCacheReader();
+    const result = await reader.read(cacheBuffer);
+
+    const after = all.map((cls, i) => [cls, result.dataStore.entities.getTypeName(i + 1)]);
+    expect(after).toEqual(all.map((cls) => [cls, cls]));
   });
 
   it('should preserve property data through round-trip', async () => {

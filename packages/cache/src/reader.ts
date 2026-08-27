@@ -99,7 +99,7 @@ export class BinaryCacheReader {
       throw new Error('Missing required Entities section');
     }
     reader.position = entitiesSection.offset;
-    const entities = readEntities(reader, strings);
+    const entities = readEntities(reader, strings, header.version);
 
     // Read properties
     const propertiesSection = sectionMap.get(SectionType.Properties);

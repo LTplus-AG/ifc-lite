@@ -202,7 +202,6 @@
    437 packages/create/src/in-store/generate-spaces.ts
    819 packages/create/src/types.ts
   1106 packages/data/scripts/generate-ifc-schema.ts
-   907 packages/data/src/ifc-entity-names.ts
    438 packages/data/src/property-table.ts
    459 packages/data/src/step-serializers.ts
    508 packages/data/src/types.ts
@@ -251,7 +250,7 @@
    468 packages/ifcx/src/federated-composition.ts
    412 packages/ifcx/src/geometry-extractor.ts
    706 packages/ifcx/src/index.ts
-   424 packages/ifcx/src/writer.ts
+   415 packages/ifcx/src/writer.ts
    464 packages/lens/src/engine.ts
    426 packages/lens/src/matching.ts
    417 packages/lens/src/types.ts

@@ -1097,7 +1097,7 @@ for (const bet of bets) {
       if (direct.kind) {
         // A marker on a numeral the artifact now backs is an excuse that has
         // outlived its reason: record it so the STALE list can report it.
-        if (markers.has(token)) usedMarkers.add(`${token} backed`);
+        if (markers.has(token)) usedMarkers.add(`${token}\0backed`);
         backed.push({ ...g, via: direct.kind, scale: direct.scale, src: direct.entry.src });
         continue;
       }
@@ -1122,7 +1122,7 @@ for (const bet of bets) {
       staleMarkers.push({
         token,
         reason,
-        why: usedMarkers.has(`${token} backed`)
+        why: usedMarkers.has(`${token}\0backed`)
           ? 'the artifact now BACKS this numeral -- delete the marker, the check covers it'
           : 'no unbacked numeral in this document matches this token -- the prose moved, delete the marker',
       });

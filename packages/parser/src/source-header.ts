@@ -259,6 +259,16 @@ function schemaFromIdentifier(identifier: string): IfcStoreBase['schemaVersion']
   return undefined;
 }
 
+/** Upper-case the ASCII letters and nothing else. See `detectSchemaVersion`. */
+function asciiUpper(text: string): string {
+  let out = '';
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    out += c >= 97 && c <= 122 ? String.fromCharCode(c - 32) : text[i];
+  }
+  return out;
+}
+
 /**
  * Determine which IFC schema a STEP buffer declares (issue #3278).
  *
@@ -291,7 +301,14 @@ export function detectSchemaVersion(
 
   const src = asSourceBytes(buffer);
   const headerEnd = Math.min(src.byteLength, 2000);
-  const headerText = src.decodeUtf8(0, headerEnd).toUpperCase();
+  // ASCII-only, for the same reason `matchesKeywordAt` is. `toUpperCase()`
+  // maps `ı` (dotless i) to `I`, so a FILE_DESCRIPTION mentioning `ıFC5` chose
+  // IFC5 for a file that never said so. This scan is already a loose
+  // last-resort substring match -- it only runs when no FILE_SCHEMA identifier
+  // resolved at all -- but loose is not a reason to accept a fold 10303-21
+  // does not use. Offsets are not taken from this copy, so a copy is fine here
+  // where it was not in the record scan.
+  const headerText = asciiUpper(src.decodeUtf8(0, headerEnd));
 
   if (headerText.includes('IFC5')) return 'IFC5';
   if (headerText.includes('IFC4X3')) return 'IFC4X3';

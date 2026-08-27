@@ -20,7 +20,7 @@
     "generate:epsg-index": "tsx ../../scripts/generate-epsg-index.ts",
     "augment:epsg-proj4": "tsx ../../scripts/augment-epsg-proj4.ts",
     "verify:epsg": "tsx scripts/verify-epsg-roundtrip.ts",
-    "generate:ifc-schema": "tsx scripts/generate-ifc-schema.ts"
+    "generate:ifc-schema": "tsx scripts/generate-ifc-schema.ts && tsx scripts/emit-entity-names.ts"
   },
   "dependencies": {
     "@ifc-lite/encoding": "workspace:^"

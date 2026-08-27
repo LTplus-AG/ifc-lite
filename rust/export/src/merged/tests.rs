@@ -6,6 +6,7 @@
 //! the `_tests.rs` suffix convention.
 
 use super::*;
+use ifc_lite_core::EntityScanner;
 
 fn scan_ids(step: &str) -> Vec<u32> {
     let bytes = step.as_bytes();
@@ -36,8 +37,22 @@ fn merge_two_models_unifies_project_and_offsets_ids() {
     let projects = merged.lines().filter(|l| l.contains("=IFCPROJECT(")).count();
     assert_eq!(projects, 1, "single unified project");
 
-    // Two models minus one dropped project ≈ 2*single - 1 entities.
-    assert_eq!(stats.written, single * 2 - 1);
+    // Self-merge: every rooted entity of the second model shares a GlobalId with
+    // the first (same unit space) and unifies into it — references remapped, the
+    // line not re-emitted — matching merged-exporter.ts's reconciliation. So the
+    // merged file has far fewer than 2*single lines, yet the first model survives
+    // in full and the second still contributes its non-rooted geometry and
+    // relationships (which carry no GlobalId to unify on).
+    assert!(
+        stats.written < single * 2 - 1,
+        "duplicate rooted entities must unify, not blindly duplicate (written={}, single={single})",
+        stats.written
+    );
+    assert!(
+        stats.written > single,
+        "second model's non-rooted geometry/relationships still contribute (written={}, single={single})",
+        stats.written
+    );
 
     // No dangling references: every #ref resolves to a written id.
     let idset: std::collections::HashSet<u32> = ids.into_iter().collect();
@@ -127,6 +142,7 @@ fn merge_maps_raw_control_bytes_in_header_fields_to_a_space() {
         schema: Some("IFC4".to_string()),
         description: "ViewDefinition [CoordinationView]".to_string(),
         application: "app\u{07}bell\u{0B}vt".to_string(),
+        ..Default::default()
     };
     let content = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('guid',$,$,$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n";
     let (merged, _stats) = export_merged_with_stats(&[content.as_bytes()], &opts);
@@ -192,6 +208,7 @@ fn header_fields_round_trip_apostrophe_and_backslash_per_spec() {
         schema: Some("IFC4".to_string()),
         description: "ViewDefinition [CoordinationView]".to_string(),
         application: r"O'Brien\Docs\ifc-lite".to_string(),
+        ..Default::default()
     };
     let a = fixture_or_skip!("ara3d/duplex.ifc");
     let (step, _stats) = export_merged_with_stats(&[&a], &opts);
@@ -305,6 +322,486 @@ fn detect_schema_un_doubles_backslash_before_escape_re_doubles_it() {
     assert_eq!(schema_line, "FILE_SCHEMA(('IFC\\\\4'));");
 }
 
+// ── Native feature-parity tests (issue #2951) ───────────────────────────────
+//
+// Synthetic federated scenes exercise the pieces the old id-offset-only merge
+// lacked: GlobalId reconciliation, spatial unification, visibility filtering,
+// and unit federation. All fixtures are inline STEP (no external fixtures).
+
+/// A minimal but structurally complete IFC model: project + unit + site +
+/// building + storey + wall + the full spatial aggregation chain
+/// (project→site→building→storey) plus the wall's spatial containment. `tag`
+/// makes every GlobalId unique per model (identical `tag` ⇒ identical
+/// GlobalIds); `mm` selects millimetre vs metre length units;
+/// `site_name`/`storey_name` drive spatial name-matching.
+fn build_model(tag: &str, mm: bool, site_name: &str, storey_name: &str) -> String {
+    let prefix = if mm { ".MILLI." } else { "$" };
+    let g = |base: &str| -> String {
+        let mut s = format!("{base}{tag}");
+        while s.len() < 22 {
+            s.push('0');
+        }
+        s.truncate(22);
+        s
+    };
+    format!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#1=IFCPROJECT('{proj}',$,'Project',$,$,$,$,$,#2);\n\
+#2=IFCUNITASSIGNMENT((#3));\n\
+#3=IFCSIUNIT(*,.LENGTHUNIT.,{prefix},.METRE.);\n\
+#10=IFCSITE('{site}',$,'{site_name}',$,$,$,$,$,$);\n\
+#11=IFCBUILDING('{bldg}',$,'Building',$,$,$,$,$,$,$,$);\n\
+#12=IFCBUILDINGSTOREY('{storey}',$,'{storey_name}',$,$,$,$,$,.ELEMENT.,0.);\n\
+#20=IFCWALL('{wall}',$,'Wall',$,$,$,$,$);\n\
+#28=IFCRELAGGREGATES('{rprj}',$,$,$,#1,(#10));\n\
+#29=IFCRELAGGREGATES('{rbld}',$,$,$,#11,(#12));\n\
+#30=IFCRELAGGREGATES('{ragg}',$,$,$,#10,(#11));\n\
+#31=IFCRELCONTAINEDINSPATIALSTRUCTURE('{rcon}',$,$,$,(#20),#12);\n\
+ENDSEC;\nEND-ISO-10303-21;\n",
+        proj = g("PROJ"),
+        site = g("SITE"),
+        bldg = g("BLDG"),
+        storey = g("STOR"),
+        wall = g("WALL"),
+        rprj = g("RPRJ"),
+        rbld = g("RBLD"),
+        ragg = g("RAGG"),
+        rcon = g("RCON"),
+    )
+}
+
+/// The leading GlobalId of every ROOTED entity line in a STEP string, classified
+/// by type (not just the 22-char shape), so a non-rooted entity leading with a
+/// 22-char charset Name is never counted as a GlobalId (CR #2952).
+fn leading_guids(step: &str) -> Vec<String> {
+    step.lines()
+        .filter(|l| l.starts_with('#'))
+        .filter_map(|l| super::guid::leading_rooted_global_id(l.as_bytes()))
+        .collect()
+}
+
+/// Count entity lines whose type token matches `=IFC…(`.
+fn type_count(step: &str, needle: &str) -> usize {
+    step.lines().filter(|l| l.contains(needle)).count()
+}
+
+/// Assert every `#ref` in the DATA section resolves to a written id.
+fn assert_no_dangling(step: &str) {
+    let ids: std::collections::HashSet<u32> = scan_ids(step).into_iter().collect();
+    for line in step.lines().filter(|l| l.starts_with('#')) {
+        let after_eq = line.find('=').map(|e| &line[e..]).unwrap_or(line);
+        let bytes = after_eq.as_bytes();
+        let mut i = 0;
+        let mut in_str = false;
+        while i < bytes.len() {
+            let c = bytes[i];
+            if c == b'\'' {
+                in_str = !in_str;
+            } else if !in_str && c == b'#' {
+                let mut j = i + 1;
+                let mut n = 0u32;
+                let mut any = false;
+                while j < bytes.len() && bytes[j].is_ascii_digit() {
+                    n = n * 10 + (bytes[j] - b'0') as u32;
+                    j += 1;
+                    any = true;
+                }
+                if any {
+                    assert!(ids.contains(&n), "dangling ref #{n} in {line:?}");
+                    i = j;
+                    continue;
+                }
+            }
+            i += 1;
+        }
+    }
+}
+
+/// Every `#N` reference in a line's attribute list (after `=`), skipping the
+/// leading express id and any `#` inside a quoted string. In source order.
+fn refs_in_line(line: &str) -> Vec<u32> {
+    let after_eq = line.find('=').map(|e| &line[e..]).unwrap_or(line);
+    let bytes = after_eq.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0;
+    let mut in_str = false;
+    while i < bytes.len() {
+        let c = bytes[i];
+        if c == b'\'' {
+            in_str = !in_str;
+        } else if !in_str && c == b'#' {
+            let mut j = i + 1;
+            let mut n = 0u32;
+            let mut any = false;
+            while j < bytes.len() && bytes[j].is_ascii_digit() {
+                n = n * 10 + (bytes[j] - b'0') as u32;
+                j += 1;
+                any = true;
+            }
+            if any {
+                out.push(n);
+                i = j;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    out
+}
+
+/// The express id of a `#123=…` line.
+fn leading_id(line: &str) -> Option<u32> {
+    line.strip_prefix('#')?.split('=').next()?.trim().parse().ok()
+}
+
+/// The express id of the single line whose text contains `needle` (panics unless
+/// exactly one matches) — e.g. the sole surviving `=IFCSITE(` after a unify.
+fn sole_id_of_type(step: &str, needle: &str) -> u32 {
+    let ids: Vec<u32> =
+        step.lines().filter(|l| l.contains(needle)).filter_map(leading_id).collect();
+    assert_eq!(ids.len(), 1, "expected exactly one {needle}, found {ids:?}");
+    ids[0]
+}
+
+#[test]
+fn spatial_hierarchy_endpoints_remapped_after_merge() {
+    // Two models with an identical named spatial tree unify into one
+    // project→site→building→storey chain. The surviving aggregations must connect
+    // the *single* unified containers, and both walls' containment must be
+    // remapped onto the one storey — not left dangling (CR #2952).
+    let a = build_model("A", true, "Terrain", "Level 1");
+    let b = build_model("B", true, "Terrain", "Level 1");
+    let (merged, _) =
+        export_merged_with_stats(&[a.as_bytes(), b.as_bytes()], &MergedOptions::default());
+
+    assert_no_dangling(&merged);
+    let project = sole_id_of_type(&merged, "=IFCPROJECT(");
+    let site = sole_id_of_type(&merged, "=IFCSITE(");
+    let building = sole_id_of_type(&merged, "=IFCBUILDING(");
+    let storey = sole_id_of_type(&merged, "=IFCBUILDINGSTOREY(");
+
+    // The full aggregation chain survives, each hop pointing at the unified ids.
+    let aggs: Vec<(u32, Vec<u32>)> = merged
+        .lines()
+        .filter(|l| l.contains("=IFCRELAGGREGATES("))
+        .map(|l| {
+            let r = refs_in_line(l);
+            (r[0], r[1..].to_vec())
+        })
+        .collect();
+    assert!(aggs.iter().any(|(rel, sub)| *rel == project && sub.as_slice() == [site]), "project→site");
+    assert!(aggs.iter().any(|(rel, sub)| *rel == site && sub.as_slice() == [building]), "site→building");
+    assert!(aggs.iter().any(|(rel, sub)| *rel == building && sub.as_slice() == [storey]), "building→storey");
+
+    // Both walls' spatial containment (RelatingStructure is the last #ref) remaps
+    // onto the one unified storey.
+    let contain_storeys: Vec<u32> = merged
+        .lines()
+        .filter(|l| l.contains("=IFCRELCONTAINEDINSPATIALSTRUCTURE("))
+        .map(|l| *refs_in_line(l).last().expect("a relating structure"))
+        .collect();
+    assert_eq!(contain_storeys.len(), 2, "both walls kept their containment");
+    assert!(contain_storeys.iter().all(|&s| s == storey), "remapped onto the unified storey");
+}
+
+#[test]
+fn within_model_duplicate_globalids_are_restamped() {
+    // A single (first) model with two rooted entities carrying the SAME GlobalId
+    // — a defective source. The cross-model map cannot see this (nothing is
+    // registered until emit time), so reconciliation must track within-model
+    // duplicates and re-stamp the second occurrence (CR #2952).
+    let dup = "SAMEGUID00000000000000"; // 22 charset chars
+    let model = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#1=IFCPROJECT('PROJ000000000000000000',$,$,$,$,$,$,$,$);\n\
+#20=IFCWALL('{dup}',$,'Wall A',$,$,$,$,$);\n\
+#21=IFCWALL('{dup}',$,'Wall B',$,$,$,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n"
+    );
+    let (merged, _) = export_merged_with_stats(&[model.as_bytes()], &MergedOptions::default());
+
+    // Both distinct walls survive, but no GlobalId is emitted twice.
+    assert_eq!(type_count(&merged, "=IFCWALL("), 2, "both walls survive");
+    let guids = leading_guids(&merged);
+    let mut unique = guids.clone();
+    unique.sort();
+    unique.dedup();
+    assert_eq!(unique.len(), guids.len(), "within-model duplicate GlobalId re-stamped");
+    // Exactly one wall kept the original GlobalId; the other was minted fresh.
+    assert_eq!(guids.iter().filter(|g| g.as_str() == dup).count(), 1);
+    assert_no_dangling(&merged);
+}
+
+#[test]
+fn assume_shared_reconciles_guids_across_incompatible_declared_units() {
+    // Regression for the AssumeShared effective-scale (CR #2952): a later model
+    // introduces a GlobalId under a declared unit incompatible with the first,
+    // and a still-later model shares it. AssumeShared must unify the two — which
+    // only holds if the introduced entity is recorded under the FIRST model's
+    // scale, not its own. With the old `this_scale`, the third model's duplicate
+    // would fail the units-compatible gate and be re-stamped instead of unified.
+    let a = build_model("A", true, "Terrain", "Level 1"); // mm, primary
+    let b = build_model("B", false, "Terrain", "Level 1"); // metre, distinct guids
+    let c = build_model("B", false, "Terrain", "Level 1"); // metre, shares B's guids
+    let opts = MergedOptions {
+        unit_reconciliation: UnitReconciliation::AssumeShared,
+        ..Default::default()
+    };
+    let (merged, stats) =
+        export_merged_with_stats(&[a.as_bytes(), b.as_bytes(), c.as_bytes()], &opts);
+
+    assert_eq!(stats.federated_model_count, 0, "AssumeShared never federates");
+    // A's wall (WALLA…) plus the single unified B/C wall (WALLB…) = 2. If C's wall
+    // were re-stamped rather than unified, there would be 3.
+    assert_eq!(type_count(&merged, "=IFCWALL("), 2, "shared guid unified across the metre models");
+    let guids = leading_guids(&merged);
+    let mut unique = guids.clone();
+    unique.sort();
+    unique.dedup();
+    assert_eq!(unique.len(), guids.len(), "no duplicate GlobalIds");
+    assert_no_dangling(&merged);
+}
+
+#[test]
+fn express_id_overflow_stops_merge_without_wrapping() {
+    // A model whose max express id sits just below u32::MAX: a second model cannot
+    // be placed without wrapping the cumulative offset, which would silently
+    // duplicate ids and mis-point references. The merge must stop and report the
+    // unmerged tail instead (CR #2952).
+    let big = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#4294967290=IFCWALL('WALLBIG0000000000000A',$,'W',$,$,$,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n";
+    let small = build_model("S", true, "Terrain", "Level 1");
+    let (merged, stats) =
+        export_merged_with_stats(&[big.as_bytes(), small.as_bytes()], &MergedOptions::default());
+
+    assert_eq!(stats.unmerged_model_count, 1, "second model would overflow the id space");
+    assert!(stats.warnings.iter().any(|w| w.contains("u32::MAX")), "overflow reported");
+    // The first model still emitted validly — no wrapped ids, no dangling refs.
+    assert_no_dangling(&merged);
+    assert_eq!(type_count(&merged, "=IFCWALL("), 1, "only the first model's wall");
+}
+
+#[test]
+fn excluded_high_id_does_not_block_a_fitting_later_model() {
+    // The first model carries a near-max express id that visibility EXCLUDES, so
+    // it is never emitted. The capacity bound must be the largest VISIBLE id, not
+    // `index.max_id` — otherwise a later model that would comfortably fit is
+    // wrongly omitted as an overflow (CR #2952).
+    let big_excluded = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#1=IFCWALL('WALLLOW00000000000000A',$,'Low',$,$,$,$,$);\n\
+#4294967295=IFCWALL('WALLMAX00000000000000A',$,'Max',$,$,$,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n";
+    let second = build_model("S", true, "Terrain", "Level 1");
+    let models = [
+        // Only the low-id wall is visible; the max-id wall is excluded.
+        MergedModel { content: big_excluded.as_bytes(), id: "a".to_string(), included: Some(vec![1]) },
+        MergedModel { content: second.as_bytes(), id: "b".to_string(), included: None },
+    ];
+    let (merged, stats) = export_merged_models(&models, &MergedOptions::default());
+
+    assert_eq!(stats.unmerged_model_count, 0, "the later model fits and must merge");
+    assert!(stats.warnings.iter().all(|w| !w.contains("u32::MAX")), "no false overflow");
+    // The first model's single visible wall plus the second model's wall.
+    assert_eq!(type_count(&merged, "=IFCWALL("), 2);
+    assert_eq!(type_count(&merged, "=IFCPROJECT("), 1, "second model's project survives");
+    assert_no_dangling(&merged);
+}
+
+#[test]
+fn converted_rooted_entity_keeps_source_globalid_for_later_unify() {
+    // Two IFC4X3 models sharing one IfcAlignmentSegment (a rooted entity) GlobalId,
+    // exported to IFC4 where the segment has no counterpart and is downgraded to a
+    // proxy with a generated placeholder GlobalId. The first model must still
+    // register the SOURCE GlobalId, so the second model's copy unifies with it
+    // instead of emitting a second proxy (CR #2952).
+    let shared = "0aBcDeFgHiJkLmNoPqRsT1"; // 22 charset chars
+    let model = |proj: &str| {
+        format!(
+            "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_SCHEMA(('IFC4X3'));\nENDSEC;\nDATA;\n\
+#1=IFCPROJECT('{proj}',$,'P',$,$,$,$,$,$);\n\
+#5=IFCALIGNMENTSEGMENT('{shared}',$,'Seg',$,$,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n"
+        )
+    };
+    let a = model("PROJA000000000000000AA");
+    let b = model("PROJB000000000000000BB");
+    let opts = MergedOptions { schema: Some("IFC4".to_string()), ..Default::default() };
+    let (merged, _) = export_merged_with_stats(&[a.as_bytes(), b.as_bytes()], &opts);
+
+    // The shared segment became exactly one proxy (the second unified with the
+    // first), and no rooted GlobalId is emitted twice.
+    assert_eq!(type_count(&merged, "=IFCPROXY("), 1, "shared converted entity unified, not duplicated");
+    let guids = leading_guids(&merged);
+    let mut unique = guids.clone();
+    unique.sort();
+    unique.dedup();
+    assert_eq!(unique.len(), guids.len(), "no duplicate GlobalIds after conversion");
+    assert_no_dangling(&merged);
+}
+
+#[test]
+fn duplicate_globalids_are_reconciled_no_dupes() {
+    // Two identical millimetre models. The old id-offset-only merge would emit
+    // every GlobalId twice; reconciliation must unify same-unit roots and
+    // re-stamp the objectified relationship instead.
+    let m = build_model("A", true, "Terrain", "Level 1");
+    let (merged, stats) =
+        export_merged_with_stats(&[m.as_bytes(), m.as_bytes()], &MergedOptions::default());
+
+    let guids = leading_guids(&merged);
+    let mut unique = guids.clone();
+    unique.sort();
+    unique.dedup();
+    assert_eq!(unique.len(), guids.len(), "no duplicate GlobalIds after merge");
+
+    // One unified project, site, building, storey, wall.
+    assert_eq!(type_count(&merged, "=IFCPROJECT("), 1);
+    assert_eq!(type_count(&merged, "=IFCSITE("), 1);
+    assert_eq!(type_count(&merged, "=IFCBUILDINGSTOREY("), 1);
+    assert_eq!(type_count(&merged, "=IFCWALL("), 1, "duplicate wall unified");
+    // The objectified relationship is re-stamped (kept), not dropped.
+    assert_eq!(type_count(&merged, "=IFCRELCONTAINEDINSPATIALSTRUCTURE("), 2);
+    assert_eq!(stats.federated_model_count, 0);
+    assert!(!stats.unit_rescale_required);
+    assert_no_dangling(&merged);
+}
+
+#[test]
+fn spatial_containers_unify_by_name() {
+    // Distinct element GlobalIds, but identical site/storey names ⇒ one shared
+    // spatial tree.
+    let a = build_model("A", true, "Terrain", "Level 1");
+    let b = build_model("B", true, "Terrain", "Level 1");
+    let (merged, stats) =
+        export_merged_with_stats(&[a.as_bytes(), b.as_bytes()], &MergedOptions::default());
+
+    assert_eq!(type_count(&merged, "=IFCSITE("), 1, "sites unified by name");
+    assert_eq!(type_count(&merged, "=IFCBUILDING("), 1, "buildings unified");
+    assert_eq!(type_count(&merged, "=IFCBUILDINGSTOREY("), 1, "storeys unified by name");
+    // Two distinct walls survive (different GlobalIds, both physical elements).
+    assert_eq!(type_count(&merged, "=IFCWALL("), 2);
+    assert_eq!(type_count(&merged, "=IFCPROJECT("), 1);
+    assert_eq!(stats.federated_model_count, 0);
+    assert_no_dangling(&merged);
+}
+
+#[test]
+fn distinct_storey_names_stay_separate() {
+    // Same site, different storey names, ByName strategy (no elevation fallback)
+    // ⇒ storeys are NOT merged.
+    let a = build_model("A", true, "Terrain", "Level 1");
+    let b = build_model("B", true, "Terrain", "Level 2");
+    let opts =
+        MergedOptions { merge_storeys: StoreyMergeStrategy::ByName, ..Default::default() };
+    let (merged, _stats) = export_merged_with_stats(&[a.as_bytes(), b.as_bytes()], &opts);
+    assert_eq!(type_count(&merged, "=IFCSITE("), 1, "sites still unify");
+    assert_eq!(type_count(&merged, "=IFCBUILDINGSTOREY("), 2, "differently-named storeys kept");
+    assert_no_dangling(&merged);
+}
+
+#[test]
+fn visibility_allowlist_limits_output() {
+    // Include only the wall (express id 20). Its forward closure is just itself
+    // (all its attributes are `$`), so nothing else is emitted.
+    let a = build_model("A", true, "Terrain", "Level 1");
+    let models =
+        [MergedModel { content: a.as_bytes(), id: "a".to_string(), included: Some(vec![20]) }];
+    let (merged, _stats) = export_merged_models(&models, &MergedOptions::default());
+
+    assert_eq!(type_count(&merged, "=IFCWALL("), 1);
+    assert_eq!(type_count(&merged, "=IFCPROJECT("), 0, "project excluded by visibility");
+    assert_eq!(type_count(&merged, "=IFCSITE("), 0, "site excluded by visibility");
+    assert_no_dangling(&merged);
+}
+
+#[test]
+fn first_model_visibility_excluded_target_does_not_dangle() {
+    // The first model exports only its wall (id 20) — its IfcProject / unit /
+    // site / building / storey are excluded by visibility. A later compatible
+    // model must NOT redirect its references onto those non-emitted canonical
+    // ids, which would dangle (Greptile P1 / CR #2952). It keeps its own instead.
+    let a = build_model("A", true, "Terrain", "Level 1");
+    let b = build_model("B", true, "Terrain", "Level 1");
+    let models = [
+        MergedModel { content: a.as_bytes(), id: "a".to_string(), included: Some(vec![20]) },
+        MergedModel { content: b.as_bytes(), id: "b".to_string(), included: None },
+    ];
+    let (merged, _stats) = export_merged_models(&models, &MergedOptions::default());
+
+    // No reference points at an entity the first model's visibility dropped.
+    assert_no_dangling(&merged);
+    // The second model kept its own project (it could not unify into an excluded
+    // one), and both walls survive.
+    assert_eq!(type_count(&merged, "=IFCPROJECT("), 1, "second model keeps its project");
+    assert_eq!(type_count(&merged, "=IFCWALL("), 2);
+    // Still no duplicate GlobalIds after the fallback.
+    let guids = leading_guids(&merged);
+    let mut unique = guids.clone();
+    unique.sort();
+    unique.dedup();
+    assert_eq!(unique.len(), guids.len());
+}
+
+#[test]
+fn incompatible_units_federate_and_flag_under_normalize() {
+    // Millimetre + metre models. Under Normalize the metre model cannot be
+    // rescaled natively, so it is federated and the flag is set for the caller.
+    let mm = build_model("A", true, "Terrain", "Level 1");
+    let m = build_model("B", false, "Terrain", "Level 1");
+    let opts =
+        MergedOptions { unit_reconciliation: UnitReconciliation::Normalize, ..Default::default() };
+    let (merged, stats) = export_merged_with_stats(&[mm.as_bytes(), m.as_bytes()], &opts);
+
+    assert_eq!(type_count(&merged, "=IFCPROJECT("), 2, "incompatible model federated");
+    // Federation keeps the metre model wholly separate: none of its spatial
+    // containers or elements are unified into the millimetre model's.
+    assert_eq!(type_count(&merged, "=IFCSITE("), 2, "federated site kept separate");
+    assert_eq!(type_count(&merged, "=IFCBUILDING("), 2, "federated building kept separate");
+    assert_eq!(type_count(&merged, "=IFCBUILDINGSTOREY("), 2, "federated storey kept separate");
+    assert_eq!(type_count(&merged, "=IFCWALL("), 2, "federated wall kept separate");
+    assert_eq!(stats.federated_model_count, 1);
+    assert!(stats.unit_rescale_required, "caller should gate to the JS path");
+    assert!(!stats.warnings.is_empty());
+    let guids = leading_guids(&merged);
+    let mut unique = guids.clone();
+    unique.sort();
+    unique.dedup();
+    assert_eq!(unique.len(), guids.len());
+    assert_no_dangling(&merged);
+}
+
+#[test]
+fn assume_shared_unifies_across_declared_units() {
+    // Same GlobalIds, different declared units. AssumeShared skips the
+    // compatibility check and unifies into one project regardless.
+    let mm = build_model("A", true, "Terrain", "Level 1");
+    let m = build_model("A", false, "Terrain", "Level 1");
+    let opts = MergedOptions {
+        unit_reconciliation: UnitReconciliation::AssumeShared,
+        ..Default::default()
+    };
+    let (merged, stats) = export_merged_with_stats(&[mm.as_bytes(), m.as_bytes()], &opts);
+
+    assert_eq!(type_count(&merged, "=IFCPROJECT("), 1, "unified despite unit mismatch");
+    // Identical GlobalIds + names across the two models: every matching rooted
+    // entity unifies into exactly one instance despite the declared-unit mismatch.
+    assert_eq!(type_count(&merged, "=IFCSITE("), 1, "site unified");
+    assert_eq!(type_count(&merged, "=IFCBUILDING("), 1, "building unified");
+    assert_eq!(type_count(&merged, "=IFCBUILDINGSTOREY("), 1, "storey unified");
+    assert_eq!(type_count(&merged, "=IFCWALL("), 1, "wall unified");
+    // And no duplicate rooted GlobalIds survive.
+    let guids = leading_guids(&merged);
+    let mut unique = guids.clone();
+    unique.sort();
+    unique.dedup();
+    assert_eq!(unique.len(), guids.len(), "unique rooted GlobalIds after AssumeShared unify");
+    assert_eq!(stats.federated_model_count, 0);
+    assert!(!stats.unit_rescale_required);
+    assert_no_dangling(&merged);
+}
+
+// ── GlobalId reconciliation regression tests (issue #3007) ───────────────────
 /// Reproduces the issue's headline defect: two federated models that share a
 /// GlobalId (a linked/shared element loaded into both models -- the common
 /// "same file merged twice" and "shared door type" cases) must not emit that
@@ -538,81 +1035,96 @@ ENDSEC;\nEND-ISO-10303-21;\n"
     );
 }
 
-/// Every fixture above that merges two models gives both of them an
-/// `IfcProject` at the SAME express id (`#1`, or literally the same file
-/// twice) -- so `canonical_project` and the current model's own
-/// `model_project` are always equal, and the redirect in `remap` cannot be
-/// observed to pick the right one of the two. Confirmed by mutation:
-/// rewriting `return Some(cp)` to `return Some(mp)` in
-/// `export_merged_with_stats` left all of the above green.
-///
-/// Here the two models' projects sit at DIFFERENT express ids (`#1` in model
-/// A, `#7` in model B) and each model has a rooted entity that references its
-/// own project, so the redirect has a distinguishable right and wrong answer:
-/// model B's reference must land on model A's `#1`, not on the dropped `#7`
-/// (which no longer exists at all after the merge) and not on the offset
-/// `#7 + offset` either.
+/// `IfcElectricalCircuit` is a rooted IFC2X3 type (parent chain `IfcSystem` →
+/// `IfcGroup` → … → `IfcRoot`, leading with a GlobalId) that was dropped from
+/// IFC4X3 AND is absent from `legacy_entities.rs`, so it resolves to
+/// `IfcType::Unknown` and the schema check alone classifies it as non-rooted.
+/// This is exactly the 38-type gap #2952 measured: without the legacy rooted
+/// fallback its shared GlobalId would duplicate across models. Unlike the
+/// `IFCDOORSTYLE` case above (which maps to `IfcDoorType` via `legacy_entities`
+/// and passes through the schema path), this one only passes through the
+/// fallback, so it pins the fallback end to end.
 #[test]
-fn merge_redirects_a_later_models_project_ref_to_the_first_models_project_id() {
-    // Model A: project at #1, max id 5. Model B: project at #7, max id 9 --
-    // deliberately different ids, and #7 is past model A's maximum so a
-    // remap that returns the model's OWN project id produces a reference to
-    // an express id that exists nowhere in the merged output.
+fn merge_reconciles_a_shared_globalid_on_a_legacy_rooted_type_absent_from_schema() {
+    let shared = "00000000000000000000E1";
+    let model = |proj: &str| {
+        format!(
+            "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n\
+#1=IFCPROJECT('{proj}',$,$,$,$,$,$,$,$);\n\
+#2=IFCELECTRICALCIRCUIT('{shared}',$,'Circuit',$,$,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n"
+        )
+    };
+    let a = model("proja0");
+    let b = model("projb0");
+    let (merged, _stats) =
+        export_merged_with_stats(&[a.as_bytes(), b.as_bytes()], &MergedOptions::default());
+
+    assert_eq!(
+        merged.matches(shared).count(),
+        1,
+        "shared legacy-rooted GlobalId {shared} must be emitted exactly once -- got:\n{merged}"
+    );
+    // The circuit itself is unified (not a relationship type), so exactly one survives.
+    assert_eq!(type_count(&merged, "=IFCELECTRICALCIRCUIT("), 1);
+    assert_no_dangling(&merged);
+}
+
+/// Every two-model fixture elsewhere gives both models an `IfcProject` at the
+/// SAME express id (`#1`, or literally the same file twice) -- so
+/// `canonical_project` and the current model's own project id are always equal,
+/// and the redirect that unifies the project cannot be observed to pick the
+/// FIRST model's id over the current model's (the #3083 blind spot).
+///
+/// Here the two projects sit at DIFFERENT express ids (`#1` in model A, `#7` in
+/// model B), and model B's kept `IfcRelAggregates` relates its project to a
+/// DISTINCT wall -- so our redundant-aggregation pruning keeps it (only fully
+/// unified aggregations are dropped, #2952) and its relating reference stays
+/// observable. That reference must land on model A's project, not on B's own
+/// `#7` (unified away) nor its offset image.
+///
+/// NB #3083's original fixture related the project to ITSELF (`#7,(#7)`); after
+/// unification both endpoints point at the unified project, so pruning correctly
+/// drops that degenerate row -- which reads as the redirect "disappearing". The
+/// distinct related wall below keeps the redirect visible.
+#[test]
+fn later_models_project_ref_redirects_to_the_first_models_project() {
     let model_a = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
 #1=IFCPROJECT('11111111111111111111P1',$,'ProjectA',$,$,$,$,$,$);\n\
-#5=IFCRELAGGREGATES('11111111111111111111R1',$,$,$,#1,(#1));\n\
+#2=IFCWALL('11111111111111111111W1',$,'WallA',$,$,$,$,$);\n\
+#3=IFCRELAGGREGATES('11111111111111111111R1',$,$,$,#1,(#2));\n\
 ENDSEC;\nEND-ISO-10303-21;\n";
     let model_b = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
 #7=IFCPROJECT('22222222222222222222P2',$,'ProjectB',$,$,$,$,$,$);\n\
-#9=IFCRELAGGREGATES('22222222222222222222R2',$,$,$,#7,(#7));\n\
+#8=IFCWALL('22222222222222222222W2',$,'WallB',$,$,$,$,$);\n\
+#9=IFCRELAGGREGATES('22222222222222222222R2',$,$,$,#7,(#8));\n\
 ENDSEC;\nEND-ISO-10303-21;\n";
 
-    let (merged, stats) = export_merged_with_stats(
+    let (merged, _stats) = export_merged_with_stats(
         &[model_a.as_bytes(), model_b.as_bytes()],
         &MergedOptions::default(),
     );
 
-    // Model B's project line is dropped; 4 source entities minus 1 = 3.
-    assert_eq!(stats.written, 3, "later model's IfcProject line is dropped");
+    assert_no_dangling(&merged);
+    // Exactly one project survives -- model A's, at its own id (offset 0).
+    let project = sole_id_of_type(&merged, "=IFCPROJECT(");
+    let project_line = merged.lines().find(|l| l.contains("=IFCPROJECT(")).unwrap();
+    assert!(project_line.contains("'ProjectA'"), "surviving project is model A's: {project_line:?}");
+    assert!(!merged.contains("22222222222222222222P2"), "model B's project is unified away:\n{merged}");
 
-    // The surviving project is model A's, at its original express id.
-    let project_lines: Vec<&str> =
-        merged.lines().filter(|l| l.contains("=IFCPROJECT(")).collect();
-    assert_eq!(project_lines.len(), 1, "single unified project, got {project_lines:?}");
-    assert!(
-        project_lines[0].starts_with("#1=IFCPROJECT("),
-        "the first model's project keeps its own id: {:?}",
-        project_lines[0]
-    );
-    assert!(
-        project_lines[0].contains("'ProjectA'"),
-        "the surviving project is model A's, not model B's: {:?}",
-        project_lines[0]
-    );
-
-    // Model B's offset is model A's max (5) + 1 = 6, so its #9 becomes #15.
-    // Both of its project references must have been redirected to #1 --
-    // NOT left at #7 (the model's own project id, which is gone) and NOT
-    // offset to #13.
+    // Model B's kept aggregation now relates the UNIFIED project (model A's id),
+    // NOT B's own #7 nor its offset image.
     let b_rel = merged
         .lines()
         .find(|l| l.contains("'22222222222222222222R2'"))
-        .expect("model B's IfcRelAggregates line");
-    assert_eq!(
-        b_rel, "#15=IFCRELAGGREGATES('22222222222222222222R2',$,$,$,#1,(#1));",
-        "model B's references to its own project must be redirected to model A's project id"
-    );
-
-    // Model A's own reference is untouched (offset 0, no redirect needed).
+        .expect("model B's IfcRelAggregates survives (its related wall is not unified)");
+    let refs = refs_in_line(b_rel);
+    assert_eq!(refs[0], project, "B's project ref redirected to model A's project: {b_rel:?}");
+    // Model A's own aggregation is untouched (offset 0, no redirect needed).
     assert!(
-        merged.contains("#5=IFCRELAGGREGATES('11111111111111111111R1',$,$,$,#1,(#1));"),
-        "model A's project references are unchanged:\n{merged}"
+        merged.contains("#3=IFCRELAGGREGATES('11111111111111111111R1',$,$,$,#1,(#2));"),
+        "model A's aggregation is unchanged:\n{merged}"
     );
-
-    // And nothing dangles: neither the model's own project id nor its
-    // offset image may appear anywhere in the merged text.
-    assert!(!merged.contains("#7"), "the dropped project id must not survive:\n{merged}");
-    assert!(!merged.contains("#13"), "the dropped project id must not be offset:\n{merged}");
 }
 
 /// Collect the leading 22-char GlobalId-shaped token of every DATA-section
@@ -626,30 +1138,21 @@ fn leading_guid_tokens(step: &str) -> Vec<String> {
             let body = rest.strip_prefix('\'')?;
             let q2 = body.find('\'')?;
             let tok = &body[..q2];
-            is_global_id_shaped(tok).then(|| tok.to_string())
+            super::guid::is_global_id(tok).then(|| tok.to_string())
         })
         .collect()
 }
 
-/// `mint_unique_guid` seeds from `{original}#{model_index}`, so two entities
-/// in the SAME model that both carry the SAME already-emitted GlobalId mint
-/// from an IDENTICAL seed. Two guards keep their fresh ids apart, and they
-/// are redundant with each other: `pending.insert(candidate.clone())` inside
-/// `mint_unique_guid`, and `emitted_guids.insert(fresh)` at the call site.
-/// Every fixture above collides at most ONE entity per model, so neither
-/// guard is exercised at all -- confirmed by mutation: deleting either one
-/// individually, and deleting BOTH, all left the pre-existing tests green,
-/// and the both-deleted case emits the same minted GlobalId three times.
-/// (Because the guards are redundant, this test dies only when both are
-/// gone; it is pinning the observable invariant, not either line.)
-///
-/// Duplicated GlobalIds inside a single file are a real-world authoring
-/// defect, and a merge that "fixes" them by minting the same replacement
-/// twice has simply moved the spec violation rather than removed it. The
-/// assertion is on the emitted STEP text (every leading GlobalId distinct),
+/// A model carrying the SAME GlobalId on THREE rooted entities is an authoring
+/// defect the merge must not carry through as duplicates (the #3083 concern:
+/// the same-seed mint guards keeping fresh ids apart). Under our reconciliation
+/// the first cross-model occurrence UNIFIES with model A's entity (same unit
+/// space), and the two remaining within-model duplicates are each re-stamped
+/// with a distinct fresh GlobalId -- so no GlobalId is ever emitted twice.
+/// The assertion is on the emitted STEP text (every leading GlobalId distinct),
 /// not on an intermediate map.
 #[test]
-fn merge_mints_distinct_ids_for_two_collisions_within_the_same_model() {
+fn merge_mints_distinct_ids_for_collisions_within_the_same_model() {
     let shared = "00000000000000000000E1";
     let model_a = format!(
         "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
@@ -673,25 +1176,26 @@ ENDSEC;\nEND-ISO-10303-21;\n"
         &MergedOptions::default(),
     );
 
-    // 5 rooted entities survive (model B's project is dropped): 1 project,
-    // 1 original door, 3 doors that each needed a fresh id.
+    // Every emitted GlobalId is distinct: same-model collisions minting the same
+    // replacement would just relocate the duplicate rather than remove it.
     let tokens = leading_guid_tokens(&merged);
-    assert_eq!(tokens.len(), 5, "five rooted entities in the merged output: {tokens:?}");
-
-    let unique: HashSet<&String> = tokens.iter().collect();
+    let unique: std::collections::HashSet<&String> = tokens.iter().collect();
     assert_eq!(
         unique.len(),
         tokens.len(),
-        "every emitted GlobalId must be distinct -- same-model collisions minting the same replacement just relocates the duplicate: {tokens:?}"
+        "every emitted GlobalId must be distinct: {tokens:?}"
     );
 
-    // The original is kept exactly once (model A's), and the three
-    // replacements are all fresh.
+    // The shared GlobalId survives on exactly one entity (model A's door, which
+    // B's first door unified into); the other two B doors were re-stamped fresh.
     assert_eq!(
         tokens.iter().filter(|t| *t == shared).count(),
         1,
         "the colliding GlobalId survives on exactly one entity: {tokens:?}"
     );
+    // Model A's door plus B's two re-stamped doors: three distinct doors survive.
+    assert_eq!(type_count(&merged, "=IFCDOOR("), 3, "one unified door + two re-stamped");
+    assert_no_dangling(&merged);
 }
 
 /// The user-visible half of the #3124 review's major finding, through the
@@ -740,10 +1244,20 @@ ENDSEC;\nEND-ISO-10303-21;\n"
         "a shared GlobalId on IFCSOLIDSTRATUM must be reconciled the same way -- \
          a second occurrence is the duplicate this step exists to prevent"
     );
-    // Both entities survive the merge; reconciliation renames, never drops.
+    // Reconciled identically to the wall: a shared GlobalId on a compatible
+    // model's non-relationship rooted entity is unified — the duplicate line is
+    // dropped and its references redirected to the first model's entity — so the
+    // stratum collapses to exactly one occurrence, just as the wall does. The
+    // point of the test is the symmetry (stratum classified and reconciled like
+    // the wall), not the drop-vs-restamp policy.
     assert_eq!(
         merged.matches("=IFCSOLIDSTRATUM(").count(),
-        2,
-        "both strata are still emitted, one of them with a freshly minted id"
+        1,
+        "the shared stratum is unified to a single surviving entity, like the wall"
+    );
+    assert_eq!(
+        merged.matches("=IFCWALL(").count(),
+        1,
+        "control: the shared wall is likewise unified to a single surviving entity"
     );
 }

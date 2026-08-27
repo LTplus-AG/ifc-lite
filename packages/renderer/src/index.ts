@@ -15,7 +15,7 @@ export type { SceneContents } from './scene-contents.js';
 export type { ProjectionMode } from './camera-state.js';
 export { pickFitPolicy } from './camera-fit-policy.js';
 export type { FitPolicy, FitPolicyKind, Bounds3, PickFitPolicyOptions } from './camera-fit-policy.js';
-export { Scene } from './scene.js';
+// `Scene` is NOT exported: an exported class republishes every method `SceneContents` above just froze.
 export { Picker } from './picker.js';
 export { MathUtils } from './math.js';
 // The orthonormal camera basis `MathUtils.lookAt` renders through, exposed so
@@ -26,7 +26,7 @@ export { MathUtils } from './math.js';
 // is the same situation from outside it).
 export { viewBasis } from './math.js';
 export { SectionPlaneRenderer } from './section-plane.js';
-export { Section2DOverlayRenderer } from './section-2d-overlay.js';
+// `Section2DOverlayRenderer` is NOT exported: `Renderer.setLineOverlay` and the section cap drive it from inside. Its types below stay published.
 
 // IfcAnnotation overlay pipelines (3D world-space). Self-contained — caller
 // passes a GPUDevice + presentation format and invokes `.render(pass, viewProj)`

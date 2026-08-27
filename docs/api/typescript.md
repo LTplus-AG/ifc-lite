@@ -442,8 +442,8 @@ class Renderer {
   pick(x: number, y: number, options?: PickOptions): Promise<PickResult | null>;
 
   // Scene access
-  // Narrower than the `Scene` class on purpose: `SceneContents` names the scene
-  // members callers actually use, and widening it is a major bump.
+  // Narrower than the package-internal `Scene` class on purpose: `SceneContents`
+  // names the scene members callers actually use, and widening it is a major bump.
   getScene(): SceneContents;
   getPipeline(): RenderPipeline | null;
   getGPUDevice(): GPUDevice | null;
@@ -456,7 +456,9 @@ class Renderer {
 
 Visibility is passed via `render()` options (`hiddenIds`, `isolatedIds`); frustum culling via `enableFrustumCulling` plus a `spatialIndex` from `@ifc-lite/spatial`.
 
-Other exports: `Camera`, `Scene`, `Picker`, `PickingManager`, `Raycaster`, `SnapDetector`, `BVH`, `SectionPlaneRenderer`, `Section2DOverlayRenderer`, `PointCloudRenderer`, `FederationRegistry` (multi-model id ranges), and the section-cap / plane-basis helpers.
+Other exports: `Camera`, `Picker`, `Raycaster`, `SnapDetector`, `BVH`, `RaycastEngine`, `SectionPlaneRenderer`, `PointCloudRenderer`, `FederationRegistry` (multi-model id ranges), and the section-cap / plane-basis helpers.
+
+`Scene` and `Section2DOverlayRenderer` are package-internal from 2.0: reach the scene through `getScene(): SceneContents`, and the 3D line overlays through `Renderer.setLineOverlay`. `PickingManager` is still exported, but its constructor takes the internal `Scene`, so only `Renderer` can build one; pick through `Renderer.pick` / `Renderer.pickRect`.
 
 ---
 

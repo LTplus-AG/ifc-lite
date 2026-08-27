@@ -436,13 +436,17 @@ class Renderer {
 
   // Camera controls
   fitToView(): void;
-  getCamera(): Camera;
+  // Narrower than the `Camera` class on purpose: `CameraControl` names the
+  // camera members callers actually use, and widening it is a major bump.
+  getCamera(): CameraControl;
 
   // Selection (GPU picking)
   pick(x: number, y: number, options?: PickOptions): Promise<PickResult | null>;
 
   // Scene access
-  getScene(): Scene;
+  // Narrower than the `Scene` class on purpose: `SceneContents` names the scene
+  // members callers actually use, and widening it is a major bump.
+  getScene(): SceneContents;
   getPipeline(): RenderPipeline | null;
   getGPUDevice(): GPUDevice | null;
   isReady(): boolean;

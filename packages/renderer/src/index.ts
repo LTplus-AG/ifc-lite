@@ -10,6 +10,9 @@ export { WebGPUDevice } from './device.js';
 export type { AdapterInfoSnapshot } from './device.js';
 export { RenderPipeline } from './pipeline.js';
 export { Camera } from './camera.js';
+// The MEASURED surfaces `getCamera()` / `getScene()` publish — see their docs.
+export type { CameraControl } from './camera-control.js';
+export type { SceneContents } from './scene-contents.js';
 export type { ProjectionMode } from './camera-state.js';
 export { pickFitPolicy } from './camera-fit-policy.js';
 export type { FitPolicy, FitPolicyKind, Bounds3, PickFitPolicyOptions } from './camera-fit-policy.js';
@@ -122,7 +125,9 @@ export type {
 import { WebGPUDevice, type AdapterInfoSnapshot } from './device.js';
 import { RenderPipeline } from './pipeline.js';
 import { Camera } from './camera.js';
+import type { CameraControl } from './camera-control.js';
 import { Scene, type InstancedTemplateGPU } from './scene.js';
+import type { SceneContents } from './scene-contents.js';
 import { Picker } from './picker.js';
 import { MathUtils, viewBasis } from './math.js';
 import type { Vec3 as Vec3Type } from './types.js';
@@ -146,8 +151,8 @@ import type {
 } from './symbolic-overlay-pipelines.js';
 import { RendererOverlays } from './renderer-overlays.js';
 import { resolveSectionPlaneFrame } from './render-section-plane.js';
-import { Raycaster, type Intersection } from './raycaster.js';
-import { SnapDetector, type SnapTarget, type SnapOptions, type EdgeLockInput, type MagneticSnapResult } from './snap-detector.js';
+import type { Intersection } from './raycaster.js';
+import type { SnapTarget, SnapOptions, EdgeLockInput, MagneticSnapResult } from './snap-detector.js';
 import { PickingManager } from './picking-manager.js';
 import { RaycastEngine } from './raycast-engine.js';
 import { RenderDegradationMonitor, type RenderDegradationInfo } from './render-degradation.js';
@@ -3338,20 +3343,6 @@ export class Renderer {
     }
 
     /**
-     * Get the raycaster instance (for advanced usage)
-     */
-    getRaycaster(): Raycaster {
-        return this.raycastEngine.getRaycaster();
-    }
-
-    /**
-     * Get the snap detector instance (for advanced usage)
-     */
-    getSnapDetector(): SnapDetector {
-        return this.raycastEngine.getSnapDetector();
-    }
-
-    /**
      * Clear all caches (call when geometry changes)
      */
     clearCaches(): void {
@@ -3411,11 +3402,13 @@ export class Renderer {
         this.camera.setAspect(width / height);
     }
 
-    getCamera(): Camera {
+    /** MEASURED external surface, not the `Camera` class: widening `CameraControl` is a published-API decision, not a detail — see `camera-control.ts`. */
+    getCamera(): CameraControl {
         return this.camera;
     }
 
-    getScene(): Scene {
+    /** MEASURED external surface, not the 4400-line `Scene`: widening `SceneContents` is a published-API decision, not a detail — see `scene-contents.ts`. */
+    getScene(): SceneContents {
         return this.scene;
     }
 
@@ -3565,7 +3558,10 @@ export class Renderer {
     }
 
     /**
-     * Get render pipeline (for batching)
+     * Get render pipeline (for batching). DELIBERATELY NOT NARROWED, unlike
+     * `getScene()` / `getCamera()`: the measurement found ZERO external
+     * `RenderPipeline` members — all 12 call sites pass the handle straight
+     * back into a `SceneContents` upload method typed for the real class.
      */
     getPipeline(): RenderPipeline | null {
         return this.pipeline;
@@ -3609,7 +3605,11 @@ export class Renderer {
      *
      * Returning null instead routes into the `if (!device) return` check that
      * every call site already has, so a lost device degrades to "stop
-     * uploading" rather than an uncaught throw. See `isDeviceLost()` /
+     * uploading" rather than an uncaught throw.
+     *
+     * DELIBERATELY NOT NARROWED, unlike `getScene()` / `getCamera()`: the one
+     * external `GPUDevice` member measured is `queue`; every other call site
+     * hands the device back to a `SceneContents` method. See `isDeviceLost()` /
      * `onDeviceLost()` for the recovery contract.
      */
     getGPUDevice(): GPUDevice | null {

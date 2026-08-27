@@ -19,7 +19,7 @@
  */
 
 import { useEffect, useRef, type MutableRefObject } from 'react';
-import type { Renderer, Scene } from '@ifc-lite/renderer';
+import type { Renderer, SceneContents } from '@ifc-lite/renderer';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 import { decodeInstancedShard, NORMAL_COORD_THRESHOLD_M } from '@ifc-lite/geometry';
 import { toast } from '../ui/toast.js';
@@ -173,7 +173,7 @@ const DEFAULT_PRESENT_INSTANCED_MODEL_INDICES: ReadonlySet<number> = new Set([0]
  * `presentInstancedModelIndices` param doc for the full rationale.
  */
 function reshapeSceneKeepingPresentInstanced(
-  scene: Scene,
+  scene: SceneContents,
   presentInstancedModelIndices: ReadonlySet<number> | undefined,
 ): void {
   scene.clearFlatGeometry();

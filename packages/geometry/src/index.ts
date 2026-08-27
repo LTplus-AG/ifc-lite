@@ -1023,8 +1023,8 @@ export class GeometryProcessor {
    * Parse `IfcGrid` / `IfcGridAxis` into a flat Float32Array of 3D line-list
    * vertices `[x0,y0,z0, x1,y1,z1, …]` (one segment per axis) in renderer Y-up
    * world space (RTC-subtracted, metres) — the same frame the streamed meshes
-   * render in, so grids overlay the model by construction (issue #945). Feed
-   * straight to a line pipeline (e.g. `renderer.setLineOverlay('annotation', …)`).
+   * render in, so grids overlay the model by construction (issue #945). Feed to
+   * `setLineOverlay('grid', …)`, NOT `'annotation'` (it expands bounds, #967).
    * @param buffer IFC file buffer
    * @returns Flat line-list vertices, or null if not initialized
    */

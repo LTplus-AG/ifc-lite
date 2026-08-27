@@ -32,7 +32,7 @@ import JSZip from 'jszip';
 import { validateXML } from 'xmllint-wasm';
 import { writeBCF } from './writer.js';
 import { readBCF } from './reader.js';
-import type { BCFProject, BCFTopic } from './types.js';
+import type { BCFProject, BCFTopic, BCFViewpoint } from './types.js';
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 
@@ -344,32 +344,46 @@ describe('BCF output validates against the official buildingSMART XSDs', () => {
  */
 describe('BCF 3.0 AspectRatio', () => {
   it('survives a write/read round trip on both camera types', async () => {
-    const topic = maximalTopic();
     // Distinct values per camera, and neither is 1 — a writer or reader that
     // dropped the field and defaulted to a square viewport would still pass a
     // test that used 1, and a writer that read one camera's value while
     // writing the other's would pass a test that used the same number twice.
-    topic.viewpoints[0].perspectiveCamera!.aspectRatio = 1.7777;
-    topic.viewpoints[0].orthogonalCamera = {
-      cameraViewPoint: { x: 20, y: 21, z: 22 },
-      cameraDirection: { x: 0, y: 0, z: -1 },
-      cameraUpVector: { x: 0, y: 1, z: 0 },
-      viewToWorldScale: 12.5,
-      aspectRatio: 2.3333,
-    };
-    const project: BCFProject = {
-      version: '3.0',
-      projectId: '66666666-6666-4666-8666-666666666666',
-      name: 'Aspect ratio project',
-      topics: new Map([[TOPIC_GUID, topic]]),
-    };
+    //
+    // The two cameras go in SEPARATE 3.0 projects. They used to share one
+    // viewpoint, which round-tripped perfectly and was schema-invalid the
+    // whole time: 3.0's visinfo.xsd declares the cameras as an `xs:choice`,
+    // so a viewpoint carries exactly one. See "BCF camera cardinality and
+    // order" below.
+    async function roundTrip(mutate: (topic: BCFTopic) => void): Promise<BCFViewpoint> {
+      const topic = maximalTopic();
+      mutate(topic);
+      const project: BCFProject = {
+        version: '3.0',
+        projectId: '66666666-6666-4666-8666-666666666666',
+        name: 'Aspect ratio project',
+        topics: new Map([[TOPIC_GUID, topic]]),
+      };
+      const blob = await writeBCF(project);
+      const readBack = await readBCF(new Uint8Array(await blob.arrayBuffer()));
+      return readBack.topics.get(TOPIC_GUID)!.viewpoints[0];
+    }
 
-    const blob = await writeBCF(project);
-    const readBack = await readBCF(new Uint8Array(await blob.arrayBuffer()));
-    const viewpoint = readBack.topics.get(TOPIC_GUID)!.viewpoints[0];
+    const perspective = await roundTrip((topic) => {
+      topic.viewpoints[0].perspectiveCamera!.aspectRatio = 1.7777;
+    });
+    expect(perspective.perspectiveCamera?.aspectRatio).toBe(1.7777);
 
-    expect(viewpoint.perspectiveCamera?.aspectRatio).toBe(1.7777);
-    expect(viewpoint.orthogonalCamera?.aspectRatio).toBe(2.3333);
+    const orthogonal = await roundTrip((topic) => {
+      delete topic.viewpoints[0].perspectiveCamera;
+      topic.viewpoints[0].orthogonalCamera = {
+        cameraViewPoint: { x: 20, y: 21, z: 22 },
+        cameraDirection: { x: 0, y: 0, z: -1 },
+        cameraUpVector: { x: 0, y: 1, z: 0 },
+        viewToWorldScale: 12.5,
+        aspectRatio: 2.3333,
+      };
+    });
+    expect(orthogonal.orthogonalCamera?.aspectRatio).toBe(2.3333);
   });
 
   it('refuses to write a 3.0 camera without one rather than emitting an invalid archive', async () => {
@@ -522,5 +536,173 @@ describe('the validator can fail (mutation proof)', () => {
   it('rejects XML that is not well-formed at all', async () => {
     const { valid } = await validate('2.1', 'markup.xsd', '<Markup><unclosed>');
     expect(valid).toBe(false);
+  });
+});
+
+/**
+ * Which cameras a viewpoint may carry, and in what order.
+ *
+ * The two schemas disagree, and the writer followed neither:
+ *
+ * - v2_1/visinfo.xsd declares `OrthogonalCamera` then `PerspectiveCamera` as
+ *   two `minOccurs="0"` members of an `xs:sequence`. Both may appear, but only
+ *   in that order — and the writer emitted the perspective camera first.
+ * - v3_0/visinfo.xsd replaced the pair with an `xs:choice` carrying neither
+ *   `minOccurs` nor `maxOccurs`, i.e. EXACTLY ONE camera, required. The writer
+ *   emitted both when both were set and none when neither was, so a 3.0
+ *   viewpoint that isolated components without a camera — what
+ *   `ids-reporter.ts` produces whenever no entity bounds are supplied — was
+ *   never valid.
+ *
+ * None of this was reachable from `maximalTopic`, which sets only
+ * `perspectiveCamera`; and the one place that did set both cameras (the
+ * AspectRatio round-trip above) checks `parse(write(x)) === x` and never asks
+ * the schema. The matrix below asks the schema for every combination instead.
+ */
+describe('BCF camera cardinality and order', () => {
+  const PERSPECTIVE = {
+    cameraViewPoint: { x: 1.5, y: 2.5, z: 3.5 },
+    cameraDirection: { x: 0, y: 0, z: -1 },
+    cameraUpVector: { x: 0, y: 1, z: 0 },
+    fieldOfView: 60,
+    aspectRatio: 1.5,
+  };
+  const ORTHOGONAL = {
+    // Distinct from PERSPECTIVE's point in every component, so a writer that
+    // emitted one camera's body under the other's tag is visible.
+    cameraViewPoint: { x: 4.5, y: 5.5, z: 6.5 },
+    cameraDirection: { x: 0, y: -1, z: 0 },
+    cameraUpVector: { x: 0, y: 0, z: 1 },
+    viewToWorldScale: 12.5,
+    aspectRatio: 2.25,
+  };
+
+  /** A project holding one viewpoint with exactly the cameras asked for. */
+  function project(
+    version: '2.1' | '3.0',
+    cameras: { perspective: boolean; orthogonal: boolean }
+  ): BCFProject {
+    const topic = maximalTopic();
+    const viewpoint = topic.viewpoints[0];
+    if (cameras.perspective) viewpoint.perspectiveCamera = { ...PERSPECTIVE };
+    else delete viewpoint.perspectiveCamera;
+    if (cameras.orthogonal) viewpoint.orthogonalCamera = { ...ORTHOGONAL };
+    else delete viewpoint.orthogonalCamera;
+    return {
+      version,
+      projectId: '66666666-6666-4666-8666-666666666666',
+      name: 'Camera matrix project',
+      topics: new Map([[TOPIC_GUID, topic]]),
+    };
+  }
+
+  async function bcfv(
+    version: '2.1' | '3.0',
+    cameras: { perspective: boolean; orthogonal: boolean }
+  ): Promise<string> {
+    const entries = await writeAndUnzip(project(version, cameras));
+    const xml = entries.get(`${TOPIC_GUID}/Viewpoint_${VIEWPOINT_GUID}.bcfv`);
+    // Anti-vacuity: every assertion below reads this string, so a writer that
+    // stopped emitting the viewpoint entry must fail here, not pass silently.
+    expect(xml).toBeDefined();
+    return xml!;
+  }
+
+  /**
+   * Re-derive the premise from the schemas themselves.
+   *
+   * Everything below is written against two facts about the vendored XSDs. If
+   * buildingSMART ever changes them, this fails first and names the change,
+   * rather than leaving the rest of the block quietly testing the wrong rule.
+   */
+  it('derives the camera rule from the vendored schemas', () => {
+    const v21 = schema('2.1', 'visinfo.xsd');
+    const v30 = schema('3.0', 'visinfo.xsd');
+    // Span from VisualizationInfo's opening tag to the Lines declaration that
+    // follows the cameras — enough to see the camera declarations and nothing
+    // that comes after them.
+    const span = (xsd: string): string =>
+      xsd.slice(xsd.indexOf('name="VisualizationInfo"'), xsd.indexOf('name="Lines"'));
+    const cameraOrder = (xsd: string): string[] =>
+      [...span(xsd).matchAll(/name="(OrthogonalCamera|PerspectiveCamera)"/g)].map((m) => m[1]);
+
+    // 2.1: an ordered pair of optionals, orthogonal first, no choice.
+    expect(cameraOrder(v21)).toEqual(['OrthogonalCamera', 'PerspectiveCamera']);
+    expect(span(v21)).not.toContain('<xs:choice');
+    expect(span(v21)).toContain('name="OrthogonalCamera" type="OrthogonalCamera" minOccurs="0"');
+
+    // 3.0: an xs:choice with no minOccurs/maxOccurs, i.e. exactly one, required.
+    expect(cameraOrder(v30)).toEqual(['OrthogonalCamera', 'PerspectiveCamera']);
+    const choice = /<xs:choice([^>]*)>/.exec(span(v30));
+    expect(choice).not.toBeNull();
+    expect(choice![1].trim()).toBe('');
+  });
+
+  describe('BCF 2.1 — both cameras are allowed, in schema order', () => {
+    it('emits OrthogonalCamera before PerspectiveCamera', async () => {
+      const xml = await bcfv('2.1', { perspective: true, orthogonal: true });
+      // Named elements in the order the schema declares them, not a count:
+      // a count of 2 passes for either order.
+      expect(
+        [...xml.matchAll(/<(OrthogonalCamera|PerspectiveCamera)>/g)].map((m) => m[1])
+      ).toEqual(['OrthogonalCamera', 'PerspectiveCamera']);
+      // Each camera's own body travels with its own tag.
+      expect(xml).toContain('<ViewToWorldScale>12.5</ViewToWorldScale>');
+      expect(xml).toContain('<FieldOfView>60</FieldOfView>');
+    });
+
+    it('validates with both cameras present', async () => {
+      const xml = await bcfv('2.1', { perspective: true, orthogonal: true });
+      const { valid, messages } = await validate('2.1', 'visinfo.xsd', xml);
+      expect(messages).toEqual([]);
+      expect(valid).toBe(true);
+    });
+
+    it.each([
+      ['perspective only', { perspective: true, orthogonal: false }],
+      ['orthogonal only', { perspective: false, orthogonal: true }],
+      // 2.1 makes both optional, so a camera-less viewpoint is legal there —
+      // the negative control for the 3.0 rule below.
+      ['no camera', { perspective: false, orthogonal: false }],
+    ] as const)('validates with %s', async (_label, cameras) => {
+      const xml = await bcfv('2.1', cameras);
+      const { valid, messages } = await validate('2.1', 'visinfo.xsd', xml);
+      expect(messages).toEqual([]);
+      expect(valid).toBe(true);
+    });
+  });
+
+  describe('BCF 3.0 — exactly one camera, required', () => {
+    it.each([
+      ['perspective only', { perspective: true, orthogonal: false }, 'PerspectiveCamera'],
+      ['orthogonal only', { perspective: false, orthogonal: true }, 'OrthogonalCamera'],
+    ] as const)('validates with %s', async (_label, cameras, expected) => {
+      const xml = await bcfv('3.0', cameras);
+      // The one camera that IS emitted must be the one that was asked for.
+      expect(
+        [...xml.matchAll(/<(OrthogonalCamera|PerspectiveCamera)>/g)].map((m) => m[1])
+      ).toEqual([expected]);
+      const { valid, messages } = await validate('3.0', 'visinfo.xsd', xml);
+      expect(messages).toEqual([]);
+      expect(valid).toBe(true);
+    });
+
+    it('refuses to write both cameras rather than emitting an invalid archive', async () => {
+      await expect(
+        writeBCF(project('3.0', { perspective: true, orthogonal: true }))
+      ).rejects.toThrow(/exactly one camera/);
+    });
+
+    it('refuses to write a viewpoint with no camera at all', async () => {
+      await expect(
+        writeBCF(project('3.0', { perspective: false, orthogonal: false }))
+      ).rejects.toThrow(/exactly one camera/);
+    });
+
+    it('names the offending viewpoint so the caller can find it', async () => {
+      await expect(
+        writeBCF(project('3.0', { perspective: false, orthogonal: false }))
+      ).rejects.toThrow(new RegExp(VIEWPOINT_GUID));
+    });
   });
 });

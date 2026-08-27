@@ -19,8 +19,6 @@ import type {
   BCFVisibility,
   BCFViewSetupHints,
   BCFColoring,
-  BCFPerspectiveCamera,
-  BCFOrthogonalCamera,
   BCFLine,
   BCFClippingPlane,
   BCFBitmap,
@@ -30,6 +28,11 @@ import type {
   BCFDocumentReference,
   BCFHeaderFile,
 } from './types.js';
+import {
+  requireCameraChoice,
+  writeOrthogonalCamera,
+  writePerspectiveCamera,
+} from './writer-camera.js';
 import { generateUuid } from '@ifc-lite/encoding';
 
 /**
@@ -479,14 +482,16 @@ async function writeViewpointFiles(
     content += writeComponents(viewpoint.components, version);
   }
 
-  // Write perspective camera
-  if (viewpoint.perspectiveCamera) {
-    content += writePerspectiveCamera(viewpoint.perspectiveCamera, version, viewpoint.guid);
-  }
+  // Write the cameras. ORTHOGONAL FIRST -- see requireCameraChoice for why the
+  // order is not free, and for the 3.0 cardinality rule enforced here.
+  requireCameraChoice(viewpoint, version);
 
-  // Write orthogonal camera
   if (viewpoint.orthogonalCamera) {
     content += writeOrthogonalCamera(viewpoint.orthogonalCamera, version, viewpoint.guid);
+  }
+
+  if (viewpoint.perspectiveCamera) {
+    content += writePerspectiveCamera(viewpoint.perspectiveCamera, version, viewpoint.guid);
   }
 
   // Write lines
@@ -703,86 +708,6 @@ function writeColoringEntry(coloring: BCFColoring, version: '2.1' | '3.0'): stri
   if (version === '3.0') content += `\n        </Components>`;
   content += `\n      </Color>`;
   return content;
-}
-
-/**
- * Require a positive AspectRatio for a BCF 3.0 camera and return the element
- * to append.
- *
- * v3_0/visinfo.xsd adds `<AspectRatio>` (type `PositiveDouble`, i.e.
- * `xs:double` with `minExclusive value="0"`) as a REQUIRED, no-minOccurs
- * child of both `OrthogonalCamera` and `PerspectiveCamera`. 2.1 has no such
- * element. We refuse to invent a value (there is no safe default aspect
- * ratio) because that would assert a value the caller never chose; instead
- * we fail the write so the caller supplies one -- same policy as the
- * `Topic/@TopicType`/`Topic/@TopicStatus` checks in {@link writeMarkupFile}.
- */
-function requireAspectRatioElement(aspectRatio: number | undefined, viewpointGuid: string): string {
-  if (aspectRatio === undefined || !(aspectRatio > 0)) {
-    throw new Error(
-      `BCF 3.0 requires a positive Camera/AspectRatio (viewpoint "${viewpointGuid}" has none). ` +
-        `Set the camera's aspectRatio before writing a 3.0 file.`
-    );
-  }
-  return `\n    <AspectRatio>${aspectRatio}</AspectRatio>`;
-}
-
-/**
- * Write perspective camera XML
- */
-function writePerspectiveCamera(
-  camera: BCFPerspectiveCamera,
-  version: '2.1' | '3.0',
-  viewpointGuid: string,
-): string {
-  const aspectRatioElement = version === '3.0' ? requireAspectRatioElement(camera.aspectRatio, viewpointGuid) : '';
-  return `\n  <PerspectiveCamera>
-    <CameraViewPoint>
-      <X>${camera.cameraViewPoint.x}</X>
-      <Y>${camera.cameraViewPoint.y}</Y>
-      <Z>${camera.cameraViewPoint.z}</Z>
-    </CameraViewPoint>
-    <CameraDirection>
-      <X>${camera.cameraDirection.x}</X>
-      <Y>${camera.cameraDirection.y}</Y>
-      <Z>${camera.cameraDirection.z}</Z>
-    </CameraDirection>
-    <CameraUpVector>
-      <X>${camera.cameraUpVector.x}</X>
-      <Y>${camera.cameraUpVector.y}</Y>
-      <Z>${camera.cameraUpVector.z}</Z>
-    </CameraUpVector>
-    <FieldOfView>${camera.fieldOfView}</FieldOfView>${aspectRatioElement}
-  </PerspectiveCamera>`;
-}
-
-/**
- * Write orthogonal camera XML
- */
-function writeOrthogonalCamera(
-  camera: BCFOrthogonalCamera,
-  version: '2.1' | '3.0',
-  viewpointGuid: string,
-): string {
-  const aspectRatioElement = version === '3.0' ? requireAspectRatioElement(camera.aspectRatio, viewpointGuid) : '';
-  return `\n  <OrthogonalCamera>
-    <CameraViewPoint>
-      <X>${camera.cameraViewPoint.x}</X>
-      <Y>${camera.cameraViewPoint.y}</Y>
-      <Z>${camera.cameraViewPoint.z}</Z>
-    </CameraViewPoint>
-    <CameraDirection>
-      <X>${camera.cameraDirection.x}</X>
-      <Y>${camera.cameraDirection.y}</Y>
-      <Z>${camera.cameraDirection.z}</Z>
-    </CameraDirection>
-    <CameraUpVector>
-      <X>${camera.cameraUpVector.x}</X>
-      <Y>${camera.cameraUpVector.y}</Y>
-      <Z>${camera.cameraUpVector.z}</Z>
-    </CameraUpVector>
-    <ViewToWorldScale>${camera.viewToWorldScale}</ViewToWorldScale>${aspectRatioElement}
-  </OrthogonalCamera>`;
 }
 
 /**

@@ -32,6 +32,13 @@ export function uploadDxfLines3DGuarded(
     renderer.setLineOverlay('dxf', null);
     return;
   }
+  // RENAMED from 'uploadDxfLines3D' when that method was removed. This string
+  // is not local: `gpu-upload-guard.ts` sends it to PostHog as
+  // `gpu_upload_site` on `captureException`, so any saved insight or alert
+  // filtering the old value stops matching and DXF upload failures read as
+  // having STOPPED rather than moved. The new value follows the convention the
+  // other sites use (`flushPending:raf`, `appendToBatches:non-streaming`), so
+  // the rename is the right call; updating those queries is the follow-up.
   const uploaded = runGpuUpload('setLineOverlay:dxf', () => {
     renderer.setLineOverlay('dxf', vertices);
     return true;

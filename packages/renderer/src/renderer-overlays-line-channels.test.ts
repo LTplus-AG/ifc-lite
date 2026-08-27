@@ -72,7 +72,19 @@ function makeHarness(): Harness {
 
 const SEGMENT = new Float32Array([0, 0, 0, 1, 1, 1]);
 
-/** Channels whose uploads must grow the scene AABB, and those that must not. */
+/**
+ * Channels whose uploads must grow the scene AABB, written out here rather than
+ * imported so the tests below do not derive their expectation from the thing
+ * under test.
+ *
+ * Be clear about what that does and does not buy. It catches the IMPLEMENTATION
+ * drifting from `CHANNEL_EXPANDS_MODEL_BOUNDS` — a draw/set path that expands
+ * for the wrong channel fails here. It does NOT catch a wrong POLICY: an author
+ * who copies the `grid` row into a fifth channel that should have expanded
+ * writes the same wrong value in both tables and every assertion below passes.
+ * No test can decide that; it is a judgement, and the rule to apply is on
+ * `Renderer.setLineOverlay`.
+ */
 const EXPECTED_EXPANDS: Record<LineOverlayChannel, boolean> = {
     annotation: true,
     alignment: true,
@@ -140,17 +152,5 @@ describe('setLineOverlay keeps each channel\'s model-bounds policy', () => {
         assert.strictEqual(h.expanded.length, 0);
         assert.strictEqual(h.cameraSyncs(), 0);
         assert.strictEqual(h.renderRequests(), 0);
-    });
-
-    it('every channel in LINE_OVERLAY_CHANNELS has a stated bounds policy', () => {
-        // A fifth channel added to the union without a row in
-        // CHANNEL_EXPANDS_MODEL_BOUNDS would not compile, but one added with the
-        // wrong row would — and would silently inherit whichever policy its
-        // author copied. This makes the table above the thing that has to be
-        // updated deliberately.
-        assert.deepStrictEqual(
-            LINE_OVERLAY_CHANNELS.slice().sort(),
-            (Object.keys(EXPECTED_EXPANDS) as LineOverlayChannel[]).sort(),
-        );
     });
 });

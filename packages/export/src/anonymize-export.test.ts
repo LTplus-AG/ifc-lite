@@ -143,12 +143,12 @@ DATA;
 #16=IFCWALL('${guid(16)}',#74,'Wall Gridline',$,$,#55,$,'TAG-GRIDLINE');
 #8=IFCOPENINGELEMENT('${guid(8)}',#74,'Opening Aperture',$,$,$,$,$);
 #9=IFCWINDOW('${guid(9)}',#74,'Window Lucent',$,$,$,$,'TAG-LUCENT',1.,1.);
-#10=IFCWALLTYPE('${guid(10)}',#74,'WallType Solace',$,$,(#11),$,$,$,.NOTDEFINED.);
+#10=IFCWALLTYPE('${guid(10)}',#74,'WallType Solace',$,'Occurrence Vermilion',(#11),$,$,'ElementType Cerulean',.NOTDEFINED.);
 #11=IFCPROPERTYSET('${guid(11)}',#74,'Pset_WallTypeCommon',$,(#12));
 #12=IFCPROPERTYSINGLEVALUE('IsExternal',$,IFCBOOLEAN(.F.),$);
 #13=IFCPROPERTYSET('${guid(13)}',#74,'Pset_WallCommon',$,(#15));
 #15=IFCPROPERTYSINGLEVALUE('LoadBearing',$,IFCBOOLEAN(.T.),$);
-#40=IFCMATERIAL('Concrete');
+#40=IFCMATERIAL('Concrete',$,'Category Marigold');
 #90=IFCELEMENTASSEMBLY('${guid(90)}',#74,'Assembly Cobalt',$,$,$,$,$,$,.RIGID.);
 #91=IFCPLATE('${guid(91)}',#74,'Plate Vertex',$,$,$,$,$,$);
 #50=IFCPOSTALADDRESS($,$,$,$,('742 Fictitious Lane'),$,'Fictitious Falls','Fictitious Province','00000','Fictitious Country');
@@ -188,6 +188,11 @@ const FULL_INCLUDED_IDS = new Set([
  *  names, tags, person/org fields, and address/georeferencing text — for
  *  every entity `FULL_INCLUDED_IDS` reaches (directly or via the closure). */
 const ORIGINAL_IDENTIFYING_STRINGS = [
+  // Slots that used to be `$` in this fixture, so the sweep below could not
+  // fail on them however badly the scrubber leaked (#3351).
+  'ElementType Cerulean',
+  'Occurrence Vermilion',
+  'Category Marigold',
   'Project Zephyr', 'Site Meridian', 'Building Solstice', 'Storey Boreal', 'Storey Austral',
   'Wall Umbra', 'Wall Penumbra', 'Wall Gridline', 'Opening Aperture', 'Window Lucent',
   'WallType Solace', 'Assembly Cobalt', 'Plate Vertex',
@@ -208,6 +213,40 @@ async function runFullExport(options: AnonymizeOptions = {}) {
 describe('exportAnonymizedSubset — full-subset export invariants (#2934 A6)', () => {
   it('emits no dangling references', async () => {
     const { content } = await runFullExport({ guidRandom: seededRandom(1) });
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
+  it('emits no dangling references when georeferencing is KEPT', async () => {
+    // The option-off path had no test at all, and it produced an invalid STEP
+    // file: `IfcSite.SiteAddress` referenced `#51`, which `IDENTIFYING_TYPES`
+    // dropped unconditionally, and `warnings` came back empty (#3351). The
+    // dangling-ref repair only rewrites `IFCREL*` lines, so it never saw a
+    // direct attribute slot.
+    const { result, content } = await runFullExport({
+      guidRandom: seededRandom(11),
+      removeGeoreferencing: false,
+    });
+    expect(findDanglingRefs(content)).toEqual([]);
+    // ...and KEPT has to mean kept. Blanking the slot would also satisfy the
+    // assertion above while doing the opposite of what the option asks for.
+    expect(content).toContain('IFCPOSTALADDRESS');
+    expect(content).toContain('IFCMAPCONVERSION');
+    expect(content).toContain('IFCPROJECTEDCRS');
+    // Not `warnings).toEqual([])`: this fixture legitimately warns about an
+    // IfcGridPlacement root it cannot zero, which has nothing to do with
+    // georeferencing. Assert the absence of THIS defect's warning class rather
+    // than the absence of all warnings, or the row fails for an unrelated
+    // reason and gets "fixed" by loosening it.
+    for (const w of result.stats.warnings) {
+      expect(w).not.toMatch(/address|dangl|unresolved/i);
+    }
+  });
+
+  it('still drops the address when georeferencing is REMOVED (the default)', async () => {
+    // The other direction, so the branch above cannot be satisfied by simply
+    // never dropping anything.
+    const { content } = await runFullExport({ guidRandom: seededRandom(12) });
+    expect(content).not.toContain('IFCPOSTALADDRESS');
     expect(findDanglingRefs(content)).toEqual([]);
   });
 

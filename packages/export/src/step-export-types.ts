@@ -97,6 +97,11 @@ export interface StepExportOptions {
    * `getSubsetEntityIds`.
    */
   subsetEntityIds?: ReadonlySet<number>;
+  /** Which identifying classes the subset closure excludes. Defaults to all of
+   *  `IDENTIFYING_TYPES`. The anonymize path narrows it when the caller asked
+   *  to KEEP georeferencing and addresses: dropping them anyway left an
+   *  `IfcSite.SiteAddress` pointing at a line that was never written (#3351). */
+  subsetIdentifyingTypes?: ReadonlySet<string>;
 
   /** Georeferencing mutations to apply (IfcProjectedCRS / IfcMapConversion edits) */
   georefMutations?: {

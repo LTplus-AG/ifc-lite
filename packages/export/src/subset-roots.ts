@@ -75,6 +75,29 @@ export const IDENTIFYING_TYPES: ReadonlySet<string> = new Set([
   'IFCACTORROLE',
 ]);
 
+/** The subset of `IDENTIFYING_TYPES` the "Georeferencing & addresses" option
+ *  governs. Dropping these while `removeGeoreferencing` is false left an
+ *  `IfcSite` pointing at a `SiteAddress` line that was not written -- an
+ *  invalid STEP file, reported with no warning, because the dangling-ref repair
+ *  only rewrites `IFCREL*` lines and never sees a direct attribute slot (#3351).
+ *
+ *  `IFCACTORROLE` is deliberately absent: it belongs to owner history, which
+ *  this option does not govern, so it stays dropped unconditionally. */
+export const GEOREFERENCE_TYPES: ReadonlySet<string> = new Set([
+  'IFCPOSTALADDRESS',
+  'IFCTELECOMADDRESS',
+  'IFCMAPCONVERSION',
+  'IFCMAPCONVERSIONSCALED',
+  'IFCPROJECTEDCRS',
+  'IFCGEOGRAPHICCRS',
+]);
+
+/** `IDENTIFYING_TYPES`, minus what the caller asked to keep. */
+export function identifyingTypesFor(removeGeoreferencing: boolean): ReadonlySet<string> {
+  if (removeGeoreferencing) return IDENTIFYING_TYPES;
+  return new Set([...IDENTIFYING_TYPES].filter((t) => !GEOREFERENCE_TYPES.has(t)));
+}
+
 /** What a `subsetEntityIds` export needs from `step-collection.ts`'s closure tail. */
 export interface SubsetEntityIds {
   /** Seed set for `collectReferencedEntityIds`: infrastructure plus every
@@ -103,6 +126,11 @@ export interface SubsetEntityIds {
 export function getSubsetEntityIds(
   index: EffectiveEntityIndex,
   includedIds: ReadonlySet<number>,
+  /** Which identifying classes to exclude. Defaults to all of them, so the
+   *  general STEP-collection path is unchanged; the anonymize path narrows it
+   *  with `identifyingTypesFor` when the caller asked to keep georeferencing
+   *  and addresses (#3351). */
+  identifying: ReadonlySet<string> = IDENTIFYING_TYPES,
 ): SubsetEntityIds {
   const roots = new Set<number>();
   const excludedIds = new Set<number>();
@@ -120,7 +148,18 @@ export function getSubsetEntityIds(
       continue;
     }
 
-    if (IFC_ROOT_TYPES.has(typeUpper) || IDENTIFYING_TYPES.has(typeUpper)) {
+    // A georeference type the caller asked to KEEP has to be ROOTED, not merely
+    // left out of the exclusion set. `IfcCoordinateOperation` hangs off
+    // `IfcGeometricRepresentationContext` by an INVERSE attribute, so the
+    // forward closure never reaches it: not excluding it only meant it was
+    // dropped silently instead of deliberately, and the toggle named
+    // "Map conversion, CRS, lat/long, addresses" kept the last two (#3351).
+    if (GEOREFERENCE_TYPES.has(typeUpper) && !identifying.has(typeUpper)) {
+      roots.add(expressId);
+      continue;
+    }
+
+    if (IFC_ROOT_TYPES.has(typeUpper) || identifying.has(typeUpper)) {
       excludedIds.add(expressId);
     }
     // Everything else (geometry, relationships, property atoms, materials,

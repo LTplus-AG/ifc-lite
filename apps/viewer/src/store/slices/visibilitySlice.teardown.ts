@@ -100,7 +100,7 @@ export const visibilityTeardown = defineSliceTeardown(
 
     // Nothing of ours named the removed model. Returning {} rather than a set
     // of equal-but-new collections is what keeps this scope idempotent:
-    // `purgeStaleEntityState` runs it a second time straight after
+    // `syncSourceModel` runs it a second time straight after
     // `removeModel`, and a fresh `isolatedEntities` reference would put the
     // channel through `withVisibilityOwnershipInvalidation` again for a set
     // that did not move.

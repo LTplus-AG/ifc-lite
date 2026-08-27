@@ -95,7 +95,7 @@ export const selectionTeardown = defineSliceTeardown(
       // `selectedModelId` on its own is enough. `removeModel` used to gate it
       // behind the entity-ref checks above, so a model selected in the
       // hierarchy but with no entity selected under it kept a dangling id;
-      // `purgeStaleEntityState` already cleared it unconditionally on the
+      // the resync purge already cleared it unconditionally on the
       // resync path. One implementation now, so it takes the purge's reading.
       state.selectedModelId === modelId;
 

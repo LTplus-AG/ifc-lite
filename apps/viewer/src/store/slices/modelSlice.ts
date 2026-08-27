@@ -386,7 +386,7 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
     // the mesh-colour backup, which used to be computed here.
     // `modelRemovedScope` carries the survivor-range predicate every
     // global-id-keyed slice filters on: the loop that used to live in this
-    // function AND, verbatim, in `syncSourceModel`'s `purgeStaleEntityState`.
+    // function AND, verbatim, in `syncSourceModel`'s second purge.
     //
     // Read the state ONCE and hand the same object to both: the scope's
     // survivor set and the contributions that filter against it must not be

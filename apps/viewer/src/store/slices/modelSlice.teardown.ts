@@ -38,7 +38,7 @@ export const modelTeardown = defineSliceTeardown(
     // collab room teardown can both re-enter with an id that has already gone,
     // and every cleanup below is keyed to THIS model (#2654 second review).
     // This guard is also what makes the whole 'model-removed' composition a
-    // no-op on its second run: `purgeStaleEntityState` runs the SAME scope
+    // no-op on its second run: `syncSourceModel` runs the SAME scope
     // immediately after `removeModel` has already removed the model.
     if (!models?.has(scope.modelId)) return {};
 

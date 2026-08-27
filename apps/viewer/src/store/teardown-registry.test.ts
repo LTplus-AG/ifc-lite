@@ -157,7 +157,13 @@ function isSliceTeardown(value: unknown): boolean {
  * does not fail to compile, and does not fail any existing test. It just stops
  * being cleared, which is the exact defect this seam was built to remove.
  *
- * Two ways to lose a key silently, one test each:
+ * The pins fail in BOTH directions. A key leaving means something stopped being
+ * torn down; a key arriving means a slice started destroying state it did not
+ * before, which is Trap A and the class `check-whole-state-reset.mjs` records as
+ * three real shipped bugs. Neither direction throws, fails to compile, or
+ * breaks another test on its own.
+ *
+ * Ways to lose or gain a key silently:
  *
  *   1. drop the key from a teardown's BODY while leaving it in `owns` — this
  *      compiles, because `Partial<Pick<...>>` does not require the key,
@@ -191,8 +197,21 @@ describe('the teardown registry stays complete', () => {
         [],
         `${kind} used to write these keys and does not any more: ${dropped.join(', ')}`,
       );
+      // Fails too, and that is the point. An `added` key is Trap A: the slice
+      // now destroys something it did not before. `check-whole-state-reset.mjs`
+      // records three of those shipping in one day - sheetSlice.clearSheet
+      // wiping savedSheetTemplates, drawing2DSlice.clearDrawing2D wiping
+      // override rules, DXF underlays and text annotations. Ownership stays
+      // disjoint through all of them, so the registry does not throw and the
+      // body type-checks. A one-directional pin would pass.
       const added = actual.filter((key) => !pinned.includes(key));
-      if (added.length > 0) console.log(`${kind} now also writes:`, added);
+      assert.deepStrictEqual(
+        added,
+        [],
+        `${kind} now writes keys it did not before: ${added.join(', ')}. If that is intended, ` +
+          'add them to the pinned list IN THE SAME COMMIT so the widening is reviewable. If it is ' +
+          'not, some slice just started destroying state it does not own.',
+      );
     }
   });
 
@@ -207,10 +226,14 @@ describe('the teardown registry stays complete', () => {
       `these keys were declared owned when this was pinned and are not any more: ${dropped.join(', ')}`,
     );
 
+    // Same both-directions rule as the emission pin above.
     const added = actual.filter((key) => !PINNED_OWNED_KEYS.includes(key));
-    if (added.length > 0) {
-      console.log('new keys now owned (update PINNED_OWNED_KEYS):', added);
-    }
+    assert.deepStrictEqual(
+      added,
+      [],
+      `these keys are newly declared owned: ${added.join(', ')}. Widening what a slice is willing ` +
+        'to destroy is a deliberate act; add them to PINNED_OWNED_KEYS in the same commit.',
+    );
   });
 
   it('registers every teardown a slice exports, so a contribution cannot be written and then left out of the registry', async () => {

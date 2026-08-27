@@ -72,7 +72,7 @@ export const pinboardTeardown = defineSliceTeardown(
     );
 
     // Nothing of ours belonged to the removed model: return {} rather than two
-    // equal-but-new Sets. `purgeStaleEntityState` runs this same scope again
+    // equal-but-new Sets. `syncSourceModel` runs this same scope again
     // straight after `removeModel`, and a fresh reference there would re-notify
     // every basket subscriber for a set that did not move.
     if (

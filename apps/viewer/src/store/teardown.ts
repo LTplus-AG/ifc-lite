@@ -35,7 +35,10 @@
  *
  * A `SliceTeardown` is a PURE function of `(scope, state)`. It returns a
  * patch. It does not call `set`, does not call another slice's action, and
- * does not touch the renderer, `localStorage` or the federation registry.
+ * does not touch the renderer or the federation registry, and does not WRITE
+ * `localStorage`. It may READ a persisted preference: Trap B below requires it
+ * (`visibilitySlice` re-reads `typeVisibility` / `typeViewMode`), which is why
+ * `viewerTeardown` is not a pure function of its arguments alone.
  *
  * That is not stylistic. Three of the four entry points sequence ORDERED side
  * effects around their `set()`, and the order is load-bearing and tested:
@@ -116,7 +119,7 @@ import type { ViewerState } from './index.js';
  * Which teardown is running.
  *
  * `model-removed` covers BOTH the federation removal (`modelSlice.removeModel`)
- * and the source resync purge (`syncSourceModel.purgeStaleEntityState`). That
+ * and the source resync purge in `syncSourceModel`. That
  * is the point of `isStale`: the two paths differed only in how they computed
  * the survivor set, and passing the predicate in is what collapses two
  * implementations into one.
@@ -195,7 +198,7 @@ export interface SliceTeardown<K extends keyof ViewerState = keyof ViewerState> 
    * spreads its groups conditionally (`...(selectionTouchedRemoved ? {…} : {})`)
    * precisely so an untouched group is not rewritten; keeping that habit is
    * what makes `model-removed` idempotent, which in turn is what lets
-   * `purgeStaleEntityState` run the SAME composition after `removeModel`
+   * `syncSourceModel` runs the SAME composition after `removeModel`
    * without undoing or re-allocating anything.
    *
    * {@link composeTeardown} drops `Object.is`-unchanged entries as a backstop,
@@ -313,18 +316,18 @@ export function teardownOwnedKeys(
  * subscriber is notified for a non-change, and the visibility-ownership
  * middleware does not run its invalidation for a channel nobody actually
  * moved. It also makes a `model-removed` teardown safe to run twice, which
- * `purgeStaleEntityState` does immediately after `removeModel`.
+ * `syncSourceModel` does immediately after `removeModel`.
  *
  * A key absent from `state` (the partial-store test harness) is never
  * "unchanged" — `Object.is(undefined, value)` is false unless the teardown also
  * returns `undefined`.
  *
- * Three contributions DO return `undefined`, and the rule that keeps that safe
- * is narrower than "never return it": `visibilitySlice` (`hiddenEntities`),
- * `selectionSlice` (`selectedEntityIds` / `selectedStoreys`) and `dataSlice`'s
- * `purgeRemovedModelsBackup` all pass through the value they READ from `state`,
- * so they return `undefined` only where the live value is `undefined` too and
- * the entry is dropped. Returning a SYNTHESIZED `undefined` would survive the
+ * About a dozen contributions DO return `undefined` - most of `visibilitySlice`
+ * and `selectionSlice`'s model-removed arms, plus `dataSlice`'s
+ * `purgeRemovedModelsBackup`. Do not audit that as a list; audit the RULE, which
+ * is narrower than "never return it": every one of them passes THROUGH a value
+ * read from `state`, so `undefined` appears only where the live value is
+ * `undefined` too and the entry is dropped. Returning a SYNTHESIZED `undefined` would survive the
  * filter, and `writeKey` would set it, and zustand's shallow merge would blank
  * the field.
  */

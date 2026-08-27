@@ -13,7 +13,7 @@
  * raising a budget; the seam is the one this refactor exists to create.
  *
  * Everything here is session-reset only. The Cesium overlay is not touched by
- * `removeModel`, `clearAllModels` or `purgeStaleEntityState` today, so both
+ * `removeModel`, `clearAllModels` or the resync purge today, so both
  * other scopes return `{}`.
  *
  * `resetCesiumPlacementDraft()` clears two of these eleven fields and stays as

@@ -13,9 +13,9 @@
  * one is a hard contract, not a preference:
  *
  *     syncSourceModel.ts:188   removeModel(modelId);
- *     syncSourceModel.ts:189   purgeStaleEntityState(modelId, replacementId);
+ *     syncSourceModel.ts        the model-removed teardown, run a second time
  *
- * `purgeStaleEntityState` deliberately KEEPS the part of the user's X-ray /
+ * `second run deliberately KEEPS the part of the user's X-ray /
  * isolation that still belongs to a surviving model and drops only the ids
  * burned with the replaced one. An unconditional CLEAR (nulling the channel
  * outright) inside `removeModel` would make that filter dead code on its only
@@ -26,7 +26,7 @@
  * record, that `useClash`'s run-start release uses.
  *
  * That is only half of `removeModel`'s job on the SAME channels, though.
- * `purgeStaleEntityState` is chained after `removeModel` on exactly one
+ * the second purge is chained after `removeModel` on exactly one
  * caller — `syncSourceModel`'s reload path (syncSourceModel.ts:188-189). The
  * two direct callers, `HierarchyPanel`'s delete button and the collab room
  * teardown (`collabSlice.ts`), call `removeModel` alone: nothing downstream
@@ -36,9 +36,9 @@
  * reassigned to a later model either) — and if EVERY id in an isolate/ghost
  * set belonged to the removed model, the channel stays non-null while
  * matching nothing in the survivors, hiding the entire remaining scene (the
- * same "empty set is worse than stale" hazard `purgeStaleEntityState`'s own
+ * same "empty set is worse than stale" hazard the purge's own
  * comment calls out). #2832 gave `removeModel` that filtering directly,
- * mirroring `purgeStaleEntityState`'s survivor-range check. It runs AFTER the
+ * mirroring `modelRemovedScope`'s survivor-range check. It runs AFTER the
  * ownership-scoped release above (so a clash-owned channel is already gone or
  * already left alone by the time it sees the channel) and only ever DROPS ids
  * no surviving model can own — it does not blanket-clear, so it does not
@@ -108,7 +108,7 @@ describe('removeModel leaves visibility state it does not own (#2654 second revi
   it('PRUNES the id the removed model owned but KEEPS the id a surviving model owns', () => {
     // 12 belongs to modelA (removed), 10_012 to the surviving modelB. No
     // downstream purge follows a bare `removeModel` call (only the
-    // syncSourceModel reload path chains `purgeStaleEntityState` after it),
+    // syncSourceModel reload path runs the same scope a second time after it),
     // so removeModel must do this filtering itself — a deleted-model id left
     // unfiltered here never gets cleaned up.
     const ghost = new Set<number>([12, 10_012]);

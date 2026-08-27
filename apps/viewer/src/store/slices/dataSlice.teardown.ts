@@ -69,7 +69,7 @@ export const dataTeardown = defineSliceTeardown(
 
     const models = state.models;
     // Same guard as `modelSlice`'s arm: a removal that removes nothing writes
-    // nothing, which is also what makes the second run (`purgeStaleEntityState`
+    // nothing, which is also what makes the second run (`syncSourceModel`
     // immediately after `removeModel`) a no-op.
     if (!models?.has(scope.modelId)) return {};
 

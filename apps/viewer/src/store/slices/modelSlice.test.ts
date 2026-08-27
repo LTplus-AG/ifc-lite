@@ -477,7 +477,7 @@ describe('ModelSlice', () => {
     });
 
     describe('global-id state (selection sets / hidden / isolated / ghost / class filter)', () => {
-      // `syncSourceModel.ts`'s `purgeStaleEntityState` already purges these
+      // `syncSourceModel.ts`'s second model-removed purge already purges these
       // exact fields on the same-modelId resync path (comment above this
       // block's parent `describe`). `removeModel` never got the same
       // treatment for anything past the EntityRef-shaped selection fields —

@@ -478,7 +478,7 @@ describe('syncSourceModel — the revision id lands on the replacement model', (
 
 describe("syncSourceModel — a resync keeps the surviving half of the user's X-ray", () => {
   // Drives the REAL `removeModel`, not the harness stub. `removeModel` runs one
-  // line before `purgeStaleEntityState`, and the stub hid that: #2654 added an
+  // line before the second model-removed purge, and the stub hid that: #2654 added an
   // unconditional `clearGhost()` to `removeModel`, which made the purge's ghost
   // and isolation filters (syncSourceModel.ts:262-271) dead code on their only
   // production path — every sync silently wiped the user's X-ray — and every

@@ -24,7 +24,7 @@
  *    highlight mode, let LayerDiff / Space Sketch / X-ray install a ghost, then
  *    remove a model — that owner's ghost was destroyed. On the `syncSourceModel`
  *    path this is the original #2654 regression: `removeModel` nulls the ghost
- *    and `purgeStaleEntityState` one line later reads `null` and skips its
+ *    and the second model-removed purge one line later reads `null` and skips its
  *    filter, so "Sync from source" wipes the user's X-ray.
  *  - UNDER-CLEAR. `useClash.selectElement` installs a NON-EMPTY clash-owned
  *    isolation via `applyFocusMode` and never writes `clashSelectedId` (and
@@ -181,7 +181,7 @@ export interface ClashSceneTeardown extends ClashVisibilityChannels {
  *    kept (a list the user is reading, not scene geometry; a sibling leaving
  *    does not invalidate pairs that do not involve it), and the visibility
  *    release is ownership-scoped — `syncSourceModel` calls `removeModel` and
- *    then `purgeStaleEntityState`, which KEEPS the part of a surviving model's
+ *    then a stricter second run of the same scope, which KEEPS the part of a surviving model's
  *    X-ray and drops only the ids burned with the replaced one. Clearing a
  *    channel clash does not own makes that filter dead code on its only
  *    production path.

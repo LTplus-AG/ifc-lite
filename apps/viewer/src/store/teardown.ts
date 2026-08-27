@@ -9,7 +9,7 @@
  * removal, a full federation clear and a source resync each wipe:
  *
  *   - `store/index.ts` `resetViewerState`        186 keys, 26 slices
- *   - `slices/modelSlice.ts` `removeModel`        24 keys
+ *   - `slices/modelSlice.ts` `removeModel`        23 keys
  *   - `slices/modelSlice.ts` `clearAllModels`     18 keys
  *   - `lib/sources/syncSourceModel.ts` `purgeStaleEntityState`  14 keys
  *

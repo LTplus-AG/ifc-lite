@@ -46,10 +46,15 @@ export type VisibilityOwnership =
  * would be exact, but it is destroyed by every flow that snapshots and later
  * restores the channel with equal content in a fresh `Set` — Space Sketch's
  * open/close view capture (`useSpaceSceneFraming` clones the prior sets and
- * replays them through the cloning slice setters). A source-model resync used to
- * be the second such flow; since the teardown seam it returns `{}` rather than
- * rebuilding unchanged sets (`visibilitySlice.teardown.ts`, asserted by
- * `teardown.idempotence.test.ts`), so Space Sketch now carries this alone.
+ * replays them through the cloning slice setters) and a source-model resync
+ * (`syncSourceModel` rebuilds the kept sets even when nothing was filtered).
+ *
+ * The teardown seam did NOT retire the second one, and an earlier revision of
+ * this comment wrongly said it had. `visibilitySlice.teardown.ts` gates all six
+ * of its keys on ONE `touched` flag, so a stale id in `hiddenEntities` alone
+ * still emits a fresh, equal `isolatedEntities` (measured; #3346 tracks the
+ * per-key gate). Do not simplify `sameMembers` to reference identity on the
+ * strength of this paragraph: that reopens #2662 P2 on the resync path.
  * Under reference identity those flows silently converted a feature-owned
  * focus into "user" state, so the next run replaced the result set but left
  * the old presentation isolated/ghosted (#2662 P2). Value identity survives

@@ -206,9 +206,12 @@ async function doSyncSourceModel({
   // `syncSourceModel.test.ts`'s "drops a burned id even when the REPLACEMENT's
   // fresh range covers it" is the one test that goes red — measured.
   //
-  // Re-running a scope is safe by construction: every contribution returns
-  // `{}` when nothing of its own moved (`store/teardown.ts`), so this pass
-  // writes only what the first could not see. Applied through
+  // Re-running a scope is safe: a contribution whose own state did not move
+  // returns `{}` (`store/teardown.ts`), so this pass writes little. Note the
+  // granularity — the gates are per SLICE, not per key, so a slice that did
+  // move re-emits its unchanged keys as equal-but-new collections (#3346).
+  // Safe, because every consumer of these keys compares by value, but it is
+  // not the no-op the per-slice rule alone would suggest. Applied through
   // `useViewerStore.setState`, the setter
   // `withVisibilityOwnershipInvalidation` wraps, so the shared isolate / ghost
   // channels are still invalidated exactly as before.

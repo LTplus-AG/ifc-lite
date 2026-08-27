@@ -9,6 +9,8 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { teardownOwnedKeys } from './teardown.js';
 import { viewerTeardownRegistry } from './teardown-registry.js';
+import { modelRemovedScope } from './teardown-scope.js';
+import type { FederatedModel } from './types.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -79,6 +81,61 @@ const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
   'ifcDataStore', 'isolatedEntities', 'isolatedEntitiesByModel', 'meshColorBackup', 'models',
   'pinboardEntities', 'selectedEntityId', 'selectedEntityIds', 'selectedStoreys',
 ];
+
+/**
+ * Every key a `model-removed` teardown writes, for the fixture below.
+ *
+ * This scope needs a state to emit anything - its contributions return `{}`
+ * when nothing of theirs names the removed model - so it is pinned against a
+ * fixture rather than `{}`. It is also the scope with the most intricate
+ * bodies (`isStale` filtering, `nextActiveModelId` following, the two-flag
+ * gates), which is exactly why leaving it unpinned would have made this file
+ * read as covering all three scopes while covering two.
+ */
+const PINNED_MODEL_REMOVED_KEYS: readonly string[] = [
+  'activeModelId', 'activeStorey', 'addElementModelId', 'addElementStoreyId', 'classFilter',
+  'geometryResult', 'ghostExceptEntities', 'hiddenEntities', 'hiddenEntitiesByModel',
+  'hierarchyBasketSelection', 'ifcDataStore', 'isolatedEntities', 'isolatedEntitiesByModel',
+  'meshColorBackup', 'models', 'pinboardEntities', 'selectedEntities', 'selectedEntitiesSet',
+  'selectedEntity', 'selectedEntityId', 'selectedEntityIds', 'selectedModelId', 'selectedStoreys',
+];
+
+/**
+ * A federation where model A owns state in every channel a removal touches.
+ *
+ * B survives with a disjoint id range, so `isStale` has a real survivor to ask
+ * about rather than answering true for everything.
+ */
+function modelRemovedFixture() {
+  const model = (id: string, idOffset: number, maxExpressId: number) =>
+    ({ id, name: id, visible: true, idOffset, maxExpressId }) as unknown as FederatedModel;
+  return {
+    models: new Map([['A', model('A', 0, 100)], ['B', model('B', 1000, 1100)]]),
+    activeModelId: 'A',
+    selectedEntityId: 42,
+    selectedEntityIds: new Set([42, 1005]),
+    selectedStoreys: new Set([44]),
+    selectedEntity: { modelId: 'A', expressId: 42 },
+    selectedEntities: [{ modelId: 'A', expressId: 42 }],
+    selectedEntitiesSet: new Set(['A:42', 'B:5']),
+    selectedModelId: 'A',
+    activeStorey: { modelId: 'A', expressId: 44 },
+    hiddenEntities: new Set([43, 1006]),
+    isolatedEntities: new Set([45, 1007]),
+    ghostExceptEntities: new Set([46]),
+    classFilter: { ids: new Set([47]), label: 'walls' },
+    hiddenEntitiesByModel: new Map([['A', new Set([43])]]),
+    isolatedEntitiesByModel: new Map([['A', new Set([45])]]),
+    pinboardEntities: new Set(['A:42', 'B:5']),
+    hierarchyBasketSelection: new Set(['A:42']),
+    meshColorBackup: new Map([[42, [1, 1, 1, 1]]]),
+    addElementModelId: 'A',
+    addElementStoreyId: 44,
+    ifcDataStore: null,
+    geometryResult: null,
+    mutationViews: new Map(),
+  } as unknown as Parameters<typeof modelRemovedScope>[0];
+}
 
 /**
  * Every key some slice DECLARES it may destroy, across all scopes.
@@ -213,6 +270,31 @@ describe('the teardown registry stays complete', () => {
           'not, some slice just started destroying state it does not own.',
       );
     }
+  });
+
+  it('still writes every `model-removed` key it wrote when this was pinned, the scope the other two pins cannot reach', () => {
+    const state = modelRemovedFixture();
+    const scope = modelRemovedScope(state, 'A');
+    const keys = new Set<string>();
+    for (const entry of viewerTeardownRegistry) {
+      for (const key of Object.keys(entry.teardown(scope, state))) keys.add(String(key));
+    }
+    const actual = [...keys].sort();
+
+    const dropped = PINNED_MODEL_REMOVED_KEYS.filter((key) => !actual.includes(key));
+    assert.deepStrictEqual(
+      dropped,
+      [],
+      `model-removed used to write these keys and does not any more: ${dropped.join(', ')}`,
+    );
+
+    const added = actual.filter((key) => !PINNED_MODEL_REMOVED_KEYS.includes(key));
+    assert.deepStrictEqual(
+      added,
+      [],
+      `model-removed now writes keys it did not before: ${added.join(', ')}. Same rule as above: ` +
+        'intended widening belongs in the pinned list in the same commit.',
+    );
   });
 
   it('declares the same ownership it declared when this was pinned', () => {

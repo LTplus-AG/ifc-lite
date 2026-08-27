@@ -32,9 +32,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { relativeExtends, parseCliMode, auditVacuity, audit } from './typecheck-tests.mjs';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { relativeExtends, parseCliMode, auditVacuity, audit, repoRootRefusal } from './typecheck-tests.mjs';
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 test('a sibling base config is ./-prefixed, not bare', () => {
   // The repo-root case: pkgDir and the base config are the same directory.
@@ -455,5 +459,113 @@ test('audit(): an empty tree names every parent it looked for', async () => {
     assert.match(stderr, /none of packages\/, apps\/ and examples\/ exists under/);
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// ---- The repo root is not a package (#3362).
+//
+// `parseCliMode` already refuses the ARGUMENT form of this mistake: `node
+// scripts/typecheck-tests.mjs packages/clash` from the root used to ignore its
+// argument and fall through to the cwd branch. The CWD form is the same
+// substitution with the argument left off, and it was still open: zero
+// arguments is a legal `package` mode, so `checkOnePackage(process.cwd())` read
+// the REPOSITORY as the package. Measured on this tree before the guard, from
+// the repo root with no arguments:
+//
+//   tsconfig.tests.json written at the repo root: 1,520 lines, 1,505 test
+//   files listed, and not one line of output while it happened.
+//
+// #3363 gitignored that path — correct for diff noise, and it removed the last
+// visible symptom, which is why the guard has to exist rather than the file
+// being noticed.
+//
+// The unit cases below pin the path arithmetic; the spawn case below them pins
+// that `checkOnePackage` actually consults it, which is the half a guard placed
+// only in `parseCliMode` would leave undone.
+
+test('the repo root itself is refused (issue 3362)', () => {
+  const message = repoRootRefusal('/repo', '/repo');
+  assert.ok(message, 'the repo root must be refused, not treated as a package');
+  assert.match(message, /refusing to treat the repository root as a package/);
+});
+
+test('the refusal says what the caller probably meant (issue 3362)', () => {
+  const message = repoRootRefusal('/repo', '/repo');
+  assert.match(message, /--audit/, 'names the repo-wide coverage gate');
+  assert.match(message, /--all/, 'names the every-package run');
+  assert.match(message, /cd <package>/, 'names the single-package run');
+});
+
+test('a trailing slash and a `.` segment are the same directory (issue 3362)', () => {
+  assert.ok(repoRootRefusal('/repo/', '/repo'), 'a trailing slash must not spell a different directory');
+  assert.ok(repoRootRefusal('/repo/./', '/repo'), 'a `.` segment must not spell a different directory');
+  assert.ok(repoRootRefusal('/repo/packages/..', '/repo'), 'a `..` segment must not spell a different directory');
+});
+
+test('a real package directory is not refused (issue 3362)', () => {
+  assert.equal(repoRootRefusal('/repo/packages/clash', '/repo'), null);
+  assert.equal(repoRootRefusal('/repo/apps/viewer', '/repo'), null);
+  // A directory whose path merely STARTS with the root is not the root.
+  assert.equal(repoRootRefusal('/repo-two', '/repo'), null);
+});
+
+test('the default root is the repo this script lives in, not a guess (issue 3362)', () => {
+  // Called with ONE argument, the way checkOnePackage calls it. If the default
+  // resolved anywhere other than the repo root, every case above would still
+  // pass while the live guard pointed at nothing.
+  assert.ok(repoRootRefusal(REPO_ROOT), 'the default repoRoot must be the repository root');
+  assert.equal(repoRootRefusal(path.join(REPO_ROOT, 'packages')), null);
+});
+
+test('a symlinked spelling of the repo root is still the repo root (issue 3362)', () => {
+  // `process.cwd()` reports the realpath while REPO_ROOT comes from this file's
+  // own URL, so a symlinked checkout spells one directory two ways. A plain
+  // string compare misses, and missing here admits the run being refused.
+  const dir = mkdtempSync(path.join(tmpdir(), 'typecheck-tests-symlink-'));
+  const link = path.join(dir, 'repo');
+  try {
+    symlinkSync(REPO_ROOT, link, 'dir');
+    assert.ok(repoRootRefusal(link), 'a symlink to the repo root must be refused too');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('running it bare from the repo root refuses and writes no program (issue 3362)', async () => {
+  // The end-to-end half. A guard that exists but that checkOnePackage never
+  // calls passes every unit case above and still writes the 1,505-file program.
+  const generated = path.join(REPO_ROOT, 'tsconfig.tests.json');
+  // Never a legitimate artifact after this guard, and the file's own header
+  // says it is generated and must not be committed, so clearing a leftover from
+  // an older run is safe.
+  rmSync(generated, { force: true });
+
+  const child = spawn(process.execPath, ['scripts/typecheck-tests.mjs'], { cwd: REPO_ROOT });
+  let out = '';
+  child.stdout.on('data', (d) => { out += d; });
+  child.stderr.on('data', (d) => { out += d; });
+
+  // Without the guard the program appears within about a second and tsc then
+  // runs for minutes. Watch for the file and for the clock, so this case FAILS
+  // rather than hangs when the guard is missing.
+  let wroteProgram = false;
+  const watcher = setInterval(() => {
+    if (existsSync(generated)) {
+      wroteProgram = true;
+      child.kill('SIGKILL');
+    }
+  }, 100);
+  const deadline = setTimeout(() => child.kill('SIGKILL'), 30_000);
+  const code = await new Promise((resolve) => child.on('exit', resolve));
+  clearInterval(watcher);
+  clearTimeout(deadline);
+
+  try {
+    assert.equal(wroteProgram, false, `it wrote ${generated}: the repository was treated as a package`);
+    assert.equal(code, 2, `expected exit 2, got ${code}: ${out}`);
+    assert.match(out, /refusing to treat the repository root as a package/);
+    assert.doesNotMatch(out, /has no test files, nothing to check/, 'it must refuse, not report a vacuous pass');
+  } finally {
+    rmSync(generated, { force: true });
   }
 });

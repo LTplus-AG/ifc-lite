@@ -190,7 +190,7 @@ const ALLOWLIST_DIGESTS = {
   'packages/pointcloud': '9060606210189352091',
   'packages/provenance': '17691750269289291288',
   'packages/query': '10617410983412679617',
-  'packages/renderer': '11681850481085978175',
+  'packages/renderer': '15202468481558700224',
   'packages/sandbox': '7650074321748792699',
   'packages/sdk': '885187935350689181',
   'packages/server-client': '7638729328149367977',

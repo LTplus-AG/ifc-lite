@@ -47,6 +47,13 @@ import { classifyReviewState } from './coderabbit-review-state.mjs';
 export const DEFAULT_REPO = 'LTplus-AG/ifc-lite';
 
 /**
+ * The `name:` of the workflow that IS the merge gate (`.github/workflows/test.yml:5`).
+ * Matched against each CheckRun's `workflowName` in the rollup, so it is the
+ * display name and not the file path.
+ */
+export const TEST_WORKFLOW_NAME = 'Test';
+
+/**
  * Severity ranks, worst-actionable first. `NOT_OURS` is deliberately the
  * LOWEST rank even though it takes precedence as a disqualifier: it is the one
  * verdict that is not a task, so it sorts to the bottom of the report while
@@ -60,6 +67,10 @@ export const SEVERITY = {
   UNREVIEWED: 60,
   PENDING: 20,
   GREEN: 10,
+  // Not a task, like NOT_OURS, and ranked separately from it ON PURPOSE: at a
+  // shared rank the two verdicts alias under `===`, so a test asserting
+  // NOT_OPEN would pass on a NOT_OURS row and pin nothing.
+  NOT_OPEN: 1,
   NOT_OURS: 0,
 };
 
@@ -71,7 +82,9 @@ export const SEVERITY = {
  *   headRepo: string,
  *   mergeable: string | null,
  *   mergeStateStatus: string | null,
+ *   state: string | null,
  *   runCount: number,
+ *   testLaneCount: number,
  *   newestRunSha: string | null,
  *   fail: number,
  *   pending: number,
@@ -101,6 +114,26 @@ export function isStaleRun(row) {
  * @returns {{ severity: number, reason: string } | null}
  */
 export function disqualify(row, repo = DEFAULT_REPO) {
+  // FIRST, ahead of even NOT_OURS: a PR that is not open is not a merge
+  // candidate, and every count below it describes history rather than a
+  // merge. Measured on the #3315 row shape: `mergeable:'UNKNOWN'` with 39
+  // passing runs disqualifies to `null` and scores SEVERITY.GREEN, because
+  // `mergeable` reads UNKNOWN on a MERGED PR exactly as it does on one GitHub
+  // has not finished computing. Today only `--state open` at the call site
+  // keeps that row out of the report, which is the filter any `--pr N` entry
+  // point would bypass.
+  if (typeof row.state !== 'string' || row.state === '') {
+    // ABSENCE IS NOT OPENNESS. A truthiness guard here (`row.state && ...`)
+    // scores a row with no state GREEN, which is the fail-open this branch
+    // exists to close, one level up: the producer always sets the field, so the
+    // caller that arrives without it is the hand-built one this branch was
+    // written for. Same bucket as an unreadable run count -- unknown is not
+    // green.
+    return { severity: SEVERITY.NO_RUNS, reason: 'state is missing - cannot show this PR is open' };
+  }
+  if (row.state.toUpperCase() !== 'OPEN') {
+    return { severity: SEVERITY.NOT_OPEN, reason: `state=${row.state} - not an open merge candidate` };
+  }
   if (row.headRepo !== repo) {
     return { severity: SEVERITY.NOT_OURS, reason: `not ours (head repo ${row.headRepo})` };
   }
@@ -118,6 +151,26 @@ export function disqualify(row, repo = DEFAULT_REPO) {
     return {
       severity: SEVERITY.NO_RUNS,
       reason: 'zero workflow runs at head - an empty rollup, not a passing one',
+    };
+  }
+  // `runCount` counts ANY workflow at the head, and the merge gate is one
+  // specific workflow. Measured on #3315 at 66c8886b: five runs present
+  // (ifcopenshell-parity x2, python-wheels, server-binaries, xmatch-fixture)
+  // and test.yml among them ZERO times, so `runCount > 0` was true over a head
+  // the test suite never examined. That is the #3294 shape wearing a non-zero
+  // count.
+  if (typeof row.testLaneCount !== 'number') {
+    // `undefined === 0` is false, so an absent count sailed straight past the
+    // branch below while the production path went dead. Measured: deleting
+    // `testLaneCount` from the row constructor left 29 of 29 green. The sibling
+    // `state` field had the identical hole and was fixed one field at a time
+    // instead of as a class, which is how this one survived.
+    return { severity: SEVERITY.NO_RUNS, reason: 'Test-lane count could not be read' };
+  }
+  if (row.testLaneCount === 0) {
+    return {
+      severity: SEVERITY.NO_RUNS,
+      reason: 'no lane from the Test workflow at this head - the other workflows are not the merge gate',
     };
   }
   if (isStaleRun(row)) {
@@ -248,7 +301,7 @@ export function sweepPullRequests({ gh, repo = DEFAULT_REPO, author = '@me', onP
     [
       'pr', 'list', '--repo', repo, '--author', author, '--state', 'open', '--limit', '200',
       '--json',
-      'number,headRefName,headRefOid,mergeable,mergeStateStatus,isDraft,headRepository,headRepositoryOwner,statusCheckRollup',
+      'number,state,headRefName,headRefOid,mergeable,mergeStateStatus,isDraft,headRepository,headRepositoryOwner,statusCheckRollup',
     ],
     'pull-request list',
   );
@@ -291,6 +344,18 @@ export function sweepPullRequests({ gh, repo = DEFAULT_REPO, author = '@me', onP
       );
     }
     const runCount = runsAtHead.total_count;
+    // How many lanes the MERGE GATE's own workflow published at this head. Read
+    // out of the rollup `gh pr list` already returned rather than bought with a
+    // second API call per PR: every CheckRun in it carries `workflowName`, and
+    // test.yml is `name: Test` (test.yml:5).
+    //
+    // Coupled to the workflow's DISPLAY NAME. A rename makes this 0 and reports
+    // "never fired" on a head where it did, which is a false alarm rather than a
+    // false green, so it fails in the safe direction. StatusContext entries (the
+    // Vercel and bot rows) carry no workflowName and are simply not Test lanes.
+    const testLaneCount = (pr.statusCheckRollup ?? []).filter(
+      (c) => c?.workflowName === TEST_WORKFLOW_NAME,
+    ).length;
 
     const runsOnBranch = call(
       gh,
@@ -351,6 +416,12 @@ export function sweepPullRequests({ gh, repo = DEFAULT_REPO, author = '@me', onP
       mergeable: pr.mergeable ?? null,
       mergeStateStatus: pr.mergeStateStatus ?? null,
       runCount,
+      testLaneCount,
+      // Fetched AND carried. Adding `state` to the --json list without copying
+      // it here left the NOT_OPEN branch reachable only from hand-built test
+      // fixtures, which is the shape where a fix is inert exactly where it is
+      // needed and the tests still go green.
+      state: pr.state ?? null,
       newestRunSha,
       fail,
       pending,
@@ -392,6 +463,10 @@ export function formatSweep(rows, repo = DEFAULT_REPO) {
 export function actionable(rows, repo = DEFAULT_REPO) {
   return rows.filter((row) => {
     const bad = disqualify(row, repo);
-    return bad !== null && bad.severity !== SEVERITY.NOT_OURS;
+    // NOT_OPEN joins NOT_OURS as a verdict that is not a TASK: a merged or
+    // closed PR needs nothing done to it. Both still suppress every other
+    // column's claim about the row, which is why they disqualify rather than
+    // being filtered earlier.
+    return bad !== null && bad.severity !== SEVERITY.NOT_OURS && bad.severity !== SEVERITY.NOT_OPEN;
   });
 }

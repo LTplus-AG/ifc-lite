@@ -90,10 +90,21 @@ describe('IfcTypeEnumFromString never resolves a class to a non-ancestor', () =>
   });
 
   it('names the three classes the rule was written for, in both directions', () => {
-    // Forward: each resolves to itself, not to the sibling/child it used to.
-    expect(IfcTypeEnumToString(IfcTypeEnumFromString('IfcTendonAnchor'))).not.toBe('IfcTendon');
-    expect(IfcTypeEnumToString(IfcTypeEnumFromString('IfcFastener'))).not.toBe('IfcMechanicalFastener');
-    expect(IfcTypeEnumToString(IfcTypeEnumFromString('IfcCableCarrierSegment'))).not.toBe('IfcCableSegment');
+    // Forward: each is asserted POSITIVELY, against the one value the table
+    // may hold for it, rather than negatively against the single wrong value
+    // it used to hold. A `.not.toBe('IfcCableSegment')` row passes for every
+    // value except that one, so re-pointing IfcCableCarrierSegment at
+    // IfcFlowSegment would satisfy it — and the ancestry sweep above cannot
+    // catch that either, because IfcFlowSegment IS an ancestor of
+    // IfcCableCarrierSegment. The raw class name would be replaced by a
+    // coarser one again, which is the defect this file exists to pin.
+    //
+    // The enum has no member for any of the three, so `Unknown` is the only
+    // sound answer: it is the miss sentinel that sends `getTypeName` to the
+    // rawTypeName column, where the parsed class name is.
+    expect(IfcTypeEnumFromString('IfcTendonAnchor')).toBe(IfcTypeEnum.Unknown);
+    expect(IfcTypeEnumFromString('IfcFastener')).toBe(IfcTypeEnum.Unknown);
+    expect(IfcTypeEnumFromString('IfcCableCarrierSegment')).toBe(IfcTypeEnum.Unknown);
 
     // Backward: the classes they were folded into still resolve to themselves.
     // Without this, deleting the enum members entirely would pass the row above.

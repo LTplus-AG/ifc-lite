@@ -102,9 +102,15 @@ export const dataTeardown = defineSliceTeardown(
  *
  * `resolveGlobalIdInModel` is the owner-scoped resolver `modelSlice` already
  * provides for exactly this question; it shares its range and overlay
- * predicates with the unscoped one, so the two cannot drift (#2697). It is a
- * pure lookup — no `set`, no ordering — read off the state handed in, and it
- * still sees the removed model because the teardown runs before the `set`.
+ * predicates with the unscoped one, so the two cannot drift (#2697).
+ *
+ * It is NOT a pure function of the state handed in: it closes over the model
+ * slice's own `get()` (`modelSlice.ts`, `mutationViewsOf(get())`), so it reads
+ * the LIVE store. That is correct here for a reason, not by luck: every entry
+ * point builds its patch BEFORE its own `set`, so live and snapshot are the
+ * same models. An entry point that ever composed against a snapshot taken
+ * before an intervening `set` would resolve `meshColorBackup` against
+ * different data than every other contribution, with nothing to catch it.
  */
 function purgeRemovedModelsBackup(
   modelId: string,

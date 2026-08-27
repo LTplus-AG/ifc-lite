@@ -57,7 +57,6 @@ describe('the model-removed teardown scope is idempotent', () => {
     // on this state, or an empty second patch would prove nothing at all.
     const before = useViewerStore.getState();
     const firstPatch = viewerTeardown(modelRemovedScope(before, 'A'), before);
-    console.log('first patch keys:', Object.keys(firstPatch).sort());
     assert.ok(
       Object.keys(firstPatch).length > 0,
       'the fixture must give the composition something to clear, or this test cannot fail',
@@ -72,7 +71,6 @@ describe('the model-removed teardown scope is idempotent', () => {
     const after = useViewerStore.getState();
     const secondPatch = viewerTeardown(modelRemovedScope(after, 'A'), after);
 
-    console.log('second patch keys:', Object.keys(secondPatch).sort());
     assert.deepStrictEqual(
       Object.keys(secondPatch).sort(),
       [],

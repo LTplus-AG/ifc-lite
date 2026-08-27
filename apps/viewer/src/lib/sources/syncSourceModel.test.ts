@@ -480,7 +480,7 @@ describe("syncSourceModel — a resync keeps the surviving half of the user's X-
   // Drives the REAL `removeModel`, not the harness stub. `removeModel` runs one
   // line before the second model-removed purge, and the stub hid that: #2654 added an
   // unconditional `clearGhost()` to `removeModel`, which made the purge's ghost
-  // and isolation filters (syncSourceModel.ts:262-271) dead code on their only
+  // and isolation filters (now visibilitySlice.teardown.ts) dead code on their only
   // production path — every sync silently wiped the user's X-ray — and every
   // test here stayed green because the stub only deletes a map entry.
   const realRemoveModel = (id: string): void => { useViewerStore.getState().removeModel(id); };

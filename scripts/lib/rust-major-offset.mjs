@@ -283,6 +283,14 @@ export function getWorkspacePackagePaths(rootDir) {
     const parentDir = join(rootDir, parent);
     try {
       for (const entry of readdirSync(parentDir)) {
+        // A dotfile is not a candidate package: pnpm-workspace.yaml globs
+        // `packages/*` / `apps/*` and a bare `*` never matches a leading dot.
+        // Skipping it matters MORE here than in a lint gate: macOS drops a
+        // `.DS_Store` into any Finder-opened directory, and the warning below
+        // is load-bearing for the release version. A local-only file must not
+        // emit an alarm indistinguishable from a directory that genuinely
+        // failed to be read.
+        if (entry.startsWith('.')) continue;
         const pkgJsonPath = join(parentDir, entry, 'package.json');
         try {
           statSync(pkgJsonPath);

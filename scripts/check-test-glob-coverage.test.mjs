@@ -279,7 +279,7 @@ test('an UNREADABLE package is not silently treated as an absent one', () => {
 // that: the same tree carries a dotfile AND a non-dotfile ENOTDIR candidate,
 // and the gate must ignore exactly one of them and refuse the other.
 
-test('a `.DS_Store` dotfile in packages/ or apps/ is not a candidate package', () => {
+test('a `.DS_Store` dotfile in packages/ or apps/ is not a candidate package (PR 3350)', () => {
   const dir = writeTree({
     'packages/real-one/package.json': pkgJson('vitest run'),
     'packages/real-one/src/a.test.ts': '// test a\n',
@@ -299,7 +299,7 @@ test('a `.DS_Store` dotfile in packages/ or apps/ is not a candidate package', (
   }
 });
 
-test('skipping dotfiles does not soften the refusal: a non-dotfile ENOTDIR candidate in the SAME tree still fails', () => {
+test('skipping dotfiles does not soften the refusal: a non-dotfile ENOTDIR candidate in the SAME tree still fails (PR 3350)', () => {
   const dir = writeTree({
     'packages/real-one/package.json': pkgJson('vitest run'),
     'packages/real-one/src/a.test.ts': '// test a\n',

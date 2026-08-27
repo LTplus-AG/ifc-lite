@@ -289,7 +289,7 @@ export function getWorkspacePackagePaths(rootDir) {
         // `.DS_Store` into any Finder-opened directory, and the warning below
         // is load-bearing for the release version. A local-only file must not
         // emit an alarm indistinguishable from a directory that genuinely
-        // failed to be read.
+        // failed to be read. (#3350)
         if (entry.startsWith('.')) continue;
         const pkgJsonPath = join(parentDir, entry, 'package.json');
         try {

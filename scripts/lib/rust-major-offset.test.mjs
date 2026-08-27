@@ -230,7 +230,7 @@ test('the real root Cargo.toml still yields its workspace version', () => {
   assert.match(readWorkspaceVersion(cargo) ?? '', /^\d+\.\d+\.\d+$/);
 });
 
-test('a `.DS_Store` dotfile does not emit a version-scan warning, and does not shrink the scan', (t) => {
+test('a `.DS_Store` dotfile does not emit a version-scan warning, and does not shrink the scan (PR 3350)', (t) => {
   const root = makeTree(t, {});
   // The warning below `getWorkspacePackagePaths` is load-bearing: a directory
   // that fails to be read shrinks the scan, and a shrunken scan syncs the
@@ -259,7 +259,7 @@ test('a `.DS_Store` dotfile does not emit a version-scan warning, and does not s
   );
 });
 
-test('skipping dotfiles does not silence a REAL unreadable candidate', (t) => {
+test('skipping dotfiles does not silence a REAL unreadable candidate (PR 3350)', (t) => {
   const root = makeTree(t, {});
   // Both in one tree, so this pins that exactly one is ignored and the other
   // still warns. Widening the skip, or swallowing the stat error, would satisfy

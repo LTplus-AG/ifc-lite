@@ -343,7 +343,7 @@ export function listPackages(root, seenParents = []) {
       // a local-only file. The fix is to stop offering a dotfile as a
       // candidate, NOT to soften that refusal: every entry that could
       // plausibly be a package still goes through existsOrThrow unchanged.
-      // Same skip walk() already applies one stage later.
+      // Same skip walk() already applies one stage later. (#3350)
       if (name.startsWith('.')) continue;
       const pkgDir = join(parentDir, name);
       const pkgJsonPath = join(pkgDir, 'package.json');

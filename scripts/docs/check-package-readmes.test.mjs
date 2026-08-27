@@ -139,7 +139,7 @@ test('positive control: a healthy tree at the floor passes, with its true count'
   rmSync(root, { recursive: true, force: true });
 });
 
-test('a `.DS_Store` dotfile in packages/ is not a candidate package', () => {
+test('a `.DS_Store` dotfile in packages/ is not a candidate package (PR 3350)', () => {
   const root = makeTree();
   fillToFloor(root);
   // macOS drops this into any directory Finder has opened. Before the skip,
@@ -153,7 +153,7 @@ test('a `.DS_Store` dotfile in packages/ is not a candidate package', () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-test('skipping dotfiles does not soften the refusal: a non-dotfile unreadable candidate still fails', () => {
+test('skipping dotfiles does not soften the refusal: a non-dotfile unreadable candidate still fails (PR 3350)', () => {
   const root = makeTree();
   fillToFloor(root);
   // Both in the same tree, so this pins that exactly one is ignored and the

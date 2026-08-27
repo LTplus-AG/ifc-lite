@@ -13,11 +13,80 @@ import { viewerTeardownRegistry } from './teardown-registry.js';
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 /**
- * Every key the registry tore down when this was pinned.
+ * Every key a session reset actually WRITES, measured by running the registry.
  *
- * Update deliberately, never to make a red test green: a key LEAVING this list
- * means some slice stopped tearing it down, which is the bug. A key joining it
- * is normal as slices gain fields, and the test logs those rather than failing.
+ * This is the list that matters. `owns` is a declaration; this is the emission,
+ * and the two are equal only by hand. Deleting a line from a teardown BODY
+ * while leaving its key in `owns` compiles clean (`Partial<Pick<...>>` does not
+ * require the key), passes an owns-only pin, and silently stops clearing that
+ * field on every file swap.
+ */
+const PINNED_SESSION_RESET_KEYS: readonly string[] = [
+  'activeBasketViewId', 'activeChangeSetId', 'activeLensId', 'activeListId', 'activePresetId',
+  'activeSheet', 'activeStorey', 'activeTool', 'activeTopicId', 'activeViewpointId',
+  'activeWorkScheduleId', 'animationEnabled', 'annotation2DActiveTool',
+  'annotation2DCursorPos', 'basketPresentationVisible', 'basketViews', 'bcfError',
+  'bcfLoading', 'bcfPanelVisible', 'cameraRotation', 'cesiumAvailable', 'cesiumEnabled',
+  'cesiumGlbLoaded', 'cesiumHeightsAreEllipsoidal', 'cesiumPlacementDraft',
+  'cesiumPlacementDraftModelId', 'cesiumPlacementEditMode', 'cesiumSourceModelId',
+  'cesiumTerrainClipY', 'cesiumTerrainHeight', 'cesiumTerrainSaveHeight', 'changeSets',
+  'chatAbortController', 'chatError', 'chatStatus', 'chatStreamingContent', 'classFilter',
+  'cloudAnnotation2DPoints', 'cloudAnnotations2D', 'compareError', 'compareResult',
+  'compareRunning', 'compareSelectedKey', 'contactShadingIntensity', 'contactShadingQuality',
+  'contactShadingRadius', 'contextMenu', 'customOverrideRules', 'dirtyModels', 'draft',
+  'drawing2D', 'drawing2DDisplayOptions', 'drawing2DError', 'drawing2DPanelVisible',
+  'drawing2DPhase', 'drawing2DProgress', 'drawing2DStatus', 'drawing2DSvgContent',
+  'edgeContrastEnabled', 'edgeContrastIntensity', 'editEnabled', 'editingZone', 'error',
+  'expandedTaskGlobalIds', 'ganttPanelVisible', 'generateScheduleDialogOpen',
+  'geometryProgress', 'geometryStreamingActive', 'geometryUpdateTick', 'ghostExceptEntities',
+  'hiddenEntities', 'hiddenEntitiesByModel', 'hierarchyBasketSelection', 'hoverState',
+  'hoveredTaskGlobalId', 'idsActiveEntityId', 'idsActiveSpecificationId', 'idsError',
+  'idsFocusVisibilityOwned', 'idsLoading', 'idsPanelVisible', 'idsProgress',
+  'isolatedEntities', 'isolatedEntitiesByModel', 'lensAppliedHiddenIds', 'lensColorMap',
+  'lensHiddenIds', 'lensPanelVisible', 'lensRuleCounts', 'lensRuleEntityIds',
+  'lensRuleIsolation', 'listExecuting', 'listPanelVisible', 'listResult', 'loading',
+  'measure2DCurrent', 'measure2DLockedAxis', 'measure2DMode', 'measure2DResults',
+  'measure2DShiftLocked', 'measure2DSnapPoint', 'measure2DStart', 'meshColorBackup',
+  'metadataProgress', 'mutationVersion', 'mutationViews', 'overridesEnabled',
+  'overridesPanelVisible', 'pendingColorUpdates', 'pendingInstancedShards',
+  'pendingMeshColorUpdates', 'pendingPropertyFocus', 'pinboardEntities', 'playbackIsPlaying',
+  'playbackTime', 'pointCloudAlignmentAvailable', 'pointCloudAlignmentEnabled',
+  'pointCloudAssetCount', 'pointCloudClassCounts', 'pointCloudClassMask',
+  'pointCloudColorMode', 'pointCloudDeviationCenterOffset', 'pointCloudDeviationComputed',
+  'pointCloudDeviationHalfRange', 'pointCloudEdlEnabled', 'pointCloudEdlStrength',
+  'pointCloudFixedColor', 'pointCloudPointSize', 'pointCloudPreviewStride',
+  'pointCloudRoundShape', 'pointCloudSizeMode', 'pointCloudWorldRadius', 'polygonArea2DPoints',
+  'polygonArea2DResults', 'progress', 'projectionMode', 'redoStacks', 'scheduleData',
+  'scheduleRange', 'scriptAssistantTurnSnapshot', 'scriptDeleteConfirmId',
+  'scriptExecutionState', 'scriptLastDiagnostics', 'scriptLastError', 'scriptLastResult',
+  'searchFieldFilter', 'searchFilter', 'searchFilterError', 'searchFilterResult',
+  'searchFilterRunning', 'searchFilterSchema', 'searchHighlightIndex', 'searchIndexes',
+  'searchModalOpen', 'searchModelFilter', 'searchOpen', 'searchQuery', 'searchVimCycle',
+  'sectionPlane', 'selectedAnnotation2D', 'selectedAnnotationId', 'selectedEntities',
+  'selectedEntitiesSet', 'selectedEntity', 'selectedEntityId', 'selectedEntityIds',
+  'selectedModelId', 'selectedStoreys', 'selectedTaskGlobalIds', 'separationLinesEnabled',
+  'separationLinesIntensity', 'separationLinesQuality', 'separationLinesRadius',
+  'sheetEnabled', 'sheetPanelVisible', 'suppressNextSection2DPanelAutoOpen',
+  'textAnnotation2DEditing', 'textAnnotations2D', 'titleBlockEditorVisible', 'typeViewMode',
+  'typeVisibility', 'undoStacks', 'visualEnhancementsEnabled', 'zoneApportionment',
+  'zoneAssignmentTiming', 'zoneAssignments',
+];
+
+/** The same, for `all-models-cleared`. */
+const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
+  'activeModelId', 'addElementModelId', 'addElementStoreyId', 'classFilter', 'geometryResult',
+  'ghostExceptEntities', 'hiddenEntities', 'hiddenEntitiesByModel', 'hierarchyBasketSelection',
+  'ifcDataStore', 'isolatedEntities', 'isolatedEntitiesByModel', 'meshColorBackup', 'models',
+  'pinboardEntities', 'selectedEntityId', 'selectedEntityIds', 'selectedStoreys',
+];
+
+/**
+ * Every key some slice DECLARES it may destroy, across all scopes.
+ *
+ * Wider than the emitted lists above by the six keys only a federation scope
+ * writes (`models`, `activeModelId`, `ifcDataStore`, `geometryResult`,
+ * `addElementModelId`, `addElementStoreyId`). Pinned so a key vanishing from an
+ * `owns` list fails even when no scope emits it under an empty state.
  */
 const PINNED_OWNED_KEYS: readonly string[] = [
   'activeBasketViewId', 'activeChangeSetId', 'activeLensId', 'activeListId', 'activeModelId',
@@ -71,6 +140,7 @@ const PINNED_OWNED_KEYS: readonly string[] = [
   'zoneAssignmentTiming', 'zoneAssignments',
 ];
 
+
 /** A `SliceTeardown` by shape, without importing the type into a runtime check. */
 function isSliceTeardown(value: unknown): boolean {
   if (typeof value !== 'object' || value === null) return false;
@@ -89,15 +159,44 @@ function isSliceTeardown(value: unknown): boolean {
  *
  * Two ways to lose a key silently, one test each:
  *
- *   1. drop it from a slice's `owns` (or from the body, since `owns` and the
- *      emitted keys are only equal by hand),
- *   2. write the whole contribution and forget the registry import line.
+ *   1. drop the key from a teardown's BODY while leaving it in `owns` — this
+ *      compiles, because `Partial<Pick<...>>` does not require the key,
+ *   2. drop it from `owns`,
+ *   3. write the whole contribution and forget the registry import line.
  *
  * `teardownOwnedKeys` was exported for the first of these and nothing called
  * it, so the guard read as coverage while asserting nothing.
  */
 describe('the teardown registry stays complete', () => {
-  it('owns exactly the keys it owned when this was pinned, so a key dropped from an `owns` list cannot go unnoticed', () => {
+  it('still WRITES every key it wrote when this was pinned, which an `owns`-only pin does not check', () => {
+    // Run the registry, do not read its declarations. A body that stops
+    // emitting a key type-checks clean and keeps its `owns` entry, so this is
+    // the only place that failure shows up.
+    const emitted = (kind: 'session-reset' | 'all-models-cleared'): string[] => {
+      const keys = new Set<string>();
+      for (const entry of viewerTeardownRegistry) {
+        for (const key of Object.keys(entry.teardown({ kind }, {}))) keys.add(String(key));
+      }
+      return [...keys].sort();
+    };
+
+    for (const [kind, pinned] of [
+      ['session-reset', PINNED_SESSION_RESET_KEYS],
+      ['all-models-cleared', PINNED_ALL_MODELS_CLEARED_KEYS],
+    ] as const) {
+      const actual = emitted(kind);
+      const dropped = pinned.filter((key) => !actual.includes(key));
+      assert.deepStrictEqual(
+        dropped,
+        [],
+        `${kind} used to write these keys and does not any more: ${dropped.join(', ')}`,
+      );
+      const added = actual.filter((key) => !pinned.includes(key));
+      if (added.length > 0) console.log(`${kind} now also writes:`, added);
+    }
+  });
+
+  it('declares the same ownership it declared when this was pinned', () => {
     const owned = teardownOwnedKeys(viewerTeardownRegistry);
     const actual = [...owned.keys()].map(String).sort();
 
@@ -105,12 +204,12 @@ describe('the teardown registry stays complete', () => {
     assert.deepStrictEqual(
       dropped,
       [],
-      `these keys were torn down when this was pinned and are not any more: ${dropped.join(', ')}`,
+      `these keys were declared owned when this was pinned and are not any more: ${dropped.join(', ')}`,
     );
 
     const added = actual.filter((key) => !PINNED_OWNED_KEYS.includes(key));
     if (added.length > 0) {
-      console.log('new keys now torn down (update teardown-owned-keys.json):', added);
+      console.log('new keys now owned (update PINNED_OWNED_KEYS):', added);
     }
   });
 

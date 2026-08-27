@@ -6,7 +6,7 @@
  * The search slice's contribution to viewer-state teardown.
  *
  * A sibling module rather than a block at the bottom of `searchSlice.ts`
- * because that file is 380 lines and the ~400-line module rule
+ * because that file is 388 lines and the ~400-line module rule
  * (`scripts/check-module-size.mjs`) leaves no room for a 13-key table with its
  * comments. The seam is real either way: this answers "what does search
  * destroy under a scope", which is a different question from "how does search

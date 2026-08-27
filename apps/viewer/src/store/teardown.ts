@@ -316,8 +316,17 @@ export function teardownOwnedKeys(
  * `purgeStaleEntityState` does immediately after `removeModel`.
  *
  * A key absent from `state` (the partial-store test harness) is never
- * "unchanged" — `Object.is(undefined, value)` is false unless the teardown
- * genuinely returns `undefined`, which no contribution should.
+ * "unchanged" — `Object.is(undefined, value)` is false unless the teardown also
+ * returns `undefined`.
+ *
+ * Three contributions DO return `undefined`, and the rule that keeps that safe
+ * is narrower than "never return it": `visibilitySlice` (`hiddenEntities`),
+ * `selectionSlice` (`selectedEntityIds` / `selectedStoreys`) and `dataSlice`'s
+ * `purgeRemovedModelsBackup` all pass through the value they READ from `state`,
+ * so they return `undefined` only where the live value is `undefined` too and
+ * the entry is dropped. Returning a SYNTHESIZED `undefined` would survive the
+ * filter, and `writeKey` would set it, and zustand's shallow merge would blank
+ * the field.
  */
 export function composeTeardown(
   registry: readonly AnySliceTeardown[],

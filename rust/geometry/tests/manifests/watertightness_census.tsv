@@ -6,7 +6,8 @@
 #
 # model: manifest-relative path (basenames are NOT unique across the corpus).
 # open:  open boundary edges, 1 mm snapped topology.
-# tris:  emitted triangles. A shrink is geometry loss even when open stays 0.
+# tris:  emitted triangles. A shrink is geometry loss UNLESS open fell with
+#        it on a host whose open count is a real reading; see retessellated.
 # coll:  1 if any triangle collapsed under the snap.
 # far:   1 if |coord| is past what f32 carries mm topology at (reported, not gated).
 # alt:   open edges under the alternate triangulator, or x if that pass failed.

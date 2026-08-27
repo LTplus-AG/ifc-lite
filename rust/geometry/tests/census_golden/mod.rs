@@ -18,8 +18,8 @@
 //!
 //! Absolute totals cannot separate those, because nothing in them pins element
 //! identity across runs. This module does: one row per swept void host, keyed by
-//! `(model, express id)`, checked in and diffed. The four cases are then
-//! distinct, and the failure message says which one happened.
+//! `(model, express id)`, checked in and diffed. The cases are then distinct,
+//! and the failure message says which one happened.
 //!
 //! # The key is the manifest-relative PATH, not the basename
 //!
@@ -107,13 +107,62 @@ impl HostRow {
         self.alt != Some(self.open)
     }
 
+    /// Can this row's `open` be COMPARED against another's as repair?
+    ///
+    /// Read `open` for what it is first: `edge_stats` accumulates a SIGNED
+    /// per-edge balance and counts the non-zero entries, so a duplicated face
+    /// contributes one forward and one reverse use and CANCELS to zero. That is
+    /// weaker than the directed-pair rule (`forward == 1 && reverse == 1`) used
+    /// by the #3353 tear pin, and the two can disagree: a mesh can be watertight
+    /// by this count and non-manifold by the strict one. So a fall in `open` can
+    /// mean a face was duplicated rather than a tear repaired. The row carries
+    /// no strict count, so this cannot be gated the way the cases below are; it
+    /// is a limit of the measure, and it points at the same volume dimension the
+    /// magnitude blindness does. Raised by the #3391 review, where a signed
+    /// count and a strict one gave contradictory readings on the same mesh.
+    /// Tracked as #3397, which also notes the wider exposure: the corpus totals
+    /// `total unmatched edges` and `torn void hosts` derive from the same count,
+    /// so a duplicate-face defect is invisible to the gate in either direction.
+    ///
+    /// Not a weakening of [`Self::open_is_a_defect_count`] and not a
+    /// strengthening: the two are INCOMPARABLE, because they add different
+    /// fourth clauses to the same base. This one allows a FAR-FIELD count,
+    /// which is noisy rather than meaningless, and refuses a COLLAPSED one,
+    /// which the other never looks at. The census already treats
+    /// a far host's open count as meaningful when it RISES, since that reds the
+    /// build with no gate at all, so refusing to credit the same count when it
+    /// FALLS was an asymmetry rather than caution. Measured cost of that
+    /// asymmetry on the #3219 run: the re-tessellation bucket reported 0 while
+    /// 20 hosts shrank with their open edges improving, all of them `far`, 11
+    /// blocked by this clause alone. The noise is reported in the reason instead.
+    pub fn open_is_comparable(&self) -> bool {
+        self.open_is_a_reading() && !self.collapsed
+    }
+
+    /// The pair both readings below agree on, factored out because neither is a
+    /// weakening of the other: they add different fourth clauses, so without
+    /// this the shared half was written twice and only prose said they were
+    /// related. See either caller for what the two clauses mean.
+    fn open_is_a_reading(&self) -> bool {
+        is_closed_solid(&self.rep) && self.pre != PreVoid::Failed
+    }
+
+    /// Is this row's `open` a watertightness READING at all, whatever its value?
+    ///
+    /// An open shell's boundary edges are structural rather than a defect, a
+    /// far-field count is an f32 artifact (`far` is "reported, never gated"),
+    /// and a failed no-void pass leaves nothing to attribute the tearing to.
+    /// Says nothing about whether the count is zero, which is why this is
+    /// separate from [`Self::is_torn_solid`]: a run whose open count fell to 0
+    /// is the ideal repair, not a disqualified reading.
+    pub fn open_is_a_defect_count(&self) -> bool {
+        self.open_is_a_reading() && !self.far
+    }
+
     /// Is this a genuine watertightness defect: a closed solid, torn, at
     /// coordinates f32 handles cleanly, whose no-void pass did not itself fail?
     pub fn is_torn_solid(&self) -> bool {
-        self.open > 0
-            && is_closed_solid(&self.rep)
-            && !self.far
-            && self.pre != PreVoid::Failed
+        self.open > 0 && self.open_is_a_defect_count()
     }
 
     fn key(&self) -> (&str, u32) {
@@ -170,8 +219,10 @@ pub struct Delta {
     pub reasons: Vec<String>,
 }
 
-/// The four outcomes the old aggregate totals could not tell apart, plus the
-/// one they could not see at all.
+/// The outcomes the old aggregate totals could not tell apart, plus the ones
+/// they could not see at all. `missing` is the sharp case: a host that stopped
+/// meshing removes its own defects from every sum, so the totals rendered a
+/// coverage loss as an IMPROVEMENT.
 #[derive(Default, Debug)]
 pub struct Diff {
     /// Strictly worse on at least one gated dimension. A real regression.
@@ -184,6 +235,57 @@ pub struct Diff {
     /// Differs in a way that is neither better nor worse: the host was
     /// reclassified. See [`reclassifications`].
     pub changed: Vec<Delta>,
+    /// Fewer triangles AND fewer open edges: on a TORN host, the mesh got
+    /// smaller and less torn at the same time. Still requires a bless, because
+    /// the golden is a per-host ceiling and this moves it, but it is not the
+    /// same event as losing geometry and must not be counted as one.
+    ///
+    /// Scoring every triangle drop as loss made this census unable to see the
+    /// class it was pointed at. Measured by running the candidate #3219 cap fix
+    /// through this lane: of the 32 hosts it calls regressed, 20 had FEWER open
+    /// edges than the golden, and 9 of those now file here instead. Every one of
+    /// the 20 was `far`, which is what moved that axis from gating to tagging.
+    ///
+    /// That run needs a fix that is not checked into this repo, so the figure
+    /// cannot be re-derived from the tree the way the golden tallies below can.
+    /// It is a different measurement from the eligible-row count quoted further
+    /// down, over a different population.
+    ///
+    /// Scope, stated because it is easy to overestimate: this can only fire
+    /// where BOTH sides satisfy `open_is_comparable`, which is neither weaker
+    /// nor stronger than `is_torn_solid`. It is more permissive on the
+    /// far-field axis, so a golden row that is far and torn qualifies here
+    /// while `g.is_torn_solid()` is false, and more restrictive on the collapse
+    /// axis, which `is_torn_solid` does not read at all.
+    ///
+    /// The figures below are a property of the golden AS CHECKED IN, not of the
+    /// rule, so a re-bless can invalidate them and nothing here would notice.
+    /// Recount before relying on them, over
+    /// `tests/manifests/watertightness_census.tsv`, by tallying rows with
+    /// `open > 0` into four groups: rep not in `is_closed_solid`, else
+    /// `pre == x`, else `coll == 1`, else eligible. The `pre` group is empty in
+    /// the golden as checked in, which is exactly why it is easy to leave out of
+    /// a recount and wrong to. At the time of writing: 126 of 1170 rows are
+    /// eligible, 97 of them far-field. 966 have `open == 0` and at `0 -> 0` open cannot fall; of
+    /// the 204 that are torn, 46 are open shells whose boundary edges are
+    /// structural. A shrink anywhere else still reads as geometry loss. The row
+    /// vocabulary genuinely cannot tell a
+    /// healed over-cut from a vanished component on a watertight host, and red
+    /// is the right answer while that is true. Separating those needs a volume
+    /// dimension the golden does not carry yet.
+    ///
+    /// It over-fires in the other direction too, and for the same missing
+    /// dimension. A torn host that loses a whole solid item can land here: at
+    /// golden `open=40 tris=800`, a run of `open=2 tris=400` has dropped half
+    /// the mesh, yet tris is non-zero and open did fall, so it is filed as a
+    /// re-tessellation and described as "less torn". Only the total vanish
+    /// (`tris == 0`) is caught by rule. Nothing passes silently, since this
+    /// bucket is red either way, but the failure text is friendlier than the
+    /// event deserves and the exposure is a wrong BLESS. Do not add a
+    /// proportionality heuristic to patch it: that is a second magnitude rule
+    /// on a vocabulary with no magnitude in it, which is the same mistake as
+    /// reading a triangle count as damage. The volume dimension is the fix.
+    pub retessellated: Vec<Delta>,
     /// Strictly better. Reported, never a failure.
     ///
     /// So the golden is a CEILING per host, not an equality snapshot, and a fix
@@ -195,6 +297,23 @@ pub struct Diff {
     /// redding every geometry fix on the commit that makes it, which is the
     /// friction that got the old constants bumped without scrutiny.
     pub improved: Vec<Delta>,
+    /// Hosts the classifier called a re-tessellation, counted WHATEVER bucket
+    /// won the verdict.
+    ///
+    /// Not "every host whose tris and open both fell": this counts exactly the
+    /// pairs that reached `c.retessellated`, so the eligibility rules still
+    /// apply. A shell whose 40 boundary edges became 12 while it shrank is NOT
+    /// here, because that fall is not repair; nor is a total vanish. Those are
+    /// geometry loss and are counted as regressions.
+    ///
+    /// `retessellated` only holds the ones where nothing outranked it, and a
+    /// reclassification does. A wall-cut change is what flips
+    /// `SweptSolid <-> Clipping`, so on the run this bucket exists for the
+    /// relabel is the likely companion and `retessellated.len()` can read 0
+    /// while many hosts shrank while healing. Without this tally that population
+    /// is recoverable only by grepping reason strings across three buckets,
+    /// which is the census going quiet about its own subject.
+    pub shrank_while_healing: usize,
 }
 
 impl Diff {
@@ -204,6 +323,7 @@ impl Diff {
             || !self.missing.is_empty()
             || !self.added.is_empty()
             || !self.changed.is_empty()
+            || !self.retessellated.is_empty()
     }
 }
 
@@ -258,8 +378,14 @@ fn reclassifications(g: &HostRow, r: &HostRow) -> Vec<String> {
 /// How one matched pair moved.
 #[derive(Default)]
 struct Classified {
-    /// A COUNT this host carries got worse. Directional on its own: no
-    /// relabelling of the host can make more unmatched edges into good news.
+    /// A COUNT this host carries got worse. The `open` member is directional on
+    /// its own: no relabelling can make more unmatched edges into good news.
+    ///
+    /// That is NOT true of the whole field any more. A `tris` shrink routes here
+    /// or to `retessellated` by reading `rep`, `far` and `pre` on both sides,
+    /// so membership is no longer independent of how the host is classified.
+    /// `worse_gated` is still a separate field, but the line between them is the
+    /// QUESTION each answers, not which inputs it reads.
     worse_counts: Vec<String>,
     /// The gated `is_torn_solid` predicate started holding. Kept apart from
     /// `worse_counts` because it is DERIVED from `rep`/`far`/`pre` as well as
@@ -267,6 +393,10 @@ struct Classified {
     /// moving, and calling that a geometry regression would be the same
     /// misattribution in the opposite direction.
     worse_gated: Vec<String>,
+    /// The tris drop came with an open-edge drop. Routed here rather than to
+    /// `worse_counts`; see [`Diff::retessellated`] for why that distinction
+    /// exists and where it cannot fire.
+    retessellated: Vec<String>,
     better: Vec<String>,
 }
 
@@ -277,15 +407,72 @@ fn classify(g: &HostRow, r: &HostRow) -> Classified {
     if r.open > g.open {
         c.worse_counts.push(format!("open edges {} -> {}", g.open, r.open));
     } else if r.open < g.open {
-        c.better.push(format!("open edges {} -> {}", g.open, r.open));
+        // Tagged, not gated, and tagged for EVERY reason the count might not be
+        // repair. `open_is_comparable` names three; caveating only the
+        // far-field one would print an unqualified "improved" next to
+        // "geometry lost" on exactly the hosts the gate just refused.
+        let note = if !g.open_is_comparable() || !r.open_is_comparable() {
+            // An open shell's boundary edges are structural, so deleting faces
+            // takes them along: the count falls BECAUSE geometry was lost. A
+            // failed no-void pass leaves nothing to attribute the tearing to.
+            "down, but not a repair signal: see the verdict"
+        } else if g.far || r.far {
+            // Real evidence, just noisy. The census already acts on this count
+            // in the other direction with no gate at all.
+            "improved; far-field, so the count is an f32 artifact"
+        } else {
+            "improved"
+        };
+        c.better.push(format!("open edges {} -> {} ({note})", g.open, r.open));
     }
 
-    // Triangles SHRINKING is the loss direction: geometry disappeared while the
-    // host still reported success.
+    // Triangles shrinking is the loss direction ONLY when the tearing did not
+    // improve with it. An empty mesh is always a loss: it still returns `Ok` and
+    // still reports `open == 0`, so nothing else here would catch it.
+    //
+    // And only where both open counts are COMPARABLE, because `g.open` and
+    // `r.open` only read as repair if each one measures the same kind of thing.
+    // `open_is_comparable` is that question. An open shell's boundary edges are
+    // structural, so a fall in them is what losing faces looks like; a failed
+    // no-void pass leaves nothing to attribute the tearing to; and a collapse
+    // depresses the count without repairing anything. All three disqualify.
+    //
+    // A FAR-FIELD count does not disqualify: it is tagged in the reason instead.
+    // That one was decided by measurement, and the measurement lives on
+    // [`HostRow::open_is_comparable`] rather than being restated here.
+    //
+    // Note this is NOT `is_torn_solid` on either side. That predicate keeps
+    // `far` and defines the gated defect population and the derived ceilings,
+    // which is a different question. The golden side needs no explicit
+    // `open > 0` either: `r.open < g.open` already forces it.
+    //
+    // A COLLAPSE is the fourth way the count can be unreal. It is guarded inside
+    // `open_is_comparable`, which the two clauses above call, and deliberately
+    // NOT inside `open_is_a_defect_count`, because that predicate
+    // also defines `is_torn_solid`, which the derived totals and `worse_gated`
+    // read and which has its own pinned test. `edge_stats` SKIPS degenerate
+    // triangles, so every one of them removes edges from `open`, and
+    // `HostRow.collapsed` is a BOOLEAN: on a host already at `coll=1`, going
+    // from 10 degenerate triangles to 200 moves no axis at all, and the entire
+    // open drop can be collapse rather than repair. 32 golden rows would
+    // otherwise be eligible and carry `coll=1`, so folding this into
+    // `open_is_comparable` took the eligible population from 158 to 126.
+    // Carrying the degenerate COUNT instead of a flag would
+    // let the axis fire on an increase and is the better fix, but it changes the
+    // golden's schema and so needs its own re-bless.
     if r.tris < g.tris {
-        c.worse_counts.push(format!("triangles {} -> {} (geometry lost)", g.tris, r.tris));
+        let msg = format!("triangles {} -> {}", g.tris, r.tris);
+        if r.tris == 0
+            || r.open >= g.open
+            || !g.open_is_comparable()
+            || !r.open_is_comparable()
+        {
+            c.worse_counts.push(format!("{msg} (geometry lost)"));
+        } else {
+            c.retessellated.push(format!("{msg} (fewer triangles, less torn)"));
+        }
     } else if r.tris > g.tris {
-        c.better.push(format!("triangles {} -> {}", g.tris, r.tris));
+        c.better.push(format!("triangles {} -> {} (improved)", g.tris, r.tris));
     }
 
     if r.collapsed && !g.collapsed {
@@ -333,6 +520,12 @@ pub fn diff(golden: &[HostRow], run: &[HostRow], swept_models: &BTreeSet<String>
         let reclassified = reclassifications(g, r);
         let c = classify(g, r);
         let delta = |reasons| Delta { run: r.clone(), reasons };
+        // Counted here rather than per branch: the whole point is that it does
+        // not depend on which verdict won.
+        if !c.retessellated.is_empty() {
+            out.shrank_while_healing += 1;
+        }
+
         // Order matters, and it is the whole point of the issue.
         //
         // A worsened COUNT outranks everything, including a reclassification.
@@ -342,21 +535,57 @@ pub fn diff(golden: &[HostRow], run: &[HostRow], swept_models: &BTreeSet<String>
         // an improvement on another: trading a tear for a collapse is not a
         // wash.
         //
+        // Every branch carries EVERY reason list it holds, `better` included.
+        // A host can shrink-and-heal while ALSO newly diverging under the
+        // alternate triangulator: the divergence decides (regressed), but
+        // dropping the shrink from the text makes the failure less informative
+        // than it was before the retessellated split existed. A gained COLLAPSE
+        // is not the example any more, because `r.collapsed` now disqualifies
+        // the re-tessellation outright, so that pair cannot occur. `better` rides
+        // along for the same reason and not as good
+        // news: the shrink reason SAYS "less torn", and the open-edge numbers
+        // are the only thing in the output that lets a reviewer check it.
+        //
         // A reclassification then outranks the DERIVED `is_torn_solid` flip,
         // because a host relabelled `SurfaceModel -> CSG` joins the gated defect
         // population without a single one of its counts moving, and that is a
         // change of question, not a degradation.
         if !c.worse_counts.is_empty() {
-            let mut reasons = c.worse_counts;
-            reasons.extend(c.worse_gated);
-            reasons.extend(reclassified);
-            out.regressed.push(delta(reasons));
+            out.regressed.push(delta(
+                [c.worse_counts, c.worse_gated, c.retessellated, reclassified, c.better].concat(),
+            ));
         } else if !reclassified.is_empty() {
-            let mut reasons = reclassified;
-            reasons.extend(c.worse_gated);
-            out.changed.push(delta(reasons));
+            out.changed
+                .push(delta([reclassified, c.worse_gated, c.retessellated, c.better].concat()));
         } else if !c.worse_gated.is_empty() {
-            out.regressed.push(delta(c.worse_gated));
+            // UNREACHABLE since #3366 (20a8efc81), and kept rather than
+            // deleted because it is freshly merged code that is not this
+            // change's to remove. Removal is tracked as #3396, deliberately as
+            // a CHOICE: reordering the chain so this outranks a reclassification
+            // is a different claim about which signal is more serious, and the
+            // measurement below does not settle that.
+            //
+            // Proof, not a sample. `worse_gated` needs
+            // `r.is_torn_solid() && !g.is_torn_solid()`. That predicate reads
+            // `open > 0`, `rep`, `far` and `pre`, and `reclassifications` now
+            // carries the last three, so any of them differing takes the
+            // `changed` branch above. That leaves only `open` crossing zero:
+            // `g.open == 0` with `r.open > 0`, which is `r.open > g.open`, which
+            // fires `worse_counts`, which outranks this branch. So every route
+            // in is claimed by an earlier branch.
+            //
+            // Corroborated over the full variant cross-product: `worse_gated`
+            // fires 50112 times and reaches this branch 0 times. Re-derive by
+            // iterating `variants()` against itself, calling `classify` and
+            // `reclassifications` directly, and counting pairs where
+            // `!c.worse_gated.is_empty()` alongside those where
+            // `c.worse_counts.is_empty() && reclassifications(g, r).is_empty()`. A verdict no
+            // fixture happens to produce looks identical to one that cannot be
+            // produced, which is why the argument above is the evidence and the
+            // sweep only agrees with it.
+            out.regressed.push(delta([c.worse_gated, c.better].concat()));
+        } else if !c.retessellated.is_empty() {
+            out.retessellated.push(delta([c.retessellated, c.better].concat()));
         } else if !c.better.is_empty() {
             out.improved.push(delta(c.better));
         }
@@ -387,7 +616,8 @@ const HEADER: &str = "\
 #
 # model: manifest-relative path (basenames are NOT unique across the corpus).
 # open:  open boundary edges, 1 mm snapped topology.
-# tris:  emitted triangles. A shrink is geometry loss even when open stays 0.
+# tris:  emitted triangles. A shrink is geometry loss UNLESS open fell with
+#        it on a host whose open count is a real reading; see retessellated.
 # coll:  1 if any triangle collapsed under the snap.
 # far:   1 if |coord| is past what f32 carries mm topology at (reported, not gated).
 # alt:   open edges under the alternate triangulator, or x if that pass failed.
@@ -485,7 +715,14 @@ mod tests {
             collapsed: false,
             far: false,
             alt: Some(open),
-            pre: PreVoid::NotTaken,
+            // `NotTaken` means "watertight, so the reading was never taken",
+            // and the sweep sets it if and only if `open == 0`. A torn row
+            // carrying it is a state the census cannot produce, so do not build
+            // one. The value is FIXED rather than derived from `open`, because
+            // `pre` is the no-void reading and an opening-cut change leaves the
+            // base geometry alone: two rows of the same host normally agree
+            // here even when their void-applied counts differ.
+            pre: if open == 0 { PreVoid::NotTaken } else { PreVoid::Open(7) },
         }
     }
 
@@ -515,6 +752,377 @@ mod tests {
         let d = diff(&g, &[row("a.ifc", 1, 0, 0)], &swept(&["a.ifc"]));
         assert_eq!(d.regressed.len(), 1, "800 -> 0 triangles must regress");
         assert!(d.regressed[0].reasons[0].contains("geometry lost"));
+    }
+
+    #[test]
+    fn fewer_triangles_with_fewer_open_edges_is_retessellation_not_loss() {
+        // The direction the old rule could not express: a cut that stops
+        // over-extending emits a smaller mesh that is no more torn, and often
+        // less. See [`Diff::retessellated`] for the measurement that motivated
+        // splitting this out.
+        let g = vec![row("a.ifc", 1, 40, 800)];
+        let d = diff(&g, &[row("a.ifc", 1, 12, 600)], &swept(&["a.ifc"]));
+        assert!(d.regressed.is_empty(), "less torn AND smaller is not a regression");
+        assert_eq!(d.retessellated.len(), 1, "it is still a change the golden must absorb");
+        let reasons = &d.retessellated[0].reasons;
+        assert!(reasons.iter().any(|r| r.contains("less torn")), "{reasons:?}");
+        // The evidence for that claim, in the bucket where "CHECK THE SHRINK
+        // before blessing" matters most. Pinned per branch, as above.
+        assert!(
+            reasons.iter().any(|r| r.contains("open edges 40 -> 12")),
+            "\"less torn\" is unverifiable without the open-edge numbers: {reasons:?}"
+        );
+        assert!(d.requires_bless(), "a moved ceiling still needs a bless");
+    }
+
+    #[test]
+    fn a_shrinking_open_shell_is_loss_however_much_its_boundary_shrank() {
+        // The input the `is_closed_solid` clause exists for. A `Tessellation` is
+        // an open shell BY CONSTRUCTION, so its unmatched edges are not a defect
+        // and deleting faces takes their boundary edges with them: `open` falls
+        // BECAUSE geometry was lost. Reading that fall as repair would file a
+        // two-thirds mesh loss as "fewer triangles, less torn".
+        //
+        // Not hypothetical: 46 of the 204 torn golden rows are `Tessellation` or
+        // `SurfaceModel`.
+        //
+        // Both ends are shells here, so BOTH clauses fire and deleting either
+        // one alone leaves this test green. It pins the outcome, not either
+        // clause; the two tests below take one side each and are what actually
+        // pin them. Said explicitly because the earlier version of this comment
+        // claimed the golden side, which is not a property this test has.
+        let shell = |open, tris| HostRow {
+            rep: "Tessellation".to_string(),
+            ..row("a.ifc", 1, open, tris)
+        };
+        let d = diff(&[shell(60, 4000)], &[shell(20, 1200)], &swept(&["a.ifc"]));
+        assert_eq!(d.regressed.len(), 1, "an open shell losing 70% of its mesh is loss");
+        assert!(d.retessellated.is_empty(), "a falling boundary is not repair here");
+        let reasons = &d.regressed[0].reasons;
+        assert!(
+            reasons.iter().any(|r| r.contains("geometry lost")),
+            "and it must be NAMED as loss: {reasons:?}"
+        );
+        // The open-edge line must not contradict that verdict. It read
+        // `open edges 60 -> 20 (improved)` beside `(geometry lost)`, which tells
+        // the reviewer the opposite of what the gate just decided.
+        assert!(
+            reasons.iter().any(|r| r.contains("not a repair signal")),
+            "the falling boundary must be qualified, not called an improvement: {reasons:?}"
+        );
+        assert!(
+            !reasons.iter().any(|r| r.contains("(improved)")),
+            "nothing here is an unqualified improvement: {reasons:?}"
+        );
+    }
+
+    #[test]
+    fn an_open_shell_that_comes_back_a_smaller_solid_is_loss_not_re_tessellation() {
+        // The golden-side half of the same rule. Here the RUN is a closed solid,
+        // so gating on `r.rep` alone passes: the golden's 60 open edges were
+        // structural, the run's 20 are a real defect, and comparing them says
+        // "less torn" about two numbers that do not measure the same thing.
+        // Because the relabel also routes this to `changed`, the loss would be
+        // reported under a banner that opens "neither better nor worse".
+        let g = HostRow { rep: "Tessellation".to_string(), ..row("a.ifc", 1, 60, 4000) };
+        let r = HostRow { rep: "CSG".to_string(), ..row("a.ifc", 1, 20, 1200) };
+        let d = diff(&[g], &[r], &swept(&["a.ifc"]));
+        assert!(d.retessellated.is_empty(), "the golden was never a solid to repair");
+        assert_eq!(d.regressed.len(), 1, "losing 70% of the mesh outranks the relabel");
+        assert!(
+            d.regressed[0].reasons.iter().any(|x| x.contains("geometry lost")),
+            "and it must be NAMED as loss: {:?}",
+            d.regressed[0].reasons
+        );
+    }
+
+    #[test]
+    fn a_solid_that_comes_back_an_open_shell_is_loss_not_re_tessellation() {
+        // The RUN side of the same rule, and the half the two shell tests above
+        // could not reach: in both of those the GOLDEN is the shell, so
+        // `!g.is_torn_solid()` fires first and the run-side clause is never
+        // reached. Here the golden is a real torn solid and the run is an open
+        // shell, whose 12 boundary edges are structural rather than a repaired
+        // 40.
+        let g = HostRow { rep: "CSG".to_string(), ..row("a.ifc", 1, 40, 800) };
+        let r = HostRow { rep: "Tessellation".to_string(), ..row("a.ifc", 1, 12, 600) };
+        let d = diff(&[g], &[r], &swept(&["a.ifc"]));
+        assert!(d.retessellated.is_empty(), "the run's open count is not a defect count");
+        assert_eq!(d.regressed.len(), 1, "a solid that became a shell and shrank is loss");
+        assert!(
+            d.regressed[0].reasons.iter().any(|x| x.contains("geometry lost")),
+            "and it must be NAMED as loss: {:?}",
+            d.regressed[0].reasons
+        );
+    }
+
+    #[test]
+    fn a_shrink_across_a_far_field_flip_reports_the_count_as_an_artifact() {
+        // `far` is TAGGED here, not gated. Gating it cost the bucket 11 of the
+        // 20 mis-gated hosts on the #3219 run and reported 0 on the case it
+        // exists for, while an open-edge RISE reds the build on a far host with
+        // no gate at all. The count is noisy, not meaningless, so it rides in
+        // with the noise named.
+        //
+        // The flip is also a reclassification, and that outranks the shrink, so
+        // this lands in `changed` rather than `retessellated`. The reasons are
+        // what carry the shrink, which is why they are asserted here.
+        let r = HostRow { far: true, ..row("a.ifc", 1, 20, 1200) };
+        let d = diff(&[row("a.ifc", 1, 60, 4000)], &[r], &swept(&["a.ifc"]));
+        assert_eq!(d.changed.len(), 1, "the far flip is a reclassification");
+        assert!(d.regressed.is_empty(), "a shrink with the tearing down is not loss");
+        let reasons = &d.changed[0].reasons;
+        assert!(
+            reasons.iter().any(|x| x.contains("less torn")),
+            "the shrink must be reported: {reasons:?}"
+        );
+        assert!(
+            reasons.iter().any(|x| x.contains("f32 artifact")),
+            "and the count's provenance with it, or a bless acts on noise: {reasons:?}"
+        );
+        assert_eq!(
+            d.shrank_while_healing, 1,
+            "and it is counted, whatever bucket won"
+        );
+    }
+
+    #[test]
+    fn a_cut_that_heals_the_host_completely_is_not_geometry_loss() {
+        // The boundary the run side must NOT copy from `is_torn_solid`. That
+        // predicate requires `open > 0`; a run whose open count fell to ZERO is
+        // the ideal outcome, so reusing it wholesale on the run would file the
+        // perfect repair as geometry loss.
+        //
+        // The verdict is RECLASSIFIED rather than the new bucket, and that is
+        // forced by the data rather than chosen: taking `open` to 0 makes the
+        // sweep record `pre = NotTaken` ("watertight, so the reading was never
+        // taken"), while a torn golden necessarily carries a real reading. That
+        // transition is a reclassification, and a reclassification outranks a
+        // shrink. Codex caught the earlier version of this test asserting
+        // `retessellated`, which no real pair can reach.
+        //
+        // What the test still discriminates is the thing that matters: gated on
+        // `is_torn_solid` the run would be disqualified and read "geometry
+        // lost"; gated on `open_is_comparable` it reads "less torn".
+        let d = diff(&[row("a.ifc", 1, 40, 800)], &[row("a.ifc", 1, 0, 600)], &swept(&["a.ifc"]));
+        assert!(d.regressed.is_empty(), "a fully healed host is not a regression");
+        assert_eq!(d.changed.len(), 1, "the forced `pre` transition relabels it");
+        let reasons = &d.changed[0].reasons;
+        assert!(
+            reasons.iter().any(|x| x.contains("less torn")),
+            "and the repair must be reported, not called loss: {reasons:?}"
+        );
+        assert!(
+            !reasons.iter().any(|x| x.contains("geometry lost")),
+            "it is the perfect repair: {reasons:?}"
+        );
+        assert_eq!(d.shrank_while_healing, 1, "and counted, whatever bucket won");
+    }
+
+    #[test]
+    fn a_shrink_and_heal_that_also_relabels_still_reports_the_shrink() {
+        // The #3219 route, and the reason the `changed` assert was reworded to
+        // say READ THE REASONS. A wall-cut change is exactly what flips
+        // `SweptSolid <-> Clipping`, and 117 of the 126 eligible golden rows
+        // are those two reps.
+        //
+        // The relabel outranks the shrink, so this host is filed under
+        // RECLASSIFIED: it is NOT in the `retessellated` count and NOT named by
+        // the RETESSELLATED print loop. The reason list is the only place the
+        // shrink survives, which makes carrying it the whole promise rather
+        // than a nicety.
+        let g = HostRow { rep: "SweptSolid".to_string(), ..row("a.ifc", 1, 40, 800) };
+        let r = HostRow { rep: "Clipping".to_string(), ..row("a.ifc", 1, 12, 600) };
+        let d = diff(&[g], &[r], &swept(&["a.ifc"]));
+        assert_eq!(d.changed.len(), 1, "the relabel decides the verdict");
+        assert!(d.retessellated.is_empty(), "so it is NOT counted as one");
+        let reasons = &d.changed[0].reasons;
+        assert!(
+            reasons.iter().any(|x| x.contains("less torn")),
+            "the shrink must survive into the reasons, or it is reported nowhere: {reasons:?}"
+        );
+        assert!(
+            reasons.iter().any(|x| x.contains("800 -> 600")),
+            "with its numbers: {reasons:?}"
+        );
+        // And the open-edge line, which is what "less torn" is claiming. Pinned
+        // per branch: deleting `c.better` from this concat reds this test and
+        // the far-field one, which routes through `changed` too. It does NOT
+        // red the other three branches' tests, which is the point.
+        assert!(
+            reasons.iter().any(|x| x.contains("open edges 40 -> 12")),
+            "\"less torn\" is unverifiable without the open-edge numbers: {reasons:?}"
+        );
+    }
+
+    #[test]
+    fn a_no_void_flip_reports_the_counts_that_moved_with_it() {
+        // #3366 (20a8efc81) put `pre` in `reclassifications`, so a no-void probe
+        // starting or stopping to fail is a relabel and files under `changed`.
+        // Before that it was the one route to `worse_gated` that was not also a
+        // reclassification, which is what this test used to exercise.
+        //
+        // The property worth pinning survives the reroute: whatever bucket wins,
+        // the counts that moved alongside the flip have to reach the reasons, or
+        // the reviewer sees a relabel and no evidence of what the host did.
+        let g = HostRow { pre: PreVoid::Failed, ..row("a.ifc", 1, 60, 800) };
+        let r = HostRow { pre: PreVoid::Open(5), ..row("a.ifc", 1, 20, 800) };
+        let d = diff(&[g], &[r], &swept(&["a.ifc"]));
+        assert_eq!(d.changed.len(), 1, "a no-void flip is a reclassification");
+        assert!(d.requires_bless(), "and it still has to be blessed");
+        let reasons = &d.changed[0].reasons;
+        assert!(
+            reasons.iter().any(|x| x.contains("no-void pass")),
+            "the flip itself must be named: {reasons:?}"
+        );
+        assert!(
+            reasons.iter().any(|x| x.contains("open edges 60 -> 20")),
+            "and the counts that moved with it: {reasons:?}"
+        );
+    }
+
+    #[test]
+    fn the_shrank_while_healing_tally_counts_hosts_the_bucket_does_not() {
+        // The property the tally exists for: `retessellated` holds only the
+        // hosts where nothing outranked the shrink, and both a relabel and a
+        // worsening on another axis do. On a wall-cut change the relabel is the
+        // likely companion, so without this the count for the class the bucket
+        // is NAMED for reads 0 on the run it was built for.
+        let relabelled = HostRow { rep: "Clipping".to_string(), ..row("a.ifc", 1, 12, 600) };
+        // Worse on another axis, using DIVERGENCE rather than a collapse: a
+        // collapse now disqualifies the re-tessellation outright, because a
+        // degenerate triangle lowers `open` without repairing anything.
+        let diverged = HostRow { alt: Some(999), ..row("b.ifc", 2, 12, 600) };
+        let clean = row("c.ifc", 3, 12, 600);
+        let golden = vec![
+            HostRow { rep: "SweptSolid".to_string(), ..row("a.ifc", 1, 40, 800) },
+            row("b.ifc", 2, 40, 800),
+            row("c.ifc", 3, 40, 800),
+        ];
+        let d = diff(
+            &golden,
+            &[relabelled, diverged, clean],
+            &swept(&["a.ifc", "b.ifc", "c.ifc"]),
+        );
+        assert_eq!(d.changed.len(), 1, "the relabelled host files under changed");
+        assert_eq!(d.regressed.len(), 1, "the diverged one under regressed");
+        assert_eq!(d.retessellated.len(), 1, "only the third reaches the bucket");
+        assert_eq!(
+            d.shrank_while_healing, 3,
+            "but all three shrank while healing, and the tally must say so"
+        );
+    }
+
+    #[test]
+    fn a_shrink_whose_open_drop_could_be_collapse_is_loss_not_re_tessellation() {
+        // `edge_stats` SKIPS degenerate triangles, so each one removes edges
+        // from `open`: on a collapsed host a falling count can be collapse
+        // rather than repair. `collapsed` is a BOOLEAN, so a host already at
+        // `coll=1` going from 10 degenerate triangles to 200 moves no axis, and
+        // nothing else here would notice. Folding this into
+        // `open_is_comparable` took the eligible population from 158 to 126, so
+        // it is a fifth of what the bucket would otherwise reach.
+        let g = HostRow { collapsed: true, ..row("a.ifc", 1, 40, 800) };
+        let r = HostRow { collapsed: true, ..row("a.ifc", 1, 12, 600) };
+        let d = diff(&[g], &[r], &swept(&["a.ifc"]));
+        assert!(d.retessellated.is_empty(), "the open drop may be collapse, not repair");
+        assert_eq!(d.regressed.len(), 1, "so it stays geometry loss");
+        let reasons = &d.regressed[0].reasons;
+        assert!(
+            reasons.iter().any(|x| x.contains("geometry lost")),
+            "and it must be NAMED as loss: {reasons:?}"
+        );
+        // The narration has to agree with the verdict, exactly as in the
+        // open-shell case. Routing was right here while the open-edge line
+        // still read "(improved)" beside "(geometry lost)", because the note
+        // caveated only `far` and the collapse disqualifier sat outside
+        // `open_is_comparable`. Folding it in fixed both at once.
+        assert!(
+            !reasons.iter().any(|x| x.contains("(improved)")),
+            "a collapse-depressed count is not an improvement: {reasons:?}"
+        );
+    }
+
+    #[test]
+    fn the_checked_in_golden_carries_exactly_the_generated_header() {
+        // `HEADER` and the golden's comment block are two copies of the same
+        // text, and the file is stamped "Generated, do not hand-edit", so the
+        // only thing keeping them in step is remembering to edit both. This PR
+        // had to, when the `tris:` legend stopped being true. Without this,
+        // editing `HEADER` alone leaves the checked-in file describing the old
+        // rule until someone runs the fixture-gated sweep, which is the only
+        // other reader of that file.
+        let golden = include_str!("../manifests/watertightness_census.tsv");
+        assert!(
+            golden.starts_with(HEADER),
+            "the golden's header has drifted from HEADER; re-bless, or make the \
+             two agree. Golden begins:\n{}",
+            &golden[..HEADER.len().min(golden.len())]
+        );
+    }
+
+    #[test]
+    fn a_torn_host_whose_mesh_vanishes_is_loss_however_much_the_tearing_improved() {
+        // The input the `r.tris == 0` clause exists for, and the only one that
+        // requires it: a TORN host whose mesh disappears. Open edges fall to
+        // zero with it, so the shrink-and-heal discriminator would otherwise
+        // route total loss into the friendly bucket and describe it as "fewer
+        // triangles, less torn". Deleting that clause leaves every other test
+        // in this module green EXCEPT the exhaustive sweep, which catches it on
+        // the `detected` count rather than on the routing. This is the only test
+        // that names the case, so without it the clause has no direct pin.
+        let g = vec![row("a.ifc", 1, 40, 800)];
+        let d = diff(&g, &[row("a.ifc", 1, 0, 0)], &swept(&["a.ifc"]));
+        assert_eq!(d.regressed.len(), 1, "a vanished mesh is loss, not a healed cut");
+        assert!(d.regressed[0].reasons.iter().any(|r| r.contains("geometry lost")));
+        assert!(d.retessellated.is_empty());
+    }
+
+    #[test]
+    fn fewer_triangles_without_less_tearing_is_still_geometry_lost() {
+        // The guard on the guard. Triangles down while tearing holds or worsens
+        // is the original defect and must keep its old verdict, otherwise the
+        // new bucket becomes a laundering route for real loss.
+        let g = vec![row("a.ifc", 1, 40, 800)];
+        let same = diff(&g, &[row("a.ifc", 1, 40, 600)], &swept(&["a.ifc"]));
+        assert_eq!(same.regressed.len(), 1, "open unchanged: still a loss");
+        assert!(same.regressed[0].reasons[0].contains("geometry lost"));
+        assert!(same.retessellated.is_empty());
+
+        let worse = diff(&g, &[row("a.ifc", 1, 55, 600)], &swept(&["a.ifc"]));
+        assert_eq!(worse.regressed.len(), 1, "open worse: still a loss");
+        assert!(worse.retessellated.is_empty());
+    }
+
+    #[test]
+    fn retessellation_never_masks_a_worse_verdict_on_another_axis() {
+        // A host can shrink, get less torn, AND newly diverge under the
+        // alternate triangulator. The worse axis has to win, or the new bucket
+        // would quietly absorb regressions that arrive alongside an improvement.
+        //
+        // DIVERGENCE rather than a collapse, because `r.collapsed` now
+        // disqualifies the re-tessellation outright: a collapsed host would test
+        // that clause over again instead of the masking this test is named for.
+        let g = vec![row("a.ifc", 1, 40, 800)];
+        let r = HostRow { alt: Some(999), ..row("a.ifc", 1, 12, 600) };
+        let d = diff(&g, &[r], &swept(&["a.ifc"]));
+        assert_eq!(d.regressed.len(), 1, "a new divergence outranks the shrink");
+        assert!(d.retessellated.is_empty());
+        // And the shrink must still be REPORTED. Asserting only the verdict left
+        // this blind to the reason silently vanishing from the failure text.
+        let reasons = &d.regressed[0].reasons;
+        assert!(
+            reasons.iter().any(|r| r.contains("800 -> 600")),
+            "the shrink must survive into the reasons: {reasons:?}"
+        );
+        // And the numbers behind it. The shrink reason SAYS "less torn"; the
+        // open-edge line is the only thing in the output that lets a reviewer
+        // check that claim, so carrying `better` into the failing branches is
+        // load-bearing rather than decorative.
+        assert!(
+            reasons.iter().any(|r| r.contains("open edges 40 -> 12")),
+            "\"less torn\" is unverifiable without the open-edge numbers: {reasons:?}"
+        );
     }
 
     #[test]
@@ -668,7 +1276,7 @@ mod tests {
         let mut out = Vec::new();
         for rep in ["CSG", "SurfaceModel"] {
             for open in [0usize, 3] {
-                for tris in [0usize, 5] {
+                for tris in [0usize, 3, 5] {
                     for collapsed in [false, true] {
                         for far in [false, true] {
                             for alt in [None, Some(0usize), Some(3), Some(9)] {
@@ -705,12 +1313,54 @@ mod tests {
         // unattributable number this issue is about.
         //
         // Exhaustive over every dimension the classifier reads, both sides.
+        //
+        // `tris` carries three values so the sweep can build a shrink at all:
+        // with `[0, 5]` the only one available is `5 -> 0`, which the
+        // `r.tris == 0` clause always routes back to `worse_counts`.
+        //
+        // Two different counts, because saying "re-tessellation pairs" without
+        // saying which one is how this got misread: over the 768 x 768 sweep,
+        // 576 pairs are DETECTED as a re-tessellation and 78 of those LAND in
+        // the bucket. The 498-pair gap is the population `shrank_while_healing`
+        // exists to surface, and it is most of the class.
+        //
+        // Both are ASSERTED below rather than left in prose, which has paid for
+        // itself four times now. The pair was 576/351 until a collapse
+        // disqualified the bucket, 288/234 until `far` stopped being gated,
+        // 1152/468 until #3366 made a no-void flip a reclassification, and
+        // 1152/156 until `collapsed` moved into `open_is_comparable` and so
+        // began disqualifying the GOLDEN side too. Every drift was caught by
+        // the assertion on the commit that caused it, not by a reader later.
+        //
+        // Be precise about what that buys HERE. The DERIVED-TOTAL invariant
+        // below never sees these pairs: they all hit the `requires_bless` skip,
+        // and `totals()` never reads `tris` anyway, so the routing is pinned by
+        // the named unit tests rather than by that invariant.
+        //
+        // The exact counts asserted at the end of this test are a different
+        // matter and DO pin it. Reverting to `[0, 5]` reds this test on the
+        // swept-pair count, and deleting the `retessellated` routing branch reds
+        // it on `detected`. An earlier version of this comment said both left
+        // the test green, which was true when it was written and stopped being
+        // true a few lines later in the same commit.
+        //
+        // What it adds to the CHECKED population is NOT what the obvious reading
+        // suggests: growth pairs already existed at `[0, 5]` via `0 -> 5`, and
+        // no shrink is ever checked, because every shrink requires a bless. The
+        // additions are further growth pairs and equal-`tris` pairs. The exact
+        // count is asserted below rather than described here.
         let vs = variants();
         let all = swept(&["a.ifc"]);
         let mut checked = 0usize;
+        let (mut detected, mut landed) = (0usize, 0usize);
         for g in &vs {
             for r in &vs {
                 let d = diff(std::slice::from_ref(g), std::slice::from_ref(r), &all);
+                // Tallied ABOVE the skip, or the two figures quoted in the
+                // comment would be unobservable from the one test able to
+                // compute them, and could go false with nothing failing.
+                detected += d.shrank_while_healing;
+                landed += d.retessellated.len();
                 if d.requires_bless() {
                     continue;
                 }
@@ -726,6 +1376,12 @@ mod tests {
         }
         // Guard against the loop vacuously skipping everything.
         assert!(checked > vs.len(), "only {checked} clean pairs of {}", vs.len() * vs.len());
+        assert_eq!(checked, 11232, "clean pairs swept");
+        // The two counts the comment above quotes, asserted rather than
+        // recorded. The gap between them is the whole reason
+        // `shrank_while_healing` exists, so it must not drift unnoticed.
+        assert_eq!(detected, 576, "pairs DETECTED as a re-tessellation");
+        assert_eq!(landed, 78, "pairs that LAND in the retessellated bucket");
     }
 
     #[test]

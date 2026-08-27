@@ -35,11 +35,12 @@
 //!
 //! The gate is now a checked-in per-host golden (#2432): one row per swept void
 //! host, keyed by `(manifest-relative path, express id)`. Regressions, coverage
-//! losses, additions and reclassifications are separate outcomes with separate
-//! messages, and the corpus totals are DERIVED from the golden rather than
-//! hand-edited, so there is no constant left to bump. `MIN_MODELS` /
-//! `MIN_VOID_HOSTS` remain as the floor: every other check is an upper bound, so
-//! without them an unpopulated tree satisfies all of them vacuously.
+//! losses, additions, reclassifications and re-tessellations are separate
+//! outcomes with separate messages, and the corpus totals are DERIVED from the
+//! golden rather than hand-edited, so there is no constant left to bump.
+//! `MIN_MODELS` / `MIN_VOID_HOSTS` remain as the floor: every other check is an
+//! upper bound, so without them an unpopulated tree satisfies all of them
+//! vacuously.
 //!
 //! Every run also writes the rows it measured to [`RUN_REPORT_PATH`], which CI
 //! uploads as an artifact, so re-blessing does not require reproducing the sweep
@@ -50,7 +51,7 @@
 
 mod census_golden;
 
-use census_golden::{is_closed_solid, totals, HostRow, PreVoid};
+use census_golden::{is_closed_solid, totals, Delta, HostRow, PreVoid};
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
 use rustc_hash::FxHashMap;
@@ -386,6 +387,19 @@ fn max_abs_coord(mesh: &Mesh) -> f64 {
     mesh.positions.iter().fold(0.0f64, |m, &v| m.max((v as f64).abs()))
 }
 
+/// The host, then the reasons that moved it. The one definition of that shape
+/// for the four buckets that carry a [`Delta`], so their print lines and their
+/// failure texts cannot drift apart. `missing` and `added` carry a bare
+/// `HostRow` with no reasons, so they format through `fmt_host` instead.
+fn fmt_delta(d: &Delta) -> String {
+    format!("{}  [{}]", fmt_host(&d.run), d.reasons.join("; "))
+}
+
+/// One indented line per delta, for a failure message.
+fn fmt_deltas(ds: &[Delta]) -> String {
+    ds.iter().map(|d| format!("  {}", fmt_delta(d))).collect::<Vec<_>>().join("\n")
+}
+
 fn fmt_host(r: &HostRow) -> String {
     format!(
         "{} #{}  {:<14} open={} tris={}",
@@ -651,9 +665,55 @@ fn watertightness_is_invariant_to_the_triangulator() {
     println!("coverage loss (in golden, produced nothing): {}", diff.missing.len());
     println!("added (newly meshing): {}", diff.added.len());
     println!("reclassified: {}", diff.changed.len());
+    // Says what it counts, because it does not count every host that shrank
+    // while healing. One that was ALSO reclassified files under `changed` and
+    // one that also worsened on another axis files under `regressed`; neither
+    // reaches this line. On a wall-cut change the relabel is the likely path, so
+    // this can read 0 on exactly the run the bucket was built for, which is why
+    // `shrank_while_healing` prints under it. The golden-derived proportions
+    // behind that live on `Diff::retessellated`, with the caveat that they go
+    // stale on a re-bless.
+    println!(
+        "retessellated (smaller AND less torn, excluding hosts also reclassified \
+         or worse on another axis): {}",
+        diff.retessellated.len()
+    );
+    // The same class WITHOUT that exclusion. If these two disagree, the
+    // difference is hosts that shrank while healing and were filed under
+    // another verdict, and the reasons on those hosts carry the shrink.
+    println!(
+        "  ... called a re-tessellation, in any bucket: {}",
+        diff.shrank_while_healing
+    );
     println!("improved  : {}", diff.improved.len());
+    // EVERY bucket names its hosts HERE, before any assert, `regressed`
+    // included even though its assert happens to run first. The asserts run
+    // regressed -> missing -> retessellated -> added -> changed and the FIRST
+    // failure panics, so any bucket that only names its hosts inside its own
+    // assert is a bare count whenever an earlier one fails. Keeping all six in
+    // this block means reordering the asserts cannot silently cost a bucket its
+    // host names.
+    //
+    // The run that motivated this is the one where several buckets are
+    // non-empty at once: whatever stays in `regressed` panics first, and every
+    // host that shrank while healing would otherwise show up only as a count.
     for d in &diff.improved {
-        println!("  IMPROVED  {}  [{}]", fmt_host(&d.run), d.reasons.join("; "));
+        println!("  IMPROVED  {}", fmt_delta(d));
+    }
+    for d in &diff.regressed {
+        println!("  REGRESSED  {}", fmt_delta(d));
+    }
+    for r in &diff.missing {
+        println!("  COVERAGE LOSS  {}", fmt_host(r));
+    }
+    for d in &diff.retessellated {
+        println!("  RETESSELLATED  {}", fmt_delta(d));
+    }
+    for r in &diff.added {
+        println!("  ADDED  {}", fmt_host(r));
+    }
+    for d in &diff.changed {
+        println!("  RECLASSIFIED  {}", fmt_delta(d));
     }
 
     // Not a failure: `MIN_MODELS` sits under the corpus precisely so a failed
@@ -688,11 +748,7 @@ fn watertightness_is_invariant_to_the_triangulator() {
         diff.regressed.is_empty(),
         "{} host(s) REGRESSED against the golden — an existing mesh got worse:\n{}",
         diff.regressed.len(),
-        diff.regressed
-            .iter()
-            .map(|d| format!("  {}  [{}]", fmt_host(&d.run), d.reasons.join("; ")))
-            .collect::<Vec<_>>()
-            .join("\n")
+        fmt_deltas(&diff.regressed)
     );
 
     assert!(
@@ -702,6 +758,22 @@ fn watertightness_is_invariant_to_the_triangulator() {
          because the missing element's defects leave every sum with it:\n{}",
         diff.missing.len(),
         diff.missing.iter().map(|r| format!("  {}", fmt_host(r))).collect::<Vec<_>>().join("\n")
+    );
+
+    // Separated from the regressions above on purpose. These hosts got SMALLER
+    // and LESS TORN at once, which is what a cut that stops over-extending looks
+    // like. Folding them in with geometry loss is what made this census score
+    // the repair of its own defect class as damage. Still red, because the
+    // golden is a per-host ceiling and these move it, but a reviewer must be
+    // able to tell "this tore" from "this shrank while healing".
+    assert!(
+        diff.retessellated.is_empty(),
+        "{} host(s) RE-TESSELLATED: fewer triangles AND fewer open edges. Usually \
+         a cut that stopped over-extending, but the test is magnitude-blind - a \
+         near-total loss on a torn host also lands here, so CHECK THE SHRINK \
+         before blessing. If the shrink is intended, re-bless:\n  {BLESS_CMD}\n{}",
+        diff.retessellated.len(),
+        fmt_deltas(&diff.retessellated)
     );
 
     assert!(
@@ -716,14 +788,35 @@ fn watertightness_is_invariant_to_the_triangulator() {
 
     assert!(
         diff.changed.is_empty(),
-        "{} host(s) were RECLASSIFIED — neither better nor worse, but it changes what \
-         the census believes it is measuring. Review, then re-bless:\n  {BLESS_CMD}\n{}",
+        "{} host(s) were RECLASSIFIED. The relabel itself is neither better nor \
+         worse, but it changes what the census believes it is measuring, and a \
+         host can be reclassified AND have shrunk: READ THE REASONS, they carry \
+         the other axes.\n\
+         \n\
+         A reason reading `(fewer triangles, less torn)` here is MAGNITUDE-BLIND, \
+         exactly as under RE-TESSELLATED: a host that lost 90% of its mesh says \
+         the same words as one that stopped over-extending by a millimetre. This \
+         is the likelier landing spot for a wall-cut change, because the relabel \
+         outranks the shrink and a wall-cut is what flips SweptSolid to \
+         Clipping. CHECK THE SHRINK before blessing.\n\
+         \n\
+         Review, then re-bless:\n  {BLESS_CMD}\n{}",
         diff.changed.len(),
-        diff.changed
-            .iter()
-            .map(|d| format!("  {}  [{}]", fmt_host(&d.run), d.reasons.join("; ")))
-            .collect::<Vec<_>>()
-            .join("\n")
+        fmt_deltas(&diff.changed)
+    );
+
+    // Backstop. The five asserts above hand-enumerate the buckets that need a
+    // bless, and `requires_bless` enumerates them again; nothing else keeps the
+    // two lists in step. Add a seventh outcome, wire it into `requires_bless`
+    // where the unit tests exercise it, forget the assert here, and the census
+    // reports that whole class as a printed count and passes GREEN. This never
+    // fires before one of the five does, so they keep their own messages; it is
+    // here for the bucket nobody wrote an assert for.
+    assert!(
+        !diff.requires_bless(),
+        "the diff requires a bless but no assert above claimed it, so a bucket \
+         has been added to `Diff::requires_bless` without a check here. Whatever \
+         moved is in the per-bucket counts printed above."
     );
 
     // Corpus ceilings, DERIVED from the golden rather than pinned as editable

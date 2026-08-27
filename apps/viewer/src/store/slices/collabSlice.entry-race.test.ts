@@ -32,7 +32,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { createModelSlice, type ModelSlice, type ModelCrossSliceState } from './modelSlice.js';
+import { createModelSlice, type ModelSlice } from './modelSlice.js';
 import { createDataSlice, type DataSlice, type DataCrossSliceState } from './dataSlice.js';
 import { createCollabSlice, type CollabSlice } from './collabSlice.js';
 import { roomModelIdOf } from '../../lib/collab/room-model-target.js';
@@ -40,7 +40,6 @@ import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { ViewerState } from '../index.js';
 
 type TestState = ModelSlice &
-  ModelCrossSliceState &
   DataSlice &
   DataCrossSliceState &
   CollabSlice & {

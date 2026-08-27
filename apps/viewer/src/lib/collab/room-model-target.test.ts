@@ -32,7 +32,7 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { createModelSlice, type ModelSlice, type ModelCrossSliceState } from '../../store/slices/modelSlice.js';
+import { createModelSlice, type ModelSlice } from '../../store/slices/modelSlice.js';
 import { createDataSlice, type DataSlice, type DataCrossSliceState } from '../../store/slices/dataSlice.js';
 import type { FederatedModel } from '../../store/types.js';
 import {
@@ -48,7 +48,7 @@ import { getEntityCenter } from '../../utils/viewportUtils.js';
 import { buildGeometryResultFromMeshes } from './geometry-sync.js';
 import type { MeshData } from '@ifc-lite/geometry';
 
-type TestState = ModelSlice & ModelCrossSliceState & DataSlice & DataCrossSliceState & {
+type TestState = ModelSlice & DataSlice & DataCrossSliceState & {
   collabRoomModelId: string | null;
   /** `null` off a session, set the instant `startCollab` begins — see room-model-target.ts. */
   collabRoomId: string | null;

@@ -145,7 +145,7 @@
    561 apps/viewer/src/services/ifc-cache.ts
    581 apps/viewer/src/store/basketVisibleSet.ts
    485 apps/viewer/src/store/constants.ts
-   850 apps/viewer/src/store/index.ts
+   575 apps/viewer/src/store/index.ts
    404 apps/viewer/src/store/slices/addElementMeshes.ts
    452 apps/viewer/src/store/slices/chatSlice.ts
    994 apps/viewer/src/store/slices/clashSlice.ts
@@ -154,7 +154,7 @@
    874 apps/viewer/src/store/slices/drawing2DSlice.ts
    482 apps/viewer/src/store/slices/idsSlice.ts
    820 apps/viewer/src/store/slices/measurementSlice.ts
-   914 apps/viewer/src/store/slices/modelSlice.ts
+   657 apps/viewer/src/store/slices/modelSlice.ts
   3283 apps/viewer/src/store/slices/mutationSlice.ts
    478 apps/viewer/src/store/slices/pinboardSlice.ts
   1317 apps/viewer/src/store/slices/scheduleSlice.ts

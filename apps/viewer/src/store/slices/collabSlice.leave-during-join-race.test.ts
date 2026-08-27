@@ -52,13 +52,12 @@ import assert from 'node:assert/strict';
 
 register('../../test/collab-session-race-hook.mjs', import.meta.url);
 
-import { createModelSlice, type ModelSlice, type ModelCrossSliceState } from './modelSlice.js';
+import { createModelSlice, type ModelSlice } from './modelSlice.js';
 import { createDataSlice, type DataSlice, type DataCrossSliceState } from './dataSlice.js';
 import { createCollabSlice, type CollabSlice } from './collabSlice.js';
 import type { ViewerState } from '../index.js';
 
 type TestState = ModelSlice &
-  ModelCrossSliceState &
   DataSlice &
   DataCrossSliceState &
   CollabSlice & {
@@ -102,9 +101,11 @@ function buildState() {
     // (role: 'admin'), but it must exist to type-check the call site.
     setEditEnabled: () => {},
     mutationViews: new Map(),
-    // `ModelCrossSliceState` — fields other slices own that `modelSlice`'s
-    // actions write to, so `TestState` requires them but no creator spread
-    // above supplies them. Same enumeration as the sibling
+    // Fields other slices own that the teardown `removeModel` dispatches
+    // reads off this stub state (`store/teardown-registry.ts`). Every
+    // contribution falls back to its own initial value when a field is
+    // absent, so these are here to make the harness store-shaped rather than
+    // to satisfy a type. Same enumeration as the sibling
     // `collabSlice.entry-race.test.ts`; keep the two in step.
     addElementModelId: null,
     addElementStoreyId: null,

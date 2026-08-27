@@ -536,4 +536,47 @@ describe("syncSourceModel — a resync keeps the surviving half of the user's X-
       'a resync must not hide the sibling by dropping the isolation wholesale',
     );
   });
+
+  it("drops a burned id even when the REPLACEMENT's fresh range covers it", async () => {
+    // The one thing that distinguishes this purge from the teardown
+    // `removeModel` ran a line earlier: the replacement is ALREADY LOADED when
+    // `removeModel` runs, so its own survivor set contains the replacement and
+    // it keeps every id the replacement's range happens to cover. Nothing can
+    // legitimately reference the replacement yet, so an id that survived only
+    // by landing inside that fresh range is still stale, and this second pass
+    // — the one that excludes the replacement — is what drops it.
+    //
+    // The two tests above cannot see that: the default harness registers the
+    // replacement with `maxExpressId: 0`, so its range owns nothing but global
+    // id 0 and both pass whether or not the replacement is excluded. Here the
+    // replacement is given a range that COVERS the burned id, which is what
+    // makes the exclusion observable — drop it and 5 survives.
+    seedStore(makeModel({ idOffset: 0, maxExpressId: 100 }));
+    useViewerStore.setState({ ghostExceptEntities: new Set([5]) });
+    const h = makeHarness({}, async (_file, options) => {
+      const id = options?.modelId ?? 'replacement';
+      useViewerStore.setState((state) => {
+        const models = new Map(state.models);
+        models.set(id, makeModel({ id, name: 'replacement', idOffset: 0, maxExpressId: 100 }));
+        return { models };
+      });
+      return id;
+    });
+
+    await syncSourceModel({
+      modelId: MODEL_ID,
+      tag: makeTag(),
+      sourceHost: h.sourceHost,
+      addModel: h.addModel,
+      removeModel: realRemoveModel,
+    });
+
+    // `null`, not an empty Set: a non-null empty ghost set still reads as
+    // "X-ray active, nothing matches" and hides the whole scene.
+    assert.equal(
+      useViewerStore.getState().ghostExceptEntities,
+      null,
+      'an id burned with the replaced model must not be rescued by the replacement occupying its range',
+    );
+  });
 });

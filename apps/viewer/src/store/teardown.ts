@@ -15,9 +15,10 @@
  *
  * Every one of those keys is owned by a slice that ALREADY declares its
  * initial value one file over; the teardown paths restate the value a second
- * time, in a file that cannot see the slice. `modelSlice` even declares 16
- * fields it does not own (`ModelCrossSliceState`) purely so its teardown can
- * type-check its reach into five other slices. The four copies are held
+ * time, in a file that cannot see the slice. `modelSlice` even declared 16
+ * fields it did not own (`ModelCrossSliceState`) purely so its teardown could
+ * type-check its reach into five other slices — that interface is gone, and
+ * its disappearance is the measure of this change. The four copies were held
  * together by prose: "same shape as `purgeStaleEntityState`", twice.
  *
  * This module replaces the prose with a contract. Each slice contributes

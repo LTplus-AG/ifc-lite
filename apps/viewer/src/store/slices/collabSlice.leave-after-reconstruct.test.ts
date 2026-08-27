@@ -27,13 +27,12 @@ import assert from 'node:assert/strict';
 
 register('../../test/collab-hydrate-gate-hook.mjs', import.meta.url);
 
-import type { ModelSlice, ModelCrossSliceState } from './modelSlice.js';
+import type { ModelSlice } from './modelSlice.js';
 import type { DataSlice, DataCrossSliceState } from './dataSlice.js';
 import type { CollabSlice } from './collabSlice.js';
 import type { ViewerState } from '../index.js';
 
 type TestState = ModelSlice &
-  ModelCrossSliceState &
   DataSlice &
   DataCrossSliceState &
   CollabSlice & {

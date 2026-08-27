@@ -56,7 +56,7 @@ export function liftTo3DLineList(
 /**
  * Returns IFC annotation segments as a single Float32Array of pre-lifted 3D
  * line-list vertices in world space, ready to feed
- * `renderer.uploadAnnotationLines3D`.
+ * `renderer.setLineOverlay('annotation', …)`.
  *
  * Each annotation is lifted to its containing storey's elevation. Annotations
  * with no resolvable storey fall back to `fallbackY` (typically the mid-Y of

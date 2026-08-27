@@ -10,7 +10,7 @@
  * they never produce a mesh in the streaming batch mesher. The WASM
  * `parseGridLines` API resolves every axis through the same placement +
  * unit-scale + RTC pipeline as the meshes and returns a flat 3D line-list in
- * renderer Y-up world space, which we feed to `renderer.uploadGridLines3D`.
+ * renderer Y-up world space, which we feed to `renderer.setLineOverlay('grid', …)`.
  * This mirrors `useAlignmentLines3D`.
  *
  * Unlike alignment (always-on), grids are gated by the `ifcGrid` type-visibility

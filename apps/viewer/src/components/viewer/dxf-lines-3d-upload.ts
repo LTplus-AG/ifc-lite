@@ -6,8 +6,7 @@ import { runGpuUpload } from './gpu-upload-guard.js';
 
 /** The slice of `Renderer` the DXF 3D upload effect needs. */
 export interface DxfLines3DUploadTarget {
-  uploadDxfLines3D(vertices: Float32Array): void;
-  clearDxfLines3D(): void;
+  setLineOverlay(channel: 'dxf', vertices: Float32Array | null): void;
 }
 
 /**
@@ -18,8 +17,8 @@ export interface DxfLines3DUploadTarget {
  *
  * Extracted from the `Viewport.tsx` effect so the drop-on-failure branch is
  * unit-testable with a mock renderer: this function has no GPU dependency,
- * only `renderer.uploadDxfLines3D`/`clearDxfLines3D`. The actual buffer
- * upload itself is not covered here — that requires a real GPUDevice.
+ * only `renderer.setLineOverlay('dxf', …)`. The actual buffer upload itself is
+ * not covered here — that requires a real GPUDevice.
  *
  * An empty `vertices` array clears the overlay (nothing to upload). A
  * failed upload also clears it — drawing from a half-written buffer would
@@ -30,14 +29,14 @@ export function uploadDxfLines3DGuarded(
   vertices: Float32Array,
 ): void {
   if (vertices.length === 0) {
-    renderer.clearDxfLines3D();
+    renderer.setLineOverlay('dxf', null);
     return;
   }
-  const uploaded = runGpuUpload('uploadDxfLines3D', () => {
-    renderer.uploadDxfLines3D(vertices);
+  const uploaded = runGpuUpload('setLineOverlay:dxf', () => {
+    renderer.setLineOverlay('dxf', vertices);
     return true;
   });
   if (!uploaded) {
-    renderer.clearDxfLines3D();
+    renderer.setLineOverlay('dxf', null);
   }
 }

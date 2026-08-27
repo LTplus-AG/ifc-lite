@@ -43,7 +43,13 @@
 
 import type { Camera } from './camera.js';
 import { SectionPlaneRenderer } from './section-plane.js';
-import { Section2DOverlayRenderer, type CutPolygon2D, type DrawingLine2D } from './section-2d-overlay.js';
+import {
+    Section2DOverlayRenderer,
+    LINE_OVERLAY_CHANNELS,
+    type CutPolygon2D,
+    type DrawingLine2D,
+    type LineOverlayChannel,
+} from './section-2d-overlay.js';
 import { SymbolicOverlays } from './renderer-symbolic-overlays.js';
 import type { SymbolicFillInput, SymbolicTextInput } from './symbolic-overlay-pipelines.js';
 import { ClashSolidPipeline, type ClashSolidInput } from './clash-solid-pipeline.js';
@@ -78,6 +84,26 @@ export interface OverlayDrawContext {
     canvasWidth: number;
     canvasHeight: number;
 }
+
+/**
+ * Whether setting a channel grows the scene AABB.
+ *
+ * The one behavioural difference between the four channels, and the reason
+ * `setLineOverlay` is a table lookup rather than a plain forward. Annotation
+ * (#653) and alignment overlays expand the bounds so an annotation-only or
+ * alignment-only file — no IfcProduct meshes at all, common for separate
+ * "annotation sheets" — still gets framed by Home / fit-to-view and still
+ * lands inside the camera's near/far range. Grid axes (#967) and the DXF
+ * reference layer (#2043) must NOT: both sit behind their own visibility
+ * toggle and routinely extend past the model envelope, so growing bounds on
+ * upload would reframe the camera every time someone ticked the box.
+ */
+const CHANNEL_EXPANDS_MODEL_BOUNDS: Record<LineOverlayChannel, boolean> = {
+    annotation: true,
+    alignment: true,
+    grid: false,
+    dxf: false,
+};
 
 export class RendererOverlays {
     private sectionPlaneRenderer: SectionPlaneRenderer | null = null;
@@ -140,17 +166,13 @@ export class RendererOverlays {
         // Order: fills (background) → lines (outlines on top) →
         // texts (labels above everything).
         this.symbolic.drawFills(pass, viewProj);
-        if (this.section2DOverlayRenderer?.hasAnnotationLines3D()) {
-            this.section2DOverlayRenderer.drawAnnotationLines3D(pass, viewProj);
-        }
-        if (this.section2DOverlayRenderer?.hasAlignmentLines3D()) {
-            this.section2DOverlayRenderer.drawAlignmentLines3D(pass, viewProj);
-        }
-        if (this.section2DOverlayRenderer?.hasGridLines3D()) {
-            this.section2DOverlayRenderer.drawGridLines3D(pass, viewProj);
-        }
-        if (this.section2DOverlayRenderer?.hasDxfLines3D()) {
-            this.section2DOverlayRenderer.drawDxfLines3D(pass, viewProj);
+        // `LINE_OVERLAY_CHANNELS` is in draw order: annotation, alignment,
+        // grid, DXF. All four share the overlay colour and the line pipeline,
+        // so the order only decides who wins a depth tie.
+        for (const channel of LINE_OVERLAY_CHANNELS) {
+            if (this.section2DOverlayRenderer?.hasLineOverlay(channel)) {
+                this.section2DOverlayRenderer.drawLineOverlay(pass, viewProj, channel);
+            }
         }
         if (this.section2DOverlayRenderer?.hasClashBoxLines3D()) {
             this.section2DOverlayRenderer.drawClashBoxLines3D(pass, viewProj);
@@ -183,7 +205,7 @@ export class RendererOverlays {
         // overlay geometry has to request a frame or the new drawing only
         // appears when something unrelated next dirties the viewport (#2442).
         // The two early returns below leave the geometry untouched, so they
-        // correctly ask for nothing — matching `uploadGridLines3D` and friends.
+        // correctly ask for nothing — matching `setLineOverlay` before init.
         if (!this.section2DOverlayRenderer) return;
 
         if (customPlane) {
@@ -246,82 +268,23 @@ export class RendererOverlays {
         this.host.requestRender();
     }
 
-    /** See `Renderer.uploadAnnotationLines3D` for the published contract. */
-    uploadAnnotationLines3D(vertices: Float32Array): void {
+    /** See `Renderer.setLineOverlay` for the published contract. */
+    setLineOverlay(channel: LineOverlayChannel, vertices: Float32Array | null): void {
         if (!this.section2DOverlayRenderer) return;
-        this.section2DOverlayRenderer.uploadAnnotationLines3D(vertices);
-        // Contribute annotation extents to modelBounds + camera sceneBounds
-        // so an annotation-only model (no IfcProduct meshes — common for
-        // separate "annotation sheets") gets framed by Home / fit-to-view
-        // AND has correct near/far clipping. Without sceneBounds the camera
-        // frustum doesn't include the annotation cluster and they're clipped
-        // away even when the camera is pointed at them. Mirror the
-        // point-cloud upload path (`addPointClouds`, `setPointClouds`) which
-        // does the same thing.
-        this.host.expandModelBoundsWithFlatVertices(vertices, 3);
-        this.host.syncCameraSceneBounds();
-        this.host.requestRender();
-    }
-
-    /** See `Renderer.clearAnnotationLines3D` for the published contract. */
-    clearAnnotationLines3D(): void {
-        if (this.section2DOverlayRenderer) {
-            this.section2DOverlayRenderer.clearAnnotationLines3D();
-            this.host.requestRender();
+        this.section2DOverlayRenderer.setLineOverlay(channel, vertices);
+        if (vertices !== null && CHANNEL_EXPANDS_MODEL_BOUNDS[channel]) {
+            // Mirrors the point-cloud upload path (`addPointClouds`,
+            // `setPointClouds`): without `syncCameraSceneBounds` the frustum
+            // excludes the cluster and it is clipped away even when the camera
+            // points straight at it. See CHANNEL_EXPANDS_MODEL_BOUNDS.
+            this.host.expandModelBoundsWithFlatVertices(vertices, 3);
+            this.host.syncCameraSceneBounds();
         }
-    }
-
-    /** See `Renderer.uploadAlignmentLines3D` for the published contract. */
-    uploadAlignmentLines3D(vertices: Float32Array): void {
-        if (!this.section2DOverlayRenderer) return;
-        this.section2DOverlayRenderer.uploadAlignmentLines3D(vertices);
-        // Frame alignment-only files the same way annotation overlays are
-        // framed (see uploadAnnotationLines3D).
-        this.host.expandModelBoundsWithFlatVertices(vertices, 3);
-        this.host.syncCameraSceneBounds();
+        // Rendering is dirty-flag gated (#2442): a channel that changed has to
+        // ask for a frame or the change waits for something unrelated to
+        // dirty the viewport. Clearing counts as a change; a pre-init call
+        // returns above without asking, because it changed nothing.
         this.host.requestRender();
-    }
-
-    /** See `Renderer.clearAlignmentLines3D` for the published contract. */
-    clearAlignmentLines3D(): void {
-        if (this.section2DOverlayRenderer) {
-            this.section2DOverlayRenderer.clearAlignmentLines3D();
-            this.host.requestRender();
-        }
-    }
-
-    /**
-     * See `Renderer.uploadGridLines3D` for the published contract. Unlike
-     * alignment, grids do NOT expand model bounds: they're behind a visibility
-     * toggle, so toggling them on must not reframe the camera.
-     */
-    uploadGridLines3D(vertices: Float32Array): void {
-        if (!this.section2DOverlayRenderer) return;
-        this.section2DOverlayRenderer.uploadGridLines3D(vertices);
-        this.host.requestRender();
-    }
-
-    /** See `Renderer.clearGridLines3D` for the published contract. */
-    clearGridLines3D(): void {
-        if (this.section2DOverlayRenderer) {
-            this.section2DOverlayRenderer.clearGridLines3D();
-            this.host.requestRender();
-        }
-    }
-
-    /** See `Renderer.uploadDxfLines3D` for the published contract. */
-    uploadDxfLines3D(vertices: Float32Array): void {
-        if (!this.section2DOverlayRenderer) return;
-        this.section2DOverlayRenderer.uploadDxfLines3D(vertices);
-        this.host.requestRender();
-    }
-
-    /** See `Renderer.clearDxfLines3D` for the published contract. */
-    clearDxfLines3D(): void {
-        if (this.section2DOverlayRenderer) {
-            this.section2DOverlayRenderer.clearDxfLines3D();
-            this.host.requestRender();
-        }
     }
 
     /** See `Renderer.setClashOverlapBox` for the published contract. */

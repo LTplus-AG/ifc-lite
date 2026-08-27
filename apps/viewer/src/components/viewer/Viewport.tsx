@@ -1468,11 +1468,10 @@ export function Viewport({
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
-    if (annotationVertices3D.length === 0) {
-      renderer.clearAnnotationLines3D();
-    } else {
-      renderer.uploadAnnotationLines3D(annotationVertices3D);
-    }
+    renderer.setLineOverlay(
+      'annotation',
+      annotationVertices3D.length === 0 ? null : annotationVertices3D,
+    );
   }, [annotationVertices3D, isInitialized]);
 
   // IfcAlignment centerlines render as thin lines (not a ribbon mesh), always
@@ -1482,11 +1481,10 @@ export function Viewport({
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
-    if (alignmentVertices3D.length === 0) {
-      renderer.clearAlignmentLines3D();
-    } else {
-      renderer.uploadAlignmentLines3D(alignmentVertices3D);
-    }
+    renderer.setLineOverlay(
+      'alignment',
+      alignmentVertices3D.length === 0 ? null : alignmentVertices3D,
+    );
   }, [alignmentVertices3D, isInitialized]);
 
   // Structural-grid (IfcGridAxis) lines, gated by the `ifcGrid` type-visibility
@@ -1496,11 +1494,10 @@ export function Viewport({
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
-    if (!ifcGridVisible || gridVertices3D.length === 0) {
-      renderer.clearGridLines3D();
-    } else {
-      renderer.uploadGridLines3D(gridVertices3D);
-    }
+    renderer.setLineOverlay(
+      'grid',
+      !ifcGridVisible || gridVertices3D.length === 0 ? null : gridVertices3D,
+    );
   }, [gridVertices3D, ifcGridVisible, isInitialized]);
 
   // DXF reference-layer line paths in the 3D viewport (issue #2043,

@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { Section2DOverlayRenderer } from './section-2d-overlay.js';
+import { Section2DOverlayRenderer, LINE_OVERLAY_CHANNELS } from './section-2d-overlay.js';
 import {
   SECTION_2D_UNIFORM_BYTES,
   SECTION_2D_UNIFORM_SLOTS,
@@ -136,35 +136,18 @@ type Family = {
   draw: (r: Section2DOverlayRenderer, p: GPURenderPassEncoder, vp: Float32Array) => void;
 };
 
+// The four named channels come from `LINE_OVERLAY_CHANNELS` itself, so a fifth
+// channel is covered by every test below the moment it joins that list —
+// nobody has to remember to add a row here. The clash box is spelled out
+// because it is not a channel: its own colour, its own entry points.
 const FAMILIES: Family[] = [
-  {
-    name: 'annotation',
-    upload: (r, v) => r.uploadAnnotationLines3D(v),
-    clear: (r) => r.clearAnnotationLines3D(),
-    has: (r) => r.hasAnnotationLines3D(),
-    draw: (r, p, vp) => r.drawAnnotationLines3D(p, vp),
-  },
-  {
-    name: 'alignment',
-    upload: (r, v) => r.uploadAlignmentLines3D(v),
-    clear: (r) => r.clearAlignmentLines3D(),
-    has: (r) => r.hasAlignmentLines3D(),
-    draw: (r, p, vp) => r.drawAlignmentLines3D(p, vp),
-  },
-  {
-    name: 'grid',
-    upload: (r, v) => r.uploadGridLines3D(v),
-    clear: (r) => r.clearGridLines3D(),
-    has: (r) => r.hasGridLines3D(),
-    draw: (r, p, vp) => r.drawGridLines3D(p, vp),
-  },
-  {
-    name: 'dxf',
-    upload: (r, v) => r.uploadDxfLines3D(v),
-    clear: (r) => r.clearDxfLines3D(),
-    has: (r) => r.hasDxfLines3D(),
-    draw: (r, p, vp) => r.drawDxfLines3D(p, vp),
-  },
+  ...LINE_OVERLAY_CHANNELS.map((channel): Family => ({
+    name: channel,
+    upload: (r, v) => r.setLineOverlay(channel, v),
+    clear: (r) => r.setLineOverlay(channel, null),
+    has: (r) => r.hasLineOverlay(channel),
+    draw: (r, p, vp) => r.drawLineOverlay(p, vp, channel),
+  })),
   {
     name: 'clashBox',
     upload: (r, v) => r.uploadClashBoxLines3D(v),
@@ -272,6 +255,26 @@ describe('Section2DOverlayRenderer: per-family buffer ownership', () => {
       family.draw(renderer, pass, new Float32Array(16));
       assert.deepStrictEqual(calls, ['setPipeline', 'setBindGroup', 'setVertexBuffer', 'draw:4']);
     });
+
+    it(`${family.name}: a cleared family stops being drawn`, () => {
+      // The clear path end to end rather than its bookkeeping. `has()` going
+      // false and the vertex buffer being destroyed are both true of a family
+      // that would still emit a draw call from a stale handle, so what this
+      // asserts is the draw itself disappearing — the thing a viewer sees.
+      const { renderer } = newRenderer();
+      family.upload(renderer, SEGMENTS);
+      const drawn = makePass();
+      family.draw(renderer, drawn.pass, new Float32Array(16));
+      assert.ok(
+        drawn.calls.some((c) => c.startsWith('draw:')),
+        'precondition: the uploaded family drew at all',
+      );
+
+      family.clear(renderer);
+      const cleared = makePass();
+      family.draw(renderer, cleared.pass, new Float32Array(16));
+      assert.deepStrictEqual(cleared.calls, [], 'a cleared family must issue no draw');
+    });
   }
 
   it('families are independent: clearing one leaves the others uploaded', () => {
@@ -340,9 +343,9 @@ describe('Section2DOverlayRenderer: shared uniform buffer', () => {
   it('writes the overlay line colour at the lineColor slot for a shared-colour family', () => {
     const { renderer, writes } = newRenderer();
     renderer.setOverlayLineColor([0.1, 0.2, 0.3, 0.4]);
-    renderer.uploadGridLines3D(SEGMENTS);
+    renderer.setLineOverlay('grid', SEGMENTS);
     const { pass } = makePass();
-    renderer.drawGridLines3D(pass, new Float32Array(16).fill(0));
+    renderer.drawLineOverlay(pass, new Float32Array(16).fill(0), 'grid');
     const u = lastWrite(writes);
     assert.deepStrictEqual(
       Array.from(u.slice(SECTION_2D_UNIFORM_SLOTS.lineColor, SECTION_2D_UNIFORM_SLOTS.lineColor + 4))
@@ -367,9 +370,9 @@ describe('Section2DOverlayRenderer: shared uniform buffer', () => {
 
   it('zeroes planeOffset for world-space families', () => {
     const { renderer, writes } = newRenderer();
-    renderer.uploadAnnotationLines3D(SEGMENTS);
+    renderer.setLineOverlay('annotation', SEGMENTS);
     const { pass } = makePass();
-    renderer.drawAnnotationLines3D(pass, new Float32Array(16).fill(7));
+    renderer.drawLineOverlay(pass, new Float32Array(16).fill(7), 'annotation');
     const u = lastWrite(writes);
     assert.deepStrictEqual(
       Array.from(u.slice(SECTION_2D_UNIFORM_SLOTS.planeOffset, SECTION_2D_UNIFORM_SLOTS.planeOffset + 4)),
@@ -471,11 +474,11 @@ describe('Section2DOverlayRenderer: section-cut draw gating', () => {
   it('clearGeometry drops the cut buffers without touching the line families', () => {
     const { renderer } = newRenderer();
     renderer.uploadDrawing(TRIANGLE, [], 'front', 0);
-    renderer.uploadGridLines3D(SEGMENTS);
+    renderer.setLineOverlay('grid', SEGMENTS);
     assert.strictEqual(renderer.hasGeometry(), true);
     renderer.clearGeometry();
     assert.strictEqual(renderer.hasGeometry(), false);
-    assert.strictEqual(renderer.hasGridLines3D(), true);
+    assert.strictEqual(renderer.hasLineOverlay('grid'), true);
   });
 
   it('re-uploading the drawing destroys the previous cut buffers', () => {
@@ -556,12 +559,12 @@ describe('Section2DOverlayRenderer: one uniform record per draw (#2456)', () => 
     const { renderer, writes } = newRenderer();
     renderer.setOverlayLineColor([0.1, 0.2, 0.3, 1]);
     renderer.setClashBoxLineColor([1, 0, 1, 1]);
-    renderer.uploadGridLines3D(SEGMENTS);
+    renderer.setLineOverlay('grid', SEGMENTS);
     renderer.uploadClashBoxLines3D(SEGMENTS);
 
     const { pass, binds } = makePass();
     const before = writes.length;
-    renderer.drawGridLines3D(pass, new Float32Array(16).fill(0));
+    renderer.drawLineOverlay(pass, new Float32Array(16).fill(0), 'grid');
     renderer.drawClashBoxLines3D(pass, new Float32Array(16).fill(0));
 
     // Resolve what the GPU would see for the FIRST draw: the last write to the
@@ -614,11 +617,11 @@ describe('Section2DOverlayRenderer: one uniform record per draw (#2456)', () => 
       const r = newRenderer(64);
       return r;
     })();
-    renderer.uploadGridLines3D(SEGMENTS);
+    renderer.setLineOverlay('grid', SEGMENTS);
     renderer.uploadClashBoxLines3D(SEGMENTS);
     const { pass } = makePass();
     const before = writes.length;
-    renderer.drawGridLines3D(pass, new Float32Array(16).fill(0));
+    renderer.drawLineOverlay(pass, new Float32Array(16).fill(0), 'grid');
     renderer.drawClashBoxLines3D(pass, new Float32Array(16).fill(0));
 
     const offsets = writes.slice(before).map((w) => w.offset);

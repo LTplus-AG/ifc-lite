@@ -44,7 +44,8 @@ export { DEFAULT_CAP_STYLE, HATCH_PATTERN_IDS } from './section-cap-style.js';
 export type { SectionCapStyle, HatchPatternId } from './section-cap-style.js';
 export { planeBasis, nearestCardinalAxis } from './section-plane-basis.js';
 export type { PlaneBasis, Vec3Tuple } from './section-plane-basis.js';
-export type { Section2DOverlayOptions, Section2DOverlayCapStyle, CutPolygon2D, DrawingLine2D } from './section-2d-overlay.js';
+export type { Section2DOverlayOptions, Section2DOverlayCapStyle, CutPolygon2D, DrawingLine2D, LineOverlayChannel } from './section-2d-overlay.js';
+export { LINE_OVERLAY_CHANNELS } from './section-2d-overlay.js';
 export { Raycaster } from './raycaster.js';
 export { SnapDetector, SnapType } from './snap-detector.js';
 export { BVH } from './bvh.js';
@@ -138,7 +139,7 @@ import type {
 } from './types.js';
 import { VisualEnhancementResolver } from './visual-enhancement.js';
 import { packClipBox } from './clip-box.js';
-import type { CutPolygon2D, DrawingLine2D } from './section-2d-overlay.js';
+import type { CutPolygon2D, DrawingLine2D, LineOverlayChannel } from './section-2d-overlay.js';
 import type {
   SymbolicFillInput,
   SymbolicTextInput,
@@ -3472,70 +3473,32 @@ export class Renderer {
     }
 
     /**
-     * Upload pre-lifted 3D line-list vertices for the standalone annotation
-     * overlay. Each segment is `[x1, y1, z1, x2, y2, z2]` in world space.
-     * The overlay is drawn regardless of whether a section plane is active.
-     * Pass an empty Float32Array to clear.
-     */
-    uploadAnnotationLines3D(vertices: Float32Array): void {
-        this.overlays.uploadAnnotationLines3D(vertices);
-    }
-
-    /**
-     * Clear the standalone annotation line overlay.
-     */
-    clearAnnotationLines3D(): void {
-        this.overlays.clearAnnotationLines3D();
-    }
-
-    /**
-     * Upload IfcAlignment centerline segments as a flat [x,y,z,x,y,z,...]
-     * line-list in world space. Rendered as thin lines (not a ribbon mesh)
-     * to match IfcGrid / IfcAnnotation. Pass an empty Float32Array to clear.
-     */
-    uploadAlignmentLines3D(vertices: Float32Array): void {
-        this.overlays.uploadAlignmentLines3D(vertices);
-    }
-
-    /** Clear the alignment centerline overlay. */
-    clearAlignmentLines3D(): void {
-        this.overlays.clearAlignmentLines3D();
-    }
-
-    /**
-     * Upload structural-grid (IfcGridAxis) segments as a flat [x,y,z,x,y,z,...]
-     * line-list in world space (issue #967). Rendered as thin lines, mirroring
-     * the alignment overlay. Pass an empty Float32Array to clear.
+     * Set one standalone 3D line overlay, or clear it by passing `null`.
      *
-     * Unlike alignment, grids do NOT expand model bounds: they're behind a
-     * visibility toggle, so toggling them on must not reframe the camera (and
-     * grid axes routinely extend past the model envelope).
+     * `vertices` is a flat world-space line-list — `[x1,y1,z1, x2,y2,z2, …]`,
+     * one segment per six floats. The vertices are already lifted to world
+     * space, so these overlays draw whether or not a section plane is active.
+     * A trailing partial segment is dropped rather than rejecting the array.
+     *
+     * Every channel is an independent buffer with its own visibility, so
+     * setting one leaves the other three untouched. All four share the colour
+     * set by {@link setOverlayLineColor}; label colour is per-text via
+     * `SymbolicTextInput.color` on `uploadAnnotationTexts3D`.
+     *
+     * The channels differ in exactly one way — whether they grow the scene
+     * bounds:
+     *
+     * - `annotation` (#653) and `alignment` DO. An annotation-only or
+     *   alignment-only file has no IfcProduct meshes to frame, so without this
+     *   Home / fit-to-view has nothing to aim at and the camera's near/far
+     *   range clips the lines away.
+     * - `grid` (IfcGridAxis, #967) and `dxf` (the DXF reference layer, #2043)
+     *   do NOT. Both sit behind their own visibility toggle and routinely
+     *   extend past the model envelope, so growing the bounds would reframe
+     *   the camera every time the toggle was ticked.
      */
-    uploadGridLines3D(vertices: Float32Array): void {
-        this.overlays.uploadGridLines3D(vertices);
-    }
-
-    /** Clear the structural-grid overlay. */
-    clearGridLines3D(): void {
-        this.overlays.clearGridLines3D();
-    }
-
-    /**
-     * Upload the DXF reference-layer's line paths as a flat
-     * [x,y,z,x,y,z,...] line-list in world space (issue #2043, follow-up to
-     * the 2D-only DXF underlay from #1782/#1929). Mirrors
-     * `uploadGridLines3D`: a dedicated buffer so 3D DXF visibility is
-     * independent of the 2D underlay's own toggle, and does NOT expand
-     * model bounds/reframe the camera on upload — it's behind its own
-     * visibility toggle, like grid axes. Pass an empty Float32Array to clear.
-     */
-    uploadDxfLines3D(vertices: Float32Array): void {
-        this.overlays.uploadDxfLines3D(vertices);
-    }
-
-    /** Clear the 3D DXF reference-layer overlay. */
-    clearDxfLines3D(): void {
-        this.overlays.clearDxfLines3D();
+    setLineOverlay(channel: LineOverlayChannel, vertices: Float32Array | null): void {
+        this.overlays.setLineOverlay(channel, vertices);
     }
 
     /**

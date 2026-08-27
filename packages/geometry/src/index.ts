@@ -1005,7 +1005,7 @@ export class GeometryProcessor {
    * Parse IfcAlignment directrix curves into a flat Float32Array of 3D
    * line-list vertices `[x0,y0,z0, x1,y1,z1, …]` in renderer Y-up world space
    * (RTC-subtracted, metres). Rendered as thin lines (not a ribbon mesh) to
-   * match IfcGrid / IfcAnnotation. Feed straight to `renderer.uploadAlignmentLines3D`.
+   * match IfcGrid / IfcAnnotation. Feed straight to `renderer.setLineOverlay('alignment', …)`.
    * @param buffer IFC file buffer
    * @returns Flat line-list vertices, or null if not initialized
    */
@@ -1024,7 +1024,7 @@ export class GeometryProcessor {
    * vertices `[x0,y0,z0, x1,y1,z1, …]` (one segment per axis) in renderer Y-up
    * world space (RTC-subtracted, metres) — the same frame the streamed meshes
    * render in, so grids overlay the model by construction (issue #945). Feed
-   * straight to a line pipeline (e.g. `renderer.uploadAnnotationLines3D`).
+   * straight to a line pipeline (e.g. `renderer.setLineOverlay('annotation', …)`).
    * @param buffer IFC file buffer
    * @returns Flat line-list vertices, or null if not initialized
    */

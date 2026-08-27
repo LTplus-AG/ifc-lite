@@ -16,8 +16,9 @@
  * vertex buffer to `section-2d-line-buffer.ts`. What is left is one nullable,
  * `init()`-created / `dispose()`-destroyed GPU object (two pipelines, one
  * bind-group layout, one bind group, one uniform buffer holding a 160-byte
- * record per draw site) plus
- * the published `upload*`/`clear*`/`has*`/`draw*` API over it. Splitting that
+ * record per draw site) plus the published API over it: one
+ * `setLineOverlay`/`hasLineOverlay`/`drawLineOverlay` trio covering every
+ * standalone line channel, and the section cut's own upload/draw. Splitting that
  * further means giving those shared resources a second owner, which is the cut
  * #2456 explicitly refuses. Do not "fix" the line count by doing it.
  */
@@ -48,6 +49,25 @@ import {
 } from './section-2d-line-buffer.js';
 
 export type { CutPolygon2D, DrawingLine2D, SectionCustomPlane } from './section-2d-lift.js';
+
+/**
+ * The standalone world-space line overlays, in draw order.
+ *
+ * Each channel is an independent vertex buffer sharing one line pipeline and
+ * one shared overlay colour, so the only thing that distinguishes them is
+ * which buffer a draw reads and which uniform slot it binds. Naming them
+ * rather than growing a method quartet per family is what makes a sixth
+ * channel one array entry plus one uniform slot instead of four methods here,
+ * two on `RendererOverlays` and two on the published `Renderer`.
+ *
+ * The focused clash's box / contact lines are deliberately NOT a channel: they
+ * draw in their own colour, not the shared one, and callers reach them through
+ * `setClashOverlapBox` / `setClashContactLines`, which carry that colour.
+ */
+export const LINE_OVERLAY_CHANNELS = ['annotation', 'alignment', 'grid', 'dxf'] as const;
+
+/** One of {@link LINE_OVERLAY_CHANNELS}. */
+export type LineOverlayChannel = (typeof LINE_OVERLAY_CHANNELS)[number];
 
 export interface Section2DOverlayCapStyle {
   fillColor:         [number, number, number, number];
@@ -113,31 +133,25 @@ export class Section2DOverlayRenderer {
   private lineVertexBuffer: GPUBuffer | null = null;
   private lineVertexCount = 0;
 
-  // Standalone 3D annotation line overlay. Same line pipeline as the section
-  // cut, but vertices are already in world space when uploaded so the draw
-  // does not depend on a section plane being active. Used by the
-  // "Show IFC Annotations" toggle so that authored 2D drawing curves
-  // (IfcAnnotation polylines/arcs) are visible in any view.
-  private annotationLines = new WorldLineBuffer(SECTION_2D_UNIFORM_SLOT_INDEX.annotation);
+  /**
+   * One world-space vertex buffer per {@link LineOverlayChannel}, each on its
+   * own uniform slot.
+   *
+   * Four `WorldLineBuffer`s, not one: the four draws are encoded into a single
+   * pass and `queue.writeBuffer` lands before the pass runs, so a shared buffer
+   * or a shared uniform slot would give all four whatever the last write said.
+   * Keying them by channel unifies the LOOKUP, which is all that was ever
+   * duplicated; the buffers stay separate because their independence is what
+   * makes annotation (#653), alignment, grid (#967) and DXF (#2043) visibility
+   * toggle independently.
+   */
+  private readonly lineOverlays: Record<LineOverlayChannel, WorldLineBuffer> = {
+    annotation: new WorldLineBuffer(SECTION_2D_UNIFORM_SLOT_INDEX.annotation),
+    alignment: new WorldLineBuffer(SECTION_2D_UNIFORM_SLOT_INDEX.alignment),
+    grid: new WorldLineBuffer(SECTION_2D_UNIFORM_SLOT_INDEX.grid),
+    dxf: new WorldLineBuffer(SECTION_2D_UNIFORM_SLOT_INDEX.dxf),
+  };
 
-  // Standalone 3D alignment centerline overlay. Independent buffer from the
-  // annotation lines (separate visibility toggle) but reuses the same line
-  // pipeline. IfcAlignment renders as a thin line here — not a ribbon mesh —
-  // to match IfcGrid axes / IfcAnnotation curves.
-  private alignmentLines = new WorldLineBuffer(SECTION_2D_UNIFORM_SLOT_INDEX.alignment);
-
-  // Standalone 3D structural-grid (IfcGridAxis) overlay. Independent buffer so
-  // grid visibility is independent of the annotation/alignment overlays, but
-  // reuses the same line pipeline (issue #967).
-  private gridLines = new WorldLineBuffer(SECTION_2D_UNIFORM_SLOT_INDEX.grid);
-
-  // Standalone 3D DXF reference-layer overlay (issue #2043, follow-up to
-  // #1782/#1929's 2D-only DXF underlay). Independent buffer so 3D DXF
-  // visibility is independent of the 2D underlay and the other overlays
-  // above, but reuses the same line pipeline + shared overlay colour —
-  // mirrors the grid overlay exactly. Line paths only (walls/boundaries);
-  // DXF fills/text are not lifted to 3D in this iteration.
-  private dxfLines = new WorldLineBuffer(SECTION_2D_UNIFORM_SLOT_INDEX.dxf);
 
   // Standalone 3D clash-overlap-box overlay (#1277): the wireframe AABB of a
   // focused clash, drawn in its OWN distinct colour (not the shared overlay
@@ -320,7 +334,7 @@ export class Section2DOverlayRenderer {
   /**
    * The shared line-pipeline resources a WorldLineBuffer borrows for a draw.
    * Returns null before `init()` has produced them (or after `dispose()`), so
-   * every `draw*Lines3D` bails on the same condition it always did.
+   * every line draw bails on the same condition it always did.
    */
   private lineResources(): SectionLinePipelineResources | null {
     if (!this.linePipeline || !this.uniformBuffer || !this.bindGroup) return null;
@@ -417,129 +431,48 @@ export class Section2DOverlayRenderer {
   }
 
   /**
-   * Upload a flat Float32Array of 3D line-list vertices for the standalone
-   * annotation overlay. Each segment is `[x1, y1, z1, x2, y2, z2]` in world
-   * space. The buffer is independent of the section cut's line buffer and
-   * is drawn regardless of `sectionPlane.enabled`.
+   * Set one standalone world-space line overlay, or clear it with `null`.
    *
-   * Pass an empty array (or omit) to clear.
+   * `vertices` is a flat line-list, `[x1,y1,z1, x2,y2,z2, …]`, already in world
+   * space: unlike the section-cut outline these do not ride the section plane,
+   * so they draw regardless of `sectionPlane.enabled`. An array too short for a
+   * whole segment clears, which is how callers spell "no lines" without a null.
+   *
+   * Every channel gets its own buffer and its own uniform slot, so setting one
+   * leaves the other three exactly as they were — that independence is the
+   * whole point of having channels rather than one merged buffer.
    */
-  uploadAnnotationLines3D(vertices: Float32Array): void {
+  setLineOverlay(channel: LineOverlayChannel, vertices: Float32Array | null): void {
+    if (vertices === null) {
+      // Deliberately no `init()`: clearing destroys a buffer that only an
+      // upload could have created, so a clear before first use must not be
+      // what brings the pipeline into existence.
+      this.lineOverlays[channel].clear();
+      return;
+    }
     this.init();
-    this.annotationLines.upload(this.device, vertices);
+    this.lineOverlays[channel].upload(this.device, vertices);
   }
 
-  clearAnnotationLines3D(): void {
-    this.annotationLines.clear();
-  }
-
-  hasAnnotationLines3D(): boolean {
-    return this.annotationLines.has();
+  /** Whether `channel` currently holds at least one whole segment. */
+  hasLineOverlay(channel: LineOverlayChannel): boolean {
+    return this.lineOverlays[channel].has();
   }
 
   /**
-   * Draw the standalone annotation line overlay. Uses the same line pipeline
-   * as the section cut outlines (vertex format: 3 floats per vertex, line-list
-   * topology) but reads from a separate vertex buffer. The pipeline's
-   * `planeOffset` uniform is zeroed so vertices render at their authored
-   * world position.
+   * Draw one channel with the shared line pipeline and the shared overlay
+   * colour, binding that channel's own uniform slot. No-ops when the channel is
+   * empty or the pipeline could not be built.
    */
-  drawAnnotationLines3D(pass: GPURenderPassEncoder, viewProj: Float32Array): void {
+  drawLineOverlay(
+    pass: GPURenderPassEncoder,
+    viewProj: Float32Array,
+    channel: LineOverlayChannel,
+  ): void {
     this.init();
     const resources = this.lineResources();
     if (!resources) return;
-    this.annotationLines.draw(pass, resources, viewProj, this.overlayLineColor);
-  }
-
-  /**
-   * Upload a flat Float32Array of 3D line-list vertices for the alignment
-   * centerline overlay. Same format/pipeline as the annotation lines, kept in
-   * a separate buffer so alignment visibility is independent.
-   * Pass an empty array (or omit) to clear.
-   */
-  uploadAlignmentLines3D(vertices: Float32Array): void {
-    this.init();
-    this.alignmentLines.upload(this.device, vertices);
-  }
-
-  clearAlignmentLines3D(): void {
-    this.alignmentLines.clear();
-  }
-
-  hasAlignmentLines3D(): boolean {
-    return this.alignmentLines.has();
-  }
-
-  /**
-   * Draw the alignment centerline overlay. Identical pipeline/uniform setup as
-   * `drawAnnotationLines3D`, reading from the separate alignment buffer.
-   */
-  drawAlignmentLines3D(pass: GPURenderPassEncoder, viewProj: Float32Array): void {
-    this.init();
-    const resources = this.lineResources();
-    if (!resources) return;
-    this.alignmentLines.draw(pass, resources, viewProj, this.overlayLineColor);
-  }
-
-  /**
-   * Upload structural-grid (IfcGridAxis) segments as a flat
-   * `[x,y,z, x,y,z, …]` line-list in world space (issue #967). Mirrors
-   * `uploadAlignmentLines3D` with a separate buffer so grid visibility is
-   * independent. Pass an empty array (or omit) to clear.
-   */
-  uploadGridLines3D(vertices: Float32Array): void {
-    this.init();
-    this.gridLines.upload(this.device, vertices);
-  }
-
-  clearGridLines3D(): void {
-    this.gridLines.clear();
-  }
-
-  hasGridLines3D(): boolean {
-    return this.gridLines.has();
-  }
-
-  /**
-   * Draw the structural-grid overlay. Identical pipeline/uniform setup as
-   * `drawAlignmentLines3D`, reading from the separate grid buffer.
-   */
-  drawGridLines3D(pass: GPURenderPassEncoder, viewProj: Float32Array): void {
-    this.init();
-    const resources = this.lineResources();
-    if (!resources) return;
-    this.gridLines.draw(pass, resources, viewProj, this.overlayLineColor);
-  }
-
-  /**
-   * Upload the DXF reference-layer's line paths as a flat `[x,y,z, x,y,z, …]`
-   * line-list in world space (issue #2043). Mirrors `uploadGridLines3D` with
-   * a separate buffer so 3D DXF visibility is independent of the 2D
-   * underlay and the other overlays above. Pass an empty array (or omit)
-   * to clear.
-   */
-  uploadDxfLines3D(vertices: Float32Array): void {
-    this.init();
-    this.dxfLines.upload(this.device, vertices);
-  }
-
-  clearDxfLines3D(): void {
-    this.dxfLines.clear();
-  }
-
-  hasDxfLines3D(): boolean {
-    return this.dxfLines.has();
-  }
-
-  /**
-   * Draw the 3D DXF reference-layer overlay. Identical pipeline/uniform
-   * setup as `drawGridLines3D`, reading from the separate DXF buffer.
-   */
-  drawDxfLines3D(pass: GPURenderPassEncoder, viewProj: Float32Array): void {
-    this.init();
-    const resources = this.lineResources();
-    if (!resources) return;
-    this.dxfLines.draw(pass, resources, viewProj, this.overlayLineColor);
+    this.lineOverlays[channel].draw(pass, resources, viewProj, this.overlayLineColor);
   }
 
   /** Colour for the clash-overlap box (its own, not the shared overlay colour). */
@@ -689,14 +622,14 @@ export class Section2DOverlayRenderer {
    * Every family's buffer must be released here. The clash box (#1277) was the
    * sixth family added and was missing from this list, leaking its vertex
    * buffer on every teardown — `section-2d-overlay-lifecycle.test.ts` now counts
-   * destroys against uploads so a seventh family cannot repeat it.
+   * destroys against uploads so a seventh family cannot repeat it. The four
+   * `LINE_OVERLAY_CHANNELS` are released by iterating the channel list, so a
+   * fifth channel is covered here the moment it joins that list; the clash box
+   * is named separately because it is not a channel.
    */
   dispose(): void {
     this.clearGeometry();
-    this.clearAnnotationLines3D();
-    this.clearAlignmentLines3D();
-    this.clearGridLines3D();
-    this.clearDxfLines3D();
+    for (const channel of LINE_OVERLAY_CHANNELS) this.lineOverlays[channel].clear();
     this.clearClashBoxLines3D();
     if (this.uniformBuffer) {
       this.uniformBuffer.destroy();

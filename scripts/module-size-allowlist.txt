@@ -223,7 +223,7 @@
    403 packages/drawing-2d/src/sheet/scale-stamp.ts
    599 packages/drawing-2d/src/sheet/title-block-renderer.ts
    489 packages/drawing-2d/src/styles.ts
-   613 packages/drawing-2d/src/svg-exporter.ts
+   537 packages/drawing-2d/src/svg-exporter.ts
    573 packages/drawing-2d/src/symbols/door-symbol.ts
    808 packages/drawing-2d/src/types.ts
    592 packages/export/src/effective-index.ts

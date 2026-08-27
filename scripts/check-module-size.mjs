@@ -173,7 +173,7 @@ const ALLOWLIST_DIGESTS = {
   'packages/create-ifc-lite': '2641290854733608547',
   'packages/data': '7334937001846380278',
   'packages/diff': '935169126877539347',
-  'packages/drawing-2d': '1289794388881750973',
+  'packages/drawing-2d': '14332356246438147430',
   'packages/export': '8294779133777308773',
   'packages/extensions': '8156044843525017433',
   'packages/geometry': '11660269484074160622',

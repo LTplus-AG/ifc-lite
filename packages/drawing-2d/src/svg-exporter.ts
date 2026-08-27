@@ -31,8 +31,12 @@ import {
   type DrawingScale,
   type HatchPattern,
 } from './styles.js';
-import { boundsSize, boundsCenter } from './math.js';
-import { formatScaleFactorLabel } from './pdf-scale.js';
+import {
+  computeTransform,
+  scaleLabel,
+  transformPoint,
+  type Transform2D,
+} from './svg-transform.js';
 import { applyDxfPlacement } from './dxf/convert.js';
 import { DEFAULT_DXF_PLACEMENT, type DxfPlacement, type DxfUnderlay } from './dxf/types.js';
 
@@ -84,21 +88,6 @@ export interface SVGUnderlayOptions {
   opacity?: number;
 }
 
-interface Transform2D {
-  scale: number;
-  offsetX: number;
-  offsetY: number;
-  flipY: boolean;
-  /**
-   * True when `scale` (worldToMm) was shrunk below the caller's requested
-   * scale to honour the padding guarantee. Drives the title block's
-   * "Scale:" label: a clamped export must never print the requested name
-   * unchanged (that would be a confidently wrong document — see PR #2131
-   * review), so the label is re-derived from the effective scale instead.
-   */
-  clamped: boolean;
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 // SVG EXPORTER CLASS
 // ═══════════════════════════════════════════════════════════════════════════
@@ -126,11 +115,6 @@ function svgNum(n: number, digits = 3): string {
   return n.toFixed(digits);
 }
 
-/** Non-finite → 0, so one bad corner of a bounding box can't move the rest. */
-function finiteOr0(n: number): number {
-  return Number.isFinite(n) ? n : 0;
-}
-
 export class SVGExporter {
   private hatchGenerator = new HatchGenerator();
 
@@ -152,7 +136,7 @@ export class SVGExporter {
     } = options;
 
     // Calculate transform from drawing coordinates to SVG coordinates
-    const transform = this.computeTransform(drawing.bounds, paperSize, scale, padding);
+    const transform = computeTransform(drawing.bounds, paperSize, scale, padding);
 
     // Build SVG
     let svg = this.createHeader(paperSize, backgroundColor);
@@ -202,7 +186,7 @@ export class SVGExporter {
 
     // Title block
     if (showTitleBlock) {
-      svg += this.createTitleBlock(paperSize, title, projectName, this.scaleLabel(scale, transform));
+      svg += this.createTitleBlock(paperSize, title, projectName, scaleLabel(scale, transform));
     }
 
     svg += '</svg>';
@@ -221,7 +205,7 @@ export class SVGExporter {
       backgroundColor = '#FFFFFF',
     } = options;
 
-    const transform = this.computeTransform(bounds, paperSize, scale, padding);
+    const transform = computeTransform(bounds, paperSize, scale, padding);
 
     let svg = this.createHeader(paperSize, backgroundColor);
     svg += this.createPolygonDefs(scale.factor);
@@ -234,107 +218,6 @@ export class SVGExporter {
   // ═══════════════════════════════════════════════════════════════════════════
   // PRIVATE METHODS
   // ═══════════════════════════════════════════════════════════════════════════
-
-  private computeTransform(
-    bounds: Bounds2D,
-    paperSize: PaperSize,
-    scale: DrawingScale,
-    padding: number
-  ): Transform2D {
-    // Sanitise the bounds before anything is derived from them. `boundsSize`
-    // and `boundsCenter` are plain min/max arithmetic, so ONE non-finite
-    // corner propagates into `center`, from there into `offsetX`/`offsetY`,
-    // and from there into every coordinate in the document — a single bad
-    // bound moved a perfectly finite line to `x1="NaN"`. Dropping the bad
-    // component to 0 contains the damage to the geometry that was actually
-    // degenerate; `svgNum` is the second line of defence, not the first.
-    const safeBounds: Bounds2D = {
-      min: { x: finiteOr0(bounds.min.x), y: finiteOr0(bounds.min.y) },
-      max: { x: finiteOr0(bounds.max.x), y: finiteOr0(bounds.max.y) },
-    };
-    const size = boundsSize(safeBounds);
-    const center = boundsCenter(safeBounds);
-
-    // `padding` is a minimum-margin guarantee: it must never consume the
-    // whole sheet. An impossible padding (padding*2 >= a paper dimension)
-    // used to disable the clamp entirely on that axis, silently falling
-    // back to rendering at the full requested scale with no margin at all
-    // — the exact failure mode this feature exists to remove, just
-    // triggered by an oversized padding instead of an absent one. Clamp
-    // `padding` itself to the largest value the shorter paper dimension can
-    // still hold (leaving a minimum sliver of usable area) and warn, so the
-    // guarantee keeps holding instead of silently lapsing.
-    const MIN_AVAILABLE_MM = 1;
-    const maxPadding = (Math.min(paperSize.width, paperSize.height) - MIN_AVAILABLE_MM) / 2;
-    let effectivePadding = padding;
-    if (padding > maxPadding) {
-      effectivePadding = Math.max(0, maxPadding);
-      // eslint-disable-next-line no-console -- deliberate: caller-visible, not a silent fallback
-      console.warn(
-        `[drawing-2d] SVGExportOptions.padding (${padding}mm) leaves no usable area on a ` +
-          `${paperSize.width}x${paperSize.height}mm sheet; clamped to ${effectivePadding.toFixed(2)}mm.`
-      );
-    }
-
-    // Available drawing area after the (possibly clamped) padding margin
-    const availableWidth = paperSize.width - effectivePadding * 2;
-    const availableHeight = paperSize.height - effectivePadding * 2;
-
-    // Scale: world units to mm on paper, at the caller's requested scale
-    const requestedWorldToMm = 1000 / scale.factor; // mm per world unit (assuming world is in meters)
-
-    // `padding` is a minimum-margin guarantee, not a forced re-fit: never
-    // render closer to the paper edge than `padding` mm. If the drawing at
-    // the requested scale already leaves at least that much margin, the
-    // exact requested scale is kept unchanged. Otherwise the effective
-    // scale is shrunk (never enlarged) just enough to respect the margin.
-    let worldToMm = requestedWorldToMm;
-    if (size.x > 0 && availableWidth > 0) {
-      worldToMm = Math.min(worldToMm, availableWidth / size.x);
-    }
-    if (size.y > 0 && availableHeight > 0) {
-      worldToMm = Math.min(worldToMm, availableHeight / size.y);
-    }
-
-    // Center the drawing
-    const offsetX = paperSize.width / 2 - center.x * worldToMm;
-    const offsetY = paperSize.height / 2 + center.y * worldToMm; // Flip Y
-
-    return {
-      scale: worldToMm,
-      offsetX,
-      offsetY,
-      flipY: true,
-      clamped: worldToMm !== requestedWorldToMm,
-    };
-  }
-
-  /**
-   * Label printed in the title block's "Scale:" line.
-   *
-   * When the drawing was not clamped, the exact requested `scale.name` is
-   * returned unchanged (no floating-point round-trip on the common path, so
-   * "1:100" never regresses to something like "1:100.0000001"). When the
-   * effective scale was shrunk to honour the padding guarantee, the label is
-   * re-derived from the *actual* `worldToMm` so a clamped sheet never claims
-   * the scale it was requested at but did not render at (PR #2131 review).
-   */
-  private scaleLabel(scale: DrawingScale, transform: Transform2D): string {
-    if (!transform.clamped) {
-      return scale.name;
-    }
-    const effectiveFactor = 1000 / transform.scale;
-    return `1:${formatScaleFactorLabel(effectiveFactor)}`;
-  }
-
-  private transformPoint(point: Point2D, transform: Transform2D): Point2D {
-    return {
-      x: point.x * transform.scale + transform.offsetX,
-      y: transform.flipY
-        ? -point.y * transform.scale + transform.offsetY
-        : point.y * transform.scale + transform.offsetY,
-    };
-  }
 
   private createHeader(paperSize: PaperSize, backgroundColor: string): string {
     return `<?xml version="1.0" encoding="UTF-8"?>
@@ -419,8 +302,8 @@ export class SVGExporter {
 
   private renderLine(line: DrawingLine, transform: Transform2D): string {
     const style = getLineStyle(line.category, line.ifcType);
-    const p0 = this.transformPoint(line.line.start, transform);
-    const p1 = this.transformPoint(line.line.end, transform);
+    const p0 = transformPoint(line.line.start, transform);
+    const p1 = transformPoint(line.line.end, transform);
 
     const dashArray =
       style.dashPattern.length > 0 ? ` stroke-dasharray="${style.dashPattern.join(' ')}"` : '';
@@ -488,10 +371,10 @@ export class SVGExporter {
 
     // Outer boundary
     if (polygon.outer.length > 0) {
-      const first = this.transformPoint(polygon.outer[0], transform);
+      const first = transformPoint(polygon.outer[0], transform);
       path += `M ${svgNum(first.x)} ${svgNum(first.y)}`;
       for (let i = 1; i < polygon.outer.length; i++) {
-        const p = this.transformPoint(polygon.outer[i], transform);
+        const p = transformPoint(polygon.outer[i], transform);
         path += ` L ${svgNum(p.x)} ${svgNum(p.y)}`;
       }
       path += ' Z';
@@ -500,10 +383,10 @@ export class SVGExporter {
     // Holes
     for (const hole of polygon.holes) {
       if (hole.length > 0) {
-        const first = this.transformPoint(hole[0], transform);
+        const first = transformPoint(hole[0], transform);
         path += ` M ${svgNum(first.x)} ${svgNum(first.y)}`;
         for (let i = 1; i < hole.length; i++) {
-          const p = this.transformPoint(hole[i], transform);
+          const p = transformPoint(hole[i], transform);
           path += ` L ${svgNum(p.x)} ${svgNum(p.y)}`;
         }
         path += ' Z';
@@ -518,8 +401,8 @@ export class SVGExporter {
     transform: Transform2D,
     pattern: HatchPattern
   ): string {
-    const p0 = this.transformPoint(hatchLine.line.start, transform);
-    const p1 = this.transformPoint(hatchLine.line.end, transform);
+    const p0 = transformPoint(hatchLine.line.start, transform);
+    const p1 = transformPoint(hatchLine.line.end, transform);
 
     return `    <line x1="${svgNum(p0.x)}" y1="${svgNum(p0.y)}" x2="${svgNum(p1.x)}" y2="${svgNum(p1.y)}"
           stroke="${pattern.strokeColor}" stroke-width="${pattern.lineWeight}" stroke-linecap="butt"/>\n`;
@@ -529,7 +412,9 @@ export class SVGExporter {
     paperSize: PaperSize,
     title: string,
     projectName: string,
-    scaleLabel: string
+    // Not `scaleLabel`: that name now belongs to the imported function from
+    // ./svg-transform.js, and shadowing it here would read as a call site.
+    scaleText: string
   ): string {
     const blockWidth = 180;
     const blockHeight = 50;
@@ -544,7 +429,7 @@ export class SVGExporter {
     <line x1="${x + 100}" y1="${y + 20}" x2="${x + 100}" y2="${y + blockHeight}" stroke="black" stroke-width="0.3"/>
     <text x="${x + 5}" y="${y + 14}" font-family="Arial" font-size="10" font-weight="bold">${this.escapeXml(title)}</text>
     <text x="${x + 5}" y="${y + 30}" font-family="Arial" font-size="8">${this.escapeXml(projectName)}</text>
-    <text x="${x + 5}" y="${y + 45}" font-family="Arial" font-size="8">Scale: ${this.escapeXml(scaleLabel)}</text>
+    <text x="${x + 5}" y="${y + 45}" font-family="Arial" font-size="8">Scale: ${this.escapeXml(scaleText)}</text>
     <text x="${x + 105}" y="${y + 30}" font-family="Arial" font-size="7">Date:</text>
     <text x="${x + 105}" y="${y + 45}" font-family="Arial" font-size="7">${new Date().toLocaleDateString()}</text>
   </g>\n`;
@@ -562,7 +447,7 @@ export class SVGExporter {
   private createUnderlayLayer(options: SVGUnderlayOptions, transform: Transform2D): string {
     const { underlay, placement = DEFAULT_DXF_PLACEMENT, layerVisibility = {}, opacity = 1 } = options;
     const mapPoint = (p: Point2D): Point2D =>
-      this.transformPoint(applyDxfPlacement({ x: p.x, y: -p.y }, placement), transform);
+      transformPoint(applyDxfPlacement({ x: p.x, y: -p.y }, placement), transform);
     const groupId = `dxf-${underlay.name.replace(/[^A-Za-z0-9_-]/g, '_')}`;
 
     let layer = `  <g id="${this.escapeXml(groupId)}" inkscape:label="${this.escapeXml(underlay.name)}" inkscape:groupmode="layer" opacity="${opacity}">\n`;

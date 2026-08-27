@@ -77,4 +77,51 @@ describe('the model-removed teardown scope is idempotent', () => {
       'a second run of the same scope must write nothing: any key here is a contribution rebuilding an equal-but-new value instead of returning {}',
     );
   });
+
+  it('the STRICTER scope syncSourceModel actually dispatches writes only what the first pass could not see', () => {
+    // The case above re-runs the scope `removeModel` used. Production does not:
+    // `syncSourceModel` passes the just-loaded replacement as `notYetASurvivor`,
+    // so ids inside the replacement's fresh range become stale on the second
+    // pass and only then. Without this, a regression in how `notYetASurvivor`
+    // interacts with the per-slice gates would leave the file green.
+    useViewerStore.setState({
+      models: new Map([
+        ['old', model('old', 5000, 5100)],
+        ['repl', model('repl', 0, 100)],
+        ['B', model('B', 1000, 1100)],
+      ]),
+      activeModelId: 'repl',
+      // 42 lands inside the REPLACEMENT's fresh range, so `removeModel`'s scope
+      // (which counts `repl` as a survivor) keeps it and the stricter one drops
+      // it. 1005 belongs to B and must survive both.
+      selectedEntityIds: new Set([42, 1005]),
+      hiddenEntities: new Set([42, 1005]),
+      isolatedEntities: null,
+      ghostExceptEntities: null,
+    });
+
+    const before = useViewerStore.getState();
+    const lenient = viewerTeardown(modelRemovedScope(before, 'old'), before);
+    console.log('lenient patch keys:', Object.keys(lenient).sort());
+
+    const stricter = viewerTeardown(modelRemovedScope(before, 'old', 'repl'), before);
+    console.log('stricter patch keys:', Object.keys(stricter).sort());
+
+    // The whole reason both runs exist: the stricter pass must see something the
+    // lenient one did not. If these ever match, `notYetASurvivor` has stopped
+    // discriminating and the resync's second pass is dead weight.
+    assert.ok(
+      (stricter.selectedEntityIds as Set<number> | undefined)?.has(42) === false,
+      'the stricter scope must drop an id inside the replacement\'s fresh range',
+    );
+    assert.ok(
+      (lenient.selectedEntityIds as Set<number> | undefined) === undefined ||
+        (lenient.selectedEntityIds as Set<number>).has(42),
+      'the lenient scope must KEEP it, or the two runs are not different and one is redundant',
+    );
+    assert.ok(
+      (stricter.selectedEntityIds as Set<number>).has(1005),
+      'an id owned by a surviving model must survive the stricter pass too',
+    );
+  });
 });

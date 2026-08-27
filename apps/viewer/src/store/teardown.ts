@@ -304,6 +304,27 @@ export function teardownOwnedKeys(
 }
 
 /**
+ * Keys the `Object.is` filter below must never drop.
+ *
+ * `withVisibilityOwnershipInvalidation` keys on PRESENCE, not value:
+ * `applyOwnershipInvalidation` tests `'isolatedEntities' in patch`. The old
+ * hand-written `resetViewerState` always carried both channels, so the
+ * middleware ran on every session reset. Dropping an unchanged channel would
+ * silently stop it running on the common reset, where both are already `null`.
+ *
+ * That matters for a guarantee rather than for today's data. `lib/visibility/
+ * ownership.ts` states the middleware's purpose as making a THIRD subsystem's
+ * claim "invalidated by construction rather than by remembering to extend a
+ * list somewhere else". Today's two record fields happen to be cleared by name
+ * as well, so nothing is broken now. Add a third and the by-construction half
+ * is what catches it, so the filter must not be what takes it away.
+ */
+const NEVER_DROPPED: ReadonlySet<keyof ViewerState> = new Set([
+  'isolatedEntities',
+  'ghostExceptEntities',
+]);
+
+/**
  * Build the one patch an entry point hands to `set`.
  *
  * Contributions are merged in registry order. Ownership is disjoint (proved by
@@ -313,10 +334,12 @@ export function teardownOwnedKeys(
  * An entry whose value is already `Object.is`-identical to the live state is
  * DROPPED. That keeps a composed patch as close as possible to today's
  * conditional spreads: a key that is not in the patch is not written, so no
- * subscriber is notified for a non-change, and the visibility-ownership
- * middleware does not run its invalidation for a channel nobody actually
- * moved. It also makes a `model-removed` teardown safe to run twice, which
- * `syncSourceModel` does immediately after `removeModel`.
+ * subscriber is notified for a non-change. It also makes a `model-removed`
+ * teardown safe to run twice, which `syncSourceModel` does immediately after
+ * `removeModel`.
+ *
+ * {@link NEVER_DROPPED} is exempt, because the visibility-ownership middleware
+ * keys on a channel's PRESENCE in the patch rather than its value.
  *
  * A key absent from `state` (the partial-store test harness) is never
  * "unchanged" — `Object.is(undefined, value)` is false unless the teardown also
@@ -340,7 +363,7 @@ export function composeTeardown(
       const contribution = entry.teardown(scope, state);
       for (const key of Object.keys(contribution) as (keyof ViewerState)[]) {
         const next = contribution[key];
-        if (Object.is(state[key], next)) continue;
+        if (!NEVER_DROPPED.has(key) && Object.is(state[key], next)) continue;
         writeKey(patch, key, next);
       }
     }

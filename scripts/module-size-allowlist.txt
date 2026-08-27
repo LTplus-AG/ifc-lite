@@ -231,7 +231,7 @@
   1667 packages/export/src/merged-exporter.ts
    639 packages/export/src/parquet-exporter.ts
   1062 packages/export/src/reference-collector.ts
-   524 packages/export/src/schema-converter.ts
+   501 packages/export/src/schema-converter.ts
    437 packages/extensions/src/testing/runner.ts
    625 packages/geometry/src/coordinate-handler.ts
   1707 packages/geometry/src/geometry-parallel.ts
@@ -274,7 +274,6 @@
   1189 packages/parser/src/columnar-parser.ts
    480 packages/parser/src/compact-entity-index.ts
    530 packages/parser/src/data-store-transport.ts
-   539 packages/parser/src/georef-extractor.ts
    827 packages/parser/src/material-resolver.ts
   1004 packages/parser/src/on-demand-extractors.ts
    523 packages/parser/src/project-units.ts
@@ -318,7 +317,7 @@
    875 packages/sdk/src/types.ts
   1082 packages/server-client/src/client.ts
    775 packages/server-client/src/data-model-decoder.ts
-   466 packages/server-client/src/parquet-tables.ts
+   465 packages/server-client/src/parquet-tables.ts
    627 packages/server-client/src/types.ts
    411 packages/source-dalux/src/http-client.ts
    406 packages/source-dalux/src/provider.ts

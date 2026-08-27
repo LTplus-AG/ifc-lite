@@ -15,22 +15,35 @@
 
 import type { IfcEntity } from './entity-extractor.js';
 import type { MapConversion } from './georef-extractor.js';
-import { getNumber, getReference, isOverflowingNumericLiteral } from './attribute-helpers.js';
+import { getNumber, getReference, isUnrepresentableNumericValue } from './attribute-helpers.js';
 
 /**
- * The three mandatory placement components of `IfcMapConversion`. Each is an
- * `IfcLengthMeasure`, non-optional in IFC4 and IFC4X3, and each lands in a
- * `number` field that the transform matrix and the viewer's placement editor
- * do arithmetic on.
+ * Every numeric component of `IfcMapConversion` that `computeTransformMatrix`
+ * reads.
+ *
+ * Slots 2-4 are the mandatory `IfcLengthMeasure` placement components. Slots
+ * 5-7 are OPTIONAL in the schema, and their absence is not the problem — an
+ * absent attribute is not a numeric literal, so the predicate below is false
+ * for it and the conversion is built as before. What they cannot do is be
+ * *present and unrepresentable*: `computeTransformMatrix` turns an undefined
+ * `scale` into `1.0` and an undefined axis pair into an angle of `0`, so
+ * dropping just the overflowing optional field would substitute the schema
+ * default for a value the file explicitly stated. That is the same plausible
+ * substitution as a `0` easting — an unrotated, unscaled placement is exactly
+ * what a normal file looks like — so an overflowing optional component
+ * refuses the whole conversion too.
  */
-const MANDATORY_PLACEMENT_SLOTS: readonly (readonly [number, string])[] = [
+const TRANSFORM_NUMERIC_SLOTS: readonly (readonly [number, string])[] = [
   [2, 'Eastings'],
   [3, 'Northings'],
   [4, 'OrthogonalHeight'],
+  [5, 'XAxisAbscissa'],
+  [6, 'XAxisOrdinate'],
+  [7, 'Scale'],
 ];
 
 /**
- * Refuse the whole map conversion when a mandatory placement component names a
+ * Refuse the whole map conversion when a component the transform reads names a
  * number the double range cannot hold, rather than letting `|| 0` put a zero
  * there.
  *
@@ -45,9 +58,9 @@ const MANDATORY_PLACEMENT_SLOTS: readonly (readonly [number, string])[] = [
  * model that really sits there.
  */
 export function extractMapConversion(entity: IfcEntity): MapConversion | null {
-  for (const [slot, name] of MANDATORY_PLACEMENT_SLOTS) {
+  for (const [slot, name] of TRANSFORM_NUMERIC_SLOTS) {
     const raw = entity.attributes[slot];
-    if (isOverflowingNumericLiteral(raw)) {
+    if (isUnrepresentableNumericValue(raw)) {
       console.warn(
         `[georef-extractor] ${entity.type} #${entity.expressId} ${name} is outside the ` +
         `IEEE-754 double range (${String(raw)}); refusing the map conversion rather than ` +

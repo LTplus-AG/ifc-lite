@@ -15,7 +15,7 @@ import { QuantityType } from '@ifc-lite/data';
 import type { EntityRef } from './types.js';
 import type { EntityExtractor } from './entity-extractor.js';
 import { QUANTITY_TYPE_MAP } from './columnar-parser-indexes.js';
-import { isOverflowingNumericLiteral } from './attribute-helpers.js';
+import { isUnrepresentableNumericValue } from './attribute-helpers.js';
 
 /** One extracted quantity, in the shape both call sites report. */
 export interface CollectedQuantity {
@@ -137,7 +137,20 @@ export function collectQuantitiesFromRefs(
         // `QuantityExtractor.extractQuantity` returns `null` and warns when
         // slot 3 is not a number. That path and this one walk the same
         // `Quantities` list, so they must agree.
-        if (isOverflowingNumericLiteral(rawValue)) {
+        //
+        // The diagnostic is per occurrence, deliberately. Each line names a
+        // different entity id and quantity name, so it is the list of what was
+        // dropped rather than one message repeated — collapsing it to
+        // once-per-file would leave a reader knowing that something was
+        // discarded and not which. There is also no per-file context threaded
+        // through this function to hang a once-per-file flag on: the only
+        // place to keep one is module scope, which outlives a file in the
+        // viewer's long-lived worker and would then silence the *next* file's
+        // first warning. No `console.warn` in this package is throttled
+        // today, so a local cap here would be the one-off. The cost is bounded by how
+        // corrupt the file is, and a file with thousands of unrepresentable
+        // measures has a louder problem than its console output.
+        if (isUnrepresentableNumericValue(rawValue)) {
             console.warn(
                 `[quantity-collect] ${qtyEntity.type} #${qtyEntity.expressId} "${qtyName}" ` +
                 `has a value outside the IEEE-754 double range (${String(rawValue)}); ` +
@@ -180,13 +193,20 @@ export interface CollectedQuantitySet {
  *
  * `SET [1:?]` admits no empty set, so a set that walks to zero quantities —
  * written empty, or filled only with members this reader cannot report, such as
- * an unresolvable reference or an `IfcPhysicalComplexQuantity` (#3254) — is
- * non-conformant data. Reporting it anyway would assert "this element has
+ * an unresolvable reference, an `IfcPhysicalComplexQuantity` (#3254), or a
+ * measure outside the IEEE-754 double range — is non-conformant data. Reporting it anyway would assert "this element has
  * quantities" on the strength of a name alone, and the consumers act on exactly
  * that: `validate` counts the element as quantified in its quantity-completeness
  * figure, an IDS quantity-set existence check passes, and the viewer's fallback
  * to the element's TYPE quantities is suppressed by the phantom occurrence set,
  * hiding the real numbers the type carries. So it is dropped (#3259).
+ *
+ * That applies unchanged when every member was dropped for being
+ * unrepresentable: the set then vanishes rather than surviving empty. Keeping
+ * an empty shell would make exactly the claim #3259 removed — "this element is
+ * quantified" — while carrying no number to back it, and it would still
+ * suppress the type-quantity fallback. The reason each quantity went is on the
+ * console; the reason the set went is that nothing in it survived.
  *
  * The instance path and the type path both go through here, so the drop cannot
  * come apart between them again: it used to be inlined at each site, and the

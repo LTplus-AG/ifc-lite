@@ -44,8 +44,10 @@ export function getNumber(value: unknown): number | undefined {
  * as a finite number, so a string in a numeric attribute slot is ambiguous: it
  * may be an enumeration, a mis-typed label, or a real the double range cannot
  * hold. Only the last is an *unrepresentable number*, and only that case is
- * this predicate's business. Callers whose value type is `number` use it to
- * refuse rather than substitute a plausible-looking `0`.
+ * this predicate's business. Callers whose value type is `number` refuse
+ * rather than substitute a plausible-looking `0`; they go through
+ * {@link isUnrepresentableNumericValue}, which adds the non-finite `number`
+ * case this one cannot see.
  *
  * `parseFloat`, matching `parseAttributeValue`: it is what decided the token
  * was non-finite in the first place, and `Number('1.0E400abc')` disagrees with
@@ -57,6 +59,28 @@ export function isOverflowingNumericLiteral(raw: unknown): boolean {
   if (typeof raw !== 'string') return false;
   const num = parseFloat(raw);
   return num === Infinity || num === -Infinity;
+}
+
+/**
+ * True when `raw` states a number that cannot be represented — either the
+ * overflowing token above, or an actual non-finite `number`.
+ *
+ * The second half is not hypothetical. `getNumber` now answers `undefined` for
+ * `Infinity`, so every caller that ends in `?? 0` turns a non-finite number
+ * into a plausible zero, and {@link isOverflowingNumericLiteral} alone cannot
+ * stop it: that predicate only sees strings. The STEP extractor no longer
+ * produces non-finite numbers itself, but this helper's callers are also fed
+ * by hand-built entity maps, by `IfcPropertySingleValue` nominal values, and
+ * by other packages' fixtures — so "the parser cannot make one" is not the
+ * same as "one cannot arrive".
+ *
+ * Refusal is reserved for a value that is PRESENT and unrepresentable. `null`
+ * / `undefined` — a `$` attribute — is ordinary absence, keeps its meaning,
+ * and keeps whatever default the caller already had.
+ */
+export function isUnrepresentableNumericValue(raw: unknown): boolean {
+  if (typeof raw === 'number') return !Number.isFinite(raw);
+  return isOverflowingNumericLiteral(raw);
 }
 
 export function getBoolean(value: unknown): boolean | undefined {

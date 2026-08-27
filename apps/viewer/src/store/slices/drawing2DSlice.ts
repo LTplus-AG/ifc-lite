@@ -365,7 +365,7 @@ export const getDefaultDisplayOptions = (): Drawing2DState['drawing2DDisplayOpti
   scanSectionIncludeInExport: true,
 });
 
-const getDefaultState = (): Drawing2DState => ({
+export const getDefaultDrawing2DState = (): Drawing2DState => ({
   drawing2D: null,
   drawing2DStatus: 'idle',
   drawing2DProgress: 0,
@@ -406,7 +406,7 @@ const getDefaultState = (): Drawing2DState => ({
 
 export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2DSlice> = (set, get) => ({
   // Initial state
-  ...getDefaultState(),
+  ...getDefaultDrawing2DState(),
 
   // Drawing Actions
   setDrawing2D: (drawing) => set({
@@ -441,8 +441,8 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
   // Only the drawing-generation fields, NOT the whole slice: this is called
   // by "View 2D" (SectionPanel.tsx) purely to force regeneration with
   // current settings, so it must leave graphic overrides, DXF underlays,
-  // and all annotation/measurement state (which `getDefaultState()` would
-  // wipe) untouched.
+  // and all annotation/measurement state (which `getDefaultDrawing2DState()`
+  // would wipe) untouched.
   clearDrawing2D: () => set({
     drawing2D: null,
     drawing2DStatus: 'idle',

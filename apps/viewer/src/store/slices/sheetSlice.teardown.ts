@@ -1,0 +1,40 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * `sheetSlice`'s answer to "what do I destroy under this scope".
+ *
+ * Beside the slice rather than inside it because `sheetSlice.ts` sits at its
+ * recorded module-size budget (`scripts/module-size-allowlist.txt`), which
+ * ratchets down only.
+ *
+ * `savedSheetTemplates` MUST SURVIVE and is absent from both `owns` and the
+ * body. That is confirmed bug #1 in `scripts/check-whole-state-reset.mjs`'s
+ * header (issue #2802): `clearSheet` did `set(getDefaultState())` and
+ * destroyed the user's template library on every "clear" click. The values
+ * below come from {@link getClearedSheetState}, the one explicit field list
+ * `clearSheet` now also uses, so the two paths cannot drift apart again.
+ */
+
+import { defineSliceTeardown } from '../teardown.js';
+import { getClearedSheetState } from './sheetSlice.js';
+
+export const sheetTeardown = defineSliceTeardown(
+  'sheetSlice',
+  ['activeSheet', 'sheetEnabled', 'sheetPanelVisible', 'titleBlockEditorVisible'],
+  (scope) => {
+    // A sheet is a document laid out over the drawing, not a per-model
+    // artefact: removing one model from a federation, or clearing them all,
+    // leaves it alone. Only a file swap tears it down.
+    if (scope.kind !== 'session-reset') return {};
+
+    const cleared = getClearedSheetState();
+    return {
+      activeSheet: cleared.activeSheet,
+      sheetEnabled: cleared.sheetEnabled,
+      sheetPanelVisible: cleared.sheetPanelVisible,
+      titleBlockEditorVisible: cleared.titleBlockEditorVisible,
+    };
+  },
+);

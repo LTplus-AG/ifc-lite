@@ -18,7 +18,14 @@ export function getNumber(value: unknown): number | undefined {
   if (typeof value === 'number') return value;
   if (typeof value === 'string') {
     const num = parseFloat(value);
-    return isNaN(num) ? undefined : num;
+    // Number.isFinite, not !isNaN: `parseFloat('1.0E400')` is `Infinity` and
+    // `isNaN(Infinity)` is `false`. This helper's callers (georeferencing
+    // eastings/northings/scale, material layer thickness, classification
+    // numerics) all feed exported geometry and property values, where an
+    // infinity becomes `null` on the way out of `JSON.stringify`. The
+    // signature is `number | undefined`, so the only honest answer for a
+    // value that is not a finite number is "absent".
+    return Number.isFinite(num) ? num : undefined;
   }
   return undefined;
 }
@@ -35,8 +42,10 @@ export function getReference(value: unknown): number | undefined {
   if (value === null || value === undefined) return undefined;
   if (typeof value === 'number') return value;
   if (typeof value === 'string' && value.startsWith('#')) {
+    // Number.isFinite, not !Number.isNaN: a 400-digit id overflows to Infinity,
+    // which is not NaN but names no entity.
     const num = parseInt(value.substring(1));
-    if (!Number.isNaN(num)) return num;
+    if (Number.isFinite(num)) return num;
   }
   return undefined;
 }

@@ -33,6 +33,12 @@ import type { IDSDocument } from '../types.js';
  * table is written by whoever changed the implementation and shares their
  * blind spot, whereas the regex is a separate mechanism deciding the same
  * language, run over a generated corpus instead of a list anyone chose.
+ *
+ * One constant for both sweeps below because there is one function beneath
+ * them: `isStrictNumericLiteral` and the `xs:double` arm of `xsd-cast.ts` both
+ * `return isWhollyNumeric(value)` from `@ifc-lite/encoding`. A second copy of
+ * this regex to pin the cast would be a copy to keep in sync, not a second
+ * opinion.
  */
 const SPEC_RE = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
 
@@ -361,12 +367,9 @@ function isStrictNumericLiteralBacktracking(v: string): boolean {
  */
 describe('the same shape elsewhere in @ifc-lite/ids', () => {
   describe('xs:double strict cast (constraints/xsd-cast.ts)', () => {
-    /** The `DOUBLE_RE` that `literalCastsUnder` used to test against. */
-    const DOUBLE_RE = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
-
-    it('accepts exactly the language DOUBLE_RE did', () => {
+    it('agrees with the spec regex, so the cast and the comparator accept one language', () => {
       const disagree = corpus()
-        .filter((v) => DOUBLE_RE.test(v) !== literalCastsUnder(v, 'xs:double'))
+        .filter((v) => SPEC_RE.test(v) !== literalCastsUnder(v, 'xs:double'))
         .map((v) => JSON.stringify(v));
       expect(disagree).toEqual([]);
     });
@@ -380,7 +383,7 @@ describe('the same shape elsewhere in @ifc-lite/ids', () => {
     });
 
     it('decides every size up to 2.56M characters inside the budget', { timeout: 60_000 }, () => {
-      // ~440ms with DOUBLE_RE at 20k, measured before the change. This used to
+      // ~440ms with the spec regex at 20k, measured before the change. This used to
       // be a single 20k reading against a 100ms bound, which is the construct
       // the ladder above exists to replace: one reading has no retry, so a
       // single descheduling reds it. Measured under 187-process load, 24 of

@@ -164,7 +164,7 @@
    414 apps/viewer/src/store/slices/uiSlice.ts
    485 apps/viewer/src/store/slices/visibilitySlice.ts
    689 apps/viewer/src/store/types.ts
-   819 apps/viewer/src/utils/serverDataModel.ts
+   662 apps/viewer/src/utils/serverDataModel.ts
    422 apps/viewer/src/utils/spatialHierarchy.ts
    573 apps/viewer/src/utils/viewportUtils.ts
    413 apps/viewer/vite.config.ts

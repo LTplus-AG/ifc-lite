@@ -1020,6 +1020,7 @@
     "entityTableFromColumns: function",
     "entityTableToColumns: function",
     "enumVal: function",
+    "exactNameOfRow: function",
     "exactTypeName: function",
     "findAttribute: function",
     "findDataType: function",

@@ -33,9 +33,12 @@ export type ExactTypeNameSource = Pick<EntityTable, 'getTypeName'> &
   Partial<Pick<EntityTable, 'getExactTypeName'>>;
 
 /**
- * The exact name for one ROW of a built table. Split out from
- * `entityTableFromColumns` so the reasoning above lives beside the code that
- * needs it rather than inside a 400-line module.
+ * The exact name for one ROW of a built table. Shared by every table builder
+ * that keeps its own columns — `entityTableFromColumns` here and the
+ * server-hydrated literal in `apps/viewer/src/utils/serverDataModel.ts` — so
+ * the two cannot drift apart on what "exact" means, and so the reasoning
+ * above lives beside the code that needs it rather than inside a 400-line
+ * module.
  */
 export function exactNameOfRow(
   strings: StringTable,
@@ -56,13 +59,25 @@ export function exactNameOfRow(
 /**
  * The declared class for an entity, with the ONE shared degradation.
  *
- * `getExactTypeName` is optional — server-hydrated stores
- * (`apps/viewer/src/utils/serverDataModel.ts`) and `@ifc-lite/cache`'s reader
- * build `EntityTable` literals that track no parsed names, and stay valid
- * without it. Every caller would otherwise pick its own fallback, and two
- * callers picking different ones is how one model exports inconsistently.
- * Falling back to `getTypeName` is the honest answer: a table that never
- * tracked the parsed name knows nothing more exact than its enum.
+ * Every table this repo builds implements `getExactTypeName`: the parser
+ * transport and `@ifc-lite/cache`'s reader both construct theirs through
+ * `entityTableFromColumns`, and `apps/viewer/src/utils/serverDataModel.ts`
+ * implements it on its own literal. The member is nonetheless OPTIONAL, for
+ * two reasons that outlive that list:
+ *
+ * - `EntityTable` is a published `@ifc-lite/data` type. Requiring a new
+ *   method breaks every implementer outside this repo at once, and buys
+ *   nothing the fallback below does not already give them.
+ * - Requiring it would not actually enforce it here either. The partial
+ *   `EntityTable` doubles across the repo's tests reach the type through
+ *   `as unknown as EntityTable`, which satisfies the compiler while supplying
+ *   no such method at runtime; an optional call is what keeps those honest
+ *   instead of throwing.
+ *
+ * So the degradation lives here, once. Every caller would otherwise pick its
+ * own fallback, and two callers picking different ones is how one model
+ * exports inconsistently. `getTypeName` is the honest fallback: a table that
+ * never tracked the parsed name knows nothing more exact than its enum.
  */
 export function exactTypeName(entities: ExactTypeNameSource, expressId: number): string {
   return entities.getExactTypeName?.(expressId) ?? entities.getTypeName(expressId);

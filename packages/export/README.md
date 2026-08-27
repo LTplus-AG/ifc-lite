@@ -80,10 +80,19 @@ await saveFile('anonymized.ifc', result.content);
 
 Every `AnonymizeOptions` field defaults to the maximally-scrubbed direction
 (names pseudonymized, `GlobalId`s regenerated, property sets dropped, owner
-history and georeferencing scrubbed). See the [Exporting
+history and georeferencing scrubbed) — `ObjectType` and material/style names
+are pseudonymized right along with everything else under the default
+`pseudonymizeAllNames`, and the STEP header's `originating_system` is
+blanked under the default `scrubOwnerHistory`. What stays in the file by
+decision: geometry and local placement rotations/non-orthogonal cuts (only
+the root placement's translation is zeroed), structural entity types,
+material *assignments* (which material, just not its original name), and
+the header's `preprocessor_version` (from `IfcApplication`, defaults to
+`'ifc-lite'`) — that is what makes the file useful for a bug repro. See the
+[Exporting
 Guide](https://ifclite.dev/docs/guide/exporting/#anonymized-isolated-export)
-for the full option list and what stays in the file by decision (`ObjectType`,
-materials, `originating_system`).
+for the full option list, including how to opt back into authored names via
+`--keep-other-names`.
 
 ## Apache Parquet — for analytics
 

@@ -5,10 +5,10 @@
 /**
  * `AnonymizedExportDialog` — clicking Export actually produces the
  * anonymized `.ifc` (#2934): a real download (`EVENT_FILE_DOWNLOADED`) with
- * the neutral default filename `anonymized.ifc` (never the model name), STEP content that keeps the
- * structural types but scrubs the original name/GUIDs by default, and a
- * GUID-map download whose values are regenerated 22-char GUIDs distinct from
- * the originals. "Keep names" flips that one scrub off.
+ * the neutral default filename `anonymized.ifc` (never the model name), STEP
+ * content that keeps the structural types but scrubs the original
+ * name/GUIDs by default, and exactly that one file — the dialog never offers
+ * a separate GUID-map download. "Keep names" flips the name/GUID scrub off.
  */
 
 import '@/test/setup-dom.js';

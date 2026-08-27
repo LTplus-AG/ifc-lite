@@ -20,6 +20,7 @@ import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { StepExporter } from './step-exporter.js';
 import { getEffectiveEntityIndex } from './effective-index.js';
 import { applyPlacementAnonymization } from './anonymize-placement.js';
+import { splitTopLevelArgs } from './step-argument-parser.js';
 
 const enc = (s: string): ArrayBuffer => new TextEncoder().encode(s).buffer as ArrayBuffer;
 const decode = (b: Uint8Array): string => new TextDecoder().decode(b);
@@ -110,6 +111,33 @@ DATA;
 #23=IFCDIRECTION((0.7071067811865476,0.7071067811865475,0.));
 #2=IFCSITE('${guid(2)}',$,'Site',$,$,#20,$,$,.ELEMENT.,$,$,$,$,$);
 #3=IFCBUILDING('${guid(3)}',$,'Building',$,$,$,$,$,.ELEMENT.,$,$,$);
+ENDSEC;
+END-ISO-10303-21;`;
+
+/**
+ * Regression fixture for the review blocker: five `IfcSite` slots
+ * (`RefLatitude`/`RefLongitude`/`RefElevation`/`LandTitleNumber`/
+ * `SiteAddress`) and `IfcBuilding.BuildingAddress` are OPTIONAL but not all
+ * STRING-typed — `RefLatitude`/`RefLongitude` are `IfcCompoundPlaneAngleMeasure`
+ * (a LIST OF INTEGER), `RefElevation` is a REAL, and the two addresses are
+ * entity references — so blanking any of them with an empty STEP string
+ * (`''`) rather than `$` would corrupt the record's schema shape and break a
+ * strict re-parse. Every slot gets a REAL, non-synthetic value here (never
+ * `$` to start with, unlike {@link FIXTURE}) so the assertions below prove
+ * the blank came out right rather than passing vacuously.
+ */
+const FIXTURE_SITE_ATTRIBUTES = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('placement-fixture-site-attributes.ifc','2024-01-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('${guid(1)}',$,'Project',$,$,$,$,$,$);
+#24=IFCPOSTALADDRESS($,$,$,$,('1 Real Street'),$,'Real Town','Real Region','12345','Real Country');
+#25=IFCPOSTALADDRESS($,$,$,$,('2 Real Avenue'),$,'Real Town','Real Region','12345','Real Country');
+#2=IFCSITE('${guid(2)}',$,'Site',$,$,$,$,$,.ELEMENT.,(47,22,15,0),(8,32,0,0),430.5,'LT-12345',#24);
+#3=IFCBUILDING('${guid(3)}',$,'Building',$,$,$,$,$,.ELEMENT.,$,$,#25);
 ENDSEC;
 END-ISO-10303-21;`;
 
@@ -217,6 +245,53 @@ describe('applyPlacementAnonymization (anonymized isolated export, #2934)', () =
     expect(content).not.toMatch(/^#21=/m);
     expect(content).not.toMatch(/^#22=/m);
     expect(content).not.toContain('1000.,2000.,30.');
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
+  it('blanks non-string IfcSite/IfcBuilding attributes as $, never an empty STEP string (review blocker: schema requires a REAL, a LIST, or a reference, not text)', async () => {
+    const store = await parse(FIXTURE_SITE_ATTRIBUTES);
+    const view = new MutablePropertyView(null, 'anonymize');
+    const editor = new StoreEditor(store, view);
+    const index = getEffectiveEntityIndex(store, view, true);
+    const includedIds = new Set([1, 2, 3]);
+
+    applyPlacementAnonymization(store, index, includedIds, editor, view);
+
+    const exported = new StepExporter(store, view).export({
+      schema: store.schemaVersion,
+      subsetEntityIds: includedIds,
+      applyMutations: true,
+    });
+    const content = decode(exported.content);
+
+    const siteLine = content.match(/^#2=IFCSITE\(([^;]*)\);$/m);
+    expect(siteLine).not.toBeNull();
+    const siteArgs = splitTopLevelArgs(siteLine![1]);
+    // RefLatitude, RefLongitude, RefElevation, LandTitleNumber, SiteAddress
+    // are IfcSite's last five positional slots.
+    const [refLatitude, refLongitude, refElevation, landTitleNumber, siteAddress] = siteArgs.slice(-5);
+    expect(refLatitude).toBe('$');
+    expect(refLongitude).toBe('$');
+    expect(refElevation).toBe('$');
+    expect(landTitleNumber).toBe('$');
+    expect(siteAddress).toBe('$');
+    expect(siteArgs).not.toContain("''");
+
+    const buildingLine = content.match(/^#3=IFCBUILDING\(([^;]*)\);$/m);
+    expect(buildingLine).not.toBeNull();
+    const buildingArgs = splitTopLevelArgs(buildingLine![1]);
+    expect(buildingArgs.at(-1)).toBe('$'); // BuildingAddress
+    expect(buildingArgs).not.toContain("''");
+
+    // The original IfcPostalAddress records (#24, #25) are no longer
+    // referenced by anything in the subset once SiteAddress/BuildingAddress
+    // are nulled, so a correct export drops them entirely — proving the real
+    // address data left the file, not merely that the site/building stopped
+    // naming it.
+    expect(content).not.toMatch(/^#24=/m);
+    expect(content).not.toMatch(/^#25=/m);
+    expect(content).not.toContain('1 Real Street');
+    expect(content).not.toContain('2 Real Avenue');
     expect(findDanglingRefs(content)).toEqual([]);
   });
 });

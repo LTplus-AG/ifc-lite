@@ -3,10 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * CommandPalette — Ctrl+K / Cmd+K
- *
- * Raycast-style command palette for the entire viewer.
- * Keyboard-first, scored search, recent usage tracking.
+ * CommandPalette — Ctrl+K / Cmd+K. Raycast-style command palette for the
+ * entire viewer. Keyboard-first, scored search, recent usage tracking.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -133,10 +131,10 @@ interface Command {
   detail?: string;            // subtle secondary text (e.g. file size)
   action: () => void;
   /**
-   * Run the action synchronously inside the click handler instead of deferring
-   * to the next animation frame. Required for actions that open a file dialog:
-   * Chrome only honours `input.click()` / `showOpenFilePicker()` while transient
-   * user activation is live, which a `requestAnimationFrame` hop would discard.
+   * Run the action synchronously in the click handler instead of deferring to the
+   * next animation frame — needed for a file dialog: Chrome only honours
+   * `input.click()` / `showOpenFilePicker()` while transient user activation is
+   * live, which a `requestAnimationFrame` hop would discard.
    */
   immediate?: boolean;
 }
@@ -218,20 +216,18 @@ function recordUsage(id: string) {
 }
 
 /** Toggle a sidebar workspace panel (#1208). The store's `toggleWorkspacePanel`
- *  owns the single-tenant + re-dock + detach semantics; a second activation
- *  closes the panel back to the Information fallback. Closing any active
- *  analysis extension first preserves the prior "panels win the slot" behavior.
- *  Kept as two thin helpers so every command action keeps its call site. */
+ *  owns the single-tenant + re-dock + detach semantics; a second activation closes
+ *  the panel back to the Information fallback. Closing any active analysis extension
+ *  first preserves the prior "panels win the slot" behavior; kept as two thin helpers so every command action keeps its call site. */
 function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'extensions' | 'layers' | 'collab' | 'sources' | 'zones') {
   closeActiveAnalysisExtension();
   useViewerStore.getState().toggleWorkspacePanel(panel);
 }
 
-/** Bottom panel (Script / Lists / Gantt) — mutually exclusive in the bottom
- *  strip, independent of the sidebar. The store owns the toggle, including the
- *  re-dock of a floating or popped-out panel; the hand-rolled flag flips that
- *  used to live here knew only the dock flags, so toggling a FLOATING Lists
- *  panel left it on screen with nothing latched. */
+/** Bottom panel (Script / Lists / Gantt) — mutually exclusive in the bottom strip,
+ *  independent of the sidebar. The store owns the toggle, including the re-dock of a
+ *  floating or popped-out panel; the hand-rolled flag flips that used to live here
+ *  knew only the dock flags, so toggling a FLOATING Lists panel left it on screen with nothing latched. */
 function activateBottomPanel(panel: 'script' | 'lists' | 'gantt') {
   closeActiveAnalysisExtension();
   useViewerStore.getState().toggleBottomPanel(panel);
@@ -252,8 +248,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const navigatedByKeyboard = useRef(false);
-  // Names currently in the blob cache, refreshed each open. Lets recent-file
-  // clicks decide hit/miss without an async gap that would void user activation.
+  // Names currently in the blob cache, refreshed each open — lets recent-file clicks decide hit/miss without an async gap that would void user activation.
   const cachedNamesRef = useRef<Set<string>>(new Set());
 
   const { execute } = useSandbox();
@@ -270,8 +265,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     }
   }, [open]);
 
-  // Collab role: in a shared session only editor/admin may author. Read
-  // reactively so the authoring commands appear the moment a role is upgraded.
+  // Collab role: in a shared session only editor/admin may author. Read reactively so authoring commands appear the moment a role is upgraded.
   const collabRole = useViewerStore((s) => s.collabRole);
   const canEditInSession = collabRole === null || collabRole === 'editor' || collabRole === 'admin';
   // Cesium only has something to show once a model carries georeferencing.
@@ -282,10 +276,10 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     const c: Command[] = [];
 
     // ── File ──
-    // `immediate` so the open action runs inside the click gesture: opening a
-    // file dialog needs live user activation, which a rAF hop would discard.
-    // The actual picker is driven by MainToolbar's handleOpenClick (via the
-    // `ifc-lite:open-files` event) so palette opens capture a live handle too.
+    // `immediate` so the open action runs inside the click gesture: opening a file
+    // dialog needs live user activation, which a rAF hop would discard. The actual
+    // picker is driven by MainToolbar's handleOpenClick (via the `ifc-lite:open-files`
+    // event) so palette opens capture a live handle too.
     c.push(
       { id: 'file:open', label: 'Open File', keywords: 'ifc ifcx glb load model browse', category: 'File', icon: FolderOpen,
         immediate: true,

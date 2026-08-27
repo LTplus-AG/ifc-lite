@@ -288,13 +288,31 @@ describe('applyScrub: guidMap', () => {
 });
 
 describe('applyScrub: owner history', () => {
-  it('blanks every IfcPerson attribute', async () => {
+  it("blanks every IfcPerson attribute except FamilyName, which becomes 'Anonymous'", async () => {
     const { store, view, index } = await freshFixture();
     applyScrub(store, index, INCLUDED_IDS, view, { guidRandom: seededRandom(2) });
     const content = exportFixture(store, view);
 
+    // IFCPERSON: Identification, FamilyName, GivenName, MiddleNames,
+    // PrefixTitles, SuffixTitles, Roles, Addresses.
     const person = lineArgs(content, 11);
-    expect(person.every((arg) => arg === '$')).toBe(true);
+    expect(person[1]).toBe("'Anonymous'");
+    expect(person.filter((_, i) => i !== 1).every((arg) => arg === '$')).toBe(true);
+  });
+
+  it('satisfies IfcPerson\'s IdentifiablePersonName WHERE rule and drops the original name', async () => {
+    const { store, view, index } = await freshFixture();
+    applyScrub(store, index, INCLUDED_IDS, view, { guidRandom: seededRandom(2) });
+    const content = exportFixture(store, view);
+
+    // IdentifiablePersonName: at least one of Identification, FamilyName, or
+    // GivenName must be set (not `$`) — a total wipe would violate it.
+    const [identification, familyName, givenName] = lineArgs(content, 11);
+    expect([identification, familyName, givenName].some((arg) => arg !== '$')).toBe(true);
+    expect(familyName).toBe("'Anonymous'");
+    expect(content).not.toContain("'Doe'");
+    expect(content).not.toContain("'Jane'");
+    expect(content).not.toContain("'IDENT-1'");
   });
 
   it("sets IfcOrganization.Name to 'Anonymous' and blanks every other attribute", async () => {

@@ -136,7 +136,7 @@ function zeroRootPlacements(
   for (const id of includedIds) {
     const rec = readEntityArgs(store, index, id);
     if (!rec) continue;
-    const objectPlacementIdx = attrIndex(rec.type, 'ObjectPlacement');
+    const objectPlacementIdx = attrIndex(rec.type, 'ObjectPlacement'); // declared on IfcProduct itself — slot order checked identical across ENTITIES_IFC2X3/_IFC4/_IFC4X3, no `schema` arg needed (#3309)
     if (objectPlacementIdx < 0 || objectPlacementIdx >= rec.args.length) continue;
     const placementId = parseRef(rec.args[objectPlacementIdx]);
     if (placementId === null) continue;
@@ -218,7 +218,7 @@ function findRootPlacement(
       return { rootId: currentId, rootType: rec.type };
     }
 
-    const relToIdx = attrIndex(rec.type, 'PlacementRelTo');
+    const relToIdx = attrIndex(rec.type, 'PlacementRelTo'); // `rec.type` is always IFCLOCALPLACEMENT here — order verified identical across all 3 schemas (#3309)
     const parentId = relToIdx >= 0 && relToIdx < rec.args.length ? parseRef(rec.args[relToIdx]) : null;
     if (parentId === null) {
       return { rootId: currentId, rootType: rec.type };
@@ -278,7 +278,7 @@ function zeroAxisPlacementSlot(
   slotName: string,
   warnings: string[],
 ): number[] | null {
-  const slotIdx = attrIndex(entityType, slotName);
+  const slotIdx = attrIndex(entityType, slotName); // entityType/slotName always fixed literals, order verified identical across all 3 schemas (#3309)
   if (slotIdx < 0) return null;
 
   const rec = readEntityArgs(store, index, entityId);
@@ -303,7 +303,7 @@ function zeroAxisPlacementSlot(
     return null;
   }
 
-  const locationIdx = attrIndex(axisRec.type, 'Location');
+  const locationIdx = attrIndex(axisRec.type, 'Location'); // IfcAxis2Placement2D/3D — same verified-stable guarantee as slotIdx above (#3309)
   const pointId = locationIdx >= 0 ? parseRef(axisRec.args[locationIdx]) : null;
   if (pointId === null) return null;
 
@@ -324,7 +324,7 @@ function zeroAxisPlacementSlot(
   // the rotation is exactly what a reproduction needs to keep.
   const newAxisAttrs: IfcAttributeValue[] = [entityRef(newPoint.expressId)];
   for (const name of is3D ? (['Axis', 'RefDirection'] as const) : (['RefDirection'] as const)) {
-    const idx = attrIndex(axisRec.type, name);
+    const idx = attrIndex(axisRec.type, name); // same guarantee as locationIdx above (#3309)
     newAxisAttrs.push(idx >= 0 ? verbatimAttr(axisRec.args[idx]) : null);
   }
   const newAxis = editor.addEntity(is3D ? 'IfcAxis2Placement3D' : 'IfcAxis2Placement2D', newAxisAttrs);
@@ -342,6 +342,11 @@ function zeroAxisPlacementSlot(
  * are `IDENTIFYING_TYPES` (`subset-roots.ts`), excluded from the export
  * outright, and only inverse-referenced from these fields — so they are
  * simply absent from the output once nothing still points at them.
+ *
+ * All six blanked slots are OPTIONAL but not all STRING-typed — a LIST OF
+ * INTEGER, a REAL, and two entity refs among them — so `$` (via
+ * `setPositionalAttribute` + `null`) is the only blank valid for all of them;
+ * `setAttribute` only emits a quoted STEP string and would corrupt the rest.
  */
 function blankSiteAndBuildingAddresses(
   index: EffectiveEntityIndex,
@@ -351,9 +356,13 @@ function blankSiteAndBuildingAddresses(
   for (const id of includedIds) {
     const type = index.typeOf(id);
     if (type === 'IFCSITE') {
-      for (const attr of IFC_SITE_ADDRESS_ATTRIBUTES) view.setAttribute(id, attr, '');
+      for (const attr of IFC_SITE_ADDRESS_ATTRIBUTES) {
+        const idx = attrIndex(type, attr); // IfcSite's address slots verified stable across all 3 schemas (#3309)
+        if (idx >= 0) view.setPositionalAttribute(id, idx, null);
+      }
     } else if (type === 'IFCBUILDING') {
-      view.setAttribute(id, 'BuildingAddress', '');
+      const idx = attrIndex(type, 'BuildingAddress'); // verified stable across all 3 schemas (#3309)
+      if (idx >= 0) view.setPositionalAttribute(id, idx, null);
     }
   }
 }

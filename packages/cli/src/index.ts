@@ -70,7 +70,8 @@ const HELP = `
     anonymize <file.ifc> --out F                 Export selected objects + context as an anonymized IFC
                       [--id N,...] [--guid G,...] [--type T] [--storey S]
                       [--keep-psets] [--keep-names] [--keep-other-names] [--keep-currency]
-                      [--no-hosts] [--no-openings] [--no-types] [--no-materials] [--no-aggregates]
+                      [--no-rel-voids-element] [--no-rel-fills-element] [--no-rel-defines-by-type]
+                      [--no-rel-associates-material] [--no-rel-aggregates] [--no-rel-nests]
                       [--connect-depth N] [--guid-map F] [--json]
     ids       <file.ifc> <rules.ids>              Validate against IDS rules
     bcf       <create|list|add-comment>           Work with BCF collaboration files

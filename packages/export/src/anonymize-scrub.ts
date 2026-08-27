@@ -37,7 +37,7 @@ import { decodeStepStringLiteral, generateIfcGuid } from '@ifc-lite/encoding';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { EffectiveEntityIndex } from './effective-index.js';
 import type { AnonymizeOptions } from './anonymize-types.js';
-import { attrIndex, readEntityArgs } from './subset-entity-reader.js';
+import { attrIndex, readEntityArgs, stepSourceSchema } from './subset-entity-reader.js';
 import { IFC_ROOT_TYPES } from './subset-roots.js';
 import { HAS_PROPERTY_SETS_SLOT, isTypeClass } from './type-owned-psets.js';
 
@@ -114,12 +114,15 @@ export interface ScrubResult {
  * entire domain of what this pass mutates (it creates no entities).
  */
 export function applyScrub(
-  store: { readonly source: IfcSourceBytes },
+  store: { readonly source: IfcSourceBytes; readonly schemaVersion?: string },
   index: EffectiveEntityIndex,
   includedIds: ReadonlySet<number>,
   view: MutablePropertyView,
   opts: ScrubOptions = {},
 ): ScrubResult {
+  // Model's OWN schema (#3309 review finding): the sweeps below walk
+  // arbitrary types, and the bundled schemas don't always agree on order.
+  const schema = stepSourceSchema(store.schemaVersion);
   const pseudonymizeNames = opts.pseudonymizeNames ?? true;
   const pseudonymizeAllNames = opts.pseudonymizeAllNames ?? true;
   const regenerateGlobalIds = opts.regenerateGlobalIds ?? true;
@@ -154,11 +157,14 @@ export function applyScrub(
     let touched = false;
 
     if (regenerateGlobalIds) {
-      const guidIdx = attrIndex(type, 'GlobalId');
+      const guidIdx = attrIndex(type, 'GlobalId', schema);
       const oldGuid = guidIdx !== -1 ? decodeQuotedStepString(record.args[guidIdx]) : null;
       if (oldGuid !== null) {
         const newGuid = generateIfcGuid(opts.guidRandom);
-        view.setAttribute(id, 'GlobalId', newGuid);
+        // Positional: `setAttribute` re-resolves the slot by name at
+        // serialize time via `step-attribute-mutations.ts`'s own (still
+        // pinned-IFC4-first) lookup, undoing `guidIdx` above (#3309).
+        view.setPositionalAttribute(id, guidIdx, newGuid);
         guidMap.set(oldGuid, newGuid);
         touched = true;
       } else {
@@ -176,9 +182,9 @@ export function applyScrub(
         ...(pseudonymizeAllNames ? ROOT_ALL_NAMES_ATTRIBUTES : []),
       ];
       for (const attr of attrs) {
-        const idx = attrIndex(type, attr);
+        const idx = attrIndex(type, attr, schema);
         if (idx === -1 || idx >= record.args.length || !isQuotedStepString(record.args[idx])) continue;
-        view.setAttribute(id, attr, pseudonym);
+        view.setPositionalAttribute(id, idx, pseudonym); // positional — see the GlobalId write above
         touched = true;
       }
     }
@@ -203,9 +209,12 @@ export function applyScrub(
         continue;
       }
       if (!scrubOwnerHistory) continue;
+      // Below (and IFCMONETARYUNIT above): FIXED literal types, each
+      // slot checked directly against all three `ENTITIES_*` tables — no
+      // `schema` argument needed (unlike the arbitrary-type sweeps above).
       switch (type) {
         case 'IFCPERSON':
-          clearAllAttributes(view, 'IFCPERSON', id);
+          scrubPerson(view, id);
           scrubbedCount += 1;
           break;
         case 'IFCORGANIZATION':
@@ -292,11 +301,15 @@ function isQuotedStepString(token: string | undefined): boolean {
  * Returns how many entities received at least one mutation.
  */
 function pseudonymizeNonRootNames(
-  store: { readonly source: IfcSourceBytes },
+  store: { readonly source: IfcSourceBytes; readonly schemaVersion?: string },
   index: EffectiveEntityIndex,
   view: MutablePropertyView,
   counters: Map<string, number>,
 ): number {
+  // Same schema-aware resolution as `applyScrub`'s root pass: this walks
+  // every non-root type (materials, styles, layers, profiles, …), e.g.
+  // IFC2X3's `IfcApprovalRelationship.Name` sits at slot 3, IFC4's at 0.
+  const schema = stepSourceSchema(store.schemaVersion);
   const slotsByType = new Map<string, ReadonlyArray<readonly [name: string, idx: number]>>();
   const slotsFor = (typeUpper: string) => {
     let slots = slotsByType.get(typeUpper);
@@ -304,7 +317,7 @@ function pseudonymizeNonRootNames(
       slots = IFC_ROOT_TYPES.has(typeUpper) || isNonRootNameExempt(typeUpper)
         ? []
         : NON_ROOT_NAME_ATTRIBUTES
-          .map((name) => [name, attrIndex(typeUpper, name)] as const)
+          .map((name) => [name, attrIndex(typeUpper, name, schema)] as const)
           .filter(([, idx]) => idx !== -1);
       slotsByType.set(typeUpper, slots);
     }
@@ -325,10 +338,10 @@ function pseudonymizeNonRootNames(
     const record = readEntityArgs(store, index, id);
     if (!record) continue; // overlay-created (e.g. the placement clones) or unreadable: nothing authored to scrub
     let pseudonym: string | null = null;
-    for (const [name, idx] of slots) {
+    for (const [, idx] of slots) {
       if (idx >= record.args.length || !isQuotedStepString(record.args[idx])) continue;
       pseudonym ??= nextPseudonym(counters, type);
-      view.setAttribute(id, name, pseudonym);
+      view.setPositionalAttribute(id, idx, pseudonym); // positional — same reasoning as `applyScrub`'s writes
     }
     if (pseudonym !== null) scrubbed += 1;
   }
@@ -349,17 +362,26 @@ function decodeQuotedStepString(token: string | undefined): string | null {
   return decodeStepStringLiteral(token.slice(1, -1));
 }
 
-/** Set every declared positional attribute of `type` on `id` to `$`. Used
- *  for `IfcPerson`: per the decision doc its ENTIRE attribute list is
- *  "identifying fields/Roles/Addresses", so there is nothing on the class to
- *  keep. Schema-driven (`getAttributeNamesAcrossSchemas`) rather than a
+/** `IfcPerson.FamilyName` -> `'Anonymous'`; every other declared attribute
+ *  (`Identification`, `GivenName`, `MiddleNames`, `PrefixTitles`,
+ *  `SuffixTitles`, `Roles`, `Addresses`) -> `$`. Per the decision doc the
+ *  ENTIRE attribute list is identifying fields/Roles/Addresses, but a total
+ *  wipe emits `IFCPERSON($,$,$,$,$,$,$,$)`, which violates the schema's
+ *  `IdentifiablePersonName` WHERE rule (`Identification`, `FamilyName`, or
+ *  `GivenName` must be set) — a validator or strict viewer can then reject
+ *  the very file this export exists to hand to a maintainer. Keeping one
+ *  fixed, non-identifying `FamilyName` satisfies the rule without leaking
+ *  anything. Schema-driven (`getAttributeNamesAcrossSchemas`) rather than a
  *  hardcoded slot count, the same way every other positional write in this
  *  package resolves slots. */
-function clearAllAttributes(view: MutablePropertyView, type: string, id: number): void {
-  const names = getAttributeNamesAcrossSchemas(type);
+function scrubPerson(view: MutablePropertyView, id: number): void {
+  const names = getAttributeNamesAcrossSchemas('IFCPERSON');
+  const familyNameIdx = names.indexOf('FamilyName');
   for (let i = 0; i < names.length; i++) {
+    if (i === familyNameIdx) continue;
     view.setPositionalAttribute(id, i, null);
   }
+  view.setAttribute(id, 'FamilyName', 'Anonymous');
 }
 
 /** `IfcOrganization.Name` -> `'Anonymous'`; every other declared attribute

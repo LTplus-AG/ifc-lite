@@ -171,7 +171,12 @@ export interface AnonymizeOptions {
   /** Pin the STEP header `FILE_NAME` timestamp (STEP format, e.g.
    *  `20240101T000000`). Omitted = the wall clock. */
   timeStamp?: string;
-  /** Output filename recorded in the STEP header. Default `'anonymized.ifc'`. */
+  /** Name recorded in the exported STEP header's `FILE_NAME` field — NOT
+   *  necessarily the name the caller writes the file to disk under. Default
+   *  `'anonymized.ifc'`, chosen because it is neutral: a caller that passes
+   *  the real output path or project name here (e.g. `Acme-Tower.ifc`)
+   *  defeats the anonymization by writing the identifying name straight back
+   *  into the header of the file this option exists to scrub it from. */
   filename?: string;
 }
 

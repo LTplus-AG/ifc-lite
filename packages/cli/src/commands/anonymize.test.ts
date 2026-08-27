@@ -18,6 +18,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { anonymizeCommand } from './anonymize.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -93,6 +94,21 @@ function findDanglingRefs(content: string): number[] {
   return [...dangling].sort((a, b) => a - b);
 }
 
+/** Parse an exported STEP file's text back into a store so a test can assert
+ *  on entity TYPES via `entityIndex.byType`, not text matching — `'IFCWALL'`
+ *  is a substring of `'IFCWALLTYPE'`/`'IFCWALLSTANDARDCASE'`, so
+ *  `content.toContain('IFCWALL')` gives a false positive/negative the moment
+ *  a `*TYPE`/`*STANDARDCASE` sibling is anywhere in the file. */
+async function parseOutput(content: string): Promise<IfcDataStore> {
+  return new IfcParser().parseColumnar(new TextEncoder().encode(content).buffer as ArrayBuffer);
+}
+
+/** Whether at least one entity of the exact EXPRESS type keyword (e.g.
+ *  `'IFCWALL'`) survived in a parsed output store. */
+function hasType(store: IfcDataStore, type: string): boolean {
+  return (store.entityIndex.byType.get(type)?.length ?? 0) > 0;
+}
+
 class ProcessExited extends Error {
   constructor(readonly code: number | undefined) {
     super(`process.exit(${code})`);
@@ -140,12 +156,13 @@ describe('anonymize — selector resolution', () => {
     expect(exited).toBe(false);
 
     const content = await readFile(out, 'utf-8');
-    expect(content).toContain('IFCWALL');
-    expect(content).toContain('IFCOPENINGELEMENT');
-    expect(content).toContain('IFCWINDOW');
-    expect(content).toContain('IFCPROJECT');
+    const store = await parseOutput(content);
+    expect(hasType(store, 'IFCWALL')).toBe(true);
+    expect(hasType(store, 'IFCOPENINGELEMENT')).toBe(true);
+    expect(hasType(store, 'IFCWINDOW')).toBe(true);
+    expect(hasType(store, 'IFCPROJECT')).toBe(true);
     // Nothing structurally connects Column C to a window seed at depth 0.
-    expect(content).not.toContain('IFCCOLUMN');
+    expect(hasType(store, 'IFCCOLUMN')).toBe(false);
     expect(findDanglingRefs(content)).toEqual([]);
   });
 
@@ -158,8 +175,9 @@ describe('anonymize — selector resolution', () => {
     const { exited } = await run([src, '--id', '10', '--out', out]);
     expect(exited).toBe(false);
     const content = await readFile(out, 'utf-8');
-    expect(content).toContain('IFCWALLTYPE');
-    expect(content).toContain('IFCMATERIAL'); // the material association itself is kept
+    const store = await parseOutput(content);
+    expect(hasType(store, 'IFCWALLTYPE')).toBe(true);
+    expect(hasType(store, 'IFCMATERIAL')).toBe(true); // the material association itself is kept
     // The material's own Name is pseudonymized by default (pseudonymizeAllNames) —
     // see the dedicated '--keep-other-names' test below for the opt-out.
     expect(content).not.toContain('Concrete');
@@ -175,7 +193,7 @@ describe('anonymize — selector resolution', () => {
     const { exited } = await run([src, '--guid', guid(10), '--out', out]);
     expect(exited).toBe(false);
     const content = await readFile(out, 'utf-8');
-    expect(content).toContain('IFCWALLTYPE');
+    expect(hasType(await parseOutput(content), 'IFCWALLTYPE')).toBe(true);
     expect(findDanglingRefs(content)).toEqual([]);
   });
 
@@ -188,9 +206,10 @@ describe('anonymize — selector resolution', () => {
     const { exited } = await run([src, '--storey', 'Level 1', '--out', out]);
     expect(exited).toBe(false);
     const content = await readFile(out, 'utf-8');
-    expect(content).toContain('IFCWALL');
+    const store = await parseOutput(content);
+    expect(hasType(store, 'IFCWALL')).toBe(true);
     // Column C lives on Level 2 and is not structurally connected at depth 0.
-    expect(content).not.toContain('IFCCOLUMN');
+    expect(hasType(store, 'IFCCOLUMN')).toBe(false);
     expect(findDanglingRefs(content)).toEqual([]);
   });
 
@@ -203,8 +222,9 @@ describe('anonymize — selector resolution', () => {
     const { exited } = await run([src, '--type', 'IfcWall', '--id', '17', '--out', out]);
     expect(exited).toBe(false);
     const content = await readFile(out, 'utf-8');
-    expect(content).toContain('IFCWALL');
-    expect(content).toContain('IFCCOLUMN');
+    const store = await parseOutput(content);
+    expect(hasType(store, 'IFCWALL')).toBe(true);
+    expect(hasType(store, 'IFCCOLUMN')).toBe(true);
     expect(findDanglingRefs(content)).toEqual([]);
   });
 
@@ -250,7 +270,7 @@ describe('anonymize — selector resolution', () => {
 });
 
 describe('anonymize — relationship expansion flags', () => {
-  it('--no-openings keeps the opening but drops the filler window', async () => {
+  it('--no-rel-fills-element keeps the opening but drops the filler window', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'ifc-anonymize-'));
     const src = join(dir, 'model.ifc');
     await writeFile(src, FIXTURE_MODEL);
@@ -258,72 +278,78 @@ describe('anonymize — relationship expansion flags', () => {
     const outDefault = join(dir, 'default.ifc');
     await run([src, '--type', 'IfcWall', '--out', outDefault]);
     const defaultContent = await readFile(outDefault, 'utf-8');
-    expect(defaultContent).toContain('IFCWINDOW');
+    expect(hasType(await parseOutput(defaultContent), 'IFCWINDOW')).toBe(true);
 
     const outNoOpenings = join(dir, 'no-openings.ifc');
-    const { exited } = await run([src, '--type', 'IfcWall', '--no-openings', '--out', outNoOpenings]);
+    const { exited } = await run([src, '--type', 'IfcWall', '--no-rel-fills-element', '--out', outNoOpenings]);
     expect(exited).toBe(false);
     const content = await readFile(outNoOpenings, 'utf-8');
-    expect(content).toContain('IFCOPENINGELEMENT');
-    expect(content).not.toContain('IFCWINDOW');
+    const store = await parseOutput(content);
+    expect(hasType(store, 'IFCOPENINGELEMENT')).toBe(true);
+    expect(hasType(store, 'IFCWINDOW')).toBe(false);
     expect(findDanglingRefs(content)).toEqual([]);
   });
 
-  it('--no-hosts reaches the opening from a window seed but not its host wall', async () => {
+  it('--no-rel-voids-element reaches the opening from a window seed but not its host wall', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'ifc-anonymize-'));
     const src = join(dir, 'model.ifc');
     const out = join(dir, 'out.ifc');
     await writeFile(src, FIXTURE_MODEL);
 
-    const { exited } = await run([src, '--id', '12', '--no-hosts', '--out', out]);
+    const { exited } = await run([src, '--id', '12', '--no-rel-voids-element', '--out', out]);
     expect(exited).toBe(false);
     const content = await readFile(out, 'utf-8');
-    expect(content).toContain('IFCWINDOW');
-    expect(content).toContain('IFCOPENINGELEMENT');
-    expect(content).not.toContain('IFCWALL');
+    const store = await parseOutput(content);
+    expect(hasType(store, 'IFCWINDOW')).toBe(true);
+    expect(hasType(store, 'IFCOPENINGELEMENT')).toBe(true);
+    expect(hasType(store, 'IFCWALL')).toBe(false);
     expect(findDanglingRefs(content)).toEqual([]);
   });
 
-  it('--no-types drops the IfcTypeObject', async () => {
+  it('--no-rel-defines-by-type drops the IfcTypeObject', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'ifc-anonymize-'));
     const src = join(dir, 'model.ifc');
     const out = join(dir, 'out.ifc');
     await writeFile(src, FIXTURE_MODEL);
 
-    const { exited } = await run([src, '--type', 'IfcWall', '--no-types', '--out', out]);
+    const { exited } = await run([src, '--type', 'IfcWall', '--no-rel-defines-by-type', '--out', out]);
     expect(exited).toBe(false);
     const content = await readFile(out, 'utf-8');
-    expect(content).not.toContain('IFCWALLTYPE');
+    expect(hasType(await parseOutput(content), 'IFCWALLTYPE')).toBe(false);
     expect(findDanglingRefs(content)).toEqual([]);
   });
 
-  it('--no-materials drops the material association', async () => {
+  it('--no-rel-associates-material drops the IfcRelAssociatesMaterial relationship', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'ifc-anonymize-'));
     const src = join(dir, 'model.ifc');
     const out = join(dir, 'out.ifc');
     await writeFile(src, FIXTURE_MODEL);
 
-    const { exited } = await run([src, '--type', 'IfcWall', '--no-materials', '--out', out]);
+    const { exited } = await run([src, '--type', 'IfcWall', '--no-rel-associates-material', '--out', out]);
     expect(exited).toBe(false);
     const content = await readFile(out, 'utf-8');
-    expect(content).not.toContain('Concrete');
+    // Assert the actual contract — the relationship entity is gone — rather
+    // than `not.toContain('Concrete')`: the default scrub already
+    // pseudonymizes material names (see `--id selects...` above), so that
+    // assertion would pass even with `IfcRelAssociatesMaterial` still present.
+    expect(hasType(await parseOutput(content), 'IFCRELASSOCIATESMATERIAL')).toBe(false);
     expect(findDanglingRefs(content)).toEqual([]);
   });
 
-  it('--no-aggregates drops an IfcElementAssembly\'s children', async () => {
+  it('--no-rel-aggregates drops an IfcElementAssembly\'s children', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'ifc-anonymize-'));
     const src = join(dir, 'model.ifc');
     await writeFile(src, FIXTURE_MODEL);
 
     const outDefault = join(dir, 'default.ifc');
     await run([src, '--id', '60', '--out', outDefault]);
-    expect(await readFile(outDefault, 'utf-8')).toContain('IFCPLATE');
+    expect(hasType(await parseOutput(await readFile(outDefault, 'utf-8')), 'IFCPLATE')).toBe(true);
 
     const outNoAgg = join(dir, 'no-agg.ifc');
-    const { exited } = await run([src, '--id', '60', '--no-aggregates', '--out', outNoAgg]);
+    const { exited } = await run([src, '--id', '60', '--no-rel-aggregates', '--out', outNoAgg]);
     expect(exited).toBe(false);
     const content = await readFile(outNoAgg, 'utf-8');
-    expect(content).not.toContain('IFCPLATE');
+    expect(hasType(await parseOutput(content), 'IFCPLATE')).toBe(false);
     expect(findDanglingRefs(content)).toEqual([]);
   });
 
@@ -334,13 +360,13 @@ describe('anonymize — relationship expansion flags', () => {
 
     const outDefault = join(dir, 'default.ifc');
     await run([src, '--type', 'IfcWall', '--out', outDefault]);
-    expect(await readFile(outDefault, 'utf-8')).not.toContain('IFCCOLUMN');
+    expect(hasType(await parseOutput(await readFile(outDefault, 'utf-8')), 'IFCCOLUMN')).toBe(false);
 
     const outDepth1 = join(dir, 'depth1.ifc');
     const { exited } = await run([src, '--type', 'IfcWall', '--connect-depth', '1', '--out', outDepth1]);
     expect(exited).toBe(false);
     const content = await readFile(outDepth1, 'utf-8');
-    expect(content).toContain('IFCCOLUMN');
+    expect(hasType(await parseOutput(content), 'IFCCOLUMN')).toBe(true);
     expect(findDanglingRefs(content)).toEqual([]);
   });
 
@@ -351,13 +377,13 @@ describe('anonymize — relationship expansion flags', () => {
 
     const outDefault = join(dir, 'default.ifc');
     await run([src, '--type', 'IfcWall', '--out', outDefault]);
-    expect(await readFile(outDefault, 'utf-8')).not.toContain('IFCPROPERTYSET');
+    expect(hasType(await parseOutput(await readFile(outDefault, 'utf-8')), 'IFCPROPERTYSET')).toBe(false);
 
     const outKeep = join(dir, 'keep.ifc');
     const { exited } = await run([src, '--type', 'IfcWall', '--keep-psets', '--out', outKeep]);
     expect(exited).toBe(false);
     const content = await readFile(outKeep, 'utf-8');
-    expect(content).toContain('IFCPROPERTYSET');
+    expect(hasType(await parseOutput(content), 'IFCPROPERTYSET')).toBe(true);
     expect(findDanglingRefs(content)).toEqual([]);
   });
 

@@ -76,21 +76,19 @@ export function ViewerLayout() {
   useKeyboardShortcuts();
   // ⌘D / Ctrl+D to duplicate the current selection.
   useDuplicateShortcut();
-  // Bridge viewer state transitions into the extension action log
-  // so the idle pattern miner can surface one-click tool suggestions.
+  // Bridge viewer state transitions into the extension action log so the idle pattern miner can surface one-click tool suggestions.
   useActionLogger();
   // Show the RFC §06 §7 privacy disclosure on first launch.
   usePrivacyDisclosure();
   const shortcutsDialog = useKeyboardShortcutsDialog();
 
-  // Auto-load a model from ?model=<URL>. Used by the landing-page iframe to drop a
-  // sample IFC into the viewer on first mount.
+  // Auto-load a model from ?model=<URL>. Used by the landing-page iframe to drop
+  // a sample IFC into the viewer on first mount.
   //
   // SECURITY: only SAME-ORIGIN model URLs are fetched. `?model=` is fully
   // attacker-controllable (any link can set it), so honouring an arbitrary
-  // cross-origin URL is a drive-by model-injection vector — a crafted link
-  // would silently pull an attacker's file into the victim's viewer. We resolve
-  // the param against the current document and require its origin to match
+  // cross-origin URL is a drive-by model-injection vector. We resolve the param
+  // against the current document and require its origin to match
   // window.location.origin; a cross-origin URL is refused, never fetched.
   const { addModel: autoloadAddModel } = useIfc();
   const autoloadDoneRef = useRef(false);
@@ -128,11 +126,10 @@ export function ViewerLayout() {
     })();
   }, [autoloadAddModel]);
 
-  // Deep-link collaboration join: a share link is `?room=…&t=…`. The
-  // recipient joins the room; with seed-into-room the model hydrates from the
-  // Y.Doc, so no `?model=` is needed for shared sessions. Guarded so React
-  // StrictMode's double-invoke can't join twice, and wrapped so a throw can't
-  // tear down the layout (uncaught throws in effects unmount the canvas).
+  // Deep-link collaboration join: a share link is `?room=…&t=…`. The recipient
+  // joins the room; with seed-into-room the model hydrates from the Y.Doc, so
+  // no `?model=` is needed. Guarded so StrictMode's double-invoke can't join twice,
+  // and wrapped so a throw can't tear down the layout (uncaught throws unmount the canvas).
   const collabJoinDoneRef = useRef(false);
   useEffect(() => {
     if (collabJoinDoneRef.current) return;
@@ -152,9 +149,9 @@ export function ViewerLayout() {
   }, []);
 
   // Surface a room whose geometry never arrived. The joiner sets this on the
-  // store (slices hold no UI imports); this is the one place it becomes
-  // visible, so a shared room that renders an empty scene says why instead of
-  // leaving the recipient to assume they misconfigured something.
+  // store (slices hold no UI imports); this is the one place it becomes visible,
+  // so a shared room rendering an empty scene says why instead of leaving the
+  // recipient to assume they misconfigured something.
   const collabGeometryNotice = useViewerStore((s) => s.collabGeometryNotice);
   useEffect(() => {
     // Consume first: StrictMode's double-invoke then finds it already taken and
@@ -220,9 +217,8 @@ export function ViewerLayout() {
   const setScriptPanelVisible = useViewerStore((s) => s.setScriptPanelVisible);
   const ganttPanelVisible = useViewerStore((s) => s.ganttPanelVisible);
   const setGanttPanelVisible = useViewerStore((s) => s.setGanttPanelVisible);
-  // The right pane is owned by the sidebar (#1208); here we only need to know
-  // which BOTTOM panel (Script / Schedule / Lists) is docked vs detached, so the
-  // bottom strip doesn't render a panel that is floating (#1201) or popped out.
+  // The right pane is owned by the sidebar (#1208); here we only need to know which
+  // BOTTOM panel (Script / Schedule / Lists) is docked vs detached, so the bottom strip skips a floating (#1201) or popped-out one.
   const floatingPanels = useViewerStore((s) => s.floatingPanels);
   const poppedOutIds = useViewerStore((s) => s.poppedOutIds);
   const detachedIds = useMemo(
@@ -236,10 +232,9 @@ export function ViewerLayout() {
   // ── Mobile bottom sheet ──
   // Mobile shows exactly ONE panel at a time, so resolve which, then render it
   // through the shared id → body map every other host uses. The hand-written
-  // chain this replaces knew seven panels and fell through to PropertiesPanel
-  // for the rest, so opening Compare, Clash, Cloud sources, the Layer stack,
-  // Location zones or the collab Room on a phone showed the Properties panel
-  // titled "Properties" — the wrong panel, not merely a wrong label.
+  // chain this replaces knew seven panels and fell through to PropertiesPanel for
+  // the rest, so opening e.g. Compare or the collab Room on a phone showed the
+  // Properties panel titled "Properties" — the wrong panel, not just a wrong label.
   const sidebarActivePanel = useViewerStore((s) => s.sidebarActivePanel);
   const { closePanel } = usePanelControls();
   const analysisExtensionState = useSyncExternalStore(
@@ -264,10 +259,9 @@ export function ViewerLayout() {
     sidebarActivePanel,
   }), [activeAnalysisExtension, activeTool, ganttPanelVisible, scriptPanelVisible, listPanelVisible, sidebarActivePanel]);
 
-  // Panel refs for programmatic collapse/expand (command palette, keyboard shortcuts).
-  // The right region is now the unified sidebar (#1208), which owns its own
-  // collapse/hide state in `sidebarSlice`; only the left hierarchy pane is a
-  // react-resizable Panel here.
+  // Panel ref for programmatic collapse/expand (command palette, keyboard
+  // shortcuts). The right region is the unified sidebar (#1208), which owns its
+  // own collapse/hide state in `sidebarSlice`; only the left hierarchy pane is a react-resizable Panel here.
   const leftPanelRef = useRef<PanelImperativeHandle>(null);
 
   // Sync store state → left Panel collapse/expand on desktop
@@ -328,13 +322,12 @@ export function ViewerLayout() {
     cleanupRef.current = cleanup;
   }, [bottomHeight]);
 
-  // Track the gap between the layout viewport (innerHeight) and the visual viewport.
-  // On iOS Safari with bottom URL bar, dvh/innerHeight INCLUDES the URL bar area,
-  // so anything at `bottom: 0` lands behind it. visualViewport.height excludes
-  // the URL bar overlay, giving us the real visible bottom.
+  // Track the gap between the layout viewport (innerHeight) and the visual
+  // viewport. On iOS Safari with bottom URL bar, dvh/innerHeight INCLUDES the
+  // URL bar area, so `bottom: 0` lands behind it; visualViewport.height excludes it.
   const bottomViewportInset = useVisualViewportBottomInset();
 
-  // Hide mobile floating buttons when the empty-state "Load IFC" card is showing.
+  // Hide mobile floating buttons when the empty-state "Load IFC" card shows.
   const { models, geometryResult } = useIfc();
   const hasModelsLoaded = models.size > 0 || ((geometryResult?.meshes?.length ?? 0) > 0);
 
@@ -390,11 +383,10 @@ export function ViewerLayout() {
         <TourHost />
         {/* Trigger-less: this instance exists so the entity context menu's
             "Export anonymized…" and the Command Palette's "export:anonymized"
-            (both of which only set `anonymizedExportRequested`, never render a
-            trigger of their own) have a mounted dialog to open regardless of
-            whether the export toolbar dropdown is open. Same host pattern as
-            `FlavorDialog` in `StatusBar.tsx`. The toolbar-registered instance
-            (`toolbar/export-commands.ts`) is the one with a `trigger`. */}
+            (both only set `anonymizedExportRequested`, no trigger of their own)
+            have a mounted dialog regardless of whether the export toolbar
+            dropdown is open. Same host pattern as `FlavorDialog` in
+            `StatusBar.tsx`; `toolbar/export-commands.ts` owns the `trigger` one. */}
         <AnonymizedExportDialog />
 
         {/* Main Toolbar — compact MobileToolbar on mobile; on desktop the
@@ -536,14 +528,13 @@ export function ViewerLayout() {
                 bottomInset={bottomViewportInset}
                 onClose={() => {
                   setRightPanelCollapsed(true);
-                  // Close ONLY what the sheet is showing. The close chain used
-                  // to close the underlying sidebar panel as well, so dismissing
-                  // Add Element took an unrelated panel down with it.
+                  // Close ONLY what the sheet is showing. The close chain used to
+                  // close the underlying sidebar panel too, so dismissing Add
+                  // Element took an unrelated panel down with it.
                   if (mobileSheet.kind === 'extension') closeActiveAnalysisExtension();
                   else if (mobileSheet.kind === 'addElement') setActiveTool('select');
-                  // Clears the dock flag AND the float / pop-out channels, so
-                  // closing the sheet cannot leave the panel open somewhere the
-                  // phone has no room to show it.
+                  // Clears the dock flag AND float/pop-out channels, so closing
+                  // the sheet can't leave the panel open where the phone has no room to show it.
                   else closePanel(mobileSheet.id);
                 }}
               >
@@ -614,9 +605,8 @@ export function ViewerLayout() {
 }
 
 /**
- * Tracks the gap between the layout viewport (innerHeight) and the visual viewport.
- * Returns the number of pixels the layout viewport extends below the visible area —
- * i.e. how tall the iOS Safari URL bar overlay (or virtual keyboard) is.
+ * Tracks the gap between the layout viewport (innerHeight) and the visual
+ * viewport: how tall the iOS Safari URL bar overlay (or virtual keyboard) is.
  */
 function useVisualViewportBottomInset(): number {
   const [inset, setInset] = useState(0);
@@ -642,7 +632,6 @@ function useVisualViewportBottomInset(): number {
  * Mobile bottom sheet with three snap states (dismissed / default / expanded).
  * Drag the handle: down to shrink/dismiss, up to enlarge. Velocity-based flicks
  * cross thresholds instantly; otherwise the sheet snaps to the closest state.
- *
  * `bottomInset` lifts the sheet above the iOS Safari URL bar overlay.
  */
 function MobileBottomSheet({

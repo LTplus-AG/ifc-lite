@@ -10,14 +10,15 @@
  * `packages/export/src/anonymize-export.ts` for the export mechanics this
  * dialog is a thin, reviewable front end for.
  *
- * Reachable three ways, all converging on the same `open` state (pattern:
- * `ExportDialog.tsx`, `GLBExportDialog.tsx`): the export toolbar dropdown
- * (`trigger` prop, registered in `toolbar/export-commands.ts`), the entity
- * context menu, and the Command Palette — the latter two set
- * `anonymizedExportRequested` in the store and this component is ALSO
- * mounted, trigger-less, in `ViewerLayout.tsx`'s "Global Overlays" block (the
- * same host `FlavorDialog` uses) so the flag has somewhere to land even when
- * the export dropdown was never opened.
+ * Reachable three ways (pattern: `ExportDialog.tsx`, `GLBExportDialog.tsx`):
+ * the export toolbar dropdown (`trigger` prop, registered in
+ * `toolbar/export-commands.ts`), the entity context menu, and the Command
+ * Palette. Only ONE of the two mounted instances may answer to the store
+ * flag, or both open together (#3309 review): the context menu and Command
+ * Palette set `anonymizedExportRequested`, and this component is ALSO
+ * mounted trigger-less in `ViewerLayout.tsx`'s "Global Overlays" block (the
+ * same host `FlavorDialog` uses) specifically to own that flag, so the
+ * triggered instance ignores it — see the `trigger` prop doc below.
  */
 
 import { useCallback, useState } from 'react';
@@ -71,14 +72,20 @@ interface AnonymizedExportDialogProps {
 
 export function AnonymizedExportDialog({ trigger }: AnonymizedExportDialogProps) {
   const [localOpen, setLocalOpen] = useState(false);
+  // Only the trigger-less host instance (ViewerLayout's "Global Overlays")
+  // responds to the store flag; a triggered instance (the export dropdown)
+  // owns its own open state exclusively, otherwise both instances would open
+  // together whenever the context menu or Command Palette sets the flag —
+  // see the module docblock and the `trigger` prop doc above.
+  const isHost = trigger === undefined;
   const anonymizedExportRequested = useViewerStore((s) => s.anonymizedExportRequested);
   const setAnonymizedExportRequested = useViewerStore((s) => s.setAnonymizedExportRequested);
-  const open = localOpen || anonymizedExportRequested;
+  const open = localOpen || (isHost && anonymizedExportRequested);
 
   const handleOpenChange = useCallback((next: boolean) => {
     setLocalOpen(next);
-    if (!next) setAnonymizedExportRequested(false);
-  }, [setAnonymizedExportRequested]);
+    if (!next && isHost) setAnonymizedExportRequested(false);
+  }, [isHost, setAnonymizedExportRequested]);
 
   const set = useAnonymizedExportSet(open);
 

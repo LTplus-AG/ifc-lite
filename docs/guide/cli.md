@@ -443,18 +443,19 @@ ifc-lite anonymize model.ifc --guid '2O2Fr$t4X7Zf8NOew3FLKr' --out anon.ifc
 ifc-lite anonymize model.ifc --storey "Level 2" --out anon.ifc
 
 # Narrow or widen the relationship context, and save the old->new GlobalId map
-ifc-lite anonymize model.ifc --type IfcWindow --no-materials --connect-depth 1 \
+ifc-lite anonymize model.ifc --type IfcWindow --no-rel-associates-material --connect-depth 1 \
   --out anon.ifc --guid-map anon.guidmap.json --json
 ```
 
 Selectors are unioned, and every one of them fails loudly on zero matches
-(never a silent empty export). Every scrub (names, `GlobalId`s, owner
-history, georeferencing/addresses, property sets, root placement) defaults to
-maximally-scrubbed and is toggled off with a `--keep-*` flag — see
-`AnonymizeOptions` in `@ifc-lite/export` for the exact defaults. The
-GUID map links back to the original, identifying model:
-`--guid-map` writes it to a separate file, never into the exported `.ifc`
-itself, and it should not be shared alongside the export.
+(never a silent empty export). Names, property sets, and currency are
+maximally-scrubbed by default and can be dialed back with a `--keep-*` flag.
+`GlobalId` regeneration, owner-history scrubbing, georeferencing/address
+removal, and root-placement zeroing are unconditional — there is no flag to
+keep any of those as authored. See `AnonymizeOptions` in `@ifc-lite/export`
+for the exact defaults. The GUID map links back to the original, identifying
+model: `--guid-map` writes it to a separate file, never into the exported
+`.ifc` itself, and it should not be shared alongside the export.
 
 **Flags:**
 
@@ -468,11 +469,12 @@ itself, and it should not be shared alongside the export.
 | `--keep-names` | Keep `IfcRoot` `Name`/`LongName`/`Description`/`Tag` as authored instead of pseudonymizing them |
 | `--keep-other-names` | Keep `ObjectType`, `IfcProject.Phase`, and non-`IfcRoot` names (materials, surface styles, layers, profiles) as authored |
 | `--keep-currency` | Keep `IfcMonetaryUnit.Currency` as authored instead of rewriting it to USD |
-| `--no-hosts` | Don't expand to a selected opening's host element (`IfcRelVoidsElement`) |
-| `--no-openings` | Don't expand the filler<->opening<->host chain (`IfcRelFillsElement`) |
-| `--no-types` | Don't include a selected object's `IfcTypeObject` |
-| `--no-materials` | Don't include a selected object's material assignment |
-| `--no-aggregates` | Don't walk `IfcRelAggregates`/`IfcRelNests` parents/children |
+| `--no-rel-voids-element` | Don't expand to a selected opening's host element (`IfcRelVoidsElement`) |
+| `--no-rel-fills-element` | Don't expand the filler<->opening<->host chain (`IfcRelFillsElement`) |
+| `--no-rel-defines-by-type` | Don't include a selected object's `IfcTypeObject` (`IfcRelDefinesByType`) |
+| `--no-rel-associates-material` | Don't include a selected object's material assignment (`IfcRelAssociatesMaterial`) |
+| `--no-rel-aggregates` | Don't walk `IfcRelAggregates` parents/children |
+| `--no-rel-nests` | Don't walk `IfcRelNests` parents/children |
 | `--connect-depth <N>` | BFS depth for `IfcRelConnectsPathElements` neighbours (default 0) |
 | `--guid-map <file>` | Write the old->new GlobalId mapping to a separate JSON file |
 | `--out <file>` | Output IFC file (required) |

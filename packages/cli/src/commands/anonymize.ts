@@ -22,7 +22,6 @@
  */
 
 import { writeFile } from 'node:fs/promises';
-import { basename } from 'node:path';
 import { EntityNode } from '@ifc-lite/query';
 import {
   collectRelatedEntities,
@@ -38,7 +37,8 @@ const USAGE =
   'Usage: ifc-lite anonymize <file.ifc> --out F\n' +
   '  [--id N,...] [--guid G,...] [--type T] [--storey S]\n' +
   '  [--keep-psets] [--keep-names] [--keep-other-names] [--keep-currency]\n' +
-  '  [--no-hosts] [--no-openings] [--no-types] [--no-materials] [--no-aggregates]\n' +
+  '  [--no-rel-voids-element] [--no-rel-fills-element] [--no-rel-defines-by-type]\n' +
+  '  [--no-rel-associates-material] [--no-rel-aggregates] [--no-rel-nests]\n' +
   '  [--connect-depth N] [--guid-map F] [--json]';
 
 /** Auto-prefix `Ifc` for `--type`, same convention as `export`/`mutate`. */
@@ -153,17 +153,24 @@ export async function anonymizeCommand(args: string[]): Promise<void> {
   }
 
   // ── Relationship expansion (RelatedEntityOptions) ──
+  // Flag names are the exact EXPRESS relationship names being toggled off
+  // (AGENTS.md "IFC schema fidelity" — full relationship names, never an
+  // invented alias like `--no-hosts`), and each relationship gets its own
+  // flag: `IfcRelAggregates` and `IfcRelNests` are distinct REL entity types
+  // (see `RelatedEntityOptions` in `anonymize-types.ts`) even though the
+  // parser folds both into one aggregation edge, so collapsing them onto one
+  // `--no-aggregates` switch would silently disable a relationship the flag
+  // never named.
   const keepPsets = hasFlag(args, '--keep-psets');
-  const noAggregates = hasFlag(args, '--no-aggregates');
   const connectDepth = validateLimit(getFlag(args, '--connect-depth'), '--connect-depth') ?? 0;
 
   const relatedOptions: RelatedEntityOptions = {
-    IfcRelVoidsElement: !hasFlag(args, '--no-hosts'),
-    IfcRelFillsElement: !hasFlag(args, '--no-openings'),
-    IfcRelDefinesByType: !hasFlag(args, '--no-types'),
-    IfcRelAssociatesMaterial: !hasFlag(args, '--no-materials'),
-    IfcRelAggregates: noAggregates ? 'none' : 'both',
-    IfcRelNests: noAggregates ? 'none' : 'down',
+    IfcRelVoidsElement: !hasFlag(args, '--no-rel-voids-element'),
+    IfcRelFillsElement: !hasFlag(args, '--no-rel-fills-element'),
+    IfcRelDefinesByType: !hasFlag(args, '--no-rel-defines-by-type'),
+    IfcRelAssociatesMaterial: !hasFlag(args, '--no-rel-associates-material'),
+    IfcRelAggregates: hasFlag(args, '--no-rel-aggregates') ? 'none' : 'both',
+    IfcRelNests: hasFlag(args, '--no-rel-nests') ? 'none' : 'down',
     IfcRelConnectsPathElementsDepth: connectDepth,
     // `--keep-psets` alone only stops `exportAnonymizedSubset` from clearing
     // `HasPropertySets` on whatever ends up included — it doesn't pull
@@ -183,7 +190,13 @@ export async function anonymizeCommand(args: string[]): Promise<void> {
     pseudonymizeAllNames: !hasFlag(args, '--keep-other-names'),
     // `--keep-currency`: IfcMonetaryUnit.Currency stays as authored instead of USD.
     neutralizeCurrency: !hasFlag(args, '--keep-currency'),
-    filename: basename(outPath),
+    // Deliberately NOT `filename: basename(outPath)`: `outPath` is whatever
+    // the caller chose to name the file on disk (often the client/project
+    // name, e.g. `--out Acme-Tower.ifc`), and `AnonymizeOptions.filename`
+    // feeds straight into the exported STEP header's `FILE_NAME` field. Using
+    // it here would write the identifying name this command exists to strip
+    // right back into the file it strips it from. Leave it unset so it falls
+    // through to the neutral `'anonymized.ifc'` default.
   };
 
   let result: ReturnType<typeof exportAnonymizedSubset>;

@@ -11,7 +11,7 @@
  * flattened row count passes ~200, matching `HierarchyPanel.tsx`.
  */
 
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { RelatedEntities } from '@ifc-lite/export';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -67,6 +67,44 @@ function entityLabel(dataStore: IfcDataStore | null, id: number): string {
   return name ? `${type} ${name}` : `${type} #${id}`;
 }
 
+/**
+ * `indeterminate` is a DOM-only property with no React attribute, so it has
+ * to be set imperatively. A ref CALLBACK only reruns when React remounts the
+ * element or the callback's identity changes, not on every re-render of the
+ * same node — under virtualization that self-corrects when the row scrolls
+ * out and back in, but in the non-virtualized path the header would keep a
+ * stale flag after e.g. one row gets unchecked. A stable ref + effect fixes
+ * the flag on every render instead.
+ */
+function SectionHeaderCheckbox({
+  allIncluded,
+  noneIncluded,
+  locked,
+  ariaLabel,
+  onToggle,
+}: {
+  allIncluded: boolean;
+  noneIncluded: boolean;
+  locked: boolean;
+  ariaLabel: string;
+  onToggle: (checked: boolean) => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = !allIncluded && !noneIncluded;
+  }, [allIncluded, noneIncluded]);
+  return (
+    <input
+      type="checkbox"
+      ref={ref}
+      checked={allIncluded}
+      disabled={locked}
+      onChange={(e) => onToggle(e.target.checked)}
+      aria-label={ariaLabel}
+    />
+  );
+}
+
 export function RelatedEntityList({
   dataStore,
   seeds,
@@ -95,18 +133,14 @@ export function RelatedEntityList({
     const locked = selectableIds.length === 0 && section.ids.length > 0;
     return (
       <div className="flex items-center gap-2 py-1 text-xs font-medium text-muted-foreground">
-        <input
-          type="checkbox"
-          checked={allIncluded}
-          ref={(el) => {
-            if (el) el.indeterminate = !allIncluded && !noneIncluded;
-          }}
-          disabled={locked}
-          onChange={(e) => {
-            const next = e.target.checked;
+        <SectionHeaderCheckbox
+          allIncluded={allIncluded}
+          noneIncluded={noneIncluded}
+          locked={locked}
+          ariaLabel={`Toggle all ${section.label}`}
+          onToggle={(next) => {
             for (const id of selectableIds) onSetExcluded(id, !next);
           }}
-          aria-label={`Toggle all ${section.label}`}
         />
         <span className="truncate">{section.label}</span>
         <span className="ml-auto tabular-nums">{section.ids.length}</span>

@@ -23,10 +23,10 @@
   },
   "devDependencies": {
     "@ifc-lite/data": "workspace:^",
-    "@webgpu/types": "^0.1.71",
+    "@webgpu/types": "^0.1.72",
     "dxf-parser": "1.1.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

@@ -367,7 +367,13 @@ function isStrictNumericLiteralBacktracking(v: string): boolean {
  */
 describe('the same shape elsewhere in @ifc-lite/ids', () => {
   describe('xs:double strict cast (constraints/xsd-cast.ts)', () => {
-    it('agrees with the spec regex, so the cast and the comparator accept one language', () => {
+    it('agrees with the spec regex across the FINITE language this corpus covers', () => {
+      // Scoped to FINITE deliberately. Since #3336 the cast also accepts `NaN`,
+      // `+INF` and `-INF`, which SPEC_RE does not, so the two no longer decide
+      // one language outright. This sweep stays true because corpus() is built
+      // from an alphabet with no letters, so it cannot reach those three; the
+      // title says so rather than letting a structural gap read as equality.
+      // The specials themselves are pinned in xsd-cast-specials.test.ts.
       const disagree = corpus()
         .filter((v) => SPEC_RE.test(v) !== literalCastsUnder(v, 'xs:double'))
         .map((v) => JSON.stringify(v));

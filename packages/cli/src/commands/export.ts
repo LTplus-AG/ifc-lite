@@ -14,6 +14,7 @@ import { writeFile, readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { GeometryProcessor, isNoRenderGeometryError } from '@ifc-lite/geometry';
 import { countGlbMeshes, escapeCsvCell } from '@ifc-lite/export';
+import { exactTypeName } from '@ifc-lite/data';
 import { createHeadlessContext } from '../loader.js';
 import { getFlag, hasFlag, fatal, writeOutput, validateLimit } from '../output.js';
 import { logger } from '../logger.js';
@@ -62,17 +63,30 @@ function normalizeTypeName(typeStr: string): string {
 }
 
 /**
- * B5: Resolve a column value from an entity, searching entity attributes,
- * property sets, AND quantity sets (by bare quantity name or QsetName.QuantityName).
+ * Resolve a column value from an entity — entity attributes, property sets AND
+ * quantity sets (bare name or `SetName.ValueName`) — returning the raw value
+ * (number, boolean, string, or null) so JSON preserves types.
+ *
+ * The `Type` column is the class the STEP line DECLARES: `exactTypeName`, not
+ * `entity.type`. `EntityData.type` is `EntityTable.getTypeName`, which resolves
+ * through `IfcTypeEnum`, and that enum coalesces class names on purpose so the
+ * viewer's scope chips render one chip per family — so this column named an
+ * `IFCDOORSTANDARDCASE` line `IfcDoor`, an `IFCSLABSTANDARDCASE` `IfcSlab`, and
+ * both `IFCDISTRIBUTIONFLOWELEMENT` and `IFCDISTRIBUTIONCONTROLELEMENT`
+ * `IfcDistributionElement`, while `IfcWallStandardCase` came through intact
+ * only because it happens to hold its own enum value. The class is
+ * unrecoverable once written, and disagreed with the Parquet exporter and with
+ * `StepExporter`, which re-emit every class verbatim.
+ *
+ * Only the exported VALUE moves. `EntityData.type` is public API other
+ * consumers legitimately want the grouping answer from, `--type` selection
+ * expands through `IFC_SUBTYPES`, and saved filters match `getTypeName` — none
+ * of those are touched here.
  */
-/**
- * Resolve a column value from an entity, returning the raw value
- * (number, boolean, string, or null) to preserve types in JSON output.
- */
-function resolveColumnValue(entity: any, col: string, bim: any): unknown {
+function resolveColumnValue(entity: any, col: string, bim: any, store: IfcDataStore): unknown {
   // Native entity attributes
   if (col === 'Name' || col === 'name') return entity.name ?? null;
-  if (col === 'Type' || col === 'type') return entity.type ?? null;
+  if (col === 'Type' || col === 'type') return exactTypeName(store.entities, entity.ref.expressId);
   if (col === 'GlobalId' || col === 'globalId') return entity.globalId ?? null;
   if (col === 'Description' || col === 'description') return entity.description ?? null;
   if (col === 'ObjectType' || col === 'objectType') return entity.objectType ?? null;
@@ -242,10 +256,6 @@ export async function exportCommand(args: string[]): Promise<void> {
     ? columnsStr.split(',')
     : ['Type', 'Name', 'GlobalId', 'Description', 'ObjectType'];
 
-  // Check if any columns need quantity/property resolution (non-native columns)
-  const nativeColumns = new Set(['Name', 'name', 'Type', 'type', 'GlobalId', 'globalId', 'Description', 'description', 'ObjectType', 'objectType']);
-  const hasCustomColumns = columns.some(c => !nativeColumns.has(c));
-
   // A filter on a whole-model format is ignored, not an error. Reported once here
   // rather than inside a single case, so every whole-model format says so — the
   // energy exporters used to accept `--type`/`--where`/`--limit` in silence.
@@ -254,38 +264,26 @@ export async function exportCommand(args: string[]): Promise<void> {
   }
 
   switch (format) {
-    case 'csv': {
-      if (hasCustomColumns) {
-        // B5: Use our own CSV generation that supports quantity columns
-        const rows: string[][] = [columns];
-        for (const entity of entities) {
-          rows.push(columns.map(col => columnValueToCsv(resolveColumnValue(entity, col, bim))));
-        }
+    // CSV and JSON build their rows HERE, for every column set. They used to
+    // delegate to `bim.export.csv`/`.json` when every column was a native
+    // attribute and resolve locally only for a quantity/property column — two
+    // row builders over one column list, which is how the `Type` column came to
+    // be wrong by two separate routes. `resolveColumnValue` answers a strict
+    // superset of the SDK's columns (bare quantity/property names too), escapes
+    // through the same `escapeCsvCell`, and walks the same `entities` the refs
+    // come from, so the rows are the same rows.
+    case 'csv':
+    case 'json': {
+      const table: unknown[][] = entities.map((entity: any) =>
+        columns.map(col => resolveColumnValue(entity, col, bim, store)));
+      if (format === 'csv') {
+        const rows = [columns, ...table.map(r => r.map(columnValueToCsv))];
         const csv = rows.map(r => r.map(cell => escapeCsv(cell, separator)).join(separator)).join('\n');
         await writeOutput(csv, outPath);
       } else {
-        const csv = bim.export.csv(refs, { columns, separator });
-        await writeOutput(csv, outPath);
-      }
-      break;
-    }
-    case 'json': {
-      if (hasCustomColumns) {
-        // B5: Use our own JSON generation that supports quantity columns (raw values preserved)
-        const result: Record<string, unknown>[] = [];
-        for (const entity of entities) {
-          const row: Record<string, unknown> = {};
-          for (const col of columns) {
-            row[col] = resolveColumnValue(entity, col, bim);
-          }
-          result.push(row);
-        }
-        const content = JSON.stringify(result, null, 2);
-        await writeOutput(content, outPath);
-      } else {
-        const json = bim.export.json(refs, columns);
-        const content = JSON.stringify(json, null, 2);
-        await writeOutput(content, outPath);
+        // Raw values, not strings: a quantity column stays a number in JSON.
+        const result = table.map(r => Object.fromEntries(columns.map((col, i) => [col, r[i]])));
+        await writeOutput(JSON.stringify(result, null, 2), outPath);
       }
       break;
     }

@@ -165,7 +165,7 @@ const ALLOWLIST_DIGESTS = {
   'packages/bcf': '9733284863521991257',
   'packages/cache': '14926850005686407910',
   'packages/clash': '781065910217740673',
-  'packages/cli': '11939142867866651937',
+  'packages/cli': '18095568320687894335',
   'packages/codegen': '18074740064258807121',
   'packages/collab': '10345031293646670667',
   'packages/collab-server': '6370800919640161263',

@@ -365,3 +365,91 @@ describe('SVGExporter impossible padding', () => {
     }
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Non-finite coordinates must never reach the SVG text.
+//
+// `NaN`, `Infinity` and `-Infinity` are not SVG `<number>` tokens — the SVG
+// grammar admits only an optional sign, digits, a decimal point and an
+// exponent — so an attribute reading `x1="NaN"` is in error and a conforming
+// renderer must not draw the element. Every coordinate here went through a
+// bare `.toFixed(3)`, which stringifies all three verbatim, while the DXF
+// writer sitting beside it in this package has guarded the same values at its
+// single `fmt()` since it was written. Two writers of the same drawing that
+// disagree about the same input is the defect; the fix is one shared emitter,
+// not a guard sprinkled over thirteen interpolations.
+//
+// The three values are asserted separately: `Infinity` reaches the text as
+// `"Infinity"` while `NaN` reaches it as `"NaN"`, and a guard keyed on only
+// one of them (`isNaN`, say) would let the other two through.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('SVG exporter: non-finite coordinates', () => {
+  const NONFINITE: Array<[string, number]> = [
+    ['NaN', NaN],
+    ['Infinity', Infinity],
+    ['-Infinity', -Infinity],
+  ];
+
+  it.each(NONFINITE)('writes no %s token anywhere in the document', (label, poison) => {
+    const drawing = drawingWithLine(
+      { min: { x: 0, y: 0 }, max: { x: 4, y: 6 } },
+      { x: poison, y: 0 },
+      { x: 2, y: 3 }
+    );
+    const svg = exportToSVG(drawing, {
+      paperSize: PAPER_SIZES.A3_LANDSCAPE,
+      scale: scaleByFactor(100),
+      padding: 20,
+    });
+    // Anti-vacuity: the drawing line really is in the document.
+    expect(svg).toContain('data-entity-id="1"');
+    expect(svg, `[${label}] emitted NaN`).not.toContain('NaN');
+    expect(svg, `[${label}] emitted Infinity`).not.toContain('Infinity');
+  });
+
+  it.each(NONFINITE)(
+    'a non-finite bound (%s) does not poison the other coordinates',
+    (label, poison) => {
+      const drawing = drawingWithLine(
+        { min: { x: poison, y: 0 }, max: { x: 4, y: 6 } },
+        { x: 0, y: 0 },
+        { x: 2, y: 3 }
+      );
+      const svg = exportToSVG(drawing, {
+        paperSize: PAPER_SIZES.A3_LANDSCAPE,
+        scale: scaleByFactor(100),
+        padding: 20,
+      });
+      // Not merely finite: the finite line must land EXACTLY where it does when
+      // the bounds are clean (the 190/178.5/210/148.5 of the characterisation
+      // test above). A guard that emitted "0" for everything would pass a
+      // finiteness-only assertion while still having lost the drawing.
+      const { x1, y1, x2, y2 } = extractLineCoords(svg);
+      expect(x1, `[${label}] x1`).toBeCloseTo(190, 3);
+      expect(y1, `[${label}] y1`).toBeCloseTo(178.5, 3);
+      expect(x2, `[${label}] x2`).toBeCloseTo(210, 3);
+      expect(y2, `[${label}] y2`).toBeCloseTo(148.5, 3);
+    }
+  );
+
+  it('still writes exact coordinates for an all-finite drawing', () => {
+    // Both directions: a guard that emitted "0" for everything would satisfy
+    // every assertion above. Same fixture as the characterisation test at the
+    // top of the file, asserted to the same precision.
+    const drawing = drawingWithLine(
+      { min: { x: 0, y: 0 }, max: { x: 4, y: 6 } },
+      { x: 0, y: 0 },
+      { x: 2, y: 3 }
+    );
+    const svg = exportToSVG(drawing, {
+      paperSize: PAPER_SIZES.A3_LANDSCAPE,
+      scale: scaleByFactor(100),
+      padding: 20,
+    });
+    expect(svg).toContain('x1="190.000"');
+    expect(svg).toContain('y1="178.500"');
+    expect(svg).toContain('x2="210.000"');
+    expect(svg).toContain('y2="148.500"');
+  });
+});

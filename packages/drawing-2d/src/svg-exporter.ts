@@ -103,6 +103,34 @@ interface Transform2D {
 // SVG EXPORTER CLASS
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * The one place a number becomes SVG text.
+ *
+ * SVG's `<number>` grammar admits a sign, digits, a decimal point and an
+ * exponent — and nothing else. `NaN`, `Infinity` and `-Infinity` stringify
+ * verbatim through `toFixed`, so an unguarded interpolation writes
+ * `x1="NaN"`, which a conforming renderer must treat as an error rather than
+ * draw. The DXF writer beside this one has always guarded the same values at
+ * its own single `fmt()` (`dxf/writer.ts`); this is the SVG half of that
+ * rule, in one function rather than at each of the coordinate, size and
+ * rotation interpolations below — so it cannot end up applied to some of
+ * them and not the others.
+ *
+ * Non-finite becomes `0`, matching the DXF writer's deterministic `'0.0'`:
+ * the document stays parseable and byte-reproducible, and the degenerate
+ * geometry collapses at the origin where it is visible, instead of taking
+ * the rest of the drawing with it.
+ */
+function svgNum(n: number, digits = 3): string {
+  if (!Number.isFinite(n)) return '0';
+  return n.toFixed(digits);
+}
+
+/** Non-finite → 0, so one bad corner of a bounding box can't move the rest. */
+function finiteOr0(n: number): number {
+  return Number.isFinite(n) ? n : 0;
+}
+
 export class SVGExporter {
   private hatchGenerator = new HatchGenerator();
 
@@ -213,8 +241,19 @@ export class SVGExporter {
     scale: DrawingScale,
     padding: number
   ): Transform2D {
-    const size = boundsSize(bounds);
-    const center = boundsCenter(bounds);
+    // Sanitise the bounds before anything is derived from them. `boundsSize`
+    // and `boundsCenter` are plain min/max arithmetic, so ONE non-finite
+    // corner propagates into `center`, from there into `offsetX`/`offsetY`,
+    // and from there into every coordinate in the document — a single bad
+    // bound moved a perfectly finite line to `x1="NaN"`. Dropping the bad
+    // component to 0 contains the damage to the geometry that was actually
+    // degenerate; `svgNum` is the second line of defence, not the first.
+    const safeBounds: Bounds2D = {
+      min: { x: finiteOr0(bounds.min.x), y: finiteOr0(bounds.min.y) },
+      max: { x: finiteOr0(bounds.max.x), y: finiteOr0(bounds.max.y) },
+    };
+    const size = boundsSize(safeBounds);
+    const center = boundsCenter(safeBounds);
 
     // `padding` is a minimum-margin guarantee: it must never consume the
     // whole sheet. An impossible padding (padding*2 >= a paper dimension)
@@ -386,7 +425,7 @@ export class SVGExporter {
     const dashArray =
       style.dashPattern.length > 0 ? ` stroke-dasharray="${style.dashPattern.join(' ')}"` : '';
 
-    return `    <line x1="${p0.x.toFixed(3)}" y1="${p0.y.toFixed(3)}" x2="${p1.x.toFixed(3)}" y2="${p1.y.toFixed(3)}"
+    return `    <line x1="${svgNum(p0.x)}" y1="${svgNum(p0.y)}" x2="${svgNum(p1.x)}" y2="${svgNum(p1.y)}"
           stroke="${style.color}" stroke-width="${style.weight}"
           stroke-linecap="${style.lineCap}"${dashArray}
           data-entity-id="${line.entityId}" data-ifc-type="${this.escapeXml(line.ifcType)}"/>\n`;
@@ -450,10 +489,10 @@ export class SVGExporter {
     // Outer boundary
     if (polygon.outer.length > 0) {
       const first = this.transformPoint(polygon.outer[0], transform);
-      path += `M ${first.x.toFixed(3)} ${first.y.toFixed(3)}`;
+      path += `M ${svgNum(first.x)} ${svgNum(first.y)}`;
       for (let i = 1; i < polygon.outer.length; i++) {
         const p = this.transformPoint(polygon.outer[i], transform);
-        path += ` L ${p.x.toFixed(3)} ${p.y.toFixed(3)}`;
+        path += ` L ${svgNum(p.x)} ${svgNum(p.y)}`;
       }
       path += ' Z';
     }
@@ -462,10 +501,10 @@ export class SVGExporter {
     for (const hole of polygon.holes) {
       if (hole.length > 0) {
         const first = this.transformPoint(hole[0], transform);
-        path += ` M ${first.x.toFixed(3)} ${first.y.toFixed(3)}`;
+        path += ` M ${svgNum(first.x)} ${svgNum(first.y)}`;
         for (let i = 1; i < hole.length; i++) {
           const p = this.transformPoint(hole[i], transform);
-          path += ` L ${p.x.toFixed(3)} ${p.y.toFixed(3)}`;
+          path += ` L ${svgNum(p.x)} ${svgNum(p.y)}`;
         }
         path += ' Z';
       }
@@ -482,7 +521,7 @@ export class SVGExporter {
     const p0 = this.transformPoint(hatchLine.line.start, transform);
     const p1 = this.transformPoint(hatchLine.line.end, transform);
 
-    return `    <line x1="${p0.x.toFixed(3)}" y1="${p0.y.toFixed(3)}" x2="${p1.x.toFixed(3)}" y2="${p1.y.toFixed(3)}"
+    return `    <line x1="${svgNum(p0.x)}" y1="${svgNum(p0.y)}" x2="${svgNum(p1.x)}" y2="${svgNum(p1.y)}"
           stroke="${pattern.strokeColor}" stroke-width="${pattern.lineWeight}" stroke-linecap="butt"/>\n`;
   }
 
@@ -539,10 +578,10 @@ export class SVGExporter {
         for (const ring of rings) {
           if (ring.length === 0) continue;
           const first = mapPoint(ring[0]);
-          d += `${d ? ' ' : ''}M ${first.x.toFixed(3)} ${first.y.toFixed(3)}`;
+          d += `${d ? ' ' : ''}M ${svgNum(first.x)} ${svgNum(first.y)}`;
           for (let i = 1; i < ring.length; i++) {
             const p = mapPoint(ring[i]);
-            d += ` L ${p.x.toFixed(3)} ${p.y.toFixed(3)}`;
+            d += ` L ${svgNum(p.x)} ${svgNum(p.y)}`;
           }
           d += ' Z';
         }
@@ -554,11 +593,11 @@ export class SVGExporter {
       for (const path of dxfLayer.paths) {
         if (path.points.length < 2) continue;
         const pts = path.points.map(mapPoint);
-        const pointsAttr = pts.map((p) => `${p.x.toFixed(3)},${p.y.toFixed(3)}`).join(' ');
+        const pointsAttr = pts.map((p) => `${svgNum(p.x)},${svgNum(p.y)}`).join(' ');
         const tag = path.closed ? 'polygon' : 'polyline';
         const strokeWidth = path.widthMm ?? 0.18;
-        const dash = path.dashed ? ` stroke-dasharray="${(strokeWidth * 6).toFixed(3)} ${(strokeWidth * 4).toFixed(3)}"` : '';
-        layer += `      <${tag} points="${pointsAttr}" fill="none" stroke="${path.color ?? dxfLayer.color}" stroke-width="${strokeWidth}" stroke-linecap="round"${dash}/>\n`;
+        const dash = path.dashed ? ` stroke-dasharray="${svgNum(strokeWidth * 6)} ${svgNum(strokeWidth * 4)}"` : '';
+        layer += `      <${tag} points="${pointsAttr}" fill="none" stroke="${path.color ?? dxfLayer.color}" stroke-width="${svgNum(strokeWidth)}" stroke-linecap="round"${dash}/>\n`;
       }
 
       for (const text of dxfLayer.texts) {
@@ -578,9 +617,9 @@ export class SVGExporter {
         // Multiline MTEXT stacks with tspans, matching the canvas layout.
         const lines = text.text.split('\n');
         const content = lines
-          .map((line, i) => `<tspan x="${anchor.x.toFixed(3)}" dy="${i === 0 ? 0 : (heightMm * 1.3).toFixed(3)}">${this.escapeXml(line)}</tspan>`)
+          .map((line, i) => `<tspan x="${svgNum(anchor.x)}" dy="${i === 0 ? 0 : svgNum(heightMm * 1.3)}">${this.escapeXml(line)}</tspan>`)
           .join('');
-        layer += `      <text x="${anchor.x.toFixed(3)}" y="${anchor.y.toFixed(3)}" font-family="Arial, sans-serif" font-size="${heightMm.toFixed(3)}" fill="${text.color ?? dxfLayer.color}" text-anchor="${anchorAttr}" dominant-baseline="${baseline}" transform="rotate(${angle.toFixed(2)} ${anchor.x.toFixed(3)} ${anchor.y.toFixed(3)})">${content}</text>\n`;
+        layer += `      <text x="${svgNum(anchor.x)}" y="${svgNum(anchor.y)}" font-family="Arial, sans-serif" font-size="${svgNum(heightMm)}" fill="${text.color ?? dxfLayer.color}" text-anchor="${anchorAttr}" dominant-baseline="${baseline}" transform="rotate(${svgNum(angle, 2)} ${svgNum(anchor.x)} ${svgNum(anchor.y)})">${content}</text>\n`;
       }
 
       layer += '    </g>\n';

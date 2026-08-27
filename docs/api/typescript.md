@@ -436,9 +436,7 @@ class Renderer {
 
   // Camera controls
   fitToView(): void;
-  // Narrower than the `Camera` class on purpose: `CameraControl` names the
-  // camera members callers actually use, and widening it is a major bump.
-  getCamera(): CameraControl;
+  getCamera(): Camera;
 
   // Selection (GPU picking)
   pick(x: number, y: number, options?: PickOptions): Promise<PickResult | null>;

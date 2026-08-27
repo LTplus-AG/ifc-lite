@@ -10,8 +10,7 @@ export { WebGPUDevice } from './device.js';
 export type { AdapterInfoSnapshot } from './device.js';
 export { RenderPipeline } from './pipeline.js';
 export { Camera } from './camera.js';
-// The MEASURED surfaces `getCamera()` / `getScene()` publish — see their docs.
-export type { CameraControl } from './camera-control.js';
+// The MEASURED surface `getScene()` publishes — see its docs.
 export type { SceneContents } from './scene-contents.js';
 export type { ProjectionMode } from './camera-state.js';
 export { pickFitPolicy } from './camera-fit-policy.js';
@@ -125,7 +124,6 @@ export type {
 import { WebGPUDevice, type AdapterInfoSnapshot } from './device.js';
 import { RenderPipeline } from './pipeline.js';
 import { Camera } from './camera.js';
-import type { CameraControl } from './camera-control.js';
 import { Scene, type InstancedTemplateGPU } from './scene.js';
 import type { SceneContents } from './scene-contents.js';
 import { Picker } from './picker.js';
@@ -3402,8 +3400,7 @@ export class Renderer {
         this.camera.setAspect(width / height);
     }
 
-    /** MEASURED external surface, not the `Camera` class: widening `CameraControl` is a published-API decision, not a detail — see `camera-control.ts`. */
-    getCamera(): CameraControl {
+    getCamera(): Camera {
         return this.camera;
     }
 

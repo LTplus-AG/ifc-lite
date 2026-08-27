@@ -3820,7 +3820,6 @@
     "BatchedMesh: interface",
     "Bounds3: interface",
     "Camera: class",
-    "CameraControl: interface",
     "ChunkAnchorSource: interface",
     "ClipBox: interface",
     "ColdGeometryProvider: interface",

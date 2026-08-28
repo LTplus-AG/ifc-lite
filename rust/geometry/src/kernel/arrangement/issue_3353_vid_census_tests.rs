@@ -98,7 +98,7 @@ use crate::kernel::interner::Vid;
 use crate::kernel::mesh_bridge::{mesh_to_tris, orient_outward};
 use crate::mesh::Mesh;
 use nalgebra::{Point3, Rotation3, Unit, Vector3};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 /// `sweep_261`'s operand builder, verbatim from
 /// `issue_3353_sweep_261_classification_tear.rs`'s `boxed()` (same
@@ -228,6 +228,110 @@ fn origin_of(tri: [Vid; 3], tris_a: &HashSet<[Vid; 3]>, tris_b: &HashSet<[Vid; 3
 /// it. A triangle contributes each of its 3 edges once; an edge's count
 /// reaching anything other than 2 across `kept` is exactly the symbolic
 /// (pre-float) signature of a classification-level tear.
+/// Squared Euclidean distance between two points.
+fn dist2(p: [f64; 3], q: [f64; 3]) -> f64 {
+    let d = super::sub_f64(p, q);
+    super::dot3(d, d)
+}
+
+/// Closest point to `p` on the closed segment `[a, b]`. The zero-length case
+/// is guarded explicitly: the projection divides by the squared segment
+/// length, which would otherwise be `0.0 / 0.0`.
+fn closest_point_on_segment3(p: [f64; 3], a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    let ab = super::sub_f64(b, a);
+    let len2 = super::dot3(ab, ab);
+    if len2 == 0.0 {
+        return a;
+    }
+    let ap = super::sub_f64(p, a);
+    let t = (super::dot3(ap, ab) / len2).clamp(0.0, 1.0);
+    [a[0] + t * ab[0], a[1] + t * ab[1], a[2] + t * ab[2]]
+}
+
+/// Closest point to `p` on the CLOSED (filled) triangle, not on its plane — a
+/// centroid can be near a triangle's plane while far from the triangle itself.
+/// Ericson's seven-region barycentric test. Its interior branch needs `va`,
+/// `vb`, `vc` all positive, which needs strictly positive area, so a degenerate
+/// triangle can never reach the final division; the guard below is explicit
+/// rather than relying on that unstated invariant.
+fn closest_point_on_triangle3(p: [f64; 3], a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> [f64; 3] {
+    let ab = super::sub_f64(b, a);
+    let ac = super::sub_f64(c, a);
+    let n = super::cross3(ab, ac);
+    let area2 = super::dot3(n, n);
+    let scale2 = super::dot3(ab, ab).max(super::dot3(ac, ac)).max(1.0);
+    if area2 <= 1e-24 * scale2 * scale2 {
+        let cands = [
+            closest_point_on_segment3(p, a, b),
+            closest_point_on_segment3(p, b, c),
+            closest_point_on_segment3(p, c, a),
+        ];
+        let mut best = cands[0];
+        for cand in cands.iter().skip(1) {
+            if dist2(p, *cand) < dist2(p, best) {
+                best = *cand;
+            }
+        }
+        return best;
+    }
+
+    let ap = super::sub_f64(p, a);
+    let d1 = super::dot3(ab, ap);
+    let d2 = super::dot3(ac, ap);
+    if d1 <= 0.0 && d2 <= 0.0 {
+        return a;
+    }
+    let bp = super::sub_f64(p, b);
+    let d3 = super::dot3(ab, bp);
+    let d4 = super::dot3(ac, bp);
+    if d3 >= 0.0 && d4 <= d3 {
+        return b;
+    }
+    let vc = d1 * d4 - d3 * d2;
+    if vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0 {
+        let v = d1 / (d1 - d3);
+        return [a[0] + v * ab[0], a[1] + v * ab[1], a[2] + v * ab[2]];
+    }
+    let cp = super::sub_f64(p, c);
+    let d5 = super::dot3(ab, cp);
+    let d6 = super::dot3(ac, cp);
+    if d6 >= 0.0 && d5 <= d6 {
+        return c;
+    }
+    let vb = d5 * d2 - d1 * d6;
+    if vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0 {
+        let w = d2 / (d2 - d6);
+        return [a[0] + w * ac[0], a[1] + w * ac[1], a[2] + w * ac[2]];
+    }
+    let va = d3 * d6 - d5 * d4;
+    if va <= 0.0 && (d4 - d3) >= 0.0 && (d5 - d6) >= 0.0 {
+        let w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+        return [
+            b[0] + w * (c[0] - b[0]),
+            b[1] + w * (c[1] - b[1]),
+            b[2] + w * (c[2] - b[2]),
+        ];
+    }
+    let denom = 1.0 / (va + vb + vc);
+    let v = vb * denom;
+    let w = vc * denom;
+    [
+        a[0] + v * ab[0] + w * ac[0],
+        a[1] + v * ab[1] + w * ac[1],
+        a[2] + v * ab[2] + w * ac[2],
+    ]
+}
+
+/// Minimum distance from `p` to any triangle of `mesh`. The operands here are
+/// a handful of `boxed()` triangles, so a linear scan is adequate and avoids
+/// the production BVH's own pruning.
+fn min_point_to_mesh_distance(p: [f64; 3], mesh: &[Tri]) -> f64 {
+    mesh.iter()
+        .map(|t| dist2(p, closest_point_on_triangle3(p, t[0], t[1], t[2])))
+        .fold(f64::INFINITY, f64::min)
+        .sqrt()
+}
+
 fn edge_census(
     kept: &[[Vid; 3]],
     tris_a: &HashSet<[Vid; 3]>,
@@ -321,6 +425,57 @@ fn sweep_261_kept_triangles_are_nonmanifold_in_vid_space() {
         println!("  {edge:?} used {} time(s) by:", users.len());
         for (idx, origin) in users.iter() {
             println!("    kept[{idx}] = {:?} origin={:?}", kept[*idx], origin);
+        }
+    }
+
+    // Centroid-to-opposite-surface proximity. MEASUREMENT ONLY — no assertion,
+    // because no threshold is known yet and pinning an unverified one is how a
+    // diagnostic turns into a false signal.
+    //
+    // `classify::centroid` rounds each Vid to f64 and then averages in IEEE.
+    // For this fixture no face pair is within 28 degrees of parallel, so the
+    // coincident-face regime never fires and every triangle is classified by
+    // the ray cast, which uses that centroid as its ray ORIGIN. Rounding can
+    // flip a parity verdict only if the true centroid sits within a few ULP of
+    // the other operand's surface. These numbers say whether it does.
+    //
+    // NOTE: `cargo test --workspace` CAPTURES stdout for a passing test, and
+    // this test passes while the defect exists, so CI will not show these
+    // lines. Run it directly:
+    //   cargo test -p ifc-lite-geometry --lib issue_3353_vid_census -- --nocapture
+    // Once the values are known they can be pinned as an assertion, which
+    // would then surface in CI on any change.
+    let implicated: BTreeSet<usize> = overused
+        .iter()
+        .flat_map(|(_, users)| users.iter().map(|(idx, _)| *idx))
+        .collect();
+    println!(
+        "centroid-to-opposite-surface distance, {} kept triangle(s) on an over-used edge:",
+        implicated.len()
+    );
+    for idx in implicated {
+        let tri = kept[idx];
+        let origin = origin_of(tri, &tris_a, &tris_b);
+        let c = super::centroid(&arr, tri);
+        let mag = super::dot3(c, c).sqrt();
+        let mut report = |label: &str, surface: &[Tri]| {
+            let d = min_point_to_mesh_distance(c, surface);
+            let relative = if mag > 0.0 { d / mag } else { f64::NAN };
+            println!(
+                "  kept[{idx}] {tri:?} origin={origin:?} dist_to_{label}={d:.6e} \
+                 relative={relative:.3e} |centroid|={mag:.6e}"
+            );
+        };
+        match origin {
+            Origin::A => report("b", &b),
+            Origin::B => report("a", &a),
+            // Attribution is undecidable for a triangle present on both sides
+            // (see `Origin::Both`), so report against both rather than guess.
+            Origin::Both => {
+                report("a", &a);
+                report("b", &b);
+            }
+            Origin::Unresolved => unreachable!("ruled out by the guard above"),
         }
     }
 

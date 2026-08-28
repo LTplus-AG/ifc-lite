@@ -137,6 +137,73 @@ describe('scanIfcEntities and an express id above 2^32', () => {
     expect(diagnostics.some((message) => message.includes('skipped 1 record(s)'))).toBe(true);
   });
 
+  it('carries the pre-scanned path’s refusal count out of the set-entity-index handoff', async () => {
+    // The canonical viewer load: for a file at or above 2 MB the streaming
+    // geometry pre-pass has already scanned it, and `scanIfcEntities` builds
+    // the refs from the handed-over columns without scanning at all. A record
+    // the pre-pass refused is ABSENT from `ids` — nothing on this side can
+    // recount it — so if the count does not ride along with the columns the
+    // load reports clean and comes back one record short. That is the gap two
+    // reviewers found in the first #3395 change.
+    const diagnostics: string[] = [];
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const source = encodeSource(IFC_SOURCE);
+    const text = new TextDecoder().decode(source);
+    const spanOf = (id: number) => {
+      const start = text.indexOf(`#${id}=`);
+      return { start, length: text.indexOf(';', start) + 1 - start };
+    };
+    const one = spanOf(1);
+    const max = spanOf(U32_MAX);
+
+    const result = await scanIfcEntities(source, {
+      disableWorkerScan: true,
+      onDiagnostic: (message) => diagnostics.push(message),
+      preScannedEntityIndex: {
+        // Exactly what the pre-pass hands over: the oversized record is not
+        // in the columns, because the Rust scanner already refused it.
+        ids: new Uint32Array([1, U32_MAX]),
+        starts: new Uint32Array([one.start, max.start]),
+        lengths: new Uint32Array([one.length, max.length]),
+        oversizedIdCount: 1,
+      },
+    });
+
+    expect(result.scanPath).toBe('pre-scanned');
+    expect(result.entityRefs.map((entityRef) => entityRef.expressId)).toEqual([1, U32_MAX]);
+    expect(result.oversizedIdCount).toBe(1);
+    expect(diagnostics.some((message) => message.includes('skipped 1 record(s)'))).toBe(true);
+    expect(
+      warn.mock.calls.some((args) => args.some((arg) => String(arg).includes('skipped 1 record(s)'))),
+    ).toBe(true);
+  });
+
+  it('reports nothing on a pre-scanned handoff that refused nothing', async () => {
+    // The other direction of the pre-scanned report, and the reason the field
+    // is read rather than assumed: a pre-pass that refused nothing sends 0,
+    // and an older host that sends no field at all must also stay quiet.
+    const diagnostics: string[] = [];
+    const source = encodeSource(IFC_SOURCE);
+    const text = new TextDecoder().decode(source);
+    const start = text.indexOf('#1=');
+    const columns = {
+      ids: new Uint32Array([1]),
+      starts: new Uint32Array([start]),
+      lengths: new Uint32Array([text.indexOf(';', start) + 1 - start]),
+    };
+
+    for (const oversizedIdCount of [0, undefined]) {
+      const result = await scanIfcEntities(source, {
+        disableWorkerScan: true,
+        onDiagnostic: (message) => diagnostics.push(message),
+        preScannedEntityIndex: { ...columns, oversizedIdCount },
+      });
+      expect(result.scanPath).toBe('pre-scanned');
+      expect(result.oversizedIdCount).toBe(0);
+    }
+    expect(diagnostics.some((message) => message.includes('skipped'))).toBe(false);
+  });
+
   it('reports nothing on a file whose ids all fit', async () => {
     // The other direction of the report: a clean file must not warn, or the
     // message stops meaning anything.

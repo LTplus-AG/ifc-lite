@@ -53,6 +53,13 @@ export interface ParserWorkerEntityIndexMessage {
   ids: Uint32Array;
   starts: Uint32Array;
   lengths: Uint32Array;
+  /**
+   * Records the pre-pass refused for an express id above the u32 storage
+   * bound (#3395). Absent from `ids` by construction, so the count has to be
+   * handed over with the columns or the parse reports a clean load that is
+   * quietly short. Optional: an older host sends the three columns only.
+   */
+  oversizedIdCount?: number;
 }
 
 /** Progress update from the worker. */
@@ -163,6 +170,7 @@ let pendingEntityIndex: {
   ids: Uint32Array;
   starts: Uint32Array;
   lengths: Uint32Array;
+  oversizedIdCount?: number;
 } | null = null;
 let entityIndexWaiter: ((value: NonNullable<typeof pendingEntityIndex>) => void) | null = null;
 
@@ -210,6 +218,7 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
       ids: data.ids,
       starts: data.starts,
       lengths: data.lengths,
+      oversizedIdCount: data.oversizedIdCount,
     };
     if (entityIndexWaiter) {
       const resolve = entityIndexWaiter;

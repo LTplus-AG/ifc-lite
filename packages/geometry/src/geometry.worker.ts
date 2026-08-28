@@ -274,6 +274,9 @@ export interface GeometryWorkerShardResultMessage {
   /** Per-record prepass class (PREPASS_CLASS_*; 4 = IfcStyledItem). */
   classes: Uint8Array;
   handoff: number;
+  /** Refused for an express id above the u32 bound, so absent from the columns:
+   * the host sums the shards rather than recounting (#3395). Optional on old wasm. */
+  oversizedIdCount?: number;
 }
 
 /**
@@ -1518,7 +1521,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
           data: Uint8Array,
           rangeStart: number,
           rangeEnd: number,
-        ) => { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array; classes: Uint8Array; handoff: number };
+        ) => { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array; classes: Uint8Array; handoff: number; oversizedIdCount?: number };
       });
       let shard;
       try {
@@ -1537,7 +1540,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
           starts: shard.starts,
           lengths: shard.lengths,
           classes: shard.classes,
-          handoff: shard.handoff,
+          handoff: shard.handoff, oversizedIdCount: shard.oversizedIdCount,
         } as GeometryWorkerShardResultMessage,
         [shard.ids.buffer, shard.starts.buffer, shard.lengths.buffer, shard.classes.buffer],
       );

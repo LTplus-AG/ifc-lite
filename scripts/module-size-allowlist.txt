@@ -247,8 +247,8 @@
    524 packages/export/src/schema-converter.ts
    437 packages/extensions/src/testing/runner.ts
    625 packages/geometry/src/coordinate-handler.ts
-  1707 packages/geometry/src/geometry-parallel.ts
-  1754 packages/geometry/src/geometry.worker.ts
+  1716 packages/geometry/src/geometry-parallel.ts
+  1757 packages/geometry/src/geometry.worker.ts
    937 packages/geometry/src/ifc-lite-bridge.ts
   1551 packages/geometry/src/index.ts
    730 packages/geometry/src/native-bridge.ts
@@ -285,7 +285,7 @@
   2121 packages/mutations/src/mutable-property-view.ts
    422 packages/oauth-pkce/src/token-manager.ts
   1189 packages/parser/src/columnar-parser.ts
-   480 packages/parser/src/compact-entity-index.ts
+   478 packages/parser/src/compact-entity-index.ts
    530 packages/parser/src/data-store-transport.ts
    827 packages/parser/src/material-resolver.ts
   1004 packages/parser/src/on-demand-extractors.ts

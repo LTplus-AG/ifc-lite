@@ -15,6 +15,17 @@ export interface PreScannedEntityIndex {
   ids: Uint32Array;
   starts: Uint32Array;
   lengths: Uint32Array;
+  /**
+   * How many records the pre-pass that produced these columns refused because
+   * their express id is outside the u32 storage contract (#3395).
+   *
+   * It has to travel with the columns: a refused record is absent from `ids`
+   * by construction, so this side cannot recount it. Optional because a host
+   * on an older wasm build sends the three columns and nothing else — treat
+   * `undefined` as "this producer does not report", which is not the same
+   * claim as `0`, and is why the wasm pre-pass now always sets it.
+   */
+  oversizedIdCount?: number;
 }
 
 export interface WasmScanApi {
@@ -37,22 +48,19 @@ export interface EntityScanResult {
   scanPath: EntityScanPath;
   /**
    * How many records the scan refused because their express id is outside the
-   * u32 storage contract (#3395). Counted on the `worker` and `tokenizer`
-   * paths only, so a nonzero value here is proof of refusals but a zero is
-   * never proof of none — the two Rust-backed paths both refuse the same
-   * records without reporting a count across the boundary:
+   * u32 storage contract (#3395).
    *
-   * - `wasm`: `EntityScanner` skips them inside Rust and the wasm entry point
-   *   warns to the console there (`rust/wasm-bindings/src/api/parsing.rs`), so
-   *   the refusal is visible even though the number is not.
-   * - `pre-scanned`: the ids arrive already narrowed to a `Uint32Array` from
-   *   the streaming geometry pre-pass, which reaches the same `EntityScanner`
-   *   (via `scan_shard_classified` on the sharded branch) and discards its
-   *   `skipped_oversized_ids()`. Nothing warns on this path, and it is the
-   *   one the viewer takes for every SAB-backed worker load of a file at or
-   *   above 2 MB (`useIfcLoader.ts`'s `geometryWillEmitEntityIndex`). Making
-   *   it visible means widening the `set-entity-index` handoff to carry the
-   *   count; this side cannot recover it from the columns alone.
+   * Counted on every path but one. `worker` and `tokenizer` count here;
+   * `pre-scanned` carries the count from the geometry pre-pass through the
+   * `set-entity-index` handoff (`PreScannedEntityIndex.oversizedIdCount`),
+   * which is the path the viewer takes for every SAB-backed worker load of a
+   * file at or above 2 MB (`useIfcLoader.ts`'s `geometryWillEmitEntityIndex`).
+   *
+   * The one exception is `wasm`: `scanEntitiesFast` returns entity refs and
+   * nothing else, so the count does not cross that boundary. Rust reports the
+   * refusal itself there, to the browser console
+   * (`rust/wasm-bindings/src/api/parsing.rs`), so it is visible even though
+   * the number is not — a zero on THAT path still is not proof of none.
    */
   oversizedIdCount: number;
 }
@@ -81,6 +89,7 @@ export async function scanIfcEntities(
     entityRefs = buildEntityRefsFromIndex(uint8Buffer, ids, starts, lengths);
     processed = entityRefs.length;
     scanPath = 'pre-scanned';
+    oversizedIdCount = options.preScannedEntityIndex.oversizedIdCount ?? 0;
   }
 
   if (entityRefs.length === 0 && !options.disableWorkerScan && typeof Worker !== 'undefined') {

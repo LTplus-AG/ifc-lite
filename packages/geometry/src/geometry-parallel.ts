@@ -210,6 +210,7 @@ interface ShardColumns {
   classes: Uint8Array;
   /** Global start of the next shard's first real entity, or -1 at EOF. */
   handoff: number;
+  oversizedIdCount: number; // #3395: refused above the u32 bound, absent from ids
 }
 
 /**
@@ -309,7 +310,7 @@ export interface ProcessParallelOptions {
   onEntityIndex?: (
     ids: Uint32Array,
     starts: Uint32Array,
-    lengths: Uint32Array,
+    lengths: Uint32Array, oversizedIdCount?: number, // #3395 refused records
   ) => void;
   /**
    * Issue #540 — "Merge Multilayer Walls" load-time toggle. When
@@ -558,6 +559,7 @@ export async function* processParallel(
           lengths: msg.lengths as Uint32Array,
           classes: msg.classes as Uint8Array,
           handoff: msg.handoff as number,
+          oversizedIdCount: (msg.oversizedIdCount as number | undefined) ?? 0,
         };
         shardResultsRemaining--;
         console.log(`[stream][shard] worker[${workerIndex}] shard ${si} done @ ${elapsed()}ms (${(msg.ids as Uint32Array).length} entities, remaining=${shardResultsRemaining})`);
@@ -1038,6 +1040,9 @@ export async function* processParallel(
     starts: Uint32Array,
     lengths: Uint32Array,
     source: 'prepass' | 'sharded',
+    // #3395: the parser worker builds the model from these columns alone, so
+    // without the count it reports a clean load that is short by that many.
+    oversizedIdCount: number,
   ) => {
     console.log(`[stream] entity-index (${source}) @ ${elapsed()}ms (${ids.length} entries)`);
     if (typeof SharedArrayBuffer !== 'undefined') {
@@ -1082,6 +1087,7 @@ export async function* processParallel(
             new Uint32Array(sabIds),
             new Uint32Array(sabStarts),
             new Uint32Array(sabLengths),
+            oversizedIdCount,
           );
         } catch (err) {
           console.warn('[stream] onEntityIndex callback failed:', err);
@@ -1100,7 +1106,7 @@ export async function* processParallel(
       }
       if (options?.onEntityIndex) {
         try {
-          options.onEntityIndex(ids.slice(), starts.slice(), lengths.slice());
+          options.onEntityIndex(ids.slice(), starts.slice(), lengths.slice(), oversizedIdCount);
         } catch (err) {
           console.warn('[stream] onEntityIndex callback failed:', err);
         }
@@ -1133,9 +1139,12 @@ export async function* processParallel(
     const starts = stitched.starts;
     const lengths = stitched.lengths;
     entityIndexDeliveredEarly = true;
+    // Sum every shard, not only the slices the stitch kept: over-reporting a
+    // refusal is visible, under-reporting is the silence #3395 is about.
+    const oversizedIdCount = shards.reduce((sum, shard) => sum + shard.oversizedIdCount, 0);
     // set-entity-index reaches every worker FIRST (FIFO), so the style-shard
     // messages below always find the index installed.
-    deliverEntityIndex(ids, starts, lengths, 'sharded');
+    deliverEntityIndex(ids, starts, lengths, 'sharded', oversizedIdCount);
 
     // Extract the styled-item span triples (class 4) in FILE ORDER from the
     // stitched columns, split into one contiguous slice per worker, and
@@ -1416,7 +1425,7 @@ export async function* processParallel(
           // entity-index event); guard against double delivery regardless.
           console.log(`[stream] pre-pass entity-index arrived @ ${elapsed()}ms (already delivered via shards; ignoring)`);
         } else {
-          deliverEntityIndex(ids, starts, lengths, 'prepass');
+          deliverEntityIndex(ids, starts, lengths, 'prepass', (evt.oversizedIdCount as number | undefined) ?? 0);
         }
       } else if (evt.type === 'prepass-columns') {
         // Pre-pass computed the referenced-repmaps + instantiated-type-id sets

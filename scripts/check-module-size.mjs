@@ -200,8 +200,8 @@ const SOURCE_RE = /\.(ts|tsx|mts|cts)$/;
  * moves if anything else touched the allowlist first.
  */
 const ALLOWLIST_DIGESTS = {
-  'apps/viewer': '5259857359528176291',
-  'apps/viewer-embed': '12728483381622404308',
+  'apps/viewer': '5176448207648905818',
+  'apps/viewer-embed': '12728482282110776097',
   'packages/bcf': '10369893299996048894',
   'packages/cache': '14926850005686407910',
   'packages/clash': '781065910217740673',

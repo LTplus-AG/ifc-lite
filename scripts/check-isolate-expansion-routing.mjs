@@ -201,6 +201,11 @@ export const REQUIRES_ROUTING_MARKER = new Set([
   // assembly would otherwise blank the preview for an id that IS part of
   // the export.
   'apps/viewer/src/components/viewer/anonymized-export/usePreviewIsolation.ts',
+  // The SDK/MCP isolate() channel: #3382 landed the routing fix
+  // (cameraCallbacks.resolveHighlightIds, unioned with the raw ids so an
+  // empty resolve result doesn't isolate nothing), so this now genuinely
+  // routes and belongs here instead of NO_MARKER_REQUIRED.
+  'apps/viewer/src/sdk/adapters/visibility-adapter.ts',
 ]);
 
 /**
@@ -214,13 +219,6 @@ export const NO_MARKER_REQUIRED = new Map([
     'resolved to geometry-bearing members at tree-build time via hasAggregatedGeometry / ' +
     'collectAggregatedDescendants (issue #1133) -- a different, non-renderer-dependent path ' +
     'to the same correctness property, not a raw ref.',
-  ],
-  [
-    'apps/viewer/src/sdk/adapters/visibility-adapter.ts',
-    'the SDK/MCP isolate() channel: tracked and fixed by open PR #3382 ' +
-    '(routes through cameraCallbacks.resolveHighlightIds), landing separately from this gate. ' +
-    'Move this entry to REQUIRES_ROUTING_MARKER once #3382 merges -- until then this is a ' +
-    'known, tracked gap, not a silent one.',
   ],
   [
     'apps/viewer/src/hooks/useClash.ts',

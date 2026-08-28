@@ -93,6 +93,47 @@ fn count_spike_triangles(mesh: &Mesh) -> usize {
     n
 }
 
+/// Issue #3353: a bounded, last-resort weld that closes small boundary gaps
+/// left by the exact kernel and its consolidation on overlapping / rotated
+/// operand pairs. Runs ONLY when `mesh` already has an open boundary edge at
+/// the 0.1 mm grid `count_open_boundary_edges_at` already uses elsewhere in
+/// this file for the cross-bucket seam conform, so a mesh that is closed at
+/// that resolution is returned byte-identical — this can only change an
+/// ALREADY-torn result, never a sound one.
+///
+/// The measured cause (traced on a reproduction of #3353, a rotated cutter
+/// against an axis-aligned host) is two vertices meant to be the same point —
+/// one bucket's earcut and its neighbour's, or two near-degenerate exact
+/// intersections in the raw arrangement itself — differing by a few hundred
+/// micrometres, well under any real feature this crate triangulates and well
+/// over the exact kernel's own snap grid (`SNAP_GRID`, ~15 µm at unit scale).
+/// The weld radius is a small multiple of that grid: comfortably above the
+/// measured gaps, comfortably below a real seam.
+///
+/// This is a REPAIR, not a gate: unlike the closed-in/closed-out enforcement
+/// tried and rejected for `ClippingProcessor::validate_mesh` (measured to
+/// regress the watertightness census), a rejected weld here falls back to the
+/// mesh exactly as it already was — no cut is ever discarded.
+fn close_micro_gaps(mesh: Mesh) -> Mesh {
+    if mesh.indices.len() < 6 || count_open_boundary_edges_at(&mesh, 1.0e4) == 0 {
+        return mesh; // already sound at 0.1 mm — untouched, no weld attempted
+    }
+    let tol = (crate::kernel::mesh_bridge::SNAP_GRID * 128.0) as f32; // ~1.95 mm at unit scale
+    let before_open = count_open_boundary_edges(&mesh);
+    let before_bad = before_open + count_spike_triangles(&mesh);
+    let welded = mesh.welded_by_position(tol);
+    let after_open = count_open_boundary_edges(&welded);
+    let after_bad = after_open + count_spike_triangles(&welded);
+    // Only keep the weld where it measurably helps: strictly fewer open edges
+    // AND no worse overall than the badness score `consolidate_coplanar`
+    // already uses to choose between raw and consolidated output.
+    if after_open < before_open && after_bad <= before_bad {
+        welded
+    } else {
+        mesh
+    }
+}
+
 impl ClippingProcessor {
     /// Re-merge the kernel's per-plane fragments via 2D polygon union, then
     /// earcut each result back to triangles. CSG over-fragments host faces
@@ -107,7 +148,20 @@ impl ClippingProcessor {
     ///
     /// Returns the input mesh unchanged if the consolidate fails or yields
     /// nothing — never worse than the raw kernel output.
+    ///
+    /// Issue #3353: a family of tears survives the #3341 parity fix on
+    /// overlapping and rotated operand pairs, some already present in the RAW
+    /// kernel output (upstream of this function) rather than introduced by the
+    /// per-bucket re-triangulation below. [`close_micro_gaps`] is a bounded,
+    /// last-resort repair applied to whichever mesh this function is about to
+    /// return: it runs ONLY when that mesh already has open boundary edges, so
+    /// it can only ever change an already-torn result and is a byte-identical
+    /// no-op on the (overwhelming majority) watertight case.
     pub(crate) fn consolidate_coplanar(mesh: Mesh) -> Mesh {
+        close_micro_gaps(Self::consolidate_coplanar_inner(mesh))
+    }
+
+    fn consolidate_coplanar_inner(mesh: Mesh) -> Mesh {
         use crate::grid::NORMAL_QUANT_F64 as NORMAL_QUANT;
         use crate::triangulation::project_to_2d_with_basis;
         use i_overlay::core::fill_rule::FillRule;

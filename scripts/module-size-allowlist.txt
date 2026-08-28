@@ -6,10 +6,17 @@
 # count at the moment it was recorded. The gate fails if any of these grows
 # PAST its budget, or if a NEW file crosses 400 without an entry.
 #
-# The rule: SHRINK OR SPLIT. Budgets ratchet DOWN only — never raise one to
-# make a red gate green. When a file drops to <= 400, DELETE its row (the gate
-# prints a note telling you to); a stale exemption is permanent slack.
-# Only ADD a row with a written justification in the PR.
+# The rule: SHRINK OR SPLIT. Budgets ratchet DOWN by default: `--update`
+# refuses to raise a budget or add a row, so the regeneration command cannot
+# quietly undo the ratchet. A raise or a new row IS sanctioned, deliberately —
+# `--update --allow-raise`, justified per file in the PR. Either way it costs
+# the reviewable digest line described below. When a file drops to <= 400,
+# DELETE its row (the gate prints a note telling you to); a stale exemption is
+# permanent slack.
+#
+# `--update` re-records only the files your change touched. `--update --all`
+# re-records every row in the tree, annexing slack your change never created:
+# a deliberate sweep, and its own PR.
 #
 # Any edit here moves that row's SCOPE entry in ALLOWLIST_DIGESTS in
 # scripts/check-module-size.mjs, which must be updated in the same commit —

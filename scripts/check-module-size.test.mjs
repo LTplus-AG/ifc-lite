@@ -11,6 +11,12 @@
  * against it via `--root` / `--allowlist` / `--digests`, and asserts the exit
  * code AND the message. Nothing here reads the checker's source.
  *
+ * The `--update` scoping cases (#3398) need a REAL git repository, because the
+ * scope is derived from `git diff` against the merge base with main. They
+ * `git init` inside the same temp dir; `tmpdir()` has no enclosing repository,
+ * which is asserted as its own case so the derivation cannot quietly be reading
+ * this checkout's diff instead.
+ *
  * The cases that matter most are the ones where a gate could pass having
  * measured nothing — no files, a missing search root, an unreadable or empty
  * allowlist, an absent digest pin. Three scripts in this repo have shipped
@@ -37,15 +43,21 @@ import {
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CHECKER = join(ROOT, 'scripts', 'check-module-size.mjs');
 
+/** `lines` real lines: n-1 newlines plus a terminating one. */
+function source(lines) {
+  return `${Array.from({ length: lines }, (_, i) => `const l${i} = ${i};`).join('\n')}\n`;
+}
+
+function writeSource(dir, rel, lines) {
+  const full = join(dir, rel);
+  mkdirSync(dirname(full), { recursive: true });
+  writeFileSync(full, source(lines));
+}
+
 /** A tree of `{ 'packages/a/b.ts': <line count> }` plus an allowlist string. */
 function makeTree(files) {
   const dir = mkdtempSync(join(tmpdir(), 'module-size-'));
-  for (const [rel, lines] of Object.entries(files)) {
-    const full = join(dir, rel);
-    mkdirSync(dirname(full), { recursive: true });
-    // `lines` real lines: n-1 newlines plus a terminating one.
-    writeFileSync(full, `${Array.from({ length: lines }, (_, i) => `const l${i} = ${i};`).join('\n')}\n`);
-  }
+  for (const [rel, lines] of Object.entries(files)) writeSource(dir, rel, lines);
   for (const d of ['packages', 'apps']) mkdirSync(join(dir, d), { recursive: true });
   return dir;
 }
@@ -82,6 +94,29 @@ function tree(files) {
   const d = makeTree(files);
   cleanup.push(d);
   return d;
+}
+
+/**
+ * The same tree, but a REAL git repository with `files` committed on `main`.
+ *
+ * `--update` scopes itself to the files a change touched, and git is where that
+ * answer comes from, so these cases cannot be faked with a plain directory.
+ * `tmpdir()` has no enclosing repository (asserted below), which is what keeps
+ * the derivation hermetic rather than reading this checkout's own diff.
+ */
+function gitTree(files) {
+  const dir = tree(files);
+  const git = (...argv) => {
+    const res = spawnSync('git', ['-C', dir, ...argv], { encoding: 'utf8' });
+    assert.equal(res.status, 0, `git ${argv.join(' ')}: ${res.stdout}${res.stderr}`);
+    return res.stdout;
+  };
+  git('init', '-q', '-b', 'main');
+  git('config', 'user.email', 'ratchet@example.invalid');
+  git('config', 'user.name', 'ratchet test');
+  git('add', '--', ...Object.keys(files));
+  git('commit', '-qm', 'base');
+  return { dir, git };
 }
 
 test('clean tree passes and says how much it measured', () => {
@@ -236,7 +271,7 @@ const HEADER = '# header line kept verbatim\n';
 test('--update refuses to raise a budget, and writes nothing', () => {
   const dir = tree({ 'packages/a/big.ts': 501 });
   const before = `${HEADER}500 packages/a/big.ts\n`;
-  const { code, out, allowlistPath } = run(dir, before, { extra: ['--update'] });
+  const { code, out, allowlistPath } = run(dir, before, { extra: ['--update', '--all'] });
   assert.equal(code, 1, out);
   assert.match(out, /refusing to loosen the ratchet/);
   assert.match(out, /packages\/a\/big\.ts: 501 lines, budget 500 \(\+1\)/);
@@ -248,7 +283,7 @@ test('--update refuses to raise a budget, and writes nothing', () => {
 test('--update refuses to add a new exemption, and writes nothing', () => {
   const dir = tree({ 'packages/a/big.ts': 500, 'apps/v/new_god.tsx': 401 });
   const before = `${HEADER}500 packages/a/big.ts\n`;
-  const { code, out, allowlistPath } = run(dir, before, { extra: ['--update'] });
+  const { code, out, allowlistPath } = run(dir, before, { extra: ['--update', '--all'] });
   assert.equal(code, 1, out);
   assert.match(out, /new exemption/);
   assert.match(out, /apps\/v\/new_god\.tsx: 401 lines/);
@@ -262,7 +297,7 @@ test('--update DOES lower a slack budget and drop a stale row', () => {
   const { code, out, allowlistPath } = run(
     dir,
     `${HEADER}500 packages/a/big.ts\n420 packages/a/small.ts\n700 packages/a/gone.ts\n`,
-    { extra: ['--update'] },
+    { extra: ['--update', '--all'] },
   );
   assert.equal(code, 0, out);
   assert.equal(
@@ -275,7 +310,7 @@ test('--update DOES lower a slack budget and drop a stale row', () => {
 test('--update --allow-raise does raise it, and says so in the output', () => {
   const dir = tree({ 'packages/a/big.ts': 501 });
   const { code, out, allowlistPath } = run(dir, `${HEADER}500 packages/a/big.ts\n`, {
-    extra: ['--update', '--allow-raise'],
+    extra: ['--update', '--allow-raise', '--all'],
   });
   assert.equal(code, 0, out);
   assert.match(out, /RAISED:\s+packages\/a\/big\.ts: 501 lines, budget 500/);
@@ -295,7 +330,7 @@ test('VACUOUS: --update refuses to write an allowlist with no rows', () => {
   // read as a clean tree.
   const dir = tree({ 'packages/a/small.ts': 100 });
   const { code, out, allowlistPath } = run(dir, `${HEADER}500 packages/a/small.ts\n`, {
-    extra: ['--update'],
+    extra: ['--update', '--all'],
   });
   assert.equal(code, 1, out);
   assert.match(out, /refusing to write an allowlist with 0 rows/);
@@ -309,7 +344,7 @@ test('what --update writes is what the gate then accepts', () => {
   const { code, out, allowlistPath } = run(
     dir,
     `${HEADER}500 packages/a/big.ts\n900 packages/a/x.ts\n`,
-    { extra: ['--update'] },
+    { extra: ['--update', '--all'] },
   );
   assert.equal(code, 0, out);
   const written = readFileSync(allowlistPath, 'utf8');
@@ -340,7 +375,7 @@ test('--update re-pins ALLOWLIST_DIGESTS in the same run, one line per scope', (
   const { code, out, allowlistPath } = run(
     dir,
     `${HEADER}500 packages/a/big.ts\n500 apps/v/huge.ts\n`,
-    { extra: ['--update'] },
+    { extra: ['--update', '--all'] },
   );
   assert.equal(code, 0, out);
 
@@ -429,7 +464,7 @@ test('regenerating the real allowlist reproduces it byte for byte', () => {
   const { code, out } = run(dir, null, {
     allowlistPath: copy,
     digest: allowlistDigests(rows),
-    extra: ['--update'],
+    extra: ['--update', '--all'],
   });
   assert.equal(code, 0, out);
   assert.equal(readFileSync(copy, 'utf8'), realText);
@@ -443,4 +478,114 @@ test('the committed gate runs green against the real repo', () => {
   const out = `${res.stdout}${res.stderr}`;
   assert.equal(res.status, 0, out);
   assert.match(out, /check-module-size: OK \(\d+ files measured, \d+ allowlisted, 0 new over 400\)/);
+});
+
+// ---------------------------------------------------------------------------
+// --update is SCOPED to the change (#3398). Repo-wide re-recording rewrote 11
+// allowlist rows and moved 5 digest lines on an unmodified checkout of
+// afa717bcf, with `git status` clean, which is the mechanism behind the
+// two-PR collision #3398 was filed for.
+// ---------------------------------------------------------------------------
+
+const SCOPED_BEFORE = `${HEADER}   500 packages/a/big.ts\n   460 packages/b/slack.ts\n`;
+
+test('the temp dir the scoping cases build in has no enclosing git repository', () => {
+  // Anti-vacuity for every case below: if tmpdir() sat inside a repository,
+  // the derivation would read THAT repository's diff and the scoped runs would
+  // pass or fail for a reason nothing here controls.
+  const res = spawnSync('git', ['-C', tmpdir(), 'rev-parse', '--show-toplevel'], { encoding: 'utf8' });
+  assert.notEqual(res.status, 0, `tmpdir() is inside a git repo: ${res.stdout}`);
+});
+
+test('--update re-records the changed file and leaves the untouched row alone', () => {
+  const { dir, git } = gitTree({ 'packages/a/big.ts': 500, 'packages/b/slack.ts': 450 });
+  git('checkout', '-q', '-b', 'feature');
+  writeSource(dir, 'packages/a/big.ts', 520);
+
+  const { code, out, allowlistPath } = run(dir, SCOPED_BEFORE, { extra: ['--update', '--allow-raise'] });
+  assert.equal(code, 0, out);
+  // packages/b/slack.ts has 10 lines of headroom and this change never touched
+  // it. Byte-for-byte: its row keeps the committed 460, not the measured 450.
+  assert.equal(
+    readFileSync(allowlistPath, 'utf8'),
+    `${HEADER}   520 packages/a/big.ts\n   460 packages/b/slack.ts\n`,
+  );
+  assert.match(out, /scoped to \d+ changed file\(s\) vs main \([0-9a-f]{9}\)/);
+  assert.match(out, /pass --all to re-record every row/);
+});
+
+test('--update on an unchanged worktree writes the allowlist back unchanged', () => {
+  const { dir } = gitTree({ 'packages/a/big.ts': 500, 'packages/b/slack.ts': 450 });
+  const { code, out, allowlistPath } = run(dir, SCOPED_BEFORE, { extra: ['--update'] });
+  assert.equal(code, 0, out);
+  assert.equal(readFileSync(allowlistPath, 'utf8'), SCOPED_BEFORE);
+  assert.match(out, /0 lowered, 0 removed, 0 raised, 0 added/);
+});
+
+test('--all is the deliberate opt-out, and it DOES annex the untouched row', () => {
+  // The A/B against the case above, same fixture: the sweep is still available,
+  // it just has to be asked for.
+  const { dir } = gitTree({ 'packages/a/big.ts': 500, 'packages/b/slack.ts': 450 });
+  const { code, out, allowlistPath } = run(dir, SCOPED_BEFORE, { extra: ['--update', '--all'] });
+  assert.equal(code, 0, out);
+  assert.equal(
+    readFileSync(allowlistPath, 'utf8'),
+    `${HEADER}   500 packages/a/big.ts\n   450 packages/b/slack.ts\n`,
+  );
+  assert.match(out, /lowered:\s+packages\/b\/slack\.ts: 450 lines, budget 460/);
+  assert.match(out, /re-recording EVERY row in the tree/);
+});
+
+test('--update outside a git worktree fails closed and names --all', () => {
+  // Falling back to repo-wide here is the annexation again, in the one place
+  // nobody is reading the output.
+  const dir = tree({ 'packages/a/big.ts': 450, 'packages/b/slack.ts': 450 });
+  const { code, out, allowlistPath } = run(dir, SCOPED_BEFORE, { extra: ['--update'] });
+  assert.equal(code, 1, out);
+  assert.match(out, /deriving those needs git/);
+  assert.match(out, /is not inside a git worktree/);
+  assert.match(out, /pass\n--all for a deliberate repo-wide regenerate/);
+  assert.equal(readFileSync(allowlistPath, 'utf8'), SCOPED_BEFORE);
+});
+
+test('a god file the change ADDED but never committed is in scope', () => {
+  const { dir } = gitTree({ 'packages/a/big.ts': 500 });
+  writeSource(dir, 'packages/a/new_god.ts', 401);
+  const before = `${HEADER}   500 packages/a/big.ts\n`;
+
+  const refused = run(dir, before, { extra: ['--update'] });
+  assert.equal(refused.code, 1, refused.out);
+  assert.match(refused.out, /packages\/a\/new_god\.ts: 401 lines \(new exemption\)/);
+  assert.equal(readFileSync(refused.allowlistPath, 'utf8'), before);
+
+  const allowed = run(dir, before, { allowlistPath: refused.allowlistPath, extra: ['--update', '--allow-raise'] });
+  assert.equal(allowed.code, 0, allowed.out);
+  assert.equal(
+    readFileSync(allowed.allowlistPath, 'utf8'),
+    `${HEADER}   500 packages/a/big.ts\n   401 packages/a/new_god.ts\n`,
+  );
+});
+
+test('--all without --update is refused rather than silently ignored', () => {
+  const dir = tree({ 'packages/a/big.ts': 500 });
+  const { code, out } = run(dir, `${HEADER}500 packages/a/big.ts\n`, { extra: ['--all'] });
+  assert.equal(code, 1, out);
+  assert.match(out, /--all only means something with --update/);
+});
+
+test('--update refuses a --root that is not the top of its worktree', () => {
+  // A tree NESTED in some other repository must not inherit that repository's
+  // diff: git answers in paths relative to the outer top, which match nothing
+  // the walk measured, so every row would silently carry through and the run
+  // would report a scope it never actually had.
+  const { dir } = gitTree({ 'packages/a/big.ts': 500 });
+  const nested = join(dir, 'nested');
+  writeSource(nested, 'packages/a/big.ts', 500);
+  writeSource(nested, 'packages/b/slack.ts', 450);
+  mkdirSync(join(nested, 'apps'), { recursive: true });
+
+  const { code, out, allowlistPath } = run(nested, SCOPED_BEFORE, { extra: ['--update'] });
+  assert.equal(code, 1, out);
+  assert.match(out, /is not the top of its git worktree/);
+  assert.equal(readFileSync(allowlistPath, 'utf8'), SCOPED_BEFORE);
 });

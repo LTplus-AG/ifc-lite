@@ -31,6 +31,7 @@ import {
   allowlistScope,
   evaluate,
   staleRows,
+  planUpdate,
 } from './module-size-ratchet.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -288,4 +289,57 @@ test('the digest agrees with the Rust ratchet, byte for byte', () => {
   // that differed from the Rust one could still produce matching digests if
   // every row happened to land in one bucket.
   assert.ok(computed.size > 1, 'the Rust allowlist must span more than one scope');
+});
+
+// ---------------------------------------------------------------------------
+// planUpdate scoping (#3398). Repo-wide re-recording only ever TIGHTENED rows,
+// which is why it read as harmless — and why it silently pulled rows belonging
+// to other people's changes into whichever PR regenerated next.
+// ---------------------------------------------------------------------------
+
+test('planUpdate carries an untouched row at its COMMITTED budget', () => {
+  const files = [
+    { rel: 'packages/a/big.ts', lines: 520 },
+    { rel: 'packages/b/slack.ts', lines: 450 },
+  ];
+  const allowlist = new Map([
+    ['packages/a/big.ts', 500],
+    ['packages/b/slack.ts', 460],
+  ]);
+
+  const scoped = planUpdate(files, allowlist, new Set(['packages/a/big.ts']));
+  assert.equal(scoped.next.get('packages/a/big.ts'), 520, 'the changed file is re-recorded');
+  assert.equal(scoped.next.get('packages/b/slack.ts'), 460, 'the untouched row keeps its committed budget');
+  assert.deepEqual(scoped.raised, ['  packages/a/big.ts: 520 lines, budget 500 (+20)']);
+  assert.deepEqual(scoped.lowered, [], 'an untouched row is not this change to make');
+
+  // The control, and the reason the assertions above are a real distinction:
+  // repo-wide sees the same two files and annexes the second one.
+  const wide = planUpdate(files, allowlist, null);
+  assert.equal(wide.next.get('packages/b/slack.ts'), 450);
+  assert.deepEqual(wide.lowered, ['  packages/b/slack.ts: 450 lines, budget 460 (-10)']);
+});
+
+test('planUpdate drops a vanished row only when the change touched that path', () => {
+  const files = [{ rel: 'packages/a/big.ts', lines: 500 }];
+  const allowlist = new Map([
+    ['packages/a/big.ts', 500],
+    ['packages/c/deleted.ts', 700],
+    ['packages/d/elsewhere.ts', 800],
+  ]);
+
+  const scoped = planUpdate(files, allowlist, new Set(['packages/c/deleted.ts']));
+  assert.equal(scoped.next.has('packages/c/deleted.ts'), false, 'this change deleted it, so its row goes');
+  assert.equal(
+    scoped.next.get('packages/d/elsewhere.ts'),
+    800,
+    'a row that vanished for someone ELSE is still their exemption',
+  );
+  assert.deepEqual(scoped.removed, [
+    '  packages/c/deleted.ts (budget 700) no longer matches a tracked file',
+  ]);
+
+  const wide = planUpdate(files, allowlist, null);
+  assert.equal(wide.next.has('packages/d/elsewhere.ts'), false);
+  assert.equal(wide.removed.length, 2);
 });

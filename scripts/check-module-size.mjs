@@ -56,14 +56,16 @@
  *
  * Run: node scripts/check-module-size.mjs
  * Regenerate: pnpm lint:module-size-baseline   (node scripts/check-module-size.mjs --update)
+ * Repo-wide sweep, its own PR: node scripts/check-module-size.mjs --update --all
  *
  * An absolute-budget ratchet fights a moving main by construction: any
  * long-lived branch accumulates a red made of files it never touched, and a
  * contributor reading a list of unfamiliar filenames reasonably concludes the
- * gate is noise. `--update` is the supported way to re-record, so that
- * hand-editing the allowlist stops being the only one — a hand-edited ratchet
- * is one distracted afternoon from someone raising a budget instead of
- * splitting a file, which is the exact thing this gate exists to prevent.
+ * gate is noise. `--update` is the supported way to re-record the rows your
+ * change touched, so that hand-editing the allowlist stops being the only one —
+ * a hand-edited ratchet is one distracted afternoon from someone raising a
+ * budget instead of splitting a file, which is the exact thing this gate exists
+ * to prevent.
  *
  * `--update` refuses, by itself, to do the one thing that would make it a
  * loophole: it will not raise a budget or add a new exemption. Those need
@@ -71,16 +73,31 @@
  * that shows up in the shell history and still costs a reviewable line in the
  * digest pin. `check-unused-locals.mjs --update` has no such safeguard.
  *
+ * `--update` IS SCOPED to the files your change touched (#3398), derived from
+ * `git diff` against the merge base with main plus anything untracked. It used
+ * to re-record every row in the tree, which sounds harmless — it only ever
+ * TIGHTENED rows it was not asked about — and is not: `slack` and `shrunk` are
+ * advisory precisely so a shrink landing on main cannot redden an open PR, so
+ * headroom accumulates on main and the next `--update` annexes all of it.
+ * Measured on an unmodified checkout of afa717bcf: 11 rows rewritten and 5
+ * digest lines moved with a clean `git status`. Two PRs that regenerate in the
+ * same window then carry the identical hunks and conflict over changes neither
+ * of them made, which is the collision #3398 was filed for. `--all` is the
+ * deliberate repo-wide regenerate, and it belongs in its own PR.
+ *
  * Flags (development and the test harness only; CI would pass none):
  *   --root <dir>       scan this tree instead of the repo
  *   --allowlist <path> read this allowlist instead of the committed one
  *   --digests <json>   compare against this scope->digest object instead of
  *                      ALLOWLIST_DIGESTS
- *   --update           rewrite the allowlist and the digest pin from the tree
+ *   --update           re-record the rows your change touched, and re-pin
  *   --allow-raise      with --update, permit budget raises and new exemptions
+ *   --all              with --update, re-record EVERY row in the tree, not
+ *                      only the changed ones (and skip the git derivation)
  */
 
-import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -206,6 +223,7 @@ function parseArgs(argv) {
     digests: ALLOWLIST_DIGESTS,
     update: false,
     allowRaise: false,
+    all: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const flag = argv[i];
@@ -226,13 +244,17 @@ function parseArgs(argv) {
       out.update = true;
     } else if (flag === '--allow-raise') {
       out.allowRaise = true;
+    } else if (flag === '--all') {
+      out.all = true;
     } else {
       fail(`unknown argument: ${flag}`);
     }
   }
   // `--allow-raise` alone reads as "budgets may go up" and does nothing, which
-  // is the worst way for a safety flag to behave. Refuse it instead.
+  // is the worst way for a safety flag to behave. Refuse it instead, and refuse
+  // a bare `--all` for the same reason: it reads as "check everything".
   if (out.allowRaise && !out.update) fail('--allow-raise only means something with --update');
+  if (out.all && !out.update) fail('--all only means something with --update');
   if (out.allowlist === null) out.allowlist = join(out.root, 'scripts', 'module-size-allowlist.txt');
   return out;
 }
@@ -272,6 +294,66 @@ function safeIsDir(path) {
   } catch {
     return false;
   }
+}
+
+function safeRealpath(path) {
+  try {
+    return realpathSync(path);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The paths this worktree changed relative to its merge base with main:
+ * committed, staged, unstaged and untracked, all relative to the repo top.
+ * `{ changed: Set, base: string }` on success, `{ error }` on failure.
+ *
+ * Git is the only honest discriminator between slack THIS change created and
+ * slack inherited from main, which is why `--update` derives the scope instead
+ * of taking a `--scope` flag: a flag nobody passes is the annexation with extra
+ * steps.
+ *
+ * It FAILS CLOSED rather than falling back to repo-wide. A silent fallback is
+ * the annexation again, in the one context — a shallow clone, a detached
+ * checkout, a script — where nobody is reading the output, and "absence read as
+ * success" is the shape this family of gates exists to avoid.
+ */
+function changedFiles(root) {
+  const git = (...argv) => spawnSync('git', ['-C', root, ...argv], { encoding: 'utf8' });
+  const top = git('rev-parse', '--show-toplevel');
+  if (top.status !== 0) return { error: `${root} is not inside a git worktree` };
+  // Compare resolved paths: `git` answers with the physical path, while --root
+  // may arrive through a symlink (macOS /var -> /private/var). Requiring the
+  // top to BE the scanned root stops a synthetic tree nested inside some other
+  // repository from silently inheriting that repository's diff.
+  const toplevel = top.stdout.trim();
+  if (safeRealpath(toplevel) !== safeRealpath(root)) {
+    return { error: `${root} is not the top of its git worktree (that is ${toplevel})` };
+  }
+  let base = null;
+  for (const ref of ['origin/main', 'main']) {
+    const merged = git('merge-base', ref, 'HEAD');
+    const sha = merged.stdout.trim();
+    if (merged.status === 0 && sha !== '') {
+      base = { ref, sha };
+      break;
+    }
+  }
+  if (base === null) return { error: 'no merge base with origin/main or main' };
+  const nulSeparated = (res) => (res.status === 0 ? res.stdout.split('\0').filter(Boolean) : null);
+  // `--no-renames` so a renamed module reports BOTH paths. Rename detection
+  // reports only the destination, and the source's row is exactly the one that
+  // has to be dropped.
+  const diffed = nulSeparated(git('diff', '--name-only', '--no-renames', '-z', base.sha));
+  // Untracked too: a god file written but not yet committed is the single most
+  // likely thing a contributor is running this for.
+  const untracked = nulSeparated(git('ls-files', '--others', '--exclude-standard', '-z'));
+  if (diffed === null || untracked === null) return { error: 'git could not list the changed files' };
+  return {
+    changed: new Set([...diffed, ...untracked]),
+    base: `${base.ref} (${base.sha.slice(0, 9)})`,
+  };
 }
 
 const args = parseArgs(process.argv.slice(2));
@@ -327,7 +409,32 @@ if (files.length === 0) {
 }
 
 if (args.update) {
-  const { next, raised, added, lowered, removed } = planUpdate(files, allowlist);
+  // Scoped by default; `--all` is the deliberate act, so the annexation can
+  // only happen when someone asked for it and said so in a PR.
+  let changed = null;
+  let scopeNote =
+    'check-module-size: --all: re-recording EVERY row in the tree, ' +
+    'including rows this change never touched.';
+  if (!args.all) {
+    const derived = changedFiles(args.root);
+    if (derived.error !== undefined) {
+      fail(
+        `--update re-records only the files your change touched, and deriving those needs git.\n\n` +
+          `  ${derived.error}\n\n` +
+          `Run it at the top of a worktree with an \`origin/main\` or \`main\` base, or pass\n` +
+          `--all for a deliberate repo-wide regenerate — which also re-records every stale\n` +
+          `row in the tree, so it belongs in its own PR rather than bundled into yours.\n\n` +
+          `Nothing was written.`,
+      );
+    }
+    changed = derived.changed;
+    scopeNote =
+      `check-module-size: scoped to ${changed.size} changed file(s) vs ${derived.base}; ` +
+      `pass --all to re-record every row.`;
+  }
+  console.log(scopeNote);
+
+  const { next, raised, added, lowered, removed } = planUpdate(files, allowlist, changed);
 
   const loosening = [...raised, ...added];
   if (loosening.length > 0 && !args.allowRaise) {

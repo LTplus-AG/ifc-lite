@@ -242,8 +242,20 @@ export function staleRows(allowlist) {
  * `next` is the whole allowlist that would be written: every measured file over
  * the limit, at its measured count. A file at or under the limit gets no row,
  * which is what deletes a stale exemption.
+ *
+ * `changed` SCOPES the re-recording to the paths a change actually touched
+ * (#3398). Pass `null` for the repo-wide behaviour; pass a Set of relative
+ * paths and every other row is carried into `next` at its COMMITTED budget and
+ * contributes to none of the four lists. Scoping is not a nicety: `slack` and
+ * `shrunk` are advisory by design (see `evaluate`), so headroom accumulates on
+ * main until some later `--update` — run by whoever, for whatever reason —
+ * re-records all of it. Measured on an unmodified checkout of afa717bcf: 11
+ * rows rewritten and 5 digest lines moved with a clean `git status`. Two PRs
+ * regenerating in one window then carry identical hunks and collide over
+ * changes neither of them made, which is the collision #3398 was filed for.
  */
-export function planUpdate(files, allowlist) {
+export function planUpdate(files, allowlist, changed = null) {
+  const inScope = (rel) => changed === null || changed.has(rel);
   const measured = new Map(files.map((f) => [f.rel, f.lines]));
   const next = new Map();
   const raised = [];
@@ -253,6 +265,10 @@ export function planUpdate(files, allowlist) {
 
   for (const { rel, lines } of files) {
     const budget = allowlist.get(rel);
+    if (!inScope(rel)) {
+      if (budget !== undefined) next.set(rel, budget);
+      continue;
+    }
     if (lines <= LIMIT) {
       if (budget !== undefined) removed.push(`  ${rel}: now ${lines} lines (row deleted)`);
       continue;
@@ -262,8 +278,13 @@ export function planUpdate(files, allowlist) {
     else if (lines > budget) raised.push(`  ${rel}: ${lines} lines, budget ${budget} (+${lines - budget})`);
     else if (lines < budget) lowered.push(`  ${rel}: ${lines} lines, budget ${budget} (-${budget - lines})`);
   }
+  // A row whose file the walk never saw: gone, renamed, or now exempt. Dropping
+  // it is only OUR call when the change touched that path; otherwise the row
+  // stays, because a row deleted here is an exemption someone else still needs.
   for (const [rel, budget] of allowlist) {
-    if (!measured.has(rel)) removed.push(`  ${rel} (budget ${budget}) no longer matches a tracked file`);
+    if (measured.has(rel)) continue;
+    if (inScope(rel)) removed.push(`  ${rel} (budget ${budget}) no longer matches a tracked file`);
+    else next.set(rel, budget);
   }
 
   raised.sort();

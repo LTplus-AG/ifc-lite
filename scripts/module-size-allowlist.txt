@@ -263,7 +263,7 @@
    470 packages/mcp/src/tools/layer-review.ts
    440 packages/mcp/src/tools/mutate.ts
    627 packages/mcp/src/tools/query.ts
-   699 packages/mcp/src/tools/viewer.ts
+   696 packages/mcp/src/tools/viewer.ts
    413 packages/mcp/src/transport/http.ts
    465 packages/merge/src/component-state.ts
    530 packages/merge/src/three-way.ts

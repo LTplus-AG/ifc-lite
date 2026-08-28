@@ -159,6 +159,22 @@ const viewerStatus: Tool = {
 
 // ── visibility / paint ────────────────────────────────────────────────────
 
+/**
+ * The selector properties every entity-targeting viewer tool accepts, matching
+ * exactly what `resolveTargetRefs` reads. Shared rather than repeated: the
+ * singular `global_id`/`express_id` were handled by `resolveTargetRefs` but
+ * missing from three of the five schemas, and with `additionalProperties:
+ * false` that made an advertised selector unreachable.
+ */
+const TARGET_SELECTOR_PROPS = {
+  model_id: { type: 'string' },
+  type: { type: 'string' },
+  global_ids: { type: 'array', items: { type: 'string' } },
+  express_ids: { type: 'array', items: { type: 'integer' } },
+  global_id: { type: 'string' },
+  express_id: { type: 'integer' },
+} as const;
+
 const viewerColorize: Tool = {
   name: 'viewer_colorize',
   description: 'Paint a set of entities with a color. Pass `type`, `global_ids`, or `express_ids` to pick the set; pass `color` as [r,g,b]/[r,g,b,a] (0–1), a #hex, or a named color.',
@@ -166,12 +182,7 @@ const viewerColorize: Tool = {
   inputSchema: {
     type: 'object',
     properties: {
-      model_id: { type: 'string' },
-      type: { type: 'string' },
-      global_ids: { type: 'array', items: { type: 'string' } },
-      express_ids: { type: 'array', items: { type: 'integer' } },
-      global_id: { type: 'string' },
-      express_id: { type: 'integer' },
+      ...TARGET_SELECTOR_PROPS,
       color: { description: '[r,g,b], [r,g,b,a], hex, or named color.' },
       reset_others: { type: 'boolean', default: false, description: 'When true, reset all other element colors first.' },
     },
@@ -198,12 +209,7 @@ const viewerIsolate: Tool = {
   inputSchema: {
     type: 'object',
     properties: {
-      model_id: { type: 'string' },
-      type: { type: 'string' },
-      global_ids: { type: 'array', items: { type: 'string' } },
-      express_ids: { type: 'array', items: { type: 'integer' } },
-      global_id: { type: 'string' },
-      express_id: { type: 'integer' },
+      ...TARGET_SELECTOR_PROPS,
     },
     additionalProperties: false,
   },
@@ -225,12 +231,7 @@ const viewerHide: Tool = {
   inputSchema: {
     type: 'object',
     properties: {
-      model_id: { type: 'string' },
-      type: { type: 'string' },
-      global_ids: { type: 'array', items: { type: 'string' } },
-      express_ids: { type: 'array', items: { type: 'integer' } },
-      global_id: { type: 'string' },
-      express_id: { type: 'integer' },
+      ...TARGET_SELECTOR_PROPS,
     },
     additionalProperties: false,
   },
@@ -251,12 +252,7 @@ const viewerShow: Tool = {
   inputSchema: {
     type: 'object',
     properties: {
-      model_id: { type: 'string' },
-      type: { type: 'string' },
-      global_ids: { type: 'array', items: { type: 'string' } },
-      express_ids: { type: 'array', items: { type: 'integer' } },
-      global_id: { type: 'string' },
-      express_id: { type: 'integer' },
+      ...TARGET_SELECTOR_PROPS,
     },
     additionalProperties: false,
   },
@@ -292,12 +288,7 @@ const viewerFlyTo: Tool = {
   inputSchema: {
     type: 'object',
     properties: {
-      model_id: { type: 'string' },
-      type: { type: 'string' },
-      global_ids: { type: 'array', items: { type: 'string' } },
-      express_ids: { type: 'array', items: { type: 'integer' } },
-      global_id: { type: 'string' },
-      express_id: { type: 'integer' },
+      ...TARGET_SELECTOR_PROPS,
     },
     additionalProperties: false,
   },

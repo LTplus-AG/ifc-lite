@@ -181,7 +181,7 @@ const ALLOWLIST_DIGESTS = {
   'packages/ifcx': '1615700849439065844',
   'packages/lens': '14019022785021391214',
   'packages/lists': '3649993370543459600',
-  'packages/mcp': '5906442248422039423',
+  'packages/mcp': '16463902778981609324',
   'packages/merge': '4328451182457757363',
   'packages/mutations': '17485196327897850153',
   'packages/oauth-pkce': '6839945177005186906',

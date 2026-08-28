@@ -841,6 +841,15 @@ jobs:
       - name: Check CSV escaper gate regressions
         run: node --test scripts/check-csv-escaper-copies.test.mjs
 
+      # Same precedent, for the STEP (ISO 10303-21) string-literal escaper
+      # (#3300, second half): the TypeScript and Rust implementations cannot
+      # share code, so each is pinned against the other via a shared vector
+      # fixture instead of a hand-kept copy of the other side's behaviour.
+      - name: Check for hand-rolled STEP string escapers
+        run: node scripts/check-step-escaper-copies.mjs
+      - name: Check STEP escaper gate regressions
+        run: node --test scripts/check-step-escaper-copies.test.mjs
+
       # `scripts/lib/vitest-timeout-audit.mjs` (#2948) replaced
       # `audit-test-timeouts.mjs`, which was deleted in the same change rather
       # than left beside it: two hand-written JS/TS lexers for one question is

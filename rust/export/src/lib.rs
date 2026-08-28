@@ -53,6 +53,15 @@ mod step_json;
 mod step_text;
 mod usd;
 
+// `step_text::escape` was `pub(crate)`, so an external integration-test
+// binary (`rust/export/tests/step_escape_parity.rs`) could not reach it: it
+// now needs `pub` visibility to be pinned against the shared vectors in
+// `tests/fixtures/step_escape_vectors.json`, the same way `csv_cell::escape_csv_cell`
+// is pinned by `tests/csv_cell_parity.rs` (issue #3300, second half). Re-export
+// just the one function, not `pub mod step_text` -- `step_text`'s other items
+// stay crate-private, so this widens the public surface by exactly one symbol.
+pub use step_text::escape as escape_step_string;
+
 pub use collada::export_collada_from_meshes;
 pub use csv::{export_csv, CsvMode, CsvOptions};
 pub use dfjson::DfjsonStats;

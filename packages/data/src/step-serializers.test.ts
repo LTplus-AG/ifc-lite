@@ -5,7 +5,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   enumVal,
-  escapeStepString,
   formatStepReal,
   generateHeader,
   generateStepFileWithRegistry,
@@ -233,81 +232,14 @@ describe('toStepLineWithRegistry / generateStepFileWithRegistry', () => {
 });
 
 
-/**
- * `escapeStepString` is now the ONE TypeScript implementation (#3300):
- * `@ifc-lite/export`'s `step-serialization.ts` re-exports this symbol rather
- * than keeping its own copy, so this suite is the only place TS-side coverage
- * needs to live. `ifc_lite_export::step_text::escape` stays a separate,
- * hand-kept Rust implementation — a wasm adapter to share it is out of scope
- * here — so the rule below (ONE SPACE PER CONTROL CHARACTER, not one per run,
- * #3284 item 2) is pinned against the Rust half's observed output rather than
- * shared code. Exercised through the two public funnels that use it —
- * `serializeValue` for an attribute value and `generateHeader` for a header
- * field — plus `escapeStepString` itself directly, now that it is exported.
- */
-describe('control-character runs are one space each (#3284, parity with the Rust escape)', () => {
-  const RUST_VECTORS: ReadonlyArray<readonly [string, string, string]> = [
-    ['tab run', 'a\t\t\tb', 'a   b'],
-    ['crlf', 'a\r\nb', 'a  b'],
-    ['mixed C0 + DEL', 'a\u0000\u000B\u001F\u007Fb', 'a    b'],
-    ['single control char', 'a\tb', 'a b'],
-    ['quote doubling around a run', "O'Brien\t\tx", "O''Brien  x"],
-    // Negative control: nothing to replace, byte-identical output.
-    ['no control chars', 'plain text 123', 'plain text 123'],
-  ];
-
-  it.each(RUST_VECTORS)('serializeValue escapes %s as the Rust half does', (_l, input, expected) => {
-    expect(serializeValue(input)).toBe(`'${expected}'`);
-  });
-
-  it.each(RUST_VECTORS)('generateHeader escapes %s as the Rust half does', (_l, input, expected) => {
-    const line = generateHeader({ schema: 'IFC4', author: [input], timeStamp: 'TS' })
-      .split('\n')
-      .find((l) => l.startsWith('FILE_NAME'));
-    expect(line).toContain(`('${expected}')`);
-  });
-
-  it('keeps the run length and still emits no control byte, at every length', () => {
-    // Both directions: same length as the input (one space per control char),
-    // and no control character survives — a run left intact would also keep
-    // its length, so neither assertion alone would fail the old collapse.
-    for (const n of [1, 2, 3, 8]) {
-      const serialized = serializeValue(`a${'\n'.repeat(n)}b`);
-      expect(serialized).toBe(`'a${' '.repeat(n)}b'`);
-      // eslint-disable-next-line no-control-regex
-      expect(serialized).not.toMatch(/[\u0000-\u001F\u007F]/);
-    }
-  });
-});
-
-
-/**
- * `escapeStepString` exported directly (#3300): the two TS copies of the
- * encode half collapsed into this one, re-exported by `@ifc-lite/export`.
- * Awkward inputs a caller could plausibly pass through -- a bare backslash,
- * an apostrophe, a BMP non-ASCII character, text that already looks like a
- * `\X2\` directive, and the empty string.
- */
-describe('escapeStepString direct (#3300)', () => {
-  it('doubles a lone backslash', () => {
-    expect(escapeStepString('a\\b')).toBe('a\\\\b');
-  });
-
-  it('doubles a lone apostrophe', () => {
-    expect(escapeStepString("a'b")).toBe("a''b");
-  });
-
-  it('encodes a non-ASCII character as an \\X2\\ directive', () => {
-    expect(escapeStepString('\u00C4')).toBe('\\X2\\00C4\\X0\\');
-  });
-
-  it('doubles the backslashes of text that already looks like a directive', () => {
-    // The input is literal text, not an actual directive: every backslash in
-    // it must be doubled like any other, or a reader would decode it as one.
-    expect(escapeStepString('a\\X2\\00FC\\X0\\b')).toBe('a\\\\X2\\\\00FC\\\\X0\\\\b');
-  });
-
-  it('returns the empty string unchanged', () => {
-    expect(escapeStepString('')).toBe('');
-  });
-});
+// The `escapeStepString`-vs-Rust literal-vector tests that used to live here
+// (`RUST_VECTORS`, in a `describe('control-character runs are one space each
+// (#3284, parity with the Rust escape)', ...)` block) and the
+// `describe('escapeStepString direct (#3300)', ...)` block are now the shared
+// vectors in `../../../rust/export/tests/fixtures/step_escape_vectors.json`,
+// pinned on this side by `./step-escape.parity.test.ts` and on the Rust side
+// by `rust/export/tests/step_escape_parity.rs` (#3300, second half). A
+// hand-kept copy of the other language's behaviour only resets the clock on
+// the drift it exists to catch -- the reasoning behind the CSV-cell-escaper
+// precedent this follows: `rust/export/tests/fixtures/csv_cell_vectors.json`
+// / `packages/export/src/csv-cell.parity.test.ts`.

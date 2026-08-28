@@ -46,7 +46,7 @@ pub(crate) fn merge_edits<'a>(
 /// raw UTF-8 multi-byte sequence into mojibake or a broken parse; this exact
 /// writer shape is a reported, reproduced defect in real IFC tooling
 /// (IfcOpenShell#699/#1016; files rejected by Solibri).
-pub(crate) fn escape(s: &str) -> String {
+pub fn escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
         match c {

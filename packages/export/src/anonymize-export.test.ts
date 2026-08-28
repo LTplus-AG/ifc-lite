@@ -102,7 +102,7 @@ function lineArgs(content: string, id: number): string[] {
  * Wall A (#6, storey 1) has a geometry representation (#100/#101/#102/#103),
  * an opening (#8) filled by a window (#9), an `IfcWallType` (#10) carrying
  * its own `Pset_WallTypeCommon` (#11/#12), and shares `Pset_WallCommon`
- * (#13/#15, via #89) and a material (#40, via #44) with Wall B (#7, storey
+ * (#13/#15/#14, via #89) and a material (#40, via #44) with Wall B (#7, storey
  * 2). #88 structurally connects the two walls. #90 (`IfcElementAssembly`)
  * aggregates a plate (#91) via #92.
  */
@@ -146,8 +146,9 @@ DATA;
 #10=IFCWALLTYPE('${guid(10)}',#74,'WallType Solace',$,'Occurrence Vermilion',(#11),$,$,'ElementType Cerulean',.NOTDEFINED.);
 #11=IFCPROPERTYSET('${guid(11)}',#74,'Pset_WallTypeCommon',$,(#12));
 #12=IFCPROPERTYSINGLEVALUE('IsExternal',$,IFCBOOLEAN(.F.),$);
-#13=IFCPROPERTYSET('${guid(13)}',#74,'Pset_WallCommon',$,(#15));
+#13=IFCPROPERTYSET('${guid(13)}',#74,'Pset_WallCommon',$,(#15,#14));
 #15=IFCPROPERTYSINGLEVALUE('LoadBearing',$,IFCBOOLEAN(.T.),$);
+#14=IFCPROPERTYSINGLEVALUE('Owner',$,IFCTEXT('jane.doe@acme-corp.example'),$);
 #40=IFCMATERIAL('Concrete',$,'Category Marigold');
 #90=IFCELEMENTASSEMBLY('${guid(90)}',#74,'Assembly Cobalt',$,$,$,$,$,$,.RIGID.);
 #91=IFCPLATE('${guid(91)}',#74,'Plate Vertex',$,$,$,$,$,$);
@@ -174,7 +175,7 @@ END-ISO-10303-21;`;
  *  storeys, all three walls, the opening/window, the wall type, the shared
  *  material association, the full relationship graph connecting them, and
  *  the assembly/plate pair. Deliberately EXCLUDES the standalone
- *  `Pset_WallCommon` (#13/#15/#89) and the wall type's own pset (#11/#12) —
+ *  `Pset_WallCommon` (#13/#15/#14/#89) and the wall type's own pset (#11/#12) —
  *  psets are dropped by default, the same way a caller's own
  *  `RelatedEntityOptions.IfcRelDefinesByProperties` default (`false`) would
  *  never have added them to `includedIds` in the first place. Every id here
@@ -391,6 +392,59 @@ describe('exportAnonymizedSubset — type-owned property sets (IfcTypeObject.Has
   });
 });
 
+describe('exportAnonymizedSubset — occurrence-owned property sets reaching includedIds directly (#3351 item 2, SDK path)', () => {
+  // #13 (Pset_WallCommon) and #89 (the IfcRelDefinesByProperties naming it)
+  // land in `includedIds` here the way a direct SDK caller would produce
+  // them — e.g. `collectRelatedEntities(store, seeds, { IfcRelDefinesByProperties: true })`
+  // adds exactly the pset id and its relationship id, never the individual
+  // property entities (#14/#15 reach the export only through #13's own
+  // `HasProperties` forward closure, same as any other non-root entity) —
+  // NOT through the viewer's coupled toggles or the CLI's `--keep-psets`,
+  // which is exactly the gap #3361 left open: it only fixed the two UI
+  // entry points, not this orchestrator.
+  const includedWithPset = new Set([1, 6, 13, 89]);
+
+  it('excludes the property set entirely by default, including the identifying value it carried', async () => {
+    const store = await parse(FIXTURE_MODEL);
+    const result = exportAnonymizedSubset(store, includedWithPset, { guidRandom: seededRandom(11) });
+    const content = decode(result.content);
+
+    // The identifying VALUE (not a Name/Tag field, and not scrubbed by any
+    // pseudonymization pass — see `applyScrub`'s own doc on why values are
+    // deliberately left alone) must not survive at all: this only holds if
+    // the pset was excluded, not merely name-scrubbed.
+    expect(content).not.toContain('jane.doe@acme-corp.example');
+    expect(content).not.toContain('IFCPROPERTYSET');
+    expect(content).not.toContain('IFCRELDEFINESBYPROPERTIES');
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
+  it('reports the excluded property set ids distinctly, not just a silent drop', async () => {
+    const store = await parse(FIXTURE_MODEL);
+    const result = exportAnonymizedSubset(store, includedWithPset, { guidRandom: seededRandom(11) });
+
+    expect(result.stats.droppedPropertySetIds).toEqual([13]);
+    // The relationship that named ONLY the dropped pset (a single-valued,
+    // mandatory reference) is pruned too, and reported through the existing
+    // `prunedRelationshipIds` channel — the same one #3361 already added,
+    // not a second parallel one.
+    expect(result.stats.prunedRelationshipIds).toContain(89);
+  });
+
+  it('keeps the property set, values included, when keepPropertySets is true', async () => {
+    const store = await parse(FIXTURE_MODEL);
+    const result = exportAnonymizedSubset(store, includedWithPset, {
+      keepPropertySets: true,
+      guidRandom: seededRandom(11),
+    });
+    const content = decode(result.content);
+
+    expect(result.stats.droppedPropertySetIds).toEqual([]);
+    expect(content).toContain('jane.doe@acme-corp.example');
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+});
+
 describe('exportAnonymizedSubset — relationship list trimming (partial exclusion) vs relationship pruning (total exclusion)', () => {
   it('trims an excluded member out of a SET/LIST relationship attribute rather than dropping the whole relationship', async () => {
     const store = await parse(FIXTURE_MODEL);
@@ -398,7 +452,15 @@ describe('exportAnonymizedSubset — relationship list trimming (partial exclusi
     // still has a survivor (#6), so it is never pruned — the emitted LIST
     // just loses the excluded member, the existing (unrelated to this
     // feature) `filterHiddenRefsFromRelationshipLine` behaviour.
-    const result = exportAnonymizedSubset(store, new Set([1, 6, 13, 89]), { guidRandom: seededRandom(9) });
+    // `keepPropertySets: true` keeps #13 (#89's RelatingPropertyDefinition,
+    // a single-valued reference) in the subset: this test is about SET/LIST
+    // trimming on RelatedObjects, not about the pset-drop behaviour covered
+    // in "property sets reaching includedIds directly" below, and without
+    // it #13 would itself be excluded by default, pruning #89 entirely.
+    const result = exportAnonymizedSubset(store, new Set([1, 6, 13, 89]), {
+      keepPropertySets: true,
+      guidRandom: seededRandom(9),
+    });
     const content = decode(result.content);
 
     expect(result.stats.prunedRelationshipIds).not.toContain(89);

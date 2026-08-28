@@ -540,10 +540,18 @@ intended common case:
 The authoring tool's *name* is kept by decision (it is debugging signal) but
 its version/build string is not — vendors embed the licence region there
 (`26.0.0 NOR FULL`). Property/quantity *names* are kept whenever
-`keepPropertySets` is on. Those are the residual leak surface; review a file
-before sharing it externally, and never name the download after the source
-model. The CLI equivalent is `ifc-lite anonymize` (see the
-[CLI guide](cli.md)).
+`keepPropertySets` is on; property/quantity *values* are never scrubbed, kept
+or dropped — a kept pset carries them exactly as authored. Those are the
+residual leak surface; review a file before sharing it externally, and never
+name the download after the source model.
+
+The `IfcPropertySet`/`IfcElementQuantity` drop holds for `includedIds`
+regardless of how it was built — `collectRelatedEntities`'s
+`IfcRelDefinesByProperties` walk, or an id set assembled by hand — not only
+the CLI's `--keep-psets` and the viewer's "Property sets" toggle, which
+couple the same option to their own selection step. A dropped id is reported
+in `result.stats.droppedPropertySetIds`. The CLI equivalent is
+`ifc-lite anonymize` (see the [CLI guide](cli.md)).
 
 ## IFC5 (IFCX) Export
 

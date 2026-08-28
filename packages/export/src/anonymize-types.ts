@@ -143,7 +143,13 @@ export interface AnonymizeOptions {
    *  or `IfcApplication`. Default `true`; independent of `pseudonymizeNames`. */
   pseudonymizeAllNames?: boolean;
   /** Keep `IfcPropertySet`/`IfcElementQuantity` entities instead of dropping
-   *  them. Default `false` (i.e. psets are dropped by default). */
+   *  them. Default `false`: `exportAnonymizedSubset` excludes every such id
+   *  from `includedIds` before export, however it got there (a caller's own
+   *  `IfcRelDefinesByProperties` walk, or a hand-built id set) — the entity
+   *  never reaches the output, values included, at any `includedIds` (#3351
+   *  item 2). Property/quantity VALUES are unscrubbed by design, so setting
+   *  this `true` keeps them exactly as authored; there is no partial,
+   *  "kept but scrubbed" state. */
   keepPropertySets?: boolean;
   /** Regenerate every exported `IfcRoot`'s `GlobalId` (the old→new mapping
    *  comes back as `AnonymizeResult.guidMap`, never written into the file
@@ -208,6 +214,13 @@ export interface AnonymizeResult {
      *  reported so a caller can see WHICH associations the anonymization
      *  cost, not just that some file that changed. */
     prunedRelationshipIds: number[];
+    /** ExpressIds of `IfcPropertySet`/`IfcElementQuantity` entities excluded
+     *  from `includedIds` because `keepPropertySets` was falsy (the
+     *  default) — reported distinctly, the same way `prunedRelationshipIds`
+     *  is, so a caller can tell "this id is missing because it is a
+     *  property set" from any other exclusion reason without grepping
+     *  `warnings` text. Empty when `keepPropertySets` was `true`. */
+    droppedPropertySetIds: number[];
     /** Each root `IfcLocalPlacement` this export zeroed, and the translation
      *  it zeroed (the ORIGINAL, pre-zero coordinates) — reported because the
      *  translation was real coordinate data the caller may still want to log

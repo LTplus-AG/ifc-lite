@@ -112,13 +112,17 @@ export function readRefId(buffer: Uint8Array, pos: number, end: number): [number
             num = num * 10 + (buffer[pos] - 0x30);
             pos++;
         }
-        // `num * 10 + digit` overflows to Infinity at ~309 digits, and EVERY
-        // overflowing id accumulates to the SAME Infinity — so two distinct
-        // records collide on one key and one silently serves the other's data.
+        // `num * 10 + digit` overflows to Infinity only past ~309 digits, but
+        // it collides long before that: doubles lose integer precision past
+        // 2^53 (~16 digits), so `#100000000000000001` and
+        // `#100000000000000002` accumulate to the SAME value and two distinct
+        // records collide on one key — one silently serves the other's data.
+        // `Number.isSafeInteger` catches that collision range as well as
+        // Infinity/NaN/non-integers; `Number.isFinite` alone missed it.
         // Guarding at each accumulator (here, and both `StepTokenizer` scans,
         // and the inline scan worker) rather than only when the entity is
         // extracted: this is the byte-level path that builds the
-        // property/relationship indexes, so an unguarded Infinity here keyed a
+        // property/relationship indexes, so an unguarded overflow here keyed a
         // pset under a record the entity index had already refused —
         // `extractPropertiesOnDemand(store, Infinity)` returned a real pset for
         // an entity whose own GlobalId and Name were unreadable.
@@ -127,7 +131,7 @@ export function readRefId(buffer: Uint8Array, pos: number, end: number): [number
         // every caller already tests it (`if (relating < 0) return null`,
         // `if (id >= 0) ids.push(id)`). `pos` is still returned advanced past
         // the digits so scanning continues from the right place.
-        if (!Number.isFinite(num)) return [-1, pos];
+        if (!Number.isSafeInteger(num)) return [-1, pos];
         return [num, pos];
     }
     return [-1, pos];

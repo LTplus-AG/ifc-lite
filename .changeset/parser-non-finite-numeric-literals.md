@@ -11,17 +11,19 @@ parses to `Infinity`, and `isNaN(Infinity)` is `false`, so the numeric guards in
 into the property table and out through every writer, where `JSON.stringify`
 turns it into `null`: the exported file silently lost the value.
 
-The guards now test `Number.isFinite`:
+The guards now test `Number.isFinite` on value paths, and `Number.isSafeInteger`
+on express-id / reference paths (an id is a key, not a measurement — see below):
 
 - An attribute literal that is not a finite number falls through to the existing
   raw-token branch, so `1.0E400` is preserved verbatim as the string `"1.0E400"`
   rather than being dropped or clamped. The value type reported alongside it
   changes from number to string for that attribute.
-- `getNumber` and `getReference` return `undefined` for non-finite input on
-  **every** branch, including when a number is passed in directly —
-  `getNumber(Infinity)`, `getNumber(NaN)` and both `getReference` equivalents
-  previously returned the non-finite value unchanged, because only the string
-  branch was guarded.
+- `getNumber` returns `undefined` for non-finite input on **every** branch,
+  including when a number is passed in directly — `getNumber(Infinity)` and
+  `getNumber(NaN)` previously returned the non-finite value unchanged, because
+  only the string branch was guarded.
+- `getReference` returns `undefined` for anything that is not a safe integer,
+  on every branch, for the same reason the express-id paths below do.
 
 Preserving the literal as a string is only honest where the consumer's value
 type admits a string. Several consumers type the field `number`, so the
@@ -62,11 +64,18 @@ non-finite `number` as well as an overflowing token, so a value that arrives as
 an actual `Infinity` — a hand-built entity map, an `IfcPropertySingleValue`
 nominal value — cannot slip past the token check.
 
-An express id with enough digits to overflow is now refused at the point it is
-read, on all four paths that accumulate one digit-by-digit (`StepTokenizer`'s
-two scans, the inline scan worker, and `readRefId` on the byte-level
-relationship path). Every overflowing id accumulated to the *same* `Infinity`,
-so two distinct records collided on one key. Refusing at the accumulator also
-removes the half-alive record the entity-level guard left behind — indexed
-under a colliding key, its pset still answerable, its own `GlobalId` and `Name`
+An express id that is not a safe integer is now refused at the point it is
+read, on every path that accumulates one digit-by-digit (`StepTokenizer`'s two
+scans, the inline scan worker, `readRefId` on the byte-level relationship
+path, `extractEntity`'s own id parse, and both `parseInt`-based reference
+reads in `entity-extractor` and `getReference`). The guard is
+`Number.isSafeInteger`, not `Number.isFinite`: doubles lose integer precision
+past 2^53 (~16 digits), so two distinct ids that merely exceed that — not the
+~309 digits it takes to overflow to `Infinity` — already accumulate to the
+*same* value, and one silently serves the other's data
+(`parseInt('100000000000000001', 10) === parseInt('100000000000000002', 10)`
+is `true`). `isFinite` alone missed this collision range entirely; it only
+ever caught the Infinity case. Refusing at the accumulator also removes the
+half-alive record the entity-level guard alone left behind — indexed under a
+colliding key, its pset still answerable, its own `GlobalId` and `Name`
 unreadable.

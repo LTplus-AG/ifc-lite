@@ -86,10 +86,13 @@ self.onmessage = function(e) {
         }
       }
       if (!hasDigits) continue;
-      // Overflow guard, identical to StepTokenizer.scanEntitiesFast — this
-      // worker is that scan's twin and must reject the same records, or which
-      // scan path ran decides whether an overflowing id is indexed.
-      if (!isFinite(expressId)) continue;
+      // Overflow/collision guard, identical to StepTokenizer.scanEntitiesFast
+      // -- this worker is that scan's twin and must reject the same records,
+      // or which scan path ran decides whether an id collides with another.
+      // isSafeInteger, not isFinite: two distinct ids collide onto the
+      // same double once they pass 2^53 (about 16 digits), long before either
+      // reaches Infinity.
+      if (!Number.isSafeInteger(expressId)) continue;
 
       // Skip whitespace
       while (pos < len) {

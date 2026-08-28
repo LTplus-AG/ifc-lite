@@ -74,11 +74,13 @@ export class EntityExtractor {
       const match = entityText.match(/^#(\d+)\s*=\s*(\w+)\(([\s\S]*)\)/);
       if (!match) return null;
 
-      // `\d+` guarantees this is not NaN, but not that it is finite: 400 digits
-      // overflow to Infinity. An entity keyed by Infinity would collide with
-      // every other overflowing id in the entity map, so refuse the record.
+      // `\d+` guarantees this is not NaN, but not that it is a safe integer:
+      // ids lose precision past 2^53 (~16 digits), long before 400 digits
+      // would overflow to Infinity. An entity keyed by a value another id also
+      // accumulates to would collide with it in the entity map, so refuse the
+      // record.
       const expressId = parseInt(match[1], 10);
-      if (!Number.isFinite(expressId)) return null;
+      if (!Number.isSafeInteger(expressId)) return null;
       const type = match[2];
       const paramsText = match[3];
 
@@ -256,11 +258,14 @@ export class EntityExtractor {
     // Reference: #123
     if (value.startsWith('#')) {
       const id = parseInt(value.substring(1), 10);
-      // Number.isFinite, not !isNaN: a reference with enough digits to overflow
-      // the double range (`parseInt('1'.repeat(400), 10)` is `Infinity`) passes
-      // an isNaN guard, and an Infinity express id resolves to nothing. Treat it
-      // as the dangling reference it is.
-      return Number.isFinite(id) ? id : null;
+      // Number.isSafeInteger, not !isNaN or Number.isFinite: a reference with
+      // enough digits to overflow the double range
+      // (`parseInt('1'.repeat(400), 10)` is `Infinity`) passes an isNaN guard,
+      // and an Infinity express id resolves to nothing — but two references
+      // that merely exceed 2^53 (~16 digits) accumulate to the SAME value and
+      // would resolve to the SAME (wrong) entity, which `isFinite` alone does
+      // not catch. Treat both as the dangling reference they are.
+      return Number.isSafeInteger(id) ? id : null;
     }
 
     // String: 'text'

@@ -403,3 +403,102 @@ describe('an overflowing express id is refused before it is indexed', () => {
     expect(psets[0].properties[0].value).toBe(2.5);
   });
 });
+
+/**
+ * The collision the `Number.isFinite` guard above missed: doubles lose
+ * integer precision at 2^53 (~16 digits), NOT at Infinity (~309 digits). Two
+ * ids past that boundary accumulate to the SAME double well before either one
+ * overflows, so a guard that only rejects Infinity lets both through and they
+ * collide on one key — the exact hazard the PR's own rationale describes,
+ * just at the wrong threshold. `Number.isSafeInteger` is a strict superset of
+ * `Number.isFinite` for this purpose: it also rejects NaN, Infinity and
+ * non-integers, so nothing the old guard caught is let back in.
+ */
+describe('a 16-digit express id that collides under isFinite is refused by isSafeInteger', () => {
+  const ID_A = '100000000000000001';
+  const ID_B = '100000000000000002';
+
+  it('the two ids really do collide once accumulated as a double (anti-vacuity)', () => {
+    expect(parseInt(ID_A, 10)).toBe(parseInt(ID_B, 10));
+    expect(parseInt(ID_A, 10)).toBe(100000000000000000);
+    // The collision is invisible to the old guard: both pass isFinite.
+    expect(Number.isFinite(parseInt(ID_A, 10))).toBe(true);
+    // ...and both are correctly rejected by the new guard.
+    expect(Number.isSafeInteger(parseInt(ID_A, 10))).toBe(false);
+  });
+
+  it.each([
+    ['scanEntitiesFast', (s: Uint8Array) => [...new StepTokenizer(s).scanEntitiesFast()]],
+    ['scanEntities', (s: Uint8Array) => [...new StepTokenizer(s).scanEntities()]],
+  ])('%s refuses both colliding ids rather than admitting a duplicate key', (_name, scan) => {
+    const src = new TextEncoder().encode(
+      `#${ID_A}=IFCWALL('a',$,$,$,$,$,$,$);\n` +
+      `#${ID_B}=IFCWALL('b',$,$,$,$,$,$,$);\n` +
+      `#3=IFCWALL('c',$,$,$,$,$,$,$);`,
+    );
+    const ids = scan(src).map((r) => r.expressId);
+    expect(ids).toEqual([3]);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('readRefId refuses a 16-digit colliding reference on the byte-level path', () => {
+    const read = (text: string) => {
+      const b = new TextEncoder().encode(text);
+      return readRefId(b, 0, b.length);
+    };
+    expect(read('#42,')[0]).toBe(42); // negative control
+    expect(read(`#${ID_A},`)[0]).toBe(-1);
+    expect(read(`#${ID_B},`)[0]).toBe(-1);
+    expect(read(`#${ID_A},`)[1]).toBe(ID_A.length + 1);
+  });
+
+  it('extractEntity refuses a record keyed by a colliding 16-digit id', () => {
+    const record = `#${ID_A}=IFCCARTESIANPOINT((1.,2.,3.));`;
+    const source = new TextEncoder().encode(record);
+    const extractor = new EntityExtractor(source);
+    // extractEntity re-derives the id from the record text itself
+    // (`parseInt(match[1], 10)`), not from the caller-supplied ref, so a
+    // deliberately wrong/absent expressId in the ref still exercises its own
+    // guard rather than short-circuiting on it.
+    const entity = extractor.extractEntity({
+      expressId: -1,
+      type: 'IFCCARTESIANPOINT',
+      byteOffset: 0,
+      byteLength: record.length,
+      lineNumber: 1,
+    });
+    expect(entity).toBeNull();
+  });
+
+  it('the # reference branch (parseAttributeValue) refuses a colliding 16-digit reference', () => {
+    const attrs = attributesOf(`#1=IFCRELAGGREGATES('g',$,$,$,#${ID_A},(#2));`);
+    expect(attrs[4]).toBeNull();
+    // Negative control: an ordinary reference still resolves.
+    expect(attributesOf(`#1=IFCRELAGGREGATES('g',$,$,$,#42,(#2));`)[4]).toBe(42);
+  });
+
+  it('getReference refuses a colliding 16-digit id on the string branch', () => {
+    expect(getReference('#42')).toBe(42); // negative control
+    expect(getReference(`#${ID_A}`)).toBeUndefined();
+    expect(getReference(`#${ID_B}`)).toBeUndefined();
+  });
+
+  it('getReference refuses a colliding 16-digit id on the number branch', () => {
+    expect(getReference(42)).toBe(42); // negative control
+    expect(getReference(100000000000000000)).toBeUndefined();
+  });
+
+  it('two distinct records at colliding ids leave no half-alive entity in the index', async () => {
+    const store = await storeOf(`${OWNER}
+#${ID_A}=IFCWALLSTANDARDCASE('wall-a-guid',#1,'Wall A',$,$,$,$,$);
+#${ID_B}=IFCWALLSTANDARDCASE('wall-b-guid',#1,'Wall B',$,$,$,$,$);
+#20=IFCPROPERTYSINGLEVALUE('P',$,IFCREAL(2.5),$);
+#30=IFCPROPERTYSET('pset-guid',#1,'Pset_Test',$,(#20));
+#40=IFCRELDEFINESBYPROPERTIES('rel-guid',#1,$,$,(#${ID_A}),#30);`);
+    // Neither record is indexed under the collided key, and no pset is
+    // servable there — the same half-alive-record hazard as the Infinity
+    // case, just at the digit count that actually occurs in practice.
+    expect(store.entityIndex.byId.get(100000000000000000)).toBeUndefined();
+    expect(extractPropertiesOnDemand(store, 100000000000000000)).toEqual([]);
+  });
+});

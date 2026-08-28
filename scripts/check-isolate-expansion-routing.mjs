@@ -45,8 +45,11 @@
  * Any non-test `.ts`/`.tsx` file under `apps/viewer/src` or
  * `apps/viewer-embed/src` that calls `isolateEntities(` or
  * `setIsolatedEntities(` (directly, via `state.`, the optional-call form
- * `?.(`, or a destructured/aliased local binding of either -- see
- * `ALIAS_DESTRUCTURE_PATTERN`) on the viewer store's `visibilitySlice`.
+ * `?.(`, a destructured/aliased local binding of either (`const {
+ * isolateEntities: apply } = ...`, including `let`/reassignment and
+ * function-parameter destructuring -- see `ALIAS_DESTRUCTURE_PATTERN`), or a
+ * plain member-access rebinding (`const apply = state.isolateEntities;` --
+ * see `PROPERTY_ALIAS_PATTERN`) on the viewer store's `visibilitySlice`.
  * Test files (`*.test.ts(x)`) are excluded -- the fixtures IN this gate's
  * own test file, and the wiring tests that already pin each of these seven
  * channels, would otherwise all read as new channels.
@@ -161,9 +164,42 @@ export const RAW_ISOLATION_ACTIONS = ['isolateEntities', 'setIsolatedEntities'];
  * regex-based gate cannot do reliably, and a live binding to either action
  * is itself the thing worth a reviewer's eyes -- false positives here are
  * safe, false negatives are the whole failure mode this exists to close).
+ *
+ * Originally anchored to `const { ... } =` only. Widened (adversarial
+ * self-review of this gate, issue #3338) after noticing the anchor missed
+ * two shapes that rename or rebind an action just as effectively:
+ *   - `let`/`var`, or no declaration keyword at all -- a destructuring
+ *     REASSIGNMENT (`({ isolateEntities } = something)`) uses no keyword,
+ *     and nothing about the bypass requires `const`.
+ *   - destructuring in FUNCTION PARAMETER position -- `function
+ *     onIsolate({ isolateEntities: apply }: VisibilitySlice) { apply(ids) }`
+ *     binds a local alias the same way a `const` destructure does, but the
+ *     brace is followed by `)` or a type annotation, never `=`.
+ * The pattern below drops the keyword requirement and accepts the brace
+ * being followed by `=`, `)`, or `:` (a nested destructure target, or a
+ * parameter's type annotation), while still requiring `[^{}]` instead of
+ * `[^}]` so it cannot cross into an unrelated outer scope (e.g. an
+ * `interface { isolateEntities: (ids: number[]) => void; ...many fields... }`
+ * declaration, which has no closing `}` anywhere near this one field).
  */
 export const ALIAS_DESTRUCTURE_PATTERN =
-  /\bconst\s*\{[^}]*\b(?:isolateEntities|setIsolatedEntities)\b[^}]*\}\s*=/;
+  /\{[^{}]*\b(?:isolateEntities|setIsolatedEntities)\b[^{}]*\}\s*[=):]/;
+
+/**
+ * A PLAIN (non-destructured) rebinding of either raw-isolation action to a
+ * local name via member access -- `const apply = state.isolateEntities;`
+ * or `const apply = store.getState().setIsolatedEntities;` -- followed
+ * later by `apply(ids)`. This defeats both `CALL_PATTERN`/
+ * `SET_ISOLATED_CALL_PATTERN` (no literal `isolateEntities(` remains) AND
+ * `ALIAS_DESTRUCTURE_PATTERN` (no `{ }` destructuring syntax at all), so a
+ * new channel written this way was invisible to every earlier version of
+ * this gate. Matches the property-access form immediately after `=`,
+ * regardless of what precedes the property name; a false positive (e.g.
+ * assigning the function without ever calling it) is safe for the same
+ * reason `ALIAS_DESTRUCTURE_PATTERN`'s false positives are.
+ */
+export const PROPERTY_ALIAS_PATTERN =
+  /=\s*[\w$]+(?:\([^()]*\))?(?:\??\.[\w$]+(?:\([^()]*\))?)*\.(?:isolateEntities|setIsolatedEntities)\b/;
 
 /** The resolvers that actually perform `IfcRelAggregates` expansion, or read
  *  from a resolver that does, called as real code (not merely named in prose). */
@@ -312,7 +348,8 @@ export function classifyFile(relPath, content) {
   if (
     !CALL_PATTERN.test(content) &&
     !SET_ISOLATED_CALL_PATTERN.test(content) &&
-    !ALIAS_DESTRUCTURE_PATTERN.test(content)
+    !ALIAS_DESTRUCTURE_PATTERN.test(content) &&
+    !PROPERTY_ALIAS_PATTERN.test(content)
   ) {
     return { isCandidate: false, ok: true };
   }

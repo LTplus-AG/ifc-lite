@@ -127,12 +127,12 @@ describe('isUnchanged walks symbol-keyed own properties, not just string keys (#
   });
 });
 
-describe('isUnchanged in the typed-array branch compares elements with `===`, not `Object.is` (#3392 follow-up)', () => {
-  it('reports a NaN at the same position as changed, never silently drops it', () => {
-    // If this branch used `Object.is`, `Object.is(NaN, NaN)` is `true` and a real
-    // NaN-vs-NaN comparison would be silently skipped. `===` makes `NaN === NaN`
-    // false instead, so the write always goes through here -- a redundant write,
-    // never a dropped one, which is the safe direction.
+describe('isUnchanged compares typed-array elements with `Object.is` (#3392 follow-up)', () => {
+  it('reports a same-position NaN as unchanged, because the arrays really are equal', () => {
+    // `Object.is(NaN, NaN)` is `true`, and that is the right answer: two arrays
+    // identical element-for-element including a NaN are equal, so skipping the
+    // write drops nothing real. `===` would report "changed" here and force a
+    // redundant write -- wasteful rather than wrong, but not the correct answer.
     const registry = [
       defineSliceTeardown('testSlice', ['clashSolidMesh'], () => ({
         clashSolidMesh: { positions: new Float64Array([NaN, 0, 0]), indices: new Uint32Array([0]) },
@@ -142,14 +142,14 @@ describe('isUnchanged in the typed-array branch compares elements with `===`, no
       clashSolidMesh: { positions: new Float64Array([NaN, 0, 0]), indices: new Uint32Array([0]) },
     };
     const patch = composeTeardown(registry)(SESSION_RESET, state);
-    assert.ok('clashSolidMesh' in patch, 'two NaNs at the same position must never compare "unchanged"');
+    assert.ok(!('clashSolidMesh' in patch), 'two NaNs at the same position must compare "unchanged"');
   });
 
-  it('reports -0 vs 0 at the same position as unchanged -- the accepted price of NaN-safety', () => {
-    // `-0 === 0` is `true`, so this is a real, narrow, low-stakes false positive,
-    // pinned here as CURRENT behavior rather than a goal. Switching this branch to
-    // `Object.is` would fix this one case but flip the NaN case above into a
-    // silently dropped write, which is the dangerous direction -- so `===` stays.
+  it('reports -0 vs 0 as changed, so a real sign flip is never silently dropped', () => {
+    // `-0 === 0` is `true`, so a `===` comparator reports this pair "unchanged"
+    // and the write is dropped -- a genuine difference lost, the same shape as
+    // the `k in b` prototype-chain bug this PR also fixes. `Object.is(-0, 0)` is
+    // `false`, so the write goes through.
     const registry = [
       defineSliceTeardown('testSlice', ['clashSolidMesh'], () => ({
         clashSolidMesh: { positions: new Float64Array([-0, 0, 0]), indices: new Uint32Array([0]) },
@@ -159,7 +159,7 @@ describe('isUnchanged in the typed-array branch compares elements with `===`, no
       clashSolidMesh: { positions: new Float64Array([0, 0, 0]), indices: new Uint32Array([0]) },
     };
     const patch = composeTeardown(registry)(SESSION_RESET, state);
-    assert.ok(!('clashSolidMesh' in patch), '-0 vs 0 at the same position must compare "unchanged"');
+    assert.ok('clashSolidMesh' in patch, '-0 vs 0 at the same position must compare "changed"');
   });
 });
 

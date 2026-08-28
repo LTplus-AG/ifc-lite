@@ -338,7 +338,7 @@ function isUnchanged(a: unknown, b: unknown, seen: WeakSet<object> = new WeakSet
   if (ArrayBuffer.isView(a) && ArrayBuffer.isView(b) && 'length' in a && 'length' in b) {
     const ta = a as unknown as ArrayLike<number>, tb = b as unknown as ArrayLike<number>;
     return a.constructor === b.constructor && ta.length === tb.length
-      && Array.prototype.every.call(ta, (v, i) => v === tb[i]); // `===`, not `Object.is`: same-position NaNs compare "changed" here (safe -- a redundant write, never a dropped one); the accepted price is that `-0` and `0` compare "unchanged" (a narrow, low-stakes false positive) rather than let `Object.is(NaN, NaN)` turn that currently-safe redundant write into a silently dropped real one.
+      && Array.prototype.every.call(ta, (v, i) => Object.is(v, tb[i])); // `Object.is`, matching the top-level fast path: two same-position NaNs ARE equal, so reporting "unchanged" loses nothing, while `-0` vs `0` is a real difference that `===` would report "unchanged" and silently drop.
   }
   if (isPlainObject(a) && isPlainObject(b) && !seen.has(a)) {
     seen.add(a);

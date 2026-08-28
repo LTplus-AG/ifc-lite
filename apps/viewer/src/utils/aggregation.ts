@@ -16,57 +16,21 @@
  * cache loads retain (issue #1133).
  */
 
-import { RelationshipType } from '@ifc-lite/data';
+import {
+  RelationshipType,
+  getAggregatedChildren,
+  collectAggregatedDescendants,
+  type DecompositionRelationships,
+} from '@ifc-lite/data';
 
-/** Structural view of the relationship graph — both the parser's
- *  `RelationshipGraph` and the cache-rebuilt graph satisfy it. */
-export interface AggregationRelationships {
-  getRelated(
-    entityId: number,
-    relType: RelationshipType,
-    direction: 'forward' | 'inverse'
-  ): number[];
-}
-
-/** Direct `IfcRelAggregates` children of `expressId` (one level down). */
-export function getAggregatedChildren(
-  relationships: AggregationRelationships | undefined,
-  expressId: number
-): number[] {
-  if (!relationships) return [];
-  return relationships.getRelated(expressId, RelationshipType.Aggregates, 'forward');
-}
-
-/**
- * All decomposition descendants of `rootId` via `IfcRelAggregates`, depth-first
- * and excluding `rootId` itself. Cycle-guarded against malformed files
- * (A aggregates B, B aggregates A) so it always terminates. Order is a stable
- * pre-order so callers can rely on it for display.
- */
-export function collectAggregatedDescendants(
-  relationships: AggregationRelationships | undefined,
-  rootId: number
-): number[] {
-  if (!relationships) return [];
-  const out: number[] = [];
-  const seen = new Set<number>([rootId]);
-  // DFS with an explicit stack; push children in reverse so siblings keep
-  // their authored order in the pre-order output.
-  const stack: number[] = [];
-  const pushChildren = (parentId: number) => {
-    const kids = relationships.getRelated(parentId, RelationshipType.Aggregates, 'forward');
-    for (let i = kids.length - 1; i >= 0; i--) stack.push(kids[i]);
-  };
-  pushChildren(rootId);
-  while (stack.length > 0) {
-    const id = stack.pop()!;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    out.push(id);
-    pushChildren(id);
-  }
-  return out;
-}
+// The traversal itself (`getAggregatedChildren`, `collectAggregatedDescendants`)
+// lives in `@ifc-lite/data` — `packages/mcp` needs the identical
+// `IfcRelAggregates` walk and cannot import from this app, so the walk moved
+// to the shared package and this module re-exports it under its existing
+// names so every consumer in this app keeps working unchanged (issue #3338).
+export { getAggregatedChildren, collectAggregatedDescendants };
+/** @deprecated import `DecompositionRelationships` from `@ifc-lite/data` instead — kept as an alias so existing imports in this app don't need touching. */
+export type AggregationRelationships = DecompositionRelationships;
 
 /**
  * Does `rootId` — or any of its `IfcRelAggregates` descendants — carry geometry?

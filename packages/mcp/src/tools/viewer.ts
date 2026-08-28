@@ -28,11 +28,11 @@ import type { ToolContext } from '../context.js';
 import type { ViewerManager } from '../viewer-manager.js';
 import { okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
+import { expandAssemblyRefs } from './viewer-assembly-expansion.js';
 
 function requireViewer(ctx: ToolContext): ViewerManager {
-  const viewer = ctx.viewer;
-  if (!viewer) throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: 'No viewer manager attached.' });
-  return viewer;
+  if (!ctx.viewer) throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: 'No viewer manager attached.' });
+  return ctx.viewer;
 }
 
 function refsForGlobalIds(m: ReturnType<typeof resolveModel>, gids: string[]): EntityRef[] {
@@ -182,7 +182,7 @@ const viewerColorize: Tool = {
     const viewer = requireViewer(ctx);
     if (!viewer.isOpen()) throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: 'Viewer is not open. Call viewer_open first.' });
     const m = resolveModel(ctx, input.model_id as string | undefined);
-    const refs = resolveTargetRefs(m, input);
+    const refs = expandAssemblyRefs(m, resolveTargetRefs(m, input));
     if (refs.length === 0) throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'No entities matched the selector.' });
     const color = parseColor(input.color);
     if (input.reset_others) m.bim.viewer.resetColors();
@@ -209,7 +209,7 @@ const viewerIsolate: Tool = {
     const viewer = requireViewer(ctx);
     if (!viewer.isOpen()) throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: 'Viewer is not open.' });
     const m = resolveModel(ctx, input.model_id as string | undefined);
-    const refs = resolveTargetRefs(m, input);
+    const refs = expandAssemblyRefs(m, resolveTargetRefs(m, input));
     if (refs.length === 0) throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'No entities matched.' });
     m.bim.viewer.isolate(refs);
     return okResult(`Isolated ${refs.length} entit${refs.length === 1 ? 'y' : 'ies'}.`, { count: refs.length });
@@ -234,7 +234,7 @@ const viewerHide: Tool = {
     const viewer = requireViewer(ctx);
     if (!viewer.isOpen()) throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: 'Viewer is not open.' });
     const m = resolveModel(ctx, input.model_id as string | undefined);
-    const refs = resolveTargetRefs(m, input);
+    const refs = expandAssemblyRefs(m, resolveTargetRefs(m, input));
     m.bim.viewer.hide(refs);
     return okResult(`Hid ${refs.length} entit${refs.length === 1 ? 'y' : 'ies'}.`, { count: refs.length });
   },
@@ -258,7 +258,7 @@ const viewerShow: Tool = {
     const viewer = requireViewer(ctx);
     if (!viewer.isOpen()) throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: 'Viewer is not open.' });
     const m = resolveModel(ctx, input.model_id as string | undefined);
-    const refs = resolveTargetRefs(m, input);
+    const refs = expandAssemblyRefs(m, resolveTargetRefs(m, input));
     m.bim.viewer.show(refs);
     return okResult(`Showed ${refs.length} entit${refs.length === 1 ? 'y' : 'ies'}.`, { count: refs.length });
   },

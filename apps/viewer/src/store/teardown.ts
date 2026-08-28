@@ -22,9 +22,8 @@
  * about the word: the same 16-field list still exists in `modelSlice.test.ts`
  * as `ModelHarnessCrossState`, and it is the sole reason `TeardownState` below
  * is `Partial` rather than total, which in turn is why model-removed
- * contributions carry `?? new Set()` fallbacks. Giving that harness a real
- * store would delete the list and the fallbacks together. The four copies were held
- * together by prose: "same shape as `purgeStaleEntityState`", twice.
+ * contributions carry `?? new Set()` fallbacks — giving that harness a real
+ * store would delete the list and the fallbacks together.
  *
  * This module replaces the prose with a contract. Each slice contributes
  * ONE function that answers "what do I clear under this scope, and nothing
@@ -62,27 +61,25 @@
  *
  * Inline at the bottom of the slice, or in a sibling `<slice>.teardown.ts`. The
  * rule is the module-size ratchet and nothing else: sibling file iff the slice
- * plus its contribution would cross ~400 lines, inline otherwise. Two files
- * are split despite fitting: `addElementSlice` and `annotationsSlice`, whose
- * host PLUS contribution come to 341 and 365. Group uniformity was the reason;
- * folding those two back inline would make the rule exceptionless.
+ * plus its contribution would cross ~400 lines, inline otherwise. `addElementSlice`
+ * and `annotationsSlice` split despite fitting (341, 365 combined) for group
+ * uniformity; folding them back inline would make the rule exceptionless.
  *
  * ## Trap A: a teardown returns an EXPLICIT field list, never a whole state
  *
  * `scripts/check-whole-state-reset.mjs` (proposal, issue #2802) documents
- * three bugs of this class that landed in one day: `sheetSlice.clearSheet`
- * did `set(getDefaultState())` and destroyed `savedSheetTemplates`;
+ * three bugs of this class in one day: `sheetSlice.clearSheet` did
+ * `set(getDefaultState())` and destroyed `savedSheetTemplates`;
  * `drawing2DSlice.clearDrawing2D` destroyed custom override rules,
  * `overridesEnabled`, text annotations and DXF underlays.
  *
  * So: `owns` is a hand-written list, and the returned object names its fields
- * one by one. `...initialState` and `...getDefaultState()` are forbidden as
- * the body of a teardown. Fields that legitimately outlive a session reset —
+ * one by one. `...initialState` / `...getDefaultState()` are forbidden as a
+ * teardown body. Fields that legitimately outlive a session reset —
  * `savedSheetTemplates`, `graphicOverridePresets`, `dxfUnderlays`, `bcfProject`,
- * `bcfAuthor`, `idsDocument`, `savedLenses`, clash presets, zone SETS,
- * `playbackSpeed` / `playbackLoop` / `ganttTimeScale` — are simply absent from
- * both `owns` and the body. `owns` is the reviewable artefact: it is the list
- * of everything this slice is willing to destroy.
+ * clash presets, zone SETS, `playbackSpeed`/`playbackLoop`/`ganttTimeScale` —
+ * are simply absent from both `owns` and the body, which is the reviewable
+ * artefact: the list of everything this slice is willing to destroy.
  *
  * ## Trap B: persisted fields survive their session-scoped neighbours
  *
@@ -101,15 +98,11 @@
  * ## The visibility-ownership middleware
  *
  * `store/index.ts` wraps the store in `withVisibilityOwnershipInvalidation`
- * (`store/visibility-invalidation.ts`), which is the one place
- * `isolatedEntities` / `ghostExceptEntities` can be written. Its own doc makes
- * the same argument this module does — a middleware "rather than a helper each
- * writing action remembers to call" — and it is already accepted here.
- *
- * Nothing below fights it: teardown produces a patch, and the ENTRY POINT
- * applies that patch through the wrapped `set` / `setState`, so the
- * invalidation fires for teardown writes exactly as it does for every other
- * write. Never apply a composed patch through an unwrapped setter.
+ * (`store/visibility-invalidation.ts`), the one place `isolatedEntities` /
+ * `ghostExceptEntities` can be written. Nothing below fights it: teardown
+ * produces a patch, and the ENTRY POINT applies it through the wrapped `set` /
+ * `setState`, so the invalidation fires for teardown writes exactly as it does
+ * for every other write. Never apply a composed patch through an unwrapped setter.
  */
 
 import type { ViewerState } from './index.js';
@@ -131,15 +124,13 @@ export type TeardownScope =
       isStale: (id: number) => boolean;
       /**
        * Which model holds `activeModelId` once this one is gone, resolved ONCE
-       * by the entry point. Federation knowledge, so it belongs to whoever
-       * builds the scope rather than to each slice that has to follow it.
-       *
-       * Two slices need it and they own different keys, so the disjointness
-       * proof cannot see them: `modelSlice` writes `activeModelId`, `dataSlice`
-       * writes the `ifcDataStore` / `geometryResult` that must follow it. When
-       * each derived the successor for itself, changing the rule in one file
-       * left the data pointing at a model the active id did not name — a blank
-       * properties panel over a live model list, and no gate would catch it.
+       * by the entry point — federation knowledge, so it belongs to whoever
+       * builds the scope. Two slices need it and own different keys, so the
+       * disjointness proof cannot see them: `modelSlice` writes `activeModelId`,
+       * `dataSlice` writes the `ifcDataStore` / `geometryResult` that must follow
+       * it. Deriving the successor twice once left the data pointing at a model
+       * the active id did not name — a blank properties panel over a live model
+       * list, no gate would catch it.
        */
       nextActiveModelId: string | null;
     }
@@ -156,10 +147,9 @@ export type TeardownScope =
  * cast optional); making it part of the type means a teardown cannot forget.
  *
  * Fall back to the slice's OWN initial value — by definition the correct
- * answer, and the value is already in the file.
- *
- * `Readonly` because a teardown must not mutate what it was handed: `set` has
- * not run yet and the object is the live state.
+ * answer, and the value is already in the file. `Readonly` because a teardown
+ * must not mutate what it was handed: `set` has not run yet and the object is
+ * the live state.
  */
 export type TeardownState = Readonly<Partial<ViewerState>>;
 
@@ -171,28 +161,26 @@ export type TeardownState = Readonly<Partial<ViewerState>>;
  * literal returned from a callback whose contextual type comes from an
  * inference site, so a body returning a key outside `owns` compiled clean
  * (measured, before this was added). Typing every OTHER key as `never` is what
- * actually makes "return only the keys you own" a compiler error rather than a
- * comment — which is the whole point of declaring `owns` separately.
+ * makes "return only the keys you own" a compiler error, not just a comment.
  */
 export type TeardownContribution<K extends keyof ViewerState> =
   Partial<Pick<ViewerState, K>> & { [P in Exclude<keyof ViewerState, K>]?: never };
 
 export type TeardownScopeKind = TeardownScope['kind'];
 type ScopeOfKind<Kind extends TeardownScopeKind> = Extract<TeardownScope, { kind: Kind }>;
-// WITHOUT TeardownContribution's excess-property trick: three per slice,
-// measured, pushes the checker over TS2590 ("union too complex") across the
-// registry. composeTeardown enforces the foreign-key guarantee at runtime.
+// WITHOUT TeardownContribution's excess-property trick (TS2590 across the
+// registry, measured): composeTeardown enforces the foreign-key guarantee at runtime instead.
 type ArmContribution<K extends keyof ViewerState> = Partial<Pick<ViewerState, K>>;
 type Arm<Kind extends TeardownScopeKind, K extends keyof ViewerState> = (scope: ScopeOfKind<Kind>, state: TeardownState) => ArmContribution<K>;
 
-// One slice's answer, ONE ARM PER SCOPE KIND (#3345): a plain function let 22
-// of 28 open with `if (scope.kind !== 'session-reset') return {};`, silently
-// no-op for a fourth kind. A required key per kind makes an omitted arm fail.
-export interface SliceTeardownArms<K extends keyof ViewerState> {
-  readonly 'session-reset': Arm<'session-reset', K>;
-  readonly 'model-removed': Arm<'model-removed', K>;
-  readonly 'all-models-cleared': Arm<'all-models-cleared', K>;
-}
+// ONE ARM PER SCOPE KIND (#3345): a plain function let 22 of 28 open with
+// `if (scope.kind !== 'session-reset') return {};`, a silent no-op for a
+// fourth kind. Mapped over TeardownScopeKind — not a record naming the three
+// kinds by hand — so a fourth TeardownScope kind is a compile error in every
+// arms object that omits it, not just a runtime no-op.
+export type SliceTeardownArms<K extends keyof ViewerState> = {
+  readonly [Kind in TeardownScopeKind]: Arm<Kind, K>;
+};
 
 /**
  * One slice's answer to "what do I clear under this scope".
@@ -214,8 +202,8 @@ export interface SliceTeardown<K extends keyof ViewerState = keyof ViewerState> 
    * spreads its groups conditionally (`...(selectionTouchedRemoved ? {…} : {})`)
    * precisely so an untouched group is not rewritten; keeping that habit is
    * what makes `model-removed` idempotent, which in turn is what lets
-   * `syncSourceModel` runs the SAME composition after `removeModel`
-   * without undoing or re-allocating anything.
+   * `syncSourceModel` run the SAME composition after `removeModel` without
+   * undoing or re-allocating anything.
    *
    * {@link composeTeardown} drops unchanged entries as a backstop, including a
    * `Set` / `Map` / array rebuilt equal-but-new — a should, not a must, but
@@ -230,8 +218,7 @@ export type AnySliceTeardown = SliceTeardown<keyof ViewerState>;
 /** "This scope does not touch me." */
 export function notApplicable(): TeardownContribution<never> { return {}; }
 
-// One arm per TeardownScopeKind; the cast below bridges ArmContribution to
-// TeardownContribution once per slice.
+// The cast below bridges ArmContribution to TeardownContribution once per slice.
 export function defineSliceTeardown<const K extends keyof ViewerState>(
   slice: string,
   owns: readonly K[],
@@ -366,11 +353,11 @@ function isUnchanged(a: unknown, b: unknown): boolean {
  *
  * A key absent from `state` (the partial-store test harness) is never
  * "unchanged" — `isUnchanged(undefined, value)` is false unless the teardown
- * also returns `undefined`. About a dozen contributions DO: most of
- * `visibilitySlice` / `selectionSlice`'s model-removed arms, plus `dataSlice`'s
- * `purgeRemovedModelsBackup`, each passing THROUGH a value read from `state`,
- * so `undefined` appears only where the live value already is. A SYNTHESIZED
- * `undefined` would survive the filter and `writeKey` would blank the field.
+ * also returns `undefined`. About a dozen contributions DO, passing THROUGH a
+ * value read from `state` (most of `visibilitySlice` / `selectionSlice`'s
+ * model-removed arms, `dataSlice.purgeRemovedModelsBackup`), so `undefined`
+ * appears only where the live value already is — a SYNTHESIZED `undefined`
+ * would survive the filter and `writeKey` would blank the field.
  */
 export function composeTeardown(
   registry: readonly AnySliceTeardown[],

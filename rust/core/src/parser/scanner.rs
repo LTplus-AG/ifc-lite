@@ -100,24 +100,12 @@ impl<'a> EntityScanner<'a> {
                 // past `*/`; if not, it's a STEP arithmetic '/' inside a
                 // value list (rare; just step past it).
                 if candidate + 1 < len && bytes[candidate + 1] == b'*' {
-                    let mut p = candidate + 2;
-                    while p + 1 < len {
-                        // Find next '*'; check if followed by '/'.
-                        let from = p;
-                        let star = match memchr::memchr(b'*', &bytes[from..]) {
-                            Some(off) => from + off,
-                            None => return None, // unterminated comment
-                        };
-                        if star + 1 < len && bytes[star + 1] == b'/' {
-                            self.position = star + 2;
-                            break;
-                        }
-                        p = star + 1;
-                    }
-                    if self.position <= candidate {
-                        // Comment never closed — refuse to scan further.
-                        return None;
-                    }
+                    // An unterminated `/*` here means corrupt input.
+                    // `skip_step_comment` refuses (returns `None`) rather
+                    // than silently consuming the rest of the file — see
+                    // its doc comment for why that's the right call for a
+                    // scanner (issue #3303).
+                    self.position = super::lexical::skip_step_comment(bytes, candidate)?;
                     continue;
                 }
                 // Lone '/' — not a comment. Skip past.

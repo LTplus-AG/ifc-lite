@@ -73,10 +73,18 @@
 //! this patch was written (no `cargo test` was run to produce this file —
 //! the workstation that wrote it was disk-constrained and cargo was
 //! off-limits). Pinning unverified literals would risk failing on the very
-//! first CI run for a labelling reason unrelated to the defect. The full
-//! kept set and edge census ARE printed (`--nocapture`) so that first CI
-//! run's output becomes the first VERIFIED record of the exact numbers,
-//! which can be pinned in a follow-up if wanted.
+//! first CI run for a labelling reason unrelated to the defect.
+//!
+//! The full kept set and edge census are printed, but CI will NOT show
+//! them: `.github/workflows/test.yml` runs `cargo test --workspace` with no
+//! `--nocapture`, and cargo suppresses stdout for a PASSING test — which
+//! this is by design while the defect exists. Confirmed absent from the
+//! first green run's log rather than assumed. To read the numbers:
+//!
+//!   cargo test -p ifc-lite-geometry --lib issue_3353_vid_census -- --nocapture
+//!
+//! Once observed they can be pinned as assertions, which WOULD surface in
+//! CI on any change.
 //!
 //! This is a characterisation pin of a KNOWN-DEFECTIVE state, not a health
 //! check: a green tick on this test means "the defect still reproduces

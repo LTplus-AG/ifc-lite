@@ -21,7 +21,7 @@ import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { parseUrlParams, assertFetchableUrl } from '../bridge/urlParams.js';
 import { initBridge, destroyBridge, emitEvent } from '../bridge/handler.js';
-import { aroundDestructiveLoad, resetCameraIntent } from '../bridge/cameraIntent.js';
+import { aroundDestructiveLoad } from '../bridge/cameraIntent.js';
 import { mountBridgeLifecycle, unmountBridgeLifecycle } from '../bridge/lifecycle.js';
 import { useEmbedBridgeEvents } from './useEmbedBridgeEvents.js';
 import { useEmbedPostLoad } from './useEmbedPostLoad.js';
@@ -144,7 +144,13 @@ export function EmbedViewer() {
       });
     });
 
-    return () => unmountBridgeLifecycle(bridgeInitialized, () => { destroyBridge(); resetCameraIntent(); });
+    // The bridge only. The camera queue is NOT reset here: the `?modelUrl=`
+    // auto-load below drives it without the bridge ever seeing it, and this
+    // cleanup also fires on StrictMode's dev-only remount, mid-fetch, where
+    // zeroing it drops the held pose and un-counts the rest of the load
+    // (EmbedViewer.cameraIntent.test.ts pins that case). A real unmount needs
+    // no reset: the embed mounts once and the state dies with the page.
+    return () => unmountBridgeLifecycle(bridgeInitialized, destroyBridge);
   }, [loadFile, addModel, urlParams.allowOrigins, urlParams.parentOrigin]);
 
   // Auto-load model from URL param

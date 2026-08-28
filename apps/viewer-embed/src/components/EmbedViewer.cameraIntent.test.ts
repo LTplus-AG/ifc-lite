@@ -101,11 +101,14 @@ function setSearch(search: string): void {
   window.history.replaceState({}, '', `/${search}`);
 }
 
-function renderEmbedViewer(): void {
+function renderEmbedViewer({ strict = false } = {}): void {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
-  act(() => { root.render(React.createElement(EmbedViewer)); });
+  const tree = React.createElement(EmbedViewer);
+  act(() => {
+    root.render(strict ? React.createElement(React.StrictMode, null, tree) : tree);
+  });
   mounted.push({ root, container });
 }
 
@@ -225,6 +228,34 @@ describe('EmbedViewer: a host pose queued against the load (#3390)', () => {
 
     setSearch('?modelUrl=https%3A%2F%2Fcdn.example%2Fa.ifc');
     renderEmbedViewer();
+    await settle();
+
+    offerHostPose({ azimuth: 137, elevation: 61 }, useViewerStore.getState);
+    releaseFetch(new Response(new ArrayBuffer(8), { status: 200 }));
+    await settle();
+    expect(loadFile, 'the auto-load must actually have reached loadFile').toHaveBeenCalled();
+
+    await landModel();
+    await nextFrame();
+
+    expect(calls).toEqual(['setCameraRotation:137,61', 'fitAll']);
+  });
+
+  it('survives the StrictMode remount that happens mid-fetch on that auto-load', async () => {
+    // `apps/viewer-embed/src/main.tsx` renders under <React.StrictMode>, so in
+    // dev every effect is mount -> cleanup -> remount. The auto-load effect is
+    // ref-guarded and does NOT restart, so its fetch is still outstanding when
+    // the OTHER effects' cleanups run. Anything those cleanups do to the camera
+    // queue therefore lands in the middle of a live load: it drops the held
+    // pose and leaves the rest of the load uncounted, so the SET_CAMERA below
+    // takes `offerHostPose`'s no-load path, is applied to the outgoing scene,
+    // and is wiped by `loadFile`'s reset — then `home()` frames the model that
+    // arrives, which is the #3390 symptom reappearing in the dev build only.
+    let releaseFetch!: (response: Response) => void;
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>((resolve) => { releaseFetch = resolve; })));
+
+    setSearch('?modelUrl=https%3A%2F%2Fcdn.example%2Fa.ifc');
+    renderEmbedViewer({ strict: true });
     await settle();
 
     offerHostPose({ azimuth: 137, elevation: 61 }, useViewerStore.getState);

@@ -58,8 +58,13 @@
  * ({@link hostPoseAppliedToCurrentModel}), cleared by the next destructive
  * load, so no number of effect runs can consume it at the wrong moment.
  *
- * The queue is module state, like the bridge's own; `resetCameraIntent` puts
- * it back to its initial value when the bridge is torn down.
+ * The queue is module state, and its owner is the embed component rather than
+ * the bridge: the `?modelUrl=` auto-load drives `aroundDestructiveLoad` too,
+ * and the bridge never sees it. Nothing resets it in production — the embed
+ * mounts once and this state dies with the page — and deliberately so: hanging
+ * the reset off the bridge effect's cleanup meant StrictMode's dev-only
+ * mount -> cleanup -> remount zeroed the queue while the auto-load's fetch was
+ * still outstanding. `resetCameraIntent` exists for tests.
  */
 
 import type { CameraRotation } from '@/store/types.js';
@@ -88,7 +93,8 @@ let destructiveLoadsInFlight = 0;
  */
 let poseAppliedToCurrentModel = false;
 
-/** Put the queue back to its initial state (bridge teardown, StrictMode remount, tests). */
+/** Put the queue back to its initial state. For tests: no production caller
+ *  resets this module, see the note on ownership above. */
 export function resetCameraIntent(): void {
   queuedPose = null;
   destructiveLoadsInFlight = 0;
@@ -107,8 +113,9 @@ export function hostPoseAppliedToCurrentModel(): boolean {
   return poseAppliedToCurrentModel;
 }
 
-/** Clamped, because `resetCameraIntent` can zero the counter mid-load when the
- *  embed unmounts; a negative count would leave every later pose unqueueable. */
+/** Clamped, because a test can call `resetCameraIntent` between cases while a
+ *  load is still pending; a negative count would leave every later pose
+ *  unqueueable. */
 function endDestructiveLoad(): void {
   destructiveLoadsInFlight = Math.max(0, destructiveLoadsInFlight - 1);
 }

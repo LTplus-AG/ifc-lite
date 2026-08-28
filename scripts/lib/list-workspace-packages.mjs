@@ -6,9 +6,6 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { existsOrThrow } from './exists-or-throw.mjs';
 
-/** The parents both fail-closed gates scan today. See the dotfile note below. */
-export const PACKAGE_PARENTS = ['packages', 'apps'];
-
 /**
  * The one workspace-package walk the fail-closed gates share.
  *
@@ -27,7 +24,8 @@ export const PACKAGE_PARENTS = ['packages', 'apps'];
  * same habit #3347 charged for one layer down, two walks kept in agreement by
  * whoever edited one remembering the other.
  *
- * NOT shared with the other ten enumerators, deliberately. They differ on four
+ * NOT shared with the repo's other package enumerators, deliberately. They
+ * differ on four
  * orthogonal axes: which parents, which filter (published-only, has-tsconfig,
  * all), which return shape, and a per-gate calibrated floor. One function
  * carrying four knobs is a config object with a `for` loop attached, and every
@@ -36,17 +34,27 @@ export const PACKAGE_PARENTS = ['packages', 'apps'];
  * Only `fail` and `parents` are injected. Both callers use the real `fs`, so
  * threading the module through too would be indirection with a single shape.
  *
+ * `parents` is REQUIRED rather than defaulted. Each gate already keeps its own
+ * literal, because `check-ci-path-coverage` derives a gate's trigger paths from
+ * that gate's own source text and does not follow imports. A default here would
+ * be a third copy that nothing forces anyone to keep in step with those two,
+ * and the one caller that took it was already scanning a different list from
+ * its own file's other caller.
+ *
  * @param {string} root repo root, or an alternate tree under a `--root` flag.
  * @param {(message: string) => never} fail the CALLER's reporter, so each gate
  *   keeps its own prefix and its own error type. Injected rather than imported:
  *   nothing about the refusal is softened to let it travel.
  * @param {readonly string[]} parents which parents to scan.
- * @param {string[]} seenParents out-param, pushed for each parent that exists.
- *   Callers use it for their own anti-vacuity accounting; ignore it if not.
- * @returns {{ rel: string, dir: string, pkgJson: unknown }[]}
+ * @returns {{ packages: { rel: string, dir: string, pkgJson: unknown }[],
+ *   seenParents: string[] }} `seenParents` lists the parents that exist, for
+ *   the callers' own anti-vacuity accounting. It is returned rather than filled
+ *   through an out-param, and it is not derivable from `packages`: a parent can
+ *   exist and hold no package at all.
  */
-export function listWorkspacePackages(root, fail, parents = PACKAGE_PARENTS, seenParents = []) {
+export function listWorkspacePackages(root, fail, parents) {
   const out = [];
+  const seenParents = [];
   for (const parent of parents) {
     const parentDir = join(root, parent);
     if (!existsOrThrow(parentDir, 'package parent', fail)) continue;
@@ -79,5 +87,5 @@ export function listWorkspacePackages(root, fail, parents = PACKAGE_PARENTS, see
       out.push({ rel: `${parent}/${name}`, dir: pkgDir, pkgJson });
     }
   }
-  return out;
+  return { packages: out, seenParents };
 }

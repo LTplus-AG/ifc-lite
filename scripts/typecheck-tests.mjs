@@ -255,14 +255,13 @@ const USAGE_LINES = [
  * Are these the same directory?
  *
  * `path.resolve` is the whole answer on every path this is actually reached
- * through. The realpath fallback is defence for platforms this was not measured
- * on, NOT a case that occurs here: four invocations were tried on macOS - cd
- * through a symlink, the same with --preserve-symlinks, invoking through the
- * link from the real directory, and that with --preserve-symlinks - and
- * `resolve` matched in all four, because getcwd(3) already returns the resolved
- * path and Node's ESM loader realpaths the module URL. The one live caller
- * passes `process.cwd()`, so `pkgDir` is a realpath by construction. Costs one
- * pair of syscalls, once per run.
+ * through, so the realpath fallback runs zero syscalls in practice. It is kept
+ * as defence for platforms this was not measured on: four invocations were
+ * tried on macOS - cd through a symlink, the same with --preserve-symlinks,
+ * invoking through the link from the real directory, and that with
+ * --preserve-symlinks - and `resolve` matched in all four, because getcwd(3)
+ * already returns the resolved path and Node's ESM loader realpaths the module
+ * URL. Only the symlink test reaches the fallback today.
  */
 function samePath(a, b) {
   if (path.resolve(a) === path.resolve(b)) return true;

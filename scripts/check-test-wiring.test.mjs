@@ -29,7 +29,7 @@ const CHECKER = join(dirname(fileURLToPath(import.meta.url)), 'check-test-wiring
 
 // Imported for the one case that has to drive a reader `audit()` never reaches
 // on its own; every other case below spawns the unmodified checker via `run`.
-const { readWorkspaceScripts, FailError } = await import('./check-test-wiring.mjs');
+import { readWorkspaceScripts, FailError } from './check-test-wiring.mjs';
 
 /** The catch-all step #3038 added: a bare glob, one directory level only. */
 const GLOB_CATCH_ALL = '      - name: Run every scripts/ test file (glob catch-all)\n' +

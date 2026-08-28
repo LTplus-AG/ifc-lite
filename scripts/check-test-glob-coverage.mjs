@@ -236,9 +236,31 @@ const VITEST_CONFIG_NAMES = [
  * file by construction, nothing to check".
  */
 function resolveVitestGlobs(pkgDir, testLooking) {
+  // Deliberately `existsSync`, NOT the existsOrThrow this file uses one
+  // function up. Measured, both ways, on a chmod-000 config: `statSync`
+  // SUCCEEDS on an unreadable file (the mode bits gate open(2), not stat(2)),
+  // so existsOrThrow returns true here and the failure lands on the read
+  // below either way. Swapping it in was an inert guard - identical exit code
+  // and identical message with and without it.
+  //
+  // There is no silent shrink on this path to begin with: the read throws and
+  // the gate exits 1. The only defect was the SHAPE of that exit, a raw
+  // EACCES stack instead of this gate's own message, so that is all the
+  // try/catch below fixes. It buys diagnostics, not fail-closed - the path was
+  // already closed.
   const configName = VITEST_CONFIG_NAMES.find((n) => existsSync(join(pkgDir, n)));
   if (!configName) return null;
-  const source = readFileSync(join(pkgDir, configName), 'utf8');
+  const configPath = join(pkgDir, configName);
+  let source;
+  try {
+    source = readFileSync(configPath, 'utf8');
+  } catch (err) {
+    fail(
+      `cannot read vitest config ${configPath}: ${err.code || err.message}. ` +
+        'Its include: globs decide which of this package\'s test files count as ' +
+        'reached, so the audit cannot answer for this package without it.',
+    );
+  }
   const includes = parseViteInclude(source);
   if (includes === null) return null;
   if (includes.length === 0) {
@@ -311,8 +333,7 @@ export function auditPackage(pkgDir, pkgJson) {
 }
 
 function main() {
-  const seenParents = [];
-  const packages = listWorkspacePackages(ROOT, fail, PACKAGE_PARENTS, seenParents);
+  const { packages, seenParents } = listWorkspacePackages(ROOT, fail, PACKAGE_PARENTS);
 
   // Anti-vacuity, structural: true of the real repo AND of every synthetic
   // fixture tree the regression harness builds, so it costs the harness

@@ -31,7 +31,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, chmodSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -345,4 +345,38 @@ test('parseViteInclude: reads the first top-level include array, ignoring a nest
 
 test('parseViteInclude: returns null when there is no include key (vitest default applies)', () => {
   assert.equal(parseViteInclude('export default defineConfig({ test: {} });'), null);
+});
+
+test('an unreadable vitest config is reported by the gate, not as a raw stack', (t) => {
+  // Windows chmod does not remove read permission, and root ignores the mode
+  // bits, so on either the config stays readable and the case cannot be built.
+  if (process.platform === 'win32') return t.skip('chmod does not gate reads on Windows');
+  if (process.getuid?.() === 0) return t.skip('root reads a 000 file regardless of mode');
+
+  const files = {
+    'packages/fixture/package.json': pkgJson('vitest run'),
+    'packages/fixture/src/a.test.ts': 'test("a", () => {})',
+    'packages/fixture/vitest.config.ts': 'export default { test: { include: ["src/**/*.test.ts"] } }',
+  };
+  const dir = writeTree(files);
+  const config = join(dir, 'packages/fixture/vitest.config.ts');
+
+  // BOTH directions. Readable first, so a fixture that fails for some unrelated
+  // reason cannot be mistaken for the refusal firing.
+  const readable = runOn(dir);
+  assert.equal(readable.status, 0, `readable config should audit cleanly:\n${readable.out}`);
+
+  chmodSync(config, 0o000);
+  try {
+    const locked = runOn(dir);
+    assert.equal(locked.status, 1, 'an unreadable config must fail the gate');
+    assert.match(locked.out, /cannot read vitest config/);
+    // The point of the change. It already exited 1 before; what it did NOT do
+    // was say why, and an uncaught readFileSync stack sends the reader into
+    // node internals instead of at their own file mode.
+    assert.doesNotMatch(locked.out, /at readFileSync \(node:fs/, 'must not surface a raw node stack');
+  } finally {
+    chmodSync(config, 0o644);
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

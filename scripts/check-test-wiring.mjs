@@ -153,8 +153,7 @@ function findTestFiles(dir, found = []) {
 
 export function auditPackages(root) {
   const offenders = [];
-  const seenParents = [];
-  const packages = listWorkspacePackages(root, fail, PACKAGE_PARENTS, seenParents);
+  const { packages, seenParents } = listWorkspacePackages(root, fail, PACKAGE_PARENTS);
 
   for (const { rel, dir, pkgJson } of packages) {
     if (pkgJson.scripts?.test) continue;
@@ -295,12 +294,16 @@ export function reachableTaskNames(sources) {
 /**
  * `{ [pkgRelPath]: scripts }` for every workspace package under packages/ and
  * apps/. A PROJECTION of the same `listWorkspacePackages` function the audit
- * uses — one discovery FUNCTION with two readers, though it is still called
- * once per reader, so this is a second walk at run time — see the note
- * there for what the two independent walks used to cost.
+ * uses: one discovery FUNCTION with two readers. Still called once per reader,
+ * so it is a second walk of the same tree at run time. That is deliberate and
+ * cheap at this size (two parents, ~50 entries); the thing worth keeping is
+ * that both readers now agree on WHAT a package is, not that they share a pass.
  */
 export function readWorkspaceScripts(root) {
-  return listWorkspacePackages(root, fail).map(({ rel, pkgJson }) => ({ rel, scripts: pkgJson.scripts ?? {} }));
+  return listWorkspacePackages(root, fail, PACKAGE_PARENTS).packages.map(({ rel, pkgJson }) => ({
+    rel,
+    scripts: pkgJson.scripts ?? {},
+  }));
 }
 
 /**

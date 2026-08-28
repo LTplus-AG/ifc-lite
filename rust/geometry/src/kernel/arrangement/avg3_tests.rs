@@ -73,6 +73,20 @@ fn adversarial_cases() -> Vec<Case> {
             c: 2_955_406.736_158_338,
             expected: -0.000_123_031_204_566_359_52,
         },
+        Case {
+            // The case that motivates the whole change, and the least
+            // contrived: site-scale coordinates (~1e7, ordinary for a
+            // georeferenced model) forming a near-cancelling hub triple of the
+            // shape CSG sub-triangulation produces at a shared edge. Naive and
+            // exact centroids differ by ~3.1e-10 — ample room for a plane
+            // through the other operand to fall between them, which is exactly
+            // how a rounded centroid flips a classification.
+            name: "site_scale_hub_near_cancel",
+            a: 9_962_210.139_537_863,
+            b: -0.011_965_918_354_684_524,
+            c: -9_962_210.139_537_925,
+            expected: -0.003_988_659_940_658_15,
+        },
     ]
 }
 

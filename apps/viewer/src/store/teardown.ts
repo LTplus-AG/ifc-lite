@@ -224,13 +224,14 @@ export function defineSliceTeardown<const K extends keyof ViewerState>(
   owns: readonly K[],
   arms: SliceTeardownArms<NoInfer<K>>,
 ): SliceTeardown<K> {
+  // Indexed lookup, not a switch naming the three kinds by hand — the sync
+  // hazard `SliceTeardownArms` closes at the type level, a forgotten switch
+  // case would fall through to `default: throw`. `undefined` check keeps that
+  // thrown message for a stale/untyped caller; `teardown-scope-completeness.test.ts` pins it.
   const teardown = (scope: TeardownScope, state: TeardownState): ArmContribution<K> => {
-    switch (scope.kind) {
-      case 'session-reset': return arms['session-reset'](scope, state);
-      case 'model-removed': return arms['model-removed'](scope, state);
-      case 'all-models-cleared': return arms['all-models-cleared'](scope, state);
-      default: throw new Error(`no teardown arm for scope kind '${(scope as { kind: string }).kind}'`);
-    }
+    const arm = (arms as Record<TeardownScopeKind, Arm<TeardownScopeKind, K>>)[scope.kind];
+    if (arm === undefined) throw new Error(`no teardown arm for scope kind '${(scope as { kind: string }).kind}'`);
+    return arm(scope, state);
   };
   return { slice, owns, teardown: teardown as (scope: TeardownScope, state: TeardownState) => TeardownContribution<K> };
 }

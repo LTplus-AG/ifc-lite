@@ -1,5 +1,5 @@
 ---
-'@ifc-lite/parser': minor
+'@ifc-lite/parser': major
 ---
 
 Refuse an express id above 4294967295 at the parse boundary instead of letting it truncate into a real entity's key (#3395).

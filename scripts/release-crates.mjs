@@ -142,14 +142,26 @@ const CRATES_TOKEN_MARGIN_MS = 60_000;
  */
 export function parseTokenMintedAtMs(env = process.env) {
   const raw = env.CRATES_TOKEN_MINTED_AT_MS;
-  if (raw === undefined || raw === '') return undefined;
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed)) {
+  // Trimmed before the empty-string check, not after: a whitespace-only value
+  // (e.g. a step output that came back `' '`) is not `=== ''`, so it used to
+  // fall through to `Number(' ')`, which is 0 — not NaN, so the finite check
+  // below let it pass. An epoch-ms deadline of 0 is 1970, already expired, so
+  // the run aborted the crates phase before publishing the first crate, AFTER
+  // npm had already published — manufacturing exactly the half-release this
+  // script exists to prevent.
+  const trimmed = raw === undefined ? undefined : raw.trim();
+  if (trimmed === undefined || trimmed === '') return undefined;
+  const parsed = Number(trimmed);
+  // `<= 0` alongside the finiteness check: a non-positive epoch timestamp
+  // (0, or a negative value from a misconfigured step) is not malformed in
+  // the NaN sense, but it is not a real mint time either, and treating it as
+  // one manufactures the same already-expired-deadline half-release above.
+  if (!Number.isFinite(parsed) || parsed <= 0) {
     throw new Error(
-      `CRATES_TOKEN_MINTED_AT_MS is set to ${JSON.stringify(raw)}, which is not a finite ` +
-        `number of milliseconds since the epoch. Refusing to start the crates.io publish ` +
-        `phase with a token-budget deadline that cannot be computed, rather than silently ` +
-        `falling back to an unbounded one.`
+      `CRATES_TOKEN_MINTED_AT_MS is set to ${JSON.stringify(raw)}, which is not a positive, ` +
+        `finite number of milliseconds since the epoch. Refusing to start the crates.io ` +
+        `publish phase with a token-budget deadline that cannot be computed, rather than ` +
+        `silently falling back to an unbounded one or to an already-expired one.`
     );
   }
   return parsed;
@@ -185,6 +197,23 @@ export async function publishAllCrates({
   tokenMintedAtMs,
   sleepFn,
 } = {}) {
+  // `main()` only ever passes a value that survived `parseTokenMintedAtMs`,
+  // but this function is also called directly (every test in this file does,
+  // and so could a future internal caller), and a non-finite value here is
+  // worse than a missing one: `Math.min(x, NaN)` is `NaN`, so `tokenDeadline`
+  // going NaN would poison `budgetDeadline` too and every `<= 0` / `<`
+  // comparison against it below is false for NaN, which disarms BOTH the
+  // token bound and the pre-existing release-wide budget it is supposed to
+  // tighten. Guarding here, not just in `parseTokenMintedAtMs`, is what makes
+  // that NaN-falls-through shape unreachable regardless of caller.
+  if (tokenMintedAtMs != null && !Number.isFinite(tokenMintedAtMs)) {
+    throw new Error(
+      `tokenMintedAtMs is ${JSON.stringify(tokenMintedAtMs)}, which is not a finite number ` +
+        `of milliseconds since the epoch. Refusing to start the crates.io publish phase ` +
+        `with a token-budget deadline that cannot be computed, rather than silently ` +
+        `disarming both the token bound and the release-wide budget.`
+    );
+  }
   const startedAt = Date.now();
   const budgetOnlyDeadline = startedAt + totalBudgetMs;
   const tokenDeadline =

@@ -34,12 +34,37 @@ function runWorkerScan(ifc: string): string[] {
 }
 
 function runWorkerScanIds(ifc: string): number[] {
-    return [...new Uint32Array(runWorkerScanRaw(ifc).ids)];
+    // Float64Array: the worker widened `ids` so a safe integer above 2^32
+    // survives instead of truncating. Reading the buffer as Uint32 here
+    // would reinterpret the doubles as garbage.
+    return [...new Float64Array(runWorkerScanRaw(ifc).ids)];
 }
 
 function runWorkerScanLines(ifc: string): number[] {
     return [...new Uint32Array(runWorkerScanRaw(ifc).lines)];
 }
+
+describe('scan-worker-inline express-id width', () => {
+    // 4294967297 is 2^32 + 1: a safe integer the guard admits, but one that a
+    // Uint32 store wraps to 1 -- so it would have silently served entity #1's
+    // record. Distinct ids must stay distinct all the way through the transfer.
+    const BIG = 4294967297;
+
+    it('does not truncate a safe id above 2^32 into a low id', () => {
+        const ids = runWorkerScanIds(
+            `#1=IFCWALL('a');\n#${BIG}=IFCWALL('b');`,
+        );
+        expect(ids).toEqual([1, BIG]);
+        expect(new Set(ids).size).toBe(ids.length);
+    });
+
+    it('still refuses an id past the safe-integer range', () => {
+        const ids = runWorkerScanIds(
+            `#1=IFCWALL('a');\n#${'9'.repeat(20)}=IFCWALL('b');`,
+        );
+        expect(ids).toEqual([1]);
+    });
+});
 
 describe('scan-worker-inline type-name cache (hash-collision safety)', () => {
     it('does not alias two type names sharing a 32-bit hash + length', () => {

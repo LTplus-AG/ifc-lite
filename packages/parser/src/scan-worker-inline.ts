@@ -36,7 +36,10 @@ self.onmessage = function(e) {
   // Pre-allocate result array (estimate ~13,500 entities per MB)
   var estimatedCount = Math.max((len / 1024 / 1024) * 13500, 1000) | 0;
   // Pack results into typed arrays for fast transfer
-  var ids = new Uint32Array(estimatedCount);
+  // Float64Array, not Uint32Array: the guard below admits any safe integer
+  // (up to 2^53), and a Uint32 store truncates -- #4294967297 lands as 1 and
+  // serves entity #1's data. A double holds every safe integer exactly.
+  var ids = new Float64Array(estimatedCount);
   var offsets = new Uint32Array(estimatedCount);
   var lengths = new Uint32Array(estimatedCount);
   var lines = new Uint32Array(estimatedCount);
@@ -49,7 +52,7 @@ self.onmessage = function(e) {
 
   function growArrays() {
     var newSize = (count * 2) | 0;
-    var newIds = new Uint32Array(newSize);
+    var newIds = new Float64Array(newSize);
     newIds.set(ids);
     ids = newIds;
     var newOffsets = new Uint32Array(newSize);
@@ -240,7 +243,9 @@ self.onmessage = function(e) {
   }
 
   // Trim arrays once, reuse for both message and transfer list
-  var needsTrim = ids.buffer.byteLength > count * 4;
+  // ids is Float64 (8 bytes); the other three are Uint32. Capacity > count is
+  // the same predicate either way, so one check still covers all four.
+  var needsTrim = ids.buffer.byteLength > count * 8;
   var trimmedIds = needsTrim ? ids.slice(0, count) : ids;
   var trimmedOffsets = needsTrim ? offsets.slice(0, count) : offsets;
   var trimmedLengths = needsTrim ? lengths.slice(0, count) : lengths;
@@ -299,7 +304,7 @@ export function scanEntitiesInWorker(
 
       activeWorker.onmessage = (e: MessageEvent) => {
         const { ids, offsets, lengths, lines, types, count } = e.data;
-        const idArr = new Uint32Array(ids);
+        const idArr = new Float64Array(ids);
         const offsetArr = new Uint32Array(offsets);
         const lengthArr = new Uint32Array(lengths);
         const lineArr = new Uint32Array(lines);

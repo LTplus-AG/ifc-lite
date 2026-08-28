@@ -66,14 +66,10 @@ export class CameraAnimator {
 
   // --- Velocity management (called by Camera class) ---
 
-  // Every one of these accumulates **in place**, and the inertia loop spends a
-  // velocity only while `Math.abs(v) > minVelocity` — false for NaN. So a
-  // single non-finite gesture argument does not cost one frame of inertia: it
-  // latches the channel dead for the rest of the session, and the value never
-  // decays back under the threshold either. That is the same latch
-  // `moveFirstPerson`'s `walkVelocity` had (#2441), reached from the argument
-  // side rather than the pose side (#2473). Skip the contribution instead;
-  // the gesture itself has already been rejected by the same test downstream.
+  // Each accumulates **in place**; the inertia loop spends a velocity only
+  // while `Math.abs(v) > minVelocity` — false for NaN forever, so one
+  // non-finite delta latches the channel dead for the session instead of one
+  // frame (same latch as `moveFirstPerson`'s `walkVelocity`, #2441/#2473).
 
   addOrbitVelocity(deltaX: number, deltaY: number): void {
     if (!areFiniteNumbers(deltaX, deltaY)) return;
@@ -124,12 +120,9 @@ export class CameraAnimator {
         this.state.camera.target.y = this.animationStartTarget.y + (this.animationEndTarget.y - this.animationStartTarget.y) * t;
         this.state.camera.target.z = this.animationStartTarget.z + (this.animationEndTarget.z - this.animationStartTarget.z) * t;
 
-        // Interpolate orthoSize if animating orthographic zoom.
-        // The animator is the second writer that bypasses `Camera.setOrthoSize`
-        // (#2461): the read-site backstop in `updateCameraMatrices` keeps the
-        // projection matrix finite but not the state, and `getOrthoSize()`
-        // reads the state — which is what a saved viewpoint persists. Keep the
-        // previous half-height when the interpolation yields nothing usable.
+        // Interpolate orthoSize if animating orthographic zoom. Bypasses
+        // `Camera.setOrthoSize` (#2461), so keep the previous half-height
+        // rather than a NaN one when the interpolation yields nothing usable.
         if (this.animationStartOrthoSize !== null && this.animationEndOrthoSize !== null) {
           const next = usableOrthoSize(
             this.animationStartOrthoSize + (this.animationEndOrthoSize - this.animationStartOrthoSize) * t,
@@ -191,26 +184,40 @@ export class CameraAnimator {
       }
     }
 
-    // Apply inertia
+    // Apply inertia, gated like `Camera`'s own wrappers (#2934 review): a
+    // refused tick (`interactionMode` can flip mid-decay) skips the side
+    // effects and zeroes that channel's velocity instead of letting it decay,
+    // so it can't survive frozen ticks and jump once the mode lifts back.
     if (Math.abs(this.velocity.orbit.x) > this.minVelocity || Math.abs(this.velocity.orbit.y) > this.minVelocity) {
-      this.resetPresetTracking();
-      this.controls.orbit(this.velocity.orbit.x * 100, this.velocity.orbit.y * 100);
-      this.velocity.orbit.x *= this.damping;
-      this.velocity.orbit.y *= this.damping;
-      isAnimating = true;
+      if (this.controls.orbit(this.velocity.orbit.x * 100, this.velocity.orbit.y * 100)) {
+        this.resetPresetTracking();
+        this.velocity.orbit.x *= this.damping;
+        this.velocity.orbit.y *= this.damping;
+        isAnimating = true;
+      } else {
+        this.velocity.orbit.x = 0;
+        this.velocity.orbit.y = 0;
+      }
     }
 
     if (Math.abs(this.velocity.pan.x) > this.minVelocity || Math.abs(this.velocity.pan.y) > this.minVelocity) {
-      this.controls.pan(this.velocity.pan.x * 1000, this.velocity.pan.y * 1000);
-      this.velocity.pan.x *= this.damping;
-      this.velocity.pan.y *= this.damping;
-      isAnimating = true;
+      if (this.controls.pan(this.velocity.pan.x * 1000, this.velocity.pan.y * 1000)) {
+        this.velocity.pan.x *= this.damping;
+        this.velocity.pan.y *= this.damping;
+        isAnimating = true;
+      } else {
+        this.velocity.pan.x = 0;
+        this.velocity.pan.y = 0;
+      }
     }
 
     if (Math.abs(this.velocity.zoom) > this.minVelocity) {
-      this.controls.zoom(this.velocity.zoom * 1000);
-      this.velocity.zoom *= this.damping;
-      isAnimating = true;
+      if (this.controls.zoom(this.velocity.zoom * 1000)) {
+        this.velocity.zoom *= this.damping;
+        isAnimating = true;
+      } else {
+        this.velocity.zoom = 0;
+      }
     }
 
     return isAnimating;

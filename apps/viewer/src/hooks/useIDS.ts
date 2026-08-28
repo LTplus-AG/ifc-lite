@@ -672,7 +672,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
    */
   const installFocusIsolation = useCallback((ids: Set<number>): void => {
     const state = useViewerStore.getState();
-    state.setIsolatedEntities(ids);
+    state.setIsolatedEntities(new Set(state.cameraCallbacks.resolveHighlightIds?.([...ids]) ?? [...ids])); // #3338: row element may lack geometry
     const installed = useViewerStore.getState().isolatedEntities;
     state.setIdsFocusVisibilityOwned(installed ? { channel: 'isolate', ids: installed } : null);
   }, []);
@@ -881,7 +881,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
    * THAT owner's presentation (#2654 fourth review).
    */
   const installSetIsolation = useCallback((ids: Set<number> | null) => {
-    setIsolatedEntities(ids);
+    setIsolatedEntities(ids === null ? null : new Set(useViewerStore.getState().cameraCallbacks.resolveHighlightIds?.([...ids]) ?? [...ids])); // #3338: null only clears
     useViewerStore.getState().setIdsFocusVisibilityOwned(null);
   }, [setIsolatedEntities]);
 

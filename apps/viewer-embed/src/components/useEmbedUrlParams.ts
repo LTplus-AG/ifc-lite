@@ -23,6 +23,13 @@
  *    TOGGLE — a second call with identical ids CLEARS isolation — so an effect
  *    that re-ran would undo itself. `setIsolatedEntities` is used instead of
  *    `isolateEntities` for the same reason: it assigns, so it cannot toggle.
+ *  - `?isolate=` ids are routed through `cameraCallbacks.resolveHighlightIds`
+ *    before being assigned (#3338), same as the embed bridge's ISOLATE
+ *    command (`bridge/handler.ts`) -- a raw geometry-less assembly id would
+ *    otherwise blank the viewport (#2531/#2532's failure mode, reachable
+ *    here too since this hook was the one channel `check-isolate-expansion-
+ *    routing.mjs`'s literal-token match could not see: it calls the
+ *    ASSIGNING `setIsolatedEntities`, never `isolateEntities`).
  */
 
 import { useEffect, useRef } from 'react';
@@ -80,7 +87,17 @@ export function useEmbedUrlParams(urlParams: EmbedViewerUrlParams, modelReady: b
 
     const state = useViewerStore.getState();
     if (urlParams.select) state.setSelectedEntityIds(urlParams.select);
-    if (urlParams.isolate) state.setIsolatedEntities(new Set(urlParams.isolate));
+    if (urlParams.isolate) {
+      // #3338: a `?isolate=` id can name a geometry-less IfcElementAssembly
+      // (or any other container the renderer never draws a mesh for), which
+      // would blank the viewport exactly like the LensPanel/PropertiesPanel
+      // /SearchModal/embed-bridge ISOLATE regressions this issue tracks.
+      // Route through the same resolver the embed bridge's ISOLATE command
+      // uses (`bridge/handler.ts`) before assigning -- falls back to the raw
+      // ids when no renderer has registered a resolver yet.
+      const resolved = state.cameraCallbacks.resolveHighlightIds?.(urlParams.isolate) ?? urlParams.isolate;
+      state.setIsolatedEntities(new Set(resolved));
+    }
   }, [modelReady, urlParams.select, urlParams.isolate]);
 
   // `?controls=` (#2934) names no entity, so unlike select/isolate above it

@@ -228,55 +228,59 @@ fn a_superset_aabb_matches_the_exact_box_and_a_shrunk_one_does_not() {
 
     // (2) Non-vacuousness: an aabb that does NOT contain `tris` (shrunk inward)
     // must be able to flip a verdict, or (1) proves nothing about `aabb`
-    // actually being used. Engineer `p` so the default far endpoint
-    // `p + dir*far_l` lands exactly at the box centroid — guaranteed inside the
-    // exact box, so `sound_far` is forced onto its extend-to-escape branch —
-    // then shrink the box `sound_far` sees. A small shrink still leaves the
-    // centroid inside the SHRUNK box too, so that call ALSO extends, but off a
-    // closer face; the shrunk-derived far endpoint can then land back inside
-    // the mesh's real (bigger) volume instead of outside it, corrupting the
-    // parity count. Deterministic grid, no hand-picked coincidences.
+    // actually being used.
+    //
+    // Mechanism (see `sound_far`'s doc comment): it only extends the far
+    // endpoint when the DEFAULT endpoint `p + dir*far_l` falls inside the box
+    // it is handed; when that endpoint is already outside the box it is handed
+    // back UNCHANGED, with no escape guarantee. So: construct `far0` to sit
+    // strictly inside the exact box but within `shrink` of one face. Against
+    // the exact box, `far0` is interior → `sound_far` extends it to a point
+    // that truly clears the solid, giving the correct (outside) verdict for a
+    // `p` chosen outside the solid. Against the shrunk box, that same `far0`
+    // is now OUTSIDE the shrunk box on that axis → the early-return fires,
+    // `sound_far` hands back `far0` itself — a point strictly INSIDE the real
+    // solid (this mesh's solid interior is exactly its AABB interior, since
+    // `tris` is a plain box). A segment from an exterior `p` to an interior
+    // endpoint crosses the boundary an odd number of times, so the shrunk-box
+    // path reports `p` as inside: wrong, and different from the exact-box
+    // verdict. This also sidesteps `sound_far`'s commensurability
+    // `debug_assert`, which only guards the extend branch the shrunk box never
+    // reaches here (it takes the early-return branch instead).
     let dir = ray_dir();
-    let centroid = [
-        (lo[0] + hi[0]) / 2.0,
-        (lo[1] + hi[1]) / 2.0,
-        (lo[2] + hi[2]) / 2.0,
-    ];
-    let mut found = false;
-    let mut witness = String::new();
-    'search: for &far_l in &[1.0, 1.2, 1.5, 2.0] {
-        let p = [
-            centroid[0] - dir[0] * far_l,
-            centroid[1] - dir[1] * far_l,
-            centroid[2] - dir[2] * far_l,
-        ];
-        for &shrink in &[0.01, 0.02, 0.05, 0.08, 0.1] {
-            let shrunk: super::Aabb = (
-                [lo[0] + shrink, lo[1] + shrink, lo[2] + shrink],
-                [hi[0] - shrink, hi[1] - shrink, hi[2] - shrink],
-            );
-            if (0..3).any(|i| shrunk.1[i] <= shrunk.0[i]) {
-                continue; // degenerate/inverted shrunk box, not meaningful here
-            }
-            let exact_verdict = point_inside(p, &tris, far_l, exact);
-            let shrunk_verdict = point_inside(p, &tris, far_l, shrunk);
-            if shrunk_verdict != exact_verdict {
-                found = true;
-                witness = format!(
-                    "p={p:?} far_l={far_l} shrunk={shrunk:?} exact-box={exact_verdict} \
-                     shrunk-box={shrunk_verdict}"
-                );
-                break 'search;
-            }
-        }
-    }
+    let far_l = 2.0; // commensurate with this box's extents (max 4.0 <= far_l*4)
+    let eps_in = 1.0e-3; // far0's distance inside the +Y face of the exact box
+    let shrink = 0.05; // > eps_in, so shrinking pushes far0 outside on Y
+    assert!(eps_in < shrink, "far0 must land outside the shrunk box on Y");
+    let far0 = [(lo[0] + hi[0]) / 2.0, hi[1] - eps_in, (lo[2] + hi[2]) / 2.0];
+    let p = [far0[0] - dir[0] * far_l, far0[1] - dir[1] * far_l, far0[2] - dir[2] * far_l];
+    // Sanity on the construction itself, so a future edit that breaks the
+    // premise fails loudly here instead of silently making assert_ne! below
+    // pass or fail for the wrong reason.
     assert!(
-        found,
-        "expected at least one (far_l, shrunk box) combination to disagree with the exact-box \
-         verdict — if none do, `point_inside` may not actually be using its `aabb` argument, \
-         which would make the superset-safety assertions above vacuous"
+        (0..3).all(|i| far0[i] >= lo[i] && far0[i] <= hi[i]),
+        "far0={far0:?} must be inside the exact box [{lo:?},{hi:?}]"
     );
-    // Recorded so a future change to the search grid that stops finding a
-    // divergence is visible as a message, not a silent pass.
-    assert!(!witness.is_empty());
+    assert!(p[1] < lo[1], "p={p:?} must be strictly outside the box on Y (below lo[1]={})", lo[1]);
+
+    let shrunk: super::Aabb =
+        ([lo[0] + shrink, lo[1] + shrink, lo[2] + shrink], [hi[0] - shrink, hi[1] - shrink, hi[2] - shrink]);
+    assert!(
+        far0[1] > shrunk.1[1],
+        "far0={far0:?} must land outside the shrunk box's +Y face at {}",
+        shrunk.1[1]
+    );
+
+    let exact_verdict = point_inside(p, &tris, far_l, exact);
+    let shrunk_verdict = point_inside(p, &tris, far_l, shrunk);
+    assert_ne!(
+        exact_verdict, shrunk_verdict,
+        "expected the shrunk box to flip the verdict at p={p:?}, far_l={far_l}: \
+         exact-box={exact_verdict} shrunk-box={shrunk_verdict} — if they agree, \
+         `point_inside` may not actually be using its `aabb` argument, which would \
+         make the superset-safety assertions above vacuous"
+    );
+    // `p` is outside the solid, so the exact box (which extends far0 to truly
+    // clear the mesh) must report it correctly as outside.
+    assert!(!exact_verdict, "exact-box verdict for an exterior p should be `outside`");
 }

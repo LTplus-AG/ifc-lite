@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use super::super::broadphase::tris_aabb;
 use super::super::interner::{Interner, Vid};
 use super::super::rational::point_of;
 use super::classify::{
@@ -48,6 +49,10 @@ pub fn union_all(meshes: &[&[Tri]]) -> (Vec<Tri>, bool) {
     let arr = arrange_many(meshes);
     let conforming = arr.unrecovered == 0;
     let exts: Vec<f64> = meshes.iter().map(|m| operand_extent(m)).collect();
+    // Each mesh's exact bounding box, hoisted once instead of having
+    // `point_inside` rescan `meshes[m]` on every OTHER mesh's sub-triangle probe
+    // against it below (an O(N) rescan repeated per-probe, not just per-mesh).
+    let aabbs: Vec<_> = meshes.iter().map(|m| tris_aabb(m)).collect();
     // Owner map: oriented (winding-preserving) Vid key → lowest mesh index that
     // KEEPS that face. A later mesh's identical co-oriented copy is dropped.
     let mut owner: HashMap<[Vid; 3], usize> = HashMap::new();
@@ -64,7 +69,7 @@ pub fn union_all(meshes: &[&[Tri]]) -> (Vec<Tri>, bool) {
             // on the union boundary iff the outer side is outside ALL other meshes
             let on_boundary = (0..meshes.len())
                 .filter(|&m| m != k)
-                .all(|m| !point_inside(outer, meshes[m], exts[m]));
+                .all(|m| !point_inside(outer, meshes[m], exts[m], aabbs[m]));
             let mut keep_this = on_boundary;
             if keep_this {
                 let key = rotate_min_first(tri);

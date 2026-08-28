@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use super::super::broadphase::{tris_aabb, Aabb};
+use super::super::broadphase::Aabb;
 use super::super::interner::Vid;
 use super::super::predicates::{orient2d_any, orient3d};
 use super::super::rational::point_of;
@@ -137,11 +137,21 @@ fn sound_far(p: [f64; 3], dir: [f64; 3], far_l: f64, (lo, hi): Aabb) -> [f64; 3]
 /// point (`far_l` past the extent, lengthened by [`sound_far`] whenever that
 /// endpoint would land inside the mesh) along a fixed generic direction; each
 /// crossing tested by the exact predicate above.
-pub(super) fn point_inside(p: [f64; 3], tris: &[Tri], far_l: f64) -> bool {
+///
+/// `aabb` must be a superset of `tris`'s true bounding box (exactly `tris_aabb(tris)`,
+/// or any box that contains it, e.g. one padded for an unrelated prefilter). Every
+/// caller already has such a box lying around, so this takes it instead of
+/// rescanning `tris` on every query. Soundness of a superset: [`sound_far`] only
+/// uses `aabb` to decide whether the default far endpoint needs lengthening to
+/// clear it; extending against a BIGGER box can only push the endpoint farther
+/// along the same ray, past the point where it has already left `tris`'s real
+/// AABB, where by definition there are no more triangles left to cross — so the
+/// crossing count, hence the parity verdict, is identical to using the exact box.
+pub(super) fn point_inside(p: [f64; 3], tris: &[Tri], far_l: f64, aabb: Aabb) -> bool {
     if tris.is_empty() {
         return false; // no crossings to count
     }
-    let far = sound_far(p, ray_dir(), far_l, tris_aabb(tris));
+    let far = sound_far(p, ray_dir(), far_l, aabb);
     tris.iter().filter(|t| exact_seg_hits_tri(p, far, t)).count() % 2 == 1
 }
 
@@ -357,7 +367,17 @@ fn c_on_or_near_a(
 /// implicit points, no BigRational escalation, const float error bounds) — so the
 /// keep/drop verdict is byte-identical native==wasm, exactly like the existing
 /// on-plane centroid classification.
-fn solid_side(c: [f64; 3], dir: [f64; 3], other: &[Tri], far_l: f64) -> (bool, bool) {
+///
+/// `other_aabb` is `other`'s bounding box (see [`point_inside`]'s contract),
+/// hoisted by the caller once instead of being rescanned here for EACH of the
+/// two probes below.
+fn solid_side(
+    c: [f64; 3],
+    dir: [f64; 3],
+    other: &[Tri],
+    far_l: f64,
+    other_aabb: Aabb,
+) -> (bool, bool) {
     // Unit-normalise `dir` so the step magnitude is plane-independent, then step a
     // small fraction of the operand extent off the plane — far enough that the
     // float predicate resolves the probe vs. the plane, near enough that no other
@@ -372,7 +392,10 @@ fn solid_side(c: [f64; 3], dir: [f64; 3], other: &[Tri], far_l: f64) -> (bool, b
     let u = [dir[0] / len * step, dir[1] / len * step, dir[2] / len * step];
     let p_plus = [c[0] + u[0], c[1] + u[1], c[2] + u[2]];
     let p_minus = [c[0] - u[0], c[1] - u[1], c[2] - u[2]];
-    (point_inside(p_plus, other, far_l), point_inside(p_minus, other, far_l))
+    (
+        point_inside(p_plus, other, far_l, other_aabb),
+        point_inside(p_minus, other, far_l, other_aabb),
+    )
 }
 
 /// The B operand as PAIRWISE-DISJOINT closed components (disjoint-cutter
@@ -478,11 +501,16 @@ impl<'a> BComponents<'a> {
     /// Is `p` inside the union of the components? (Pairwise-disjoint closed
     /// solids ⇒ inside exactly one ⇒ a per-component exact ray parity, each
     /// prefiltered by its AABB.)
+    ///
+    /// Passes the already-computed, `pad`-inflated `self.aabbs[k]` to
+    /// [`point_inside`] instead of having it rescan `comp`. `point_inside` only
+    /// needs a box that contains `comp`'s triangles, and the inflated box does
+    /// (see its own doc comment) — so this is verdict-identical, not just
+    /// faster: the escalation counts and the boolean manifest are unaffected.
     fn inside(&self, p: [f64; 3]) -> bool {
-        self.comps
-            .iter()
-            .enumerate()
-            .any(|(k, comp)| self.ray_may_hit(k, p) && point_inside(p, comp, self.exts[k]))
+        self.comps.iter().enumerate().any(|(k, comp)| {
+            self.ray_may_hit(k, p) && point_inside(p, comp, self.exts[k], self.aabbs[k])
+        })
     }
 
     /// Regime-1 coincident-face probe across the components: the EXACT
@@ -551,10 +579,11 @@ fn on_interface_keep(
     c: [f64; 3],
     other: &[Tri],
     ext_other: f64,
+    other_aabb: Aabb,
     op: BoolOp,
 ) -> Option<bool> {
     let n = tri_normal(arr, tri);
-    let (op_plus, op_minus) = solid_side(c, n, other, ext_other);
+    let (op_plus, op_minus) = solid_side(c, n, other, ext_other, other_aabb);
     if op_plus == op_minus {
         // `c` is strictly inside/outside the other solid — NOT on its boundary;
         // the plain centroid ray-cast is well-defined, so defer to it. This is the
@@ -615,6 +644,11 @@ pub(super) fn boolean_vids_components(
     // boolean-heavy meshes). `a_band` (hoisted) feeds the near-surface band.
     let bvh_a = super::super::broadphase::Bvh::build(a);
     let a_band = NearBand::from_tris(a);
+    // The BVH already computed `a`'s exact bounding box while building; reuse it
+    // (rather than have `on_interface_keep`'s regime-2 probe rescan `a` on every
+    // coplanar-parent B triangle it's called for). `unwrap_or` only matters for
+    // an empty `a`, where `point_inside`/`solid_side` never touch the box anyway.
+    let a_aabb = bvh_a.root_aabb().unwrap_or(([0.0; 3], [0.0; 3]));
     let mut scratch: Vec<u32> = Vec::new();
     let dedup = matches!(op, BoolOp::Union | BoolOp::Intersection);
     let mut a_kept: HashSet<[Vid; 3]> = HashSet::new();
@@ -687,7 +721,7 @@ pub(super) fn boolean_vids_components(
             continue; // coplanar-shared B-copy: dropped (the A-copy is the kept one)
         }
         if cop_parent {
-            if let Some(keep) = on_interface_keep(arr, tri, c, a, ext_a, op) {
+            if let Some(keep) = on_interface_keep(arr, tri, c, a, ext_a, a_aabb, op) {
                 // regime 2 for B (coplanar-overlap parent only).
                 if keep {
                     let flip = matches!(op, BoolOp::Difference);

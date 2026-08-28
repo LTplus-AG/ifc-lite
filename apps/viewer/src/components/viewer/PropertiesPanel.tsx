@@ -763,10 +763,9 @@ export function PropertiesPanel() {
   // off the IfcRelAggregates parts. The renderer matches `isolatedEntities`
   // against mesh ids directly, so isolating such a member's bare id contributes
   // nothing renderable and a group made of assemblies blanked the view -- the
-  // same class #2531 fixed for framing and the class trees, and #2660 fixed for
-  // the advanced filter's "Isolate in 3D". Resolve through the same Viewport
-  // channel those use (`cameraCallbacks.resolveHighlightIds`, backed by
-  // `expandToGeometryBearingIds`).
+  // same class #2531 fixed for framing/class trees and #2660 fixed for the
+  // advanced filter. Resolve through the same Viewport channel those use
+  // (`cameraCallbacks.resolveHighlightIds`, backed by `expandToGeometryBearingIds`).
   const handleIsolateGroupMembers = useCallback((groupId: number) => {
     const dataStore = (model?.ifcDataStore ?? ifcDataStore) as IfcDataStore | null;
     if (!dataStore || !selectedEntity) return;
@@ -780,23 +779,24 @@ export function PropertiesPanel() {
     // this handler exists for zones of hidden-by-default IfcSpaces (#1075):
     // those members resolve to nothing until the toggles below flip, so
     // replacing would drop exactly the ids the feature is about. Keeping them
-    // costs nothing -- `isolatedEntities` is a whitelist the renderer matches
-    // mesh ids against, and an id with no mesh simply never matches.
+    // costs nothing -- an id with no mesh simply never matches the whitelist.
     //
-    // Both store setters take the Set of this array, so the resolver handing
-    // back a member id it passed through is a harmless duplicate rather than a
-    // second entry. Members ride LAST because `selectedEntityId` is the
-    // ARRAY's final element (selectionSlice.ts): the primary selection stays a
-    // member of the group the user clicked instead of an arbitrary aggregated
-    // part -- the #1133 convention SearchModal.text's commit and
-    // HierarchyPanel's group isolate already follow.
+    // Both store setters take the Set of this array, so a duplicate resolver
+    // hit is harmless. Members ride LAST -- `selectedEntityId` is the ARRAY's
+    // final element (selectionSlice.ts) -- so the primary selection stays a
+    // member of the clicked group, not an arbitrary part (#1133 convention).
     //
     // Residual gap, documented rather than pretended closed: an assembly
-    // member whose parts are THEMSELVES hidden types resolves to nothing and
-    // still contributes no geometry, because the toggles below only flip for
-    // the classes present among the DIRECT members. Closing it properly wants
-    // a resolver that sees UNFILTERED geometry, which is Viewport plumbing
-    // shared with frameSelection and the Search tab.
+    // member whose parts are THEMSELVES hidden types resolves to nothing,
+    // because the toggles below only flip for classes among DIRECT members.
+    // Closing it wants a resolver seeing UNFILTERED geometry, Viewport
+    // plumbing shared with frameSelection and the Search tab.
+    //
+    // Deliberately NOT routed through `resolveIsolationIds` (#3389/#3426): it
+    // leaves the channel alone on `[]`, but `[]` is the EXPECTED result for
+    // members this handler isolates -- hidden types the FILTERED resolver
+    // can't see yet -- and the toggles below make them render right after.
+    // Aborting here would break the #1075 zone-isolate feature's common case.
     const isolationIds = [
       ...(cameraCallbacks.resolveHighlightIds?.(globalIds) ?? []),
       ...globalIds,

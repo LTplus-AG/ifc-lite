@@ -20,6 +20,7 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { useViewerStore, toGlobalIdForRef } from '@/store';
+import { resolveIsolationIds } from '@/lib/isolation/resolveIsolationIds';
 
 interface PriorView {
   isolated: Set<number> | null;
@@ -89,11 +90,12 @@ export function usePreviewIsolation({ enabled, targetModelId, includedIds }: Use
     // channel; the SELECTION below stays on the raw set (what is actually
     // included), matching the #1133 convention other channels use.
     const rawIds = [...globalIds];
-    // `??` alone only guards an ABSENT resolver, not one that runs and
-    // returns [] -- union with the raw ids so an empty resolve result
-    // doesn't blank the preview (matching every other isolation channel).
-    const resolved = store.cameraCallbacks.resolveHighlightIds?.(rawIds) ?? [];
-    store.setIsolatedEntities(new Set([...resolved, ...rawIds]));
+    // resolveIsolationIds tells "resolver hasn't answered yet" (union,
+    // self-heals once geometry streams in) apart from "resolver answered:
+    // nothing renders" (null -- leave isolation alone rather than blank the
+    // preview, #3389).
+    const isolateIds = resolveIsolationIds(store.cameraCallbacks.resolveHighlightIds, rawIds);
+    if (isolateIds !== null) store.setIsolatedEntities(new Set(isolateIds));
     // Highlight the same (raw) set. Seeds are latched by
     // `useAnonymizedExportSet` on open, so rewriting the live selection here
     // does not re-seed.

@@ -22,6 +22,7 @@ import {
   type ViewPreset,
   type SectionAxis,
 } from '@ifc-lite/embed-protocol';
+import { resolveIsolationIds } from '@/lib/isolation/resolveIsolationIds.js';
 import { toGlobalIdFromModels, type ViewerState } from '@/store/index.js';
 import { aroundDestructiveLoad, offerHostPose } from './cameraIntent.js';
 
@@ -341,11 +342,10 @@ async function handleCommand(type: InboundCommandType, data: unknown, requestId?
 
     case 'ISOLATE': {
       const payload = data as InboundPayloads['ISOLATE']; // #3338: expand assemblies, matching LensPanel/PropertiesPanel/SearchModal/SDK.
-      // `??` alone only guards an ABSENT resolver, not one that runs and
-      // returns [] -- union with the raw ids so an empty resolve result
-      // doesn't isolate nothing (matching every other isolation channel).
-      const resolved = state.cameraCallbacks.resolveHighlightIds?.(payload.ids) ?? [];
-      state.isolateEntities([...new Set([...resolved, ...payload.ids])]);
+      // resolveIsolationIds tells "hasn't answered yet" (union, self-heals) apart from
+      // "answered: nothing renders" (null -- leave isolation alone, #3389).
+      const isolateIds = resolveIsolationIds(state.cameraCallbacks.resolveHighlightIds, payload.ids);
+      if (isolateIds !== null) state.isolateEntities(isolateIds);
       if (requestId) emitToParent(createResponse(requestId));
       return;
     }

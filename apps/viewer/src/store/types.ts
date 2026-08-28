@@ -388,12 +388,12 @@ export interface CameraCallbacks {
    * geometry-less `IfcRelAggregates` assembly (own id has no mesh) to its
    * geometry-bearing parts — the same resolution `frameSelection` applies to
    * decide what to frame. For a selection entry point that assigns
-   * `selectedEntityId`/`selectedEntityIds` directly (search modal, programmatic
-   * select) rather than a 3D pick, calling this before setting the selection
-   * keeps "camera moved here" and "this is highlighted" in agreement. Returns
-   * `[]` for an id with neither geometry nor renderable parts.
-   */
-  resolveHighlightIds?: (ids: number[]) => number[];
+   * `selectedEntityId`/`selectedEntityIds` (search modal, programmatic select)
+   * rather than a 3D pick, calling this first keeps "camera moved here" and
+   * "this is highlighted" in agreement. Returns `[]` for an id with neither
+   * geometry nor renderable parts, `null` when geometry hasn't streamed in
+   * yet — isolation callers route through `@/lib/isolation/resolveIsolationIds`. */
+  resolveHighlightIds?: (ids: number[]) => number[] | null;
   /**
    * Frame the camera on the bounds of an explicit id set, keeping the current
    * view direction. Ids are federated GLOBAL ids — the id space the scene

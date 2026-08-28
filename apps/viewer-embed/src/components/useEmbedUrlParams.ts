@@ -33,6 +33,7 @@
  */
 
 import { useEffect, useRef } from 'react';
+import { resolveIsolationIds } from '@/lib/isolation/resolveIsolationIds.js';
 import { useViewerStore } from '@/store';
 import type { EmbedViewerUrlParams } from '../bridge/urlParams.js';
 
@@ -94,12 +95,13 @@ export function useEmbedUrlParams(urlParams: EmbedViewerUrlParams, modelReady: b
       // /SearchModal/embed-bridge ISOLATE regressions this issue tracks.
       // Route through the same resolver the embed bridge's ISOLATE command
       // uses (`bridge/handler.ts`) before assigning -- falls back to the raw
-      // ids when no renderer has registered a resolver yet.
-      // `??` alone only guards an ABSENT resolver, not one that runs and
-      // returns [] -- union with the raw ids so an empty resolve result
-      // doesn't isolate nothing (matching every other isolation channel).
-      const resolved = state.cameraCallbacks.resolveHighlightIds?.(urlParams.isolate) ?? [];
-      state.setIsolatedEntities(new Set([...resolved, ...urlParams.isolate]));
+      // ids when no renderer has registered a resolver yet. resolveIsolationIds
+      // tells "resolver hasn't answered yet" (union, self-heals once geometry
+      // streams in) apart from "resolver answered: nothing renders" (null --
+      // leave isolation alone rather than blank the viewport for a
+      // geometry-less assembly, #3389).
+      const isolateIds = resolveIsolationIds(state.cameraCallbacks.resolveHighlightIds, urlParams.isolate);
+      if (isolateIds !== null) state.setIsolatedEntities(new Set(isolateIds));
     }
   }, [modelReady, urlParams.select, urlParams.isolate]);
 

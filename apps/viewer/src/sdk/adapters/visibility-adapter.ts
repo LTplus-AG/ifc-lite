@@ -8,6 +8,7 @@ import { getModelForRef, type ModelLike } from './model-compat.js';
 import { collectSpatialSubtreeElementsWithIfcSpace } from '../../store/basketVisibleSet.js';
 import { toGlobalIdForRef, toGlobalIdFromModels } from '../../store/globalId.js';
 import type { AggregationRelationships } from '../../utils/aggregation.js';
+import { resolveIsolationIds } from '../../lib/isolation/resolveIsolationIds.js';
 import { isSpaceLikeSpatialTypeName, isSpatialStructureTypeName, type SpatialNode } from '@ifc-lite/data';
 
 function findDescendantNode(root: SpatialNode, expressId: number): SpatialNode | null {
@@ -96,17 +97,21 @@ export function createVisibilityAdapter(store: StoreApi): VisibilityBackendMetho
         // resolve the same way they do — a geometry-less `IfcElementAssembly`
         // ref (spatial expansion above leaves it untouched) has to become its
         // geometry-bearing `IfcRelAggregates` parts, or the viewport isolates
-        // an id with nothing to render and shows an empty scene. Falling back
-        // to the unresolved ids when no renderer has registered
-        // `resolveHighlightIds` yet, OR when the resolver runs but resolves
-        // to nothing (the renderer-initialised-but-geometry-not-loaded
-        // window, or every id resolving geometry-less), matches every other
-        // channel's fallback — `??` alone only catches the former case, not
-        // the latter, and an empty isolation hides the entire model.
-        const resolved = state.cameraCallbacks.resolveHighlightIds?.(globalIds) ?? globalIds;
-        state.isolateEntities?.(
-          resolved.length > 0 ? [...new Set([...resolved, ...globalIds])] : globalIds,
-        );
+        // an id with nothing to render and shows an empty scene.
+        //
+        // #3426 correction: falling back to the unresolved ids when the
+        // resolver runs and returns `[]` (the old `resolved.length > 0 ? ...
+        // : globalIds` above) does NOT fix the geometry-less case — it
+        // isolates to a set with no mesh in it, which blanks the viewport
+        // exactly like isolating `[]` does (`visibilitySlice.ts`'s isolation
+        // predicate hides everything not in the set, and an id nothing
+        // renders is functionally not in the set either). `resolveIsolationIds`
+        // tells that case apart from "resolver hasn't answered yet" (still
+        // streaming, or not registered) — see its doc comment for which
+        // table row each branch handles — and returns `null` there so this
+        // channel leaves the isolation alone instead of blanking it.
+        const isolateIds = resolveIsolationIds(state.cameraCallbacks.resolveHighlightIds, globalIds);
+        if (isolateIds !== null) state.isolateEntities?.(isolateIds);
       }
       return undefined;
     },

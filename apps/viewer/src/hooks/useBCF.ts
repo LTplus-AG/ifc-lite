@@ -30,6 +30,7 @@ import {
   expressIdToGlobalId as expressIdToGlobalIdLookup,
 } from './bcfIdLookup';
 import { fromGlobalIdFromModels } from '@/store/globalId';
+import { resolveIsolationIds } from '@/lib/isolation/resolveIsolationIds';
 import { deriveHeaderFiles } from './bcfHeaderFiles';
 
 // ============================================================================
@@ -573,14 +574,12 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
 
         if (isolatedExpressIds.size > 0) {
           const rawIds = [...isolatedExpressIds];
-          // #3338: resolve, guid may not be geometry-bearing. `??` alone only
-          // guards an ABSENT resolver, not one that runs and returns [] (the
-          // renderer-initialised-but-geometry-not-loaded window, or every id
-          // resolving geometry-less) -- union with the raw ids instead of
-          // falling through to only the resolved set, matching every other
-          // isolation channel (LensPanel, PropertiesPanel, SearchModal).
-          const resolved = useViewerStore.getState().cameraCallbacks.resolveHighlightIds?.(rawIds) ?? [];
-          setIsolatedEntities(new Set([...resolved, ...rawIds]));
+          // #3338: resolve, guid may not be geometry-bearing. resolveIsolationIds
+          // tells "hasn't answered yet" (union, self-heals) apart from "answered:
+          // nothing renders" (null -- leave isolation alone, #3389).
+          const resolver = useViewerStore.getState().cameraCallbacks.resolveHighlightIds;
+          const isolateIds = resolveIsolationIds(resolver, rawIds);
+          if (isolateIds !== null) setIsolatedEntities(new Set(isolateIds));
         } else {
           setIsolatedEntities(null);
         }

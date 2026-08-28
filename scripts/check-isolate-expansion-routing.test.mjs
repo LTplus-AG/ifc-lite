@@ -149,6 +149,31 @@ describe('check-isolate-expansion-routing: classifyFile', () => {
     );
     assert.equal(ROUTING_MARKERS.test('cameraCallbacks.resolveHighlightIds?.(ids)'), true);
   });
+
+  it('ROUTING_MARKERS recognises resolveIsolationIds( (#3389/#3426: the shared null-guard wrapper)', () => {
+    assert.equal(
+      ROUTING_MARKERS.test('const isolateIds = resolveIsolationIds(state.cameraCallbacks.resolveHighlightIds, ids);'),
+      true,
+      'a channel that switched to the shared wrapper no longer contains a literal resolveHighlightIds( call',
+    );
+    assert.equal(
+      ROUTING_MARKERS.test('// resolveIsolationIds handles this -- see #3389'),
+      false,
+      'naming the wrapper in prose without calling it must not satisfy the gate',
+    );
+  });
+
+  it('GREEN: a REQUIRES_ROUTING_MARKER file routed via resolveIsolationIds passes', () => {
+    const relPath = [...REQUIRES_ROUTING_MARKER][0];
+    const compliant = `
+      const isolationIds = resolveIsolationIds(cameraCallbacks.resolveHighlightIds, matchingIds);
+      if (isolationIds === null) return;
+      isolateEntities(isolationIds);
+    `;
+    const verdict = classifyFile(relPath, compliant);
+    assert.equal(verdict.isCandidate, true);
+    assert.equal(verdict.ok, true);
+  });
 });
 
 describe('check-isolate-expansion-routing: Finding 1 -- destructure-and-rename bypass', () => {

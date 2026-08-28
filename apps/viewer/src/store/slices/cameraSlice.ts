@@ -144,10 +144,11 @@ export const createCameraSlice: StateCreator<CameraSlice, [], [], CameraSlice> =
  *
  * `pendingCameraRotation` IS owned (#3364): it is a replay buffer keyed to
  * whatever renderer registers `setCameraCallbacks` NEXT, not to the model
- * that recorded it. A rotation set while no actuator was registered
- * (`setCameraRotation`, above) survives a session reset untouched, and the
- * next model's `Viewport` mounting and calling `setCameraCallbacks` replays
- * the OUTGOING model's rotation onto the INCOMING one.
+ * that recorded it. Before this fix, a rotation set while no actuator was
+ * registered (`setCameraRotation`, above) survived a session reset untouched,
+ * so the next model's `Viewport` mounting and calling `setCameraCallbacks`
+ * replayed the OUTGOING model's rotation onto the INCOMING one. A session
+ * reset now discards the pending rotation below, closing that gap.
  *
  * `cameraCallbacks`, the two callback slots and `cameraRotationListeners`
  * are still absent from `owns`: they are renderer/host wiring that outlives

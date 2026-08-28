@@ -188,10 +188,16 @@ export function serializeValue(value: StepValue): string {
  * `\X2\HHHH\X0\`, `\X4\HHHHHHHH\X0\`), never a raw byte, and buildingSMART
  * says the same for IFC2X3/IFC4/IFC4X3. A reader decoding as ISO-8859-1 (what
  * the base standard and most consumers assume) turns raw UTF-8 into mojibake or
- * a broken parse: IfcOpenShell#699/#1016, files rejected by Solibri. Matches
- * `@ifc-lite/export`'s `escapeStepString`.
+ * a broken parse: IfcOpenShell#699/#1016, files rejected by Solibri.
+ *
+ * This is the SINGLE TypeScript implementation (#3300): `@ifc-lite/export`'s
+ * `step-serialization.ts` re-exports this symbol rather than keeping its own
+ * copy. `ifc_lite_export::step_text::escape` is a separate, hand-kept Rust
+ * implementation — collapsing that one too would need a wasm adapter, which
+ * is a bigger change than this issue's scope, so the TS/Rust agreement is
+ * pinned by a vector test instead of shared code.
  */
-function escapeStepString(str: string): string {
+export function escapeStepString(str: string): string {
   const escaped = str
     .replace(/\\/g, '\\\\')  // Backslash
     .replace(/'/g, "''")     // Single quote

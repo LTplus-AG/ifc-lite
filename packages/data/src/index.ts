@@ -56,6 +56,7 @@ export {
   generateHeader,
   generateStepFileWithRegistry,
   parseStepValue,
+  escapeStepString,
 } from './step-serializers.js';
 export type {
   StepValue,

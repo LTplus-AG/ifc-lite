@@ -5,6 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   enumVal,
+  escapeStepString,
   formatStepReal,
   generateHeader,
   generateStepFileWithRegistry,
@@ -233,13 +234,16 @@ describe('toStepLineWithRegistry / generateStepFileWithRegistry', () => {
 
 
 /**
- * The `@ifc-lite/data` serializer's escaper is the second TS copy of the rule
- * pinned in `@ifc-lite/export`'s `step-serialization.test.ts` and in
- * `ifc_lite_export::step_text::escape`: ONE SPACE PER CONTROL CHARACTER, not
- * one per run (#3284 item 2). `escapeStepString` is module-private here, so a
- * run reaches it through the two public funnels that use it — `serializeValue`
- * for an attribute value and `generateHeader` for a header field. The expected
- * strings are the Rust half's observed output for the same inputs.
+ * `escapeStepString` is now the ONE TypeScript implementation (#3300):
+ * `@ifc-lite/export`'s `step-serialization.ts` re-exports this symbol rather
+ * than keeping its own copy, so this suite is the only place TS-side coverage
+ * needs to live. `ifc_lite_export::step_text::escape` stays a separate,
+ * hand-kept Rust implementation — a wasm adapter to share it is out of scope
+ * here — so the rule below (ONE SPACE PER CONTROL CHARACTER, not one per run,
+ * #3284 item 2) is pinned against the Rust half's observed output rather than
+ * shared code. Exercised through the two public funnels that use it —
+ * `serializeValue` for an attribute value and `generateHeader` for a header
+ * field — plus `escapeStepString` itself directly, now that it is exported.
  */
 describe('control-character runs are one space each (#3284, parity with the Rust escape)', () => {
   const RUST_VECTORS: ReadonlyArray<readonly [string, string, string]> = [
@@ -273,5 +277,37 @@ describe('control-character runs are one space each (#3284, parity with the Rust
       // eslint-disable-next-line no-control-regex
       expect(serialized).not.toMatch(/[\u0000-\u001F\u007F]/);
     }
+  });
+});
+
+
+/**
+ * `escapeStepString` exported directly (#3300): the two TS copies of the
+ * encode half collapsed into this one, re-exported by `@ifc-lite/export`.
+ * Awkward inputs a caller could plausibly pass through -- a bare backslash,
+ * an apostrophe, a BMP non-ASCII character, text that already looks like a
+ * `\X2\` directive, and the empty string.
+ */
+describe('escapeStepString direct (#3300)', () => {
+  it('doubles a lone backslash', () => {
+    expect(escapeStepString('a\\b')).toBe('a\\\\b');
+  });
+
+  it('doubles a lone apostrophe', () => {
+    expect(escapeStepString("a'b")).toBe("a''b");
+  });
+
+  it('encodes a non-ASCII character as an \\X2\\ directive', () => {
+    expect(escapeStepString('\u00C4')).toBe('\\X2\\00C4\\X0\\');
+  });
+
+  it('doubles the backslashes of text that already looks like a directive', () => {
+    // The input is literal text, not an actual directive: every backslash in
+    // it must be doubled like any other, or a reader would decode it as one.
+    expect(escapeStepString('a\\X2\\00FC\\X0\\b')).toBe('a\\\\X2\\\\00FC\\\\X0\\\\b');
+  });
+
+  it('returns the empty string unchanged', () => {
+    expect(escapeStepString('')).toBe('');
   });
 });

@@ -25,7 +25,25 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { composeTeardown, defineSliceTeardown, type TeardownState } from './teardown.js';
+import { composeTeardown, defineSliceTeardown, notApplicable, type SliceTeardownArms, type TeardownState } from './teardown.js';
+import type { ViewerState } from './index.js';
+
+/**
+ * Every registry below is a session-reset probe: `isUnchanged` is only ever
+ * consulted on the reset path. Spelling the other two arms out 18 times would
+ * bury that, so they are `notApplicable` once, here.
+ */
+function sessionResetOnly<const K extends keyof ViewerState>(
+  slice: string,
+  owns: readonly K[],
+  arm: SliceTeardownArms<K>['session-reset'],
+) {
+  return defineSliceTeardown(slice, owns, {
+    'session-reset': arm,
+    'model-removed': notApplicable,
+    'all-models-cleared': notApplicable,
+  });
+}
 
 const SESSION_RESET = { kind: 'session-reset' } as const;
 
@@ -36,7 +54,7 @@ describe('isUnchanged sees through a rebuilt-but-equal Map<string, plain object>
     assert.notStrictEqual(rebuilt.get('g1:r1'), prior.get('g1:r1'), 'fixture must use a cloned value, not the same reference');
 
     const registry = [
-      defineSliceTeardown('testSlice', ['clashReviews'], () => ({ clashReviews: rebuilt })),
+      sessionResetOnly('testSlice', ['clashReviews'], () => ({ clashReviews: rebuilt })),
     ];
     const state: TeardownState = { clashReviews: prior };
     const patch = composeTeardown(registry)(SESSION_RESET, state);
@@ -55,7 +73,7 @@ describe('isUnchanged sees through a rebuilt-but-equal typed array', () => {
     assert.notStrictEqual(rebuilt.positions, prior.positions, 'fixture must use a cloned typed array, not the same reference');
 
     const registry = [
-      defineSliceTeardown('testSlice', ['clashSolidMesh'], () => ({ clashSolidMesh: rebuilt })),
+      sessionResetOnly('testSlice', ['clashSolidMesh'], () => ({ clashSolidMesh: rebuilt })),
     ];
     const state: TeardownState = { clashSolidMesh: prior };
     const patch = composeTeardown(registry)(SESSION_RESET, state);
@@ -68,7 +86,7 @@ describe('isUnchanged sees through a rebuilt-but-equal typed array', () => {
 
   it('still rewrites a typed array whose contents actually differ', () => {
     const registry = [
-      defineSliceTeardown('testSlice', ['collabDraftBaseline'], () => ({
+      sessionResetOnly('testSlice', ['collabDraftBaseline'], () => ({
         collabDraftBaseline: new Uint8Array([9, 9]),
       })),
     ];
@@ -90,7 +108,7 @@ describe('isUnchanged compares plain-object keys by OWNERSHIP, not the prototype
     const rebuilt = { valueOf: Object.prototype.valueOf };
 
     const registry = [
-      defineSliceTeardown('testSlice', ['sectionPlane'], () => ({
+      sessionResetOnly('testSlice', ['sectionPlane'], () => ({
         sectionPlane: rebuilt as unknown as TeardownState['sectionPlane'],
       })),
     ];
@@ -112,7 +130,7 @@ describe('isUnchanged walks symbol-keyed own properties, not just string keys (#
     const rebuilt = { foo: 1, [marker]: 'new' };
 
     const registry = [
-      defineSliceTeardown('testSlice', ['sectionPlane'], () => ({
+      sessionResetOnly('testSlice', ['sectionPlane'], () => ({
         sectionPlane: rebuilt as unknown as TeardownState['sectionPlane'],
       })),
     ];
@@ -134,7 +152,7 @@ describe('isUnchanged compares typed-array elements with `Object.is` (#3392 foll
     // write drops nothing real. `===` would report "changed" here and force a
     // redundant write -- wasteful rather than wrong, but not the correct answer.
     const registry = [
-      defineSliceTeardown('testSlice', ['clashSolidMesh'], () => ({
+      sessionResetOnly('testSlice', ['clashSolidMesh'], () => ({
         clashSolidMesh: { positions: new Float64Array([NaN, 0, 0]), indices: new Uint32Array([0]) },
       })),
     ];
@@ -151,7 +169,7 @@ describe('isUnchanged compares typed-array elements with `Object.is` (#3392 foll
     // the `k in b` prototype-chain bug this PR also fixes. `Object.is(-0, 0)` is
     // `false`, so the write goes through.
     const registry = [
-      defineSliceTeardown('testSlice', ['clashSolidMesh'], () => ({
+      sessionResetOnly('testSlice', ['clashSolidMesh'], () => ({
         clashSolidMesh: { positions: new Float64Array([-0, 0, 0]), indices: new Uint32Array([0]) },
       })),
     ];
@@ -166,7 +184,7 @@ describe('isUnchanged compares typed-array elements with `Object.is` (#3392 foll
 describe('isUnchanged sees a content-different Map/Set as changed (#3346 core guarantee)', () => {
   it('reports two content-different Maps as changed', () => {
     const registry = [
-      defineSliceTeardown('testSlice', ['clashReviews'], () => ({
+      sessionResetOnly('testSlice', ['clashReviews'], () => ({
         clashReviews: new Map([['g1:r1', { status: 'open' as const, comment: 'different', updatedAt: 9 }]]),
       })),
     ];
@@ -179,7 +197,7 @@ describe('isUnchanged sees a content-different Map/Set as changed (#3346 core gu
 
   it('reports two content-different Sets as changed', () => {
     const registry = [
-      defineSliceTeardown('testSlice', ['selectedStoreys'], () => ({
+      sessionResetOnly('testSlice', ['selectedStoreys'], () => ({
         selectedStoreys: new Set([1, 3]),
       })),
     ];
@@ -197,7 +215,7 @@ describe('isUnchanged excludes Date/RegExp/class instances from the plain-object
     // it on the safe `return false` path instead.
     const t = 1_700_000_000_000;
     const registry = [
-      defineSliceTeardown('testSlice', ['sectionPlane'], () => ({
+      sessionResetOnly('testSlice', ['sectionPlane'], () => ({
         sectionPlane: new Date(t) as unknown as TeardownState['sectionPlane'],
       })),
     ];
@@ -208,7 +226,7 @@ describe('isUnchanged excludes Date/RegExp/class instances from the plain-object
 
   it('reports two different RegExp instances with the same source/flags as changed', () => {
     const registry = [
-      defineSliceTeardown('testSlice', ['sectionPlane'], () => ({
+      sessionResetOnly('testSlice', ['sectionPlane'], () => ({
         sectionPlane: /abc/g as unknown as TeardownState['sectionPlane'],
       })),
     ];
@@ -222,7 +240,7 @@ describe('isUnchanged excludes Date/RegExp/class instances from the plain-object
       constructor(public x: number) {}
     }
     const registry = [
-      defineSliceTeardown('testSlice', ['sectionPlane'], () => ({
+      sessionResetOnly('testSlice', ['sectionPlane'], () => ({
         sectionPlane: new Point(1) as unknown as TeardownState['sectionPlane'],
       })),
     ];
@@ -244,7 +262,7 @@ describe('isUnchanged runs Object.create(null) through structural compare, not a
     rebuilt.x = 1;
 
     const registry = [
-      defineSliceTeardown('testSlice', ['sectionPlane'], () => ({
+      sessionResetOnly('testSlice', ['sectionPlane'], () => ({
         sectionPlane: rebuilt as unknown as TeardownState['sectionPlane'],
       })),
     ];
@@ -260,7 +278,7 @@ describe('isUnchanged runs Object.create(null) through structural compare, not a
     rebuilt.x = 2;
 
     const registry = [
-      defineSliceTeardown('testSlice', ['sectionPlane'], () => ({
+      sessionResetOnly('testSlice', ['sectionPlane'], () => ({
         sectionPlane: rebuilt as unknown as TeardownState['sectionPlane'],
       })),
     ];
@@ -278,7 +296,7 @@ describe('isUnchanged falls through a detected cycle to "changed", never loops o
     rebuilt.self = rebuilt;
 
     const registry = [
-      defineSliceTeardown('testSlice', ['sectionPlane'], () => ({
+      sessionResetOnly('testSlice', ['sectionPlane'], () => ({
         sectionPlane: rebuilt as unknown as TeardownState['sectionPlane'],
       })),
     ];
@@ -300,7 +318,7 @@ describe('isUnchanged\'s cycle-detection WeakSet is fresh per top-level call (#3
     // plain-object branch and adds `shared` to THAT call's `seen` WeakSet.
     const different = { v: 2 };
     const firstRegistry = [
-      defineSliceTeardown('testSlice', ['sectionPlane'], () => ({
+      sessionResetOnly('testSlice', ['sectionPlane'], () => ({
         sectionPlane: different as unknown as TeardownState['sectionPlane'],
       })),
     ];
@@ -315,7 +333,7 @@ describe('isUnchanged\'s cycle-detection WeakSet is fresh per top-level call (#3
     // reporting "changed" instead of "unchanged".
     const equalButNew = { v: 1 };
     const secondRegistry = [
-      defineSliceTeardown('testSlice', ['sectionPlane'], () => ({
+      sessionResetOnly('testSlice', ['sectionPlane'], () => ({
         sectionPlane: equalButNew as unknown as TeardownState['sectionPlane'],
       })),
     ];
@@ -332,7 +350,7 @@ describe('isUnchanged\'s cycle-detection WeakSet is fresh per top-level call (#3
 describe('isUnchanged is order-sensitive for plain arrays (#3392 follow-up)', () => {
   it('reports [1, 2] vs [2, 1] as changed', () => {
     const registry = [
-      defineSliceTeardown('testSlice', ['sectionPlane'], () => ({
+      sessionResetOnly('testSlice', ['sectionPlane'], () => ({
         sectionPlane: [2, 1] as unknown as TeardownState['sectionPlane'],
       })),
     ];

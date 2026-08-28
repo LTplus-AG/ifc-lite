@@ -4,8 +4,8 @@
 
 /**
  * Regression test for the retry-storm defect found in the error-path sweep
- * (see the sibling fix already applied in useGridLines3D.ts / useAlignmentLines3D.ts
- * — "Cache empty on failure so we don't retry a doomed parse every tick").
+ * (see the sibling fix already applied in useAlignmentLines3D.ts —
+ * "Cache empty on failure so we don't retry a doomed parse every tick").
  *
  * `ensureParseFor` memoizes a successful parse in `PARSE_CACHE` keyed by the
  * source's content hash, and a `PARSE_INFLIGHT` map de-dupes concurrent calls

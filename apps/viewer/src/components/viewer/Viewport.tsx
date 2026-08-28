@@ -65,7 +65,6 @@ import {
   type SectionClipForGrid,
 } from '../../hooks/useSymbolicAnnotations.js';
 import { useAlignmentLines3D } from '../../hooks/useAlignmentLines3D.js';
-import { useGridLines3D } from '../../hooks/useGridLines3D.js';
 import { useDxfUnderlays3DLines } from '../../hooks/useDxfUnderlay.js';
 import { uploadDxfLines3DGuarded } from './dxf-lines-3d-upload.js';
 import { subscribeViewportHealth } from './device-loss-report.js';
@@ -1487,18 +1486,19 @@ export function Viewport({
     );
   }, [alignmentVertices3D, isInitialized]);
 
-  // Structural-grid (IfcGridAxis) lines, gated by the `ifcGrid` type-visibility
-  // toggle (issue #967). Parsed once per source + cached; only the upload/clear
-  // is toggled so flipping visibility doesn't re-parse.
-  const gridVertices3D = useGridLines3D();
-  useEffect(() => {
-    const renderer = rendererRef.current;
-    if (!renderer || !isInitialized) return;
-    renderer.setLineOverlay(
-      'grid',
-      !ifcGridVisible || gridVertices3D.length === 0 ? null : gridVertices3D,
-    );
-  }, [gridVertices3D, ifcGridVisible, isInitialized]);
+  // Structural-grid (IfcGridAxis) lines used to also draw from a second,
+  // independent extractor (`useGridLines3D`, backed by the wasm
+  // `parseGridLines` API) uploaded to the renderer's own 'grid' line-overlay
+  // channel. That copy was never section-clipped and never received the
+  // TS-side `originShift` elevation rebase `useSymbolicAnnotations` applies
+  // to its grid buckets (see `elevationRebaseFor` in
+  // `symbolic-parse-cache.ts`), so every axis drew twice, #862's grid
+  // section-clipping was inert (the unclipped copy always drew the full
+  // grid), and a federated/re-aligned model with nonzero `originShift` could
+  // show the two copies at different elevations (issue #3368). Grid lines
+  // now draw ONLY from `useSymbolicAnnotations`'s `annotationVertices3D`
+  // above, which already section-clips and rebases them when `ifcGridVisible`
+  // (`gridEnabled`) is on — see its `effectiveGridEnabled` branch.
 
   // DXF reference-layer line paths in the 3D viewport (issue #2043,
   // follow-up to #1782/#1929's 2D-only DXF underlay). Gated by each

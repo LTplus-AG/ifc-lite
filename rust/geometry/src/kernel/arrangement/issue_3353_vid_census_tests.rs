@@ -458,7 +458,7 @@ fn sweep_261_kept_triangles_are_nonmanifold_in_vid_space() {
         let origin = origin_of(tri, &tris_a, &tris_b);
         let c = super::centroid(&arr, tri);
         let mag = super::dot3(c, c).sqrt();
-        let mut report = |label: &str, surface: &[Tri]| {
+        let report = |label: &str, surface: &[Tri]| {
             let d = min_point_to_mesh_distance(c, surface);
             let relative = if mag > 0.0 { d / mag } else { f64::NAN };
             println!(

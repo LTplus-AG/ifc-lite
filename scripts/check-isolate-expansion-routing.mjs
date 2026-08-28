@@ -109,6 +109,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, dirname, relative, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isMainEntry } from './lib/is-main-entry.mjs';
 
 const ROOT_ARG_INDEX = process.argv.indexOf('--root');
 const ROOT =
@@ -437,6 +438,6 @@ function main() {
   );
 }
 
-if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
+if (isMainEntry(import.meta.url)) {
   main();
 }

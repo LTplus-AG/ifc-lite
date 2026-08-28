@@ -44,10 +44,19 @@
  *
  *   Growth INHERITED from main, after a merge — the scoped command cannot fix
  *   this one. That growth is by definition outside the files your change
- *   touched, so the run reports success and leaves the gate red. Only
- *   `--update --all` clears it, and it re-records every stale row in the tree
- *   on the way past, which is why it is a maintainer sweep in its OWN commit
- *   and its own PR rather than something to bundle into yours.
+ *   touched, so the run reports success and leaves the gate red. It takes
+ *   `--update --all --allow-raise`: `--all` to reach outside your scope, and
+ *   `--allow-raise` because re-recording a file that grew IS a raise and the
+ *   command refuses one unless asked twice. `--update --all` alone writes
+ *   nothing and exits 1. It re-records every stale row in the tree on the way
+ *   past, which is why it is a maintainer sweep in its OWN commit and its own
+ *   PR rather than something to bundle into yours.
+ *
+ *   Both spellings are pinned by tests, because this paragraph has now been
+ *   wrong three separate ways — it named a command that silently did nothing,
+ *   then one that pnpm could not even parse, then one that refuses to write.
+ *   Prose describing a command is a claim about behaviour, and the only thing
+ *   that keeps it true is a test that runs it.
  *
  * Neither is licence to raise a budget for growth the PR itself introduced,
  * which is why the regeneration command refuses a raise unless asked twice.

@@ -650,3 +650,26 @@ test('the local-main fallback warns, and an origin/main base does not', () => {
   assert.doesNotMatch(clean.out, /WARNING/);
   assert.match(clean.out, /vs origin\/main \(/);
 });
+
+// The docstring's remedy for growth inherited from main has been wrong three
+// times: it named the scoped command (which cannot reach outside the branch's
+// own files), then `-- --all` (which pnpm forwards verbatim and parseArgs
+// rejected), then `--all` alone (which refuses to write, because re-recording a
+// grown file is a raise). Prose describing a command is a claim about
+// behaviour; these two pin the claim so the next rewrite has to agree with
+// something executable.
+test('--update --all alone refuses inherited growth rather than clearing it', () => {
+  const dir = tree({ 'packages/a/big.ts': 520 });
+  const { code, out } = run(dir, '   500 packages/a/big.ts\n', { extra: ['--update', '--all'] });
+  assert.equal(code, 1, out);
+  assert.match(out, /Nothing was written/);
+});
+
+test('--update --all --allow-raise is what actually clears inherited growth', () => {
+  const dir = tree({ 'packages/a/big.ts': 520 });
+  const { code, out, allowlistPath } = run(dir, '   500 packages/a/big.ts\n', {
+    extra: ['--update', '--all', '--allow-raise'],
+  });
+  assert.equal(code, 0, out);
+  assert.match(readFileSync(allowlistPath, 'utf8'), /520 packages\/a\/big\.ts/);
+});

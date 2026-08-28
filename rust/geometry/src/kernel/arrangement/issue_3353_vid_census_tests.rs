@@ -198,15 +198,28 @@ enum Origin {
     /// a finding, and the test body fails loudly on it rather than
     /// mislabeling it.
     Unresolved,
+    /// Present in BOTH operands' sub-triangle sets — the arrangement conforms
+    /// over one interner, so an interface face can be the same oriented Vid
+    /// triple on both sides. Attribution is genuinely undecidable from the
+    /// merged output alone.
+    Both,
 }
 
 fn origin_of(tri: [Vid; 3], tris_a: &HashSet<[Vid; 3]>, tris_b: &HashSet<[Vid; 3]>) -> Origin {
-    if tris_a.contains(&tri) {
-        Origin::A
-    } else if tris_b.contains(&tri) {
-        Origin::B
-    } else {
-        Origin::Unresolved
+    // Membership is tested against the FULL per-side sub-triangle sets, not the
+    // kept subsets, because `boolean_vids` returns one merged list and does not
+    // say which loop pushed each triangle. So a triangle present on both sides
+    // is genuinely ambiguous here: the arrangement conforms over one interner,
+    // so an interface face can be the SAME oriented Vid triple on both operands
+    // (`classify.rs` says as much), and reporting `A` for it — as a first-match
+    // check would — could attribute an over-used edge to the wrong operand.
+    // Report the ambiguity instead of guessing; the census's pass/fail does not
+    // depend on it, only the per-edge attribution does.
+    match (tris_a.contains(&tri), tris_b.contains(&tri)) {
+        (true, false) => Origin::A,
+        (false, true) => Origin::B,
+        (true, true) => Origin::Both,
+        (false, false) => Origin::Unresolved,
     }
 }
 
@@ -244,6 +257,17 @@ fn sweep_261_kept_triangles_are_nonmanifold_in_vid_space() {
     // Same construction `kernel::mesh_bridge::union` runs internally, so the
     // arrangement below is the one production actually computes for this
     // pair — not a hand-rolled approximation of it.
+    //
+    // `budget::begin()` first, exactly as every production entry point does.
+    // The #1109 escalation counters are THREAD-LOCAL and nothing else resets
+    // them, so without this the arrangement below would run against whatever
+    // budget state a previously-scheduled unit test happened to leave on this
+    // worker thread — `kernel::budget::tests` and `router::voids::
+    // flap_clip_tests` both drive that state deliberately, and they share this
+    // binary. `arrange` consults `budget::tripped()` and bails at its first
+    // pair when set, which would fail the `unrecovered == 0` assertion below
+    // for a reason having nothing to do with #3353.
+    crate::kernel::budget::begin();
     let a: Vec<Tri> = orient_outward(mesh_to_tris(&mesh_a));
     let b: Vec<Tri> = orient_outward(mesh_to_tris(&mesh_b));
 

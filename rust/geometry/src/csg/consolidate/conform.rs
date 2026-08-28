@@ -321,9 +321,15 @@ pub(super) fn conform_plans(plans: &mut [PlanBucket], seam: &SeamMap) -> bool {
             // Snapping — not inserting a second near-duplicate vertex, which the
             // needle backstop would then drop — closes it without changing the
             // vertex count, so it cannot fight the never-lose-triangles guard.
-            let mut this = snap_near_duplicates(&mut region.outer_conformed, &cands);
+            let mut this = snap_near_duplicates(
+                &mut region.outer_conformed,
+                &cands,
+                plan.origin,
+                plan.u_axis,
+                plan.v_axis,
+            );
             for hole in region.holes_conformed.iter_mut() {
-                this |= snap_near_duplicates(hole, &cands);
+                this |= snap_near_duplicates(hole, &cands, plan.origin, plan.u_axis, plan.v_axis);
             }
             // A candidate this region ALREADY carries must not be re-inserted: a
             // duplicate ring vertex fails the CDT and would drop the whole region.

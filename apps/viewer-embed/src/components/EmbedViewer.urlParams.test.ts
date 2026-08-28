@@ -293,12 +293,30 @@ describe('EmbedViewer: ?isolate=', () => {
 
     const isolated = useViewerStore.getState().isolatedEntities;
     expect(isolated).not.toBeNull();
-    expect([...isolated!].sort((a, b) => a - b)).toEqual([11, 12]);
+    // The resolved parts are unioned with the raw (pre-resolution) id,
+    // matching every other isolation channel -- harmless here since the raw
+    // assembly id has no geometry of its own to draw.
+    expect([...isolated!].sort((a, b) => a - b)).toEqual([11, 12, 1005]);
   });
 
   it('falls back to the raw ids when no renderer has registered resolveHighlightIds yet', async () => {
     // `beforeEach` sets `cameraCallbacks: {}` -- no resolver at all, mirroring
     // a host page that isolates before the renderer has mounted.
+    setSearch('?isolate=1005');
+    renderEmbedViewer();
+    await settle();
+
+    const isolated = useViewerStore.getState().isolatedEntities;
+    expect(isolated).not.toBeNull();
+    expect([...isolated!]).toEqual([1005]);
+  });
+
+  it('falls back to the raw ids when the resolver returns [] (#3338 follow-up)', async () => {
+    // A resolver that runs and resolves to nothing (renderer-initialised-
+    // but-geometry-not-loaded, or every id resolving geometry-less) must
+    // ALSO fall back to the raw ids, not isolate an empty set -- `??` alone
+    // only guards an ABSENT resolver, not one that returns [].
+    useViewerStore.setState({ cameraCallbacks: { resolveHighlightIds: () => [] } });
     setSearch('?isolate=1005');
     renderEmbedViewer();
     await settle();

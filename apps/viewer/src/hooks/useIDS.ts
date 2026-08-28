@@ -672,7 +672,13 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
    */
   const installFocusIsolation = useCallback((ids: Set<number>): void => {
     const state = useViewerStore.getState();
-    state.setIsolatedEntities(new Set(state.cameraCallbacks.resolveHighlightIds?.([...ids]) ?? [...ids])); // #3338: row element may lack geometry
+    const rawIds = [...ids];
+    // #3338: row element may lack geometry. `??` alone only guards an
+    // ABSENT resolver, not one that runs and returns [] -- union with the
+    // raw ids so an empty resolve result doesn't isolate nothing (matching
+    // every other isolation channel).
+    const resolved = state.cameraCallbacks.resolveHighlightIds?.(rawIds) ?? [];
+    state.setIsolatedEntities(new Set([...resolved, ...rawIds]));
     const installed = useViewerStore.getState().isolatedEntities;
     state.setIdsFocusVisibilityOwned(installed ? { channel: 'isolate', ids: installed } : null);
   }, []);
@@ -881,7 +887,16 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
    * THAT owner's presentation (#2654 fourth review).
    */
   const installSetIsolation = useCallback((ids: Set<number> | null) => {
-    setIsolatedEntities(ids === null ? null : new Set(useViewerStore.getState().cameraCallbacks.resolveHighlightIds?.([...ids]) ?? [...ids])); // #3338: null only clears
+    if (ids === null) {
+      setIsolatedEntities(null); // #3338: null only clears
+    } else {
+      const rawIds = [...ids];
+      // `??` alone only guards an ABSENT resolver, not one that runs and
+      // returns [] -- union with the raw ids so an empty resolve result
+      // doesn't isolate nothing (matching every other isolation channel).
+      const resolved = useViewerStore.getState().cameraCallbacks.resolveHighlightIds?.(rawIds) ?? [];
+      setIsolatedEntities(new Set([...resolved, ...rawIds]));
+    }
     useViewerStore.getState().setIdsFocusVisibilityOwned(null);
   }, [setIsolatedEntities]);
 

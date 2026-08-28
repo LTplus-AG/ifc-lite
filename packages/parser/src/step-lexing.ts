@@ -21,6 +21,8 @@ const SLASH = 0x2f; // '/'
 const STAR = 0x2a; // '*'
 const NEWLINE = 0x0a; // '\n'
 const QUOTE = 0x27; // '\''
+const LPAREN = 0x28; // '('
+const RPAREN = 0x29; // ')'
 
 // Whether a comment opens at `pos`.
 export function opensComment(buf: Uint8Array, pos: number, len: number): boolean {
@@ -136,6 +138,54 @@ export function countNewlines(buf: Uint8Array, from: number, to: number): number
     if (buf[p] === NEWLINE) n++;
   }
   return n;
+}
+
+// Byte length of the record that starts at `startOffset` and whose argument
+// list opens at `pos`: the span up to and including the ')' balancing that '(',
+// or 0 when the input runs out first.
+//
+// A string literal is consumed whole rather than counted, so the '(' in
+// 'Storey (Level 1)' is text and not depth, and STEP's doubled-quote escape
+// ('') stays inside the literal instead of closing it.
+export function findEntityLength(buf: Uint8Array, pos: number, startOffset: number): number {
+  let depth = 0;
+  let inString = false;
+
+  while (pos < buf.length) {
+    const char = buf[pos];
+
+    if (char === QUOTE) {
+      if (inString) {
+        if (pos + 1 < buf.length && buf[pos + 1] === QUOTE) {
+          pos += 2; // doubled quote: an escaped ' inside the literal
+          continue;
+        }
+        inString = false;
+      } else {
+        inString = true;
+      }
+      pos++;
+      continue;
+    }
+
+    if (inString) {
+      pos++;
+      continue;
+    }
+
+    if (char === LPAREN) {
+      depth++;
+      pos++;
+    } else if (char === RPAREN) {
+      depth--;
+      pos++;
+      if (depth === 0) return pos - startOffset;
+    } else {
+      pos++;
+    }
+  }
+
+  return 0; // no matching ')'
 }
 
 // ---------------------------------------------------------------------------

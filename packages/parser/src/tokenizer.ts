@@ -10,7 +10,7 @@
 import { safeUtf8Decode } from '@ifc-lite/data';
 
 import { isIndexableExpressId } from './express-id.js';
-import { countNewlines, opensLiteralOrComment, skipLexical } from './step-lexing.js';
+import { countNewlines, findEntityLength, opensLiteralOrComment, skipLexical } from './step-lexing.js';
 
 export class StepTokenizer {
   private buffer: Uint8Array;
@@ -80,7 +80,7 @@ export class StepTokenizer {
         }
 
         // Find matching closing parenthesis to get full entity length
-        const entityLength = this.findEntityLength(startOffset);
+        const entityLength = findEntityLength(this.buffer, this.position, startOffset);
         if (entityLength > 0) {
           // Step past the whole record, as Rust's next_entity does. Leaving
           // `position` at the '(' made this loop re-walk the body, which was
@@ -361,51 +361,5 @@ export class StepTokenizer {
         break;
       }
     }
-  }
-
-  private findEntityLength(startOffset: number): number {
-    let pos = this.position;
-    let depth = 0;
-    let inString = false;
-
-    while (pos < this.buffer.length) {
-      const char = this.buffer[pos];
-
-      if (char === 0x27) { // Single quote (string delimiter)
-        if (inString) {
-          // Check for escaped quote ('') - STEP uses doubled quotes
-          if (pos + 1 < this.buffer.length && this.buffer[pos + 1] === 0x27) {
-            pos += 2; // Skip escaped quote
-            continue;
-          }
-          inString = false;
-        } else {
-          inString = true;
-        }
-        pos++;
-        continue;
-      }
-
-      if (inString) {
-        pos++;
-        continue;
-      }
-
-      if (char === 0x28) { // '('
-        depth++;
-        pos++;
-      } else if (char === 0x29) { // ')'
-        depth--;
-        pos++;
-        if (depth === 0) {
-          // Found matching closing parenthesis
-          return pos - startOffset;
-        }
-      } else {
-        pos++;
-      }
-    }
-
-    return 0; // No matching closing parenthesis found
   }
 }

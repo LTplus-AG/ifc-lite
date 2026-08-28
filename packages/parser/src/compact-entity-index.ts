@@ -13,26 +13,20 @@
  * Provides the same Map-like interface via get()/has() for drop-in compatibility.
  */
 
-import { isIndexableExpressId, MAX_EXPRESS_ID } from './express-id.js';
+import { checkedExpressId } from './express-id.js';
 import type { EntityRef } from './types.js';
 import { yieldToEventLoop } from './yield-to-event-loop.js';
 
-/**
- * Refuse to narrow an express id the columns cannot hold (#3395).
- *
- * The parse boundary already rejects such ids, so this is unreachable from
- * ifc-lite's own scans. It exists because the failure it replaces is invisible:
- * `expressIds[i] = 4294967297` stores `1` and the index then serves entity #1's
- * byte range under two keys, out of sort order, with nothing anywhere to read.
- * A throw naming the id is what makes the next path that forgets the guard
- * fail where the mistake is, instead of at a lookup three layers away.
- */
-function assertIndexableExpressId(expressId: number): void {
-  if (!isIndexableExpressId(expressId)) {
-    throw new RangeError(
-      `CompactEntityIndex cannot hold express id ${expressId}: ids must be integers in [0, ${MAX_EXPRESS_ID}] (#3395)`,
-    );
+/** Intern `type` into the parallel string table/lookup pair, returning the
+ *  index the `Uint16Array` type column stores. */
+function internType(typeStrings: string[], typeStringMap: Map<string, number>, type: string): number {
+  let index = typeStringMap.get(type);
+  if (index === undefined) {
+    index = typeStrings.length;
+    typeStrings.push(type);
+    typeStringMap.set(type, index);
   }
+  return index;
 }
 
 /**
@@ -288,23 +282,19 @@ export class CompactEntityIndexBuilder {
   }
 
   add(expressId: number, type: string, byteOffset: number, byteLength: number): void {
-    assertIndexableExpressId(expressId);
+    // Checked before the slot is claimed, so a caught throw cannot leave a
+    // zero-filled phantom entry behind for build() to emit.
+    const id = checkedExpressId(expressId);
     if (this.count >= this.capacity) {
       this.grow();
     }
     const i = this.count++;
 
-    this.expressIds[i] = expressId;
+    this.expressIds[i] = id;
     this.byteOffsets[i] = byteOffset;
     this.byteLengths[i] = byteLength;
 
-    let typeIdx = this.typeStringMap.get(type);
-    if (typeIdx === undefined) {
-      typeIdx = this.typeStrings.length;
-      this.typeStrings.push(type);
-      this.typeStringMap.set(type, typeIdx);
-    }
-    this.typeIndices[i] = typeIdx;
+    this.typeIndices[i] = internType(this.typeStrings, this.typeStringMap, type);
   }
 
   private grow(): void {
@@ -406,18 +396,11 @@ export function buildCompactEntityIndex(
 
   for (let i = 0; i < count; i++) {
     const ref = sorted[i];
-    assertIndexableExpressId(ref.expressId);
-    expressIds[i] = ref.expressId;
+    expressIds[i] = checkedExpressId(ref.expressId);
     byteOffsets[i] = ref.byteOffset;
     byteLengths[i] = ref.byteLength;
 
-    let typeIdx = typeStringMap.get(ref.type);
-    if (typeIdx === undefined) {
-      typeIdx = typeStrings.length;
-      typeStrings.push(ref.type);
-      typeStringMap.set(ref.type, typeIdx);
-    }
-    typeIndices[i] = typeIdx;
+    typeIndices[i] = internType(typeStrings, typeStringMap, ref.type);
   }
 
   return new CompactEntityIndex(
@@ -477,18 +460,11 @@ export async function buildCompactEntityIndexAsync(
       chunkStart = performance.now();
     }
     const ref = sorted[i];
-    assertIndexableExpressId(ref.expressId);
-    expressIds[i] = ref.expressId;
+    expressIds[i] = checkedExpressId(ref.expressId);
     byteOffsets[i] = ref.byteOffset;
     byteLengths[i] = ref.byteLength;
 
-    let typeIdx = typeStringMap.get(ref.type);
-    if (typeIdx === undefined) {
-      typeIdx = typeStrings.length;
-      typeStrings.push(ref.type);
-      typeStringMap.set(ref.type, typeIdx);
-    }
-    typeIndices[i] = typeIdx;
+    typeIndices[i] = internType(typeStrings, typeStringMap, ref.type);
   }
 
   return new CompactEntityIndex(

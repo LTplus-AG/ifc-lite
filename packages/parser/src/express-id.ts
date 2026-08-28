@@ -38,3 +38,24 @@ export const MAX_EXPRESS_ID = 0xffff_ffff;
 export function isIndexableExpressId(id: number): boolean {
   return Number.isSafeInteger(id) && id >= 0 && id <= MAX_EXPRESS_ID;
 }
+
+/**
+ * `id` itself when the 32-bit columns can hold it, otherwise a `RangeError`
+ * naming it (#3395).
+ *
+ * It returns the id rather than asserting so the check sits *inside* the
+ * narrowing expression — `expressIds[i] = checkedExpressId(ref.expressId)`
+ * cannot drift away from the store it guards the way a preceding statement
+ * can. ifc-lite's own scans already refuse these ids at the parse boundary, so
+ * this only fires for a caller that assembled refs some other way, and it
+ * fires where that mistake is instead of at a lookup three layers away that
+ * silently reads a different entity.
+ */
+export function checkedExpressId(id: number): number {
+  if (!isIndexableExpressId(id)) {
+    throw new RangeError(
+      `express id ${id} cannot be stored: ids must be integers in [0, ${MAX_EXPRESS_ID}] (#3395)`,
+    );
+  }
+  return id;
+}

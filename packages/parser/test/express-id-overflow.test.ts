@@ -268,6 +268,22 @@ describe('CompactEntityIndex refuses to narrow an out-of-contract id', () => {
     expect(() => builder.add(U32_MAX, 'IFCWALL', 0, 10)).not.toThrow();
   });
 
+  it('leaves no phantom slot behind when add() refuses an id', () => {
+    // The throw has to land before the slot is claimed. If it lands after
+    // `count++`, a caller that catches it and still calls build() gets an
+    // index one entry longer than it added, and that entry reads back as
+    // express id 0 with the first type string and a zero byte range -- the
+    // same one-entity-serves-another confusion the bound exists to stop.
+    const builder = new CompactEntityIndexBuilder(4);
+    builder.add(1, 'IFCWALL', 0, 10);
+    expect(() => builder.add(ABOVE_U32, 'IFCWALL', 10, 10)).toThrow();
+    builder.add(2, 'IFCSLAB', 20, 10);
+
+    const index = builder.build();
+    expect(index.size).toBe(2);
+    expect([...index.keys()]).toEqual([1, 2]);
+  });
+
   it('refuses a negative id, which aliases onto the top of the range', () => {
     // The bound's lower end, and it is not decoration: `scanIfcEntities`
     // accepts wasm-supplied refs through `normalizeWasmEntityRef`, which

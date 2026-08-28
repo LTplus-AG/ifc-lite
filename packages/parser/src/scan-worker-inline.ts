@@ -10,6 +10,8 @@
  * avoid bundler/import issues with Web Workers.
  */
 
+import { MAX_EXPRESS_ID } from './express-id.js';
+
 export interface EntityRefWorkerResult {
   expressId: number;
   type: string;
@@ -49,8 +51,9 @@ self.onmessage = function(e) {
   // to (CompactEntityIndex, the entity/property/quantity tables, the wasm
   // boundary, Rust's ColumnarIndex), so the guard below refuses anything wider
   // rather than carrying it one buffer further and truncating downstream
-  // (#3395). See express-id.ts, which this worker cannot import: its source is
-  // a string, so it has to carry the literal bound itself.
+  // (#3395). The worker runs from a Blob URL and cannot import at runtime, so
+  // the bound below is interpolated from express-id.ts when this template is
+  // evaluated -- one home for the number, not a copy that can drift.
   var ids = new Uint32Array(estimatedCount);
   var offsets = new Uint32Array(estimatedCount);
   var lengths = new Uint32Array(estimatedCount);
@@ -111,7 +114,7 @@ self.onmessage = function(e) {
       // one past 2^53, where two distinct ids collide onto one double -- fails
       // it. Count the refusal; a record that vanishes without a trace is the
       // same defect wearing a different hat.
-      if (expressId > 0xFFFFFFFF) { oversizedIds++; continue; }
+      if (expressId > ${MAX_EXPRESS_ID}) { oversizedIds++; continue; }
 
       // Skip whitespace
       while (pos < len) {

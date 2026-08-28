@@ -86,10 +86,22 @@ pub(super) fn sub_f64(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
 }
 
 /// Error-free transformation: `a + b` exactly, as a double-double `(hi, lo)`
-/// with `hi + lo` equal to the real sum (Knuth/Møller `2Sum`). Exact for any
-/// finite inputs that do not overflow, which every kernel coordinate satisfies
-/// — `to_f64_pt` never yields a non-finite point, since both its fast paths
-/// check `is_finite()` and fall through to the exact rational conversion.
+/// with `hi + lo` equal to the real sum (Knuth/Møller `2Sum`, not the cheaper
+/// `Fast2Sum` — no ordering precondition on `a` and `b`).
+///
+/// Exact for finite inputs that do not overflow. Kernel coordinates are orders
+/// of magnitude away from that boundary, but the guarantee is worth stating
+/// precisely rather than loosely: `to_f64_pt` has THREE paths, and only its two
+/// fixed-width fast paths check `is_finite()`. The exact-rational fallback ends
+/// in `to_f64().unwrap()`, and `num-rational`'s conversion filters NaN but
+/// returns infinity on overflow — so an ill-conditioned intersection point
+/// whose fixed-width conversion overflowed could in principle arrive non-finite.
+/// That exposure is pre-existing and unchanged by this routine; what IS new is
+/// that [`avg3`] degrades less gracefully than the naive form there (NaN rather
+/// than an infinity), because the Newton step's `q1 + 2 * q1` can itself
+/// overflow near `f64::MAX`. Not guarded here deliberately: a guard would mask
+/// an upstream conversion failure that should be visible, and no real geometry
+/// reaches 1e308.
 #[inline]
 fn two_sum(a: f64, b: f64) -> (f64, f64) {
     let s = a + b;

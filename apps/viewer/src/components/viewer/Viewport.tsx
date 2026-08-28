@@ -65,8 +65,6 @@ import {
   type SectionClipForGrid,
 } from '../../hooks/useSymbolicAnnotations.js';
 import { useAlignmentLines3D } from '../../hooks/useAlignmentLines3D.js';
-import { useGridLines3D } from '../../hooks/useGridLines3D.js';
-import { mergeGridLineChannels } from './merge-grid-line-channels.js';
 import { useDxfUnderlays3DLines } from '../../hooks/useDxfUnderlay.js';
 import { uploadDxfLines3DGuarded } from './dxf-lines-3d-upload.js';
 import { subscribeViewportHealth } from './device-loss-report.js';
@@ -1486,19 +1484,21 @@ export function Viewport({
     );
   }, [alignmentVertices3D, isInitialized]);
 
-  // Structural-grid (IfcGridAxis) lines (issue #967): merges `useGridLines3D`
-  // (unclipped) with the clipped grid buffer above (#3359 / pending #3368).
-  const gridVertices3D = useGridLines3D();
-  const symbolicGridVertices3D = symbolicLineChannels.grid;
-  const mergedGridVertices3D = useMemo(() => mergeGridLineChannels(gridVertices3D, symbolicGridVertices3D), [gridVertices3D, symbolicGridVertices3D]);
+  // Structural-grid (IfcGridAxis) lines draw ONLY from `useSymbolicAnnotations`
+  // (issue #3368: a second independent extractor, `useGridLines3D`, used to
+  // double-draw every axis, leave #862's section-clipping inert since it was
+  // unclipped, and go stale in elevation under a nonzero `originShift` since
+  // it skipped the TS-side rebase — see `useSymbolicAnnotations.ts`'s
+  // `effectiveGridEnabled` branch, which already clips and rebases). They
+  // upload to their OWN 'grid' channel rather than the 'annotation' buffer
+  // (issue #3359): `CHANNEL_EXPANDS_MODEL_BOUNDS.annotation` is `true` but
+  // `.grid` is `false` (grid axes extend past the model envelope, issue #967).
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
-    renderer.setLineOverlay(
-      'grid',
-      !ifcGridVisible || mergedGridVertices3D.length === 0 ? null : mergedGridVertices3D,
-    );
-  }, [mergedGridVertices3D, ifcGridVisible, isInitialized]);
+    const v = symbolicLineChannels.grid;
+    renderer.setLineOverlay('grid', !ifcGridVisible || v.length === 0 ? null : v);
+  }, [symbolicLineChannels.grid, ifcGridVisible, isInitialized]);
 
   // DXF reference-layer line paths in the 3D viewport (issue #2043,
   // follow-up to #1782/#1929's 2D-only DXF underlay). Gated by each

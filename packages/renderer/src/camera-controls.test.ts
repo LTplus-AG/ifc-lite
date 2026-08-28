@@ -495,3 +495,57 @@ describe('CameraControls – setInteractionMode (#2934)', () => {
     assert.notDeepStrictEqual(state.camera.position, posBefore);
   });
 });
+
+// `orbit`/`pan`/`zoom` report back whether the gesture applied, so `Camera`
+// can gate its own side effects (resetPresetTracking, inertia) on the same
+// decision one level up rather than half-applying a rejected gesture
+// (#2934 review).
+describe('CameraControls – orbit/pan/zoom report whether they applied', () => {
+  function setup() {
+    const state = makeState(makeCamera(vec3(0, 10, 20), vec3(0, 0, 0)));
+    const controls = new CameraControls(state, () => {});
+    return { state, controls };
+  }
+
+  it('orbit returns false when the mode refuses it, true when it applies', () => {
+    const { controls } = setup();
+    controls.setInteractionMode('pan');
+    assert.strictEqual(controls.orbit(50, 0), false, 'refused by interactionMode');
+
+    controls.setInteractionMode('all');
+    assert.strictEqual(controls.orbit(50, 0), true, 'applied');
+  });
+
+  it('orbit returns false for a non-finite delta', () => {
+    const { controls } = setup();
+    assert.strictEqual(controls.orbit(Number.NaN, 0), false, 'refused for a non-finite delta');
+  });
+
+  it('pan returns false when the mode refuses it, true when it applies', () => {
+    const { controls } = setup();
+    controls.setInteractionMode('orbit');
+    assert.strictEqual(controls.pan(50, 0), false, 'refused by interactionMode');
+
+    controls.setInteractionMode('all');
+    assert.strictEqual(controls.pan(50, 0), true, 'applied');
+  });
+
+  it('pan returns false for a non-finite delta', () => {
+    const { controls } = setup();
+    assert.strictEqual(controls.pan(Number.NaN, 0), false, 'refused for a non-finite delta');
+  });
+
+  it("zoom returns false outside 'all', true within it", () => {
+    const { controls } = setup();
+    controls.setInteractionMode('orbit');
+    assert.strictEqual(controls.zoom(-50), false, 'refused by interactionMode');
+
+    controls.setInteractionMode('all');
+    assert.strictEqual(controls.zoom(-50), true, 'applied');
+  });
+
+  it('zoom returns false for a non-finite delta', () => {
+    const { controls } = setup();
+    assert.strictEqual(controls.zoom(Number.NaN), false, 'refused for a non-finite delta');
+  });
+});

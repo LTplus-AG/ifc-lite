@@ -79,10 +79,11 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
 
 /** The same, for `all-models-cleared`. */
 const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
-  'activeModelId', 'addElementModelId', 'addElementStoreyId', 'classFilter', 'geometryResult',
-  'ghostExceptEntities', 'hiddenEntities', 'hiddenEntitiesByModel', 'hierarchyBasketSelection',
-  'ifcDataStore', 'isolatedEntities', 'isolatedEntitiesByModel', 'meshColorBackup', 'models',
-  'pinboardEntities', 'selectedEntityId', 'selectedEntityIds', 'selectedStoreys',
+  'activeModelId', 'activeStorey', 'addElementModelId', 'addElementStoreyId', 'classFilter',
+  'geometryResult', 'ghostExceptEntities', 'hiddenEntities', 'hiddenEntitiesByModel',
+  'hierarchyBasketSelection', 'ifcDataStore', 'isolatedEntities', 'isolatedEntitiesByModel',
+  'meshColorBackup', 'models', 'pinboardEntities', 'selectedEntities', 'selectedEntitiesSet',
+  'selectedEntity', 'selectedEntityId', 'selectedEntityIds', 'selectedModelId', 'selectedStoreys',
 ];
 
 /**

@@ -1435,18 +1435,15 @@ mod tests {
                     assert!(d.retessellated.is_empty(), "{g:?} -> {r:?}");
                     assert!(d.improved.is_empty(), "{g:?} -> {r:?}");
                     assert!(d.requires_bless(), "{g:?} -> {r:?}");
-                    // And the flip is still SAID, wherever it was routed.
-                    let reasons = d
-                        .regressed
-                        .iter()
-                        .chain(&d.changed)
-                        .flat_map(|x| x.reasons.iter())
-                        .cloned()
-                        .collect::<Vec<_>>()
-                        .join("; ");
+                    // And the flip is still SAID, wherever it was routed. Asked
+                    // per REASON, not against the concatenation, so the needle
+                    // has to sit inside one reason rather than being spliced
+                    // out of two.
+                    let reasons: Vec<&String> =
+                        d.regressed.iter().chain(&d.changed).flat_map(|x| &x.reasons).collect();
                     assert!(
-                        reasons.contains("genuine watertightness defect"),
-                        "gated flip not reported: {g:?} -> {r:?}: {reasons}"
+                        reasons.iter().any(|x| x.contains("genuine watertightness defect")),
+                        "gated flip not reported: {g:?} -> {r:?}: {reasons:?}"
                     );
                 } else {
                     improved_flips += 1;

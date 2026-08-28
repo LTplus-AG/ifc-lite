@@ -82,4 +82,15 @@ export function useEmbedUrlParams(urlParams: EmbedViewerUrlParams, modelReady: b
     if (urlParams.select) state.setSelectedEntityIds(urlParams.select);
     if (urlParams.isolate) state.setIsolatedEntities(new Set(urlParams.isolate));
   }, [modelReady, urlParams.select, urlParams.isolate]);
+
+  // `?controls=` (#2934) names no entity, so unlike select/isolate above it
+  // does not wait for a model: `setInteractionMode` itself defers to the
+  // renderer via `pendingInteractionMode` (cameraSlice) if `Viewport` hasn't
+  // registered its callbacks yet, so applying it once on mount is enough.
+  const controlsApplied = useRef(false);
+  useEffect(() => {
+    if (controlsApplied.current || !urlParams.controls) return;
+    controlsApplied.current = true;
+    useViewerStore.getState().setInteractionMode(urlParams.controls);
+  }, [urlParams.controls]);
 }

@@ -21,11 +21,15 @@ export interface EmbedOptions {
   theme?: 'light' | 'dark';
   /** Custom background color (hex without #) */
   bg?: string;
-  /** Camera controls mode. NOT YET IMPLEMENTED — sent, and the viewer ignores it. */
+  /**
+   * Restrict interactive orbit/pan/zoom. `'orbit'`/`'pan'` allow only that
+   * gesture, `'none'` freezes the view, `'all'` is unrestricted. Programmatic
+   * moves (`setCamera`, `view`/`camera` options, SDK calls) are unaffected.
+   */
   controls?: 'orbit' | 'pan' | 'all' | 'none';
-  /** Hide the axis helper. NOT YET IMPLEMENTED — sent, and the viewer ignores it. */
+  /** Hide the axis helper. */
   hideAxis?: boolean;
-  /** Hide the scale bar. NOT YET IMPLEMENTED — sent, and the viewer ignores it. */
+  /** Hide the scale bar. */
   hideScale?: boolean;
   /** IFC class names to hide, matched case-insensitively (`IFCSPACE` === `IfcSpace`). */
   hideTypes?: string[];

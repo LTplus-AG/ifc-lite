@@ -1075,6 +1075,9 @@ export function Viewport({
           renderCurrent();
           calculateScale();
         },
+        setInteractionMode: (mode) => {
+          camera.setInteractionMode(mode);
+        },
         setCameraRotation: ({ azimuth, elevation }) => {
           // Absolute counterpart to rotateLeft/rotateRight below (which step by
           // 90° from wherever the camera already is). Snaps rather than

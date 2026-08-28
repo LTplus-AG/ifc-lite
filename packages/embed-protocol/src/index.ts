@@ -234,10 +234,10 @@ export interface ModelInfo {
 /**
  * Parameters that can be passed via URL to the embed viewer.
  *
- * Every field here is parsed by the viewer. Three are parsed and NOT yet
- * applied, and they are marked as such below rather than left to look
- * implemented: presence in this type is not a behaviour guarantee, and
- * pretending otherwise is what #2934 was about.
+ * Every field here is parsed by the viewer AND applied — presence in this
+ * type is a behaviour guarantee, not just a parsed-and-ignored value. That
+ * was not always true (#2934): `hideAxis`/`hideScale` and `controls` used to
+ * be marked NOT YET IMPLEMENTED here.
  */
 export interface EmbedUrlParams {
   /** Model to fetch on load. http(s) only; other schemes are rejected. */
@@ -246,17 +246,19 @@ export interface EmbedUrlParams {
   /** Background colour, hex digits without the leading `#`. */
   bg?: string;
   /**
-   * NOT YET IMPLEMENTED — parsed and ignored. There is no interaction gate in
-   * the camera controller to restrict orbit/pan/zoom against; wheel and pinch
-   * zoom in particular bypass the orbit/pan entry points entirely. Tracked
-   * separately from #2934 so it is not mistaken for wiring work.
+   * Restricts interactive orbit/pan/zoom (mouse, touch, keyboard, and
+   * spacemouse gestures) at the renderer's `Camera`. `'orbit'` allows only
+   * orbit, `'pan'` only pan, `'none'` freezes the view (orbit, pan AND zoom
+   * all inert), `'all'` is unrestricted. Does not gate programmatic moves —
+   * `SET_CAMERA`, `?camera=`/`?view=`, or host SDK calls still work in every
+   * mode.
    */
   controls?: 'orbit' | 'pan' | 'all' | 'none';
   /** `false` suppresses the automatic fetch of `modelUrl`. Default: load. */
   autoLoad?: boolean;
-  /** NOT YET IMPLEMENTED — parsed and ignored; the axis triad renders regardless. */
+  /** `true` hides the axis triad overlay. */
   hideAxis?: boolean;
-  /** NOT YET IMPLEMENTED — parsed and ignored; the scale bar renders regardless. */
+  /** `true` hides the scale bar overlay. */
   hideScale?: boolean;
   /** Entity ids to select once the first model is on screen. */
   select?: number[];

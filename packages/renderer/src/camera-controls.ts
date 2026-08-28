@@ -160,16 +160,33 @@ function clampPhi(phi: number): number {
 // ---------------------------------------------------------------------------
 
 /**
+ * Restricts which gestures {@link CameraControls.orbit}/{@link
+ * CameraControls.pan}/{@link CameraControls.zoom} act on. `'all'` (the
+ * default) is unrestricted; `'none'` freezes the view entirely. Mirrors the
+ * embed protocol's `controls` URL param / `EmbedConfig.controls` (#2934).
+ */
+export type InteractionMode = 'orbit' | 'pan' | 'all' | 'none';
+
+/**
  * Handles core camera movement: orbit, pan, and zoom.
  */
 export class CameraControls {
   /** Optional orbit pivot (set on object selection). null = orbit around camera.target. */
   private orbitCenter: Vec3 | null = null;
+  /** See {@link InteractionMode}. Gates orbit/pan/zoom; unrestricted by default. */
+  private interactionMode: InteractionMode = 'all';
 
   constructor(
     private readonly state: CameraInternalState,
     private readonly updateMatrices: () => void,
   ) {}
+
+  /** Restrict interactive orbit/pan/zoom. Does not affect programmatic moves
+   *  (`setRotation`, `setPresetView`, `zoomExtent`, ...) — only the gesture
+   *  entry points below. */
+  setInteractionMode(mode: InteractionMode): void {
+    this.interactionMode = mode;
+  }
 
   /**
    * Set the orbit center without moving the camera.
@@ -207,6 +224,7 @@ export class CameraControls {
     // Rejecting before the `up` reset means a rejected gesture changes nothing
     // at all, rather than half-applying its side effect.
     if (!areFiniteNumbers(deltaX, deltaY)) return;
+    if (this.interactionMode === 'pan' || this.interactionMode === 'none') return;
 
     this.state.camera.up = { x: 0, y: 1, z: 0 };
 
@@ -327,6 +345,7 @@ export class CameraControls {
     // non-finite delta becomes nine bad coordinates — the same blast radius a
     // malformed pose has, reached from the caller instead.
     if (!areFiniteNumbers(deltaX, deltaY)) return;
+    if (this.interactionMode === 'orbit' || this.interactionMode === 'none') return;
 
     const dir = sub(this.state.camera.position, this.state.camera.target);
     const dist = length(dir);
@@ -398,6 +417,7 @@ export class CameraControls {
     // only NaN gets through here. Guarding both anyway keeps this agreeing
     // with `orbit`/`pan`, where the two behave differently.
     if (!Number.isFinite(delta)) return;
+    if (this.interactionMode === 'none') return;
 
     const dir = sub(this.state.camera.position, this.state.camera.target);
     const distance = length(dir);

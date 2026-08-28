@@ -42,6 +42,7 @@ describe('cameraSlice', () => {
         cameraCallbacks: {
           setCameraRotation: (rotation) => calls.push(['setCameraRotation', rotation]),
           setProjectionMode: (mode) => calls.push(['setProjectionMode', mode]),
+          setInteractionMode: (mode) => calls.push(['setInteractionMode', mode]),
         },
       };
     }
@@ -78,6 +79,35 @@ describe('cameraSlice', () => {
         azimuth: CAMERA_DEFAULTS.AZIMUTH,
         elevation: CAMERA_DEFAULTS.ELEVATION,
       });
+    });
+  });
+
+  describe('setInteractionMode', () => {
+    it('drives the renderer through cameraCallbacks.setInteractionMode', () => {
+      state.setInteractionMode('pan');
+
+      assert.deepStrictEqual(calls, [['setInteractionMode', 'pan']]);
+      assert.strictEqual(state.interactionMode, 'pan');
+    });
+
+    it('defers via pendingInteractionMode when no renderer has registered yet, and replays on setCameraCallbacks', () => {
+      build(false);
+
+      state.setInteractionMode('none');
+
+      assert.deepStrictEqual(calls, []);
+      assert.strictEqual(state.pendingInteractionMode, 'none');
+
+      state.setCameraCallbacks({
+        setInteractionMode: (mode) => calls.push(['setInteractionMode', mode]),
+      });
+
+      assert.deepStrictEqual(calls, [['setInteractionMode', 'none']]);
+      assert.strictEqual(state.pendingInteractionMode, null);
+    });
+
+    it('defaults to unrestricted (\'all\')', () => {
+      assert.strictEqual(state.interactionMode, 'all');
     });
   });
 

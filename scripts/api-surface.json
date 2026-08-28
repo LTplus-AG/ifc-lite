@@ -3845,6 +3845,7 @@
     "GpuFrameTimingRecorder: class",
     "HATCH_PATTERN_IDS: const",
     "HatchPatternId: type",
+    "InteractionMode: type",
     "Intersection: interface",
     "LINE_OVERLAY_CHANNELS: const",
     "LOD_CELL_FRACTION: const",

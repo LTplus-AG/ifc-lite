@@ -12,7 +12,7 @@
 
 import type { Vec3, Mat4 } from './types.js';
 import { MathUtils } from './math.js';
-import { CameraControls } from './camera-controls.js';
+import { CameraControls, type InteractionMode } from './camera-controls.js';
 import type { CameraInternalState, ProjectionMode } from './camera-state.js';
 import { CameraAnimator } from './camera-animation.js';
 import { CameraProjection } from './camera-projection.js';
@@ -139,6 +139,11 @@ export class Camera {
    */
   setOrbitCenter(center: Vec3 | null): void {
     this.controls.setOrbitCenter(center);
+  }
+
+  /** Restrict interactive orbit/pan/zoom (embed `controls` param, #2934). */
+  setInteractionMode(mode: InteractionMode): void {
+    this.controls.setInteractionMode(mode);
   }
 
   /**

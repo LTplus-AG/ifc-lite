@@ -7,7 +7,7 @@
  */
 
 import type { StateCreator } from 'zustand';
-import type { CameraRotation, CameraCallbacks, ProjectionMode } from '../types.js';
+import type { CameraRotation, CameraCallbacks, ProjectionMode, ControlsMode } from '../types.js';
 import { CAMERA_DEFAULTS } from '../constants.js';
 import { defineSliceTeardown } from '../teardown.js';
 
@@ -20,6 +20,10 @@ const defaultCameraRotation = (): CameraRotation => ({
 
 /** Likewise for the projection: `perspective` is the startup mode. */
 const DEFAULT_PROJECTION_MODE: ProjectionMode = 'perspective';
+
+/** Unrestricted orbit/pan/zoom — every consumer except the embed's
+ *  `?controls=` param (#2934) leaves this at the default. */
+const DEFAULT_CONTROLS_MODE: ControlsMode = 'all';
 
 export interface CameraSlice {
   // State
@@ -35,6 +39,12 @@ export interface CameraSlice {
   /** A rotation accepted before any renderer was registered, replayed by
    *  {@link setCameraCallbacks}. `null` once applied. */
   pendingCameraRotation: CameraRotation | null;
+  /** Interactive orbit/pan/zoom restriction (embed `?controls=`, #2934). */
+  interactionMode: ControlsMode;
+  setInteractionMode: (mode: ControlsMode) => void;
+  /** Same replay pattern as {@link pendingCameraRotation} — the embed applies
+   *  `?controls=` on mount, before `Viewport` has registered its callbacks. */
+  pendingInteractionMode: ControlsMode | null;
   setProjectionMode: (mode: ProjectionMode) => void;
   toggleProjectionMode: () => void;
   setOnCameraRotationChange: (callback: ((rotation: CameraRotation) => void) | null) => void;
@@ -54,6 +64,8 @@ export const createCameraSlice: StateCreator<CameraSlice, [], [], CameraSlice> =
   pendingCameraRotation: null,
   cameraCallbacks: {},
   projectionMode: DEFAULT_PROJECTION_MODE,
+  interactionMode: DEFAULT_CONTROLS_MODE,
+  pendingInteractionMode: null,
   onCameraRotationChange: null,
   cameraRotationListeners: new Set(),
   onScaleChange: null,
@@ -77,8 +89,17 @@ export const createCameraSlice: StateCreator<CameraSlice, [], [], CameraSlice> =
   },
   setCameraCallbacks: (cameraCallbacks) => {
     const pending = get().pendingCameraRotation;
-    set({ cameraCallbacks, pendingCameraRotation: null });
+    const pendingMode = get().pendingInteractionMode;
+    set({ cameraCallbacks, pendingCameraRotation: null, pendingInteractionMode: null });
     if (pending) cameraCallbacks.setCameraRotation?.(pending);
+    if (pendingMode) cameraCallbacks.setInteractionMode?.(pendingMode);
+  },
+  // Same shape as setCameraRotation above: drive the actuator, then record,
+  // and remember what to replay if no renderer is registered yet.
+  setInteractionMode: (interactionMode) => {
+    const actuator = get().cameraCallbacks.setInteractionMode;
+    actuator?.(interactionMode);
+    set({ interactionMode, pendingInteractionMode: actuator ? null : interactionMode });
   },
   setProjectionMode: (projectionMode) => {
     get().cameraCallbacks.setProjectionMode?.(projectionMode);

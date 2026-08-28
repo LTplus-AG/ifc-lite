@@ -194,3 +194,51 @@ fn extract_entity_type_name_trims_and_rejects_empty() {
         );
     }
 }
+
+/// `extract_first_entity_ref` and `extract_entity_refs_from_list` are the two
+/// `#<digits>` REFERENCE readers in this file (issue #3421, split from
+/// #3395 which fixed only the definition side). Before this fix both
+/// accumulated with `wrapping_mul`/`wrapping_add`, so a reference above
+/// `u32::MAX` wrapped onto a real low-numbered entity instead of being
+/// refused — the same defect #3395 fixed one hop earlier, in the reference
+/// readers rather than the definition scanner.
+///
+/// `4294967297` is `% 2^32 == 1`: an unfixed reader binds it to a real `#1`
+/// rather than merely erroring, which is the actual defect. `4294967295` is
+/// `u32::MAX` exactly and must still resolve (the bound is inclusive).
+#[test]
+fn extract_first_entity_ref_refuses_above_u32_max_and_resolves_at_the_boundary() {
+    // The defect value: would wrap to 1 without the bound.
+    assert_eq!(
+        extract_first_entity_ref(b"#77=IFCTRIANGULATEDFACESET(#4294967297,$);"),
+        None,
+        "a reference above u32::MAX must be refused, not aliased to #1"
+    );
+    // The inclusive boundary: u32::MAX itself must still resolve.
+    assert_eq!(
+        extract_first_entity_ref(b"#77=IFCTRIANGULATEDFACESET(#4294967295,$);"),
+        Some(u32::MAX)
+    );
+    // An ordinary reference is unaffected.
+    assert_eq!(
+        extract_first_entity_ref(b"#77=IFCTRIANGULATEDFACESET(#78,$);"),
+        Some(78)
+    );
+}
+
+#[test]
+fn extract_entity_refs_from_list_refuses_above_u32_max_and_resolves_at_the_boundary() {
+    // The oversized id is dropped, not aliased to #1 — it must not appear in
+    // the result at all, and the real #1 in the same list must not be
+    // duplicated by the dropped one wrapping onto it.
+    let ids = extract_entity_refs_from_list(b"(#1,#4294967297,#2)");
+    assert_eq!(
+        ids,
+        vec![1, 2],
+        "an out-of-range reference must be dropped, not wrapped onto #1"
+    );
+
+    // The inclusive boundary: u32::MAX itself must still resolve and appear.
+    let ids = extract_entity_refs_from_list(b"(#1,#4294967295,#2)");
+    assert_eq!(ids, vec![1, u32::MAX, 2]);
+}

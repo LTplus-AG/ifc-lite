@@ -81,4 +81,27 @@ describe('resetViewerState — drops the persisted cross-session section mode (#
     assert.strictEqual(after.capStyle.spacingPx, 12, 'cap style is a UI preference, must survive a model swap');
     assert.strictEqual(after.showCap, false, 'showCap is a UI preference, must survive a model swap');
   });
+
+  it('drops a face-picked custom plane — it is absolute world-space geometry from the outgoing model (#3365)', () => {
+    // Face-pick an arbitrary (non-cardinal) plane against "model A". Every
+    // field of `custom` — normal, distance, pickedAt, tangent, bitangent —
+    // is world-space geometry read off model A's coordinate frame, strictly
+    // MORE model-relative than the cardinal axis/position fields the reset
+    // already clears two blocks up.
+    useViewerStore.getState().setSectionPlaneFromFace([1, 2, 3], [10, 20, 30]);
+    const before = useViewerStore.getState().sectionPlane;
+    assert.notStrictEqual(before.custom, undefined, 'precondition: the face pick committed a custom plane');
+
+    // Same call every primary file load makes before loading "model B".
+    useViewerStore.getState().resetViewerState();
+
+    const after = useViewerStore.getState().sectionPlane;
+    assert.strictEqual(
+      after.custom,
+      undefined,
+      'a session reset must drop the custom plane along with axis/position/enabled/flipped — ' +
+      'it is model-relative geometry too, and the reset already treats a cardinal-axis change ' +
+      '(setSectionPlaneAxis) as invalidating it at a smaller scope',
+    );
+  });
 });

@@ -10,8 +10,16 @@
  * ratchets down only.
  *
  * This is the store's canonical Trap B: ONE value, `sectionPlane`, holds both
- * session-scoped and persisted fields, so the teardown spreads the live plane
- * instead of replacing it. See the field comment below.
+ * session-scoped and persisted fields. Rather than spread the live plane and
+ * overwrite each session-scoped field by name — which is how #3365 happened,
+ * `custom` being model-relative geometry that nobody remembered to list next
+ * to `axis`/`position`/`enabled`/`flipped` — this builds the result as an
+ * ALLOWLIST: start from the slice's own defaults (every field session-scoped
+ * by construction) and carry forward only the three fields that are
+ * genuinely persisted. A future field added to `SectionPlane` therefore
+ * defaults to CLEARED on a session reset unless someone deliberately opts it
+ * into the keep-list below, instead of silently surviving the way `custom`
+ * did.
  *
  * `sectionPickMode` and `sectionPickPreview` are NOT reset by any of today's
  * four teardown paths, so they are absent from both `owns` and the body.
@@ -26,7 +34,6 @@
  */
 
 import { defineSliceTeardown } from '../teardown.js';
-import { SECTION_PLANE_DEFAULTS } from '../constants.js';
 import { getDefaultSectionPlane } from './sectionSlice.js';
 
 export const sectionTeardown = defineSliceTeardown(
@@ -37,24 +44,26 @@ export const sectionTeardown = defineSliceTeardown(
     // one model, so neither removing a model nor clearing them all moves it.
     if (scope.kind !== 'session-reset') return {};
 
+    // The `??` is for the partial-store harness (`TeardownState` is a
+    // `Partial<ViewerState>`): with no live plane to read from, the slice's
+    // own initial value is by definition the right answer for the fields
+    // being kept too.
+    const live = state.sectionPlane ?? getDefaultSectionPlane();
+
     return {
-      // Section plane: reset axis/position/enabled/flipped (those are
-      // model-relative and meaningless when switching files), but PRESERVE
-      // the user's cap appearance preferences (showCap, showOutlines,
-      // capStyle). Those round-trip to localStorage via the slice's
-      // persistence helpers; clobbering them here was the cause of "my
-      // hatch / colour resets to defaults every time I open a file".
-      //
-      // The `??` is for the partial-store harness (`TeardownState` is a
-      // `Partial<ViewerState>`): with no live plane to spread, the slice's own
-      // initial value is by definition the right answer, and it re-reads the
-      // same persisted fields.
+      // Keep ONLY the user's cut-surface appearance preferences — showCap,
+      // showOutlines, capStyle. Those round-trip to localStorage via the
+      // slice's persistence helpers; clobbering them here was the cause of
+      // "my hatch / colour resets to defaults every time I open a file".
+      // Everything else (axis, position, enabled, flipped, custom) is
+      // model-relative and meaningless against a different model, so it
+      // comes from `getDefaultSectionPlane()` rather than being spread from
+      // `live` and then patched field by field.
       sectionPlane: {
-        ...(state.sectionPlane ?? getDefaultSectionPlane()),
-        axis:     SECTION_PLANE_DEFAULTS.AXIS,
-        position: SECTION_PLANE_DEFAULTS.POSITION,
-        enabled:  SECTION_PLANE_DEFAULTS.ENABLED,
-        flipped:  SECTION_PLANE_DEFAULTS.FLIPPED,
+        ...getDefaultSectionPlane(),
+        showCap:      live.showCap,
+        showOutlines: live.showOutlines,
+        capStyle:     live.capStyle,
       },
     };
   },

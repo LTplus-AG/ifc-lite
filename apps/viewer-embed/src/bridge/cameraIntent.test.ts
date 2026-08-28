@@ -52,8 +52,12 @@ function makeCameraState({ renderer = true }: { renderer?: boolean } = {}) {
     driven,
     getState: () => state,
     registerRenderer,
-    /** What `loadFile` leaves behind. Only `meshes.length` is read from it. */
+    /** What `loadFile` leaves behind. Only the field's NULLNESS is read --
+     *  `aroundDestructiveLoad` asks whether a model ever loaded, not whether it
+     *  has geometry, so `meshes` is incidental here. */
     publishModel: () => set({ geometryResult: { meshes: [{ expressId: 1 }] } }),
+    /** A spatial-only IFC: non-null result, ZERO meshes. Reads as SHOWN. */
+    publishModelWithNoMeshes: () => set({ geometryResult: { meshes: [] } }),
   };
 }
 
@@ -241,6 +245,20 @@ describe('aroundDestructiveLoad', () => {
     await aroundDestructiveLoad(showing.getState, () => Promise.resolve());
     // #3364: shown on the model that is leaving, so it leaves with it.
     expect(showing.driven).toEqual([{ azimuth: 137, elevation: 61 }]);
+    expect(hostPoseAppliedToCurrentModel()).toBe(false);
+
+    resetCameraIntent();
+
+    // A spatial-only IFC is SHOWN even though it has no geometry: non-null
+    // result, zero meshes. Reading `meshes.length` here would call it an empty
+    // scene, re-lift the pose the user watched it at, and replay it onto the
+    // next file — #3364 re-opened for the model class least likely to be
+    // tested. Same assertions as the case above; only the mesh list differs.
+    const spatialOnly = makeCameraState();
+    spatialOnly.publishModelWithNoMeshes();
+    offerHostPose({ azimuth: 137, elevation: 61 }, spatialOnly.getState);
+    await aroundDestructiveLoad(spatialOnly.getState, () => Promise.resolve());
+    expect(spatialOnly.driven).toEqual([{ azimuth: 137, elevation: 61 }]);
     expect(hostPoseAppliedToCurrentModel()).toBe(false);
   });
 

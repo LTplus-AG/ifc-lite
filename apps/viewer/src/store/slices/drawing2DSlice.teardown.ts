@@ -7,8 +7,8 @@
  *
  * Lives beside the slice rather than inside it because `drawing2DSlice.ts` is
  * at its recorded module-size budget (`scripts/module-size-allowlist.txt`),
- * and that ratchet only goes down. The seam is real either way: this file is
- * the reviewable list of everything the slice is willing to lose, and the
+ * and that ratchet goes down by default. The seam is real either way: this file
+ * is the reviewable list of everything the slice is willing to lose, and the
  * only consumer is the store's teardown registry.
  *
  * Every value is picked off {@link getDefaultDrawing2DState}, the slice's own

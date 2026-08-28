@@ -127,3 +127,32 @@ test('an ABSENT parent is skipped, not refused', () => {
     assert.deepEqual(messages, [], 'absent is not unreadable');
   });
 });
+
+test('a .DS_Store FILE is skipped, and a non-dotfile ENOTDIR is still refused', () => {
+  // The skip and the refusal have to ship together. macOS drops a `.DS_Store`
+  // FILE into any Finder-opened directory; statting `.DS_Store/package.json`
+  // raises ENOTDIR, which existsOrThrow refuses correctly and by design - so
+  // without the leading-dot skip this walk is a flake generator, and #3350
+  // fixed exactly that in three sibling gates.
+  //
+  // Both directions in ONE tree, because the tempting way to kill the flake is
+  // to catch ENOTDIR and continue, which deletes the refusal outright. That
+  // edit passes a dotfile-only test and fails this one.
+  withTree((root) => {
+    seed(root);
+    writeFileSync(join(root, 'packages/.DS_Store'), 'finder junk');
+    const messages = [];
+    const { packages } = listWorkspacePackages(root, softFail(messages), ['packages']);
+    assert.deepEqual(packages.map((p) => p.rel), ['packages/alpha'], 'the real package survives');
+    assert.deepEqual(messages, [], 'a dotfile must not be refused, it is not a package');
+
+    // Same ENOTDIR shape without the leading dot: this one MUST refuse.
+    writeFileSync(join(root, 'packages/notadir'), 'a file where a package dir should be');
+    const messages2 = [];
+    assert.throws(
+      () => listWorkspacePackages(root, softFail(messages2), ['packages']),
+      (err) => err.code === 'ENOTDIR',
+    );
+    assert.match(messages2[0] ?? '', /cannot read package manifest/);
+  });
+});

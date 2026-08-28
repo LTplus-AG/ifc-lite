@@ -921,21 +921,21 @@ impl GeometryRouter {
         // of the engulf guard. Verified: the whole rect-opening + #1007 + #960 suite
         // stays green and `issue_1007_real_opening_no_bridge`'s footprint coverage
         // stays 0 (no bridge).
-        // A jamb is pulled off its plane by one coincidence band, the smallest
-        // move that stops it being coincident at all.
+        // A jamb is pulled off its plane by one coincidence band, or a quarter
+        // of the cutter where that is smaller. See `CutterFrame::shrink`.
         let shrink = frame.shrink();
         let push_back = caps.push_back(omn, pad, shrink);
         let push_fwd = caps.push_fwd(omx, pad, shrink);
-        // Only the exit cap ring(s) move; interior loops are untouched (band = a
-        // quarter of the opening's own depth).
-        let band = (open_span * 0.25).max(1e-6);
+        // Only cap rings move, exit and jamb alike; interior loops stay put.
+        // Named for contrast with `CutterFrame::cap_band`, a different quantity.
+        let ring_band = (open_span * exit_cap::RING_BAND_FRACTION).max(1e-6);
         let mut out = opening_mesh.clone();
         for c in out.positions.chunks_exact_mut(3) {
             let p = Point3::new(c[0] as f64, c[1] as f64, c[2] as f64);
             let s = p.x * d.x + p.y * d.y + p.z * d.z;
-            let shift = if caps.min_moves() && s <= omn + band {
+            let shift = if caps.min_moves() && s <= omn + ring_band {
                 -push_back
-            } else if caps.max_moves() && s >= omx - band {
+            } else if caps.max_moves() && s >= omx - ring_band {
                 push_fwd
             } else {
                 0.0

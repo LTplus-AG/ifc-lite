@@ -37,14 +37,24 @@ fn push_quad(m: &mut Mesh, quad: [Point3<f64>; 4], target: Vector3<f64>) {
 /// fixture: those facets are coincident with a cutter that fills the hole, and
 /// coincidence alone used to qualify them for the flush-cap push.
 fn pre_cut_wall() -> Mesh {
+    pre_cut_wall_with_slot(2.0)
+}
+
+/// The same wall carrying a hole of an arbitrary width `w`, centred on x = 3.
+///
+/// Parametric because a cutter shallower than the jamb pull-in only reaches the
+/// pull-in at all if the host's hole is as thin as the cutter: with a wide hole
+/// the cutter's caps float clear of every facet and classify `Free`.
+fn pre_cut_wall_with_slot(w: f64) -> Mesh {
     let p = |x: f64, y: f64, z: f64| Point3::new(x, y, z);
+    let (a, b) = (3.0 - w * 0.5, 3.0 + w * 0.5);
     let mut m = Mesh::with_capacity(96, 144);
     // Front (y = 0) and back (y = 0.4) skins, each an annulus around the hole.
     for (y, out) in [(0.0, Vector3::new(0.0, -1.0, 0.0)), (0.4, Vector3::new(0.0, 1.0, 0.0))] {
         push_quad(&mut m, [p(0.0, y, 0.0), p(6.0, y, 0.0), p(6.0, y, 0.5), p(0.0, y, 0.5)], out);
         push_quad(&mut m, [p(0.0, y, 2.5), p(6.0, y, 2.5), p(6.0, y, 3.0), p(0.0, y, 3.0)], out);
-        push_quad(&mut m, [p(0.0, y, 0.5), p(2.0, y, 0.5), p(2.0, y, 2.5), p(0.0, y, 2.5)], out);
-        push_quad(&mut m, [p(4.0, y, 0.5), p(6.0, y, 0.5), p(6.0, y, 2.5), p(4.0, y, 2.5)], out);
+        push_quad(&mut m, [p(0.0, y, 0.5), p(a, y, 0.5), p(a, y, 2.5), p(0.0, y, 2.5)], out);
+        push_quad(&mut m, [p(b, y, 0.5), p(6.0, y, 0.5), p(6.0, y, 2.5), p(b, y, 2.5)], out);
     }
     // Outer faces.
     push_quad(&mut m, [p(0.0, 0.0, 0.0), p(6.0, 0.0, 0.0), p(6.0, 0.4, 0.0), p(0.0, 0.4, 0.0)], Vector3::new(0.0, 0.0, -1.0));
@@ -52,20 +62,100 @@ fn pre_cut_wall() -> Mesh {
     push_quad(&mut m, [p(0.0, 0.0, 0.0), p(0.0, 0.4, 0.0), p(0.0, 0.4, 3.0), p(0.0, 0.0, 3.0)], Vector3::new(-1.0, 0.0, 0.0));
     push_quad(&mut m, [p(6.0, 0.0, 0.0), p(6.0, 0.4, 0.0), p(6.0, 0.4, 3.0), p(6.0, 0.0, 3.0)], Vector3::new(1.0, 0.0, 0.0));
     // Hole reveals: outward normal points INTO the void.
-    push_quad(&mut m, [p(2.0, 0.0, 0.5), p(2.0, 0.4, 0.5), p(2.0, 0.4, 2.5), p(2.0, 0.0, 2.5)], Vector3::new(1.0, 0.0, 0.0));
-    push_quad(&mut m, [p(4.0, 0.0, 0.5), p(4.0, 0.4, 0.5), p(4.0, 0.4, 2.5), p(4.0, 0.0, 2.5)], Vector3::new(-1.0, 0.0, 0.0));
-    push_quad(&mut m, [p(2.0, 0.0, 0.5), p(4.0, 0.0, 0.5), p(4.0, 0.4, 0.5), p(2.0, 0.4, 0.5)], Vector3::new(0.0, 0.0, 1.0));
-    push_quad(&mut m, [p(2.0, 0.0, 2.5), p(4.0, 0.0, 2.5), p(4.0, 0.4, 2.5), p(2.0, 0.4, 2.5)], Vector3::new(0.0, 0.0, -1.0));
-    // Self-check before anyone trusts it: 6*0.4*3 minus the 2*0.4*2 hole. The
+    push_quad(&mut m, [p(a, 0.0, 0.5), p(a, 0.4, 0.5), p(a, 0.4, 2.5), p(a, 0.0, 2.5)], Vector3::new(1.0, 0.0, 0.0));
+    push_quad(&mut m, [p(b, 0.0, 0.5), p(b, 0.4, 0.5), p(b, 0.4, 2.5), p(b, 0.0, 2.5)], Vector3::new(-1.0, 0.0, 0.0));
+    push_quad(&mut m, [p(a, 0.0, 0.5), p(b, 0.0, 0.5), p(b, 0.4, 0.5), p(a, 0.4, 0.5)], Vector3::new(0.0, 0.0, 1.0));
+    push_quad(&mut m, [p(a, 0.0, 2.5), p(b, 0.0, 2.5), p(b, 0.4, 2.5), p(a, 0.4, 2.5)], Vector3::new(0.0, 0.0, -1.0));
+    // Self-check before anyone trusts it: 6*0.4*3 minus the w*0.4*2 hole. The
     // SIGN is asserted, not just the magnitude - facet orientation is the
     // property these fixtures exist to exercise, so `.abs()` here would hide
-    // exactly the mistake the check is for.
+    // exactly the mistake the check is for. `push_quad` winds from the `target`
+    // normal, so a wrong normal in any one of these sixteen quads (twelve call
+    // sites, four of them inside a two-pass loop) flips a face and nothing else
+    // would say so.
+    let want = 7.2 - 0.8 * w;
     let vol = mesh_signed_volume(&m);
     assert!(
-        (vol - 5.6).abs() < 1e-6,
-        "pre_cut_wall fixture is malformed or inward-wound: signed volume {vol:.6}, expected +5.6"
+        (vol - want).abs() < 1e-6,
+        "pre_cut_wall_with_slot({w}) is malformed or inward-wound: \
+         signed volume {vol:.6}, expected {want:+.6}"
     );
     m
+}
+
+/// A jamb pull-in must stay inside the cutter it is moving within.
+///
+/// Why the bound exists is stated once, on [`CutterFrame::shrink`]; repeating
+/// it here would be two copies free to drift apart on the next tune of the
+/// constant. What is local to this test is the fixture it needs.
+///
+/// The host must carry a slot as thin as the cutter for the clamp to be
+/// reachable at all: with a wide hole the cutter's caps float clear of every
+/// facet, classify `Free`, and never move. An earlier version of this test put
+/// a thin cutter inside `pre_cut_wall`'s 2 m hole and passed with the clamp
+/// deleted, testing nothing.
+///
+/// 2 mm is the one case that can fail: it collapses to zero width without the
+/// clamp. 4 mm is exactly break-even (`cap_band` and `span * RING_BAND_FRACTION`
+/// are both 1 mm), so it discriminates nothing on its own and is kept only as
+/// the largest span where `span * 0.5` is still the right expectation, which is
+/// what makes the 2 mm row's expectation non-arbitrary. Wider spans were
+/// dropped: above 4 mm `.min` selects `cap_band` with or without the clamp, so
+/// such a row could not discriminate. Note it would also need a DIFFERENT
+/// expectation, `span - 2 * cap_band` rather than `span * 0.5`, so it cannot
+/// simply be added to this loop.
+#[test]
+fn a_pull_in_never_inverts_a_shallow_cutter() {
+    for span in [0.002_f64, 0.004] {
+        let host = pre_cut_wall_with_slot(span);
+        let cutter = GeometryRouter::make_box_mesh(
+            Point3::new(3.0 - span * 0.5, -10.0, 0.5),
+            Point3::new(3.0 + span * 0.5, 10.4, 2.5),
+        );
+        let ext = GeometryRouter::extend_opening_mesh_through_host(
+            &cutter,
+            &host,
+            Vector3::new(1.0, 0.0, 0.0),
+        );
+        let (mn, mx) = ext.bounds();
+        let remaining = (mx.x as f64) - (mn.x as f64);
+        // Exactly half is the designed floor (a quarter per cap). The
+        // tolerance is absolute in the COORDINATE, not relative to the span:
+        // `Mesh` stores f32, so each cap position is quantized at ulp(3) =
+        // 2.38e-7 and a width differenced from two of them can be off by 2 ulp
+        // = 4.77e-7 however narrow the cutter is. Measured here: 7.25e-8 at
+        // 2 mm, 3.32e-7 at 4 mm, both inside that bound and inside the 1e-6
+        // tolerance. A COLLAPSED cutter fails this; an inverted one does not,
+        // which is what the volume assertion below is for.
+        // The oracle is signed VOLUME, not the AABB. No bounds-based assertion
+        // can see a symmetric over-pull: at `shrink = 0.75 * span` the two caps
+        // swap places (min-cap vertices land at `omn + 0.75*span`, max-cap ones
+        // at `omn + 0.25*span`) and the AABB comes back bit-identical to the
+        // correct `[3 - span/4, 3 + span/4]`. Width is sign-blind for the same
+        // reason, being |span - 2*shrink|. Turning the box inside out flips the
+        // volume's SIGN, which is the one reading that survives the swap.
+        //
+        // Both caps are jambs at both spans, and the bound is the binding term
+        // at 2 mm and exactly break-even at 4 mm, so each cap pulls in by a
+        // quarter of the span either way: a box of `span/2` by 20.4 by 2.0.
+        let (want_lo, want_hi) = (3.0 - span * 0.25, 3.0 + span * 0.25);
+        assert!(
+            ((mn.x as f64) - want_lo).abs() <= 1.0e-6
+                && ((mx.x as f64) - want_hi).abs() <= 1.0e-6,
+            "span {span}: caps at {:.9} .. {:.9}, expected {want_lo:.9} .. \
+             {want_hi:.9} (width {remaining:.9})",
+            mn.x,
+            mx.x
+        );
+        // 20.4 deep in y (-10 .. 10.4), 2.0 tall in z (0.5 .. 2.5).
+        let want_vol = span * 0.5 * 20.4 * 2.0;
+        let vol = mesh_signed_volume(&ext);
+        assert!(
+            (vol - want_vol).abs() <= want_vol * 1.0e-3,
+            "span {span}: cutter volume {vol:.9}, expected {want_vol:.9}; a \
+             NEGATIVE value means the caps swapped and the box is inside out"
+        );
+    }
 }
 
 /// A coincident facet only votes on a cap if it sits UNDER the opening's
@@ -248,22 +338,26 @@ fn flip_winding(m: &Mesh) -> Mesh {
     o
 }
 
-/// The exit test reads a SIGNED facet normal, so it has to know which way the
-/// host is wound. IFC winding is not reliably outward (`kernel/mesh_bridge.rs`),
-/// and the host is not oriented until AFTER the cut
-/// (`processing/src/element.rs` runs `orient_mesh_outward_verdict` on the
-/// result), so an inward-wound body reaches this code as authored.
+/// Cap classification must not depend on host winding. IFC winding is not
+/// reliably outward (`kernel/mesh_bridge.rs`), and the host is not oriented
+/// until AFTER the cut (`processing/src/element.rs` runs
+/// `orient_mesh_outward_verdict` on the result), so an inward-wound body
+/// reaches this code exactly as authored.
 ///
-/// Both failure modes were reproduced before the orientation term existed: an
-/// inward-wound slab lost the #1007 clearance push entirely (0.0000 of a 0.2500
-/// span), and an inward-wound pre-cut wall got the #3219 pier-eating back (the
-/// cutter grew to 1.400 .. 4.600 against an authored 2.000 .. 4.000).
+/// `exit_cap::detect` qualifies a cap on parallelism plus coincidence and then
+/// vetoes with RAY PARITY (`point_inside_mesh_agreed`), which counts crossings
+/// and never reads a facet's orientation. This test pins that: flipping every
+/// facet must change neither the #1007 exit clearance nor the #3219 jamb
+/// verdict.
 ///
-/// KNOWN LIMITATION, deliberately not fixed here: this reads the host's GLOBAL
-/// convention from its signed volume, so a body whose winding is MIXED can
-/// still mis-tally at a cap. That direction is safe — the cap is demoted and
-/// the clearance push is skipped, costing a #1007 rim sliver, never an
-/// over-cut.
+/// An earlier revision decided the cap from a SIGNED facet normal, taking the
+/// host's global convention from its signed volume. Both failure modes were
+/// reproduced against it: an inward-wound slab lost the #1007 clearance push
+/// entirely (0.0000 of a 0.2500 span), and an inward-wound pre-cut wall got the
+/// #3219 pier-eating back (the cutter grew to 1.400 .. 4.600 against an
+/// authored 2.000 .. 4.000). It could not read a MIXED-winding body at all.
+/// Parity has none of those failure modes, so that design was deleted rather
+/// than patched.
 #[test]
 fn an_inward_wound_host_is_read_the_same_as_an_outward_one() {
     let up = Vector3::new(0.0, 0.0, 1.0);

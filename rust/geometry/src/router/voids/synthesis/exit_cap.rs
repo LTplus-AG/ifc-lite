@@ -34,6 +34,31 @@ const CAP_PARALLEL_COS: f64 = 0.985;
 /// relative slack.
 const BAND_FRACTION: f64 = 1.0e-3;
 
+/// Fraction of a cutter's own span occupied by the cap RING: the vertices near
+/// enough to a cap to be moved with it, in
+/// `GeometryRouter::extend_opening_mesh_through_host`.
+///
+/// Read at both ends of one relationship, which is why it is a shared constant
+/// rather than a literal in each place. That function uses it to choose WHICH
+/// vertices move; [`CutterFrame::shrink`] uses it to bound HOW FAR a jamb cap
+/// may be pulled, so a pulled ring travels at most one ring-width, keeping the
+/// move and the selection on the same scale by construction.
+///
+/// It is a scale bound, NOT an ordering guarantee: a vertex selected at the far
+/// edge of the band still lands past any unselected vertex within `shrink` of
+/// that edge. A cutter carrying a mid-span ring is reachable from inside that
+/// same function, which deseams before it runs the band:
+/// `remove_internal_membrane` welds two cap-to-cap extrusions into one tube and
+/// leaves the seam's ring of vertices mid-cutter. Closing that means moving
+/// whole discrete rings instead of a coordinate band, a redesign of the
+/// selection scheme, deliberately not done here.
+///
+/// The hazard is the jamb pull-in's, not this bound's: see
+/// [`CutterFrame::shrink`] for why the bound is inert at or above a 4 mm span
+/// and only ever reduces the move below it, so it can only narrow the
+/// overtaking distance, never widen it. Not reproduced on any corpus host.
+pub(super) const RING_BAND_FRACTION: f64 = 0.25;
+
 /// A cutter's extents in the frame of its penetration axis: `lo`/`hi` hold
 /// `(u, v, d)` minima and maxima, so `.z` bounds the cutter along the axis
 /// (its two caps) and `.x`/`.y` are its cross-section footprint.
@@ -64,16 +89,58 @@ impl CutterFrame {
     }
 
     /// How far to pull a jamb cap off the plane it is coincident with: one
-    /// coincidence band, so the cap stops satisfying the very test that found
-    /// it, and no further.
+    /// coincidence band, or a quarter of the cutter, whichever is SMALLER.
+    ///
+    /// One band is the intent, because that is the smallest move that stops the
+    /// cap satisfying the very test that found it. The quarter is a bound, not
+    /// a second intent: [`Self::cap_band`] is floored at 1 mm so a sub-metre
+    /// opening keeps a usable coincidence TOLERANCE, and a tolerance floor has
+    /// no business setting how far a MOVE travels. Unclamped, two jamb caps
+    /// each pulling in by that floor meet in the middle of any span at or below
+    /// 2 mm; measured with the clamp removed, a 2 mm cutter comes back at
+    /// exactly zero width and still reaches the boolean.
+    ///
+    /// Below a 4 mm span the bound wins and the cap therefore moves LESS than
+    /// one band, so it does not clear the coincidence tolerance it was pulled
+    /// to escape. That regime is knowingly a bound rather than an escape: a
+    /// cutter that cannot be both escaped and preserved is better preserved,
+    /// since inverting it corrupts the cutter outright. No corpus host is in
+    /// it (the census is byte-identical across all 1170 rows with and without
+    /// this clamp), so the choice is argued, not measured.
+    ///
+    /// The quarter is [`RING_BAND_FRACTION`]; see it for why the two ends share
+    /// one constant and what the bound does and does not guarantee.
     ///
     /// Measured, not assumed: flooring this at the local f32 spacing changes
-    /// nothing on the corpus, byte for byte. The cap offsets here are frame
-    /// projections and stay small even on hosts whose world coordinates are at
-    /// 8e6, so the pull-in is representable where it is applied. Recorded
-    /// because the opposite was plausible enough that I implemented it.
+    /// nothing on the corpus, byte for byte. Recorded because the opposite was
+    /// plausible enough that I implemented it.
+    ///
+    /// That measurement was taken on the UNCLAMPED move and does not carry over
+    /// to the clamped regime, where the move shrinks with the span instead of
+    /// holding at the band. On a host at 9000 m (under the far-field cutoff, so
+    /// the veto still runs) a 1.5 mm cutter gives a 3.75e-4 MOVE against an f32
+    /// ulp of 9.77e-4. A move below half an ulp rounds away entirely, so that
+    /// cap does not move AT ALL. Strictly worse than the paragraph above:
+    /// moving less than one band still escapes something, while not moving
+    /// leaves the cap exactly coplanar and reinstates the graze.
+    ///
+    /// Where BOTH caps are jambs this is still not a regression, and that was
+    /// checked rather than assumed: over 500 consecutive representable cap
+    /// positions at 9000 m crossed with spans from 0.1 mm to 3.9 mm, ranking
+    /// outcomes inverted < collapsed < coplanar < moved, the clamped move is
+    /// never worse. Where a move can round away, the unclamped one COLLAPSES or
+    /// INVERTS the cutter, and a graze beats an inverted cutter.
+    ///
+    /// Where only ONE cap is a jamb it IS a regression, and the scope above is
+    /// exactly why: collapse needs two caps closing on each other, so a lone
+    /// jamb could safely move a full band, and below 4 mm this bound withholds
+    /// that. Relaxing it to `span * 0.5` when one cap moves would restore the
+    /// escape and break the ring coupling in the same breath (at 2 mm that is a
+    /// 1 mm move against a 0.5 mm ring band). Below 4 mm the two constraints
+    /// cannot both hold, so the conservative one is kept: a graze tears, an
+    /// unbounded ring move corrupts. No corpus host is in the regime.
     pub fn shrink(&self) -> f64 {
-        self.cap_band()
+        self.cap_band().min(self.span() * RING_BAND_FRACTION)
     }
 
     /// Cutter offsets along the axis at the min and max cap.
@@ -95,9 +162,7 @@ impl CutterFrame {
     /// and projected about the origin, so this inverts `project_aabb_in_frame`
     /// exactly.
     fn point_at(&self, u: f64, v: f64, s: f64) -> Point3<f64> {
-        Point3::from(
-            self.frame.cross_a * u + self.frame.cross_b * v + self.frame.depth * s,
-        )
+        Point3::from(self.frame.cross_a * u + self.frame.cross_b * v + self.frame.depth * s)
     }
 
     /// Where to sample across the axis: the HOST's cross-section centre, pulled
@@ -125,7 +190,6 @@ impl CutterFrame {
     fn probe_offset(&self) -> f64 {
         self.cap_band() * 4.0
     }
-
 }
 
 /// The host surface offset along the axis at each cap the opening EXITS
@@ -263,25 +327,36 @@ pub(super) fn detect(host: &Mesh, f: &CutterFrame, pad: f64) -> ExitCaps {
     // clearance push and tears the host; a missing veto reproduces exactly what
     // main already does, which the corpus is blessed against.
     // No veto where the mesh cannot express the geometry the probe is asking
-    // about. `Mesh` stores f32, so at georeferenced magnitudes the gap between
-    // representable positions is metres-scale (0.5 m at 8.2e6), and ray parity
-    // there is answering about a shape quantized past recognition. Two ray
-    // directions can then AGREE and both be wrong, so self-agreement is not
-    // enough on its own.
+    // about. `Mesh` stores f32, so representable positions thin out with
+    // magnitude until parity is answering about a shape quantized past
+    // recognition, and two ray directions can then AGREE and both be wrong.
+    // The threshold sits well below where that bites (~1 mm spacing at 10 km,
+    // reaching 0.5 m only at 4.2e6) precisely because suppressing the veto is
+    // the free direction: it costs main's blessed behaviour and nothing else.
     //
     // Suppressing the veto is the safe direction, and this is the one place a
     // magnitude guard belongs: it can only fall back to main's behaviour, which
     // the corpus is blessed against. Gating QUALIFICATION on magnitude was tried
     // and is unsound, because declining to qualify cannot restore a push main
     // made; it only withholds one.
-    let far_field = {
-        let m = host
+    //
+    // Nothing below runs unless some cap qualified. Skipping the rays but not
+    // the setup that feeds them would leave a full `positions` scan and a full
+    // `project_aabb_in_frame` pass on the commonest case of all, an opening
+    // whose caps float clear of every host facet and casts no rays at all.
+    let qualified = min_has_surface || max_has_surface;
+    // `any`, not a max fold: the threshold is all that is asked, so the first
+    // far vertex answers it.
+    let far_field = qualified
+        && host
             .positions
             .iter()
-            .fold(0.0f64, |acc, &v| acc.max((v as f64).abs()));
-        m >= crate::LARGE_COORD_THRESHOLD_METERS
-    };
-    let probe = f.probe_uv(host).filter(|_| !far_field);
+            .any(|&v| (v as f64).abs() >= crate::LARGE_COORD_THRESHOLD_METERS);
+    // `then`, not `filter`: projecting the host and discarding the result is
+    // the whole cost of the call.
+    let probe = (qualified && !far_field)
+        .then(|| f.probe_uv(host))
+        .flatten();
     let occupied_along = |from: f64, dir: f64| -> bool {
         let Some((cu, cv)) = probe else {
             return false;
@@ -293,22 +368,25 @@ pub(super) fn detect(host: &Mesh, f: &CutterFrame, pad: f64) -> ExitCaps {
         // A depth whose parity does not AGREE between two ray directions is not
         // evidence and is skipped rather than counted either way: the surface
         // there is not closed to a ray, and a coin flip must not remove a push.
-        [f.probe_offset(), pad * 0.5, pad]
-            .into_iter()
-            .any(|t| {
-                point_inside_mesh_agreed(host, f.point_at(cu, cv, from + dir * t))
-                    .unwrap_or(false)
-            })
+        [f.probe_offset(), pad * 0.5, pad].into_iter().any(|t| {
+            point_inside_mesh_agreed(host, f.point_at(cu, cv, from + dir * t)).unwrap_or(false)
+        })
     };
-    let classify = |has_surface: bool, occupied: bool, host_at: f64| {
-        match (has_surface, occupied) {
-            (false, _) => Cap::Free,
-            (true, true) => Cap::Jamb,
-            (true, false) => Cap::Exit(host_at),
+    // Probe ONLY a cap that qualified: `occupied_along` casts up to three points
+    // and two rays each, and for a cap that is already `Free` every one of
+    // those traversals is discarded.
+    let classify = |has_surface: bool, from: f64, dir: f64, host_at: f64| {
+        if !has_surface {
+            return Cap::Free;
+        }
+        if occupied_along(from, dir) {
+            Cap::Jamb
+        } else {
+            Cap::Exit(host_at)
         }
     };
     ExitCaps {
-        min: classify(min_has_surface, occupied_along(omn, -1.0), host_at_min),
-        max: classify(max_has_surface, occupied_along(omx, 1.0), host_at_max),
+        min: classify(min_has_surface, omn, -1.0, host_at_min),
+        max: classify(max_has_surface, omx, 1.0, host_at_max),
     }
 }

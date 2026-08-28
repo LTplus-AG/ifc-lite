@@ -53,23 +53,18 @@ export type { CutPolygon2D, DrawingLine2D, SectionCustomPlane } from './section-
 /**
  * The standalone world-space line overlays, in draw order.
  *
- * Each channel is an independent vertex buffer sharing one line pipeline and
- * one shared overlay colour, so the only thing that distinguishes them is
- * which buffer a draw reads and which uniform slot it binds. Naming them
- * rather than growing a method quartet per family is what makes a fifth
- * channel five table rows instead of eight methods. Four of the five refuse
- * to compile if skipped; the fifth, `SECTION_2D_UNIFORM_SLOT_COUNT`, is
- * derived from `SECTION_2D_UNIFORM_SLOT_INDEX`, so the shared uniform buffer
- * follows the index automatically (#3342 was a hand-written count here, left
- * one slot short).
+ * Each channel is an independent vertex buffer sharing one line pipeline and one shared overlay
+ * colour; only the buffer read and the uniform slot bound distinguish them — naming them makes a
+ * fifth channel five table rows, not eight methods. Four of five refuse to compile if skipped;
+ * the fifth, `SECTION_2D_UNIFORM_SLOT_COUNT`, derives from `SECTION_2D_UNIFORM_SLOT_INDEX`, so
+ * the buffer follows it automatically (#3342 was a hand-written count, one short).
  *
- * Not enforced: each draw site binding its OWN slot. A test pins the index
- * dense, but a channel that reuses an existing slot constant passes it while
- * the two sites overwrite each other's `lineColor` (#2456).
+ * Not enforced: each draw site binding its OWN slot. A test pins the index dense, but a channel
+ * reusing an existing slot constant passes it while two sites overwrite each other's `lineColor`
+ * (#2456).
  *
- * The focused clash's box / contact lines are deliberately NOT a channel: they
- * draw in their own colour, not the shared one, and callers reach them through
- * `setClashOverlapBox` / `setClashContactLines`, which carry that colour.
+ * Clash box/contact lines are deliberately NOT a channel: they draw in their own colour via
+ * `setClashOverlapBox` / `setClashContactLines`.
  */
 export const LINE_OVERLAY_CHANNELS = ['annotation', 'alignment', 'grid', 'dxf'] as const;
 

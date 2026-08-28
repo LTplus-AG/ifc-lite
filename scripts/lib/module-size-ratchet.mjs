@@ -251,7 +251,13 @@ export function staleRows(allowlist) {
  * `changed` SCOPES the re-recording to the paths a change actually touched
  * (#3398). Pass `null` for the repo-wide behaviour; pass a Set of relative
  * paths and every other row is carried into `next` at its COMMITTED budget and
- * contributes to none of the four lists. Scoping is not a nicety: `slack` and
+ * contributes to none of the four lists — with ONE exception, which is not a
+ * leak but the point: a STALE row is still removed out of scope. A row at or
+ * under the limit grants no exemption and is already a hard gate failure, and a
+ * row whose file the walk never saw grants an exemption to nothing, so neither
+ * is something another change can still need. A valid out-of-scope exemption is
+ * never touched; a dead one is. (`grantsNoExemption` below carries the full
+ * rule, including why the measured loop must also check the FILE.) Scoping is not a nicety: `slack` and
  * `shrunk` are advisory by design (see `evaluate`), so headroom accumulates on
  * main until some later `--update` — run by whoever, for whatever reason —
  * re-records all of it. Measured on an unmodified checkout of afa717bcf: 11

@@ -14,7 +14,12 @@
 # DELETE its row (the gate prints a note telling you to); a stale exemption is
 # permanent slack.
 #
-# `--update` re-records only the files your change touched.
+# `--update` re-records only the files your change touched — plus one
+# deliberate exception: a STALE row is dropped wherever it is. A row at or under
+# the 400-line limit, or one whose file no longer exists, grants no exemption to
+# anybody, so leaving it would mean the regeneration command could not clear a
+# failure it is supposed to clear. A row that still exempts a real file is never
+# touched unless your change touched that file.
 # `--update --all --allow-raise` re-records every row in the tree, annexing
 # slack your change never created: a deliberate sweep, and its own PR. The
 # `--allow-raise` is not optional there — re-recording a file that GREW is a

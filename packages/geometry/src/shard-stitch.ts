@@ -32,19 +32,7 @@ export interface ShardColumns {
   oversizedIdStarts: Uint32Array;
 }
 
-/**
- * SPIKE: stitch N speculative shard scans into the full entity index —
- * byte-identical to the single-threaded scan. Port of the native
- * `parallel_scan::stitch`: shard 0 is authoritative (header-aware start); for
- * shard i>0 the previous shard's validated `handoff` is a real entity start, so
- * binary-search shard i's `starts` for it and drop the speculative prefix before
- * it. Concatenates the validated slices in shard order (= file order), so
- * last-wins on a duplicate id is preserved when the worker rebuilds its map.
- *
- * Returns null on the rare "handoff not found" case (speculative overshoot / a
- * record spanning a whole shard), which needs the serial-rescan fallback the JS
- * spike doesn't implement — the caller falls back to the pre-pass's own index.
- */
+/** What one stitch produced. See `stitchShards` below. */
 export interface StitchedShards {
   ids: Uint32Array;
   starts: Uint32Array;
@@ -68,6 +56,19 @@ export interface StitchedShards {
   oversizedIdCount: number;
 }
 
+/**
+ * SPIKE: stitch N speculative shard scans into the full entity index —
+ * byte-identical to the single-threaded scan. Port of the native
+ * `parallel_scan::stitch`: shard 0 is authoritative (header-aware start); for
+ * shard i>0 the previous shard's validated `handoff` is a real entity start, so
+ * binary-search shard i's `starts` for it and drop the speculative prefix before
+ * it. Concatenates the validated slices in shard order (= file order), so
+ * last-wins on a duplicate id is preserved when the worker rebuilds its map.
+ *
+ * Returns null on the rare "handoff not found" case (speculative overshoot / a
+ * record spanning a whole shard), which needs the serial-rescan fallback the JS
+ * spike doesn't implement — the caller falls back to the pre-pass's own index.
+ */
 export function stitchShards(shards: ShardColumns[]): StitchedShards | null {
   const n = shards.length;
 

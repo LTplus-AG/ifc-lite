@@ -144,36 +144,24 @@ export function countNewlines(buf: Uint8Array, from: number, to: number): number
 // list opens at `pos`: the span up to and including the ')' balancing that '(',
 // or 0 when the input runs out first.
 //
-// A string literal is consumed whole rather than counted, so the '(' in
-// 'Storey (Level 1)' is text and not depth, and STEP's doubled-quote escape
-// ('') stays inside the literal instead of closing it.
+// A string literal is jumped over by skipStringLiteral above rather than
+// counted, so the '(' in 'Storey (Level 1)' is text and not depth, and STEP's
+// doubled-quote escape ('') stays inside the literal instead of closing it.
+// Sharing that helper is what keeps the escape rule in one place: an
+// open-coded `inString` flag here would be a second copy of it, free to drift
+// from the one every other scanner in this file uses.
 export function findEntityLength(buf: Uint8Array, pos: number, startOffset: number): number {
+  const len = buf.length;
   let depth = 0;
-  let inString = false;
 
-  while (pos < buf.length) {
+  while (pos < len) {
     const char = buf[pos];
 
     if (char === QUOTE) {
-      if (inString) {
-        if (pos + 1 < buf.length && buf[pos + 1] === QUOTE) {
-          pos += 2; // doubled quote: an escaped ' inside the literal
-          continue;
-        }
-        inString = false;
-      } else {
-        inString = true;
-      }
-      pos++;
-      continue;
-    }
-
-    if (inString) {
-      pos++;
-      continue;
-    }
-
-    if (char === LPAREN) {
+      // Returns `len` on an unterminated literal, which ends the loop with no
+      // balancing ')' found -- the same 0 the open-coded version returned.
+      pos = skipStringLiteral(buf, pos, len);
+    } else if (char === LPAREN) {
       depth++;
       pos++;
     } else if (char === RPAREN) {

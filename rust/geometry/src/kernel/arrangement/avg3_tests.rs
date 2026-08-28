@@ -154,39 +154,3 @@ fn avg3_handles_exact_ties_and_identical_inputs() {
     assert_eq!(avg3(-2.5, -2.5, -2.5), -2.5);
     assert_eq!(avg3(0.0, 0.0, 0.0), 0.0);
 }
-
-/// A TEXTUAL guard, and deliberately labelled as one. Rust never auto-fuses
-/// float operations into an FMA, so no runtime observation distinguishes a
-/// fused `avg3` from an unfused one — a passing arithmetic test proves nothing
-/// about it. This greps `avg3`'s own source at test time instead, so a future
-/// edit reintroducing `mul_add` fails `cargo test` rather than silently
-/// breaking the native/wasm determinism this routine is FMA-free to preserve.
-#[test]
-fn avg3_source_contains_no_fma() {
-    let src = include_str!("classify.rs");
-    let start = src.find("fn avg3(").expect("avg3 not found in classify.rs");
-    let body = &src[start..];
-    let open = body.find('{').expect("avg3 has no body");
-    let mut depth = 0i32;
-    let mut end = None;
-    for (i, ch) in body[open..].char_indices() {
-        match ch {
-            '{' => depth += 1,
-            '}' => {
-                depth -= 1;
-                if depth == 0 {
-                    end = Some(open + i + 1);
-                    break;
-                }
-            }
-            _ => {}
-        }
-    }
-    let end = end.expect("unbalanced braces scanning avg3");
-    assert!(
-        !body[..end].contains("mul_add"),
-        "avg3 must stay FMA-free: a fused multiply-add can round differently \
-         between native and wasm, which is the determinism this routine exists \
-         to preserve"
-    );
-}

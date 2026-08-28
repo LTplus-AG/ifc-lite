@@ -823,13 +823,27 @@ describe('selection and visibility commands', () => {
     state.cameraCallbacks.resolveHighlightIds = resolveHighlightIds;
     initBridge(makeCtx(state));
     await send(fw, cmd('ISOLATE', { ids: [1005] }, 'r1'));
-    expect(argsOf(state, 'isolateEntities')).toEqual([[9001, 9002]]);
+    // The resolved parts are unioned with the raw (pre-resolution) id,
+    // matching every other isolation channel -- harmless here since the
+    // raw assembly id has no geometry of its own.
+    expect(argsOf(state, 'isolateEntities')).toEqual([[9001, 9002, 1005]]);
   });
 
   it('ISOLATE falls back to the raw ids when no renderer has registered resolveHighlightIds yet', async () => {
     // Mirrors every other channel's fallback (LensPanel, PropertiesPanel,
     // SearchModal, the SDK adapter): the default test state's
     // `cameraCallbacks` carries no `resolveHighlightIds` at all.
+    initBridge(makeCtx(state));
+    await send(fw, cmd('ISOLATE', { ids: [1005] }, 'r1'));
+    expect(argsOf(state, 'isolateEntities')).toEqual([[1005]]);
+  });
+
+  it('ISOLATE falls back to the raw ids when the resolver returns [] (#3389 follow-up)', async () => {
+    // A resolver that runs and resolves to nothing (renderer-initialised-
+    // but-geometry-not-loaded, or every id resolving geometry-less) must
+    // ALSO fall back to the raw ids, not isolate an empty set -- `??`
+    // alone only guards an ABSENT resolver, not one that returns [].
+    state.cameraCallbacks.resolveHighlightIds = () => [];
     initBridge(makeCtx(state));
     await send(fw, cmd('ISOLATE', { ids: [1005] }, 'r1'));
     expect(argsOf(state, 'isolateEntities')).toEqual([[1005]]);

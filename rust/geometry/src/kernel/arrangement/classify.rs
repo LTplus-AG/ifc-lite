@@ -138,15 +138,10 @@ fn sound_far(p: [f64; 3], dir: [f64; 3], far_l: f64, (lo, hi): Aabb) -> [f64; 3]
 /// endpoint would land inside the mesh) along a fixed generic direction; each
 /// crossing tested by the exact predicate above.
 ///
-/// `aabb` must be a superset of `tris`'s true bounding box (exactly `tris_aabb(tris)`,
-/// or any box that contains it, e.g. one padded for an unrelated prefilter). Every
-/// caller already has such a box lying around, so this takes it instead of
-/// rescanning `tris` on every query. Soundness of a superset: [`sound_far`] only
-/// uses `aabb` to decide whether the default far endpoint needs lengthening to
-/// clear it; extending against a BIGGER box can only push the endpoint farther
-/// along the same ray, past the point where it has already left `tris`'s real
-/// AABB, where by definition there are no more triangles left to cross — so the
-/// crossing count, hence the parity verdict, is identical to using the exact box.
+/// `aabb` must CONTAIN `tris`'s true box; every caller already holds one, so this
+/// takes it rather than rescanning per query. A superset is verdict-identical:
+/// [`sound_far`] only uses it to lengthen the far endpoint, and extending past the
+/// real AABB crosses no further triangles, so parity is unchanged.
 pub(super) fn point_inside(p: [f64; 3], tris: &[Tri], far_l: f64, aabb: Aabb) -> bool {
     if tris.is_empty() {
         return false; // no crossings to count
@@ -368,16 +363,9 @@ fn c_on_or_near_a(
 /// keep/drop verdict is byte-identical native==wasm, exactly like the existing
 /// on-plane centroid classification.
 ///
-/// `other_aabb` is `other`'s bounding box (see [`point_inside`]'s contract),
-/// hoisted by the caller once instead of being rescanned here for EACH of the
-/// two probes below.
-fn solid_side(
-    c: [f64; 3],
-    dir: [f64; 3],
-    other: &[Tri],
-    far_l: f64,
-    other_aabb: Aabb,
-) -> (bool, bool) {
+/// `other_aabb` is `other`'s box (see [`point_inside`]), hoisted once by the
+/// caller rather than rescanned for each of the two probes below.
+fn solid_side(c: [f64; 3], dir: [f64; 3], other: &[Tri], far_l: f64, other_aabb: Aabb) -> (bool, bool) {
     // Unit-normalise `dir` so the step magnitude is plane-independent, then step a
     // small fraction of the operand extent off the plane — far enough that the
     // float predicate resolves the probe vs. the plane, near enough that no other
@@ -502,11 +490,9 @@ impl<'a> BComponents<'a> {
     /// solids ⇒ inside exactly one ⇒ a per-component exact ray parity, each
     /// prefiltered by its AABB.)
     ///
-    /// Passes the already-computed, `pad`-inflated `self.aabbs[k]` to
-    /// [`point_inside`] instead of having it rescan `comp`. `point_inside` only
-    /// needs a box that contains `comp`'s triangles, and the inflated box does
-    /// (see its own doc comment) — so this is verdict-identical, not just
-    /// faster: the escalation counts and the boolean manifest are unaffected.
+    /// Passes the already-inflated `self.aabbs[k]` rather than rescanning `comp`.
+    /// It contains `comp`'s triangles, so the verdict is unchanged — not merely
+    /// faster: escalation counts and the boolean manifest are unaffected.
     fn inside(&self, p: [f64; 3]) -> bool {
         self.comps.iter().enumerate().any(|(k, comp)| {
             self.ray_may_hit(k, p) && point_inside(p, comp, self.exts[k], self.aabbs[k])
@@ -644,10 +630,9 @@ pub(super) fn boolean_vids_components(
     // boolean-heavy meshes). `a_band` (hoisted) feeds the near-surface band.
     let bvh_a = super::super::broadphase::Bvh::build(a);
     let a_band = NearBand::from_tris(a);
-    // The BVH already computed `a`'s exact bounding box while building; reuse it
-    // (rather than have `on_interface_keep`'s regime-2 probe rescan `a` on every
-    // coplanar-parent B triangle it's called for). `unwrap_or` only matters for
-    // an empty `a`, where `point_inside`/`solid_side` never touch the box anyway.
+    // Reuse the box the BVH build already computed, rather than rescanning `a` per
+    // coplanar-parent B triangle. `unwrap_or` matters only for an empty `a`, where
+    // the box is never read.
     let a_aabb = bvh_a.root_aabb().unwrap_or(([0.0; 3], [0.0; 3]));
     let mut scratch: Vec<u32> = Vec::new();
     let dedup = matches!(op, BoolOp::Union | BoolOp::Intersection);

@@ -276,3 +276,95 @@ fn boolean_manifest_is_pinned() {
     let m = super::boolean_manifest();
     assert_eq!(m, PINNED, "boolean topology manifest changed: 0x{m:016x}");
 }
+
+// ---- TEMPORARY repro for #3353 diagnosis verification; will be reverted ----
+#[test]
+fn debug_repro_step2_vid_space_tear_sweep_261() {
+    use crate::mesh::Mesh;
+    use nalgebra::{Point3 as NPoint3, Rotation3, Unit, Vector3 as NVector3};
+    use std::collections::HashMap;
+
+    fn boxed_repro(min: [f64; 3], size: [f64; 3], rot: Option<([f64; 3], f64, [f64; 3])>) -> Mesh {
+        let mx = [min[0] + size[0], min[1] + size[1], min[2] + size[2]];
+        let c = |i: usize| -> [f64; 2] { [min[i], mx[i]] };
+        let mut corners: Vec<NPoint3<f64>> = [
+            (0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0),
+            (0, 0, 1), (1, 0, 1), (1, 1, 1), (0, 1, 1),
+        ]
+        .iter()
+        .map(|&(i, j, k)| NPoint3::new(c(0)[i], c(1)[j], c(2)[k]))
+        .collect();
+        if let Some((axis, angle, about)) = rot {
+            let r = Rotation3::from_axis_angle(&Unit::new_normalize(NVector3::new(axis[0], axis[1], axis[2])), angle);
+            let o = NPoint3::new(about[0], about[1], about[2]);
+            for p in corners.iter_mut() {
+                *p = o + r * (*p - o);
+            }
+        }
+        let faces: [[usize; 4]; 6] = [
+            [0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4],
+            [2, 3, 7, 6], [0, 4, 7, 3], [1, 2, 6, 5],
+        ];
+        let mut m = Mesh::with_capacity(24, 36);
+        for f in &faces {
+            let e1 = corners[f[1]] - corners[f[0]];
+            let e2 = corners[f[2]] - corners[f[0]];
+            let n = e1.cross(&e2).try_normalize(1e-12).unwrap_or(NVector3::z());
+            let b = m.vertex_count() as u32;
+            for &i in f {
+                m.add_vertex(corners[i], n);
+            }
+            m.add_triangle(b, b + 1, b + 2);
+            m.add_triangle(b, b + 2, b + 3);
+        }
+        m
+    }
+
+    let a_mesh = boxed_repro(
+        [-1.72371594746207, -0.35246108913603935, -1.2204342720208154],
+        [2.8534163464770894, 3.0795194627753784, 2.858202766048261],
+        None,
+    );
+    let b_min = [-2.5947221996202225, 0.7995282321488091, -1.1895637752048271];
+    let b_size = [3.215043208338911, 0.9570224289084479, 3.548848436777412];
+    let about = [
+        b_min[0] + b_size[0] / 2.0,
+        b_min[1] + b_size[1] / 2.0,
+        b_min[2] + b_size[2] / 2.0,
+    ];
+    let b_mesh = boxed_repro(
+        b_min,
+        b_size,
+        Some(([0.413429423622099, -0.8221765971936017, -0.6789513492042303], 1.3791241095493956, about)),
+    );
+
+    // Exactly what `mesh_bridge::union` does before calling `arrange`/`boolean_vids`.
+    let a: Vec<Tri> = crate::kernel::mesh_bridge::orient_outward(crate::kernel::mesh_bridge::mesh_to_tris(&a_mesh));
+    let b: Vec<Tri> = crate::kernel::mesh_bridge::orient_outward(crate::kernel::mesh_bridge::mesh_to_tris(&b_mesh));
+
+    let arr = arrange(&a, &b);
+    eprintln!("STEP2 arr.unrecovered={}", arr.unrecovered);
+
+    let kept = boolean_vids(&arr, &a, &b, BoolOp::Union);
+    eprintln!("STEP2 kept triangle count={}", kept.len());
+
+    // Undirected Vid-edge usage count across the KEPT symbolic triangles —
+    // BEFORE any f64/position materialisation. A manifold complex uses every
+    // edge exactly twice (once per adjoining triangle); >2 is a symbolic tear.
+    let mut edge_uses: HashMap<(Vid, Vid), usize> = HashMap::new();
+    for tri in &kept {
+        for k in 0..3 {
+            let (x, y) = (tri[k], tri[(k + 1) % 3]);
+            let key = if x < y { (x, y) } else { (y, x) };
+            *edge_uses.entry(key).or_insert(0) += 1;
+        }
+    }
+    let bad: Vec<_> = edge_uses.iter().filter(|&(_, &n)| n != 2).collect();
+    eprintln!("STEP2 non-manifold Vid edges (use count != 2): {:?}", bad);
+    panic!(
+        "STEP2 result: unrecovered={} kept_tris={} bad_vid_edges={}",
+        arr.unrecovered,
+        kept.len(),
+        bad.len()
+    );
+}

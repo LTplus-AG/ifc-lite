@@ -10,7 +10,7 @@
  * streaming batch mesher. Instead of rendering it as a triangulated ribbon —
  * which reads as a thin solid strip — the WASM `parseAlignmentLines` API
  * samples the directrix into a flat 3D line-list in renderer Y-up world space,
- * which we feed to `renderer.uploadAlignmentLines3D`. This matches how IfcGrid
+ * which we feed to `renderer.setLineOverlay('alignment', …)`. This matches how IfcGrid
  * axes and IfcAnnotation curves render as thin lines.
  *
  * Unlike annotations there is no visibility toggle: alignment lines render

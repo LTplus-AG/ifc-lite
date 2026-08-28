@@ -6,10 +6,41 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
-import { createModelSlice, type ModelSlice, type ModelCrossSliceState } from './modelSlice.js';
+import { createModelSlice, type ModelSlice } from './modelSlice.js';
 import type { FederatedModel } from '../types.js';
 
-type ModelTestState = ModelSlice & ModelCrossSliceState;
+/**
+ * Store fields other slices own that this harness has to seed.
+ *
+ * This used to be `modelSlice`'s exported `ModelCrossSliceState`. It is gone
+ * from the slice: teardown no longer reaches across, so the only cross-slice
+ * write left in production is `dataSlice`'s two active-model pointers, and the
+ * slice is typed over `ViewerState` like `collabSlice`. What remains is a
+ * HARNESS concern — `createModelSlice` is driven here with a stub `get()` that
+ * holds the model slice alone, and the teardown composition it dispatches
+ * reads these fields off that stub — so the list lives with the harness that
+ * seeds it rather than in the slice.
+ */
+interface ModelHarnessCrossState {
+  ifcDataStore: IfcDataStore | null;
+  geometryResult: GeometryResult | null;
+  meshColorBackup: Map<number, [number, number, number, number]> | null;
+  addElementModelId: string | null;
+  addElementStoreyId: number | null;
+  selectedEntityId: number | null;
+  selectedEntityIds: Set<number>;
+  selectedStoreys: Set<number>;
+  hiddenEntities: Set<number>;
+  isolatedEntities: Set<number> | null;
+  ghostExceptEntities: Set<number> | null;
+  classFilter: { ids: Set<number>; label: string } | null;
+  hiddenEntitiesByModel: Map<string, Set<number>>;
+  isolatedEntitiesByModel: Map<string, Set<number>>;
+  pinboardEntities: Set<string>;
+  hierarchyBasketSelection: Set<string>;
+}
+
+type ModelTestState = ModelSlice & ModelHarnessCrossState;
 
 /** The selection fields `removeModel` purges. They belong to another slice, so
  *  the slice under test reads them through a cast and so does this file. */
@@ -446,7 +477,7 @@ describe('ModelSlice', () => {
     });
 
     describe('global-id state (selection sets / hidden / isolated / ghost / class filter)', () => {
-      // `syncSourceModel.ts`'s `purgeStaleEntityState` already purges these
+      // `syncSourceModel.ts`'s second model-removed purge already purges these
       // exact fields on the same-modelId resync path (comment above this
       // block's parent `describe`). `removeModel` never got the same
       // treatment for anything past the EntityRef-shaped selection fields —

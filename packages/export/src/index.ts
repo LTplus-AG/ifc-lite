@@ -14,6 +14,18 @@ export { ParquetExporter, type ParquetExportOptions } from './parquet-exporter.j
 // JSONLDExporter removed — JSON-LD is now produced in Rust (ifc-lite-export).
 // Use GeometryProcessor.exportJsonld(bytes, …).
 export { StepExporter, exportToStep, type StepExportOptions, type StepExportResult, type StepExportProgress } from './step-exporter.js';
+// Anonymized isolated export (#2934): pick a seed selection, expand it by
+// relationship context, then export exactly that subset with every
+// project-identifying signal removed. See `docs/guide/exporting.md`.
+export { collectRelatedEntities } from './related-entities.js';
+export { exportAnonymizedSubset } from './anonymize-export.js';
+export type {
+  RelatedEntityOptions,
+  RelatedEntityGroup,
+  RelatedEntities,
+  AnonymizeOptions,
+  AnonymizeResult,
+} from './anonymize-types.js';
 export { MergedExporter, type MergeModelInput, type MergeExportOptions, type MergeExportResult, type MergeBlobExportResult, type ExportProgress } from './merged-exporter.js';
 export { collectReferencedEntityIds, getVisibleEntityIds, collectStyleEntities } from './reference-collector.js';
 export { convertEntityType, convertStepLine, needsConversion, describeConversion, type IfcSchemaVersion } from './schema-converter.js';

@@ -13,6 +13,7 @@ mod test_support;
 
 mod adjacency;
 mod collada;
+mod collada_fmt;
 mod constructions;
 mod csv;
 /// The single CSV cell escaper for this crate — RFC 4180 quoting plus the
@@ -30,6 +31,7 @@ mod json;
 mod jsonld;
 mod kmz;
 mod merged;
+mod mesh_input;
 mod model;
 mod obj;
 mod relationships;

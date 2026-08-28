@@ -1,5 +1,20 @@
 # @ifc-lite/clash
 
+## 1.9.2
+
+### Patch Changes
+
+- [#3257](https://github.com/LTplus-AG/ifc-lite/pull/3257) [`dcf3838`](https://github.com/LTplus-AG/ifc-lite/commit/dcf383831c7f3ec671360a39f6357b51821f2648) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Clash detection no longer reports a void against the element it cuts.
+  
+  The non-clashable filter listed `IfcOpeningElement` and `IfcOpeningStandardCase` by hand — one branch of the subtraction family in its IFC4 spelling. `IfcVoidingFeature` (IFC4) and `IfcEarthworksCut` (IFC4.3) are `IfcFeatureElementSubtraction` subtypes too, are meshed like any other product, and were becoming clash candidates, so every such void collided with its host. Subtraction features are now derived from the bundled schema union instead of enumerated, so a class a later schema adds is covered without another edit.
+  
+  Addition features stay clashable: `IfcProjectionElement` and `IfcSurfaceFeature` are physical material, so a clash against them is a real coordination problem.
+- Updated dependencies [[`b456e27`](https://github.com/LTplus-AG/ifc-lite/commit/b456e279831dbde5b2889b788aada9bd06ff32b8), [`8092522`](https://github.com/LTplus-AG/ifc-lite/commit/80925228ec72aca31d7e9fa3ab4466895c4b1f66), [`98828c4`](https://github.com/LTplus-AG/ifc-lite/commit/98828c4b004506b6d31546ce93b533fa26e808ea), [`98828c4`](https://github.com/LTplus-AG/ifc-lite/commit/98828c4b004506b6d31546ce93b533fa26e808ea), [`c658213`](https://github.com/LTplus-AG/ifc-lite/commit/c658213bfa5c17a767c8534e68f2416bac780979), [`da266c1`](https://github.com/LTplus-AG/ifc-lite/commit/da266c1138767208f193083eb8b39d48e34b9a5d), [`c1490aa`](https://github.com/LTplus-AG/ifc-lite/commit/c1490aa48037c396d014f1dcb9647934fc16e43d), [`38460bd`](https://github.com/LTplus-AG/ifc-lite/commit/38460bd543d6c869db15f867b129db6f965695da), [`e2c67f0`](https://github.com/LTplus-AG/ifc-lite/commit/e2c67f084bfca20ff82460ae54aa80a383fcb39a), [`302121a`](https://github.com/LTplus-AG/ifc-lite/commit/302121ac7bc9312b1073738b3bbe0956ce452cf4), [`08cbf72`](https://github.com/LTplus-AG/ifc-lite/commit/08cbf72dbb3e375d20f703c8c813d4cd873657c1), [`5e236e2`](https://github.com/LTplus-AG/ifc-lite/commit/5e236e26a33bfc5e41d82ccd742351e743131293), [`8dd8a9d`](https://github.com/LTplus-AG/ifc-lite/commit/8dd8a9db10a2b2388a4e92f92f0835468ee58a69), [`c8049a0`](https://github.com/LTplus-AG/ifc-lite/commit/c8049a0bf464cd1fec7a4cd2aad2f08326e04737), [`50895fb`](https://github.com/LTplus-AG/ifc-lite/commit/50895fb5b3d57c95e00daccc1e560f5b619c535d), [`24c7abc`](https://github.com/LTplus-AG/ifc-lite/commit/24c7abc6510f2e469992c0e76554471bf1cfe296), [`d470d76`](https://github.com/LTplus-AG/ifc-lite/commit/d470d768cea3eb18dbb9c1138e128bc23ebfca68), [`ffe80a7`](https://github.com/LTplus-AG/ifc-lite/commit/ffe80a76ab269b6ce8abe52a9ebc7bd16c184db5), [`bb3fc2c`](https://github.com/LTplus-AG/ifc-lite/commit/bb3fc2c5af754a120b98b545e186303de0fb4951)]:
+  - @ifc-lite/parser@4.3.2
+  - @ifc-lite/ifcx@3.0.1
+  - @ifc-lite/wasm@6.1.0
+  - @ifc-lite/geometry@4.1.0
+
 ## 1.9.1
 
 ### Patch Changes

@@ -536,7 +536,7 @@ export class IfcAPI {
      * `Float32Array` of 3D line-list vertices `[x0,y0,z0, x1,y1,z1, …]` in
      * the renderer's Y-up world space (RTC-subtracted, metres). Consecutive
      * samples form line segments. Feed straight to
-     * `renderer.uploadAnnotationLines3D(...)`.
+     * `renderer.setLineOverlay('alignment', ...)`.
      *
      * Returns an empty array when the file has no alignments (or none with a
      * resolvable Axis curve), so the caller can clear the overlay cheaply.
@@ -552,7 +552,7 @@ export class IfcAPI {
      * Parse the file and return every `IfcGridAxis` as a flat `Float32Array`
      * of 3D line-list vertices `[x0,y0,z0, x1,y1,z1, …]` (one segment per
      * axis) in the renderer's Y-up world space (RTC-subtracted, metres). Feed
-     * straight to a line pipeline (e.g. `uploadAnnotationLines3D`).
+     * straight to a line pipeline (e.g. `renderer.setLineOverlay('grid', …)`).
      *
      * Returns an empty array when the file has no grids, so the caller can
      * clear the overlay cheaply.

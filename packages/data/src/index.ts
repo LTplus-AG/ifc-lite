@@ -9,6 +9,8 @@
 export { IFCX_VERSION } from './ifcx-version.js';
 export { StringTable } from './string-table.js';
 export { EntityTableBuilder, entityTableFromColumns, entityTableToColumns } from './entity-table.js';
+export { exactTypeName, exactNameOfRow } from './exact-type-name.js';
+export type { ExactTypeNameSource } from './exact-type-name.js';
 export type { EntityTable, EntityTableColumns } from './entity-table.js';
 export { PropertyTableBuilder, propertyTableFromColumns, propertyTableToColumns, comparePropertyValues } from './property-table.js';
 export type { PropertyTable, PropertyTableColumns, PropertySet, Property, PropertyValue } from './property-table.js';

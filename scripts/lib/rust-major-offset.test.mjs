@@ -18,6 +18,7 @@ import { join } from 'node:path';
 
 import {
   applyMajorOffset,
+  getWorkspacePackagePaths,
   computeReleaseVersions,
   MIN_WORKSPACE_PACKAGES,
   parseSemver,
@@ -227,4 +228,55 @@ test('a non-matching manifest makes the sync-versions replace a silent no-op', (
 test('the real root Cargo.toml still yields its workspace version', () => {
   const cargo = readFileSync(join(import.meta.dirname, '..', '..', 'Cargo.toml'), 'utf8');
   assert.match(readWorkspaceVersion(cargo) ?? '', /^\d+\.\d+\.\d+$/);
+});
+
+test('a `.DS_Store` dotfile does not emit a version-scan warning, and does not shrink the scan (PR 3350)', (t) => {
+  const root = makeTree(t, {});
+  // The warning below `getWorkspacePackagePaths` is load-bearing: a directory
+  // that fails to be read shrinks the scan, and a shrunken scan syncs the
+  // release to a version LOWER than what was published. A macOS Finder
+  // artefact must not produce an alarm indistinguishable from that.
+  writeFileSync(join(root, 'packages', '.DS_Store'), '\0\0\0');
+
+  const warnings = [];
+  const realWarn = console.warn;
+  console.warn = (...args) => warnings.push(args.join(' '));
+  let paths;
+  try {
+    paths = getWorkspacePackagePaths(root);
+  } finally {
+    console.warn = realWarn;
+  }
+
+  assert.deepEqual(warnings, [], `a dotfile must not warn, got: ${warnings.join(' | ')}`);
+  assert.ok(
+    paths.length >= MIN_WORKSPACE_PACKAGES,
+    `the scan must not shrink: ${paths.length} manifests found`,
+  );
+  assert.ok(
+    !paths.some((p) => p.includes('.DS_Store')),
+    'the dotfile must not be scanned as a package',
+  );
+});
+
+test('skipping dotfiles does not silence a REAL unreadable candidate (PR 3350)', (t) => {
+  const root = makeTree(t, {});
+  // Both in one tree, so this pins that exactly one is ignored and the other
+  // still warns. Widening the skip, or swallowing the stat error, would satisfy
+  // the test above while destroying the alarm the release path depends on.
+  writeFileSync(join(root, 'packages', '.DS_Store'), '\0\0\0');
+  writeFileSync(join(root, 'packages', 'not-a-dir'), 'a file where a package directory belongs');
+
+  const warnings = [];
+  const realWarn = console.warn;
+  console.warn = (...args) => warnings.push(args.join(' '));
+  try {
+    getWorkspacePackagePaths(root);
+  } finally {
+    console.warn = realWarn;
+  }
+
+  assert.equal(warnings.length, 1, `expected exactly one warning, got: ${warnings.join(' | ')}`);
+  assert.match(warnings[0], /not-a-dir/);
+  assert.doesNotMatch(warnings[0], /DS_Store/, 'the dotfile must not be what warned');
 });

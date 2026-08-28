@@ -15,16 +15,17 @@ function makeRenderer(opts?: { throwOnUpload?: boolean }): DxfLines3DUploadTarge
   const target = {
     uploadCount: 0,
     clearCount: 0,
-    uploadDxfLines3D(_vertices: Float32Array): void {
+    setLineOverlay(_channel: 'dxf', vertices: Float32Array | null): void {
+      if (vertices === null) {
+        target.clearCount += 1;
+        return;
+      }
       target.uploadCount += 1;
       if (opts?.throwOnUpload) {
         throw new RangeError(
           "Failed to execute 'createBuffer' on 'GPUDevice': createBuffer failed",
         );
       }
-    },
-    clearDxfLines3D(): void {
-      target.clearCount += 1;
     },
   };
   return target;

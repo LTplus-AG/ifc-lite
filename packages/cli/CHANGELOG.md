@@ -1,5 +1,51 @@
 # @ifc-lite/cli
 
+## 0.26.0
+
+### Minor Changes
+
+- [#3309](https://github.com/LTplus-AG/ifc-lite/pull/3309) [`21003c6`](https://github.com/LTplus-AG/ifc-lite/commit/21003c6d5c730ef5c4d57ee2c44c95d9c7a1c723) Thanks [@Sonderwoods](https://github.com/Sonderwoods)! - Add an anonymized isolated export: pick a seed selection, expand it by relationship context, and export exactly that subset as a STEP file with every project-identifying signal removed.
+  
+  `@ifc-lite/export` gains `collectRelatedEntities(store, seeds, options?)`, which walks host/opening/filler, aggregate parent/child, type, material, spatial-containment and (bounded) connected-element relationships outward from a seed selection, and `exportAnonymizedSubset(store, includedIds, options?)`, which exports that subset with root placements zeroed (rotations kept), georeferencing/addresses removed, names pseudonymized (`IfcRoot` text fields via `pseudonymizeNames`; `ObjectType`, `Phase` and non-`IfcRoot` names such as surface styles, materials, layers and profiles via `pseudonymizeAllNames`), `GlobalId`s regenerated, property sets dropped, owner history scrubbed (persons, organizations, dates, the authoring tool's version string and the header's `originating_system`), and `IfcMonetaryUnit.Currency` neutralized to USD — every toggle defaulting to the maximally-scrubbed direction. Only the spatial containers the selection actually sits in are exported; sibling storeys are not pulled in through the building. See the new `RelatedEntityOptions`/`RelatedEntities`/`AnonymizeOptions`/`AnonymizeResult` types and the "Anonymized isolated export" section of the exporting guide.
+  
+  `@ifc-lite/cli` gains `ifc-lite anonymize <file.ifc> --out F`, selecting objects by `--id`/`--guid`/`--type`/`--storey`, with flags to tune the relationship expansion (`--no-rel-voids-element`, `--no-rel-fills-element`, `--no-rel-defines-by-type`, `--no-rel-associates-material`, `--no-rel-aggregates`, `--no-rel-nests`, `--connect-depth`), `--keep-psets` / `--keep-names` / `--keep-other-names` / `--keep-currency`, and a `--guid-map` sidecar file for the old→new `GlobalId` mapping.
+  
+  The viewer's Export menu gains a matching "Anonymized" dialog laid out beside the live 3D view (the objects about to be exported are isolated and highlighted), with a category overview to block whole IFC classes, uniform Anonymize/Keep switches for every scrub (all on by default), and a prompted download name that is never derived from the model's name.
+
+### Patch Changes
+
+- Updated dependencies [[`21003c6`](https://github.com/LTplus-AG/ifc-lite/commit/21003c6d5c730ef5c4d57ee2c44c95d9c7a1c723), [`e8c0d71`](https://github.com/LTplus-AG/ifc-lite/commit/e8c0d715de5152c885ddd3b121237d1f17a7fd1d), [`4a606d6`](https://github.com/LTplus-AG/ifc-lite/commit/4a606d6a81906c5a5b05594bb121b0cf1c7a0e7b), [`111b733`](https://github.com/LTplus-AG/ifc-lite/commit/111b733b21915522cf9678fb05d4595ac4a8906e), [`758ed93`](https://github.com/LTplus-AG/ifc-lite/commit/758ed93f24d48dd0067568a1e4b62f9380e9d131), [`b3921ac`](https://github.com/LTplus-AG/ifc-lite/commit/b3921ac56bb3b8d4522f980009fecb0994ae8acf)]:
+  - @ifc-lite/export@3.1.0
+  - @ifc-lite/bcf@2.0.1
+  - @ifc-lite/wasm@6.1.1
+  - @ifc-lite/data@3.5.1
+  - @ifc-lite/ids@1.15.52
+
+## 0.25.2
+
+### Patch Changes
+
+- [#3233](https://github.com/LTplus-AG/ifc-lite/pull/3233) [`2d5aea0`](https://github.com/LTplus-AG/ifc-lite/commit/2d5aea091ad243c39f040db66deb79aa9dd36d7a) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `validate` walked past every `*StandardCase` and `*ElementedCase` element in two of its rules.
+  
+  `store.entityIndex.byType` is keyed by the raw STEP type name, so an `IfcWallStandardCase` sits in its own bucket, not under `IFCWALL`. Both element-scanning rules read that index from a hand-written list of type names, and both lists were short.
+  
+  `named-elements` listed thirteen base types and not one subtype, so **all ten** of `IfcWallStandardCase`, `IfcWallElementedCase`, `IfcSlabStandardCase`, `IfcSlabElementedCase`, `IfcColumnStandardCase`, `IfcBeamStandardCase`, `IfcDoorStandardCase`, `IfcWindowStandardCase`, `IfcMemberStandardCase` and `IfcPlateStandardCase` were invisible to it. An IFC4 file whose walls are all `IfcWallStandardCase` — which is what several exporters write — reported zero unnamed elements no matter how many had no Name.
+  
+  `quantity-completeness` did spell six subtypes out by hand, and had drifted four short: `IfcWallElementedCase`, `IfcSlabElementedCase`, `IfcMemberStandardCase` and `IfcPlateStandardCase` were left out of both the numerator and the denominator, so the reported "N/M building elements have no quantity sets" percentage was computed over the wrong population.
+  
+  Both lists are now `expandTypes(...)` of a base list — the same expansion `byType()` uses on all three backends — so these rules and a `byType('IfcWall')` query cannot disagree about what counts as a wall, and the tables cannot fall behind the schema again. Which *base* types each rule scans is unchanged: that is a policy choice, and the existing asymmetry (`IfcRailing` is checked for a Name but not for quantities) is preserved.
+  
+  Same shape as [#3229](https://github.com/LTplus-AG/ifc-lite/issues/3229), where `IFC_SUBTYPES` itself had drifted; found by the same mechanical diff against the generated schema registry.
+- Updated dependencies [[`dcf3838`](https://github.com/LTplus-AG/ifc-lite/commit/dcf383831c7f3ec671360a39f6357b51821f2648), [`b456e27`](https://github.com/LTplus-AG/ifc-lite/commit/b456e279831dbde5b2889b788aada9bd06ff32b8), [`537a0a2`](https://github.com/LTplus-AG/ifc-lite/commit/537a0a2070b17973b15fac709725a0f5ab6ef44b), [`8092522`](https://github.com/LTplus-AG/ifc-lite/commit/80925228ec72aca31d7e9fa3ab4466895c4b1f66), [`98828c4`](https://github.com/LTplus-AG/ifc-lite/commit/98828c4b004506b6d31546ce93b533fa26e808ea), [`98828c4`](https://github.com/LTplus-AG/ifc-lite/commit/98828c4b004506b6d31546ce93b533fa26e808ea), [`36350e8`](https://github.com/LTplus-AG/ifc-lite/commit/36350e8439af3c52d62d8bb3f6e2daa7bb8d4fa2), [`b342063`](https://github.com/LTplus-AG/ifc-lite/commit/b34206376700e5544a908a94d18cf89af9501772), [`78354d9`](https://github.com/LTplus-AG/ifc-lite/commit/78354d9607cee098d34df037299c344b0d1e6103), [`846a2ba`](https://github.com/LTplus-AG/ifc-lite/commit/846a2baf2c0df700ab14480509b2ef2446d6d3cd), [`329008d`](https://github.com/LTplus-AG/ifc-lite/commit/329008d2324204ff39d2ac4a0423add6a60e8907), [`c658213`](https://github.com/LTplus-AG/ifc-lite/commit/c658213bfa5c17a767c8534e68f2416bac780979), [`da266c1`](https://github.com/LTplus-AG/ifc-lite/commit/da266c1138767208f193083eb8b39d48e34b9a5d), [`c1490aa`](https://github.com/LTplus-AG/ifc-lite/commit/c1490aa48037c396d014f1dcb9647934fc16e43d), [`38460bd`](https://github.com/LTplus-AG/ifc-lite/commit/38460bd543d6c869db15f867b129db6f965695da), [`365e209`](https://github.com/LTplus-AG/ifc-lite/commit/365e209f559122113dc641899c94c0f777c26c27), [`e2c67f0`](https://github.com/LTplus-AG/ifc-lite/commit/e2c67f084bfca20ff82460ae54aa80a383fcb39a), [`ff5c233`](https://github.com/LTplus-AG/ifc-lite/commit/ff5c233d49d8e1d85400ae23b004c803b6d890ba), [`302121a`](https://github.com/LTplus-AG/ifc-lite/commit/302121ac7bc9312b1073738b3bbe0956ce452cf4), [`08cbf72`](https://github.com/LTplus-AG/ifc-lite/commit/08cbf72dbb3e375d20f703c8c813d4cd873657c1), [`5e236e2`](https://github.com/LTplus-AG/ifc-lite/commit/5e236e26a33bfc5e41d82ccd742351e743131293), [`8dd8a9d`](https://github.com/LTplus-AG/ifc-lite/commit/8dd8a9db10a2b2388a4e92f92f0835468ee58a69), [`2ddb206`](https://github.com/LTplus-AG/ifc-lite/commit/2ddb206860f3afa3ca157abbaeb49136a3eb67c2), [`c8049a0`](https://github.com/LTplus-AG/ifc-lite/commit/c8049a0bf464cd1fec7a4cd2aad2f08326e04737), [`50895fb`](https://github.com/LTplus-AG/ifc-lite/commit/50895fb5b3d57c95e00daccc1e560f5b619c535d), [`24c7abc`](https://github.com/LTplus-AG/ifc-lite/commit/24c7abc6510f2e469992c0e76554471bf1cfe296), [`d470d76`](https://github.com/LTplus-AG/ifc-lite/commit/d470d768cea3eb18dbb9c1138e128bc23ebfca68), [`c2885ef`](https://github.com/LTplus-AG/ifc-lite/commit/c2885ef575fe57d9bc8e1960bb0ea31cb02f0665), [`ffe80a7`](https://github.com/LTplus-AG/ifc-lite/commit/ffe80a76ab269b6ce8abe52a9ebc7bd16c184db5), [`bb3fc2c`](https://github.com/LTplus-AG/ifc-lite/commit/bb3fc2c5af754a120b98b545e186303de0fb4951), [`3ea5e7d`](https://github.com/LTplus-AG/ifc-lite/commit/3ea5e7d4d790cec7eeea37321e1969da07505632)]:
+  - @ifc-lite/clash@1.9.2
+  - @ifc-lite/parser@4.3.2
+  - @ifc-lite/export@3.0.1
+  - @ifc-lite/data@3.5.0
+  - @ifc-lite/ids@1.15.51
+  - @ifc-lite/ifcx@3.0.1
+  - @ifc-lite/wasm@6.1.0
+  - @ifc-lite/geometry@4.1.0
+
 ## 0.25.1
 
 ### Patch Changes

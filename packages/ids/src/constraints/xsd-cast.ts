@@ -5,14 +5,31 @@
 /**
  * XSD strict-cast helpers shared by the attribute and property facets.
  *
- * Mirrors the `int.TryParse` / `double.TryParse` / `DateTime.TryParse`
- * rules upstream `IDS-Audit-tool` applies before doing the value
- * comparison. An IDS literal must cast successfully under at least one
+ * Mirrors what upstream `IDS-Audit-tool` accepts before doing the value
+ * comparison.
+ *
+ * NOT `TryParse`, which this said until #3336: upstream decides these with
+ * GENERATED REGEXES (`ids-lib.codegen/XmlSchema_XsTypesGenerator.cs`), and its
+ * xs:double pattern is neither .NET nor XSD. It takes `+INF` (an XSD 1.1
+ * spelling) while rejecting bare `INF` (the 1.0 one), and rejects `Infinity`
+ * (the .NET one). Parity with upstream is the contract, so that is what these
+ * arms implement. An IDS literal must cast successfully under at least one
  * of the slot's declared XSD types — `xs:integer` rejects `42.0`,
  * `xs:double` accepts either, etc.
  */
 
 import { isWhollyNumeric } from '@ifc-lite/encoding';
+
+/**
+ * The specials upstream's xs:double pattern accepts, spelled exactly as it
+ * spells them:
+ *
+ *     ^([-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?|NaN|\+INF|-INF)$
+ *
+ * Bare `INF` is absent because that pattern has `\+INF`, not `\+?INF`; and
+ * `Infinity` because it appears in neither upstream nor XSD.
+ */
+export const XSD_NUMERIC_SPECIALS = new Set(['NaN', '+INF', '-INF']);
 
 const INTEGER_RE = /^[+-]?\d+$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}(Z|[+-]\d{2}:\d{2})?$/;
@@ -40,12 +57,21 @@ export function literalCastsUnder(value: string, xsdType: string): boolean {
     case 'xs:integer':
       return INTEGER_RE.test(value);
     case 'xs:double':
-      // Same language the local `DOUBLE_RE` decided, via the shared
-      // linear scan. That regex was
-      // `/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/` — the #3113 shape,
-      // quadratic on a failing match — and an IDS literal is as
+      // The finite part goes through the shared linear scan, not a regex: the
+      // natural pattern `/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/` is the
+      // #3113 shape, quadratic on a failing match, and an IDS literal is as
       // untrusted as the file it came out of.
-      return isWhollyNumeric(value);
+      //
+      // Deliberate deviation from upstream (#3336). Every part of upstream's
+      // pattern is optional, so it accepts a family of digitless and
+      // mantissa-less forms that are not numbers: "", "+", ".", "-", "+.",
+      // "-.", and the exponent-only class "e5" / "+e5" / ".e5". Those fall out
+      // of how the regex is written rather than being a contract, and an empty
+      // string is not a double, so the finite scan keeps rejecting them.
+      //
+      // NOT an exhaustive list -- the family is larger than the rows pinned in
+      // xsd-cast-specials.test.ts, which are representatives.
+      return isWhollyNumeric(value) || XSD_NUMERIC_SPECIALS.has(value);
     case 'xs:boolean':
       return value === 'true' || value === 'false';
     case 'xs:date':

@@ -44,6 +44,20 @@ export interface StepExportOptions {
   author?: string;
   /** Organization name */
   organization?: string;
+  /**
+   * FILE_NAME `authorization` slot override. Omitted = the source header's
+   * own authorization token, unchanged (see `buildStepHeader`); there was no
+   * caller-facing way to override or blank it before this (#2934, part of the
+   * anonymized-export header scrub — an unblanked authorization line would
+   * leak whatever the source file's steward wrote there).
+   */
+  authorization?: string;
+  /**
+   * FILE_NAME `originating_system` slot override. Omitted = the source
+   * header's own value, unchanged. The anonymized export blanks it: a vendor
+   * build string like `<tool> 26.0.0 NOR FULL` encodes the licence region.
+   */
+  originatingSystem?: string;
   /** Application name (defaults to 'ifc-lite') */
   application?: string;
   /** Output filename */
@@ -69,6 +83,20 @@ export interface StepExportOptions {
   hiddenEntityIds?: Set<number>;
   /** Isolated entity IDs (local expressIds, null = no isolation active) */
   isolatedEntityIds?: Set<number> | null;
+
+  /**
+   * Export exactly these `IfcRoot`-derived entities plus infrastructure and
+   * their forward closure; every other `IfcRoot` entity (and each
+   * `IDENTIFYING_TYPES` entity — postal/telecom address, georeferencing) is
+   * excluded and stripped from relationship lines by the same dangling-ref
+   * protection `visibleOnly` gets (`evaluateOmissionPredicates` +
+   * `filterHiddenRefsFromRelationshipLine`, both driven off
+   * `pass.allowedEntityIds`/`hiddenProductIds`). Mutually exclusive with
+   * `visibleOnly` — `collectModifications` throws if both are set. The seed
+   * set for the anonymized-subset export (#2934); see `subset-roots.ts`'s
+   * `getSubsetEntityIds`.
+   */
+  subsetEntityIds?: ReadonlySet<number>;
 
   /** Georeferencing mutations to apply (IfcProjectedCRS / IfcMapConversion edits) */
   georefMutations?: {

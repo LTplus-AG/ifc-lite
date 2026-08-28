@@ -20,12 +20,12 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
-import { createModelSlice, type ModelSlice, type ModelCrossSliceState } from '../../store/slices/modelSlice.js';
+import { createModelSlice, type ModelSlice } from '../../store/slices/modelSlice.js';
 import { createDataSlice, type DataSlice, type DataCrossSliceState } from '../../store/slices/dataSlice.js';
 import type { FederatedModel } from '../../store/types.js';
 import { applyRoomModelData } from './room-model-apply.js';
 
-type TestState = ModelSlice & ModelCrossSliceState & DataSlice & DataCrossSliceState;
+type TestState = ModelSlice & DataSlice & DataCrossSliceState;
 
 /** A marker store/geometry pair per model — identity is all the test compares. */
 function markerStore(tag: string): IfcDataStore {

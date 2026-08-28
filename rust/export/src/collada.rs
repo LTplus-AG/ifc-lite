@@ -21,6 +21,8 @@
 use std::collections::HashMap;
 use std::fmt::Write as _;
 
+use crate::collada_fmt::append_floats;
+
 /// Material dedup key: RGBA rounded to 2 decimals (matches the glTF exporter).
 fn color_key(c: [f32; 4]) -> (i32, i32, i32, i32) {
     let r = |v: f32| (v * 100.0).round() as i32;
@@ -63,6 +65,17 @@ pub fn export_collada_from_meshes(
     colors: &[f32],
     origins: &[f64],
 ) -> Vec<u8> {
+    // Gate every float BEFORE any of it is read. `<float_array>` is `xs:float`,
+    // which has no lexical form matching Rust's `inf`/`-inf`, and the AABB
+    // re-centring below spreads a single non-finite vertex over every other
+    // vertex in the document. See `crate::mesh_input`.
+    let scrubbed = crate::mesh_input::scrub_nonfinite(positions, normals, colors, origins);
+    let (positions, normals, colors, origins) = (
+        &*scrubbed.positions,
+        &*scrubbed.normals,
+        &*scrubbed.colors,
+        &*scrubbed.origins,
+    );
     // Concatenated Z-up vertex buffers (one shared POSITION + NORMAL source) and,
     // per material, the triangle indices into that shared buffer. Positions are
     // accumulated in f64 so `world = origin + position` and the subsequent AABB
@@ -393,36 +406,6 @@ fn write_dae(
     s.push_str("  <scene><instance_visual_scene url=\"#scene\"/></scene>\n</COLLADA>\n");
 
     s.into_bytes()
-}
-
-/// Append space-separated floats, trimming trailing zeros for compactness while
-/// keeping enough precision for metre-scale building coordinates.
-fn append_floats(s: &mut String, vals: &[f32]) {
-    for (i, v) in vals.iter().enumerate() {
-        if i > 0 {
-            s.push(' ');
-        }
-        let _ = write!(s, "{}", fmt_f32(*v));
-    }
-}
-
-/// Format an f32 with up to 4 decimals (0.1 mm at building scale), no trailing
-/// zeros — keeps the document compact (fewer chars per coordinate) while staying
-/// far below any visible tolerance.
-fn fmt_f32(v: f32) -> String {
-    if v == 0.0 {
-        return "0".to_string();
-    }
-    let mut t = format!("{v:.4}");
-    if t.contains('.') {
-        while t.ends_with('0') {
-            t.pop();
-        }
-        if t.ends_with('.') {
-            t.pop();
-        }
-    }
-    t
 }
 
 #[cfg(test)]

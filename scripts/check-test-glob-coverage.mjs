@@ -334,6 +334,17 @@ export function listPackages(root, seenParents = []) {
     if (!existsOrThrow(parentDir, 'package parent')) continue;
     seenParents.push(parent);
     for (const name of readdirSync(parentDir).sort()) {
+      // A dotfile is not a candidate package and never was: pnpm-workspace.yaml
+      // globs `packages/*` and `apps/*`, and a bare `*` does not match a
+      // leading dot, so no dotted entry can ever be a workspace package. macOS
+      // drops a `.DS_Store` FILE into any directory Finder has opened, and
+      // statting `.DS_Store/package.json` raises ENOTDIR — which existsOrThrow
+      // below refuses, correctly and by design, failing the whole Lint lane on
+      // a local-only file. The fix is to stop offering a dotfile as a
+      // candidate, NOT to soften that refusal: every entry that could
+      // plausibly be a package still goes through existsOrThrow unchanged.
+      // Same skip walk() already applies one stage later. (#3350)
+      if (name.startsWith('.')) continue;
       const pkgDir = join(parentDir, name);
       const pkgJsonPath = join(pkgDir, 'package.json');
       if (!existsOrThrow(pkgJsonPath, 'package manifest')) continue;

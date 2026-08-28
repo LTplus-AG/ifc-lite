@@ -1,5 +1,165 @@
 # @ifc-lite/wasm
 
+## 6.1.1
+
+### Patch Changes
+
+- [#3329](https://github.com/LTplus-AG/ifc-lite/pull/3329) [`4a606d6`](https://github.com/LTplus-AG/ifc-lite/commit/4a606d6a81906c5a5b05594bb121b0cf1c7a0e7b) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Stop writing `NaN` / `Infinity` / `-Infinity` into exported GLB, COLLADA, KMZ and SVG files.
+  
+  Neither format can carry a non-finite number, and every one of these paths wrote one anyway.
+  
+  **GLB / COLLADA / KMZ** (`export_glb_from_meshes`, `export_collada_from_meshes`, `export_kmz_collada_from_meshes` — the viewer's "export" buttons, via `GeometryProcessor.exportGlbFromMeshes` / `exportKmzFromMeshes`). Nothing between a mesh buffer and the bytes established that a coordinate was finite, and the three values did not fail alike:
+  
+  - An infinite position made `serde_json` write `null` where glTF requires a number — `"min":[null,-0.5,0.0]`, `"translation":[null,0.5,0.0]` — which is schema-invalid, so the whole GLB is rejected rather than merely wrong.
+  - A `NaN` position reached the BIN chunk while `min`/`max` stayed finite, because `NaN < min` and `NaN > max` are both false. The accessor's bounding box described a buffer it did not contain.
+  - COLLADA re-centres on the mesh AABB, so **one** non-finite vertex turned **every other vertex in the document** into `inf`/`NaN`. Observed: a triangle whose first X was `-Infinity` came out as `NaN 0 0 inf 0 0 inf 0 1` — one bad vertex, no surviving geometry. `<float_array>` is `xs:float`, whose non-finite lexical forms are `INF`/`-INF`/`NaN`; Rust's `Display` writes `inf`/`-inf`, which are not even those.
+  - A non-finite colour component became `"baseColorFactor":[null,0.5,0.5,null]`.
+  
+  All four float arrays (positions, normals, colours, per-mesh origins) now pass through one gate, `mesh_input::scrub_nonfinite`, before either exporter's per-mesh loop reads any of them — rather than at each of the several points where a value becomes bytes, where a guard reaches three call sites out of four. A non-finite component is replaced with `0.0`, matching what the USD writer already did; alpha is the exception and becomes `1.0`, since scrubbing it to `0` would turn a colour defect into an invisible mesh. An all-finite input — the only case a well-formed model produces — is passed through borrowed, with no copy and byte-identical output.
+  
+  **SVG** (`exportToSVG`). SVG's `<number>` grammar admits a sign, digits, a point and an exponent and nothing else, so `x1="NaN"` is an error a conforming renderer must not draw. Thirteen coordinate, size and rotation interpolations went through a bare `.toFixed(3)`, which stringifies all three values verbatim; the DXF writer beside it in the same package has guarded exactly these at its single `fmt()` since it was written, so the two writers of the same drawing disagreed about the same input. Every SVG number now goes through one `svgNum()`. Separately, `computeTransform` derived the paper offsets from `boundsCenter`/`boundsSize`, which are plain min/max arithmetic: one non-finite corner of the bounding box moved every finite line in the drawing (a line that belonged at `x1="190.000"` was written as `x1="NaN"`). The bounds are sanitised before anything is derived from them, so a degenerate corner no longer relocates the rest of the drawing.
+
+## 6.1.0
+
+### Minor Changes
+
+- [#3210](https://github.com/LTplus-AG/ifc-lite/pull/3210) [`50895fb`](https://github.com/LTplus-AG/ifc-lite/commit/50895fb5b3d57c95e00daccc1e560f5b619c535d) Thanks [@louistrue](https://github.com/louistrue)! - Carry representation-item identity across the wasm boundary, and stop delivering material ids in the same field.
+  
+  `MeshData` gains two DISJOINT fields. `geometryItemId` is always the `IfcRepresentationItem` a mesh was tessellated from, so a host can drill from a rendered piece into an `IfcWindow`'s pane or frame and navigate to that entity in source. `materialId` is always the `IfcMaterial` whose layer a mesh slices. Never both — a consumer that ignores the distinction still cannot read one as the other.
+  
+  The router already kept each item's STEP id and it already reached the server REST payload; `MeshDataJs::from_mesh_data` did not copy it, so the browser never saw it. And for material-layered walls and slabs the same field carried the layer's `IfcMaterial` id, so following it to source landed on the wrong entity with nothing to warn the caller.
+  
+  `geometryClass === 3` cannot discriminate the two: it is stamped from a static material-index check made before the geometry runs, while the layered path can bail at runtime and emit representation-item submeshes under that class. The discriminator therefore lives on `SubMeshCollection`, set where the layered slabs are built.
+  
+  Neither field is ever `0`. `IfcMaterialLayer.Material` is optional, so an air gap reaches the mesher as `material_id 0` — that is the decoder's "no reference" sentinel, not an entity, and STEP instance names start at `[#1](https://github.com/LTplus-AG/ifc-lite/issues/1)`. Twelve slabs of `duplex.ifc` reported `IfcMaterial #0` before this was filtered at the setter. An air-gap slab is still meshed; it simply reports no material.
+  
+  Both fields cross the boundary, both wasm converters carry them, the REST wire shape and `convertServerMesh` carry them, and the cache format gains them at v14 — without that, a cache-restored session silently lost the identity.
+  
+  BREAKING FOR THE RUST CRATE, and this changeset cannot express it. `ifc-lite-processing` is published to crates.io (`scripts/release-crates.mjs`), `MeshData` gains a public field, and `with_style_metadata(self, material_name, geometry_item_id)` becomes `with_style_metadata(self, material_name, source_id, id_is_material)` — two caller-supplied arguments to three. Both break downstream, and both are demonstrated in-repo: the added field broke the `MeshData` struct literal in `rust/export/src/usd/tests.rs`, and the new argument broke the call in `rust/processing/src/element.rs`. `scripts/sync-versions.js` derives the Cargo workspace version from the highest npm package version, so a `minor` here ships 6.0.1 → 6.1.0 and a consumer pinned to `ifc-lite-processing = "6"` breaks on `cargo update`. This was ungated when the paragraph was written and is not any more. `scripts/check-rust-semver.mjs` ([#3216](https://github.com/LTplus-AG/ifc-lite/issues/3216)) asks `cargo-semver-checks` what bump each crate's API change requires, compares it with the bump the derived version actually carries over the crate's latest crates.io release, and fails when the version is the smaller of the two — and its lint set recognises BOTH breaks named above, a field added to a `pub` struct that callers construct literally and a changed argument count. It runs as the `Rust crate semver` lane on PRs and again before the crates.io publish. The remedy it leaves for a break like this one is `rust-major-offset.json`, which advances the Rust major without inventing an npm major.
+
+### Patch Changes
+
+- [#3299](https://github.com/LTplus-AG/ifc-lite/pull/3299) [`da266c1`](https://github.com/LTplus-AG/ifc-lite/commit/da266c1138767208f193083eb8b39d48e34b9a5d) Thanks [@louistrue](https://github.com/louistrue)! - Resolve geometry-job types legacy-aware in all three browser pre-pass discovery paths, so a job's label agrees with the gate that admitted it.
+  
+  Seven sites across `styling/prepass.rs`, `gpu_meshes/prepass.rs` and `gpu_meshes/prepass_discovery.rs` resolved a job's type with a bare `IfcType::from_str`, which knows only the current schema. A keyword a newer schema dropped came back `IfcType::Unknown(crc32)`, while the gate that admitted the job (`has_geometry_by_name`) resolved it legacy-aware. The label and the gate disagreed.
+  
+  **Scope, stated precisely: this is a consistency fix, not a user-visible one.** The label these sites compute does not currently reach the wire. `emit_jobs_chunk` writes three slots per job (`id`, `start`, `end`) and drops the type, and the worker re-derives it from the record with `legacy_aware_ifc_type_from_record`, which is where [#3179](https://github.com/LTplus-AG/ifc-lite/issues/3179) was actually fixed. So the wrong labels were dead data. What this changes is that the field stops being an `Unknown` waiting to surface the moment anything reads it, and the two branches of the same walk stop contradicting each other.
+  
+  The sites are reachable rather than theoretical: enumerating `LEGACY_ENTITY_NAMES` against `has_geometry_by_name` gives 22 keywords that reach these branches and are `Unknown` under the bare resolver. Measured against the generated per-version tables, they split:
+  
+  - **10 IFC4-only**, removed in IFC4X3: the `StandardCase` / `ElementedCase` family
+  - **7 IFC2X3-only**: `IFCEQUIPMENTELEMENT`, `IFCELECTRICDISTRIBUTIONPOINT`, `IFCELECTRICALELEMENT`, the two edge-feature leaves, the two `...ActionVarying` leaves
+  - **2 in both**: `IFCPROXY`, `IFCBUILDINGELEMENT`
+  - **3 in neither**: the IFC4X3 stratum leaves
+  
+  The seventh site is the reason this is worth doing now: it is in the sharded column-discovery walk, and its sibling branch eight lines above already resolves legacy-aware, under a comment stating that the label can never disagree with the gate that admitted it. The geometry-job branch below it was the counterexample to that comment.
+
+- [#3190](https://github.com/LTplus-AG/ifc-lite/pull/3190) [`c1490aa`](https://github.com/LTplus-AG/ifc-lite/commit/c1490aa48037c396d014f1dcb9647934fc16e43d) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Render the type geometry of IFC2X3 `IfcDoorStyle`, `IfcWindowStyle` and `IfcBuildingElementType`, which every pass silently dropped.
+  
+  `schema_helpers.rs` states the rule: a pass that *classifies* a keyword must resolve it through `legacy_aware_ifc_type`, because `DecodedEntity.ifc_type` is a bare `IfcType::from_str` and is deliberately literal. Six type-geometry candidate gates did not — the native processor, the streaming and sharded browser pre-passes, the sharded discovery pass, the styling pre-pass, and the attribute export's type-product pass. Five of the six ran `IfcType::from_str(keyword).is_subtype_of(IfcTypeProduct)` behind an `ends_with("TYPE") || ends_with("STYLE")` pre-filter. The sixth, the sharded discovery pass, ran neither: it re-labels a span some other pass already flagged, so it pushed a bare `IfcType::from_str(keyword)` unconditionally and put `Unknown` on the wire instead of dropping the entity.
+  
+  For the three IFC2X3 type products IFC4X3 dropped, `from_str` answers `Unknown`, `Unknown` is a subtype of nothing, and the entity was discarded before it could become a job. They also carry `has_geometry: false` in `legacy_entities.rs`, so the ordinary product route did not reach them either. An IFC2X3 file that authors its door geometry on an `IfcDoorStyle`'s `RepresentationMaps` — the IFC2X3 spelling of the [#957](https://github.com/LTplus-AG/ifc-lite/issues/957) orphan-type case — rendered nothing at all, in the browser, the CLI and every exporter alike.
+  
+  The six gates now share one predicate, `ifc_lite_core::type_product_ifc_type`, so a keyword one admits and another drops is no longer expressible. Sweeping the generated schema catalog and the whole legacy table shows it widens by exactly those three keywords and narrows nowhere; none of the three is also an ordinary geometry job or an `IfcProduct`, so nothing is double-counted, and no bundled fixture contains one, so no existing mesh or element count moves.
+
+- [#3280](https://github.com/LTplus-AG/ifc-lite/pull/3280) [`8dd8a9d`](https://github.com/LTplus-AG/ifc-lite/commit/8dd8a9db10a2b2388a4e92f92f0835468ee58a69) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Derive the fast-boot spatial tree's type gate from the generated schema instead of a hand-written list of fourteen names.
+  
+  `is_quick_spatial_type_ci` decides which entities become nodes in the bootstrap
+  spatial tree — the hierarchy the viewer shows while a file is still loading. It
+  hand-listed fourteen entity names, and a hand list is only ever as complete as
+  whoever last audited the schema. It was missing `IfcMarineFacility`,
+  `IfcMarinePart` and `IfcFacilityPartCommon`, so an IFC4.3 harbour or a generic
+  facility with common parts lost its whole branch from that tree: the facility
+  was never inserted as a node, so nothing aggregated beneath it could be
+  reparented either.
+  
+  The gate now asks `ifc_lite_core::IfcType` directly — `IfcProject`, plus
+  `IfcSpatialZone`, plus the whole `IfcSpatialStructureElement` closure — the same
+  move `rooted_type.rs` made for `IfcRoot`. Newly recognised as fast-boot spatial
+  nodes: `IfcMarineFacility`, `IfcMarinePart`, `IfcFacilityPartCommon` and
+  `IfcSpatialStructureElement` itself. Nothing previously recognised is dropped.
+  
+  `IfcExternalSpatialElement` stays out on purpose. It is an `IfcSpatialElement`,
+  but it descends from `IfcExternalSpatialStructureElement`, carries none of the
+  `WR41` aggregation rule that defines the containment hierarchy, and models a
+  space *boundary* volume rather than a container — admitting it would put a
+  permanently parentless node in the tree.
+
+- [#3297](https://github.com/LTplus-AG/ifc-lite/pull/3297) [`c8049a0`](https://github.com/LTplus-AG/ifc-lite/commit/c8049a0bf464cd1fec7a4cd2aad2f08326e04737) Thanks [@louistrue](https://github.com/louistrue)! - STEP header scanning now treats a `/* ... */` comment as trivia, in both halves. ISO 10303-21 allows a comment wherever whitespace is allowed, so a header carrying one is ordinary input rather than malformed input.
+  
+  Three things were wrong, and each lost more than the comment it came from. An apostrophe inside a comment (`/* John's export */`) inverted quote state for the rest of the file, so no record was found and the whole header was lost. A comment between a keyword and its `(` dropped that record. A comma inside a comment read as an argument separator and shifted every later field along, so `originatingSystem` came back holding the preprocessor version.
+  
+  On the Rust side the cost is the exported file, because `export_step` falls back to its own defaults whenever `parse_source_header` returns nothing. One comment in a header was enough to turn this:
+  
+  ```text
+  FILE_DESCRIPTION(('ViewDefinition [CoordinationView_V2.0]'),'2;1');
+  FILE_NAME('export.ifc','2024-01-01T00:00:00',('Ann'),('Acme Ltd'),'ifc-lite','TheirSystem','contract-77');
+  FILE_SCHEMA(('IFC4X3'));
+  ```
+  
+  into this:
+  
+  ```text
+  FILE_DESCRIPTION(('Exported from ifc-lite'),'2;1');
+  FILE_NAME('export.ifc','',(''),(''),'ifc-lite','ifc-lite','');
+  FILE_SCHEMA(('IFC4'));
+  ```
+  
+  Author, organization, authorization and time stamp are emptied, the description is overwritten, `originatingSystem` becomes `ifc-lite`, and the file is converted to the wrong schema.
+  
+  `detect_schema` decides which schema a file is converted to on export, and had four separate ways to answer wrongly. A commented-out declaration (`/* was FILE_SCHEMA(('IFC2X3')); */`) was read as the real one. A comment after the keyword put its first apostrophe forward as the label, so `FILE_SCHEMA /* Jane's */ (('IFC4X3'))` reported `s */ ((` and wrote that into the exported header. A record with no label at all borrowed the next record's first string, so `FILE_SCHEMA(()); FILE_NAME('leak.ifc',...)` reported `leak.ifc`. And a label containing a doubled apostrophe was cut off at the escape, so `FILE_SCHEMA(('IFC''4X3'))` reported `IFC`.
+  
+  Keyword matching in the TypeScript reader now folds ASCII case per character rather than uppercasing a copy of the text. Indexing a copy shifted every offset after a value whose uppercase is longer, so a header describing `Straße` lost its entire `FILE_NAME` record, and a full Unicode fold read an unquoted `ENDſEC` as `ENDSEC` and truncated the header there. The Rust reader already folded per byte.
+  
+  One behaviour is now stricter, in the TypeScript reader only. Whitespace between a record keyword and its `(` is ASCII, which is what ISO 10303-21 means, where it previously accepted any Unicode space separator. A header written with `U+00A0` there resolved before and does not now. That is the answer the Rust half already gave, so the two agree rather than one being widened to match the other.
+  
+  The last-resort schema scan folds ASCII too, for the same reason. It only runs when no `FILE_SCHEMA` identifier resolves at all, and it uppercased the first 2000 bytes before looking for `IFC5` / `IFC4X3` / `IFC4` / `IFC2X3` as substrings. `ı` uppercases to `I`, so a description mentioning `ıFC5` selected IFC5 for a file that never said so. That input now falls through to the IFC4 default instead. Lower-case prose still resolves.
+  
+  The one thing this gives up is a Turkish-locale lowercasing: `ıfc4x3` written in free header prose used to resolve to IFC4X3 and now does not. ISO 10303-21 tokens are ASCII, and this scan only runs for a file that declares no resolvable schema at all, so the trade is one exotic spelling against the false positives above.
+
+- [#3283](https://github.com/LTplus-AG/ifc-lite/pull/3283) [`24c7abc`](https://github.com/LTplus-AG/ifc-lite/commit/24c7abc6510f2e469992c0e76554471bf1cfe296) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Stop erasing the source file's HEADER on a Rust-side STEP export.
+  
+  `exportStep` (and the `ifc-lite export --format step` CLI that calls it) wrote a header built entirely from constants:
+  
+  ```
+  FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
+  FILE_NAME('','',(''),(''),'ifc-lite','ifc-lite-export','');
+  ```
+  
+  Two of those are wrong values rather than merely missing ones. The `FILE_DESCRIPTION` item is a model-view-definition claim, so a file authored against `ViewDefinition [CoordinationView_V2.0]` came back asserting a different MVD; and ISO 10303-21 gives `FILE_NAME`'s `time_stamp` as the file's creation date-time, which `''` is not. The author, organization, authoring system and authorization the source stated were dropped outright, so a round trip through the CLI erased the model's provenance.
+  
+  The TypeScript writer `buildStepHeader` had preserved all of this since it was written; nothing held the two halves together, so the Rust port never gained it. It now reads the source header (a port of `parseSourceHeader`) and applies the same precedence field for field: an explicit option wins, else the source's value, else the documented default. `StepOptions` gains `filename` and `time_stamp`, and its four header strings become optional so "not stated" is expressible.
+  
+  One documented difference remains: given no explicit stamp, the TypeScript half stamps the current time and the Rust half carries the source's stamp forward, because `SystemTime::now` is unavailable on the `wasm32-unknown-unknown` target this exporter ships to. Both agree whenever a caller states a stamp.
+  
+  The halves are now pinned to shared cross-language vectors (`rust/export/tests/fixtures/step_header_vectors.json`), whose expectations are written from ISO 10303-21 and each case's own source file rather than from either implementation.
+
+- [#3273](https://github.com/LTplus-AG/ifc-lite/pull/3273) [`d470d76`](https://github.com/LTplus-AG/ifc-lite/commit/d470d768cea3eb18dbb9c1138e128bc23ebfca68) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Pad the attributes a newer schema appended when the Rust STEP converter upgrades a file.
+  
+  `convertStepLine` in `packages/export` has padded the trailing optional attributes newer schemas ADD since [#1416](https://github.com/LTplus-AG/ifc-lite/issues/1416) — `PredefinedType` on `IfcWall` / `IfcBeam` / `IfcOpeningElement`, `IfcMaterial`'s `Description` and `Category`, and 61 more. Its Rust port never got the fix, and the Rust port is what `exportStep` runs, so `ifc-lite export --format step --schema IFC4` on an IFC2X3 source wrote entities one or more positional attributes short. That is an invalid IFC4 file, and strict readers reject it. Verbatim, before:
+  
+  ```
+  [#1](https://github.com/LTplus-AG/ifc-lite/issues/1)=IFCWALL('0aBcDeFgHiJkLmNoPqRsTu',$,'W1',$,$,$,$,'tag');
+  ```
+  
+  and after:
+  
+  ```
+  [#1](https://github.com/LTplus-AG/ifc-lite/issues/1)=IFCWALL('0aBcDeFgHiJkLmNoPqRsTu',$,'W1',$,$,$,$,'tag',$);
+  ```
+  
+  Padding applies only where the source schema's positional attribute NAME list is a strict PREFIX of the target's — the same restriction the TypeScript half enforces at run time. Entities that reorder or insert mid-list (`IfcMaterialProperties` goes from `[Material]` to `[Name, Description, Properties, Material]`) are left untouched, because a trailing `$` there would shove existing values into the wrong and type-invalid slots.
+  
+  The two implementations are now pinned to one shared fixture, `rust/export/tests/fixtures/schema_upconvert_sweep.json`, whose rows are derived from the generated buildingSMART attribute tables and which NAMES every padded type rather than counting them — a count floor stays silent exactly when a row is dropped.
+
+- [#3235](https://github.com/LTplus-AG/ifc-lite/pull/3235) [`ffe80a7`](https://github.com/LTplus-AG/ifc-lite/commit/ffe80a76ab269b6ce8abe52a9ebc7bd16c184db5) Thanks [@louistrue](https://github.com/louistrue)! - `MeshCollection.takeMesh(i)` now leaves a DEFAULT mesh behind rather than a metadata-bearing husk.
+  
+  `takeMesh` is read-once by contract and moves the vertex data out. It used to move the buffers field by field and copy the scalars, so a second read of the same index still reported the real `expressId`, `color`, `geometryClass`, `origin`, `localBounds` and `localToWorld` alongside empty buffers. It now moves the whole struct, so a second read reports `expressId 0`, `color [0,0,0,0]`, `geometryClass 0`, `origin [0,0,0]` and no bounds.
+  
+  This only affects a consumer that calls `takeMesh(i)` and then reads metadata for the same `i` again. That second read is affected whether it goes through `takeMesh` or `get`, because the data is gone from the collection either way. `get` on an index never taken is unaffected. The documented contract was already read-once and the in-repo streaming path takes each index exactly once, so nothing here changes. Read the metadata before taking, or use `get` for every read of that index.
+  
+  The change comes from collapsing three hand-written 21-field copies of `MeshDataJs` into a derived `Clone`, which is what removes the per-field edit cost that [#3199](https://github.com/LTplus-AG/ifc-lite/issues/3199) paid three times over.
+
 ## 6.0.1
 
 ### Patch Changes

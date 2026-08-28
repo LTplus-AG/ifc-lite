@@ -1,5 +1,70 @@
 # @ifc-lite/data
 
+## 3.5.1
+
+### Patch Changes
+
+- [#3325](https://github.com/LTplus-AG/ifc-lite/pull/3325) [`111b733`](https://github.com/LTplus-AG/ifc-lite/commit/111b733b21915522cf9678fb05d4595ac4a8906e) Thanks [@BIMvoice](https://github.com/BIMvoice)! - The Parquet `Type` column now names the IFC class the file declares, instead of the class its `IfcTypeEnum` value coalesces to.
+  
+  `IfcTypeEnum` maps several STEP class names onto one value on purpose, so the viewer's scope chips show one chip per family: `IfcDoorStandardCase` shares `IfcDoor`, `IfcSlabStandardCase` shares `IfcSlab`, and `IfcDistributionFlowElement` and `IfcDistributionControlElement` both share `IfcDistributionElement`. `EntityTable.getTypeName` resolves through that enum and only falls back to the parsed name when the enum says `Unknown`, so a known-but-coalesced class never reached the fallback and `ParquetExporter` wrote the coalesced name. A nine-entity model exported `IfcDoor` twice for one `IFCDOOR` and one `IFCDOORSTANDARDCASE` line, `IfcDistributionElement` three times for three different classes, and `IfcSlab` for an `IFCSLABSTANDARDCASE` — while `IfcWallStandardCase` came through intact only because it happens to hold its own enum value. The class is unrecoverable once written, and the archive disagreed with `StepExporter`, which re-emits every class verbatim.
+  
+  `EntityTable` gains an optional `getExactTypeName`, read through the new `exactTypeName(entities, expressId)` helper, which answers the declared class and falls back to `getTypeName` for table shapes that track no parsed names (a pre-v15 cache section, whose bytes never carried the column). Both table builders that keep their own columns now implement the accessor from one shared row reader, `exactNameOfRow`, also newly exported — so a model loaded from the server exports the same class as the same model parsed locally, rather than the coalesced one. `getTypeName` itself is unchanged, so the ~90 grouping, search and display callers that depend on the coalescing — the scope chips among them — keep the answer they had.
+  
+  CSV, JSON and ifcx exports read the class through other paths and still report the coalesced name; those are not addressed here.
+
+- [#3321](https://github.com/LTplus-AG/ifc-lite/pull/3321) [`758ed93`](https://github.com/LTplus-AG/ifc-lite/commit/758ed93f24d48dd0067568a1e4b62f9380e9d131) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Three IFC classes are no longer reported as a different IFC class.
+  
+  `IfcTypeEnum` covers a fraction of the schema, so the table behind `IfcTypeEnumFromString` deliberately coalesces some classes onto a coarser one — `IFCDOORSTANDARDCASE` resolves to `IfcDoor`, which is lossy but sound because a door standard case is a door. Three rows pointed somewhere else entirely:
+  
+  - `IfcTendonAnchor` → `IfcTendon` — siblings under `IfcReinforcingElement`.
+  - `IfcFastener` → `IfcMechanicalFastener` — the key's own child, so a plain fastener was reported as the narrower mechanical one.
+  - `IfcCableCarrierSegment` → `IfcCableSegment` — siblings under `IfcFlowSegment`; the tray was reported as the cable it holds.
+  
+  `entities.getTypeName()` returned the wrong class for all three, which the Parquet exporter writes into its `Type` column. The rows are removed, so those classes fall through to the raw parsed name and keep their own spelling. A new test sweeps the whole table against the bundled IFC2X3/IFC4/IFC4X3 registries and fails any row whose key is not the class it resolves to or one of that class's ancestors, so this cannot come back under a different spelling.
+
+## 3.5.0
+
+### Minor Changes
+
+- [#3249](https://github.com/LTplus-AG/ifc-lite/pull/3249) [`c2885ef`](https://github.com/LTplus-AG/ifc-lite/commit/c2885ef575fe57d9bc8e1960bb0ea31cb02f0665) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Recognise `IfcMarinePart` and `IfcFacilityPartCommon` as spatial structure elements.
+  
+  `SPATIAL_STRUCTURE_TYPE_ENUMS` is the single source of truth for "does this entity belong in the spatial tree". It listed twelve of the fourteen concrete `IfcSpatialStructureElement` subtypes IFC4X3 defines: `IfcMarineFacility` was there but its part type was not, and the generic `IfcFacilityPartCommon` was missing too. `IfcTypeEnum` had no member for either, so `EntityTable.getTypeEnum` answered `Unknown` for them and `isSpatialStructureType` answered `false`.
+  
+  `SpatialHierarchyBuilder.addSpatialChild` only recurses into a child that `isSpatialStructureType` accepts, so an `IfcMarinePart` or `IfcFacilityPartCommon` aggregated under its facility produced no node at all — the part and every element it contained were absent from the spatial hierarchy, and therefore from the viewer's Hierarchy panel, while the sibling `IfcRoadPart` / `IfcBridgePart` / `IfcRailwayPart` rows appeared normally. A port or quay model built out of `IfcMarinePart` berths showed an empty facility.
+  
+  Both types now have an `IfcTypeEnum` member with entries in the STEP-name and display-name maps, and both join `SPATIAL_STRUCTURE_TYPE_ENUMS`. The new enum ids are additive (321, 322); no existing id moves.
+  
+  `spatial-types.test.ts` no longer re-types the entity names by hand. It derives the expectation from `ENTITIES_IFC4X3` — the table generated from buildingSMART's own `SchemaInfo.*.g.cs` — walking the `parent` chain for every non-abstract `IfcSpatialStructureElement` descendant, and asserts in both directions: every such entity is recognised by name AND resolves through the STEP-name map, and nothing in the list is an entity the schema does not call spatial (`IfcProject`, the tree root, and `IfcSpatialZone`, an `IfcSpatialElement` carried deliberately since [#1075](https://github.com/LTplus-AG/ifc-lite/issues/1075), are the documented exceptions). An anti-vacuity assertion pins the derived list so a broken traversal cannot pass over an empty set.
+
+### Patch Changes
+
+- [#3294](https://github.com/LTplus-AG/ifc-lite/pull/3294) [`36350e8`](https://github.com/LTplus-AG/ifc-lite/commit/36350e8439af3c52d62d8bb3f6e2daa7bb8d4fa2) Thanks [@BIMvoice](https://github.com/BIMvoice)! - STEP string escaping: a run of control characters now becomes one space per character, not one space for the whole run, matching `ifc_lite_export::step_text::escape`. Both TS escapers used `/[\x00-\x1F\x7F]+/g`, so `"a\t\t\tb"` was written as `'a b'` by TypeScript and `'a   b'` by Rust while each escaper's doc comment claimed it matched the other. ISO 10303-21 6.3.3.4 permits either (it only bars the control byte from a literal); preserving the count loses no information.
+
+- [#3323](https://github.com/LTplus-AG/ifc-lite/pull/3323) [`329008d`](https://github.com/LTplus-AG/ifc-lite/commit/329008d2324204ff39d2ac4a0423add6a60e8907) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `IFC_ENTITY_NAMES` now spells 282 keys it silently omitted, including `IfcWallElementedCase`, `IfcSlabElementedCase`, `IfcBuildingElement`, `IfcDoorStyle`, `IfcWindowStyle` and every `*StandardCase` except `IfcWallStandardCase`, which was the only one of that family already listed.
+  
+  The map was a hand-maintained literal of 880 entries whose header named a regenerator, `scripts/generate-entity-names.ts`, that has never existed in this repository. The only thing pinning it was a test comparing it against `IfcTypeEnum`, a 128-member subset of the schema, so the other 1000-odd names could go missing unnoticed — and 282 had. Every caller doing `IFC_ENTITY_NAMES[upper] ?? upper` fell through to the raw UPPERCASE STEP keyword for those, so `IFCWALLELEMENTEDCASE` displayed as `IFCWALLELEMENTEDCASE` instead of `IfcWallElementedCase` in the CLI's info/diff output, the MCP query/diff/validation/discovery tools, the parquet export and the viewer's retype path.
+  
+  It is now emitted by `packages/data/scripts/emit-entity-names.ts` from the `ifc-schema/generated/entities-*.ts` tables, in the same `pnpm --filter @ifc-lite/data run generate:ifc-schema` command that regenerates those tables from the vendored buildingSMART dumps, so a schema bump carries the names along and there is no second list to fall behind. Not every added key is an entity: the dumps also carry defined types, so `IfcLengthMeasure`, `IfcLabel`, `IfcBoolean` and `IfcGloballyUniqueId` are now spelled too. That is harmless at every call site — all of them are indexed `?? upper` lookups and no consumer iterates the map — and it makes the lookup answer for tokens it previously left uppercase. `IfcSolidStratum`, `IfcVoidStratum` and `IfcWaterStratum` are reachable through `IfcTypeEnum` but absent from the dumps, so the emitter adds them by name.
+  
+  The map is emitted as a literal rather than built at load from the `ENTITIES_*` arrays: a runtime loop over those arrays is not tree-shakable, so it kept all three alive in every bundle that touches a name lookup. Measured with esbuild, minified, on an entry importing only `EntityTableBuilder`: 49,405 bytes (12,932 gzipped) before this change, 681,999 (70,740) built at load, 63,283 (16,780) as a literal — so the 282 recovered names cost ~3.8 KB gzipped instead of ~58 KB. `@ifc-lite/data` is published, so a browser consumer would have paid that for a string map.
+  
+  `ifc-entity-names.schema-parity.test.ts` re-derives the expectation from `entities-*.ts` and checks it in both directions plus a named required list, so the failure mode a committed artefact introduces — a schema bump that regenerates `entities-*.ts` and leaves `entity-names.ts` behind — fails there instead of degrading display names silently. The emitter itself refuses to write when any source array is empty, rather than emitting a partial map and exiting 0.
+
+- [#3266](https://github.com/LTplus-AG/ifc-lite/pull/3266) [`302121a`](https://github.com/LTplus-AG/ifc-lite/commit/302121ac7bc9312b1073738b3bbe0956ce452cf4) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Recognise `IfcQuantityNumber` instead of relabelling it as a count
+  
+  IFC4X3 added `IfcQuantityNumber` to the `IfcPhysicalSimpleQuantity` family,
+  but `QuantityType` stopped at `Time`, so the parser's lookup fell through to
+  its `?? QuantityType.Count` default. The value survived; the type did not. A
+  `Number` quantity was exported to Parquet as `Count`, described to IDS as
+  `IFCCOUNTMEASURE`, and written back out by the STEP exporter as
+  `IFCQUANTITYCOUNT` — a silent entity rewrite on round-trip.
+  
+  `QuantityType.Number` now exists and the parser, the Parquet and STEP
+  exporters, the IDS data-type bridge and the viewer's unit table all carry it.
+  A schema-derived test in `@ifc-lite/data` asserts the enum against the
+  generated per-version entity tables in both directions, so the next subtype a
+  schema regeneration introduces reds rather than falling through.
+
 ## 3.4.1
 
 ### Patch Changes

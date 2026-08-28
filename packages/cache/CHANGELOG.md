@@ -1,5 +1,34 @@
 # @ifc-lite/cache
 
+## 3.1.0
+
+### Minor Changes
+
+- [#3210](https://github.com/LTplus-AG/ifc-lite/pull/3210) [`50895fb`](https://github.com/LTplus-AG/ifc-lite/commit/50895fb5b3d57c95e00daccc1e560f5b619c535d) Thanks [@louistrue](https://github.com/louistrue)! - Carry representation-item identity across the wasm boundary, and stop delivering material ids in the same field.
+  
+  `MeshData` gains two DISJOINT fields. `geometryItemId` is always the `IfcRepresentationItem` a mesh was tessellated from, so a host can drill from a rendered piece into an `IfcWindow`'s pane or frame and navigate to that entity in source. `materialId` is always the `IfcMaterial` whose layer a mesh slices. Never both — a consumer that ignores the distinction still cannot read one as the other.
+  
+  The router already kept each item's STEP id and it already reached the server REST payload; `MeshDataJs::from_mesh_data` did not copy it, so the browser never saw it. And for material-layered walls and slabs the same field carried the layer's `IfcMaterial` id, so following it to source landed on the wrong entity with nothing to warn the caller.
+  
+  `geometryClass === 3` cannot discriminate the two: it is stamped from a static material-index check made before the geometry runs, while the layered path can bail at runtime and emit representation-item submeshes under that class. The discriminator therefore lives on `SubMeshCollection`, set where the layered slabs are built.
+  
+  Neither field is ever `0`. `IfcMaterialLayer.Material` is optional, so an air gap reaches the mesher as `material_id 0` — that is the decoder's "no reference" sentinel, not an entity, and STEP instance names start at `[#1](https://github.com/LTplus-AG/ifc-lite/issues/1)`. Twelve slabs of `duplex.ifc` reported `IfcMaterial #0` before this was filtered at the setter. An air-gap slab is still meshed; it simply reports no material.
+  
+  Both fields cross the boundary, both wasm converters carry them, the REST wire shape and `convertServerMesh` carry them, and the cache format gains them at v14 — without that, a cache-restored session silently lost the identity.
+  
+  BREAKING FOR THE RUST CRATE, and this changeset cannot express it. `ifc-lite-processing` is published to crates.io (`scripts/release-crates.mjs`), `MeshData` gains a public field, and `with_style_metadata(self, material_name, geometry_item_id)` becomes `with_style_metadata(self, material_name, source_id, id_is_material)` — two caller-supplied arguments to three. Both break downstream, and both are demonstrated in-repo: the added field broke the `MeshData` struct literal in `rust/export/src/usd/tests.rs`, and the new argument broke the call in `rust/processing/src/element.rs`. `scripts/sync-versions.js` derives the Cargo workspace version from the highest npm package version, so a `minor` here ships 6.0.1 → 6.1.0 and a consumer pinned to `ifc-lite-processing = "6"` breaks on `cargo update`. This was ungated when the paragraph was written and is not any more. `scripts/check-rust-semver.mjs` ([#3216](https://github.com/LTplus-AG/ifc-lite/issues/3216)) asks `cargo-semver-checks` what bump each crate's API change requires, compares it with the bump the derived version actually carries over the crate's latest crates.io release, and fails when the version is the smaller of the two — and its lint set recognises BOTH breaks named above, a field added to a `pub` struct that callers construct literally and a changed argument count. It runs as the `Rust crate semver` lane on PRs and again before the crates.io publish. The remedy it leaves for a break like this one is `rust-major-offset.json`, which advances the Rust major without inventing an npm major.
+
+### Patch Changes
+
+- [#3320](https://github.com/LTplus-AG/ifc-lite/pull/3320) [`4e6ebb1`](https://github.com/LTplus-AG/ifc-lite/commit/4e6ebb1ef176f99c0c50129f8fe74c4be10068e4) Thanks [@BIMvoice](https://github.com/BIMvoice)! - A cache load no longer renames an element to "Unknown" when its IFC class has no `IfcTypeEnum` member.
+  
+  `EntityTable` carries a `rawTypeName` string column so `getTypeName()` can name a class the hand-maintained `IfcTypeEnum` does not cover — 101 of the 157 concrete `IfcProduct` subtypes in the bundled IFC4 registry, `IfcPump`, `IfcValve`, `IfcAirTerminal`, `IfcBoiler` and `IfcSurfaceFeature` among them. The cache writer never serialized that column and the reader's hand-rolled `EntityTable` had no fallback for it, so every such element came back from a cache hit as "Unknown" while the same model parsed from source named it correctly.
+  
+  The column is now written (cache format v15, appended after the type-range triples so a v14 section stays readable and version-gated on the way in), and `readEntities` builds its table through `entityTableFromColumns` — the same constructor the parser path uses — instead of keeping a second copy of the accessor closures. That duplicate is what let the fallback go missing on one side only.
+- Updated dependencies [[`36350e8`](https://github.com/LTplus-AG/ifc-lite/commit/36350e8439af3c52d62d8bb3f6e2daa7bb8d4fa2), [`329008d`](https://github.com/LTplus-AG/ifc-lite/commit/329008d2324204ff39d2ac4a0423add6a60e8907), [`302121a`](https://github.com/LTplus-AG/ifc-lite/commit/302121ac7bc9312b1073738b3bbe0956ce452cf4), [`5e236e2`](https://github.com/LTplus-AG/ifc-lite/commit/5e236e26a33bfc5e41d82ccd742351e743131293), [`50895fb`](https://github.com/LTplus-AG/ifc-lite/commit/50895fb5b3d57c95e00daccc1e560f5b619c535d), [`c2885ef`](https://github.com/LTplus-AG/ifc-lite/commit/c2885ef575fe57d9bc8e1960bb0ea31cb02f0665)]:
+  - @ifc-lite/data@3.5.0
+  - @ifc-lite/geometry@4.1.0
+
 ## 3.0.6
 
 ### Patch Changes

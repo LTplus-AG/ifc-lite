@@ -487,6 +487,64 @@ definitions and georeferencing offsets are left untouched. Length attributes
 specific to IFC4X3 (alignment / linear referencing) may not be rescaled — a
 `stats.warnings` advisory flags this.
 
+### Anonymized Isolated Export
+
+Some parsing or geometry bugs only reproduce on a client's actual model, which
+cannot be shared for debugging. The anonymized isolated export picks the
+offending object(s), expands the selection to the context a reproduction
+needs (host wall, openings/fillers, the storey/building/site/project chain,
+type objects, materials, aggregate parents/children), and exports **only**
+that subset with every project-identifying signal removed — while keeping
+the geometry-relevant local transformations (placement rotations,
+non-orthogonal cuts) so the bug still reproduces:
+
+```typescript
+import { collectRelatedEntities, exportAnonymizedSubset } from '@ifc-lite/export';
+
+// Seed selection: e.g. the window an offending model fails to parse around.
+const seeds = new Set([312]); // expressId(s) of the seed entity/entities
+
+// Expand by relationship context: host, openings/fillers, type, materials,
+// and the spatial containment chain up to IfcProject (all on by default).
+const related = collectRelatedEntities(store, seeds);
+
+// Export exactly that subset, anonymized.
+const result = exportAnonymizedSubset(store, related.all);
+await saveFile('anonymized.ifc', result.content);
+
+// Old GlobalId -> regenerated GlobalId, kept OUT of the exported file itself.
+console.log(result.guidMap.size, result.stats.warnings);
+```
+
+`RelatedEntityOptions` toggles which relationship kinds `collectRelatedEntities`
+expands (`IfcRelVoidsElement`, `IfcRelFillsElement`, `IfcRelAggregates`,
+`IfcRelNests`, `IfcRelDefinesByType`, `IfcRelAssociatesMaterial`,
+`IfcRelContainedInSpatialStructure`, `IfcRelDefinesByProperties`, and a
+bounded `IfcRelConnectsPathElementsDepth`) and how far; `IfcProject` is
+always included regardless of any toggle. `AnonymizeOptions` toggles what
+`exportAnonymizedSubset` scrubs — every field defaults to the
+maximally-scrubbed direction, so the call above with no options is the
+intended common case:
+
+| Kept by default | Removed/replaced by default |
+|---|---|
+| `PredefinedType`, enum-valued attributes | `Name`/`LongName`/`Description`/`Tag` on `IfcRoot` → `<IfcType>-<n>` pseudonym (`pseudonymizeNames`) |
+| Materials, representation, styles (their geometry/colour values) | `ObjectType`, `IfcProject.Phase`, and quoted `Name`/`Description`/`ProfileName`/`LayerSetName` on non-`IfcRoot` entities — surface styles, materials, layers, profiles, colours (`pseudonymizeAllNames`) |
+| Units, geometric contexts, `RepresentationIdentifier` (`Body`, `Axis`) | `GlobalId` (regenerated; old→new in `result.guidMap`, never in the file) |
+| `preprocessor_version` (ifc-lite) | `IfcPropertySet`/`IfcElementQuantity` (unless `keepPropertySets`) |
+| `IfcApplication.ApplicationFullName` / `ApplicationIdentifier` | Root placement translation (rotation/`Axis`/`RefDirection` kept) |
+| Only the storeys/buildings the selection actually sits in (siblings are not pulled in) | `IfcMapConversion*`/`IfcProjectedCRS`, `IfcSite`/`IfcBuilding` address & georeferencing fields |
+| | `IfcPerson`/`IfcOrganization` fields, `IfcOwnerHistory` dates (`CreationDate` → 0, `LastModifiedDate` → `$`), `IfcApplication.Version`, STEP header author/organization/authorization/`originating_system` (`scrubOwnerHistory`) |
+| | `IfcMonetaryUnit.Currency` → USD (`neutralizeCurrency`) |
+
+The authoring tool's *name* is kept by decision (it is debugging signal) but
+its version/build string is not — vendors embed the licence region there
+(`26.0.0 NOR FULL`). Property/quantity *names* are kept whenever
+`keepPropertySets` is on. Those are the residual leak surface; review a file
+before sharing it externally, and never name the download after the source
+model. The CLI equivalent is `ifc-lite anonymize` (see the
+[CLI guide](cli.md)).
+
 ## IFC5 (IFCX) Export
 
 Export a parsed model as an IFC5 IFCX document (JSON with USD-style composition):

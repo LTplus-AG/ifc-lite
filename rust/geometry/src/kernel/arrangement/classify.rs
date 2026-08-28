@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use super::super::broadphase::{tris_aabb, Aabb};
 use super::super::interner::Vid;
 use super::super::predicates::{orient2d_any, orient3d};
 use super::super::rational::point_of;
@@ -67,12 +68,80 @@ fn ray_dir() -> [f64; 3] {
     [0.301_511_3, 0.557_328_1, 0.773_890_1]
 }
 
-/// Is point `p` inside the closed mesh `tris`? Exact ray-cast parity to a far
-/// point (`far_l` past the extent) along a fixed generic direction; each crossing
-/// tested by the exact predicate above.
-pub(super) fn point_inside(p: [f64; 3], tris: &[Tri], far_l: f64) -> bool {
-    let dir = ray_dir();
+/// The parity segment's far endpoint, placed strictly outside `[lo, hi]` (the
+/// AABB of the mesh being tested) - the soundness condition the parity argument
+/// needs, and the one the pre-fix code did not have.
+///
+/// PRECONDITION: `far_l` must be commensurate with the box, which every caller
+/// satisfies by passing `operand_extent` of the SAME mesh (that bounds
+/// `esc / far_l` at about 3.3). Hand a `far_l` far smaller than the box and
+/// `esc + far_l` is absorbed by f64 rounding, putting the endpoint back inside:
+/// measured 33425 of 200000 at box scale 1e10 to 1e18 with `far_l` in [1, 10].
+/// The assert below pins that, since the property is otherwise silent.
+///
+/// `far_l` is `operand_extent(other)`, sized from the coordinates of the OTHER
+/// operand. But `p` is a centroid of THIS operand, and can sit outside that
+/// envelope along `dir`. Then `p + dir*far_l` lands strictly INSIDE the other
+/// solid: the segment counts the ENTRY crossing and never reaches the EXIT, odd
+/// parity calls an outside point inside, and in a Difference the triangle is
+/// dropped - deleting a whole face of the host and leaving an open shell. That
+/// is issue #3341, where two boxes that merely TOUCH lose a face of the host,
+/// and a purely DISJOINT pair does the same. The bug is the segment LENGTH; it
+/// has nothing to do with touching or coplanarity.
+///
+/// When the default endpoint falls inside the AABB, walk out along `dir` to the
+/// first face of the box it can escape through and add a `far_l` margin. Both
+/// endpoints then lie outside the mesh, so both parities are valid; what the
+/// extension buys is that the NEW one is reliably so.
+///
+/// Note what this does NOT claim. Extension fires whenever the old endpoint was
+/// inside the AABB, which on a non-convex operand includes points inside the
+/// bounding box but outside the solid, where the old parity was already correct.
+/// Those queries do get a different, longer segment. The justification is not
+/// that they are untouched, it is that both endpoints are outside the solid and
+/// so both answers agree. Queries whose endpoint was ALREADY outside the AABB
+/// keep a byte-identical segment, because the early return below is literally
+/// the pre-fix expression.
+///
+/// The escape face is chosen per axis by `dir`'s sign, so this holds for any
+/// direction and not only the all-positive [`ray_dir`]; pinned by
+/// `classify_tests::the_extended_endpoint_clears_the_box_for_any_direction_sign`,
+/// which also records why that generality is load-bearing.
+///
+/// FMA-free f64 throughout, so native and wasm stay bit-identical.
+fn sound_far(p: [f64; 3], dir: [f64; 3], far_l: f64, (lo, hi): Aabb) -> [f64; 3] {
     let far = [p[0] + dir[0] * far_l, p[1] + dir[1] * far_l, p[2] + dir[2] * far_l];
+    if !(0..3).all(|i| far[i] >= lo[i] && far[i] <= hi[i]) {
+        return far;
+    }
+    debug_assert!(
+        (0..3).all(|i| !(hi[i] - lo[i]).is_finite() || hi[i] - lo[i] <= far_l * 4.0),
+        "far_l={far_l} is too small for the box {lo:?}..{hi:?}; the escape margin \
+         would be lost to rounding (see the precondition above)"
+    );
+    // Inside the box, so on every axis with a nonzero `dir` the ray escapes
+    // through `hi` when moving up and `lo` when moving down; either way the
+    // parameter is positive. An axis with `dir[i] == 0` never escapes and is
+    // skipped. At least one axis has a nonzero component (`dir` is a unit
+    // vector), so `esc` is finite.
+    // The sign selects which FACE the ray escapes through, not which formula.
+    let esc = (0..3)
+        .filter(|&i| dir[i] != 0.0)
+        .map(|i| ((if dir[i] > 0.0 { hi[i] } else { lo[i] }) - p[i]) / dir[i])
+        .fold(f64::MAX, f64::min);
+    let l2 = esc + far_l; // clears the escape face by >= |dir_i| * far_l
+    [p[0] + dir[0] * l2, p[1] + dir[1] * l2, p[2] + dir[2] * l2]
+}
+
+/// Is point `p` inside the closed mesh `tris`? Exact ray-cast parity to a far
+/// point (`far_l` past the extent, lengthened by [`sound_far`] whenever that
+/// endpoint would land inside the mesh) along a fixed generic direction; each
+/// crossing tested by the exact predicate above.
+pub(super) fn point_inside(p: [f64; 3], tris: &[Tri], far_l: f64) -> bool {
+    if tris.is_empty() {
+        return false; // no crossings to count
+    }
+    let far = sound_far(p, ray_dir(), far_l, tris_aabb(tris));
     tris.iter().filter(|t| exact_seg_hits_tri(p, far, t)).count() % 2 == 1
 }
 
@@ -89,8 +158,13 @@ fn point_inside_bvh(
     far_l: f64,
     scratch: &mut Vec<u32>,
 ) -> bool {
-    let dir = ray_dir();
-    let far = [p[0] + dir[0] * far_l, p[1] + dir[1] * far_l, p[2] + dir[2] * far_l];
+    // Same far-endpoint soundness guarantee as `point_inside`, taken from the
+    // BVH's root AABB (the unpadded bound over every triangle) rather than an
+    // O(N) rescan.
+    let Some(bb) = bvh.root_aabb() else {
+        return false; // empty tree, no crossings to count
+    };
+    let far = sound_far(p, ray_dir(), far_l, bb);
     scratch.clear();
     bvh.ray_candidates(p, far, scratch);
     scratch
@@ -361,6 +435,15 @@ impl<'a> BComponents<'a> {
     /// a slab test of `[p, p + dir·ext_k]` against the inflated AABB. Sound:
     /// the component's triangles lie inside the (un-inflated) AABB, so a
     /// segment that misses the inflated AABB has parity 0 there.
+    ///
+    /// NOTE this tests the UNEXTENDED endpoint, while the parity cast it gates
+    /// may be lengthened by [`sound_far`]. That is still sound, but only via
+    /// [`sound_far`]'s early return, so the dependency is stated here rather
+    /// than left to be re-derived: a rejection here means the short segment
+    /// missed the INFLATED box, hence the default endpoint is outside the
+    /// UN-inflated box, hence `sound_far` returns it unchanged and the segment
+    /// actually cast is the one this tested. Extending against a padded box
+    /// instead of the unpadded one would break this and silently under-count.
     fn ray_may_hit(&self, k: usize, p: [f64; 3]) -> bool {
         let dir = ray_dir();
         let far_l = self.exts[k];
@@ -631,3 +714,7 @@ pub(super) fn rotate_min_first(t: [Vid; 3]) -> [Vid; 3] {
     let i = (0..3).min_by_key(|&k| t[k]).unwrap();
     [t[i], t[(i + 1) % 3], t[(i + 2) % 3]]
 }
+
+#[cfg(test)]
+#[path = "classify_tests.rs"]
+mod classify_tests;

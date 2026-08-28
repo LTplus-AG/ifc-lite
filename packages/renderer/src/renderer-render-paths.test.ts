@@ -8,6 +8,7 @@ import { Renderer } from './index.js';
 import { Picker } from './picker.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { RenderOptions, BatchedMesh } from './types.js';
+import type { Scene } from './scene.js';
 
 /**
  * Drives the REAL render() loop against a stub GPU so the frame-lifecycle
@@ -299,6 +300,17 @@ function makeHarness(): Harness {
     };
 }
 
+/**
+ * The concrete `Scene`, not the narrowed `SceneContents` that `getScene()`
+ * publishes. These render-path tests reach for internals (`partialBatchCache`,
+ * `addMeshData`, `getTexturedMeshes`) that are deliberately absent from the
+ * published surface, the same way they already reach `renderer['device']` and
+ * `renderer['pipeline']`.
+ */
+function sceneOf(h: Harness): Scene {
+    return h.renderer['scene'];
+}
+
 function triangle(expressId: number, color: [number, number, number, number], modelIndex?: number): MeshData {
     return {
         expressId,
@@ -315,7 +327,7 @@ const RED: [number, number, number, number] = [0.8, 0.1, 0.1, 1];
 
 /** Build two real colour batches: grey {1, 2} and red {3}. */
 function seedBatches(h: Harness): { grey: BatchedMesh; red: BatchedMesh } {
-    const scene = h.renderer.getScene();
+    const scene = sceneOf(h);
     const device = h.renderer['device'].getDevice();
     const pipeline = h.renderer['pipeline'] as never;
     scene.appendToBatches([triangle(1, GREY), triangle(2, GREY), triangle(3, RED)], device, pipeline, false);
@@ -483,7 +495,7 @@ describe('visibility epoch drives the batched draw path', () => {
         assert.ok(!h.stats.draws.includes(grey.vertexBuffer),
             'partially hidden batch must not draw from its own buffers');
         assert.ok(h.stats.draws.includes(red.vertexBuffer), 'red batch is unaffected');
-        const scene = h.renderer.getScene();
+        const scene = sceneOf(h);
         assert.strictEqual(scene['partialBatchCache'].size, 1, 'a partial sub-batch was built');
 
         // Mutate in place again: id 2 hides too, the grey batch is now fully
@@ -521,7 +533,7 @@ describe('visibility epoch drives the batched draw path', () => {
     it('rapid hide -> show-all -> same set -> different set: partial caches drop and rebuild, buffers destroyed exactly once', () => {
         const h = makeHarness();
         seedBatches(h);
-        const scene = h.renderer.getScene();
+        const scene = sceneOf(h);
 
         h.render({ hiddenIds: new Set([1]) });
         assert.strictEqual(scene['partialBatchCache'].size, 1);
@@ -561,7 +573,7 @@ describe('hydrated selection meshes across renders', () => {
     it('selection thrash: earlier selections are disposed, the current one is kept', () => {
         const h = makeHarness();
         seedBatches(h);
-        const scene = h.renderer.getScene();
+        const scene = sceneOf(h);
 
         const hydratedFor = (id: number) =>
             scene.getMeshes().filter((m) => m.hydrated && m.expressId === id);
@@ -590,7 +602,7 @@ describe('hydrated selection meshes across renders', () => {
     it('same express id in two federated models: switching models disposes the other model\'s mesh', () => {
         const h = makeHarness();
         seedBatches(h);
-        const scene = h.renderer.getScene();
+        const scene = sceneOf(h);
         // Two models share express id 42 (federation reuses local ids).
         scene.addMeshData(triangle(42, GREY, 0));
         scene.addMeshData(triangle(42, RED, 1));
@@ -873,7 +885,7 @@ describe('textured sub-pass carries the per-element origin (#1973)', () => {
     const ORIGIN: [number, number, number] = [12.5, 10.5, -3.25];
 
     function seedTextured(h: Harness, meshes: MeshData[]) {
-        const scene = h.renderer.getScene();
+        const scene = sceneOf(h);
         const device = h.renderer['device'].getDevice();
         const pipeline = h.renderer['pipeline'] as never;
         scene.appendToBatches(meshes, device, pipeline, false);

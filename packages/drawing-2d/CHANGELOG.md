@@ -1,5 +1,45 @@
 # @ifc-lite/drawing-2d
 
+## 3.1.1
+
+### Patch Changes
+
+- [#3329](https://github.com/LTplus-AG/ifc-lite/pull/3329) [`4a606d6`](https://github.com/LTplus-AG/ifc-lite/commit/4a606d6a81906c5a5b05594bb121b0cf1c7a0e7b) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Stop writing `NaN` / `Infinity` / `-Infinity` into exported GLB, COLLADA, KMZ and SVG files.
+  
+  Neither format can carry a non-finite number, and every one of these paths wrote one anyway.
+  
+  **GLB / COLLADA / KMZ** (`export_glb_from_meshes`, `export_collada_from_meshes`, `export_kmz_collada_from_meshes` — the viewer's "export" buttons, via `GeometryProcessor.exportGlbFromMeshes` / `exportKmzFromMeshes`). Nothing between a mesh buffer and the bytes established that a coordinate was finite, and the three values did not fail alike:
+  
+  - An infinite position made `serde_json` write `null` where glTF requires a number — `"min":[null,-0.5,0.0]`, `"translation":[null,0.5,0.0]` — which is schema-invalid, so the whole GLB is rejected rather than merely wrong.
+  - A `NaN` position reached the BIN chunk while `min`/`max` stayed finite, because `NaN < min` and `NaN > max` are both false. The accessor's bounding box described a buffer it did not contain.
+  - COLLADA re-centres on the mesh AABB, so **one** non-finite vertex turned **every other vertex in the document** into `inf`/`NaN`. Observed: a triangle whose first X was `-Infinity` came out as `NaN 0 0 inf 0 0 inf 0 1` — one bad vertex, no surviving geometry. `<float_array>` is `xs:float`, whose non-finite lexical forms are `INF`/`-INF`/`NaN`; Rust's `Display` writes `inf`/`-inf`, which are not even those.
+  - A non-finite colour component became `"baseColorFactor":[null,0.5,0.5,null]`.
+  
+  All four float arrays (positions, normals, colours, per-mesh origins) now pass through one gate, `mesh_input::scrub_nonfinite`, before either exporter's per-mesh loop reads any of them — rather than at each of the several points where a value becomes bytes, where a guard reaches three call sites out of four. A non-finite component is replaced with `0.0`, matching what the USD writer already did; alpha is the exception and becomes `1.0`, since scrubbing it to `0` would turn a colour defect into an invisible mesh. An all-finite input — the only case a well-formed model produces — is passed through borrowed, with no copy and byte-identical output.
+  
+  **SVG** (`exportToSVG`). SVG's `<number>` grammar admits a sign, digits, a point and an exponent and nothing else, so `x1="NaN"` is an error a conforming renderer must not draw. Thirteen coordinate, size and rotation interpolations went through a bare `.toFixed(3)`, which stringifies all three values verbatim; the DXF writer beside it in the same package has guarded exactly these at its single `fmt()` since it was written, so the two writers of the same drawing disagreed about the same input. Every SVG number now goes through one `svgNum()`. Separately, `computeTransform` derived the paper offsets from `boundsCenter`/`boundsSize`, which are plain min/max arithmetic: one non-finite corner of the bounding box moved every finite line in the drawing (a line that belonged at `x1="190.000"` was written as `x1="NaN"`). The bounds are sanitised before anything is derived from them, so a degenerate corner no longer relocates the rest of the drawing.
+
+## 3.1.0
+
+### Minor Changes
+
+- [#3262](https://github.com/LTplus-AG/ifc-lite/pull/3262) [`2cf529e`](https://github.com/LTplus-AG/ifc-lite/commit/2cf529e918406e728049f2c0ce0143665eb4b497) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Resolve graphic-override subtypes from the IFC schema instead of a drifted hand-written table.
+  
+  `ifcTypeCriterion` defaults `includeSubtypes` to `true`, so a rule naming a supertype is meant to style everything beneath it. That expansion ran off `IFC_TYPE_HIERARCHY`, a hand-written table in `rule-engine.ts` that had fallen far behind the schema. A rule on `IfcBuildingElement` reached 21 of the 31 entities IFC4 puts under it, never touching `IfcCurtainWall`, `IfcPlate`, `IfcMember`, `IfcFooting`, `IfcPile`, `IfcBuildingElementProxy`, `IfcChimney`, `IfcShadingDevice` or the two `StandardCase` leaves. A rule on `IfcDistributionElement` reached 2 of 76 — it resolved `IfcDistributionFlowElement` and `IfcDistributionControlElement` and stopped, because neither was itself a key, so no duct, pipe, cable, terminal, valve or sensor was ever styled. The elements still drew; they drew without the override the rule asked for, with no warning.
+  
+  The table now lives in `ifc-type-hierarchy.ts` and is the direct-children map of every entity under `IfcElement` and `IfcSpatialElement`, derived from IFC4 ADD2 TC1. Rules matching more elements than before is the point of the fix, but it is a visible change to any drawing that used a supertype rule.
+  
+  `IfcFlowElement` was a table key and is not an IFC entity — not in IFC2X3, IFC4 or IFC4X3, so it was never a legacy alias for anything. Rather than delete a name users may already have written into a rule, it is kept in an explicit `AUTHORING_ALIASES` map pointing at `IfcDistributionFlowElement`, the real supertype of the four names it used to list; it now reaches that whole subtree. `IfcStair` -> `IfcStairFlight` and `IfcRamp` -> `IfcRampFlight` move to the same map: IFC4 makes both flights siblings rather than subtypes, and silently narrowing those rules would be its own regression.
+  
+  `getIfcSubtypes` now de-duplicates its result and tracks visited nodes, so an alias pointing back into the table cannot spin.
+  
+  The module had no tests. It now has two suites: one driving rules through `applyOverrides` against named required entities, and one that re-derives the hierarchy from `@ifc-lite/data`'s `ENTITIES_IFC4` — an authority independent of the parser registry the table was generated from — and fails if the table omits a subtype, invents an entity, or claims an edge the schema does not have. `@ifc-lite/data` is a devDependency only; nothing is added to the published bundle.
+
+### Patch Changes
+
+- Updated dependencies [[`5e236e2`](https://github.com/LTplus-AG/ifc-lite/commit/5e236e26a33bfc5e41d82ccd742351e743131293), [`50895fb`](https://github.com/LTplus-AG/ifc-lite/commit/50895fb5b3d57c95e00daccc1e560f5b619c535d)]:
+  - @ifc-lite/geometry@4.1.0
+
 ## 3.0.0
 
 ### Major Changes

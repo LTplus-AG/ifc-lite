@@ -123,6 +123,17 @@ pub fn export_glb_from_meshes(
     lit: bool,
     emissive: bool,
 ) -> (Vec<u8>, GltfStats) {
+    // Gate every float BEFORE any of it is read: a non-finite coordinate has no
+    // representation in glTF JSON (`serde_json` writes `null`, which is
+    // schema-invalid) and, left alone, propagates through the scene-centre
+    // subtraction into vertices that were fine. See `crate::mesh_input`.
+    let scrubbed = crate::mesh_input::scrub_nonfinite(positions, normals, colors, origins);
+    let (positions, normals, colors, origins) = (
+        &*scrubbed.positions,
+        &*scrubbed.normals,
+        &*scrubbed.colors,
+        &*scrubbed.origins,
+    );
     let n = vertex_counts.len();
     // The viewer's `MeshData` arrives pre-welded from the mesh source
     // (`ifc_lite_processing::element::build_mesh_data` welds every element via

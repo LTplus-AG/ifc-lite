@@ -263,6 +263,65 @@ test('an UNREADABLE package is not silently treated as an absent one', () => {
   }
 });
 
+// --- Dotfiles are not candidate packages, and skipping them must not soften
+//     the ENOTDIR refusal directly above ---
+//
+// macOS drops a `.DS_Store` FILE into `packages/` and `apps/` as soon as
+// Finder opens them. Statting `packages/.DS_Store/package.json` raises
+// ENOTDIR, so the refusal above fired on it and failed the whole Lint lane —
+// observed in four separate fresh worktrees. CI never sees this (no Finder on
+// the runners), so a green CI proves nothing about it either way; these two
+// cases are where the pairing is pinned.
+//
+// They are deliberately a PAIR. Making the flake go away is trivial and has an
+// obvious wrong fix (catch ENOTDIR and continue), which would delete the
+// refusal this gate exists for. The second case is the one that would catch
+// that: the same tree carries a dotfile AND a non-dotfile ENOTDIR candidate,
+// and the gate must ignore exactly one of them and refuse the other.
+
+test('a `.DS_Store` dotfile in packages/ or apps/ is not a candidate package (PR 3350)', () => {
+  const dir = writeTree({
+    'packages/real-one/package.json': pkgJson('vitest run'),
+    'packages/real-one/src/a.test.ts': '// test a\n',
+    'apps/real-app/package.json': pkgJson('vitest run'),
+    'apps/real-app/src/b.test.ts': '// test b\n',
+    // Finder's leavings: a FILE, so `<name>/package.json` gives ENOTDIR.
+    'packages/.DS_Store': '\x00\x01Bud1',
+    'apps/.DS_Store': '\x00\x01Bud1',
+  });
+  try {
+    const { status, out } = runOn(dir);
+    assert.equal(status, 0, out);
+    assert.match(out, /check-test-glob-coverage: OK \(2 packages audited, 0 unrun test files\)/);
+    assert.doesNotMatch(out, /DS_Store/, 'a dotfile must not appear in the output at all');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('skipping dotfiles does not soften the refusal: a non-dotfile ENOTDIR candidate in the SAME tree still fails (PR 3350)', () => {
+  const dir = writeTree({
+    'packages/real-one/package.json': pkgJson('vitest run'),
+    'packages/real-one/src/a.test.ts': '// test a\n',
+    'packages/.DS_Store': '\x00\x01Bud1',
+    // Not a dotfile, and not a directory: `packages/blocked/package.json`
+    // raises ENOTDIR exactly as `.DS_Store` did. This one must still be
+    // refused — that is the whole point of the guard.
+    'packages/blocked': 'i am a file, not a package directory\n',
+  });
+  try {
+    const { status, out } = runOn(dir);
+    assert.equal(status, 1, `expected a non-zero exit on a non-dotfile ENOTDIR candidate, got ${status}: ${out}`);
+    assert.match(out, /cannot read package manifest/);
+    assert.match(out, /packages\/blocked\/package\.json/);
+    assert.match(out, /Refusing to treat an unreadable path as an absent one/);
+    assert.doesNotMatch(out, /DS_Store/, 'the dotfile must not be what tripped it');
+    assert.doesNotMatch(out, /OK \(/, 'must not print a success line at all');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // --- Direct unit tests on the exported glob helpers ---
 
 test('globToRegExp: ** matches zero or more path segments', () => {

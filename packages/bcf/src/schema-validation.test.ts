@@ -32,7 +32,7 @@ import JSZip from 'jszip';
 import { validateXML } from 'xmllint-wasm';
 import { writeBCF } from './writer.js';
 import { readBCF } from './reader.js';
-import type { BCFProject, BCFTopic } from './types.js';
+import type { BCFProject, BCFTopic, BCFViewpoint } from './types.js';
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 
@@ -344,32 +344,46 @@ describe('BCF output validates against the official buildingSMART XSDs', () => {
  */
 describe('BCF 3.0 AspectRatio', () => {
   it('survives a write/read round trip on both camera types', async () => {
-    const topic = maximalTopic();
     // Distinct values per camera, and neither is 1 — a writer or reader that
     // dropped the field and defaulted to a square viewport would still pass a
     // test that used 1, and a writer that read one camera's value while
     // writing the other's would pass a test that used the same number twice.
-    topic.viewpoints[0].perspectiveCamera!.aspectRatio = 1.7777;
-    topic.viewpoints[0].orthogonalCamera = {
-      cameraViewPoint: { x: 20, y: 21, z: 22 },
-      cameraDirection: { x: 0, y: 0, z: -1 },
-      cameraUpVector: { x: 0, y: 1, z: 0 },
-      viewToWorldScale: 12.5,
-      aspectRatio: 2.3333,
-    };
-    const project: BCFProject = {
-      version: '3.0',
-      projectId: '66666666-6666-4666-8666-666666666666',
-      name: 'Aspect ratio project',
-      topics: new Map([[TOPIC_GUID, topic]]),
-    };
+    //
+    // The two cameras go in SEPARATE 3.0 projects. They used to share one
+    // viewpoint, which round-tripped perfectly and was schema-invalid the
+    // whole time: 3.0's visinfo.xsd declares the cameras as an `xs:choice`,
+    // so a viewpoint carries exactly one. See "BCF camera cardinality and
+    // order" below.
+    async function roundTrip(mutate: (topic: BCFTopic) => void): Promise<BCFViewpoint> {
+      const topic = maximalTopic();
+      mutate(topic);
+      const project: BCFProject = {
+        version: '3.0',
+        projectId: '66666666-6666-4666-8666-666666666666',
+        name: 'Aspect ratio project',
+        topics: new Map([[TOPIC_GUID, topic]]),
+      };
+      const blob = await writeBCF(project);
+      const readBack = await readBCF(new Uint8Array(await blob.arrayBuffer()));
+      return readBack.topics.get(TOPIC_GUID)!.viewpoints[0];
+    }
 
-    const blob = await writeBCF(project);
-    const readBack = await readBCF(new Uint8Array(await blob.arrayBuffer()));
-    const viewpoint = readBack.topics.get(TOPIC_GUID)!.viewpoints[0];
+    const perspective = await roundTrip((topic) => {
+      topic.viewpoints[0].perspectiveCamera!.aspectRatio = 1.7777;
+    });
+    expect(perspective.perspectiveCamera?.aspectRatio).toBe(1.7777);
 
-    expect(viewpoint.perspectiveCamera?.aspectRatio).toBe(1.7777);
-    expect(viewpoint.orthogonalCamera?.aspectRatio).toBe(2.3333);
+    const orthogonal = await roundTrip((topic) => {
+      delete topic.viewpoints[0].perspectiveCamera;
+      topic.viewpoints[0].orthogonalCamera = {
+        cameraViewPoint: { x: 20, y: 21, z: 22 },
+        cameraDirection: { x: 0, y: 0, z: -1 },
+        cameraUpVector: { x: 0, y: 1, z: 0 },
+        viewToWorldScale: 12.5,
+        aspectRatio: 2.3333,
+      };
+    });
+    expect(orthogonal.orthogonalCamera?.aspectRatio).toBe(2.3333);
   });
 
   it('refuses to write a 3.0 camera without one rather than emitting an invalid archive', async () => {
@@ -389,6 +403,191 @@ describe('BCF 3.0 AspectRatio', () => {
     expect(entries.get(`${TOPIC_GUID}/Viewpoint_${VIEWPOINT_GUID}.bcfv`)).not.toContain(
       'AspectRatio'
     );
+  });
+});
+
+/**
+ * FINITENESS is the property, not sign and not schema-conformance.
+ *
+ * `AspectRatio` was guarded with `!(aspectRatio > 0)`, and `Infinity > 0` is
+ * `true`, so `Infinity` walked straight through a check whose doc comment
+ * claimed to enforce `PositiveDouble` and was written out verbatim. The same
+ * mistake in its other disguise shipped elsewhere in this repository within
+ * the week — `Number('Infinity')` is not `NaN`, so an `isNaN` guard passes it
+ * too. Neither a positivity test nor a NaN test is a finiteness test;
+ * `Number.isFinite` is, which is why every case below is stated against it
+ * rather than against the value's sign.
+ *
+ * The XSDs punish the three non-finite values in three different ways, so no
+ * single facet catches them and "the schema will reject it" is not a defence:
+ *
+ *  - `Infinity`/`-Infinity` stringify to `"Infinity"`/`"-Infinity"`, which are
+ *    outside `xs:double`'s lexical space altogether (XSD 1.0 spells the
+ *    infinities `INF`/`-INF`). Rejected everywhere.
+ *  - `NaN` stringifies to `"NaN"`, which `xs:double` ACCEPTS. On a facet-bearing
+ *    type it still fails (`PositiveDouble`'s `minExclusive`, `FieldOfView`'s
+ *    range), but on the plain `xs:double` elements — every coordinate,
+ *    `ViewToWorldScale`, `Bitmap/Height` — a validator sees nothing wrong while
+ *    the archive carries a number no consumer can use. Two tests below pin that
+ *    asymmetry so it cannot be mistaken for coverage.
+ *  - `Topic/Index` is `xs:int`, narrower again: `1.5` is invalid there too.
+ *
+ * The sweep is the point. The reported defect was `AspectRatio`; it was the
+ * only one of these fields with any guard at all.
+ */
+describe('non-finite numbers never reach the archive', () => {
+  /**
+   * Every numeric the writer emits under an XSD numeric type, as a mutation
+   * that puts `value` in exactly that position.
+   *
+   * Anti-vacuity for the list itself is the `emits a schema-valid ...` tests
+   * above: `maximalTopic` populates the camera, lines, clipping planes and
+   * bitmaps, so each mutator below lands on markup that is really written.
+   */
+  const NUMERICS: ReadonlyArray<
+    readonly [string, (t: BCFTopic, v: number) => void, number?]
+  > = [
+    ['PerspectiveCamera/AspectRatio', (t, v) => { t.viewpoints[0].perspectiveCamera!.aspectRatio = v; }],
+    ['PerspectiveCamera/FieldOfView', (t, v) => { t.viewpoints[0].perspectiveCamera!.fieldOfView = v; }],
+    ['PerspectiveCamera/CameraViewPoint/X', (t, v) => { t.viewpoints[0].perspectiveCamera!.cameraViewPoint.x = v; }],
+    ['PerspectiveCamera/CameraDirection/Y', (t, v) => { t.viewpoints[0].perspectiveCamera!.cameraDirection.y = v; }],
+    ['PerspectiveCamera/CameraUpVector/Z', (t, v) => { t.viewpoints[0].perspectiveCamera!.cameraUpVector.z = v; }],
+    // The orthogonal camera REPLACES the perspective one: BCF 3.0 admits
+    // exactly one camera per viewpoint (see "BCF camera cardinality and order"),
+    // so setting both here would fail for that reason instead of this one.
+    ['OrthogonalCamera/ViewToWorldScale', (t, v) => { useOrthogonal(t).viewToWorldScale = v; }],
+    ['OrthogonalCamera/AspectRatio', (t, v) => { useOrthogonal(t).aspectRatio = v; }],
+    ['OrthogonalCamera/CameraViewPoint/X', (t, v) => { useOrthogonal(t).cameraViewPoint.x = v; }],
+    ['Line/StartPoint/X', (t, v) => { t.viewpoints[0].lines![0].startPoint.x = v; }],
+    ['Line/EndPoint/Z', (t, v) => { t.viewpoints[0].lines![0].endPoint.z = v; }],
+    ['ClippingPlane/Location/Y', (t, v) => { t.viewpoints[0].clippingPlanes![0].location.y = v; }],
+    ['ClippingPlane/Direction/X', (t, v) => { t.viewpoints[0].clippingPlanes![0].direction.x = v; }],
+    ['Bitmap/Location/Z', (t, v) => { t.viewpoints[0].bitmaps![0].location.z = v; }],
+    ['Bitmap/Normal/X', (t, v) => { t.viewpoints[0].bitmaps![0].normal.x = v; }],
+    ['Bitmap/Up/Y', (t, v) => { t.viewpoints[0].bitmaps![0].up.y = v; }],
+    ['Bitmap/Height', (t, v) => { t.viewpoints[0].bitmaps![0].height = v; }],
+    // The third element is the FINITE value the anti-vacuity case below uses;
+    // `Topic/Index` needs its own because 3.25 is not an xs:int.
+    ['Topic/Index', (t, v) => { t.index = v; }, 3],
+  ];
+
+  /** Swap the fixture's perspective camera for an orthogonal one and return it. */
+  function useOrthogonal(topic: BCFTopic) {
+    delete topic.viewpoints[0].perspectiveCamera;
+    topic.viewpoints[0].orthogonalCamera = {
+      cameraViewPoint: { x: 4.5, y: 5.5, z: 6.5 },
+      cameraDirection: { x: 0, y: -1, z: 0 },
+      cameraUpVector: { x: 0, y: 0, z: 1 },
+      viewToWorldScale: 12.5,
+      aspectRatio: 2.25,
+    };
+    return topic.viewpoints[0].orthogonalCamera;
+  }
+
+  function mutated(mutate: (t: BCFTopic, v: number) => void, value: number): BCFProject {
+    const topic = maximalTopic();
+    mutate(topic, value);
+    return {
+      version: '3.0',
+      projectId: '66666666-6666-4666-8666-666666666666',
+      name: 'Non-finite project',
+      topics: new Map([[TOPIC_GUID, topic]]),
+    };
+  }
+
+  for (const [field, mutate, finite = 3.25] of NUMERICS) {
+    describe(field, () => {
+      it.each([
+        ['Infinity', Infinity],
+        ['-Infinity', -Infinity],
+        ['NaN', NaN],
+      ] as const)('is refused rather than written when it is %s', async (_label, value) => {
+        await expect(writeBCF(mutated(mutate, value))).rejects.toThrow();
+      });
+
+      /**
+       * Anti-vacuity, and the half a `rejects.toThrow()` cannot state: the same
+       * mutation with a FINITE value must still produce a schema-valid archive.
+       * Without this, a guard that rejected every value — or a mutator aimed at
+       * a field the writer never emits — would pass the three cases above.
+       */
+      it('still writes a schema-valid archive for a finite value', async () => {
+        const entries = await writeAndUnzip(mutated(mutate, finite));
+        for (const [name, xml] of entries) {
+          const xsd = SCHEMA_FOR_ENTRY.find(([re]) => re.test(name))![1];
+          const { valid, messages } = await validate('3.0', xsd, xml);
+          expect(messages, `${field} -> ${name}`).toEqual([]);
+          expect(valid).toBe(true);
+        }
+      });
+    });
+  }
+
+  /**
+   * The reported symptom, pinned exactly.
+   *
+   * This is the archive the old guard produced, reconstructed by splicing
+   * `Infinity` back into a good document. It asserts the VALIDATOR's verdict,
+   * not the writer's — so it keeps working as a statement about the format
+   * however the writer is later refactored, and it names the message a
+   * reviewer would see rather than a generic "invalid".
+   */
+  it('would have failed XSD validation had Infinity been emitted (the reported defect)', async () => {
+    const entries = await writeAndUnzip(maximalProject('3.0'));
+    const good = entries.get(`${TOPIC_GUID}/Viewpoint_${VIEWPOINT_GUID}.bcfv`)!;
+    expect((await validate('3.0', 'visinfo.xsd', good)).valid).toBe(true);
+
+    const broken = good.replace(
+      /<AspectRatio>[^<]*<\/AspectRatio>/,
+      '<AspectRatio>Infinity</AspectRatio>'
+    );
+    expect(broken).not.toEqual(good);
+
+    const { valid, messages } = await validate('3.0', 'visinfo.xsd', broken);
+    expect(valid).toBe(false);
+    expect(messages).toEqual([
+      "Schemas validity error : Element 'AspectRatio': 'Infinity' is not a valid value of the atomic type 'PositiveDouble'.",
+    ]);
+  });
+
+  /**
+   * Why the guard is finiteness and not "whatever the schema rejects".
+   *
+   * `"NaN"` IS in `xs:double`'s lexical space, so a `<X>NaN</X>` coordinate
+   * validates cleanly — the XSD cannot see this one at all. It is still
+   * unusable: our own reader routes every number through `parseFiniteFloat`
+   * and drops what is not finite, so a written `NaN` comes back as a camera
+   * that has lost its viewpoint. Schema validity was never the bar.
+   */
+  it('accepts NaN as a schema-valid xs:double, which is exactly why the schema cannot be the guard', async () => {
+    const entries = await writeAndUnzip(maximalProject('3.0'));
+    const good = entries.get(`${TOPIC_GUID}/Viewpoint_${VIEWPOINT_GUID}.bcfv`)!;
+    const withNaN = good.replace('<X>1.5</X>', '<X>NaN</X>');
+    expect(withNaN).not.toEqual(good);
+
+    const { valid, messages } = await validate('3.0', 'visinfo.xsd', withNaN);
+    expect(messages).toEqual([]);
+    expect(valid).toBe(true);
+
+    // ...and the value does not survive the trip back in.
+    const readBack = await readBCF(
+      new Uint8Array(await (await writeBCF(maximalProject('3.0'))).arrayBuffer())
+    );
+    expect(readBack.topics.get(TOPIC_GUID)!.viewpoints[0].perspectiveCamera?.cameraViewPoint.x)
+      .toBe(1.5);
+  });
+
+  /**
+   * `Topic/Index` is `xs:int`, and finiteness alone is not its whole rule.
+   *
+   * A fractional index is finite, so the `Number.isFinite` test every other
+   * field uses would pass it — and `<Index>1.5</Index>` is still rejected
+   * ("'1.5' is not a valid value of the atomic type 'xs:int'"). The one field
+   * with a narrower type gets the narrower check.
+   */
+  it('refuses a fractional Topic/Index, which finiteness alone would let through', async () => {
+    expect(Number.isFinite(1.5)).toBe(true);
+    await expect(writeBCF(mutated((t, v) => { t.index = v; }, 1.5))).rejects.toThrow(/xs:int/);
   });
 });
 
@@ -522,5 +721,173 @@ describe('the validator can fail (mutation proof)', () => {
   it('rejects XML that is not well-formed at all', async () => {
     const { valid } = await validate('2.1', 'markup.xsd', '<Markup><unclosed>');
     expect(valid).toBe(false);
+  });
+});
+
+/**
+ * Which cameras a viewpoint may carry, and in what order.
+ *
+ * The two schemas disagree, and the writer followed neither:
+ *
+ * - v2_1/visinfo.xsd declares `OrthogonalCamera` then `PerspectiveCamera` as
+ *   two `minOccurs="0"` members of an `xs:sequence`. Both may appear, but only
+ *   in that order — and the writer emitted the perspective camera first.
+ * - v3_0/visinfo.xsd replaced the pair with an `xs:choice` carrying neither
+ *   `minOccurs` nor `maxOccurs`, i.e. EXACTLY ONE camera, required. The writer
+ *   emitted both when both were set and none when neither was, so a 3.0
+ *   viewpoint that isolated components without a camera — what
+ *   `ids-reporter.ts` produces whenever no entity bounds are supplied — was
+ *   never valid.
+ *
+ * None of this was reachable from `maximalTopic`, which sets only
+ * `perspectiveCamera`; and the one place that did set both cameras (the
+ * AspectRatio round-trip above) checks `parse(write(x)) === x` and never asks
+ * the schema. The matrix below asks the schema for every combination instead.
+ */
+describe('BCF camera cardinality and order', () => {
+  const PERSPECTIVE = {
+    cameraViewPoint: { x: 1.5, y: 2.5, z: 3.5 },
+    cameraDirection: { x: 0, y: 0, z: -1 },
+    cameraUpVector: { x: 0, y: 1, z: 0 },
+    fieldOfView: 60,
+    aspectRatio: 1.5,
+  };
+  const ORTHOGONAL = {
+    // Distinct from PERSPECTIVE's point in every component, so a writer that
+    // emitted one camera's body under the other's tag is visible.
+    cameraViewPoint: { x: 4.5, y: 5.5, z: 6.5 },
+    cameraDirection: { x: 0, y: -1, z: 0 },
+    cameraUpVector: { x: 0, y: 0, z: 1 },
+    viewToWorldScale: 12.5,
+    aspectRatio: 2.25,
+  };
+
+  /** A project holding one viewpoint with exactly the cameras asked for. */
+  function project(
+    version: '2.1' | '3.0',
+    cameras: { perspective: boolean; orthogonal: boolean }
+  ): BCFProject {
+    const topic = maximalTopic();
+    const viewpoint = topic.viewpoints[0];
+    if (cameras.perspective) viewpoint.perspectiveCamera = { ...PERSPECTIVE };
+    else delete viewpoint.perspectiveCamera;
+    if (cameras.orthogonal) viewpoint.orthogonalCamera = { ...ORTHOGONAL };
+    else delete viewpoint.orthogonalCamera;
+    return {
+      version,
+      projectId: '66666666-6666-4666-8666-666666666666',
+      name: 'Camera matrix project',
+      topics: new Map([[TOPIC_GUID, topic]]),
+    };
+  }
+
+  async function bcfv(
+    version: '2.1' | '3.0',
+    cameras: { perspective: boolean; orthogonal: boolean }
+  ): Promise<string> {
+    const entries = await writeAndUnzip(project(version, cameras));
+    const xml = entries.get(`${TOPIC_GUID}/Viewpoint_${VIEWPOINT_GUID}.bcfv`);
+    // Anti-vacuity: every assertion below reads this string, so a writer that
+    // stopped emitting the viewpoint entry must fail here, not pass silently.
+    expect(xml).toBeDefined();
+    return xml!;
+  }
+
+  /**
+   * Re-derive the premise from the schemas themselves.
+   *
+   * Everything below is written against two facts about the vendored XSDs. If
+   * buildingSMART ever changes them, this fails first and names the change,
+   * rather than leaving the rest of the block quietly testing the wrong rule.
+   */
+  it('derives the camera rule from the vendored schemas', () => {
+    const v21 = schema('2.1', 'visinfo.xsd');
+    const v30 = schema('3.0', 'visinfo.xsd');
+    // Span from VisualizationInfo's opening tag to the Lines declaration that
+    // follows the cameras — enough to see the camera declarations and nothing
+    // that comes after them.
+    const span = (xsd: string): string =>
+      xsd.slice(xsd.indexOf('name="VisualizationInfo"'), xsd.indexOf('name="Lines"'));
+    const cameraOrder = (xsd: string): string[] =>
+      [...span(xsd).matchAll(/name="(OrthogonalCamera|PerspectiveCamera)"/g)].map((m) => m[1]);
+
+    // 2.1: an ordered pair of optionals, orthogonal first, no choice.
+    expect(cameraOrder(v21)).toEqual(['OrthogonalCamera', 'PerspectiveCamera']);
+    expect(span(v21)).not.toContain('<xs:choice');
+    expect(span(v21)).toContain('name="OrthogonalCamera" type="OrthogonalCamera" minOccurs="0"');
+
+    // 3.0: an xs:choice with no minOccurs/maxOccurs, i.e. exactly one, required.
+    expect(cameraOrder(v30)).toEqual(['OrthogonalCamera', 'PerspectiveCamera']);
+    const choice = /<xs:choice([^>]*)>/.exec(span(v30));
+    expect(choice).not.toBeNull();
+    expect(choice![1].trim()).toBe('');
+  });
+
+  describe('BCF 2.1 — both cameras are allowed, in schema order', () => {
+    it('emits OrthogonalCamera before PerspectiveCamera', async () => {
+      const xml = await bcfv('2.1', { perspective: true, orthogonal: true });
+      // Named elements in the order the schema declares them, not a count:
+      // a count of 2 passes for either order.
+      expect(
+        [...xml.matchAll(/<(OrthogonalCamera|PerspectiveCamera)>/g)].map((m) => m[1])
+      ).toEqual(['OrthogonalCamera', 'PerspectiveCamera']);
+      // Each camera's own body travels with its own tag.
+      expect(xml).toContain('<ViewToWorldScale>12.5</ViewToWorldScale>');
+      expect(xml).toContain('<FieldOfView>60</FieldOfView>');
+    });
+
+    it('validates with both cameras present', async () => {
+      const xml = await bcfv('2.1', { perspective: true, orthogonal: true });
+      const { valid, messages } = await validate('2.1', 'visinfo.xsd', xml);
+      expect(messages).toEqual([]);
+      expect(valid).toBe(true);
+    });
+
+    it.each([
+      ['perspective only', { perspective: true, orthogonal: false }],
+      ['orthogonal only', { perspective: false, orthogonal: true }],
+      // 2.1 makes both optional, so a camera-less viewpoint is legal there —
+      // the negative control for the 3.0 rule below.
+      ['no camera', { perspective: false, orthogonal: false }],
+    ] as const)('validates with %s', async (_label, cameras) => {
+      const xml = await bcfv('2.1', cameras);
+      const { valid, messages } = await validate('2.1', 'visinfo.xsd', xml);
+      expect(messages).toEqual([]);
+      expect(valid).toBe(true);
+    });
+  });
+
+  describe('BCF 3.0 — exactly one camera, required', () => {
+    it.each([
+      ['perspective only', { perspective: true, orthogonal: false }, 'PerspectiveCamera'],
+      ['orthogonal only', { perspective: false, orthogonal: true }, 'OrthogonalCamera'],
+    ] as const)('validates with %s', async (_label, cameras, expected) => {
+      const xml = await bcfv('3.0', cameras);
+      // The one camera that IS emitted must be the one that was asked for.
+      expect(
+        [...xml.matchAll(/<(OrthogonalCamera|PerspectiveCamera)>/g)].map((m) => m[1])
+      ).toEqual([expected]);
+      const { valid, messages } = await validate('3.0', 'visinfo.xsd', xml);
+      expect(messages).toEqual([]);
+      expect(valid).toBe(true);
+    });
+
+    it('refuses to write both cameras rather than emitting an invalid archive', async () => {
+      await expect(
+        writeBCF(project('3.0', { perspective: true, orthogonal: true }))
+      ).rejects.toThrow(/exactly one camera/);
+    });
+
+    it('refuses to write a viewpoint with no camera at all', async () => {
+      await expect(
+        writeBCF(project('3.0', { perspective: false, orthogonal: false }))
+      ).rejects.toThrow(/exactly one camera/);
+    });
+
+    it('names the offending viewpoint so the caller can find it', async () => {
+      await expect(
+        writeBCF(project('3.0', { perspective: false, orthogonal: false }))
+      ).rejects.toThrow(new RegExp(VIEWPOINT_GUID));
+    });
   });
 });

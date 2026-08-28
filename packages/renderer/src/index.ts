@@ -10,10 +10,12 @@ export { WebGPUDevice } from './device.js';
 export type { AdapterInfoSnapshot } from './device.js';
 export { RenderPipeline } from './pipeline.js';
 export { Camera } from './camera.js';
+// The MEASURED surface `getScene()` publishes — see its docs.
+export type { SceneContents } from './scene-contents.js';
 export type { ProjectionMode } from './camera-state.js';
 export { pickFitPolicy } from './camera-fit-policy.js';
 export type { FitPolicy, FitPolicyKind, Bounds3, PickFitPolicyOptions } from './camera-fit-policy.js';
-export { Scene } from './scene.js';
+// `Scene` is NOT exported: an exported class republishes every method `SceneContents` above just froze.
 export { Picker } from './picker.js';
 export { MathUtils } from './math.js';
 // The orthonormal camera basis `MathUtils.lookAt` renders through, exposed so
@@ -24,7 +26,7 @@ export { MathUtils } from './math.js';
 // is the same situation from outside it).
 export { viewBasis } from './math.js';
 export { SectionPlaneRenderer } from './section-plane.js';
-export { Section2DOverlayRenderer } from './section-2d-overlay.js';
+// `Section2DOverlayRenderer` is NOT exported: `Renderer.setLineOverlay` and the section cap drive it from inside. Its types below stay published.
 
 // IfcAnnotation overlay pipelines (3D world-space). Self-contained — caller
 // passes a GPUDevice + presentation format and invokes `.render(pass, viewProj)`
@@ -44,7 +46,8 @@ export { DEFAULT_CAP_STYLE, HATCH_PATTERN_IDS } from './section-cap-style.js';
 export type { SectionCapStyle, HatchPatternId } from './section-cap-style.js';
 export { planeBasis, nearestCardinalAxis } from './section-plane-basis.js';
 export type { PlaneBasis, Vec3Tuple } from './section-plane-basis.js';
-export type { Section2DOverlayOptions, Section2DOverlayCapStyle, CutPolygon2D, DrawingLine2D } from './section-2d-overlay.js';
+export type { Section2DOverlayOptions, Section2DOverlayCapStyle, CutPolygon2D, DrawingLine2D, LineOverlayChannel } from './section-2d-overlay.js';
+export { LINE_OVERLAY_CHANNELS } from './section-2d-overlay.js';
 export { Raycaster } from './raycaster.js';
 export { SnapDetector, SnapType } from './snap-detector.js';
 export { BVH } from './bvh.js';
@@ -61,8 +64,8 @@ export type { LightingEnvironment, ResolvedEnvironment, SkyGradient, Vec3Color }
 export type { Ray, Vec3, Intersection } from './raycaster.js';
 export type { SnapTarget, SnapOptions, EdgeLockInput, MagneticSnapResult } from './snap-detector.js';
 
-// Extracted manager classes
-export { PickingManager } from './picking-manager.js';
+// Extracted manager classes. `PickingManager` is NOT exported: its constructor
+// takes the now-internal `Scene`, so nobody outside could build one anyway.
 export type { PointPickProvider } from './picking-manager.js';
 export { resolveContributionThresholdPx, projectedAabbRadiusPx } from './contribution-cull.js';
 export type { ContributionCullOptions, CullCameraState } from './contribution-cull.js';
@@ -122,6 +125,7 @@ import { WebGPUDevice, type AdapterInfoSnapshot } from './device.js';
 import { RenderPipeline } from './pipeline.js';
 import { Camera } from './camera.js';
 import { Scene, type InstancedTemplateGPU } from './scene.js';
+import type { SceneContents } from './scene-contents.js';
 import { Picker } from './picker.js';
 import { MathUtils, viewBasis } from './math.js';
 import type { Vec3 as Vec3Type } from './types.js';
@@ -138,15 +142,15 @@ import type {
 } from './types.js';
 import { VisualEnhancementResolver } from './visual-enhancement.js';
 import { packClipBox } from './clip-box.js';
-import type { CutPolygon2D, DrawingLine2D } from './section-2d-overlay.js';
+import type { CutPolygon2D, DrawingLine2D, LineOverlayChannel } from './section-2d-overlay.js';
 import type {
   SymbolicFillInput,
   SymbolicTextInput,
 } from './symbolic-overlay-pipelines.js';
 import { RendererOverlays } from './renderer-overlays.js';
 import { resolveSectionPlaneFrame } from './render-section-plane.js';
-import { Raycaster, type Intersection } from './raycaster.js';
-import { SnapDetector, type SnapTarget, type SnapOptions, type EdgeLockInput, type MagneticSnapResult } from './snap-detector.js';
+import type { Intersection } from './raycaster.js';
+import type { SnapTarget, SnapOptions, EdgeLockInput, MagneticSnapResult } from './snap-detector.js';
 import { PickingManager } from './picking-manager.js';
 import { RaycastEngine } from './raycast-engine.js';
 import { RenderDegradationMonitor, type RenderDegradationInfo } from './render-degradation.js';
@@ -3337,20 +3341,6 @@ export class Renderer {
     }
 
     /**
-     * Get the raycaster instance (for advanced usage)
-     */
-    getRaycaster(): Raycaster {
-        return this.raycastEngine.getRaycaster();
-    }
-
-    /**
-     * Get the snap detector instance (for advanced usage)
-     */
-    getSnapDetector(): SnapDetector {
-        return this.raycastEngine.getSnapDetector();
-    }
-
-    /**
      * Clear all caches (call when geometry changes)
      */
     clearCaches(): void {
@@ -3414,7 +3404,8 @@ export class Renderer {
         return this.camera;
     }
 
-    getScene(): Scene {
+    /** MEASURED external surface, not the 4400-line `Scene`: widening `SceneContents` is a published-API decision, not a detail — see `scene-contents.ts`. */
+    getScene(): SceneContents {
         return this.scene;
     }
 
@@ -3472,70 +3463,32 @@ export class Renderer {
     }
 
     /**
-     * Upload pre-lifted 3D line-list vertices for the standalone annotation
-     * overlay. Each segment is `[x1, y1, z1, x2, y2, z2]` in world space.
-     * The overlay is drawn regardless of whether a section plane is active.
-     * Pass an empty Float32Array to clear.
-     */
-    uploadAnnotationLines3D(vertices: Float32Array): void {
-        this.overlays.uploadAnnotationLines3D(vertices);
-    }
-
-    /**
-     * Clear the standalone annotation line overlay.
-     */
-    clearAnnotationLines3D(): void {
-        this.overlays.clearAnnotationLines3D();
-    }
-
-    /**
-     * Upload IfcAlignment centerline segments as a flat [x,y,z,x,y,z,...]
-     * line-list in world space. Rendered as thin lines (not a ribbon mesh)
-     * to match IfcGrid / IfcAnnotation. Pass an empty Float32Array to clear.
-     */
-    uploadAlignmentLines3D(vertices: Float32Array): void {
-        this.overlays.uploadAlignmentLines3D(vertices);
-    }
-
-    /** Clear the alignment centerline overlay. */
-    clearAlignmentLines3D(): void {
-        this.overlays.clearAlignmentLines3D();
-    }
-
-    /**
-     * Upload structural-grid (IfcGridAxis) segments as a flat [x,y,z,x,y,z,...]
-     * line-list in world space (issue #967). Rendered as thin lines, mirroring
-     * the alignment overlay. Pass an empty Float32Array to clear.
+     * Set one standalone 3D line overlay, or clear it by passing `null`.
      *
-     * Unlike alignment, grids do NOT expand model bounds: they're behind a
-     * visibility toggle, so toggling them on must not reframe the camera (and
-     * grid axes routinely extend past the model envelope).
+     * `vertices` is a flat world-space line-list — `[x1,y1,z1, x2,y2,z2, …]`,
+     * one segment per six floats. The vertices are already lifted to world
+     * space, so these overlays draw whether or not a section plane is active.
+     * A trailing partial segment is dropped rather than rejecting the array.
+     * An empty array clears too, but `null` skips building the pipelines.
+     *
+     * Every channel is an independent buffer with its own visibility, so
+     * setting one leaves the other three untouched. All four share the colour
+     * set by {@link setOverlayLineColor}; label colour is per-text via
+     * `SymbolicTextInput.color` on `uploadAnnotationTexts3D`.
+     *
+     * The channels differ in exactly one way — whether they grow the scene
+     * bounds. `annotation` (#653) and `alignment` DO: a file holding only them
+     * has no IfcProduct meshes to frame, so Home / fit-to-view would have
+     * nothing to aim at and the near/far range would clip the lines away.
+     * `grid` (IfcGridAxis, #967) and `dxf` (the DXF reference layer, #2043) do
+     * NOT: they are reference layers that routinely extend past the model
+     * envelope, so growing the bounds would reframe the camera whenever one
+     * was ticked on. The rule is "does this content DEFINE the model's
+     * extent", NOT "is it behind a visibility toggle" — annotations sit behind
+     * `ifcAnnotationsVisible` too.
      */
-    uploadGridLines3D(vertices: Float32Array): void {
-        this.overlays.uploadGridLines3D(vertices);
-    }
-
-    /** Clear the structural-grid overlay. */
-    clearGridLines3D(): void {
-        this.overlays.clearGridLines3D();
-    }
-
-    /**
-     * Upload the DXF reference-layer's line paths as a flat
-     * [x,y,z,x,y,z,...] line-list in world space (issue #2043, follow-up to
-     * the 2D-only DXF underlay from #1782/#1929). Mirrors
-     * `uploadGridLines3D`: a dedicated buffer so 3D DXF visibility is
-     * independent of the 2D underlay's own toggle, and does NOT expand
-     * model bounds/reframe the camera on upload — it's behind its own
-     * visibility toggle, like grid axes. Pass an empty Float32Array to clear.
-     */
-    uploadDxfLines3D(vertices: Float32Array): void {
-        this.overlays.uploadDxfLines3D(vertices);
-    }
-
-    /** Clear the 3D DXF reference-layer overlay. */
-    clearDxfLines3D(): void {
-        this.overlays.clearDxfLines3D();
+    setLineOverlay(channel: LineOverlayChannel, vertices: Float32Array | null): void {
+        this.overlays.setLineOverlay(channel, vertices);
     }
 
     /**
@@ -3602,7 +3555,10 @@ export class Renderer {
     }
 
     /**
-     * Get render pipeline (for batching)
+     * Get render pipeline (for batching). DELIBERATELY NOT NARROWED, unlike
+     * `getScene()`: the measurement found ZERO external
+     * `RenderPipeline` members — all 12 call sites pass the handle straight
+     * back into a `SceneContents` upload method typed for the real class.
      */
     getPipeline(): RenderPipeline | null {
         return this.pipeline;
@@ -3646,7 +3602,11 @@ export class Renderer {
      *
      * Returning null instead routes into the `if (!device) return` check that
      * every call site already has, so a lost device degrades to "stop
-     * uploading" rather than an uncaught throw. See `isDeviceLost()` /
+     * uploading" rather than an uncaught throw.
+     *
+     * DELIBERATELY NOT NARROWED, unlike `getScene()`: the one external
+     * `GPUDevice` member measured is `queue`; every other call site
+     * hands the device back to a `SceneContents` method. See `isDeviceLost()` /
      * `onDeviceLost()` for the recovery contract.
      */
     getGPUDevice(): GPUDevice | null {

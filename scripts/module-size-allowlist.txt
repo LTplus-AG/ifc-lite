@@ -95,7 +95,7 @@
    970 apps/viewer/src/components/viewer/useGeometryStreaming.ts
    946 apps/viewer/src/components/viewer/useMouseControls.ts
    782 apps/viewer/src/components/viewer/ViewerLayout.tsx
-  1843 apps/viewer/src/components/viewer/Viewport.tsx
+  1840 apps/viewer/src/components/viewer/Viewport.tsx
   1539 apps/viewer/src/components/viewer/ViewportContainer.tsx
    511 apps/viewer/src/components/viewer/ZonesPanel.tsx
    862 apps/viewer/src/hooks/ids/idsExportService.ts
@@ -145,7 +145,7 @@
    561 apps/viewer/src/services/ifc-cache.ts
    581 apps/viewer/src/store/basketVisibleSet.ts
    485 apps/viewer/src/store/constants.ts
-   850 apps/viewer/src/store/index.ts
+   575 apps/viewer/src/store/index.ts
    404 apps/viewer/src/store/slices/addElementMeshes.ts
    452 apps/viewer/src/store/slices/chatSlice.ts
    994 apps/viewer/src/store/slices/clashSlice.ts
@@ -154,7 +154,7 @@
    874 apps/viewer/src/store/slices/drawing2DSlice.ts
    482 apps/viewer/src/store/slices/idsSlice.ts
    820 apps/viewer/src/store/slices/measurementSlice.ts
-   914 apps/viewer/src/store/slices/modelSlice.ts
+   657 apps/viewer/src/store/slices/modelSlice.ts
   3283 apps/viewer/src/store/slices/mutationSlice.ts
    478 apps/viewer/src/store/slices/pinboardSlice.ts
   1317 apps/viewer/src/store/slices/scheduleSlice.ts
@@ -164,7 +164,7 @@
    414 apps/viewer/src/store/slices/uiSlice.ts
    485 apps/viewer/src/store/slices/visibilitySlice.ts
    689 apps/viewer/src/store/types.ts
-   819 apps/viewer/src/utils/serverDataModel.ts
+   662 apps/viewer/src/utils/serverDataModel.ts
    422 apps/viewer/src/utils/spatialHierarchy.ts
    573 apps/viewer/src/utils/viewportUtils.ts
    413 apps/viewer/vite.config.ts
@@ -172,7 +172,7 @@
    495 packages/bcf/src/overlay-renderer.ts
   1058 packages/bcf/src/reader.ts
    573 packages/bcf/src/viewpoint.ts
-   981 packages/bcf/src/writer.ts
+   878 packages/bcf/src/writer.ts
    605 packages/cache/src/glb.ts
    414 packages/clash/src/adapters/step.ts
    441 packages/clash/src/bcf-bridge.ts
@@ -223,7 +223,7 @@
    403 packages/drawing-2d/src/sheet/scale-stamp.ts
    599 packages/drawing-2d/src/sheet/title-block-renderer.ts
    489 packages/drawing-2d/src/styles.ts
-   613 packages/drawing-2d/src/svg-exporter.ts
+   537 packages/drawing-2d/src/svg-exporter.ts
    573 packages/drawing-2d/src/symbols/door-symbol.ts
    808 packages/drawing-2d/src/types.ts
    592 packages/export/src/effective-index.ts
@@ -293,7 +293,7 @@
    535 packages/query/src/duckdb-integration.ts
    561 packages/renderer/src/camera-controls.ts
    657 packages/renderer/src/camera.ts
-  3792 packages/renderer/src/index.ts
+  3752 packages/renderer/src/index.ts
    780 packages/renderer/src/picker.ts
    952 packages/renderer/src/pipeline.ts
    477 packages/renderer/src/pointcloud/point-cloud-renderer.ts
@@ -302,7 +302,7 @@
    401 packages/renderer/src/render-section-plane.ts
    445 packages/renderer/src/scene-raycaster.ts
   4429 packages/renderer/src/scene.ts
-   706 packages/renderer/src/section-2d-overlay.ts
+   639 packages/renderer/src/section-2d-overlay.ts
    514 packages/renderer/src/section-plane.ts
    639 packages/renderer/src/shaders/main.wgsl.ts
    454 packages/renderer/src/shadow-pass.ts

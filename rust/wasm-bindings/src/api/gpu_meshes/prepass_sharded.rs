@@ -98,7 +98,7 @@ impl IfcAPI {
     /// Byte offsets returned are GLOBAL (relative to file start), so shards
     /// concatenate without rewriting. Returns a plain object:
     ///   `{ ids: Uint32Array, starts: Uint32Array, lengths: Uint32Array,
-    ///      classes: Uint8Array, handoff: number }`
+    ///      classes: Uint8Array, handoff: number, oversizedIdCount: number }`
     /// where `classes` is the parallel per-record prepass class byte
     /// (`PREPASS_CLASS_*`: named code in the low bits plus the geometry-job /
     /// type-candidate flags) the host filters on to rebuild pre-pass span
@@ -114,8 +114,8 @@ impl IfcAPI {
         let total = data.len();
         let start = (range_start as usize).min(total);
         let end = (range_end as usize).min(total);
-        let (records, classes, handoff) =
-            ifc_lite_processing::scan_shard_classified(data, start, end);
+        let (records, classes, handoff, oversized_id_count) =
+            ifc_lite_processing::scan_shard_classified_counted(data, start, end);
 
         let n = records.len() as u32;
         let ids = js_sys::Uint32Array::new_with_length(n);
@@ -143,6 +143,18 @@ impl IfcAPI {
             None => -1.0,
         };
         crate::api::set_js_prop(&result, "handoff", &handoff_val.into());
+        // #3395: the stitched columns are the ONLY thing the parser worker sees
+        // on the SAB-backed pre-scanned load, and a refused record is absent
+        // from them by construction — the host cannot recount it. Carry the
+        // number so `scanIfcEntities` can report on the canonical viewer path
+        // instead of returning an apparently clean, incomplete model. Console
+        // too, since a shard scan can run with no host listening.
+        ifc_lite_core::report_oversized_ids(oversized_id_count);
+        crate::api::set_js_prop(
+            &result,
+            "oversizedIdCount",
+            &(oversized_id_count as f64).into(),
+        );
         result.into()
     }
 

@@ -62,6 +62,26 @@ pub fn scan_shard_classified(
     range_start: usize,
     range_end: usize,
 ) -> (ShardRecords, Vec<u8>, Option<usize>) {
+    let (records, classes, handoff, _skipped) =
+        scan_shard_classified_counted(content, range_start, range_end);
+    (records, classes, handoff)
+}
+
+/// [`scan_shard_classified`] plus the count of records this shard refused
+/// because their instance name does not fit `u32` (#3395).
+///
+/// The browser's SAB-backed pre-scanned load hands the stitched shard columns
+/// straight to the parser worker, which cannot recover the refusals from the
+/// narrowed columns — the ids that were dropped are simply not there. So the
+/// number has to ride along, and only a caller that asked for it pays for the
+/// extra binding. [`scan_shard_classified`] stays the 3-tuple it always was
+/// (an added return value would be a breaking change for a published crate)
+/// and delegates here, so there is one loop, not two.
+pub fn scan_shard_classified_counted(
+    content: &[u8],
+    range_start: usize,
+    range_end: usize,
+) -> (ShardRecords, Vec<u8>, Option<usize>, usize) {
     let mut scanner = if range_start == 0 {
         EntityScanner::new(content)
     } else {
@@ -81,7 +101,7 @@ pub fn scan_shard_classified(
             &content[start..entity_end],
         ));
     }
-    (records, classes, handoff)
+    (records, classes, handoff, scanner.skipped_oversized_ids())
 }
 
 /// [`classify_type_name`] plus the #1910 instance-level exception: a spatial

@@ -8,7 +8,7 @@
 
 use crate::columnar_index::EntityIndexStore;
 use crate::error::{Error, Result};
-use crate::parser::{parse_entity, EntityScanner};
+use crate::parser::{parse_entity, report_oversized_ids, EntityScanner};
 use crate::schema_gen::{AttributeValue, DecodedEntity};
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
@@ -21,9 +21,9 @@ pub type EntityIndex = FxHashMap<u32, (usize, usize)>;
 
 /// Build an entity index from content.
 ///
-/// This intentionally shares `EntityScanner`'s HEADER skipping and quoted-string
-/// semantics so scan iteration and decoder lookup cannot disagree on malformed
-/// headers or semicolons embedded inside STEP strings.
+/// This intentionally shares `EntityScanner`'s HEADER skipping, quoted-string
+/// semantics, and its #3395 refusal of instance names wider than `u32` (reported
+/// here, not handed back as a quietly short index), so scan and lookup agree.
 #[inline]
 pub fn build_entity_index<T>(content: &T) -> EntityIndex
 where
@@ -36,7 +36,7 @@ where
     while let Some((id, _type_name, start, end)) = scanner.next_entity() {
         index.insert(id, (start, end));
     }
-
+    report_oversized_ids(scanner.skipped_oversized_ids());
     index
 }
 

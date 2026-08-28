@@ -97,6 +97,9 @@ pub fn scan_shard(
         }
         records.push((id, start, entity_end));
     }
+    // Per-shard: a speculative i>0 prefix the stitch later drops can
+    // over-report, and over-reporting is visible where silence is not (#3395).
+    ifc_lite_core::report_oversized_ids(scanner.skipped_oversized_ids());
     (records, handoff)
 }
 

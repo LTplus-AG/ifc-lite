@@ -666,7 +666,7 @@ export class IfcAPI {
      * Byte offsets returned are GLOBAL (relative to file start), so shards
      * concatenate without rewriting. Returns a plain object:
      *   `{ ids: Uint32Array, starts: Uint32Array, lengths: Uint32Array,
-     *      classes: Uint8Array, handoff: number }`
+     *      classes: Uint8Array, handoff: number, oversizedIdCount: number }`
      * where `classes` is the parallel per-record prepass class byte
      * (`PREPASS_CLASS_*`: named code in the low bits plus the geometry-job /
      * type-candidate flags) the host filters on to rebuild pre-pass span
@@ -1772,7 +1772,8 @@ export function get_memory(): any;
  * Initialize the WASM module.
  *
  * This function is called automatically when the WASM module is loaded.
- * It sets up panic hooks for better error messages in the browser console.
+ * It sets up panic hooks for better error messages in the browser console,
+ * and points core's scan diagnostics at that console too.
  */
 export function init(): void;
 
@@ -2145,7 +2146,6 @@ export interface InitOutput {
     readonly zonesplitjs_piece: (a: number, b: number) => number;
     readonly zonesplitjs_pieceCount: (a: number) => number;
     readonly zonesplitjs_remainderFailed: (a: number) => number;
-    readonly init: () => void;
     readonly meshoutlinejs_contourCount: (a: number) => number;
     readonly symbolicpolyline_pointCount: (a: number) => number;
     readonly get_memory: () => number;
@@ -2164,6 +2164,7 @@ export interface InitOutput {
     readonly zonepiecejs_volume: (a: number) => number;
     readonly zonesplitjs_sumErrorRel: (a: number) => number;
     readonly zonesplitjs_wholeVolume: (a: number) => number;
+    readonly init: () => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;

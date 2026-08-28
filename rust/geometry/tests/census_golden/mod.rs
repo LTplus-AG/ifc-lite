@@ -387,11 +387,21 @@ struct Classified {
     /// `worse_gated` is still a separate field, but the line between them is the
     /// QUESTION each answers, not which inputs it reads.
     worse_counts: Vec<String>,
-    /// The gated `is_torn_solid` predicate started holding. Kept apart from
-    /// `worse_counts` because it is DERIVED from `rep`/`far`/`pre` as well as
-    /// from `open`, so a pure reclassification flips it without any count
-    /// moving, and calling that a geometry regression would be the same
-    /// misattribution in the opposite direction.
+    /// The gated `is_torn_solid` predicate started holding. A REASON
+    /// annotation, never a verdict of its own: it rides along on whichever of
+    /// `regressed` / `changed` the pair was already routed to, so the failure
+    /// text always says the gated population grew, and no branch below is
+    /// decided by it.
+    ///
+    /// It cannot be a verdict, because it is DERIVED. `is_torn_solid` reads
+    /// exactly `open`, `rep`, `far` and `pre`; `open` moving is a directional
+    /// count, and `rep`/`far`/`pre` moving is a [`reclassifications`] entry
+    /// since #3366. So every flip already has a more specific arm with a more
+    /// actionable message, and a branch keyed on this alone would be
+    /// unreachable — as one was, until #3396 removed it. Kept apart from
+    /// `worse_counts` for the same reason: a pure reclassification flips it
+    /// without any count moving, and calling that a geometry regression would
+    /// be the same misattribution in the opposite direction.
     worse_gated: Vec<String>,
     /// The tris drop came with an open-edge drop. Routed here rather than to
     /// `worse_counts`; see [`Diff::retessellated`] for why that distinction
@@ -550,6 +560,26 @@ pub fn diff(golden: &[HostRow], run: &[HostRow], swept_models: &BTreeSet<String>
         // because a host relabelled `SurfaceModel -> CSG` joins the gated defect
         // population without a single one of its counts moving, and that is a
         // change of question, not a degradation.
+        //
+        // A gated flip is never the DECIDING signal, though, so no arm of this
+        // chain is keyed on `worse_gated` alone — #3396 deleted the one that
+        // was, and it sat right here, between the reclassification and the
+        // re-tessellation. `is_torn_solid` reads exactly `open`, `rep`, `far`
+        // and `pre`. Suppose it flips with `reclassifications` empty: then
+        // `rep`, `far` and `pre` are equal on both sides (#3366 carries all
+        // three), so the three non-count clauses read the same for `g` and `r`,
+        // and only `open` can have moved — `g.open == 0` with `r.open > 0`,
+        // which is `r.open > g.open`, which fires `worse_counts` and takes the
+        // first branch. So every route in is claimed by one of the two branches
+        // above, which is also why those two are the only ones carrying
+        // `worse_gated` in their reasons: a flip cannot reach `retessellated`
+        // or `improved`, so listing it there would be the same dead arm written
+        // as a dead concat. Deleting the branch is therefore not a demotion of
+        // the signal: it stays in the text either way, and both buckets that
+        // can carry it are red and require a bless. Reordering it ABOVE the
+        // reclassification would be the real change of meaning, filing a pure
+        // relabel as a geometry regression — the misattribution #3366 landed to
+        // stop, pinned by the reclassification tests below.
         if !c.worse_counts.is_empty() {
             out.regressed.push(delta(
                 [c.worse_counts, c.worse_gated, c.retessellated, reclassified, c.better].concat(),
@@ -557,33 +587,6 @@ pub fn diff(golden: &[HostRow], run: &[HostRow], swept_models: &BTreeSet<String>
         } else if !reclassified.is_empty() {
             out.changed
                 .push(delta([reclassified, c.worse_gated, c.retessellated, c.better].concat()));
-        } else if !c.worse_gated.is_empty() {
-            // UNREACHABLE since #3366 (20a8efc81), and kept rather than
-            // deleted because it is freshly merged code that is not this
-            // change's to remove. Removal is tracked as #3396, deliberately as
-            // a CHOICE: reordering the chain so this outranks a reclassification
-            // is a different claim about which signal is more serious, and the
-            // measurement below does not settle that.
-            //
-            // Proof, not a sample. `worse_gated` needs
-            // `r.is_torn_solid() && !g.is_torn_solid()`. That predicate reads
-            // `open > 0`, `rep`, `far` and `pre`, and `reclassifications` now
-            // carries the last three, so any of them differing takes the
-            // `changed` branch above. That leaves only `open` crossing zero:
-            // `g.open == 0` with `r.open > 0`, which is `r.open > g.open`, which
-            // fires `worse_counts`, which outranks this branch. So every route
-            // in is claimed by an earlier branch.
-            //
-            // Corroborated over the full variant cross-product: `worse_gated`
-            // fires 50112 times and reaches this branch 0 times. Re-derive by
-            // iterating `variants()` against itself, calling `classify` and
-            // `reclassifications` directly, and counting pairs where
-            // `!c.worse_gated.is_empty()` alongside those where
-            // `c.worse_counts.is_empty() && reclassifications(g, r).is_empty()`. A verdict no
-            // fixture happens to produce looks identical to one that cannot be
-            // produced, which is why the argument above is the evidence and the
-            // sweep only agrees with it.
-            out.regressed.push(delta([c.worse_gated, c.better].concat()));
         } else if !c.retessellated.is_empty() {
             out.retessellated.push(delta([c.retessellated, c.better].concat()));
         } else if !c.better.is_empty() {
@@ -1382,6 +1385,147 @@ mod tests {
         // `shrank_while_healing` exists, so it must not drift unnoticed.
         assert_eq!(detected, 576, "pairs DETECTED as a re-tessellation");
         assert_eq!(landed, 78, "pairs that LAND in the retessellated bucket");
+    }
+
+    #[test]
+    fn the_gated_flip_is_never_the_deciding_signal_and_is_always_reported() {
+        // #3396. `is_torn_solid` is DERIVED: it reads exactly `open`, `rep`,
+        // `far` and `pre`. `open` moving is a directional count and the other
+        // three are `reclassifications` entries (#3366), so a host entering the
+        // gated defect population ALWAYS carries a more specific signal than
+        // the flip itself. That is the theorem that made the old
+        // `worse_gated`-only branch of the diff chain unreachable, and this
+        // test is what keeps it true.
+        //
+        // If you add an input to `is_torn_solid`, this test reds unless that
+        // input is also carried by a directional count or by
+        // `reclassifications`. That is the point, not an accident: an input
+        // carried by neither can flip the gated population with the chain
+        // routing the pair to `improved` — green — which is the coverage-loss
+        // failure this module's header calls the worst of the three cases.
+        let vs = variants();
+        let all = swept(&["a.ifc"]);
+        let (mut worsened, mut improved_flips) = (0usize, 0usize);
+        for g in &vs {
+            for r in &vs {
+                if r.is_torn_solid() == g.is_torn_solid() {
+                    continue;
+                }
+                let c = classify(g, r);
+                let reclassified = reclassifications(g, r);
+                let d = diff(std::slice::from_ref(g), std::slice::from_ref(r), &all);
+                if r.is_torn_solid() {
+                    worsened += 1;
+                    assert!(
+                        !c.worse_counts.is_empty() || !reclassified.is_empty(),
+                        "joining the gated defect set with no worsened count and no \
+                         reclassification: {g:?} -> {r:?}"
+                    );
+                    // So it is routed by one of those, never by the flip, and
+                    // both of those buckets are red.
+                    assert_eq!(
+                        d.regressed.len() + d.changed.len(),
+                        1,
+                        "a gated flip must file as regressed or changed: {g:?} -> {r:?}"
+                    );
+                    // Neither of the two arms below the reclassification, in
+                    // particular: a flip that reached `retessellated` would be
+                    // described as "fewer triangles, less torn" on a host that
+                    // just entered the defect population.
+                    assert!(d.retessellated.is_empty(), "{g:?} -> {r:?}");
+                    assert!(d.improved.is_empty(), "{g:?} -> {r:?}");
+                    assert!(d.requires_bless(), "{g:?} -> {r:?}");
+                    // And the flip is still SAID, wherever it was routed.
+                    let reasons = d
+                        .regressed
+                        .iter()
+                        .chain(&d.changed)
+                        .flat_map(|x| x.reasons.iter())
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join("; ");
+                    assert!(
+                        reasons.contains("genuine watertightness defect"),
+                        "gated flip not reported: {g:?} -> {r:?}: {reasons}"
+                    );
+                } else {
+                    improved_flips += 1;
+                    // The mirror: LEAVING the gated set silently is only allowed
+                    // when the open count genuinely fell. Anything else is a
+                    // reclassification, which is red (#3366).
+                    assert!(
+                        r.open < g.open || !reclassified.is_empty(),
+                        "leaving the gated defect set with no count improvement and no \
+                         reclassification: {g:?} -> {r:?}"
+                    );
+                }
+            }
+        }
+        // Guard against a vacuous sweep: both directions must actually occur.
+        assert!(worsened > 0 && improved_flips > 0, "{worsened} / {improved_flips} flips");
+    }
+
+    #[test]
+    fn every_arm_of_the_diff_chain_is_reachable() {
+        // This chain carried a dead arm — `worse_gated` alone, unreachable
+        // since #3366, removed by #3396 — and nothing noticed, because a
+        // verdict no input happens to produce looks exactly like one that
+        // cannot be produced. This is the check that tells them apart.
+        //
+        // It asserts the routing arm-by-arm as well as tallying the buckets, so
+        // "the bucket was reached" means "that arm was taken" and a reordering
+        // of the chain reds here rather than quietly re-labelling verdicts.
+        //
+        // The clause order below is the CHAIN's order, not a convenient one:
+        // `retessellated` sits between the reclassification and the improvement
+        // because that is where `diff` tests it, and swapping the two here would
+        // make the test agree with a chain that routes a shrink-and-heal to
+        // `improved`.
+        let vs = variants();
+        let all = swept(&["a.ifc"]);
+        let (mut regressed, mut changed, mut retessellated, mut improved, mut unchanged) =
+            (0usize, 0, 0, 0, 0);
+        for g in &vs {
+            for r in &vs {
+                let c = classify(g, r);
+                let reclassified = reclassifications(g, r);
+                let d = diff(std::slice::from_ref(g), std::slice::from_ref(r), &all);
+                let got =
+                    (d.regressed.len(), d.changed.len(), d.retessellated.len(), d.improved.len());
+                assert!(d.added.is_empty() && d.missing.is_empty(), "{g:?} -> {r:?}");
+                if !c.worse_counts.is_empty() {
+                    assert_eq!(got, (1, 0, 0, 0), "a worsened count must regress: {g:?} -> {r:?}");
+                    regressed += 1;
+                } else if !reclassified.is_empty() {
+                    assert_eq!(got, (0, 1, 0, 0), "a reclassification must change: {g:?} -> {r:?}");
+                    changed += 1;
+                } else if !c.retessellated.is_empty() {
+                    assert_eq!(
+                        got,
+                        (0, 0, 1, 0),
+                        "a shrink that healed must re-tessellate: {g:?} -> {r:?}"
+                    );
+                    retessellated += 1;
+                } else if !c.better.is_empty() {
+                    assert_eq!(got, (0, 0, 0, 1), "an improvement must improve: {g:?} -> {r:?}");
+                    improved += 1;
+                } else {
+                    assert_eq!(got, (0, 0, 0, 0), "an identical pair moves nothing: {g:?} -> {r:?}");
+                    unchanged += 1;
+                }
+            }
+        }
+        assert!(regressed > 0, "no pair reaches the regressed arm");
+        assert!(changed > 0, "no pair reaches the changed arm");
+        assert!(retessellated > 0, "no pair reaches the retessellated arm");
+        assert!(improved > 0, "no pair reaches the improved arm");
+        assert!(unchanged > 0, "no pair leaves the chain without a delta");
+
+        // The two remaining arms are keyed on key PRESENCE, not on movement, so
+        // the same-key cross-product above cannot reach them. One pair does.
+        let d = diff(&[row("a.ifc", 1, 0, 10)], &[row("a.ifc", 2, 0, 10)], &all);
+        assert_eq!(d.added.len(), 1, "no pair reaches the added arm");
+        assert_eq!(d.missing.len(), 1, "no pair reaches the missing arm");
     }
 
     #[test]

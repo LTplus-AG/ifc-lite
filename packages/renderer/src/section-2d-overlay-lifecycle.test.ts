@@ -334,12 +334,20 @@ describe('Section2DOverlayRenderer: dispose releases EVERY family (#1277 leak)',
   });
 });
 
-describe('SECTION_2D_UNIFORM_SLOT_COUNT (#3342)', () => {
-  it('equals the number of entries in SECTION_2D_UNIFORM_SLOT_INDEX', () => {
-    assert.strictEqual(
-      SECTION_2D_UNIFORM_SLOT_COUNT,
-      Object.keys(SECTION_2D_UNIFORM_SLOT_INDEX).length,
-    );
+describe('SECTION_2D_UNIFORM_SLOT_INDEX (#3342)', () => {
+  it('is dense: values are exactly {0, ..., SECTION_2D_UNIFORM_SLOT_COUNT - 1}, no gaps or duplicates', () => {
+    // SECTION_2D_UNIFORM_SLOT_COUNT is *derived* from this index
+    // (Object.keys(...).length), so comparing the two against each other
+    // would hold by construction no matter what the index contains — it
+    // would not catch a sparse index (e.g. a slot bumped past the end
+    // while leaving a gap), which is exactly the #3342 bind-group failure:
+    // the buffer is sized for `count` slots but a draw addresses a slot
+    // beyond it. Pin density instead: every slot value 0..COUNT-1 must be
+    // used exactly once.
+    const values = Object.values(SECTION_2D_UNIFORM_SLOT_INDEX);
+    const sorted = [...values].sort((a, b) => a - b);
+    const expected = Array.from({ length: SECTION_2D_UNIFORM_SLOT_COUNT }, (_, i) => i);
+    assert.deepStrictEqual(sorted, expected, 'slot values must be exactly 0..COUNT-1 with no gaps or duplicates');
   });
 });
 

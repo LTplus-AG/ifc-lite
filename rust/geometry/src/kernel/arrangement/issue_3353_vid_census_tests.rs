@@ -231,11 +231,6 @@ fn origin_of(tri: [Vid; 3], tris_a: &HashSet<[Vid; 3]>, tris_b: &HashSet<[Vid; 3
     }
 }
 
-/// Undirected Vid-space edge census over `kept`: canonical `(min(u,v),
-/// max(u,v))` -> the `(index into kept, origin)` of every triangle that uses
-/// it. A triangle contributes each of its 3 edges once; an edge's count
-/// reaching anything other than 2 across `kept` is exactly the symbolic
-/// (pre-float) signature of a classification-level tear.
 /// Squared Euclidean distance between two points.
 fn dist2(p: [f64; 3], q: [f64; 3]) -> f64 {
     let d = super::sub_f64(p, q);
@@ -340,6 +335,11 @@ fn min_point_to_mesh_distance(p: [f64; 3], mesh: &[Tri]) -> f64 {
         .sqrt()
 }
 
+/// Undirected Vid-space edge census over `kept`: canonical `(min(u,v),
+/// max(u,v))` -> the `(index into kept, origin)` of every triangle that uses
+/// it. A triangle contributes each of its 3 edges once; an edge's count
+/// reaching anything other than 2 across `kept` is exactly the symbolic
+/// (pre-float) signature of a classification-level tear.
 fn edge_census(
     kept: &[[Vid; 3]],
     tris_a: &HashSet<[Vid; 3]>,

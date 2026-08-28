@@ -880,13 +880,14 @@ fn raw_divergence_volume(tris: &[[[f64; 3]; 3]]) -> f64 {
 /// `intersection_tris` — the same triangles the gate sums before refusing them.
 ///
 /// WHY exactly 2/3, and why it does not depend on the cross-section: for each
-/// opposite face pair of a box, the two faces' contributions combine to the
-/// enclosed volume `V` with the reference-point terms cancelling *within* the
-/// pair. Three pairs give `3V`, and `/3` returns `V`. Classification drops both
-/// x end caps here — A's cap is anti-parallel to B's, so `co_oriented` is false
-/// and the `Intersection` keep rule drops it, while the B side drops its copy
-/// unconditionally — leaving the four side walls, `2V`, hence `2V/3`. That is
-/// `2/3` for EVERY `Ly`/`Lz`: losing a whole pair always costs exactly a third.
+/// opposite face pair of a box, the two faces' triple-product contributions
+/// sum to `2V`, with the reference-point terms cancelling *within* the pair.
+/// Three pairs give `6V`, which is what `raw_divergence_volume`'s `/6.0`
+/// turns back into `V`. Classification drops both x end caps here — A's cap is
+/// anti-parallel to B's, so `co_oriented` is false and the `Intersection` keep
+/// rule drops it, while the B side drops its copy unconditionally — leaving
+/// the four side walls at `4V`, hence `4V/6 = 2V/3`. That is `2/3` for EVERY
+/// `Ly`/`Lz`: losing a whole pair always costs exactly a third.
 ///
 /// The reference-point invariance is narrower than it looks and the distinction
 /// matters if this test is ever extended: it holds because the REMOVED faces are

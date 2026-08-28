@@ -36,16 +36,20 @@
  *
  * The allowlist is a SNAPSHOT of the tree it was recorded from, so growth that
  * lands on main afterwards — from any PR, including ones this branch never
- * touched — makes the gate red on a long-lived branch. After any merge from
- * main, run the script; if it reports a listed file past budget or a new file
- * over 400, the allowlist needs refreshing in the same commit. Do that with
- * `pnpm lint:module-size-baseline --all` rather than by hand: the bare
- * command is SCOPED to the files your branch touched, and growth inherited from
- * main is by definition outside that scope, so it would report success and
- * leave the gate red. `--all` is the repo-wide regenerate and belongs in its own
- * commit, stated in the PR. A refresh that only
- * tracks growth already on main is a maintainer call and must be stated in the
- * PR; it is not licence to raise a budget for growth the PR itself introduced,
+ * touched — makes the gate red on a long-lived branch. That is a DIFFERENT red
+ * from the one your own change causes, and the two do not share a remedy:
+ *
+ *   Growth YOUR change caused — re-record it with
+ *   `pnpm lint:module-size-baseline`, in the same commit that grows the file.
+ *
+ *   Growth INHERITED from main, after a merge — the scoped command cannot fix
+ *   this one. That growth is by definition outside the files your change
+ *   touched, so the run reports success and leaves the gate red. Only
+ *   `--update --all` clears it, and it re-records every stale row in the tree
+ *   on the way past, which is why it is a maintainer sweep in its OWN commit
+ *   and its own PR rather than something to bundle into yours.
+ *
+ * Neither is licence to raise a budget for growth the PR itself introduced,
  * which is why the regeneration command refuses a raise unless asked twice.
  *
  * What the step breaks on afterwards, by design: any PR adding a TS/TSX file
@@ -344,7 +348,14 @@ function changedFiles(root) {
   // top to BE the scanned root stops a synthetic tree nested inside some other
   // repository from silently inheriting that repository's diff.
   const toplevel = top.stdout.trim();
-  if (safeRealpath(toplevel) !== safeRealpath(root)) {
+  // Either side unresolvable is a REFUSAL, not a pass. `safeRealpath` answers
+  // null on failure, so a bare `!==` compares null to null and lets the guard
+  // through in exactly the case where it knows least about the two paths.
+  // Fail-closed is this function's whole contract; a guard that opens when its
+  // input is unreadable is the "absence read as success" shape again.
+  const resolvedTop = safeRealpath(toplevel);
+  const resolvedRoot = safeRealpath(root);
+  if (resolvedTop === null || resolvedRoot === null || resolvedTop !== resolvedRoot) {
     return { error: `${root} is not the top of its git worktree (that is ${toplevel})` };
   }
   let base = null;

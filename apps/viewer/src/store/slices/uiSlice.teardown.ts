@@ -7,7 +7,7 @@
  *
  * Beside the slice rather than inside it because `uiSlice.ts` sits at its
  * recorded module-size budget (`scripts/module-size-allowlist.txt`), which
- * ratchets down only.
+ * ratchets down by default.
  *
  * `owns` is a SMALL subset of what this slice holds, on purpose. The slice
  * also owns the panel-collapse flags, `hierarchyMode`, `theme`,

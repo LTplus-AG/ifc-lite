@@ -624,3 +624,29 @@ test('a renamed module puts BOTH paths in scope, so the source row drops', () =>
     `${HEADER}   500 packages/a/renamed.ts\n   460 packages/b/slack.ts\n`,
   );
 });
+
+// changedFiles() falls back from `origin/main` to a local `main`, and that ref
+// can be arbitrarily stale (changedFiles' own comment carries the measurement).
+// A stale base widens the scope, so the warning is the only thing between a
+// contributor and the annexation this whole change exists to stop -- and it was
+// as invisible as the two guards above: deleting it left the suite green, and
+// so did making it fire unconditionally. Asserted in BOTH directions, because a
+// warning that always fires is as useless as one that never does.
+test('the local-main fallback warns, and an origin/main base does not', () => {
+  const { dir, git } = gitTree({ 'packages/a/big.ts': 500, 'packages/b/slack.ts': 450 });
+  git('checkout', '-q', '-b', 'feature');
+  writeSource(dir, 'packages/a/big.ts', 480);
+
+  // No `origin/main` ref: the merge base comes from local `main`.
+  const fell = run(dir, SCOPED_BEFORE, { extra: ['--update'] });
+  assert.equal(fell.code, 0, fell.out);
+  assert.match(fell.out, /WARNING -- no merge base with origin\/main/);
+  assert.match(fell.out, /fell back to local 'main'/);
+
+  // Same tree with the remote-tracking ref present: no warning.
+  git('update-ref', 'refs/remotes/origin/main', 'main');
+  const clean = run(dir, SCOPED_BEFORE, { extra: ['--update'] });
+  assert.equal(clean.code, 0, clean.out);
+  assert.doesNotMatch(clean.out, /WARNING/);
+  assert.match(clean.out, /vs origin\/main \(/);
+});

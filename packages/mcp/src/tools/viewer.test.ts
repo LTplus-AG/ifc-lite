@@ -74,7 +74,6 @@ const MODEL = step(`
 
 const ASM_GID = guid('ASM');
 const WALL1_GID = guid('WALL1');
-const WALL2_GID = guid('WALL2');
 const WALL3_GID = guid('WALL3');
 
 let tmp: string;

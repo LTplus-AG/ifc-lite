@@ -9,15 +9,23 @@
 
 import { safeUtf8Decode } from '@ifc-lite/data';
 
+import { isIndexableExpressId } from './express-id.js';
 import { countNewlines, opensLiteralOrComment, skipLexical } from './step-lexing.js';
 
 export class StepTokenizer {
   private buffer: Uint8Array;
   private position: number = 0;
   private lineNumber: number = 1;
+  private oversizedIds: number = 0;
 
   constructor(buffer: Uint8Array) {
     this.buffer = buffer;
+  }
+
+  /** Records the last scan refused for an out-of-contract express id
+   *  (express-id.ts, #3395). Reset per scan; the caller reports it. */
+  get oversizedIdCount(): number {
+    return this.oversizedIds;
   }
 
   /**
@@ -27,6 +35,7 @@ export class StepTokenizer {
   *scanEntities(): Generator<{ expressId: number; type: string; offset: number; length: number; line: number }> {
     this.position = 0;
     this.lineNumber = 1;
+    this.oversizedIds = 0;
 
     while (this.position < this.buffer.length) {
       // Look for '#' character (entity ID marker)
@@ -121,6 +130,7 @@ export class StepTokenizer {
   *scanEntitiesFast(): Generator<{ expressId: number; type: string; offset: number; length: number; line: number }> {
     this.position = 0;
     this.lineNumber = 1;
+    this.oversizedIds = 0;
 
     // Pre-compute common byte codes
     const HASH = 0x23;      // '#'
@@ -162,8 +172,8 @@ export class StepTokenizer {
         }
 
         if (!hasDigits) continue;
-        // Overflow/collision: see `readRefId` in columnar-parser-attributes.ts.
-        if (!Number.isSafeInteger(expressId)) continue;
+        // Storage contract, not just overflow: see express-id.ts (#3395).
+        if (!isIndexableExpressId(expressId)) { this.oversizedIds++; continue; }
 
         // Skip whitespace (inline)
         while (pos < len) {
@@ -304,7 +314,8 @@ export class StepTokenizer {
     }
 
     if (digits === 0) return null;
-    if (!Number.isSafeInteger(id)) return null; // same overflow/collision as scanEntitiesFast
+    // Same storage contract as scanEntitiesFast; see express-id.ts (#3395).
+    if (!isIndexableExpressId(id)) { this.oversizedIds++; return null; }
     this.position = pos;
     return id;
   }

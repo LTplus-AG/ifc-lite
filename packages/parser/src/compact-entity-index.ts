@@ -13,8 +13,27 @@
  * Provides the same Map-like interface via get()/has() for drop-in compatibility.
  */
 
+import { isIndexableExpressId, MAX_EXPRESS_ID } from './express-id.js';
 import type { EntityRef } from './types.js';
 import { yieldToEventLoop } from './yield-to-event-loop.js';
+
+/**
+ * Refuse to narrow an express id the columns cannot hold (#3395).
+ *
+ * The parse boundary already rejects such ids, so this is unreachable from
+ * ifc-lite's own scans. It exists because the failure it replaces is invisible:
+ * `expressIds[i] = 4294967297` stores `1` and the index then serves entity #1's
+ * byte range under two keys, out of sort order, with nothing anywhere to read.
+ * A throw naming the id is what makes the next path that forgets the guard
+ * fail where the mistake is, instead of at a lookup three layers away.
+ */
+function assertIndexableExpressId(expressId: number): void {
+  if (!isIndexableExpressId(expressId)) {
+    throw new RangeError(
+      `CompactEntityIndex cannot hold express id ${expressId}: ids must be integers in [0, ${MAX_EXPRESS_ID}] (#3395)`,
+    );
+  }
+}
 
 /**
  * Compact read-only entity index backed by sorted typed arrays.
@@ -269,6 +288,7 @@ export class CompactEntityIndexBuilder {
   }
 
   add(expressId: number, type: string, byteOffset: number, byteLength: number): void {
+    assertIndexableExpressId(expressId);
     if (this.count >= this.capacity) {
       this.grow();
     }
@@ -386,6 +406,7 @@ export function buildCompactEntityIndex(
 
   for (let i = 0; i < count; i++) {
     const ref = sorted[i];
+    assertIndexableExpressId(ref.expressId);
     expressIds[i] = ref.expressId;
     byteOffsets[i] = ref.byteOffset;
     byteLengths[i] = ref.byteLength;
@@ -456,6 +477,7 @@ export async function buildCompactEntityIndexAsync(
       chunkStart = performance.now();
     }
     const ref = sorted[i];
+    assertIndexableExpressId(ref.expressId);
     expressIds[i] = ref.expressId;
     byteOffsets[i] = ref.byteOffset;
     byteLengths[i] = ref.byteLength;

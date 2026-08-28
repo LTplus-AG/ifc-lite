@@ -77,6 +77,18 @@ impl IfcAPI {
             last_position = end;
         }
 
+        // The scanner drops records whose instance name does not fit `u32`
+        // (issue #3395). Dropping them is the only outcome the u32 express-id
+        // columns can hold, but a load that comes back quietly short reads
+        // exactly like a load that had nothing to drop — so say it.
+        let skipped = scanner.skipped_oversized_ids();
+        if skipped > 0 {
+            web_sys::console::warn_1(&JsValue::from_str(&format!(
+                "[ifc-lite] scan: skipped {skipped} record(s) with an express id above {} (#3395)",
+                u32::MAX
+            )));
+        }
+
         to_value(&refs).unwrap_or_else(|_| js_sys::Array::new().into())
     }
 

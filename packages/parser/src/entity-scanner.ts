@@ -4,6 +4,7 @@
 
 import { safeUtf8Decode } from '@ifc-lite/data';
 import { buildEntityRefsFromIndex } from './entity-refs-from-index.js';
+import { MAX_EXPRESS_ID } from './express-id.js';
 import { scanEntitiesInWorker } from './scan-worker-inline.js';
 import { StepTokenizer } from './tokenizer.js';
 import type { EntityRef } from './types.js';
@@ -34,6 +35,14 @@ export interface EntityScanResult {
   processed: number;
   elapsedMs: number;
   scanPath: EntityScanPath;
+  /**
+   * How many records the scan refused because their express id is outside the
+   * u32 storage contract (#3395). Counted on the `worker` and `tokenizer`
+   * paths. The `wasm` path skips the same records inside Rust and warns to the
+   * console there; its count does not cross the boundary, so a nonzero value
+   * here is proof of refusals but a zero is not proof of none.
+   */
+  oversizedIdCount: number;
 }
 
 type WasmScanFunction = () => unknown;
@@ -53,6 +62,7 @@ export async function scanIfcEntities(
   let entityRefs: EntityRef[] = [];
   let processed = 0;
   let scanPath: EntityScanPath = 'tokenizer';
+  let oversizedIdCount = 0;
 
   if (options.preScannedEntityIndex) {
     const { ids, starts, lengths } = options.preScannedEntityIndex;
@@ -63,13 +73,16 @@ export async function scanIfcEntities(
 
   if (entityRefs.length === 0 && !options.disableWorkerScan && typeof Worker !== 'undefined') {
     try {
-      entityRefs = await scanEntitiesInWorker(buffer);
+      const scan = await scanEntitiesInWorker(buffer);
+      entityRefs = scan.refs;
+      oversizedIdCount = scan.oversizedIdCount;
       processed = entityRefs.length;
       scanPath = 'worker';
     } catch (error) {
       console.warn('[IfcParser] Worker scan failed, falling back to main thread:', error);
       entityRefs = [];
       processed = 0;
+      oversizedIdCount = 0;
     }
   }
 
@@ -107,13 +120,24 @@ export async function scanIfcEntities(
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
     }
+    oversizedIdCount = tokenizer.oversizedIdCount;
+  }
+
+  // A refused record is a record the caller will not find. Say so on both
+  // channels the loader already watches, rather than letting the model come
+  // back quietly short (#3395).
+  if (oversizedIdCount > 0) {
+    const message =
+      `scan: skipped ${oversizedIdCount} record(s) with an express id above ${MAX_EXPRESS_ID} (#3395)`;
+    console.warn(`[IfcParser] ${message}`);
+    options.onDiagnostic?.(message);
   }
 
   const elapsedMs = performance.now() - scanStartTime;
   options.onDiagnostic?.(`scan complete: entities=${processed} elapsed=${elapsedMs.toFixed(0)}ms`);
   options.onProgress?.({ phase: 'scanning', percent: 100 });
 
-  return { entityRefs, processed, elapsedMs, scanPath };
+  return { entityRefs, processed, elapsedMs, scanPath, oversizedIdCount };
 }
 
 /**

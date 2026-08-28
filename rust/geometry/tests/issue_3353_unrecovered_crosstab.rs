@@ -354,7 +354,7 @@ fn torn_vs_unrecovered_crosstab() {
 /// Base seed for the CI sweep below. Deliberately a DIFFERENT constant from
 /// the ignored sweep's `SplitMix64(0xC0FF_EE15_3353_5EED)` starting state, so
 /// the two sweeps' draws do not overlap or shadow one another.
-const CI_SWEEP_BASE_SEED: u64 = 0x3353_C1_5EED_CAFE;
+const CI_SWEEP_BASE_SEED: u64 = 0xCAFE_3353_5EED_C1C1;
 
 /// Pair count for the CI-visible sweep (runs on every `cargo test
 /// --workspace`, unlike `SWEEP_PAIRS` above which only runs under

@@ -106,9 +106,31 @@ function annotationAndGrid(storeyY = NaN): FlatSymbolic {
   return f;
 }
 
-function store(): IfcDataStore {
+/**
+ * The `contentKey` CARRIES the fixture, and that is load-bearing (issue #3393).
+ *
+ * `symbolic-parse-cache.ts` keys its module-global parse cache on
+ * `source.contentKey` plus the elevation rebase, and `ensureParseFor` returns
+ * early when that key is already cached or in flight. The worker stub below is
+ * the only thing that knows which fixture a `sample()` call wants, and it is
+ * NOT part of that key — so with one shared key, re-installing the worker to
+ * change fixtures does nothing once a parse for that key has started: the
+ * second call silently reads the FIRST fixture back.
+ *
+ * That is measured, not defensive. With a single shared key, two `sample()`
+ * calls in one test served the second one the first one's NaN parse, which
+ * puts every grid primitive in `gridLoose*` and leaves `gridByStorey` empty —
+ * so a section-clip band check over `gridByStorey` guards a zero-iteration
+ * loop and an out-of-band case comes back empty whether the band check exists
+ * or not. That is exactly the vacuous pair #3393 was filed for.
+ */
+function store(storeyY = NaN): IfcDataStore {
   return {
-    source: { contentKey: 'grid-channel-bytes', byteLength: 10, toTransferable: () => ({}) },
+    source: {
+      contentKey: `grid-channel-bytes-${storeyY}`,
+      byteLength: 10,
+      toTransferable: () => ({}),
+    },
   } as unknown as IfcDataStore;
 }
 
@@ -152,6 +174,9 @@ async function sample(
   if (Number.isFinite(storeyY)) {
     restoreStoreyWorker?.();
     restoreStoreyWorker = installWorker(storeyY);
+    // Point the hooks at a store whose contentKey names THIS fixture, so the
+    // parse cache cannot answer with the one installed before it. See `store`.
+    useViewerStore.setState({ ifcDataStore: store(storeyY) } as never);
   }
 
   function Probe(): null {
@@ -261,6 +286,31 @@ describe('grid bubbles draw without defining the model extent (issue 3359)', () 
     assert.equal(s.texts[0].definesExtent, false);
     assert.equal(s.fills.length, 1);
     assert.equal(s.fills[0].definesExtent, false);
+  });
+
+  it('a second source in one test is parsed on its own, not answered from the first', async () => {
+    // The trap that made #3393's first attempt vacuous, turned into a gate.
+    //
+    // `ensureParseFor` skips a store whose cache key is already cached or in
+    // flight (`symbolic-parse-cache.ts`), and the key is the source's
+    // `contentKey` plus the elevation rebase — never the worker stub that
+    // actually holds the fixture. So a second `sample()` in one test reads the
+    // FIRST fixture back unless the two sources are distinct, which is the
+    // same staleness that hid a federated model's annotations in #2183.
+    //
+    // Read on the ELEVATION rather than on presence: the NaN fixture lifts its
+    // bubble to `fallbackY` (0) and the finite one to its own storey (3), so a
+    // stale answer is a wrong NUMBER here, not an empty list that a filter
+    // somewhere upstream could also explain.
+    const loose = await sample({ enabled: false, gridEnabled: true }, NaN);
+    assert.deepEqual(loose.texts.map((t) => t.worldPos[1]), [0], 'the NaN fixture lifts to fallbackY');
+
+    const bucketed = await sample({ enabled: false, gridEnabled: true }, 3);
+    assert.deepEqual(
+      bucketed.texts.map((t) => t.worldPos[1]),
+      [3],
+      'the second fixture must reach the parse; 0 here means the first parse was reused',
+    );
   });
 
   it('the same split holds for content that RESOLVES to a storey bucket', async () => {

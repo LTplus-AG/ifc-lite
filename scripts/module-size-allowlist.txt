@@ -39,13 +39,13 @@
   1802 apps/viewer/src/components/viewer/ChatPanel.tsx
   1314 apps/viewer/src/components/viewer/ClashPanel.tsx
    437 apps/viewer/src/components/viewer/ClashSettingsDialog.tsx
-   846 apps/viewer/src/components/viewer/CommandPalette.tsx
+   849 apps/viewer/src/components/viewer/CommandPalette.tsx
    410 apps/viewer/src/components/viewer/ComparePanel.tsx
   1059 apps/viewer/src/components/viewer/DataConnector.tsx
   1842 apps/viewer/src/components/viewer/Drawing2DCanvas.tsx
    536 apps/viewer/src/components/viewer/DrawingSettingsPanel.tsx
    426 apps/viewer/src/components/viewer/DxfUnderlayPanel.tsx
-   580 apps/viewer/src/components/viewer/EntityContextMenu.tsx
+   583 apps/viewer/src/components/viewer/EntityContextMenu.tsx
    863 apps/viewer/src/components/viewer/ExportDialog.tsx
    531 apps/viewer/src/components/viewer/GLBExportDialog.tsx
   1424 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
@@ -94,7 +94,7 @@
    406 apps/viewer/src/components/viewer/useAnimationLoop.ts
    970 apps/viewer/src/components/viewer/useGeometryStreaming.ts
    946 apps/viewer/src/components/viewer/useMouseControls.ts
-   780 apps/viewer/src/components/viewer/ViewerLayout.tsx
+   782 apps/viewer/src/components/viewer/ViewerLayout.tsx
   1840 apps/viewer/src/components/viewer/Viewport.tsx
   1539 apps/viewer/src/components/viewer/ViewportContainer.tsx
    511 apps/viewer/src/components/viewer/ZonesPanel.tsx
@@ -161,7 +161,7 @@
    536 apps/viewer/src/store/slices/scriptSlice.ts
    574 apps/viewer/src/store/slices/sectionSlice.ts
    571 apps/viewer/src/store/slices/sheetSlice.ts
-   412 apps/viewer/src/store/slices/uiSlice.ts
+   414 apps/viewer/src/store/slices/uiSlice.ts
    485 apps/viewer/src/store/slices/visibilitySlice.ts
    689 apps/viewer/src/store/types.ts
    662 apps/viewer/src/utils/serverDataModel.ts
@@ -204,7 +204,7 @@
   1106 packages/data/scripts/generate-ifc-schema.ts
    438 packages/data/src/property-table.ts
    459 packages/data/src/step-serializers.ts
-   507 packages/data/src/types.ts
+   508 packages/data/src/types.ts
    440 packages/diff/src/fingerprint.ts
    550 packages/drawing-2d/src/drawing-generator.ts
    507 packages/drawing-2d/src/dxf/convert.ts
@@ -230,8 +230,8 @@
    888 packages/export/src/ifc5-exporter.ts
   1667 packages/export/src/merged-exporter.ts
    639 packages/export/src/parquet-exporter.ts
-  1046 packages/export/src/reference-collector.ts
-   501 packages/export/src/schema-converter.ts
+  1062 packages/export/src/reference-collector.ts
+   524 packages/export/src/schema-converter.ts
    437 packages/extensions/src/testing/runner.ts
    625 packages/geometry/src/coordinate-handler.ts
   1707 packages/geometry/src/geometry-parallel.ts
@@ -239,7 +239,7 @@
    937 packages/geometry/src/ifc-lite-bridge.ts
   1551 packages/geometry/src/index.ts
    730 packages/geometry/src/native-bridge.ts
-   467 packages/ids/src/audit/coherence/index.ts
+   469 packages/ids/src/audit/coherence/index.ts
    904 packages/ids/src/audit/ifc-schema/index.ts
    566 packages/ids/src/audit/structural/index.ts
    467 packages/ids/src/facets/property-facet.ts
@@ -317,7 +317,7 @@
    875 packages/sdk/src/types.ts
   1082 packages/server-client/src/client.ts
    775 packages/server-client/src/data-model-decoder.ts
-   465 packages/server-client/src/parquet-tables.ts
+   466 packages/server-client/src/parquet-tables.ts
    627 packages/server-client/src/types.ts
    411 packages/source-dalux/src/http-client.ts
    406 packages/source-dalux/src/provider.ts

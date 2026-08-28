@@ -39,6 +39,8 @@ self.onmessage = function(e) {
   // Float64Array, not Uint32Array: the guard below admits any safe integer
   // (up to 2^53), and a Uint32 store truncates -- #4294967297 lands as 1 and
   // serves entity #1's data. A double holds every safe integer exactly.
+  // Only for this buffer, though: CompactEntityIndex still narrows these ids
+  // to Uint32Array, so ids >= 2^32 collide there anyway (#3395).
   var ids = new Float64Array(estimatedCount);
   var offsets = new Uint32Array(estimatedCount);
   var lengths = new Uint32Array(estimatedCount);

@@ -37,7 +37,7 @@ describe('SDK visibility adapter: isolate() and #3338 assembly expansion', () =>
   const PART_A_GLOBAL_ID = 9001;
   const PART_B_GLOBAL_ID = 9002;
 
-  function makeStore(resolveHighlightIds?: (ids: number[]) => number[]): StoreApi {
+  function makeStore(resolveHighlightIds?: (ids: number[]) => number[] | null): StoreApi {
     const isolateEntities = (() => {
       let calls: number[][] = [];
       const fn = (ids: number[]) => { calls.push(ids); };
@@ -114,14 +114,14 @@ describe('SDK visibility adapter: isolate() and #3338 assembly expansion', () =>
     );
   });
 
-  it('a resolver that resolves to nothing must ALSO fall back to the raw ids, not isolate an empty set (#3338 follow-up)', () => {
-    // Viewport's resolveHighlightIds returns [] whenever geometryRef.current
-    // is null (the renderer-initialised-but-geometry-not-loaded window) or
-    // when every id resolves geometry-less. `??` only guards an ABSENT
-    // resolver, not one that runs and returns []: isolateEntities([]) hides
-    // the entire model, and it stays hidden after geometry finishes loading.
-    const emptyResolver = (_ids: number[]) => [];
-    const store = makeStore(emptyResolver);
+  it('a resolver returning null (geometry still streaming) unions the raw ids (#3426)', () => {
+    // Viewport's resolveHighlightIds returns `null`, not `[]`, whenever
+    // geometryRef.current is null (the renderer-initialised-but-geometry-
+    // not-loaded window) — "cannot answer yet", not "answered: nothing
+    // renders". The raw-id union is correct here: it self-heals once the
+    // meshes arrive.
+    const streamingResolver = (_ids: number[]) => null;
+    const store = makeStore(streamingResolver);
     const adapter = createVisibilityAdapter(store);
 
     adapter.isolate([{ modelId: MODEL_ID, expressId: ASSEMBLY_EXPRESS_ID }]);
@@ -131,8 +131,25 @@ describe('SDK visibility adapter: isolate() and #3338 assembly expansion', () =>
     assert.deepEqual(
       calls[0],
       [ASSEMBLY_GLOBAL_ID],
-      'an empty resolver result must fall back to the raw ids, exactly like an absent resolver — ' +
-      'isolating [] would hide the entire model instead of the requested ref',
+      'a still-streaming resolver falls back to the raw ids, exactly like an absent resolver',
     );
+  });
+
+  it('a resolver that genuinely resolves to [] must leave the isolation channel untouched (#3426 correction)', () => {
+    // #3382 (merged as 975cd6d89) fell back to the raw ids here on ANY
+    // empty result, including a resolver that has already resolved -- with
+    // geometry in -- and found nothing renderable at all (a true
+    // geometry-less `IfcElementAssembly` with no aggregated part that
+    // renders either). Falling back to the raw id there isolates a set
+    // with no mesh in it, which blanks the viewport exactly like isolating
+    // `[]` does (#3426) -- isolateEntities must not be called.
+    const emptyResolver = (_ids: number[]) => [];
+    const store = makeStore(emptyResolver);
+    const adapter = createVisibilityAdapter(store);
+
+    adapter.isolate([{ modelId: MODEL_ID, expressId: ASSEMBLY_EXPRESS_ID }]);
+
+    const calls = (store.getState().isolateEntities as unknown as { calls: number[][] }).calls;
+    assert.equal(calls.length, 0, 'isolateEntities must not be called when the resolver genuinely resolves to []');
   });
 });

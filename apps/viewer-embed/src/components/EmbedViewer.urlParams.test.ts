@@ -311,12 +311,11 @@ describe('EmbedViewer: ?isolate=', () => {
     expect([...isolated!]).toEqual([1005]);
   });
 
-  it('falls back to the raw ids when the resolver returns [] (#3338 follow-up)', async () => {
-    // A resolver that runs and resolves to nothing (renderer-initialised-
-    // but-geometry-not-loaded, or every id resolving geometry-less) must
-    // ALSO fall back to the raw ids, not isolate an empty set -- `??` alone
-    // only guards an ABSENT resolver, not one that returns [].
-    useViewerStore.setState({ cameraCallbacks: { resolveHighlightIds: () => [] } });
+  it('unions the raw ids when the resolver returns null -- geometry still streaming (#3426)', async () => {
+    // `null` is "cannot answer yet" (Viewport's geometryRef unset), not
+    // "answered: nothing renders" -- the raw-id union is correct here since
+    // the isolation self-heals once geometry lands.
+    useViewerStore.setState({ cameraCallbacks: { resolveHighlightIds: () => null } });
     setSearch('?isolate=1005');
     renderEmbedViewer();
     await settle();
@@ -324,6 +323,21 @@ describe('EmbedViewer: ?isolate=', () => {
     const isolated = useViewerStore.getState().isolatedEntities;
     expect(isolated).not.toBeNull();
     expect([...isolated!]).toEqual([1005]);
+  });
+
+  it('leaves the isolation channel untouched when the resolver genuinely resolves to [] (#3426 correction)', async () => {
+    // A resolver that has already resolved -- geometry is in -- and found
+    // nothing renderable must NOT fall back to the raw ids: that id has no
+    // mesh either, so isolating it blanks the viewport exactly like
+    // isolating `[]` does. #3338's union "fix" converted one empty viewport
+    // into a different one for precisely this case.
+    useViewerStore.setState({ cameraCallbacks: { resolveHighlightIds: () => [] } });
+    setSearch('?isolate=1005');
+    renderEmbedViewer();
+    await settle();
+
+    const isolated = useViewerStore.getState().isolatedEntities;
+    expect(isolated).toBeNull();
   });
 });
 

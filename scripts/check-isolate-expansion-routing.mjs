@@ -166,9 +166,15 @@ export const ALIAS_DESTRUCTURE_PATTERN =
   /\bconst\s*\{[^}]*\b(?:isolateEntities|setIsolatedEntities)\b[^}]*\}\s*=/;
 
 /** The resolvers that actually perform `IfcRelAggregates` expansion, or read
- *  from a resolver that does, called as real code (not merely named in prose). */
+ *  from a resolver that does, called as real code (not merely named in prose).
+ *  `resolveIsolationIds` (`apps/viewer/src/lib/isolation/resolveIsolationIds.ts`,
+ *  #3389/#3426) is the shared policy wrapper every isolation channel now
+ *  calls INSTEAD of `resolveHighlightIds` directly -- it takes the resolver
+ *  as its first argument rather than invoking it inline, so a channel that
+ *  switched to it no longer contains the literal `resolveHighlightIds(`
+ *  call this pattern used to require. */
 export const ROUTING_MARKERS =
-  /\b(resolveHighlightIds|expandToGeometryBearingIds|expandFilterRowsThroughAggregation)\b\s*\?{0,1}\.{0,1}\s*\(/;
+  /\b(resolveHighlightIds|expandToGeometryBearingIds|expandFilterRowsThroughAggregation|resolveIsolationIds)\b\s*\?{0,1}\.{0,1}\s*\(/;
 
 /**
  * Channels that MUST show a `ROUTING_MARKERS` call in the same file. Paths

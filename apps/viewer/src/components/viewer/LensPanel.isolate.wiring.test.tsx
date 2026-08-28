@@ -97,7 +97,7 @@ let initialState: ReturnType<typeof useViewerStore.getState>;
 function seedLens(options: {
   /** Viewport's aggregation resolver (#2531). Omitted = a renderer that has
    *  not registered its camera callbacks yet. */
-  resolveHighlightIds?: (ids: number[]) => number[];
+  resolveHighlightIds?: (ids: number[]) => number[] | null;
   /** Pre-existing hides, to prove the round-trip restores them untouched. */
   hiddenEntities?: Set<number>;
 } = {}) {
@@ -333,17 +333,33 @@ describe('LensPanel: isolating a rule resolves geometry-less assemblies to their
     );
   });
 
-  it('keeps the raw ids when the resolver returns nothing, rather than isolating an empty set', () => {
-    // An assembly with neither geometry nor geometry-bearing parts resolves to
-    // nothing at all (expandToGeometryBearingIds drops it). Isolating the empty
-    // set would hide the ENTIRE model, strictly worse than the raw id.
-    seedLens({ resolveHighlightIds: () => [] });
+  it('unions the raw ids when the resolver returns null -- geometry still streaming (#3426)', () => {
+    // `null` (Viewport's geometryRef unset) is "cannot answer yet", not
+    // "answered: nothing renders" -- the raw-id union is correct here since
+    // the isolation self-heals once geometry lands.
+    seedLens({ resolveHighlightIds: () => null });
     const container = render(<LensPanel onClose={() => {}} />);
 
     click(ruleRow(container, 'Assemblies'));
 
     assert.deepEqual(useViewerStore.getState().isolatedEntities, new Set([ASSEMBLY]));
     assert.deepEqual(useViewerStore.getState().lensRuleIsolation?.entityIds, [ASSEMBLY]);
+  });
+
+  it('leaves the isolation channel untouched when the resolver genuinely resolves to nothing (#3426 correction)', () => {
+    // An assembly with neither geometry nor geometry-bearing parts resolves to
+    // nothing at all (expandToGeometryBearingIds drops it) -- once geometry
+    // HAS streamed in. Isolating the raw assembly id anyway (the pre-#3426
+    // "fix") still isolates to a set with no mesh in it, blanking the ENTIRE
+    // model just the same as isolating `[]` does. The channel must be left
+    // alone instead.
+    seedLens({ resolveHighlightIds: () => [] });
+    const container = render(<LensPanel onClose={() => {}} />);
+
+    click(ruleRow(container, 'Assemblies'));
+
+    assert.equal(useViewerStore.getState().isolatedEntities, null);
+    assert.equal(useViewerStore.getState().lensRuleIsolation, null);
   });
 
   it('keeps the raw ids when no renderer has registered a resolver yet', () => {

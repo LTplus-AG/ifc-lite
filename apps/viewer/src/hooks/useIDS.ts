@@ -50,6 +50,7 @@ import {
   buildRestoreColorUpdates,
 } from './ids/idsColorSystem';
 import { releaseOwnedIdsFocusVisibility } from '@/lib/ids/visibility-ownership';
+import { resolveIsolationIds } from '@/lib/isolation/resolveIsolationIds';
 import type { IDSFocusMode } from '@/store/slices/idsSlice';
 import type { ColorTuple } from './ids/idsColorSystem';
 import { downloadReportJSON, downloadReportHTML } from './ids/idsExportService';
@@ -673,12 +674,11 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   const installFocusIsolation = useCallback((ids: Set<number>): void => {
     const state = useViewerStore.getState();
     const rawIds = [...ids];
-    // #3338: row element may lack geometry. `??` alone only guards an
-    // ABSENT resolver, not one that runs and returns [] -- union with the
-    // raw ids so an empty resolve result doesn't isolate nothing (matching
-    // every other isolation channel).
-    const resolved = state.cameraCallbacks.resolveHighlightIds?.(rawIds) ?? [];
-    state.setIsolatedEntities(new Set([...resolved, ...rawIds]));
+    // #3338: row element may lack geometry. resolveIsolationIds tells "hasn't
+    // answered yet" (union, self-heals) apart from "answered: nothing renders" (null, #3389).
+    const isolateIds = resolveIsolationIds(state.cameraCallbacks.resolveHighlightIds, rawIds);
+    if (isolateIds === null) return;
+    state.setIsolatedEntities(new Set(isolateIds));
     const installed = useViewerStore.getState().isolatedEntities;
     state.setIdsFocusVisibilityOwned(installed ? { channel: 'isolate', ids: installed } : null);
   }, []);
@@ -891,11 +891,11 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
       setIsolatedEntities(null); // #3338: null only clears
     } else {
       const rawIds = [...ids];
-      // `??` alone only guards an ABSENT resolver, not one that runs and
-      // returns [] -- union with the raw ids so an empty resolve result
-      // doesn't isolate nothing (matching every other isolation channel).
-      const resolved = useViewerStore.getState().cameraCallbacks.resolveHighlightIds?.(rawIds) ?? [];
-      setIsolatedEntities(new Set([...resolved, ...rawIds]));
+      // resolveIsolationIds tells "hasn't answered yet" (union, self-heals)
+      // apart from "answered: nothing renders" (null -- leave alone, #3389).
+      const isolateIds = resolveIsolationIds(useViewerStore.getState().cameraCallbacks.resolveHighlightIds, rawIds);
+      if (isolateIds === null) return;
+      setIsolatedEntities(new Set(isolateIds));
     }
     useViewerStore.getState().setIdsFocusVisibilityOwned(null);
   }, [setIsolatedEntities]);

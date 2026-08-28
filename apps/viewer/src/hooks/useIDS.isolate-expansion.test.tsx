@@ -150,17 +150,30 @@ describe('#3338: useIDS isolate actuators route ids through resolveHighlightIds'
     assert.deepEqual(isolated(), [5], 'with no resolver the raw id is isolated, matching pre-fix behaviour');
   });
 
-  it('installFocusIsolation falls back to the raw id when the resolver returns [] (#3338 follow-up)', async () => {
-    // A resolver that runs and resolves to nothing (renderer-initialised-
-    // but-geometry-not-loaded, or every id resolving geometry-less) must
-    // ALSO fall back to the raw ids, not isolate an empty set -- `??` alone
-    // only guards an ABSENT resolver.
+  it('installFocusIsolation unions the raw id when the resolver returns null -- geometry still streaming (#3426)', async () => {
+    // `null` is "cannot answer yet" (Viewport's geometryRef unset), not
+    // "answered: nothing renders" -- the raw-id union is correct here since
+    // the isolation self-heals once geometry lands.
+    await seed();
+    useViewerStore.setState({ cameraCallbacks: { resolveHighlightIds: () => null } });
+
+    await act(async () => { api!.focusEntity('A', 5, 'isolate'); });
+
+    assert.deepEqual(isolated(), [5], 'a still-streaming resolver falls back to the raw id, matching pre-fix behaviour');
+  });
+
+  it('installFocusIsolation leaves the isolation channel untouched when the resolver genuinely resolves to [] (#3426 correction)', async () => {
+    // A resolver that has already resolved -- geometry is in -- and found
+    // nothing renderable must NOT fall back to isolating the raw id: that
+    // id has no mesh either, so isolating it blanks the viewport exactly
+    // like isolating `[]` does. #3338's union "fix" converted one empty
+    // viewport into a different one for precisely this case.
     await seed();
     useViewerStore.setState({ cameraCallbacks: { resolveHighlightIds: () => [] } });
 
     await act(async () => { api!.focusEntity('A', 5, 'isolate'); });
 
-    assert.deepEqual(isolated(), [5], 'an empty resolver result must fall back to the raw id, not isolate []');
+    assert.deepEqual(isolated(), null, 'a resolver that genuinely resolves to [] must leave isolatedEntities exactly as it was');
   });
 
   it('installSetIsolation (isolateFailed) expands a geometry-less assembly id via the registered resolver', async () => {
@@ -187,12 +200,21 @@ describe('#3338: useIDS isolate actuators route ids through resolveHighlightIds'
     assert.deepEqual(isolated(), [5], 'with no resolver the raw failed id is isolated');
   });
 
-  it('installSetIsolation falls back to the raw ids when the resolver returns [] (#3338 follow-up)', async () => {
+  it('installSetIsolation unions the raw ids when the resolver returns null -- geometry still streaming (#3426)', async () => {
+    await seed();
+    useViewerStore.setState({ cameraCallbacks: { resolveHighlightIds: () => null } });
+
+    await act(async () => { api!.isolateFailed(); });
+
+    assert.deepEqual(isolated(), [5], 'a still-streaming resolver falls back to the raw ids, matching pre-fix behaviour');
+  });
+
+  it('installSetIsolation leaves the isolation channel untouched when the resolver genuinely resolves to [] (#3426 correction)', async () => {
     await seed();
     useViewerStore.setState({ cameraCallbacks: { resolveHighlightIds: () => [] } });
 
     await act(async () => { api!.isolateFailed(); });
 
-    assert.deepEqual(isolated(), [5], 'an empty resolver result must fall back to the raw ids, not isolate []');
+    assert.deepEqual(isolated(), null, 'a resolver that genuinely resolves to [] must leave isolatedEntities exactly as it was');
   });
 });

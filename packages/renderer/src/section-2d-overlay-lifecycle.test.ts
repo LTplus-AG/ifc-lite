@@ -334,6 +334,15 @@ describe('Section2DOverlayRenderer: dispose releases EVERY family (#1277 leak)',
   });
 });
 
+describe('SECTION_2D_UNIFORM_SLOT_COUNT (#3342)', () => {
+  it('equals the number of entries in SECTION_2D_UNIFORM_SLOT_INDEX', () => {
+    assert.strictEqual(
+      SECTION_2D_UNIFORM_SLOT_COUNT,
+      Object.keys(SECTION_2D_UNIFORM_SLOT_INDEX).length,
+    );
+  });
+});
+
 describe('Section2DOverlayRenderer: shared uniform buffer', () => {
   function lastWrite(writes: Array<{ data: Float32Array }>): Float32Array {
     assert.ok(writes.length > 0, 'expected a uniform write');

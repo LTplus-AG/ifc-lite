@@ -84,9 +84,19 @@ const PACKAGE_PARENTS = ['packages', 'apps'];
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 
+// Declared before any module-evaluation-time caller of `fail`. A class sits in
+// the temporal dead zone until its own line, so with this further down a `fail`
+// during module eval threw ReferenceError instead of FailError.
+export class FailError extends Error {}
+
 const rootFlagIdx = process.argv.indexOf('--root');
 if (rootFlagIdx !== -1 && !process.argv[rootFlagIdx + 1]) {
-  fail('--root requires a directory argument');
+  // console.error + exit, NOT `fail`, matching check-test-wiring.mjs. This runs
+  // during module evaluation, so a throw here escapes the entry point's
+  // try/catch at the bottom of the file and prints a raw stack on top of the
+  // message - which is precisely what this gate's own tests assert against.
+  console.error('\ncheck-test-glob-coverage: --root requires a directory argument\n');
+  process.exit(1);
 }
 const ROOT = rootFlagIdx === -1 ? join(SCRIPT_DIR, '..') : resolveArg(process.argv[rootFlagIdx + 1]);
 
@@ -99,8 +109,6 @@ export function fail(message) {
   process.exitCode = 1;
   throw new FailError(message);
 }
-
-export class FailError extends Error {}
 
 const TEST_FILE_RE = /\.(test|spec)\.(ts|tsx|mts|js|mjs)$/;
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'pkg', 'build', 'coverage', '.turbo', 'generated']);

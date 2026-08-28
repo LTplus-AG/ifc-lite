@@ -194,6 +194,7 @@ export function readWorkflows(root) {
       source = readFileSync(join(dir, name), 'utf8');
     } catch (err) {
       fail(`${join(dir, name)} could not be read: ${err.message}`);
+      throw err;
     }
     return { name, text: stripYamlComments(source) };
   });
@@ -536,6 +537,7 @@ export function auditGateScripts(root, workflows, pkgScripts) {
       source = readFileSync(join(root, rel), 'utf8');
     } catch (err) {
       fail(`${join(root, rel)} could not be read: ${err.message}`);
+      throw err;
     }
     const reason = unwiredReason(source);
     if (reason === null) {
@@ -612,6 +614,7 @@ export function audit(root) {
     pkgScripts = JSON.parse(readFileSync(pkgJsonPath, 'utf8')).scripts ?? {};
   } catch (err) {
     fail(`${pkgJsonPath} is not valid JSON: ${err.message}`);
+    throw err;
   }
   const workflows = readWorkflows(root);
   return {

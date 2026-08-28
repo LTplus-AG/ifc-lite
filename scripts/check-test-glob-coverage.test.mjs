@@ -386,3 +386,18 @@ test('an unreadable vitest config is reported by the gate, not as a raw stack', 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('--root with no argument is refused cleanly, without a raw stack', () => {
+  // This runs during MODULE EVALUATION, before the entry point's try/catch
+  // exists, so a `fail` here escapes and prints a stack on top of the message.
+  // It did exactly that, two ways at once: `class FailError` was declared below
+  // `fail`, so the throw was a ReferenceError from the temporal dead zone.
+  // check-test-wiring.test.mjs has always had this case; this file did not,
+  // which is why a gate whose own tests forbid raw stacks was printing one.
+  const r = spawnSync(process.execPath, [CHECKER, '--root'], { encoding: 'utf8' });
+  const out = `${r.stdout}${r.stderr}`;
+  assert.equal(r.status, 1, 'a missing --root argument must fail the gate');
+  assert.match(out, /--root requires a directory argument/);
+  assert.doesNotMatch(out, /ReferenceError/, 'must not die in the temporal dead zone');
+  assert.doesNotMatch(out, /\n\s+at /, 'must not surface a raw node stack');
+});

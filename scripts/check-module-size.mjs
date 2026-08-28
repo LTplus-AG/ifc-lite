@@ -250,6 +250,14 @@ function parseArgs(argv) {
       out.allowRaise = true;
     } else if (flag === '--all') {
       out.all = true;
+    } else if (flag === '--') {
+      // npm, yarn and pnpm each treat the conventional `--` separator
+      // differently, and pnpm forwards it to the script verbatim. Refusing it
+      // makes `pnpm lint:module-size-baseline -- --all` -- the spelling a
+      // contributor types out of habit -- die before writing anything, which
+      // is the same defect this file's own docstring is about: documented
+      // advice that does not work. Tolerate it and read the rest.
+      continue;
     } else {
       fail(`unknown argument: ${flag}`);
     }

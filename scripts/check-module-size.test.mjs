@@ -592,3 +592,35 @@ test('--update refuses a --root that is not the top of its worktree', () => {
   assert.match(out, /is not the top of its git worktree/);
   assert.equal(readFileSync(allowlistPath, 'utf8'), SCOPED_BEFORE);
 });
+
+// pnpm forwards the conventional `--` separator to the script verbatim, so
+// `pnpm lint:module-size-baseline -- --all` reached parseArgs as a bare `--`
+// and died with "unknown argument" before writing anything. The docstring no
+// longer spells it that way, but a contributor typing it out of habit must not
+// hit a hard failure from a gate whose own subject is advice that works.
+test('a bare -- separator is tolerated, not a hard failure', () => {
+  const dir = tree({ 'packages/a/big.ts': 500 });
+  const { code, out } = run(dir, '500 packages/a/big.ts\n', { extra: ['--'] });
+  assert.equal(code, 0, out);
+  assert.doesNotMatch(out, /unknown argument/);
+});
+
+// `--no-renames` in changedFiles() is load-bearing and was silent when removed:
+// rename detection reports only the DESTINATION, so the source's allowlist row
+// -- the one that must be dropped, because that file no longer exists -- stays
+// out of scope and survives the regenerate. The gate then still exits 0, with
+// the stale row reported only as an advisory `missing` note.
+test('a renamed module puts BOTH paths in scope, so the source row drops', () => {
+  const { dir, git } = gitTree({ 'packages/a/big.ts': 500, 'packages/b/slack.ts': 450 });
+  git('checkout', '-q', '-b', 'feature');
+  git('mv', 'packages/a/big.ts', 'packages/a/renamed.ts');
+
+  const { code, out, allowlistPath } = run(dir, SCOPED_BEFORE, { extra: ['--update', '--allow-raise'] });
+  assert.equal(code, 0, out);
+  // The source row is GONE and the destination has one, both at 500 lines.
+  // packages/b/slack.ts is untouched, so it keeps its committed 460.
+  assert.equal(
+    readFileSync(allowlistPath, 'utf8'),
+    `${HEADER}   500 packages/a/renamed.ts\n   460 packages/b/slack.ts\n`,
+  );
+});

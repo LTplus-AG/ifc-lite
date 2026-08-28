@@ -23,6 +23,7 @@
 //!   B's ORIGINAL (pre-arrangement) faces;
 //! - for a triangle from B: `c_on_or_near_a`, tested against A's
 //!   ORIGINAL faces.
+//!
 //! At a near-degenerate rotated overlap the two tests can disagree on the
 //! same coincident pair, so a redundant triangle survives on BOTH operands
 //! and a shared edge ends up used by three kept triangles instead of two —

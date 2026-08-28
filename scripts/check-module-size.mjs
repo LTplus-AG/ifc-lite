@@ -35,7 +35,11 @@
  * touched — makes the gate red on a long-lived branch. After any merge from
  * main, run the script; if it reports a listed file past budget or a new file
  * over 400, the allowlist needs refreshing in the same commit. Do that with
- * `pnpm lint:module-size-baseline` rather than by hand. A refresh that only
+ * `pnpm lint:module-size-baseline -- --all` rather than by hand: the bare
+ * command is SCOPED to the files your branch touched, and growth inherited from
+ * main is by definition outside that scope, so it would report success and
+ * leave the gate red. `--all` is the repo-wide regenerate and belongs in its own
+ * commit, stated in the PR. A refresh that only
  * tracks growth already on main is a maintainer call and must be stated in the
  * PR; it is not licence to raise a budget for growth the PR itself introduced,
  * which is why the regeneration command refuses a raise unless asked twice.
@@ -341,6 +345,19 @@ function changedFiles(root) {
     }
   }
   if (base === null) return { error: 'no merge base with origin/main or main' };
+  // `main` can be arbitrarily far behind `origin/main` (measured here: 147
+  // commits, widening scope from 0 files to 381, 49 of them allowlisted), which
+  // is the annexation this scoping exists to prevent. The fallback is still the
+  // right behaviour -- not every clone names its upstream `origin` -- but it
+  // must not be a routine log line.
+  if (base.ref !== 'origin/main') {
+    console.warn(
+      `check-module-size: WARNING -- no merge base with origin/main; fell back to ` +
+        `local '${base.ref}' (${base.sha.slice(0, 9)}). If that ref is stale, the scope ` +
+        `is WIDER than your change and this regenerate may annex rows you did not touch. ` +
+        `Fetch origin/main and re-run.`,
+    );
+  }
   const nulSeparated = (res) => (res.status === 0 ? res.stdout.split('\0').filter(Boolean) : null);
   // `--no-renames` so a renamed module reports BOTH paths. Rename detection
   // reports only the destination, and the source's row is exactly the one that
@@ -428,8 +445,16 @@ if (args.update) {
       );
     }
     changed = derived.changed;
+    // Report the population scoping can ACT on, not every changed path. A PR
+    // touching a lockfile, some docs and one module was printing "scoped to 200
+    // changed file(s)" next to "0 lowered, 0 removed", which reads as the
+    // scoping having silently done nothing.
+    const actionable = [...changed].filter(
+      (rel) => /\.tsx?$/.test(rel) && !isExempt(rel) && SEARCH_DIRS.some((d) => rel.startsWith(`${d}/`)),
+    ).length;
     scopeNote =
-      `check-module-size: scoped to ${changed.size} changed file(s) vs ${derived.base}; ` +
+      `check-module-size: scoped to ${actionable} changed module(s) ` +
+      `(of ${changed.size} changed path(s)) vs ${derived.base}; ` +
       `pass --all to re-record every row.`;
   }
   console.log(scopeNote);

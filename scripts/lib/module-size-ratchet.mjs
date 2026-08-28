@@ -256,6 +256,12 @@ export function staleRows(allowlist) {
  */
 export function planUpdate(files, allowlist, changed = null) {
   const inScope = (rel) => changed === null || changed.has(rel);
+  // Scoping exists so a regeneration cannot delete an exemption someone else
+  // still needs. A row at or under the limit grants no exemption — `staleRows`
+  // already fails the gate on it — so it is not something anyone can need, and
+  // carrying it forward would leave the documented regeneration command unable
+  // to fix a hard failure it used to fix. Dropping it is safe at any scope.
+  const grantsNoExemption = (budget) => budget !== undefined && budget <= LIMIT;
   const measured = new Map(files.map((f) => [f.rel, f.lines]));
   const next = new Map();
   const raised = [];
@@ -266,7 +272,10 @@ export function planUpdate(files, allowlist, changed = null) {
   for (const { rel, lines } of files) {
     const budget = allowlist.get(rel);
     if (!inScope(rel)) {
-      if (budget !== undefined) next.set(rel, budget);
+      if (budget !== undefined && !grantsNoExemption(budget)) next.set(rel, budget);
+      else if (grantsNoExemption(budget)) {
+        removed.push(`  ${rel}: budget ${budget} <= ${LIMIT} granted nothing (row deleted)`);
+      }
       continue;
     }
     if (lines <= LIMIT) {
@@ -280,11 +289,14 @@ export function planUpdate(files, allowlist, changed = null) {
   }
   // A row whose file the walk never saw: gone, renamed, or now exempt. Dropping
   // it is only OUR call when the change touched that path; otherwise the row
-  // stays, because a row deleted here is an exemption someone else still needs.
+  // stays, because a row deleted here is an exemption someone else still needs
+  // — unless it grants no exemption at all, which nobody can need.
   for (const [rel, budget] of allowlist) {
     if (measured.has(rel)) continue;
     if (inScope(rel)) removed.push(`  ${rel} (budget ${budget}) no longer matches a tracked file`);
-    else next.set(rel, budget);
+    else if (grantsNoExemption(budget)) {
+      removed.push(`  ${rel}: budget ${budget} <= ${LIMIT} granted nothing (row deleted)`);
+    } else next.set(rel, budget);
   }
 
   raised.sort();

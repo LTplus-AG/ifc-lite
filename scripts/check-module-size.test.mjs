@@ -510,7 +510,10 @@ test('--update re-records the changed file and leaves the untouched row alone', 
     readFileSync(allowlistPath, 'utf8'),
     `${HEADER}   520 packages/a/big.ts\n   460 packages/b/slack.ts\n`,
   );
-  assert.match(out, /scoped to \d+ changed file\(s\) vs main \([0-9a-f]{9}\)/);
+  // The count is the population scoping can ACT on, not every changed path:
+  // this fixture changes 2 paths and exactly 1 of them is an allowlistable
+  // module, so a bare "2 changed file(s)" would have overstated the scope.
+  assert.match(out, /scoped to 1 changed module\(s\) \(of 2 changed path\(s\)\) vs main \([0-9a-f]{9}\)/);
   assert.match(out, /pass --all to re-record every row/);
 });
 

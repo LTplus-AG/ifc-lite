@@ -236,7 +236,8 @@ export interface ModelInfo {
  *
  * Every field here is parsed by the viewer AND applied, as of #2934 --
  * `hideAxis`/`hideScale` and `controls` were marked NOT YET IMPLEMENTED here
- * until then. Read that as a statement about the fields below, not as a
+ * until then. The one deliberate exception is `camera.zoom`; see its doc
+ * below. Read that as a statement about the fields below, not as a
  * guarantee this type enforces on fields added later: nothing here fails a
  * build when a new field is parsed and then ignored, which is exactly how the
  * three above drifted. A new field owes its own applying call site and a test

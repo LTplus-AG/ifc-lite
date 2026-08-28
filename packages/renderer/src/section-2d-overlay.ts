@@ -57,10 +57,15 @@ export type { CutPolygon2D, DrawingLine2D, SectionCustomPlane } from './section-
  * one shared overlay colour, so the only thing that distinguishes them is
  * which buffer a draw reads and which uniform slot it binds. Naming them
  * rather than growing a method quartet per family is what makes a fifth
- * channel five table rows instead of eight methods. Four of the five refuse to
- * compile if skipped; `SECTION_2D_UNIFORM_SLOT_COUNT` is a hand-written literal
- * that does not, and it sizes the shared uniform buffer, so missing it binds a
- * dynamic offset past the end.
+ * channel five table rows instead of eight methods. Four of the five refuse
+ * to compile if skipped; the fifth, `SECTION_2D_UNIFORM_SLOT_COUNT`, is
+ * derived from `SECTION_2D_UNIFORM_SLOT_INDEX`, so the shared uniform buffer
+ * follows the index automatically (#3342 was a hand-written count here, left
+ * one slot short).
+ *
+ * Not enforced: each draw site binding its OWN slot. A test pins the index
+ * dense, but a channel that reuses an existing slot constant passes it while
+ * the two sites overwrite each other's `lineColor` (#2456).
  *
  * The focused clash's box / contact lines are deliberately NOT a channel: they
  * draw in their own colour, not the shared one, and callers reach them through

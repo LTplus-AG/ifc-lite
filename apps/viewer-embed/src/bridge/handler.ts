@@ -343,8 +343,8 @@ async function handleCommand(type: InboundCommandType, data: unknown, requestId?
     }
 
     case 'ISOLATE': {
-      const payload = data as InboundPayloads['ISOLATE'];
-      state.isolateEntities(payload.ids);
+      const payload = data as InboundPayloads['ISOLATE']; // #3338: expand assemblies, matching LensPanel/PropertiesPanel/SearchModal/SDK.
+      state.isolateEntities(state.cameraCallbacks.resolveHighlightIds?.(payload.ids) ?? payload.ids);
       if (requestId) emitToParent(createResponse(requestId));
       return;
     }

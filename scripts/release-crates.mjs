@@ -208,7 +208,7 @@ export async function publishAllCrates({
   // that NaN-falls-through shape unreachable regardless of caller.
   if (tokenMintedAtMs != null && !Number.isFinite(tokenMintedAtMs)) {
     throw new Error(
-      `tokenMintedAtMs is ${JSON.stringify(tokenMintedAtMs)}, which is not a finite number ` +
+      `tokenMintedAtMs is ${String(tokenMintedAtMs)}, which is not a finite number ` +
         `of milliseconds since the epoch. Refusing to start the crates.io publish phase ` +
         `with a token-budget deadline that cannot be computed, rather than silently ` +
         `disarming both the token bound and the release-wide budget.`

@@ -579,3 +579,59 @@ test('parseTokenMintedAtMs REFUSES a non-numeric value instead of letting NaN si
     /CRATES_TOKEN_MINTED_AT_MS.*not-a-number/
   );
 });
+
+test('parseTokenMintedAtMs treats a whitespace-only value as unset, not as epoch 0', () => {
+  // `' '` is not `=== ''`, so it used to fall through to `Number(' ')`,
+  // which is 0 — finite, so the old check let it pass. An epoch-ms deadline
+  // of 0 is 1970: already expired, so the run aborted the crates phase
+  // before the first publish, AFTER npm had already published — the exact
+  // half-release this script exists to prevent. Trimming first makes a
+  // whitespace value behave like an unset one (budget-only fallback)
+  // instead of manufacturing that already-expired deadline.
+  assert.equal(parseTokenMintedAtMs({ CRATES_TOKEN_MINTED_AT_MS: '   ' }), undefined);
+});
+
+test('parseTokenMintedAtMs REFUSES a non-positive timestamp', () => {
+  // Not a NaN-shaped malformation, but not a real mint time either: 0 or a
+  // negative value produces the same already-expired-deadline half-release
+  // as the whitespace case above, just via a value that IS finite.
+  assert.throws(
+    () => parseTokenMintedAtMs({ CRATES_TOKEN_MINTED_AT_MS: '0' }),
+    /CRATES_TOKEN_MINTED_AT_MS/
+  );
+  assert.throws(
+    () => parseTokenMintedAtMs({ CRATES_TOKEN_MINTED_AT_MS: '-5' }),
+    /CRATES_TOKEN_MINTED_AT_MS/
+  );
+});
+
+test('publishAllCrates REFUSES a non-finite tokenMintedAtMs passed directly, instead of disarming both bounds', async () => {
+  // parseTokenMintedAtMs validates the env-var path, but publishAllCrates is
+  // also callable directly with tokenMintedAtMs bypassing it entirely. A NaN
+  // there poisons budgetDeadline via Math.min(x, NaN) === NaN, and every
+  // `<=`/`<` comparison against NaN is false — so with totalBudgetMs: 0 (an
+  // already-exhausted release-wide budget) the run would otherwise publish
+  // anyway, because NEITHER bound can trip on a NaN deadline.
+  const clock = fakeClock();
+  try {
+    const published = [];
+    await assert.rejects(
+      () =>
+        publishAllCrates({
+          crates: ['ifc-lite-core'],
+          version: '6.0.0',
+          publishFn: (c) => published.push(c),
+          preCheckFn: async () => false,
+          indexCheckFn: async () => true,
+          totalBudgetMs: 0,
+          tokenMintedAtMs: NaN,
+          sleepFn: clock.sleepFn,
+        }),
+      /tokenMintedAtMs is NaN, which is not a finite number/
+    );
+    // The assertion that actually catches the defect: nothing published.
+    assert.deepEqual(published, []);
+  } finally {
+    clock.restore();
+  }
+});

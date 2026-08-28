@@ -35,6 +35,7 @@ import {
   SET_ISOLATED_CALL_PATTERN,
   ROUTING_MARKERS,
   ALIAS_DESTRUCTURE_PATTERN,
+  PROPERTY_ALIAS_PATTERN,
   REQUIRES_ROUTING_MARKER,
   NO_MARKER_REQUIRED,
   MIN_ALLOWLIST_REASON_LENGTH,
@@ -236,6 +237,66 @@ describe('check-isolate-expansion-routing: Finding 1 -- destructure-and-rename b
     // (CALL_PATTERN already covers it via the later `isolateEntities(...)` call).
     const content = 'const isolateEntities = useViewerStore((s) => s.isolateEntities);';
     assert.equal(ALIAS_DESTRUCTURE_PATTERN.test(content), false);
+  });
+});
+
+describe('check-isolate-expansion-routing: widened alias detection -- param destructure, reassignment, and plain member-access rebinding', () => {
+  it('RED: function-parameter destructure-and-rename is caught (was invisible to the const-only anchor)', () => {
+    const content = `
+      function onIsolate({ isolateEntities: apply }) {
+        apply(rawIds); // never routed, and never calls the action by its own name
+      }
+    `;
+    assert.equal(CALL_PATTERN.test(content), false);
+    assert.equal(ALIAS_DESTRUCTURE_PATTERN.test(content), true, 'a param destructure must be caught, not just `const { ... } =`');
+  });
+
+  it('RED: a destructuring REASSIGNMENT with no declaration keyword is caught', () => {
+    const content = `
+      let apply;
+      ({ isolateEntities: apply } = useViewerStore.getState());
+      apply(rawIds);
+    `;
+    assert.equal(ALIAS_DESTRUCTURE_PATTERN.test(content), true, 'a keyword-less destructuring assignment must be caught');
+  });
+
+  it('RED: a plain member-access rebinding (no braces at all) is caught by PROPERTY_ALIAS_PATTERN', () => {
+    // The gap ALIAS_DESTRUCTURE_PATTERN cannot close: no `{ }` syntax
+    // appears anywhere, so the destructure regex cannot match, yet the
+    // action is still rebound to a local name and never called by its
+    // literal name.
+    const content = `
+      const apply = useViewerStore.getState().isolateEntities;
+      apply(rawIds);
+    `;
+    assert.equal(CALL_PATTERN.test(content), false);
+    assert.equal(ALIAS_DESTRUCTURE_PATTERN.test(content), false, 'no braces here -- this is exactly the gap PROPERTY_ALIAS_PATTERN closes');
+    assert.equal(PROPERTY_ALIAS_PATTERN.test(content), true);
+  });
+
+  it('RED: an unlisted file using the plain member-access rebinding is flagged, not silently skipped', () => {
+    const relPath = 'apps/viewer/src/components/viewer/BrandNewIsolatePanelPropertyAlias.tsx';
+    assert.equal(REQUIRES_ROUTING_MARKER.has(relPath), false, 'fixture must not already be allowlisted');
+    assert.equal(NO_MARKER_REQUIRED.has(relPath), false, 'fixture must not already be allowlisted');
+    const content = `
+      const apply = useViewerStore.getState().setIsolatedEntities;
+      const handleClick = () => apply(new Set(rawIds)); // raw ids, never routed
+    `;
+    const verdict = classifyFile(relPath, content);
+    assert.equal(verdict.isCandidate, true, 'must count toward candidateCount, not vanish');
+    assert.equal(verdict.ok, false, 'an unrouted property-alias binding must fail');
+    assert.match(verdict.reason, /not in either allowlist/);
+  });
+
+  it('GREEN: real allowlisted channels are unaffected -- the widened patterns still do not fire on their real source', () => {
+    // The shape every real allowlisted channel actually uses:
+    // `useViewerStore((s) => s.isolateEntities)` inside a selector callback.
+    // Neither widened pattern should treat this as a rebind: there is no
+    // `{ }` destructure, and the member access is not the RHS of a bare
+    // assignment to a local variable (it is passed straight into a call).
+    const content = 'const isolateEntities = useViewerStore((s) => s.isolateEntities);';
+    assert.equal(ALIAS_DESTRUCTURE_PATTERN.test(content), false);
+    assert.equal(PROPERTY_ALIAS_PATTERN.test(content), false);
   });
 });
 

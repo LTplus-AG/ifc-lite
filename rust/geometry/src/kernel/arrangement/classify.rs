@@ -126,7 +126,7 @@ fn point_in_tri_proj(c: [f64; 3], t: &Tri, n: [f64; 3]) -> bool {
     inside(t[0], t[1]) && inside(t[1], t[2]) && inside(t[2], t[0])
 }
 
-/// Per-triangle exact coincident-face test (see [`on_surface_normal`]).
+/// Per-triangle exact coincident-face test (see [`coincident_face_normal`]).
 fn on_surface_tri(c: [f64; 3], t: &Tri) -> Option<[f64; 3]> {
     if orient3d(&e(t[0]), &e(t[1]), &e(t[2]), &e(c)) != Sign::Zero {
         return None; // c not on t's plane
@@ -135,7 +135,7 @@ fn on_surface_tri(c: [f64; 3], t: &Tri) -> Option<[f64; 3]> {
     point_in_tri_proj(c, t, n).then_some(n)
 }
 
-/// Per-triangle near-coplanar-flush test (see [`near_on_surface_normal`]); the
+/// Per-triangle near-coplanar-flush test (see [`coincident_face_normal`]); the
 /// plane-gap tolerance is resolved from `band` against THIS triangle's own
 /// normal, so an operand offset along an axis this face does not face cannot
 /// widen it.
@@ -152,74 +152,57 @@ fn near_on_surface_tri(c: [f64; 3], t: &Tri, band: &NearBand) -> Option<[f64; 3]
     point_in_tri_proj(c, t, n).then_some(n)
 }
 
-fn on_surface_normal(c: [f64; 3], others: &[Tri]) -> Option<[f64; 3]> {
-    others.iter().find_map(|t| on_surface_tri(c, t))
-}
-
-/// Canonical near-coplanar band (see [`near_on_surface_normal`]): the
+/// Canonical near-coplanar band (see [`coincident_face_normal`]): the
 /// `SNAP_GRID` scatter envelope plus the operands' per-axis extents projected
 /// onto the plane under test, defined once in `near_band`.
 use super::super::near_band::{NearBand, near_band_from_extent};
 
-/// The NEAR-coplanar analogue of [`on_surface_normal`], used ONLY for a
-/// sub-triangle whose parent face had a near-coplanar overlap with the other
-/// operand (`coplanar_a/b[i]` set). Returns the covering `other` face's f64 normal
-/// when `c` sits within the snap-scatter band of that face's plane AND projects
-/// strictly inside it.
+/// THE coincident-shared-face test, used IDENTICALLY from both classification
+/// directions in [`boolean_vids_components`] (#3353's classification-level
+/// fix — see `sweep_261` in `issue_3353_sweep_261_classification_tear.rs`).
 ///
-/// WHY this exists — the flush-cap defect (#1007 host #1112 openings #2150/#2154):
-/// real IFC is f32, so an opening cap authored EXACTLY flush with a TILTED roof
-/// surface is NOT exactly coplanar after `mesh_bridge`'s per-axis snap — each
-/// operand scatters up to `SNAP_GRID·√3` off the shared tilted plane. The exact
-/// [`on_surface_normal`] needs `orient3d == 0` (centroid bit-exactly on the other
-/// face's plane), so it MISSES the flush cap; the sub-triangle then falls to the
-/// fragile `solid_side` probe (regime 2) or the on-boundary centroid ray-cast
-/// (regime 3), both undefined at a µm-flush interface ⇒ the inside-footprint host
-/// sub-triangle is wrongly KEPT and bridges the opening.
+/// Does `c` sit on a triangle of `tris` — exactly (`on_surface_tri`), or
+/// within the near-coplanar snap band (`near_on_surface_tri`, the #1007
+/// flush-cap fix: real IFC is f32, so a cap authored EXACTLY flush with a
+/// tilted shared surface is not exactly coplanar after `mesh_bridge`'s
+/// per-axis snap)? Returns the covering triangle's f64 normal on a hit.
 ///
-/// DETERMINISM: the only inexactness vs. [`on_surface_normal`] is the perpendicular
-/// plane-gap admitted (the `band` test); the in-plane containment still uses the
-/// EXACT `orient2d_any`. `band` is an absolute power-of-two multiple of `SNAP_GRID`
-/// (≈ the 2-operand scatter envelope) widened only for far-from-origin operands
-/// (coarser f32 import) — and only along the axes the tested face's normal weighs,
-/// since [`NearBand`] projects the per-axis extents onto that normal: a 10 km X
-/// offset leaves a Z-normal face at the floor instead of opening it to ~2.4 mm and
-/// welding separate surfaces (`csg/world_frame_tests.rs`). Always THREE orders
-/// below the smallest real feature edge (~0.2 m), so a distinct parallel face
-/// can never be within it. All FMA-free f64 over input coords ⇒ byte-identical
-/// native==wasm. GATED on the near-coplanar-parent flag, so a transversal cut
-/// (every pinned box−box manifest face) never reaches it.
-fn near_on_surface_normal(c: [f64; 3], others: &[Tri]) -> Option<[f64; 3]> {
-    let mut band = NearBand::default();
-    band.observe_point(&c);
-    band.observe_tris(others);
-    others.iter().find_map(|t| near_on_surface_tri(c, t, &band))
-}
-
-/// BVH-accelerated equivalent of `on_surface_normal(c, a).is_some() ||
-/// near_on_surface_normal(c, a).is_some()` — does ANY triangle of `a` carry `c` on
-/// its face (exactly or within the snap band)? `a_band` carries `a`'s per-axis
-/// coordinate extents (hoisted once per arrangement, since only `c` varies per
-/// call). The query radius is [`NearBand::radius`], the isotropic UPPER bound
-/// over every plane normal — never the max-over-axes scalar, which is NOT such
-/// a bound and could drop a candidate the per-triangle test would accept — so
-/// candidates stay a superset and the exact per-triangle predicates decide; the
-/// result is `any`, so it is candidate-order independent and byte-identical to
-/// the linear scan.
-fn c_on_or_near_a(
+/// `bvh` MUST be built over `tris`, and `band` MUST be `NearBand::from_tris
+/// (tris)` — sized from `tris`'s OWN per-axis extents, hoisted once by the
+/// caller and never rebuilt per query. Before #3353 the two directions built
+/// this differently: an A-triangle went through a linear scan that rebuilt a
+/// fresh [`NearBand`] over the OTHER operand's triangles on every single
+/// call, while a B-triangle went through a BVH query against a band hoisted
+/// once for the whole arrangement. Both bottomed out in the same per-triangle
+/// primitives and (it turns out) the same band VALUE, so the two were never
+/// answering different tolerance questions — but reaching them via different
+/// mechanics left room for a candidate-selection or floating-point-order
+/// divergence at a near-degenerate rotated overlap. There is now exactly one
+/// function either direction calls, against a target whose BVH/band were
+/// built the same way, so there is no mechanism left for the two directions
+/// to disagree on the SAME coincident pair.
+///
+/// This function folds `c`'s own coordinates into `band` via `observe_point`
+/// (matching [`NearBand::radius`]'s precondition that the query point be
+/// included) before deriving the BVH query radius, tries the EXACT test
+/// before the near one per candidate (a coincident-shared-face verdict
+/// should prefer the bit-exact answer when available), and is `find_map`
+/// over BVH candidates — order-independent, so candidate order (hence BVH
+/// internal layout) can never change the verdict.
+fn coincident_face_normal(
     c: [f64; 3],
-    a: &[Tri],
+    tris: &[Tri],
     bvh: &super::super::broadphase::Bvh,
-    a_band: &NearBand,
+    band: &NearBand,
     scratch: &mut Vec<u32>,
-) -> bool {
-    let mut band = *a_band;
+) -> Option<[f64; 3]> {
+    let mut band = *band;
     band.observe_point(&c);
     scratch.clear();
     bvh.point_candidates(c, band.radius(), scratch);
-    scratch.iter().any(|&i| {
-        let t = &a[i as usize];
-        on_surface_tri(c, t).is_some() || near_on_surface_tri(c, t, &band).is_some()
+    scratch.iter().find_map(|&i| {
+        let t = &tris[i as usize];
+        on_surface_tri(c, t).or_else(|| near_on_surface_tri(c, t, &band))
     })
 }
 
@@ -277,6 +260,16 @@ pub(super) struct BComponents<'a> {
     /// Per-component ray-cast far length (`operand_extent`), exactly as the
     /// binary path computes it for its single operand.
     exts: Vec<f64>,
+    /// Per-component BVH, hoisted once and reused by every
+    /// [`Self::surface_normal`] query — the SAME acceleration structure shape
+    /// the A-operand's coincident-face probe has always used. Gives a
+    /// B-triangle's probe (built by wrapping the single A operand in a
+    /// `BComponents`, see `boolean_vids_components`) and an A-triangle's
+    /// probe the IDENTICAL mechanics (#3353).
+    bvhs: Vec<super::super::broadphase::Bvh>,
+    /// Per-component near-coplanar band, hoisted once from that component's
+    /// OWN triangles (`NearBand::from_tris`) — never rebuilt per query.
+    bands: Vec<NearBand>,
 }
 
 impl<'a> BComponents<'a> {
@@ -314,7 +307,9 @@ impl<'a> BComponents<'a> {
                 (lo, hi)
             })
             .collect();
-        Self { comps, aabbs, exts }
+        let bvhs = comps.iter().map(|c| super::super::broadphase::Bvh::build(c)).collect();
+        let bands = comps.iter().map(|c| NearBand::from_tris(c)).collect();
+        Self { comps, aabbs, exts, bvhs, bands }
     }
 
     /// Conservative "could the parity segment from `p` hit component `k`?" —
@@ -374,21 +369,17 @@ impl<'a> BComponents<'a> {
         })
     }
 
-    /// Regime-1 coincident-face probe across the components: the EXACT
-    /// [`on_surface_normal`] on every AABB-near component first, then the
-    /// snap-band [`near_on_surface_normal`] analogue (same priority order as
-    /// the binary path). Disjointness makes at most one component eligible.
-    fn surface_normal(&self, c: [f64; 3]) -> Option<[f64; 3]> {
+    /// Regime-1 coincident-face probe across the components:
+    /// [`coincident_face_normal`] against every AABB-near component's own
+    /// hoisted BVH/band (see [`Self::new`]) — the SAME function, with the
+    /// SAME band-sizing rule, that a B-triangle's probe uses in
+    /// `boolean_vids_components` (#3353: the two used to be structurally
+    /// different tests). Disjointness makes at most one component eligible,
+    /// so the per-component result is unambiguous regardless of order.
+    fn surface_normal(&self, c: [f64; 3], scratch: &mut Vec<u32>) -> Option<[f64; 3]> {
         for (k, comp) in self.comps.iter().enumerate() {
             if self.point_in_aabb(k, c) {
-                if let Some(n) = on_surface_normal(c, comp) {
-                    return Some(n);
-                }
-            }
-        }
-        for (k, comp) in self.comps.iter().enumerate() {
-            if self.point_in_aabb(k, c) {
-                if let Some(n) = near_on_surface_normal(c, comp) {
+                if let Some(n) = coincident_face_normal(c, comp, &self.bvhs[k], &self.bands[k], scratch) {
                     return Some(n);
                 }
             }
@@ -463,7 +454,7 @@ fn on_interface_keep(
 ///
 /// A sub-triangle's centroid is classified against the OTHER operand in one of
 /// three regimes:
-/// 1. **On a coincident SHARED face** (`on_surface_normal` finds a covering,
+/// 1. **On a coincident SHARED face** (`coincident_face_normal` finds a covering,
 ///    coplanar triangle of the other operand): classify by NORMAL AGREEMENT —
 ///    keep the A-copy for a co-oriented face on a union/intersection, or an
 ///    opposite face on a difference; drop the B-copy (dedup). This is the
@@ -500,15 +491,24 @@ pub(super) fn boolean_vids_components(
 ) -> Vec<[Vid; 3]> {
     use std::collections::HashSet;
     let ext_a = operand_extent(a);
-    // One BVH over operand A, reused for every B-face inside/outside ray-cast AND
-    // coincident/near-surface probe below (the dominant O(|tris_b|·|a|) scans on
-    // boolean-heavy meshes). `a_band` (hoisted) feeds the near-surface band.
+    // One BVH over operand A, reused for every B-face inside/outside ray-cast
+    // below (the dominant O(|tris_b|·|a|) scan on boolean-heavy meshes). The
+    // coincident/near-surface probe below uses its own `ac` (see below).
     let bvh_a = super::super::broadphase::Bvh::build(a);
-    let a_band = NearBand::from_tris(a);
     // Reuse the box the BVH build already computed, rather than rescanning `a` per
     // coplanar-parent B triangle. `unwrap_or` matters only for an empty `a`, where
     // the box is never read.
     let a_aabb = bvh_a.root_aabb().unwrap_or(([0.0; 3], [0.0; 3]));
+    // `a` as a single-component `BComponents`, so a B-triangle's coincident-face
+    // probe reaches [`coincident_face_normal`] through the IDENTICAL path an
+    // A-triangle's probe uses above (`bc.surface_normal`) — same BVH shape, same
+    // band-sizing rule, same combined exact-then-near candidate scan. This is
+    // the #3353 classification-level fix: the two directions used to be
+    // different functions (`c_on_or_near_a` vs `BComponents::surface_normal`)
+    // that could disagree on the same coincident pair at a near-degenerate
+    // rotated overlap (`sweep_261`); now there is only one function to call.
+    let a_as_components = [a];
+    let ac = BComponents::new(&a_as_components);
     let mut scratch: Vec<u32> = Vec::new();
     let dedup = matches!(op, BoolOp::Union | BoolOp::Intersection);
     let mut a_kept: HashSet<[Vid; 3]> = HashSet::new();
@@ -518,13 +518,13 @@ pub(super) fn boolean_vids_components(
         let cop_parent = arr.coplanar_a.get(i).copied().unwrap_or(false);
         let keep;
         // regime 1: coincident shared face → classify by normal agreement. Tried
-        // EXACT first, then the snap-band-flush analogue (`near_on_surface_normal`)
+        // EXACT first, then the snap-band-flush analogue (`near_on_surface_tri`)
         // which catches a face left a few µm off a TILTED shared plane by per-axis
         // import snapping (the #1007 flush roof-opening cap). The near test is
         // ungated (like the exact one) because a coincident-shared-face DROP/keep is
         // unconditionally correct, and its centroid-inside + µm-perp requirements
         // never match a transversal cut face (every pinned box−box manifest face).
-        if let Some(n_other) = bc.surface_normal(c) {
+        if let Some(n_other) = bc.surface_normal(c, &mut scratch) {
             let co_oriented = dot3(tri_normal(arr, tri), n_other) > 0.0;
             keep = match op {
                 BoolOp::Union | BoolOp::Intersection => co_oriented,
@@ -577,7 +577,7 @@ pub(super) fn boolean_vids_components(
         // own (the host imposes none on it) so `coplanar_b` is unset for it, yet it
         // is still a coincident shared face that must drop (the #1007 flush roof cap
         // — without the near drop here it survives and bridges the opening).
-        if c_on_or_near_a(c, a, &bvh_a, &a_band, &mut scratch) {
+        if ac.surface_normal(c, &mut scratch).is_some() {
             continue; // coplanar-shared B-copy: dropped (the A-copy is the kept one)
         }
         if cop_parent {

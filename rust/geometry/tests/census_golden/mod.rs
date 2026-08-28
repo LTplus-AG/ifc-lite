@@ -1514,9 +1514,19 @@ mod tests {
                     // and the host vanishes from the census with the lane green.
                     // The comment on the chain proves that shape is unreachable
                     // today. This asserts it, so the proof is enforced rather
-                    // than merely written down: it reds the moment someone adds
-                    // a fifth input to `is_torn_solid` without carrying it in
-                    // `reclassifications`, which is exactly what #3366 was.
+                    // than merely written down.
+                    //
+                    // It reds for a NARROWER class than the sibling test above,
+                    // because this arm is only reached once every other list is
+                    // empty too: a fifth input to `is_torn_solid` trips it only
+                    // when it is carried by NEITHER a directional count NOR
+                    // `reclassifications`. Dropping the `pre` clause from
+                    // `reclassifications`, i.e. reverting #3366, is that case,
+                    // and it reds here. Adding `&& !self.collapsed` to the
+                    // predicate is not: `collapsed` is already carried as a
+                    // directional count by `classify`, so such a pair routes to
+                    // `worse_counts` or `better` and only the sibling test
+                    // reds. Both directions measured.
                     assert!(
                         c.worse_gated.is_empty(),
                         "a gated flip with nothing else moving would land in NO bucket: {g:?} -> {r:?}"

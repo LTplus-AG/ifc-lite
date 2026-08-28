@@ -236,12 +236,13 @@ const VITEST_CONFIG_NAMES = [
  * file by construction, nothing to check".
  */
 function resolveVitestGlobs(pkgDir, testLooking) {
-  // Deliberately `existsSync`, NOT the existsOrThrow this file uses one
-  // function up. Measured, both ways, on a chmod-000 config: `statSync`
-  // SUCCEEDS on an unreadable file (the mode bits gate open(2), not stat(2)),
-  // so existsOrThrow returns true here and the failure lands on the read
-  // below either way. Swapping it in was an inert guard - identical exit code
-  // and identical message with and without it.
+  // Deliberately `existsSync`, and deliberately NOT `existsOrThrow` from
+  // ./lib/exists-or-throw.mjs, which this file's package walk uses via
+  // listWorkspacePackages. Measured, both ways, on a chmod-000 config:
+  // `statSync` SUCCEEDS on an unreadable file (the mode bits gate open(2), not
+  // stat(2)), so existsOrThrow returns true here and the failure lands on the
+  // read below either way. Swapping it in was an inert guard - identical exit
+  // code and identical message with and without it.
   //
   // There is no silent shrink on this path to begin with: the read throws and
   // the gate exits 1. The only defect was the SHAPE of that exit, a raw

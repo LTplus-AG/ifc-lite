@@ -59,7 +59,24 @@ export function listWorkspacePackages(root, fail, parents) {
     const parentDir = join(root, parent);
     if (!existsOrThrow(parentDir, 'package parent', fail)) continue;
     seenParents.push(parent);
-    for (const name of readdirSync(parentDir).sort()) {
+    // existsOrThrow answers "is it there", and for a DIRECTORY that is all it
+    // can answer: the mode bits gate opendir(3), not stat(2), so a mode-000
+    // parent stats clean and the refusal above never fires for the case its
+    // own label names. Unguarded, the scandir below then threw a raw EACCES
+    // with no gate message at all. Both halves are needed, and neither
+    // subsumes the other: stat catches a MISSING or non-directory parent,
+    // this catches an unreadable one.
+    let entries;
+    try {
+      entries = readdirSync(parentDir).sort();
+    } catch (err) {
+      fail(
+        `cannot read package parent ${parentDir}: ${err.code || err.message}. ` +
+          'Refusing to treat an unreadable parent as an empty one -- that is how ' +
+          'every package under it drops out of the audit at once.',
+      );
+    }
+    for (const name of entries) {
       // Skipping a dotfile is a CONSEQUENCE of a rule this code does not yet
       // read, not a rule of its own: pnpm-workspace.yaml's globs are
       // `packages/*`, `apps/*`, `examples/*`, and a bare `*` never matches a
@@ -78,9 +95,23 @@ export function listWorkspacePackages(root, fail, parents) {
       const pkgDir = join(parentDir, name);
       const pkgJsonPath = join(pkgDir, 'package.json');
       if (!existsOrThrow(pkgJsonPath, 'package manifest', fail)) continue;
+      // Read and parse are separate so they cannot be reported as each other.
+      // Folded together, an unreadable manifest came back as "is not valid
+      // JSON: EACCES", sending the reader to fix syntax on a file whose syntax
+      // is fine -- and the `cannot read package manifest` message above is
+      // unreachable for a mode-000 FILE, since statSync succeeds on one.
+      let raw;
+      try {
+        raw = readFileSync(pkgJsonPath, 'utf8');
+      } catch (err) {
+        fail(
+          `cannot read package manifest ${pkgJsonPath}: ${err.code || err.message}. ` +
+            'Refusing to treat an unreadable manifest as an absent one.',
+        );
+      }
       let pkgJson;
       try {
-        pkgJson = JSON.parse(readFileSync(pkgJsonPath, 'utf8'));
+        pkgJson = JSON.parse(raw);
       } catch (err) {
         fail(`${pkgJsonPath} is not valid JSON: ${err.message}`);
       }

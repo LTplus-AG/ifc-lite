@@ -665,6 +665,10 @@ test('--root with no argument is rejected', () => {
  */
 
 test('an unreadable package manifest is refused, not silently dropped from the audit (issue 3347)', (t) => {
+  // Same skip as the siblings in exists-or-throw.test.mjs and
+  // check-test-glob-coverage.test.mjs: chmod does not remove directory
+  // traversal on Windows, so the gate would audit both packages and exit 0.
+  if (process.platform === 'win32') return t.skip('chmod 000 does not block traversal on Windows');
   if (process.getuid?.() === 0) return t.skip('root traverses every directory regardless of mode');
   withTree({}, (root) => {
     write(root, 'packages/beta/package.json', JSON.stringify({ name: 'beta', scripts: { test: 'vitest run' } }));
@@ -741,4 +745,61 @@ test('the workspace-script reader shares the hardened walk, so it cannot go soft
     process.exitCode = previousExitCode;
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+/* ---------------------------------------------------------------- *
+ * The two cases existsOrThrow cannot reach on its own. `statSync`     *
+ * succeeds on both a mode-000 FILE and a mode-000 DIRECTORY, because  *
+ * the mode bits gate open(2)/opendir(3) and not stat(2). Both used to *
+ * fail closed with the WRONG diagnosis: a raw scandir stack for the   *
+ * parent, and "is not valid JSON" for the manifest.                   *
+ * ---------------------------------------------------------------- */
+
+test('an unreadable package PARENT is named, not surfaced as a raw scandir stack', (t) => {
+  if (process.platform === 'win32') return t.skip('chmod 000 does not block traversal on Windows');
+  if (process.getuid?.() === 0) return t.skip('root traverses every directory regardless of mode');
+  withTree({}, (root) => {
+    const parent = join(root, 'packages');
+    chmodSync(parent, 0o000);
+    try {
+      const { status, out } = run(root);
+      assert.equal(status, 1, 'an unreadable package parent must fail the gate');
+      assert.match(out, /cannot read package parent/);
+      assert.doesNotMatch(out, /at Object\.readdirSync/, 'must not surface a raw node stack');
+    } finally {
+      chmodSync(parent, 0o755);
+    }
+  });
+});
+
+test('an unreadable package MANIFEST is not reported as a JSON syntax error', (t) => {
+  if (process.platform === 'win32') return t.skip('chmod does not gate reads on Windows');
+  if (process.getuid?.() === 0) return t.skip('root reads a 000 file regardless of mode');
+  withTree({}, (root) => {
+    const manifest = write(root, 'packages/beta/package.json', JSON.stringify({ name: 'beta' }));
+    chmodSync(manifest, 0o000);
+    try {
+      const { status, out } = run(root);
+      assert.equal(status, 1, 'an unreadable manifest must fail the gate');
+      assert.match(out, /cannot read package manifest/);
+      // The defect. EACCES arrived inside the JSON.parse catch and was
+      // reported as bad syntax, sending the reader to fix a file whose
+      // syntax is fine.
+      assert.doesNotMatch(out, /is not valid JSON/, 'must not blame the syntax of a file it could not read');
+    } finally {
+      chmodSync(manifest, 0o644);
+    }
+  });
+});
+
+test('a genuinely malformed manifest still reports a SYNTAX error', () => {
+  // Non-vacuity for the pair above: the new read/parse split must not turn
+  // every manifest failure into "cannot read".
+  withTree({}, (root) => {
+    write(root, 'packages/beta/package.json', '{oops');
+    const { status, out } = run(root);
+    assert.equal(status, 1);
+    assert.match(out, /is not valid JSON/);
+    assert.doesNotMatch(out, /cannot read package manifest/);
+  });
 });

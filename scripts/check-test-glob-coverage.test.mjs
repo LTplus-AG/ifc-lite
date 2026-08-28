@@ -361,13 +361,14 @@ test('an unreadable vitest config is reported by the gate, not as a raw stack', 
   const dir = writeTree(files);
   const config = join(dir, 'packages/fixture/vitest.config.ts');
 
-  // BOTH directions. Readable first, so a fixture that fails for some unrelated
-  // reason cannot be mistaken for the refusal firing.
-  const readable = runOn(dir);
-  assert.equal(readable.status, 0, `readable config should audit cleanly:\n${readable.out}`);
-
-  chmodSync(config, 0o000);
   try {
+    // BOTH directions. Readable first, so a fixture that fails for some
+    // unrelated reason cannot be mistaken for the refusal firing. Inside the
+    // try, or a failure here leaks the tree instead of cleaning up.
+    const readable = runOn(dir);
+    assert.equal(readable.status, 0, `readable config should audit cleanly:\n${readable.out}`);
+
+    chmodSync(config, 0o000);
     const locked = runOn(dir);
     assert.equal(locked.status, 1, 'an unreadable config must fail the gate');
     assert.match(locked.out, /cannot read vitest config/);

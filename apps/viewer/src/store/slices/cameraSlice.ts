@@ -142,17 +142,25 @@ export const createCameraSlice: StateCreator<CameraSlice, [], [], CameraSlice> =
  * are NOT driven here. The reframe comes from the load path instead. Calling
  * an actuator from a teardown would be a behaviour change, not a tidy-up.
  *
- * `pendingCameraRotation`, `cameraCallbacks`, the two callback slots and
- * `cameraRotationListeners` are absent from `owns`: they are renderer/host
- * wiring that outlives a file swap, and no teardown path touches them today.
+ * `pendingCameraRotation` IS owned (#3364): it is a replay buffer keyed to
+ * whatever renderer registers `setCameraCallbacks` NEXT, not to the model
+ * that recorded it. A rotation set while no actuator was registered
+ * (`setCameraRotation`, above) survives a session reset untouched, and the
+ * next model's `Viewport` mounting and calling `setCameraCallbacks` replays
+ * the OUTGOING model's rotation onto the INCOMING one.
+ *
+ * `cameraCallbacks`, the two callback slots and `cameraRotationListeners`
+ * are still absent from `owns`: they are renderer/host wiring that outlives
+ * a file swap, and no teardown path touches them today.
  */
 export const cameraTeardown = defineSliceTeardown(
   'cameraSlice',
-  ['cameraRotation', 'projectionMode'],
+  ['cameraRotation', 'pendingCameraRotation', 'projectionMode'],
   (scope) => {
     if (scope.kind !== 'session-reset') return {};
     return {
       cameraRotation: defaultCameraRotation(),
+      pendingCameraRotation: null,
       projectionMode: DEFAULT_PROJECTION_MODE,
     };
   },

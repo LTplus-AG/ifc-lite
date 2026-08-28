@@ -76,6 +76,85 @@ const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLISH_POLL_INTERVAL_MS = 5000;
 const PUBLISH_POLL_TIMEOUT_MS = 660_000;
 
+// The per-crate cap above is not a bound on the RELEASE. Seven crates at 660s
+// is 77 minutes, against a CARGO_REGISTRY_TOKEN that `release.yml` documents as
+// short-lived, 30 minutes from the mint, at lines 13, 205 and 243. Spend longer
+// than the token lasts and a later `cargo publish` fails AUTHENTICATION with
+// earlier crates already on the registry: the same half-publish this poll exists
+// to prevent, wearing an error that points at auth rather than propagation.
+//
+// So the loop carries one wall-clock budget for all crates and gives each crate
+// whatever is left of it, capped by the per-crate value.
+//
+// BE EXACT ABOUT WHAT THIS BOUNDS, because it is less than it looks.
+//
+// It bounds the publish phase: everything from the first `cargo publish` to the
+// last index wait, INCLUDING the seven `cargo publish` invocations themselves,
+// which run full verification builds (no `--no-verify`) and cargo's own ~60s
+// index wait each. It does NOT bound token consumption. The token is minted at
+// `release.yml`'s auth step, and between that and this loop the changesets step
+// runs a second `pnpm build`, `test:esm`, and the entire npm publish with
+// per-tarball provenance. None of that is charged here, so total consumption is
+// (elapsed since mint) + this budget, which is not bounded above by 900s.
+//
+// Bounding the real constraint needs the mint timestamp plumbed in from the
+// workflow and the deadline taken as the earlier of the two — this is #3258,
+// closed by `tokenMintedAtMs` below. When it is supplied, the deadline is
+// whichever comes first: this budget, or the token's own claimed lifetime.
+// When it is NOT supplied (a manual/local run with no minted token), this
+// constant is the only bound, same as before #3258 — it stops the unbounded
+// 77-minute case but not total token consumption.
+//
+// For the same reason, do not read 900s as "enough for one 600s CDN TTL stall
+// plus slack". That subtraction ignores the seven verification builds inside
+// the same budget and has not been measured. Raising it to fit a worst case of
+// cap x crates is worse still: that worst case cannot be afforded at all.
+//
+// The 30-minute figure is this repo's own claim in release.yml, not something
+// read off `crates-io-auth-action`, whose action.yml says only "temporary".
+const PUBLISH_PHASE_BUDGET_MS = 900_000;
+
+// The token's claimed lifetime — same unverified 30-minute figure as above,
+// this repo's own claim (release.yml lines 13, 205, 243), not something
+// `crates-io-auth-action` exposes (its action.yml outputs only `token`, no
+// expiry).
+const CRATES_TOKEN_LIFETIME_MS = 30 * 60 * 1000;
+
+// Subtracted from CRATES_TOKEN_LIFETIME_MS before treating it as a deadline.
+// `tokenMintedAtMs` is stamped by a workflow step that runs AFTER the auth
+// action returns, not at the instant the token is actually issued, and the
+// gap between "cargo publish presents the token" and "the registry checks
+// it" is not zero either. This margin keeps that slack from being counted as
+// usable budget.
+const CRATES_TOKEN_MARGIN_MS = 60_000;
+
+/**
+ * Reads `CRATES_TOKEN_MINTED_AT_MS` from an env-like object. Returns
+ * `undefined` when unset (a manual/local run with no minted token — the
+ * budget-only deadline still applies) and THROWS when set but not a finite
+ * epoch-milliseconds number, rather than letting a malformed value silently
+ * defeat the bound: an un-validated NaN propagates through Math.min and every
+ * `<= 0` / `<` comparison below without ever being caught, which is exactly
+ * how a non-numeric budget was found to hang the release forever (see the
+ * PR/issue discussion on #3258). Validating at this boundary is what makes
+ * that latent failure mode unreachable once this value is read from
+ * `process.env` in `main()`.
+ */
+export function parseTokenMintedAtMs(env = process.env) {
+  const raw = env.CRATES_TOKEN_MINTED_AT_MS;
+  if (raw === undefined || raw === '') return undefined;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(
+      `CRATES_TOKEN_MINTED_AT_MS is set to ${JSON.stringify(raw)}, which is not a finite ` +
+        `number of milliseconds since the epoch. Refusing to start the crates.io publish ` +
+        `phase with a token-budget deadline that cannot be computed, rather than silently ` +
+        `falling back to an unbounded one.`
+    );
+  }
+  return parsed;
+}
+
 export async function publishAllCrates({
   crates = CRATES,
   version,
@@ -93,9 +172,60 @@ export async function publishAllCrates({
   indexCheckFn = isInSparseIndex,
   intervalMs = PUBLISH_POLL_INTERVAL_MS,
   timeoutMs = PUBLISH_POLL_TIMEOUT_MS,
+  totalBudgetMs = PUBLISH_PHASE_BUDGET_MS,
+  // Epoch-ms timestamp of when the CARGO_REGISTRY_TOKEN was minted, stamped
+  // by `release.yml` right after the OIDC exchange and plumbed down through
+  // `pnpm run release` as `CRATES_TOKEN_MINTED_AT_MS`. When supplied, the
+  // deadline below is capped by the token's own claimed lifetime — not just
+  // this function's own budget — so time already spent between the mint and
+  // this call (a second build, test:esm, the whole npm publish; see the
+  // header) is charged against it. `undefined` (no minted token — a
+  // manual/local run) falls back to the budget-only deadline this function
+  // has always used.
+  tokenMintedAtMs,
   sleepFn,
 } = {}) {
+  const startedAt = Date.now();
+  const budgetOnlyDeadline = startedAt + totalBudgetMs;
+  const tokenDeadline =
+    tokenMintedAtMs == null ? undefined : tokenMintedAtMs + CRATES_TOKEN_LIFETIME_MS - CRATES_TOKEN_MARGIN_MS;
+  // One deadline for the whole run, not one per crate. See the note on
+  // PUBLISH_PHASE_BUDGET_MS: the binding constraint is the registry token,
+  // which does not restart between crates. Whichever of the two candidate
+  // deadlines is EARLIER wins — a large release-wide budget must not paper
+  // over a token that is already close to (or past) its own lifetime.
+  const budgetDeadline = tokenDeadline === undefined ? budgetOnlyDeadline : Math.min(budgetOnlyDeadline, tokenDeadline);
+  const boundByToken = tokenDeadline !== undefined && tokenDeadline < budgetOnlyDeadline;
+  // Seconds-from-now this run actually has, for the messages below. Equal to
+  // `totalBudgetMs` whenever the token isn't the tighter bound, so every
+  // pre-#3258 message stays byte-identical when no token is supplied.
+  const effectiveBudgetMs = budgetDeadline - startedAt;
+
   for (const crate of crates) {
+    // BEFORE the publish, not after. Placed below it, this guard still ran
+    // `cargo publish` for the crate it then named as "not published" — one
+    // irreversible upload past the point it had decided further uploads were
+    // unsafe, which is the failure it exists to prevent.
+    const budgetLeftMs = budgetDeadline - Date.now();
+    if (budgetLeftMs <= 0) {
+      throw new Error(
+        `Ran out of publish-phase budget before ${crate}@${version}, which has NOT ` +
+          `been published. The release has spent its whole ` +
+          `${Math.round(effectiveBudgetMs / 1000)}s allowance on publishing and on waiting ` +
+          `for crates to become resolvable` +
+          (boundByToken
+            ? ` — this run is bounded by the crates.io token's own remaining lifetime ` +
+              `(minted at ${new Date(tokenMintedAtMs).toISOString()}), tighter here than the ` +
+              `${Math.round(totalBudgetMs / 1000)}s release-wide budget`
+            : '') +
+          `. The crates.io token from ` +
+          `crates-io-auth-action is short-lived (this repo's release.yml documents 30 ` +
+          `minutes from the mint), so publishing further crates now risks failing on ` +
+          `AUTHENTICATION with earlier crates already on the registry. Stopping while ` +
+          `the failure is still legible. Re-running is safe: already-published crates ` +
+          `are not re-published, and a re-run mints a fresh token.`
+      );
+    }
     // The already-published pre-check is an OPTIMISATION, not a gate: a
     // registry error here (one that outlasted `cratesIoGet`'s retry budget)
     // must not abort a release part-way down this list. Fall through to the
@@ -129,24 +259,55 @@ export async function publishAllCrates({
     // API record — skipping straight past it would re-create the original
     // failure at its first dependent if the index still has not caught up.
     console.log(`⏳ Waiting for ${crate}@${version} to appear in the crates.io index …`);
+    // Measured HERE, not reused from the guard above. `publishFn` runs a full
+    // verification build between the two points, and sizing the wait from the
+    // pre-publish remainder let that build's time escape the budget entirely:
+    // with a 900s budget and a 400s publish, the stale remainder still exceeded
+    // the 660s cap, so the cap won, the wait ran in full, the phase ended 160s
+    // past the deadline, and the message blamed the cap without mentioning the
+    // budget. The budget was silently defeated for exactly the crate whose
+    // publish had consumed it.
+    const remainingMs = budgetDeadline - Date.now();
+    // Whichever binds first. The per-crate cap keeps one stuck crate from
+    // eating the whole run; the budget keeps the run inside the token.
+    const thisWaitMs = Math.max(0, Math.min(timeoutMs, remainingMs));
     const { ok, waitedMs, attempts, lastError } = await waitUntilInIndex(crate, version, {
       checkFn: indexCheckFn,
       intervalMs,
-      timeoutMs,
+      timeoutMs: thisWaitMs,
       ...(sleepFn ? { sleepFn } : {}),
     });
     if (!ok) {
+      const boundedByBudget = remainingMs < timeoutMs;
       throw new Error(
         `${crate}@${version} did not appear in the crates.io index within ` +
-          `${Math.round(timeoutMs / 1000)}s (${attempts} checks). ` +
+          `${Math.round(thisWaitMs / 1000)}s (${attempts} checks)` +
+          (boundedByBudget
+            ? `, which was the remainder of the ${Math.round(effectiveBudgetMs / 1000)}s ` +
+              `release-wide budget rather than the ${Math.round(timeoutMs / 1000)}s ` +
+              `per-crate cap` +
+              (boundByToken ? ` (itself capped by the crates.io token's remaining lifetime)` : ``) +
+              `. `
+            : `. `) +
           `The upload succeeded (or the version was already uploaded), but the index ` +
           `cargo resolves against has not caught up — publishing the next crate now ` +
           `would fail to resolve this one. Failing the release rather than racing it. ` +
-          `Re-running is safe (already-published crates are not re-published), but if ` +
-          `the cause is a stale CDN edge rather than the origin, an immediate re-run ` +
-          `hits the same cached copy: check ` +
-          `\`curl -sI https://index.crates.io/<path>\` for last-modified and age, and ` +
-          `if the origin already has the version, wait out the remaining max-age.` +
+          // Two different causes need two different remedies. Cut short by the
+          // budget, the index may be perfectly healthy and the answer is a fresh
+          // token; stuck at the cap, the answer is to look at the CDN edge.
+          // Giving the CDN remedy for a budget stop sends the operator to
+          // inspect something that was never the problem.
+          (boundedByBudget
+            ? `The wait was cut short by the budget, not by a stuck index, so the ` +
+              `index may be fine. The crates.io token is short-lived; re-run to mint ` +
+              `a fresh one. Already-published crates are not re-published, so a ` +
+              `re-run resumes rather than repeating.`
+            : `Re-running is safe (already-published crates are not re-published), ` +
+              `but if the cause is a stale CDN edge rather than the origin, an ` +
+              `immediate re-run hits the same cached copy: check ` +
+              `\`curl -sI https://index.crates.io/<path>\` for last-modified and age, ` +
+              `and if the origin already has the version, wait out the remaining ` +
+              `max-age.`) +
           // Distinguishes "the index never caught up" from "crates.io was
           // erroring the whole time" — the same message for both would send
           // the operator hunting a propagation problem during an outage.
@@ -159,7 +320,11 @@ export async function publishAllCrates({
 
 async function main() {
   const version = readWorkspaceVersion(rootDir);
-  await publishAllCrates({ version, cwd: rootDir });
+  // Validated at this boundary, once, before anything else runs — see
+  // `parseTokenMintedAtMs`. Unset (no `release.yml` step wired it in) falls
+  // back to the budget-only deadline `publishAllCrates` has always used.
+  const tokenMintedAtMs = parseTokenMintedAtMs();
+  await publishAllCrates({ version, cwd: rootDir, tokenMintedAtMs });
 }
 
 // Only run when invoked directly (`node scripts/release-crates.mjs`), not

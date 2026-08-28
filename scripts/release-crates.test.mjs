@@ -15,13 +15,16 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { publishAllCrates } from './release-crates.mjs';
+import { publishAllCrates, parseTokenMintedAtMs } from './release-crates.mjs';
 
 function fakeClock(start = 0) {
   let now = start;
   const realNow = Date.now;
   Date.now = () => now;
   return {
+    advance: (ms) => {
+      now += ms;
+    },
     sleepFn: async (ms) => {
       now += ms;
     },
@@ -166,6 +169,141 @@ test('a transient crates.io error mid-list does NOT abort the release into a par
       published,
       ['ifc-lite-core', 'ifc-lite-geometry', 'ifc-lite-clash'],
       'a blip must not leave the release stopped part-way down the list'
+    );
+  } finally {
+    clock.restore();
+  }
+});
+
+test('the budget charges cargo publish too, not only the index waits', async () => {
+  // The constant is PUBLISH_PHASE_BUDGET_MS and the comment says it covers the
+  // seven `cargo publish` invocations, which run full verification builds. No
+  // test charged anything but index waits, so that claim was unverified: an
+  // implementation accumulating only `waitedMs` passed the whole file.
+  //
+  // Here `publishFn` advances the clock. With a 500s budget and a 400s publish,
+  // only 100s of waiting may remain; charging index waits alone would allow the
+  // full 660s cap.
+  const clock = fakeClock();
+  try {
+    await assert.rejects(
+      () =>
+        publishAllCrates({
+          crates: ['ifc-lite-core'],
+          version: '6.0.0',
+          publishFn: () => clock.advance(400_000),
+          preCheckFn: async () => false,
+          indexCheckFn: async () => false,
+          intervalMs: 5000,
+          timeoutMs: 660_000,
+          totalBudgetMs: 500_000,
+          sleepFn: clock.sleepFn,
+        }),
+      /within 100s[\s\S]*remainder of the 500s release-wide budget/
+    );
+  } finally {
+    clock.restore();
+  }
+});
+
+test('the index wait is bounded by ONE release-wide budget, not by the per-crate cap x crates', async () => {
+  // The defect this pins: 7 crates x a 660s per-crate cap is 77 minutes, inside
+  // a CARGO_REGISTRY_TOKEN that expires in 30. If the budget restarts per crate
+  // it enforces nothing across the run, and a later `cargo publish` fails on
+  // AUTH with earlier crates already published.
+  //
+  // The discriminating shape matters, and my first attempt at this test did not
+  // have it: with a budget barely above one cap, the run dies on the FIRST
+  // crate either way and the reset is never observed. So the first crate must
+  // SUCCEED and consume budget, and the second must show a shortened wait.
+  const clock = fakeClock();
+  try {
+    const published = [];
+    // core becomes visible only after 400s of waiting; clash never does.
+    const indexCheckFn = async (crate) => crate === 'ifc-lite-core' && Date.now() >= 400_000;
+
+    await assert.rejects(
+      () =>
+        publishAllCrates({
+          crates: ['ifc-lite-core', 'ifc-lite-clash'],
+          version: '6.0.0',
+          publishFn: (c) => published.push(c),
+          preCheckFn: async () => false,
+          indexCheckFn,
+          intervalMs: 5000,
+          timeoutMs: 660_000, // per-crate cap
+          totalBudgetMs: 700_000, // one cap plus a little
+          sleepFn: clock.sleepFn,
+        }),
+      // With ONE shared budget, core's 400s leaves clash ~300s, so clash's wait
+      // is bounded by the budget and the message says so. With a per-crate
+      // reset, clash would get its full 660s cap and this phrase is absent.
+      /remainder of the 700s release-wide budget rather than the 660s per-crate cap/
+    );
+    assert.deepEqual(published, ['ifc-lite-core', 'ifc-lite-clash']);
+  } finally {
+    clock.restore();
+  }
+});
+
+test('a budget stop happens BEFORE the publish, so the crate it names is really unpublished', async () => {
+  // The guard used to sit below `publishFn`, so it ran `cargo publish` for the
+  // crate it then reported as not published: one irreversible upload past the
+  // point it had decided further uploads were unsafe. The message was false and
+  // the guard defeated its own purpose.
+  const clock = fakeClock();
+  try {
+    const published = [];
+    await assert.rejects(
+      () =>
+        publishAllCrates({
+          crates: ['ifc-lite-core', 'ifc-lite-clash', 'ifc-lite-geometry'],
+          version: '6.0.0',
+          publishFn: (c) => published.push(c),
+          preCheckFn: async () => false,
+          // core becomes visible exactly as the budget runs out.
+          indexCheckFn: async (c) => c === 'ifc-lite-core' && Date.now() >= 300_000,
+          intervalMs: 5000,
+          timeoutMs: 660_000,
+          totalBudgetMs: 300_000,
+          sleepFn: clock.sleepFn,
+        }),
+      /before ifc-lite-clash@6\.0\.0, which has NOT been published/
+    );
+    // The assertion that actually catches the defect: clash must not appear.
+    assert.deepEqual(published, ['ifc-lite-core']);
+  } finally {
+    clock.restore();
+  }
+});
+
+test('a crate whose wait is cut short by the budget says so, and gives the token remedy not the CDN one', async () => {
+  // Two different failures must not read the same. "Cap exceeded" means the
+  // index is genuinely stuck; "budget exceeded" means stop before the token
+  // dies. An operator who cannot tell them apart re-runs into the wrong one.
+  const clock = fakeClock();
+  try {
+    await assert.rejects(
+      () =>
+        publishAllCrates({
+          crates: ['ifc-lite-core'],
+          version: '6.0.0',
+          publishFn: () => {},
+          preCheckFn: async () => false,
+          indexCheckFn: async () => false,
+          intervalMs: 5000,
+          timeoutMs: 660_000,
+          totalBudgetMs: 30_000, // budget binds well before the cap
+          sleepFn: clock.sleepFn,
+        }),
+      // Asserts across the JOIN, not just the prefix. A stray `+ +` here coerced
+      // the tail to NaN and swallowed a whole sentence while a prefix-only
+      // assertion stayed green.
+      // Spans the join (a stray `+ +` once coerced the tail to NaN and swallowed
+      // a sentence while prefix-only assertions stayed green), and pins the
+      // budget-specific remedy: a budget stop must NOT send the operator to
+      // inspect a CDN edge that was never the problem.
+      /remainder of the 30s release-wide budget rather than the 660s per-crate cap\. The upload succeeded[\s\S]*cut short by the budget, not by a stuck index[\s\S]*mint\s+a fresh one/
     );
   } finally {
     clock.restore();
@@ -321,4 +459,123 @@ test('the DEFAULT wiring polls the sparse index and pre-checks the API — not o
     globalThis.fetch = realFetch;
     clock.restore();
   }
+});
+
+// #3258: the budget started counting only inside `publishAllCrates`, so
+// unmeasured work between the token mint and this loop (a second build,
+// test:esm, the whole npm publish) was never charged against it. Passing
+// `tokenMintedAtMs` closes that: the deadline becomes whichever is EARLIER,
+// this budget or the token's own claimed lifetime measured from the mint.
+
+test('a token minted well before the loop starts is already past its lifetime, and a large budget alone would have missed that (#3258)', async () => {
+  const clock = fakeClock(); // "now" = 0
+  try {
+    // Simulates the real defect: by the time this loop runs, the token was
+    // already minted 2,000,000ms (~33min) ago — standing in for the
+    // unmeasured second build + test:esm + full npm publish that happens
+    // between the mint and here. The 30-minute token (minus the 60s margin)
+    // is therefore already expired, even though the release-wide budget
+    // below is generous and has never been touched.
+    const mintedAtMs = -2_000_000;
+    await assert.rejects(
+      () =>
+        publishAllCrates({
+          crates: ['ifc-lite-core'],
+          version: '6.0.0',
+          publishFn: () => {
+            throw new Error('must not publish: the crates.io token is already past its lifetime');
+          },
+          preCheckFn: async () => false,
+          indexCheckFn: async () => false,
+          intervalMs: 5000,
+          timeoutMs: 660_000,
+          totalBudgetMs: 900_000, // plenty of budget-only headroom
+          tokenMintedAtMs: mintedAtMs,
+          sleepFn: clock.sleepFn,
+        }),
+      /Ran out of publish-phase budget before ifc-lite-core@6\.0\.0[\s\S]*crates\.io token's own remaining lifetime/
+    );
+  } finally {
+    clock.restore();
+  }
+});
+
+test('the token bound charges the SAME publish-phase work as the release-wide budget, so a stall it alone would have allowed is now caught', async () => {
+  // With no token, the budget is 3,000,000ms and would not bind here at all.
+  // With the token, the 30-minute (minus 60s margin) lifetime from the mint
+  // is the tighter deadline, so the same publish + index-wait sequence must
+  // now fail against it instead of sailing through on the oversized budget.
+  const clock = fakeClock();
+  try {
+    await assert.rejects(
+      () =>
+        publishAllCrates({
+          crates: ['ifc-lite-core'],
+          version: '6.0.0',
+          // Mint happens at the same instant this loop starts (the best
+          // case for the old, unfixed code — even here it must now bind).
+          tokenMintedAtMs: 0,
+          publishFn: () => clock.advance(1_700_000), // 28m20s of build+verify
+          preCheckFn: async () => false,
+          indexCheckFn: async () => false,
+          intervalMs: 5000,
+          timeoutMs: 660_000,
+          totalBudgetMs: 3_000_000, // deliberately far looser than the token
+          sleepFn: clock.sleepFn,
+        }),
+      /did not appear in the crates\.io index within 40s[\s\S]*remainder of the 1740s release-wide budget[\s\S]*capped by the crates\.io token/
+    );
+  } finally {
+    clock.restore();
+  }
+});
+
+test('without a minted-token timestamp, the deadline falls back to the release-wide budget only (manual/local run)', async () => {
+  // Pins the pre-#3258 fallback: `tokenMintedAtMs` omitted must reproduce the
+  // exact old message, unchanged, so a local `node scripts/release-crates.mjs`
+  // run (no minted token to bound against) is not newly and needlessly
+  // stricter.
+  const clock = fakeClock();
+  try {
+    await assert.rejects(
+      () =>
+        publishAllCrates({
+          crates: ['ifc-lite-core'],
+          version: '6.0.0',
+          publishFn: () => clock.advance(400_000),
+          preCheckFn: async () => false,
+          indexCheckFn: async () => false,
+          intervalMs: 5000,
+          timeoutMs: 660_000,
+          totalBudgetMs: 500_000,
+          sleepFn: clock.sleepFn,
+        }),
+      /within 100s[\s\S]*remainder of the 500s release-wide budget rather than the 660s per-crate cap\. /
+    );
+  } finally {
+    clock.restore();
+  }
+});
+
+test('parseTokenMintedAtMs returns undefined when CRATES_TOKEN_MINTED_AT_MS is unset', () => {
+  assert.equal(parseTokenMintedAtMs({}), undefined);
+});
+
+test('parseTokenMintedAtMs returns undefined when CRATES_TOKEN_MINTED_AT_MS is the empty string', () => {
+  assert.equal(parseTokenMintedAtMs({ CRATES_TOKEN_MINTED_AT_MS: '' }), undefined);
+});
+
+test('parseTokenMintedAtMs parses a valid numeric string', () => {
+  assert.equal(parseTokenMintedAtMs({ CRATES_TOKEN_MINTED_AT_MS: '1735689600000' }), 1735689600000);
+});
+
+test('parseTokenMintedAtMs REFUSES a non-numeric value instead of letting NaN silently defeat the bound', () => {
+  // A NaN deadline would propagate through Math.min and every `<=`/`<`
+  // comparison in `publishAllCrates` without ever tripping — the exact "hangs
+  // the release forever" shape flagged on #3258 for an unvalidated budget
+  // read from the environment.
+  assert.throws(
+    () => parseTokenMintedAtMs({ CRATES_TOKEN_MINTED_AT_MS: 'not-a-number' }),
+    /CRATES_TOKEN_MINTED_AT_MS.*not-a-number/
+  );
 });

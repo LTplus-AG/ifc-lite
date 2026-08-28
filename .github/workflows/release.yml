@@ -214,6 +214,23 @@ jobs:
         id: crates-auth
         uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
 
+      # Stamp the mint time immediately after the token above, NOT after the
+      # semver-gate installs or the publish-script step that consumes it
+      # (#3258). `crates-io-auth-action` exposes only the token — no expiry
+      # (see its action.yml) — so the only way to know how much of the
+      # token's claimed 30-minute lifetime is left is to record when this
+      # step ran and do the arithmetic ourselves downstream. Passed to the
+      # changesets step below as CRATES_TOKEN_MINTED_AT_MS,
+      # `scripts/release-crates.mjs` takes the publish-phase deadline as the
+      # earlier of its own release-wide budget and (mint time + 30 minutes −
+      # a margin), so time already spent on the semver gate below, the
+      # second build, `test:esm`, and the full npm publish between here and
+      # the crates loop is charged against the token's real remaining
+      # lifetime instead of escaping the bound entirely.
+      - name: Stamp crates.io token mint time
+        id: crates-auth-time
+        run: echo "minted_at_ms=$(node -e 'process.stdout.write(String(Date.now()))')" >> "$GITHUB_OUTPUT"
+
       # SEMVER GATE for the crates (issue #3216). `pnpm release` runs
       # `check:rust-semver` before it publishes anything; these two steps put
       # the tool it needs on PATH.
@@ -262,6 +279,12 @@ jobs:
           NPM_CONFIG_PROVENANCE: 'true'
           # crates.io token minted via OIDC above; expires in 30 minutes.
           CARGO_REGISTRY_TOKEN: ${{ steps.crates-auth.outputs.token }}
+          # When the token above was minted, so `scripts/release-crates.mjs`
+          # can bound the publish phase by the token's real remaining
+          # lifetime rather than by a budget that only starts counting once
+          # this whole step (build, test:esm, npm publish) is already done.
+          # See the comment on the "Stamp crates.io token mint time" step.
+          CRATES_TOKEN_MINTED_AT_MS: ${{ steps.crates-auth-time.outputs.minted_at_ms }}
 
       # Whether to create this version's release artifacts.
       #

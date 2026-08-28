@@ -24,7 +24,11 @@
  *     debt is frozen; a listed file may stay flat or shrink, never grow.
  *
  * Shrinking a file to <= 400 lets you delete its row, and the gate says so.
- * Budgets ratchet DOWN only: shrink or split instead of raising one.
+ * Budgets ratchet DOWN by default: prefer shrinking or splitting to raising
+ * one. A raise is not forbidden, it is deliberate -- `--update --allow-raise`,
+ * justified per file in the PR -- and the allowlist header says the same. The
+ * two must keep saying the same thing: a reviewer reaches whichever copy sits
+ * in the file they are editing, and #3398 was filed because they disagreed.
  *
  * WIRED INTO CI in the node-tests job of .github/workflows/test.yml, next to
  * the other source-shape gates. The initial allowlist grandfathers 312 files

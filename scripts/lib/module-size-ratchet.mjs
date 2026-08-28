@@ -11,8 +11,11 @@
  *
  * This mirrors `rust/processing/tests/module_size_ratchet.rs` deliberately:
  * same 400-line limit, same `<budget> <path>` allowlist format, same FNV-1a
- * digest over the sorted rows, same "shrink or split, never raise" contract.
- * Two files, one rule.
+ * digest over the sorted rows, same "shrink or split" preference. Two files,
+ * one rule -- with one asymmetry worth stating rather than glossing: the TS
+ * side has a sanctioned escape hatch (`--update --allow-raise`) and the Rust
+ * twin has none, so "never raise" is literally true there and only the default
+ * here.
  */
 
 /** AGENTS.md: "split modules over ~400 non-generated lines". */

@@ -7,7 +7,8 @@
 //! `intersection` here are what the `ClippingProcessor` seam calls.
 
 use super::arrangement::{
-    boolean, difference_all, difference_all_lenient, union_all, BoolOp, Tri,
+    boolean, boolean_with_conformity, difference_all, difference_all_lenient, union_all, BoolOp,
+    Tri,
 };
 use super::signed_volume::signed_volume6;
 use crate::mesh::Mesh;
@@ -395,6 +396,15 @@ pub fn subtract_many(host: &Mesh, cutters: &[&Mesh]) -> Option<Mesh> {
 
 /// `a ∪ b` as a `Mesh`.
 pub fn union(a: &Mesh, b: &Mesh) -> Mesh {
+    union_with_conformity(a, b).0
+}
+
+/// Like [`union`], but also returns whether the pairwise arrangement backing
+/// it was CONFORMING (`Arrangement::unrecovered == 0`), via
+/// [`boolean_with_conformity`]. Diagnostics-only companion (issue #3353's
+/// classification-level tear): `union()` computes and discards this same
+/// signal, unchanged.
+pub fn union_with_conformity(a: &Mesh, b: &Mesh) -> (Mesh, bool) {
     // Enter the #1109 escalation budget exactly like `subtract` does: begin a
     // fresh PER-BOOLEAN count (this is a distinct operation) while the per-ELEMENT
     // accumulator is left intact — `begin()` resets only the per-op counter, so a
@@ -406,7 +416,7 @@ pub fn union(a: &Mesh, b: &Mesh) -> Mesh {
     super::budget::begin();
     let a = orient_outward(mesh_to_tris(a));
     let b = orient_outward(mesh_to_tris(b));
-    let out = boolean(&a, &b, BoolOp::Union);
+    let (out, conforming) = boolean_with_conformity(&a, &b, BoolOp::Union);
     // On a budget trip `arrange` bailed mid-way and `out` is a PARTIAL arrangement.
     // Discard it and return empty — the graceful-fallback signal the callers already
     // handle (`csg::union_mesh` degrades to a plain merge; the #960 roof
@@ -414,9 +424,9 @@ pub fn union(a: &Mesh, b: &Mesh) -> Mesh {
     // Deterministic: the trip point is a pure function of the snapped operands, so
     // native and wasm degrade the SAME union identically (parity).
     if super::budget::tripped() {
-        return Mesh::new();
+        return (Mesh::new(), conforming);
     }
-    tris_to_mesh(&out)
+    (tris_to_mesh(&out), conforming)
 }
 
 /// `∪ meshes` as one watertight `Mesh` — the N-ary union, computed in a single

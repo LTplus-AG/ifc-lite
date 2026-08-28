@@ -152,12 +152,40 @@ fn point_via_interner(it: &Interner, v: Vid) -> [f64; 3] {
 /// Compute the boolean `op` of operand meshes `a` and `b`, materialised to f64
 /// triangles. `A−B = (A outside B) ∪ flip(B inside A)`;
 /// `A∪B = (A outside B) ∪ (B outside A)`; `A∩B = (A inside B) ∪ (B inside A)`.
+///
+/// This deliberately does NOT gate on `Arrangement::unrecovered` the way
+/// [`difference_all`] does — see [`boolean_with_conformity`], which computes
+/// the identical result and additionally surfaces that signal for callers
+/// that want it (diagnostics; issue #3353's classification-level tear).
 pub fn boolean(a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<Tri> {
+    boolean_with_conformity(a, b, op).0
+}
+
+/// Like [`boolean`], but also returns whether the underlying pairwise
+/// arrangement was CONFORMING (`Arrangement::unrecovered == 0`) — the same
+/// `(result, conforming)` shape [`union_all`] already returns for the N-ary
+/// union. `boolean()` computes this exact arrangement and discards the
+/// signal on purpose (its graceful degrade when `unrecovered > 0` is
+/// intentional; see its doc comment, and contrast [`difference_all`]'s hard
+/// reject). This function changes no behaviour — it is an observation-only
+/// companion for callers (tests, diagnostics) that want to inspect the
+/// signal `boolean()` throws away, without altering `boolean()`'s own
+/// return type or any existing caller.
+pub fn boolean_with_conformity(a: &[Tri], b: &[Tri], op: BoolOp) -> (Vec<Tri>, bool) {
     let arr = arrange(a, b);
+    let conforming = arr.unrecovered == 0;
     let vids = boolean_vids(&arr, a, b, op);
-    vids.into_iter()
-        .map(|t| [to_f64_pt(&arr, t[0]), to_f64_pt(&arr, t[1]), to_f64_pt(&arr, t[2])])
-        .collect()
+    let out = vids
+        .into_iter()
+        .map(|t| {
+            [
+                to_f64_pt(&arr, t[0]),
+                to_f64_pt(&arr, t[1]),
+                to_f64_pt(&arr, t[2]),
+            ]
+        })
+        .collect();
+    (out, conforming)
 }
 
 /// `a − (∪ comps)` for PAIRWISE-DISJOINT, per-component-closed, OUTWARD-wound

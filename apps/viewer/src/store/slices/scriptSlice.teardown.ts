@@ -10,7 +10,7 @@
  * `scripts/module-size-allowlist.txt`) and may not grow.
  */
 
-import { defineSliceTeardown } from '../teardown.js';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
 /**
  * What a session reset clears on the script slice.
@@ -46,9 +46,8 @@ export const scriptTeardown = defineSliceTeardown(
     'scriptAssistantTurnSnapshot',
     'scriptDeleteConfirmId',
   ],
-  (scope) => {
-    if (scope.kind !== 'session-reset') return {};
-    return {
+  {
+    'session-reset': () => ({
       scriptExecutionState: 'idle' as const,
       // The result, the error and the diagnostics all describe a run
       // against the OUTGOING model's data store.
@@ -61,6 +60,8 @@ export const scriptTeardown = defineSliceTeardown(
       // A delete confirmation armed before the load is a one-shot UI
       // prompt; it must not still be pending afterwards.
       scriptDeleteConfirmId: null,
-    };
+    }),
+    'model-removed': notApplicable,
+    'all-models-cleared': notApplicable,
   },
 );

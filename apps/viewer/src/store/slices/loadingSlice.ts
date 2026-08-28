@@ -7,7 +7,7 @@
  */
 
 import type { StateCreator } from 'zustand';
-import { defineSliceTeardown } from '../teardown.js';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
 export interface LoadingSlice {
   // State
@@ -74,15 +74,16 @@ export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice
 export const loadingTeardown = defineSliceTeardown(
   'loadingSlice',
   ['loading', 'geometryStreamingActive', 'progress', 'geometryProgress', 'metadataProgress', 'error'],
-  (scope) => {
-    if (scope.kind !== 'session-reset') return {};
-    return {
+  {
+    'session-reset': () => ({
       loading: false,
       geometryStreamingActive: false,
       progress: null,
       geometryProgress: null,
       metadataProgress: null,
       error: null,
-    };
+    }),
+    'model-removed': notApplicable,
+    'all-models-cleared': notApplicable,
   },
 );

@@ -13,7 +13,7 @@
  * pure, no `set`, no `get`, no release call.
  */
 
-import { defineSliceTeardown } from '../teardown.js';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
 /**
  * What a session reset clears on the IDS slice.
@@ -47,9 +47,8 @@ export const idsTeardown = defineSliceTeardown(
     'idsActiveEntityId',
     'idsFocusVisibilityOwned',
   ],
-  (scope) => {
-    if (scope.kind !== 'session-reset') return {};
-    return {
+  {
+    'session-reset': () => ({
       idsPanelVisible: false,
       idsLoading: false,
       idsProgress: null,
@@ -65,6 +64,8 @@ export const idsTeardown = defineSliceTeardown(
       // and the next release destroys that owner's presentation (#2654
       // fourth review).
       idsFocusVisibilityOwned: null,
-    };
+    }),
+    'model-removed': notApplicable,
+    'all-models-cleared': notApplicable,
   },
 );

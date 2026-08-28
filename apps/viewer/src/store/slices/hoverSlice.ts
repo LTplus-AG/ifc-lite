@@ -8,7 +8,7 @@
 
 import type { StateCreator } from 'zustand';
 import type { HoverState, ContextMenuState } from '../types.js';
-import { defineSliceTeardown } from '../teardown.js';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
 /**
  * "Nothing is hovered", in one place.
@@ -69,14 +69,11 @@ export const createHoverSlice: StateCreator<HoverSlice, [], [], HoverSlice> = (s
  * Both now build their value from the same helpers above, so the two paths
  * cannot drift.
  */
-export const hoverTeardown = defineSliceTeardown(
-  'hoverSlice',
-  ['hoverState', 'contextMenu'],
-  (scope) => {
-    if (scope.kind !== 'session-reset') return {};
-    return {
-      hoverState: emptyHoverState(),
-      contextMenu: closedContextMenu(),
-    };
-  },
-);
+export const hoverTeardown = defineSliceTeardown('hoverSlice', ['hoverState', 'contextMenu'], {
+  'session-reset': () => ({
+    hoverState: emptyHoverState(),
+    contextMenu: closedContextMenu(),
+  }),
+  'model-removed': notApplicable,
+  'all-models-cleared': notApplicable,
+});

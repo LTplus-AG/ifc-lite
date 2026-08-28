@@ -9,7 +9,7 @@
 import type { StateCreator } from 'zustand';
 import type { CameraRotation, CameraCallbacks, ProjectionMode, ControlsMode } from '../types.js';
 import { CAMERA_DEFAULTS } from '../constants.js';
-import { defineSliceTeardown } from '../teardown.js';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
 /** The home orientation, in one place: the slice's initial value and the
  *  session-reset teardown must not be able to drift apart. */
@@ -196,14 +196,15 @@ export const cameraTeardown = defineSliceTeardown(
     'interactionMode',
     'pendingInteractionMode',
   ],
-  (scope) => {
-    if (scope.kind !== 'session-reset') return {};
-    return {
+  {
+    'session-reset': () => ({
       cameraRotation: defaultCameraRotation(),
       pendingCameraRotation: null,
       projectionMode: DEFAULT_PROJECTION_MODE,
       interactionMode: DEFAULT_CONTROLS_MODE,
       pendingInteractionMode: null,
-    };
+    }),
+    'model-removed': notApplicable,
+    'all-models-cleared': notApplicable,
   },
 );

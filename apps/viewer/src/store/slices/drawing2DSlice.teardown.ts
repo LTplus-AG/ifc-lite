@@ -32,7 +32,7 @@
  * authored), and collapsing the two is the mistake #2802 records.
  */
 
-import { defineSliceTeardown } from '../teardown.js';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 import { getDefaultDrawing2DState } from './drawing2DSlice.js';
 
 export const drawing2DTeardown = defineSliceTeardown(
@@ -68,52 +68,54 @@ export const drawing2DTeardown = defineSliceTeardown(
     'cloudAnnotations2D',
     'selectedAnnotation2D',
   ],
-  (scope) => {
+  {
+    'session-reset': () => {
+      const defaults = getDefaultDrawing2DState();
+      return {
+        // Drawing 2D
+        drawing2D: defaults.drawing2D,
+        drawing2DStatus: defaults.drawing2DStatus,
+        drawing2DProgress: defaults.drawing2DProgress,
+        drawing2DPhase: defaults.drawing2DPhase,
+        drawing2DError: defaults.drawing2DError,
+        drawing2DPanelVisible: defaults.drawing2DPanelVisible,
+        suppressNextSection2DPanelAutoOpen: defaults.suppressNextSection2DPanelAutoOpen,
+        drawing2DSvgContent: defaults.drawing2DSvgContent,
+        drawing2DDisplayOptions: defaults.drawing2DDisplayOptions,
+
+        // Graphic overrides (keep presets, reset active and custom)
+        activePresetId: defaults.activePresetId,
+        customOverrideRules: defaults.customOverrideRules,
+        overridesEnabled: defaults.overridesEnabled,
+        overridesPanelVisible: defaults.overridesPanelVisible,
+
+        // 2D Measure
+        measure2DMode: defaults.measure2DMode,
+        measure2DStart: defaults.measure2DStart,
+        measure2DCurrent: defaults.measure2DCurrent,
+        measure2DShiftLocked: defaults.measure2DShiftLocked,
+        measure2DLockedAxis: defaults.measure2DLockedAxis,
+        measure2DResults: defaults.measure2DResults,
+        measure2DSnapPoint: defaults.measure2DSnapPoint,
+
+        // Annotation tools
+        annotation2DActiveTool: defaults.annotation2DActiveTool,
+        annotation2DCursorPos: defaults.annotation2DCursorPos,
+        polygonArea2DPoints: defaults.polygonArea2DPoints,
+        polygonArea2DResults: defaults.polygonArea2DResults,
+        textAnnotations2D: defaults.textAnnotations2D,
+        textAnnotation2DEditing: defaults.textAnnotation2DEditing,
+        cloudAnnotation2DPoints: defaults.cloudAnnotation2DPoints,
+        cloudAnnotations2D: defaults.cloudAnnotations2D,
+        selectedAnnotation2D: defaults.selectedAnnotation2D,
+      };
+    },
     // The generated drawing, its overrides and its annotations are all keyed
     // to the file that was loaded. Removing ONE model from a federation, or
     // clearing them all, leaves the 2D view to be regenerated on demand and
     // must not throw away the user's markup, so both of those scopes are
     // no-ops here.
-    if (scope.kind !== 'session-reset') return {};
-
-    const defaults = getDefaultDrawing2DState();
-    return {
-      // Drawing 2D
-      drawing2D: defaults.drawing2D,
-      drawing2DStatus: defaults.drawing2DStatus,
-      drawing2DProgress: defaults.drawing2DProgress,
-      drawing2DPhase: defaults.drawing2DPhase,
-      drawing2DError: defaults.drawing2DError,
-      drawing2DPanelVisible: defaults.drawing2DPanelVisible,
-      suppressNextSection2DPanelAutoOpen: defaults.suppressNextSection2DPanelAutoOpen,
-      drawing2DSvgContent: defaults.drawing2DSvgContent,
-      drawing2DDisplayOptions: defaults.drawing2DDisplayOptions,
-
-      // Graphic overrides (keep presets, reset active and custom)
-      activePresetId: defaults.activePresetId,
-      customOverrideRules: defaults.customOverrideRules,
-      overridesEnabled: defaults.overridesEnabled,
-      overridesPanelVisible: defaults.overridesPanelVisible,
-
-      // 2D Measure
-      measure2DMode: defaults.measure2DMode,
-      measure2DStart: defaults.measure2DStart,
-      measure2DCurrent: defaults.measure2DCurrent,
-      measure2DShiftLocked: defaults.measure2DShiftLocked,
-      measure2DLockedAxis: defaults.measure2DLockedAxis,
-      measure2DResults: defaults.measure2DResults,
-      measure2DSnapPoint: defaults.measure2DSnapPoint,
-
-      // Annotation tools
-      annotation2DActiveTool: defaults.annotation2DActiveTool,
-      annotation2DCursorPos: defaults.annotation2DCursorPos,
-      polygonArea2DPoints: defaults.polygonArea2DPoints,
-      polygonArea2DResults: defaults.polygonArea2DResults,
-      textAnnotations2D: defaults.textAnnotations2D,
-      textAnnotation2DEditing: defaults.textAnnotation2DEditing,
-      cloudAnnotation2DPoints: defaults.cloudAnnotation2DPoints,
-      cloudAnnotations2D: defaults.cloudAnnotations2D,
-      selectedAnnotation2D: defaults.selectedAnnotation2D,
-    };
+    'model-removed': notApplicable,
+    'all-models-cleared': notApplicable,
   },
 );

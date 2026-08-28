@@ -10,7 +10,7 @@
  * the ~400-line module rule (`scripts/check-module-size.mjs`).
  */
 
-import { defineSliceTeardown } from '../teardown.js';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
 /**
  * What a session reset clears on the BCF slice.
@@ -32,9 +32,8 @@ import { defineSliceTeardown } from '../teardown.js';
 export const bcfTeardown = defineSliceTeardown(
   'bcfSlice',
   ['bcfPanelVisible', 'bcfLoading', 'bcfError', 'activeTopicId', 'activeViewpointId'],
-  (scope) => {
-    if (scope.kind !== 'session-reset') return {};
-    return {
+  {
+    'session-reset': () => ({
       bcfPanelVisible: false,
       bcfLoading: false,
       bcfError: null,
@@ -44,6 +43,8 @@ export const bcfTeardown = defineSliceTeardown(
       // stays; where the user was in it does not.
       activeTopicId: null,
       activeViewpointId: null,
-    };
+    }),
+    'model-removed': notApplicable,
+    'all-models-cleared': notApplicable,
   },
 );

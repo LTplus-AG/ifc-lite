@@ -177,6 +177,23 @@ export type TeardownState = Readonly<Partial<ViewerState>>;
 export type TeardownContribution<K extends keyof ViewerState> =
   Partial<Pick<ViewerState, K>> & { [P in Exclude<keyof ViewerState, K>]?: never };
 
+export type TeardownScopeKind = TeardownScope['kind'];
+type ScopeOfKind<Kind extends TeardownScopeKind> = Extract<TeardownScope, { kind: Kind }>;
+// WITHOUT TeardownContribution's excess-property trick: three per slice,
+// measured, pushes the checker over TS2590 ("union too complex") across the
+// registry. composeTeardown enforces the foreign-key guarantee at runtime.
+type ArmContribution<K extends keyof ViewerState> = Partial<Pick<ViewerState, K>>;
+type Arm<Kind extends TeardownScopeKind, K extends keyof ViewerState> = (scope: ScopeOfKind<Kind>, state: TeardownState) => ArmContribution<K>;
+
+// One slice's answer, ONE ARM PER SCOPE KIND (#3345): a plain function let 22
+// of 28 open with `if (scope.kind !== 'session-reset') return {};`, silently
+// no-op for a fourth kind. A required key per kind makes an omitted arm fail.
+export interface SliceTeardownArms<K extends keyof ViewerState> {
+  readonly 'session-reset': Arm<'session-reset', K>;
+  readonly 'model-removed': Arm<'model-removed', K>;
+  readonly 'all-models-cleared': Arm<'all-models-cleared', K>;
+}
+
 /**
  * One slice's answer to "what do I clear under this scope".
  *
@@ -210,33 +227,25 @@ export interface SliceTeardown<K extends keyof ViewerState = keyof ViewerState> 
 /** A teardown in a heterogeneous registry, where `K` is no longer known. */
 export type AnySliceTeardown = SliceTeardown<keyof ViewerState>;
 
-/**
- * Declare a slice's teardown.
- *
- * The `const` type parameter infers `K` as the literal union of `owns`, so the
- * body is checked against exactly those keys — no `as const` needed at the
- * call site, and no way to widen `K` by accident.
- *
- * @example
- * export const uiTeardown = defineSliceTeardown(
- *   'uiSlice',
- *   ['activeTool', 'editEnabled', 'pendingPropertyFocus'],
- *   (scope) => scope.kind !== 'session-reset' ? {} : {
- *     activeTool: UI_DEFAULTS.ACTIVE_TOOL,
- *     editEnabled: false,
- *     // Drop any one-shot bSDD "jump to property" focus armed before the
- *     // load — a new file reuses ids, so a stale focus could match an
- *     // unrelated entity (issue #1107).
- *     pendingPropertyFocus: null,
- *   },
- * );
- */
+/** "This scope does not touch me." */
+export function notApplicable(): TeardownContribution<never> { return {}; }
+
+// One arm per TeardownScopeKind; the cast below bridges ArmContribution to
+// TeardownContribution once per slice.
 export function defineSliceTeardown<const K extends keyof ViewerState>(
   slice: string,
   owns: readonly K[],
-  teardown: (scope: TeardownScope, state: TeardownState) => TeardownContribution<NoInfer<K>>,
+  arms: SliceTeardownArms<NoInfer<K>>,
 ): SliceTeardown<K> {
-  return { slice, owns, teardown };
+  const teardown = (scope: TeardownScope, state: TeardownState): ArmContribution<K> => {
+    switch (scope.kind) {
+      case 'session-reset': return arms['session-reset'](scope, state);
+      case 'model-removed': return arms['model-removed'](scope, state);
+      case 'all-models-cleared': return arms['all-models-cleared'](scope, state);
+      default: throw new Error(`no teardown arm for scope kind '${(scope as { kind: string }).kind}'`);
+    }
+  };
+  return { slice, owns, teardown: teardown as (scope: TeardownScope, state: TeardownState) => TeardownContribution<K> };
 }
 
 /**
@@ -366,12 +375,16 @@ function isUnchanged(a: unknown, b: unknown): boolean {
 export function composeTeardown(
   registry: readonly AnySliceTeardown[],
 ): (scope: TeardownScope, state: TeardownState) => Partial<ViewerState> {
+  // Runtime half of the foreign-key guard ArmContribution gave up at compile
+  // time: a contribution naming a key it does not own is caught here.
+  const owner = teardownOwnedKeys(registry);
   return (scope, state) => {
     const forcePresence = FORCED_PRESENCE_SCOPES.has(scope.kind);
     const patch: Partial<ViewerState> = {};
     for (const entry of registry) {
       const contribution = entry.teardown(scope, state);
       for (const key of Object.keys(contribution) as (keyof ViewerState)[]) {
+        if (owner.get(key) !== entry.slice) throw new Error(`${entry.slice} returned unowned key '${String(key)}'`);
         const next = contribution[key];
         if (!(forcePresence && NEVER_DROPPED.has(key)) && isUnchanged(state[key], next)) continue;
         writeKey(patch, key, next);

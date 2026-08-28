@@ -15,7 +15,7 @@ import type { Lens, LensRule, LensCriteria, AutoColorSpec, AutoColorLegendEntry,
 import { BUILTIN_LENSES } from '@ifc-lite/lens';
 import { duplicateLensConfig, mergeImportedLenses, reserveUniqueId } from '@/components/viewer/lens-editor-utils';
 import { saveJson, type SaveResult } from '@/lib/storage/save-result';
-import { defineSliceTeardown } from '../teardown.js';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
 // Re-export types so existing consumer imports from this file still work
 export type { Lens, LensRule, LensCriteria, AutoColorSpec, AutoColorLegendEntry, DiscoveredLensData };
@@ -368,19 +368,23 @@ export const lensTeardown = defineSliceTeardown(
     'activeLensId', 'lensPanelVisible', 'lensColorMap', 'lensHiddenIds',
     'lensAppliedHiddenIds', 'lensRuleIsolation', 'lensRuleCounts', 'lensRuleEntityIds',
   ],
-  (scope) => scope.kind !== 'session-reset' ? {} : {
-    activeLensId: null,
-    lensPanelVisible: false,
-    lensColorMap: new Map<number, string>(),
-    lensHiddenIds: new Set<number>(),
-    // Ownership bookkeeping for the shared hidden/isolation channels — those
-    // channels are wiped by the same reset, so stale claims must not survive
-    // it: ownership is tested by VALUE, so a record left behind starts
-    // matching again the moment another owner installs equal content, and the
-    // next release destroys that owner's presentation (#2654 fourth review).
-    lensAppliedHiddenIds: [] as number[],
-    lensRuleIsolation: null,
-    lensRuleCounts: new Map<string, number>(),
-    lensRuleEntityIds: new Map<string, number[]>(),
+  {
+    'session-reset': () => ({
+      activeLensId: null,
+      lensPanelVisible: false,
+      lensColorMap: new Map<number, string>(),
+      lensHiddenIds: new Set<number>(),
+      // Ownership bookkeeping for the shared hidden/isolation channels — those
+      // channels are wiped by the same reset, so stale claims must not survive
+      // it: ownership is tested by VALUE, so a record left behind starts
+      // matching again the moment another owner installs equal content, and the
+      // next release destroys that owner's presentation (#2654 fourth review).
+      lensAppliedHiddenIds: [] as number[],
+      lensRuleIsolation: null,
+      lensRuleCounts: new Map<string, number>(),
+      lensRuleEntityIds: new Map<string, number[]>(),
+    }),
+    'model-removed': notApplicable,
+    'all-models-cleared': notApplicable,
   },
 );

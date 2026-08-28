@@ -75,6 +75,11 @@ export function listWorkspacePackages(root, fail, parents) {
           'Refusing to treat an unreadable parent as an empty one -- that is how ' +
           'every package under it drops out of the audit at once.',
       );
+      // Unreachable with either gate's `fail`, which throws. Carried for the
+      // same reason exists-or-throw.mjs carries one: a caller whose `fail`
+      // RETURNS would leave `entries` undefined and the loop below would throw
+      // a TypeError, destroying the diagnosis this branch exists to produce.
+      throw err;
     }
     for (const name of entries) {
       // Skipping a dotfile is a CONSEQUENCE of a rule this code does not yet
@@ -108,6 +113,12 @@ export function listWorkspacePackages(root, fail, parents) {
           `cannot read package manifest ${pkgJsonPath}: ${err.code || err.message}. ` +
             'Refusing to treat an unreadable manifest as an absent one.',
         );
+        // The one that MATTERS, not just insurance. With a `fail` that
+        // returns, `raw` stays undefined, JSON.parse(undefined) throws a
+        // SYNTAX error, that fail returns too, and the package is pushed with
+        // `pkgJson: undefined` -- an unreadable package entering the counted
+        // population, which is the exact invariant this module protects.
+        throw err;
       }
       let pkgJson;
       try {

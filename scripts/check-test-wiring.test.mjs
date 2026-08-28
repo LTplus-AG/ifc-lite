@@ -765,7 +765,12 @@ test('an unreadable package PARENT is named, not surfaced as a raw scandir stack
       const { status, out } = run(root);
       assert.equal(status, 1, 'an unreadable package parent must fail the gate');
       assert.match(out, /cannot read package parent/);
-      assert.doesNotMatch(out, /at Object\.readdirSync/, 'must not surface a raw node stack');
+      // `at readdirSync (node:fs`, NOT `at Object.readdirSync`. V8 names the
+      // frame after how the function was INVOKED, and the gate imports it bare
+      // from an ESM module, so the `Object.` form never appears there - it is
+      // what a CJS `require('fs').readdirSync(...)` produces. The first spelling
+      // here was that one, and it matched nothing while reporting pass.
+      assert.doesNotMatch(out, /at readdirSync \(node:fs/, 'must not surface a raw node stack');
     } finally {
       chmodSync(parent, 0o755);
     }

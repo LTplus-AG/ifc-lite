@@ -36,36 +36,24 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { buildParseResult } from '../../lib/overlay-parse/symbolic-parse.js';
 import { createEmptyFlatSymbolic, type FlatSymbolic } from '../../lib/overlay-parse/symbolic-flat.js';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
-const viewportSource = readFileSync(path.join(dir, 'Viewport.tsx'), 'utf8');
 const hookPath = path.join(dir, '../../hooks/useGridLines3D.ts');
 
 describe('grid line overlay has one owner (issue #3368)', () => {
-  it('Viewport does not import the redundant raw grid-line hook', () => {
-    assert.ok(
-      !/from ['"][^'"]*useGridLines3D(\.js)?['"]/.test(viewportSource) &&
-        !/\buseGridLines3D\s*\(/.test(viewportSource),
-      'Viewport.tsx still imports/calls useGridLines3D — a second, unclipped, ' +
-        'origin-shift-unaware IfcGridAxis source is wired into the viewport ' +
-        "alongside useSymbolicAnnotations' clipped grid buckets, so section " +
-        'clipping stays inert and the two copies can disagree in Y (#3368).',
-    );
-  });
-
-  it("Viewport does not upload a separate, unclipped 'grid' line-overlay channel", () => {
-    assert.ok(
-      !/setLineOverlay\(\s*['"]grid['"]/.test(viewportSource),
-      "Viewport.tsx still uploads a 'grid' line-overlay channel independent " +
-        "of the clipped 'annotation' channel that already carries grid " +
-        'buckets when ifcGrid is visible (#3368).',
-    );
-  });
+  // The two assertions that used to sit here read `Viewport.tsx` as text and
+  // regex-matched it, which `scripts/check-source-text-assertions.mjs` refuses
+  // for new tests -- its escape hatch is for anchor guards, which this is not.
+  // They are also redundant: `useGridLines3D.ts` is deleted, so an import of it
+  // does not compile and typecheck already enforces what they asserted. What a
+  // text predicate could still catch -- a NEW second line-overlay channel wired
+  // from somewhere else -- is left to the file-absence check below plus review,
+  // rather than kept as an assertion the house rule bans.
 
   it('the redundant useGridLines3D hook has been retired', () => {
     assert.ok(

@@ -19,10 +19,10 @@
 //! but `boolean_vids_components` decides whether a triangle is a coincident
 //! duplicate of a face on the OTHER operand using two structurally
 //! different tests depending on which operand owns the triangle:
-//!   - for a triangle from A: `BComponents::surface_normal`, tested against
-//!     B's ORIGINAL (pre-arrangement) faces;
-//!   - for a triangle from B: `c_on_or_near_a`, tested against A's
-//!     ORIGINAL faces.
+//! - for a triangle from A: `BComponents::surface_normal`, tested against
+//!   B's ORIGINAL (pre-arrangement) faces;
+//! - for a triangle from B: `c_on_or_near_a`, tested against A's
+//!   ORIGINAL faces.
 //! At a near-degenerate rotated overlap the two tests can disagree on the
 //! same coincident pair, so a redundant triangle survives on BOTH operands
 //! and a shared edge ends up used by three kept triangles instead of two —

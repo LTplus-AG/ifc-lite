@@ -85,6 +85,7 @@ import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripYamlComments } from './lib/server-bin-targets-parse.mjs';
 import { listWorkspacePackages } from './lib/list-workspace-packages.mjs';
+import { isMainEntry } from './lib/is-main-entry.mjs';
 
 // Deliberately a literal here rather than imported from the shared walk.
 // `scripts/lib/ci-path-coverage.mjs`'s `deriveInputs` reads only THIS file's own
@@ -686,7 +687,7 @@ function main(root) {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMainEntry(import.meta.url)) {
   const rootFlagIdx = process.argv.indexOf('--root');
   if (rootFlagIdx !== -1 && !process.argv[rootFlagIdx + 1]) {
     console.error('\ncheck-test-wiring: --root requires a directory argument\n');

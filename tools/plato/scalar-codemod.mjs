@@ -33,6 +33,7 @@
 
 import ts from 'typescript';
 import { readFileSync, writeFileSync } from 'node:fs';
+import { isMainEntry } from '../../scripts/lib/is-main-entry.mjs';
 import { appendFlattened } from './flatten-codemod.mjs';
 
 // Scalar operator method name -> native binary operator token.
@@ -312,7 +313,7 @@ function assertArgc(name, args, expected) {
 }
 
 // --- CLI ---
-const isMain = import.meta.url === `file://${process.argv[1]}`;
+const isMain = isMainEntry(import.meta.url);
 if (isMain) {
   const inputPath = process.argv[2];
   const outputPath = process.argv[3];

@@ -73,6 +73,10 @@ test('ENOTDIR is refused, not read as absent', () => {
 });
 
 test('EACCES is refused, not read as absent', (t) => {
+  // Windows chmod does not remove directory traversal, so statSync succeeds and
+  // the refusal never fires. CI is linux-only today, but a Windows checkout
+  // would see a spurious failure here rather than a real one.
+  if (process.platform === 'win32') return t.skip('chmod 000 does not block traversal on Windows');
   if (process.getuid?.() === 0) return t.skip('root traverses every directory regardless of mode');
   withTree((root) => {
     mkdirSync(join(root, 'locked'));

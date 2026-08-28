@@ -851,3 +851,75 @@ fn two_disjoint_below_band_slivers_are_withheld_not_pooled_into_one_bounding_box
         }
     }
 }
+
+/// Divergence-theorem volume of a possibly-OPEN triangle soup, about the world
+/// origin — the same summation `clash_solid_geom::tri_volume` performs before
+/// the trust gate withholds the result. Reproduced here because that function
+/// is `pub(super)` and unreachable from an integration test.
+fn raw_divergence_volume(tris: &[[[f64; 3]; 3]]) -> f64 {
+    tris.iter()
+        .map(|t| {
+            let (a, b, c) = (t[0], t[1], t[2]);
+            let cr = [
+                b[1] * c[2] - b[2] * c[1],
+                b[2] * c[0] - b[0] * c[2],
+                b[0] * c[1] - b[1] * c[0],
+            ];
+            a[0] * cr[0] + a[1] * cr[1] + a[2] * cr[2]
+        })
+        .sum::<f64>()
+        .abs()
+        / 6.0
+}
+
+/// The `2/3` in this file's header is asserted in prose and never measured.
+/// This measures it, and pins the property that makes it exact: the shortfall
+/// is a whole missing face PAIR, not a shape-dependent wedge.
+///
+/// `intersection_solid` withholds inside the band, so the volume is read through
+/// `intersection_tris` — the same triangles the gate sums before refusing them.
+///
+/// WHY exactly 2/3, and why it does not depend on the cross-section: for each
+/// opposite face pair of a box, the two faces' contributions combine to the
+/// enclosed volume `V` with the reference-point terms cancelling *within* the
+/// pair. Three pairs give `3V`, and `/3` returns `V`. Classification drops both
+/// x end caps here — A's cap is anti-parallel to B's, so `co_oriented` is false
+/// and the `Intersection` keep rule drops it, while the B side drops its copy
+/// unconditionally — leaving the four side walls, `2V`, hence `2V/3`. That is
+/// `2/3` for EVERY `Ly`/`Lz`: losing a whole pair always costs exactly a third.
+///
+/// The reference-point invariance is narrower than it looks and the distinction
+/// matters if this test is ever extended: it holds because the REMOVED faces are
+/// themselves a complete opposite pair, so their position-dependent terms cancel
+/// against each other. Drop a single face instead and the value does depend on
+/// where the box sits.
+#[test]
+fn the_near_band_shortfall_is_a_missing_face_pair_not_a_shape_dependent_wedge() {
+    for (ly, lz) in [(1.0, 1.0), (1.0, 2.0), (2.0, 2.0), (1.0, 4.0)] {
+        for cells in [1u32, 2, 4, 6, 8] {
+            let depth = f64::from(cells) / 65536.0;
+            for &n in &TESSELLATIONS {
+                let a = box_mesh([0.0, 0.0, 0.0], [1.0, ly, lz], n);
+                let b = box_mesh([1.0 - depth, 0.0, 0.0], [2.0, ly, lz], n);
+                let tris = ifc_lite_geometry::kernel::mesh_bridge::intersection_tris(&a, &b);
+                assert!(
+                    !tris.is_empty(),
+                    "ly={ly} lz={lz} cells={cells} n={n}: no intersection triangles"
+                );
+                let ratio = raw_divergence_volume(&tris) / (depth * ly * lz);
+                // At 1-2 cells the overlap is 1-2 snap cells deep, so a single
+                // grid-scale perturbation is a large fraction of `depth` itself
+                // and a tight bound is not defensible. Above that the ratio is
+                // an exact identity on grid-aligned corners. Both bounds still
+                // reject a shape-dependent wedge, which would move with ly/lz.
+                let tol = if cells >= 4 { 1.0e-9 } else { 1.0e-3 };
+                assert!(
+                    (ratio - 2.0 / 3.0).abs() < tol,
+                    "ly={ly} lz={lz} cells={cells} n={n}: ratio {ratio}, expected 2/3 \
+                     (a cross-section-dependent ratio would mean the shortfall is a \
+                     wedge, not a missing face pair)"
+                );
+            }
+        }
+    }
+}

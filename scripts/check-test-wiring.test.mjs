@@ -765,12 +765,15 @@ test('an unreadable package PARENT is named, not surfaced as a raw scandir stack
       const { status, out } = run(root);
       assert.equal(status, 1, 'an unreadable package parent must fail the gate');
       assert.match(out, /cannot read package parent/);
-      // `at readdirSync (node:fs`, NOT `at Object.readdirSync`. V8 names the
-      // frame after how the function was INVOKED, and the gate imports it bare
-      // from an ESM module, so the `Object.` form never appears there - it is
-      // what a CJS `require('fs').readdirSync(...)` produces. The first spelling
-      // here was that one, and it matched nothing while reporting pass.
-      assert.doesNotMatch(out, /at readdirSync \(node:fs/, 'must not surface a raw node stack');
+      // Anchored on the PAYLOAD, not on a V8 frame name. The frame name encodes
+      // the CALL FORM - `at readdirSync` for a bare ESM import, `at
+      // Object.readdirSync` for CJS, `at Module.readdirSync` for a namespace
+      // import - so any of those spellings is voided by a behaviour-preserving
+      // change to how the gate imports fs, and nothing in the repo pins that.
+      // This assertion has already been vacuous once for exactly that reason.
+      // The raw scandir message is what a developer would actually see, and it
+      // is the same under all three call forms.
+      assert.doesNotMatch(out, /permission denied, scandir/, 'must not surface a raw node error');
     } finally {
       chmodSync(parent, 0o755);
     }

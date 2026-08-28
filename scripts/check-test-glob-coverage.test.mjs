@@ -375,7 +375,12 @@ test('an unreadable vitest config is reported by the gate, not as a raw stack', 
     // The point of the change. It already exited 1 before; what it did NOT do
     // was say why, and an uncaught readFileSync stack sends the reader into
     // node internals instead of at their own file mode.
-    assert.doesNotMatch(locked.out, /at readFileSync \(node:fs/, 'must not surface a raw node stack');
+    //
+    // Matched on the payload rather than a `at readFileSync (node:fs` frame:
+    // V8 names the frame after the call form, so the frame spelling is voided
+    // by a change to how this gate imports fs. See the sibling in
+    // check-test-wiring.test.mjs, which was vacuous for that exact reason.
+    assert.doesNotMatch(locked.out, /permission denied, open/, 'must not surface a raw node error');
   } finally {
     chmodSync(config, 0o644);
     rmSync(dir, { recursive: true, force: true });

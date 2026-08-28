@@ -261,6 +261,11 @@ function resolveVitestGlobs(pkgDir, testLooking) {
         'Its include: globs decide which of this package\'s test files count as ' +
         'reached, so the audit cannot answer for this package without it.',
     );
+    // Same rethrow the two refusals in lib/list-workspace-packages.mjs carry.
+    // Without it a `fail` that returns leaves `source` undefined and
+    // parseViteInclude throws a TypeError on it: closed, but with the
+    // diagnosis destroyed, which is the outcome this branch exists to stop.
+    throw err;
   }
   const includes = parseViteInclude(source);
   if (includes === null) return null;

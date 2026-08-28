@@ -125,6 +125,11 @@ export function listWorkspacePackages(root, fail, parents) {
         pkgJson = JSON.parse(raw);
       } catch (err) {
         fail(`${pkgJsonPath} is not valid JSON: ${err.message}`);
+        // The read branch above is not the only way in. With a `fail` that
+        // returns, a MALFORMED manifest reached this same catch and the package
+        // was pushed with `pkgJson: undefined` - the identical corruption,
+        // through the parse branch instead of the read one.
+        throw err;
       }
       out.push({ rel: `${parent}/${name}`, dir: pkgDir, pkgJson });
     }

@@ -78,8 +78,36 @@ pub struct HostRow {
     pub id: u32,
     /// `RepresentationType` of the Body representation.
     pub rep: String,
-    /// Open boundary edges on the 1 mm snapped topology.
+    /// Open boundary edges on the 1 mm snapped topology, read as a SIGNED
+    /// per-edge balance: an undirected edge counts when its forward and its
+    /// reverse use counts DIFFER.
+    ///
+    /// #3397 kept this reading rather than replacing it. [`HostRow::strict`] is
+    /// the stricter reading of the same walk, and the two are carried side by
+    /// side precisely so they can be compared per host — replacing this one
+    /// would restate every number in the golden at once and surface every
+    /// pre-existing non-manifold host as a new tear, which is a different
+    /// decision from measuring how many there are.
     pub open: usize,
+    /// Undirected edges of the SAME 1 mm snapped topology whose directed uses
+    /// are not exactly one forward and one reverse — the manifold condition
+    /// `touching_operand.rs` and the #3353 tear pin already use (#3397).
+    ///
+    /// A superset of [`HostRow::open`] by construction: `forward != reverse`
+    /// implies `(forward, reverse) != (1, 1)`. What it sees that `open` cannot
+    /// is every topology where the two directed counts grow TOGETHER, leaving
+    /// the signed net at zero: a face duplicated along with its opposite-wound
+    /// twin, a wholesale duplicated shell, a 2-forward / 2-reverse non-manifold
+    /// seam. The two DUPLICATION cases also grow `tris`, and a grown `tris`
+    /// files under `better`, so before this column the census reported a
+    /// duplicated sheet as an improvement. The seam is stated without that
+    /// claim: four triangles meeting on one edge need not have arrived by
+    /// duplication, so `tris` may not have moved at all, and then nothing in
+    /// the row moved either.
+    ///
+    /// Both readings come off ONE walk in `edge_stats`, over one snapped
+    /// topology, so they cannot drift into two measurements of two meshes.
+    pub strict: usize,
     /// Triangles in the emitted mesh. Load-bearing on its own: a host whose mesh
     /// degrades to EMPTY still returns `Ok` and still reports `open == 0`, which
     /// is indistinguishable from a perfect watertight solid under an
@@ -115,14 +143,27 @@ impl HostRow {
     /// weaker than the directed-pair rule (`forward == 1 && reverse == 1`) used
     /// by the #3353 tear pin, and the two can disagree: a mesh can be watertight
     /// by this count and non-manifold by the strict one. So a fall in `open` can
-    /// mean a face was duplicated rather than a tear repaired. The row carries
-    /// no strict count, so this cannot be gated the way the cases below are; it
-    /// is a limit of the measure, and it points at the same volume dimension the
-    /// magnitude blindness does. Raised by the #3391 review, where a signed
-    /// count and a strict one gave contradictory readings on the same mesh.
-    /// Tracked as #3397, which also notes the wider exposure: the corpus totals
-    /// `total unmatched edges` and `torn void hosts` derive from the same count,
-    /// so a duplicate-face defect is invisible to the gate in either direction.
+    /// mean a face was duplicated rather than a tear repaired. Raised by the
+    /// #3391 review, where a signed count and a strict one gave contradictory
+    /// readings on the same mesh.
+    ///
+    /// WHAT IS NOW MEASURED (#3397). The row carries [`HostRow::strict`], the
+    /// directed-pair reading of the same walk, and `classify` gates a RISE in it
+    /// as a worsened count. So the duplication hazard above is no longer
+    /// un-gated: the pair that hides it — `open` falling while `strict` rises —
+    /// files as a regression, and a worsened count outranks the re-tessellation
+    /// verdict, which is where a falling `open` would otherwise buy a friendly
+    /// message.
+    ///
+    /// WHAT IS STILL NOT. `strict` is deliberately kept out of this predicate
+    /// and out of [`Self::is_torn_solid`], so the gated defect population and
+    /// the `torn` / `torn_solid` / `total unmatched edges` totals all still read
+    /// the SIGNED count: a host that has always been non-manifold is not
+    /// reclassified into a tear by this change. `alt` and `pre` are signed
+    /// readings too, so a duplicated sheet that only ONE triangulator emits
+    /// stays invisible to [`Self::diverged`]. And neither reading sees a
+    /// self-intersection, or coincidence finer than the 1 mm snap, or anything
+    /// about a host with no `IfcRelVoidsElement` — the sweep's own scope.
     ///
     /// Not a weakening of [`Self::open_is_a_defect_count`] and not a
     /// strengthening: the two are INCOMPARABLE, because they add different
@@ -155,6 +196,14 @@ impl HostRow {
     /// Says nothing about whether the count is zero, which is why this is
     /// separate from [`Self::is_torn_solid`]: a run whose open count fell to 0
     /// is the ideal repair, not a disqualified reading.
+    ///
+    /// Reads the SIGNED `open`, not [`HostRow::strict`], and #3397 left it that
+    /// way on purpose. This predicate defines the gated defect population, so
+    /// swapping the reading would move `torn_solid` on every host that is
+    /// watertight by one rule and not the other, in one commit, with no way to
+    /// tell those hosts from geometry that actually changed. The strict reading
+    /// is gated as its OWN count instead; see [`Self::open_is_comparable`] for
+    /// what that does and does not buy.
     pub fn open_is_a_defect_count(&self) -> bool {
         self.open_is_a_reading() && !self.far
     }
@@ -182,6 +231,12 @@ pub struct Totals {
     pub hosts: usize,
     pub torn: usize,
     pub open_edges: usize,
+    /// Sum of [`HostRow::strict`]. A ceiling of its own ALONGSIDE `open_edges`,
+    /// never instead of it: the two are readings of the same corpus, and the gap
+    /// between them is how many edges the signed balance cannot see. That is a
+    /// corpus-wide EDGE figure and not #3397's headline number, which is a HOST
+    /// count (`open == 0 && strict > 0`) and is computed in the census itself.
+    pub strict_edges: usize,
     pub collapsed: usize,
     pub torn_solid: usize,
     pub non_invariant: usize,
@@ -192,6 +247,7 @@ pub fn totals<'a>(rows: impl IntoIterator<Item = &'a HostRow>) -> Totals {
         hosts: 0,
         torn: 0,
         open_edges: 0,
+        strict_edges: 0,
         collapsed: 0,
         torn_solid: 0,
         non_invariant: 0,
@@ -199,6 +255,7 @@ pub fn totals<'a>(rows: impl IntoIterator<Item = &'a HostRow>) -> Totals {
     for r in rows {
         t.hosts += 1;
         t.open_edges += r.open;
+        t.strict_edges += r.strict;
         t.torn += usize::from(r.open > 0);
         t.collapsed += usize::from(r.collapsed);
         t.torn_solid += usize::from(r.is_torn_solid());
@@ -400,6 +457,32 @@ struct Classified {
     better: Vec<String>,
 }
 
+/// How to describe a FALLING edge count, tagged for EVERY reason the fall might
+/// not be repair. `open_is_comparable` names three; caveating only the far-field
+/// one would print an unqualified "improved" next to "geometry lost" on exactly
+/// the hosts the gate just refused.
+///
+/// ONE function for both the signed and the strict arm, because the
+/// disqualifiers are properties of the host rather than of either reading: an
+/// open shell's boundary edges are structural under both rules, a failed no-void
+/// pass leaves nothing to attribute either count to, and `edge_stats` skips
+/// degenerate triangles, so a collapse depresses both. Two copies would let one
+/// arm print "(improved)" beside the other's "geometry lost".
+fn fall_note(g: &HostRow, r: &HostRow) -> &'static str {
+    if !g.open_is_comparable() || !r.open_is_comparable() {
+        // An open shell's boundary edges are structural, so deleting faces
+        // takes them along: the count falls BECAUSE geometry was lost. A
+        // failed no-void pass leaves nothing to attribute the tearing to.
+        "down, but not a repair signal: see the verdict"
+    } else if g.far || r.far {
+        // Real evidence, just noisy. The census already acts on this count
+        // in the other direction with no gate at all.
+        "improved; far-field, so the count is an f32 artifact"
+    } else {
+        "improved"
+    }
+}
+
 /// Classify one matched pair.
 fn classify(g: &HostRow, r: &HostRow) -> Classified {
     let mut c = Classified::default();
@@ -407,23 +490,30 @@ fn classify(g: &HostRow, r: &HostRow) -> Classified {
     if r.open > g.open {
         c.worse_counts.push(format!("open edges {} -> {}", g.open, r.open));
     } else if r.open < g.open {
-        // Tagged, not gated, and tagged for EVERY reason the count might not be
-        // repair. `open_is_comparable` names three; caveating only the
-        // far-field one would print an unqualified "improved" next to
-        // "geometry lost" on exactly the hosts the gate just refused.
-        let note = if !g.open_is_comparable() || !r.open_is_comparable() {
-            // An open shell's boundary edges are structural, so deleting faces
-            // takes them along: the count falls BECAUSE geometry was lost. A
-            // failed no-void pass leaves nothing to attribute the tearing to.
-            "down, but not a repair signal: see the verdict"
-        } else if g.far || r.far {
-            // Real evidence, just noisy. The census already acts on this count
-            // in the other direction with no gate at all.
-            "improved; far-field, so the count is an f32 artifact"
-        } else {
-            "improved"
-        };
-        c.better.push(format!("open edges {} -> {} ({note})", g.open, r.open));
+        c.better.push(format!("open edges {} -> {} ({})", g.open, r.open, fall_note(g, r)));
+    }
+
+    // The STRICT directed-pair reading, gated in its own right (#3397). A rise
+    // here while `open` holds is the shape the signed balance cannot see at
+    // all: a face duplicated along with its opposite-wound twin nets to zero on
+    // that reading and GROWS `tris`, and a grown `tris` files under `better`, so
+    // the census used to report the defect as an improvement.
+    //
+    // It joins `worse_counts` rather than getting a bucket of its own because
+    // it answers exactly the question that field asks — a count this host
+    // carries got worse, and no relabelling makes more non-manifold edges into
+    // good news — and because outranking the re-tessellation verdict is the
+    // point: `open` falling while `strict` rises is the duplicated-face case
+    // [`HostRow::open_is_comparable`] warns a falling `open` can hide.
+    if r.strict > g.strict {
+        c.worse_counts.push(format!("strict directed-pair edges {} -> {}", g.strict, r.strict));
+    } else if r.strict < g.strict {
+        c.better.push(format!(
+            "strict directed-pair edges {} -> {} ({})",
+            g.strict,
+            r.strict,
+            fall_note(g, r)
+        ));
     }
 
     // Triangles shrinking is the loss direction ONLY when the tearing did not
@@ -622,7 +712,10 @@ const HEADER: &str = "\
 # far:   1 if |coord| is past what f32 carries mm topology at (reported, not gated).
 # alt:   open edges under the alternate triangulator, or x if that pass failed.
 # pre:   open edges with no voids applied; x if that pass failed, - if not taken.
-model\tid\trep\topen\ttris\tcoll\tfar\talt\tpre";
+# strict: undirected edges NOT used exactly once forward and once reverse. Always
+#        >= open, and sees what open cannot: a doubled sheet nets to zero on the
+#        signed balance. Gated as its own count; the defect population is open's.
+model\tid\trep\topen\ttris\tcoll\tfar\talt\tpre\tstrict";
 
 fn pre_token(p: PreVoid) -> String {
     match p {
@@ -654,8 +747,12 @@ pub fn render(rows: &[HostRow]) -> String {
     let mut out = String::from(HEADER);
     for r in rows {
         let alt = r.alt.map(|v| v.to_string()).unwrap_or_else(|| "x".to_string());
+        // `strict` is appended LAST rather than beside `open`, so `cut -f1-9`
+        // over this file still reproduces the pre-#3397 row byte for byte. That
+        // is what made the bless diff for the commit that added it readable:
+        // every existing column had to hold, and a moved one had to be visible.
         out.push_str(&format!(
-            "\n{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            "\n{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             r.model,
             r.id,
             r.rep,
@@ -665,6 +762,7 @@ pub fn render(rows: &[HostRow]) -> String {
             u8::from(r.far),
             alt,
             pre_token(r.pre),
+            r.strict,
         ));
     }
     out.push('\n');
@@ -680,8 +778,12 @@ pub fn parse(text: &str) -> Result<Vec<HostRow>, String> {
             continue;
         }
         let f: Vec<&str> = line.split('\t').collect();
-        if f.len() != 9 {
-            return Err(format!("line {}: expected 9 columns, got {}", n + 1, f.len()));
+        // Exactly 10. A pre-#3397 nine-column row is an ERROR, not a row with
+        // an implied strict count: accepting it would have to invent one, and a
+        // fabricated zero is a clean-looking host that was never measured. A bad
+        // merge of this golden is then loud instead of silently under-gated.
+        if f.len() != 10 {
+            return Err(format!("line {}: expected 10 columns, got {}", n + 1, f.len()));
         }
         let num = |i: usize| -> Result<usize, String> {
             f[i].parse::<usize>().map_err(|_| format!("line {}: bad number {:?}", n + 1, f[i]))
@@ -696,6 +798,7 @@ pub fn parse(text: &str) -> Result<Vec<HostRow>, String> {
             far: parse_flag(f[6]).map_err(|e| format!("line {}: {e}", n + 1))?,
             alt: if f[7] == "x" { None } else { Some(num(7)?) },
             pre: parse_pre(f[8]).map_err(|e| format!("line {}: {e}", n + 1))?,
+            strict: num(9)?,
         });
     }
     Ok(out)
@@ -711,6 +814,11 @@ mod tests {
             id,
             rep: "SweptSolid".to_string(),
             open,
+            // The clean default: every unbalanced edge is unbalanced, and
+            // nothing else is doubled. `strict >= open` always holds, so a
+            // helper that set this below `open` would build a row the sweep
+            // cannot produce. Tests that need a doubled sheet raise it.
+            strict: open,
             tris,
             collapsed: false,
             far: false,
@@ -1062,6 +1170,45 @@ mod tests {
     }
 
     #[test]
+    fn the_checked_in_golden_carries_a_strict_column_that_is_not_a_copy_of_open() {
+        // The one property no synthetic row can carry: that the sweep actually
+        // FEEDS `strict` the directed-pair reading. `strict: stats.open` in
+        // `triangulation_invariance.rs` would leave every other test in this
+        // module green, and it would leave the CENSUS green too — the golden is
+        // a per-host CEILING, so a column that only ever falls files under
+        // `improved` and requires no bless. What it cannot survive is a
+        // re-bless: the dark column lands in this file, and this test reads it.
+        //
+        // Bounds rather than exact counts, so a real geometry fix never has to
+        // edit this test. Zero on either tally is the failure: it means the
+        // column has gone dark or is echoing `open`.
+        let rows = parse(include_str!("../manifests/watertightness_census.tsv"))
+            .expect("the checked-in golden must parse");
+        assert!(rows.len() > 1000, "golden is under-populated: {} rows", rows.len());
+        for r in &rows {
+            assert!(
+                r.strict >= r.open,
+                "{} #{}: strict {} < open {} — `f != r` implies `(f, r) != (1, 1)`, so \
+                 the walk cannot produce this row",
+                r.model,
+                r.id,
+                r.strict,
+                r.open
+            );
+        }
+        assert!(
+            rows.iter().any(|r| r.strict > r.open),
+            "no golden row disagrees with the signed count, so the strict column is \
+             either dark or a copy of `open`"
+        );
+        assert!(
+            rows.iter().any(|r| r.open == 0 && r.strict > 0),
+            "no golden row is watertight by the SIGNED balance and torn by the STRICT \
+             rule — the population #3397 exists to measure has left the golden"
+        );
+    }
+
+    #[test]
     fn a_torn_host_whose_mesh_vanishes_is_loss_however_much_the_tearing_improved() {
         // The input the `r.tris == 0` clause exists for, and the only one that
         // requires it: a TORN host whose mesh disappears. Open edges fall to
@@ -1092,6 +1239,92 @@ mod tests {
         let worse = diff(&g, &[row("a.ifc", 1, 55, 600)], &swept(&["a.ifc"]));
         assert_eq!(worse.regressed.len(), 1, "open worse: still a loss");
         assert!(worse.retessellated.is_empty());
+    }
+
+    #[test]
+    fn a_doubled_sheet_regresses_even_though_open_holds_and_triangles_grow() {
+        // #3397 verbatim, and the reason the strict column is GATED rather than
+        // merely reported. A face duplicated along with its opposite-wound twin
+        // leaves the signed balance at 0 — one extra forward use and one extra
+        // reverse use cancel — and GROWS `tris`, and a grown `tris` files under
+        // `better`. So before this column the census filed the defect as an
+        // improvement, `requires_bless()` read false, and the lane stayed green.
+        let mut g = row("a.ifc", 1, 0, 12);
+        g.strict = 0;
+        let mut r = row("a.ifc", 1, 0, 14);
+        r.strict = 3;
+
+        let d = diff(std::slice::from_ref(&g), std::slice::from_ref(&r), &swept(&["a.ifc"]));
+        assert_eq!(d.regressed.len(), 1, "a doubled coincident sheet must regress");
+        assert!(d.improved.is_empty(), "and must not be filed as a triangle-count gain");
+        let reasons = d.regressed[0].reasons.join("; ");
+        assert!(reasons.contains("strict directed-pair edges 0 -> 3"), "{reasons}");
+        // The triangle growth still has to be REPORTED, or the failure text
+        // omits the evidence that the extra edges arrived with extra geometry.
+        assert!(reasons.contains("triangles 12 -> 14"), "{reasons}");
+        assert!(d.requires_bless());
+
+        // Removing the duplicate is the mirror image, and must not read as a
+        // regression. Held at the SAME triangle count as the golden so it is the
+        // strict column deciding and not the `tris` shrink that accompanies a
+        // real de-duplication.
+        let mut fixed = row("a.ifc", 1, 0, 14);
+        fixed.strict = 0;
+        let back = diff(std::slice::from_ref(&r), &[fixed], &swept(&["a.ifc"]));
+        assert!(back.regressed.is_empty(), "fewer strict violations is not a regression");
+        assert_eq!(back.improved.len(), 1);
+        assert!(back.improved[0].reasons.join("; ").contains("strict directed-pair edges 3 -> 0"));
+    }
+
+    #[test]
+    fn a_shrink_that_heals_the_signed_count_while_doubling_a_sheet_is_a_regression() {
+        // The interaction that decides where the strict arm belongs. This host
+        // shrank AND its signed count fell, which is the re-tessellation shape
+        // and would be filed under the friendly bucket — but its strict count
+        // ROSE, so some of that repair is a duplicated sheet rather than a
+        // closed tear. `open_is_comparable` documents that hazard as the reason
+        // a falling `open` cannot be trusted on its own; putting the strict rise
+        // in `worse_counts` is what makes the hazard gated, because a worsened
+        // count outranks `retessellated` in the verdict chain.
+        let mut g = row("a.ifc", 1, 40, 800);
+        g.strict = 40;
+        let mut r = row("a.ifc", 1, 12, 600);
+        r.strict = 44;
+
+        let d = diff(&[g], &[r], &swept(&["a.ifc"]));
+        assert!(d.retessellated.is_empty(), "a doubled sheet is not a re-tessellation");
+        assert_eq!(d.regressed.len(), 1, "the strict rise outranks the friendly reading");
+        let reasons = d.regressed[0].reasons.join("; ");
+        assert!(reasons.contains("strict directed-pair edges 40 -> 44"), "{reasons}");
+        // The signed fall still rides along, because it is what a reviewer would
+        // otherwise have called a repair, and the two numbers together are the
+        // whole argument for carrying both columns.
+        assert!(reasons.contains("open edges 40 -> 12"), "{reasons}");
+    }
+
+    #[test]
+    fn a_falling_strict_count_is_qualified_wherever_a_falling_open_count_is() {
+        // Both arms read `fall_note`, so a strict fall on a host the gate just
+        // called geometry loss must not print an unqualified "(improved)" next
+        // to "(geometry lost)". Splitting the note into two copies is exactly
+        // how that contradiction reappears, and the open-shell test above would
+        // stay green while it did, because it only ever inspects `open`.
+        let shell = |open, strict, tris| HostRow {
+            rep: "Tessellation".to_string(),
+            strict,
+            ..row("a.ifc", 1, open, tris)
+        };
+        let d = diff(&[shell(60, 66, 4000)], &[shell(20, 22, 1200)], &swept(&["a.ifc"]));
+        assert_eq!(d.regressed.len(), 1);
+        let reasons = &d.regressed[0].reasons;
+        assert!(
+            reasons.iter().any(|x| x.contains("strict directed-pair edges 66 -> 22")),
+            "the strict fall must be reported: {reasons:?}"
+        );
+        assert!(
+            !reasons.iter().any(|x| x.contains("(improved)")),
+            "and qualified like the signed one, not called an improvement: {reasons:?}"
+        );
     }
 
     #[test]
@@ -1276,24 +1509,36 @@ mod tests {
         let mut out = Vec::new();
         for rep in ["CSG", "SurfaceModel"] {
             for open in [0usize, 3] {
-                for tris in [0usize, 3, 5] {
-                    for collapsed in [false, true] {
-                        for far in [false, true] {
-                            for alt in [None, Some(0usize), Some(3), Some(9)] {
-                                for pre in
-                                    [PreVoid::NotTaken, PreVoid::Failed, PreVoid::Open(0), PreVoid::Open(2)]
-                                {
-                                    out.push(HostRow {
-                                        model: "a.ifc".to_string(),
-                                        id: 1,
-                                        rep: rep.to_string(),
-                                        open,
-                                        tris,
-                                        collapsed,
-                                        far,
-                                        alt,
-                                        pre,
-                                    });
+                // `open` itself (nothing doubled) and one value ABOVE it (a
+                // doubled sheet). Never below: `strict >= open` by
+                // construction, so a lower value is a row no sweep can emit.
+                // Two values are enough — the cross product pairs them both
+                // ways, so it already builds a rise with `open` unmoved, which
+                // is the #3397 shape, and its mirror.
+                for strict in [open, open + 2] {
+                    for tris in [0usize, 3, 5] {
+                        for collapsed in [false, true] {
+                            for far in [false, true] {
+                                for alt in [None, Some(0usize), Some(3), Some(9)] {
+                                    for pre in [
+                                        PreVoid::NotTaken,
+                                        PreVoid::Failed,
+                                        PreVoid::Open(0),
+                                        PreVoid::Open(2),
+                                    ] {
+                                        out.push(HostRow {
+                                            model: "a.ifc".to_string(),
+                                            id: 1,
+                                            rep: rep.to_string(),
+                                            open,
+                                            strict,
+                                            tris,
+                                            collapsed,
+                                            far,
+                                            alt,
+                                            pre,
+                                        });
+                                    }
                                 }
                             }
                         }
@@ -1318,19 +1563,35 @@ mod tests {
         // with `[0, 5]` the only one available is `5 -> 0`, which the
         // `r.tris == 0` clause always routes back to `worse_counts`.
         //
+        // `strict` carries two values per `open` — the count itself and one
+        // above it — so the sweep can build the #3397 shape: a doubled sheet is
+        // `strict` rising while `open` holds. Never below `open`, which is a row
+        // the walk cannot emit.
+        //
         // Two different counts, because saying "re-tessellation pairs" without
-        // saying which one is how this got misread: over the 768 x 768 sweep,
-        // 576 pairs are DETECTED as a re-tessellation and 78 of those LAND in
-        // the bucket. The 498-pair gap is the population `shrank_while_healing`
-        // exists to surface, and it is most of the class.
+        // saying which one is how this got misread: over the 1536 x 1536 sweep,
+        // 2304 pairs are DETECTED as a re-tessellation and 312 of those LAND in
+        // the bucket. The gap is the population `shrank_while_healing` exists to
+        // surface, and it is most of the class.
         //
         // Both are ASSERTED below rather than left in prose, which has paid for
-        // itself four times now. The pair was 576/351 until a collapse
+        // itself five times now. The pair was 576/351 until a collapse
         // disqualified the bucket, 288/234 until `far` stopped being gated,
-        // 1152/468 until #3366 made a no-void flip a reclassification, and
+        // 1152/468 until #3366 made a no-void flip a reclassification,
         // 1152/156 until `collapsed` moved into `open_is_comparable` and so
-        // began disqualifying the GOLDEN side too. Every drift was caught by
-        // the assertion on the commit that caused it, not by a reader later.
+        // began disqualifying the GOLDEN side too, and 576/78 until #3397
+        // doubled the variant set. Every drift was caught by the assertion on
+        // the commit that caused it, not by a reader later.
+        //
+        // BOTH scaled by exactly 4 at #3397, which is a property worth naming
+        // rather than a coincidence. `shrank_while_healing` never reads
+        // `strict`, so every old pair replicates into four. And a LANDING pair
+        // needs `r.open < g.open`, which over `open` in `[0, 3]` forces
+        // `g.open = 3, r.open = 0`; every strict combination that follows is a
+        // FALL, so the new arm cannot evict a landing. `checked` is the count
+        // that did not scale: 11232 x 4 would be 44928, and the 7488 missing
+        // pairs are the equal-`open` ones whose `strict` rose, which now need a
+        // bless. That is the arm doing its job inside this very sweep.
         //
         // Be precise about what that buys HERE. The DERIVED-TOTAL invariant
         // below never sees these pairs: they all hit the `requires_bless` skip,
@@ -1367,6 +1628,7 @@ mod tests {
                 checked += 1;
                 let (want, got) = (totals([g]), totals([r]));
                 assert!(got.open_edges <= want.open_edges, "open edges: {g:?} -> {r:?}");
+                assert!(got.strict_edges <= want.strict_edges, "strict edges: {g:?} -> {r:?}");
                 assert!(got.torn <= want.torn, "torn: {g:?} -> {r:?}");
                 assert!(got.collapsed <= want.collapsed, "collapsed: {g:?} -> {r:?}");
                 assert!(got.torn_solid <= want.torn_solid, "torn solid: {g:?} -> {r:?}");
@@ -1376,12 +1638,12 @@ mod tests {
         }
         // Guard against the loop vacuously skipping everything.
         assert!(checked > vs.len(), "only {checked} clean pairs of {}", vs.len() * vs.len());
-        assert_eq!(checked, 11232, "clean pairs swept");
+        assert_eq!(checked, 37440, "clean pairs swept");
         // The two counts the comment above quotes, asserted rather than
         // recorded. The gap between them is the whole reason
         // `shrank_while_healing` exists, so it must not drift unnoticed.
-        assert_eq!(detected, 576, "pairs DETECTED as a re-tessellation");
-        assert_eq!(landed, 78, "pairs that LAND in the retessellated bucket");
+        assert_eq!(detected, 2304, "pairs DETECTED as a re-tessellation");
+        assert_eq!(landed, 312, "pairs that LAND in the retessellated bucket");
     }
 
     #[test]
@@ -1463,6 +1725,7 @@ mod tests {
                 id: 42,
                 rep: "CSG".to_string(),
                 open: 7,
+                strict: 9,
                 tris: 300,
                 collapsed: true,
                 far: false,
@@ -1474,6 +1737,11 @@ mod tests {
                 id: 7,
                 rep: "SurfaceModel".to_string(),
                 open: 0,
+                // Watertight by the signed balance and torn by the strict rule:
+                // the row shape #3397 exists to make representable, so the
+                // serializer is pinned on it rather than only on `strict ==
+                // open`.
+                strict: 4,
                 tris: 0,
                 collapsed: false,
                 far: true,
@@ -1493,9 +1761,18 @@ mod tests {
 
     #[test]
     fn a_truncated_row_is_an_error_not_a_silently_short_golden() {
-        let err = parse("model\tid\trep\topen\ttris\tcoll\tfar\talt\tpre\na.ifc\t1\tCSG\t0\t0\t0\t0\n")
+        let header = "model\tid\trep\topen\ttris\tcoll\tfar\talt\tpre\tstrict\n";
+        let err = parse(&format!("{header}a.ifc\t1\tCSG\t0\t0\t0\t0\n"))
             .expect_err("a 7-column row must not parse");
-        assert!(err.contains("expected 9 columns"), "{err}");
+        assert!(err.contains("expected 10 columns"), "{err}");
+
+        // And a COMPLETE pre-#3397 row is a truncation too, not a row with an
+        // implied strict count. Defaulting it would fabricate a clean-looking
+        // host for every line of a stale golden, which is the one way this
+        // column could go dark across the whole corpus at once.
+        let old = parse(&format!("{header}a.ifc\t1\tCSG\t0\t12\t0\t0\t0\t-\n"))
+            .expect_err("a 9-column pre-#3397 row must not parse");
+        assert!(old.contains("expected 10 columns"), "{old}");
     }
 
     #[test]

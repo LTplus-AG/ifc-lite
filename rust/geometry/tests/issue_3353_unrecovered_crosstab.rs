@@ -66,7 +66,28 @@
 //! `boolean()`/`union()` still discard the signal exactly as before; the
 //! companions just expose what they already compute.
 //!
-//! ## How to run
+//! ## Two sweeps, two purposes
+//!
+//! This file has TWO tests, not one:
+//!
+//! - `torn_vs_unrecovered_crosstab` (below): the original 8000-pair
+//!   diagnostic. `#[ignore]`d — slow, and prints a crosstab rather than
+//!   asserting anything. Manual-only; see "How to run" below.
+//! - `every_torn_pair_is_conforming_ci_sweep`: a SEPARATE, smaller
+//!   (`CI_SWEEP_PAIRS`, see that constant's doc for the count and why) sweep
+//!   that actually runs in normal CI (`cargo test --workspace`, no
+//!   `--ignored` needed) and turns the same measurement into a falsifiable
+//!   assertion: no pair in the sweep has BOTH `torn == true` and
+//!   `unrecovered > 0`. It draws its own independently-seeded pairs (see
+//!   `pair_at`/`seed_for_index`) rather than reusing any prefix of the
+//!   ignored sweep's continuous RNG stream, so it does not depend on the
+//!   ignored test and runs on its own.
+//!
+//! If the CI sweep ever fails, it prints the full crosstab and the
+//! `(index, seed)` of every counterexample pair — regenerate one directly
+//! with `pair_at(CI_SWEEP_BASE_SEED, index)`, no need to replay the loop.
+//!
+//! ## How to run the ignored (large) sweep manually
 //!
 //! ```text
 //! cargo test --test issue_3353_unrecovered_crosstab -- --ignored --nocapture
@@ -328,4 +349,131 @@ fn torn_vs_unrecovered_crosstab() {
              next classify.rs fix attempt."
         );
     }
+}
+
+/// Base seed for the CI sweep below. Deliberately a DIFFERENT constant from
+/// the ignored sweep's `SplitMix64(0xC0FF_EE15_3353_5EED)` starting state, so
+/// the two sweeps' draws do not overlap or shadow one another.
+const CI_SWEEP_BASE_SEED: u64 = 0x3353_C1_5EED_CAFE;
+
+/// Pair count for the CI-visible sweep (runs on every `cargo test
+/// --workspace`, unlike `SWEEP_PAIRS` above which only runs under
+/// `--ignored`). Chosen at 1/20 of the ignored sweep's 8000 pairs: that
+/// sweep's own module doc already reduced FROM the sibling `issue_3353_*`
+/// files' out-of-repo 40000-60000-pair sweeps by a comparable ~5-7x factor
+/// when moving from "no committed harness" to "committed, manually-invoked
+/// diagnostic"; this constant applies a similar order-of-magnitude step down
+/// again when moving from "manually-invoked, run once" to "every `cargo test
+/// --workspace` invocation, on every push and every PR, indefinitely" — the
+/// cost that matters for a permanent CI gate is cumulative across many runs,
+/// not the wall-clock of any one run. No local timing measurement backs this
+/// number (disk constraints on the machine that wrote this test forbade
+/// running `cargo test` locally at all); if CI shows this sweep is
+/// meaningfully slower or faster than the rest of the `Rust tests` job's
+/// ~28-minute budget, this constant is the number to revisit, not the
+/// assertion below.
+const CI_SWEEP_PAIRS: u64 = 400;
+
+/// Deterministic seed for sweep index `index`, independent of every other
+/// index in the same sweep (unlike the ignored sweep's `torn_vs_unrecovered_
+/// crosstab`, which advances ONE `SplitMix64` continuously across the whole
+/// loop — reproducing pair `N` there means replaying pairs `0..N` first).
+/// One splitmix64 step folding `index` into `base`: `next_u64` on
+/// `SplitMix64`-with-golden-ratio-increment-seeded-state is exactly
+/// splitmix64's own recommended seed-mixing step, so `index` values that
+/// differ only in their low bits still land on well-separated seeds.
+fn seed_for_index(base: u64, index: u64) -> u64 {
+    let mut mixer = SplitMix64(base ^ index.wrapping_mul(0x9E37_79B9_7F4A_7C15));
+    mixer.next_u64()
+}
+
+/// Regenerate the exact pair the CI sweep drew for `index`, from `base` and
+/// `index` alone. A failing counterexample is reported as `(index, seed)`;
+/// either `pair_at(CI_SWEEP_BASE_SEED, index)` or
+/// `gen_pair(&mut SplitMix64(seed))` (the `seed` printed IS
+/// `seed_for_index(base, index)`) reproduces it standalone, with no need to
+/// replay the loop up to `index`.
+fn pair_at(base: u64, index: u64) -> (Mesh, Mesh) {
+    let mut rng = SplitMix64(seed_for_index(base, index));
+    gen_pair(&mut rng)
+}
+
+/// CI-visible counterpart to `torn_vs_unrecovered_crosstab`, above: same
+/// generator shape and tear/conformity check, run over a much smaller,
+/// independently-seeded sweep (`CI_SWEEP_PAIRS`; see that constant's doc for
+/// the count and why), asserting rather than merely printing.
+///
+/// Hypothesis under test (from `issue_3353_sweep_261_classification_tear.rs`'s
+/// single drilled case, where `unrecovered == 0` held for a tear): torn
+/// implies conforming, i.e. no pair in the sweep is BOTH torn AND has
+/// `unrecovered > 0`. If this ever fails, arrangement non-conformity DOES
+/// contribute to some #3353 tears — a previously unmeasured sub-population —
+/// and the counterexamples printed below are the pairs to separate out
+/// before the next `classify.rs` fix attempt. This assertion is NOT to be
+/// weakened to force a pass; a failure here is a valid, actionable result.
+#[test]
+fn every_torn_pair_is_conforming_ci_sweep() {
+    let clipper = ClippingProcessor::new();
+
+    let mut torn_unrecovered_zero = 0u64;
+    let mut torn_unrecovered_pos = 0u64;
+    let mut clean_unrecovered_zero = 0u64;
+    let mut clean_unrecovered_pos = 0u64;
+    let mut skipped_errors = 0u64;
+    let mut counterexamples: Vec<(u64, u64)> = Vec::new(); // (index, seed)
+
+    for i in 0..CI_SWEEP_PAIRS {
+        let (a, b) = pair_at(CI_SWEEP_BASE_SEED, i);
+
+        // Same observation channel as the ignored sweep: a pure function of
+        // `(a, b)`, independent of (and not perturbing) the tear check below.
+        let (_raw_union, conforming) = union_with_conformity(&a, &b);
+
+        let out = match clipper.union_mesh(&a, &b) {
+            Ok(m) => m,
+            Err(_) => {
+                skipped_errors += 1;
+                continue;
+            }
+        };
+        let torn = match open_edges(&out) {
+            Ok(0) => false,
+            Ok(_) => true,
+            Err(_) => true,
+        };
+
+        match (torn, conforming) {
+            (true, true) => torn_unrecovered_zero += 1,
+            (true, false) => {
+                torn_unrecovered_pos += 1;
+                counterexamples.push((i, seed_for_index(CI_SWEEP_BASE_SEED, i)));
+            }
+            (false, true) => clean_unrecovered_zero += 1,
+            (false, false) => clean_unrecovered_pos += 1,
+        }
+    }
+
+    let total_torn = torn_unrecovered_zero + torn_unrecovered_pos;
+    let table = format!(
+        "issue #3353 classification-half CI sweep: torn x unrecovered crosstab\n\
+         sweep pairs requested: {CI_SWEEP_PAIRS}, skipped (union errored): {skipped_errors}\n\
+         \x20                   unrecovered==0      unrecovered>0\n\
+         torn                {torn_unrecovered_zero:>14}      {torn_unrecovered_pos:>14}\n\
+         not torn            {clean_unrecovered_zero:>14}      {clean_unrecovered_pos:>14}\n\
+         total torn: {total_torn} / {} ({:.3}%)",
+        CI_SWEEP_PAIRS - skipped_errors,
+        100.0 * total_torn as f64 / (CI_SWEEP_PAIRS - skipped_errors).max(1) as f64
+    );
+    println!("{table}");
+
+    assert!(
+        counterexamples.is_empty(),
+        "{table}\n\n{} of {total_torn} torn pair(s) had unrecovered > 0 — arrangement \
+         non-conformity contributed to a tear in this sweep, contradicting the hypothesis \
+         that every torn pair in this regime is conforming. This is a real, previously \
+         unmeasured sub-population, not a flake: do NOT weaken this assertion to force a \
+         pass. Counterexample (index, seed) pairs — regenerate each with \
+         `pair_at(CI_SWEEP_BASE_SEED, index)`:\n{counterexamples:#?}",
+        counterexamples.len(),
+    );
 }

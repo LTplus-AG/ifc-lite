@@ -77,3 +77,30 @@ describe('isUnchanged sees through a rebuilt-but-equal typed array', () => {
     assert.ok('collabDraftBaseline' in patch, 'a typed array with different contents must still be written');
   });
 });
+
+describe('isUnchanged compares plain-object keys by OWNERSHIP, not the prototype chain (#3392 follow-up)', () => {
+  it('still rewrites when two objects share no own keys, even though a key each has via the shared Object prototype makes `k in b` true', () => {
+    // `Object.prototype.toString` / `Object.prototype.valueOf` are inherited
+    // by every plain object -- so `'toString' in rebuilt` is true even though
+    // `rebuilt` does not OWN a `toString` key of its own, and `a.toString`/
+    // `rebuilt.toString` are Object.is-equal because both resolve to the same
+    // inherited function. A comparison keyed on `in` therefore reports these
+    // two objects -- which share NO own key -- as unchanged.
+    const prior = { toString: Object.prototype.toString };
+    const rebuilt = { valueOf: Object.prototype.valueOf };
+
+    const registry = [
+      defineSliceTeardown('testSlice', ['sectionPlane'], () => ({
+        sectionPlane: rebuilt as unknown as TeardownState['sectionPlane'],
+      })),
+    ];
+    const state: TeardownState = { sectionPlane: prior as unknown as TeardownState['sectionPlane'] };
+    const patch = composeTeardown(registry)(SESSION_RESET, state);
+
+    assert.ok(
+      'sectionPlane' in patch,
+      'two objects with completely different own keys must be written as changed -- ' +
+      '`k in b` treats a key inherited from Object.prototype as if b owned it too',
+    );
+  });
+});

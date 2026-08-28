@@ -343,7 +343,7 @@ function isUnchanged(a: unknown, b: unknown, seen: WeakSet<object> = new WeakSet
   if (isPlainObject(a) && isPlainObject(b) && !seen.has(a)) {
     seen.add(a);
     const keys = Object.keys(a);
-    return keys.length === Object.keys(b).length && keys.every((k) => k in b && isUnchanged(a[k], b[k], seen));
+    return keys.length === Object.keys(b).length && keys.every((k) => Object.hasOwn(b, k) && isUnchanged(a[k], b[k], seen));
   }
   return false;
 }

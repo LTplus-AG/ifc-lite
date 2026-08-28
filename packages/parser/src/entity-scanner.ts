@@ -38,9 +38,21 @@ export interface EntityScanResult {
   /**
    * How many records the scan refused because their express id is outside the
    * u32 storage contract (#3395). Counted on the `worker` and `tokenizer`
-   * paths. The `wasm` path skips the same records inside Rust and warns to the
-   * console there; its count does not cross the boundary, so a nonzero value
-   * here is proof of refusals but a zero is not proof of none.
+   * paths only, so a nonzero value here is proof of refusals but a zero is
+   * never proof of none — the two Rust-backed paths both refuse the same
+   * records without reporting a count across the boundary:
+   *
+   * - `wasm`: `EntityScanner` skips them inside Rust and the wasm entry point
+   *   warns to the console there (`rust/wasm-bindings/src/api/parsing.rs`), so
+   *   the refusal is visible even though the number is not.
+   * - `pre-scanned`: the ids arrive already narrowed to a `Uint32Array` from
+   *   the streaming geometry pre-pass, which reaches the same `EntityScanner`
+   *   (via `scan_shard_classified` on the sharded branch) and discards its
+   *   `skipped_oversized_ids()`. Nothing warns on this path, and it is the
+   *   one the viewer takes for every SAB-backed worker load of a file at or
+   *   above 2 MB (`useIfcLoader.ts`'s `geometryWillEmitEntityIndex`). Making
+   *   it visible means widening the `set-entity-index` handoff to carry the
+   *   count; this side cannot recover it from the columns alone.
    */
   oversizedIdCount: number;
 }

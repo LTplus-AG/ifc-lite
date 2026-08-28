@@ -206,9 +206,8 @@ export interface SliceTeardown<K extends keyof ViewerState = keyof ViewerState> 
    * undoing or re-allocating anything.
    *
    * {@link composeTeardown} drops unchanged entries as a backstop, including a
-   * `Set` / `Map` / array / typed array / plain object rebuilt equal-but-new
-   * — a should, not a must, but cheaper: {@link isUnchanged}'s structural
-   * check only runs after `Object.is` fails.
+   * `Set` / `Map` / array / typed array / plain object rebuilt equal-but-new — a
+   * should, not a must: {@link isUnchanged}'s structural check runs only after `Object.is` fails.
    */
   readonly teardown: (scope: TeardownScope, state: TeardownState) => TeardownContribution<K>;
 }

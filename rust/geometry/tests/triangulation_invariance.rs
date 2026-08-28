@@ -967,6 +967,22 @@ fn unit_cube() -> Mesh {
     m
 }
 
+/// [`unit_cube`] with one existing face triangle re-emitted AND its reverse.
+///
+/// Every position is already in the mesh, so this adds no boundary at all: the
+/// three affected edges go from 1 forward / 1 reverse to 2 forward / 2 reverse.
+/// That is the exact shape the signed balance cancels to zero on.
+///
+/// ONE fixture rather than a copy per test, because the six indices are what
+/// makes it a doubling rather than a hole: a copy that drifted would leave the
+/// superset test below asserting `strict >= open` over some other mesh, and
+/// passing.
+fn doubled_face_cube() -> Mesh {
+    let mut m = unit_cube();
+    m.indices.extend_from_slice(&[0, 3, 2, 0, 2, 3]);
+    m
+}
+
 /// #3397. The census measured watertightness with a SIGNED per-edge balance, so
 /// a face duplicated along with its opposite-wound twin contributes one extra
 /// forward AND one extra reverse use of each of its edges, cancels to zero, and
@@ -979,13 +995,7 @@ fn a_doubled_coincident_face_is_invisible_to_the_signed_balance_but_not_the_stri
     assert_eq!(clean.strict, 0, "and every one of its edges is a clean 1f/1r pair");
     assert_eq!(clean.degenerate, 0);
 
-    // Re-emit one existing face triangle AND its reverse. Every position is
-    // already in the mesh, so this adds no boundary at all: the three affected
-    // edges go from 1 forward / 1 reverse to 2 forward / 2 reverse.
-    let mut doubled = unit_cube();
-    doubled.indices.extend_from_slice(&[0, 3, 2, 0, 2, 3]);
-
-    let s = edge_stats(&doubled);
+    let s = edge_stats(&doubled_face_cube());
     // Pins the signed column's BLIND SPOT as a measurement rather than
     // asserting it is right. This is the reading the census still gates its
     // defect population on, so what it cannot see has to be written down.
@@ -1006,11 +1016,7 @@ fn a_real_hole_moves_both_readings_and_strict_is_never_below_open() {
     assert_eq!(s.open, 3, "the three edges of the missing triangle are unbalanced");
     assert_eq!(s.strict, 3, "and the strict rule counts the same three");
 
-    for m in [unit_cube(), holed, {
-        let mut d = unit_cube();
-        d.indices.extend_from_slice(&[0, 3, 2, 0, 2, 3]);
-        d
-    }] {
+    for m in [unit_cube(), holed, doubled_face_cube()] {
         let s = edge_stats(&m);
         assert!(s.strict >= s.open, "strict {} < open {}", s.strict, s.open);
     }

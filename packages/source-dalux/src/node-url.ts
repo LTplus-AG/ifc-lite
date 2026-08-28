@@ -86,7 +86,13 @@ export function canonicalFieldNodeUrl(rawUrl: string, baseUrl: string): string |
   }
   const base = new URL(baseUrl);
   if (parsed.origin === base.origin) return undefined; // caller's own-origin path
-  if (!parsed.pathname.startsWith(base.pathname)) return undefined;
+  // Boundary-checked, not a bare `startsWith`: with a base path of
+  // `/service/api`, a bare prefix test also admits the SIBLING path
+  // `/service/api-v2/...`, which is a different API surface and would be
+  // rerouted through the relay as if it were ours. Match the path exactly, or
+  // at a `/` boundary.
+  const basePath = base.pathname.endsWith('/') ? base.pathname.slice(0, -1) : base.pathname;
+  if (parsed.pathname !== basePath && !parsed.pathname.startsWith(`${basePath}/`)) return undefined;
   const node = daluxFieldNode(parsed.hostname);
   if (!node) return undefined;
   parsed.protocol = base.protocol;

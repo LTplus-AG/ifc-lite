@@ -223,4 +223,24 @@ describe('canonicalFieldNodeUrl', () => {
   it('returns undefined for an unparseable URL', () => {
     expect(canonicalFieldNodeUrl('not a url', baseUrl)).toBeUndefined();
   });
+
+  // A bare `startsWith(base.pathname)` also admits a SIBLING path: with a base
+  // of `/service/api`, `/service/api-v2/...` shares the prefix without being
+  // under it. That is a different API surface, and rerouting it through the
+  // relay would send a request we do not own to our own origin.
+  it('returns undefined for a sibling path that merely shares the base prefix', () => {
+    expect(
+      canonicalFieldNodeUrl('https://node2.field.dalux.com/service/api-v2/2.0/x', baseUrl),
+    ).toBeUndefined();
+    expect(
+      canonicalFieldNodeUrl('https://node2.field.dalux.com/service/apiary/x', baseUrl),
+    ).toBeUndefined();
+  });
+
+  it('still accepts the base path exactly, and a real child of it', () => {
+    expect(canonicalFieldNodeUrl('https://node2.field.dalux.com/service/api', baseUrl)).toBeDefined();
+    expect(
+      canonicalFieldNodeUrl('https://node2.field.dalux.com/service/api/2.0/x', baseUrl),
+    ).toBeDefined();
+  });
 });

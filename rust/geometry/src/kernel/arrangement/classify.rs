@@ -223,6 +223,52 @@ fn c_on_or_near_a(
     })
 }
 
+/// THE unified coincident-face test (#3353's narrowed classification fix — see
+/// the doc comment on [`BComponents::surface_normal_unified`] and the A/B call
+/// sites in [`boolean_vids_components`] for exactly when this is consulted).
+///
+/// Does `c` sit on a triangle of `tris` — exactly ([`on_surface_tri`]), or
+/// within the near-coplanar snap band ([`near_on_surface_tri`], the #1007
+/// flush-cap fix)? Returns the covering triangle's f64 normal on a hit. `bvh`
+/// MUST be built over `tris`, and `band` MUST be sized from `tris`'s own
+/// per-axis extents (`NearBand::from_tris(tris)`), hoisted once by the caller.
+///
+/// This function folds `c`'s own coordinates into `band` via `observe_point`
+/// (matching [`NearBand::radius`]'s precondition that the query point be
+/// included) before deriving the BVH query radius, tries the EXACT test
+/// before the near one per candidate, and is `find_map` over BVH candidates —
+/// order-independent, so candidate order (hence BVH internal layout) can
+/// never change the verdict for a fixed `tris`/`c`.
+///
+/// Prior attempts (#3404, `wip/3353-coincident-detectors`) called this
+/// identically from BOTH the A-triangle and B-triangle classification
+/// directions for EVERY triangle, in place of [`BComponents::surface_normal`]
+/// / [`c_on_or_near_a`] respectively; that unconditional substitution measured
+/// 27 hosts regressed against the `triangulation_invariance` census and was
+/// not merged. This function itself is unchanged from that attempt — only the
+/// call sites differ: it is now consulted ONLY for a triangle whose parent
+/// face was flagged `coplanar_a`/`coplanar_b` (a near-coplanar overlap with
+/// the other operand — the near-degenerate population the `sweep_261` tear
+/// actually occupies), and only its own result is used when it disagrees with
+/// today's detector on that narrow population; every other triangle is
+/// entirely untouched.
+fn coincident_face_normal(
+    c: [f64; 3],
+    tris: &[Tri],
+    bvh: &super::super::broadphase::Bvh,
+    band: &NearBand,
+    scratch: &mut Vec<u32>,
+) -> Option<[f64; 3]> {
+    let mut band = *band;
+    band.observe_point(&c);
+    scratch.clear();
+    bvh.point_candidates(c, band.radius(), scratch);
+    scratch.iter().find_map(|&i| {
+        let t = &tris[i as usize];
+        on_surface_tri(c, t).or_else(|| near_on_surface_tri(c, t, &band))
+    })
+}
+
 /// Is the OTHER operand's solid present just off `c` along `±dir`?
 ///
 /// `c` is a sub-triangle centroid that may lie EXACTLY on a shared interface plane
@@ -277,6 +323,15 @@ pub(super) struct BComponents<'a> {
     /// Per-component ray-cast far length (`operand_extent`), exactly as the
     /// binary path computes it for its single operand.
     exts: Vec<f64>,
+    /// Per-component BVH, hoisted once and reused by every
+    /// [`Self::surface_normal_unified`] query — never rebuilt per query.
+    /// Only [`Self::surface_normal_unified`] (the #3353 narrow-gate path)
+    /// reads this; [`Self::surface_normal`] is unchanged and does not.
+    bvhs: Vec<super::super::broadphase::Bvh>,
+    /// Per-component near-coplanar band, hoisted once from that component's
+    /// OWN triangles (`NearBand::from_tris`) — never rebuilt per query. Same
+    /// caveat as `bvhs`: only [`Self::surface_normal_unified`] reads this.
+    bands: Vec<NearBand>,
 }
 
 impl<'a> BComponents<'a> {
@@ -314,7 +369,18 @@ impl<'a> BComponents<'a> {
                 (lo, hi)
             })
             .collect();
-        Self { comps, aabbs, exts }
+        let bvhs = comps
+            .iter()
+            .map(|c| super::super::broadphase::Bvh::build(c))
+            .collect();
+        let bands = comps.iter().map(|c| NearBand::from_tris(c)).collect();
+        Self {
+            comps,
+            aabbs,
+            exts,
+            bvhs,
+            bands,
+        }
     }
 
     /// Conservative "could the parity segment from `p` hit component `k`?" —
@@ -389,6 +455,27 @@ impl<'a> BComponents<'a> {
         for (k, comp) in self.comps.iter().enumerate() {
             if self.point_in_aabb(k, c) {
                 if let Some(n) = near_on_surface_normal(c, comp) {
+                    return Some(n);
+                }
+            }
+        }
+        None
+    }
+
+    /// The #3353 narrow-gate analogue of [`Self::surface_normal`]: same
+    /// AABB-gated per-component loop, but each component's probe goes
+    /// through [`coincident_face_normal`] against that component's OWN
+    /// hoisted `bvhs[k]`/`bands[k]` (see [`Self::new`]) instead of the linear
+    /// [`on_surface_normal`]/[`near_on_surface_normal`] scan. Callers consult
+    /// this ONLY for a `coplanar_a`/`coplanar_b`-flagged triangle, and only
+    /// act on its result when it disagrees with [`Self::surface_normal`]'s —
+    /// see the call sites in [`boolean_vids_components`].
+    fn surface_normal_unified(&self, c: [f64; 3], scratch: &mut Vec<u32>) -> Option<[f64; 3]> {
+        for (k, comp) in self.comps.iter().enumerate() {
+            if self.point_in_aabb(k, c) {
+                if let Some(n) =
+                    coincident_face_normal(c, comp, &self.bvhs[k], &self.bands[k], scratch)
+                {
                     return Some(n);
                 }
             }
@@ -509,6 +596,13 @@ pub(super) fn boolean_vids_components(
     // coplanar-parent B triangle. `unwrap_or` matters only for an empty `a`, where
     // the box is never read.
     let a_aabb = bvh_a.root_aabb().unwrap_or(([0.0; 3], [0.0; 3]));
+    // `a` as a single-component `BComponents`, so a B-triangle's narrow-gate
+    // unified probe (below) can reach `surface_normal_unified` the same way an
+    // A-triangle's probe reaches it through `bc`. Built unconditionally (O(|a|)
+    // once, the same cost `bvh_a`/the per-component AABBs already pay), even
+    // though it is only READ for a `coplanar_b`-flagged B-triangle.
+    let a_as_components = [a];
+    let ac = BComponents::new(&a_as_components);
     let mut scratch: Vec<u32> = Vec::new();
     let dedup = matches!(op, BoolOp::Union | BoolOp::Intersection);
     let mut a_kept: HashSet<[Vid; 3]> = HashSet::new();
@@ -524,7 +618,35 @@ pub(super) fn boolean_vids_components(
         // ungated (like the exact one) because a coincident-shared-face DROP/keep is
         // unconditionally correct, and its centroid-inside + µm-perp requirements
         // never match a transversal cut face (every pinned box−box manifest face).
-        if let Some(n_other) = bc.surface_normal(c) {
+        //
+        // `linear` is today's detector (`bc.surface_normal`), always run. On a
+        // `coplanar_a`-flagged triangle ONLY (the near-degenerate overlap
+        // population `sweep_261` occupies), ALSO run the #3353 unified detector
+        // (`bc.surface_normal_unified`) and use ITS verdict instead whenever the
+        // two disagree — either on Some/None, or on the co-oriented/opposite call
+        // when both are Some. When `cop_parent` is false, or the two agree, this
+        // is byte-identical to the pre-#3353 behavior.
+        let linear = bc.surface_normal(c);
+        let regime1 = if cop_parent {
+            let unified = bc.surface_normal_unified(c, &mut scratch);
+            let disagree = match (linear, unified) {
+                (Some(ln), Some(un)) => {
+                    let co_l = dot3(tri_normal(arr, tri), ln) > 0.0;
+                    let co_u = dot3(tri_normal(arr, tri), un) > 0.0;
+                    co_l != co_u
+                }
+                (None, None) => false,
+                _ => true,
+            };
+            if disagree {
+                unified
+            } else {
+                linear
+            }
+        } else {
+            linear
+        };
+        if let Some(n_other) = regime1 {
             let co_oriented = dot3(tri_normal(arr, tri), n_other) > 0.0;
             keep = match op {
                 BoolOp::Union | BoolOp::Intersection => co_oriented,
@@ -577,7 +699,23 @@ pub(super) fn boolean_vids_components(
         // own (the host imposes none on it) so `coplanar_b` is unset for it, yet it
         // is still a coincident shared face that must drop (the #1007 flush roof cap
         // — without the near drop here it survives and bridges the opening).
-        if c_on_or_near_a(c, a, &bvh_a, &a_band, &mut scratch) {
+        // Same narrow-gate shape as the A-triangle regime-1 block above: the
+        // baseline `c_on_or_near_a` detector runs always; ONLY on a
+        // `coplanar_b`-flagged triangle, ALSO run the unified detector and use
+        // its verdict instead when it disagrees (this side only needs a bool —
+        // any coincident hit drops the B-copy, there is no normal comparison).
+        let hit = c_on_or_near_a(c, a, &bvh_a, &a_band, &mut scratch);
+        let drop_coincident = if cop_parent {
+            let unified_hit = ac.surface_normal_unified(c, &mut scratch).is_some();
+            if hit != unified_hit {
+                unified_hit
+            } else {
+                hit
+            }
+        } else {
+            hit
+        };
+        if drop_coincident {
             continue; // coplanar-shared B-copy: dropped (the A-copy is the kept one)
         }
         if cop_parent {

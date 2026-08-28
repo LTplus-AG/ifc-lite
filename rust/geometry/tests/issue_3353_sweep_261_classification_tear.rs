@@ -52,12 +52,17 @@
 //!
 //! ## Status
 //!
-//! `#[ignore]`d: this documents a KNOWN, OPEN defect, not a passing
-//! invariant. Do not un-ignore it without first fixing the classification
-//! disagreement referenced above and re-validating with the full
-//! `triangulation_invariance` census (see AGENTS.md). Verified to fail
-//! for the stated reason (3 unmatched directed edges) when run with
-//! `--ignored`.
+//! Un-ignored: `classify.rs` now narrows the two directions' coincident-
+//! shared-face check to agree on the population where they can disagree —
+//! a triangle whose parent face was flagged `coplanar_a`/`coplanar_b` (a
+//! near-coplanar overlap with the other operand, the near-degenerate regime
+//! this case's rotated overlap falls in). On that flagged subset only, a
+//! unified BVH-based detector (`coincident_face_normal`) runs alongside
+//! today's detector, and its verdict is used in place of today's whenever
+//! the two disagree; every other triangle is untouched. This test is the
+//! classification-level regression that change targets; it must stay
+//! green, and any change to `classify.rs` must be re-validated against the
+//! full `triangulation_invariance` census (see AGENTS.md).
 //!
 //! Refs #3353
 
@@ -136,8 +141,6 @@ fn open_edges(m: &Mesh) -> Result<usize, String> {
 
 /// `sweep_261`, recovered verbatim from PR #3373's closed branch.
 #[test]
-#[ignore = "known-open #3353 defect: classification-level tear, consolidate_coplanar \
-            is a byte-identical no-op on this input (see module doc)"]
 fn sweep_261_overlapping_rotated_union_never_tears() {
     let a_min = [-1.72371594746207, -0.35246108913603935, -1.2204342720208154];
     let a_size = [2.8534163464770894, 3.0795194627753784, 2.858202766048261];

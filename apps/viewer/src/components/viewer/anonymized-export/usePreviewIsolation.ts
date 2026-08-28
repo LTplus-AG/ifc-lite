@@ -82,9 +82,17 @@ export function usePreviewIsolation({ enabled, targetModelId, includedIds }: Use
     for (const id of includedIds) {
       globalIds.add(toGlobalIdForRef(store.models, { modelId: targetModelId, expressId: id }));
     }
-    store.setIsolatedEntities(globalIds);
-    // Highlight the same set. Seeds are latched by `useAnonymizedExportSet`
-    // on open, so rewriting the live selection here does not re-seed.
+    // #3338: `includedIds` is not restricted to renderable leaf types -- an
+    // included geometry-less IfcElementAssembly would otherwise blank the
+    // preview for an id that genuinely IS part of the export. Route through
+    // the resolver before isolating, same as every other user-facing isolate
+    // channel; the SELECTION below stays on the raw set (what is actually
+    // included), matching the #1133 convention other channels use.
+    const resolved = store.cameraCallbacks.resolveHighlightIds?.([...globalIds]) ?? [...globalIds];
+    store.setIsolatedEntities(new Set(resolved));
+    // Highlight the same (raw) set. Seeds are latched by
+    // `useAnonymizedExportSet` on open, so rewriting the live selection here
+    // does not re-seed.
     store.setSelectedEntityIds([...globalIds]);
   }, [enabled, targetModelId, includedIds]);
 }

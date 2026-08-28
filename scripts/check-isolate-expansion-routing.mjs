@@ -22,10 +22,20 @@
  * This happened twice nine hours apart (#2531, #2532) with no CI run
  * containing both sides, and a fifth channel (the SDK/MCP `isolate()` call,
  * `apps/viewer/src/sdk/adapters/visibility-adapter.ts`) carried the same gap
- * until #3382. This gate exists so a SIXTH -- or a regression in one of the
- * five -- fails a CI run instead of shipping quietly. A sixth channel this
- * gate's own audit found: `apps/viewer-embed/src/bridge/handler.ts`'s
- * `ISOLATE` postMessage command (fixed alongside this gate, same PR).
+ * until #3382. A sixth channel this gate's own audit found:
+ * `apps/viewer-embed/src/bridge/handler.ts`'s `ISOLATE` postMessage command
+ * (fixed alongside this gate, same PR).
+ *
+ * A SEVENTH channel surfaced after this gate shipped, from an adversarial
+ * review of the gate itself: `apps/viewer-embed/src/components/
+ * useEmbedUrlParams.ts`'s `?isolate=` handler calls `setIsolatedEntities(`,
+ * never `isolateEntities(` -- the visibility slice's other raw-id isolation
+ * actuator (ASSIGNS instead of TOGGLING; see `SET_ISOLATED_CALL_PATTERN`).
+ * A gate that only watched one of the two sibling actions let a channel
+ * dodge it for free by picking the other one, so the gate now watches both
+ * (`RAW_ISOLATION_ACTIONS`), and every OTHER direct `setIsolatedEntities`
+ * caller was audited at the same time -- see `REQUIRES_ROUTING_MARKER` and
+ * `NO_MARKER_REQUIRED` below for what each one turned out to need.
  *
  * Run: `node scripts/check-isolate-expansion-routing.mjs` (also
  * `pnpm check:isolate-expansion-routing`).
@@ -33,19 +43,20 @@
  * ## What counts as a channel
  *
  * Any non-test `.ts`/`.tsx` file under `apps/viewer/src` or
- * `apps/viewer-embed/src` that calls `isolateEntities(` (directly, via
- * `state.isolateEntities(`, or the optional-call form
- * `state.isolateEntities?.(`) on the viewer store's `visibilitySlice`
- * action. Test files (`*.test.ts(x)`) are excluded -- the fixtures IN this
- * gate's own test file, and the wiring tests that already pin each of these
- * five channels, would otherwise all read as new channels.
+ * `apps/viewer-embed/src` that calls `isolateEntities(` or
+ * `setIsolatedEntities(` (directly, via `state.`, the optional-call form
+ * `?.(`, or a destructured/aliased local binding of either -- see
+ * `ALIAS_DESTRUCTURE_PATTERN`) on the viewer store's `visibilitySlice`.
+ * Test files (`*.test.ts(x)`) are excluded -- the fixtures IN this gate's
+ * own test file, and the wiring tests that already pin each of these seven
+ * channels, would otherwise all read as new channels.
  *
  * ## Two ways to fail
  *
- * 1. UNKNOWN CHANNEL: a file calls `isolateEntities(` and is not in either
- *    allowlist below. This is the "sixth channel nobody enumerated" failure
- *    mode -- new code that isolates ids has to be triaged into one of the two
- *    lists (with a reason), not silently pass.
+ * 1. UNKNOWN CHANNEL: a file calls `isolateEntities(` or `setIsolatedEntities(`
+ *    and is not in either allowlist below. This is the "a channel nobody
+ *    enumerated" failure mode -- new code that isolates ids has to be
+ *    triaged into one of the two lists (with a reason), not silently pass.
  * 2. LOST ROUTING: a file in `REQUIRES_ROUTING_MARKER` no longer contains a
  *    call to one of the resolvers in `ROUTING_MARKERS`. This catches a
  *    channel that HAD the fix regressing -- e.g. a refactor that inlines the
@@ -115,22 +126,43 @@ const TEST_FILE = /\.test\.[jt]sx?$/;
 export const CALL_PATTERN = /\bisolateEntities\s*\?{0,1}\.{0,1}\s*\(/;
 
 /**
- * A binding of the store's `isolateEntities` action to a LOCAL NAME via
- * object destructuring -- `const { isolateEntities } = useViewerStore()` or,
- * critically, the aliased form `const { isolateEntities: applyIsolation } =
- * useViewerStore()`. The aliased form defeats `CALL_PATTERN`: every call
- * site afterwards reads `applyIsolation(ids)`, never the literal token
- * `isolateEntities(`, so a file that only destructures-and-renames was
- * previously invisible to this gate -- not even counted toward
- * `candidateCount`. Any destructuring of the key, aliased or not, is treated
- * as a candidate signal on its own (deliberately not narrowed to "and the
- * alias is later called": tracking a dynamic alias through the rest of the
- * file is a data-flow problem this regex-based gate cannot do reliably, and
- * a live binding to the action is itself the thing worth a reviewer's eyes
- * -- false positives here are safe, false negatives are the whole failure
- * mode this exists to close).
+ * A call to `setIsolatedEntities(`, the visibility slice's OTHER raw-id
+ * isolation actuator. `isolateEntities` TOGGLES a same-set channel;
+ * `setIsolatedEntities` ASSIGNS it -- used by every channel that must not
+ * self-cancel on a re-run (an embed URL param applied once, a preview that
+ * re-syncs on every change, a BCF viewpoint, a clash/IDS focus). Both take a
+ * bare id collection with no expansion, and both blank the viewport the same
+ * way on a geometry-less assembly id (#2531/#2532's failure mode) -- a
+ * gate that only watched `isolateEntities` let a channel dodge it for free
+ * simply by picking this sibling action, which is exactly how
+ * `apps/viewer-embed/src/components/useEmbedUrlParams.ts` (#3338) went
+ * unnoticed: `grep -c "isolateEntities("` on that file is 0.
  */
-export const ALIAS_DESTRUCTURE_PATTERN = /\bconst\s*\{[^}]*\bisolateEntities\b[^}]*\}\s*=/;
+export const SET_ISOLATED_CALL_PATTERN = /\bsetIsolatedEntities\s*\?{0,1}\.{0,1}\s*\(/;
+
+/** The store actions this gate treats as "raw isolation" -- see
+ *  `CALL_PATTERN` and `SET_ISOLATED_CALL_PATTERN`. Exported so a future
+ *  third sibling action can be found by grepping for this list's use. */
+export const RAW_ISOLATION_ACTIONS = ['isolateEntities', 'setIsolatedEntities'];
+
+/**
+ * A binding of either raw-isolation action (`RAW_ISOLATION_ACTIONS`) to a
+ * LOCAL NAME via object destructuring -- `const { isolateEntities } =
+ * useViewerStore()` or, critically, the aliased form `const {
+ * isolateEntities: applyIsolation } = useViewerStore()`. The aliased form
+ * defeats `CALL_PATTERN`/`SET_ISOLATED_CALL_PATTERN`: every call site
+ * afterwards reads `applyIsolation(ids)`, never the literal action name, so
+ * a file that only destructures-and-renames was previously invisible to
+ * this gate -- not even counted toward `candidateCount`. Any destructuring
+ * of either key, aliased or not, is treated as a candidate signal on its own
+ * (deliberately not narrowed to "and the alias is later called": tracking a
+ * dynamic alias through the rest of the file is a data-flow problem this
+ * regex-based gate cannot do reliably, and a live binding to either action
+ * is itself the thing worth a reviewer's eyes -- false positives here are
+ * safe, false negatives are the whole failure mode this exists to close).
+ */
+export const ALIAS_DESTRUCTURE_PATTERN =
+  /\bconst\s*\{[^}]*\b(?:isolateEntities|setIsolatedEntities)\b[^}]*\}\s*=/;
 
 /** The resolvers that actually perform `IfcRelAggregates` expansion, or read
  *  from a resolver that does, called as real code (not merely named in prose). */
@@ -146,6 +178,29 @@ export const REQUIRES_ROUTING_MARKER = new Set([
   'apps/viewer/src/components/viewer/PropertiesPanel.tsx',
   'apps/viewer/src/components/viewer/SearchModal.filter.tsx',
   'apps/viewer-embed/src/bridge/handler.ts',
+  // A SEVENTH channel found by widening CALL_PATTERN to setIsolatedEntities
+  // (a real bug, not hypothetical): `?isolate=` named a geometry-less
+  // assembly and blanked the viewport, because this hook calls the
+  // ASSIGNING `setIsolatedEntities`, never `isolateEntities` -- invisible to
+  // every earlier version of this gate.
+  'apps/viewer-embed/src/components/useEmbedUrlParams.ts',
+  // Audited alongside the seventh channel (all five other setIsolatedEntities
+  // callers, per the review that found #useEmbedUrlParams.ts): a BCF
+  // viewpoint's visible-component exceptions can name whatever the
+  // AUTHORING tool recorded, not guaranteed geometry-bearing in this
+  // renderer.
+  'apps/viewer/src/hooks/useBCF.ts',
+  // The IDS row-focus isolate (`installFocusIsolation`) and set-level
+  // isolate (`installSetIsolation`, the failed/passed/involved buttons):
+  // both isolate ids an IDS specification's applicability filter matched,
+  // which can be any IFC class, including a geometry-less assembly -- the
+  // same shape as LensPanel/SearchModal.filter's rule-matched ids.
+  'apps/viewer/src/hooks/useIDS.ts',
+  // The anonymized-export 3D preview mirrors `includedIds`, which is not
+  // restricted to renderable leaf types -- an included geometry-less
+  // assembly would otherwise blank the preview for an id that IS part of
+  // the export.
+  'apps/viewer/src/components/viewer/anonymized-export/usePreviewIsolation.ts',
 ]);
 
 /**
@@ -167,11 +222,36 @@ export const NO_MARKER_REQUIRED = new Map([
     'Move this entry to REQUIRES_ROUTING_MARKER once #3382 merges -- until then this is a ' +
     'known, tracked gap, not a silent one.',
   ],
+  [
+    'apps/viewer/src/hooks/useClash.ts',
+    'installClashIsolation only ever receives a clash PAIR\'s element refs (clash.a.ref / ' +
+    'clash.b.ref), and clash detection tests actual mesh triangles for intersection -- an ' +
+    'element without geometry can never appear in a clash result, so these ids are always ' +
+    'geometry-bearing by construction, not a raw user pick that needs expansion.',
+  ],
+  [
+    'apps/viewer/src/lib/tours/tours/ids.ts',
+    'the tour cleanup only ever calls setIsolatedEntities(null) to release an isolation the ' +
+    'tour installed elsewhere -- null clears the channel and has nothing to expand, and this ' +
+    'file never installs a non-null set of its own.',
+  ],
+  [
+    'apps/viewer/src/store/slices/visibilitySlice.ts',
+    'this IS the definition site of both isolateEntities and setIsolatedEntities (the actions ' +
+    'this gate polices, not a caller of them) -- the only textual match is a doc comment ' +
+    'describing another channel\'s restore sequence ("... went setIsolatedEntities(null) ..."), ' +
+    'and the file itself never installs a raw id set into a resolver-dependent channel.',
+  ],
 ]);
 
 /** Anti-vacuity floor: fewer total call sites than this means the detection
- *  regex broke (renamed action, moved directory), not that channels vanished. */
-const CANDIDATE_FLOOR = 6;
+ *  regex broke (renamed action, moved directory), not that channels vanished.
+ *  Raised from 6 to 13 when `SET_ISOLATED_CALL_PATTERN` widened the scan to
+ *  `setIsolatedEntities` (seven new real candidates: the seventh channel
+ *  itself plus the six audited direct callers) -- the real tree scans clean
+ *  at 13 as of this change; lower it only after confirming channels were
+ *  deliberately removed, never just because the count dropped. */
+const CANDIDATE_FLOOR = 13;
 
 /**
  * A `NO_MARKER_REQUIRED` reason below this length is treated as a stub, not
@@ -230,7 +310,11 @@ export function walk(dir, out, errors) {
  * @returns {{ isCandidate: boolean, ok: boolean, reason?: string }}
  */
 export function classifyFile(relPath, content) {
-  if (!CALL_PATTERN.test(content) && !ALIAS_DESTRUCTURE_PATTERN.test(content)) {
+  if (
+    !CALL_PATTERN.test(content) &&
+    !SET_ISOLATED_CALL_PATTERN.test(content) &&
+    !ALIAS_DESTRUCTURE_PATTERN.test(content)
+  ) {
     return { isCandidate: false, ok: true };
   }
   if (NO_MARKER_REQUIRED.has(relPath)) {
@@ -259,16 +343,18 @@ export function classifyFile(relPath, content) {
       isCandidate: true,
       ok: false,
       reason:
-        'calls isolateEntities( but no resolveHighlightIds / expandToGeometryBearingIds / ' +
-        'expandFilterRowsThroughAggregation call was found in the file -- this known channel ' +
-        'appears to have lost its assembly-expansion routing.',
+        'calls a raw isolation action (isolateEntities( / setIsolatedEntities() but no ' +
+        'resolveHighlightIds / expandToGeometryBearingIds / expandFilterRowsThroughAggregation ' +
+        'call was found in the file -- this known channel appears to have lost its ' +
+        'assembly-expansion routing.',
     };
   }
   return {
     isCandidate: true,
     ok: false,
     reason:
-      'calls isolateEntities( and is not in either allowlist (REQUIRES_ROUTING_MARKER / ' +
+      'calls a raw isolation action (isolateEntities( / setIsolatedEntities() -- or binds one via ' +
+      'destructuring) and is not in either allowlist (REQUIRES_ROUTING_MARKER / ' +
       'NO_MARKER_REQUIRED) in scripts/check-isolate-expansion-routing.mjs -- this looks like a ' +
       'NEW selection/isolation channel (issue #3338: "expansion is one call site every channel ' +
       'must remember to use"). Either route it through cameraCallbacks.resolveHighlightIds the ' +

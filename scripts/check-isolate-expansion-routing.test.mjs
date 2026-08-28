@@ -32,6 +32,7 @@ import { join } from 'node:path';
 import {
   classifyFile,
   CALL_PATTERN,
+  SET_ISOLATED_CALL_PATTERN,
   ROUTING_MARKERS,
   ALIAS_DESTRUCTURE_PATTERN,
   REQUIRES_ROUTING_MARKER,
@@ -289,5 +290,80 @@ describe('check-isolate-expansion-routing: Finding 4 -- walk() records unreadabl
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe('check-isolate-expansion-routing: seventh channel -- setIsolatedEntities is a sibling raw-isolation action', () => {
+  it('RED: SET_ISOLATED_CALL_PATTERN matches the exact shape useEmbedUrlParams.ts had before its fix', () => {
+    const content = 'state.setIsolatedEntities(new Set(urlParams.isolate));';
+    assert.equal(CALL_PATTERN.test(content), false, 'CALL_PATTERN alone must not see setIsolatedEntities');
+    assert.equal(SET_ISOLATED_CALL_PATTERN.test(content), true);
+  });
+
+  it('RED: an unlisted file calling ONLY setIsolatedEntities( is a new/unknown channel', () => {
+    const relPath = 'apps/viewer-embed/src/components/BrandNewIsolateUrlHandler.ts';
+    assert.equal(REQUIRES_ROUTING_MARKER.has(relPath), false, 'fixture must not already be allowlisted');
+    assert.equal(NO_MARKER_REQUIRED.has(relPath), false, 'fixture must not already be allowlisted');
+    const content = `
+      export function applyIsolateParam(state, ids) {
+        state.setIsolatedEntities(new Set(ids)); // raw ids, no resolver
+      }
+    `;
+    assert.equal(CALL_PATTERN.test(content), false, 'must be invisible to the isolateEntities-only pattern');
+    const verdict = classifyFile(relPath, content);
+    assert.equal(verdict.isCandidate, true, 'must count toward candidateCount via SET_ISOLATED_CALL_PATTERN');
+    assert.equal(verdict.ok, false);
+    assert.match(verdict.reason, /not in either allowlist/);
+  });
+
+  it('RED: a REQUIRES_ROUTING_MARKER file that calls setIsolatedEntities( with no resolver still fails', () => {
+    // useEmbedUrlParams.ts and useBCF.ts route through setIsolatedEntities,
+    // not isolateEntities -- the "lost routing" check has to fire for them too.
+    const relPath = 'apps/viewer-embed/src/components/useEmbedUrlParams.ts';
+    assert.equal(REQUIRES_ROUTING_MARKER.has(relPath), true, 'this fix depends on the seventh channel staying routed');
+    const regressed = 'state.setIsolatedEntities(new Set(urlParams.isolate)); // resolver dropped';
+    assert.equal(ROUTING_MARKERS.test(regressed), false);
+    const verdict = classifyFile(relPath, regressed);
+    assert.equal(verdict.ok, false, 'a regressed known channel must fail even via setIsolatedEntities');
+    assert.match(verdict.reason, /lost its assembly-expansion routing/);
+  });
+
+  it('GREEN: useEmbedUrlParams.ts routed through resolveHighlightIds before assigning passes', () => {
+    const relPath = 'apps/viewer-embed/src/components/useEmbedUrlParams.ts';
+    const compliant = `
+      const resolved = state.cameraCallbacks.resolveHighlightIds?.(urlParams.isolate) ?? urlParams.isolate;
+      state.setIsolatedEntities(new Set(resolved));
+    `;
+    const verdict = classifyFile(relPath, compliant);
+    assert.equal(verdict.ok, true);
+  });
+
+  it('GREEN: useBCF.ts, useIDS.ts and usePreviewIsolation.ts are allowlisted as REQUIRES_ROUTING_MARKER', () => {
+    for (const relPath of [
+      'apps/viewer/src/hooks/useBCF.ts',
+      'apps/viewer/src/hooks/useIDS.ts',
+      'apps/viewer/src/components/viewer/anonymized-export/usePreviewIsolation.ts',
+    ]) {
+      assert.equal(REQUIRES_ROUTING_MARKER.has(relPath), true, relPath);
+    }
+  });
+
+  it('GREEN: useClash.ts and tours/ids.ts are allowlisted as NO_MARKER_REQUIRED with a real reason', () => {
+    for (const relPath of ['apps/viewer/src/hooks/useClash.ts', 'apps/viewer/src/lib/tours/tours/ids.ts']) {
+      assert.equal(NO_MARKER_REQUIRED.has(relPath), true, relPath);
+      assert.equal(isSufficientAllowlistReason(NO_MARKER_REQUIRED.get(relPath)), true, relPath);
+    }
+  });
+
+  it('GREEN: setIsolatedEntities(null) alone (a pure clear, no ids) is still flagged as a candidate needing triage', () => {
+    // classifyFile does not special-case null -- a file calling
+    // setIsolatedEntities(null) IS a candidate, and has to be allowlisted
+    // (tours/ids.ts) rather than silently passing just because the argument
+    // happens to be a literal null in this one text sample.
+    const relPath = 'apps/viewer/src/lib/tours/tours/ids.ts';
+    const content = "s.setIsolatedEntities(null);";
+    const verdict = classifyFile(relPath, content);
+    assert.equal(verdict.isCandidate, true);
+    assert.equal(verdict.ok, true, 'allowlisted with a reason, not exempt by pattern-matching the argument');
   });
 });

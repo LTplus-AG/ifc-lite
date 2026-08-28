@@ -572,7 +572,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
         }
 
         if (isolatedExpressIds.size > 0) {
-          setIsolatedEntities(isolatedExpressIds);
+          setIsolatedEntities(new Set(useViewerStore.getState().cameraCallbacks.resolveHighlightIds?.([...isolatedExpressIds]) ?? [...isolatedExpressIds])); // #3338: resolve, guid may not be geometry-bearing
         } else {
           setIsolatedEntities(null);
         }

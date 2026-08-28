@@ -206,8 +206,9 @@ export interface SliceTeardown<K extends keyof ViewerState = keyof ViewerState> 
    * undoing or re-allocating anything.
    *
    * {@link composeTeardown} drops unchanged entries as a backstop, including a
-   * `Set` / `Map` / array rebuilt equal-but-new — a should, not a must, but
-   * still cheaper: its structural check only runs after `Object.is` fails.
+   * `Set` / `Map` / array / typed array / plain object rebuilt equal-but-new
+   * — a should, not a must, but cheaper: {@link isUnchanged}'s structural
+   * check only runs after `Object.is` fails.
    */
   readonly teardown: (scope: TeardownScope, state: TeardownState) => TeardownContribution<K>;
 }
@@ -317,25 +318,40 @@ const FORCED_PRESENCE_SCOPES: ReadonlySet<TeardownScope['kind']> = new Set([
 const NEVER_DROPPED: ReadonlySet<keyof ViewerState> = new Set(['isolatedEntities', 'ghostExceptEntities']);
 
 /**
- * Whether `a` and `b` are the same value, seeing through a `Set` / `Map` /
- * array rebuilt with equal contents under a new reference (#3346: a per-slice
- * `touched` gate rebuilds every field it covers once ANY one moves).
- * `Object.is` alone otherwise — two equal-but-distinct plain objects, e.g.
- * `classFilter`, are NOT equal here. `Map` values recurse, since e.g.
- * `hiddenEntitiesByModel` holds `Set`s a contribution may itself rebuild.
+ * Whether `a`/`b` are equal, seeing through `Set`/`Map`/array/typed array/
+ * plain object rebuilt equal-but-new (#3346). `seen` guards the object/Map
+ * recursion against a cycle (assumed absent from the registry today). A
+ * `Set` of objects is NOT covered — `Set.has` is reference-based and O(n²)
+ * content equality has no registry entry that needs it.
  */
-function isUnchanged(a: unknown, b: unknown): boolean {
+function isUnchanged(a: unknown, b: unknown, seen: WeakSet<object> = new WeakSet()): boolean {
   if (Object.is(a, b)) return true;
   if (a instanceof Set && b instanceof Set) {
     return a.size === b.size && [...a].every((value) => b.has(value));
   }
   if (a instanceof Map && b instanceof Map) {
-    return a.size === b.size && [...a].every(([k, v]) => b.has(k) && isUnchanged(v, b.get(k)));
+    return a.size === b.size && [...a].every(([k, v]) => b.has(k) && isUnchanged(v, b.get(k), seen));
   }
   if (Array.isArray(a) && Array.isArray(b)) {
-    return a.length === b.length && a.every((value, index) => isUnchanged(value, b[index]));
+    return a.length === b.length && a.every((value, index) => isUnchanged(value, b[index], seen));
+  }
+  if (ArrayBuffer.isView(a) && ArrayBuffer.isView(b) && 'length' in a && 'length' in b) {
+    const ta = a as unknown as ArrayLike<number>, tb = b as unknown as ArrayLike<number>;
+    return a.constructor === b.constructor && ta.length === tb.length
+      && Array.prototype.every.call(ta, (v, i) => v === tb[i]);
+  }
+  if (isPlainObject(a) && isPlainObject(b) && !seen.has(a)) {
+    seen.add(a);
+    const keys = Object.keys(a);
+    return keys.length === Object.keys(b).length && keys.every((k) => k in b && isUnchanged(a[k], b[k], seen));
   }
   return false;
+}
+
+/** `{}` / null-prototype only — excludes class instances and built-ins. */
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null
+    && (Object.getPrototypeOf(v) === Object.prototype || Object.getPrototypeOf(v) === null);
 }
 
 /**

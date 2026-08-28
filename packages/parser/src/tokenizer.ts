@@ -172,8 +172,6 @@ export class StepTokenizer {
         }
 
         if (!hasDigits) continue;
-        // Storage contract, not just overflow: see express-id.ts (#3395).
-        if (!isIndexableExpressId(expressId)) { this.oversizedIds++; continue; }
 
         // Skip whitespace (inline)
         while (pos < len) {
@@ -186,6 +184,17 @@ export class StepTokenizer {
         // Check for '='
         if (pos >= len || buf[pos] !== EQUALS) continue;
         pos++;
+
+        // Storage contract, not just overflow: see express-id.ts (#3395).
+        // Tested only now that `#<digits>[ws]*=` has matched, which is the
+        // DECLARATION shape Rust's `EntityScanner` validates before it
+        // refuses. Refusing above the '=' check counted references too: the
+        // `continue` resumes inside the refused record's argument list
+        // (unlike the accepted path, which skips to the terminating ';'), so
+        // `#4294967297=IFCWALL(#4294967298,#4294967299,...)` reported three
+        // skipped records for the one record actually dropped. A count that
+        // overstates is the same class of defect as one that undercounts.
+        if (!isIndexableExpressId(expressId)) { this.oversizedIds++; continue; }
 
         // Skip whitespace
         while (pos < len) {
@@ -315,7 +324,21 @@ export class StepTokenizer {
 
     if (digits === 0) return null;
     // Same storage contract as scanEntitiesFast; see express-id.ts (#3395).
-    if (!isIndexableExpressId(id)) { this.oversizedIds++; return null; }
+    // And the same rule about WHICH refusals count: only a declaration,
+    // `#<digits>[ws]*=`. `scanEntities` resumes one byte into a refused
+    // record and walks its argument list, so an oversized `#ref` in there
+    // reaches this method too. Look ahead rather than consume — `position`
+    // must stay where the caller's recovery expects it.
+    if (!isIndexableExpressId(id)) {
+      let probe = pos;
+      while (probe < this.buffer.length) {
+        const c = this.buffer[probe];
+        if (c === 0x20 || c === 0x09 || c === 0x0D || c === 0x0A) probe++;
+        else break;
+      }
+      if (probe < this.buffer.length && this.buffer[probe] === 0x3D) this.oversizedIds++;
+      return null;
+    }
     this.position = pos;
     return id;
   }

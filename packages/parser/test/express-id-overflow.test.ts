@@ -204,6 +204,52 @@ describe('scanIfcEntities and an express id above 2^32', () => {
     expect(diagnostics.some((message) => message.includes('skipped'))).toBe(false);
   });
 
+  it('counts one refusal per refused RECORD, not per oversized reference', async () => {
+    // An accepted record is left behind by skipping to its terminating ';', so
+    // its argument list is never re-scanned. A REFUSED one is not: the scan
+    // resumes a few bytes into it and walks the body, where `#4294967298` and
+    // `#4294967299` are references, not declarations. Counting those made the
+    // number the user is shown scale with the refused record's reference
+    // count — "skipped 3 record(s)" for one dropped record — on exactly the
+    // files this guard exists for, where ids above 2^32 come in runs and
+    // reference each other. Rust's `EntityScanner` counts only what matches
+    // `#<digits>[ws]*=`; both TypeScript scans now do too.
+    //
+    // Both paths, because they are separate copies of the same loop and the
+    // inline worker's copy fails independently of the tokenizer's.
+    const source = encodeSource(
+      [
+        'ISO-10303-21;',
+        'HEADER;',
+        "FILE_SCHEMA(('IFC4'));",
+        'ENDSEC;',
+        'DATA;',
+        "#1=IFCWALL('GID-one',$,'Wall one',$,$,$,$,$,.NOTDEFINED.);",
+        `#${ABOVE_U32}=IFCWALL('GID-big',#${ABOVE_U32 + 1},#${ABOVE_U32 + 2},$,$,$,$,$,.NOTDEFINED.);`,
+        'ENDSEC;',
+        'END-ISO-10303-21;',
+      ].join('\n'),
+    );
+
+    for (const useWorker of [false, true]) {
+      if (useWorker) vi.stubGlobal('Worker', InProcessScanWorker);
+      const diagnostics: string[] = [];
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const result = await scanIfcEntities(source, {
+        disableWorkerScan: !useWorker,
+        onDiagnostic: (message) => diagnostics.push(message),
+      });
+
+      expect(result.scanPath).toBe(useWorker ? 'worker' : 'tokenizer');
+      expect(result.entityRefs.map((entityRef) => entityRef.expressId)).toEqual([1]);
+      expect(result.oversizedIdCount).toBe(1);
+      expect(diagnostics.some((message) => message.includes('skipped 1 record(s)'))).toBe(true);
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    }
+  });
+
   it('reports nothing on a file whose ids all fit', async () => {
     // The other direction of the report: a clean file must not warn, or the
     // message stops meaning anything.

@@ -106,15 +106,6 @@ self.onmessage = function(e) {
         }
       }
       if (!hasDigits) continue;
-      // Express-id bound, identical to StepTokenizer.scanEntitiesFast -- this
-      // worker is that scan's twin and must reject the same records, or which
-      // scan path ran decides whether an id collides with another. The single
-      // '>' subsumes a safe-integer check: a digit run accumulated as a double
-      // is non-negative and integral, and every value past 2^32 -- including
-      // one past 2^53, where two distinct ids collide onto one double -- fails
-      // it. Count the refusal; a record that vanishes without a trace is the
-      // same defect wearing a different hat.
-      if (expressId > ${MAX_EXPRESS_ID}) { oversizedIds++; continue; }
 
       // Skip whitespace
       while (pos < len) {
@@ -127,6 +118,21 @@ self.onmessage = function(e) {
       // Check for '='
       if (pos >= len || buf[pos] !== 0x3D) continue;
       pos++;
+
+      // Express-id bound, identical to StepTokenizer.scanEntitiesFast -- this
+      // worker is that scan's twin and must reject the same records, and count
+      // the same ones, or which scan path ran decides both whether an id
+      // collides with another and what the user is told was dropped. The
+      // single '>' subsumes a safe-integer check: a digit run accumulated as a
+      // double is non-negative and integral, and every value past 2^32 --
+      // including one past 2^53, where two distinct ids collide onto one
+      // double -- fails it. Tested only after '=' has matched, because that is
+      // the DECLARATION shape Rust's EntityScanner validates before refusing:
+      // the 'continue' below resumes inside the refused record's argument
+      // list, so an oversized '#ref' in there arrives here too and would be
+      // counted as a second dropped record. Count the refusal; a record that
+      // vanishes without a trace is the same defect wearing a different hat.
+      if (expressId > ${MAX_EXPRESS_ID}) { oversizedIds++; continue; }
 
       // Skip whitespace
       while (pos < len) {

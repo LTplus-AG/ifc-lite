@@ -22,8 +22,15 @@ import {
   resetCameraIntent,
 } from './cameraIntent.js';
 
-/** The real camera slice with a recording renderer actuator registered. */
-function makeCameraState() {
+/**
+ * The real camera slice with a recording renderer actuator.
+ *
+ * `registerRenderer` is deferred with `{ renderer: false }` for the tests that
+ * need the store's OTHER branch: with no actuator registered
+ * `setCameraRotation` arms `pendingCameraRotation` instead of driving
+ * anything, which is the field this module lifts.
+ */
+function makeCameraState({ renderer = true }: { renderer?: boolean } = {}) {
   const driven: CameraRotation[] = [];
   let state: any;
   const set = (partial: any) => {
@@ -31,10 +38,13 @@ function makeCameraState() {
     state = { ...state, ...updates };
   };
   state = createCameraSlice(set, () => state, undefined as never);
-  state.setCameraCallbacks({
-    setCameraRotation: (rotation: CameraRotation) => { driven.push(rotation); },
-  });
-  return { driven, getState: () => state };
+  const registerRenderer = () => {
+    state.setCameraCallbacks({
+      setCameraRotation: (rotation: CameraRotation) => { driven.push(rotation); },
+    });
+  };
+  if (renderer) registerRenderer();
+  return { driven, getState: () => state, registerRenderer };
 }
 
 beforeEach(() => {
@@ -132,6 +142,46 @@ describe('aroundDestructiveLoad', () => {
     releaseSecond();
     await later;
     expect(store.driven).toEqual([{ azimuth: 137, elevation: 61 }]);
+  });
+
+  it('does not re-lift a superseded store pose when loads overlap (#3390)', async () => {
+    // The lift at load entry reads `pendingCameraRotation`, and the reset that
+    // clears that field runs inside `loadFile`, well after the load starts. So
+    // a second LOAD_MODEL posted before the first one's reset sees the FIRST
+    // pose still armed in the store — and re-lifting it would overwrite the
+    // newer pose the host queued in between, ending the camera on a command
+    // the host had already replaced. `offerHostPose`'s no-load path clears the
+    // queue before it arms the store, so a queued pose at load entry is always
+    // the newer of the two.
+    const store = makeCameraState({ renderer: false });
+
+    // No renderer registered yet, so this arms the store's replay buffer.
+    offerHostPose({ azimuth: 1, elevation: 1 }, store.getState);
+    expect(store.getState().pendingCameraRotation).toEqual({ azimuth: 1, elevation: 1 });
+
+    let releaseFirst!: () => void;
+    const firstFetch = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const first = aroundDestructiveLoad(store.getState, () => firstFetch);
+
+    // The host changes its mind while the first fetch is still outstanding.
+    offerHostPose({ azimuth: 2, elevation: 2 }, store.getState);
+
+    // ...and starts a second destructive load before the first has reset.
+    let releaseSecond!: () => void;
+    const secondFetch = new Promise<void>((resolve) => { releaseSecond = resolve; });
+    const second = aroundDestructiveLoad(store.getState, () => secondFetch);
+    expect(store.getState().pendingCameraRotation).toEqual({ azimuth: 1, elevation: 1 });
+
+    releaseFirst();
+    await first;
+    releaseSecond();
+    await second;
+
+    // The incoming model's renderer registers and replays what is armed.
+    store.registerRenderer();
+
+    expect(store.driven).toEqual([{ azimuth: 2, elevation: 2 }]);
+    expect(hostPoseAppliedToCurrentModel()).toBe(true);
   });
 
   it('clears the framing bit when the next load carries no host pose', async () => {

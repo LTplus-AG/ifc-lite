@@ -159,8 +159,20 @@ export async function aroundDestructiveLoad<A extends unknown[], R>(
   // Lift an unactuated pose out of the store before the reset can clear it.
   // The store copy is deliberately left alone: on a load that fails no reset
   // runs, and the store's own replay must keep working as it did.
+  //
+  // Only when the queue is empty, and that guard is load-bearing rather than
+  // defensive. The reset that clears `pendingCameraRotation` runs inside
+  // `loadFile`, a whole fetch after the load starts, so a SECOND destructive
+  // load beginning in that window still reads the FIRST load's pose out of the
+  // store. Re-lifting it would overwrite whatever the host queued in between
+  // and end the camera on a command the host had already superseded — the same
+  // ACKed-but-wrong failure this module exists to close.
+  //
+  // A queued pose here is always the newer of the two: `offerHostPose` reaches
+  // the store only on its no-load path, which clears `queuedPose` first, so
+  // anything left in the queue was commanded after the store's copy was armed.
   const neverShown = getState().pendingCameraRotation;
-  if (neverShown) queuedPose = neverShown;
+  if (neverShown && queuedPose === null) queuedPose = neverShown;
 
   try {
     const result = await load(...args);

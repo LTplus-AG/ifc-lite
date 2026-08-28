@@ -52,15 +52,41 @@ pub(super) fn emit_triangle(mesh: &mut Mesh, v: &[Point3<f64>; 3], normal: &Vect
     mesh.add_triangle(base, base + 1, base + 2);
 }
 
+/// Grid scale for [`count_open_boundary_edges`], relative to `mesh`'s own extent
+/// instead of a flat constant.
+///
+/// A flat 1 mm grid (scale 1e3) is fail-OPEN on issue #3353: a rotated-box union
+/// tears at roughly 3-10 µm (measured directly on the pinned repro — 0 open
+/// edges at grid 1 mm through 10 µm, 4 open edges once the grid reaches ~3.3 µm),
+/// so the flat grid merges the tear away and the watertightness guard below never
+/// sees it. But a flat FINE grid is fail-SHUT on a large host: `Mesh` positions
+/// are f32, whose ULP spacing grows with coordinate magnitude, and the few-ULP
+/// spread between per-bucket duplicate vertices `consolidate_coplanar`
+/// legitimately emits at a shared position would read as an open edge on every
+/// such host — the exact failure the original 1 mm grid was chosen to avoid.
+///
+/// So the grid scales with the mesh's own extent: `extent * 2^-21` keeps a
+/// constant ~4x margin over the f32 ULP at that extent (ULP is `extent * 2^-23`)
+/// at any coordinate magnitude, rather than a fixed absolute margin that erodes
+/// as coordinates grow. Clamped to [1 µm, 1 mm]: never finer than the 1 µm bar
+/// `curved_wall_opening_seam_is_watertight` (below) already proves false-positive-free
+/// for the guard's intended near-origin, building-component-scale hosts, and never
+/// coarser than the original flat 1 mm — a host whose extent alone pushes past
+/// that (~2 km) gets exactly today's behaviour, unchanged.
+fn open_edge_grid_scale(mesh: &Mesh) -> f64 {
+    let (lo, hi) = mesh.bounds();
+    let extent = (hi - lo).iter().cloned().fold(0.0f32, f32::max) as f64;
+    let grid = (extent * 2.0_f64.powi(-21)).clamp(1.0e-6, 1.0e-3);
+    1.0 / grid
+}
+
 /// Count OPEN boundary edges: undirected edges whose directed half-edges do not
-/// pair (one forward + one reverse). Vertices are merged on a 1 mm grid — bigger
-/// than the few-ULP spread between the per-bucket duplicate vertices
-/// `consolidate_coplanar` emits at a shared position (a finer grid would read every
-/// inter-bucket edge as "open"), yet far smaller than a genuine crack (which spans a
-/// facet width, cm). A watertight closed mesh returns 0; the consolidation tear
-/// shows up as a positive count the (watertight) raw kernel output lacks.
+/// pair (one forward + one reverse), at a grid relative to `mesh`'s own extent
+/// (see [`open_edge_grid_scale`]). A watertight closed mesh returns 0; the
+/// consolidation tear shows up as a positive count the (watertight) raw kernel
+/// output lacks.
 fn count_open_boundary_edges(mesh: &Mesh) -> usize {
-    count_open_boundary_edges_at(mesh, 1.0e3)
+    count_open_boundary_edges_at(mesh, open_edge_grid_scale(mesh))
 }
 
 /// Count spike triangles (longest-edge / shortest-edge > 50:1) — the same quality
@@ -804,6 +830,81 @@ mod tests {
             }
         }
         edge.values().filter(|&&v| v != 0).count()
+    }
+
+    /// Pins issue #3353's rotated-box union (also pinned end-to-end, ignored, at
+    /// `rust/geometry/tests/issue_3353_boolean_tear.rs`): the tear is real (raw
+    /// kernel output is watertight, `consolidate_coplanar` introduces ~3-10 µm
+    /// open edges) and the WATERTIGHTNESS GUARD's relative grid
+    /// ([`open_edge_grid_scale`]) must be fine enough, at this mesh's own extent
+    /// (~5 m), to see it and fall back to the clean raw mesh.
+    #[test]
+    fn issue_3353_watertightness_guard_sees_the_tear() {
+        fn boxed(min: [f64; 3], size: [f64; 3]) -> Mesh {
+            let mx = [min[0] + size[0], min[1] + size[1], min[2] + size[2]];
+            let c = |i: usize| -> [f64; 2] { [min[i], mx[i]] };
+            let corners: Vec<Point3<f64>> = [
+                (0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0),
+                (0, 0, 1), (1, 0, 1), (1, 1, 1), (0, 1, 1),
+            ]
+            .iter()
+            .map(|&(i, j, k)| Point3::new(c(0)[i], c(1)[j], c(2)[k]))
+            .collect();
+            let faces: [[usize; 4]; 6] = [
+                [0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4],
+                [2, 3, 7, 6], [0, 4, 7, 3], [1, 2, 6, 5],
+            ];
+            let mut m = Mesh::with_capacity(24, 36);
+            for f in &faces {
+                let e1 = corners[f[1]] - corners[f[0]];
+                let e2 = corners[f[2]] - corners[f[0]];
+                let n = e1.cross(&e2).try_normalize(1e-12).unwrap_or(Vector3::z());
+                let b = m.vertex_count() as u32;
+                for &i in f {
+                    m.add_vertex(corners[i], n);
+                }
+                m.add_triangle(b, b + 1, b + 2);
+                m.add_triangle(b, b + 2, b + 3);
+            }
+            m
+        }
+        fn rotated_boxed(min: [f64; 3], size: [f64; 3], theta: f64) -> Mesh {
+            let mut m = boxed(min, size);
+            let (s, c) = theta.sin_cos();
+            for p in m.positions.chunks_exact_mut(3) {
+                let (x, y) = (p[0] as f64, p[1] as f64);
+                p[0] = (c * x - s * y) as f32;
+                p[1] = (s * x + c * y) as f32;
+            }
+            m
+        }
+        let a_min = [-1.064427873716452, -1.5758991032070164, -2.335934512221897];
+        let a_size = [1.7582981472721038, 3.7437572581011054, 2.5580013636220693];
+        let b_min = [-0.468184233137136, -1.8002926870781526, -1.0101295786317475];
+        let b_size = [1.9952974802528327, 3.404965797097641, 3.2964264954246745];
+        let theta = 1.3158416849982029;
+        let a = boxed(a_min, a_size);
+        let b = rotated_boxed(b_min, b_size, theta);
+        let raw_u = crate::kernel::mesh_bridge::union(&a, &b);
+
+        // The raw kernel output is already watertight — the tear is introduced
+        // by consolidation, not by the exact kernel.
+        assert_eq!(
+            count_open_boundary_edges(&raw_u),
+            0,
+            "raw kernel union must be watertight"
+        );
+
+        // The full public entry point (mesh_bridge::union + consolidate_coplanar,
+        // exactly what union_mesh runs) must now come back watertight: either
+        // consolidation didn't tear it, or the guard caught the tear and fell
+        // back to the clean raw mesh.
+        let result = ClippingProcessor::consolidate_coplanar(raw_u.clone());
+        assert_eq!(
+            count_open_boundary_edges(&result),
+            0,
+            "watertightness guard must catch the #3353 hairline tear and fall back to raw"
+        );
     }
 
     #[test]

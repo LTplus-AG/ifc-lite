@@ -14,9 +14,11 @@
 # DELETE its row (the gate prints a note telling you to); a stale exemption is
 # permanent slack.
 #
-# `--update` re-records only the files your change touched. `--update --all`
-# re-records every row in the tree, annexing slack your change never created:
-# a deliberate sweep, and its own PR.
+# `--update` re-records only the files your change touched.
+# `--update --all --allow-raise` re-records every row in the tree, annexing
+# slack your change never created: a deliberate sweep, and its own PR. The
+# `--allow-raise` is not optional there — re-recording a file that GREW is a
+# raise, so without it the sweep writes nothing and exits 1.
 #
 # Any edit here moves that row's SCOPE entry in ALLOWLIST_DIGESTS in
 # scripts/check-module-size.mjs, which must be updated in the same commit —

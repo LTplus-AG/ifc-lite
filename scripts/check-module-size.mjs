@@ -47,8 +47,10 @@
  *   touched, so the run reports success and leaves the gate red. It takes
  *   `--update --all --allow-raise`: `--all` to reach outside your scope, and
  *   `--allow-raise` because re-recording a file that grew IS a raise and the
- *   command refuses one unless asked twice. `--update --all` alone writes
- *   nothing and exits 1. It re-records every stale row in the tree on the way
+ *   command refuses one unless asked twice. Without it, `--update --all` writes
+ *   nothing and exits 1 the moment any file grew -- on a shrink-only tree it
+ *   succeeds, which is why "it always refuses" would be the wrong thing to
+ *   remember. It re-records every stale row in the tree on the way
  *   past, which is why it is a maintainer sweep in its OWN commit and its own
  *   PR rather than something to bundle into yours.
  *
@@ -77,7 +79,7 @@
  *
  * Run: node scripts/check-module-size.mjs
  * Regenerate: pnpm lint:module-size-baseline   (node scripts/check-module-size.mjs --update)
- * Repo-wide sweep, its own PR: node scripts/check-module-size.mjs --update --all
+ * Repo-wide sweep, its own PR: node scripts/check-module-size.mjs --update --all --allow-raise
  *
  * An absolute-budget ratchet fights a moving main by construction: any
  * long-lived branch accumulates a red made of files it never touched, and a

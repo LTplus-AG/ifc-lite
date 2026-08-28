@@ -265,7 +265,16 @@ export function planUpdate(files, allowlist, changed = null) {
   // still needs. A row at or under the limit grants no exemption — `staleRows`
   // already fails the gate on it — so it is not something anyone can need, and
   // carrying it forward would leave the documented regeneration command unable
-  // to fix a hard failure it used to fix. Dropping it is safe at any scope.
+  // to fix a hard failure it used to fix.
+  //
+  // This predicate answers "does the ROW grant anything", nothing more. Whether
+  // dropping it is safe depends on the FILE, and the two call sites differ:
+  // the measured loop must also check `lines <= LIMIT` (dropping a sub-limit
+  // row off an over-limit file strands it as a `newOffenders` failure no scoped
+  // rerun can reach), while the vanished loop needs no such check because there
+  // is no file left to strand. An earlier version of this comment said
+  // "dropping it is safe at any scope", which was true of every case it was
+  // written against and false of the one above.
   const grantsNoExemption = (budget) => budget !== undefined && budget <= LIMIT;
   // Both loops below reach this case, and the two messages must not drift.
   const grantedNothing = (rel, budget) =>
@@ -280,14 +289,8 @@ export function planUpdate(files, allowlist, changed = null) {
   for (const { rel, lines } of files) {
     const budget = allowlist.get(rel);
     if (!inScope(rel)) {
-      // `grantsNoExemption` is safe to act on out of scope only while the FILE
-      // is also under the limit. If the row is sub-limit but the file measures
-      // OVER it, dropping the row turns a stale-row failure into a
-      // `newOffenders` one -- and that one no scoped rerun can fix, because the
-      // file is out of scope by construction. Keep the row and let the
-      // stale-row check report it; a run scoped to that file resolves it
-      // properly. The earlier comment here said "safe at any scope", which was
-      // true of every case it was written against and false of this one.
+      // The `lines <= LIMIT` half is the FILE's condition, not the row's --
+      // see `grantsNoExemption` above for why the two call sites differ.
       if (grantsNoExemption(budget) && lines <= LIMIT) removed.push(grantedNothing(rel, budget));
       else if (budget !== undefined) next.set(rel, budget);
       continue;

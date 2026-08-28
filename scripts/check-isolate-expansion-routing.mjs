@@ -73,10 +73,16 @@
  *    while building this allowlist), so this is a real gap for a FUTURE
  *    edit, not a known miss today.
  *  - Textual match, not parsed: `ROUTING_MARKERS` and `CALL_PATTERN` are
- *    regexes over raw source, so a call spelled through a renamed local
- *    alias (`const rhi = cameraCallbacks.resolveHighlightIds; rhi(ids)`) or
- *    reached via dynamic dispatch is not detected. Not observed in the
- *    scanned tree.
+ *    regexes over raw source. `ALIAS_DESTRUCTURE_PATTERN` closes the specific
+ *    gap an adversarial review found in `isolateEntities` itself -- a
+ *    destructured, renamed store binding (`const { isolateEntities:
+ *    applyIsolation } = useViewerStore()`) is now flagged as a candidate even
+ *    though the literal token `isolateEntities(` never appears again. The
+ *    SAME gap still exists on the `ROUTING_MARKERS` side: a call spelled
+ *    through a renamed local alias (`const rhi = cameraCallbacks
+ *    .resolveHighlightIds; rhi(ids)`) or reached via dynamic dispatch is not
+ *    detected there, and a flagged file that routes ONLY that way would read
+ *    as unrouted. Not observed in the scanned tree.
  *  - Scope is `apps/viewer/src` and `apps/viewer-embed/src` only.
  *    `packages/viewer` (the separate server-side streaming HTML viewer,
  *    `viewer-html.ts`/`streaming-viewer.ts`/`server.ts`) also has an
@@ -107,6 +113,24 @@ const TEST_FILE = /\.test\.[jt]sx?$/;
 /** A call to the visibility slice's `isolateEntities` action: `isolateEntities(`,
  *  `state.isolateEntities(`, or the optional-call form `...isolateEntities?.(`. */
 export const CALL_PATTERN = /\bisolateEntities\s*\?{0,1}\.{0,1}\s*\(/;
+
+/**
+ * A binding of the store's `isolateEntities` action to a LOCAL NAME via
+ * object destructuring -- `const { isolateEntities } = useViewerStore()` or,
+ * critically, the aliased form `const { isolateEntities: applyIsolation } =
+ * useViewerStore()`. The aliased form defeats `CALL_PATTERN`: every call
+ * site afterwards reads `applyIsolation(ids)`, never the literal token
+ * `isolateEntities(`, so a file that only destructures-and-renames was
+ * previously invisible to this gate -- not even counted toward
+ * `candidateCount`. Any destructuring of the key, aliased or not, is treated
+ * as a candidate signal on its own (deliberately not narrowed to "and the
+ * alias is later called": tracking a dynamic alias through the rest of the
+ * file is a data-flow problem this regex-based gate cannot do reliably, and
+ * a live binding to the action is itself the thing worth a reviewer's eyes
+ * -- false positives here are safe, false negatives are the whole failure
+ * mode this exists to close).
+ */
+export const ALIAS_DESTRUCTURE_PATTERN = /\bconst\s*\{[^}]*\bisolateEntities\b[^}]*\}\s*=/;
 
 /** The resolvers that actually perform `IfcRelAggregates` expansion, or read
  *  from a resolver that does, called as real code (not merely named in prose). */
@@ -149,21 +173,48 @@ export const NO_MARKER_REQUIRED = new Map([
  *  regex broke (renamed action, moved directory), not that channels vanished. */
 const CANDIDATE_FLOOR = 6;
 
+/**
+ * A `NO_MARKER_REQUIRED` reason below this length is treated as a stub, not
+ * a justification -- e.g. `['some/File.tsx', 'x']`. This used to be checked
+ * ONLY by this gate's own test file (`reason.length > 20`, an assertion
+ * about the two entries that happened to exist when the test was written),
+ * which is not a rule: nothing stopped a THIRD entry with a one-character
+ * reason from passing CI, because `classifyFile` itself never looked at the
+ * string. Enforcing it here, in the classifier, means a junk entry fails the
+ * gate on its own rather than depending on a reviewer -- or a future test
+ * author -- to notice.
+ */
+export const MIN_ALLOWLIST_REASON_LENGTH = 20;
+
+/** @param {unknown} reason */
+export function isSufficientAllowlistReason(reason) {
+  return typeof reason === 'string' && reason.trim().length > MIN_ALLOWLIST_REASON_LENGTH;
+}
+
 function toPosix(p) {
   return p.split('\\').join('/');
 }
 
-function walk(dir, out) {
+/**
+ * @param {string} dir
+ * @param {string[]} out
+ * @param {string[]} errors unreadable subtrees are pushed here, not
+ *   swallowed -- a directory this gate could not scan must fail the run
+ *   loudly, not read as "clean" the same way an empty, readable directory
+ *   would.
+ */
+export function walk(dir, out, errors) {
   let entries;
   try {
     entries = readdirSync(dir, { withFileTypes: true });
-  } catch {
+  } catch (err) {
+    errors.push(`could not read directory \`${dir}\`: ${err && err.message ? err.message : err}`);
     return;
   }
   for (const entry of entries) {
     if (entry.isDirectory()) {
       if (SKIP_DIR.has(entry.name)) continue;
-      walk(join(dir, entry.name), out);
+      walk(join(dir, entry.name), out, errors);
     } else if (entry.isFile() && SOURCE_EXT.has(extname(entry.name)) && !TEST_FILE.test(entry.name)) {
       out.push(join(dir, entry.name));
     }
@@ -179,11 +230,26 @@ function walk(dir, out) {
  * @returns {{ isCandidate: boolean, ok: boolean, reason?: string }}
  */
 export function classifyFile(relPath, content) {
-  if (!CALL_PATTERN.test(content)) {
+  if (!CALL_PATTERN.test(content) && !ALIAS_DESTRUCTURE_PATTERN.test(content)) {
     return { isCandidate: false, ok: true };
   }
   if (NO_MARKER_REQUIRED.has(relPath)) {
-    return { isCandidate: true, ok: true, reason: NO_MARKER_REQUIRED.get(relPath) };
+    const reason = NO_MARKER_REQUIRED.get(relPath);
+    if (!isSufficientAllowlistReason(reason)) {
+      return {
+        isCandidate: true,
+        ok: false,
+        reason:
+          `NO_MARKER_REQUIRED entry for ${relPath} in ` +
+          'scripts/check-isolate-expansion-routing.mjs carries no reviewable reason ' +
+          `(got ${JSON.stringify(reason)}) -- exempting a channel from routing without a real ` +
+          'justification is exactly what this allowlist exists to prevent. Write a reason ' +
+          `longer than ${MIN_ALLOWLIST_REASON_LENGTH} characters explaining why this file does ` +
+          'not need cameraCallbacks.resolveHighlightIds / expandToGeometryBearingIds / ' +
+          'expandFilterRowsThroughAggregation.',
+      };
+    }
+    return { isCandidate: true, ok: true, reason };
   }
   if (REQUIRES_ROUTING_MARKER.has(relPath)) {
     if (ROUTING_MARKERS.test(content)) {
@@ -231,7 +297,7 @@ function main() {
       continue;
     }
     scannedRoots += 1;
-    walk(abs, files);
+    walk(abs, files, failures);
   }
 
   if (scannedRoots === 0) {

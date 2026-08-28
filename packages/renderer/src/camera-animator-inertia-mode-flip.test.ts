@@ -38,7 +38,6 @@ import assert from 'node:assert';
 
 import { Camera } from './camera.js';
 import type { Vec3 } from './types.js';
-import type { FramingBounds } from './camera-framing.js';
 
 function poseOf(camera: Camera): { position: Vec3; target: Vec3; up: Vec3 } {
   return { position: camera.getPosition(), target: camera.getTarget(), up: camera.getUp() };
@@ -50,32 +49,6 @@ function freshCamera(): Camera {
   camera.setPosition(20, 20, 20);
   camera.setTarget(0, 0, 0);
   return camera;
-}
-
-const PRESET_BOUNDS: FramingBounds = { min: { x: -5, y: -5, z: -5 }, max: { x: 5, y: 5, z: 5 } };
-
-/** Runs a preset transition to completion so its end pose is directly readable. */
-function finishPreset(camera: Camera, view: 'top' | 'bottom' | 'front' | 'back' | 'left' | 'right'): void {
-  const originalNow = Date.now;
-  const hadRaf = Object.prototype.hasOwnProperty.call(globalThis, 'requestAnimationFrame');
-  const originalRaf = Reflect.get(globalThis, 'requestAnimationFrame');
-  let now = 1_000;
-
-  Date.now = () => now;
-  Reflect.set(globalThis, 'requestAnimationFrame', () => 0);
-
-  try {
-    camera.setPresetView(view, PRESET_BOUNDS);
-    now += 400;
-    camera.update(0);
-  } finally {
-    Date.now = originalNow;
-    if (hadRaf) {
-      Reflect.set(globalThis, 'requestAnimationFrame', originalRaf);
-    } else {
-      Reflect.deleteProperty(globalThis, 'requestAnimationFrame');
-    }
-  }
 }
 
 describe('CameraAnimator inertia loop gates on CameraControls applying, mid-decay (#2934)', () => {

@@ -218,9 +218,12 @@ function makeLoadableState(log?: (entry: string) => void) {
     loadedUrls: [] as string[],
     getState: () => state,
     sessionReset: () => set(cameraTeardown.teardown({ kind: 'session-reset' }, state)),
-    /** What `loadFile` does after the reset: a model appears on screen. Only
-     *  `meshes.length` is ever read from it here. */
+    /** What `loadFile` does after the reset: a model appears on screen. */
     publishModel: () => set({ geometryResult: { meshes: [{ expressId: 1 }] } }),
+    /** A spatial-only IFC — storeys and spaces, no geometry. `geometryResult`
+     *  is non-null and `meshes` is EMPTY. A real state in this repo, not a
+     *  pathological one, and the case a mesh COUNT would misread. */
+    publishModelWithNoMeshes: () => set({ geometryResult: { meshes: [] } }),
     registerRenderer: () => state.setCameraCallbacks({
       setCameraRotation: (rotation: CameraRotation) => {
         driven.push(rotation);
@@ -376,6 +379,27 @@ describe('a host camera pose around a destructive load (#3390)', () => {
 
     // Still exactly the one call from before the load: nothing was replayed
     // onto the incoming model, and nothing is armed to replay later.
+    expect(store.driven).toEqual([{ azimuth: 137, elevation: 61 }]);
+    expect(store.getState().pendingCameraRotation).toBeNull();
+    expect(hostPoseAppliedToCurrentModel()).toBe(false);
+  });
+
+  it('does NOT replay a pose shown on a SPATIAL-ONLY model (zero meshes is still shown)', async () => {
+    // The discriminator is whether a model was ever LOADED, not whether it has
+    // geometry. A spatial-only IFC publishes a non-null `geometryResult` with
+    // ZERO meshes, so a mesh COUNT calls it "never shown", re-lifts the pose the
+    // user watched it at, and replays it onto the next file — #3364 re-opened
+    // for the model class least likely to be tested. Same shape as the #3364
+    // case above, with the only difference being an empty mesh list.
+    store.registerRenderer();
+    store.publishModelWithNoMeshes();
+    win.dispatch(cmd('SET_CAMERA', { azimuth: 137, elevation: 61 }));
+    expect(store.driven).toEqual([{ azimuth: 137, elevation: 61 }]);
+
+    win.dispatch(cmd('LOAD_MODEL', { url: 'https://host.example/m.ifc' }));
+    releaseFetch();
+    await settle();
+
     expect(store.driven).toEqual([{ azimuth: 137, elevation: 61 }]);
     expect(store.getState().pendingCameraRotation).toBeNull();
     expect(hostPoseAppliedToCurrentModel()).toBe(false);

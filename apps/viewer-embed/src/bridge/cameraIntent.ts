@@ -261,9 +261,17 @@ export async function aroundDestructiveLoad<A extends unknown[], R>(
   // the line between "actuated against nothing" and #3364's "shown on the
   // model that is leaving".
   const state = getState();
-  const onScreen = state.geometryResult?.meshes.length ?? 0;
+  // `geometryResult !== null`, NOT `meshes.length > 0`. A spatial-only IFC --
+  // storeys and spaces with no geometry -- loads to a non-null result holding
+  // ZERO meshes, and that is a real state in this repo rather than a
+  // pathological one. Counting meshes would call such a model "never shown",
+  // re-lift a pose the user watched it at, and replay it onto the next file:
+  // #3364 re-opened for exactly the model class least likely to be tested.
+  // The question is whether a model was ever LOADED, which is what the field's
+  // nullness answers.
+  const everLoaded = state.geometryResult != null;
   const neverShown = state.pendingCameraRotation
-    ?? (onScreen === 0 ? poseActuatedSinceLastLoad : null);
+    ?? (everLoaded ? null : poseActuatedSinceLastLoad);
   poseActuatedSinceLastLoad = null;
   if (neverShown && queuedPose === null) queuedPose = neverShown;
 

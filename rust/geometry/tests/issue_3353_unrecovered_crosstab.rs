@@ -466,13 +466,36 @@ fn every_torn_pair_is_conforming_ci_sweep() {
     );
     println!("{table}");
 
+    let completed = CI_SWEEP_PAIRS - skipped_errors;
+    // `union_mesh` erroring is not "no signal" — it is the union failing to
+    // produce a result at all, and the sibling `issue_3353_boolean_tear.rs`
+    // sweep already treats that as a hard failure (`.expect("union must not
+    // error")`) rather than something to shrug off. Left unasserted, a
+    // regression that made `union_mesh` error on every pair would `continue`
+    // before ever reaching the `(torn, conforming)` match, so
+    // `counterexamples` would stay empty BY CONSTRUCTION and the assertion
+    // below would report a false green over zero actual coverage — exactly
+    // the "absent check renders as a pass" failure mode this CI gate exists
+    // to avoid. So: any skip is itself the failure, reported with how many of
+    // `CI_SWEEP_PAIRS` this run actually completed so a future failure here
+    // is diagnosable without re-deriving `completed` by hand.
+    assert_eq!(
+        skipped_errors, 0,
+        "{table}\n\n{skipped_errors} of {CI_SWEEP_PAIRS} pairs made `union_mesh` return Err \
+         and were skipped — only {completed} pair(s) actually ran the torn/conforming check \
+         below, so its pass is not meaningful coverage. `union_mesh` erroring on a generated \
+         pair is itself a regression worth investigating, not a case to silently drop; do NOT \
+         weaken this assertion to force a pass.",
+    );
+
     assert!(
         counterexamples.is_empty(),
-        "{table}\n\n{} of {total_torn} torn pair(s) had unrecovered > 0 — arrangement \
-         non-conformity contributed to a tear in this sweep, contradicting the hypothesis \
-         that every torn pair in this regime is conforming. This is a real, previously \
-         unmeasured sub-population, not a flake: do NOT weaken this assertion to force a \
-         pass. Counterexample (index, seed) pairs — regenerate each with \
+        "{table}\n\n{} of {total_torn} torn pair(s) had unrecovered > 0 (of {completed} \
+         completed pairs out of {CI_SWEEP_PAIRS} requested) — arrangement non-conformity \
+         contributed to a tear in this sweep, contradicting the hypothesis that every torn \
+         pair in this regime is conforming. This is a real, previously unmeasured \
+         sub-population, not a flake: do NOT weaken this assertion to force a pass. \
+         Counterexample (index, seed) pairs — regenerate each with \
          `pair_at(CI_SWEEP_BASE_SEED, index)`:\n{counterexamples:#?}",
         counterexamples.len(),
     );

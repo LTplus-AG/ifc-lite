@@ -145,7 +145,7 @@
    561 apps/viewer/src/services/ifc-cache.ts
    581 apps/viewer/src/store/basketVisibleSet.ts
    485 apps/viewer/src/store/constants.ts
-   575 apps/viewer/src/store/index.ts
+   581 apps/viewer/src/store/index.ts
    404 apps/viewer/src/store/slices/addElementMeshes.ts
    452 apps/viewer/src/store/slices/chatSlice.ts
    994 apps/viewer/src/store/slices/clashSlice.ts
@@ -292,7 +292,7 @@
   1033 packages/provenance/src/merge-model.ts
    609 packages/provenance/src/node-hash.ts
    535 packages/query/src/duckdb-integration.ts
-   581 packages/renderer/src/camera-controls.ts
+   583 packages/renderer/src/camera-controls.ts
    662 packages/renderer/src/camera.ts
   3753 packages/renderer/src/index.ts
    780 packages/renderer/src/picker.ts

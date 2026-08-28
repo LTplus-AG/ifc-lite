@@ -18,7 +18,7 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
-import { createCameraSlice, type CameraSlice } from './cameraSlice.js';
+import { cameraTeardown, createCameraSlice, type CameraSlice } from './cameraSlice.js';
 import { CAMERA_DEFAULTS } from '../constants.js';
 
 describe('cameraSlice', () => {
@@ -108,6 +108,29 @@ describe('cameraSlice', () => {
 
     it('defaults to unrestricted (\'all\')', () => {
       assert.strictEqual(state.interactionMode, 'all');
+    });
+  });
+
+  // `?controls=` is read once per embed session and `Viewport` stays mounted
+  // across a file swap, so nothing re-applies the param and nothing restores
+  // the default when the next URL omits it. Without the teardown owning these
+  // two fields, the outgoing model's restriction governed the incoming one.
+  describe('session-reset teardown (#2934 review)', () => {
+    it('clears interactionMode and pendingInteractionMode', () => {
+      build(false);
+      state.setInteractionMode('none');
+      assert.strictEqual(state.interactionMode, 'none');
+      assert.strictEqual(state.pendingInteractionMode, 'none');
+
+      const patch = cameraTeardown.teardown({ kind: 'session-reset' }, state as never);
+
+      assert.strictEqual(patch.interactionMode, 'all');
+      assert.strictEqual(patch.pendingInteractionMode, null);
+    });
+
+    it('declares both fields in owns, so the patch cannot drift from them', () => {
+      assert.ok(cameraTeardown.owns.includes('interactionMode'));
+      assert.ok(cameraTeardown.owns.includes('pendingInteractionMode'));
     });
   });
 

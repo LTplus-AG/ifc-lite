@@ -447,6 +447,31 @@ describe('CameraControls – setInteractionMode (#2934)', () => {
     assert.notDeepStrictEqual(state.camera.position, posBefore, 'orbit must still work in orbit mode');
   });
 
+  // The doc contract for `controls` is "Restricts interactive orbit/pan/zoom
+  // ... `'all'` is unrestricted", so zoom is restricted in every mode that is
+  // not `'all'` -- not only in `'none'`. Gating zoom on `'none'` alone left
+  // `'orbit'` and `'pan'` able to dolly the camera, which the prose already
+  // promised they could not.
+  it("'orbit' and 'pan' modes: zoom is inert, and 'all' still zooms", () => {
+    for (const mode of ['orbit', 'pan'] as const) {
+      const { state, controls } = setup();
+      controls.setInteractionMode(mode);
+      const posBefore = { ...state.camera.position };
+      controls.zoom(-50);
+      assert.deepStrictEqual(
+        state.camera.position,
+        posBefore,
+        `zoom must be a no-op in ${mode} mode`,
+      );
+    }
+
+    const { state, controls } = setup();
+    controls.setInteractionMode('all');
+    const posBefore = { ...state.camera.position };
+    controls.zoom(-50);
+    assert.notDeepStrictEqual(state.camera.position, posBefore, "zoom must work in 'all' mode");
+  });
+
   it("'none' mode: orbit, pan and zoom are all inert", () => {
     const { state, controls } = setup();
     controls.setInteractionMode('none');

@@ -417,7 +417,9 @@ export class CameraControls {
     // only NaN gets through here. Guarding both anyway keeps this agreeing
     // with `orbit`/`pan`, where the two behave differently.
     if (!Number.isFinite(delta)) return;
-    if (this.interactionMode === 'none') return;
+    // `!== 'all'`: `controls` documents "Restricts orbit/pan/zoom ... `'all'`
+    // is unrestricted", so `'orbit'` and `'pan'` refuse a dolly too (#2934).
+    if (this.interactionMode !== 'all') return;
 
     const dir = sub(this.state.camera.position, this.state.camera.target);
     const distance = length(dir);

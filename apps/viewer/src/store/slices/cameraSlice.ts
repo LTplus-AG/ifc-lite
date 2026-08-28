@@ -23,7 +23,7 @@ const DEFAULT_PROJECTION_MODE: ProjectionMode = 'perspective';
 
 /** Unrestricted orbit/pan/zoom — every consumer except the embed's
  *  `?controls=` param (#2934) leaves this at the default. */
-const DEFAULT_CONTROLS_MODE: ControlsMode = 'all';
+export const DEFAULT_CONTROLS_MODE: ControlsMode = 'all';
 
 export interface CameraSlice {
   // State
@@ -166,15 +166,29 @@ export const createCameraSlice: StateCreator<CameraSlice, [], [], CameraSlice> =
  * `pendingCameraRotation`, `cameraCallbacks`, the two callback slots and
  * `cameraRotationListeners` are absent from `owns`: they are renderer/host
  * wiring that outlives a file swap, and no teardown path touches them today.
+ *
+ * `interactionMode` IS owned. It comes from `?controls=`, which is read once
+ * per embed session, so nothing re-applies it and nothing restores the
+ * default when it is absent: without this, a restricted mode set for one
+ * model silently outlived the swap to the next. `pendingInteractionMode` goes
+ * with it -- leaving a pending value behind would re-apply the outgoing
+ * model's restriction the next time callbacks register.
+ *
+ * Clearing the STATE here does not move the renderer, because this stays pure
+ * like the rest. `resetViewerState` drives the actuator back to the default
+ * immediately after applying this patch, next to the other side effects that
+ * cannot live in a teardown.
  */
 export const cameraTeardown = defineSliceTeardown(
   'cameraSlice',
-  ['cameraRotation', 'projectionMode'],
+  ['cameraRotation', 'projectionMode', 'interactionMode', 'pendingInteractionMode'],
   (scope) => {
     if (scope.kind !== 'session-reset') return {};
     return {
       cameraRotation: defaultCameraRotation(),
       projectionMode: DEFAULT_PROJECTION_MODE,
+      interactionMode: DEFAULT_CONTROLS_MODE,
+      pendingInteractionMode: null,
     };
   },
 );

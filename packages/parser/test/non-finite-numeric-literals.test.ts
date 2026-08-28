@@ -414,7 +414,7 @@ describe('an overflowing express id is refused before it is indexed', () => {
  * `Number.isFinite` for this purpose: it also rejects NaN, Infinity and
  * non-integers, so nothing the old guard caught is let back in.
  */
-describe('a 16-digit express id that collides under isFinite is refused by isSafeInteger', () => {
+describe('an unsafe-integer express id that collides under isFinite is refused by isSafeInteger', () => {
   const ID_A = '100000000000000001';
   const ID_B = '100000000000000002';
 
@@ -441,7 +441,7 @@ describe('a 16-digit express id that collides under isFinite is refused by isSaf
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('readRefId refuses a 16-digit colliding reference on the byte-level path', () => {
+  it('readRefId refuses an unsafe-integer colliding reference on the byte-level path', () => {
     const read = (text: string) => {
       const b = new TextEncoder().encode(text);
       return readRefId(b, 0, b.length);
@@ -452,7 +452,7 @@ describe('a 16-digit express id that collides under isFinite is refused by isSaf
     expect(read(`#${ID_A},`)[1]).toBe(ID_A.length + 1);
   });
 
-  it('extractEntity refuses a record keyed by a colliding 16-digit id', () => {
+  it('extractEntity refuses a record keyed by a colliding unsafe-integer id', () => {
     const record = `#${ID_A}=IFCCARTESIANPOINT((1.,2.,3.));`;
     const source = new TextEncoder().encode(record);
     const extractor = new EntityExtractor(source);
@@ -470,20 +470,20 @@ describe('a 16-digit express id that collides under isFinite is refused by isSaf
     expect(entity).toBeNull();
   });
 
-  it('the # reference branch (parseAttributeValue) refuses a colliding 16-digit reference', () => {
+  it('the # reference branch (parseAttributeValue) refuses a colliding unsafe-integer reference', () => {
     const attrs = attributesOf(`#1=IFCRELAGGREGATES('g',$,$,$,#${ID_A},(#2));`);
     expect(attrs[4]).toBeNull();
     // Negative control: an ordinary reference still resolves.
     expect(attributesOf(`#1=IFCRELAGGREGATES('g',$,$,$,#42,(#2));`)[4]).toBe(42);
   });
 
-  it('getReference refuses a colliding 16-digit id on the string branch', () => {
+  it('getReference refuses a colliding unsafe-integer id on the string branch', () => {
     expect(getReference('#42')).toBe(42); // negative control
     expect(getReference(`#${ID_A}`)).toBeUndefined();
     expect(getReference(`#${ID_B}`)).toBeUndefined();
   });
 
-  it('getReference refuses a colliding 16-digit id on the number branch', () => {
+  it('getReference refuses a colliding unsafe-integer id on the number branch', () => {
     expect(getReference(42)).toBe(42); // negative control
     expect(getReference(100000000000000000)).toBeUndefined();
   });

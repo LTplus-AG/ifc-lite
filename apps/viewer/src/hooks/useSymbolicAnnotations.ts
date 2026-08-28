@@ -266,6 +266,15 @@ export interface AnnotationText3D {
   color?: [number, number, number, number];
   /** Per-instance target cap height in screen pixels. */
   targetPx?: number;
+  /**
+   * False for grid bubbles: drawn, but the scene AABB must not grow to them
+   * (#3359). REQUIRED here, unlike the optional on the renderer's published
+   * `SymbolicTextInput`: this hook is the only producer and every push sets
+   * it, so requiring it makes the forwarding compiler-checked rather than
+   * remembered. The published side stays optional, which is what keeps the
+   * field an additive change for outside callers.
+   */
+  definesExtent: boolean;
 }
 
 /**
@@ -279,6 +288,8 @@ export interface AnnotationFill3D {
   worldY: number;
   color: [number, number, number, number];
   hatching?: AnnotationFill2D['hatching'];
+  /** False for grid bubble fills. See [`AnnotationText3D.definesExtent`] (#3359). */
+  definesExtent: boolean;
 }
 
 /** Cheap stable empty arrays for the no-data path. */
@@ -502,7 +513,9 @@ export function useSymbolicAnnotationsRichData(params: {
       // Per-entity hide: drop text/fills whose owning annotation is hidden.
       const isHidden = makeHiddenOwnerPredicate(entry, hiddenSets);
 
-      const pushText = (t: AnnotationText2D, y: number) => {
+      // `definesExtent`: see [`AnnotationText3D.definesExtent`] for why the
+      // channel routing does not reach bubbles (#3359).
+      const pushText = (t: AnnotationText2D, y: number, definesExtent: boolean) => {
         if (isHidden && isHidden(t.ownerId)) return;
         // lineYOffset stacks multi-line text downward in world-Y. Glyph
         // upAxis is world-Y (see SymbolicTextPipeline), so subtracting
@@ -518,9 +531,10 @@ export function useSymbolicAnnotationsRichData(params: {
           billboard: t.billboard,
           color: t.color,
           targetPx: t.targetPx,
+          definesExtent,
         });
       };
-      const pushFill = (f: AnnotationFill2D, y: number) => {
+      const pushFill = (f: AnnotationFill2D, y: number, definesExtent: boolean) => {
         if (isHidden && isHidden(f.ownerId)) return;
         fills.push({
           points: f.points,
@@ -528,17 +542,25 @@ export function useSymbolicAnnotationsRichData(params: {
           worldY: y,
           color: f.color,
           hatching: f.hatching,
+          definesExtent,
         });
       };
+
+      // Bound once per branch, not spelled at each call: twelve literal
+      // booleans is twelve chances to type `true` in the grid half.
+      const pushAnnotationText = (t: AnnotationText2D, y: number) => pushText(t, y, true);
+      const pushAnnotationFill = (f: AnnotationFill2D, y: number) => pushFill(f, y, true);
+      const pushGridText = (t: AnnotationText2D, y: number) => pushText(t, y, false);
+      const pushGridFill = (f: AnnotationFill2D, y: number) => pushFill(f, y, false);
 
       if (enabled) {
         for (const bucket of cached.byStorey.values()) {
           const y = resolveBucketY(bucket.storeyElevation, fallbackY);
-          for (const t of bucket.texts) pushText(t, y);
-          for (const f of bucket.fills) pushFill(f, y);
+          for (const t of bucket.texts) pushAnnotationText(t, y);
+          for (const f of bucket.fills) pushAnnotationFill(f, y);
         }
-        for (const t of cached.looseTexts) pushText(t, fallbackY);
-        for (const f of cached.looseFills) pushFill(f, fallbackY);
+        for (const t of cached.looseTexts) pushAnnotationText(t, fallbackY);
+        for (const f of cached.looseFills) pushAnnotationFill(f, fallbackY);
       }
 
       if (effectiveGridEnabled) {
@@ -548,21 +570,21 @@ export function useSymbolicAnnotationsRichData(params: {
           for (const bucket of cached.gridByStorey.values()) {
             const y = resolveBucketY(bucket.storeyElevation, fallbackY);
             if (y < lo || y > hi) continue;
-            for (const t of bucket.texts) pushText(t, y);
-            for (const f of bucket.fills) pushFill(f, y);
+            for (const t of bucket.texts) pushGridText(t, y);
+            for (const f of bucket.fills) pushGridFill(f, y);
           }
           if (fallbackY >= lo && fallbackY <= hi) {
-            for (const t of cached.gridLooseTexts) pushText(t, fallbackY);
-            for (const f of cached.gridLooseFills) pushFill(f, fallbackY);
+            for (const t of cached.gridLooseTexts) pushGridText(t, fallbackY);
+            for (const f of cached.gridLooseFills) pushGridFill(f, fallbackY);
           }
         } else {
           for (const bucket of cached.gridByStorey.values()) {
             const y = resolveBucketY(bucket.storeyElevation, fallbackY);
-            for (const t of bucket.texts) pushText(t, y);
-            for (const f of bucket.fills) pushFill(f, y);
+            for (const t of bucket.texts) pushGridText(t, y);
+            for (const f of bucket.fills) pushGridFill(f, y);
           }
-          for (const t of cached.gridLooseTexts) pushText(t, fallbackY);
-          for (const f of cached.gridLooseFills) pushFill(f, fallbackY);
+          for (const t of cached.gridLooseTexts) pushGridText(t, fallbackY);
+          for (const f of cached.gridLooseFills) pushGridFill(f, fallbackY);
         }
       }
     }

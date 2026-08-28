@@ -54,6 +54,8 @@ export interface SymbolicFillInput {
   worldY: number;
   /** Straight-alpha RGBA in [0..1]. The shader premultiplies. */
   color: [number, number, number, number];
+  /** Does this fill DEFINE the model's extent? Default true; see `uploadFills` (#3359). */
+  definesExtent?: boolean;
 }
 
 // ─── Text input ─────────────────────────────────────────────────────────────
@@ -86,6 +88,8 @@ export interface SymbolicTextInput {
    * disappear behind the character.
    */
   targetPx?: number;
+  /** Does this label DEFINE the model's extent? Default true; see `uploadTexts` (#3359). */
+  definesExtent?: boolean;
 }
 
 // ─── Fill pipeline ──────────────────────────────────────────────────────────
@@ -690,18 +694,13 @@ export class SymbolicTextPipeline {
  * first token decides vertical, the second decides horizontal, matching
  * the row-then-column order every compound value in the enum uses.
  *
- * Vertical (from the first token, or the whole string for a single-token
- * value like "center"):
- *   "top"     →  0   (no offset)
- *   "middle"  → -0.5
- *   "bottom"  → -1   (default per IFC)
- * Horizontal (from the second token, or the whole string for a single-token
- * value):
- *   "left"    →  0   (default per IFC)
- *   "middle" / "center" → -0.5
- *   "right"   → -1
- *
- * Unknown / empty values fall back to ("bottom", "left").
+ * Vertical comes from the first token, horizontal from the second, or from
+ * the whole string for a single-token value like "center": top 0, middle
+ * -0.5, bottom -1 (the IFC default) vertically; left 0 (the IFC default),
+ * middle/center -0.5, right -1 horizontally. Unknown or empty falls back to
+ * ("bottom", "left"). The if/else below is the same table, which is why this
+ * is prose: the file sits exactly on its module-size budget, and two
+ * documented public fields cost the four lines this paragraph gives back.
  */
 export function parseBoxAlignment(s: string): { horizontal: number; vertical: number } {
   const norm = s.toLowerCase().trim();

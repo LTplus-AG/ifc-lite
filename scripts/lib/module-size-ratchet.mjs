@@ -13,9 +13,11 @@
  * same 400-line limit, same `<budget> <path>` allowlist format, same FNV-1a
  * digest over the sorted rows, same "shrink or split" preference. Two files,
  * one rule -- with one asymmetry worth stating rather than glossing: the TS
- * side has a sanctioned escape hatch (`--update --allow-raise`) and the Rust
- * twin has none, so "never raise" is literally true there and only the default
- * here.
+ * side has a regenerate command with a sanctioned raise inside it (`--update
+ * --allow-raise`); the Rust twin has no regenerate command at all, so a raise
+ * there is a hand edit of the allowlist and its pinned digest. Neither side
+ * makes a raise impossible -- module_size_ratchet.rs records one that reached
+ * main that way (#2658) -- both make it cost a reviewable line.
  */
 
 /** AGENTS.md: "split modules over ~400 non-generated lines". */
@@ -265,6 +267,9 @@ export function planUpdate(files, allowlist, changed = null) {
   // carrying it forward would leave the documented regeneration command unable
   // to fix a hard failure it used to fix. Dropping it is safe at any scope.
   const grantsNoExemption = (budget) => budget !== undefined && budget <= LIMIT;
+  // Both loops below reach this case, and the two messages must not drift.
+  const grantedNothing = (rel, budget) =>
+    `  ${rel}: budget ${budget} <= ${LIMIT} granted nothing (row deleted)`;
   const measured = new Map(files.map((f) => [f.rel, f.lines]));
   const next = new Map();
   const raised = [];
@@ -275,10 +280,8 @@ export function planUpdate(files, allowlist, changed = null) {
   for (const { rel, lines } of files) {
     const budget = allowlist.get(rel);
     if (!inScope(rel)) {
-      if (budget !== undefined && !grantsNoExemption(budget)) next.set(rel, budget);
-      else if (grantsNoExemption(budget)) {
-        removed.push(`  ${rel}: budget ${budget} <= ${LIMIT} granted nothing (row deleted)`);
-      }
+      if (grantsNoExemption(budget)) removed.push(grantedNothing(rel, budget));
+      else if (budget !== undefined) next.set(rel, budget);
       continue;
     }
     if (lines <= LIMIT) {
@@ -297,9 +300,8 @@ export function planUpdate(files, allowlist, changed = null) {
   for (const [rel, budget] of allowlist) {
     if (measured.has(rel)) continue;
     if (inScope(rel)) removed.push(`  ${rel} (budget ${budget}) no longer matches a tracked file`);
-    else if (grantsNoExemption(budget)) {
-      removed.push(`  ${rel}: budget ${budget} <= ${LIMIT} granted nothing (row deleted)`);
-    } else next.set(rel, budget);
+    else if (grantsNoExemption(budget)) removed.push(grantedNothing(rel, budget));
+    else next.set(rel, budget);
   }
 
   raised.sort();

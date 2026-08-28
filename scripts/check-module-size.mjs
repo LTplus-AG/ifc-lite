@@ -462,7 +462,7 @@ if (args.update) {
     // changed file(s)" next to "0 lowered, 0 removed", which reads as the
     // scoping having silently done nothing.
     const actionable = [...changed].filter(
-      (rel) => /\.tsx?$/.test(rel) && !isExempt(rel) && SEARCH_DIRS.some((d) => rel.startsWith(`${d}/`)),
+      (rel) => SOURCE_RE.test(rel) && !isExempt(rel) && SEARCH_DIRS.some((d) => rel.startsWith(`${d}/`)),
     ).length;
     scopeNote =
       `check-module-size: scoped to ${actionable} changed module(s) ` +

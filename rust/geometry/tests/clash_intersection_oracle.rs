@@ -923,3 +923,97 @@ fn the_near_band_shortfall_is_a_missing_face_pair_not_a_shape_dependent_wedge() 
         }
     }
 }
+
+/// Reproduces the CAUSE behind the `2/3` ratio measured above, not just its
+/// consequence. `classify.rs` drops A's x end cap for failing `co_oriented`
+/// under `Intersection`, and drops B's copy unconditionally in
+/// `c_on_or_near_a`. If both x caps are really gone, every triangle
+/// `intersection_tris` returns belongs to one of the four side walls, whose
+/// outward normals are +/-y or +/-z -- none should be x-facing.
+///
+/// Kept separate from the ratio sweep rather than folded into its loop, so a
+/// normal-classification failure cannot be mistaken for a failure of the
+/// volume identity.
+#[test]
+fn no_surviving_near_band_triangle_has_an_x_facing_normal() {
+    // Below this cross-product magnitude a triangle has no well-defined
+    // normal, so classify it as neither rather than guessing. Positions are
+    // O(1-4), so cross-product round-off floors out near 1e-14. The smallest
+    // triangle this sweep genuinely produces has one edge of order `depth`
+    // (>= 1/65536, itself grid-aligned) and another of order a box_mesh cell
+    // (>= min(ly, lz)/n >= 1/4), i.e. magnitude >~ 3.8e-6. Anything thinner
+    // is EXCLUDED from the area sum rather than classified, which can only
+    // weaken the guard below, never hide an x-facing survivor.
+    const DEGENERATE_NORM: f64 = 1.0e-10;
+    // |n.x| after normalising. A side wall's normal is (0, +/-1, 0) or
+    // (0, 0, +/-1) up to round-off; an end cap's is (+/-1, 0, 0). For a
+    // triangle that only just clears the floor above, worst-case relative
+    // noise on |n.x| is ~1e-4, so this sits ~100x above the noise and ~100x
+    // below a real cap.
+    const X_FACING_TOL: f64 = 1.0e-2;
+
+    for (ly, lz) in [(1.0, 1.0), (1.0, 2.0), (2.0, 2.0), (1.0, 4.0)] {
+        for cells in [1u32, 2, 4, 6, 8] {
+            let depth = f64::from(cells) / 65536.0;
+            for &n in &TESSELLATIONS {
+                let a = box_mesh([0.0, 0.0, 0.0], [1.0, ly, lz], n);
+                let b = box_mesh([1.0 - depth, 0.0, 0.0], [2.0, ly, lz], n);
+                let tris = ifc_lite_geometry::kernel::mesh_bridge::intersection_tris(&a, &b);
+                assert!(
+                    !tris.is_empty(),
+                    "ly={ly} lz={lz} cells={cells} n={n}: no intersection triangles"
+                );
+
+                // Non-vacuity guard, by AREA rather than triangle count:
+                // `intersection_tris` retriangulates the clipped region, so
+                // its output count is not a closed form of box_mesh's n, but
+                // area is invariant under retriangulation. The overlap is a
+                // box depth x ly x lz whose four side faces total
+                // 2*depth*(ly + lz). Without this, "no x-facing normal"
+                // would pass trivially if almost nothing survived.
+                let expected_side_area = 2.0 * depth * (ly + lz);
+                let mut side_area = 0.0;
+                let mut degenerate = 0usize;
+                let mut x_facing = 0usize;
+
+                for t in &tris {
+                    let e1 = [t[1][0] - t[0][0], t[1][1] - t[0][1], t[1][2] - t[0][2]];
+                    let e2 = [t[2][0] - t[0][0], t[2][1] - t[0][1], t[2][2] - t[0][2]];
+                    let nrm = [
+                        e1[1] * e2[2] - e1[2] * e2[1],
+                        e1[2] * e2[0] - e1[0] * e2[2],
+                        e1[0] * e2[1] - e1[1] * e2[0],
+                    ];
+                    let norm = (nrm[0] * nrm[0] + nrm[1] * nrm[1] + nrm[2] * nrm[2]).sqrt();
+                    if norm < DEGENERATE_NORM {
+                        degenerate += 1;
+                        continue;
+                    }
+                    if (nrm[0] / norm).abs() > X_FACING_TOL {
+                        x_facing += 1;
+                    } else {
+                        side_area += 0.5 * norm;
+                    }
+                }
+
+                assert_eq!(
+                    x_facing,
+                    0,
+                    "ly={ly} lz={lz} cells={cells} n={n}: {x_facing} of {} triangles \
+                     ({degenerate} degenerate) face x -- an x cap survived, so the \
+                     'both caps dropped' account is incomplete",
+                    tris.len()
+                );
+
+                let tol = if cells >= 4 { 1.0e-9 } else { 1.0e-3 };
+                let ratio = side_area / expected_side_area;
+                assert!(
+                    (ratio - 1.0).abs() < tol,
+                    "ly={ly} lz={lz} cells={cells} n={n}: side-wall area {side_area}, \
+                     expected {expected_side_area} (ratio {ratio}) -- too little side-wall \
+                     geometry survived for the x-facing check to mean anything"
+                );
+            }
+        }
+    }
+}

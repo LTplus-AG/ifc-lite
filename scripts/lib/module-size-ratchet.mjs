@@ -280,7 +280,15 @@ export function planUpdate(files, allowlist, changed = null) {
   for (const { rel, lines } of files) {
     const budget = allowlist.get(rel);
     if (!inScope(rel)) {
-      if (grantsNoExemption(budget)) removed.push(grantedNothing(rel, budget));
+      // `grantsNoExemption` is safe to act on out of scope only while the FILE
+      // is also under the limit. If the row is sub-limit but the file measures
+      // OVER it, dropping the row turns a stale-row failure into a
+      // `newOffenders` one -- and that one no scoped rerun can fix, because the
+      // file is out of scope by construction. Keep the row and let the
+      // stale-row check report it; a run scoped to that file resolves it
+      // properly. The earlier comment here said "safe at any scope", which was
+      // true of every case it was written against and false of this one.
+      if (grantsNoExemption(budget) && lines <= LIMIT) removed.push(grantedNothing(rel, budget));
       else if (budget !== undefined) next.set(rel, budget);
       continue;
     }

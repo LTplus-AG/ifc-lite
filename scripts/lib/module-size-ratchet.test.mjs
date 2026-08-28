@@ -381,3 +381,40 @@ test('planUpdate drops a row granting no exemption even out of scope, and keeps 
   assert.equal(wide.next.has('packages/d/real.ts'), false);
   assert.equal(wide.next.get('packages/a/big.ts'), 520, 'repo-wide re-records the measured count');
 });
+
+// `grantsNoExemption` drops a row that grants nothing, at any scope. That is
+// safe while the FILE is also under the limit. It is not safe when the row is
+// sub-limit but the file measures OVER it: dropping the row then converts a
+// stale-row failure into a `newOffenders` one, and that failure no scoped rerun
+// can clear, because the file is out of scope by construction. The comment that
+// shipped with the fix said "safe at any scope" — true of every case it was
+// written against, false of this one.
+test('an out-of-scope sub-limit row is KEPT when its file is over the limit', () => {
+  const files = [
+    { rel: 'packages/x/stranded.ts', lines: 450 }, // over LIMIT, row grants nothing
+    { rel: 'packages/y/touched.ts', lines: 410 },
+  ];
+  const allowlist = new Map([
+    ['packages/x/stranded.ts', 400],
+    ['packages/y/touched.ts', 415],
+  ]);
+  const scoped = planUpdate(files, allowlist, new Set(['packages/y/touched.ts']));
+
+  assert.equal(
+    scoped.next.get('packages/x/stranded.ts'),
+    400,
+    'dropping this row would make the file a newOffender no scoped run can fix',
+  );
+  assert.equal(scoped.removed.length, 0);
+
+  // The control that keeps the assertion honest: the same row IS dropped when
+  // its file is under the limit, so this is a real distinction and not the
+  // rule being disabled.
+  const under = planUpdate(
+    [{ rel: 'packages/x/stranded.ts', lines: 300 }, { rel: 'packages/y/touched.ts', lines: 410 }],
+    allowlist,
+    new Set(['packages/y/touched.ts']),
+  );
+  assert.equal(under.next.has('packages/x/stranded.ts'), false);
+  assert.equal(under.removed.length, 1);
+});

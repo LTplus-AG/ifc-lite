@@ -561,6 +561,27 @@ if (args.update) {
       ? `check-module-size: ALLOWLIST_DIGESTS re-pinned in ${selfPath} (${nextDigests.size} scopes). Commit both.`
       : `check-module-size: no ALLOWLIST_DIGESTS pin found under ${args.root}; the new digests are ${nextDigest}.`,
   );
+
+  // Re-evaluate against what was actually WRITTEN, and exit on the answer.
+  // A scoped regenerate leaves inherited growth untouched by design, so it used
+  // to print "Commit both." and exit 0 while the gate stayed red -- reporting
+  // success for a run that fixed nothing the contributor was failing on. The
+  // docstring admitted this in prose and the code did not act on it, which is
+  // the same shape as the header claim this whole issue is about.
+  const after = evaluate(files, next);
+  if (after.newOffenders.length > 0 || after.grew.length > 0) {
+    console.error(`
+check-module-size: the allowlist was rewritten, but the gate is STILL RED for
+files outside this change's scope:\n
+${[...after.newOffenders, ...after.grew].join('\n')}
+
+That growth came from main, not from your change, so a scoped regenerate cannot
+reach it. Clear it with a maintainer sweep in its OWN commit and its own PR:
+
+  pnpm lint:module-size-baseline --all --allow-raise
+`);
+    process.exit(1);
+  }
   process.exit(0);
 }
 

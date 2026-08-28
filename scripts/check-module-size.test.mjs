@@ -673,3 +673,21 @@ test('--update --all --allow-raise is what actually clears inherited growth', ()
   assert.equal(code, 0, out);
   assert.match(readFileSync(allowlistPath, 'utf8'), /520 packages\/a\/big\.ts/);
 });
+
+// A scoped regenerate used to print "Commit both." and exit 0 even when the
+// gate stayed red for growth inherited from main — reporting success for a run
+// that fixed nothing the contributor was failing on. The docstring described
+// the case; the code exited 0 before ever re-evaluating what it wrote.
+test('a scoped regenerate that leaves the gate red exits 1 and names the sweep', () => {
+  // The growth must PREDATE the branch point, or it lands in the branch's own
+  // diff and the scoped run correctly fixes it. slack.ts is committed on main
+  // already over its recorded 460 budget; the branch touches only big.ts.
+  const { dir, git } = gitTree({ 'packages/a/big.ts': 500, 'packages/b/slack.ts': 520 });
+  git('checkout', '-q', '-b', 'feature');
+  writeSource(dir, 'packages/a/big.ts', 520);
+
+  const { code, out } = run(dir, SCOPED_BEFORE, { extra: ['--update', '--allow-raise'] });
+  assert.equal(code, 1, out);
+  assert.match(out, /the gate is STILL RED for\s+files outside this change's scope/);
+  assert.match(out, /--all --allow-raise/);
+});

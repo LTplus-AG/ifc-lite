@@ -1,6 +1,8 @@
 //! Tests for `prepass_discovery`, split out of it for the module-size ratchet.
 //!
-//! The rule there is shrink or split, never raise the budget, and a `_tests.rs`
+//! The rule there is shrink or split by default -- a raise is possible on both
+//! sides (see `module_size_ratchet.rs`, which records one reaching main and
+//! being undone, #2658), it is just not the move here -- and a `_tests.rs`
 //! file is exempt by the gate's own `is_exempt`. Same move as
 //! `styling/prepass_issue_3187_tests.rs`.
 use super::*;

@@ -676,3 +676,7 @@ mod classify_tests;
 #[cfg(test)]
 #[path = "issue_3353_vid_census_tests.rs"]
 mod issue_3353_vid_census_tests;
+
+#[cfg(test)]
+#[path = "avg3_tests.rs"]
+mod avg3_tests;

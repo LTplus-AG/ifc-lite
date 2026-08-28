@@ -46,6 +46,15 @@ pub(crate) fn merge_edits<'a>(
 /// raw UTF-8 multi-byte sequence into mojibake or a broken parse; this exact
 /// writer shape is a reported, reproduced defect in real IFC tooling
 /// (IfcOpenShell#699/#1016; files rejected by Solibri).
+///
+/// `pub`, and re-exported from the crate root as `escape_step_string`, so the
+/// integration-test binary `tests/step_escape_parity.rs` can pin it to the
+/// shared vectors in `tests/fixtures/step_escape_vectors.json` — the same
+/// vectors the TypeScript `escapeStepString` is held to, since the two
+/// implementations cannot share code (#3300). Only this one function is
+/// re-exported, not the whole module, so the rest of `step_text` stays
+/// crate-private and the public surface widens by exactly one symbol —
+/// narrower than the `pub mod csv_cell` the CSV parity pin already relies on.
 pub fn escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {

@@ -208,10 +208,12 @@ export { buildSymbolicLineChannels, type SymbolicLineChannels, type SymbolicLine
 // `symbolic-rich-channels.ts` — split out for the same two reasons as the line
 // channels above, and so the grid section-clip band it applies has a seam a
 // test can reach with no worker, no parse cache and no React (issue #3393).
-// Re-exported narrowly: `AnnotationText3D` / `AnnotationFill3D` have consumers
-// on this import path, and `SymbolicRichChannels` names the return type of the
-// hook below. The builder and its entry type have no consumer here and are
-// imported from their own module instead.
+// Re-exported narrowly: `SymbolicRichChannels` names the return type of the
+// hook below, and `AnnotationText3D` / `AnnotationFill3D` keep this import
+// path working for the callers that already used it (today only
+// `useSymbolicAnnotations.gridBubbleExtent.test.tsx`; `Viewport.tsx` consumes
+// the shapes structurally without naming them). The builder and its entry type
+// have no consumer here and are imported from their own module instead.
 export { type AnnotationFill3D, type AnnotationText3D, type SymbolicRichChannels };
 
 export function useSymbolicAnnotations(params: {

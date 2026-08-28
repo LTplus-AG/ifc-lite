@@ -6,8 +6,13 @@
  * The pure merge step behind `useSymbolicAnnotationsRichData` — the text and
  * fill twin of `symbolic-line-channels.ts`, split out for the same reason and
  * along the same seam #3381 cut: it takes already-resolved `ParseResult`s and
- * scalars, so it runs against a hand-built parse with no React, no store, no
- * overlay worker and no module-global parse cache.
+ * scalars, so a call runs against a hand-built parse with no React tree, no
+ * store subscription, no overlay worker and no parse-cache lookup.
+ *
+ * Purity of the CALL, not of the import graph: `resolveBucketY` is imported
+ * from the hook file (as the line twin does), so loading this module still
+ * loads React, the store and `symbolic-parse-cache.ts`. Nothing here reads
+ * them, which is the property the tests below rely on.
  *
  * That seam is what makes the grid section-clip band (issue #862) testable.
  * While this walk lived inside the hook, the only way to reach its band check

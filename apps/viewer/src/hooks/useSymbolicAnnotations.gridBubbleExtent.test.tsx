@@ -171,6 +171,23 @@ async function sample(
   hookOpts: { fallbackY?: number; gridSectionClip?: SectionClipForGrid } = {},
 ): Promise<Sample> {
   let latest: Sample | null = null;
+
+  // Tear the previous mount down FIRST, before anything below touches the
+  // store. `root` / `container` are single slots and `afterEach` unmounts only
+  // what they point at LAST, so without this a Probe from an earlier
+  // `sample()` stays subscribed to the store and the parse cache and
+  // re-renders outside `act()` — into the tests that follow, since nothing
+  // ever unmounts it. Doing it before the `setState` below is what keeps that
+  // store write from reaching a live Probe unwrapped.
+  if (root && container) {
+    const staleRoot = root;
+    const staleContainer = container;
+    act(() => staleRoot.unmount());
+    staleContainer.remove();
+    root = null;
+    container = null;
+  }
+
   if (Number.isFinite(storeyY)) {
     restoreStoreyWorker?.();
     restoreStoreyWorker = installWorker(storeyY);
@@ -286,6 +303,46 @@ describe('grid bubbles draw without defining the model extent (issue 3359)', () 
     assert.equal(s.texts[0].definesExtent, false);
     assert.equal(s.fills.length, 1);
     assert.equal(s.fills[0].definesExtent, false);
+  });
+
+  it('only an ENABLED, DOWN cut clips — the derivation, not just the band (issues #862, #3393)', async () => {
+    // `clipEnabled` is DERIVED inside both hooks, never passed in:
+    //   !!gridSectionClip && gridSectionClip.enabled && gridSectionClip.axis === 'down'
+    // The pure-seam cases in `symbolic-grid-section-clip.test.ts` take
+    // `clipEnabled` as a literal, so they structurally cannot reach that line;
+    // rewriting it to `!!gridSectionClip` left the whole suite green.
+    //
+    // Not a live app bug today: `Viewport.tsx` is the only producer and it
+    // returns `undefined` unless the cut is enabled and `axis === 'down'`, so
+    // the two conjuncts are unreachable-false through the app. They are the
+    // hook's PUBLISHED contract for any other caller — `SectionClipForGrid`
+    // documents both — and that contract had no test.
+    //
+    // The band [2, 4] excludes the loose fixture's `fallbackY` of 0, so the
+    // clipping arm is observably EMPTY. Each non-clipping arm runs the SAME
+    // fixture and is observably non-empty, which is what rules out "the content
+    // never arrived" as the reason for the empty one — the confound that made
+    // the first attempt at #3393 vacuous.
+    const cut = { posWorld: 3, viewDepth: 1 };
+
+    const sideCut = await sample({ enabled: false, gridEnabled: true }, NaN, {
+      gridSectionClip: { ...cut, enabled: true, axis: 'front' },
+    });
+    assert.equal(sideCut.texts.length, 1, 'a front cut passes grid content through unfiltered');
+
+    const offCut = await sample({ enabled: false, gridEnabled: true }, NaN, {
+      gridSectionClip: { ...cut, enabled: false, axis: 'down' },
+    });
+    assert.equal(offCut.texts.length, 1, 'and so does a down cut that is not enabled');
+
+    const downCut = await sample({ enabled: false, gridEnabled: true }, NaN, {
+      gridSectionClip: { ...cut, enabled: true, axis: 'down' },
+    });
+    assert.equal(
+      downCut.texts.length,
+      0,
+      'only the enabled down cut clips; a truthy-only derivation makes all three of these 0',
+    );
   });
 
   it('a second source in one test is parsed on its own, not answered from the first', async () => {

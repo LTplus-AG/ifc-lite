@@ -243,22 +243,40 @@ describe('the grid section-clip band filters gridByStorey buckets (issues #862, 
     // The rule the band belongs to. An annotation bucket at the same excluded
     // elevation still lifts, so a band check copy-pasted onto `byStorey` would
     // fail here rather than pass quietly.
+    //
+    // Asserted on BOTH builders. Each keeps its own `byStorey` walk, so the
+    // line assertion says nothing about the rich one: pasting a band check into
+    // `symbolic-rich-channels.ts` alone hides every label and fill on an
+    // out-of-slab storey while the line channel stays green.
     const flat = mixedGridFlat();
     flat.typeNames = ['IfcAnnotation'];
     const cached = buildParseResult(flat, {});
     assert.equal(cached.byStorey.size, 1, 'the fixture must reach the annotation buckets for this to mean anything');
 
-    const { annotation } = buildSymbolicLineChannels([{ cached }], {
+    const params = {
       enabled: true,
       effectiveGridEnabled: true,
       fallbackY: FALLBACK_Y,
       ...BAND_OVER_FALLBACK,
-    });
+    };
 
+    const { annotation } = buildSymbolicLineChannels([{ cached }], params);
     assert.deepEqual(
       xs(annotation).sort((a, b) => a - b),
       [BUCKET_X, BUCKET_X, LOOSE_X, LOOSE_X],
-      'the annotation channel ignores the section band entirely',
+      'the annotation line channel ignores the section band entirely',
+    );
+
+    const { texts, fills } = buildSymbolicRichChannels([{ cached }], params);
+    assert.deepEqual(
+      [...texts.map((t) => t.content)].sort(),
+      ['BUCKET', 'LOOSE'],
+      'and so does the annotation text channel; BUCKET sits outside the band',
+    );
+    assert.deepEqual(
+      [...fills.map((f) => f.worldY)].sort((a, b) => a - b),
+      [FALLBACK_Y, BUCKET_Y],
+      'and the fill channel, on its own walk again',
     );
   });
 });

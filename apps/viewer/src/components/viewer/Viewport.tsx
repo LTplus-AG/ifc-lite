@@ -1452,7 +1452,7 @@ export function Viewport({
     };
   }, [sectionPlane.enabled, sectionPlane.axis, sectionPlane.position, sectionRange]);
 
-  const annotationVertices3D = useSymbolicAnnotations({
+  const symbolicLineChannels = useSymbolicAnnotations({ // two buffers, not one (issue #3359)
     enabled: ifcAnnotationsVisible,
     gridEnabled: ifcGridVisible,
     gridSectionClip,
@@ -1467,11 +1467,9 @@ export function Viewport({
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
-    renderer.setLineOverlay(
-      'annotation',
-      annotationVertices3D.length === 0 ? null : annotationVertices3D,
-    );
-  }, [annotationVertices3D, isInitialized]);
+    const v = symbolicLineChannels.annotation;
+    renderer.setLineOverlay('annotation', v.length === 0 ? null : v);
+  }, [symbolicLineChannels.annotation, isInitialized]);
 
   // IfcAlignment centerlines render as thin lines (not a ribbon mesh), always
   // on — see useAlignmentLines3D. Upload/clear mirrors the annotation overlay;
@@ -1486,19 +1484,20 @@ export function Viewport({
     );
   }, [alignmentVertices3D, isInitialized]);
 
-  // Structural-grid (IfcGridAxis) lines used to also draw from a second,
-  // independent extractor (`useGridLines3D`, backed by the wasm
-  // `parseGridLines` API) uploaded to the renderer's own 'grid' line-overlay
-  // channel. That copy was never section-clipped and never received the
-  // TS-side `originShift` elevation rebase `useSymbolicAnnotations` applies
-  // to its grid buckets (see `elevationRebaseFor` in
-  // `symbolic-parse-cache.ts`), so every axis drew twice, #862's grid
-  // section-clipping was inert (the unclipped copy always drew the full
-  // grid), and a federated/re-aligned model with nonzero `originShift` could
-  // show the two copies at different elevations (issue #3368). Grid lines
-  // now draw ONLY from `useSymbolicAnnotations`'s `annotationVertices3D`
-  // above, which already section-clips and rebases them when `ifcGridVisible`
-  // (`gridEnabled`) is on — see its `effectiveGridEnabled` branch.
+  // Structural-grid (IfcGridAxis) lines draw ONLY from `useSymbolicAnnotations`
+  // (issue #3368: a second independent extractor used to double-draw every
+  // axis and go stale under `originShift`). They upload to their OWN 'grid'
+  // channel rather than sharing the 'annotation' buffer above (issue #3359):
+  // `CHANNEL_EXPANDS_MODEL_BOUNDS.annotation` is `true` but `.grid` is
+  // `false` (grid axes extend past the model envelope, issue #967) — sharing
+  // one buffer put grid-only content on the bounds-expanding channel,
+  // dragging the empty-space orbit-pivot fallback toward the grid.
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !isInitialized) return;
+    const v = symbolicLineChannels.grid;
+    renderer.setLineOverlay('grid', v.length === 0 ? null : v);
+  }, [symbolicLineChannels.grid, isInitialized]);
 
   // DXF reference-layer line paths in the 3D viewport (issue #2043,
   // follow-up to #1782/#1929's 2D-only DXF underlay). Gated by each

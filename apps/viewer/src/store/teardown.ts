@@ -200,8 +200,9 @@ export interface SliceTeardown<K extends keyof ViewerState = keyof ViewerState> 
    * `syncSourceModel` runs the SAME composition after `removeModel`
    * without undoing or re-allocating anything.
    *
-   * {@link composeTeardown} drops `Object.is`-unchanged entries as a backstop,
-   * but a contribution that rebuilds an equal-but-new `Map` defeats it.
+   * {@link composeTeardown} drops unchanged entries as a backstop, including a
+   * `Set` / `Map` / array rebuilt equal-but-new — a should, not a must, but
+   * still cheaper: its structural check only runs after `Object.is` fails.
    */
   readonly teardown: (scope: TeardownScope, state: TeardownState) => TeardownContribution<K>;
 }
@@ -303,25 +304,42 @@ export function teardownOwnedKeys(
 }
 
 /**
- * Keys the `Object.is` filter below must never drop.
- *
- * `withVisibilityOwnershipInvalidation` keys on PRESENCE, not value:
- * `applyOwnershipInvalidation` tests `'isolatedEntities' in patch`. The old
- * hand-written `resetViewerState` always carried both channels, so the
- * middleware ran on every session reset. Dropping an unchanged channel would
- * silently stop it running on the common reset, where both are already `null`.
- *
- * That matters for a guarantee rather than for today's data. `lib/visibility/
- * ownership.ts` states the middleware's purpose as making a THIRD subsystem's
- * claim "invalidated by construction rather than by remembering to extend a
- * list somewhere else". Today's two record fields happen to be cleared by name
- * as well, so nothing is broken now. Add a third and the by-construction half
- * is what catches it, so the filter must not be what takes it away.
+ * Keys the equality filter below must never drop, on the two scopes whose
+ * hand-written predecessor always carried both — `withVisibilityOwnershipInvalidation`
+ * keys on PRESENCE in the patch, not value (`applyOwnershipInvalidation` tests
+ * `'isolatedEntities' in patch`), so it must keep running even when both are
+ * already `null`. `model-removed` is excluded: its `visibilitySlice.teardown.ts`
+ * arm already gates presence on its own `touched` check, and forcing it here
+ * would reproduce #3346 (a channel unwritten by anything of its own, forced
+ * through because a SIBLING field's `touched` gate rebuilt it equal-but-new).
  */
-const NEVER_DROPPED: ReadonlySet<keyof ViewerState> = new Set([
-  'isolatedEntities',
-  'ghostExceptEntities',
+const FORCED_PRESENCE_SCOPES: ReadonlySet<TeardownScope['kind']> = new Set([
+  'session-reset',
+  'all-models-cleared',
 ]);
+const NEVER_DROPPED: ReadonlySet<keyof ViewerState> = new Set(['isolatedEntities', 'ghostExceptEntities']);
+
+/**
+ * Whether `a` and `b` are the same value, seeing through a `Set` / `Map` /
+ * array rebuilt with equal contents under a new reference (#3346: a per-slice
+ * `touched` gate rebuilds every field it covers once ANY one moves).
+ * `Object.is` alone otherwise — two equal-but-distinct plain objects, e.g.
+ * `classFilter`, are NOT equal here. `Map` values recurse, since e.g.
+ * `hiddenEntitiesByModel` holds `Set`s a contribution may itself rebuild.
+ */
+function isUnchanged(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (a instanceof Set && b instanceof Set) {
+    return a.size === b.size && [...a].every((value) => b.has(value));
+  }
+  if (a instanceof Map && b instanceof Map) {
+    return a.size === b.size && [...a].every(([k, v]) => b.has(k) && isUnchanged(v, b.get(k)));
+  }
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((value, index) => isUnchanged(value, b[index]));
+  }
+  return false;
+}
 
 /**
  * Build the one patch an entry point hands to `set`.
@@ -330,39 +348,32 @@ const NEVER_DROPPED: ReadonlySet<keyof ViewerState> = new Set([
  * {@link createTeardownRegistry}), so the order cannot decide a value — it only
  * decides key insertion order, which nothing observes.
  *
- * An entry whose value is already `Object.is`-identical to the live state is
- * DROPPED. That keeps a composed patch as close as possible to today's
- * conditional spreads: a key that is not in the patch is not written, so no
- * subscriber is notified for a non-change. It also makes a `model-removed`
- * teardown safe to run twice, which `syncSourceModel` does immediately after
- * `removeModel`.
- *
- * {@link NEVER_DROPPED} is exempt, because the visibility-ownership middleware
- * keys on a channel's PRESENCE in the patch rather than its value.
+ * An entry whose value {@link isUnchanged} from the live state is DROPPED
+ * (structurally, not by `Object.is` alone — see {@link isUnchanged}, #3346),
+ * so a key not in the patch is not written and no subscriber is notified for
+ * a non-change. That also makes `model-removed` safe to run twice, which
+ * `syncSourceModel` does right after `removeModel`. {@link NEVER_DROPPED} is
+ * the scope-dependent exception; see its own doc.
  *
  * A key absent from `state` (the partial-store test harness) is never
- * "unchanged" — `Object.is(undefined, value)` is false unless the teardown also
- * returns `undefined`.
- *
- * About a dozen contributions DO return `undefined` - most of `visibilitySlice`
- * and `selectionSlice`'s model-removed arms, plus `dataSlice`'s
- * `purgeRemovedModelsBackup`. Do not audit that as a list; audit the RULE, which
- * is narrower than "never return it": every one of them passes THROUGH a value
- * read from `state`, so `undefined` appears only where the live value is
- * `undefined` too and the entry is dropped. Returning a SYNTHESIZED `undefined` would survive the
- * filter, and `writeKey` would set it, and zustand's shallow merge would blank
- * the field.
+ * "unchanged" — `isUnchanged(undefined, value)` is false unless the teardown
+ * also returns `undefined`. About a dozen contributions DO: most of
+ * `visibilitySlice` / `selectionSlice`'s model-removed arms, plus `dataSlice`'s
+ * `purgeRemovedModelsBackup`, each passing THROUGH a value read from `state`,
+ * so `undefined` appears only where the live value already is. A SYNTHESIZED
+ * `undefined` would survive the filter and `writeKey` would blank the field.
  */
 export function composeTeardown(
   registry: readonly AnySliceTeardown[],
 ): (scope: TeardownScope, state: TeardownState) => Partial<ViewerState> {
   return (scope, state) => {
+    const forcePresence = FORCED_PRESENCE_SCOPES.has(scope.kind);
     const patch: Partial<ViewerState> = {};
     for (const entry of registry) {
       const contribution = entry.teardown(scope, state);
       for (const key of Object.keys(contribution) as (keyof ViewerState)[]) {
         const next = contribution[key];
-        if (!NEVER_DROPPED.has(key) && Object.is(state[key], next)) continue;
+        if (!(forcePresence && NEVER_DROPPED.has(key)) && isUnchanged(state[key], next)) continue;
         writeKey(patch, key, next);
       }
     }

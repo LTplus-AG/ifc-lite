@@ -338,18 +338,18 @@ function isUnchanged(a: unknown, b: unknown, seen: WeakSet<object> = new WeakSet
   if (ArrayBuffer.isView(a) && ArrayBuffer.isView(b) && 'length' in a && 'length' in b) {
     const ta = a as unknown as ArrayLike<number>, tb = b as unknown as ArrayLike<number>;
     return a.constructor === b.constructor && ta.length === tb.length
-      && Array.prototype.every.call(ta, (v, i) => v === tb[i]);
+      && Array.prototype.every.call(ta, (v, i) => v === tb[i]); // `===`, not `Object.is`: same-position NaNs compare "changed" here (safe -- a redundant write, never a dropped one); the accepted price is that `-0` and `0` compare "unchanged" (a narrow, low-stakes false positive) rather than let `Object.is(NaN, NaN)` turn that currently-safe redundant write into a silently dropped real one.
   }
   if (isPlainObject(a) && isPlainObject(b) && !seen.has(a)) {
     seen.add(a);
-    const keys = Object.keys(a);
-    return keys.length === Object.keys(b).length && keys.every((k) => Object.hasOwn(b, k) && isUnchanged(a[k], b[k], seen));
+    const keys = Reflect.ownKeys(a).filter((k) => Object.prototype.propertyIsEnumerable.call(a, k)); // string AND symbol keys, `Object.hasOwn`'s own-property-only semantics kept: `Object.keys` alone missed an own enumerable SYMBOL key whose value differs while every string key matches
+    return keys.length === Reflect.ownKeys(b).filter((k) => Object.prototype.propertyIsEnumerable.call(b, k)).length && keys.every((k) => Object.hasOwn(b, k) && isUnchanged(a[k], b[k], seen));
   }
   return false;
 }
 
 /** `{}` / null-prototype only — excludes class instances and built-ins. */
-function isPlainObject(v: unknown): v is Record<string, unknown> {
+function isPlainObject(v: unknown): v is Record<PropertyKey, unknown> {
   return typeof v === 'object' && v !== null
     && (Object.getPrototypeOf(v) === Object.prototype || Object.getPrototypeOf(v) === null);
 }

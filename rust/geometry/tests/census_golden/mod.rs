@@ -1510,6 +1510,20 @@ mod tests {
                     assert_eq!(got, (0, 0, 0, 1), "an improvement must improve: {g:?} -> {r:?}");
                     improved += 1;
                 } else {
+                    // Deleting the gated arm made this `else` a SILENT DROP for
+                    // one shape the chain can no longer name: a pair whose only
+                    // non-empty list is `worse_gated` matches no arm, so it
+                    // lands in no bucket, `requires_bless` sees an empty diff,
+                    // and the host vanishes from the census with the lane green.
+                    // The comment on the chain proves that shape is unreachable
+                    // today. This asserts it, so the proof is enforced rather
+                    // than merely written down: it reds the moment someone adds
+                    // a fifth input to `is_torn_solid` without carrying it in
+                    // `reclassifications`, which is exactly what #3366 was.
+                    assert!(
+                        c.worse_gated.is_empty(),
+                        "a gated flip with nothing else moving would land in NO bucket: {g:?} -> {r:?}"
+                    );
                     assert_eq!(got, (0, 0, 0, 0), "an identical pair moves nothing: {g:?} -> {r:?}");
                     unchanged += 1;
                 }

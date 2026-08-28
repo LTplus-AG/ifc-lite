@@ -35,7 +35,7 @@
  * touched — makes the gate red on a long-lived branch. After any merge from
  * main, run the script; if it reports a listed file past budget or a new file
  * over 400, the allowlist needs refreshing in the same commit. Do that with
- * `pnpm lint:module-size-baseline -- --all` rather than by hand: the bare
+ * `pnpm lint:module-size-baseline --all` rather than by hand: the bare
  * command is SCOPED to the files your branch touched, and growth inherited from
  * main is by definition outside that scope, so it would report success and
  * leave the gate red. `--all` is the repo-wide regenerate and belongs in its own

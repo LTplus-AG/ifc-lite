@@ -343,3 +343,41 @@ test('planUpdate drops a vanished row only when the change touched that path', (
   assert.equal(wide.next.has('packages/d/elsewhere.ts'), false);
   assert.equal(wide.removed.length, 2);
 });
+
+// A row at or under the limit grants no exemption and is a HARD gate failure
+// (`staleRows`). Scoping must not carry it forward: the carry-forward rule
+// exists to protect an exemption someone ELSE still needs, and this row is not
+// one. Both loops in planUpdate reach it — the measured file and the vanished
+// file — so both are pinned here, each against the real exemption that must
+// survive the same call.
+test('planUpdate drops a row granting no exemption even out of scope, and keeps real ones', () => {
+  const files = [
+    { rel: 'packages/a/big.ts', lines: 520 },
+    { rel: 'packages/b/shrunk.ts', lines: 300 },
+  ];
+  const allowlist = new Map([
+    ['packages/a/big.ts', 500],
+    ['packages/b/shrunk.ts', 380], // measured: hand-edited under the limit
+    ['packages/c/vanished.ts', 390], // unmeasured: under the limit, file gone
+    ['packages/d/real.ts', 800], // unmeasured: a genuine exemption
+  ]);
+
+  // Nothing in `changed`: every row below is OUT of scope, which is the whole
+  // point — the deletions must happen anyway, the preservation must still hold.
+  const scoped = planUpdate(files, allowlist, new Set(['packages/z/unrelated.ts']));
+
+  assert.equal(scoped.next.has('packages/b/shrunk.ts'), false, 'measured loop: 380 <= 400 grants nothing');
+  assert.equal(scoped.next.has('packages/c/vanished.ts'), false, 'vanished loop: 390 <= 400 grants nothing');
+  assert.equal(scoped.next.get('packages/d/real.ts'), 800, 'a REAL out-of-scope exemption survives');
+  assert.equal(scoped.next.get('packages/a/big.ts'), 500, 'an out-of-scope row keeps its COMMITTED budget');
+  assert.deepEqual(scoped.removed.sort(), [
+    '  packages/b/shrunk.ts: budget 380 <= 400 granted nothing (row deleted)',
+    '  packages/c/vanished.ts: budget 390 <= 400 granted nothing (row deleted)',
+  ]);
+
+  // The control that makes the preservation above a real distinction: repo-wide
+  // drops packages/d/real.ts too, so `next` differs between the two calls.
+  const wide = planUpdate(files, allowlist, null);
+  assert.equal(wide.next.has('packages/d/real.ts'), false);
+  assert.equal(wide.next.get('packages/a/big.ts'), 520, 'repo-wide re-records the measured count');
+});

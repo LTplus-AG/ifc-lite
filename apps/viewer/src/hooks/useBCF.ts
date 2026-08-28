@@ -572,7 +572,15 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
         }
 
         if (isolatedExpressIds.size > 0) {
-          setIsolatedEntities(new Set(useViewerStore.getState().cameraCallbacks.resolveHighlightIds?.([...isolatedExpressIds]) ?? [...isolatedExpressIds])); // #3338: resolve, guid may not be geometry-bearing
+          const rawIds = [...isolatedExpressIds];
+          // #3338: resolve, guid may not be geometry-bearing. `??` alone only
+          // guards an ABSENT resolver, not one that runs and returns [] (the
+          // renderer-initialised-but-geometry-not-loaded window, or every id
+          // resolving geometry-less) -- union with the raw ids instead of
+          // falling through to only the resolved set, matching every other
+          // isolation channel (LensPanel, PropertiesPanel, SearchModal).
+          const resolved = useViewerStore.getState().cameraCallbacks.resolveHighlightIds?.(rawIds) ?? [];
+          setIsolatedEntities(new Set([...resolved, ...rawIds]));
         } else {
           setIsolatedEntities(null);
         }

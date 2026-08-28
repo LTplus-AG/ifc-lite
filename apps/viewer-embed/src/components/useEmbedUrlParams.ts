@@ -95,8 +95,11 @@ export function useEmbedUrlParams(urlParams: EmbedViewerUrlParams, modelReady: b
       // Route through the same resolver the embed bridge's ISOLATE command
       // uses (`bridge/handler.ts`) before assigning -- falls back to the raw
       // ids when no renderer has registered a resolver yet.
-      const resolved = state.cameraCallbacks.resolveHighlightIds?.(urlParams.isolate) ?? urlParams.isolate;
-      state.setIsolatedEntities(new Set(resolved));
+      // `??` alone only guards an ABSENT resolver, not one that runs and
+      // returns [] -- union with the raw ids so an empty resolve result
+      // doesn't isolate nothing (matching every other isolation channel).
+      const resolved = state.cameraCallbacks.resolveHighlightIds?.(urlParams.isolate) ?? [];
+      state.setIsolatedEntities(new Set([...resolved, ...urlParams.isolate]));
     }
   }, [modelReady, urlParams.select, urlParams.isolate]);
 

@@ -88,8 +88,12 @@ export function usePreviewIsolation({ enabled, targetModelId, includedIds }: Use
     // the resolver before isolating, same as every other user-facing isolate
     // channel; the SELECTION below stays on the raw set (what is actually
     // included), matching the #1133 convention other channels use.
-    const resolved = store.cameraCallbacks.resolveHighlightIds?.([...globalIds]) ?? [...globalIds];
-    store.setIsolatedEntities(new Set(resolved));
+    const rawIds = [...globalIds];
+    // `??` alone only guards an ABSENT resolver, not one that runs and
+    // returns [] -- union with the raw ids so an empty resolve result
+    // doesn't blank the preview (matching every other isolation channel).
+    const resolved = store.cameraCallbacks.resolveHighlightIds?.(rawIds) ?? [];
+    store.setIsolatedEntities(new Set([...resolved, ...rawIds]));
     // Highlight the same (raw) set. Seeds are latched by
     // `useAnonymizedExportSet` on open, so rewriting the live selection here
     // does not re-seed.

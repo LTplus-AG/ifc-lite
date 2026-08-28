@@ -134,7 +134,12 @@ describe('#3338: useIDS isolate actuators route ids through resolveHighlightIds'
 
     await act(async () => { api!.focusEntity('A', 5, 'isolate'); });
 
-    assert.deepEqual(isolated(), [51, 52], 'the assembly id must be replaced by its geometry-bearing parts');
+    assert.deepEqual(
+      isolated(),
+      [5, 51, 52],
+      'the resolved parts are unioned with the raw (pre-resolution) id, matching every other ' +
+      'isolation channel -- harmless here since the raw assembly id has no geometry of its own',
+    );
   });
 
   it('installFocusIsolation falls back to the raw id when no resolver is registered', async () => {
@@ -145,6 +150,19 @@ describe('#3338: useIDS isolate actuators route ids through resolveHighlightIds'
     assert.deepEqual(isolated(), [5], 'with no resolver the raw id is isolated, matching pre-fix behaviour');
   });
 
+  it('installFocusIsolation falls back to the raw id when the resolver returns [] (#3338 follow-up)', async () => {
+    // A resolver that runs and resolves to nothing (renderer-initialised-
+    // but-geometry-not-loaded, or every id resolving geometry-less) must
+    // ALSO fall back to the raw ids, not isolate an empty set -- `??` alone
+    // only guards an ABSENT resolver.
+    await seed();
+    useViewerStore.setState({ cameraCallbacks: { resolveHighlightIds: () => [] } });
+
+    await act(async () => { api!.focusEntity('A', 5, 'isolate'); });
+
+    assert.deepEqual(isolated(), [5], 'an empty resolver result must fall back to the raw id, not isolate []');
+  });
+
   it('installSetIsolation (isolateFailed) expands a geometry-less assembly id via the registered resolver', async () => {
     await seed();
     useViewerStore.setState({
@@ -153,7 +171,12 @@ describe('#3338: useIDS isolate actuators route ids through resolveHighlightIds'
 
     await act(async () => { api!.isolateFailed(); });
 
-    assert.deepEqual(isolated(), [51, 52], 'the failed set must be resolved before assigning');
+    assert.deepEqual(
+      isolated(),
+      [5, 51, 52],
+      'the resolved parts are unioned with the raw (pre-resolution) id, matching every other ' +
+      'isolation channel',
+    );
   });
 
   it('installSetIsolation falls back to the raw ids when no resolver is registered', async () => {
@@ -162,5 +185,14 @@ describe('#3338: useIDS isolate actuators route ids through resolveHighlightIds'
     await act(async () => { api!.isolateFailed(); });
 
     assert.deepEqual(isolated(), [5], 'with no resolver the raw failed id is isolated');
+  });
+
+  it('installSetIsolation falls back to the raw ids when the resolver returns [] (#3338 follow-up)', async () => {
+    await seed();
+    useViewerStore.setState({ cameraCallbacks: { resolveHighlightIds: () => [] } });
+
+    await act(async () => { api!.isolateFailed(); });
+
+    assert.deepEqual(isolated(), [5], 'an empty resolver result must fall back to the raw ids, not isolate []');
   });
 });

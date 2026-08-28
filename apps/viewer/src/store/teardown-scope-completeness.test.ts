@@ -36,14 +36,30 @@ describe('an unrecognised teardown scope kind fails loudly, not silently (#3345)
 
     let thrown = 0;
     const silent: string[] = [];
+    const wrongError: string[] = [];
     for (const entry of viewerTeardownRegistry) {
       try {
         const result = entry.teardown(unknownScope, state);
         if (Object.keys(result).length === 0) silent.push(entry.slice);
-      } catch {
-        thrown++;
+      } catch (err) {
+        // Matched, not counted blindly: `state` is `{}`, so an arm that merely
+        // READS state can throw a TypeError, and a bare `catch` would score
+        // that as "correctly rejected the unknown kind" — the test would pass
+        // for the wrong reason. Only the dispatcher's own refusal counts.
+        if (err instanceof Error && /no teardown arm for scope kind/.test(err.message)) {
+          thrown++;
+        } else {
+          wrongError.push(`${entry.slice}: ${err instanceof Error ? err.message : String(err)}`);
+        }
       }
     }
+
+    assert.deepStrictEqual(
+      wrongError,
+      [],
+      'every throw must be the dispatcher refusing the unknown scope kind, not an ' +
+        'incidental error from inside an arm',
+    );
 
     assert.strictEqual(
       thrown,

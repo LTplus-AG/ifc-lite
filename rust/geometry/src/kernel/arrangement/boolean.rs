@@ -6,9 +6,10 @@ use super::super::broadphase::tris_aabb;
 use super::super::interner::{Interner, Vid};
 use super::super::rational::point_of;
 use super::classify::{
-    boolean_vids, boolean_vids_components, cross3, operand_extent, point_inside, rotate_min_first,
-    sub_f64, to_f64_pt, BComponents,
+    boolean_vids, boolean_vids_components, cross3, rotate_min_first, sub_f64, to_f64_pt,
+    BComponents,
 };
+use super::ray_parity::{operand_extent, point_inside};
 use super::{arrange, arrange_many, BoolOp, MultiArrangement, Tri};
 use num_traits::ToPrimitive;
 

@@ -33,9 +33,10 @@ vi.mock('@/store/index.js', () => ({
 
 import { EMBED_SOURCE, PROTOCOL_VERSION } from '@ifc-lite/embed-protocol';
 import { createDataSlice } from '@/store/slices/dataSlice.js';
-import { createCameraSlice } from '@/store/slices/cameraSlice.js';
+import { createCameraSlice, cameraTeardown } from '@/store/slices/cameraSlice.js';
 import type { CameraRotation } from '@/store/types.js';
 import { initBridge, destroyBridge } from './handler.js';
+import { hostPoseAppliedToCurrentModel, resetCameraIntent } from './cameraIntent.js';
 
 // ---------------------------------------------------------------------------
 // Window double (postMessage in, postMessage out)
@@ -170,5 +171,169 @@ describe('bridge commands against the real store slices', () => {
 
       expect(store.getState().pendingColorUpdates.get(12)).toEqual([1, 1, 0, 1]);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #3390: a host pose commanded around a destructive load
+// ---------------------------------------------------------------------------
+
+/**
+ * Same real-slice composition as above, but the renderer starts UNregistered —
+ * which is the state `pendingCameraRotation` exists for — and the load
+ * stand-in applies the one thing `resetViewerState()` contributes to this
+ * slice, at the point in the bridge's async chain where it really lands: after
+ * `loadModelFromUrl`'s fetch, not inside the LOAD_MODEL message task.
+ */
+function makeLoadableState() {
+  const driven: CameraRotation[] = [];
+  let state: any;
+  const set = (partial: any) => {
+    const updates = typeof partial === 'function' ? partial(state) : partial;
+    state = { ...state, ...updates };
+  };
+  const get = () => state;
+  state = { ...createCameraSlice(set, get, undefined as never), models: new Map() };
+
+  return {
+    driven,
+    /** Every url `LOAD_MODEL` actually asked the adapter to fetch. */
+    loadedUrls: [] as string[],
+    getState: () => state,
+    sessionReset: () => set(cameraTeardown.teardown({ kind: 'session-reset' }, state)),
+    registerRenderer: () => state.setCameraCallbacks({
+      setCameraRotation: (rotation: CameraRotation) => { driven.push(rotation); },
+    }),
+  };
+}
+
+describe('a host camera pose around a destructive load (#3390)', () => {
+  let win: ReturnType<typeof installWindow>;
+  let store: ReturnType<typeof makeLoadableState>;
+  let releaseFetch: () => void;
+
+  /** Let every queued microtask (and the load's own continuation) run. */
+  const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+  beforeEach(() => {
+    win = installWindow();
+    store = makeLoadableState();
+    resetCameraIntent();
+    const fetched = new Promise<void>((resolve) => { releaseFetch = resolve; });
+    initBridge({
+      getState: store.getState as never,
+      loadModelFromUrl: async (url: string) => {
+        // `EmbedViewer.tsx`'s adapter: fetch, read the body, and only then
+        // `loadFile` — whose `resetViewerState()` is the reset below.
+        store.loadedUrls.push(url);
+        await fetched;
+        store.sessionReset();
+        return { entities: 0, triangles: 0, vertices: 0 };
+      },
+      loadModelFromBuffer: async () => {
+        // No pre-reset await on this path (`EmbedViewer.tsx` hands the buffer
+        // straight to `loadFile`), so the reset lands inside the message task.
+        store.sessionReset();
+        return { entities: 0, triangles: 0, vertices: 0 };
+      },
+      addModelFromUrl: vi.fn(),
+    } as never);
+  });
+
+  afterEach(() => {
+    destroyBridge();
+    resetCameraIntent();
+  });
+
+  it('applies a SET_CAMERA sent during the load fetch to the model that arrives', async () => {
+    // `v.loadModel(url); v.setCamera(137, 61);` with neither call awaited.
+    win.dispatch(cmd('LOAD_MODEL', { url: 'https://host.example/m.ifc' }));
+    win.dispatch(cmd('SET_CAMERA', { azimuth: 137, elevation: 61 }));
+
+    releaseFetch();
+    await settle();
+
+    // The wrapper forwards to the real adapter with the real payload; it is a
+    // hold, not a substitute for the load.
+    expect(store.loadedUrls).toEqual(['https://host.example/m.ifc']);
+
+    // Nothing was registered to actuate it, so it is armed for replay — and
+    // this time the session reset that just ran cannot reach it.
+    expect(store.getState().pendingCameraRotation).toEqual({ azimuth: 137, elevation: 61 });
+    expect(hostPoseAppliedToCurrentModel()).toBe(true);
+
+    store.registerRenderer();
+
+    expect(store.driven).toEqual([{ azimuth: 137, elevation: 61 }]);
+  });
+
+  it('holds a mid-load SET_CAMERA back even when a renderer IS registered', async () => {
+    // The same ordering with a live renderer — a second load into an embed
+    // that is already showing something. Nothing here is `pending`, so the
+    // store-level replay cannot help: applying the pose now aims the OUTGOING
+    // scene, which is the half of #3390 a renderer-readiness gate cannot see.
+    store.registerRenderer();
+
+    win.dispatch(cmd('LOAD_MODEL', { url: 'https://host.example/m.ifc' }));
+    win.dispatch(cmd('SET_CAMERA', { azimuth: 137, elevation: 61 }));
+
+    // Still fetching: nothing may be driven onto the model that is leaving.
+    // Without the hold this is where the pose lands, and the reset below then
+    // makes it invisible to everything downstream.
+    expect(store.driven).toEqual([]);
+
+    releaseFetch();
+    await settle();
+
+    expect(store.driven).toEqual([{ azimuth: 137, elevation: 61 }]);
+  });
+
+  it('carries a SET_CAMERA sent just BEFORE the load through the session reset', async () => {
+    // The reverse order. Nothing has registered a renderer, so the pose arms
+    // `pendingCameraRotation` — which the load's reset then clears.
+    win.dispatch(cmd('SET_CAMERA', { azimuth: 137, elevation: 61 }));
+    win.dispatch(cmd('LOAD_MODEL', { url: 'https://host.example/m.ifc' }));
+
+    releaseFetch();
+    await settle();
+    // Re-armed AFTER the reset rather than wiped by it.
+    expect(store.getState().pendingCameraRotation).toEqual({ azimuth: 137, elevation: 61 });
+
+    store.registerRenderer();
+
+    expect(store.driven).toEqual([{ azimuth: 137, elevation: 61 }]);
+  });
+
+  it('carries a SET_CAMERA sent before LOAD_MODEL_BUFFER, whose reset is synchronous', async () => {
+    // The buffer path has no fetch, so nothing can be commanded DURING it —
+    // but a pose armed just before it still meets the same session reset, and
+    // the queue has to lift it for the same reason.
+    win.dispatch(cmd('SET_CAMERA', { azimuth: 137, elevation: 61 }));
+    win.dispatch(cmd('LOAD_MODEL_BUFFER', new ArrayBuffer(8)));
+
+    await settle();
+    expect(store.getState().pendingCameraRotation).toEqual({ azimuth: 137, elevation: 61 });
+
+    store.registerRenderer();
+
+    expect(store.driven).toEqual([{ azimuth: 137, elevation: 61 }]);
+  });
+
+  it('does NOT replay a pose the outgoing model already showed (#3364 stays closed)', async () => {
+    // The renderer is registered first, so this pose is actuated immediately —
+    // the user watched the outgoing model at it. It must die with that model.
+    store.registerRenderer();
+    win.dispatch(cmd('SET_CAMERA', { azimuth: 137, elevation: 61 }));
+    expect(store.driven).toEqual([{ azimuth: 137, elevation: 61 }]);
+
+    win.dispatch(cmd('LOAD_MODEL', { url: 'https://host.example/m.ifc' }));
+    releaseFetch();
+    await settle();
+
+    // Still exactly the one call from before the load: nothing was replayed
+    // onto the incoming model, and nothing is armed to replay later.
+    expect(store.driven).toEqual([{ azimuth: 137, elevation: 61 }]);
+    expect(store.getState().pendingCameraRotation).toBeNull();
+    expect(hostPoseAppliedToCurrentModel()).toBe(false);
   });
 });

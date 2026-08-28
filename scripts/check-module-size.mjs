@@ -201,7 +201,7 @@ const SOURCE_RE = /\.(ts|tsx|mts|cts)$/;
  */
 const ALLOWLIST_DIGESTS = {
   'apps/viewer': '15058997042616343155',
-  'apps/viewer-embed': '4565652428901906968',
+  'apps/viewer-embed': '12728483381622404308',
   'packages/bcf': '10369893299996048894',
   'packages/cache': '14926850005686407910',
   'packages/clash': '781065910217740673',

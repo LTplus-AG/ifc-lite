@@ -113,6 +113,13 @@ export async function scanIfcEntities(
       entityRefs = normalizeWasmEntityRefs(wasmScanFn());
       processed = entityRefs.length;
       scanPath = 'wasm';
+      // Cleared, not carried: `scanEntitiesFast` hands back refs and nothing
+      // else, so this path has no count of its own (Rust reports the refusal
+      // straight to the console instead). Leaving an earlier path's number
+      // here would attribute it to a scan that never produced it. The two
+      // sibling branches already set their own; this one says zero out loud
+      // rather than by omission (#3395).
+      oversizedIdCount = 0;
     } catch (error) {
       console.warn('[IfcParser] WASM scan failed, falling back to TypeScript:', error);
       entityRefs = [];

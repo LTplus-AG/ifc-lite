@@ -33,9 +33,12 @@
 //! PyO3 wheel already surface their warnings. `wasm32-unknown-unknown` has no
 //! stderr — `eprintln!` there is a silent no-op, which is the same
 //! absence-reads-as-success failure one layer down — so the wasm bindings
-//! install a console sink through [`set_report_sink`] when `IfcAPI` is
-//! constructed. Anything embedding this crate with its own log pipeline can do
-//! the same.
+//! install a console sink through [`set_report_sink`] from
+//! `#[wasm_bindgen(start)] init()`, i.e. when the module LOADS, not when an
+//! `IfcAPI` is constructed: the free functions and `ColumnarEntityIndex`
+//! report too, and a load that never constructs an `IfcAPI` would otherwise
+//! scan with the sink still unset. Anything embedding this crate with its own
+//! log pipeline can do the same.
 
 use std::sync::OnceLock;
 

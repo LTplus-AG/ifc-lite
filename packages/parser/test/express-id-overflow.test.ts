@@ -250,6 +250,42 @@ describe('scanIfcEntities and an express id above 2^32', () => {
     }
   });
 
+  it('does not attribute an earlier path’s refusal count to the wasm scan', async () => {
+    // `scanEntitiesFast` returns entity refs and nothing else, so the wasm path
+    // has no count of its own — Rust reports that refusal straight to the
+    // console instead. Reaching it means an earlier path already ran and left
+    // `oversizedIdCount` set (here: a pre-scanned index whose columns build no
+    // refs, which is what a file with nothing BUT refused records looks like).
+    // Carrying that number forward would put a count on a scan that never
+    // produced it, and warn the caller about records this scan did find.
+    const diagnostics: string[] = [];
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const source = encodeSource(IFC_SOURCE);
+
+    const result = await scanIfcEntities(source, {
+      disableWorkerScan: true,
+      onDiagnostic: (message) => diagnostics.push(message),
+      preScannedEntityIndex: {
+        ids: new Uint32Array(),
+        starts: new Uint32Array(),
+        lengths: new Uint32Array(),
+        oversizedIdCount: 4,
+      },
+      wasmApi: {
+        scanEntitiesFastBytes: () => [
+          { expressId: 1, type: 'IFCWALL', byteOffset: 0, byteLength: 10, lineNumber: 1 },
+        ],
+      },
+    });
+
+    expect(result.scanPath).toBe('wasm');
+    expect(result.oversizedIdCount).toBe(0);
+    expect(diagnostics.some((message) => message.includes('skipped'))).toBe(false);
+    expect(
+      warn.mock.calls.some((args) => args.some((arg) => String(arg).includes('skipped'))),
+    ).toBe(false);
+  });
+
   it('reports nothing on a file whose ids all fit', async () => {
     // The other direction of the report: a clean file must not warn, or the
     // message stops meaning anything.

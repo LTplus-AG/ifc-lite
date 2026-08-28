@@ -98,9 +98,15 @@ export function createVisibilityAdapter(store: StoreApi): VisibilityBackendMetho
         // geometry-bearing `IfcRelAggregates` parts, or the viewport isolates
         // an id with nothing to render and shows an empty scene. Falling back
         // to the unresolved ids when no renderer has registered
-        // `resolveHighlightIds` yet matches every other channel's fallback.
+        // `resolveHighlightIds` yet, OR when the resolver runs but resolves
+        // to nothing (the renderer-initialised-but-geometry-not-loaded
+        // window, or every id resolving geometry-less), matches every other
+        // channel's fallback — `??` alone only catches the former case, not
+        // the latter, and an empty isolation hides the entire model.
         const resolved = state.cameraCallbacks.resolveHighlightIds?.(globalIds) ?? globalIds;
-        state.isolateEntities?.(resolved);
+        state.isolateEntities?.(
+          resolved.length > 0 ? [...new Set([...resolved, ...globalIds])] : globalIds,
+        );
       }
       return undefined;
     },

@@ -84,7 +84,11 @@ describe('SDK visibility adapter: isolate() and #3338 assembly expansion', () =>
     assert.equal(calls.length, 1, 'isolate() must call isolateEntities exactly once');
     assert.deepEqual(
       [...calls[0]].sort((a, b) => a - b),
-      [PART_A_GLOBAL_ID, PART_B_GLOBAL_ID],
+      // The resolved parts, unioned with the raw (pre-resolution) id — the
+      // same union every other selection channel (LensPanel, PropertiesPanel,
+      // SearchModal) performs, harmless here since the raw assembly id has
+      // no geometry of its own to draw.
+      [ASSEMBLY_GLOBAL_ID, PART_A_GLOBAL_ID, PART_B_GLOBAL_ID],
       'isolate() must route through cameraCallbacks.resolveHighlightIds, the same aggregation ' +
       'resolver every other selection channel (LensPanel, PropertiesPanel, SearchModal) uses, ' +
       'instead of isolating the raw geometry-less assembly id',
@@ -107,6 +111,28 @@ describe('SDK visibility adapter: isolate() and #3338 assembly expansion', () =>
       calls[0],
       [ASSEMBLY_GLOBAL_ID],
       'without a resolver, isolate() falls back to the raw (unexpanded) id — the pre-fix shape',
+    );
+  });
+
+  it('a resolver that resolves to nothing must ALSO fall back to the raw ids, not isolate an empty set (#3338 follow-up)', () => {
+    // Viewport's resolveHighlightIds returns [] whenever geometryRef.current
+    // is null (the renderer-initialised-but-geometry-not-loaded window) or
+    // when every id resolves geometry-less. `??` only guards an ABSENT
+    // resolver, not one that runs and returns []: isolateEntities([]) hides
+    // the entire model, and it stays hidden after geometry finishes loading.
+    const emptyResolver = (_ids: number[]) => [];
+    const store = makeStore(emptyResolver);
+    const adapter = createVisibilityAdapter(store);
+
+    adapter.isolate([{ modelId: MODEL_ID, expressId: ASSEMBLY_EXPRESS_ID }]);
+
+    const calls = (store.getState().isolateEntities as unknown as { calls: number[][] }).calls;
+    assert.equal(calls.length, 1);
+    assert.deepEqual(
+      calls[0],
+      [ASSEMBLY_GLOBAL_ID],
+      'an empty resolver result must fall back to the raw ids, exactly like an absent resolver — ' +
+      'isolating [] would hide the entire model instead of the requested ref',
     );
   });
 });

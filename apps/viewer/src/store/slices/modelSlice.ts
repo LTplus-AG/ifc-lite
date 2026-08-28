@@ -15,6 +15,7 @@ import type { StateCreator } from 'zustand';
 import type { FederatedModel } from '../types.js';
 import { federationRegistry, type GlobalIdLookup } from '@ifc-lite/renderer';
 import type { ViewerState } from '../index.js';
+import { localIdInParseRange, localIdInOverlay } from '../globalId.js';
 import { viewerTeardown } from '../teardown-registry.js';
 import { modelRemovedScope } from '../teardown-scope.js';
 import {
@@ -96,7 +97,9 @@ export interface ModelSlice {
    * It shares the range and overlay predicates with the unscoped resolver
    * above, so the two cannot drift — a private range check in a caller is how
    * this codebase produced two resolvers that disagreed about the same id space
-   * (#2697).
+   * (#2697). Those predicates (`localIdInParseRange` / `localIdInOverlay`) live
+   * in `store/globalId.ts`, the same functions `teardown-scope.ts`'s
+   * `modelRemovedScope` calls for its survivor check (#3343).
    *
    * Not the only spelling in the repo, and this doc must not claim otherwise:
    * `store/globalId.ts` `fromGlobalIdFromModels` holds an independent copy that
@@ -110,35 +113,12 @@ export interface ModelSlice {
 }
 
 /**
- * Parse-time ownership: a model owns `[idOffset, idOffset + maxExpressId]` from
- * the original parse. Returns the LOCAL express id, or `null`.
- *
- * `model.idOffset` bare, no `?? 0`: it is a required `number` on
- * `FederatedModel` (`store/types.ts`), and the unscoped resolver this is
- * extracted from has always read it bare. `null` is returned for a miss, so a
- * caller must test `!== null` — local id `0` is a legitimate answer and a
- * truthiness test would drop it.
+ * `localIdInParseRange` / `localIdInOverlay` live in `store/globalId.ts` now
+ * (#3343) — that is the cycle-free home for the "does a surviving model own
+ * this global id" rule shared with `teardown-scope.ts`'s `modelRemovedScope`.
+ * They used to be defined here; keep this pointer so a reader who remembers
+ * that lands in the right file.
  */
-function localIdInParseRange(model: FederatedModel, globalId: number): number | null {
-  const localId = globalId - model.idOffset;
-  return localId >= 0 && localId <= model.maxExpressId ? localId : null;
-}
-
-/**
- * Overlay ownership: duplicates / scripted adds through StoreEditor land ABOVE
- * the model's parse-time `maxExpressId`, so `localIdInParseRange` cannot see
- * them; the model's mutation view can. Returns the LOCAL express id, or `null`.
- */
-function localIdInOverlay(
-  model: FederatedModel,
-  globalId: number,
-  view: { getNewEntity: (id: number) => unknown } | undefined,
-): number | null {
-  if (!view) return null;
-  const localId = globalId - model.idOffset;
-  if (localId <= model.maxExpressId) return null; // parse-range's business
-  return view.getNewEntity(localId) !== null ? localId : null;
-}
 
 /** The mutation views registered on the store, if the owning slice is present. */
 function mutationViewsOf(

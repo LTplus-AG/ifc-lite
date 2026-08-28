@@ -46,3 +46,57 @@ export function parseDaluxNode(raw: string | undefined | null): string | undefin
   }
   return match[1] === 'node1' ? undefined : match[1];
 }
+
+/** Matches a Dalux field-node hostname exactly, e.g. `node2.field.dalux.com`. */
+const DALUX_NODE_HOST_PATTERN = /^(node[1-9][0-9]{0,2})\.field\.dalux\.com$/;
+
+/**
+ * Returns the node name if `hostname` is a Dalux field node, or `undefined`
+ * otherwise.
+ *
+ * Unlike {@link parseDaluxNode} this never throws: it is used to
+ * opportunistically recognise a Dalux-shaped URL the API itself handed back
+ * (a `downloadLink`), not to validate user input, so an unrecognised host is
+ * simply "not a Dalux field node" rather than an error.
+ */
+export function daluxFieldNode(hostname: string): string | undefined {
+  return DALUX_NODE_HOST_PATTERN.exec(hostname)?.[1];
+}
+
+/**
+ * Reroutes a `rawUrl` on a *different* Dalux field node than `baseUrl` back
+ * onto `baseUrl`'s origin, stamping that node as `daluxNode` — or
+ * `undefined` if `rawUrl` isn't field-node-shaped.
+ *
+ * A `downloadLink`/revision-content value from a non-node1 account points
+ * straight at that node using our own `/service/api` shape — not always the
+ * opaque, differently-hosted link `BrowserDaluxApiClient.nodeSelectorFor`
+ * describes. Untouched it never matches the relay's upstream, so the
+ * browser fetches Dalux directly and CORS blocks it (#3308). The node comes
+ * from `rawUrl` itself, which is authoritative; re-serialising is safe
+ * because the relay rebuilds the request from the forwarded path/query
+ * regardless of `rawUrl`'s exact bytes.
+ */
+export function canonicalFieldNodeUrl(rawUrl: string, baseUrl: string): string | undefined {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return undefined;
+  }
+  const base = new URL(baseUrl);
+  if (parsed.origin === base.origin) return undefined; // caller's own-origin path
+  // Boundary-checked, not a bare `startsWith`: with a base path of
+  // `/service/api`, a bare prefix test also admits the SIBLING path
+  // `/service/api-v2/...`, which is a different API surface and would be
+  // rerouted through the relay as if it were ours. Match the path exactly, or
+  // at a `/` boundary.
+  const basePath = base.pathname.endsWith('/') ? base.pathname.slice(0, -1) : base.pathname;
+  if (parsed.pathname !== basePath && !parsed.pathname.startsWith(`${basePath}/`)) return undefined;
+  const node = daluxFieldNode(parsed.hostname);
+  if (!node) return undefined;
+  parsed.protocol = base.protocol;
+  parsed.host = base.host;
+  parsed.searchParams.set('daluxNode', node);
+  return parsed.toString();
+}

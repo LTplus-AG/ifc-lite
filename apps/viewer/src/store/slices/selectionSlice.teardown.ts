@@ -57,16 +57,26 @@ export const selectionTeardown = defineSliceTeardown(
     }
 
     if (scope.kind === 'all-models-cleared') {
-      // Only the global-id half, which is what `clearAllModels` has always
-      // written. The `EntityRef`-keyed half is deliberately absent: adding it
-      // here would be a behaviour change, not a restructuring, and this
-      // refactor is not the place to make one. (It is a real asymmetry —
-      // `resetViewerState` clears both halves — and is called out as a
-      // follow-up rather than smuggled in.)
+      // `clearAllModels` removes EVERY model, so — unlike `model-removed`,
+      // which must filter the `EntityRef`-keyed half by `modelId` to spare a
+      // surviving federated sibling's selection — there is no survivor to
+      // preserve anything for. Both halves clear unconditionally, same as
+      // `session-reset` above: the previous version of this arm wrote only
+      // the global-id half, which left `selectedEntity`, `selectedEntities`,
+      // `selectedEntitiesSet`, `selectedModelId` and `activeStorey` pointing
+      // at removed models (#3348) — `resetViewerState` already clears both
+      // halves, so this was purely a gap in `clearAllModels`'s own path
+      // (`GeoreferencingPanel.tsx`'s `reloadModelsForAlignment`, which calls
+      // `clearAllModels()` without `resetViewerState()`).
       return {
         selectedEntityId: null,
         selectedEntityIds: new Set<number>(),
         selectedStoreys: new Set<number>(),
+        activeStorey: null,
+        selectedEntity: null,
+        selectedEntitiesSet: new Set<string>(),
+        selectedEntities: [],
+        selectedModelId: null,
       };
     }
 

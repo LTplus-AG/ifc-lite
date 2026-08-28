@@ -91,13 +91,13 @@ fn extract_coord_index_bytes(bytes: &[u8]) -> Option<&[u8]> {
             continue;
         }
 
-        // Skip comments (/* ... */)
+        // Skip comments (/* ... */). An unterminated `/*` means the input
+        // is corrupt; refuse rather than silently reading past it and
+        // returning bogus CoordIndex bytes. Shared with
+        // `ifc_lite_core::EntityScanner`, which answers the same question
+        // the same way — the two used to disagree here (issue #3303).
         if b == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'*' {
-            i += 2;
-            while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
-                i += 1;
-            }
-            i += 2;
+            i = ifc_lite_core::skip_step_comment(bytes, i)?;
             continue;
         }
 

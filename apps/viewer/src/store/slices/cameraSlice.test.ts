@@ -134,6 +134,28 @@ describe('cameraSlice', () => {
     });
   });
 
+  describe('session-reset teardown (#3364)', () => {
+    it('clears a pending rotation recorded before any renderer registered', () => {
+      // Distinctly non-default: the default is CAMERA_DEFAULTS.AZIMUTH/ELEVATION,
+      // so a fixture equal to it could not distinguish "cleared" from "replayed".
+      build(false);
+      state.setCameraRotation({ azimuth: 199, elevation: 61 });
+      assert.strictEqual(state.pendingCameraRotation?.azimuth, 199);
+
+      const patch = cameraTeardown.teardown({ kind: 'session-reset' }, state as never);
+
+      assert.strictEqual(
+        patch.pendingCameraRotation,
+        null,
+        "a session reset must drop the outgoing model's pending rotation, or the next " +
+          'viewport to register cameraCallbacks replays it onto the new model',
+      );
+    });
+
+    it('declares pendingCameraRotation in owns, so the patch cannot drift from it', () => {
+      assert.ok(cameraTeardown.owns.includes('pendingCameraRotation'));    });
+  });
+
   describe('updateCameraRotationRealtime', () => {
     it('stays off the actuator — the per-frame path reports, it does not command', () => {
       // This is the callback the live navigation loop drives on every frame.

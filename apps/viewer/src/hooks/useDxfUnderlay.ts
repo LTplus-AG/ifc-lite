@@ -121,8 +121,8 @@ export function useDxfUnderlaysForDrawing(params: {
  * for `renderer.setLineOverlay('dxf', …)` (issue #2043). Independent of the 2D
  * panel's section-axis/plan-view gating in {@link useDxfUnderlaysForDrawing}
  * — the 3D overlay renders regardless of section state, matching how the
- * alignment/grid 3D overlays are always-eligible (`useAlignmentLines3D`,
- * `useGridLines3D`).
+ * alignment 3D overlay is always-eligible (`useAlignmentLines3D`); grid 3D
+ * lines are drawn by `useSymbolicAnnotations` instead (issue #3368).
  */
 export function useDxfUnderlays3DLines(
   coordinateInfo: GeometryResult['coordinateInfo'] | undefined,

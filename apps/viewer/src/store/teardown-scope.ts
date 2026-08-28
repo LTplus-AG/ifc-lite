@@ -19,6 +19,7 @@
  */
 
 import type { TeardownScope, TeardownState } from './teardown.js';
+import { localIdInParseRange, localIdInOverlay } from './globalId.js';
 
 /** The `model-removed` arm, once its predicate is known. */
 export type ModelRemovedScope = Extract<TeardownScope, { kind: 'model-removed' }>;
@@ -26,19 +27,25 @@ export type ModelRemovedScope = Extract<TeardownScope, { kind: 'model-removed' }
 /**
  * Build the scope for "this model is going away".
  *
- * KNOWN DUPLICATION, deliberately left: the survivor predicate below is a third
- * statement of the ownership rule that `modelSlice`'s `localIdInParseRange` /
- * `localIdInOverlay` (#2697) and `store/globalId.ts` already carry. It cannot
- * import `modelSlice` — that file imports this one — and `store/globalId.ts` is
- * the cycle-free home all three should share. Consolidating them is a change of
- * its own; until then, a boundary change has to be made in three places.
+ * The survivor predicate below calls `localIdInParseRange` / `localIdInOverlay`
+ * (`store/globalId.ts`) — the same functions `modelSlice`'s unscoped and
+ * scoped resolvers call (#2697) — instead of re-spelling the range/overlay
+ * arithmetic a third time (#3343). `store/globalId.ts` is the cycle-free home:
+ * this file cannot import `modelSlice` (that file imports this one), and
+ * `globalId.ts` imports neither.
  *
  * The predicate mirrors the two-pass resolution in `modelSlice`'s
  * `resolveGlobalIdFromModels`: a global id survives if some SURVIVING model
  * owns it, either inside its parse-time range (`idOffset` ..
  * `idOffset + maxExpressId`) or as an overlay-allocated entity above that
  * range in its mutation view (StoreEditor duplicates, scripted adds). An id no
- * survivor owns is stale, and every global-id-keyed slice drops it.
+ * survivor owns is stale, and every global-id-keyed slice drops it. Unlike
+ * `resolveGlobalIdFromModels`'s two full passes (parse range for every model,
+ * THEN overlay for every model — needed there because it must pick a single
+ * WINNING model), this only needs a yes/no per id, so it checks each survivor
+ * fully (parse range, then overlay) before moving to the next: the two orders
+ * agree on membership because "some survivor owns it via A or B" is the same
+ * boolean regardless of which survivor or which check is tried first.
  *
  * @param state - the store as it stands BEFORE the teardown's `set`. Read-only
  *   and partial: `slices/modelSlice.test.ts` drives `removeModel` through a
@@ -69,10 +76,8 @@ export function modelRemovedScope(
 
   const isStale = (id: number): boolean => {
     for (const survivor of survivors) {
-      const localId = id - survivor.idOffset;
-      if (localId < 0) continue;
-      if (localId <= survivor.maxExpressId) return false;
-      if (mutationViews?.get(survivor.id)?.getNewEntity(localId) != null) return false;
+      if (localIdInParseRange(survivor, id) !== null) return false;
+      if (localIdInOverlay(survivor, id, mutationViews?.get(survivor.id)) !== null) return false;
     }
     return true;
   };

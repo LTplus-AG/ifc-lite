@@ -163,9 +163,13 @@ export const createCameraSlice: StateCreator<CameraSlice, [], [], CameraSlice> =
  * are NOT driven here. The reframe comes from the load path instead. Calling
  * an actuator from a teardown would be a behaviour change, not a tidy-up.
  *
- * `pendingCameraRotation`, `cameraCallbacks`, the two callback slots and
- * `cameraRotationListeners` are absent from `owns`: they are renderer/host
- * wiring that outlives a file swap, and no teardown path touches them today.
+ * `pendingCameraRotation` IS owned (#3364): it is a replay buffer keyed to
+ * whatever renderer registers `setCameraCallbacks` NEXT, not to the model
+ * that recorded it. Before this fix, a rotation set while no actuator was
+ * registered (`setCameraRotation`, above) survived a session reset untouched,
+ * so the next model's `Viewport` mounting and calling `setCameraCallbacks`
+ * replayed the OUTGOING model's rotation onto the INCOMING one. A session
+ * reset now discards the pending rotation below, closing that gap.
  *
  * `interactionMode` IS owned. It comes from `?controls=`, which is read once
  * per embed session, so nothing re-applies it and nothing restores the
@@ -174,6 +178,10 @@ export const createCameraSlice: StateCreator<CameraSlice, [], [], CameraSlice> =
  * with it -- leaving a pending value behind would re-apply the outgoing
  * model's restriction the next time callbacks register.
  *
+ * `cameraCallbacks`, the two callback slots and `cameraRotationListeners`
+ * are still absent from `owns`: they are renderer/host wiring that outlives
+ * a file swap, and no teardown path touches them today.
+ *
  * Clearing the STATE here does not move the renderer, because this stays pure
  * like the rest. `resetViewerState` drives the actuator back to the default
  * immediately after applying this patch, next to the other side effects that
@@ -181,11 +189,18 @@ export const createCameraSlice: StateCreator<CameraSlice, [], [], CameraSlice> =
  */
 export const cameraTeardown = defineSliceTeardown(
   'cameraSlice',
-  ['cameraRotation', 'projectionMode', 'interactionMode', 'pendingInteractionMode'],
+  [
+    'cameraRotation',
+    'pendingCameraRotation',
+    'projectionMode',
+    'interactionMode',
+    'pendingInteractionMode',
+  ],
   (scope) => {
     if (scope.kind !== 'session-reset') return {};
     return {
       cameraRotation: defaultCameraRotation(),
+      pendingCameraRotation: null,
       projectionMode: DEFAULT_PROJECTION_MODE,
       interactionMode: DEFAULT_CONTROLS_MODE,
       pendingInteractionMode: null,

@@ -24,6 +24,11 @@ import {
   type AnnotationsForStorey,
 } from '../lib/overlay-parse/symbolic-parse.js';
 import { ensureParseFor, getParseFor, subscribeToParseCache } from './symbolic-parse-cache.js';
+import {
+  buildSymbolicLineChannels,
+  type SymbolicLineChannels,
+  type SymbolicLineChannelsEntry,
+} from './symbolic-line-channels.js';
 
 // The parse walk itself lives in `lib/overlay-parse/symbolic-parse.ts` so a
 // worker can import it (a worker module cannot import this React hook file).
@@ -164,7 +169,7 @@ function makeHiddenOwnerPredicate(
  * fall back to the caller's `fallbackY` (typically the model's mid-Y). A
  * real ground floor at 0.0 keeps its authored 0 instead of being remapped.
  */
-function resolveBucketY(elevation: number | null, fallbackY: number): number {
+export function resolveBucketY(elevation: number | null, fallbackY: number): number {
   return elevation === null ? fallbackY : elevation;
 }
 
@@ -184,6 +189,12 @@ export interface SectionClipForGrid {
   axis: 'down' | 'front' | 'side';
 }
 
+// `buildSymbolicLineChannels` (the pure annotation/grid merge, issue #3359)
+// lives in `symbolic-line-channels.ts` — split out to keep this file under
+// budget and so it can be unit-tested with no React/store/WASM dependency.
+// Re-exported here so existing consumers keep this import path.
+export { buildSymbolicLineChannels, type SymbolicLineChannels, type SymbolicLineChannelsEntry };
+
 export function useSymbolicAnnotations(params: {
   /** Enable IfcAnnotation lift (the existing default behaviour). */
   enabled: boolean;
@@ -198,7 +209,7 @@ export function useSymbolicAnnotations(params: {
   gridSectionClip?: SectionClipForGrid;
   /** World Y to use for annotations with no resolvable storey. Defaults to 0. */
   fallbackY?: number;
-}): Float32Array {
+}): SymbolicLineChannels {
   const { enabled, gridEnabled, gridSectionClip, fallbackY = 0 } = params;
   const effectiveGridEnabled = gridEnabled ?? enabled;
   const stores = useActiveStores();
@@ -210,64 +221,27 @@ export function useSymbolicAnnotations(params: {
   const clipDepth = clipEnabled ? gridSectionClip!.viewDepth : 0;
 
   return useMemo(() => {
-    if (!enabled && !effectiveGridEnabled) return EMPTY_F32;
+    if (!enabled && !effectiveGridEnabled) return { annotation: EMPTY_F32, grid: EMPTY_F32 };
     void version; // depend on parse-completion ticks
 
-    const verts: number[] = [];
-    let storeIdx = 0;
+    // Per-entity hide: an annotation/grid owner hidden via the hierarchy, a
+    // lens, or a federated per-model hide drops its overlay primitives.
+    // Stores whose parse isn't cached yet drop out (logged below).
+    const entries: SymbolicLineChannelsEntry[] = [];
     for (const entry of stores) {
       const cached = getParseFor(entry.store);
-      if (!cached) {
-        if (debugEnabled()) console.log(`[annotations] store ${storeIdx}: parse not yet ready`);
-        storeIdx++;
-        continue;
-      }
-      // Per-entity hide: an annotation/grid owner hidden via the hierarchy,
-      // a lens, or a federated per-model hide drops its overlay primitives.
-      const isHidden = makeHiddenOwnerPredicate(entry, hiddenSets);
-      if (debugEnabled()) {
-        console.log(
-          `[annotations] store ${storeIdx}: annotation buckets=${cached.byStorey.size}+${cached.loose.length}loose, grid buckets=${cached.gridByStorey.size}+${cached.gridLoose.length}loose (annot=${enabled}, grid=${effectiveGridEnabled}, clip=${clipEnabled})`,
-        );
-      }
-
-      if (enabled) {
-        for (const bucket of cached.byStorey.values()) {
-          liftTo3DLineList(bucket.lines, resolveBucketY(bucket.storeyElevation, fallbackY), verts, isHidden);
-        }
-        liftTo3DLineList(cached.loose, fallbackY, verts, isHidden);
-      }
-
-      if (effectiveGridEnabled) {
-        // Issue #862: section-clip grid buckets only — IfcAnnotation
-        // intentionally bypasses this per the feedback memory ("the
-        // user expects every storey's dimensions/grid bubbles to lift
-        // into the viewport when [the annotation toggle is] on, even
-        // while a section cut is active").
-        if (clipEnabled) {
-          const lo = clipPos - clipDepth;
-          const hi = clipPos + clipDepth;
-          for (const bucket of cached.gridByStorey.values()) {
-            const y = resolveBucketY(bucket.storeyElevation, fallbackY);
-            if (y < lo || y > hi) continue;
-            liftTo3DLineList(bucket.lines, y, verts, isHidden);
-          }
-          if (fallbackY >= lo && fallbackY <= hi) {
-            liftTo3DLineList(cached.gridLoose, fallbackY, verts, isHidden);
-          }
-        } else {
-          for (const bucket of cached.gridByStorey.values()) {
-            liftTo3DLineList(bucket.lines, resolveBucketY(bucket.storeyElevation, fallbackY), verts, isHidden);
-          }
-          liftTo3DLineList(cached.gridLoose, fallbackY, verts, isHidden);
-        }
-      }
-      storeIdx++;
+      if (cached) entries.push({ cached, isHidden: makeHiddenOwnerPredicate(entry, hiddenSets) });
+      else if (debugEnabled()) console.log(`[annotations] store not yet ready: ${entry.modelId}`);
     }
 
-    if (debugEnabled()) console.log(`[annotations] total 3D line vertices: ${verts.length / 3} from ${stores.length} stores`);
-    if (verts.length === 0) return EMPTY_F32;
-    return new Float32Array(verts);
+    return buildSymbolicLineChannels(entries, {
+      enabled,
+      effectiveGridEnabled,
+      clipEnabled,
+      clipPos,
+      clipDepth,
+      fallbackY,
+    });
   }, [enabled, effectiveGridEnabled, clipEnabled, clipPos, clipDepth, stores, hiddenSets, version, fallbackY]);
 }
 

@@ -53,8 +53,9 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
   'measure2DCurrent', 'measure2DLockedAxis', 'measure2DMode', 'measure2DResults',
   'measure2DShiftLocked', 'measure2DSnapPoint', 'measure2DStart', 'meshColorBackup',
   'metadataProgress', 'mutationVersion', 'mutationViews', 'overridesEnabled',
-  'overridesPanelVisible', 'pendingColorUpdates', 'pendingInstancedShards', 'pendingInteractionMode',
-  'pendingMeshColorUpdates', 'pendingPropertyFocus', 'pinboardEntities', 'playbackIsPlaying',
+  'overridesPanelVisible', 'pendingCameraRotation', 'pendingColorUpdates',
+  'pendingInstancedShards', 'pendingInteractionMode', 'pendingMeshColorUpdates',
+  'pendingPropertyFocus', 'pinboardEntities', 'playbackIsPlaying',
   'playbackTime', 'pointCloudAlignmentAvailable', 'pointCloudAlignmentEnabled',
   'pointCloudAssetCount', 'pointCloudClassCounts', 'pointCloudClassMask',
   'pointCloudColorMode', 'pointCloudDeviationCenterOffset', 'pointCloudDeviationComputed',
@@ -79,10 +80,11 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
 
 /** The same, for `all-models-cleared`. */
 const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
-  'activeModelId', 'addElementModelId', 'addElementStoreyId', 'classFilter', 'geometryResult',
-  'ghostExceptEntities', 'hiddenEntities', 'hiddenEntitiesByModel', 'hierarchyBasketSelection',
-  'ifcDataStore', 'isolatedEntities', 'isolatedEntitiesByModel', 'meshColorBackup', 'models',
-  'pinboardEntities', 'selectedEntityId', 'selectedEntityIds', 'selectedStoreys',
+  'activeModelId', 'activeStorey', 'addElementModelId', 'addElementStoreyId', 'classFilter',
+  'geometryResult', 'ghostExceptEntities', 'hiddenEntities', 'hiddenEntitiesByModel',
+  'hierarchyBasketSelection', 'ifcDataStore', 'isolatedEntities', 'isolatedEntitiesByModel',
+  'meshColorBackup', 'models', 'pinboardEntities', 'selectedEntities', 'selectedEntitiesSet',
+  'selectedEntity', 'selectedEntityId', 'selectedEntityIds', 'selectedModelId', 'selectedStoreys',
 ];
 
 /**
@@ -176,8 +178,9 @@ const PINNED_OWNED_KEYS: readonly string[] = [
   'measure2DCurrent', 'measure2DLockedAxis', 'measure2DMode', 'measure2DResults',
   'measure2DShiftLocked', 'measure2DSnapPoint', 'measure2DStart', 'meshColorBackup',
   'metadataProgress', 'models', 'mutationVersion', 'mutationViews', 'overridesEnabled',
-  'overridesPanelVisible', 'pendingColorUpdates', 'pendingInstancedShards', 'pendingInteractionMode',
-  'pendingMeshColorUpdates', 'pendingPropertyFocus', 'pinboardEntities', 'playbackIsPlaying',
+  'overridesPanelVisible', 'pendingCameraRotation', 'pendingColorUpdates',
+  'pendingInstancedShards', 'pendingInteractionMode', 'pendingMeshColorUpdates',
+  'pendingPropertyFocus', 'pinboardEntities', 'playbackIsPlaying',
   'playbackTime', 'pointCloudAlignmentAvailable', 'pointCloudAlignmentEnabled',
   'pointCloudAssetCount', 'pointCloudClassCounts', 'pointCloudClassMask',
   'pointCloudColorMode', 'pointCloudDeviationCenterOffset', 'pointCloudDeviationComputed',

@@ -107,8 +107,13 @@ impl<'a> Lex<'a> {
             return None;
         }
         self.searches += 1;
-        match self.bytes[i + 2..].windows(2).position(|w| w == b"*/") {
-            Some(close) => Some(i + 2 + close + 2),
+        // Finding where a *closed* comment ends is the same question every
+        // STEP scanner in this repo answers the same way; `skip_step_comment`
+        // is that shared answer (issue #3303). Only the unterminated case —
+        // `no_closer` below — is this call site's own, deliberately
+        // different from `EntityScanner`'s; see the type doc above.
+        match ifc_lite_core::skip_step_comment(self.bytes, i) {
+            Some(end) => Some(end),
             None => {
                 self.no_closer = true;
                 None

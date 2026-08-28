@@ -231,11 +231,15 @@ pub fn bless_mode(bless_set: bool, in_ci: bool) -> Result<bool, &'static str> {
 /// worse, but a different thing is now being measured, so the census must not
 /// absorb it silently.
 ///
-/// `far` belongs here with `rep` because both are inputs to
+/// `far` and `pre` belong here with `rep` because all three are inputs to
 /// [`HostRow::is_torn_solid`] that carry no direction of their own. A host
-/// crossing the f32 magnitude threshold enters or leaves the gated defect
-/// population without any of its own counts moving, which is exactly the kind of
-/// silent population change this golden exists to surface.
+/// crossing the f32 magnitude threshold, or a no-void probe starting or
+/// stopping to fail, enters or leaves the gated defect population without any
+/// of its own counts moving, which is exactly the kind of silent population
+/// change this golden exists to surface. Without `pre` here, a probe going
+/// dark (`Open(n) -> Failed`) reads as the host "no longer a genuine
+/// watertightness defect" — an improvement — which is precisely the coverage
+/// loss this module's header calls the worst of the three cases (#3366).
 fn reclassifications(g: &HostRow, r: &HostRow) -> Vec<String> {
     let mut out = Vec::new();
     if g.rep != r.rep {
@@ -244,6 +248,9 @@ fn reclassifications(g: &HostRow, r: &HostRow) -> Vec<String> {
     if g.far != r.far {
         let side = |f: bool| if f { "far-field" } else { "f32-safe" };
         out.push(format!("coordinate magnitude {} -> {}", side(g.far), side(r.far)));
+    }
+    if g.pre != r.pre {
+        out.push(format!("no-void pass {} -> {}", pre_token(g.pre), pre_token(r.pre)));
     }
     out
 }
@@ -585,11 +592,14 @@ mod tests {
     }
 
     #[test]
-    fn a_no_void_pass_that_stops_failing_makes_the_host_a_gated_defect() {
-        // The other input to `is_torn_solid` that moves on its own. With `pre`
-        // Failed the host is excluded from the genuine-defect count; once that
-        // pass succeeds it joins, and `open`, `tris`, `collapsed` and `alt` are
-        // all unmoved. Only the gated predicate itself sees this.
+    fn a_no_void_pass_flipping_either_way_is_a_reclassification() {
+        // #3366: the other input to `is_torn_solid` that moves on its own. With
+        // `pre` Failed the host is excluded from the genuine-defect count; once
+        // that pass succeeds it joins, and `open`, `tris`, `collapsed` and `alt`
+        // are all unmoved. `pre` is carried in `reclassifications` for the same
+        // reason `rep` and `far` are: this is a change of question, not a
+        // measured degradation or improvement, so it must require a bless
+        // either way rather than silently filing one direction as green.
         let mut g = row("a.ifc", 1, 4, 100);
         g.rep = "CSG".to_string();
         g.pre = PreVoid::Failed;
@@ -599,13 +609,58 @@ mod tests {
         assert!(r.is_torn_solid());
 
         let d = diff(&[g.clone()], &[r.clone()], &swept(&["a.ifc"]));
-        assert_eq!(d.regressed.len(), 1, "joining the gated defect set is a regression");
-        assert!(d.regressed[0].reasons[0].contains("genuine watertightness defect"));
+        assert!(d.regressed.is_empty(), "a pure no-void relabel is not a geometry regression");
+        assert!(d.improved.is_empty());
+        assert_eq!(d.changed.len(), 1, "joining the gated defect set by relabel must be acknowledged");
+        let reasons = d.changed[0].reasons.join("; ");
+        assert!(reasons.contains("no-void pass x -> 0"), "{reasons}");
+        assert!(reasons.contains("genuine watertightness defect"), "{reasons}");
+        assert!(d.requires_bless());
 
-        // And the reverse direction is an improvement, not a regression.
+        // And the reverse direction — a probe going DARK — must also require a
+        // bless, not read as an improvement. This is the shape #3366 reports:
+        // before the fix this arm filed under `improved` with `requires_bless()
+        // == false`, so the lane stayed green while a host silently left the
+        // genuine-defect count.
         let back = diff(&[r], &[g], &swept(&["a.ifc"]));
         assert!(back.regressed.is_empty());
-        assert_eq!(back.improved.len(), 1);
+        assert!(back.improved.is_empty(), "a probe going dark must not read as an improvement");
+        assert_eq!(back.changed.len(), 1);
+        assert!(back.requires_bless(), "a probe going dark must not leave the lane green");
+    }
+
+    #[test]
+    fn a_probe_that_starts_failing_is_a_reclassification_not_an_improvement() {
+        // #3366: `process_no_voids` going dark for a host flips `pre`
+        // `Open(n) -> Failed` while `open`, `tris`, `collapsed` and `alt` all
+        // hold. `is_torn_solid` reads `pre`, so the host leaves the gated
+        // defect population with nothing else having moved. Filing that as
+        // `improved` costs the census the one thing `pre` exists to provide:
+        // telling "arrived torn" apart from "the boolean tore it". It must
+        // require a bless like every other population change, not read green.
+        let mut g = row("a.ifc", 1, 4, 100);
+        g.rep = "CSG".to_string();
+        g.pre = PreVoid::Open(0);
+        assert!(g.is_torn_solid());
+        let mut r = g.clone();
+        r.pre = PreVoid::Failed;
+        assert!(!r.is_torn_solid());
+
+        let d = diff(&[g], &[r], &swept(&["a.ifc"]));
+        assert!(d.improved.is_empty(), "a dark no-void probe must not read as an improvement");
+        assert!(d.requires_bless(), "a probe going dark must not leave the lane green");
+
+        // Break the symmetry: the OTHER direction (probe starts running) must
+        // also require a bless, so the fix cannot special-case one arm.
+        let mut g2 = row("a.ifc", 1, 4, 100);
+        g2.rep = "CSG".to_string();
+        g2.pre = PreVoid::Failed;
+        assert!(!g2.is_torn_solid());
+        let mut r2 = g2.clone();
+        r2.pre = PreVoid::Open(0);
+        assert!(r2.is_torn_solid());
+        let d2 = diff(&[g2], &[r2], &swept(&["a.ifc"]));
+        assert!(d2.requires_bless(), "a probe starting to run must also require a bless");
     }
 
     /// Every `HostRow` shape that matters, for the exhaustive invariant below.

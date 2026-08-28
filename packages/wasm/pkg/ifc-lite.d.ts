@@ -655,8 +655,9 @@ export class IfcAPI {
      * range_end)` shard; the main thread stitches the returned columns into the
      * full entity index (byte-identical to the single-threaded
      * `build_entity_index`) by binary-searching each shard for the previous
-     * shard's `handoff`. Delegates to `ifc_lite_processing::scan_shard_classified`
-     * — a separately-maintained loop over the same `EntityScanner` primitive as
+     * shard's `handoff`. Delegates to
+     * `ifc_lite_processing::scan_shard_classified_with_refusals` — a
+     * separately-maintained loop over the same `EntityScanner` primitive as
      * `scan_shard` (the one the native `build_entity_index_parallel` fans across
      * cores), plus a per-record class column this sharded path also needs. The
      * two loops' records/handoff are kept in parity by a dedicated test
@@ -666,12 +667,24 @@ export class IfcAPI {
      * Byte offsets returned are GLOBAL (relative to file start), so shards
      * concatenate without rewriting. Returns a plain object:
      *   `{ ids: Uint32Array, starts: Uint32Array, lengths: Uint32Array,
-     *      classes: Uint8Array, handoff: number, oversizedIdCount: number }`
+     *      classes: Uint8Array, handoff: number,
+     *      oversizedIdStarts: Uint32Array }`
      * where `classes` is the parallel per-record prepass class byte
      * (`PREPASS_CLASS_*`: named code in the low bits plus the geometry-job /
      * type-candidate flags) the host filters on to rebuild pre-pass span
      * lists, and `handoff` is the global start of the first entity at/after
      * `range_end` (the next shard's first real entity), or `-1` at EOF.
+     *
+     * `oversizedIdStarts` carries the global start byte of every record this
+     * shard refused for an express id above `u32::MAX` (#3395). Offsets, not
+     * a count, and deliberately NOT reported from here: a shard begins at an
+     * arbitrary byte, so it can start inside a quoted value and refuse a
+     * string literal shaped like `#4294967297=IFCWALL(` — text no file
+     * declared. Reporting per shard would warn "skipped N records" on a file
+     * that is fine. The host's stitch keeps only the offsets at/after the
+     * retained boundary it computed for this shard and reports once, which is
+     * what makes the number attributable to a record the stitch retained
+     * (#3430).
      */
     scanEntityIndexShard(data: Uint8Array, range_start: number, range_end: number): any;
     /**

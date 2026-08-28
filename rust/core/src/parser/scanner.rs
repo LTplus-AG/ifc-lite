@@ -13,7 +13,13 @@
 pub struct EntityScanner<'a> {
     bytes: &'a [u8],
     position: usize,
-    skipped_oversized_ids: usize,
+    /// `line_start` of every record refused for an oversized instance name,
+    /// in scan order (so: strictly increasing). A `Vec` rather than a counter
+    /// because a SHARDED caller has to know WHERE a refusal happened before it
+    /// can tell a real one from one its speculative prefix invented — see
+    /// [`Self::skipped_oversized_id_starts`]. It never allocates on a file
+    /// with nothing to refuse, which is every real file.
+    skipped_oversized_id_starts: Vec<usize>,
 }
 
 impl<'a> EntityScanner<'a> {
@@ -31,7 +37,7 @@ impl<'a> EntityScanner<'a> {
         Self {
             bytes,
             position: data_section_start(bytes),
-            skipped_oversized_ids: 0,
+            skipped_oversized_id_starts: Vec::new(),
         }
     }
 
@@ -54,7 +60,7 @@ impl<'a> EntityScanner<'a> {
         Self {
             bytes,
             position: clamped,
-            skipped_oversized_ids: 0,
+            skipped_oversized_id_starts: Vec::new(),
         }
     }
 
@@ -74,7 +80,23 @@ impl<'a> EntityScanner<'a> {
     /// counter is the other half of that guard: callers report it rather than
     /// letting the model come back quietly short.
     pub fn skipped_oversized_ids(&self) -> usize {
-        self.skipped_oversized_ids
+        self.skipped_oversized_id_starts.len()
+    }
+
+    /// The `line_start` byte offset of every record this scanner refused,
+    /// strictly increasing.
+    ///
+    /// A whole-file scan only needs the count above. A SHARDED scan needs the
+    /// offsets, and the difference is not cosmetic: shard `i > 0` starts at an
+    /// arbitrary byte, so it can begin inside a quoted value and parse a
+    /// string literal such as `'…#4294967297=IFCWALL(…'` as a record — and
+    /// refuse it. That refusal is an artefact of where the shard started, not
+    /// a record the file declares, so a count alone would let a file with
+    /// NOTHING oversized in it be reported as incomplete. The offset lets the
+    /// stitch keep only the refusals inside the byte region it actually
+    /// retained from that shard (issue #3395/#3430).
+    pub fn skipped_oversized_id_starts(&self) -> &[usize] {
+        &self.skipped_oversized_id_starts
     }
 
     /// Scan for the next entity
@@ -174,7 +196,7 @@ impl<'a> EntityScanner<'a> {
                 // truncating the model from that byte on. Per-record skip is
                 // what the rest of this scanner already does with malformed
                 // input, and the counter above is how the caller finds out.
-                self.skipped_oversized_ids += 1;
+                self.skipped_oversized_id_starts.push(line_start);
                 self.position = line_end;
                 continue;
             };
@@ -329,7 +351,7 @@ impl<'a> EntityScanner<'a> {
     /// Reset scanner to beginning (re-applies the HEADER skip).
     pub fn reset(&mut self) {
         self.position = data_section_start(self.bytes);
-        self.skipped_oversized_ids = 0;
+        self.skipped_oversized_id_starts.clear();
     }
 
     /// Fast check if attribute at given index is non-null (not '$')

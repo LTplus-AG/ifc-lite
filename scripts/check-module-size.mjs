@@ -216,7 +216,7 @@ const ALLOWLIST_DIGESTS = {
   'packages/drawing-2d': '14332356246438147430',
   'packages/export': '8294779133777308773',
   'packages/extensions': '8156044843525017433',
-  'packages/geometry': '4035582609848842641',
+  'packages/geometry': '12847835029883478945',
   'packages/ids': '9562546445799669442',
   'packages/ifcx': '1615700849439065844',
   'packages/lens': '14019022785021391214',

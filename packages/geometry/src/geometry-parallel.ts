@@ -36,6 +36,7 @@ import { restashWasmPanicLocation } from './wasm-panic-forward.js';
 // `IfcLiteBridge.init()` path can reuse whatever this pool already compiled
 // (and vice versa) instead of fetching the same binary a second time.
 import { compileSharedWasmModule } from './wasm-shared-module.js';
+import { stitchShards, type ShardColumns } from './shard-stitch.js';
 
 /**
  * Prepass class-byte layout, mirroring the `PREPASS_CLASS_*` definitions in
@@ -199,95 +200,6 @@ function terminateWorkerQuietly(worker: Worker, label: string): void {
   } catch (err) {
     console.warn(`[stream] ${label} terminate failed:`, err);
   }
-}
-
-/** One shard's returned columns + handoff (see `scanEntityIndexShard`). */
-interface ShardColumns {
-  ids: Uint32Array;
-  starts: Uint32Array;
-  lengths: Uint32Array;
-  /** Per-record prepass class (PREPASS_CLASS_*; 4 = IfcStyledItem). */
-  classes: Uint8Array;
-  /** Global start of the next shard's first real entity, or -1 at EOF. */
-  handoff: number;
-  oversizedIdCount: number; // #3395: refused above the u32 bound, absent from ids
-}
-
-/**
- * SPIKE: stitch N speculative shard scans into the full entity index —
- * byte-identical to the single-threaded scan. Port of the native
- * `parallel_scan::stitch`: shard 0 is authoritative (header-aware start); for
- * shard i>0 the previous shard's validated `handoff` is a real entity start, so
- * binary-search shard i's `starts` for it and drop the speculative prefix before
- * it. Concatenates the validated slices in shard order (= file order), so
- * last-wins on a duplicate id is preserved when the worker rebuilds its map.
- *
- * Returns null on the rare "handoff not found" case (speculative overshoot / a
- * record spanning a whole shard), which needs the serial-rescan fallback the JS
- * spike doesn't implement — the caller falls back to the pre-pass's own index.
- */
-function stitchShards(shards: ShardColumns[]): { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array; classes: Uint8Array } | null {
-  const n = shards.length;
-
-  // Phase 1 — locate each shard's validated slice (binary-search the previous
-  // shard's handoff) WITHOUT copying, so the output size is exact before any
-  // allocation. Exactness matters: the id/start/length columns are allocated
-  // SAB-backed below and handed to every worker as full-buffer views, so a
-  // cap-sized buffer would let consumers read past the last real record.
-  const sliceFrom = new Array<number>(n).fill(0);
-  let used = 1;
-  let w = shards[0].ids.length; // shard 0 is authoritative, take every record
-  let expectedStart = shards[0].handoff; // -1 => no more real entities
-  for (let i = 1; i < n; i++) {
-    if (expectedStart < 0) break;
-    // starts is strictly increasing → binary-search for expectedStart.
-    const starts = shards[i].starts;
-    let lo = 0;
-    let hi = starts.length - 1;
-    let p = -1;
-    while (lo <= hi) {
-      const mid = (lo + hi) >>> 1;
-      const v = starts[mid];
-      if (v === expectedStart) { p = mid; break; }
-      if (v < expectedStart) lo = mid + 1;
-      else hi = mid - 1;
-    }
-    if (p < 0) {
-      // Handoff not present in this shard — fallback path (not implemented here).
-      return null;
-    }
-    sliceFrom[i] = p;
-    w += starts.length - p;
-    expectedStart = shards[i].handoff;
-    used = i + 1;
-  }
-
-  // Phase 2 — single concatenation copy, straight into SharedArrayBuffer-backed
-  // columns. The stitched index used to be copied THREE times per column on the
-  // main thread (cap-array stitch → `.slice()` to contiguous → `.set()` into
-  // fresh SABs in deliverEntityIndex); writing the stitch output into SABs
-  // directly makes index delivery zero-copy (~450 MB of critical-path memcpy
-  // saved on a 19M-entity file). `classes` stays plain: its only consumer past
-  // the span-extraction loop is the pre-pass worker, which takes it by transfer.
-  const sabAvailable = typeof SharedArrayBuffer !== 'undefined';
-  const u32Column = (len: number) =>
-    new Uint32Array(sabAvailable ? new SharedArrayBuffer(len * 4) : new ArrayBuffer(len * 4));
-  const outIds = u32Column(w);
-  const outStarts = u32Column(w);
-  const outLengths = u32Column(w);
-  const outClasses = new Uint8Array(w);
-  let o = 0;
-  for (let i = 0; i < used; i++) {
-    const s = shards[i];
-    const p = sliceFrom[i];
-    outIds.set(p === 0 ? s.ids : s.ids.subarray(p), o);
-    outStarts.set(p === 0 ? s.starts : s.starts.subarray(p), o);
-    outLengths.set(p === 0 ? s.lengths : s.lengths.subarray(p), o);
-    outClasses.set(p === 0 ? s.classes : s.classes.subarray(p), o);
-    o += s.ids.length - p;
-  }
-
-  return { ids: outIds, starts: outStarts, lengths: outLengths, classes: outClasses };
 }
 
 interface PrepassMeta {
@@ -559,7 +471,9 @@ export async function* processParallel(
           lengths: msg.lengths as Uint32Array,
           classes: msg.classes as Uint8Array,
           handoff: msg.handoff as number,
-          oversizedIdCount: (msg.oversizedIdCount as number | undefined) ?? 0,
+          // Absent on an older wasm build: "does not report", which is not the
+          // same claim as zero, but zero is all a host with no offsets can say.
+          oversizedIdStarts: (msg.oversizedIdStarts as Uint32Array | undefined) ?? new Uint32Array(0),
         };
         shardResultsRemaining--;
         console.log(`[stream][shard] worker[${workerIndex}] shard ${si} done @ ${elapsed()}ms (${(msg.ids as Uint32Array).length} entities, remaining=${shardResultsRemaining})`);
@@ -1139,9 +1053,10 @@ export async function* processParallel(
     const starts = stitched.starts;
     const lengths = stitched.lengths;
     entityIndexDeliveredEarly = true;
-    // Sum every shard, not only the slices the stitch kept: over-reporting a
-    // refusal is visible, under-reporting is the silence #3395 is about.
-    const oversizedIdCount = shards.reduce((sum, shard) => sum + shard.oversizedIdCount, 0);
+    // The stitch's attributed count, NOT the per-shard sum. Summing reports
+    // refusals a discarded speculative prefix invented, which on a file with
+    // nothing oversized in it is a warning about a file that is fine (#3430).
+    const oversizedIdCount = stitched.oversizedIdCount;
     // set-entity-index reaches every worker FIRST (FIFO), so the style-shard
     // messages below always find the index installed.
     deliverEntityIndex(ids, starts, lengths, 'sharded', oversizedIdCount);

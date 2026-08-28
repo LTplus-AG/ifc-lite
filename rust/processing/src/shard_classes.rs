@@ -7,7 +7,7 @@
 //! this module owns the class codes and the classified scan variant the
 //! browser's sharded pre-pass consumes).
 
-use crate::parallel_scan::ShardRecords;
+use crate::parallel_scan::{ShardRecords, ShardRefusals};
 use ifc_lite_core::EntityScanner;
 
 /// Per-record prepass class emitted by [`scan_shard_classified`].
@@ -62,26 +62,34 @@ pub fn scan_shard_classified(
     range_start: usize,
     range_end: usize,
 ) -> (ShardRecords, Vec<u8>, Option<usize>) {
-    let (records, classes, handoff, _skipped) =
-        scan_shard_classified_counted(content, range_start, range_end);
+    let (records, classes, handoff, _refusals) =
+        scan_shard_classified_with_refusals(content, range_start, range_end);
     (records, classes, handoff)
 }
 
-/// [`scan_shard_classified`] plus the count of records this shard refused
-/// because their instance name does not fit `u32` (#3395).
+/// [`scan_shard_classified`] plus the byte offset of every record this shard
+/// refused because its instance name does not fit `u32` (#3395).
 ///
 /// The browser's SAB-backed pre-scanned load hands the stitched shard columns
 /// straight to the parser worker, which cannot recover the refusals from the
-/// narrowed columns — the ids that were dropped are simply not there. So the
-/// number has to ride along, and only a caller that asked for it pays for the
+/// narrowed columns — the ids that were dropped are simply not there. So they
+/// have to ride along, and only a caller that asked for them pays for the
 /// extra binding. [`scan_shard_classified`] stays the 3-tuple it always was
 /// (an added return value would be a breaking change for a published crate)
 /// and delegates here, so there is one loop, not two.
-pub fn scan_shard_classified_counted(
+///
+/// Offsets rather than a count, for the reason spelled out on
+/// [`scan_shard_with_refusals`](crate::scan_shard_with_refusals): a shard that
+/// starts inside a quoted value refuses text the file never declared, so only
+/// the host's stitch — which knows where this shard's retained region begins
+/// — can tell a real refusal from an artefact of where the shard started.
+/// Handing back a count instead would let a clean file be reported as
+/// incomplete.
+pub fn scan_shard_classified_with_refusals(
     content: &[u8],
     range_start: usize,
     range_end: usize,
-) -> (ShardRecords, Vec<u8>, Option<usize>, usize) {
+) -> (ShardRecords, Vec<u8>, Option<usize>, ShardRefusals) {
     let mut scanner = if range_start == 0 {
         EntityScanner::new(content)
     } else {
@@ -101,7 +109,12 @@ pub fn scan_shard_classified_counted(
             &content[start..entity_end],
         ));
     }
-    (records, classes, handoff, scanner.skipped_oversized_ids())
+    (
+        records,
+        classes,
+        handoff,
+        scanner.skipped_oversized_id_starts().to_vec(),
+    )
 }
 
 /// [`classify_type_name`] plus the #1910 instance-level exception: a spatial

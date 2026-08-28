@@ -42,7 +42,7 @@ import { hostPoseAppliedToCurrentModel, resetCameraIntent } from './cameraIntent
 // Window double (postMessage in, postMessage out)
 // ---------------------------------------------------------------------------
 
-function installWindow() {
+function installWindow(log?: (entry: string) => void) {
   const listeners = new Set<(e: unknown) => void>();
   const win: any = {
     addEventListener: (type: string, fn: (e: unknown) => void) => {
@@ -52,7 +52,15 @@ function installWindow() {
       if (type === 'message') listeners.delete(fn);
     },
   };
-  win.parent = { postMessage: () => { /* replies are not the subject here */ } };
+  // Replies are not the subject for most of this file, but WHEN a reply is
+  // posted is the whole subject of the ACK-ordering test below, so the command
+  // responses go on the caller's timeline alongside the camera actuations.
+  // Events (READY, MODEL_LOADED, ...) carry no `responseId` and are skipped.
+  win.parent = {
+    postMessage: (msg: any) => {
+      if (msg?.responseId) log?.(`ack:${msg.responseId}`);
+    },
+  };
   (globalThis as any).window = win;
   return {
     dispatch: (data: unknown) => {
@@ -61,8 +69,8 @@ function installWindow() {
   };
 }
 
-function cmd(type: string, data?: unknown) {
-  return { source: EMBED_SOURCE, version: PROTOCOL_VERSION, type, data, requestId: 'r1' };
+function cmd(type: string, data?: unknown, requestId = 'r1') {
+  return { source: EMBED_SOURCE, version: PROTOCOL_VERSION, type, data, requestId };
 }
 
 // ---------------------------------------------------------------------------
@@ -185,7 +193,7 @@ describe('bridge commands against the real store slices', () => {
  * slice, at the point in the bridge's async chain where it really lands: after
  * `loadModelFromUrl`'s fetch, not inside the LOAD_MODEL message task.
  */
-function makeLoadableState() {
+function makeLoadableState(log?: (entry: string) => void) {
   const driven: CameraRotation[] = [];
   let state: any;
   const set = (partial: any) => {
@@ -193,7 +201,16 @@ function makeLoadableState() {
     state = { ...state, ...updates };
   };
   const get = () => state;
-  state = { ...createCameraSlice(set, get, undefined as never), models: new Map() };
+  // `geometryResult` starts null, as it does in a freshly mounted embed: the
+  // store field is what says whether ANY model has ever been on screen here,
+  // and a session reset deliberately leaves it alone (`dataSlice.teardown.ts`:
+  // "the loader writes both straight after"), so it names the OUTGOING model
+  // right up to the moment the incoming one lands.
+  state = {
+    ...createCameraSlice(set, get, undefined as never),
+    models: new Map(),
+    geometryResult: null,
+  };
 
   return {
     driven,
@@ -201,8 +218,14 @@ function makeLoadableState() {
     loadedUrls: [] as string[],
     getState: () => state,
     sessionReset: () => set(cameraTeardown.teardown({ kind: 'session-reset' }, state)),
+    /** What `loadFile` does after the reset: a model appears on screen. Only
+     *  `meshes.length` is ever read from it here. */
+    publishModel: () => set({ geometryResult: { meshes: [{ expressId: 1 }] } }),
     registerRenderer: () => state.setCameraCallbacks({
-      setCameraRotation: (rotation: CameraRotation) => { driven.push(rotation); },
+      setCameraRotation: (rotation: CameraRotation) => {
+        driven.push(rotation);
+        log?.(`camera:${rotation.azimuth},${rotation.elevation}`);
+      },
     }),
   };
 }
@@ -211,15 +234,30 @@ describe('a host camera pose around a destructive load (#3390)', () => {
   let win: ReturnType<typeof installWindow>;
   let store: ReturnType<typeof makeLoadableState>;
   let releaseFetch: () => void;
+  let failFetch: (err: Error) => void;
+  /** The url adapter's in-flight fetch. Re-armed per load so a test can hold
+   *  TWO destructive loads open one after the other. */
+  let fetched: Promise<void>;
+  const rearmFetch = () => {
+    fetched = new Promise<void>((resolve, reject) => {
+      releaseFetch = resolve;
+      failFetch = reject;
+    });
+  };
+  /** Camera actuations and outbound command responses, in the order they
+   *  happened. The ACK-ordering test is about exactly that interleaving. */
+  let timeline: string[];
 
   /** Let every queued microtask (and the load's own continuation) run. */
   const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
   beforeEach(() => {
-    win = installWindow();
-    store = makeLoadableState();
+    timeline = [];
+    const log = (entry: string) => { timeline.push(entry); };
+    win = installWindow(log);
+    store = makeLoadableState(log);
     resetCameraIntent();
-    const fetched = new Promise<void>((resolve) => { releaseFetch = resolve; });
+    rearmFetch();
     initBridge({
       getState: store.getState as never,
       loadModelFromUrl: async (url: string) => {
@@ -228,12 +266,14 @@ describe('a host camera pose around a destructive load (#3390)', () => {
         store.loadedUrls.push(url);
         await fetched;
         store.sessionReset();
+        store.publishModel();
         return { entities: 0, triangles: 0, vertices: 0 };
       },
       loadModelFromBuffer: async () => {
         // No pre-reset await on this path (`EmbedViewer.tsx` hands the buffer
         // straight to `loadFile`), so the reset lands inside the message task.
         store.sessionReset();
+        store.publishModel();
         return { entities: 0, triangles: 0, vertices: 0 };
       },
       addModelFromUrl: vi.fn(),
@@ -320,9 +360,13 @@ describe('a host camera pose around a destructive load (#3390)', () => {
   });
 
   it('does NOT replay a pose the outgoing model already showed (#3364 stays closed)', async () => {
-    // The renderer is registered first, so this pose is actuated immediately —
-    // the user watched the outgoing model at it. It must die with that model.
+    // A model is on screen and the renderer is registered, so this pose is
+    // actuated immediately — the user watched the OUTGOING model at it. It must
+    // die with that model. The published model is what makes this #3364's case
+    // rather than the empty-scene one below: same renderer, same immediate
+    // actuation, opposite answer.
     store.registerRenderer();
+    store.publishModel();
     win.dispatch(cmd('SET_CAMERA', { azimuth: 137, elevation: 61 }));
     expect(store.driven).toEqual([{ azimuth: 137, elevation: 61 }]);
 
@@ -335,5 +379,103 @@ describe('a host camera pose around a destructive load (#3390)', () => {
     expect(store.driven).toEqual([{ azimuth: 137, elevation: 61 }]);
     expect(store.getState().pendingCameraRotation).toBeNull();
     expect(hostPoseAppliedToCurrentModel()).toBe(false);
+  });
+
+  it('carries a pose actuated on the EMPTY first scene into the load that follows', async () => {
+    // The gap Codex found. `Viewport` mounts before any model, so a host that
+    // does `setCamera(...)` then `loadModel(url)` on a fresh embed hits a LIVE
+    // actuator: the pose is applied to an empty scene and `cameraSlice` records
+    // nothing (`pendingCameraRotation` is armed only when no actuator exists).
+    // The lift used to read that field alone, found null, and the command was
+    // gone — then `home()` framed the arriving model over the top of it.
+    store.registerRenderer();
+
+    win.dispatch(cmd('SET_CAMERA', { azimuth: 137, elevation: 61 }));
+    expect(store.getState().pendingCameraRotation).toBeNull();
+
+    win.dispatch(cmd('LOAD_MODEL', { url: 'https://host.example/m.ifc' }));
+    releaseFetch();
+    await settle();
+
+    // Applied a second time, to the model that arrived — and marked, so the
+    // first-load auto-fit frames with `fitAll` instead of homing it away.
+    expect(store.driven).toEqual([
+      { azimuth: 137, elevation: 61 },
+      { azimuth: 137, elevation: 61 },
+    ]);
+    expect(hostPoseAppliedToCurrentModel()).toBe(true);
+  });
+
+  it('drops that same pose once a model HAS been shown at it (both halves, one fixture)', async () => {
+    // The pair to the test above, differing only in whether a model was on
+    // screen when the pose was actuated. Run as two real loads through the
+    // bridge so the discriminator is the store's own `geometryResult`, written
+    // by the first load, rather than a value the test placed there.
+    store.registerRenderer();
+
+    win.dispatch(cmd('LOAD_MODEL', { url: 'https://host.example/first.ifc' }, 'load1'));
+    releaseFetch();
+    await settle();
+    expect(store.driven).toEqual([]);
+
+    // Now the host aims the model it is looking at.
+    win.dispatch(cmd('SET_CAMERA', { azimuth: 137, elevation: 61 }));
+    expect(store.driven).toEqual([{ azimuth: 137, elevation: 61 }]);
+
+    // ...and then replaces it. #3364: that pose belonged to the file leaving.
+    rearmFetch();
+    win.dispatch(cmd('LOAD_MODEL', { url: 'https://host.example/second.ifc' }, 'load2'));
+    releaseFetch();
+    await settle();
+
+    expect(store.driven).toEqual([{ azimuth: 137, elevation: 61 }]);
+    expect(hostPoseAppliedToCurrentModel()).toBe(false);
+  });
+
+  it('withholds the SET_CAMERA ACK until the queued pose has reached the camera', async () => {
+    // A queue defers the EFFECT, so it has to defer the ACK with it. Before
+    // #3390 `setCameraRotation` ran inside the SET_CAMERA handler and the reply
+    // followed it, so `await v.setCamera(...); v.getScreenshot()` meant the
+    // camera had already moved. ACKing on receipt gives that host back the
+    // OUTGOING angle — an ordering regression the queue introduced, invisible
+    // to every assertion about where the pose ends up.
+    store.registerRenderer();
+    store.publishModel();
+
+    win.dispatch(cmd('LOAD_MODEL', { url: 'https://host.example/m.ifc' }, 'load1'));
+    win.dispatch(cmd('SET_CAMERA', { azimuth: 137, elevation: 61 }, 'cam1'));
+    await settle();
+
+    // Still fetching: the pose is held, and so is the promise the host is
+    // sitting on. Anything it would do after that await must not run yet.
+    expect(store.driven).toEqual([]);
+    expect(timeline).not.toContain('ack:cam1');
+
+    releaseFetch();
+    await settle();
+
+    // The camera moves FIRST, then the host is told it may proceed.
+    expect(timeline.filter((e) => e.startsWith('camera:') || e === 'ack:cam1'))
+      .toEqual(['camera:137,61', 'ack:cam1']);
+  });
+
+  it('ACKs a held SET_CAMERA even when the load it was waiting on fails', async () => {
+    // An ACK that never arrives is worse than a late one: the host's
+    // `setCamera()` promise never settles and its whole command chain stalls.
+    // The failing load applies the pose to the scene still on screen (nothing
+    // was reset), so the reply is owed on that path too.
+    store.registerRenderer();
+    store.publishModel();
+
+    win.dispatch(cmd('LOAD_MODEL', { url: 'https://host.example/boom.ifc' }, 'load1'));
+    win.dispatch(cmd('SET_CAMERA', { azimuth: 137, elevation: 61 }, 'cam1'));
+    await settle();
+    expect(timeline).not.toContain('ack:cam1');
+
+    failFetch(new Error('Failed to fetch model: Not Found'));
+    await settle();
+
+    expect(timeline.filter((e) => e.startsWith('camera:') || e === 'ack:cam1'))
+      .toEqual(['camera:137,61', 'ack:cam1']);
   });
 });

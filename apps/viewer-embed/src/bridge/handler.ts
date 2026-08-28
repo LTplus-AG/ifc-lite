@@ -407,7 +407,7 @@ async function handleCommand(type: InboundCommandType, data: unknown, requestId?
 
     case 'SET_CAMERA': {
       const payload = data as InboundPayloads['SET_CAMERA'];
-      offerHostPose({ azimuth: payload.azimuth, elevation: payload.elevation }, ctx.getState);
+      await offerHostPose({ azimuth: payload.azimuth, elevation: payload.elevation }, ctx.getState);
       if (requestId) emitToParent(createResponse(requestId));
       return;
     }

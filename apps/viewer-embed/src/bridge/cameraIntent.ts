@@ -28,19 +28,36 @@
  * `setCamera(...)` still aims the outgoing scene; it only ever separates
  * "renderer up" from "renderer down", which is not the question.
  *
- * The discriminator used here, and why it keeps #3364 closed:
+ * The discriminator used here, and why it keeps #3364 closed. #3364's rule is
+ * "a pose the OUTGOING model already showed must die with it", so the question
+ * a load has to answer at its entry is whether there was an outgoing model at
+ * all — `geometryResult`, the meshes on screen at the instant the load starts,
+ * before `loadFile`'s reset is anywhere near. Given that:
  *
- *  - A pose that reached a renderer was SHOWN on the outgoing scene. It leaves
- *    `pendingCameraRotation` null (`cameraSlice.ts`: the field is set only when
- *    no actuator was registered, and cleared again on replay), so nothing is
- *    lifted here and the incoming model still gets its default framing. That
- *    is exactly #3364's case, unchanged.
+ *  - A pose that reached a renderer WHILE a model was on screen was shown on
+ *    that model. Nothing is lifted, and the incoming model gets its default
+ *    framing. That is exactly #3364's case, unchanged.
+ *  - A pose that reached a renderer with NO model on screen was actuated
+ *    against an empty scene. There was no outgoing model for it to have been
+ *    shown on, so it is still intent for the model arriving and it is lifted.
+ *    Codex found this half missing: the lift used to read only
+ *    `pendingCameraRotation`, which `cameraSlice.ts` arms solely when no
+ *    actuator was registered, so with a mounted `Viewport` a `SET_CAMERA`
+ *    posted just before the first `LOAD_MODEL` left nothing behind to lift and
+ *    the command was lost with `home()` framing over the top of it.
  *  - A pose sitting in `pendingCameraRotation` never reached any renderer, so
  *    it was never on screen for any model. At the moment a destructive load
  *    starts it can only be intent for the model arriving, and it is lifted out
  *    of the store into this module's queue, where the reset cannot reach it.
  *  - A pose commanded WHILE a destructive load runs is likewise intent for the
  *    incoming model, so it is queued instead of applied.
+ *
+ * Queuing a pose defers its EFFECT, so it has to defer the ACK with it.
+ * `offerHostPose` resolves only once the pose has reached the store, which is
+ * what makes `await v.setCamera(...); v.getScreenshot()` capture the pose the
+ * host just asked for rather than the outgoing angle. Before #3390 the
+ * actuator ran inside the SET_CAMERA handler and the ACK followed it, so the
+ * ordering was free; a queue that ACKs on receipt breaks it silently.
  *
  * The queue is released by the load itself, not by a later render: once
  * `aroundDestructiveLoad` resolves, `loadFile` has returned, so the session
@@ -67,12 +84,21 @@
  * still outstanding. `resetCameraIntent` exists for tests.
  */
 
+import type { GeometryResult } from '@ifc-lite/geometry';
+
 import type { CameraRotation } from '@/store/types.js';
 
 /** The slice of the store this module reads and drives. */
 interface CameraIntentState {
   pendingCameraRotation: CameraRotation | null;
   setCameraRotation: (rotation: CameraRotation) => void;
+  /**
+   * The geometry on screen. Read at a destructive load's ENTRY, where it still
+   * describes the OUTGOING model — `loadFile`'s `resetViewerState()` is a whole
+   * fetch away — so "empty here" means no model has ever been shown in this
+   * embed and a pose already actuated cannot have belonged to one.
+   */
+  geometryResult: GeometryResult | null;
 }
 
 /** The pose to apply to the model currently arriving, if the host asked for one. */
@@ -93,12 +119,44 @@ let destructiveLoadsInFlight = 0;
  */
 let poseAppliedToCurrentModel = false;
 
+/**
+ * The last pose `offerHostPose` sent straight to the store, kept for the case
+ * the store cannot represent: a live renderer actuates it and records nothing,
+ * so with no model on screen yet there is no `pendingCameraRotation` for the
+ * next load to lift. Only ever read when the store says no model has landed —
+ * once one has, a pose that went straight through was shown on it and #3364
+ * says it dies there.
+ */
+let poseActuatedSinceLastLoad: CameraRotation | null = null;
+
+/**
+ * Hosts still awaiting the ACK for a pose that is sitting in the queue.
+ * Resolved together the moment the queue is drained, so no `setCamera()`
+ * promise outlives the effect it is reporting — and none is left hanging by a
+ * load that failed, which releases the queue on its way out too.
+ *
+ * Non-empty only while a destructive load is running: entries are added on
+ * `offerHostPose`'s queued branch alone, and every load drains them as it
+ * leaves. That is why the only other caller is `resetCameraIntent`, which a
+ * test can reach mid-load and which would otherwise strand a promise.
+ */
+let queuedPoseWaiters: Array<() => void> = [];
+
+/** Let every held ACK go. Safe to call when there are none. */
+function settleQueuedPoseWaiters(): void {
+  const waiting = queuedPoseWaiters;
+  queuedPoseWaiters = [];
+  for (const resolve of waiting) resolve();
+}
+
 /** Put the queue back to its initial state. For tests: no production caller
  *  resets this module, see the note on ownership above. */
 export function resetCameraIntent(): void {
   queuedPose = null;
   destructiveLoadsInFlight = 0;
   poseAppliedToCurrentModel = false;
+  poseActuatedSinceLastLoad = null;
+  settleQueuedPoseWaiters();
 }
 
 /**
@@ -128,16 +186,34 @@ function endDestructiveLoad(): void {
  * buffer if none has registered yet (#2934). With one running the pose is held
  * until the incoming model lands, because applying it now aims the outgoing
  * scene and the load's reset then discards it.
+ *
+ * Resolves when the pose has reached the store — immediately on the direct
+ * path, at the end of the load on the queued one. The bridge ACKs `SET_CAMERA`
+ * on that promise, so a host awaiting `setCamera()` still gets the guarantee it
+ * had before the queue existed: the next command it sends sees the new angle.
  */
-export function offerHostPose(pose: CameraRotation, getState: () => CameraIntentState): void {
+export function offerHostPose(
+  pose: CameraRotation,
+  getState: () => CameraIntentState,
+): Promise<void> {
   if (destructiveLoadsInFlight > 0) {
     queuedPose = pose;
-    return;
+    // Held, so the ACK is held with it: the SDK's `setCamera()` promise is the
+    // host's only ordering primitive, and resolving it here would let the next
+    // awaited command run against the scene this load is replacing.
+    //
+    // It inherits the SDK's 30 s per-request timeout (`embed-sdk/src/index.ts`
+    // `request`), which is the same ceiling the `LOAD_MODEL` it is waiting on
+    // already sits under — a load slow enough to time this out has failed the
+    // host's `loadModel()` call too, so it is not a new way to fail.
+    return new Promise<void>((resolve) => { queuedPoseWaiters.push(resolve); });
   }
   // A direct command supersedes anything left queued by a load that never
   // delivered a model, so a stale pose cannot resurface at the next load.
   queuedPose = null;
   getState().setCameraRotation(pose);
+  poseActuatedSinceLastLoad = pose;
+  return Promise.resolve();
 }
 
 /**
@@ -178,7 +254,17 @@ export async function aroundDestructiveLoad<A extends unknown[], R>(
   // A queued pose here is always the newer of the two: `offerHostPose` reaches
   // the store only on its no-load path, which clears `queuedPose` first, so
   // anything left in the queue was commanded after the store's copy was armed.
-  const neverShown = getState().pendingCameraRotation;
+  //
+  // With a renderer already up the store keeps no copy at all, so the second
+  // source is this module's own record of the last pose that went straight
+  // through — admissible only while the scene has never held a model, which is
+  // the line between "actuated against nothing" and #3364's "shown on the
+  // model that is leaving".
+  const state = getState();
+  const onScreen = state.geometryResult?.meshes.length ?? 0;
+  const neverShown = state.pendingCameraRotation
+    ?? (onScreen === 0 ? poseActuatedSinceLastLoad : null);
+  poseActuatedSinceLastLoad = null;
   if (neverShown && queuedPose === null) queuedPose = neverShown;
 
   try {
@@ -207,9 +293,12 @@ export async function aroundDestructiveLoad<A extends unknown[], R>(
  * Returns whether a pose was applied.
  */
 function releaseQueuedPose(getState: () => CameraIntentState): boolean {
-  if (destructiveLoadsInFlight > 0 || !queuedPose) return false;
+  if (destructiveLoadsInFlight > 0) return false;
   const pose = queuedPose;
   queuedPose = null;
-  getState().setCameraRotation(pose);
-  return true;
+  if (pose) getState().setCameraRotation(pose);
+  // After the actuation, never before: the ACK's whole job is to say the
+  // camera has already moved.
+  settleQueuedPoseWaiters();
+  return pose !== null;
 }

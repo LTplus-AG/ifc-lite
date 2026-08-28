@@ -38,13 +38,23 @@ function makeCameraState({ renderer = true }: { renderer?: boolean } = {}) {
     state = { ...state, ...updates };
   };
   state = createCameraSlice(set, () => state, undefined as never);
+  // The store's own answer to "has a model ever been on screen here". A
+  // session reset deliberately leaves it alone (`dataSlice.teardown.ts`), so at
+  // a load's entry it still names the OUTGOING model.
+  set({ geometryResult: null });
   const registerRenderer = () => {
     state.setCameraCallbacks({
       setCameraRotation: (rotation: CameraRotation) => { driven.push(rotation); },
     });
   };
   if (renderer) registerRenderer();
-  return { driven, getState: () => state, registerRenderer };
+  return {
+    driven,
+    getState: () => state,
+    registerRenderer,
+    /** What `loadFile` leaves behind. Only `meshes.length` is read from it. */
+    publishModel: () => set({ geometryResult: { meshes: [{ expressId: 1 }] } }),
+  };
 }
 
 beforeEach(() => {
@@ -80,6 +90,31 @@ describe('offerHostPose', () => {
       { azimuth: 99, elevation: 40 },
       { azimuth: 12, elevation: 3 },
     ]);
+  });
+
+  it('still resolves the ACK for a pose the host itself superseded mid-load', async () => {
+    // Two `SET_CAMERA`s inside one load: the second overwrites the first in the
+    // queue, so the first pose never reaches the camera. Its promise is still
+    // owed — a host awaiting it would otherwise hang forever on a command the
+    // bridge accepted.
+    const store = makeCameraState();
+
+    let releaseFetch!: () => void;
+    const fetched = new Promise<void>((resolve) => { releaseFetch = resolve; });
+    const load = aroundDestructiveLoad(store.getState, () => fetched);
+
+    const settled: string[] = [];
+    const first = offerHostPose({ azimuth: 1, elevation: 1 }, store.getState)
+      .then(() => { settled.push('first'); });
+    const second = offerHostPose({ azimuth: 2, elevation: 2 }, store.getState)
+      .then(() => { settled.push('second'); });
+
+    releaseFetch();
+    await load;
+    await Promise.all([first, second]);
+
+    expect(settled.sort()).toEqual(['first', 'second']);
+    expect(store.driven).toEqual([{ azimuth: 2, elevation: 2 }]);
   });
 });
 
@@ -182,6 +217,61 @@ describe('aroundDestructiveLoad', () => {
 
     expect(store.driven).toEqual([{ azimuth: 2, elevation: 2 }]);
     expect(hostPoseAppliedToCurrentModel()).toBe(true);
+  });
+
+  it('lifts a pose actuated against an EMPTY scene, and drops it once a model has worn it', async () => {
+    // One fixture, both directions. The renderer is live in both halves, so the
+    // pose is actuated immediately and the store records nothing either time —
+    // `pendingCameraRotation` cannot tell these apart. What separates them is
+    // whether there was an outgoing model for the pose to have been shown on.
+    const empty = makeCameraState();
+    offerHostPose({ azimuth: 137, elevation: 61 }, empty.getState);
+    await aroundDestructiveLoad(empty.getState, () => Promise.resolve());
+    expect(empty.driven).toEqual([
+      { azimuth: 137, elevation: 61 },
+      { azimuth: 137, elevation: 61 },
+    ]);
+    expect(hostPoseAppliedToCurrentModel()).toBe(true);
+
+    resetCameraIntent();
+
+    const showing = makeCameraState();
+    showing.publishModel();
+    offerHostPose({ azimuth: 137, elevation: 61 }, showing.getState);
+    await aroundDestructiveLoad(showing.getState, () => Promise.resolve());
+    // #3364: shown on the model that is leaving, so it leaves with it.
+    expect(showing.driven).toEqual([{ azimuth: 137, elevation: 61 }]);
+    expect(hostPoseAppliedToCurrentModel()).toBe(false);
+  });
+
+  it('does not resurface a superseded empty-scene pose at the NEXT load', async () => {
+    // The empty-scene lift keeps its own copy of the last pose that went
+    // straight through, and a pose queued DURING a load never updates that copy
+    // — `offerHostPose` takes its other branch. So a copy left behind after the
+    // load that consumed it is strictly older than what the host asked for
+    // last, and re-lifting it at the next load ends the camera on a command the
+    // host had already replaced. Same failure as the store-side re-lift above,
+    // reached through the module's own record instead of the store's.
+    const store = makeCameraState();
+
+    // Nothing on screen yet, so this is the case the lift exists for.
+    offerHostPose({ azimuth: 1, elevation: 1 }, store.getState);
+
+    let releaseFirst!: () => void;
+    const firstFetch = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const first = aroundDestructiveLoad(store.getState, () => firstFetch);
+    offerHostPose({ azimuth: 2, elevation: 2 }, store.getState);
+    releaseFirst();
+    await first;
+
+    // That load delivered no geometry, so the scene is still empty — the one
+    // state in which the next load consults the record again.
+    await aroundDestructiveLoad(store.getState, () => Promise.resolve());
+
+    expect(store.driven).toEqual([
+      { azimuth: 1, elevation: 1 },
+      { azimuth: 2, elevation: 2 },
+    ]);
   });
 
   it('clears the framing bit when the next load carries no host pose', async () => {

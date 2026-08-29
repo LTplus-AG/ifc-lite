@@ -22,7 +22,7 @@ import {
   extractTypeQuantitiesOnDemand,
 } from '@ifc-lite/parser';
 import type { PropertySet, QuantitySet } from '@ifc-lite/data';
-import { RelationshipType } from '@ifc-lite/data';
+import { RelationshipType, exactTypeName } from '@ifc-lite/data';
 import { ENTITY_ATTRIBUTES } from '@ifc-lite/lists';
 import type { ListDataProvider, ListClassificationRef, DiscoveredColumns } from '@ifc-lite/lists';
 import { resolveEntityPredefinedType } from '../entity-predefined-type.js';
@@ -242,7 +242,7 @@ export function createListDataProvider(
     getEntityObjectType: (id) => store.entities.getObjectType(id) || getOnDemandAttrs(id).objectType,
     getEntityPredefinedType: (id) => getPredefinedTypeFor(id),
     getEntityTag: (id) => store.entities.getTag?.(id) || getOnDemandAttrs(id).tag,
-    getEntityTypeName: (id) => store.entities.getTypeName(id),
+    getEntityTypeName: (id) => exactTypeName(store.entities, id), // declared class, not coalesced (#3325)
 
     getPropertySets: getPropertySetsFor,
     getQuantitySets: getQuantitySetsFor,

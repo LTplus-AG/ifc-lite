@@ -32,7 +32,13 @@ export interface NamespaceMapping {
 export const INFERENCE_CATALOGUE: Record<string, NamespaceMapping> = {
   model: {
     defaultCapabilities: ['model.read'],
+    // Differentiated: capability varies by method, so every method is
+    // listed explicitly (a differentiated namespace treats a missing
+    // method as a catalogue gap, not as an intended fall-through).
     methods: {
+      list: ['model.read'],
+      active: ['model.read'],
+      activeId: ['model.read'],
       // Loads a whole new IFC document into the app — creation, not a
       // read (see host/permissions.ts: model.create "modifies the document").
       loadIfc: ['model.create'],

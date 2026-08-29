@@ -89,10 +89,14 @@ async function fetchAllTopics(
   options: FetchProjectOptions,
   warnings: string[],
 ): Promise<BcfTopicDto[]> {
-  // Normalize caller-supplied sizes: a fractional maxTopics would let
-  // `topics.length < maxTopics` admit one topic past the documented cap.
+  if (
+    options.maxTopics !== undefined &&
+    (!Number.isInteger(options.maxTopics) || options.maxTopics < 0)
+  ) {
+    throw new RangeError('maxTopics must be a non-negative integer');
+  }
   const pageSize = Math.max(1, Math.floor(options.pageSize ?? 100));
-  const maxTopics = Math.max(0, Math.floor(options.maxTopics ?? 1000));
+  const maxTopics = options.maxTopics ?? 1000;
   const topics: BcfTopicDto[] = [];
   const seen = new Set<string>();
   let skippedNoGuid = 0;

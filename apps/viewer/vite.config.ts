@@ -14,7 +14,6 @@ import { oauthCallbackRoutes } from './vite-plugins/oauth-callback';
 import { daluxRelayRoute } from './vite-plugins/dalux-relay';
 
 // --- Build-time changelog parser ---
-
 interface ReleaseHighlight {
   type: 'feature' | 'fix' | 'perf';
   text: string;
@@ -40,12 +39,10 @@ const SKIP_BOLD_LOWER = new Set([
   'renderer fixes', 'parser fixes', 'viewer integration', 'fixes', 'features',
   'breaking', 'minor changes', 'patch changes', 'dependencies',
 ]);
-
 function isInternalName(text: string): boolean {
   // Skip PascalCase single-word class names like "PolygonalFaceSetProcessor"
   return /^[A-Z][a-zA-Z]+$/.test(text) && !text.includes(' ');
 }
-
 function categorizeHighlight(text: string): 'feature' | 'fix' | 'perf' {
   const lower = text.toLowerCase();
   if (lower.startsWith('fixed ') || lower.startsWith('fix ')) return 'fix';

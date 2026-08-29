@@ -6,6 +6,7 @@
   "examples/threejs-collab": 1,
   "examples/threejs-viewer": 2,
   "packages/bcf": 5,
+  "packages/bcf-api": 0,
   "packages/cache": 6,
   "packages/clash": 1,
   "packages/cli": 7,

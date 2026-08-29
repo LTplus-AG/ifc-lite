@@ -274,13 +274,14 @@ describe('fetchProjectAsBCF', () => {
     ).rejects.toMatchObject({ status: 401 });
   });
 
-  it('floors a fractional maxTopics instead of admitting an extra topic', async () => {
+  it('rejects maxTopics values that are fractional or negative', async () => {
     const client = makeClient(fakeBcfServer({ topics: makeTopics(5) }));
-    const { project } = await fetchProjectAsBCF(client, 'p1', {
-      maxTopics: 1.5,
-      includeSnapshots: false,
-    });
-    expect(project.topics.size).toBe(1);
+    await expect(
+      fetchProjectAsBCF(client, 'p1', { maxTopics: 1.5, includeSnapshots: false }),
+    ).rejects.toThrow('maxTopics must be a non-negative integer');
+    await expect(
+      fetchProjectAsBCF(client, 'p1', { maxTopics: -1, includeSnapshots: false }),
+    ).rejects.toThrow('maxTopics must be a non-negative integer');
   });
 
   it('degrades a failed snapshot to a warning and keeps the viewpoint', async () => {

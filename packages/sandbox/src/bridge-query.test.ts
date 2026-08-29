@@ -281,10 +281,47 @@ describe('bim.query.matchingActiveFilter', () => {
 });
 
 describe('bim.query.entity', () => {
-  it('returns null for an unresolved (modelId, expressId) pair without ref validation', () => {
+  it('returns null for an unresolved (modelId, expressId) pair', () => {
     const sdk = mockSdk({ entity: vi.fn(() => null) as any });
     const result = findMethod('entity').call(sdk, ['m1', 999], CTX);
     expect(sdk.entity).toHaveBeenCalledWith({ modelId: 'm1', expressId: 999 });
     expect(result).toBeNull();
+  });
+
+  // Unlike every other method in this file, `entity` used to build its ref
+  // as a bare `{ modelId, expressId }` object literal from raw args (`as
+  // string` / `as number` casts only, no runtime check) instead of going
+  // through `toRef` like `attributes`, `properties`, etc. do. Routing it
+  // through `toRef` closes that shape gap: a wrong-typed arg is now
+  // rejected here exactly as it already is at the other 20+ call sites in
+  // this file, instead of being forwarded to `sdk.entity` unchecked.
+  //
+  // `toRef` on this branch only checks `typeof expressId === 'number'`, so
+  // NaN/Infinity/-1/1.5 (all `typeof 'number'`) still reach `sdk.entity`
+  // unchanged here, exactly as they did before this fix and exactly as
+  // every other `toRef`-guarded method in this file still does — see
+  // https://github.com/LTplus-AG/ifc-lite/pull/3471, which hardens `toRef`
+  // itself to also reject those. That PR is open, not merged; once it
+  // lands, `entity` inherits the same rejection automatically because it
+  // now goes through `toRef` rather than building the ref inline.
+  it.each([
+    [42 as unknown as string, 1],
+    ['m1', '7' as unknown as number],
+  ])('rejects a wrong-typed (modelId=%j, expressId=%j) pair without calling sdk.entity', (modelId, expressId) => {
+    const sdk = mockSdk({
+      entity: vi.fn(() => {
+        throw new Error('sdk.entity must not be called with an invalid ref shape');
+      }) as any,
+    });
+    const result = findMethod('entity').call(sdk, [modelId, expressId], CTX);
+    expect(result).toBeNull();
+    expect(sdk.entity).not.toHaveBeenCalled();
+  });
+
+  it('still reaches sdk.entity unmodified for a valid expressId (regression)', () => {
+    const sdk = mockSdk({ entity: vi.fn(() => ENTITY) as any });
+    const result = findMethod('entity').call(sdk, ['m1', 7], CTX);
+    expect(sdk.entity).toHaveBeenCalledWith({ modelId: 'm1', expressId: 7 });
+    expect((result as any).Name).toBe('Basic Wall');
   });
 });

@@ -1,5 +1,5 @@
 ---
-'@ifc-lite/cli': patch
+'@ifc-lite/cli': minor
 ---
 
 Fix `ifc-lite bsdd`'s `--json` flag doing nothing: every subcommand (`class`, `search`, `psets`, `qsets`) called `printJson(...)` unconditionally, so the parsed `--json` value was never read and output was identical with or without the flag. `bsdd` now prints a human-readable summary by default (matching every other CLI command's `--json` convention, e.g. `ext capabilities`) and the raw structured payload only under `--json`.

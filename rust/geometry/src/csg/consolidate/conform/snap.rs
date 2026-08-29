@@ -79,15 +79,11 @@ use nalgebra::{Point2, Point3, Vector3};
 /// because that reconstruction — not the local 2D delta — is what
 /// `Mesh::add_vertex` actually quantizes.
 ///
-/// A snap that would collapse a vertex onto ANY other ring vertex is refused —
-/// not only its two ring-adjacent neighbours. A non-adjacent vertex can sit
-/// within `CONFORM_TOL` of the same candidate once the ring has four or more
-/// vertices, and the loop carries no cross-vertex state, so two non-adjacent
-/// indices can otherwise choose one candidate independently. Refusing only the
+/// A snap onto ANY other ring vertex is refused, not only the two ring-adjacent
+/// ones: a non-adjacent vertex can sit within `CONFORM_TOL` of the same
+/// candidate once the ring has four or more vertices. Refusing only the
 /// adjacent case trades a zero-length edge for a duplicate ring vertex, which
-/// `conform_regions` records as failing the CDT and dropping the whole region:
-/// a hole in the mesh, strictly worse than the sub-visible crack this pass
-/// exists to close.
+/// `conform_regions` records as failing the CDT and dropping the whole region.
 pub(super) fn snap_near_duplicates(
     ring: &mut [Point2<f64>],
     cands: &[Point2<f64>],
@@ -374,15 +370,10 @@ mod tests {
 
     #[test]
     fn refuses_a_snap_that_would_collapse_onto_a_non_adjacent_vertex() {
-        // A pentagon (n = 5, so NOT every vertex is mutually adjacent).
-        // ring[3] sits within CONFORM_TOL of ring[0]'s exact position but is
-        // not bit-identical to it, so ring[0]'s position is an eligible snap
-        // target for it. ring[3]'s ring-adjacent neighbours are ring[2] and
-        // ring[4] — neither is ring[0] — so an adjacent-only guard never looks
-        // at ring[0] and lets the snap through, producing a duplicate ring
-        // vertex. `conform_regions` records that a duplicate fails the CDT and
-        // drops the whole region, so this must be refused even though the two
-        // vertices are two steps apart in winding order.
+        // A pentagon: n = 5, so NOT every vertex is mutually adjacent (a quad
+        // cannot tell the two guards apart). ring[3] sits within CONFORM_TOL of
+        // ring[0] without being bit-identical, and its ring neighbours are
+        // ring[2]/ring[4] — so an adjacent-only guard never looks at ring[0].
         let ring0 = Point2::new(0.0, 0.0);
         let ring1 = Point2::new(10.0, 0.0);
         let ring2 = Point2::new(10.0, 10.0);

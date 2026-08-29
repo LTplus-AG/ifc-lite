@@ -3816,7 +3816,9 @@
     "QueryBuilder: class",
     "QueryInterface: class",
     "QueryResultEntity: class",
-    "SQLResult: interface"
+    "SQLResult: interface",
+    "findPropertyInSets: function",
+    "findQuantityInSets: function"
   ],
   "@ifc-lite/renderer": [
     "AdapterInfoSnapshot: interface",

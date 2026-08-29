@@ -41,10 +41,12 @@ export function parseValue(
     }
 
     case PropertyValueType.List: {
-      // Two accepted CSV encodings, resolved in three steps: valid JSON
-      // wins, a semicolon is the unambiguous marker of the other form, and
-      // only a cell that looks like JSON, carries no semicolon, and still
-      // will not parse is refused.
+      // Two accepted CSV encodings, resolved in three steps: a valid JSON
+      // ARRAY wins, a semicolon is the unambiguous marker of the other
+      // form, and only a cell that looks like JSON, carries no semicolon,
+      // and still will not parse is refused. Valid JSON that is not an
+      // array (`5`, `{"a":1}`) is not a list either, so it falls to the
+      // semicolon path and becomes a one-element list, as before.
       //
       // Both simpler rules are wrong in opposite directions. Deciding on the
       // thrown exception sent malformed JSON down the semicolon path, so

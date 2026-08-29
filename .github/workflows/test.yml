@@ -695,6 +695,15 @@ jobs:
       # counting and digest logic underneath it.
       - name: Check module-size ratchet gate regressions
         run: node --test scripts/check-module-size.test.mjs scripts/lib/module-size-ratchet.test.mjs
+      # An entity can legitimately carry two distinct property/quantity sets
+      # sharing the same name (type + occurrence). `sets.find(s => s.name ===
+      # x)` only ever sees the first one -- fixed one call site at a time
+      # across #2907, #3463, #3465, and this family's own PR, each rediscovered
+      # independently. This is the shape gate: it fails on a NEW two-step
+      # .find(set) -> .find(property/quantity) on what looks like an entity's
+      # (possibly-repeating) sets, so the next lookup can't reintroduce it.
+      - name: Check for the same-named-property-set .find() shape
+        run: node scripts/check-pset-name-find.mjs
       # The version every Rust crate is published at is the npm version with
       # `rust-major-offset.json`'s major offset applied (#3216). That offset is
       # applied by `scripts/sync-versions.js`, which runs ONCE per release

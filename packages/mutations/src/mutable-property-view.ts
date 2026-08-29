@@ -13,6 +13,7 @@
  */
 
 import type { PropertyTable, PropertySet, Property, QuantitySet, Quantity } from '@ifc-lite/data';
+import { findQuantityInBaseSets } from './base-qset-lookup.js';
 import { PropertyValueType, QuantityType } from '@ifc-lite/data';
 import type { IfcAttributeValue, PropertyValue, PropertyMutation, QuantityMutation, AttributeMutation, EntityTypeMutation, Mutation, NewEntity, EffectiveChange } from './types.js';
 import { propertyKey, quantityKey, attributeKey, generateMutationId } from './types.js';
@@ -412,14 +413,15 @@ export class MutablePropertyView {
       }
     }
 
-    // Fall back to on-demand extraction or base table
+    // Fall back to on-demand extraction or base table. Scan every same-named
+    // pset (an entity can carry two, e.g. type + occurrence), not just the
+    // first -- see findQuantityInBaseSets's doc for why this doesn't import
+    // @ifc-lite/query's version.
     const basePsets = this.getBasePropertiesForEntity(entityId);
-    const pset = basePsets.find(p => p.name === psetName);
-    if (pset) {
+    for (const pset of basePsets) {
+      if (pset.name !== psetName) continue;
       const prop = pset.properties.find(p => p.name === propName);
-      if (prop) {
-        return prop.value;
-      }
+      if (prop) return prop.value;
     }
 
     return null;
@@ -932,9 +934,7 @@ export class MutablePropertyView {
       oldValue = existingMutation.value ?? null;
       isUpdate = true;
     } else {
-      const baseQuantity = baseQsets
-        .find(q => q.name === qsetName)
-        ?.quantities.find(q => q.name === quantName);
+      const baseQuantity = findQuantityInBaseSets(baseQsets, qsetName, quantName);
       oldValue = baseQuantity ? baseQuantity.value : null;
       isUpdate = baseQuantity !== undefined;
     }

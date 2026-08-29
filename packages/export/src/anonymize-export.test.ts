@@ -152,6 +152,9 @@ DATA;
 #40=IFCMATERIAL('Concrete',$,'Category Marigold');
 #90=IFCELEMENTASSEMBLY('${guid(90)}',#74,'Assembly Cobalt',$,$,$,$,$,$,.RIGID.);
 #91=IFCPLATE('${guid(91)}',#74,'Plate Vertex',$,$,$,$,$,$);
+#95=IFCPROPERTYSET('${guid(95)}',#74,'Pset_AddressRef',$,(#96));
+#96=IFCPROPERTYREFERENCEVALUE('AddressRef',$,$,#51);
+#97=IFCRELDEFINESBYPROPERTIES('${guid(97)}',#74,$,$,(#6),#95);
 #50=IFCPOSTALADDRESS($,$,$,$,('742 Fictitious Lane'),$,'Fictitious Falls','Fictitious Province','00000','Fictitious Country');
 #51=IFCPOSTALADDRESS($,$,$,$,('99 Imaginary Boulevard'),$,'Imaginary Heights','Imaginary Province','11111','Imaginary Country');
 #52=IFCPROJECTEDCRS('EPSG:FICTITIOUS-9999',$,$,$,$,$,$);
@@ -442,6 +445,52 @@ describe('exportAnonymizedSubset — occurrence-owned property sets reaching inc
     expect(result.stats.droppedPropertySetIds).toEqual([]);
     expect(content).toContain('jane.doe@acme-corp.example');
     expect(findDanglingRefs(content)).toEqual([]);
+  });
+});
+
+describe('exportAnonymizedSubset — IfcPropertyReferenceValue into an excluded target (#3439)', () => {
+  it('nulls a directly included property reference rather than emitting a dangling reference', async () => {
+    const store = await parse(FIXTURE_MODEL);
+    const result = exportAnonymizedSubset(store, new Set([1, 3, 95, 96]), {
+      keepPropertySets: true,
+      guidRandom: seededRandom(13),
+    });
+    const content = decode(result.content);
+
+    expect(findDanglingRefs(content)).toEqual([]);
+    expect(content).not.toContain('99 Imaginary Boulevard');
+    expect(lineArgs(content, 96)[3]).toBe('$');
+    expect(result.stats.droppedPropertyReferenceIds).toEqual([96]);
+  });
+
+  it('nulls a property value reached through an included defining relationship and property set', async () => {
+    const store = await parse(FIXTURE_MODEL);
+    const result = exportAnonymizedSubset(store, new Set([1, 3, 6, 95, 97]), {
+      keepPropertySets: true,
+      guidRandom: seededRandom(16),
+    });
+    const content = decode(result.content);
+
+    // #96 is deliberately not a caller seed. The exporter reaches it through
+    // #97 -> #95, so sanitization must run over the forward closure too.
+    expect(content).toContain('#96=IFCPROPERTYREFERENCEVALUE');
+    expect(findDanglingRefs(content)).toEqual([]);
+    expect(lineArgs(content, 96)[3]).toBe('$');
+    expect(result.stats.droppedPropertyReferenceIds).toEqual([96]);
+  });
+
+  it('leaves a property reference intact when the target is legitimately included', async () => {
+    const store = await parse(FIXTURE_MODEL);
+    const result = exportAnonymizedSubset(store, new Set([1, 3, 95, 96]), {
+      keepPropertySets: true,
+      removeGeoreferencing: false,
+      guidRandom: seededRandom(15),
+    });
+    const content = decode(result.content);
+
+    expect(findDanglingRefs(content)).toEqual([]);
+    expect(lineArgs(content, 96)[3]).toBe('#51');
+    expect(result.stats.droppedPropertyReferenceIds).toEqual([]);
   });
 });
 

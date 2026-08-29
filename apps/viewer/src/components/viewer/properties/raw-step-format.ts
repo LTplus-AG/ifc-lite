@@ -123,7 +123,10 @@ export function serializeStepToken(value: IfcAttributeValue): string {
     if (trimmed === '$' || trimmed === '*') return trimmed;
     if (/^#\d+$/.test(trimmed)) return trimmed;
     if (/^\.[A-Z0-9_]+\.$/i.test(trimmed)) return trimmed.toUpperCase();
-    return `'${value.replace(/'/g, "''")}'`;
+    // Backslash must double before the quote does — same order as
+    // `escapeStepString` in @ifc-lite/export — or a value containing both
+    // (e.g. `C:\O'Brien`) mis-escapes.
+    return `'${value.replace(/\\/g, '\\\\').replace(/'/g, "''")}'`;
   }
   if (Array.isArray(value)) {
     return `(${value.map(serializeStepToken).join(',')})`;

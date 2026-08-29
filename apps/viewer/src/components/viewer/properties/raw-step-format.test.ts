@@ -108,6 +108,21 @@ describe('serializeStepToken', () => {
     assert.strictEqual(serializeStepToken("it's"), "'it''s'");
   });
 
+  it('doubles a backslash the same way the STEP exporter does', () => {
+    // The doc-comment says this function "mirrors serializeStepValue" in
+    // @ifc-lite/export, which escapes a literal backslash as `\\` (doubled)
+    // before it escapes quotes — see packages/export/src/step-serialization.ts
+    // `escapeStepString`. A raw Windows path (`C:\Users\a`) or any string
+    // containing a backslash must round-trip through the same doubling here,
+    // or the "Raw STEP" tab shows a token that disagrees with what the real
+    // exporter would write to disk for the identical overlay value.
+    assert.strictEqual(serializeStepToken('C:\\Users\\a'), "'C:\\\\Users\\\\a'");
+  });
+
+  it('handles a value with both a backslash and a quote, backslash first', () => {
+    assert.strictEqual(serializeStepToken("C:\\O'Brien"), "'C:\\\\O''Brien'");
+  });
+
   it('serializes arrays recursively, comma-joined and wrapped in parens', () => {
     assert.strictEqual(serializeStepToken([1, 'a', null, true]), "(1,'a',$,.T.)");
   });

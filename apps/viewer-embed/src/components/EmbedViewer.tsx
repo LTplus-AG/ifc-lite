@@ -42,6 +42,11 @@ export function EmbedViewer() {
   const [urlParams] = useState(() => parseUrlParams());
   const bridgeInitialized = useRef(false);
   const autoLoadAttempted = useRef(false);
+  // Seeded from ?bg=; can also be set at runtime via SET_THEME's/INIT's `bg`
+  // (see setBackgroundColor passed into initBridge below). Stored bare (no
+  // leading '#') to match the URL-param convention and normalized to CSS
+  // color the same way in both places.
+  const [customBgHex, setCustomBgHex] = useState<string | undefined>(urlParams.bg);
 
   // Apply URL params on mount. Embeds default to light unless ?theme=dark
   // (the surrounding viewer-core store may bootstrap to dark based on system
@@ -117,7 +122,7 @@ export function EmbedViewer() {
             vertices: gr?.totalVertices ?? 0,
           };
         },
-        addModelFromUrl: async (url: string) => {
+        addModelFromUrl: async (url: string, name?: string) => {
           // Federation-aware add: routes through useIfcFederation's addModel,
           // which loads with target `{ kind: 'federated' }` and therefore does
           // NOT clear existing models (unlike loadFile's default primary
@@ -127,7 +132,7 @@ export function EmbedViewer() {
           if (!response.ok) throw new Error(`Failed to fetch model: ${response.statusText}`);
           const buffer = await response.arrayBuffer();
           const filename = url.split('/').pop() || 'model.ifc';
-          const file = new File([buffer], filename);
+          const file = new File([buffer], name || filename);
           const modelId = await addModel(file);
           if (!modelId) throw new Error('Failed to add model');
           const added = useViewerStore.getState().models.get(modelId);
@@ -138,6 +143,7 @@ export function EmbedViewer() {
             vertices: added?.geometryResult?.totalVertices ?? 0,
           };
         },
+        setBackgroundColor: (bg: string | undefined) => setCustomBgHex(bg),
       }, {
         allowedOrigins: urlParams.allowOrigins,
         expectedParentOrigin,
@@ -290,7 +296,7 @@ export function EmbedViewer() {
 
   // Background color
   const bgColor = theme === 'dark' ? '#1a1b26' : '#ffffff';
-  const customBg = urlParams.bg ? `#${urlParams.bg}` : undefined;
+  const customBg = customBgHex ? `#${customBgHex}` : undefined;
 
   return (
     <div

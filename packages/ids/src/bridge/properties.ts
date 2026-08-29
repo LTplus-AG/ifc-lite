@@ -16,7 +16,7 @@ import { RelationshipType } from '@ifc-lite/data';
 
 import type { PropertySetInfo } from '../types.js';
 import { idsDataTypeForProperty, idsDataTypeForQuantity } from './data-types.js';
-import { applyUnitConversion } from './units.js';
+import { applyUnitConversion, resolveMeasureScales, type MeasureScales } from './units.js';
 
 interface RawProp {
   name: string;
@@ -38,9 +38,10 @@ interface RawProp {
  *      the entity's schema-defined attributes act as property names.
  *   3. Inherited property sets from `IfcRelDefinesByType`.
  *
- * Length-typed properties are converted to base SI units per the
- * project's `lengthUnitScale` so IDS literals (always in metres)
- * compare correctly.
+ * Length-, area- and volume-typed properties are converted to base SI
+ * units per the project's declared units (`lengthUnitScale`, and the
+ * declared AREAUNIT/VOLUMEUNIT where present — see `resolveMeasureScales`)
+ * so IDS literals (always metre / m² / m³) compare correctly.
  */
 export function collectAllPropertySets(
   store: IfcDataStore,
@@ -48,16 +49,17 @@ export function collectAllPropertySets(
 ): PropertySetInfo[] {
   const own: PropertySetInfo[] = [];
   const scale = store.lengthUnitScale;
+  const measureScales = resolveMeasureScales(store);
 
-  appendInstancePropertySets(store, expressId, scale, own);
-  appendQuantitySets(store, expressId, scale, own);
+  appendInstancePropertySets(store, expressId, scale, measureScales, own);
+  appendQuantitySets(store, expressId, scale, measureScales, own);
   appendPredefinedPropertySets(store, expressId, own);
-  appendMaterialOwnPropertySets(store, expressId, scale, own);
+  appendMaterialOwnPropertySets(store, expressId, scale, measureScales, own);
 
   // Merged per property, not per set — see `mergeInheritedPropertySets`.
   const out = mergeInheritedPropertySets(
     own,
-    inheritedPropertySets(store, expressId, scale),
+    inheritedPropertySets(store, expressId, scale, measureScales),
   );
 
   if (out.length === 0) {
@@ -70,6 +72,7 @@ function appendInstancePropertySets(
   store: IfcDataStore,
   expressId: number,
   scale: number | undefined,
+  measureScales: MeasureScales,
   out: PropertySetInfo[]
 ): void {
   let props = store.properties?.getForEntity?.(expressId) as
@@ -86,15 +89,26 @@ function appendInstancePropertySets(
   for (const pset of props) {
     out.push({
       name: pset.name,
-      properties: (pset.properties || []).map((p) => projectProperty(p, scale)),
+      properties: (pset.properties || []).map((p) => projectProperty(p, scale, measureScales)),
     });
   }
 }
 
+/**
+ * `IfcPhysicalQuantity` (Qto_*) values are stored in the project's raw
+ * author unit exactly like `IfcPropertySingleValue` (Pset_*) — an
+ * `IfcQuantityLength`/`IfcQuantityArea`/`IfcQuantityVolume` is just as
+ * much an IFC measure as a length/area/volume-typed property, so it
+ * needs the same base-SI conversion `projectProperty` already applies
+ * there. Route through it here too rather than building the value
+ * inline, so the two paths can't drift again — see `applyUnitConversion`
+ * in `units.ts` for the length/area/volume exponents.
+ */
 function appendQuantitySets(
   store: IfcDataStore,
   expressId: number,
   scale: number | undefined,
+  measureScales: MeasureScales,
   out: PropertySetInfo[]
 ): void {
   let quantities = store.quantities?.getForEntity?.(expressId);
@@ -106,15 +120,12 @@ function appendQuantitySets(
   for (const qset of quantities) {
     out.push({
       name: qset.name,
-      // IfcPhysicalQuantity (Qto_*) values are stored in the project's
-      // raw author unit exactly like IfcPropertySingleValue (Pset_*) —
-      // an IfcQuantityLength is just as much an IFCLENGTHMEASURE as a
-      // length-typed property, so it needs the same base-SI conversion
-      // `projectProperty` already applies there. Route through it here
-      // too rather than building the value inline, so the two paths
-      // can't drift again.
       properties: (qset.quantities || []).map((q) =>
-        projectProperty({ name: q.name, value: q.value, type: undefined, dataType: idsDataTypeForQuantity(q.type) }, scale)
+        projectProperty(
+          { name: q.name, value: q.value, type: undefined, dataType: idsDataTypeForQuantity(q.type) },
+          scale,
+          measureScales
+        )
       ),
     });
   }
@@ -190,6 +201,7 @@ function appendMaterialOwnPropertySets(
   store: IfcDataStore,
   expressId: number,
   scale: number | undefined,
+  measureScales: MeasureScales,
   out: PropertySetInfo[]
 ): void {
   if (resolveEntityTypeName(store, expressId)?.toUpperCase() !== 'IFCMATERIAL') return;
@@ -200,7 +212,7 @@ function appendMaterialOwnPropertySets(
       if (out.some((p) => p.name === pset.name)) continue;
       out.push({
         name: pset.name,
-        properties: pset.properties.map((p) => projectProperty(p as RawProp, scale)),
+        properties: pset.properties.map((p) => projectProperty(p as RawProp, scale, measureScales)),
       });
     }
   }
@@ -225,7 +237,8 @@ function resolveEntityTypeName(store: IfcDataStore, expressId: number): string |
 function inheritedPropertySets(
   store: IfcDataStore,
   expressId: number,
-  scale: number | undefined
+  scale: number | undefined,
+  measureScales: MeasureScales
 ): PropertySetInfo[] {
   // Source-backed extraction (WASM/columnar parse) first; it bails on stores
   // with no `source` buffer — i.e. server-parsed stores — so fall back to the
@@ -237,7 +250,7 @@ function inheritedPropertySets(
 
   return inheritedPsets.map((pset) => ({
     name: pset.name,
-    properties: (pset.properties || []).map((p) => projectProperty(p as RawProp, scale)),
+    properties: (pset.properties || []).map((p) => projectProperty(p as RawProp, scale, measureScales)),
   }));
 }
 
@@ -298,7 +311,8 @@ function appendTypeEntityOwnProperties(
  */
 function projectProperty(
   p: RawProp,
-  scale: number | undefined
+  scale: number | undefined,
+  measureScales: MeasureScales
 ): PropertySetInfo['properties'][number] {
   const hasMultiValue = Array.isArray(p.values) && p.values.length > 0;
   const dataType =
@@ -308,7 +322,7 @@ function projectProperty(
     ? JSON.stringify(p.value)
     : (p.value as string | number | boolean | null);
   const baseValues = hasMultiValue ? (p.values as string[]) : undefined;
-  const converted = applyUnitConversion(baseValue, baseValues, dataType, scale);
+  const converted = applyUnitConversion(baseValue, baseValues, dataType, scale, measureScales);
   return {
     name: p.name,
     value: converted.value,

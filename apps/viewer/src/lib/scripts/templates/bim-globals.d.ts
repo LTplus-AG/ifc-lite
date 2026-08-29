@@ -412,8 +412,8 @@ declare const bim: {
     select(entities: BimEntity[]): void;
     /** Fly camera to entities */
     flyTo(entities: BimEntity[]): void;
-    /** Reset all colors */
-    resetColors(): void;
+    /** Reset colors. Omit entities (or pass none) to reset every color override; pass entities to reset only theirs. */
+    resetColors(entities?: BimEntity[]): void;
     /** Reset all visibility */
     resetVisibility(): void;
   };

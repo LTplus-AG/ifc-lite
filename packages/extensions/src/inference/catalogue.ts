@@ -32,22 +32,54 @@ export interface NamespaceMapping {
 export const INFERENCE_CATALOGUE: Record<string, NamespaceMapping> = {
   model: {
     defaultCapabilities: ['model.read'],
+    // Differentiated: capability varies by method, so every method is
+    // listed explicitly (a differentiated namespace treats a missing
+    // method as a catalogue gap, not as an intended fall-through).
+    methods: {
+      list: ['model.read'],
+      active: ['model.read'],
+      activeId: ['model.read'],
+      // Loads a whole new IFC document into the app — creation, not a
+      // read (see host/permissions.ts: model.create "modifies the document").
+      loadIfc: ['model.create'],
+    },
   },
   query: {
     defaultCapabilities: ['model.read'],
   },
   store: {
+    // Every real `bim.store.*` method is a document-level edit
+    // (packages/sandbox/src/bridge-store.ts): the read-only default only
+    // applies to a namespace call with no method (`bim.store`, untargeted).
     defaultCapabilities: ['model.read'],
+    methods: {
+      addEntity: ['model.create'],
+      removeEntity: ['model.delete'],
+      setPositionalAttribute: ['model.mutate:*'],
+      addColumn: ['model.create'],
+      addWall: ['model.create'],
+      addSlab: ['model.create'],
+      addBeam: ['model.create'],
+      addDoor: ['model.create'],
+      addWindow: ['model.create'],
+      addSpace: ['model.create'],
+      addRoof: ['model.create'],
+      addPlate: ['model.create'],
+      addMember: ['model.create'],
+    },
   },
   viewer: {
     defaultCapabilities: ['viewer.read'],
     methods: {
       colorize: ['viewer.colorize'],
+      colorizeAll: ['viewer.colorize'],
+      resetColors: ['viewer.colorize'],
       color: ['viewer.colorize'],
       setColors: ['viewer.colorize'],
       isolate: ['viewer.isolate'],
       hide: ['viewer.isolate'],
       show: ['viewer.isolate'],
+      resetVisibility: ['viewer.isolate'],
       reset: ['viewer.isolate'],
       flyTo: ['viewer.fly'],
       fly: ['viewer.fly'],

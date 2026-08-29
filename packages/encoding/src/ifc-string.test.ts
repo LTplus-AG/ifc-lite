@@ -177,6 +177,24 @@ describe('encodeIfcString', () => {
     expect(decodeIfcString(encodeIfcString('\\'))).toBe('\\');
   });
 
+  it('does NOT double the apostrophe (pins current behaviour, issue #3445)', () => {
+    // The apostrophe is code point 39, printable ASCII, so unlike the raw
+    // backslash above it passes straight through the range check untouched.
+    // The comment on the reverse-solidus test just above makes exactly the
+    // argument that transfers here: an unescaped `'` in output destined for a
+    // STEP literal terminates the literal early (`O'Brien` -> `'O'Brien'`).
+    // But that argument does NOT make this a bug in isolation, because
+    // `encodeIfcString` never claimed to be literal-safe once its doc is
+    // corrected — only that it emits directive escapes. Whether apostrophe
+    // doubling belongs here or in the caller (`escapeStepString` in
+    // `@ifc-lite/data` already does it) is an open question for #3445, not
+    // decided by this repo yet. This test pins TODAY'S behaviour so any
+    // change is a deliberate decision, not a silent one — it is not an
+    // assertion that the behaviour is correct.
+    expect(encodeIfcString("'")).toBe("'");
+    expect(encodeIfcString("O'Brien")).toBe("O'Brien");
+  });
+
   it('encodes BMP chars as \\X2\\....\\X0\\', () => {
     expect(encodeIfcString('Ω')).toBe('\\X2\\03A9\\X0\\');
   });

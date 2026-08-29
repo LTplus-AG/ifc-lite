@@ -42,6 +42,7 @@ import {
   openIfcFilesWithHandles,
   handlesFromDataTransfer,
 } from '@/services/file-system-access';
+import { FILE_ACCEPT, isSupportedModelFile } from '@/services/supported-model-files';
 import {
   SOURCE_DOWNLOAD_EVENT,
   type SourceDownloadEvent,
@@ -486,12 +487,7 @@ export function ViewportContainer() {
     applyDragEvent('leave');
   }, [applyDragEvent]);
 
-  const isSupportedFile = useCallback((f: File) => {
-    const n = f.name.toLowerCase();
-    return n.endsWith('.ifc') || n.endsWith('.ifcx') || n.endsWith('.ifczip') || n.endsWith('.glb')
-      || n.endsWith('.las') || n.endsWith('.laz') || n.endsWith('.ply') || n.endsWith('.pcd')
-      || n.endsWith('.e57') || n.endsWith('.pts') || n.endsWith('.xyz');
-  }, []);
+  const isSupportedFile = isSupportedModelFile;
 
   // Single routing point for every ingestion path (picker / drop / input). The
   // optional `handles` array is positionally aligned with `files` and carries a
@@ -1091,7 +1087,7 @@ export function ViewportContainer() {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".ifc,.ifcx,.ifczip,.glb,.las,.laz,.ply,.pcd,.e57,.pts,.xyz,.dxf"
+          accept={FILE_ACCEPT}
           multiple
           onChange={handleFileSelect}
           className="hidden"

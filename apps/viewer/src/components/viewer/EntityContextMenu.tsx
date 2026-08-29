@@ -22,7 +22,7 @@ import {
   CopyPlus,
   ShieldQuestion,
 } from 'lucide-react';
-import { useViewerStore, resolveEntityRef, resolveGlobalId } from '@/store';
+import { useViewerStore, resolveEntityRef, resolveGlobalId, toGlobalIdFromModels } from '@/store';
 import type { DuplicateDirection } from '@/store/slices/mutationSlice';
 import { resetVisibilityForHomeFromStore } from '@/store/homeView';
 import {
@@ -185,19 +185,20 @@ export function EntityContextMenu() {
       }
     }
 
-    if (entityType) {
-      // Select all entities of the same type (original expressIds — for multi-model, should transform to globalIds).
+    if (entityType && contextEntityRef) {
+      // `entity.expressId` is model-space — resolve through the model
+      // offset before it reaches `selectedEntityIds` (renderer-space).
       const sameTypeIds: number[] = [];
       for (let i = 0; i < entity.count; i++) {
         if (entity.getTypeName(entity.expressId[i]) === entityType) {
-          sameTypeIds.push(entity.expressId[i]);
+          sameTypeIds.push(toGlobalIdFromModels(models, contextEntityRef.modelId, entity.expressId[i]));
         }
       }
       setSelectedEntityIds(sameTypeIds);
     }
 
     closeContextMenu();
-  }, [resolvedExpressId, activeDataStore, setSelectedEntityIds, closeContextMenu]);
+  }, [resolvedExpressId, activeDataStore, contextEntityRef, models, setSelectedEntityIds, closeContextMenu]);
 
   const handleSelectSameStorey = useCallback(() => {
     // Use resolvedExpressId (original ID) for IfcDataStore lookups
@@ -207,16 +208,18 @@ export function EntityContextMenu() {
     }
 
     const storeyId = activeDataStore.spatialHierarchy.elementToStorey.get(resolvedExpressId);
-    if (storeyId) {
+    if (storeyId && contextEntityRef) {
       const storeyElements = activeDataStore.spatialHierarchy.byStorey.get(storeyId);
       if (storeyElements) {
-        // NOTE: These are original expressIds - for multi-model, should transform to globalIds
-        setSelectedEntityIds(Array.from(storeyElements));
+        // Same model-space -> renderer-space resolution as above.
+        setSelectedEntityIds(
+          Array.from(storeyElements, (id) => toGlobalIdFromModels(models, contextEntityRef.modelId, id)),
+        );
       }
     }
 
     closeContextMenu();
-  }, [resolvedExpressId, activeDataStore, setSelectedEntityIds, closeContextMenu]);
+  }, [resolvedExpressId, activeDataStore, contextEntityRef, models, setSelectedEntityIds, closeContextMenu]);
 
   // "Export anonymized…" (#2934): seed `AnonymizedExportDialog` — whose
   // `useAnonymizedExportSet` reads `selectedEntityIds`, the multi-select

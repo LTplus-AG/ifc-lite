@@ -51,7 +51,7 @@ export interface ViewerController {
   show(args: { globalIds?: string[]; expressIds?: number[]; type?: string }): { count: number };
   reset(): void;
   flyTo(args: { globalIds?: string[]; expressIds?: number[] }): { count: number };
-  setSection(args: { axis: 'x' | 'y' | 'z'; position: number }): void;
+  setSection(args: { axis: 'x' | 'y' | 'z'; position: number; flipped?: boolean; enabled?: boolean }): void;
   clearSection(): void;
   colorByStorey(): { groups: number };
   colorByProperty(args: {
@@ -59,6 +59,7 @@ export interface ViewerController {
     pset: string;
     property: string;
     sample: (expressId: number) => string | number | boolean | null;
+    missingColor?: ColorTuple;
   }): { legend: Array<{ value: string; count: number; color: ColorTuple }> };
   getSelection(): SelectionHit[];
   setOnSelectionChange(handler: ((hits: SelectionHit[]) => void) | null): void;
@@ -76,7 +77,7 @@ export interface SceneHandle {
   show(args: { globalIds?: string[]; expressIds?: number[]; type?: string }): { count: number };
   reset(): void;
   flyTo(args: { globalIds?: string[]; expressIds?: number[] }): { count: number };
-  setSection(args: { axis: 'x' | 'y' | 'z'; position: number }): void;
+  setSection(args: { axis: 'x' | 'y' | 'z'; position: number; flipped?: boolean; enabled?: boolean }): void;
   clearSection(): void;
   colorByStorey(): { groups: number };
   colorByProperty(args: {
@@ -84,6 +85,7 @@ export interface SceneHandle {
     pset: string;
     property: string;
     sample: (expressId: number) => string | number | boolean | null;
+    missingColor?: ColorTuple;
   }): { legend: Array<{ value: string; count: number; color: ColorTuple }> };
   getSelection(): SelectionHit[];
   setOnSelectionChange(handler: ((hits: SelectionHit[]) => void) | null): void;

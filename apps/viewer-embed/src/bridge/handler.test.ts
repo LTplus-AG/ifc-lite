@@ -200,6 +200,7 @@ function makeCtx(state: any, overrides: Partial<Record<string, any>> = {}) {
     // override that does.
     addModelFromUrl: overrides.addModelFromUrl
       ?? vi.fn(async () => ({ modelId: 'default-added-id', entities: 10, triangles: 20, vertices: 30 })),
+    setBackgroundColor: overrides.setBackgroundColor ?? vi.fn(),
   };
 }
 
@@ -639,6 +640,20 @@ describe('command dispatch', () => {
     });
   });
 
+  it('ADD_MODEL forwards the optional name to addModelFromUrl (not dropped)', async () => {
+    const addModelFromUrl = vi.fn(async () => ({ modelId: 'new-id', entities: 1, triangles: 2, vertices: 3 }));
+    initBridge(makeCtx(state, { addModelFromUrl }));
+    await send(fw, cmd('ADD_MODEL', { url: 'https://x.test/a.ifc', name: 'Custom Name.ifc' }, 'r1'));
+    expect(addModelFromUrl).toHaveBeenCalledWith('https://x.test/a.ifc', 'Custom Name.ifc');
+  });
+
+  it('ADD_MODEL without a name still calls addModelFromUrl (name undefined)', async () => {
+    const addModelFromUrl = vi.fn(async () => ({ modelId: 'new-id', entities: 1, triangles: 2, vertices: 3 }));
+    initBridge(makeCtx(state, { addModelFromUrl }));
+    await send(fw, cmd('ADD_MODEL', { url: 'https://x.test/a.ifc' }, 'r1'));
+    expect(addModelFromUrl).toHaveBeenCalledWith('https://x.test/a.ifc', undefined);
+  });
+
   it('REMOVE_MODEL forwards the modelId', async () => {
     initBridge(makeCtx(state));
     await send(fw, cmd('REMOVE_MODEL', { modelId: 'm1' }, 'r1'));
@@ -689,7 +704,7 @@ describe('command dispatch', () => {
     initBridge(makeCtx(state, { addModelFromUrl }));
     await send(fw, cmd('ADD_MODEL', { url: 'https://x.test/b.ifc' }, 'r1'));
 
-    expect(addModelFromUrl).toHaveBeenCalledWith('https://x.test/b.ifc');
+    expect(addModelFromUrl).toHaveBeenCalledWith('https://x.test/b.ifc', undefined);
     // The pre-existing model must survive the add — this is the registry-level
     // assertion, not just "the call resolved".
     expect(state.models.has('m1')).toBe(true);
@@ -855,6 +870,20 @@ describe('selection and visibility commands', () => {
     initBridge(makeCtx(state));
     await send(fw, cmd('SET_THEME', { theme: 'dark' }, 'r1'));
     expect(argsOf(state, 'setTheme')).toEqual(['dark']);
+  });
+
+  it('SET_THEME forwards bg to setBackgroundColor (not dropped)', async () => {
+    const setBackgroundColor = vi.fn();
+    initBridge(makeCtx(state, { setBackgroundColor }));
+    await send(fw, cmd('SET_THEME', { theme: 'dark', bg: '000000' }, 'r1'));
+    expect(setBackgroundColor).toHaveBeenCalledWith('000000');
+  });
+
+  it('SET_THEME without bg does not touch the background (so a later call cannot clear it)', async () => {
+    const setBackgroundColor = vi.fn();
+    initBridge(makeCtx(state, { setBackgroundColor }));
+    await send(fw, cmd('SET_THEME', { theme: 'light' }, 'r1'));
+    expect(setBackgroundColor).not.toHaveBeenCalled();
   });
 });
 

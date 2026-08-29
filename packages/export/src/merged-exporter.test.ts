@@ -1131,6 +1131,30 @@ describe('MergedExporter', () => {
       expect(findDanglingRefs(content)).toEqual([]);
     });
 
+    // Regression: a prefixed SI area/volume unit must scale the prefix by the
+    // unit's dimension (area = prefix², volume = prefix³), matching both
+    // `rust/core/src/project_units/symbols.rs`'s `prefix_power` and
+    // `packages/parser/src/project-units.ts`'s `siUnitSymbolAndScale` — the two
+    // implementations this repo already cross-checks by parity test. A CENTI
+    // SQUARE_METRE unit is (10⁻²)² = 1e-4 m² per unit, not 1e-2.
+    it('scales a prefixed SI area unit by the prefix squared, not linearly', () => {
+      const secondary = buildModel('centi', 'Centi', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('centiProj')}',$,'Centi',$,$,$,$,$,#2);`],
+        [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#3,#4));'],
+        [3, 'IFCSIUNIT', '#3=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);'],
+        [4, 'IFCSIUNIT', '#4=IFCSIUNIT(*,.AREAUNIT.,.CENTI.,.SQUARE_METRE.);'],
+        [5, 'IFCELEMENTQUANTITY', `#5=IFCELEMENTQUANTITY('${guid('centiQto')}',$,'Q',$,$,(#6));`],
+        [6, 'IFCQUANTITYAREA', "#6=IFCQUANTITYAREA('Area',$,$,10.,$);"],
+      ]);
+      secondary.lengthUnitScale = 0.001;
+
+      const content = decode(new MergedExporter([metreModel(), secondary])
+        .export({ schema: 'IFC4', unitReconciliation: 'normalize' }).content);
+      // 10 centi-square-metre × (10⁻²)² m²/unit = 0.001 m².
+      expect(content).toContain("IFCQUANTITYAREA('Area',$,$,0.001,$)");
+      expect(findDanglingRefs(content)).toEqual([]);
+    });
+
     it('rescales in the other direction (metre model into a feet primary)', () => {
       const feet = buildModel('feet', 'Feet', [
         [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('ftProj')}',$,'Feet',$,$,$,$,$,#2);`],

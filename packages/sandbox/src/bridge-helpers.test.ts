@@ -67,6 +67,27 @@ describe('toRef', () => {
       expressId: 2,
     });
   });
+
+  it('rejects an expressId that is not a finite positive integer', () => {
+    // typeof NaN/Infinity/-1/1.5 is all 'number', so the old `typeof
+    // ref.expressId === 'number'` check let each of these through as a
+    // seemingly-valid ref. bridge-store.ts's requireStoreyId already
+    // enforces Number.isInteger(id) && id > 0 for storey ids; toRef must
+    // hold express ids to the same standard, since every bim.mutate/store/
+    // query call site trusts a non-null toRef() result as a real entity.
+    expect(toRef({ modelId: 'm1', expressId: NaN })).toBeNull();
+    expect(toRef({ modelId: 'm1', expressId: Infinity })).toBeNull();
+    expect(toRef({ modelId: 'm1', expressId: -Infinity })).toBeNull();
+    expect(toRef({ modelId: 'm1', expressId: -1 })).toBeNull();
+    expect(toRef({ modelId: 'm1', expressId: 1.5 })).toBeNull();
+    // 0 is the case bridge-store.ts:319-321 calls out by name: EXPRESS ids
+    // are 1-based, so `#0` is never a valid reference. It is also the only
+    // rejected value that is a finite integer, so a `> 0` written as `>= 0`
+    // would keep every other case above passing.
+    expect(toRef({ modelId: 'm1', expressId: 0 })).toBeNull();
+    // Regression guard: a real, valid express id must still pass.
+    expect(toRef({ modelId: 'm1', expressId: 1 })).toEqual({ modelId: 'm1', expressId: 1 });
+  });
 });
 
 describe('withAliases', () => {

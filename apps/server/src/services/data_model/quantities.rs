@@ -65,7 +65,8 @@ pub(super) fn extract_quantities(
 
 /// Extract a single quantity value from IfcPhysicalQuantity entity.
 /// Supports: IfcQuantityLength, IfcQuantityArea, IfcQuantityVolume,
-///           IfcQuantityCount, IfcQuantityWeight, IfcQuantityTime
+///           IfcQuantityCount, IfcQuantityWeight, IfcQuantityTime,
+///           IfcQuantityNumber
 fn extract_quantity_value(entity: &DecodedEntity) -> Option<Quantity> {
     // PERF: Use eq_ignore_ascii_case to avoid string allocation per comparison
     let ifc_type = entity.ifc_type.as_str();
@@ -83,6 +84,8 @@ fn extract_quantity_value(entity: &DecodedEntity) -> Option<Quantity> {
         "weight"
     } else if ifc_type.eq_ignore_ascii_case("IFCQUANTITYTIME") {
         "time"
+    } else if ifc_type.eq_ignore_ascii_case("IFCQUANTITYNUMBER") {
+        "number"
     } else {
         return None; // Not a recognized quantity type
     };

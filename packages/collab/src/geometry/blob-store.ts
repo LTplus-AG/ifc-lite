@@ -101,10 +101,16 @@ export class MemoryBlobStore implements BlobStore {
       contentType,
       uploadedAt: new Date().toISOString(),
     };
-    if (!this.blobs.has(hash)) {
-      // Defensive copy so callers can mutate `bytes` after put().
-      this.blobs.set(hash, { bytes: new Uint8Array(bytes), meta });
-    }
+    const existing = this.blobs.get(hash);
+    // Always store the fresh meta, even on a re-put of already-known content:
+    // blob-gc's race protection (see blob-gc-worker.ts) relies on a re-PUT
+    // refreshing the upload timestamp, and both other backends (IndexedDB
+    // `put()`, and the HTTP server's own PUT semantics) already do this —
+    // only this in-memory store used to keep the FIRST put's timestamp
+    // forever, so a blob re-referenced long after its original upload read
+    // back as old enough to sweep. The bytes are identical (same hash), so
+    // reuse the already-stored copy instead of paying for another one.
+    this.blobs.set(hash, { bytes: existing ? existing.bytes : new Uint8Array(bytes), meta });
     return meta;
   }
   async get(hash: BlobHash): Promise<Uint8Array | null> {

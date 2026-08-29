@@ -125,6 +125,40 @@ describe('EmbedViewer: postMessage bridge survives React.StrictMode', () => {
 });
 
 /**
+ * SET_THEME's `bg` field (packages/embed-protocol) is sent by the SDK
+ * (embed-sdk's `setTheme(theme, bg)`) but, before this fix, was read into
+ * handler.ts's `case 'SET_THEME'` payload and never applied anywhere. The
+ * capability itself already existed via the `?bg=` URL param, which drives
+ * `customBg` in EmbedViewer.tsx's root `<div>` background style -- this test
+ * proves the runtime SET_THEME path now reaches that same rendered style,
+ * not just that some function got called.
+ */
+describe('EmbedViewer: SET_THEME bg overrides the rendered background', () => {
+  it('applies bg from a runtime SET_THEME command to the root div background', () => {
+    const container = renderEmbedViewer();
+    const root = container.firstElementChild as HTMLElement;
+
+    // Baseline: light theme's default background, no custom bg yet.
+    expect(root.style.background).toContain('#ffffff');
+
+    dispatchInbound({ type: 'SET_THEME', data: { theme: 'light', bg: '112233' } });
+
+    expect(root.style.background).toContain('#112233');
+  });
+
+  it('a later SET_THEME without bg does not clear a previously-set background', () => {
+    const container = renderEmbedViewer();
+    const root = container.firstElementChild as HTMLElement;
+
+    dispatchInbound({ type: 'SET_THEME', data: { theme: 'light', bg: 'aabbcc' } });
+    expect(root.style.background).toContain('#aabbcc');
+
+    dispatchInbound({ type: 'SET_THEME', data: { theme: 'dark' } });
+    expect(root.style.background).toContain('#aabbcc');
+  });
+});
+
+/**
  * SECTION_CHANGED is a declared OutboundEventType (packages/embed-protocol)
  * that packages/embed-sdk exposes to host pages as 'section-changed'. The
  * SDK's own test (events-lifecycle.test.ts) only proves the SDK's listener

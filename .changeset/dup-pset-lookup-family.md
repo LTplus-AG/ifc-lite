@@ -17,4 +17,6 @@ Affected symptoms, now fixed:
 - Editing a quantity whose base value lived on a second same-named quantity set recorded the wrong "old value" and the wrong create-vs-update classification, which undo relied on.
 - Deleting a property or quantity set that the entity carried twice under the same name removed only the first one's members: the panel showed the whole set gone while the exported file still carried the second one's properties.
 
-All of these now check every same-named set, not just the first, before deciding a property or quantity is absent.
+All of these now scan every same-named set, not just the first, before deciding a property or quantity is absent.
+
+Which member they then use is still first-match, and that is the remaining gap: when two same-named sets both carry the property, only the first one's value is read. Emitting one cell wants exactly that, but a filter does not -- `ifc-lite query --where Pset_WallCommon.FireRating=REI60` still drops a wall whose first `Pset_WallCommon` says `REI30` and whose second says `REI60`. That behaviour predates this change and is tracked in #3490.

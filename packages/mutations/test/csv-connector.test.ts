@@ -229,6 +229,122 @@ describe('CsvConnector.generateMutations', () => {
 });
 
 /**
+ * A malformed numeric cell ("N/A", blank after trim, or any non-numeric
+ * text) fell through `parseFloat(value) || 0` / `parseInt(value, 10) || 0`.
+ * `NaN || 0` is `0`, so a dirty CSV column silently wrote a real `0`
+ * mutation — indistinguishable from a legitimately-imported zero — instead
+ * of being skipped and reported, which is exactly what the sibling
+ * ExpressId matcher above already does with an `isNaN` guard (see 'matches
+ * by ExpressId, parsing the numeric column').
+ */
+describe('CsvConnector.generateMutations: malformed numeric cells', () => {
+  it('does not write 0 for a non-numeric Real cell; skips the mutation instead', () => {
+    const { connector, view } = makeConnector([
+      { expressId: 1, globalId: 'guid-a', name: 'Wall A' },
+    ]);
+
+    const mapping: DataMapping = {
+      matchStrategy: { type: 'globalId', column: 'GlobalId' },
+      propertyMappings: [
+        {
+          sourceColumn: 'Transmittance',
+          targetPset: 'Pset_WallCommon',
+          targetProperty: 'ThermalTransmittance',
+          valueType: PropertyValueType.Real,
+        },
+      ],
+    };
+
+    const rows = connector.parse('GlobalId,Transmittance\nguid-a,N/A');
+    const matches = connector.match(rows, mapping);
+    const mutations = connector.generateMutations(matches, mapping);
+
+    expect(mutations).toEqual([]);
+    expect(view.getPropertyValue(1, 'Pset_WallCommon', 'ThermalTransmittance')).toBeNull();
+  });
+
+  it('does not write 0 for a non-numeric Integer cell; skips the mutation instead', () => {
+    const { connector, view } = makeConnector([
+      { expressId: 1, globalId: 'guid-a', name: 'Wall A' },
+    ]);
+
+    const mapping: DataMapping = {
+      matchStrategy: { type: 'globalId', column: 'GlobalId' },
+      propertyMappings: [
+        {
+          sourceColumn: 'FloorCount',
+          targetPset: 'Pset_BuildingCommon',
+          targetProperty: 'NumberOfStoreys',
+          valueType: PropertyValueType.Integer,
+        },
+      ],
+    };
+
+    const rows = connector.parse('GlobalId,FloorCount\nguid-a,TBD');
+    const matches = connector.match(rows, mapping);
+    const mutations = connector.generateMutations(matches, mapping);
+
+    expect(mutations).toEqual([]);
+    expect(view.getPropertyValue(1, 'Pset_BuildingCommon', 'NumberOfStoreys')).toBeNull();
+  });
+
+  it('still writes a genuine 0 for Real and Integer cells', () => {
+    const { connector, view } = makeConnector([
+      { expressId: 1, globalId: 'guid-a', name: 'Wall A' },
+    ]);
+
+    const mapping: DataMapping = {
+      matchStrategy: { type: 'globalId', column: 'GlobalId' },
+      propertyMappings: [
+        {
+          sourceColumn: 'Transmittance',
+          targetPset: 'Pset_WallCommon',
+          targetProperty: 'ThermalTransmittance',
+          valueType: PropertyValueType.Real,
+        },
+        {
+          sourceColumn: 'FloorCount',
+          targetPset: 'Pset_BuildingCommon',
+          targetProperty: 'NumberOfStoreys',
+          valueType: PropertyValueType.Integer,
+        },
+      ],
+    };
+
+    const rows = connector.parse('GlobalId,Transmittance,FloorCount\nguid-a,0,0');
+    const matches = connector.match(rows, mapping);
+    const mutations = connector.generateMutations(matches, mapping);
+
+    expect(mutations).toHaveLength(2);
+    expect(view.getPropertyValue(1, 'Pset_WallCommon', 'ThermalTransmittance')).toBe(0);
+    expect(view.getPropertyValue(1, 'Pset_BuildingCommon', 'NumberOfStoreys')).toBe(0);
+  });
+
+  it('reports a warning through import() stats instead of failing silently', () => {
+    const { connector } = makeConnector([
+      { expressId: 1, globalId: 'guid-a', name: 'Wall A' },
+    ]);
+
+    const mapping: DataMapping = {
+      matchStrategy: { type: 'globalId', column: 'GlobalId' },
+      propertyMappings: [
+        {
+          sourceColumn: 'Transmittance',
+          targetPset: 'Pset_WallCommon',
+          targetProperty: 'ThermalTransmittance',
+          valueType: PropertyValueType.Real,
+        },
+      ],
+    };
+
+    const stats = connector['import']('GlobalId,Transmittance\nguid-a,N/A', mapping);
+
+    expect(stats.mutationsCreated).toBe(0);
+    expect(stats.warnings.some((w) => w.includes('Transmittance'))).toBe(true);
+  });
+});
+
+/**
  * github.com/LTplus-AG/ifc-lite/issues/2765: replacing the Boolean/Logical
  * parse branch with `return false` left 172 tests green. Every truthy spelling
  * a checkbox column can carry silently became false, and the only production

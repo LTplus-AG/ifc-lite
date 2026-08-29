@@ -16,6 +16,16 @@ import type { Mutation, PropertyValue } from './types.js';
 import { checkMutationGuard, type MutationGuard } from './mutation-guard.js';
 
 /**
+ * Sentinel returned by {@link CsvConnector.parseValue} for a Real/Integer
+ * cell that isn't a number at all ("N/A", "TBD", ...). `parseFloat`/
+ * `parseInt` return `NaN` for these, and `NaN || 0` is `0` — coercing a
+ * dirty column straight to a real `0` mutation, indistinguishable from a
+ * genuinely-imported zero. `generateMutations` checks for this sentinel and
+ * skips the cell (with a warning) instead of writing the fabricated value.
+ */
+const PARSE_INVALID = Symbol('csv-parse-invalid');
+
+/**
  * A parsed CSV row
  */
 export interface CsvRow {
@@ -250,9 +260,14 @@ export class CsvConnector {
   }
 
   /**
-   * Generate mutations from matched data
+   * Generate mutations from matched data.
+   *
+   * `warnings`, when passed, collects one message per skipped cell — a
+   * malformed Real/Integer value (see {@link parseValue}) that would
+   * otherwise have silently written `0`. Optional and additive: existing
+   * callers that only want the mutation list are unaffected.
    */
-  generateMutations(matches: MatchResult[], mapping: DataMapping): Mutation[] {
+  generateMutations(matches: MatchResult[], mapping: DataMapping, warnings?: string[]): Mutation[] {
     checkMutationGuard(this.canEdit);
     const mutations: Mutation[] = [];
 
@@ -267,6 +282,15 @@ export class CsvConnector {
           const value = propMapping.transform
             ? propMapping.transform(rawValue)
             : this.parseValue(rawValue, propMapping.valueType);
+
+          if (value === PARSE_INVALID) {
+            warnings?.push(
+              `Row ${match.rowIndex}: could not parse "${rawValue}" in column ` +
+                `"${propMapping.sourceColumn}" as ${PropertyValueType[propMapping.valueType]} ` +
+                `for ${propMapping.targetPset}.${propMapping.targetProperty} — skipped`
+            );
+            continue;
+          }
 
           const mutation = this.mutationView.setProperty(
             entityId,
@@ -323,7 +347,7 @@ export class CsvConnector {
       }
 
       // Generate and apply mutations
-      const mutations = this.generateMutations(matches, mapping);
+      const mutations = this.generateMutations(matches, mapping, stats.warnings);
       stats.mutationsCreated = mutations.length;
     } catch (error) {
       stats.errors.push(error instanceof Error ? error.message : 'Unknown error');
@@ -398,7 +422,7 @@ export class CsvConnector {
       let mutationCount = 0;
       for (let i = 0; i < allMatches.length; i += batchSize) {
         const batch = allMatches.slice(i, i + batchSize);
-        const mutations = this.generateMutations(batch, mapping);
+        const mutations = this.generateMutations(batch, mapping, stats.warnings);
         mutationCount += mutations.length;
 
         const applyProgress = Math.min(i + batchSize, allMatches.length) / allMatches.length;
@@ -473,15 +497,22 @@ export class CsvConnector {
   }
 
   /**
-   * Parse a string value to the appropriate type
+   * Parse a string value to the appropriate type. Returns {@link PARSE_INVALID}
+   * for a Real/Integer cell that doesn't parse as a number at all — the
+   * caller (`generateMutations`) must check for it and skip the cell rather
+   * than writing the sentinel through as a property value.
    */
-  private parseValue(value: string, type: PropertyValueType): PropertyValue {
+  private parseValue(value: string, type: PropertyValueType): PropertyValue | typeof PARSE_INVALID {
     switch (type) {
-      case PropertyValueType.Real:
-        return parseFloat(value) || 0;
+      case PropertyValueType.Real: {
+        const parsed = parseFloat(value);
+        return Number.isNaN(parsed) ? PARSE_INVALID : parsed;
+      }
 
-      case PropertyValueType.Integer:
-        return parseInt(value, 10) || 0;
+      case PropertyValueType.Integer: {
+        const parsed = parseInt(value, 10);
+        return Number.isNaN(parsed) ? PARSE_INVALID : parsed;
+      }
 
       case PropertyValueType.Boolean:
       case PropertyValueType.Logical:

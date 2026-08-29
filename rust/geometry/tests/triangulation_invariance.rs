@@ -873,16 +873,18 @@ fn watertightness_census_and_triangulator_invariance() {
     assert!(
         diff.regressed.is_empty(),
         "{} host(s) regressed against the pinned golden (GATE 2, production \
-         triangulator only; this is NOT by itself a triangulator-invariance \
-         failure). Check each reason below: only one reading \"newly depends on \
-         the triangulator's diagonal choice\" is GATE 1 (invariance) surfacing \
-         here — compare it against \"non-invariant : {} vs {}\" printed above; \
-         if those two numbers are equal, the triangulators still agree exactly \
-         and every host below regressed for an unrelated reason (triangle count, \
-         collapse, or classification):\n{}",
+         triangulator only; a regression here is NOT by itself a \
+         triangulator-invariance failure). ONE rule decides which gate fired, \
+         and it is per host: read the reasons below. A host whose reason reads \
+         \"newly depends on the triangulator's diagonal choice\" is GATE 1 \
+         (invariance) surfacing through this gate; a host carrying only other \
+         reasons (triangle count, collapse, classification) is gate 2 alone. \
+         The \"non-invariant : run vs golden\" totals printed above cannot \
+         answer this and are not a shortcut past the reasons: one host healing \
+         while another newly diverges leaves that pair EQUAL with a gate-1 host \
+         listed right below, and a host that was added or went missing this run \
+         moves the pair with no regression at all:\n{}",
         diff.regressed.len(),
-        run.non_invariant,
-        expected.non_invariant,
         fmt_deltas(&diff.regressed)
     );
 

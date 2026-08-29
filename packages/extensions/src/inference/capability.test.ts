@@ -41,6 +41,24 @@ describe('inferCapabilities — viewer methods', () => {
     expect(inferCapabilities('bim.viewer.isolate(ids);').capabilities).toContain('viewer.isolate');
   });
 
+  // `colorizeAll`, `resetColors`, and `resetVisibility` are real bridge
+  // methods (packages/sandbox/src/bridge-viewer.ts) that mutate viewer
+  // state exactly like `colorize`/`isolate` do. The catalogue's module doc
+  // says it is kept in sync with that schema, and design rule #2 above
+  // ("Never under-grant") forbids a mutating call resolving to the
+  // read-only default.
+  it('colorizeAll → viewer.colorize (not the viewer.read default)', () => {
+    expect(inferCapabilities('bim.viewer.colorizeAll([]);').capabilities).toContain('viewer.colorize');
+  });
+
+  it('resetColors → viewer.colorize (not the viewer.read default)', () => {
+    expect(inferCapabilities('bim.viewer.resetColors();').capabilities).toContain('viewer.colorize');
+  });
+
+  it('resetVisibility → viewer.isolate (not the viewer.read default)', () => {
+    expect(inferCapabilities('bim.viewer.resetVisibility();').capabilities).toContain('viewer.isolate');
+  });
+
   it('setSection → viewer.section', () => {
     expect(inferCapabilities('bim.viewer.setSection({});').capabilities).toContain('viewer.section');
   });

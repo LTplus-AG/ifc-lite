@@ -6,7 +6,7 @@ Correction to the `6.0.0` entry for [#2987](https://github.com/LTplus-AG/ifc-lit
 
 > `ifc_lite_core::encode_ifc_string` already implemented the correct directive encoding. This change reimplements that encoding inline in the writer rather than calling it, so the two now agree but remain separate code paths.
 
-That is false. `ifc_lite_export::step_text::escape` and `ifc_lite_core::encode_ifc_string` diverge on four character classes: the apostrophe, the reverse solidus, control characters, and everything in U+0080..U+00FF — which together are the population #2987 was about. They agree on the rest of printable ASCII, and above U+00FF, where both take the same `\X2\`/`\X4\` directive form. Measured on current `main` (`rust/export/src/step_text.rs::escape` vs `rust/core/src/step_encoding.rs::encode_ifc_string`):
+That is false. `ifc_lite_export::step_text::escape` and `ifc_lite_core::encode_ifc_string` diverge on four character classes: the apostrophe, the reverse solidus, control characters (the C0 range plus DEL), and everything in U+0080..U+00FF. Only the last of those four is part of the non-ASCII population #2987 was about; the other three are ASCII, and the CJK and emoji that entry names agree exactly. They agree on the rest of printable ASCII, and everywhere above U+00FF, where both take the same `\X2\`/`\X4\` directive form. Measured on current `main` (`rust/export/src/step_text.rs::escape` vs `rust/core/src/step_encoding.rs::encode_ifc_string`):
 
 | input | `step_text::escape` | `encode_ifc_string` |
 |---|---|---|
@@ -20,7 +20,7 @@ Swept over U+0000..U+02FF, comparing the two functions on every single-character
 | range | differ |
 |---|---|
 | printable ASCII U+0020..U+007E | 2 of 95 — exactly `'` (U+0027) and `\` (U+005C) |
-| control characters U+0000..U+001F | 32 of 32 |
+| control characters U+0000..U+001F and DEL U+007F | 33 of 33 |
 | U+0080..U+00FF | 128 of 128 |
 | U+0100..U+02FF | 0 of 512 |
 

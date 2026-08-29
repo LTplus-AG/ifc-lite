@@ -6,7 +6,7 @@ Correction to the `6.0.0` entry for [#2987](https://github.com/LTplus-AG/ifc-lit
 
 > `ifc_lite_core::encode_ifc_string` already implemented the correct directive encoding. This change reimplements that encoding inline in the writer rather than calling it, so the two now agree but remain separate code paths.
 
-That is false. `ifc_lite_export::step_text::escape` and `ifc_lite_core::encode_ifc_string` disagree on every input below U+0100 — the exact population #2987 was about — and only agree above U+00FF, where both take the same `\X2\`/`\X4\` directive form. Measured on current `main` (`rust/export/src/step_text.rs::escape` vs `rust/core/src/step_encoding.rs::encode_ifc_string`):
+That is false. `ifc_lite_export::step_text::escape` and `ifc_lite_core::encode_ifc_string` diverge on four character classes: the apostrophe, the reverse solidus, control characters, and everything in U+0080..U+00FF — which together are the population #2987 was about. They agree on the rest of printable ASCII, and above U+00FF, where both take the same `\X2\`/`\X4\` directive form. Measured on current `main` (`rust/export/src/step_text.rs::escape` vs `rust/core/src/step_encoding.rs::encode_ifc_string`):
 
 | input | `step_text::escape` | `encode_ifc_string` |
 |---|---|---|
@@ -14,6 +14,17 @@ That is false. `ifc_lite_export::step_text::escape` and `ifc_lite_core::encode_i
 | TAB (U+0009) | ` ` (one space) | `\X\09` |
 | `\` (U+005C) | `\\` (doubled) | `\X\5C` |
 | `Ä` (U+00C4) | `\X2\00C4\X0\` | `\X\C4` |
+
+Swept over U+0000..U+02FF, comparing the two functions on every single-character input:
+
+| range | differ |
+|---|---|
+| printable ASCII U+0020..U+007E | 2 of 95 — exactly `'` (U+0027) and `\` (U+005C) |
+| control characters U+0000..U+001F | 32 of 32 |
+| U+0080..U+00FF | 128 of 128 |
+| U+0100..U+02FF | 0 of 512 |
+
+One branch accounts for the Latin-1 block: `encode_ifc_string` has an `else if cp <= 0xFF { \X\{cp:02X} }` arm that `escape` does not, so the whole supplement takes a different directive form.
 
 `encode_ifc_string` also never doubles the apostrophe, so its output is not safe to embed as a STEP string literal body.
 

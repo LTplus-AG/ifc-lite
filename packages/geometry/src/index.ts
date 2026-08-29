@@ -474,7 +474,7 @@ export class GeometryProcessor {
         );
         // Loop, not `push(...batch)`: spreading passes one ARGUMENT per mesh,
         // and past V8's ~65k argument ceiling that throws RangeError "Maximum
-        // call stack size exceeded" — real models (~110k meshes) hit it.
+        // call stack size exceeded" — Holter Tower (~110k meshes) hits it.
         const batch = convertMeshCollectionToBatch(collection);
         for (let i = 0; i < batch.length; i++) meshes.push(batch[i]);
       }

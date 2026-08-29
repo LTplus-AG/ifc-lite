@@ -125,13 +125,17 @@ export interface AnonymizeOptions {
   /** Replace `Name`/`LongName`/`Description`/`Tag` on every exported
    *  `IfcRoot` with a `<IfcType>-<n>` pseudonym. Default `true`. */
   pseudonymizeNames?: boolean;
-  /** Also pseudonymize names OUTSIDE the `IfcRoot` text fields: `ObjectType`
-   *  and `IfcProject.Phase` on roots, and every quoted-string `Name` /
-   *  `Description` / `LongName` / `ProfileName` / `LayerSetName` on
-   *  non-`IfcRoot` entities (`IfcSurfaceStyle`, `IfcMaterial*`,
-   *  `IfcPresentationLayerAssignment`, `IfcProfileDef`, `IfcColourRgb`, …).
+  /** Also pseudonymize names OUTSIDE the `IfcRoot` text fields: `ObjectType`,
+   *  `IfcTypeObject.ApplicableOccurrence`, `IfcElementType.ElementType` and
+   *  `IfcProject.Phase` on roots, and every quoted-string `Name` /
+   *  `Description` / `LongName` / `ProfileName` / `LayerSetName` / `Category`
+   *  (`IfcMaterial`, `IfcMaterialLayer`) on non-`IfcRoot` entities
+   *  (`IfcSurfaceStyle`, `IfcMaterial*`, `IfcPresentationLayerAssignment`,
+   *  `IfcProfileDef`, `IfcColourRgb`, …).
    *  A surface style called after the building it belongs to identifies the
-   *  project as surely as `IfcProject.Name` does. Enum-valued `Name`s
+   *  project as surely as `IfcProject.Name` does, and `ElementType` is the
+   *  type-side twin of `ObjectType`, carrying the same authored text
+   *  ("Basic Wall: <project> Exterior 300"). Enum-valued `Name`s
    *  (`IfcSIUnit.Name = .METRE.`) are never touched, nor are property /
    *  quantity names (schema semantics, only present under `keepPropertySets`)
    *  or `IfcApplication`. Default `true`; independent of `pseudonymizeNames`. */

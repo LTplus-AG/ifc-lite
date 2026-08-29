@@ -540,10 +540,12 @@ intended common case:
 The authoring tool's *name* is kept by decision (it is debugging signal) but
 its version/build string is not — vendors embed the licence region there
 (`26.0.0 NOR FULL`). Property/quantity *names* are kept whenever
-`keepPropertySets` is on; property/quantity *values* are never scrubbed, kept
-or dropped — a kept pset carries them exactly as authored. Those are the
-residual leak surface; review a file before sharing it externally, and never
-name the download after the source model.
+`keepPropertySets` is on; property/quantity *values* are never scrubbed,
+whether the pset is kept or dropped — a kept pset carries them exactly as
+authored, and a dropped one takes its values out of the file with it. The
+tool name and a kept pset's values are the residual leak surface; review a
+file before sharing it externally, and never name the download after the
+source model.
 
 The `IfcPropertySet`/`IfcElementQuantity` drop holds for `includedIds`
 regardless of how it was built — `collectRelatedEntities`'s

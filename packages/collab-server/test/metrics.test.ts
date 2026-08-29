@@ -48,6 +48,49 @@ describe('metrics', () => {
     await handle.stop();
   });
 
+  it('drops a room from collab_room_peers once it unloads, instead of reporting a stale peer count forever', async () => {
+    // Room ids are peer-chosen (the websocket URL path) and the /metrics
+    // scrape refreshes the gauge only for CURRENTLY loaded rooms
+    // (`for (const s of stats) peersGauge.set(...)` in server.ts). Nothing
+    // ever removes a label for a room that has since unloaded, so a room a
+    // peer visited once keeps reporting its last-seen peer count forever —
+    // wrong (stale, non-zero) data on a scrape that is supposed to reflect
+    // live state, and unbounded growth of the metrics registry over the
+    // life of a long-running server.
+    const handle = await startCollabServer({
+      port: 0,
+      persistence: new MemoryPersistence(),
+      idleUnloadMs: 10,
+    });
+    const port = (handle.httpServer.address() as { port: number }).port;
+    try {
+      const room = await handle.roomManager.getOrCreate('ghost-room');
+      const conn = {
+        ws: { readyState: 1, OPEN: 1, send: () => {}, close: () => {}, terminate: () => {} } as unknown as import('ws').WebSocket,
+        principal: { userId: 'u', role: 'editor' as const },
+        awarenessClients: new Set<number>(),
+      };
+      room.addConnection(conn);
+
+      // First scrape: the room is loaded with one peer, so it is reported.
+      let body = await (await fetch(`http://127.0.0.1:${port}/metrics`)).text();
+      expect(body).toContain('collab_room_peers{room="ghost-room"} 1');
+
+      // The peer leaves and the room goes idle long enough to unload.
+      room.removeConnection(conn);
+      await new Promise((r) => setTimeout(r, 30));
+      const dropped = await handle.roomManager.sweepIdle();
+      expect(dropped).toContain('ghost-room');
+      expect(handle.roomManager.list()).not.toContain('ghost-room');
+
+      // The room is gone; the scrape must not keep claiming it has a peer.
+      body = await (await fetch(`http://127.0.0.1:${port}/metrics`)).text();
+      expect(body).not.toContain('room="ghost-room"');
+    } finally {
+      await handle.stop();
+    }
+  });
+
   it('gated /metrics refuses hostile bearer shapes without crashing', async () => {
     // The digest-based comparison must behave identically for empty, huge,
     // and multi-byte presented tokens: never throw (raw timingSafeEqual

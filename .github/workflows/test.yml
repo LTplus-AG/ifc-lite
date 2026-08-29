@@ -826,6 +826,18 @@ jobs:
       # block / zero derived inputs must FAIL rather than report clean.
       - name: Check CI path-coverage gate regressions
         run: node --test scripts/check-ci-path-coverage.test.mjs
+      # Same class as the gate above (#3452), for a case it cannot see: its
+      # own scan only recognises gates invoked as a literal `node
+      # scripts/*.mjs` in a `run:` step, and sdk-canary.yml's job is `pnpm
+      # turbo build` + `node packages/cli/dist/index.js ext test` -- no gate
+      # script at all. This instead derives the FULL transitive
+      # workspace-dependency closure `turbo build` walks from the real
+      # package.json graph and fails when sdk-canary.yml's own `paths:`
+      # filter does not cover all of it.
+      - name: Check SDK canary path coverage
+        run: node scripts/check-sdk-canary-coverage.mjs
+      - name: Check SDK canary path-coverage gate regressions
+        run: node --test scripts/check-sdk-canary-coverage.test.mjs
       # The CSV cell escaper reached NINE hand-rolled copies and no two were
       # identical: some tested the formula trigger anchored at offset 0 (so a
       # BOM/ZWSP/LRM/NBSP/U+2028 in front of `=` bypassed the CWE-1236 guard),

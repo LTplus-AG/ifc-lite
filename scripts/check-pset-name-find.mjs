@@ -33,6 +33,8 @@
  * required: a lone `.find(...name === ...)` on some OTHER unique-by-
  * construction list (`ifc4-pset-definitions.ts`'s definition table,
  * `COMMON_SCALES`, an enum lookup) has no second step and does not match.
+ * Either callback's parameter may carry a type annotation -- `(p: any) =>`
+ * and `(p: PropertySet) =>` read as the same defect as `p =>`.
  *
  * WHAT THIS DOES NOT CATCH:
  *  - A `for` loop that scans every same-named set before giving up (the
@@ -57,6 +59,17 @@
  *    contains X" is a fundamentally different risk than a resolution path
  *    real callers depend on, and this shape is common, legitimate assertion
  *    code there (build one pset, `.find` it, check a field).
+ *  - Any `.find` callback that is not `<param> => <param>.name ===` with a
+ *    single, optionally type-annotated identifier parameter: a destructured
+ *    parameter (`({ name }) => name === x`), a block body (`p => { return
+ *    p.name === x; }`), `==` instead of `===`, or a named function passed
+ *    by reference. This one is worth stating plainly because the gate was
+ *    already caught by it once: as first written it required a BARE
+ *    identifier, so every `(p: any) =>` site in packages/cli's query and
+ *    export commands sat unflagged through the PR that added the gate and
+ *    converted every other call site. A regex over callback text has no
+ *    way to notice which spellings it is blind to -- only writing the
+ *    variant down as a fixture does.
  * This is a deliberately NARROW pattern match, not a type-aware analysis:
  * it is scoped to catch the exact shape that has recurred, and prefers
  * missing a disguised instance over crying wolf on legitimate code.
@@ -117,14 +130,31 @@ function looksRisky(varName) {
 /** How many logical lines forward to look for the second `.find` when it isn't chained inline. */
 const WINDOW = 6;
 
-const FIND_NAME_RE = /\.find\(\s*\(?(\w+)\)?\s*=>\s*\1\.name\s*===/;
+/**
+ * `.find(<param> => <param>.name ===` — the single fragment every pattern
+ * below is built from, so widening it widens all three at once rather than
+ * two of three. `group` numbers the parameter's capture group so the
+ * back-reference stays correct wherever the fragment is embedded.
+ *
+ * The parameter may carry a TYPE ANNOTATION: `(p: any) => p.name ===` and
+ * `(p: PropertySet) => p.name ===` are the same defect as `p => p.name ===`,
+ * but an identifier-only pattern misses them silently. That is not
+ * hypothetical — it is how `packages/cli/src/commands/export.ts` sat
+ * unflagged through the very PR that added this gate and converted every
+ * other call site.
+ */
+function findNameFragment(group) {
+  return `\\.find\\(\\s*\\(?\\s*(\\w+)\\s*(?::[^)\\n]+)?\\s*\\)?\\s*=>\\s*\\${group}\\.name\\s*===`;
+}
+
+const FIND_NAME_RE = new RegExp(findNameFragment(1));
 
 /**
  * Same-line (post continuation-merge) chain:
  * `sets.find(p => p.name === x)?.properties.find(p => p.name === y)`.
  */
 const CHAIN_RE = new RegExp(
-  `(\\w+)${'\\.find\\(\\s*\\(?(\\w+)\\)?\\s*=>\\s*\\2\\.name\\s*==='}[^;\\n]*?\\?\\.\\s*(properties|quantities)\\.find\\(\\s*\\(?(\\w+)\\)?\\s*=>\\s*\\4\\.name\\s*===`,
+  `(\\w+)${findNameFragment(2)}[^;\\n]*?\\?\\.\\s*(properties|quantities)${findNameFragment(4)}`,
 );
 
 function safeIsDir(path) {
@@ -188,7 +218,7 @@ export function scanText(rel, text, { knownUnfixed = KNOWN_UNFIXED } = {}) {
     if (!looksRisky(setsVar)) continue;
 
     const innerRe = new RegExp(
-      `${psetVar}\\??\\.(properties|quantities)\\??\\.find\\(\\s*\\(?(\\w+)\\)?\\s*=>\\s*\\2\\.name\\s*===`,
+      `${psetVar}\\??\\.(properties|quantities)\\??${findNameFragment(2)}`,
     );
     for (let j = i + 1; j < Math.min(merged.length, i + 1 + WINDOW); j += 1) {
       if (innerRe.test(merged[j].text)) {

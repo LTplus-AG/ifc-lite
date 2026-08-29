@@ -10,6 +10,7 @@
  * classifications, attributes, relationships, type properties.
  */
 
+import { findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';
 import { createHeadlessContext } from '../loader.js';
 import { printJson, getFlag, hasFlag, fatal, validateLimit } from '../output.js';
 import { STANDARD_QTO_MAP, sortEntities } from './query-aggregation.js';
@@ -76,24 +77,18 @@ export function applyWhereFilter(entities: any[], parsed: ReturnType<typeof pars
   return entities.filter(e => {
     // First try property sets
     const props = bim.properties(e.ref);
-    const pset = props.find((p: any) => p.name === parsed.psetName);
-    if (pset) {
-      const prop = pset.properties.find((p: any) => p.name === parsed.propName);
-      if (prop) {
-        if (parsed.operator === 'exists') return true;
-        return compareValues(prop.value, parsed.operator, parsed.value);
-      }
+    const prop = findPropertyInSets<any>(props, parsed.psetName, parsed.propName);
+    if (prop) {
+      if (parsed.operator === 'exists') return true;
+      return compareValues(prop.value, parsed.operator, parsed.value);
     }
 
     // B3: Also search quantity sets
     const qsets = bim.quantities(e.ref);
-    const qset = qsets.find((q: any) => q.name === parsed.psetName);
-    if (qset) {
-      const qty = qset.quantities.find((q: any) => q.name === parsed.propName);
-      if (qty) {
-        if (parsed.operator === 'exists') return true;
-        return compareValues(qty.value, parsed.operator, parsed.value);
-      }
+    const qty = findQuantityInSets<any>(qsets, parsed.psetName, parsed.propName);
+    if (qty) {
+      if (parsed.operator === 'exists') return true;
+      return compareValues(qty.value, parsed.operator, parsed.value);
     }
 
     return false;
@@ -330,8 +325,7 @@ export async function queryCommand(args: string[]): Promise<void> {
 
       for (const e of entities) {
         const psets = bim.properties(e.ref);
-        const pset = psets.find((p: any) => p.name === psetName);
-        const prop = pset?.properties?.find((p: any) => p.name === propName);
+        const prop = findPropertyInSets<any>(psets, psetName, propName);
         const val = prop?.value != null ? String(prop.value) : '(no value)';
         valueCounts.set(val, (valueCounts.get(val) ?? 0) + 1);
       }

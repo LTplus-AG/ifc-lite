@@ -13,6 +13,7 @@ Affected symptoms, now fixed:
 - MCP and CLI entity queries with a property filter (`where_property` / `query_entities` filters) could wrongly exclude a matching entity from the results, with no indication anything was omitted, if the filtered property lived on the entity's second same-named property set.
 - CSV/JSON export with a `Pset.Property` or `Qto.Quantity` column could emit an empty cell instead of the real value, for the same reason.
 - The viewer's advanced-filter query could likewise drop a matching entity from the result count/highlight.
+- `ifc-lite query`'s `--sort`, `--group-by` and `--unique` on a `Pset.Property` path, and `ifc-lite export`'s dotted columns, read only the first same-named set and so sorted, grouped, or exported a blank where a value existed.
 - Editing a quantity whose base value lived on a second same-named quantity set recorded the wrong "old value" and the wrong create-vs-update classification, which undo relied on.
 - Deleting a property or quantity set that the entity carried twice under the same name removed only the first one's members: the panel showed the whole set gone while the exported file still carried the second one's properties.
 

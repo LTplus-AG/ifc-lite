@@ -93,6 +93,49 @@ function getQty(baseQsets, qsetName, quantName) {
   assert.equal(r.ok, false);
 });
 
+test('flags the two-step shape when the callback parameter is TYPE-ANNOTATED', () => {
+  const r = check({
+    'packages/foo/src/a.ts': `
+function resolve(props: any, setName: string, propName: string) {
+  const pset = props.find((p: any) => p.name === setName);
+  if (pset) {
+    const prop = pset.properties.find((p: any) => p.name === propName);
+    if (prop?.value != null) return prop.value;
+  }
+  return null;
+}
+`,
+  });
+  assert.equal(r.ok, false);
+  assert.equal(r.violations.length, 1);
+});
+
+test('flags a type-annotated quantity lookup reached through optional chaining', () => {
+  const r = check({
+    'packages/foo/src/a.ts': `
+function resolve(qsets: QuantitySet[], setName: string, qtyName: string) {
+  const qset = qsets.find((q: QuantitySet) => q.name === setName);
+  const qty = qset?.quantities?.find((q: Quantity) => q.name === qtyName);
+  return qty?.value ?? null;
+}
+`,
+  });
+  assert.equal(r.ok, false);
+  assert.equal(r.violations.length, 1);
+});
+
+test('flags a same-line chain whose both callbacks are type-annotated', () => {
+  const r = check({
+    'packages/foo/src/a.ts': `
+function getProp(props: PropertySet[], setName: string, propName: string) {
+  return props.find((p: PropertySet) => p.name === setName)?.properties.find((p: Property) => p.name === propName)?.value ?? null;
+}
+`,
+  });
+  assert.equal(r.ok, false);
+  assert.equal(r.violations.length, 1);
+});
+
 test('does not flag a for-loop that scans every same-named set (the correct shape)', () => {
   const r = check({
     'packages/foo/src/a.ts': `
@@ -129,6 +172,19 @@ function findUser(users, id) {
   const user = users.find(u => u.name === id);
   if (!user) return null;
   const detail = user.properties.find(p => p.name === 'email');
+  return detail;
+}
+`,
+  });
+  assert.equal(r.ok, true);
+});
+
+test('a type-annotated parameter does not make a non-pset receiver risky', () => {
+  const r = check({
+    'packages/foo/src/lookup.ts': `
+function findUser(users: User[], id: string) {
+  const user = users.find((u: User) => u.name === id);
+  const detail = user?.properties?.find((p: Prop) => p.name === 'email');
   return detail;
 }
 `,

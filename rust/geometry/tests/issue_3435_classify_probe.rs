@@ -271,10 +271,16 @@ fn classify_open_edges(edges: &[((f64, f64, f64), (f64, f64, f64))]) -> (bool, S
         .collect();
     clusters.retain(|g| !g.is_empty());
 
-    // Per cluster: T-junction covering iff the longest edge's length equals
-    // the sum of every OTHER edge in the cluster (the sub-edges partition
-    // the long edge with no gap/overlap) within LEN_TOL, and the cluster has
-    // >= 2 edges (a lone unmatched edge is not "covered" by anything).
+    // Per cluster: T-junction covering iff the OTHER edges' merged intervals
+    // exactly span the longest edge's own interval -- no gap at either end and
+    // no double coverage -- and the cluster has >= 2 edges (a lone unmatched
+    // edge is not "covered" by anything).
+    //
+    // Intervals are merged rather than lengths summed. Summing was the earlier
+    // test and it accepts a set of sub-edges that overlap each other while
+    // leaving part of the long edge bare, since the surplus in one place
+    // cancels the shortfall in another. `overlap_slack` below exists to catch
+    // exactly that, and `#640479` is the host where the two tests disagree.
     let mut all_covered = true;
     let mut parts = Vec::new();
     for g in &clusters {

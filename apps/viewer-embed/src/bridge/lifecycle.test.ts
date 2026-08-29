@@ -101,6 +101,7 @@ function makeCtx(state: any) {
       triangles: 0,
       vertices: 0,
     }),
+    setBackgroundColor: () => {},
   };
 }
 

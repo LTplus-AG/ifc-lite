@@ -110,3 +110,25 @@ export function formatSignedTriple(
   };
   return `ΔX ${axis(p.x)}  ΔY ${axis(p.y)}  ΔZ ${axis(p.z)}`;
 }
+
+/**
+ * Format the Split tool's live "distance / length" hover readout, honoring
+ * the LENGTHUNIT display override (#1573) the same way every other
+ * measure-tool readout in this panel does.
+ *
+ * `SplitOverlay`'s guide-line label used to hardcode `${distance.toFixed(2)}
+ * / ${length.toFixed(2)} m` — the exact shape #2199's maintainer note (see
+ * this module's docstring) already found and fixed once for
+ * `formatDistance` itself: a user with a `ft` LENGTHUNIT override sees every
+ * other panel (Measure, Lists, Properties) convert, but the Split tool's
+ * live preview kept reporting raw, unconverted metres regardless. Both
+ * numbers share ONE unit (per {@link formatSignedTriple}'s convention), so
+ * only `length` prints the symbol.
+ */
+export function formatSplitHoverLabel(
+  distance: number,
+  length: number,
+  overrides: Record<string, string> = {},
+): string {
+  return `${formatDistanceMagnitude(distance, overrides)} / ${formatDistance(length, overrides)}`;
+}

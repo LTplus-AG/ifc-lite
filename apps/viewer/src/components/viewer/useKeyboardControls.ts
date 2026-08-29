@@ -125,18 +125,32 @@ export function useKeyboardControls(params: UseKeyboardControlsParams): void {
       if (e.key === '5') setViewAndRender('left');
       if (e.key === '6') setViewAndRender('right');
 
-      // Frame selection (F) - zoom to fit selection, or fit all if nothing selected
+      // Frame selection (F) - zoom to fit selection, or fit all if nothing
+      // selected. Delegates to `cameraCallbacks.frameSelection` — the SAME
+      // callback the toolbar/ribbon "Frame selection" button, search,
+      // hierarchy, properties, compare and clash all use — rather than
+      // reimplementing it: `frameSelection` unions the full multi-selection
+      // set (not just this hook's single `selectedEntityIdRef`) and resolves
+      // a geometry-less assembly to the aggregated parts that carry geometry
+      // (#1133) before giving up on bounds. A local reimplementation here
+      // would silently regain both bugs (Viewport.tsx documents #1133 at the
+      // `frameSelection` definition).
       if (e.key === 'f' || e.key === 'F') {
-        const selectedId = selectedEntityIdRef.current;
-        if (selectedId !== null) {
-          const bounds = getEntityBounds(geometryRef.current, selectedId);
-          if (bounds) {
-            camera.frameBounds(bounds.min, bounds.max, 300);
-          }
+        const state = useViewerStore.getState();
+        const hasSelection = state.selectedEntityIds.size > 0 || selectedEntityIdRef.current !== null;
+        if (hasSelection && state.cameraCallbacks.frameSelection) {
+          state.cameraCallbacks.frameSelection();
+        } else if (selectedEntityIdRef.current !== null) {
+          // No frameSelection callback registered (renderer not mounted) —
+          // fall back to the direct bounds lookup so the shortcut still does
+          // something rather than nothing.
+          const bounds = getEntityBounds(geometryRef.current, selectedEntityIdRef.current);
+          if (bounds) camera.frameBounds(bounds.min, bounds.max, 300);
+          calculateScale();
         } else {
           camera.zoomExtent(geometryBoundsRef.current.min, geometryBoundsRef.current.max, 300);
+          calculateScale();
         }
-        calculateScale();
       }
 
       // Home view (H) - reset to isometric

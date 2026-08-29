@@ -15,9 +15,9 @@
           "seed": 20260724,
           "family": "office",
           "entityCount": 548,
-          "fileSize": 28004,
+          "fileSize": 28008,
           "storeyCount": 1,
-          "sha256": "b18f6558f1a829385e300f4455fe7fe06eee5665e5755acbca6ca3806f08da33",
+          "sha256": "7fdb6b6032c6333baf071d6bb5d37a308b53debffdc4fad36d70119cea3f450e",
           "groundTruthTotals": {
             "slabCount": 1,
             "slabGrossArea": 214.212816,
@@ -83,7 +83,7 @@
           "spotlight": {
             "seed": 20260725,
             "family": "office",
-            "sha256": "32f5e361f234c94bf9c97c1ec9ced3f3aec195fd7e488c3b2101aaa2859fbaee",
+            "sha256": "6f3865669ffdde9fcb339d731c3f1c713842c1bd8351d20e1fe3eb0863a70f9e",
             "plantedDefects": [
               {
                 "type": "duplicate-globalid",
@@ -369,9 +369,9 @@
             }
           ],
           "optimumIfc": {
-            "bytes": 111197,
+            "bytes": 111201,
             "mappedElements": 74,
-            "sha256": "b4bc4bd689d28769f54593f9adf0b4c078a2c9e3ff18a233f82711cdc2e3dce7"
+            "sha256": "6a148d1031175f5949b26674f1cd746e57cc1905dbe30e1f0ed78319be9ce7ab"
           },
           "kernelValidation": {
             "worstElementRelDev": 0.000001675,
@@ -391,25 +391,25 @@
   },
   "volatile": {
     "note": "ONLY this block differs between runs: wall clocks and the timestamp. Everything under `deterministic` is a pure function of the master seed.",
-    "generatedAt": "2026-08-02T11:45:51.178Z",
+    "generatedAt": "2026-08-29T21:07:30.298Z",
     "nodeVersion": "v22.14.0",
-    "totalWallClockMs": 6698,
+    "totalWallClockMs": 6235,
     "actWallClockMs": {
-      "act1": 30,
-      "act2": 57,
-      "act3": 267,
-      "act4": 2488,
-      "act5": 3855
+      "act1": 32,
+      "act2": 55,
+      "act3": 244,
+      "act4": 2287,
+      "act5": 3615
     },
     "actVolatile": {
       "act2": {
-        "verifyMs": 2.755,
-        "tamperVerifyMs": 2.1
+        "verifyMs": 2.897,
+        "tamperVerifyMs": 2.15
       },
       "act4": {
-        "batteryElapsedMs": 2476.0827499999996
+        "batteryElapsedMs": 2279.123958
       }
     },
-    "artifactDir": "/var/folders/n2/jkb39p_x4md9jdv5hhzny6jc0000gn/T/ifc-lite-b35-demo"
+    "artifactDir": "/var/folders/nv/01qd6gt17wzcc99yqf12gr940000gn/T/ifc-lite-b35-demo"
   }
 }

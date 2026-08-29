@@ -1203,7 +1203,7 @@ ifc-lite convert model.ifc --schema IFC4 --out v4.ifc
 ifc-lite diff model.ifc v4.ifc --json
 
 # Look up bSDD data for wall types
-ifc-lite bsdd psets IfcWall | jq '.["Pset_WallCommon"]'
+ifc-lite bsdd psets IfcWall --json | jq '.["Pset_WallCommon"]'
 ```
 
 ## Using with LLM Terminals

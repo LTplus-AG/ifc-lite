@@ -41,6 +41,24 @@ describe('inferCapabilities — viewer methods', () => {
     expect(inferCapabilities('bim.viewer.isolate(ids);').capabilities).toContain('viewer.isolate');
   });
 
+  // `colorizeAll`, `resetColors`, and `resetVisibility` are real bridge
+  // methods (packages/sandbox/src/bridge-viewer.ts) that mutate viewer
+  // state exactly like `colorize`/`isolate` do. The catalogue's module doc
+  // says it is kept in sync with that schema, and design rule #2 above
+  // ("Never under-grant") forbids a mutating call resolving to the
+  // read-only default.
+  it('colorizeAll → viewer.colorize (not the viewer.read default)', () => {
+    expect(inferCapabilities('bim.viewer.colorizeAll([]);').capabilities).toContain('viewer.colorize');
+  });
+
+  it('resetColors → viewer.colorize (not the viewer.read default)', () => {
+    expect(inferCapabilities('bim.viewer.resetColors();').capabilities).toContain('viewer.colorize');
+  });
+
+  it('resetVisibility → viewer.isolate (not the viewer.read default)', () => {
+    expect(inferCapabilities('bim.viewer.resetVisibility();').capabilities).toContain('viewer.isolate');
+  });
+
   it('setSection → viewer.section', () => {
     expect(inferCapabilities('bim.viewer.setSection({});').capabilities).toContain('viewer.section');
   });
@@ -59,6 +77,26 @@ describe('inferCapabilities — mutation patterns', () => {
 
   it('bim.create.* → model.create', () => {
     expect(inferCapabilities('bim.create.project({});').capabilities).toContain('model.create');
+  });
+
+  // `bim.store.*` (packages/sandbox/src/bridge-store.ts) is document-level
+  // edits, not reads — the namespace has no read-only methods at all. The
+  // catalogue's own default for the namespace is `model.read`, which is
+  // safe only for an untargeted `bim.store` reference; every real method
+  // must have an explicit override or it silently under-grants.
+  it('bim.store.addWall → model.create', () => {
+    const r = inferCapabilities('bim.store.addWall("m1", 5, {});');
+    expect(r.capabilities).toContain('model.create');
+  });
+
+  it('bim.store.removeEntity → model.delete', () => {
+    const r = inferCapabilities('bim.store.removeEntity(ref);');
+    expect(r.capabilities).toContain('model.delete');
+  });
+
+  it('bim.store.setPositionalAttribute → model.mutate:*', () => {
+    const r = inferCapabilities('bim.store.setPositionalAttribute(ref, 3, 42);');
+    expect(r.capabilities).toContain('model.mutate:*');
   });
 
   it('bim.model.loadIfc → model.create (loads a new document, not a read)', () => {

@@ -218,3 +218,101 @@ describe('#3338: useIDS isolate actuators route ids through resolveHighlightIds'
     assert.deepEqual(isolated(), null, 'a resolver that genuinely resolves to [] must leave isolatedEntities exactly as it was');
   });
 });
+
+/**
+ * The regression this PR introduced on top of #3426: a skipped install (the
+ * resolver definitively answers "nothing renders") must not let the caller
+ * (`isolateFailed`/`isolatePassed`/`isolateInvolved`) go on to press the
+ * isolate-mode button and paint spec colours for an isolation that never
+ * hit the channel -- and must not do so only for `isolateFailed`'s
+ * `isolationScope === 'spec'` branch, which is the one that also calls
+ * `setSpecColors`.
+ */
+describe('isolate actuators gate follow-on mode/colour on whether the install actually happened', () => {
+  it('a resolver that answers [] leaves idsIsolateMode null and applies no spec colours', async () => {
+    await seed();
+    useViewerStore.setState({
+      cameraCallbacks: { resolveHighlightIds: () => [] },
+      idsIsolationScope: 'spec',
+    });
+    useViewerStore.getState().setIdsActiveSpecification('spec-1');
+    // Baseline: `autoApplyColors` (default on) already painted the
+    // whole-report overlay when `seed()` installed the report. `setSpecColors`
+    // would call `setPendingColorUpdates` again with a NEW Map -- capture the
+    // reference so a same-content-different-object swap still fails the test.
+    const colorsBeforeCall = useViewerStore.getState().pendingColorUpdates;
+    assert.ok(colorsBeforeCall, 'sanity: the whole-report overlay is already applied');
+
+    await act(async () => { api!.isolateFailed(); });
+
+    assert.equal(isolated(), null, 'the channel must stay untouched');
+    assert.equal(useViewerStore.getState().idsIsolateMode, null, 'the isolate button must not read pressed');
+    assert.equal(
+      useViewerStore.getState().pendingColorUpdates,
+      colorsBeforeCall,
+      'spec colours must not be (re-)applied for an isolation that was never installed',
+    );
+  });
+
+  it('a resolver that answers null (not yet resolved) still sets the mode and colours, as before', async () => {
+    await seed();
+    useViewerStore.setState({
+      cameraCallbacks: { resolveHighlightIds: () => null },
+      idsIsolationScope: 'spec',
+    });
+    useViewerStore.getState().setIdsActiveSpecification('spec-1');
+
+    await act(async () => { api!.isolateFailed(); });
+
+    assert.deepEqual(isolated(), [5], 'falls back to the raw id, matching pre-fix behaviour');
+    assert.equal(useViewerStore.getState().idsIsolateMode, 'failed');
+    assert.ok(useViewerStore.getState().pendingColorUpdates, 'spec colours are applied once the install happens');
+  });
+
+  it('a resolver that never answers (no resolver registered) still sets the mode, as before', async () => {
+    await seed(); // cameraCallbacks: {} -- no resolver at all
+    useViewerStore.setState({ idsIsolationScope: 'spec' });
+    useViewerStore.getState().setIdsActiveSpecification('spec-1');
+
+    await act(async () => { api!.isolateFailed(); });
+
+    assert.deepEqual(isolated(), [5]);
+    assert.equal(useViewerStore.getState().idsIsolateMode, 'failed');
+  });
+
+  it('installSetIsolation(null) -- the clear path -- still sets mode/ownership exactly as before', async () => {
+    await seed();
+    useViewerStore.setState({ idsIsolationScope: 'spec' });
+    useViewerStore.getState().setIdsActiveSpecification('spec-1');
+    await act(async () => { api!.isolateFailed(); });
+    assert.deepEqual(isolated(), [5], 'sanity: something is isolated before clearing');
+
+    await act(async () => { api!.clearIsolation(); });
+
+    assert.equal(isolated(), null);
+    assert.equal(useViewerStore.getState().idsIsolateMode, null);
+    assert.equal(useViewerStore.getState().idsFocusVisibilityOwned, null);
+  });
+
+  it('a skipped install leaves a row focus\'s ownership record alone -- the channel it describes was never touched', async () => {
+    await seed();
+    useViewerStore.setState({ idsIsolationScope: 'spec' });
+    useViewerStore.getState().setIdsActiveSpecification('spec-1');
+    // Establish a row focus's isolation and its ownership record first.
+    await act(async () => { api!.focusEntity('A', 5, 'isolate'); });
+    const ownedBefore = useViewerStore.getState().idsFocusVisibilityOwned;
+    assert.ok(ownedBefore, 'sanity: the row focus owns the channel');
+
+    // Now a set-level action whose resolver definitively answers "nothing
+    // renders" -- the channel is left untouched, so the row's ownership
+    // record is still an accurate description of what's on screen.
+    useViewerStore.setState({ cameraCallbacks: { resolveHighlightIds: () => [] } });
+    await act(async () => { api!.isolateFailed(); });
+
+    assert.deepEqual(
+      useViewerStore.getState().idsFocusVisibilityOwned,
+      ownedBefore,
+      'the row focus\'s ownership record must survive a skipped install untouched',
+    );
+  });
+});

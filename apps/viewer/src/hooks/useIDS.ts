@@ -885,8 +885,14 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
    * a record that outlives its presentation starts matching again the moment
    * another owner installs equal content, and the next release then destroys
    * THAT owner's presentation (#2654 fourth review).
+   *
+   * Returns whether the channel was actually replaced. `resolveIsolationIds`
+   * returning `null` (#3389: nothing renders) leaves the channel AND the
+   * ownership record untouched — it still names whatever is really there.
+   * Callers must gate any follow-on mode/colour change on the return value,
+   * or they show a pressed isolate button and colours for a skipped install.
    */
-  const installSetIsolation = useCallback((ids: Set<number> | null) => {
+  const installSetIsolation = useCallback((ids: Set<number> | null): boolean => {
     if (ids === null) {
       setIsolatedEntities(null); // #3338: null only clears
     } else {
@@ -894,26 +900,25 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
       // resolveIsolationIds tells "hasn't answered yet" (union, self-heals)
       // apart from "answered: nothing renders" (null -- leave alone, #3389).
       const isolateIds = resolveIsolationIds(useViewerStore.getState().cameraCallbacks.resolveHighlightIds, rawIds);
-      if (isolateIds === null) return;
+      if (isolateIds === null) return false;
       setIsolatedEntities(new Set(isolateIds));
     }
     useViewerStore.getState().setIdsFocusVisibilityOwned(null);
+    return true;
   }, [setIsolatedEntities]);
 
   const isolateFailed = useCallback(() => {
     if (isolationScope === 'spec') {
       if (!activeSpecificationId) return;
       const ids = refsToGlobalIds(getFailedEntitiesForSpec(activeSpecificationId));
-      if (ids.size > 0) {
-        installSetIsolation(ids);
+      if (ids.size > 0 && installSetIsolation(ids)) {
         setSpecColors(activeSpecificationId);
         setIdsIsolateMode('failed');
       }
       return;
     }
     const failedIds = keySetToGlobalIds(idsFailedEntityIds);
-    if (failedIds.size > 0) {
-      installSetIsolation(failedIds);
+    if (failedIds.size > 0 && installSetIsolation(failedIds)) {
       setIdsIsolateMode('failed');
     }
   }, [
@@ -932,16 +937,14 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     if (isolationScope === 'spec') {
       if (!activeSpecificationId) return;
       const ids = refsToGlobalIds(getPassedEntitiesForSpec(activeSpecificationId));
-      if (ids.size > 0) {
-        installSetIsolation(ids);
+      if (ids.size > 0 && installSetIsolation(ids)) {
         setSpecColors(activeSpecificationId);
         setIdsIsolateMode('passed');
       }
       return;
     }
     const passedIds = keySetToGlobalIds(idsPassedEntityIds);
-    if (passedIds.size > 0) {
-      installSetIsolation(passedIds);
+    if (passedIds.size > 0 && installSetIsolation(passedIds)) {
       setIdsIsolateMode('passed');
     }
   }, [
@@ -963,15 +966,13 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
         ...getFailedEntitiesForSpec(targetSpec),
         ...getPassedEntitiesForSpec(targetSpec),
       ]);
-      if (ids.size > 0) {
-        installSetIsolation(ids);
+      if (ids.size > 0 && installSetIsolation(ids)) {
         setSpecColors(targetSpec);
         setIdsIsolateMode('involved');
-      } else {
-        // The spec has no applicable entities (not_applicable). There's
-        // nothing to isolate, so drop any stale isolation/overlay left by a
-        // previously selected spec rather than leaving it on screen while
-        // the panel points at this (empty) spec.
+      } else if (ids.size === 0) {
+        // Not_applicable: nothing to isolate, so drop any stale
+        // isolation/overlay left by a previously selected spec rather than
+        // leaving it on screen while the panel points at this (empty) spec.
         installSetIsolation(null);
         restoreReportColors();
         setIdsIsolateMode(null);
@@ -982,8 +983,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     // green/red regardless of the user's display toggles.
     const ids = keySetToGlobalIds(idsFailedEntityIds);
     for (const globalId of keySetToGlobalIds(idsPassedEntityIds)) ids.add(globalId);
-    if (ids.size > 0) {
-      installSetIsolation(ids);
+    if (ids.size > 0 && installSetIsolation(ids)) {
       setPendingColorUpdates(buildColors(undefined, true));
       setIdsIsolateMode('involved');
     }

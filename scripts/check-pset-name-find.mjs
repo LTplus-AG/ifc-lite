@@ -67,7 +67,7 @@
  * examined nothing, or fail to distinguish a real instance from a for-loop.
  */
 
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMainEntry } from './lib/is-main-entry.mjs';
@@ -236,7 +236,29 @@ export function runCheck(root, opts = {}) {
   }
   for (const dir of existingSearchDirs) walk(join(root, dir));
 
-  return { ok: violations.length === 0, scanned, violations, grandfathered: knownUnfixed.size };
+  // An allowlist entry that no longer has the shape is worse than useless: it
+  // silently exempts that file forever, so a reintroduced instance would never
+  // be reported. Rescan each entry WITHOUT the allowlist and fail on any that
+  // now come back clean, so the list is forced to shrink as its comment says.
+  const staleAllowlisted = [];
+  for (const rel of knownUnfixed) {
+    const full = join(root, rel);
+    // Absent under this root proves nothing — the tests scan synthetic trees
+    // that contain none of the repo's real files. Only a file that IS here and
+    // scans clean is provably a stale row.
+    if (!existsSync(full)) continue;
+    if (scanText(rel, readFileSync(full, 'utf8'), { knownUnfixed: new Set() }).length === 0) {
+      staleAllowlisted.push(`${rel} (no longer matches -- delete this row)`);
+    }
+  }
+
+  return {
+    ok: violations.length === 0 && staleAllowlisted.length === 0,
+    scanned,
+    violations,
+    staleAllowlisted,
+    grandfathered: knownUnfixed.size,
+  };
 }
 
 function formatViolation(v) {
@@ -255,7 +277,17 @@ if (isMain) {
     process.exit(1);
   }
 
-  if (!result.ok) {
+  if (result.staleAllowlisted.length > 0) {
+    console.error(`
+KNOWN_UNFIXED rows that no longer match. The allowlist exempts a whole file, so
+a stale row turns that file into a permanent blind spot for this bug. Delete
+each row listed below:
+`);
+    for (const s of result.staleAllowlisted) console.error(`  ${s}`);
+    console.error('');
+  }
+
+  if (!result.ok && result.violations.length > 0) {
     console.error(`
 Two-step .find(set by name) -> .find(property/quantity by name) on what looks
 like an entity's property/quantity sets. An entity can legitimately carry two
@@ -267,6 +299,8 @@ from '@ifc-lite/query' (packages/query/src/pset-lookup.ts) instead.
     for (const v of result.violations) console.error(formatViolation(v) + '\n');
     process.exit(1);
   }
+
+  if (!result.ok) process.exit(1);
 
   console.log(
     `check-pset-name-find: OK (${result.scanned.length} files scanned, 0 new violations, ${result.grandfathered} grandfathered)`,

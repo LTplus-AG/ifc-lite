@@ -10,6 +10,7 @@ import {
   PropertyValueType,
   QuantityType,
 } from './mock-store.js';
+import type { IfcStoreBase } from '@ifc-lite/data';
 
 // ── Fixtures ────────────────────────────────────────────────────
 
@@ -412,7 +413,7 @@ describe('EntityNode', () => {
     // the analogous drop in `PropertyTable.getProperties`).
     it('property() checks every same-named property set, not just the first (regression, mirrors #2907)', () => {
       const store = buildSpatialStore();
-      const duckStore = {
+      const duckStore: IfcStoreBase = {
         ...store,
         getProperties: (expressId: number) => {
           if (expressId !== 10) return store.getProperties(expressId);
@@ -422,7 +423,7 @@ describe('EntityNode', () => {
           ];
         },
       };
-      const wall = new EntityNode(duckStore as any, 10);
+      const wall = new EntityNode(duckStore, 10);
       // FireRating only lives on the second same-named pset -- must not be
       // dropped just because the first same-named pset was checked first.
       expect(wall.property('Pset_WallCommon', 'FireRating')).toBe('REI60');
@@ -466,7 +467,7 @@ describe('EntityNode', () => {
     // unmerged by the on-demand extraction path.
     it('quantity() checks every same-named quantity set, not just the first', () => {
       const store = buildSpatialStore();
-      const duckStore = {
+      const duckStore: IfcStoreBase = {
         ...store,
         getQuantities: (expressId: number) => {
           if (expressId !== 10) return store.getQuantities(expressId);
@@ -476,7 +477,7 @@ describe('EntityNode', () => {
           ];
         },
       };
-      const wall = new EntityNode(duckStore as any, 10);
+      const wall = new EntityNode(duckStore, 10);
       expect(wall.quantity('Qto_WallBaseQuantities', 'NetSideArea')).toBe(15.0);
     });
   });

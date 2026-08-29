@@ -88,6 +88,32 @@ use nalgebra::{Point2, Point3, Vector3};
 /// `conform_regions` records as failing the CDT and dropping the whole region:
 /// a hole in the mesh, strictly worse than the sub-visible crack this pass
 /// exists to close.
+///
+/// That "any other ring vertex" guard reads a live, partially-mutated `ring`
+/// as the pass proceeds: a vertex processed earlier in iteration order shows
+/// its NEW (already-snapped) position to this check, while one not yet
+/// reached still shows its ORIGINAL position. Two things follow from that,
+/// and both make the result depend on which index the ring walk happens to
+/// start or proceed from, not on the ring's actual geometry:
+///
+///   - two ring vertices can independently choose the exact same candidate
+///     point (they need not be adjacent, or even collide with each other's
+///     ORIGINAL position — only with the shared candidate). Applying both
+///     would itself produce the duplicate this function exists to prevent,
+///     so at most one may win, and which one must not depend on which was
+///     visited first;
+///   - whether a given vertex's candidate is "already taken" is decided by
+///     scanning live state, so the same physical ring stored starting from a
+///     different index can walk the candidates in a different order and
+///     reach a different — but equally valid-looking — outcome.
+///
+/// Both guards below are therefore evaluated only against snapshots taken
+/// before any vertex moves: every OTHER vertex's original position, and every
+/// OTHER vertex's own independently-chosen candidate. A shared-candidate
+/// collision is resolved by a fixed, order-independent tie-break — the vertex
+/// strictly closer (by squared distance to its own original position) wins;
+/// an exact tie means neither wins, since there is then no unambiguous winner
+/// to pick without depending on iteration order.
 pub(super) fn snap_near_duplicates(
     ring: &mut [Point2<f64>],
     cands: &[Point2<f64>],
@@ -100,9 +126,19 @@ pub(super) fn snap_near_duplicates(
         return false;
     }
     let lift = |p: Point2<f64>| -> Point3<f64> { origin + u_axis * p.x + v_axis * p.y };
-    let mut snapped = false;
-    for i in 0..n {
-        let v = ring[i];
+
+    // Snapshot the ring before making any decision: every vertex's guards
+    // below are evaluated against these ORIGINAL positions and against each
+    // other vertex's own chosen candidate — never against another vertex's
+    // already-applied move — so the result cannot depend on which index the
+    // ring walk starts or proceeds from.
+    let orig: Vec<Point2<f64>> = ring.to_vec();
+
+    // Phase 1: pick each vertex's nearest in-tolerance, f32-visible candidate
+    // independently of every other vertex's decision. Reads only `orig[i]`
+    // and `cands`.
+    let mut chosen: Vec<Option<Point2<f64>>> = vec![None; n];
+    for (i, &v) in orig.iter().enumerate() {
         let mut best: Option<(f64, Point2<f64>)> = None;
         for &q in cands {
             let dx = q.x - v.x;
@@ -145,11 +181,43 @@ pub(super) fn snap_near_duplicates(
         {
             continue;
         }
-        // Scans the whole ring, not just `prev`/`next`: adjacency in winding
-        // order is not what makes a collapse possible, proximity is.
-        if ring.iter().enumerate().any(|(j, &p)| j != i && p == q) {
-            continue; // would duplicate an existing ring vertex
+        chosen[i] = Some(q);
+    }
+
+    // Phase 2: accept a chosen candidate only if it cannot create a
+    // zero-length or duplicate-vertex edge. Both checks read only the
+    // immutable `orig`/`chosen` snapshots — never a neighbour's
+    // already-applied move — so neither depends on the order the ring is
+    // walked in:
+    //
+    //   - against every OTHER vertex's ORIGINAL position, so a candidate that
+    //     would duplicate any ring vertex is refused;
+    //   - against every OTHER vertex's own chosen candidate: if two or more
+    //     indices independently picked the exact same target point, only the
+    //     one strictly closer to it (by squared distance to its own original
+    //     position) may use it; an exact tie means none of them may, since
+    //     there is then no unambiguous winner without depending on iteration
+    //     order.
+    let dist2_to = |i: usize, q: Point2<f64>| {
+        let dx = q.x - orig[i].x;
+        let dy = q.y - orig[i].y;
+        dx * dx + dy * dy
+    };
+    let mut snapped = false;
+    for i in 0..n {
+        let Some(q) = chosen[i] else { continue };
+
+        if (0..n).any(|j| j != i && orig[j] == q) {
+            continue; // would duplicate another ring vertex's original position
         }
+
+        let d2_i = dist2_to(i, q);
+        let loses_the_tie_break =
+            (0..n).any(|j| j != i && chosen[j] == Some(q) && dist2_to(j, q) <= d2_i);
+        if loses_the_tie_break {
+            continue; // another ring index is at least as close to this candidate
+        }
+
         ring[i] = q;
         snapped = true;
     }
@@ -403,6 +471,119 @@ mod tests {
         );
         assert_ne!(
             ring[3], ring[0],
+            "ring must not end up with two bit-identical vertices"
+        );
+    }
+
+    #[test]
+    fn result_is_independent_of_ring_traversal_order() {
+        // Physical ring (a square-ish quad): V0=(0,0), V1=(3e-5,0),
+        // V2=(10,10), V3=(0,10). Two candidates: C_A is bit-identical to
+        // V1's ORIGINAL position and is V0's nearest candidate; C_C is near
+        // V1 (not bit-identical) and is V1's nearest candidate. Both are
+        // within CONFORM_TOL of their nearest vertex; V2/V3 are far from
+        // both and never match either candidate.
+        //
+        // Walking the ring forward, V0 is decided before V1, and vice versa
+        // walking it starting from V1: a live-array duplicate check would
+        // read one of the two vertices' NEW position instead of its
+        // ORIGINAL one depending on which is visited first, and so accept
+        // or refuse V0's snap onto C_A (which is bit-identical to V1's
+        // ORIGINAL position) differently depending on storage order alone —
+        // same physical ring, different result. This pins the fixed,
+        // order-independent result instead.
+        let v0 = Point2::new(0.0, 0.0);
+        let v1 = Point2::new(3.0e-5, 0.0);
+        let v2 = Point2::new(10.0, 10.0);
+        let v3 = Point2::new(0.0, 10.0);
+        let c_a = v1; // bit-identical to V1's original position
+        let c_c = Point2::new(3.0e-5, 5.0e-5);
+        let cands = [c_a, c_c];
+
+        let mut forward = vec![v0, v1, v2, v3];
+        snap_near_duplicates(&mut forward, &cands, ORIGIN(), U_AXIS(), V_AXIS());
+
+        // Same physical ring (identical edge set), storage order reversed.
+        let mut reversed = vec![v3, v2, v1, v0];
+        snap_near_duplicates(&mut reversed, &cands, ORIGIN(), U_AXIS(), V_AXIS());
+
+        // Map the reversed run's result back onto the same physical
+        // positions as `forward`: index k in `forward` <-> index (n-1-k) in
+        // `reversed`.
+        let n = forward.len();
+        let remapped: Vec<Point2<f64>> = (0..n).map(|k| reversed[n - 1 - k]).collect();
+
+        assert_eq!(
+            forward, remapped,
+            "snap_near_duplicates must not depend on which index the ring \
+             traversal starts from — both describe the same ring"
+        );
+        // Pin the actual expected geometry too, not just cross-order
+        // agreement: V0 must stay put (its only candidate equals V1's own
+        // original position) and V1 must snap to C_C.
+        assert_eq!(forward, vec![v0, c_c, v2, v3]);
+    }
+
+    #[test]
+    fn refuses_both_when_adjacent_vertices_pick_the_same_candidate() {
+        // A and B are adjacent ring vertices 3e-5 apart; the single
+        // candidate M sits EXACTLY between them, within CONFORM_TOL of
+        // both, so both A and B independently pick M as their nearest
+        // candidate and are exactly tied on distance to it. Applying either
+        // would collapse the A-B edge to zero length, and the exact tie
+        // leaves no unambiguous winner, so both must be refused.
+        let a = Point2::new(0.0, 0.0);
+        let b = Point2::new(3.0e-5, 0.0);
+        let c = Point2::new(2.0, 2.0);
+        let d = Point2::new(0.0, 2.0);
+        let m = Point2::new(1.5e-5, 0.0); // equidistant from a and b
+
+        let mut ring = vec![a, b, c, d];
+        let moved = snap_near_duplicates(&mut ring, &[m], ORIGIN(), U_AXIS(), V_AXIS());
+
+        assert!(
+            !moved,
+            "both candidates tie on distance and must be refused"
+        );
+        assert_eq!(ring, vec![a, b, c, d], "neither A nor B may move");
+    }
+
+    #[test]
+    fn refuses_reuse_of_the_same_candidate_by_non_adjacent_vertices() {
+        // A quad (n = 4): ring[0] and ring[2] are OPPOSITE corners, not ring
+        // neighbours of each other. Both independently sit within
+        // CONFORM_TOL of the single candidate `q` and are not bit-identical
+        // to it, so both pass phase 1. A guard that only compared each
+        // vertex's chosen candidate against its two ring-adjacent
+        // neighbours would miss this collision entirely, since ring[0] and
+        // ring[2] are not adjacent, and would let BOTH apply `q`, producing
+        // a duplicate ring vertex. ring[0] is strictly closer to `q` than
+        // ring[2] is, so the deterministic tie-break must let ring[0] win
+        // and refuse ring[2].
+        let v0 = Point2::new(0.0, 0.0);
+        let v1 = Point2::new(10.0, 0.0);
+        let v2 = Point2::new(0.000_03, 0.000_02);
+        let v3 = Point2::new(10.0, 10.0);
+        let q = Point2::new(0.000_01, 0.000_01);
+        let mut ring = vec![v0, v1, v2, v3];
+        let cands = [q];
+
+        let moved = snap_near_duplicates(&mut ring, &cands, ORIGIN(), U_AXIS(), V_AXIS());
+
+        assert!(
+            moved,
+            "the strictly closer vertex must still win the candidate"
+        );
+        assert_eq!(
+            ring[0], q,
+            "ring[0] is closer to q and must win the tie-break"
+        );
+        assert_eq!(
+            ring[2], v2,
+            "ring[2] lost the tie-break and must not also snap onto q"
+        );
+        assert_ne!(
+            ring[0], ring[2],
             "ring must not end up with two bit-identical vertices"
         );
     }

@@ -114,6 +114,9 @@ DATA;
 #7=IFCPROPERTYSINGLEVALUE('Area',$,IFCAREAMEASURE(2.),$);
 #8=IFCPROPERTYSET('0FhAr5rvX3vfPGjNbwau9F',$,'Pset_WallCommon',$,(#7));
 #9=IFCRELDEFINESBYPROPERTIES('1xdwj8qGXK4hzoNbvMdXJW',$,$,$,(#6),#8);
+#10=IFCQUANTITYAREA('NetSideArea',$,$,2.,$);
+#11=IFCELEMENTQUANTITY('3sIvBaNRfL2RQijKS1p08K',$,'Qto_WallBaseQuantities',$,$,(#10));
+#12=IFCRELDEFINESBYPROPERTIES('2ydxk9rHYL5izPocwNeYKX',$,$,$,(#6),#11);
 ENDSEC;
 END-ISO-10303-21;
 `;
@@ -251,6 +254,28 @@ describe('IDS area/volume unit conversion (Pset_* and Qto_*)', () => {
     const accessor = createDataAccessor(store);
     const pset = accessor.getPropertySets(6).find((p) => p.name === 'Pset_WallCommon');
     const area = pset?.properties.find((p) => p.name === 'Area');
+
+    expect(area?.value).toBe(2);
+  });
+
+  // The Qto_ sibling of the test above. Every other Qto_ case in this file
+  // does declare an AREAUNIT, but declares it as MILLI SQUARE_METRE, and
+  // the resolver raises the prefix to the unit's dimension
+  // (project-units.ts: prefixPower 2), so its scale is numerically the
+  // same 1e-6 the `lengthScale ** 2` fallback derives. Agreeing, they
+  // cannot tell the two apart, and dropping `measureScales` from the
+  // quantity path leaves every one of them green.
+  //
+  // Divergence needs the unprefixed SQUARE_METRE of the fixture below
+  // against a MILLI length, where the declared scale is 1 and the derived
+  // one 1e-6. Adding an AREAUNIT to a fixture is therefore not what makes
+  // it discriminating; declaring one that does not agree with the length
+  // unit is.
+  it('reads the file-declared AREAUNIT on the Qto_ path too, not just the Pset_ one', async () => {
+    const store = await parseIfc(IFC_DECLARED_AREA_UNIT_DIVERGES_FROM_LENGTH);
+    const accessor = createDataAccessor(store);
+    const qset = accessor.getPropertySets(6).find((p) => p.name === 'Qto_WallBaseQuantities');
+    const area = qset?.properties.find((p) => p.name === 'NetSideArea');
 
     expect(area?.value).toBe(2);
   });

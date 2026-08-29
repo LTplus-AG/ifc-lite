@@ -14,16 +14,7 @@ import { PropertyValueType } from '@ifc-lite/data';
 import type { MutablePropertyView } from './mutable-property-view.js';
 import type { Mutation, PropertyValue } from './types.js';
 import { checkMutationGuard, type MutationGuard } from './mutation-guard.js';
-
-/**
- * Sentinel returned by {@link CsvConnector.parseValue} for a Real/Integer
- * cell that isn't a number at all ("N/A", "TBD", ...). `parseFloat`/
- * `parseInt` return `NaN` for these, and `NaN || 0` is `0` — coercing a
- * dirty column straight to a real `0` mutation, indistinguishable from a
- * genuinely-imported zero. `generateMutations` checks for this sentinel and
- * skips the cell (with a warning) instead of writing the fabricated value.
- */
-const PARSE_INVALID = Symbol('csv-parse-invalid');
+import { PARSE_INVALID, parseValue } from './csv-parse-value.js';
 
 /**
  * A parsed CSV row
@@ -281,7 +272,7 @@ export class CsvConnector {
 
           const value = propMapping.transform
             ? propMapping.transform(rawValue)
-            : this.parseValue(rawValue, propMapping.valueType);
+            : parseValue(rawValue, propMapping.valueType);
 
           if (value === PARSE_INVALID) {
             warnings?.push(
@@ -496,43 +487,6 @@ export class CsvConnector {
     return values;
   }
 
-  /**
-   * Parse a string value to the appropriate type. Returns {@link PARSE_INVALID}
-   * for a Real/Integer cell that doesn't parse as a number at all — the
-   * caller (`generateMutations`) must check for it and skip the cell rather
-   * than writing the sentinel through as a property value.
-   */
-  private parseValue(value: string, type: PropertyValueType): PropertyValue | typeof PARSE_INVALID {
-    switch (type) {
-      case PropertyValueType.Real: {
-        const parsed = parseFloat(value);
-        return Number.isNaN(parsed) ? PARSE_INVALID : parsed;
-      }
-
-      case PropertyValueType.Integer: {
-        const parsed = parseInt(value, 10);
-        return Number.isNaN(parsed) ? PARSE_INVALID : parsed;
-      }
-
-      case PropertyValueType.Boolean:
-      case PropertyValueType.Logical:
-        const lower = value.toLowerCase();
-        return lower === 'true' || lower === 'yes' || lower === '1';
-
-      case PropertyValueType.List:
-        try {
-          return JSON.parse(value);
-        } catch {
-          // Legitimately silent: two accepted CSV encodings for a list value,
-          // JSON first then semicolon-separated. A non-JSON cell is the normal
-          // second form, not a failure.
-          return value.split(';').map((s) => s.trim());
-        }
-
-      default:
-        return value;
-    }
-  }
 
   /**
    * Auto-detect column mappings based on column names

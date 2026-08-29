@@ -72,7 +72,17 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 
-const SEARCH_DIRS = ['packages', 'apps'];
+/**
+ * Scanned roots, deliberately NOT a bare `apps` — this must stay a subset of
+ * what can actually trigger the node-tests job. `test.yml`'s filter names
+ * `apps/viewer` and `apps/viewer-embed` individually rather than `apps/**`,
+ * so that broadening it would not drag every landing-page edit through the
+ * lane. Scanning `apps/landing` from here would make the gate read files that
+ * cannot trigger it — `check-ci-path-coverage` fails on exactly that, and it
+ * is right to: a gate that cannot run on a file it guards is absent there,
+ * not merely weak. When a new app is added to that filter, add it here too.
+ */
+const SEARCH_DIRS = ['packages', 'apps/viewer', 'apps/viewer-embed', 'examples'];
 
 const SKIP_DIRS = new Set([
   'node_modules', 'dist', 'pkg', 'build', 'coverage', '.turbo', '.next', 'target', '.git',

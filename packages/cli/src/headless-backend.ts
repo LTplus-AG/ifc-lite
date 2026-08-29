@@ -70,7 +70,7 @@ import {
   listStoreys,
   type GenerateSpacesAllOptions,
 } from '@ifc-lite/create';
-import { EntityNode } from '@ifc-lite/query';
+import { EntityNode, findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';
 
 import {
   extractAllEntityAttributes,
@@ -324,9 +324,7 @@ export class HeadlessBackend implements BimBackend {
           for (const filter of descriptor.filters) {
             filtered = filtered.filter(entity => {
               const props = getCachedProps(entity.ref);
-              const pset = props.find(p => p.name === filter.psetName);
-              if (!pset) return false;
-              const prop = pset.properties.find(p => p.name === filter.propName);
+              const prop = findPropertyInSets(props, filter.psetName, filter.propName);
               if (!prop) return false;
               if (filter.operator === 'exists') return true;
               const val = prop.value;
@@ -607,18 +605,12 @@ export class HeadlessBackend implements BimBackend {
         const setName = col.slice(0, dotIdx);
         const valueName = col.slice(dotIdx + 1);
         if (props) {
-          const pset = props.find(p => p.name === setName);
-          if (pset) {
-            const prop = pset.properties.find(p => p.name === valueName);
-            if (prop?.value != null) return String(prop.value);
-          }
+          const prop = findPropertyInSets(props, setName, valueName);
+          if (prop?.value != null) return String(prop.value);
         }
         if (qsets) {
-          const qset = qsets.find(q => q.name === setName);
-          if (qset) {
-            const qty = qset.quantities.find(q => q.name === valueName);
-            if (qty?.value != null) return String(qty.value);
-          }
+          const qty = findQuantityInSets(qsets, setName, valueName);
+          if (qty?.value != null) return String(qty.value);
         }
       }
       return '';

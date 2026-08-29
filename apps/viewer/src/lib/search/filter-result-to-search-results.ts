@@ -47,7 +47,23 @@ export function filterResultToSearchResults(
   fallbackModelId: string | null,
 ): SearchResult[] {
   const { columns, rows } = result;
-  const keyIdx = columns.findIndex((c) => SELECTION_COLUMNS.includes(c));
+  // Priority order, not positional first-match: `SearchModalFilter`'s own
+  // `selectionKeyIndex` checks SELECTION_COLUMNS in order (express_id before
+  // entity_id) and takes the first candidate PRESENT, wherever it sits in
+  // `columns` — so a result carrying both picks express_id even when
+  // entity_id appears earlier in the column list. A positional
+  // `columns.findIndex` would disagree with that whenever column order and
+  // candidate priority differ, and the two id spaces are not guaranteed to
+  // agree row-to-row, so the two pickers could resolve the same row to two
+  // different elements (row click vs. n/N-cycle stepping).
+  let keyIdx = -1;
+  for (const candidate of SELECTION_COLUMNS) {
+    const i = columns.indexOf(candidate);
+    if (i >= 0) {
+      keyIdx = i;
+      break;
+    }
+  }
   if (keyIdx < 0) return [];
 
   const modelIdx = columns.indexOf('model_id');

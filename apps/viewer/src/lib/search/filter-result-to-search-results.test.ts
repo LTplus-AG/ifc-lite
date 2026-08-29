@@ -117,6 +117,23 @@ describe('filterResultToSearchResults', () => {
     assert.equal(out[0].expressId, 55);
   });
 
+  it('prefers express_id over entity_id when a result carries both, regardless of column order — same PRIORITY order as SearchModalFilter.selectionKeyIndex, not first-match-by-position', () => {
+    // entity_id appears BEFORE express_id here. A positional first-match
+    // (`columns.findIndex`) would pick entity_id; SearchModalFilter's own
+    // `selectionKeyIndex` checks SELECTION_COLUMNS in order (express_id
+    // first) and would pick express_id regardless of where either column
+    // sits. The two id spaces are not required to agree row-to-row, so
+    // disagreeing on which one is "the" selection key means a row's
+    // n/N-cycle target can differ from what clicking that same row selects.
+    const result = {
+      columns: ['entity_id', 'express_id', 'name'],
+      rows: [[999, 42, 'Slab A']],
+    };
+    const out = filterResultToSearchResults(result, 'model-1');
+    assert.equal(out.length, 1);
+    assert.equal(out[0].expressId, 42);
+  });
+
   it('produces entries directly consumable by enterVimCycle / applySelection: only modelId + expressId matter for stepping', () => {
     const result = {
       columns: ['express_id', 'global_id', 'name', 'type'],

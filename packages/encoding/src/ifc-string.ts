@@ -151,8 +151,8 @@ export function decodeIfcString(str: string): string {
  * string literal: an undoubled `'` terminates the literal early and produces
  * a file no conformant reader parses as intended (e.g. a name like
  * `O'Brien`). A caller writing into a literal must double `'` itself, or use
- * {@link https://github.com/LTplus-AG/ifc-lite `escapeStepString`} from
- * `@ifc-lite/data`, which handles the full literal-context contract: doubling
+ * `escapeStepString` from `@ifc-lite/data`, which handles the full
+ * literal-context contract: doubling
  * `'` and `\`, mapping control characters to a space, and encoding non-ASCII —
  * per ISO 10303-21 6.3.3.4. The two functions do not produce the same output
  * for the same input; do not assume they agree.

@@ -1,5 +1,5 @@
 ---
-'@ifc-lite/parser': minor
+'@ifc-lite/parser': major
 '@ifc-lite/geometry': minor
 '@ifc-lite/wasm': minor
 ---
@@ -16,4 +16,7 @@ Refusing a record whose instance name does not fit `u32` is only half a guard; t
 
 A refusal stays a **diagnostic, not an error**: `#4294967297` is a legal ISO 10303-21 instance name, so failing the load would turn one lost record into a lost file that is otherwise fine, and would make native refuse a file the browser still opens.
 
-All three additions are optional or additive, so existing callers compile and behave unchanged.
+The `@ifc-lite/geometry` and `@ifc-lite/wasm` additions are optional or additive, so their
+callers compile and behave unchanged. `@ifc-lite/parser` is NOT: `EntityScanResult` gains a
+REQUIRED `oversizedIdCount`, so anything constructing that shape must supply it. See the
+`parser-express-id-u32-bound` entry for the breaking notice and migration.

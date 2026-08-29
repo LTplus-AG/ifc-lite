@@ -82,9 +82,14 @@ const REFUSED_AT = new TextDecoder()
 export function runShardRefusalBoundaryTests(api, test) {
   console.log('\n📋 #3395 refusal count (wasm <-> host)');
 
-  const whole = api.scanEntityIndexShard(REFUSING_BYTES, 0, REFUSING_BYTES.length);
-
   test('scanEntityIndexShard hands back refusal OFFSETS, not a count', () => {
+    // Called INSIDE the test rather than at module scope. `test` in
+    // scripts/test-wasm-contract.mjs wraps only its `fn()` in try/catch, so a
+    // throw out here — a renamed export, a changed Rust signature, a shard-scan
+    // trap — escapes the top-level await and aborts the whole contract run.
+    // Every later section is then skipped and the pass/fail summary is lost,
+    // which is the opposite of what a gate should do when it breaks.
+    const whole = api.scanEntityIndexShard(REFUSING_BYTES, 0, REFUSING_BYTES.length);
     // The type is load-bearing, not a tautology: the host stitch compares each
     // entry against a byte boundary (`refusals[k] >= expectedStart`). A count,
     // or a signed/float array, would still index and compare — and would

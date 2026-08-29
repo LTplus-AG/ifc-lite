@@ -192,16 +192,32 @@ describe('scanIfcEntities and an express id above 2^32', () => {
       lengths: new Uint32Array([text.indexOf(';', start) + 1 - start]),
     };
 
-    for (const oversizedIdCount of [0, undefined]) {
-      const result = await scanIfcEntities(source, {
-        disableWorkerScan: true,
-        onDiagnostic: (message) => diagnostics.push(message),
-        preScannedEntityIndex: { ...columns, oversizedIdCount },
-      });
-      expect(result.scanPath).toBe('pre-scanned');
-      expect(result.oversizedIdCount).toBe(0);
-    }
-    expect(diagnostics.some((message) => message.includes('skipped'))).toBe(false);
+    // A producer that REPORTS zero is a clean scan and says nothing.
+    const reported = await scanIfcEntities(source, {
+      disableWorkerScan: true,
+      onDiagnostic: (message) => diagnostics.push(message),
+      preScannedEntityIndex: { ...columns, oversizedIdCount: 0 },
+    });
+    expect(reported.scanPath).toBe('pre-scanned');
+    expect(reported.oversizedIdCount).toBe(0);
+    expect(diagnostics.some((m) => m.includes('skipped') || m.includes('not proof'))).toBe(false);
+
+    // A producer that does NOT report is a different claim, and must not be
+    // passed off as a clean scan. `PreScannedEntityIndex.oversizedIdCount`'s
+    // own doc says `undefined` means "this producer does not report", which is
+    // not what `0` asserts — an older wasm build sends the three columns and
+    // nothing else. The number still reads 0 because the field is `number`, so
+    // the distinction has to survive in the REPORT.
+    diagnostics.length = 0;
+    const unreported = await scanIfcEntities(source, {
+      disableWorkerScan: true,
+      onDiagnostic: (message) => diagnostics.push(message),
+      preScannedEntityIndex: { ...columns, oversizedIdCount: undefined },
+    });
+    expect(unreported.scanPath).toBe('pre-scanned');
+    expect(unreported.oversizedIdCount).toBe(0);
+    expect(diagnostics.some((m) => m.includes('not proof that none were skipped'))).toBe(true);
+    expect(diagnostics.some((m) => m.includes('skipped 0 record'))).toBe(false);
   });
 
   it('counts one refusal per refused RECORD, not per oversized reference', async () => {

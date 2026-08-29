@@ -83,13 +83,21 @@ export async function scanIfcEntities(
   let processed = 0;
   let scanPath: EntityScanPath = 'tokenizer';
   let oversizedIdCount = 0;
+  let preScanCountUnreported = false;
 
   if (options.preScannedEntityIndex) {
     const { ids, starts, lengths } = options.preScannedEntityIndex;
     entityRefs = buildEntityRefsFromIndex(uint8Buffer, ids, starts, lengths);
     processed = entityRefs.length;
     scanPath = 'pre-scanned';
+    // `undefined` means this producer does not report, which the field's own
+    // doc says is NOT the claim `0` makes. Coercing it here would turn "not
+    // counted" into "none refused" — the exact conflation #3395 exists to
+    // remove, reintroduced at the handoff. The number still reads 0 because the
+    // contract is `number`, so the honesty has to live in the REPORT: an
+    // unreported count is announced rather than passed off as a clean scan.
     oversizedIdCount = options.preScannedEntityIndex.oversizedIdCount ?? 0;
+    preScanCountUnreported = options.preScannedEntityIndex.oversizedIdCount === undefined;
   }
 
   if (entityRefs.length === 0 && !options.disableWorkerScan && typeof Worker !== 'undefined') {
@@ -157,6 +165,15 @@ export async function scanIfcEntities(
   if (oversizedIdCount > 0) {
     const message =
       `scan: skipped ${oversizedIdCount} record(s) with an express id above ${MAX_EXPRESS_ID} (#3395)`;
+    console.warn(`[IfcParser] ${message}`);
+    options.onDiagnostic?.(message);
+  } else if (preScanCountUnreported && scanPath === 'pre-scanned') {
+    // Absence has to look different from success. This producer sent the
+    // columns without a refusal count, so a zero here is not evidence of none
+    // — say that, rather than returning a result that reads like a clean scan.
+    const message =
+      'scan: the pre-pass that produced this entity index does not report refused ' +
+      `express ids (#3395), so a count of 0 is not proof that none were skipped`;
     console.warn(`[IfcParser] ${message}`);
     options.onDiagnostic?.(message);
   }

@@ -38,6 +38,17 @@ export function withAliases(entity: EntityData): Record<string, unknown> {
 }
 
 /**
+ * An express id is a STEP entity's 1-based instance number: always a finite
+ * positive integer. `typeof x === 'number'` alone is not a shape check — it
+ * is also true of NaN, +/-Infinity, negative numbers and fractions, none of
+ * which name a real entity. bridge-store.ts's `requireStoreyId` already
+ * holds storey ids to `Number.isInteger(id) && id > 0`; this mirrors that.
+ */
+function isValidExpressId(id: unknown): id is number {
+  return typeof id === 'number' && Number.isInteger(id) && id > 0;
+}
+
+/**
  * Extract an EntityRef from a dumped entity object.
  * Accepts both { ref: { modelId, expressId } } and { modelId, expressId }.
  */
@@ -46,11 +57,11 @@ export function toRef(raw: unknown): EntityRef | null {
   if (!obj) return null;
   if (obj.ref && typeof obj.ref === 'object') {
     const ref = obj.ref as Record<string, unknown>;
-    if (typeof ref.modelId === 'string' && typeof ref.expressId === 'number') {
+    if (typeof ref.modelId === 'string' && isValidExpressId(ref.expressId)) {
       return ref as unknown as EntityRef;
     }
   }
-  if (typeof obj.modelId === 'string' && typeof obj.expressId === 'number') {
+  if (typeof obj.modelId === 'string' && isValidExpressId(obj.expressId)) {
     return obj as unknown as EntityRef;
   }
   return null;

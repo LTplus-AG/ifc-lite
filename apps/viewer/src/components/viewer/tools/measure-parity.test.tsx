@@ -887,10 +887,27 @@ describe('guard sanity', () => {
     // different name, and a prefix filter would wave it through. Adding a
     // genuinely unrelated export here is meant to fail: extend this list once,
     // deliberately, having checked it is not a distance formatter.
+    // Extended once, deliberately, for `formatSplitHoverLabel` — the Split
+    // tool's "distance / length" hover label, which previously hardcoded
+    // `toFixed(2)` metres in SplitOverlay and so reproduced #2538's defect at
+    // a call site instead of in this module.
+    //
+    // It IS distance formatting, so the honest reading of the rule above is
+    // not "this isn't a formatter". What makes a wrong pick harmless is the
+    // property every export here shares: all of them resolve the LENGTHUNIT
+    // override. #2538's danger was an override-UNAWARE `formatDistance` sitting
+    // beside an aware one, so a readout that grabbed the wrong name silently
+    // printed metres. `formatSignedTriple` is already a composed multi-value
+    // formatter on this list for the same reason.
+    //
+    // The invariant to hold when extending again: every name exported here
+    // must honour `overrides`. A formatter that ignores them belongs nowhere
+    // in this module, under any name. `formatSplitHoverLabel`'s own tests pin
+    // that it converts both of its numbers.
     assert.deepEqual(
       Object.keys(formatDistanceModule).sort(),
-      ['formatDistance', 'formatSignedTriple'],
-      "formatDistance.ts's exports changed — if this is a second distance formatter, fold it into formatDistance instead of exporting two names",
+      ['formatDistance', 'formatSignedTriple', 'formatSplitHoverLabel'],
+      "formatDistance.ts's exports changed — a new export here must honour the LENGTHUNIT override; if it does not, fold it into formatDistance rather than exporting a second name",
     );
   });
 

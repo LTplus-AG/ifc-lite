@@ -495,7 +495,10 @@ export class GeometryProcessor {
 
   private async *processStreamingBytes(
     buffer: Uint8Array,
-    batchConfig: number | DynamicBatchConfig
+    batchConfig: number | DynamicBatchConfig,
+    // Federation RTC origin, overriding the pre-pass's per-model detection so
+    // every model shares one coordinate space — mirrors `geometry-parallel.ts`.
+    sharedRtcOffset?: { x: number; y: number; z: number },
   ): AsyncGenerator<StreamingGeometryEvent> {
     if (!this.bridge) {
       throw new Error('WASM bridge not initialized');
@@ -503,23 +506,23 @@ export class GeometryProcessor {
 
     const api = this.bridge.getApi();
     const prePass = api.buildPrePassOnce(buffer) as ByteStreamingPrePassResult;
-    this.applyPrePassMetadata(prePass);
+    const useSharedRtc = sharedRtcOffset != null;
+    const rtc = useSharedRtc
+      ? sharedRtcOffset
+      : { x: prePass.rtcOffset?.[0] ?? 0, y: prePass.rtcOffset?.[1] ?? 0, z: prePass.rtcOffset?.[2] ?? 0 };
+    const effectiveNeedsShift = useSharedRtc || Boolean(prePass.needsShift);
+    this.coordinateHandler.setWasmMetadata(prePass.unitScale, effectiveNeedsShift ? { ...rtc } : null);
 
-    // try/finally so the pre-pass cache is released on every exit: the
-    // totalJobs===0 early return, a processGeometryBatch throw, or the
-    // consumer abandoning the generator (which triggers `.return()`).
+    // try/finally releases the pre-pass cache on every exit: the totalJobs===0
+    // early return, a throw, or the consumer abandoning the generator.
     try {
       yield { type: 'model-open', modelID: 0 };
 
-      if (prePass.rtcOffset) {
+      if (prePass.rtcOffset || useSharedRtc) {
         yield {
           type: 'rtcOffset',
-          rtcOffset: {
-            x: prePass.rtcOffset[0] ?? 0,
-            y: prePass.rtcOffset[1] ?? 0,
-            z: prePass.rtcOffset[2] ?? 0,
-          },
-          hasRtc: Boolean(prePass.needsShift),
+          rtcOffset: { x: rtc.x, y: rtc.y, z: rtc.z },
+          hasRtc: effectiveNeedsShift,
         };
       }
 
@@ -546,10 +549,10 @@ export class GeometryProcessor {
           buffer,
           jobSlice,
           prePass.unitScale,
-          prePass.rtcOffset?.[0] ?? 0,
-          prePass.rtcOffset?.[1] ?? 0,
-          prePass.rtcOffset?.[2] ?? 0,
-          prePass.needsShift,
+          rtc.x,
+          rtc.y,
+          rtc.z,
+          effectiveNeedsShift,
           prePass.voidKeys,
           prePass.voidCounts,
           prePass.voidValues,
@@ -605,9 +608,6 @@ export class GeometryProcessor {
     buffer: Uint8Array,
     _entityIndex?: Map<number, any>,
     batchConfig: number | DynamicBatchConfig = 25,
-    // TODO: sharedRtcOffset is accepted but not yet threaded through to the
-    // WASM streaming collector. The WASM layer detects its own RTC offset
-    // per-model; federation-level override requires collector API changes.
     sharedRtcOffset?: { x: number; y: number; z: number },
   ): AsyncGenerator<StreamingGeometryEvent> {
     const releaseWasmOperation = this.isNative
@@ -682,7 +682,7 @@ export class GeometryProcessor {
         throw new Error('WASM bridge not initialized');
       }
 
-      yield* this.processStreamingBytes(buffer, batchConfig);
+      yield* this.processStreamingBytes(buffer, batchConfig, sharedRtcOffset);
     }
   }
 

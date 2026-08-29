@@ -540,23 +540,27 @@ fn backfills_only_missing_document_reference_fields_from_referenced_document() {
 
 /// One quantity of EACH `IfcPhysicalQuantity` subtype the extractor supports,
 /// on a single Qto. Only `IFCQUANTITYLENGTH` was previously exercised (via
-/// `Qto_WallBaseQuantities.Width` in `TYPE_PARITY_IFC`) — the other five
-/// match arms in `extract_quantity_value`'s `quantity_type` mapping had no
+/// `Qto_WallBaseQuantities.Width` in `TYPE_PARITY_IFC`) — the other match
+/// arms in `extract_quantity_value`'s `quantity_type` mapping had no
 /// coverage, so e.g. "area" and "volume" could be silently swapped.
+/// `IFCQUANTITYNUMBER` was worse than swapped: unrecognised, so `#3266`'s
+/// subtype was dropped from the quantity set entirely. It is IFC4X3-only,
+/// hence this fixture's schema header.
 const ALL_QUANTITY_KINDS_IFC: &str = r#"ISO-10303-21;
 HEADER;
-FILE_SCHEMA(('IFC4'));
+FILE_SCHEMA(('IFC4X3'));
 ENDSEC;
 DATA;
 #1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
 #10=IFCWALL('Wall00000000000000001',$,'W1',$,$,$,$,$,$);
-#20=IFCELEMENTQUANTITY('Qset00000000000000001',$,'Qto_All',$,$,(#21,#22,#23,#24,#25,#26));
+#20=IFCELEMENTQUANTITY('Qset00000000000000001',$,'Qto_All',$,$,(#21,#22,#23,#24,#25,#26,#27));
 #21=IFCQUANTITYLENGTH('QLen',$,$,111.);
 #22=IFCQUANTITYAREA('QArea',$,$,222.);
 #23=IFCQUANTITYVOLUME('QVol',$,$,333.);
 #24=IFCQUANTITYCOUNT('QCount',$,$,444.);
 #25=IFCQUANTITYWEIGHT('QWeight',$,$,555.);
 #26=IFCQUANTITYTIME('QTime',$,$,666.);
+#27=IFCQUANTITYNUMBER('QNumber',$,$,777.);
 #30=IFCRELDEFINESBYPROPERTIES('Rdbp0000000000000001',$,$,$,(#10),#20);
 ENDSEC;
 END-ISO-10303-21;
@@ -588,6 +592,8 @@ fn maps_every_physical_quantity_subtype_to_its_own_quantity_type_string() {
     assert_eq!(q("QWeight").quantity_value, 555.0);
     assert_eq!(q("QTime").quantity_type, "time");
     assert_eq!(q("QTime").quantity_value, 666.0);
+    assert_eq!(q("QNumber").quantity_type, "number");
+    assert_eq!(q("QNumber").quantity_value, 777.0);
 }
 
 /// A wall associated DIRECTLY with an `IfcMaterial` (no layer set / usage

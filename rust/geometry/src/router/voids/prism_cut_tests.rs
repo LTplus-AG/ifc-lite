@@ -663,6 +663,94 @@ fn hairline_true_collinear_cover_still_accepted() {
     );
 }
 
+/// The census's undirected ±1 edge balance (#3435), reimplemented here on
+/// purpose rather than imported: the real one, `edge_stats` in
+/// `rust/geometry/tests/triangulation_invariance.rs`, lives in the
+/// integration-test binary of this crate, which a `src` unit-test module
+/// cannot depend on (it is a separate compilation target, built after the
+/// library). This mirrors only the `open` field of that struct — count an
+/// undirected edge (grid-quantized like `closed_or_hairline`'s own key, so
+/// the two predicates read the identical triangle soup) as open when its
+/// forward and reverse use counts differ — and is intentionally a second copy
+/// of the same one-line rule `edge_stats` already states; that duplication is
+/// exactly the shape #3435 is about, not an accident of this test.
+fn undirected_open_edge_count(mesh: &Mesh) -> usize {
+    type K = (i64, i64, i64);
+    let key = |i: u32| -> K {
+        let b = i as usize * 3;
+        let q = |v: f32| (v as f64 / 1.0e-4).round() as i64;
+        (
+            q(mesh.positions[b]),
+            q(mesh.positions[b + 1]),
+            q(mesh.positions[b + 2]),
+        )
+    };
+    let mut uses: std::collections::HashMap<(K, K), (u32, u32)> = std::collections::HashMap::new();
+    for tri in mesh.indices.chunks_exact(3) {
+        let (a, b, c) = (key(tri[0]), key(tri[1]), key(tri[2]));
+        if a == b || b == c || c == a {
+            continue;
+        }
+        for (x, y) in [(a, b), (b, c), (c, a)] {
+            let e = uses.entry((x.min(y), x.max(y))).or_insert((0, 0));
+            if x < y {
+                e.0 += 1;
+            } else {
+                e.1 += 1;
+            }
+        }
+    }
+    uses.values().filter(|&&(f, r)| f != r).count()
+}
+
+/// #3435: `closed_or_hairline` and the census's undirected ±1 balance are two
+/// different definitions of "closed", and this mesh is the minimal witness
+/// that they DISAGREE.
+///
+/// Three triangles, sharing points `A=(0,0,0)`, `B=(10,0,0)`, `M=(5,0,0)`
+/// (collinear) and an off-line apex `C`:
+///   - `(A, B, C)` — one face using the FULL boundary edge `A→B`.
+///   - `(M, A, C)` and `(B, M, C)` — an adjacent face using the SAME boundary,
+///     but split at `M` and wound the other way, i.e. `M→A` then `B→M`.
+///
+/// Every edge touching `C` cancels exactly (each is walked once each
+/// direction across the three triangles), so the only uncancelled directed
+/// edges are `A→B`, `M→A`, `B→M` — a T-junction: one face's full-length edge,
+/// covered by the adjacent face's two sub-edges split at an interior point.
+/// This is the exact signature #3435 measured on host `#628727` in
+/// `ISSUE_068_ARK_NUS_skolebygg.ifc` (a 336 mm pier with two openings): a
+/// full-height edge collinearly covered by two sub-edges split off-centre,
+/// read `open=3` by the census while `try_prism_cut`'s own gate passed it.
+///
+/// `closed_or_hairline` ACCEPTS this by design (own module doc: uncancelled
+/// directed edges that net to zero everywhere along their shared line). The
+/// undirected ±1 balance calls all three of `{A,B}`, `{M,A}`, `{B,M}` open,
+/// because each pair is used only once total and has no reverse partner to
+/// balance against — it has no collinear-coverage step, so it cannot see that
+/// the "reverse" is split across two edges rather than missing.
+///
+/// This test does not say which reading is right — #3435 tracks that
+/// decision — it pins that they currently disagree, so a change to either
+/// definition has to touch this assertion on purpose.
+#[test]
+fn t_junction_hairline_accepted_but_undirected_balance_reports_open() {
+    let a = [0.0, 0.0, 0.0];
+    let b = [10.0, 0.0, 0.0];
+    let m = [5.0, 0.0, 0.0];
+    let c = [0.0, 1.0, 1.0];
+    let mesh = mesh_from_tris(&[[a, b, c], [m, a, c], [b, m, c]]);
+
+    assert!(
+        closed_or_hairline(&mesh),
+        "closed_or_hairline must accept the T-junction (its own hairline contract)"
+    );
+    assert_ne!(
+        undirected_open_edge_count(&mesh),
+        0,
+        "the undirected ±1 balance must call the same mesh open (no collinear-coverage step)"
+    );
+}
+
 /// Minimal single-slab unit-square `PrismFrame`, for exercising
 /// `try_merge_prisms` directly without routing through a full mesh.
 fn square_frame(d: V3, u: V3, v: V3, d0: f64, d1: f64) -> PrismFrame {

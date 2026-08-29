@@ -50,7 +50,7 @@ export function collectAllPropertySets(
   const scale = store.lengthUnitScale;
 
   appendInstancePropertySets(store, expressId, scale, own);
-  appendQuantitySets(store, expressId, own);
+  appendQuantitySets(store, expressId, scale, own);
   appendPredefinedPropertySets(store, expressId, own);
   appendMaterialOwnPropertySets(store, expressId, scale, own);
 
@@ -94,6 +94,7 @@ function appendInstancePropertySets(
 function appendQuantitySets(
   store: IfcDataStore,
   expressId: number,
+  scale: number | undefined,
   out: PropertySetInfo[]
 ): void {
   let quantities = store.quantities?.getForEntity?.(expressId);
@@ -105,11 +106,16 @@ function appendQuantitySets(
   for (const qset of quantities) {
     out.push({
       name: qset.name,
-      properties: (qset.quantities || []).map((q) => ({
-        name: q.name,
-        value: q.value,
-        dataType: idsDataTypeForQuantity(q.type),
-      })),
+      // IfcPhysicalQuantity (Qto_*) values are stored in the project's
+      // raw author unit exactly like IfcPropertySingleValue (Pset_*) —
+      // an IfcQuantityLength is just as much an IFCLENGTHMEASURE as a
+      // length-typed property, so it needs the same base-SI conversion
+      // `projectProperty` already applies there. Route through it here
+      // too rather than building the value inline, so the two paths
+      // can't drift again.
+      properties: (qset.quantities || []).map((q) =>
+        projectProperty({ name: q.name, value: q.value, type: undefined, dataType: idsDataTypeForQuantity(q.type) }, scale)
+      ),
     });
   }
 }

@@ -1433,15 +1433,14 @@ const IMPLS: Record<string, ToolImpl> = {
   async viewer_set_section(_m, args, ctx) {
     const v = requireViewer(ctx);
     const axis = String(args.axis ?? '').toLowerCase();
-    if (axis !== 'x' && axis !== 'y' && axis !== 'z') {
-      throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'axis must be "x", "y", or "z".' });
-    }
+    if (axis !== 'x' && axis !== 'y' && axis !== 'z') throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'axis must be "x", "y", or "z".' });
     const position = Number(args.position ?? 0);
-    if (!Number.isFinite(position)) {
-      throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'position must be a number.' });
-    }
-    v.setSection({ axis: axis as 'x' | 'y' | 'z', position });
-    return { text: `Section ${axis} = ${position.toFixed(2)}.`, structured: { axis, position } };
+    if (!Number.isFinite(position)) throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'position must be a number.' });
+    const flipped = args.flipped === true;
+    const enabled = args.enabled !== false;
+    v.setSection({ axis: axis as 'x' | 'y' | 'z', position, flipped, enabled });
+    const suffix = `${flipped ? ' (flipped)' : ''}${enabled ? '' : ' (disabled)'}`;
+    return { text: `Section ${axis} = ${position.toFixed(2)}${suffix}.`, structured: { axis, position, flipped, enabled } };
   },
 
   async viewer_clear_section(_m, _args, ctx) {
@@ -1468,6 +1467,7 @@ const IMPLS: Record<string, ToolImpl> = {
       type,
       pset: psetName,
       property: propName,
+      missingColor: parseColorArg(args.missing_color ?? 'gray'),
       sample: (expressId) => {
         const ref: EntityRef = { modelId: m.id, expressId };
         return m.bim.property(ref, psetName, propName);

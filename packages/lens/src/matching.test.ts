@@ -62,6 +62,46 @@ describe('matchesCriteria — ifcType', () => {
   });
 });
 
+// IFC_SUBTYPE_TO_BASE only covered 4 of IFC4's 9 `*StandardCase` entities
+// (plus the two `*Flight` types) — Door/Member/Plate/Window/Opening were
+// hand-list omissions, so a rule on the base type silently failed to match
+// files exported with those StandardCase variants (issue: lens rule
+// matching does not close over the full StandardCase family).
+describe('matchesCriteria — ifcType subtype coverage (IFC_SUBTYPE_TO_BASE)', () => {
+  const provider = createMockProvider([
+    { id: 1, type: 'IfcDoorStandardCase' },
+    { id: 2, type: 'IfcWindowStandardCase' },
+    { id: 3, type: 'IfcMemberStandardCase' },
+    { id: 4, type: 'IfcPlateStandardCase' },
+    { id: 5, type: 'IfcOpeningStandardCase' },
+  ]);
+
+  it('IfcDoorStandardCase matches an IfcDoor rule', () => {
+    const c: LensCriteria = { type: 'ifcType', ifcType: 'IfcDoor' };
+    expect(matchesCriteria(c, 1, provider)).toBe(true);
+  });
+
+  it('IfcWindowStandardCase matches an IfcWindow rule', () => {
+    const c: LensCriteria = { type: 'ifcType', ifcType: 'IfcWindow' };
+    expect(matchesCriteria(c, 2, provider)).toBe(true);
+  });
+
+  it('IfcMemberStandardCase matches an IfcMember rule', () => {
+    const c: LensCriteria = { type: 'ifcType', ifcType: 'IfcMember' };
+    expect(matchesCriteria(c, 3, provider)).toBe(true);
+  });
+
+  it('IfcPlateStandardCase matches an IfcPlate rule', () => {
+    const c: LensCriteria = { type: 'ifcType', ifcType: 'IfcPlate' };
+    expect(matchesCriteria(c, 4, provider)).toBe(true);
+  });
+
+  it('IfcOpeningStandardCase matches an IfcOpeningElement rule', () => {
+    const c: LensCriteria = { type: 'ifcType', ifcType: 'IfcOpeningElement' };
+    expect(matchesCriteria(c, 5, provider)).toBe(true);
+  });
+});
+
 describe('matchesCriteria — group (#1075)', () => {
   // Spaces 1 & 2 belong to zone "Apt-01"; space 3 belongs to "Apt-02"; entity 4
   // belongs to no group.

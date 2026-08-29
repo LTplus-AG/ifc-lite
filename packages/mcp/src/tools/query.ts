@@ -378,8 +378,7 @@ const getEntitiesBulk: Tool = {
     }
 
     const entities: Record<string, unknown> = {};
-    // Every live entity this call saw per GlobalId, so a key that names more
-    // than one can be reported instead of quietly resolved.
+    // Every live entity this call saw per GlobalId, so a key naming more than one is reported, not silently resolved.
     const byGlobalId = new Map<string, number[]>(
       [...carriers].map(([globalId, list]) => [globalId, [...list]]),
     );
@@ -396,7 +395,8 @@ const getEntitiesBulk: Tool = {
       else if (!known.includes(id)) known.push(id);
       // First write wins, and the first write is the resolved one.
       if (Object.prototype.hasOwnProperty.call(entities, data.globalId)) continue;
-      const e: Record<string, unknown> = { ...data };
+      const e: Record<string, unknown> = { ...data }; // identity only; attributes need their own call, like get_entity
+      if (include.has('attributes')) e.attributes = m.bim.attributes(ref);
       if (include.has('properties')) e.properties = m.bim.properties(ref);
       if (include.has('quantities')) e.quantities = m.bim.quantities(ref);
       if (include.has('classifications')) e.classifications = m.bim.classifications(ref);

@@ -93,13 +93,18 @@ export function validateBcfServerUrl(input: string): string | null {
   return null;
 }
 
-export function requireSecureTokenUrl(tokenUrl: string | undefined): string {
-  if (!tokenUrl) {
-    throw new Error('This BCF server does not advertise an OAuth2 token endpoint');
+/** Discovered OAuth URLs (token, auth, registration) must pass the TLS rule. */
+export function requireSecureOAuthUrl(url: string | undefined, kind: string): string {
+  if (!url) {
+    throw new Error(`This BCF server does not advertise an OAuth2 ${kind}`);
   }
-  const problem = validateBcfServerUrl(tokenUrl);
+  const problem = validateBcfServerUrl(url);
   if (problem) {
-    throw new Error(`This BCF server advertises an insecure token endpoint (${problem})`);
+    throw new Error(`This BCF server advertises an insecure ${kind} (${problem})`);
   }
-  return tokenUrl;
+  return url;
+}
+
+export function requireSecureTokenUrl(tokenUrl: string | undefined): string {
+  return requireSecureOAuthUrl(tokenUrl, 'token endpoint');
 }

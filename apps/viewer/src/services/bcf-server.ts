@@ -16,9 +16,9 @@
 import type { BcfApiClient, BcfProjectDto, BcfProjectFetchResult, BcfSyncProgress } from '@ifc-lite/bcf-api';
 import {
   loadBcfServerConfig,
+  requireSecureOAuthUrl,
   requireSecureTokenUrl,
   saveBcfServerConfig,
-  validateBcfServerUrl,
 } from './bcf-server-config.js';
 import type { BcfServerConfig } from './bcf-server-config.js';
 export {
@@ -136,14 +136,7 @@ export async function prepareBcfOAuth(
   const baseUrl = api.normalizeBcfBaseUrl(serverUrl);
   const authInfo = await new api.BcfApiClient({ baseUrl }).getAuthInfo();
   const tokenUrl = requireSecureTokenUrl(authInfo.oauth2_token_url);
-  const authEndpoint = authInfo.oauth2_auth_url;
-  if (!authEndpoint) {
-    throw new Error('This BCF server does not advertise an OAuth2 authorization endpoint');
-  }
-  const endpointProblem = validateBcfServerUrl(authEndpoint);
-  if (endpointProblem) {
-    throw new Error(`This BCF server advertises an insecure authorization endpoint (${endpointProblem})`);
-  }
+  const authEndpoint = requireSecureOAuthUrl(authInfo.oauth2_auth_url, 'authorization endpoint');
 
   let clientId = options.clientId?.trim() ?? '';
   let clientSecret = options.clientSecret?.trim() ?? '';
@@ -154,7 +147,10 @@ export async function prepareBcfOAuth(
       );
     }
     const registered = await api.registerBcfClient({
-      registrationUrl: authInfo.oauth2_dynamic_client_reg_url,
+      registrationUrl: requireSecureOAuthUrl(
+        authInfo.oauth2_dynamic_client_reg_url,
+        'client registration endpoint',
+      ),
       clientName: 'IFClite viewer',
       clientUrl: window.location.origin,
       redirectUrl: bcfOAuthRedirectUri(),

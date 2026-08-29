@@ -39,6 +39,8 @@ interface FakeServerState {
   tokenGate?: Promise<void>;
   /** When set, /auth advertises this token endpoint instead of the default. */
   advertisedTokenUrl?: string;
+  /** When set, /auth advertises this registration endpoint instead of the default. */
+  advertisedRegistrationUrl?: string;
   /** When false, /auth omits the dynamic client registration URL. */
   dynamicRegistration?: boolean;
   /** Registration requests seen, for asserting what was sent. */
@@ -66,7 +68,7 @@ function installFakeServer(): FakeServerState {
         oauth2_dynamic_client_reg_url:
           state.dynamicRegistration === false
             ? undefined
-            : 'https://fake.example/bcf/oauth2/register',
+            : (state.advertisedRegistrationUrl ?? 'https://fake.example/bcf/oauth2/register'),
       });
     }
     if (url.pathname === '/bcf/oauth2/register') {
@@ -439,6 +441,16 @@ describe('prepareBcfOAuth', () => {
     const server = installFakeServer();
     server.dynamicRegistration = false;
     await assert.rejects(prepareBcfOAuth('https://fake.example/bcf'), /needs a Client ID/);
+  });
+
+  it('refuses to register a client at a plain-http registration endpoint', async () => {
+    const server = installFakeServer();
+    server.advertisedRegistrationUrl = 'http://fake.example/bcf/oauth2/register';
+    await assert.rejects(
+      prepareBcfOAuth('https://fake.example/bcf'),
+      /insecure client registration endpoint/,
+    );
+    assert.equal(server.registrations.length, 0, 'no client secret may be minted over http');
   });
 });
 

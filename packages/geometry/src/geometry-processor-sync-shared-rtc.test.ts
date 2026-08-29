@@ -84,7 +84,12 @@ describe('GeometryProcessor sync path (<2MB) sharedRtcOffset override', () => {
       totalJobs: 1,
       unitScale: 1,
       rtcOffset: new Float64Array([10, 20, 30]),
-      needsShift: true,
+      // false on purpose. A caller-supplied shared offset must FORCE
+      // needsShift true, and while the mock reports true this assertion
+      // holds whether or not the fix does that -- dropping `useShared ?
+      // true :` from applyPrePassMetadata leaves the test green and ships
+      // half the fix unguarded.
+      needsShift: false,
       buildingRotation: 0,
       voidKeys: new Uint32Array(),
       voidCounts: new Uint32Array(),

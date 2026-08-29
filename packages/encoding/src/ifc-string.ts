@@ -155,16 +155,16 @@ export function decodeIfcString(str: string): string {
  * a file no conformant reader parses as intended (e.g. a name like
  * `O'Brien`). A caller writing into a literal must double `'` itself, or use
  * `escapeStepString` from `@ifc-lite/data`, which handles the full
- * literal-context contract: doubling
- * `'` and `\`, mapping control characters to a space, and encoding non-ASCII —
+ * literal-context contract: doubling `'` and `\`, mapping control characters
+ * to a space, and encoding non-ASCII —
  * per ISO 10303-21 6.3.3.4. The two functions do not produce the same output
  * for the same input; do not assume they agree. Sweeping U+0000..U+02FF, they
  * disagree on exactly two of the 95 printable ASCII characters: the
  * apostrophe (U+0027; doubled there, passed through here) and the reverse
  * solidus (U+005C; doubled there, `\X\5C` here). They also disagree on all 32
  * C0 controls AND on DEL (U+007F) -- a space there, `\X\HH` here, since
- * `escape` maps `'\0'..='\u{1F}' | '\u{7F}'` to a space -- and on all 128 of
- * U+0080..U+00FF (`\X2\HHHH\X0\` there, `\X\HH` here). That is 163
+ * `escapeStepString` collapses `/[\x00-\x1F\x7F]/g` to a space -- and on all
+ * 128 of U+0080..U+00FF (`\X2\HHHH\X0\` there, `\X\HH` here). That is 163
  * disagreements in all. Above U+00FF they agree on all 512.
  *
  * Kept for round-trip use with {@link decodeIfcString}, within the scope the

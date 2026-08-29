@@ -135,6 +135,46 @@ describe('inferCapabilities — unknown calls', () => {
   });
 });
 
+describe('inferCapabilities — unrecognised methods in a differentiated namespace', () => {
+  // `mutate` has an explicit `methods` map in the catalogue (only
+  // `delete` is overridden today), so it already differentiates
+  // capability by method. `setProperty` is a real bridge method
+  // (packages/sandbox/src/bridge-mutate.ts) that the map does not
+  // classify — before the fix this silently fell through to the
+  // namespace default with `unknown: false` and no warning, exactly
+  // the "reviewer never told" gap described in capability.ts's design
+  // rule #3. Chosen because it is untouched by PR #3487 (which only
+  // adds overrides to `viewer`/`store`), so it stays a valid example
+  // whether or not that PR has merged.
+  it('(i) known namespace, unrecognised method → flagged unknown, capability still granted', () => {
+    const r = inferCapabilities('bim.mutate.setProperty(id, "Pset_X", "F", 1);');
+    const obs = r.observations.find((o) => o.call === 'bim.mutate.setProperty');
+    expect(obs?.unknown).toBe(true);
+    // Never under-grant: the namespace default is still returned.
+    expect(obs?.capabilities).toEqual(['model.mutate:*']);
+  });
+
+  it('(ii) known namespace, recognised method (explicit override) → not flagged', () => {
+    const r = inferCapabilities('bim.mutate.delete(id);');
+    const obs = r.observations.find((o) => o.call === 'bim.mutate.delete');
+    expect(obs?.unknown).toBe(false);
+  });
+
+  it('(ii) known namespace, flat namespace with no `methods` map at all → not flagged', () => {
+    // `query` has no per-method differentiation in the catalogue, so an
+    // unlisted method is the intended fallback, not a gap.
+    const r = inferCapabilities('bim.query.byType("IfcWall");');
+    const obs = r.observations.find((o) => o.call === 'bim.query.byType');
+    expect(obs?.unknown).toBe(false);
+  });
+
+  it('(iii) unknown namespace → still flagged (regression guard)', () => {
+    const r = inferCapabilities('bim.totallyMadeUp.thing();');
+    const obs = r.observations.find((o) => o.call === 'bim.totallyMadeUp.thing');
+    expect(obs?.unknown).toBe(true);
+  });
+});
+
 describe('inferCapabilities — parse errors', () => {
   it('reports parse errors on syntactically invalid input', () => {
     const r = inferCapabilities('this is not js');

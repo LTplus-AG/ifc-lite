@@ -16,7 +16,11 @@
  *      "extension breaks at install" over "extension silently uses an
  *      unauthorised capability."
  *   3. **Surface unknowns.** Calls into unknown namespaces produce a
- *      warning in the result so reviewers can investigate.
+ *      warning in the result so reviewers can investigate. So do calls
+ *      whose method the catalogue never classified inside a namespace
+ *      that otherwise differentiates capability by method — see
+ *      `isRecognisedMethod` in `./catalogue.ts` for exactly which calls
+ *      that covers.
  *   4. **No execution.** This is pure static analysis. We do not run the
  *      script during inference.
  *
@@ -26,7 +30,7 @@
 
 import * as acorn from 'acorn';
 import { MAX_AST_DEPTH, walkBounded } from '../ast/bounded-walk.js';
-import { lookupNamespaceMethod, isKnownNamespace } from './catalogue.js';
+import { lookupNamespaceMethod, isRecognisedMethod } from './catalogue.js';
 
 export interface InferenceResult {
   /** De-duplicated capability strings, sorted. */
@@ -42,7 +46,13 @@ export interface InferenceObservation {
   call: string;
   /** Inferred capabilities for this call. */
   capabilities: string[];
-  /** True if we know nothing about this call (catalogue miss). */
+  /**
+   * True if the catalogue does not actually classify this call: either
+   * the namespace itself is unrecognised, or the namespace differentiates
+   * capability by method and this specific method has no entry. In both
+   * cases `capabilities` is still a real (over-)grant — see
+   * `isRecognisedMethod` in `./catalogue.ts`.
+   */
   unknown: boolean;
 }
 
@@ -112,7 +122,7 @@ export function inferCapabilities(source: string): InferenceResult {
     observations.push({
       call,
       capabilities: [...caps],
-      unknown: !isKnownNamespace(namespace),
+      unknown: !isRecognisedMethod(namespace, method),
     });
   });
 

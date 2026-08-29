@@ -19,6 +19,18 @@
  * surface as the fallback `model.read` plus a warning in the inference
  * result so the user/AI can investigate.
  *
+ * Two shapes of namespace entry, and they warn differently on a miss:
+ *   - FLAT (no `methods` map): every real method in the namespace is
+ *     documented to share `defaultCapabilities` (e.g. `query`, `create`).
+ *     A method not listed here still resolves to that default, silently —
+ *     that is the intended behavior, not a gap.
+ *   - DIFFERENTIATED (has a `methods` map): the author has already shown
+ *     that capability varies by method within this namespace (e.g.
+ *     `viewer`, `mutate`). A method missing from that map is therefore a
+ *     genuine catalogue gap — it still resolves to `defaultCapabilities`
+ *     (never under-grant), but `isRecognisedMethod` reports it as
+ *     unrecognised so `capability.ts` can warn. See `isRecognisedMethod`.
+ *
  * Keep this in sync with `@ifc-lite/sandbox/schema` (NAMESPACE_SCHEMAS).
  */
 
@@ -118,4 +130,29 @@ export function lookupNamespaceMethod(
 /** True iff the namespace is recognised. */
 export function isKnownNamespace(namespace: string): boolean {
   return Object.prototype.hasOwnProperty.call(INFERENCE_CATALOGUE, namespace);
+}
+
+/**
+ * True iff this specific `bim.<namespace>.<method>` call resolves to a
+ * capability the catalogue actually classified, rather than falling
+ * through to a namespace default the table never considered for this
+ * method.
+ *
+ * `method` is `undefined` for an untargeted `bim.<namespace>` reference
+ * (no method call) — that always resolves to the documented default and
+ * is always recognised.
+ *
+ * A FLAT namespace (no `methods` map) recognises every method: the
+ * table's own shape says one capability legitimately covers the whole
+ * namespace. A DIFFERENTIATED namespace (has a `methods` map) only
+ * recognises methods present in that map — the table has already shown
+ * capability varies here, so a method it never classified is a gap, not
+ * an intentional fallback.
+ */
+export function isRecognisedMethod(namespace: string, method: string | undefined): boolean {
+  if (!isKnownNamespace(namespace)) return false;
+  if (!method) return true;
+  const entry = INFERENCE_CATALOGUE[namespace];
+  if (!entry.methods) return true;
+  return Object.prototype.hasOwnProperty.call(entry.methods, method);
 }

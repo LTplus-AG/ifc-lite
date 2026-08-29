@@ -1,0 +1,11 @@
+---
+'@ifc-lite/extensions': patch
+---
+
+Fix `inferCapabilities` (`src/inference/capability.ts`) surfacing the wrong thing on a catalogue gap.
+
+The module's own design rule #3 ("Surface unknowns") only checked `isKnownNamespace`, but `INFERENCE_CATALOGUE` (`src/inference/catalogue.ts`) grants capability per *method*, not per namespace: a namespace maps to `defaultCapabilities` plus optional per-method `methods` overrides. A call like `bim.mutate.setProperty` — a real bridge method (`packages/sandbox/src/bridge-mutate.ts`) the `mutate` entry's `methods` map does not list — found `mutate` a known namespace, reported `unknown: false`, and emitted no warning, silently falling back to the namespace default with nothing telling a reviewer this specific call was never classified.
+
+`isRecognisedMethod` (new export in `catalogue.ts`) now distinguishes two shapes of namespace entry: a FLAT one (no `methods` map, e.g. `query`, `create`) where every method legitimately shares the default and an unlisted method stays silent, and a DIFFERENTIATED one (has a `methods` map, e.g. `viewer`, `mutate`, `export`) where a method missing from that map is a genuine gap and now sets `unknown: true`. `inferCapabilities` still returns the namespace default as the capability either way — this only changes what gets surfaced to a human reviewing the "Promote to tool" screen (`apps/viewer/src/components/extensions/PromoteToolDialog.tsx`, driven by `observations.some((o) => o.unknown)`), not what gets granted.
+
+Scoped to namespaces that already differentiate by method, rather than every catalogue miss: a blanket version of this check flags 114 of the 122 real bridge methods (across `packages/sandbox/src/bridge-*.ts`) that currently have no per-method override, most of which are read-only methods in flat namespaces correctly falling back to a read-only default. Restricted to differentiated namespaces, it is 10 (`viewer.colorizeAll`, `viewer.select`, `viewer.resetColors`, `viewer.resetVisibility`, `mutate.setProperty`, `mutate.setAttribute`, `mutate.deleteProperty`, `mutate.undo`, `mutate.redo`, `export.download`) — the shape of gap #3487 fixed by hand for `viewer`/`store`, now caught mechanically for any namespace that opts into per-method differentiation, including `store` once #3487 lands and gives it a `methods` map.

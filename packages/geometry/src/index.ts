@@ -496,18 +496,8 @@ export class GeometryProcessor {
   private async *processStreamingBytes(
     buffer: Uint8Array,
     batchConfig: number | DynamicBatchConfig,
-    /**
-     * Shared RTC origin from an earlier federated model. Overrides the
-     * pre-pass's own per-model RTC detection so every model in the
-     * federation renders in the SAME coordinate space —
-     * mirrors `sendStreamStartIfReady`'s `useSharedRtc` logic in
-     * `geometry-parallel.ts`. Without this override, a model that reaches
-     * this single-threaded WASM fallback (no `SharedArrayBuffer`/`Worker`,
-     * or `hardwareConcurrency` of 1 — common when cross-origin isolation
-     * headers are not set) silently used its OWN detected RTC offset even
-     * though `processAdaptive` was handed a `sharedRtcOffset`, misaligning
-     * it against the rest of the federation.
-     */
+    // Federation RTC origin, overriding the pre-pass's per-model detection so
+    // every model shares one coordinate space — mirrors `geometry-parallel.ts`.
     sharedRtcOffset?: { x: number; y: number; z: number },
   ): AsyncGenerator<StreamingGeometryEvent> {
     if (!this.bridge) {
@@ -516,28 +506,22 @@ export class GeometryProcessor {
 
     const api = this.bridge.getApi();
     const prePass = api.buildPrePassOnce(buffer) as ByteStreamingPrePassResult;
-
     const useSharedRtc = sharedRtcOffset != null;
-    const rtcX = useSharedRtc ? sharedRtcOffset.x : prePass.rtcOffset?.[0] ?? 0;
-    const rtcY = useSharedRtc ? sharedRtcOffset.y : prePass.rtcOffset?.[1] ?? 0;
-    const rtcZ = useSharedRtc ? sharedRtcOffset.z : prePass.rtcOffset?.[2] ?? 0;
-    const effectiveNeedsShift = useSharedRtc ? true : Boolean(prePass.needsShift);
+    const rtc = useSharedRtc
+      ? sharedRtcOffset
+      : { x: prePass.rtcOffset?.[0] ?? 0, y: prePass.rtcOffset?.[1] ?? 0, z: prePass.rtcOffset?.[2] ?? 0 };
+    const effectiveNeedsShift = useSharedRtc || Boolean(prePass.needsShift);
+    this.coordinateHandler.setWasmMetadata(prePass.unitScale, effectiveNeedsShift ? { ...rtc } : null);
 
-    this.coordinateHandler.setWasmMetadata(
-      prePass.unitScale,
-      effectiveNeedsShift ? { x: rtcX, y: rtcY, z: rtcZ } : null,
-    );
-
-    // try/finally so the pre-pass cache is released on every exit: the
-    // totalJobs===0 early return, a processGeometryBatch throw, or the
-    // consumer abandoning the generator (which triggers `.return()`).
+    // try/finally releases the pre-pass cache on every exit: the totalJobs===0
+    // early return, a throw, or the consumer abandoning the generator.
     try {
       yield { type: 'model-open', modelID: 0 };
 
       if (prePass.rtcOffset || useSharedRtc) {
         yield {
           type: 'rtcOffset',
-          rtcOffset: { x: rtcX, y: rtcY, z: rtcZ },
+          rtcOffset: { x: rtc.x, y: rtc.y, z: rtc.z },
           hasRtc: effectiveNeedsShift,
         };
       }
@@ -565,9 +549,9 @@ export class GeometryProcessor {
           buffer,
           jobSlice,
           prePass.unitScale,
-          rtcX,
-          rtcY,
-          rtcZ,
+          rtc.x,
+          rtc.y,
+          rtc.z,
           effectiveNeedsShift,
           prePass.voidKeys,
           prePass.voidCounts,

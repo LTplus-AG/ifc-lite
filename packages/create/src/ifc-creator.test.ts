@@ -644,7 +644,14 @@ describe('IfcCreator deterministic output (Timestamp + GuidSource)', () => {
     // The fixed instant landed in the STEP header and IfcOwnerHistory, as
     // an ISO 8601 date-time (ISO 10303-21 time_stamp) — not digits with the
     // '-'/':' separators stripped.
-    expect(first).toContain("'2024-01-01T00:00:00'");
+    //
+    // Assert on the FILE_NAME line rather than on the whole file: this
+    // model also carries an IfcWorkSchedule seeded with that same literal
+    // (`buildModel` above), so a bare `toContain` matches whatever the
+    // header holds and cannot fail. The pre-fix form was live only because
+    // '20240101T000000' happened to occur nowhere else.
+    const fileName = first.split('\n').find((l) => l.startsWith('FILE_NAME('));
+    expect(fileName).toContain("'2024-01-01T00:00:00'");
     expect(first).toContain(`,${Math.floor(FIXED / 1000)});`);
   });
 

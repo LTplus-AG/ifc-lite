@@ -42,8 +42,17 @@
  *  - The pattern split across MORE than a few lines, or through a
  *    function call boundary this script does not trace into.
  *  - A single `.find` with no matching second `.find` chained to
- *    `.properties`/`.quantities` -- e.g. checking whether a pset merely
- *    EXISTS is a different (and correct) question this script leaves alone.
+ *    `.properties`/`.quantities`. Usually that is a different, correct
+ *    question (does this pset EXIST at all), which is why the gate stays
+ *    quiet -- but NOT always: `deletePropertySet`/`deleteQuantitySet` in
+ *    packages/mutations used a single `.find` to reach one set and then
+ *    iterate ITS members, which is the same defect wearing a different
+ *    shape (only the first same-named set's members got DELETE markers).
+ *    Both were fixed in the PR that added this gate; the gate cannot see
+ *    that shape, and widening it to every single `.find` on a pset-ish
+ *    variable would flag the many legitimate existence checks. If you are
+ *    reaching into a set you found by name, ask whether a SECOND set could
+ *    share that name -- the gate will not ask it for you.
  *  - `*.test.ts(x)` files: a test asserting "the fixture I just built
  *    contains X" is a fundamentally different risk than a resolution path
  *    real callers depend on, and this shape is common, legitimate assertion

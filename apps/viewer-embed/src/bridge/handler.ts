@@ -22,8 +22,8 @@ import {
   type ViewPreset,
   type SectionAxis,
 } from '@ifc-lite/embed-protocol';
-import type { ViewerState } from '@/store/index.js';
-import { toGlobalIdFromModels } from '@/store/index.js';
+import { toGlobalIdFromModels, type ViewerState } from '@/store/index.js';
+import { aroundDestructiveLoad, offerHostPose } from './cameraIntent.js';
 
 /** Reference to the store's getState / setState for imperative access */
 interface BridgeContext {
@@ -256,7 +256,7 @@ async function handleCommand(type: InboundCommandType, data: unknown, requestId?
 
     case 'LOAD_MODEL': {
       const payload = data as InboundPayloads['LOAD_MODEL'];
-      const stats = await ctx.loadModelFromUrl(payload.url);
+      const stats = await aroundDestructiveLoad(ctx.getState, ctx.loadModelFromUrl, payload.url);
       if (requestId) emitToParent(createResponse(requestId, stats));
       return;
     }
@@ -267,7 +267,7 @@ async function handleCommand(type: InboundCommandType, data: unknown, requestId?
       if (buffer.byteLength > MAX_BUFFER_SIZE) {
         throw new Error(`Model too large (${(buffer.byteLength / 1024 / 1024).toFixed(0)} MB). Max: 500 MB`);
       }
-      const stats = await ctx.loadModelFromBuffer(buffer);
+      const stats = await aroundDestructiveLoad(ctx.getState, ctx.loadModelFromBuffer, buffer);
       if (requestId) emitToParent(createResponse(requestId, stats));
       return;
     }
@@ -407,7 +407,7 @@ async function handleCommand(type: InboundCommandType, data: unknown, requestId?
 
     case 'SET_CAMERA': {
       const payload = data as InboundPayloads['SET_CAMERA'];
-      state.setCameraRotation({ azimuth: payload.azimuth, elevation: payload.elevation });
+      await offerHostPose({ azimuth: payload.azimuth, elevation: payload.elevation }, ctx.getState);
       if (requestId) emitToParent(createResponse(requestId));
       return;
     }

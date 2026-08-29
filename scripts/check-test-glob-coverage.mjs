@@ -72,6 +72,7 @@
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isMainEntry } from './lib/is-main-entry.mjs';
 import { listWorkspacePackages } from './lib/list-workspace-packages.mjs';
 
 // Deliberately a literal here rather than imported from the shared walk.
@@ -413,7 +414,7 @@ if they are dead and should be deleted, delete them. Do not add a skip.
   console.log(`check-test-glob-coverage: OK (${audited} packages audited, 0 unrun test files)`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMainEntry(import.meta.url)) {
   try {
     main();
   } catch (err) {

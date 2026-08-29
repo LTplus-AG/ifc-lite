@@ -60,6 +60,23 @@ describe('iframe URL construction', () => {
     expect(p.has('hideScale')).toBe(false);
   });
 
+  it('serialises autoLoad only when explicitly false', () => {
+    // autoLoad is the one flag with the OPPOSITE polarity to hideAxis/hideScale
+    // above: those default off and are emitted when true, this defaults ON and is
+    // emitted only to suppress. The viewer parses it as `autoLoad !== 'false'`,
+    // so the literal string is load-bearing — `autoLoad=0` or `autoLoad=` would
+    // both read back as true and silently load the model the host asked us not to.
+    expect(urlOf({ autoLoad: false }).searchParams.get('autoLoad')).toBe('false');
+  });
+
+  it('omits autoLoad when unset or true, matching the viewer default', () => {
+    // Emitting `autoLoad=true` would be harmless today but pins a value the
+    // parser only reads as "not the string false"; omission is the same answer
+    // and keeps the URL to what the host actually chose.
+    expect(urlOf({}).searchParams.has('autoLoad')).toBe(false);
+    expect(urlOf({ autoLoad: true }).searchParams.has('autoLoad')).toBe(false);
+  });
+
   it('maps hideAxis and hideScale to their own distinct params, not each other', () => {
     // Setting only one flag distinguishes a key swap: both prior tests set
     // hideAxis and hideScale to the SAME value together, so `params.set(

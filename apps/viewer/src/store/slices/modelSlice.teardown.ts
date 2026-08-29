@@ -6,9 +6,9 @@
  * `modelSlice`'s contribution to the store-wide teardown seam (`store/teardown.ts`).
  *
  * Beside the slice rather than inside it: `modelSlice.ts` carries a recorded
- * budget in `scripts/module-size-allowlist.txt`, and that ratchet only lets a
- * listed file shrink, never grow. Every slice in this group is split the same
- * way so the registry imports one shape, not two.
+ * budget in `scripts/module-size-allowlist.txt`, and that ratchet lets a listed
+ * file shrink by default; growth is a raise, stated in the PR. Every slice in
+ * this group is split the same way so the registry imports one shape, not two.
  *
  * The federation registry is NOT touched here. `federationRegistry
  * .unregisterModel` (partial removal, which BURNS the freed offset range) and

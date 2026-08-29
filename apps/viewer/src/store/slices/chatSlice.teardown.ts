@@ -7,7 +7,8 @@
  *
  * A sibling module rather than a block at the bottom of `chatSlice.ts` because
  * that file sits at its recorded module-size budget (452 lines,
- * `scripts/module-size-allowlist.txt`) and may not grow.
+ * `scripts/module-size-allowlist.txt`), which a raise could lift but a
+ * split does not need.
  */
 
 import { defineSliceTeardown, notApplicable } from '../teardown.js';

@@ -751,7 +751,7 @@ export class GeometryProcessor {
     onEntityIndex?: (
       ids: Uint32Array,
       starts: Uint32Array,
-      lengths: Uint32Array,
+      lengths: Uint32Array, oversizedIdCount?: number, // #3395 refused records
     ) => void,
     /**
      * Explicit wasm asset URL forwarded to the worker pool. See
@@ -830,7 +830,7 @@ export class GeometryProcessor {
       onEntityIndex?: (
         ids: Uint32Array,
         starts: Uint32Array,
-        lengths: Uint32Array,
+        lengths: Uint32Array, oversizedIdCount?: number, // #3395 refused records
       ) => void;
       /**
        * Explicit wasm asset URL forwarded to the worker pool.

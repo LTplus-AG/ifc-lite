@@ -7,7 +7,7 @@
  *
  * Beside the slice rather than inside it because `sectionSlice.ts` sits at its
  * recorded module-size budget (`scripts/module-size-allowlist.txt`), which
- * ratchets down only.
+ * ratchets down by default.
  *
  * This is the store's canonical Trap B: ONE value, `sectionPlane`, holds both
  * session-scoped and persisted fields. Rather than spread the live plane and

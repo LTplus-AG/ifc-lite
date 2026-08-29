@@ -7,7 +7,7 @@
  *
  * Beside the slice rather than inside it because `sheetSlice.ts` sits at its
  * recorded module-size budget (`scripts/module-size-allowlist.txt`), which
- * ratchets down only.
+ * ratchets down by default.
  *
  * `savedSheetTemplates` MUST SURVIVE and is absent from both `owns` and the
  * body. That is confirmed bug #1 in `scripts/check-whole-state-reset.mjs`'s

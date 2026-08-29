@@ -7,6 +7,8 @@
  * Used across material, georef, and classification extractors.
  */
 
+import { isIndexableExpressId } from './express-id.js';
+
 export function getString(value: unknown): string | undefined {
   if (value === null || value === undefined) return undefined;
   if (typeof value === 'string') return value;
@@ -94,18 +96,15 @@ export function getBoolean(value: unknown): boolean | undefined {
 export function getReference(value: unknown): number | undefined {
   if (value === null || value === undefined) return undefined;
   // Guarded on the number branch too: an express id is an integer key into the
-  // entity map. `Number.isSafeInteger`, not `Number.isFinite`: `Infinity`
-  // names no entity, but two DISTINCT ids that merely exceed 2^53 (~16
-  // digits) accumulate to the same double and would resolve to the same
-  // (wrong) entity — `isFinite` alone does not catch that collision. `NaN`
-  // never matches anything, including itself.
-  if (typeof value === 'number') return Number.isSafeInteger(value) ? value : undefined;
+  // entity map, and `isIndexableExpressId` is the one place that says which
+  // integers this toolkit can actually key on (express-id.ts, #3395).
+  // `Infinity` names no entity, two ids past 2^53 accumulate to the same
+  // double and would resolve to the same wrong entity, an id above 2^32 is
+  // never in the index, and `NaN` matches nothing, including itself.
+  if (typeof value === 'number') return isIndexableExpressId(value) ? value : undefined;
   if (typeof value === 'string' && value.startsWith('#')) {
-    // Number.isSafeInteger, not !Number.isNaN or Number.isFinite: a 400-digit
-    // id overflows to Infinity (not NaN, names no entity), and a 16+ digit id
-    // collides with a distinct sibling well before it overflows.
     const num = parseInt(value.substring(1));
-    if (Number.isSafeInteger(num)) return num;
+    if (isIndexableExpressId(num)) return num;
   }
   return undefined;
 }

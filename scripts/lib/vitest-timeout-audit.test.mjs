@@ -526,8 +526,8 @@ test('auditFile: a second sibling test file in the same subdirectory also resolv
 // exited 0 — a tool that read nothing and said so in the same shape it uses
 // to say "all good". Same failure class as `check-tla-chunk-await.mjs`
 // printing `0 chunks…` against an unbuilt dist. These tests drive the real
-// script as a subprocess (the guard lives in its `import.meta.url ===
-// argv[1]` block, so importing the module cannot reach it) and, in keeping
+// script as a subprocess (the guard lives in its `isMainEntry(import.meta.url)`
+// block, so importing the module cannot reach it) and, in keeping
 // with this file's rule, hand it SYNTHETIC files only.
 
 const SCRIPT = fileURLToPath(new URL('./vitest-timeout-audit.mjs', import.meta.url));

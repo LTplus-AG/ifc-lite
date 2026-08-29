@@ -182,18 +182,43 @@ fn process(content: &str, host_id: u32, voids: &FxHashMap<u32, Vec<u32>>) -> Opt
     router.process_element_with_voids(&entity, &mut decoder, voids).ok()
 }
 
-/// Open boundary edges on a 1 mm position-snapped topology, and separately the
-/// count of DEGENERATE edges (both endpoints snapping to one position).
+/// Two readings of watertightness plus the degenerate-triangle count, all from
+/// ONE walk over ONE 1 mm position-snapped topology.
 ///
-/// The distinction is load-bearing. A degenerate edge is a self-loop produced by
-/// a triangle that collapsed under the snap, which happens wholesale on
-/// georeferenced models: `Mesh.positions` is f32, and at UTM-scale coordinates
-/// (~5e5) the f32 step is ~3 cm, so a 200 mm wall cannot be represented at all.
-/// The pipeline's RTC offset exists to prevent that, but it is applied ABOVE
-/// `GeometryRouter::process_element`, which this harness calls directly. Counting
-/// self-loops as open boundary would therefore measure a harness artifact rather
-/// than a watertightness defect.
-fn edge_stats(mesh: &Mesh) -> (usize, usize) {
+/// Both readings off the same walk is the point of #3397 rather than a tidiness
+/// choice: two separate passes could be given two different snap tolerances, or
+/// two different degenerate-skip rules, and the per-host comparison this census
+/// now prints would silently stop comparing like with like.
+struct EdgeStats {
+    /// The SIGNED per-edge balance: undirected edges whose forward and reverse
+    /// use counts DIFFER. The census's historical reading, unchanged.
+    ///
+    /// Blind to every topology where the two counts grow together, because the
+    /// net stays zero: a face duplicated along with its opposite-wound twin, a
+    /// duplicated shell, a 2-forward / 2-reverse seam. See `strict`.
+    open: usize,
+    /// The STRICT directed-pair rule: undirected edges NOT used exactly once
+    /// forward and once reverse (#3397). This is the manifold condition the rest
+    /// of the repo already checks — `touching_operand.rs` counts the two
+    /// directions apart for this reason, and `issue_3353_boolean_tear.rs` pins
+    /// `f != 1 || r != 1` — and it is a superset of `open` by construction,
+    /// since `f != r` implies `(f, r) != (1, 1)`.
+    strict: usize,
+    /// Triangles that COLLAPSED under the snap (two of their three endpoints
+    /// landing on one position), counted and then skipped by BOTH readings.
+    ///
+    /// The distinction is load-bearing. A degenerate edge is a self-loop
+    /// produced by a triangle that collapsed under the snap, which happens
+    /// wholesale on georeferenced models: `Mesh.positions` is f32, and at
+    /// UTM-scale coordinates (~5e5) the f32 step is ~3 cm, so a 200 mm wall
+    /// cannot be represented at all. The pipeline's RTC offset exists to prevent
+    /// that, but it is applied ABOVE `GeometryRouter::process_element`, which
+    /// this harness calls directly. Counting self-loops as open boundary would
+    /// therefore measure a harness artifact rather than a watertightness defect.
+    degenerate: usize,
+}
+
+fn edge_stats(mesh: &Mesh) -> EdgeStats {
     let q = |v: f32| (v as f64 * 1.0e3).round() as i64;
     let mut vid: FxHashMap<(i64, i64, i64), u32> = FxHashMap::default();
     let mut id = |i: usize| -> u32 {
@@ -205,7 +230,11 @@ fn edge_stats(mesh: &Mesh) -> (usize, usize) {
         let n = vid.len() as u32;
         *vid.entry(k).or_insert(n)
     };
-    let mut bal: FxHashMap<(u32, u32), i32> = FxHashMap::default();
+    // (forward uses, reverse uses) per undirected edge, forward meaning the
+    // low-to-high orientation. Keeping the two directions APART rather than
+    // netting them is the whole of #3397: a net of zero cannot tell 1f/1r from
+    // 2f/2r, and the second is a duplicated or non-manifold sheet.
+    let mut uses: FxHashMap<(u32, u32), (u32, u32)> = FxHashMap::default();
     let mut degenerate = 0usize;
     for tri in mesh.indices.chunks_exact(3) {
         let (a, b, c) = (id(tri[0] as usize), id(tri[1] as usize), id(tri[2] as usize));
@@ -214,15 +243,32 @@ fn edge_stats(mesh: &Mesh) -> (usize, usize) {
             continue; // a collapsed triangle has no meaningful boundary
         }
         for (x, y) in [(a, b), (b, c), (c, a)] {
-            let (k, s) = if x < y { ((x, y), 1) } else { ((y, x), -1) };
-            *bal.entry(k).or_insert(0) += s;
+            let e = uses.entry((x.min(y), x.max(y))).or_insert((0, 0));
+            if x < y {
+                e.0 += 1;
+            } else {
+                e.1 += 1;
+            }
         }
     }
-    (bal.values().filter(|&&v| v != 0).count(), degenerate)
+    EdgeStats {
+        open: uses.values().filter(|&&(f, r)| f != r).count(),
+        strict: uses.values().filter(|&&(f, r)| f != 1 || r != 1).count(),
+        degenerate,
+    }
 }
 
+/// The SIGNED reading alone, for the `alt` and `pre` columns.
+///
+/// Those two stay signed deliberately (#3397). `alt` is gated through
+/// [`HostRow::diverged`] and `pre` through `is_torn_solid`, so widening either
+/// would move `non-invariant` and `genuine defects` on every host where the two
+/// rules disagree — the same population this change exists to MEASURE, which
+/// cannot be measured and re-baselined in one step. The cost is stated on
+/// [`HostRow::open_is_comparable`]: a doubled sheet only one triangulator emits
+/// is still invisible here.
 fn open_boundary_edges(mesh: &Mesh) -> usize {
-    edge_stats(mesh).0
+    edge_stats(mesh).open
 }
 
 /// Byte offset of each entity's `#id=` line, built in ONE pass over the file.
@@ -402,8 +448,8 @@ fn fmt_deltas(ds: &[Delta]) -> String {
 
 fn fmt_host(r: &HostRow) -> String {
     format!(
-        "{} #{}  {:<14} open={} tris={}",
-        r.model, r.id, r.rep, r.open, r.tris
+        "{} #{}  {:<14} open={} strict={} tris={}",
+        r.model, r.id, r.rep, r.open, r.strict, r.tris
     )
 }
 
@@ -443,10 +489,15 @@ fn watertightness_is_invariant_to_the_triangulator() {
             let alt = process(&content, id, &voids);
             set_alt(false);
 
-            let (open, degenerate) = edge_stats(&base);
+            let stats = edge_stats(&base);
+            let open = stats.open;
             // Only taken for torn hosts: it is a full second processing pass,
             // and it is only ever read to attribute a tear to construction or
-            // to the boolean.
+            // to the boolean. Triggered on the SIGNED reading, not the strict
+            // one, for the reason `open_boundary_edges` gives: widening the
+            // trigger would move `pre` on exactly the hosts #3397 exists to
+            // count, re-baselining the population in the commit that measures
+            // it.
             let pre = if open == 0 {
                 PreVoid::NotTaken
             } else {
@@ -460,8 +511,9 @@ fn watertightness_is_invariant_to_the_triangulator() {
                 id,
                 rep: representation_type(&content, &lines, id),
                 open,
+                strict: stats.strict,
                 tris: base.indices.len() / 3,
-                collapsed: degenerate > 0,
+                collapsed: stats.degenerate > 0,
                 far: max_abs_coord(&base) >= F32_SAFE_MAGNITUDE,
                 alt: alt.as_ref().map(open_boundary_edges),
                 pre,
@@ -478,7 +530,55 @@ fn watertightness_is_invariant_to_the_triangulator() {
         "hosts with collapsed triangles (f32 precision): {}/{}",
         run.collapsed, run.hosts
     );
-    println!("TOTAL unmatched edges across corpus: {}", run.open_edges);
+    println!("TOTAL unmatched edges across corpus (signed):  {}", run.open_edges);
+    println!("TOTAL directed-pair violations (strict):        {}", run.strict_edges);
+
+    // #3397's measurement, and the reason `strict` is a SECOND column rather
+    // than a replacement for `open`: how far apart the two rules actually are on
+    // this corpus. A host listed here is certified watertight by the signed
+    // balance while carrying edges that are not a clean one-forward /
+    // one-reverse pair — a doubled sheet, a duplicated shell, or a 2f/2r seam.
+    // Under the signed reading alone that population is not merely un-gated, it
+    // is unknown, because `torn` and `total unmatched edges` both derive from
+    // the count that cannot see it.
+    let signed_only: Vec<&HostRow> = rows.iter().filter(|r| r.open == 0 && r.strict > 0).collect();
+    println!(
+        "\nwatertight by the SIGNED balance, torn by the STRICT directed-pair rule: {}/{}",
+        signed_only.len(),
+        run.hosts
+    );
+    // Two further readings, each saying only what it counts. The host tally
+    // above answers #3397's question ("watertight by one rule, not the other");
+    // these two say how far apart the rules are everywhere else, and are kept
+    // separate from it because a corpus-wide edge total is NOT a statement
+    // about the hosts listed above.
+    println!(
+        "  hosts where the two readings disagree at all (strict > open): {}/{}",
+        rows.iter().filter(|r| r.strict > r.open).count(),
+        run.hosts
+    );
+    // `strict` is a superset of `open` per host, so this subtraction cannot
+    // wrap: every edge the signed balance counts is one the strict rule counts
+    // too.
+    println!(
+        "  corpus edge totals: {} signed, {} strict — {} edges the signed balance cannot see",
+        run.open_edges,
+        run.strict_edges,
+        run.strict_edges - run.open_edges
+    );
+    if !signed_only.is_empty() {
+        println!("    rep            model / element                  strict  tris");
+        for r in signed_only.iter().take(12) {
+            println!(
+                "    {:<14} {:<32} {:>6}  {:>5}",
+                r.rep,
+                format!("{} #{}", r.model, r.id),
+                r.strict,
+                r.tris
+            );
+        }
+    }
+
     let mut by_rep: std::collections::BTreeMap<&str, usize> = Default::default();
     for r in rows.iter().filter(|r| r.open > 0) {
         *by_rep.entry(r.rep.as_str()).or_insert(0) += 1;
@@ -737,6 +837,7 @@ fn watertightness_is_invariant_to_the_triangulator() {
     println!("  void hosts        : {} vs {}", run.hosts, expected.hosts);
     println!("  torn hosts        : {} vs {}", run.torn, expected.torn);
     println!("  unmatched edges   : {} vs {}", run.open_edges, expected.open_edges);
+    println!("  strict-rule edges : {} vs {}", run.strict_edges, expected.strict_edges);
     println!("  collapsed hosts   : {} vs {}", run.collapsed, expected.collapsed);
     println!("  genuine defects   : {} vs {}", run.torn_solid, expected.torn_solid);
     println!("  non-invariant     : {} vs {}", run.non_invariant, expected.non_invariant);
@@ -828,6 +929,7 @@ fn watertightness_is_invariant_to_the_triangulator() {
     // edges to 324, and an element-count gate saw only the improvement.
     for (name, got, want) in [
         ("total unmatched edges", run.open_edges, expected.open_edges),
+        ("total strict directed-pair violations", run.strict_edges, expected.strict_edges),
         ("torn void hosts", run.torn, expected.torn),
         ("hosts with snap-collapsed triangles", run.collapsed, expected.collapsed),
         ("closed solids that are not watertight", run.torn_solid, expected.torn_solid),
@@ -835,4 +937,105 @@ fn watertightness_is_invariant_to_the_triangulator() {
     ] {
         assert!(got <= want, "{name} grew: {got} > {want} (golden-derived)");
     }
+}
+
+/// A unit cube as 8 welded vertices and 12 consistently wound triangles.
+///
+/// Every one of its 18 undirected edges is used exactly once forward and once
+/// reverse, which is what makes it a valid null case for BOTH readings at once:
+/// a fixture that were merely balanced would leave `strict` untested.
+fn unit_cube() -> Mesh {
+    let mut m = Mesh::new();
+    m.positions = vec![
+        0.0, 0.0, 0.0, // 0
+        1.0, 0.0, 0.0, // 1
+        1.0, 1.0, 0.0, // 2
+        0.0, 1.0, 0.0, // 3
+        0.0, 0.0, 1.0, // 4
+        1.0, 0.0, 1.0, // 5
+        1.0, 1.0, 1.0, // 6
+        0.0, 1.0, 1.0, // 7
+    ];
+    m.indices = vec![
+        0, 3, 2, 0, 2, 1, // z = 0
+        4, 5, 6, 4, 6, 7, // z = 1
+        0, 1, 5, 0, 5, 4, // y = 0
+        1, 2, 6, 1, 6, 5, // x = 1
+        2, 3, 7, 2, 7, 6, // y = 1
+        3, 0, 4, 3, 4, 7, // x = 0
+    ];
+    m
+}
+
+/// [`unit_cube`] with one existing face triangle re-emitted AND its reverse.
+///
+/// Every position is already in the mesh, so this adds no boundary at all: the
+/// three affected edges go from 1 forward / 1 reverse to 2 forward / 2 reverse.
+/// That is the exact shape the signed balance cancels to zero on.
+///
+/// ONE fixture rather than a copy per test, because the six indices are what
+/// makes it a doubling rather than a hole: a copy that drifted would leave the
+/// superset test below asserting `strict >= open` over some other mesh, and
+/// passing.
+fn doubled_face_cube() -> Mesh {
+    let mut m = unit_cube();
+    m.indices.extend_from_slice(&[0, 3, 2, 0, 2, 3]);
+    m
+}
+
+/// #3397. The census measured watertightness with a SIGNED per-edge balance, so
+/// a face duplicated along with its opposite-wound twin contributes one extra
+/// forward AND one extra reverse use of each of its edges, cancels to zero, and
+/// is certified closed. Both readings now come off the same walk, and this is
+/// the mesh they disagree on.
+#[test]
+fn a_doubled_coincident_face_is_invisible_to_the_signed_balance_but_not_the_strict_rule() {
+    let clean = edge_stats(&unit_cube());
+    assert_eq!(clean.open, 0, "a closed cube has no unbalanced edges");
+    assert_eq!(clean.strict, 0, "and every one of its edges is a clean 1f/1r pair");
+    assert_eq!(clean.degenerate, 0);
+
+    let s = edge_stats(&doubled_face_cube());
+    // Pins the signed column's BLIND SPOT as a measurement rather than
+    // asserting it is right. This is the reading the census still gates its
+    // defect population on, so what it cannot see has to be written down.
+    assert_eq!(s.open, 0, "the signed balance cannot see a doubled coincident sheet");
+    assert_eq!(s.strict, 3, "the strict rule sees all three of its edges");
+    assert_eq!(s.degenerate, 0);
+}
+
+/// The superset relation the two columns are compared under. A real hole moves
+/// BOTH readings, so `strict` is not merely a different number: `f != r` implies
+/// `(f, r) != (1, 1)`, and a census row with `strict < open` would be a state
+/// neither this walk nor the golden's parser should ever produce.
+#[test]
+fn a_real_hole_moves_both_readings_and_strict_is_never_below_open() {
+    let mut holed = unit_cube();
+    holed.indices.truncate(holed.indices.len() - 3); // drop one triangle
+    let s = edge_stats(&holed);
+    assert_eq!(s.open, 3, "the three edges of the missing triangle are unbalanced");
+    assert_eq!(s.strict, 3, "and the strict rule counts the same three");
+
+    for m in [unit_cube(), holed, doubled_face_cube()] {
+        let s = edge_stats(&m);
+        assert!(s.strict >= s.open, "strict {} < open {}", s.strict, s.open);
+    }
+}
+
+/// A triangle that collapses under the 1 mm snap is skipped by BOTH readings, so
+/// it cannot inflate the strict count the way it would if only `open` skipped
+/// it. `HostRow.collapsed` is what reports the collapse instead.
+#[test]
+fn a_snap_collapsed_triangle_is_skipped_by_both_readings() {
+    let mut m = unit_cube();
+    // Two vertices 0.1 mm apart snap to one position, so this triangle is a
+    // self-loop rather than a boundary. Positions are metres; the snap is 1 mm.
+    let base = (m.positions.len() / 3) as u32;
+    m.positions.extend_from_slice(&[5.0, 5.0, 5.0, 5.0001, 5.0, 5.0, 5.0, 6.0, 5.0]);
+    m.indices.extend_from_slice(&[base, base + 1, base + 2]);
+
+    let s = edge_stats(&m);
+    assert_eq!(s.degenerate, 1, "the collapsed triangle is counted");
+    assert_eq!(s.open, 0, "and contributes no unbalanced edge");
+    assert_eq!(s.strict, 0, "nor any strict violation, or every far-field host would gain some");
 }

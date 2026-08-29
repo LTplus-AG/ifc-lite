@@ -147,6 +147,35 @@ describe('loadBcfServerConfig', () => {
   });
 });
 
+describe('clearBcfServerConfig', () => {
+  it('still notifies subscribers when browser storage is blocked', () => {
+    const storagePrototype = Object.getPrototypeOf(localStorage) as object;
+    const descriptor = Object.getOwnPropertyDescriptor(storagePrototype, 'removeItem');
+    assert.ok(descriptor);
+    const originalWarn = console.warn;
+    let changes = 0;
+    const onChange = () => {
+      changes += 1;
+    };
+    Object.defineProperty(storagePrototype, 'removeItem', {
+      configurable: true,
+      value: () => {
+        throw new Error('storage blocked');
+      },
+    });
+    console.warn = () => {};
+    window.addEventListener('ifc-lite:bcf-server-changed', onChange);
+    try {
+      assert.doesNotThrow(() => clearBcfServerConfig());
+      assert.equal(changes, 1);
+    } finally {
+      window.removeEventListener('ifc-lite:bcf-server-changed', onChange);
+      console.warn = originalWarn;
+      Object.defineProperty(storagePrototype, 'removeItem', descriptor);
+    }
+  });
+});
+
 describe('signInToBcfServer', () => {
   it('discovers the token endpoint, exchanges the password grant, and persists the session', async () => {
     const server = installFakeServer();

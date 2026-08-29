@@ -65,7 +65,11 @@ export function saveBcfServerConfig(config: BcfServerConfig): void {
 }
 
 export function clearBcfServerConfig(): void {
-  localStorage.removeItem(STORAGE_KEY);
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch (error) {
+    console.warn('[bcf-server] failed to clear saved connection', error);
+  }
   window.dispatchEvent(new Event(CHANGED_EVENT));
 }
 

@@ -641,8 +641,10 @@ describe('IfcCreator deterministic output (Timestamp + GuidSource)', () => {
     const first = buildModel(opts());
     const second = buildModel(opts());
     expect(second).toBe(first);
-    // The fixed instant landed in the STEP header and IfcOwnerHistory.
-    expect(first).toContain("'20240101T000000'");
+    // The fixed instant landed in the STEP header and IfcOwnerHistory, as
+    // an ISO 8601 date-time (ISO 10303-21 time_stamp) — not digits with the
+    // '-'/':' separators stripped.
+    expect(first).toContain("'2024-01-01T00:00:00'");
     expect(first).toContain(`,${Math.floor(FIXED / 1000)});`);
   });
 

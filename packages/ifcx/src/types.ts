@@ -7,7 +7,14 @@
  * Based on buildingSMART IFC5-development schema
  */
 
-import { IfcTypeEnumToString, SPATIAL_STRUCTURE_TYPE_ENUMS } from '@ifc-lite/data';
+import {
+  ENTITIES_IFC2X3,
+  ENTITIES_IFC4,
+  ENTITIES_IFC4X3,
+  IfcTypeEnumToString,
+  SPATIAL_STRUCTURE_TYPE_ENUMS,
+} from '@ifc-lite/data';
+import type { IfcEntityInfo } from '@ifc-lite/data';
 
 // ============================================================================
 // Core IFCX File Structure
@@ -289,20 +296,48 @@ export const SPATIAL_TYPES: Set<string> = new Set(
   SPATIAL_STRUCTURE_TYPE_ENUMS.map((typeEnum) => IfcTypeEnumToString(typeEnum)),
 );
 
-export const BUILDING_ELEMENT_TYPES = new Set([
-  'IfcWall',
-  'IfcWallStandardCase',
-  'IfcDoor',
-  'IfcWindow',
-  'IfcSlab',
-  'IfcColumn',
-  'IfcBeam',
-  'IfcStair',
-  'IfcRamp',
-  'IfcRoof',
-  'IfcCovering',
-  'IfcCurtainWall',
-  'IfcRailing',
-  'IfcOpeningElement',
-  'IfcBuildingElementProxy',
+/** Every descendant of `root` (not the root itself) in one schema's entity table. */
+function elementUniverse(entities: readonly IfcEntityInfo[], root: string): Set<string> {
+  const children = new Map<string, string[]>();
+  for (const entity of entities) {
+    if (!entity.parent) continue;
+    const siblings = children.get(entity.parent) ?? [];
+    siblings.push(entity.name);
+    children.set(entity.parent, siblings);
+  }
+  const out = new Set<string>();
+  const walk = (node: string): void => {
+    for (const child of children.get(node) ?? []) {
+      if (out.has(child)) continue;
+      out.add(child);
+      walk(child);
+    }
+  };
+  walk(root);
+  return out;
+}
+
+/**
+ * The IFC classes recognized as physical building elements.
+ *
+ * Derived from `@ifc-lite/data`'s generated entity tables rather than
+ * hand-listed: the 15-name hand list this replaced missed `IfcFooting`,
+ * `IfcPile`, `IfcMember`, `IfcPlate`, `IfcShadingDevice`, `IfcChimney`,
+ * `IfcStairFlight`, `IfcRampFlight` and the `*StandardCase` door/window
+ * variants even for IFC4 alone, and wrongly included `IfcOpeningElement`
+ * (a subtraction feature under `IfcFeatureElement`, not a building
+ * element). It also could not have covered IFC4X3 correctly by adding more
+ * names: IFC4X3 renamed the abstract root itself from `IfcBuildingElement`
+ * to `IfcBuiltElement`, adding a family of civil/infrastructure elements
+ * (`IfcBearing`, `IfcCaissonFoundation`, `IfcCourse`, `IfcDeepFoundation`,
+ * `IfcEarthworksFill`, `IfcKerb`, `IfcMooringDevice`,
+ * `IfcNavigationElement`, `IfcPavement`, `IfcRail`, `IfcReinforcedSoil`,
+ * `IfcTrackElement`) under the new name, so this walks both root names
+ * across all three generated schemas (see `SPATIAL_TYPES` above for the
+ * same fix applied to the neighboring hand-list gap).
+ */
+export const BUILDING_ELEMENT_TYPES: Set<string> = new Set([
+  ...elementUniverse(ENTITIES_IFC2X3, 'IfcBuildingElement'),
+  ...elementUniverse(ENTITIES_IFC4, 'IfcBuildingElement'),
+  ...elementUniverse(ENTITIES_IFC4X3, 'IfcBuiltElement'),
 ]);

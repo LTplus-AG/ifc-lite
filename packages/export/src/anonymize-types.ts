@@ -129,7 +129,9 @@ export interface AnonymizeOptions {
    *  `IfcTypeObject.ApplicableOccurrence`, `IfcElementType.ElementType` and
    *  `IfcProject.Phase` on roots, and every quoted-string `Name` /
    *  `Description` / `LongName` / `ProfileName` / `LayerSetName` / `Category`
-   *  (`IfcMaterial`, `IfcMaterialLayer`) on non-`IfcRoot` entities
+   *  on non-`IfcRoot` entities — `Category` on ANY non-root class declaring it,
+   *  `IfcMaterialProfile` and `IfcMaterialConstituent` included, not only
+   *  `IfcMaterial` / `IfcMaterialLayer` —
    *  (`IfcSurfaceStyle`, `IfcMaterial*`, `IfcPresentationLayerAssignment`,
    *  `IfcProfileDef`, `IfcColourRgb`, …).
    *  A surface style called after the building it belongs to identifies the

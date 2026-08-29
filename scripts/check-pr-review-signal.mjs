@@ -382,7 +382,7 @@ function fetchPrState(opts) {
       'view',
       opts.pr,
       '--json',
-      'headRefOid,isCrossRepository,statusCheckRollup',
+      'headRefOid,isCrossRepository,statusCheckRollup,baseRefName',
       '--repo',
       opts.repo,
     ],
@@ -402,6 +402,7 @@ function fetchPrState(opts) {
   return {
     sha,
     isFork: data.isCrossRepository === true,
+    baseRefName: typeof data.baseRefName === 'string' ? data.baseRefName : undefined,
     // This job's own lane is dropped. It is `in_progress` for as long as it is
     // asking the question, so leaving it in would make `rollupSettled` false
     // forever and turn every run into a full-budget wait ending in a timeout.
@@ -507,9 +508,26 @@ function sleepSync(ms) {
  * harness can drive every branch -- including every fail-closed one -- without
  * a network, a token, or a real PR.
  *
+ * @param {string} [baseRefName] - the PR's base branch, if known. Distinguishes
+ *   a stacked PR (base is not `main`, so test.yml's OWN `branches: [main]`
+ *   filter means every required lane is legitimately absent right now, and
+ *   will stay absent until retargeted) from the #3294 retarget shape (base IS
+ *   `main`, workflow fired for nobody, and pushing an empty commit or
+ *   reopening genuinely helps). Optional and defaults to the retarget message
+ *   when the caller has not fetched it (`--state-file` offline mode).
  * @returns {{ ok: boolean, lines: string[] }}
  */
-export function evaluate({ required, lanes, reviewChecks, reviews, headSha, isFork, cfg, timedOut }) {
+export function evaluate({
+  required,
+  lanes,
+  reviewChecks,
+  reviews,
+  headSha,
+  isFork,
+  cfg,
+  timedOut,
+  baseRefName,
+}) {
   const lines = [];
   let ok = true;
 
@@ -540,7 +558,21 @@ export function evaluate({ required, lanes, reviewChecks, reviews, headSha, isFo
     // missing because #3298 added it to test.yml AFTER that head — not a
     // retarget at all. The discriminator is whether test.yml fired here AT ALL:
     // the #3294 retarget shape is TOTAL absence, because the workflow never ran.
-    if (missing.length === required.length) {
+    if (missing.length === required.length && baseRefName && baseRefName !== 'main') {
+      // #3429: a PR stacked on another PR's branch. test.yml's OWN
+      // `branches: [main]` filter is why nothing appeared -- there was no
+      // retarget to fail to retroactively fire, and no push here changes
+      // that, because test.yml still would not fire against this base.
+      lines.push(
+        `   NOT ONE lane from test.yml appeared, and this PR's base is \`${baseRefName}\`, not ` +
+          '`main` --',
+        '   test.yml carries the same `branches: [main]` filter this gate does not, so every ' +
+          'lane is',
+        '   genuinely absent for as long as the PR is stacked (#3429). An empty commit will not ' +
+          'fire it;',
+        '   retargeting this PR to `main` will.',
+      );
+    } else if (missing.length === required.length) {
       lines.push(
         '   NOT ONE lane from test.yml appeared, so the workflow never fired for this head. A PR ' +
           'opened against a',
@@ -713,6 +745,7 @@ function main() {
       reviews: state.reviews,
       headSha: state.headSha,
       isFork: state.isFork === true,
+      baseRefName: typeof state.baseRefName === 'string' ? state.baseRefName : undefined,
       cfg,
       timedOut: false,
     });
@@ -776,7 +809,9 @@ function main() {
   // and 2 are untouched.
   const reviews = cfg.staleReviewPolicy === 'off' ? [] : fetchReviews({ repo, pr: args.pr });
 
-  console.log(`PR #${args.pr} @ ${state.sha}${state.isFork ? ' (fork)' : ''}`);
+  console.log(
+    `PR #${args.pr} @ ${state.sha}${state.isFork ? ' (fork)' : ''} -> base \`${state.baseRefName ?? '(unknown)'}\``,
+  );
   console.log(`Required lanes derived from ${args.workflow}: ${required.length}`);
   console.log(`Rollup lanes seen: ${state.lanes.length}`);
   console.log(
@@ -793,6 +828,7 @@ function main() {
     reviews,
     headSha: state.sha,
     isFork: state.isFork,
+    baseRefName: state.baseRefName,
     cfg,
     timedOut,
   });

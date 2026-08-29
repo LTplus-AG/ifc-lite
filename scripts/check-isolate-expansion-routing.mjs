@@ -97,6 +97,20 @@
  *    .resolveHighlightIds; rhi(ids)`) or reached via dynamic dispatch is not
  *    detected there, and a flagged file that routes ONLY that way would read
  *    as unrouted. Not observed in the scanned tree.
+ *  - "Textual match, not parsed" cuts both ways: a demonstrated instance was
+ *    that a call-SHAPED fragment inside a line comment, a block comment, or a
+ *    string literal (`// cameraCallbacks.resolveHighlightIds(ids)`, or the same
+ *    text quoted as `"resolveHighlightIds(ids)"`) satisfied `ROUTING_MARKERS`
+ *    even though no such call executes -- exactly the false GREEN this gate
+ *    exists to prevent (a routing call commented out during a refactor would
+ *    read as "still routed"). `classifyFile` now runs every pattern above
+ *    against `stripCommentsAndStrings(content)` rather than raw `content` to
+ *    close that. That stripper is itself a naive, non-parsing pass -- see its
+ *    own doc comment for exactly what it does and does not handle (regex
+ *    literals, escaped-quote parity, template-literal interpolations). It
+ *    does not change the two gaps above: a real call reached only through a
+ *    renamed alias, or a real call in an unrelated part of the file, is still
+ *    invisible/insufficiently-precise the same way.
  *  - Scope is `apps/viewer/src` and `apps/viewer-embed/src` only.
  *    `packages/viewer` (the separate server-side streaming HTML viewer,
  *    `viewer-html.ts`/`streaming-viewer.ts`/`server.ts`) also has an
@@ -285,8 +299,16 @@ export const NO_MARKER_REQUIRED = new Map([
  *  `setIsolatedEntities` (seven new real candidates: the seventh channel
  *  itself plus the six audited direct callers) -- the real tree scans clean
  *  at 13 as of this change; lower it only after confirming channels were
- *  deliberately removed, never just because the count dropped. */
-const CANDIDATE_FLOOR = 13;
+ *  deliberately removed, never just because the count dropped.
+ *  Lowered from 13 to 12 when `classifyFile` started scanning
+ *  `stripCommentsAndStrings(content)` instead of raw source: this floor's OWN
+ *  NO_MARKER_REQUIRED entry for `visibilitySlice.ts` already documented that
+ *  "the only textual match is a doc comment" there (a `setIsolatedEntities(
+ *  null)` mention describing a DIFFERENT channel's restore sequence, not a
+ *  call in this file). Stripping comments correctly removes that false
+ *  candidate rather than a real channel disappearing -- confirmed by rereading
+ *  the file, not by the count alone. */
+const CANDIDATE_FLOOR = 12;
 
 /**
  * A `NO_MARKER_REQUIRED` reason below this length is treated as a stub, not
@@ -308,6 +330,86 @@ export function isSufficientAllowlistReason(reason) {
 
 function toPosix(p) {
   return p.split('\\').join('/');
+}
+
+/**
+ * Strip line comments (`//` to end of line), block comments (`/*` to `*​/`),
+ * and single/double/backtick string-literal bodies out of `content`, so the
+ * patterns above run against something closer to executable code than raw
+ * text. Every removed character is replaced with a space (a removed newline
+ * stays a newline) so positions and line numbers are unaffected -- nothing
+ * here currently reports a line number, but nothing should have to change if
+ * something later does.
+ *
+ * This closes a demonstrated false GREEN: `ROUTING_MARKERS` and `CALL_PATTERN`
+ * are plain regexes over raw source (see LIMITATIONS above), so a call-shaped
+ * fragment inside a comment (`// cameraCallbacks.resolveHighlightIds(ids)`)
+ * or a string literal (`"resolveHighlightIds(ids)"`) previously satisfied
+ * them exactly as well as a real call -- meaning a routing call commented
+ * out mid-refactor, or quoted in a log message, read as "still routed". This
+ * gate's whole premise is that a false negative here is the failure mode it
+ * exists to close (see the file header), so this is intentionally NOT a
+ * full lexer/parser -- it is a single left-to-right scan with three states
+ * (line comment, block comment, string), and it is honest about what that
+ * naive scan does not handle:
+ *   - A regex literal containing a quote or `//`/`/*` sequence (e.g.
+ *     `/["/]/`) is not distinguished from a string or comment start -- its
+ *     quote or slash characters can desync the scan for the rest of the
+ *     file. Not observed in the scanned tree.
+ *   - Escaped-quote handling is a single backslash lookback (`\"` inside a
+ *     string skips the quote), not a parity count -- a string ending in an
+ *     even run of backslashes before its closing quote (`"a\\\\"`, a literal
+ *     backslash followed by a real close) is handled correctly, but this was
+ *     verified by construction, not by tracking backslash-run parity, so an
+ *     unusual escape sequence could still mislead it.
+ *   - A `${...}` interpolation inside a template literal is stripped along
+ *     with the rest of the backtick span -- a call that legitimately lives
+ *     inside an interpolation (`` `${resolveHighlightIds(ids)}` ``) is
+ *     treated the same as a call inside dead text and will not be seen as a
+ *     routing call. Not observed in the scanned tree; a channel routing
+ *     ONLY this way would need a comment-visible, non-interpolated call
+ *     elsewhere, or a NO_MARKER_REQUIRED entry.
+ *
+ * @param {string} content
+ * @returns {string}
+ */
+export function stripCommentsAndStrings(content) {
+  let out = '';
+  const n = content.length;
+  let i = 0;
+  while (i < n) {
+    const ch = content[i];
+    const next = content[i + 1];
+    if (ch === '/' && next === '/') {
+      let j = i;
+      while (j < n && content[j] !== '\n') j++;
+      out += ' '.repeat(j - i);
+      i = j;
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      let j = i + 2;
+      while (j < n && !(content[j] === '*' && content[j + 1] === '/')) j++;
+      j = Math.min(j + 2, n);
+      for (let k = i; k < j; k++) out += content[k] === '\n' ? '\n' : ' ';
+      i = j;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      const quote = ch;
+      let j = i + 1;
+      while (j < n && content[j] !== quote) {
+        j += content[j] === '\\' && j + 1 < n ? 2 : 1;
+      }
+      j = Math.min(j + 1, n);
+      for (let k = i; k < j; k++) out += content[k] === '\n' ? '\n' : ' ';
+      i = j;
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+  return out;
 }
 
 /**
@@ -345,11 +447,12 @@ export function walk(dir, out, errors) {
  * @returns {{ isCandidate: boolean, ok: boolean, reason?: string }}
  */
 export function classifyFile(relPath, content) {
+  const code = stripCommentsAndStrings(content);
   if (
-    !CALL_PATTERN.test(content) &&
-    !SET_ISOLATED_CALL_PATTERN.test(content) &&
-    !ALIAS_DESTRUCTURE_PATTERN.test(content) &&
-    !PROPERTY_ALIAS_PATTERN.test(content)
+    !CALL_PATTERN.test(code) &&
+    !SET_ISOLATED_CALL_PATTERN.test(code) &&
+    !ALIAS_DESTRUCTURE_PATTERN.test(code) &&
+    !PROPERTY_ALIAS_PATTERN.test(code)
   ) {
     return { isCandidate: false, ok: true };
   }
@@ -372,7 +475,7 @@ export function classifyFile(relPath, content) {
     return { isCandidate: true, ok: true, reason };
   }
   if (REQUIRES_ROUTING_MARKER.has(relPath)) {
-    if (ROUTING_MARKERS.test(content)) {
+    if (ROUTING_MARKERS.test(code)) {
       return { isCandidate: true, ok: true };
     }
     return {

@@ -67,10 +67,18 @@
 //! walk via [`sweep`]. Both are `#[ignore]`d, this repo's existing convention
 //! for a fixture too expensive for the default `cargo test` — see
 //! `wall_opening_cut_regression.rs` and `issue_053_heavy_csg_probe.rs` for the
-//! same pattern. Run either with:
+//! same pattern. Run them SEPARATELY -- they have OPPOSITE expectations, and a
+//! bare `heavy_fixture` filter matches both, so it always reports a failure:
 //!
+//!   # passes: ISSUE_053 against its own golden
 //!   cargo test -p ifc-lite-geometry --features triangulation-alt \
-//!     --test triangulation_invariance -- --ignored --nocapture heavy_fixture
+//!     --test triangulation_invariance \
+//!     -- --ignored --nocapture heavy_fixture_issue_053_is_watertight
+//!
+//!   # FAILS TODAY, deliberately -- it asserts the #3435 tear is gone
+//!   cargo test -p ifc-lite-geometry --features triangulation-alt \
+//!     --test triangulation_invariance \
+//!     -- --ignored --nocapture heavy_fixture_issue_068
 //!
 //! ISSUE_053 measures CLEAN (289/289 void hosts watertight) and is checked
 //! against its own per-host golden, [`HEAVY_GOLDEN_PATH`], exactly like the

@@ -17,7 +17,7 @@ import type {
   QueryBackendMethods,
 } from '@ifc-lite/sdk';
 import type { StoreApi } from './types.js';
-import { EntityNode } from '@ifc-lite/query';
+import { EntityNode, findPropertyInSets } from '@ifc-lite/query';
 import { IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';
 import { getModelForRef, getAllModelEntries } from './model-compat.js';
 import {
@@ -242,9 +242,7 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
       for (const filter of descriptor.filters) {
         filtered = filtered.filter(entity => {
           const props = getCachedProps(entity.ref);
-          const pset = props.find(p => p.name === filter.psetName);
-          if (!pset) return false;
-          const prop = pset.properties.find(p => p.name === filter.propName);
+          const prop = findPropertyInSets(props, filter.psetName, filter.propName);
           if (!prop) return false;
           if (filter.operator === 'exists') return true;
 

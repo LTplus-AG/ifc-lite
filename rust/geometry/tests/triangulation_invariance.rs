@@ -528,7 +528,7 @@ fn fmt_host(r: &HostRow) -> String {
 /// [`HostRow`] per host plus the set of models that were actually opened
 /// (whether or not they turned out to have any void hosts).
 ///
-/// Shared by [`watertightness_is_invariant_to_the_triangulator`] and the heavy
+/// Shared by [`watertightness_census_and_triangulator_invariance`] and the heavy
 /// lane at the bottom of this file (#3434), so the two lanes characterize a
 /// host through the exact same walk rather than two implementations that can
 /// drift apart.
@@ -593,11 +593,12 @@ fn sweep(models: &[(String, PathBuf)]) -> (Vec<HostRow>, BTreeSet<String>) {
     (rows, swept_models)
 }
 
-/// Two gates share this one test, because splitting them would double the
-/// sweep: both need the alternate triangulator's pass over every host (the
-/// golden gate's `diverged()` reason depends on it too), so a second
-/// `#[test]` could not reuse this one's work across libtest's independent
-/// test threads.
+/// Two gates share this one test. They cannot be split into two `#[test]`s
+/// because the alternate triangulator is switched by a process-wide
+/// `AtomicBool` (`triangulation::alt_oracle::set_alt_triangulator`), and
+/// libtest runs tests as threads in one process, so two tests sweeping
+/// concurrently would race on it. Sharing the sweep also avoids paying for
+/// it twice.
 ///
 /// GATE 1, invariance: does watertightness depend on the triangulator's
 /// diagonal choice? Every void-hosting element is meshed twice, production
@@ -605,21 +606,24 @@ fn sweep(models: &[(String, PathBuf)]) -> (Vec<HostRow>, BTreeSet<String>) {
 /// per host into `run.non_invariant`.
 ///
 /// GATE 2, regression: does this run match the pinned per-host golden
-/// (`tests/manifests/watertightness_census.tsv`), measured with the
-/// PRODUCTION triangulator only? That is `diff.regressed` and the corpus
-/// ceilings.
+/// (`tests/manifests/watertightness_census.tsv`)? That is `diff.regressed`
+/// and the corpus ceilings.
 ///
-/// The two fail independently, and the test's NAME only says gate 1. A
-/// failure reading "REGRESSED" is gate 2: a golden mismatch on triangle
-/// count, collapse or classification, not necessarily a triangulator
-/// disagreement. Only a per-host reason reading "newly depends on the
-/// triangulator's diagonal choice" is gate 1 surfacing through gate 2.
-/// #3404 and #3406 failed gate 2 while `non-invariant` printed identically
-/// before and after (140 vs 140 -- the triangulators still agreed exactly)
-/// and were called invariance failures for hours because of it (#3353).
-/// Every assert below now names the gate that fired.
+/// The gates overlap rather than partition. The golden's COUNT columns
+/// (open, strict, tris, collapsed) are production-triangulator readings,
+/// but it also pins each host's `alt` column, so `classify` can push
+/// "newly depends on the triangulator's diagonal choice" into the same
+/// `worse_counts` that feeds `diff.regressed`. A REGRESSED failure is
+/// therefore NOT evidence either way on its own: only the per-host reasons
+/// say which gate fired. #3404 and #3406 failed gate 2 while
+/// `non-invariant` printed identically before and after (140 vs 140 -- the
+/// triangulators still agreed exactly) and were called invariance failures
+/// for hours because of it (#3353). The three asserts that can be reached
+/// with the triangulators disagreeing now name their gate; the coverage,
+/// re-tessellation, addition and reclassification asserts below are gate 2
+/// by construction and are left unlabelled.
 #[test]
-fn watertightness_is_invariant_to_the_triangulator() {
+fn watertightness_census_and_triangulator_invariance() {
     if cfg!(not(feature = "triangulation-alt")) {
         eprintln!(
             "SKIPPED: rerun with --features triangulation-alt to enable the \
@@ -957,17 +961,19 @@ fn watertightness_is_invariant_to_the_triangulator() {
     // this golden exists to fix.
     assert!(
         diff.regressed.is_empty(),
-        "{} host(s) REGRESSED against the pinned golden (GATE 2, production \
-         triangulator only; a regression here is NOT by itself a \
-         triangulator-invariance failure). One rule decides which gate fired, \
-         and it is per host: read the reasons below. A host whose reason reads \
-         \"newly depends on the triangulator's diagonal choice\" is GATE 1 \
-         surfacing through this gate; a host carrying only other reasons \
-         (triangle count, collapse, classification) is gate 2 alone. The \
-         \"non-invariant : run vs golden\" totals printed above cannot answer \
-         this and are not a shortcut past the reasons: one host healing while \
-         another newly diverges leaves that pair EQUAL with a gate-1 host \
-         listed right below:\n{}",
+        "{} host(s) REGRESSED against the pinned golden. This assert carries \
+         BOTH gates, so it is not by itself a triangulator-invariance \
+         failure and not by itself a plain golden mismatch. ONE rule decides \
+         which, and it is per host: read the reasons below. A host whose \
+         reason reads \"newly depends on the triangulator's diagonal choice\" \
+         is GATE 1 (invariance); a host carrying only other reasons (open \
+         edges, strict pairs, triangle count, collapse, classification) is \
+         GATE 2 (regression against the production-triangulator columns). \
+         The \"non-invariant : run vs golden\" totals printed above cannot \
+         answer this and are not a shortcut past the reasons: one host \
+         healing while another newly diverges leaves that pair EQUAL with a \
+         gate-1 host listed right below, and a host added or gone missing \
+         this run moves the pair with no regression at all:\n{}",
         diff.regressed.len(),
         fmt_deltas(&diff.regressed)
     );
@@ -1062,11 +1068,17 @@ fn watertightness_is_invariant_to_the_triangulator() {
     }
 
     // Kept out of the loop above, though it is the same shape, because it is
-    // the one ceiling that IS gate 1 rather than gate 2. In practice it can
-    // only fire alongside `diff.regressed`, since the total growing means some
-    // host newly diverged and that host is already listed there with its own
-    // reason; this is the backstop for a classifier bug that moved the total
-    // without moving any one host's diverged() reading.
+    // the one ceiling that IS gate 1 rather than gate 2.
+    //
+    // Reaching it means every assert above passed, so `diff.regressed` and
+    // `diff.added` are both EMPTY -- there is no early return between them
+    // and here. That rules out the two ordinary ways this total grows: a
+    // matched host that newly diverges goes to `worse_counts` and panics as
+    // REGRESSED, and an added host that diverges panics as ADDED. So this
+    // fires alone or not at all, and what it catches is a classifier bug
+    // that moved the total without moving any one host's own `diverged()`
+    // reading. Do not delete it as redundant with the loop: nothing above
+    // can reach the same state.
     assert!(
         run.non_invariant <= expected.non_invariant,
         "hosts depending on the triangulator's diagonal choice grew: {} > {} \

@@ -38,6 +38,7 @@ import {
   listBcfServerProjects,
   loadBcfServerConfig,
   pullBcfServerProject,
+  subscribeBcfServer,
   type BcfServerConfig,
 } from '@/services/bcf-server';
 import { BCFServerConnectForm } from './BCFServerConnectForm';
@@ -86,6 +87,28 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
     }
   }, []);
 
+  const configRef = useRef(config);
+  configRef.current = config;
+
+  const applySavedConnection = useCallback((saved: BcfServerConfig | null) => {
+    const previous = configRef.current;
+    const identityChanged =
+      !saved ||
+      !previous ||
+      previous.serverUrl !== saved.serverUrl ||
+      previous.userId !== saved.userId ||
+      previous.clientId !== saved.clientId;
+    setConfig(saved);
+    if (!identityChanged) return;
+    projectsGenerationRef.current += 1;
+    setProjects(null);
+    setSelectedProjectId(saved?.projectId ?? '');
+    setError(null);
+    setProgress(null);
+    setReplaceCount(null);
+    if (saved) void loadProjects();
+  }, [loadProjects]);
+
   // Re-seed from the saved connection only on the closed -> open transition,
   // so parent re-renders never wipe in-progress typing.
   const wasOpenRef = useRef(false);
@@ -104,6 +127,13 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
     }
     wasOpenRef.current = open;
   }, [open, loadProjects]);
+
+  useEffect(() => {
+    if (!open) return;
+    return subscribeBcfServer(() => {
+      applySavedConnection(loadBcfServerConfig());
+    });
+  }, [open, applySavedConnection]);
 
   const handleSignedIn = useCallback(
     (next: BcfServerConfig) => {

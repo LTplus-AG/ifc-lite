@@ -74,8 +74,20 @@ export function clearBcfServerConfig(): void {
 }
 
 export function subscribeBcfServer(listener: () => void): () => void {
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === STORAGE_KEY || event.key === null) listener();
+  };
   window.addEventListener(CHANGED_EVENT, listener);
-  return () => window.removeEventListener(CHANGED_EVENT, listener);
+  window.addEventListener('storage', onStorage);
+  return () => {
+    window.removeEventListener(CHANGED_EVENT, listener);
+    window.removeEventListener('storage', onStorage);
+  };
+}
+
+/** Same server + account + OAuth app; refresh-token rotation still matches. */
+export function isSameBcfAccount(a: BcfServerConfig, b: BcfServerConfig): boolean {
+  return a.serverUrl === b.serverUrl && a.userId === b.userId && a.clientId === b.clientId;
 }
 
 /** Require TLS for BCF servers and discovered OAuth endpoints off localhost. */

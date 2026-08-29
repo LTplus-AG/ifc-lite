@@ -15,6 +15,7 @@
 
 import type { BcfApiClient, BcfProjectDto, BcfProjectFetchResult, BcfSyncProgress } from '@ifc-lite/bcf-api';
 import {
+  isSameBcfAccount,
   loadBcfServerConfig,
   requireSecureOAuthUrl,
   requireSecureTokenUrl,
@@ -262,12 +263,7 @@ function canReauthenticate(config: BcfServerConfig): boolean {
  * by the older session's rotation.
  */
 function isSameSession(current: BcfServerConfig, config: BcfServerConfig): boolean {
-  return (
-    current.serverUrl === config.serverUrl &&
-    current.userId === config.userId &&
-    current.refreshToken === config.refreshToken &&
-    current.clientId === config.clientId
-  );
+  return isSameBcfAccount(current, config) && current.refreshToken === config.refreshToken;
 }
 
 async function refreshStoredToken(config: BcfServerConfig): Promise<string> {
@@ -334,13 +330,13 @@ export async function createConnectedClient(): Promise<BcfApiClient> {
   const api = await loadApi();
   const config = loadBcfServerConfig();
   if (!config) throw new Error('Not connected to a BCF server');
-  // Storage can change mid-pull (another tab disconnects or connects to a
-  // different server). This client is bound to config.serverUrl, so only a
-  // stored config for the SAME server may feed it tokens — anything else
-  // would send the new server's token to the old server's host.
+  // Storage can change mid-pull. Only the same account on this server may
+  // feed tokens — a different user on the same host would send their bearer
+  // token on this client's requests. Token rotation still matches (account
+  // identity ignores the refresh token).
   const boundConfig = (): BcfServerConfig => {
     const current = loadBcfServerConfig();
-    return current && current.serverUrl === config.serverUrl ? current : config;
+    return current && isSameBcfAccount(current, config) ? current : config;
   };
   return new api.BcfApiClient({
     baseUrl: config.serverUrl,
@@ -387,10 +383,13 @@ export async function pullBcfServerProject(
   onProgress?: (progress: BcfSyncProgress) => void,
 ): Promise<BcfProjectFetchResult> {
   const api = await loadApi();
+  const started = loadBcfServerConfig();
   const client = await createConnectedClient();
   const result = await api.fetchProjectAsBCF(client, projectId, { onProgress });
   if (!result.project.name) result.project.name = projectName;
-  const config = loadBcfServerConfig();
-  if (config) saveBcfServerConfig({ ...config, projectId, projectName });
+  const current = loadBcfServerConfig();
+  if (started && current && isSameBcfAccount(current, started)) {
+    saveBcfServerConfig({ ...current, projectId, projectName });
+  }
   return result;
 }

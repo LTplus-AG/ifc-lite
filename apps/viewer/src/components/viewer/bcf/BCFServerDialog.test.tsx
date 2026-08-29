@@ -15,7 +15,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { render, cleanup, click } from '@/test/render.js';
 import { useViewerStore } from '@/store';
-import { clearBcfServerConfig } from '@/services/bcf-server';
+import { clearBcfServerConfig, saveBcfServerConfig } from '@/services/bcf-server';
 import type { BCFProject } from '@ifc-lite/bcf';
 import { BCFServerDialog } from './BCFServerDialog.js';
 
@@ -297,5 +297,49 @@ describe('BCFServerDialog', () => {
       'the validateBcfServerUrl message',
     );
     assert.deepEqual(requested, [], 'no request may reach an http server');
+  });
+
+  it('adopts another tab signing into a different account on the same server', async () => {
+    installFakeServer();
+    saveBcfServerConfig({
+      serverUrl: 'https://fake.example/bcf',
+      userId: 'alice@example.com',
+      accessToken: 'token-1',
+      refreshToken: '',
+      tokenExpiresAt: 0,
+      clientId: '',
+      clientSecret: '',
+      projectId: 'p1',
+      projectName: 'Project One',
+    });
+    render(<BCFServerDialog open onOpenChange={() => {}} />);
+    await waitFor(
+      () => document.body.textContent?.includes('Signed in as alice@example.com') ?? false,
+      'alice banner',
+    );
+    const bob = {
+      serverUrl: 'https://fake.example/bcf',
+      userId: 'bob@example.com',
+      accessToken: 'token-1',
+      refreshToken: '',
+      tokenExpiresAt: 0,
+      clientId: '',
+      clientSecret: '',
+      projectId: 'p1',
+      projectName: 'Project One',
+    };
+    localStorage.setItem('ifc-lite:bcf-server:v1', JSON.stringify(bob));
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: 'ifc-lite:bcf-server:v1',
+          newValue: JSON.stringify(bob),
+        }),
+      );
+    });
+    await waitFor(
+      () => document.body.textContent?.includes('Signed in as bob@example.com') ?? false,
+      'bob banner after cross-tab sign-in',
+    );
   });
 });

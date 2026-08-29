@@ -21,10 +21,12 @@ import {
   listBcfServerProjects,
   loadBcfServerConfig,
   prepareBcfOAuth,
+  pullBcfServerProject,
   saveBcfServerConfig,
   signInToBcfServer,
   signInWithClientCredentials,
   signInWithToken,
+  subscribeBcfServer,
   validateBcfServerUrl,
 } from './bcf-server.js';
 
@@ -403,6 +405,36 @@ describe('createConnectedClient token refresh', () => {
     await pending;
     assert.equal(loadBcfServerConfig(), null, 'sign-out must survive the completed refresh');
   });
+
+  it('keeps the original account token after another account signs in on the same server', async () => {
+    const server = installFakeServer();
+    saveBcfServerConfig({
+      serverUrl: 'https://fake.example/bcf',
+      userId: 'old-account@example.com',
+      accessToken: 'token-1',
+      refreshToken: 'refresh-1',
+      tokenExpiresAt: Date.now() + 3_600_000,
+      clientId: '',
+      clientSecret: '',
+      projectId: '',
+      projectName: '',
+    });
+    const client = await createConnectedClient();
+    saveBcfServerConfig({
+      serverUrl: 'https://fake.example/bcf',
+      userId: 'new-account@example.com',
+      accessToken: 'token-from-other-account',
+      refreshToken: 'refresh-other',
+      tokenExpiresAt: Date.now() + 3_600_000,
+      clientId: '',
+      clientSecret: '',
+      projectId: '',
+      projectName: '',
+    });
+    const projects = await client.getProjects();
+    assert.equal(projects.length, 1, 'original session token must still be accepted');
+    assert.deepEqual(server.grants, [], 'must not refresh as the replacement account');
+  });
 });
 
 describe('prepareBcfOAuth', () => {
@@ -473,6 +505,80 @@ describe('completeBcfOAuth', () => {
     const forged = `${bcfOAuthRedirectUri()}?code=good-code&state=someone-elses-state`;
     await assert.rejects(completeBcfOAuth(preparation, forged));
     assert.equal(loadBcfServerConfig(), null);
+  });
+});
+
+describe('subscribeBcfServer', () => {
+  it('notifies on the same-window change event and on a storage event for this key', () => {
+    let calls = 0;
+    const stop = subscribeBcfServer(() => {
+      calls += 1;
+    });
+    saveBcfServerConfig({
+      serverUrl: 'https://fake.example/bcf',
+      userId: 'tester@example.com',
+      accessToken: 'token-1',
+      refreshToken: '',
+      tokenExpiresAt: 0,
+      clientId: '',
+      clientSecret: '',
+      projectId: '',
+      projectName: '',
+    });
+    assert.equal(calls, 1);
+    window.dispatchEvent(new StorageEvent('storage', { key: 'ifc-lite:bcf-server:v1' }));
+    assert.equal(calls, 2);
+    window.dispatchEvent(new StorageEvent('storage', { key: 'unrelated' }));
+    assert.equal(calls, 2);
+    stop();
+  });
+});
+
+describe('pullBcfServerProject session isolation', () => {
+  it('does not persist the pulled project onto a replacement account', async () => {
+    installFakeServer();
+    saveBcfServerConfig({
+      serverUrl: 'https://fake.example/bcf',
+      userId: 'old-account@example.com',
+      accessToken: 'token-1',
+      refreshToken: 'refresh-1',
+      tokenExpiresAt: Date.now() + 3_600_000,
+      clientId: '',
+      clientSecret: '',
+      projectId: '',
+      projectName: '',
+    });
+    const inner = globalThis.fetch;
+    const json = (body: unknown) =>
+      new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input)).pathname;
+      if (path.endsWith('/topics')) {
+        saveBcfServerConfig({
+          serverUrl: 'https://fake.example/bcf',
+          userId: 'new-account@example.com',
+          accessToken: 'token-1',
+          refreshToken: 'refresh-other',
+          tokenExpiresAt: Date.now() + 3_600_000,
+          clientId: '',
+          clientSecret: '',
+          projectId: '',
+          projectName: '',
+        });
+        return json([]);
+      }
+      if (path.endsWith('/projects/p1')) return json({ project_id: 'p1', name: 'Project One' });
+      if (path.endsWith('/extensions')) return json({});
+      if (path.endsWith('/comments') || path.endsWith('/viewpoints')) return json([]);
+      return inner(input, init);
+    }) as typeof fetch;
+    await pullBcfServerProject('p1', 'Project One');
+    const stored = loadBcfServerConfig();
+    assert.equal(stored?.userId, 'new-account@example.com');
+    assert.equal(stored?.projectId, '', 'replacement session must not inherit the other account pull');
   });
 });
 

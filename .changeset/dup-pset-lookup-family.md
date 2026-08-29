@@ -10,7 +10,7 @@
 Fix queries, filters, and CSV/JSON exports that silently dropped or omitted data when an entity carried two property (or quantity) sets with the same name -- e.g. one from the type definition and one from the occurrence, which is valid IFC.
 
 Affected symptoms, now fixed:
-- MCP and CLI entity queries with a property filter (`where_property` / `query_entities` filters) could wrongly exclude a matching entity from the results, with no indication anything was omitted, if the filtered property lived on the entity's second same-named property set.
+- MCP and CLI entity queries with a property filter (`query_entities`, `ifc-lite query --where`) could wrongly exclude a matching entity from the results, with no indication anything was omitted, when the filtered property lived ONLY on the entity's second same-named property set. (When both sets carry it, the filter still reads the first one's value -- see the closing paragraph.)
 - CSV/JSON export with a `Pset.Property` or `Qto.Quantity` column could emit an empty cell instead of the real value, for the same reason.
 - The viewer's advanced-filter query could likewise drop a matching entity from the result count/highlight.
 - `ifc-lite query`'s `--sort`, `--group-by` and `--unique` on a `Pset.Property` path, and `ifc-lite export`'s dotted columns, read only the first same-named set and so sorted, grouped, or exported a blank where a value existed.

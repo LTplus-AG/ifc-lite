@@ -107,17 +107,15 @@ const TEST_FILE_RE = /\.test\.(ts|tsx|mts|cts)$/;
 /**
  * Files with a known, still-open instance of this exact shape, left
  * unconverted deliberately because they are mid-flight in another PR this
- * family does not touch:
- *
- *   packages/query/src/entity-node.ts -- fixed by #3465 (EntityNode.property
- *   / .quantity), not yet merged as of this gate landing.
+ * family does not touch. Empty today: #3465 fixed
+ * packages/query/src/entity-node.ts before this gate landed, so there is
+ * nothing left to grandfather.
  *
  * Remove a row here the same PR that removes its `.find` pattern -- this
- * allowlist is meant to shrink to empty, not grow.
+ * allowlist is meant to shrink to empty, not grow, and the staleness check
+ * in runCheck() fails the gate on any row whose file no longer matches.
  */
-export const KNOWN_UNFIXED = new Set([
-  'packages/query/src/entity-node.ts',
-]);
+export const KNOWN_UNFIXED = new Set([]);
 
 /** Variable name plausibly holding an entity's property/quantity sets. */
 const RISKY_VAR_RE = /^(sets|props|psets|qsets|propsets|propertysets|prop_sets|property_sets|quantitysets|quantity_sets)$/i;

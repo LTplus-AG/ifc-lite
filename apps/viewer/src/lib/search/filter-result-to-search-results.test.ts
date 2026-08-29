@@ -131,4 +131,21 @@ describe('filterResultToSearchResults', () => {
       { modelId: 'm', expressId: 3 },
     ]);
   });
+
+  it('prefers express_id over entity_id when a result carries both, regardless of column order — this is the shared selectionKeyColumnIndex helper\'s PRIORITY-order semantics, not first-match-by-position', () => {
+    // entity_id appears BEFORE express_id here. A positional first-match
+    // (`columns.findIndex`) would pick entity_id; `selectionKeyColumnIndex`
+    // (imported from `./selection-key-column.js`, shared with
+    // `SearchModalFilter`'s own `selectionKeyIndex`) checks SELECTION_COLUMNS
+    // in priority order (express_id first) and picks express_id regardless
+    // of where either column sits. Both call sites import the same helper
+    // now, so they cannot resolve this case differently.
+    const result = {
+      columns: ['entity_id', 'express_id', 'name'],
+      rows: [[999, 42, 'Slab A']],
+    };
+    const out = filterResultToSearchResults(result, 'model-1');
+    assert.equal(out.length, 1);
+    assert.equal(out[0].expressId, 42);
+  });
 });

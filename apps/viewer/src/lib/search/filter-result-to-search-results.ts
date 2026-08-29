@@ -22,10 +22,7 @@
  */
 
 import type { SearchResult, MatchField } from './tier0-scan.js';
-
-/** Columns a filter row's selection key may appear under (kept in sync
- *  with `SearchModalFilter`'s own `SELECTION_COLUMNS`). */
-const SELECTION_COLUMNS: readonly string[] = ['express_id', 'entity_id'];
+import { selectionKeyColumnIndex } from './selection-key-column.js';
 
 /** Placeholder — the cycle-stepping path never reads `matchField` /
  *  `score`; only `modelId` / `expressId` drive selection + framing. */
@@ -40,14 +37,15 @@ const PLACEHOLDER_MATCH_FIELD: MatchField = 'name';
  * `null` there and rows are skipped when it's absent, rather than guessed.
  *
  * Returns `[]` (never throws) if the result has no recognised selection-key
- * column — mirrors `SearchModalFilter`'s own `selectionKeyIndex < 0` guard.
+ * column — uses the same shared `selectionKeyColumnIndex` helper as
+ * `SearchModalFilter`'s own `selectionKeyIndex`, so the two can't disagree.
  */
 export function filterResultToSearchResults(
   result: { columns: string[]; rows: unknown[][] },
   fallbackModelId: string | null,
 ): SearchResult[] {
   const { columns, rows } = result;
-  const keyIdx = columns.findIndex((c) => SELECTION_COLUMNS.includes(c));
+  const keyIdx = selectionKeyColumnIndex(columns);
   if (keyIdx < 0) return [];
 
   const modelIdx = columns.indexOf('model_id');

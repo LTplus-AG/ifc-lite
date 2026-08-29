@@ -32,17 +32,9 @@ interface BridgeContext {
   loadModelFromUrl: (url: string) => Promise<{ entities: number; triangles: number; vertices: number }>;
   /** Callback to load a model from ArrayBuffer */
   loadModelFromBuffer: (buffer: ArrayBuffer, name?: string) => Promise<{ entities: number; triangles: number; vertices: number }>;
-  /**
-   * Callback to ADD a model to the federation alongside whatever is already
-   * loaded (does not replace existing models). Returns the real, freshly
-   * minted model id so the host can later target it with REMOVE_MODEL.
-   */
-  addModelFromUrl: (
-    url: string,
-    name?: string,
-  ) => Promise<{ modelId: string; entities: number; triangles: number; vertices: number }>;
-  /** Callback to set (or clear, with undefined) the embed's custom background colour. */
-  setBackgroundColor: (bg: string | undefined) => void;
+  // Adds a model to the federation alongside what's already loaded (unlike LOAD_MODEL); resolves the real minted model id for later REMOVE_MODEL targeting.
+  addModelFromUrl: (url: string, name?: string) => Promise<{ modelId: string; entities: number; triangles: number; vertices: number }>;
+  setBackgroundColor: (bg: string | undefined) => void; // set (or clear, with undefined) the embed's custom background colour
 }
 
 /** Optional security knobs for the bridge (all opt-in; defaults preserve the public-widget behaviour). */
@@ -443,10 +435,7 @@ async function handleCommand(type: InboundCommandType, data: unknown, requestId?
     case 'SET_THEME': {
       const payload = data as InboundPayloads['SET_THEME'];
       state.setTheme(payload.theme);
-      // Only touch the background when a value was actually sent -- a later
-      // SET_THEME that only changes light/dark must not clear a previously
-      // set custom background (same "only touch what's provided" convention
-      // as SET_SECTION's optional fields above).
+      // Only touch bg when sent, so a theme-only SET_THEME can't clear a prior background (same optional-field convention as SET_SECTION above).
       if (payload.bg !== undefined) ctx.setBackgroundColor(payload.bg);
       if (requestId) emitToParent(createResponse(requestId));
       return;

@@ -31,7 +31,7 @@
 # sharded per packages/<name>, apps/<name> and rust/<crate>, so an edit here
 # moves ONE of its entries. Two PRs in different scopes then merge cleanly
 # unless their entries sit on ADJACENT lines, which git cannot auto-merge.
-   532 apps/viewer-embed/src/bridge/handler.ts
+   522 apps/viewer-embed/src/bridge/handler.ts
    481 apps/viewer/src/components/extensions/ExtensionsPanel.tsx
    431 apps/viewer/src/components/extensions/FlavorDialog.tsx
    428 apps/viewer/src/components/extensions/widget/WidgetRenderer.tsx

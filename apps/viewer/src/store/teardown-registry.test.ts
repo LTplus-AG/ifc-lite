@@ -82,8 +82,8 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
 /** The same, for `all-models-cleared`. */
 const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
   'activeModelId', 'activeStorey', 'addElementModelId', 'addElementStoreyId', 'classFilter',
-  'geometryResult', 'ghostExceptEntities', 'hiddenEntities', 'hiddenEntitiesByModel',
-  'hierarchyBasketSelection', 'ifcDataStore', 'isolatedEntities', 'isolatedEntitiesByModel',
+  'contextMenu', 'geometryResult', 'ghostExceptEntities', 'hiddenEntities', 'hiddenEntitiesByModel',
+  'hierarchyBasketSelection', 'hoverState', 'ifcDataStore', 'isolatedEntities', 'isolatedEntitiesByModel',
   'meshColorBackup', 'models', 'pinboardEntities', 'selectedEntities', 'selectedEntitiesSet',
   'selectedEntity', 'selectedEntityId', 'selectedEntityIds', 'selectedModelId', 'selectedStoreys',
 ];
@@ -100,8 +100,8 @@ const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
  */
 const PINNED_MODEL_REMOVED_KEYS: readonly string[] = [
   'activeModelId', 'activeStorey', 'addElementModelId', 'addElementStoreyId', 'classFilter',
-  'geometryResult', 'ghostExceptEntities', 'hiddenEntities', 'hiddenEntitiesByModel',
-  'hierarchyBasketSelection', 'ifcDataStore', 'isolatedEntities', 'isolatedEntitiesByModel',
+  'contextMenu', 'geometryResult', 'ghostExceptEntities', 'hiddenEntities', 'hiddenEntitiesByModel',
+  'hierarchyBasketSelection', 'hoverState', 'ifcDataStore', 'isolatedEntities', 'isolatedEntitiesByModel',
   'meshColorBackup', 'models', 'pinboardEntities', 'selectedEntities', 'selectedEntitiesSet',
   'selectedEntity', 'selectedEntityId', 'selectedEntityIds', 'selectedModelId', 'selectedStoreys',
 ];
@@ -137,6 +137,8 @@ function modelRemovedFixture() {
     meshColorBackup: new Map([[42, [1, 1, 1, 1]]]),
     addElementModelId: 'A',
     addElementStoreyId: 44,
+    hoverState: { entityId: 42, screenX: 1, screenY: 2 },
+    contextMenu: { isOpen: true, entityId: 42, screenX: 1, screenY: 2 },
     ifcDataStore: null,
     geometryResult: null,
     mutationViews: new Map(),

@@ -273,8 +273,21 @@ fn classify_open_edges(edges: &[((f64, f64, f64), (f64, f64, f64))]) -> (bool, S
 
     // Per cluster: T-junction covering iff the OTHER edges' merged intervals
     // exactly span the longest edge's own interval -- no gap at either end and
-    // no double coverage -- and the cluster has >= 2 edges (a lone unmatched
-    // edge is not "covered" by anything).
+    // no double coverage -- and the cluster has >= 3 edges.
+    //
+    // Three, not two. A T-junction is a long edge TILED by shorter sub-edges,
+    // so the smallest genuine one is the long edge plus the two pieces the
+    // junction vertex splits it into. A two-edge cluster cannot be that: the
+    // one "sub-edge" is by construction no longer than the anchor, so spanning
+    // it end to end within `rel_tol` means the two edges ARE the same edge --
+    // a coincident/duplicated boundary edge from split vertices, not a tear
+    // covered by anything. On this fixture `>= 2` would admit exactly two such
+    // clusters, both of that shape: `#43810`'s 0.3362 m edge against a
+    // 0.3361 m twin, and `#144568`'s 1.6200 m edge against a 1.6000 m one
+    // (2 cm apart, inside the 2% `rel_tol`). Neither flips its host's verdict,
+    // because both hosts have other clusters that are genuinely not covered,
+    // so the anchor assertions at the end of this file do NOT pin this bound.
+    // It is pinned by the geometry, not by the fixture.
     //
     // Intervals are merged rather than lengths summed. Summing was the earlier
     // test and it accepts a set of sub-edges that overlap each other while

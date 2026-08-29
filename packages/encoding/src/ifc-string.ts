@@ -138,12 +138,29 @@ export function decodeIfcString(str: string): string {
 }
 
 /**
- * Encode a Unicode string to IFC STEP string escapes.
+ * Encode a Unicode string to IFC STEP directive escapes.
  *
  * - Printable ASCII (32..126) is kept as-is.
  * - 8-bit values are encoded as \X\HH.
  * - BMP values are encoded as \X2\HHHH\X0\.
  * - Non-BMP values are encoded as \X4\HHHHHHHH\X0\.
+ *
+ * This is directive encoding only — it does NOT double the apostrophe (`'`,
+ * code point 39 is printable ASCII and passes through unchanged). Its output
+ * is therefore **not** safe to place directly inside a STEP single-quoted
+ * string literal: an undoubled `'` terminates the literal early and produces
+ * a file no conformant reader parses as intended (e.g. a name like
+ * `O'Brien`). A caller writing into a literal must double `'` itself, or use
+ * {@link https://github.com/LTplus-AG/ifc-lite `escapeStepString`} from
+ * `@ifc-lite/data`, which handles the full literal-context contract: doubling
+ * `'` and `\`, mapping control characters to a space, and encoding non-ASCII —
+ * per ISO 10303-21 6.3.3.4. The two functions do not produce the same output
+ * for the same input; do not assume they agree.
+ *
+ * Kept for round-trip use with {@link decodeIfcString}
+ * (`decodeIfcString(encodeIfcString(s)) === s`), which holds regardless of
+ * apostrophe handling because doubling is a literal-context requirement, not
+ * an encoding one. See https://github.com/LTplus-AG/ifc-lite/issues/3445.
  */
 export function encodeIfcString(str: string): string {
   if (!str || typeof str !== 'string') return str;

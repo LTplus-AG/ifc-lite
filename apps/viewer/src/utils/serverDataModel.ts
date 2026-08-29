@@ -546,8 +546,7 @@ export function convertServerDataModel(
     },
   };
 
-  /** Map server quantity type strings to QuantityType enum */
-  const mapQuantityType = (type: string): QuantityType => {
+  const mapQuantityType = (type: string): QuantityType => { // server quantity type string -> QuantityType
     switch (type.toLowerCase()) {
       case 'length': return QuantityType.Length;
       case 'area': return QuantityType.Area;
@@ -555,6 +554,7 @@ export function convertServerDataModel(
       case 'count': return QuantityType.Count;
       case 'weight': return QuantityType.Weight;
       case 'time': return QuantityType.Time;
+      case 'number': return QuantityType.Number; // IfcQuantityNumber, #3266's sibling here
       default: return QuantityType.Count;
     }
   };

@@ -128,6 +128,7 @@ import { Camera } from './camera.js';
 import { Scene, type InstancedTemplateGPU } from './scene.js';
 import type { SceneContents } from './scene-contents.js';
 import { Picker } from './picker.js';
+import { reportableItemId } from './pick-resolve.js';
 import { MathUtils, viewBasis } from './math.js';
 import type { Vec3 as Vec3Type } from './types.js';
 import { FrustumUtils } from '@ifc-lite/spatial';
@@ -1464,6 +1465,11 @@ export class Renderer {
         this.scene.addMesh({
             expressId: meshData.expressId,
             modelIndex: meshData.modelIndex,  // Preserve modelIndex for multi-model selection
+            // Source item, so a pick can report it (#2985) — via the shared rule,
+            // so this and the CPU raycaster cannot answer one click two ways.
+            // In-tree callers pre-split merged pieces (Scene.getMeshDataPieces
+            // drops the field incidentally); this is public, so it owns the rule.
+            geometryItemId: reportableItemId(meshData, meshData.expressId),
             vertexBuffer,
             indexBuffer,
             indexCount: meshData.indices.length,

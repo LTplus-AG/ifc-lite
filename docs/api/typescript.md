@@ -456,6 +456,8 @@ class Renderer {
 
 Visibility is passed via `render()` options (`hiddenIds`, `isolatedIds`); frustum culling via `enableFrustumCulling` plus a `spatialIndex` from `@ifc-lite/spatial`.
 
+`PickResult` carries `expressId` (the product) plus the optional `modelIndex`, `worldXYZ` and `geometryItemId`. The last is the `IfcRepresentationItem` the clicked surface was built from, and the key is absent, never `0`, where the renderer has no item identity for that hit. See [Which representation item was picked](../guide/rendering.md#which-representation-item-was-picked).
+
 Other exports: `Camera`, `Picker`, `Raycaster`, `SnapDetector`, `BVH`, `RaycastEngine`, `SectionPlaneRenderer`, `PointCloudRenderer`, `FederationRegistry` (multi-model id ranges), and the section-cap / plane-basis helpers.
 
 `Scene` and `Section2DOverlayRenderer` are package-internal from 2.0: reach the scene through `getScene(): SceneContents`, and the 3D line overlays through `Renderer.setLineOverlay`. `PickingManager` is package-internal from 2.0 as well: its constructor takes the now-internal `Scene`, so an exported class nobody could construct would have been worse than no export. Pick through `Renderer.pick` / `Renderer.pickRect`.

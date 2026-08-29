@@ -410,6 +410,69 @@ canvas.addEventListener('click', async (e) => {
 });
 ```
 
+### Which representation item was picked
+
+`PickResult.expressId` names the product that was clicked. `PickResult.geometryItemId`
+names the `IfcRepresentationItem` that particular surface was built from, so a host can
+drill from one pane of a curtain wall down to its own entity in the IFC source instead of
+stopping at the wall. It is the same value under the same name as `MeshData.geometryItemId`
+from `@ifc-lite/geometry`, and it is reported on both pick paths: the GPU pick pass, and
+the CPU raycast fallback that every model past the pick-mesh budget takes.
+
+```typescript
+canvas.addEventListener('click', async (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const hit = await renderer.pick(e.clientX - rect.left, e.clientY - rect.top);
+  if (!hit) return;
+
+  console.log(`Product #${hit.expressId} ${store.entities.getTypeName(hit.expressId)}`);
+
+  if (hit.geometryItemId === undefined) {
+    // No item identity available for this hit. Not the same as "this product
+    // has no representation item" - see below.
+    return;
+  }
+
+  // Drill to the item's own STEP line in the original file. `entityIndex.byId`
+  // indexes every entity the file declares, representation items included; the
+  // entity table behind `store.entities` only carries products and relations,
+  // so it cannot resolve an item id.
+  const ref = store.entityIndex.byId.get(hit.geometryItemId);
+  if (ref) {
+    console.log(`Item #${ref.expressId} is a ${ref.type}`);
+    const stepLine = store.source.decodeUtf8(ref.byteOffset, ref.byteOffset + ref.byteLength);
+    console.log(stepLine); // #4711=IFCEXTRUDEDAREASOLID(...);
+  }
+});
+```
+
+`EntityRef` carries the byte range along with the type. When you hold the index as its
+concrete `CompactEntityIndex`, `getByteRange(id)` returns `{ byteOffset, byteLength }`
+on its own, without building an `EntityRef`.
+
+#### When `geometryItemId` is absent
+
+The key is left off the result, never written as `0`. A real id of `0` cannot happen
+because STEP express ids start at `#1`, so `hit.geometryItemId === undefined` is the only
+"no answer" state and it never collides with a valid id.
+
+Absent means **no item identity is available for this hit**, not that the product has no
+representation item. It is absent when:
+
+- the element fell back to the single merged mesh path, where one mesh stands for the
+  whole product;
+- the geometry came through the cached `IfcMappedItem` path, where a representation map's
+  items really are merged into one piece;
+- the hit landed on a colour-merged batch, which holds many entities at once, so whatever
+  item id the batch carries belongs to none of them individually.
+
+Treat the check as the contract: read `geometryItemId` and handle `undefined`, rather than
+deciding up front which geometry can answer.
+
+Rectangle select stays product-level. `Renderer.pickRect` resolves to a `Set<number>` of
+express ids, which has no room for a per-item answer. Drill down with a single click on
+the piece you want.
+
 ### Multi-Selection
 
 ```typescript

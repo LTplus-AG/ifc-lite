@@ -307,14 +307,14 @@
    535 packages/query/src/duckdb-integration.ts
    583 packages/renderer/src/camera-controls.ts
    662 packages/renderer/src/camera.ts
-  3753 packages/renderer/src/index.ts
-   780 packages/renderer/src/picker.ts
+  3759 packages/renderer/src/index.ts
+   756 packages/renderer/src/picker.ts
    952 packages/renderer/src/pipeline.ts
    477 packages/renderer/src/pointcloud/point-cloud-renderer.ts
    758 packages/renderer/src/pointcloud/point-cloud-spatial-index.ts
    474 packages/renderer/src/raycast-engine.ts
    401 packages/renderer/src/render-section-plane.ts
-   445 packages/renderer/src/scene-raycaster.ts
+   462 packages/renderer/src/scene-raycaster.ts
   4436 packages/renderer/src/scene.ts
    639 packages/renderer/src/section-2d-overlay.ts
    514 packages/renderer/src/section-plane.ts
@@ -322,7 +322,6 @@
    454 packages/renderer/src/shadow-pass.ts
    764 packages/renderer/src/snap-detector.ts
    766 packages/renderer/src/symbolic-overlay-pipelines.ts
-   406 packages/renderer/src/types.ts
    587 packages/sandbox/src/bridge-create.ts
    421 packages/sandbox/src/bridge-query.ts
    498 packages/sandbox/src/bridge-schema.ts

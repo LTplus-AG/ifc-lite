@@ -345,6 +345,51 @@ describe('CsvConnector.generateMutations: malformed numeric cells', () => {
 });
 
 /**
+ * The List branch used to pick its encoding by catching a `JSON.parse` throw,
+ * so a malformed JSON list took the semicolon path and `[1,2` was written as
+ * the one-element array `['[1,2']`: a fabricated value indistinguishable from
+ * an imported one, the same class of silent damage PARSE_INVALID was added to
+ * stop on numeric cells. The encoding is chosen on shape now, so the broken
+ * cell is skipped and reported while the semicolon form still imports.
+ */
+describe('CsvConnector.generateMutations: malformed List cells', () => {
+  const mapping: DataMapping = {
+    matchStrategy: { type: 'globalId', column: 'GlobalId' },
+    propertyMappings: [
+      {
+        sourceColumn: 'Tags',
+        targetPset: 'Pset_WallCommon',
+        targetProperty: 'Tags',
+        valueType: PropertyValueType.List,
+      },
+    ],
+  };
+
+  it('does not write the raw cell as a one-element array; skips and warns instead', () => {
+    const { connector, view } = makeConnector([
+      { expressId: 1, globalId: 'guid-a', name: 'Wall A' },
+    ]);
+
+    const stats = connector['import']('GlobalId,Tags\nguid-a,"[1,2"', mapping);
+
+    expect(stats.mutationsCreated).toBe(0);
+    expect(stats.warnings.some((w) => w.includes('Tags'))).toBe(true);
+    expect(view.getPropertyValue(1, 'Pset_WallCommon', 'Tags')).toBeNull();
+  });
+
+  it('still imports the semicolon encoding of a list', () => {
+    const { connector, view } = makeConnector([
+      { expressId: 1, globalId: 'guid-a', name: 'Wall A' },
+    ]);
+
+    const stats = connector['import']('GlobalId,Tags\nguid-a,a;b', mapping);
+
+    expect(stats.mutationsCreated).toBe(1);
+    expect(view.getPropertyValue(1, 'Pset_WallCommon', 'Tags')).toEqual(['a', 'b']);
+  });
+});
+
+/**
  * github.com/LTplus-AG/ifc-lite/issues/2765: replacing the Boolean/Logical
  * parse branch with `return false` left 172 tests green. Every truthy spelling
  * a checkbox column can carry silently became false, and the only production

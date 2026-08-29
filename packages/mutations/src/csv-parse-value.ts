@@ -40,15 +40,29 @@ export function parseValue(
       return lower === 'true' || lower === 'yes' || lower === '1';
     }
 
-    case PropertyValueType.List:
+    case PropertyValueType.List: {
+      // Two accepted CSV encodings, resolved in three steps: valid JSON
+      // wins, a semicolon is the unambiguous marker of the other form, and
+      // only a cell that looks like JSON, carries no semicolon, and still
+      // will not parse is refused.
+      //
+      // Both simpler rules are wrong in opposite directions. Deciding on the
+      // thrown exception sent malformed JSON down the semicolon path, so
+      // `[1,2` parsed to `['[1,2']` -- a fabricated value of exactly the kind
+      // PARSE_INVALID exists to keep out. Deciding on a leading `[` alone
+      // refused `[EXT];[LOAD]`, a legitimate semicolon list whose first entry
+      // starts with `[`, dropping cells that imported correctly before.
+      const trimmed = value.trim();
       try {
-        return JSON.parse(value);
+        const parsed: unknown = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) return parsed as PropertyValue;
       } catch {
-        // Legitimately silent: two accepted CSV encodings for a list value,
-        // JSON first then semicolon-separated. A non-JSON cell is the normal
-        // second form, not a failure.
-        return value.split(';').map((s) => s.trim());
+        // Not JSON. Fall through to the shape checks below.
       }
+      if (trimmed.includes(';')) return trimmed.split(';').map((s) => s.trim());
+      if (trimmed.startsWith('[')) return PARSE_INVALID;
+      return trimmed.split(';').map((s) => s.trim());
+    }
 
     default:
       return value;

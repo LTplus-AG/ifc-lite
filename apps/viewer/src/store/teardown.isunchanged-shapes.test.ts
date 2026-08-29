@@ -310,12 +310,12 @@ describe('isUnchanged falls through a detected cycle to "changed", never loops o
   });
 });
 
-describe('isUnchanged\'s cycle-detection WeakSet is fresh per top-level call (#3392 follow-up)', () => {
-  it('does not leak stale "seen" membership from one composeTeardown call into the next', () => {
+describe('isUnchanged\'s recursion depth is fresh per top-level call (#3392 follow-up)', () => {
+  it('does not leak recursion state from one composeTeardown call into the next', () => {
     const shared = { v: 1 };
 
-    // First call: `shared` genuinely differs from `different`, so it walks the
-    // plain-object branch and adds `shared` to THAT call's `seen` WeakSet.
+    // First call: `shared` genuinely differs from `different`, walking the
+    // plain-object branch several `depth` levels deep inside THIS call.
     const different = { v: 2 };
     const firstRegistry = [
       sessionResetOnly('testSlice', ['sectionPlane'], () => ({
@@ -327,10 +327,9 @@ describe('isUnchanged\'s cycle-detection WeakSet is fresh per top-level call (#3
     assert.ok('sectionPlane' in firstPatch, 'sanity check: the first call must report the genuinely different value as changed');
 
     // Second, SEPARATE top-level call reusing the SAME `shared` reference, this
-    // time against an equal-but-new object. If `seen` leaked across calls (e.g. a
-    // future refactor hoists it out of the default parameter), `shared` would
-    // already read as "seen" here and the branch would be skipped, wrongly
-    // reporting "changed" instead of "unchanged".
+    // time against an equal-but-new object. Each top-level `isUnchanged` call
+    // starts `depth` back at 0 (its default parameter), so a deep first call
+    // must not leave the second call artificially depth-capped.
     const equalButNew = { v: 1 };
     const secondRegistry = [
       sessionResetOnly('testSlice', ['sectionPlane'], () => ({
@@ -357,5 +356,47 @@ describe('isUnchanged is order-sensitive for plain arrays (#3392 follow-up)', ()
     const state: TeardownState = { sectionPlane: [1, 2] as unknown as TeardownState['sectionPlane'] };
     const patch = composeTeardown(registry)(SESSION_RESET, state);
     assert.ok('sectionPlane' in patch, 'two arrays with the same elements in a different order must compare "changed"');
+  });
+});
+
+describe('isUnchanged bounds Map/array recursion, which the object cycle guard above never covered (#3392 follow-up)', () => {
+  it('reports two self-referential arrays as changed instead of exhausting the stack', () => {
+    const prior: unknown[] = [];
+    prior.push(prior);
+    const rebuilt: unknown[] = [];
+    rebuilt.push(rebuilt);
+
+    const registry = [
+      sessionResetOnly('testSlice', ['sectionPlane'], () => ({
+        sectionPlane: rebuilt as unknown as TeardownState['sectionPlane'],
+      })),
+    ];
+    const state: TeardownState = { sectionPlane: prior as unknown as TeardownState['sectionPlane'] };
+
+    let patch: ReturnType<ReturnType<typeof composeTeardown>>;
+    assert.doesNotThrow(() => {
+      patch = composeTeardown(registry)(SESSION_RESET, state);
+    }, 'a self-referential array must not recurse until the call stack is exhausted');
+    assert.ok(patch! && 'sectionPlane' in patch!, 'an uncomparable (depth-capped) pair must fall through to "changed", not a false "unchanged"');
+  });
+
+  it('reports two self-referential Maps as changed instead of exhausting the stack', () => {
+    const prior = new Map<string, unknown>();
+    prior.set('self', prior);
+    const rebuilt = new Map<string, unknown>();
+    rebuilt.set('self', rebuilt);
+
+    const registry = [
+      sessionResetOnly('testSlice', ['sectionPlane'], () => ({
+        sectionPlane: rebuilt as unknown as TeardownState['sectionPlane'],
+      })),
+    ];
+    const state: TeardownState = { sectionPlane: prior as unknown as TeardownState['sectionPlane'] };
+
+    let patch: ReturnType<ReturnType<typeof composeTeardown>>;
+    assert.doesNotThrow(() => {
+      patch = composeTeardown(registry)(SESSION_RESET, state);
+    }, 'a self-referential Map must not recurse until the call stack is exhausted');
+    assert.ok(patch! && 'sectionPlane' in patch!, 'an uncomparable (depth-capped) pair must fall through to "changed", not a false "unchanged"');
   });
 });

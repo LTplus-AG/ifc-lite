@@ -242,3 +242,9 @@ fn extract_entity_refs_from_list_refuses_above_u32_max_and_resolves_at_the_bound
     let ids = extract_entity_refs_from_list(b"(#1,#4294967295,#2)");
     assert_eq!(ids, vec![1, u32::MAX, 2]);
 }
+
+#[test]
+fn extract_entity_refs_from_list_hash_with_no_digits_does_not_panic() {
+    let ids = extract_entity_refs_from_list(b"(#,#2)");
+    assert_eq!(ids, vec![2]);
+}

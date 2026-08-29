@@ -374,9 +374,11 @@ pub fn extract_entity_refs_from_list(bytes: &[u8]) -> Vec<u32> {
         while i < len && bytes[i].is_ascii_digit() {
             i += 1;
         }
-        if let Some(id) = crate::express_id::parse_express_id(&bytes[id_start..i]) {
-            if id > 0 {
-                ids.push(id);
+        if i > id_start {
+            if let Some(id) = crate::express_id::parse_express_id(&bytes[id_start..i]) {
+                if id > 0 {
+                    ids.push(id);
+                }
             }
         }
     }

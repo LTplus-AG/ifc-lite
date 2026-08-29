@@ -19,7 +19,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { expandJobNames } from './lib/pr-review-signal.mjs';
+import { expandJobNames, pullRequestBranchFilterKeys } from './lib/pr-review-signal.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..');
@@ -598,16 +598,21 @@ test('the gate carries NO base-branch filter, so a stacked PR cannot dodge it (#
   // can observe a stacked PR's total lane absence and fail loud rather than
   // being silently skipped alongside it. Pinned rather than reasoned about in
   // a comment, because the two files are edited independently.
+  //
+  // #3433: a text regex here (`/^\s*branches:\s*(\[.*\])\s*$/m`) caught the
+  // inline `branches: [main]` spelling but not the equivalent block form
+  // (`branches:\n  - main`), so the guard this test IS could itself be
+  // defeated by reformatting. Parsed structurally instead -- see
+  // `pullRequestBranchFilterKeys` for every spelling this now covers.
   const own = readFileSync(join(REPO_ROOT, '.github/workflows/pr-review-signal.yml'), 'utf8');
   const testYml = readFileSync(TEST_YML, 'utf8');
-  const branchesOf = (text) => /^\s*branches:\s*(\[.*\])\s*$/m.exec(text)?.[1];
-  assert.equal(
-    branchesOf(own),
-    undefined,
+  assert.deepEqual(
+    pullRequestBranchFilterKeys(own),
+    [],
     'pr-review-signal.yml must not declare a base-branch filter -- it has to run on stacked PRs to catch them',
   );
   assert.ok(
-    branchesOf(testYml),
+    pullRequestBranchFilterKeys(testYml).length > 0,
     'test.yml is expected to keep its own base-branch filter; this test documents the asymmetry, not test.yml\'s scope',
   );
 });

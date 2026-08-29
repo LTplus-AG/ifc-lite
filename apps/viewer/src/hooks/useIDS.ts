@@ -661,42 +661,44 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
    * exactly what was installed so the release can release only that.
    *
    * Mirrors `useClash.installClashIsolation`, including the read-BACK: the
-   * record holds the SET THE CHANNEL ENDED UP WITH, not the argument.
+   * record holds the SET THE CHANNEL ENDED UP WITH, not the argument. Under
+   * value equality the two are interchangeable today (the setter clones its
+   * argument, verified an equivalent mutant survives on the argument form),
+   * but the read-back is what stops that from being depended on: a setter
+   * that ever normalised what it stores would silently make the argument a
+   * claim on something that is not on screen.
    *
-   * Under value equality those two are interchangeable today — the setter
-   * clones the argument, so recording the argument instead is an equivalent
-   * mutant (verified: it survives). The read-back is what stops that from
-   * being a property this code depends on: `null` for "the channel refused the
-   * install" is expressible, and a setter that ever normalised what it stores
-   * (dropping unknown ids, say) would silently make the argument a claim on
-   * something that is not on screen.
+   * Returns whether the channel was replaced, mirroring `installSetIsolation`
+   * (a `null` from `resolveIsolationIds`, #3389, leaves both untouched) —
+   * callers must gate a follow-on mode change on it.
    */
-  const installFocusIsolation = useCallback((ids: Set<number>): void => {
+  const installFocusIsolation = useCallback((ids: Set<number>): boolean => {
     const state = useViewerStore.getState();
     const rawIds = [...ids];
-    // #3338: row element may lack geometry. resolveIsolationIds tells "hasn't
-    // answered yet" (union, self-heals) apart from "answered: nothing renders" (null, #3389).
+    // #3338/#3389: row element may lack geometry; null means "answered: nothing renders".
     const isolateIds = resolveIsolationIds(state.cameraCallbacks.resolveHighlightIds, rawIds);
-    if (isolateIds === null) return;
+    if (isolateIds === null) return false;
     state.setIsolatedEntities(new Set(isolateIds));
     const installed = useViewerStore.getState().isolatedEntities;
     state.setIdsFocusVisibilityOwned(installed ? { channel: 'isolate', ids: installed } : null);
+    return true;
   }, []);
 
-  /** Install the row focus's ghosting (X-Ray context) into the shared channel,
-   *  with the same install-record contract as `installFocusIsolation`. */
-  const installFocusGhost = useCallback((ids: Set<number>): void => {
+  /** Install the row focus's ghosting (X-Ray context), same install-record
+   *  contract as `installFocusIsolation`; always installs and returns `true`
+   *  (no "nothing renders" gap), kept boolean to stay uniform with it. */
+  const installFocusGhost = useCallback((ids: Set<number>): boolean => {
     const state = useViewerStore.getState();
     state.setGhostExceptEntities(ids);
     const installed = useViewerStore.getState().ghostExceptEntities;
     state.setIdsFocusVisibilityOwned(installed ? { channel: 'ghost', ids: installed } : null);
+    return true;
   }, []);
 
   /**
    * Release the isolation/ghost the ROW FOCUS itself installed — and only
    * that. A clash focus, a spaces X-ray, "Isolate in 3D" or IDS's own
-   * set-level isolate buttons occupying the channel instead do not
-   * content-match the record and survive untouched.
+   * set-level isolate buttons instead survive untouched: no content match.
    */
   const releaseFocusVisibility = useCallback((): void => {
     releaseOwnedIdsFocusVisibility(useViewerStore.getState());
@@ -709,12 +711,10 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
    * The focus colour is ADDED to the report overlay rather than replacing it:
    * the surrounding red/green is the context that makes "this one is the row I
    * clicked" mean anything. Scoped exactly as the isolate actions are — the
-   * active spec's own verdict in 'spec' scope, the whole report otherwise — so
-   * activating a row never silently changes which verdict is on screen.
-   *
-   * Does nothing without a report: IDS is not colouring then, and pushing a
-   * map here would take the colour-override channel away from whoever is (a
-   * lens, clash) — the same reason `restoreReportColors` returns early.
+   * active spec's own verdict in 'spec' scope, the whole report otherwise —
+   * so activating a row never silently changes which verdict is on screen.
+   * Does nothing without a report, the same reason `restoreReportColors` bails:
+   * a map here would take the colour-override channel from whoever holds it.
    */
   const paintFocus = useCallback((focusedGlobalId: number | null): void => {
     if (!report) return;
@@ -730,27 +730,27 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
    * channels — the IDS spelling of `useClash.applyFocusMode`:
    *
    * - `highlight`: release whatever the row focus itself installed, and take
-   *   no claim. Unlike clash's `highlight`, this does NOT clear both channels
-   *   outright: IDS has set-level isolation of its own (`isolateFailed` and
-   *   friends) that the user may have established deliberately, and clicking a
-   *   row must not silently discard it. Releasing by ownership discards the
-   *   previous ROW presentation and nothing else.
+   *   no claim. Unlike clash's `highlight`, this does NOT clear both channels:
+   *   releasing by ownership never touches IDS's own set-level isolation
+   *   (`isolateFailed` and friends), which may be deliberate.
    * - `isolate`: hide everything except the activated element.
    * - `ghost`:   keep it solid and fade the rest to translucent context.
    *
    * A row focus that installs into a channel supersedes any set-level
-   * isolation that was showing (both slice setters replace the channel
-   * wholesale), so `idsIsolateMode` is cleared with it — otherwise the isolate
-   * buttons keep a pressed state for an isolation no longer on screen.
+   * isolation showing there (both slice setters replace it wholesale), so
+   * `idsIsolateMode` is cleared with it — but only when install actually
+   * happened: a `false` return (#3389, nothing renders) leaves the channel
+   * and prior isolation untouched, so clearing the mode would desync the UI.
    */
   const applyFocusMode = useCallback((globalId: number, mode: IDSFocusMode): void => {
     if (mode === 'highlight') {
       releaseFocusVisibility();
       return;
     }
-    if (mode === 'isolate') installFocusIsolation(new Set([globalId]));
-    else installFocusGhost(new Set([globalId]));
-    setIdsIsolateMode(null);
+    const installed = mode === 'isolate'
+      ? installFocusIsolation(new Set([globalId]))
+      : installFocusGhost(new Set([globalId]));
+    if (installed) setIdsIsolateMode(null);
   }, [releaseFocusVisibility, installFocusIsolation, installFocusGhost, setIdsIsolateMode]);
 
   const focusEntity = useCallback((

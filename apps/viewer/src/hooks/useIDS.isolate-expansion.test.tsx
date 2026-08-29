@@ -316,3 +316,70 @@ describe('isolate actuators gate follow-on mode/colour on whether the install ac
     );
   });
 });
+
+/**
+ * PR #3389 fixed this gate for `installSetIsolation`'s callers but missed
+ * `applyFocusMode` (the row-focus path `focusEntity` drives): it called
+ * `setIdsIsolateMode(null)` unconditionally after `installFocusIsolation`,
+ * so a resolver that definitively answers "nothing renders" (install
+ * skipped, channel untouched) still reported isolation mode "off" while a
+ * live set-level isolation stayed on screen underneath it.
+ */
+describe('row focus (applyFocusMode) gates the idsIsolateMode clear on whether install actually happened', () => {
+  it('a resolver answering [] leaves idsIsolateMode unchanged and does not clear a live isolation', async () => {
+    await seed();
+    // Establish a live SET-level isolation first (no resolver registered yet).
+    await act(async () => { api!.isolateFailed(); });
+    assert.deepEqual(isolated(), [5], 'sanity: a live isolation is on screen');
+    assert.equal(useViewerStore.getState().idsIsolateMode, 'failed', 'sanity: isolate mode reads pressed');
+
+    // Now the row's own resolver definitively answers "nothing renders".
+    useViewerStore.setState({ cameraCallbacks: { resolveHighlightIds: () => [] } });
+    await act(async () => { api!.focusEntity('A', 5, 'isolate'); });
+
+    assert.deepEqual(isolated(), [5], 'the live isolation must survive a skipped row-focus install untouched');
+    assert.equal(
+      useViewerStore.getState().idsIsolateMode,
+      'failed',
+      'idsIsolateMode must not be cleared when the row-focus install was skipped',
+    );
+  });
+
+  it('a resolver answering null (not yet resolved) still clears idsIsolateMode, matching pre-fix behaviour', async () => {
+    await seed();
+    await act(async () => { api!.isolateFailed(); });
+    assert.equal(useViewerStore.getState().idsIsolateMode, 'failed');
+
+    useViewerStore.setState({ cameraCallbacks: { resolveHighlightIds: () => null } });
+    await act(async () => { api!.focusEntity('A', 5, 'isolate'); });
+
+    assert.deepEqual(isolated(), [5], 'a still-streaming resolver falls back to the raw id, so the install happens');
+    assert.equal(useViewerStore.getState().idsIsolateMode, null, 'the install happened, so the mode clears as before');
+  });
+
+  it('with no resolver registered, focusEntity(isolate) still clears idsIsolateMode, matching pre-fix behaviour', async () => {
+    await seed(); // cameraCallbacks: {} -- no resolver at all
+    await act(async () => { api!.isolateFailed(); });
+    assert.equal(useViewerStore.getState().idsIsolateMode, 'failed');
+
+    await act(async () => { api!.focusEntity('A', 5, 'isolate'); });
+
+    assert.deepEqual(isolated(), [5]);
+    assert.equal(useViewerStore.getState().idsIsolateMode, null);
+  });
+
+  it('ghost mode has no "nothing renders" gap and always clears idsIsolateMode, the explicit-clear path', async () => {
+    await seed();
+    await act(async () => { api!.isolateFailed(); });
+    assert.equal(useViewerStore.getState().idsIsolateMode, 'failed');
+
+    // Even with a resolver that would skip an *isolate* install, ghosting
+    // always installs -- it has no "nothing renders" gap to resolve -- so
+    // the mode must still clear, exactly as `installSetIsolation(null)`
+    // always succeeds and clears on the set-level clear path.
+    useViewerStore.setState({ cameraCallbacks: { resolveHighlightIds: () => [] } });
+    await act(async () => { api!.focusEntity('A', 5, 'ghost'); });
+
+    assert.equal(useViewerStore.getState().idsIsolateMode, null, 'ghosting always installs, so the mode always clears');
+  });
+});

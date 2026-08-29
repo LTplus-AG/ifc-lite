@@ -292,9 +292,13 @@ describe('bim.query.entity', () => {
   // as a bare `{ modelId, expressId }` object literal from raw args (`as
   // string` / `as number` casts only, no runtime check) instead of going
   // through `toRef` like `attributes`, `properties`, etc. do. Routing it
-  // through `toRef` closes that shape gap: a wrong-typed arg is now
-  // rejected here exactly as it already is at the other 20+ call sites in
-  // this file, instead of being forwarded to `sdk.entity` unchecked.
+  // through `toRef` closes that shape gap at the handler boundary. The 17
+  // other `toRef` sites in bridge-query.ts are not an exact parallel: their arg 0
+  // is declared `'dump'` and reaches the handler uncoerced, while `entity`
+  // declares `['string', 'number']`, so `vm.getString` / `vm.getNumber` have
+  // already coerced its args by the time `call:` runs. The cases below
+  // therefore pin the handler's own contract, not a shape a script can send;
+  // the one difference a script can reach is an OMITTED argument.
   //
   // `toRef` on this branch only checks `typeof expressId === 'number'`, so
   // NaN/Infinity/-1/1.5 (all `typeof 'number'`) still reach `sdk.entity`
@@ -307,7 +311,7 @@ describe('bim.query.entity', () => {
   it.each([
     [42 as unknown as string, 1],
     ['m1', '7' as unknown as number],
-  ])('rejects a wrong-typed (modelId=%j, expressId=%j) pair without calling sdk.entity', (modelId, expressId) => {
+  ])('refuses a (modelId=%j, expressId=%j) pair at the handler boundary without calling sdk.entity', (modelId, expressId) => {
     const sdk = mockSdk({
       entity: vi.fn(() => {
         throw new Error('sdk.entity must not be called with an invalid ref shape');

@@ -79,9 +79,15 @@ use nalgebra::{Point2, Point3, Vector3};
 /// because that reconstruction — not the local 2D delta — is what
 /// `Mesh::add_vertex` actually quantizes.
 ///
-/// A snap that would collapse a vertex onto either of its own ring neighbours
-/// is refused: that would leave a zero-length edge the CDT cannot
-/// triangulate, trading one topological defect for another.
+/// A snap that would collapse a vertex onto ANY other ring vertex is refused —
+/// not only its two ring-adjacent neighbours. A non-adjacent vertex can sit
+/// within `CONFORM_TOL` of the same candidate once the ring has four or more
+/// vertices, and the loop carries no cross-vertex state, so two non-adjacent
+/// indices can otherwise choose one candidate independently. Refusing only the
+/// adjacent case trades a zero-length edge for a duplicate ring vertex, which
+/// `conform_regions` records as failing the CDT and dropping the whole region:
+/// a hole in the mesh, strictly worse than the sub-visible crack this pass
+/// exists to close.
 pub(super) fn snap_near_duplicates(
     ring: &mut [Point2<f64>],
     cands: &[Point2<f64>],
@@ -139,10 +145,10 @@ pub(super) fn snap_near_duplicates(
         {
             continue;
         }
-        let prev = ring[(i + n - 1) % n];
-        let next = ring[(i + 1) % n];
-        if q == prev || q == next {
-            continue; // would collapse this vertex onto a ring neighbour
+        // Scans the whole ring, not just `prev`/`next`: adjacency in winding
+        // order is not what makes a collapse possible, proximity is.
+        if ring.iter().enumerate().any(|(j, &p)| j != i && p == q) {
+            continue; // would duplicate an existing ring vertex
         }
         ring[i] = q;
         snapped = true;
@@ -364,5 +370,40 @@ mod tests {
              even though it is visible in the local 2D frame"
         );
         assert_eq!(ring[0], v_local, "f32-invisible move must be refused");
+    }
+
+    #[test]
+    fn refuses_a_snap_that_would_collapse_onto_a_non_adjacent_vertex() {
+        // A pentagon (n = 5, so NOT every vertex is mutually adjacent).
+        // ring[3] sits within CONFORM_TOL of ring[0]'s exact position but is
+        // not bit-identical to it, so ring[0]'s position is an eligible snap
+        // target for it. ring[3]'s ring-adjacent neighbours are ring[2] and
+        // ring[4] — neither is ring[0] — so an adjacent-only guard never looks
+        // at ring[0] and lets the snap through, producing a duplicate ring
+        // vertex. `conform_regions` records that a duplicate fails the CDT and
+        // drops the whole region, so this must be refused even though the two
+        // vertices are two steps apart in winding order.
+        let ring0 = Point2::new(0.0, 0.0);
+        let ring1 = Point2::new(10.0, 0.0);
+        let ring2 = Point2::new(10.0, 10.0);
+        let ring3 = Point2::new(0.000_05, 0.000_03);
+        let ring4 = Point2::new(0.0, 10.0);
+        let mut ring = vec![ring0, ring1, ring2, ring3, ring4];
+        let cands = [ring0];
+
+        let moved = snap_near_duplicates(&mut ring, &cands, ORIGIN(), U_AXIS(), V_AXIS());
+
+        assert!(
+            !moved,
+            "snapping ring[3] onto ring[0]'s position would duplicate a non-adjacent vertex"
+        );
+        assert_eq!(
+            ring[3], ring3,
+            "non-adjacent vertex must not be snapped onto ring[0]'s position"
+        );
+        assert_ne!(
+            ring[3], ring[0],
+            "ring must not end up with two bit-identical vertices"
+        );
     }
 }

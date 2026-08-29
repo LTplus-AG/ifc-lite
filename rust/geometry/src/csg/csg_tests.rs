@@ -374,6 +374,80 @@ fn difference_result_wrong_piece_check_is_per_axis_not_longest_dimension() {
     );
 }
 
+/// Build an open box: the same 6-face box as [`aabb_to_mesh`] minus its top
+/// face (z = max). Finite positions/normals and every index in bounds, so
+/// `validate_mesh` accepts it — but the missing face leaves a boundary loop
+/// with no reverse edge to cancel it, so `directed_closed` rejects it.
+fn open_box_mesh(min: Point3<f64>, max: Point3<f64>) -> Mesh {
+    let mut mesh = Mesh::with_capacity(8, 30);
+
+    let v0 = Point3::new(min.x, min.y, min.z);
+    let v1 = Point3::new(max.x, min.y, min.z);
+    let v2 = Point3::new(max.x, max.y, min.z);
+    let v3 = Point3::new(min.x, max.y, min.z);
+    let v4 = Point3::new(min.x, min.y, max.z);
+    let v5 = Point3::new(max.x, min.y, max.z);
+    let v6 = Point3::new(max.x, max.y, max.z);
+    let v7 = Point3::new(min.x, max.y, max.z);
+
+    // Bottom (z = min): present.
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v0, v2, v1));
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v0, v3, v2));
+    // Top (z = max): DELETED — this is the open edge.
+    // -X side.
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v0, v4, v7));
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v0, v7, v3));
+    // +X side.
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v1, v2, v6));
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v1, v6, v5));
+    // -Y side.
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v0, v1, v5));
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v0, v5, v4));
+    // +Y side.
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v3, v7, v6));
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v3, v6, v2));
+
+    mesh
+}
+
+/// Step 1 of #3440: `record_topology_tear` must fire on an accepted-but-open
+/// mesh WITHOUT changing what `validate_mesh` itself returns. Both halves
+/// matter — the acceptance half is what proves this is a diagnostic, not a
+/// gate.
+#[test]
+fn topology_tear_recorded_without_gating_open_mesh() {
+    let mesh = open_box_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));
+    let processor = ClippingProcessor::new();
+
+    // Unchanged: `validate_mesh` has no topology notion and still accepts.
+    assert!(
+        processor.validate_mesh(&mesh),
+        "validate_mesh must keep accepting an open-but-finite, in-bounds mesh"
+    );
+
+    processor.record_topology_tear(BoolOp::Difference, &mesh);
+    let failures = processor.take_failures();
+    assert_eq!(failures.len(), 1, "the open mesh must record exactly one diagnostic");
+    assert_eq!(failures[0].op, BoolOp::Difference);
+    assert_eq!(failures[0].reason, BoolFailureReason::OpenTopology);
+}
+
+/// A closed mesh must record nothing — the diagnostic is specific to open
+/// topology, not a blanket informational record on every accepted mesh.
+#[test]
+fn topology_tear_not_recorded_for_closed_mesh() {
+    let mesh = aabb_to_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));
+    let processor = ClippingProcessor::new();
+
+    assert!(processor.validate_mesh(&mesh));
+
+    processor.record_topology_tear(BoolOp::Difference, &mesh);
+    assert!(
+        processor.take_failures().is_empty(),
+        "a closed mesh must not record an OpenTopology diagnostic"
+    );
+}
+
 // World-frame corpus tests: a sibling test file, attached here rather than
 // from `mod.rs` because that allowlisted production module is at its
 // module-size-ratchet budget and test files are exempt. The file itself

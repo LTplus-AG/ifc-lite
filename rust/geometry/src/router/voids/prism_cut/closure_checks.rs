@@ -16,7 +16,7 @@ use rustc_hash::FxHashMap;
 /// surfaces (two triangles sharing an edge in the SAME direction), not just
 /// cracks. Triangles that collapse to a degenerate key on the grid are skipped
 /// (their edges net to zero).
-pub(super) fn directed_closed(mesh: &Mesh) -> bool {
+pub(crate) fn directed_closed(mesh: &Mesh) -> bool {
     let key = |i: u32| -> (i64, i64, i64) {
         let b = i as usize * 3;
         let q = |v: f32| (v as f64 / 1.0e-4).round() as i64;

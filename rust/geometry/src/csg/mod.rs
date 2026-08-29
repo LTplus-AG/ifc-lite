@@ -16,6 +16,7 @@ use std::cell::RefCell;
 mod consolidate;
 mod normals;
 mod plane_eps;
+mod topology_diagnostic;
 
 pub use normals::calculate_normals;
 pub(crate) use consolidate::tri_is_needle;
@@ -329,7 +330,7 @@ impl ClippingProcessor {
             self.record_failure(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid);
             return Ok(host_mesh.clone());
         }
-        Ok(result)
+        Ok(result).inspect(|m| self.record_topology_tear(BoolOp::Difference, m))
     }
 
     /// Subtract a GROUP of pairwise-disjoint opening cutters from the host in
@@ -402,6 +403,7 @@ impl ClippingProcessor {
                 self.record_failure(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid);
                 return Ok(host_mesh.clone());
             }
+            self.record_topology_tear(BoolOp::Difference, &next);
             result = next;
         }
         Ok(result)
@@ -431,7 +433,7 @@ impl ClippingProcessor {
             merged.merge(mesh_b);
             return Ok(merged);
         }
-        Ok(result)
+        Ok(result).inspect(|m| self.record_topology_tear(BoolOp::Union, m))
     }
 
     /// Intersect two meshes using CSG boolean operations on the pure-Rust
@@ -453,7 +455,7 @@ impl ClippingProcessor {
             self.record_failure(BoolOp::Intersection, BoolFailureReason::KernelOutputInvalid);
             return Ok(Mesh::new());
         }
-        Ok(result)
+        Ok(result).inspect(|m| self.record_topology_tear(BoolOp::Intersection, m))
     }
 
     /// Union multiple meshes together
@@ -558,12 +560,10 @@ impl ClippingProcessor {
         if mesh.positions.iter().any(|v| !v.is_finite()) {
             return false;
         }
-
         // Check for NaN/Inf in normals
         if mesh.normals.iter().any(|v| !v.is_finite()) {
             return false;
         }
-
         // Check for valid triangle indices
         let vertex_count = mesh.vertex_count();
         for idx in &mesh.indices {

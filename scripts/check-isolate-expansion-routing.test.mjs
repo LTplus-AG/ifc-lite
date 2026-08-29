@@ -28,7 +28,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import {
   classifyFile,
   CALL_PATTERN,
@@ -40,6 +41,7 @@ import {
   NO_MARKER_REQUIRED,
   MIN_ALLOWLIST_REASON_LENGTH,
   isSufficientAllowlistReason,
+  stripCommentsAndStrings,
   walk,
 } from './check-isolate-expansion-routing.mjs';
 
@@ -142,13 +144,213 @@ describe('check-isolate-expansion-routing: classifyFile', () => {
     assert.equal(CALL_PATTERN.test('isolateEntity(id)'), false, 'must not match the singular sibling action');
   });
 
-  it('ROUTING_MARKERS requires the marker to be CALLED, not merely mentioned in prose', () => {
+  // Renamed from "ROUTING_MARKERS requires the marker to be CALLED, not
+  // merely mentioned in prose": that name overclaimed. The regex only
+  // requires the token to be immediately followed by `(` -- it says nothing
+  // about comments or strings, so a call-SHAPED fragment inside either one
+  // satisfies it exactly as well as a real call. Demonstrated: `ROUTING_MARKERS
+  // .test('// cameraCallbacks.resolveHighlightIds(ids)')` and
+  // `ROUTING_MARKERS.test('const s = "resolveHighlightIds(ids)";')` both
+  // return `true` against the bare regex. This test now scopes its claim to
+  // exactly what the regex alone proves (paren-less prose is rejected); the
+  // comment/string cases are covered below, against `classifyFile` (which
+  // strips comments and strings before testing), not the bare regex.
+  it('ROUTING_MARKERS (the bare regex) requires "(" immediately after the marker name, but does not know about comments or strings', () => {
     assert.equal(
       ROUTING_MARKERS.test('// backed by expandToGeometryBearingIds -- see #2531'),
       false,
-      'a comment naming the helper without calling it must not satisfy the gate',
+      'a comment naming the helper without anything that looks like a call must not match',
     );
     assert.equal(ROUTING_MARKERS.test('cameraCallbacks.resolveHighlightIds?.(ids)'), true);
+    // The gap this file exists to close: the bare regex does not distinguish
+    // a real call from a call-shaped comment or string. `classifyFile` is
+    // what closes this (see the "classifyFile scans code, not comments or
+    // string literals" suite below) -- the bare regex alone still matches.
+    assert.equal(
+      ROUTING_MARKERS.test('// cameraCallbacks.resolveHighlightIds(ids)'),
+      true,
+      'the bare regex, by itself, cannot tell a commented-out call from a real one',
+    );
+    assert.equal(
+      ROUTING_MARKERS.test('const s = "resolveHighlightIds(ids)";'),
+      true,
+      'the bare regex, by itself, cannot tell a quoted string from a real call',
+    );
+  });
+});
+
+describe('check-isolate-expansion-routing: stripCommentsAndStrings', () => {
+  it('removes a line comment', () => {
+    const out = stripCommentsAndStrings('const x = 1; // resolveHighlightIds(ids)\nconst y = 2;');
+    assert.equal(/resolveHighlightIds/.test(out), false);
+    assert.match(out, /const y = 2;/);
+  });
+
+  it('removes a block comment, including one spanning multiple lines', () => {
+    const out = stripCommentsAndStrings(
+      'const x = 1;\n/* backed by\n   resolveHighlightIds(ids)\n   see #2531 */\nconst y = 2;',
+    );
+    assert.equal(/resolveHighlightIds/.test(out), false);
+    assert.match(out, /const y = 2;/);
+  });
+
+  it('removes single, double, and backtick string-literal bodies', () => {
+    for (const src of [
+      "const s = 'resolveHighlightIds(ids)';",
+      'const s = "resolveHighlightIds(ids)";',
+      'const s = `resolveHighlightIds(ids)`;',
+    ]) {
+      const out = stripCommentsAndStrings(src);
+      assert.equal(/resolveHighlightIds/.test(out), false, src);
+    }
+  });
+
+  it('leaves a real call, plain or optional-chained, intact', () => {
+    assert.match(stripCommentsAndStrings('resolveHighlightIds(ids)'), /resolveHighlightIds\(ids\)/);
+    assert.match(
+      stripCommentsAndStrings('cameraCallbacks.resolveHighlightIds?.(ids)'),
+      /cameraCallbacks\.resolveHighlightIds\?\.\(ids\)/,
+    );
+  });
+});
+
+describe('check-isolate-expansion-routing: classifyFile scans code, not comments or string literals', () => {
+  it('RED (demonstrated against the unmodified script): a call-shaped LINE COMMENT satisfies ROUTING_MARKERS on raw content', () => {
+    // This is the exact false GREEN found by hand: a routing call commented
+    // out during a refactor still reads as "routed". Documented here as a
+    // fact about the raw regex (matches classifyFile's pre-fix behaviour,
+    // which tested ROUTING_MARKERS against raw `content`); the suites below
+    // prove classifyFile itself no longer has this gap.
+    assert.equal(ROUTING_MARKERS.test('// cameraCallbacks.resolveHighlightIds(ids)'), true);
+  });
+
+  it('a call-shaped line comment does NOT satisfy classifyFile for a REQUIRES_ROUTING_MARKER file', () => {
+    const relPath = [...REQUIRES_ROUTING_MARKER][0];
+    const content = `
+      const isolationIds = matchingIds; // cameraCallbacks.resolveHighlightIds(matchingIds)
+      isolateEntities(isolationIds);
+    `;
+    const verdict = classifyFile(relPath, content);
+    assert.equal(verdict.ok, false, 'a commented-out routing call must not satisfy the gate');
+    assert.match(verdict.reason, /lost its assembly-expansion routing/);
+  });
+
+  it('a call-shaped BLOCK COMMENT spanning multiple lines does NOT satisfy classifyFile', () => {
+    const relPath = [...REQUIRES_ROUTING_MARKER][0];
+    const content = `
+      /*
+       * TODO: restore routing here, it used to say:
+       * cameraCallbacks.resolveHighlightIds(matchingIds)
+       */
+      const isolationIds = matchingIds;
+      isolateEntities(isolationIds);
+    `;
+    const verdict = classifyFile(relPath, content);
+    assert.equal(verdict.ok, false, 'a call-shaped fragment inside a block comment must not satisfy the gate');
+    assert.match(verdict.reason, /lost its assembly-expansion routing/);
+  });
+
+  it('the same call-shaped text inside a STRING LITERAL does NOT satisfy classifyFile', () => {
+    const relPath = [...REQUIRES_ROUTING_MARKER][0];
+    const content = `
+      const isolationIds = matchingIds;
+      const debugLabel = "resolveHighlightIds(ids)"; // just a label, not a call
+      isolateEntities(isolationIds);
+    `;
+    const verdict = classifyFile(relPath, content);
+    assert.equal(verdict.ok, false, 'a call-shaped string literal must not satisfy the gate');
+    assert.match(verdict.reason, /lost its assembly-expansion routing/);
+  });
+
+  it('a REAL call still satisfies classifyFile -- plain form', () => {
+    const relPath = [...REQUIRES_ROUTING_MARKER][0];
+    const content = `
+      const resolved = resolveHighlightIds(matchingIds);
+      isolateEntities(resolved);
+    `;
+    assert.equal(classifyFile(relPath, content).ok, true);
+  });
+
+  it('a REAL call still satisfies classifyFile -- optional-chaining form', () => {
+    const relPath = [...REQUIRES_ROUTING_MARKER][0];
+    const content = `
+      const resolved = cameraCallbacks.resolveHighlightIds?.(matchingIds) ?? matchingIds;
+      isolateEntities(resolved);
+    `;
+    assert.equal(classifyFile(relPath, content).ok, true);
+  });
+});
+
+describe('check-isolate-expansion-routing: end-to-end -- a commented-out routing call fails the whole gate (exit code)', () => {
+  it('RED/GREEN: the gate exits non-zero on a fixture tree where the real resolver call is commented out, and 0 when it is a real call', () => {
+    const root = mkdtempSync(join(tmpdir(), 'isolate-gate-e2e-'));
+    try {
+      const viewerSrc = join(root, 'apps/viewer/src/components/viewer');
+      const embedSrc = join(root, 'apps/viewer-embed/src');
+      mkdirSync(viewerSrc, { recursive: true });
+      mkdirSync(embedSrc, { recursive: true });
+
+      // Filler so CANDIDATE_FLOOR doesn't fire for unrelated reasons -- one
+      // real fixture file per REQUIRES_ROUTING_MARKER path is enough to prove
+      // the exit-code contract without depending on the real repo tree.
+      let fillerIndex = 0;
+      const writeRouted = (relPath) => {
+        const abs = join(root, relPath);
+        mkdirSync(dirname(abs), { recursive: true });
+        writeFileSync(
+          abs,
+          `export function h${fillerIndex++}(state, ids) {\n` +
+            '  const resolved = cameraCallbacks.resolveHighlightIds?.(ids) ?? ids;\n' +
+            '  state.isolateEntities(resolved);\n' +
+            '}\n',
+        );
+      };
+      for (const relPath of REQUIRES_ROUTING_MARKER) writeRouted(relPath);
+
+      // Also materialize the NO_MARKER_REQUIRED (exempt) channels as bare
+      // raw-id calls -- CANDIDATE_FLOOR counts every classified candidate,
+      // routed or exempt, so without these the fixture tree undercounts
+      // relative to the real repo and the floor check itself fires first,
+      // masking the routing assertion this test exists to make.
+      const writeExempt = (relPath) => {
+        const abs = join(root, relPath);
+        mkdirSync(dirname(abs), { recursive: true });
+        writeFileSync(abs, `export function e${fillerIndex++}(state, ids) {\n  state.isolateEntities(ids);\n}\n`);
+      };
+      for (const relPath of NO_MARKER_REQUIRED.keys()) writeExempt(relPath);
+
+      const scriptPath = join(process.cwd(), 'scripts', 'check-isolate-expansion-routing.mjs');
+      const runGate = () =>
+        execFileSync(process.execPath, [scriptPath, '--root', root], { encoding: 'utf8', stdio: 'pipe' });
+
+      // GREEN: every routed fixture calls the resolver for real -- clean exit.
+      assert.doesNotThrow(runGate, 'a fully routed fixture tree must exit 0');
+
+      // RED: comment out the real call on ONE known channel, leaving the
+      // call-shaped text sitting in a comment (the demonstrated defect).
+      const target = [...REQUIRES_ROUTING_MARKER][0];
+      const targetAbs = join(root, target);
+      writeFileSync(
+        targetAbs,
+        'export function h(state, ids) {\n' +
+          '  // cameraCallbacks.resolveHighlightIds?.(ids) -- disabled during refactor, TODO restore\n' +
+          '  state.isolateEntities(ids);\n' +
+          '}\n',
+      );
+
+      let threw = false;
+      let output = '';
+      try {
+        runGate();
+      } catch (err) {
+        threw = true;
+        output = `${err.stdout || ''}${err.stderr || ''}`;
+      }
+      assert.equal(threw, true, 'a real routing call commented out must make the gate exit non-zero');
+      assert.match(output, /lost its assembly-expansion routing/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it('ROUTING_MARKERS recognises resolveIsolationIds( (#3338: the shared expansion wrapper)', () => {

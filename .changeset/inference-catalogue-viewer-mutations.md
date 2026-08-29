@@ -1,5 +1,5 @@
 ---
-'@ifc-lite/extensions': patch
+'@ifc-lite/extensions': minor
 ---
 
 Fix the "Promote to tool" capability inference under-granting real `bim.viewer` and `bim.store` mutations.
@@ -11,4 +11,4 @@ Fix the "Promote to tool" capability inference under-granting real `bim.viewer` 
 
 `colorizeAll`/`resetColors` now map to `viewer.colorize` and `resetVisibility` to `viewer.isolate`. The `addEntity`/`addColumn`/`addWall`/`addSlab`/`addBeam`/`addDoor`/`addWindow`/`addSpace`/`addRoof`/`addPlate`/`addMember` methods now map to `model.create`, `removeEntity` to `model.delete`, and `setPositionalAttribute` to the wildcard `model.mutate:*` (mirroring how the `mutate` namespace already treats an unstructured attribute edit).
 
-Two state-changing bridge methods are still left at their namespace's read-only default and are not changed here, because the capability catalogue has no scope that fits either: `bim.model.loadIfc` (`packages/sandbox/src/bridge-model.ts`) loads a file into the viewer but infers `model.read`, and `bim.viewer.select` (`packages/sandbox/src/bridge-viewer.ts`) writes viewer selection state but infers `viewer.read`. Closing those needs a new capability, which is a manifest API change rather than a patch.
+Two state-changing bridge methods are still left at their namespace's read-only default and are not changed here, because the capability catalogue has no scope that fits either: `bim.model.loadIfc` (`packages/sandbox/src/bridge-model.ts`) loads a file into the viewer but infers `model.read`, and `bim.viewer.select` (`packages/sandbox/src/bridge-viewer.ts`) writes viewer selection state but infers `viewer.read`. Closing those needs a new capability, which extensions would have to declare in their manifest, so it is a change to the manifest contract rather than to this catalogue.

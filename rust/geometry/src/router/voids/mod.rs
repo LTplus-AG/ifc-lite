@@ -1015,7 +1015,12 @@ impl GeometryRouter {
         let local_ctx = ctx.relativized_by(origin);
         let mut result =
             self.apply_void_context_inner(mesh, &local_ctx, element_id, host_world_bounds);
-        result.origin = origin;
+        // COMPOSE, do not overwrite: the inner cut may return an origin of its
+        // own (a local-frame cut puts its centre there), and assigning would
+        // silently drop that translation.
+        for i in 0..3 {
+            result.origin[i] += origin[i];
+        }
         result
     }
 
@@ -1178,7 +1183,10 @@ impl GeometryRouter {
         // diagnostic reports world coords, not wall-frame (rotated/centred) ones.
         let result_local =
             self.apply_void_context_inner(host_local, &local_ctx, element_id, host_world_bounds);
-        Some(mesh_from_frame(&result_local, &axes, center))
+        // Rotation-only positions with the centre in `Mesh::origin`: baking the
+        // centre into f32 is what collapses a thin cut at site coordinates.
+        let r = Matrix3::from_columns(&axes);
+        Some(rotate_mesh_from_frame(&result_local, &r, &Point3::from(center)))
     }
 
     // `host_mutated` is set just before an early `break`, so the final write is

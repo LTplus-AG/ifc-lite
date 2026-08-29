@@ -304,9 +304,25 @@ fn process(content: &str, use_voids: bool) -> Mesh {
     }
 }
 
+/// WORLD bounds. `Mesh` positions are relative to `Mesh::origin`, and the
+/// local-frame cut returns its centre there rather than baked into f32, so a
+/// raw `bounds()` would compare the cut in its own frame against a
+/// world-absolute host.
 fn aabb(m: &Mesh) -> ([f32; 3], [f32; 3]) {
     let (lo, hi) = m.bounds();
-    ([lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z])
+    let o = m.origin;
+    (
+        [
+            lo.x + o[0] as f32,
+            lo.y + o[1] as f32,
+            lo.z + o[2] as f32,
+        ],
+        [
+            hi.x + o[0] as f32,
+            hi.y + o[1] as f32,
+            hi.z + o[2] as f32,
+        ],
+    )
 }
 
 #[test]

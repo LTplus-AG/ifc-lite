@@ -48,6 +48,42 @@
 //! [`census_golden::bless_mode`]): the bless path returns before every check, so
 //! a leaked `IFCLITE_CENSUS_BLESS` would leave the lane permanently and silently
 //! green, which is worse than a lane that reports a problem.
+//!
+//! # The heavy lane (#3434)
+//!
+//! [`MAX_FIXTURE_BYTES`] filters `discover_models()` BEFORE any file is opened,
+//! so an oversized fixture is not merely un-pinned in the golden above — the
+//! sweep never reads it at all. Two `ara3d` fixtures are excluded that way:
+//! `ISSUE_053_20181220Holter_Tower_10.ifc` (169 MB) and
+//! `ISSUE_068_ARK_NUS_skolebygg.ifc` (54 MB). AGENTS.md's perf section already
+//! names this exact class — "a heavy CSG model (Holter/ISSUE_053) since CI
+//! never touches that class and that is where every shipped regression has
+//! lived" — and until #3434 the census instrument did not touch it either.
+//!
+//! [`heavy_fixture_issue_053_is_watertight`] and
+//! [`heavy_fixture_issue_068_has_a_known_boolean_tear`], near the bottom of this
+//! file, reach the two fixtures directly (bypassing `discover_models`'s size
+//! filter, not raising [`MAX_FIXTURE_BYTES`] itself) and run the SAME per-host
+//! walk via [`sweep`]. Both are `#[ignore]`d, this repo's existing convention
+//! for a fixture too expensive for the default `cargo test` — see
+//! `wall_opening_cut_regression.rs` and `issue_053_heavy_csg_probe.rs` for the
+//! same pattern. Run either with:
+//!
+//!   cargo test -p ifc-lite-geometry --features triangulation-alt \
+//!     --test triangulation_invariance -- --ignored --nocapture heavy_fixture
+//!
+//! ISSUE_053 measures CLEAN (289/289 void hosts watertight) and is checked
+//! against its own per-host golden, [`HEAVY_GOLDEN_PATH`], exactly like the
+//! main corpus above — a genuine, gated coverage win. ISSUE_068 measures 29
+//! torn hosts / 285 open edges, a live, unfixed CSG defect now tracked as
+//! #3435 (one host, `IFCWALLSTANDARDCASE #43810`, carries 38
+//! `IfcRelVoidsElement` cuts against one swept solid and 27 of the 29 torn
+//! hosts are confirmed CSG-caused: `pre` reads watertight, `post` does not).
+//! That is NOT written into any golden: doing so would freeze a live bug as
+//! expected, checked-in output, which is the opposite of what #3434 is for.
+//! Its test instead asserts the CORRECT end state (`torn == 0`) and is
+//! expected to FAIL until #3435 is fixed, documenting the defect rather than
+//! certifying it.
 
 mod census_golden;
 
@@ -128,6 +164,32 @@ fn discover_models() -> Vec<(String, PathBuf)> {
         .unwrap_or_default();
     out.sort();
     out
+}
+
+/// Fixtures excluded from [`discover_models`] by [`MAX_FIXTURE_BYTES`], reached
+/// deliberately by the opt-in heavy lane at the bottom of this file (#3434).
+/// Relative to `tests/models/`, matching `discover_models`'s keys.
+const HEAVY_FIXTURES: &[&str] = &[
+    "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+    "ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc",
+];
+
+/// `(manifest-relative path, absolute path)` for each fixture in
+/// [`HEAVY_FIXTURES`] that is actually on disk.
+///
+/// Unlike `discover_models`, this does NOT check size against
+/// `MAX_FIXTURE_BYTES` — reaching an oversized fixture is the entire point —
+/// and it does not read `manifest.json` either: it names its fixtures
+/// directly rather than filtering the full corpus down to two entries. A
+/// fixture not yet fetched is silently skipped rather than failing the lane,
+/// matching `discover_models`'s treatment of a missing file.
+fn discover_heavy_models() -> Vec<(String, PathBuf)> {
+    let models = crate_dir().join("..").join("..").join("tests/models");
+    HEAVY_FIXTURES
+        .iter()
+        .map(|rel| (rel.to_string(), models.join(rel)))
+        .filter(|(_, p)| p.is_file())
+        .collect()
 }
 
 /// Corpus floor. Every other check here is an upper bound or a per-host
@@ -453,21 +515,20 @@ fn fmt_host(r: &HostRow) -> String {
     )
 }
 
-#[test]
-fn watertightness_is_invariant_to_the_triangulator() {
-    if cfg!(not(feature = "triangulation-alt")) {
-        eprintln!(
-            "SKIPPED: rerun with --features triangulation-alt to enable the \
-             differential oracle"
-        );
-        return;
-    }
-
+/// Sweep every void host across `models`: process with and without the alt
+/// triangulator, take the pre-void reading for torn hosts, and return one
+/// [`HostRow`] per host plus the set of models that were actually opened
+/// (whether or not they turned out to have any void hosts).
+///
+/// Shared by [`watertightness_is_invariant_to_the_triangulator`] and the heavy
+/// lane at the bottom of this file (#3434), so the two lanes characterize a
+/// host through the exact same walk rather than two implementations that can
+/// drift apart.
+fn sweep(models: &[(String, PathBuf)]) -> (Vec<HostRow>, BTreeSet<String>) {
     let mut rows: Vec<HostRow> = Vec::new();
     let mut swept_models: BTreeSet<String> = BTreeSet::new();
 
-    let models = discover_models();
-    for (rel, path) in &models {
+    for (rel, path) in models {
         let Ok(content) = std::fs::read_to_string(path) else {
             continue;
         };
@@ -520,6 +581,22 @@ fn watertightness_is_invariant_to_the_triangulator() {
             });
         }
     }
+
+    (rows, swept_models)
+}
+
+#[test]
+fn watertightness_is_invariant_to_the_triangulator() {
+    if cfg!(not(feature = "triangulation-alt")) {
+        eprintln!(
+            "SKIPPED: rerun with --features triangulation-alt to enable the \
+             differential oracle"
+        );
+        return;
+    }
+
+    let models = discover_models();
+    let (rows, swept_models) = sweep(&models);
 
     let models_seen = swept_models.len();
     let run = totals(&rows);
@@ -1038,4 +1115,244 @@ fn a_snap_collapsed_triangle_is_skipped_by_both_readings() {
     assert_eq!(s.degenerate, 1, "the collapsed triangle is counted");
     assert_eq!(s.open, 0, "and contributes no unbalanced edge");
     assert_eq!(s.strict, 0, "nor any strict violation, or every far-field host would gain some");
+}
+
+/* -------------------------------------------------------------------- *
+ * The heavy lane (#3434). See the module doc's "heavy lane" section.   *
+ * -------------------------------------------------------------------- */
+
+/// Per-host golden for the heavy lane's CLEAN fixture only — ISSUE_053. Never
+/// carries ISSUE_068: see the module doc's "heavy lane" section for why.
+const HEAVY_GOLDEN_PATH: &str = "tests/manifests/watertightness_census_heavy.tsv";
+
+const HEAVY_BLESS_CMD: &str = "IFCLITE_CENSUS_BLESS=1 cargo test -p ifc-lite-geometry \
+                               --features triangulation-alt --test triangulation_invariance \
+                               -- --ignored heavy_fixture_issue_053_is_watertight";
+
+const ISSUE_053_MODEL: &str = "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc";
+const ISSUE_068_MODEL: &str = "ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc";
+
+/// #3434. ISSUE_053 (Holter Tower, 169 MB) is the exact fixture AGENTS.md's
+/// perf section names as "where every shipped regression has lived", and until
+/// this test it was invisible to the census: `discover_models` excludes it by
+/// size before ever opening the file. Measured clean — 289/289 void hosts
+/// watertight — so unlike ISSUE_068 below it gets a real per-host golden,
+/// [`HEAVY_GOLDEN_PATH`], diffed through the exact same [`census_golden`]
+/// machinery as the main corpus: a genuine, gated coverage win rather than a
+/// bare smoke check.
+///
+/// `#[ignore]`d: 169 MB is too expensive for the default `cargo test`. Run:
+///
+///   cargo test -p ifc-lite-geometry --features triangulation-alt \
+///     --test triangulation_invariance -- --ignored --nocapture \
+///     heavy_fixture_issue_053_is_watertight
+///
+/// Bless only after confirming a change is a genuine, reviewed fix — same rule
+/// as the main golden:
+///
+///   IFCLITE_CENSUS_BLESS=1 cargo test -p ifc-lite-geometry \
+///     --features triangulation-alt --test triangulation_invariance \
+///     -- --ignored heavy_fixture_issue_053_is_watertight
+#[test]
+#[ignore = "manual heavy-fixture lane (#3434): ISSUE_053 is 169 MB, excluded from the default sweep by MAX_FIXTURE_BYTES"]
+fn heavy_fixture_issue_053_is_watertight() {
+    if cfg!(not(feature = "triangulation-alt")) {
+        eprintln!(
+            "SKIPPED: rerun with --features triangulation-alt to enable the \
+             differential oracle"
+        );
+        return;
+    }
+
+    let models: Vec<(String, PathBuf)> =
+        discover_heavy_models().into_iter().filter(|(rel, _)| rel == ISSUE_053_MODEL).collect();
+    assert!(
+        !models.is_empty(),
+        "{ISSUE_053_MODEL} is not on disk under tests/models/ — fetch it with \
+         scripts/fixtures/fetch-fixtures.mjs before running this lane"
+    );
+
+    let (rows, swept_models) = sweep(&models);
+    let run = totals(&rows);
+
+    println!("\n=== heavy lane: {ISSUE_053_MODEL} ===");
+    println!("void hosts    : {}", run.hosts);
+    println!("torn hosts    : {}", run.torn);
+    println!("unmatched edges (signed) : {}", run.open_edges);
+    println!("strict-rule edges        : {}", run.strict_edges);
+
+    assert!(
+        run.hosts > 0,
+        "swept {ISSUE_053_MODEL} but found no void hosts — the fixture loaded \
+         but is empty of the class this lane exists to measure, which is itself \
+         a sign something is wrong"
+    );
+
+    let golden_path = crate_dir().join(HEAVY_GOLDEN_PATH);
+    let golden_text = std::fs::read_to_string(&golden_path).unwrap_or_default();
+    let golden = census_golden::parse(&golden_text)
+        .unwrap_or_else(|e| panic!("{} is unreadable: {e}", golden_path.display()));
+
+    let bless = census_golden::bless_mode(
+        std::env::var_os(BLESS_ENV).is_some(),
+        std::env::var_os("CI").is_some_and(|v| !v.is_empty() && v != "0" && v != "false"),
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+
+    if bless {
+        // Preserve rows of heavy models this run did not sweep (none today,
+        // since the golden only ever carries ISSUE_053, but the same rule as
+        // the main golden's bless path applies if that ever changes).
+        let mut next: Vec<HostRow> =
+            golden.iter().filter(|r| !swept_models.contains(&r.model)).cloned().collect();
+        let kept = next.len();
+        next.extend(rows.iter().cloned());
+        if let Some(dir) = golden_path.parent() {
+            std::fs::create_dir_all(dir).expect("create golden directory");
+        }
+        std::fs::write(&golden_path, census_golden::render(&next)).expect("write golden");
+        println!(
+            "\nBLESSED {} — {} swept rows written, {kept} rows kept for unswept models",
+            golden_path.display(),
+            rows.len()
+        );
+        return;
+    }
+
+    assert!(
+        !golden.is_empty(),
+        "{} is missing or empty. Generate it with:\n  {HEAVY_BLESS_CMD}",
+        golden_path.display()
+    );
+
+    let diff = census_golden::diff(&golden, &rows, &swept_models);
+
+    println!("regressed : {}", diff.regressed.len());
+    println!("coverage loss (in golden, produced nothing): {}", diff.missing.len());
+    println!("added (newly meshing): {}", diff.added.len());
+    println!("reclassified: {}", diff.changed.len());
+    println!("retessellated: {}", diff.retessellated.len());
+    println!("improved  : {}", diff.improved.len());
+    for d in &diff.improved {
+        println!("  IMPROVED  {}", fmt_delta(d));
+    }
+    for d in &diff.regressed {
+        println!("  REGRESSED  {}", fmt_delta(d));
+    }
+    for r in &diff.missing {
+        println!("  COVERAGE LOSS  {}", fmt_host(r));
+    }
+    for d in &diff.retessellated {
+        println!("  RETESSELLATED  {}", fmt_delta(d));
+    }
+    for r in &diff.added {
+        println!("  ADDED  {}", fmt_host(r));
+    }
+    for d in &diff.changed {
+        println!("  RECLASSIFIED  {}", fmt_delta(d));
+    }
+
+    assert!(
+        diff.regressed.is_empty(),
+        "{} host(s) in {ISSUE_053_MODEL} REGRESSED against {HEAVY_GOLDEN_PATH}:\n{}",
+        diff.regressed.len(),
+        fmt_deltas(&diff.regressed)
+    );
+    assert!(
+        diff.missing.is_empty(),
+        "COVERAGE LOSS in {ISSUE_053_MODEL}: {} host(s) in the golden produced no \
+         geometry in this run:\n{}",
+        diff.missing.len(),
+        diff.missing.iter().map(fmt_host).collect::<Vec<_>>().join("\n")
+    );
+    assert!(
+        !diff.requires_bless(),
+        "the diff against {HEAVY_GOLDEN_PATH} requires a bless (added, reclassified, or \
+         re-tessellated rows present) — review the buckets printed above, then:\n  {HEAVY_BLESS_CMD}"
+    );
+
+    // The fixture measured clean when #3434 added this lane (289/289 void
+    // hosts watertight). Kept as an explicit assertion alongside the golden
+    // diff above: the diff's checks are all CEILINGS, so a golden whose `open`
+    // columns silently grew from 0 to some small number on every row would
+    // still pass them while this fixture stopped being the coverage win #3434
+    // added it for.
+    assert_eq!(
+        run.torn, 0,
+        "{ISSUE_053_MODEL} was clean (0 torn hosts) when #3434 measured it; now {} host(s) \
+         are torn. If this is a genuine, reviewed regression, bless it into \
+         {HEAVY_GOLDEN_PATH} like any other golden change; if not, it is the exact defect \
+         class #3434 exists to surface",
+        run.torn
+    );
+}
+
+/// #3434 built this lane; the tear itself is #3435. ISSUE_068 (54 MB) is
+/// torn: 29 of 363 void hosts, 285 total open edges, deterministic across two
+/// independent runs. The worst single host is `IFCWALLSTANDARDCASE #43810`:
+/// 42 open edges across 38 `IfcRelVoidsElement` cuts against one swept solid —
+/// the "many sequential boolean cuts" shape AGENTS.md's perf section warns
+/// about for this fixture class. 27 of the 29 torn hosts are confirmed
+/// CSG-caused (a `pre`-void reading of watertight going to torn `post`-void),
+/// so this is a boolean-kernel bug to fix, not corpus noise to record.
+///
+/// Deliberately asserts the CORRECT end state (`torn == 0`), not today's
+/// count, and is expected to FAIL until #3435 is fixed — the same convention
+/// `wall_opening_cut_regression.rs` and `issue_3353_boolean_tear.rs` already
+/// use for a known, unfixed defect. This fixture is NOT in any golden: writing
+/// its 29 torn rows into a checked-in baseline would freeze a live bug as
+/// expected, passing output, which is the opposite of what #3434 is for. Once
+/// #3435 is fixed, remove `#[ignore]` here — and, if the fixture is then
+/// clean, fold ISSUE_068 into [`heavy_fixture_issue_053_is_watertight`]'s
+/// golden-backed pattern instead of leaving it as a bare assertion.
+///
+/// `#[ignore]`d for the same reason `heavy_fixture_issue_053_is_watertight` is:
+/// too expensive for the default `cargo test`. Run:
+///
+///   cargo test -p ifc-lite-geometry --features triangulation-alt \
+///     --test triangulation_invariance -- --ignored --nocapture \
+///     heavy_fixture_issue_068_has_a_known_boolean_tear
+#[test]
+#[ignore = "documents a known, unfixed CSG tear (#3434) — expected to fail until the tear is fixed"]
+fn heavy_fixture_issue_068_has_a_known_boolean_tear() {
+    if cfg!(not(feature = "triangulation-alt")) {
+        eprintln!(
+            "SKIPPED: rerun with --features triangulation-alt to enable the \
+             differential oracle"
+        );
+        return;
+    }
+
+    let models: Vec<(String, PathBuf)> =
+        discover_heavy_models().into_iter().filter(|(rel, _)| rel == ISSUE_068_MODEL).collect();
+    assert!(
+        !models.is_empty(),
+        "{ISSUE_068_MODEL} is not on disk under tests/models/ — fetch it with \
+         scripts/fixtures/fetch-fixtures.mjs before running this lane"
+    );
+
+    let (rows, _swept_models) = sweep(&models);
+    let run = totals(&rows);
+
+    println!("\n=== heavy lane: {ISSUE_068_MODEL} ===");
+    println!("void hosts total : {}", run.hosts);
+    println!("torn hosts       : {}", run.torn);
+    println!("unmatched edges (signed) : {}", run.open_edges);
+    println!("strict-rule edges        : {}", run.strict_edges);
+    let mut torn: Vec<&HostRow> = rows.iter().filter(|r| r.open > 0).collect();
+    torn.sort_by_key(|r| std::cmp::Reverse(r.open));
+    println!("\n  torn hosts (worst first):");
+    for r in torn.iter().take(15) {
+        println!("  TORN  {}", fmt_host(r));
+    }
+
+    assert_eq!(
+        run.torn, 0,
+        "{ISSUE_068_MODEL} has {} torn void host(s) / {} open edges — a known, unfixed \
+         CSG defect tracked as #3435 (surfaced by the #3434 heavy lane). This assertion \
+         pins the CORRECT end state, not today's count, so this test stays red on \
+         purpose until #3435 is fixed rather than certifying it. See the module doc's \
+         \"heavy lane\" section for why this fixture carries no golden.",
+        run.torn, run.open_edges
+    );
 }

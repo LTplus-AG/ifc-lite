@@ -4,7 +4,7 @@
 
 import type { StoreApi } from './types.js';
 import type { EntityRef, EntityData, PropertySetData, QuantitySetData, ExportBackendMethods } from '@ifc-lite/sdk';
-import { EntityNode } from '@ifc-lite/query';
+import { EntityNode, findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';
 import { escapeCsvCell, StepExporter, type StepExportOptions } from '@ifc-lite/export';
 import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
 import { applyAttributeMutationsToEntityData, getMutationViewForModel } from './mutation-view.js';
@@ -203,19 +203,13 @@ export function createExportAdapter(store: StoreApi): ExportBackendMethods {
 
       // Try property sets first
       const psets = getProps();
-      const pset = psets.find(p => p.name === setName);
-      if (pset) {
-        const prop = pset.properties.find(p => p.name === valueName);
-        if (prop?.value != null) return String(prop.value);
-      }
+      const prop = findPropertyInSets(psets, setName, valueName);
+      if (prop?.value != null) return String(prop.value);
 
       // Fall back to quantity sets
       const qsets = getQties();
-      const qset = qsets.find(q => q.name === setName);
-      if (qset) {
-        const qty = qset.quantities.find(q => q.name === valueName);
-        if (qty?.value != null) return String(qty.value);
-      }
+      const qty = findQuantityInSets(qsets, setName, valueName);
+      if (qty?.value != null) return String(qty.value);
 
       return '';
     }

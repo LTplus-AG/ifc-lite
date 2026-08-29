@@ -80,6 +80,11 @@ describe('toRef', () => {
     expect(toRef({ modelId: 'm1', expressId: -Infinity })).toBeNull();
     expect(toRef({ modelId: 'm1', expressId: -1 })).toBeNull();
     expect(toRef({ modelId: 'm1', expressId: 1.5 })).toBeNull();
+    // 0 is the case bridge-store.ts:319-321 calls out by name: EXPRESS ids
+    // are 1-based, so `#0` is never a valid reference. It is also the only
+    // rejected value that is a finite integer, so a `> 0` written as `>= 0`
+    // would keep every other case above passing.
+    expect(toRef({ modelId: 'm1', expressId: 0 })).toBeNull();
     // Regression guard: a real, valid express id must still pass.
     expect(toRef({ modelId: 'm1', expressId: 1 })).toEqual({ modelId: 'm1', expressId: 1 });
   });

@@ -468,6 +468,9 @@ export async function queryCommand(args: string[]): Promise<void> {
       outputGroupBy(storeyEntities, groupBy, undefined, bim, jsonOutput, rowLimit);
       return;
     }
+    // Same slice the --where branch applies; without it both flags were inert here.
+    if (offset) storeyEntities = storeyEntities.slice(parseInt(offset, 10));
+    if (rowLimit !== undefined) storeyEntities = storeyEntities.slice(0, rowLimit);
     if (countOnly) {
       outputCount(storeyEntities.length, jsonOutput);
       return;
@@ -514,9 +517,8 @@ export async function queryCommand(args: string[]): Promise<void> {
       outputAggregation(entities, maxQuantity, 'max', bim, jsonOutput);
       return;
     }
-    // Apply offset/limit only for non-aggregation, non-group paths.
-    // `rowLimit` is validated once, up front (see above) -- slice(0, NaN)
-    // used to silently empty the result on a garbage --limit.
+    // Non-aggregation, non-group paths only. `rowLimit` is validated up
+    // front -- slice(0, NaN) used to silently empty the result.
     if (offset) entities = entities.slice(parseInt(offset, 10));
     if (rowLimit !== undefined) entities = entities.slice(0, rowLimit);
     if (countOnly) {
@@ -530,10 +532,8 @@ export async function queryCommand(args: string[]): Promise<void> {
     return;
   }
 
-  // Validated, not parseInt'd -- the QueryBuilder forwards this to the
-  // headless backend's descriptor, which only honours it under a `> 0`
-  // check downstream; a garbage/NaN --limit was silently ignored there,
-  // returning every match instead of being rejected.
+  // Validated, not parseInt'd -- the backend descriptor only honours the
+  // limit under a `> 0` check, so a NaN --limit returned every match.
   if (rowLimit !== undefined && !groupBy) q = q.limit(rowLimit);
   if (offset) q = q.offset(parseInt(offset, 10));
 

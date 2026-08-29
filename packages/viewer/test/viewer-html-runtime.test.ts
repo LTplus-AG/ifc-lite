@@ -1071,9 +1071,15 @@ describe('viewer blob — handleCommand: camera and flyto', () => {
   // `{ action: 'camera', state }` over the streaming adapter
   // (src/streaming-viewer.ts). Before this, `handleCommand`'s switch had no
   // `'camera'` case at all, so the command fell into `default` and was a
-  // silent no-op — every assertion below failed against that code with the
-  // orbit state left at its untouched default (camDist 50, camTheta 0,
-  // camPhi 0) instead of being derived from `state`.
+  // silent no-op.
+  //
+  // The first three tests are the RED ones: delete the `case 'camera'` block
+  // and each fails, because the orbit state stays where the test left it
+  // (camDist 50, camPhi PI/2, camTarget [0, 0, 0]) instead of being derived
+  // from `state`. The last two assert the case does NOT move the camera, so a
+  // missing case cannot fail them by construction; they pin the two guards
+  // inside it, the zero-length position-to-target direction and the absent
+  // `state` object, and were checked by mutating each guard away instead.
   it('camera derives dist/theta/phi from an explicit position, target defaulting to the current one', () => {
     const v = makeViewer();
     v.run({ action: 'camera', state: { position: [10, 0, 0] } });
@@ -1087,8 +1093,11 @@ describe('viewer blob — handleCommand: camera and flyto', () => {
 
   it('camera looking straight down from +Y lands at the top-view pole', () => {
     // Cross-checks against the independently-pinned 'setView top' expectation
-    // (phi < 0.2 near the +Y pole) rather than restating the formula.
+    // (phi < 0.2 near the +Y pole) rather than restating the formula. Start at
+    // the horizon: phi defaults to 0, which is already inside that window, so
+    // without this seed the assertion also holds for a camera that never moved.
     const v = makeViewer();
+    v.ctx.camPhi = v.ctx.camPhiTarget = Math.PI / 2;
     v.run({ action: 'camera', state: { position: [0, 10, 0] } });
     assert.ok(v.ctx.camPhi < 0.2, `expected the +Y pole, got phi=${v.ctx.camPhi}`);
   });

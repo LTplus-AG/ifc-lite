@@ -78,6 +78,26 @@ describe('inferCapabilities — mutation patterns', () => {
   it('bim.create.* → model.create', () => {
     expect(inferCapabilities('bim.create.project({});').capabilities).toContain('model.create');
   });
+
+  // `bim.store.*` (packages/sandbox/src/bridge-store.ts) is document-level
+  // edits, not reads — the namespace has no read-only methods at all. The
+  // catalogue's own default for the namespace is `model.read`, which is
+  // safe only for an untargeted `bim.store` reference; every real method
+  // must have an explicit override or it silently under-grants.
+  it('bim.store.addWall → model.create', () => {
+    const r = inferCapabilities('bim.store.addWall("m1", 5, {});');
+    expect(r.capabilities).toContain('model.create');
+  });
+
+  it('bim.store.removeEntity → model.delete', () => {
+    const r = inferCapabilities('bim.store.removeEntity(ref);');
+    expect(r.capabilities).toContain('model.delete');
+  });
+
+  it('bim.store.setPositionalAttribute → model.mutate:*', () => {
+    const r = inferCapabilities('bim.store.setPositionalAttribute(ref, 3, 42);');
+    expect(r.capabilities).toContain('model.mutate:*');
+  });
 });
 
 describe('inferCapabilities — export', () => {

@@ -37,7 +37,25 @@ export const INFERENCE_CATALOGUE: Record<string, NamespaceMapping> = {
     defaultCapabilities: ['model.read'],
   },
   store: {
+    // Every real `bim.store.*` method is a document-level edit
+    // (packages/sandbox/src/bridge-store.ts): the read-only default only
+    // applies to a namespace call with no method (`bim.store`, untargeted).
     defaultCapabilities: ['model.read'],
+    methods: {
+      addEntity: ['model.create'],
+      removeEntity: ['model.delete'],
+      setPositionalAttribute: ['model.mutate:*'],
+      addColumn: ['model.create'],
+      addWall: ['model.create'],
+      addSlab: ['model.create'],
+      addBeam: ['model.create'],
+      addDoor: ['model.create'],
+      addWindow: ['model.create'],
+      addSpace: ['model.create'],
+      addRoof: ['model.create'],
+      addPlate: ['model.create'],
+      addMember: ['model.create'],
+    },
   },
   viewer: {
     defaultCapabilities: ['viewer.read'],

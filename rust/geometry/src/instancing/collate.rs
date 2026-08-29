@@ -92,6 +92,13 @@ pub struct InstanceMeshRef<'a> {
     pub entity_id: u32,
     /// Per-occurrence RGBA (used only by the encoder).
     pub color: [f32; 4],
+    /// The `IfcRepresentationItem` this occurrence's geometry was tessellated
+    /// from (`MeshData::geometry_item_id`) — the host's drill-to-source link,
+    /// used only by the encoder. `Option` like every other link in the chain
+    /// (`RawInstanceOccurrence`, `InstanceRecord`, `DecodedInstance::item_id`), so
+    /// no caller can pass a meaningful-looking `0`; the encoder collapses `None`
+    /// to the wire's `0` once, where that sentinel is a wire fact.
+    pub item_id: Option<u32>,
 }
 
 impl<'a> InstanceMeshRef<'a> {
@@ -105,6 +112,7 @@ impl<'a> InstanceMeshRef<'a> {
             instance_meta: m.instance_meta.as_ref(),
             entity_id: 0,
             color: [0.0; 4],
+            item_id: None,
         }
     }
 }

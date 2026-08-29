@@ -70,9 +70,9 @@ export {
   WASM_RUNTIME_UNRECOVERABLE_EVENT,
 } from './wasm-runtime-trap.js';
 export {
-  // `isInstancedShard` / `INSTANCED_SHARD_MAGIC` / `INSTANCED_SHARD_VERSION`
-  // are intentionally NOT re-exported — they have no consumer outside the
-  // decoder module + its test, so they stay internal. (#1238 review)
+  // `isInstancedShard` / `INSTANCED_SHARD_MAGIC` / `INSTANCED_SHARD_VERSION` and the wire
+  // layout constants are intentionally NOT re-exported — no consumer outside the decoder
+  // + its test; `DecodedInstancedShard.carriesItemIds` is the stride answer. (#1238, #2985)
   decodeInstancedShard,
   type DecodedInstancedShard,
   type DecodedInstancedTemplate,

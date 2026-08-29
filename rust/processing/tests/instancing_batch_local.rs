@@ -209,6 +209,7 @@ fn browser_batch_local_instanced_equals_flat_synthetic() {
             instance_meta: m.instance.as_ref(),
             entity_id: m.express_id,
             color: m.color,
+            item_id: m.geometry_item_id,
         })
         .collect();
     for (o, meta) in bl_occ.iter().zip(occ_metas.iter()) {
@@ -220,6 +221,7 @@ fn browser_batch_local_instanced_equals_flat_synthetic() {
             instance_meta: Some(meta),
             entity_id: o.express_id,
             color: o.color,
+            item_id: o.geometry_item_id,
         });
     }
     let collated = collate_refs(&refs, 2, [0.0, 0.0, 0.0]);

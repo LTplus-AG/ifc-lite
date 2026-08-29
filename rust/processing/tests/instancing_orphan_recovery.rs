@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! #1623 Phase 2 don't-bake: proves the orphan-recovery fallback in
-//! `processor/instancing.rs::recover_orphan_occurrences` actually fires and
+//! `processor/instancing.rs::recover_occurrences_flat` actually fires and
 //! recovers geometry when the plan's designated TEMPLATE occurrence (the
 //! min-id `IfcMappedItem` for a repeated source) never materializes.
 //!
@@ -22,11 +22,11 @@
 //! template_item_id` for every SURVIVING occurrence too, and none of them
 //! is ever `true`. Every occurrence of that source becomes a don't-bake
 //! placeholder, `template_by_rep.get(&rep)` finds no non-empty template mesh,
-//! and the whole group must fall to `recover_orphan_occurrences` or its
+//! and the whole group must fall to `recover_occurrences_flat` or its
 //! geometry is silently dropped.
 //!
 //! Before this test, NO test in the suite exercised
-//! `recover_orphan_occurrences`: deleting its body (returning before the
+//! `recover_occurrences_flat`: deleting its body (returning before the
 //! bake loop, so every orphan occurrence is silently dropped) left all other
 //! processing tests green.
 
@@ -90,7 +90,7 @@ fn flat_baseline_skips_the_window_and_meshes_the_rest() {
 
 /// The regression gate: with instancing ON and the plan's template-owning job
 /// skipped by the opening filter, every surviving occurrence's geometry must
-/// still show up in the instanced result — via `recover_orphan_occurrences`
+/// still show up in the instanced result — via `recover_occurrences_flat`
 /// — not vanish. This is the exact production shape the doc comment claims
 /// is "effectively unreachable"; it is reachable, and today's fallback
 /// (correctly) recovers it. A regression that deletes the fallback body would
@@ -124,7 +124,7 @@ fn instancing_recovers_orphaned_occurrences_when_the_template_job_is_skipped() {
     assert_eq!(
         instanced_occurrence_ids, flat_occurrence_ids,
         "instancing must not silently drop occurrences when the plan's template-owning \
-         job is filtered out before the router ever sees it (recover_orphan_occurrences \
+         job is filtered out before the router ever sees it (recover_occurrences_flat \
          must fire for this source)"
     );
     assert!(

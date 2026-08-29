@@ -325,7 +325,8 @@
 # subtree is searched yet stays marked, so a later shorter branch is skipped.
 # +5: thread the discriminator into build_mesh_data so the source id is routed to whichever of the two disjoint MeshData fields it actually is (#3199).
 # -154: colour and material-name resolution moved to element/element_color.rs -- a pure function of (geometry id, style map) with its own bounded walk (#3199 follow-up).
-     812 rust/processing/src/element.rs
+# +4: #2985 — a don't-bake RawInstanceOccurrence now records the representation item its sub-mesh came from, through the same #3199 discriminator and 0-filter a materialized sub-mesh gets, so the id is not computed and dropped for GPU-instanced geometry.
+     816 rust/processing/src/element.rs
 # +9: #2019 — canonicalise each host's opening order so the world geometry
 # hash stops depending on IFCRELVOIDSELEMENT statement order (sequential void
 # cuts are not associative). Three lines of code plus the why.
@@ -345,7 +346,8 @@
 # +155: #1623 Phase 3 browser don't-bake — produce_batch gains arm_instancing (batch-local plan arm + occurrence collection + finalize call/return-tuple change) and the partitioned path folds the kept occurrences into the IFNS shard as empty-geometry refs; the finalize + recovery bodies were extracted to gpu_meshes/instancing.rs (new, ~165 lines) to hold the net down.
 # +4: #1891 follow-on — carry ProducedElementMeshes.geometry_aabb through ElementMeshOutput to push_geometry_hash on both the flat and partitioned paths.
 # +31: #1891 closedness — ElementMeshOutput gains geometry_volume + geometry_closure_bits, and the ONE ElementMeshOutput::fingerprint() builder both push sites now call (net shorter than the two struct literals it replaces, and the flat/partitioned paths can no longer fill different subsets of the index-parallel arrays). The fingerprint is taken into a local before each loop moves `out.meshes`, with a one-line note at both sites so the ordering is not "tidied" back into a borrow error.
-     976 rust/wasm-bindings/src/api/gpu_meshes/batch.rs
+# +5: #2985 — both instanced call sites populate InstanceMeshRef::item_id (from MeshData::geometry_item_id for a template, from the ShardOccurrence for a don't-bake occurrence). The shard is the ONLY route to the host for this geometry, so the field cannot live anywhere cheaper.
+     981 rust/wasm-bindings/src/api/gpu_meshes/batch.rs
 # +108: build the referenced-repmaps + instantiated-type-id sets and the material-layer index ONCE in the streaming pre-pass (from spans this scan already collected) and emit them as a `prepass-columns` event, so every geometry worker skips its own full-file walk on the first batch (perf/single-scan #957/#563).
 # +14: #1623 Phase 3 — tally the don't-bake MappedInstancePlan from the same IfcMappedItem spans and emit it on the prepass-columns event (mirrors the referenced-repmaps ship).
 # +9: cap the entity-index up-front reservation (PREPASS_INDEX_RESERVE_CAP) so a ~4GB file does not reserve ~1GB of slots on top of the resident file and abort the wasm32 4GB address space before the scan (huge-file graceful-4gb).

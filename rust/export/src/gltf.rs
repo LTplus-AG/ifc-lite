@@ -1122,6 +1122,9 @@ fn build_gltf(
             instance_meta: m.instance,
             entity_id: m.express_id,
             color: m.color,
+            // Encoder-only field: this path calls `collate_refs`, never the IFNS
+            // encoder, so nothing here reads it.
+            item_id: None,
         })
         .collect();
     // rtc [0,0,0]: this path keeps the RAW pre-RTC relative transforms and applies

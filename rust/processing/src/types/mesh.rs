@@ -101,9 +101,10 @@ pub struct MeshData {
     /// to warn the caller.
     ///
     /// `None` where the identity is genuinely merged away: the single-mesh
-    /// fallback, the cached `IfcMappedItem` path, and GPU-instanced
-    /// occurrences. A boolean result reports the `IfcBooleanResult` id, which
-    /// is a real entity.
+    /// fallback and the cached `IfcMappedItem` path. A boolean result reports
+    /// the `IfcBooleanResult` id, which is a real entity. GPU-instanced
+    /// occurrences used to be `None` here too; they now carry the id through
+    /// [`RawInstanceOccurrence::geometry_item_id`] and the IFNS wire format.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub geometry_item_id: Option<u32>,
     /// The `IfcMaterial` whose layer this mesh is a slice of.
@@ -272,15 +273,30 @@ impl MeshData {
         id_is_material: bool,
     ) -> Self {
         self.material_name = material_name;
-        let source_id = source_id.filter(|&id| id != 0);
-        if id_is_material {
-            self.material_id = source_id;
-            self.geometry_item_id = None;
-        } else {
-            self.geometry_item_id = source_id;
-            self.material_id = None;
-        }
+        self.geometry_item_id = Self::style_geometry_item_id(source_id, id_is_material);
+        // The two fields are disjoint BY CONSTRUCTION: the same source id is a
+        // material id exactly when it is not a geometry item id, so the material
+        // half is the same rule with the discriminator negated. Spelling it as
+        // two independent branches is what lets one drift from the other.
+        self.material_id = Self::style_geometry_item_id(source_id, !id_is_material);
         self
+    }
+
+    /// The `geometry_item_id` a producer's `source_id` resolves to, given the
+    /// #3199 discriminator: `None` when the id is a material's, and `None` for
+    /// the `0` sentinel (see [`Self::with_style_metadata`], which owns the why).
+    /// Passing the NEGATED discriminator gives the `material_id` half.
+    ///
+    /// Both rules live HERE because both are invisible when violated. `element.rs`
+    /// computes the same id for a don't-bake `RawInstanceOccurrence`, which has no
+    /// `MeshData` to run `with_style_metadata` over, so it calls this rather than
+    /// restating the pair.
+    pub fn style_geometry_item_id(source_id: Option<u32>, id_is_material: bool) -> Option<u32> {
+        if id_is_material {
+            None
+        } else {
+            source_id.filter(|&id| id != 0)
+        }
     }
 
     /// Attach optional IFC property set values.
@@ -333,6 +349,12 @@ pub struct RawInstanceOccurrence {
     /// captured WITHOUT materializing vertices. The finalize reduces it to the
     /// post-RTC frame and derives the template-relative `InstanceRecord.transform`.
     pub world_transform: [f64; 16],
+    /// The `IfcRepresentationItem` this occurrence's geometry comes from — the
+    /// same id a materialized sub-mesh would carry in
+    /// [`MeshData::geometry_item_id`], read off the sub-mesh that was NOT
+    /// baked. `None` when the collection's ids are material ids rather than
+    /// item ids (#3199) or when the producer had none.
+    pub geometry_item_id: Option<u32>,
 }
 
 /// #1623 Phase 2: one resolved occurrence of a shared template geometry, emitted in
@@ -364,4 +386,9 @@ pub struct InstanceRecord {
     /// geometry (`template.origin + positions`) it yields this occurrence's world
     /// geometry (`rel_k = post_rtc(M_k) · post_rtc(M_ref)⁻¹`).
     pub transform: [f32; 16],
+    /// The `IfcRepresentationItem` this occurrence's geometry comes from, so a
+    /// host can drill from a rendered instanced piece back into the source.
+    /// Same meaning and same disjointness rule as [`MeshData::geometry_item_id`]
+    /// — always a representation item, never an `IfcMaterial`.
+    pub geometry_item_id: Option<u32>,
 }

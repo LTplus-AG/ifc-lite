@@ -755,6 +755,9 @@ impl IfcAPI {
                 instance_meta: m.instance.as_ref(),
                 entity_id: m.express_id,
                 color: m.color,
+                // #2985: the originating representation item, so a host can drill
+                // from an instanced piece back to the source entity.
+                item_id: m.geometry_item_id,
             })
             .collect();
         // min_group = 2: instance any repeat; singletons + non-instanceable flat.
@@ -903,6 +906,9 @@ impl IfcAPI {
                 instance_meta: m.instance.as_ref(),
                 entity_id: m.express_id,
                 color: m.color,
+                // #2985: the TEMPLATE's own representation item — it rides the
+                // shard, not the flat MeshCollection, so this is its only route.
+                item_id: m.geometry_item_id,
             })
             .collect();
         for (o, meta) in shard_occurrences.iter().zip(occ_metas.iter()) {
@@ -914,6 +920,8 @@ impl IfcAPI {
                 instance_meta: Some(meta),
                 entity_id: o.entity_id,
                 color: o.color,
+                // #2985: a don't-bake occurrence has no MeshData to read it from.
+                item_id: o.geometry_item_id,
             });
         }
         // min_group == the routing threshold so collate_refs never re-flattens a group

@@ -543,6 +543,10 @@ fn emit_sub_meshes(
                     color,
                     rep_identity: im.rep_identity,
                     world_transform: compose_instance_world_row_major(im),
+                    // #2985: the id `build_mesh_data` would have stamped had this
+                    // sub-mesh materialized. ONE home for the #3199 discriminator and the
+                    // 0-filter — two spellings drift invisibly ("no item id" reads as "no item").
+                    geometry_item_id: MeshData::style_geometry_item_id(Some(sub.geometry_id), ids_are_materials),
                 });
             }
             continue;

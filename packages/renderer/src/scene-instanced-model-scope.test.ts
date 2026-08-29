@@ -105,7 +105,7 @@ function shard(templateCount: number, entityIds: number[]): DecodedInstancedShar
       transform: rowMajorTranslation(t, 0, 0),
     });
   }
-  return { templates, instances };
+  return { templates, instances, carriesItemIds: false };
 }
 
 /** The `(modelIndex, slot)` pairs of every live template, in slot order. */
@@ -403,6 +403,7 @@ function singleOccShard(entityId: number, tx: number): DecodedInstancedShard {
       color: [1, 1, 1, 1] as [number, number, number, number],
       transform: rowMajorTranslation(tx, 0, 0),
     }],
+    carriesItemIds: false,
   };
 }
 

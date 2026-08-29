@@ -64,6 +64,10 @@ pub use pipeline_diagnostics::{
 /// Re-exported so the server can name the quality level without a direct
 /// `ifc-lite-geometry` dependency edge for one enum.
 pub use ifc_lite_geometry::TessellationQuality;
+/// The don't-bake occurrence → flat `MeshData` recovery, shared with the browser
+/// batch (`rust/wasm-bindings/src/api/gpu_meshes/instancing.rs`) so the mapping
+/// has one home rather than two clones. See its doc comment.
+pub use processor::instancing::recover_occurrences_flat;
 pub use processor::{
     convert_mesh_to_site_local, is_quick_spatial_type_ci, process_geometry,
     process_geometry_filtered,

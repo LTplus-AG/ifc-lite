@@ -302,6 +302,26 @@ test('processGeometryBatchFromSource is byte-identical to processGeometryBatch',
     'processGeometryBatchFromSource must be byte-for-byte identical to processGeometryBatch');
 });
 
+/** The 15-argument pre-pass tail both partitioned exports take, spelled ONCE.
+ *  Three call sites carried a literal copy each, so a pre-pass field added or
+ *  reordered had to be threaded through all three by hand and a miss would read
+ *  as a geometry bug rather than a call-site bug. `pre` is a `buildPrePassOnce`
+ *  result. The two exports stay separate calls on purpose — the test below
+ *  exists to compare them. */
+function partitionedArgs(pre) {
+  return [
+    pre.jobs, pre.unitScale,
+    pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2], pre.needsShift,
+    pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
+    pre.planeAngleToRadians, pre.materialElementIds, pre.materialColorCounts, pre.materialColors,
+  ];
+}
+
+/** `processGeometryBatchPartitioned` over a per-call `data` buffer. */
+function callPartitioned(data, pre) {
+  return api.processGeometryBatchPartitioned(data, ...partitionedArgs(pre));
+}
+
 test('processGeometryBatchPartitionedFromSource matches processGeometryBatchPartitioned', () => {
   if (typeof api.processGeometryBatchPartitioned !== 'function'
     || typeof api.processGeometryBatchPartitionedFromSource !== 'function') {
@@ -313,12 +333,7 @@ test('processGeometryBatchPartitionedFromSource matches processGeometryBatchPart
   const preRef = api.buildPrePassOnce(bytes);
   let refFlat, refShard, refOcc;
   try {
-    const p = api.processGeometryBatchPartitioned(
-      bytes, preRef.jobs, preRef.unitScale,
-      preRef.rtcOffset[0], preRef.rtcOffset[1], preRef.rtcOffset[2], preRef.needsShift,
-      preRef.voidKeys, preRef.voidCounts, preRef.voidValues, preRef.styleIds, preRef.styleColors,
-      preRef.planeAngleToRadians, preRef.materialElementIds, preRef.materialColorCounts, preRef.materialColors,
-    );
+    const p = callPartitioned(bytes, preRef);
     try {
       refOcc = p.instancedOccurrences;
       refShard = Array.from(p.takeShard());
@@ -337,12 +352,7 @@ test('processGeometryBatchPartitionedFromSource matches processGeometryBatchPart
   let gotFlat, gotShard, gotOcc;
   try {
     api.setSourceBytes(bytes);
-    const p = api.processGeometryBatchPartitionedFromSource(
-      pre.jobs, pre.unitScale,
-      pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2], pre.needsShift,
-      pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
-      pre.planeAngleToRadians, pre.materialElementIds, pre.materialColorCounts, pre.materialColors,
-    );
+    const p = api.processGeometryBatchPartitionedFromSource(...partitionedArgs(pre));
     try {
       gotOcc = p.instancedOccurrences;
       gotShard = Array.from(p.takeShard());
@@ -360,6 +370,76 @@ test('processGeometryBatchPartitionedFromSource matches processGeometryBatchPart
   assert.deepEqual(gotShard, refShard, 'IFNS instancing shard bytes must be identical');
   assert.deepEqual(gotFlat, refFlat, 'flat MeshCollection must be byte-identical');
 });
+
+// #2985: the item id at the REAL wasm boundary.
+//
+// The Rust-side coverage builds its `InstanceMeshRef`s by MIRRORING what
+// `process_geometry_batch_partitioned` does, because that export is
+// wasm_bindgen-only and cannot run natively — so a mirror can stay green while
+// the production wiring one file over is wrong. This runs the real export
+// against a real model and reads the ids straight out of the shard bytes, which
+// is the only place the two can be compared without a mirror.
+//
+// Duplex is chosen because it HAS repeated mapped geometry: eight identical
+// windows, each a multi-item source, so several templates share one product set
+// and each template's item id is the thing that tells them apart. The
+// instance-count assertion is what stops this going vacuous if a routing change
+// empties the shard — zero instances would otherwise satisfy every `for` below.
+if (LAYERED_AVAILABLE) {
+  console.log('\n📋 #2985 instanced item id (wasm → wire)');
+
+  test('the partitioned shard carries each occurrence\'s representation item', () => {
+    const bytes = readFileSync(LAYERED_IFC);
+    const pre = api.buildPrePassOnce(bytes);
+    let shard;
+    try {
+      const p = callPartitioned(bytes, pre);
+      try {
+        shard = p.takeShard();
+        const flat = p.takeMeshes();
+        if (flat) flat.free();
+      } finally {
+        p.free?.();
+      }
+    } finally {
+      api.clearPrePassCache();
+    }
+
+    assert.ok(shard.length >= 32, 'the shard must at least carry a header');
+    const dv = new DataView(shard.buffer, shard.byteOffset, shard.byteLength);
+    assert.equal(dv.getUint32(4, true), 2, 'the shipped encoder writes wire version 2');
+    // Header word 7 is the instance record STRIDE IN BYTES: 88 for the base
+    // record (templateIndex, entityId, colour, transform) plus 4 for trailing
+    // field 1, the item id. The encoder writes 88 when no occurrence in the
+    // batch names an item, so 92 here IS the claim that duplex's do.
+    const stride = dv.getUint32(28, true);
+    assert.equal(stride, 92, 'header word 7 must declare the 92-byte item-id stride');
+
+    const templateCount = dv.getUint32(8, true);
+    const instanceCount = dv.getUint32(12, true);
+    assert.ok(instanceCount > 0, 'duplex must still produce instanced occurrences');
+    const instanceTable = 32 + templateCount * 48;
+
+    const perTemplate = new Map();
+    for (let i = 0; i < instanceCount; i++) {
+      const base = instanceTable + i * stride;
+      const templateIndex = dv.getUint32(base, true);
+      const entityId = dv.getUint32(base + 4, true);
+      const itemId = dv.getUint32(base + 88, true);
+      assert.notEqual(itemId, 0, `occurrence ${i} (#${entityId}) reports no item id`);
+      // The two are different questions; equal means one is wired to the other.
+      assert.notEqual(itemId, entityId, `occurrence ${i}'s item id is its own express id`);
+      const seen = perTemplate.get(templateIndex);
+      if (seen === undefined) perTemplate.set(templateIndex, itemId);
+      else assert.equal(seen, itemId,
+        `template ${templateIndex} reports two different item ids (${seen} vs ${itemId})`);
+    }
+    // Distinct templates come from distinct source items — that is what makes
+    // the id worth carrying rather than derivable from the product.
+    assert.equal(new Set(perTemplate.values()).size, perTemplate.size,
+      'two templates share an item id; the id is not per representation item');
+  });
+}
 
 test('processGeometryBatchFromSource returns empty when no source is installed (defensive)', () => {
   const freshApi = new IfcAPI();

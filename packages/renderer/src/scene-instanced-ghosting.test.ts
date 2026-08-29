@@ -72,7 +72,7 @@ function shard(entityIds: number[]): DecodedInstancedShard {
       transform: rowMajorTranslation(t),
     });
   }
-  return { templates, instances };
+  return { templates, instances, carriesItemIds: false };
 }
 
 /** The instance colour lane is f32, so 0.12 reads back as 0.11999999…. Compare

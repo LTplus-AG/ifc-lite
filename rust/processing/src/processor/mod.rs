@@ -23,7 +23,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 mod color_layer;
-mod instancing;
+pub(crate) mod instancing;
 mod jobs;
 mod opening_filter;
 mod properties;

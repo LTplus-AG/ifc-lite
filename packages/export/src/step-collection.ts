@@ -81,7 +81,11 @@ export function collectModifications(
     // rather than derived from viewer visibility, but the CLOSURE mechanics —
     // walk from roots, exclude everything else, collect style entities — are
     // exactly `visibleOnly`'s, so both branches end in `applyExportClosure`.
-    const subset = getSubsetEntityIds(pass.effective, options.subsetEntityIds);
+    const subset = getSubsetEntityIds(
+      pass.effective,
+      options.subsetEntityIds,
+      options.subsetIdentifyingTypes,
+    );
     applyExportClosure(pass, ctx, subset.roots, subset.excludedIds);
   } else if (options.visibleOnly && ctx.dataStore.source) {
     const visible = getVisibleEntityIds(

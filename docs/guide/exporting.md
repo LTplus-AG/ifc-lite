@@ -529,7 +529,7 @@ intended common case:
 | Kept by default | Removed/replaced by default |
 |---|---|
 | `PredefinedType`, enum-valued attributes | `Name`/`LongName`/`Description`/`Tag` on `IfcRoot` → `<IfcType>-<n>` pseudonym (`pseudonymizeNames`) |
-| Materials, representation, styles (their geometry/colour values) | `ObjectType`, `IfcProject.Phase`, and quoted `Name`/`Description`/`ProfileName`/`LayerSetName` on non-`IfcRoot` entities — surface styles, materials, layers, profiles, colours (`pseudonymizeAllNames`) |
+| Materials, representation, styles (their geometry/colour values) | `ObjectType`, `IfcTypeObject.ApplicableOccurrence`, `IfcElementType.ElementType`, `IfcProject.Phase`, and quoted `Name`/`LongName`/`Description`/`ProfileName`/`LayerSetName`/`Category` on non-`IfcRoot` entities — surface styles, materials, layers, profiles, colours (`pseudonymizeAllNames`) |
 | Units, geometric contexts, `RepresentationIdentifier` (`Body`, `Axis`) | `GlobalId` (regenerated; old→new in `result.guidMap`, never in the file) |
 | `preprocessor_version` (ifc-lite) | `IfcPropertySet`/`IfcElementQuantity` (unless `keepPropertySets`) |
 | `IfcApplication.ApplicationFullName` / `ApplicationIdentifier` | Root placement translation (rotation/`Axis`/`RefDirection` kept) |

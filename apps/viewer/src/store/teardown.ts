@@ -206,8 +206,8 @@ export interface SliceTeardown<K extends keyof ViewerState = keyof ViewerState> 
    * undoing or re-allocating anything.
    *
    * {@link composeTeardown} drops unchanged entries as a backstop, including a
-   * `Set` / `Map` / array rebuilt equal-but-new — a should, not a must, but
-   * still cheaper: its structural check only runs after `Object.is` fails.
+   * `Set` / `Map` / array / typed array / plain object rebuilt equal-but-new — a
+   * should, not a must: {@link isUnchanged}'s structural check runs only after `Object.is` fails.
    */
   readonly teardown: (scope: TeardownScope, state: TeardownState) => TeardownContribution<K>;
 }
@@ -316,26 +316,41 @@ const FORCED_PRESENCE_SCOPES: ReadonlySet<TeardownScope['kind']> = new Set([
 ]);
 const NEVER_DROPPED: ReadonlySet<keyof ViewerState> = new Set(['isolatedEntities', 'ghostExceptEntities']);
 
+const MAX_ISUNCHANGED_DEPTH = 64; // no slice value nests this deep; past it a cyclic Map/array/object reports "changed"
+
 /**
- * Whether `a` and `b` are the same value, seeing through a `Set` / `Map` /
- * array rebuilt with equal contents under a new reference (#3346: a per-slice
- * `touched` gate rebuilds every field it covers once ANY one moves).
- * `Object.is` alone otherwise — two equal-but-distinct plain objects, e.g.
- * `classFilter`, are NOT equal here. `Map` values recurse, since e.g.
- * `hiddenEntitiesByModel` holds `Set`s a contribution may itself rebuild.
+ * Whether `a`/`b` are equal, seeing through `Set`/`Map`/array/typed array/
+ * plain object rebuilt equal-but-new (#3346), `depth`-bounded per {@link
+ * MAX_ISUNCHANGED_DEPTH}. `Set` of objects NOT covered: reference-based `has`.
  */
-function isUnchanged(a: unknown, b: unknown): boolean {
+function isUnchanged(a: unknown, b: unknown, depth = 0): boolean {
   if (Object.is(a, b)) return true;
+  if (depth >= MAX_ISUNCHANGED_DEPTH) return false;
   if (a instanceof Set && b instanceof Set) {
     return a.size === b.size && [...a].every((value) => b.has(value));
   }
   if (a instanceof Map && b instanceof Map) {
-    return a.size === b.size && [...a].every(([k, v]) => b.has(k) && isUnchanged(v, b.get(k)));
+    return a.size === b.size && [...a].every(([k, v]) => b.has(k) && isUnchanged(v, b.get(k), depth + 1));
   }
   if (Array.isArray(a) && Array.isArray(b)) {
-    return a.length === b.length && a.every((value, index) => isUnchanged(value, b[index]));
+    return a.length === b.length && a.every((value, index) => isUnchanged(value, b[index], depth + 1));
+  }
+  if (ArrayBuffer.isView(a) && ArrayBuffer.isView(b) && 'length' in a && 'length' in b) {
+    const ta = a as unknown as ArrayLike<number>, tb = b as unknown as ArrayLike<number>;
+    return a.constructor === b.constructor && ta.length === tb.length
+      && Array.prototype.every.call(ta, (v, i) => Object.is(v, tb[i])); // `Object.is`, matching the top-level fast path: two same-position NaNs ARE equal, so reporting "unchanged" loses nothing, while `-0` vs `0` is a real difference that `===` would report "unchanged" and silently drop.
+  }
+  if (isPlainObject(a) && isPlainObject(b)) {
+    const keys = Reflect.ownKeys(a).filter((k) => Object.prototype.propertyIsEnumerable.call(a, k)); // string AND symbol keys, `Object.hasOwn`'s own-property-only semantics kept: `Object.keys` alone missed an own enumerable SYMBOL key whose value differs while every string key matches
+    return keys.length === Reflect.ownKeys(b).filter((k) => Object.prototype.propertyIsEnumerable.call(b, k)).length && keys.every((k) => Object.hasOwn(b, k) && isUnchanged(a[k], b[k], depth + 1));
   }
   return false;
+}
+
+/** `{}` / null-prototype only — excludes class instances and built-ins. */
+function isPlainObject(v: unknown): v is Record<PropertyKey, unknown> {
+  return typeof v === 'object' && v !== null
+    && (Object.getPrototypeOf(v) === Object.prototype || Object.getPrototypeOf(v) === null);
 }
 
 /**

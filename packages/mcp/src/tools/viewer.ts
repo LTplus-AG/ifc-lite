@@ -296,7 +296,7 @@ const viewerFlyTo: Tool = {
     const viewer = requireViewer(ctx);
     if (!viewer.isOpen()) throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: 'Viewer is not open.' });
     const m = resolveModel(ctx, input.model_id as string | undefined);
-    const refs = resolveTargetRefs(m, input);
+    const refs = expandAssemblyRefs(m, resolveTargetRefs(m, input));
     if (refs.length === 0) throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'No entities matched.' });
     m.bim.viewer.flyTo(refs);
     return okResult(`Flying to ${refs.length} entit${refs.length === 1 ? 'y' : 'ies'}.`, { count: refs.length });

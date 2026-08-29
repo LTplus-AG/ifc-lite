@@ -338,10 +338,10 @@ function zeroAxisPlacementSlot(
 // ---------------------------------------------------------------------------
 
 /**
- * `IfcMapConversion(Scaled)` / `IfcProjectedCRS` need no handling here: they
- * are `IDENTIFYING_TYPES` (`subset-roots.ts`), excluded from the export
- * outright, and only inverse-referenced from these fields — so they are
- * simply absent from the output once nothing still points at them.
+ * `IfcMapConversion(Scaled)` / `IfcProjectedCRS` need no handling here, and the
+ * reason is conditional since #3351: `IDENTIFYING_TYPES` and inverse-only, so
+ * `removeGeoreferencing` ON leaves them absent, while OFF must ROOT them —
+ * merely not excluding an inverse-only entity still drops it silently.
  *
  * All six blanked slots are OPTIONAL but not all STRING-typed — a LIST OF
  * INTEGER, a REAL, and two entity refs among them — so `$` (via

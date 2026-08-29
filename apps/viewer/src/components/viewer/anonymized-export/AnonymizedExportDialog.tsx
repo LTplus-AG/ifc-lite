@@ -23,7 +23,7 @@
 
 import { useCallback, useState } from 'react';
 import { EyeOff, Download, AlertCircle, Check, Loader2 } from 'lucide-react';
-import type { AnonymizeResult } from '@ifc-lite/export';
+import type { AnonymizeResult, RelatedEntityOptions } from '@ifc-lite/export';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -51,6 +51,8 @@ import { TypeCategoryBar } from './TypeCategoryBar';
 import { runAnonymizedExport } from './anonymized-export-run';
 import {
   AnonymizationOptionsPanel,
+  coupleTogglesToRelations,
+  coupleRelationsToToggles,
   DEFAULT_ANONYMIZE_TOGGLES,
   toAnonymizeOptions,
   type AnonymizeToggles,
@@ -106,6 +108,34 @@ export function AnonymizedExportDialog({ trigger }: AnonymizedExportDialogProps)
   const [isExporting, setIsExporting] = useState(false);
   const [exportResult, setExportResult] = useState<{ success: boolean; message: string } | null>(null);
   const [lastResult, setLastResult] = useState<AnonymizeResult | null>(null);
+
+  // ONE DECISION, TWO CONTROLS (#3351). "Property sets -> Anonymize" only ever
+  // cleared `HasPropertySets` on type classes, so a pset pulled in by the
+  // `IfcRelDefinesByProperties` walk survived with its values while the label
+  // said it was dropped. The CLI has never had this bug because `--keep-psets`
+  // drives BOTH the walk and `keepPropertySets` from one flag; these two
+  // handlers give the dialog the same invariant, in both directions, so the
+  // state where the walk is on and psets are "anonymized" cannot be reached.
+  const handleTogglesChange = useCallback(
+    (next: AnonymizeToggles) => {
+      const { toggles: coupled, turnRelationOff } = coupleTogglesToRelations(
+        next,
+        set.options.IfcRelDefinesByProperties ?? false,
+      );
+      if (turnRelationOff) set.setOption({ IfcRelDefinesByProperties: false });
+      setToggles(coupled);
+    },
+    [set],
+  );
+
+  const handleRelationChange = useCallback(
+    (patch: Partial<RelatedEntityOptions>) => {
+      // Asking for source psets IS asking to keep them.
+      setToggles((t) => coupleRelationsToToggles(t, patch.IfcRelDefinesByProperties === true));
+      set.setOption(patch);
+    },
+    [set],
+  );
 
   const handleExport = useCallback(async () => {
     if (!set.targetModelId || set.includedIds.size === 0) return;
@@ -207,7 +237,7 @@ export function AnonymizedExportDialog({ trigger }: AnonymizedExportDialogProps)
 
             {set.hasSelection && (
               <>
-                <RelationTogglePanel options={set.options} onChange={set.setOption} related={set.related} />
+                <RelationTogglePanel options={set.options} onChange={handleRelationChange} related={set.related} />
 
                 <div className="flex items-center justify-between">
                   <div className="text-sm font-medium">
@@ -233,7 +263,7 @@ export function AnonymizedExportDialog({ trigger }: AnonymizedExportDialogProps)
                   onSetExcluded={set.setExcluded}
                 />
 
-                <AnonymizationOptionsPanel toggles={toggles} onTogglesChange={setToggles} disabled={isExporting} />
+                <AnonymizationOptionsPanel toggles={toggles} onTogglesChange={handleTogglesChange} disabled={isExporting} />
               </>
             )}
 

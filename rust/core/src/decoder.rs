@@ -493,11 +493,8 @@ impl<'a> EntityDecoder<'a> {
                     i += 1;
                 }
                 if i > start {
-                    let mut id = 0u32;
-                    for &b in &bytes[start..i] {
-                        id = id.wrapping_mul(10).wrapping_add((b - b'0') as u32);
-                    }
-                    return Some(id);
+                    // Shared checked accumulator (#3421): refuses rather than wraps.
+                    return crate::express_id::parse_express_id(&bytes[start..i]);
                 }
             }
             i += 1;
@@ -558,12 +555,10 @@ impl<'a> EntityDecoder<'a> {
                     i += 1;
                 }
                 if i > start {
-                    // Fast integer parsing directly from ASCII digits
-                    let mut id = 0u32;
-                    for &b in &bytes[start..i] {
-                        id = id.wrapping_mul(10).wrapping_add((b - b'0') as u32);
+                    // Shared checked accumulator (#3421): an oversized id is dropped, not wrapped.
+                    if let Some(id) = crate::express_id::parse_express_id(&bytes[start..i]) {
+                        ids.push(id);
                     }
-                    ids.push(id);
                 }
             } else {
                 i += 1; // Skip unknown character
@@ -629,12 +624,10 @@ impl<'a> EntityDecoder<'a> {
                     i += 1;
                 }
                 if i > start {
-                    // Fast integer parsing directly from ASCII digits
-                    let mut id = 0u32;
-                    for &b in &bytes[start..i] {
-                        id = id.wrapping_mul(10).wrapping_add((b - b'0') as u32);
+                    // Shared checked accumulator (#3421): an oversized id is dropped, not wrapped.
+                    if let Some(id) = crate::express_id::parse_express_id(&bytes[start..i]) {
+                        point_ids.push(id);
                     }
-                    point_ids.push(id);
                 }
             } else {
                 i += 1; // Skip unknown character
@@ -753,10 +746,10 @@ impl<'a> EntityDecoder<'a> {
         if i <= start {
             return None;
         }
-        let mut loop_id = 0u32;
-        for &b in &bytes[start..i] {
-            loop_id = loop_id.wrapping_mul(10).wrapping_add((b - b'0') as u32);
-        }
+        // Shared checked accumulator (#3421): an oversized loop ref fails
+        // this lookup outright, like any other unresolvable reference,
+        // instead of resolving to the wrong loop.
+        let loop_id = crate::express_id::parse_express_id(&bytes[start..i])?;
 
         // Find orientation after comma - default to true (.T.)
         // Skip to comma
@@ -840,19 +833,18 @@ impl<'a> EntityDecoder<'a> {
                     i += 1;
                 }
                 if i > id_start {
-                    // Fast integer parsing directly from ASCII digits
-                    let mut point_id = 0u32;
-                    for &b in &bytes[id_start..i] {
-                        point_id = point_id.wrapping_mul(10).wrapping_add((b - b'0') as u32);
-                    }
-
-                    // INLINE: Get cartesian point coordinates directly
-                    // This avoids the overhead of calling get_cartesian_point_fast for each point
-                    if let Some((pt_start, pt_end)) = index.lookup(point_id) {
-                        if let Some(coord) =
-                            parse_cartesian_point_inline(&bytes_full[pt_start..pt_end])
-                        {
-                            coords.push(coord);
+                    // Shared checked accumulator (#3421): an oversized ref drops this point.
+                    if let Some(point_id) =
+                        crate::express_id::parse_express_id(&bytes[id_start..i])
+                    {
+                        // INLINE: Get cartesian point coordinates directly
+                        // This avoids the overhead of calling get_cartesian_point_fast for each point
+                        if let Some((pt_start, pt_end)) = index.lookup(point_id) {
+                            if let Some(coord) =
+                                parse_cartesian_point_inline(&bytes_full[pt_start..pt_end])
+                            {
+                                coords.push(coord);
+                            }
                         }
                     }
                 }
@@ -931,25 +923,27 @@ impl<'a> EntityDecoder<'a> {
                 if i > id_start {
                     expected_count += 1; // Count every point ID we encounter
 
-                    // Fast integer parsing directly from ASCII digits
-                    let mut point_id = 0u32;
-                    for &b in &bytes[id_start..i] {
-                        point_id = point_id.wrapping_mul(10).wrapping_add((b - b'0') as u32);
-                    }
-
-                    // Check cache first
-                    if let Some(&coord) = self.point_cache.get(&point_id) {
-                        self.point_cache_hits += 1;
-                        coords.push(coord);
-                    } else {
-                        // Not in cache - parse and cache
-                        if let Some((pt_start, pt_end)) = index.lookup(point_id) {
-                            if let Some(coord) =
-                                parse_cartesian_point_inline(&bytes_full[pt_start..pt_end])
-                            {
-                                self.point_cache_misses += 1;
-                                self.point_cache.insert(point_id, coord);
-                                coords.push(coord);
+                    // Shared checked accumulator (#3421): `expected_count`
+                    // was already bumped, so a refused id here trips the
+                    // `coords.len() == expected_count` check below, same as
+                    // any other missing point.
+                    if let Some(point_id) =
+                        crate::express_id::parse_express_id(&bytes[id_start..i])
+                    {
+                        // Check cache first
+                        if let Some(&coord) = self.point_cache.get(&point_id) {
+                            self.point_cache_hits += 1;
+                            coords.push(coord);
+                        } else {
+                            // Not in cache - parse and cache
+                            if let Some((pt_start, pt_end)) = index.lookup(point_id) {
+                                if let Some(coord) =
+                                    parse_cartesian_point_inline(&bytes_full[pt_start..pt_end])
+                                {
+                                    self.point_cache_misses += 1;
+                                    self.point_cache.insert(point_id, coord);
+                                    coords.push(coord);
+                                }
                             }
                         }
                     }

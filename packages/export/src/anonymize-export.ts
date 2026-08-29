@@ -49,7 +49,7 @@ import type { IfcDataStore, IfcSourceBytes } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import type { IfcSchemaVersion } from './schema-converter.js';
 import { getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
-import { getSubsetEntityIds, IFC_ROOT_TYPES } from './subset-roots.js';
+import { getSubsetEntityIds, IFC_ROOT_TYPES, identifyingTypesFor } from './subset-roots.js';
 import { readEntityArgs } from './subset-entity-reader.js';
 import { refGroupFromArg, relationshipRefsSurviveExclusion } from './reference-collector.js';
 import { applyPlacementAnonymization } from './anonymize-placement.js';
@@ -78,6 +78,11 @@ function pruneUnresolvableRelationships(
   index: EffectiveEntityIndex,
   includedIds: ReadonlySet<number>,
 ): { prunedRelationshipIds: number[]; finalIncludedIds: Set<number> } {
+  // Deliberately the DEFAULT identifying set, not the caller's narrowed one:
+  // this pass only decides which relationship members to trim, and a kept
+  // georeference entity is rooted by `getSubsetEntityIds` before it gets here.
+  // Threading the narrowed set in was measured dead -- mutating it failed zero
+  // tests -- so it is not carried.
   const { excludedIds } = getSubsetEntityIds(index, includedIds);
   const isExcluded = (id: number): boolean => excludedIds.has(id);
 
@@ -140,7 +145,11 @@ export function exportAnonymizedSubset(
   const editor = new StoreEditor(store, view);
   const index = getEffectiveEntityIndex(store, view, true);
 
-  const { prunedRelationshipIds, finalIncludedIds } = pruneUnresolvableRelationships(store, index, includedIds);
+  const { prunedRelationshipIds, finalIncludedIds } = pruneUnresolvableRelationships(
+    store,
+    index,
+    includedIds,
+  );
 
   const placementResult = applyPlacementAnonymization(store, index, finalIncludedIds, editor, view, options);
   const scrubResult = applyScrub(store, index, finalIncludedIds, view, options);
@@ -148,6 +157,7 @@ export function exportAnonymizedSubset(
   const exportResult = new StepExporter(store, view).export({
     schema: store.schemaVersion as IfcSchemaVersion,
     subsetEntityIds: finalIncludedIds,
+    subsetIdentifyingTypes: identifyingTypesFor(options?.removeGeoreferencing !== false),
     filename: options.filename ?? 'anonymized.ifc',
     // Header scrub per the decision doc: author/organization/authorization
     // blanked outright (never inherited from the source header — an empty

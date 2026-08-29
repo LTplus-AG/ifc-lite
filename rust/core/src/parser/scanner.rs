@@ -239,29 +239,14 @@ impl<'a> EntityScanner<'a> {
     /// be `wrapping_mul`/`wrapping_add`, which turned `#4294967297` into `1` —
     /// a real entity's id, indistinguishable from it downstream (issue #3395).
     ///
-    /// Two loops rather than one: a run of at most 9 digits is at most
-    /// 999_999_999 and cannot overflow `u32`, so every real file keeps the
-    /// unchecked instruction sequence. Only a 10+ digit run — which no
-    /// exporter emits — pays for `checked_mul`/`checked_add`.
+    /// Delegates to [`crate::express_id::parse_express_id`], the single
+    /// checked accumulator shared with every `#<digits>` reference reader in
+    /// [`crate::fast_parse`] and [`crate::decoder`] (issue #3421) — the
+    /// definition and reference sides of an express id agree on the bound
+    /// because they call the same function, not two copies of the same rule.
     #[inline]
     fn parse_u32_fast(&self, start: usize, end: usize) -> Option<u32> {
-        debug_assert!(
-            self.bytes[start..end].iter().all(u8::is_ascii_digit),
-            "parse_u32_fast expects a validated digit run"
-        );
-        let mut result: u32 = 0;
-        if end - start <= 9 {
-            for i in start..end {
-                result = result * 10 + (self.bytes[i] - b'0') as u32;
-            }
-            return Some(result);
-        }
-        for i in start..end {
-            result = result
-                .checked_mul(10)?
-                .checked_add((self.bytes[i] - b'0') as u32)?;
-        }
-        Some(result)
+        crate::express_id::parse_express_id(&self.bytes[start..end])
     }
 
     /// Find the terminating semicolon of an entity, skipping over quoted strings.

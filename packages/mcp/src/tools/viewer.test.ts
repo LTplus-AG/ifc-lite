@@ -18,10 +18,17 @@
  * never keys is a silent no-op.
  *
  * These tests exercise `viewer_isolate`/`viewer_hide`/`viewer_show`/
- * `viewer_colorize` end to end (through the real tool handlers, with a
- * fake streaming adapter recording exactly which `EntityRef[]` reached the
- * backend) rather than unit-testing a helper in isolation, so a regression
- * in the wiring — not just the expansion logic — fails these tests too.
+ * `viewer_colorize`/`viewer_fly_to` end to end (through the real tool
+ * handlers, with a fake streaming adapter recording exactly which
+ * `EntityRef[]` reached the backend) rather than unit-testing a helper in
+ * isolation, so a regression in the wiring — not just the expansion logic
+ * — fails these tests too.
+ *
+ * `viewer_fly_to` has the same failure mode as `viewer_hide`/`show`/
+ * `colorize`: `packages/viewer`'s `viewer-html.ts` computes the camera
+ * target bounding box only from `entityMap` (rendered-mesh ids), so an
+ * unexpanded assembly id matches nothing and `getEntityBoundsForFilter`
+ * returns `null` — the camera silently does not move.
  */
 
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -94,6 +101,7 @@ let isolateCalls: EntityRef[][];
 let hideCalls: EntityRef[][];
 let showCalls: EntityRef[][];
 let colorizeCalls: EntityRef[][];
+let flyToCalls: EntityRef[][];
 
 async function load(): Promise<void> {
   const path = join(tmp, 'm.ifc');
@@ -103,12 +111,13 @@ async function load(): Promise<void> {
   hideCalls = [];
   showCalls = [];
   colorizeCalls = [];
+  flyToCalls = [];
   model.backend.attachStreamingAdapters(
     {
       colorize(refs) { colorizeCalls.push(refs); },
       colorizeAll() {},
       resetColors() {},
-      flyTo() {},
+      flyTo(refs) { flyToCalls.push(refs); },
       setSection() {},
       getSection() { return null; },
       setCamera() {},
@@ -199,5 +208,26 @@ describe('viewer_colorize — assembly expansion (#3338)', () => {
     await load();
     await tool('viewer_colorize').handler({ global_id: WALL3_GID, color: 'red' }, ctx);
     expect(expressIdsOf(colorizeCalls)).toEqual([103]);
+  });
+});
+
+describe('viewer_fly_to — assembly expansion (#3338)', () => {
+  it('flying to a geometry-less assembly reaches the backend with its geometry-bearing parts, not just the assembly id', async () => {
+    await load();
+    const result = await tool('viewer_fly_to').handler({ global_id: ASM_GID }, ctx);
+    expect(result.isError).toBeUndefined();
+    expect(expressIdsOf(flyToCalls)).toEqual([100, 101, 102]);
+  });
+
+  it('flying to a plain wall (no IfcRelAggregates children) is a no-op — passes through unchanged', async () => {
+    await load();
+    await tool('viewer_fly_to').handler({ global_id: WALL3_GID }, ctx);
+    expect(expressIdsOf(flyToCalls)).toEqual([103]);
+  });
+
+  it('flying to both the assembly and one of its own children does not double-expand', async () => {
+    await load();
+    await tool('viewer_fly_to').handler({ global_ids: [ASM_GID, WALL1_GID] }, ctx);
+    expect(expressIdsOf(flyToCalls)).toEqual([100, 101, 102]);
   });
 });

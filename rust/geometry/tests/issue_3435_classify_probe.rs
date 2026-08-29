@@ -135,9 +135,6 @@ fn sub(a: (f64, f64, f64), b: (f64, f64, f64)) -> (f64, f64, f64) {
 fn norm(a: (f64, f64, f64)) -> f64 {
     (a.0 * a.0 + a.1 * a.1 + a.2 * a.2).sqrt()
 }
-fn cross(a: (f64, f64, f64), b: (f64, f64, f64)) -> (f64, f64, f64) {
-    (a.1 * b.2 - a.2 * b.1, a.2 * b.0 - a.0 * b.2, a.0 * b.1 - a.1 * b.0)
-}
 fn unit(a: (f64, f64, f64)) -> (f64, f64, f64) {
     let n = norm(a);
     if n < 1e-12 {
@@ -220,7 +217,6 @@ fn classify_open_edges(edges: &[((f64, f64, f64), (f64, f64, f64))]) -> (bool, S
     // to-line distance), anchored on the longest unclustered edge each round
     // (longest edges are the most reliable to derive a direction from).
     const DIST_TOL: f64 = 1e-3; // metres, point-to-line distance tolerance
-    const LEN_TOL: f64 = 2e-3; // metres, absolute length-balance tolerance
     // Proximity bound for the interval-adjacency split (see module doc for
     // the phantom-merge failure mode this closes): every genuine
     // within-tear gap on this fixture is 0 or sub-mm, every confirmed
@@ -431,8 +427,8 @@ fn classify_probe() {
     println!("void hosts total: {}", hosts.len());
 
     println!(
-        "{:>10} {:>5} {:>6} {:>12} {:>4}  {}",
-        "host", "nvoid", "open", "path", "tjnc", "detail"
+        "{:>10} {:>5} {:>6} {:>12} {:>4}  detail",
+        "host", "nvoid", "open", "path", "tjnc"
     );
 
     let dump_hosts: [u32; 0] = [];
@@ -442,7 +438,7 @@ fn classify_probe() {
     let mut general_torn = 0usize;
     let mut tjunction = 0usize;
     let mut not_tjunction = 0usize;
-    let mut unclassified = 0usize;
+    let unclassified = 0usize;
     let mut anchor_verdicts: FxHashMap<u32, bool> = FxHashMap::default();
 
     for &host in &hosts {

@@ -355,7 +355,7 @@ fn void_ordering_probe() {
     let any_clean = |r: &HostResult| -> bool {
         r.declaration == 0
             || r.reversed == 0
-            || r.random.iter().any(|&o| o == 0)
+            || r.random.contains(&0)
             || r.desc_volume == 0
             || r.asc_volume == 0
             || r.axis == 0

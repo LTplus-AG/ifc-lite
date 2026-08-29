@@ -1,5 +1,5 @@
 ---
-'@ifc-lite/extensions': patch
+'@ifc-lite/extensions': minor
 ---
 
 Fix `bim.model.loadIfc` inferring the read-only `model.read` capability instead of `model.create`.

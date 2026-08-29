@@ -60,6 +60,18 @@ describe('inferCapabilities — mutation patterns', () => {
   it('bim.create.* → model.create', () => {
     expect(inferCapabilities('bim.create.project({});').capabilities).toContain('model.create');
   });
+
+  it('bim.model.loadIfc → model.create (loads a new document, not a read)', () => {
+    const r = inferCapabilities('bim.model.loadIfc(content, "tower.ifc");');
+    const call = r.observations.find((o) => o.call === 'bim.model.loadIfc');
+    expect(call?.capabilities).toEqual(['model.create']);
+  });
+
+  it('bim.model.list still infers model.read (regression guard)', () => {
+    const r = inferCapabilities('const models = bim.model.list();');
+    const call = r.observations.find((o) => o.call === 'bim.model.list');
+    expect(call?.capabilities).toEqual(['model.read']);
+  });
 });
 
 describe('inferCapabilities — export', () => {

@@ -32,6 +32,11 @@ export interface NamespaceMapping {
 export const INFERENCE_CATALOGUE: Record<string, NamespaceMapping> = {
   model: {
     defaultCapabilities: ['model.read'],
+    methods: {
+      // Loads a whole new IFC document into the app — creation, not a
+      // read (see host/permissions.ts: model.create "modifies the document").
+      loadIfc: ['model.create'],
+    },
   },
   query: {
     defaultCapabilities: ['model.read'],

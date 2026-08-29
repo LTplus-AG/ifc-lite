@@ -419,10 +419,10 @@ export class GeometryProcessor {
    */
   /**
    * Surface the world→render metadata (unit scale + applied RTC offset) from
-   * a pre-pass result onto the coordinate handler (issue #945). Shared by the
-   * sync and streaming WASM paths; `sharedRtcOffset` overrides the model's
-   * own detected offset for federation alignment (mirrors `useSharedRtc` in
-   * geometry-parallel.ts).
+   * a pre-pass result onto the coordinate handler (issue #945). Used by the
+   * sync WASM mesh path; `sharedRtcOffset` overrides the model's own detected
+   * offset for federation alignment (mirrors `useSharedRtc` in
+   * geometry-parallel.ts and `processStreamingBytes`).
    */
   private applyPrePassMetadata(
     prePass: ByteStreamingPrePassResult,

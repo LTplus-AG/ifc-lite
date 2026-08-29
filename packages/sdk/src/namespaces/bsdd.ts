@@ -262,7 +262,9 @@ export class BsddNamespace {
    */
   async fetchClassInfo(ifcType: string): Promise<BsddClassInfo | null> {
     const uri = this.ifcClassUri(ifcType);
-    const cached = getCached(this.cache, uri, this.cacheTtl);
+    // Namespaced: shares `this.cache` with fetchClassByUri, which marks classes non-standard.
+    const cacheKey = `std:${uri}`;
+    const cached = getCached(this.cache, cacheKey, this.cacheTtl);
     if (cached) return cached;
 
     let raw: Record<string, unknown>;
@@ -277,8 +279,7 @@ export class BsddNamespace {
 
     let info = mapClassResponse(raw, true);
 
-    // Fallback: if inline classProperties came back empty, try paginated endpoint.
-    // Network failures on the fallback are non-fatal — keep the partial result.
+    // Fallback: empty inline classProperties tries the paginated endpoint (non-fatal on failure).
     if (info.classProperties.length === 0) {
       try {
         const propsRaw = await fetchJson<Record<string, unknown>>(
@@ -289,16 +290,14 @@ export class BsddNamespace {
           info = { ...info, classProperties: propsList.map((p) => mapProperty(p, true)) };
         }
       } catch (err) {
-        // Non-fatal — the primary call already succeeded. Logged because
-        // the partial result (no classProperties) is what gets cached, so
-        // one transient failure silently answers every later call for this
-        // URI until the entry expires.
+        // Non-fatal — the primary call already succeeded. Logged because the
+        // partial (no classProperties) result gets cached until the entry expires.
         // eslint-disable-next-line no-console
         console.warn(`[bsdd] classProperties fallback failed for ${uri}; caching partial result:`, err);
       }
     }
 
-    setCache(this.cache, uri, info, this.maxCacheEntries);
+    setCache(this.cache, cacheKey, info, this.maxCacheEntries);
     return info;
   }
 
@@ -307,7 +306,8 @@ export class BsddNamespace {
    * Useful for non-IFC dictionaries (Uniclass, OmniClass, etc.).
    */
   async fetchClassByUri(classUri: string): Promise<BsddClassInfo | null> {
-    const cached = getCached(this.cache, classUri, this.cacheTtl);
+    const cacheKey = `any:${classUri}`; // see fetchClassInfo's cache-key note
+    const cached = getCached(this.cache, cacheKey, this.cacheTtl);
     if (cached) return cached;
 
     try {
@@ -315,7 +315,7 @@ export class BsddNamespace {
         `${this.apiBase}/api/Class/v1?Uri=${encodeURIComponent(classUri)}&IncludeClassProperties=true`,
       );
       const info = mapClassResponse(raw, false);
-      setCache(this.cache, classUri, info, this.maxCacheEntries);
+      setCache(this.cache, cacheKey, info, this.maxCacheEntries);
       return info;
     } catch (err) {
       if (err instanceof BsddHttpError && err.status === 404) return null;

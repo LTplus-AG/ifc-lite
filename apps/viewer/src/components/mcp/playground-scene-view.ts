@@ -106,21 +106,39 @@ export function frameOn(view: SceneView, records: EntityRecord[], instant = fals
 export function setSection(
   section: SectionState,
   records: EntityRecord[],
-  { axis, position }: { axis: 'x' | 'y' | 'z'; position: number },
+  { axis, position, flipped = false, enabled = true }: {
+    axis: 'x' | 'y' | 'z';
+    position: number;
+    /** Keep the opposite half-space. Mirrors the main viewer's
+     *  `sectionPlane.flipped` (`store/slices/sectionSlice.ts`): negating
+     *  both the plane's normal and constant swaps which side survives. */
+    flipped?: boolean;
+    /** When false, record the section state but apply no clipping —
+     *  matches the MCP `viewer_set_section` tool's `enabled` param
+     *  (`packages/mcp/src/tools/viewer.ts`), which the agent uses to stage
+     *  a section without cutting the model yet. */
+    enabled?: boolean;
+  },
 ): void {
   section.planes.length = 0;
-  // Geometry is in Three.js coordinates (Y is up after the geometry
-  // pipeline's Z-up→Y-up conversion). The agent's `axis` arg is read
-  // in the same convention: 'y' is the horizontal "cut the top off"
-  // plane, 'x' / 'z' are vertical slabs perpendicular to those world
-  // axes. Three.js clipping plane keeps points where n·x + d > 0.
-  const normal = new THREE.Vector3(
-    axis === 'x' ? -1 : 0,
-    axis === 'y' ? -1 : 0,
-    axis === 'z' ? -1 : 0,
-  );
-  section.active = new THREE.Plane(normal, position);
-  section.planes.push(section.active);
+  if (enabled) {
+    // Geometry is in Three.js coordinates (Y is up after the geometry
+    // pipeline's Z-up→Y-up conversion). The agent's `axis` arg is read
+    // in the same convention: 'y' is the horizontal "cut the top off"
+    // plane, 'x' / 'z' are vertical slabs perpendicular to those world
+    // axes. Three.js clipping plane keeps points where n·x + d > 0.
+    const sign = flipped ? 1 : -1;
+    const normal = new THREE.Vector3(
+      axis === 'x' ? sign : 0,
+      axis === 'y' ? sign : 0,
+      axis === 'z' ? sign : 0,
+    );
+    const constant = flipped ? -position : position;
+    section.active = new THREE.Plane(normal, constant);
+    section.planes.push(section.active);
+  } else {
+    section.active = null;
+  }
   for (const r of records) {
     const mat = r.mesh.material as THREE.MeshStandardMaterial;
     mat.clippingPlanes = section.planes;

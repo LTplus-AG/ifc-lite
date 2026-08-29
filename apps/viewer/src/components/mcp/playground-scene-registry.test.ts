@@ -604,4 +604,18 @@ describe('playground ops: the property legend counts entities (#2455)', () => {
     assert.deepEqual(colorByProperty(reg, { type: 'IfcDoor', ...args, sample }).legend, []);
     assert.equal(asked.length, 0);
   });
+
+  it('honours a caller-supplied missingColor for the (missing) bucket', () => {
+    // `viewer_color_by_property`'s MCP schema (packages/mcp/src/tools/viewer.ts)
+    // and this playground's own tool catalogue (data.ts) both advertise
+    // `missing_color`. The dispatcher used to parse it and then drop it on
+    // the floor — the (missing) bucket always painted the hardcoded gray.
+    const { reg } = mount();
+    const { sample } = sampler({});
+    const missingColor: [number, number, number, number] = [1, 0, 0, 1];
+
+    const { legend } = colorByProperty(reg, { type: 'IfcWall', ...args, sample, missingColor });
+
+    assert.deepEqual(legend[0].color, missingColor);
+  });
 });

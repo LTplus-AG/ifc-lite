@@ -254,9 +254,19 @@ export class EntityNode {
   }
 
   property(psetName: string, propName: string): PropertyValue | null {
-    const props = this.store.getProperties(this.expressId);
-    const pset = props.find(p => p.name === psetName);
-    return pset?.properties.find(p => p.name === propName)?.value ?? null;
+    // Two distinct IfcPropertySet entities sharing the same Name is a
+    // legitimate model shape, and the on-demand extraction path returns one
+    // array entry per underlying set rather than merging them. `.find()`
+    // would stop at the first same-named set and miss a property that only
+    // lives on a later one with that name (the same defect fixed in
+    // `PropertyTable.getProperty`, #2907) — so every same-named set is
+    // checked here instead.
+    for (const pset of this.store.getProperties(this.expressId)) {
+      if (pset.name !== psetName) continue;
+      const prop = pset.properties.find(p => p.name === propName);
+      if (prop) return prop.value;
+    }
+    return null;
   }
 
   quantities(): QuantitySet[] {
@@ -264,9 +274,14 @@ export class EntityNode {
   }
 
   quantity(qsetName: string, quantityName: string): number | null {
-    const qsets = this.store.getQuantities(this.expressId);
-    const qset = qsets.find(q => q.name === qsetName);
-    return qset?.quantities.find(q => q.name === quantityName)?.value ?? null;
+    // Mirrors property() above: check every same-named quantity set rather
+    // than stopping at the first one.
+    for (const qset of this.store.getQuantities(this.expressId)) {
+      if (qset.name !== qsetName) continue;
+      const quantity = qset.quantities.find(q => q.name === quantityName);
+      if (quantity) return quantity.value;
+    }
+    return null;
   }
 
   private getRelated(relType: RelationshipType, direction: 'forward' | 'inverse'): EntityNode[] {

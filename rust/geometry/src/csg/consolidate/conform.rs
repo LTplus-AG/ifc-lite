@@ -21,8 +21,10 @@
 //! Split out of `consolidate.rs` to keep both files under the module-size ratchet.
 
 mod emit;
+mod snap;
 
 pub(super) use emit::emit_plans;
+use snap::snap_near_duplicates;
 
 use crate::mesh::Mesh;
 use nalgebra::{Point3, Vector3};
@@ -309,6 +311,26 @@ pub(super) fn conform_plans(plans: &mut [PlanBucket], seam: &SeamMap) -> bool {
             continue;
         }
         for region in plan.regions.iter_mut() {
+            // Phase B0 — snap a ring vertex this region ALREADY carries (within
+            // CONFORM_TOL of a candidate) onto the candidate's exact position when
+            // the two are not already bit-identical. This is the residual gap the
+            // "already carries" filter below leaves: two buckets can land the SAME
+            // physical corner on floats a few µm apart, and the filter's OWN test
+            // (a ring vertex within CONFORM_TOL) reads that as "already shared" and
+            // drops the candidate, leaving the buckets disagreeing by that residual.
+            // Snapping — not inserting a second near-duplicate vertex, which the
+            // needle backstop would then drop — closes it without changing the
+            // vertex count, so it cannot fight the never-lose-triangles guard.
+            let mut this = snap_near_duplicates(
+                &mut region.outer_conformed,
+                &cands,
+                plan.origin,
+                plan.u_axis,
+                plan.v_axis,
+            );
+            for hole in region.holes_conformed.iter_mut() {
+                this |= snap_near_duplicates(hole, &cands, plan.origin, plan.u_axis, plan.v_axis);
+            }
             // A candidate this region ALREADY carries must not be re-inserted: a
             // duplicate ring vertex fails the CDT and would drop the whole region.
             let local: Vec<nalgebra::Point2<f64>> = cands
@@ -324,12 +346,11 @@ pub(super) fn conform_plans(plans: &mut [PlanBucket], seam: &SeamMap) -> bool {
                         })
                 })
                 .collect();
-            if local.is_empty() {
-                continue;
-            }
-            let mut this = conform_ring(&mut region.outer_conformed, &local);
-            for hole in region.holes_conformed.iter_mut() {
-                this |= conform_ring(hole, &local);
+            if !local.is_empty() {
+                this |= conform_ring(&mut region.outer_conformed, &local);
+                for hole in region.holes_conformed.iter_mut() {
+                    this |= conform_ring(hole, &local);
+                }
             }
             region.changed = this;
             changed |= this;

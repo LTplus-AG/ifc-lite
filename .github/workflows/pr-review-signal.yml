@@ -15,29 +15,47 @@ name: PR review signal
 #    ON THE PATH THAT MERGES IT. Asserted in
 #    scripts/check-pr-review-signal.test.mjs.
 #
-#    THE SCOPE OF THAT CLAIM, stated rather than left to be discovered: the
-#    `branches: [main]` filter below means a PR based on a FEATURE branch does
-#    not run this job, so both files can change on such a PR with no gate run.
-#    That is not a hole to close by widening the filter -- the required lane set
-#    is derived from test.yml, which carries the same `branches: [main]`, so on
-#    a feature-targeted PR every required lane is legitimately absent and this
-#    gate would fail every stacked PR for a reason that is not a defect. The
-#    residue is bounded by the retarget rule the next paragraph describes:
-#    pointing such a PR at main fires `edited`, which runs this job, and it must
-#    then pass before the change reaches main.
+#    THE SCOPE OF THAT CLAIM, stated rather than left to be discovered: this job
+#    used to carry the SAME `branches: [main]` filter as test.yml, on the
+#    reasoning that widening it would fail every stacked PR "for a reason that
+#    is not a defect" -- the required lane set is derived from test.yml, which
+#    still targets `branches: [main]` only, so on a feature-targeted PR every
+#    required lane IS legitimately absent. #3429 (louistrue, BIMvoice) is the
+#    correction to that reasoning: "legitimately absent" is exactly the fact a
+#    reviewer needs surfaced, not a reason to suppress the gate that surfaces
+#    it. #3405 and #3428, both stacked on another PR's branch, ran ZERO
+#    `test.yml` lanes and their check lists showed six passes and two skips --
+#    nothing said "nothing ran". `gh pr checks` and `mergeable: MERGEABLE` gave
+#    no discriminator either. Filtering THIS job the same way test.yml is
+#    filtered reproduces the silence in the one place meant to catch it.
+#
+#    So this job now has NO `branches:` filter and fires on every base. Part 1
+#    of scripts/check-pr-review-signal.mjs already handles total absence --
+#    it is the #3294 shape it was built for -- so on a stacked PR every lane
+#    derived from test.yml comes back missing and the gate reports
+#    `MISSING_LANES` and exits non-zero, unconditionally (part 1 has no
+#    severity knob; see the script for why). That failure does not block the
+#    stacked PR from merging into its feature-branch base: GitHub's required-
+#    status-checks ruleset is configured against `main`, and only applies when
+#    a PR's base IS the ref the ruleset protects, so this job going red on a
+#    PR based on a feature branch is a visible row, not an enforced gate --
+#    exactly the "silence into a visible failure" trade #3429 asks for. It
+#    still becomes an enforced gate the moment the PR is retargeted to main,
+#    same as before.
 #
 # `edited` IS THE POINT OF THE TYPES LIST. GitHub's default `pull_request`
 # activity types are opened/synchronize/reopened. Retargeting a PR's base branch
-# fires `edited` and nothing else -- and it does NOT re-fire the workflows that
-# a `branches: [main]` filter had excluded while the PR pointed at a feature
-# branch. That is the deterministic, reproducible mechanism behind #3294 merging
-# with 8 checks and leaving main's module-size gate red. Without `edited` here,
-# this detector would miss the one case it was built for.
+# fires `edited` and nothing else. Before this job ran on all bases, that meant
+# `edited` did not re-fire the workflows that a `branches: [main]` filter had
+# excluded while the PR pointed at a feature branch -- the deterministic,
+# reproducible mechanism behind #3294 merging with 8 checks and leaving main's
+# module-size gate red. Kept now for the same retarget transition, and because
+# this job derives its required-lane list from test.yml at read time regardless
+# of which event fired it.
 #
 # `ready_for_review` covers the draft->ready transition for the same reason.
 on:
   pull_request:
-    branches: [main]
     types: [opened, synchronize, reopened, edited, ready_for_review]
 
 concurrency:

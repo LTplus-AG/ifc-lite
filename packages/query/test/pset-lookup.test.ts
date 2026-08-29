@@ -5,9 +5,18 @@
 import { describe, it, expect } from 'vitest';
 import { findPropertyInSets, findQuantityInSets } from '../src/pset-lookup.js';
 
+/**
+ * Real property values are heterogeneous (a boolean `IsExternal` alongside a
+ * string `FireRating`), so the fixtures need this annotation: left to
+ * inference, each set literal gets its OWN value type and the array becomes a
+ * union that cannot unify with the helper's single `P`.
+ */
+type PropSets = { name: string; properties: { name: string; value: string | boolean }[] }[];
+type QtoSets = { name: string; quantities: { name: string; value: number }[] }[];
+
 describe('findPropertyInSets', () => {
   it('finds a property that only exists on the SECOND same-named set', () => {
-    const sets = [
+    const sets: PropSets = [
       { name: 'Pset_WallCommon', properties: [{ name: 'IsExternal', value: true }] },
       { name: 'Pset_WallCommon', properties: [{ name: 'FireRating', value: 'REI60' }] },
     ];
@@ -18,7 +27,7 @@ describe('findPropertyInSets', () => {
   });
 
   it('returns undefined when no same-named set has the property', () => {
-    const sets = [
+    const sets: PropSets = [
       { name: 'Pset_WallCommon', properties: [{ name: 'IsExternal', value: true }] },
       { name: 'Pset_WallCommon', properties: [{ name: 'LoadBearing', value: false }] },
     ];
@@ -27,7 +36,7 @@ describe('findPropertyInSets', () => {
   });
 
   it('prefers the first matching set when both carry the property', () => {
-    const sets = [
+    const sets: PropSets = [
       { name: 'Pset_WallCommon', properties: [{ name: 'FireRating', value: 'first' }] },
       { name: 'Pset_WallCommon', properties: [{ name: 'FireRating', value: 'second' }] },
     ];
@@ -38,7 +47,7 @@ describe('findPropertyInSets', () => {
 
 describe('findQuantityInSets', () => {
   it('finds a quantity that only exists on the SECOND same-named set', () => {
-    const sets = [
+    const sets: QtoSets = [
       { name: 'Qto_WallBaseQuantities', quantities: [{ name: 'Length', value: 3 }] },
       { name: 'Qto_WallBaseQuantities', quantities: [{ name: 'GrossVolume', value: 12.5 }] },
     ];
@@ -49,7 +58,7 @@ describe('findQuantityInSets', () => {
   });
 
   it('returns undefined when no same-named set has the quantity', () => {
-    const sets = [
+    const sets: QtoSets = [
       { name: 'Qto_WallBaseQuantities', quantities: [{ name: 'Length', value: 3 }] },
     ];
 

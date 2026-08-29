@@ -8,7 +8,7 @@
   "packages/bcf": 5,
   "packages/cache": 6,
   "packages/clash": 1,
-  "packages/cli": 7,
+  "packages/cli": 6,
   "packages/codegen": 5,
   "packages/collab": 7,
   "packages/collab-server": 3,

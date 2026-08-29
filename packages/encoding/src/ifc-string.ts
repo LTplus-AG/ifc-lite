@@ -140,7 +140,10 @@ export function decodeIfcString(str: string): string {
 /**
  * Encode a Unicode string to IFC STEP directive escapes.
  *
- * - Printable ASCII (32..126) is kept as-is.
+ * - Printable ASCII (32..126) is kept as-is, with ONE exception: the reverse
+ *   solidus (`\`, U+005C) is printable ASCII but goes out as `\X\5C`, because
+ *   a raw `\` in the output is what a reader takes for the start of a
+ *   directive or of a `\\` pair.
  * - 8-bit values are encoded as \X\HH.
  * - BMP values are encoded as \X2\HHHH\X0\.
  * - Non-BMP values are encoded as \X4\HHHHHHHH\X0\.
@@ -155,12 +158,28 @@ export function decodeIfcString(str: string): string {
  * literal-context contract: doubling
  * `'` and `\`, mapping control characters to a space, and encoding non-ASCII —
  * per ISO 10303-21 6.3.3.4. The two functions do not produce the same output
- * for the same input; do not assume they agree.
+ * for the same input; do not assume they agree. Sweeping U+0000..U+02FF, they
+ * disagree on exactly two of the 95 printable ASCII characters: the
+ * apostrophe (U+0027; doubled there, passed through here) and the reverse
+ * solidus (U+005C; doubled there, `\X\5C` here). They also disagree on all 32
+ * C0 controls AND on DEL (U+007F) -- a space there, `\X\HH` here, since
+ * `escape` maps `'\0'..='\u{1F}' | '\u{7F}'` to a space -- and on all 128 of
+ * U+0080..U+00FF (`\X2\HHHH\X0\` there, `\X\HH` here). That is 163
+ * disagreements in all. Above U+00FF they agree on all 512.
  *
- * Kept for round-trip use with {@link decodeIfcString}
- * (`decodeIfcString(encodeIfcString(s)) === s`), which holds regardless of
- * apostrophe handling because doubling is a literal-context requirement, not
- * an encoding one. See https://github.com/LTplus-AG/ifc-lite/issues/3445.
+ * Kept for round-trip use with {@link decodeIfcString}, within the scope the
+ * two functions actually cover: `decodeIfcString(encodeIfcString(s)) === s`
+ * for every `s` built from Unicode SCALAR values. That is not the same as
+ * every JS string. A JS string can also hold an unpaired surrogate
+ * (U+D800..U+DFFF), which is not a scalar value; this encoder writes it as a
+ * `\X2\` directive, and {@link decodeIfcString} decodes every lone surrogate
+ * to U+FFFD to stay in parity with the Rust decoder's
+ * `String::from_utf16_lossy`. Those 2048 code units are the only inputs that
+ * do not come back unchanged.
+ *
+ * Within that scope the guarantee is independent of apostrophe handling,
+ * because doubling is a literal-context requirement, not an encoding one.
+ * See https://github.com/LTplus-AG/ifc-lite/issues/3445.
  */
 export function encodeIfcString(str: string): string {
   if (!str || typeof str !== 'string') return str;

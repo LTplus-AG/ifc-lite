@@ -587,6 +587,9 @@ function makeViewer(
     camPhiTarget: 0,
     camVelTheta: 0,
     camVelPhi: 0,
+    camVelPanX: 0,
+    camVelPanY: 0,
+    camVelPanZ: 0,
     camAnimating: false,
     camAnimStart: 0,
     camAnimDuration: 0,
@@ -1062,6 +1065,59 @@ describe('viewer blob — handleCommand: camera and flyto', () => {
       Math.abs(v.flyToCalls[0].dist - 0.15) < 1e-12,
       `a point selection must fall back to the 0.1 m floor, scaled by 1.5; got ${v.flyToCalls[0].dist}`
     );
+  });
+
+  // bim.viewer.setCamera() (packages/sdk) reaches the browser as
+  // `{ action: 'camera', state }` over the streaming adapter
+  // (src/streaming-viewer.ts). Before this, `handleCommand`'s switch had no
+  // `'camera'` case at all, so the command fell into `default` and was a
+  // silent no-op — every assertion below failed against that code with the
+  // orbit state left at its untouched default (camDist 50, camTheta 0,
+  // camPhi 0) instead of being derived from `state`.
+  it('camera derives dist/theta/phi from an explicit position, target defaulting to the current one', () => {
+    const v = makeViewer();
+    v.run({ action: 'camera', state: { position: [10, 0, 0] } });
+    assert.deepEqual(v.ctx.camTarget, [0, 0, 0], 'target was not supplied, so it must be left alone');
+    assert.equal(v.ctx.camDist, 10);
+    assert.ok(Math.abs(v.ctx.camPhi - Math.PI / 2) < 1e-9, `expected phi ~ PI/2, got ${v.ctx.camPhi}`);
+    assert.ok(Math.abs(v.ctx.camTheta) < 1e-9, `expected theta ~ 0, got ${v.ctx.camTheta}`);
+    assert.equal(v.ctx.camPhiTarget, v.ctx.camPhi, 'the smoothing target must be synced');
+    assert.equal(v.ctx.camThetaTarget, v.ctx.camTheta, 'the smoothing target must be synced');
+  });
+
+  it('camera looking straight down from +Y lands at the top-view pole', () => {
+    // Cross-checks against the independently-pinned 'setView top' expectation
+    // (phi < 0.2 near the +Y pole) rather than restating the formula.
+    const v = makeViewer();
+    v.run({ action: 'camera', state: { position: [0, 10, 0] } });
+    assert.ok(v.ctx.camPhi < 0.2, `expected the +Y pole, got phi=${v.ctx.camPhi}`);
+  });
+
+  it('camera with only a target pans without disturbing distance or orientation', () => {
+    const v = makeViewer();
+    v.ctx.camDist = 25;
+    v.ctx.camTheta = 1.2;
+    v.ctx.camPhi = 0.5;
+    v.run({ action: 'camera', state: { target: [5, 5, 5] } });
+    assert.deepEqual(v.ctx.camTarget, [5, 5, 5]);
+    assert.equal(v.ctx.camDist, 25, 'no position was supplied, so distance must be untouched');
+    assert.equal(v.ctx.camTheta, 1.2, 'no position was supplied, so orientation must be untouched');
+    assert.equal(v.ctx.camPhi, 0.5);
+  });
+
+  it('camera ignores a position coincident with the target instead of producing NaN', () => {
+    const v = makeViewer();
+    v.run({ action: 'camera', state: { position: [0, 0, 0], target: [0, 0, 0] } });
+    assert.equal(v.ctx.camDist, 50, 'a zero-length direction must leave the prior distance in place');
+    assert.ok(Number.isFinite(v.ctx.camTheta) && Number.isFinite(v.ctx.camPhi));
+  });
+
+  it('camera with neither field, or an unsupported mode alone, does not throw and leaves state be', () => {
+    const v = makeViewer();
+    assert.doesNotThrow(() => v.run({ action: 'camera', state: { mode: 'orthographic' } }));
+    assert.deepEqual(v.ctx.camTarget, [0, 0, 0]);
+    assert.equal(v.ctx.camDist, 50);
+    assert.doesNotThrow(() => v.run({ action: 'camera' }));
   });
 });
 

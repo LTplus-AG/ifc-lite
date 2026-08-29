@@ -453,8 +453,33 @@ fn fmt_host(r: &HostRow) -> String {
     )
 }
 
+/// Two gates share this one function, because splitting them would double the
+/// sweep: both need the alternate triangulator's pass over every host (the
+/// golden gate's `diverged()` reason depends on it too), so a second `#[test]`
+/// could not reuse this one's work without a shared cache across libtest's
+/// independent test processes/threads.
+///
+/// GATE 1, invariance: does watertightness depend on the triangulator's
+/// diagonal choice? Every void-hosting element is meshed twice, production
+/// ear-clipper vs the alternate one, and `open_boundary_edges` is compared per
+/// host into `run.non_invariant` (see "triangulation invariance sweep" below).
+///
+/// GATE 2, regression: does this run match the pinned per-host golden
+/// (`tests/manifests/watertightness_census.tsv`), measured with the
+/// PRODUCTION triangulator only? This is `diff.regressed` and the corpus
+/// ceilings below.
+///
+/// The two can fail independently, and a failure naming only "REGRESSED"
+/// is gate 2 — a golden mismatch on triangle count, collapse, or
+/// classification, not necessarily a triangulator disagreement. Only a
+/// per-host reason reading "newly depends on the triangulator's diagonal
+/// choice" is gate 1 surfacing through gate 2. Two PRs (#3404, #3406) failed
+/// gate 2 while `non-invariant` printed identically before and after
+/// (`140 vs 140` — the triangulators still agreed exactly) and were
+/// mis-described as triangulator-invariance failures for hours as a result
+/// (#3353); every assert below now says which gate fired.
 #[test]
-fn watertightness_is_invariant_to_the_triangulator() {
+fn watertightness_census_and_triangulator_invariance() {
     if cfg!(not(feature = "triangulation-alt")) {
         eprintln!(
             "SKIPPED: rerun with --features triangulation-alt to enable the \
@@ -847,8 +872,17 @@ fn watertightness_is_invariant_to_the_triangulator() {
     // this golden exists to fix.
     assert!(
         diff.regressed.is_empty(),
-        "{} host(s) REGRESSED against the golden — an existing mesh got worse:\n{}",
+        "{} host(s) regressed against the pinned golden (GATE 2, production \
+         triangulator only; this is NOT by itself a triangulator-invariance \
+         failure). Check each reason below: only one reading \"newly depends on \
+         the triangulator's diagonal choice\" is GATE 1 (invariance) surfacing \
+         here — compare it against \"non-invariant : {} vs {}\" printed above; \
+         if those two numbers are equal, the triangulators still agree exactly \
+         and every host below regressed for an unrelated reason (triangle count, \
+         collapse, or classification):\n{}",
         diff.regressed.len(),
+        run.non_invariant,
+        expected.non_invariant,
         fmt_deltas(&diff.regressed)
     );
 
@@ -933,10 +967,30 @@ fn watertightness_is_invariant_to_the_triangulator() {
         ("torn void hosts", run.torn, expected.torn),
         ("hosts with snap-collapsed triangles", run.collapsed, expected.collapsed),
         ("closed solids that are not watertight", run.torn_solid, expected.torn_solid),
-        ("hosts depending on the triangulator's diagonal choice", run.non_invariant, expected.non_invariant),
     ] {
-        assert!(got <= want, "{name} grew: {got} > {want} (golden-derived)");
+        assert!(
+            got <= want,
+            "{name} grew: {got} > {want} (GATE 2, golden-derived ceiling; unrelated \
+             to triangulator invariance)"
+        );
     }
+
+    // Kept separate from the loop above, even though it is the same shape,
+    // because it is the one ceiling that IS gate 1 (invariance) rather than
+    // gate 2 (regression) — see the function doc. In practice this can only
+    // fire alongside `diff.regressed` above, since `run.non_invariant` growing
+    // means some host newly diverged, and that host is already reported there
+    // with the "newly depends on the triangulator's diagonal choice" reason;
+    // this is the backstop for a classifier bug that moved the total without
+    // moving any one host's own diverged() reading.
+    assert!(
+        run.non_invariant <= expected.non_invariant,
+        "hosts depending on the triangulator's diagonal choice grew: {} > {} \
+         (GATE 1, triangulator invariance — this IS a genuine invariance \
+         regression, not merely a golden mismatch)",
+        run.non_invariant,
+        expected.non_invariant
+    );
 }
 
 /// A unit cube as 8 welded vertices and 12 consistently wound triangles.

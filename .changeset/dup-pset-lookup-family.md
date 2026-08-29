@@ -14,5 +14,6 @@ Affected symptoms, now fixed:
 - CSV/JSON export with a `Pset.Property` or `Qto.Quantity` column could emit an empty cell instead of the real value, for the same reason.
 - The viewer's advanced-filter query could likewise drop a matching entity from the result count/highlight.
 - Editing a quantity whose base value lived on a second same-named quantity set recorded the wrong "old value" and the wrong create-vs-update classification, which undo relied on.
+- Deleting a property or quantity set that the entity carried twice under the same name removed only the first one's members: the panel showed the whole set gone while the exported file still carried the second one's properties.
 
 All of these now check every same-named set, not just the first, before deciding a property or quantity is absent.

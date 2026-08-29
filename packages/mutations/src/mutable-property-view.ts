@@ -708,17 +708,19 @@ export class MutablePropertyView {
       }
     }
 
-    // A DELETE marker in `deletedPsets` only earns its keep when it is
-    // masking a pset that genuinely exists in the base data — same argument
-    // as `deleteProperty` one level down (see the comment above its own
-    // base-existence check): a purely in-session pset (added via
+    // A DELETE marker in `deletedPsets` only earns its keep when it is masking
+    // a pset that genuinely exists in the base data — same argument as
+    // `deleteProperty` one level down. A purely in-session pset (added via
     // `createPropertySet`, never in the base file) has nothing to mask, so
-    // dropping the pset above already nets to nothing and there is no
-    // deletion to report. Recording it as deleted here told the export
-    // review a pset would be removed when the net change was zero.
+    // dropping it above already nets to nothing: recording a deletion here
+    // told the export review a pset would go when the net change was zero.
+    // EVERY same-named pset: `deletedPsets` masks by name so the panel hides
+    // both, but the DELETE markers the exporter reads are per PROPERTY —
+    // covering only the first left `getForEntity` and `getPropertyValue`
+    // disagreeing on whether the second still exists.
     const existingPsets = this.getBasePropertiesForEntity(entityId);
-    const pset = existingPsets.find(p => p.name === psetName);
-    if (pset) {
+    for (const pset of existingPsets) {
+      if (pset.name !== psetName) continue;
       this.deletedPsets.add(`${entityId}:${psetName}`);
       for (const prop of pset.properties) {
         const key = propertyKey(entityId, psetName, prop.name);
@@ -995,12 +997,10 @@ export class MutablePropertyView {
       }
     }
 
-    // A DELETE marker only earns its keep against a qset that genuinely exists
-    // in the base file - same argument as `deletePropertySet`'s. A purely
-    // in-session qset has nothing to mask, and recording one would tell the
-    // export review a set is being removed when the net change is zero.
-    const baseQset = this.getBaseQuantitiesForEntity(entityId).find(q => q.name === qsetName);
-    if (baseQset) {
+    // Only masks a qset that genuinely exists in the base file, and covers
+    // EVERY same-named one - both arguments as in `deletePropertySet` above.
+    for (const baseQset of this.getBaseQuantitiesForEntity(entityId)) {
+      if (baseQset.name !== qsetName) continue;
       this.deletedQsets.add(`${entityId}:${qsetName}`);
       for (const quantity of baseQset.quantities) {
         this.setQuantityMutation(entityId, quantityKey(entityId, qsetName, quantity.name), { operation: 'DELETE' });

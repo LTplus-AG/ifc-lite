@@ -14,7 +14,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { IfcParser } from '@ifc-lite/parser';
+import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { createQueryAdapter } from './query-adapter.js';
 import type { StoreApi } from './types.js';
 
@@ -54,9 +54,16 @@ ENDSEC;
 END-ISO-10303-21;
 `;
 
-function makeStore(store: unknown): StoreApi {
+/**
+ * The adapter reads only `ifcDataStore` and `models` off the store, and the
+ * data store here is a REAL one (`parseColumnar` over the STEP above), not a
+ * stub -- so the property sets under test come from the actual extraction
+ * path. Only the surrounding `ViewerState` is shimmed, the same way
+ * `query-adapter.active-filter.test.ts` next door does it.
+ */
+function makeStore(dataStore: IfcDataStore): StoreApi {
   return {
-    getState: () => ({ ifcDataStore: store, models: new Map() }),
+    getState: () => ({ ifcDataStore: dataStore, models: new Map() }),
     subscribe: () => () => {},
   } as unknown as StoreApi;
 }

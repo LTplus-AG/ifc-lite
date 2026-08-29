@@ -9,12 +9,12 @@
 //! a ring vertex within `CONFORM_TOL` of it, on the (correct, when the two
 //! positions are bit-identical) assumption that the corner is already shared.
 //! When they are NOT bit-identical — this bucket's own union/weld/simplify
-//! landed the same physical corner on a float a few µm from the seam's
-//! canonical position — the filter still drops the candidate, so the two
-//! buckets keep disagreeing on that corner by that residual amount. That
-//! residual is exactly the T-junction the maintainer traced #3353's census
-//! regressions to: too small for the coarse open-edge grids to see, real
-//! enough that the exact triangulated topology does not close.
+//! landed the same physical corner a few µm from the seam's canonical
+//! position — the filter still drops the candidate, so the two buckets keep
+//! disagreeing on that corner by that residual: the T-junction the
+//! maintainer traced #3353's census regressions to, too small for the coarse
+//! open-edge grids to see yet real enough that the triangulated topology
+//! does not close.
 //!
 //! Inserting a SECOND, near-duplicate vertex to fix it is not an option — a
 //! sub-`CONFORM_TOL` pair is what the needle backstop in
@@ -28,41 +28,33 @@
 //! # Why a snap must also clear an f32-visibility floor
 //!
 //! `region.changed` (set whenever this function moves anything) controls far
-//! more than the moved vertex: [`super::emit_plans`] uses it to decide whether
-//! to reuse pass 1's cached CDT or re-run
-//! `triangulate_polygon_with_holes_refined` from scratch on the conformed
-//! rings. That re-run is not guaranteed to reproduce the cached triangle set
-//! bit-for-bit even when the ring is unchanged in every way that matters —
-//! ear/diagonal choice and Ruppert refinement are sensitive to orientation
-//! predicates near-degenerate configurations, and re-running it on regions
-//! phase B left alone is exactly what caused a +61% geometry regression on
-//! ISSUE_129 (see the caching comment in `emit.rs`). A run against
+//! more than the moved vertex: [`super::emit_plans`] uses it to decide
+//! whether to reuse pass 1's cached CDT or re-run
+//! `triangulate_polygon_with_holes_refined` from scratch. That re-run is not
+//! guaranteed to reproduce the cached triangle set bit-for-bit even when the
+//! ring is unchanged in every way that matters, and re-running it on regions
+//! phase B left alone is exactly what caused a +61% regression on ISSUE_129
+//! (see the caching comment in `emit.rs`). A run against
 //! `ara3d/ISSUE_171_IfcSurfaceCurveSweptAreaSolid.ifc` hosts #528 and #1290
-//! confirmed this directly: EVERY one of #528's 82 candidate snaps was a
-//! same-corner disagreement of 2.1e-9 units or less — double-precision noise
-//! from two independently-computed transform chains landing the same corner a
-//! few ULPs apart, not a real seam gap — yet applying even the single
-//! smallest of them still forced the re-triangulation and dropped a triangle
-//! through the needle backstop. Host #1290 showed the same noise band
-//! (≤1.7e-9) alongside genuine µm-scale corrections (≥2.8e-7); nothing fell
-//! between the two, a ~140x gap. Skipping the snap whenever the candidate is
-//! not distinguishable from the current position AT THE MESH'S OWN OUTPUT
-//! PRECISION (`Mesh.positions` is f32) closes exactly that noise band: such a
-//! move cannot change what a viewer ever sees, so refusing it costs nothing,
+//! confirmed this: EVERY one of #528's 82 candidate snaps was a same-corner
+//! disagreement of 2.1e-9 units or less — double-precision noise from two
+//! independently-computed transform chains, not a real seam gap — yet even
+//! the smallest still forced re-triangulation and dropped a triangle through
+//! the needle backstop. Host #1290 showed the same noise band (≤1.7e-9)
+//! alongside genuine µm-scale corrections (≥2.8e-7), a ~140x gap with
+//! nothing between. Skipping the snap whenever the candidate is not
+//! distinguishable from the current position AT THE MESH'S OWN OUTPUT
+//! PRECISION (`Mesh.positions` is f32) closes that noise band for free,
 //! while a µm-scale correction remains f32-visible and still fires. This is
-//! not a retune of `tri_is_needle` or `CONFORM_TOL` — both are untouched —
-//! and it does not touch the never-lose-triangles guard.
+//! not a retune of `tri_is_needle` or `CONFORM_TOL` — both are untouched.
 //!
-//! The f32-visibility check must be done in the frame that `Mesh::add_vertex`
-//! actually quantizes: the absolute 3D position `emit_region` reconstructs via
-//! `origin + u_axis * p.x + v_axis * p.y`, not the local 2D delta `v` and `q`
-//! are expressed in here. f32 ULP scales with magnitude — near zero it is far
-//! finer than `CONFORM_TOL`, but on a georeferenced host (`origin` at
-//! ~1e6-scale easting/northing) it can exceed `CONFORM_TOL` by orders of
-//! magnitude, so a local-delta comparison would almost never agree with what
-//! the mesh actually emits. `snap_near_duplicates` therefore takes the
-//! plane's own basis (`origin`, `u_axis`, `v_axis`) and lifts both `v` and `q`
-//! through it before casting to f32.
+//! The f32-visibility check happens in the frame `Mesh::add_vertex` actually
+//! quantizes — the absolute 3D position `emit_region` reconstructs via
+//! `origin + u_axis * p.x + v_axis * p.y`, not the local 2D delta `v`/`q` are
+//! expressed in here. f32 ULP scales with magnitude, and on a georeferenced
+//! host (`origin` at ~1e6-scale easting/northing) it can exceed
+//! `CONFORM_TOL` by orders of magnitude, so `snap_near_duplicates` lifts both
+//! `v` and `q` through the plane's own basis before casting to f32.
 
 use super::CONFORM_TOL;
 use nalgebra::{Point2, Point3, Vector3};
@@ -73,17 +65,19 @@ use nalgebra::{Point2, Point3, Vector3};
 /// onto that candidate's exact position. Returns whether anything moved.
 ///
 /// `origin`, `u_axis` and `v_axis` are the plane's own basis (the same fields
-/// `emit_region` in `emit.rs` uses to lift a 2D point to 3D). The
-/// f32-visibility check below reconstructs both `v` and `q` through that same
+/// `emit_region` in `emit.rs` uses to lift a 2D point to 3D): the
+/// f32-visibility check reconstructs `v` and `q` through that same
 /// `origin + u_axis * p.x + v_axis * p.y` mapping before casting to f32,
-/// because that reconstruction — not the local 2D delta — is what
-/// `Mesh::add_vertex` actually quantizes.
+/// because that — not the local 2D delta — is what `Mesh::add_vertex`
+/// actually quantizes.
 ///
-/// A snap onto ANY other ring vertex is refused, not only the two ring-adjacent
-/// ones: a non-adjacent vertex can sit within `CONFORM_TOL` of the same
-/// candidate once the ring has four or more vertices. Refusing only the
-/// adjacent case trades a zero-length edge for a duplicate ring vertex, which
-/// `conform_regions` records as failing the CDT and dropping the whole region.
+/// A snap onto any OTHER ring vertex within `CONFORM_TOL` of the candidate is
+/// refused, whether or not it is ring-adjacent and whether or not it is
+/// bit-identical to the candidate: a non-adjacent, non-equal vertex can sit
+/// within tolerance of the same candidate once the ring has four or more
+/// vertices, and moving onto the candidate would then leave that pair a
+/// sub-`CONFORM_TOL` edge apart. `conform_regions` records any such collapse
+/// as failing the CDT and drops the whole region.
 pub(super) fn snap_near_duplicates(
     ring: &mut [Point2<f64>],
     cands: &[Point2<f64>],
@@ -119,20 +113,16 @@ pub(super) fn snap_near_duplicates(
             }
         }
         let Some((_, q)) = best else { continue };
-        // Below the mesh's own f32 output precision: the move is invisible in
-        // anything this pipeline ever emits, so it cannot be the fix for a
-        // real T-junction. Applying it anyway would only pay the cost below
-        // (forcing emit_plans to discard the cached CDT and re-triangulate)
-        // for zero visible benefit — see the module doc for the #528/#1290
-        // measurement that this floor is calibrated against.
-        //
-        // The comparison happens in the SAME frame `Mesh::add_vertex` actually
-        // quantizes: the absolute 3D reconstruction, not the local 2D delta.
+        // Below the mesh's own f32 output precision the move is invisible in
+        // anything this pipeline ever emits, so applying it anyway would only
+        // pay the re-triangulation cost below for zero visible benefit — see
+        // the module doc for the #528/#1290 measurement this floor is
+        // calibrated against. Compared in the SAME frame `Mesh::add_vertex`
+        // quantizes (the absolute 3D reconstruction, not the local 2D delta):
         // f32 ULP scales with magnitude, and on a georeferenced host `origin`
-        // can be ~1e6 units while every candidate here is within `CONFORM_TOL`
-        // (1e-4) of `v` — comparing the local deltas as f32 would almost
-        // always read as "distinguishable" even though the absolute position
-        // this pipeline emits collides.
+        // can be ~1e6 units while every candidate is within `CONFORM_TOL`
+        // (1e-4) of `v`, so a local-delta comparison would almost always read
+        // as distinguishable even where the absolute position collides.
         let v_abs = lift(v);
         let q_abs = lift(q);
         if v_abs.x as f32 == q_abs.x as f32
@@ -141,10 +131,15 @@ pub(super) fn snap_near_duplicates(
         {
             continue;
         }
-        // Scans the whole ring, not just `prev`/`next`: adjacency in winding
-        // order is not what makes a collapse possible, proximity is.
-        if ring.iter().enumerate().any(|(j, &p)| j != i && p == q) {
-            continue; // would duplicate an existing ring vertex
+        // Scans the whole ring, not just `prev`/`next`, and blocks on any
+        // OTHER vertex within CONFORM_TOL of `q`, not only one bit-identical
+        // to it: a near-but-unequal vertex would still end up a
+        // sub-`CONFORM_TOL` edge from `v` after the move — the same
+        // needle-backstop hazard as an exact duplicate.
+        let near =
+            |p: Point2<f64>| (p.x - q.x).abs() <= CONFORM_TOL && (p.y - q.y).abs() <= CONFORM_TOL;
+        if ring.iter().enumerate().any(|(j, &p)| j != i && near(p)) {
+            continue; // would create a degenerate or near-duplicate ring edge
         }
         ring[i] = q;
         snapped = true;
@@ -270,10 +265,7 @@ mod tests {
         // never be seen and must not force emit_plans to re-triangulate.
         let v_x = 0.329_999_958f64;
         let q_x = v_x + 1.0e-12; // real double-precision gap, invisible in f32
-        assert_eq!(
-            v_x as f32, q_x as f32,
-            "fixture must be f32-indistinguishable"
-        );
+        assert_eq!(v_x as f32, q_x as f32, "must be f32-indistinguishable");
         let mut ring = vec![
             Point2::new(v_x, 0.0),
             Point2::new(2.0, 0.0),
@@ -322,36 +314,23 @@ mod tests {
         assert_eq!(ring[0], Point2::new(q_x, 0.0));
     }
 
-    /// Reproduces the bug this fix closes: a candidate whose LOCAL 2D delta
-    /// is well inside `CONFORM_TOL` (so it is nowhere near the local-frame
-    /// f32 floor) but whose ABSOLUTE reconstruction — `origin.x + local.x`,
-    /// the actual value `Mesh::add_vertex` quantizes — collides at f32 once
-    /// `origin` sits at a realistic georeferenced-host magnitude (~2.6e6
-    /// easting). The pre-fix, local-only comparison would have applied this
-    /// snap (invisible to any viewer, paying the cached-CDT invalidation for
-    /// nothing); the frame-correct comparison must refuse it.
+    /// Reproduces the bug this fix closes: `q_local`'s LOCAL delta is well
+    /// inside `CONFORM_TOL` (nowhere near the local-frame f32 floor), but its
+    /// ABSOLUTE reconstruction (`origin.x + local.x`, what `Mesh::add_vertex`
+    /// actually quantizes) collides at f32 once `origin` sits at a realistic
+    /// georeferenced-host magnitude (~2.6e6 easting); only the frame-correct
+    /// comparison refuses it.
     #[test]
     fn refuses_a_snap_invisible_at_f32_precision_only_once_lifted_to_the_georeferenced_frame() {
         let origin = Point3::new(2_600_000.0, 0.0, 0.0);
         let v_local = Point2::new(0.0, 0.0);
         let q_local = Point2::new(9.9e-5, 0.0); // within CONFORM_TOL (1e-4)
 
-        // Sanity: LOCAL f32 values are distinguishable — the pre-fix guard
-        // (`q.x as f32 == v.x as f32` on the raw local coordinates) would
-        // NOT have refused this snap.
-        assert_ne!(
-            q_local.x as f32, v_local.x as f32,
-            "fixture must be f32-distinguishable in the local frame"
-        );
-        // But the ABSOLUTE reconstruction this pipeline actually emits
-        // collides at f32: origin.x + q_local.x and origin.x + v_local.x
-        // round to the same f32 value at this magnitude.
-        let v_abs_x = (origin.x + v_local.x) as f32;
-        let q_abs_x = (origin.x + q_local.x) as f32;
-        assert_eq!(
-            v_abs_x, q_abs_x,
-            "fixture must be f32-indistinguishable once reconstructed to the absolute frame"
-        );
+        // LOCAL f32 values are distinguishable (the pre-fix, local-only
+        // guard would NOT have refused this), but the ABSOLUTE
+        // reconstruction collides at f32 at this magnitude.
+        assert_ne!(q_local.x as f32, v_local.x as f32);
+        assert_eq!((origin.x + v_local.x) as f32, (origin.x + q_local.x) as f32);
 
         let mut ring = vec![
             v_local,
@@ -359,42 +338,61 @@ mod tests {
             Point2::new(2.0, 2.0),
             Point2::new(0.0, 2.0),
         ];
-        let cands = [q_local];
-        assert!(
-            !snap_near_duplicates(&mut ring, &cands, origin, U_AXIS(), V_AXIS()),
-            "a snap invisible in the absolute (mesh-emitted) frame must be refused \
-             even though it is visible in the local 2D frame"
-        );
+        assert!(!snap_near_duplicates(
+            &mut ring,
+            &[q_local],
+            origin,
+            U_AXIS(),
+            V_AXIS()
+        ));
         assert_eq!(ring[0], v_local, "f32-invisible move must be refused");
     }
 
+    /// A pentagon: n = 5, so NOT every vertex is mutually adjacent (a quad
+    /// cannot tell the two guards apart). ring[3] sits within `CONFORM_TOL`
+    /// of ring[0] without being bit-identical, and its ring neighbours are
+    /// ring[2]/ring[4] — so an adjacent-only guard never looks at ring[0].
+    /// Run twice: once with the candidate exactly on ring[0] (the narrower,
+    /// equality case), once 9e-5 off it (inside `CONFORM_TOL`, not equal —
+    /// the case an equality-only guard `p == q` does not see as a collision
+    /// and would admit, leaving a 9e-5 ring edge; this is what separates the
+    /// tolerance rule from the equality rule the exact case alone cannot).
     #[test]
     fn refuses_a_snap_that_would_collapse_onto_a_non_adjacent_vertex() {
-        // A pentagon: n = 5, so NOT every vertex is mutually adjacent (a quad
-        // cannot tell the two guards apart). ring[3] sits within CONFORM_TOL of
-        // ring[0] without being bit-identical, and its ring neighbours are
-        // ring[2]/ring[4] — so an adjacent-only guard never looks at ring[0].
         let ring0 = Point2::new(0.0, 0.0);
         let ring1 = Point2::new(10.0, 0.0);
         let ring2 = Point2::new(10.0, 10.0);
         let ring3 = Point2::new(0.000_05, 0.000_03);
         let ring4 = Point2::new(0.0, 10.0);
-        let mut ring = vec![ring0, ring1, ring2, ring3, ring4];
-        let cands = [ring0];
+        let pentagon = || vec![ring0, ring1, ring2, ring3, ring4];
 
-        let moved = snap_near_duplicates(&mut ring, &cands, ORIGIN(), U_AXIS(), V_AXIS());
+        for cands in [[ring0], [Point2::new(9.0e-5, 0.0)]] {
+            let mut ring = pentagon();
+            let moved = snap_near_duplicates(&mut ring, &cands, ORIGIN(), U_AXIS(), V_AXIS());
+            assert!(!moved, "must not snap ring[3] near ring[0]: {cands:?}");
+            assert_eq!(ring[3], ring3, "non-adjacent vertex must not move");
+            assert_ne!(ring[3], ring[0], "ring must not end up bit-identical");
+        }
+    }
 
+    /// Two non-adjacent vertices both sit within `CONFORM_TOL` of the same
+    /// candidate; the reused candidate must not let both, or either, end up
+    /// closer than `CONFORM_TOL` to it.
+    #[test]
+    fn refuses_both_snaps_when_two_vertices_want_the_same_candidate() {
+        let q = Point2::new(0.0, 0.0);
+        let mut ring = vec![
+            Point2::new(9.0e-5, 0.0), // within CONFORM_TOL of q
+            Point2::new(5.0, 5.0),
+            Point2::new(-9.0e-5, 0.0), // also within CONFORM_TOL of q
+            Point2::new(5.0, -5.0),
+        ];
+        let before = ring.clone();
+        let moved = snap_near_duplicates(&mut ring, &[q], ORIGIN(), U_AXIS(), V_AXIS());
         assert!(
             !moved,
-            "snapping ring[3] onto ring[0]'s position would duplicate a non-adjacent vertex"
+            "neither vertex may take a candidate the other still sits near"
         );
-        assert_eq!(
-            ring[3], ring3,
-            "non-adjacent vertex must not be snapped onto ring[0]'s position"
-        );
-        assert_ne!(
-            ring[3], ring[0],
-            "ring must not end up with two bit-identical vertices"
-        );
+        assert_eq!(ring, before);
     }
 }

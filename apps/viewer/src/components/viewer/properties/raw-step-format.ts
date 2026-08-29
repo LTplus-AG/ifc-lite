@@ -21,6 +21,7 @@
  *   (a,b,c)            → JS array, recursively
  */
 
+import { decodeStepStringLiteral } from '@ifc-lite/encoding';
 import type { IfcAttributeValue } from '@ifc-lite/mutations';
 import { asSourceBytes, type IfcSourceBytes } from '@ifc-lite/parser';
 
@@ -181,9 +182,16 @@ export function parseRawStepInput(input: string): { value: IfcAttributeValue } |
   }
 
   // Quoted string: strip the wrapping quotes — `serializeStepValue`
-  // re-adds them on export.
+  // re-adds them on export. The inner text goes through the repo's one
+  // STEP literal decoder rather than a local `''` -> `'` replace: it
+  // undoes BOTH lexical doublings (`''` and `\\`) plus the backslash
+  // directives, so it is the exact inverse of the `escapeStepString`
+  // order `serializeStepToken` mirrors above. A hand-rolled quote-only
+  // inverse silently doubled every backslash again on each save
+  // (1 -> 2 -> 4 per open-and-Enter round) and read an on-disk
+  // `\X2\00FC\X0\` back as literal escape text instead of `ü`.
   if (trimmed.startsWith("'") && trimmed.endsWith("'") && trimmed.length >= 2) {
-    return { value: trimmed.slice(1, -1).replace(/''/g, "'") };
+    return { value: decodeStepStringLiteral(trimmed.slice(1, -1)) };
   }
 
   // Lists / typed values: refuse for now. The pen icon is hidden for

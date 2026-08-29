@@ -37,7 +37,12 @@ interface BridgeContext {
    * loaded (does not replace existing models). Returns the real, freshly
    * minted model id so the host can later target it with REMOVE_MODEL.
    */
-  addModelFromUrl: (url: string) => Promise<{ modelId: string; entities: number; triangles: number; vertices: number }>;
+  addModelFromUrl: (
+    url: string,
+    name?: string,
+  ) => Promise<{ modelId: string; entities: number; triangles: number; vertices: number }>;
+  /** Callback to set (or clear, with undefined) the embed's custom background colour. */
+  setBackgroundColor: (bg: string | undefined) => void;
 }
 
 /** Optional security knobs for the bridge (all opt-in; defaults preserve the public-widget behaviour). */
@@ -277,7 +282,7 @@ async function handleCommand(type: InboundCommandType, data: unknown, requestId?
       // Federation-aware add: does NOT replace existing models (unlike
       // LOAD_MODEL, which is destructive by design). The response carries the
       // real minted model id so REMOVE_MODEL can target it later.
-      const result = await ctx.addModelFromUrl(payload.url);
+      const result = await ctx.addModelFromUrl(payload.url, payload.name);
       if (requestId) emitToParent(createResponse(requestId, result));
       return;
     }
@@ -438,6 +443,11 @@ async function handleCommand(type: InboundCommandType, data: unknown, requestId?
     case 'SET_THEME': {
       const payload = data as InboundPayloads['SET_THEME'];
       state.setTheme(payload.theme);
+      // Only touch the background when a value was actually sent -- a later
+      // SET_THEME that only changes light/dark must not clear a previously
+      // set custom background (same "only touch what's provided" convention
+      // as SET_SECTION's optional fields above).
+      if (payload.bg !== undefined) ctx.setBackgroundColor(payload.bg);
       if (requestId) emitToParent(createResponse(requestId));
       return;
     }

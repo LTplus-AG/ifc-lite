@@ -158,6 +158,10 @@ impl ColumnarEntityIndex {
     /// its last-in-file-order-wins duplicate handling — without ever
     /// materializing the intermediate `FxHashMap`. Used by the wasm lazy
     /// fallback when `setEntityIndex` was never called.
+    ///
+    /// Reports the scanner's #3395 refusals for the same reason
+    /// [`crate::build_entity_index`] does: this is a whole-file index build, so
+    /// a refused record is a record the model will not contain.
     pub fn from_scan<T>(content: &T) -> Self
     where
         T: AsRef<[u8]> + ?Sized,
@@ -174,6 +178,7 @@ impl ColumnarEntityIndex {
             starts.push(start as u32);
             lengths.push((end - start) as u32);
         }
+        crate::parser::report_oversized_ids(scanner.skipped_oversized_ids());
         Self::from_unsorted(ids, starts, lengths)
     }
 

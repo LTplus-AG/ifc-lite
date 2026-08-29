@@ -11,7 +11,8 @@
  * the question it answers is a different one from "which georeferencing
  * entities does this export write", it has a second caller in
  * `step-property-sets.ts` (property units reach `findLengthUnitReference`
- * through `findUnitId`), and the module-size budget is not a thing to raise.
+ * through `findUnitId`), and raising the module-size budget instead would have
+ * wanted a per-file justification in the PR; a split does not.
  *
  * THE RULE THIS MODULE EXISTS TO KEEP: a unit name is compared WHOLE. The
  * defect it was extracted for was a substring test — `normalized.includes('METRE')`

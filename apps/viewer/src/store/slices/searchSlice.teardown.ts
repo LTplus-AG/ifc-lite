@@ -14,7 +14,7 @@
  * own — `owns` is the list of everything search is willing to throw away.
  */
 
-import { defineSliceTeardown } from '../teardown.js';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 import { emptyFilterState } from './searchSlice.js';
 
 /**
@@ -50,9 +50,8 @@ export const searchTeardown = defineSliceTeardown(
     'searchFilter',
     'searchFilterSchema',
   ],
-  (scope) => {
-    if (scope.kind !== 'session-reset') return {};
-    return {
+  {
+    'session-reset': () => ({
       // The inline field: query, popover and the frozen vim-cycle
       // snapshot. `resetSearch()` clears exactly these four for Esc; it
       // stays a separate, narrower action (see `searchSlice.ts`).
@@ -78,6 +77,8 @@ export const searchTeardown = defineSliceTeardown(
       searchFilter: emptyFilterState(),
       // Per-model chip-dropdown schema cache, keyed by modelId.
       searchFilterSchema: new Map(),
-    };
+    }),
+    'model-removed': notApplicable,
+    'all-models-cleared': notApplicable,
   },
 );

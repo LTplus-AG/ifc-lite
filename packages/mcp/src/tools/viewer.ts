@@ -28,11 +28,11 @@ import type { ToolContext } from '../context.js';
 import type { ViewerManager } from '../viewer-manager.js';
 import { okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
+import { expandAssemblyRefs } from './viewer-assembly-expansion.js';
 
 function requireViewer(ctx: ToolContext): ViewerManager {
-  const viewer = ctx.viewer;
-  if (!viewer) throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: 'No viewer manager attached.' });
-  return viewer;
+  if (!ctx.viewer) throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: 'No viewer manager attached.' });
+  return ctx.viewer;
 }
 
 function refsForGlobalIds(m: ReturnType<typeof resolveModel>, gids: string[]): EntityRef[] {
@@ -159,6 +159,22 @@ const viewerStatus: Tool = {
 
 // ── visibility / paint ────────────────────────────────────────────────────
 
+/**
+ * The selector properties every entity-targeting viewer tool accepts, matching
+ * exactly what `resolveTargetRefs` reads. Shared rather than repeated: the
+ * singular `global_id`/`express_id` were handled by `resolveTargetRefs` but
+ * missing from three of the five schemas, and with `additionalProperties:
+ * false` that made an advertised selector unreachable.
+ */
+const TARGET_SELECTOR_PROPS = {
+  model_id: { type: 'string' },
+  type: { type: 'string' },
+  global_ids: { type: 'array', items: { type: 'string' } },
+  express_ids: { type: 'array', items: { type: 'integer' } },
+  global_id: { type: 'string' },
+  express_id: { type: 'integer' },
+} as const;
+
 const viewerColorize: Tool = {
   name: 'viewer_colorize',
   description: 'Paint a set of entities with a color. Pass `type`, `global_ids`, or `express_ids` to pick the set; pass `color` as [r,g,b]/[r,g,b,a] (0–1), a #hex, or a named color.',
@@ -166,12 +182,7 @@ const viewerColorize: Tool = {
   inputSchema: {
     type: 'object',
     properties: {
-      model_id: { type: 'string' },
-      type: { type: 'string' },
-      global_ids: { type: 'array', items: { type: 'string' } },
-      express_ids: { type: 'array', items: { type: 'integer' } },
-      global_id: { type: 'string' },
-      express_id: { type: 'integer' },
+      ...TARGET_SELECTOR_PROPS,
       color: { description: '[r,g,b], [r,g,b,a], hex, or named color.' },
       reset_others: { type: 'boolean', default: false, description: 'When true, reset all other element colors first.' },
     },
@@ -182,7 +193,7 @@ const viewerColorize: Tool = {
     const viewer = requireViewer(ctx);
     if (!viewer.isOpen()) throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: 'Viewer is not open. Call viewer_open first.' });
     const m = resolveModel(ctx, input.model_id as string | undefined);
-    const refs = resolveTargetRefs(m, input);
+    const refs = expandAssemblyRefs(m, resolveTargetRefs(m, input));
     if (refs.length === 0) throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'No entities matched the selector.' });
     const color = parseColor(input.color);
     if (input.reset_others) m.bim.viewer.resetColors();
@@ -198,10 +209,7 @@ const viewerIsolate: Tool = {
   inputSchema: {
     type: 'object',
     properties: {
-      model_id: { type: 'string' },
-      type: { type: 'string' },
-      global_ids: { type: 'array', items: { type: 'string' } },
-      express_ids: { type: 'array', items: { type: 'integer' } },
+      ...TARGET_SELECTOR_PROPS,
     },
     additionalProperties: false,
   },
@@ -209,7 +217,7 @@ const viewerIsolate: Tool = {
     const viewer = requireViewer(ctx);
     if (!viewer.isOpen()) throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: 'Viewer is not open.' });
     const m = resolveModel(ctx, input.model_id as string | undefined);
-    const refs = resolveTargetRefs(m, input);
+    const refs = expandAssemblyRefs(m, resolveTargetRefs(m, input));
     if (refs.length === 0) throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'No entities matched.' });
     m.bim.viewer.isolate(refs);
     return okResult(`Isolated ${refs.length} entit${refs.length === 1 ? 'y' : 'ies'}.`, { count: refs.length });
@@ -223,10 +231,7 @@ const viewerHide: Tool = {
   inputSchema: {
     type: 'object',
     properties: {
-      model_id: { type: 'string' },
-      type: { type: 'string' },
-      global_ids: { type: 'array', items: { type: 'string' } },
-      express_ids: { type: 'array', items: { type: 'integer' } },
+      ...TARGET_SELECTOR_PROPS,
     },
     additionalProperties: false,
   },
@@ -234,7 +239,7 @@ const viewerHide: Tool = {
     const viewer = requireViewer(ctx);
     if (!viewer.isOpen()) throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: 'Viewer is not open.' });
     const m = resolveModel(ctx, input.model_id as string | undefined);
-    const refs = resolveTargetRefs(m, input);
+    const refs = expandAssemblyRefs(m, resolveTargetRefs(m, input));
     m.bim.viewer.hide(refs);
     return okResult(`Hid ${refs.length} entit${refs.length === 1 ? 'y' : 'ies'}.`, { count: refs.length });
   },
@@ -247,10 +252,7 @@ const viewerShow: Tool = {
   inputSchema: {
     type: 'object',
     properties: {
-      model_id: { type: 'string' },
-      type: { type: 'string' },
-      global_ids: { type: 'array', items: { type: 'string' } },
-      express_ids: { type: 'array', items: { type: 'integer' } },
+      ...TARGET_SELECTOR_PROPS,
     },
     additionalProperties: false,
   },
@@ -258,7 +260,7 @@ const viewerShow: Tool = {
     const viewer = requireViewer(ctx);
     if (!viewer.isOpen()) throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: 'Viewer is not open.' });
     const m = resolveModel(ctx, input.model_id as string | undefined);
-    const refs = resolveTargetRefs(m, input);
+    const refs = expandAssemblyRefs(m, resolveTargetRefs(m, input));
     m.bim.viewer.show(refs);
     return okResult(`Showed ${refs.length} entit${refs.length === 1 ? 'y' : 'ies'}.`, { count: refs.length });
   },
@@ -286,12 +288,7 @@ const viewerFlyTo: Tool = {
   inputSchema: {
     type: 'object',
     properties: {
-      model_id: { type: 'string' },
-      type: { type: 'string' },
-      global_ids: { type: 'array', items: { type: 'string' } },
-      express_ids: { type: 'array', items: { type: 'integer' } },
-      global_id: { type: 'string' },
-      express_id: { type: 'integer' },
+      ...TARGET_SELECTOR_PROPS,
     },
     additionalProperties: false,
   },

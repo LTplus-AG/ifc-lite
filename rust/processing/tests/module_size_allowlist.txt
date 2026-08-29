@@ -207,7 +207,13 @@
      479 rust/geometry/src/router/rtc_offset.rs
 # +1: reveal-quads comment expanded to 2 lines (dead-symbol reference fix, no code change).
      619 rust/geometry/src/router/voids/aabb_clip.rs
-     871 rust/geometry/src/router/voids/geom.rs
+# +36: `parity_along` extracted so the single-ray `point_inside_mesh` and the
+# new two-ray `point_inside_mesh_agreed` share ONE loop body and ONE ray
+# direction constant. #3219's exit-cap veto needs to tell "inside" from "the
+# surface here is not closed to a ray", which a single ray cannot answer, and
+# the alternative was a second copy of the crossing loop that nothing kept in
+# step with the first; 871 -> 907.
+     907 rust/geometry/src/router/voids/geom.rs
 # +10: extract min_opening_volume(quality) tier->floor helper shared by the batch
 # admission gate and the sequential CSG path so they can't diverge on the
 # High/Highest small-opening floor (B11 regression, issue #976).
@@ -287,7 +293,13 @@
 # (is_finite guards) so an inf depth can no longer slip past the `> 0.0` / `<= 0.0`
 # gates into the fast path.
      858 rust/geometry/src/router/voids/probe.rs
-    1002 rust/geometry/src/router/voids/synthesis.rs
+# -47: the exit-cap decision (which cutter caps may be pushed through the host)
+# moved to synthesis/exit_cap.rs, a module under the 400 budget, rather than
+# sitting inline here; 1002 -> 955. The move is NOT verbatim: the occupancy veto
+# that decides jamb from exit (#3219) is new there. An earlier revision added a
+# facing vote and a footprint restriction; both were measured to decline pushes
+# the pre-fix code made, and both were deleted.
+     955 rust/geometry/src/router/voids/synthesis.rs
     1472 rust/geometry/src/space_dcel/mod.rs
      525 rust/geometry/src/transform.rs
      782 rust/geometry/src/triangulation.rs

@@ -11,6 +11,7 @@
 
 import type { EntityRef } from './types.js';
 import { decodeIfcString } from '@ifc-lite/encoding';
+import { isIndexableExpressId } from './express-id.js';
 
 /**
  * Find the byte range of a quoted string at a specific attribute position in STEP entity bytes.
@@ -113,12 +114,12 @@ export function readRefId(buffer: Uint8Array, pos: number, end: number): [number
             pos++;
         }
         // `num * 10 + digit` overflows to Infinity only past ~309 digits, but
-        // it collides long before that: doubles lose integer precision past
-        // 2^53 (~16 digits), so `#100000000000000001` and
-        // `#100000000000000002` accumulate to the SAME value and two distinct
-        // records collide on one key — one silently serves the other's data.
-        // `Number.isSafeInteger` catches that collision range as well as
-        // Infinity/NaN/non-integers; `Number.isFinite` alone missed it.
+        // it stops meaning anything long before that: doubles lose integer
+        // precision past 2^53 (~16 digits), so `#100000000000000001` and
+        // `#100000000000000002` accumulate to the SAME value, and the 32-bit
+        // express-id columns below truncate anything above 2^32 so that
+        // `#4294967297` lands on `#1`. `isIndexableExpressId` is the single
+        // home for that bound (express-id.ts, #3395).
         // Guarding at each accumulator (here, and both `StepTokenizer` scans,
         // and the inline scan worker) rather than only when the entity is
         // extracted: this is the byte-level path that builds the
@@ -131,7 +132,7 @@ export function readRefId(buffer: Uint8Array, pos: number, end: number): [number
         // every caller already tests it (`if (relating < 0) return null`,
         // `if (id >= 0) ids.push(id)`). `pos` is still returned advanced past
         // the digits so scanning continues from the right place.
-        if (!Number.isSafeInteger(num)) return [-1, pos];
+        if (!isIndexableExpressId(num)) return [-1, pos];
         return [num, pos];
     }
     return [-1, pos];

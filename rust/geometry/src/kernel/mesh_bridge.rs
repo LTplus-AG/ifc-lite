@@ -7,7 +7,8 @@
 //! `intersection` here are what the `ClippingProcessor` seam calls.
 
 use super::arrangement::{
-    boolean, difference_all, difference_all_lenient, union_all, BoolOp, Tri,
+    boolean, boolean_with_conformity, difference_all, difference_all_lenient, union_all, BoolOp,
+    Tri,
 };
 use super::signed_volume::signed_volume6;
 use crate::mesh::Mesh;
@@ -395,28 +396,27 @@ pub fn subtract_many(host: &Mesh, cutters: &[&Mesh]) -> Option<Mesh> {
 
 /// `a ∪ b` as a `Mesh`.
 pub fn union(a: &Mesh, b: &Mesh) -> Mesh {
-    // Enter the #1109 escalation budget exactly like `subtract` does: begin a
-    // fresh PER-BOOLEAN count (this is a distinct operation) while the per-ELEMENT
-    // accumulator is left intact — `begin()` resets only the per-op counter, so a
-    // union inside an over-budget element STILL trips (it is not an element-cap
-    // escape hatch; see `budget::begin` / the `per_element_budget_accumulates_
-    // across_booleans` test). Without this, a union scheduled on a worker thread
-    // after a subtract tripped starts already-tripped and `arrange` bails at its
-    // first pair, silently returning a partial/empty arrangement.
+    union_with_conformity(a, b).0
+}
+
+/// Like [`union`], but also reports arrangement conformity (`unrecovered == 0`).
+/// Diagnostics only (#3353); `union()` computes and discards this same signal.
+pub fn union_with_conformity(a: &Mesh, b: &Mesh) -> (Mesh, bool) {
+    // #1109 budget, as `subtract` does: fresh PER-BOOLEAN count, per-ELEMENT accumulator
+    // intact — `begin()` resets only the per-op counter, so a union inside an over-budget
+    // element STILL trips (see `budget::begin`). Without it a union after a tripped
+    // subtract starts tripped and `arrange` bails at its first pair.
     super::budget::begin();
     let a = orient_outward(mesh_to_tris(a));
     let b = orient_outward(mesh_to_tris(b));
-    let out = boolean(&a, &b, BoolOp::Union);
-    // On a budget trip `arrange` bailed mid-way and `out` is a PARTIAL arrangement.
-    // Discard it and return empty — the graceful-fallback signal the callers already
-    // handle (`csg::union_mesh` degrades to a plain merge; the #960 roof
-    // `build_cutter_union` defers to the sequential path) — never a poisoned mesh.
-    // Deterministic: the trip point is a pure function of the snapped operands, so
-    // native and wasm degrade the SAME union identically (parity).
+    let (out, conforming) = boolean_with_conformity(&a, &b, BoolOp::Union);
+    // On a trip `out` is PARTIAL: discard it, return empty — the graceful fallback callers
+    // handle (`csg::union_mesh` merges plainly; #960 goes sequential), never a poisoned
+    // mesh. The trip point is a pure function of the snapped operands, so wasm agrees.
     if super::budget::tripped() {
-        return Mesh::new();
+        return (Mesh::new(), conforming);
     }
-    tris_to_mesh(&out)
+    (tris_to_mesh(&out), conforming)
 }
 
 /// `∪ meshes` as one watertight `Mesh` — the N-ary union, computed in a single

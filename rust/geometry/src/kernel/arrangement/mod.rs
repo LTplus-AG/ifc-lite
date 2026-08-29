@@ -36,8 +36,8 @@ mod ray_parity;
 mod tests;
 
 pub use self::boolean::{
-    boolean, boolean_manifest, boolean_topology_hash, box_mesh, cube_mesh, difference_all,
-    difference_all_lenient, union_all,
+    boolean, boolean_manifest, boolean_topology_hash, boolean_with_conformity, box_mesh, cube_mesh,
+    difference_all, difference_all_lenient, union_all,
 };
 pub type Tri = [[f64; 3]; 3];
 

@@ -14,21 +14,18 @@
  * `createAnnotationsSlice`), which `store/index.ts` restated a second time.
  */
 
-import { defineSliceTeardown } from '../teardown.js';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
-export const annotationsTeardown = defineSliceTeardown(
-  'annotationsSlice',
-  ['draft', 'selectedAnnotationId'],
-  (scope) =>
-    // Pin authoring is not per-model: removing one model from a federation,
-    // or clearing them all, leaves an open draft and its popover alone.
-    scope.kind !== 'session-reset'
-      ? {}
-      : {
-          // Drop draft + selection so a new file doesn't inherit the previous
-          // file's pin authoring state. Persisted pins themselves stay in
-          // localStorage (cross-file workspace).
-          draft: null,
-          selectedAnnotationId: null,
-        },
-);
+export const annotationsTeardown = defineSliceTeardown('annotationsSlice', ['draft', 'selectedAnnotationId'], {
+  'session-reset': () => ({
+    // Drop draft + selection so a new file doesn't inherit the previous
+    // file's pin authoring state. Persisted pins themselves stay in
+    // localStorage (cross-file workspace).
+    draft: null,
+    selectedAnnotationId: null,
+  }),
+  // Pin authoring is not per-model: removing one model from a federation, or
+  // clearing them all, leaves an open draft and its popover alone.
+  'model-removed': notApplicable,
+  'all-models-cleared': notApplicable,
+});

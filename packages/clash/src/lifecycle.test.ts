@@ -270,6 +270,67 @@ describe('compareClashRuns × the real engine (engine-ts/orchestrator.ts)', () =
     expect(ids(diff.resolved)).toEqual([]);
   });
 
+  /**
+   * The case the positional leftover pairing gets wrong if it is not told to
+   * look at `model`. Both runs load the SAME three elements under the SAME
+   * model ids — no reload happened — and the two clashes share one review key,
+   * so the counts are equal (1 vs 1) and the ids do not match. Pairing on
+   * count alone calls the new clash `persistent` and drops the fixed one out
+   * of `resolved` entirely: the coordinator is told a clash they just fixed is
+   * still open and never hears about the one that appeared.
+   */
+  it('a same-session layer swap under one review key is added + resolved, not persistent', async () => {
+    const previous = await runClash(
+      [wallA(), ductA(), ductB()],
+      [rule],
+      {},
+      new FixedKernel([record(0, 1)]),
+    );
+    const next = await runClash(
+      [wallA(), ductA(), ductB()],
+      [rule],
+      {},
+      new FixedKernel([record(0, 2)]),
+    );
+
+    expect(ids(previous.clashes)).toEqual([CLASH_A]);
+    expect(ids(next.clashes)).toEqual([CLASH_B]);
+
+    const diff = compareClashRuns(previous, next);
+
+    expect(ids(diff.added)).toEqual([CLASH_B]);
+    expect(ids(diff.persistent)).toEqual([]);
+    expect(ids(diff.resolved)).toEqual([CLASH_A]);
+  });
+
+  /**
+   * The other direction of the same model test: layer-b IS re-loaded (new
+   * `model` id) while layer-a is not, so one clash id-matches and the other
+   * does not. The leftovers must still pair into `persistent` — a fix that
+   * sent every non-id-matching leftover straight to `added` + `resolved` would
+   * re-open the very churn this module exists to remove.
+   */
+  it('a leftover whose model was re-minted still pairs into persistent', async () => {
+    const previous = await runClash(
+      [wallA(), ductA(), ductB()],
+      [rule],
+      {},
+      new FixedKernel([record(0, 1), record(0, 2)]),
+    );
+    const next = await runClash(
+      [wallA(), ductA(), element('/Duct', 'IfcDuct', 'layer-b2')],
+      [rule],
+      {},
+      new FixedKernel([record(0, 1), record(0, 2)]),
+    );
+
+    const diff = compareClashRuns(previous, next);
+
+    expect(ids(diff.added)).toEqual([]);
+    expect(ids(diff.persistent)).toEqual([CLASH_A, 'r layer-a /Wall layer-b2 /Duct']);
+    expect(ids(diff.resolved)).toEqual([]);
+  });
+
   it('one of two clashes under a shared review key going away is resolved, not lost', async () => {
     const previous = await runClash(
       [wallA(), ductA(), ductB()],

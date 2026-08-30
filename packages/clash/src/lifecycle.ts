@@ -86,25 +86,68 @@ function groupByReviewKey(run: ClashResult): Map<string, Clash[]> {
   return groups;
 }
 
+/** Every `model` id that appears on any clash in a run. `toRef`
+ *  (`engine-ts/orchestrator.ts`) carries `model` onto both of a `Clash`'s
+ *  element refs, so this is readable from a `ClashResult` alone. A model that
+ *  produced no clash at all in the run is invisible here — see `pairGroup`. */
+function modelsInRun(run: ClashResult): Set<string> {
+  const models = new Set<string>();
+  for (const clash of run.clashes) {
+    models.add(clash.a.model);
+    models.add(clash.b.model);
+  }
+  return models;
+}
+
+/** The `model` ids each run clashed in, used to tell a re-load from a swap. */
+interface RunModels {
+  previous: Set<string>;
+  next: Set<string>;
+}
+
+/** True when both of a clash's elements sit in models the other run also
+ *  clashed in, i.e. that clash's `clash.id` was still mintable there. */
+function bothModelsIn(clash: Clash, models: Set<string>): boolean {
+  return models.has(clash.a.model) && models.has(clash.b.model);
+}
+
+/** Split into [matching, rest], preserving run order in both. */
+function partition(clashes: Clash[], keep: (clash: Clash) => boolean): [Clash[], Clash[]] {
+  const yes: Clash[] = [];
+  const no: Clash[] = [];
+  for (const clash of clashes) (keep(clash) ? yes : no).push(clash);
+  return [yes, no];
+}
+
 /**
  * Pair one review key's previous-run occurrences against its next-run ones.
  *
- * Equal `clash.id`s are paired first. When `model` is stable across the two
- * runs (a federated session that did not reload), that pairs each surviving
- * clash with ITSELF, so the entry that falls out into `added` / `resolved` is
- * the one that actually changed rather than an arbitrary group member.
+ * Equal `clash.id`s are paired first. `clashId()` folds both elements' `model`
+ * into the id, so an id match is the same clash between the same two loaded
+ * models — which covers the whole of the "federated session that did not
+ * reload" case, pairing every surviving clash with ITSELF.
  *
- * Whatever is left is paired in run order. That is the cross-load case the
- * review key exists for: `model` was re-minted, so no id matches, and the same
- * real-world clash still lands in `persistent`. With unequal counts and no id
- * to go on there is nothing in the data that says which leftover is which, so
- * the pairing is arbitrary — but the surplus, which is the part a reviewer
- * acts on, is still reported: extra next-run occurrences are `added`, extra
- * previous-run ones are `resolved`.
+ * A leftover is the same real-world clash seen again only if `model` was
+ * re-minted between the runs, and the data says whether it was: a previous-run
+ * leftover whose two models BOTH still clash somewhere in the next run was not
+ * re-minted, so had that clash survived it would have produced the same id and
+ * paired above — it is genuinely `resolved`. The mirror of that is genuinely
+ * `added`. Only leftovers whose models the other run no longer shows — the
+ * re-load this whole module exists to diff — are paired with each other, in
+ * run order, and the surplus on either side is `added` / `resolved`. Without
+ * that model test, two runs of one federated session in which the wall stops
+ * hitting `/Duct` in layer-a and starts hitting `/Duct` in layer-b would pair
+ * on count alone: the fixed clash would vanish from `resolved` and the new one
+ * would be reported as pre-existing.
+ *
+ * The model ids are read off the two runs' clashes, so a model that produced
+ * no clash at all in a run is invisible to the test and its clashes count as
+ * re-minted. That errs towards pairing, i.e. towards `persistent`: the
+ * churn-free reading, not a claim that something was fixed.
  *
  * `persistent` always receives the NEXT run's Clash (current geometry).
  */
-function pairGroup(previous: Clash[], next: Clash[], out: Buckets): void {
+function pairGroup(previous: Clash[], next: Clash[], models: RunModels, out: Buckets): void {
   const prevIndicesById = new Map<string, number[]>();
   previous.forEach((clash, i) => {
     const slot = prevIndicesById.get(clash.id);
@@ -125,10 +168,21 @@ function pairGroup(previous: Clash[], next: Clash[], out: Buckets): void {
   }
 
   const unmatchedPrev = previous.filter((_, i) => !matchedPrev[i]);
-  const paired = Math.min(unmatchedPrev.length, unmatchedNext.length);
-  out.persistent.push(...unmatchedNext.slice(0, paired));
-  out.added.push(...unmatchedNext.slice(paired));
-  out.resolved.push(...unmatchedPrev.slice(paired));
+  const [reloadedPrev, stillLivePrev] = partition(
+    unmatchedPrev,
+    (clash) => !bothModelsIn(clash, models.next),
+  );
+  const [reloadedNext, stillLiveNext] = partition(
+    unmatchedNext,
+    (clash) => !bothModelsIn(clash, models.previous),
+  );
+  out.resolved.push(...stillLivePrev);
+  out.added.push(...stillLiveNext);
+
+  const paired = Math.min(reloadedPrev.length, reloadedNext.length);
+  out.persistent.push(...reloadedNext.slice(0, paired));
+  out.added.push(...reloadedNext.slice(paired));
+  out.resolved.push(...reloadedPrev.slice(paired));
 }
 
 /**
@@ -143,10 +197,12 @@ export function compareClashRuns(previous: ClashResult, next: ClashResult): Clas
   const prevGroups = groupByReviewKey(previous);
   const nextGroups = groupByReviewKey(next);
 
+  const models: RunModels = { previous: modelsInRun(previous), next: modelsInRun(next) };
+
   const buckets: Buckets = { added: [], persistent: [], resolved: [] };
 
   for (const [key, nextGroup] of nextGroups) {
-    pairGroup(prevGroups.get(key) ?? [], nextGroup, buckets);
+    pairGroup(prevGroups.get(key) ?? [], nextGroup, models, buckets);
   }
   for (const [key, prevGroup] of prevGroups) {
     if (!nextGroups.has(key)) buckets.resolved.push(...prevGroup);

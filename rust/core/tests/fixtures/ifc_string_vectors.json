@@ -95,8 +95,49 @@
     {
       "name": "s_escape_non_bmp_parity",
       "_comment": "Malformed: \\S\\ is spec-defined for ASCII only. Pins that both decoders read the whole code point (U+1F600) plus 128 (=U+1F680) and advance past the surrogate pair, rather than diverging on a trailing surrogate.",
-      "encoded": "\\S\\\uD83D\uDE00",
-      "decoded": "\uD83D\uDE80"
+      "encoded": "\\S\\\ud83d\ude00",
+      "decoded": "\ud83d\ude80"
+    },
+    {
+      "name": "s_escape_default_page_explicit_A",
+      "_comment": "ISO 10303-21 6.4.3: \\PA\\ selects ISO 8859-1, the default \\S\\ already used. An explicit \\PA\\ must be a no-op, matching plain \\S\\! (0x21+128=0xA1, identity in Latin-1).",
+      "encoded": "\\PA\\\\S\\!",
+      "decoded": "\u00a1"
+    },
+    {
+      "name": "s_escape_codepage_2_central_european",
+      "_comment": "\\PB\\ selects ISO 8859-2. 0x21+128=0xA1, which is U+0104 (LATIN CAPITAL LETTER A WITH OGONEK) in ISO 8859-2 but U+00A1 (inverted exclamation) in the default page -- pins that a decoder hardcoding the default page for every \\S\\ is wrong.",
+      "encoded": "\\PB\\\\S\\!",
+      "decoded": "\u0104"
+    },
+    {
+      "name": "s_escape_codepage_5_cyrillic",
+      "_comment": "The exact example from ISO 10303-21 code-page selection: \\PE\\ selects ISO 8859-5 (Cyrillic). 0x50('P')+128=0xD0, which is U+0430 (CYRILLIC SMALL LETTER A) in ISO 8859-5, not U+00D0 (LATIN CAPITAL LETTER ETH) the default page would give.",
+      "encoded": "\\PE\\\\S\\P",
+      "decoded": "\u0430"
+    },
+    {
+      "name": "s_escape_codepage_5_persists_across_escapes",
+      "_comment": "The selected code page persists for every subsequent \\S\\ in the string, not just the next one.",
+      "encoded": "\\PE\\\\S\\P\\S\\Q",
+      "decoded": "\u0430\u0431"
+    },
+    {
+      "name": "s_escape_codepage_switch_mid_string",
+      "_comment": "A second \\P?\\ mid-string overrides the first: \\PA\\ after \\PE\\ switches back to the default page, so the second \\S\\P decodes as identity (0xD0) rather than reusing the Cyrillic table.",
+      "encoded": "\\PE\\\\S\\P\\PA\\\\S\\P",
+      "decoded": "\u0430\u00d0"
+    },
+    {
+      "name": "s_escape_codepage_6_undefined_slot_falls_back_to_raw_byte",
+      "_comment": "ISO 8859-6 (Arabic, \\PF\\) leaves byte 0xB0 unassigned. ISO 10303-21 does not define decoder behaviour for a code position the selected page itself leaves unassigned; both decoders fall back to the raw byte value (identity, same as the default page) rather than U+FFFD.",
+      "encoded": "\\PF\\\\S\\0",
+      "decoded": "\u00b0"
+    },
+    {
+      "name": "s_escape_codepage_9_turkish",
+      "encoded": "\\PI\\\\S\\P",
+      "decoded": "\u011e"
     }
   ],
   "_literal_comment": "END-TO-END cases (#2323). `raw` is a STEP string literal's INNER bytes, exactly as the tokenizer hands them over with '' still doubled; `value` is what a consumer must surface. The two decoders agreeing is not enough: the '' escape is delegated to the caller, so the contract only holds if callers un-double FIRST and then decode. Rust drives these through AttributeValue::from_token, TS through decodeIfcString(raw.replace(/''/g, \"'\")).",

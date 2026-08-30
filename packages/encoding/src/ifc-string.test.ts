@@ -152,6 +152,24 @@ describe('decodeIfcString', () => {
     expect(decodeIfcString('\\PA\\Hello')).toBe('Hello');
   });
 
+  it('maps \\S\\ through a non-default \\P?\\ code page instead of hardcoding ISO 8859-1 (ISO 10303-21 6.4.3)', () => {
+    // \PE\ selects ISO 8859-5 (Cyrillic). 0x50('P')+128=0xD0, which is
+    // U+0430 (CYRILLIC SMALL LETTER A) in ISO 8859-5, not U+00D0 (LATIN
+    // CAPITAL LETTER ETH) the default page gives for the same byte.
+    expect(decodeIfcString('\\PE\\\\S\\P')).toBe('а');
+    // The selected page persists across every \S\ in the string, not just
+    // the next one, until another \P?\ directive switches it.
+    expect(decodeIfcString('\\PE\\\\S\\P\\S\\Q')).toBe('аб');
+    expect(decodeIfcString('\\PE\\\\S\\P\\PA\\\\S\\P')).toBe('аÐ');
+  });
+
+  it('falls back to the raw byte for a code position the selected page leaves unassigned', () => {
+    // ISO 8859-6 (Arabic, \PF\) leaves byte 0xB0 unassigned. ISO 10303-21
+    // does not define decoder behaviour there; this decoder answers with the
+    // raw code point (identity, same as the default page) rather than U+FFFD.
+    expect(decodeIfcString('\\PF\\\\S\\0')).toBe('°');
+  });
+
   it('decodes mixed encodings in one string', () => {
     expect(decodeIfcString('Br\\X2\\00FC\\X0\\cke')).toBe('Brücke');
   });

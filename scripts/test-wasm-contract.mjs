@@ -403,11 +403,6 @@ test('processGeometryBatchPartitionedFromSource matches processGeometryBatchPart
 // and each template's item id is the thing that tells them apart. The
 // instance-count assertion is what stops this going vacuous if a routing change
 // empties the shard — zero instances would otherwise satisfy every `for` below.
-if (!LAYERED_AVAILABLE) {
-  // A missing fixture must not read as success: without this line the whole
-  // #2985 block is simply not registered and the run still says "0 failed".
-  console.log('\n⏭️  #2985 instanced item id — SKIPPED, layered fixture missing (run `pnpm fixtures`)');
-}
 if (LAYERED_AVAILABLE) {
   console.log('\n📋 #2985 instanced item id (wasm → wire)');
 
@@ -459,6 +454,12 @@ if (LAYERED_AVAILABLE) {
     }
     // Distinct templates come from distinct source items — that is what makes
     // the id worth carrying rather than derivable from the product.
+    //
+    // The equality below is VACUOUS on a one-template shard: a single entry is
+    // trivially distinct from itself. Duplex's eight windows are multi-item, so
+    // a collapse to one template is a regression, not a fixture quirk.
+    assert.ok(perTemplate.size > 1,
+      `need >1 template to prove ids differ ACROSS templates, got ${perTemplate.size}`);
     assert.equal(new Set(perTemplate.values()).size, perTemplate.size,
       'two templates share an item id; the id is not per representation item');
   });

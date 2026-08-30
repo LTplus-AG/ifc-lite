@@ -120,9 +120,10 @@ describe('decodeInstancedShard (Rust↔TS conformance)', () => {
 
 // ── v1 → v2 compatibility (#2985) ──
 //
-// The version bump deliberately did NOT bump the cache FORMAT_VERSION, which
-// means every IFNS shard already persisted in a browser cache is a v1 shard this
-// decoder must still read. That is a claim about bytes, so it is tested against
+// The cache FORMAT_VERSION does move, 15 -> 16, so no v16 key serves a v15
+// entry. The frozen v1 fixture still has to decode regardless: the
+// InstancedShards section stores shard bytes VERBATIM, and those bytes reach
+// this decoder by routes the cache key does not gate. That is a claim about bytes, so it is tested against
 // bytes: the frozen v1 fixture, decoded by the current decoder.
 describe('decodeInstancedShard (v1 backward compatibility)', () => {
   const v1 = hexToBytes(FIXTURE_V1_HEX);

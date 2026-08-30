@@ -540,7 +540,9 @@ here has one", not "this build cannot see them".
     before this change refuses any shard version but 1 while the streaming
     loader swallows the error, which would silently drop every instanced
     occurrence under deploy skew or a rollback. After the one re-mesh, a warm
-    cache holds v2 shards and reports the ids.
+    cache holds v2 shards wherever an occurrence actually names an item. A
+    batch where none does is still written at the base stride as version 1,
+    so re-meshing does not turn every shard into a v2 one.
 
 ## Performance Optimization
 

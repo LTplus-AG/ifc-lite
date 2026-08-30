@@ -59,9 +59,10 @@ describe('readInstancedShards', () => {
     );
   });
 
-  // #2985. The IFNS wire version went 1 → 2 WITHOUT bumping the cache
-  // FORMAT_VERSION, so every cache entry on disk today still holds v1 shard
-  // bytes and must keep loading. That is a claim about a whole path — persisted
+  // #2985. The IFNS wire version went 1 → 2 and the cache FORMAT_VERSION moved
+  // 15 → 16 with it, so no v16 key serves a v15 entry. A v1 shard must still
+  // read back regardless: this section stores shard bytes VERBATIM and never
+  // re-encodes them, so those bytes outlive any one cache key. That is a claim about a whole path — persisted
   // bytes → this reader → the decoder that draws them — so it is tested across
   // the whole path, not asserted in a comment on either end.
   it('a v1 shard persisted by an earlier build still reads back and decodes (#2985)', () => {

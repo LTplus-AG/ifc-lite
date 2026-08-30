@@ -280,7 +280,8 @@ impl ClippingProcessor {
     /// On any failure path the host is returned un-cut and a [`BoolFailure`]
     /// record is appended to the processor's failure log (drainable via
     /// [`Self::take_failures`]). An empty host returns an empty mesh without
-    /// recording a failure (it's a fast path, not a fallback).
+    /// recording a failure (it's a fast path, not a fallback). The accept path
+    /// also runs `record_topology_tear` (#3440): diagnostic only, never gates.
     pub fn subtract_mesh(&self, host_mesh: &Mesh, opening_mesh: &Mesh) -> Result<Mesh> {
         record_csg_op(0, host_mesh.triangle_count(), opening_mesh.triangle_count());
         if host_mesh.is_empty() {
@@ -403,10 +404,9 @@ impl ClippingProcessor {
                 self.record_failure(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid);
                 return Ok(host_mesh.clone());
             }
-            self.record_topology_tear(BoolOp::Difference, &next);
             result = next;
         }
-        Ok(result)
+        Ok(result).inspect(|m| self.record_topology_tear(BoolOp::Difference, m))
     }
 
     /// Union two meshes together using CSG boolean operations on the

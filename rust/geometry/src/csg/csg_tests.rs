@@ -7,6 +7,7 @@
 //! (module-size-ratchet exempt) and attached via `#[path]`, the same shape
 //! `bool2d_tests.rs` / `facet_weld_scoped_tests.rs` already use.
 
+use super::topology_diagnostic::OPEN_TOPOLOGY_MESSAGE;
 use super::*;
 /// Build a box mesh from AABB min/max bounds (12 triangles, 2 per face).
 /// Test-only fixture builder for `subtract_mesh_many_chunks_match_sequential`
@@ -410,42 +411,125 @@ fn open_box_mesh(min: Point3<f64>, max: Point3<f64>) -> Mesh {
     mesh
 }
 
-/// Step 1 of #3440: `record_topology_tear` must fire on an accepted-but-open
-/// mesh WITHOUT changing what `validate_mesh` itself returns. Both halves
-/// matter — the acceptance half is what proves this is a diagnostic, not a
-/// gate.
+/// Step 1 of #3440: every boolean op's ACCEPT path must record the tear, and
+/// must still return the kernel result it returned before. Driving the four
+/// public ops (not `record_topology_tear` directly) is the point — the call
+/// sites are the change, so reverting any one of them has to turn this red.
 #[test]
-fn topology_tear_recorded_without_gating_open_mesh() {
-    let mesh = open_box_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));
-    let processor = ClippingProcessor::new();
+fn topology_tear_recorded_by_every_boolean_op_without_gating() {
+    // An open host makes every op's kernel output open too, which is what
+    // `validate_mesh` cannot see: it accepts all four results below.
+    let open_host = open_box_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));
+    let through_cutter = aabb_to_mesh(Point3::new(0.4, 0.4, -0.1), Point3::new(0.6, 0.6, 1.1));
+    let overlapping = aabb_to_mesh(Point3::new(0.5, 0.5, 0.5), Point3::new(1.5, 1.5, 1.5));
 
-    // Unchanged: `validate_mesh` has no topology notion and still accepts.
-    assert!(
-        processor.validate_mesh(&mesh),
-        "validate_mesh must keep accepting an open-but-finite, in-bounds mesh"
-    );
+    let expected = BoolFailureReason::KernelError(OPEN_TOPOLOGY_MESSAGE.to_string());
 
-    processor.record_topology_tear(BoolOp::Difference, &mesh);
-    let failures = processor.take_failures();
-    assert_eq!(failures.len(), 1, "the open mesh must record exactly one diagnostic");
-    assert_eq!(failures[0].op, BoolOp::Difference);
-    assert_eq!(failures[0].reason, BoolFailureReason::OpenTopology);
+    let cases: Vec<(&str, BoolOp, Mesh)> = {
+        let p = ClippingProcessor::new();
+        let subtract = p.subtract_mesh(&open_host, &through_cutter).unwrap();
+        let batched = p.subtract_mesh_many(&open_host, &[&through_cutter]).unwrap();
+        let union = p.union_mesh(&open_host, &overlapping).unwrap();
+        let intersection = p.intersection_mesh(&open_host, &overlapping).unwrap();
+        // One processor, four ops, four records — in call order.
+        let failures = p.take_failures();
+        assert_eq!(
+            failures.iter().map(|f| (f.op, f.reason.clone())).collect::<Vec<_>>(),
+            vec![
+                (BoolOp::Difference, expected.clone()),
+                (BoolOp::Difference, expected.clone()),
+                (BoolOp::Union, expected.clone()),
+                (BoolOp::Intersection, expected.clone()),
+            ],
+            "each of the four accept paths must record exactly one open-topology tear"
+        );
+        vec![
+            ("subtract_mesh", BoolOp::Difference, subtract),
+            ("subtract_mesh_many", BoolOp::Difference, batched),
+            ("union_mesh", BoolOp::Union, union),
+            ("intersection_mesh", BoolOp::Intersection, intersection),
+        ]
+    };
+
+    // The recording half is above; this is the NOT-GATING half. Every op
+    // handed back a non-empty kernel result that `validate_mesh` accepts and
+    // `directed_closed` rejects — i.e. the torn mesh, not a fallback.
+    let p = ClippingProcessor::new();
+    for (name, _, mesh) in &cases {
+        assert!(!mesh.is_empty(), "{name} must return the kernel result, not an empty fallback");
+        assert!(p.validate_mesh(mesh), "{name}: validate_mesh must still accept the torn result");
+        assert!(
+            !crate::router::voids::prism_cut::closure_checks::directed_closed(mesh),
+            "{name}: the returned mesh must be the torn one, or this test proves nothing"
+        );
+    }
+    assert!(p.take_failures().is_empty());
 }
 
-/// A closed mesh must record nothing — the diagnostic is specific to open
-/// topology, not a blanket informational record on every accepted mesh.
+/// The same four ops on a CLOSED host record nothing — the diagnostic is
+/// specific to open topology, not a blanket record on every accepted mesh.
+/// Without this the test above would pass on a helper that always records.
 #[test]
-fn topology_tear_not_recorded_for_closed_mesh() {
-    let mesh = aabb_to_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));
-    let processor = ClippingProcessor::new();
+fn topology_tear_not_recorded_for_closed_results() {
+    let closed_host = aabb_to_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));
+    let through_cutter = aabb_to_mesh(Point3::new(0.4, 0.4, -0.1), Point3::new(0.6, 0.6, 1.1));
+    let overlapping = aabb_to_mesh(Point3::new(0.5, 0.5, 0.5), Point3::new(1.5, 1.5, 1.5));
 
-    assert!(processor.validate_mesh(&mesh));
+    let p = ClippingProcessor::new();
+    p.subtract_mesh(&closed_host, &through_cutter).unwrap();
+    p.subtract_mesh_many(&closed_host, &[&through_cutter]).unwrap();
+    p.union_mesh(&closed_host, &overlapping).unwrap();
+    p.intersection_mesh(&closed_host, &overlapping).unwrap();
 
-    processor.record_topology_tear(BoolOp::Difference, &mesh);
-    assert!(
-        processor.take_failures().is_empty(),
-        "a closed mesh must not record an OpenTopology diagnostic"
+    assert_eq!(
+        p.take_failures(),
+        vec![],
+        "closed results must not record an open-topology tear"
     );
+}
+
+/// `subtract_mesh_many` must audit the mesh it RETURNS, once — not each
+/// chunk's intermediate. The cutter cap per arrangement is 16, so 17 cutters
+/// run two chunks over one returned mesh; auditing intermediates records
+/// twice, inflating the very per-host census this diagnostic exists to feed.
+/// 16 cutters (one chunk) is the control: same host, same tear, one record
+/// either way.
+#[test]
+fn topology_tear_recorded_once_per_batched_subtract_not_once_per_chunk() {
+    let open_host = open_box_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(20.0, 1.0, 1.0));
+    // Disjoint slabs cutting clean through the host in Y, one per metre.
+    let cutters: Vec<Mesh> = (0..17)
+        .map(|i| {
+            let x = 0.5 + f64::from(i);
+            aabb_to_mesh(Point3::new(x, -0.1, 0.3), Point3::new(x + 0.4, 1.1, 0.7))
+        })
+        .collect();
+    let expected = vec![BoolFailure {
+        op: BoolOp::Difference,
+        reason: BoolFailureReason::KernelError(OPEN_TOPOLOGY_MESSAGE.to_string()),
+        product_id: None,
+    }];
+
+    for cutter_count in [16usize, 17] {
+        let refs: Vec<&Mesh> = cutters.iter().take(cutter_count).collect();
+        let p = ClippingProcessor::new();
+        let result = p.subtract_mesh_many(&open_host, &refs).unwrap();
+        // The group must have been CUT, not rejected — a rejected group returns
+        // the host un-cut and records nothing, which would make this vacuous.
+        assert!(
+            result.triangle_count() > open_host.triangle_count(),
+            "{cutter_count} cutters: the group was rejected, so this proves nothing"
+        );
+        assert!(
+            !crate::router::voids::prism_cut::closure_checks::directed_closed(&result),
+            "{cutter_count} cutters: the returned mesh must be torn"
+        );
+        assert_eq!(
+            p.take_failures(),
+            expected,
+            "{cutter_count} cutters: one returned mesh, one record, whatever the chunk count"
+        );
+    }
 }
 
 // World-frame corpus tests: a sibling test file, attached here rather than
@@ -454,3 +538,4 @@ fn topology_tear_not_recorded_for_closed_mesh() {
 // imports via `crate::csg::`, so the attachment depth does not matter.
 #[path = "world_frame_tests.rs"]
 mod world_frame_tests;
+

@@ -119,14 +119,6 @@ pub enum BoolFailureReason {
     /// viewers do in practice) and records this so the loss surfaces in
     /// diagnostics rather than as a silently missing element.
     DifferenceEmptiedHost,
-    /// Step 1 of #3440: the accepted kernel result passed `validate_mesh`
-    /// (finite, in-bounds indices) but failed the directed-edge closure
-    /// audit ([`crate::router::voids::prism_cut::closure_checks::directed_closed`]) —
-    /// an open edge slipped through. Informational — the mesh returned to
-    /// the caller is UNCHANGED; nothing branches production geometry on
-    /// this variant. It exists to measure how often the gap in #3440 is hit
-    /// before any gating behaviour is added.
-    OpenTopology,
 }
 
 impl BoolFailureReason {
@@ -149,7 +141,6 @@ impl BoolFailureReason {
             BoolFailureReason::ManifoldOutputDegenerate { .. } => "ManifoldOutputDegenerate",
             BoolFailureReason::KernelError(_) => "KernelError",
             BoolFailureReason::DifferenceEmptiedHost => "DifferenceEmptiedHost",
-            BoolFailureReason::OpenTopology => "OpenTopology",
         }
     }
 }
@@ -190,9 +181,6 @@ impl fmt::Display for BoolFailureReason {
                 "Manifold difference returned implausibly small result ({result_tris} triangles from {host_tris}-triangle host) — fell back to BSP"
             ),
             BoolFailureReason::KernelError(msg) => write!(f, "kernel error: {msg}"),
-            BoolFailureReason::OpenTopology => f.write_str(
-                "accepted CSG result passed validate_mesh but failed the directed-edge closure audit (informational, non-gating)",
-            ),
         }
     }
 }

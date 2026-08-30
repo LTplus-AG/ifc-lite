@@ -29,6 +29,7 @@ import type { ViewerManager } from '../viewer-manager.js';
 import { okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { expandAssemblyRefs } from './viewer-assembly-expansion.js';
+import { formatMaterialsBlock } from './material-summary.js';
 
 function requireViewer(ctx: ToolContext): ViewerManager {
   if (!ctx.viewer) throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: 'No viewer manager attached.' });
@@ -543,19 +544,8 @@ function buildSelectionPayload(
       blocks.push(`  Classifications: ${c}`);
     }
     if (e.materials) {
-      const mat = e.materials as {
-        layers?: Array<{ materialName?: string; name?: string }>;
-        materials?: Array<{ name?: string }>;
-        name?: string;
-        materialName?: string;
-      };
-      if (Array.isArray(mat.layers) && mat.layers.length > 0) {
-        blocks.push(`  Materials: ${mat.layers.map((l) => l.materialName ?? l.name ?? '?').join(', ')}`);
-      } else if (Array.isArray(mat.materials) && mat.materials.length > 0) {
-        blocks.push(`  Materials: ${mat.materials.map((l) => l.name ?? '?').join(', ')}`);
-      } else if (mat.name ?? mat.materialName) {
-        blocks.push(`  Material: ${mat.name ?? mat.materialName}`);
-      }
+      const block = formatMaterialsBlock(e.materials);
+      if (block) blocks.push(block);
     }
   }
   return { selection: enriched, modelId, text: blocks.join('\n') };

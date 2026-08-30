@@ -20,6 +20,7 @@ import {
   extractTypePropertiesOnDemand,
 } from '@ifc-lite/parser';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
+import { materialDisplayName } from './material-name.js';
 
 let cachedTypeCountsFingerprint = '';
 let cachedTypeCounts: Record<string, number> = {};
@@ -139,7 +140,7 @@ function collectSelectedEntities(state: ReturnType<typeof useViewerStore.getStat
     const propertySets = (selectionKind === 'type' ? ownTypePropertySets : instancePropertySets).slice(0, 6);
     const typePropertySets = (selectionKind === 'type' ? [] : inheritedTypePropertySets).slice(0, 6);
     const quantitySets = (rawQsets ?? []).map((qset) => qset.name ?? qset.Name).filter((value): value is string => Boolean(value)).slice(0, 6);
-    const materialName = rawMaterial?.name ?? rawMaterial?.materials?.[0]?.name;
+    const materialName = materialDisplayName(rawMaterial);
     const classifications = rawClassifications
       .map((classification) => classification.identification ?? classification.name ?? classification.system)
       .filter((value): value is string => Boolean(value))

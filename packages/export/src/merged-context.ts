@@ -29,6 +29,7 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { asSourceBytes } from '@ifc-lite/parser';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
+import { planSubContextUnify } from './merged-subcontext.js';
 
 /** A resolved WorldCoordinateSystem frame: origin in metres and normalized axes. */
 export interface WcsSignature {
@@ -175,6 +176,7 @@ export function planInfrastructureUnify(
   dataStore: IfcDataStore,
   modelInfra: ReadonlyMap<string, number[]>,
   firstModelInfraMap: ReadonlyMap<string, number[]>,
+  firstModelSubContextsByKind: ReadonlyMap<string, number[]>,
   firstModelOffset: number,
   firstModelContextWcs: WcsSignature | null,
   lengthUnitScale: number,
@@ -190,6 +192,11 @@ export function planInfrastructureUnify(
     // retained, retain every child too; remapping just the child would point
     // the model's representations at the primary model's different frame.
     if (CONTEXT_TYPES.has(type) && !contextsCompatible) continue;
+    if (type === 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT') {
+      planSubContextUnify(dataStore, thisIds, firstModelSubContextsByKind,
+        firstModelOffset, sharedRemap, skipEntityIds);
+      continue;
+    }
     sharedRemap.set(thisIds[0], firstIds[0] + firstModelOffset);
     skipEntityIds.add(thisIds[0]);
   }

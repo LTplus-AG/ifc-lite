@@ -1418,6 +1418,100 @@ describe('MergedExporter', () => {
       expect(content.match(/=IFCGEOMETRICREPRESENTATIONCONTEXT\(/g)?.length).toBe(1);
       expect(content.match(/=IFCGEOMETRICREPRESENTATIONSUBCONTEXT\(/g)?.length).toBe(1);
       expect(findDanglingRefs(content)).toEqual([]);
+  // Merge invariant lens pass 3, item 1: `IfcShapeRepresentation.ContextOfItems`
+  // must point at a SURVIVING sub-context of the right kind ('Body'/'Axis'), not
+  // at the wrong kind. `MergedExporter` deduplicates each unit-compatible
+  // model's IFCGEOMETRICREPRESENTATIONSUBCONTEXT entities against the primary
+  // model's by taking the two models' subcontext lists positionally
+  // (`thisIds[0]` unified onto `firstIds[0]`), with no check that the two
+  // subcontexts are the same kind (ContextIdentifier). Real exporters do not
+  // guarantee subcontext emission order, so a second model whose subcontexts
+  // happen to be ordered differently than the first model's gets its 'Body'
+  // subcontext silently unified onto the first model's 'Axis' subcontext (or
+  // vice versa) — every representation in that subcontext is now tagged with
+  // the wrong kind, which many viewers filter out entirely (geometry
+  // vanishes), a wrong result no dangling-ref check catches.
+  describe('sub-context kind matching', () => {
+    // Model1's subcontexts are ordered [Axis, Body] (#4, #5); Model2's are
+    // ordered [Body, Axis] (#4, #5) — the same two kinds, reversed order, a
+    // realistic case (exporters differ in subcontext emission order).
+    const model1 = () => buildModel('m1', 'Arch', [
+      [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('subctxProjA')}',$,'A',$,$,$,$,(#3),#2);`],
+      [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#8));'],
+      [3, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#9,$);"],
+      [4, 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT', "#4=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Axis',$,*,*,*,*,#3,$,.MODEL_VIEW.,$);"],
+      [5, 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT', "#5=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body',$,*,*,*,*,#3,$,.MODEL_VIEW.,$);"],
+      [8, 'IFCSIUNIT', '#8=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+      [9, 'IFCCARTESIANPOINT', '#9=IFCCARTESIANPOINT((0.,0.,0.));'],
+    ]);
+
+    const model2 = () => buildModel('m2', 'Struct', [
+      [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('subctxProjB')}',$,'B',$,$,$,$,(#3),#2);`],
+      [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#8));'],
+      [3, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#9,$);"],
+      [4, 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT', "#4=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body',$,*,*,*,*,#3,$,.MODEL_VIEW.,$);"],
+      [5, 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT', "#5=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Axis',$,*,*,*,*,#3,$,.MODEL_VIEW.,$);"],
+      [6, 'IFCWALL', `#6=IFCWALL('${guid('subctxWallB')}',$,'W',$,$,$,#7,$);`],
+      [7, 'IFCPRODUCTDEFINITIONSHAPE', '#7=IFCPRODUCTDEFINITIONSHAPE($,$,(#10));'],
+      // ContextOfItems (attr 0) = #4, this model's OWN 'Body' subcontext.
+      [10, 'IFCSHAPEREPRESENTATION', "#10=IFCSHAPEREPRESENTATION(#4,'Body','SweptSolid',$);"],
+      [8, 'IFCSIUNIT', '#8=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+      [9, 'IFCCARTESIANPOINT', '#9=IFCCARTESIANPOINT((0.,0.,0.));'],
+    ]);
+
+    it("keeps a unified IfcShapeRepresentation's ContextOfItems on a same-kind subcontext, never a differently-ordered one", () => {
+      const content = decode(new MergedExporter([model1(), model2()])
+        .export({ schema: 'IFC4' }).content);
+
+      expect(findDanglingRefs(content)).toEqual([]);
+
+      // Find #10's (model2's IFCSHAPEREPRESENTATION) final ContextOfItems ref.
+      const shapeRepMatch = content.match(/#(\d+)=IFCSHAPEREPRESENTATION\(#(\d+),'Body'/);
+      expect(shapeRepMatch).not.toBeNull();
+      const contextRef = shapeRepMatch![2];
+
+      // The referenced context's own defining line must be the 'Body' kind —
+      // never 'Axis' (model1's #4), which is what a positional (index-0)
+      // match would have wrongly unified it onto.
+      const contextDefRegex = new RegExp(`#${contextRef}=IFCGEOMETRICREPRESENTATIONSUBCONTEXT\\('([^']*)'`);
+      const contextDefMatch = content.match(contextDefRegex);
+      expect(contextDefMatch).not.toBeNull();
+      expect(contextDefMatch![1]).toBe('Body');
+    });
+
+    // Control: the pre-existing behaviour this fix must not regress — two
+    // models whose subcontexts share the SAME order still dedup down to one
+    // surviving subcontext per kind (kind matching, not merely "no longer
+    // positional", still performs the intended unification).
+    it('still dedups same-kind subcontexts when both models order them identically', () => {
+      const sameOrderModel2 = () => buildModel('m2', 'Struct', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('subctxProjC')}',$,'C',$,$,$,$,(#3),#2);`],
+        [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#8));'],
+        [3, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#9,$);"],
+        [4, 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT', "#4=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Axis',$,*,*,*,*,#3,$,.MODEL_VIEW.,$);"],
+        [5, 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT', "#5=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body',$,*,*,*,*,#3,$,.MODEL_VIEW.,$);"],
+        [6, 'IFCWALL', `#6=IFCWALL('${guid('subctxWallC')}',$,'W',$,$,$,#7,$);`],
+        [7, 'IFCPRODUCTDEFINITIONSHAPE', '#7=IFCPRODUCTDEFINITIONSHAPE($,$,(#10));'],
+        [10, 'IFCSHAPEREPRESENTATION', "#10=IFCSHAPEREPRESENTATION(#5,'Body','SweptSolid',$);"],
+        [8, 'IFCSIUNIT', '#8=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+        [9, 'IFCCARTESIANPOINT', '#9=IFCCARTESIANPOINT((0.,0.,0.));'],
+      ]);
+
+      const content = decode(new MergedExporter([model1(), sameOrderModel2()])
+        .export({ schema: 'IFC4' }).content);
+
+      expect(findDanglingRefs(content)).toEqual([]);
+      // Only ONE 'Axis' and ONE 'Body' subcontext should survive.
+      expect(content.match(/=IFCGEOMETRICREPRESENTATIONSUBCONTEXT\('Axis'/g)?.length).toBe(1);
+      expect(content.match(/=IFCGEOMETRICREPRESENTATIONSUBCONTEXT\('Body'/g)?.length).toBe(1);
+
+      const shapeRepMatch = content.match(/#(\d+)=IFCSHAPEREPRESENTATION\(#(\d+),'Body'/);
+      expect(shapeRepMatch).not.toBeNull();
+      const contextDefMatch = content.match(
+        new RegExp(`#${shapeRepMatch![2]}=IFCGEOMETRICREPRESENTATIONSUBCONTEXT\\('([^']*)'`),
+      );
+      expect(contextDefMatch).not.toBeNull();
+      expect(contextDefMatch![1]).toBe('Body');
     });
   });
 });

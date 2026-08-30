@@ -16,7 +16,11 @@ import {
 } from '@ifc-lite/data';
 import type { PropertyTable } from '@ifc-lite/data';
 
-// Attributes to skip (not properties)
+// Attributes to skip (not properties). `ATTR.MATERIAL` is deliberately NOT
+// here: `bsi::ifc::material` ({code, uri}) is the only channel IFCX carries
+// an element's material on (buildingSMART's PCERT sample scenes author it on
+// nearly every element), and it gets unpacked into its own "Material" pset
+// below rather than treated as graph structure like CLASS/MESH/TRANSFORM.
 const SKIP_ATTRIBUTES: Set<string> = new Set([
   ATTR.CLASS,
   ATTR.MESH,
@@ -24,7 +28,6 @@ const SKIP_ATTRIBUTES: Set<string> = new Set([
   ATTR.VISIBILITY,
   ATTR.DIFFUSE_COLOR,
   ATTR.OPACITY,
-  ATTR.MATERIAL,
 ]);
 
 /**
@@ -88,6 +91,28 @@ function groupAttributesByNamespace(
     // collab classifications/materials/geometryRef) — never user
     // properties (#1031).
     if (key.startsWith('ifclite::')) {
+      continue;
+    }
+
+    // `bsi::ifc::material` is a leaf attribute in its own right (an
+    // {code, uri} reference), not a `namespace::name` pair — the generic
+    // split below would slice it into namespace `bsi::ifc` / name
+    // `material` and bury it in the catch-all "IFC" pset as a JSON blob.
+    // Unpack it into its own "Material" pset instead, mirroring how a
+    // STEP-sourced model surfaces IfcMaterial.Name via IfcRelAssociatesMaterial.
+    if (key === ATTR.MATERIAL && value && typeof value === 'object' && !Array.isArray(value)) {
+      const material = value as { code?: unknown; uri?: unknown };
+      const psetName = formatNamespace(key);
+      if (!grouped.has(psetName)) {
+        grouped.set(psetName, new Map());
+      }
+      const materialProps = grouped.get(psetName)!;
+      if (typeof material.code === 'string') {
+        materialProps.set('Material', material.code);
+      }
+      if (typeof material.uri === 'string') {
+        materialProps.set('Uri', material.uri);
+      }
       continue;
     }
 

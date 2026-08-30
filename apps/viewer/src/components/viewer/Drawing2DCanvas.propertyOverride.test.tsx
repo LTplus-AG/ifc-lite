@@ -68,9 +68,37 @@ ENDSEC;
 END-ISO-10303-21;
 `;
 
-async function parseFixture(): Promise<IfcDataStore> {
-  const bytes = new TextEncoder().encode(MODEL);
+// Same wall, but its properties arrive in TWO property sets that share the
+// name `Pset_WallCommon` -- one attached by #85, one by #95, exactly how a
+// type-level set and an occurrence-level set reach the same occurrence in a
+// real file. `extractPropertiesOnDemand` returns them as two separate
+// entries and does not merge them, so a flattening that keys the record by
+// set name and assigns outright drops every property of the first set.
+const MODEL_DUPLICATE_PSET_NAMES = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('m','2026',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#72= IFCWALL('${guid('WALA')}',$,'Wall A',$,$,$,$,'tagA',$);
+#84= IFCPROPERTYSINGLEVALUE('LoadBearing',$,IFCBOOLEAN(.T.),$);
+#83= IFCPROPERTYSET('${guid('PST1')}',$,'Pset_WallCommon',$,(#84));
+#85= IFCRELDEFINESBYPROPERTIES('${guid('RDP1')}',$,$,$,(#72),#83);
+#94= IFCPROPERTYSINGLEVALUE('Reference',$,IFCLABEL('W01'),$);
+#93= IFCPROPERTYSET('${guid('PST2')}',$,'Pset_WallCommon',$,(#94));
+#95= IFCRELDEFINESBYPROPERTIES('${guid('RDP2')}',$,$,$,(#72),#93);
+ENDSEC;
+END-ISO-10303-21;
+`;
+
+async function parseModel(source: string): Promise<IfcDataStore> {
+  const bytes = new TextEncoder().encode(source);
   return new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
+}
+
+async function parseFixture(): Promise<IfcDataStore> {
+  return parseModel(MODEL);
 }
 
 // ─── Rules: mirror the shipped Fire Safety preset's own rule shape ─────────
@@ -218,6 +246,45 @@ describe('Drawing2DCanvas live-canvas property overrides (#3523 gap: the export 
       assert.ok(
         stub.fillStyleCalls.includes('#AAAAAA'),
         `expected the base ifcType-only rule to match; got ${JSON.stringify(stub.fillStyleCalls)}`,
+      );
+    } finally {
+      stub.restore();
+    }
+  });
+
+  it('merges two property sets that share a name instead of letting the second erase the first', async () => {
+    useViewerStore.getState().setIfcDataStore(await parseModel(MODEL_DUPLICATE_PSET_NAMES));
+
+    // Both halves of the merge are asserted at once: `LoadBearing` lives only
+    // on the FIRST `Pset_WallCommon` and `Reference` only on the SECOND, so
+    // this rule can only win if the flattening is a union of the two. Keeping
+    // just the last set (what assigning by set name does) loses `LoadBearing`;
+    // keeping just the first loses `Reference`. Either way the base rule's
+    // #AAAAAA wins instead of #0000FF -- two distinct colours, so the fixture
+    // discriminates.
+    const mergedRule: GraphicOverrideRule = {
+      id: 'load-bearing-and-reference',
+      name: 'Load-bearing wall W01',
+      enabled: true,
+      priority: 200,
+      criteria: andCriteria(
+        ifcTypeCriterion(['IfcWall']),
+        propertyCriterion('LoadBearing', 'equals', true, 'Pset_WallCommon'),
+        propertyCriterion('Reference', 'equals', 'W01', 'Pset_WallCommon'),
+      ),
+      style: { fillColor: '#0000FF' },
+    };
+
+    const stub = installCanvasStub();
+    try {
+      renderCanvas(new GraphicOverrideEngine([BASE_RULE, mergedRule]));
+      assert.ok(
+        stub.fillStyleCalls.includes('#0000FF'),
+        `expected properties from BOTH same-named "Pset_WallCommon" sets to survive flattening, so the higher-priority rule wins with "#0000FF"; got ${JSON.stringify(stub.fillStyleCalls)}`,
+      );
+      assert.ok(
+        !stub.fillStyleCalls.includes('#AAAAAA'),
+        `the base rule's "#AAAAAA" should have lost to the merged-property rule; got ${JSON.stringify(stub.fillStyleCalls)}`,
       );
     } finally {
       stub.restore();

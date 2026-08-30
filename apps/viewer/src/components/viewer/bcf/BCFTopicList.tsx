@@ -216,10 +216,12 @@ export function BCFTopicList({
                     <User className="h-3 w-3" />
                     {topic.creationAuthor.split('@')[0]}
                   </span>
-                  <span className="flex items-center gap-1">
-                    <Calendar className="h-3 w-3" />
-                    {formatDate(topic.creationDate)}
-                  </span>
+                  {topic.creationDate && (
+                    <span className="flex items-center gap-1">
+                      <Calendar className="h-3 w-3" />
+                      {formatDate(topic.creationDate)}
+                    </span>
+                  )}
                   {topic.comments.length > 0 && (
                     <span className="flex items-center gap-1">
                       <MessageSquare className="h-3 w-3" />

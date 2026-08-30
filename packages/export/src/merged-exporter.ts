@@ -42,6 +42,7 @@ import {
   EMPTY_MODEL_VIEW,
   type EmptyContainerModelView,
 } from './merged-empty-containers.js';
+import { skipRedundantRelAggregates, applyRelAggregateStrip } from './merged-rel-aggregates.js';
 
 /**
  * UTF-8 decode of `[start, end)` of a model's source, accepting either the raw
@@ -1116,7 +1117,10 @@ export class MergedExporter {
 
       // Skip IfcRelAggregates that become fully redundant after unification,
       // and strip individually-duplicated members from ones only partially so.
-      this.skipRedundantRelAggregates(model.dataStore, sharedRemap, skipEntityIds, relAggregateStrip);
+      skipRedundantRelAggregates(
+        model.dataStore, sharedRemap, skipEntityIds, relAggregateStrip,
+        this.findEntitiesByType.bind(this), this.extractStepAttribute.bind(this),
+      );
     }
 
     if (!isFirstModel) {
@@ -1208,16 +1212,10 @@ export class MergedExporter {
 
     // Drop RelatedObjects members a partially redundant IFCRELAGGREGATES
     // already shares with the first model's OWN relationship to the same
-    // (now-unified) RelatingObject — see skipRedundantRelAggregates. Reuses
-    // the same list/scalar-aware ref filter as the hidden-refs pass above;
-    // the strip set never includes the RelatingObject's own id (only
-    // RelatedObjects members), so this can only narrow the list, never null
-    // out the whole line. Runs in LOCAL id space, before the remap below.
-    const relAggregateStrip = plan.relAggregateStrip.get(localId);
-    if (relAggregateStrip !== undefined) {
-      const filtered = filterHiddenRefsFromRelationshipLine(entityText, id => relAggregateStrip.has(id));
-      if (filtered !== null) entityText = filtered;
-    }
+    // (now-unified) RelatingObject — see skipRedundantRelAggregates /
+    // applyRelAggregateStrip (merged-rel-aggregates.ts). Runs in LOCAL id
+    // space, before the remap below.
+    entityText = applyRelAggregateStrip(entityText, localId, plan.relAggregateStrip);
 
     // Remap ids. Fast path: the first model (offset 0, no remaps) is byte-identical.
     let finalText: string;
@@ -1463,64 +1461,6 @@ export class MergedExporter {
     if (mergeMode === 'single') return bySingle();
     if (mergeMode === 'by-name') return byName();
     return byName() ?? bySingle();
-  }
-
-  /**
-   * Skip IfcRelAggregates that become fully redundant after spatial
-   * unification, and mark the individually-redundant members of ones only
-   * PARTIALLY so for stripping.
-   *
-   * When Model2's `IfcRelAggregates(Project, (Site))` gets remapped to
-   * `IfcRelAggregates(FirstProject, (FirstSite))`, it duplicates Model1's
-   * existing relationship, causing viewers to show Site multiple times.
-   *
-   * An IfcRelAggregates is fully redundant (skipped entirely) when its
-   * RelatingObject (attr 4) AND ALL its RelatedObjects (attr 5) were
-   * remapped via sharedRemap. When only the RelatingObject and SOME (not
-   * all) of its RelatedObjects were remapped — e.g. Model2's Building
-   * unifies with Model1's, and one of its two Storeys matches Model1's by
-   * name while the other is new — the rel is genuinely needed for its new
-   * member(s), but Model1's own relationship already lists the remapped
-   * one(s) under the same (now-shared) RelatingObject: emitting them again
-   * here would duplicate that membership. Those specific ids are recorded in
-   * `relAggregateStrip` so {@link renderEntity} drops them from the emitted
-   * RelatedObjects list (via {@link filterHiddenRefsFromRelationshipLine}),
-   * keeping only the genuinely new members.
-   */
-  private skipRedundantRelAggregates(
-    dataStore: IfcDataStore,
-    sharedRemap: Map<number, number>,
-    skipEntityIds: Set<number>,
-    relAggregateStrip: Map<number, Set<number>>,
-  ): void {
-    for (const relId of this.findEntitiesByType(dataStore, 'IFCRELAGGREGATES')) {
-      // RelatingObject is attr 4 — single #ref
-      const relatingAttr = this.extractStepAttribute(relId, dataStore, 4);
-      if (!relatingAttr) continue;
-      const relatingRef = relatingAttr.match(/^#(\d+)$/);
-      if (!relatingRef || !sharedRemap.has(parseInt(relatingRef[1], 10))) continue;
-
-      // RelatedObjects is attr 5 — list of #refs like (#2,#3)
-      const relatedAttr = this.extractStepAttribute(relId, dataStore, 5);
-      if (!relatedAttr) continue;
-      const refs: number[] = [];
-      const refRegex = /#(\d+)/g;
-      let m;
-      while ((m = refRegex.exec(relatedAttr)) !== null) {
-        refs.push(parseInt(m[1], 10));
-      }
-      if (refs.length === 0) continue;
-
-      const remappedRefs = refs.filter(ref => sharedRemap.has(ref));
-      if (remappedRefs.length === refs.length) {
-        // ALL related objects were also remapped — this rel is fully redundant.
-        skipEntityIds.add(relId);
-      } else if (remappedRefs.length > 0) {
-        // Some, not all — keep the rel for its new member(s), but drop the
-        // ones Model1's own relationship already aggregates.
-        relAggregateStrip.set(relId, new Set(remappedRefs));
-      }
-    }
   }
 
   /**

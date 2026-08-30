@@ -209,6 +209,12 @@ describe('extractProperties — typed records and internal carriers (#1031)', ()
       `material code reaches the property table (got ${JSON.stringify(props)})`
     );
     assert.strictEqual(material?.value, 'concrete_reinforced_in_situ');
+    const uri = props.find((p) => p.name === 'Uri');
+    assert.ok(uri, `material uri reaches the property table (got ${JSON.stringify(props)})`);
+    assert.strictEqual(
+      uri?.value,
+      'https://identifier.buildingsmart.org/uri/buildingsmart-community/materials-demo/1.0/class/concrete_reinforced_in_situ'
+    );
   });
 });
 

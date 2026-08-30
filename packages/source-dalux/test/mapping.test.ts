@@ -107,6 +107,26 @@ describe('toSourceFile', () => {
     const file = toSourceFile('fa1', daluxFile({ folderId: undefined }));
     expect(file.containerId).toBe(fileAreaContainerId('fa1'));
   });
+
+  // Control: fileType is decoded by decodeFile and DOES reach the produced
+  // SourceFile (as mimeType), proving the decode-to-map pipeline works.
+  it('surfaces the decoded fileType as mimeType (control: this sibling field does reach output)', () => {
+    const file = toSourceFile('fa1', daluxFile({ fileType: 'application/ifc' }));
+    expect(file.mimeType).toBe('application/ifc');
+  });
+
+  // `DaluxFile.version` is decoded by decodeFile (dalux-types.ts) at the same
+  // cost as fileAreaId/folderId, which this function already forwards via
+  // `meta`. `SourceFile.meta` is documented as "Provider-specific metadata
+  // the host passes through opaquely" (plugin-api types.ts) -- version is
+  // exactly that, and Dalux has no revision-history API to carry it via
+  // SourceRevision (unlike the msgraph/SharePoint provider's version label),
+  // so `meta` is the only channel this value has to reach a consumer. Before
+  // the fix it was decoded and silently dropped.
+  it('surfaces the decoded version in meta, mirroring how fileAreaId/folderId already pass through', () => {
+    const file = toSourceFile('fa1', daluxFile({ version: '3.2' }));
+    expect(file.meta?.version).toBe('3.2');
+  });
 });
 
 interface Thing {

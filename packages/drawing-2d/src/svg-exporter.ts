@@ -93,26 +93,26 @@ export interface SVGUnderlayOptions {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * The one place a number becomes SVG text.
- *
- * SVG's `<number>` grammar admits a sign, digits, a decimal point and an
- * exponent — and nothing else. `NaN`, `Infinity` and `-Infinity` stringify
- * verbatim through `toFixed`, so an unguarded interpolation writes
- * `x1="NaN"`, which a conforming renderer must treat as an error rather than
- * draw. The DXF writer beside this one has always guarded the same values at
- * its own single `fmt()` (`dxf/writer.ts`); this is the SVG half of that
- * rule, in one function rather than at each of the coordinate, size and
- * rotation interpolations below — so it cannot end up applied to some of
- * them and not the others.
- *
- * Non-finite becomes `0`, matching the DXF writer's deterministic `'0.0'`:
- * the document stays parseable and byte-reproducible, and the degenerate
- * geometry collapses at the origin where it is visible, instead of taking
- * the rest of the drawing with it.
+ * The one place a number becomes SVG text. `NaN`/`Infinity` stringify
+ * verbatim through `toFixed`, which a conforming renderer must reject, so
+ * every coordinate/size/rotation routes through here (mirrors the DXF
+ * writer's single `fmt()`). Non-finite becomes `0`: the document stays
+ * parseable and the degenerate geometry collapses at the visible origin.
  */
 function svgNum(n: number, digits = 3): string {
   if (!Number.isFinite(n)) return '0';
   return n.toFixed(digits);
+}
+
+/** `drawing.config.scale` is any positive number, not just the ten
+ *  {@link COMMON_SCALES} presets; a `.find()` miss (a custom scale) must
+ *  build a synthetic `DrawingScale`, not fall to the same 1:50 as "absent". */
+function resolveDrawingScale(configScale: number): DrawingScale {
+  const common = COMMON_SCALES.find((s) => s.factor === configScale);
+  if (common) return common;
+  return Number.isFinite(configScale) && configScale > 0
+    ? { name: `1:${configScale}`, factor: configScale, useCase: 'Custom scale' }
+    : COMMON_SCALES[5];
 }
 
 export class SVGExporter {
@@ -124,7 +124,7 @@ export class SVGExporter {
   export(drawing: Drawing2D, options: SVGExportOptions = {}): string {
     const {
       paperSize = PAPER_SIZES.A3_LANDSCAPE,
-      scale = COMMON_SCALES.find((s) => s.factor === drawing.config.scale) || COMMON_SCALES[5],
+      scale = resolveDrawingScale(drawing.config.scale),
       padding = 20,
       showHiddenLines = true,
       showHatching = true,

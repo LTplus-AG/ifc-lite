@@ -190,6 +190,20 @@ describe('createStreamingViewerAdapter', () => {
     assert.deepEqual(received[0], { action: 'showall' });
   });
 
+  it('setSection(null) sends clearSection, not a section with a null payload', TO, async () => {
+    // bim.viewer.clearSection() calls backend.viewer.setSection(null) (see
+    // packages/sdk/src/namespaces/viewer.ts). The server's 'section' handler
+    // treats a null `cmd.section` as "use the whole command object", which
+    // defaults axis to 'y' and position to the model center — so forwarding
+    // {action:'section', section:null} verbatim would turn a clear into an
+    // enable. The server already exposes a dedicated 'clearSection' action
+    // for exactly this (viewer-html.ts, server.ts's allowed-actions list);
+    // the adapter must use it.
+    createStreamingViewerAdapter(port).setSection(null);
+    await waitFor(1);
+    assert.deepEqual(received[0], { action: 'clearSection' });
+  });
+
   it('setSection and setCamera forward their payloads under the right action', TO, async () => {
     const adapter = createStreamingViewerAdapter(port);
     const plane = { axis: 'z' as const, position: 2.5, enabled: true, flipped: false };

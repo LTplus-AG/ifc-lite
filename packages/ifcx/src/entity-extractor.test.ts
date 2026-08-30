@@ -85,32 +85,74 @@ describe('extractEntities', () => {
     assert.strictEqual(entities.getTypeName(expressId), 'Unknown');
   });
 
+  it('reads back bsi::ifc::prop::Description written by the writer, mirroring Name', () => {
+    // writer.ts's writeEntities emits `bsi::ifc::prop::Description` (and
+    // `bsi::ifc::prop::Name`) from `EntityTable.description`/`.name` — see
+    // its comment "IFC5 uses bsi::ifc::prop:: namespace for name/description".
+    // `extractName` above already reads `bsi::ifc::prop::Name` back; this
+    // pins that `Description` gets the same treatment rather than being
+    // hardcoded to `''` on every read.
+    const wall = createNode('wall');
+    wall.attributes.set(ATTR.CLASS, ifcClass('IfcWall'));
+    wall.attributes.set('bsi::ifc::prop::Name', 'Wall-A');
+    wall.attributes.set('bsi::ifc::prop::Description', 'Exterior load-bearing wall');
+
+    const strings = new StringTable();
+    const { entities, pathToId } = extractEntities(new Map([[wall.path, wall]]), strings);
+
+    const wallId = pathToId.get(wall.path);
+    assert.ok(wallId !== undefined);
+    // Control: the sibling field (Name) already reaches the output via the
+    // same attribute-map channel — proves the extractor and this test setup
+    // both work, isolating the failure to Description specifically.
+    assert.strictEqual(entities.getName(wallId), 'Wall-A');
+    assert.strictEqual(entities.getDescription(wallId), 'Exterior load-bearing wall');
+  });
+
   it('does not fabricate ObjectType from the IFC class code', () => {
-    // IFCX has no `bsi::ifc::prop::ObjectType` (or equivalent) attribute — the
-    // official v5a prop schema (packages/export/src/__fixtures__/schemas/prop@v5a.ifcx)
-    // defines Name, Description, UsageType, TypeName, etc. but no ObjectType.
-    // The STEP parser's own default for an entity with no real ObjectType
-    // attribute is '' (packages/parser/src/columnar-parser.ts's addEntityBatch),
-    // never the class name. Filling it with the class code here silently
-    // invents plausible-looking but wrong data for every IFCX-sourced entity
-    // (e.g. getObjectType() returning 'IfcWall' for every wall), corrupting
-    // any consumer that reads ObjectType (CSV/Parquet export, the query
-    // engine, the lens summary line, IDS `getObjectType`).
+    // objectType used to be filled with the entity's own class code, so
+    // every IFCX-sourced wall reported ObjectType 'IfcWall' — a
+    // plausible-looking value no source attribute backs, indistinguishable
+    // from an authored one to every consumer that reads it (CSV/Parquet
+    // export, the query engine's ObjectType column, IDS's `getObjectType`,
+    // the lens summary line). With no ObjectType on the node the field must
+    // stay '', the STEP parser's own default (`addEntityBatch` in
+    // packages/parser/src/columnar-parser.ts).
     const wall = createNode('wall');
     wall.attributes.set(ATTR.CLASS, ifcClass('IfcWall'));
     wall.attributes.set('bsi::ifc::prop::Name', 'Wall-01');
 
     const strings = new StringTable();
-    const { entities, pathToId } = extractEntities(new Map([
-      [wall.path, wall],
-    ]), strings);
+    const { entities, pathToId } = extractEntities(new Map([[wall.path, wall]]), strings);
 
     const wallId = pathToId.get(wall.path);
     assert.ok(wallId !== undefined);
-    // Control: Name is a real attribute on this node and DOES round-trip.
+    // Control: Name is a real attribute on this node and DOES round-trip,
+    // isolating the failure to objectType.
     assert.strictEqual(entities.getName(wallId), 'Wall-01');
-    // ObjectType has no source attribute on this node, so it must stay
-    // empty rather than being fabricated from the class code.
     assert.strictEqual(entities.getObjectType(wallId), '');
+  });
+
+  it('reads back bsi::ifc::prop::ObjectType when the source carries it', () => {
+    // buildingSMART's v5a `prop` schema defines no ObjectType, but ifc-lite's
+    // own collab seed writes the key: apps/viewer/src/lib/collab/step-seed.ts
+    // emits `bsi::ifc::prop::ObjectType` for every STEP entity that has one,
+    // and that snapshot comes back through `extractEntities`
+    // (`snapshotToIfcx` → `parseIfcxViewerModel`). This node is the shape
+    // step-seed.ts produces for a typed wall. The expected value matches
+    // neither the class code nor '', so it separates reading the attribute
+    // from both the old fabrication and a blanket ''.
+    const wall = createNode('wall');
+    wall.attributes.set(ATTR.CLASS, ifcClass('IfcWall'));
+    wall.attributes.set('bsi::ifc::prop::Name', 'Wall-01');
+    wall.attributes.set('bsi::ifc::prop::ObjectType', 'Basic Wall:Generic 200mm');
+
+    const strings = new StringTable();
+    const { entities, pathToId } = extractEntities(new Map([[wall.path, wall]]), strings);
+
+    const wallId = pathToId.get(wall.path);
+    assert.ok(wallId !== undefined);
+    assert.strictEqual(entities.getName(wallId), 'Wall-01');
+    assert.strictEqual(entities.getObjectType(wallId), 'Basic Wall:Generic 200mm');
   });
 });

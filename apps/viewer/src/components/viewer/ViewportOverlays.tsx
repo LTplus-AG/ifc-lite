@@ -46,7 +46,7 @@ export function ViewportOverlays({
   const isMobile = useViewerStore((s) => s.isMobile);
   const setOnCameraRotationChange = useViewerStore((s) => s.setOnCameraRotationChange);
   const setOnScaleChange = useViewerStore((s) => s.setOnScaleChange);
-  const { ifcDataStore } = useIfc();
+  const { ifcDataStore, models } = useIfc();
 
   // Cesium state
   const cesiumEnabled = useViewerStore((s) => s.cesiumEnabled);
@@ -90,11 +90,21 @@ export function ViewportOverlays({
     return () => setOnScaleChange(null);
   }, [setOnScaleChange]);
 
-  // Get names of selected storeys
-  const storeyNames = selectedStoreys.size > 0 && ifcDataStore
-    ? Array.from(selectedStoreys).map(id => 
-        ifcDataStore.entities.getName(id) || `Storey #${id}`
-      )
+  // Get names of selected storeys. `selectedStoreys` holds raw model-space
+  // expressIds (see HierarchyPanel's `setStoreysSelection`), which may belong
+  // to ANY federated model, not just the active one — `ifcDataStore` only
+  // tracks the active model (`modelSlice.ts`). Resolve each id through the
+  // model whose own spatial hierarchy actually contains it as a storey,
+  // falling back to the active store for legacy single-model mode.
+  const storeyNames = selectedStoreys.size > 0 && (ifcDataStore || models.size > 0)
+    ? Array.from(selectedStoreys).map((id) => {
+        const ownStore = models.size > 0
+          ? Array.from(models.values()).find(
+              (m) => m.ifcDataStore?.spatialHierarchy?.byStorey.has(id),
+            )?.ifcDataStore
+          : ifcDataStore;
+        return ownStore?.entities.getName(id) || `Storey #${id}`;
+      })
     : null;
 
   // Physical objects in the loaded model — the denominator. Derived from the

@@ -526,10 +526,20 @@ export async function queryCommand(args: string[]): Promise<void> {
     return;
   }
 
+  // Detect aggregation quantity and mode up front: --sum/--avg/--min/--max
+  // must run over the FULL filtered set, matching the --where and --storey
+  // paths' explicit "no offset/limit" rule for aggregations -- a partial sum
+  // over a --limit-sliced set is a silently wrong total, not a preview.
+  const aggQuantity = sumQuantity ?? avgQuantity ?? minQuantity ?? maxQuantity;
+  const aggMode: 'sum' | 'avg' | 'min' | 'max' | undefined = sumQuantity ? 'sum' : avgQuantity ? 'avg' : minQuantity ? 'min' : maxQuantity ? 'max' : undefined;
+
   // Validated, not parseInt'd -- the backend descriptor only honours the
   // limit under a `> 0` check, so a NaN --limit returned every match.
-  if (rowLimit !== undefined && !groupBy) q = q.limit(rowLimit);
-  if (offset) q = q.offset(offset);
+  // Both flags need both guards: !groupBy because the --where/--storey
+  // siblings never slice before grouping, and !aggQuantity (#3510) because
+  // an aggregation must run over the whole filtered set.
+  if (rowLimit !== undefined && !groupBy && !aggQuantity) q = q.limit(rowLimit);
+  if (offset && !groupBy && !aggQuantity) q = q.offset(offset);
 
   // B11: Validate --group-by key
   if (groupBy) {
@@ -537,10 +547,6 @@ export async function queryCommand(args: string[]): Promise<void> {
       fatal(`Unknown grouping "${groupBy}". Valid options: ${VALID_GROUP_BY_KEYS.join(', ')}, or PsetName.PropName`);
     }
   }
-
-  // Detect aggregation quantity and mode for --group-by combos
-  const aggQuantity = sumQuantity ?? avgQuantity ?? minQuantity ?? maxQuantity;
-  const aggMode: 'sum' | 'avg' | 'min' | 'max' | undefined = sumQuantity ? 'sum' : avgQuantity ? 'avg' : minQuantity ? 'min' : maxQuantity ? 'max' : undefined;
 
   // --group-by + aggregation combo: aggregate per group
   if (groupBy && aggQuantity) {

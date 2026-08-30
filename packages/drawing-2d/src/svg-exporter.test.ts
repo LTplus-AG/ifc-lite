@@ -291,6 +291,61 @@ describe('SVGExporter title block scale label', () => {
     expect(extractScaleLabel(svg)).toBe('1:100');
   });
 
+  it('honours a custom scale not present in COMMON_SCALES, instead of silently substituting a preset', () => {
+    // `drawing.config.scale` is a plain `number` (see types.ts) — the
+    // generator accepts ANY positive scale, not just the ten presets in
+    // COMMON_SCALES. The default `scale` option in `export()` used to do
+    // `COMMON_SCALES.find(s => s.factor === drawing.config.scale) ||
+    // COMMON_SCALES[5]`: a `.find()` miss (a legitimate custom scale, e.g.
+    // 1:75) is indistinguishable from "no scale option was passed at all",
+    // and both fell through to the SAME hardcoded 1:50 default — silently
+    // rendering the drawing at the wrong scale with no error, no warning,
+    // and (per the test above) a title-block label that claims the
+    // requested scale was honoured when it names 1:50 either way.
+    const drawing = drawingWithLine(
+      { min: { x: 0, y: 0 }, max: { x: 4, y: 6 } },
+      { x: 0, y: 0 },
+      { x: 2, y: 3 }
+    );
+    drawing.config.scale = 75; // not in COMMON_SCALES
+    // No `scale` option passed: exportSVG(drawing) callers (drawing-generator.ts,
+    // the SDK's exportToSVG) rely on the default deriving it from
+    // `drawing.config.scale`.
+    const svg = exportToSVG(drawing, {
+      paperSize: PAPER_SIZES.A3_LANDSCAPE,
+      padding: 20,
+      showTitleBlock: true,
+    });
+    expect(extractScaleLabel(svg)).toBe('1:75');
+
+    // And the geometry itself must actually be drawn at 1:75 (worldToMm =
+    // 1000/75), not just the label — the label and the drawn scale must
+    // never disagree (PR #2131 review, same rule as the clamped test below).
+    const { x1, x2 } = extractLineCoords(svg);
+    const actualWorldToMm = (x2 - x1) / 2; // line runs (0,0)->(2,3), dx=2
+    // Coordinates are serialised via `svgNum` at 3 decimal places, so allow
+    // for that rounding rather than exact floating-point equality.
+    expect(actualWorldToMm).toBeCloseTo(1000 / 75, 2);
+  });
+
+  it('still falls back to the 1:50 default for an invalid (non-finite/non-positive) scale', () => {
+    // The legitimate-default control: a genuinely absent/invalid scale
+    // (0, negative, NaN) must still fall back to COMMON_SCALES[5]. Fixing
+    // the custom-scale bug above must not remove this default.
+    const drawing = drawingWithLine(
+      { min: { x: 0, y: 0 }, max: { x: 4, y: 6 } },
+      { x: 0, y: 0 },
+      { x: 2, y: 3 }
+    );
+    drawing.config.scale = 0;
+    const svg = exportToSVG(drawing, {
+      paperSize: PAPER_SIZES.A3_LANDSCAPE,
+      padding: 20,
+      showTitleBlock: true,
+    });
+    expect(extractScaleLabel(svg)).toBe('1:50');
+  });
+
   it('prints the effective (clamped) scale, matching the actually rendered geometry', () => {
     // Same overflow scenario as the padding-clamp test above: 250m x 100m
     // bounds requested at 1:100 on an A4 landscape sheet (297x210mm) with

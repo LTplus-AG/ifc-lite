@@ -108,6 +108,7 @@ export interface ScopeVerification {
  *   - tombstone opinion (`ifclite::deleted`) → model.delete
  *   - path absent from the base stack state  → model.create
  *   - attribute keys on existing entities    → model.mutate:<target>
+ *   - children/inherits slot changes         → model.mutate:children / :inherits
  * `ifclite::*` bookkeeping keys never produce ops.
  */
 export function deriveLayerDescriptors(
@@ -136,8 +137,36 @@ export function deriveLayerDescriptors(
       if (key === IFCLITE_ATTR.DELETED || key.startsWith(IFCLITE_ATTR.DERIVED)) continue;
       out.push({ capability: `model.mutate:${mutationTarget(key)}`, path: node.path, ...typed });
     }
+    // Structural edits are write capabilities too: a delta that only
+    // touches children/inherits must not bypass scope verification. Mirrors
+    // the CLI's `deriveScopeOps` (`layer-publish.ts`) exactly — a layer
+    // published from a source other than `draft_apply_ops` (import, merge)
+    // can carry a pure reparent with no attribute edits at all, and that
+    // must still require `model.mutate:children`/`:inherits` coverage.
+    if (hierarchyChanged(node.children, baseEntity.children)) {
+      out.push({ capability: 'model.mutate:children', path: node.path, ...typed });
+    }
+    if (hierarchyChanged(node.inherits, baseEntity.inherits)) {
+      out.push({ capability: 'model.mutate:inherits', path: node.path, ...typed });
+    }
   }
   return out;
+}
+
+/** True when a children/inherits delta differs from the base slots. */
+function hierarchyChanged(
+  delta: Record<string, string | null> | undefined,
+  base: Map<string, string>,
+): boolean {
+  if (!delta) return false;
+  for (const [role, target] of Object.entries(delta)) {
+    if (target === null) {
+      if (base.has(role)) return true;
+    } else if (base.get(role) !== target) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**

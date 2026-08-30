@@ -46,9 +46,9 @@ export function readQuantities(reader: BufferReader, strings: StringTable): Quan
   const unitId = reader.readInt32Array(count);
   const formula = reader.readUint32Array(count);
 
-  const entityIndex = readIndex(reader);
-  const qsetIndex = readIndex(reader);
-  const quantityIndex = readIndex(reader);
+  const entityIndex = readIndex(reader, count, 'entityIndex');
+  const qsetIndex = readIndex(reader, count, 'qsetIndex');
+  const quantityIndex = readIndex(reader, count, 'quantityIndex');
 
   return {
     count,
@@ -168,7 +168,18 @@ function writeIndex(writer: BufferWriter, index: Map<number, number[]>): void {
   }
 }
 
-function readIndex(reader: BufferReader): Map<number, number[]> {
+/**
+ * Read a row-index table (entityIndex/qsetIndex/quantityIndex): key -> row
+ * indices into the parallel column arrays. Each row index MUST be < rowCount
+ * — the column arrays (entityId, qsetName, quantityType, value, ...) are
+ * fixed-size typed arrays, so an out-of-range read returns `undefined`
+ * instead of throwing. A corrupt cache with an inflated row index would
+ * otherwise flow `undefined` names and values into `getForEntity` results and
+ * `NaN` into `sumByType` silently instead of failing the cache load. Same
+ * defect shape, and same fix, as `entity-index.ts`'s `typeIndex` bounds
+ * check and `properties.ts`'s equivalent guard.
+ */
+function readIndex(reader: BufferReader, rowCount: number, name: string): Map<number, number[]> {
   const size = reader.readUint32();
   const index = new Map<number, number[]>();
   for (let i = 0; i < size; i++) {
@@ -176,7 +187,14 @@ function readIndex(reader: BufferReader): Map<number, number[]> {
     const valueCount = reader.readUint32();
     const values: number[] = [];
     for (let j = 0; j < valueCount; j++) {
-      values.push(reader.readUint32());
+      const rowIndex = reader.readUint32();
+      if (rowIndex >= rowCount) {
+        throw new Error(
+          `Corrupt cache QuantityTable ${name}: row index ${rowIndex} for key ${key} ` +
+            `exceeds row count ${rowCount}`,
+        );
+      }
+      values.push(rowIndex);
     }
     index.set(key, values);
   }

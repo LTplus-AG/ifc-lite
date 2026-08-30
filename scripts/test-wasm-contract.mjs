@@ -44,6 +44,8 @@ const SPACES_IFC = join(FIXTURES_DIR, 'buildingsmart/Building-Architecture.ifc')
 // have no IFCMATERIALLAYERSET at all, and wall-with-opening-and-window.ifc has a
 // single-layer set, which Rust classifies NotSliceable on purpose.
 const LAYERED_IFC = join(FIXTURES_DIR, 'ara3d/duplex.ifc');
+/** Spelled once: every skip below points at the command that undoes it. */
+const FIXTURES_HINT = 'run `pnpm fixtures`';
 
 console.log('🧪 WASM API Contract Tests\n');
 
@@ -85,6 +87,22 @@ const api = new IfcAPI();
 
 let passed = 0;
 let failed = 0;
+let skipped = 0;
+
+/**
+ * A test (or a whole fixture-gated block of them) that did NOT run.
+ *
+ * Registering nothing used to be indistinguishable from passing: a missing
+ * fixture simply took the assertions out of the run and the summary reported a
+ * silently smaller `passed`, which reads as success. Every skip is now named on
+ * stdout AND carried into the tally, so "78 passed, 0 failed, 3 skipped" says
+ * out loud that less was tested than the run claims to cover.
+ */
+function skip(name, reason) {
+  console.log(`  \u23ed\ufe0f  SKIP ${name}`);
+  console.log(`     ${reason}`);
+  skipped++;
+}
 
 function test(name, fn) {
   try {
@@ -208,8 +226,8 @@ test('issue #1023: raw byte geometry and scans accept non-UTF-8 string bytes', (
   const refs = api.scanEntitiesFastBytes(bytes);
   assert.ok(refs.length > 0, 'byte scan must still find entities');
 
-  const pre = api.buildPrePassOnce(bytes);
   try {
+    const pre = api.buildPrePassOnce(bytes);
     assert.ok(pre.totalJobs > 0, 'pre-pass must still produce geometry jobs');
     const collection = api.processGeometryBatch(
       bytes, pre.jobs, pre.unitScale,
@@ -267,9 +285,9 @@ test('processGeometryBatchFromSource is byte-identical to processGeometryBatch',
   const bytes = new TextEncoder().encode(columnContent);
 
   // Reference: the legacy per-call `data`-taking path.
-  const preRef = api.buildPrePassOnce(bytes);
   let ref;
   try {
+    const preRef = api.buildPrePassOnce(bytes);
     const col = api.processGeometryBatch(
       bytes, preRef.jobs, preRef.unitScale,
       preRef.rtcOffset[0], preRef.rtcOffset[1], preRef.rtcOffset[2], preRef.needsShift,
@@ -283,9 +301,9 @@ test('processGeometryBatchFromSource is byte-identical to processGeometryBatch',
   assert.ok(ref.length > 0, 'reference batch must produce meshes');
 
   // Candidate: hold the source ONCE, run the no-`data` variant.
-  const pre = api.buildPrePassOnce(bytes);
   let got;
   try {
+    const pre = api.buildPrePassOnce(bytes);
     api.setSourceBytes(bytes);
     const col = api.processGeometryBatchFromSource(
       pre.jobs, pre.unitScale,
@@ -330,9 +348,9 @@ test('processGeometryBatchPartitionedFromSource matches processGeometryBatchPart
   const bytes = new TextEncoder().encode(columnContent);
 
   // Reference partitioned (legacy per-call data).
-  const preRef = api.buildPrePassOnce(bytes);
   let refFlat, refShard, refOcc;
   try {
+    const preRef = api.buildPrePassOnce(bytes);
     const p = callPartitioned(bytes, preRef);
     try {
       refOcc = p.instancedOccurrences;
@@ -348,9 +366,9 @@ test('processGeometryBatchPartitionedFromSource matches processGeometryBatchPart
   }
 
   // Candidate partitioned FromSource (source held once).
-  const pre = api.buildPrePassOnce(bytes);
   let gotFlat, gotShard, gotOcc;
   try {
+    const pre = api.buildPrePassOnce(bytes);
     api.setSourceBytes(bytes);
     const p = api.processGeometryBatchPartitionedFromSource(...partitionedArgs(pre));
     try {
@@ -385,14 +403,19 @@ test('processGeometryBatchPartitionedFromSource matches processGeometryBatchPart
 // and each template's item id is the thing that tells them apart. The
 // instance-count assertion is what stops this going vacuous if a routing change
 // empties the shard — zero instances would otherwise satisfy every `for` below.
+if (!LAYERED_AVAILABLE) {
+  // A missing fixture must not read as success: without this line the whole
+  // #2985 block is simply not registered and the run still says "0 failed".
+  console.log('\n⏭️  #2985 instanced item id — SKIPPED, layered fixture missing (run `pnpm fixtures`)');
+}
 if (LAYERED_AVAILABLE) {
   console.log('\n📋 #2985 instanced item id (wasm → wire)');
 
   test('the partitioned shard carries each occurrence\'s representation item', () => {
     const bytes = readFileSync(LAYERED_IFC);
-    const pre = api.buildPrePassOnce(bytes);
     let shard;
     try {
+      const pre = api.buildPrePassOnce(bytes);
       const p = callPartitioned(bytes, pre);
       try {
         shard = p.takeShard();
@@ -439,13 +462,16 @@ if (LAYERED_AVAILABLE) {
     assert.equal(new Set(perTemplate.values()).size, perTemplate.size,
       'two templates share an item id; the id is not per representation item');
   });
+} else {
+  skip('#2985 instanced item id (wasm \u2192 wire)',
+    `${LAYERED_IFC} missing \u2014 ${FIXTURES_HINT}`);
 }
 
 test('processGeometryBatchFromSource returns empty when no source is installed (defensive)', () => {
   const freshApi = new IfcAPI();
   const bytes = new TextEncoder().encode(columnContent);
-  const pre = freshApi.buildPrePassOnce(bytes);
   try {
+    const pre = freshApi.buildPrePassOnce(bytes);
     // No setSourceBytes: the held bytes are empty → zero meshes, and crucially
     // NO panic (the decoder validates every byte span). The JS worker gates the
     // *FromSource path on a successful setSourceBytes, so this is unreachable in
@@ -475,8 +501,8 @@ console.log('\n📋 buildPrePassOnce contract');
 
 test('pre-pass exposes every field the viewer consumes', () => {
   const bytes = new TextEncoder().encode(columnContent);
-  const pre = api.buildPrePassOnce(bytes);
   try {
+    const pre = api.buildPrePassOnce(bytes);
     assert.equal(typeof pre.totalJobs, 'number');
     assert.ok(pre.jobs, 'jobs must exist');
     assert.equal(typeof pre.unitScale, 'number');
@@ -501,8 +527,8 @@ test('unit scale resolves conversion-based units (inch fixture → 0.0254)', () 
   // unit but overrides length with IFCCONVERSIONBASEDUNIT 'inch'. The
   // recurring unit-bug class is exactly this chain resolving wrong.
   const bytes = new TextEncoder().encode(columnContent);
-  const pre = api.buildPrePassOnce(bytes);
   try {
+    const pre = api.buildPrePassOnce(bytes);
     assert.ok(Math.abs(pre.unitScale - 0.0254) < 1e-9,
       `inch model must yield unitScale 0.0254, got ${pre.unitScale}`);
   } finally {
@@ -515,8 +541,8 @@ test('prepass resolves planeAngleToRadians on the wire', () => {
   // scales once and ships the plane-angle scale to workers so batch decoders
   // are seeded instead of re-paying an O(file) IFCPROJECT hunt per call.
   const bytes = new TextEncoder().encode(columnContent);
-  const pre = api.buildPrePassOnce(bytes);
   try {
+    const pre = api.buildPrePassOnce(bytes);
     assert.equal(typeof pre.planeAngleToRadians, 'number',
       'buildPrePassOnce must carry planeAngleToRadians');
     assert.ok(pre.planeAngleToRadians > 0,
@@ -570,15 +596,13 @@ test('streaming meta resolves units with IFCPROJECT moved to the END of DATA', (
   assert.ok(complete && complete.totalJobs > 0, 'streaming must complete with jobs');
 });
 
-test('unit scale resolves plain SI metres (georef fixture → 1.0)', () => {
-  if (!GEOREF_AVAILABLE) {
-    console.log('     (skipped — georef fixture missing, run `pnpm fixtures`)');
-    return;
-  }
+const GEOREF_METRE_TEST = 'unit scale resolves plain SI metres (georef fixture → 1.0)';
+if (!GEOREF_AVAILABLE) skip(GEOREF_METRE_TEST, `${GEOREF_IFC} missing — ${FIXTURES_HINT}`);
+else test(GEOREF_METRE_TEST, () => {
   const georefContent = readFileSync(GEOREF_IFC, 'utf-8');
   const bytes = new TextEncoder().encode(georefContent);
-  const pre = api.buildPrePassOnce(bytes);
   try {
+    const pre = api.buildPrePassOnce(bytes);
     assert.equal(pre.unitScale, 1, `metre model must yield unitScale 1, got ${pre.unitScale}`);
     assert.equal(pre.needsShift, false, 'local-coordinate model must not trigger RTC shift');
   } finally {
@@ -1012,6 +1036,9 @@ if (LAYERED_AVAILABLE) {
       `expected placed occurrences tagged 0; saw classes ${[...classes].sort().join(', ')}`,
     );
   });
+} else {
+  skip('geometryClass ordinals (Rust \u2192 TS contract)',
+    `${LAYERED_IFC} missing \u2014 ${FIXTURES_HINT}`);
 }
 
 // ===== source ids: representation item vs material layer (#3199) =====
@@ -1041,9 +1068,9 @@ if (LAYERED_AVAILABLE) {
   // The real `MeshCollection`, handles and all. Callers must free.
   const rawCollection = (content) => {
     const bytes = new TextEncoder().encode(content);
-    const pre = api.buildPrePassOnce(bytes);
-    const rtc = (pre && pre.rtcOffset) || [0, 0, 0];
     try {
+      const pre = api.buildPrePassOnce(bytes);
+      const rtc = (pre && pre.rtcOffset) || [0, 0, 0];
       return api.processGeometryBatch(
         bytes, pre.jobs, pre.unitScale, rtc[0] || 0, rtc[1] || 0, rtc[2] || 0, pre.needsShift,
         pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
@@ -1342,6 +1369,9 @@ if (LAYERED_AVAILABLE) {
       col.free();
     }
   });
+} else {
+  skip('source ids: representation item vs material layer (#3199)',
+    `${LAYERED_IFC} missing — ${FIXTURES_HINT}`);
 }
 
 // ===== energy-model boundary (exportHbjson / exportDfjson) =====
@@ -1391,6 +1421,9 @@ if (SPACES_AVAILABLE) {
     const model = JSON.parse(new TextDecoder().decode(out));
     assert.ok(Array.isArray(model.rooms), 'Honeybee model must declare a rooms array');
   });
+} else {
+  skip('energy model (exportHbjson / exportDfjson)',
+    `${SPACES_IFC} missing — ${FIXTURES_HINT}`);
 }
 
 test('exportKmz packs a stored-zip KMZ (PK header, doc.kml + model.glb, axis-derived heading)', () => {
@@ -1464,7 +1497,8 @@ if (existsSync(HELLO_WALL)) {
     assert.ok(!('version' in header), 'the pre-#2556 `version` key must not come back');
   });
 } else {
-  console.log('  ⚠️  apps/landing/samples/hello-wall.ifc missing — skipping exportUsd contract test');
+  skip('export contracts (USD / IFCX) over hello-wall',
+    `apps/landing/samples/hello-wall.ifc missing — ${FIXTURES_HINT}`);
 }
 
 // ===== Pipeline diagnostics channel (wasm boundary) =====
@@ -1629,8 +1663,8 @@ function withHashedBatch(content, tolerance, fn) {
   const hashApi = new IfcAPI();
   hashApi.setComputeGeometryHashes(tolerance);
   const bytes = new TextEncoder().encode(content);
-  const pre = hashApi.buildPrePassOnce(bytes);
   try {
+    const pre = hashApi.buildPrePassOnce(bytes);
     assert.ok(pre.totalJobs > 0, 'fixture must produce geometry jobs');
     const col = hashApi.processGeometryBatch(
       bytes, pre.jobs, pre.unitScale,
@@ -2153,7 +2187,7 @@ await runShardRefusalBoundaryTests(api, test);
 
 // Summary
 console.log('\n' + '═'.repeat(50));
-console.log(`📊 Results: ${passed} passed, ${failed} failed`);
+console.log(`📊 Results: ${passed} passed, ${failed} failed, ${skipped} skipped`);
 console.log('═'.repeat(50));
 
 if (failed > 0) {

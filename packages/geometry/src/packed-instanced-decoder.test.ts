@@ -22,7 +22,8 @@ import {
 // FROZEN. A real v1 shard, produced by the encoder before #2985 added the item
 // id. NEVER regenerate it: its whole value is that no current code produced it —
 // it is the shape already sitting in caches, which store IFNS bytes verbatim and
-// are NOT invalidated by the version bump (cache FORMAT_VERSION stays 15).
+// still decode. The cache key moves 15 -> 16 with this change, but shard bytes
+// also travel by other routes, so a v1 shard must keep decoding regardless.
 // Regenerating it would silently turn the backward-compatibility test into a
 // second forward-compatibility test. Rust holds the identical bytes as
 // `FIXTURE_V1_HEX` in instancing/tests.rs, so both decoders answer for one

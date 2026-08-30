@@ -489,8 +489,7 @@ uploaded.
 Instanced occurrences carry `geometryItemId` too, so instancing is no longer a
 reason to lose the drill-to-source link. **Do not turn instancing off to get
 item ids**: that trade no longer exists, and it costs you the draw-call win for
-nothing. (The `enableInstancing: false` advice above is about federation and
-nothing else.)
+nothing.
 
 On the wire the id rides the shard: `decodeInstancedShard` returns each
 occurrence with an optional `itemId`, and the renderer's `prepareInstancedRender`

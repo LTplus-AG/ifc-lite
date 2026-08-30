@@ -354,11 +354,19 @@ fn instanced_occurrences_carry_their_source_solid_item_id() {
         })
         .collect();
     items.sort_unstable();
-    items.dedup();
+    // NOT deduped on purpose. Dedup would drop multiplicity, and the property
+    // this pins is the DISTRIBUTION: four occurrences per source solid. With a
+    // dedup the test passes on seven SOLID_A and one SOLID_B, which is exactly
+    // the mis-grouping a per-item identity bug produces.
     assert_eq!(
         items,
-        vec![SOLID_A, SOLID_B],
-        "item ids must be the two source solids #{SOLID_A}/#{SOLID_B}, got {items:?}"
+        [
+            vec![SOLID_A; OCCURRENCES_PER_SOLID],
+            vec![SOLID_B; OCCURRENCES_PER_SOLID]
+        ]
+        .concat(),
+        "item ids must be {OCCURRENCES_PER_SOLID} each of the two source solids \
+         #{SOLID_A}/#{SOLID_B}, got {items:?}"
     );
 
     // Negative: every id that would look right at a glance. A field wired to the

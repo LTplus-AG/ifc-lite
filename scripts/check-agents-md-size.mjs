@@ -12,9 +12,12 @@
  * commits between eb2fd5af9 (2026-06-29) and a0250405f (2026-08-23) — 55 days,
  * ~690 bytes a day — and NOT ONE of those 26 commits made it smaller. Measured
  * by reading the blob size at every commit that touched it; the sequence is
- * strictly monotonic. It is now 6,899 words over 300 lines, with a single line
- * of 4,865 characters. Every incident adds a paragraph and nothing removes one,
- * because adding costs one commit and deleting costs an argument. An
+ * strictly monotonic. AT `a0250405f` it was 6,899 words over 300 lines, with a
+ * single line of 4,865 characters. Those figures are anchored to that SHA on
+ * purpose: the commit that WIRES this gate also rewrites AGENTS.md to pass it,
+ * so an unanchored "it is now" would be false by the time anyone read it.
+ *
+ * It grows because adding costs one commit and deleting costs an argument. An
  * instruction file nobody finishes is an instruction file that does not
  * instruct: past some length the marginal paragraph does not add a rule, it
  * hides the rules already there.
@@ -108,10 +111,11 @@
  *    in sync and buy nothing.
  *  - `--update` IS NOT SCOPED to the files your change touched. There, scoping
  *    stops a regenerate from annexing headroom that accumulated on main. Here
- *    there is no headroom to annex: every write either lowers a row to the
- *    file's measured size or is a raise, and a raise already needs
- *    `--allow-raise`. The worst an unscoped `--update` can do is tighten a row
- *    someone else shrank, which is the direction this gate wants.
+ *    there is no headroom to annex: NO WRITE CAN RAISE A ROW WITHOUT
+ *    `--allow-raise`. (Writes come in three kinds, not two: lower a row to the
+ *    file's measured size, remove a row for a file no longer tracked, or raise
+ *    one, which needs the flag.) The worst an unscoped `--update` can do is
+ *    tighten a row someone else shrank, which is the direction this gate wants.
  *  - EVERY tracked AGENTS.md keeps a row, including the small ones. The module
  *    ratchet deletes a row once the file drops under 400 lines, because there
  *    the row is an EXEMPTION from a universal limit. Here the row IS the limit,
@@ -141,6 +145,10 @@ import { readFileSync, writeFileSync, realpathSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseAllowlist, renderAllowlist } from './lib/module-size-ratchet.mjs';
+// The `<budget> <path>` format has ONE parser and ONE renderer, shared with
+// check-module-size.mjs and the Rust ratchet. A third copy would mean a
+// hardening applied to one of them reaching neither of the others.
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(SCRIPTS_DIR, '..');
@@ -226,53 +234,6 @@ function trackedAgentsFiles(root) {
   return listed.stdout.split('\0').filter((p) => p !== '' && AGENTS_MD_RE.test(p)).sort();
 }
 
-/**
- * Parse `<budget> <path>` rows into a Map. Comments and blanks are skipped; a
- * malformed row throws, because a silently dropped row is a silently unfrozen
- * file. Zero rows throws for the same reason: a truncated or renamed budget
- * file must be loud, not green.
- */
-function parseBudgets(text, label = 'budget file') {
-  if (typeof text !== 'string' || text.trim() === '') throw new Error(`${label}: empty or unreadable`);
-  const map = new Map();
-  for (const raw of text.split('\n')) {
-    const line = raw.trim();
-    if (line === '' || line.startsWith('#')) continue;
-    const match = /^(\S+)\s+(\S.*)$/.exec(line);
-    if (!match) throw new Error(`${label}: malformed line: ${JSON.stringify(line)}`);
-    const budget = Number(match[1]);
-    if (!Number.isInteger(budget) || budget <= 0) {
-      throw new Error(`${label}: bad budget in: ${JSON.stringify(line)}`);
-    }
-    const path = match[2].trim();
-    if (map.has(path)) {
-      throw new Error(`${label}: duplicate row for ${path} (budgets ${map.get(path)} and ${budget})`);
-    }
-    map.set(path, budget);
-  }
-  if (map.size === 0) throw new Error(`${label}: parsed 0 rows`);
-  return map;
-}
-
-/**
- * Re-render the budget file: its leading comment block verbatim, then one
- * `<budget> <path>` row per entry sorted by path. The header is carried over
- * rather than regenerated because it is where the rule is written down, and a
- * regenerate that dropped it would erase the reason the file exists.
- */
-function renderBudgets(existingText, map) {
-  const header = [];
-  for (const raw of String(existingText).split('\n')) {
-    const line = raw.trim();
-    if (line === '' || line.startsWith('#')) header.push(raw);
-    else break;
-  }
-  const rows = [...map.entries()]
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([path, budget]) => `${String(budget).padStart(6)} ${path}`);
-  return `${[...header, ...rows].join('\n')}\n`;
-}
-
 /** Characters per line, 1-indexed, for every line over `limit`. */
 function longLines(text, limit = MAX_LINE_CHARS) {
   const over = [];
@@ -328,7 +289,7 @@ try {
 
 let budgets;
 try {
-  budgets = parseBudgets(budgetsText, args.budgets);
+  budgets = parseAllowlist(budgetsText, args.budgets);
 } catch (err) {
   fail(err.message);
 }
@@ -396,7 +357,7 @@ if (args.update) {
     );
   }
 
-  writeFileSync(args.budgets, renderBudgets(budgetsText, next));
+  writeFileSync(args.budgets, renderAllowlist(budgetsText, next));
   for (const row of lowered) console.log(`lowered:${row}`);
   for (const row of removed) console.log(`removed:${row}`);
   for (const row of raised) console.log(`RAISED:${row}`);

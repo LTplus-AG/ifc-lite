@@ -93,22 +93,32 @@ reviews:
         mode: error
         instructions: >-
           Applies only when the PR adds or edits a file under `.changeset/`.
-          For each package named in a changeset, determine whether the PR removes,
-          renames, or narrows any exported symbol of that package, or changes an
-          exported function's return type in a way existing callers cannot absorb
-          (for example `String` to `Result<String, String>`, or returning a value to
-          throwing).
-          FAIL when such a change is declared as `patch`, or when it is declared as
-          `minor` for a package whose version is >= 1.0.0.
+
+          SCOPE: judge ONLY behaviour changes on exports that still exist under the
+          same name. Name-level removals and renames belong to
+          `scripts/check-changeset-bump.mjs`, which decides them from the API-surface
+          snapshot and is right by construction. Do NOT re-derive those: agreeing is
+          noise and disagreeing is a false finding the maintainer has to triage, which
+          is the review burden this whole change exists to reduce.
+
+          What the snapshot CANNOT see, and what you are here for: an exported
+          function that starts throwing where it returned a value; a return type
+          existing callers cannot absorb (`String` -> `Result<String, String>`, a Blob
+          -> a throw); a narrowed parameter type; a widened thrown-error contract; a
+          default that changes meaning. Each is a break on a surviving name, so the
+          snapshot is byte-identical and only reading the diff finds it.
+          FAIL when such a change is declared `patch`, or `minor` for a package at
+          >= 1.0.0.
           The repo rule is AGENTS.md, not generic semver: "removing/renaming an export
           is major (>=1.0 pkg) or minor (0.x), never patch when the surface shrank."
           Note the Rust crate version derives from the highest npm workspace version,
           so a bump chosen for a TypeScript API also governs a crates.io publish.
-          PASS when no changeset is touched, or when every declared bump is at or
-          above the level the surface change requires.
-          This check is a BACKSTOP. `scripts/check-changeset-bump.mjs` is the
-          deterministic gate; report a disagreement between the two as a finding,
-          because one of them is wrong and which one matters.
+          PASS when no changeset is touched, or when every behaviour change on a
+          surviving export is declared at or above the level it requires.
+          Worked example, the one that made this check exist: #3175's
+          `bcf-validate-against-official-xsds` declared `patch` while `writeBCF` began
+          throwing where it had returned a Blob. `writeBCF` never left the surface, so
+          the deterministic gate is blind to it and you are not.
 
       - name: Verification evidence is present
         mode: error

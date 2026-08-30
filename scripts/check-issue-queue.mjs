@@ -202,6 +202,8 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isMainEntry } from './lib/is-main-entry.mjs';
+import { existsOrThrow } from './lib/exists-or-throw.mjs';
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CONFIG = join(SCRIPTS_DIR, 'issue-queue.config.json');
@@ -241,7 +243,10 @@ export function normaliseLogin(login) {
 
 /** @param {string} path */
 export function readConfig(path) {
-  if (!existsSync(path)) {
+  // existsOrThrow: an unreadable config (EACCES, ENOTDIR) must not report as a
+  // MISSING one, because the two have different remedies and only one of them
+  // is 'create the file'.
+  if (!existsOrThrow(path, 'the issue-queue config', (m) => { throw new IssueQueueError('BAD_CONFIG', m); })) {
     throw new IssueQueueError(
       'NO_CONFIG',
       `Config \`${path}\` is missing. A missing label name is NOT an empty one: with no ` +
@@ -540,9 +545,12 @@ function timelineOf(conn, what) {
 /**
  * A raw GraphQL payload into the shape `evaluate` adjudicates.
  *
- * Exported and pure so the harness can drive it over payloads captured from the
- * live API -- the parser and the policy are both under test, rather than the
- * policy over a hand-rolled shape the parser never sees.
+ * Pure, so the harness can drive it over payloads captured from the live API via
+ * `--dump` and replayed with `--state-file` -- the parser and the policy are both
+ * under test, rather than the policy over a hand-rolled shape the parser never
+ * sees. The harness drives this as a SUBPROCESS (real argv, real config reads,
+ * real exit codes), not by importing it; the `export` keeps it addressable for a
+ * future in-process caller and is not evidence that one exists today.
  *
  * @param {unknown} payload
  */
@@ -636,9 +644,10 @@ function adjudicateLabel(holder, label, cfg) {
 }
 
 /**
- * The whole check over data already fetched. Split out so the harness can drive
- * every branch -- including every fail-closed one -- without a network, a
+ * The whole check over data already fetched. Split out so `--state-file` can
+ * reach every branch -- including every fail-closed one -- without a network, a
  * token, or a real PR, and so that the SAME function runs in CI as runs there.
+ * The harness reaches it through that flag, not through an import.
  *
  * @param {{ pr: ReturnType<typeof normalisePullRequest>, cfg: ReturnType<typeof readConfig> }} args
  * @returns {{ ok: boolean, verdict: string, lines: string[] }}
@@ -823,7 +832,7 @@ function main() {
   process.exit(ok ? 0 : 1);
 }
 
-if (process.argv[1] && process.argv[1].endsWith('check-issue-queue.mjs')) {
+if (isMainEntry(import.meta.url)) {
   try {
     main();
   } catch (err) {

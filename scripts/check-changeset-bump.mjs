@@ -183,6 +183,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import parseChangeset from '@changesets/parse';
 import { listWorkspacePackages } from './lib/list-workspace-packages.mjs';
+import { existsOrThrow } from './lib/exists-or-throw.mjs';
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(SCRIPTS_DIR, '..');
@@ -201,7 +202,16 @@ function flag(name, fallback = null) {
 const ROOT = flag('--root', REPO_ROOT);
 const CHANGESET_DIR = join(ROOT, '.changeset');
 
-/** Every refusal goes through here so none of them can exit 0 by accident. */
+/**
+ * The named-refusal path: a class, a message, a remedy, exit 1.
+ *
+ * SCOPE, stated because the previous wording claimed more than the code does:
+ * this is not the ONLY non-zero exit. `packageVersions()` throws a raw Error
+ * through its injected callback, and the unreadable-changesets block prints and
+ * exits 1 directly. Both still fail closed, so nothing is unsound -- but they
+ * exit without a refusal CLASS, so do not read a green run as proof that every
+ * exit path is routed through here.
+ */
 function refuse(what, why, remedy) {
   console.error(`❌ changeset-bump gate refused to run: ${what}\n`);
   console.error(`   ${why}\n`);
@@ -378,10 +388,32 @@ function requiredBump(version) {
 
 /** name -> { max, declarations: [{ file, type }] } over every pending changeset. */
 function pendingBumps() {
-  if (!existsSync(CHANGESET_DIR)) {
+  // TWO guards, because they catch different things and the first one alone is
+  // INERT against the case that matters. existsOrThrow separates "absent" from
+  // "unreadable" at STAT level, which catches ENOTDIR (a file where the
+  // directory belongs) and EIO. It does NOT catch a locked directory: statSync
+  // SUCCEEDS on a chmod-000 directory -- stat needs execute on the parent, not
+  // read on the directory -- so EACCES arrives at readdirSync instead, and an
+  // unguarded readdirSync there crashes with a stack trace rather than a named
+  // reason. Verified by chmod 000 on `.changeset/`: with only the stat guard the
+  // gate died in node:fs, never reaching its own refusal.
+  //
+  // Either way the answer must not be "no pending changesets": that is absence
+  // reading as success, on the one artifact class #3175 proved nobody reviews.
+  if (!existsOrThrow(CHANGESET_DIR, 'the changeset directory', (m) => refuse('CHANGESET_DIR_UNREADABLE', m))) {
     return { files: [], byPackage: new Map(), unreadable: [] };
   }
-  const files = readdirSync(CHANGESET_DIR)
+  let entries;
+  try {
+    entries = readdirSync(CHANGESET_DIR);
+  } catch (err) {
+    refuse(
+      'CHANGESET_DIR_UNREADABLE',
+      `cannot list the changeset directory ${CHANGESET_DIR}: ${err.code || err.message}. ` +
+        'Refusing to report "no pending changesets" for a directory this gate could not read.',
+    );
+  }
+  const files = entries
     .filter((f) => f.endsWith('.md') && f.toLowerCase() !== 'readme.md')
     .sort();
   const byPackage = new Map();

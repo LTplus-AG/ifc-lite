@@ -6,31 +6,26 @@
  * Pins that a PRIMARY `.glb` load registers itself in the federation registry
  * (`registerModelOffset`), exactly like every other primary format does.
  *
- * `finalizeModel`'s primary branch (`useIfcLoader.ts`) guards the
- * registration on `if (dataStore && geometryResult)`. For a primary GLB,
- * `loadFile`'s GLB branch deliberately passes `dataStore: null` into
- * `finalizeModel` ("Primary keeps the historical null data store (GLB has no
- * entities)") — so that guard never fires for a primary GLB, and the
- * registry's `nextOffset` never advances past 0. A federated model added
- * afterwards is then assigned an offset that starts at (or below) the
- * primary GLB's own max expressId, so the two models' mesh ids overlap:
- * primary mesh `k` and federated mesh `k` (local id) collide in the shared
- * id space `FederationRegistry.toGlobalId`/`fromGlobalId` resolve through.
+ * `finalizeModel`'s primary branch (`useIfcLoader.ts`) used to guard the
+ * registration on `if (dataStore && geometryResult)`; it now guards on
+ * `if (geometryResult)` alone. For a primary GLB, `loadFile`'s GLB branch
+ * deliberately passes `dataStore: null` into `finalizeModel` ("Primary keeps
+ * the historical null data store (GLB has no entities)") — so the old guard
+ * never fired for a primary GLB, and the registry's `nextOffset` never
+ * advanced past 0. A federated model added afterwards was then assigned an
+ * offset that started at (or below) the primary GLB's own max expressId, so
+ * the two models' mesh ids overlapped: primary mesh `k` and federated mesh
+ * `k` (local id) collided in the shared id space
+ * `FederationRegistry.toGlobalId`/`fromGlobalId` resolve through.
  *
- * `useIfcLoader.federatedIdOffset.test.tsx` already documents this exact gap
- * in its own header ("GLB is the one primary format that does NOT
- * register") and works around it by seeding the registry directly rather
- * than driving a real primary load. This file drives BOTH loads for real —
+ * `useIfcLoader.federatedIdOffset.test.tsx` documented this exact gap in its
+ * own header ("GLB is the one primary format that does NOT register") and
+ * works around it by seeding the registry directly rather than driving a real
+ * primary load; its header is corrected alongside this file, since the gap it
+ * described is the one fixed here. This file drives BOTH loads for real —
  * a primary GLB via `loadFile(file, { kind: 'primary' })`, then a federated
  * GLB via `loadFile(file, { kind: 'federated', modelId })` — and asserts the
  * federated model's `idOffset` does not overlap the primary's mesh ids.
- *
- * Control: the same two-load sequence, but with the primary given a non-null
- * (minimal, entity-less but non-null) data store — standing in for an
- * IFC/IFCX primary, which always carries a real `dataStore` — registers
- * correctly and produces disjoint ranges. This isolates the defect to the
- * `dataStore` nullness, not anything intrinsic to the sequence or the test
- * harness.
  */
 
 import '@/test/setup-dom.js';

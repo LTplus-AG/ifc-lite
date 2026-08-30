@@ -321,7 +321,7 @@ function writeMarkupFile(
     }
   }
 
-  content += `\n    <CreationDate>${escapeXml(topic.creationDate)}</CreationDate>`;
+  if (topic.creationDate) content += `\n    <CreationDate>${escapeXml(topic.creationDate)}</CreationDate>`;
   content += `\n    <CreationAuthor>${escapeXml(topic.creationAuthor)}</CreationAuthor>`;
 
   if (topic.modifiedDate) {
@@ -384,7 +384,7 @@ function writeMarkupFile(
     topic.comments
       .map((comment) => {
         let c = `\n${indent}<Comment Guid="${escapeXml(comment.guid)}">`;
-        c += `\n${indent}  <Date>${escapeXml(comment.date)}</Date>`;
+        if (comment.date) c += `\n${indent}  <Date>${escapeXml(comment.date)}</Date>`; // mirror undefined date; see reader.ts
         c += `\n${indent}  <Author>${escapeXml(comment.author)}</Author>`;
         c += `\n${indent}  <Comment>${escapeXml(comment.comment)}</Comment>`;
         if (comment.viewpointGuid) {

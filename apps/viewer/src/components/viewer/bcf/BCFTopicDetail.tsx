@@ -186,8 +186,8 @@ export function BCFTopicDetail({
 
             <div className="text-xs text-muted-foreground space-y-1">
               <p>
-                Created by {topic.creationAuthor} on{' '}
-                {formatDateTime(topic.creationDate)}
+                Created by {topic.creationAuthor}
+                {topic.creationDate ? <> on {formatDateTime(topic.creationDate)}</> : null}
               </p>
               {topic.assignedTo && <p>Assigned to: {topic.assignedTo}</p>}
               {topic.dueDate && <p>Due: {formatDate(topic.dueDate)}</p>}

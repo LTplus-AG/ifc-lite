@@ -227,7 +227,7 @@ describe('BCF Reader - buildingSMART Test Files', () => {
       const topic = Array.from(project.topics.values())[0];
       expect(topic.creationDate).toBeDefined();
       // Should be a valid ISO date string
-      expect(new Date(topic.creationDate).toString()).not.toBe('Invalid Date');
+      expect(new Date(topic.creationDate!).toString()).not.toBe('Invalid Date');
     });
   });
 

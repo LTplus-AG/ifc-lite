@@ -53,8 +53,15 @@ export interface BCFTopic {
   priority?: string;
   /** Index for ordering topics */
   index?: number;
-  /** Creation date (ISO 8601) */
-  creationDate: string;
+  /**
+   * Creation date (ISO 8601). `markup.xsd` declares this required with no
+   * default, but it comes through undefined when the source markup.bcf
+   * omits it — the reader never fabricates a read-time wall-clock
+   * timestamp in its place (that value would be indistinguishable from a
+   * genuinely-declared one, and isn't even stable across repeated reads of
+   * the same untouched file).
+   */
+  creationDate?: string;
   /** Author email */
   creationAuthor: string;
   /** Modification date (ISO 8601) */
@@ -119,8 +126,13 @@ export interface BCFDocumentReference {
 export interface BCFComment {
   /** Unique identifier */
   guid: string;
-  /** Comment creation date (ISO 8601) */
-  date: string;
+  /**
+   * Comment creation date (ISO 8601). `markup.xsd` declares this required
+   * with no default, but it comes through undefined when the source
+   * markup.bcf omits it — see `BCFTopic.creationDate` for why the reader
+   * never fabricates a read-time wall-clock timestamp in its place.
+   */
+  date?: string;
   /** Author email */
   author: string;
   /** Comment text */

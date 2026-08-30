@@ -39,9 +39,14 @@ export function assertModelAccess(ctx: ToolContext, model: LoadedModel): LoadedM
  * the source file, a LayerSet/ProfileSet/ConstituentSet) — an
  * `IfcMaterialList` never carries a list-level name, only `.materials[]`, so
  * reading `.name` alone mis-buckets every list-material entity as
- * materialless. Mirrors `computeMaterialSummary` in
- * `packages/cli/src/commands/stats-aggregation.ts`, which already falls back
- * this way.
+ * materialless.
+ *
+ * Only the `.materials[]` leg has a counterpart in `computeMaterialSummary`
+ * (`packages/cli/src/commands/stats-aggregation.ts`), and even there the CLI
+ * reads `.materials[0]` *before* `.name` rather than after. The layer,
+ * profile and constituent legs go beyond it: an unnamed set that the CLI
+ * skips entirely still gets a name here. So this is not parity with the CLI,
+ * only agreement on the `IfcMaterialList` case that motivated it.
  */
 export function materialDisplayName(mat: MaterialData | null | undefined): string | undefined {
   if (!mat) return undefined;

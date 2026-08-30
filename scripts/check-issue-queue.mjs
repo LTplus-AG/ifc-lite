@@ -284,6 +284,19 @@ export function readConfig(path) {
   // NOT defaulted, on purpose. `undefined` is falsy, so a typo in this key
   // would silently downgrade the gate to advisory -- which is the exact
   // difference between hole (2) being closed and being open.
+  // `mode` is NOT defaulted in code, for the reason every other knob in this
+  // config is not: a missing value must be a refusal, never a silent choice of
+  // the weaker behaviour. Defaulting to 'advisory' would mean a corrupted config
+  // downgrades the gate to a no-op and prints ticks while doing it.
+  if (cfg.mode !== 'advisory' && cfg.mode !== 'enforcing') {
+    throw new IssueQueueError(
+      'BAD_CONFIG',
+      `\`mode\` in \`${path}\` must be "advisory" or "enforcing"; found ` +
+        `${JSON.stringify(cfg.mode)}. Advisory prints the same verdict and exits 0; ` +
+        'enforcing exits 1. There is no default: a missing mode is a broken config, ' +
+        'not a request for the lenient one.',
+    );
+  }
   if (typeof cfg.requireLabelAuthority !== 'boolean') {
     throw new IssueQueueError(
       'BAD_CONFIG',
@@ -330,6 +343,13 @@ export function readConfig(path) {
   return {
     readyLabel: cfg.readyLabel,
     escapeLabel: cfg.escapeLabel,
+    // Carried through DELIBERATELY. This return is an explicit allowlist, not a
+    // spread, so a key validated above but omitted here reads as `undefined` at
+    // the call site while the validation still passes -- the gate then behaves as
+    // though the knob were unset and nothing says so. `mode` was added and lost
+    // exactly that way once; the advisory branch never fired and the only symptom
+    // was a correct-looking exit 1.
+    mode: cfg.mode,
     requireLabelAuthority: cfg.requireLabelAuthority,
     labelAuthorities: new Set(cfg.labelAuthorities.map(normaliseLogin)),
     exemptLogins: new Set(cfg.exemptLogins.map(normaliseLogin)),
@@ -829,6 +849,21 @@ function main() {
 
   const { ok, lines } = evaluate({ pr, cfg });
   for (const l of lines) console.log(l);
+
+  // ADVISORY GATES THE EXIT CODE AND NOTHING ELSE. The verdict above is printed
+  // identically in both modes, so the rollout cannot quietly change what the gate
+  // SAYS -- only whether saying it fails the job. That matters because advisory
+  // is a transition state: it shipped that way so 30 in-flight PRs from an active
+  // contributor did not all turn red on the day the rule arrived, and the flip to
+  // enforcing is a one-word config edit reviewed like any other.
+  if (!ok && cfg.mode === 'advisory') {
+    console.log('');
+    console.log(
+      'ADVISORY MODE: the finding above does not fail this job. Set `mode` to ' +
+        '"enforcing" in scripts/issue-queue.config.json once the queue is stocked.',
+    );
+    process.exit(0);
+  }
   process.exit(ok ? 0 : 1);
 }
 

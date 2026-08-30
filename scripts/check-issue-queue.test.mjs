@@ -122,9 +122,88 @@ function run(payload, extra = []) {
 /** Write a config variant and return `--config <path>`. */
 function cfgWith(patch, tag) {
   const path = join(TMP, `cfg-${tag}.json`);
-  writeFileSync(path, JSON.stringify({ ...SHIPPED, ...patch }));
+  // Defaults to `enforcing`, and `patch` can still override it. A verdict test
+  // asks "does this shape fail", which is a question about the POLICY; the
+  // shipped `mode` is a rollout state that will flip. Without this default,
+  // flipping the shipped config silently rewrote what nine tests asserted.
+  writeFileSync(path, JSON.stringify({ ...SHIPPED, mode: 'enforcing', ...patch }));
   return ['--config', path];
 }
+
+/** The shipped config with the rollout pinned to enforcing. */
+const ENFORCING = cfgWith({}, 'enforcing-base');
+
+// =========================================================== advisory mode
+//
+// These exist because the branch shipped BROKEN and every one of the 33 tests
+// stayed green. `readConfig` returns an explicit key allowlist rather than a
+// spread, so `mode` was validated on the raw JSON and then dropped from the
+// object the gate actually reads: `cfg.mode` was `undefined` at the exit check,
+// the advisory branch never ran, and the only symptom was a correct-LOOKING
+// exit 1. A knob with no test is a knob that does nothing.
+
+test('ADVISORY: a failing verdict prints in full and exits 0', () => {
+  const r = run(
+    prPayload({ issues: [issue(3525, [])] }),
+    cfgWith({ mode: 'advisory' }, 'advisory-fail'),
+  );
+  assert.equal(r.code, 0, r.output);
+  // The verdict text must be IDENTICAL to enforcing: advisory gates the exit
+  // code and nothing else, so a rollout cannot quietly change what is reported.
+  assert.match(r.output, /UNQUEUED_WORK/);
+  assert.match(r.output, /ADVISORY MODE: the finding above does not fail this job/);
+});
+
+test('ENFORCING: the same payload exits 1 and says nothing about advisory', () => {
+  const r = run(
+    prPayload({ issues: [issue(3525, [])] }),
+    cfgWith({ mode: 'enforcing' }, 'enforcing-fail'),
+  );
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /UNQUEUED_WORK/);
+  assert.doesNotMatch(r.output, /ADVISORY MODE/);
+});
+
+test('ADVISORY does not alter a PASS', () => {
+  const r = run(
+    prPayload({ issues: [issue(3525, [[READY, MAINTAINER]])] }),
+    cfgWith({ mode: 'advisory' }, 'advisory-pass'),
+  );
+  assert.equal(r.code, 0, r.output);
+  assert.match(r.output, /READY_ISSUE/);
+  assert.doesNotMatch(r.output, /ADVISORY MODE/);
+});
+
+test('ADVISORY does not suppress a REFUSAL', () => {
+  // A refusal is a fact about the gate's inputs, not a verdict on the PR, so it
+  // must fail closed in both modes. Advisory softening these would make a broken
+  // config indistinguishable from a clean run.
+  const r = run(
+    prPayload({ issues: [issue(3525, [])], issuesTruncated: true }),
+    cfgWith({ mode: 'advisory' }, 'advisory-refusal'),
+  );
+  assert.equal(r.code, 1, r.output);
+  assert.doesNotMatch(r.output, /ADVISORY MODE/);
+});
+
+test('a MISSING mode is refused, not defaulted to the lenient one', () => {
+  const path = join(TMP, 'cfg-no-mode.json');
+  const { mode, ...withoutMode } = SHIPPED;
+  writeFileSync(path, JSON.stringify(withoutMode));
+  const r = run(prPayload({ issues: [issue(3525, [])] }), ['--config', path]);
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /BAD_CONFIG/);
+  assert.match(r.output, /must be "advisory" or "enforcing"/);
+});
+
+test('an UNKNOWN mode is refused', () => {
+  const r = run(
+    prPayload({ issues: [issue(3525, [])] }),
+    cfgWith({ mode: 'warn' }, 'bad-mode'),
+  );
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /BAD_CONFIG/);
+});
 
 // =================================================== the five core verdicts
 
@@ -138,7 +217,7 @@ test('PASS: a PR closing a `ready` issue', () => {
 });
 
 test('FAIL: a PR closing an UNLABELLED issue', () => {
-  const r = run(prPayload({ issues: [issue(3525, [])] }));
+  const r = run(prPayload({ issues: [issue(3525, [])] }), ENFORCING);
   assert.equal(r.code, 1, r.output);
   assert.match(r.output, /UNQUEUED_WORK/);
   assert.match(r.output, new RegExp(`#3525 has no \`${READY}\` label \\(no labels\\)`));
@@ -148,7 +227,7 @@ test('FAIL: a PR closing an UNLABELLED issue', () => {
 });
 
 test('FAIL: a PR closing NOTHING', () => {
-  const r = run(prPayload({ issues: [] }));
+  const r = run(prPayload({ issues: [] }), ENFORCING);
   assert.equal(r.code, 1, r.output);
   assert.match(r.output, /NO_LINKED_ISSUE/);
   // The #2978 lesson is IN the failure text, because a contributor reading it
@@ -159,14 +238,14 @@ test('FAIL: a PR closing NOTHING', () => {
 });
 
 test('PASS: a PR carrying the escape label, applied by an authority', () => {
-  const r = run(prPayload({ prLabels: [[ESCAPE, MAINTAINER]], issues: [] }));
+  const r = run(prPayload({ prLabels: [[ESCAPE, MAINTAINER]], issues: [] }), ENFORCING);
   assert.equal(r.code, 0, r.output);
   assert.match(r.output, /ESCAPE_LABEL/);
   assert.match(r.output, /queue is bypassed deliberately/);
 });
 
 test("PASS: the maintainer's own PR, closing nothing and carrying no label", () => {
-  const r = run(prPayload({ author: MAINTAINER, issues: [] }));
+  const r = run(prPayload({ author: MAINTAINER, issues: [] }), ENFORCING);
   assert.equal(r.code, 0, r.output);
   assert.match(r.output, /EXEMPT_AUTHOR/);
   assert.match(r.output, /sets direction by definition/);
@@ -175,7 +254,7 @@ test("PASS: the maintainer's own PR, closing nothing and carrying no label", () 
 // ============================================ the escape label's own hole
 
 test('FAIL: the escape label applied by the PR AUTHOR is not an escape', () => {
-  const r = run(prPayload({ prLabels: [[ESCAPE, CONTRIBUTOR]], issues: [] }));
+  const r = run(prPayload({ prLabels: [[ESCAPE, CONTRIBUTOR]], issues: [] }), ENFORCING);
   assert.equal(r.code, 1, r.output);
   assert.match(r.output, /SELF_APPLIED_LABEL/);
   assert.match(r.output, new RegExp(`applied by \`${CONTRIBUTOR.toLowerCase()}\``));
@@ -183,7 +262,7 @@ test('FAIL: the escape label applied by the PR AUTHOR is not an escape', () => {
 });
 
 test('FAIL: a `ready` label the contributor applied to their own issue', () => {
-  const r = run(prPayload({ issues: [issue(3525, [[READY, CONTRIBUTOR]])] }));
+  const r = run(prPayload({ issues: [issue(3525, [[READY, CONTRIBUTOR]])] }), ENFORCING);
   assert.equal(r.code, 1, r.output);
   assert.match(r.output, /UNQUEUED_WORK/);
   assert.match(r.output, /applied it and is not in `labelAuthorities`/);
@@ -191,7 +270,7 @@ test('FAIL: a `ready` label the contributor applied to their own issue', () => {
 
 test('the authority rule is a KNOB, and turning it off is what makes self-applying work', () => {
   const selfEscaped = prPayload({ prLabels: [[ESCAPE, CONTRIBUTOR]], issues: [] });
-  assert.equal(run(selfEscaped).code, 1);
+  assert.equal(run(selfEscaped, ENFORCING).code, 1);
   const off = run(selfEscaped, cfgWith({ requireLabelAuthority: false }, 'noauth'));
   assert.equal(off.code, 0, off.output);
   assert.match(off.output, /ESCAPE_LABEL/);
@@ -200,7 +279,7 @@ test('the authority rule is a KNOB, and turning it off is what makes self-applyi
 test('FAIL-CLOSED: a label present with NO event explaining it', () => {
   // `[ESCAPE, null]` is the live shape for a deleted actor, or a label applied
   // outside the timeline window. It must not read as authorised.
-  const r = run(prPayload({ prLabels: [[ESCAPE, null]], issues: [] }));
+  const r = run(prPayload({ prLabels: [[ESCAPE, null]], issues: [] }), ENFORCING);
   assert.equal(r.code, 1, r.output);
   assert.match(r.output, /UNKNOWN_LABEL_APPLIER/);
 });
@@ -208,6 +287,7 @@ test('FAIL-CLOSED: a label present with NO event explaining it', () => {
 test('FAIL-CLOSED: a label whose event is past the timeline page boundary', () => {
   const r = run(
     prPayload({ prLabels: [[ESCAPE, null]], issues: [], prExtra: { historyTruncated: true } }),
+    ENFORCING,
   );
   assert.equal(r.code, 1, r.output);
   assert.match(r.output, /LABEL_HISTORY_TRUNCATED/);
@@ -224,7 +304,7 @@ test('the NEWEST applier decides, not the oldest', () => {
     actor: { login: CONTRIBUTOR },
     createdAt: '2026-08-29T09:00:00Z',
   });
-  const r = run(payload);
+  const r = run(payload, ENFORCING);
   assert.equal(r.code, 0, r.output);
   assert.match(r.output, new RegExp(`applied by \`${MAINTAINER}\``));
 });
@@ -247,6 +327,7 @@ test('every unqueued issue is listed with ITS OWN reason, not one collapsed verd
     prPayload({
       issues: [issue(1, [['bug', MAINTAINER]]), issue(2, [[READY, CONTRIBUTOR]])],
     }),
+    ENFORCING,
   );
   assert.equal(r.code, 1, r.output);
   assert.match(r.output, /#1 has no `ready` label \(it has: bug\)/);
@@ -260,7 +341,7 @@ test('the three dependabot spellings all resolve to the same exemption', () => {
   // `dependabot`, REST says `dependabot[bot]`. A gate that only matched one
   // would redden every dependency bump under the other two.
   for (const login of ['dependabot', 'dependabot[bot]', 'app/dependabot', 'DependaBot']) {
-    const r = run(prPayload({ author: login, issues: [] }));
+    const r = run(prPayload({ author: login, issues: [] }), ENFORCING);
     assert.equal(r.code, 0, `${login}: ${r.output}`);
     assert.match(r.output, /EXEMPT_AUTHOR/);
   }
@@ -281,7 +362,7 @@ test('normalisation is load-bearing: ONE spelling in the config covers all three
 });
 
 test('a login that merely CONTAINS an exempt one is not exempt', () => {
-  const r = run(prPayload({ author: 'louistrue-bot-clone', issues: [] }));
+  const r = run(prPayload({ author: 'louistrue-bot-clone', issues: [] }), ENFORCING);
   assert.equal(r.code, 1, r.output);
   assert.match(r.output, /NO_LINKED_ISSUE/);
 });
@@ -302,7 +383,7 @@ test('FAIL-CLOSED: a null pullRequest is not a PR that closes nothing', () => {
 });
 
 test('FAIL-CLOSED: a deleted author cannot be adjudicated', () => {
-  const r = run(prPayload({ author: null, issues: [] }));
+  const r = run(prPayload({ author: null, issues: [] }), ENFORCING);
   assert.equal(r.code, 1, r.output);
   assert.match(r.output, /NO_AUTHOR/);
 });
@@ -310,19 +391,19 @@ test('FAIL-CLOSED: a deleted author cannot be adjudicated', () => {
 test('FAIL-CLOSED: a MISSING closingIssuesReferences is not an empty one', () => {
   const payload = prPayload({ issues: [] });
   delete payload.data.repository.pullRequest.closingIssuesReferences;
-  const r = run(payload);
+  const r = run(payload, ENFORCING);
   assert.equal(r.code, 1, r.output);
   assert.match(r.output, /NO_CLOSING_ISSUES/);
 });
 
 test('FAIL-CLOSED: a truncated issue list never reports "none of them is ready"', () => {
-  const r = run(prPayload({ issues: [issue(1, [])], issuesTruncated: true }));
+  const r = run(prPayload({ issues: [issue(1, [])], issuesTruncated: true }), ENFORCING);
   assert.equal(r.code, 1, r.output);
   assert.match(r.output, /ISSUES_TRUNCATED/);
 });
 
 test('FAIL-CLOSED: a truncated label list on an issue', () => {
-  const r = run(prPayload({ issues: [issue(1, [], { labelsTruncated: true })] }));
+  const r = run(prPayload({ issues: [issue(1, [], { labelsTruncated: true })] }), ENFORCING);
   assert.equal(r.code, 1, r.output);
   assert.match(r.output, /LABELS_TRUNCATED/);
 });
@@ -330,7 +411,7 @@ test('FAIL-CLOSED: a truncated label list on an issue', () => {
 test('FAIL-CLOSED: a missing label list is not an empty one', () => {
   const payload = prPayload({ issues: [] });
   delete payload.data.repository.pullRequest.labels;
-  const r = run(payload);
+  const r = run(payload, ENFORCING);
   assert.equal(r.code, 1, r.output);
   assert.match(r.output, /NO_LABELS/);
 });
@@ -338,7 +419,7 @@ test('FAIL-CLOSED: a missing label list is not an empty one', () => {
 test('FAIL-CLOSED: a missing label history is not "nobody applied anything"', () => {
   const payload = prPayload({ prLabels: [[ESCAPE, MAINTAINER]], issues: [] });
   delete payload.data.repository.pullRequest.timelineItems;
-  const r = run(payload);
+  const r = run(payload, ENFORCING);
   assert.equal(r.code, 1, r.output);
   assert.match(r.output, /NO_TIMELINE/);
 });
@@ -390,7 +471,7 @@ test('config: an unknown flag is refused rather than ignored', () => {
 test('the SHIPPED config is the one the gate validates', () => {
   // Not decoration: every test above patches this file, so a shipped config
   // that its own validator rejects would be invisible here.
-  const r = run(prPayload({ issues: [issue(3525, [[READY, MAINTAINER]])] }));
+  const r = run(prPayload({ issues: [issue(3525, [[READY, MAINTAINER]])] }), ENFORCING);
   assert.equal(r.code, 0, r.output);
   assert.equal(SHIPPED.requireLabelAuthority, true, 'ships with the self-apply rule ARMED');
   assert.ok(SHIPPED.labelAuthorities.length > 0);

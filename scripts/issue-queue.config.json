@@ -23,7 +23,6 @@
     "is the correct behaviour for a queue nobody has filled yet, and it is also why this gate",
     "should not be made a REQUIRED check until the maintainer has labelled a working set."
   ],
-
   "$readyLabelComment": [
     "READY_LABEL: the label on an ISSUE that says the maintainer wants this built.",
     "The measured problem: 608 of one contributor's 743 commits (82%) carried no linked issue,",
@@ -33,7 +32,6 @@
     "per PR at 27.7 PRs/day."
   ],
   "readyLabel": "ready",
-
   "$escapeLabelComment": [
     "ESCAPE_LABEL: the label on a PULL REQUEST that says `this one is fine unqueued'.",
     "It exists because this gate cannot tell a genuinely urgent drive-by fix -- a release is",
@@ -44,7 +42,18 @@
     "steers nothing."
   ],
   "escapeLabel": "unqueued",
-
+  "$modeComment": [
+    "ADVISORY or ENFORCING. Advisory prints the identical verdict and exits 0;",
+    "enforcing exits 1. Not defaulted in code: a missing value is a refusal, because",
+    "defaulting would let a corrupted config silently downgrade the gate to a no-op.",
+    "SHIPPED ADVISORY DELIBERATELY. On the day this landed the highest-volume",
+    "contributor had 30 open PRs, none of them closing a `ready`-labelled issue,",
+    "because no issue carried the label yet. Enforcing on day one would have turned",
+    "all 30 red for a rule that did not exist when they were opened. Flip to",
+    "`enforcing` once a working set of issues is labelled -- it is a one-word edit,",
+    "and it is reviewed like any other change to this file."
+  ],
+  "mode": "advisory",
   "$labelAuthoritiesComment": [
     "WHO IS ALLOWED TO APPLY THE TWO LABELS. This is the half that makes the gate more than a",
     "suggestion, and it is not hypothetical: the contributor this gate is aimed at has",
@@ -64,9 +73,10 @@
     "list that is correct in one API and silently inert in another is a config nobody can",
     "audit by reading it."
   ],
-  "labelAuthorities": ["louistrue"],
+  "labelAuthorities": [
+    "louistrue"
+  ],
   "requireLabelAuthority": true,
-
   "$exemptLoginsComment": [
     "WHOSE PRs THIS GATE DOES NOT ADJUDICATE.",
     "",

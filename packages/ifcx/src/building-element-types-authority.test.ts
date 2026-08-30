@@ -18,9 +18,11 @@
  * `IfcCaissonFoundation`, `IfcCourse`, `IfcDeepFoundation`,
  * `IfcEarthworksFill`, `IfcKerb`, `IfcMooringDevice`,
  * `IfcNavigationElement`, `IfcPavement`, `IfcRail`, `IfcReinforcedSoil`,
- * `IfcTrackElement`) — IFC4X3 renamed the abstract root itself from
- * `IfcBuildingElement` to `IfcBuiltElement`, so even a schema-derived walk
- * rooted only at the IFC4 name would silently return nothing for IFC4X3.
+ * `IfcTrackElement`) — IFC4X3 replaced the family root `IfcBuildingElement`
+ * with `IfcBuiltElement`, so even a schema-derived walk rooted only at the
+ * IFC4 name would silently return nothing for IFC4X3. Unlike the abstract
+ * IFC2X3/IFC4 root, `IfcBuiltElement` is itself concrete, so it has to be
+ * a member of the set and not merely the walk's starting point.
  *
  * This test re-derives the full descendant set from `@ifc-lite/data`'s
  * generated IFC2X3/IFC4/IFC4X3 entity tables — walking `IfcBuildingElement`
@@ -76,10 +78,11 @@ describe('BUILDING_ELEMENT_TYPES vs generated IFC schemas', () => {
       assert.ok(universe.size > 1, `expected a real ${root} family, got size ${universe.size}`);
     });
 
-    it(`BUILDING_ELEMENT_TYPES flags every ${schemaName} ${root} descendant`, () => {
-      const missing = [...universe]
-        .filter((name) => name !== root)
-        .filter((name) => !BUILDING_ELEMENT_TYPES.has(name));
+    it(`BUILDING_ELEMENT_TYPES flags every ${schemaName} ${root} member`, () => {
+      // The root counts as a member, not just the walk's starting point:
+      // excluding it drops IFC4X3's concrete `IfcBuiltElement` (see the
+      // dedicated case below).
+      const missing = [...universe].filter((name) => !BUILDING_ELEMENT_TYPES.has(name));
       assert.deepStrictEqual(missing, []);
     });
   }
@@ -116,6 +119,22 @@ describe('BUILDING_ELEMENT_TYPES vs generated IFC schemas', () => {
     ]) {
       assert.ok(BUILDING_ELEMENT_TYPES.has(name), `${name} missing from BUILDING_ELEMENT_TYPES`);
     }
+  });
+
+  it('carries IFC4X3 IfcBuiltElement itself, which the schema marks concrete', () => {
+    // The one root that is instantiable: an IFC4X3 file may carry an
+    // `IFCBUILTELEMENT` line, so a set that walks from the root but drops
+    // it answers `false` for a real built element. Read the flag from the
+    // generated table rather than asserting it here, so a future schema
+    // that makes the root abstract shows up as a failure to re-decide
+    // rather than as a stale hand-written claim.
+    const root = ENTITIES_IFC4X3.find((entity) => entity.name === 'IfcBuiltElement');
+    assert.ok(root, 'IfcBuiltElement missing from ENTITIES_IFC4X3');
+    assert.strictEqual(root.abstract, false, 'IfcBuiltElement is no longer concrete in IFC4X3');
+    assert.ok(
+      BUILDING_ELEMENT_TYPES.has('IfcBuiltElement'),
+      'IfcBuiltElement missing from BUILDING_ELEMENT_TYPES',
+    );
   });
 
   it('does not flag any real IfcElement outside the building-element family (IFC4)', () => {

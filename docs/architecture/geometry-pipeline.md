@@ -460,6 +460,34 @@ flowchart TB
     Definition --> Fallback
 ```
 
+### IFNS shard wire format: v2 carries the source item id
+
+Each occurrence in a shard names the `IfcRepresentationItem` it was tessellated
+from, so an instanced piece drills back to source exactly like a flat mesh does
+(`MeshData.geometryItemId`; see the [Geometry Guide](../guide/geometry.md)).
+Header word 7, a literal `0` nobody read in v1, now holds the **instance record
+stride in bytes**. Per-instance fields are append-only in a fixed order: the
+88-byte base record (template index, entity id, colour, transform), then the
+`itemId` u32 at offset 88 for a stride of 92.
+
+The stride, not a flag word, is what buys forward compatibility. A decoder must
+reject a flag bit it does not know, because an unknown bit changes the stride
+unknowably and a mis-strided read yields plausible garbage rather than an error.
+A stride the decoder *reads* lets it keep every field it knows and step over a
+trailing field it does not. So the version gate is permissive and the stride
+gate is strict: any version ≥ 2 with a readable stride decodes, a v1 shard (or
+word 7 == 0) reads at the 88-byte base, and a stride below the base, or one
+whose instance table cannot fit the buffer, is refused.
+
+The encoder derives the stride from the data, declaring 92 only when some
+occurrence actually names an item. A model with none pays no per-occurrence
+zeros (roughly 800 KB on a 200k-occurrence model, written and cached), and a
+shard that declares the field is never all-zero, which is what lets the decoder
+expose `DecodedInstancedShard.carriesItemIds` as a real answer rather than a
+guess. The cache stores shard bytes verbatim, so cache `FORMAT_VERSION` stays at
+15 and existing v1 shards keep loading, without ids, until the model is
+re-parsed.
+
 ## Streaming Pipeline (Browser Worker Pool)
 
 In the browser, `@ifc-lite/geometry` orchestrates a worker pool (`geometry-parallel.ts`):

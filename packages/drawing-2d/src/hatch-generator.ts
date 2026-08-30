@@ -271,18 +271,32 @@ export class HatchGenerator {
     // the polygon it was clipped to.
     //
     // The tie-break reads as an infinitesimal displacement of the hatch line
-    // towards its `> 0` side, applied consistently to every ring: a line
-    // lying exactly ALONG a ring edge therefore resolves to outside that
-    // ring. The sweep's first line always passes through the extreme vertex
-    // (`generateParallelLines` starts at the bbox minimum), so on an
-    // axis-aligned shape that first line falls on the boundary edge and is
-    // dropped, and a line flush with a hole's near edge is kept rather than
-    // subtracted. Both are the same rule, and both put the line on the
-    // boundary rather than in the interior of anything.
+    // BACKWARDS along the sweep direction — `sideOf`'s `> 0` half-plane is
+    // the `-perp` one, and `generateParallelLines` steps along `+perp` from
+    // the bounding-box minimum. Every ring is nudged by that same amount in
+    // that same direction, so a row lying exactly on an edge resolves to
+    // whichever side of the ring the sweep has not reached yet: the sweep's
+    // first line sits on the outer ring's minimum-side edge and falls
+    // outside the polygon, a line flush with a hole's minimum-side edge
+    // falls outside that hole and is kept, and a line flush with a hole's
+    // far edge falls inside it and is subtracted. All three are the one
+    // rule, and none of them moves a line off the boundary into an
+    // interior.
     const sideOf = (p: Point2D): number =>
       dx * (p.y - line.start.y) - dy * (p.x - line.start.x);
 
     const lenSq = dx * dx + dy * dy;
+    // Crossings anywhere on the INFINITE line, not only the stretch between
+    // `line.start` and `line.end`. That is what lets the walk below seed
+    // itself: the ring is closed, so its vertices end in the bucket they
+    // started in, the crossing count is therefore even, and the state out at
+    // `t = -Infinity` is "outside the ring" for any ring whatever. The
+    // earlier version kept only crossings within `[0, 1]` and seeded the
+    // walk by ray-casting `line.start` instead, which decides a point lying
+    // exactly ON the ring by its own rule — the opposite of the tie-break
+    // above. On a row flush with a hole's edge the two disagreed: no
+    // crossings by side, `inside` by ray cast, so the whole row was thrown
+    // away, taking interior fill with it that never touched the hole.
     const ts: number[] = [];
     for (let i = 0; i < ring.length; i++) {
       const j = (i + 1) % ring.length;
@@ -299,58 +313,37 @@ export class HatchGenerator {
       const u = sa / (sa - sb);
       const px = ring[i].x + u * (ring[j].x - ring[i].x);
       const py = ring[i].y + u * (ring[j].y - ring[i].y);
-      const t = ((px - line.start.x) * dx + (py - line.start.y) * dy) / lenSq;
-      if (t >= 0 && t <= 1) {
-        ts.push(t);
-      }
+      ts.push(((px - line.start.x) * dx + (py - line.start.y) * dy) / lenSq);
     }
     ts.sort((a, b) => a - b);
 
-    // A line with zero crossings has a CONSTANT inside/outside state along
-    // its whole length, so any point on it answers. `line.start` is used
-    // rather than the midpoint the previous implementation sampled because
-    // it is the same point the parity walk below seeds `currentlyInside`
-    // from — one sampling point for the whole function, so the two branches
-    // cannot disagree about which side the line starts on.
-    if (ts.length === 0) {
-      return this.pointInRing(line.start, ring) === inside ? [line] : [];
-    }
+    // `t <= 0` and `t >= 1` return copies of the line's own endpoints rather
+    // than `start + t * d`, which in floating point is not exactly the
+    // endpoint. A segment handed on to the next ring's clip therefore
+    // carries the coordinates it arrived with, unrounded.
+    const pointAt = (t: number): Point2D => {
+      if (t <= 0) return { x: line.start.x, y: line.start.y };
+      if (t >= 1) return { x: line.end.x, y: line.end.y };
+      return { x: line.start.x + t * dx, y: line.start.y + t * dy };
+    };
 
-    // Build segments based on intersections
     const segments: Line2D[] = [];
+    const keep = (from: number, to: number): void => {
+      const lo = Math.max(from, 0);
+      const hi = Math.min(to, 1);
+      if (hi > lo) segments.push({ start: pointAt(lo), end: pointAt(hi) });
+    };
 
-    // Check if we start inside
-    let currentlyInside = this.pointInRing(line.start, ring);
-    let lastT = 0;
-
+    // Walk the whole line from `t = -Infinity`, where every ring is outside,
+    // and clip each kept run back to the `[0, 1]` stretch that was asked for.
+    let currentlyInside = false;
+    let lastT = -Infinity;
     for (const t of ts) {
-      if (currentlyInside === inside) {
-        // Add segment from lastT to this intersection
-        segments.push({
-          start: {
-            x: line.start.x + lastT * dx,
-            y: line.start.y + lastT * dy,
-          },
-          end: {
-            x: line.start.x + t * dx,
-            y: line.start.y + t * dy,
-          },
-        });
-      }
+      if (currentlyInside === inside) keep(lastT, t);
       lastT = t;
       currentlyInside = !currentlyInside;
     }
-
-    // Handle final segment to end
-    if (currentlyInside === inside) {
-      segments.push({
-        start: {
-          x: line.start.x + lastT * dx,
-          y: line.start.y + lastT * dy,
-        },
-        end: line.end,
-      });
-    }
+    if (currentlyInside === inside) keep(lastT, Infinity);
 
     // Filter out degenerate segments
     return segments.filter((seg) => {
@@ -358,28 +351,6 @@ export class HatchGenerator {
         Math.abs(seg.end.x - seg.start.x) + Math.abs(seg.end.y - seg.start.y);
       return len > EPSILON;
     });
-  }
-
-  /**
-   * Point in polygon ring test (ray casting)
-   */
-  private pointInRing(point: Point2D, ring: Point2D[]): boolean {
-    let inside = false;
-    const n = ring.length;
-
-    for (let i = 0, j = n - 1; i < n; j = i++) {
-      const pi = ring[i];
-      const pj = ring[j];
-
-      if (
-        pi.y > point.y !== pj.y > point.y &&
-        point.x < ((pj.x - pi.x) * (point.y - pi.y)) / (pj.y - pi.y) + pi.x
-      ) {
-        inside = !inside;
-      }
-    }
-
-    return inside;
   }
 
   /**

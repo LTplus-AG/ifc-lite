@@ -150,6 +150,57 @@ describe('HatchGenerator', () => {
     expect(totalLenAtY5).toBeCloseTo(10, 3);
   });
 
+  it('keeps the interior run on a row that lies along a hole edge', () => {
+    const gen = new HatchGenerator();
+    // Two holes abutting on y=6, so the y=6 hatch row is flush with the top
+    // edge of the lower one AND the bottom edge of the upper one. Nothing
+    // about that touches x < 4, which is plain interior 4 units wide.
+    const outer: Point2D[] = [
+      { x: 0, y: 0 },
+      { x: 11, y: 0 },
+      { x: 11, y: 13 },
+      { x: 0, y: 13 },
+    ];
+    const lower: Point2D[] = [
+      { x: 4, y: 3 },
+      { x: 7, y: 3 },
+      { x: 7, y: 6 },
+      { x: 4, y: 6 },
+    ];
+    const upper: Point2D[] = [
+      { x: 4, y: 6 },
+      { x: 8, y: 6 },
+      { x: 8, y: 8 },
+      { x: 4, y: 8 },
+    ];
+
+    const result = gen.generateHatch(polygonOf(5, outer, [lower, upper]), 100, {
+      type: 'diagonal',
+      spacing: 1,
+      angle: 90,
+    });
+
+    const atY6 = result.lines
+      .filter((l) => Math.abs(l.line.start.y - 6) < 1e-6)
+      .map((l) => [
+        Math.min(l.line.start.x, l.line.end.x),
+        Math.max(l.line.start.x, l.line.end.x),
+      ] as const)
+      .sort((a, b) => a[0] - b[0]);
+
+    // x in [0,4] and x in [7,11] are interior; x in [4,7] is the lower hole,
+    // whose FAR edge the row lies on, so it is subtracted. Deciding the row
+    // by ray-casting its start point instead of by the side test threw the
+    // whole row away here, losing the [0,4] run — genuine interior two units
+    // clear of any boundary — because the row's start read as inside the
+    // upper hole, which it only touches.
+    expect(atY6).toHaveLength(2);
+    expect(atY6[0][0]).toBeCloseTo(0, 9);
+    expect(atY6[0][1]).toBeCloseTo(4, 9);
+    expect(atY6[1][0]).toBeCloseTo(7, 9);
+    expect(atY6[1][1]).toBeCloseTo(11, 9);
+  });
+
   it('still subtracts a hole whose edge is flush with the hatch line (regression)', () => {
     const gen = new HatchGenerator();
     // 10x10 square with a 4x4 hole whose top edge sits exactly at y=5.

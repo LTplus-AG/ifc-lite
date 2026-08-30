@@ -1,0 +1,150 @@
+{
+  "//": "Shared cross-language STEP-string-escape vectors (issue #3300, second half). The TypeScript escaper (packages/data/src/step-serializers.ts, escapeStepString, via packages/data/src/step-escape.parity.test.ts) and the Rust escaper (rust/export/src/step_text.rs, escape, via rust/export/tests/step_escape_parity.rs) are BOTH pinned to this file, so the two cannot drift apart unnoticed. Before this file existed, each side pinned the OTHER side's behaviour via its own hand-written literal test table, with a comment claiming the two agreed -- exactly the arrangement issue #3300 identifies as the cause of bug #3284 (a hand-kept copy 'only resets the clock', per the CSV-cell-escaper precedent this file follows: rust/export/tests/fixtures/csv_cell_vectors.json, rust/export/tests/csv_cell_parity.rs, packages/export/src/csv-cell.parity.test.ts, scripts/check-csv-escaper-copies.mjs). This escaper takes no options, so unlike the CSV fixture a case here is only {name, input, expected}. Author cases by hand; there is no generator script for this one (the CSV fixture's swept option ranges have no equivalent here).",
+  "cases": [
+    {
+      "name": "tab run",
+      "input": "a\t\t\tb",
+      "expected": "a   b"
+    },
+    {
+      "name": "crlf",
+      "input": "a\r\nb",
+      "expected": "a  b"
+    },
+    {
+      "name": "mixed C0 and DEL",
+      "input": "a\u0000\u000b\u001f\u007fb",
+      "expected": "a    b"
+    },
+    {
+      "name": "single control char",
+      "input": "a\tb",
+      "expected": "a b"
+    },
+    {
+      "name": "quote doubling around a run",
+      "input": "O'Brien\t\tx",
+      "expected": "O''Brien  x"
+    },
+    {
+      "name": "no control chars",
+      "input": "plain text 123",
+      "expected": "plain text 123"
+    },
+    {
+      "name": "doubles a lone backslash",
+      "input": "a\\b",
+      "expected": "a\\\\b"
+    },
+    {
+      "name": "doubles a lone apostrophe",
+      "input": "a'b",
+      "expected": "a''b"
+    },
+    {
+      "name": "encodes a non-ASCII BMP character as an X2 directive",
+      "input": "Ä",
+      "expected": "\\X2\\00C4\\X0\\"
+    },
+    {
+      "name": "doubles the backslashes of text that already looks like a directive",
+      "input": "a\\X2\\00FC\\X0\\b",
+      "expected": "a\\\\X2\\\\00FC\\\\X0\\\\b"
+    },
+    {
+      "name": "empty string stays empty",
+      "input": "",
+      "expected": ""
+    },
+    {
+      "name": "rust: backslash before a path separator",
+      "input": "C:\\temp",
+      "expected": "C:\\\\temp"
+    },
+    {
+      "name": "rust: multiple backslashes in one string",
+      "input": "a\\b\\c",
+      "expected": "a\\\\b\\\\c"
+    },
+    {
+      "name": "rust: apostrophe then backslash, in that order",
+      "input": "O'Brien\\Docs",
+      "expected": "O''Brien\\\\Docs"
+    },
+    {
+      "name": "rust: backslash then apostrophe, in that order",
+      "input": "\\Docs\\O'Brien",
+      "expected": "\\\\Docs\\\\O''Brien"
+    },
+    {
+      "name": "rust control: NUL",
+      "input": "a\u0000b",
+      "expected": "a b"
+    },
+    {
+      "name": "rust control: VT 0x0B",
+      "input": "a\u000bb",
+      "expected": "a b"
+    },
+    {
+      "name": "rust control: US 0x1F",
+      "input": "a\u001fb",
+      "expected": "a b"
+    },
+    {
+      "name": "rust control: DEL 0x7F",
+      "input": "a\u007fb",
+      "expected": "a b"
+    },
+    {
+      "name": "rust: a run of three NUL bytes",
+      "input": "\u0000\u0000\u0000",
+      "expected": "   "
+    },
+    {
+      "name": "rust: a mixed-kind control run (CR LF VT DEL)",
+      "input": "a\r\n\u000b\u007fb",
+      "expected": "a    b"
+    },
+    {
+      "name": "rust plain: \"plain\"",
+      "input": "plain",
+      "expected": "plain"
+    },
+    {
+      "name": "rust plain: \"IFC4\"",
+      "input": "IFC4",
+      "expected": "IFC4"
+    },
+    {
+      "name": "rust plain: \"Pset_WallCommon\"",
+      "input": "Pset_WallCommon",
+      "expected": "Pset_WallCommon"
+    },
+    {
+      "name": "rust plain: \"123-abc_DEF\"",
+      "input": "123-abc_DEF",
+      "expected": "123-abc_DEF"
+    },
+    {
+      "name": "rust: a BMP non-ASCII character mid-string",
+      "input": "Trümpler",
+      "expected": "Tr\\X2\\00FC\\X0\\mpler"
+    },
+    {
+      "name": "rust: an astral-plane character",
+      "input": "😀",
+      "expected": "\\X4\\0001F600\\X0\\"
+    },
+    {
+      "name": "a longer control-char run (n=8) stays one space per char",
+      "input": "a\n\n\n\n\n\n\n\nb",
+      "expected": "a        b"
+    },
+    {
+      "name": "a directive-looking literal text run immediately followed by real non-ASCII",
+      "input": "\\X2\\Ä",
+      "expected": "\\\\X2\\\\\\X2\\00C4\\X0\\"
+    }
+  ]
+}

@@ -59,7 +59,16 @@ export class PropertyTable {
   }
 
   /**
-   * Get all properties for entity
+   * Get all properties for entity, one entry per distinct pset NAME.
+   *
+   * An entity can carry two same-named property sets (two
+   * `IfcRelDefinesByProperties` pointing at distinct `IfcPropertySet`s — the
+   * same shape `getProperty`, above, scans through). Keying the result
+   * `Map` by name alone would let the later same-named set overwrite the
+   * earlier one, silently dropping every property that lived only in the
+   * set that got overwritten. Merge same-named sets' properties instead —
+   * earlier-set values win on a key collision, matching `getProperty`'s own
+   * first-match-wins order above.
    */
   getProperties(entityId: number): Map<string, PropertySet> {
     const result = new Map<string, PropertySet>();
@@ -68,9 +77,16 @@ export class PropertyTable {
 
     for (const setId of propertySetIds) {
       const pset = this.propertySets.get(setId);
-      if (pset) {
+      if (!pset) continue;
+      const existing = result.get(pset.name);
+      if (!existing) {
         result.set(pset.name, pset);
+        continue;
       }
+      if (existing === pset) continue; // same pset shared across entities
+      const merged = new Map(pset.properties);
+      for (const [key, value] of existing.properties) merged.set(key, value); // earlier wins
+      result.set(pset.name, { name: pset.name, properties: merged });
     }
 
     return result;

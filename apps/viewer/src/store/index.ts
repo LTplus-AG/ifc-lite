@@ -17,7 +17,7 @@ import { createSelectionSlice, type SelectionSlice } from './slices/selectionSli
 import { createVisibilitySlice, type VisibilitySlice } from './slices/visibilitySlice.js';
 import { createUISlice, type UISlice } from './slices/uiSlice.js';
 import { createHoverSlice, type HoverSlice } from './slices/hoverSlice.js';
-import { createCameraSlice, type CameraSlice } from './slices/cameraSlice.js';
+import { createCameraSlice, DEFAULT_CONTROLS_MODE, type CameraSlice } from './slices/cameraSlice.js';
 import { createSectionSlice, type SectionSlice, clearLastSectionMode } from './slices/sectionSlice.js';
 export { customPlaneCenter, loadLastSectionMode } from './slices/sectionSlice.js';
 export type { LastSectionMode } from './slices/sectionSlice.js';
@@ -312,6 +312,12 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
     // channels sit in `NEVER_DROPPED` so the filter cannot remove them, so it
     // fires on EVERY reset as the hand-written payload did. Keep that exemption.
     set(viewerTeardown({ kind: 'session-reset' }, get()));
+
+    // Camera interaction (#2934 review): the patch resets the STATE, but a
+    // teardown is pure, so the renderer still holds whatever `?controls=`
+    // restricted it to -- the param is read once and `Viewport` outlives the
+    // swap. Side effect, so it lives here like `clearLastSectionMode`.
+    get().cameraCallbacks.setInteractionMode?.(DEFAULT_CONTROLS_MODE);
 
     // Clash (#2654 review) — same stale-model-reference class as the
     // `compareResult` and `zoneAssignments` the composed patch above clears

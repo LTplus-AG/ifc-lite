@@ -23,7 +23,7 @@ import type { StateCreator } from 'zustand';
 import type { AnimationSettings } from '@/components/viewer/schedule/schedule-animator';
 import { DEFAULT_ANIMATION_SETTINGS } from '@/components/viewer/schedule/schedule-animator';
 import type { ScheduleTimeRange } from './scheduleSlice.js';
-import { defineSliceTeardown } from '../teardown.js';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
 export interface PlaybackSlice {
   /** Animation master toggle — when false the viewer renders normally. */
@@ -138,9 +138,13 @@ export const createPlaybackSlice: StateCreator<
 export const playbackTeardown = defineSliceTeardown(
   'playbackSlice',
   ['animationEnabled', 'playbackIsPlaying', 'playbackTime'],
-  (scope) => scope.kind !== 'session-reset' ? {} : {
-    animationEnabled: false,
-    playbackIsPlaying: false,
-    playbackTime: 0,
+  {
+    'session-reset': () => ({
+      animationEnabled: false,
+      playbackIsPlaying: false,
+      playbackTime: 0,
+    }),
+    'model-removed': notApplicable,
+    'all-models-cleared': notApplicable,
   },
 );

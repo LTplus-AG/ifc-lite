@@ -811,6 +811,12 @@ pub fn process_geometry_streaming_filtered_with_options(
         }
     }
 
+    // The scan just refused every record whose instance name is wider than
+    // `u32` (#3395). This is the native/server load's only whole-file walk, so
+    // those records are simply not in the result — say so rather than returning
+    // a model that is short by a count nobody read.
+    ifc_lite_core::report_oversized_ids(scanner.skipped_oversized_ids());
+
     // #957: synthesize render jobs for orphan type-product geometry — a
     // RepresentationMap on an IfcXxxType that no IfcMappedItem instantiates.
     // Normally-instanced typed products keep their geometry on the occurrence

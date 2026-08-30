@@ -6,10 +6,11 @@
  * The column layer shared by both Parquet decoders.
  *
  * Split out of `parquet-tables.ts` when #3215 pushed that file past its
- * module-size budget. The gate's rule is shrink or split, not raise, and this
- * is the seam that was already there: the two decoders differ in row count and
- * identity column, but resolve the SAME additive trailing block, which the
- * server builds from one `shared_trailing_fields()` in
+ * module-size budget. The gate's default is shrink or split; a raise is
+ * sanctioned but wants a per-file justification in the PR, and none was needed
+ * here, because the seam was already there: the two decoders differ in row
+ * count and identity column, but resolve the SAME additive trailing block,
+ * which the server builds from one `shared_trailing_fields()` in
  * `apps/server/src/services/parquet_schema.rs`.
  */
 

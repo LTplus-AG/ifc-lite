@@ -20,6 +20,7 @@
   },
   "dependencies": {},
   "devDependencies": {
+    "@ifc-lite/data": "workspace:^",
     "typescript": "^6.0.3",
     "vitest": "^4.1.11"
   },

@@ -47,6 +47,7 @@ import {
   extractScheduleOnDemand,
 } from '@ifc-lite/parser';
 import { escapeCsvCell, exportToStep, StepExporter, type StepExportOptions } from '@ifc-lite/export';
+import { findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';
 import { createQueryAdapter } from './backend-query.js';
 import { overlayFromView, type PendingOverlay } from './overlay.js';
 
@@ -273,18 +274,12 @@ export class HeadlessLikeBackend implements BimBackend {
         const setName = col.slice(0, dot);
         const valueName = col.slice(dot + 1);
         if (props) {
-          const pset = props.find((p) => p.name === setName);
-          if (pset) {
-            const prop = pset.properties.find((p) => p.name === valueName);
-            if (prop?.value != null) return String(prop.value);
-          }
+          const prop = findPropertyInSets(props, setName, valueName);
+          if (prop?.value != null) return String(prop.value);
         }
         if (qsets) {
-          const qset = qsets.find((q) => q.name === setName);
-          if (qset) {
-            const qty = qset.quantities.find((q) => q.name === valueName);
-            if (qty?.value != null) return String(qty.value);
-          }
+          const qty = findQuantityInSets(qsets, setName, valueName);
+          if (qty?.value != null) return String(qty.value);
         }
       }
       return '';

@@ -26,9 +26,13 @@
  * cache-restore path would close that residual gap.
  *
  * The set is the concrete (instantiable) `IfcFeatureElement` leaf types plus
- * the abstract roots, matched case-insensitively. `IfcDoor`/`IfcWindow` are
- * deliberately absent — they descend from `IfcBuiltElement`, not
- * `IfcFeatureElement`, and are real structure that must keep projecting.
+ * the abstract roots, matched case-insensitively, and spans IFC2X3 as well as
+ * IFC4/IFC4X3 — including the IFC2X3-only edge-feature family
+ * (`IfcEdgeFeature` and its leaves `IfcChamferEdgeFeature` /
+ * `IfcRoundedEdgeFeature`), which IFC4/IFC4X3 dropped from the schema.
+ * `IfcDoor`/`IfcWindow` are deliberately absent — they descend from
+ * `IfcBuiltElement`, not `IfcFeatureElement`, and are real structure that
+ * must keep projecting.
  */
 
 /** Canonical IFC feature-element type names (lower-cased for O(1) lookup). */
@@ -42,6 +46,9 @@ const FEATURE_ELEMENT_TYPES: ReadonlySet<string> = new Set([
   'ifcearthworkscut',
   'ifcprojectionelement',
   'ifcsurfacefeature',
+  'ifcedgefeature',
+  'ifcchamferedgefeature',
+  'ifcroundededgefeature',
 ]);
 
 /**

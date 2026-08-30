@@ -43,6 +43,36 @@ export const DEFAULT_ANONYMIZE_TOGGLES: Readonly<AnonymizeToggles> = {
   currency: true,
 };
 
+/**
+ * ONE DECISION, TWO CONTROLS (#3351).
+ *
+ * "Property sets -> Anonymize" only ever cleared `HasPropertySets` on type
+ * classes, so a pset pulled in by the `IfcRelDefinesByProperties` walk survived
+ * with its values while the label said it was dropped. The CLI has never had
+ * this bug because `--keep-psets` drives BOTH the walk and `keepPropertySets`
+ * from one flag.
+ *
+ * These two functions give the dialog the same invariant from either side, so
+ * the state "walk on AND psets anonymized" is unreachable. Pure on purpose:
+ * the rule is the thing worth testing, and it should not need a rendered
+ * dialog to exercise.
+ */
+export function coupleTogglesToRelations(
+  next: AnonymizeToggles,
+  relationPsetsOn: boolean,
+): { toggles: AnonymizeToggles; turnRelationOff: boolean } {
+  return { toggles: next, turnRelationOff: next.propertySets && relationPsetsOn };
+}
+
+/** The mirror: turning the source-pset walk ON means keeping them. */
+export function coupleRelationsToToggles(
+  current: AnonymizeToggles,
+  relationPsetsTurnedOn: boolean,
+): AnonymizeToggles {
+  if (!relationPsetsTurnedOn || !current.propertySets) return current;
+  return { ...current, propertySets: false };
+}
+
 /** Translate the uniform Anonymize/Keep state into the core's mixed-polarity flags. */
 export function toAnonymizeOptions(t: AnonymizeToggles): AnonymizeOptions {
   return {

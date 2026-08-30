@@ -406,12 +406,11 @@ export const LENS_PALETTE = [
   '#EC407A', '#5C6BC0', '#26A69A', '#78909C',
 ] as const;
 
-/** IFC subclass → base class mapping for hierarchy-aware matching */
+/** IFC subclass -> base class map for hierarchy-aware matching: every `*StandardCase` entity plus the two `*Flight` types. */
 export const IFC_SUBTYPE_TO_BASE: Readonly<Record<string, string>> = {
-  IfcWallStandardCase: 'IfcWall',
-  IfcSlabStandardCase: 'IfcSlab',
-  IfcColumnStandardCase: 'IfcColumn',
-  IfcBeamStandardCase: 'IfcBeam',
-  IfcStairFlight: 'IfcStair',
-  IfcRampFlight: 'IfcRamp',
-};
+  IfcWallStandardCase: 'IfcWall', IfcSlabStandardCase: 'IfcSlab',
+  IfcColumnStandardCase: 'IfcColumn', IfcBeamStandardCase: 'IfcBeam',
+  IfcDoorStandardCase: 'IfcDoor', IfcWindowStandardCase: 'IfcWindow',
+  IfcMemberStandardCase: 'IfcMember', IfcPlateStandardCase: 'IfcPlate',
+  IfcOpeningStandardCase: 'IfcOpeningElement', IfcStairFlight: 'IfcStair',
+  IfcRampFlight: 'IfcRamp' };

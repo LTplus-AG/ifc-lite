@@ -346,6 +346,16 @@ pub(super) fn mesh_signed_volume(mesh: &Mesh) -> f64 {
 /// Closed-2-manifold self-check (0.1 mm weld): every undirected edge shared by exactly
 /// two non-degenerate triangles. The parametric path refuses to emit a cut that fails
 /// this, deferring to the exact kernel instead.
+/// NOT a closure test, despite the name reading like one. It pairs DIRECTED
+/// edges, so a genuinely closed solid whose faces carry T-junctions reads as
+/// open: an annulus face around a hole produces exactly that, which is how IFC
+/// breps and pre-cut wall layers are commonly built. The `pre_cut_wall` fixture
+/// self-checks to a signed volume of +5.6, the exact box minus its hole, and
+/// still fails this predicate.
+///
+/// So do not gate "is this mesh closed" on it. For "can I trust a ray parity
+/// here", ask [`point_inside_mesh_agreed`], which asks about the point rather
+/// than the topology and is tolerant of T-junctions.
 pub(super) fn param_cut_watertight(mesh: &Mesh) -> bool {
     let key = |i: u32| -> (i64, i64, i64) {
         let b = i as usize * 3;
@@ -477,15 +487,32 @@ pub(super) fn opening_redundant_with_host(host: &Mesh, opening: &Mesh, axis: &Ve
     true
 }
 
-/// Forward-ray crossing parity: `true` when `point` lies inside the closed
-/// `mesh`. Casts a ray in a fixed off-axis direction and counts triangle
-/// crossings ahead of the origin — an odd count means inside. The skewed
-/// direction keeps the ray from grazing axis-aligned shared edges/vertices
-/// (the common case for box cutters), so the parity stays reliable.
-pub(super) fn point_inside_mesh(mesh: &Mesh, point: Point3<f64>) -> bool {
-    // Irrational-ish, non-axis-aligned direction: avoids exact edge/vertex
-    // grazes on the axis-aligned faces that dominate IFC opening boxes.
-    let dir = Vector3::new(0.573_257_1, 0.665_412_3, 0.477_889_5);
+/// Ray parity from two independent directions, or `None` when they disagree.
+///
+/// Disagreement means the surface around `point` is not closed to a ray, so the
+/// crossing count is not evidence of anything. Callers that would ACT on
+/// "inside" need to tell that apart from "inside", because a torn shell answers
+/// this question differently depending on where the ray goes.
+///
+/// Deliberately not `param_cut_watertight`: that pairs directed edges, so a
+/// closed solid whose faces carry T-junctions (an annulus around a hole, which
+/// is how IFC breps and pre-cut wall layers are built) reads as open when it is
+/// not. This asks about the point, not the topology.
+pub(super) fn point_inside_mesh_agreed(mesh: &Mesh, point: Point3<f64>) -> Option<bool> {
+    let a = parity_along(mesh, point, PARITY_DIR_A);
+    let b = parity_along(mesh, point, PARITY_DIR_B);
+    (a == b).then_some(a)
+}
+
+/// Irrational-ish, non-axis-aligned: avoids exact edge and vertex grazes on the
+/// axis-aligned faces that dominate IFC opening boxes. ONE definition, shared by
+/// both callers, so the single-ray and two-ray answers cannot drift apart.
+const PARITY_DIR_A: Vector3<f64> = Vector3::new(0.573_257_1, 0.665_412_3, 0.477_889_5);
+
+/// Shares no plane with [`PARITY_DIR_A`] and no axis with those same facets.
+const PARITY_DIR_B: Vector3<f64> = Vector3::new(-0.412_889_7, 0.734_115_3, -0.538_662_1);
+
+fn parity_along(mesh: &Mesh, point: Point3<f64>, dir: Vector3<f64>) -> bool {
     let mut crossings = 0usize;
     for tri in mesh.indices.chunks_exact(3) {
         let (Some(a), Some(b), Some(c)) = (
@@ -502,6 +529,15 @@ pub(super) fn point_inside_mesh(mesh: &Mesh, point: Point3<f64>) -> bool {
         }
     }
     crossings % 2 == 1
+}
+
+/// Forward-ray crossing parity: `true` when `point` lies inside the closed
+/// `mesh`. Casts a ray in a fixed off-axis direction and counts triangle
+/// crossings ahead of the origin — an odd count means inside. The skewed
+/// direction keeps the ray from grazing axis-aligned shared edges/vertices
+/// (the common case for box cutters), so the parity stays reliable.
+pub(super) fn point_inside_mesh(mesh: &Mesh, point: Point3<f64>) -> bool {
+    parity_along(mesh, point, PARITY_DIR_A)
 }
 
 /// `true` when the opening's real solid CONTAINS the host: the host centroid

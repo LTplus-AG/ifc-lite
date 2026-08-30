@@ -33,7 +33,13 @@
  *
  * Usage:
  *   node ../../scripts/typecheck-tests.mjs     (cwd = a package; the per-package `typecheck` script)
+ *   node scripts/typecheck-tests.mjs --all     (cwd = repo root; every package)
  *   node scripts/typecheck-tests.mjs --audit   (cwd = repo root; the repo-wide coverage gate)
+ *
+ * The no-argument form reads the CURRENT DIRECTORY as one package, so run bare
+ * from the repo root it used to type-check the whole repository as a single
+ * program (#3362). `repoRootRefusal` below refuses that; see it for what was
+ * measured.
  *
  * ANTI-VACUITY (#3194, #3200). `--audit` used to print
  * `TOTAL 0 / 0` followed by `every test file on disk is in a typecheck
@@ -59,7 +65,7 @@
  */
 
 import { execFile } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -238,9 +244,86 @@ async function tsc(args) {
   }
 }
 
+/** The three real ways to run this, printed by every refusal below. */
+const USAGE_LINES = [
+  `    cd <package> && node ../../scripts/${SCRIPT_NAME}   (that one package)`,
+  `    node scripts/${SCRIPT_NAME} --all                   (every package)`,
+  `    node scripts/${SCRIPT_NAME} --audit                 (repo-wide coverage gate)`,
+];
+
+/**
+ * Are these the same directory?
+ *
+ * `path.resolve` is the whole answer on every path this is actually reached
+ * through, so the realpath fallback runs zero syscalls in practice. It is kept
+ * as defence for platforms this was not measured on: four invocations were
+ * tried on macOS - cd through a symlink, the same with --preserve-symlinks,
+ * invoking through the link from the real directory, and that with
+ * --preserve-symlinks - and `resolve` matched in all four, because getcwd(3)
+ * already returns the resolved path and Node's ESM loader realpaths the module
+ * URL. Only the symlink test reaches the fallback today.
+ */
+function samePath(a, b) {
+  if (path.resolve(a) === path.resolve(b)) return true;
+  try {
+    return realpathSync(a) === realpathSync(b);
+  } catch {
+    // One of them cannot be resolved, so they are not provably the same path.
+    // Reported by the caller that actually reads it, not swallowed here.
+    return false;
+  }
+}
+
+/**
+ * Why the repo root is not a package: the message, or null when `pkgDir` is fine.
+ *
+ * `parseCliMode` already refuses the ARGUMENT form of this mistake — `node
+ * scripts/typecheck-tests.mjs packages/clash` from the root used to ignore its
+ * argument and fall through to the cwd branch. The CWD form was left open, and
+ * it is the same substitution with the argument omitted: `node
+ * scripts/typecheck-tests.mjs` run bare from the root takes zero arguments,
+ * which `parseCliMode` accepts as `package` mode, and `checkOnePackage` then
+ * reads the REPOSITORY as the package. Measured on this tree (#3362): it wrote
+ * a 1,520-line /tsconfig.tests.json naming 1,505 test files and handed the lot
+ * to one tsc invocation, printing nothing at all while it did so.
+ *
+ * #3363 added that path to .gitignore, which was right for diff noise and which
+ * also removed the last visible symptom — an untracked file someone would
+ * notice. A guard is what is left.
+ *
+ * Exported for its unit test: like `parseCliMode`, every wrong answer here is
+ * invisible at the call site, because the script runs and reports on something
+ * other than what was asked for.
+ *
+ * @param {string} pkgDir
+ * @param {string} [repoRoot]
+ * @returns {string | null}
+ */
+export function repoRootRefusal(pkgDir, repoRoot = REPO_ROOT) {
+  if (!samePath(pkgDir, repoRoot)) return null;
+  return [
+    `${SCRIPT_NAME}: refusing to treat the repository root as a package.`,
+    '',
+    '  The no-argument mode checks the CURRENT DIRECTORY as one package, and',
+    `  ${pkgDir} is the repo root. Running it there builds a single tsconfig`,
+    '  program naming every test file in the repo and type-checks them all at',
+    '  once, which is not what any caller has ever wanted (#2664, #3362).',
+    '',
+    '  You probably meant one of:',
+    ...USAGE_LINES,
+  ].join('\n');
+}
+
 /** Per-package mode: generate this package's test program and check it. */
 async function checkOnePackage(pkgDir) {
-  const name = path.relative(REPO_ROOT, pkgDir) || path.basename(pkgDir);
+  const refusal = repoRootRefusal(pkgDir);
+  if (refusal) {
+    console.error(refusal);
+    return 2;
+  }
+  // Never empty: `path.relative` returns '' only for the repo root itself, and
+  // the refusal above is the only way past this line.
+  const name = path.relative(REPO_ROOT, pkgDir);
   const program = writeTestProgram(pkgDir);
   if (!program) {
     console.log(`typecheck-tests: ${name} has no test files, nothing to check`);
@@ -586,9 +669,7 @@ if (invokedDirectly) {
     console.error(`${SCRIPT_NAME}: ${parsed.error}.`);
     console.error('');
     console.error('  This script takes no package argument. Usage:');
-    console.error(`    cd <package> && node ../../scripts/${SCRIPT_NAME}   (that one package)`);
-    console.error(`    node scripts/${SCRIPT_NAME} --all                   (every package)`);
-    console.error(`    node scripts/${SCRIPT_NAME} --audit                 (repo-wide coverage gate)`);
+    for (const line of USAGE_LINES) console.error(line);
     exitCode = 2;
   } else if (parsed.mode === 'audit') exitCode = await audit();
   else if (parsed.mode === 'all') exitCode = await checkAll();

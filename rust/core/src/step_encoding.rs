@@ -138,11 +138,26 @@ pub fn decode_ifc_string(s: &str) -> Cow<'_, str> {
 }
 
 /// Encode a UTF-8 string back to IFC STEP escapes. Inverse of
-/// [`decode_ifc_string`] for the canonical (non-overlong) forms; kept for STEP
-/// writers and round-trip tests.
+/// [`decode_ifc_string`] for the canonical (non-overlong) forms.
 ///
 /// Printable ASCII is preserved; everything else (and backslash) is escaped as
 /// `\X\HH`, `\X2\HHHH\X0\`, or `\X4\HHHHHHHH\X0\` by code point.
+///
+/// This is escape encoding only — it does NOT double the apostrophe (`'`,
+/// 0x27 is printable ASCII and passes through unchanged). Its output is
+/// therefore **not** safe to place directly inside a STEP single-quoted
+/// string literal: an undoubled `'` terminates the literal early and
+/// produces a file no conformant reader parses as intended (e.g. a name like
+/// `O'Brien`). A caller that writes into a literal must double `'` itself,
+/// or use `step_text::escape` in `ifc-lite-export` (re-exported as
+/// `escape_step_string`), which handles the full literal-context contract:
+/// doubling `'` and `\`, mapping control characters to a space, and encoding
+/// non-ASCII — per ISO 10303-21 6.3.3.4. The two functions do not produce
+/// the same output for the same input; do not assume they agree.
+///
+/// Kept for round-trip tests (`decode_ifc_string(encode_ifc_string(s)) ==
+/// s`), which hold regardless of apostrophe handling because doubling is a
+/// literal-context requirement, not an encoding one.
 pub fn encode_ifc_string(s: &str) -> Cow<'_, str> {
     if s.bytes().all(|b| (0x20..=0x7E).contains(&b) && b != b'\\') {
         return Cow::Borrowed(s);
@@ -263,5 +278,16 @@ mod tests {
         for s in ["plain", "Br\u{FC}cke", "\u{1F600}", "a\u{E9}b"] {
             assert_eq!(decode_ifc_string(&encode_ifc_string(s)), s);
         }
+    }
+
+    #[test]
+    fn encode_does_not_double_the_apostrophe() {
+        // Pins the documented contract: `encode_ifc_string` is escape
+        // encoding only, not literal-safe. `'` is printable ASCII and passes
+        // through unchanged (unlike `step_text::escape`, which doubles it).
+        // A behaviour change here is a deliberate decision, not a silent one
+        // (issue #3445).
+        assert_eq!(encode_ifc_string("'"), "'");
+        assert_eq!(encode_ifc_string("O'Brien"), "O'Brien");
     }
 }

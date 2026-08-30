@@ -27,6 +27,7 @@ import {
 } from '../packages/wasm/pkg/ifc-lite.js';
 import { parseMeshesViaPrePass } from './lib/mesh-via-prepass.mjs';
 import { runPrepassClassBoundaryTests } from './lib/prepass-class-boundary.mjs';
+import { runShardRefusalBoundaryTests } from './lib/shard-refusal-boundary.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
@@ -2061,6 +2062,13 @@ test('splitMeshByZones cuts by a prism footprint, not by its bounding box', () =
 // Self-contained suite in its own module (this file is already several times
 // the size guideline); it owns its fixture and its own IfcAPI handles.
 await runPrepassClassBoundaryTests(api, test);
+
+// ===== The #3395 refusal count across the real WASM boundary =====
+// A refused record is absent from the entity-index columns, so these two
+// wasm outputs are the only evidence of it that reaches the host — and the
+// host reads both through a `??` fallback, which turns a boundary regression
+// into "this file refused nothing". Same module split, same reason.
+await runShardRefusalBoundaryTests(api, test);
 
 
 // Summary

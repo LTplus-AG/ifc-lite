@@ -848,3 +848,102 @@ export function flattenCheckRunPages(pages, where) {
   }
   return out;
 }
+
+// -------------------------------------------------- workflow trigger parsing
+
+/**
+ * Which base-branch filter keys, if any, sit on a workflow's `pull_request`
+ * trigger -- `branches`, `branches-ignore`, or neither. Located structurally,
+ * by indentation depth, rather than matched against one hard-coded spelling
+ * of the value.
+ *
+ * #3433 caught the previous version of this check reading `branches: [main]`
+ * (a flow sequence on one line) but not the equivalent block form:
+ *
+ *   branches:
+ *     - main
+ *
+ * GitHub Actions treats both identically, so a regex that only recognises one
+ * spelling can be defeated just by reformatting. This function never inspects
+ * the VALUE of `branches` / `branches-ignore` at all, so every spelling GitHub
+ * Actions accepts for it -- flow sequence, block sequence, a single
+ * unbracketed scalar, a quoted string, an alias -- is covered the same way:
+ * by finding the KEY at the right nesting depth under `on.pull_request` and
+ * not caring what comes after its colon.
+ *
+ * This is not a general YAML parser -- deliberately: the workflow that runs
+ * this file's own tests (`pr-review-signal.yml`) has NO `pnpm install` step,
+ * on purpose, so that a gate whose job is to notice when other jobs did not
+ * run depends on as little as possible. A `js-yaml` version of this function
+ * shipped once and broke exactly that job (`ERR_MODULE_NOT_FOUND` -- no
+ * install means no third-party import resolves). Node builtins only.
+ *
+ * @param {string} workflowYaml - a workflow file's full text.
+ * @returns {string[]} - `[]`, `['branches']`, `['branches-ignore']`, or (an
+ *   invalid but not this function's place to reject) both.
+ */
+export function pullRequestBranchFilterKeys(workflowYaml) {
+  const lines = workflowYaml.split(/\r?\n/);
+  const indentOf = (line) => /^[ ]*/.exec(line)[0].length;
+  const isBlankOrComment = (line) => {
+    const trimmed = line.trim();
+    return trimmed === '' || trimmed.startsWith('#');
+  };
+
+  // The top-level `on:` key -- column 0, so no leading whitespace.
+  const onIdx = lines.findIndex((line) => /^(?:on|'on'|"on"):/.test(line));
+  if (onIdx === -1) return [];
+
+  // Its block runs until the next column-0 key (a sibling of `on:`), or EOF.
+  let onEnd = lines.length;
+  for (let i = onIdx + 1; i < lines.length; i++) {
+    if (isBlankOrComment(lines[i])) continue;
+    if (indentOf(lines[i]) === 0) {
+      onEnd = i;
+      break;
+    }
+  }
+
+  // `pull_request:` somewhere inside the `on:` block.
+  let pullRequestIdx = -1;
+  let pullRequestIndent = -1;
+  for (let i = onIdx + 1; i < onEnd; i++) {
+    if (isBlankOrComment(lines[i])) continue;
+    const match = /^([ ]*)pull_request:/.exec(lines[i]);
+    if (match) {
+      pullRequestIdx = i;
+      pullRequestIndent = match[1].length;
+      break;
+    }
+  }
+  if (pullRequestIdx === -1) return [];
+
+  // Its body: every following line indented deeper than it, until one that
+  // is not (a sibling of `pull_request:`, e.g. `push:`), or the end of the
+  // `on:` block.
+  let bodyEnd = onEnd;
+  for (let i = pullRequestIdx + 1; i < onEnd; i++) {
+    if (isBlankOrComment(lines[i])) continue;
+    if (indentOf(lines[i]) <= pullRequestIndent) {
+      bodyEnd = i;
+      break;
+    }
+  }
+
+  // Direct children of `pull_request:` all share ONE indentation depth --
+  // the first body line's. Anything deeper belongs to a key's own value (a
+  // block sequence item, a nested flow collection continued on its own
+  // line, ...), not to a sibling key, so it is never mistaken for one.
+  let childIndent = -1;
+  const keys = [];
+  for (let i = pullRequestIdx + 1; i < bodyEnd; i++) {
+    if (isBlankOrComment(lines[i])) continue;
+    const indent = indentOf(lines[i]);
+    if (childIndent === -1) childIndent = indent;
+    if (indent !== childIndent) continue;
+    const match = /^[ ]*([A-Za-z0-9_-]+):/.exec(lines[i]);
+    if (match) keys.push(match[1]);
+  }
+
+  return ['branches', 'branches-ignore'].filter((key) => keys.includes(key));
+}

@@ -38,89 +38,17 @@ fn split_top_level_args_respects_nesting() {
     assert_eq!(parts[3], "IFCBOOLEAN(.T.)");
 }
 
-/// ISO 10303-21 doubles two characters inside a string literal: the
-/// apostrophe (already handled) and the reverse solidus (the bug this
-/// pins). `escape()` is the single funnel every STEP string literal in
-/// this exporter goes through, so this test is the RED/GREEN pin for the
-/// write-side half of the doubling-escape gap.
-#[test]
-fn escape_doubles_backslash_like_apostrophe() {
-    assert_eq!(escape(r"C:\temp"), r"C:\\temp");
-    assert_eq!(escape(r"a\b\c"), r"a\\b\\c");
-}
+// The `escape()` literal-table tests that used to live here (backslash
+// doubling, apostrophe+backslash ordering, per-char control mapping, run
+// length, byte-identical plain text, non-ASCII directive encoding) are now
+// the shared vectors in `tests/fixtures/step_escape_vectors.json`, pinned by
+// `tests/step_escape_parity.rs` -- the same file the TypeScript escaper
+// (`packages/data/src/step-serializers.ts`) is pinned to via
+// `packages/data/src/step-escape.parity.test.ts` (#3300, second half). A
+// hand-kept copy of the other language's behaviour only resets the clock on
+// the drift it exists to catch (the reasoning behind the CSV-cell-escaper
+// precedent this follows: `csv_cell_vectors.json` / `csv_cell_parity.rs`).
 
-#[test]
-fn escape_doubles_both_escapes_in_the_same_string_in_source_order() {
-    // A name carrying both a literal apostrophe and a literal backslash,
-    // in each relative order, must come out with each doubled exactly
-    // where it occurred — not reordered, not merged.
-    assert_eq!(escape(r"O'Brien\Docs"), r"O''Brien\\Docs");
-    assert_eq!(escape(r"\Docs\O'Brien"), r"\\Docs\\O''Brien");
-}
-
-#[test]
-fn escape_maps_every_ascii_control_char_to_a_space() {
-    // ISO 10303-21 restricts a string literal's literal bytes to the
-    // basic graphic range 32-126; anything below that (or DEL, 127) is
-    // not a legal literal byte in the file. `escape()` already maps
-    // '\n' / '\r' / '\t' to a space; this pins that the same treatment
-    // applies to every other C0 control byte and DEL, not just those
-    // three. NUL, vertical tab (0x0B), unit separator (0x1F), and DEL
-    // (0x7F) are direct reproductions of CodeRabbit's finding on #2405.
-    for c in ['\0', '\u{0B}', '\u{1F}', '\u{7F}'] {
-        let s = format!("a{c}b");
-        assert_eq!(
-            escape(&s),
-            "a b",
-            "control char {:#04x} was not mapped to a space",
-            c as u32
-        );
-    }
-}
-
-#[test]
-fn escape_preserves_the_length_of_a_control_char_run() {
-    // The single-char cases above pass identically whether `escape` replaces
-    // per character or collapses a run, so they cannot see the difference
-    // #3284 is about, and this side's rule was never actually asserted.
-    //
-    // That mattered: the two TypeScript escapers carried `[\x00-\x1F\x7F]+`,
-    // so `"a\t\t\tb"` was written as `'a b'` there and `'a   b'` here, one
-    // nominal rule with two behaviours, and every test on both sides stayed
-    // green because none of them used a run. #3294 fixes the TypeScript half.
-    // This pins the half it is being made to agree with, so the agreement
-    // rests on a test rather than on two doc comments citing each other.
-    assert_eq!(escape("a\t\t\tb"), "a   b");
-    assert_eq!(escape("\0\0\0"), "   ");
-    // Mixed kinds in one run: still one space each, not one for the run.
-    assert_eq!(escape("a\r\n\u{0B}\u{7F}b"), "a    b");
-}
-
-#[test]
-fn escape_no_special_chars_is_byte_identical() {
-    // Bounding control: plain ASCII with no quote/backslash/control chars
-    // must pass through unchanged (no spurious allocation-visible diff).
-    for s in ["plain", "IFC4", "Pset_WallCommon", "123-abc_DEF"] {
-        assert_eq!(escape(s), s);
-    }
-}
-
-#[test]
-fn escape_encodes_non_ascii_as_x2_directive_not_raw_utf8() {
-    // ISO 10303-21 6.3.3.4 restricts a string literal's plain-text bytes to
-    // the basic graphic range 32-126 — the same clause the doc comment above
-    // `escape()` already cites for control chars. A byte outside that range
-    // must be a control directive (`\X\HH`, `\X2\HHHH\X0\`, `\X4\HHHHHHHH\X0\`),
-    // never a raw byte; buildingSMART's IFC string-encoding guidance says the
-    // same for IFC2X3/IFC4/IFC4X3. `ifc_lite_core::encode_ifc_string` already
-    // implements this correctly but was never wired into this writer, so a
-    // BMP or non-BMP character in a name/label went out as raw UTF-8 — bytes
-    // a reader that (correctly, per spec) treats the file as ISO-8859-1 turns
-    // into mojibake or a broken parse. Matches the TS-side fix in
-    // `@ifc-lite/export`'s `escapeStepString`.
-    assert_eq!(escape("Trümpler"), r"Tr\X2\00FC\X0\mpler");
-    assert_eq!(escape("😀"), r"\X4\0001F600\X0\");
-}
 /// End-to-end write-side round-trip for the ISO 10303-21 doubling escapes.
 ///
 /// ifc-lite's own reader (`ifc_lite_core::step_encoding::decode_ifc_string`

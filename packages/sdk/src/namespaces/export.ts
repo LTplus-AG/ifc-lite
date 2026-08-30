@@ -11,6 +11,7 @@
  */
 
 import { escapeCsvCell } from '@ifc-lite/export';
+import { findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';
 import type { BimBackend, EntityRef, EntityData, PropertySetData, QuantitySetData } from '../types.js';
 
 export interface ExportCsvOptions {
@@ -92,20 +93,14 @@ export class ExportNamespace {
 
           // Try property sets first
           if (psets) {
-            const pset = psets.find(p => p.name === setName);
-            if (pset) {
-              const prop = pset.properties.find(p => p.name === valueName);
-              if (prop?.value != null) { row.push(String(prop.value)); continue; }
-            }
+            const prop = findPropertyInSets(psets, setName, valueName);
+            if (prop?.value != null) { row.push(String(prop.value)); continue; }
           }
 
           // Fall back to quantity sets
           if (qsets) {
-            const qset = qsets.find(q => q.name === setName);
-            if (qset) {
-              const qty = qset.quantities.find(q => q.name === valueName);
-              if (qty?.value != null) { row.push(String(qty.value)); continue; }
-            }
+            const qty = findQuantityInSets(qsets, setName, valueName);
+            if (qty?.value != null) { row.push(String(qty.value)); continue; }
           }
 
           row.push('');
@@ -164,20 +159,14 @@ export class ExportNamespace {
 
           // Try property sets first
           if (psets) {
-            const pset = psets.find(p => p.name === setName);
-            if (pset) {
-              const prop = pset.properties.find(p => p.name === valueName);
-              if (prop?.value != null) { row[col] = prop.value; resolved = true; }
-            }
+            const prop = findPropertyInSets(psets, setName, valueName);
+            if (prop?.value != null) { row[col] = prop.value; resolved = true; }
           }
 
           // Fall back to quantity sets
           if (!resolved && qsets) {
-            const qset = qsets.find(q => q.name === setName);
-            if (qset) {
-              const qty = qset.quantities.find(q => q.name === valueName);
-              if (qty?.value != null) { row[col] = qty.value; resolved = true; }
-            }
+            const qty = findQuantityInSets(qsets, setName, valueName);
+            if (qty?.value != null) { row[col] = qty.value; resolved = true; }
           }
 
           if (!resolved) row[col] = null;

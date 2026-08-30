@@ -10,9 +10,12 @@
 pub mod determinism;
 pub(crate) mod parallel_scan;
 mod shard_classes;
-pub use parallel_scan::{build_entity_index_parallel, scan_shard, ShardRecords};
+pub use parallel_scan::{
+    build_entity_index_parallel, scan_shard, scan_shard_with_refusals, ShardRecords, ShardRefusals,
+};
 pub use shard_classes::{
-    classify_type_name, scan_shard_classified, PREPASS_CLASS_CODE_MASK,
+    classify_type_name, scan_shard_classified, scan_shard_classified_with_refusals,
+    PREPASS_CLASS_CODE_MASK,
     PREPASS_CLASS_FLAG_GEOMETRY_JOB, PREPASS_CLASS_FLAG_TYPE_CANDIDATE,
     PREPASS_CLASS_INDEXED_COLOUR_MAP, PREPASS_CLASS_MATERIAL_DEF_REPR,
     PREPASS_CLASS_MAPPED_ITEM, PREPASS_CLASS_MATERIAL_LAYER_SET, PREPASS_CLASS_NONE,

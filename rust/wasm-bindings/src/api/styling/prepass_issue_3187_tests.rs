@@ -1,8 +1,10 @@
 //! #3187 — geometry jobs must be labelled legacy-aware.
 //!
 //! Split into its own file rather than grown inline: `prepass.rs` is on the
-//! module-size ratchet, and the rule there is shrink or split, never raise
-//! the budget. `prepass_orphan_type_tests.rs` is the same pattern.
+//! module-size ratchet, and the rule there is shrink or split by default. A
+//! raise is possible rather than forbidden (`module_size_ratchet.rs` records
+//! one reaching main and being undone, #2658); splitting is simply the better
+//! move. `prepass_orphan_type_tests.rs` is the same pattern.
 use super::combined_pre_pass;
 
 use ifc_lite_core::{legacy_aware_ifc_type, EntityDecoder, IfcType};

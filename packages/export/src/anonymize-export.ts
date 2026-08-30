@@ -49,13 +49,69 @@ import type { IfcDataStore, IfcSourceBytes } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import type { IfcSchemaVersion } from './schema-converter.js';
 import { getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
-import { getSubsetEntityIds, IFC_ROOT_TYPES } from './subset-roots.js';
+import { getSubsetEntityIds, IFC_ROOT_TYPES, identifyingTypesFor } from './subset-roots.js';
 import { readEntityArgs } from './subset-entity-reader.js';
 import { refGroupFromArg, relationshipRefsSurviveExclusion } from './reference-collector.js';
 import { applyPlacementAnonymization } from './anonymize-placement.js';
 import { applyScrub } from './anonymize-scrub.js';
 import { StepExporter } from './step-exporter.js';
 import type { AnonymizeOptions, AnonymizeResult } from './anonymize-types.js';
+import { isPropertySetDefinitionClass } from './type-owned-psets.js';
+
+/**
+ * Drop every `IfcPropertySet`/`IfcElementQuantity` id out of `includedIds`
+ * unless `keepPropertySets` is on (#3351 item 2, the SDK-path half `#3361`
+ * left open): `applyScrub`'s `keepPropertySets` handling only ever clears an
+ * `IfcTypeObject`'s `HasPropertySets` SLOT, so a pset that reached
+ * `includedIds` some other way — a caller's own
+ * `collectRelatedEntities(..., { IfcRelDefinesByProperties: true })` walk, or
+ * a hand-built id set — survived complete, values included, with
+ * `keepPropertySets` at its documented `false` default.
+ *
+ * DROP means EXCLUDE, not "emit scrubbed": this pass never queues a mutation
+ * on a pset entity, it removes the id from the set the exporter's closure
+ * ever sees, the same way the CLI's `--keep-psets` already behaves (it
+ * drives both this exclusion, via `RelatedEntityOptions.IfcRelDefinesByProperties`,
+ * and `keepPropertySets` from one flag) and the same way the viewer's two
+ * toggles are now coupled (`AnonymizationOptionsPanel.tsx`). Scrubbing in
+ * place was considered and rejected: a property/quantity VALUE is left
+ * unscrubbed by design everywhere else in this module (only NAMES are
+ * pseudonymized), so a scrubbed-but-kept pset would still carry
+ * `IFCPROPERTYSINGLEVALUE('Owner',$,IFCTEXT('jane.doe@acme-corp.example'),$)`
+ * verbatim — exactly the leak this exists to close. Exclusion is the only
+ * one of the two that actually removes it.
+ *
+ * Must run BEFORE `pruneUnresolvableRelationships`: dropping a pset id here
+ * feeds straight into that pass's `getSubsetEntityIds` exclusion set, so an
+ * `IfcRelDefinesByProperties` whose `RelatingPropertyDefinition` named only a
+ * now-dropped pset is pruned the same way any other relationship with an
+ * excluded mandatory single-valued reference is — never left dangling.
+ *
+ * Returns the surviving set plus every id this pass dropped, reported
+ * distinctly (the same shape `prunedRelationshipIds` already uses on
+ * `AnonymizeResult.stats`) so a caller can tell "excluded because it is a
+ * property set" from any other reason an id might be missing, without
+ * grepping `warnings` text.
+ */
+function excludePropertySetsUnlessKept(
+  index: EffectiveEntityIndex,
+  includedIds: ReadonlySet<number>,
+  keepPropertySets: boolean,
+): { includedIds: Set<number>; droppedPropertySetIds: number[] } {
+  if (keepPropertySets) return { includedIds: new Set(includedIds), droppedPropertySetIds: [] };
+
+  const kept = new Set<number>();
+  const droppedPropertySetIds: number[] = [];
+  for (const id of includedIds) {
+    if (isPropertySetDefinitionClass(index.typeOf(id))) {
+      droppedPropertySetIds.push(id);
+    } else {
+      kept.add(id);
+    }
+  }
+  droppedPropertySetIds.sort((a, b) => a - b);
+  return { includedIds: kept, droppedPropertySetIds };
+}
 
 /**
  * Every id in `includedIds` whose EXPRESS type is an `IfcRel*` (an
@@ -78,6 +134,11 @@ function pruneUnresolvableRelationships(
   index: EffectiveEntityIndex,
   includedIds: ReadonlySet<number>,
 ): { prunedRelationshipIds: number[]; finalIncludedIds: Set<number> } {
+  // Deliberately the DEFAULT identifying set, not the caller's narrowed one:
+  // this pass only decides which relationship members to trim, and a kept
+  // georeference entity is rooted by `getSubsetEntityIds` before it gets here.
+  // Threading the narrowed set in was measured dead -- mutating it failed zero
+  // tests -- so it is not carried.
   const { excludedIds } = getSubsetEntityIds(index, includedIds);
   const isExcluded = (id: number): boolean => excludedIds.has(id);
 
@@ -140,7 +201,20 @@ export function exportAnonymizedSubset(
   const editor = new StoreEditor(store, view);
   const index = getEffectiveEntityIndex(store, view, true);
 
-  const { prunedRelationshipIds, finalIncludedIds } = pruneUnresolvableRelationships(store, index, includedIds);
+  // Runs BEFORE relationship pruning — see that function's own doc for why
+  // the order matters (a dropped pset must be visible to the exclusion set
+  // relationship pruning reads).
+  const { includedIds: psetFilteredIds, droppedPropertySetIds } = excludePropertySetsUnlessKept(
+    index,
+    includedIds,
+    options.keepPropertySets ?? false,
+  );
+
+  const { prunedRelationshipIds, finalIncludedIds } = pruneUnresolvableRelationships(
+    store,
+    index,
+    psetFilteredIds,
+  );
 
   const placementResult = applyPlacementAnonymization(store, index, finalIncludedIds, editor, view, options);
   const scrubResult = applyScrub(store, index, finalIncludedIds, view, options);
@@ -148,6 +222,7 @@ export function exportAnonymizedSubset(
   const exportResult = new StepExporter(store, view).export({
     schema: store.schemaVersion as IfcSchemaVersion,
     subsetEntityIds: finalIncludedIds,
+    subsetIdentifyingTypes: identifyingTypesFor(options?.removeGeoreferencing !== false),
     filename: options.filename ?? 'anonymized.ifc',
     // Header scrub per the decision doc: author/organization/authorization
     // blanked outright (never inherited from the source header — an empty
@@ -174,6 +249,7 @@ export function exportAnonymizedSubset(
       entityCount: exportResult.stats.entityCount,
       includedRootEntityCount,
       prunedRelationshipIds,
+      droppedPropertySetIds,
       zeroedPlacements: placementResult.zeroedPlacements,
       warnings: [
         ...placementResult.warnings,

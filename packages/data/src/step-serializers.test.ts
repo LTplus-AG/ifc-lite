@@ -83,6 +83,21 @@ describe('serializeValue (number)', () => {
   });
 });
 
+describe('generateHeader default time_stamp (ISO 10303-21 clause 4.2 "time_stamp")', () => {
+  it('stamps FILE_NAME with an ISO 8601 date-time, not digits with the separators stripped', () => {
+    const header = generateHeader({ schema: 'IFC4' });
+    const fileNameLine = header.split('\n').find((l) => l.startsWith('FILE_NAME'));
+    expect(fileNameLine).toBeDefined();
+    const stamp = fileNameLine!.match(/^FILE_NAME\('[^']*','([^']*)'/)![1];
+    // ISO 8601 extended date-time: 'YYYY-MM-DDThh:mm:ss', matching the
+    // format every source-header round-trip in this codebase already
+    // carries (e.g. '2024-03-01T09:15:00' in step_header_vectors.json).
+    // Stripping the '-'/':' separators, as the previous default did,
+    // produces neither this format nor a value any real IFC file uses.
+    expect(stamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
+  });
+});
+
 describe('generateHeader control-char handling', () => {
   it('collapses a newline in a header value to a space so the record stays one line', () => {
     const header = generateHeader({
@@ -232,46 +247,14 @@ describe('toStepLineWithRegistry / generateStepFileWithRegistry', () => {
 });
 
 
-/**
- * The `@ifc-lite/data` serializer's escaper is the second TS copy of the rule
- * pinned in `@ifc-lite/export`'s `step-serialization.test.ts` and in
- * `ifc_lite_export::step_text::escape`: ONE SPACE PER CONTROL CHARACTER, not
- * one per run (#3284 item 2). `escapeStepString` is module-private here, so a
- * run reaches it through the two public funnels that use it — `serializeValue`
- * for an attribute value and `generateHeader` for a header field. The expected
- * strings are the Rust half's observed output for the same inputs.
- */
-describe('control-character runs are one space each (#3284, parity with the Rust escape)', () => {
-  const RUST_VECTORS: ReadonlyArray<readonly [string, string, string]> = [
-    ['tab run', 'a\t\t\tb', 'a   b'],
-    ['crlf', 'a\r\nb', 'a  b'],
-    ['mixed C0 + DEL', 'a\u0000\u000B\u001F\u007Fb', 'a    b'],
-    ['single control char', 'a\tb', 'a b'],
-    ['quote doubling around a run', "O'Brien\t\tx", "O''Brien  x"],
-    // Negative control: nothing to replace, byte-identical output.
-    ['no control chars', 'plain text 123', 'plain text 123'],
-  ];
-
-  it.each(RUST_VECTORS)('serializeValue escapes %s as the Rust half does', (_l, input, expected) => {
-    expect(serializeValue(input)).toBe(`'${expected}'`);
-  });
-
-  it.each(RUST_VECTORS)('generateHeader escapes %s as the Rust half does', (_l, input, expected) => {
-    const line = generateHeader({ schema: 'IFC4', author: [input], timeStamp: 'TS' })
-      .split('\n')
-      .find((l) => l.startsWith('FILE_NAME'));
-    expect(line).toContain(`('${expected}')`);
-  });
-
-  it('keeps the run length and still emits no control byte, at every length', () => {
-    // Both directions: same length as the input (one space per control char),
-    // and no control character survives — a run left intact would also keep
-    // its length, so neither assertion alone would fail the old collapse.
-    for (const n of [1, 2, 3, 8]) {
-      const serialized = serializeValue(`a${'\n'.repeat(n)}b`);
-      expect(serialized).toBe(`'a${' '.repeat(n)}b'`);
-      // eslint-disable-next-line no-control-regex
-      expect(serialized).not.toMatch(/[\u0000-\u001F\u007F]/);
-    }
-  });
-});
+// The `escapeStepString`-vs-Rust literal-vector tests that used to live here
+// (`RUST_VECTORS`, in a `describe('control-character runs are one space each
+// (#3284, parity with the Rust escape)', ...)` block) and the
+// `describe('escapeStepString direct (#3300)', ...)` block are now the shared
+// vectors in `../../../rust/export/tests/fixtures/step_escape_vectors.json`,
+// pinned on this side by `./step-escape.parity.test.ts` and on the Rust side
+// by `rust/export/tests/step_escape_parity.rs` (#3300, second half). A
+// hand-kept copy of the other language's behaviour only resets the clock on
+// the drift it exists to catch -- the reasoning behind the CSV-cell-escaper
+// precedent this follows: `rust/export/tests/fixtures/csv_cell_vectors.json`
+// / `packages/export/src/csv-cell.parity.test.ts`.

@@ -17,9 +17,11 @@
 //! unterminated comment mean" differently gives the same answer (#3303).
 
 mod lexical;
+mod oversized_ids;
 mod scanner;
 mod tokenizer;
 
 pub use lexical::skip_step_comment;
+pub use oversized_ids::{oversized_id_report, report_oversized_ids, set_report_sink};
 pub use scanner::{entity_count, EntityScanner};
 pub use tokenizer::{parse_entity, Token};

@@ -145,3 +145,81 @@ describe('anonymized subset export — spatial root (IfcSite) security (P1 findi
     expect(findDanglingRefs(content)).toEqual([]);
   });
 });
+
+/**
+ * Two sites, one selected and one not, each with its OWN `IfcPostalAddress`.
+ * The second site is the whole point: `removeGeoreferencing: false` un-excludes
+ * the address classes, and the first cut of that fix ROOTED them, which is
+ * unconditional over the entire source model — so the sibling site's address
+ * was written into the file verbatim even though nothing the caller selected
+ * ever pointed at it (Codex P1 on #3361). Addresses are forward-referenced, so
+ * the closure walk from the included roots is the only thing that may decide.
+ *
+ * Every literal is a made-up token chosen to be unmistakable in a substring
+ * match; none of it is anyone's address.
+ */
+const TWO_SITE_MODEL = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('subset-security-two-site-fixture.ifc','2020-01-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#20=IFCLOCALPLACEMENT($,#21);
+#21=IFCAXIS2PLACEMENT3D(#22,$,$);
+#22=IFCCARTESIANPOINT((0.,0.,0.));
+#1=IFCPROJECT('${guid(1)}',$,'Project Pair',$,$,$,$,$,$);
+#2=IFCSITE('${guid(2)}',$,'Site Selected',$,$,#20,$,$,.ELEMENT.,$,$,$,$,#50);
+#3=IFCSITE('${guid(3)}',$,'Site Sibling',$,$,$,$,$,.ELEMENT.,$,$,$,$,#51);
+#50=IFCPOSTALADDRESS($,$,$,$,('11 Selected Site Row'),$,'Selectedton','Selected Province','SEL-111','Selected Country');
+#51=IFCPOSTALADDRESS($,$,$,$,('22 Sibling Site Row'),$,'Siblington','Sibling Province','SIB-222','Sibling Country');
+#85=IFCRELAGGREGATES('${guid(85)}',$,$,$,#1,(#2,#3));
+ENDSEC;
+END-ISO-10303-21;`;
+
+/** Values only reachable through the site the caller did NOT select. */
+const SIBLING_ADDRESS_VALUES = [
+  '22 Sibling Site Row',
+  'Siblington',
+  'Sibling Province',
+  'SIB-222',
+  'Sibling Country',
+];
+
+/** Values reachable through the site the caller DID select — the positive
+ *  control, so the assertions above cannot be satisfied by an export that
+ *  simply dropped every address again and re-broke #3351's dangling
+ *  `SiteAddress`. */
+const SELECTED_ADDRESS_VALUES = [
+  '11 Selected Site Row',
+  'Selectedton',
+  'Selected Province',
+  'SEL-111',
+  'Selected Country',
+];
+
+describe('anonymized subset export — an EXCLUDED sibling site\'s address, with georeferencing KEPT (#3361)', () => {
+  it('emits the selected site\'s address and none of the sibling\'s', async () => {
+    const store = await parse(TWO_SITE_MODEL);
+    // Project, the selected site, and the aggregation naming both sites.
+    // Site #3 — and therefore address #51 — is reachable from nothing else.
+    const result = exportAnonymizedSubset(store, new Set([1, 2, 85]), {
+      removeGeoreferencing: false,
+    });
+    const content = decode(result.content);
+
+    for (const needle of SIBLING_ADDRESS_VALUES) {
+      expect(
+        content,
+        `"${needle}" belongs to the site the caller never selected and must not be in the export`,
+      ).not.toContain(needle);
+    }
+    for (const needle of SELECTED_ADDRESS_VALUES) {
+      expect(
+        content,
+        `"${needle}" hangs off the SELECTED site, which "keep georeferencing" asks to keep`,
+      ).toContain(needle);
+    }
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+});

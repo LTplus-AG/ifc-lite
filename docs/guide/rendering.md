@@ -755,6 +755,67 @@ occurrences; the renderer mirrors `selectedIds`, `hiddenIds`, and
 primary-model only: disable it (`enableInstancing: false` on the
 `GeometryProcessor`) for federated multi-model loads.
 
+## Annotation Overlays
+
+IFC annotation content — dimension lines, leaders, room labels, grid axes and their
+bubbles — is uploaded separately from meshed geometry, as world-space lines, texts
+and filled regions.
+
+```typescript
+import type { SymbolicTextInput, SymbolicFillInput } from '@ifc-lite/renderer';
+
+const labels: SymbolicTextInput[] = [
+  {
+    worldPos: [12, 3, 4],
+    dirX: 1,
+    dirZ: 0,
+    height: 0.25,
+    content: 'A',
+    alignment: 'center',
+  },
+];
+
+renderer.uploadAnnotationTexts3D(labels);
+```
+
+Each upload REPLACES the whole array, so pass everything that should be visible;
+an empty array clears the channel.
+
+### Keeping content out of the camera framing
+
+By default every uploaded text and fill grows the model's bounding box, so a
+camera fit or a "zoom to extents" will frame it. That is right for annotations,
+which are often the only content a drawing-like file has. It is wrong for
+reference content that deliberately reaches past the building — a grid bubble
+sits beyond the end of its axis, so framing on it pushes the model off screen.
+
+Set `definesExtent: false` to draw an item without letting the scene bounds grow
+to it:
+
+```typescript
+import type { SymbolicFillInput } from '@ifc-lite/renderer';
+
+const gridBubble: SymbolicFillInput = {
+  points: new Float32Array([0, 0, 1, 0, 1, 1]),
+  holesOffsets: new Uint32Array(0),
+  worldY: 3,
+  color: [0.2, 0.2, 0.2, 1],
+  // Drawn, but the camera will not frame on it.
+  definesExtent: false,
+};
+
+renderer.uploadAnnotationFills3D([gridBubble]);
+```
+
+The field is optional and defaults to `true`, so existing callers keep the
+behaviour they had. It is set per item rather than per call because an upload
+replaces the whole array — one call cannot carry both a framing annotation and a
+non-framing grid bubble otherwise.
+
+The equivalent for 3D line overlays is keyed by channel rather than per item:
+`setLineOverlay('annotation', …)` grows the bounds and `setLineOverlay('grid', …)`
+does not.
+
 ## Complete Example
 
 ```typescript

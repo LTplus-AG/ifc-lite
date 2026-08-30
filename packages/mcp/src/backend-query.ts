@@ -58,7 +58,7 @@ import {
   isQueryableObjectType,
 } from '@ifc-lite/parser';
 import { attributeNamesForSchema } from './schema-tables.js';
-import { EntityNode } from '@ifc-lite/query';
+import { EntityNode, findPropertyInSets } from '@ifc-lite/query';
 
 import { stepText, type CreatedEntity, type PendingOverlay } from './overlay.js';
 
@@ -337,9 +337,7 @@ export function createQueryAdapter(
         for (const filter of descriptor.filters) {
           filtered = filtered.filter((entity) => {
             const props = cachedProps(entity.ref);
-            const pset = props.find((p) => p.name === filter.psetName);
-            if (!pset) return false;
-            const prop = pset.properties.find((p) => p.name === filter.propName);
+            const prop = findPropertyInSets(props, filter.psetName, filter.propName);
             if (!prop) return false;
             if (filter.operator === 'exists') return true;
             const v = normalizeBoolean(prop.value);

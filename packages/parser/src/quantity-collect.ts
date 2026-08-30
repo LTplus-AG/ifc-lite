@@ -15,6 +15,7 @@ import { QuantityType } from '@ifc-lite/data';
 import type { EntityRef } from './types.js';
 import type { EntityExtractor } from './entity-extractor.js';
 import { QUANTITY_TYPE_MAP } from './columnar-parser-indexes.js';
+import { isUnrepresentableNumericValue } from './attribute-helpers.js';
 
 /** One extracted quantity, in the shape both call sites report. */
 export interface CollectedQuantity {
@@ -124,6 +125,40 @@ export function collectQuantitiesFromRefs(
 
         const qtyType = QUANTITY_TYPE_MAP[qtyTypeUpper] ?? QuantityType.Count;
         const rawValue = qtyAttrs[SIMPLE_QUANTITY_VALUE_SLOT];
+
+        // A measure the double range cannot hold is dropped with a diagnostic,
+        // not reported as `0`. `CollectedQuantity.value` is `number` and is
+        // consumed by callers that do arithmetic on it, so there is no
+        // in-band way to say "unrepresentable" — and `0` is the worst of the
+        // available lies, because a 0 m^3 volume reads as a measurement
+        // somebody took. An absent quantity is detectable; a zero one is not.
+        //
+        // This matches what the sibling path already does:
+        // `QuantityExtractor.extractQuantity` returns `null` and warns when
+        // slot 3 is not a number. That path and this one walk the same
+        // `Quantities` list, so they must agree.
+        //
+        // The diagnostic is per occurrence, deliberately. Each line names a
+        // different entity id and quantity name, so it is the list of what was
+        // dropped rather than one message repeated — collapsing it to
+        // once-per-file would leave a reader knowing that something was
+        // discarded and not which. There is also no per-file context threaded
+        // through this function to hang a once-per-file flag on: the only
+        // place to keep one is module scope, which outlives a file in the
+        // viewer's long-lived worker and would then silence the *next* file's
+        // first warning. No `console.warn` in this package is throttled
+        // today, so a local cap here would be the one-off. The cost is bounded by how
+        // corrupt the file is, and a file with thousands of unrepresentable
+        // measures has a louder problem than its console output.
+        if (isUnrepresentableNumericValue(rawValue)) {
+            console.warn(
+                `[quantity-collect] ${qtyEntity.type} #${qtyEntity.expressId} "${qtyName}" ` +
+                `has a value outside the IEEE-754 double range (${String(rawValue)}); ` +
+                `dropping the quantity rather than reporting it as 0.`,
+            );
+            continue;
+        }
+
         const value = typeof rawValue === 'number' ? rawValue : 0;
 
         quantities.push({ name: qtyName, type: qtyType, value });
@@ -158,13 +193,20 @@ export interface CollectedQuantitySet {
  *
  * `SET [1:?]` admits no empty set, so a set that walks to zero quantities —
  * written empty, or filled only with members this reader cannot report, such as
- * an unresolvable reference or an `IfcPhysicalComplexQuantity` (#3254) — is
- * non-conformant data. Reporting it anyway would assert "this element has
+ * an unresolvable reference, an `IfcPhysicalComplexQuantity` (#3254), or a
+ * measure outside the IEEE-754 double range — is non-conformant data. Reporting it anyway would assert "this element has
  * quantities" on the strength of a name alone, and the consumers act on exactly
  * that: `validate` counts the element as quantified in its quantity-completeness
  * figure, an IDS quantity-set existence check passes, and the viewer's fallback
  * to the element's TYPE quantities is suppressed by the phantom occurrence set,
  * hiding the real numbers the type carries. So it is dropped (#3259).
+ *
+ * That applies unchanged when every member was dropped for being
+ * unrepresentable: the set then vanishes rather than surviving empty. Keeping
+ * an empty shell would make exactly the claim #3259 removed — "this element is
+ * quantified" — while carrying no number to back it, and it would still
+ * suppress the type-quantity fallback. The reason each quantity went is on the
+ * console; the reason the set went is that nothing in it survived.
  *
  * The instance path and the type path both go through here, so the drop cannot
  * come apart between them again: it used to be inlined at each site, and the

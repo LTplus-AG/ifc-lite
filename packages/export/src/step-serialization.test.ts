@@ -196,69 +196,18 @@ describe('toStepRealScaled', () => {
   });
 });
 
-describe('escapeStepString non-ASCII encoding (ISO 10303-21 6.3.3.4)', () => {
-  // ISO 10303-21 restricts a string literal's plain-text bytes to the "basic
-  // graphic" range 32-126; anything outside it is a control directive
-  // (\X\HH, \X2\HHHH\X0\, \X4\HHHHHHHH\X0\), never a raw byte. buildingSMART's
-  // own IFC string-encoding guidance states the same for IFC2X3/IFC4/IFC4X3:
-  // "characters ... represented by decimal value 32 to 126 ... any other
-  // character ... has to be encoded" (e.g. German 'Ä' as '\X2\00C4\X0\').
-  // A reader that treats the file bytes as ISO-8859-1 (the byte encoding real
-  // consumers - and the base standard - assume) turns a raw UTF-8 multi-byte
-  // sequence into mojibake or an outright parse break; this is a reported,
-  // reproduced defect in real IFC tooling (IfcOpenShell#699, files rejected
-  // by Solibri) for exactly this shape of writer bug.
-  it('encodes a BMP character as \\X2\\HHHH\\X0\\, not raw UTF-8', () => {
-    expect(escapeStepString('Trümpler')).toBe('Tr\\X2\\00FC\\X0\\mpler');
-  });
-
-  it('encodes a non-BMP character (emoji) as \\X4\\HHHHHHHH\\X0\\', () => {
-    expect(escapeStepString('😀')).toBe('\\X4\\0001F600\\X0\\');
-  });
-
-  it('leaves printable ASCII untouched', () => {
-    expect(escapeStepString('plain text 123')).toBe('plain text 123');
-  });
-});
-
-
 /**
- * A run of control characters becomes ONE SPACE PER CHARACTER (#3284 item 2).
- *
- * The expectations below are not invented: they are the observed output of the
- * Rust half, `ifc_lite_export::step_text::escape`, over the same six inputs —
- * the doc comment on each escaper claims it "matches" the other, and until
- * this fix the TS `/[\x00-\x1F\x7F]+/g` collapsed `"a\t\t\tb"` to `'a b'`
- * while Rust wrote `'a   b'`. ISO 10303-21 6.3.3.4 mandates neither (it only
- * bars the control byte from the literal), so the tie is broken by the parity
- * claim and by information loss: collapsing discards the run's length.
+ * `escapeStepString` no longer has an implementation here (#3300): this
+ * package re-exports `@ifc-lite/data`'s. Full coverage -- non-ASCII `\X2\`/
+ * `\X4\` directives, one-space-per-control-char (#3284), and the vector
+ * comparison against `ifc_lite_export::step_text::escape` -- lives once, in
+ * `packages/data/src/step-serializers.test.ts`. This is a wiring check that
+ * the re-export resolves to a working function, not a second copy of that
+ * suite.
  */
-describe('escapeStepString control-character runs (#3284, parity with the Rust escape)', () => {
-  // label, input, and the output the Rust half printed for that input.
-  const RUST_VECTORS: ReadonlyArray<readonly [string, string, string]> = [
-    ['tab run', 'a\t\t\tb', 'a   b'],
-    ['crlf', 'a\r\nb', 'a  b'],
-    ['mixed C0 + DEL', 'a\u0000\u000B\u001F\u007Fb', 'a    b'],
-    ['single control char', 'a\tb', 'a b'],
-    ['quote doubling around a run', "O'Brien\t\tx", "O''Brien  x"],
-    // Negative control: no control characters at all, byte-identical output.
-    ['no control chars', 'plain text 123', 'plain text 123'],
-  ];
-
-  it.each(RUST_VECTORS)('%s escapes exactly as the Rust half does', (_label, input, expected) => {
-    expect(escapeStepString(input)).toBe(expected);
-  });
-
-  it('preserves the length of every control run and emits no control byte', () => {
-    // Both directions of the rule in one place: the output must have the same
-    // length as the input (one space per control character), and must contain
-    // no control character (a run left intact would also keep its length, so
-    // neither half alone is sufficient).
-    for (const n of [1, 2, 3, 8]) {
-      const escaped = escapeStepString(`a${'\n'.repeat(n)}b`);
-      expect(escaped).toBe(`a${' '.repeat(n)}b`);
-      // eslint-disable-next-line no-control-regex
-      expect(escaped).not.toMatch(/[\u0000-\u001F\u007F]/);
-    }
+describe('escapeStepString (re-exported from @ifc-lite/data, #3300)', () => {
+  it('escapes quotes, backslashes and non-ASCII the way @ifc-lite/data does', () => {
+    expect(escapeStepString("O'Brien\\x")).toBe("O''Brien\\\\x");
+    expect(escapeStepString('\u00C4')).toBe('\\X2\\00C4\\X0\\');
   });
 });

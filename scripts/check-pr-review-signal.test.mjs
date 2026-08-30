@@ -19,7 +19,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { expandJobNames } from './lib/pr-review-signal.mjs';
+import { expandJobNames, pullRequestBranchFilterKeys } from './lib/pr-review-signal.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..');
@@ -115,6 +115,28 @@ test('RED, the #3294 shape: a rollup with no compile lanes fails and NAMES each 
   // The remedy has to name the mechanism that actually caused it, or the next
   // person re-derives the retarget rule from scratch.
   assert.match(r.output, /retargeted to main does NOT fire test\.yml retroactively/);
+});
+
+test('RED, the #3429 shape: a PR stacked on a feature-branch base fails and names the real remedy', () => {
+  // The #3294 message above ("push an empty commit, or close and reopen")
+  // does not work here: test.yml's own `branches: [main]` filter means it
+  // will not fire against a non-main base no matter how the PR is nudged.
+  // This is the case #3429 asks the gate to surface -- a stacked PR whose
+  // lanes are absent not because of a stale retarget, but because they were
+  // never going to run against this base at all.
+  const r = run({
+    required: HEALTHY,
+    lanes: [LANE('Vercel – ifc-lite'), LANE('IfcOpenShell parity')],
+    reviewChecks: [],
+    baseRefName: 'fix-3338-isolate-expansion-gate',
+  });
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /MISSING_LANES: 3 of 3/);
+  assert.match(r.output, /this PR's base is `fix-3338-isolate-expansion-gate`, not `main`/);
+  assert.match(r.output, /retargeting this PR to `main` will/);
+  // Must NOT print the #3294 remedy -- pushing an empty commit fixes nothing
+  // here, and telling a stacked-PR author to do it is advice that cannot work.
+  assert.doesNotMatch(r.output, /retargeted to main does NOT fire test\.yml retroactively/);
 });
 
 test('RED, the #3305 shape: CodeRabbit passing while rate limited fails and quotes it', () => {
@@ -560,29 +582,38 @@ test('the resolved repo reaches the PR read, not just the commit-status reads', 
 });
 
 
-test('the gate and the workflow it derives lanes from carry the SAME base-branch filter', () => {
-  // The self-guard above ("no edit to the script or its config can dodge the
-  // job") holds only for PRs targeting main, because this job carries
-  // `branches: [main]`. That scope is SOUND only while test.yml carries the
-  // same filter: the required lane set is derived from test.yml, so if test.yml
-  // ran on feature-targeted PRs and this gate did not, the gate would be blind
-  // on PRs whose lanes genuinely did run. And if this gate ran where test.yml
-  // did not, every required lane would be legitimately absent and every stacked
-  // PR would fail for a reason that is not a defect.
+test('the gate carries NO base-branch filter, so a stacked PR cannot dodge it (#3429)', () => {
+  // #3429: this job used to carry the SAME `branches: [main]` filter as
+  // test.yml, on the reasoning that widening it would fail every stacked PR
+  // "for a reason that is not a defect" -- every lane test.yml would have
+  // published is legitimately absent on a feature-targeted PR. That reasoning
+  // is exactly backwards for what this gate exists to do: "legitimately
+  // absent" is the fact a reviewer needs surfaced, not a reason to suppress
+  // the one job that surfaces it. #3405 and #3428 (both stacked) ran ZERO
+  // test.yml lanes and their check lists showed passes and skips only --
+  // nothing said "nothing ran", because this gate did not run either.
   //
-  // Pinned rather than reasoned about in a comment, because the two files are
-  // edited independently and the failure is silent in both directions.
+  // So test.yml keeps `branches: [main]` (a stacked PR should not pay for the
+  // whole suite on every push) while THIS job must run on every base, so it
+  // can observe a stacked PR's total lane absence and fail loud rather than
+  // being silently skipped alongside it. Pinned rather than reasoned about in
+  // a comment, because the two files are edited independently.
+  //
+  // #3433: a text regex here (`/^\s*branches:\s*(\[.*\])\s*$/m`) caught the
+  // inline `branches: [main]` spelling but not the equivalent block form
+  // (`branches:\n  - main`), so the guard this test IS could itself be
+  // defeated by reformatting. Parsed structurally instead -- see
+  // `pullRequestBranchFilterKeys` for every spelling this now covers.
   const own = readFileSync(join(REPO_ROOT, '.github/workflows/pr-review-signal.yml'), 'utf8');
   const testYml = readFileSync(TEST_YML, 'utf8');
-  const branchesOf = (text) => /^\s*branches:\s*(\[.*\])\s*$/m.exec(text)?.[1];
-  const mine = branchesOf(own);
-  const theirs = branchesOf(testYml);
-  assert.ok(mine, 'pr-review-signal.yml must declare an explicit base-branch filter');
-  assert.ok(theirs, 'test.yml must declare an explicit base-branch filter');
-  assert.equal(
-    mine,
-    theirs,
-    'the gate must run on exactly the base branches whose lanes it requires',
+  assert.deepEqual(
+    pullRequestBranchFilterKeys(own),
+    [],
+    'pr-review-signal.yml must not declare a base-branch filter -- it has to run on stacked PRs to catch them',
+  );
+  assert.ok(
+    pullRequestBranchFilterKeys(testYml).length > 0,
+    'test.yml is expected to keep its own base-branch filter; this test documents the asymmetry, not test.yml\'s scope',
   );
 });
 

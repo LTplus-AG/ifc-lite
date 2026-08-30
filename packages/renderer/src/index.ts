@@ -13,6 +13,7 @@ export { Camera } from './camera.js';
 // The MEASURED surface `getScene()` publishes — see its docs.
 export type { SceneContents } from './scene-contents.js';
 export type { ProjectionMode } from './camera-state.js';
+export type { InteractionMode } from './camera-controls.js';
 export { pickFitPolicy } from './camera-fit-policy.js';
 export type { FitPolicy, FitPolicyKind, Bounds3, PickFitPolicyOptions } from './camera-fit-policy.js';
 // `Scene` is NOT exported: an exported class republishes every method `SceneContents` above just froze.

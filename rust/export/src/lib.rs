@@ -53,6 +53,9 @@ mod step_json;
 mod step_text;
 mod usd;
 
+/// The STEP string-literal escaper; `escape`'s docs say why it is public.
+pub use step_text::escape as escape_step_string;
+
 pub use collada::export_collada_from_meshes;
 pub use csv::{export_csv, CsvMode, CsvOptions};
 pub use dfjson::DfjsonStats;

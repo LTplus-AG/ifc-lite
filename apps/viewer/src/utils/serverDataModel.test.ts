@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { ServerEntityIndex, type DataModel } from '@ifc-lite/server-client';
-import { IfcTypeEnum, RelationshipType, STOREY_ELEVATION_MATCH_TOLERANCE_M } from '@ifc-lite/data';
+import { IfcTypeEnum, QuantityType, RelationshipType, STOREY_ELEVATION_MATCH_TOLERANCE_M } from '@ifc-lite/data';
 import { EntityQuery } from '@ifc-lite/query';
 import { convertServerDataModel, type ServerParseResult } from './serverDataModel';
 
@@ -188,6 +188,45 @@ describe('convertServerDataModel', () => {
     // TYPEHASPROPERTYSETS must NOT become a graph edge.
     assert.deepEqual(store.relationships.getRelated(20, RelationshipType.DefinesByProperties, 'forward'), []);
   });
+  it('classifies IfcQuantityNumber as QuantityType.Number, not Count (#3266 sibling)', () => {
+    // IFC4X3 added `IfcQuantityNumber`. The columnar parser's own
+    // QUANTITY_TYPE_MAP already carries it (packages/parser's
+    // columnar-parser-indexes.ts, fixed by #3266); this pins the server-hydrated
+    // path's INDEPENDENT `mapQuantityType` switch, which must classify the
+    // server's "number" quantity_type string the same way — not silently fall
+    // through its `default` to Count, which is exactly the #3266 defect this
+    // pins for the second, un-fixed implementation of the same mapping.
+    const dataModel: DataModel = {
+      entities: ServerEntityIndex.fromRows([
+        { entity_id: 10, type_name: 'IFCREINFORCINGBAR', global_id: 'r', name: 'Bar', has_geometry: false },
+      ]),
+      propertySets: new Map(),
+      quantitySets: new Map([
+        [30, {
+          qset_id: 30,
+          qset_name: 'Qto_ReinforcingBarBaseQuantities',
+          quantities: [
+            { quantity_name: 'BarCount', quantity_value: 12, quantity_type: 'number' },
+          ],
+        }],
+      ]),
+      relationships: [
+        { rel_type: 'IFCRELDEFINESBYPROPERTIES', relating_id: 30, related_id: 10 },
+      ],
+      spatialHierarchy: {
+        nodes: [{ entity_id: 1, parent_id: 0, level: 0, path: 'P', type_name: 'IFCPROJECT', name: 'P', children_ids: [], element_ids: [] }],
+        project_id: 1,
+        element_to_storey: new Map(), element_to_building: new Map(), element_to_site: new Map(), element_to_space: new Map(),
+      },
+    } as unknown as DataModel;
+
+    const store = convertServerDataModel(dataModel, parseResult, { size: 1 }, []);
+    const qsets = store.quantities.getForEntity(10);
+    assert.equal(qsets.length, 1);
+    assert.equal(qsets[0].quantities[0].name, 'BarCount');
+    assert.equal(qsets[0].quantities[0].type, QuantityType.Number, 'must classify as Number, not fall through to Count');
+  });
+
   it('resolves storey by elevation with the same tolerance as the parser path (#1841)', () => {
     // Two storeys at 0m and 3m. The server-loaded path used to always snap to
     // the nearest storey, so a Z far above the building still resolved to the

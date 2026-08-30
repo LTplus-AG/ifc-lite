@@ -46,6 +46,7 @@
     "check:loader-hook-specifier-match": "node scripts/check-loader-hook-specifier-match.mjs",
     "check:clash-degenerate-reason-parity": "node scripts/check-clash-degenerate-reason-parity.mjs",
     "check:csv-escapers": "node scripts/check-csv-escaper-copies.mjs",
+    "check:step-escapers": "node scripts/check-step-escaper-copies.mjs",
     "check:vitest-timeout-audit": "git ls-files -z '*.test.ts' '*.test.tsx' | xargs -0 node scripts/lib/vitest-timeout-audit.mjs --summary-only",
     "check:api-surface": "node scripts/check-api-surface.mjs",
     "check:rust-semver": "node scripts/check-rust-semver.mjs",

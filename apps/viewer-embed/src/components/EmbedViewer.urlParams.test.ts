@@ -341,3 +341,45 @@ describe('EmbedViewer: ?camera=', () => {
     expect(setCameraRotation).not.toHaveBeenCalled();
   });
 });
+
+describe('EmbedViewer: ?controls=', () => {
+  it('applies the parsed mode to the registered camera callback', async () => {
+    const setInteractionMode = vi.fn();
+    useViewerStore.setState({ cameraCallbacks: { setInteractionMode } });
+
+    setSearch('?controls=pan');
+    renderEmbedViewer();
+    await settle();
+
+    expect(setInteractionMode).toHaveBeenCalledWith('pan');
+  });
+
+  it('replays once the camera callback registers late, same as ?camera=', async () => {
+    // Renderer callbacks are not yet registered at mount (Viewport's effect
+    // runs after `renderer.init()` resolves). Before #2934, urlParams.controls
+    // was read nowhere at all, so there was nothing to replay; this pins that
+    // the store-level pending/replay path used for SET_CAMERA (#2978) is now
+    // shared by the URL param too.
+    setSearch('?controls=none');
+    renderEmbedViewer();
+    await settle();
+
+    const setInteractionMode = vi.fn();
+    act(() => {
+      useViewerStore.getState().setCameraCallbacks({ setInteractionMode });
+    });
+
+    expect(setInteractionMode).toHaveBeenCalledWith('none');
+  });
+
+  it('does not call the callback when ?controls= is absent', async () => {
+    const setInteractionMode = vi.fn();
+    useViewerStore.setState({ cameraCallbacks: { setInteractionMode } });
+
+    setSearch('');
+    renderEmbedViewer();
+    await settle();
+
+    expect(setInteractionMode).not.toHaveBeenCalled();
+  });
+});

@@ -12,7 +12,7 @@
 
 import type { StateCreator } from 'zustand';
 
-import { defineSliceTeardown } from '../teardown.js';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
 export type PointColorModeUi = 'rgb' | 'classification' | 'intensity' | 'height' | 'fixed' | 'deviation';
 export type PointSizeModeUi = 'fixed-px' | 'adaptive-world' | 'attenuated';
@@ -291,10 +291,14 @@ export const pointCloudTeardown = defineSliceTeardown(
     'pointCloudAlignmentAvailable',
     'pointCloudAlignmentEnabled',
   ],
-  (scope) => scope.kind !== 'session-reset' ? {} : {
-    ...POINT_CLOUD_DEFAULTS,
-    // Re-spread typed-array fields so consumers get fresh references
-    // instead of the readonly literal in POINT_CLOUD_DEFAULTS.
-    pointCloudFixedColor: [...POINT_CLOUD_DEFAULTS.pointCloudFixedColor] as [number, number, number, number],
+  {
+    'session-reset': () => ({
+      ...POINT_CLOUD_DEFAULTS,
+      // Re-spread typed-array fields so consumers get fresh references
+      // instead of the readonly literal in POINT_CLOUD_DEFAULTS.
+      pointCloudFixedColor: [...POINT_CLOUD_DEFAULTS.pointCloudFixedColor] as [number, number, number, number],
+    }),
+    'model-removed': notApplicable,
+    'all-models-cleared': notApplicable,
   },
 );

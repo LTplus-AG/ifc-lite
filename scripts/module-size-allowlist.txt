@@ -6,10 +6,24 @@
 # count at the moment it was recorded. The gate fails if any of these grows
 # PAST its budget, or if a NEW file crosses 400 without an entry.
 #
-# The rule: SHRINK OR SPLIT. Budgets ratchet DOWN only — never raise one to
-# make a red gate green. When a file drops to <= 400, DELETE its row (the gate
-# prints a note telling you to); a stale exemption is permanent slack.
-# Only ADD a row with a written justification in the PR.
+# The rule: SHRINK OR SPLIT. Budgets ratchet DOWN by default: `--update`
+# refuses to raise a budget or add a row, so the regeneration command cannot
+# quietly undo the ratchet. A raise or a new row IS sanctioned, deliberately —
+# `--update --allow-raise`, justified per file in the PR. Either way it costs
+# the reviewable digest line described below. When a file drops to <= 400,
+# DELETE its row (the gate prints a note telling you to); a stale exemption is
+# permanent slack.
+#
+# `--update` re-records only the files your change touched — plus one
+# deliberate exception: a STALE row is dropped wherever it is. A row at or under
+# the 400-line limit, or one whose file no longer exists, grants no exemption to
+# anybody, so leaving it would mean the regeneration command could not clear a
+# failure it is supposed to clear. A row that still exempts a real file is never
+# touched unless your change touched that file.
+# `--update --all --allow-raise` re-records every row in the tree, annexing
+# slack your change never created: a deliberate sweep, and its own PR. The
+# `--allow-raise` is not optional there — re-recording a file that GREW is a
+# raise, so without it the sweep writes nothing and exits 1.
 #
 # Any edit here moves that row's SCOPE entry in ALLOWLIST_DIGESTS in
 # scripts/check-module-size.mjs, which must be updated in the same commit —
@@ -18,7 +32,6 @@
 # moves ONE of its entries. Two PRs in different scopes then merge cleanly
 # unless their entries sit on ADJACENT lines, which git cannot auto-merge.
    522 apps/viewer-embed/src/bridge/handler.ts
-   439 apps/viewer-embed/src/components/EmbedViewer.tsx
    481 apps/viewer/src/components/extensions/ExtensionsPanel.tsx
    431 apps/viewer/src/components/extensions/FlavorDialog.tsx
    428 apps/viewer/src/components/extensions/widget/WidgetRenderer.tsx
@@ -95,7 +108,7 @@
    970 apps/viewer/src/components/viewer/useGeometryStreaming.ts
    946 apps/viewer/src/components/viewer/useMouseControls.ts
    782 apps/viewer/src/components/viewer/ViewerLayout.tsx
-  1840 apps/viewer/src/components/viewer/Viewport.tsx
+  1843 apps/viewer/src/components/viewer/Viewport.tsx
   1539 apps/viewer/src/components/viewer/ViewportContainer.tsx
    511 apps/viewer/src/components/viewer/ZonesPanel.tsx
    862 apps/viewer/src/hooks/ids/idsExportService.ts
@@ -114,7 +127,7 @@
   2204 apps/viewer/src/hooks/useIfcLoader.ts
    436 apps/viewer/src/hooks/useIfcServer.ts
    488 apps/viewer/src/hooks/useKeyboardShortcuts.ts
-   601 apps/viewer/src/hooks/useSymbolicAnnotations.ts
+   493 apps/viewer/src/hooks/useSymbolicAnnotations.ts
    629 apps/viewer/src/lib/analytics-scrub.ts
    651 apps/viewer/src/lib/clash/persistence.ts
    427 apps/viewer/src/lib/collab/geometry-sync.ts
@@ -145,7 +158,7 @@
    561 apps/viewer/src/services/ifc-cache.ts
    581 apps/viewer/src/store/basketVisibleSet.ts
    485 apps/viewer/src/store/constants.ts
-   575 apps/viewer/src/store/index.ts
+   581 apps/viewer/src/store/index.ts
    404 apps/viewer/src/store/slices/addElementMeshes.ts
    452 apps/viewer/src/store/slices/chatSlice.ts
    994 apps/viewer/src/store/slices/clashSlice.ts
@@ -163,7 +176,8 @@
    571 apps/viewer/src/store/slices/sheetSlice.ts
    414 apps/viewer/src/store/slices/uiSlice.ts
    485 apps/viewer/src/store/slices/visibilitySlice.ts
-   689 apps/viewer/src/store/types.ts
+   415 apps/viewer/src/store/teardown.ts
+   696 apps/viewer/src/store/types.ts
    662 apps/viewer/src/utils/serverDataModel.ts
    422 apps/viewer/src/utils/spatialHierarchy.ts
    573 apps/viewer/src/utils/viewportUtils.ts
@@ -234,8 +248,8 @@
    524 packages/export/src/schema-converter.ts
    437 packages/extensions/src/testing/runner.ts
    625 packages/geometry/src/coordinate-handler.ts
-  1707 packages/geometry/src/geometry-parallel.ts
-  1754 packages/geometry/src/geometry.worker.ts
+  1631 packages/geometry/src/geometry-parallel.ts
+  1757 packages/geometry/src/geometry.worker.ts
    937 packages/geometry/src/ifc-lite-bridge.ts
   1551 packages/geometry/src/index.ts
    730 packages/geometry/src/native-bridge.ts
@@ -263,7 +277,7 @@
    470 packages/mcp/src/tools/layer-review.ts
    440 packages/mcp/src/tools/mutate.ts
    627 packages/mcp/src/tools/query.ts
-   699 packages/mcp/src/tools/viewer.ts
+   696 packages/mcp/src/tools/viewer.ts
    413 packages/mcp/src/transport/http.ts
    465 packages/merge/src/component-state.ts
    530 packages/merge/src/three-way.ts
@@ -272,9 +286,8 @@
   2121 packages/mutations/src/mutable-property-view.ts
    422 packages/oauth-pkce/src/token-manager.ts
   1189 packages/parser/src/columnar-parser.ts
-   480 packages/parser/src/compact-entity-index.ts
+   478 packages/parser/src/compact-entity-index.ts
    530 packages/parser/src/data-store-transport.ts
-   539 packages/parser/src/georef-extractor.ts
    827 packages/parser/src/material-resolver.ts
   1004 packages/parser/src/on-demand-extractors.ts
    523 packages/parser/src/project-units.ts
@@ -292,9 +305,9 @@
   1033 packages/provenance/src/merge-model.ts
    609 packages/provenance/src/node-hash.ts
    535 packages/query/src/duckdb-integration.ts
-   561 packages/renderer/src/camera-controls.ts
-   657 packages/renderer/src/camera.ts
-  3752 packages/renderer/src/index.ts
+   583 packages/renderer/src/camera-controls.ts
+   662 packages/renderer/src/camera.ts
+  3753 packages/renderer/src/index.ts
    780 packages/renderer/src/picker.ts
    952 packages/renderer/src/pipeline.ts
    477 packages/renderer/src/pointcloud/point-cloud-renderer.ts

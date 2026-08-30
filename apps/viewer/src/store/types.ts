@@ -216,6 +216,10 @@ export type SectionPlaneAxis = 'down' | 'front' | 'side';
 // pattern only requires editing `packages/renderer/src/section-cap-style.ts`.
 export type { HatchPatternId as SectionCapHatchId, SectionCapStyle } from '@ifc-lite/renderer';
 import type { SectionCapStyle } from '@ifc-lite/renderer';
+// Same reasoning: the embed `controls` param (#2934) restricts orbit/pan/zoom
+// at the renderer's `Camera`, so the store shares the renderer's own type.
+export type { InteractionMode as ControlsMode } from '@ifc-lite/renderer';
+import type { InteractionMode as ControlsMode } from '@ifc-lite/renderer';
 
 /**
  * Custom (face-picked) plane override. When present, the renderer uses
@@ -434,6 +438,9 @@ export interface CameraCallbacks {
    * cameraSlice, mirroring how `setProjectionMode` drives its own callback.
    */
   setCameraRotation?: (rotation: CameraRotation) => void;
+  /** Restrict interactive orbit/pan/zoom (embed `?controls=`, #2934). Does
+   *  not gate programmatic moves — `setCameraRotation`/`setPresetView`/etc. */
+  setInteractionMode?: (mode: ControlsMode) => void;
   projectToScreen?: (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null;
   /**
    * Unproject a screen pixel onto the horizontal plane at the

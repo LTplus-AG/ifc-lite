@@ -48,6 +48,28 @@ function mockSdk() {
   } as unknown as BimContext;
 }
 
+describe('bim.viewer.resetColors — entity-scoped reset', () => {
+  it('forwards the given entities to sdk.viewer.resetColors instead of always resetting everything', () => {
+    // sdk.viewer.resetColors(refs?: EntityRef[]) already supports resetting
+    // just the given entities (packages/sdk/src/namespaces/viewer.ts) — the
+    // streaming viewer backend (packages/viewer/src/streaming-viewer.ts)
+    // dispatches a distinct `resetColorEntities` action for a non-empty
+    // `refs`. The bridge previously declared `args: []` and always called
+    // `sdk.viewer.resetColors()` with nothing, so a script author had no way
+    // to reach that capability — every call reset the whole model.
+    const sdk = mockSdk();
+    const refA: EntityRef = { modelId: 'm1', expressId: 1 };
+    findMethod('resetColors').call(sdk, [[refA]], CTX);
+    expect(sdk.viewer.resetColors).toHaveBeenCalledWith([refA]);
+  });
+
+  it('still resets everything when called with no entities', () => {
+    const sdk = mockSdk();
+    findMethod('resetColors').call(sdk, [[]], CTX);
+    expect(sdk.viewer.resetColors).toHaveBeenCalledWith([]);
+  });
+});
+
 describe('bim.viewer.colorizeAll — batch reshape', () => {
   it('extracts .ref from wrapped entities and pairs it with the batch color', () => {
     const sdk = mockSdk();

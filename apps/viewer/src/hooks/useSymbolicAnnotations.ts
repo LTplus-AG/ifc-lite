@@ -12,7 +12,7 @@
  * lazily and is cached per model source.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { DrawingLine2D } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { useShallow } from 'zustand/react/shallow';
@@ -29,6 +29,14 @@ import {
   type SymbolicLineChannels,
   type SymbolicLineChannelsEntry,
 } from './symbolic-line-channels.js';
+import {
+  buildSymbolicRichChannels,
+  EMPTY_RICH_CHANNELS,
+  type AnnotationFill3D,
+  type AnnotationText3D,
+  type SymbolicRichChannels,
+  type SymbolicRichChannelsEntry,
+} from './symbolic-rich-channels.js';
 
 // The parse walk itself lives in `lib/overlay-parse/symbolic-parse.ts` so a
 // worker can import it (a worker module cannot import this React hook file).
@@ -195,6 +203,19 @@ export interface SectionClipForGrid {
 // Re-exported here so existing consumers keep this import path.
 export { buildSymbolicLineChannels, type SymbolicLineChannels, type SymbolicLineChannelsEntry };
 
+// `buildSymbolicRichChannels` (the pure text/fill merge) and the
+// `AnnotationText3D` / `AnnotationFill3D` shapes it produces live in
+// `symbolic-rich-channels.ts` — split out for the same two reasons as the line
+// channels above, and so the grid section-clip band it applies has a seam a
+// test can reach with no worker, no parse cache and no React (issue #3393).
+// Re-exported narrowly: `SymbolicRichChannels` names the return type of the
+// hook below, and `AnnotationText3D` / `AnnotationFill3D` keep this import
+// path working for the callers that already used it (today only
+// `useSymbolicAnnotations.gridBubbleExtent.test.tsx`; `Viewport.tsx` consumes
+// the shapes structurally without naming them). The builder and its entry type
+// have no consumer here and are imported from their own module instead.
+export { type AnnotationFill3D, type AnnotationText3D, type SymbolicRichChannels };
+
 export function useSymbolicAnnotations(params: {
   /** Enable IfcAnnotation lift (the existing default behaviour). */
   enabled: boolean;
@@ -244,46 +265,6 @@ export function useSymbolicAnnotations(params: {
     });
   }, [enabled, effectiveGridEnabled, clipEnabled, clipPos, clipDepth, stores, hiddenSets, version, fallbackY]);
 }
-
-/**
- * A text annotation lifted into 3D world space.
- *
- * `worldPos[1]` is the storey Y the annotation belongs to (or `fallbackY` for
- * orphans). `dirX / dirZ` is the baseline direction in 3D (already mirrored
- * from the IFC frame to match the section overlay's coordinate handedness).
- * `height` is in world units.
- */
-export interface AnnotationText3D {
-  worldPos: [number, number, number];
-  dirX: number;
-  dirZ: number;
-  height: number;
-  content: string;
-  alignment: string;
-  /** True when the glyph quad should rebuild in camera-aligned basis (grid tags). */
-  billboard?: boolean;
-  /** sRGB straight-alpha tint, 0..1. */
-  color?: [number, number, number, number];
-  /** Per-instance target cap height in screen pixels. */
-  targetPx?: number;
-}
-
-/**
- * A filled region lifted into 3D world space. `points` is a flat
- * `[x, z, x, z, …]` ring buffer (Y is constant = `worldY`). Holes are tracked
- * via `holesOffsets` (vertex indices into `points`); the renderer triangulates.
- */
-export interface AnnotationFill3D {
-  points: Float32Array;
-  holesOffsets: Uint32Array;
-  worldY: number;
-  color: [number, number, number, number];
-  hatching?: AnnotationFill2D['hatching'];
-}
-
-/** Cheap stable empty arrays for the no-data path. */
-const EMPTY_TEXTS: readonly AnnotationText3D[] = Object.freeze([]);
-const EMPTY_FILLS: readonly AnnotationFill3D[] = Object.freeze([]);
 
 /**
  * Hook for the 2D Section panel: filters the shared parse cache to
@@ -478,7 +459,7 @@ export function useSymbolicAnnotationsRichData(params: {
    *  [`useSymbolicAnnotations`]. */
   gridSectionClip?: SectionClipForGrid;
   fallbackY?: number;
-}): { texts: readonly AnnotationText3D[]; fills: readonly AnnotationFill3D[] } {
+}): SymbolicRichChannels {
   const { enabled, gridEnabled, gridSectionClip, fallbackY = 0 } = params;
   const effectiveGridEnabled = gridEnabled ?? enabled;
   const stores = useActiveStores();
@@ -489,87 +470,24 @@ export function useSymbolicAnnotationsRichData(params: {
   const clipDepth = clipEnabled ? gridSectionClip!.viewDepth : 0;
 
   return useMemo(() => {
-    if (!enabled && !effectiveGridEnabled) return { texts: EMPTY_TEXTS, fills: EMPTY_FILLS };
-    void version;
+    if (!enabled && !effectiveGridEnabled) return EMPTY_RICH_CHANNELS;
+    void version; // depend on parse-completion ticks
 
-    const texts: AnnotationText3D[] = [];
-    const fills: AnnotationFill3D[] = [];
-
+    // Per-entity hide: drop text/fills whose owning annotation is hidden.
+    // Stores whose parse isn't cached yet drop out.
+    const entries: SymbolicRichChannelsEntry[] = [];
     for (const entry of stores) {
       const cached = getParseFor(entry.store);
-      if (!cached) continue;
-
-      // Per-entity hide: drop text/fills whose owning annotation is hidden.
-      const isHidden = makeHiddenOwnerPredicate(entry, hiddenSets);
-
-      const pushText = (t: AnnotationText2D, y: number) => {
-        if (isHidden && isHidden(t.ownerId)) return;
-        // lineYOffset stacks multi-line text downward in world-Y. Glyph
-        // upAxis is world-Y (see SymbolicTextPipeline), so subtracting
-        // here puts line 1 below line 0 on screen for any side/oblique
-        // 3D view of the floor plan.
-        texts.push({
-          worldPos: [t.x, y + (t.lineYOffset ?? 0), t.y],
-          dirX: t.dirX,
-          dirZ: t.dirY,
-          height: t.height,
-          content: t.content,
-          alignment: t.alignment,
-          billboard: t.billboard,
-          color: t.color,
-          targetPx: t.targetPx,
-        });
-      };
-      const pushFill = (f: AnnotationFill2D, y: number) => {
-        if (isHidden && isHidden(f.ownerId)) return;
-        fills.push({
-          points: f.points,
-          holesOffsets: f.holesOffsets,
-          worldY: y,
-          color: f.color,
-          hatching: f.hatching,
-        });
-      };
-
-      if (enabled) {
-        for (const bucket of cached.byStorey.values()) {
-          const y = resolveBucketY(bucket.storeyElevation, fallbackY);
-          for (const t of bucket.texts) pushText(t, y);
-          for (const f of bucket.fills) pushFill(f, y);
-        }
-        for (const t of cached.looseTexts) pushText(t, fallbackY);
-        for (const f of cached.looseFills) pushFill(f, fallbackY);
-      }
-
-      if (effectiveGridEnabled) {
-        if (clipEnabled) {
-          const lo = clipPos - clipDepth;
-          const hi = clipPos + clipDepth;
-          for (const bucket of cached.gridByStorey.values()) {
-            const y = resolveBucketY(bucket.storeyElevation, fallbackY);
-            if (y < lo || y > hi) continue;
-            for (const t of bucket.texts) pushText(t, y);
-            for (const f of bucket.fills) pushFill(f, y);
-          }
-          if (fallbackY >= lo && fallbackY <= hi) {
-            for (const t of cached.gridLooseTexts) pushText(t, fallbackY);
-            for (const f of cached.gridLooseFills) pushFill(f, fallbackY);
-          }
-        } else {
-          for (const bucket of cached.gridByStorey.values()) {
-            const y = resolveBucketY(bucket.storeyElevation, fallbackY);
-            for (const t of bucket.texts) pushText(t, y);
-            for (const f of bucket.fills) pushFill(f, y);
-          }
-          for (const t of cached.gridLooseTexts) pushText(t, fallbackY);
-          for (const f of cached.gridLooseFills) pushFill(f, fallbackY);
-        }
-      }
+      if (cached) entries.push({ cached, isHidden: makeHiddenOwnerPredicate(entry, hiddenSets) });
     }
 
-    return {
-      texts: texts.length ? texts : EMPTY_TEXTS,
-      fills: fills.length ? fills : EMPTY_FILLS,
-    };
+    return buildSymbolicRichChannels(entries, {
+      enabled,
+      effectiveGridEnabled,
+      clipEnabled,
+      clipPos,
+      clipDepth,
+      fallbackY,
+    });
   }, [enabled, effectiveGridEnabled, clipEnabled, clipPos, clipDepth, stores, hiddenSets, version, fallbackY]);
 }

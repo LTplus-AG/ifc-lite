@@ -7,9 +7,9 @@
  */
 
 import type { StateCreator } from 'zustand';
-import type { CameraRotation, CameraCallbacks, ProjectionMode } from '../types.js';
+import type { CameraRotation, CameraCallbacks, ProjectionMode, ControlsMode } from '../types.js';
 import { CAMERA_DEFAULTS } from '../constants.js';
-import { defineSliceTeardown } from '../teardown.js';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
 /** The home orientation, in one place: the slice's initial value and the
  *  session-reset teardown must not be able to drift apart. */
@@ -20,6 +20,10 @@ const defaultCameraRotation = (): CameraRotation => ({
 
 /** Likewise for the projection: `perspective` is the startup mode. */
 const DEFAULT_PROJECTION_MODE: ProjectionMode = 'perspective';
+
+/** Unrestricted orbit/pan/zoom — every consumer except the embed's
+ *  `?controls=` param (#2934) leaves this at the default. */
+export const DEFAULT_CONTROLS_MODE: ControlsMode = 'all';
 
 export interface CameraSlice {
   // State
@@ -35,6 +39,12 @@ export interface CameraSlice {
   /** A rotation accepted before any renderer was registered, replayed by
    *  {@link setCameraCallbacks}. `null` once applied. */
   pendingCameraRotation: CameraRotation | null;
+  /** Interactive orbit/pan/zoom restriction (embed `?controls=`, #2934). */
+  interactionMode: ControlsMode;
+  setInteractionMode: (mode: ControlsMode) => void;
+  /** Same replay pattern as {@link pendingCameraRotation} — the embed applies
+   *  `?controls=` on mount, before `Viewport` has registered its callbacks. */
+  pendingInteractionMode: ControlsMode | null;
   setProjectionMode: (mode: ProjectionMode) => void;
   toggleProjectionMode: () => void;
   setOnCameraRotationChange: (callback: ((rotation: CameraRotation) => void) | null) => void;
@@ -54,6 +64,8 @@ export const createCameraSlice: StateCreator<CameraSlice, [], [], CameraSlice> =
   pendingCameraRotation: null,
   cameraCallbacks: {},
   projectionMode: DEFAULT_PROJECTION_MODE,
+  interactionMode: DEFAULT_CONTROLS_MODE,
+  pendingInteractionMode: null,
   onCameraRotationChange: null,
   cameraRotationListeners: new Set(),
   onScaleChange: null,
@@ -77,8 +89,17 @@ export const createCameraSlice: StateCreator<CameraSlice, [], [], CameraSlice> =
   },
   setCameraCallbacks: (cameraCallbacks) => {
     const pending = get().pendingCameraRotation;
-    set({ cameraCallbacks, pendingCameraRotation: null });
+    const pendingMode = get().pendingInteractionMode;
+    set({ cameraCallbacks, pendingCameraRotation: null, pendingInteractionMode: null });
     if (pending) cameraCallbacks.setCameraRotation?.(pending);
+    if (pendingMode) cameraCallbacks.setInteractionMode?.(pendingMode);
+  },
+  // Same shape as setCameraRotation above: drive the actuator, then record,
+  // and remember what to replay if no renderer is registered yet.
+  setInteractionMode: (interactionMode) => {
+    const actuator = get().cameraCallbacks.setInteractionMode;
+    actuator?.(interactionMode);
+    set({ interactionMode, pendingInteractionMode: actuator ? null : interactionMode });
   },
   setProjectionMode: (projectionMode) => {
     get().cameraCallbacks.setProjectionMode?.(projectionMode);
@@ -150,19 +171,40 @@ export const createCameraSlice: StateCreator<CameraSlice, [], [], CameraSlice> =
  * replayed the OUTGOING model's rotation onto the INCOMING one. A session
  * reset now discards the pending rotation below, closing that gap.
  *
+ * `interactionMode` IS owned. It comes from `?controls=`, which is read once
+ * per embed session, so nothing re-applies it and nothing restores the
+ * default when it is absent: without this, a restricted mode set for one
+ * model silently outlived the swap to the next. `pendingInteractionMode` goes
+ * with it -- leaving a pending value behind would re-apply the outgoing
+ * model's restriction the next time callbacks register.
+ *
  * `cameraCallbacks`, the two callback slots and `cameraRotationListeners`
  * are still absent from `owns`: they are renderer/host wiring that outlives
  * a file swap, and no teardown path touches them today.
+ *
+ * Clearing the STATE here does not move the renderer, because this stays pure
+ * like the rest. `resetViewerState` drives the actuator back to the default
+ * immediately after applying this patch, next to the other side effects that
+ * cannot live in a teardown.
  */
 export const cameraTeardown = defineSliceTeardown(
   'cameraSlice',
-  ['cameraRotation', 'pendingCameraRotation', 'projectionMode'],
-  (scope) => {
-    if (scope.kind !== 'session-reset') return {};
-    return {
+  [
+    'cameraRotation',
+    'pendingCameraRotation',
+    'projectionMode',
+    'interactionMode',
+    'pendingInteractionMode',
+  ],
+  {
+    'session-reset': () => ({
       cameraRotation: defaultCameraRotation(),
       pendingCameraRotation: null,
       projectionMode: DEFAULT_PROJECTION_MODE,
-    };
+      interactionMode: DEFAULT_CONTROLS_MODE,
+      pendingInteractionMode: null,
+    }),
+    'model-removed': notApplicable,
+    'all-models-cleared': notApplicable,
   },
 );

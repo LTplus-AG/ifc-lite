@@ -291,16 +291,17 @@ pub fn extract_first_entity_ref(bytes: &[u8]) -> Option<u32> {
     let hash_pos = content.iter().position(|&b| b == b'#')?;
     let id_start = hash_pos + 1;
 
-    // Parse the ID number
-    let mut id: u32 = 0;
+    // Find the end of the digit run, then parse it through the single
+    // checked accumulator shared with every other reference reader and the
+    // definition scanner (issue #3421) — an id above `u32::MAX` is refused
+    // (`None`) rather than wrapped onto a real low-numbered entity.
     let mut i = id_start;
     while i < content.len() && content[i].is_ascii_digit() {
-        id = id.wrapping_mul(10).wrapping_add((content[i] - b'0') as u32);
         i += 1;
     }
 
     if i > id_start {
-        Some(id)
+        crate::express_id::parse_express_id(&content[id_start..i])
     } else {
         None
     }
@@ -366,14 +367,19 @@ pub fn extract_entity_refs_from_list(bytes: &[u8]) -> Vec<u32> {
         }
         i += 1; // Skip '#'
 
-        // Parse ID
-        let mut id: u32 = 0;
+        // Parse ID through the shared checked accumulator (issue #3421): an
+        // id above `u32::MAX` is refused (`None`, dropped from `ids`) rather
+        // than wrapped onto a real low-numbered entity.
+        let id_start = i;
         while i < len && bytes[i].is_ascii_digit() {
-            id = id.wrapping_mul(10).wrapping_add((bytes[i] - b'0') as u32);
             i += 1;
         }
-        if id > 0 {
-            ids.push(id);
+        if i > id_start {
+            if let Some(id) = crate::express_id::parse_express_id(&bytes[id_start..i]) {
+                if id > 0 {
+                    ids.push(id);
+                }
+            }
         }
     }
 

@@ -11,6 +11,7 @@
 
 import type { EntityRef } from './types.js';
 import { decodeIfcString } from '@ifc-lite/encoding';
+import { isIndexableExpressId } from './express-id.js';
 
 /**
  * Find the byte range of a quoted string at a specific attribute position in STEP entity bytes.
@@ -112,6 +113,26 @@ export function readRefId(buffer: Uint8Array, pos: number, end: number): [number
             num = num * 10 + (buffer[pos] - 0x30);
             pos++;
         }
+        // `num * 10 + digit` overflows to Infinity only past ~309 digits, but
+        // it stops meaning anything long before that: doubles lose integer
+        // precision past 2^53 (~16 digits), so `#100000000000000001` and
+        // `#100000000000000002` accumulate to the SAME value, and the 32-bit
+        // express-id columns below truncate anything above 2^32 so that
+        // `#4294967297` lands on `#1`. `isIndexableExpressId` is the single
+        // home for that bound (express-id.ts, #3395).
+        // Guarding at each accumulator (here, and both `StepTokenizer` scans,
+        // and the inline scan worker) rather than only when the entity is
+        // extracted: this is the byte-level path that builds the
+        // property/relationship indexes, so an unguarded overflow here keyed a
+        // pset under a record the entity index had already refused —
+        // `extractPropertiesOnDemand(store, Infinity)` returned a real pset for
+        // an entity whose own GlobalId and Name were unreadable.
+        //
+        // `-1` is this function's existing "no reference here" sentinel and
+        // every caller already tests it (`if (relating < 0) return null`,
+        // `if (id >= 0) ids.push(id)`). `pos` is still returned advanced past
+        // the digits so scanning continues from the right place.
+        if (!isIndexableExpressId(num)) return [-1, pos];
         return [num, pos];
     }
     return [-1, pos];

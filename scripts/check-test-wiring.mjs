@@ -10,7 +10,7 @@
  * silently skips it and the suite never runs in CI (this happened to
  * @ifc-lite/ifcx and @ifc-lite/renderer — 13 test files dark for months).
  *
- * Part 2 — the same absence one directory over. `PACKAGE_DIRS` is
+ * Part 2 — the same absence one directory over. `PACKAGE_PARENTS` is
  * `packages` + `apps`, and `scripts/` is neither — yet `scripts/` is where
  * this repo keeps its gates. PR #3062 shipped a gate script AND its test
  * with no workflow step, no package.json script and no turbo task, and
@@ -84,6 +84,16 @@ import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripYamlComments } from './lib/server-bin-targets-parse.mjs';
+import { listWorkspacePackages } from './lib/list-workspace-packages.mjs';
+import { isMainEntry } from './lib/is-main-entry.mjs';
+
+// Deliberately a literal here rather than imported from the shared walk.
+// `scripts/lib/ci-path-coverage.mjs`'s `deriveInputs` reads only THIS file's own
+// source text and does not follow imports, so these two strings are what put
+// `packages/` and `apps/` into the CI-path-coverage census for this gate. Move
+// them into the lib and the ratchet silently stops checking that this gate can
+// be triggered by the paths it reads. (#3347)
+const PACKAGE_PARENTS = ['packages', 'apps'];
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -95,7 +105,6 @@ export function fail(message) {
   throw new FailError(message);
 }
 
-const PACKAGE_DIRS = ['packages', 'apps'];
 const TEST_FILE_RE = /\.(test|spec)\.(ts|tsx|mts|js|mjs)$/;
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'pkg', 'build', 'coverage', '.turbo']);
 
@@ -140,50 +149,34 @@ function findTestFiles(dir, found = []) {
 }
 
 /* ------------------------------------------------------------------ *
- * Part 1: packages/ and apps/ (unchanged behaviour)                    *
+ * Part 1: packages/ and apps/ — and the package discovery Part 2 shares  *
  * ------------------------------------------------------------------ */
 
 export function auditPackages(root) {
   const offenders = [];
-  let examined = 0;
-  let parentsSeen = 0;
+  const { packages, seenParents } = listWorkspacePackages(root, fail, PACKAGE_PARENTS);
 
-  for (const parent of PACKAGE_DIRS) {
-    const parentDir = join(root, parent);
-    if (!existsSync(parentDir)) continue;
-    parentsSeen++;
-    for (const name of readdirSync(parentDir)) {
-      const pkgDir = join(parentDir, name);
-      const pkgJsonPath = join(pkgDir, 'package.json');
-      if (!existsSync(pkgJsonPath)) continue;
-      examined++;
-      let pkgJson;
-      try {
-        pkgJson = JSON.parse(readFileSync(pkgJsonPath, 'utf-8'));
-      } catch (err) {
-        fail(`${pkgJsonPath} is not valid JSON: ${err.message}`);
-      }
-      if (pkgJson.scripts?.test) continue;
-      const testFiles = findTestFiles(pkgDir);
-      if (testFiles.length > 0) {
-        offenders.push({
-          name: pkgJson.name ?? `${parent}/${name}`,
-          example: relative(root, testFiles[0]).split('\\').join('/'),
-        });
-      }
+  for (const { rel, dir, pkgJson } of packages) {
+    if (pkgJson.scripts?.test) continue;
+    const testFiles = findTestFiles(dir);
+    if (testFiles.length > 0) {
+      offenders.push({
+        name: pkgJson.name ?? rel,
+        example: relative(root, testFiles[0]).split('\\').join('/'),
+      });
     }
   }
 
   // Anti-vacuity: "0 offenders" must mean "looked and found none", never
   // "looked in the wrong tree". Both of these are silent greens otherwise.
-  if (parentsSeen === 0) {
-    fail(`no search root found: none of ${PACKAGE_DIRS.map((d) => `${root}/${d}`).join(', ')} exists`);
+  if (seenParents.length === 0) {
+    fail(`no search root found: none of ${PACKAGE_PARENTS.map((d) => `${root}/${d}`).join(', ')} exists`);
   }
-  if (examined === 0) {
-    fail(`found no package.json under ${PACKAGE_DIRS.join('/ or ')}/ in ${root} — the package scan cannot be trusted`);
+  if (packages.length === 0) {
+    fail(`found no package.json under ${PACKAGE_PARENTS.join('/ or ')}/ in ${root} — the package scan cannot be trusted`);
   }
 
-  return { offenders, examined };
+  return { offenders, examined: packages.length };
 }
 
 /* ------------------------------------------------------------------ *
@@ -202,6 +195,7 @@ export function readWorkflows(root) {
       source = readFileSync(join(dir, name), 'utf8');
     } catch (err) {
       fail(`${join(dir, name)} could not be read: ${err.message}`);
+      throw err;
     }
     return { name, text: stripYamlComments(source) };
   });
@@ -299,23 +293,19 @@ export function reachableTaskNames(sources) {
   return tasks;
 }
 
-/** `{ [pkgRelPath]: scripts }` for every workspace package under packages/ and apps/. */
+/**
+ * `{ [pkgRelPath]: scripts }` for every workspace package under packages/ and
+ * apps/. A PROJECTION of the same `listWorkspacePackages` function the audit
+ * uses: one discovery FUNCTION with two readers. Still called once per reader,
+ * so it is a second walk of the same tree at run time. That is deliberate and
+ * cheap at this size (two parents, ~50 entries); the thing worth keeping is
+ * that both readers now agree on WHAT a package is, not that they share a pass.
+ */
 export function readWorkspaceScripts(root) {
-  const out = [];
-  for (const parent of PACKAGE_DIRS) {
-    const parentDir = join(root, parent);
-    if (!existsSync(parentDir)) continue;
-    for (const name of readdirSync(parentDir).sort()) {
-      const pkgJsonPath = join(parentDir, name, 'package.json');
-      if (!existsSync(pkgJsonPath)) continue;
-      try {
-        out.push({ rel: `${parent}/${name}`, scripts: JSON.parse(readFileSync(pkgJsonPath, 'utf8')).scripts ?? {} });
-      } catch (err) {
-        fail(`${pkgJsonPath} is not valid JSON: ${err.message}`);
-      }
-    }
-  }
-  return out;
+  return listWorkspacePackages(root, fail, PACKAGE_PARENTS).packages.map(({ rel, pkgJson }) => ({
+    rel,
+    scripts: pkgJson.scripts ?? {},
+  }));
 }
 
 /**
@@ -548,6 +538,7 @@ export function auditGateScripts(root, workflows, pkgScripts) {
       source = readFileSync(join(root, rel), 'utf8');
     } catch (err) {
       fail(`${join(root, rel)} could not be read: ${err.message}`);
+      throw err;
     }
     const reason = unwiredReason(source);
     if (reason === null) {
@@ -624,6 +615,7 @@ export function audit(root) {
     pkgScripts = JSON.parse(readFileSync(pkgJsonPath, 'utf8')).scripts ?? {};
   } catch (err) {
     fail(`${pkgJsonPath} is not valid JSON: ${err.message}`);
+    throw err;
   }
   const workflows = readWorkflows(root);
   return {
@@ -695,7 +687,7 @@ function main(root) {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMainEntry(import.meta.url)) {
   const rootFlagIdx = process.argv.indexOf('--root');
   if (rootFlagIdx !== -1 && !process.argv[rootFlagIdx + 1]) {
     console.error('\ncheck-test-wiring: --root requires a directory argument\n');

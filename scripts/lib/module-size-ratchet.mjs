@@ -11,8 +11,13 @@
  *
  * This mirrors `rust/processing/tests/module_size_ratchet.rs` deliberately:
  * same 400-line limit, same `<budget> <path>` allowlist format, same FNV-1a
- * digest over the sorted rows, same "shrink or split, never raise" contract.
- * Two files, one rule.
+ * digest over the sorted rows, same "shrink or split" preference. Two files,
+ * one rule -- with one asymmetry worth stating rather than glossing: the TS
+ * side has a regenerate command with a sanctioned raise inside it (`--update
+ * --allow-raise`); the Rust twin has no regenerate command at all, so a raise
+ * there is a hand edit of the allowlist and its pinned digest. Neither side
+ * makes a raise impossible -- module_size_ratchet.rs records one that reached
+ * main that way (#2658) -- both make it cost a reviewable line.
  */
 
 /** AGENTS.md: "split modules over ~400 non-generated lines". */
@@ -242,8 +247,44 @@ export function staleRows(allowlist) {
  * `next` is the whole allowlist that would be written: every measured file over
  * the limit, at its measured count. A file at or under the limit gets no row,
  * which is what deletes a stale exemption.
+ *
+ * `changed` SCOPES the re-recording to the paths a change actually touched
+ * (#3398). Pass `null` for the repo-wide behaviour; pass a Set of relative
+ * paths and every other row is carried into `next` at its COMMITTED budget and
+ * contributes to none of the four lists — with ONE exception, which is not a
+ * leak but the point: a STALE row is still removed out of scope. A row at or
+ * under the limit grants no exemption and is already a hard gate failure, and a
+ * row whose file the walk never saw grants an exemption to nothing, so neither
+ * is something another change can still need. A valid out-of-scope exemption is
+ * never touched; a dead one is. (`grantsNoExemption` below carries the full
+ * rule, including why the measured loop must also check the FILE.) Scoping is not a nicety: `slack` and
+ * `shrunk` are advisory by design (see `evaluate`), so headroom accumulates on
+ * main until some later `--update` — run by whoever, for whatever reason —
+ * re-records all of it. Measured on an unmodified checkout of afa717bcf: 11
+ * rows rewritten and 5 digest lines moved with a clean `git status`. Two PRs
+ * regenerating in one window then carry identical hunks and collide over
+ * changes neither of them made, which is the collision #3398 was filed for.
  */
-export function planUpdate(files, allowlist) {
+export function planUpdate(files, allowlist, changed = null) {
+  const inScope = (rel) => changed === null || changed.has(rel);
+  // Scoping exists so a regeneration cannot delete an exemption someone else
+  // still needs. A row at or under the limit grants no exemption — `staleRows`
+  // already fails the gate on it — so it is not something anyone can need, and
+  // carrying it forward would leave the documented regeneration command unable
+  // to fix a hard failure it used to fix.
+  //
+  // This predicate answers "does the ROW grant anything", nothing more. Whether
+  // dropping it is safe depends on the FILE, and the two call sites differ:
+  // the measured loop must also check `lines <= LIMIT` (dropping a sub-limit
+  // row off an over-limit file strands it as a `newOffenders` failure no scoped
+  // rerun can reach), while the vanished loop needs no such check because there
+  // is no file left to strand. An earlier version of this comment said
+  // "dropping it is safe at any scope", which was true of every case it was
+  // written against and false of the one above.
+  const grantsNoExemption = (budget) => budget !== undefined && budget <= LIMIT;
+  // Both loops below reach this case, and the two messages must not drift.
+  const grantedNothing = (rel, budget) =>
+    `  ${rel}: budget ${budget} <= ${LIMIT} granted nothing (row deleted)`;
   const measured = new Map(files.map((f) => [f.rel, f.lines]));
   const next = new Map();
   const raised = [];
@@ -253,6 +294,13 @@ export function planUpdate(files, allowlist) {
 
   for (const { rel, lines } of files) {
     const budget = allowlist.get(rel);
+    if (!inScope(rel)) {
+      // The `lines <= LIMIT` half is the FILE's condition, not the row's --
+      // see `grantsNoExemption` above for why the two call sites differ.
+      if (grantsNoExemption(budget) && lines <= LIMIT) removed.push(grantedNothing(rel, budget));
+      else if (budget !== undefined) next.set(rel, budget);
+      continue;
+    }
     if (lines <= LIMIT) {
       if (budget !== undefined) removed.push(`  ${rel}: now ${lines} lines (row deleted)`);
       continue;
@@ -262,8 +310,15 @@ export function planUpdate(files, allowlist) {
     else if (lines > budget) raised.push(`  ${rel}: ${lines} lines, budget ${budget} (+${lines - budget})`);
     else if (lines < budget) lowered.push(`  ${rel}: ${lines} lines, budget ${budget} (-${budget - lines})`);
   }
+  // A row whose file the walk never saw: gone, renamed, or now exempt. Dropping
+  // it is only OUR call when the change touched that path; otherwise the row
+  // stays, because a row deleted here is an exemption someone else still needs
+  // — unless it grants no exemption at all, which nobody can need.
   for (const [rel, budget] of allowlist) {
-    if (!measured.has(rel)) removed.push(`  ${rel} (budget ${budget}) no longer matches a tracked file`);
+    if (measured.has(rel)) continue;
+    if (inScope(rel)) removed.push(`  ${rel} (budget ${budget}) no longer matches a tracked file`);
+    else if (grantsNoExemption(budget)) removed.push(grantedNothing(rel, budget));
+    else next.set(rel, budget);
   }
 
   raised.sort();

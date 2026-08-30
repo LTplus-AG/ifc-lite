@@ -1074,6 +1074,9 @@ export function Viewport({
           renderCurrent();
           calculateScale();
         },
+        setInteractionMode: (mode) => {
+          camera.setInteractionMode(mode);
+        },
         setCameraRotation: ({ azimuth, elevation }) => {
           // Absolute counterpart to rotateLeft/rotateRight below (which step by
           // 90° from wherever the camera already is). Snaps rather than
@@ -1526,32 +1529,18 @@ export function Viewport({
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
-    renderer.uploadAnnotationFills3D(
-      annotationFills3D.map((f) => ({
-        points: f.points,
-        holesOffsets: f.holesOffsets,
-        worldY: f.worldY,
-        color: f.color,
-      })),
-    );
+    // Passed straight through: AnnotationFill3D is structurally assignable to
+    // SymbolicFillInput, and the renderer copies field by field, so a mapper
+    // here would only be a hand-written field list to forget `definesExtent`
+    // from. Required on the record, so the compiler catches an omission at the
+    // push site instead.
+    renderer.uploadAnnotationFills3D(annotationFills3D);
   }, [annotationFills3D, isInitialized]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
-    renderer.uploadAnnotationTexts3D(
-      annotationTexts3D.map((t) => ({
-        worldPos: t.worldPos,
-        dirX: t.dirX,
-        dirZ: t.dirZ,
-        height: t.height,
-        content: t.content,
-        alignment: t.alignment,
-        billboard: t.billboard,
-        color: t.color,
-        targetPx: t.targetPx,
-      })),
-    );
+    renderer.uploadAnnotationTexts3D(annotationTexts3D);
   }, [annotationTexts3D, isInitialized]);
 
   // ===== Streaming progress =====

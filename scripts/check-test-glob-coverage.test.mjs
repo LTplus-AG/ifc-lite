@@ -31,7 +31,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, chmodSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -345,4 +345,59 @@ test('parseViteInclude: reads the first top-level include array, ignoring a nest
 
 test('parseViteInclude: returns null when there is no include key (vitest default applies)', () => {
   assert.equal(parseViteInclude('export default defineConfig({ test: {} });'), null);
+});
+
+test('an unreadable vitest config is reported by the gate, not as a raw stack', (t) => {
+  // Windows chmod does not remove read permission, and root ignores the mode
+  // bits, so on either the config stays readable and the case cannot be built.
+  if (process.platform === 'win32') return t.skip('chmod does not gate reads on Windows');
+  if (process.getuid?.() === 0) return t.skip('root reads a 000 file regardless of mode');
+
+  const files = {
+    'packages/fixture/package.json': pkgJson('vitest run'),
+    'packages/fixture/src/a.test.ts': 'test("a", () => {})',
+    'packages/fixture/vitest.config.ts': 'export default { test: { include: ["src/**/*.test.ts"] } }',
+  };
+  const dir = writeTree(files);
+  const config = join(dir, 'packages/fixture/vitest.config.ts');
+
+  try {
+    // BOTH directions. Readable first, so a fixture that fails for some
+    // unrelated reason cannot be mistaken for the refusal firing. Inside the
+    // try, or a failure here leaks the tree instead of cleaning up.
+    const readable = runOn(dir);
+    assert.equal(readable.status, 0, `readable config should audit cleanly:\n${readable.out}`);
+
+    chmodSync(config, 0o000);
+    const locked = runOn(dir);
+    assert.equal(locked.status, 1, 'an unreadable config must fail the gate');
+    assert.match(locked.out, /cannot read vitest config/);
+    // The point of the change. It already exited 1 before; what it did NOT do
+    // was say why, and an uncaught readFileSync stack sends the reader into
+    // node internals instead of at their own file mode.
+    //
+    // Matched on the payload rather than a `at readFileSync (node:fs` frame:
+    // V8 names the frame after the call form, so the frame spelling is voided
+    // by a change to how this gate imports fs. See the sibling in
+    // check-test-wiring.test.mjs, which was vacuous for that exact reason.
+    assert.doesNotMatch(locked.out, /permission denied, open/, 'must not surface a raw node error');
+  } finally {
+    chmodSync(config, 0o644);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('--root with no argument is refused cleanly, without a raw stack', () => {
+  // This runs during MODULE EVALUATION, before the entry point's try/catch
+  // exists, so a `fail` here escapes and prints a stack on top of the message.
+  // It did exactly that, two ways at once: `class FailError` was declared below
+  // `fail`, so the throw was a ReferenceError from the temporal dead zone.
+  // check-test-wiring.test.mjs has always had this case; this file did not,
+  // which is why a gate whose own tests forbid raw stacks was printing one.
+  const r = spawnSync(process.execPath, [CHECKER, '--root'], { encoding: 'utf8' });
+  const out = `${r.stdout}${r.stderr}`;
+  assert.equal(r.status, 1, 'a missing --root argument must fail the gate');
+  assert.match(out, /--root requires a directory argument/);
+  assert.doesNotMatch(out, /ReferenceError/, 'must not die in the temporal dead zone');
+  assert.doesNotMatch(out, /\n\s+at /, 'must not surface a raw node stack');
 });

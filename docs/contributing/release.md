@@ -61,7 +61,7 @@ A changeset states a bump level for **npm packages**. A change can be additive i
 { "majorOffset": 1, "reason": "…which crate's public API broke…", "refs": ["#3210"] }
 ```
 
-`sync-versions.js` adds `majorOffset` to the **major** of the npm-derived version when it writes the Rust manifests. npm 6.1.0 with `majorOffset: 1` publishes the crates at 7.1.0; the npm packages, the root `package.json` and the `v*` tag stay on 6.1.0. At `majorOffset: 0` the two versions are the same string; the repo is at `1`, so the crates run one major ahead of the npm packages.
+`sync-versions.js` adds `majorOffset` to the **major** of the npm-derived version when it writes the Rust manifests. npm 6.1.0 with `majorOffset: 1` publishes the crates at 7.1.0; the npm packages, the root `package.json` and the `v*` tag stay on 6.1.0. At `majorOffset: 0` the two versions are the same string; the repo is at `2`, so the crates run two majors ahead of the npm packages.
 
 - Minor and patch keep tracking npm, so raising the offset is a **once per Rust-only major** edit, not a per-release chore.
 - A non-zero offset without a `reason` and at least one `refs` entry is a hard failure: a permanent major-version claim about a published crate has to say what broke.

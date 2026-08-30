@@ -84,4 +84,33 @@ describe('extractEntities', () => {
     assert.strictEqual(entities.hasGeometry(expressId), true);
     assert.strictEqual(entities.getTypeName(expressId), 'Unknown');
   });
+
+  it('does not fabricate ObjectType from the IFC class code', () => {
+    // IFCX has no `bsi::ifc::prop::ObjectType` (or equivalent) attribute — the
+    // official v5a prop schema (packages/export/src/__fixtures__/schemas/prop@v5a.ifcx)
+    // defines Name, Description, UsageType, TypeName, etc. but no ObjectType.
+    // The STEP parser's own default for an entity with no real ObjectType
+    // attribute is '' (packages/parser/src/columnar-parser.ts's addEntityBatch),
+    // never the class name. Filling it with the class code here silently
+    // invents plausible-looking but wrong data for every IFCX-sourced entity
+    // (e.g. getObjectType() returning 'IfcWall' for every wall), corrupting
+    // any consumer that reads ObjectType (CSV/Parquet export, the query
+    // engine, the lens summary line, IDS `getObjectType`).
+    const wall = createNode('wall');
+    wall.attributes.set(ATTR.CLASS, ifcClass('IfcWall'));
+    wall.attributes.set('bsi::ifc::prop::Name', 'Wall-01');
+
+    const strings = new StringTable();
+    const { entities, pathToId } = extractEntities(new Map([
+      [wall.path, wall],
+    ]), strings);
+
+    const wallId = pathToId.get(wall.path);
+    assert.ok(wallId !== undefined);
+    // Control: Name is a real attribute on this node and DOES round-trip.
+    assert.strictEqual(entities.getName(wallId), 'Wall-01');
+    // ObjectType has no source attribute on this node, so it must stay
+    // empty rather than being fabricated from the class code.
+    assert.strictEqual(entities.getObjectType(wallId), '');
+  });
 });

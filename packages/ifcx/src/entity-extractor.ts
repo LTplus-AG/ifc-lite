@@ -89,14 +89,23 @@ export function extractEntities(
     // Check if this is a type definition
     const isType = typeCode.toUpperCase().endsWith('TYPE');
 
-    // Add entity to builder
+    // Add entity to builder.
+    // objectType has no IFCX channel — the official v5a `prop` schema
+    // defines Name/Description/TypeName/UsageType etc. but no attribute
+    // that carries IFC's ObjectType — so it stays '' here, matching the
+    // STEP parser's own default for an entity with no real ObjectType
+    // value (packages/parser/src/columnar-parser.ts). Filling it with the
+    // class code instead would fabricate data: every IFCX-sourced wall
+    // would report ObjectType 'IfcWall', corrupting any consumer that
+    // reads it (CSV/Parquet export, the query engine, IDS, the lens
+    // summary line).
     builder.add(
       expressId,
       typeCode,
       node.path, // Use path as GlobalId
       name,
       '', // description
-      typeCode, // objectType
+      '', // objectType
       hasGeometry,
       isType
     );

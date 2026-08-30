@@ -199,3 +199,46 @@ describe('query --storey honours --limit and --offset', () => {
     expect(await storeyCount(['--where', 'Pset_WallCommon.IsExternal', '--limit', '1'])).toBe(1);
   });
 });
+
+/**
+ * `--group-by` on the plain (no `--where`, no `--storey`) path re-used the
+ * shared `QueryBuilder` after `.limit()`/`.offset()` were applied to it.
+ * `.limit()` was guarded with `!groupBy` so it never truncated a group-by
+ * query, but `.offset()` had no such guard, so `--group-by X --offset N`
+ * silently skipped N rows out of the *underlying filtered set* before
+ * grouping -- changing which rows land in which group -- while the
+ * `--where` and `--storey` siblings both group the full filtered set and
+ * ignore `--offset` entirely. One flag, three different answers for the
+ * same combination, depending only on which branch handled the query.
+ */
+describe('query --group-by ignores --offset on the plain path (matches --where/--storey)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  async function groupJson(extra: string[]): Promise<string> {
+    const stdout = captureStdout();
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    await queryCommand([SAMPLE_IFC, '--group-by', 'type', '--json', ...extra]);
+    vi.restoreAllMocks();
+    return stdout.out;
+  }
+
+  it('plain path: --offset does not change the group-by result', async () => {
+    const full = await groupJson([]);
+    const offsetResult = await groupJson(['--offset', '2']);
+    expect(offsetResult).toBe(full);
+  });
+
+  it('--where path: --offset already ignored for group-by (control)', async () => {
+    const full = await groupJson(['--where', 'Pset_WallCommon.IsExternal']);
+    const offsetResult = await groupJson(['--where', 'Pset_WallCommon.IsExternal', '--offset', '1']);
+    expect(offsetResult).toBe(full);
+  });
+
+  it('--storey path: --offset already ignored for group-by (control)', async () => {
+    const full = await groupJson(['--storey', '00 groundfloor']);
+    const offsetResult = await groupJson(['--storey', '00 groundfloor', '--offset', '2']);
+    expect(offsetResult).toBe(full);
+  });
+});

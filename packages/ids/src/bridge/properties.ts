@@ -16,7 +16,7 @@ import { RelationshipType } from '@ifc-lite/data';
 
 import type { PropertySetInfo } from '../types.js';
 import { idsDataTypeForProperty, idsDataTypeForQuantity } from './data-types.js';
-import { applyUnitConversion, resolveMeasureScales, type MeasureScales } from './units.js';
+import { applyUnitConversion, resolveEntityMeasureScales, type MeasureScales } from './units.js';
 
 interface RawProp {
   name: string;
@@ -39,17 +39,17 @@ interface RawProp {
  *   3. Inherited property sets from `IfcRelDefinesByType`.
  *
  * Length-, area- and volume-typed properties are converted to base SI
- * units per the project's declared units (`lengthUnitScale`, and the
- * declared AREAUNIT/VOLUMEUNIT where present — see `resolveMeasureScales`)
- * so IDS literals (always metre / m² / m³) compare correctly.
+ * units per the ENTITY'S OWN OWNING `IFCPROJECT`'s declared units — see
+ * `resolveEntityMeasureScales` — so IDS literals (always metre / m² / m³)
+ * compare correctly even for an entity belonging to a later `IFCPROJECT`
+ * in a multi-project (federated-merge) file.
  */
 export function collectAllPropertySets(
   store: IfcDataStore,
   expressId: number
 ): PropertySetInfo[] {
   const own: PropertySetInfo[] = [];
-  const scale = store.lengthUnitScale;
-  const measureScales = resolveMeasureScales(store);
+  const { length: scale, ...measureScales } = resolveEntityMeasureScales(store, expressId);
 
   appendInstancePropertySets(store, expressId, scale, measureScales, own);
   appendQuantitySets(store, expressId, scale, measureScales, own);

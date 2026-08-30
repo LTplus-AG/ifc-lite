@@ -2,7 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { extractProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
+import {
+  extractLengthUnitScale,
+  extractProjectUnits,
+  resolveOwningProjectId,
+  type IfcDataStore,
+} from '@ifc-lite/parser';
 
 /**
  * Per IDS spec, IDS literal values for IFC measure types are always in
@@ -59,6 +64,70 @@ export function resolveMeasureScales(store: IfcDataStore): MeasureScales {
     area: units.resolvedForUnitType('AREAUNIT')?.siScale,
     volume: units.resolvedForUnitType('VOLUMEUNIT')?.siScale,
   };
+}
+
+/** Per-entity resolved scales: `length` mirrors `store.lengthUnitScale`'s
+ *  meaning (metres-per-raw-unit), `area`/`volume` mirror {@link MeasureScales}. */
+export interface EntityMeasureScales extends MeasureScales {
+  length: number | undefined;
+}
+
+const entityProjectScaleCache = new WeakMap<object, Map<number, EntityMeasureScales>>();
+
+/**
+ * Resolve length/area/volume scales for `expressId`'s OWN `IFCPROJECT`,
+ * not necessarily the file's first one.
+ *
+ * An ordinary IFC file has exactly one `IFCPROJECT` (EXPRESS invariant), so
+ * `store.lengthUnitScale` / {@link resolveMeasureScales} — both resolved
+ * once from the file's first `IFCPROJECT` at parse time — are correct for
+ * every entity and this is a zero-cost fast path back to them.
+ *
+ * A multi-project file (the shape `MergedExporter`'s documented `auto`
+ * unit-reconciliation mode produces for a federated merge of
+ * differently-unit'd models, see issue #1332) can contain a SECOND
+ * `IFCPROJECT` with its own, different declared units. An entity belonging
+ * to that later project was previously scaled by the FIRST project's units
+ * regardless — silently wrong, not absent, and compliance-critical for IDS
+ * (a `Width >= 100mm` requirement evaluates against the wrongly-scaled raw
+ * value). This resolves the entity's OWN owning project via
+ * `resolveOwningProjectId` (a minimal reimplementation of the walk in PR
+ * #3554, not yet on `main` at the time of writing — unify once it lands)
+ * and reads THAT project's units, falling back to the store-wide default
+ * when the walk can't place the entity (matches prior behaviour).
+ */
+export function resolveEntityMeasureScales(
+  store: IfcDataStore,
+  expressId: number
+): EntityMeasureScales {
+  const fallback = (): EntityMeasureScales => ({
+    length: store.lengthUnitScale,
+    ...resolveMeasureScales(store),
+  });
+
+  if (!store.source?.length || !store.entityIndex) return fallback();
+  const projectIds = store.entityIndex.byType.get('IFCPROJECT') ?? [];
+  if (projectIds.length <= 1) return fallback();
+
+  const ownerId = resolveOwningProjectId(store.entityIndex, store.relationships, expressId);
+  if (ownerId === undefined) return fallback();
+
+  let byProject = entityProjectScaleCache.get(store);
+  if (!byProject) {
+    byProject = new Map();
+    entityProjectScaleCache.set(store, byProject);
+  }
+  let scales = byProject.get(ownerId);
+  if (!scales) {
+    const units = extractProjectUnits(store.source, store.entityIndex, ownerId);
+    scales = {
+      length: extractLengthUnitScale(store.source, store.entityIndex, ownerId),
+      area: units.resolvedForUnitType('AREAUNIT')?.siScale,
+      volume: units.resolvedForUnitType('VOLUMEUNIT')?.siScale,
+    };
+    byProject.set(ownerId, scales);
+  }
+  return scales;
 }
 
 export function applyUnitConversion(

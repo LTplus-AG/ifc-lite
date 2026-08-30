@@ -184,11 +184,14 @@ function getAttributeValueByName(entity: IfcEntity, attributeName: string): unkn
   return entity.attributes[index];
 }
 
-// `x < 0` is `false` for IEEE-754 negative zero, but a STEP INTEGER literal
-// "-0" (a legal token for a magnitude-zero degree component of a southern/
-// western sub-degree site, e.g. -0°30'0") parses to exactly that: negative
-// zero (`parseFloat('-0') === -0`, `Object.is(-0, 0)` is `false`). Treat it
-// as the negative sign it was written to carry.
+// The spec's canonical sign encoding puts the sign on the first non-zero
+// component (e.g. 0°30'S is `(0, -30, 0)`), which `minutesRaw < 0` below
+// already honours. Defensively also honour a writer that instead carries the
+// hemisphere sign on a zero-magnitude degree token (`-0`, e.g. `(-0, 30, 0)`
+// for 0°30'S): the STEP tokenizer parses that literal to IEEE-754 negative
+// zero (`parseFloat('-0') === -0`), but `x < 0` is `false` for negative zero,
+// so without this check such a site silently flips to the northern/eastern
+// hemisphere.
 function isNegativeComponent(n: number): boolean {
   return n < 0 || Object.is(n, -0);
 }

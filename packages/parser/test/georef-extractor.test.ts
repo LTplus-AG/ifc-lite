@@ -253,16 +253,18 @@ describe('Georeferencing Extractor', () => {
     expect(description).toBe('Local Engineering Coordinates');
   });
 
-  // A sub-degree southern/western coordinate carries its sign on a degree
-  // component that is itself magnitude zero. IfcCompoundPlaneAngleMeasure
-  // degrees are STEP INTEGER literals, and STEP text legitimately contains
-  // "-0" for this case (site at e.g. 0°30'S) — tools that always sign the
-  // leading/degree component write it that way even though the minutes below
-  // already carry the sign too. The STEP tokenizer preserves that as IEEE-754
-  // negative zero (`parseFloat('-0') === -0`), but `-0 < 0` is `false` in
-  // JS, so a sign test built only from `< 0` silently drops it and reports
-  // the site north/east of the equator/meridian instead of south/west.
-  it('honours a negative-zero degree component in RefLatitude/RefLongitude', () => {
+  // The spec's canonical sign encoding puts the sign on the first non-zero
+  // component (0°30'S is `(0, -30, 0)`), which `main` already handled via
+  // `minutesRaw < 0`. This fixture instead covers a writer that carries the
+  // hemisphere sign on a zero-magnitude degree token (`-0`, e.g.
+  // `(-0, 30, 0)` for the same 0°30'S) — a non-canonical but plausible
+  // encoding, defensively worth honouring rather than a spec requirement.
+  // IfcCompoundPlaneAngleMeasure degrees are STEP INTEGER literals, and the
+  // tokenizer preserves a "-0" token as IEEE-754 negative zero
+  // (`parseFloat('-0') === -0`), but `-0 < 0` is `false` in JS, so a sign
+  // test built only from `< 0` silently drops it and reports the site
+  // north/east of the equator/meridian instead of south/west.
+  it('honours a zero-magnitude negative-zero degree component in RefLatitude/RefLongitude', () => {
     const entities = new Map<number, IfcEntity>();
     const siteAttrNames = getAttributeNames('IfcSite');
     const attributes = new Array(siteAttrNames.length).fill(null);

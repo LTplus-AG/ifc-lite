@@ -82,6 +82,13 @@ export function extractEntities(
     // Extract name from attributes
     const name = extractName(node, incomingEdgeNames.get(node.path) ?? []) ?? node.path.slice(0, 8);
 
+    // Extract description from attributes (writer.ts writes it to the same
+    // `bsi::ifc::prop::Description` attribute it writes name to under
+    // `bsi::ifc::prop::Name` — see writeEntities's "IFC5 uses bsi::ifc::prop::
+    // namespace for name/description" comment). Without this, `description`
+    // survived nowhere on a round trip through an IFCX archive.
+    const description = extractDescription(node);
+
     // Check if has geometry — points count too so the hierarchy panel
     // shows a geometry indicator for scan entries.
     const hasGeometry = (geometryIndex.get(node.path) ?? false) || isPointCloud;
@@ -95,7 +102,7 @@ export function extractEntities(
       typeCode,
       node.path, // Use path as GlobalId
       name,
-      '', // description
+      description,
       typeCode, // objectType
       hasGeometry,
       isType
@@ -135,4 +142,14 @@ function extractName(node: ComposedNode, incomingEdgeNames: string[]): string | 
   }
 
   return null;
+}
+
+/**
+ * Extract entity description from node attributes. Mirrors `extractName`'s
+ * direct-attribute lookup, but has no incoming-edge-name fallback: an edge
+ * name is a plausible stand-in for a missing *name*, not a description.
+ */
+function extractDescription(node: ComposedNode): string {
+  const description = node.attributes.get('bsi::ifc::prop::Description');
+  return typeof description === 'string' ? description : '';
 }

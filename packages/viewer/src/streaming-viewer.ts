@@ -75,6 +75,16 @@ export function createStreamingViewerAdapter(port: number): ViewerBackendMethods
     },
 
     setSection(section: unknown): void {
+      // `bim.viewer.clearSection()` calls this with `null` (see
+      // ViewerNamespace.clearSection). The server's 'section' handler falls
+      // back to a default y-axis plane through the model center when
+      // `cmd.section` is falsy, rather than clearing anything — so a null
+      // section must go over the wire as the server's dedicated
+      // 'clearSection' action, not as `{action: 'section', section: null}`.
+      if (section === null) {
+        sendCommand(port, { action: 'clearSection' });
+        return;
+      }
       sendCommand(port, {
         action: 'section',
         section,

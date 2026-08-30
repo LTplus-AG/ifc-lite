@@ -30,6 +30,7 @@
 import { IfcParser, type IfcDataStore, extractLengthUnitScale, extractProjectUnits } from '@ifc-lite/parser';
 import { QuantityType } from '@ifc-lite/data';
 import { formatQuantityUnit } from '@/lib/units/display';
+import { lensMaterialNames } from '@/lib/lens-material-names';
 import {
   BsddNamespace,
   createBimContext,
@@ -590,7 +591,7 @@ const IMPLS: Record<string, ToolImpl> = {
     } else if (groupBy === 'material') {
       for (const e of m.bim.query().toArray()) {
         const mat = m.bim.materials(e.ref);
-        const key = mat?.name ?? '(no material)';
+        const key = lensMaterialNames(mat)[0] ?? '(no material)';
         counts.set(key, (counts.get(key) ?? 0) + 1);
       }
     }
@@ -700,7 +701,7 @@ const IMPLS: Record<string, ToolImpl> = {
     for (const e of m.bim.query().toArray()) {
       const mat = m.bim.materials(e.ref);
       if (!mat) continue;
-      const key = mat.name ?? '(unnamed)';
+      const key = lensMaterialNames(mat)[0] ?? '(unnamed)';
       counts.set(key, (counts.get(key) ?? 0) + 1);
     }
     const list = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count }));
@@ -1875,14 +1876,11 @@ function makeIdsAccessor(m: LoadedPlaygroundModel): import('@ifc-lite/ids').IFCD
       }));
     },
     getMaterials(id) {
-      const mat = m.bim.materials(ref(id));
-      if (!mat) return [];
-      const layers = (mat as { layers?: Array<{ materialName?: string; name?: string }>; name?: string });
-      if (Array.isArray(layers.layers) && layers.layers.length > 0) {
-        return layers.layers.map((l) => ({ name: l.materialName ?? l.name ?? '' }));
-      }
-      if (layers.name) return [{ name: layers.name }];
-      return [];
+      // Every variant via the same #1366 lens collector the material
+      // filter/list panels use. Previously only `mat.layers` and the
+      // top-level `mat.name` were checked, so a profile set, constituent
+      // set, or material list was invisible to IDS material requirements.
+      return lensMaterialNames(m.bim.materials(ref(id))).map((name) => ({ name }));
     },
     getParent(id) {
       try {

@@ -84,4 +84,28 @@ describe('extractEntities', () => {
     assert.strictEqual(entities.hasGeometry(expressId), true);
     assert.strictEqual(entities.getTypeName(expressId), 'Unknown');
   });
+
+  it('reads back bsi::ifc::prop::Description written by the writer, mirroring Name', () => {
+    // writer.ts's writeEntities emits `bsi::ifc::prop::Description` (and
+    // `bsi::ifc::prop::Name`) from `EntityTable.description`/`.name` — see
+    // its comment "IFC5 uses bsi::ifc::prop:: namespace for name/description".
+    // `extractName` above already reads `bsi::ifc::prop::Name` back; this
+    // pins that `Description` gets the same treatment rather than being
+    // hardcoded to `''` on every read.
+    const wall = createNode('wall');
+    wall.attributes.set(ATTR.CLASS, ifcClass('IfcWall'));
+    wall.attributes.set('bsi::ifc::prop::Name', 'Wall-A');
+    wall.attributes.set('bsi::ifc::prop::Description', 'Exterior load-bearing wall');
+
+    const strings = new StringTable();
+    const { entities, pathToId } = extractEntities(new Map([[wall.path, wall]]), strings);
+
+    const wallId = pathToId.get(wall.path);
+    assert.ok(wallId !== undefined);
+    // Control: the sibling field (Name) already reaches the output via the
+    // same attribute-map channel — proves the extractor and this test setup
+    // both work, isolating the failure to Description specifically.
+    assert.strictEqual(entities.getName(wallId), 'Wall-A');
+    assert.strictEqual(entities.getDescription(wallId), 'Exterior load-bearing wall');
+  });
 });

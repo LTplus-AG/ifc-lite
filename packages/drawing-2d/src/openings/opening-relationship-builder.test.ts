@@ -94,4 +94,32 @@ describe('OpeningRelationshipBuilder', () => {
     // doorOperation must not leak onto a window-filled opening.
     expect(relationships.openingInfo.get(30)?.doorOperation).toBeUndefined();
   });
+
+  it('assigns windowPartitioning for window-type openings, mirroring doorOperation', () => {
+    const entityMetadata = new Map<number, EntityMetadata>([
+      [
+        10,
+        {
+          ifcType: 'IfcOpeningElement',
+          bounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 2 } },
+        },
+      ],
+      [
+        20,
+        {
+          ifcType: 'IfcWindow',
+          properties: { PartitioningType: 'DOUBLE_PANEL_HORIZONTAL' },
+        },
+      ],
+    ]);
+
+    const relationships = new OpeningRelationshipBuilder(entityMetadata)
+      .addVoidRelationships([{ hostId: 1, openingId: 10 }])
+      .addFillRelationships([{ openingId: 10, elementId: 20 }])
+      .build(0);
+
+    const info = relationships.openingInfo.get(10);
+    expect(info?.type).toBe('window');
+    expect(info?.windowPartitioning).toBe('DOUBLE_PANEL_HORIZONTAL');
+  });
 });

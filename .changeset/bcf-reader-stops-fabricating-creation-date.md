@@ -1,5 +1,5 @@
 ---
-'@ifc-lite/bcf': patch
+'@ifc-lite/bcf': minor
 ---
 
 Stop the BCF reader from fabricating a `CreationDate`/`Date` when a `markup.bcf` omits the required element.

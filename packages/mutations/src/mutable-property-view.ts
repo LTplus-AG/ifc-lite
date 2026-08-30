@@ -14,6 +14,7 @@
 
 import type { PropertyTable, PropertySet, Property, QuantitySet, Quantity } from '@ifc-lite/data';
 import { findQuantityInBaseSets } from './base-qset-lookup.js';
+import { newMemberPlacement } from './new-member-placement.js';
 import { PropertyValueType, QuantityType } from '@ifc-lite/data';
 import type { IfcAttributeValue, PropertyValue, PropertyMutation, QuantityMutation, AttributeMutation, EntityTypeMutation, Mutation, NewEntity, EffectiveChange } from './types.js';
 import { propertyKey, quantityKey, attributeKey, generateMutationId } from './types.js';
@@ -306,12 +307,12 @@ export class MutablePropertyView {
   getForEntity(entityId: number): PropertySet[] {
     const result: PropertySet[] = [];
     const seenPsets = new Set<string>();
-    // A new property's key carries no identity past its pset NAME; only the first same-named instance gets it below.
-    const newPropAssignedForName = new Set<string>();
     // First, add properties from base (on-demand or table) with mutations applied
     const basePsets = this.getBasePropertiesForEntity(entityId);
+    // Which same-named instance takes a brand-new property: see new-member-placement.ts.
+    const takesNewProperty = newMemberPlacement(basePsets, (pset) => pset.properties);
 
-    for (const pset of basePsets) {
+    for (const [psetIndex, pset] of basePsets.entries()) {
       // Skip deleted property sets
       if (this.deletedPsets.has(`${entityId}:${pset.name}`)) {
         continue;
@@ -342,9 +343,8 @@ export class MutablePropertyView {
         }
       }
 
-      const isFirstOfName = !newPropAssignedForName.has(pset.name); // new props go here only
-      newPropAssignedForName.add(pset.name);
-      const entityPropKeys = isFirstOfName ? this.propertyKeysByEntity.get(entityId) : undefined;
+      // New properties on this pset; the per-entity key set keeps it O(M_entity).
+      const entityPropKeys = this.propertyKeysByEntity.get(entityId);
       if (entityPropKeys) {
         const psetPrefix = `${entityId}:${pset.name}:`;
         for (const key of entityPropKeys) {
@@ -352,15 +352,13 @@ export class MutablePropertyView {
           const mutation = this.propertyMutations.get(key);
           if (!mutation || mutation.operation !== 'SET') continue;
           const propName = key.slice(psetPrefix.length);
-          // Only add if not already in the list
-          if (!mutatedProperties.some(p => p.name === propName)) {
-            mutatedProperties.push({
-              name: propName,
-              type: mutation.valueType ?? PropertyValueType.String,
-              value: mutation.value ?? null,
-              unit: mutation.unit,
-            });
-          }
+          if (!takesNewProperty(psetIndex, propName)) continue;
+          mutatedProperties.push({
+            name: propName,
+            type: mutation.valueType ?? PropertyValueType.String,
+            value: mutation.value ?? null,
+            unit: mutation.unit,
+          });
         }
       }
 
@@ -767,8 +765,10 @@ export class MutablePropertyView {
     const seenQsets = new Set<string>();
 
     const baseQsets = this.getBaseQuantitiesForEntity(entityId);
+    // Same name-only key as the property path above, so the same rule.
+    const takesNewQuantity = newMemberPlacement(baseQsets, (qset) => qset.quantities);
 
-    for (const qset of baseQsets) {
+    for (const [qsetIndex, qset] of baseQsets.entries()) {
       if (this.deletedQsets.has(`${entityId}:${qset.name}`)) continue;
 
       seenQsets.add(qset.name);
@@ -801,14 +801,13 @@ export class MutablePropertyView {
           const mutation = this.quantityMutations.get(key);
           if (!mutation || mutation.operation !== 'SET') continue;
           const quantName = key.slice(qsetPrefix.length);
-          if (!mutatedQuantities.some(q => q.name === quantName)) {
-            mutatedQuantities.push({
-              name: quantName,
-              type: mutation.quantityType ?? QuantityType.Count,
-              value: mutation.value ?? 0,
-              unit: mutation.unit,
-            });
-          }
+          if (!takesNewQuantity(qsetIndex, quantName)) continue;
+          mutatedQuantities.push({
+            name: quantName,
+            type: mutation.quantityType ?? QuantityType.Count,
+            value: mutation.value ?? 0,
+            unit: mutation.unit,
+          });
         }
       }
 

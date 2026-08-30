@@ -138,6 +138,32 @@ describe('MutablePropertyView.setProperty — a brand-new property on two same-n
     });
   });
 
+  it('edits a property the SECOND same-named pset holds in place, without copying it onto the first', () => {
+    // "First same-named instance" is the tie-break for a property NO instance
+    // carries. One an instance already carries is not new at all -- the
+    // per-property loop above applies the SET in place, on g2 -- so stamping a
+    // copy onto g1 as well would re-create the very duplicate this file pins,
+    // and would put the value on the opposite set from the one
+    // `findPropertyInSets`/`getPropertyValue` resolve the read to.
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor((entityId) =>
+      entityId === 1
+        ? [
+            { name: 'Pset_Common', globalId: 'g1', properties: [{ name: 'Reference', type: PropertyValueType.Label, value: 'refA' }] },
+            { name: 'Pset_Common', globalId: 'g2', properties: [{ name: 'FireRating', type: PropertyValueType.Label, value: 'RF30' }] },
+          ]
+        : [],
+    );
+
+    view.setProperty(1, 'Pset_Common', 'FireRating', 'RF60', PropertyValueType.Label);
+
+    const result = view.getForEntity(1);
+    expect(result[0]).toMatchObject({ globalId: 'g1', properties: [{ name: 'Reference', value: 'refA' }] });
+    expect(result[1]).toMatchObject({ globalId: 'g2', properties: [{ name: 'FireRating', value: 'RF60' }] });
+    // The read agrees with where the write landed.
+    expect(view.getPropertyValue(1, 'Pset_Common', 'FireRating')).toBe('RF60');
+  });
+
   it('control: a unique-named pset still receives the new property normally', () => {
     const view = new MutablePropertyView(null, 'model-1');
     view.setOnDemandExtractor((entityId) =>
@@ -156,6 +182,68 @@ describe('MutablePropertyView.setProperty — a brand-new property on two same-n
           { name: 'FireRating', value: 'RF60' },
         ],
       },
+    ]);
+  });
+});
+
+describe('MutablePropertyView.setQuantity — a brand-new quantity on two same-named base qsets', () => {
+  // `getQuantitiesForEntity` is `getForEntity`'s sibling and had the identical
+  // defect: `quantityKey` stops at the qset NAME too, and `BsddCard`'s add
+  // path routes a `Qto_*` name straight through `setQuantity`. The duplicate
+  // reaches the properties panel AND the STEP exporter, which regenerates
+  // every same-named `IfcElementQuantity` from this output, so a phantom
+  // quantity is written into the saved IFC file.
+  it('lands the new quantity on the FIRST same-named qset only, not every one', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setQuantityExtractor((entityId) =>
+      entityId === 1
+        ? [
+            { name: 'Qto_WallBaseQuantities', quantities: [{ name: 'Length', type: QuantityType.Length, value: 3 }] },
+            { name: 'Qto_WallBaseQuantities', quantities: [{ name: 'GrossVolume', type: QuantityType.Volume, value: 12.5 }] },
+          ]
+        : [],
+    );
+
+    view.setQuantity(1, 'Qto_WallBaseQuantities', 'NetArea', 7, QuantityType.Area);
+
+    const result = view.getQuantitiesForEntity(1);
+    expect(result).toHaveLength(2);
+    expect(result[0].quantities.map((q) => q.name)).toEqual(['Length', 'NetArea']);
+    // The second same-named qset keeps its own quantities, unpolluted.
+    expect(result[1].quantities.map((q) => q.name)).toEqual(['GrossVolume']);
+  });
+
+  it('edits a quantity the SECOND same-named qset holds in place, without copying it onto the first', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setQuantityExtractor((entityId) =>
+      entityId === 1
+        ? [
+            { name: 'Qto_WallBaseQuantities', quantities: [{ name: 'Length', type: QuantityType.Length, value: 3 }] },
+            { name: 'Qto_WallBaseQuantities', quantities: [{ name: 'GrossVolume', type: QuantityType.Volume, value: 12.5 }] },
+          ]
+        : [],
+    );
+
+    view.setQuantity(1, 'Qto_WallBaseQuantities', 'GrossVolume', 20, QuantityType.Volume);
+
+    expect(view.getQuantitiesForEntity(1)).toMatchObject([
+      { name: 'Qto_WallBaseQuantities', quantities: [{ name: 'Length', value: 3 }] },
+      { name: 'Qto_WallBaseQuantities', quantities: [{ name: 'GrossVolume', value: 20 }] },
+    ]);
+  });
+
+  it('control: a unique-named qset still receives the new quantity normally', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setQuantityExtractor((entityId) =>
+      entityId === 1
+        ? [{ name: 'Qto_Unique', quantities: [{ name: 'Length', type: QuantityType.Length, value: 3 }] }]
+        : [],
+    );
+
+    view.setQuantity(1, 'Qto_Unique', 'NetArea', 7, QuantityType.Area);
+
+    expect(view.getQuantitiesForEntity(1)).toMatchObject([
+      { name: 'Qto_Unique', quantities: [{ name: 'Length', value: 3 }, { name: 'NetArea', value: 7 }] },
     ]);
   });
 });

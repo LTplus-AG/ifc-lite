@@ -100,7 +100,13 @@ export function toSourceFile(fileAreaId: string, file: DaluxFile): SourceFile {
     currentRevisionId: currentRevisionId(file),
     modifiedAt: orUndefined(file.lastModified ?? file.uploaded),
     modifiedBy: orUndefined(file.lastModifiedByUserId ?? file.uploadedByUserId),
-    meta: { fileAreaId, folderId },
+    // `version` is decoded by `decodeFile` (dalux-types.ts) but has no
+    // dedicated `SourceFile` field and no revision-history API to carry it
+    // via `SourceRevision` (unlike the msgraph/SharePoint provider's version
+    // label) -- `meta` is the documented "provider-specific metadata passed
+    // through opaquely" channel, so that's where it belongs. Omitted when
+    // absent rather than set to `undefined`, matching `folderId` above.
+    meta: { fileAreaId, folderId, ...(file.version !== undefined ? { version: file.version } : {}) },
   };
 }
 

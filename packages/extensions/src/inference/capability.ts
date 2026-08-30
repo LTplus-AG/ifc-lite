@@ -49,9 +49,12 @@ export interface InferenceObservation {
   /**
    * True if the catalogue does not actually classify this call: either
    * the namespace itself is unrecognised, or the namespace differentiates
-   * capability by method and this specific method has no entry. In both
-   * cases `capabilities` is still a real (over-)grant — see
-   * `isRecognisedMethod` in `./catalogue.ts`.
+   * capability by method and this specific method has no entry. The two
+   * cases differ in what `capabilities` holds: an unclassified method in
+   * a known namespace still gets that namespace's default (an
+   * over-grant), while an unknown namespace has no default to fall back
+   * on and yields an empty list. See `isRecognisedMethod` in
+   * `./catalogue.ts`.
    */
   unknown: boolean;
 }

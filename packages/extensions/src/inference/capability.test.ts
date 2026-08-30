@@ -185,32 +185,61 @@ describe('inferCapabilities — unknown calls', () => {
   });
 });
 
-describe('inferCapabilities — unrecognised methods in a differentiated namespace', () => {
-  // `mutate` has an explicit `methods` map in the catalogue (only
-  // `delete` is overridden today), so it already differentiates
-  // capability by method. `setProperty` is a real bridge method
-  // (packages/sandbox/src/bridge-mutate.ts) that the map does not
-  // classify — before the fix this silently fell through to the
-  // namespace default with `unknown: false` and no warning, exactly
-  // the "reviewer never told" gap described in capability.ts's design
-  // rule #3. Chosen because it is untouched by PR #3487 (which only
-  // adds overrides to `viewer`/`store`), so it stays a valid example
-  // whether or not that PR has merged.
-  it('(i) known namespace, unrecognised method → flagged unknown, capability still granted', () => {
-    const r = inferCapabilities('bim.mutate.setProperty(id, "Pset_X", "F", 1);');
-    const obs = r.observations.find((o) => o.call === 'bim.mutate.setProperty');
+describe('inferCapabilities — unclassified methods in a differentiated namespace', () => {
+  // `mutate` differentiates capability by method, so its `methods` map is
+  // the complete classification set for that namespace. `batch` is not in
+  // it and is not a bridge method either — the SDK has one but the bridge
+  // deliberately omits it, because QuickJS cannot marshal the callback
+  // (packages/sandbox/src/bridge-mutate.ts). A script calling it is
+  // exactly the case the warning is for: before the fix `mutate` was a
+  // known namespace, so this reported `unknown: false` and the reviewer
+  // was told nothing.
+  it('(i) known namespace, unclassified method → flagged unknown, capability still granted', () => {
+    const r = inferCapabilities('bim.mutate.batch(() => {});');
+    const obs = r.observations.find((o) => o.call === 'bim.mutate.batch');
     expect(obs?.unknown).toBe(true);
     // Never under-grant: the namespace default is still returned.
     expect(obs?.capabilities).toEqual(['model.mutate:*']);
   });
 
-  it('(ii) known namespace, recognised method (explicit override) → not flagged', () => {
-    const r = inferCapabilities('bim.mutate.delete(id);');
-    const obs = r.observations.find((o) => o.call === 'bim.mutate.delete');
+  // The other half of the rule, and the one that keeps this a tripwire
+  // instead of noise: a differentiated namespace lists every real bridge
+  // method, including the ones whose answer IS the namespace default. Both
+  // of these are real methods (bridge-export.ts, bridge-mutate.ts) whose
+  // correct grant is the namespace default, so a reviewer has nothing to
+  // investigate and must not be told otherwise.
+  it('(ii) real method classified at the namespace default → not flagged', () => {
+    const r = inferCapabilities('bim.export.download("a.txt", "hello");');
+    const obs = r.observations.find((o) => o.call === 'bim.export.download');
+    expect(obs?.unknown).toBe(false);
+    expect(obs?.capabilities).toEqual(['export.create:*']);
+  });
+
+  it('(ii) real method classified at the wildcard mutate default → not flagged', () => {
+    const r = inferCapabilities('bim.mutate.setProperty(id, "Pset_X", "F", 1);');
+    const obs = r.observations.find((o) => o.call === 'bim.mutate.setProperty');
+    expect(obs?.unknown).toBe(false);
+    expect(obs?.capabilities).toEqual(['model.mutate:*']);
+  });
+
+  it('(ii) real method whose default grant is a known, deliberate limitation → not flagged', () => {
+    // `viewer.select` writes selection state and resolves to `viewer.read`
+    // because the capability catalogue has no scope for it. That is a
+    // recorded decision, not a call nobody classified, so the reviewer
+    // gets no warning for it.
+    const r = inferCapabilities('bim.viewer.select(ids);');
+    const obs = r.observations.find((o) => o.call === 'bim.viewer.select');
+    expect(obs?.unknown).toBe(false);
+    expect(obs?.capabilities).toEqual(['viewer.read']);
+  });
+
+  it('(ii) known namespace, method with a non-default entry → not flagged', () => {
+    const r = inferCapabilities('bim.viewer.colorize({});');
+    const obs = r.observations.find((o) => o.call === 'bim.viewer.colorize');
     expect(obs?.unknown).toBe(false);
   });
 
-  it('(ii) known namespace, flat namespace with no `methods` map at all → not flagged', () => {
+  it('(ii) flat namespace with no `methods` map at all → not flagged', () => {
     // `query` has no per-method differentiation in the catalogue, so an
     // unlisted method is the intended fallback, not a gap.
     const r = inferCapabilities('bim.query.byType("IfcWall");');
@@ -218,10 +247,13 @@ describe('inferCapabilities — unrecognised methods in a differentiated namespa
     expect(obs?.unknown).toBe(false);
   });
 
-  it('(iii) unknown namespace → still flagged (regression guard)', () => {
+  it('(iii) unknown namespace → still flagged, and grants nothing', () => {
     const r = inferCapabilities('bim.totallyMadeUp.thing();');
     const obs = r.observations.find((o) => o.call === 'bim.totallyMadeUp.thing');
     expect(obs?.unknown).toBe(true);
+    // There is no namespace default to fall back on here, so unlike an
+    // unclassified method this is not an over-grant at all.
+    expect(obs?.capabilities).toEqual([]);
   });
 });
 

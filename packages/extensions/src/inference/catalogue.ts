@@ -24,20 +24,36 @@
  *     documented to share `defaultCapabilities` (e.g. `query`, `create`).
  *     A method not listed here still resolves to that default, silently —
  *     that is the intended behavior, not a gap.
- *   - DIFFERENTIATED (has a `methods` map): the author has already shown
- *     that capability varies by method within this namespace (e.g.
- *     `viewer`, `mutate`). A method missing from that map is therefore a
- *     genuine catalogue gap — it still resolves to `defaultCapabilities`
- *     (never under-grant), but `isRecognisedMethod` reports it as
- *     unrecognised so `capability.ts` can warn. See `isRecognisedMethod`.
+ *   - DIFFERENTIATED (has a `methods` map): capability varies by method
+ *     here, so the map is the namespace's *complete* classification set,
+ *     not a list of exceptions. Every real bridge method gets an entry,
+ *     including the ones whose answer is the namespace default (see
+ *     `model.list`, `export.download`) — writing the default out is how
+ *     the table records "this method was looked at". A method absent from
+ *     a complete map is therefore one nobody classified: it still
+ *     resolves to `defaultCapabilities` (never under-grant), but
+ *     `isRecognisedMethod` reports it as unrecognised so `capability.ts`
+ *     can warn.
  *
  * Keep this in sync with `@ifc-lite/sandbox/schema` (NAMESPACE_SCHEMAS).
+ * Nothing machine-checks that sync, so a differentiated namespace's map
+ * can fall behind a newly added bridge method. It falls behind in the
+ * safe direction: the new method warns until someone classifies it.
  */
 
 export interface NamespaceMapping {
   /** Default capabilities required for any call inside this namespace. */
   defaultCapabilities: readonly string[];
-  /** Per-method overrides. Method name → capability list. */
+  /**
+   * Per-method capabilities. Method name → capability list.
+   *
+   * Present only on a DIFFERENTIATED namespace, and then it must list
+   * every real bridge method in that namespace — an entry repeating
+   * `defaultCapabilities` is a deliberate record that the method was
+   * classified, not redundancy. `isRecognisedMethod` reads membership
+   * here as "the catalogue classified this method", so an omission
+   * shows up to the reviewer as an unrecognised call.
+   */
   methods?: Record<string, readonly string[]>;
 }
 
@@ -98,14 +114,26 @@ export const INFERENCE_CATALOGUE: Record<string, NamespaceMapping> = {
       setCamera: ['viewer.fly'],
       setSection: ['viewer.section'],
       clearSection: ['viewer.section'],
-      // selection-reading methods stay at the default viewer.read
+      // `select` writes viewer selection state, so `viewer.read` is a
+      // known under-grant — `../capability/catalogue.ts` has no scope
+      // that fits, and adding one changes the manifest contract rather
+      // than this table. Listed at the default on purpose: a recorded
+      // decision, not a method nobody looked at.
+      select: ['viewer.read'],
     },
   },
   mutate: {
     // Conservative: mutate.* defaults to wildcard. The promote dialog
-    // surfaces this as red and asks the user to narrow.
+    // surfaces this as red and asks the user to narrow. Every real
+    // method is listed at that wildcard rather than left to fall
+    // through, so an unlisted `bim.mutate.*` call is a genuine miss.
     defaultCapabilities: ['model.mutate:*'],
     methods: {
+      setProperty: ['model.mutate:*'],
+      setAttribute: ['model.mutate:*'],
+      deleteProperty: ['model.mutate:*'],
+      undo: ['model.mutate:*'],
+      redo: ['model.mutate:*'],
       delete: ['model.delete'],
     },
   },
@@ -128,6 +156,10 @@ export const INFERENCE_CATALOGUE: Record<string, NamespaceMapping> = {
       ifc: ['export.create:ifc'],
       ifcx: ['export.create:ifcx'],
       parquet: ['export.create:parquet'],
+      // Writes arbitrary caller-supplied content under a caller-supplied
+      // filename and mime type, so no format target is narrower than the
+      // wildcard. Listed at the default on purpose: classified, not missed.
+      download: ['export.create:*'],
     },
   },
   schedule: {
@@ -177,9 +209,13 @@ export function isKnownNamespace(namespace: string): boolean {
  * A FLAT namespace (no `methods` map) recognises every method: the
  * table's own shape says one capability legitimately covers the whole
  * namespace. A DIFFERENTIATED namespace (has a `methods` map) only
- * recognises methods present in that map — the table has already shown
- * capability varies here, so a method it never classified is a gap, not
- * an intentional fallback.
+ * recognises methods present in that map, which is why that map has to
+ * list every real bridge method in the namespace including the ones
+ * that land on `defaultCapabilities` — see `NamespaceMapping.methods`.
+ * Read the other way round, this answers "did the catalogue classify
+ * this method", not "does this method exist": the two agree only for as
+ * long as a differentiated map stays complete against NAMESPACE_SCHEMAS,
+ * and when it does not, the newly added method is the one that warns.
  */
 export function isRecognisedMethod(namespace: string, method: string | undefined): boolean {
   if (!isKnownNamespace(namespace)) return false;

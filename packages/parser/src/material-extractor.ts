@@ -19,32 +19,22 @@
  */
 
 import type { IfcEntity } from './entity-extractor.js';
-import { getString, getNumber, getBoolean, getReference, getReferences } from './attribute-helpers.js';
+import { getString, getNumber, getReference, getReferences } from './attribute-helpers.js';
+import {
+  LAYER_THICKNESS_SLOT,
+  extractMaterialLayer,
+  extractMaterialLayerSet,
+  hasUnrepresentableThickness,
+} from './material-layer-reader.js';
+import type { MaterialLayer, MaterialLayerSet } from './material-layer-reader.js';
+
+export type { MaterialLayer, MaterialLayerSet } from './material-layer-reader.js';
 
 export interface Material {
   id: number;
   name: string;
   description?: string;
   category?: string;
-}
-
-export interface MaterialLayer {
-  id: number;
-  material: number;  // Material ID
-  thickness: number;
-  isVentilated?: boolean;
-  name?: string;
-  description?: string;
-  category?: string;
-  priority?: number;
-}
-
-export interface MaterialLayerSet {
-  id: number;
-  name?: string;
-  description?: string;
-  layers: number[];  // MaterialLayer IDs
-  totalThickness?: number;
 }
 
 export interface MaterialProfile {
@@ -130,7 +120,18 @@ export function extractMaterials(
   for (const id of layerIds) {
     const entity = entities.get(id);
     if (entity) {
-      data.materialLayers.set(id, extractMaterialLayer(entity, entities));
+      // Dropped rather than recorded with a substituted thickness. A consumer
+      // that looks the layer up gets `undefined`, which it can see; a layer
+      // recorded as 0 thick reads as a measurement.
+      if (hasUnrepresentableThickness(entity)) {
+        console.warn(
+          `[material-extractor] IfcMaterialLayer #${id} LayerThickness is outside the ` +
+          `IEEE-754 double range (${String(entity.attributes[LAYER_THICKNESS_SLOT])}); ` +
+          `dropping the layer rather than reporting it as 0 thick.`,
+        );
+        continue;
+      }
+      data.materialLayers.set(id, extractMaterialLayer(entity));
     }
   }
 
@@ -200,52 +201,6 @@ function extractMaterial(entity: IfcEntity): Material {
     name: getString(entity.attributes[0]) || '',
     description: getString(entity.attributes[1]),
     category: getString(entity.attributes[2]),
-  };
-}
-
-function extractMaterialLayer(
-  entity: IfcEntity,
-  entities: Map<number, IfcEntity>
-): MaterialLayer {
-  const materialRef = getReference(entity.attributes[0]);
-  const thickness = getNumber(entity.attributes[1]) || 0;
-
-  return {
-    id: entity.expressId,
-    material: materialRef || 0,
-    thickness,
-    isVentilated: getBoolean(entity.attributes[2]),
-    name: getString(entity.attributes[3]),
-    description: getString(entity.attributes[4]),
-    category: getString(entity.attributes[5]),
-    priority: getNumber(entity.attributes[6]),
-  };
-}
-
-function extractMaterialLayerSet(
-  entity: IfcEntity,
-  entities: Map<number, IfcEntity>
-): MaterialLayerSet {
-  const layers = getReferences(entity.attributes[0]) || [];
-  const name = getString(entity.attributes[1]);
-  const description = getString(entity.attributes[2]);
-
-  // Calculate total thickness
-  let totalThickness = 0;
-  for (const layerId of layers) {
-    const layerEntity = entities.get(layerId);
-    if (layerEntity) {
-      const thickness = getNumber(layerEntity.attributes[1]) || 0;
-      totalThickness += thickness;
-    }
-  }
-
-  return {
-    id: entity.expressId,
-    name,
-    description,
-    layers,
-    totalThickness,
   };
 }
 

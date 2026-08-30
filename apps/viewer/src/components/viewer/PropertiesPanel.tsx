@@ -63,17 +63,7 @@ import { GeoreferencingPanel } from './properties/GeoreferencingPanel';
 import { RawStepCard } from './properties/RawStepCard';
 import { UnitDisplayControl } from './properties/UnitDisplayControl';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
-
-/** IFC material *definition* classes selectable from the Materials tab. */
-const MATERIAL_DEF_TYPES = new Set([
-  'IFCMATERIAL',
-  'IFCMATERIALLAYERSET',
-  'IFCMATERIALLAYERSETUSAGE',
-  'IFCMATERIALPROFILESET',
-  'IFCMATERIALPROFILESETUSAGE',
-  'IFCMATERIALCONSTITUENTSET',
-  'IFCMATERIALLIST',
-]);
+import { isMaterialDefinitionType } from '@/utils/materialDefinitionTypes';
 
 type DisplayProperty = { name: string; value: unknown; isMutated: boolean; type?: number; dataType?: string };
 type DisplayPropertySet = {
@@ -505,7 +495,11 @@ export function PropertiesPanel() {
     if (!selectedEntity) return null;
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     const rawType = (dataStore as IfcDataStore | null)?.entityIndex?.byId?.get(selectedEntity.expressId)?.type;
-    return rawType && MATERIAL_DEF_TYPES.has(rawType.toUpperCase()) ? selectedEntity.expressId : null;
+    // Every IfcMaterialSelect member, not just the set-valued ones: the tab
+    // renders a row for any definition the usage index leaves unexpanded (a
+    // bare IfcMaterialConstituent, an IfcMaterialLayerWithOffsets), and a
+    // narrower gate here turns those rows into dead clicks.
+    return isMaterialDefinitionType(rawType) ? selectedEntity.expressId : null;
   }, [selectedEntity, model, ifcDataStore]);
 
   // Unified property/quantity access - EntityNode handles on-demand extraction automatically
@@ -1707,9 +1701,9 @@ export function PropertiesPanel() {
                         ) : 'Occurrence Properties:'}
                       </div>
                     )}
-                    {renderedOccurrenceProperties.map((pset: PropertySet) => (
+                    {renderedOccurrenceProperties.map((pset: PropertySet, index: number) => (
                       <PropertySetCard
-                        key={`occ-${pset.name}`}
+                        key={`occ-${pset.name}-${index}`}
                         pset={pset}
                         modelId={selectedEntity?.modelId}
                         entityId={selectedEntity?.expressId}
@@ -1734,9 +1728,9 @@ export function PropertiesPanel() {
                       <Building2 className="h-3 w-3 shrink-0" />
                       <span className="truncate">Type Properties ({renderedTypeProperties.typeName})</span>
                     </div>
-                    {renderedInheritedTypeProperties.map((pset: PropertySet) => (
+                    {renderedInheritedTypeProperties.map((pset: PropertySet, index: number) => (
                       <PropertySetCard
-                        key={`type-${pset.name}`}
+                        key={`type-${pset.name}-${index}`}
                         pset={pset}
                         modelId={selectedEntity?.modelId}
                         entityId={renderedTypeProperties.typeId}
@@ -1789,9 +1783,9 @@ export function PropertiesPanel() {
                           <Layers className="h-3 w-3 shrink-0" />
                           <span className="truncate">Material Properties ({group.materialName})</span>
                         </div>
-                        {group.psets.map((pset) => (
+                        {group.psets.map((pset, index) => (
                           <PropertySetCard
-                            key={`matpset-${group.materialId}-${pset.name}`}
+                            key={`matpset-${group.materialId}-${pset.name}-${index}`}
                             pset={{
                               name: pset.name,
                               properties: pset.properties.map((p) => ({ name: p.name, value: p.value, isMutated: false, dataType: p.dataType })),
@@ -1852,8 +1846,8 @@ export function PropertiesPanel() {
               <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">No quantities</p>
             ) : (
               <div className="space-y-3 w-full overflow-hidden">
-                {renderedQuantities.map((qset: QuantitySet) => (
-                  <QuantitySetCard key={qset.name} qset={qset} projectUnits={renderedProjectUnits} unitDisplayOverrides={unitDisplayOverrides} />
+                {renderedQuantities.map((qset: QuantitySet, index: number) => (
+                  <QuantitySetCard key={`${qset.name}-${index}`} qset={qset} projectUnits={renderedProjectUnits} unitDisplayOverrides={unitDisplayOverrides} />
                 ))}
               </div>
             )}
@@ -2181,8 +2175,8 @@ function EntityDataSection({
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="p-2 pt-0 space-y-2">
-              {properties.map((pset) => (
-                <PropertySetCard key={pset.name} pset={pset} projectUnits={projectUnits} unitDisplayOverrides={unitDisplayOverrides} />
+              {properties.map((pset, index) => (
+                <PropertySetCard key={`${pset.name}-${index}`} pset={pset} projectUnits={projectUnits} unitDisplayOverrides={unitDisplayOverrides} />
               ))}
             </div>
           </CollapsibleContent>
@@ -2199,8 +2193,8 @@ function EntityDataSection({
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="p-2 pt-0 space-y-2">
-              {quantities.map((qset) => (
-                <QuantitySetCard key={qset.name} qset={qset} projectUnits={projectUnits} unitDisplayOverrides={unitDisplayOverrides} />
+              {quantities.map((qset, index) => (
+                <QuantitySetCard key={`${qset.name}-${index}`} qset={qset} projectUnits={projectUnits} unitDisplayOverrides={unitDisplayOverrides} />
               ))}
             </div>
           </CollapsibleContent>

@@ -26,6 +26,7 @@ import type { IfcDataStore, EntityExtractor } from '@ifc-lite/parser';
 import type { EffectiveEntityIndex } from './effective-index.js';
 import { escapeStepString, toStepReal } from './step-serialization.js';
 import type { ExportPass, StepExportOptions } from './step-exporter.js';
+import { reportMapUnitUnsupported, resolveMapUnitReference } from './step-map-unit.js';
 
 /**
  * Message for the one refusal `export()` can report, shared by the returned
@@ -44,6 +45,19 @@ const MAP_CONVERSION_WITHOUT_CONTEXT_WARNING =
  */
 const MAP_CONVERSION_WITHOUT_CRS_WARNING =
   'Cannot create IfcMapConversion: no IfcProjectedCRS was requested and none exists in the file to reference as TargetCRS. Nothing was written.';
+
+/**
+ * Every concrete class carrying an IfcMapConversion's attributes, in the
+ * UPPERCASE spelling `EffectiveEntityIndex.byType` is keyed by. Kept beside
+ * `@ifc-lite/parser`'s `MAP_CONVERSION_TYPE_NAMES`, which is the same list in
+ * the mixed-case spelling the read path uses — the reader and the writer must
+ * agree on what counts as a map conversion, or the exporter duplicates a
+ * record the reader can see.
+ */
+const MAP_CONVERSION_STEP_TYPES: readonly string[] = [
+  'IFCMAPCONVERSION',
+  'IFCMAPCONVERSIONSCALED',
+];
 
 /**
  * The exporter state this phase cannot read off the pass.
@@ -87,7 +101,19 @@ export function applyGeoreferencingMutations(
   // pass applies `modifiedAttributes` to, so both branches agree on which
   // georeferencing entities exist (#2048).
   const existingCrsIds = pass.effective.byType.get('IFCPROJECTEDCRS');
-  const existingMcIds = pass.effective.byType.get('IFCMAPCONVERSION');
+  // `byType` is keyed by the RAW STEP type name, so the supertype key alone
+  // does not see IFC4X3's concrete IfcMapConversionScaled. Missing it left a
+  // file that HAS a map conversion looking like one that has none: the modify
+  // branch below found nothing, and a create branch ran instead — emitting a
+  // SECOND coordinate operation against the same source CRS while the file's
+  // own scaled one stayed put, which is not a file any consumer can read
+  // unambiguously. The six attributes edited below are IfcMapConversion's own
+  // and are edited BY NAME, which the scaled subtype inherits unchanged, so
+  // modifying it in place is well-defined (its extra FactorX/Y/Z sit after
+  // them and are left alone).
+  const existingMcIds = MAP_CONVERSION_STEP_TYPES.flatMap(
+    (typeName) => pass.effective.byType.get(typeName) ?? [],
+  );
 
   // Modify existing IfcProjectedCRS
   if (gm.projectedCRS && existingCrsIds?.length) {
@@ -106,7 +132,16 @@ export function applyGeoreferencingMutations(
     if (crs.mapZone !== undefined) { attrMap.set('MapZone', String(crs.mapZone)); changed = true; }
     if (crs.mapUnit !== undefined) {
       const mapUnitRef = resolveMapUnitReference(String(crs.mapUnit), pass.newGeorefLines, pass.effective, ctx);
-      attrMap.set('MapUnit', `#${mapUnitRef}`);
+      // A refused unit clears MapUnit rather than leaving the file's own in
+      // place: the caller asked for a DIFFERENT unit, so the one already
+      // there is known to be wrong, and `$` is the only honest answer this
+      // exporter can write (#3274).
+      if (mapUnitRef === null) {
+        reportMapUnitUnsupported(pass.warnings, String(crs.mapUnit));
+        attrMap.set('MapUnit', '$');
+      } else {
+        attrMap.set('MapUnit', `#${mapUnitRef}`);
+      }
       changed = true;
     }
     if (changed) {
@@ -166,9 +201,15 @@ export function applyGeoreferencingMutations(
     const vDatum = crs.verticalDatum ? `'${escapeStepString(String(crs.verticalDatum))}'` : '$';
     const proj = crs.mapProjection ? `'${escapeStepString(String(crs.mapProjection))}'` : '$';
     const zone = crs.mapZone ? `'${escapeStepString(String(crs.mapZone))}'` : '$';
-    const mapUnitRef = crs.mapUnit
-      ? `#${resolveMapUnitReference(String(crs.mapUnit), pass.newGeorefLines, pass.effective, ctx)}`
-      : '$';
+    let mapUnitRef = '$';
+    // `!== undefined`, matching the existing-CRS path above: an empty MapUnit is
+    // a unit this exporter cannot express, not an absent request, and the caller
+    // has to be told so rather than quietly getting `$`.
+    if (crs.mapUnit !== undefined) {
+      const resolved = resolveMapUnitReference(String(crs.mapUnit), pass.newGeorefLines, pass.effective, ctx);
+      if (resolved === null) reportMapUnitUnsupported(pass.warnings, String(crs.mapUnit));
+      else mapUnitRef = `#${resolved}`;
+    }
     pass.newGeorefLines.push(`#${crsId}=IFCPROJECTEDCRS(${name},${desc},${datum},${vDatum},${proj},${zone},${mapUnitRef});`);
     pass.newEntityCount++;
 
@@ -217,98 +258,6 @@ export function applyGeoreferencingMutations(
   }
 }
 
-export function resolveMapUnitReference(unitName: string, newGeorefLines: string[], effective: EffectiveEntityIndex, ctx: GeorefContext): number {
-  const normalized = normalizeMapUnitName(unitName);
-  const existing = findLengthUnitReference(normalized, effective, ctx);
-  if (existing !== null) {
-    return existing;
-  }
-
-  if (normalized === 'METRE') {
-    const unitId = ctx.allocateExpressId();
-    newGeorefLines.push(`#${unitId}=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);`);
-    return unitId;
-  }
-
-  if (normalized === 'FOOT' || normalized === 'US SURVEY FOOT') {
-    const dimId = ctx.allocateExpressId();
-    const siUnitId = ctx.allocateExpressId();
-    const measureId = ctx.allocateExpressId();
-    const convUnitId = ctx.allocateExpressId();
-    const factor = normalized === 'US SURVEY FOOT' ? 1200 / 3937 : 0.3048;
-    const name = normalized === 'US SURVEY FOOT' ? 'US SURVEY FOOT' : 'FOOT';
-    newGeorefLines.push(`#${dimId}=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);`);
-    newGeorefLines.push(`#${siUnitId}=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);`);
-    newGeorefLines.push(`#${measureId}=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(${toStepReal(factor)}),#${siUnitId});`);
-    newGeorefLines.push(`#${convUnitId}=IFCCONVERSIONBASEDUNIT(#${dimId},.LENGTHUNIT.,'${name}',#${measureId});`);
-    return convUnitId;
-  }
-
-  const fallbackId = ctx.allocateExpressId();
-  newGeorefLines.push(`#${fallbackId}=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);`);
-  return fallbackId;
-}
-
-export function normalizeMapUnitName(unitName: string): string {
-  const normalized = unitName.trim().toUpperCase().replace(/\s+/g, ' ');
-  if (normalized.includes('US SURVEY FOOT')) return 'US SURVEY FOOT';
-  if (normalized.includes('METER') || normalized.includes('METRE')) return 'METRE';
-  if (normalized.includes('FOOT') || normalized.includes('FEET')) return 'FOOT';
-  return normalized;
-}
-
-/**
- * `effective` filters the candidates the same way the georef reads above do:
- * returning a tombstoned unit id hands the caller a `#id` for a line the
- * export never writes. Returning null instead makes `resolveMapUnitReference`
- * synthesise a fresh unit, which is the outcome a deleted unit deserves.
- */
-export function findLengthUnitReference(preferredUnitName: string, effective: EffectiveEntityIndex, ctx: GeorefLookupContext): number | null {
-  if (!ctx.entityExtractor) return null;
-
-  // Only source records carry the bytes `extractEntity` reads, so an
-  // overlay-created project is skipped rather than shadowing the file's own.
-  const projectId = (effective.byType.get('IFCPROJECT') ?? []).find((id) => ctx.dataStore.entityIndex.byId.has(id));
-  const projectRef = projectId !== undefined ? ctx.dataStore.entityIndex.byId.get(projectId) : undefined;
-  const project = projectRef ? ctx.entityExtractor.extractEntity(projectRef) : null;
-  const unitAssignmentId = project?.attributes?.[8];
-  if (typeof unitAssignmentId !== 'number' || effective.isDeleted(unitAssignmentId)) return null;
-
-  const unitAssignmentRef = ctx.dataStore.entityIndex.byId.get(unitAssignmentId);
-  const unitAssignment = unitAssignmentRef ? ctx.entityExtractor.extractEntity(unitAssignmentRef) : null;
-  const units = unitAssignment?.attributes?.[0];
-  if (!Array.isArray(units)) return null;
-
-  for (const unitId of units) {
-    if (typeof unitId !== 'number' || effective.isDeleted(unitId)) continue;
-    const unitRef = ctx.dataStore.entityIndex.byId.get(unitId);
-    const unit = unitRef ? ctx.entityExtractor.extractEntity(unitRef) : null;
-    if (!unit) continue;
-
-    const typeName = unit.type.toUpperCase();
-    const attrs = unit.attributes ?? [];
-    const unitType = typeof attrs[1] === 'string' ? attrs[1].replace(/\./g, '').toUpperCase() : '';
-    if (unitType !== 'LENGTHUNIT') continue;
-
-    if (typeName === 'IFCSIUNIT') {
-      const prefix = typeof attrs[2] === 'string' ? attrs[2].replace(/\./g, '').toUpperCase() : '';
-      const name = typeof attrs[3] === 'string' ? attrs[3].replace(/\./g, '').toUpperCase() : '';
-      const combined = prefix ? `${prefix}${name}` : name;
-      if (preferredUnitName === 'METRE' && (combined === 'METRE' || combined === 'METER')) {
-        return unitId;
-      }
-    }
-
-    if (typeName === 'IFCCONVERSIONBASEDUNIT') {
-      const name = typeof attrs[2] === 'string' ? normalizeMapUnitName(attrs[2]) : '';
-      if (name === preferredUnitName) {
-        return unitId;
-      }
-    }
-  }
-
-  return null;
-}
 
 /**
  * Record that a requested IfcMapConversion could not be written. Emitting it

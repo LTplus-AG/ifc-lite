@@ -54,30 +54,70 @@
 
 use ifc_lite_core::{EntityIndex, EntityScanner};
 
-/// One shard's speculative scan over `[range_start, range_end)`.
+/// One shard's records: `(id, start, end)` per entity, strictly increasing in `start`.
+pub type ShardRecords = Vec<(u32, usize, usize)>;
+
+/// One shard's refusals: the `start` byte of each record the scan dropped for
+/// an instance name above `u32::MAX` (#3395), strictly increasing.
+///
+/// Offsets, not a count, because a shard cannot tell on its own which of its
+/// refusals are real — see [`scan_shard_with_refusals`].
+pub type ShardRefusals = Vec<usize>;
+
+/// [`scan_shard_with_refusals`] without the refusal offsets.
+///
+/// A shard's refusal list is only meaningful next to the stitch that decides
+/// which of the shard's bytes were kept, so this convenience wrapper is for
+/// callers that build no index from the result (the parity tests) — a caller
+/// that DOES must take the offsets and attribute them, or it reports refusals
+/// that no retained record produced.
+pub fn scan_shard(
+    content: &[u8],
+    range_start: usize,
+    range_end: usize,
+) -> (ShardRecords, Option<usize>) {
+    let (records, handoff, _refusals) = scan_shard_with_refusals(content, range_start, range_end);
+    (records, handoff)
+}
+
+/// One shard's speculative scan over `[range_start, range_end)`, plus the byte
+/// offset of every record this shard refused.
 ///
 /// This is the exact per-chunk primitive [`build_entity_index_parallel`] fans
-/// across cores, exposed for the wasm **sharded pre-pass**: each browser
-/// geometry worker calls it on a byte range and the main thread stitches the
-/// columns (binary-searching each shard for the previous shard's handoff — see
-/// the [`native::stitch`] doc). Compiled on all targets (the `native` merge is
+/// across cores, and the sibling of the wasm **sharded pre-pass**'s
+/// `scan_shard_classified_with_refusals`: each browser geometry worker calls
+/// that one on a byte range and the main thread stitches the columns
+/// (binary-searching each shard for the previous shard's handoff — see the
+/// [`native::stitch`] doc). Compiled on all targets (the `native` merge is
 /// wasm-gated, but the shard primitive itself is target-independent).
 ///
 /// Chunk 0 (`range_start == 0`) uses the header-aware [`EntityScanner::new`];
 /// every other shard starts *speculatively* at `range_start` via
 /// [`EntityScanner::new_at`] (which may land mid-record — the handoff stitch
 /// makes that exact, not heuristic). Returns every record with
-/// `start < range_end` (strictly increasing in `start`) plus the `handoff`: the
-/// `start` of the first record at/after `range_end` (the next shard's first real
-/// entity), or `None` at EOF.
-/// One shard's records: `(id, start, end)` per entity, strictly increasing in `start`.
-pub type ShardRecords = Vec<(u32, usize, usize)>;
-
-pub fn scan_shard(
+/// `start < range_end` (strictly increasing in `start`), the `handoff` (the
+/// `start` of the first record at/after `range_end`, i.e. the next shard's
+/// first real entity, or `None` at EOF), and the refusal offsets.
+///
+/// **It does not report them, and it must not.** A shard with
+/// `range_start > 0` starts at an arbitrary byte, so it can begin inside a
+/// quoted value; a string literal containing `#4294967297=IFCWALL(` satisfies
+/// the scanner's `#<digits>[ws]*=` shape check (which has no quote context),
+/// so the speculative prefix can refuse arbitrarily many records that the file
+/// never declared. Reporting from inside the shard therefore turns a file with
+/// NOTHING oversized in it into a "skipped N records" warning — a false alarm
+/// on valid input, which is worse than the inflated count the first version of
+/// this was thought to produce (#3395, retracted reasoning on #3430).
+///
+/// Bounding by ownership alone (`start < range_end`) does not fix it either:
+/// a false refusal parsed out of a quoted value INSIDE the owned range still
+/// counts. Only the stitch knows which bytes of a shard were kept, so only the
+/// stitch can attribute a refusal — see [`native::stitch`].
+pub fn scan_shard_with_refusals(
     content: &[u8],
     range_start: usize,
     range_end: usize,
-) -> (ShardRecords, Option<usize>) {
+) -> (ShardRecords, Option<usize>, ShardRefusals) {
     // Deliberately NOT delegating to `scan_shard_classified`: index-only
     // callers (native exporters / georeferencing via
     // `build_entity_index_parallel`) would pay a per-entity keyword
@@ -97,9 +137,8 @@ pub fn scan_shard(
         }
         records.push((id, start, entity_end));
     }
-    (records, handoff)
+    (records, handoff, scanner.skipped_oversized_id_starts().to_vec())
 }
-
 
 /// Build the entity index (expressId -> byte span) across all available cores.
 ///
@@ -141,12 +180,21 @@ mod native {
     /// keeps the chunk count sane on merely-large (not huge) files.
     const MIN_CHUNK_BYTES: usize = 2 * 1024 * 1024;
 
+    /// The one place the parallel path reports a refusal: once per load, on
+    /// the stitched count, never per shard (#3395/#3430).
     pub(super) fn build(content: &[u8]) -> EntityIndex {
         let n = chunk_count(content.len());
         if n <= 1 {
+            // Serial. Not merely a shortcut: the chunked path materialises a
+            // `Vec<(u32, usize, usize)>` per chunk before the stitch inserts
+            // it, ~20 B per entity, which is the price of splitting and is not
+            // worth paying when there is nothing to split. `build_entity_index`
+            // scans once straight into the map and reports its own refusals.
             return build_entity_index(content);
         }
-        with_chunks(content, n)
+        let (index, refused) = with_chunks_counted(content, n);
+        ifc_lite_core::report_oversized_ids(refused);
+        index
     }
 
     fn chunk_count(len: usize) -> usize {
@@ -164,10 +212,13 @@ mod native {
     struct ChunkScan {
         records: Vec<(u32, usize, usize)>,
         handoff: Option<usize>,
+        /// Every refusal this chunk's scan produced, real or speculative. The
+        /// stitch decides which; the chunk cannot.
+        refusals: super::ShardRefusals,
     }
 
     #[inline]
-    fn range_end(i: usize, n_chunks: usize, len: usize) -> usize {
+    pub(super) fn range_end(i: usize, n_chunks: usize, len: usize) -> usize {
         if i + 1 == n_chunks {
             len
         } else {
@@ -182,19 +233,29 @@ mod native {
         // semantics (`scan_shard` selects it on `range_start == 0`); every other
         // chunk starts speculatively at its byte offset. Same shard primitive the
         // wasm sharded pre-pass calls per worker, so the merge cannot drift.
-        let (records, handoff) = super::scan_shard(content, start, end);
-        ChunkScan { records, handoff }
+        let (records, handoff, refusals) = super::scan_shard_with_refusals(content, start, end);
+        ChunkScan {
+            records,
+            handoff,
+            refusals,
+        }
     }
 
-    /// Scan with an explicit chunk count. Public within the crate so the
-    /// byte-identity tests can force many boundary positions (including inside a
-    /// quoted string) on a small buffer.
-    pub(super) fn with_chunks(content: &[u8], n_chunks: usize) -> EntityIndex {
+    /// Scan with an explicit chunk count, returning the index and the number of
+    /// refusals the stitch ATTRIBUTED — the count a caller may report, never
+    /// the raw per-shard sum (see [`stitch`]). Public within the crate so the
+    /// byte-identity and refusal-parity tests can force many boundary
+    /// positions (including inside a quoted string) on a small buffer.
+    ///
+    /// `n_chunks == 1` is not special-cased HERE (though [`build`] takes a
+    /// serial shortcut before reaching this): one chunk spans the whole file,
+    /// starts at 0 (so the header-aware [`EntityScanner::new`] is selected)
+    /// and has no boundary, which is precisely the serial scan. Routing it
+    /// through the same shard+stitch machinery means the `n = 1` leg of the
+    /// byte-identity sweep exercises this code rather than delegating past it.
+    pub(super) fn with_chunks_counted(content: &[u8], n_chunks: usize) -> (EntityIndex, usize) {
         let len = content.len();
         let n_chunks = n_chunks.max(1).min(len.max(1));
-        if n_chunks == 1 {
-            return build_entity_index(content);
-        }
         let chunks: Vec<ChunkScan> = (0..n_chunks)
             .into_par_iter()
             .map(|i| scan_chunk(content, i, n_chunks))
@@ -202,7 +263,48 @@ mod native {
         stitch(content, &chunks, n_chunks)
     }
 
-    fn stitch(content: &[u8], chunks: &[ChunkScan], n_chunks: usize) -> EntityIndex {
+    /// Replay the chunks in file order into one index, and count the refusals
+    /// that are attributable to the bytes actually retained.
+    ///
+    /// ## Why a refusal needs attributing at all
+    ///
+    /// A refusal is a record the scanner dropped, so it leaves no trace in
+    /// `records` and the stitch cannot re-derive it. A chunk `i > 0` starts at
+    /// an arbitrary byte and can begin inside a quoted value, where a string
+    /// literal shaped like `#4294967297=IFCWALL(` reads as a record and gets
+    /// refused. Those refusals belong to the speculative prefix this stitch
+    /// throws away, so summing the chunks would report refusals on a file that
+    /// declares none.
+    ///
+    /// ## The rule, and why it is exact
+    ///
+    /// Chunk `i`'s retained region begins at `target` — chunk `i-1`'s
+    /// validated handoff, a REAL entity start — and chunk 0's begins at the
+    /// header skip. Scanner events advance `position` monotonically, so every
+    /// event a chunk emitted before the record at `target` sits strictly below
+    /// `target`; and from that record on, the chunk's `position` sequence is
+    /// the serial scanner's (the handoff is a real start and `find_entity_end`
+    /// re-parses the record from its `#`). Hence:
+    ///
+    ///   * refusals `>= target` are exactly the post-resynchronisation ones,
+    ///     and they are the ones a serial scan over those bytes also produces;
+    ///   * refusals `< target` are exactly the speculative-prefix ones, and
+    ///     they are dropped with the records they sat among.
+    ///
+    /// A chunk stops at the first record at/after its `range_end`, which is
+    /// the next chunk's `target`, so the intervals `[target_i, target_{i+1})`
+    /// tile the file with no gap and no overlap: each real refusal is counted
+    /// once, by exactly one chunk. On the `Err` fallback the chunk is
+    /// discarded whole, refusals included, and the serial rescan over the same
+    /// bytes supplies them instead.
+    ///
+    /// What this does NOT bound: a `#<digits>=` inside a quoted value that the
+    /// SERIAL scanner also mis-parses (only reachable on malformed input,
+    /// where a stray quote has already flipped `find_entity_end`'s parity)
+    /// still counts here, because it counts there. That is parity with the
+    /// serial path, which is the target — not immunity to mis-parsing, which
+    /// would mean giving the scanner quote context (#3395/#3430).
+    fn stitch(content: &[u8], chunks: &[ChunkScan], n_chunks: usize) -> (EntityIndex, usize) {
         let len = content.len();
         // Same capacity heuristic as the serial builder.
         let mut index: EntityIndex =
@@ -213,10 +315,13 @@ mod native {
             index.insert(id, (start, end));
         }
         let mut expected_start = chunks[0].handoff;
+        let mut refused = chunks[0].refusals.len();
 
         for (i, chunk) in chunks.iter().enumerate().skip(1) {
             // `expected_start` is the real entity start where chunk `i` begins,
-            // validated by chunk `i-1`. `None` => no more real entities.
+            // validated by chunk `i-1`. `None` => no more real entities, so
+            // every later chunk is speculative from end to end — records and
+            // refusals alike are dropped by breaking here.
             let target = match expected_start {
                 Some(t) => t,
                 None => break,
@@ -230,6 +335,10 @@ mod native {
                     for &(id, start, e) in &recs[p..] {
                         index.insert(id, (start, e));
                     }
+                    // `refusals` is strictly increasing, so the split point is
+                    // the first refusal inside the retained region.
+                    let from = chunk.refusals.partition_point(|&o| o < target);
+                    refused += chunk.refusals.len() - from;
                     expected_start = chunk.handoff;
                 }
                 Err(_) => {
@@ -237,160 +346,40 @@ mod native {
                     // single record spans the whole chunk. Serially rescan this
                     // range from the known-real `target` — byte-identical to the
                     // serial builder for these bytes — and recompute the handoff.
-                    expected_start = rescan_range(content, target, end, &mut index);
+                    // The chunk's own refusals go with its records: unusable.
+                    let (next, rescanned) = rescan_range(content, target, end, &mut index);
+                    refused += rescanned;
+                    expected_start = next;
                 }
             }
         }
-        index
+        (index, refused)
     }
 
     /// Serial rescan from a known-real entity start `target` up to `end`,
-    /// inserting each entity; returns the first entity start at/after `end` (the
-    /// handoff for the next chunk), or `None` at EOF.
+    /// inserting each entity; returns the first entity start at/after `end`
+    /// (the handoff for the next chunk, or `None` at EOF) together with the
+    /// refusals over those bytes.
+    ///
+    /// This scan is aligned from its first byte, so every refusal it makes is
+    /// one the serial builder makes too — no attribution needed.
     fn rescan_range(
         content: &[u8],
         target: usize,
         end: usize,
         index: &mut EntityIndex,
-    ) -> Option<usize> {
+    ) -> (Option<usize>, usize) {
         let mut scanner = EntityScanner::new_at(content, target);
         while let Some((id, _type_name, start, entity_end)) = scanner.next_entity() {
             if start >= end {
-                return Some(start);
+                return (Some(start), scanner.skipped_oversized_ids());
             }
             index.insert(id, (start, entity_end));
         }
-        None
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use super::with_chunks;
-        use ifc_lite_core::build_entity_index;
-
-        /// Assert `with_chunks(content, n)` equals the serial index for a range of
-        /// chunk counts — many `n` means many boundary positions, so a boundary
-        /// lands inside strings/comments/records across the sweep.
-        fn assert_parallel_matches_serial(content: &[u8], label: &str) {
-            let serial = build_entity_index(content);
-            for n in [1usize, 2, 3, 4, 5, 7, 8, 11, 16, 32, 64] {
-                let par = with_chunks(content, n);
-                assert_eq!(
-                    par, serial,
-                    "parallel index (n_chunks={n}) != serial for {label}"
-                );
-            }
-        }
-
-        #[test]
-        fn empty_and_tiny_and_malformed() {
-            assert_parallel_matches_serial(b"", "empty");
-            assert_parallel_matches_serial(b"\n", "single-newline");
-            assert_parallel_matches_serial(
-                b"ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\n",
-                "header-only",
-            );
-            assert_parallel_matches_serial(
-                b"#1=IFCWALL('g',$,$,$,$,$,$,$);\n",
-                "no-header",
-            );
-            // Truncated / malformed: unterminated record, stray '#', bad digits.
-            assert_parallel_matches_serial(
-                b"DATA;\n#1=IFCWALL('g',$,$\n#2=IFCDOOR( #notanid #=x ; ;",
-                "malformed",
-            );
-        }
-
-        #[test]
-        fn simple_data_section() {
-            let mut content = String::from("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n");
-            for id in 1..=200u32 {
-                content.push_str(&format!(
-                    "#{id}=IFCCARTESIANPOINT(({}.,{}.,{}.));\n",
-                    id, id, id
-                ));
-            }
-            content.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
-            assert_parallel_matches_serial(content.as_bytes(), "simple-200");
-        }
-
-        /// Duplicate ids must resolve last-wins in file order, exactly as the
-        /// serial `insert` loop does.
-        #[test]
-        fn duplicate_ids_last_wins() {
-            let mut content = String::from("DATA;\n");
-            for _ in 0..3 {
-                for id in 1..=50u32 {
-                    content.push_str(&format!("#{id}=IFCWALL('g{id}',$,$,$,$,$,$,$);\n"));
-                }
-            }
-            assert_parallel_matches_serial(content.as_bytes(), "duplicate-ids");
-        }
-
-        /// Adversarial: a record whose quoted string contains fake `;` terminators
-        /// and fake `#N=IFCWALL(...)` records. A chunk boundary inside the string
-        /// makes the speculative scanner emit garbage until it re-syncs; the stitch
-        /// (incl. the fallback) must still reproduce the serial index exactly.
-        #[test]
-        fn chunk_boundary_inside_quoted_string() {
-            let mut fake = String::new();
-            for k in 0..400 {
-                fake.push_str(&format!(";\\n#{}=IFCWALL(fake ; still in string ", 90000 + k));
-            }
-            let mut content = String::from("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n");
-            content.push_str("#1=IFCPROJECT('guid',$,$,$,$,$,$,$,$);\n");
-            content.push_str(&format!("#2=IFCWALL('{fake}',$,$,$,$,$,$,$);\n"));
-            for id in 3..=120u32 {
-                content.push_str(&format!("#{id}=IFCDOOR('g{id}',$,$,$,$,$,$,$);\n"));
-            }
-            content.push_str("ENDSEC;\n");
-            assert_parallel_matches_serial(content.as_bytes(), "in-string-boundary");
-        }
-
-        /// One record larger than a chunk (forces the "record spans chunk" /
-        /// fallback path where the handoff sits beyond a chunk's whole range).
-        #[test]
-        fn record_larger_than_chunk() {
-            let big_name = "X".repeat(20_000);
-            let mut content = String::from("DATA;\n");
-            content.push_str("#1=IFCPROJECT('g',$,$,$,$,$,$,$,$);\n");
-            content.push_str(&format!("#2=IFCWALL('{big_name}',$,$,$,$,$,$,$);\n"));
-            for id in 3..=40u32 {
-                content.push_str(&format!("#{id}=IFCDOOR('g{id}',$,$,$,$,$,$,$);\n"));
-            }
-            assert_parallel_matches_serial(content.as_bytes(), "record-larger-than-chunk");
-        }
-
-        /// Fixture leg: byte-identical over real models when present. Sweeps chunk
-        /// counts AND checks the public `build_entity_index_parallel` (thread-count
-        /// driven) path. Skips (never fails) when fixtures are absent.
-        ///
-        /// `ara3d/AC-20-Smiley-West-10-Bldg.ifc` was the original third leg but is
-        /// not, and never was, in `tests/models/manifest.json` — `pnpm fixtures`
-        /// cannot fetch it, so this leg silently never ran. Swapped for
-        /// `ara3d/advanced_model.ifc` (35MB, in the manifest), which serves the
-        /// same role: a third large, structurally distinct real model. The test
-        /// is model-agnostic (byte-identical parallel-vs-serial STEP scan), so any
-        /// large real fixture exercises the same property.
-        #[test]
-        fn fixtures_byte_identical() {
-            for rel in [
-                "ara3d/schependomlaan.ifc",
-                "ara3d/advanced_model.ifc",
-                "various/01_BIMcollab_Example_ARC.ifc",
-            ] {
-                let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
-                let Ok(content) = std::fs::read(&path) else {
-                    eprintln!("skipping {rel}: fixture absent — run `pnpm fixtures`");
-                    continue;
-                };
-                assert_parallel_matches_serial(&content, rel);
-                assert_eq!(
-                    super::super::build_entity_index_parallel(&content),
-                    build_entity_index(&content),
-                    "public build_entity_index_parallel != serial for {rel}"
-                );
-            }
-        }
+        (None, scanner.skipped_oversized_ids())
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+#[path = "parallel_scan_tests.rs"]
+mod tests;

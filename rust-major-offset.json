@@ -1,0 +1,12 @@
+{
+  "$comment": "How many MAJOR versions ahead of the npm packages the published Rust crates run. scripts/sync-versions.js applies it when writing the Rust manifests; scripts/check-rust-major-offset.mjs fails CI when the manifests and this file disagree. See scripts/lib/rust-major-offset.mjs for why an offset and not an absolute override, and docs/contributing/release.md for how to raise it. A non-zero offset MUST carry `reason` and `refs`.",
+  "majorOffset": 2,
+  "reason": "Rust-only break #2: carrying the representation-item id on GPU-instanced occurrences (#2985) adds a public field to four structs that are exhaustively constructible through the public API, so any downstream struct literal stops compiling. Measured with cargo-semver-checks against the published 7.1.1, --release-type minor: ifc-lite-geometry 196 checks, 195 pass, 1 fail, 58 skip (InstanceMeshRef::item_id, DecodedInstance::item_id); ifc-lite-processing the same verdict (InstanceRecord::geometry_item_id, RawInstanceOccurrence::geometry_item_id). Both report \"semver requires new major version: 1 major and 0 minor checks failed\" on constructible_struct_adds_field. None of the four is #[non_exhaustive], and adding that attribute would itself be breaking, so the feature cannot ship without a major. The npm packages carry only a minor, and a changeset written about the TypeScript API cannot express a Rust break. The previous offset of 1 is retained in history: this raises it rather than replacing it, because the offset is cumulative against the npm major.",
+  "refs": [
+    "#2985",
+    "#3199",
+    "#3210",
+    "#3216",
+    "#3227"
+  ]
+}

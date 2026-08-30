@@ -115,11 +115,13 @@ export function colorByStorey(reg: EntityRegistry): { groups: number } {
 
 export function colorByProperty(
   reg: EntityRegistry,
-  { type, sample }: {
+  { type, sample, missingColor = [0.4, 0.4, 0.45, 1] }: {
     type: string;
     pset: string;
     property: string;
     sample: (expressId: number) => string | number | boolean | null;
+    /** Color for the `(missing)` bucket. Defaults to the original gray. */
+    missingColor?: ColorTuple;
   },
 ): { legend: Array<{ value: string; count: number; color: ColorTuple }> } {
   // `byType` values RECORDS — submeshes — and an element routinely tessellates
@@ -162,7 +164,7 @@ export function colorByProperty(
   const legend: Array<{ value: string; count: number; color: ColorTuple }> = [];
   let i = 0;
   for (const [value, bucket] of buckets) {
-    const color = value === '(missing)' ? [0.4, 0.4, 0.45, 1] as ColorTuple : PALETTE[i++ % PALETTE.length];
+    const color = value === '(missing)' ? missingColor : PALETTE[i++ % PALETTE.length];
     const c = new THREE.Color(color[0], color[1], color[2]);
     for (const r of bucket.records) {
       (r.mesh.material as THREE.MeshStandardMaterial).color.copy(c);

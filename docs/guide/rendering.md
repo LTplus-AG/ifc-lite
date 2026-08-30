@@ -410,6 +410,76 @@ canvas.addEventListener('click', async (e) => {
 });
 ```
 
+### Which representation item was picked
+
+`PickResult.expressId` names the product that was clicked. `PickResult.geometryItemId`
+names the `IfcRepresentationItem` that particular surface was built from, so a host can
+drill from one pane of a curtain wall down to its own entity in the IFC source instead of
+stopping at the wall. It is the same value under the same name as `MeshData.geometryItemId`
+from `@ifc-lite/geometry`, and it is reported on both pick paths: the GPU pick pass, and
+the CPU raycast fallback that every model past the pick-mesh budget takes.
+
+```typescript
+canvas.addEventListener('click', async (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const hit = await renderer.pick(e.clientX - rect.left, e.clientY - rect.top);
+  if (!hit) return;
+
+  console.log(`Product #${hit.expressId} ${store.entities.getTypeName(hit.expressId)}`);
+
+  if (hit.geometryItemId === undefined) {
+    // No item identity available for this hit. Not the same as "this product
+    // has no representation item" - see below.
+    return;
+  }
+
+  // Drill to the item's own STEP line in the original file. `entityIndex.byId`
+  // indexes every entity the file declares, representation items included; the
+  // entity table behind `store.entities` only carries products and relations,
+  // so it cannot resolve an item id.
+  const ref = store.entityIndex.byId.get(hit.geometryItemId);
+  if (ref) {
+    console.log(`Item #${ref.expressId} is a ${ref.type}`);
+    const stepLine = store.source.decodeUtf8(ref.byteOffset, ref.byteOffset + ref.byteLength);
+    console.log(stepLine); // #4711=IFCEXTRUDEDAREASOLID(...);
+  }
+});
+```
+
+`EntityRef` carries the byte range along with the type. When you hold the index as its
+concrete `CompactEntityIndex`, `getByteRange(id)` returns `{ byteOffset, byteLength }`
+on its own, without building an `EntityRef`.
+
+#### When `geometryItemId` is absent
+
+The key is left off the result, never written as `0`. A real id of `0` cannot happen
+because STEP express ids start at `#1`, so `hit.geometryItemId === undefined` is the only
+"no answer" state and it never collides with a valid id.
+
+Absent means **no item identity is available for this hit**, not that the product has no
+representation item. It is absent when:
+
+- the element fell back to the single merged mesh path, where one mesh stands for the
+  whole product;
+- the geometry came through the cached `IfcMappedItem` path, where a representation map's
+  items really are merged into one piece;
+- the hit landed on a colour-merged batch, which holds many entities at once, so whatever
+  item id the batch carries belongs to none of them individually.
+
+Every case in that list is geometry whose item identity was merged away before the pick
+ran. GPU-instanced occurrences are **not** in it: they carry their own item id, because
+the instanced wire format was extended to hold one. See
+[Item ids on instanced occurrences](./geometry.md#item-ids-on-instanced-occurrences) for
+that path, including how to tell a shard that declares no ids from a piece that has none.
+
+The list is the set of merge cases known today, not a closed set. Treat the check as the
+contract: read `geometryItemId` and handle `undefined`, rather than
+deciding up front which geometry can answer.
+
+Rectangle select stays product-level. `Renderer.pickRect` resolves to a `Set<number>` of
+express ids, which has no room for a per-item answer. Drill down with a single click on
+the piece you want.
+
 ### Multi-Selection
 
 ```typescript
@@ -754,6 +824,67 @@ occurrences; the renderer mirrors `selectedIds`, `hiddenIds`, and
 `isolatedIds` onto the instanced pass automatically. Instancing is
 primary-model only: disable it (`enableInstancing: false` on the
 `GeometryProcessor`) for federated multi-model loads.
+
+## Annotation Overlays
+
+IFC annotation content — dimension lines, leaders, room labels, grid axes and their
+bubbles — is uploaded separately from meshed geometry, as world-space lines, texts
+and filled regions.
+
+```typescript
+import type { SymbolicTextInput, SymbolicFillInput } from '@ifc-lite/renderer';
+
+const labels: SymbolicTextInput[] = [
+  {
+    worldPos: [12, 3, 4],
+    dirX: 1,
+    dirZ: 0,
+    height: 0.25,
+    content: 'A',
+    alignment: 'center',
+  },
+];
+
+renderer.uploadAnnotationTexts3D(labels);
+```
+
+Each upload REPLACES the whole array, so pass everything that should be visible;
+an empty array clears the channel.
+
+### Keeping content out of the camera framing
+
+By default every uploaded text and fill grows the model's bounding box, so a
+camera fit or a "zoom to extents" will frame it. That is right for annotations,
+which are often the only content a drawing-like file has. It is wrong for
+reference content that deliberately reaches past the building — a grid bubble
+sits beyond the end of its axis, so framing on it pushes the model off screen.
+
+Set `definesExtent: false` to draw an item without letting the scene bounds grow
+to it:
+
+```typescript
+import type { SymbolicFillInput } from '@ifc-lite/renderer';
+
+const gridBubble: SymbolicFillInput = {
+  points: new Float32Array([0, 0, 1, 0, 1, 1]),
+  holesOffsets: new Uint32Array(0),
+  worldY: 3,
+  color: [0.2, 0.2, 0.2, 1],
+  // Drawn, but the camera will not frame on it.
+  definesExtent: false,
+};
+
+renderer.uploadAnnotationFills3D([gridBubble]);
+```
+
+The field is optional and defaults to `true`, so existing callers keep the
+behaviour they had. It is set per item rather than per call because an upload
+replaces the whole array — one call cannot carry both a framing annotation and a
+non-framing grid bubble otherwise.
+
+The equivalent for 3D line overlays is keyed by channel rather than per item:
+`setLineOverlay('annotation', …)` grows the bounds and `setLineOverlay('grid', …)`
+does not.
 
 ## Complete Example
 

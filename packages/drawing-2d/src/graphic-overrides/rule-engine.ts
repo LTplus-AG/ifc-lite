@@ -22,6 +22,7 @@ import type {
   LineStylePreset,
   DashPattern,
 } from './types.js';
+import { getIfcSubtypes } from './ifc-type-hierarchy.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CONSTANTS
@@ -63,45 +64,6 @@ const DEFAULT_STYLE: ResolvedGraphicStyle = {
   opacity: 1,
   drawOrder: 0,
 };
-
-// ═══════════════════════════════════════════════════════════════════════════
-// IFC TYPE HIERARCHY (for subtype matching)
-// ═══════════════════════════════════════════════════════════════════════════
-
-const IFC_TYPE_HIERARCHY: Record<string, string[]> = {
-  IfcWall: ['IfcWallStandardCase', 'IfcWallElementedCase'],
-  IfcSlab: ['IfcSlabStandardCase', 'IfcSlabElementedCase'],
-  IfcBeam: ['IfcBeamStandardCase'],
-  IfcColumn: ['IfcColumnStandardCase'],
-  IfcDoor: ['IfcDoorStandardCase'],
-  IfcWindow: ['IfcWindowStandardCase'],
-  IfcMember: ['IfcMemberStandardCase'],
-  IfcPlate: ['IfcPlateStandardCase'],
-  IfcStair: ['IfcStairFlight'],
-  IfcRamp: ['IfcRampFlight'],
-  IfcBuildingElement: [
-    'IfcWall', 'IfcSlab', 'IfcBeam', 'IfcColumn', 'IfcDoor', 'IfcWindow',
-    'IfcStair', 'IfcRamp', 'IfcRoof', 'IfcRailing', 'IfcCovering',
-  ],
-  IfcDistributionElement: [
-    'IfcDistributionFlowElement', 'IfcDistributionControlElement',
-  ],
-  IfcFlowElement: [
-    'IfcFlowTerminal', 'IfcFlowSegment', 'IfcFlowFitting', 'IfcFlowController',
-  ],
-};
-
-function getIfcSubtypes(ifcType: string): string[] {
-  const subtypes = IFC_TYPE_HIERARCHY[ifcType] || [];
-  const allSubtypes = [...subtypes];
-
-  // Recursively get subtypes of subtypes
-  for (const subtype of subtypes) {
-    allSubtypes.push(...getIfcSubtypes(subtype));
-  }
-
-  return allSubtypes;
-}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CRITERION EVALUATION
@@ -249,30 +211,6 @@ function evaluateCriterion(criterion: OverrideCriterion, element: ElementData): 
       if (operator === 'notExists') return !exists;
 
       return exists;
-    }
-
-    case 'material': {
-      if (!criterion.materialNames || !element.materials) {
-        return false;
-      }
-
-      return criterion.materialNames.some((pattern) =>
-        element.materials!.some((m) =>
-          m.toLowerCase().includes(pattern.toLowerCase())
-        )
-      );
-    }
-
-    case 'layer': {
-      if (!criterion.layerNames || !element.layers) {
-        return false;
-      }
-
-      return criterion.layerNames.some((pattern) =>
-        element.layers!.some((l) =>
-          l.toLowerCase().includes(pattern.toLowerCase())
-        )
-      );
     }
 
     case 'expressId': {

@@ -31,7 +31,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, chmodSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -263,6 +263,65 @@ test('an UNREADABLE package is not silently treated as an absent one', () => {
   }
 });
 
+// --- Dotfiles are not candidate packages, and skipping them must not soften
+//     the ENOTDIR refusal directly above ---
+//
+// macOS drops a `.DS_Store` FILE into `packages/` and `apps/` as soon as
+// Finder opens them. Statting `packages/.DS_Store/package.json` raises
+// ENOTDIR, so the refusal above fired on it and failed the whole Lint lane —
+// observed in four separate fresh worktrees. CI never sees this (no Finder on
+// the runners), so a green CI proves nothing about it either way; these two
+// cases are where the pairing is pinned.
+//
+// They are deliberately a PAIR. Making the flake go away is trivial and has an
+// obvious wrong fix (catch ENOTDIR and continue), which would delete the
+// refusal this gate exists for. The second case is the one that would catch
+// that: the same tree carries a dotfile AND a non-dotfile ENOTDIR candidate,
+// and the gate must ignore exactly one of them and refuse the other.
+
+test('a `.DS_Store` dotfile in packages/ or apps/ is not a candidate package (PR 3350)', () => {
+  const dir = writeTree({
+    'packages/real-one/package.json': pkgJson('vitest run'),
+    'packages/real-one/src/a.test.ts': '// test a\n',
+    'apps/real-app/package.json': pkgJson('vitest run'),
+    'apps/real-app/src/b.test.ts': '// test b\n',
+    // Finder's leavings: a FILE, so `<name>/package.json` gives ENOTDIR.
+    'packages/.DS_Store': '\x00\x01Bud1',
+    'apps/.DS_Store': '\x00\x01Bud1',
+  });
+  try {
+    const { status, out } = runOn(dir);
+    assert.equal(status, 0, out);
+    assert.match(out, /check-test-glob-coverage: OK \(2 packages audited, 0 unrun test files\)/);
+    assert.doesNotMatch(out, /DS_Store/, 'a dotfile must not appear in the output at all');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('skipping dotfiles does not soften the refusal: a non-dotfile ENOTDIR candidate in the SAME tree still fails (PR 3350)', () => {
+  const dir = writeTree({
+    'packages/real-one/package.json': pkgJson('vitest run'),
+    'packages/real-one/src/a.test.ts': '// test a\n',
+    'packages/.DS_Store': '\x00\x01Bud1',
+    // Not a dotfile, and not a directory: `packages/blocked/package.json`
+    // raises ENOTDIR exactly as `.DS_Store` did. This one must still be
+    // refused — that is the whole point of the guard.
+    'packages/blocked': 'i am a file, not a package directory\n',
+  });
+  try {
+    const { status, out } = runOn(dir);
+    assert.equal(status, 1, `expected a non-zero exit on a non-dotfile ENOTDIR candidate, got ${status}: ${out}`);
+    assert.match(out, /cannot read package manifest/);
+    assert.match(out, /packages\/blocked\/package\.json/);
+    assert.match(out, /Refusing to treat an unreadable path as an absent one/);
+    assert.doesNotMatch(out, /DS_Store/, 'the dotfile must not be what tripped it');
+    assert.doesNotMatch(out, /OK \(/, 'must not print a success line at all');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // --- Direct unit tests on the exported glob helpers ---
 
 test('globToRegExp: ** matches zero or more path segments', () => {
@@ -286,4 +345,59 @@ test('parseViteInclude: reads the first top-level include array, ignoring a nest
 
 test('parseViteInclude: returns null when there is no include key (vitest default applies)', () => {
   assert.equal(parseViteInclude('export default defineConfig({ test: {} });'), null);
+});
+
+test('an unreadable vitest config is reported by the gate, not as a raw stack', (t) => {
+  // Windows chmod does not remove read permission, and root ignores the mode
+  // bits, so on either the config stays readable and the case cannot be built.
+  if (process.platform === 'win32') return t.skip('chmod does not gate reads on Windows');
+  if (process.getuid?.() === 0) return t.skip('root reads a 000 file regardless of mode');
+
+  const files = {
+    'packages/fixture/package.json': pkgJson('vitest run'),
+    'packages/fixture/src/a.test.ts': 'test("a", () => {})',
+    'packages/fixture/vitest.config.ts': 'export default { test: { include: ["src/**/*.test.ts"] } }',
+  };
+  const dir = writeTree(files);
+  const config = join(dir, 'packages/fixture/vitest.config.ts');
+
+  try {
+    // BOTH directions. Readable first, so a fixture that fails for some
+    // unrelated reason cannot be mistaken for the refusal firing. Inside the
+    // try, or a failure here leaks the tree instead of cleaning up.
+    const readable = runOn(dir);
+    assert.equal(readable.status, 0, `readable config should audit cleanly:\n${readable.out}`);
+
+    chmodSync(config, 0o000);
+    const locked = runOn(dir);
+    assert.equal(locked.status, 1, 'an unreadable config must fail the gate');
+    assert.match(locked.out, /cannot read vitest config/);
+    // The point of the change. It already exited 1 before; what it did NOT do
+    // was say why, and an uncaught readFileSync stack sends the reader into
+    // node internals instead of at their own file mode.
+    //
+    // Matched on the payload rather than a `at readFileSync (node:fs` frame:
+    // V8 names the frame after the call form, so the frame spelling is voided
+    // by a change to how this gate imports fs. See the sibling in
+    // check-test-wiring.test.mjs, which was vacuous for that exact reason.
+    assert.doesNotMatch(locked.out, /permission denied, open/, 'must not surface a raw node error');
+  } finally {
+    chmodSync(config, 0o644);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('--root with no argument is refused cleanly, without a raw stack', () => {
+  // This runs during MODULE EVALUATION, before the entry point's try/catch
+  // exists, so a `fail` here escapes and prints a stack on top of the message.
+  // It did exactly that, two ways at once: `class FailError` was declared below
+  // `fail`, so the throw was a ReferenceError from the temporal dead zone.
+  // check-test-wiring.test.mjs has always had this case; this file did not,
+  // which is why a gate whose own tests forbid raw stacks was printing one.
+  const r = spawnSync(process.execPath, [CHECKER, '--root'], { encoding: 'utf8' });
+  const out = `${r.stdout}${r.stderr}`;
+  assert.equal(r.status, 1, 'a missing --root argument must fail the gate');
+  assert.match(out, /--root requires a directory argument/);
+  assert.doesNotMatch(out, /ReferenceError/, 'must not die in the temporal dead zone');
+  assert.doesNotMatch(out, /\n\s+at /, 'must not surface a raw node stack');
 });

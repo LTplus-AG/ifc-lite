@@ -23,8 +23,12 @@ import {
   toGlobalIdFromModels,
   fromGlobalIdFromModels,
   toGlobalIdForRef,
+  localIdInParseRange,
+  localIdInOverlay,
   type ForwardModelMapLike,
+  type OwnershipView,
 } from './globalId.js';
+import { modelRemovedScope } from './teardown-scope.js';
 
 type ReverseEntry = Pick<FederatedModel, 'idOffset' | 'maxExpressId'>;
 
@@ -136,5 +140,99 @@ describe('fromGlobalIdFromModels', () => {
         );
       }
     }
+  });
+});
+
+/**
+ * `localIdInParseRange` / `localIdInOverlay` — the "does a surviving model
+ * own this global id" rule (#3343). Exported here so `modelSlice.ts`'s
+ * resolvers and `teardown-scope.ts`'s `modelRemovedScope` survivor check
+ * share ONE implementation instead of three hand-written copies (the third,
+ * `fromGlobalIdFromModels` above, stays a deliberate fourth spelling — see
+ * its own boundary comment).
+ */
+describe('localIdInParseRange', () => {
+  it('returns the local id inside [idOffset, idOffset + maxExpressId], both boundaries included', () => {
+    const model = { idOffset: 1000, maxExpressId: 300 };
+    assert.equal(localIdInParseRange(model, 1000), 0);
+    assert.equal(localIdInParseRange(model, 1300), 300);
+    assert.equal(localIdInParseRange(model, 1150), 150);
+  });
+
+  it('returns null one past either boundary', () => {
+    const model = { idOffset: 1000, maxExpressId: 300 };
+    assert.equal(localIdInParseRange(model, 999), null);
+    assert.equal(localIdInParseRange(model, 1301), null);
+  });
+});
+
+describe('localIdInOverlay', () => {
+  it('returns null with no mutation view', () => {
+    const model = { idOffset: 0, maxExpressId: 100 };
+    assert.equal(localIdInOverlay(model, 150, undefined), null);
+  });
+
+  it('returns null for an id inside the parse range — not overlay\'s business', () => {
+    const model = { idOffset: 0, maxExpressId: 100 };
+    const view: OwnershipView = { getNewEntity: () => ({}) };
+    assert.equal(localIdInOverlay(model, 50, view), null);
+  });
+
+  it('returns the local id when the overlay view holds an entity above maxExpressId', () => {
+    const model = { idOffset: 0, maxExpressId: 100 };
+    const view: OwnershipView = { getNewEntity: (id) => (id === 150 ? {} : null) };
+    assert.equal(localIdInOverlay(model, 150, view), 150);
+  });
+
+  it('returns null when the overlay view has nothing at that local id', () => {
+    const model = { idOffset: 0, maxExpressId: 100 };
+    const view: OwnershipView = { getNewEntity: () => null };
+    assert.equal(localIdInOverlay(model, 150, view), null);
+  });
+});
+
+/**
+ * The scenario `modelSlice.ts`'s `resolveGlobalIdFromModels` doc-comment
+ * warns about: model A's overlay-allocated ids can land inside model B's
+ * PARSE-time range, because overlay ids simply increment past A's
+ * `maxExpressId` with no knowledge of where B starts. `resolveGlobalIdFromModels`
+ * handles this with two full passes (every model's parse range, THEN every
+ * model's overlay) specifically so a real, parsed entity in B always wins
+ * identity resolution over a synthetic overlay id in A.
+ *
+ * `modelRemovedScope`'s survivor check only ever needs "does SOME survivor
+ * own this id", not "which one" — and that boolean is the same regardless of
+ * which model or which check (parse range vs. overlay) is tried first, since
+ * it is a plain OR across survivors. This test pins that: it is what makes it
+ * safe for `modelRemovedScope` to check each survivor's parse range THEN
+ * overlay before moving to the next, rather than mirroring the two full
+ * passes `resolveGlobalIdFromModels` needs for identity.
+ */
+describe('parse-range vs. overlay ownership — cross-model shadowing', () => {
+  it('a survivor\'s PARSE-range id is not mistaken for stale even when an earlier survivor\'s overlay could also claim it', () => {
+    // A: parse range [0, 100], overlay claims local id 150 (global 150).
+    // B: parse range [101, 200] — globalId 150 falls in B's parse range too
+    // (150 - 101 = 49, inside [0, 100]).
+    const modelA = { id: 'A', idOffset: 0, maxExpressId: 100 };
+    const modelB = { id: 'B', idOffset: 101, maxExpressId: 100 };
+    const overlayA: OwnershipView = { getNewEntity: (id) => (id === 150 ? {} : null) };
+
+    // Both models claim globalId 150 by DIFFERENT rules — A via overlay, B
+    // via its own parse range. `modelRemovedScope` only needs to know it is
+    // owned by someone, and does not care which; it must not report this id
+    // stale regardless of survivor iteration order.
+    const state = {
+      models: new Map([
+        ['A', modelA],
+        ['B', modelB],
+      ]),
+      mutationViews: new Map([['A', overlayA]]),
+    } as Parameters<typeof modelRemovedScope>[0];
+
+    const scope = modelRemovedScope(state, 'unrelated-removed-model');
+    assert.equal(scope.isStale(150), false, 'globalId 150 is owned (by B\'s parse range, at least) — must not be purged');
+
+    // And B's own answer for that id is unambiguous, independent of A's overlay.
+    assert.equal(localIdInParseRange(modelB, 150), 49);
   });
 });

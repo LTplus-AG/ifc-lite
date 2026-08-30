@@ -536,7 +536,7 @@ export class IfcAPI {
      * `Float32Array` of 3D line-list vertices `[x0,y0,z0, x1,y1,z1, …]` in
      * the renderer's Y-up world space (RTC-subtracted, metres). Consecutive
      * samples form line segments. Feed straight to
-     * `renderer.uploadAnnotationLines3D(...)`.
+     * `renderer.setLineOverlay('alignment', ...)`.
      *
      * Returns an empty array when the file has no alignments (or none with a
      * resolvable Axis curve), so the caller can clear the overlay cheaply.
@@ -552,7 +552,7 @@ export class IfcAPI {
      * Parse the file and return every `IfcGridAxis` as a flat `Float32Array`
      * of 3D line-list vertices `[x0,y0,z0, x1,y1,z1, …]` (one segment per
      * axis) in the renderer's Y-up world space (RTC-subtracted, metres). Feed
-     * straight to a line pipeline (e.g. `uploadAnnotationLines3D`).
+     * straight to a line pipeline (e.g. `renderer.setLineOverlay('grid', …)`).
      *
      * Returns an empty array when the file has no grids, so the caller can
      * clear the overlay cheaply.
@@ -655,8 +655,9 @@ export class IfcAPI {
      * range_end)` shard; the main thread stitches the returned columns into the
      * full entity index (byte-identical to the single-threaded
      * `build_entity_index`) by binary-searching each shard for the previous
-     * shard's `handoff`. Delegates to `ifc_lite_processing::scan_shard_classified`
-     * — a separately-maintained loop over the same `EntityScanner` primitive as
+     * shard's `handoff`. Delegates to
+     * `ifc_lite_processing::scan_shard_classified_with_refusals` — a
+     * separately-maintained loop over the same `EntityScanner` primitive as
      * `scan_shard` (the one the native `build_entity_index_parallel` fans across
      * cores), plus a per-record class column this sharded path also needs. The
      * two loops' records/handoff are kept in parity by a dedicated test
@@ -666,12 +667,24 @@ export class IfcAPI {
      * Byte offsets returned are GLOBAL (relative to file start), so shards
      * concatenate without rewriting. Returns a plain object:
      *   `{ ids: Uint32Array, starts: Uint32Array, lengths: Uint32Array,
-     *      classes: Uint8Array, handoff: number }`
+     *      classes: Uint8Array, handoff: number,
+     *      oversizedIdStarts: Uint32Array }`
      * where `classes` is the parallel per-record prepass class byte
      * (`PREPASS_CLASS_*`: named code in the low bits plus the geometry-job /
      * type-candidate flags) the host filters on to rebuild pre-pass span
      * lists, and `handoff` is the global start of the first entity at/after
      * `range_end` (the next shard's first real entity), or `-1` at EOF.
+     *
+     * `oversizedIdStarts` carries the global start byte of every record this
+     * shard refused for an express id above `u32::MAX` (#3395). Offsets, not
+     * a count, and deliberately NOT reported from here: a shard begins at an
+     * arbitrary byte, so it can start inside a quoted value and refuse a
+     * string literal shaped like `#4294967297=IFCWALL(` — text no file
+     * declared. Reporting per shard would warn "skipped N records" on a file
+     * that is fine. The host's stitch keeps only the offsets at/after the
+     * retained boundary it computed for this shard and reports once, which is
+     * what makes the number attributable to a record the stitch retained
+     * (#3430).
      */
     scanEntityIndexShard(data: Uint8Array, range_start: number, range_end: number): any;
     /**
@@ -1772,7 +1785,8 @@ export function get_memory(): any;
  * Initialize the WASM module.
  *
  * This function is called automatically when the WASM module is loaded.
- * It sets up panic hooks for better error messages in the browser console.
+ * It sets up panic hooks for better error messages in the browser console,
+ * and points core's scan diagnostics at that console too.
  */
 export function init(): void;
 
@@ -2145,7 +2159,6 @@ export interface InitOutput {
     readonly zonesplitjs_piece: (a: number, b: number) => number;
     readonly zonesplitjs_pieceCount: (a: number) => number;
     readonly zonesplitjs_remainderFailed: (a: number) => number;
-    readonly init: () => void;
     readonly meshoutlinejs_contourCount: (a: number) => number;
     readonly symbolicpolyline_pointCount: (a: number) => number;
     readonly get_memory: () => number;
@@ -2164,6 +2177,7 @@ export interface InitOutput {
     readonly zonepiecejs_volume: (a: number) => number;
     readonly zonesplitjs_sumErrorRel: (a: number) => number;
     readonly zonesplitjs_wholeVolume: (a: number) => number;
+    readonly init: () => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;

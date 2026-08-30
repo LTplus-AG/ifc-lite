@@ -443,7 +443,9 @@ class Renderer {
   pick(x: number, y: number, options?: PickOptions): Promise<PickResult | null>;
 
   // Scene access
-  getScene(): Scene;
+  // Narrower than the package-internal `Scene` class on purpose: `SceneContents`
+  // names the scene members callers actually use, and widening it is a major bump.
+  getScene(): SceneContents;
   getPipeline(): RenderPipeline | null;
   getGPUDevice(): GPUDevice | null;
   isReady(): boolean;
@@ -455,7 +457,11 @@ class Renderer {
 
 Visibility is passed via `render()` options (`hiddenIds`, `isolatedIds`); frustum culling via `enableFrustumCulling` plus a `spatialIndex` from `@ifc-lite/spatial`.
 
-Other exports: `Camera`, `Scene`, `Picker`, `PickingManager`, `Raycaster`, `SnapDetector`, `BVH`, `SectionPlaneRenderer`, `Section2DOverlayRenderer`, `PointCloudRenderer`, `FederationRegistry` (multi-model id ranges), and the section-cap / plane-basis helpers.
+`PickResult` carries `expressId` (the product) plus the optional `modelIndex`, `worldXYZ` and `geometryItemId`. The last is the `IfcRepresentationItem` the clicked surface was built from, and the key is absent, never `0`, where the renderer has no item identity for that hit. See [Which representation item was picked](../guide/rendering.md#which-representation-item-was-picked).
+
+Other exports: `Camera`, `Picker`, `Raycaster`, `SnapDetector`, `BVH`, `RaycastEngine`, `SectionPlaneRenderer`, `PointCloudRenderer`, `FederationRegistry` (multi-model id ranges), and the section-cap / plane-basis helpers.
+
+`Scene` and `Section2DOverlayRenderer` are package-internal from 2.0: reach the scene through `getScene(): SceneContents`, and the 3D line overlays through `Renderer.setLineOverlay`. `PickingManager` is package-internal from 2.0 as well: its constructor takes the now-internal `Scene`, so an exported class nobody could construct would have been worse than no export. Pick through `Renderer.pick` / `Renderer.pickRect`.
 
 ---
 

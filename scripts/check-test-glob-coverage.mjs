@@ -72,12 +72,32 @@
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isMainEntry } from './lib/is-main-entry.mjs';
+import { listWorkspacePackages } from './lib/list-workspace-packages.mjs';
+
+// Deliberately a literal here rather than imported from the shared walk.
+// `scripts/lib/ci-path-coverage.mjs`'s `deriveInputs` reads only THIS file's own
+// source text and does not follow imports, so these two strings are what put
+// `packages/` and `apps/` into the CI-path-coverage census for this gate. Move
+// them into the lib and the ratchet silently stops checking that this gate can
+// be triggered by the paths it reads. (#3347)
+const PACKAGE_PARENTS = ['packages', 'apps'];
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 
+// Declared before any module-evaluation-time caller of `fail`. A class sits in
+// the temporal dead zone until its own line, so with this further down a `fail`
+// during module eval threw ReferenceError instead of FailError.
+export class FailError extends Error {}
+
 const rootFlagIdx = process.argv.indexOf('--root');
 if (rootFlagIdx !== -1 && !process.argv[rootFlagIdx + 1]) {
-  fail('--root requires a directory argument');
+  // console.error + exit, NOT `fail`, matching check-test-wiring.mjs. This runs
+  // during module evaluation, so a throw here escapes the entry point's
+  // try/catch at the bottom of the file and prints a raw stack on top of the
+  // message - which is precisely what this gate's own tests assert against.
+  console.error('\ncheck-test-glob-coverage: --root requires a directory argument\n');
+  process.exit(1);
 }
 const ROOT = rootFlagIdx === -1 ? join(SCRIPT_DIR, '..') : resolveArg(process.argv[rootFlagIdx + 1]);
 
@@ -91,11 +111,8 @@ export function fail(message) {
   throw new FailError(message);
 }
 
-export class FailError extends Error {}
-
 const TEST_FILE_RE = /\.(test|spec)\.(ts|tsx|mts|js|mjs)$/;
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'pkg', 'build', 'coverage', '.turbo', 'generated']);
-const PACKAGE_PARENTS = ['packages', 'apps'];
 
 /**
  * Lower bound on how many packages must actually get audited when this runs
@@ -228,9 +245,37 @@ const VITEST_CONFIG_NAMES = [
  * file by construction, nothing to check".
  */
 function resolveVitestGlobs(pkgDir, testLooking) {
+  // Deliberately `existsSync`, and deliberately NOT `existsOrThrow` from
+  // ./lib/exists-or-throw.mjs, which this file's package walk uses via
+  // listWorkspacePackages. Measured, both ways, on a chmod-000 config:
+  // `statSync` SUCCEEDS on an unreadable file (the mode bits gate open(2), not
+  // stat(2)), so existsOrThrow returns true here and the failure lands on the
+  // read below either way. Swapping it in was an inert guard - identical exit
+  // code and identical message with and without it.
+  //
+  // There is no silent shrink on this path to begin with: the read throws and
+  // the gate exits 1. The only defect was the SHAPE of that exit, a raw
+  // EACCES stack instead of this gate's own message, so that is all the
+  // try/catch below fixes. It buys diagnostics, not fail-closed - the path was
+  // already closed.
   const configName = VITEST_CONFIG_NAMES.find((n) => existsSync(join(pkgDir, n)));
   if (!configName) return null;
-  const source = readFileSync(join(pkgDir, configName), 'utf8');
+  const configPath = join(pkgDir, configName);
+  let source;
+  try {
+    source = readFileSync(configPath, 'utf8');
+  } catch (err) {
+    fail(
+      `cannot read vitest config ${configPath}: ${err.code || err.message}. ` +
+        'Its include: globs decide which of this package\'s test files count as ' +
+        'reached, so the audit cannot answer for this package without it.',
+    );
+    // Same rethrow the two refusals in lib/list-workspace-packages.mjs carry.
+    // Without it a `fail` that returns leaves `source` undefined and
+    // parseViteInclude throws a TypeError on it: closed, but with the
+    // diagnosis destroyed, which is the outcome this branch exists to stop.
+    throw err;
+  }
   const includes = parseViteInclude(source);
   if (includes === null) return null;
   if (includes.length === 0) {
@@ -302,56 +347,8 @@ export function auditPackage(pkgDir, pkgJson) {
   return { testLooking, matched, missed };
 }
 
-/**
- * Does this path exist? Throws if the answer is UNKNOWABLE.
- *
- * `existsSync` answers false for every failure, including EACCES, so an
- * unreadable directory is indistinguishable from an absent one. That is the
- * same "absence reads as success" defect this gate was fixed for -- one stage
- * earlier, in DISCOVERY rather than in the walk. Measured before this change:
- * a `chmod 000` package carrying a real test script reported
- * `OK (1 packages audited, 0 unrun test files)` and exit 0, with the locked
- * package silently missing from the count.
- */
-function existsOrThrow(path, what) {
-  try {
-    statSync(path);
-    return true;
-  } catch (err) {
-    if (err.code === 'ENOENT') return false;
-    fail(
-      `cannot read ${what} ${path}: ${err.code || err.message}. ` +
-        'Refusing to treat an unreadable path as an absent one -- that is how a ' +
-        'package drops out of the audit without anyone noticing.',
-    );
-  }
-}
-
-export function listPackages(root, seenParents = []) {
-  const out = [];
-  for (const parent of PACKAGE_PARENTS) {
-    const parentDir = join(root, parent);
-    if (!existsOrThrow(parentDir, 'package parent')) continue;
-    seenParents.push(parent);
-    for (const name of readdirSync(parentDir).sort()) {
-      const pkgDir = join(parentDir, name);
-      const pkgJsonPath = join(pkgDir, 'package.json');
-      if (!existsOrThrow(pkgJsonPath, 'package manifest')) continue;
-      let pkgJson;
-      try {
-        pkgJson = JSON.parse(readFileSync(pkgJsonPath, 'utf8'));
-      } catch (err) {
-        fail(`${pkgJsonPath} is not valid JSON: ${err.message}`);
-      }
-      out.push({ rel: `${parent}/${name}`, dir: pkgDir, pkgJson });
-    }
-  }
-  return out;
-}
-
 function main() {
-  const seenParents = [];
-  const packages = listPackages(ROOT, seenParents);
+  const { packages, seenParents } = listWorkspacePackages(ROOT, fail, PACKAGE_PARENTS);
 
   // Anti-vacuity, structural: true of the real repo AND of every synthetic
   // fixture tree the regression harness builds, so it costs the harness
@@ -417,7 +414,7 @@ if they are dead and should be deleted, delete them. Do not add a skip.
   console.log(`check-test-glob-coverage: OK (${audited} packages audited, 0 unrun test files)`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMainEntry(import.meta.url)) {
   try {
     main();
   } catch (err) {

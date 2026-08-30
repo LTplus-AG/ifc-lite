@@ -7,8 +7,9 @@
  */
 
 import type { EntityTable, StringTable } from '@ifc-lite/data';
-import { IfcTypeEnum, IfcTypeEnumToString, IfcTypeEnumFromString, IFC_ENTITY_NAMES } from '@ifc-lite/data';
+import { entityTableFromColumns } from '@ifc-lite/data';
 import { BufferWriter, BufferReader } from '../utils/buffer-utils.js';
+import { FORMAT_VERSION } from '../types.js';
 
 /**
  * Write EntityTable to buffer
@@ -26,11 +27,16 @@ import { BufferWriter, BufferReader } from '../utils/buffer-utils.js';
  *   - geometryIndex: Int32Array[count]
  *   - typeRangeCount: uint16
  *   - typeRanges: [type:uint16, start:uint32, end:uint32][]
+ *   - rawTypeName: Uint32Array[count] (string indices; v15+ only)
  *
  * The typeRanges triples are vestigial on read: `readEntities` derives the
  * spans from the typeEnum column instead, because pre-#3101 caches stored
  * `start + count` here and the format version does not distinguish them.
  * They are still written so the section layout is unchanged.
+ *
+ * `rawTypeName` is appended AFTER the typeRanges triples rather than beside
+ * the other columns so the v14 prefix stays byte-identical; a v15 reader
+ * handed a v14 section simply stops where the old section ended.
  */
 export function writeEntities(writer: BufferWriter, entities: EntityTable): void {
   const count = entities.count;
@@ -59,12 +65,29 @@ export function writeEntities(writer: BufferWriter, entities: EntityTable): void
     writer.writeUint32(range.start);
     writer.writeUint32(range.end);
   }
+
+  // Raw IFC class names (v15+). Most concrete IFC product classes have no
+  // `IfcTypeEnum` member, so without this column `getTypeName` can only
+  // answer 'Unknown' for them after a cache load, while the live parser
+  // table answers with the real class. A table built without the column
+  // (server hydration) writes zeroes, which read back as the empty string
+  // and degrade to the same enum-only answer as before.
+  const raw = entities.rawTypeName;
+  writer.writeTypedArray(raw && raw.length >= count ? raw.subarray(0, count) : new Uint32Array(count));
 }
 
 /**
- * Read EntityTable from buffer
+ * Read EntityTable from buffer.
+ *
+ * `version` is the cache header's FORMAT_VERSION. v15+ sections carry a
+ * trailing `rawTypeName` column; older ones stop after the typeRanges
+ * triples and must not be read past.
  */
-export function readEntities(reader: BufferReader, strings: StringTable): EntityTable {
+export function readEntities(
+  reader: BufferReader,
+  strings: StringTable,
+  version: number = FORMAT_VERSION,
+): EntityTable {
   const count = reader.readUint32();
 
   // Read columnar arrays
@@ -84,8 +107,9 @@ export function readEntities(reader: BufferReader, strings: StringTable): Entity
   // caches written before #3101 hold `start + count`, later ones hold a
   // `[firstRow, lastRow + 1]` span, and FORMAT_VERSION was deliberately not
   // bumped (header.ts accepts any version <= FORMAT_VERSION by design), so
-  // both vintages arrive here indistinguishable. The spans are derived from
-  // the live typeEnum column below instead.
+  // both vintages arrive here indistinguishable. `entityTableFromColumns`
+  // derives the spans from the live typeEnum column instead, which is why
+  // `typeRanges` is deliberately left off the columns object below.
   const typeRangeCount = reader.readUint16();
 
   for (let i = 0; i < typeRangeCount; i++) {
@@ -94,120 +118,30 @@ export function readEntities(reader: BufferReader, strings: StringTable): Entity
     reader.readUint32(); // end (or count, for a pre-#3101 cache)
   }
 
-  // Build EntityTable with methods
-  const HAS_GEOMETRY = 0b00000001;
+  // Raw IFC class names, v15+ only (see writeEntities). Left undefined for
+  // older sections, where the bytes are simply not there — reading them
+  // would consume whatever section follows.
+  const rawTypeName = version >= 15 ? reader.readUint32Array(count) : undefined;
 
-  // Build correct per-type index arrays. Every row of a type is listed, so
-  // this survives IFC files that interleave types — unlike the serialized
-  // typeRanges, which cannot express more than one contiguous run per type.
-  const typeIndices = new Map<IfcTypeEnum, number[]>();
-  for (let i = 0; i < count; i++) {
-    const t = typeEnum[i] as IfcTypeEnum;
-    let arr = typeIndices.get(t);
-    if (!arr) {
-      arr = [];
-      typeIndices.set(t, arr);
-    }
-    arr.push(i);
-  }
-
-  // Derive the spans from the same index arrays, so the one structure that
-  // survives interleaving feeds both getByType() and the public typeRanges.
-  const typeRanges = new Map<IfcTypeEnum, { start: number; end: number }>();
-  for (const [type, indices] of typeIndices) {
-    typeRanges.set(type, { start: indices[0], end: indices[indices.length - 1] + 1 });
-  }
-
-  // PRE-BUILD INDEX MAP: O(n) once, then O(1) lookups
-  // This eliminates O(n²) when getName/hasGeometry are called for every entity
-  const idToIndex = new Map<number, number>();
-  for (let i = 0; i < count; i++) {
-    idToIndex.set(expressId[i], i);
-  }
-
-  const indexOfId = (id: number): number => {
-    return idToIndex.get(id) ?? -1;
-  };
-
-  // Build GlobalId → expressId map for BCF integration
-  const globalIdToExpressId = new Map<string, number>();
-  for (let i = 0; i < count; i++) {
-    const gidString = strings.get(globalId[i]);
-    if (gidString) {
-      globalIdToExpressId.set(gidString, expressId[i]);
-    }
-  }
-
-  // Additive display-class overrides (UI retype). See entity-table.ts.
-  const typeOverrides = new Map<number, string>();
-
-  return {
-    count,
-    expressId,
-    typeEnum,
-    globalId,
-    name,
-    description,
-    objectType,
-    flags,
-    containedInStorey,
-    definedByType,
-    geometryIndex,
-    typeRanges,
-
-    getGlobalId: (id) => {
-      const idx = indexOfId(id);
-      return idx >= 0 ? strings.get(globalId[idx]) : '';
+  // One shared implementation with the live parser table. Keeping a second
+  // copy here is what let the `rawTypeName` fallback go missing from cache
+  // loads while the parser had it: every entity of a class absent from
+  // `IfcTypeEnum` came back as 'Unknown'.
+  return entityTableFromColumns(
+    {
+      count,
+      expressId,
+      typeEnum,
+      globalId,
+      name,
+      description,
+      objectType,
+      flags,
+      containedInStorey,
+      definedByType,
+      geometryIndex,
+      rawTypeName,
     },
-    getName: (id) => {
-      const idx = indexOfId(id);
-      return idx >= 0 ? strings.get(name[idx]) : '';
-    },
-    getDescription: (id) => {
-      const idx = indexOfId(id);
-      return idx >= 0 ? strings.get(description[idx]) : '';
-    },
-    getObjectType: (id) => {
-      const idx = indexOfId(id);
-      return idx >= 0 ? strings.get(objectType[idx]) : '';
-    },
-    getTypeName: (id) => {
-      const override = typeOverrides.get(id);
-      if (override !== undefined) return override;
-      const idx = indexOfId(id);
-      return idx >= 0 ? IfcTypeEnumToString(typeEnum[idx]) : 'Unknown';
-    },
-    hasGeometry: (id) => {
-      const idx = indexOfId(id);
-      return idx >= 0 ? (flags[idx] & HAS_GEOMETRY) !== 0 : false;
-    },
-    getByType: (type) => {
-      const indices = typeIndices.get(type);
-      if (!indices) return [];
-      const ids: number[] = new Array(indices.length);
-      for (let i = 0; i < indices.length; i++) {
-        ids[i] = expressId[indices[i]];
-      }
-      return ids;
-    },
-    getTypeEnum: (id) => {
-      const override = typeOverrides.get(id);
-      if (override !== undefined) return IfcTypeEnumFromString(override);
-      const idx = indexOfId(id);
-      return idx >= 0 ? typeEnum[idx] as IfcTypeEnum : IfcTypeEnum.Unknown;
-    },
-    setTypeOverride: (id, typeName) => {
-      if (typeName === null) typeOverrides.delete(id);
-      // Canonicalise on the way in, matching `entityTableFromColumns`
-      // (packages/data/src/entity-table.ts). `getTypeName` echoes the
-      // override back verbatim and consumers like
-      // `isSpatialStructureTypeName` match the PascalCase form, so storing
-      // the caller's raw UPPERCASE token makes a retyped entity invisible to
-      // them. All three EntityTable implementations must agree here.
-      else typeOverrides.set(id, IFC_ENTITY_NAMES[typeName.toUpperCase()] ?? typeName.toUpperCase());
-    },
-    getExpressIdByGlobalId: (gid) => {
-      return globalIdToExpressId.get(gid) ?? -1;
-    },
-  };
+    strings,
+  );
 }

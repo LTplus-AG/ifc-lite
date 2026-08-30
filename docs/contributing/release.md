@@ -51,6 +51,22 @@ The root `package.json` wires the flow together:
 
 Packages version independently. Changesets still propagates internal dependency bumps, and `scripts/sync-versions.js` keeps the root package version, Cargo.toml workspace version, and internal Rust workspace dependency versions aligned with the highest released workspace package version.
 
+### Expressing a Rust-only major
+
+A changeset states a bump level for **npm packages**. A change can be additive in TypeScript and breaking in Rust — a new field on a `pub` struct callers construct literally, an extra parameter on a `pub fn` — and the crate would then publish under the TypeScript bump level.
+
+`rust-major-offset.json` at the repo root is how that is said out loud:
+
+```json
+{ "majorOffset": 1, "reason": "…which crate's public API broke…", "refs": ["#3210"] }
+```
+
+`sync-versions.js` adds `majorOffset` to the **major** of the npm-derived version when it writes the Rust manifests. npm 6.1.0 with `majorOffset: 1` publishes the crates at 7.1.0; the npm packages, the root `package.json` and the `v*` tag stay on 6.1.0. At `majorOffset: 0` the two versions are the same string; the repo is at `2`, so the crates run two majors ahead of the npm packages.
+
+- Minor and patch keep tracking npm, so raising the offset is a **once per Rust-only major** edit, not a per-release chore.
+- A non-zero offset without a `reason` and at least one `refs` entry is a hard failure: a permanent major-version claim about a published crate has to say what broke.
+- `pnpm check:rust-major-offset` (run on every PR) fails when the committed manifests do not match what the offset implies. Whether the offset is **large enough** is a different question, answered by `scripts/check-rust-semver.mjs` against the crate live on crates.io.
+
 ### Workflow
 
 1. Create a PR with your changes and a changeset file

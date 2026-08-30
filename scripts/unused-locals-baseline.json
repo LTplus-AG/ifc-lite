@@ -1,6 +1,6 @@
 {
-  "apps/viewer": 345,
-  "apps/viewer-embed": 348,
+  "apps/viewer": 344,
+  "apps/viewer-embed": 345,
   "examples/babylonjs-viewer": 1,
   "examples/collab-demo": 1,
   "examples/threejs-collab": 1,
@@ -9,7 +9,7 @@
   "packages/bcf-api": 0,
   "packages/cache": 6,
   "packages/clash": 1,
-  "packages/cli": 7,
+  "packages/cli": 6,
   "packages/codegen": 5,
   "packages/collab": 7,
   "packages/collab-server": 3,
@@ -48,6 +48,7 @@
   "packages/source-fixture": 0,
   "packages/source-msgraph": 0,
   "packages/spatial": 0,
+  "packages/timing-ladder": 0,
   "packages/viewer": 0,
   "packages/world-frame-fixtures": 0
 }

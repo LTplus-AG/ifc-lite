@@ -361,3 +361,144 @@ END-ISO-10303-21;
         "metre-authored file must still report 1.0, got {scale}"
     );
 }
+
+// --- Issue #3421: the raw-byte REFERENCE readers, not just the definition
+// scanner, must refuse a `#<digits>` above `u32::MAX` rather than wrapping it
+// onto a real low-numbered entity. #3395 fixed only the definition side
+// (`EntityScanner`, see `parser::scanner_tests`); these pin the six decoder
+// sites and the fast_parse pair have their own tests in `fast_parse_tests.rs`.
+//
+// `4294967297` is the defect value: `% 2^32 == 1`, so an unfixed reader binds
+// it to a real `#1` rather than merely erroring. `4294967295` is `u32::MAX`
+// exactly and must still resolve — the bound is inclusive.
+
+/// One fixture exercised through BOTH the definition scanner and a reference
+/// reader: `#4294967295` is a real, independently defined entity, distinct
+/// from `#1`. If the reference readers ever grew a second, disagreeing copy
+/// of the bound, this would show up as `#1`'s coordinates being served twice
+/// (aliasing) or the boundary id's own coordinates going missing — not as a
+/// bare "does it error" check.
+#[test]
+fn definition_and_reference_readers_agree_at_the_express_id_boundary() {
+    let content = "\
+#1=IFCCARTESIANPOINT((1.,1.,1.));
+#4294967295=IFCCARTESIANPOINT((9.,9.,9.));
+#2=IFCPOLYLOOP((#1,#4294967295,#4294967297));
+";
+
+    // Definition side: the scanner must see #1 and #4294967295 as distinct
+    // entities, and #4294967297 is never a definition here at all.
+    let mut scanner = EntityScanner::new(content);
+    let mut defined_ids = Vec::new();
+    while let Some((id, _type_name, _start, _end)) = scanner.next_entity() {
+        defined_ids.push(id);
+    }
+    assert_eq!(defined_ids, vec![1, u32::MAX, 2]);
+
+    // Reference side: get_polyloop_point_ids_fast reads the SAME
+    // `#4294967295` and `#4294967297` bytes out of #2's attribute list.
+    let mut decoder = EntityDecoder::new(content);
+    let point_ids = decoder
+        .get_polyloop_point_ids_fast(2)
+        .expect("polyloop with two resolvable point refs");
+    assert_eq!(
+        point_ids,
+        vec![1, u32::MAX],
+        "the oversized ref must be dropped, and u32::MAX must resolve, matching the definition side"
+    );
+}
+
+/// `get_polyloop_coords_fast` needs >= 3 resolved points to return a polygon
+/// at all, so the previous test's 2-point case always yields `None` — this
+/// isolates the "oversized ref dropped, others still resolve" behaviour with
+/// enough real points to actually get coordinates back.
+#[test]
+fn get_polyloop_coords_fast_drops_oversized_ref_but_resolves_the_rest() {
+    let content = "\
+#1=IFCCARTESIANPOINT((1.,0.,0.));
+#2=IFCCARTESIANPOINT((0.,1.,0.));
+#4294967295=IFCCARTESIANPOINT((0.,0.,1.));
+#3=IFCPOLYLOOP((#1,#2,#4294967295,#4294967297));
+";
+    let mut decoder = EntityDecoder::new(content);
+    let coords = decoder
+        .get_polyloop_coords_fast(3)
+        .expect("3 of the 4 referenced points resolve, which is >= the minimum of 3");
+    assert_eq!(
+        coords,
+        vec![(1., 0., 0.), (0., 1., 0.), (0., 0., 1.)],
+        "the oversized ref (#4294967297) must be dropped, not aliased onto #1's coordinates"
+    );
+}
+
+/// Same boundary, through the cached point-lookup path
+/// (`get_polyloop_coords_cached`): the oversized ref must fail the whole
+/// polygon's `coords.len() == expected_count` check (missing point, same as
+/// any other unresolvable reference) rather than resolve via a wrapped alias.
+#[test]
+fn get_polyloop_coords_cached_rejects_oversized_ref() {
+    let content = "\
+#1=IFCCARTESIANPOINT((1.,0.,0.));
+#2=IFCCARTESIANPOINT((0.,1.,0.));
+#3=IFCPOLYLOOP((#1,#2,#4294967297));
+";
+    let mut decoder = EntityDecoder::new(content);
+    assert_eq!(
+        decoder.get_polyloop_coords_cached(3),
+        None,
+        "an oversized ref must leave the polygon short of expected_count, not resolve via alias"
+    );
+}
+
+/// `get_polyloop_point_ids_fast` (issue #3421): pins the drop-not-alias
+/// behaviour directly, independent of the combined test above.
+#[test]
+fn get_polyloop_point_ids_fast_drops_oversized_ref() {
+    let content = "#1=IFCPOLYLOOP((#2,#4294967297,#4294967295));\n";
+    let mut decoder = EntityDecoder::new(content);
+    assert_eq!(
+        decoder.get_polyloop_point_ids_fast(1),
+        Some(vec![2, u32::MAX])
+    );
+}
+
+/// `get_entity_ref_list_fast` (issue #3421): same contract as
+/// `get_polyloop_point_ids_fast`, different accessor and record shape.
+#[test]
+fn get_entity_ref_list_fast_drops_oversized_ref() {
+    let content = "#1=IFCCLOSEDSHELL((#2,#4294967297,#4294967295));\n";
+    let mut decoder = EntityDecoder::new(content);
+    assert_eq!(
+        decoder.get_entity_ref_list_fast(1),
+        Some(vec![2, u32::MAX])
+    );
+}
+
+/// `get_first_entity_ref_fast` (issue #3421): an oversized first reference
+/// must refuse (`None`), not resolve to `#1`.
+#[test]
+fn get_first_entity_ref_fast_refuses_oversized_ref() {
+    let content = "#1=IFCMAPPEDITEM(#4294967297,$);\n";
+    let mut decoder = EntityDecoder::new(content);
+    assert_eq!(decoder.get_first_entity_ref_fast(1), None);
+
+    // Control: the same accessor resolves an ordinary reference, and the
+    // inclusive boundary (u32::MAX) still resolves too.
+    let content = "#1=IFCMAPPEDITEM(#4294967295,$);\n";
+    let mut decoder = EntityDecoder::new(content);
+    assert_eq!(decoder.get_first_entity_ref_fast(1), Some(u32::MAX));
+}
+
+/// `get_face_bound_fast` (issue #3421): an oversized loop reference must
+/// refuse the whole face bound (`None`), not resolve to a real, wrong loop.
+#[test]
+fn get_face_bound_fast_refuses_oversized_loop_ref() {
+    let content = "#1=IFCFACEBOUND(#4294967297,.T.);\n";
+    let mut decoder = EntityDecoder::new(content);
+    assert_eq!(decoder.get_face_bound_fast(1), None);
+
+    // Control: the inclusive boundary still resolves, with the right id.
+    let content = "#1=IFCFACEBOUND(#4294967295,.T.);\n";
+    let mut decoder = EntityDecoder::new(content);
+    assert_eq!(decoder.get_face_bound_fast(1), Some((u32::MAX, true, false)));
+}

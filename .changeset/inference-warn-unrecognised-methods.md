@@ -1,0 +1,13 @@
+---
+'@ifc-lite/extensions': minor
+---
+
+Flag `bim.<ns>.<method>` calls the capability catalogue never classified, instead of only flagging unknown namespaces.
+
+`inferCapabilities` (`src/inference/capability.ts`) documents a design rule of surfacing unknowns so a reviewer can investigate, but it set `observation.unknown` from the namespace alone. `INFERENCE_CATALOGUE` (`src/inference/catalogue.ts`) resolves capability per method: a namespace maps to `defaultCapabilities` plus a `methods` map where capability varies by method. A method missing from that map found its namespace known, reported `unknown: false`, and fell through to the namespace default with nothing telling the reviewer this particular call had never been looked at.
+
+`unknown` now comes from a new `isRecognisedMethod(namespace, method)`. A namespace with no `methods` map is flat — one capability covers all of it, so every method is recognised. A namespace with a `methods` map is differentiated, and membership in that map is what "classified" means, so an absent method is now reported as unrecognised. The capability itself is unchanged in every case: `lookupNamespaceMethod` still returns the namespace default, so nothing is under-granted and no grant moves. What changes is what the "Promote to tool" screen tells a human, which is why this is a `minor` rather than a `patch`: `unknown` is part of the exported `InferenceObservation`, and it flips for calls that previously came back clean.
+
+That reading of the `methods` map only holds if the map lists every real bridge method, including the ones whose answer is the namespace default — otherwise a method that exists and is granted correctly would be reported as a gap. Three namespaces were relying on the default instead, so their real methods are now written out at the capability they already resolved to: `mutate.setProperty`, `mutate.setAttribute`, `mutate.deleteProperty`, `mutate.undo` and `mutate.redo` at the namespace's deliberate `model.mutate:*` wildcard, `export.download` at `export.create:*` (it writes caller-supplied content under a caller-supplied filename, so no format target is narrower), and `viewer.select` at `viewer.read`. None of those changes an inferred capability; they record a classification that was previously implicit.
+
+Nothing machine-checks a differentiated namespace's map against `@ifc-lite/sandbox`'s `NAMESPACE_SCHEMAS`, so the two can still drift — but now in the safe direction: a bridge method added without a catalogue decision warns until someone makes one. Flat namespaces stay outside this mechanism entirely; giving one a `methods` map is what opts it in.

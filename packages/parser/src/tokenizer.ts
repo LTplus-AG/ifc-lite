@@ -9,15 +9,23 @@
 
 import { safeUtf8Decode } from '@ifc-lite/data';
 
-import { countNewlines, opensLiteralOrComment, skipLexical } from './step-lexing.js';
+import { isIndexableExpressId } from './express-id.js';
+import { countNewlines, findEntityLength, opensLiteralOrComment, skipLexical } from './step-lexing.js';
 
 export class StepTokenizer {
   private buffer: Uint8Array;
   private position: number = 0;
   private lineNumber: number = 1;
+  private oversizedIds: number = 0;
 
   constructor(buffer: Uint8Array) {
     this.buffer = buffer;
+  }
+
+  /** Records the last scan refused for an out-of-contract express id
+   *  (express-id.ts, #3395). Reset per scan; the caller reports it. */
+  get oversizedIdCount(): number {
+    return this.oversizedIds;
   }
 
   /**
@@ -27,6 +35,7 @@ export class StepTokenizer {
   *scanEntities(): Generator<{ expressId: number; type: string; offset: number; length: number; line: number }> {
     this.position = 0;
     this.lineNumber = 1;
+    this.oversizedIds = 0;
 
     while (this.position < this.buffer.length) {
       // Look for '#' character (entity ID marker)
@@ -71,7 +80,7 @@ export class StepTokenizer {
         }
 
         // Find matching closing parenthesis to get full entity length
-        const entityLength = this.findEntityLength(startOffset);
+        const entityLength = findEntityLength(this.buffer, this.position, startOffset);
         if (entityLength > 0) {
           // Step past the whole record, as Rust's next_entity does. Leaving
           // `position` at the '(' made this loop re-walk the body, which was
@@ -121,6 +130,7 @@ export class StepTokenizer {
   *scanEntitiesFast(): Generator<{ expressId: number; type: string; offset: number; length: number; line: number }> {
     this.position = 0;
     this.lineNumber = 1;
+    this.oversizedIds = 0;
 
     // Pre-compute common byte codes
     const HASH = 0x23;      // '#'
@@ -174,6 +184,17 @@ export class StepTokenizer {
         // Check for '='
         if (pos >= len || buf[pos] !== EQUALS) continue;
         pos++;
+
+        // Storage contract, not just overflow: see express-id.ts (#3395).
+        // Tested only now that `#<digits>[ws]*=` has matched, which is the
+        // DECLARATION shape Rust's `EntityScanner` validates before it
+        // refuses. Refusing above the '=' check counted references too: the
+        // `continue` resumes inside the refused record's argument list
+        // (unlike the accepted path, which skips to the terminating ';'), so
+        // `#4294967297=IFCWALL(#4294967298,#4294967299,...)` reported three
+        // skipped records for the one record actually dropped. A count that
+        // overstates is the same class of defect as one that undercounts.
+        if (!isIndexableExpressId(expressId)) { this.oversizedIds++; continue; }
 
         // Skip whitespace
         while (pos < len) {
@@ -302,6 +323,22 @@ export class StepTokenizer {
     }
 
     if (digits === 0) return null;
+    // Same storage contract as scanEntitiesFast; see express-id.ts (#3395).
+    // And the same rule about WHICH refusals count: only a declaration,
+    // `#<digits>[ws]*=`. `scanEntities` resumes one byte into a refused
+    // record and walks its argument list, so an oversized `#ref` in there
+    // reaches this method too. Look ahead rather than consume — `position`
+    // must stay where the caller's recovery expects it.
+    if (!isIndexableExpressId(id)) {
+      let probe = pos;
+      while (probe < this.buffer.length) {
+        const c = this.buffer[probe];
+        if (c === 0x20 || c === 0x09 || c === 0x0D || c === 0x0A) probe++;
+        else break;
+      }
+      if (probe < this.buffer.length && this.buffer[probe] === 0x3D) this.oversizedIds++;
+      return null;
+    }
     this.position = pos;
     return id;
   }
@@ -347,51 +384,5 @@ export class StepTokenizer {
         break;
       }
     }
-  }
-
-  private findEntityLength(startOffset: number): number {
-    let pos = this.position;
-    let depth = 0;
-    let inString = false;
-
-    while (pos < this.buffer.length) {
-      const char = this.buffer[pos];
-
-      if (char === 0x27) { // Single quote (string delimiter)
-        if (inString) {
-          // Check for escaped quote ('') - STEP uses doubled quotes
-          if (pos + 1 < this.buffer.length && this.buffer[pos + 1] === 0x27) {
-            pos += 2; // Skip escaped quote
-            continue;
-          }
-          inString = false;
-        } else {
-          inString = true;
-        }
-        pos++;
-        continue;
-      }
-
-      if (inString) {
-        pos++;
-        continue;
-      }
-
-      if (char === 0x28) { // '('
-        depth++;
-        pos++;
-      } else if (char === 0x29) { // ')'
-        depth--;
-        pos++;
-        if (depth === 0) {
-          // Found matching closing parenthesis
-          return pos - startOffset;
-        }
-      } else {
-        pos++;
-      }
-    }
-
-    return 0; // No matching closing parenthesis found
   }
 }

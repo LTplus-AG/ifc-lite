@@ -106,7 +106,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="border-t-2 border-zinc-200 dark:border-zinc-800 divide-y divide-zinc-100 dark:divide-zinc-900">
-          {pset.properties.map((prop: { name: string; value: unknown; isMutated?: boolean; type?: number; dataType?: string }) => {
+          {pset.properties.map((prop: { name: string; value: unknown; isMutated?: boolean; type?: number; dataType?: string }, index: number) => {
             const parsed = parsePropertyValue(prop.value);
             // Names render VERBATIM: the parse path already decoded them (see
             // the note on `parsePropertyValue`), and decoding a second time
@@ -119,7 +119,10 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
 
             return (
               <div
-                key={prop.name}
+                // A property set's own property list may repeat a name (the same
+                // slack the pset-name uniqueness comment above documents, one
+                // level down); index disambiguates the React key.
+                key={`${prop.name}-${index}`}
                 data-prop-key={propKey}
                 className={`flex items-start justify-between gap-2 px-3 py-2 text-xs group/prop transition-colors ${
                   isFocused

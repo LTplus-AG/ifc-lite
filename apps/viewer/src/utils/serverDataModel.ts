@@ -15,9 +15,7 @@ import type { DataModel } from '@ifc-lite/server-client';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import {
   REL_TYPE_MAP as CANONICAL_REL_TYPE_MAP,
-  CompactEntityIndexBuilder,
   EMPTY_SOURCE_BYTES,
-  type CompactEntityIndex,
 } from '@ifc-lite/parser';
 import {
   comparePropertyValues,
@@ -26,15 +24,12 @@ import {
   RelationshipType,
   IfcTypeEnumFromString,
   IfcTypeEnumToString,
-  EntityFlags,
   PropertyValueType,
   QuantityType,
   isBuildingLikeSpatialType,
   isStoreyLikeSpatialType,
-  IFC_ENTITY_NAMES,
   type SpatialHierarchy,
   type SpatialNode,
-  type EntityTable,
   type RelationshipGraph,
   type PropertyTable,
   type PropertySet,
@@ -44,6 +39,7 @@ import {
 } from '@ifc-lite/data';
 import { StringTable } from '@ifc-lite/data';
 import type { SpatialIndex } from '@ifc-lite/spatial';
+import { buildEntityTable } from './serverEntityTable';
 
 // ============================================================================
 // Types
@@ -265,159 +261,6 @@ function buildSpatialHierarchy(
   };
 }
 
-// ============================================================================
-// Entity Table Building
-// ============================================================================
-
-/**
- * Build EntityTable from server data model
- */
-function buildEntityTable(
-  dataModel: DataModel,
-  strings: StringTable
-): { entities: EntityTable; entityById: CompactEntityIndex; typeGroups: Map<IfcTypeEnum, number[]> } {
-  // Columnar consumption (issue #1841): iterate the decoder's raw columns by
-  // index instead of a per-entity Map (V8 caps Map at 2^24 entries).
-  const cols = dataModel.entities.columns;
-  const entityCount = cols.count;
-
-  // Pre-allocate TypedArrays
-  const expressId = new Uint32Array(entityCount);
-  const typeEnumArr = new Uint16Array(entityCount);
-  const globalIdArr = new Uint32Array(entityCount);
-  const nameArr = new Uint32Array(entityCount);
-  const descriptionArr = new Uint32Array(entityCount);
-  const objectTypeArr = new Uint32Array(entityCount);
-  // Tag / PredefinedType from the v4 data-model payload (issue #1765).
-  const tagArr = new Uint32Array(entityCount);
-  const predefinedTypeArr = new Uint32Array(entityCount);
-  const flagsArr = new Uint8Array(entityCount);
-  const containedInStoreyArr = new Int32Array(entityCount).fill(-1);
-  const definedByTypeArr = new Int32Array(entityCount).fill(-1);
-  const geometryIndexArr = new Int32Array(entityCount).fill(-1);
-
-  // Maps for fast lookup
-  const globalIdToExpressId = new Map<string, number>();
-  const typeGroups = new Map<IfcTypeEnum, number[]>();
-
-  // Canonical compact byId index (replaces the hand-rolled Map of faked
-  // EntityRef objects). The server has no source buffer, so byteOffset /
-  // byteLength are 0 — matching the previous faked EntityRef exactly.
-  const byIdBuilder = new CompactEntityIndexBuilder(entityCount);
-
-  // Single pass through entity columns
-  for (let idx = 0; idx < entityCount; idx++) {
-    const id = cols.expressId[idx];
-    expressId[idx] = id;
-    const typeName = cols.typeName[idx] ?? '';
-    const typeVal = IfcTypeEnumFromString(typeName);
-    typeEnumArr[idx] = typeVal;
-    const globalIdString = cols.globalId[idx] || '';
-    globalIdArr[idx] = strings.intern(globalIdString);
-    if (globalIdString) {
-      globalIdToExpressId.set(globalIdString, id);
-    }
-    nameArr[idx] = strings.intern(cols.name[idx] || '');
-    descriptionArr[idx] = strings.intern(cols.description?.[idx] || '');
-    objectTypeArr[idx] = strings.intern(cols.objectType?.[idx] || '');
-    tagArr[idx] = strings.intern(cols.tag?.[idx] || '');
-    predefinedTypeArr[idx] = strings.intern(cols.predefinedType?.[idx] || '');
-    flagsArr[idx] = cols.hasGeometry[idx] !== 0 ? EntityFlags.HAS_GEOMETRY : 0;
-
-    byIdBuilder.add(id, typeName, 0, 0);
-
-    if (!typeGroups.has(typeVal)) {
-      typeGroups.set(typeVal, []);
-    }
-    typeGroups.get(typeVal)!.push(idx);
-  }
-
-  const entityById = byIdBuilder.build();
-
-  // Rows above were filled in column order, so the ServerEntityIndex row
-  // position IS the EntityTable index — binary search instead of an
-  // idToIndex Map (which would hit the same 2^24 ceiling).
-  const indexOfId = (id: number): number => dataModel.entities.rowIndexOf(id);
-
-  // Additive display-class overrides (UI retype). See entity-table.ts.
-  const typeOverrides = new Map<number, string>();
-
-  const entities: EntityTable = {
-    count: entityCount,
-    expressId,
-    typeEnum: typeEnumArr,
-    globalId: globalIdArr,
-    name: nameArr,
-    description: descriptionArr,
-    objectType: objectTypeArr,
-    flags: flagsArr,
-    containedInStorey: containedInStoreyArr,
-    definedByType: definedByTypeArr,
-    geometryIndex: geometryIndexArr,
-    typeRanges: new Map(), // Deprecated - use getByType which uses typeGroups directly
-    getGlobalId: (id) => {
-      const i = indexOfId(id);
-      return i >= 0 ? strings.get(globalIdArr[i]) : '';
-    },
-    getName: (id) => {
-      const i = indexOfId(id);
-      return i >= 0 ? strings.get(nameArr[i]) : '';
-    },
-    getDescription: (id) => {
-      const i = indexOfId(id);
-      return i >= 0 ? strings.get(descriptionArr[i]) : '';
-    },
-    getObjectType: (id) => {
-      const i = indexOfId(id);
-      return i >= 0 ? strings.get(objectTypeArr[i]) : '';
-    },
-    getTag: (id) => {
-      const i = indexOfId(id);
-      return i >= 0 ? strings.get(tagArr[i]) : '';
-    },
-    getPredefinedType: (id) => {
-      const i = indexOfId(id);
-      return i >= 0 ? strings.get(predefinedTypeArr[i]) : '';
-    },
-    getTypeName: (id) => {
-      const override = typeOverrides.get(id);
-      if (override !== undefined) return override;
-      const i = indexOfId(id);
-      return i >= 0 ? IfcTypeEnumToString(typeEnumArr[i]) : 'Unknown';
-    },
-    hasGeometry: (id) => {
-      const i = indexOfId(id);
-      return i >= 0 ? (flagsArr[i] & EntityFlags.HAS_GEOMETRY) !== 0 : false;
-    },
-    getByType: (type) => {
-      // Use typeGroups directly - indices stored there map to expressId array
-      const indices = typeGroups.get(type);
-      if (!indices) return [];
-      return indices.map(idx => expressId[idx]);
-    },
-    getTypeEnum: (id) => {
-      const override = typeOverrides.get(id);
-      if (override !== undefined) return IfcTypeEnumFromString(override);
-      const i = indexOfId(id);
-      return i >= 0 ? typeEnumArr[i] as IfcTypeEnum : IfcTypeEnum.Unknown;
-    },
-    setTypeOverride: (id, typeName) => {
-      if (typeName === null) typeOverrides.delete(id);
-      // Canonicalise on the way in, matching `entityTableFromColumns`
-      // (packages/data/src/entity-table.ts) and the cache-restored table.
-      // `getTypeName` echoes the override back verbatim and consumers like
-      // `isSpatialStructureTypeName` match the PascalCase form, so storing
-      // the caller's raw UPPERCASE token makes a retyped entity invisible to
-      // them. All three EntityTable implementations must agree here.
-      else typeOverrides.set(id, IFC_ENTITY_NAMES[typeName.toUpperCase()] ?? typeName.toUpperCase());
-    },
-    getExpressIdByGlobalId: (gid) => {
-      return globalIdToExpressId.get(gid) ?? -1;
-    },
-  };
-
-  return { entities, entityById, typeGroups };
-}
 
 // ============================================================================
 // Relationship Graph Building
@@ -703,8 +546,7 @@ export function convertServerDataModel(
     },
   };
 
-  /** Map server quantity type strings to QuantityType enum */
-  const mapQuantityType = (type: string): QuantityType => {
+  const mapQuantityType = (type: string): QuantityType => { // server quantity type string -> QuantityType
     switch (type.toLowerCase()) {
       case 'length': return QuantityType.Length;
       case 'area': return QuantityType.Area;
@@ -712,6 +554,7 @@ export function convertServerDataModel(
       case 'count': return QuantityType.Count;
       case 'weight': return QuantityType.Weight;
       case 'time': return QuantityType.Time;
+      case 'number': return QuantityType.Number; // IfcQuantityNumber, #3266's sibling here
       default: return QuantityType.Count;
     }
   };

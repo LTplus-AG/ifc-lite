@@ -22,7 +22,17 @@
  */
 
 import { serializeValue, SCHEMA_REGISTRY, type IfcAttributeValue } from '@ifc-lite/parser';
-import { QuantityType, formatStepReal } from '@ifc-lite/data';
+import { QuantityType, formatStepReal, escapeStepString } from '@ifc-lite/data';
+
+/**
+ * Re-exported so every existing `import { escapeStepString } from
+ * './step-serialization.js'` call site keeps working. The implementation
+ * lives once, in `@ifc-lite/data` (#3300) — this package used to keep its
+ * own byte-identical copy, which is exactly the duplication
+ * `packages/codegen/test/serialization-generator.test.ts` already forbids
+ * for the schema-agnostic serializer bundles.
+ */
+export { escapeStepString };
 
 /** EXPRESS base primitives a defined type ultimately resolves to. */
 const EXPRESS_PRIMITIVES = new Set(['BOOLEAN', 'LOGICAL', 'INTEGER', 'REAL', 'NUMBER', 'STRING', 'BINARY']);
@@ -116,59 +126,6 @@ export function serializeTypedMarker(type: string, value: string | number | bool
 }
 
 /**
- * Escape a string for STEP format: backslash and single-quote doubling, plus
- * non-ASCII directive encoding.
- *
- * Control characters (CR/LF and other C0 codes) are collapsed to a single
- * space so every generated STEP entity stays on one physical line and
- * round-trips through the line-oriented merge/convert paths.
- *
- * ISO 10303-21 6.3.3.4 restricts a string literal's plain-text bytes to the
- * "basic graphic" range 32-126; every other character is a control directive
- * (`\X\HH`, `\X2\HHHH\X0\`, `\X4\HHHHHHHH\X0\`), never a raw byte — and
- * buildingSMART's IFC string-encoding guidance states the same for the
- * IFC2X3/IFC4/IFC4X3 schemas this exporter targets: characters outside
- * decimal 32-126 "have to be encoded" (e.g. 'Ä' as `\X2\00C4\X0\`). A reader
- * that treats the file's bytes as ISO-8859-1 — the byte encoding the base
- * standard and most real consumers assume for these schemas — turns a raw
- * UTF-8 multi-byte sequence into mojibake or a broken parse; this exact
- * writer shape is a reported, reproduced defect in real IFC tooling
- * (IfcOpenShell#699/#1016; files rejected by Solibri). Encoded one character
- * at a time (never batching a run into one `\X2\...\X0\` block) to keep the
- * encoder trivially correct; ISO 10303-21 allows either.
- */
-export function escapeStepString(str: string): string {
-  const escaped = str
-    .replace(/\\/g, '\\\\')
-    .replace(/'/g, "''")
-    // eslint-disable-next-line no-control-regex
-    .replace(/[\x00-\x1F\x7F]+/g, ' ');
-  return encodeNonAsciiStepDirectives(escaped);
-}
-
-/**
- * Replace every character outside the STEP "basic graphic" range (32-126)
- * with its `\X2\`/`\X4\` directive. Must run AFTER backslash-doubling: the
- * directive's own backslashes are literal syntax the reader expects
- * undoubled, so escaping non-ASCII first would corrupt them when the
- * backslash-doubling pass ran afterward.
- */
-function encodeNonAsciiStepDirectives(str: string): string {
-  let out = '';
-  for (const ch of str) {
-    const cp = ch.codePointAt(0)!;
-    if (cp >= 32 && cp <= 126) {
-      out += ch;
-    } else if (cp <= 0xFFFF) {
-      out += `\\X2\\${cp.toString(16).toUpperCase().padStart(4, '0')}\\X0\\`;
-    } else {
-      out += `\\X4\\${cp.toString(16).toUpperCase().padStart(8, '0')}\\X0\\`;
-    }
-  }
-  return out;
-}
-
-/**
  * Convert a number to a valid STEP REAL literal.
  *
  * Handles NaN/Infinity (-> `0.`) and delegates the mantissa/`E` rewrite to the
@@ -192,6 +149,7 @@ export function quantityTypeToIfcType(type: QuantityType): string {
     case QuantityType.Count: return 'IFCQUANTITYCOUNT';
     case QuantityType.Weight: return 'IFCQUANTITYWEIGHT';
     case QuantityType.Time: return 'IFCQUANTITYTIME';
+    case QuantityType.Number: return 'IFCQUANTITYNUMBER';
     default: return 'IFCQUANTITYCOUNT';
   }
 }

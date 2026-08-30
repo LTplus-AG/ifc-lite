@@ -2,10 +2,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use super::super::broadphase::Aabb;
 use super::super::interner::Vid;
 use super::super::predicates::{orient2d_any, orient3d};
 use super::super::rational::point_of;
 use super::super::{DropAxis, ImplicitPoint, Sign};
+use super::ray_parity::{exact_seg_hits_tri, operand_extent, point_inside, ray_dir, sound_far};
 use super::{Arrangement, BoolOp, Tri};
 use num_traits::ToPrimitive;
 
@@ -23,59 +25,6 @@ fn e(p: [f64; 3]) -> ImplicitPoint {
     ImplicitPoint::Explicit(p)
 }
 
-/// EXACT segment–triangle intersection via `orient3d` (no epsilon): the segment
-/// `q1→q2` crosses triangle `t` iff its endpoints straddle `t`'s plane AND the
-/// line passes the same side of all three edges. A grazing hit (`orient3d == 0`)
-/// is rejected — the fixed generic ray direction makes those vanishingly rare.
-fn exact_seg_hits_tri(q1: [f64; 3], q2: [f64; 3], t: &Tri) -> bool {
-    let s1 = orient3d(&e(t[0]), &e(t[1]), &e(t[2]), &e(q1));
-    let s2 = orient3d(&e(t[0]), &e(t[1]), &e(t[2]), &e(q2));
-    if s1 == Sign::Zero || s2 == Sign::Zero || s1 == s2 {
-        return false;
-    }
-    let ea = orient3d(&e(q1), &e(q2), &e(t[0]), &e(t[1]));
-    let eb = orient3d(&e(q1), &e(q2), &e(t[1]), &e(t[2]));
-    let ec = orient3d(&e(q1), &e(q2), &e(t[2]), &e(t[0]));
-    ea != Sign::Zero && ea == eb && eb == ec
-}
-
-/// Ray-cast "far" distance: just past the operand's actual extent. Critically NOT
-/// a huge constant (1e7) — that blows the orient3d float-filter error bound so
-/// EVERY predicate escalates to BigRational (≈5000× slower). Sized to the operand,
-/// the float filter resolves the common case and only true grazing escalates.
-pub(super) fn operand_extent(tris: &[Tri]) -> f64 {
-    let mut hi = 1.0f64;
-    for t in tris {
-        for v in t {
-            for &c in v {
-                hi = hi.max(c.abs());
-            }
-        }
-    }
-    2.0 * hi + 1.0
-}
-
-/// The fixed generic ray direction for parity casts. No two components
-/// near-equal and no pairwise ratio near a simple architectural slope (1:1
-/// roofs, axis planes). The previous direction had x≈y and dz/dx≈1 — nearly
-/// PARALLEL to 45° roof slopes/ridge edges, so a roof-clipped wall's ray grazed
-/// the roof and edge-crossings (rejected, not counted) miscounted parity → the
-/// sub-ridge gable triangle was wrongly judged inside the cutter and removed
-/// (the "missing wall" over-clip). Shared by [`point_inside`] and the
-/// per-component AABB ray prefilter so they can never disagree.
-fn ray_dir() -> [f64; 3] {
-    [0.301_511_3, 0.557_328_1, 0.773_890_1]
-}
-
-/// Is point `p` inside the closed mesh `tris`? Exact ray-cast parity to a far
-/// point (`far_l` past the extent) along a fixed generic direction; each crossing
-/// tested by the exact predicate above.
-pub(super) fn point_inside(p: [f64; 3], tris: &[Tri], far_l: f64) -> bool {
-    let dir = ray_dir();
-    let far = [p[0] + dir[0] * far_l, p[1] + dir[1] * far_l, p[2] + dir[2] * far_l];
-    tris.iter().filter(|t| exact_seg_hits_tri(p, far, t)).count() % 2 == 1
-}
-
 /// BVH-accelerated [`point_inside`]: the `bvh` (built over `tris`) prunes the ray
 /// to the triangles whose AABB it may cross, and the EXACT crossing test runs only
 /// on those. The BVH candidate set is a conservative superset of the exact hits,
@@ -89,8 +38,13 @@ fn point_inside_bvh(
     far_l: f64,
     scratch: &mut Vec<u32>,
 ) -> bool {
-    let dir = ray_dir();
-    let far = [p[0] + dir[0] * far_l, p[1] + dir[1] * far_l, p[2] + dir[2] * far_l];
+    // Same far-endpoint soundness guarantee as `point_inside`, taken from the
+    // BVH's root AABB (the unpadded bound over every triangle) rather than an
+    // O(N) rescan.
+    let Some(bb) = bvh.root_aabb() else {
+        return false; // empty tree, no crossings to count
+    };
+    let far = sound_far(p, ray_dir(), far_l, bb);
     scratch.clear();
     bvh.ray_candidates(p, far, scratch);
     scratch
@@ -283,7 +237,10 @@ fn c_on_or_near_a(
 /// implicit points, no BigRational escalation, const float error bounds) — so the
 /// keep/drop verdict is byte-identical native==wasm, exactly like the existing
 /// on-plane centroid classification.
-fn solid_side(c: [f64; 3], dir: [f64; 3], other: &[Tri], far_l: f64) -> (bool, bool) {
+///
+/// `other_aabb` is `other`'s box (see [`point_inside`]), hoisted once by the
+/// caller rather than rescanned for each of the two probes below.
+fn solid_side(c: [f64; 3], dir: [f64; 3], other: &[Tri], far_l: f64, other_aabb: Aabb) -> (bool, bool) {
     // Unit-normalise `dir` so the step magnitude is plane-independent, then step a
     // small fraction of the operand extent off the plane — far enough that the
     // float predicate resolves the probe vs. the plane, near enough that no other
@@ -298,7 +255,10 @@ fn solid_side(c: [f64; 3], dir: [f64; 3], other: &[Tri], far_l: f64) -> (bool, b
     let u = [dir[0] / len * step, dir[1] / len * step, dir[2] / len * step];
     let p_plus = [c[0] + u[0], c[1] + u[1], c[2] + u[2]];
     let p_minus = [c[0] - u[0], c[1] - u[1], c[2] - u[2]];
-    (point_inside(p_plus, other, far_l), point_inside(p_minus, other, far_l))
+    (
+        point_inside(p_plus, other, far_l, other_aabb),
+        point_inside(p_minus, other, far_l, other_aabb),
+    )
 }
 
 /// The B operand as PAIRWISE-DISJOINT closed components (disjoint-cutter
@@ -361,6 +321,15 @@ impl<'a> BComponents<'a> {
     /// a slab test of `[p, p + dir·ext_k]` against the inflated AABB. Sound:
     /// the component's triangles lie inside the (un-inflated) AABB, so a
     /// segment that misses the inflated AABB has parity 0 there.
+    ///
+    /// NOTE this tests the UNEXTENDED endpoint, while the parity cast it gates
+    /// may be lengthened by [`sound_far`]. That is still sound, but only via
+    /// [`sound_far`]'s early return, so the dependency is stated here rather
+    /// than left to be re-derived: a rejection here means the short segment
+    /// missed the INFLATED box, hence the default endpoint is outside the
+    /// UN-inflated box, hence `sound_far` returns it unchanged and the segment
+    /// actually cast is the one this tested. Extending against a padded box
+    /// instead of the unpadded one would break this and silently under-count.
     fn ray_may_hit(&self, k: usize, p: [f64; 3]) -> bool {
         let dir = ray_dir();
         let far_l = self.exts[k];
@@ -395,11 +364,14 @@ impl<'a> BComponents<'a> {
     /// Is `p` inside the union of the components? (Pairwise-disjoint closed
     /// solids ⇒ inside exactly one ⇒ a per-component exact ray parity, each
     /// prefiltered by its AABB.)
+    ///
+    /// Passes the already-inflated `self.aabbs[k]` rather than rescanning `comp`.
+    /// It contains `comp`'s triangles, so the verdict is unchanged — not merely
+    /// faster: escalation counts and the boolean manifest are unaffected.
     fn inside(&self, p: [f64; 3]) -> bool {
-        self.comps
-            .iter()
-            .enumerate()
-            .any(|(k, comp)| self.ray_may_hit(k, p) && point_inside(p, comp, self.exts[k]))
+        self.comps.iter().enumerate().any(|(k, comp)| {
+            self.ray_may_hit(k, p) && point_inside(p, comp, self.exts[k], self.aabbs[k])
+        })
     }
 
     /// Regime-1 coincident-face probe across the components: the EXACT
@@ -468,10 +440,11 @@ fn on_interface_keep(
     c: [f64; 3],
     other: &[Tri],
     ext_other: f64,
+    other_aabb: Aabb,
     op: BoolOp,
 ) -> Option<bool> {
     let n = tri_normal(arr, tri);
-    let (op_plus, op_minus) = solid_side(c, n, other, ext_other);
+    let (op_plus, op_minus) = solid_side(c, n, other, ext_other, other_aabb);
     if op_plus == op_minus {
         // `c` is strictly inside/outside the other solid — NOT on its boundary;
         // the plain centroid ray-cast is well-defined, so defer to it. This is the
@@ -532,6 +505,10 @@ pub(super) fn boolean_vids_components(
     // boolean-heavy meshes). `a_band` (hoisted) feeds the near-surface band.
     let bvh_a = super::super::broadphase::Bvh::build(a);
     let a_band = NearBand::from_tris(a);
+    // Reuse the box the BVH build already computed, rather than rescanning `a` per
+    // coplanar-parent B triangle. `unwrap_or` matters only for an empty `a`, where
+    // the box is never read.
+    let a_aabb = bvh_a.root_aabb().unwrap_or(([0.0; 3], [0.0; 3]));
     let mut scratch: Vec<u32> = Vec::new();
     let dedup = matches!(op, BoolOp::Union | BoolOp::Intersection);
     let mut a_kept: HashSet<[Vid; 3]> = HashSet::new();
@@ -604,7 +581,7 @@ pub(super) fn boolean_vids_components(
             continue; // coplanar-shared B-copy: dropped (the A-copy is the kept one)
         }
         if cop_parent {
-            if let Some(keep) = on_interface_keep(arr, tri, c, a, ext_a, op) {
+            if let Some(keep) = on_interface_keep(arr, tri, c, a, ext_a, a_aabb, op) {
                 // regime 2 for B (coplanar-overlap parent only).
                 if keep {
                     let flip = matches!(op, BoolOp::Difference);
@@ -631,3 +608,11 @@ pub(super) fn rotate_min_first(t: [Vid; 3]) -> [Vid; 3] {
     let i = (0..3).min_by_key(|&k| t[k]).unwrap();
     [t[i], t[(i + 1) % 3], t[(i + 2) % 3]]
 }
+
+#[cfg(test)]
+#[path = "classify_tests.rs"]
+mod classify_tests;
+
+#[cfg(test)]
+#[path = "issue_3353_vid_census_tests.rs"]
+mod issue_3353_vid_census_tests;

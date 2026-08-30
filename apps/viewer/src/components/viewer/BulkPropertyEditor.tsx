@@ -116,6 +116,28 @@ interface BulkPropertyEditorProps {
   trigger?: React.ReactNode;
 }
 
+/** Parse "New Value" for a SET_PROPERTY action. `parseFloat(...) || 0` /
+ *  `parseInt(..., 10) || 0` used to coerce a non-numeric entry to `0`,
+ *  reused across the whole bulk selection (see `buildAction`) — returns a
+ *  failure instead, so the caller refuses the whole operation. Empty is
+ *  invalid too: this form has no "unset" affordance. */
+type BulkParseResult = { ok: true; value: string | number | boolean } | { ok: false; message: string };
+
+export function parseBulkSetPropertyValue(targetValue: string, valueType: PropertyValueType): BulkParseResult {
+  if (valueType === PropertyValueType.Real || valueType === PropertyValueType.Integer) {
+    const label = valueType === PropertyValueType.Real ? 'Real' : 'Integer';
+    const parsed = valueType === PropertyValueType.Real ? parseFloat(targetValue) : parseInt(targetValue, 10);
+    if (targetValue.trim() === '' || Number.isNaN(parsed)) {
+      return { ok: false, message: `"${targetValue}" is not a valid ${label} value.` };
+    }
+    return { ok: true, value: parsed };
+  }
+  if (valueType === PropertyValueType.Boolean) {
+    return { ok: true, value: targetValue.toLowerCase() === 'true' || targetValue === '1' };
+  }
+  return { ok: true, value: targetValue };
+}
+
 export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
   const { models } = useIfc();
   const getMutationView = useViewerStore((s) => s.getMutationView);
@@ -123,17 +145,13 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
   const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
   // Subscribe to mutationViews directly to trigger re-render when views are registered
   const mutationViews = useViewerStore((s) => s.mutationViews);
-  // Collab role gate, two layers deep. (1) canCollabEdit is injected straight into
-  // BulkQueryEngine's constructor (see mutation-guard.ts): bulk edits reach the
-  // mutation view's setProperty/setEntityType directly via applyAction, bypassing
-  // the store's own setProperty action (and its canCollabEdit() check) entirely, so
-  // the engine itself refuses a write for a viewer/commenter role as containment.
-  // (2) canEditInSession mirrors that same role check here in the component, the
-  // same way MainToolbar/AuthorTab gate Edit mode, so the Execute button is disabled
-  // and never gets clicked in the first place. Both layers read the one shared
-  // `roleCanEdit` rule that `canCollabEdit()` is itself built from, so a future
-  // role change cannot leave them disagreeing. null role = single-user, always
-  // editable.
+  // Collab role gate, two layers deep. (1) canCollabEdit is injected into
+  // BulkQueryEngine's constructor (mutation-guard.ts): bulk edits bypass the
+  // store's own setProperty (and its check) via applyAction, so the engine
+  // itself refuses a viewer/commenter write as containment. (2) canEditInSession
+  // mirrors that check here, like MainToolbar/AuthorTab gate Edit mode, so
+  // Execute stays disabled. Both read the shared `roleCanEdit` rule
+  // canCollabEdit() is built from. null role = single-user, always editable.
   const canCollabEdit = useViewerStore((s) => s.canCollabEdit);
   const collabEditRole = useViewerStore((s) => s.collabRole);
   const canEditInSession = roleCanEdit(collabEditRole);
@@ -216,8 +234,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
   // Loading state for initial dialog open computation
   const [isInitializing, setIsInitializing] = useState(false);
 
-  // Get storeys, available types, and typeEnum mapping — computed once on dialog open,
-  // deferred via setTimeout so the dialog shell renders instantly with a spinner.
+  // Storeys/types/typeEnum mapping — computed once on open, deferred so the dialog renders instantly.
   const [availableStoreys, setAvailableStoreys] = useState<{ id: number; name: string; elevation?: number }[]>([]);
   const [availableTypes, setAvailableTypes] = useState<{ ifcType: string; label: string }[]>([]);
   const typeNameToEnumsRef = useRef<Map<string, number[]>>(new Map());
@@ -386,8 +403,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
     return criteria;
   }, [selectedTypes, selectedStoreys, namePattern, filters, typeNameToEnums]);
 
-  // Deferred computation: all expensive work (select + property discovery) yields to the
-  // browser first so pill toggles paint instantly, then runs via setTimeout(0).
+  // Deferred: select + property discovery yield to the browser first so pill toggles paint instantly.
   const [isComputing, setIsComputing] = useState(false);
   const [matchResult, setMatchResult] = useState<{
     count: number;
@@ -421,12 +437,9 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
         matchedIds = queryEngine.select(currentCriteria);
         count = matchedIds.length;
       } catch (err) {
-        // A count of 0 reads as "nothing matches these criteria", which is the
-        // answer the user acts on — so a query that FAILED must not be
-        // indistinguishable from one that matched nothing. Debounced per
-        // criteria edit, so this is not a hot path.
+        // A count of 0 must not be silently indistinguishable from a query
+        // that FAILED — log it. Debounced per edit, not a hot path.
         console.warn('[bulk-edit] criteria query failed; showing 0 matches', err);
-        // leave at 0
       }
 
       // Update count right away, keep old psets until discovery finishes
@@ -519,39 +532,20 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
     ));
   }, []);
 
-  // Build action for the query engine
-  const buildAction = useCallback((): BulkAction => {
+  // Build action for the query engine; returns a failure (parseBulkSetPropertyValue)
+  // instead of a fabricated-value action — callers must refuse the whole operation.
+  const buildAction = useCallback((): { ok: true; action: BulkAction } | { ok: false; message: string } => {
+    let action: BulkAction;
     if (actionType === 'SET_PROPERTY') {
-      // Parse value based on type
-      let parsedValue: string | number | boolean = targetValue;
-      if (valueType === PropertyValueType.Real) {
-        parsedValue = parseFloat(targetValue) || 0;
-      } else if (valueType === PropertyValueType.Integer) {
-        parsedValue = parseInt(targetValue, 10) || 0;
-      } else if (valueType === PropertyValueType.Boolean) {
-        parsedValue = targetValue.toLowerCase() === 'true' || targetValue === '1';
-      }
-
-      return {
-        type: 'SET_PROPERTY',
-        psetName: targetPset,
-        propName: targetProp,
-        value: parsedValue,
-        valueType,
-      };
+      const parsed = parseBulkSetPropertyValue(targetValue, valueType);
+      if (!parsed.ok) return parsed;
+      action = { type: 'SET_PROPERTY', psetName: targetPset, propName: targetProp, value: parsed.value, valueType };
     } else if (actionType === 'DELETE_PROPERTY') {
-      return {
-        type: 'DELETE_PROPERTY',
-        psetName: targetPset,
-        propName: targetProp,
-      };
+      action = { type: 'DELETE_PROPERTY', psetName: targetPset, propName: targetProp };
     } else {
-      return {
-        type: 'SET_ATTRIBUTE',
-        attribute: targetProp as 'name' | 'description' | 'objectType',
-        value: targetValue,
-      };
+      action = { type: 'SET_ATTRIBUTE', attribute: targetProp as 'name' | 'description' | 'objectType', value: targetValue };
     }
+    return { ok: true, action };
   }, [actionType, targetPset, targetProp, targetValue, valueType]);
 
   // Preview query
@@ -561,9 +555,12 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
     setPreviewResult(null);
     setExecuteResult(null);
 
+    const built = buildAction();
+    // Refuse rather than build around a fabricated value; same Alert Execute uses.
+    if (!built.ok) return setExecuteResult({ mutations: [], affectedEntityCount: 0, success: false, errors: [built.message] });
+
     try {
-      const action = buildAction();
-      const result = queryEngine.preview({ select: currentCriteria, action });
+      const result = queryEngine.preview({ select: currentCriteria, action: built.action });
       setPreviewResult(result);
     } catch (error) {
       console.error('Preview failed:', error);
@@ -575,6 +572,11 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
   const handleExecute = useCallback(async () => {
     if (!queryEngine || liveMatchCount === 0 || !canEditInSession) return;
 
+    const built = buildAction();
+    // Refuse before touching a single entity — one bad value must not half-apply across the selection.
+    if (!built.ok) return setExecuteResult({ mutations: [], affectedEntityCount: 0, success: false, errors: [built.message] });
+    const action = built.action;
+
     setIsExecuting(true);
     setExecuteResult(null);
     setExecuteProgress({ done: 0, total: 0 });
@@ -584,8 +586,6 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
     await new Promise(r => setTimeout(r, 0));
 
     try {
-      const action = buildAction();
-
       // Step 1: select matching IDs
       const entityIds = queryEngine.select(currentCriteria);
       const total = entityIds.length;

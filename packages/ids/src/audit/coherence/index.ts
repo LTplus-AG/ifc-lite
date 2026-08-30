@@ -19,6 +19,7 @@ import type {
   IDSSpecification,
 } from '../../types.js';
 import type { IDSAuditIssue } from '../types.js';
+import { XSD_NUMERIC_SPECIALS } from '../../constraints/xsd-cast.js';
 import { compileXsdRegex } from './regex.js';
 
 export function runCoherenceAudit(doc: IDSDocument): IDSAuditIssue[] {
@@ -455,15 +456,12 @@ const XS_VALUE_REGEX: Record<string, RegExp> = {
 function isValidLexicalForXsType(value: string, base: string): boolean {
   const rx = XS_VALUE_REGEX[base];
   if (!rx) return true; // base we don't recognise → don't fabricate errors
-  // For doubles/floats/decimals, an empty lexeme is technically allowed
-  // by the regex but isn't a meaningful number — reject.
-  if (
-    (base === 'xs:double' ||
-      base === 'xs:float' ||
-      base === 'xs:decimal') &&
-    !/[0-9]/.test(value)
-  ) {
-    return false;
+  if (base === 'xs:double' || base === 'xs:float' || base === 'xs:decimal') {
+    // Digit required in the MANTISSA, specials exempt (#3336). Testing the
+    // whole lexeme accepted 'e5' on the exponent's digit and rejected the
+    // digitless specials, which is how this and `literalCastsUnder` disagreed.
+    const bare = !XSD_NUMERIC_SPECIALS.has(value);
+    if (bare && !/[0-9]/.test(value.split(/[eE]/)[0])) return false;
   }
   return rx.test(value);
 }

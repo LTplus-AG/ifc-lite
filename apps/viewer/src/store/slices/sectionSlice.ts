@@ -309,7 +309,7 @@ function isDrawablePick(
   return point.every(Number.isFinite);
 }
 
-const getDefaultSectionPlane = (): SectionPlane => ({
+export const getDefaultSectionPlane = (): SectionPlane => ({
   axis: SECTION_PLANE_DEFAULTS.AXIS,
   position: SECTION_PLANE_DEFAULTS.POSITION,
   enabled: SECTION_PLANE_DEFAULTS.ENABLED,

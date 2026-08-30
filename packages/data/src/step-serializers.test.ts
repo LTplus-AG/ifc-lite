@@ -83,6 +83,21 @@ describe('serializeValue (number)', () => {
   });
 });
 
+describe('generateHeader default time_stamp (ISO 10303-21 clause 4.2 "time_stamp")', () => {
+  it('stamps FILE_NAME with an ISO 8601 date-time, not digits with the separators stripped', () => {
+    const header = generateHeader({ schema: 'IFC4' });
+    const fileNameLine = header.split('\n').find((l) => l.startsWith('FILE_NAME'));
+    expect(fileNameLine).toBeDefined();
+    const stamp = fileNameLine!.match(/^FILE_NAME\('[^']*','([^']*)'/)![1];
+    // ISO 8601 extended date-time: 'YYYY-MM-DDThh:mm:ss', matching the
+    // format every source-header round-trip in this codebase already
+    // carries (e.g. '2024-03-01T09:15:00' in step_header_vectors.json).
+    // Stripping the '-'/':' separators, as the previous default did,
+    // produces neither this format nor a value any real IFC file uses.
+    expect(stamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
+  });
+});
+
 describe('generateHeader control-char handling', () => {
   it('collapses a newline in a header value to a space so the record stays one line', () => {
     const header = generateHeader({
@@ -230,3 +245,16 @@ describe('toStepLineWithRegistry / generateStepFileWithRegistry', () => {
     expect(ids).toEqual([10, 20, 30]);
   });
 });
+
+
+// The `escapeStepString`-vs-Rust literal-vector tests that used to live here
+// (`RUST_VECTORS`, in a `describe('control-character runs are one space each
+// (#3284, parity with the Rust escape)', ...)` block) and the
+// `describe('escapeStepString direct (#3300)', ...)` block are now the shared
+// vectors in `../../../rust/export/tests/fixtures/step_escape_vectors.json`,
+// pinned on this side by `./step-escape.parity.test.ts` and on the Rust side
+// by `rust/export/tests/step_escape_parity.rs` (#3300, second half). A
+// hand-kept copy of the other language's behaviour only resets the clock on
+// the drift it exists to catch -- the reasoning behind the CSV-cell-escaper
+// precedent this follows: `rust/export/tests/fixtures/csv_cell_vectors.json`
+// / `packages/export/src/csv-cell.parity.test.ts`.

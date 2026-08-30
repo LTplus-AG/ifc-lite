@@ -127,3 +127,10 @@ tests/benchmark/benchmark-results/viewer-*.console.log
 # are rebuilt on every run rather than committed. See tsconfig.tests.base.json.
 packages/*/tsconfig.tests.json
 apps/*/tsconfig.tests.json
+# The ROOT path is here for a different reason: `audit()` only writes for
+# `packages/*` (typecheck-tests.mjs, `rel.startsWith('packages/')`), so
+# `pnpm typecheck` never produces this one. It appears from the bare-cwd mode
+# the script's own header calls a misuse (#2664). Untracked it is harmless;
+# tracked, every branch that adds or removes a test file carries a spurious
+# diff of a ~1.5k-line generated file, and those conflict between branches.
+/tsconfig.tests.json

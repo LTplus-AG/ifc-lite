@@ -60,6 +60,23 @@ describe('iframe URL construction', () => {
     expect(p.has('hideScale')).toBe(false);
   });
 
+  it('serialises autoLoad only when explicitly false', () => {
+    // autoLoad is the one flag with the OPPOSITE polarity to hideAxis/hideScale
+    // above: those default off and are emitted when true, this defaults ON and is
+    // emitted only to suppress. The viewer parses it as `autoLoad !== 'false'`,
+    // so the literal string is load-bearing — `autoLoad=0` or `autoLoad=` would
+    // both read back as true and silently load the model the host asked us not to.
+    expect(urlOf({ autoLoad: false }).searchParams.get('autoLoad')).toBe('false');
+  });
+
+  it('omits autoLoad when unset or true, matching the viewer default', () => {
+    // Emitting `autoLoad=true` would be harmless today but pins a value the
+    // parser only reads as "not the string false"; omission is the same answer
+    // and keeps the URL to what the host actually chose.
+    expect(urlOf({}).searchParams.has('autoLoad')).toBe(false);
+    expect(urlOf({ autoLoad: true }).searchParams.has('autoLoad')).toBe(false);
+  });
+
   it('maps hideAxis and hideScale to their own distinct params, not each other', () => {
     // Setting only one flag distinguishes a key swap: both prior tests set
     // hideAxis and hideScale to the SAME value together, so `params.set(
@@ -83,6 +100,21 @@ describe('iframe URL construction', () => {
 
   it('omits hideTypes for an empty array', () => {
     expect(urlOf({ hideTypes: [] }).searchParams.has('hideTypes')).toBe(false);
+  });
+
+  it('joins select and isolate with commas, on separate params', () => {
+    // `EmbedUrlParams` carries both and the viewer applies them once the
+    // first model is on screen, so an SDK that cannot emit them leaves an
+    // initial selection reachable only by hand-writing the iframe URL.
+    const p = urlOf({ select: [42, 43], isolate: [7] }).searchParams;
+    expect(p.get('select')).toBe('42,43');
+    expect(p.get('isolate')).toBe('7');
+  });
+
+  it('omits select and isolate for empty arrays', () => {
+    const p = urlOf({ select: [], isolate: [] }).searchParams;
+    expect(p.has('select')).toBe(false);
+    expect(p.has('isolate')).toBe(false);
   });
 
   it('serialises camera as azimuth,elevation when zoom is absent', () => {

@@ -13,13 +13,20 @@
 import { describe, it, expect } from 'vitest';
 import { WORKER_CODE } from '../src/scan-worker-inline.js';
 
-function runWorkerScanRaw(ifc: string): { types: string[]; ids: ArrayBuffer; lines: ArrayBuffer } {
+interface WorkerScanMessage {
+    types: string[];
+    ids: ArrayBuffer;
+    lines: ArrayBuffer;
+    oversizedIds: number;
+}
+
+function runWorkerScanRaw(ifc: string): WorkerScanMessage {
     const buffer = new TextEncoder().encode(ifc).buffer;
     const mockSelf: Record<string, unknown> & {
         onmessage?: (e: { data: ArrayBuffer }) => void;
     } = {};
-    let result: { types: string[]; ids: ArrayBuffer; lines: ArrayBuffer } | undefined;
-    mockSelf.postMessage = (msg: { types: string[]; ids: ArrayBuffer; lines: ArrayBuffer }) => { result = msg; };
+    let result: WorkerScanMessage | undefined;
+    mockSelf.postMessage = (msg: WorkerScanMessage) => { result = msg; };
     // WORKER_CODE assigns `self.onmessage`; execute it with our mock as `self`.
     // eslint-disable-next-line no-new-func
     const install = new Function('self', WORKER_CODE) as (s: unknown) => void;
@@ -34,12 +41,50 @@ function runWorkerScan(ifc: string): string[] {
 }
 
 function runWorkerScanIds(ifc: string): number[] {
+    // Uint32Array, matching the worker's own buffer: that IS the express-id
+    // storage contract (#3395). Reading a Float64 buffer this way would yield
+    // garbage, so this decoding also pins the buffer width.
     return [...new Uint32Array(runWorkerScanRaw(ifc).ids)];
 }
 
 function runWorkerScanLines(ifc: string): number[] {
     return [...new Uint32Array(runWorkerScanRaw(ifc).lines)];
 }
+
+describe('scan-worker-inline express-id bound (#3395)', () => {
+    // 4294967297 is 2^32 + 1. It used to be admitted and carried in a widened
+    // Float64 buffer, which only moved the truncation one layer down: every
+    // store below this worker keys express ids in 32 bits, so the id landed on
+    // key 1 and served entity #1's record. It is refused here instead.
+    const ABOVE_U32 = 4294967297;
+    const U32_MAX = 4294967295;
+
+    it('refuses an id above 2^32 instead of aliasing it onto a real entity', () => {
+        const result = runWorkerScanRaw(
+            `#1=IFCWALL('a');\n#${ABOVE_U32}=IFCWALL('b');`,
+        );
+        const ids = [...new Uint32Array(result.ids)];
+        expect(ids).toEqual([1]);
+        expect(new Set(ids).size).toBe(ids.length);
+        expect(result.oversizedIds).toBe(1);
+    });
+
+    it('still yields an id of exactly u32::MAX', () => {
+        const result = runWorkerScanRaw(
+            `#1=IFCWALL('a');\n#${U32_MAX}=IFCWALL('b');`,
+        );
+        expect([...new Uint32Array(result.ids)]).toEqual([1, U32_MAX]);
+        expect(result.oversizedIds).toBe(0);
+    });
+
+    it('still refuses an id past the safe-integer range', () => {
+        const result = runWorkerScanRaw(
+            `#1=IFCWALL('a');\n#${'9'.repeat(20)}=IFCWALL('b');`,
+        );
+        expect([...new Uint32Array(result.ids)]).toEqual([1]);
+        expect(result.oversizedIds).toBe(1);
+    });
+});
 
 describe('scan-worker-inline type-name cache (hash-collision safety)', () => {
     it('does not alias two type names sharing a 32-bit hash + length', () => {

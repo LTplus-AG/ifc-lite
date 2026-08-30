@@ -115,6 +115,61 @@ describe('StepExporter header overrides (options.* wins over source/default)', (
     expect(out.authorization).toBe('source-authorization-token');
   });
 
+  // #2934 (anonymized isolated export): the header scrub needs to BLANK the
+  // authorization token, not merely inherit the source's — so this is the
+  // ninth override, added alongside `subsetEntityIds`. Same pattern as
+  // `options.author`/`options.organization` above: proves override-wins-over-
+  // source, not merely override-wins-over-default, by giving the source a
+  // distinctive non-default value the override must displace.
+  it('options.authorization replaces the FILE_NAME authorization slot (not merged with the source token)', async () => {
+    const store = await parse(SOURCE_MODEL);
+    const result = new StepExporter(store).export({
+      schema: store.schemaVersion,
+      authorization: 'caller-override-authorization',
+    });
+    const out = exportedHeader(result.content);
+    expect(out.authorization).toBe('caller-override-authorization');
+    expect(out.authorization).not.toBe('source-authorization-token');
+  });
+
+  // Control for the anonymization use case: an explicit empty string must
+  // actually blank the slot, not be treated as "no override" and fall back to
+  // the source token — `??` only skips `undefined`/`null`, but a naive
+  // `options.authorization || sourceHeader?.authorization` would wrongly
+  // treat `''` as absent too.
+  it('options.authorization of the empty string blanks the slot rather than falling back to source', async () => {
+    const store = await parse(SOURCE_MODEL);
+    const result = new StepExporter(store).export({
+      schema: store.schemaVersion,
+      authorization: '',
+    });
+    const out = exportedHeader(result.content);
+    expect(out.authorization).toBe('');
+  });
+
+  // Tenth override (anonymized isolated export): `originating_system` carries
+  // the authoring tool's build string, which for at least one vendor embeds
+  // the licence region ("26.0.0 NOR FULL"); the anonymizer blanks it.
+  it('options.originatingSystem replaces the FILE_NAME originating_system slot, and the empty string blanks it', async () => {
+    const store = await parse(SOURCE_MODEL);
+    const replaced = exportedHeader(new StepExporter(store).export({
+      schema: store.schemaVersion,
+      originatingSystem: 'caller-override-system',
+    }).content);
+    expect(replaced.originatingSystem).toBe('caller-override-system');
+
+    const blanked = exportedHeader(new StepExporter(store).export({
+      schema: store.schemaVersion,
+      originatingSystem: '',
+    }).content);
+    // `generateHeader` treats an empty originating_system as absent
+    // (`options.originatingSystem || app`) and stamps its own default — the
+    // source's vendor string is gone either way, which is the point.
+    expect(blanked.originatingSystem).not.toBe('Source Originating System');
+    expect(blanked.originatingSystem).toBe('ifc-lite');
+    expect(blanked.preprocessorVersion).toBe('ifc-lite'); // untouched by this override
+  });
+
   it('options.application overrides preprocessor_version but NOT originating_system', async () => {
     const store = await parse(SOURCE_MODEL);
     const result = new StepExporter(store).export({

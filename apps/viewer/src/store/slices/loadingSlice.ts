@@ -7,6 +7,7 @@
  */
 
 import type { StateCreator } from 'zustand';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
 export interface LoadingSlice {
   // State
@@ -55,3 +56,34 @@ export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice
   setError: (error) => set({ error }),
   setActiveStreamCanceller: (activeStreamCanceller) => set({ activeStreamCanceller }),
 });
+
+/**
+ * What a session reset clears on the loading slice.
+ *
+ * `resetViewerState`'s "Data" block owns these six today (`store/index.ts`):
+ * a file swap ends whatever load was in flight as far as the UI is concerned,
+ * so the spinner, the three progress channels and the last error all go.
+ *
+ * `error` is THIS slice's field, not `chatSlice`'s — that one is `chatError`.
+ *
+ * `activeStreamCanceller` is deliberately absent from `owns`: no teardown path
+ * resets it today. It is a live cancellation hook owned by the loader hook
+ * that registered it, and dropping it here would silently orphan an in-flight
+ * stream's only stop button.
+ */
+export const loadingTeardown = defineSliceTeardown(
+  'loadingSlice',
+  ['loading', 'geometryStreamingActive', 'progress', 'geometryProgress', 'metadataProgress', 'error'],
+  {
+    'session-reset': () => ({
+      loading: false,
+      geometryStreamingActive: false,
+      progress: null,
+      geometryProgress: null,
+      metadataProgress: null,
+      error: null,
+    }),
+    'model-removed': notApplicable,
+    'all-models-cleared': notApplicable,
+  },
+);

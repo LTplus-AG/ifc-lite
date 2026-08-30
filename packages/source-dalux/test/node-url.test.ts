@@ -12,7 +12,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { parseDaluxNode } from '../src/node-url.js';
+import { canonicalFieldNodeUrl, daluxFieldNode, parseDaluxNode } from '../src/node-url.js';
 import { BrowserDaluxApiClient } from '../src/http-client.js';
 
 describe('parseDaluxNode', () => {
@@ -128,5 +128,119 @@ describe('node stamping is scoped to the relay', () => {
     const lookalike = 'https://node1.field.dalux.com.evil.com/service/api/2.0/x/content';
     await client.getBinary(lookalike);
     expect(seen[0]).toBe(lookalike);
+  });
+
+  it('reroutes a downloadLink pointing at a different Dalux field node through the relay origin (#3308)', async () => {
+    // A customer whose account lives on node2 (not node1) sees Dalux hand
+    // back a `downloadLink`/revision-content URL built on THEIR node, using
+    // the same `/service/api` REST shape our own requests use — this is not
+    // the opaque-CDN-link case the tests above cover. `baseUrl` is always the
+    // canonical node1 origin (see `provider.ts#createClient`), so this URL's
+    // origin never matches it. Left alone, it would never be rewritten onto
+    // the same-origin relay by the host (`applyRelay` in `host-fetch.ts`
+    // only rewrites URLs starting with the declared relay upstream, node1),
+    // and the browser would attempt a direct cross-origin fetch to Dalux —
+    // which fails, because Dalux sends no CORS headers from any node. The
+    // fix must land it back on the node1 origin with the real node stamped
+    // as `daluxNode`, exactly like the node-preference case above.
+    const seen: string[] = [];
+    const ctx = {
+      fetch: async (url: string) => {
+        seen.push(url);
+        return new Response(new ArrayBuffer(2), { status: 200 });
+      },
+      log: { debug() {}, error() {}, info() {}, warn() {} },
+    } as unknown as ConstructorParameters<typeof BrowserDaluxApiClient>[1];
+
+    // No `node` preference set — the account's node preference is
+    // irrelevant here; what matters is the node baked into the URL itself.
+    const client = new BrowserDaluxApiClient(
+      { baseUrl: 'https://node1.field.dalux.com/service/api', apiKey: 'k' },
+      ctx,
+    );
+
+    const otherNodeLink =
+      'https://node2.field.dalux.com/service/api/2.0/projects/p1/file_areas/fa1/files/f1/revisions/r1/content?Signature=abc';
+    await client.getBinary(otherNodeLink);
+
+    expect(seen[0]).not.toBe(otherNodeLink);
+    const fetched = new URL(seen[0]);
+    expect(fetched.origin).toBe('https://node1.field.dalux.com');
+    expect(fetched.pathname).toBe('/service/api/2.0/projects/p1/file_areas/fa1/files/f1/revisions/r1/content');
+    expect(fetched.searchParams.get('daluxNode')).toBe('node2');
+    expect(fetched.searchParams.get('Signature')).toBe('abc');
+  });
+});
+
+describe('daluxFieldNode', () => {
+  it('recognises a Dalux field-node hostname', () => {
+    expect(daluxFieldNode('node1.field.dalux.com')).toBe('node1');
+    expect(daluxFieldNode('node2.field.dalux.com')).toBe('node2');
+    expect(daluxFieldNode('node10.field.dalux.com')).toBe('node10');
+  });
+
+  it('rejects anything that is not exactly a Dalux field node', () => {
+    for (const host of [
+      'cdn.dalux.com',
+      'node1.field.dalux.com.evil.com',
+      'node0.field.dalux.com',
+      'field.dalux.com',
+      'evil.com',
+    ]) {
+      expect(daluxFieldNode(host), host).toBeUndefined();
+    }
+  });
+});
+
+describe('canonicalFieldNodeUrl', () => {
+  const baseUrl = 'https://node1.field.dalux.com/service/api';
+
+  it('rewrites a different-node URL onto baseUrl, stamping the real node', () => {
+    const result = canonicalFieldNodeUrl(
+      'https://node3.field.dalux.com/service/api/2.0/x/content?a=b',
+      baseUrl,
+    );
+    expect(result).toBeDefined();
+    const url = new URL(result!);
+    expect(url.origin).toBe('https://node1.field.dalux.com');
+    expect(url.pathname).toBe('/service/api/2.0/x/content');
+    expect(url.searchParams.get('daluxNode')).toBe('node3');
+    expect(url.searchParams.get('a')).toBe('b');
+  });
+
+  it('returns undefined for a URL already on baseUrl’s origin', () => {
+    expect(canonicalFieldNodeUrl('https://node1.field.dalux.com/service/api/2.0/x', baseUrl)).toBeUndefined();
+  });
+
+  it('returns undefined for a host that is not a Dalux field node', () => {
+    expect(canonicalFieldNodeUrl('https://cdn.dalux.com/files/abc?Signature=x', baseUrl)).toBeUndefined();
+  });
+
+  it('returns undefined when the path does not share the base path', () => {
+    expect(canonicalFieldNodeUrl('https://node2.field.dalux.com/other/2.0/x', baseUrl)).toBeUndefined();
+  });
+
+  it('returns undefined for an unparseable URL', () => {
+    expect(canonicalFieldNodeUrl('not a url', baseUrl)).toBeUndefined();
+  });
+
+  // A bare `startsWith(base.pathname)` also admits a SIBLING path: with a base
+  // of `/service/api`, `/service/api-v2/...` shares the prefix without being
+  // under it. That is a different API surface, and rerouting it through the
+  // relay would send a request we do not own to our own origin.
+  it('returns undefined for a sibling path that merely shares the base prefix', () => {
+    expect(
+      canonicalFieldNodeUrl('https://node2.field.dalux.com/service/api-v2/2.0/x', baseUrl),
+    ).toBeUndefined();
+    expect(
+      canonicalFieldNodeUrl('https://node2.field.dalux.com/service/apiary/x', baseUrl),
+    ).toBeUndefined();
+  });
+
+  it('still accepts the base path exactly, and a real child of it', () => {
+    expect(canonicalFieldNodeUrl('https://node2.field.dalux.com/service/api', baseUrl)).toBeDefined();
+    expect(
+      canonicalFieldNodeUrl('https://node2.field.dalux.com/service/api/2.0/x', baseUrl),
+    ).toBeDefined();
   });
 });

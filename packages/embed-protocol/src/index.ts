@@ -151,6 +151,23 @@ export interface OutboundPayloads {
   ENTITY_SELECTED: { id: number; globalId?: string; modelId?: string; ifcType?: string };
   ENTITY_DESELECTED: void;
   ENTITY_HOVERED: { id: number; globalId?: string; ifcType?: string };
+  /**
+   * A change of camera ORIENTATION -- `azimuth`/`elevation`, the direction from
+   * the camera's target to the camera. Fires for an orbit drag, the keyboard
+   * orbit keys, the ViewCube and the preset views, and for a programmatic
+   * SET_CAMERA.
+   *
+   * It does NOT fire for a pan or for a zoom/dolly: panning translates the
+   * camera and its target by the same offset and zooming changes only the
+   * distance between them, so in both cases the orientation this event reports
+   * is unchanged, and an unchanged pose is not re-sent. A host that needs to
+   * follow a pan or a zoom cannot use this event -- `zoom` below is optional
+   * and the embed viewer does not currently populate it.
+   *
+   * Cadence: at most one event per 100ms while the orientation keeps changing,
+   * plus one trailing event carrying the orientation it settled on -- never one
+   * per animation frame. The same pose is never reported twice in a row.
+   */
   CAMERA_CHANGED: { azimuth: number; elevation: number; zoom?: number };
   SECTION_CHANGED: { axis: SectionAxis; position: number; enabled: boolean };
 }
@@ -214,19 +231,57 @@ export interface ModelInfo {
 // URL Parameter Types
 // ============================================================================
 
-/** Parameters that can be passed via URL to the embed viewer */
+/**
+ * Parameters that can be passed via URL to the embed viewer.
+ *
+ * Every field here is parsed by the viewer AND applied, as of #2934 --
+ * `hideAxis`/`hideScale` and `controls` were marked NOT YET IMPLEMENTED here
+ * until then. The one deliberate exception is `camera.zoom`; see its doc
+ * below. Read that as a statement about the fields below, not as a
+ * guarantee this type enforces on fields added later: nothing here fails a
+ * build when a new field is parsed and then ignored, which is exactly how the
+ * three above drifted. A new field owes its own applying call site and a test
+ * that observes the effect.
+ */
 export interface EmbedUrlParams {
+  /** Model to fetch on load. http(s) only; other schemes are rejected. */
   modelUrl?: string;
   theme?: 'light' | 'dark';
+  /** Background colour, hex digits without the leading `#`. */
   bg?: string;
+  /**
+   * Restricts interactive orbit/pan/zoom (mouse, touch, keyboard, and
+   * spacemouse gestures) at the renderer's `Camera`. `'orbit'` allows only
+   * orbit, `'pan'` only pan, `'none'` freezes the view (orbit, pan AND zoom
+   * all inert), `'all'` is unrestricted. Does not gate programmatic moves —
+   * `SET_CAMERA`, `?camera=`/`?view=`, or host SDK calls still work in every
+   * mode.
+   */
   controls?: 'orbit' | 'pan' | 'all' | 'none';
+  /** `false` suppresses the automatic fetch of `modelUrl`. Default: load. */
   autoLoad?: boolean;
+  /** `true` hides the axis triad overlay. */
   hideAxis?: boolean;
+  /** `true` hides the scale bar overlay. */
   hideScale?: boolean;
+  /** Entity ids to select once the first model is on screen. */
   select?: number[];
+  /** Entity ids to isolate once the first model is on screen. */
   isolate?: number[];
+  /**
+   * IFC class names to hide, e.g. `IfcSpace`. Arbitrary class names are
+   * accepted and matched case-insensitively, so `IFCSPACE`, `ifcspace` and
+   * `IfcSpace` all name the same class.
+   */
   hideTypes?: string[];
+  /**
+   * Initial absolute camera orientation in degrees; the model is framed at
+   * that orientation. `zoom` is accepted for backwards compatibility and is
+   * NOT applied — the viewer has no absolute-zoom actuator and the field
+   * carries no unit, so framing comes from a fit instead.
+   */
   camera?: { azimuth: number; elevation: number; zoom?: number };
+  /** Preset view direction. Takes precedence over `camera`. */
   view?: ViewPreset;
 }
 

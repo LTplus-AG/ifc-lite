@@ -26,7 +26,7 @@
   "devDependencies": {
     "@ifc-lite/export": "workspace:^",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

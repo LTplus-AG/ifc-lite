@@ -1,0 +1,5 @@
+---
+'@ifc-lite/drawing-2d': major
+---
+
+Removed the `material` and `layer` graphic-override criteria. **Breaking:** `CriteriaType` no longer includes `'material'`/`'layer'`, `OverrideCriterion` no longer has `materialNames`/`layerNames`, and `ElementData` no longer has `materials`/`layers`. Code that constructed one of those shapes no longer compiles, and a rule that matched because the caller populated `ElementData.materials` or `.layers` no longer matches. Inside this repository the two criteria were dead: no construction site of `ElementData` in the viewer (`Drawing2DCanvas.tsx`, `useDrawingExport.ts`) ever populated either field — only `expressId` and `ifcType` are ever set — so a rule keyed on material or layer silently never matched anything there, with no error and no unmatched-criterion warning. No built-in preset and no viewer UI ever exposed these two criteria types, so nothing changes in the viewer. A rule persisted from before this change with `type: 'material'` or `'layer'` still loads without throwing; it now matches nothing.

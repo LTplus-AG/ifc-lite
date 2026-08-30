@@ -11,7 +11,7 @@
 import type { IfcxFile, IfcxNode, IfcxHeader, ImportNode } from './types.js';
 import type { EntityTable, PropertyTable, PropertySet, SpatialHierarchy } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { IFCX_VERSION } from '@ifc-lite/data';
+import { IFCX_VERSION, IfcTypeEnum, IfcTypeEnumToString } from '@ifc-lite/data';
 
 // ============================================================================
 // Standard IFCX schema imports
@@ -181,7 +181,7 @@ export class IfcxWriter {
       const attributes: Record<string, unknown> = {};
 
       // Add IFC class (requires both code and uri per official schema)
-      const typeName = this.getTypeName(typeEnum);
+      const typeName = this.getTypeName(expressId, typeEnum);
       if (typeName) {
         attributes['bsi::ifc::class'] = {
           code: typeName,
@@ -302,40 +302,31 @@ export class IfcxWriter {
   }
 
   /**
-   * Get type name from enum
+   * The IFC class name to write as `bsi::ifc::class`, or undefined when the
+   * entity has no class to write.
+   *
+   * Derived from the entity table, not enumerated. `EntityTable.getTypeName`
+   * resolves a type override first, then the `IfcTypeEnum` member name, then
+   * the raw class name the parser read — so a class the enum has never heard
+   * of (`IfcAirTerminal`) still exports under its own name. `IfcTypeEnumToString`
+   * is the fallback for the structural table stubs that carry a `typeEnum`
+   * column but no `getTypeName`.
+   *
+   * The hand-written enum->name table this replaced was both incomplete and
+   * SHIFTED against the enum it claimed to decode: it answered for 26 of the
+   * enum's 128 members, and 14 of those 26 rows named a different class than
+   * the id actually holds (17 is `IfcStair`, the table said `IfcRoof`). So a
+   * stair exported as a roof, a member as a pile, a distribution element as an
+   * opening — and every MEP, infrastructure and furniture class fell through
+   * to `undefined` and lost its class attribute entirely.
    */
-  private getTypeName(typeEnum: number): string | undefined {
-    // Map common type enums to IFC class names
-    const typeMap: Record<number, string> = {
-      1: 'IfcProject',
-      2: 'IfcSite',
-      3: 'IfcBuilding',
-      4: 'IfcBuildingStorey',
-      5: 'IfcSpace',
-      10: 'IfcWall',
-      11: 'IfcWallStandardCase',
-      12: 'IfcDoor',
-      13: 'IfcWindow',
-      14: 'IfcSlab',
-      15: 'IfcColumn',
-      16: 'IfcBeam',
-      17: 'IfcRoof',
-      18: 'IfcStair',
-      19: 'IfcRailing',
-      20: 'IfcCurtainWall',
-      21: 'IfcCovering',
-      22: 'IfcPlate',
-      23: 'IfcMember',
-      24: 'IfcPile',
-      25: 'IfcFooting',
-      30: 'IfcFurnishingElement',
-      31: 'IfcSystemFurnitureElement',
-      32: 'IfcDistributionElement',
-      33: 'IfcBuildingElementProxy',
-      40: 'IfcOpeningElement',
-    };
-
-    return typeMap[typeEnum] || undefined;
+  private getTypeName(expressId: number, typeEnum: number): string | undefined {
+    const table = this.data.entities as Partial<Pick<EntityTable, 'getTypeName'>>;
+    const fromTable = table.getTypeName?.(expressId);
+    // 'Unknown' is the table's own miss sentinel, not an IFC class.
+    if (fromTable && fromTable !== 'Unknown') return fromTable;
+    const fromEnum = IfcTypeEnumToString(typeEnum as IfcTypeEnum);
+    return fromEnum === 'Unknown' ? undefined : fromEnum;
   }
 
   /**
@@ -358,7 +349,7 @@ export class IfcxWriter {
    */
   private generatePath(expressId: number, typeEnum: number, globalId?: string): string {
     if (globalId) return globalId;
-    const typeName = this.getTypeName(typeEnum) || 'IfcElement';
+    const typeName = this.getTypeName(expressId, typeEnum) || 'IfcElement';
     return `ifc:${typeName}.${expressId}`;
   }
 

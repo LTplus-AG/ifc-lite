@@ -1,0 +1,154 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: PR review signal
+
+# NO `paths:` FILTER, DELIBERATELY, AND FOR TWO SEPARATE REASONS.
+#
+# 1. This gate's question is "did the other lanes run at all". A path filter
+#    would make it skip on exactly the changes whose lanes are missing.
+# 2. It reads scripts/pr-review-signal.config.json. #3305's gate could not fire
+#    on the file it guarded because that file was in no path filter, so the gate
+#    existed, was correct, and was unreachable on its own input. With no filter
+#    here, no edit to the script or its config can dodge the job that runs them
+#    ON THE PATH THAT MERGES IT. Asserted in
+#    scripts/check-pr-review-signal.test.mjs.
+#
+#    THE SCOPE OF THAT CLAIM, stated rather than left to be discovered: this job
+#    used to carry the SAME `branches: [main]` filter as test.yml, on the
+#    reasoning that widening it would fail every stacked PR "for a reason that
+#    is not a defect" -- the required lane set is derived from test.yml, which
+#    still targets `branches: [main]` only, so on a feature-targeted PR every
+#    required lane IS legitimately absent. #3429 (louistrue, BIMvoice) is the
+#    correction to that reasoning: "legitimately absent" is exactly the fact a
+#    reviewer needs surfaced, not a reason to suppress the gate that surfaces
+#    it. #3405 and #3428, both stacked on another PR's branch, ran ZERO
+#    `test.yml` lanes and their check lists showed six passes and two skips --
+#    nothing said "nothing ran". `gh pr checks` and `mergeable: MERGEABLE` gave
+#    no discriminator either. Filtering THIS job the same way test.yml is
+#    filtered reproduces the silence in the one place meant to catch it.
+#
+#    So this job now has NO `branches:` filter and fires on every base. Part 1
+#    of scripts/check-pr-review-signal.mjs already handles total absence --
+#    it is the #3294 shape it was built for -- so on a stacked PR every lane
+#    derived from test.yml comes back missing and the gate reports
+#    `MISSING_LANES` and exits non-zero, unconditionally (part 1 has no
+#    severity knob; see the script for why). That failure does not block the
+#    stacked PR from merging into its feature-branch base: GitHub's required-
+#    status-checks ruleset is configured against `main`, and only applies when
+#    a PR's base IS the ref the ruleset protects, so this job going red on a
+#    PR based on a feature branch is a visible row, not an enforced gate --
+#    exactly the "silence into a visible failure" trade #3429 asks for. It
+#    still becomes an enforced gate the moment the PR is retargeted to main,
+#    same as before.
+#
+# `edited` IS THE POINT OF THE TYPES LIST. GitHub's default `pull_request`
+# activity types are opened/synchronize/reopened. Retargeting a PR's base branch
+# fires `edited` and nothing else. Before this job ran on all bases, that meant
+# `edited` did not re-fire the workflows that a `branches: [main]` filter had
+# excluded while the PR pointed at a feature branch -- the deterministic,
+# reproducible mechanism behind #3294 merging with 8 checks and leaving main's
+# module-size gate red. Kept now for the same retarget transition, and because
+# this job derives its required-lane list from test.yml at read time regardless
+# of which event fired it.
+#
+# `ready_for_review` covers the draft->ready transition for the same reason.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+  # The two reads this gate is made of. `checks: read` for the check runs,
+  # `statuses: read` for the commit statuses -- the reviewers publish as one or
+  # the other, and the free-text description only exists on the raw APIs.
+  checks: read
+  statuses: read
+
+env:
+  ACTIONS_RUNNER_FORCE_ACTIONS_NODE_VERSION: node24
+
+jobs:
+  review-signal:
+    # This name is passed to the gate as `--self-name` so it can drop its own
+    # lane from the rollup. It is `in_progress` for as long as it is asking the
+    # question, and leaving it in would mean the rollup never reads as settled.
+    name: PR review signal
+    # Free runner: two API reads and a poll, not compute-bound.
+    runs-on: ubuntu-latest
+    # Above the poll budget below, so a run that exhausts the budget still gets
+    # to PRINT its verdict rather than being killed mid-wait with no output.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+
+      # No `pnpm install`: the gate imports only node builtins plus its own lib,
+      # and shells out to `gh`, which is preinstalled on GitHub runners. A gate
+      # whose job is to run when other jobs did not should depend on as little
+      # as possible.
+      #
+      # THE BUDGET IS MEASURED, NOT GUESSED -- AND THE MEASUREMENT ITSELF WAS
+      # WRONG ONCE. The first version of this comment quoted `started_at`, i.e.
+      # when a runner picked each job up. This gate never waits for that: it
+      # polls for PRESENCE in the rollup, which is `created_at`, and the two
+      # diverge hard: on run 32930088375, `Lint` was CREATED 416 s into the run
+      # and STARTED 1037 s into it. Every figure below is `created_at`,
+      # measured from each run's own creation, over the 68 completed `test.yml`
+      # PR runs of 2026-08-25/26 that published the aggregate.
+      #
+      # The fix is TWO changes, because either alone still false-fails.
+      #   1. `excludeJobKeys: ["test"]` in the config drops the aggregate, and
+      #      this is the load-bearing half. It `needs:` twelve jobs and
+      #      publishes no check run until all finish, so requiring it ties this
+      #      budget to the SUITE's total runtime, which grows with the suite. It
+      #      appeared at min 509 / median 894 / max 2067 s -- 33 OF THE 68 PAST
+      #      900 s. Requiring it would false-fail roughly half of every green
+      #      PR. Nothing is lost: the aggregate is one of only two contexts in
+      #      main's ruleset, so branch protection already blocks on it, and the
+      #      #3294 total-absence shape still fails under this config naming all
+      #      fifteen lanes.
+      #   2. 900 s, not 420 s. Excluding the aggregate is not enough on its own:
+      #      the last non-aggregate lane appeared at min 161 / median 190 /
+      #      p95 522 / max 845 s, so 420 s would still have false-failed 8 of
+      #      the 68. 900 s covers all 68 -- but the tail margin is 900/845 =
+      #      1.07x, NOT the 1.33x this comment used to claim off the `started_at`
+      #      numbers. It is thin, and measuring from run creation is the
+      #      conservative direction (this job's own deadline starts later still,
+      #      after its pickup and checkout), so the margin is worth stating
+      #      plainly rather than rounding up.
+      # The poll normally returns in seconds via the settle rule; the budget is
+      # the ceiling, not the expected cost. A settled-but-incomplete rollup is
+      # confirmed across SETTLE_HOLD_SECONDS (60 s) before its absence counts,
+      # because the fan-out boundary produces a ~1 s window in which every
+      # published lane is terminal and more are still coming -- so the
+      # genuine-absence path costs 60 s, not the whole budget.
+      # THE GATE'S OWN UNIT TESTS, RUN BEFORE THE GATE. Neither
+      # `scripts/check-pr-review-signal.test.mjs` nor
+      # `scripts/lib/pr-review-signal.test.mjs` was reached by any workflow: the
+      # test.yml lanes name their script files one by one and this pair was
+      # never added, and `check-test-glob-coverage` audits package globs, not
+      # `scripts/`. A gate whose fail-closed refusals, severity knobs and
+      # policy scopings are asserted only on a developer's machine is a gate
+      # nobody is checking, which is the shape this whole workflow exists to
+      # reject. Same job, no `pnpm install` -- node builtins only, like the gate.
+      - name: Unit-test the gate itself
+        run: node --test scripts/check-pr-review-signal.test.mjs scripts/lib/pr-review-signal.test.mjs
+
+      - name: Check required lanes ran and reviews produced a verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          node scripts/check-pr-review-signal.mjs \
+            --pr "${{ github.event.pull_request.number }}" \
+            --self-name 'PR review signal' \
+            --timeout-seconds 900

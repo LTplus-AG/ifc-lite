@@ -51,10 +51,7 @@ function makeStubs(capHasGeometry = true): Stubs {
             draw(_pass: unknown, params: Record<string, unknown>) { capDraws.push({ params }); },
             // Every 3D line family reports empty, so the facade's draw() reaches
             // nothing but the section block under test.
-            hasAnnotationLines3D: () => false,
-            hasAlignmentLines3D: () => false,
-            hasGridLines3D: () => false,
-            hasDxfLines3D: () => false,
+            hasLineOverlay: () => false,
             hasClashBoxLines3D: () => false,
         } as unknown as Section2DOverlayRenderer,
     };

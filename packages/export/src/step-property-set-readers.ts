@@ -21,7 +21,7 @@ import type { IfcDataStore, IfcAttributeValue, EntityExtractor } from '@ifc-lite
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { createSourceRefReader, decodeRange } from './source-ref-bounds.js';
-import { findLengthUnitReference, normalizeMapUnitName } from './step-georeferencing.js';
+import { findLengthUnitReference, normalizeMapUnitName } from './step-map-unit.js';
 import { authoredEntityRefs, type EffectiveEntityIndex } from './effective-index.js';
 import { HAS_PROPERTY_SETS_SLOT } from './type-owned-psets.js';
 import type { IfcSchemaVersion } from './schema-converter.js';

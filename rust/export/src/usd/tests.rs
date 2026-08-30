@@ -850,6 +850,7 @@ fn emitted_matrix4d_roundtrips_usd_transform_rows() {
         template_express_id: 7,
         rep_identity: 0,
         transform: a,
+        geometry_item_id: None,
     };
     let mut origins = std::collections::HashMap::new();
     origins.insert(7u32, origin);

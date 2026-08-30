@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { PluginContext } from '@ifc-lite/plugin-api';
+import { canonicalFieldNodeUrl } from './node-url.js';
 
 export interface DaluxCredentials {
   readonly baseUrl: string;
@@ -171,13 +172,12 @@ export class BrowserDaluxApiClient {
     // Missing it here would send file downloads to the default node while
     // listings went to the user's own — the failure would look like "the file
     // is gone" rather than "wrong host".
-    // Only re-serialise when we actually added the selector. `new URL(x)
-    // .toString()` is NOT identity: it strips a default port, normalises `.`
-    // and `..` path segments and can re-case percent escapes, any of which
-    // changes a URL whose signature was computed over the original string.
-    // Round-tripping unconditionally would have re-broken the exact links the
-    // stamping guard above exists to protect.
-    const url = this.nodeSelectorFor(rawUrl) ?? rawUrl;
+    // Only re-serialise when we added the selector or rerouted onto the
+    // canonical origin (`canonicalFieldNodeUrl`, #3308) — `new URL(x)
+    // .toString()` is NOT identity, so doing it unconditionally would
+    // re-break the signed links the guard above protects.
+    const url =
+      this.nodeSelectorFor(rawUrl) ?? canonicalFieldNodeUrl(rawUrl, this.credentials.baseUrl) ?? rawUrl;
     this.debug('binary GET request', { url });
     const response = await this.ctx.fetch(url, {
       headers: {

@@ -7,6 +7,7 @@
  * aggregation, group-by, table rendering, and JSON serialization.
  */
 
+import { findPropertyInSets } from '@ifc-lite/query';
 import { printJson, formatTable, hasFlag, fatal } from '../output.js';
 import { getQuantityValue } from './query-aggregation.js';
 
@@ -203,8 +204,7 @@ export function outputGroupBy(entities: any[], groupByKey: string, sumQuantity: 
       // PsetName.PropName
       const [psetName, propName] = groupByKey.split('.', 2);
       const props = bim.properties(e.ref);
-      const pset = props.find((p: any) => p.name === psetName);
-      const prop = pset?.properties?.find((p: any) => p.name === propName);
+      const prop = findPropertyInSets<any>(props, psetName, propName);
       groupValue = prop?.value != null ? String(prop.value) : `(no ${propName})`;
     } else {
       groupValue = e[groupByKey] ?? `(no ${groupByKey})`;

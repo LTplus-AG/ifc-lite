@@ -737,6 +737,27 @@ describe('BCF Writer', () => {
     };
   }
 
+  /**
+   * A camera valid at BOTH versions, for 3.0 fixtures whose subject is not the
+   * camera.
+   *
+   * Same reason `baseTopic` carries TopicType/TopicStatus: BCF 3.0's
+   * visinfo.xsd declares OrthogonalCamera/PerspectiveCamera as an `xs:choice`
+   * with no minOccurs, so a 3.0 viewpoint MUST have exactly one camera, and
+   * that camera must carry the 3.0-required AspectRatio. A 3.0 fixture without
+   * one is an archive no conforming reader has to accept, so the writer now
+   * refuses it -- see `schema-validation.test.ts` > "BCF camera cardinality and
+   * order". Tests below that are about markup nesting or ViewSetupHints, not
+   * cameras, attach this so their subject stays reachable.
+   */
+  const VALID_CAMERA: BCFViewpoint['perspectiveCamera'] = {
+    cameraViewPoint: { x: 1, y: 2, z: 3 },
+    cameraDirection: { x: 0, y: 0, z: -1 },
+    cameraUpVector: { x: 0, y: 1, z: 0 },
+    fieldOfView: 60,
+    aspectRatio: 1.5,
+  };
+
   it('defaults DefaultVisibility to true when a viewpoint has components but no visibility', async () => {
     // Visibility is REQUIRED inside Components, so the writer synthesises one.
     // Emitting false instead of true would tell the receiving tool to hide the
@@ -1136,7 +1157,9 @@ describe('BCF Writer', () => {
     // could never see the mismatch against a real 3.0 consumer.
     const topic = baseTopic({
       comments: [{ guid: 'c-1', date: '2026-01-01T00:00:00.000Z', author: 'a@x.com', comment: 'hi' }],
-      viewpoints: [{ guid: 'vp-1', snapshot: 'data:image/png;base64,AA==' }],
+      viewpoints: [
+        { guid: 'vp-1', snapshot: 'data:image/png;base64,AA==', perspectiveCamera: VALID_CAMERA },
+      ],
     });
 
     const markup30 = await markupFor(topic, '3.0');
@@ -1303,7 +1326,9 @@ describe('BCF Writer', () => {
       documentReferences: [{ guid: 'dr-1', documentGuid: 'doc-guid-1' }],
       relatedTopics: ['related-guid-1'],
       comments: [{ guid: 'c-1', date: '2026-01-01T00:00:00.000Z', author: 'a@x.com', comment: 'hi' }],
-      viewpoints: [{ guid: 'vp-1', snapshot: 'data:image/png;base64,AA==' }],
+      viewpoints: [
+        { guid: 'vp-1', snapshot: 'data:image/png;base64,AA==', perspectiveCamera: VALID_CAMERA },
+      ],
     });
 
     const markup = await markupFor(topic, '3.0');
@@ -1569,6 +1594,7 @@ describe('BCF Writer', () => {
     // ourselves produce would read back with every hint dropped.
     const vp: BCFViewpoint = {
       guid: generateUuid(),
+      perspectiveCamera: VALID_CAMERA,
       components: {
         selection: [{ ifcGuid: '0abc123def456789012345' }],
         visibility: {

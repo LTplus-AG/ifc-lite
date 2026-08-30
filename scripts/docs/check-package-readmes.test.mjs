@@ -64,6 +64,9 @@ test('an empty packages/ is refused, not reported as every package having a READ
   assert.equal(status, 1, out);
   assert.match(out, /only 0 published package\(s\) reached the README check/);
   assert.match(out, /expected at least 25/);
+  // The remedy must NAME the constant. A message that says only "the SCAN is
+  // wrong" is actively misleading to someone who really did retire packages.
+  assert.match(out, /lower CHECKED_FLOOR in this file/);
   assert.doesNotMatch(out, /✅/);
   rmSync(root, { recursive: true, force: true });
 });
@@ -121,6 +124,9 @@ test('negative control: the missing-README verdict still fires, and before the f
   assert.equal(status, 1, out);
   assert.match(out, /Published packages without a README\.md \(1\)/);
   assert.match(out, /@x\/no-readme/);
+  // The floor must not have swallowed the gate's actual job: 26 packages clears
+  // CHECKED_FLOOR, so the only thing that can fail here is the README check.
+  assert.doesNotMatch(out, /expected at least/, 'failed on the floor, not on the README');
   rmSync(root, { recursive: true, force: true });
 });
 
@@ -130,5 +136,36 @@ test('positive control: a healthy tree at the floor passes, with its true count'
   const { status, out } = run(root);
   assert.equal(status, 0, out);
   assert.match(out, /✅ All 25 published packages have a README\.md/);
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('a `.DS_Store` dotfile in packages/ is not a candidate package (PR 3350)', () => {
+  const root = makeTree();
+  fillToFloor(root);
+  // macOS drops this into any directory Finder has opened. Before the skip,
+  // statting `.DS_Store/package.json` raised ENOTDIR and existsOrFail refused
+  // it, failing the docs gate on a local-only file.
+  writeFileSync(join(root, 'packages', '.DS_Store'), '\0\0\0');
+  const { status, out } = run(root);
+  assert.equal(status, 0, out);
+  assert.match(out, /All 25 published packages have a README\.md/);
+  assert.doesNotMatch(out, /DS_Store/, 'the dotfile must not appear in the verdict at all');
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('skipping dotfiles does not soften the refusal: a non-dotfile unreadable candidate still fails (PR 3350)', () => {
+  const root = makeTree();
+  fillToFloor(root);
+  // Both in the same tree, so this pins that exactly one is ignored and the
+  // other is refused. Catching ENOTDIR and continuing would have satisfied the
+  // test above while destroying the guarantee this gate exists for, and this
+  // is the case that catches it.
+  writeFileSync(join(root, 'packages', '.DS_Store'), '\0\0\0');
+  writeFileSync(join(root, 'packages', 'not-a-dir'), 'this is a file, not a package directory');
+  const { status, out } = run(root);
+  assert.equal(status, 1, out);
+  assert.match(out, /cannot read package manifest/);
+  assert.match(out, /not-a-dir/);
+  assert.doesNotMatch(out, /DS_Store/, 'the dotfile must not be what tripped it');
   rmSync(root, { recursive: true, force: true });
 });

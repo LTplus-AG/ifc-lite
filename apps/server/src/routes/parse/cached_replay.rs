@@ -37,7 +37,7 @@ pub(super) async fn try_cached_replay(
     state: &AppState,
     cache_key: &str,
 ) -> Result<Option<axum::response::Response>, ApiError> {
-    let parquet_cache_key = format!("{}-parquet-v4", cache_key);
+    let parquet_cache_key = format!("{}-parquet-v5", cache_key);
     let metadata_cache_key = format!("{}-parquet-metadata-v4", cache_key);
 
     let (Some(cached_parquet), Some(cached_metadata_json)) = (
@@ -207,7 +207,7 @@ mod tests {
         let cache_key = "only-parquet";
         state
             .cache
-            .set_bytes(&format!("{cache_key}-parquet-v4"), &well_framed_blob(&[1, 2, 3]))
+            .set_bytes(&format!("{cache_key}-parquet-v5"), &well_framed_blob(&[1, 2, 3]))
             .await
             .unwrap();
         let result = try_cached_replay(&state, cache_key).await;
@@ -244,7 +244,7 @@ mod tests {
             .unwrap();
         state
             .cache
-            .set_bytes(&format!("{cache_key}-parquet-v4"), &[1, 2, 3]) // < 4 bytes
+            .set_bytes(&format!("{cache_key}-parquet-v5"), &[1, 2, 3]) // < 4 bytes
             .await
             .unwrap();
 
@@ -270,7 +270,7 @@ mod tests {
             .unwrap();
         state
             .cache
-            .set_bytes(&format!("{cache_key}-parquet-v4"), &well_framed_blob(&[9, 9]))
+            .set_bytes(&format!("{cache_key}-parquet-v5"), &well_framed_blob(&[9, 9]))
             .await
             .unwrap();
 
@@ -294,7 +294,7 @@ mod tests {
             .unwrap();
         state
             .cache
-            .set_bytes(&format!("{cache_key}-parquet-v4"), &well_framed_blob(&geometry))
+            .set_bytes(&format!("{cache_key}-parquet-v5"), &well_framed_blob(&geometry))
             .await
             .unwrap();
 

@@ -25,6 +25,12 @@ const green = (overrides = {}) => ({
   branch: 'fix/example',
   head: HEAD,
   headRepo: DEFAULT_REPO,
+  // Both mirror fields sweepPullRequests populates -- verified against the row
+  // constructor, not assumed: an earlier draft added `state` to the --json list
+  // and never copied it onto the row, so the branch reading it was reachable
+  // only from fixtures like this one while being dead in production.
+  state: 'OPEN',
+  testLaneCount: 4,
   mergeable: 'MERGEABLE',
   mergeStateStatus: 'CLEAN',
   runCount: 4,
@@ -198,13 +204,21 @@ function stubGh(table) {
 const onePr = JSON.stringify([
   {
     number: 42,
+    state: 'OPEN',
     headRefName: 'fix/example',
     headRefOid: HEAD,
     mergeable: 'MERGEABLE',
     mergeStateStatus: 'CLEAN',
     headRepository: { name: 'ifc-lite' },
     headRepositoryOwner: { login: 'LTplus-AG' },
-    statusCheckRollup: [{ status: 'COMPLETED', conclusion: 'SUCCESS' }],
+    // A rollup entry now has to say WHICH workflow published it. This fixture
+    // carried a bare {status, conclusion} and the sweep read it as healthy,
+    // which is the state the Test-lane branch exists to refuse: a populated
+    // rollup with nothing from the merge gate in it.
+    statusCheckRollup: [
+      { __typename: 'CheckRun', workflowName: 'Test', name: 'Typecheck', status: 'COMPLETED', conclusion: 'SUCCESS' },
+      { __typename: 'StatusContext', context: 'Vercel', state: 'SUCCESS' },
+    ],
   },
 ]);
 
@@ -330,4 +344,87 @@ test('the sweep reports a stale run and a DIRTY base from real response shapes',
   // DIRTY outranks both, so that is the reason reported.
   assert.equal(disqualify(rows[0])?.severity, SEVERITY.DIRTY);
   assert.equal(actionable(rows).length, 1);
+});
+
+test('a MERGED pull request is never green, whatever its counts say', () => {
+  // The #3315 row shape, measured on origin/main before this branch existed:
+  // disqualify() returned null and severityOf() returned SEVERITY.GREEN over a
+  // pull request that was already merged. `mergeable` reads UNKNOWN on a MERGED
+  // PR exactly as it does on one GitHub has not finished computing, so nothing
+  // below this branch can tell the two apart. Only `--state open` at the call
+  // site was keeping it out of the report.
+  const row = green({
+    number: 3315,
+    state: 'MERGED',
+    mergeable: 'UNKNOWN',
+    mergeStateStatus: 'UNKNOWN',
+    runCount: 39,
+    pass: 39,
+  });
+  assert.equal(disqualify(row)?.severity, SEVERITY.NOT_OPEN);
+  assert.notEqual(SEVERITY.NOT_OPEN, SEVERITY.NOT_OURS, 'ranks must differ or this assertion pins nothing');
+  assert.match(disqualify(row).reason, /not an open merge candidate/);
+  assert.equal(actionable([row]).length, 0, 'a merged PR is not a task');
+});
+
+test('a CLOSED, unmerged pull request is disqualified the same way', () => {
+  const row = green({ state: 'CLOSED' });
+  assert.equal(disqualify(row)?.severity, SEVERITY.NOT_OPEN);
+  assert.match(disqualify(row).reason, /not an open merge candidate/);
+  assert.equal(actionable([row]).length, 0);
+});
+
+test('runs at the head do not mean the TEST workflow ran', () => {
+  // Measured on #3315 at 66c8886b: five workflow runs present
+  // (ifcopenshell-parity x2, python-wheels, server-binaries, xmatch-fixture)
+  // and test.yml among them zero times. `runCount > 0` was true over a head the
+  // test suite never examined, which is the #3294 shape with a non-zero count.
+  const bad = disqualify(green({ runCount: 5, testLaneCount: 0 }));
+  assert.ok(bad);
+  assert.equal(bad.severity, SEVERITY.NO_RUNS);
+  assert.match(bad.reason, /no lane from the Test workflow/);
+});
+
+test('the test-workflow branch can also NOT fire', () => {
+  // Anti-vacuity twin of the row above: same low runCount, but test.yml did
+  // run. Without this, a branch that disqualified unconditionally would pass
+  // the case above and nothing would notice.
+  assert.equal(disqualify(green({ runCount: 5, testLaneCount: 1 })), null);
+});
+
+test('the sweep CARRIES state onto the row, so NOT_OPEN is live in production', () => {
+  // The unit cases above build rows by hand, so every one of them passes with
+  // the row constructor dropping `state` entirely -- measured: removing
+  // `state: pr.state ?? null` leaves 28 of 28 green. That is how the first
+  // draft of this branch shipped inert, reachable only from fixtures. This
+  // case drives the real producer instead.
+  const merged = JSON.parse(onePr);
+  merged[0].state = 'MERGED';
+  const gh = stubGh([
+    ['pr list', JSON.stringify(merged)],
+    [`head_sha=${HEAD}`, '{"total_count":3}'],
+    ['branch=', `{"workflow_runs":[{"head_sha":"${HEAD}"}]}`],
+    ['graphql', '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}'],
+    ['issues/', '[]'],
+  ]);
+  const rows = sweepPullRequests({ gh });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].state, 'MERGED', 'the row must carry state, not drop it');
+  assert.equal(disqualify(rows[0])?.severity, SEVERITY.NOT_OPEN);
+  // Its sibling, pinned in the same place for the same reason: the first draft
+  // fixed `state` carriage alone and left this field able to go missing with
+  // every test still green.
+  assert.equal(typeof rows[0].testLaneCount, 'number', 'the row must carry testLaneCount too');
+});
+
+test('a row missing either field is not green', () => {
+  // Both are "unknown", and unknown is not green. A truthiness guard on state
+  // and an `=== 0` on the count both let absence through, which is the fail-open
+  // these two branches exist to close.
+  const { state: _s, ...noState } = green();
+  assert.equal(disqualify(noState)?.severity, SEVERITY.NO_RUNS);
+  assert.match(disqualify(noState).reason, /state is missing/);
+  const { testLaneCount: _t, ...noCount } = green();
+  assert.equal(disqualify(noCount)?.severity, SEVERITY.NO_RUNS);
+  assert.match(disqualify(noCount).reason, /Test-lane count could not be read/);
 });

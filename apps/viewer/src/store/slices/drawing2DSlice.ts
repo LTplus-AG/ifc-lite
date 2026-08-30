@@ -347,10 +347,10 @@ export interface Drawing2DSlice extends Drawing2DState {
 
 /**
  * Single source of truth for `drawing2DDisplayOptions` defaults. Both the
- * slice initializer and `resetViewerState` (`store/index.ts`) call this so
+ * slice initializer and `drawing2DSlice.teardown.ts` call this so
  * the two paths can't drift — the same pattern `POINT_CLOUD_DEFAULTS` uses.
  */
-export const getDefaultDisplayOptions = (): Drawing2DState['drawing2DDisplayOptions'] => ({
+const getDefaultDisplayOptions = (): Drawing2DState['drawing2DDisplayOptions'] => ({
   showHiddenLines: true,
   showHatching: true,
   showAnnotations: true,
@@ -365,7 +365,7 @@ export const getDefaultDisplayOptions = (): Drawing2DState['drawing2DDisplayOpti
   scanSectionIncludeInExport: true,
 });
 
-const getDefaultState = (): Drawing2DState => ({
+export const getDefaultDrawing2DState = (): Drawing2DState => ({
   drawing2D: null,
   drawing2DStatus: 'idle',
   drawing2DProgress: 0,
@@ -406,7 +406,7 @@ const getDefaultState = (): Drawing2DState => ({
 
 export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2DSlice> = (set, get) => ({
   // Initial state
-  ...getDefaultState(),
+  ...getDefaultDrawing2DState(),
 
   // Drawing Actions
   setDrawing2D: (drawing) => set({
@@ -441,8 +441,8 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
   // Only the drawing-generation fields, NOT the whole slice: this is called
   // by "View 2D" (SectionPanel.tsx) purely to force regeneration with
   // current settings, so it must leave graphic overrides, DXF underlays,
-  // and all annotation/measurement state (which `getDefaultState()` would
-  // wipe) untouched.
+  // and all annotation/measurement state (which `getDefaultDrawing2DState()`
+  // would wipe) untouched.
   clearDrawing2D: () => set({
     drawing2D: null,
     drawing2DStatus: 'idle',

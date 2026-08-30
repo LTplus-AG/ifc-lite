@@ -7,7 +7,7 @@
 //! this module owns the class codes and the classified scan variant the
 //! browser's sharded pre-pass consumes).
 
-use crate::parallel_scan::ShardRecords;
+use crate::parallel_scan::{ShardRecords, ShardRefusals};
 use ifc_lite_core::EntityScanner;
 
 /// Per-record prepass class emitted by [`scan_shard_classified`].
@@ -62,6 +62,34 @@ pub fn scan_shard_classified(
     range_start: usize,
     range_end: usize,
 ) -> (ShardRecords, Vec<u8>, Option<usize>) {
+    let (records, classes, handoff, _refusals) =
+        scan_shard_classified_with_refusals(content, range_start, range_end);
+    (records, classes, handoff)
+}
+
+/// [`scan_shard_classified`] plus the byte offset of every record this shard
+/// refused because its instance name does not fit `u32` (#3395).
+///
+/// The browser's SAB-backed pre-scanned load hands the stitched shard columns
+/// straight to the parser worker, which cannot recover the refusals from the
+/// narrowed columns — the ids that were dropped are simply not there. So they
+/// have to ride along, and only a caller that asked for them pays for the
+/// extra binding. [`scan_shard_classified`] stays the 3-tuple it always was
+/// (an added return value would be a breaking change for a published crate)
+/// and delegates here, so there is one loop, not two.
+///
+/// Offsets rather than a count, for the reason spelled out on
+/// [`scan_shard_with_refusals`](crate::scan_shard_with_refusals): a shard that
+/// starts inside a quoted value refuses text the file never declared, so only
+/// the host's stitch — which knows where this shard's retained region begins
+/// — can tell a real refusal from an artefact of where the shard started.
+/// Handing back a count instead would let a clean file be reported as
+/// incomplete.
+pub fn scan_shard_classified_with_refusals(
+    content: &[u8],
+    range_start: usize,
+    range_end: usize,
+) -> (ShardRecords, Vec<u8>, Option<usize>, ShardRefusals) {
     let mut scanner = if range_start == 0 {
         EntityScanner::new(content)
     } else {
@@ -81,7 +109,12 @@ pub fn scan_shard_classified(
             &content[start..entity_end],
         ));
     }
-    (records, classes, handoff)
+    (
+        records,
+        classes,
+        handoff,
+        scanner.skipped_oversized_id_starts().to_vec(),
+    )
 }
 
 /// [`classify_type_name`] plus the #1910 instance-level exception: a spatial
@@ -118,7 +151,7 @@ pub fn classify_type_name_with_content(type_name: &str, entity_bytes: &[u8]) -> 
 /// every other named/flag arm here stays byte-identical to what it was
 /// before #1910 -- the only new code path is the explicit OR-in above.
 pub fn classify_type_name(type_name: &str) -> u8 {
-    use ifc_lite_core::{has_geometry_by_name, IfcType};
+    use ifc_lite_core::{has_geometry_by_name, type_product_ifc_type};
     let named = match type_name {
         "IFCPROJECT" => PREPASS_CLASS_PROJECT,
         "IFCSITE" => return PREPASS_CLASS_SITE, // site is job + site-record; flags implied
@@ -140,11 +173,8 @@ pub fn classify_type_name(type_name: &str) -> u8 {
         return named;
     }
     let mut class = PREPASS_CLASS_NONE;
-    if type_name.ends_with("TYPE") || type_name.ends_with("STYLE") {
-        let ty = IfcType::from_str(type_name);
-        if ty.is_subtype_of(IfcType::IfcTypeProduct) {
-            class |= PREPASS_CLASS_FLAG_TYPE_CANDIDATE;
-        }
+    if type_product_ifc_type(type_name).is_some() {
+        class |= PREPASS_CLASS_FLAG_TYPE_CANDIDATE;
     }
     if has_geometry_by_name(type_name) {
         class |= PREPASS_CLASS_FLAG_GEOMETRY_JOB;

@@ -201,6 +201,37 @@ describe('readEntities derives typeRanges instead of trusting the stored triples
     expect([...table.typeRanges.keys()]).toEqual([IfcTypeEnum.IfcWall, IfcTypeEnum.IfcSpace]);
   });
 
+  it('reads a v14 section, which has no rawTypeName column, without running past its end', () => {
+    // A v15 payload is a v14 payload plus a trailing Uint32Array[count], so
+    // dropping those bytes reproduces exactly what an old writer emitted.
+    const strings = new StringTable();
+    const columns = columnsFor(INTERLEAVED_TYPES, strings);
+    const source = entityTableFromColumns({ ...columns, typeRanges: newSpans() }, strings);
+    const writer = new BufferWriter();
+    writeEntities(writer, source);
+    const v15 = new Uint8Array(writer.build());
+    const v14Length = v15.byteLength - INTERLEAVED_TYPES.length * 4;
+
+    // Anti-vacuity: the column really is the only difference, and it is not
+    // zero-width — otherwise this test would pass against an unchanged writer.
+    expect(v15.byteLength - v14Length).toBe(INTERLEAVED_TYPES.length * 4);
+    expect(v14Length).toBeGreaterThan(0);
+
+    // Trailing bytes the reader must not touch. Reading the absent column
+    // would consume them (and a shorter buffer would run off the end).
+    const withTrailer = new Uint8Array(v14Length + 64);
+    withTrailer.set(v15.subarray(0, v14Length), 0);
+    withTrailer.fill(0xab, v14Length);
+
+    const reader = new BufferReader(withTrailer.buffer);
+    const table = readEntities(reader, strings, 14);
+
+    expect(reader.position).toBe(v14Length);
+    expect(table.count).toBe(INTERLEAVED_TYPES.length);
+    expect(table.getTypeName(10)).toBe('IfcWall');
+    expect(table.getTypeName(20)).toBe('IfcSpace');
+  });
+
   it('round-trips the derived spans through a second write', () => {
     const { table: first, strings } = hydrate(INTERLEAVED_TYPES, oldStartPlusCount());
     const writer = new BufferWriter();

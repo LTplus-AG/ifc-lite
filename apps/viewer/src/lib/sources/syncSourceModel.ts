@@ -3,7 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { SourceFile, SourceTag } from '@ifc-lite/plugin-api';
-import { useViewerStore, stringToEntityRef } from '@/store';
+import { useViewerStore } from '@/store';
+import { viewerTeardown } from '@/store/teardown-registry';
+import { modelRemovedScope } from '@/store/teardown-scope';
 import type { SourceHost } from '@/services/sources/source-host';
 import { recordDownloadedSourceFile } from './persistence';
 import { enqueueSourceLoad } from './loadQueue';
@@ -186,7 +188,37 @@ async function doSyncSourceModel({
   // slice), purge ids that pointed into its now-burned global-id range, and
   // restore the sibling collapse states addModel just collapsed.
   removeModel(modelId);
-  purgeStaleEntityState(modelId, replacementId);
+  // Then drop every stored entity id that no longer belongs to a surviving
+  // model: ids in the removed model's now-burned global-id range, its
+  // overlay-allocated ids ABOVE that range (StoreEditor duplicates, scripted
+  // adds), and per-model entries keyed by its model id. The replacement gets a
+  // new offset range, so none of these can be remapped — they must all go, or
+  // selection / isolation state dangles forever.
+  //
+  // This is the SAME scope `removeModel` just ran, and used to be a
+  // hand-written second copy of it (`purgeStaleEntityState`). The one
+  // difference is the third argument, whose reasoning is on
+  // `modelRemovedScope`'s `notYetASurvivor` param rather than repeated here.
+  // The short version: `removeModel`'s own dispatch a moment ago counted the
+  // replacement as a survivor and so KEPT ids pointing into its fresh range;
+  // this stricter run is what drops them, which is why both runs are needed
+  // and neither is redundant. Drop the third argument and
+  // `syncSourceModel.test.ts`'s "drops a burned id even when the REPLACEMENT's
+  // fresh range covers it" is the one test that goes red — measured.
+  //
+  // Re-running a scope is safe: a contribution whose own state did not move
+  // returns `{}` (`store/teardown.ts`), so this pass writes little. Note the
+  // granularity — the gates are per SLICE, not per key, so a slice that did
+  // move re-emits its unchanged keys as equal-but-new collections (#3346).
+  // Safe, because every consumer of these keys compares by value, but it is
+  // not the no-op the per-slice rule alone would suggest. Applied through
+  // `useViewerStore.setState`, the setter
+  // `withVisibilityOwnershipInvalidation` wraps, so the shared isolate / ghost
+  // channels are still invalidated exactly as before.
+  const postRemoval = useViewerStore.getState();
+  useViewerStore.setState(
+    viewerTeardown(modelRemovedScope(postRemoval, modelId, replacementId), postRemoval),
+  );
 
   const postStore = useViewerStore.getState();
   for (const state of otherCollapseStates) {
@@ -211,102 +243,4 @@ async function doSyncSourceModel({
     latestFile,
     sourceTag: nextTag,
   };
-}
-
-/**
- * Drops every stored entity id that no longer belongs to any surviving model:
- * ids in the removed model's burned global-id range, its overlay-allocated
- * ids ABOVE that range (StoreEditor duplicates and scripted adds — see
- * modelSlice's resolveGlobalIdFromModels), and per-model entries keyed by its
- * model id. Purged state: selection, storeys, hidden/isolated/ghost sets, and
- * the Class-tab filter. The replacement model gets a new offset range, so
- * none of these can be remapped — they must all go, or selection / isolation
- * state dangles forever.
- *
- * Runs after the swap. A survivor is any model still in the store EXCEPT the
- * just-loaded replacement: nothing can legitimately reference the replacement
- * yet, and a stale id (notably an old overlay id, which range-filtering on
- * the removed model's own range would let escape) can land inside the
- * replacement's new range and silently mis-highlight an unrelated entity. An
- * id is kept iff a survivor owns it: inside its parse-time range, or an
- * overlay-allocated entity in its mutation view (mirrors the two-pass
- * resolution in resolveGlobalIdFromModels).
- */
-function purgeStaleEntityState(modelId: string, replacementId: string): void {
-  const state = useViewerStore.getState();
-  const mutationViews = state.mutationViews;
-  const survivors = Array.from(state.models.values())
-    .filter((model) => model.id !== replacementId)
-    .map((model) => ({
-      id: model.id,
-      idOffset: model.idOffset,
-      maxExpressId: model.maxExpressId,
-    }));
-
-  const isStale = (id: number): boolean => {
-    for (const survivor of survivors) {
-      const localId = id - survivor.idOffset;
-      if (localId < 0) continue;
-      if (localId <= survivor.maxExpressId) return false;
-      if (mutationViews.get(survivor.id)?.getNewEntity(localId) != null) return false;
-    }
-    return true;
-  };
-
-  const selectedEntityIds = new Set([...state.selectedEntityIds].filter((id) => !isStale(id)));
-  const selectedStoreys = new Set([...state.selectedStoreys].filter((id) => !isStale(id)));
-  const hiddenEntities = new Set([...state.hiddenEntities].filter((id) => !isStale(id)));
-
-  let isolatedEntities = state.isolatedEntities;
-  if (isolatedEntities) {
-    const kept = new Set([...isolatedEntities].filter((id) => !isStale(id)));
-    // An isolation that only referenced the removed model must clear entirely
-    // — an empty isolate set would hide everything.
-    isolatedEntities = kept.size > 0 ? kept : null;
-  }
-  let ghostExceptEntities = state.ghostExceptEntities;
-  if (ghostExceptEntities) {
-    const kept = new Set([...ghostExceptEntities].filter((id) => !isStale(id)));
-    ghostExceptEntities = kept.size > 0 ? kept : null;
-  }
-  // The Class-tab filter intersects into the visible set: left unpurged it
-  // would hold only burned ids after a sync, matching nothing — every element
-  // of the reloaded model would disappear. An emptied filter clears entirely.
-  let classFilter = state.classFilter;
-  if (classFilter) {
-    const kept = new Set([...classFilter.ids].filter((id) => !isStale(id)));
-    classFilter = kept.size > 0 ? { ids: kept, label: classFilter.label } : null;
-  }
-
-  const selectedEntitiesSet = new Set(
-    [...state.selectedEntitiesSet].filter((key) => stringToEntityRef(key).modelId !== modelId),
-  );
-  const selectedEntities = state.selectedEntities.filter((ref) => ref.modelId !== modelId);
-  const selectedEntity = state.selectedEntity?.modelId === modelId ? null : state.selectedEntity;
-  const activeStorey = state.activeStorey?.modelId === modelId ? null : state.activeStorey;
-
-  const hiddenEntitiesByModel = new Map(state.hiddenEntitiesByModel);
-  hiddenEntitiesByModel.delete(modelId);
-  const isolatedEntitiesByModel = new Map(state.isolatedEntitiesByModel);
-  isolatedEntitiesByModel.delete(modelId);
-
-  useViewerStore.setState({
-    selectedEntityIds,
-    selectedEntityId:
-      state.selectedEntityId !== null && isStale(state.selectedEntityId)
-        ? null
-        : state.selectedEntityId,
-    selectedStoreys,
-    activeStorey,
-    selectedEntity,
-    selectedEntities,
-    selectedEntitiesSet,
-    selectedModelId: state.selectedModelId === modelId ? null : state.selectedModelId,
-    hiddenEntities,
-    isolatedEntities,
-    ghostExceptEntities,
-    classFilter,
-    hiddenEntitiesByModel,
-    isolatedEntitiesByModel,
-  });
 }

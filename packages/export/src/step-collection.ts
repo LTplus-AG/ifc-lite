@@ -30,6 +30,7 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { collectReferencedEntityIds, getVisibleEntityIds, collectStyleEntities } from './reference-collector.js';
+import { getSubsetEntityIds } from './subset-roots.js';
 import { buildRelDefinesByPropertiesIndex } from './step-property-set-index.js';
 import { collectPropertyAndQuantitySetMutations } from './step-property-set-collection.js';
 import { type PropertySetContext } from './step-property-set-readers.js';
@@ -67,29 +68,33 @@ export function collectModifications(
   applyMutations: boolean,
   ctx: CollectionContext,
 ): void {
-  if (options.visibleOnly && ctx.dataStore.source) {
+  if (options.subsetEntityIds && options.visibleOnly) {
+    throw new Error(
+      'StepExportOptions.subsetEntityIds and visibleOnly are mutually exclusive: '
+      + 'each computes its own root set and hiddenProductIds/allowedEntityIds pair, '
+      + 'so combining them would make one silently overwrite the other\'s closure.',
+    );
+  }
+
+  if (options.subsetEntityIds && ctx.dataStore.source) {
+    // Anonymized-subset export (#2934): the seed set is caller-supplied
+    // rather than derived from viewer visibility, but the CLOSURE mechanics —
+    // walk from roots, exclude everything else, collect style entities — are
+    // exactly `visibleOnly`'s, so both branches end in `applyExportClosure`.
+    const subset = getSubsetEntityIds(
+      pass.effective,
+      options.subsetEntityIds,
+      options.subsetIdentifyingTypes,
+    );
+    applyExportClosure(pass, ctx, subset.roots, subset.excludedIds);
+  } else if (options.visibleOnly && ctx.dataStore.source) {
     const visible = getVisibleEntityIds(
       ctx.dataStore,
       options.hiddenEntityIds ?? new Set(),
       options.isolatedEntityIds ?? null,
       pass.effective,
     );
-    pass.hiddenProductIds = visible.hiddenProductIds;
-    pass.allowedEntityIds = collectReferencedEntityIds(
-      visible.roots,
-      ctx.dataStore.source,
-      pass.effective,
-      visible.hiddenProductIds,
-      pass.isRefExcludedDuringClosureWalk,
-    );
-    // Second pass: collect IFCSTYLEDITEM entities that reference included
-    // geometry. Styled items reference geometry items but nothing references
-    // them back, so the forward closure misses them.
-    collectStyleEntities(
-      pass.allowedEntityIds,
-      ctx.dataStore.source,
-      { byId: pass.effective, byType: pass.effective.byType },
-    );
+    applyExportClosure(pass, ctx, visible.roots, visible.hiddenProductIds);
   }
 
   // Process mutations if we have a mutation view
@@ -200,4 +205,40 @@ export function collectModifications(
   if (applyMutations && options.georefMutations) {
     applyGeoreferencingMutations(pass, options.georefMutations, ctx.georefContext(options.deltaOnly === true));
   }
+}
+
+/**
+ * The closure tail shared by `visibleOnly` and `subsetEntityIds`: seed
+ * `pass.hiddenProductIds` with `excludeIds` (load-bearing BEFORE the walk —
+ * `pass.isRefExcludedDuringClosureWalk` reads it, per `step-pass-builder.ts`),
+ * walk the forward reference closure from `roots`, then collect the
+ * `IFCSTYLEDITEM`/`IFCSTYLEDREPRESENTATION` entities the forward walk cannot
+ * reach on its own (nothing references a styled item back).
+ *
+ * Extracted verbatim from the pre-#2934 `visibleOnly` branch — same three
+ * statements, same argument order — so that branch's output is byte-identical
+ * to before; the ONLY new caller is `subsetEntityIds`.
+ */
+function applyExportClosure(
+  pass: ExportPass,
+  ctx: CollectionContext,
+  roots: Set<number>,
+  excludeIds: Set<number>,
+): void {
+  pass.hiddenProductIds = excludeIds;
+  pass.allowedEntityIds = collectReferencedEntityIds(
+    roots,
+    ctx.dataStore.source,
+    pass.effective,
+    excludeIds,
+    pass.isRefExcludedDuringClosureWalk,
+  );
+  // Second pass: collect IFCSTYLEDITEM entities that reference included
+  // geometry. Styled items reference geometry items but nothing references
+  // them back, so the forward closure misses them.
+  collectStyleEntities(
+    pass.allowedEntityIds,
+    ctx.dataStore.source,
+    { byId: pass.effective, byType: pass.effective.byType },
+  );
 }

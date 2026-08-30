@@ -75,11 +75,13 @@ export function BCFTopicList({
     );
   }, [topics, statusFilter]);
 
-  // Sort by creation date (newest first)
+  // Sort by creation date (newest first); a topic read back from a
+  // non-conformant source that omitted CreationDate has it undefined
+  // (see @ifc-lite/bcf's reader.ts) and sorts as oldest, never fabricated.
   const sortedTopics = useMemo(() => {
-    return [...filteredTopics].sort(
-      (a, b) => new Date(b.creationDate).getTime() - new Date(a.creationDate).getTime()
-    );
+    const time = (t: (typeof filteredTopics)[number]) =>
+      t.creationDate ? new Date(t.creationDate).getTime() : 0;
+    return [...filteredTopics].sort((a, b) => time(b) - time(a));
   }, [filteredTopics]);
 
   return (
@@ -214,10 +216,12 @@ export function BCFTopicList({
                     <User className="h-3 w-3" />
                     {topic.creationAuthor.split('@')[0]}
                   </span>
-                  <span className="flex items-center gap-1">
-                    <Calendar className="h-3 w-3" />
-                    {formatDate(topic.creationDate)}
-                  </span>
+                  {topic.creationDate && (
+                    <span className="flex items-center gap-1">
+                      <Calendar className="h-3 w-3" />
+                      {formatDate(topic.creationDate)}
+                    </span>
+                  )}
                   {topic.comments.length > 0 && (
                     <span className="flex items-center gap-1">
                       <MessageSquare className="h-3 w-3" />

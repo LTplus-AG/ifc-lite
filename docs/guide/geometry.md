@@ -175,6 +175,72 @@ const bounds = result.coordinateInfo.shiftedBounds;
 console.log(`Model bounds:`, bounds);
 ```
 
+### Drilling from a Mesh Back to its Source Item
+
+An element's `expressId` names the wall; it does not name the piece of the wall
+you just clicked. `MeshData.geometryItemId` does. It is the **STEP express id of
+the `IfcRepresentationItem` the mesh was tessellated from**, so on a wall built
+from several solids each mesh names its own `IfcExtrudedAreaSolid`,
+`IfcFacetedBrep` or `IfcBooleanResult`. Because it is a STEP instance name, it resolves
+against the same entity index as any other id, so you can read the source line
+back out of the file:
+
+```typescript
+import type { MeshData } from '@ifc-lite/geometry';
+
+/** The raw STEP text of the representation item a mesh was tessellated from. */
+function sourceItemText(mesh: MeshData): string | undefined {
+  // Absent is a real state; see "When it is absent" below. It is never `0`.
+  if (mesh.geometryItemId === undefined) return undefined;
+
+  // Representation items are indexed in `entityIndex.byId` like every other
+  // entity. They are NOT in the entity TABLE (the columnar parser classifies
+  // them as skip-category and never materialises them), so
+  // `store.entities.getTypeName(...)` has nothing to return for one. Take the
+  // type off the ref instead.
+  const ref = store.entityIndex.byId.get(mesh.geometryItemId);
+  if (!ref) return undefined;
+
+  console.log(`#${mesh.expressId} came from #${ref.expressId} (${ref.type})`);
+  return store.source.decodeUtf8(ref.byteOffset, ref.byteOffset + ref.byteLength);
+}
+
+for (const mesh of result.meshes) {
+  const text = sourceItemText(mesh);
+  if (text) console.log(text);
+}
+```
+
+`geometryItemId` is **disjoint from `materialId`**, the other source id on
+`MeshData`. `materialId` is an `IfcMaterial` express id, set on the meshes that
+slice a wall or slab by material layer. The two are never both set, and they
+name different classes of entity, so neither is a fallback for the other:
+following `materialId` as though it were a representation item lands on the
+wrong entity, which is exactly the confusion the split fixed (#3199).
+
+#### When it is absent
+
+`geometryItemId` is `undefined` when there is no id to carry, never `0`. STEP
+instance names start at `#1`, so a zero can only be a producer's own "no
+reference" sentinel, and the pipeline filters it to absent at the single place
+both source ids are set.
+
+Absence means **"no item identity is available here"**, not "this geometry has
+no source item". The item existed; the mesh you are holding was merged from more
+than one of them, so no single id describes it. The cases:
+
+- **The single merged mesh fallback.** The element was emitted as one mesh for
+  its whole body rather than one mesh per representation item.
+- **The cached `IfcMappedItem` path.** A representation map's items were merged
+  into one template, so the template names none of them individually.
+- **A colour-merged batch.** Many entities' vertices share one `MeshData`,
+  identified per-vertex by `entityIds`; one item id cannot name many entities'
+  geometry.
+
+A material-layer slice is a fourth kind of absence with a different reading: it
+carries `materialId` instead, so the identity is present but is a material's,
+not an item's.
+
 ## Streaming Geometry
 
 Process geometry incrementally for large files:
@@ -417,6 +483,66 @@ packed instanced shards when the processor's `enableInstancing` option is on
 `enableInstancing: false`, since the renderer's instanced path is
 primary-model only. See the [Rendering Guide](rendering.md) for how shards are
 uploaded.
+
+### Item Ids on Instanced Occurrences
+
+Instanced occurrences carry `geometryItemId` too, so instancing is no longer a
+reason to lose the drill-to-source link. **Do not turn instancing off to get
+item ids**: that trade no longer exists, and it costs you the draw-call win for
+nothing.
+
+On the wire the id rides the shard: `decodeInstancedShard` returns each
+occurrence with an optional `itemId`, and the renderer's `prepareInstancedRender`
+turns that into a per-template `itemIds` column parallel to `entityIds`. An
+occurrence that renders flat because it fell below the instancing threshold
+keeps its id as an ordinary `MeshData.geometryItemId`, so both halves of a model
+answer the same question.
+
+`DecodedInstancedShard.carriesItemIds` is how you tell **"this shard declares no
+ids at all"** from **"this one piece has no item"**:
+
+```typescript
+import { decodeInstancedShard } from '@ifc-lite/geometry';
+
+const shard = decodeInstancedShard(bytes);
+
+if (!shard.carriesItemIds) {
+  // Nothing in this shard names an item. Every occurrence's `itemId` is
+  // undefined for the SAME reason, so don't report per-piece "unknown source".
+} else {
+  for (const occurrence of shard.instances) {
+    // Here an undefined `itemId` is about this occurrence, not the shard.
+    if (occurrence.itemId !== undefined) {
+      console.log(`#${occurrence.entityId} <- item #${occurrence.itemId}`);
+    }
+  }
+}
+```
+
+The flag is derived from the shard's declared instance-record stride, and the
+encoder derives that stride from the data (it only widens the record when some
+occurrence actually names an item), so `false` genuinely means "no occurrence
+here has one", not "this build cannot see them".
+
+!!! warning "A warm cache can show absence that is about the cache"
+    Instanced shards are persisted into the binary cache as raw wire bytes and
+    replayed verbatim, without a re-encode. A shard written by a build from
+    before item ids shipped is a **v1 shard**: it declares the narrow stride, so
+    `carriesItemIds` is `false` and every occurrence in it reports no item,
+    even though the current pipeline would produce ids for that same model. The
+    decoders read such a shard rather than refusing it, so a host with a warm
+    cache can see absence caused by the cache rather than by the geometry.
+
+    In this release those entries are invalidated anyway: the cache
+    `FORMAT_VERSION` moves 15 → 16, so every entry misses once and re-meshes.
+    That bump is not about reading old shards — it is about not handing NEW ones
+    to an OLD bundle. The cache key carries `FORMAT_VERSION`, and a build from
+    before this change refuses any shard version but 1 while the streaming
+    loader swallows the error, which would silently drop every instanced
+    occurrence under deploy skew or a rollback. After the one re-mesh, a warm
+    cache holds v2 shards wherever an occurrence actually names an item. A
+    batch where none does is still written at the base stride as version 1,
+    so re-meshing does not turn every shard into a v2 one.
 
 ## Performance Optimization
 

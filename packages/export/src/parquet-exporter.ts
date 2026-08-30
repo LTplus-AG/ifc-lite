@@ -2,14 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * Parquet exporter for ara3d BOS-compatible format
- */
+/** Parquet exporter for ara3d BOS-compatible format */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { IfcTypeEnum, EntityFlags, PropertyValueType, QuantityType, RelationshipType, IFC_ENTITY_NAMES } from '@ifc-lite/data';
+import { IfcTypeEnum, EntityFlags, PropertyValueType, QuantityType, RelationshipType, IFC_ENTITY_NAMES, exactTypeName } from '@ifc-lite/data';
 import { getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
 import { columnsToParquet } from './columns-to-parquet.js';
 
@@ -142,20 +140,20 @@ export class ParquetExporter {
             // retyped-then-exported row no longer disagrees with those two
             // exporters.
             //
-            // The unretyped name comes from `entities.getTypeName(id)`, the
-            // store's own canonical answer, NOT from re-deriving PascalCase out
-            // of `typeEnum` through IFC_ENTITY_NAMES. That round trip is lossy
-            // by construction and had already gone stale once (the table was
-            // missing 4 of the 125 enum types until #2319); `getTypeName` also
-            // falls back to the raw parsed type name when an entity's type is
-            // outside the generated enum, where `IfcTypeEnumToString` yields the
-            // literal string 'Unknown'.
+            // The unretyped name comes from `exactTypeName`, not `getTypeName`
+            // and not from re-deriving PascalCase out of `typeEnum` through
+            // IFC_ENTITY_NAMES (lossy; already went stale once, #2319).
+            // `getTypeName` resolves through `IfcTypeEnum`, which coalesces
+            // class names so the viewer's scope chips group one per family —
+            // so this column named an `IFCDOORSTANDARDCASE` line `IfcDoor`,
+            // disagreeing with StepExporter, which re-emits classes verbatim.
+            // `@ifc-lite/data`'s exact-type-name.ts lists the coalesced set.
             //
             // `typeOf` answers for EVERY indexed entity, not only retyped ones,
             // so it cannot be the source for untouched rows. Override only when
             // the overlay actually DISAGREES with the parsed class.
             Type: expressId.map((id) => {
-                const source = entities.getTypeName(id);
+                const source = exactTypeName(entities, id);
                 const effectiveType = effective?.typeOf(id);
                 if (effectiveType === undefined || effectiveType === source.toUpperCase()) {
                     return source;
@@ -612,6 +610,7 @@ export function QuantityTypeToString(type: QuantityType): string {
         [QuantityType.Count]: 'Count',
         [QuantityType.Weight]: 'Weight',
         [QuantityType.Time]: 'Time',
+        [QuantityType.Number]: 'Number',
     };
     return names[type] || 'Unknown';
 }

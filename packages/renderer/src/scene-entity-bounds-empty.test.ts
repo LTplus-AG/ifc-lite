@@ -260,6 +260,7 @@ describe('#2480 consumers: what the sentinel used to reach', () => {
         color: [1, 1, 1, 1] as [number, number, number, number],
         transform: new Float32Array([1, 0, 0, 5, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]),
       }],
+      carriesItemIds: false,
     }, 0);
     const box = scene.getEntityBoundingBox(42)!;
     assert.ok(box, 'the occurrence box must be published');

@@ -346,7 +346,7 @@ impl IfcAPI {
                     if site_position.is_none() {
                         site_position = Some((id, start, end));
                     }
-                    let ifc_type = IfcType::from_str(type_name);
+                    let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
                     buffered_jobs.push((id, start, end, ifc_type));
                     total_jobs += 1;
                 }
@@ -387,14 +387,11 @@ impl IfcAPI {
                     // orphan-type pass; the RepresentationMaps attr-6 decode +
                     // referenced-filter happens later in
                     // `collect_type_geometry_jobs_from_spans`.
-                    if type_name.ends_with("TYPE") || type_name.ends_with("STYLE") {
-                        let type_ty = IfcType::from_str(type_name);
-                        if type_ty.is_subtype_of(IfcType::IfcTypeProduct) {
-                            type_candidate_spans.push((id, start, end, type_ty));
-                        }
+                    if let Some(type_ty) = ifc_lite_core::type_product_ifc_type(type_name) {
+                        type_candidate_spans.push((id, start, end, type_ty));
                     }
                     if has_geometry_by_name(type_name) && !disabled_types.contains(type_name) {
-                        let ifc_type = IfcType::from_str(type_name);
+                        let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
                         // We don't bucket by simple/complex here — the host
                         // distributes work across N geometry workers anyway,
                         // and the simple/complex split was a heuristic for
@@ -416,7 +413,7 @@ impl IfcAPI {
                         // with no `IfcBuildingElement` children at all) must
                         // still be scheduled for meshing, or the browser
                         // viewer renders nothing despite a correct scene tree.
-                        let ifc_type = IfcType::from_str(type_name);
+                        let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
                         buffered_jobs.push((id, start, end, ifc_type));
                         total_jobs += 1;
                     }
@@ -524,6 +521,8 @@ impl IfcAPI {
             on_event.call1(&JsValue::NULL, &meta.into())?;
         }
 
+        let oversized_id_count = scanner.skipped_oversized_ids(); // #3395, reported + exported below
+        ifc_lite_core::report_oversized_ids(oversized_id_count);
         // Cache for processGeometryBatch reuse. Convert the scan's FxHashMap
         // into a compact columnar index (sorted u32 columns + binary search):
         // ~229 MB vs the hashmap's ~436 MB on a 19.1 M-entity model (#1682).
@@ -569,6 +568,7 @@ impl IfcAPI {
             crate::api::set_js_prop(&index_event, "ids", &ids_arr);
             crate::api::set_js_prop(&index_event, "starts", &starts_arr);
             crate::api::set_js_prop(&index_event, "lengths", &lengths_arr);
+            crate::api::set_js_prop(&index_event, "oversizedIdCount", &(oversized_id_count as f64).into()); // #3395: the parser worker sees only these columns
             on_event.call1(&JsValue::NULL, &index_event.into())?;
         }
 

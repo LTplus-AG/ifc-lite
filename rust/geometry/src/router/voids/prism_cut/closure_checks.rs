@@ -76,11 +76,13 @@ pub(super) fn closed_or_hairline(mesh: &Mesh) -> bool {
     // Canonicalize to undirected segments with a net sign.
     //
     // Sorted by endpoint key, NOT left in `edges` iteration order: `FxHashMap`
-    // iterates target-dependently, and the length sort below is not a total order,
-    // so equal-length segments would seed the line grouping in an arbitrary order
-    // that differs between native and wasm32. The grouping is greedy, so a
-    // different seed can reach a different verdict. (Pre-existing; surfaced when
-    // this moved out of `prism_cut.rs`.)
+    // iterates target-dependently, and the grouping below is greedy, so an
+    // arbitrary seed order could reach a different verdict on native than on
+    // wasm32. This sort closes that: `edges` is keyed by `(K, K)`, so every
+    // `(a, b)` pushed here is unique and the sort key is tie-free -- an unstable
+    // sort with a tie-free key yields one deterministic sequence whatever order
+    // the map was walked in. The length sort that seeds the grouping is a total
+    // order too, by its own index tie-break; see the comment there.
     let mut bad: Vec<(K, K, i64)> = Vec::new();
     for (&(a, b), &c) in edges.iter() {
         if c > 0 {

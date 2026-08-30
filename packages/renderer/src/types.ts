@@ -53,6 +53,10 @@ export interface Mesh {
    *  when their entity leaves the selection (see Scene.disposeHydratedMeshesExcept)
    *  to stop unbounded accumulation + transparent double-draw on deselect. */
   hydrated?: boolean;
+  /** Source `MeshData.geometryItemId`, carried through hydration so a pick can
+   *  report the representation item it hit. See {@link PickResult.geometryItemId}
+   *  for when it is absent. */
+  geometryItemId?: number;
 }
 
 /**
@@ -389,18 +393,6 @@ export interface PickClipState {
   clipBox?: ClipBox | null;
 }
 
-/**
- * Result from GPU picking
- * For multi-model support, includes both expressId and modelIndex
- */
-export interface PickResult {
-  expressId: number;
-  modelIndex?: number;  // Index of the model this entity belongs to
-  /**
-   * World-space XYZ of the picked surface point. Optional because the
-   * pick path can skip depth readback for callers that only need the
-   * entityId (e.g. selection state). Recovered by sampling the pick
-   * pass's depth texture at the click position and unprojecting.
-   */
-  worldXYZ?: { x: number; y: number; z: number };
-}
+// `PickResult` lives with the code that builds it (pick-resolve.ts) and is
+// re-exported here so every existing `from './types.js'` import still resolves.
+export type { PickResult } from './pick-resolve.js';

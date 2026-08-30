@@ -320,7 +320,7 @@ export class IfcLiteBridge {
   /**
    * Parse IfcAlignment directrix curves into a flat Float32Array of 3D
    * line-list vertices `[x0,y0,z0, x1,y1,z1, …]` in renderer Y-up world space
-   * (RTC-subtracted, metres). Feed straight to `renderer.uploadAlignmentLines3D`.
+   * (RTC-subtracted, metres). Feed straight to `renderer.setLineOverlay('alignment', …)`.
    * Empty when the file has no alignments.
    */
   parseAlignmentLines(content: string): Float32Array {
@@ -347,8 +347,8 @@ export class IfcLiteBridge {
    * Parse `IfcGrid` / `IfcGridAxis` into a flat Float32Array of 3D line-list
    * vertices `[x0,y0,z0, x1,y1,z1, …]` (one segment per axis) in renderer Y-up
    * world space (RTC-subtracted, metres) — the same frame the streamed meshes
-   * render in, so grids overlay the model by construction (issue #945). Feed
-   * straight to a line pipeline (e.g. `renderer.uploadAnnotationLines3D`).
+   * render in, so grids overlay the model by construction (issue #945). Feed to
+   * `setLineOverlay('grid', …)`, NOT `'annotation'` (it expands bounds, #967).
    * Empty when the file has no grids.
    */
   parseGridLines(content: string): Float32Array {

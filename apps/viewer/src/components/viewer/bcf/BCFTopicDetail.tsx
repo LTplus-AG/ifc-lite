@@ -186,8 +186,8 @@ export function BCFTopicDetail({
 
             <div className="text-xs text-muted-foreground space-y-1">
               <p>
-                Created by {topic.creationAuthor} on{' '}
-                {formatDateTime(topic.creationDate)}
+                Created by {topic.creationAuthor}
+                {topic.creationDate ? <> on {formatDateTime(topic.creationDate)}</> : null}
               </p>
               {topic.assignedTo && <p>Assigned to: {topic.assignedTo}</p>}
               {topic.dueDate && <p>Due: {formatDate(topic.dueDate)}</p>}
@@ -340,8 +340,7 @@ export function BCFTopicDetail({
                     <div className="flex items-center gap-2 mb-1 text-xs text-muted-foreground">
                       <User className="h-3 w-3" />
                       <span>{comment.author.split('@')[0]}</span>
-                      <span>-</span>
-                      <span>{formatDateTime(comment.date)}</span>
+                      {comment.date && <><span>-</span><span>{formatDateTime(comment.date)}</span></>}
                       {comment.viewpointGuid && (
                         <span className="flex items-center gap-0.5">
                           <Camera className="h-3 w-3" />

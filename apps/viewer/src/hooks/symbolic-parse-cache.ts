@@ -167,9 +167,9 @@ export function ensureParseFor(stores: IfcDataStore[]): Promise<void>[] {
         notifyCacheChange();
       } catch (error) {
         // Cache empty on failure so we don't retry a doomed parse every tick
-        // (matches useGridLines3D / useAlignmentLines3D — a model whose
-        // annotation section is malformed would otherwise re-run the
-        // full-source WASM walk on every `stores` dependency change).
+        // (matches useAlignmentLines3D — a model whose annotation section is
+        // malformed would otherwise re-run the full-source WASM walk on
+        // every `stores` dependency change).
         // eslint-disable-next-line no-console
         console.warn('[useSymbolicAnnotations] parse failed:', error);
         PARSE_CACHE.set(key, createEmptyParseResult());

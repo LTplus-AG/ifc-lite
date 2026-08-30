@@ -65,17 +65,19 @@ const CAST_GATE_CACHE = new WeakMap<object, Map<string, boolean>>();
 
 function passesCastGate(
   value: { value: string },
-  dataType: string | undefined
+  dataType: string | undefined,
+  schemaVersion: string | undefined
 ): boolean {
   let byType = CAST_GATE_CACHE.get(value);
   if (!byType) {
     byType = new Map();
     CAST_GATE_CACHE.set(value, byType);
   }
-  const key = dataType ?? '';
+  // `IFCTIMESTAMP` casts differently under IFC2X3, so the version is in the key.
+  const key = `${dataType ?? ''}|${schemaVersion ?? ''}`;
   let passes = byType.get(key);
   if (passes === undefined) {
-    const xsdTypes = ifcMeasureToXsdTypes(dataType);
+    const xsdTypes = ifcMeasureToXsdTypes(dataType, schemaVersion);
     passes = xsdTypes.length === 0 || literalCastsUnderAnyType(value.value, xsdTypes);
     byType.set(key, passes);
   }
@@ -88,7 +90,8 @@ function passesCastGate(
  */
 function singlePropertyPasses(
   facet: IDSPropertyFacet,
-  prop: PropertySetInfo['properties'][number]
+  prop: PropertySetInfo['properties'][number],
+  schemaVersion: string | undefined
 ): boolean {
   // "No value" fails any check, including existence-only ones.
   if (prop.value === null || prop.value === undefined || prop.value === '') {
@@ -102,8 +105,8 @@ function singlePropertyPasses(
   }
 
   if (facet.value) {
-    if (facet.value.type === 'simpleValue' && !passesCastGate(facet.value, prop.dataType)) {
-      return false;
+    if (facet.value.type === 'simpleValue') {
+      if (!passesCastGate(facet.value, prop.dataType, schemaVersion)) return false;
     }
     const candidateValues =
       prop.values && prop.values.length > 0 ? prop.values : [prop.value];
@@ -135,6 +138,7 @@ export function propertyFacetPasses(
   const propertySets = accessor.getPropertySets(expressId);
   if (propertySets.length === 0) return false;
 
+  const schemaVersion = accessor.getSchemaVersion?.();
   let anyMatchingPset = false;
 
   for (const pset of propertySets) {
@@ -145,7 +149,7 @@ export function propertyFacetPasses(
     for (const prop of pset.properties) {
       if (!matchConstraint(facet.baseName, prop.name)) continue;
       anyMatchingProp = true;
-      if (!singlePropertyPasses(facet, prop)) return false;
+      if (!singlePropertyPasses(facet, prop, schemaVersion)) return false;
     }
     if (!anyMatchingProp) return false;
   }
@@ -205,7 +209,7 @@ export function checkPropertyFacet(
   let firstFailure: FacetCheckResult | undefined;
 
   for (const pset of matchingPsets) {
-    const result = checkPropertyInPset(facet, pset);
+    const result = checkPropertyInPset(facet, pset, accessor.getSchemaVersion?.());
     if (result.passed) {
       lastPass = result;
       continue;
@@ -268,7 +272,8 @@ export function checkPropertyFacet(
  */
 function checkPropertyInPset(
   facet: IDSPropertyFacet,
-  pset: PropertySetInfo
+  pset: PropertySetInfo,
+  schemaVersion: string | undefined
 ): FacetCheckResult {
   // Find matching properties
   const matchingProps = pset.properties.filter((prop) =>
@@ -298,7 +303,7 @@ function checkPropertyInPset(
   let firstFailure: FacetCheckResult | undefined;
 
   for (const prop of matchingProps) {
-    const result = checkSingleProperty(facet, pset, prop);
+    const result = checkSingleProperty(facet, pset, prop, schemaVersion);
     if (result.passed) {
       lastPass = result;
       continue;
@@ -324,7 +329,8 @@ function checkPropertyInPset(
 function checkSingleProperty(
   facet: IDSPropertyFacet,
   pset: PropertySetInfo,
-  prop: PropertySetInfo['properties'][number]
+  prop: PropertySetInfo['properties'][number],
+  schemaVersion: string | undefined
 ): FacetCheckResult {
   // Per IDS spec, a property whose stored value is "no value" (null,
   // undefined, empty string, or IfcLogical UNKNOWN) fails ANY check —
@@ -395,30 +401,24 @@ function checkSingleProperty(
       };
     }
 
-    // Strict XSD-cast gate: the IDS literal MUST cast successfully
-    // under at least one of the IFC measure's XSD types. Mirrors the
-    // attribute facet's check — an `IFCINTEGER` slot rejects `42.0`,
-    // an `IFCBOOLEAN` slot rejects numeric literals, etc. The shared
-    // `ifcMeasureToXsdTypes` mapping turns the parser-side measure
-    // name into the XSD types the cast helper understands.
-    if (facet.value.type === 'simpleValue') {
-      const xsdTypes = ifcMeasureToXsdTypes(prop.dataType);
-      if (
-        xsdTypes.length > 0 &&
-        !literalCastsUnderAnyType(facet.value.value, xsdTypes)
-      ) {
-        return {
-          passed: false,
-          actualValue: String(propValue),
-          expectedValue: formatConstraint(facet.value),
-          failure: {
-            type: 'PROPERTY_VALUE_MISMATCH',
-            field: `${pset.name}.${prop.name}`,
-            actual: String(propValue),
-            expected: formatConstraint(facet.value),
-          },
-        };
-      }
+    // Strict XSD-cast gate, mirroring the attribute facet. Shared with
+    // `singlePropertyPasses` rather than repeated: the two must return the
+    // same verdict, and a second copy is what lets them drift.
+    if (
+      facet.value.type === 'simpleValue' &&
+      !passesCastGate(facet.value, prop.dataType, schemaVersion)
+    ) {
+      return {
+        passed: false,
+        actualValue: String(propValue),
+        expectedValue: formatConstraint(facet.value),
+        failure: {
+          type: 'PROPERTY_VALUE_MISMATCH',
+          field: `${pset.name}.${prop.name}`,
+          actual: String(propValue),
+          expected: formatConstraint(facet.value),
+        },
+      };
     }
 
     // Multi-valued IFC properties (IfcPropertyEnumeratedValue,

@@ -88,6 +88,7 @@ function singleOccShard(eid: number): DecodedInstancedShard {
       color: [1, 1, 1, 1],
       transform: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]),
     }],
+    carriesItemIds: false,
   };
 }
 

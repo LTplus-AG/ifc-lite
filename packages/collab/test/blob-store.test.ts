@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   fnv128,
   HttpBlobStore,
@@ -43,6 +43,37 @@ describe('blob store', () => {
     const b = await store.put(new Uint8Array([1, 2, 3]));
     expect(a.hash).toBe(b.hash);
     expect((await store.list()).length).toBe(1);
+  });
+
+  it('MemoryBlobStore refreshes uploadedAt on a re-put of already-known content', async () => {
+    // Order matters: put() the SAME bytes on the SAME store instance twice,
+    // months apart. blob-gc's grace-window check (planBlobSweep in gc.ts)
+    // reads stat().uploadedAt to decide whether an unreferenced-right-now
+    // blob is too young to sweep — a re-PUT is exactly how a client
+    // refreshes that clock when it re-references a blob (see the
+    // blob-gc-worker.ts race-protection comment). A store that keeps the
+    // FIRST put's timestamp forever would let the sweep condemn a blob the
+    // instant after it was legitimately re-uploaded.
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2020-01-01T00:00:00.000Z'));
+      const store = new MemoryBlobStore();
+      const bytes = new Uint8Array([1, 2, 3]);
+      const first = await store.put(bytes);
+      expect(first.uploadedAt).toBe('2020-01-01T00:00:00.000Z');
+
+      vi.setSystemTime(new Date('2020-06-01T00:00:00.000Z'));
+      const second = await store.put(bytes); // same content, re-uploaded months later
+      expect(second.hash).toBe(first.hash);
+      expect(second.uploadedAt).toBe('2020-06-01T00:00:00.000Z');
+
+      // What blob-gc actually reads on its next sweep must agree with what
+      // put() just told the caller — not the original upload time.
+      const stat = await store.stat(first.hash);
+      expect(stat?.uploadedAt).toBe('2020-06-01T00:00:00.000Z');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('LayeredBlobStore reads from local first, falls through to remote, caches on hit', async () => {

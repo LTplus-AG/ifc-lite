@@ -22,6 +22,7 @@ import type { Zone, ZoneSet, ZoneAssignmentsByElement } from '../../lib/zones/ty
 import type { ZoneApportionmentEntry } from '../../lib/zones/apportionment-cache.js';
 import { serializeZoneSets, parseZoneSetFile } from '../../lib/zones/persistence.js';
 import { isConvexFootprint, normalizePrismBounds } from '../../lib/zones/prism.js';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
 const ZONE_SETS_STORAGE_KEY = 'ifc-lite:zone-sets';
 
@@ -310,6 +311,48 @@ export const createZonesSlice: StateCreator<ZonesSlice, [], [], ZonesSlice> = (s
 
   clearAllZoneSets: () => set(() => {
     savePersistedZoneSets([]);
-    return { zoneSets: [], zoneAssignments: new Map(), zoneAssignmentTiming: null, zoneApportionment: new Map(), editingZone: null };
+    // The zone SETS are this action's own business ("the user deleted their
+    // zones"); everything downstream of them is the session-reset arm's list,
+    // spread rather than restated so a field added there lands in both.
+    return { zoneSets: [], ...zonesTeardown.teardown({ kind: 'session-reset' }, {}) };
   }),
 });
+
+/**
+ * Zones (#1810): keep the user-authored zone SETS (they persist across model
+ * loads, like clash presets), but drop the computed assignments — they're keyed
+ * by the OUTGOING model's global ids, and the single-model fallback
+ * (globalId === expressId) means the incoming model's ids can collide and read
+ * the old model's zone membership until the debounced recompute fires. Same
+ * stale-model-reference class as `compareResult`; `useZoneAssignmentSync`
+ * recomputes against the new scene.
+ *
+ * `zoneSets` is therefore absent from both `owns` and the body. `clearAllZoneSets`
+ * DOES destroy them, and spreads this arm for everything else: its field set is a
+ * strict superset with a different meaning, but the overlap is exact, and a
+ * session-scoped field added here has to reach both.
+ */
+export const zonesTeardown = defineSliceTeardown(
+  'zonesSlice',
+  ['zoneAssignments', 'zoneAssignmentTiming', 'zoneApportionment', 'editingZone'],
+  {
+    'session-reset': () => ({
+      zoneAssignments: new Map(),
+      zoneAssignmentTiming: null,
+      // ... and the apportioned cubic metres computed off those assignments
+      // (#2508). `validEntry` only checks the ZONE revision, which a model swap
+      // does not move, so an entry that survives here is served against the
+      // incoming file — and the single-model fallback (globalId === expressId)
+      // means the new model's ids collide with the old one's. Same stale-model
+      // reference as `zoneAssignments` directly above; the two are one fact and
+      // must be dropped together.
+      zoneApportionment: new Map(),
+      // ... and drop any in-flight zone-edit session: leaving `editingZone`
+      // set would hand the incoming model live gizmo handles + picking for
+      // a zone the user was editing against the outgoing model.
+      editingZone: null,
+    }),
+    'model-removed': notApplicable,
+    'all-models-cleared': notApplicable,
+  },
+);

@@ -33,11 +33,39 @@
  *
  * Usage:
  *   node ../../scripts/typecheck-tests.mjs     (cwd = a package; the per-package `typecheck` script)
+ *   node scripts/typecheck-tests.mjs --all     (cwd = repo root; every package)
  *   node scripts/typecheck-tests.mjs --audit   (cwd = repo root; the repo-wide coverage gate)
+ *
+ * The no-argument form reads the CURRENT DIRECTORY as one package, so run bare
+ * from the repo root it used to type-check the whole repository as a single
+ * program (#3362). `repoRootRefusal` below refuses that; see it for what was
+ * measured.
+ *
+ * ANTI-VACUITY (#3194, #3200). `--audit` used to print
+ * `TOTAL 0 / 0` followed by `every test file on disk is in a typecheck
+ * program.` and exit 0 when it found no packages at all — a scan of nothing
+ * reported as a clean scan. Reproduced by running a copy of this script from
+ * an otherwise-empty tree, and again from a tree where `packages/` and `apps/`
+ * exist but are empty. Four guards now stand between an empty input set and
+ * that success line: neither package parent existing is a failure, no package
+ * carrying tests is a failure, and — against the real repo, where a collapse
+ * would otherwise be invisible — fewer than `AUDITED_PACKAGES_FLOOR` packages
+ * or `TEST_FILES_FLOOR` test files is a failure. A directory the walk cannot
+ * read is loud too, and distinguished from one that is missing: they call for
+ * different fixes, and neither of them means "this package has no tests".
+ *
+ * SCAN SCOPE, stated so nobody mistakes the OK for a whole-repo claim: the
+ * audit walks every parent `pnpm-workspace.yaml` declares — `packages/*`,
+ * `apps/*` and `examples/*`. Test files under `tests/` are NOT in
+ * any typecheck program today (`tests/tsconfig.json` extends the root config,
+ * whose `exclude` carries `**\/*.test.ts`, and `tsx --test` transpiles without
+ * checking) — the very #2457 gap this file exists to close, one directory
+ * over, and tracked in #3200. The success line names its scope rather than
+ * claiming every test file on disk.
  */
 
 import { execFile } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -48,16 +76,83 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 const SCRIPT_NAME = 'typecheck-tests.mjs';
 const TSC = path.join(REPO_ROOT, 'node_modules', 'typescript', 'bin', 'tsc');
 const TEST_FILE_RE = /\.test\.(ts|tsx|mts|cts)$/;
-const SKIP_DIRS = new Set(['node_modules', 'dist', 'pkg', '.git', '.turbo']);
+// `target` is Rust's build directory (apps/server is a crate). Nothing under
+// it matches TEST_FILE_RE, so skipping it fixes no false positive — it stops
+// the walk descending through a whole Rust build tree on every local run. CI
+// checkouts are clean, so this is a local-speed change only. Safe to skip
+// unconditionally: `.gitignore` carries a repo-wide `target/`, so no directory
+// of that name can hold a tracked test file.
+const SKIP_DIRS = new Set(['node_modules', 'dist', 'pkg', '.git', '.turbo', 'target']);
 const GENERATED_CONFIG = 'tsconfig.tests.json';
+
+/**
+ * Package parents the audit walks. Not the whole repo — see SCAN SCOPE above.
+ *
+ * All three of the parents `pnpm-workspace.yaml` declares. `examples` was
+ * missing until the #3201 review, and that gap was the same shape as the
+ * skipped-directory bug fixed below, one level further out and strictly worse:
+ * an unwatched PARENT is never a skipped DIRECTORY, so the "look inside every
+ * skipped directory" check could not reach it either. `examples/*` members are
+ * real TypeScript workspace packages with their own tsconfigs, so a test at
+ * `examples/collab-demo/src/foo.test.ts` escaped in silence. Adding the parent
+ * changed no count on a healthy tree — `find examples -name '*.test.*'` returns
+ * 0 today, so the audit still reports 1,434 files across 46 packages — which is
+ * exactly why only a regression test keeps it closed (typecheck-tests.test.mjs).
+ */
+const PACKAGE_PARENTS = ['packages', 'apps', 'examples'];
+
+/** `packages/`; `packages/ and apps/`; `packages/, apps/ and examples/`. */
+function parentList(names) {
+  const parts = names.map((p) => `${p}/`);
+  if (parts.length <= 1) return parts.join('');
+  return `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`;
+}
+
+/**
+ * Lower bound on how many workspace packages must actually reach the audit.
+ * Measured on a healthy tree: 46 packages carry test files, all of them under
+ * `packages/` and `apps/` — no `examples/*` member has one today. Set to 30 — about a third of headroom, enough that ordinary
+ * churn (a package split, a few merged or retired) never forces an edit here,
+ * while the failure this guards against still trips: it is the WHOLESALE
+ * blindings this floor is sized for — a wrong scan root, a `readdirSync` that
+ * returns nothing, a package.json read that stops finding files — and each of
+ * those collapses the count to zero or near it, not to 29.
+ *
+ * It is deliberately not the guard for a PARTIAL drop, and this PR's own change
+ * supplies the counter-example: a package that loses its `tsconfig.json` stops
+ * being audited and the count falls by one. That case is caught earlier and by
+ * name — if the package carries test files the skipped-directory check in
+ * `audit()` fails the run before these counts are consulted, and if it carries
+ * none, no coverage was lost by dropping it.
+ */
+const AUDITED_PACKAGES_FLOOR = 30;
+
+/**
+ * Lower bound on how many test files the walk must find. A second floor,
+ * because the audit has two independent ways to go blind and each leaves the
+ * other's number looking healthy: the package enumeration can collapse, or the
+ * package walk can succeed while `findTestFiles` stops recognising test files
+ * (a change to TEST_FILE_RE, a new extension). Measured on a healthy tree:
+ * 1,434 test files. Set to 900.
+ */
+const TEST_FILES_FLOOR = 900;
 
 /** Test files on disk under `dir`, sorted, repo-relative-free (absolute). */
 function findTestFiles(dir, out = []) {
   let entries;
   try {
     entries = readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return out;
+  } catch (err) {
+    // A directory that is MISSING and one that cannot be READ are different
+    // events, and neither of them is "this package has no test files". The
+    // previous `catch { return out; }` collapsed both into an empty result,
+    // which is how `--audit` could report a clean tree it never opened.
+    throw new Error(
+      err?.code === 'ENOENT'
+        ? `${dir} does not exist — refusing to treat a missing directory as one containing no test files`
+        : `${dir} could not be read (${err?.code ?? err?.message}) — refusing to treat an unreadable directory as one containing no test files`,
+      { cause: err },
+    );
   }
   for (const entry of entries) {
     if (SKIP_DIRS.has(entry.name)) continue;
@@ -149,9 +244,86 @@ async function tsc(args) {
   }
 }
 
+/** The three real ways to run this, printed by every refusal below. */
+const USAGE_LINES = [
+  `    cd <package> && node ../../scripts/${SCRIPT_NAME}   (that one package)`,
+  `    node scripts/${SCRIPT_NAME} --all                   (every package)`,
+  `    node scripts/${SCRIPT_NAME} --audit                 (repo-wide coverage gate)`,
+];
+
+/**
+ * Are these the same directory?
+ *
+ * `path.resolve` is the whole answer on every path this is actually reached
+ * through, so the realpath fallback runs zero syscalls in practice. It is kept
+ * as defence for platforms this was not measured on: four invocations were
+ * tried on macOS - cd through a symlink, the same with --preserve-symlinks,
+ * invoking through the link from the real directory, and that with
+ * --preserve-symlinks - and `resolve` matched in all four, because getcwd(3)
+ * already returns the resolved path and Node's ESM loader realpaths the module
+ * URL. Only the symlink test reaches the fallback today.
+ */
+function samePath(a, b) {
+  if (path.resolve(a) === path.resolve(b)) return true;
+  try {
+    return realpathSync(a) === realpathSync(b);
+  } catch {
+    // One of them cannot be resolved, so they are not provably the same path.
+    // Reported by the caller that actually reads it, not swallowed here.
+    return false;
+  }
+}
+
+/**
+ * Why the repo root is not a package: the message, or null when `pkgDir` is fine.
+ *
+ * `parseCliMode` already refuses the ARGUMENT form of this mistake — `node
+ * scripts/typecheck-tests.mjs packages/clash` from the root used to ignore its
+ * argument and fall through to the cwd branch. The CWD form was left open, and
+ * it is the same substitution with the argument omitted: `node
+ * scripts/typecheck-tests.mjs` run bare from the root takes zero arguments,
+ * which `parseCliMode` accepts as `package` mode, and `checkOnePackage` then
+ * reads the REPOSITORY as the package. Measured on this tree (#3362): it wrote
+ * a 1,520-line /tsconfig.tests.json naming 1,505 test files and handed the lot
+ * to one tsc invocation, printing nothing at all while it did so.
+ *
+ * #3363 added that path to .gitignore, which was right for diff noise and which
+ * also removed the last visible symptom — an untracked file someone would
+ * notice. A guard is what is left.
+ *
+ * Exported for its unit test: like `parseCliMode`, every wrong answer here is
+ * invisible at the call site, because the script runs and reports on something
+ * other than what was asked for.
+ *
+ * @param {string} pkgDir
+ * @param {string} [repoRoot]
+ * @returns {string | null}
+ */
+export function repoRootRefusal(pkgDir, repoRoot = REPO_ROOT) {
+  if (!samePath(pkgDir, repoRoot)) return null;
+  return [
+    `${SCRIPT_NAME}: refusing to treat the repository root as a package.`,
+    '',
+    '  The no-argument mode checks the CURRENT DIRECTORY as one package, and',
+    `  ${pkgDir} is the repo root. Running it there builds a single tsconfig`,
+    '  program naming every test file in the repo and type-checks them all at',
+    '  once, which is not what any caller has ever wanted (#2664, #3362).',
+    '',
+    '  You probably meant one of:',
+    ...USAGE_LINES,
+  ].join('\n');
+}
+
 /** Per-package mode: generate this package's test program and check it. */
 async function checkOnePackage(pkgDir) {
-  const name = path.relative(REPO_ROOT, pkgDir) || path.basename(pkgDir);
+  const refusal = repoRootRefusal(pkgDir);
+  if (refusal) {
+    console.error(refusal);
+    return 2;
+  }
+  // Never empty: `path.relative` returns '' only for the repo root itself, and
+  // the refusal above is the only way past this line.
+  const name = path.relative(REPO_ROOT, pkgDir);
   const program = writeTestProgram(pkgDir);
   if (!program) {
     console.log(`typecheck-tests: ${name} has no test files, nothing to check`);
@@ -167,16 +339,30 @@ async function checkOnePackage(pkgDir) {
   return 0;
 }
 
-function workspaceDirs() {
+/**
+ * @param {string[]} [seenParents] filled with the package parents that exist,
+ *   so a caller can tell "no packages here" from "nowhere to look for them".
+ */
+function workspaceDirs(seenParents = [], scanRoot = REPO_ROOT, skipped = []) {
   const dirs = [];
-  for (const group of ['packages', 'apps']) {
-    const base = path.join(REPO_ROOT, group);
+  for (const group of PACKAGE_PARENTS) {
+    const base = path.join(scanRoot, group);
     if (!existsSync(base)) continue;
+    seenParents.push(group);
     for (const name of readdirSync(base).sort()) {
       const dir = path.join(base, name);
       if (!statSync(dir).isDirectory()) continue;
-      if (!existsSync(path.join(dir, 'tsconfig.json'))) continue;
-      if (!existsSync(path.join(dir, 'package.json'))) continue;
+      const missing = [];
+      if (!existsSync(path.join(dir, 'tsconfig.json'))) missing.push('tsconfig.json');
+      if (!existsSync(path.join(dir, 'package.json'))) missing.push('package.json');
+      // A directory without both files cannot be audited — there is no program
+      // to resolve and no `typecheck` script to check. But "cannot be audited"
+      // is not "has no tests": the caller has to look inside before the run
+      // may claim it covered this parent. See auditSkipped() below.
+      if (missing.length > 0) {
+        skipped.push({ dir, missing });
+        continue;
+      }
       dirs.push(dir);
     }
   }
@@ -184,17 +370,119 @@ function workspaceDirs() {
 }
 
 /**
- * Repo-wide mode: prove every test file on disk is a root file of some
- * typecheck program, and that every package carrying tests actually runs one.
- * This is the part that fails when a test file stops being checked — without
- * it the arrangement rots the next time a package is added.
+ * Does this audit run have enough input to mean anything? Returns the refusal
+ * message, or null when the run is worth trusting.
+ *
+ * Pure and exported so `typecheck-tests.test.mjs` can drive every branch in
+ * isolation. That is NOT sufficient on its own: testing this function only
+ * through direct calls leaves nothing asserting that `audit()` still calls it,
+ * and all four call sites could be deleted with the suite green (#3201
+ * review). `audit()` therefore takes an injectable `scanRoot` and injectable
+ * floors — the `opts.candidateFloor ?? CANDIDATE_FLOOR` seam that
+ * `check-refwalk-guards.mjs` uses — so the same tests drive the refusals END TO
+ * END through `audit()` against a synthetic tree. The CLI exposes no override,
+ * so the gate itself always runs the real root and the real floors.
+ *
+ * `packagesWithTests` / `testFiles` are null on the structural pass, which
+ * runs before any tsc invocation; the quantitative floors need counts that
+ * only exist after the walk.
+ *
+ * @param {{seenParents: string[], packagesWithTests: number|null, testFiles: number|null}} counts
+ * @returns {string|null}
  */
-async function audit() {
+export function auditVacuity({
+  seenParents,
+  packagesWithTests,
+  testFiles,
+  scanRoot = REPO_ROOT,
+  packagesFloor = AUDITED_PACKAGES_FLOOR,
+  testFilesFloor = TEST_FILES_FLOOR,
+}) {
+  if (seenParents.length === 0) {
+    return (
+      `none of ${parentList(PACKAGE_PARENTS)} exists under ${scanRoot}. ` +
+      `Refusing a vacuous pass: this audit exists to prove workspace test files reach a typecheck ` +
+      `program, and it found nowhere to look for them.`
+    );
+  }
+  if (packagesWithTests === null || testFiles === null) return null;
+  if (packagesWithTests === 0) {
+    return (
+      `${parentList(seenParents)} contain no package with a test file. ` +
+      `Refusing a vacuous pass: an audit that found zero test files has proved nothing about ` +
+      `typecheck coverage.`
+    );
+  }
+  if (packagesWithTests < packagesFloor) {
+    return (
+      `only ${packagesWithTests} package(s) carried test files, floor is ${packagesFloor}. ` +
+      `Refusing a vacuous pass: this repo has about 46, so a count this low means the package walk ` +
+      `stopped working, not that the packages went away. If packages were genuinely removed, lower ` +
+      `AUDITED_PACKAGES_FLOOR in the same commit.`
+    );
+  }
+  if (testFiles < testFilesFloor) {
+    return (
+      `only ${testFiles} test file(s) found, floor is ${testFilesFloor}. ` +
+      `Refusing a vacuous pass: this repo has about 1,434, so a count this low means the test-file ` +
+      `walk or TEST_FILE_RE stopped matching, not that the tests went away. If tests were genuinely ` +
+      `removed, lower TEST_FILES_FLOOR in the same commit.`
+    );
+  }
+  return null;
+}
+
+/**
+ * Repo-wide mode: prove every test file under the workspace parents is a
+ * root file of some typecheck program, and that every package carrying tests
+ * actually runs one. This is the part that fails when a test file stops being
+ * checked — without it the arrangement rots the next time a package is added.
+ */
+async function audit({
+  scanRoot = REPO_ROOT,
+  packagesFloor = AUDITED_PACKAGES_FLOOR,
+  testFilesFloor = TEST_FILES_FLOOR,
+} = {}) {
   const rows = [];
   const problems = [];
+  const seenParents = [];
+  const skipped = [];
+  const dirs = workspaceDirs(seenParents, scanRoot, skipped);
+  const floors = { scanRoot, packagesFloor, testFilesFloor };
 
-  for (const dir of workspaceDirs()) {
-    const rel = toPosix(path.relative(REPO_ROOT, dir));
+  // Anti-vacuity, structural. Checked before any tsc runs, because with an
+  // empty input set everything below it succeeds by having nothing to do.
+  const vacuous = auditVacuity({ seenParents, packagesWithTests: null, testFiles: null, ...floors });
+  if (vacuous) {
+    console.error(`\ntypecheck-tests: ${vacuous}`);
+    return 1;
+  }
+
+  // #3201 review: the success line said "all N test file(s) ... under
+  // packages/ and apps/ are in a typecheck program", but workspaceDirs skips
+  // any directory missing tsconfig.json or package.json, and those files were
+  // never counted. A package added without a tsconfig.json therefore had its
+  // tests escape silently — the exact #2457 rot this gate exists to stop, one
+  // level up. Look inside every skipped directory before claiming the parent.
+  for (const { dir, missing } of skipped) {
+    const rel = toPosix(path.relative(scanRoot, dir));
+    const stray = findTestFiles(dir);
+    if (stray.length === 0) continue;
+    problems.push(
+      `${rel}: ${stray.length} test file(s) on disk but no ${missing.join(' and no ')}, ` +
+        `so this audit cannot resolve a typecheck program for it and skipped it entirely. ` +
+        `Add the missing file(s), or move the tests into a package that has them. ` +
+        // Both reds are correct and precise, but they arrive one CI run apart:
+        // adding the tsconfig.json this asks for promotes the directory into
+        // the walk below, which then fails it for having no "typecheck"
+        // script. Name both here so the fix is one round trip, not two.
+        `A directory promoted this way also needs a "typecheck" script — under packages/ that must be ` +
+        `"node ../../scripts/${SCRIPT_NAME}" — or the next run fails on that instead.`,
+    );
+  }
+
+  for (const dir of dirs) {
+    const rel = toPosix(path.relative(scanRoot, dir));
     const onDisk = findTestFiles(dir).sort();
     if (onDisk.length === 0) continue;
 
@@ -220,7 +508,11 @@ async function audit() {
     }
 
     // Which project is supposed to cover this package's tests? Packages use
-    // the generated test program; the two apps typecheck their own tsconfig.
+    // the generated test program; apps and examples typecheck their own
+    // tsconfig. That is right for examples/*: unlike packages/*, their
+    // tsconfigs are standalone (no `extends` of the root config), so they
+    // never inherit the `**/*.test.ts` exclude that makes the generated
+    // program necessary — `"include": ["src"]` already reaches their tests.
     const generated = rel.startsWith('packages/') ? writeTestProgram(dir) : null;
     const project = generated?.config ?? path.join(dir, 'tsconfig.json');
 
@@ -229,14 +521,25 @@ async function audit() {
     try {
       rootFiles = (JSON.parse(output).files ?? []).map((f) => path.resolve(dir, f));
     } catch {
-      problems.push(`${rel}: could not read the resolved config for ${toPosix(path.relative(REPO_ROOT, project))}`);
+      problems.push(`${rel}: could not read the resolved config for ${toPosix(path.relative(scanRoot, project))}`);
     }
     const covered = new Set(rootFiles.filter((f) => TEST_FILE_RE.test(f)));
     const missing = onDisk.filter((f) => !covered.has(f));
     for (const f of missing) {
-      problems.push(`${toPosix(path.relative(REPO_ROOT, f))} is in no typecheck program`);
+      problems.push(`${toPosix(path.relative(scanRoot, f))} is in no typecheck program`);
     }
     rows.push({ pkg: rel, inProgram: onDisk.length - missing.length, onDisk: onDisk.length });
+  }
+
+  // No rows means nothing was measured, so there is no table to print and
+  // `Math.max()` over an empty list would be -Infinity. Refuse here rather
+  // than fall through to a success line describing a run that looked at
+  // nothing.
+  if (rows.length === 0) {
+    console.error(
+      `\ntypecheck-tests: ${auditVacuity({ seenParents, packagesWithTests: 0, testFiles: 0, ...floors })}`,
+    );
+    return 1;
   }
 
   const width = Math.max(...rows.map((r) => r.pkg.length));
@@ -253,7 +556,24 @@ async function audit() {
     for (const p of problems) console.error(`  - ${p}`);
     return 1;
   }
-  console.log('\ntypecheck-tests: every test file on disk is in a typecheck program.');
+
+  // Anti-vacuity, quantitative. After the offenders check: a run that found a
+  // real problem should say so rather than argue about how much it measured.
+  const undersized = auditVacuity({
+    seenParents,
+    packagesWithTests: rows.length,
+    testFiles: totalOn,
+    ...floors,
+  });
+  if (undersized) {
+    console.error(`\ntypecheck-tests: ${undersized}`);
+    return 1;
+  }
+
+  console.log(
+    `\ntypecheck-tests: all ${totalOn} test file(s) across ${rows.length} package(s) under ` +
+      `${parentList(PACKAGE_PARENTS)} are in a typecheck program.`,
+  );
   return 0;
 }
 
@@ -333,7 +653,7 @@ export function parseCliMode(args) {
   return { error: `expected at most one argument, got ${args.map((a) => JSON.stringify(a)).join(' ')}` };
 }
 
-export { writeTestProgram, GENERATED_CONFIG, relativeExtends };
+export { audit, writeTestProgram, GENERATED_CONFIG, relativeExtends };
 
 // Only run the CLI when invoked as one — importing this must not typecheck the
 // repo and call process.exit.
@@ -349,9 +669,7 @@ if (invokedDirectly) {
     console.error(`${SCRIPT_NAME}: ${parsed.error}.`);
     console.error('');
     console.error('  This script takes no package argument. Usage:');
-    console.error(`    cd <package> && node ../../scripts/${SCRIPT_NAME}   (that one package)`);
-    console.error(`    node scripts/${SCRIPT_NAME} --all                   (every package)`);
-    console.error(`    node scripts/${SCRIPT_NAME} --audit                 (repo-wide coverage gate)`);
+    for (const line of USAGE_LINES) console.error(line);
     exitCode = 2;
   } else if (parsed.mode === 'audit') exitCode = await audit();
   else if (parsed.mode === 'all') exitCode = await checkAll();

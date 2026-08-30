@@ -14,3 +14,4 @@ export { EntityQuery, type ComparisonOperator } from './entity-query.js';
 export { EntityNode } from './entity-node.js';
 export { QueryResultEntity } from './query-result-entity.js';
 export { DuckDBIntegration, type SQLResult } from './duckdb-integration.js';
+export { findPropertyInSets, findQuantityInSets } from './pset-lookup.js';

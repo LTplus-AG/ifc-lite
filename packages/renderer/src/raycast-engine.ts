@@ -3,13 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * RaycastEngine - Handles raycasting, BVH management, and snap detection.
- * Extracted from the Renderer class to use composition pattern.
+ * RaycastEngine - raycasting, BVH management and snap detection, composed into `Renderer`.
+ * Reads the scene through the published `SceneContents`, not the package-internal `Scene`: it uses six of its members.
  */
 
 import { Camera } from './camera.js';
 import { isEntityVisible } from './entity-visibility.js';
-import { Scene } from './scene.js';
+import type { SceneContents } from './scene-contents.js';
 import { Raycaster, type Intersection, type Ray } from './raycaster.js';
 import { SnapDetector, SnapType, type SnapTarget, type SnapOptions, type EdgeLockInput, type MagneticSnapResult } from './snap-detector.js';
 import { BVH } from './bvh.js';
@@ -44,7 +44,7 @@ function computeMeshSetSignature(meshData: readonly MeshData[]): number {
 
 export class RaycastEngine {
     private camera: Camera;
-    private scene: Scene;
+    private scene: SceneContents;
     private canvas: HTMLCanvasElement;
     private raycaster: Raycaster;
     private snapDetector: SnapDetector;
@@ -66,7 +66,7 @@ export class RaycastEngine {
     // Performance constants
     private readonly BVH_THRESHOLD = 100;
 
-    constructor(camera: Camera, scene: Scene, canvas: HTMLCanvasElement) {
+    constructor(camera: Camera, scene: SceneContents, canvas: HTMLCanvasElement) {
         this.camera = camera;
         this.scene = scene;
         this.canvas = canvas;

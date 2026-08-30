@@ -80,8 +80,8 @@ export const SECTION_2D_UNIFORM_SLOT_INDEX = {
   clashBox: 5,
 } as const;
 
-/** How many uniform records the shared buffer holds. */
-export const SECTION_2D_UNIFORM_SLOT_COUNT = 6;
+/** How many uniform records the shared buffer holds — one per entry above. */
+export const SECTION_2D_UNIFORM_SLOT_COUNT = Object.keys(SECTION_2D_UNIFORM_SLOT_INDEX).length;
 
 /**
  * Byte stride between uniform slots for `device`.

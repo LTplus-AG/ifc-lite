@@ -33,7 +33,12 @@
     "no-import-assign": "error",
     "no-inner-declarations": "error",
     "no-invalid-regexp": "error",
-    "no-irregular-whitespace": "error",
+    // Stated, not inherited: oxlint <=1.78 defaulted skipComments to true and
+    // this repo relied on that; 1.79 reports four comment hits (#3290), each an
+    // invisible character the comment is DESCRIBING. Two of them are load-bearing:
+    // the ZWSP in `packages/*<ZWSP>/src/**.ts` is what stops the text reading `*/`
+    // and closing its own block comment early.
+    "no-irregular-whitespace": ["error", { "skipComments": true }],
     "no-new-native-nonconstructor": "error",
     "no-obj-calls": "error",
     "no-self-assign": "error",

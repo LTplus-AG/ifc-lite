@@ -58,6 +58,7 @@ fn assert_roundtrip(name: &str) {
             instance_meta: m.instance.as_ref(),
             entity_id: m.express_id,
             color: m.color,
+            item_id: m.geometry_item_id,
         })
         .collect();
 

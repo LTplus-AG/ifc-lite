@@ -19,8 +19,6 @@ import type {
   BCFVisibility,
   BCFViewSetupHints,
   BCFColoring,
-  BCFPerspectiveCamera,
-  BCFOrthogonalCamera,
   BCFLine,
   BCFClippingPlane,
   BCFBitmap,
@@ -30,6 +28,12 @@ import type {
   BCFDocumentReference,
   BCFHeaderFile,
 } from './types.js';
+import {
+  requireCameraChoice,
+  writeOrthogonalCamera,
+  writePerspectiveCamera,
+} from './writer-camera.js';
+import { xsdDouble, xsdInt, xsdPointElement } from './numeric.js';
 import { generateUuid } from '@ifc-lite/encoding';
 
 /**
@@ -127,33 +131,17 @@ function shortGuidHash(guid: string): string {
 }
 
 /**
- * Sanitize a topic GUID for use as a zip folder name (zip-slip guard).
- *
- * A topic GUID is parsed unvalidated from untrusted markup XML on read, so it
- * can carry path separators or `..`. Using it verbatim as a zip path component
- * on a read-modify-save would let a crafted GUID (`../../evil`) write outside
- * the archive root. Restrict the name to safe filename characters and collapse
- * any dot-run so it can never traverse. The real GUID is still written verbatim
- * as the markup `<Topic Guid>` attribute, which is what readers key off.
- *
- * Sanitization is lossy, so two distinct GUIDs can map to one name (`a?b` and
- * `a:b` both give `a_b`), which would silently overwrite a topic folder. Any
- * name that sanitization changed gets a hash of the original GUID appended,
- * and `usedNames` catches the remaining collisions with a counter suffix.
- */
-function sanitizeTopicFolderName(guid: string, usedNames: Set<string>): string {
-  return sanitizeZipComponent(guid, usedNames, 'topic');
-}
-
-/**
  * Sanitize an arbitrary GUID for use as a zip path component (zip-slip guard).
  *
  * Shared by both the topic-folder name and the viewpoint file base name: a
  * viewpoint GUID is parsed just as unvalidated from untrusted markup XML on
  * read (reader.ts `parseViewpointContent`) as a topic GUID is, so it carries
- * the same path-traversal hazard. Restrict the name to safe filename
- * characters and collapse any dot-run so it can never traverse. `fallback` is
- * used when sanitization strips the name to nothing.
+ * the same path-traversal hazard (`../../evil` as a topic GUID would write
+ * outside the archive root). Restrict the name to safe filename characters and
+ * collapse any dot-run so it can never traverse. `fallback` is used when
+ * sanitization strips the name to nothing. The real GUID is still written
+ * verbatim as the markup `<Topic Guid>`/`<Viewpoint Guid>` attribute, which is
+ * what readers key off.
  *
  * Sanitization is lossy, so two distinct GUIDs can map to one name, which
  * would silently overwrite an entry. Any name that sanitization changed gets
@@ -177,16 +165,14 @@ function sanitizeZipComponent(raw: string, usedNames: Set<string>, fallback: str
   return candidate;
 }
 
-/**
- * Write a topic folder with all its contents
- */
+/** Write a topic folder with all its contents. */
 async function writeTopicFolder(
   zip: JSZip,
   topic: BCFTopic,
   version: '2.1' | '3.0',
   usedFolderNames: Set<string>,
 ): Promise<void> {
-  const folder = zip.folder(sanitizeTopicFolderName(topic.guid, usedFolderNames));
+  const folder = zip.folder(sanitizeZipComponent(topic.guid, usedFolderNames, 'topic'));
   if (!folder) return;
 
   // Sanitize each viewpoint GUID once, up front, so the markup <Viewpoint>
@@ -222,17 +208,35 @@ function snapshotExt(viewpoint: BCFViewpoint): 'png' | 'jpg' {
   return 'png';
 }
 
-/**
- * Write markup.bcf file
- * Uses buildingSMART standard format
- */
 // BCF 3.0's markup.xsd types `Topic/@TopicType` and `Topic/@TopicStatus` as
 // `NonEmptyOrBlankString`: after XML whitespace (#x9, #xA, #xD, #x20) is
 // collapsed, the value must have length >= 1. A value that is present but
 // consists entirely of XML whitespace collapses to nothing and is therefore
-// as invalid as an absent one.
+// as invalid as an absent one -- which is why `xsdDateTime` reuses it below.
 const XML_WHITESPACE_ONLY = /^[\t\n\r ]*$/;
 
+/**
+ * A required `xs:dateTime` on its way into an archive, escaped -- or an error.
+ *
+ * `markup.xsd` declares `Topic/CreationDate` and `Comment/Date` `minOccurs="1"`
+ * with no default in BOTH 2.1 (:67, :107) and 3.0 (:73, :155), and reader.ts no
+ * longer invents a wall-clock timestamp when the source omits one, so either can
+ * arrive unset. Inventing one here is that same fabrication; dropping the
+ * element hands the caller an archive we already know fails the schema. So we
+ * refuse, as the TopicType/TopicStatus check below and `xsdDouble` do.
+ */
+function xsdDateTime(value: string | undefined, element: string, where: string): string {
+  if (!value || XML_WHITESPACE_ONLY.test(value)) {
+    throw new Error(
+      `BCF requires ${element} (${where} has none). markup.xsd declares it ` +
+        `minOccurs="1" with no default, and a time the source never stated is ` +
+        `not the writer's to invent. Set it before writing.`
+    );
+  }
+  return escapeXml(value);
+}
+
+/** Write markup.bcf -- buildingSMART standard format. */
 function writeMarkupFile(
   folder: JSZip,
   topic: BCFTopic,
@@ -293,7 +297,8 @@ function writeMarkupFile(
   }
 
   if (topic.index !== undefined) {
-    content += `\n    <Index>${topic.index}</Index>`;
+    // `Index` is the writer's only xs:int; see xsdInt for what that excludes.
+    content += `\n    <Index>${xsdInt(topic.index, 'Topic/Index', `topic "${topic.guid}"`)}</Index>`;
   }
 
   if (topic.labels && topic.labels.length > 0) {
@@ -316,7 +321,7 @@ function writeMarkupFile(
     }
   }
 
-  content += `\n    <CreationDate>${escapeXml(topic.creationDate)}</CreationDate>`;
+  content += `\n    <CreationDate>${xsdDateTime(topic.creationDate, 'Topic/CreationDate', `topic "${topic.guid}"`)}</CreationDate>`;
   content += `\n    <CreationAuthor>${escapeXml(topic.creationAuthor)}</CreationAuthor>`;
 
   if (topic.modifiedDate) {
@@ -379,7 +384,7 @@ function writeMarkupFile(
     topic.comments
       .map((comment) => {
         let c = `\n${indent}<Comment Guid="${escapeXml(comment.guid)}">`;
-        c += `\n${indent}  <Date>${escapeXml(comment.date)}</Date>`;
+        c += `\n${indent}  <Date>${xsdDateTime(comment.date, 'Comment/Date', `comment "${comment.guid}"`)}</Date>`;
         c += `\n${indent}  <Author>${escapeXml(comment.author)}</Author>`;
         c += `\n${indent}  <Comment>${escapeXml(comment.comment)}</Comment>`;
         if (comment.viewpointGuid) {
@@ -479,21 +484,28 @@ async function writeViewpointFiles(
     content += writeComponents(viewpoint.components, version);
   }
 
-  // Write perspective camera
-  if (viewpoint.perspectiveCamera) {
-    content += writePerspectiveCamera(viewpoint.perspectiveCamera, version, viewpoint.guid);
-  }
+  // Every number below reaches an XSD numeric type, so each goes through
+  // `numeric.ts`'s write-side guards; `where` is what puts the offending
+  // viewpoint's guid in the error, as the camera checks already do.
+  const where = `viewpoint "${viewpoint.guid}"`;
 
-  // Write orthogonal camera
+  // Write the cameras. ORTHOGONAL FIRST -- see requireCameraChoice for why the
+  // order is not free, and for the 3.0 cardinality rule enforced here.
+  requireCameraChoice(viewpoint, version);
+
   if (viewpoint.orthogonalCamera) {
     content += writeOrthogonalCamera(viewpoint.orthogonalCamera, version, viewpoint.guid);
+  }
+
+  if (viewpoint.perspectiveCamera) {
+    content += writePerspectiveCamera(viewpoint.perspectiveCamera, version, viewpoint.guid);
   }
 
   // Write lines
   if (viewpoint.lines && viewpoint.lines.length > 0) {
     content += `\n  <Lines>`;
     for (const line of viewpoint.lines) {
-      content += writeLine(line);
+      content += writeLine(line, where);
     }
     content += `\n  </Lines>`;
   }
@@ -502,7 +514,7 @@ async function writeViewpointFiles(
   if (viewpoint.clippingPlanes && viewpoint.clippingPlanes.length > 0) {
     content += `\n  <ClippingPlanes>`;
     for (const plane of viewpoint.clippingPlanes) {
-      content += writeClippingPlane(plane);
+      content += writeClippingPlane(plane, where);
     }
     content += `\n  </ClippingPlanes>`;
   }
@@ -519,12 +531,12 @@ async function writeViewpointFiles(
     if (version === '3.0') {
       content += `\n  <Bitmaps>`;
       for (const bitmap of viewpoint.bitmaps) {
-        content += writeBitmap(bitmap, version);
+        content += writeBitmap(bitmap, version, where);
       }
       content += `\n  </Bitmaps>`;
     } else {
       for (const bitmap of viewpoint.bitmaps) {
-        content += writeBitmap(bitmap, version);
+        content += writeBitmap(bitmap, version, where);
       }
     }
   }
@@ -706,118 +718,18 @@ function writeColoringEntry(coloring: BCFColoring, version: '2.1' | '3.0'): stri
 }
 
 /**
- * Require a positive AspectRatio for a BCF 3.0 camera and return the element
- * to append.
- *
- * v3_0/visinfo.xsd adds `<AspectRatio>` (type `PositiveDouble`, i.e.
- * `xs:double` with `minExclusive value="0"`) as a REQUIRED, no-minOccurs
- * child of both `OrthogonalCamera` and `PerspectiveCamera`. 2.1 has no such
- * element. We refuse to invent a value (there is no safe default aspect
- * ratio) because that would assert a value the caller never chose; instead
- * we fail the write so the caller supplies one -- same policy as the
- * `Topic/@TopicType`/`Topic/@TopicStatus` checks in {@link writeMarkupFile}.
- */
-function requireAspectRatioElement(aspectRatio: number | undefined, viewpointGuid: string): string {
-  if (aspectRatio === undefined || !(aspectRatio > 0)) {
-    throw new Error(
-      `BCF 3.0 requires a positive Camera/AspectRatio (viewpoint "${viewpointGuid}" has none). ` +
-        `Set the camera's aspectRatio before writing a 3.0 file.`
-    );
-  }
-  return `\n    <AspectRatio>${aspectRatio}</AspectRatio>`;
-}
-
-/**
- * Write perspective camera XML
- */
-function writePerspectiveCamera(
-  camera: BCFPerspectiveCamera,
-  version: '2.1' | '3.0',
-  viewpointGuid: string,
-): string {
-  const aspectRatioElement = version === '3.0' ? requireAspectRatioElement(camera.aspectRatio, viewpointGuid) : '';
-  return `\n  <PerspectiveCamera>
-    <CameraViewPoint>
-      <X>${camera.cameraViewPoint.x}</X>
-      <Y>${camera.cameraViewPoint.y}</Y>
-      <Z>${camera.cameraViewPoint.z}</Z>
-    </CameraViewPoint>
-    <CameraDirection>
-      <X>${camera.cameraDirection.x}</X>
-      <Y>${camera.cameraDirection.y}</Y>
-      <Z>${camera.cameraDirection.z}</Z>
-    </CameraDirection>
-    <CameraUpVector>
-      <X>${camera.cameraUpVector.x}</X>
-      <Y>${camera.cameraUpVector.y}</Y>
-      <Z>${camera.cameraUpVector.z}</Z>
-    </CameraUpVector>
-    <FieldOfView>${camera.fieldOfView}</FieldOfView>${aspectRatioElement}
-  </PerspectiveCamera>`;
-}
-
-/**
- * Write orthogonal camera XML
- */
-function writeOrthogonalCamera(
-  camera: BCFOrthogonalCamera,
-  version: '2.1' | '3.0',
-  viewpointGuid: string,
-): string {
-  const aspectRatioElement = version === '3.0' ? requireAspectRatioElement(camera.aspectRatio, viewpointGuid) : '';
-  return `\n  <OrthogonalCamera>
-    <CameraViewPoint>
-      <X>${camera.cameraViewPoint.x}</X>
-      <Y>${camera.cameraViewPoint.y}</Y>
-      <Z>${camera.cameraViewPoint.z}</Z>
-    </CameraViewPoint>
-    <CameraDirection>
-      <X>${camera.cameraDirection.x}</X>
-      <Y>${camera.cameraDirection.y}</Y>
-      <Z>${camera.cameraDirection.z}</Z>
-    </CameraDirection>
-    <CameraUpVector>
-      <X>${camera.cameraUpVector.x}</X>
-      <Y>${camera.cameraUpVector.y}</Y>
-      <Z>${camera.cameraUpVector.z}</Z>
-    </CameraUpVector>
-    <ViewToWorldScale>${camera.viewToWorldScale}</ViewToWorldScale>${aspectRatioElement}
-  </OrthogonalCamera>`;
-}
-
-/**
  * Write line XML
  */
-function writeLine(line: BCFLine): string {
-  return `\n    <Line>
-      <StartPoint>
-        <X>${line.startPoint.x}</X>
-        <Y>${line.startPoint.y}</Y>
-        <Z>${line.startPoint.z}</Z>
-      </StartPoint>
-      <EndPoint>
-        <X>${line.endPoint.x}</X>
-        <Y>${line.endPoint.y}</Y>
-        <Z>${line.endPoint.z}</Z>
-      </EndPoint>
+function writeLine(line: BCFLine, where: string): string {
+  return `\n    <Line>${xsdPointElement('StartPoint', line.startPoint, '      ', where)}${xsdPointElement('EndPoint', line.endPoint, '      ', where)}
     </Line>`;
 }
 
 /**
  * Write clipping plane XML
  */
-function writeClippingPlane(plane: BCFClippingPlane): string {
-  return `\n    <ClippingPlane>
-      <Location>
-        <X>${plane.location.x}</X>
-        <Y>${plane.location.y}</Y>
-        <Z>${plane.location.z}</Z>
-      </Location>
-      <Direction>
-        <X>${plane.direction.x}</X>
-        <Y>${plane.direction.y}</Y>
-        <Z>${plane.direction.z}</Z>
-      </Direction>
+function writeClippingPlane(plane: BCFClippingPlane, where: string): string {
+  return `\n    <ClippingPlane>${xsdPointElement('Location', plane.location, '      ', where)}${xsdPointElement('Direction', plane.direction, '      ', where)}
     </ClippingPlane>`;
 }
 
@@ -836,28 +748,13 @@ function writeClippingPlane(plane: BCFClippingPlane): string {
  *   otherwise. `BCFBitmap.format` stays typed `'PNG' | 'JPG'`; we only
  *   lowercase it on the wire for 3.0.
  */
-function writeBitmap(bitmap: BCFBitmap, version: '2.1' | '3.0'): string {
+function writeBitmap(bitmap: BCFBitmap, version: '2.1' | '3.0', where: string): string {
   const formatTag = version === '3.0' ? 'Format' : 'Bitmap';
   const formatValue = version === '3.0' ? bitmap.format.toLowerCase() : bitmap.format;
   return `\n    <Bitmap>
       <${formatTag}>${formatValue}</${formatTag}>
-      <Reference>${escapeXml(bitmap.reference)}</Reference>
-      <Location>
-        <X>${bitmap.location.x}</X>
-        <Y>${bitmap.location.y}</Y>
-        <Z>${bitmap.location.z}</Z>
-      </Location>
-      <Normal>
-        <X>${bitmap.normal.x}</X>
-        <Y>${bitmap.normal.y}</Y>
-        <Z>${bitmap.normal.z}</Z>
-      </Normal>
-      <Up>
-        <X>${bitmap.up.x}</X>
-        <Y>${bitmap.up.y}</Y>
-        <Z>${bitmap.up.z}</Z>
-      </Up>
-      <Height>${bitmap.height}</Height>
+      <Reference>${escapeXml(bitmap.reference)}</Reference>${xsdPointElement('Location', bitmap.location, '      ', where)}${xsdPointElement('Normal', bitmap.normal, '      ', where)}${xsdPointElement('Up', bitmap.up, '      ', where)}
+      <Height>${xsdDouble(bitmap.height, 'Bitmap/Height', where)}</Height>
     </Bitmap>`;
 }
 

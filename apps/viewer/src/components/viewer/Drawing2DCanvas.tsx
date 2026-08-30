@@ -18,6 +18,7 @@ import type { AnnotationFill2D, AnnotationText2D } from '@/hooks/useSymbolicAnno
 import type { ScanBandPoint } from '@/hooks/scanSectionMath';
 import { type CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key';
 import { resolveSheetTransform } from '@/lib/drawing/sheet-transform';
+import { useDrawingElementPropertiesLookup } from '@/hooks/useDrawingElementPropertiesLookup';
 
 // Fill colors for IFC types (architectural convention)
 const IFC_TYPE_FILL_COLORS: Record<string, string> = {
@@ -430,6 +431,8 @@ export function Drawing2DCanvas({
 }: Drawing2DCanvasProps): React.ReactElement {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+  // Resolved once per (model set, polygon set) change, never per draw frame.
+  const getElementProperties = useDrawingElementPropertiesLookup(drawing, overrideEngine, overridesEnabled);
 
   // ResizeObserver to track canvas size changes
   useEffect(() => {
@@ -804,8 +807,7 @@ export function Drawing2DCanvas({
 
         // Fill cut polygons
         for (const polygon of drawing.cutPolygons) {
-          let fillColor = getFillColorForType(polygon.ifcType);
-          let opacity = 1;
+          let fillColor = getFillColorForType(polygon.ifcType), opacity = 1;
 
           if (useIfcMaterials) {
             // Per-layer fill (material-layer wall/slab) wins over the per-entity
@@ -823,7 +825,7 @@ export function Drawing2DCanvas({
           } else if (overridesEnabled) {
             const elementData: ElementData = {
               expressId: polygon.entityId,
-              ifcType: polygon.ifcType,
+              ifcType: polygon.ifcType, properties: getElementProperties(polygon.entityId),
             };
             const result = overrideEngine.applyOverrides(elementData);
             fillColor = result.style.fillColor;
@@ -867,7 +869,7 @@ export function Drawing2DCanvas({
           if (overridesEnabled) {
             const elementData: ElementData = {
               expressId: polygon.entityId,
-              ifcType: polygon.ifcType,
+              ifcType: polygon.ifcType, properties: getElementProperties(polygon.entityId),
             };
             const result = overrideEngine.applyOverrides(elementData);
             strokeColor = result.style.strokeColor;
@@ -1168,9 +1170,7 @@ export function Drawing2DCanvas({
       // ═══════════════════════════════════════════════════════════════════════
       for (const polygon of drawing.cutPolygons) {
         // Get fill color - priority: IFC materials > override engine > IFC type fallback
-        let fillColor = getFillColorForType(polygon.ifcType);
-        let strokeColor = '#000000';
-        let opacity = 1;
+        let fillColor = getFillColorForType(polygon.ifcType), strokeColor = '#000000', opacity = 1;
 
         // Use actual IFC material colors from the mesh data
         if (useIfcMaterials) {
@@ -1190,7 +1190,7 @@ export function Drawing2DCanvas({
         } else if (overridesEnabled) {
           const elementData: ElementData = {
             expressId: polygon.entityId,
-            ifcType: polygon.ifcType,
+            ifcType: polygon.ifcType, properties: getElementProperties(polygon.entityId),
           };
           const result = overrideEngine.applyOverrides(elementData);
           fillColor = result.style.fillColor;
@@ -1233,7 +1233,7 @@ export function Drawing2DCanvas({
         if (overridesEnabled) {
           const elementData: ElementData = {
             expressId: polygon.entityId,
-            ifcType: polygon.ifcType,
+            ifcType: polygon.ifcType, properties: getElementProperties(polygon.entityId),
           };
           const result = overrideEngine.applyOverrides(elementData);
           strokeColor = result.style.strokeColor;
@@ -1830,7 +1830,7 @@ export function Drawing2DCanvas({
         }
       }
     }
-  }, [drawing, transform, showHiddenLines, canvasSize, overrideEngine, overridesEnabled, entityColorMap, useIfcMaterials, measureMode, measureStart, measureCurrent, measureResults, measureSnapPoint, sheetEnabled, activeSheet, sectionAxis, isPinned, annotation2DActiveTool, annotation2DCursorPos, polygonAreaPoints, polygonAreaResults, textAnnotations, textAnnotationEditing, cloudAnnotationPoints, cloudAnnotations, selectedAnnotation, ifcAnnotationLines, ifcAnnotationTexts, ifcAnnotationFills, dxfUnderlays, scanPoints, scanOpacity, unitDisplayOverrides]);
+  }, [drawing, transform, showHiddenLines, canvasSize, overrideEngine, overridesEnabled, getElementProperties, entityColorMap, useIfcMaterials, measureMode, measureStart, measureCurrent, measureResults, measureSnapPoint, sheetEnabled, activeSheet, sectionAxis, isPinned, annotation2DActiveTool, annotation2DCursorPos, polygonAreaPoints, polygonAreaResults, textAnnotations, textAnnotationEditing, cloudAnnotationPoints, cloudAnnotations, selectedAnnotation, ifcAnnotationLines, ifcAnnotationTexts, ifcAnnotationFills, dxfUnderlays, scanPoints, scanOpacity, unitDisplayOverrides]);
 
   return (
     <canvas

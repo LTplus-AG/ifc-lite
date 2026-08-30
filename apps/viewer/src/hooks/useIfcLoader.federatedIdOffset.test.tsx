@@ -53,19 +53,21 @@
  * every step from format detection through `finalizeModel`'s offset
  * application runs for real. The one thing seeded directly is the federation
  * registry's starting offset: production reaches a NON-ZERO `idOffset` only
- * once some earlier model has already registered an id range (typically a
- * primary STEP/IFC load, which registers for real — GLB is the one primary
- * format that does NOT register: `finalizeModel`'s primary branch passes
- * `dataStore: null` for a primary GLB, so its
+ * once some earlier model has already registered an id range. When this file
+ * was written that meant a primary STEP/IFC or IFCX load, because GLB was the
+ * one primary format that did NOT register: `finalizeModel`'s primary branch
+ * passed `dataStore: null` for a primary GLB, so its
  * `if (dataStore && geometryResult) { ... registerModelOffset(...) }` guard
- * never fires). Reproducing that earlier registration through a real primary
- * load would need either the same unreachable WASM engine (STEP/IFC) or a
- * hand-composed IFCX ECS/USD fixture (points, face-vertex indices, a
- * composition layer) whose complexity is orthogonal to what this test pins —
- * and `registerModelOffset` itself is already covered by
- * `packages/renderer/src/federation-registry.test.ts`, so re-deriving it here
- * would only duplicate that coverage while adding an unrelated fixture.
- * Instead this test calls the SAME store action — `registerModelOffset`,
+ * never fired. That guard is now `if (geometryResult)` and a primary GLB
+ * registers like every other format, which is what
+ * `useIfcLoader.primaryGlbFederationOffset.test.tsx` pins by driving a real
+ * primary GLB load followed by a real federated one. Seeding is kept here
+ * rather than switched to that second real load: `registerModelOffset` is
+ * already covered by `packages/renderer/src/federation-registry.test.ts` and
+ * by that sibling file, so re-deriving it here would only duplicate their
+ * coverage, and the point of THIS file is the offset the federated branch
+ * applies, not where the offset came from. The seed calls the SAME store
+ * action — `registerModelOffset`,
  * `useViewerStore`'s real federation-registry entry point, not a stub of it —
  * directly, exactly as a real primary load's `finalizeModel` would, to seed
  * "a primary model already occupying ids 0..1000". From that point on, the
@@ -75,7 +77,7 @@
  *
  * **What remains unverified.** Whether a REAL primary load's own
  * `registerModelOffset` call (the one inside `finalizeModel`'s primary
- * branch, for STEP/IFC or IFCX) wires its `maxExpressId` correctly is not
+ * branch, for STEP/IFC, IFCX or GLB) wires its `maxExpressId` correctly is not
  * checked here — only that a federated load, given a registered offset,
  * applies it correctly to its own meshes. That first link is a much smaller
  * surface (`getMaxExpressId(dataStore, meshes)` feeding a single

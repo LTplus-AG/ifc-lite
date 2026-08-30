@@ -101,8 +101,37 @@ export const MAGIC = 0x4C434649; // "IFCL" in little-endian
  *   `undefined`, which is the same state the runtime uses where the identity is
  *   genuinely merged away, so an old cache degrades to "unknown" and never to a
  *   WRONG id.
+ *
+ * v15: the Entities section gains a trailing `rawTypeName: Uint32Array[count]`
+ *   of interned-string indices, appended after the typeRanges triples. Only
+ *   ~1/4 of the concrete IFC product classes in the generated schema registry
+ *   have an `IfcTypeEnum` member, so the enum column alone cannot name the
+ *   rest; the live parser table has carried a raw-name column for that
+ *   fallback all along and the cache did not, which turned every such element
+ *   into 'Unknown' on a cache load. Bumped rather than sniffed because the
+ *   section is positional: a v14 section has nothing after the triples, so a
+ *   reader that read the column unconditionally would consume whatever
+ *   follows. A v15 reader still reads v14 sections — the column is
+ *   version-gated and degrades to the enum-only name, exactly the pre-v15
+ *   behaviour.
+ *
+ * v15->v16: instanced shards go to IFNS v2 (#2985). Their instance records gain
+ *   a trailing `itemId` and declare a 92-byte stride, and the InstancedShards
+ *   section stores shard bytes VERBATIM -- it never re-encodes. So a v2 shard
+ *   this build writes would sit under a cache key an OLDER bundle still
+ *   matches, and that bundle's decoder is a strict `version !== 1` throw which
+ *   `useGeometryStreaming` swallows with a console.warn. Every instanced
+ *   occurrence would vanish while the flat geometry kept drawing: it reads as
+ *   missing geometry, not as a version error. Deploy skew reaches that without
+ *   a rollback (a tab opened before the deploy, an edge still serving the
+ *   previous bundle), and this repo has been bitten by deploy skew before.
+ *   The bump splits the keyspace rather than sharing it: an old bundle looks
+ *   for v15, misses, re-parses, and writes v1 shards it can read; this build
+ *   looks for v16. This is the ONE bump here that is deliberately destructive
+ *   -- every existing entry re-meshes once -- because the alternative is a
+ *   silent partial render on a bundle nobody can update.
  */
-export const FORMAT_VERSION = 14;
+export const FORMAT_VERSION = 16;
 
 /** Geometry chunking parameters (v13+). Grouping is a WRITE-side layout
  *  policy: readers only trust the directory, so these can change without a

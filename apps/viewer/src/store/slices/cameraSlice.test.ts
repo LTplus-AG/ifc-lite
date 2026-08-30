@@ -18,7 +18,7 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
-import { createCameraSlice, type CameraSlice } from './cameraSlice.js';
+import { cameraTeardown, createCameraSlice, type CameraSlice } from './cameraSlice.js';
 import { CAMERA_DEFAULTS } from '../constants.js';
 
 describe('cameraSlice', () => {
@@ -42,6 +42,7 @@ describe('cameraSlice', () => {
         cameraCallbacks: {
           setCameraRotation: (rotation) => calls.push(['setCameraRotation', rotation]),
           setProjectionMode: (mode) => calls.push(['setProjectionMode', mode]),
+          setInteractionMode: (mode) => calls.push(['setInteractionMode', mode]),
         },
       };
     }
@@ -79,6 +80,80 @@ describe('cameraSlice', () => {
         elevation: CAMERA_DEFAULTS.ELEVATION,
       });
     });
+  });
+
+  describe('setInteractionMode', () => {
+    it('drives the renderer through cameraCallbacks.setInteractionMode', () => {
+      state.setInteractionMode('pan');
+
+      assert.deepStrictEqual(calls, [['setInteractionMode', 'pan']]);
+      assert.strictEqual(state.interactionMode, 'pan');
+    });
+
+    it('defers via pendingInteractionMode when no renderer has registered yet, and replays on setCameraCallbacks', () => {
+      build(false);
+
+      state.setInteractionMode('none');
+
+      assert.deepStrictEqual(calls, []);
+      assert.strictEqual(state.pendingInteractionMode, 'none');
+
+      state.setCameraCallbacks({
+        setInteractionMode: (mode) => calls.push(['setInteractionMode', mode]),
+      });
+
+      assert.deepStrictEqual(calls, [['setInteractionMode', 'none']]);
+      assert.strictEqual(state.pendingInteractionMode, null);
+    });
+
+    it('defaults to unrestricted (\'all\')', () => {
+      assert.strictEqual(state.interactionMode, 'all');
+    });
+  });
+
+  // `?controls=` is read once per embed session and `Viewport` stays mounted
+  // across a file swap, so nothing re-applies the param and nothing restores
+  // the default when the next URL omits it. Without the teardown owning these
+  // two fields, the outgoing model's restriction governed the incoming one.
+  describe('session-reset teardown (#2934 review)', () => {
+    it('clears interactionMode and pendingInteractionMode', () => {
+      build(false);
+      state.setInteractionMode('none');
+      assert.strictEqual(state.interactionMode, 'none');
+      assert.strictEqual(state.pendingInteractionMode, 'none');
+
+      const patch = cameraTeardown.teardown({ kind: 'session-reset' }, state as never);
+
+      assert.strictEqual(patch.interactionMode, 'all');
+      assert.strictEqual(patch.pendingInteractionMode, null);
+    });
+
+    it('declares both fields in owns, so the patch cannot drift from them', () => {
+      assert.ok(cameraTeardown.owns.includes('interactionMode'));
+      assert.ok(cameraTeardown.owns.includes('pendingInteractionMode'));
+    });
+  });
+
+  describe('session-reset teardown (#3364)', () => {
+    it('clears a pending rotation recorded before any renderer registered', () => {
+      // Distinctly non-default: the default is CAMERA_DEFAULTS.AZIMUTH/ELEVATION,
+      // so a fixture equal to it could not distinguish "cleared" from "replayed".
+      build(false);
+      state.setCameraRotation({ azimuth: 199, elevation: 61 });
+      assert.strictEqual(state.pendingCameraRotation?.azimuth, 199);
+
+      const patch = cameraTeardown.teardown({ kind: 'session-reset' }, state as never);
+
+      assert.strictEqual(
+        patch.pendingCameraRotation,
+        null,
+        "a session reset must drop the outgoing model's pending rotation, or the next " +
+          'viewport to register cameraCallbacks replays it onto the new model',
+      );
+    });
+
+    it('declares pendingCameraRotation in owns, so the patch cannot drift from it', () => {
+      assert.ok(cameraTeardown.owns.includes('pendingCameraRotation'));    });
   });
 
   describe('updateCameraRotationRealtime', () => {

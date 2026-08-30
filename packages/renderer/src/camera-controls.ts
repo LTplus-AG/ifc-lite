@@ -7,11 +7,10 @@
  *
  * Orbit uses a pivot point:
  * - Default pivot = camera.target (standard orbit — position rotates, target stays)
- * - When orbitCenter is set (raycast hit / selected object), position orbits
- *   around the pivot and the look direction is rotated by the exact same
- *   axis-angle rotation (Rodrigues). A small vertical clamp on the look
- *   direction prevents the view matrix from degenerating (model flip).
- *   Approach mirrors Blender's turntable: Y-axis horizontal + right-axis vertical.
+ * - When orbitCenter is set (raycast hit / selected object), position orbits around
+ *   the pivot and the look direction is rotated by the exact same axis-angle rotation
+ *   (Rodrigues). A small vertical clamp on the look direction prevents the view matrix
+ *   from degenerating (model flip). Mirrors Blender's turntable: Y-axis horizontal + right-axis vertical.
  */
 
 import type { Vec3 } from './types.js';
@@ -160,16 +159,33 @@ function clampPhi(phi: number): number {
 // ---------------------------------------------------------------------------
 
 /**
+ * Restricts which gestures {@link CameraControls.orbit}/{@link
+ * CameraControls.pan}/{@link CameraControls.zoom} act on. `'all'` (the
+ * default) is unrestricted; `'none'` freezes the view entirely. Mirrors the
+ * embed protocol's `controls` URL param / `EmbedConfig.controls` (#2934).
+ */
+export type InteractionMode = 'orbit' | 'pan' | 'all' | 'none';
+
+/**
  * Handles core camera movement: orbit, pan, and zoom.
  */
 export class CameraControls {
   /** Optional orbit pivot (set on object selection). null = orbit around camera.target. */
   private orbitCenter: Vec3 | null = null;
+  /** See {@link InteractionMode}. Gates orbit/pan/zoom; unrestricted by default. */
+  private interactionMode: InteractionMode = 'all';
 
   constructor(
     private readonly state: CameraInternalState,
     private readonly updateMatrices: () => void,
   ) {}
+
+  /** Restrict interactive orbit/pan/zoom. Does not affect programmatic moves
+   *  (`setRotation`, `setPresetView`, `zoomExtent`, ...) — only the gesture
+   *  entry points below. */
+  setInteractionMode(mode: InteractionMode): void {
+    this.interactionMode = mode;
+  }
 
   /**
    * Set the orbit center without moving the camera.
@@ -187,15 +203,14 @@ export class CameraControls {
   /**
    * Orbit the camera around a pivot point.
    *
-   * `camera.up` is always world Y — setPresetView positions the camera at
-   * phi ∈ [MIN_PHI, MAX_PHI] (never on the exact pole), so the orbit math
-   * never hits the spherical singularity and no special pole-handling is
-   * needed. Phi is clamped to [MIN_PHI, π − MIN_PHI], keeping it just
-   * off both poles so sinφ stays nonzero in the spherical tangent math.
-   *
-   * Pattern is the same as yomotsu/camera-controls and Autodesk Viewer.
+   * `camera.up` is always world Y — setPresetView positions the camera at phi
+   * ∈ [MIN_PHI, MAX_PHI] (never on the exact pole), so the orbit math never
+   * hits the spherical singularity and no special pole-handling is needed.
+   * Phi is clamped to [MIN_PHI, π − MIN_PHI], keeping it just off both poles
+   * so sinφ stays nonzero in the spherical tangent math. Pattern is the same
+   * as yomotsu/camera-controls and Autodesk Viewer.
    */
-  orbit(deltaX: number, deltaY: number): void {
+  orbit(deltaX: number, deltaY: number): boolean {
     // The pose guards below are not enough: the *arguments* are a second input
     // class and they reach the same arithmetic (#2473). A non-finite `deltaX`
     // survives `toSpherical`/`fromSpherical` and `rodrigues` alike, and both
@@ -204,9 +219,9 @@ export class CameraControls {
     // side. Measured, not reasoned: `orbit(NaN, 0)` and `orbit(Infinity, 0)`
     // each came back with a non-finite position on a single call.
     //
-    // Rejecting before the `up` reset means a rejected gesture changes nothing
-    // at all, rather than half-applying its side effect.
-    if (!areFiniteNumbers(deltaX, deltaY)) return;
+    // Rejecting before `up` means a rejection changes nothing -- `boolean` lets `Camera` gate its own side effects the same way, one level up (#2934).
+    if (!areFiniteNumbers(deltaX, deltaY)) return false;
+    if (this.interactionMode === 'pan' || this.interactionMode === 'none') return false;
 
     this.state.camera.up = { x: 0, y: 1, z: 0 };
 
@@ -235,6 +250,7 @@ export class CameraControls {
     }
 
     this.updateMatrices();
+    return true;
   }
 
   /**
@@ -321,12 +337,13 @@ export class CameraControls {
    * Pan camera (Y-up coordinate system).
    * Moves both position and target by the same offset (preserves orbit relationship).
    */
-  pan(deltaX: number, deltaY: number): void {
+  pan(deltaX: number, deltaY: number): boolean {
     // Argument-side counterpart of the pose guard below (#2473). `translateAll`
     // adds the offset to position, target *and* the orbit centre, so one
     // non-finite delta becomes nine bad coordinates — the same blast radius a
     // malformed pose has, reached from the caller instead.
-    if (!areFiniteNumbers(deltaX, deltaY)) return;
+    if (!areFiniteNumbers(deltaX, deltaY)) return false;
+    if (this.interactionMode === 'orbit' || this.interactionMode === 'none') return false;
 
     const dir = sub(this.state.camera.position, this.state.camera.target);
     const dist = length(dir);
@@ -336,7 +353,7 @@ export class CameraControls {
     // the orbit centre alike, so one malformed coordinate becomes nine. A
     // zero-length pose is still pannable — the polar fallback below covers it —
     // so the floor here is 0, not the 1e-6 the orbit paths use.
-    if (!isUsableDistance(dist, 0)) return;
+    if (!isUsableDistance(dist, 0)) return false;
 
     // Standard Y-up reference for the screen-right axis. When the camera is
     // looking straight up or down (e.g., top/bottom preset view), dir's
@@ -375,6 +392,7 @@ export class CameraControls {
 
     this.translateAll(offset);
     this.updateMatrices();
+    return true;
   }
 
   // -------------------------------------------------------------------------
@@ -389,7 +407,7 @@ export class CameraControls {
    * @param canvasWidth - Canvas width
    * @param canvasHeight - Canvas height
    */
-  zoom(delta: number, mouseX?: number, mouseY?: number, canvasWidth?: number, canvasHeight?: number, fastZoom?: boolean): void {
+  zoom(delta: number, mouseX?: number, mouseY?: number, canvasWidth?: number, canvasHeight?: number, fastZoom?: boolean): boolean {
     // `Math.sign(NaN) * Math.min(NaN, MAX)` is NaN, so the clamp below does not
     // absorb a non-finite delta — it forwards it into `zoomFactor` and from
     // there into the pose and (orthographic) into `orthoSize` (#2473/#2461).
@@ -397,14 +415,17 @@ export class CameraControls {
     // absorb `Infinity` (`Math.min(Infinity, MAX_ZOOM_DELTA)` is the cap), so
     // only NaN gets through here. Guarding both anyway keeps this agreeing
     // with `orbit`/`pan`, where the two behave differently.
-    if (!Number.isFinite(delta)) return;
+    if (!Number.isFinite(delta)) return false;
+    // `!== 'all'`: `controls` documents "Restricts orbit/pan/zoom ... `'all'`
+    // is unrestricted", so `'orbit'` and `'pan'` refuse a dolly too (#2934).
+    if (this.interactionMode !== 'all') return false;
 
     const dir = sub(this.state.camera.position, this.state.camera.target);
     const distance = length(dir);
     // Degenerate (position ≈ target, nothing to zoom) or non-finite: `forward`
     // is `dir` scaled by `-1 / distance`, and both branches below write the
     // result back into the pose.
-    if (!isUsableDistance(distance, CC.MIN_PERSPECTIVE_DISTANCE)) return;
+    if (!isUsableDistance(distance, CC.MIN_PERSPECTIVE_DISTANCE)) return false;
 
     const normalizedDelta = Math.sign(delta) * Math.min(Math.abs(delta) * CC.ZOOM_SENSITIVITY, CC.MAX_ZOOM_DELTA);
     const zoomFactor = 1 + normalizedDelta;
@@ -431,7 +452,7 @@ export class CameraControls {
       // notch overflows to `Infinity` is the reachable case, and `Math.max`
       // would have forwarded it. Leave the zoom un-applied rather than write
       // a half-height `getOrthoSize()` would hand to a saved viewpoint (#2461).
-      if (nextOrthoSize === null) return;
+      if (nextOrthoSize === null) return false;
       const effectiveFactor = nextOrthoSize / this.state.orthoSize;
 
       if (anchor) {
@@ -446,6 +467,7 @@ export class CameraControls {
     }
 
     this.updateMatrices();
+    return true;
   }
 
   /**

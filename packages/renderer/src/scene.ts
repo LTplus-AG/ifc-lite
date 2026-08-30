@@ -148,6 +148,9 @@ interface InstancedOccurrence {
   templateIndex: number;
   byteOffset: number;
   originalColor: [number, number, number, number];
+  /** Originating `IfcRepresentationItem` id (#2985), absent when the shard
+   *  carried none. CPU-side by design — see `InstancedRenderTemplate.itemIds`. */
+  itemId?: number;
 }
 
 /** Compact CPU-side copy of one instanced template, retained so CPU consumers
@@ -3370,7 +3373,8 @@ export class Scene {
           arr = [];
           this.instancedEntityMap.set(eid, arr);
         }
-        arr.push({ templateIndex, byteOffset, originalColor });
+        // #2985; no id column or the 0 sentinel ⇒ none. ASSIGNED, never conditionally spread: ONE object shape for records that outlive the shard.
+        arr.push({ templateIndex, byteOffset, originalColor, itemId: t.itemIds?.[i] || undefined });
 
         // A shard can stream in AFTER a selection was recorded (its ids may
         // exist in earlier shards or the flat path). setInstancedSelection
@@ -3530,7 +3534,10 @@ export class Scene {
       // world-space positions (issue #1405). templateIndex+byteOffset uniquely
       // and stably identifies an occurrence within the instance buffers.
       const occurrenceKey = `${expressId}:inst:${o.templateIndex}:${o.byteOffset}`;
-      out.push({ expressId, positions, normals, indices: tpl.indices, color, occurrenceKey });
+      // #2985: the same drill-to-source id a flat mesh carries, so a consumer of
+      // these pieces is not worse off for the geometry having been instanced.
+      const item = o.itemId !== undefined ? { geometryItemId: o.itemId } : {};
+      out.push({ expressId, positions, normals, indices: tpl.indices, color, occurrenceKey, ...item });
     }
     return out.length > 0 ? out : undefined;
   }

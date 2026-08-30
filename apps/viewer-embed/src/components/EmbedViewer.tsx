@@ -21,12 +21,16 @@ import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { parseUrlParams, assertFetchableUrl } from '../bridge/urlParams.js';
 import { initBridge, destroyBridge, emitEvent } from '../bridge/handler.js';
+import { aroundDestructiveLoad } from '../bridge/cameraIntent.js';
 import { mountBridgeLifecycle, unmountBridgeLifecycle } from '../bridge/lifecycle.js';
+import { useEmbedBridgeEvents } from './useEmbedBridgeEvents.js';
+import { useEmbedPostLoad } from './useEmbedPostLoad.js';
+import { useEmbedUrlParams, toHiddenTypeSet, isTypeHidden } from './useEmbedUrlParams.js';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 
 export function EmbedViewer() {
   const webgpu = useWebGPU();
-  const { geometryResult, ifcDataStore, loadFile, loading, models, clearAllModels, addModel } = useIfc();
+  const { geometryResult, ifcDataStore, loadFile, loading, addModel } = useIfc();
   const storeModels = useViewerStore((s) => s.models);
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
@@ -38,6 +42,11 @@ export function EmbedViewer() {
   const [urlParams] = useState(() => parseUrlParams());
   const bridgeInitialized = useRef(false);
   const autoLoadAttempted = useRef(false);
+  // Seeded from ?bg=; can also be set at runtime via SET_THEME's/INIT's `bg`
+  // (see setBackgroundColor passed into initBridge below). Stored bare (no
+  // leading '#') to match the URL-param convention and normalized to CSS
+  // color the same way in both places.
+  const [customBgHex, setCustomBgHex] = useState<string | undefined>(urlParams.bg);
 
   // Apply URL params on mount. Embeds default to light unless ?theme=dark
   // (the surrounding viewer-core store may bootstrap to dark based on system
@@ -113,7 +122,7 @@ export function EmbedViewer() {
             vertices: gr?.totalVertices ?? 0,
           };
         },
-        addModelFromUrl: async (url: string) => {
+        addModelFromUrl: async (url: string, name?: string) => {
           // Federation-aware add: routes through useIfcFederation's addModel,
           // which loads with target `{ kind: 'federated' }` and therefore does
           // NOT clear existing models (unlike loadFile's default primary
@@ -123,7 +132,7 @@ export function EmbedViewer() {
           if (!response.ok) throw new Error(`Failed to fetch model: ${response.statusText}`);
           const buffer = await response.arrayBuffer();
           const filename = url.split('/').pop() || 'model.ifc';
-          const file = new File([buffer], filename);
+          const file = new File([buffer], name || filename);
           const modelId = await addModel(file);
           if (!modelId) throw new Error('Failed to add model');
           const added = useViewerStore.getState().models.get(modelId);
@@ -134,13 +143,20 @@ export function EmbedViewer() {
             vertices: added?.geometryResult?.totalVertices ?? 0,
           };
         },
+        setBackgroundColor: (bg: string | undefined) => setCustomBgHex(bg),
       }, {
         allowedOrigins: urlParams.allowOrigins,
         expectedParentOrigin,
       });
     });
 
-    return () => unmountBridgeLifecycle(bridgeInitialized, () => destroyBridge());
+    // The bridge only. The camera queue is NOT reset here: the `?modelUrl=`
+    // auto-load below drives it without the bridge ever seeing it, and this
+    // cleanup also fires on StrictMode's dev-only remount, mid-fetch, where
+    // zeroing it drops the held pose and un-counts the rest of the load
+    // (EmbedViewer.cameraIntent.test.ts pins that case). A real unmount needs
+    // no reset: the embed mounts once and the state dies with the page.
+    return () => unmountBridgeLifecycle(bridgeInitialized, destroyBridge);
   }, [loadFile, addModel, urlParams.allowOrigins, urlParams.parentOrigin]);
 
   // Auto-load model from URL param
@@ -154,12 +170,17 @@ export function EmbedViewer() {
     (async () => {
       try {
         emitEvent('MODEL_LOADING', { progress: 0, phase: 'Fetching model...' });
-        const response = await fetch(urlParams.modelUrl!, { signal: AbortSignal.timeout(60_000) });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const buffer = await response.arrayBuffer();
-        const filename = urlParams.modelUrl!.split('/').pop() || 'model.ifc';
-        const file = new File([buffer], filename);
-        await loadFile(file);
+        // Same scene-replacing window the bridge's LOAD_MODEL has (#3390): the
+        // fetch runs long before `loadFile`'s session reset, so a host
+        // SET_CAMERA arriving in between is held for the incoming model.
+        await aroundDestructiveLoad(useViewerStore.getState, async () => {
+          const response = await fetch(urlParams.modelUrl!, { signal: AbortSignal.timeout(60_000) });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const buffer = await response.arrayBuffer();
+          const filename = urlParams.modelUrl!.split('/').pop() || 'model.ifc';
+          const file = new File([buffer], filename);
+          await loadFile(file);
+        });
       } catch (err) {
         emitEvent('MODEL_ERROR', {
           error: {
@@ -178,132 +199,16 @@ export function EmbedViewer() {
     }
   }, [progress]);
 
-  // Emit model loaded event + auto-fit camera on the first model that lands.
-  // Unlike the full viewer (which has toolbar buttons for fit-all and a default
-  // load flow that fits), the embed has no chrome — so without an explicit fit
-  // call the camera stays at its initial position and the model renders off-frame.
-  // We only fit on the *first* successful load so host-driven SET_CAMERA / view
-  // params via the bridge aren't immediately overridden.
-  const autoFittedRef = useRef(false);
-  useEffect(() => {
-    if (loading) return;
-    const meshes = geometryResult?.meshes;
-    if (!meshes || meshes.length === 0) return;
+  // MODEL_LOADED, the camera pose a host queued against this load, and
+  // first-load framing — see useEmbedPostLoad.ts.
+  useEmbedPostLoad(loading, geometryResult, ifcDataStore, urlParams);
 
-    emitEvent('MODEL_LOADED', {
-      entities: ifcDataStore?.entities?.count ?? 0,
-      triangles: geometryResult.totalTriangles,
-      vertices: geometryResult.totalVertices,
-    });
+  // Outbound store-change events (ENTITY_SELECTED / ENTITY_HOVERED /
+  // CAMERA_CHANGED / SECTION_CHANGED) — see useEmbedBridgeEvents.ts.
+  useEmbedBridgeEvents();
 
-    if (autoFittedRef.current) return;
-
-    // Viewport registers cameraCallbacks AFTER renderer.init() resolves (async).
-    // On a fast network + small model, geometry can land before that happens.
-    // Poll for up to ~2 s, checking each frame, then bail out so we never leak.
-    autoFittedRef.current = true;
-    const deadline = performance.now() + 2000;
-    let rafId = 0;
-    const tryFit = () => {
-      const cbs = useViewerStore.getState().cameraCallbacks;
-      const ready = Boolean(cbs.home || cbs.fitAll || cbs.setPresetView);
-      if (!ready) {
-        if (performance.now() < deadline) {
-          rafId = requestAnimationFrame(tryFit);
-        } else {
-          console.warn('[embed] auto-fit gave up — cameraCallbacks never registered');
-        }
-        return;
-      }
-      // Honour ?view= / ?camera= URL params first; only auto-fit if neither was set.
-      if (urlParams.view) {
-        cbs.setPresetView?.(urlParams.view);
-      } else if (urlParams.camera) {
-        // ?camera= is handled elsewhere — nothing to do here.
-      } else if (cbs.home) {
-        cbs.home();
-      } else if (cbs.fitAll) {
-        cbs.fitAll();
-      }
-    };
-    rafId = requestAnimationFrame(tryFit);
-    return () => cancelAnimationFrame(rafId);
-  }, [loading, geometryResult, ifcDataStore, urlParams.view, urlParams.camera]);
-
-  // Emit selection events to parent
-  const selectedEntityId = useViewerStore((s) => s.selectedEntityId);
-  useEffect(() => {
-    if (selectedEntityId !== null) {
-      // Resolve metadata for the selected entity
-      const state = useViewerStore.getState();
-      const lookup = state.resolveGlobalIdFromModels(selectedEntityId);
-      const model = lookup ? state.models.get(lookup.modelId) : undefined;
-      const entities = model?.ifcDataStore?.entities;
-      emitEvent('ENTITY_SELECTED', {
-        id: selectedEntityId,
-        globalId: entities?.getGlobalId(lookup?.expressId ?? selectedEntityId) ?? undefined,
-        modelId: lookup?.modelId,
-        ifcType: entities?.getTypeName(lookup?.expressId ?? selectedEntityId) ?? undefined,
-      });
-    } else {
-      emitEvent('ENTITY_DESELECTED', undefined);
-    }
-  }, [selectedEntityId]);
-
-  // Emit hover events to parent. ENTITY_HOVERED is declared in the protocol
-  // and exposed by the SDK, but nothing in this app ever emitted it — the
-  // SDK's tests pass because they fabricate the event themselves (#2934).
-  //
-  // Subscribes to `hoverState.entityId` specifically, not the whole
-  // `hoverState` object: screenX/screenY/worldXYZ change on every
-  // hover-throttled mousemove even while the pointer stays on the same mesh,
-  // so selecting the object would re-post the event continuously instead of
-  // only on a hover-target change. The protocol declares no ENTITY_UNHOVERED
-  // counterpart to ENTITY_DESELECTED, so null (nothing hovered) is tracked but
-  // never emitted.
-  const hoveredEntityId = useViewerStore((s) => s.hoverState.entityId);
-  useEffect(() => {
-    if (hoveredEntityId === null) return;
-
-    const state = useViewerStore.getState();
-    const lookup = state.resolveGlobalIdFromModels(hoveredEntityId);
-    const model = lookup ? state.models.get(lookup.modelId) : undefined;
-    const entities = model?.ifcDataStore?.entities;
-    emitEvent('ENTITY_HOVERED', {
-      id: hoveredEntityId,
-      globalId: entities?.getGlobalId(lookup?.expressId ?? hoveredEntityId) ?? undefined,
-      ifcType: entities?.getTypeName(lookup?.expressId ?? hoveredEntityId) ?? undefined,
-    });
-  }, [hoveredEntityId]);
-
-  // Emit camera rotation changes to parent (throttled)
-  const cameraRotation = useViewerStore((s) => s.cameraRotation);
-  const lastCameraEmit = useRef(0);
-  useEffect(() => {
-    const now = Date.now();
-    if (now - lastCameraEmit.current < 100) return; // throttle to 10Hz
-    lastCameraEmit.current = now;
-    emitEvent('CAMERA_CHANGED', {
-      azimuth: cameraRotation.azimuth,
-      elevation: cameraRotation.elevation,
-    });
-  }, [cameraRotation]);
-
-  // Emit section-plane changes to parent. Mirrors the CAMERA_CHANGED effect
-  // above: the bridge's SET_SECTION handler (apps/viewer-embed/src/bridge/
-  // handler.ts) only mutates `sectionPlane` via the store's setters and never
-  // emits an event itself, so this reactive subscription is what turns those
-  // mutations (from SET_SECTION *or* any in-viewer section-tool interaction)
-  // into the outbound SECTION_CHANGED event -- same source of truth as
-  // ENTITY_SELECTED/CAMERA_CHANGED, not a handler.ts-local special case.
-  const sectionPlane = useViewerStore((s) => s.sectionPlane);
-  useEffect(() => {
-    emitEvent('SECTION_CHANGED', {
-      axis: sectionPlane.axis,
-      position: sectionPlane.position,
-      enabled: sectionPlane.enabled,
-    });
-  }, [sectionPlane]);
+  // Apply ?select= / ?isolate= once the first model is on screen.
+  useEmbedUrlParams(urlParams, Boolean(geometryResult?.meshes?.length || storeModels.size));
 
   // Multi-model: create mapping from modelId to modelIndex
   const modelIdToIndex = useMemo(() => {
@@ -342,12 +247,18 @@ export function EmbedViewer() {
     return geometryResult;
   }, [storeModels, geometryResult, modelIdToIndex]);
 
-  // Filter by type visibility
+  // Filter by type visibility, plus the host's ?hideTypes= list. The latter
+  // takes ARBITRARY IFC class names (that is what the SDK's `hideTypes?:
+  // string[]` already ships as accepting), so it cannot go through
+  // `typeVisibility`, whose six semantic toggles are a fixed set — it is a
+  // case-folded membership test in this same pass instead.
+  const hiddenTypes = useMemo(() => toHiddenTypeSet(urlParams.hideTypes), [urlParams.hideTypes]);
   const filteredGeometry = useMemo(() => {
     if (!mergedGeometryResult?.meshes) return null;
     let meshes = mergedGeometryResult.meshes;
 
     meshes = meshes.filter(mesh => {
+      if (isTypeHidden(mesh.ifcType, hiddenTypes)) return false;
       if (mesh.ifcType === 'IfcSpace' && !typeVisibility.spaces) return false;
       if (mesh.ifcType === 'IfcOpeningElement' && !typeVisibility.openings) return false;
       if (mesh.ifcType === 'IfcSite' && !typeVisibility.site) return false;
@@ -362,7 +273,7 @@ export function EmbedViewer() {
     });
 
     return meshes;
-  }, [mergedGeometryResult, typeVisibility]);
+  }, [mergedGeometryResult, typeVisibility, hiddenTypes]);
 
   // Compute isolation set
   const computedIsolatedIds = useMemo(() => {
@@ -385,7 +296,7 @@ export function EmbedViewer() {
 
   // Background color
   const bgColor = theme === 'dark' ? '#1a1b26' : '#ffffff';
-  const customBg = urlParams.bg ? `#${urlParams.bg}` : undefined;
+  const customBg = customBgHex ? `#${customBgHex}` : undefined;
 
   return (
     <div
@@ -476,7 +387,7 @@ export function EmbedViewer() {
             computedIsolatedIds={computedIsolatedIds}
             modelIdToIndex={modelIdToIndex}
           />
-          <ViewportOverlays hideViewCube />
+          <ViewportOverlays hideViewCube hideAxis={urlParams.hideAxis} hideScale={urlParams.hideScale} />
         </div>
       )}
     </div>

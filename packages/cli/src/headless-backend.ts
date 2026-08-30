@@ -70,7 +70,7 @@ import {
   listStoreys,
   type GenerateSpacesAllOptions,
 } from '@ifc-lite/create';
-import { EntityNode } from '@ifc-lite/query';
+import { EntityNode, findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';
 
 import {
   extractAllEntityAttributes,
@@ -88,6 +88,7 @@ import {
 } from '@ifc-lite/parser';
 import { escapeCsvCell, exportToStep, StepExporter, type StepExportOptions } from '@ifc-lite/export';
 import { exportHbjson, exportDfjson } from './energy-export.js';
+import { foldQueuedRelated } from './query-overlay-relations.js';
 
 // `expandTypes` used to be defined here; it now comes from `@ifc-lite/parser`,
 // shared with the other query backends (see `query-backend-maps.ts`). Re-exported
@@ -234,6 +235,8 @@ export class HeadlessBackend implements BimBackend {
 
   private createQueryAdapter(): QueryBackendMethods {
     const store = this.dataStore;
+    // Lazy — a read-only session's `related()` stays on the store-only path.
+    const getMutationView = () => this.mutationView;
 
     function getEntityData(ref: EntityRef): EntityData | null {
       // Verify the entity actually exists in the parsed data
@@ -324,9 +327,7 @@ export class HeadlessBackend implements BimBackend {
           for (const filter of descriptor.filters) {
             filtered = filtered.filter(entity => {
               const props = getCachedProps(entity.ref);
-              const pset = props.find(p => p.name === filter.psetName);
-              if (!pset) return false;
-              const prop = pset.properties.find(p => p.name === filter.propName);
+              const prop = findPropertyInSets(props, filter.psetName, filter.propName);
               if (!prop) return false;
               if (filter.operator === 'exists') return true;
               const val = prop.value;
@@ -348,24 +349,13 @@ export class HeadlessBackend implements BimBackend {
           }
         }
 
-        // `!= null` alone lets a NaN offset/limit through (NaN is neither
-        // null nor undefined); a bare `> 0` then silently drops it (every
-        // NaN comparison is false), which used to IGNORE a garbage value
-        // instead of rejecting it -- and, by the same reasoning, silently
-        // ignored a deliberate `limit: 0`. Reject non-finite/negative
-        // values loudly instead of quietly serving the wrong slice; the
-        // The CLI's own `--limit`/`--offset` flags are validated before they
-        // reach this descriptor, so this guards callers that build one
-        // directly — and it makes `limit: 0` mean "no rows" rather than being
-        // silently ignored, matching what `--limit 0` documents.
-        //
-        // NOTE this does NOT cover @ifc-lite/mcp. That package has its own
-        // backend (`packages/mcp/src/backend-query.ts`), a parallel
-        // implementation rather than a shared import, and its equivalent lines
-        // still read `descriptor.limit && descriptor.limit > 0` — so a NaN is
-        // silently ignored there and `limit: 0` is a no-op. Same defect,
-        // different package, its own tests and release cadence; tracked as a
-        // separate change rather than folded into this CLI-scoped PR.
+        // `!= null` alone lets a NaN offset/limit through (neither null nor
+        // undefined); a bare `> 0` then silently drops it (every NaN
+        // comparison is false) instead of rejecting it, and by the same
+        // reasoning silently ignored a deliberate `limit: 0`. Reject
+        // non-finite/negative values loudly instead of quietly serving the
+        // wrong slice. `@ifc-lite/mcp`'s parallel `backend-query.ts` carries
+        // the identical fix independently — same defect shape, own tests.
         if (descriptor.offset != null) {
           if (!Number.isFinite(descriptor.offset) || descriptor.offset < 0) {
             throw new TypeError(`Invalid offset: ${descriptor.offset} (must be a non-negative finite number)`);
@@ -419,11 +409,25 @@ export class HeadlessBackend implements BimBackend {
       relationships(ref: EntityRef): EntityRelationshipsData {
         return extractRelationshipsOnDemand(store, ref.expressId);
       },
+      // Folds queued `IfcRel…` creates in (query-overlay-relations.ts, mirrors #2014).
       related(ref: EntityRef, relType: string, direction: 'forward' | 'inverse'): EntityRef[] {
         const relEnum = QUERY_REL_TYPE_MAP[relType];
         if (relEnum === undefined) return [];
-        const targets = store.relationships.getRelated(ref.expressId, relEnum, direction);
-        return targets.map((expressId: number) => ({ modelId: ref.modelId, expressId }));
+        const view = getMutationView();
+        if (view?.isDeleted(ref.expressId)) return []; // deleted relates to nothing
+        const half = direction === 'forward' ? store.relationships.forward : store.relationships.inverse;
+        const out: number[] = [];
+        const seen = new Set<number>();
+        const take = (id: number): void => {
+          if (view?.isDeleted(id) || seen.has(id)) return;
+          seen.add(id);
+          out.push(id);
+        };
+        for (const edge of half.getEdges(ref.expressId, relEnum)) {
+          if (!view?.isDeleted(edge.relationshipId)) take(edge.target);
+        }
+        if (view) for (const t of foldQueuedRelated(view.getNewEntities(), (id) => view.isDeleted(id), relType, direction, ref.expressId)) take(t);
+        return out.map((expressId: number) => ({ modelId: ref.modelId, expressId }));
       },
     };
   }
@@ -463,30 +467,23 @@ export class HeadlessBackend implements BimBackend {
   }
 
   /**
-   * The overlay every write goes through, created on first use.
-   *
-   * Built by `getOrCreateStoreEditor` so the property and quantity extractors
-   * are wired exactly once, whichever adapter writes first.
+   * The overlay every write goes through, created on first use by
+   * `getOrCreateStoreEditor` so its extractors are wired exactly once.
    */
   private getOrCreateMutationView(): MutablePropertyView {
     this.getOrCreateStoreEditor();
-    // Non-null immediately after: getOrCreateStoreEditor assigns both fields
-    // together and never clears them.
+    // Non-null immediately after: both fields are assigned together and never cleared.
     return this.mutationView as MutablePropertyView;
   }
 
   private getOrCreateStoreEditor(): StoreEditor {
     if (this.storeEditor) return this.storeEditor;
     this.mutationView = new MutablePropertyView(this.dataStore.properties || null, MODEL_ID);
-    // Give the overlay a base to merge against. The columnar parser leaves
-    // `store.properties` empty and serves properties on demand, so without these
-    // the view's *only* source is the overlay itself and `getForEntity` answers
-    // with the one edited pset and nothing else. `StepExporter` re-emits
-    // `getForEntity(id)` for every entity with a property mutation and skips the
-    // original records, so editing one property would drop every sibling
-    // property in that pset on save. Same wiring, same reason, as
-    // `packages/mcp/src/headless-backend.ts` and
-    // `apps/viewer/src/utils/configureMutationView.ts` (#2000, #2004).
+    // Give the overlay a base to merge against — the columnar parser serves
+    // properties on demand, so without this `getForEntity` would answer with
+    // only the one edited pset and `StepExporter` would drop every sibling
+    // property on save. Same wiring as `packages/mcp/src/headless-backend.ts`
+    // and `apps/viewer/src/utils/configureMutationView.ts` (#2000, #2004).
     if (this.dataStore.source?.length > 0) {
       this.mutationView.setOnDemandExtractor((entityId) => extractPropertiesOnDemand(this.dataStore, entityId));
       this.mutationView.setQuantityExtractor((entityId) => extractQuantitiesOnDemand(this.dataStore, entityId));
@@ -607,18 +604,12 @@ export class HeadlessBackend implements BimBackend {
         const setName = col.slice(0, dotIdx);
         const valueName = col.slice(dotIdx + 1);
         if (props) {
-          const pset = props.find(p => p.name === setName);
-          if (pset) {
-            const prop = pset.properties.find(p => p.name === valueName);
-            if (prop?.value != null) return String(prop.value);
-          }
+          const prop = findPropertyInSets(props, setName, valueName);
+          if (prop?.value != null) return String(prop.value);
         }
         if (qsets) {
-          const qset = qsets.find(q => q.name === setName);
-          if (qset) {
-            const qty = qset.quantities.find(q => q.name === valueName);
-            if (qty?.value != null) return String(qty.value);
-          }
+          const qty = findQuantityInSets(qsets, setName, valueName);
+          if (qty?.value != null) return String(qty.value);
         }
       }
       return '';

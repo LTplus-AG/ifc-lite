@@ -35,6 +35,7 @@ import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { PropertyValueType } from '@ifc-lite/data';
 import { extractPropertiesOnDemand } from '@ifc-lite/parser';
 import { StepExporter } from './step-exporter.js';
+import { normalizeMapUnitName } from './step-map-unit.js';
 
 /** Decode Uint8Array content to string for test assertions */
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
@@ -866,5 +867,302 @@ describe('express ids are unique across an export that allocates on both paths',
     // from a reference — otherwise the assertion above is decoration.
     expect(duplicateDefinedIds('#7=IFCWALL($);\n#8=IFCSLAB($);\n#7=IFCBEAM($);\n')).toEqual([7]);
     expect(duplicateDefinedIds('#7=IFCWALL($);\n#9=IFCREL(#7,#7);\n')).toEqual([]);
+  });
+});
+
+/**
+ * `EffectiveEntityIndex.byType` is keyed by the RAW STEP type name, so asking
+ * for `IFCMAPCONVERSION` alone does not find IFC4X3's concrete subtype
+ * `IfcMapConversionScaled`. A file carrying one then looked to the exporter
+ * like a file with no map conversion at all, and a create branch emitted a
+ * SECOND coordinate operation against the same source CRS while the file's own
+ * one stayed put. Same defect shape as #3229 / #3232.
+ */
+describe('StepExporter georeferencing — IfcMapConversionScaled', () => {
+  /** The georeferenced fixture, but with the IFC4X3 scaled spelling at `#41`. */
+  function buildScaledGeoreferencedMockDataStore(): IfcDataStore {
+    return buildMockDataStore([
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g',$,'Project',$,$,$,$,(#20),#30);"],
+      [2, 'IFCSIUNIT', '#2=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+      [20, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#20=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#21,$);"],
+      [21, 'IFCAXIS2PLACEMENT3D', '#21=IFCAXIS2PLACEMENT3D(#22,#23,#24);'],
+      [22, 'IFCCARTESIANPOINT', '#22=IFCCARTESIANPOINT((0.,0.,0.));'],
+      [23, 'IFCDIRECTION', '#23=IFCDIRECTION((0.,0.,1.));'],
+      [24, 'IFCDIRECTION', '#24=IFCDIRECTION((1.,0.,0.));'],
+      [30, 'IFCUNITASSIGNMENT', '#30=IFCUNITASSIGNMENT((#2));'],
+      [40, 'IFCPROJECTEDCRS', "#40=IFCPROJECTEDCRS('EPSG:2056',$,'CH1903+',$,$,$,#2);"],
+      [41, 'IFCMAPCONVERSIONSCALED', '#41=IFCMAPCONVERSIONSCALED(#20,#40,1.,2.,3.,1.,0.,1.,1.,1.,1.);'],
+    ]);
+  }
+
+  it('edits the scaled record in place instead of emitting a second conversion', () => {
+    const exporter = new StepExporter(buildScaledGeoreferencedMockDataStore());
+    const result = exporter.export({
+      schema: 'IFC4',
+      applyMutations: true,
+      georefMutations: { mapConversion: { eastings: 9999, northings: 8888 } },
+    });
+    const content = decode(result.content);
+
+    // The file's own record carries the edit — applied by attribute NAME,
+    // which the subtype inherits unchanged — and its FactorX/Y/Z tail is
+    // untouched.
+    expect(content).toContain('#41=IFCMAPCONVERSIONSCALED(#20,#40,9999.,8888.,3.,1.,0.,1.,1.,1.,1.);');
+
+    // And no rival conversion was invented beside it. The open paren keeps
+    // this from matching the scaled spelling.
+    expect(content).not.toMatch(/=IFCMAPCONVERSION\(/);
+    expect(findDanglingRefs(content)).toEqual([]);
+    expect(duplicateDefinedIds(content)).toEqual([]);
+  });
+
+  it('still creates a conversion when the file genuinely has none', () => {
+    // The control. Widening the lookup must not disable the create path for a
+    // file that really is missing a map conversion — otherwise the assertion
+    // above could be satisfied by an exporter that stopped creating anything.
+    const dataStore = buildMockDataStore([
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g',$,'Project',$,$,$,$,(#20),#30);"],
+      [2, 'IFCSIUNIT', '#2=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+      [20, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#20=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#21,$);"],
+      [21, 'IFCAXIS2PLACEMENT3D', '#21=IFCAXIS2PLACEMENT3D(#22,#23,#24);'],
+      [22, 'IFCCARTESIANPOINT', '#22=IFCCARTESIANPOINT((0.,0.,0.));'],
+      [23, 'IFCDIRECTION', '#23=IFCDIRECTION((0.,0.,1.));'],
+      [24, 'IFCDIRECTION', '#24=IFCDIRECTION((1.,0.,0.));'],
+      [30, 'IFCUNITASSIGNMENT', '#30=IFCUNITASSIGNMENT((#2));'],
+      [40, 'IFCPROJECTEDCRS', "#40=IFCPROJECTEDCRS('EPSG:2056',$,'CH1903+',$,$,$,#2);"],
+    ]);
+    const result = new StepExporter(dataStore).export({
+      schema: 'IFC4',
+      applyMutations: true,
+      georefMutations: { mapConversion: { eastings: 9999, northings: 8888 } },
+    });
+    const content = decode(result.content);
+
+    expect(content).toMatch(/=IFCMAPCONVERSION\(/);
+    expect(findDanglingRefs(content)).toEqual([]);
+    expect(duplicateDefinedIds(content)).toEqual([]);
+  });
+});
+
+
+
+describe('IfcProjectedCRS.MapUnit carries the unit that was asked for (#3274)', () => {
+  /**
+   * A project whose OWN length unit is the millimetre, so the reuse path has
+   * something to find and the "synthesise a metre" path has something visibly
+   * wrong to synthesise instead.
+   */
+  function millimetreProjectStore(): IfcDataStore {
+    return buildMockDataStore([
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g',$,'Project',$,$,$,$,(#20),#30);"],
+      [20, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#20=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#21,$);"],
+      [21, 'IFCAXIS2PLACEMENT3D', '#21=IFCAXIS2PLACEMENT3D(#22,#23,#24);'],
+      [22, 'IFCCARTESIANPOINT', '#22=IFCCARTESIANPOINT((0.,0.,0.));'],
+      [23, 'IFCDIRECTION', '#23=IFCDIRECTION((0.,0.,1.));'],
+      [24, 'IFCDIRECTION', '#24=IFCDIRECTION((1.,0.,0.));'],
+      [30, 'IFCUNITASSIGNMENT', '#30=IFCUNITASSIGNMENT((#31));'],
+      [31, 'IFCSIUNIT', '#31=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);'],
+    ]);
+  }
+
+  function exportWithMapUnit(mapUnit: string, store: IfcDataStore = millimetreProjectStore()) {
+    return new StepExporter(store).export({
+      schema: 'IFC4',
+      applyMutations: true,
+      georefMutations: {
+        projectedCRS: { name: 'EPSG:2056', mapUnit },
+        mapConversion: { eastings: 1, northings: 2, orthogonalHeight: 3, xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 1 },
+      },
+    });
+  }
+
+  /** The `IFCSIUNIT` / `IFCCONVERSIONBASEDUNIT` line the written CRS points at,
+   *  or the literal `'$'` when it declares no MapUnit at all. */
+  function crsMapUnitLine(content: string): string | null {
+    const crs = /^#\d+=IFCPROJECTEDCRS\(.*$/m.exec(content);
+    if (!crs) return null;
+    const ref = /,(#\d+|\$)\);$/.exec(crs[0].trim());
+    const target = ref?.[1];
+    if (!target || target === '$') return target ?? null;
+    const line = new RegExp(`^${target}=.*$`, 'm').exec(content);
+    return line ? line[0].trim() : null;
+  }
+
+  it('keeps the SI prefix instead of declaring a prefixed metre to be a metre', () => {
+    // Before #3274 all four of these produced the identical
+    // `IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)` — `normalizeMapUnitName` tested for
+    // the SUBSTRING `METRE`, which MILLIMETRE, CENTIMETRE and KILOMETRE all
+    // contain. A metre-scaled MapUnit on a millimetre map is a 1000x error in
+    // the attribute the whole georeference hangs on.
+    expect(crsMapUnitLine(decode(exportWithMapUnit('MILLIMETRE').content)))
+      .toBe('#31=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);');
+    expect(crsMapUnitLine(decode(exportWithMapUnit('CENTIMETRE').content)))
+      .toMatch(/^#\d+=IFCSIUNIT\(\*,\.LENGTHUNIT\.,\.CENTI\.,\.METRE\.\);$/);
+    expect(crsMapUnitLine(decode(exportWithMapUnit('KILOMETRE').content)))
+      .toMatch(/^#\d+=IFCSIUNIT\(\*,\.LENGTHUNIT\.,\.KILO\.,\.METRE\.\);$/);
+    // The unprefixed direction of the same rule: a plain metre must NOT pick
+    // up the file's `.MILLI.` unit now that the reuse test compares prefixes.
+    expect(crsMapUnitLine(decode(exportWithMapUnit('METRE').content)))
+      .toMatch(/^#\d+=IFCSIUNIT\(\*,\.LENGTHUNIT\.,\$,\.METRE\.\);$/);
+  });
+
+  it('reuses the file’s own unit when the prefixes match, and synthesises one when they do not', () => {
+    // `#31` is the store's own millimetre unit. Reuse is observable as the id.
+    const millis = decode(exportWithMapUnit('MILLIMETRE').content);
+    expect(crsMapUnitLine(millis)).toContain('#31=');
+    // …and not by accident: nothing new was written for it.
+    expect(millis.match(/=IFCSIUNIT\(\*,\.LENGTHUNIT\.,\.MILLI\.,\.METRE\.\)/g)).toHaveLength(1);
+
+    // The negative control for that reuse: a request the file cannot satisfy
+    // gets a NEW id, so "reuse" is a decision and not the only outcome.
+    expect(crsMapUnitLine(decode(exportWithMapUnit('METRE').content))).not.toContain('#31=');
+  });
+
+  it('refuses a unit it cannot express rather than calling it metres', () => {
+    // `IfcProjectedCRS.MapUnit` is `OPTIONAL IfcNamedUnit`, so `$` is valid;
+    // `.METRE.` for an inch is not merely lossy, it is false.
+    for (const unit of ['INCH', 'YARD', 'VENDOR UNIT']) {
+      const result = exportWithMapUnit(unit);
+      const content = decode(result.content);
+      expect(crsMapUnitLine(content), `${unit} MapUnit`).toBe('$');
+      // The file alone cannot say a unit was dropped, so the caller is told.
+      expect(result.stats.warnings.join('\n'), `${unit} warning`).toContain(
+        'Cannot express map unit',
+      );
+      // Anti-vacuity: the CRS itself was still written, so `$` above is a
+      // refused MapUnit and not a missing IfcProjectedCRS.
+      expect(content).toContain("IFCPROJECTEDCRS('EPSG:2056'");
+    }
+  });
+
+  it('warns on an empty MapUnit on the create path, as the existing-CRS path does', () => {
+    // Both paths take the SAME supplied value. The existing-CRS branch tested
+    // `!== undefined`, the create branch tested truthiness, so `mapUnit: ''`
+    // was refused-with-a-warning on one and silently `$` on the other. The
+    // file cannot say a unit was dropped, so the silent half lost the only
+    // signal the caller had.
+    const result = exportWithMapUnit('');
+    const content = decode(result.content);
+    expect(crsMapUnitLine(content)).toBe('$');
+    expect(result.stats.warnings.join('\n')).toContain('Cannot express map unit');
+    // Anti-vacuity: the CRS was written, so `$` is a refused MapUnit and not a
+    // missing IfcProjectedCRS.
+    expect(content).toContain("IFCPROJECTEDCRS('EPSG:2056'");
+  });
+
+  it('still writes FOOT and US SURVEY FOOT, with distinct conversion factors', () => {
+    // Negative control for the refusal above: the two non-metric units the
+    // exporter DOES know are unaffected, so a refusal is about the unit and
+    // not about anything non-metric.
+    const foot = decode(exportWithMapUnit('FOOT').content);
+    expect(crsMapUnitLine(foot)).toMatch(/IFCCONVERSIONBASEDUNIT\(#\d+,\.LENGTHUNIT\.,'FOOT',#\d+\);$/);
+    expect(foot).toContain('IFCLENGTHMEASURE(0.3048)');
+
+    const survey = decode(exportWithMapUnit('US SURVEY FOOT').content);
+    expect(crsMapUnitLine(survey)).toMatch(/IFCCONVERSIONBASEDUNIT\(#\d+,\.LENGTHUNIT\.,'US SURVEY FOOT',#\d+\);$/);
+    expect(survey).not.toContain('IFCLENGTHMEASURE(0.3048)');
+  });
+
+  it('normalizeMapUnitName reads the whole name, not a substring of it', () => {
+    // The predicate on its own, both directions. A metre at each spelling and
+    // prefix keeps its identity; the three that used to collapse do not.
+    expect(normalizeMapUnitName('metre')).toBe('METRE');
+    expect(normalizeMapUnitName('METERS')).toBe('METRE');
+    expect(normalizeMapUnitName('MILLIMETRE')).toBe('MILLIMETRE');
+    expect(normalizeMapUnitName('millimeters')).toBe('MILLIMETRE');
+    expect(normalizeMapUnitName('KILOMETRE')).toBe('KILOMETRE');
+    expect(normalizeMapUnitName('CENTIMETRE')).toBe('CENTIMETRE');
+    // Distinctness is the point: three names, three answers.
+    expect(new Set(['METRE', 'MILLIMETRE', 'KILOMETRE'].map(normalizeMapUnitName)).size).toBe(3);
+    // Feet still normalize, and US survey feet still win over plain feet.
+    expect(normalizeMapUnitName('US SURVEY FOOT')).toBe('US SURVEY FOOT');
+    expect(normalizeMapUnitName('feet')).toBe('FOOT');
+    // An unknown name is returned as-is for the caller to refuse — never
+    // rewritten into something the exporter happens to be able to write.
+    expect(normalizeMapUnitName('inch')).toBe('INCH');
+  });
+
+  it('reads the whole FOOT name too, not a substring of it', () => {
+    // The `METRE` half of the rule was fixed in #3274 while the foot half was
+    // left as `includes('FOOT') || includes('FEET')`. Every label below merely
+    // CONTAINS a foot token, and every one of them was written into the file
+    // as a `FOOT` conversion unit at 0.3048 m — an area, an illuminance, an
+    // energy and four different national feet all handed the international
+    // foot's ratio, in the one attribute that scales the whole CRS.
+    for (const label of [
+      'SQUARE FOOT', 'CUBIC FEET', 'FOOTCANDLE', 'FOOT-POUND',
+      'FOOTPRINT', 'FOOTBALL FIELD', 'FEETLESS', 'VENDOR FOOT', 'BANANAFOOT',
+    ]) {
+      expect(normalizeMapUnitName(label), label).not.toBe('FOOT');
+      expect(normalizeMapUnitName(label), label).not.toBe('US SURVEY FOOT');
+    }
+
+    // A survey foot with no nationality is REFUSED, not guessed: Clarke's foot
+    // is 0.3047972654 m and the Indian foot 0.304799514 m, so the qualifier
+    // alone does not identify a ratio. `includes('FOOT')` gave all of them
+    // 0.3048.
+    for (const label of [
+      'SURVEY FOOT', 'SURVEY FEET', 'CLARKE FOOT', "CLARKE'S FOOT", 'INDIAN FOOT',
+      'SEARS FOOT', 'BRITISH FOOT (1936)', 'GOLD COAST FOOT',
+    ]) {
+      expect(normalizeMapUnitName(label), label).not.toBe('FOOT');
+      expect(normalizeMapUnitName(label), label).not.toBe('US SURVEY FOOT');
+    }
+
+    // The other direction of the same substring test: `US SURVEY FOOT` was
+    // reached by `includes`, so a label that says it is NOT the US survey foot
+    // was resolved as one, and so was an area built on it.
+    expect(normalizeMapUnitName('NON-US SURVEY FOOT')).not.toBe('US SURVEY FOOT');
+    expect(normalizeMapUnitName('SQUARE US SURVEY FOOT')).not.toBe('US SURVEY FOOT');
+
+    // An area or a volume is the worse half of this: not a wrong magnitude but
+    // a wrong DIMENSION, which no length scale can be right for. `MapUnit` is
+    // constrained to `UnitType = LENGTHUNIT`, so these are refused outright,
+    // the same way the georef reader refuses `SQUARE METRE`.
+    for (const label of ['SQUARE FOOT', 'SQUARE FEET', 'CUBIC FOOT', 'CUBIC FEET', 'SQUARE METRE', 'SQUARE METRES', 'CUBIC METRE']) {
+      const answer = normalizeMapUnitName(label);
+      expect(answer, label).not.toBe('FOOT');
+      expect(answer, label).not.toBe('US SURVEY FOOT');
+      expect(answer, label).not.toBe('METRE');
+    }
+
+    // Over-refusal is the opposite failure and is just as wrong: case,
+    // separators, word order and one plural suffix are NORMALISATION, not
+    // approximation, so every recognisable spelling still resolves.
+    expect(normalizeMapUnitName('FOOT')).toBe('FOOT');
+    expect(normalizeMapUnitName('Feet')).toBe('FOOT');
+    expect(normalizeMapUnitName('foot (US survey)')).toBe('US SURVEY FOOT');
+    expect(normalizeMapUnitName('SURVEY FEET (US)')).toBe('US SURVEY FOOT');
+    expect(normalizeMapUnitName('us survey foot')).toBe('US SURVEY FOOT');
+    expect(normalizeMapUnitName('USSURVEYFT')).toBe('US SURVEY FOOT');
+    expect(normalizeMapUnitName('FTUS')).toBe('US SURVEY FOOT');
+    expect(normalizeMapUnitName('METRES')).toBe('METRE');
+    expect(normalizeMapUnitName('MILLIMETERS')).toBe('MILLIMETRE');
+    expect(normalizeMapUnitName('MILLI-METRE')).toBe('MILLIMETRE');
+
+    // EPSG 9003 is the only US foot, so `US FOOT`/`USFOOT` is the US survey
+    // foot and NOT the international one — the substring test answered
+    // `FOOT`, i.e. 0.3048 for a 0.3048006096 unit.
+    expect(normalizeMapUnitName('US FOOT')).toBe('US SURVEY FOOT');
+    expect(normalizeMapUnitName('USFOOT')).toBe('US SURVEY FOOT');
+  });
+
+  it('leaves MapUnit unset for a label that merely contains a foot token', () => {
+    // End to end, past the predicate: the refusal reaches the written file and
+    // the caller, rather than a `FOOT` conversion unit at 0.3048 m.
+    for (const unit of ['SQUARE FOOT', 'FOOTCANDLE', 'SURVEY FOOT']) {
+      const result = exportWithMapUnit(unit);
+      const content = decode(result.content);
+      expect(crsMapUnitLine(content), `${unit} MapUnit`).toBe('$');
+      expect(content, `${unit} conversion unit`).not.toContain('IFCLENGTHMEASURE(0.3048)');
+      expect(result.stats.warnings.join('\n'), `${unit} warning`).toContain('Cannot express map unit');
+      // Anti-vacuity: the CRS itself was still written.
+      expect(content).toContain("IFCPROJECTEDCRS('EPSG:2056'");
+    }
+
+    // Negative control: the accepted spelling still writes its unit, so `$`
+    // above is a decision about the label and not a dead MapUnit path.
+    const survey = decode(exportWithMapUnit('foot (US survey)').content);
+    expect(crsMapUnitLine(survey)).toMatch(/IFCCONVERSIONBASEDUNIT\(#\d+,\.LENGTHUNIT\.,'US SURVEY FOOT',#\d+\);$/);
   });
 });

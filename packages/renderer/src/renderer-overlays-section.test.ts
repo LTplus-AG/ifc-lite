@@ -142,9 +142,8 @@ describe('the 2D section cap keeps axis-aligned units (#2447)', () => {
  * Rendering is dirty-flag gated: `requestRender()` sets the flag and the rAF
  * loop drains it. `uploadSection2DOverlay` and `clearSection2DOverlay` changed
  * or dropped overlay GPU geometry and returned without setting it, alone among
- * every sibling on this facade (`setOverlayLineColor`, `uploadAnnotationLines3D`,
- * `uploadGridLines3D`, `uploadDxfLines3D`, `setClashOverlapBox`, ... and all the
- * matching `clear*`). A section drawing uploaded or cleared while nothing else
+ * every sibling on this facade (`setOverlayLineColor`, `setLineOverlay` for
+ * each of the four line channels, `setClashOverlapBox`, ...). A section drawing uploaded or cleared while nothing else
  * dirtied the frame did not appear or disappear until some unrelated
  * interaction happened to drive one.
  *

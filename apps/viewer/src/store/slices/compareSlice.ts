@@ -14,6 +14,7 @@
 import type { StateCreator } from 'zustand';
 import type { DiffScope, ModelDiff } from '@ifc-lite/diff';
 import type { CompareRef } from '@/lib/compare/buildFingerprints';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
 /** A completed comparison: the engine result plus the A/B context it ran on. */
 export interface CompareResult {
@@ -183,6 +184,33 @@ export interface CompareSlice {
   clearCompare: () => void;
 }
 
+/**
+ * The fields `clearCompare` and a session reset both drop.
+ *
+ * Compare (#924): a stale diff result references models by id and the loaded
+ * set is changing. Panel visibility and the A/B/scope choices are UI prefs and
+ * stay; the user re-runs against the new set.
+ *
+ * Named once and consumed by both so neither can drift, the same shape
+ * `sheetSlice`'s `getClearedSheetState` uses. `compareRunSeq` is deliberately
+ * absent from both: it is a monotonic guard against a stale async result
+ * landing after a newer run, so resetting it would let exactly that through.
+ */
+function getClearedCompareState() {
+  return {
+    compareResult: null,
+    compareSelectedKey: null,
+    compareRunning: false,
+    compareError: null,
+  } as const;
+}
+
+export const compareTeardown = defineSliceTeardown(
+  'compareSlice',
+  ['compareResult', 'compareSelectedKey', 'compareRunning', 'compareError'],
+  { 'session-reset': getClearedCompareState, 'model-removed': notApplicable, 'all-models-cleared': notApplicable },
+);
+
 export const createCompareSlice: StateCreator<CompareSlice, [], [], CompareSlice> = (set) => ({
   comparePanelVisible: false,
   compareBaseModelId: null,
@@ -244,11 +272,5 @@ export const createCompareSlice: StateCreator<CompareSlice, [], [], CompareSlice
   setCompareError: (compareError) => set({ compareError }),
   setCompareSelectedKey: (compareSelectedKey) => set({ compareSelectedKey }),
 
-  clearCompare: () =>
-    set({
-      compareResult: null,
-      compareRunning: false,
-      compareError: null,
-      compareSelectedKey: null,
-    }),
+  clearCompare: () => set(getClearedCompareState()),
 });

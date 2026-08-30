@@ -117,20 +117,60 @@ jobs:
               - 'server/**'
               - 'api/**'
               - 'tests/api/**'
+              # `pnpm test:integration` runs THIS EXACT FILE in the Node tests
+              # job. Without it here the test cannot trigger its own execution:
+              # a PR editing only the integration harness skips the only lane
+              # that runs it.
+              - 'tests/integration.test.ts'
+              # The tsconfig BOTH `pnpm test:integration` and `pnpm test:api`
+              # compile against (`tsx --tsconfig tests/tsconfig.json`). Same
+              # trap as `.oxlintrc.json` above: a PR editing only the config a
+              # lane reads must not be able to skip that lane.
+              - 'tests/tsconfig.json'
               # The lint CONFIG, so a PR that only edits it cannot skip the
               # Lint job that reads it. Absent CI reads as green here, and a
               # guard cannot fire in a job that never runs.
               - '.oxlintrc.json'
-              # The server-bin platform-parity check reads this workflow's
-              # release matrix, so a PR that only edits the matrix cannot
-              # skip the job that checks it (issue #2619).
-              - '.github/workflows/server-binaries.yml'
+              # EVERY workflow, not just this one and server-binaries.yml.
+              # `scripts/check-swallowed-push.mjs` declares its SCOPE to be
+              # `.github/workflows/**` and runs in the Node tests job, so with
+              # only two workflows named here the gate was unreachable on 13 of
+              # the 15 files it guards -- PR #3118 edited release.yml and
+              # docker.yml and Node tests SKIPPED. `server-binaries.yml` (the
+              # server-bin platform-parity check's input, issue #2619) and
+              # `test.yml` are subsumed by this glob; test.yml stays named
+              # individually in the OTHER filters below, which this does not
+              # cover. COST: a workflow-only PR now runs the JS lane. Every job
+              # it adds is on a FREE ubuntu-latest runner except `build`, which
+              # only reaches Depot when the WASM source has drifted from the
+              # published release tag -- the same condition every frontend PR
+              # already pays. Workflow-only PRs are rare (dependabot bumps).
+              - '.github/workflows/**'
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
               - 'turbo.json'
               - 'tsconfig*.json'
               - 'scripts/**'
+              # `check-ci-path-coverage` reads .gitignore to decide which paths
+              # are committed source and which are build output it must not
+              # walk. That makes .gitignore an INPUT to the gate: an edit to it
+              # can turn a covered path into an uncovered one. Without this
+              # line a gitignore-only PR skips Node tests and the gate never
+              # sees the change that moved its own verdict.
+              - '.gitignore'
+              # The offset file itself. `node-tests` carries the Rust
+              # major-offset gate, and `scripts/**` above already brings the
+              # gate's own sources into this lane -- but the ONE file whose
+              # contents that gate exists to check sat in no filter at all, so
+              # a PR editing only `rust-major-offset.json` skipped the job and
+              # the gate could not fire on the change that declares the offset.
+              # Same trap this block warns about for `apps/`, `examples/` and
+              # `.oxlintrc.json` above. It goes here rather than under `rust:`
+              # because the gate is a Node step and `rust:` would additionally
+              # spin the paid Depot compile lane for a one-line JSON edit
+              # (scripts/README-vercel-cost.md).
+              - 'rust-major-offset.json'
               - 'tests/models/manifest.json'
               - '.github/workflows/test.yml'
             geometry:
@@ -154,6 +194,19 @@ jobs:
               - 'mkdocs.yml'
               - 'README.md'
               - 'packages/*/README.md'
+              # The two SOURCES `scripts/docs/generate-docs-sections.mjs`
+              # regenerates its sections from. They belong in `docs` rather
+              # than `frontend` on purpose: `docs` reaches the freshness check
+              # through the Docs-checks job -- one free ubuntu-latest runner,
+              # three node scripts, no build artifact and no Depot -- which is
+              # the CHEAPEST job that runs this gate. `frontend` would drag a
+              # landing-copy edit through build + typecheck + lint + the viewer
+              # shards for no added signal. Coverage holds either way: when a
+              # PR also touches frontend/rust, Docs checks skips itself and
+              # Node tests runs the same `--check`. PR #1817 changed only
+              # apps/landing/bench-data.json, and BOTH lanes skipped.
+              - 'apps/landing/**'
+              - 'tests/benchmark/baseline.json'
               - 'scripts/docs/**'
               - '.github/workflows/test.yml'
 
@@ -642,6 +695,31 @@ jobs:
       # counting and digest logic underneath it.
       - name: Check module-size ratchet gate regressions
         run: node --test scripts/check-module-size.test.mjs scripts/lib/module-size-ratchet.test.mjs
+      # An entity can legitimately carry two distinct property/quantity sets
+      # sharing the same name (type + occurrence). `sets.find(s => s.name ===
+      # x)` only ever sees the first one -- fixed one call site at a time
+      # across #2907, #3463, #3465, and this family's own PR, each rediscovered
+      # independently. This is the shape gate: it fails on a NEW two-step
+      # .find(set) -> .find(property/quantity) on what looks like an entity's
+      # (possibly-repeating) sets, so the next lookup can't reintroduce it.
+      - name: Check for the same-named-property-set .find() shape
+        run: node scripts/check-pset-name-find.mjs
+      # The version every Rust crate is published at is the npm version with
+      # `rust-major-offset.json`'s major offset applied (#3216). That offset is
+      # applied by `scripts/sync-versions.js`, which runs ONCE per release
+      # inside `pnpm run version` -- so between releases the file and the
+      # manifests can disagree with nothing to notice, and the first symptom
+      # would be a `cargo publish` at a version meaning something other than
+      # what the file claims. Running it here, on every PR, is what makes the
+      # `chore: version packages` PR (the one commit that actually moves these
+      # literals) reviewable before it publishes.
+      # Its own tests run FIRST, for the reason the pairs above state: this
+      # gate's value is entirely in not passing over a tree it never read, so a
+      # broken detector must fail here rather than report agreement.
+      - name: Check Rust major-offset gate's own tests
+        run: node --test scripts/check-rust-major-offset.test.mjs scripts/lib/rust-major-offset.test.mjs scripts/sync-versions.test.mjs
+      - name: Check Rust crate version matches the declared major offset
+        run: node scripts/check-rust-major-offset.mjs
       # A hidden tab never delivers an animation frame, so an unbounded
       # `await new Promise(r => requestAnimationFrame(r))` in the load pipeline
       # parks finalize / WASM release / setLoading(false) until the user comes
@@ -744,6 +822,31 @@ jobs:
       # its first run.
       - name: Check swallowed-push gate regressions
         run: node --test scripts/check-swallowed-push.test.mjs
+      # The class the swallowed-push gate above was itself an instance of: a
+      # gate is only as good as the job that runs it, and the job only runs
+      # when the path filter says so. This derives each gate's INPUTS from the
+      # gate's own source and fails when one of them cannot trigger the job
+      # that reads it -- an unreachable gate reports success, because a skipped
+      # job counts as success in the aggregate `test` gate below (#3312).
+      - name: Check CI path coverage
+        run: node scripts/check-ci-path-coverage.mjs
+      # Executable proof it cannot pass vacuously: reintroducing a real hole
+      # must name that hole, and an empty workflow dir / unparseable filter
+      # block / zero derived inputs must FAIL rather than report clean.
+      - name: Check CI path-coverage gate regressions
+        run: node --test scripts/check-ci-path-coverage.test.mjs
+      # Same class as the gate above (#3452), for a case it cannot see: its
+      # own scan only recognises gates invoked as a literal `node
+      # scripts/*.mjs` in a `run:` step, and sdk-canary.yml's job is `pnpm
+      # turbo build` + `node packages/cli/dist/index.js ext test` -- no gate
+      # script at all. This instead derives the FULL transitive
+      # workspace-dependency closure `turbo build` walks from the real
+      # package.json graph and fails when sdk-canary.yml's own `paths:`
+      # filter does not cover all of it.
+      - name: Check SDK canary path coverage
+        run: node scripts/check-sdk-canary-coverage.mjs
+      - name: Check SDK canary path-coverage gate regressions
+        run: node --test scripts/check-sdk-canary-coverage.test.mjs
       # The CSV cell escaper reached NINE hand-rolled copies and no two were
       # identical: some tested the formula trigger anchored at offset 0 (so a
       # BOM/ZWSP/LRM/NBSP/U+2028 in front of `=` bypassed the CWE-1236 guard),
@@ -758,6 +861,15 @@ jobs:
       # almost no files must fail rather than report clean.
       - name: Check CSV escaper gate regressions
         run: node --test scripts/check-csv-escaper-copies.test.mjs
+
+      # Same precedent, for the STEP (ISO 10303-21) string-literal escaper
+      # (#3300, second half): the TypeScript and Rust implementations cannot
+      # share code, so each is pinned against the other via a shared vector
+      # fixture instead of a hand-kept copy of the other side's behaviour.
+      - name: Check for hand-rolled STEP string escapers
+        run: node scripts/check-step-escaper-copies.mjs
+      - name: Check STEP escaper gate regressions
+        run: node --test scripts/check-step-escaper-copies.test.mjs
 
       # `scripts/lib/vitest-timeout-audit.mjs` (#2948) replaced
       # `audit-test-timeouts.mjs`, which was deleted in the same change rather
@@ -885,6 +997,46 @@ jobs:
       # crates.io behind npm. This makes that order a PR-visible gate.
       - name: Check the crates publish order matches the dependency graph
         run: node --test scripts/release-crates-order.test.mjs
+      # #3180: `cargo publish` does not block until a crate is visible in the
+      # crates.io index (the comment that used to claim it did was false —
+      # v6.0.0 left 4 of 7 crates unpublished when the index lagged past
+      # cargo's own internal wait). release-crates.mjs now polls the index
+      # itself with a bounded timeout instead of trusting cargo's wait; these
+      # cover that poll (and the underlying crates.io query helper) against a
+      # stubbed registry and a fake clock, never a real network call.
+      - name: Check the crates.io publish poll fails closed on a stuck index
+        run: node --test scripts/lib/crates-io.test.mjs scripts/release-crates.test.mjs
+      # #3181: `verify-npm-publish.js` only ever checked npm, so the v6.0.0
+      # partial crates.io publish (#3180) went unreported — npm was complete,
+      # and nothing checked the other registry. Covers `verify-crates-publish.js`
+      # reproducing that exact 3-of-7 shape against a stubbed registry — and
+      # the EXIT CODE, not just the pure `verifyAll`: the step name claims the
+      # verifier "catches" a partial publish, which is a claim about what the
+      # process returns. `runMain` is driven directly so `if (failed.length >
+      # 0) → if (false)` (a partial publish exiting 0) and an empty crate list
+      # exiting 0 both fail here rather than at the next release.
+      - name: Check the crates.io publish verifier catches a partial publish
+        run: node --test scripts/verify-crates-publish.test.mjs
+      # The gate that decides whether either publish verifier runs at all. It
+      # is read from `release.yml` on main only, so nothing on a PR exercises
+      # it — and its first spelling (root `package.json` version vs `HEAD~1`)
+      # was wrong on this repo's own history: `sync-versions.js` pins the root
+      # version to the HIGHEST workspace version without lockstepping the
+      # rest, so the root version stands still on most release commits and the
+      # gate collapsed back to `published == 'true'`, skipping verification on
+      # exactly the re-run that recovers a partial publish (#3181). These
+      # drive real throwaway git repositories: a root bump, a bump that leaves
+      # the root alone, no bump at all, and a first commit with no parent.
+      #
+      # They also cover the YAML SEAM, by lifting the `VERSION_CHANGED=` lines
+      # straight out of `release.yml` and running them under the Actions
+      # default shell. The script fails open on its own, but a bare
+      # `VAR=$(node …)` under `bash -eo pipefail` takes the substitution's
+      # exit status: a non-zero exit killed the step, `version_changed` was
+      # never written, and both verifiers skipped DESPITE `always()`. Editing
+      # the workflow back to that spelling reddens these tests.
+      - name: Check the release version-bump gate sees non-root bumps and fails open
+        run: node --test scripts/release-version-changed.test.mjs
       # verify-esm-entrypoints.mjs is the last gate before `pnpm release`
       # publishes. If its package discovery ever returns nothing — packages/
       # moved, or the publishable filter stops matching — the smoke loop has
@@ -1324,9 +1476,58 @@ jobs:
   # for the branch protection rule so we don't have to retouch settings.
   # Succeeds if every dependency succeeded or was skipped (path-filtered
   # out); fails the moment any dependency fails or is cancelled.
+  # The crate semver gate (issue #3216). It runs at release time as the
+  # crates.io half's precondition, but a release-only gate is exactly the shape
+  # `release-crates-order.test.mjs` argues against in its own header: the
+  # Release workflow runs only on main, and only on an actual publish, so a
+  # breaking API change sits latent until it fails after npm has already gone
+  # out. This runs it on every PR instead.
+  #
+  # It is cheap on an ordinary PR and expensive only where it has signal. Each
+  # crate whose version is already live on crates.io is skipped BEFORE
+  # cargo-semver-checks is invoked, which on an ordinary PR is all of them: the
+  # job is seven registry lookups and a message saying plainly that no API was
+  # compared. On the `chore: version packages` PR, where `sync-versions.js` has
+  # moved the workspace version, it does the real comparison — and that is the
+  # commit whose version the whole issue is about, reviewed before it merges
+  # and publishes.
+  rust-semver:
+    name: Rust crate semver
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+
+      # A stable toolchain, not the dated nightly in rust-toolchain.toml:
+      # cargo-semver-checks refuses a nightly outright ("rustc version is not
+      # high enough: >=1.93.0 needed, got 1.93.0-nightly"). The gate invokes it
+      # as `cargo +stable semver-checks`, so this only has to exist.
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master 2026-05
+        with:
+          toolchain: stable
+
+      # Prebuilt binary. `cargo install cargo-semver-checks --locked` compiles
+      # it from source (~5 min).
+      - name: Install cargo-semver-checks
+        uses: taiki-e/install-action@4f5ee4a4759116abc6b10af05f20374e179d8ca3 # cargo-semver-checks (snapshot pinned 2026-08)
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          prefix-key: ci-rust-semver
+
+      # No `pnpm install`: the gate imports only node builtins and
+      # scripts/lib/crates-io.mjs, which does the same.
+      - name: Check crate semver against crates.io
+        run: node scripts/check-rust-semver.mjs
+
   test:
     name: Build + WASM + Rust + Node
-    needs: [changes, build, typecheck, lint, node-tests, viewer-tests, viewer-e2e, rust-tests, geometry-census, plato-check, docs-checks]
+    needs: [changes, build, typecheck, lint, node-tests, viewer-tests, viewer-e2e, rust-tests, rust-semver, geometry-census, plato-check, docs-checks]
     if: always()
     # Free runner — the gate just inspects upstream job results.
     runs-on: ubuntu-latest
@@ -1341,6 +1542,7 @@ jobs:
             [viewer-tests]="${{ needs.viewer-tests.result }}"
             [viewer-e2e]="${{ needs.viewer-e2e.result }}"
             [rust-tests]="${{ needs.rust-tests.result }}"
+            [rust-semver]="${{ needs.rust-semver.result }}"
             [geometry-census]="${{ needs.geometry-census.result }}"
             [plato-check]="${{ needs.plato-check.result }}"
             [docs-checks]="${{ needs.docs-checks.result }}"

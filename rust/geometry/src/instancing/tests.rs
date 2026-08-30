@@ -4,8 +4,9 @@
 
 use super::collate::mat4_to_row_major_f32;
 use super::{
-    collate_and_encode, collate_instances, decode_instanced, encode_instanced, verify_recomposition,
-    Collated, InstanceMeshRef, INSTANCED_MAGIC, INSTANCED_VERSION,
+    collate_and_encode, collate_instances, collate_refs, decode_instanced, encode_instanced,
+    encode_refs, verify_recomposition, Collated, InstanceMeshRef, INSTANCED_MAGIC,
+    INSTANCED_VERSION,
 };
 use crate::mesh::{InstanceMeta, Mesh};
 use nalgebra::Matrix4;
@@ -236,8 +237,12 @@ fn instanced_wire_format_roundtrips_and_expands_to_flat() {
 /// Dumps a deterministic instanced-shard fixture as hex for the cross-language
 /// TS conformance test (packed-instanced-decoder.test.ts). Run on demand:
 /// `cargo test -p ifc-lite-geometry --lib dump_instanced_fixture -- --ignored --nocapture`
-/// then paste the hex into the TS fixture. Pure-translation transforms keep
-/// the expected world geometry trivially checkable on both sides.
+/// then paste the hex into the TS fixture's `FIXTURE_V2_HEX`. Pure-translation
+/// transforms keep the expected world geometry trivially checkable on both sides.
+///
+/// This emits the CURRENT version only. The v1 fixture on the TS side is frozen
+/// evidence that a shard written before this encoder existed still decodes — it
+/// is not regenerable and must never be replaced by this output.
 #[test]
 #[ignore]
 fn dump_instanced_fixture() {
@@ -258,9 +263,21 @@ fn dump_instanced_fixture() {
     };
     let meshes = vec![mk(&m0, 50), mk(&m1, 50), mk(&m2, 60)];
     let collated = collate_instances(&meshes, 2, [0.0, 0.0, 0.0]);
-    let bytes = encode_instanced(&meshes, &collated, |i| (1000 + i) as u32, |i| {
-        [i as f32 * 0.1, 0.2, 0.3, 1.0]
-    });
+    // Same ids/colours as the frozen v1 fixture so the version diff is legible;
+    // the item ids are the only NEW payload. `encode_refs` rather than
+    // `encode_instanced` because the item id is a per-ref field, not a closure.
+    let refs: Vec<InstanceMeshRef> = meshes
+        .iter()
+        .enumerate()
+        .map(|(i, m)| {
+            let mut r = InstanceMeshRef::from_mesh(m);
+            r.entity_id = 1000 + i as u32;
+            r.color = [i as f32 * 0.1, 0.2, 0.3, 1.0];
+            r.item_id = Some(500 + i as u32);
+            r
+        })
+        .collect();
+    let bytes = encode_refs(&refs, &collated);
     let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
     println!("INSTANCED_FIXTURE_HEX_BEGIN");
     println!("{hex}");
@@ -444,6 +461,7 @@ fn dont_bake_empty_occurrence_refs_recompose_like_materialized() {
             instance_meta: Some(meta),
             entity_id: 1000 + (k as u32 + 1),
             color: [0.2, 0.4, 0.6, 1.0],
+            item_id: None,
         });
     }
     let db_shard = collate_and_encode(&refs_db, 2, [0.0, 0.0, 0.0]);
@@ -494,7 +512,7 @@ fn decode_rejects_bad_magic() {
 
 /// Little-endian instanced-shard header (mirrors the packed-instanced-decoder.test.ts
 /// header helper): magic, version, template_count, instance_count, positions_len,
-/// normals_len, indices_len, reserved.
+/// normals_len, indices_len, instance stride (0 = the 88-byte base record).
 fn header_bytes(
     magic: u32,
     version: u32,
@@ -621,4 +639,409 @@ fn singletons_and_non_instanceable_go_flat() {
     flat.sort_unstable();
     assert_eq!(flat, vec![0, 1], "singleton + non-instanceable both emitted flat");
     assert_eq!(collated.unique_geometry_count(), 2);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #2985: v1 → v2 wire compatibility.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A REAL v1 shard, produced by this encoder before #2985 and frozen here. It is
+/// the same bytes the TS decoder's `FIXTURE_V1_HEX` holds, so both decoders are
+/// tested against one artefact rather than against each other's idea of v1.
+///
+/// NEVER regenerate this. Its whole value is that no current code produced it:
+/// it is the shape already sitting in browser caches, which persist IFNS bytes
+/// verbatim. The cache key moves 15 -> 16 with this change, but bytes also
+/// travel by other routes, so a v1 shard must keep decoding regardless.
+/// Regenerating it would quietly turn the backward-compatibility test into
+/// another forward-compatibility test.
+const FIXTURE_V1_HEX: &str = "534e464901000000020000000300000018000000180000000800000000000000000000000c000000000000000c00000000000000040000000000000000000000000000000000000000000000000000000c0000000c0000000c0000000c000000040000000400000000000000000000000000000000000000000000000000000000000000e803000000000000cdcc4c3e9a99993e0000803f0000803f000000000000000000000000000000000000803f000000000000000000000000000000000000803f000000000000000000000000000000000000803f00000000e9030000cdcccc3dcdcc4c3e9a99993e0000803f0000803f0000000000000000000080bf000000000000803f000000000000004000000000000000000000803f000000000000000000000000000000000000803f01000000ea030000cdcc4c3ecdcc4c3e9a99993e0000803f0000803f000000000000000000000000000000000000803f000000000000000000000000000000000000803f000000000000000000000000000000000000803f0000803f00000000000000000000004000000000000000000000803f0000803f000000000000803f000000000000803f0000a0400000a0400000a0400000c0400000a0400000a0400000a0400000c0400000a0400000a0400000a0400000c0400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000020000000300000000000000010000000200000003000000";
+
+fn from_hex(hex: &str) -> Vec<u8> {
+    (0..hex.len() / 2)
+        .map(|i| u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).expect("hex"))
+        .collect()
+}
+
+/// The no-cache-invalidation claim, measured rather than asserted in prose: the
+/// v2 decoder reads a v1 shard whole. Templates, ids, colours and transforms all
+/// come back; only `item_id` is absent, because v1 had no such field.
+#[test]
+fn a_v1_shard_decodes_through_the_v2_decoder() {
+    let bytes = from_hex(FIXTURE_V1_HEX);
+    assert_eq!(
+        u32::from_le_bytes(bytes[4..8].try_into().unwrap()),
+        1,
+        "the fixture must actually BE v1 — a v2 fixture here would test nothing"
+    );
+
+    let dec = decode_instanced(&bytes).expect("a v1 shard must still decode");
+    assert_eq!(dec.templates.len(), 2);
+    assert_eq!(dec.instances.len(), 3);
+    // Read at the v1 stride of 88: at 92 the second record would start inside the
+    // first one's transform and these ids would be garbage.
+    assert_eq!(
+        dec.instances.iter().map(|i| i.entity_id).collect::<Vec<_>>(),
+        vec![1000, 1001, 1002]
+    );
+    assert_eq!(
+        dec.instances.iter().map(|i| i.template_index).collect::<Vec<_>>(),
+        vec![0, 0, 1]
+    );
+    for inst in &dec.instances {
+        assert_eq!(
+            inst.item_id, None,
+            "a v1 shard has no item id field; reporting one would be fabricated"
+        );
+    }
+}
+
+/// The encoder declares the widened stride and the decoder reads the item ids
+/// back at it. An occurrence with no item writes the wire's `0` sentinel and
+/// comes back as `None` rather than `Some(0)`, so a host cannot follow a
+/// fabricated `#0` to nothing.
+#[test]
+fn v2_round_trips_the_item_id_and_treats_zero_as_absent() {
+    let m0 = Matrix4::new_translation(&nalgebra::Vector3::new(1.0, 0.0, 0.0));
+    let m1 = Matrix4::new_translation(&nalgebra::Vector3::new(0.0, 2.0, 0.0));
+    let mk = |m: &Matrix4<f64>| {
+        mesh_from(
+            baked(&CANON, m),
+            InstanceMeta {
+                transform: mat_rm(m),
+                local_transform: None,
+                canonical_transform: None,
+                rep_identity: 50,
+                instanceable: true,
+            },
+        )
+    };
+    let meshes = vec![mk(&m0), mk(&m1)];
+    let collated = collate_instances(&meshes, 2, [0.0, 0.0, 0.0]);
+    let mut refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
+    refs[0].entity_id = 40;
+    refs[0].item_id = Some(11);
+    refs[1].entity_id = 47;
+    refs[1].item_id = None; // this occurrence names no item
+
+    let bytes = encode_refs(&refs, &collated);
+    assert_eq!(
+        u32::from_le_bytes(bytes[4..8].try_into().unwrap()),
+        INSTANCED_VERSION
+    );
+    assert_eq!(
+        u32::from_le_bytes(bytes[28..32].try_into().unwrap()),
+        92,
+        "the encoder must declare the stride it wrote records at"
+    );
+
+    let dec = decode_instanced(&bytes).expect("decodes");
+    let by_entity: Vec<(u32, Option<u32>)> =
+        dec.instances.iter().map(|i| (i.entity_id, i.item_id)).collect();
+    assert!(by_entity.contains(&(40, Some(11))), "got {by_entity:?}");
+    assert!(by_entity.contains(&(47, None)), "got {by_entity:?}");
+}
+
+/// Two occurrences sharing one representation, with item ids, encoded by the
+/// current encoder — the base shard the stride tests below re-pack.
+fn two_occurrence_shard(item_ids: [Option<u32>; 2]) -> Vec<u8> {
+    let m0 = Matrix4::new_translation(&nalgebra::Vector3::new(1.0, 0.0, 0.0));
+    let m1 = Matrix4::new_translation(&nalgebra::Vector3::new(0.0, 2.0, 0.0));
+    let mk = |m: &Matrix4<f64>| {
+        mesh_from(
+            baked(&CANON, m),
+            InstanceMeta {
+                transform: mat_rm(m),
+                local_transform: None,
+                canonical_transform: None,
+                rep_identity: 50,
+                instanceable: true,
+            },
+        )
+    };
+    let meshes = vec![mk(&m0), mk(&m1)];
+    let collated = collate_instances(&meshes, 2, [0.0, 0.0, 0.0]);
+    let mut refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
+    for (r, (i, id)) in refs.iter_mut().zip(item_ids.into_iter().enumerate()) {
+        r.entity_id = 40 + i as u32;
+        r.item_id = id;
+    }
+    encode_refs(&refs, &collated)
+}
+
+/// Re-pack a shard this encoder wrote as one a FUTURE producer would have
+/// written: a higher version, a stride widened by `extra` bytes, and `extra`
+/// bytes of a trailing field this build has never heard of after each record's
+/// known fields. Nothing else moves — that is what "append-only" means.
+fn append_unknown_trailing_field(bytes: &[u8], new_version: u32, extra: usize) -> Vec<u8> {
+    let ru = |o: usize| u32::from_le_bytes(bytes[o..o + 4].try_into().unwrap()) as usize;
+    let (template_count, instance_count, stride) = (ru(8), ru(12), ru(28));
+    let it_off = 32 + template_count * 48;
+    let data_off = it_off + instance_count * stride;
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len() + instance_count * extra);
+    out.extend_from_slice(&bytes[..it_off]);
+    out[4..8].copy_from_slice(&new_version.to_le_bytes());
+    out[28..32].copy_from_slice(&((stride + extra) as u32).to_le_bytes());
+    for i in 0..instance_count {
+        let r = it_off + i * stride;
+        out.extend_from_slice(&bytes[r..r + stride]);
+        out.resize(out.len() + extra, 0xAB);
+    }
+    out.extend_from_slice(&bytes[data_off..]);
+    out
+}
+
+/// FORWARD COMPATIBILITY, the whole point of spending word 7 on a stride rather
+/// than on flags. A v3 shard that APPENDS a field must still decode here: every
+/// field this build knows sits at its fixed offset in the base record, and the
+/// declared stride steps over the tail it does not know. Under the flags word
+/// this replaced, this shard was refused outright — an unknown flag bit changes
+/// the stride unknowably, so flags could only ever gate, never carry.
+#[test]
+fn a_future_version_with_an_appended_field_still_decodes_every_known_field() {
+    let v2 = two_occurrence_shard([Some(11), Some(12)]);
+    let known = decode_instanced(&v2).expect("the v2 baseline decodes");
+
+    // version 3, stride 96 = 88 base + itemId + 4 bytes of a field from a build
+    // that does not exist yet.
+    let v3 = append_unknown_trailing_field(&v2, 3, 4);
+    assert_eq!(u32::from_le_bytes(v3[4..8].try_into().unwrap()), 3);
+    assert_eq!(u32::from_le_bytes(v3[28..32].try_into().unwrap()), 96);
+
+    let dec = decode_instanced(&v3).expect("a v3 shard with a valid stride must decode");
+    assert_eq!(dec.templates.len(), known.templates.len());
+    assert_eq!(dec.instances.len(), known.instances.len());
+    for (got, want) in dec.instances.iter().zip(known.instances.iter()) {
+        assert_eq!(got.template_index, want.template_index);
+        assert_eq!(got.entity_id, want.entity_id);
+        assert_eq!(got.color, want.color);
+        assert_eq!(got.transform, want.transform);
+        assert_eq!(
+            got.item_id, want.item_id,
+            "the item id must be read at its fixed offset, not shifted by the unknown tail"
+        );
+    }
+    for (got, want) in dec.templates.iter().zip(known.templates.iter()) {
+        assert_eq!(got.positions, want.positions);
+        assert_eq!(got.normals, want.normals);
+        assert_eq!(got.indices, want.indices);
+        assert_eq!(got.origin, want.origin);
+    }
+}
+
+/// The stride is the ONE thing a decoder must be strict about, because a
+/// mis-strided read produces plausible garbage rather than an error.
+#[test]
+fn a_stride_below_the_base_record_or_past_the_buffer_is_refused() {
+    let mut bytes = two_occurrence_shard([Some(11), Some(12)]);
+
+    // One byte short of the base record: the base fields are not optional.
+    bytes[28..32].copy_from_slice(&87u32.to_le_bytes());
+    assert!(
+        decode_instanced(&bytes).is_none(),
+        "a stride below the 88-byte base record must be refused"
+    );
+
+    // A stride the buffer cannot hold. `instance_count * stride` also has to
+    // survive the multiply: on wasm32 usize is 32 bits, and a wrap would fold
+    // the data offset back INSIDE the buffer with every later check passing.
+    // 4-ALIGNED on purpose: an unaligned value is refused one guard earlier and
+    // would stop exercising the buffer-fit check at all.
+    bytes[28..32].copy_from_slice(&0xFFFF_FFFCu32.to_le_bytes());
+    assert!(
+        decode_instanced(&bytes).is_none(),
+        "a stride whose instance table cannot fit the buffer must be refused"
+    );
+
+    // Version 0 is not a version, at any stride.
+    bytes[28..32].copy_from_slice(&92u32.to_le_bytes());
+    bytes[4..8].copy_from_slice(&0u32.to_le_bytes());
+    assert!(decode_instanced(&bytes).is_none(), "version 0 is not a version");
+}
+
+/// #2985 follow-up: the stride is derived from the DATA. A shard whose
+/// occurrences name no representation item declares the 88-byte base record and
+/// writes nothing extra, instead of paying 4 bytes of zeros per occurrence — on
+/// a 200k-occurrence model that is ~800 KB written, cached verbatim, and re-read
+/// on every load to say nothing.
+#[test]
+fn a_shard_with_no_item_ids_declares_the_base_stride_and_pays_no_bytes_for_them() {
+    let none = two_occurrence_shard([None, None]);
+    let some = two_occurrence_shard([None, Some(12)]);
+
+    assert_eq!(
+        u32::from_le_bytes(none[28..32].try_into().unwrap()),
+        0,
+        "no occurrence names an item, so the shard must not declare the field \
+         — and it says so the way v1 said it, with word 7 at a literal 0"
+    );
+    assert_eq!(u32::from_le_bytes(some[28..32].try_into().unwrap()), 92);
+    // Two instances × 4 bytes: the difference is the field itself, nothing else.
+    assert_eq!(some.len(), none.len() + 8);
+
+    let dec = decode_instanced(&none).expect("decodes");
+    assert_eq!(dec.instances.len(), 2);
+    for inst in &dec.instances {
+        assert_eq!(inst.item_id, None);
+    }
+    // A single id anywhere in the batch is enough to declare the field; the
+    // occurrence that has none still reports None rather than a fabricated #0.
+    let dec = decode_instanced(&some).expect("decodes");
+    let ids: Vec<Option<u32>> = dec.instances.iter().map(|i| i.item_id).collect();
+    assert!(ids.contains(&Some(12)) && ids.contains(&None), "got {ids:?}");
+}
+
+/// FIX for the deploy-skew window (#2985 review). A batch where NO occurrence
+/// names an item produces a record with no trailing field — which is a v1
+/// record, so the shard is declared v1 and its header word 7 carries v1's
+/// literal `0` rather than an explicit 88. That makes it byte-identical to what
+/// a pre-#2985 encoder would have written for the same input, so a build from
+/// before this format — whose decoder is `version != 1 => refuse` — reads it.
+/// The cache key bump (`@ifc-lite/cache` FORMAT_VERSION 15 -> 16) closes the
+/// same window from the other side; this closes it for bytes that travel by any
+/// other route.
+#[test]
+fn an_all_absent_id_batch_encodes_as_version_1_at_the_base_stride() {
+    let bytes = two_occurrence_shard([None, None]);
+
+    assert_eq!(
+        u32::from_le_bytes(bytes[4..8].try_into().unwrap()),
+        1,
+        "a shard with no trailing field IS a v1 shard; declaring v2 would make a \
+         pre-#2985 decoder refuse bytes it can read perfectly well"
+    );
+    assert_eq!(
+        u32::from_le_bytes(bytes[28..32].try_into().unwrap()),
+        0,
+        "v1 wrote word 7 as a literal 0; anything else is not byte-identical"
+    );
+
+    // The record stride is still 88 — the property the version claim rests on.
+    // Derived from the layout rather than from the encoder, so this cannot agree
+    // with the encoder by sharing its arithmetic: header + template table +
+    // instance table + the three pools must account for every byte.
+    let ru = |o: usize| u32::from_le_bytes(bytes[o..o + 4].try_into().unwrap()) as usize;
+    let (template_count, instance_count) = (ru(8), ru(12));
+    let pools = (ru(16) + ru(20) + ru(24)) * 4;
+    assert_eq!(
+        bytes.len(),
+        32 + template_count * 48 + instance_count * 88 + pools,
+        "records must be 88 bytes wide"
+    );
+
+    // And it still decodes here, with every occurrence reporting no item.
+    let dec = decode_instanced(&bytes).expect("decodes");
+    assert_eq!(dec.instances.len(), 2);
+    assert!(dec.instances.iter().all(|i| i.item_id.is_none()));
+}
+
+/// The two decoders have to refuse the same shards, or "permissive on version,
+/// strict on stride" is a promise only one of them keeps. An unaligned stride is
+/// the case where they disagreed: every field on this wire is 4 bytes, and the
+/// TS decoder views the data pools as `Float32Array` over the shard buffer, so a
+/// stride of 90 puts the data offset at 170 and the view constructor throws an
+/// opaque `RangeError`. This decoder reads through byte slices and used to
+/// accept the identical bytes, decoding every base field.
+#[test]
+fn an_unaligned_stride_is_refused_rather_than_read() {
+    let mut bytes = two_occurrence_shard([Some(11), Some(12)]);
+
+    for stride in [89u32, 90, 91, 94] {
+        bytes[28..32].copy_from_slice(&stride.to_le_bytes());
+        assert!(
+            decode_instanced(&bytes).is_none(),
+            "stride {stride} is not a multiple of 4 and must be refused, not read"
+        );
+    }
+
+    // The guard is about alignment, not about being unusual: 96 is a stride no
+    // producer here writes and it must still decode (that is the forward
+    // compatibility the stride buys).
+    let v3 = append_unknown_trailing_field(&two_occurrence_shard([Some(11), Some(12)]), 3, 4);
+    assert!(decode_instanced(&v3).is_some(), "an aligned wider stride still decodes");
+}
+
+/// A template's pool offsets are attacker-controlled u32s, and the contract is
+/// `None` rather than a panic for every malformed header. NOTE what this test
+/// does and does not prove: on a 64-bit host `data_off + (pos_off + k) * 4`
+/// cannot overflow a usize, so it returned `None` before the checked arithmetic
+/// too — this pins the CONTRACT. The defect the checked arithmetic fixes is
+/// wasm32-only (usize = 32 bits), where the same expression overflows: debug
+/// traps the geometry worker instead of returning `None`, release wraps back
+/// inside the buffer and returns WRONG geometry. That is the case the "Checked
+/// throughout" comment in wire.rs claimed to cover and did not.
+#[test]
+fn an_out_of_range_template_pool_offset_decodes_to_none() {
+    let base = two_occurrence_shard([Some(11), Some(12)]);
+    assert!(decode_instanced(&base).is_some(), "sanity: the shard decodes");
+
+    // Template record 0 starts at 32: posOff, posLen, nrmOff, nrmLen, idxOff, idxLen.
+    for (field, name) in [(0usize, "positions"), (8, "normals"), (16, "indices")] {
+        let mut bytes = base.clone();
+        bytes[32 + field..36 + field].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert!(
+            decode_instanced(&bytes).is_none(),
+            "a template {name} offset of 0xFFFFFFFF must decode to None, not panic"
+        );
+    }
+}
+
+/// #2985 review: the stride predicate must be read off the occurrences the
+/// encoder actually WRITES, not off the input slice. `collate_refs` drops
+/// members — an empty non-instanceable mesh hits its `_ => {}` arm — so a batch
+/// whose ONLY id-bearing entry is a dropped one used to declare the 92-byte
+/// stride and then write `0` into every record it emitted: the zero-filled
+/// widened record the data-derived stride exists to prevent, and a
+/// `carriesItemIds: true` that lies to the consumer.
+#[test]
+fn an_item_id_on_a_mesh_collate_drops_does_not_widen_the_stride() {
+    let m0 = Matrix4::new_translation(&nalgebra::Vector3::new(1.0, 0.0, 0.0));
+    let m1 = Matrix4::new_translation(&nalgebra::Vector3::new(0.0, 2.0, 0.0));
+    let mk = |m: &Matrix4<f64>| {
+        mesh_from(
+            baked(&CANON, m),
+            InstanceMeta {
+                transform: mat_rm(m),
+                local_transform: None,
+                canonical_transform: None,
+                rep_identity: 50,
+                instanceable: true,
+            },
+        )
+    };
+    // Two instanceable occurrences that name no item, plus an EMPTY,
+    // non-instanceable mesh that does. collate_refs keeps the first two and
+    // drops the third: nothing to draw, no instance meta.
+    let meshes = [mk(&m0), mk(&m1), Mesh::new()];
+    let collated = collate_refs(
+        &meshes.iter().map(InstanceMeshRef::from_mesh).collect::<Vec<_>>(),
+        2,
+        [0.0, 0.0, 0.0],
+    );
+    assert_eq!(
+        collated.instanced_occurrence_count() + collated.flat_indices.len(),
+        2,
+        "the empty non-instanceable mesh must be the DROPPED one, or this tests nothing"
+    );
+
+    let mut refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
+    refs[0].entity_id = 40;
+    refs[1].entity_id = 41;
+    refs[2].item_id = Some(999); // the only id in the batch, on the dropped mesh
+
+    let bytes = encode_refs(&refs, &collated);
+    assert_eq!(
+        u32::from_le_bytes(bytes[28..32].try_into().unwrap()),
+        0,
+        "no WRITTEN occurrence names an item, so the shard must not declare the field"
+    );
+    assert_eq!(u32::from_le_bytes(bytes[4..8].try_into().unwrap()), 1);
+
+    let dec = decode_instanced(&bytes).expect("decodes");
+    assert_eq!(dec.instances.len(), 2);
+    assert!(
+        dec.instances.iter().all(|i| i.item_id.is_none()),
+        "declaring the field here would have written 0 into every record — an id \
+         that names nothing, reported as if it were data"
+    );
 }

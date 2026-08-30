@@ -47,14 +47,12 @@ export { CoordinateHandler, NORMAL_COORD_THRESHOLD_M } from './coordinate-handle
 export { computeWorkerCount, pickWorkerCount, type WorkerCountInputs, type WorkerCountResult } from './worker-count.js';
 export { getGeometryStreamWatchdogMs, type WatchdogInputs } from './watchdog.js';
 // Cold-start prewarm: start the shared wasm fetch+compile before a file is
-// opened so the download overlaps the user's think time instead of blocking
-// first geometry. The host app decides when (idle / intent) and whether the
-// connection can afford it.
+// opened so the download overlaps think time instead of blocking first
+// geometry. The host app decides when (idle / intent) and affordability.
 export { prewarmSharedWasmModule } from './wasm-shared-module.js';
 // Stale-deployment WASM-asset detection (#1363). The host app subscribes to
-// WASM_ASSET_UNAVAILABLE_EVENT and uses `isWasmAssetUnavailableError` to reload
-// onto the current deployment. `notifyIfWasmAssetUnavailable` stays internal —
-// it is the engine-side dispatcher, imported directly where it fires.
+// WASM_ASSET_UNAVAILABLE_EVENT and uses `isWasmAssetUnavailableError` to
+// reload onto the deployment; `notifyIfWasmAssetUnavailable` stays internal.
 export {
   isWasmAssetUnavailableError,
   WASM_ASSET_UNAVAILABLE_EVENT,
@@ -72,9 +70,9 @@ export {
   WASM_RUNTIME_UNRECOVERABLE_EVENT,
 } from './wasm-runtime-trap.js';
 export {
-  // `isInstancedShard` / `INSTANCED_SHARD_MAGIC` / `INSTANCED_SHARD_VERSION`
-  // are intentionally NOT re-exported — they have no consumer outside the
-  // decoder module + its test, so they stay internal. (#1238 review)
+  // `isInstancedShard` / `INSTANCED_SHARD_MAGIC` / `INSTANCED_SHARD_VERSION` and the wire
+  // layout constants are intentionally NOT re-exported — no consumer outside the decoder
+  // + its test; `DecodedInstancedShard.carriesItemIds` is the stride answer. (#1238, #2985)
   decodeInstancedShard,
   type DecodedInstancedShard,
   type DecodedInstancedTemplate,
@@ -281,10 +279,9 @@ export class GeometryProcessor {
 
     if (!this.isNative) {
       this.bridge = new IfcLiteBridge();
-      // Cache the merge-layers flag on the bridge eagerly — if init()
-      // hasn't run yet the bridge stores the value and replays it on
-      // the freshly-built IfcAPI. Existing call sites can opt in
-      // simply by passing { mergeLayers: true } into the constructor.
+      // Cache the merge-layers flag on the bridge eagerly — if init() hasn't
+      // run yet the bridge stores the value and replays it on the freshly-
+      // built IfcAPI. Call sites opt in via { mergeLayers: true }.
       this.bridge.setMergeLayers(this.mergeLayers);
       // Same eager cache-and-replay for the tessellation level (#976).
       this.bridge.setTessellationQuality(this.tessellationQuality);
@@ -421,28 +418,36 @@ export class GeometryProcessor {
    * no `TextDecoder` materialization of the whole file.
    */
   /**
-   * Surface the world→render metadata (unit scale + the applied RTC offset)
-   * from a pre-pass result onto the coordinate handler, so it appears on the
-   * emitted `CoordinateInfo` (issue #945). Shared by the sync and streaming
-   * WASM paths to keep the RTC transform in one place.
+   * Surface the world→render metadata (unit scale + applied RTC offset) from
+   * a pre-pass result onto the coordinate handler (issue #945). Used by the
+   * sync WASM mesh path; `sharedRtcOffset` overrides the model's own detected
+   * offset for federation alignment (mirrors `useSharedRtc` in
+   * geometry-parallel.ts and `processStreamingBytes`).
    */
-  private applyPrePassMetadata(prePass: ByteStreamingPrePassResult): void {
-    this.coordinateHandler.setWasmMetadata(
-      prePass.unitScale,
-      prePass.needsShift
-        ? { x: prePass.rtcOffset?.[0] ?? 0, y: prePass.rtcOffset?.[1] ?? 0, z: prePass.rtcOffset?.[2] ?? 0 }
-        : null,
-    );
+  private applyPrePassMetadata(
+    prePass: ByteStreamingPrePassResult,
+    sharedRtcOffset?: { x: number; y: number; z: number },
+  ): { x: number; y: number; z: number; needsShift: boolean } {
+    const useShared = sharedRtcOffset != null;
+    const x = useShared ? sharedRtcOffset.x : (prePass.rtcOffset?.[0] ?? 0);
+    const y = useShared ? sharedRtcOffset.y : (prePass.rtcOffset?.[1] ?? 0);
+    const z = useShared ? sharedRtcOffset.z : (prePass.rtcOffset?.[2] ?? 0);
+    const needsShift = useShared ? true : Boolean(prePass.needsShift);
+    this.coordinateHandler.setWasmMetadata(prePass.unitScale, needsShift ? { x, y, z } : null);
+    return { x, y, z, needsShift };
   }
 
-  private collectMeshesViaPrePass(buffer: Uint8Array): { meshes: MeshData[]; buildingRotation?: number } {
+  private collectMeshesViaPrePass(
+    buffer: Uint8Array,
+    sharedRtcOffset?: { x: number; y: number; z: number },
+  ): { meshes: MeshData[]; buildingRotation?: number } {
     if (!this.bridge) {
       throw new Error('WASM bridge not initialized');
     }
 
     const api = this.bridge.getApi();
     const prePass = api.buildPrePassOnce(buffer) as ByteStreamingPrePassResult;
-    this.applyPrePassMetadata(prePass);
+    const rtc = this.applyPrePassMetadata(prePass, sharedRtcOffset);
     try {
       const meshes: MeshData[] = [];
       const totalJobs = prePass.totalJobs ?? 0;
@@ -453,10 +458,10 @@ export class GeometryProcessor {
           buffer,
           prePass.jobs,
           prePass.unitScale,
-          prePass.rtcOffset?.[0] ?? 0,
-          prePass.rtcOffset?.[1] ?? 0,
-          prePass.rtcOffset?.[2] ?? 0,
-          prePass.needsShift,
+          rtc.x,
+          rtc.y,
+          rtc.z,
+          rtc.needsShift,
           prePass.voidKeys,
           prePass.voidCounts,
           prePass.voidValues,
@@ -469,8 +474,7 @@ export class GeometryProcessor {
         );
         // Loop, not `push(...batch)`: spreading passes one ARGUMENT per mesh,
         // and past V8's ~65k argument ceiling that throws RangeError "Maximum
-        // call stack size exceeded" — real models (Holter: ~110k meshes) hit
-        // it, killing the whole sync process() call.
+        // call stack size exceeded" — Holter Tower (~110k meshes) hits it.
         const batch = convertMeshCollectionToBatch(collection);
         for (let i = 0; i < batch.length; i++) meshes.push(batch[i]);
       }
@@ -495,7 +499,10 @@ export class GeometryProcessor {
 
   private async *processStreamingBytes(
     buffer: Uint8Array,
-    batchConfig: number | DynamicBatchConfig
+    batchConfig: number | DynamicBatchConfig,
+    // Federation RTC origin, overriding the pre-pass's per-model detection so
+    // every model shares one coordinate space — mirrors `geometry-parallel.ts`.
+    sharedRtcOffset?: { x: number; y: number; z: number },
   ): AsyncGenerator<StreamingGeometryEvent> {
     if (!this.bridge) {
       throw new Error('WASM bridge not initialized');
@@ -503,23 +510,23 @@ export class GeometryProcessor {
 
     const api = this.bridge.getApi();
     const prePass = api.buildPrePassOnce(buffer) as ByteStreamingPrePassResult;
-    this.applyPrePassMetadata(prePass);
+    const useSharedRtc = sharedRtcOffset != null;
+    const rtc = useSharedRtc
+      ? sharedRtcOffset
+      : { x: prePass.rtcOffset?.[0] ?? 0, y: prePass.rtcOffset?.[1] ?? 0, z: prePass.rtcOffset?.[2] ?? 0 };
+    const effectiveNeedsShift = useSharedRtc || Boolean(prePass.needsShift);
+    this.coordinateHandler.setWasmMetadata(prePass.unitScale, effectiveNeedsShift ? { ...rtc } : null);
 
-    // try/finally so the pre-pass cache is released on every exit: the
-    // totalJobs===0 early return, a processGeometryBatch throw, or the
-    // consumer abandoning the generator (which triggers `.return()`).
+    // try/finally releases the pre-pass cache on every exit: the totalJobs===0
+    // early return, a throw, or the consumer abandoning the generator.
     try {
       yield { type: 'model-open', modelID: 0 };
 
-      if (prePass.rtcOffset) {
+      if (prePass.rtcOffset || useSharedRtc) {
         yield {
           type: 'rtcOffset',
-          rtcOffset: {
-            x: prePass.rtcOffset[0] ?? 0,
-            y: prePass.rtcOffset[1] ?? 0,
-            z: prePass.rtcOffset[2] ?? 0,
-          },
-          hasRtc: Boolean(prePass.needsShift),
+          rtcOffset: { x: rtc.x, y: rtc.y, z: rtc.z },
+          hasRtc: effectiveNeedsShift,
         };
       }
 
@@ -546,10 +553,10 @@ export class GeometryProcessor {
           buffer,
           jobSlice,
           prePass.unitScale,
-          prePass.rtcOffset?.[0] ?? 0,
-          prePass.rtcOffset?.[1] ?? 0,
-          prePass.rtcOffset?.[2] ?? 0,
-          prePass.needsShift,
+          rtc.x,
+          rtc.y,
+          rtc.z,
+          effectiveNeedsShift,
           prePass.voidKeys,
           prePass.voidCounts,
           prePass.voidValues,
@@ -605,9 +612,6 @@ export class GeometryProcessor {
     buffer: Uint8Array,
     _entityIndex?: Map<number, any>,
     batchConfig: number | DynamicBatchConfig = 25,
-    // TODO: sharedRtcOffset is accepted but not yet threaded through to the
-    // WASM streaming collector. The WASM layer detects its own RTC offset
-    // per-model; federation-level override requires collector API changes.
     sharedRtcOffset?: { x: number; y: number; z: number },
   ): AsyncGenerator<StreamingGeometryEvent> {
     const releaseWasmOperation = this.isNative
@@ -682,7 +686,7 @@ export class GeometryProcessor {
         throw new Error('WASM bridge not initialized');
       }
 
-      yield* this.processStreamingBytes(buffer, batchConfig);
+      yield* this.processStreamingBytes(buffer, batchConfig, sharedRtcOffset);
     }
   }
 
@@ -751,7 +755,7 @@ export class GeometryProcessor {
     onEntityIndex?: (
       ids: Uint32Array,
       starts: Uint32Array,
-      lengths: Uint32Array,
+      lengths: Uint32Array, oversizedIdCount?: number, // #3395 refused records
     ) => void,
     /**
      * Explicit wasm asset URL forwarded to the worker pool. See
@@ -830,7 +834,7 @@ export class GeometryProcessor {
       onEntityIndex?: (
         ids: Uint32Array,
         starts: Uint32Array,
-        lengths: Uint32Array,
+        lengths: Uint32Array, oversizedIdCount?: number, // #3395 refused records
       ) => void;
       /**
        * Explicit wasm asset URL forwarded to the worker pool.
@@ -877,14 +881,10 @@ export class GeometryProcessor {
         console.timeEnd('[GeometryProcessor] native-adaptive-sync');
       } else {
         // WASM PATH — Family-A pre-pass + job batches (SAB-safe, bytes in).
-        const collected = this.collectMeshesViaPrePass(buffer);
+        const collected = this.collectMeshesViaPrePass(buffer, options.sharedRtcOffset);
         allMeshes = collected.meshes;
         buildingRotation = collected.buildingRotation;
       }
-
-      // NOTE: The sync path (<2MB) does not support sharedRtcOffset override.
-      // Infrastructure models with large coordinates are always >2MB and use
-      // the parallel/streaming paths where shared RTC is properly threaded.
 
       // Process coordinate shifts
       this.coordinateHandler.processMeshesIncremental(allMeshes);
@@ -1005,7 +1005,7 @@ export class GeometryProcessor {
    * Parse IfcAlignment directrix curves into a flat Float32Array of 3D
    * line-list vertices `[x0,y0,z0, x1,y1,z1, …]` in renderer Y-up world space
    * (RTC-subtracted, metres). Rendered as thin lines (not a ribbon mesh) to
-   * match IfcGrid / IfcAnnotation. Feed straight to `renderer.uploadAlignmentLines3D`.
+   * match IfcGrid / IfcAnnotation. Feed straight to `renderer.setLineOverlay('alignment', …)`.
    * @param buffer IFC file buffer
    * @returns Flat line-list vertices, or null if not initialized
    */
@@ -1023,8 +1023,8 @@ export class GeometryProcessor {
    * Parse `IfcGrid` / `IfcGridAxis` into a flat Float32Array of 3D line-list
    * vertices `[x0,y0,z0, x1,y1,z1, …]` (one segment per axis) in renderer Y-up
    * world space (RTC-subtracted, metres) — the same frame the streamed meshes
-   * render in, so grids overlay the model by construction (issue #945). Feed
-   * straight to a line pipeline (e.g. `renderer.uploadAnnotationLines3D`).
+   * render in, so grids overlay the model by construction (issue #945). Feed to
+   * `setLineOverlay('grid', …)`, NOT `'annotation'` (it expands bounds, #967).
    * @param buffer IFC file buffer
    * @returns Flat line-list vertices, or null if not initialized
    */

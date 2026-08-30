@@ -13,12 +13,49 @@
 
 name: SDK canary
 
+# `paths:` below names every package `pnpm turbo build --filter=@ifc-lite/extensions
+# --filter=@ifc-lite/cli` transitively builds (turbo's `build` task depends on
+# `^build`, so it walks the full `dependencies` + `devDependencies` workspace
+# graph of both, in topological order) plus the canary fixtures and this file
+# itself. `scripts/check-sdk-canary-coverage.mjs` derives that closure from the
+# real package.json graph on every CI run and fails if this list falls behind
+# it -- so this is a snapshot of a derived fact, not a maintained one; if the
+# list and the gate disagree, trust the gate and regenerate the list from its
+# output. Note `@ifc-lite/viewer-core` lives in `packages/viewer`, not
+# `packages/viewer-core` -- the package NAME and its directory diverge.
 on:
   pull_request:
     branches: [main]
     paths:
-      - 'packages/extensions/**'
+      - 'packages/bcf/**'
+      - 'packages/clash/**'
       - 'packages/cli/**'
+      - 'packages/collab/**'
+      - 'packages/create/**'
+      - 'packages/data/**'
+      - 'packages/diff/**'
+      - 'packages/drawing-2d/**'
+      - 'packages/encoding/**'
+      - 'packages/export/**'
+      - 'packages/extensions/**'
+      - 'packages/geometry/**'
+      - 'packages/ids/**'
+      - 'packages/ifcx/**'
+      - 'packages/lens/**'
+      - 'packages/lists/**'
+      - 'packages/mcp/**'
+      - 'packages/merge/**'
+      - 'packages/mutations/**'
+      - 'packages/parser/**'
+      - 'packages/pointcloud/**'
+      - 'packages/query/**'
+      - 'packages/sandbox/**'
+      - 'packages/sdk/**'
+      - 'packages/spatial/**'
+      - 'packages/timing-ladder/**'
+      - 'packages/viewer/**'
+      - 'packages/wasm/**'
+      - 'packages/world-frame-fixtures/**'
       - 'tests/extensions/canaries/**'
       - '.github/workflows/sdk-canary.yml'
 

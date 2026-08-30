@@ -7,6 +7,8 @@
  * Based on buildingSMART IFC5-development schema
  */
 
+import { IfcTypeEnumToString, SPATIAL_STRUCTURE_TYPE_ENUMS } from '@ifc-lite/data';
+
 // ============================================================================
 // Core IFCX File Structure
 // ============================================================================
@@ -268,13 +270,24 @@ export interface IfcClass {
 // Spatial Types
 // ============================================================================
 
-export const SPATIAL_TYPES = new Set([
-  'IfcProject',
-  'IfcSite',
-  'IfcBuilding',
-  'IfcBuildingStorey',
-  'IfcSpace',
-]);
+/**
+ * The IFC classes that are LEVELS of the spatial tree rather than contents of
+ * one. `hierarchy-builder.ts` recurses into a child in this set and stops
+ * collecting elements at one, so a class missing here is not merely absent
+ * from the tree — it and everything beneath it are flattened into the
+ * parent's element list.
+ *
+ * Derived from `@ifc-lite/data`'s `SPATIAL_STRUCTURE_TYPE_ENUMS`, this repo's
+ * single answer to "is this entity part of the spatial tree", rather than
+ * listed again here. The hand-written list this replaced named the five
+ * building-storey levels and none of IFC4.3's twelve: `IfcSpatialZone` and
+ * the facility classes (`IfcRoad`, `IfcBridge`, `IfcRailway`,
+ * `IfcMarineFacility`, `IfcFacility` and their `*Part` counterparts), so an
+ * infrastructure model's whole hierarchy collapsed onto its site.
+ */
+export const SPATIAL_TYPES: Set<string> = new Set(
+  SPATIAL_STRUCTURE_TYPE_ENUMS.map((typeEnum) => IfcTypeEnumToString(typeEnum)),
+);
 
 export const BUILDING_ELEMENT_TYPES = new Set([
   'IfcWall',

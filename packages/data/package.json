@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/data",
-  "version": "3.4.1",
+  "version": "3.5.1",
   "description": "Columnar data structures for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
@@ -20,7 +20,7 @@
     "generate:epsg-index": "tsx ../../scripts/generate-epsg-index.ts",
     "augment:epsg-proj4": "tsx ../../scripts/augment-epsg-proj4.ts",
     "verify:epsg": "tsx scripts/verify-epsg-roundtrip.ts",
-    "generate:ifc-schema": "tsx scripts/generate-ifc-schema.ts"
+    "generate:ifc-schema": "tsx scripts/generate-ifc-schema.ts && tsx scripts/emit-entity-names.ts"
   },
   "dependencies": {
     "@ifc-lite/encoding": "workspace:^"
@@ -29,7 +29,7 @@
     "@types/node": "^26.2.0",
     "proj4": "^2.21.0",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

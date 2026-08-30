@@ -25,22 +25,19 @@ import { isCollabEnabled } from '@/lib/collab/config';
 import { ingestDxfFiles, splitDxfFiles } from '@/hooks/ingest/dxfIngest';
 import { ShareDialog } from '../ShareDialog';
 
-/** Extensions the viewer can ingest (IFC / IFCX / GLB / point clouds). */
-export function isSupportedModelFile(f: File): boolean {
-  const n = f.name.toLowerCase();
-  return n.endsWith('.ifc') || n.endsWith('.ifcx') || n.endsWith('.ifczip') || n.endsWith('.glb')
-    || n.endsWith('.las') || n.endsWith('.laz') || n.endsWith('.ply') || n.endsWith('.pcd')
-    || n.endsWith('.e57') || n.endsWith('.pts') || n.endsWith('.xyz');
-}
+import { FILE_ACCEPT, isSupportedModelFile } from '@/services/supported-model-files';
+
+// FILE_ACCEPT offers `.dxf` while `isSupportedModelFile` rejects it: DXF
+// files are 2D reference underlays, not models, and split off to the DXF
+// ingest path (issue #1782) before model routing.
+
+/** Re-exported so the toolbar's existing call sites keep their import path. */
+export { isSupportedModelFile };
 
 /** Case-insensitive IFCX check (filenames are accepted case-insensitively). */
 function isIfcxModelFile(f: File): boolean {
   return f.name.toLowerCase().endsWith('.ifcx');
 }
-
-// `.dxf` files are 2D reference underlays, not models: they split off to
-// the DXF ingest path (issue #1782) before model routing.
-const FILE_ACCEPT = '.ifc,.ifcx,.ifczip,.glb,.las,.laz,.ply,.pcd,.e57,.pts,.xyz,.dxf';
 
 export interface FileCommands {
   /**

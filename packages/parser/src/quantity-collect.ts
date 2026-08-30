@@ -15,6 +15,7 @@ import { QuantityType } from '@ifc-lite/data';
 import type { EntityRef } from './types.js';
 import type { EntityExtractor } from './entity-extractor.js';
 import { QUANTITY_TYPE_MAP } from './columnar-parser-indexes.js';
+import { isUnrepresentableNumericValue } from './attribute-helpers.js';
 
 /** One extracted quantity, in the shape both call sites report. */
 export interface CollectedQuantity {
@@ -70,16 +71,33 @@ const SIMPLE_QUANTITY_VALUE_SLOT = 3;
  * `quantity-extractor.ts` already does for a type it does not recognise, so all
  * three quantity readers now agree.
  *
- * The nested quantities stay invisible, exactly as they are today; surfacing
- * them is tracked separately, because flattening them into this list would feed
- * new names to a dozen name-keyed consumers and — via the mutable property view
- * that re-writes a touched `IfcElementQuantity` from these records — would
- * flatten the complex structure out of the file on the next export.
+ * **Its nested quantities are dropped with it, and that is a known gap with no
+ * tracking issue behind it.** Not "tracked separately" — an earlier version of
+ * this comment said so and nothing tracked it. The children are lost in every
+ * case — #3254's fixture nests two `IfcQuantityArea` totalling 26 m² that read
+ * back as nothing — and a set whose ONLY member is a complex quantity collects
+ * nothing, so since #3261 {@link readQuantitySet} drops the whole
+ * `IfcElementQuantity` rather than reporting an empty one.
+ *
+ * The gap is deliberate rather than overlooked. Flattening the children into
+ * this list would feed new names to a dozen name-keyed consumers, and — via the
+ * mutable property view that re-writes a touched `IfcElementQuantity` from these
+ * records, and `step-property-sets.ts` which emits them as flat siblings — would
+ * permanently destroy the complex structure on the next export. Surfacing them
+ * safely needs a representation these records do not have: one that read-side
+ * consumers can see and the write-back path provably skips. Until that exists,
+ * under-reporting is the lesser harm, and this paragraph is the whole of what
+ * anyone is doing about it.
  *
  * An entity of a type absent from {@link QUANTITY_TYPE_MAP} still reports as a
- * `Count`, which keeps `IfcQuantityNumber` (IFC4X3) surfacing its correct value
- * under a wrong label rather than vanishing; labelling it needs a new
- * `QuantityType` member and is tracked separately.
+ * `Count`, keeping its value under a wrong label rather than vanishing. No
+ * `IfcPhysicalSimpleQuantity` subtype relies on that fallback today —
+ * `IfcQuantityNumber` (IFC4X3) did until #3266 gave it `QuantityType.Number`,
+ * and `test/quantity-type-map-coverage.test.ts` now reds if a schema declares a
+ * subtype the map has not gained. That test guards the OTHER hand-written set
+ * too: `PROPERTY_ENTITY_TYPES` in `columnar-parser-indexes.ts` decides whether
+ * the entity is retained at all, so a subtype missing THERE never reaches this
+ * map and the quantity does not exist rather than being mislabelled.
  */
 export function collectQuantitiesFromRefs(
     store: QuantityLookupStore,
@@ -107,10 +125,106 @@ export function collectQuantitiesFromRefs(
 
         const qtyType = QUANTITY_TYPE_MAP[qtyTypeUpper] ?? QuantityType.Count;
         const rawValue = qtyAttrs[SIMPLE_QUANTITY_VALUE_SLOT];
+
+        // A measure the double range cannot hold is dropped with a diagnostic,
+        // not reported as `0`. `CollectedQuantity.value` is `number` and is
+        // consumed by callers that do arithmetic on it, so there is no
+        // in-band way to say "unrepresentable" — and `0` is the worst of the
+        // available lies, because a 0 m^3 volume reads as a measurement
+        // somebody took. An absent quantity is detectable; a zero one is not.
+        //
+        // This matches what the sibling path already does:
+        // `QuantityExtractor.extractQuantity` returns `null` and warns when
+        // slot 3 is not a number. That path and this one walk the same
+        // `Quantities` list, so they must agree.
+        //
+        // The diagnostic is per occurrence, deliberately. Each line names a
+        // different entity id and quantity name, so it is the list of what was
+        // dropped rather than one message repeated — collapsing it to
+        // once-per-file would leave a reader knowing that something was
+        // discarded and not which. There is also no per-file context threaded
+        // through this function to hang a once-per-file flag on: the only
+        // place to keep one is module scope, which outlives a file in the
+        // viewer's long-lived worker and would then silence the *next* file's
+        // first warning. No `console.warn` in this package is throttled
+        // today, so a local cap here would be the one-off. The cost is bounded by how
+        // corrupt the file is, and a file with thousands of unrepresentable
+        // measures has a louder problem than its console output.
+        if (isUnrepresentableNumericValue(rawValue)) {
+            console.warn(
+                `[quantity-collect] ${qtyEntity.type} #${qtyEntity.expressId} "${qtyName}" ` +
+                `has a value outside the IEEE-754 double range (${String(rawValue)}); ` +
+                `dropping the quantity rather than reporting it as 0.`,
+            );
+            continue;
+        }
+
         const value = typeof rawValue === 'number' ? rawValue : 0;
 
         quantities.push({ name: qtyName, type: qtyType, value });
     }
 
     return quantities;
+}
+
+/**
+ * `Quantities` slot on `IfcElementQuantity`: GlobalId[0], OwnerHistory[1],
+ * Name[2], Description[3] inherited from `IfcRoot`, then MethodOfMeasurement[4]
+ * and Quantities[5].
+ */
+const QUANTITIES_SLOT = 5;
+
+/** One extracted quantity set, in the shape both call sites report. */
+export interface CollectedQuantitySet {
+    name: string;
+    quantities: CollectedQuantity[];
+}
+
+/**
+ * Read one `IfcElementQuantity` into a reportable quantity set, or `null` when
+ * it carries nothing worth reporting.
+ *
+ * `IFC4_ADD2_TC1.exp` (identically `IFC4X3.exp`):
+ *
+ *     ENTITY IfcElementQuantity
+ *      SUBTYPE OF (IfcQuantitySet);
+ *         MethodOfMeasurement : OPTIONAL IfcLabel;
+ *         Quantities : SET [1:?] OF IfcPhysicalQuantity;
+ *
+ * `SET [1:?]` admits no empty set, so a set that walks to zero quantities —
+ * written empty, or filled only with members this reader cannot report, such as
+ * an unresolvable reference, an `IfcPhysicalComplexQuantity` (#3254), or a
+ * measure outside the IEEE-754 double range — is non-conformant data. Reporting it anyway would assert "this element has
+ * quantities" on the strength of a name alone, and the consumers act on exactly
+ * that: `validate` counts the element as quantified in its quantity-completeness
+ * figure, an IDS quantity-set existence check passes, and the viewer's fallback
+ * to the element's TYPE quantities is suppressed by the phantom occurrence set,
+ * hiding the real numbers the type carries. So it is dropped (#3259).
+ *
+ * That applies unchanged when every member was dropped for being
+ * unrepresentable: the set then vanishes rather than surviving empty. Keeping
+ * an empty shell would make exactly the claim #3259 removed — "this element is
+ * quantified" — while carrying no number to back it, and it would still
+ * suppress the type-quantity fallback. The reason each quantity went is on the
+ * console; the reason the set went is that nothing in it survived.
+ *
+ * The instance path and the type path both go through here, so the drop cannot
+ * come apart between them again: it used to be inlined at each site, and the
+ * type site dropped while the instance site kept.
+ */
+export function readQuantitySet(
+    store: QuantityLookupStore,
+    extractor: EntityExtractor,
+    qsetRef: EntityRef,
+    qsetId: number,
+): CollectedQuantitySet | null {
+    const qsetEntity = extractor.extractEntity(qsetRef);
+    if (!qsetEntity) return null;
+
+    const qsetAttrs = qsetEntity.attributes || [];
+    const qsetName = typeof qsetAttrs[2] === 'string' ? qsetAttrs[2] : `QuantitySet #${qsetId}`;
+    const quantities = collectQuantitiesFromRefs(store, extractor, qsetAttrs[QUANTITIES_SLOT]);
+
+    if (quantities.length === 0) return null;
+    return { name: qsetName, quantities };
 }

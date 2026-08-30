@@ -16,6 +16,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { EntityTableBuilder } from './entity-table.js';
+import { ENTITIES_IFC4X3 } from './ifc-schema/generated/entities-ifc4x3.js';
 import {
   BUILDING_LIKE_SPATIAL_TYPE_ENUMS,
   SPACE_LIKE_SPATIAL_TYPE_ENUMS,
@@ -30,7 +31,7 @@ import {
   isStoreyLikeSpatialTypeName,
 } from './spatial-types.js';
 import { StringTable } from './string-table.js';
-import { IfcTypeEnum } from './types.js';
+import { IfcTypeEnum, IfcTypeEnumFromString, IfcTypeEnumToString } from './types.js';
 
 describe('SPATIAL_STRUCTURE_TYPE_ENUMS membership', () => {
   it('contains every level of the IFC spatial tree', () => {
@@ -184,5 +185,72 @@ describe('retype override interop with isSpatialStructureTypeName', () => {
     table.setTypeOverride(501, 'IFCBUILDINGSTOREY');
 
     expect(isSpatialStructureTypeName(table.getTypeName(501))).toBe(true);
+  });
+});
+
+describe('SPATIAL_STRUCTURE_TYPE_ENUMS vs the generated IFC4X3 entity table', () => {
+  // The membership lists above are hand-written, and a hand-written list of
+  // schema entities drifts. `ENTITIES_IFC4X3` is generated from buildingSMART's
+  // own `SchemaInfo.*.g.cs` (see its header), so it is the authority on which
+  // entities ARE spatial structure elements. Derive the expectation from it, in
+  // both directions, rather than re-typing the names a third time.
+  const byName = new Map(ENTITIES_IFC4X3.map((e) => [e.name, e]));
+
+  const isDescendantOf = (name: string, ancestor: string): boolean => {
+    let cursor: string | undefined = name;
+    const seen = new Set<string>();
+    while (cursor && !seen.has(cursor)) {
+      if (cursor === ancestor) return true;
+      seen.add(cursor);
+      cursor = byName.get(cursor)?.parent;
+    }
+    return false;
+  };
+
+  /** Every instantiable entity that IS an IfcSpatialStructureElement. */
+  const concreteSpatialStructureEntities = ENTITIES_IFC4X3.filter(
+    (e) => !e.abstract && isDescendantOf(e.name, 'IfcSpatialStructureElement'),
+  ).map((e) => e.name);
+
+  it('derives a non-trivial expectation from the generated table', () => {
+    // Anti-vacuity: if the traversal above ever silently yields nothing (a
+    // renamed ancestor, a changed field name), every assertion below would pass
+    // over an empty set. Pin the shape of the derived list itself.
+    expect(concreteSpatialStructureEntities.length).toBeGreaterThanOrEqual(14);
+    expect(concreteSpatialStructureEntities).toContain('IfcBuildingStorey');
+    expect(concreteSpatialStructureEntities).toContain('IfcMarinePart');
+    // …and that the traversal really discriminates: a product is not spatial.
+    expect(concreteSpatialStructureEntities).not.toContain('IfcWall');
+  });
+
+  it('recognises every concrete IFC4X3 spatial structure element', () => {
+    const unrecognised = concreteSpatialStructureEntities.filter(
+      (name) => !isSpatialStructureTypeName(name),
+    );
+    expect(unrecognised).toEqual([]);
+  });
+
+  it('resolves each of them through the STEP-name → enum map too', () => {
+    // `isSpatialStructureTypeName` reads the enum→string direction. The parser
+    // reaches the same set the other way round, via `getTypeEnum`, so a name
+    // missing from the STEP-name → enum map would still drop the node from the
+    // tree while the assertion above passed.
+    const unresolved = concreteSpatialStructureEntities.filter(
+      (name) => !isSpatialStructureType(IfcTypeEnumFromString(name.toUpperCase())),
+    );
+    expect(unresolved).toEqual([]);
+  });
+
+  it('lists nothing the schema does not call spatial', () => {
+    // Reverse direction. `IfcProject` is the tree ROOT rather than a spatial
+    // element, and `IfcSpatialZone` is an `IfcSpatialElement` (not a
+    // *structure* element) carried deliberately since #1075 — those two are the
+    // only allowed non-`IfcSpatialStructureElement` members.
+    const allowedNonStructure = new Set(['IfcProject', 'IfcSpatialZone']);
+    const strangers = SPATIAL_STRUCTURE_TYPE_ENUMS.map((t) => IfcTypeEnumToString(t)).filter(
+      (name) =>
+        !allowedNonStructure.has(name) && !isDescendantOf(name, 'IfcSpatialStructureElement'),
+    );
+    expect(strangers).toEqual([]);
   });
 });

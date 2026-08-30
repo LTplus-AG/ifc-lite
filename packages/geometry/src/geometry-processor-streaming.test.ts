@@ -141,6 +141,69 @@ describe('GeometryProcessor byte streaming (processStreaming, mocked WASM)', () 
     expect((completeEvent?.coordinateInfo as { buildingRotation?: number })?.buildingRotation).toBe(0.5);
   });
 
+  // Federation alignment (issue: shared RTC origin not threaded through the
+  // single-threaded WASM streaming fallback). `processAdaptive` reaches
+  // `processStreaming` — and, via it, the byte-based prepass/batch path
+  // exercised here — whenever `useParallel` is false: no `SharedArrayBuffer`/
+  // `Worker`, or `navigator.hardwareConcurrency <= 1` (e.g. Safari without
+  // cross-origin isolation headers, or a single-core sandbox). A federated
+  // model that lands here must render in the SAME coordinate space as the
+  // rest of the federation, so a caller-supplied `sharedRtcOffset` MUST
+  // override the pre-pass's own per-model RTC detection — exactly like
+  // `processParallel`'s `sendStreamStartIfReady` already does (see
+  // `geometry-parallel.ts`'s `useSharedRtc`).
+  it('overrides the pre-pass RTC offset with a caller-supplied sharedRtcOffset', async () => {
+    wasmMocks.buildPrePassOnce.mockReturnValue({
+      jobs: new Uint32Array([11, 0, 42]),
+      totalJobs: 1,
+      unitScale: 1,
+      // This model's OWN detected offset — must NOT reach processGeometryBatch
+      // or the emitted `rtcOffset` event once a shared offset is supplied.
+      rtcOffset: new Float64Array([10, 20, 30]),
+      needsShift: true,
+      buildingRotation: 0.5,
+      voidKeys: new Uint32Array(),
+      voidCounts: new Uint32Array(),
+      voidValues: new Uint32Array(),
+      styleIds: new Uint32Array([7]),
+      styleColors: new Uint8Array([255, 0, 0, 255]),
+    });
+
+    wasmMocks.processGeometryBatch.mockReturnValue({
+      length: 0,
+      get() { return undefined; },
+      free: vi.fn(),
+    });
+
+    const geometry = new GeometryProcessor();
+    const buffer = new Uint8Array([65, 66, 67]);
+    const sharedRtcOffset = { x: 1000, y: 2000, z: 300 };
+    const events: Array<{ type: string; [key: string]: unknown }> = [];
+
+    for await (const event of geometry.processStreaming(buffer, undefined, 25, sharedRtcOffset)) {
+      events.push(event as { type: string; [key: string]: unknown });
+    }
+
+    // The batch call must carry the SHARED offset, not the pre-pass's own.
+    expect(wasmMocks.processGeometryBatch).toHaveBeenCalledWith(
+      buffer,
+      expect.anything(),
+      1,
+      sharedRtcOffset.x,
+      sharedRtcOffset.y,
+      sharedRtcOffset.z,
+      true,
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+
+    const rtcEvent = events.find((event) => event.type === 'rtcOffset');
+    expect(rtcEvent?.rtcOffset).toEqual(sharedRtcOffset);
+  });
+
   it('rejects overlapping WASM streaming runs before re-entering the processor', async () => {
     const firstGeometry = new GeometryProcessor();
     const secondGeometry = new GeometryProcessor();

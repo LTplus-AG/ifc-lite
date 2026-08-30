@@ -17,6 +17,7 @@ import { propsCommand } from './commands/props.js';
 import { exportCommand } from './commands/export.js';
 import { diagnoseGeometryCommand } from './commands/diagnose-geometry.js';
 import { extractEntitiesCommand } from './commands/extract-entities.js';
+import { anonymizeCommand } from './commands/anonymize.js';
 import { idsCommand } from './commands/ids.js';
 import { bcfCommand } from './commands/bcf.js';
 import { clashCommand } from './commands/clash.js';
@@ -66,6 +67,12 @@ const HELP = `
                       [--product ID|GUID] [--type T]  Filter worst-hosts detail to one product/type
     extract-entities <file.ifc> --out F          Isolate entities into a small, viewable standalone IFC
                       [--product ID|GUID] [--storey S] [--detect] [--view]  by GUID/type/storey or auto-triage
+    anonymize <file.ifc> --out F                 Export selected objects + context as an anonymized IFC
+                      [--id N,...] [--guid G,...] [--type T] [--storey S]
+                      [--keep-psets] [--keep-names] [--keep-other-names] [--keep-currency]
+                      [--no-rel-voids-element] [--no-rel-fills-element] [--no-rel-defines-by-type]
+                      [--no-rel-associates-material] [--no-rel-aggregates] [--no-rel-nests]
+                      [--connect-depth N] [--guid-map F] [--json]
     ids       <file.ifc> <rules.ids>              Validate against IDS rules
     bcf       <create|list|add-comment>           Work with BCF collaboration files
     clash     <file.ifc> [--matrix] [--bcf F]      Detect geometric clashes between elements
@@ -248,6 +255,9 @@ async function main(): Promise<void> {
       break;
     case 'extract-entities':
       await extractEntitiesCommand(commandArgs);
+      break;
+    case 'anonymize':
+      await anonymizeCommand(commandArgs);
       break;
     case 'ids':
       await idsCommand(commandArgs);

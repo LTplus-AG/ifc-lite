@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 //! STEP text-level primitives shared by the STEP exporter (`step.rs`): string
-//! escaping, header `FILE_SCHEMA` detection, `#ref` scanning, and the
-//! attribute-list splitting used to apply root-attribute mutations.
+//! escaping, `#ref` scanning, and the attribute-list splitting used to apply
+//! root-attribute mutations.
+//!
+//! Header `FILE_SCHEMA` detection used to live here and is now `schema_detect`.
+//! It left because it is not a text EDIT: it reads one fact out of raw bytes
+//! before anything is parsed, and unlike everything here it runs on whole
+//! uncapped attacker-supplied files.
 //!
 //! Split out of `step.rs` to keep that file under the module-size ratchet
 //! (`rust/processing/tests/module_size_ratchet.rs`). These are self-contained
@@ -41,7 +46,16 @@ pub(crate) fn merge_edits<'a>(
 /// raw UTF-8 multi-byte sequence into mojibake or a broken parse; this exact
 /// writer shape is a reported, reproduced defect in real IFC tooling
 /// (IfcOpenShell#699/#1016; files rejected by Solibri).
-pub(crate) fn escape(s: &str) -> String {
+///
+/// `pub`, and re-exported from the crate root as `escape_step_string`, so the
+/// integration-test binary `tests/step_escape_parity.rs` can pin it to the
+/// shared vectors in `tests/fixtures/step_escape_vectors.json` — the same
+/// vectors the TypeScript `escapeStepString` is held to, since the two
+/// implementations cannot share code (#3300). Only this one function is
+/// re-exported, not the whole module, so the rest of `step_text` stays
+/// crate-private and the public surface widens by exactly one symbol —
+/// narrower than the `pub mod csv_cell` the CSV parity pin already relies on.
+pub fn escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
         match c {
@@ -63,78 +77,6 @@ pub(crate) fn escape(s: &str) -> String {
         }
     }
     out
-}
-
-/// Find the first occurrence of `needle` in `haystack` that is *not* inside a
-/// STEP single-quoted string literal — i.e. skip matches that fall within a
-/// header field's string value. Quote state is tracked by toggling on every
-/// `'` byte; a literal apostrophe inside a string is escaped by doubling
-/// (`''` per ISO 10303-21 6.3.2.4), so a doubled pair toggles the state twice
-/// and correctly nets to a no-op, the same technique `refs_in_line` already
-/// uses above for `#`-reference scanning. Linear in `haystack.len()` — no
-/// backtracking, no regex.
-fn find_unquoted(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    if needle.is_empty() || needle.len() > haystack.len() {
-        return None;
-    }
-    let mut in_quote = false;
-    let mut i = 0;
-    let last_start = haystack.len() - needle.len();
-    while i < haystack.len() {
-        if haystack[i] == b'\'' {
-            in_quote = !in_quote;
-            i += 1;
-            continue;
-        }
-        if !in_quote && i <= last_start && haystack[i..i + needle.len()] == *needle {
-            return Some(i);
-        }
-        i += 1;
-    }
-    None
-}
-
-/// Detect the source `FILE_SCHEMA` label (e.g. `IFC2X3`); defaults to `IFC4`.
-pub(crate) fn detect_schema(content: &[u8]) -> String {
-    // Only look in the header region: from the start through the HEADER
-    // section's closing `ENDSEC;`. A fixed byte cutoff is not safe here —
-    // an earlier header field (e.g. a long DESCRIPTION or AUTHOR string)
-    // can push FILE_SCHEMA past any fixed budget, silently falling back to
-    // the IFC4 default and applying the wrong schema conversion. Scan for
-    // the actual section terminator instead; if it's missing (malformed
-    // input), fall back to scanning the whole buffer.
-    //
-    // Both this ENDSEC; search and the FILE_SCHEMA search below must be
-    // quote-aware: a header field's plain-text string VALUE (e.g. a
-    // DESCRIPTION or AUTHOR carrying the literal text "ENDSEC;" or
-    // "FILE_SCHEMA") is not the section terminator or the schema entry, and
-    // a raw byte search cannot tell the difference.
-    let head_len = find_unquoted(content, b"ENDSEC;")
-        .map(|idx| idx + b"ENDSEC;".len())
-        .unwrap_or(content.len());
-    let head = &content[..head_len];
-    if let Some(idx) = find_unquoted(head, b"FILE_SCHEMA") {
-        let rest = String::from_utf8_lossy(&head[idx..]);
-        if let Some(q1) = rest.find('\'') {
-            if let Some(q2) = rest[q1 + 1..].find('\'') {
-                let label = &rest[q1 + 1..q1 + 1 + q2];
-                if !label.is_empty() {
-                    // `label` is the RAW, still-STEP-escaped slice between
-                    // the quotes. Both call sites (`step.rs`'s
-                    // `source_schema` fallback and `merged.rs`) feed this
-                    // straight into `escape()` when the header is
-                    // re-written, which doubles `\` again -- un-double it
-                    // here first so a schema label carrying a literal `\`
-                    // round-trips instead of being re-escaped on top of
-                    // its own escaping. A no-op for every real schema
-                    // label (IFC2X3, IFC4, IFC4X3_ADD2, ...), none of
-                    // which contain a backslash.
-                    return label.replace("\\\\", "\\");
-                }
-            }
-        }
-    }
-    "IFC4".to_string()
 }
 
 /// Collect outgoing `#<digits>` references in a STEP entity line, skipping the

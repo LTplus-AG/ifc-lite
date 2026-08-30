@@ -12,7 +12,9 @@
 # +8: add set_entity_index setter so the processor can install its inline-built index (perf/single-scan).
 # +50: add the per-worker placement-transform memo (field + take/set/get/cache methods), mirroring point_cache (perf/placement-cache).
     1064 rust/core/src/decoder.rs
-     793 rust/core/src/georef.rs
+# -35: the ePSet MapUnit label rules moved to unit_labels.rs, next to the unit
+# tables they resolve through (#3292); 793 -> 758.
+     758 rust/core/src/georef.rs
      445 rust/core/src/model_bounds.rs
      601 rust/core/src/parser/scanner.rs
      463 rust/core/src/parser/tokenizer.rs
@@ -21,7 +23,11 @@
 # schema_helpers.rs row removed: the merged upstream #1969 split its tests into
 # schema_helpers_tests.rs, dropping the file to 305 lines (under the 400 budget),
 # same as the tree main converged on independently.
-    990 rust/core/src/units.rs
+# -416: the inline #[cfg(test)] mod moved VERBATIM to units_tests.rs (ratchet-exempt)
+# so the quoted 'FEET' arm and its two cross-reader comments fit; 990 -> 574.
+# -38: the SI-prefix and conversion-based tables moved to unit_labels.rs, shared
+# verbatim with the georeferencing MapUnit reader (#3292); 574 -> 536.
+    536 rust/core/src/units.rs
 # +4: build the index once in parallel on the fail-closed try_/project_glb_size large-model GLB paths (perf/parallel-scan).
 # +81: emissive-material knob for KMZ/Google Earth (#1427) - make_material lit/unlit/emissive branch + emissive param threaded through build_gltf/export_glb_from_meshes and their tests.
     4028 rust/export/src/gltf.rs
@@ -37,7 +43,6 @@
 # budget. step_text.rs's own #[cfg(test)] block was further split into
 # step_text_tests.rs (ratchet-exempt via the _tests.rs suffix), leaving
 # step_text.rs at 196 lines of production code (under 400, no row needed).
-     471 rust/export/src/step.rs
 # +45: reject non-positive SegmentLength/HorizontalLength (malformed-input NaN guard) + regression test.
     1170 rust/geometry/src/alignment.rs
 # +19: split_on_edge now sets a failed flag and bails to the ear-clip fallback instead of the lone .expect() panic.
@@ -79,7 +84,13 @@
 # anchor (Step 1.5); its regression tests moved to facet_weld_scoped_tests.rs
 # (ratchet-exempt), netting the module below the prior budget; budget refreshed downward.
           907 rust/geometry/src/facet_weld.rs
-     633 rust/geometry/src/kernel/arrangement/classify.rs
+# +87: the #3341 far-endpoint soundness guarantee (`sound_far`) and the argument
+# it rests on, which has to be local because the comment it replaces asserted a
+# safety property that is FALSE for non-convex operands. All +75 is NEW code and
+# doc prose - this file had no inline test module to move out, and the new tests
+# went straight to classify_tests.rs (ratchet-exempt) rather than offsetting the
+# growth. The AABB helper went to broadphase.rs next to `tri_aabb`; 633 -> 720.
+     720 rust/geometry/src/kernel/arrangement/classify.rs
      566 rust/geometry/src/kernel/fixed.rs
 # NEW (#1655): register-resident FixedInt<K> newtype backing the exact predicate cascade; large because it is a drop-in for bnum's I512 and must carry the full num_traits + std::ops trait surface (16 impls) the fixed_impl! macro binds. Its differential fuzz is split into the sibling tests.rs, kept under budget.
      630 rust/geometry/src/kernel/fixed_int/mod.rs
@@ -196,7 +207,13 @@
      479 rust/geometry/src/router/rtc_offset.rs
 # +1: reveal-quads comment expanded to 2 lines (dead-symbol reference fix, no code change).
      619 rust/geometry/src/router/voids/aabb_clip.rs
-     871 rust/geometry/src/router/voids/geom.rs
+# +36: `parity_along` extracted so the single-ray `point_inside_mesh` and the
+# new two-ray `point_inside_mesh_agreed` share ONE loop body and ONE ray
+# direction constant. #3219's exit-cap veto needs to tell "inside" from "the
+# surface here is not closed to a ray", which a single ray cannot answer, and
+# the alternative was a second copy of the crossing loop that nothing kept in
+# step with the first; 871 -> 907.
+     907 rust/geometry/src/router/voids/geom.rs
 # +10: extract min_opening_volume(quality) tier->floor helper shared by the batch
 # admission gate and the sequential CSG path so they can't diverge on the
 # High/Highest small-opening floor (B11 regression, issue #976).
@@ -276,7 +293,13 @@
 # (is_finite guards) so an inf depth can no longer slip past the `> 0.0` / `<= 0.0`
 # gates into the fast path.
      858 rust/geometry/src/router/voids/probe.rs
-    1002 rust/geometry/src/router/voids/synthesis.rs
+# -47: the exit-cap decision (which cutter caps may be pushed through the host)
+# moved to synthesis/exit_cap.rs, a module under the 400 budget, rather than
+# sitting inline here; 1002 -> 955. The move is NOT verbatim: the occupancy veto
+# that decides jamb from exit (#3219) is new there. An earlier revision added a
+# facing vote and a footprint restriction; both were measured to decline pushes
+# the pre-fix code made, and both were deleted.
+     955 rust/geometry/src/router/voids/synthesis.rs
     1472 rust/geometry/src/space_dcel/mod.rs
      525 rust/geometry/src/transform.rs
      782 rust/geometry/src/triangulation.rs
@@ -302,7 +325,8 @@
 # subtree is searched yet stays marked, so a later shorter branch is skipped.
 # +5: thread the discriminator into build_mesh_data so the source id is routed to whichever of the two disjoint MeshData fields it actually is (#3199).
 # -154: colour and material-name resolution moved to element/element_color.rs -- a pure function of (geometry id, style map) with its own bounded walk (#3199 follow-up).
-     812 rust/processing/src/element.rs
+# +4: #2985 — a don't-bake RawInstanceOccurrence now records the representation item its sub-mesh came from, through the same #3199 discriminator and 0-filter a materialized sub-mesh gets, so the id is not computed and dropped for GPU-instanced geometry.
+     816 rust/processing/src/element.rs
 # +9: #2019 — canonicalise each host's opening order so the world geometry
 # hash stops depending on IFCRELVOIDSELEMENT statement order (sequential void
 # cuts are not associative). Three lines of code plus the why.
@@ -322,7 +346,8 @@
 # +155: #1623 Phase 3 browser don't-bake — produce_batch gains arm_instancing (batch-local plan arm + occurrence collection + finalize call/return-tuple change) and the partitioned path folds the kept occurrences into the IFNS shard as empty-geometry refs; the finalize + recovery bodies were extracted to gpu_meshes/instancing.rs (new, ~165 lines) to hold the net down.
 # +4: #1891 follow-on — carry ProducedElementMeshes.geometry_aabb through ElementMeshOutput to push_geometry_hash on both the flat and partitioned paths.
 # +31: #1891 closedness — ElementMeshOutput gains geometry_volume + geometry_closure_bits, and the ONE ElementMeshOutput::fingerprint() builder both push sites now call (net shorter than the two struct literals it replaces, and the flat/partitioned paths can no longer fill different subsets of the index-parallel arrays). The fingerprint is taken into a local before each loop moves `out.meshes`, with a one-line note at both sites so the ordering is not "tidied" back into a borrow error.
-     976 rust/wasm-bindings/src/api/gpu_meshes/batch.rs
+# +5: #2985 — both instanced call sites populate InstanceMeshRef::item_id (from MeshData::geometry_item_id for a template, from the ShardOccurrence for a don't-bake occurrence). The shard is the ONLY route to the host for this geometry, so the field cannot live anywhere cheaper.
+     981 rust/wasm-bindings/src/api/gpu_meshes/batch.rs
 # +108: build the referenced-repmaps + instantiated-type-id sets and the material-layer index ONCE in the streaming pre-pass (from spans this scan already collected) and emit them as a `prepass-columns` event, so every geometry worker skips its own full-file walk on the first batch (perf/single-scan #957/#563).
 # +14: #1623 Phase 3 — tally the don't-bake MappedInstancePlan from the same IfcMappedItem spans and emit it on the prepass-columns event (mirrors the referenced-repmaps ship).
 # +9: cap the entity-index up-front reservation (PREPASS_INDEX_RESERVE_CAP) so a ~4GB file does not reserve ~1GB of slots on top of the resident file and abort the wasm32 4GB address space before the scan (huge-file graceful-4gb).
@@ -363,12 +388,3 @@
 # the bug being fixed: geometry is client-side only, so that path is the only
 # way a viewer learns its drawing was clipped.
      757 rust/wasm-bindings/src/zero_copy/symbolic.rs
-# +65: #1910 follow-up — buildPrePassOnce's combined_pre_pass is a third
-# geometry-job discovery path with the same has_geometry_by_name gap as the
-# serial/sharded scans; adds the instance-level exception plus its regression
-# test (combined_pre_pass_issue_1910_tests).
-# +22: #1910 review follow-up — the exception test only proved a storey WITH a
-# Representation gets a job, so forcing nth_attribute_is_present to always
-# report "present" left it passing (demonstrated by mutation). Adds the null-
-# Representation negative case and the shared storey_jobs helper it needs.
-     527 rust/wasm-bindings/src/api/styling/prepass.rs

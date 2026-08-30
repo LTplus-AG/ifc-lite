@@ -46,14 +46,13 @@ export interface PickResult {
    *     have none, mirroring `MeshData.geometryItemId` itself;
    *   - a colour-merged batch holds many entities, so whatever item id it
    *     carries belongs to none of them individually and is not reported;
-   *   - a GPU-instanced occurrence has none YET, on EITHER pick route and for
-   *     two INDEPENDENT reasons. On the GPU route the instanced pick shader
-   *     writes the express id straight into the sample, with no per-instance
-   *     item channel to look one up from. The CPU raycast never runs that
-   *     shader: it loses the field earlier, in the synthetic `MeshData` that
-   *     `Scene.getInstancedMeshDataPieces` materialises per occurrence. Fixing
-   *     the shader alone leaves the CPU half product-level. Deliberate on both
-   *     sides, not an oversight.
+   *   - a GPU-instanced occurrence has none on the GPU route ONLY. The
+   *     instanced pick shader writes the express id straight into the sample,
+   *     with no per-instance item channel to look one up from. The CPU raycast
+   *     never runs that shader, and since #2985 carried the id onto instanced
+   *     occurrences it DOES report one: `Scene.getInstancedMeshDataPieces`
+   *     stamps `geometryItemId` on each synthetic `MeshData` it materialises.
+   *     So the two routes disagree here, and only the shader half is open.
    * Rectangle/marquee pick returns bare express ids and never builds a
    * `PickResult` at all, so it cannot report this either.
    */
@@ -172,9 +171,11 @@ export function resolvePickSample(
 
   if (decoded.kind === 'instanced') {
     // Instanced occurrence. modelIndex is not tracked per occurrence yet
-    // (single-model instancing), and neither is geometryItemId: there is no
-    // per-occurrence item channel to read one out of. The CPU raycast half
-    // drops it separately, in Scene.getInstancedMeshDataPieces.
+    // (single-model instancing), and neither is geometryItemId: this shader
+    // has no per-occurrence item channel to read one out of. Note the CPU
+    // raycast route DOES report it for the same geometry, because
+    // Scene.getInstancedMeshDataPieces stamps it onto the pieces it
+    // materialises (#2985). This is the remaining half of that gap.
     return { expressId, modelIndex: undefined, worldXYZ: world };
   }
 

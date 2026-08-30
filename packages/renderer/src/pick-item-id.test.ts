@@ -283,6 +283,11 @@ describe('Scene.raycast itself forwards the item id (#2985)', () => {
    */
   function instancedShardAt(z: number): DecodedInstancedShard {
     return {
+      // #2985 landed a required flag on the decoded shard: false says the
+      // encoder wrote a base-stride record, so no occurrence here names an
+      // item. This fixture exercises the express-id half of the instanced CPU
+      // route; the item-id half is pinned on the instancing side.
+      carriesItemIds: false,
       templates: [{
         positions: new Float32Array([-1, 0, -1, 1, 0, -1, 0, 0, 1]),
         normals: new Float32Array([0, -1, 0, 0, -1, 0, 0, -1, 0]),

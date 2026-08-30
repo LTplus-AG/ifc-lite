@@ -383,19 +383,49 @@ function clamp01(v: number): number {
 /**
  * Normalize a decoded RGB channel value to 0..1.
  *
- * The PLY format has no single blessed encoding for colour, but the
- * convention every writer in the wild follows is: integer property types
- * (`uchar` is the overwhelming majority; `ushort`/`uint`/etc. show up too)
- * store 0..maxOfType and need dividing down, while `float`/`double`
- * properties already carry a 0..1 value — dividing THOSE by 255 as well
- * (the previous behaviour here) crushed every float-typed r/g/b channel to
- * near-black.
+ * The PLY format has no single blessed encoding for colour, so the divisor
+ * is picked from the property's own declared type rather than sniffed from
+ * the value (magnitude sniffing is exactly what caused the original bug —
+ * see git history):
+ *
+ *   - `uchar`/`uint8` (and the signed `char`/`int8`, treated the same): the
+ *     overwhelming majority convention, 0..255 → divide by 255.
+ *   - `ushort`/`uint16`: 0..65535, the 16-bit-colour convention used by
+ *     many Leica/FARO scanner exports and CloudCompare's 16-bit RGB option
+ *     → divide by 65535. Dividing these by 255 instead saturates every
+ *     channel to 1.0 (a scan renders solid white).
+ *   - `float`/`float32`/`double`/`float64`: already 0..1 (CloudCompare,
+ *     some photogrammetry exporters) → pass through unscaled.
+ *   - `short`/`int16`: no documented PLY convention places signed 16-bit
+ *     colour in the wild; treated the same as `ushort` (÷32767, its
+ *     positive range) since a colour channel is never meant to go
+ *     negative — chosen over ÷65535 because for a *signed* type the
+ *     positive half is the whole usable range.
+ *   - `int`/`uint`/`int32`/`uint32`: no documented convention exists for
+ *     32-bit-typed PLY colour either; rather than guess a bit width we
+ *     fall back to the 0..255 rule (`uchar`'s convention) since some
+ *     writers do emit tiny int-typed colour values that fit in a byte.
+ *     Values that are genuinely wider than a byte will clamp to 1.0 here
+ *     — no worse than the pre-existing behaviour for every other type.
  */
 function normalizeColorChannel(value: number, type: string): number {
-  if (type === 'float' || type === 'float32' || type === 'double' || type === 'float64') {
-    return clamp01(value);
+  switch (type) {
+    case 'float':
+    case 'float32':
+    case 'double':
+    case 'float64':
+      return clamp01(value);
+    case 'ushort':
+    case 'uint16':
+      return clamp01(value / 65535);
+    case 'short':
+    case 'int16':
+      return clamp01(value / 32767);
+    default:
+      // uchar/uint8/char/int8, and the undocumented int/uint/int32/uint32
+      // fallback described above.
+      return clamp01(value / 255);
   }
-  return clamp01(value / 255);
 }
 
 function computeBBox(positions: Float32Array): PointCloudBBox {

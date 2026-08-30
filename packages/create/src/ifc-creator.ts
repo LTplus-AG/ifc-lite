@@ -1933,7 +1933,7 @@ export class IfcCreator {
   }
 
   private buildHeader(): string {
-    const now = new Date(this.nowMs()).toISOString().replace(/[-:]/g, '').split('.')[0];
+    const now = new Date(this.nowMs()).toISOString().replace(/\.\d{3}Z$/, ''); // ISO 8601 time_stamp: keep '-'/':', drop only ms+'Z'
     const desc = 'Created by ifc-lite';
     const author = this.projectParams.Author ?? '';
     const org = this.projectParams.Organization ?? '';

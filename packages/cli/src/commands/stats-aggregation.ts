@@ -9,6 +9,8 @@
  * these to the SDK's `BimContext`.
  */
 
+import { findPropertyInSets } from '@ifc-lite/query';
+
 export interface QuantitySet {
   name: string;
   quantities: Array<{ name: string; value: unknown }>;
@@ -57,13 +59,12 @@ export function sumQuantity<R>(bim: QuantityBim<R>, refs: R[], quantityNames: st
 /** Read a single property's value out of a named property set, or undefined. */
 export function getPropertyValue<R>(bim: PropertyBim<R>, ref: R, psetName: string, propName: string): unknown {
   try {
-    const psets = bim.properties(ref);
-    for (const pset of psets) {
-      if (pset.name === psetName) {
-        const prop = pset.properties?.find(p => p.name === propName);
-        if (prop) return prop.value;
-      }
-    }
+    const psets = bim.properties(ref).filter(
+      (pset): pset is PropertySet & { properties: Array<{ name: string; value: unknown }> } =>
+        pset.properties !== undefined,
+    );
+    const prop = findPropertyInSets(psets, psetName, propName);
+    if (prop) return prop.value;
   } catch {
     // Property not available
   }

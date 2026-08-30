@@ -121,6 +121,27 @@ function readEdges(reader: BufferReader): {
   const edgeTypes = reader.readUint16Array(edgeCount);
   const edgeRelIds = reader.readUint32Array(edgeCount);
 
+  // Fail fast on a corrupt cache: each node's (offset, count) pair is an
+  // independent field from `edgeCount` — `BufferReader`'s own bounds checks
+  // (see its `ensureAvailable` doc comment) only guarantee the edge arrays
+  // themselves are `edgeCount` long, they say nothing about whether a given
+  // node's range stays inside that. Without this check, `getEdges` below
+  // reads `edgeTargets[i]` for `i` past the array's end — a plain JS typed-
+  // array index-out-of-bounds, which silently yields `undefined` rather than
+  // throwing — and returns edges with an `undefined` target/type/
+  // relationshipId mixed in with the real ones instead of failing loudly.
+  // Mirrors the same-shaped guards already in `strings.ts` (offset
+  // monotonicity) and `entity-index.ts` (typeIndex range).
+  for (const [entityId, offset] of offsets) {
+    const count = counts.get(entityId) ?? 0;
+    if (offset + count > edgeCount) {
+      throw new Error(
+        `Corrupt cache RelationshipGraph: entity ${entityId}'s edge range ` +
+          `[${offset}, ${offset + count}) exceeds edge array length ${edgeCount}`,
+      );
+    }
+  }
+
   return {
     offsets,
     counts,

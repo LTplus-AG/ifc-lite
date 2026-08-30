@@ -14,6 +14,7 @@ import { writeFile, readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { GeometryProcessor, isNoRenderGeometryError } from '@ifc-lite/geometry';
 import { countGlbMeshes, escapeCsvCell } from '@ifc-lite/export';
+import { findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';
 import { createHeadlessContext } from '../loader.js';
 import { getFlag, hasFlag, fatal, writeOutput, validateLimit } from '../output.js';
 import { logger } from '../logger.js';
@@ -85,19 +86,13 @@ function resolveColumnValue(entity: any, col: string, bim: any): unknown {
 
     // Search property sets
     const props = bim.properties(entity.ref);
-    const pset = props.find((p: any) => p.name === setName);
-    if (pset) {
-      const prop = pset.properties.find((p: any) => p.name === valueName);
-      if (prop?.value != null) return prop.value;
-    }
+    const prop = findPropertyInSets<any>(props, setName, valueName);
+    if (prop?.value != null) return prop.value;
 
     // Search quantity sets
     const qsets = bim.quantities(entity.ref);
-    const qset = qsets.find((q: any) => q.name === setName);
-    if (qset) {
-      const qty = qset.quantities.find((q: any) => q.name === valueName);
-      if (qty?.value != null) return qty.value;
-    }
+    const qty = findQuantityInSets<any>(qsets, setName, valueName);
+    if (qty?.value != null) return qty.value;
     return null;
   }
 

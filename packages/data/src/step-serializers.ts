@@ -261,7 +261,7 @@ export function generateHeader(options: {
   const quoteList = (items: string[]): string =>
     '(' + items.map(s => "'" + escapeStepString(s) + "'").join(',') + ')';
 
-  const now = options.timeStamp ?? new Date().toISOString().replace(/[-:]/g, '').split('.')[0];
+  const now = options.timeStamp ?? new Date().toISOString().replace(/\.\d{3}Z$/, ''); // ISO 8601 time_stamp: keep '-'/':', drop only ms+'Z'
   const description = toList(options.description, ['ViewDefinition [CoordinationView]']);
   const implementationLevel = options.implementationLevel || '2;1';
   const authors = toList(options.author, ['']);

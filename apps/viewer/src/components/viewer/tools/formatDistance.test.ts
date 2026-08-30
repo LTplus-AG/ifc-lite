@@ -19,7 +19,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { formatDistance, formatSignedTriple } from './formatDistance.js';
+import { formatDistance, formatSignedTriple, formatSplitHoverLabel } from './formatDistance.js';
 
 describe('formatDistance', () => {
   it('falls back to the auto-scaled metric string when overrides is omitted', () => {
@@ -113,5 +113,36 @@ describe('formatSignedTriple', () => {
   it('gives a zero offset no direction', () => {
     // `+0.000` claims a direction an offset of nothing does not have.
     assert.strictEqual(formatSignedTriple({ x: 0, y: 0, z: 0 }), 'ΔX 0.000  ΔY 0.000  ΔZ 0.000');
+  });
+});
+
+// `SplitOverlay`'s live "distance / length" hover label hardcoded
+// `${distance.toFixed(2)} / ${length.toFixed(2)} m`, the exact shape #2199's
+// maintainer note already found and fixed once for `formatDistance` itself
+// (see this module's docstring): every other measure-tool readout in this
+// panel honors the LENGTHUNIT display override, but the Split tool's guide
+// line kept reporting raw, unconverted metres regardless of it.
+describe('formatSplitHoverLabel', () => {
+  // NOT the pre-fix shape: the old label was `toFixed(2)` raw metres
+  // ("1.50 / 4.00 m"). Routing through formatDistance adopts the panel's
+  // auto-scaled convention instead, so the no-override rendering changes too
+  // — including switching to mm/cm for small values. That alignment is the
+  // point of the fix, but it is a visible change, not a no-op.
+  it('renders unlabelled metres in the panel\'s auto-scaled form when overrides is omitted', () => {
+    assert.strictEqual(formatSplitHoverLabel(1.5, 4), '1.500 / 4.000 m');
+  });
+
+  it('keeps unlabelled metres for an empty override map', () => {
+    assert.strictEqual(formatSplitHoverLabel(1.5, 4, {}), '1.500 / 4.000 m');
+  });
+
+  it('converts BOTH numbers into the LENGTHUNIT override, sharing one trailing unit', () => {
+    // 1.5 m -> 4.9213 ft, 4 m -> 13.1234 ft (3.28084 ft/m, formatConverted's
+    // 4-fraction-digit cap) — the same per-value conversion `formatDistance`
+    // applies, not the pre-fix raw metres.
+    assert.strictEqual(
+      formatSplitHoverLabel(1.5, 4, { LENGTHUNIT: 'ft' }),
+      '4.9213 / 13.1234 ft',
+    );
   });
 });

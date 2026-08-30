@@ -148,3 +148,54 @@ describe('eval --type --limit validation', () => {
     expect(stdout.out.trim()).toBe('');
   });
 });
+
+/**
+ * `--storey` takes its own branch in `queryCommand`, post-filtering the
+ * entity list by hand. Both sibling paths — the plain `QueryBuilder` path
+ * and the `--where` path — apply `--limit`/`--offset` before printing, but
+ * the storey branch handed its unsliced array straight to `outputEntities`,
+ * so both flags parsed, validated, and then did nothing at all.
+ */
+describe('query --storey honours --limit and --offset', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const STOREY = '00 groundfloor';
+
+  async function storeyCount(extra: string[]): Promise<number> {
+    const stdout = captureStdout();
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    await queryCommand([SAMPLE_IFC, '--storey', STOREY, '--json', ...extra]);
+    const n = countEntities(stdout.out);
+    vi.restoreAllMocks();
+    return n;
+  }
+
+  it('bounding control: the unrestricted storey listing has more than 2 rows', async () => {
+    expect(await storeyCount([])).toBeGreaterThan(2);
+  });
+
+  it('--limit caps the rows returned', async () => {
+    expect(await storeyCount(['--limit', '2'])).toBe(2);
+  });
+
+  it('--limit 0 is a deliberate empty result', async () => {
+    expect(await storeyCount(['--limit', '0'])).toBe(0);
+  });
+
+  it('--offset skips rows from the front', async () => {
+    const total = await storeyCount([]);
+    expect(await storeyCount(['--offset', '2'])).toBe(total - 2);
+  });
+
+  it('--offset and --limit compose', async () => {
+    expect(await storeyCount(['--offset', '1', '--limit', '2'])).toBe(2);
+  });
+
+  it('--limit still applies when --storey is combined with --where', async () => {
+    const all = await storeyCount(['--where', 'Pset_WallCommon.IsExternal']);
+    expect(all).toBeGreaterThan(1);
+    expect(await storeyCount(['--where', 'Pset_WallCommon.IsExternal', '--limit', '1'])).toBe(1);
+  });
+});

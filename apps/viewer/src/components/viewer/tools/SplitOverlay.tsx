@@ -27,6 +27,7 @@
 import { useViewerStore } from '@/store';
 import { useCameraTickSubscription } from '@/hooks/useCameraTickSubscription';
 import { Slice as KnifeIcon } from 'lucide-react';
+import { formatSplitHoverLabel } from './formatDistance';
 
 type Vec2 = { x: number; y: number };
 type Vec3 = { x: number; y: number; z: number };
@@ -50,6 +51,7 @@ export function SplitOverlay() {
   const splitHoverAxisDirection = useViewerStore((s) => s.splitHoverAxisDirection);
   const splitTargetModelId = useViewerStore((s) => s.splitTargetModelId);
   const splitTargetExpressId = useViewerStore((s) => s.splitTargetExpressId);
+  const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
   const slabCutAnchor = useViewerStore((s) => s.slabCutAnchor);
   const slabCutFootprint = useViewerStore((s) => s.slabCutFootprint);
   const slabCutStoreyElevation = useViewerStore((s) => s.slabCutStoreyElevation);
@@ -197,7 +199,7 @@ export function SplitOverlay() {
   const gy1 = cutScreen.y - guideDy * GUIDE_HALF_LENGTH_PX;
   const gx2 = cutScreen.x + guideDx * GUIDE_HALF_LENGTH_PX;
   const gy2 = cutScreen.y + guideDy * GUIDE_HALF_LENGTH_PX;
-  const labelText = `${splitHoverDistance.toFixed(2)} / ${splitHoverLength.toFixed(2)} m`;
+  const labelText = formatSplitHoverLabel(splitHoverDistance, splitHoverLength, unitDisplayOverrides);
 
   return (
     <svg className="absolute inset-0 pointer-events-none z-30" style={{ overflow: 'visible' }}>

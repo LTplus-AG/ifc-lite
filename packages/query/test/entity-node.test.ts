@@ -10,6 +10,7 @@ import {
   PropertyValueType,
   QuantityType,
 } from './mock-store.js';
+import type { IfcStoreBase } from '@ifc-lite/data';
 
 // ── Fixtures ────────────────────────────────────────────────────
 
@@ -399,6 +400,34 @@ describe('EntityNode', () => {
       const project = new EntityNode(store, 1);
       expect(project.properties()).toEqual([]);
     });
+
+    // Two distinct IfcPropertySet entities sharing the same Name is a
+    // legitimate model shape (two separate IfcRelDefinesByProperties
+    // relationships pointing at two different property sets that happen to
+    // be named alike). The on-demand extraction path used for a raw STEP
+    // parse (columnar-parser.ts's extractPropertiesOnDemand) returns one
+    // array entry per underlying IfcPropertySet, so `store.getProperties`
+    // can legitimately return two entries with the same `name`, each
+    // carrying different properties -- unlike the columnar PropertyTable's
+    // `getForEntity`, which merges same-named sets into one entry (fixed for
+    // the analogous drop in `PropertyTable.getProperties`).
+    it('property() checks every same-named property set, not just the first (regression, mirrors #2907)', () => {
+      const store = buildSpatialStore();
+      const duckStore: IfcStoreBase = {
+        ...store,
+        getProperties: (expressId: number) => {
+          if (expressId !== 10) return store.getProperties(expressId);
+          return [
+            { name: 'Pset_WallCommon', globalId: 'pset-a', properties: [{ name: 'IsExternal', type: PropertyValueType.Boolean, value: true }] },
+            { name: 'Pset_WallCommon', globalId: 'pset-b', properties: [{ name: 'FireRating', type: PropertyValueType.Label, value: 'REI60' }] },
+          ];
+        },
+      };
+      const wall = new EntityNode(duckStore, 10);
+      // FireRating only lives on the second same-named pset -- must not be
+      // dropped just because the first same-named pset was checked first.
+      expect(wall.property('Pset_WallCommon', 'FireRating')).toBe('REI60');
+    });
   });
 
   // ── Quantities ────────────────────────────────────────────────
@@ -431,6 +460,25 @@ describe('EntityNode', () => {
       const store = buildSpatialStore();
       const door = new EntityNode(store, 11);
       expect(door.quantities()).toEqual([]);
+    });
+
+    // Same shape as the property() regression above: two distinct
+    // IfcElementQuantity entities sharing the same Name, as returned
+    // unmerged by the on-demand extraction path.
+    it('quantity() checks every same-named quantity set, not just the first', () => {
+      const store = buildSpatialStore();
+      const duckStore: IfcStoreBase = {
+        ...store,
+        getQuantities: (expressId: number) => {
+          if (expressId !== 10) return store.getQuantities(expressId);
+          return [
+            { name: 'Qto_WallBaseQuantities', quantities: [{ name: 'Length', type: QuantityType.Length, value: 5.0 }] },
+            { name: 'Qto_WallBaseQuantities', quantities: [{ name: 'NetSideArea', type: QuantityType.Area, value: 15.0 }] },
+          ];
+        },
+      };
+      const wall = new EntityNode(duckStore, 10);
+      expect(wall.quantity('Qto_WallBaseQuantities', 'NetSideArea')).toBe(15.0);
     });
   });
 

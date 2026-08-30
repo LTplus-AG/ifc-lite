@@ -880,8 +880,8 @@ export class MergedExporter {
    * Resolve a model's declared AREAUNIT / VOLUMEUNIT scale (SI m² / m³ per unit)
    * by walking IfcProject → IfcUnitAssignment. Falls back to the length-derived
    * unit (`lengthScale ** power`) when the model declares no explicit area/volume
-   * unit — the IFC default. A prefixed SI area/volume unit (rare) applies the
-   * prefix once (buildingSMART / IfcOpenShell convention).
+   * unit — the IFC default. A prefixed SI area/volume unit (rare) raises the
+   * prefix to `power` (area = prefix², volume = prefix³), matching `rust/core`.
    */
   private resolveDerivedUnitScale(
     dataStore: IfcDataStore,
@@ -912,8 +912,8 @@ export class MergedExporter {
         if (this.normalizeEnum(this.extractStepAttribute(uid, dataStore, 1)) !== wantType) continue;
         const prefixRaw = this.extractStepAttribute(uid, dataStore, 2);
         if (!prefixRaw || prefixRaw === '$' || prefixRaw === '*') return 1.0; // square/cubic metre
-        const mult = SI_PREFIX_MULTIPLIERS[this.normalizeEnum(prefixRaw)];
-        return mult !== undefined ? mult : 1.0;
+        const mult = SI_PREFIX_MULTIPLIERS[this.normalizeEnum(prefixRaw)]; // see doc: raised to `power`
+        return mult !== undefined ? Math.pow(mult, power) : 1.0;
       }
 
       if (utype === 'IFCCONVERSIONBASEDUNIT') {

@@ -5,19 +5,14 @@
 /**
  * Self-contained WebGL 2 viewer HTML template for the CLI `view` command.
  *
- * Features:
- *   - Progressive geometry streaming via @ifc-lite/wasm
- *   - Edge-enhanced rendering (dFdx/dFdy normal discontinuity detection)
- *   - Ground grid with distance fade
- *   - Section plane clipping
- *   - Orbit camera with smooth inertia
- *   - Entity picking (GPU color-ID pass)
- *   - Live geometry addition (addGeometry command)
- *   - Full command API: colorize, isolate, xray, highlight, section, etc.
+ * Features: progressive geometry streaming via @ifc-lite/wasm, edge-enhanced
+ * rendering (dFdx/dFdy normal discontinuity detection), a distance-faded
+ * ground grid, section plane clipping, an orbit camera with smooth inertia,
+ * GPU color-ID entity picking, live geometry addition (addGeometry), and the
+ * full command API (colorize, isolate, xray, highlight, section, etc).
  *
- * Communication:
- *   CLI → Browser:  Server-Sent Events on /events
- *   Browser → CLI:  POST /api/command
+ * Communication: CLI to browser over Server-Sent Events (/events); browser
+ * to CLI via POST /api/command.
  */
 
 export function getViewerHtml(modelName: string): string {
@@ -846,10 +841,9 @@ function showPickInfo(eid) {
   if (!info) return;
   const el = document.getElementById('pick-info');
   el.style.display = 'block';
-  // Build with textContent, not innerHTML. info.ifcType is safe today -- it
-  // comes from the WASM parser's IfcType::name(), a closed set of generated
-  // "Ifc..." literals -- so this is not fixing a reachable escape. It removes
-  // the file's last interpolation site that would depend on that staying true.
+  // Build with textContent, not innerHTML. info.ifcType is safe today (a
+  // closed "Ifc..." literal set from the WASM parser), but this removes the
+  // file's last interpolation site that would depend on that staying true.
   el.textContent = '';
   const row = (cls, text) => {
     const d = document.createElement('div');
@@ -1177,6 +1171,17 @@ function handleCommand(cmd) {
       break;
     }
 
+    case 'camera': { // bim.viewer.setCamera/SDK; state: Partial<CameraState> {mode?,position?,target?,up?} — mode/up unused (perspective-only)
+      const s = (cmd && cmd.state) || {};
+      if (Array.isArray(s.target)) camTarget = [s.target[0], s.target[1], s.target[2]];
+      if (Array.isArray(s.position)) {
+        const dx = s.position[0] - camTarget[0], dy = s.position[1] - camTarget[1], dz = s.position[2] - camTarget[2], dist = Math.hypot(dx, dy, dz);
+        if (dist > 1e-9) { camDist = dist; camPhi = camPhiTarget = Math.acos(Math.max(-1, Math.min(1, dy / dist))); camTheta = camThetaTarget = Math.atan2(dz, dx); }
+      }
+      camAnimating = false; camVelTheta = camVelPhi = camVelPanX = camVelPanY = camVelPanZ = 0;
+      break;
+    }
+
     // ── Remove created geometry ──
     case 'removeCreated': {
       // Hide all entities added via addGeometry by making them fully transparent
@@ -1356,10 +1361,9 @@ async function parseMeshesViaPrePass(api, content, opts) {
           pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
           pre.planeAngleToRadians, pre.materialElementIds, pre.materialColorCounts, pre.materialColors,
         );
-        // The MeshDataJs getters copy into JS-owned typed arrays, so onBatch
-        // consumers keep working after we free the WASM handles. Free every
-        // mesh + the collection per batch, or the standalone viewer leaks
-        // WASM memory batch-by-batch and can OOM before a large load finishes.
+        // MeshDataJs getters copy into JS-owned typed arrays, so freeing the
+        // WASM handles below is safe. Free every mesh + the collection per
+        // batch, or the viewer leaks WASM memory and can OOM on a large load.
         try {
           const meshes = [];
           for (let i = 0; i < collection.length; i++) {
@@ -1420,11 +1424,7 @@ async function loadModel() {
           const batch = meshes.map(m => ({
             expressId: m.expressId,
             ifcType: m.ifcType || 'Unknown',
-            // positions are stored in each mesh's own local frame -- world
-            // position = m.origin + positions[i] (see MeshDataJs.origin).
-            // wasm defaults local-frame storage ON, so skipping this fold
-            // collapses every element toward its own AABB centre, i.e. most
-            // elements render near the shared (0,0,0) origin (#2261).
+            // Fold the per-mesh local frame into world positions -- see foldOrigin's own docstring (#2261).
             positions: foldOrigin(m.positions, m.origin),
             normals: m.normals,
             indices: m.indices,

@@ -19,16 +19,25 @@ const STORE_TO_AXIS: Record<string, 'x' | 'y' | 'z'> = {
 };
 
 export function createViewerAdapter(store: StoreApi): ViewerBackendMethods {
+  // Tracks colors the SDK itself has applied. `pendingColorUpdates` in the store is a
+  // one-shot signal: the geometry-streaming effect flushes it to the renderer and then
+  // nulls it out, so it can't be read back later as "what's currently applied". This
+  // closure survives that flush, so resetColors(refs) can compute "all SDK colors minus
+  // refs" even after the effect has already run.
+  let sdkColorOverrides = new Map<number, [number, number, number, number]>();
+
   return {
     colorize(refs: EntityRef[], color: [number, number, number, number]) {
       const state = store.getState();
-      // Merge with existing pending colors (supports multiple colorize calls per script)
-      const existing = state.pendingColorUpdates;
-      const colorMap = existing ? new Map(existing) : new Map<number, [number, number, number, number]>();
+      // Merge with existing pending colors (supports multiple colorize calls per script,
+      // and survives the effect having already flushed+cleared pendingColorUpdates).
+      const existing = state.pendingColorUpdates ?? sdkColorOverrides;
+      const colorMap = new Map(existing);
       for (const ref of refs) {
         if (!getModelForRef(state, ref.modelId)) continue;
         colorMap.set(toGlobalIdForRef(state.models, ref), color);
       }
+      sdkColorOverrides = colorMap;
       state.setPendingColorUpdates(colorMap);
       return undefined;
     },
@@ -43,13 +52,28 @@ export function createViewerAdapter(store: StoreApi): ViewerBackendMethods {
           batchMap.set(toGlobalIdForRef(state.models, ref), batch.color);
         }
       }
+      sdkColorOverrides = batchMap;
       state.setPendingColorUpdates(batchMap);
       return undefined;
     },
-    resetColors() {
+    resetColors(refs?: EntityRef[]) {
       const state = store.getState();
-      // Set empty map to trigger scene.clearColorOverrides() (null skips the effect)
-      state.setPendingColorUpdates(new Map());
+      if (!refs || refs.length === 0) {
+        // Set empty map to trigger scene.clearColorOverrides() (null skips the effect)
+        sdkColorOverrides = new Map();
+        state.setPendingColorUpdates(new Map());
+        return undefined;
+      }
+      // Targeted reset: drop only the given entities from the known override set,
+      // re-emitting whatever remains (same "empty map clears everything" contract above —
+      // if nothing remains, this naturally clears everything too).
+      const existing = state.pendingColorUpdates ?? sdkColorOverrides;
+      const colorMap = new Map(existing);
+      for (const ref of refs) {
+        colorMap.delete(toGlobalIdForRef(state.models, ref));
+      }
+      sdkColorOverrides = colorMap;
+      state.setPendingColorUpdates(colorMap);
       return undefined;
     },
     flyTo() {

@@ -70,7 +70,7 @@ import {
   listStoreys,
   type GenerateSpacesAllOptions,
 } from '@ifc-lite/create';
-import { EntityNode, findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';
+import { EntityNode, findPropertyInSets, findQuantityInSets, findAllPropertiesInSets } from '@ifc-lite/query';
 
 import {
   extractAllEntityAttributes,
@@ -331,24 +331,29 @@ export class HeadlessBackend implements BimBackend {
           for (const filter of descriptor.filters) {
             filtered = filtered.filter(entity => {
               const props = getCachedProps(entity.ref);
-              const prop = findPropertyInSets(props, filter.psetName, filter.propName);
-              if (!prop) return false;
+              // Any-match, not first-match (#3490): an entity can carry two
+              // distinct same-named property sets (type + occurrence), so a
+              // filter predicate passes when ANY of them satisfies the
+              // condition, not just the first one found.
+              const matchingProps = findAllPropertiesInSets(props, filter.psetName, filter.propName);
+              if (matchingProps.length === 0) return false;
               if (filter.operator === 'exists') return true;
-              const val = prop.value;
               const filterVal = filter.value;
-              // Normalize booleans: .T./.F./true/false all compare equally
-              const normVal = normalizeBooleanValue(val);
               const normFilterVal = normalizeBooleanValue(filterVal);
-              switch (filter.operator) {
-                case '=': return String(normVal) === String(normFilterVal);
-                case '!=': return String(normVal) !== String(normFilterVal);
-                case '>': return Number(normVal) > Number(normFilterVal);
-                case '<': return Number(normVal) < Number(normFilterVal);
-                case '>=': return Number(normVal) >= Number(normFilterVal);
-                case '<=': return Number(normVal) <= Number(normFilterVal);
-                case 'contains': return String(normVal).toLowerCase().includes(String(normFilterVal).toLowerCase());
-                default: return false;
-              }
+              return matchingProps.some(prop => {
+                // Normalize booleans: .T./.F./true/false all compare equally
+                const normVal = normalizeBooleanValue(prop.value);
+                switch (filter.operator) {
+                  case '=': return String(normVal) === String(normFilterVal);
+                  case '!=': return String(normVal) !== String(normFilterVal);
+                  case '>': return Number(normVal) > Number(normFilterVal);
+                  case '<': return Number(normVal) < Number(normFilterVal);
+                  case '>=': return Number(normVal) >= Number(normFilterVal);
+                  case '<=': return Number(normVal) <= Number(normFilterVal);
+                  case 'contains': return String(normVal).toLowerCase().includes(String(normFilterVal).toLowerCase());
+                  default: return false;
+                }
+              });
             });
           }
         }

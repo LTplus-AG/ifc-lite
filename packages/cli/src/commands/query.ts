@@ -10,11 +10,14 @@
  * classifications, attributes, relationships, type properties.
  */
 
-import { findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';
+import { findPropertyInSets } from '@ifc-lite/query';
 import { createHeadlessContext } from '../loader.js';
 import { printJson, getFlag, hasFlag, fatal, validateLimit } from '../output.js';
 import { STANDARD_QTO_MAP, sortEntities } from './query-aggregation.js';
 import { VALID_GROUP_BY_KEYS, outputCount, outputSum, outputAggregation, outputGroupBy, outputEntities } from './query-output.js';
+import { applyWhereFilter, parseWhereFilter, compareValues, normalizeBooleanValue } from './where-filter.js';
+
+export { applyWhereFilter, parseWhereFilter, compareValues, normalizeBooleanValue };
 
 /**
  * B9/F6: Auto-prefix Ifc for --type if user omits it.
@@ -31,90 +34,6 @@ export function normalizeTypeName(typeStr: string): string {
     process.stderr.write(`Note: Auto-corrected type "${trimmed}" → "${prefixed}"\n`);
     return prefixed;
   }).join(',');
-}
-
-/**
- * Parse a --where filter string into psetName, propName, operator, value.
- * Supported formats:
- *   PsetName.PropName=Value     (equals)
- *   PsetName.PropName!=Value    (not equals)
- *   PsetName.PropName>Value     (greater than)
- *   PsetName.PropName<Value     (less than)
- *   PsetName.PropName>=Value    (greater or equal)
- *   PsetName.PropName<=Value    (less or equal)
- *   PsetName.PropName~Value     (contains)
- *   PsetName.PropName           (exists)
- */
-export function parseWhereFilter(filter: string): { psetName: string; propName: string; operator: string; value?: string } {
-  const dotIdx = filter.indexOf('.');
-  if (dotIdx <= 0) {
-    fatal(`Invalid --where syntax: "${filter}". Expected: PsetName.PropName[=Value]`);
-  }
-
-  const psetName = filter.slice(0, dotIdx);
-  const rest = filter.slice(dotIdx + 1);
-
-  // Try multi-char operators first, then single-char
-  for (const op of ['!=', '>=', '<=', '>', '<', '=', '~']) {
-    const opIdx = rest.indexOf(op);
-    if (opIdx > 0) {
-      const propName = rest.slice(0, opIdx);
-      const value = rest.slice(opIdx + op.length);
-      const mappedOp = op === '~' ? 'contains' : op;
-      return { psetName, propName, operator: mappedOp, value };
-    }
-  }
-
-  // No operator found — exists check
-  return { psetName, propName: rest, operator: 'exists' };
-}
-
-/**
- * B3/F1: Apply --where filter to entities, searching both property sets AND quantity sets.
- * Falls back to quantity sets when a property set match is not found.
- */
-export function applyWhereFilter(entities: any[], parsed: ReturnType<typeof parseWhereFilter>, bim: any): any[] {
-  return entities.filter(e => {
-    // First try property sets
-    const props = bim.properties(e.ref);
-    const prop = findPropertyInSets<any>(props, parsed.psetName, parsed.propName);
-    if (prop) {
-      if (parsed.operator === 'exists') return true;
-      return compareValues(prop.value, parsed.operator, parsed.value);
-    }
-
-    // B3: Also search quantity sets
-    const qsets = bim.quantities(e.ref);
-    const qty = findQuantityInSets<any>(qsets, parsed.psetName, parsed.propName);
-    if (qty) {
-      if (parsed.operator === 'exists') return true;
-      return compareValues(qty.value, parsed.operator, parsed.value);
-    }
-
-    return false;
-  });
-}
-
-export function compareValues(actual: any, operator: string, expected: string | undefined): boolean {
-  if (expected === undefined) return actual != null;
-  const normActual = normalizeBooleanValue(actual);
-  const normExpected = normalizeBooleanValue(expected);
-  switch (operator) {
-    case '=': return String(normActual) === String(normExpected);
-    case '!=': return String(normActual) !== String(normExpected);
-    case '>': return Number(normActual) > Number(normExpected);
-    case '<': return Number(normActual) < Number(normExpected);
-    case '>=': return Number(normActual) >= Number(normExpected);
-    case '<=': return Number(normActual) <= Number(normExpected);
-    case 'contains': return String(normActual).toLowerCase().includes(String(normExpected).toLowerCase());
-    default: return false;
-  }
-}
-
-export function normalizeBooleanValue(value: unknown): unknown {
-  if (value === true || value === '.T.' || value === 'true' || value === 'TRUE') return 'true';
-  if (value === false || value === '.F.' || value === 'false' || value === 'FALSE') return 'false';
-  return value;
 }
 
 export async function queryCommand(args: string[]): Promise<void> {

@@ -17,7 +17,7 @@ import type {
   QueryBackendMethods,
 } from '@ifc-lite/sdk';
 import type { StoreApi } from './types.js';
-import { EntityNode, findPropertyInSets } from '@ifc-lite/query';
+import { EntityNode, findAllPropertiesInSets } from '@ifc-lite/query';
 import { IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';
 import { getModelForRef, getAllModelEntries } from './model-compat.js';
 import {
@@ -242,21 +242,27 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
       for (const filter of descriptor.filters) {
         filtered = filtered.filter(entity => {
           const props = getCachedProps(entity.ref);
-          const prop = findPropertyInSets(props, filter.psetName, filter.propName);
-          if (!prop) return false;
+          // Any-match, not first-match (#3490): an entity can carry two
+          // distinct same-named property sets (type + occurrence), so a
+          // filter predicate passes when ANY of them satisfies the
+          // condition, not just the first one found.
+          const matchingProps = findAllPropertiesInSets(props, filter.psetName, filter.propName);
+          if (matchingProps.length === 0) return false;
           if (filter.operator === 'exists') return true;
 
-          const val = prop.value;
-          switch (filter.operator) {
-            case '=': return String(val) === String(filter.value);
-            case '!=': return String(val) !== String(filter.value);
-            case '>': return Number(val) > Number(filter.value);
-            case '<': return Number(val) < Number(filter.value);
-            case '>=': return Number(val) >= Number(filter.value);
-            case '<=': return Number(val) <= Number(filter.value);
-            case 'contains': return String(val).includes(String(filter.value));
-            default: return false;
-          }
+          return matchingProps.some(prop => {
+            const val = prop.value;
+            switch (filter.operator) {
+              case '=': return String(val) === String(filter.value);
+              case '!=': return String(val) !== String(filter.value);
+              case '>': return Number(val) > Number(filter.value);
+              case '<': return Number(val) < Number(filter.value);
+              case '>=': return Number(val) >= Number(filter.value);
+              case '<=': return Number(val) <= Number(filter.value);
+              case 'contains': return String(val).includes(String(filter.value));
+              default: return false;
+            }
+          });
         });
       }
     }

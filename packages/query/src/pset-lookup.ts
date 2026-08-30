@@ -73,3 +73,48 @@ export function findQuantityInSets<Q extends Named>(
   }
   return undefined;
 }
+
+/**
+ * Find EVERY property named `propName`, across EVERY same-named
+ * (setName) property set — not just the first. For a caller evaluating a
+ * predicate ("does this entity have a set with this name and value?")
+ * first-match is wrong: an entity can carry two distinct `IfcPropertySet`s
+ * named e.g. "Pset_WallCommon" (one from the type, one from the
+ * occurrence), and the wanted value may live on the second one. Use this
+ * instead of `findPropertyInSets` when the result feeds a `.some(...)`
+ * predicate rather than a single value read; keep `findPropertyInSets` for
+ * value extraction (export/aggregation/display), where picking one member
+ * is the documented, correct behaviour.
+ */
+export function findAllPropertiesInSets<P extends Named>(
+  sets: readonly PropertySetLike<P>[],
+  setName: string,
+  propName: string,
+): P[] {
+  const matches: P[] = [];
+  for (const set of sets) {
+    if (set.name !== setName) continue;
+    for (const p of set.properties) {
+      if (p.name === propName) matches.push(p);
+    }
+  }
+  return matches;
+}
+
+/**
+ * Quantity counterpart to `findAllPropertiesInSets` — see its doc comment.
+ */
+export function findAllQuantitiesInSets<Q extends Named>(
+  sets: readonly QuantitySetLike<Q>[],
+  setName: string,
+  quantityName: string,
+): Q[] {
+  const matches: Q[] = [];
+  for (const set of sets) {
+    if (set.name !== setName) continue;
+    for (const q of set.quantities) {
+      if (q.name === quantityName) matches.push(q);
+    }
+  }
+  return matches;
+}

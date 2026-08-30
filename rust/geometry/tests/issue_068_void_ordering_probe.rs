@@ -34,6 +34,28 @@ fn repo_root() -> std::path::PathBuf {
     crate_dir().join("..").join("..")
 }
 
+/// `true` when the catalogued fixture is on disk.
+///
+/// An absent fixture must SKIP, never panic (AGENTS.md "Test fixtures"); CI
+/// runs `pnpm fixtures` before tests, so it always has the full set.
+/// `try_exists`, not `exists`: `Path::exists` collapses a permission error
+/// into `false`, which would quietly skip on a broken checkout while
+/// reporting green. Only a definite "not there" skips; an undecidable answer
+/// is a broken setup and still panics.
+fn fixture_present(path: &std::path::Path) -> bool {
+    match path.try_exists() {
+        Ok(true) => true,
+        Ok(false) => {
+            eprintln!(
+                "skipping: fixture {} not present -- run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)",
+                path.display()
+            );
+            false
+        }
+        Err(e) => panic!("cannot determine whether fixture {} exists: {e}", path.display()),
+    }
+}
+
 fn void_index(content: &str) -> FxHashMap<u32, Vec<u32>> {
     let mut idx: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
     let mut scanner = EntityScanner::new(content);
@@ -189,6 +211,9 @@ struct HostResult {
 fn void_ordering_probe() {
     let rel = "tests/models/ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc";
     let path = repo_root().join(rel);
+    if !fixture_present(&path) {
+        return;
+    }
     let content = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
 

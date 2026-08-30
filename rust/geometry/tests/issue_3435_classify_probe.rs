@@ -28,17 +28,27 @@
 //!
 //! The fix (`split_by_proximity` below) is a second pass, after collinear
 //! clustering, that further splits a line-cluster wherever two consecutive
-//! edges' projected intervals are separated by more than `GAP_TOL`. Every
-//! genuine within-tear gap observed on this fixture (the sub-edges that
-//! legitimately tile one opening's long edge) is 0 or sub-millimetre —
-//! f32-mesh-export noise. Every confirmed cross-doorway separation observed
-//! (including the `#144568` 1.07 m case) is >= 1 m. `GAP_TOL = 5 cm` sits
-//! two orders of magnitude above the noise floor and more than an order of
-//! magnitude below the smallest confirmed real separation, so it cannot
-//! misclassify either side of that fixture's evidence.
+//! edges' projected intervals are separated by more than `GAP_TOL`.
 //!
-//! Anchors (must hold after the fix): host `#628727` classifies as a
-//! T-junction; hosts `#144568` and `#893133` do not.
+//! `GAP_TOL = 5 cm` is placed from this fixture's own measured gaps, obtained
+//! by printing `lo - running_hi` for every pair `split_by_proximity` compares
+//! across all 29 torn hosts. Gaps that stay together (the sub-edges that
+//! legitimately tile one opening's long edge) are 0 or negative: the largest
+//! is 0.000000 m to six decimals, i.e. f32-mesh-export noise. Gaps that do
+//! split are 0.1235 m (`#360795`), 0.2110 / 0.2639 / 0.6034 m (`#43810`),
+//! 1.0721 m (`#144568`), 3.5200 m (`#893133`) and 5.0760 m (`#53374`).
+//!
+//! So 5 cm clears the noise floor by two orders of magnitude, but the margin
+//! on the other side is a factor of 2.5, not another two orders: four of
+//! those seven separations are under a metre, and the smallest is at
+//! `#360795`, the one host whose verdict the fix changes. Raising `GAP_TOL`
+//! past 0.1235 m would re-merge `#360795` and silently undo the fix. The
+//! headroom is below this value, not above it, which is worth knowing before
+//! anyone widens it to make an unrelated host behave.
+//!
+//! Anchors (must hold after the fix): hosts `#628727` and `#360795` classify
+//! as T-junctions; hosts `#144568` and `#893133` do not. `#360795` is the one
+//! that pins the fix itself, see `ANCHOR_TJUNCTION` below.
 //!
 //! Run (needs `debug_geometry` to read the prism fast-path fire counter):
 //!   cargo test -p ifc-lite-geometry --features debug_geometry \
@@ -55,6 +65,28 @@ fn crate_dir() -> std::path::PathBuf {
 }
 fn repo_root() -> std::path::PathBuf {
     crate_dir().join("..").join("..")
+}
+
+/// `true` when the catalogued fixture is on disk.
+///
+/// An absent fixture must SKIP, never panic (AGENTS.md "Test fixtures"); CI
+/// runs `pnpm fixtures` before tests, so it always has the full set.
+/// `try_exists`, not `exists`: `Path::exists` collapses a permission error
+/// into `false`, which would quietly skip on a broken checkout while
+/// reporting green. Only a definite "not there" skips; an undecidable answer
+/// is a broken setup and still panics.
+fn fixture_present(path: &std::path::Path) -> bool {
+    match path.try_exists() {
+        Ok(true) => true,
+        Ok(false) => {
+            eprintln!(
+                "skipping: fixture {} not present -- run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)",
+                path.display()
+            );
+            false
+        }
+        Err(e) => panic!("cannot determine whether fixture {} exists: {e}", path.display()),
+    }
 }
 
 fn void_index(content: &str) -> FxHashMap<u32, Vec<u32>> {
@@ -148,8 +180,8 @@ fn unit(a: (f64, f64, f64)) -> (f64, f64, f64) {
 /// proximity along the shared line: two edges stay together only while the
 /// gap between their projected intervals is <= `gap_tol`. See the module
 /// doc for why collinearity alone over-merges (the host `#144568`
-/// two-doorway phantom cluster) and why `gap_tol` is safe at any value
-/// between the sub-mm noise floor and the >= 1 m confirmed separations.
+/// two-doorway phantom cluster) and for the measured gaps that bracket
+/// `gap_tol` from both sides.
 fn split_by_proximity(
     edges: &[((f64, f64, f64), (f64, f64, f64))],
     group: Vec<usize>,
@@ -217,13 +249,12 @@ fn classify_open_edges(edges: &[((f64, f64, f64), (f64, f64, f64))]) -> (bool, S
     // to-line distance), anchored on the longest unclustered edge each round
     // (longest edges are the most reliable to derive a direction from).
     const DIST_TOL: f64 = 1e-3; // metres, point-to-line distance tolerance
-    // Proximity bound for the interval-adjacency split (see module doc for
-    // the phantom-merge failure mode this closes): every genuine
-    // within-tear gap on this fixture is 0 or sub-mm, every confirmed
-    // cross-doorway separation is >= 1 m, so 5 cm sits comfortably between
-    // both without being derivable from either -- it is not tuned to a
-    // specific edge, just placed in the two-orders-of-magnitude gap the
-    // evidence leaves open.
+    // Proximity bound for the interval-adjacency split. See the module doc
+    // for the phantom-merge failure mode this closes and for every gap this
+    // fixture actually produces: the gaps kept together measure 0, and the
+    // smallest gap that must split is 0.1235 m at host #360795. 5 cm is two
+    // orders of magnitude above the first and a factor of 2.5 below the
+    // second, so the headroom is below this value, not above it.
     const GAP_TOL: f64 = 0.05; // metres
 
     let mut remaining: Vec<usize> = (0..edges.len()).collect();
@@ -400,10 +431,19 @@ impl SplitMix64 {
     }
 }
 
-/// Anchor hosts pinned by the #3435 investigation: `#628727` is the
-/// original T-junction reproducer; `#144568` and `#893133` are confirmed
-/// NOT T-junctions (see module doc for `#144568`'s phantom-merge history).
-const ANCHOR_TJUNCTION: u32 = 628727;
+/// Anchor hosts pinned by the #3435 investigation.
+///
+/// `#628727` is the original T-junction reproducer. `#360795` is the anchor
+/// that pins the proximity-split fix itself: over this fixture's 29 torn
+/// hosts it is the ONLY host whose verdict the fix changes (a T-junction with
+/// `split_by_proximity`, not a T-junction without it). Without it here, every
+/// assertion in this file stays green when the second pass in
+/// `classify_open_edges` is deleted, so the file would pin the classifier's
+/// other outputs but not the fix this probe exists to land. `#144568` and
+/// `#893133` are confirmed NOT T-junctions (see module doc for `#144568`'s
+/// phantom-merge history); their verdicts are the same either way, which is
+/// exactly why they cannot pin it.
+const ANCHOR_TJUNCTION: [u32; 2] = [628727, 360795];
 const ANCHOR_NOT_TJUNCTION: [u32; 2] = [144568, 893133];
 
 /// The classifier clusters by a greedy longest-edge-first anchor pick, which
@@ -437,6 +477,9 @@ fn assert_permutation_invariant(host: u32, edges: &[((f64, f64, f64), (f64, f64,
 fn classify_probe() {
     let rel = "tests/models/ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc";
     let path = repo_root().join(rel);
+    if !fixture_present(&path) {
+        return;
+    }
     let content = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
     let voids = void_index(&content);
@@ -487,7 +530,7 @@ fn classify_probe() {
             not_tjunction += 1;
             "NO"
         };
-        if host == ANCHOR_TJUNCTION || ANCHOR_NOT_TJUNCTION.contains(&host) {
+        if ANCHOR_TJUNCTION.contains(&host) || ANCHOR_NOT_TJUNCTION.contains(&host) {
             anchor_verdicts.insert(host, is_tj);
             assert_permutation_invariant(host, &edges);
         }
@@ -523,11 +566,13 @@ fn classify_probe() {
     // Anchors: the corrected classifier (collinearity + proximity split)
     // must reproduce these regardless of any unrelated drift elsewhere in
     // the population.
-    assert_eq!(
-        anchor_verdicts.get(&ANCHOR_TJUNCTION).copied(),
-        Some(true),
-        "host #{ANCHOR_TJUNCTION} must classify as a T-junction"
-    );
+    for &host in &ANCHOR_TJUNCTION {
+        assert_eq!(
+            anchor_verdicts.get(&host).copied(),
+            Some(true),
+            "host #{host} must classify as a T-junction"
+        );
+    }
     for &host in &ANCHOR_NOT_TJUNCTION {
         assert_eq!(
             anchor_verdicts.get(&host).copied(),

@@ -168,20 +168,15 @@ export const ALIAS_DESTRUCTURE_PATTERN =
 /** The resolvers that actually perform `IfcRelAggregates` expansion, or read
  *  from a resolver that does, called as real code (not merely named in prose).
  *  `resolveIsolationIds` (`apps/viewer/src/lib/isolation/resolveIsolationIds.ts`,
- *  #3389/#3426) is the shared policy wrapper most isolation channels now
+ *  #3338) is the shared policy wrapper most isolation channels now
  *  call INSTEAD of `resolveHighlightIds` directly -- it takes the resolver
  *  as its first argument rather than invoking it inline, so a channel that
  *  switched to it no longer contains the literal `resolveHighlightIds(`
  *  call this pattern used to require. (`PropertiesPanel.tsx` and
  *  `SearchModal.filter.tsx` still call the resolver inline on purpose, each
- *  with its own reason in the source -- both spellings must keep passing.)
- *  `resolveIsolationIdsForViewSync` is that wrapper's variant for channels
- *  that REPLACE the view (a BCF viewpoint apply, the anonymized-export
- *  preview re-sync): same expansion, but it always returns a set to install
- *  instead of `null`, because leaving the channel untouched there shows the
- *  PREVIOUS view's isolation as the new one's contents (#3389). */
+ *  with its own reason in the source -- both spellings must keep passing.) */
 export const ROUTING_MARKERS =
-  /\b(resolveHighlightIds|expandToGeometryBearingIds|expandFilterRowsThroughAggregation|resolveIsolationIds|resolveIsolationIdsForViewSync)\b\s*\?{0,1}\.{0,1}\s*\(/;
+  /\b(resolveHighlightIds|expandToGeometryBearingIds|expandFilterRowsThroughAggregation|resolveIsolationIds)\b\s*\?{0,1}\.{0,1}\s*\(/;
 
 /**
  * Channels that MUST show a `ROUTING_MARKERS` call in the same file. Paths
@@ -210,15 +205,9 @@ export const REQUIRES_ROUTING_MARKER = new Set([
   // which can be any IFC class, including a geometry-less assembly -- the
   // same shape as LensPanel/SearchModal.filter's rule-matched ids.
   'apps/viewer/src/hooks/useIDS.ts',
-  // The anonymized-export 3D preview mirrors `includedIds`, which is not
-  // restricted to renderable leaf types -- an included geometry-less
-  // assembly would otherwise blank the preview for an id that IS part of
-  // the export.
-  'apps/viewer/src/components/viewer/anonymized-export/usePreviewIsolation.ts',
-  // The SDK/MCP isolate() channel: #3382 landed the routing fix
-  // (cameraCallbacks.resolveHighlightIds, unioned with the raw ids so an
-  // empty resolve result doesn't isolate nothing), so this now genuinely
-  // routes and belongs here instead of NO_MARKER_REQUIRED.
+  // The SDK/MCP isolate() channel: #3382 landed the routing fix and #3338
+  // moved its union policy into the shared `resolveIsolationIds`, so this
+  // now genuinely routes and belongs here instead of NO_MARKER_REQUIRED.
   'apps/viewer/src/sdk/adapters/visibility-adapter.ts',
 ]);
 
@@ -240,6 +229,16 @@ export const NO_MARKER_REQUIRED = new Map([
     'clash.b.ref), and clash detection tests actual mesh triangles for intersection -- an ' +
     'element without geometry can never appear in a clash result, so these ids are always ' +
     'geometry-bearing by construction, not a raw user pick that needs expansion.',
+  ],
+  [
+    'apps/viewer/src/components/viewer/anonymized-export/usePreviewIsolation.ts',
+    "the 3D preview's contract is to MIRROR the export's `includedIds` exactly, not to isolate " +
+    'what a user picked -- a geometry-less container in that set draws nothing because the export ' +
+    'genuinely contains no geometry for it, which is the truth the preview is there to show. ' +
+    "Expanding it would be inert under the shipped defaults (`related-entities.ts` walks " +
+    "`IfcRelAggregates` 'both', so an included container's renderable parts are already in the " +
+    'set) and actively wrong when the user turns that walk off or unchecks a part: the preview ' +
+    'would then show geometry the exported file does not contain.',
   ],
   [
     'apps/viewer/src/lib/tours/tours/ids.ts',

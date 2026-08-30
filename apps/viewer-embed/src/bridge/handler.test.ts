@@ -853,31 +853,18 @@ describe('selection and visibility commands', () => {
     expect(argsOf(state, 'isolateEntities')).toEqual([[1005]]);
   });
 
-  it('ISOLATE unions the raw ids when the resolver returns null -- geometry still streaming (#3426)', async () => {
-    // `resolveRenderableIds` (Viewport.tsx) returns `null`, not `[]`, while
-    // `geometryRef.current` is still unset -- "cannot answer yet", not
-    // "answered: nothing renders". The raw-id union is correct here: once
-    // geometry streams in, the ids that DO have geometry are already in the
-    // isolation set.
-    state.cameraCallbacks.resolveHighlightIds = () => null;
-    initBridge(makeCtx(state));
-    await send(fw, cmd('ISOLATE', { ids: [1005] }, 'r1'));
-    expect(argsOf(state, 'isolateEntities')).toEqual([[1005]]);
-  });
-
-  it('ISOLATE leaves the isolation channel untouched when the resolver genuinely resolves to [] (#3426 correction)', async () => {
-    // A resolver that has already resolved -- geometry IS in -- and found
-    // nothing renderable (a geometry-less IfcElementAssembly with no
-    // aggregated part that renders either) must NOT fall back to the raw
-    // ids: `isolateEntities([1005])` isolates to a set with no mesh id in
-    // it, which blanks the viewport exactly like isolating `[]` does. The
-    // #3382 union "fix" converted one empty viewport into a different one
-    // for precisely this case (#3426). The correct behaviour is to leave
-    // the isolation channel alone -- isolateEntities must not be called.
+  it('ISOLATE keeps the raw ids when the resolver resolves to [] (#3389)', async () => {
+    // `[]` is not "geometry is in and nothing renders": the resolver
+    // bounds-checks against the type-visibility FILTERED mesh list, so an
+    // IfcSpace at the shipped `spaces: false` default -- and a mesh that has
+    // not streamed in yet -- answers `[]` too. Dropping the isolate there
+    // makes an ISOLATE of a space a silent no-op over postMessage; keeping
+    // the raw ids costs nothing and starts showing the right thing as soon as
+    // the host flips the toggle or the batch lands.
     state.cameraCallbacks.resolveHighlightIds = () => [];
     initBridge(makeCtx(state));
     await send(fw, cmd('ISOLATE', { ids: [1005] }, 'r1'));
-    expect(called(state, 'isolateEntities')).toBe(false);
+    expect(argsOf(state, 'isolateEntities')).toEqual([[1005]]);
   });
 
   it('SHOW_ALL restores visibility across every model', async () => {

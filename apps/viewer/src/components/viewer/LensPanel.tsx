@@ -1384,13 +1384,11 @@ export function LensPanel({ onClose }: LensPanelProps) {
     // and the spaces would silently drop under replace semantics; carrying an
     // id that owns no mesh is free, it just never matches the whitelist.
     //
-    // `resolveIsolationIds` returns `null` -- leave the channel alone --
-    // only when the resolver has genuinely resolved and found NOTHING
-    // renderable (every matched id and every aggregated part is
-    // geometry-less): appending the raw ids there would isolate to a set
-    // with no mesh in it and blank the ENTIRE model (#3389). It still unions
-    // the raw ids -- self-healing once geometry lands -- when no resolver is
-    // registered yet, or one is registered but still streaming (`null`).
+    // An empty resolve keeps the raw ids rather than isolating nothing: `[]`
+    // is also what a set hidden by a type toggle, or one whose meshes have
+    // not streamed in yet, answers, and isolating an empty set hides the
+    // ENTIRE model. See `resolveIsolationIds` for why the three cases cannot
+    // be told apart here.
     //
     // #2660's second fallback -- walking IfcRelAggregates when the resolver
     // is empty because the parts are HIDDEN types -- is deliberately not
@@ -1399,7 +1397,6 @@ export function LensPanel({ onClose }: LensPanelProps) {
     // to a type-visibility gate the lens panel doesn't have. Adding one is a
     // feature, not this fix.
     const isolationIds = resolveIsolationIds(cameraCallbacks.resolveHighlightIds, matchingIds);
-    if (isolationIds === null) return;
 
     // `isolateEntities` is a same-set TOGGLE (visibilitySlice.ts, `isolateEntities`): if
     // the channel already holds exactly these ids it CLEARS instead of

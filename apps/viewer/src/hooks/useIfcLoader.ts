@@ -655,10 +655,10 @@ export function useIfcLoader() {
           return;
         }
 
-        // PRIMARY — unchanged from the former finalizePrimaryModel.
+        // PRIMARY. Registration needs only `geometryResult`, not `dataStore` (a primary GLB keeps `dataStore: null`).
         let idOffset = 0;
         let maxExpressId = 0;
-        if (dataStore && geometryResult) {
+        if (geometryResult) {
           maxExpressId = getMaxExpressId(dataStore, geometryResult.meshes);
           idOffset = registerModelOffset(modelId, maxExpressId);
         }

@@ -67,10 +67,10 @@ export function createMinimalGlbDataStore(buffer: ArrayBuffer, meshCount: number
   });
 }
 
-export function getMaxExpressId(dataStore: IfcDataStore, meshes: MeshData[]): number {
+export function getMaxExpressId(dataStore: IfcDataStore | null, meshes: MeshData[]): number {
   const maxExpressIdFromMeshes = meshes.reduce((max, mesh) => Math.max(max, mesh.expressId), 0);
   let maxExpressIdFromEntities = 0;
-  if (dataStore.entityIndex?.byId) {
+  if (dataStore?.entityIndex?.byId) {
     for (const key of dataStore.entityIndex.byId.keys()) {
       if (key > maxExpressIdFromEntities) {
         maxExpressIdFromEntities = key;

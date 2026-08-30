@@ -31,6 +31,11 @@
  *   | registered, returns []  | no (geometry-less)     | `null` — leave the isolation    |
  *   |                          |                        | channel untouched              |
  *
+ * That last row is right for a ONE-SHOT isolate: the user (or an SDK/embed
+ * caller) asked to isolate something, nothing in it renders, and doing
+ * nothing beats blanking the viewport. It is WRONG for a channel whose job is
+ * to REPLACE the current view — see `resolveIsolationIdsForViewSync` below.
+ *
  * IMPORTANT: the `undefined`-resolver and `null`-resolved rows are still a
  * gamble, not a fix. Both union the raw ids into the isolation set on the
  * assumption that geometry will eventually stream in and the ids will start
@@ -57,4 +62,29 @@ export function resolveIsolationIds(
   if (resolved === null) return [...new Set(rawIds)];
   if (resolved.length === 0) return null;
   return [...new Set([...resolved, ...rawIds])];
+}
+
+/**
+ * Same expansion policy as `resolveIsolationIds`, for the channels that must
+ * ASSIGN on every run rather than perform a one-shot user action: the BCF
+ * viewpoint apply (`useBCF.ts`) and the anonymized-export 3D preview
+ * (`usePreviewIsolation.ts`). Both say "the view is now exactly this set" —
+ * a re-sync effect and a "put the viewer into this state" command.
+ *
+ * For those, "leave the isolation channel untouched" is not a safe no-op: it
+ * leaves the PREVIOUS isolation on screen and labels it as the new
+ * viewpoint's / the export's contents, while the selection channel next to it
+ * is updated to the real set, so highlight and isolation disagree. A blank
+ * view (what `main` produced) is wrong too, but it is honestly empty rather
+ * than someone else's content mislabelled — so these channels fall back to
+ * the raw ids on `[]` and always return a set to install.
+ *
+ * The expansion win is unchanged: a resolver that DOES expand a geometry-less
+ * assembly still contributes its parts, which is the #3338 fix.
+ */
+export function resolveIsolationIdsForViewSync(
+  resolver: ((ids: number[]) => number[] | null) | undefined,
+  rawIds: readonly number[],
+): number[] {
+  return resolveIsolationIds(resolver, rawIds) ?? [...new Set(rawIds)];
 }

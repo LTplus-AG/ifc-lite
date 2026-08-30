@@ -168,13 +168,20 @@ export const ALIAS_DESTRUCTURE_PATTERN =
 /** The resolvers that actually perform `IfcRelAggregates` expansion, or read
  *  from a resolver that does, called as real code (not merely named in prose).
  *  `resolveIsolationIds` (`apps/viewer/src/lib/isolation/resolveIsolationIds.ts`,
- *  #3389/#3426) is the shared policy wrapper every isolation channel now
- *  calls INSTEAD of `resolveHighlightIds` directly -- it takes the resolver
+ *  #3389/#3426) is the shared policy wrapper most isolation channels now
+ *  call INSTEAD of `resolveHighlightIds` directly -- it takes the resolver
  *  as its first argument rather than invoking it inline, so a channel that
  *  switched to it no longer contains the literal `resolveHighlightIds(`
- *  call this pattern used to require. */
+ *  call this pattern used to require. (`PropertiesPanel.tsx` and
+ *  `SearchModal.filter.tsx` still call the resolver inline on purpose, each
+ *  with its own reason in the source -- both spellings must keep passing.)
+ *  `resolveIsolationIdsForViewSync` is that wrapper's variant for channels
+ *  that REPLACE the view (a BCF viewpoint apply, the anonymized-export
+ *  preview re-sync): same expansion, but it always returns a set to install
+ *  instead of `null`, because leaving the channel untouched there shows the
+ *  PREVIOUS view's isolation as the new one's contents (#3389). */
 export const ROUTING_MARKERS =
-  /\b(resolveHighlightIds|expandToGeometryBearingIds|expandFilterRowsThroughAggregation|resolveIsolationIds)\b\s*\?{0,1}\.{0,1}\s*\(/;
+  /\b(resolveHighlightIds|expandToGeometryBearingIds|expandFilterRowsThroughAggregation|resolveIsolationIds|resolveIsolationIdsForViewSync)\b\s*\?{0,1}\.{0,1}\s*\(/;
 
 /**
  * Channels that MUST show a `ROUTING_MARKERS` call in the same file. Paths

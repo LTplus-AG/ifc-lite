@@ -17,6 +17,7 @@ mod consolidate;
 mod normals;
 mod plane_eps;
 mod topology_diagnostic;
+mod union;
 
 pub use normals::calculate_normals;
 pub(crate) use consolidate::tri_is_needle;
@@ -409,33 +410,6 @@ impl ClippingProcessor {
         Ok(result).inspect(|m| self.record_topology_tear(BoolOp::Difference, m))
     }
 
-    /// Union two meshes together using CSG boolean operations on the
-    /// pure-Rust exact kernel.
-    ///
-    /// Empty operands are handled silently — they have a unique correct answer.
-    pub fn union_mesh(&self, mesh_a: &Mesh, mesh_b: &Mesh) -> Result<Mesh> {
-        record_csg_op(1, mesh_a.triangle_count(), mesh_b.triangle_count());
-        if mesh_a.is_empty() {
-            return Ok(mesh_b.clone());
-        }
-        if mesh_b.is_empty() {
-            return Ok(mesh_a.clone());
-        }
-
-        // Pure-Rust exact kernel. On an empty/invalid kernel result
-        // fall back to a plain merge (overlap not removed) + record the failure,
-        // preserving the legacy never-Err contract.
-        let raw_u = crate::kernel::mesh_bridge::union(mesh_a, mesh_b);
-        let result = Self::consolidate_coplanar(raw_u);
-        if result.is_empty() || !self.validate_mesh(&result) {
-            self.record_failure(BoolOp::Union, BoolFailureReason::KernelOutputInvalid);
-            let mut merged = mesh_a.clone();
-            merged.merge(mesh_b);
-            return Ok(merged);
-        }
-        Ok(result).inspect(|m| self.record_topology_tear(BoolOp::Union, m))
-    }
-
     /// Intersect two meshes using CSG boolean operations on the pure-Rust
     /// exact kernel.
     ///
@@ -456,40 +430,6 @@ impl ClippingProcessor {
             return Ok(Mesh::new());
         }
         Ok(result).inspect(|m| self.record_topology_tear(BoolOp::Intersection, m))
-    }
-
-    /// Union multiple meshes together
-    ///
-    /// Convenience method that sequentially unions all non-empty meshes.
-    /// Skips empty meshes to avoid unnecessary CSG operations.
-    pub fn union_meshes(&self, meshes: &[Mesh]) -> Result<Mesh> {
-        if meshes.is_empty() {
-            return Ok(Mesh::new());
-        }
-
-        if meshes.len() == 1 {
-            return Ok(meshes[0].clone());
-        }
-
-        // Start with first non-empty mesh
-        let mut result = Mesh::new();
-        let mut found_first = false;
-
-        for mesh in meshes {
-            if mesh.is_empty() {
-                continue;
-            }
-
-            if !found_first {
-                result = mesh.clone();
-                found_first = true;
-                continue;
-            }
-
-            result = self.union_mesh(&result, mesh)?;
-        }
-
-        Ok(result)
     }
 
     /// Heuristic: does this look like a botched CSG difference?

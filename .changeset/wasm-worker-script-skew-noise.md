@@ -1,5 +1,5 @@
 ---
-'@ifc-lite/geometry': patch
+'@ifc-lite/geometry': minor
 '@ifc-lite/viewer': patch
 ---
 

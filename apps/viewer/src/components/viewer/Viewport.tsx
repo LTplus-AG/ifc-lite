@@ -1009,17 +1009,12 @@ export function Viewport({
       // per call unless the caller passes its own — callers don't share
       // cadence with each other, and the common case (ids that already render)
       // never touches aggregation.
-      // Returns `null`, not `[]`, when geometry has not streamed in yet —
-      // "cannot answer" and "answered: nothing renders" are different facts
-      // and callers (resolveIsolationIds in particular) need to tell them
-      // apart. See resolveIsolationIds's doc comment for the policy this
-      // distinction enables.
       const resolveRenderableIds = (
         ids: readonly number[],
         boundsOf: (id: number) => BoundingBox3D | null = createRenderableBoundsLookup(),
-      ): number[] | null => {
+      ): number[] => {
         const geom = geometryRef.current;
-        if (!geom) return null;
+        if (!geom) return [];
         const hasGeometry = (id: number) => boundsOf(id) !== null;
         return expandToGeometryBearingIds(ids, hasGeometry, {
           resolve: resolveEntityRef,
@@ -1135,7 +1130,7 @@ export function Viewport({
           // frameSelection moved the camera to an assembly that stayed
           // unhighlighted, because the renderer highlights `selectedEntityIds`
           // directly and that set still held the geometry-less assembly id.
-          const framedIds = resolveRenderableIds(ids, boundsOf) ?? [];
+          const framedIds = resolveRenderableIds(ids, boundsOf);
           for (const id of framedIds) {
             const b = boundsOf(id);
             if (!b) continue;
@@ -1166,13 +1161,9 @@ export function Viewport({
         // but the search modal does: it sets the assembly's own id and calls
         // frameSelection, and the renderer highlights `selectedEntityIds`
         // directly (it doesn't itself expand assemblies), so the camera moved
-        // to the right place while nothing lit up. Returns `[]` — not the
-        // input — for an id with neither geometry nor renderable parts, so a
-        // caller can fall back to its own default; returns `null` when
-        // geometry has not streamed in yet, so a caller can tell "answered:
-        // nothing renders" apart from "cannot answer yet" (isolation callers
-        // route this through resolveIsolationIds instead of handling it
-        // inline).
+        // to the right place while nothing lit up. Returns `[]`, not the
+        // input, for an id with neither geometry nor renderable parts, so a
+        // caller can fall back to its own default.
         resolveHighlightIds: (ids) => resolveRenderableIds(ids),
         frameEntities: (ids: number[]) => {
           // Frame an explicit id set. Ids are federated GLOBAL ids — the same

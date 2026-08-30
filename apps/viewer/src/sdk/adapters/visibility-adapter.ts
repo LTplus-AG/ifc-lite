@@ -99,19 +99,11 @@ export function createVisibilityAdapter(store: StoreApi): VisibilityBackendMetho
         // geometry-bearing `IfcRelAggregates` parts, or the viewport isolates
         // an id with nothing to render and shows an empty scene.
         //
-        // #3426 correction: falling back to the unresolved ids when the
-        // resolver runs and returns `[]` (the old `resolved.length > 0 ? ...
-        // : globalIds` above) does NOT fix the geometry-less case — it
-        // isolates to a set with no mesh in it, which blanks the viewport
-        // exactly like isolating `[]` does (`visibilitySlice.ts`'s isolation
-        // predicate hides everything not in the set, and an id nothing
-        // renders is functionally not in the set either). `resolveIsolationIds`
-        // tells that case apart from "resolver hasn't answered yet" (still
-        // streaming, or not registered) — see its doc comment for which
-        // table row each branch handles — and returns `null` there so this
-        // channel leaves the isolation alone instead of blanking it.
-        const isolateIds = resolveIsolationIds(state.cameraCallbacks.resolveHighlightIds, globalIds);
-        if (isolateIds !== null) state.isolateEntities?.(isolateIds);
+        // #3382's union policy, now via the shared `resolveIsolationIds` so
+        // `check-isolate-expansion-routing.mjs` can require every channel to
+        // use the same one: the resolved ids are unioned with the raw ids, and
+        // an empty resolve keeps the raw ids rather than isolating nothing.
+        state.isolateEntities?.(resolveIsolationIds(state.cameraCallbacks.resolveHighlightIds, globalIds));
       }
       return undefined;
     },

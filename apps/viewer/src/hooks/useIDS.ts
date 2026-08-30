@@ -661,38 +661,32 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
    * exactly what was installed so the release can release only that.
    *
    * Mirrors `useClash.installClashIsolation`, including the read-BACK: the
-   * record holds the SET THE CHANNEL ENDED UP WITH, not the argument. Under
-   * value equality the two are interchangeable today (the setter clones its
-   * argument, verified an equivalent mutant survives on the argument form),
-   * but the read-back is what stops that from being depended on: a setter
-   * that ever normalised what it stores would silently make the argument a
-   * claim on something that is not on screen.
+   * record holds the SET THE CHANNEL ENDED UP WITH, not the argument.
    *
-   * Returns whether the channel was replaced, mirroring `installSetIsolation`
-   * (a `null` from `resolveIsolationIds`, #3389, leaves both untouched) —
-   * callers must gate a follow-on mode change on it.
+   * Under value equality those two are interchangeable today — the setter
+   * clones the argument, so recording the argument instead is an equivalent
+   * mutant (verified: it survives). The read-back is what stops that from
+   * being a property this code depends on: `null` for "the channel refused the
+   * install" is expressible, and a setter that ever normalised what it stores
+   * (dropping unknown ids, say) would silently make the argument a claim on
+   * something that is not on screen.
    */
-  const installFocusIsolation = useCallback((ids: Set<number>): boolean => {
+  const installFocusIsolation = useCallback((ids: Set<number>): void => {
     const state = useViewerStore.getState();
-    const rawIds = [...ids];
-    // #3338/#3389: row element may lack geometry; null means "answered: nothing renders".
-    const isolateIds = resolveIsolationIds(state.cameraCallbacks.resolveHighlightIds, rawIds);
-    if (isolateIds === null) return false;
-    state.setIsolatedEntities(new Set(isolateIds));
+    // #3338: an IDS applicability filter matches any class, so the focused
+    // row can be a geometry-less assembly whose bare id draws nothing.
+    state.setIsolatedEntities(new Set(resolveIsolationIds(state.cameraCallbacks.resolveHighlightIds, [...ids])));
     const installed = useViewerStore.getState().isolatedEntities;
     state.setIdsFocusVisibilityOwned(installed ? { channel: 'isolate', ids: installed } : null);
-    return true;
   }, []);
 
-  /** Install the row focus's ghosting (X-Ray context), same install-record
-   *  contract as `installFocusIsolation`; always installs and returns `true`
-   *  (no "nothing renders" gap), kept boolean to stay uniform with it. */
-  const installFocusGhost = useCallback((ids: Set<number>): boolean => {
+  /** Install the row focus's ghosting (X-Ray context) into the shared channel,
+   *  with the same install-record contract as `installFocusIsolation`. */
+  const installFocusGhost = useCallback((ids: Set<number>): void => {
     const state = useViewerStore.getState();
     state.setGhostExceptEntities(ids);
     const installed = useViewerStore.getState().ghostExceptEntities;
     state.setIdsFocusVisibilityOwned(installed ? { channel: 'ghost', ids: installed } : null);
-    return true;
   }, []);
 
   /**
@@ -737,20 +731,18 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
    * - `ghost`:   keep it solid and fade the rest to translucent context.
    *
    * A row focus that installs into a channel supersedes any set-level
-   * isolation showing there (both slice setters replace it wholesale), so
-   * `idsIsolateMode` is cleared with it — but only when install actually
-   * happened: a `false` return (#3389, nothing renders) leaves the channel
-   * and prior isolation untouched, so clearing the mode would desync the UI.
+   * isolation that was showing (both slice setters replace the channel
+   * wholesale), so `idsIsolateMode` is cleared with it — otherwise the isolate
+   * buttons keep a pressed state for an isolation no longer on screen.
    */
   const applyFocusMode = useCallback((globalId: number, mode: IDSFocusMode): void => {
     if (mode === 'highlight') {
       releaseFocusVisibility();
       return;
     }
-    const installed = mode === 'isolate'
-      ? installFocusIsolation(new Set([globalId]))
-      : installFocusGhost(new Set([globalId]));
-    if (installed) setIdsIsolateMode(null);
+    if (mode === 'isolate') installFocusIsolation(new Set([globalId]));
+    else installFocusGhost(new Set([globalId]));
+    setIdsIsolateMode(null);
   }, [releaseFocusVisibility, installFocusIsolation, installFocusGhost, setIdsIsolateMode]);
 
   const focusEntity = useCallback((
@@ -881,44 +873,32 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   /**
    * Install a SET-level isolation (the isolate-failed / passed / involved
    * buttons). Unowned, exactly as before — but it replaces the channel
-   * wholesale, so any ROW-focus claim on it is now stale and must be dropped:
-   * a record that outlives its presentation starts matching again the moment
-   * another owner installs equal content, and the next release then destroys
-   * THAT owner's presentation (#2654 fourth review).
-   *
-   * Returns whether the channel was actually replaced. `resolveIsolationIds`
-   * returning `null` (#3389: nothing renders) leaves the channel AND the
-   * ownership record untouched — it still names whatever is really there.
-   * Callers must gate any follow-on mode/colour change on the return value,
-   * or they show a pressed isolate button and colours for a skipped install.
+   * wholesale, so any ROW-focus claim on it is stale and must be dropped: a
+   * record that outlives its presentation starts matching again once another
+   * owner installs equal content, and the next release then destroys THAT
+   * owner's presentation (#2654 fourth review).
    */
-  const installSetIsolation = useCallback((ids: Set<number> | null): boolean => {
-    if (ids === null) {
-      setIsolatedEntities(null); // #3338: null only clears
-    } else {
-      const rawIds = [...ids];
-      // resolveIsolationIds tells "hasn't answered yet" (union, self-heals)
-      // apart from "answered: nothing renders" (null -- leave alone, #3389).
-      const isolateIds = resolveIsolationIds(useViewerStore.getState().cameraCallbacks.resolveHighlightIds, rawIds);
-      if (isolateIds === null) return false;
-      setIsolatedEntities(new Set(isolateIds));
-    }
+  const installSetIsolation = useCallback((ids: Set<number> | null) => {
+    // #3338: same for the failed/passed/involved sets; `null` only clears.
+    const resolver = useViewerStore.getState().cameraCallbacks.resolveHighlightIds;
+    setIsolatedEntities(ids === null ? null : new Set(resolveIsolationIds(resolver, [...ids])));
     useViewerStore.getState().setIdsFocusVisibilityOwned(null);
-    return true;
   }, [setIsolatedEntities]);
 
   const isolateFailed = useCallback(() => {
     if (isolationScope === 'spec') {
       if (!activeSpecificationId) return;
       const ids = refsToGlobalIds(getFailedEntitiesForSpec(activeSpecificationId));
-      if (ids.size > 0 && installSetIsolation(ids)) {
+      if (ids.size > 0) {
+        installSetIsolation(ids);
         setSpecColors(activeSpecificationId);
         setIdsIsolateMode('failed');
       }
       return;
     }
     const failedIds = keySetToGlobalIds(idsFailedEntityIds);
-    if (failedIds.size > 0 && installSetIsolation(failedIds)) {
+    if (failedIds.size > 0) {
+      installSetIsolation(failedIds);
       setIdsIsolateMode('failed');
     }
   }, [
@@ -937,14 +917,16 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     if (isolationScope === 'spec') {
       if (!activeSpecificationId) return;
       const ids = refsToGlobalIds(getPassedEntitiesForSpec(activeSpecificationId));
-      if (ids.size > 0 && installSetIsolation(ids)) {
+      if (ids.size > 0) {
+        installSetIsolation(ids);
         setSpecColors(activeSpecificationId);
         setIdsIsolateMode('passed');
       }
       return;
     }
     const passedIds = keySetToGlobalIds(idsPassedEntityIds);
-    if (passedIds.size > 0 && installSetIsolation(passedIds)) {
+    if (passedIds.size > 0) {
+      installSetIsolation(passedIds);
       setIdsIsolateMode('passed');
     }
   }, [
@@ -966,13 +948,15 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
         ...getFailedEntitiesForSpec(targetSpec),
         ...getPassedEntitiesForSpec(targetSpec),
       ]);
-      if (ids.size > 0 && installSetIsolation(ids)) {
+      if (ids.size > 0) {
+        installSetIsolation(ids);
         setSpecColors(targetSpec);
         setIdsIsolateMode('involved');
-      } else if (ids.size === 0) {
-        // Not_applicable: nothing to isolate, so drop any stale
-        // isolation/overlay left by a previously selected spec rather than
-        // leaving it on screen while the panel points at this (empty) spec.
+      } else {
+        // The spec has no applicable entities (not_applicable). There's
+        // nothing to isolate, so drop any stale isolation/overlay left by a
+        // previously selected spec rather than leaving it on screen while
+        // the panel points at this (empty) spec.
         installSetIsolation(null);
         restoreReportColors();
         setIdsIsolateMode(null);
@@ -983,7 +967,8 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     // green/red regardless of the user's display toggles.
     const ids = keySetToGlobalIds(idsFailedEntityIds);
     for (const globalId of keySetToGlobalIds(idsPassedEntityIds)) ids.add(globalId);
-    if (ids.size > 0 && installSetIsolation(ids)) {
+    if (ids.size > 0) {
+      installSetIsolation(ids);
       setPendingColorUpdates(buildColors(undefined, true));
       setIdsIsolateMode('involved');
     }

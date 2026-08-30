@@ -311,11 +311,12 @@ describe('EmbedViewer: ?isolate=', () => {
     expect([...isolated!]).toEqual([1005]);
   });
 
-  it('unions the raw ids when the resolver returns null -- geometry still streaming (#3426)', async () => {
-    // `null` is "cannot answer yet" (Viewport's geometryRef unset), not
-    // "answered: nothing renders" -- the raw-id union is correct here since
-    // the isolation self-heals once geometry lands.
-    useViewerStore.setState({ cameraCallbacks: { resolveHighlightIds: () => null } });
+  it('keeps the raw ids when the resolver resolves to [] (#3389)', async () => {
+    // `[]` is also what a type-hidden id (spaces ship OFF) and a mesh that has
+    // not streamed in yet answer, so skipping the isolate would make
+    // `?isolate=<a space>` a silent no-op. The raw ids self-heal: they start
+    // matching the renderer's whitelist as soon as the mesh is there.
+    useViewerStore.setState({ cameraCallbacks: { resolveHighlightIds: () => [] } });
     setSearch('?isolate=1005');
     renderEmbedViewer();
     await settle();
@@ -323,21 +324,6 @@ describe('EmbedViewer: ?isolate=', () => {
     const isolated = useViewerStore.getState().isolatedEntities;
     expect(isolated).not.toBeNull();
     expect([...isolated!]).toEqual([1005]);
-  });
-
-  it('leaves the isolation channel untouched when the resolver genuinely resolves to [] (#3426 correction)', async () => {
-    // A resolver that has already resolved -- geometry is in -- and found
-    // nothing renderable must NOT fall back to the raw ids: that id has no
-    // mesh either, so isolating it blanks the viewport exactly like
-    // isolating `[]` does. #3338's union "fix" converted one empty viewport
-    // into a different one for precisely this case.
-    useViewerStore.setState({ cameraCallbacks: { resolveHighlightIds: () => [] } });
-    setSearch('?isolate=1005');
-    renderEmbedViewer();
-    await settle();
-
-    const isolated = useViewerStore.getState().isolatedEntities;
-    expect(isolated).toBeNull();
   });
 });
 

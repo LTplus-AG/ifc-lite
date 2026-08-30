@@ -20,7 +20,6 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { useViewerStore, toGlobalIdForRef } from '@/store';
-import { resolveIsolationIdsForViewSync } from '@/lib/isolation/resolveIsolationIds';
 
 interface PriorView {
   isolated: Set<number> | null;
@@ -83,24 +82,9 @@ export function usePreviewIsolation({ enabled, targetModelId, includedIds }: Use
     for (const id of includedIds) {
       globalIds.add(toGlobalIdForRef(store.models, { modelId: targetModelId, expressId: id }));
     }
-    // #3338: `includedIds` is not restricted to renderable leaf types -- an
-    // included geometry-less IfcElementAssembly would otherwise blank the
-    // preview for an id that genuinely IS part of the export. Route through
-    // the resolver before isolating, same as every other user-facing isolate
-    // channel; the SELECTION below stays on the raw set (what is actually
-    // included), matching the #1133 convention other channels use.
-    const rawIds = [...globalIds];
-    // The ...ForViewSync variant, because this is a RE-SYNC effect (#3389):
-    // it must always assign the isolation to the currently-included set.
-    // Leaving the channel untouched when the resolver answers "nothing
-    // renders" would keep the PRIOR isolation on screen and present it as the
-    // preview of this export, while the selection below moves to the real
-    // included set.
-    const isolateIds = resolveIsolationIdsForViewSync(store.cameraCallbacks.resolveHighlightIds, rawIds);
-    store.setIsolatedEntities(new Set(isolateIds));
-    // Highlight the same (raw) set. Seeds are latched by
-    // `useAnonymizedExportSet` on open, so rewriting the live selection here
-    // does not re-seed.
+    store.setIsolatedEntities(globalIds);
+    // Highlight the same set. Seeds are latched by `useAnonymizedExportSet`
+    // on open, so rewriting the live selection here does not re-seed.
     store.setSelectedEntityIds([...globalIds]);
   }, [enabled, targetModelId, includedIds]);
 }

@@ -3,10 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Inbound postMessage command handler.
- *
- * Receives commands from the parent SDK and dispatches them to the store
- * and renderer. Also handles the READY → INIT → INIT_ACK handshake.
+ * Inbound postMessage command handler: receives commands from the parent SDK,
+ * dispatches them to the store and renderer, and handles the
+ * READY → INIT → INIT_ACK handshake.
  */
 
 import {
@@ -345,10 +344,7 @@ async function handleCommand(type: InboundCommandType, data: unknown, requestId?
 
     case 'ISOLATE': {
       const payload = data as InboundPayloads['ISOLATE']; // #3338: expand assemblies, matching LensPanel/PropertiesPanel/SearchModal/SDK.
-      // resolveIsolationIds tells "hasn't answered yet" (union, self-heals) apart from
-      // "answered: nothing renders" (null -- leave isolation alone, #3389).
-      const isolateIds = resolveIsolationIds(state.cameraCallbacks.resolveHighlightIds, payload.ids);
-      if (isolateIds !== null) state.isolateEntities(isolateIds);
+      state.isolateEntities(resolveIsolationIds(state.cameraCallbacks.resolveHighlightIds, payload.ids));
       if (requestId) emitToParent(createResponse(requestId));
       return;
     }

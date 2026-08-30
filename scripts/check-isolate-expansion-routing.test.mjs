@@ -150,26 +150,21 @@ describe('check-isolate-expansion-routing: classifyFile', () => {
     assert.equal(ROUTING_MARKERS.test('cameraCallbacks.resolveHighlightIds?.(ids)'), true);
   });
 
-  it('ROUTING_MARKERS recognises resolveIsolationIds( (#3389/#3426: the shared null-guard wrapper)', () => {
+  it('ROUTING_MARKERS recognises resolveIsolationIds( (#3338: the shared expansion wrapper)', () => {
     assert.equal(
       ROUTING_MARKERS.test('const isolateIds = resolveIsolationIds(state.cameraCallbacks.resolveHighlightIds, ids);'),
       true,
       'a channel that switched to the shared wrapper no longer contains a literal resolveHighlightIds( call',
     );
     assert.equal(
-      ROUTING_MARKERS.test('setIsolatedEntities(new Set(resolveIsolationIdsForViewSync(resolver, rawIds)));'),
+      ROUTING_MARKERS.test('setIsolatedEntities(new Set(resolveIsolationIds(resolver, rawIds)));'),
       true,
-      'the view-REPLACE variant (useBCF, usePreviewIsolation -- #3389) routes just as much as the base wrapper',
+      'the assigning channels (useBCF, usePreviewIsolation) route through the same wrapper',
     );
     assert.equal(
-      ROUTING_MARKERS.test('// resolveIsolationIds handles this -- see #3389'),
+      ROUTING_MARKERS.test('// resolveIsolationIds handles this -- see #3338'),
       false,
       'naming the wrapper in prose without calling it must not satisfy the gate',
-    );
-    assert.equal(
-      ROUTING_MARKERS.test('// resolveIsolationIdsForViewSync handles this -- see #3389'),
-      false,
-      'the variant named in prose without being called must not satisfy the gate either',
     );
   });
 
@@ -177,7 +172,6 @@ describe('check-isolate-expansion-routing: classifyFile', () => {
     const relPath = [...REQUIRES_ROUTING_MARKER][0];
     const compliant = `
       const isolationIds = resolveIsolationIds(cameraCallbacks.resolveHighlightIds, matchingIds);
-      if (isolationIds === null) return;
       isolateEntities(isolationIds);
     `;
     const verdict = classifyFile(relPath, compliant);
@@ -373,18 +367,21 @@ describe('check-isolate-expansion-routing: seventh channel -- setIsolatedEntitie
     assert.equal(verdict.ok, true);
   });
 
-  it('GREEN: useBCF.ts, useIDS.ts and usePreviewIsolation.ts are allowlisted as REQUIRES_ROUTING_MARKER', () => {
+  it('GREEN: useBCF.ts and useIDS.ts are allowlisted as REQUIRES_ROUTING_MARKER', () => {
     for (const relPath of [
       'apps/viewer/src/hooks/useBCF.ts',
       'apps/viewer/src/hooks/useIDS.ts',
-      'apps/viewer/src/components/viewer/anonymized-export/usePreviewIsolation.ts',
     ]) {
       assert.equal(REQUIRES_ROUTING_MARKER.has(relPath), true, relPath);
     }
   });
 
-  it('GREEN: useClash.ts and tours/ids.ts are allowlisted as NO_MARKER_REQUIRED with a real reason', () => {
-    for (const relPath of ['apps/viewer/src/hooks/useClash.ts', 'apps/viewer/src/lib/tours/tours/ids.ts']) {
+  it('GREEN: useClash.ts, tours/ids.ts and usePreviewIsolation.ts are allowlisted as NO_MARKER_REQUIRED with a real reason', () => {
+    for (const relPath of [
+      'apps/viewer/src/hooks/useClash.ts',
+      'apps/viewer/src/lib/tours/tours/ids.ts',
+      'apps/viewer/src/components/viewer/anonymized-export/usePreviewIsolation.ts',
+    ]) {
       assert.equal(NO_MARKER_REQUIRED.has(relPath), true, relPath);
       assert.equal(isSufficientAllowlistReason(NO_MARKER_REQUIRED.get(relPath)), true, relPath);
     }

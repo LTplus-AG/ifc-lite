@@ -15,16 +15,22 @@
  * Only a job on an independent trigger, asking the API which open PRs are
  * conflicted, can see this. See .github/workflows/dirty-pr-scan.yml.
  *
+ * WHAT IT REPORTS: the two causes of silent `pull_request` CI, separately,
+ * because they take opposite remedies -- a base `test.yml` does not run on
+ * (#3429's first case: retarget the PR; a merge cannot help) and an unresolved
+ * merge conflict (#3443, #3429's second case: resolve it). See
+ * `classifyPr` in scripts/lib/dirty-pr-scan.mjs.
+ *
  * WHAT THIS CANNOT DETECT: a single-PR problem (this only runs against the
- * live list of open PRs, on a cron cadence -- it has no way to answer "is PR
- * #N clean right now" between runs; use `--pr` for that), a PR that has gone
- * quietly stale (GitHub's own `UNKNOWN` mergeable state is reported but not
- * failed on, since it self-resolves), and a PR whose lanes are ABSENT for a
- * DIFFERENT reason (a real failure, a path filter, #3429's base-branch filter
- * on a stacked PR) -- those aren't paired with `mergeable: CONFLICTING` and so
- * are out of scope for this specific gate on purpose. It also cannot detect
- * conflicts closed and reopened between polls; the cron interval IS the
- * detection latency.
+ * live list of open PRs, on a cron cadence, and has no way to answer "is PR #N
+ * clean right now" between runs), a PR that has gone quietly stale (GitHub's
+ * own `UNKNOWN` mergeable state is reported but not failed on, since it
+ * self-resolves), and a lane ABSENT for a reason this gate cannot name -- a
+ * real failure, a path filter, a lane still queued on an otherwise-clean PR --
+ * which is deliberately out of scope, since naming a cause it has not
+ * established is how a gate starts handing out remedies that do not work. It
+ * also cannot detect conflicts closed and reopened between polls; the cron
+ * interval IS the detection latency.
  */
 
 import { readFileSync, existsSync, appendFileSync } from 'node:fs';
@@ -32,7 +38,7 @@ import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { DirtyPrScanError, scanPrs, report } from './lib/dirty-pr-scan.mjs';
+import { DirtyPrScanError, pullRequestBaseBranches, scanPrs, report } from './lib/dirty-pr-scan.mjs';
 import { expandJobNames } from './lib/pr-review-signal.mjs';
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
@@ -113,7 +119,9 @@ function fetchOpenPrs({ repo, limit }) {
       '--state',
       'open',
       '--json',
-      'number,title,url,mergeable,mergeStateStatus,isDraft,statusCheckRollup',
+      // `baseRefName` is load-bearing, not decoration: without it `classifyPr`
+      // cannot tell a stacked PR from a conflicted one and fails closed.
+      'number,title,url,baseRefName,mergeable,mergeStateStatus,isDraft,statusCheckRollup',
       '--limit',
       String(limit),
       '--repo',
@@ -132,7 +140,9 @@ async function main() {
       `Workflow \`${args.workflow}\` does not exist, so the required lane set cannot be derived.`,
     );
   }
-  const required = expandJobNames(readFileSync(args.workflow, 'utf8'), { exclude: EXCLUDE_JOB_KEYS });
+  const workflowText = readFileSync(args.workflow, 'utf8');
+  const required = expandJobNames(workflowText, { exclude: EXCLUDE_JOB_KEYS });
+  const baseBranches = pullRequestBaseBranches(workflowText);
 
   let prs;
   if (args.stateFile) {
@@ -149,8 +159,8 @@ async function main() {
     prs = fetchOpenPrs({ repo: args.repo, limit: args.limit });
   }
 
-  const results = scanPrs(prs, required);
-  const { ok, lines } = report(results, required);
+  const results = scanPrs(prs, required, baseBranches);
+  const { ok, lines } = report(results, required, baseBranches);
   for (const l of lines) console.log(l);
 
   if (args.summaryFile) {

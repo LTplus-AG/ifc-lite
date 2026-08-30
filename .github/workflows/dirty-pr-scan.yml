@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-name: Dirty PR CI visibility
+name: Silent PR CI visibility
 
 # DELIBERATELY NOT `pull_request` (issue #3443).
 #
@@ -21,6 +21,12 @@ name: Dirty PR CI visibility
 # changing how `pull_request` is gated. It makes the silence VISIBLE: a red
 # scheduled run in the Actions tab, on a fixed cadence, independent of any one
 # PR's state.
+#
+# It reports the OTHER cause of the same silence too, separately: `test.yml`
+# fires `pull_request` only for `branches: [main]`, so a PR stacked on a
+# feature branch has no lanes either, and a merge cannot give it any (#3429).
+# The two causes take opposite remedies -- retarget vs resolve -- so the scan
+# names which one fired rather than issuing one instruction for both.
 on:
   schedule:
     # Every 30 minutes. Cheap (two `gh` reads, no checkout of anything to
@@ -39,7 +45,7 @@ env:
 
 jobs:
   scan:
-    name: Scan open PRs for conflicted, CI-silent heads
+    name: Scan open PRs for CI-silent heads
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

@@ -49,6 +49,7 @@ test('RED: a #3411-shaped conflicted PR with no required lanes present fails and
       number: 3411,
       title: 'fix(core): order-independence',
       url: 'https://github.com/LTplus-AG/ifc-lite/pull/3411',
+      baseRefName: 'main',
       mergeable: 'CONFLICTING',
       mergeStateStatus: 'DIRTY',
       isDraft: false,
@@ -58,6 +59,7 @@ test('RED: a #3411-shaped conflicted PR with no required lanes present fails and
   assert.equal(code, 1, output);
   assert.match(output, /#3411/);
   assert.match(output, /pushing a new commit will not fix this/i);
+  assert.doesNotMatch(output, /retarget the PR/i);
   assert.ok(required.includes('Node tests'));
   assert.match(output, /Node tests/);
 });
@@ -67,6 +69,7 @@ test('GREEN: a clean PR with every required lane present passes', async () => {
   const { code, output } = run([
     {
       number: 9001,
+      baseRefName: 'main',
       mergeable: 'MERGEABLE',
       mergeStateStatus: 'BLOCKED',
       isDraft: false,
@@ -82,6 +85,7 @@ test('GREEN: a conflicted PR whose lanes already ran (the #3417 shape) passes', 
   const { code, output } = run([
     {
       number: 3417,
+      baseRefName: 'main',
       mergeable: 'CONFLICTING',
       mergeStateStatus: 'DIRTY',
       isDraft: false,
@@ -107,4 +111,54 @@ test('requires --repo or --state-file', () => {
   const r = spawnSync(process.execPath, [GATE], { encoding: 'utf8', env: { ...process.env, GITHUB_REPOSITORY: '' } });
   assert.equal(r.status, 1);
   assert.match(`${r.stdout}${r.stderr}`, /NO_REPO/);
+});
+
+test('RED: a stacked PR is named with the retarget remedy, never the resolve-the-conflict one', async () => {
+  // The failing input from the review: #3411's real base. Before this gate read
+  // `baseRefName` it printed "only resolving the conflict ... restores CI",
+  // which cannot restore a lane while `test.yml` filters on `branches: [main]`.
+  await requiredLaneNames();
+  const { code, output } = run([
+    {
+      number: 3411,
+      title: 'fix(core): order-independence',
+      url: 'https://github.com/LTplus-AG/ifc-lite/pull/3411',
+      baseRefName: 'fix-3353-snap-f32-invisible-floor',
+      mergeable: 'CONFLICTING',
+      mergeStateStatus: 'DIRTY',
+      isDraft: false,
+      statusCheckRollup: [lane('Vercel Agent Review')],
+    },
+  ]);
+  assert.equal(code, 1, output);
+  assert.match(output, /#3411/);
+  assert.match(output, /retarget the PR/i, output);
+  assert.doesNotMatch(output, /only resolving the conflict/i, output);
+});
+
+test('RED: a stacked PR that is fully mergeable is still reported', async () => {
+  // #3405's live shape: MERGEABLE/CLEAN, 0 of 15 lanes. Nothing about a merge
+  // conflict is involved, so a conflict-only gate is blind to it.
+  await requiredLaneNames();
+  const { code, output } = run([
+    {
+      number: 3405,
+      baseRefName: 'fix-3338-isolate-expansion-gate',
+      mergeable: 'MERGEABLE',
+      mergeStateStatus: 'CLEAN',
+      isDraft: false,
+      statusCheckRollup: [lane('Vercel Agent Review')],
+    },
+  ]);
+  assert.equal(code, 1, output);
+  assert.match(output, /#3405/);
+  assert.match(output, /retarget the PR/i, output);
+});
+
+test('fails closed rather than guessing a remedy when `baseRefName` is absent', () => {
+  const { code, output } = run([
+    { number: 3411, mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY', statusCheckRollup: [] },
+  ]);
+  assert.equal(code, 1, output);
+  assert.match(output, /NO_BASE_REF/);
 });

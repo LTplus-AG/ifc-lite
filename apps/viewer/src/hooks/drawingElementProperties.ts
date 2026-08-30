@@ -5,8 +5,9 @@
 /**
  * `ElementData.properties` for `useDrawingExport.ts`'s SVG generators, feeding
  * the graphic-override engine's `property`/`propertySet` criteria — e.g. the
- * built-in Fire Safety preset's `FireRating` rules, and Structural's
- * `LoadBearing` rule (`packages/drawing-2d/src/graphic-overrides/presets.ts`).
+ * built-in Fire Safety preset's `FireRating exists` fire-door rule, and
+ * Structural's `LoadBearing` rule
+ * (`packages/drawing-2d/src/graphic-overrides/presets.ts`).
  * Every `ElementData` construction site used to omit `properties` entirely,
  * so a property criterion could never match: the same gap #3520 found (and
  * removed) for `ElementData.materials`/`.layers`, except here the data

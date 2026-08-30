@@ -3,22 +3,26 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The built-in "Fire Safety" preset (`packages/drawing-2d/src/graphic-overrides/presets.ts`)
- * colors walls by their `FireRating` property (`propertyCriterion('FireRating', ...)`),
- * and is directly selectable in `DrawingSettingsPanel.tsx`'s "Style Presets" list
- * (`graphicOverridePresets.map(...)`, backed by `BUILT_IN_PRESETS`). #3520 removed the
- * sibling `material`/`layer` criteria because no construction site ever populated
- * `ElementData.materials`/`.layers`; it explicitly scoped `properties` out.
- *
  * Every `ElementData` construction site in `useDrawingExport.ts` built only
- * `{ expressId, ifcType }`, same as the sites #3520 fixed — so a `property`
- * criterion could never match, and the Fire Safety preset silently painted every
- * wall with its base (non-matching) style, no matter how it was fire-rated. This
- * pins the fix: `generateExportSVG`'s two render loops now resolve `properties`
- * from the real parsed model (`ifcDataStore`) before calling `applyOverrides`.
+ * `{ expressId, ifcType }`, so the rule engine's `property`/`propertySet`
+ * criteria could never match — the same gap #3520 found (and removed) for the
+ * sibling `ElementData.materials`/`.layers`. This pins the wiring fix.
  *
- * Control: a plain `ifcType` criterion (`base` rule below) must match regardless
- * of the fix, isolating the assertion to the property path specifically.
+ * The rules under test are the SHIPPED `FIRE_SAFETY_PRESET` /
+ * `STRUCTURAL_PRESET` objects, not hand-written look-alikes, so the test cannot
+ * quietly disagree with what a user actually selects in the drawing settings
+ * panel's Style Presets list.
+ *
+ * The fixture writes each property with its IFC4-declared type:
+ * `Pset_WallCommon.FireRating` and `Pset_DoorCommon.FireRating` are `IfcLabel`
+ * (`IFCLABEL('REI 120')`, `IFCLABEL('EI30')` — the encoding this repo's own
+ * fixtures use: `apps/server/src/services/data_model/tests.rs:161`,
+ * `apps/viewer/src/lib/lists/server-type-parity.test.ts:54`,
+ * `packages/mcp/src/backend-query-duplicate-pset-filter.test.ts:52`), and
+ * `Pset_WallCommon.LoadBearing` is `IfcBoolean`. Encoding `FireRating` as
+ * `IFCINTEGER` instead would make the preset's `greaterOrEqual` wall rules pass
+ * here while staying dead on every conformant file — a fixture that agrees with
+ * the fix only because it disagrees with the schema.
  */
 
 import '@/test/setup-dom.js';
@@ -30,15 +34,23 @@ import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import {
   GraphicOverrideEngine,
   ifcTypeCriterion,
-  propertyCriterion,
-  andCriteria,
+  FIRE_SAFETY_PRESET,
+  STRUCTURAL_PRESET,
   type Drawing2D,
   type GraphicOverrideRule,
 } from '@ifc-lite/drawing-2d';
 import { useViewerStore } from '@/store';
 import useDrawingExport from './useDrawingExport.js';
 
-// ─── Fixture: one fire-rated wall, parsed the way production data arrives ──
+// ─── Fixture: one fire-rated load-bearing wall + one fire door ─────────────
+
+const WALL_ID = 1;
+const DOOR_ID = 6;
+
+/** A syntactically valid 22-character IFC GlobalId. */
+function guid(letter: string): string {
+  return `0${letter.repeat(21)}`;
+}
 
 function ifc4(body: string): string {
   return [
@@ -56,27 +68,34 @@ function ifc4(body: string): string {
   ].join('\n');
 }
 
-/** IfcWall #1, FireRating (IfcInteger, 120 = 2-hour rating) via Pset_WallCommon. */
-const WALL_BODY = [
-  "#1=IFCWALL('0aaaaaaaaaaaaaaaaaaaaa',$,'Wall A',$,$,$,$,$,.STANDARD.);",
-  "#2=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCINTEGER(120),$);",
-  "#3=IFCPROPERTYSET('0bbbbbbbbbbbbbbbbbbbbb',$,'Pset_WallCommon',$,(#2));",
-  "#4=IFCRELDEFINESBYPROPERTIES('0ccccccccccccccccccccc',$,$,$,(#1),#3);",
+const BODY = [
+  `#${WALL_ID}=IFCWALL('${guid('a')}',$,'Wall A',$,$,$,$,$,.STANDARD.);`,
+  `#2=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('REI 120'),$);`,
+  `#3=IFCPROPERTYSINGLEVALUE('LoadBearing',$,IFCBOOLEAN(.T.),$);`,
+  `#4=IFCPROPERTYSET('${guid('b')}',$,'Pset_WallCommon',$,(#2,#3));`,
+  `#5=IFCRELDEFINESBYPROPERTIES('${guid('c')}',$,$,$,(#${WALL_ID}),#4);`,
+  `#${DOOR_ID}=IFCDOOR('${guid('d')}',$,'Door A',$,$,$,$,$,$,$,$,$,$);`,
+  `#7=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('EI30'),$);`,
+  `#8=IFCPROPERTYSET('${guid('e')}',$,'Pset_DoorCommon',$,(#7));`,
+  `#9=IFCRELDEFINESBYPROPERTIES('${guid('f')}',$,$,$,(#${DOOR_ID}),#8);`,
 ].join('\n');
 
-async function parseWall(): Promise<IfcDataStore> {
-  const bytes = new TextEncoder().encode(ifc4(WALL_BODY));
+async function parseFixture(): Promise<IfcDataStore> {
+  const bytes = new TextEncoder().encode(ifc4(BODY));
   // disableWorkerScan keeps the scan in-process (no Worker under node:test).
   return new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
 }
 
-function buildDrawing(): Drawing2D {
-  const outer = [
-    { x: 0, y: 0 },
-    { x: 4, y: 0 },
-    { x: 4, y: 1 },
-    { x: 0, y: 1 },
+function box(x0: number, x1: number): { x: number; y: number }[] {
+  return [
+    { x: x0, y: 0 },
+    { x: x1, y: 0 },
+    { x: x1, y: 1 },
+    { x: x0, y: 1 },
   ];
+}
+
+function buildDrawing(): Drawing2D {
   return {
     config: {
       plane: { axis: 'z', position: 0, flipped: false },
@@ -88,63 +107,71 @@ function buildDrawing(): Drawing2D {
     lines: [],
     cutPolygons: [
       {
-        polygon: { outer, holes: [] },
-        entityId: 1,
+        polygon: { outer: box(0, 4), holes: [] },
+        entityId: WALL_ID,
         ifcType: 'IfcWall',
+        modelIndex: 0,
+        isCut: true,
+      },
+      {
+        polygon: { outer: box(5, 6), holes: [] },
+        entityId: DOOR_ID,
+        ifcType: 'IfcDoor',
         modelIndex: 0,
         isCut: true,
       },
     ],
     projectionPolygons: [],
-    bounds: { min: { x: 0, y: 0 }, max: { x: 4, y: 1 } },
+    bounds: { min: { x: 0, y: 0 }, max: { x: 6, y: 1 } },
     stats: {
       cutLineCount: 0,
       projectionLineCount: 0,
       hiddenLineCount: 0,
       silhouetteLineCount: 0,
-      polygonCount: 1,
+      polygonCount: 2,
       totalTriangles: 0,
       processingTimeMs: 0,
     },
   };
 }
 
-/** Mirrors the Fire Safety preset's "Fire Rated 2hr+" rule shape: an `ifcType`
- *  control rule (low priority, always matches) plus a higher-priority rule that
- *  ALSO requires the `FireRating` property — so a broken property path falls
- *  back to the control color, and a working one wins with the fire color. */
-function buildRules(): GraphicOverrideRule[] {
-  return [
-    {
-      id: 'base',
-      name: 'Walls - base',
-      enabled: true,
-      priority: 100,
-      criteria: ifcTypeCriterion(['IfcWall']),
-      style: { fillColor: '#BASEBASE' },
-    },
-    {
-      id: 'fire',
-      name: 'Fire Rated 2hr+',
-      enabled: true,
-      priority: 200,
-      criteria: andCriteria(
-        ifcTypeCriterion(['IfcWall']),
-        propertyCriterion('FireRating', 'greaterOrEqual', 120),
-      ),
-      style: { fillColor: '#FIREFIRE' },
-    },
-  ];
+// ─── SVG readback ───────────────────────────────────────────────────────────
+
+/** The `<g id="...">` block's inner markup. */
+function group(svg: string, id: string): string {
+  const start = svg.indexOf(`<g id="${id}">`);
+  assert.ok(start >= 0, `SVG has no <g id="${id}"> group`);
+  const end = svg.indexOf('</g>', start);
+  return svg.slice(start, end);
 }
 
-// ─── Harness ────────────────────────────────────────────────────────────
+/** The `fill` the export resolved for one entity's cut polygon. */
+function fillOf(svg: string, entityId: number): string {
+  const m = new RegExp(`fill="([^"]*)"[^>]*data-entity-id="${entityId}"`).exec(
+    group(svg, 'polygon-fills'),
+  );
+  assert.ok(m, `no fill path for entity ${entityId}`);
+  return m[1];
+}
+
+/** The `stroke` the export resolved for one entity's cut-polygon outline. */
+function strokeOf(svg: string, entityId: number): string {
+  const m = new RegExp(`stroke="([^"]*)"[^>]*data-entity-id="${entityId}"`).exec(
+    group(svg, 'polygon-outlines'),
+  );
+  assert.ok(m, `no outline path for entity ${entityId}`);
+  return m[1];
+}
+
+// ─── Harness ────────────────────────────────────────────────────────────────
 
 interface HarnessProps {
   ifcDataStore: IfcDataStore | null;
+  rules: GraphicOverrideRule[];
   onReady: (fn: () => void) => void;
 }
 
-function Harness({ ifcDataStore, onReady }: HarnessProps): null {
+function Harness({ ifcDataStore, rules, onReady }: HarnessProps): null {
   const { handleExportSVG } = useDrawingExport({
     drawing: buildDrawing(),
     displayOptions: {
@@ -158,7 +185,7 @@ function Harness({ ifcDataStore, onReady }: HarnessProps): null {
     activePresetId: null,
     entityColorMap: new Map(),
     overridesEnabled: true,
-    overrideEngine: new GraphicOverrideEngine(buildRules()),
+    overrideEngine: new GraphicOverrideEngine(rules),
     measure2DResults: [],
     polygonArea2DResults: [],
     textAnnotations2D: [],
@@ -178,7 +205,11 @@ function Harness({ ifcDataStore, onReady }: HarnessProps): null {
  *  intercepting the `Blob` `downloadFile` hands to `URL.createObjectURL` — the
  *  same technique `useDrawingExport.pdfVectorPaths.test.tsx` uses for the PDF
  *  path, applied to the plain-text SVG blob here. */
-async function exportSvg(ifcDataStore: IfcDataStore | null): Promise<string> {
+async function exportSvg(
+  ifcDataStore: IfcDataStore | null,
+  rules: GraphicOverrideRule[],
+): Promise<string> {
+  useViewerStore.setState({ models: new Map() });
   const container = document.createElement('div');
   document.body.appendChild(container);
   let root: Root | null = null;
@@ -200,6 +231,7 @@ async function exportSvg(ifcDataStore: IfcDataStore | null): Promise<string> {
       root.render(
         <Harness
           ifcDataStore={ifcDataStore}
+          rules={rules}
           onReady={(fn) => {
             exportFn = fn;
           }}
@@ -219,27 +251,59 @@ async function exportSvg(ifcDataStore: IfcDataStore | null): Promise<string> {
   }
 }
 
-describe('useDrawingExport — property-criterion overrides reach the real model', () => {
-  it('CONTROL: an ifcType-only rule matches regardless of the property path', async () => {
-    useViewerStore.setState({ models: new Map() });
-    const svg = await exportSvg(null); // no data store at all — property lookup impossible
-    assert.ok(
-      svg.includes('#BASEBASE'),
-      'the base ifcType rule must apply even with no data store, proving the harness and engine work',
+/** The engine's own `DEFAULT_STYLE` fill, i.e. "no rule matched". */
+const UNMATCHED_FILL = '#CCCCCC';
+
+describe('useDrawingExport — property criteria reach the real model', () => {
+  it('CONTROL: an ifcType-only rule matches with no data store at all', async () => {
+    const svg = await exportSvg(null, [
+      {
+        id: 'base',
+        name: 'Walls - base',
+        enabled: true,
+        priority: 100,
+        criteria: ifcTypeCriterion(['IfcWall']),
+        style: { fillColor: '#BASEBASE' },
+      },
+    ]);
+    assert.equal(
+      fillOf(svg, WALL_ID),
+      '#BASEBASE',
+      'the harness and engine must resolve a non-property rule even with no store, isolating the rest of this file to the property path',
     );
   });
 
-  it('matches a FireRating property criterion against the real parsed model', async () => {
-    useViewerStore.setState({ models: new Map() });
-    const store = await parseWall();
-    const svg = await exportSvg(store);
-    assert.ok(
-      svg.includes('#FIREFIRE'),
-      'FireRating=120 (>= the 120 threshold) must win over the base rule once `ElementData.properties` is populated from the real model',
+  it("Structural Highlight's LoadBearing rule matches the real parsed model", async () => {
+    const svg = await exportSvg(await parseFixture(), STRUCTURAL_PRESET.rules);
+    assert.equal(
+      fillOf(svg, WALL_ID),
+      '#BBDEFB',
+      "Pset_WallCommon.LoadBearing = IFCBOOLEAN(.T.) must satisfy the preset's `LoadBearing equals true` criterion",
     );
-    assert.ok(
-      !svg.includes('#BASEBASE'),
-      'the higher-priority fire rule should have fully overridden the base fill, not merely coexisted with it',
+  });
+
+  it("Fire Safety's fire-door rule matches, but its numeric wall rules still cannot", async () => {
+    const svg = await exportSvg(await parseFixture(), FIRE_SAFETY_PRESET.rules);
+
+    assert.equal(
+      strokeOf(svg, DOOR_ID),
+      '#C62828',
+      "the 'Fire Doors' rule (`FireRating exists`) must match Pset_DoorCommon.FireRating = IFCLABEL('EI30')",
+    );
+
+    // KNOWN LIMITATION, deliberately pinned — see the changeset. The preset's
+    // three wall rules compare `FireRating` numerically (`greaterOrEqual` 120 /
+    // 60 / 30), and the rule engine's numeric operators return false unless
+    // BOTH sides are already numbers (`rule-engine.ts` `evaluateOperator`). A
+    // schema-conformant `IfcLabel` FireRating ('REI 120', 'EI90', a bare '120')
+    // is a string, so no threshold matches and the wall falls through unstyled.
+    // Wiring `properties` through — what this PR does — is necessary but not
+    // sufficient for those three; making them work is a change to the preset's
+    // own criteria, tracked separately. Delete this assertion when that lands.
+    assert.equal(
+      fillOf(svg, WALL_ID),
+      UNMATCHED_FILL,
+      "if a numeric FireRating threshold now matches IFCLABEL('REI 120'), the preset was fixed and the changeset's limitation note is stale",
     );
   });
 });

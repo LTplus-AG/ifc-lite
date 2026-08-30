@@ -37,6 +37,7 @@ import { useViewerStore } from '@/store';
 import { buildDxfExportTransform, resolveDxfExportGeoreference } from '@/hooks/dxfExportGeoref';
 import { DEFAULT_SCAN_SVG_CAP, type ScanBandPoint } from '@/hooks/scanSectionMath';
 import { computeSvgExportViewport, svgExportMmToWorld } from '@/hooks/svgExportViewport';
+import { makePropertiesGetter } from '@/hooks/drawingElementProperties';
 
 /** Map a DXF vertical justification onto an SVG dominant-baseline. */
 function dxfValignToBaseline(valign: 'baseline' | 'bottom' | 'middle' | 'top'): string {
@@ -373,6 +374,7 @@ function useDrawingExport({
     if (!drawing) return null;
 
     const { bounds } = drawing;
+    const getElementProperties = makePropertiesGetter(storeModels, ifcDataStore);
 
     // World-metres -> paper-mm arithmetic for the direct SVG export,
     // extracted to svgExportViewport.ts (see that file's docstring for why
@@ -468,10 +470,7 @@ function useDrawingExport({
           opacity = materialColor[3];
         }
       } else if (overridesEnabled) {
-        const elementData: ElementData = {
-          expressId: polygon.entityId,
-          ifcType: polygon.ifcType,
-        };
+        const elementData: ElementData = { expressId: polygon.entityId, ifcType: polygon.ifcType, properties: getElementProperties(polygon.entityId) };
         const result = overrideEngine.applyOverrides(elementData);
         fillColor = result.style.fillColor;
         opacity = result.style.opacity;
@@ -489,10 +488,7 @@ function useDrawingExport({
       let lineWeight = 0.5;
 
       if (overridesEnabled) {
-        const elementData: ElementData = {
-          expressId: polygon.entityId,
-          ifcType: polygon.ifcType,
-        };
+        const elementData: ElementData = { expressId: polygon.entityId, ifcType: polygon.ifcType, properties: getElementProperties(polygon.entityId) };
         const result = overrideEngine.applyOverrides(elementData);
         strokeColor = result.style.strokeColor;
         lineWeight = result.style.lineWeight;
@@ -707,7 +703,7 @@ function useDrawingExport({
 
     svg += '</svg>';
     return svg;
-  }, [drawing, displayOptions, activePresetId, entityColorMap, overridesEnabled, overrideEngine, measure2DResults, polygonArea2DResults, textAnnotations2D, cloudAnnotations2D, sectionPlane.axis, dxfUnderlays, scanSection]);
+  }, [drawing, displayOptions, activePresetId, entityColorMap, overridesEnabled, overrideEngine, measure2DResults, polygonArea2DResults, textAnnotations2D, cloudAnnotations2D, sectionPlane.axis, dxfUnderlays, scanSection, ifcDataStore, storeModels]);
 
   // Generate SVG with drawing sheet (frame, title block, scale bar)
   // This generates coordinates directly in paper mm space (like the canvas rendering)
@@ -715,6 +711,7 @@ function useDrawingExport({
     if (!drawing || !activeSheet) return null;
 
     const { bounds } = drawing;
+    const getElementProperties = makePropertiesGetter(storeModels, ifcDataStore);
 
     // Sheet dimensions in mm
     const paperWidth = activeSheet.paper.widthMm;
@@ -839,10 +836,7 @@ function useDrawingExport({
           opacity = materialColor[3];
         }
       } else if (overridesEnabled) {
-        const elementData: ElementData = {
-          expressId: polygon.entityId,
-          ifcType: polygon.ifcType,
-        };
+        const elementData: ElementData = { expressId: polygon.entityId, ifcType: polygon.ifcType, properties: getElementProperties(polygon.entityId) };
         const result = overrideEngine.applyOverrides(elementData);
         fillColor = result.style.fillColor;
         opacity = result.style.opacity;
@@ -862,10 +856,7 @@ function useDrawingExport({
       let lineWeight = 0.5;
 
       if (overridesEnabled) {
-        const elementData: ElementData = {
-          expressId: polygon.entityId,
-          ifcType: polygon.ifcType,
-        };
+        const elementData: ElementData = { expressId: polygon.entityId, ifcType: polygon.ifcType, properties: getElementProperties(polygon.entityId) };
         const result = overrideEngine.applyOverrides(elementData);
         strokeColor = result.style.strokeColor;
         lineWeight = result.style.lineWeight;
@@ -972,7 +963,7 @@ function useDrawingExport({
     // identity when the axis changes, and the canvas rewrote the cache on
     // every fresh draw — neither of which this callback controls.
     // `cachedSheetTransformRef` is a ref: stable identity, read at call time.
-  }, [drawing, activeSheet, displayOptions, activePresetId, entityColorMap, overridesEnabled, overrideEngine, dxfUnderlays, scanSection, sectionPlane.axis, isPinned]);
+  }, [drawing, activeSheet, displayOptions, activePresetId, entityColorMap, overridesEnabled, overrideEngine, dxfUnderlays, scanSection, sectionPlane.axis, isPinned, ifcDataStore, storeModels]);
 
   // Export SVG
   const handleExportSVG = useCallback(() => {

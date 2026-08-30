@@ -1,0 +1,97 @@
+{
+  "$comment": [
+    "Config for scripts/check-issue-queue.mjs -- the steering gate.",
+    "",
+    "WHY THE LABEL NAMES LIVE HERE AND NOT IN THE SCRIPT. The two labels are the maintainer's",
+    "steering wheel, and retuning a steering wheel should not be a code change reviewed by the",
+    "people being steered. Rename `ready` to `approved`, or point `escapeLabel` at a different",
+    "word, and the gate follows without touching a line of JavaScript.",
+    "",
+    "This file lives under scripts/, and .github/workflows/issue-queue.yml carries NO `paths:`",
+    "filter, so the job that reads it fires on every pull_request event regardless of which",
+    "files changed. That is deliberate and it is copied from pr-review-signal.yml, which",
+    "documents the reasoning at length: #3305's gate could not fire on the file it guarded",
+    "because that file was in no path filter, and a presence check that can itself be filtered",
+    "out is the same defect it is trying to catch. A steering gate is worth even less: a",
+    "contributor sweeping for defects on their own initiative can edit this config, or the",
+    "gate, in the very PR the gate would have refused.",
+    "",
+    "NEITHER LABEL EXISTS IN THE REPOSITORY YET. Measured 2026-08-30, `gh label list` returns",
+    "22 labels and neither `ready` nor `unqueued` is among them. GitHub creates a label on",
+    "first use, so nothing here breaks before then -- an issue simply never carries",
+    "`readyLabel`, and every non-exempt PR fails with UNQUEUED_WORK or NO_LINKED_ISSUE. That",
+    "is the correct behaviour for a queue nobody has filled yet, and it is also why this gate",
+    "should not be made a REQUIRED check until the maintainer has labelled a working set."
+  ],
+
+  "$readyLabelComment": [
+    "READY_LABEL: the label on an ISSUE that says the maintainer wants this built.",
+    "The measured problem: 608 of one contributor's 743 commits (82%) carried no linked issue,",
+    "because the backlog is empty -- 19 open, 698 all-time -- so the agent manufactures its own",
+    "work queue by sweeping for defects. A label on an issue is the cheapest possible way for",
+    "the maintainer to say `this one', and it costs one click per item rather than one review",
+    "per PR at 27.7 PRs/day."
+  ],
+  "readyLabel": "ready",
+
+  "$escapeLabelComment": [
+    "ESCAPE_LABEL: the label on a PULL REQUEST that says `this one is fine unqueued'.",
+    "It exists because this gate cannot tell a genuinely urgent drive-by fix -- a release is",
+    "broken, main is red, a security report just landed -- from unwanted sweeping. Nothing in",
+    "`closingIssuesReferences` carries urgency. Rather than pretend to judge it, the gate hands",
+    "the judgement back to a human and records who made it (see `labelAuthorities`).",
+    "A gate with no escape hatch gets disabled the first time it is wrong, and a disabled gate",
+    "steers nothing."
+  ],
+  "escapeLabel": "unqueued",
+
+  "$labelAuthoritiesComment": [
+    "WHO IS ALLOWED TO APPLY THE TWO LABELS. This is the half that makes the gate more than a",
+    "suggestion, and it is not hypothetical: the contributor this gate is aimed at has",
+    "authorAssociation COLLABORATOR (measured on #3540), which means he can apply labels. An",
+    "escape label the contributor applies to their own PR defeats the gate completely, and",
+    "the same is true of a `ready` label self-applied to a self-filed issue.",
+    "",
+    "IT IS CHECKABLE, AND SO IT IS CHECKED. GitHub's timeline carries LabeledEvent.actor, so",
+    "`who applied this label' is a fact, not a guess. Verified live on #3333 (dependabot's own",
+    "PR): both `dependencies` and `javascript` come back with actor.login `dependabot`, i.e.",
+    "self-applied, which is exactly the shape this rule rejects when it matters.",
+    "",
+    "TWO IDENTITY SPACES, AND THEY DISAGREE. `gh pr list --json author` reports dependabot as",
+    "`app/dependabot'; the GraphQL `author { login }' on the SAME PR (#3333) reports",
+    "`dependabot'; the REST API reports `dependabot[bot]'. All three spellings are listed in",
+    "`exemptLogins` below and the gate normalises all three to the same key, because a login",
+    "list that is correct in one API and silently inert in another is a config nobody can",
+    "audit by reading it."
+  ],
+  "labelAuthorities": ["louistrue"],
+  "requireLabelAuthority": true,
+
+  "$exemptLoginsComment": [
+    "WHOSE PRs THIS GATE DOES NOT ADJUDICATE.",
+    "",
+    "The maintainer, because the gate exists to carry HIS direction and a maintainer setting",
+    "direction by writing code is setting direction. Requiring him to file an issue, label it",
+    "`ready`, and then close it with his own PR is ceremony that steers nobody.",
+    "",
+    "Bots, because they have no work queue to steer. A dependabot bump closes no issue and",
+    "never will; failing it teaches contributors that this gate is noise, which is how a gate",
+    "ends up disabled. `github-actions` covers the changeset release PR, which likewise closes",
+    "nothing.",
+    "",
+    "ADDING A HUMAN HERE IS A REAL DECISION, not a convenience: it removes that person from",
+    "the queue entirely. It is a config change so that it is reviewable, and it is a separate",
+    "key from `labelAuthorities` so that `may steer' and `is not steered' stay separable --",
+    "a trusted reviewer might be allowed to label a PR `unqueued` without being exempt from",
+    "the queue themselves."
+  ],
+  "exemptLogins": [
+    "louistrue",
+    "dependabot",
+    "dependabot[bot]",
+    "app/dependabot",
+    "github-actions",
+    "github-actions[bot]",
+    "app/github-actions"
+  ]
+}

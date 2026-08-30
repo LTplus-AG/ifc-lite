@@ -5,6 +5,26 @@ Project-specific gotchas and guardrails: the things that bite you *here* and tha
 ## What this is
 Browser-first IFC toolkit: a WebGPU web viewer plus a headless CLI/MCP/server. No first-party desktop app. Domain logic (decode, geometry, styling, export) lives in Rust crates under `rust/*` and is the source of truth for the server, CLI, SDK, and wasm; TypeScript packages under `packages/*` and apps under `apps/*` consume it (TS mostly does GPU upload and UI). Architecture docs: `docs/architecture/overview.md`.
 
+## Accountability, and what a PR has to be able to answer
+
+Everything here is agent-written, including the maintainer's own commits, so there is no AI-disclosure rule and no point in one. What matters is not who typed the code, it is whether anyone can answer for it.
+
+**Every PR has an accountable submitter, and the test is answering, not authorship.** When review asks a question, the submitter answers with evidence: a test, a run, a measurement, a model file that reproduces it. "The agent wrote it" is never an answer. "Here is the run that proves it" always is. You do not need to be able to write the code. You do need to be able to demonstrate what it does. Unanswered questions block the merge.
+
+**A PR claiming user-visible behaviour shows that behaviour.** Not "should work". The verification section of the PR template asks what you ran and what you observed, and it means it. For this repo that usually means a real IFC model from a real authoring tool, an oracle run, or a viewer screenshot, because those are the ground truth an agent cannot fabricate for itself.
+
+**Ground truth is the contribution an agent cannot make.** The most valuable thing a human operator brings here is a file, a measurement, or a reproduction from the physical world of BIM software. Supplying one is worth more than another sweep.
+
+## Work selection
+
+**Default lane: a PR closes an issue carrying the `ready` label.** `ready` means the maintainer has decided it is in scope, wanted now, and scoped. It is applied by the maintainer only. `scripts/check-issue-queue.mjs` enforces this; the escape hatch is the `unqueued` label for a genuine drive-by fix, applied by the maintainer after the fact.
+
+Filing issues is welcome and unrestricted: a swept audit that produces twenty good issue reports is a real contribution. Filing is not claiming, and an unlabelled issue is not a work item.
+
+**One defect class per issue, one issue per PR.** A defect class found once and paid for N times is N review contexts for one decision: nine separate PRs once landed one state-reset class, one call site at a time. Fix the class. Above roughly 1,500 changed lines, stack PRs against the same issue rather than shipping one unreviewable diff.
+
+**A sweep needs a charter.** Audit-driven work (mutation sweeps, coverage sweeps, conformance sweeps) is some of the most valuable work done here and it is not discouraged. It has no natural stopping point, so it needs an issue that names one: what is being swept, and what condition ends it. The maintainer approves the charter once instead of adjudicating each of its PRs.
+
 ## Commands
 - Install: `corepack enable && pnpm install` (Node 22.x, `pnpm@10.8.1` pinned via `packageManager`).
 - Build: `pnpm build` (turbo). WASM: `pnpm build:wasm` (needs Rust nightly + `wasm-pack`); `pnpm build:wasm:fetch` pulls the prebuilt wasm from npm when Rust is unavailable (e.g. Windows without WSL).
@@ -15,7 +35,15 @@ Browser-first IFC toolkit: a WebGPU web viewer plus a headless CLI/MCP/server. N
 - Fixtures: `pnpm fixtures` (tests skip when absent). Dead code: `pnpm knip` (TS) / `cargo test --workspace` (Rust).
 - Publish: `pnpm changeset`; refresh the API-surface snapshot with `pnpm api-surface:update`.
 
-**House rules (self-police the TypeScript ones — the Rust ones are CI-enforced, see below):** no `as any` / `@ts-ignore` (fix the types or add a `.d.ts`); no silent `catch {}` (log or rethrow); split production modules over ~400 non-generated lines; new packages/features ship tests; package-specific deps go in the consuming package, never root. `pnpm lint` runs **oxlint** against `apps`, `packages` and `scripts` (3,008 files, ~1s wall including pnpm's own startup; oxlint's own pass is ~60ms warm) with `.oxlintrc.json`, and the CI "Lint" job runs that — but only its ERROR tier is a gate, so the house rules above are still self-policed. **Errors** are the curated list in `.oxlintrc.json`: rules whose every hit in this repo was a real defect (`no-unreachable`, `no-useless-catch`, `no-debugger`, `no-dupe-keys`, `use-isnan`, `valid-typeof`, `no-loss-of-precision` and ~40 more of that kind). Everything else is a **warning** — visible, not blocking — and that includes about 35 rules from oxlint's own defaults, which `"categories": {}` does NOT switch off: 98 rules run in total, and a rule you never see in the config file is running at warn severity. `no-unused-vars` is the bulk of it, at ~353 of the ~450 warnings, nearly all dead imports; clean those up in files you are already touching rather than in a sweep. oxlint honours the existing `// eslint-disable-next-line <rule>` comments (~190 of them predate any linter and now do something), so silence a deliberate violation the same way, with the directive on the line DIRECTLY above the offending one and a reason above that. `tsc --strict` still does not flag `as any`/`@ts-ignore`/`catch {}`, and no lint rule here does either. Before this, `pnpm lint` was `pnpm -r lint` with no package defining a `lint` script: it printed "None of the selected packages has a lint script" and exited 0, so the CI job spent ~30s and verified nothing. `pnpm lint` also validates pending changesets (`scripts/check-changesets.mjs`), so a changeset naming something outside the workspace — the private repo root is the easy mistake — fails on the PR. Release remains the backstop, but it used to be the FIRST to know: nothing else on a PR reads changesets, so a bad name landed on main and blocked every release until someone noticed. `scripts/check-lint-ran.mjs` lints each of `apps`, `packages` and `scripts` separately and fails if any one of them falls under its own floor — a single combined floor could not see one target stop matching, since the other two would carry the count past it — and `.oxlintrc.json` is in the `frontend` path filter so a PR that edits only the config cannot skip the job that reads it. The size rule binds production modules only — test files are exempt from it, which matches rather than contradicts the enforced Rust side, where the `module_size_ratchet` below already exempts test/example/bench files — but a long test file should still be split where it has a genuine logical seam (two units with two different failure stories), never merely to hit a line count. **Rust is not self-policed:** the "Rust tests" job runs `cargo clippy --workspace --exclude ifc-lite-wasm --all-targets -- -D warnings`, so a warning-only defect (an unused import, a needless borrow) is a hard CI failure even when `cargo test --workspace --no-fail-fast` is green locally — `cargo test` does not fail on warnings. Run that exact command before pushing Rust — including the `--exclude ifc-lite-wasm` (that crate's tests target wasm32, and a plain `--workspace` clippy additionally reports pre-existing errors there, so it looks broken while telling you nothing about the gate). The ~400-line module rule is likewise enforced for Rust, by the `module_size_ratchet` test (`rust/processing/tests/`): a new non-generated, non-test `.rs` over 400 lines fails the build unless it has a row in `module_size_allowlist.txt` (test/example/bench files are exempt, and an allowlisted file may not grow past its recorded budget). Prefer splitting to allowlisting — for a module whose bulk is `#[cfg(test)]`, the house pattern is a sibling `<name>_tests.rs` included via `#[cfg(test)] #[path = "<name>_tests.rs"] mod tests;` (see `stream_meta.rs`). The real CI gates are typecheck, tests, test-wiring (`scripts/check-test-wiring.mjs`), test-typecheck coverage (`pnpm check:test-typecheck`, run as the tail of `pnpm typecheck`), **clippy**, the **module-size ratchet**, the wasm-type-sync check, and the API-surface check. The last of those pairs with test-wiring: that one fails when a package with tests has no `test` script, this one fails when a package with tests has no `typecheck` script or when a test file on disk is in no typecheck program — including the `.ts`/`.tsx` basename collision that silently drops one of the pair from the program (`useCompare.test.ts` + `useCompare.test.tsx` did exactly that).
+**House rules.** No `as any` / `@ts-ignore` (fix the types or add a `.d.ts`); no silent `catch {}` (log or rethrow); split production modules over ~400 non-generated lines; new packages and features ship tests; package-specific deps go in the consuming package, never root.
+
+**Which of those a machine enforces, and which you self-police.** The TypeScript house rules above are SELF-POLICED: `tsc --strict` does not flag `as any`, `@ts-ignore` or `catch {}`, and no lint rule here does either. `pnpm lint` runs oxlint over `apps`, `packages` and `scripts`, but only its ERROR tier is a gate. Errors are the curated list in `.oxlintrc.json`: rules whose every hit in this repo was a real defect. Everything else is a warning, visible and not blocking, and a rule you never see in that config is still running at warn severity. oxlint honours `// eslint-disable-next-line <rule>` with the directive on the line DIRECTLY above the offence and a reason above that. Clear warnings in files you are already touching, never in a sweep.
+
+**Rust is NOT self-policed.** CI runs `cargo clippy --workspace --all-targets -- -D warnings`, so a warning-only defect (an unused import, a needless borrow) is a hard CI failure even when `cargo test --workspace` is green locally, because `cargo test` does not fail on warnings. Run that clippy line verbatim before pushing Rust.
+
+**The ~400-line rule is enforced on both sides**: for Rust by the `module_size_ratchet` test in `rust/processing/tests/`, for TypeScript by `scripts/check-module-size.mjs`. A new non-generated, non-test file over 400 lines fails unless it has an allowlist row, and an allowlisted file may not grow past its recorded budget. Prefer splitting to allowlisting. For a module whose bulk is `#[cfg(test)]`, the house pattern is a sibling `<name>_tests.rs` included via `#[cfg(test)] #[path = "<name>_tests.rs"] mod tests;` (see `stream_meta.rs`). The rule binds production modules only; test files are exempt, though a long test file should still be split where it has a genuine logical seam, never merely to hit a line count.
+
+**Do not trust any list of CI gates written down in this file.** The authoritative list of gates is `.github/workflows/`; the authoritative list of REQUIRED ones is the `main` ruleset, `gh api repos/:owner/:repo/rulesets`. Read them. This paragraph replaced a prose copy that told agents to run clippy with `--exclude ifc-lite-wasm` and `cargo test --no-fail-fast` long after #2108 removed the exclude from CI and when no `--no-fail-fast` ever appeared in `.github/`: an agent following it ran a strictly WEAKER check than the gate and pushed red PRs believing it had verified. A gate list is a measurement, and a measurement recorded as prose goes stale by the next merged workflow.
 
 ## IFC schema fidelity
 - User-facing APIs/exports/scripts use exact IFC EXPRESS names: PascalCase attributes (`GlobalId`, `Name`, `ObjectType`), full relationship names (`IfcRelAggregates`, not `Aggregates`). Never invent aliases.
@@ -37,7 +65,7 @@ Browser-first IFC toolkit: a WebGPU web viewer plus a headless CLI/MCP/server. N
 - Driving `GeometryRouter` directly in examples/harnesses skips the RTC rebase: georeferenced models (>10 km coords, e.g. ISSUE_098 at ~5,000 km) produce f32-fabricated geometry "failures"; bucket by coordinate magnitude or rebase before blaming the kernel.
 - Colour and coordinate resolution is canonical Rust shared by the server (`process_geometry`) and viewer (`process_geometry_batch`) so they can't drift; don't re-fork it. Single homes: `default_color_for_type`, `resolve_submesh_color`, **`extract_surface_style_colors`** (the IfcSurfaceStyle to Rendering to Colour leaf; SurfaceColour is the apparent colour, a distinct DiffuseColour IfcColourRgb is only `shading_color`, per #859/#871), and the indexed-colour resolvers, all in `ifc_lite_processing::style`; **`rotation_angle_about_z`** (site/building rotation, off `resolve_scaled_placement`) in `ifc_lite_geometry`. `styling_parity` Rust tests fail the build if a duplicate `get_default_color*` table or a per-pipeline `extract_color_from_rendering`/`extract_color_rgb` reappears. New type default: edit `default_color_for_type` and extend the mesh fixture. Sanctioned exceptions: the 2D drafting palette in `section-2d-overlay.ts` (`PARITY-ALLOW`) and standalone debug tools under `rust/geometry/examples/` (can't reach the downstream crate). (#913, #996, #997)
 - Cross-platform determinism is enforced weekly by `.github/workflows/determinism.yml` (free `ubuntu-24.04-arm` runner, also `workflow_dispatch`-able before kernel-sensitive merges): it re-runs `exact_predicate_determinism` and `geometry_correctness_harness` on arm64 against the committed x86_64-generated insta snapshots; a snapshot mismatch there means platform-dependent geometry (a real bug, not flake). It also pins the mesh-output manifests `rust/processing/tests/manifests/mesh_determinism.json` (x86_64/arm64) and `mesh_determinism.wasm32.json` (identical except the documented libm-trig gap), so a legitimate geometry-output change must re-pin **both** manifests, not just the snapshots (#1492, see `docs/architecture/mesh-determinism.md`).
-- Geometry-affecting PRs also run `.github/workflows/ifcopenshell-parity.yml` (path-gated): a per-PR quick lane diffs ifc-lite against committed reference dumps in `tools/ifcopenshell_reference/`, plus a nightly full lane on the pinned engine. It is non-blocking (not on the required needs-list), so a legitimate output change means regenerating the committed reference in the same PR (#1519).
+- Geometry-affecting PRs also run `.github/workflows/ifcopenshell-parity.yml` (path-gated): a per-PR quick lane diffs ifc-lite against committed reference dumps in `tools/ifcopenshell_reference/`, plus a nightly full lane on the pinned engine. **It IS blocking**: `parity (in-tree fixtures, committed reference)` is one of only two contexts in the `main` ruleset, so a legitimate output change means regenerating the committed reference in the same PR (#1519). Being absent from `test.yml`s `needs:` list is a different thing from being non-required, and this line asserted the opposite until the ruleset was read.
 
 ## Performance
 - **Perf-sensitive paths:** `rust/geometry`, `rust/processing`, `rust/core`, `packages/geometry`, `packages/wasm`, `scripts/build-wasm.sh`. A change under these must carry a perf verdict in the PR.
@@ -132,7 +160,13 @@ allowlist is `scripts/refwalk-guard-allowlist.txt` and is empty.
 ## Writing tests
 - A new test must assert behavior through a real fixture or a stated invariant. Don't write: set-state-then-read-it-back store tests, tests that assert a mock's return value (they test the mock), constructor/setter tautologies, or byte-for-byte output pinning unless the byte layout IS the compatibility contract (e.g. signed bundles). Regression tests cite the issue/PR number in the test name or a comment.
 - Every package with test files needs a `test` script in its package.json or `turbo test` silently skips it; `scripts/check-test-wiring.mjs` (CI) enforces this. Packages use vitest OR node:test via `tsx --test`; match the package's existing convention, never mix within a package.
-- **A new gate under `scripts/` must be INVOKED, and a package.json entry is not invocation.** A guard nothing runs is the same absence as a guard that finds nothing, and it is invisible in exactly the same way: #3062 shipped a gate script and its test with no workflow step, no `package.json` script and no turbo task, and nothing flagged it. `scripts/check-test-wiring.mjs` now also audits `scripts/` — every `check-*` / `verify-*` file at **any depth** and in `.mjs`, `.js` or `.cjs` (`verify-npm-publish.js` and `check-benchmark-regression.js` are real gates, and `scripts/ci/` is exactly where the advice "move it to a covered directory" puts a file) — and accepts exactly the wiring this repo actually uses: a `.github/workflows/` step running `node scripts/<gate>.mjs` (the common case — see the `node-tests` job), a root `package.json` script a workflow reaches through `pnpm <name>`, possibly transitively (`check-changesets.mjs` ← `lint` ← the Lint job), a **workspace** package's script reached by a turbo task (`check-tla-chunk-await.mjs` is the viewer `build` script's tail, deliberately, so Vercel runs it too and not only CI), or a file that a script already reached imports or spawns (below the top level a `verify-*` name is as often a module as a gate: `moonshot/diff-spike/verify-common.mjs` is imported by the workflow-wired `verify-trajectory.mjs`, and a file a running gate runs does run). A root `package.json` entry no workflow ever calls executes exactly as often as no entry at all and is rejected. `scripts/*.test.mjs` is audited separately from the gate itself — the `node --test scripts/*.test.mjs scripts/lib/*.test.mjs` catch-all covers those two directories and no others (a shell glob has no `**`), and a gate whose test runs while its script never executes is still the #3062 failure. A script that genuinely should not run in CI declares `@unwired-by-design <reason>` in its own header and is then listed in the checker's OK output rather than hidden; today that is `check-generated.mjs` (a pre-push aggregator of gates CI already runs), `check-git-lfs.mjs` (reports on the developer's own clone), `check-whole-state-reset.mjs` (an unadopted heuristic, issue #2802) and `moonshot/b45-m1-midterm/verify-worker.mjs` (a worker of a hand-run benchmark). The marker is a blanket escape — nothing judges the reason's quality — so its only safeguard is that every declaration is printed and lives in the diff. The check is lexical and does not evaluate workflow expressions: a gate whose only step sits in a job with `if: false` still counts as wired. `audit-*.mjs` reports and does not gate, so it is not demanded.
+- **A new gate under `scripts/` must be INVOKED, and a package.json entry is not invocation.** A guard nothing runs is the same absence as a guard that finds nothing, and it is invisible in exactly the same way: #3062 shipped a gate script and its test with no workflow step, no `package.json` script and no turbo task, and nothing flagged it.
+
+  `scripts/check-test-wiring.mjs` audits `scripts/` — every `check-*` / `verify-*` file at **any depth** and in `.mjs`, `.js` or `.cjs` (`verify-npm-publish.js` and `check-benchmark-regression.js` are real gates, and `scripts/ci/` is exactly where the advice "move it to a covered directory" puts a file). It accepts exactly the wiring this repo actually uses: a `.github/workflows/` step running `node scripts/<gate>.mjs` (the common case, see the `node-tests` job); a root `package.json` script a workflow reaches through `pnpm <name>`, possibly transitively (`check-changesets.mjs` <- `lint` <- the Lint job); a **workspace** package's script reached by a turbo task (`check-tla-chunk-await.mjs` is the viewer `build` script's tail, deliberately, so Vercel runs it too and not only CI); or a file that an already-reached script imports or spawns (below the top level a `verify-*` name is as often a module as a gate: `moonshot/diff-spike/verify-common.mjs` is imported by the workflow-wired `verify-trajectory.mjs`, and a file a running gate runs does run). A root `package.json` entry no workflow ever calls executes exactly as often as no entry at all, and is rejected.
+
+  `scripts/*.test.mjs` is audited separately from the gate itself. The `node --test scripts/*.test.mjs scripts/lib/*.test.mjs` catch-all covers those two directories and no others, because a shell glob has no `**`, and a gate whose test runs while its script never executes is still the #3062 failure.
+
+  A script that genuinely should not run in CI declares `@unwired-by-design <reason>` in its own header and is then listed in the checker's OK output rather than hidden. Today that is `check-generated.mjs` (a pre-push aggregator of gates CI already runs), `check-git-lfs.mjs` (reports on the developer's own clone), `check-whole-state-reset.mjs` (an unadopted heuristic, issue #2802) and `moonshot/b45-m1-midterm/verify-worker.mjs` (a worker of a hand-run benchmark). The marker is a blanket escape and nothing judges the reason's quality, so its only safeguard is that every declaration is printed and lives in the diff. STATED HOLES: the check is lexical and does not evaluate workflow expressions, so a gate whose only step sits in a job with `if: false` still counts as wired; and `audit-*.mjs` reports rather than gates, so it is not demanded.
 - **Never assert on a source file's text.** A test that reads `Thing.tsx` and greps it certifies a string exists, not that the code works: `SearchModal.filter.wiring.test.tsx` asserted the whole body of `handleRowClick` and stayed 5/5 green when `onRowClick={handleRowClick}` was replaced with `onRowClick={() => {}}` — defect #2396 verbatim. `scripts/check-source-text-assertions.mjs` (CI) blocks new ones; the remaining list is in `scripts/source-text-assertion-allowlist.txt` and only ratchets down (#2434).
 - **Testing a viewer component.** It is mountable — including one that reads `useViewerStore`, which is a module-level Zustand store you seed with `setState`. Three test files claimed otherwise for months; the real blockers were two Vite-isms, fixed once in `apps/viewer/src/test/`. The recipe:
   ```tsx
@@ -196,97 +230,38 @@ Check again immediately before opening the PR. A claim can appear while you work
 
 ### Every agent is the same GitHub account
 
-`gh issue edit --add-assignee` cannot tell two agents apart, because they all
-push and assign as the **same account**. An issue assigned to that account
-means *somebody has claimed this*. It does **not** mean *you* claimed it, and
-you cannot tell which from the assignee field.
-
-So an assignment to your own account is a claim by someone else until you can
-show otherwise. **Leave a claim comment as well**, naming the session, so the
-next agent can tell:
+`gh issue edit --add-assignee` cannot tell two agents apart: they all push and assign as the **same account**. An assignment to that account means *somebody* claimed this. It does not mean *you* did, and the field cannot tell you which. So treat it as a claim by someone else until you can show otherwise, and **leave a claim comment naming the session**, which is the only artifact that can:
 
     gh issue comment <n> --body "Claiming this. Session <id>, branch <name>."
 
-And when you find the account already assigned with no claim comment, ask on
-the issue before starting rather than reading the field as your own.
-
-Note this is about OUR sessions only. An outside contributor has their own
-account, so the field says what it looks like it says for them.
+If the account is assigned with no claim comment, ask on the issue rather than reading the field as your own. This applies to OUR sessions only. An outside contributor has their own account, so for them the field says what it appears to say.
 
 ### The contributor check and the session check are different checks
 
-Doing one does not do the other, and the assignee field cannot cover both.
-
-On #3012 the account was self-assigned at 14:12:52 and a PR for the same issue
-appeared 47 minutes later. The natural reading was another session ignoring the
-claim. It was not: **the PR came from an outside contributor**, who has no
-reason to know or care about an internal assignment, and for whom the repo's
-existing rules already apply (look for their PR before starting, external work
-takes precedence, never push to their branch).
-
-The session that self-assigned never ran `gh pr list --search 3012`. No
-assignee field, however precise about sessions, would have helped: **no session
-held it.** Only the PR search would have.
-
-So run both, every time:
+Doing one does not do the other. Run both, every time:
 
     gh issue view <n> --json assignees      # is one of us on it
     gh pr list --search "<n>"               # is anyone at all on it
 
+On #3012 the account was self-assigned and a PR appeared 47 minutes later. That looked like a session ignoring the claim; it was an outside contributor, who has no reason to know about an internal assignment. No assignee field would have helped, because no session held it. Only the PR search would have.
+
 ### When you collide mid-flight
 
-The checks above cover noticing **before** you start and noticing **after** you
-finish. The expensive case is neither: **both of you are already half-built when
-the claim appears.** Both have sunk work, both can reasonably feel they should
-be the one to finish, and the race is usually settled by whoever opens a PR
-first, which rewards speed over ownership.
+The expensive case is that both of you are already half-built when the claim appears. **The session named in the earliest claim comment decides. The other stops immediately** and hands over what it has as a comment or a patch on that session's PR. "The assignee decides" cannot work here, because the field holds one shared account and cannot name a session.
 
-**The session named in the earliest claim comment decides. The other stops
-immediately** rather than racing to open first, and hands over what it has as a
-comment or a patch on that session's PR.
-
-"The assignee decides" is not usable here, because the assignee field holds one
-shared account and cannot name a session. The claim comment can, which is the
-other half of why it is required above. If no claim comment exists, ask on the
-issue rather than inferring from the field.
-
-An outside contributor's PR still takes precedence over any internal claim,
-however early. They cannot see our claims and are not bound by them.
-
-Stopping mid-build is cheap. Two finished implementations of the same thing is
-not, and neither is the conversation about which one lands.
+**An outside contributor's PR takes precedence over any internal claim, however early.** They cannot see our claims and are not bound by them. Stopping mid-build is cheap; two finished implementations of the same thing is not.
 
 ### Helping on someone else's issue
 
-Helping is welcome. **Taking over is not.** Two things make it help:
+Helping is welcome. **Taking over is not.** Two things make it help: they accepted an offer (silence is not a yes), or it has genuinely gone quiet (no commits and no word for about a week, and even then comment first and give them a couple of days).
 
-**They accepted an offer.** Comment saying what you would do and wait for a yes. Silence is not a yes, and neither is a thumbs-up on something else. An assignee who is mid-development and reads "we have already built this in parallel" is being told, not asked.
+Help, no permission needed: reviewing their PR including finding real defects; diagnosing a failing check and posting the cause; answering a question they asked; reporting a defect in shipped code even if their PR introduced it.
 
-**It has genuinely gone quiet.** No commits on their branch and no word from them for about a week. Even then: comment first, say you will pick it up, and give them a couple of days to say otherwise. Then reassign explicitly rather than working in the shadows.
+Not help, however good the code: building a parallel implementation and announcing it afterwards; carrying an unraised branch that duplicates their work; pushing to their branch; opening a competing PR on their issue.
 
-What is help regardless, no permission needed:
-- Reviewing their PR, including finding real defects in it.
-- Diagnosing a failing check and posting the cause and the fix.
-- Answering a question they asked.
-- Reporting a defect you found in shipped code, even if it came from their PR.
+If you built something before noticing, say so plainly, hand it over, and let them decide. That is recoverable; landing it is not. When you find you have duplicated someone: **the assignee keeps the work** (not whoever is further along, not whoever noticed first), do not close the duplicate silently but enumerate what it holds that the survivor does not, and never push to a branch you do not own to "help".
 
-What is not help, however good the code:
-- Building a parallel implementation and announcing it afterwards.
-- Carrying an unraised branch that duplicates their work.
-- Pushing to their branch.
-- Opening a competing PR on their issue.
-
-If you have already built something before noticing, say so plainly, hand it over, and let them decide whether to use it. That is recoverable. Landing it is not.
-
-When you find you have duplicated someone:
-
-- **The person who was assigned keeps the work.** Not whoever is further along, and not whoever noticed first.
-- Do not close the duplicate silently. Enumerate what it holds that the surviving one does not, so nothing is lost when it goes, and post that list on both.
-- Never push to a branch you do not own to "help". If a fix is a one-liner, say the one line in a comment.
-
-This rule exists because it was broken, twice in two days, against the same external contributor. Issue #2951 was filed by them, assigned to them, and implemented in #2952 — and #2970 arrived fifteen hours later implementing the same thing. On #2670 they were assigned and mid-development when they were told a parallel implementation already existed.
-
-The cost is not the wasted effort. It is that a contributor who did everything correctly had to be the one to raise it, twice.
+This rule exists because it was broken twice in two days against the same external contributor (#2951 filed, assigned and implemented by them as #2952, with #2970 arriving fifteen hours later doing the same thing; and #2670, where they were mid-development when told a parallel implementation existed). The cost is not the wasted effort. It is that a contributor who did everything correctly had to be the one to raise it, twice.
 
 Applies to every agent and every session, including short-lived subagents.
 

@@ -1,0 +1,185 @@
+# CodeRabbit configuration for ifc-lite.
+# Schema: https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
+#
+# WHY THIS FILE EXISTS.
+#
+# Measured over August 2026, on 830 merged PRs from the project's highest-volume
+# contributor: 174 of them (21%, 46,717 lines) merged with NO review of any kind,
+# while 0% of the maintainer's own PRs did. On a 40-PR sample of that contributor's
+# merges, CodeRabbit was rate-limited on 27 and produced a real review on 12, and
+# `cursor[bot]` appeared 0 times against 92 appearances across the maintainer's own
+# last 40 PRs. The review layer was attached to the MAINTAINER'S TOOLING SEAT rather
+# than to the repository, so the contributor producing the most code received the
+# least review.
+#
+# That gap has already cost something concrete. PR #3175 corrected TWELVE changesets
+# by hand that would have shipped breaking changes as `patch`; the release was one
+# command from publishing. Its own body names the cause: CodeRabbit was rate-limited
+# across the whole 42-PR batch, 39 of 41 PRs had no review on their head, and the
+# changesets were the one artifact class nobody looked at.
+#
+# So this file is written against one principle the repo has learned the hard way:
+# ABSENCE MUST NOT READ AS SUCCESS. A reviewer that did not run has to look different
+# from a reviewer that ran and found nothing.
+
+language: en-US
+
+tone_instructions: >-
+  Be direct and concrete. State the failing input or the file:line, not a general
+  concern. Do not soften a real defect and do not manufacture one to seem useful.
+  No praise openers.
+
+reviews:
+  profile: chill
+
+  # THE LOAD-BEARING LINE. Default is `false`, which is what let a rate-limited run
+  # publish a green tick: `success / Review rate limited` is a PASS to every consumer
+  # that reads the status. With this true, a review that ERRORED fails its status
+  # instead of passing, so "the reviewer never read this diff" is visible on the PR
+  # rather than indistinguishable from "the reviewer read it and was happy".
+  #
+  # KNOWN COST, STATED RATHER THAN DISCOVERED: a rate-limited status never self-heals.
+  # The history on such a SHA is `queued -> in progress -> error`, and then nothing.
+  # The quota recovers; the status on that commit does not. So this WILL hold PRs red
+  # during a quota exhaustion until someone pushes a commit, triggers an on-demand
+  # review, or bypasses. That is the intended trade: a visible block beats a silent
+  # false green. If it becomes intolerable, buy review capacity rather than setting
+  # this back to false.
+  fail_commit_status: true
+  commit_status: true
+
+  assess_linked_issues: true
+  related_issues: true
+  related_prs: true
+  estimate_code_review_effort: true
+
+  # Spam/low-quality classification, labelled rather than silently dropped so the
+  # maintainer can audit what it caught.
+  slop_detection:
+    enabled: true
+    label: slop
+
+  auto_review:
+    enabled: true
+    drafts: false
+    auto_incremental_review: true
+    # Default is 5. At this repo's cadence (peak 75 merges in one day, median PR open
+    # 6.4 hours) a 5-commit pause silently stops reviewing exactly the long-running
+    # PRs that most need it, and publishes `Reviews paused ... under active
+    # development` alongside a passing status. Raised so the pause is rare.
+    auto_pause_after_reviewed_commits: 30
+
+  pre_merge_checks:
+    # Only requested reviewers can wave a failing check through, never the PR author.
+    # Without this an agent-driven contributor overrides the check that exists to
+    # catch it.
+    override_requested_reviewers_only: true
+
+    title:
+      mode: warning
+    description:
+      mode: warning
+
+    # The repo now requires a PR to close a `ready`-labelled issue
+    # (scripts/check-issue-queue.mjs). This is the semantic half of that gate: the
+    # deterministic gate proves a linked issue EXISTS and is labelled, this proves
+    # the diff actually addresses it. 82% of one contributor's 743 commits carried no
+    # linked issue at all, which is the condition both halves exist to end.
+    issue_assessment:
+      mode: warning
+
+    custom_checks:
+      - name: Changeset bump matches the API surface
+        mode: error
+        instructions: >-
+          Applies only when the PR adds or edits a file under `.changeset/`.
+          For each package named in a changeset, determine whether the PR removes,
+          renames, or narrows any exported symbol of that package, or changes an
+          exported function's return type in a way existing callers cannot absorb
+          (for example `String` to `Result<String, String>`, or returning a value to
+          throwing).
+          FAIL when such a change is declared as `patch`, or when it is declared as
+          `minor` for a package whose version is >= 1.0.0.
+          The repo rule is AGENTS.md, not generic semver: "removing/renaming an export
+          is major (>=1.0 pkg) or minor (0.x), never patch when the surface shrank."
+          Note the Rust crate version derives from the highest npm workspace version,
+          so a bump chosen for a TypeScript API also governs a crates.io publish.
+          PASS when no changeset is touched, or when every declared bump is at or
+          above the level the surface change requires.
+          This check is a BACKSTOP. `scripts/check-changeset-bump.mjs` is the
+          deterministic gate; report a disagreement between the two as a finding,
+          because one of them is wrong and which one matters.
+
+      - name: Verification evidence is present
+        mode: error
+        instructions: >-
+          The PR description must state what was RUN and what was OBSERVED, not what
+          should work. FAIL when the description claims user-visible behaviour (a bug
+          is fixed, a feature works, output changed) and offers no evidence for it:
+          no command and its output, no test that asserts the new behaviour, no
+          measurement, no named fixture or model file, no screenshot.
+          A ticked template checkbox is NOT evidence; the box is unverified text.
+          "Should work", "this fixes it", and a restatement of the diff are not
+          evidence.
+          PASS when the claim is mechanical and the diff is self-evidently its own
+          proof (a typo, a comment, a dependency bump), or when the stated evidence
+          names something a reader could re-run.
+          The rule this enforces: you do not need to be able to write the code, you
+          do need to be able to demonstrate what it does.
+
+      - name: One defect class per PR
+        mode: warning
+        instructions: >-
+          FAIL when the PR fixes the SAME defect class at several unrelated call
+          sites and the diff shows no shared fix, no shared helper, and no gate that
+          would prevent the next instance. The repo has paid for this: one
+          state-reset defect class shipped as nine separate PRs, one call site each,
+          which is nine review contexts for one decision.
+          Say which call sites share the class and what the unifying fix would be.
+          PASS when the PR fixes one class once, or when it fixes several sites AND
+          adds the shared predicate, helper, or gate that holds the class closed.
+          Do NOT fire on a PR that is large but coherent, or on a mechanical
+          rename across many files.
+
+  path_instructions:
+    - path: '.changeset/**'
+      instructions: >-
+        Read the frontmatter bump level against what the referenced commit actually
+        did to the public surface, never against the changeset's own prose. The prose
+        describes intent; the bump is a contract. This is the artifact class that
+        merged unreviewed and produced twelve wrong bumps in one batch.
+
+    - path: 'scripts/check-*.mjs'
+      instructions: >-
+        These are CI gates. For each one ask the two questions the repo's own
+        incidents turned into rules: can this gate FAIL (a gate that cannot fail is
+        the same absence as no gate), and is it INVOKED by a workflow step (a
+        package.json entry is not invocation, see #3062). Also check that each
+        distinct failure class names a remedy, and that the remedy does not
+        contradict the finding.
+
+    - path: 'rust/**/*.rs'
+      instructions: >-
+        CI runs `cargo clippy --workspace --all-targets -- -D warnings`, so a
+        warning-only defect is a hard failure. Do not suggest numeric clippy rewrites
+        (`.clamp()`, `RangeInclusive::contains`, `partial_cmp`) in geometry code:
+        they change NaN and panic behaviour. See rust/AGENTS.md.
+
+    - path: 'apps/viewer/**'
+      instructions: >-
+        Selection has two channels and the multi-model actions do not write
+        `selectedEntityId`. `main.tsx` import order is load-bearing. Never construct
+        a GPU context straight from a mount effect. See apps/viewer/AGENTS.md.
+
+    - path: '**/*.test.ts'
+      instructions: >-
+        Ask whether this test can fail. Check specifically for the failure modes this
+        repo has catalogued: an oracle that shares the defect under test, an expected
+        value derived FROM the thing under test, a ratio assertion that is trivially
+        true at zero, a fixture where two distinct things are accidentally identical,
+        and an assertion aimed at an index while the corruption would be in the
+        payload. Never assert on a source file's text.
+
+knowledge_base:
+  learnings:
+    scope: local

@@ -99,3 +99,5 @@ scripts/check-ci-path-coverage.test.mjs docs # quoted in an assertion, not read
 scripts/check-ci-path-coverage.test.mjs tests/benchmark # quoted in an assertion, not read
 scripts/check-ci-path-coverage.test.mjs tests/extensions # quoted in an assertion, not read
 scripts/check-ci-path-coverage.test.mjs tests/models # quoted in an assertion, not read
+scripts/check-changeset-bump.mjs readme.md # `readme.md` is an EXCLUSION, not an input: line 385 filters `.changeset/README.md` out of the changeset list. The gate never reads it, so nothing is hidden by exempting it.
+scripts/check-agents-md-size.test.mjs README.md # a temp-fixture FILENAME inside the harness (a repo built in a tmpdir to prove a non-AGENTS.md file is ignored), not a path in this repository.

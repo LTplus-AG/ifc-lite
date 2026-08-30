@@ -56,6 +56,49 @@ pnpm api-surface:update      # if you added/removed/renamed an export
 
 Never hand-edit versions or `CHANGELOG.md`.
 
+## Working with an AI agent
+
+Most contributions here are agent-written, including the maintainer's own. There is
+no disclosure rule and no point in one. Two rules replace it.
+
+**You are accountable for the PR, and the test is answering, not authorship.** When
+review asks a question, answer it with evidence: a test, a run, a measurement, a model
+file that reproduces it. "The agent wrote it" is never an answer. "Here is the run
+that proves it" always is. You do not need to be able to write the code. You do need
+to be able to demonstrate what it does. Unanswered questions block the merge.
+
+**Supply the ground truth your agent cannot.** The most valuable thing you bring is a
+real IFC file from a real authoring tool, a measurement, a screenshot, a reproduction.
+An agent can write a plausible test all day; it cannot produce a Vectorworks export
+that georeferences wrong. Contributions that carry one of those are worth more than
+another sweep.
+
+## Picking what to work on
+
+**Default lane: your PR closes an issue labelled `ready`.** `ready` is applied by the
+maintainer and means: in scope, wanted now, scoped. That label is how project direction
+gets set, and it is the one thing not delegated. CI enforces it
+(`scripts/check-issue-queue.mjs`). A genuine drive-by fix can be waved through with the
+`unqueued` label, applied by the maintainer.
+
+**Filing issues is unrestricted and welcome.** An audit that produces twenty good
+issue reports is a real contribution. Filing is not claiming, and an unlabelled issue
+is not yet a work item.
+
+**One defect class per issue, one issue per PR.** A class found once and paid for N
+times is N review contexts for one decision. Fix the class, not the call site. Past
+roughly 1,500 changed lines, stack PRs against the same issue instead of shipping one
+diff nobody can review.
+
+**A sweep needs a charter.** Audit-driven work is welcome and has produced some of the
+best work in this repo. It also has no natural stopping point, so it needs an issue
+naming one: what is being swept, and what ends it.
+
+**New contributors start with one PR open at a time.** Not a punishment and not a
+judgement of your code: with a single human reviewer, review is the scarce resource,
+and an unreviewed merge is worse for the project than a slow one. The limit rises as
+merges land clean.
+
 ## Pull requests
 
 - Branch from `main`; one focused change per PR.

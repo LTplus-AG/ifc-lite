@@ -91,6 +91,17 @@ jobs:
               # to see changeset-only PRs, or the check it runs cannot fire on
               # the PR that introduces the mistake.
               - '.changeset/**'
+              # AGENTS.md is the instruction file every agent reads, and
+              # scripts/check-agents-md-size.mjs gates its size and line length.
+              # Without these two lines a PR editing ONLY the root AGENTS.md
+              # matches no filter at all, so no job runs and the gate cannot fire
+              # on its own input -- the #3314 class this filter block warns about.
+              - 'AGENTS.md'
+              - '**/AGENTS.md'
+              - 'scripts/agents-md-budget.txt'
+              # scripts/check-changeset-bump.mjs reads the API-surface snapshot as
+              # its baseline, so the snapshot must be able to trigger the job.
+              - 'scripts/api-surface.json'
               # oxlint lints all of `apps/` except `apps/landing`, but this
               # filter names the two apps individually rather than `apps/**` —
               # broadening it would drag every landing-page edit through the
@@ -402,6 +413,11 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
+          # scripts/check-changeset-bump.mjs needs the last `chore: version
+          # packages` commit as its baseline. That anchor sat 130 commits back
+          # when this was wired, and the gate REFUSES on a shallow clone rather
+          # than passing, so a depth guess would turn into a flaky red.
+          fetch-depth: 0
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -419,6 +435,18 @@ jobs:
           name: build-output
           path: packages
       - run: pnpm lint
+      # THE ARTIFACT CLASS NOBODY REVIEWED. PR #3175 corrected twelve changesets
+      # by hand that would have shipped breaking changes as `patch`, with the
+      # release one command from publishing; its own body names the cause --
+      # CodeRabbit was rate-limited across the 42-PR batch and the changesets
+      # were the one artifact class nobody looked at. `pnpm lint` above validates
+      # that a changeset NAMES a real package; this validates its BUMP LEVEL.
+      - name: Check changeset bump levels against the API surface
+        run: node scripts/check-changeset-bump.mjs
+      # Executable proof the gate fires, including that the under-bump remedy
+      # says RAISE THE BUMP rather than restore the deleted export.
+      - name: Check changeset-bump gate regressions
+        run: node --test scripts/check-changeset-bump.test.mjs
 
   # The viewer's own suite, split out of `node-tests` AND sharded four ways.
   #
@@ -861,6 +889,16 @@ jobs:
       # almost no files must fail rather than report clean.
       - name: Check CSV escaper gate regressions
         run: node --test scripts/check-csv-escaper-copies.test.mjs
+
+      # AGENTS.md grew 10,123 -> 48,066 bytes in 55 days across 26 commits,
+      # strictly monotonically -- not one shrink. An instruction file nobody
+      # finishes does not instruct. Budgets ratchet DOWN only, and the second
+      # tooth caps line length: the authoritative CI-gate list used to sit
+      # inside a single 4,893-character line where a skimming reader missed it.
+      - name: Check AGENTS.md size and line length
+        run: node scripts/check-agents-md-size.mjs
+      - name: Check AGENTS.md ratchet regressions
+        run: node --test scripts/check-agents-md-size.test.mjs
 
       # Same precedent, for the STEP (ISO 10303-21) string-literal escaper
       # (#3300, second half): the TypeScript and Rust implementations cannot

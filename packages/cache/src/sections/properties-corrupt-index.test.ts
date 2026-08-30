@@ -7,12 +7,12 @@
  * (key -> indices into the parallel `entityId`/`psetName`/... column
  * arrays). Those columns are fixed-size `Uint32Array`s, so an out-of-range
  * row index doesn't throw — `arr[idx]` on a typed array silently answers
- * `undefined`. A corrupt or truncated cache whose index table names a row
- * past the column length therefore doesn't fail the cache load: it flows
- * `undefined` names/values into `getForEntity`'s result as if they were
- * real properties. Same defect shape as `entity-index.ts`'s `typeIndex`
- * bounds check (which already throws on the equivalent condition) and the
- * one fixed for `relationships.ts`'s edge ranges.
+ * `undefined`. A corrupt cache whose index table names a row past the column
+ * length therefore doesn't fail the cache load: it flows `undefined`
+ * names/types into `getForEntity`'s result as if they were real properties.
+ * Same defect shape as `entity-index.ts`'s `typeIndex` bounds check, which
+ * already throws on the equivalent condition. `relationships.ts`'s edge
+ * ranges still carry the same unguarded shape and are out of scope here.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -52,7 +52,7 @@ function tableWithCorruptEntityIndex(): PropertyTable {
     unitId: Int32Array.from([-1]),
     // Row 0 is the only row (count = 1), but the index claims row 5 —
     // exactly what a corrupt/truncated cache file would contain.
-    entityIndex: new Map([[100, [5]]]),
+    entityIndex: new Map([[100, [1]]]),
     psetIndex: new Map([[1, [0]]]),
     propIndex: new Map([[2, [0]]]),
   } as unknown as PropertyTable;
@@ -66,7 +66,7 @@ describe('readProperties row-index bounds', () => {
     const strings = makeStrings(['', 'Pset_Test', 'MyProp']);
 
     expect(() => readProperties(new BufferReader(buffer), strings)).toThrow(
-      /Corrupt cache PropertyTable entityIndex: row index 5 for key 100 exceeds row count 1/,
+      /Corrupt cache PropertyTable entityIndex: row index 1 for key 100 exceeds row count 1/,
     );
   });
 

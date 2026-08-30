@@ -237,10 +237,10 @@ function writeIndex(writer: BufferWriter, index: Map<number, number[]>): void {
  * — the column arrays (entityId, psetName, propType, valueString, ...) are
  * fixed-size `Uint32Array`/`Float64Array`s, so an out-of-range read returns
  * `undefined` instead of throwing (`arr[idx]` on a typed array never throws).
- * A corrupt/truncated cache with an inflated row index would otherwise flow
- * `undefined` names and values into `getForEntity`/`findByProperty` results
- * silently instead of failing the cache load. Same defect shape, and same
- * fix, as `entity-index.ts`'s `typeIndex` bounds check.
+ * A corrupt cache with an inflated row index would otherwise flow `undefined`
+ * names and types into `getForEntity` results silently instead of failing the
+ * cache load. Same defect shape, and same fix, as `entity-index.ts`'s
+ * `typeIndex` bounds check.
  */
 function readIndex(reader: BufferReader, rowCount: number, name: string): Map<number, number[]> {
   const size = reader.readUint32();

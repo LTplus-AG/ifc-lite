@@ -173,9 +173,9 @@ function writeIndex(writer: BufferWriter, index: Map<number, number[]>): void {
  * indices into the parallel column arrays. Each row index MUST be < rowCount
  * — the column arrays (entityId, qsetName, quantityType, value, ...) are
  * fixed-size typed arrays, so an out-of-range read returns `undefined`
- * instead of throwing. A corrupt/truncated cache with an inflated row index
- * would otherwise flow `undefined` names and values into `getForEntity`/
- * `findByQuantity` results silently instead of failing the cache load. Same
+ * instead of throwing. A corrupt cache with an inflated row index would
+ * otherwise flow `undefined` names and values into `getForEntity` results and
+ * `NaN` into `sumByType` silently instead of failing the cache load. Same
  * defect shape, and same fix, as `entity-index.ts`'s `typeIndex` bounds
  * check and `properties.ts`'s equivalent guard.
  */

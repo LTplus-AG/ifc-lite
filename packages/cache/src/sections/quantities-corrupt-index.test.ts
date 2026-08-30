@@ -46,7 +46,7 @@ function tableWithCorruptEntityIndex(): QuantityTable {
     formula: Uint32Array.from([0]),
     // Row 0 is the only row (count = 1), but the index claims row 7 —
     // exactly what a corrupt/truncated cache file would contain.
-    entityIndex: new Map([[100, [7]]]),
+    entityIndex: new Map([[100, [1]]]),
     qsetIndex: new Map([[1, [0]]]),
     quantityIndex: new Map([[2, [0]]]),
   } as unknown as QuantityTable;
@@ -60,7 +60,7 @@ describe('readQuantities row-index bounds', () => {
     const strings = makeStrings(['', 'Qto_Test', 'Length']);
 
     expect(() => readQuantities(new BufferReader(buffer), strings)).toThrow(
-      /Corrupt cache QuantityTable entityIndex: row index 7 for key 100 exceeds row count 1/,
+      /Corrupt cache QuantityTable entityIndex: row index 1 for key 100 exceeds row count 1/,
     );
   });
 

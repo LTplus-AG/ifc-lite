@@ -446,13 +446,24 @@ impl SplitMix64 {
 const ANCHOR_TJUNCTION: [u32; 2] = [628727, 360795];
 const ANCHOR_NOT_TJUNCTION: [u32; 2] = [144568, 893133];
 
-/// The classifier clusters by a greedy longest-edge-first anchor pick, which
-/// is itself order-independent (max-by-length, not first-seen), but the
-/// input edge list order still depends on `open_edges`'s `FxHashMap`
-/// iteration order, which is NOT deterministic across runs. Reproducing the
-/// verdict under several explicit shuffles of the same edge set guards
-/// against a hidden order dependency creeping back into the clustering (the
-/// exact class of bug the collinear-merge fix above was pinned against).
+/// What the shuffles below guard is the anchor tie-break, not run-to-run
+/// hash order.
+///
+/// The input order is in fact stable: `open_edges` iterates an `FxHashMap`,
+/// and `FxBuildHasher` is a seedless unit struct (rustc-hash's randomized
+/// state is the separate, opt-in `FxRandomState`), so two runs of this probe
+/// over the same fixture print byte-identical cluster lines.
+///
+/// The order dependency that does exist is inside the clustering. Its anchor
+/// is picked with `Iterator::max_by` over edge length, and `max_by` returns
+/// the LAST maximum on ties, so equal-length edges are resolved by input
+/// position. Host `#144568` has two open edges tying exactly at
+/// 1.6199951183372845 m, and permuting its edge list really does swap which
+/// of them anchors the first cluster (its 1.6200 m clusters come out in the
+/// opposite order). Reproducing the verdict under several explicit shuffles
+/// pins that whichever tied edge wins, the classifier still concludes the
+/// same thing (the exact class of bug the collinear-merge fix above was
+/// pinned against).
 fn assert_permutation_invariant(host: u32, edges: &[((f64, f64, f64), (f64, f64, f64))]) {
     let (baseline_tj, baseline_detail) = classify_open_edges(edges);
     let mut rng = SplitMix64(0x1235_5EED_C0FF_EE03 ^ host as u64);

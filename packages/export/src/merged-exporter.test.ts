@@ -1433,5 +1433,44 @@ describe('MergedExporter', () => {
       expect(contextDefMatch).not.toBeNull();
       expect(contextDefMatch![1]).toBe('Body');
     });
+
+    // A second-model subcontext kind with NO counterpart in the primary model
+    // (e.g. 'FootPrint', which the primary never declares) must survive as
+    // its OWN subcontext, offset-only — never silently unified onto whatever
+    // happened to sit at that array index under the old positional pairing.
+    it("keeps a no-counterpart subcontext kind ('FootPrint') as its own entity, with its reference intact", () => {
+      const footprintModel2 = () => buildModel('m2', 'Struct', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('subctxProjD')}',$,'D',$,$,$,$,(#3),#2);`],
+        [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#8));'],
+        [3, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#9,$);"],
+        [4, 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT', "#4=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body',$,*,*,*,*,#3,$,.MODEL_VIEW.,$);"],
+        [5, 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT', "#5=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Axis',$,*,*,*,*,#3,$,.MODEL_VIEW.,$);"],
+        // 'FootPrint' — a kind the primary model (Axis/Body only) never declares.
+        [11, 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT', "#11=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('FootPrint',$,*,*,*,*,#3,$,.PLAN_VIEW.,$);"],
+        [6, 'IFCWALL', `#6=IFCWALL('${guid('subctxWallD')}',$,'W',$,$,$,#7,$);`],
+        [7, 'IFCPRODUCTDEFINITIONSHAPE', '#7=IFCPRODUCTDEFINITIONSHAPE($,$,(#10));'],
+        // ContextOfItems (attr 0) = #11, this model's own 'FootPrint' subcontext.
+        [10, 'IFCSHAPEREPRESENTATION', "#10=IFCSHAPEREPRESENTATION(#11,'FootPrint','GeometricCurveSet',$);"],
+        [8, 'IFCSIUNIT', '#8=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+        [9, 'IFCCARTESIANPOINT', '#9=IFCCARTESIANPOINT((0.,0.,0.));'],
+      ]);
+
+      const content = decode(new MergedExporter([model1(), footprintModel2()])
+        .export({ schema: 'IFC4' }).content);
+
+      expect(findDanglingRefs(content)).toEqual([]);
+
+      // The 'FootPrint' subcontext survives in the output (not dropped).
+      expect(content.match(/=IFCGEOMETRICREPRESENTATIONSUBCONTEXT\('FootPrint'/g)?.length).toBe(1);
+
+      // The representation naming it still resolves to that surviving 'FootPrint' subcontext.
+      const shapeRepMatch = content.match(/#(\d+)=IFCSHAPEREPRESENTATION\(#(\d+),'FootPrint'/);
+      expect(shapeRepMatch).not.toBeNull();
+      const contextDefMatch2 = content.match(
+        new RegExp(`#${shapeRepMatch![2]}=IFCGEOMETRICREPRESENTATIONSUBCONTEXT\\('([^']*)'`),
+      );
+      expect(contextDefMatch2).not.toBeNull();
+      expect(contextDefMatch2![1]).toBe('FootPrint');
+    });
   });
 });

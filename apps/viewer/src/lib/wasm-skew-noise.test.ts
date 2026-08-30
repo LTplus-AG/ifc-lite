@@ -113,6 +113,52 @@ describe('shouldSuppressWasmSkewNoise', () => {
     assert.equal(shouldSuppressWasmSkewNoise(skewEvent(HTTP_SKEW), h.deps), false);
   });
 
+  it('suppresses the worker-script skew wrapper (#3533) — recovered by kind, not by MIME text', () => {
+    // The pre-pass worker's own `onerror` handler never sees a wasm-MIME
+    // token — it wraps a synthetic detail string and dispatches
+    // `WASM_ASSET_UNAVAILABLE_EVENT` with `kind: 'worker-script'` (trusted by
+    // `recoverFromWorkerScriptSkew`, which reloads WITHOUT re-running the
+    // message matcher — see wasm-version-skew.test.ts's "pre-classified by
+    // the geometry library" suite). But by the time the exception reaches
+    // this gate, only the message text survives — `isWasmAssetUnavailableError`
+    // requires a wasm/MIME/status-code token that this message never carries,
+    // so the reload silently ran while the exception still got captured.
+    const h = harness();
+    assert.equal(
+      shouldSuppressWasmSkewNoise(
+        skewEvent('Pre-pass worker failed: worker script failed to load (possibly a stale deployment)'),
+        h.deps,
+      ),
+      true,
+    );
+  });
+
+  it('suppresses the sibling geometry-worker-pool wrapper of the same signature', () => {
+    const h = harness();
+    assert.equal(
+      shouldSuppressWasmSkewNoise(
+        skewEvent('Geometry worker failed: worker script failed to load (possibly a stale deployment)'),
+        h.deps,
+      ),
+      true,
+    );
+  });
+
+  it('control: a genuine (non-skew) worker failure is still captured', () => {
+    const h = harness();
+    assert.equal(
+      shouldSuppressWasmSkewNoise(
+        skewEvent('Pre-pass worker failed: RangeError: Maximum call stack size exceeded'),
+        h.deps,
+      ),
+      false,
+    );
+    assert.equal(
+      shouldSuppressWasmSkewNoise(skewEvent('Geometry worker failed: worker terminated unexpectedly'), h.deps),
+      false,
+    );
+  });
+
   it('reads the message from $exception_values when $exception_list is absent', () => {
     const h = harness();
     const out = shouldSuppressWasmSkewNoise(

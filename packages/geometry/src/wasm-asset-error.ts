@@ -111,6 +111,40 @@ export function isWasmAssetUnavailableError(err: unknown): boolean {
   return false;
 }
 
+// The literal detail text `geometry-parallel.ts`'s worker `onerror` handlers
+// (pre-pass AND the process-worker pool — both wrap it as `Pre-pass worker
+// failed: ${detail}` / `Geometry worker failed: ${detail}`) synthesize ONLY
+// when the worker never posted a message and the ErrorEvent itself carried no
+// `.message`/`.filename` — i.e. exactly the condition under which
+// `notifyIfWorkerScriptUnavailable` below dispatches
+// `WASM_ASSET_UNAVAILABLE_EVENT` with `kind: 'worker-script'` and the host
+// reloads. It carries none of the wasm/MIME/status-code tokens
+// `isWasmAssetUnavailableError` looks for, so a caller that re-derives
+// classification from the message text alone (rather than trusting the
+// `kind` the library already assigned) misses it entirely — see
+// `isWorkerScriptSkewMessage` below.
+const WORKER_SCRIPT_SKEW_SIGNATURE = 'worker script failed to load (possibly a stale deployment)';
+
+/**
+ * True when `err`'s message is the worker-script version-skew signature
+ * synthesized by `geometry-parallel.ts`'s pre-pass or process-worker `onerror`
+ * handlers (`Pre-pass worker failed: worker script failed to load (possibly a
+ * stale deployment)` / `Geometry worker failed: …` — same suffix). This is a
+ * DIFFERENT (and deliberately narrower) test than
+ * {@link isWasmAssetUnavailableError}: that one matches the wasm-binary
+ * MIME/404 signature (#1363) and is used both to trigger a reload from an
+ * arbitrary unclassified error AND, by a host, to decide whether an already-
+ * recovered exception is safe to drop from error tracking. The worker-script
+ * variant never carries a wasm/MIME/status token (see the messageless
+ * `ErrorEvent` this wraps), so `isWasmAssetUnavailableError` structurally
+ * cannot see it; this function exists so a host-side classifier that only has
+ * the final message text (not the `kind` on the `WASM_ASSET_UNAVAILABLE_EVENT`
+ * detail) can still recognize the same recovered condition.
+ */
+export function isWorkerScriptSkewMessage(err: unknown): boolean {
+  return messageOf(err).includes(WORKER_SCRIPT_SKEW_SIGNATURE);
+}
+
 interface DomDispatcher {
   dispatchEvent: (event: Event) => boolean;
 }

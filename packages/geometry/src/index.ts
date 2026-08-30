@@ -54,7 +54,7 @@ export { prewarmSharedWasmModule } from './wasm-shared-module.js';
 // WASM_ASSET_UNAVAILABLE_EVENT and uses `isWasmAssetUnavailableError` to
 // reload onto the deployment; `notifyIfWasmAssetUnavailable` stays internal.
 export {
-  isWasmAssetUnavailableError,
+  isWasmAssetUnavailableError, isWorkerScriptSkewMessage,
   WASM_ASSET_UNAVAILABLE_EVENT,
 } from './wasm-asset-error.js';
 // WebAssembly runtime-trap contract (#1898). A trap taken by an operation

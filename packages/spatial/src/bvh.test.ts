@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { BVH, type MeshWithBounds } from './bvh.js';
-import type { AABB } from './aabb.js';
+import { AABBUtils, type AABB } from './aabb.js';
 import { FrustumUtils, type Frustum } from './frustum.js';
 
 function box(
@@ -115,6 +115,25 @@ describe('BVH.queryAABB', () => {
     const meshes = [cube(1, [0, 0, 0]), cube(2, [0, 0, 0]), cube(3, [0, 0, 0])];
     const bvh = BVH.build(meshes);
     expect(bvh.queryAABB(box(0, 0, 0, 0, 0, 0)).sort((a, b) => a - b)).toEqual([1, 2, 3]);
+  });
+
+  it('does not let a NaN-bounded mesh hide a valid sibling from the same subtree (#hunt2)', () => {
+    // Mesh 1 has degenerate/NaN bounds (e.g. a corrupt vertex produced them).
+    // `computeBounds` used to fold every mesh's bounds with Math.min/Math.max;
+    // Math.min(x, NaN) is NaN, and once NaN enters the running min/max it
+    // poisons every later comparison in the same reduce too, so the internal
+    // node covering both meshes got NaN bounds. AABBUtils.intersects treats a
+    // NaN bound as "no intersection" on that axis, so the whole subtree —
+    // including mesh 2, whose own bounds are perfectly valid and inside the
+    // query box — was pruned before its leaf was ever reached. On unmodified
+    // main this asserted `[]`, not `[2]`: a valid mesh vanishing from culling,
+    // picking, and box queries because an unrelated sibling had bad geometry.
+    const meshes: MeshWithBounds[] = [
+      { expressId: 1, bounds: box(NaN, 0, 0, NaN, 1, 1) },
+      { expressId: 2, bounds: box(0, 0, 0, 1, 1, 1) },
+    ];
+    const bvh = BVH.build(meshes);
+    expect(bvh.queryAABB(box(-1, -1, -1, 4, 4, 4))).toEqual([2]);
   });
 });
 
@@ -418,5 +437,139 @@ describe('FrustumUtils', () => {
     expect(FrustumUtils.isAABBVisible(f, b)).toBe(true);
     const far: Frustum = { planes: [{ normal: [-1, 0, 0], distance: -1.6 }] };
     expect(FrustumUtils.isAABBVisible(far, b)).toBe(false);
+  });
+});
+
+describe('BVH property harness — tree query vs. brute-force leaf oracle', () => {
+  // Deterministic xorshift32, no dependency added.
+  function makeRng(seed: number): () => number {
+    let s = seed >>> 0;
+    return () => {
+      s ^= s << 13; s >>>= 0;
+      s ^= s >>> 17;
+      s ^= s << 5; s >>>= 0;
+      return s / 4294967296;
+    };
+  }
+
+  function randRange(rng: () => number, lo: number, hi: number): number {
+    return lo + rng() * (hi - lo);
+  }
+
+  /** Item box: usually normal, sometimes degenerate (zero extent on an axis). */
+  function randomBox(rng: () => number, mag: number): AABB {
+    const cx = randRange(rng, -mag, mag);
+    const cy = randRange(rng, -mag, mag);
+    const cz = randRange(rng, -mag, mag);
+    let hx = randRange(rng, 0, mag * 0.2);
+    let hy = randRange(rng, 0, mag * 0.2);
+    let hz = randRange(rng, 0, mag * 0.2);
+    if (rng() < 0.15) hx = 0;
+    if (rng() < 0.15) hy = 0;
+    if (rng() < 0.15) hz = 0;
+    return { min: [cx - hx, cy - hy, cz - hz], max: [cx + hx, cy + hy, cz + hz] };
+  }
+
+  function sortedEq(a: number[], b: number[]): boolean {
+    const sa = [...a].sort((x, y) => x - y);
+    const sb = [...b].sort((x, y) => x - y);
+    return sa.length === sb.length && sa.every((v, i) => v === sb[i]);
+  }
+
+  // Leaf-level oracles: the exact predicates each query claims to accelerate,
+  // applied to every item directly (no tree, so nothing to prune wrongly).
+  function bruteAABB(meshes: MeshWithBounds[], q: AABB): number[] {
+    return meshes.filter((m) => AABBUtils.intersects(m.bounds, q)).map((m) => m.expressId);
+  }
+  function bruteRay(
+    meshes: MeshWithBounds[],
+    origin: [number, number, number],
+    dir: [number, number, number],
+  ): number[] {
+    const len = Math.hypot(dir[0], dir[1], dir[2]);
+    const d: [number, number, number] =
+      len === 0 ? [NaN, NaN, NaN] : [dir[0] / len, dir[1] / len, dir[2] / len];
+    return meshes.filter((m) => rayIntersectsAABB(origin, d, m.bounds)).map((m) => m.expressId);
+  }
+  function bruteFrustum(meshes: MeshWithBounds[], frustum: Frustum): number[] {
+    return meshes.filter((m) => FrustumUtils.isAABBVisible(frustum, m.bounds)).map((m) => m.expressId);
+  }
+  function rayIntersectsAABB(
+    origin: [number, number, number],
+    direction: [number, number, number],
+    aabb: AABB,
+  ): boolean {
+    let tmin = -Infinity, tmax = Infinity;
+    for (let i = 0; i < 3; i++) {
+      if (direction[i] === 0) {
+        if (origin[i] < aabb.min[i] || origin[i] > aabb.max[i]) return false;
+        continue;
+      }
+      const invD = 1 / direction[i];
+      let t0 = (aabb.min[i] - origin[i]) * invD;
+      let t1 = (aabb.max[i] - origin[i]) * invD;
+      if (invD < 0) [t0, t1] = [t1, t0];
+      tmin = Math.max(tmin, t0);
+      tmax = Math.min(tmax, t1);
+      if (tmax < tmin) return false;
+    }
+    return tmax >= 0;
+  }
+
+  it('agrees with the brute-force oracle across randomized configurations (200+ queries/type)', () => {
+    const rng = makeRng(0xC0FFEE);
+    const configs = 12;
+    const queriesPerConfig = 18; // 12 * 18 = 216 queries per query type, >= 200.
+    let aabbChecked = 0, rayChecked = 0, frustumChecked = 0;
+
+    for (let c = 0; c < configs; c++) {
+      const n = 1 + Math.floor(rng() * 25);
+      const mag = [1, 100, 1e5][c % 3];
+      const meshes: MeshWithBounds[] = [];
+      for (let i = 0; i < n; i++) meshes.push({ expressId: i + 1, bounds: randomBox(rng, mag) });
+      // Occasional duplicate expressId (submeshes sharing one element id).
+      if (rng() < 0.3 && meshes.length > 1) {
+        meshes.push({ expressId: meshes[0].expressId, bounds: randomBox(rng, mag) });
+      }
+      const bvh = BVH.build(meshes);
+
+      for (let q = 0; q < queriesPerConfig; q++) {
+        const qbox = randomBox(rng, mag * 1.5);
+        expect(bvh.queryAABB(qbox).sort((a, b) => a - b)).toEqual(bruteAABB(meshes, qbox).sort((a, b) => a - b));
+        aabbChecked++;
+
+        const origin: [number, number, number] = [
+          randRange(rng, -mag, mag), randRange(rng, -mag, mag), randRange(rng, -mag, mag),
+        ];
+        let dir: [number, number, number] = [
+          randRange(rng, -1, 1), randRange(rng, -1, 1), randRange(rng, -1, 1),
+        ];
+        if (rng() < 0.3) {
+          const axis = Math.floor(rng() * 3);
+          dir = [0, 0, 0];
+          dir[axis] = rng() < 0.5 ? 1 : -1;
+        }
+        expect(sortedEq(bvh.raycast(origin, dir), bruteRay(meshes, origin, dir))).toBe(true);
+        rayChecked++;
+
+        const fb = randomBox(rng, mag * 1.5);
+        const frustum: Frustum = {
+          planes: [
+            { normal: [1, 0, 0], distance: -fb.min[0] },
+            { normal: [-1, 0, 0], distance: fb.max[0] },
+            { normal: [0, 1, 0], distance: -fb.min[1] },
+            { normal: [0, -1, 0], distance: fb.max[1] },
+            { normal: [0, 0, 1], distance: -fb.min[2] },
+            { normal: [0, 0, -1], distance: fb.max[2] },
+          ],
+        };
+        expect(sortedEq(bvh.queryFrustum(frustum), bruteFrustum(meshes, frustum))).toBe(true);
+        frustumChecked++;
+      }
+    }
+
+    expect(aabbChecked).toBeGreaterThanOrEqual(200);
+    expect(rayChecked).toBeGreaterThanOrEqual(200);
+    expect(frustumChecked).toBeGreaterThanOrEqual(200);
   });
 });

@@ -3,12 +3,15 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * How an occurrence's own property sets compose with the ones it inherits from
- * its `IfcTypeProduct`.
+ * How property/quantity sets coming from two different sources compose: an
+ * occurrence's own sets with the ones it inherits from its `IfcTypeProduct`
+ * ({@link mergeInheritedPropertySets}), and a type's `HasPropertySets` list with
+ * the sets attached to it by `IfcRelDefinesByProperties`
+ * ({@link appendSetsFromSecondSource}).
  *
- * Its own module rather than a corner of `on-demand-extractors.ts`: the rule is
- * independent of how either side was extracted, and every consumer that resolves
- * properties for an occurrence needs the same answer.
+ * Their own module rather than a corner of `on-demand-extractors.ts`: the rules
+ * are independent of how either side was extracted, and every consumer that
+ * resolves sets from more than one source needs the same answer.
  */
 
 /**
@@ -61,7 +64,13 @@ export function mergeInheritedPropertySets<T extends NamedPropertySet>(
     }
 
     for (const inherited of inheritedSets) {
-        const indices = indicesByName.get(inherited.name);
+        // An UNNAMED set matches nothing: since #3530 every set the source left
+        // without a Name reports `''`, so keying on it would fold an unnamed
+        // inherited set into an unrelated unnamed occurrence set and lose any
+        // property the two happen to share. Before #3530 the two carried
+        // distinct `PropertySet #<id>` placeholders and were kept apart here;
+        // an absent name is evidence of nothing, least of all of sameness.
+        const indices = inherited.name ? indicesByName.get(inherited.name) : undefined;
         if (!indices) {
             // Appended as-is, and deliberately NOT recorded in `indicesByName`:
             // that index tracks OCCURRENCE sets only. Recording it would make a
@@ -85,4 +94,35 @@ export function mergeInheritedPropertySets<T extends NamedPropertySet>(
     }
 
     return merged;
+}
+
+/**
+ * Append the sets a type carries via `IfcRelDefinesByProperties` to the ones
+ * already collected from its `HasPropertySets` attribute, listing a set that is
+ * reachable BOTH ways only once.
+ *
+ * The dedupe is by express id, not by name. A name is only a proxy for identity,
+ * and since #3530 it stopped being even that: every set the source left unnamed
+ * now reports `''`, so a name-keyed check folds every unnamed set from the
+ * second source into the first unnamed one from the first and drops its
+ * properties outright. The name check is still applied on top for genuinely
+ * named sets, where an empty set from one source must not shadow a populated
+ * same-named set from the other.
+ *
+ * `extract` is called at most once, with the ids the first source did not
+ * already contribute.
+ */
+export function appendSetsFromSecondSource<T extends { name: string }>(
+    into: T[],
+    firstSourceIds: ReadonlySet<number>,
+    firstSourceNames: ReadonlySet<string>,
+    candidateIds: readonly number[],
+    extract: (ids: number[]) => T[],
+): void {
+    const fresh = candidateIds.filter((id) => !firstSourceIds.has(id));
+    if (fresh.length === 0) return;
+    for (const set of extract(fresh)) {
+        if (set.name && firstSourceNames.has(set.name)) continue;
+        into.push(set);
+    }
 }

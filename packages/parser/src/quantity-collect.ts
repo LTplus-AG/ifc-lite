@@ -216,7 +216,6 @@ export function readQuantitySet(
     store: QuantityLookupStore,
     extractor: EntityExtractor,
     qsetRef: EntityRef,
-    qsetId: number,
 ): CollectedQuantitySet | null {
     const qsetEntity = extractor.extractEntity(qsetRef);
     if (!qsetEntity) return null;

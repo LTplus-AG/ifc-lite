@@ -860,7 +860,7 @@ export class ColumnarParser {
             const qsetRef = getEntityRefFromStore(store, qsetId);
             if (!qsetRef) continue;
 
-            const qset = readQuantitySet(store, extractor, qsetRef, qsetId);
+            const qset = readQuantitySet(store, extractor, qsetRef);
             if (qset) result.push(qset);
         }
 

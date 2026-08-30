@@ -88,10 +88,40 @@ describe('HatchGenerator', () => {
     });
 
     // The very first sweep row (y=0) is collinear with the polygon's own
-    // bottom edge. That is a genuinely ambiguous boundary case (the row has
-    // no interior on either side to enter), so this only pins the invariant
-    // that matters: no segment leaks outside the shape it was clipped to.
+    // bottom edge. Before the fix it leaked to x=-21.2. The tie-break puts a
+    // line lying exactly along a ring edge on the OUTSIDE of that ring, so
+    // the row is now dropped outright rather than emitted as a boundary
+    // sliver — assert that, not just that nothing escaped the bbox.
     assertBoundedInX(result.lines, 0, 10);
+    const atY0 = result.lines.filter((l) => Math.abs(l.line.start.y) < 1e-6);
+    expect(atY0).toHaveLength(0);
+  });
+
+  it('does not lose a crossing when a whole boundary edge is collinear with the hatch row', () => {
+    const gen = new HatchGenerator();
+    // Trapezoid whose TOP edge lies exactly on the y=8 hatch row. Both top
+    // vertices are nominally on the row, so their side values are
+    // floating-point noise of either sign: the edge between them reads as a
+    // crossing by side but as parallel to a cross-product intersection
+    // solve, and losing it there inverts parity for the rest of the row.
+    const outer: Point2D[] = [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 7, y: 8 },
+      { x: 3, y: 8 },
+    ];
+    const result = gen.generateHatch(polygonOf(4, outer), 100, {
+      type: 'diagonal',
+      spacing: 1,
+      angle: 90,
+    });
+
+    assertBoundedInX(result.lines, 0, 10);
+    const atY8 = result.lines.filter((l) => Math.abs(l.line.start.y - 8) < 1e-6);
+    // The shape at y=8 is the top edge itself, x in [3,7]. Before the fix
+    // this row ran to x=-19.2, ~19 units clear of the trapezoid.
+    expect(atY8.length).toBeGreaterThan(0);
+    assertBoundedInX(atY8, 3, 7);
   });
 
   it('resolves a genuine pass-through vertex as a real crossing (rhombus)', () => {
@@ -143,10 +173,22 @@ describe('HatchGenerator', () => {
       angle: 90,
     });
 
-    // A boundary row exactly flush with the hole's edge is a genuinely
-    // ambiguous case (open vs. closed set convention) — what matters here is
-    // that no segment leaks outside the outer square, which the tangent-spike
-    // fix above could otherwise break for a hole boundary too.
     assertBoundedInX(result.lines, 0, 10);
+
+    // The row at y=5 runs exactly along the hole's top edge. Pin that the
+    // hole is still cut out of it: a bbox check alone passes even when the
+    // row is painted straight across the void, because the void is inside
+    // the outer square.
+    const atY5 = result.lines
+      .filter((l) => Math.abs(l.line.start.y - 5) < 1e-6)
+      .map((l) => [
+        Math.min(l.line.start.x, l.line.end.x),
+        Math.max(l.line.start.x, l.line.end.x),
+      ] as const);
+    expect(atY5.length).toBeGreaterThan(0);
+    for (const [lo, hi] of atY5) {
+      // Overlap of the emitted interval with the hole's span x in [3,7].
+      expect(Math.min(hi, 7) - Math.max(lo, 3)).toBeLessThanOrEqual(1e-6);
+    }
   });
 });

@@ -228,7 +228,7 @@
    565 packages/drawing-2d/src/gpu-section-cutter.ts
    470 packages/drawing-2d/src/graphic-overrides/presets.ts
    523 packages/drawing-2d/src/graphic-overrides/rule-engine.ts
-   431 packages/drawing-2d/src/hatch-generator.ts
+   408 packages/drawing-2d/src/hatch-generator.ts
    572 packages/drawing-2d/src/index.ts
    436 packages/drawing-2d/src/line-merger.ts
    417 packages/drawing-2d/src/object-styles.ts

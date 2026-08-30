@@ -252,46 +252,66 @@ export class HatchGenerator {
     const dx = line.end.x - line.start.x;
     const dy = line.end.y - line.start.y;
 
-    // Which side of the (infinite) hatch line a ring vertex is on. A vertex
-    // exactly ON the line buckets with the "not > 0" side — the same
-    // strict, consistent tie-break `pointInRing` below uses for its own ray
-    // cast — so an edge is a genuine crossing only when its two endpoints
-    // land on OPPOSITE sides. That is what makes a ring VERTEX sitting
-    // exactly on the hatch line resolve correctly either way it occurs: at
-    // a tangent spike (both neighbouring edges climbing away on the SAME
-    // side) neither adjacent edge crosses, net 0; at a genuine pass-through
-    // (neighbours on opposite sides) exactly one of the two adjacent edges
-    // crosses, net 1 — the even/odd parity a robust point-in-polygon test
-    // relies on. The previous implementation computed a literal geometric
-    // intersection per EDGE regardless of side and de-duplicated near-equal
-    // `t` values, which collapsed a spike's two touching intersections into
-    // ONE instead of zero, inverting the inside/outside sense of every
-    // segment built past it — including the final "run off the far end of
-    // the line" segment, which is how a hatch line ended up running dozens
-    // of units outside the polygon it was clipped to.
-    const side = (p: Point2D): boolean =>
-      dx * (p.y - line.start.y) - dy * (p.x - line.start.x) > 0;
+    // Signed side of the (infinite) hatch line a ring vertex falls on. An
+    // edge counts as a crossing only when its two endpoints have opposite
+    // signs, with the tie-break "not > 0" applied to whatever the sign
+    // actually computes as. That is what makes a ring VERTEX sitting on the
+    // hatch line resolve correctly however it occurs: at a tangent spike
+    // (the ring stays on one side and only touches) the two adjacent edges
+    // contribute an EVEN number of crossings — zero when the vertex buckets
+    // with its neighbours, two when it buckets against them — so parity is
+    // unchanged; at a genuine pass-through (neighbours on opposite sides)
+    // exactly one of the two adjacent edges crosses, net 1. The previous
+    // implementation computed a literal geometric intersection per EDGE
+    // regardless of side and de-duplicated near-equal `t` values, which
+    // collapsed a spike's two touching intersections into ONE instead of
+    // zero, inverting the inside/outside sense of every segment built past
+    // it — including the final "run off the far end of the line" segment,
+    // which is how a hatch line ended up running dozens of units outside
+    // the polygon it was clipped to.
+    //
+    // The tie-break reads as an infinitesimal displacement of the hatch line
+    // towards its `> 0` side, applied consistently to every ring: a line
+    // lying exactly ALONG a ring edge therefore resolves to outside that
+    // ring. The sweep's first line always passes through the extreme vertex
+    // (`generateParallelLines` starts at the bbox minimum), so on an
+    // axis-aligned shape that first line falls on the boundary edge and is
+    // dropped, and a line flush with a hole's near edge is kept rather than
+    // subtracted. Both are the same rule, and both put the line on the
+    // boundary rather than in the interior of anything.
+    const sideOf = (p: Point2D): number =>
+      dx * (p.y - line.start.y) - dy * (p.x - line.start.x);
 
+    const lenSq = dx * dx + dy * dy;
     const ts: number[] = [];
     for (let i = 0; i < ring.length; i++) {
       const j = (i + 1) % ring.length;
-      if (side(ring[i]) === side(ring[j])) continue;
-      const intersection = this.lineLineIntersection(line.start, line.end, ring[i], ring[j]);
-      if (intersection !== null && intersection.t >= 0 && intersection.t <= 1) {
-        ts.push(intersection.t);
+      const sa = sideOf(ring[i]);
+      const sb = sideOf(ring[j]);
+      if (sa > 0 === sb > 0) continue;
+      // Locate the crossing by interpolating the very side values the test
+      // above used, then project it back onto the line. Deriving `t` from a
+      // separate segment-intersection solve instead would let the two
+      // disagree: an edge nominally COLLINEAR with the hatch line still has
+      // endpoints a few ULPs either side of it, so the side test calls it a
+      // crossing while a cross-product test calls it parallel and drops it —
+      // one lost crossing inverts parity for the rest of the line.
+      const u = sa / (sa - sb);
+      const px = ring[i].x + u * (ring[j].x - ring[i].x);
+      const py = ring[i].y + u * (ring[j].y - ring[i].y);
+      const t = ((px - line.start.x) * dx + (py - line.start.y) * dy) / lenSq;
+      if (t >= 0 && t <= 1) {
+        ts.push(t);
       }
     }
     ts.sort((a, b) => a - b);
 
     // A line with zero crossings has a CONSTANT inside/outside state along
-    // its whole length, so testing at `line.start` (rather than the line's
-    // midpoint, as before) is exact — and unlike the midpoint it cannot
-    // coincide with the very vertex that made the crossing count zero: the
-    // caller always extends `line` well past the ring before this is
-    // reached (`generateParallelLines`'s `extent`), so a hatch row that
-    // merely grazes the ring's boundary (no interior on either side to
-    // enter) resolves to "outside" rather than to whichever side the
-    // midpoint happened to land on.
+    // its whole length, so any point on it answers. `line.start` is used
+    // rather than the midpoint the previous implementation sampled because
+    // it is the same point the parity walk below seeds `currentlyInside`
+    // from — one sampling point for the whole function, so the two branches
+    // cannot disagree about which side the line starts on.
     if (ts.length === 0) {
       return this.pointInRing(line.start, ring) === inside ? [line] : [];
     }
@@ -338,46 +358,6 @@ export class HatchGenerator {
         Math.abs(seg.end.x - seg.start.x) + Math.abs(seg.end.y - seg.start.y);
       return len > EPSILON;
     });
-  }
-
-  /**
-   * Line-line intersection
-   * Returns t parameter on first line, or null if no intersection
-   */
-  private lineLineIntersection(
-    p1: Point2D,
-    p2: Point2D,
-    p3: Point2D,
-    p4: Point2D
-  ): { t: number; u: number } | null {
-    const d1x = p2.x - p1.x;
-    const d1y = p2.y - p1.y;
-    const d2x = p4.x - p3.x;
-    const d2y = p4.y - p3.y;
-
-    const cross = d1x * d2y - d1y * d2x;
-    if (Math.abs(cross) < EPSILON) {
-      return null; // Parallel
-    }
-
-    const dx = p3.x - p1.x;
-    const dy = p3.y - p1.y;
-
-    const t = (dx * d2y - dy * d2x) / cross;
-    const u = (dx * d1y - dy * d1x) / cross;
-
-    // Check if intersection is within edge segment. Tolerant at the
-    // boundary: `clipLineToRing` only calls this for an edge whose two
-    // endpoints its own side test already found on OPPOSITE sides of the
-    // query line, so the true intersection is at u = 0 or 1 exactly when
-    // that edge's ON-line endpoint IS the crossing point — and once the
-    // query line has any tilt at all, that u routinely computes a few ULPs
-    // past the boundary rather than landing exactly on it.
-    if (u < -EPSILON || u > 1 + EPSILON) {
-      return null;
-    }
-
-    return { t, u };
   }
 
   /**

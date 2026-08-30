@@ -62,7 +62,11 @@ export interface MeshData {
   geometryItemId?: number;
   /** The `IfcMaterial` layer this mesh slices. DISJOINT from `geometryItemId`,
    *  which used to carry it — so following that field for a layered wall landed
-   *  on the wrong entity. `geometryClass === 3` cannot substitute (#3199). */
+   *  on the wrong entity. `geometryClass === 3` cannot substitute (#3199).
+   *  Same id space as `expressId`: a federated viewer session re-homes it
+   *  alongside `expressId` and `geometryItemId` (`applyFederationOffsetToMesh`
+   *  in `apps/viewer/src/hooks/useIfcLoader.ts`), so a value read off this
+   *  field is always safe to resolve the same way as `expressId` (#3525). */
   materialId?: number;
   /** Per-vertex texture coordinates (u, v pairs, 1:1 with positions), present
    *  only for textured meshes (issue #961). */

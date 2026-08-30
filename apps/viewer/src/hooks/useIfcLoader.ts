@@ -175,9 +175,9 @@ const COMPLETE_FRAME_WAIT_MS = 1000;
  * `useZoneApportionment`), so an unshifted item id beside a shifted `expressId`
  * on one mesh is exactly the mixed-space case above.
  *
- * `materialId`, the other #3199 source id, is an `IfcMaterial` express id with
- * the same gap and is knowingly NOT shifted here — out of scope for this
- * change, and named so this list is not read as exhaustive.
+ * `materialId`, the other #3199 source id, is an `IfcMaterial` express id from
+ * the same file as `expressId`, so it moves with it too: every TS-side
+ * consumer only copies it (census: PR #3525; #3211's Rust lookups differ).
  *
  * Absence must stay absence: `geometryItemId` is legitimately absent, and both
  * naive shifts are wrong in a way a "the number changed" test accepts —
@@ -195,9 +195,8 @@ export function applyFederationOffsetToMesh(mesh: MeshData, idOffset: number): v
   if (mesh.textureRef) {
     mesh.textureRef = { ...mesh.textureRef, textureId: mesh.textureRef.textureId + idOffset };
   }
-  if (typeof mesh.geometryItemId === 'number') {
-    mesh.geometryItemId = mesh.geometryItemId + idOffset;
-  }
+  if (typeof mesh.geometryItemId === 'number') mesh.geometryItemId = mesh.geometryItemId + idOffset;
+  if (typeof mesh.materialId === 'number') mesh.materialId = mesh.materialId + idOffset;
 }
 
 /**

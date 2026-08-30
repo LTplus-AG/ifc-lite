@@ -151,6 +151,60 @@ describe('federation id-offset — the source item id is re-homed with the expre
     );
   });
 
+  it('flat path: the shifted materialId resolves back to its OWN model, not the primary (#3525)', () => {
+    // Same shape as geometryItemId, disjoint field (#3199): a material-layer
+    // mesh carries `materialId` instead of `geometryItemId`, never both. If
+    // this is left unshifted while `expressId` on the same mesh is global,
+    // the mesh's material resolves to a REAL entity in the WRONG model.
+    const m = mesh({ materialId: LOCAL_ITEM_ID });
+    applyFederationOffsetToMesh(m, secondaryOffset);
+
+    assert.deepEqual(
+      resolve(m.materialId!),
+      { modelId: 'secondary', expressId: LOCAL_ITEM_ID },
+      'materialId must resolve to the secondary model and back to its original local id',
+    );
+    assert.equal(
+      useViewerStore.getState().findModelForGlobalId(m.materialId!),
+      'secondary',
+      'a raw-local material id would answer "primary" here — that is the defect (#3525)',
+    );
+    assert.deepEqual(
+      useViewerStore.getState().resolveGlobalIdFromModels(m.materialId!),
+      { modelId: 'secondary', expressId: LOCAL_ITEM_ID },
+      'the store-backed resolver (the canonical one) must agree with the registry',
+    );
+    assert.equal(
+      resolve(m.expressId)?.modelId,
+      resolve(m.materialId!)?.modelId,
+      'expressId and materialId on one mesh must resolve to the same model',
+    );
+  });
+
+  it('flat path: an absent materialId stays absent — not NaN, not the bare offset (#3525)', () => {
+    const m = mesh({});
+    assert.equal('materialId' in m, false, 'sanity: the fixture must not carry the field');
+
+    applyFederationOffsetToMesh(m, secondaryOffset);
+
+    const materialId: number | undefined = m.materialId;
+    assert.equal('materialId' in m, false, 'the key must not be invented');
+    assert.equal(materialId, undefined, 'an absent material id must stay absent');
+    assert.notEqual(materialId, secondaryOffset, 'an absent material id must not become the bare offset');
+  });
+
+  it('a source materialId of 0 is shifted, not dropped by a truthiness guard (#3525)', () => {
+    const m = mesh({ materialId: 0 });
+    applyFederationOffsetToMesh(m, secondaryOffset);
+    assert.equal(m.materialId, secondaryOffset, 'a 0 material id must still be shifted');
+  });
+
+  it('materialId and geometryItemId are never both offset into the SAME resolved model incorrectly — control: primary model stays untouched at zero offset (#3525)', () => {
+    const m = mesh({ materialId: LOCAL_ITEM_ID });
+    applyFederationOffsetToMesh(m, 0);
+    assert.equal(m.materialId, LOCAL_ITEM_ID, 'a zero offset (primary model) must leave materialId untouched');
+  });
+
   it('flat path: the shifted geometryItemId resolves back to its OWN model, not the primary', () => {
     const m = mesh({ geometryItemId: LOCAL_ITEM_ID });
     applyFederationOffsetToMesh(m, secondaryOffset);

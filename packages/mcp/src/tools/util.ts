@@ -47,6 +47,10 @@ export function assertModelAccess(ctx: ToolContext, model: LoadedModel): LoadedM
  * profile and constituent legs go beyond it: an unnamed set that the CLI
  * skips entirely still gets a name here. So this is not parity with the CLI,
  * only agreement on the `IfcMaterialList` case that motivated it.
+ *
+ * Returns one name, never several: a multi-material `IfcMaterialList`
+ * resolves to its first member, so a caller counting distinct materials
+ * still under-counts such a model.
  */
 export function materialDisplayName(mat: MaterialData | null | undefined): string | undefined {
   if (!mat) return undefined;

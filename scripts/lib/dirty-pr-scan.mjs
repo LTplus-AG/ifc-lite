@@ -37,9 +37,11 @@
  * `on: pull_request: branches: [main]`, so a PR stacked on a feature branch is
  * silent for a reason a merge has no power over. #3411 is that shape -- its
  * base is `fix-3353-snap-f32-invisible-floor` -- so the flagship fixture above
- * is BOTH conflicted and base-filtered, and reporting only the conflict would
- * hand it a remedy that provably does not restore a lane. `classifyPr` reads
- * `baseRefName` and names which cause fired; see its docblock.
+ * is BOTH conflicted and base-filtered, and either cause reported alone hands
+ * it a remedy that provably does not restore a lane -- neither retargeting a
+ * dirty PR nor merging into a feature-based one fires `pull_request`.
+ * `classifyPr` reads `baseRefName`, names the cause a merge cannot clear, and
+ * flags the both-case so the report carries both remedies; see its docblock.
  */
 
 /** Thrown for every fail-closed condition; `reason` is the machine-readable tag. */
@@ -190,9 +192,13 @@ function finishBranches(branches) {
  *   `pull_request` for (`branches: [main]`). Measured on #3411 and #3405, both
  *   stacked on a feature branch with 0 of 15 lanes. Resolving a merge conflict
  *   does nothing here; the PR has to be retargeted (or its base landed first).
- *   This is #3429's first case, and it is checked FIRST: when a PR is both
- *   stacked and conflicted, the base filter is what still blocks the workflow
- *   after the conflict is gone, so it is the cause worth reporting.
+ *   This is #3429's first case, and it is checked FIRST because it is the cause
+ *   a merge has no power over, so it is the one that names the group.
+ *
+ *   IT IS NOT THE WHOLE REMEDY WHEN A PR IS BOTH (#3411 live is that shape):
+ *   retargeting a dirty PR at `main` clears the filter and leaves the conflict,
+ *   which fires nothing on its own, so the retarget line alone buys zero lanes.
+ *   Such a PR carries `alsoConflicted` and the report names BOTH remedies.
  * - `CONFLICTED`: the base IS one `test.yml` fires for, but the PR reads
  *   conflicted (`mergeable: CONFLICTING`, or `mergeStateStatus: DIRTY` --
  *   GitHub has shown both spellings live), so GitHub computes no merge ref and
@@ -245,9 +251,10 @@ export function classifyPr(pr, required, baseBranches) {
   const isUnknown = pr.mergeable === 'UNKNOWN' || pr.mergeStateStatus === 'UNKNOWN';
   const isBaseFiltered = baseBranches !== null && !baseBranches.includes(pr.baseRefName);
 
-  // Base filter first: it is the condition that still blocks the workflow once
-  // any merge conflict is resolved, so for a PR that is both, it is the cause
-  // whose remedy actually works.
+  // Base filter first: it is the condition a merge has no power over, so it
+  // names the group. It is not the whole remedy for a PR that is both --
+  // retargeting a dirty PR leaves no merge ref, so still no lane -- which is
+  // what `alsoConflicted` below carries into the report.
   let cause = null;
   if (missing.length > 0) {
     if (isBaseFiltered) cause = 'BASE_FILTERED';
@@ -267,6 +274,9 @@ export function classifyPr(pr, required, baseBranches) {
     rollupCount: rollup.length,
     missing,
     cause,
+    // Both remedies, not the first one. Derived from the same `isConflicted`
+    // the cause ladder uses, so the two can never disagree.
+    alsoConflicted: cause === 'BASE_FILTERED' && isConflicted,
     silent: cause !== null,
     // Advisory only -- see the docblock. Never folds into `silent`. A
     // base-filtered PR is a settled finding, not a pending one, so `UNKNOWN`
@@ -301,6 +311,11 @@ export function scanPrs(prs, required, baseBranches) {
  * is advice that cannot restore a single lane, because `test.yml`'s
  * `branches:` filter still excludes its base afterwards.
  *
+ * They are not mutually exclusive either. A PR that is stacked AND conflicted
+ * is grouped under the base filter, but the retarget line alone would have a
+ * maintainer do half the work for no lane, so `alsoConflicted` puts the second
+ * remedy on that PR's own lines instead of deferring it to a later cron run.
+ *
  * @param {ReturnType<typeof scanPrs>} results
  * @param {string[]} required
  * @param {string[] | null} [baseBranches]
@@ -321,6 +336,14 @@ export function report(results, required, baseBranches = null) {
           `mergeStateStatus=${r.mergeStateStatus} rollup=${r.rollupCount} row(s); ` +
           `missing ${r.missing.length}/${required.length} required lane(s): ${r.missing.join(', ')}`,
       );
+      if (r.alsoConflicted) {
+        lines.push(
+          '     ALSO conflicted, so this one needs BOTH remedies: retargeting it clears the ' +
+            'base filter but leaves the conflict, and GitHub fires no `pull_request` for a PR ' +
+            'it cannot compute a merge ref for. Resolve the conflict as well, or the retarget ' +
+            'restores no lane.',
+        );
+      }
     }
   };
 

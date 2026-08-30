@@ -281,6 +281,72 @@ test('report: the stacked group gets the retarget remedy and NOT the resolve-the
   assert.doesNotMatch(text, /only resolving the\s+conflict/i);
 });
 
+test('classifyPr: a stacked AND conflicted PR is flagged as needing both remedies', () => {
+  const both = {
+    number: 3411,
+    baseRefName: 'fix-3353-snap-f32-invisible-floor',
+    mergeable: 'CONFLICTING',
+    mergeStateStatus: 'DIRTY',
+    statusCheckRollup: [lane('Vercel Agent Review')],
+  };
+  assert.equal(classifyPr(both, REQUIRED, BASES).alsoConflicted, true);
+
+  // The other direction, so the flag tracks the conflict rather than just the
+  // base filter: #3405 is stacked and perfectly mergeable.
+  const stackedOnly = {
+    number: 3405,
+    baseRefName: 'fix-3338-isolate-expansion-gate',
+    mergeable: 'MERGEABLE',
+    mergeStateStatus: 'CLEAN',
+    statusCheckRollup: [lane('Vercel Agent Review')],
+  };
+  assert.equal(classifyPr(stackedOnly, REQUIRED, BASES).alsoConflicted, false);
+
+  // And a `main`-based conflicted PR is not "also" anything -- it is the
+  // CONFLICTED group, whose header already carries the resolve remedy.
+  const conflictedOnly = {
+    number: 2931,
+    baseRefName: 'main',
+    mergeable: 'CONFLICTING',
+    mergeStateStatus: 'DIRTY',
+    statusCheckRollup: [],
+  };
+  assert.equal(classifyPr(conflictedOnly, REQUIRED, BASES).alsoConflicted, false);
+});
+
+test('report: RED -- the stacked AND conflicted PR carries the second remedy, not just the retarget', () => {
+  // Following the retarget line alone on this shape restores no lane: the PR is
+  // still DIRTY afterwards and GitHub fires no `pull_request` for it. The
+  // stacked-only PR beside it must NOT pick the extra line up.
+  const results = scanPrs(
+    [
+      {
+        number: 3411,
+        baseRefName: 'fix-3353-snap-f32-invisible-floor',
+        mergeable: 'CONFLICTING',
+        mergeStateStatus: 'DIRTY',
+        statusCheckRollup: [],
+      },
+      {
+        number: 3405,
+        baseRefName: 'fix-3338-isolate-expansion-gate',
+        mergeable: 'MERGEABLE',
+        mergeStateStatus: 'CLEAN',
+        statusCheckRollup: [],
+      },
+    ],
+    REQUIRED,
+    BASES,
+  );
+  const { lines } = report(results, REQUIRED, BASES);
+  const text = lines.join('\n');
+  assert.match(text, /retarget the PR/i);
+  assert.equal(lines.filter((l) => /ALSO conflicted/i.test(l)).length, 1, text);
+  assert.match(text, /resolve the conflict as well/i);
+  const flagged = lines.findIndex((l) => /ALSO conflicted/i.test(l));
+  assert.ok(lines[flagged - 2].includes('#3411'), text);
+});
+
 test('report: both causes present are reported as separate groups with separate remedies', () => {
   const results = scanPrs(
     [

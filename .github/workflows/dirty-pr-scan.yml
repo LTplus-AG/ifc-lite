@@ -26,7 +26,9 @@ name: Silent PR CI visibility
 # fires `pull_request` only for `branches: [main]`, so a PR stacked on a
 # feature branch has no lanes either, and a merge cannot give it any (#3429).
 # The two causes take opposite remedies -- retarget vs resolve -- so the scan
-# names which one fired rather than issuing one instruction for both.
+# names which one fired rather than issuing one instruction for both. A PR can
+# carry both at once, and then neither remedy works alone, so the scan says so
+# on that PR's own lines instead of leaving half of it for a later run.
 on:
   schedule:
     # Every 30 minutes. Cheap (two `gh` reads, no checkout of anything to
@@ -39,6 +41,16 @@ on:
 permissions:
   contents: read
   pull-requests: read
+  # Declaring ANY `permissions:` block sets every scope not listed to `none`,
+  # and this scan's whole verdict rests on `statusCheckRollup` -- check-run and
+  # commit-status data, neither of which `pull-requests: read` covers. Without
+  # these two the job either dies with GH_ERROR or reads an empty rollup, and an
+  # empty rollup makes every conflicted PR look like it never ran a lane, which
+  # is the one false positive this gate is built to avoid (#3417/#3447 ran all
+  # 15 before going dirty). Same pair, for the same `gh --json
+  # statusCheckRollup` read, as pr-review-signal.yml.
+  checks: read
+  statuses: read
 
 env:
   ACTIONS_RUNNER_FORCE_ACTIONS_NODE_VERSION: node24

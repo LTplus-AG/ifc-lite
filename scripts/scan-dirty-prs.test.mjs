@@ -155,6 +155,70 @@ test('RED: a stacked PR that is fully mergeable is still reported', async () => 
   assert.match(output, /retarget the PR/i, output);
 });
 
+test('RED: a stacked PR that is ALSO conflicted is told to resolve the conflict too', async () => {
+  // #3411's real shape again. Retargeting it at `main` clears the base filter
+  // and leaves it DIRTY, and GitHub fires no `pull_request` for a PR it cannot
+  // compute a merge ref for -- so the retarget line alone sends a maintainer to
+  // do half the work and get zero lanes back. Both remedies, on one run.
+  await requiredLaneNames();
+  const { code, output } = run([
+    {
+      number: 3411,
+      baseRefName: 'fix-3353-snap-f32-invisible-floor',
+      mergeable: 'CONFLICTING',
+      mergeStateStatus: 'DIRTY',
+      isDraft: false,
+      statusCheckRollup: [lane('Vercel Agent Review')],
+    },
+  ]);
+  assert.equal(code, 1, output);
+  assert.match(output, /retarget the PR/i, output);
+  assert.match(output, /ALSO conflicted/i, output);
+  assert.match(output, /resolve the conflict as well/i, output);
+});
+
+test('a stacked PR that is NOT conflicted gets the retarget remedy only', async () => {
+  // The other direction: #3405 is MERGEABLE/CLEAN, so telling it to resolve a
+  // conflict it does not have would be the same wrong-remedy defect inverted.
+  await requiredLaneNames();
+  const { code, output } = run([
+    {
+      number: 3405,
+      baseRefName: 'fix-3338-isolate-expansion-gate',
+      mergeable: 'MERGEABLE',
+      mergeStateStatus: 'CLEAN',
+      isDraft: false,
+      statusCheckRollup: [lane('Vercel Agent Review')],
+    },
+  ]);
+  assert.equal(code, 1, output);
+  assert.match(output, /retarget the PR/i, output);
+  assert.doesNotMatch(output, /ALSO conflicted/i, output);
+});
+
+test('the scan workflow grants the check-run and commit-status reads its verdict rests on', async () => {
+  // Declaring ANY `permissions:` block sets every unlisted scope to `none`, and
+  // every verdict this gate reaches comes from `statusCheckRollup` -- check runs
+  // and commit statuses, neither of which `pull-requests: read` covers. With
+  // them missing the job either dies on `gh` or reads an empty rollup, and an
+  // empty rollup makes a PR that ran all 15 lanes before going dirty (#3417,
+  // #3447) indistinguishable from one that never ran any. Nothing in a local
+  // run can catch that: a developer's `gh` auth is full-scope, the Actions
+  // token is not, so the coupling is asserted here instead.
+  const { readFileSync } = await import('node:fs');
+  const text = readFileSync(join(HERE, '../.github/workflows/dirty-pr-scan.yml'), 'utf8');
+  const block = /^permissions:\n((?:[ \t]+\S.*\n|[ \t]*\n)*)/m.exec(text);
+  assert.ok(block, 'dirty-pr-scan.yml declares no top-level `permissions:` block');
+  const scopes = new Map();
+  for (const line of block[1].split('\n')) {
+    const m = /^\s+([a-z-]+):\s*(\S+)\s*$/.exec(line);
+    if (m) scopes.set(m[1], m[2]);
+  }
+  assert.equal(scopes.get('checks'), 'read', 'the rollup carries check runs');
+  assert.equal(scopes.get('statuses'), 'read', 'the rollup carries commit statuses too');
+  assert.equal(scopes.get('pull-requests'), 'read', 'the scan lists open PRs');
+});
+
 test('fails closed rather than guessing a remedy when `baseRefName` is absent', () => {
   const { code, output } = run([
     { number: 3411, mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY', statusCheckRollup: [] },

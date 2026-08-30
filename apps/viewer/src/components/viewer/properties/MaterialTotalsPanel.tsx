@@ -384,12 +384,12 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
                 <span className="truncate">Material Properties</span>
               </div>
               {psetGroups.map((group) =>
-                group.psets.map((pset) => {
+                group.psets.map((pset, index) => {
                   const psetView: PropertySet = {
                     name: pset.name,
                     properties: pset.properties.map((p) => ({ name: p.name, value: p.value, isMutated: false, dataType: p.dataType })),
                   };
-                  return <PropertySetCard key={`${group.materialId}-${pset.name}`} pset={psetView} projectUnits={projectUnits} unitDisplayOverrides={unitDisplayOverrides} />;
+                  return <PropertySetCard key={`${group.materialId}-${pset.name}-${index}`} pset={psetView} projectUnits={projectUnits} unitDisplayOverrides={unitDisplayOverrides} />;
                 }),
               )}
             </div>

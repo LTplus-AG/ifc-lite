@@ -242,8 +242,10 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
             {/* Project Properties */}
             {projectData.properties.length > 0 && (
               <div className="p-3 pt-0 space-y-2">
-                {projectData.properties.map((pset) => (
-                  <PropertySetCard key={pset.name} pset={pset} projectUnits={projectUnits} unitDisplayOverrides={unitDisplayOverrides} />
+                {projectData.properties.map((pset, index) => (
+                  // Pset names are not unique per entity (two IfcPropertySet
+                  // entities may legitimately share a Name); index disambiguates.
+                  <PropertySetCard key={`${pset.name}-${index}`} pset={pset} projectUnits={projectUnits} unitDisplayOverrides={unitDisplayOverrides} />
                 ))}
               </div>
             )}

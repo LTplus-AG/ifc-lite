@@ -1701,9 +1701,9 @@ export function PropertiesPanel() {
                         ) : 'Occurrence Properties:'}
                       </div>
                     )}
-                    {renderedOccurrenceProperties.map((pset: PropertySet) => (
+                    {renderedOccurrenceProperties.map((pset: PropertySet, index: number) => (
                       <PropertySetCard
-                        key={`occ-${pset.name}`}
+                        key={`occ-${pset.name}-${index}`}
                         pset={pset}
                         modelId={selectedEntity?.modelId}
                         entityId={selectedEntity?.expressId}
@@ -1728,9 +1728,9 @@ export function PropertiesPanel() {
                       <Building2 className="h-3 w-3 shrink-0" />
                       <span className="truncate">Type Properties ({renderedTypeProperties.typeName})</span>
                     </div>
-                    {renderedInheritedTypeProperties.map((pset: PropertySet) => (
+                    {renderedInheritedTypeProperties.map((pset: PropertySet, index: number) => (
                       <PropertySetCard
-                        key={`type-${pset.name}`}
+                        key={`type-${pset.name}-${index}`}
                         pset={pset}
                         modelId={selectedEntity?.modelId}
                         entityId={renderedTypeProperties.typeId}
@@ -1783,9 +1783,9 @@ export function PropertiesPanel() {
                           <Layers className="h-3 w-3 shrink-0" />
                           <span className="truncate">Material Properties ({group.materialName})</span>
                         </div>
-                        {group.psets.map((pset) => (
+                        {group.psets.map((pset, index) => (
                           <PropertySetCard
-                            key={`matpset-${group.materialId}-${pset.name}`}
+                            key={`matpset-${group.materialId}-${pset.name}-${index}`}
                             pset={{
                               name: pset.name,
                               properties: pset.properties.map((p) => ({ name: p.name, value: p.value, isMutated: false, dataType: p.dataType })),
@@ -1846,8 +1846,8 @@ export function PropertiesPanel() {
               <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">No quantities</p>
             ) : (
               <div className="space-y-3 w-full overflow-hidden">
-                {renderedQuantities.map((qset: QuantitySet) => (
-                  <QuantitySetCard key={qset.name} qset={qset} projectUnits={renderedProjectUnits} unitDisplayOverrides={unitDisplayOverrides} />
+                {renderedQuantities.map((qset: QuantitySet, index: number) => (
+                  <QuantitySetCard key={`${qset.name}-${index}`} qset={qset} projectUnits={renderedProjectUnits} unitDisplayOverrides={unitDisplayOverrides} />
                 ))}
               </div>
             )}
@@ -2175,8 +2175,8 @@ function EntityDataSection({
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="p-2 pt-0 space-y-2">
-              {properties.map((pset) => (
-                <PropertySetCard key={pset.name} pset={pset} projectUnits={projectUnits} unitDisplayOverrides={unitDisplayOverrides} />
+              {properties.map((pset, index) => (
+                <PropertySetCard key={`${pset.name}-${index}`} pset={pset} projectUnits={projectUnits} unitDisplayOverrides={unitDisplayOverrides} />
               ))}
             </div>
           </CollapsibleContent>
@@ -2193,8 +2193,8 @@ function EntityDataSection({
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="p-2 pt-0 space-y-2">
-              {quantities.map((qset) => (
-                <QuantitySetCard key={qset.name} qset={qset} projectUnits={projectUnits} unitDisplayOverrides={unitDisplayOverrides} />
+              {quantities.map((qset, index) => (
+                <QuantitySetCard key={`${qset.name}-${index}`} qset={qset} projectUnits={projectUnits} unitDisplayOverrides={unitDisplayOverrides} />
               ))}
             </div>
           </CollapsibleContent>

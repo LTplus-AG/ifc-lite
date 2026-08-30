@@ -284,3 +284,66 @@ fn a_superset_aabb_matches_the_exact_box_and_a_shrunk_one_does_not() {
     // clear the mesh) must report it correctly as outside.
     assert!(!exact_verdict, "exact-box verdict for an exterior p should be `outside`");
 }
+
+/// [`super::face_candidates`] must hand its callers the candidate triangle
+/// indices in ASCENDING order, not in the BVH's traversal order.
+///
+/// Both callers (`exact_face_normal`, `near_face_normal`) take the FIRST hit
+/// and return that triangle's normal, which `boolean_vids_components` turns
+/// into a co-orientation keep/drop verdict. When two triangles both cover the
+/// query point with different normals, "first" under traversal order is a
+/// different triangle from "first" under index order — so the verdict would
+/// depend on the BVH's internal layout rather than on the geometry. That is
+/// not hypothetical: leaving the candidates unsorted moved 19 hosts of the
+/// `triangulation_invariance` census off the pinned golden. This pins the
+/// property without the 20-minute sweep.
+///
+/// The second assertion is what keeps this from passing vacuously: it fails if
+/// the fixture's BVH happens to emit candidates in index order anyway, in
+/// which case the sort under test could be deleted and this test would still
+/// be green.
+#[test]
+fn face_candidates_are_in_ascending_index_order() {
+    let c = [1.25, 0.5, 0.5];
+    // Wide, near-coplanar triangles that all straddle `c`, so every one of them
+    // is a candidate. Their CENTROIDS are laid out along x in a scrambled
+    // order, which is what the BVH sorts on — so its traversal order is this
+    // permutation, not 0..n.
+    let perm = [5usize, 0, 7, 2, 6, 1, 4, 3];
+    let tris: Vec<super::Tri> = perm
+        .iter()
+        .enumerate()
+        .map(|(k, &p)| {
+            let dx = p as f64 * 0.001;
+            let z = c[2] + k as f64 * 1e-9;
+            [
+                [c[0] - 1.0 + dx, c[1] - 1.0, z],
+                [c[0] + 2.0 + dx, c[1] - 1.0, z],
+                [c[0] - 1.0 + dx, c[1] + 2.0, z],
+            ]
+        })
+        .collect();
+    let bvh = crate::kernel::broadphase::Bvh::build(&tris);
+    let band = super::NearBand::from_tris(&tris);
+
+    let radius = {
+        let mut b = band;
+        b.observe_point(&c);
+        b.radius()
+    };
+    let mut raw = Vec::new();
+    bvh.point_candidates(c, radius, &mut raw);
+    assert!(raw.len() > 1, "fixture produced {} candidate(s), need several", raw.len());
+    assert!(
+        raw.windows(2).any(|w| w[0] > w[1]),
+        "fixture is vacuous: this BVH already emits candidates in index order ({raw:?})",
+    );
+
+    let mut scratch = Vec::new();
+    super::face_candidates(c, &bvh, &band, &mut scratch);
+    assert_eq!(scratch.len(), raw.len(), "the sort must not add or drop candidates");
+    assert!(
+        scratch.windows(2).all(|w| w[0] < w[1]),
+        "candidates must be strictly ascending, got {scratch:?}",
+    );
+}

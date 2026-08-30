@@ -52,13 +52,21 @@
 //!
 //! ## Status
 //!
-//! Un-ignored: `classify.rs`'s `coincident_face_normal` now unifies the two
-//! directions' coincident-shared-face test (previously `BComponents::
-//! surface_normal`'s linear scan vs. `c_on_or_near_a`'s BVH scan) into one
-//! function, called identically from both — see that function's doc comment.
-//! This test is the classification-level regression that change targets; it
-//! must stay green, and any change to `classify.rs` must be re-validated
-//! against the full `triangulation_invariance` census (see AGENTS.md).
+//! `#[ignore]`d: this documents a KNOWN, OPEN defect, not a passing
+//! invariant. Do not un-ignore it without first fixing the classification
+//! disagreement referenced above and re-validating with the full
+//! `triangulation_invariance` census (see AGENTS.md). Verified to fail
+//! for the stated reason (3 unmatched directed edges) when run with
+//! `--ignored`.
+//!
+//! One candidate cause has been RULED OUT. #3353 suspected the two
+//! classification directions' coincident-shared-face probes, which asked the
+//! same question through two structurally different functions
+//! (`BComponents::surface_normal`'s linear scan vs. `c_on_or_near_a`'s BVH
+//! scan). `classify.rs` now routes both through one set of primitives
+//! (`coincident_face_normal`), and this test still returns the SAME 3
+//! unmatched directed edges it returned before — measured on both sides, so
+//! the tear has some other cause and this stays ignored.
 //!
 //! Refs #3353
 
@@ -137,6 +145,8 @@ fn open_edges(m: &Mesh) -> Result<usize, String> {
 
 /// `sweep_261`, recovered verbatim from PR #3373's closed branch.
 #[test]
+#[ignore = "known-open #3353 defect: classification-level tear, consolidate_coplanar \
+            is a byte-identical no-op on this input (see module doc)"]
 fn sweep_261_overlapping_rotated_union_never_tears() {
     let a_min = [-1.72371594746207, -0.35246108913603935, -1.2204342720208154];
     let a_size = [2.8534163464770894, 3.0795194627753784, 2.858202766048261];

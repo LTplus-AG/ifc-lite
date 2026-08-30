@@ -155,9 +155,10 @@ class SpatialTreeProvider implements ResourceProvider {
  * authored in the source file, a LayerSet/ProfileSet/ConstituentSet) — an
  * `IfcMaterialList` never carries a list-level name, only `.materials[]`,
  * so reading `.name` alone mis-buckets every list-material entity as
- * unnamed. Mirrors `computeMaterialSummary`
- * (`packages/cli/src/commands/stats-aggregation.ts`), which already falls
- * back this way. Local to this provider until `materialDisplayName()`
+ * unnamed. `computeMaterialSummary`
+ * (`packages/cli/src/commands/stats-aggregation.ts`) already falls back to
+ * `.materials[0]` for that case; the layer, profile and constituent
+ * fallbacks below go beyond it. Local to this provider until `materialDisplayName()`
  * (proposed in #3515) lands in `packages/mcp/src/tools/util.ts`, at which
  * point this should be replaced with that shared helper.
  */

@@ -13,12 +13,15 @@
  * set rather than merging them."
  *
  * The Properties/Quantities tabs used to key each card by `pset.name` /
- * `qset.name` alone. React requires list keys to be unique among siblings;
- * a collision drops/mis-associates rows silently and warns via
- * `console.error` in dev builds ("Encountered two children with the same
- * key"). This file mounts the REAL panel over a REAL parsed store (per
- * AGENTS.md: no cast stub) with two same-named sets on one entity and checks
- * both cards render their own properties, with no such warning.
+ * `qset.name` alone, so two same-named sets collided on one React key. React
+ * requires list keys to be unique among siblings and documents duplicate ones
+ * as unsupported (children "may be duplicated and/or omitted"); in dev builds
+ * it warns via `console.error` ("Encountered two children with the same
+ * key"). On the React version in use both cards still rendered their own
+ * contents, so the reproduced symptom is the warning, not a dropped card, and
+ * the assertions below check both: content present AND no warning. This file
+ * mounts the REAL panel over a REAL parsed store (per AGENTS.md: no cast
+ * stub) with two same-named sets on one entity.
  */
 
 import '@/test/setup-dom.js';

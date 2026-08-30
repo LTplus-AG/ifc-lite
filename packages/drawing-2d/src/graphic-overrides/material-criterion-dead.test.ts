@@ -8,7 +8,9 @@
  * production construction site of `ElementData` — all in apps/viewer
  * (`Drawing2DCanvas.tsx`, `useDrawingExport.ts`) — populates only
  * `expressId` and `ifcType`. No writer for `.materials`/`.layers` existed
- * anywhere in packages/ or apps/, so the two criteria could never match: an
+ * anywhere in packages/ or apps/, so within this repository the two criteria
+ * could never match (an external consumer of the exported `ElementData` could
+ * populate either field, which is why their removal is breaking): an
  * override rule keyed on material or layer silently did nothing, with no
  * error and no unmatched-criterion warning. Removed rather than wired up —
  * see CriteriaType in ./types.ts for why.

@@ -46,12 +46,14 @@ export type CriteriaOperator =
   | 'in'
   | 'notIn';
 
-// `material` and `layer` criteria used to exist here, but no production
-// construction site of `ElementData` ever populated `.materials`/`.layers`
+// `material` and `layer` criteria used to exist here. No construction site
+// of `ElementData` IN THIS REPOSITORY ever populated `.materials`/`.layers`
 // (only `expressId`/`ifcType` are ever set — see the construction sites in
 // apps/viewer/src/components/viewer/Drawing2DCanvas.tsx and
 // apps/viewer/src/hooks/useDrawingExport.ts), so those criteria could never
-// match anything. Removed rather than wired up: the material/layer names
+// match anything here. `ElementData` is exported, though, so a consumer
+// that populated either field had rules that did match; removing them is
+// breaking for that caller, which is why the changeset is a major. Removed rather than wired up: the material/layer names
 // aren't in reach at those call sites without threading a new per-entity
 // data source (a model reference or precomputed name map) through several
 // UI layers — a larger refactor than this fix, and out of scope here.

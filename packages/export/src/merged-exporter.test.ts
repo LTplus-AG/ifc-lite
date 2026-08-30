@@ -1507,4 +1507,66 @@ describe('MergedExporter', () => {
       expect(contextDefMatch![1]).toBe('.PLAN_VIEW.');
     });
   });
+
+  // Lens invariant 2 (units & coordinates): a differing WorldCoordinateSystem
+  // is the wrong-place class the unit checks don't cover. Two same-unit models
+  // whose IfcGeometricRepresentationContext declares a different WCS origin
+  // must NOT have the second model's context silently unified into the
+  // first's — the WCS is the root anchor of the whole placement tree, so
+  // dropping it re-interprets every one of the second model's untouched
+  // coordinates against the wrong origin.
+  describe('context WorldCoordinateSystem alignment', () => {
+    const originModel = (): MergeModelInput => buildModel('origin', 'Origin', [
+      [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('wcsProjA')}',$,'A',$,$,$,$,(#3),#2);`],
+      [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#7));'],
+      [3, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#4,$);"],
+      [4, 'IFCCARTESIANPOINT', '#4=IFCCARTESIANPOINT((0.,0.,0.));'],
+      [5, 'IFCSITE', `#5=IFCSITE('${guid('wcsSiteA')}',$,'SiteA',$,$,$,$,$,$,$);`],
+      [6, 'IFCRELAGGREGATES', `#6=IFCRELAGGREGATES('${guid('wcsAggA')}',$,$,$,#1,(#5));`],
+      [7, 'IFCSIUNIT', '#7=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+    ]);
+
+    // Same length unit as originModel, but its WCS origin is offset by 500 m —
+    // e.g. a discipline model authored around its own project base point.
+    const offsetModel = (): MergeModelInput => buildModel('offset', 'Offset', [
+      [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('wcsProjB')}',$,'B',$,$,$,$,(#3),#2);`],
+      [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#8));'],
+      [3, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#4,$);"],
+      [4, 'IFCCARTESIANPOINT', '#4=IFCCARTESIANPOINT((500.,0.,0.));'],
+      [5, 'IFCSITE', `#5=IFCSITE('${guid('wcsSiteB')}',$,'SiteB',$,$,$,$,$,$,$);`],
+      [6, 'IFCRELAGGREGATES', `#6=IFCRELAGGREGATES('${guid('wcsAggB')}',$,$,$,#1,(#5));`],
+      [7, 'IFCWALL', `#7=IFCWALL('${guid('wcsWallB')}',$,'W',$,$,$,$,$);`],
+      [8, 'IFCSIUNIT', '#8=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+    ]);
+
+    it('keeps the second model\'s own context when its WCS origin differs from the primary\'s', () => {
+      const content = decode(new MergedExporter([originModel(), offsetModel()])
+        .export({ schema: 'IFC4' }).content);
+
+      // Exactly one context would mean the offset model's own frame was
+      // silently discarded and pasted raw into the origin model's frame.
+      expect(content.match(/=IFCGEOMETRICREPRESENTATIONCONTEXT\(/g)?.length).toBe(2);
+      expect(findDanglingRefs(content)).toEqual([]);
+    });
+
+    it('still unifies a matching (identical-origin) context, unchanged', () => {
+      // Control: two models sharing the SAME WCS origin — the pre-existing
+      // "one shared context" behaviour must not regress.
+      const sameOriginB = (): MergeModelInput => buildModel('same', 'Same', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('wcsProjC')}',$,'C',$,$,$,$,(#3),#2);`],
+        [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#8));'],
+        [3, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#4,$);"],
+        [4, 'IFCCARTESIANPOINT', '#4=IFCCARTESIANPOINT((0.,0.,0.));'],
+        [5, 'IFCSITE', `#5=IFCSITE('${guid('wcsSiteC')}',$,'SiteC',$,$,$,$,$,$,$);`],
+        [6, 'IFCRELAGGREGATES', `#6=IFCRELAGGREGATES('${guid('wcsAggC')}',$,$,$,#1,(#5));`],
+        [7, 'IFCWALL', `#7=IFCWALL('${guid('wcsWallC')}',$,'W',$,$,$,$,$);`],
+        [8, 'IFCSIUNIT', '#8=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+      ]);
+
+      const content = decode(new MergedExporter([originModel(), sameOriginB()])
+        .export({ schema: 'IFC4' }).content);
+      expect(content.match(/=IFCGEOMETRICREPRESENTATIONCONTEXT\(/g)?.length).toBe(1);
+      expect(findDanglingRefs(content)).toEqual([]);
+    });
+  });
 });

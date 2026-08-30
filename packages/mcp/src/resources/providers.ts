@@ -11,6 +11,7 @@
  */
 
 import { extractGeoreferencingOnDemand } from '@ifc-lite/parser';
+import type { MaterialData } from '@ifc-lite/sdk';
 import { foldedEntityCount, pendingMutationsField, pendingOverlay } from '../overlay.js';
 import { buildSpatialTree } from '../spatial-tree.js';
 import { findByGlobalId } from '../tools/util.js';
@@ -148,6 +149,29 @@ class SpatialTreeProvider implements ResourceProvider {
   }
 }
 
+/**
+ * Grouping name for a `MaterialData` result, or undefined when none is
+ * available. `.name` alone only covers a plain `Material` (and, when
+ * authored in the source file, a LayerSet/ProfileSet/ConstituentSet) — an
+ * `IfcMaterialList` never carries a list-level name, only `.materials[]`,
+ * so reading `.name` alone mis-buckets every list-material entity as
+ * unnamed. Mirrors `computeMaterialSummary`
+ * (`packages/cli/src/commands/stats-aggregation.ts`), which already falls
+ * back this way. Local to this provider until `materialDisplayName()`
+ * (proposed in #3515) lands in `packages/mcp/src/tools/util.ts`, at which
+ * point this should be replaced with that shared helper.
+ */
+function materialFallbackName(mat: MaterialData | null | undefined): string | undefined {
+  if (!mat) return undefined;
+  return (
+    mat.name ??
+    mat.materials?.[0]?.name ??
+    mat.layers?.find((l) => l.materialName)?.materialName ??
+    mat.profiles?.find((p) => p.materialName)?.materialName ??
+    mat.constituents?.find((c) => c.materialName)?.materialName
+  );
+}
+
 class MaterialsProvider implements ResourceProvider {
   name = 'materials';
   list(ctx: ToolContext): ResourceDefinition[] {
@@ -168,7 +192,7 @@ class MaterialsProvider implements ResourceProvider {
     for (const e of m.bim.query().toArray()) {
       const mat = m.bim.materials(e.ref);
       if (!mat) continue;
-      const key = mat.name ?? '(unnamed)';
+      const key = materialFallbackName(mat) ?? '(unnamed)';
       counts.set(key, (counts.get(key) ?? 0) + 1);
     }
     return [jsonContents(uri, {

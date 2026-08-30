@@ -12,9 +12,10 @@
  * for optimal performance with large models.
  */
 
-import type { PropertyTable, PropertySet, Property, QuantitySet, Quantity } from '@ifc-lite/data';
+import type { PropertyTable, PropertySet, QuantitySet, Quantity } from '@ifc-lite/data';
 import { findQuantityInBaseSets } from './base-qset-lookup.js';
 import { newMemberPlacement } from './new-member-placement.js';
+import { computePsetClaims, mutatedPropertiesForInstance } from './same-name-pset-claims.js';
 import { PropertyValueType, QuantityType } from '@ifc-lite/data';
 import type { IfcAttributeValue, PropertyValue, PropertyMutation, QuantityMutation, AttributeMutation, EntityTypeMutation, Mutation, NewEntity, EffectiveChange } from './types.js';
 import { propertyKey, quantityKey, attributeKey, generateMutationId } from './types.js';
@@ -309,10 +310,17 @@ export class MutablePropertyView {
     const seenPsets = new Set<string>();
     // First, add properties from base (on-demand or table) with mutations applied
     const basePsets = this.getBasePropertiesForEntity(entityId);
-    // Which same-named instance takes a brand-new property: see new-member-placement.ts.
-    const takesNewProperty = newMemberPlacement(basePsets, (pset) => pset.properties);
 
-    for (const [psetIndex, pset] of basePsets.entries()) {
+    // Two base psets can share a name (type pset + occurrence pset); a
+    // mutation key has no per-instance identity, so figure out up front
+    // which instance an edit -- or a brand-new property -- is claimed by.
+    // Subsumes the narrower new-property-only `newMemberPlacement` check
+    // (still used for quantities below): a claim also decides which
+    // instance an EXISTING property's SET/DELETE lands on. See
+    // `same-name-pset-claims.ts`.
+    const claims = computePsetClaims(basePsets);
+
+    for (const pset of basePsets) {
       // Skip deleted property sets
       if (this.deletedPsets.has(`${entityId}:${pset.name}`)) {
         continue;
@@ -320,47 +328,13 @@ export class MutablePropertyView {
 
       seenPsets.add(pset.name);
 
-      // Apply property mutations
-      const mutatedProperties: Property[] = [];
-      for (const prop of pset.properties) {
-        const key = propertyKey(entityId, pset.name, prop.name);
-        const mutation = this.propertyMutations.get(key);
-
-        if (mutation) {
-          if (mutation.operation === 'DELETE') {
-            continue; // Skip deleted properties
-          }
-          // Apply SET mutation
-          mutatedProperties.push({
-            name: prop.name,
-            type: mutation.valueType ?? prop.type,
-            value: mutation.value ?? null,
-            unit: mutation.unit ?? prop.unit,
-            dataType: prop.dataType,
-          });
-        } else {
-          mutatedProperties.push(prop);
-        }
-      }
-
-      // New properties on this pset; the per-entity key set keeps it O(M_entity).
-      const entityPropKeys = this.propertyKeysByEntity.get(entityId);
-      if (entityPropKeys) {
-        const psetPrefix = `${entityId}:${pset.name}:`;
-        for (const key of entityPropKeys) {
-          if (!key.startsWith(psetPrefix)) continue;
-          const mutation = this.propertyMutations.get(key);
-          if (!mutation || mutation.operation !== 'SET') continue;
-          const propName = key.slice(psetPrefix.length);
-          if (!takesNewProperty(psetIndex, propName)) continue;
-          mutatedProperties.push({
-            name: propName,
-            type: mutation.valueType ?? PropertyValueType.String,
-            value: mutation.value ?? null,
-            unit: mutation.unit,
-          });
-        }
-      }
+      const mutatedProperties = mutatedPropertiesForInstance(
+        entityId,
+        pset,
+        claims,
+        this.propertyMutations,
+        this.propertyKeysByEntity.get(entityId),
+      );
 
       if (mutatedProperties.length > 0) {
         result.push({

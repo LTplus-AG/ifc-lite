@@ -247,3 +247,101 @@ describe('MutablePropertyView.setQuantity — a brand-new quantity on two same-n
     ]);
   });
 });
+
+// Two same-named base psets that BOTH already carry a property of the same
+// name (e.g. a type pset and an occurrence pset that happen to share a
+// name, each with their own FireRating). setProperty/deleteProperty key
+// mutations purely as `${entityId}:${psetName}:${propName}` -- one key with
+// no instance identity -- and getForEntity's per-pset loop re-applies that
+// single mutation to every base pset instance whose properties contain a
+// matching name. Editing one row must not silently change the other same-
+// named pset's row too: `getForEntity` should apply the edit to the FIRST
+// same-named instance that carries the property, matching the "first match
+// across the sequence wins" semantics `findPropertyInSets`/
+// `PropertyTable.getProperty` already use for reads (#3468).
+describe('MutablePropertyView.setProperty — two same-named base psets both carrying the edited property', () => {
+  const twoSets = (entityId: number) =>
+    entityId === 1
+      ? [
+          {
+            name: 'Pset_WallCommon',
+            globalId: 'g1',
+            properties: [
+              { name: 'IsExternal', type: 3, value: true },
+              { name: 'FireRating', type: 0, value: 'RF30' },
+            ],
+          },
+          {
+            name: 'Pset_WallCommon',
+            globalId: 'g2',
+            properties: [
+              { name: 'Reference', type: 0, value: 'REF-2' },
+              { name: 'FireRating', type: 0, value: 'RF60' },
+            ],
+          },
+        ]
+      : [];
+
+  it('mutates FireRating on only the FIRST same-named pset, not both', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(twoSets);
+
+    view.setProperty(1, 'Pset_WallCommon', 'FireRating', 'RF90');
+
+    const psets = view.getForEntity(1);
+    const g1 = psets.find((p) => p.globalId === 'g1')!;
+    const g2 = psets.find((p) => p.globalId === 'g2')!;
+    expect(g1.properties.find((p) => p.name === 'FireRating')?.value).toBe('RF90');
+    expect(g2.properties.find((p) => p.name === 'FireRating')?.value).toBe('RF60');
+  });
+
+  it('control: a property present on only ONE of the two sets mutates only that set', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(twoSets);
+
+    view.setProperty(1, 'Pset_WallCommon', 'Reference', 'REF-9');
+
+    const psets = view.getForEntity(1);
+    const g1 = psets.find((p) => p.globalId === 'g1')!;
+    const g2 = psets.find((p) => p.globalId === 'g2')!;
+    expect(g1.properties.find((p) => p.name === 'Reference')).toBeUndefined();
+    expect(g2.properties.find((p) => p.name === 'Reference')?.value).toBe('REF-9');
+  });
+});
+
+describe('MutablePropertyView.deleteProperty — two same-named base psets both carrying the deleted property', () => {
+  const twoSets = (entityId: number) =>
+    entityId === 1
+      ? [
+          {
+            name: 'Pset_WallCommon',
+            globalId: 'g1',
+            properties: [
+              { name: 'IsExternal', type: 3, value: true },
+              { name: 'FireRating', type: 0, value: 'RF30' },
+            ],
+          },
+          {
+            name: 'Pset_WallCommon',
+            globalId: 'g2',
+            properties: [
+              { name: 'Reference', type: 0, value: 'REF-2' },
+              { name: 'FireRating', type: 0, value: 'RF60' },
+            ],
+          },
+        ]
+      : [];
+
+  it('removes FireRating from only the FIRST same-named pset, not both', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(twoSets);
+
+    view.deleteProperty(1, 'Pset_WallCommon', 'FireRating');
+
+    const psets = view.getForEntity(1);
+    const g1 = psets.find((p) => p.globalId === 'g1')!;
+    const g2 = psets.find((p) => p.globalId === 'g2')!;
+    expect(g1.properties.find((p) => p.name === 'FireRating')).toBeUndefined();
+    expect(g2.properties.find((p) => p.name === 'FireRating')?.value).toBe('RF60');
+  });
+});

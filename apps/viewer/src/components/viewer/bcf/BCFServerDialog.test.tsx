@@ -342,4 +342,70 @@ describe('BCFServerDialog', () => {
       'bob banner after cross-tab sign-in',
     );
   });
+
+  it('drops a topic pull that finishes after another tab switches accounts', async () => {
+    installFakeServer();
+    let openTopics = () => {};
+    const topicsGate = new Promise<void>((resolve) => {
+      openTopics = resolve;
+    });
+    const inner = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input)).pathname;
+      if (path.endsWith('/topics')) await topicsGate;
+      return inner(input, init);
+    }) as typeof fetch;
+    saveBcfServerConfig({
+      serverUrl: 'https://fake.example/bcf',
+      userId: 'alice@example.com',
+      accessToken: 'token-1',
+      refreshToken: '',
+      tokenExpiresAt: 0,
+      clientId: '',
+      clientSecret: '',
+      projectId: 'p1',
+      projectName: 'Project One',
+    });
+    let openState = true;
+    render(<BCFServerDialog open onOpenChange={(open) => (openState = open)} />);
+    await waitFor(
+      () => document.body.textContent?.includes('Project One') ?? false,
+      'alice project list',
+    );
+    click(button('Load topics'));
+    const bob = {
+      serverUrl: 'https://fake.example/bcf',
+      userId: 'bob@example.com',
+      accessToken: 'token-1',
+      refreshToken: '',
+      tokenExpiresAt: 0,
+      clientId: '',
+      clientSecret: '',
+      projectId: 'p1',
+      projectName: 'Project One',
+    };
+    localStorage.setItem('ifc-lite:bcf-server:v1', JSON.stringify(bob));
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: 'ifc-lite:bcf-server:v1',
+          newValue: JSON.stringify(bob),
+        }),
+      );
+    });
+    await waitFor(
+      () => document.body.textContent?.includes('Signed in as bob@example.com') ?? false,
+      'bob banner while alice pull is still in flight',
+    );
+    openTopics();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    assert.equal(useViewerStore.getState().bcfProject, null, 'alice topics must not land after the account switch');
+    assert.equal(openState, true, 'dialog must stay open');
+    assert.ok(
+      document.body.textContent?.includes('Signed in as bob@example.com'),
+      'banner must still show bob',
+    );
+  });
 });

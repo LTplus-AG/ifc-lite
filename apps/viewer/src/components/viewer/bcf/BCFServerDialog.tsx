@@ -65,23 +65,23 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
   // user must confirm before we overwrite them (they may be unexported).
   const [replaceCount, setReplaceCount] = useState<number | null>(null);
 
-  // A project-list request can outlive the connection it was issued for
-  // (disconnect, or sign-in to another server, mid-flight). Results carrying
-  // a stale generation are dropped so they can never pair the new
-  // connection with the old server's project list.
-  const projectsGenerationRef = useRef(0);
+  // A project-list or topic-pull request can outlive the connection it was
+  // issued for (disconnect, or another tab signing in mid-flight). Results
+  // carrying a stale generation are dropped so they can never pair the new
+  // connection with the old account's data.
+  const sessionGenerationRef = useRef(0);
   const loadProjects = useCallback(async () => {
-    const generation = ++projectsGenerationRef.current;
+    const generation = ++sessionGenerationRef.current;
     try {
       const list = await listBcfServerProjects();
-      if (generation !== projectsGenerationRef.current) return;
+      if (generation !== sessionGenerationRef.current) return;
       setProjects(list);
       setSelectedProjectId((current) => {
         if (current && list.some((p) => p.project_id === current)) return current;
         return list[0]?.project_id ?? '';
       });
     } catch (err) {
-      if (generation !== projectsGenerationRef.current) return;
+      if (generation !== sessionGenerationRef.current) return;
       setProjects([]);
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -100,12 +100,13 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
       previous.clientId !== saved.clientId;
     setConfig(saved);
     if (!identityChanged) return;
-    projectsGenerationRef.current += 1;
+    sessionGenerationRef.current += 1;
     setProjects(null);
     setSelectedProjectId(saved?.projectId ?? '');
     setError(null);
     setProgress(null);
     setReplaceCount(null);
+    setBusy(false);
     if (saved) void loadProjects();
   }, [loadProjects]);
 
@@ -149,12 +150,13 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
   );
 
   const handleDisconnect = useCallback(() => {
-    projectsGenerationRef.current += 1;
+    sessionGenerationRef.current += 1;
     clearBcfServerConfig();
     setConfig(null);
     setProjects(null);
     setSelectedProjectId('');
     setError(null);
+    setBusy(false);
   }, []);
 
   const handlePull = useCallback(async () => {
@@ -167,6 +169,7 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
       setReplaceCount(localTopics);
       return;
     }
+    const generation = sessionGenerationRef.current;
     setReplaceCount(null);
     setBusy(true);
     setError(null);
@@ -175,8 +178,12 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
       const result = await pullBcfServerProject(
         project.project_id,
         project.name ?? 'BCF project',
-        setProgress,
+        (progress) => {
+          if (generation !== sessionGenerationRef.current) return;
+          setProgress(progress);
+        },
       );
+      if (generation !== sessionGenerationRef.current) return;
       setBcfProject(result.project);
       posthog.capture('bcf_server_synced', {
         topic_count: result.project.topics.size,
@@ -192,10 +199,13 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
       }
       onOpenChange(false);
     } catch (err) {
+      if (generation !== sessionGenerationRef.current) return;
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setBusy(false);
-      setProgress(null);
+      if (generation === sessionGenerationRef.current) {
+        setBusy(false);
+        setProgress(null);
+      }
     }
   }, [projects, selectedProjectId, replaceCount, setBcfProject, setBcfError, onOpenChange]);
 

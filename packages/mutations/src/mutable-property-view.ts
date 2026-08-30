@@ -306,7 +306,8 @@ export class MutablePropertyView {
   getForEntity(entityId: number): PropertySet[] {
     const result: PropertySet[] = [];
     const seenPsets = new Set<string>();
-
+    // A new property's key carries no identity past its pset NAME; only the first same-named instance gets it below.
+    const newPropAssignedForName = new Set<string>();
     // First, add properties from base (on-demand or table) with mutations applied
     const basePsets = this.getBasePropertiesForEntity(entityId);
 
@@ -341,10 +342,9 @@ export class MutablePropertyView {
         }
       }
 
-      // Check for new properties added to this pset. Iterate the per-entity
-      // key set so this stays O(M_entity) instead of scanning every mutation
-      // in the model.
-      const entityPropKeys = this.propertyKeysByEntity.get(entityId);
+      const isFirstOfName = !newPropAssignedForName.has(pset.name); // new props go here only
+      newPropAssignedForName.add(pset.name);
+      const entityPropKeys = isFirstOfName ? this.propertyKeysByEntity.get(entityId) : undefined;
       if (entityPropKeys) {
         const psetPrefix = `${entityId}:${pset.name}:`;
         for (const key of entityPropKeys) {

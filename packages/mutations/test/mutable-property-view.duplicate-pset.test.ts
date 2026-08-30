@@ -16,7 +16,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { QuantityType } from '@ifc-lite/data';
+import { PropertyValueType, QuantityType } from '@ifc-lite/data';
 import { MutablePropertyView } from '../src/index.js';
 
 describe('MutablePropertyView — two same-named property sets', () => {
@@ -99,5 +99,63 @@ describe('MutablePropertyView.setQuantity — two same-named quantity sets', () 
 
     expect(mutation.type).toBe('UPDATE_QUANTITY');
     expect(mutation.oldValue).toBe(12.5);
+  });
+});
+
+describe('MutablePropertyView.setProperty — a brand-new property on two same-named base psets', () => {
+  // `setProperty` records the mutation under `propertyKey(entityId, psetName,
+  // propName)`, which carries no identity beyond the pset NAME. Traced from
+  // the bSDD "jump to added property" flow (#1107): `BsddCard` only knows a
+  // pset by name, so adding a property that is new to both same-named sets
+  // used to make `getForEntity` inject it into EVERY base pset sharing that
+  // name -- a genuine duplicate write, not just a highlight ambiguity.
+  it('lands the new property on the FIRST same-named pset only, not every one', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor((entityId) =>
+      entityId === 1
+        ? [
+            { name: 'Pset_Common', globalId: 'g1', properties: [{ name: 'Reference', type: PropertyValueType.Label, value: 'refA' }] },
+            { name: 'Pset_Common', globalId: 'g2', properties: [{ name: 'Status', type: PropertyValueType.Label, value: 'NEW' }] },
+          ]
+        : [],
+    );
+
+    view.setProperty(1, 'Pset_Common', 'FireRating', 'RF60', PropertyValueType.Label);
+
+    const result = view.getForEntity(1);
+    expect(result).toHaveLength(2);
+    expect(result[0]).toMatchObject({
+      globalId: 'g1',
+      properties: [
+        { name: 'Reference', value: 'refA' },
+        { name: 'FireRating', value: 'RF60' },
+      ],
+    });
+    // The second same-named pset keeps its own properties, unpolluted.
+    expect(result[1]).toMatchObject({
+      globalId: 'g2',
+      properties: [{ name: 'Status', value: 'NEW' }],
+    });
+  });
+
+  it('control: a unique-named pset still receives the new property normally', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor((entityId) =>
+      entityId === 1
+        ? [{ name: 'Pset_Unique', globalId: 'g1', properties: [{ name: 'Reference', type: PropertyValueType.Label, value: 'refA' }] }]
+        : [],
+    );
+
+    view.setProperty(1, 'Pset_Unique', 'FireRating', 'RF60', PropertyValueType.Label);
+
+    expect(view.getForEntity(1)).toMatchObject([
+      {
+        globalId: 'g1',
+        properties: [
+          { name: 'Reference', value: 'refA' },
+          { name: 'FireRating', value: 'RF60' },
+        ],
+      },
+    ]);
   });
 });

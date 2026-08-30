@@ -31,6 +31,7 @@ import { assembleStepBytes, assembleStepBlob } from './step-file-assembly.js';
 import { getCompleteEntityIndex, getMaxExpressId, type CompleteEntityIndex, type ExportEntityRef } from './entity-iteration.js';
 import { StepExporter } from './step-exporter.js';
 import { rescaleEntityLengths, computeNormalizeFactor } from './unit-normalize.js';
+import { resolveModelContextWcs, planInfrastructureUnify, type WcsSignature } from './merged-context.js';
 
 /**
  * UTF-8 decode of `[start, end)` of a model's source, accepting either the raw
@@ -120,6 +121,8 @@ interface MergeSetup {
   firstModelOffset: number;
   /** Infrastructure entities (units, contexts) of the primary model. */
   firstModelInfraMap: Map<string, number[]>;
+  /** Primary model's representation context WCS origin (metres) — see `merged-context.ts`. */
+  firstModelContextWcs: WcsSignature | null;
   /** IfcProject express ids of the primary model. */
   firstProjectIds: number[];
   /** Spatial lookup built from the primary model. */
@@ -822,6 +825,7 @@ export class MergedExporter {
       modelOffsets,
       firstModelOffset: modelOffsets.get(firstModel.id)!,
       firstModelInfraMap: this.findInfrastructureEntities(firstModel.dataStore),
+      firstModelContextWcs: resolveModelContextWcs(firstModel.dataStore, primaryScale),
       firstProjectIds: this.findEntitiesByType(firstModel.dataStore, 'IFCPROJECT'),
       spatialLookup: this.buildSpatialLookup(firstModel.dataStore),
       primaryScale,
@@ -1044,15 +1048,10 @@ export class MergedExporter {
         }
       }
 
-      // Remap and skip duplicate infrastructure (units, contexts).
+      // Remap and skip duplicate infrastructure; a context whose WCS disagrees is kept.
       const modelInfra = this.findInfrastructureEntities(model.dataStore);
-      for (const [type, firstIds] of setup.firstModelInfraMap) {
-        const thisIds = modelInfra.get(type);
-        if (thisIds && firstIds.length > 0 && thisIds.length > 0) {
-          sharedRemap.set(thisIds[0], firstIds[0] + setup.firstModelOffset);
-          skipEntityIds.add(thisIds[0]);
-        }
-      }
+      planInfrastructureUnify(model.dataStore, modelInfra, setup.firstModelInfraMap,
+        setup.firstModelOffset, setup.firstModelContextWcs, this.resolveUnitScale(model), sharedRemap, skipEntityIds);
 
       // Unify spatial hierarchy: match Site, Building, Storey to first model.
       // Under normalize, this model's raw elevations are in its own unit, so the

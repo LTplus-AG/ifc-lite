@@ -204,10 +204,11 @@ describe('query --storey honours --limit and --offset', () => {
  * `--sum`/`--avg`/`--min`/`--max` must aggregate over the FULL filtered set,
  * never a `--limit`/`--offset`-sliced one — the `--where` path enforces this
  * deliberately ("Aggregations operate on the full filtered set (no
- * offset/limit)"). The plain (no `--where`, no `--storey`) path builds its
- * `QueryBuilder` with `q.limit(rowLimit)` / `q.offset(offset)` applied
- * unconditionally whenever `!groupBy`, then reuses that SAME limited `q` for
- * `--sum`/`--avg`/`--min`/`--max`, which never should have been sliced in
+ * offset/limit)"). The plain (no `--where`, no `--storey`) path built its
+ * `QueryBuilder` with `q.limit(rowLimit)` applied whenever `!groupBy` and
+ * `q.offset(offset)` applied with no guard at all, then reused that SAME
+ * limited `q` for `--sum`/`--avg`/`--min`/`--max`, which never should have
+ * been sliced in
  * the first place: `--type IfcBeam --sum NetVolume --limit 2` silently sums
  * only the first two matched beams instead of every beam with the quantity,
  * with no warning that the total is partial.

@@ -184,6 +184,15 @@ function getAttributeValueByName(entity: IfcEntity, attributeName: string): unkn
   return entity.attributes[index];
 }
 
+// `x < 0` is `false` for IEEE-754 negative zero, but a STEP INTEGER literal
+// "-0" (a legal token for a magnitude-zero degree component of a southern/
+// western sub-degree site, e.g. -0°30'0") parses to exactly that: negative
+// zero (`parseFloat('-0') === -0`, `Object.is(-0, 0)` is `false`). Treat it
+// as the negative sign it was written to carry.
+function isNegativeComponent(n: number): boolean {
+  return n < 0 || Object.is(n, -0);
+}
+
 function compoundPlaneAngleToDecimalDegrees(value: unknown): number | undefined {
   if (!Array.isArray(value) || value.length < 3) return undefined;
   const numbers = value
@@ -192,7 +201,13 @@ function compoundPlaneAngleToDecimalDegrees(value: unknown): number | undefined 
   if (numbers.length < 3) return undefined;
 
   const [degreesRaw, minutesRaw, secondsRaw, millionthsRaw = 0] = numbers;
-  const sign = degreesRaw < 0 || minutesRaw < 0 || secondsRaw < 0 || millionthsRaw < 0 ? -1 : 1;
+  const sign =
+    isNegativeComponent(degreesRaw) ||
+    isNegativeComponent(minutesRaw) ||
+    isNegativeComponent(secondsRaw) ||
+    isNegativeComponent(millionthsRaw)
+      ? -1
+      : 1;
   const degrees = Math.abs(degreesRaw);
   const minutes = Math.abs(minutesRaw);
   const seconds = Math.abs(secondsRaw);

@@ -30,7 +30,7 @@ import {
   expressIdToGlobalId as expressIdToGlobalIdLookup,
 } from './bcfIdLookup';
 import { fromGlobalIdFromModels } from '@/store/globalId';
-import { resolveIsolationIds } from '@/lib/isolation/resolveIsolationIds';
+import { resolveIsolationIdsForViewSync } from '@/lib/isolation/resolveIsolationIds';
 import { deriveHeaderFiles } from './bcfHeaderFiles';
 
 // ============================================================================
@@ -574,12 +574,12 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
 
         if (isolatedExpressIds.size > 0) {
           const rawIds = [...isolatedExpressIds];
-          // #3338: resolve, guid may not be geometry-bearing. resolveIsolationIds
-          // tells "hasn't answered yet" (union, self-heals) apart from "answered:
-          // nothing renders" (null -- leave isolation alone, #3389).
+          // #3338: a viewpoint guid may name a geometry-less assembly whose
+          // parts carry the mesh. ...ForViewSync, not the plain wrapper: an
+          // apply REPLACES the view, so it must assign every time, or the
+          // PREVIOUS viewpoint's isolation stays on screen as this one (#3389).
           const resolver = useViewerStore.getState().cameraCallbacks.resolveHighlightIds;
-          const isolateIds = resolveIsolationIds(resolver, rawIds);
-          if (isolateIds !== null) setIsolatedEntities(new Set(isolateIds));
+          setIsolatedEntities(new Set(resolveIsolationIdsForViewSync(resolver, rawIds)));
         } else {
           setIsolatedEntities(null);
         }

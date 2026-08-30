@@ -157,9 +157,19 @@ describe('check-isolate-expansion-routing: classifyFile', () => {
       'a channel that switched to the shared wrapper no longer contains a literal resolveHighlightIds( call',
     );
     assert.equal(
+      ROUTING_MARKERS.test('setIsolatedEntities(new Set(resolveIsolationIdsForViewSync(resolver, rawIds)));'),
+      true,
+      'the view-REPLACE variant (useBCF, usePreviewIsolation -- #3389) routes just as much as the base wrapper',
+    );
+    assert.equal(
       ROUTING_MARKERS.test('// resolveIsolationIds handles this -- see #3389'),
       false,
       'naming the wrapper in prose without calling it must not satisfy the gate',
+    );
+    assert.equal(
+      ROUTING_MARKERS.test('// resolveIsolationIdsForViewSync handles this -- see #3389'),
+      false,
+      'the variant named in prose without being called must not satisfy the gate either',
     );
   });
 

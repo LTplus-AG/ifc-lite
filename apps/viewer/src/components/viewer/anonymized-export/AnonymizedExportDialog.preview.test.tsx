@@ -90,6 +90,9 @@ beforeEach(async () => {
     isolatedEntities: new Set([globalId(9999)]),
     ghostExceptEntities: null,
     hiddenEntities: new Set([globalId(8888)]),
+    // Reset per test: one case below installs a resolver, and `setState`
+    // merges, so leaving it set would leak into whatever runs next.
+    cameraCallbacks: {},
   });
 });
 
@@ -133,5 +136,36 @@ describe('AnonymizedExportDialog — 3D preview isolation', () => {
     assert.deepEqual(after.isolatedEntities, new Set([globalId(9999)]), 'isolatedEntities must be restored');
     assert.deepEqual(after.ghostExceptEntities, null, 'ghostExceptEntities must be restored');
     assert.deepEqual(after.hiddenEntities, new Set([globalId(8888)]), 'hiddenEntities must be restored');
+  });
+
+  it('still assigns the included set when the resolver answers "nothing renders" (#3389)', () => {
+    // The preview is a RE-SYNC channel: it must always assign the isolation to
+    // the currently-included set. `resolveHighlightIds` returning `[]` means
+    // "resolved, and none of these render" (an IfcSpace while the Spaces type
+    // toggle is off, a geometry-less IfcElementAssembly with no renderable
+    // part). Skipping the assignment there leaves the PRIOR isolation -- entity
+    // 9999, which is not in the export -- on screen and presents it as the 3D
+    // preview of the anonymized export, while the selection two lines below is
+    // updated to the real included set, so highlight and isolation disagree.
+    act(() => {
+      useViewerStore.setState({ cameraCallbacks: { resolveHighlightIds: () => [] } });
+    });
+    const store = useViewerStore.getState().models.get('m1')!.ifcDataStore!;
+    const expectedGlobalIds = new Set([...collectRelatedEntities(store, [FIXTURE_WALL_A]).all].map(globalId));
+
+    render(<AnonymizedExportDialog />);
+    act(() => { useViewerStore.getState().setAnonymizedExportRequested(true); });
+
+    const isolated = useViewerStore.getState().isolatedEntities;
+    assert.equal(
+      isolated?.has(globalId(9999)),
+      false,
+      'BUG: the preview left the PRIOR isolation on screen; it shows entities that are not in the export',
+    );
+    assert.deepEqual(
+      isolated,
+      expectedGlobalIds,
+      'preview must isolate the included set even when nothing in it currently renders',
+    );
   });
 });

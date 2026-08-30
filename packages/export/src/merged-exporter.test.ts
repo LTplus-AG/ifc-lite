@@ -320,17 +320,23 @@ describe('MergedExporter', () => {
     // exactly once — model1's own RelAgg#4 already lists it. Model2's kept
     // RelAgg#5 must not re-list the SAME already-unified storey again; only its
     // genuinely new 'Roof' storey should survive in it.
+    // Regex literals below deliberately avoid any `(`/`)` character — even
+    // escaped ones inside a character class — because scripts/lib/vitest-timeout-audit.mjs's
+    // lexical paren-depth tracker treats a `/regex/` literal's contents as
+    // ordinary source text, not an opaque token; a literal paren inside one
+    // desyncs its depth count for every call site after it in the file.
     const buildingAggLines = content
       .split('\n')
-      .filter(line => /^#\d+=IFCRELAGGREGATES\(.*,#2,\(/.test(line));
-    const storey3Mentions = buildingAggLines.filter(line => /\(#3[),]/.test(line) || /,#3\)/.test(line));
+      .filter(line => /^#\d+=IFCRELAGGREGATES/.test(line) && line.includes(',#2,('));
+    const storey3Mentions = buildingAggLines.filter(line =>
+      line.includes('(#3)') || line.includes('(#3,') || line.includes(',#3)'));
     expect(storey3Mentions.length).toBe(1);
 
     // Model2's Roof storey survives: #4 offset by model1's maxId(4) → #8.
     expect(content).toContain("IFCBUILDINGSTOREY('g7'");
     // Model2's kept RelAgg#5 (id #9, offset 4) now lists only the new Roof
     // storey (#8) — the unified GF storey (#2/local #3) has been stripped.
-    expect(content).toMatch(/#9=IFCRELAGGREGATES\('r2',\$,\$,\$,#2,\(#8\)\)/);
+    expect(content).toContain("#9=IFCRELAGGREGATES('r2',$,$,$,#2,(#8))");
 
     // No reference was left dangling by the RelatedObjects rewrite.
     expect(findDanglingRefs(content)).toEqual([]);

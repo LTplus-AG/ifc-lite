@@ -20,6 +20,31 @@
  * store via `fromGlobalIdFromModels` — the same resolution `bcfIdLookup.ts`
  * uses — before extracting; `legacyStore` covers the pre-federation path
  * where `storeModels` is empty and the global id already IS the local id.
+ *
+ * The engine wants a record keyed by set name; the parser returns a list of
+ * sets. Two things about that list survive the flattening on purpose:
+ *
+ * - An entity can carry several property sets with the SAME name (one from
+ *   the type definition, one from the occurrence, each via its own
+ *   `IfcRelDefinesByProperties`) — `extractPropertiesOnDemand` returns one
+ *   entry per set and does not merge them. Assigning `result[pset.name]`
+ *   outright would let the later set erase the earlier one and every
+ *   property in it, which is the #3465/#3468 duplicate-pset defect in
+ *   another shape; `scripts/check-pset-name-find.mjs` does not catch it
+ *   because it looks for a two-step `.find`, not for record-keying. Sets
+ *   sharing a name are merged, first match across the sequence winning —
+ *   the semantics `findPropertyInSets` (`packages/query/src/pset-lookup.ts`)
+ *   settled for the rest of the repo.
+ * - `prop.value` is the scalar the property panel shows; `prop.values` is
+ *   the parser's raw `string[]` for the multi-valued subtypes
+ *   (`IfcPropertyEnumeratedValue`, `…ListValue`, `…BoundedValue`,
+ *   `…TableValue`). The engine gets `value`. Every string operator in
+ *   `rule-engine.ts` `evaluateOperator` returns false unless
+ *   `typeof actual === 'string'`, and `in`/`notIn` compare an array by
+ *   identity, so handing over the array would leave those properties able
+ *   to satisfy `exists`/`notExists` and nothing else — Fire Safety's
+ *   `OccupancyType contains 'CIRCULATION'` would never match an enumerated
+ *   OccupancyType.
  */
 
 import { extractPropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
@@ -45,9 +70,10 @@ export function makePropertiesGetter(
     if (psets.length > 0) {
       result = {};
       for (const pset of psets) {
-        const props: Record<string, unknown> = {};
-        for (const prop of pset.properties) props[prop.name] = prop.values ?? prop.value;
-        result[pset.name] = props;
+        const props = (result[pset.name] ??= {});
+        for (const prop of pset.properties) {
+          if (!Object.hasOwn(props, prop.name)) props[prop.name] = prop.value;
+        }
       }
     }
     cache.set(globalId, result);

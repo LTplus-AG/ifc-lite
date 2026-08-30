@@ -27,8 +27,10 @@
  * This test re-derives the full descendant set from `@ifc-lite/data`'s
  * generated IFC2X3/IFC4/IFC4X3 entity tables — walking `IfcBuildingElement`
  * for IFC2X3/IFC4 and `IfcBuiltElement` for IFC4X3 — and asserts
- * `BUILDING_ELEMENT_TYPES` agrees in both directions, so a future schema
- * bump or hand-edit cannot quietly reopen the gap.
+ * `BUILDING_ELEMENT_TYPES` agrees in both directions: every member of each
+ * schema's universe is in the set, and every name in the set is in the union
+ * of the three universes. So neither a future schema bump nor a hand-edit can
+ * quietly reopen the gap or slip an unrelated class in.
  */
 
 import { describe, it } from 'node:test';
@@ -37,7 +39,13 @@ import { ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3 } from '@ifc-lite/data'
 import type { IfcEntityInfo } from '@ifc-lite/data';
 import { BUILDING_ELEMENT_TYPES } from './types.js';
 
-/** Every descendant of `root` (plus the root itself) in one schema. */
+/**
+ * Every descendant of `root` (plus the root itself) in one schema.
+ *
+ * Deliberately a second copy of the walk in `types.ts` rather than an import
+ * of it: an oracle that shares the code under test cannot disagree with it,
+ * and this file's whole job is to disagree when the set drifts.
+ */
 function elementUniverse(entities: readonly IfcEntityInfo[], root: string): Set<string> {
   const children = new Map<string, string[]>();
   for (const entity of entities) {
@@ -86,6 +94,26 @@ describe('BUILDING_ELEMENT_TYPES vs generated IFC schemas', () => {
       assert.deepStrictEqual(missing, []);
     });
   }
+
+  it('carries no name outside the union of the three schema universes', () => {
+    // The other direction, and the one a per-schema subset check is blind to:
+    // a name hand-added to the set literal, or a root accidentally widened to
+    // `IfcElement`, leaves every `missing` list empty and would otherwise sail
+    // through. Modelled on spatial-types-authority.test.ts, which asserts
+    // `missing` and `extra` together for `SPATIAL_TYPES`.
+    //
+    // The comparison is against the union and not against any single schema,
+    // because the set spans all three: `IfcDoorStandardCase` is an IFC4 name
+    // IFC4X3 dropped, `IfcBearing` an IFC4X3 name IFC4 never had, and both
+    // belong in the set. Run per schema, this check would reject each of them.
+    // The two directions also cross-guard each other's arithmetic — a union
+    // computed too wide here shows up as a non-empty `missing` above.
+    const union = new Set(
+      SCHEMAS.flatMap(([, entities, root]) => [...elementUniverse(entities, root)]),
+    );
+    const extra = [...BUILDING_ELEMENT_TYPES].filter((name) => !union.has(name));
+    assert.deepStrictEqual(extra, []);
+  });
 
   it('names the specific IFC4 gap reported for this set', () => {
     for (const name of [

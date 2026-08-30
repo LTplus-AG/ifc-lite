@@ -11,6 +11,7 @@
  */
 
 import { EntityNode } from '@ifc-lite/query';
+import type { MaterialData } from '@ifc-lite/sdk';
 import type { CallToolResult, ContentBlock } from '../protocol/index.js';
 import type { LoadedModel, ToolContext } from '../context.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
@@ -30,6 +31,27 @@ export function assertModelAccess(ctx: ToolContext, model: LoadedModel): LoadedM
     });
   }
   return model;
+}
+
+/**
+ * Grouping/display name for a `MaterialData` result, or undefined when none
+ * is available. `.name` only exists for a plain `Material` (and, when set in
+ * the source file, a LayerSet/ProfileSet/ConstituentSet) — an
+ * `IfcMaterialList` never carries a list-level name, only `.materials[]`, so
+ * reading `.name` alone mis-buckets every list-material entity as
+ * materialless. Mirrors `computeMaterialSummary` in
+ * `packages/cli/src/commands/stats-aggregation.ts`, which already falls back
+ * this way.
+ */
+export function materialDisplayName(mat: MaterialData | null | undefined): string | undefined {
+  if (!mat) return undefined;
+  return (
+    mat.name ??
+    mat.materials?.[0]?.name ??
+    mat.layers?.find((l) => l.materialName)?.materialName ??
+    mat.profiles?.find((p) => p.materialName)?.materialName ??
+    mat.constituents?.find((c) => c.materialName)?.materialName
+  );
 }
 
 /** Model IDs the caller's scope permits — never leak identifiers outside scope. */

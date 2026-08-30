@@ -32,8 +32,9 @@ export function parseGLB(glb: Uint8Array): ParsedGlb {
   // buffer with bytes appended after a legitimate GLB's end (e.g. a phantom
   // chunk with the BIN magic) get parsed as additional real chunks — the
   // last BIN/JSON chunk found wins, so an attacker-appended trailing chunk
-  // silently REPLACED the genuine bin/json instead of the file being
-  // rejected. Each chunk is also checked against `totalLen` so a chunkLen
+  // silently REPLACED the genuine bin/json. The walk now stops at `totalLen`,
+  // so such a trailing chunk is ignored rather than adopted; the file itself
+  // is not rejected. Each chunk is also checked against `totalLen` so a chunkLen
   // that overruns the declared length throws instead of `subarray` silently
   // clamping to a truncated view (mirrors the guard in the sibling GLB
   // reader, `@ifc-lite/cache`'s `glb.ts`).

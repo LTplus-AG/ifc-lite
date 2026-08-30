@@ -131,33 +131,17 @@ function shortGuidHash(guid: string): string {
 }
 
 /**
- * Sanitize a topic GUID for use as a zip folder name (zip-slip guard).
- *
- * A topic GUID is parsed unvalidated from untrusted markup XML on read, so it
- * can carry path separators or `..`. Using it verbatim as a zip path component
- * on a read-modify-save would let a crafted GUID (`../../evil`) write outside
- * the archive root. Restrict the name to safe filename characters and collapse
- * any dot-run so it can never traverse. The real GUID is still written verbatim
- * as the markup `<Topic Guid>` attribute, which is what readers key off.
- *
- * Sanitization is lossy, so two distinct GUIDs can map to one name (`a?b` and
- * `a:b` both give `a_b`), which would silently overwrite a topic folder. Any
- * name that sanitization changed gets a hash of the original GUID appended,
- * and `usedNames` catches the remaining collisions with a counter suffix.
- */
-function sanitizeTopicFolderName(guid: string, usedNames: Set<string>): string {
-  return sanitizeZipComponent(guid, usedNames, 'topic');
-}
-
-/**
  * Sanitize an arbitrary GUID for use as a zip path component (zip-slip guard).
  *
  * Shared by both the topic-folder name and the viewpoint file base name: a
  * viewpoint GUID is parsed just as unvalidated from untrusted markup XML on
  * read (reader.ts `parseViewpointContent`) as a topic GUID is, so it carries
- * the same path-traversal hazard. Restrict the name to safe filename
- * characters and collapse any dot-run so it can never traverse. `fallback` is
- * used when sanitization strips the name to nothing.
+ * the same path-traversal hazard (`../../evil` as a topic GUID would write
+ * outside the archive root). Restrict the name to safe filename characters and
+ * collapse any dot-run so it can never traverse. `fallback` is used when
+ * sanitization strips the name to nothing. The real GUID is still written
+ * verbatim as the markup `<Topic Guid>`/`<Viewpoint Guid>` attribute, which is
+ * what readers key off.
  *
  * Sanitization is lossy, so two distinct GUIDs can map to one name, which
  * would silently overwrite an entry. Any name that sanitization changed gets
@@ -181,16 +165,14 @@ function sanitizeZipComponent(raw: string, usedNames: Set<string>, fallback: str
   return candidate;
 }
 
-/**
- * Write a topic folder with all its contents
- */
+/** Write a topic folder with all its contents. */
 async function writeTopicFolder(
   zip: JSZip,
   topic: BCFTopic,
   version: '2.1' | '3.0',
   usedFolderNames: Set<string>,
 ): Promise<void> {
-  const folder = zip.folder(sanitizeTopicFolderName(topic.guid, usedFolderNames));
+  const folder = zip.folder(sanitizeZipComponent(topic.guid, usedFolderNames, 'topic'));
   if (!folder) return;
 
   // Sanitize each viewpoint GUID once, up front, so the markup <Viewpoint>
@@ -226,17 +208,35 @@ function snapshotExt(viewpoint: BCFViewpoint): 'png' | 'jpg' {
   return 'png';
 }
 
-/**
- * Write markup.bcf file
- * Uses buildingSMART standard format
- */
 // BCF 3.0's markup.xsd types `Topic/@TopicType` and `Topic/@TopicStatus` as
 // `NonEmptyOrBlankString`: after XML whitespace (#x9, #xA, #xD, #x20) is
 // collapsed, the value must have length >= 1. A value that is present but
 // consists entirely of XML whitespace collapses to nothing and is therefore
-// as invalid as an absent one.
+// as invalid as an absent one -- which is why `xsdDateTime` reuses it below.
 const XML_WHITESPACE_ONLY = /^[\t\n\r ]*$/;
 
+/**
+ * A required `xs:dateTime` on its way into an archive, escaped -- or an error.
+ *
+ * `markup.xsd` declares `Topic/CreationDate` and `Comment/Date` `minOccurs="1"`
+ * with no default in BOTH 2.1 (:67, :107) and 3.0 (:73, :155), and reader.ts no
+ * longer invents a wall-clock timestamp when the source omits one, so either can
+ * arrive unset. Inventing one here is that same fabrication; dropping the
+ * element hands the caller an archive we already know fails the schema. So we
+ * refuse, as the TopicType/TopicStatus check below and `xsdDouble` do.
+ */
+function xsdDateTime(value: string | undefined, element: string, where: string): string {
+  if (!value || XML_WHITESPACE_ONLY.test(value)) {
+    throw new Error(
+      `BCF requires ${element} (${where} has none). markup.xsd declares it ` +
+        `minOccurs="1" with no default, and a time the source never stated is ` +
+        `not the writer's to invent. Set it before writing.`
+    );
+  }
+  return escapeXml(value);
+}
+
+/** Write markup.bcf -- buildingSMART standard format. */
 function writeMarkupFile(
   folder: JSZip,
   topic: BCFTopic,
@@ -321,7 +321,7 @@ function writeMarkupFile(
     }
   }
 
-  if (topic.creationDate) content += `\n    <CreationDate>${escapeXml(topic.creationDate)}</CreationDate>`;
+  content += `\n    <CreationDate>${xsdDateTime(topic.creationDate, 'Topic/CreationDate', `topic "${topic.guid}"`)}</CreationDate>`;
   content += `\n    <CreationAuthor>${escapeXml(topic.creationAuthor)}</CreationAuthor>`;
 
   if (topic.modifiedDate) {
@@ -384,7 +384,7 @@ function writeMarkupFile(
     topic.comments
       .map((comment) => {
         let c = `\n${indent}<Comment Guid="${escapeXml(comment.guid)}">`;
-        if (comment.date) c += `\n${indent}  <Date>${escapeXml(comment.date)}</Date>`; // mirror undefined date; see reader.ts
+        c += `\n${indent}  <Date>${xsdDateTime(comment.date, 'Comment/Date', `comment "${comment.guid}"`)}</Date>`;
         c += `\n${indent}  <Author>${escapeXml(comment.author)}</Author>`;
         c += `\n${indent}  <Comment>${escapeXml(comment.comment)}</Comment>`;
         if (comment.viewpointGuid) {

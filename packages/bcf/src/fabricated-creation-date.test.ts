@@ -20,7 +20,7 @@
  * timestamp, mirroring how a missing required `Guid` is already handled
  * (the topic-less case) rather than papering over it.
  *
- * `Title` includes a CONTROL assertion: it is population from real,
+ * `Title` includes a CONTROL assertion: it is populated from real,
  * declared XML content elsewhere in the same fixture, so it must still come
  * through correctly — this isolates the CreationDate/Date defect rather
  * than proving the reader broadly works.
@@ -32,7 +32,10 @@ import { readFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { validateXML } from 'xmllint-wasm';
+
 import { readBCF } from './reader.js';
+import { writeBCF } from './writer.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TEST_DATA_DIR = join(__dirname, '..', 'test-data');
@@ -113,5 +116,85 @@ describe('BCF reader — CreationDate/Date fabrication (#markup.xsd required, no
       ).toBe(false);
     }
     expect(comment.date).toBeUndefined();
+  });
+});
+
+/**
+ * `markup.xsd` requires `Topic/CreationDate` and `Comment/Date`
+ * (`minOccurs="1"`, no default) in BOTH 2.1 (:67, :107) and 3.0 (:73, :155),
+ * so a writer that simply mirrors the reader's omission produces a
+ * `markup.bcf` no conforming BCF tool has to accept -- and hands it back as an
+ * ordinary Blob, with nothing to tell the caller. `writer.ts` refuses that
+ * write instead, the same way it already refuses a BCF 3.0 topic with no
+ * `TopicType`: it will neither invent a timestamp the source never stated nor
+ * emit an archive it knows fails the schema.
+ */
+describe('BCF writer — refuses a markup.bcf it knows fails markup.xsd', () => {
+  const COMMENT_NO_DATE =
+    '<Comment Guid="c1a2b3c4-0000-0000-0000-000000000001">' +
+    '<Author>reviewer@example.com</Author>' +
+    '<Comment>looks fine</Comment>' +
+    '</Comment>';
+
+  /** xmllint against the real v2_1/markup.xsd (the fixture's own version). */
+  async function markupIsSchemaValid(markup: string): Promise<{ valid: boolean; errors: string }> {
+    const xsd = await readFile(
+      join(__dirname, '__fixtures__', 'schemas', 'v2_1', 'markup.xsd'),
+      'utf8',
+    );
+    const result = await validateXML({
+      xml: [{ fileName: 'subject.xml', contents: markup }],
+      schema: [xsd],
+    });
+    return { valid: result.valid, errors: result.errors.map((e) => e.message).join(' | ') };
+  }
+
+  async function markupOf(blob: Blob): Promise<string> {
+    const zip = await JSZip.loadAsync(await blob.arrayBuffer());
+    const name = Object.keys(zip.files).find((n) => n.endsWith('markup.bcf'))!;
+    return zip.file(name)!.async('string');
+  }
+
+  it('CONTROL: the untouched fixture round-trips to markup that validates', async () => {
+    // Same fixture, same code path, CreationDate left in place. Without this,
+    // a writer that threw on every topic would pass the two tests below.
+    const project = await readBCF(await readFile(join(TEST_DATA_DIR, 'PerspectiveCamera.bcf')));
+    const markup = await markupOf(await writeBCF(project));
+    expect(markup).toContain('<CreationDate>');
+    const { valid, errors } = await markupIsSchemaValid(markup);
+    expect(valid, `round-tripped markup.bcf failed markup.xsd: ${errors}`).toBe(true);
+  });
+
+  it('refuses to write a Topic whose CreationDate the source never declared', async () => {
+    const project = await readBCF(
+      await archiveWithEditedMarkup((xml) =>
+        xml.replace(/<CreationDate>[^<]*<\/CreationDate>/, ''),
+      ),
+    );
+    // The error has to name the element, or the caller cannot act on it.
+    await expect(writeBCF(project)).rejects.toThrow(/Topic\/CreationDate/);
+  });
+
+  it('refuses to write a Comment whose Date the source never declared', async () => {
+    const project = await readBCF(
+      await archiveWithEditedMarkup((xml) => xml.replace('</Topic>', COMMENT_NO_DATE + '</Topic>')),
+    );
+    await expect(writeBCF(project)).rejects.toThrow(/Comment\/Date/);
+  });
+
+  it('what the refusal replaces: emitting the topic without CreationDate fails markup.xsd', async () => {
+    // Pin the reason. This builds the exact markup a mirror-the-omission
+    // writer produces -- the round trip above with the one element dropped --
+    // and shows an independent authority (buildingSMART's own XSD, via
+    // xmllint) rejecting it. If that ever validated, the throw above would be
+    // pointless ceremony rather than a guard.
+    const project = await readBCF(await readFile(join(TEST_DATA_DIR, 'PerspectiveCamera.bcf')));
+    const good = await markupOf(await writeBCF(project));
+    const withoutCreationDate = good.replace(/\n?\s*<CreationDate>[^<]*<\/CreationDate>/, '');
+    expect(withoutCreationDate, 'the edit must actually drop the element').not.toBe(good);
+
+    const { valid, errors } = await markupIsSchemaValid(withoutCreationDate);
+    expect(valid).toBe(false);
+    expect(errors).toMatch(/CreationDate/);
   });
 });

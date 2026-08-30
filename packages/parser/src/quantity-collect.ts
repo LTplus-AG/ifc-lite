@@ -222,7 +222,11 @@ export function readQuantitySet(
     if (!qsetEntity) return null;
 
     const qsetAttrs = qsetEntity.attributes || [];
-    const qsetName = typeof qsetAttrs[2] === 'string' ? qsetAttrs[2] : `QuantitySet #${qsetId}`;
+    // Left empty rather than a fabricated `QuantitySet #<id>` when the source
+    // declared no Name: this is `store.getQuantities()`'s answer, consumed
+    // verbatim downstream (MCP tool responses, `bim.quantities()`) as though
+    // the model had genuinely declared that name (#3530 census).
+    const qsetName = typeof qsetAttrs[2] === 'string' ? qsetAttrs[2] : '';
     const quantities = collectQuantitiesFromRefs(store, extractor, qsetAttrs[QUANTITIES_SLOT]);
 
     if (quantities.length === 0) return null;

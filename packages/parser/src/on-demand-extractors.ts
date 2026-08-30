@@ -344,7 +344,7 @@ export function extractPsetsFromIds(
 
         const psetAttrs = psetEntity.attributes || [];
         const psetGlobalId = typeof psetAttrs[0] === 'string' ? psetAttrs[0] : undefined;
-        const psetName = typeof psetAttrs[2] === 'string' ? psetAttrs[2] : `PropertySet #${psetId}`;
+        const psetName = typeof psetAttrs[2] === 'string' ? psetAttrs[2] : ''; // not `PropertySet #<id>` (#3530)
         const hasProperties = psetAttrs[4];
 
         const properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> = [];
@@ -887,7 +887,7 @@ function readMaterialPropsEntity(
     }
 
     if (typeof materialId !== 'number' || !Array.isArray(propsList)) return null;
-    const psetName = typeof name === 'string' && name ? name : (entityType || 'Material Properties');
+    const psetName = typeof name === 'string' && name ? name : (entityType || ''); // not the 'Material Properties' fabrication
     return { materialId, propsList, psetName };
 }
 

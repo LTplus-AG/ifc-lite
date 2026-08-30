@@ -57,6 +57,7 @@ export function HierarchyPanel() {
   const toGlobalId = useViewerStore((s) => s.toGlobalId);
   const setSelectedModelId = useViewerStore((s) => s.setSelectedModelId);
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
+  const activeStorey = useViewerStore((s) => s.activeStorey);
   const setStoreySelection = useViewerStore((s) => s.setStoreySelection);
   const setStoreysSelection = useViewerStore((s) => s.setStoreysSelection);
   const clearStoreySelection = useViewerStore((s) => s.clearStoreySelection);
@@ -724,19 +725,17 @@ export function HierarchyPanel() {
 
   // Compute selection and visibility state for a node
   const computeNodeState = useCallback((node: TreeNode): { isSelected: boolean; nodeHidden: boolean; modelVisible?: boolean } => {
-    // Determine if node is selected
-    // For ifc-type nodes, check if the type entity itself is selected
+    // `selectedStoreys` drops the modelId pairing (#3506/#3508) — guard with `activeStorey` below.
+    const storeyModelOk = (modelId?: string) => selectedStoreys.size !== 1 || modelId === activeStorey?.modelId;
     const isSelected = node.type === 'unified-storey'
-      ? node.expressIds.some(id => selectedStoreys.has(id))
+      ? node.expressIds.some((id, i) => selectedStoreys.has(id) && storeyModelOk(node.modelIds[i]))
       : node.type === 'IfcBuildingStorey'
-        ? selectedStoreys.has(node.expressIds[0])
+        ? selectedStoreys.has(node.expressIds[0]) && storeyModelOk(node.modelIds[0])
         : node.type === 'IfcSpace' || node.type === 'element' || node.type === 'group-member'
           ? (() => {
               const gId = node.globalIds[0] ?? node.expressIds[0];
-              // Honour the multi-selection set so Ctrl/Shift-selected rows all
-              // read as highlighted in the tree, not just the primary. (#1463)
-              // group-member rows highlight by globalId, so the same element
-              // under two groups lights up in both rows (many-to-many, #1622).
+              // Honour the multi-selection set so Ctrl/Shift-selected rows all read as highlighted, not just the primary (#1463);
+              // group-member rows highlight by globalId, so the same element under two groups lights up in both rows (#1622).
               return selectedEntityId === gId || selectedEntityIds.has(gId);
             })()
           : node.type === 'ifc-type' || node.type === 'material-group' || node.type === 'group'
@@ -778,7 +777,7 @@ export function HierarchyPanel() {
     }
 
     return { isSelected, nodeHidden, modelVisible };
-  }, [selectedStoreys, selectedEntityId, selectedEntityIds, hiddenEntities, getNodeElements, models, toGlobalId]);
+  }, [selectedStoreys, activeStorey, selectedEntityId, selectedEntityIds, hiddenEntities, getNodeElements, models, toGlobalId]);
 
   if (!ifcDataStore && models.size === 0) {
     return (

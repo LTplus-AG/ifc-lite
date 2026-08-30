@@ -16,6 +16,7 @@ import type { EntityRef } from './types.js';
 import type { EntityExtractor } from './entity-extractor.js';
 import { QUANTITY_TYPE_MAP } from './columnar-parser-indexes.js';
 import { isUnrepresentableNumericValue } from './attribute-helpers.js';
+import type { ProjectUnits } from './project-units.js';
 
 /** One extracted quantity, in the shape both call sites report. */
 export interface CollectedQuantity {
@@ -230,4 +231,48 @@ export function readQuantitySet(
 
     if (quantities.length === 0) return null;
     return { name: qsetName, quantities };
+}
+
+/**
+ * SI scale factor for a `Qto_` value of the given {@link QuantityType},
+ * resolved against the project's declared units.
+ *
+ * An `IfcQuantityLength`/`Area`/`Volume` is stored in the project's raw
+ * author unit exactly like an `IfcPropertySingleValue` of the matching
+ * measure type — the value is not pre-converted to SI by the exporter. A
+ * consumer that hashes or otherwise compares `CollectedQuantity.value`
+ * across two files (or against a base-SI literal) as-is therefore reads a
+ * project's choice of length unit as a change in the design itself: the
+ * same 2 m wall authored in millimetres carries the raw value `2000`
+ * instead of `2`.
+ *
+ * `1` for `Count`/`Weight`/`Time`/`Number` — this only scales the three
+ * quantity types that are themselves `IfcLengthMeasure`-family measures.
+ *
+ * Area and Volume scale by the SQUARE and CUBE of the length factor (a
+ * millimetre-authored 1 m² is stored as `1e6`, not `1e3`) — but only as a
+ * FALLBACK: `IFC` lets a project declare an explicit `AREAUNIT`/`VOLUMEUNIT`
+ * with no arithmetic relationship to `LENGTHUNIT`, so the file's own
+ * declaration is preferred and the length-derived power is used only when
+ * the project declares none.
+ */
+export function quantitySiScale(quantityType: number, units: ProjectUnits): number {
+    switch (quantityType) {
+        case QuantityType.Length:
+            return units.unitForMeasure('IfcLengthMeasure')?.siScale ?? 1;
+        case QuantityType.Area: {
+            const explicit = units.resolvedForUnitType('AREAUNIT')?.siScale;
+            if (explicit !== undefined) return explicit;
+            const length = units.unitForMeasure('IfcLengthMeasure')?.siScale ?? 1;
+            return length ** 2;
+        }
+        case QuantityType.Volume: {
+            const explicit = units.resolvedForUnitType('VOLUMEUNIT')?.siScale;
+            if (explicit !== undefined) return explicit;
+            const length = units.unitForMeasure('IfcLengthMeasure')?.siScale ?? 1;
+            return length ** 3;
+        }
+        default:
+            return 1;
+    }
 }

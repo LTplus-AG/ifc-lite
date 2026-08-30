@@ -466,7 +466,14 @@ representation item. It is absent when:
 - the hit landed on a colour-merged batch, which holds many entities at once, so whatever
   item id the batch carries belongs to none of them individually.
 
-Treat the check as the contract: read `geometryItemId` and handle `undefined`, rather than
+Every case in that list is geometry whose item identity was merged away before the pick
+ran. GPU-instanced occurrences are **not** in it: they carry their own item id, because
+the instanced wire format was extended to hold one. See
+[Item ids on instanced occurrences](./geometry.md#item-ids-on-instanced-occurrences) for
+that path, including how to tell a shard that declares no ids from a piece that has none.
+
+The list is the set of merge cases known today, not a closed set. Treat the check as the
+contract: read `geometryItemId` and handle `undefined`, rather than
 deciding up front which geometry can answer.
 
 Rectangle select stays product-level. `Renderer.pickRect` resolves to a `Set<number>` of

@@ -199,3 +199,43 @@ describe('query --storey honours --limit and --offset', () => {
     expect(await storeyCount(['--where', 'Pset_WallCommon.IsExternal', '--limit', '1'])).toBe(1);
   });
 });
+
+/**
+ * `--sum`/`--avg`/`--min`/`--max` must aggregate over the FULL filtered set,
+ * never a `--limit`/`--offset`-sliced one — the `--where` path enforces this
+ * deliberately ("Aggregations operate on the full filtered set (no
+ * offset/limit)"). The plain (no `--where`, no `--storey`) path builds its
+ * `QueryBuilder` with `q.limit(rowLimit)` / `q.offset(offset)` applied
+ * unconditionally whenever `!groupBy`, then reuses that SAME limited `q` for
+ * `--sum`/`--avg`/`--min`/`--max`, which never should have been sliced in
+ * the first place: `--type IfcBeam --sum NetVolume --limit 2` silently sums
+ * only the first two matched beams instead of every beam with the quantity,
+ * with no warning that the total is partial.
+ */
+describe('query --sum ignores --limit/--offset (plain path, no --where)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const BRIDGE_IFC = join(__dirname, '../../../../apps/viewer/public/samples/infra-bridge.ifc');
+
+  async function sumJson(extra: string[]): Promise<{ total: number; matchedEntities: number }> {
+    const stdout = captureStdout();
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    await queryCommand([BRIDGE_IFC, '--type', 'IfcBeam', '--sum', 'NetVolume', '--json', ...extra]);
+    vi.restoreAllMocks();
+    return JSON.parse(stdout.out);
+  }
+
+  it('bounding control: the unrestricted sum matches more than 2 beams', async () => {
+    const full = await sumJson([]);
+    expect(full.matchedEntities).toBeGreaterThan(2);
+  });
+
+  it('--limit does not shrink the summed set or the total', async () => {
+    const full = await sumJson([]);
+    const limited = await sumJson(['--limit', '2']);
+    expect(limited.matchedEntities).toBe(full.matchedEntities);
+    expect(limited.total).toBeCloseTo(full.total, 9);
+  });
+});

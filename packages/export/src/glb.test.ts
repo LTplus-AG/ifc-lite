@@ -62,4 +62,40 @@ describe('countGlbMeshes', () => {
     expect(json.meshes).toHaveLength(1);
     expect(bin.byteLength).toBe(4);
   });
+
+  it('ignores a chunk appended after the declared total length instead of adopting it as the BIN chunk', () => {
+    // A well-formed GLB whose header declares `total` correctly, followed by
+    // extra bytes shaped like a legitimate BIN chunk (its own length prefix
+    // + 'BIN\0' magic + attacker-controlled payload). The header's `total`
+    // field is untouched, so a spec-faithful reader must stop walking chunks
+    // there — the genuine BIN chunk must win, not the appended one.
+    const legitBin = new Uint8Array([1, 2, 3, 4]);
+    const glb = buildGlb({ asset: { version: '2.0' }, meshes: [{}] }, legitBin);
+    const evilBin = new Uint8Array([9, 9, 9, 9, 9, 9, 9, 9]);
+    const trailer = new Uint8Array(8 + evilBin.length);
+    const tdv = new DataView(trailer.buffer);
+    tdv.setUint32(0, evilBin.length, true);
+    tdv.setUint32(4, 0x004e4942, true); // 'BIN\0'
+    trailer.set(evilBin, 8);
+    const tampered = new Uint8Array(glb.length + trailer.length);
+    tampered.set(glb, 0);
+    tampered.set(trailer, glb.length);
+
+    const { bin } = parseGLB(tampered);
+    expect(Array.from(bin)).toEqual(Array.from(legitBin));
+  });
+
+  it('rejects a chunk whose declared length runs past the declared total (no silent truncation)', () => {
+    // A chunkLen that overruns `total` must throw, not have `subarray`
+    // silently clamp to a truncated (but seemingly valid) BIN buffer.
+    const glb = buildGlb({ asset: { version: '2.0' }, meshes: [{}] }, new Uint8Array([1, 2, 3, 4]));
+    const dv = new DataView(glb.buffer);
+    // BIN chunk's length prefix sits right after the JSON chunk; inflate it
+    // far beyond what the (unchanged) header `total` field declares.
+    const jsonChunkLen = dv.getUint32(12, true);
+    const binLenFieldOffset = 12 + 8 + jsonChunkLen;
+    dv.setUint32(binLenFieldOffset, 0xffffff00, true);
+
+    expect(() => parseGLB(glb)).toThrow(/beyond declared length/);
+  });
 });

@@ -293,9 +293,9 @@ function decodeAsciiBody(
     positions[written * 3 + 1] = Number(parts[yCol]) - offY;
     positions[written * 3 + 2] = Number(parts[zCol]) - offZ;
     if (colors && rCol >= 0 && gCol >= 0 && bCol >= 0) {
-      colors[written * 3] = clamp01(Number(parts[rCol]) / 255);
-      colors[written * 3 + 1] = clamp01(Number(parts[gCol]) / 255);
-      colors[written * 3 + 2] = clamp01(Number(parts[bCol]) / 255);
+      colors[written * 3] = normalizeColorChannel(Number(parts[rCol]), vertex.properties[rCol].type);
+      colors[written * 3 + 1] = normalizeColorChannel(Number(parts[gCol]), vertex.properties[gCol].type);
+      colors[written * 3 + 2] = normalizeColorChannel(Number(parts[bCol]), vertex.properties[bCol].type);
     }
     if (intensities && iCol >= 0) {
       intensities[written] = Math.min(65535, Math.max(0, Number(parts[iCol]) | 0));
@@ -344,9 +344,9 @@ function decodeBinaryBody(
     positions[i * 3 + 1] = readScalar(view, base + yProp.offset, yProp, littleEndian) - offY;
     positions[i * 3 + 2] = readScalar(view, base + zProp.offset, zProp, littleEndian) - offZ;
     if (colors && rProp && gProp && bProp) {
-      colors[i * 3] = clamp01(readScalar(view, base + rProp.offset, rProp, littleEndian) / 255);
-      colors[i * 3 + 1] = clamp01(readScalar(view, base + gProp.offset, gProp, littleEndian) / 255);
-      colors[i * 3 + 2] = clamp01(readScalar(view, base + bProp.offset, bProp, littleEndian) / 255);
+      colors[i * 3] = normalizeColorChannel(readScalar(view, base + rProp.offset, rProp, littleEndian), rProp.type);
+      colors[i * 3 + 1] = normalizeColorChannel(readScalar(view, base + gProp.offset, gProp, littleEndian), gProp.type);
+      colors[i * 3 + 2] = normalizeColorChannel(readScalar(view, base + bProp.offset, bProp, littleEndian), bProp.type);
     }
     if (intensities && iProp) {
       intensities[i] = Math.min(65535, Math.max(0, readScalar(view, base + iProp.offset, iProp, littleEndian) | 0));
@@ -378,6 +378,24 @@ function readScalar(view: DataView, offset: number, prop: PropertyDecl, le: bool
 
 function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
+/**
+ * Normalize a decoded RGB channel value to 0..1.
+ *
+ * The PLY format has no single blessed encoding for colour, but the
+ * convention every writer in the wild follows is: integer property types
+ * (`uchar` is the overwhelming majority; `ushort`/`uint`/etc. show up too)
+ * store 0..maxOfType and need dividing down, while `float`/`double`
+ * properties already carry a 0..1 value — dividing THOSE by 255 as well
+ * (the previous behaviour here) crushed every float-typed r/g/b channel to
+ * near-black.
+ */
+function normalizeColorChannel(value: number, type: string): number {
+  if (type === 'float' || type === 'float32' || type === 'double' || type === 'float64') {
+    return clamp01(value);
+  }
+  return clamp01(value / 255);
 }
 
 function computeBBox(positions: Float32Array): PointCloudBBox {

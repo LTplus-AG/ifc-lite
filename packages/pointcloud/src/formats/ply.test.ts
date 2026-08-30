@@ -158,6 +158,53 @@ describe('decodePly', () => {
     expect(chunk.colors![0]).toBeCloseTo(1.0, 2);
   });
 
+  it('decodes ascii xyz + rgb stored as float 0..1 without re-dividing by 255', () => {
+    // PLY has no single mandated colour encoding: `uchar` 0..255 is the
+    // overwhelming majority, but writers that declare `property float
+    // red/green/blue` mean 0..1 directly (CloudCompare, some photogrammetry
+    // exporters). Dividing an already-normalized 0.8 by 255 crushes every
+    // such file's colours to near-black.
+    const header =
+      'ply\n' +
+      'format ascii 1.0\n' +
+      'element vertex 1\n' +
+      'property float x\nproperty float y\nproperty float z\n' +
+      'property float red\nproperty float green\nproperty float blue\n' +
+      'end_header\n';
+    const chunk = decodePly(enc.encode(header + '1 2 3 1 0.5 0.25\n'));
+    expect(chunk.colors).toBeDefined();
+    expect(chunk.colors![0]).toBeCloseTo(1.0, 5);
+    expect(chunk.colors![1]).toBeCloseTo(0.5, 5);
+    expect(chunk.colors![2]).toBeCloseTo(0.25, 5);
+  });
+
+  it('decodes binary xyz + rgb stored as float 0..1 without re-dividing by 255', () => {
+    const header =
+      'ply\n' +
+      'format binary_little_endian 1.0\n' +
+      'element vertex 1\n' +
+      'property float x\nproperty float y\nproperty float z\n' +
+      'property float red\nproperty float green\nproperty float blue\n' +
+      'end_header\n';
+    const headerBytes = enc.encode(header);
+    const body = new ArrayBuffer(24);
+    const view = new DataView(body);
+    view.setFloat32(0, 0, true);
+    view.setFloat32(4, 0, true);
+    view.setFloat32(8, 0, true);
+    view.setFloat32(12, 1, true);
+    view.setFloat32(16, 0.5, true);
+    view.setFloat32(20, 0.25, true);
+    const buf = new Uint8Array(headerBytes.length + body.byteLength);
+    buf.set(headerBytes, 0);
+    buf.set(new Uint8Array(body), headerBytes.length);
+
+    const chunk = decodePly(buf);
+    expect(chunk.colors![0]).toBeCloseTo(1.0, 5);
+    expect(chunk.colors![1]).toBeCloseTo(0.5, 5);
+    expect(chunk.colors![2]).toBeCloseTo(0.25, 5);
+  });
+
   it('throws when binary body is short', () => {
     const truncated = buildBinaryPlyLe([[0, 0, 0], [1, 1, 1]], false);
     // chop the last 4 bytes — now we're missing one float of point 2

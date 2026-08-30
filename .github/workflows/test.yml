@@ -906,7 +906,6 @@ jobs:
       - name: Check CSV escaper gate regressions
         run: node --test scripts/check-csv-escaper-copies.test.mjs
 
-
       # Same precedent, for the STEP (ISO 10303-21) string-literal escaper
       # (#3300, second half): the TypeScript and Rust implementations cannot
       # share code, so each is pinned against the other via a shared vector

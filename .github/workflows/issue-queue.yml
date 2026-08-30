@@ -51,13 +51,25 @@ name: Issue queue
 # exact thing the failure asked for and watch a stale red sit there.
 #
 # `labeled` and `unlabeled` are the other half, and they have no analogue in
-# pr-review-signal.yml because nothing there turns on a label. Here BOTH ways
-# out of a failure are a label -- a maintainer labelling the linked issue
-# `ready`, or labelling this PR `unqueued` -- and neither pushes a commit.
-# Without these two types the remedy this gate PRINTS would not re-run it, and a
-# gate whose own remedy does not clear it teaches people to ignore it.
-# `unlabeled` matters in the other direction: withdrawing `unqueued` must be
-# able to make a green PR red again, or the escape hatch is one-way.
+# pr-review-signal.yml because nothing there turns on a label. They cover
+# labelling THIS PR `unqueued`, one of the two ways out of a failure, which
+# pushes no commit. `unlabeled` matters in the other direction: withdrawing
+# `unqueued` must be able to make a green PR red again, or the escape is one-way.
+#
+# STATED HOLE, because an earlier draft of this comment claimed the opposite:
+# `pull_request: [labeled]` fires ONLY for labels applied to the PULL REQUEST.
+# The other way out -- a maintainer labelling the linked ISSUE `ready` -- fires
+# the `issues` event, which this workflow does not subscribe to, so THAT remedy
+# does not re-run this gate. The row stays stale until the PR is pushed to,
+# edited, relabelled or manually re-run, and a fork contributor cannot re-run it.
+# The gate's printed remedy says so rather than implying a re-run that will not
+# happen.
+#
+# The deeper fix, not taken here: subscribe to `issues: [labeled, unlabeled]`,
+# resolve issue -> linked PRs and re-dispatch. That is a second query, a second
+# permission, and a fan-out on an event firing for every label on every issue.
+# Worth doing when this gate goes enforcing; while it is advisory a stale row
+# blocks nothing.
 #
 # `ready_for_review` covers the draft->ready transition, same as
 # pr-review-signal.yml.
@@ -72,11 +84,17 @@ concurrency:
 
 permissions:
   contents: read
-  # `pull-requests: read` covers the whole GraphQL query: the PR, its labels,
-  # its LabeledEvent timeline, and `closingIssuesReferences` with each linked
-  # issue's labels and timeline. `issues: read` is NOT additionally required for
-  # issues reached through that connection, and is not requested, because a
-  # permission a job does not need is a permission a compromised action gets.
+  # `pull-requests: read` is BELIEVED to cover the whole GraphQL query -- the PR,
+  # its labels, its LabeledEvent timeline, and `closingIssuesReferences` with each
+  # linked issue's labels and timeline -- so `issues: read` is not requested, on
+  # the principle that a permission a job does not need is a permission a
+  # compromised action gets.
+  #
+  # NOT MEASURED under the workflow token. It was exercised against a maintainer
+  # PAT, which carries `repo` and would succeed either way, so that run proves
+  # nothing about this scope. If the first CI run reports GRAPHQL_ERRORS
+  # mentioning permissions, add `issues: read` -- the gate fails closed, so the
+  # failure mode is a visible refusal rather than a silent empty issue list.
   pull-requests: read
 
 env:

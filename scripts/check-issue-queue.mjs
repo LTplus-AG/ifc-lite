@@ -518,7 +518,11 @@ export function labelApplier(timeline, label) {
   // finds the event that put the CURRENT label there, not a removed ancestor.
   for (let i = timeline.nodes.length - 1; i >= 0; i -= 1) {
     const node = timeline.nodes[i];
-    if (node?.label?.name !== label) continue;
+    // Case-folded, for the same reason the presence check above is: a label
+    // created as `Ready` must resolve to the same event as one created as
+    // `ready`, or the label is FOUND and its applier is not, which reports
+    // UNKNOWN_LABEL_APPLIER on a label a maintainer plainly applied.
+    if (String(node?.label?.name ?? '').toLowerCase() !== String(label).toLowerCase()) continue;
     const applier = normaliseLogin(node?.actor?.login);
     // An event with no readable actor is not evidence of authority, so the
     // walk STOPS here rather than falling through to an older event by a
@@ -644,7 +648,15 @@ export function normalisePullRequest(payload) {
  * @returns {{ ok: boolean, reason: string | null, applier: string | null, at: string | null }}
  */
 function adjudicateLabel(holder, label, cfg) {
-  if (!holder.labels.includes(label)) return { ok: false, reason: 'ABSENT', applier: null, at: null };
+  // Case-folded on BOTH sides, for the reason normaliseLogin exists. GitHub
+  // labels are case-preserving and a maintainer creating `ready` through the web
+  // UI can easily land `Ready`. Matched case-sensitively, every non-exempt PR
+  // then fails reporting "#N has no `ready` label (it has: Ready)" -- a remedy
+  // that has already been performed, which is the worst kind of failure message.
+  const wanted = String(label).toLowerCase();
+  if (!holder.labels.some((l) => String(l).toLowerCase() === wanted)) {
+    return { ok: false, reason: 'ABSENT', applier: null, at: null };
+  }
   if (!cfg.requireLabelAuthority) {
     return { ok: true, reason: 'UNCHECKED', applier: null, at: null };
   }
@@ -697,29 +709,41 @@ export function evaluate({ pr, cfg }) {
     );
     return { ok: true, verdict: 'ESCAPE_LABEL', lines };
   }
-  if (escape.reason === 'SELF_APPLIED_LABEL') {
-    lines.push(
-      `❌ SELF_APPLIED_LABEL: this PR carries \`${cfg.escapeLabel}\`, but it was applied by ` +
-        `\`${escape.applier}\`, who is not in \`labelAuthorities\`.`,
-      '   An escape label the author applies to their own PR is not an escape hatch, it is the ' +
-        'absence of a gate.',
-      '   REMEDY: a maintainer applies it. Re-applying it yourself reproduces this failure with ' +
-        'your login in it.',
-    );
-    return { ok: false, verdict: 'SELF_APPLIED_LABEL', lines };
-  }
-  if (escape.reason === 'UNKNOWN_LABEL_APPLIER' || escape.reason === 'LABEL_HISTORY_TRUNCATED') {
-    lines.push(
-      `❌ ${escape.reason}: this PR carries \`${cfg.escapeLabel}\`, but no readable LabeledEvent ` +
-        'says who applied it' +
-        (escape.reason === 'LABEL_HISTORY_TRUNCATED' ? ' within the newest 100 label events.' : '.'),
-      '   A label with no author is not evidence of authority. REMEDY: remove it and have a ' +
-        'maintainer re-apply it, which writes a fresh event.',
-    );
-    return { ok: false, verdict: escape.reason, lines };
-  }
+  // A BAD ESCAPE LABEL MUST NOT FAIL A PR THE QUEUE CHECK WOULD PASS.
+  //
+  // This block used to `return { ok: false }` here, before `pr.issues` was ever
+  // read. A contributor who optimistically added `unqueued` to a PR that ALREADY
+  // closed a `ready` issue got a red check, and the printed remedy ("a maintainer
+  // applies it") was the wrong fix: the PR was properly queued and the correct
+  // action was to remove the label. The escape hatch is a way to PASS something
+  // the queue would refuse; it can never be the reason a queued PR fails.
+  //
+  // So a failed escape is remembered, not returned. If the queue check passes,
+  // the PR passes and the bad label is reported as a note. If the queue check
+  // also fails, both are reported, because then the escape is the route the
+  // contributor was actually trying to take and its remedy is the useful one.
+  const escapeProblem =
+    escape.reason === 'SELF_APPLIED_LABEL'
+      ? [
+          `⚠️  SELF_APPLIED_LABEL: this PR carries \`${cfg.escapeLabel}\`, but it was applied by ` +
+            `\`${escape.applier}\`, who is not in \`labelAuthorities\`.`,
+          '   An escape label the author applies to their own PR is not an escape hatch, it is ' +
+            'the absence of a gate.',
+          '   REMEDY: a maintainer applies it. Re-applying it yourself reproduces this with your ' +
+            'login in it.',
+        ]
+      : escape.reason === 'UNKNOWN_LABEL_APPLIER' || escape.reason === 'LABEL_HISTORY_TRUNCATED'
+        ? [
+            `⚠️  ${escape.reason}: this PR carries \`${cfg.escapeLabel}\`, but no readable ` +
+              'LabeledEvent says who applied it' +
+              (escape.reason === 'LABEL_HISTORY_TRUNCATED'
+                ? ' within the newest 100 label events.'
+                : '.'),
+            '   A label with no author is not evidence of authority. REMEDY: remove it and have ' +
+              'a maintainer re-apply it.',
+          ]
+        : null;
 
-  // ---- the queue itself.
   if (pr.issues.length === 0) {
     lines.push(
       '❌ NO_LINKED_ISSUE: this PR closes no issue, and carries no ' +
@@ -739,7 +763,8 @@ export function evaluate({ pr, cfg }) {
       '   If you pushed the linking commit after opening this PR, re-run: the link appears when ' +
         'the commit does.',
     );
-    return { ok: false, verdict: 'NO_LINKED_ISSUE', lines };
+    if (escapeProblem) lines.push('', ...escapeProblem);
+    return { ok: false, verdict: escapeProblem ? escape.reason : 'NO_LINKED_ISSUE', lines };
   }
 
   const verdicts = pr.issues.map((issue) => ({
@@ -763,6 +788,9 @@ export function evaluate({ pr, cfg }) {
         `   ${verdicts.length - queued.length} other linked issue(s) are not queued; one ready ` +
           'issue is enough.',
       );
+    }
+    if (escapeProblem) {
+      lines.push('', ...escapeProblem, '   This PR passes on its `ready` issue regardless.');
     }
     return { ok: true, verdict: 'READY_ISSUE', lines };
   }
@@ -798,8 +826,13 @@ export function evaluate({ pr, cfg }) {
       'requested. The label is the request.',
     `   REMEDY: ask the maintainer to label one of these \`${cfg.readyLabel}\`, or to label this ` +
       `PR \`${cfg.escapeLabel}\` if it should not wait.`,
+    '',
+    '   NOTE: labelling an ISSUE does not re-run this check. It fires the `issues` event and ' +
+      'this workflow listens to `pull_request`, so the row stays stale until this PR is pushed ' +
+      'to, edited, relabelled, or re-run by hand.',
   );
-  return { ok: false, verdict: 'UNQUEUED_WORK', lines };
+  if (escapeProblem) lines.push('', ...escapeProblem);
+  return { ok: false, verdict: escapeProblem ? escape.reason : 'UNQUEUED_WORK', lines };
 }
 
 // -------------------------------------------------------------------- main

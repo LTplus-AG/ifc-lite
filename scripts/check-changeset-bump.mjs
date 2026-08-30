@@ -398,9 +398,23 @@ function pendingBumps() {
   // reason. Verified by chmod 000 on `.changeset/`: with only the stat guard the
   // gate died in node:fs, never reaching its own refusal.
   //
-  // Either way the answer must not be "no pending changesets": that is absence
-  // reading as success, on the one artifact class #3175 proved nobody reviews.
-  if (!existsOrThrow(CHANGESET_DIR, 'the changeset directory', (m) => refuse('CHANGESET_DIR_UNREADABLE', m))) {
+  // SCOPE, narrowed to what this actually guarantees: these guards cover an
+  // UNREADABLE .changeset/, not an ABSENT one. A directory that is simply not
+  // there still returns an empty list and this gate can still exit 0 -- but only
+  // when nothing shrank, because the surface half runs regardless of how many
+  // changesets are pending, and a shrink with zero changesets is a FAILURE here
+  // (pinned by test). So the silent case is "no directory AND no surface change",
+  // which is benign. Absence of the directory itself is check-changesets.mjs's
+  // question, not this gate's.
+  const dirRemedy =
+    'Fix the permissions or the path and re-run. Do NOT work around this by ' +
+    'deleting the directory: an ABSENT .changeset/ is a different state from an ' +
+    'unreadable one, and this gate treats them differently on purpose.';
+  if (
+    !existsOrThrow(CHANGESET_DIR, 'the changeset directory', (m) =>
+      refuse('CHANGESET_DIR_UNREADABLE', m, dirRemedy),
+    )
+  ) {
     return { files: [], byPackage: new Map(), unreadable: [] };
   }
   let entries;
@@ -411,6 +425,7 @@ function pendingBumps() {
       'CHANGESET_DIR_UNREADABLE',
       `cannot list the changeset directory ${CHANGESET_DIR}: ${err.code || err.message}. ` +
         'Refusing to report "no pending changesets" for a directory this gate could not read.',
+      dirRemedy,
     );
   }
   const files = entries

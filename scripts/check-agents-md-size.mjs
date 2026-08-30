@@ -318,7 +318,13 @@ if (args.update) {
   const lowered = [];
   for (const { rel, bytes } of measured) {
     const budget = budgets.get(rel);
-    next.set(rel, bytes);
+    // CLAMPED TO 1. parseAllowlist refuses `budget <= 0`, so recording the true
+    // size of a tracked EMPTY AGENTS.md would write a row this gate's own parser
+    // then rejects: `--update` exits 0 having written it, and every later run
+    // dies with "bad budget in" and no way out but hand-editing. A gate must not
+    // be able to write a file it cannot read. A 1-byte budget is still a ratchet
+    // floor -- an empty file cannot grow without failing.
+    next.set(rel, Math.max(1, bytes));
     if (budget === undefined) {
       // Recording a file the DEFAULT already permitted is a tightening, not a
       // new exemption; only an over-default row loosens anything.

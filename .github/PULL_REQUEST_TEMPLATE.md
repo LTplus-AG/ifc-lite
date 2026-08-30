@@ -5,8 +5,11 @@
 <!--
 The change and the problem it solves.
 
-Closes #<issue>   <- required unless this PR carries the `unqueued` label.
-The issue needs the `ready` label. See CONTRIBUTING.md "Picking what to work on".
+Closes #<issue>   <- the issue needs the `ready` label.
+                     See CONTRIBUTING.md "Picking what to work on".
+                     Checked by CI, currently ADVISORY: a green `Issue queue`
+                     check does not yet mean this was satisfied, so read its
+                     verdict rather than its tick.
 -->
 
 ## How it was verified

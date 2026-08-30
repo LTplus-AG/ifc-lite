@@ -133,6 +133,50 @@ function cfgWith(patch, tag) {
 /** The shipped config with the rollout pinned to enforcing. */
 const ENFORCING = cfgWith({}, 'enforcing-base');
 
+test('a BAD escape label does not fail a PR the queue check passes', () => {
+  // The escape hatch is a way to PASS something the queue would refuse. It must
+  // never be the reason a properly queued PR fails. This shipped the other way:
+  // `evaluate` adjudicated the escape label before reading `pr.issues` and
+  // returned ok:false, so a contributor who optimistically added `unqueued` to a
+  // PR that ALREADY closed a `ready` issue got a red check whose remedy ("a
+  // maintainer applies it") was the wrong fix -- the right one was to remove it.
+  const r = run(
+    prPayload({
+      prLabels: [[ESCAPE, CONTRIBUTOR]],
+      issues: [issue(3525, [[READY, MAINTAINER]])],
+    }),
+    ENFORCING,
+  );
+  assert.equal(r.code, 0, r.output);
+  assert.match(r.output, /READY_ISSUE/);
+  // The bad label is still reported, as a note rather than a verdict.
+  assert.match(r.output, /SELF_APPLIED_LABEL/);
+  assert.match(r.output, /passes on its `ready` issue regardless/);
+});
+
+test('a bad escape label IS the verdict when the queue check also fails', () => {
+  const r = run(
+    prPayload({ prLabels: [[ESCAPE, CONTRIBUTOR]], issues: [issue(3525, [])] }),
+    ENFORCING,
+  );
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /UNQUEUED_WORK/);
+  assert.match(r.output, /SELF_APPLIED_LABEL/);
+});
+
+test('label matching folds case, so `Ready` satisfies `ready`', () => {
+  // GitHub labels are case-preserving and a maintainer creating the label in the
+  // web UI can easily land `Ready`. Matched case-sensitively, every non-exempt PR
+  // would fail reporting "has no `ready` label (it has: Ready)" -- a remedy that
+  // has already been performed.
+  const r = run(
+    prPayload({ issues: [issue(3525, [['Ready', MAINTAINER]])] }),
+    ENFORCING,
+  );
+  assert.equal(r.code, 0, r.output);
+  assert.match(r.output, /READY_ISSUE/);
+});
+
 // =========================================================== advisory mode
 //
 // These exist because the branch shipped BROKEN and every one of the 33 tests

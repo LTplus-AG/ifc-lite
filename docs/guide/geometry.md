@@ -531,12 +531,17 @@ here has one", not "this build cannot see them".
     before item ids shipped is a **v1 shard**: it declares the narrow stride, so
     `carriesItemIds` is `false` and every occurrence in it reports no item,
     even though the current pipeline would produce ids for that same model. The
-    cache format version was deliberately *not* bumped for this (nothing else
-    about those shards is wrong, and bumping it would have thrown away every
-    user's cache), so the stale shards are not invalidated. A host with a warm
-    cache therefore sees absence caused by the cache rather than by the
-    geometry. Re-parsing the model (a cache miss, or clearing the cache)
-    produces v2 shards with the ids.
+    decoders read such a shard rather than refusing it, so a host with a warm
+    cache can see absence caused by the cache rather than by the geometry.
+
+    In this release those entries are invalidated anyway: the cache
+    `FORMAT_VERSION` moves 15 → 16, so every entry misses once and re-meshes.
+    That bump is not about reading old shards — it is about not handing NEW ones
+    to an OLD bundle. The cache key carries `FORMAT_VERSION`, and a build from
+    before this change refuses any shard version but 1 while the streaming
+    loader swallows the error, which would silently drop every instanced
+    occurrence under deploy skew or a rollback. After the one re-mesh, a warm
+    cache holds v2 shards and reports the ids.
 
 ## Performance Optimization
 

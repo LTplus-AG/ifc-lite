@@ -13,11 +13,17 @@ use crate::mesh::Mesh;
 
 /// `"IFNS"` little-endian — the instanced-shard magic the TS decoder validates.
 pub const INSTANCED_MAGIC: u32 = 0x4946_4E53;
-/// Instanced format version WRITTEN by this encoder. Decoders accept v1 and any
-/// version at or above 2 that declares a valid stride, so this bumps only when a
-/// trailing field is APPENDED — never to gate a read. Keep in lockstep with the
-/// TS decoder.
+/// Instanced format version this encoder writes for a record that CARRIES
+/// trailing field 1 (`item_id`). Decoders accept v1 and any version at or above
+/// 2 that declares a valid stride, so this bumps only when a trailing field is
+/// APPENDED — never to gate a read. Keep in lockstep with the TS decoder.
 pub const INSTANCED_VERSION: u32 = 2;
+/// Version written when the derived stride is the bare 88-byte base record: with
+/// no trailing field such a shard IS a v1 shard byte for byte, header word 7's
+/// literal `0` included, so it stays readable by a pre-#2985 build whose decoder
+/// refuses every version but 1. Belt and braces beside the cache-key bump
+/// (`@ifc-lite/cache` FORMAT_VERSION 15 → 16): bytes travel by other routes.
+const INSTANCED_VERSION_BASE_RECORD: u32 = 1;
 
 /// Instance record bytes BEFORE any trailing field: templateIndex(4) +
 /// entityId(4) + color(16) + transform(64). Also the stride of a v1 shard, and
@@ -115,16 +121,25 @@ pub fn encode_refs(meshes: &[InstanceMeshRef], collated: &Collated) -> Vec<u8> {
     // whose producer named no representation item writes 88-byte records instead
     // of paying 4 bytes of zeros on every occurrence — roughly 800 KB on a 200k-
     // occurrence model, written, cached to IndexedDB verbatim, and re-read on
-    // every load. One O(n) pass over a slice already in hand. It also closes a
-    // hole: `InstanceMeshRef::from_mesh` leaves `item_id: None`, so a caller
-    // going through it can no longer produce a shard that DECLARES the field and
-    // fills every record with 0 — indistinguishable from "this model has no
-    // representation items".
-    let carries_item_id = meshes.iter().any(|m| m.item_id.is_some());
-    let instance_stride = if carries_item_id {
-        INSTANCE_RECORD_ITEM_ID_BYTES
+    // every load. It also closes a hole: `InstanceMeshRef::from_mesh` leaves
+    // `item_id: None`, so a caller going through it can no longer produce a
+    // shard that DECLARES the field and fills every record with 0 —
+    // indistinguishable from "this model has no representation items".
+    // Over the occurrence indices the instance loop below actually WALKS, not
+    // over `meshes`: `collate_refs` drops members (an empty non-instanceable
+    // mesh, an all-empty rep group), so a batch whose only id-bearing entry is
+    // a dropped one would declare 92 and write 0 into every record — the exact
+    // hole this predicate exists to close.
+    let carries_item_id = tspecs
+        .iter()
+        .flat_map(|t| t.instances.iter())
+        .any(|(occ_idx, _)| meshes[*occ_idx].item_id.is_some());
+    // A base-record shard is declared v1, word 7 at the literal `0` v1 wrote
+    // there: byte-identical to a pre-#2985 shard. Only a widened record is v2.
+    let (version, instance_stride, stride_word) = if carries_item_id {
+        (INSTANCED_VERSION, INSTANCE_RECORD_ITEM_ID_BYTES, INSTANCE_RECORD_ITEM_ID_BYTES as u32)
     } else {
-        INSTANCE_RECORD_BASE_BYTES
+        (INSTANCED_VERSION_BASE_RECORD, INSTANCE_RECORD_BASE_BYTES, 0u32)
     };
 
     let mut buf: Vec<u8> = Vec::with_capacity(
@@ -139,13 +154,13 @@ pub fn encode_refs(meshes: &[InstanceMeshRef], collated: &Collated) -> Vec<u8> {
 
     // Header.
     pu32(&mut buf, INSTANCED_MAGIC);
-    pu32(&mut buf, INSTANCED_VERSION);
+    pu32(&mut buf, version);
     pu32(&mut buf, template_count as u32);
     pu32(&mut buf, instance_count as u32);
     pu32(&mut buf, positions_len as u32);
     pu32(&mut buf, normals_len as u32);
     pu32(&mut buf, indices_len as u32);
-    pu32(&mut buf, instance_stride as u32);
+    pu32(&mut buf, stride_word);
 
     // Template table (running element offsets into the pooled data arrays).
     let (mut pos_off, mut nrm_off, mut idx_off) = (0u32, 0u32, 0u32);
@@ -183,8 +198,8 @@ pub fn encode_refs(meshes: &[InstanceMeshRef], collated: &Collated) -> Vec<u8> {
             // The assert guards the direction that LOSES data: a record holding
             // an id the header made no room for would be dropped silently. The
             // other direction (declared ⇒ some record carries one) needs no
-            // assert — `carries_item_id` IS that predicate, over a superset of
-            // the occurrences written here.
+            // assert — `carries_item_id` IS that predicate, over exactly the
+            // occurrences written here.
             debug_assert!(
                 carries_item_id || meshes[*occ_idx].item_id.is_none(),
                 "instance record carries an item id the declared stride has no room for"
@@ -289,8 +304,13 @@ pub fn decode_instanced(bytes: &[u8]) -> Option<DecodedInstanced> {
     };
     // A stride below the base is not a shorter record, it is a corrupt header:
     // the base fields are not optional. Reading at it would slice each record
-    // out of its predecessor's transform and yield plausible garbage.
-    if inst_bytes < INSTANCE_RECORD_BASE_BYTES {
+    // out of its predecessor's transform and yield plausible garbage. An
+    // UNALIGNED stride is refused beside it, in BOTH languages: every field on
+    // this wire is 4 bytes, so a boundary off a 4-byte multiple names no field,
+    // and the TS decoder cannot even attempt one — it views the data pools as
+    // `Float32Array` over the shard buffer, which throws an opaque `RangeError`
+    // where this decoder used to read the same bytes happily.
+    if inst_bytes < INSTANCE_RECORD_BASE_BYTES || inst_bytes % 4 != 0 {
         return None;
     }
 
@@ -316,6 +336,16 @@ pub fn decode_instanced(bytes: &[u8]) -> Option<DecodedInstanced> {
         return None;
     }
 
+    // Byte offset of element `k` of the pool at `base` whose template range
+    // starts at element `off` — checked against the same attacker-controlled
+    // u32s, and what makes "Checked throughout" above true of the pool reads
+    // too. On wasm32 (usize = 32 bits) `pos_off = 0xFFFFFFFF` overflows
+    // `base + (off + k) * 4`: debug traps rather than returning the promised
+    // `None`, release wraps back INSIDE the buffer and returns WRONG geometry.
+    let elem = |base: usize, off: usize, k: usize| -> Option<usize> {
+        base.checked_add(off.checked_add(k)?.checked_mul(4)?)
+    };
+
     let mut templates = Vec::with_capacity(template_count);
     for t in 0..template_count {
         let r = tt_off + t * TEMPLATE_RECORD_BYTES;
@@ -327,13 +357,13 @@ pub fn decode_instanced(bytes: &[u8]) -> Option<DecodedInstanced> {
         let i_len = ru32(r + 20)? as usize;
         let origin = [rf64(r + 24)?, rf64(r + 32)?, rf64(r + 40)?];
         let positions = (0..pos_len)
-            .map(|k| rf32(data_off + (pos_off + k) * 4))
+            .map(|k| rf32(elem(data_off, pos_off, k)?))
             .collect::<Option<Vec<f32>>>()?;
         let normals = (0..nrm_len)
-            .map(|k| rf32(nrm_data + (nrm_off + k) * 4))
+            .map(|k| rf32(elem(nrm_data, nrm_off, k)?))
             .collect::<Option<Vec<f32>>>()?;
         let indices = (0..i_len)
-            .map(|k| ru32(idx_data + (i_off + k) * 4))
+            .map(|k| ru32(elem(idx_data, i_off, k)?))
             .collect::<Option<Vec<u32>>>()?;
         templates.push(DecodedTemplate { positions, normals, indices, origin });
     }

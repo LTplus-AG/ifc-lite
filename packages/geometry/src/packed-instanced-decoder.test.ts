@@ -461,9 +461,27 @@ describe('decodeInstancedShard (synthetic edge cases)', () => {
     );
   });
 
+  it('refuses an unaligned stride instead of throwing a RangeError', () => {
+    // The two decoders have to refuse the same shards. This one CANNOT read an
+    // unaligned stride: templateCount 1 + instanceCount 1 at stride 90 puts the
+    // data offset at 32 + 48 + 90 = 170, and `new Float32Array(buffer, 170, n)`
+    // throws "start offset ... should be a multiple of 4" — an opaque RangeError
+    // where the stride gate exists to raise a format error. Rust reads the same
+    // bytes through byte slices and used to accept them, so on exactly the
+    // shards the permissive-version rule promises to read, the two statements of
+    // the format disagreed.
+    for (const stride of [89, 90, 91, 94]) {
+      expect(() => decodeInstancedShard(synthShard({ version: 2, stride }))).toThrow(
+        new RegExp(`stride ${stride} is not a multiple of 4`)
+      );
+    }
+  });
+
   it('refuses a stride whose instance table cannot fit the buffer', () => {
     const bytes = synthShard();
-    new DataView(bytes.buffer).setUint32(28, 0xffff_ffff, true);
+    // 4-ALIGNED on purpose: an unaligned value would be refused one guard
+    // earlier and this would stop exercising the buffer-fit check at all.
+    new DataView(bytes.buffer).setUint32(28, 0xffff_fffc, true);
     expect(() => decodeInstancedShard(bytes)).toThrow(/truncated/);
   });
 

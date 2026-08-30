@@ -71,12 +71,22 @@
 //!     reserved, but it wrote `0`, and 0 is not a legal stride — both readings
 //!     land on 88. That is what lets a v1 shard already persisted verbatim in a
 //!     browser cache (`packages/cache/src/sections/instanced-shards.ts`) keep
-//!     decoding, with `item_id: None`, and the cache FORMAT_VERSION stay put.
+//!     decoding, with `item_id: None`. This encoder also WRITES version 1
+//!     whenever the derived stride is the base record, so such a shard is
+//!     byte-identical to a pre-#2985 one and an older build can still read it.
 //!   - any version >= 2 whose stride is READABLE and VALID (>= the 88-byte base,
-//!     and small enough that the instance table it implies fits the buffer):
-//!     decode the trailing fields this build knows, ignore the rest.
+//!     4-byte aligned, and small enough that the instance table it implies fits
+//!     the buffer): decode the trailing fields this build knows, ignore the
+//!     rest. Alignment is refused in both languages because every field is 4
+//!     bytes and the TS decoder's pooled data views cannot even be constructed
+//!     at an unaligned data offset.
 //!
 //! Version 0 is refused — it is not a version.
+//!
+//! Reading permissively does not make the cache key safe the other way round: a
+//! bundle from before #2985 refuses every version but 1, so `@ifc-lite/cache`'s
+//! FORMAT_VERSION moves 15 -> 16 with this change and an old bundle can no
+//! longer match a key whose stored shards are v2.
 //!
 //! [`InstanceMeta`]: crate::mesh::InstanceMeta
 

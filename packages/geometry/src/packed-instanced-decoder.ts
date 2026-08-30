@@ -52,20 +52,31 @@
  *     literal 0 there and 0 is not a legal stride, so both readings agree. That
  *     is what lets a v1 shard already persisted verbatim in a cache
  *     (`@ifc-lite/cache`'s InstancedShards section stores the raw bytes and does
- *     not re-encode) keep loading without a cache format bump.
+ *     not re-encode) keep loading. It is also what the Rust encoder writes when
+ *     no occurrence names an item, so a base-record shard from THIS build is
+ *     byte-identical to a v1 one and an older build can still read it.
  *   - any version >= 2 whose stride is READABLE and VALID (>= the 88-byte base,
  *     and small enough that the instance table it implies fits the buffer):
- *     decode the trailing fields this build knows, ignore the rest.
+ *     decode the trailing fields this build knows, ignore the rest. A stride
+ *     must also be 4-BYTE ALIGNED: every field on this wire is 4 bytes, and the
+ *     pooled data views below cannot be constructed at an unaligned offset.
  * Version 0 is refused — it is not a version.
+ *
+ * Permissiveness here does NOT make the cache key safe in the other direction.
+ * A bundle from before #2985 refuses any version but 1 outright, so
+ * `@ifc-lite/cache`'s FORMAT_VERSION moves 15 → 16 with this change to stop such
+ * a bundle matching a key whose stored shards are v2 and silently dropping every
+ * instanced occurrence.
  */
 
 import { toArrayBuffer } from './packed-geometry-decoder.js';
 
 /** `"IFNS"` little-endian — must match `INSTANCED_MAGIC` in wire.rs. */
 export const INSTANCED_SHARD_MAGIC = 0x4946_4e53;
-/** The version the Rust encoder WRITES; must match `INSTANCED_VERSION` in
- *  wire.rs. It is not a ceiling on what this decoder reads — see the versioning
- *  note above. */
+/** The HIGHEST version the Rust encoder writes — for a record carrying the
+ *  trailing itemId; must match `INSTANCED_VERSION` in wire.rs. The encoder still
+ *  writes 1 for a base-record shard. Neither is a ceiling on what this decoder
+ *  reads — see the versioning note above. */
 export const INSTANCED_SHARD_VERSION = 2;
 
 const HEADER_WORDS = 8;
@@ -166,6 +177,21 @@ export function decodeInstancedShard(payload: unknown): DecodedInstancedShard {
   if (instanceRecordStride < INSTANCE_RECORD_BASE_BYTES) {
     throw new Error(
       `Instanced shard instance stride ${instanceRecordStride} is below the ${INSTANCE_RECORD_BASE_BYTES}-byte base record`
+    );
+  }
+  // An UNALIGNED stride is refused for the same reason, and the Rust decoder
+  // refuses it too: every field on this wire is 4 bytes, so a record boundary
+  // off a 4-byte multiple names no field. This side cannot even attempt one —
+  // the data pools below are Float32Array/Uint32Array views onto the shard
+  // buffer at `dataOffset`, and an odd stride pushes that offset off 4 (stride
+  // 90 with one template and one instance lands on 170), where the view
+  // constructor throws an opaque RangeError instead of this format error. Rust
+  // reads the identical bytes through byte slices and used to accept them, so
+  // without this the two statements of the format disagreed on exactly the
+  // shards the permissive-version rule promises to read.
+  if (instanceRecordStride % 4 !== 0) {
+    throw new Error(
+      `Instanced shard instance stride ${instanceRecordStride} is not a multiple of 4`
     );
   }
   const carriesItemIds = instanceRecordStride >= INSTANCE_RECORD_ITEM_ID_BYTES;

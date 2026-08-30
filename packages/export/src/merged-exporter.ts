@@ -168,6 +168,15 @@ interface ModelMergePlan {
   /** Empty spatial containers this model must not write (#3643); every line
    *  naming one is narrowed, or withheld with it. */
   droppedContainerIds?: ReadonlySet<number>;
+  /**
+   * Local express id of a kept (not fully redundant) IFCRELAGGREGATES → the
+   * local ids of its RelatedObjects members that must be dropped from the
+   * emitted list because they were unified with an object the first model's
+   * OWN relationship already aggregates the same RelatingObject to (see
+   * {@link MergedExporter.skipRedundantRelAggregates}). Emitting them
+   * unmodified would list that member twice under the same parent.
+   */
+  relAggregateStrip: Map<number, Set<number>>;
 }
 
 /**
@@ -1078,6 +1087,7 @@ export class MergedExporter {
     const sharedRemap = new Map<number, number>();
     const skipEntityIds = new Set<number>();
     const guidRewrite = new Map<number, string>();
+    const relAggregateStrip = new Map<number, Set<number>>();
 
     // One cheap pass to read each rooted entity's GlobalId (first attribute).
     const localGuids = new Map<number, string>();
@@ -1104,8 +1114,9 @@ export class MergedExporter {
       // elevation match is done in the primary unit (rawElevation * lengthFactor).
       this.unifySpatialEntities(model.dataStore, setup.spatialLookup, setup.firstModelOffset, lengthFactor, sharedRemap, skipEntityIds, setup);
 
-      // Skip IfcRelAggregates that become fully redundant after unification.
-      this.skipRedundantRelAggregates(model.dataStore, sharedRemap, skipEntityIds);
+      // Skip IfcRelAggregates that become fully redundant after unification,
+      // and strip individually-duplicated members from ones only partially so.
+      this.skipRedundantRelAggregates(model.dataStore, sharedRemap, skipEntityIds, relAggregateStrip);
     }
 
     if (!isFirstModel) {
@@ -1137,7 +1148,7 @@ export class MergedExporter {
       }
     }
 
-    return { sharedRemap, skipEntityIds, guidRewrite, localGuids };
+    return { sharedRemap, skipEntityIds, guidRewrite, localGuids, relAggregateStrip };
   }
 
   /**
@@ -1193,6 +1204,19 @@ export class MergedExporter {
       const kept = filterHiddenRefsFromRelationshipLine(entityText, id => plan.droppedContainerIds!.has(id));
       if (kept === null) return null;
       entityText = kept;
+    }
+
+    // Drop RelatedObjects members a partially redundant IFCRELAGGREGATES
+    // already shares with the first model's OWN relationship to the same
+    // (now-unified) RelatingObject — see skipRedundantRelAggregates. Reuses
+    // the same list/scalar-aware ref filter as the hidden-refs pass above;
+    // the strip set never includes the RelatingObject's own id (only
+    // RelatedObjects members), so this can only narrow the list, never null
+    // out the whole line. Runs in LOCAL id space, before the remap below.
+    const relAggregateStrip = plan.relAggregateStrip.get(localId);
+    if (relAggregateStrip !== undefined) {
+      const filtered = filterHiddenRefsFromRelationshipLine(entityText, id => relAggregateStrip.has(id));
+      if (filtered !== null) entityText = filtered;
     }
 
     // Remap ids. Fast path: the first model (offset 0, no remaps) is byte-identical.
@@ -1442,19 +1466,32 @@ export class MergedExporter {
   }
 
   /**
-   * Skip IfcRelAggregates that become fully redundant after spatial unification.
+   * Skip IfcRelAggregates that become fully redundant after spatial
+   * unification, and mark the individually-redundant members of ones only
+   * PARTIALLY so for stripping.
    *
    * When Model2's `IfcRelAggregates(Project, (Site))` gets remapped to
    * `IfcRelAggregates(FirstProject, (FirstSite))`, it duplicates Model1's
    * existing relationship, causing viewers to show Site multiple times.
    *
-   * An IfcRelAggregates is redundant if both its RelatingObject (attr 4)
-   * and ALL its RelatedObjects (attr 5) were remapped via sharedRemap.
+   * An IfcRelAggregates is fully redundant (skipped entirely) when its
+   * RelatingObject (attr 4) AND ALL its RelatedObjects (attr 5) were
+   * remapped via sharedRemap. When only the RelatingObject and SOME (not
+   * all) of its RelatedObjects were remapped — e.g. Model2's Building
+   * unifies with Model1's, and one of its two Storeys matches Model1's by
+   * name while the other is new — the rel is genuinely needed for its new
+   * member(s), but Model1's own relationship already lists the remapped
+   * one(s) under the same (now-shared) RelatingObject: emitting them again
+   * here would duplicate that membership. Those specific ids are recorded in
+   * `relAggregateStrip` so {@link renderEntity} drops them from the emitted
+   * RelatedObjects list (via {@link filterHiddenRefsFromRelationshipLine}),
+   * keeping only the genuinely new members.
    */
   private skipRedundantRelAggregates(
     dataStore: IfcDataStore,
     sharedRemap: Map<number, number>,
     skipEntityIds: Set<number>,
+    relAggregateStrip: Map<number, Set<number>>,
   ): void {
     for (const relId of this.findEntitiesByType(dataStore, 'IFCRELAGGREGATES')) {
       // RelatingObject is attr 4 — single #ref
@@ -1474,9 +1511,14 @@ export class MergedExporter {
       }
       if (refs.length === 0) continue;
 
-      // If ALL related objects were also remapped, this rel is fully redundant
-      if (refs.every(ref => sharedRemap.has(ref))) {
+      const remappedRefs = refs.filter(ref => sharedRemap.has(ref));
+      if (remappedRefs.length === refs.length) {
+        // ALL related objects were also remapped — this rel is fully redundant.
         skipEntityIds.add(relId);
+      } else if (remappedRefs.length > 0) {
+        // Some, not all — keep the rel for its new member(s), but drop the
+        // ones Model1's own relationship already aggregates.
+        relAggregateStrip.set(relId, new Set(remappedRefs));
       }
     }
   }

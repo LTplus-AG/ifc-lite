@@ -291,6 +291,51 @@ describe('MergedExporter', () => {
     expect(decode(result.content)).toContain("#6=IFCBUILDING('g5'");
   });
 
+  it('does not duplicate a matched storey when its RelAggregates is only partially redundant', () => {
+    // Model1: Building#2 aggregates [Storey#3 'GF'] via RelAgg#4.
+    const model1 = buildModel('m1', 'Arch', [
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g1',$,'P',$,$,$,$,$,$);"],
+      [2, 'IFCBUILDING', "#2=IFCBUILDING('g2',$,'B',$,$,$,$,$,$,$);"],
+      [3, 'IFCBUILDINGSTOREY', "#3=IFCBUILDINGSTOREY('g3',$,'GF',$,$,$,$,$,.ELEMENT.,0.);"],
+      [4, 'IFCRELAGGREGATES', "#4=IFCRELAGGREGATES('r1',$,$,$,#2,(#3));"],
+    ]);
+
+    // Model2: same-named Building#2 (unified) aggregates [Storey#3 'GF' (matches
+    // model1's), Storey#4 'Roof' (no match)] via RelAgg#5. The building and the
+    // 'GF' storey both unify with model1's; 'Roof' does not, so the rel is only
+    // PARTIALLY redundant and today's skipRedundantRelAggregates keeps it whole.
+    const model2 = buildModel('m2', 'Struct', [
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g4',$,'P2',$,$,$,$,$,$);"],
+      [2, 'IFCBUILDING', "#2=IFCBUILDING('g5',$,'B',$,$,$,$,$,$,$);"],
+      [3, 'IFCBUILDINGSTOREY', "#3=IFCBUILDINGSTOREY('g6',$,'GF',$,$,$,$,$,.ELEMENT.,0.);"],
+      [4, 'IFCBUILDINGSTOREY', "#4=IFCBUILDINGSTOREY('g7',$,'Roof',$,$,$,$,$,.ELEMENT.,3000.);"],
+      [5, 'IFCRELAGGREGATES', "#5=IFCRELAGGREGATES('r2',$,$,$,#2,(#3,#4));"],
+    ]);
+
+    const exporter = new MergedExporter([model1, model2]);
+    const result = exporter.export({ schema: 'IFC4', projectStrategy: 'keep-first' });
+    const content = decode(result.content);
+
+    // The 'GF' storey (model1's #3) must be a RelatedObject of the Building
+    // exactly once — model1's own RelAgg#4 already lists it. Model2's kept
+    // RelAgg#5 must not re-list the SAME already-unified storey again; only its
+    // genuinely new 'Roof' storey should survive in it.
+    const buildingAggLines = content
+      .split('\n')
+      .filter(line => /^#\d+=IFCRELAGGREGATES\(.*,#2,\(/.test(line));
+    const storey3Mentions = buildingAggLines.filter(line => /\(#3[),]/.test(line) || /,#3\)/.test(line));
+    expect(storey3Mentions.length).toBe(1);
+
+    // Model2's Roof storey survives: #4 offset by model1's maxId(4) → #8.
+    expect(content).toContain("IFCBUILDINGSTOREY('g7'");
+    // Model2's kept RelAgg#5 (id #9, offset 4) now lists only the new Roof
+    // storey (#8) — the unified GF storey (#2/local #3) has been stripped.
+    expect(content).toMatch(/#9=IFCRELAGGREGATES\('r2',\$,\$,\$,#2,\(#8\)\)/);
+
+    // No reference was left dangling by the RelatedObjects rewrite.
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
   it('should unify storeys with matching names', () => {
     // Model1: maxId=4, offset=0
     const model1 = buildModel('m1', 'Arch', [

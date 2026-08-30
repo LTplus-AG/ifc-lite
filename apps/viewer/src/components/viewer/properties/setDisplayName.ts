@@ -12,10 +12,12 @@
  * marker `$`, which the parser no longer fabricates a placeholder for.
  *
  * This mirrors the `getName || "<Type> #<id>"` convention `treeDataBuilder`
- * uses for element rows, but a pset/qset carries no id downstream of the
- * on-demand extraction functions that build it (`packages/parser`,
- * `packages/ifcx`) — nothing between there and this component threads one
- * through. So the fallback names only the kind, not a fabricated id.
+ * uses for element rows, but no id reaches these headers: the viewer's
+ * `PropertySet`/`QuantitySet` types (`encodingUtils.ts`), which are the
+ * cards' own prop shapes, declare no id field at all. A property set does
+ * keep a `GlobalId` upstream (`packages/data`'s `PropertySet`, still present
+ * at `PropertiesPanel`), but that is not the express id this convention
+ * formats. So the fallback names only the kind, not a fabricated id.
  */
 export function setDisplayName(name: string, kind: 'Property Set' | 'Quantity Set'): string {
   return name.trim() ? name : `Unnamed ${kind}`;

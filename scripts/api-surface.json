@@ -946,6 +946,7 @@
   ],
   "@ifc-lite/data": [
     "BUILDING_LIKE_SPATIAL_TYPE_ENUMS: const",
+    "DecompositionRelationships: interface",
     "ENTITIES_IFC2X3: const",
     "ENTITIES_IFC4: const",
     "ENTITIES_IFC4X3: const",
@@ -1015,6 +1016,7 @@
     "StepValue: type",
     "StringTable: class",
     "buildCSR: function",
+    "collectAggregatedDescendants: function",
     "comparePropertyValues: function",
     "createLogger: function",
     "entityTableFromColumns: function",
@@ -1031,6 +1033,7 @@
     "formatStepReal: function",
     "generateHeader: function",
     "generateStepFileWithRegistry: function",
+    "getAggregatedChildren: function",
     "getAttributeXsdTypes: function",
     "getAttributes: function",
     "getDataTypes: function",
@@ -3813,7 +3816,9 @@
     "QueryBuilder: class",
     "QueryInterface: class",
     "QueryResultEntity: class",
-    "SQLResult: interface"
+    "SQLResult: interface",
+    "findPropertyInSets: function",
+    "findQuantityInSets: function"
   ],
   "@ifc-lite/renderer": [
     "AdapterInfoSnapshot: interface",

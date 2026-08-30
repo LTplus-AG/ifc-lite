@@ -94,6 +94,20 @@ describe('getPropertyValue', () => {
     expect(getPropertyValue(bim, 1, 'Pset_WallCommon', 'IsExternal')).toBeUndefined();
     expect(getPropertyValue(bim, 99, 'Pset_WallCommon', 'IsExternal')).toBeUndefined();
   });
+
+  it('finds a property on a SECOND same-named pset when the first same-named pset lacks it', () => {
+    // Two distinct IfcPropertySets named "Pset_WallCommon" on one entity is
+    // legitimate IFC (e.g. one via the type definition, one via the
+    // occurrence) -- a lookup that only checked the first same-named pset
+    // would wrongly report FireRating missing here.
+    const bim = fakeBim({}, {
+      1: [
+        { name: 'Pset_WallCommon', properties: [{ name: 'IsExternal', value: true }] },
+        { name: 'Pset_WallCommon', properties: [{ name: 'FireRating', value: 'REI60' }] },
+      ],
+    });
+    expect(getPropertyValue(bim, 1, 'Pset_WallCommon', 'FireRating')).toBe('REI60');
+  });
 });
 
 describe('isTruthyIfcBoolean', () => {

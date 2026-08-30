@@ -10,6 +10,7 @@
  * classifications, attributes, relationships, type properties.
  */
 
+import { findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';
 import { createHeadlessContext } from '../loader.js';
 import { printJson, getFlag, hasFlag, fatal, validateLimit } from '../output.js';
 import { STANDARD_QTO_MAP, sortEntities } from './query-aggregation.js';
@@ -76,24 +77,18 @@ export function applyWhereFilter(entities: any[], parsed: ReturnType<typeof pars
   return entities.filter(e => {
     // First try property sets
     const props = bim.properties(e.ref);
-    const pset = props.find((p: any) => p.name === parsed.psetName);
-    if (pset) {
-      const prop = pset.properties.find((p: any) => p.name === parsed.propName);
-      if (prop) {
-        if (parsed.operator === 'exists') return true;
-        return compareValues(prop.value, parsed.operator, parsed.value);
-      }
+    const prop = findPropertyInSets<any>(props, parsed.psetName, parsed.propName);
+    if (prop) {
+      if (parsed.operator === 'exists') return true;
+      return compareValues(prop.value, parsed.operator, parsed.value);
     }
 
     // B3: Also search quantity sets
     const qsets = bim.quantities(e.ref);
-    const qset = qsets.find((q: any) => q.name === parsed.psetName);
-    if (qset) {
-      const qty = qset.quantities.find((q: any) => q.name === parsed.propName);
-      if (qty) {
-        if (parsed.operator === 'exists') return true;
-        return compareValues(qty.value, parsed.operator, parsed.value);
-      }
+    const qty = findQuantityInSets<any>(qsets, parsed.psetName, parsed.propName);
+    if (qty) {
+      if (parsed.operator === 'exists') return true;
+      return compareValues(qty.value, parsed.operator, parsed.value);
     }
 
     return false;
@@ -128,16 +123,16 @@ export async function queryCommand(args: string[]): Promise<void> {
 
   let type = getFlag(args, '--type');
   const limit = getFlag(args, '--limit');
-  // Validated once, up front, and reused by every branch below (plain,
-  // --where, and --group-by). Each branch used to do its own
-  // `limit ? parseInt(limit, 10) : undefined`, which is truthy for any
-  // non-empty garbage string; the parsed NaN was then either silently
-  // ignored (query builder / group-by paths, via a `> 0`-shaped guard
-  // downstream) or silently emptied the result (`slice(0, NaN)` in the
-  // --where path) -- either way a typo'd --limit exited 0 with a wrong
-  // answer instead of being rejected.
+  // Both validated once, up front, and reused by every branch below (plain,
+  // --where, --storey, --group-by). Each branch used to parse for itself,
+  // and `parseInt` is truthy for any non-empty garbage: a typo'd --limit was
+  // either ignored (`> 0`-shaped guards downstream) or silently emptied the
+  // result (`slice(0, NaN)`), while --offset reached three different wrong
+  // answers -- `slice(NaN)` inert, `slice(-2)` returning the LAST two entries
+  // instead of skipping two, and NaN reaching the backend guard as an
+  // uncaught TypeError. Every one of them exited 0 with a wrong answer.
   const rowLimit = validateLimit(limit);
-  const offset = getFlag(args, '--offset');
+  const offset = validateLimit(getFlag(args, '--offset'), '--offset');
   const propFilter = getFlag(args, '--where');
   const jsonOutput = hasFlag(args, '--json');
   const countOnly = hasFlag(args, '--count');
@@ -330,8 +325,7 @@ export async function queryCommand(args: string[]): Promise<void> {
 
       for (const e of entities) {
         const psets = bim.properties(e.ref);
-        const pset = psets.find((p: any) => p.name === psetName);
-        const prop = pset?.properties?.find((p: any) => p.name === propName);
+        const prop = findPropertyInSets<any>(psets, psetName, propName);
         const val = prop?.value != null ? String(prop.value) : '(no value)';
         valueCounts.set(val, (valueCounts.get(val) ?? 0) + 1);
       }
@@ -468,6 +462,9 @@ export async function queryCommand(args: string[]): Promise<void> {
       outputGroupBy(storeyEntities, groupBy, undefined, bim, jsonOutput, rowLimit);
       return;
     }
+    // Same slice the --where branch applies; without it both flags were inert here.
+    if (offset) storeyEntities = storeyEntities.slice(offset);
+    if (rowLimit !== undefined) storeyEntities = storeyEntities.slice(0, rowLimit);
     if (countOnly) {
       outputCount(storeyEntities.length, jsonOutput);
       return;
@@ -514,10 +511,9 @@ export async function queryCommand(args: string[]): Promise<void> {
       outputAggregation(entities, maxQuantity, 'max', bim, jsonOutput);
       return;
     }
-    // Apply offset/limit only for non-aggregation, non-group paths.
-    // `rowLimit` is validated once, up front (see above) -- slice(0, NaN)
-    // used to silently empty the result on a garbage --limit.
-    if (offset) entities = entities.slice(parseInt(offset, 10));
+    // Non-aggregation, non-group paths only. `rowLimit` is validated up
+    // front -- slice(0, NaN) used to silently empty the result.
+    if (offset) entities = entities.slice(offset);
     if (rowLimit !== undefined) entities = entities.slice(0, rowLimit);
     if (countOnly) {
       outputCount(entities.length, jsonOutput);
@@ -530,12 +526,10 @@ export async function queryCommand(args: string[]): Promise<void> {
     return;
   }
 
-  // Validated, not parseInt'd -- the QueryBuilder forwards this to the
-  // headless backend's descriptor, which only honours it under a `> 0`
-  // check downstream; a garbage/NaN --limit was silently ignored there,
-  // returning every match instead of being rejected.
+  // Validated, not parseInt'd -- the backend descriptor only honours the
+  // limit under a `> 0` check, so a NaN --limit returned every match.
   if (rowLimit !== undefined && !groupBy) q = q.limit(rowLimit);
-  if (offset) q = q.offset(parseInt(offset, 10));
+  if (offset) q = q.offset(offset);
 
   // B11: Validate --group-by key
   if (groupBy) {

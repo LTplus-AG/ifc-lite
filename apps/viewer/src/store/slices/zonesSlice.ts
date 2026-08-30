@@ -22,7 +22,7 @@ import type { Zone, ZoneSet, ZoneAssignmentsByElement } from '../../lib/zones/ty
 import type { ZoneApportionmentEntry } from '../../lib/zones/apportionment-cache.js';
 import { serializeZoneSets, parseZoneSetFile } from '../../lib/zones/persistence.js';
 import { isConvexFootprint, normalizePrismBounds } from '../../lib/zones/prism.js';
-import { defineSliceTeardown } from '../teardown.js';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
 const ZONE_SETS_STORAGE_KEY = 'ifc-lite:zone-sets';
 
@@ -335,20 +335,24 @@ export const createZonesSlice: StateCreator<ZonesSlice, [], [], ZonesSlice> = (s
 export const zonesTeardown = defineSliceTeardown(
   'zonesSlice',
   ['zoneAssignments', 'zoneAssignmentTiming', 'zoneApportionment', 'editingZone'],
-  (scope) => scope.kind !== 'session-reset' ? {} : {
-    zoneAssignments: new Map(),
-    zoneAssignmentTiming: null,
-    // ... and the apportioned cubic metres computed off those assignments
-    // (#2508). `validEntry` only checks the ZONE revision, which a model swap
-    // does not move, so an entry that survives here is served against the
-    // incoming file — and the single-model fallback (globalId === expressId)
-    // means the new model's ids collide with the old one's. Same stale-model
-    // reference as `zoneAssignments` directly above; the two are one fact and
-    // must be dropped together.
-    zoneApportionment: new Map(),
-    // ... and drop any in-flight zone-edit session: leaving `editingZone`
-    // set would hand the incoming model live gizmo handles + picking for
-    // a zone the user was editing against the outgoing model.
-    editingZone: null,
+  {
+    'session-reset': () => ({
+      zoneAssignments: new Map(),
+      zoneAssignmentTiming: null,
+      // ... and the apportioned cubic metres computed off those assignments
+      // (#2508). `validEntry` only checks the ZONE revision, which a model swap
+      // does not move, so an entry that survives here is served against the
+      // incoming file — and the single-model fallback (globalId === expressId)
+      // means the new model's ids collide with the old one's. Same stale-model
+      // reference as `zoneAssignments` directly above; the two are one fact and
+      // must be dropped together.
+      zoneApportionment: new Map(),
+      // ... and drop any in-flight zone-edit session: leaving `editingZone`
+      // set would hand the incoming model live gizmo handles + picking for
+      // a zone the user was editing against the outgoing model.
+      editingZone: null,
+    }),
+    'model-removed': notApplicable,
+    'all-models-cleared': notApplicable,
   },
 );

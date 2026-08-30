@@ -43,6 +43,8 @@ export {
   findStoreyByElevation,
 } from './storey-elevation.js';
 export type { IfcStoreBase, IfcSourceHeader } from './data-store.js';
+export { getAggregatedChildren, collectAggregatedDescendants } from './decomposition.js';
+export type { DecompositionRelationships } from './decomposition.js';
 // Schema-agnostic STEP serialization primitives — the single source of truth
 // re-exported by the per-schema serializer bundles (parser runtime + codegen).
 export {

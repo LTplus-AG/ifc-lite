@@ -61,6 +61,37 @@ export function isTypeClass(typeUpper: string | undefined): boolean {
   return isTypeObject;
 }
 
+/** class name → is it an `IfcPropertySetDefinition`. Same caching as
+ *  {@link isTypeClass}, for the same reason. */
+const psetDefinitionByClass = new Map<string, boolean>();
+
+/**
+ * Is this the class of an `IfcPropertySetDefinition` (`IfcPropertySet`,
+ * `IfcElementQuantity`, and any other schema-declared subtype)?
+ *
+ * From the cross-schema inheritance chain, the same way {@link isTypeClass}
+ * decides its own question and for the same reason: a hand-listed pair of
+ * names would need updating by hand the day a bundled schema adds another
+ * subtype, and would silently mis-handle it in the meantime (#3351 item 2 —
+ * an occurrence-owned pset reaching `exportAnonymizedSubset`'s `includedIds`
+ * directly, rather than through an `IfcTypeObject`'s `HasPropertySets`,
+ * which {@link isTypeClass} already governs).
+ *
+ * A class no bundled schema declares is treated as NOT a pset definition —
+ * the safe direction here is the opposite of `isTypeClass`'s: silently
+ * excluding an unrecognised class from a "drop unless kept" sweep would leak
+ * it, so an unknown class is left for the ordinary `IFC_ROOT_TYPES` handling
+ * to include or exclude on its own terms instead.
+ */
+export function isPropertySetDefinitionClass(typeUpper: string | undefined): boolean {
+  if (typeUpper === undefined) return false;
+  const cached = psetDefinitionByClass.get(typeUpper);
+  if (cached !== undefined) return cached;
+  const isPsetDefinition = getInheritanceChainAcrossSchemas(typeUpper).includes('IfcPropertySetDefinition');
+  psetDefinitionByClass.set(typeUpper, isPsetDefinition);
+  return isPsetDefinition;
+}
+
 /**
  * The `HasPropertySets` list a type object should carry after export: the psets
  * it already had, with each affected one swapped for the replacement this export

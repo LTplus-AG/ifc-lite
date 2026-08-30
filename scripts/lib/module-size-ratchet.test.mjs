@@ -31,6 +31,7 @@ import {
   allowlistScope,
   evaluate,
   staleRows,
+  planUpdate,
 } from './module-size-ratchet.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -288,4 +289,132 @@ test('the digest agrees with the Rust ratchet, byte for byte', () => {
   // that differed from the Rust one could still produce matching digests if
   // every row happened to land in one bucket.
   assert.ok(computed.size > 1, 'the Rust allowlist must span more than one scope');
+});
+
+// ---------------------------------------------------------------------------
+// planUpdate scoping (#3398). Repo-wide re-recording only ever TIGHTENED rows,
+// which is why it read as harmless — and why it silently pulled rows belonging
+// to other people's changes into whichever PR regenerated next.
+// ---------------------------------------------------------------------------
+
+test('planUpdate carries an untouched row at its COMMITTED budget', () => {
+  const files = [
+    { rel: 'packages/a/big.ts', lines: 520 },
+    { rel: 'packages/b/slack.ts', lines: 450 },
+  ];
+  const allowlist = new Map([
+    ['packages/a/big.ts', 500],
+    ['packages/b/slack.ts', 460],
+  ]);
+
+  const scoped = planUpdate(files, allowlist, new Set(['packages/a/big.ts']));
+  assert.equal(scoped.next.get('packages/a/big.ts'), 520, 'the changed file is re-recorded');
+  assert.equal(scoped.next.get('packages/b/slack.ts'), 460, 'the untouched row keeps its committed budget');
+  assert.deepEqual(scoped.raised, ['  packages/a/big.ts: 520 lines, budget 500 (+20)']);
+  assert.deepEqual(scoped.lowered, [], 'an untouched row is not this change to make');
+
+  // The control, and the reason the assertions above are a real distinction:
+  // repo-wide sees the same two files and annexes the second one.
+  const wide = planUpdate(files, allowlist, null);
+  assert.equal(wide.next.get('packages/b/slack.ts'), 450);
+  assert.deepEqual(wide.lowered, ['  packages/b/slack.ts: 450 lines, budget 460 (-10)']);
+});
+
+test('planUpdate drops a vanished row only when the change touched that path', () => {
+  const files = [{ rel: 'packages/a/big.ts', lines: 500 }];
+  const allowlist = new Map([
+    ['packages/a/big.ts', 500],
+    ['packages/c/deleted.ts', 700],
+    ['packages/d/elsewhere.ts', 800],
+  ]);
+
+  const scoped = planUpdate(files, allowlist, new Set(['packages/c/deleted.ts']));
+  assert.equal(scoped.next.has('packages/c/deleted.ts'), false, 'this change deleted it, so its row goes');
+  assert.equal(
+    scoped.next.get('packages/d/elsewhere.ts'),
+    800,
+    'a row that vanished for someone ELSE is still their exemption',
+  );
+  assert.deepEqual(scoped.removed, [
+    '  packages/c/deleted.ts (budget 700) no longer matches a tracked file',
+  ]);
+
+  const wide = planUpdate(files, allowlist, null);
+  assert.equal(wide.next.has('packages/d/elsewhere.ts'), false);
+  assert.equal(wide.removed.length, 2);
+});
+
+// A row at or under the limit grants no exemption and is a HARD gate failure
+// (`staleRows`). Scoping must not carry it forward: the carry-forward rule
+// exists to protect an exemption someone ELSE still needs, and this row is not
+// one. Both loops in planUpdate reach it — the measured file and the vanished
+// file — so both are pinned here, each against the real exemption that must
+// survive the same call.
+test('planUpdate drops a row granting no exemption even out of scope, and keeps real ones', () => {
+  const files = [
+    { rel: 'packages/a/big.ts', lines: 520 },
+    { rel: 'packages/b/shrunk.ts', lines: 300 },
+  ];
+  const allowlist = new Map([
+    ['packages/a/big.ts', 500],
+    ['packages/b/shrunk.ts', 380], // measured: hand-edited under the limit
+    ['packages/c/vanished.ts', 390], // unmeasured: under the limit, file gone
+    ['packages/d/real.ts', 800], // unmeasured: a genuine exemption
+  ]);
+
+  // Nothing in `changed`: every row below is OUT of scope, which is the whole
+  // point — the deletions must happen anyway, the preservation must still hold.
+  const scoped = planUpdate(files, allowlist, new Set(['packages/z/unrelated.ts']));
+
+  assert.equal(scoped.next.has('packages/b/shrunk.ts'), false, 'measured loop: 380 <= 400 grants nothing');
+  assert.equal(scoped.next.has('packages/c/vanished.ts'), false, 'vanished loop: 390 <= 400 grants nothing');
+  assert.equal(scoped.next.get('packages/d/real.ts'), 800, 'a REAL out-of-scope exemption survives');
+  assert.equal(scoped.next.get('packages/a/big.ts'), 500, 'an out-of-scope row keeps its COMMITTED budget');
+  assert.deepEqual(scoped.removed.sort(), [
+    '  packages/b/shrunk.ts: budget 380 <= 400 granted nothing (row deleted)',
+    '  packages/c/vanished.ts: budget 390 <= 400 granted nothing (row deleted)',
+  ]);
+
+  // The control that makes the preservation above a real distinction: repo-wide
+  // drops packages/d/real.ts too, so `next` differs between the two calls.
+  const wide = planUpdate(files, allowlist, null);
+  assert.equal(wide.next.has('packages/d/real.ts'), false);
+  assert.equal(wide.next.get('packages/a/big.ts'), 520, 'repo-wide re-records the measured count');
+});
+
+// `grantsNoExemption` drops a row that grants nothing, at any scope. That is
+// safe while the FILE is also under the limit. It is not safe when the row is
+// sub-limit but the file measures OVER it: dropping the row then converts a
+// stale-row failure into a `newOffenders` one, and that failure no scoped rerun
+// can clear, because the file is out of scope by construction. The comment that
+// shipped with the fix said "safe at any scope" — true of every case it was
+// written against, false of this one.
+test('an out-of-scope sub-limit row is KEPT when its file is over the limit', () => {
+  const files = [
+    { rel: 'packages/x/stranded.ts', lines: 450 }, // over LIMIT, row grants nothing
+    { rel: 'packages/y/touched.ts', lines: 410 },
+  ];
+  const allowlist = new Map([
+    ['packages/x/stranded.ts', 400],
+    ['packages/y/touched.ts', 415],
+  ]);
+  const scoped = planUpdate(files, allowlist, new Set(['packages/y/touched.ts']));
+
+  assert.equal(
+    scoped.next.get('packages/x/stranded.ts'),
+    400,
+    'dropping this row would make the file a newOffender no scoped run can fix',
+  );
+  assert.equal(scoped.removed.length, 0);
+
+  // The control that keeps the assertion honest: the same row IS dropped when
+  // its file is under the limit, so this is a real distinction and not the
+  // rule being disabled.
+  const under = planUpdate(
+    [{ rel: 'packages/x/stranded.ts', lines: 300 }, { rel: 'packages/y/touched.ts', lines: 410 }],
+    allowlist,
+    new Set(['packages/y/touched.ts']),
+  );
+  assert.equal(under.next.has('packages/x/stranded.ts'), false);
+  assert.equal(under.removed.length, 1);
 });

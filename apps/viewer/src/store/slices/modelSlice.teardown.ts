@@ -6,9 +6,9 @@
  * `modelSlice`'s contribution to the store-wide teardown seam (`store/teardown.ts`).
  *
  * Beside the slice rather than inside it: `modelSlice.ts` carries a recorded
- * budget in `scripts/module-size-allowlist.txt`, and that ratchet only lets a
- * listed file shrink, never grow. Every slice in this group is split the same
- * way so the registry imports one shape, not two.
+ * budget in `scripts/module-size-allowlist.txt`, and that ratchet lets a listed
+ * file shrink by default; growth is a raise, stated in the PR. Every slice in
+ * this group is split the same way so the registry imports one shape, not two.
  *
  * The federation registry is NOT touched here. `federationRegistry
  * .unregisterModel` (partial removal, which BURNS the freed offset range) and
@@ -18,21 +18,15 @@
  * the entry point, in today's order.
  */
 
-import { defineSliceTeardown } from '../teardown.js';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
-export const modelTeardown = defineSliceTeardown(
-  'modelSlice',
-  ['models', 'activeModelId'],
-  (scope, state) => {
-    // `resetViewerState` deliberately does NOT clear models — "use
-    // clearAllModels() for that" (store/index.ts). A file load swaps the
-    // ACTIVE model; the federation itself survives it.
-    if (scope.kind === 'session-reset') return {};
-
-    if (scope.kind === 'all-models-cleared') {
-      return { models: new Map(), activeModelId: null };
-    }
-
+export const modelTeardown = defineSliceTeardown('modelSlice', ['models', 'activeModelId'], {
+  // `resetViewerState` deliberately does NOT clear models — "use
+  // clearAllModels() for that" (store/index.ts). A file load swaps the
+  // ACTIVE model; the federation itself survives it.
+  'session-reset': notApplicable,
+  'all-models-cleared': () => ({ models: new Map(), activeModelId: null }),
+  'model-removed': (scope, state) => {
     const models = state.models;
     // A removal that removes nothing must do nothing. `syncSourceModel` and the
     // collab room teardown can both re-enter with an id that has already gone,
@@ -53,4 +47,4 @@ export const modelTeardown = defineSliceTeardown(
     // keep `ifcDataStore` / `geometryResult` pointing at the model this names.
     return { models: nextModels, activeModelId: scope.nextActiveModelId };
   },
-);
+});

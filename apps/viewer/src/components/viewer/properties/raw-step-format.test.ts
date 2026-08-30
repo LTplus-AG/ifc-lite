@@ -5,6 +5,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
+import type { IfcAttributeValue } from '@ifc-lite/mutations';
+
 import {
   extractRawStepTokens,
   serializeStepToken,
@@ -108,6 +110,21 @@ describe('serializeStepToken', () => {
     assert.strictEqual(serializeStepToken("it's"), "'it''s'");
   });
 
+  it('doubles a backslash the same way the STEP exporter does', () => {
+    // The doc-comment says this function "mirrors serializeStepValue" in
+    // @ifc-lite/export, which escapes a literal backslash as `\\` (doubled)
+    // before it escapes quotes — see packages/export/src/step-serialization.ts
+    // `escapeStepString`. A raw Windows path (`C:\Users\a`) or any string
+    // containing a backslash must round-trip through the same doubling here,
+    // or the "Raw STEP" tab shows a token that disagrees with what the real
+    // exporter would write to disk for the identical overlay value.
+    assert.strictEqual(serializeStepToken('C:\\Users\\a'), "'C:\\\\Users\\\\a'");
+  });
+
+  it('handles a value with both a backslash and a quote, backslash first', () => {
+    assert.strictEqual(serializeStepToken("C:\\O'Brien"), "'C:\\\\O''Brien'");
+  });
+
   it('serializes arrays recursively, comma-joined and wrapped in parens', () => {
     assert.strictEqual(serializeStepToken([1, 'a', null, true]), "(1,'a',$,.T.)");
   });
@@ -200,5 +217,50 @@ describe('parseRawStepInput', () => {
     // this would be misread as an empty quoted string ({ value: '' }) instead
     // of the literal apostrophe the user typed.
     assert.deepStrictEqual(parseRawStepInput("'"), { value: "'" });
+  });
+});
+
+describe('serializeStepToken / parseRawStepInput round-trip', () => {
+  // The file header calls parseRawStepInput the inverse of the display side
+  // and promises the round-trip "stays predictable". Nothing pinned that, so
+  // when serializeStepToken started doubling backslashes the parse side kept
+  // un-doubling only quotes: opening the inline editor on such a value and
+  // pressing Enter with no edit re-serialized the already-doubled token and
+  // doubled it again — 1 -> 2 -> 4 -> 8 backslashes per open/save round.
+  function parsedValue(token: string): IfcAttributeValue {
+    const result = parseRawStepInput(token);
+    assert.ok('value' in result, `expected a value for ${token}, got ${JSON.stringify(result)}`);
+    return result.value;
+  }
+
+  const cases: Array<[string, IfcAttributeValue]> = [
+    ['a Windows path', String.raw`C:\Users\a`],
+    ['a UNC share', String.raw`\\server\share`],
+    ['a backslash and a quote together', String.raw`C:\O'Brien`],
+    ['a trailing backslash', 'ends with\\'],
+    ['a doubled quote', "it's a 'test'"],
+    ['plain text', 'My Column'],
+  ];
+
+  for (const [label, value] of cases) {
+    it(`round-trips ${label} unchanged`, () => {
+      assert.deepStrictEqual(parsedValue(serializeStepToken(value)), value);
+    });
+
+    it(`is a fixed point for ${label} (a no-op edit does not grow the value)`, () => {
+      const once = parsedValue(serializeStepToken(value));
+      const twice = parsedValue(serializeStepToken(once));
+      assert.deepStrictEqual(twice, value);
+    });
+  }
+
+  it('does not decode a STEP escape directive the user typed as literal text', () => {
+    // `\X2\00FC\X0\` is an encoded `ü` on disk, but a user who types those twelve
+    // characters into the editor means them literally: the serializer doubles
+    // each backslash, and the decoder must read the doubled form back as text
+    // rather than resolving it to `ü`.
+    const value = '\\X2\\00FC\\X0\\';
+    assert.strictEqual(serializeStepToken(value), "'\\\\X2\\\\00FC\\\\X0\\\\'");
+    assert.deepStrictEqual(parsedValue(serializeStepToken(value)), value);
   });
 });

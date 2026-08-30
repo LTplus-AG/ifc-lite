@@ -17,6 +17,14 @@ export interface EmbedOptions {
   container: string | HTMLElement;
   /** URL of the model to load on initialization */
   modelUrl?: string;
+  /**
+   * Set `false` to suppress the automatic fetch of `modelUrl`, leaving the
+   * viewer mounted and empty until the host loads something itself. Omitted
+   * and `true` both mean "load", matching the viewer's default — only an
+   * explicit `false` is serialised, because the parser treats every value
+   * other than the literal `'false'` as `true`.
+   */
+  autoLoad?: boolean;
   /** Color theme */
   theme?: 'light' | 'dark';
   /** Custom background color (hex without #) */
@@ -67,6 +75,7 @@ export interface EmbedOptions {
 export function embedUrlSearchParams(opts: EmbedOptions): URLSearchParams {
   const params = new URLSearchParams();
   if (opts.modelUrl) params.set('modelUrl', opts.modelUrl);
+  if (opts.autoLoad === false) params.set('autoLoad', 'false');
   if (opts.theme) params.set('theme', opts.theme);
   if (opts.bg) params.set('bg', opts.bg);
   if (opts.controls) params.set('controls', opts.controls);

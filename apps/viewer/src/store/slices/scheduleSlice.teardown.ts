@@ -17,7 +17,7 @@
  * lines 378-385), which already matched what `resetViewerState` restated.
  */
 
-import { defineSliceTeardown } from '../teardown.js';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
 /**
  * Schedule (4D) — drop panel + data; definitions are re-extracted on next load.
@@ -43,14 +43,18 @@ export const scheduleTeardown = defineSliceTeardown(
     'hoveredTaskGlobalId',
     'selectedTaskGlobalIds',
   ],
-  (scope) => scope.kind !== 'session-reset' ? {} : {
-    ganttPanelVisible: false,
-    generateScheduleDialogOpen: false,
-    scheduleData: null,
-    scheduleRange: null,
-    activeWorkScheduleId: '',
-    expandedTaskGlobalIds: new Set<string>(),
-    hoveredTaskGlobalId: null,
-    selectedTaskGlobalIds: new Set<string>(),
+  {
+    'session-reset': () => ({
+      ganttPanelVisible: false,
+      generateScheduleDialogOpen: false,
+      scheduleData: null,
+      scheduleRange: null,
+      activeWorkScheduleId: '',
+      expandedTaskGlobalIds: new Set<string>(),
+      hoveredTaskGlobalId: null,
+      selectedTaskGlobalIds: new Set<string>(),
+    }),
+    'model-removed': notApplicable,
+    'all-models-cleared': notApplicable,
   },
 );

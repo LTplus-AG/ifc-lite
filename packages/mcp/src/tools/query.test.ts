@@ -289,3 +289,30 @@ describe('count_entities → group_by sort', () => {
     expect(structured.total).toBe(8);
   });
 });
+
+describe("get_entities_bulk → include: ['attributes']", () => {
+  // The schema declares `include` with `default: ['attributes']` and no enum
+  // restricting its values, matching `get_entity`'s vocabulary
+  // ('attributes','properties','quantities','classifications','materials').
+  // `get_entity` honours 'attributes' by attaching `bim.attributes(ref)`
+  // (the full EXPRESS attribute list — Tag, PredefinedType, etc. — which is
+  // NOT part of the base `EntityData` shape returned by `bim.entity(ref)`).
+  // `get_entities_bulk`'s handler checks 'properties' / 'quantities' /
+  // 'classifications' / 'materials' but never 'attributes', so the
+  // documented default silently does nothing: the field an agent asked for
+  // by name never appears, with no error and a 200-shaped success result.
+  it('attaches the full attribute list when include names it, like get_entity does', async () => {
+    const single = await call('get_entity', { model_id: 'shape', global_id: guid('WALA'), include: ['attributes'] });
+    const singleAttrs = (single.structuredContent as { attributes: unknown[] }).attributes;
+    expect(singleAttrs.length).toBeGreaterThan(0);
+
+    const bulk = await call('get_entities_bulk', {
+      model_id: 'shape',
+      global_ids: [guid('WALA')],
+      include: ['attributes'],
+    });
+    const entities = (bulk.structuredContent as { entities: Record<string, { attributes?: unknown[] }> }).entities;
+    expect(entities[guid('WALA')].attributes).toBeDefined();
+    expect((entities[guid('WALA')].attributes as unknown[]).length).toBeGreaterThan(0);
+  });
+});

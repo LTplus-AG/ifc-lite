@@ -7,7 +7,7 @@
  *
  * Beside the slice rather than inside it because `sectionSlice.ts` sits at its
  * recorded module-size budget (`scripts/module-size-allowlist.txt`), which
- * ratchets down only.
+ * ratchets down by default.
  *
  * This is the store's canonical Trap B: ONE value, `sectionPlane`, holds both
  * session-scoped and persisted fields. Rather than spread the live plane and
@@ -33,38 +33,40 @@
  * stays at the entry point in `store/index.ts`; a teardown is pure.
  */
 
-import { defineSliceTeardown } from '../teardown.js';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 import { getDefaultSectionPlane } from './sectionSlice.js';
 
 export const sectionTeardown = defineSliceTeardown(
   'sectionSlice',
   ['sectionPlane'],
-  (scope, state) => {
+  {
+    'session-reset': (_scope, state) => {
+      // The `??` is for the partial-store harness (`TeardownState` is a
+      // `Partial<ViewerState>`): with no live plane to read from, the slice's
+      // own initial value is by definition the right answer for the fields
+      // being kept too.
+      const live = state.sectionPlane ?? getDefaultSectionPlane();
+
+      return {
+        // Keep ONLY the user's cut-surface appearance preferences — showCap,
+        // showOutlines, capStyle. Those round-trip to localStorage via the
+        // slice's persistence helpers; clobbering them here was the cause of
+        // "my hatch / colour resets to defaults every time I open a file".
+        // Everything else (axis, position, enabled, flipped, custom) is
+        // model-relative and meaningless against a different model, so it
+        // comes from `getDefaultSectionPlane()` rather than being spread from
+        // `live` and then patched field by field.
+        sectionPlane: {
+          ...getDefaultSectionPlane(),
+          showCap:      live.showCap,
+          showOutlines: live.showOutlines,
+          capStyle:     live.capStyle,
+        },
+      };
+    },
     // A cut plane is positioned against the whole loaded scene, not against
     // one model, so neither removing a model nor clearing them all moves it.
-    if (scope.kind !== 'session-reset') return {};
-
-    // The `??` is for the partial-store harness (`TeardownState` is a
-    // `Partial<ViewerState>`): with no live plane to read from, the slice's
-    // own initial value is by definition the right answer for the fields
-    // being kept too.
-    const live = state.sectionPlane ?? getDefaultSectionPlane();
-
-    return {
-      // Keep ONLY the user's cut-surface appearance preferences — showCap,
-      // showOutlines, capStyle. Those round-trip to localStorage via the
-      // slice's persistence helpers; clobbering them here was the cause of
-      // "my hatch / colour resets to defaults every time I open a file".
-      // Everything else (axis, position, enabled, flipped, custom) is
-      // model-relative and meaningless against a different model, so it
-      // comes from `getDefaultSectionPlane()` rather than being spread from
-      // `live` and then patched field by field.
-      sectionPlane: {
-        ...getDefaultSectionPlane(),
-        showCap:      live.showCap,
-        showOutlines: live.showOutlines,
-        capStyle:     live.capStyle,
-      },
-    };
+    'model-removed': notApplicable,
+    'all-models-cleared': notApplicable,
   },
 );

@@ -186,6 +186,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve as resolvePath } from 'node:path';
+import { isMainEntry } from './is-main-entry.mjs';
 
 const CALL_KEYWORD_RE = /(?<![.\w$])(describe|it|test)(?![\w$])/g;
 
@@ -1078,7 +1079,7 @@ export function auditFile(filePath, source) {
  * single corrupted file inside a large run therefore still contributes
  * silently zero — see the regex/template erasure notes in LIMITATIONS.
  */
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMainEntry(import.meta.url)) {
   const argv = process.argv.slice(2);
   // `--summary-only` keeps the error paths and the summary but drops the
   // per-call-site listing. The listing is the point of a human run; across

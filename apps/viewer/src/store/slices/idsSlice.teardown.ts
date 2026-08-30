@@ -7,13 +7,14 @@
  *
  * A sibling module rather than a block at the bottom of `idsSlice.ts` because
  * that file sits at its recorded module-size budget (482 lines,
- * `scripts/module-size-allowlist.txt`) and may not grow. The seam is real
+ * `scripts/module-size-allowlist.txt`), which a raise could lift but a
+ * split does not need. The seam is real
  * either way: this answers "what does IDS destroy under a scope", which is a
  * different question from "how does IDS behave", and it has different rules —
  * pure, no `set`, no `get`, no release call.
  */
 
-import { defineSliceTeardown } from '../teardown.js';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
 /**
  * What a session reset clears on the IDS slice.
@@ -47,9 +48,8 @@ export const idsTeardown = defineSliceTeardown(
     'idsActiveEntityId',
     'idsFocusVisibilityOwned',
   ],
-  (scope) => {
-    if (scope.kind !== 'session-reset') return {};
-    return {
+  {
+    'session-reset': () => ({
       idsPanelVisible: false,
       idsLoading: false,
       idsProgress: null,
@@ -65,6 +65,8 @@ export const idsTeardown = defineSliceTeardown(
       // and the next release destroys that owner's presentation (#2654
       // fourth review).
       idsFocusVisibilityOwned: null,
-    };
+    }),
+    'model-removed': notApplicable,
+    'all-models-cleared': notApplicable,
   },
 );

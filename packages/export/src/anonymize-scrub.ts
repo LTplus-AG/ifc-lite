@@ -51,12 +51,15 @@ const PSEUDONYM_ATTRIBUTES = ['Name', 'LongName', 'Description', 'Tag'] as const
 /** Extra root-entity text fields covered by `pseudonymizeAllNames`:
  *  `IfcObject.ObjectType` (authoring tools put the family/type name there —
  *  "Basic Wall: <project> Exterior 300") and `IfcProject.Phase`. */
-const ROOT_ALL_NAMES_ATTRIBUTES = ['ObjectType', 'Phase'] as const;
+// `ElementType` must be HERE, not in NON_ROOT_NAME_ATTRIBUTES: `slotsFor`
+// short-circuits on IFC_ROOT_TYPES, so that list is inert for IfcWallType (#3351).
+const ROOT_ALL_NAMES_ATTRIBUTES = ['ObjectType', 'Phase', 'ElementType', 'ApplicableOccurrence'] as const;
 
 /** Non-`IfcRoot` text fields covered by `pseudonymizeAllNames`. Only a
  *  quoted-string token is ever rewritten, so an enum-valued `Name`
  *  (`IfcSIUnit.Name = .METRE.`) or a `$` passes through untouched. */
-const NON_ROOT_NAME_ATTRIBUTES = ['Name', 'LongName', 'Description', 'ProfileName', 'LayerSetName'] as const;
+// `Category` is authored text in practice ("ACME Acoustic Batt") (#3351).
+const NON_ROOT_NAME_ATTRIBUTES = ['Name', 'LongName', 'Description', 'ProfileName', 'LayerSetName', 'Category'] as const;
 
 /** Non-root classes whose `Name` is schema semantics rather than authored
  *  text, left alone by `pseudonymizeAllNames`: the authoring application

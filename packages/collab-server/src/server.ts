@@ -358,10 +358,10 @@ export async function startCollabServer(
             res.end(JSON.stringify({ error: 'unauthorized' }));
             return;
           }
-          // Refresh derived gauges before rendering so the snapshot
-          // reflects live state, not state-at-last-event.
           const stats = await roomManager.stats();
           roomsGauge.set(stats.length);
+          // Reset first — keyed by peer-chosen roomId, an unloaded room would otherwise report a stale peer count forever.
+          peersGauge.reset();
           for (const s of stats) peersGauge.set(s.peerCount, { room: s.roomId });
           res.writeHead(200, { 'content-type': 'text/plain; version=0.0.4' });
           res.end(metrics.render());

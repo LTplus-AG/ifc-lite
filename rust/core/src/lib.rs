@@ -65,6 +65,7 @@
 pub mod columnar_index;
 pub mod decoder;
 pub mod error;
+pub(crate) mod express_id;
 pub mod fast_parse;
 pub mod generated;
 pub mod georef;
@@ -96,7 +97,10 @@ pub use legacy_entities::{
     LEGACY_ENTITY_NAMES,
 };
 pub use model_bounds::{scan_model_bounds, scan_placement_bounds, ModelBounds};
-pub use parser::{entity_count, parse_entity, skip_step_comment, EntityScanner, Token};
+pub use parser::{
+    entity_count, oversized_id_report, parse_entity, report_oversized_ids, set_report_sink,
+    skip_step_comment, EntityScanner, Token,
+};
 pub use project_units::{
     measure::{measure_unit, MeasureUnit},
     resolve_unit_by_ref, ProjectUnits, ResolvedUnit,

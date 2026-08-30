@@ -7,7 +7,7 @@
  *
  * Beside the slice rather than inside it because `uiSlice.ts` sits at its
  * recorded module-size budget (`scripts/module-size-allowlist.txt`), which
- * ratchets down only.
+ * ratchets down by default.
  *
  * `owns` is a SMALL subset of what this slice holds, on purpose. The slice
  * also owns the panel-collapse flags, `hierarchyMode`, `theme`,
@@ -20,7 +20,7 @@
  * state is built from, so the reset value and the initial value are one fact.
  */
 
-import { defineSliceTeardown } from '../teardown.js';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 import { UI_DEFAULTS } from '../constants.js';
 
 export const uiTeardown = defineSliceTeardown(
@@ -40,28 +40,29 @@ export const uiTeardown = defineSliceTeardown(
     'separationLinesIntensity',
     'separationLinesRadius',
   ],
-  (scope) =>
+  {
+    'session-reset': () => ({
+      activeTool: UI_DEFAULTS.ACTIVE_TOOL,
+      editEnabled: false,
+      // Drop any one-shot bSDD "jump to property" focus armed before the
+      // load — a new file reuses ids ('legacy' + reassigned expressIds) so
+      // a stale focus could otherwise match an unrelated entity (#1107).
+      pendingPropertyFocus: null,
+      visualEnhancementsEnabled: UI_DEFAULTS.VISUAL_ENHANCEMENTS_ENABLED,
+      edgeContrastEnabled: UI_DEFAULTS.EDGE_CONTRAST_ENABLED,
+      edgeContrastIntensity: UI_DEFAULTS.EDGE_CONTRAST_INTENSITY,
+      contactShadingQuality: UI_DEFAULTS.CONTACT_SHADING_QUALITY,
+      contactShadingIntensity: UI_DEFAULTS.CONTACT_SHADING_INTENSITY,
+      contactShadingRadius: UI_DEFAULTS.CONTACT_SHADING_RADIUS,
+      separationLinesEnabled: UI_DEFAULTS.SEPARATION_LINES_ENABLED,
+      separationLinesQuality: UI_DEFAULTS.SEPARATION_LINES_QUALITY,
+      separationLinesIntensity: UI_DEFAULTS.SEPARATION_LINES_INTENSITY,
+      separationLinesRadius: UI_DEFAULTS.SEPARATION_LINES_RADIUS,
+    }),
     // Removing one model from a federation, or clearing them all, leaves the
     // chrome alone: the active tool and the render-quality toggles describe
     // the session, not the file. Only a file swap resets them.
-    scope.kind !== 'session-reset'
-      ? {}
-      : {
-          activeTool: UI_DEFAULTS.ACTIVE_TOOL,
-          editEnabled: false,
-          // Drop any one-shot bSDD "jump to property" focus armed before the
-          // load — a new file reuses ids ('legacy' + reassigned expressIds) so
-          // a stale focus could otherwise match an unrelated entity (#1107).
-          pendingPropertyFocus: null,
-          visualEnhancementsEnabled: UI_DEFAULTS.VISUAL_ENHANCEMENTS_ENABLED,
-          edgeContrastEnabled: UI_DEFAULTS.EDGE_CONTRAST_ENABLED,
-          edgeContrastIntensity: UI_DEFAULTS.EDGE_CONTRAST_INTENSITY,
-          contactShadingQuality: UI_DEFAULTS.CONTACT_SHADING_QUALITY,
-          contactShadingIntensity: UI_DEFAULTS.CONTACT_SHADING_INTENSITY,
-          contactShadingRadius: UI_DEFAULTS.CONTACT_SHADING_RADIUS,
-          separationLinesEnabled: UI_DEFAULTS.SEPARATION_LINES_ENABLED,
-          separationLinesQuality: UI_DEFAULTS.SEPARATION_LINES_QUALITY,
-          separationLinesIntensity: UI_DEFAULTS.SEPARATION_LINES_INTENSITY,
-          separationLinesRadius: UI_DEFAULTS.SEPARATION_LINES_RADIUS,
-        },
+    'model-removed': notApplicable,
+    'all-models-cleared': notApplicable,
+  },
 );

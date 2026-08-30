@@ -13,6 +13,7 @@ import {
   readFreshFile,
   supportsFileSystemAccess,
 } from './file-system-access.js';
+import { MODEL_FILE_EXTENSIONS, isSupportedModelFile } from './supported-model-files.js';
 
 type FSFileHandleLike = {
   name: string;
@@ -123,6 +124,34 @@ describe('file-system-access', () => {
       assert.ok(result);
       assert.equal(result.length, 1);
       assert.equal(result[0].file.name, 'ok.ifc');
+    });
+
+    // Boundary test: the picker's accept filter (what the Chromium Open
+    // dialog will let the user select) against the ingest guard that every
+    // load path routes through. Both ends were covered on their own — the
+    // picker's return handling above, `isSupportedModelFile` at its call
+    // sites — but nothing compared what the picker OFFERS against what the
+    // app ACCEPTS, so `.ifczip` sat in the guard and not in the filter.
+    it('offers every extension the ingest guard accepts', async () => {
+      let offered: string[] = [];
+      (window as unknown as Record<string, unknown>).showOpenFilePicker = async (
+        opts: { types?: FilePickerAcceptType[] },
+      ) => {
+        offered = (opts.types ?? []).flatMap((t) => Object.values(t.accept).flat());
+        return [fakeHandle('a.ifc')];
+      };
+      await openIfcFilesWithHandles();
+
+      for (const ext of MODEL_FILE_EXTENSIONS) {
+        assert.ok(
+          isSupportedModelFile(fakeFile(`model${ext}`)),
+          `${ext} must be accepted by the ingest guard`,
+        );
+        assert.ok(
+          offered.includes(ext),
+          `the picker hides ${ext}, which the viewer can ingest — the user cannot select it`,
+        );
+      }
     });
 
     it('returns null (not an empty array) when every picked handle fails to read', async () => {

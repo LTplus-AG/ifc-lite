@@ -6,8 +6,9 @@
  * The symbolic-representation type family, split out of `types.ts` (#3199).
  *
  * Moved rather than trimmed: `types.ts` sat EXACTLY at its module-size budget,
- * and the TS allowlist is explicit that budgets ratchet DOWN only and are never
- * raised to make a red gate green. This family is self-contained -- nothing
+ * and the TS allowlist is explicit that budgets ratchet DOWN by default -- a
+ * raise is sanctioned but deliberate, and wants a per-file justification in the
+ * PR, which a split does not. This family is self-contained -- nothing
  * imports it from `types.ts`, and the names the package root exposes come from
  * `ifc-lite-bridge.ts` -- so it is the natural seam. `types.ts` re-exports it,
  * so the public surface is unchanged.

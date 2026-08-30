@@ -7,10 +7,11 @@
  *
  * A sibling module rather than a block at the bottom of `chatSlice.ts` because
  * that file sits at its recorded module-size budget (452 lines,
- * `scripts/module-size-allowlist.txt`) and may not grow.
+ * `scripts/module-size-allowlist.txt`), which a raise could lift but a
+ * split does not need.
  */
 
-import { defineSliceTeardown } from '../teardown.js';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
 /**
  * What a session reset clears on the chat slice.
@@ -31,9 +32,8 @@ import { defineSliceTeardown } from '../teardown.js';
 export const chatTeardown = defineSliceTeardown(
   'chatSlice',
   ['chatStatus', 'chatStreamingContent', 'chatError', 'chatAbortController'],
-  (scope) => {
-    if (scope.kind !== 'session-reset') return {};
-    return {
+  {
+    'session-reset': () => ({
       chatStatus: 'idle' as const,
       chatStreamingContent: '',
       chatError: null,
@@ -42,6 +42,8 @@ export const chatTeardown = defineSliceTeardown(
       // only path that aborts. Adding an `abort()` here would be a
       // behaviour change, and a side effect a teardown may not have.
       chatAbortController: null,
-    };
+    }),
+    'model-removed': notApplicable,
+    'all-models-cleared': notApplicable,
   },
 );

@@ -4,6 +4,7 @@
 
 import { safeUtf8Decode } from '@ifc-lite/data';
 import { buildEntityRefsFromIndex } from './entity-refs-from-index.js';
+import { MAX_EXPRESS_ID } from './express-id.js';
 import { scanEntitiesInWorker } from './scan-worker-inline.js';
 import { StepTokenizer } from './tokenizer.js';
 import type { EntityRef } from './types.js';
@@ -14,6 +15,17 @@ export interface PreScannedEntityIndex {
   ids: Uint32Array;
   starts: Uint32Array;
   lengths: Uint32Array;
+  /**
+   * How many records the pre-pass that produced these columns refused because
+   * their express id is outside the u32 storage contract (#3395).
+   *
+   * It has to travel with the columns: a refused record is absent from `ids`
+   * by construction, so this side cannot recount it. Optional because a host
+   * on an older wasm build sends the three columns and nothing else — treat
+   * `undefined` as "this producer does not report", which is not the same
+   * claim as `0`, and is why the wasm pre-pass now always sets it.
+   */
+  oversizedIdCount?: number;
 }
 
 export interface WasmScanApi {
@@ -34,6 +46,23 @@ export interface EntityScanResult {
   processed: number;
   elapsedMs: number;
   scanPath: EntityScanPath;
+  /**
+   * How many records the scan refused because their express id is outside the
+   * u32 storage contract (#3395).
+   *
+   * Counted on every path but one. `worker` and `tokenizer` count here;
+   * `pre-scanned` carries the count from the geometry pre-pass through the
+   * `set-entity-index` handoff (`PreScannedEntityIndex.oversizedIdCount`),
+   * which is the path the viewer takes for every SAB-backed worker load of a
+   * file at or above 2 MB (`useIfcLoader.ts`'s `geometryWillEmitEntityIndex`).
+   *
+   * The one exception is `wasm`: `scanEntitiesFast` returns entity refs and
+   * nothing else, so the count does not cross that boundary. Rust reports the
+   * refusal itself there, to the browser console
+   * (`rust/wasm-bindings/src/api/parsing.rs`), so it is visible even though
+   * the number is not — a zero on THAT path still is not proof of none.
+   */
+  oversizedIdCount: number;
 }
 
 type WasmScanFunction = () => unknown;
@@ -53,23 +82,36 @@ export async function scanIfcEntities(
   let entityRefs: EntityRef[] = [];
   let processed = 0;
   let scanPath: EntityScanPath = 'tokenizer';
+  let oversizedIdCount = 0;
+  let preScanCountUnreported = false;
 
   if (options.preScannedEntityIndex) {
     const { ids, starts, lengths } = options.preScannedEntityIndex;
     entityRefs = buildEntityRefsFromIndex(uint8Buffer, ids, starts, lengths);
     processed = entityRefs.length;
     scanPath = 'pre-scanned';
+    // `undefined` means this producer does not report, which the field's own
+    // doc says is NOT the claim `0` makes. Coercing it here would turn "not
+    // counted" into "none refused" — the exact conflation #3395 exists to
+    // remove, reintroduced at the handoff. The number still reads 0 because the
+    // contract is `number`, so the honesty has to live in the REPORT: an
+    // unreported count is announced rather than passed off as a clean scan.
+    oversizedIdCount = options.preScannedEntityIndex.oversizedIdCount ?? 0;
+    preScanCountUnreported = options.preScannedEntityIndex.oversizedIdCount === undefined;
   }
 
   if (entityRefs.length === 0 && !options.disableWorkerScan && typeof Worker !== 'undefined') {
     try {
-      entityRefs = await scanEntitiesInWorker(buffer);
+      const scan = await scanEntitiesInWorker(buffer);
+      entityRefs = scan.refs;
+      oversizedIdCount = scan.oversizedIdCount;
       processed = entityRefs.length;
       scanPath = 'worker';
     } catch (error) {
       console.warn('[IfcParser] Worker scan failed, falling back to main thread:', error);
       entityRefs = [];
       processed = 0;
+      oversizedIdCount = 0;
     }
   }
 
@@ -79,6 +121,13 @@ export async function scanIfcEntities(
       entityRefs = normalizeWasmEntityRefs(wasmScanFn());
       processed = entityRefs.length;
       scanPath = 'wasm';
+      // Cleared, not carried: `scanEntitiesFast` hands back refs and nothing
+      // else, so this path has no count of its own (Rust reports the refusal
+      // straight to the console instead). Leaving an earlier path's number
+      // here would attribute it to a scan that never produced it. The two
+      // sibling branches already set their own; this one says zero out loud
+      // rather than by omission (#3395).
+      oversizedIdCount = 0;
     } catch (error) {
       console.warn('[IfcParser] WASM scan failed, falling back to TypeScript:', error);
       entityRefs = [];
@@ -107,13 +156,33 @@ export async function scanIfcEntities(
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
     }
+    oversizedIdCount = tokenizer.oversizedIdCount;
+  }
+
+  // A refused record is a record the caller will not find. Say so on both
+  // channels the loader already watches, rather than letting the model come
+  // back quietly short (#3395).
+  if (oversizedIdCount > 0) {
+    const message =
+      `scan: skipped ${oversizedIdCount} record(s) with an express id above ${MAX_EXPRESS_ID} (#3395)`;
+    console.warn(`[IfcParser] ${message}`);
+    options.onDiagnostic?.(message);
+  } else if (preScanCountUnreported && scanPath === 'pre-scanned') {
+    // Absence has to look different from success. This producer sent the
+    // columns without a refusal count, so a zero here is not evidence of none
+    // — say that, rather than returning a result that reads like a clean scan.
+    const message =
+      'scan: the pre-pass that produced this entity index does not report refused ' +
+      `express ids (#3395), so a count of 0 is not proof that none were skipped`;
+    console.warn(`[IfcParser] ${message}`);
+    options.onDiagnostic?.(message);
   }
 
   const elapsedMs = performance.now() - scanStartTime;
   options.onDiagnostic?.(`scan complete: entities=${processed} elapsed=${elapsedMs.toFixed(0)}ms`);
   options.onProgress?.({ phase: 'scanning', percent: 100 });
 
-  return { entityRefs, processed, elapsedMs, scanPath };
+  return { entityRefs, processed, elapsedMs, scanPath, oversizedIdCount };
 }
 
 /**

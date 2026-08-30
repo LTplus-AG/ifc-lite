@@ -14,7 +14,7 @@
 import type { StateCreator } from 'zustand';
 import type { DiffScope, ModelDiff } from '@ifc-lite/diff';
 import type { CompareRef } from '@/lib/compare/buildFingerprints';
-import { defineSliceTeardown } from '../teardown.js';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
 /** A completed comparison: the engine result plus the A/B context it ran on. */
 export interface CompareResult {
@@ -208,7 +208,7 @@ function getClearedCompareState() {
 export const compareTeardown = defineSliceTeardown(
   'compareSlice',
   ['compareResult', 'compareSelectedKey', 'compareRunning', 'compareError'],
-  (scope) => scope.kind !== 'session-reset' ? {} : getClearedCompareState(),
+  { 'session-reset': getClearedCompareState, 'model-removed': notApplicable, 'all-models-cleared': notApplicable },
 );
 
 export const createCompareSlice: StateCreator<CompareSlice, [], [], CompareSlice> = (set) => ({

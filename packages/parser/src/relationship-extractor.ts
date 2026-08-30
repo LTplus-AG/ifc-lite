@@ -101,7 +101,20 @@ export class RelationshipExtractor {
       // IfcRelDefinesByProperties: RelatedObjects (4), RelatingPropertyDefinition (5)
       // IfcRelAggregates: RelatingObject (4), RelatedObjects (5)
       // IfcRelContainedInSpatialStructure: RelatedElements (4), RelatingStructure (5)
-      
+      // IfcRelAssociatesMaterial: RelatedObjects (4, inherited from IfcRelAssociates),
+      //   RelatingMaterial (5, own attribute) — the list/single-ref slots are
+      //   swapped relative to IfcRelAggregates. Schema (IFC4_ADD2_TC1.exp):
+      //     ENTITY IfcRelAssociates SUBTYPE OF (IfcRelationship);
+      //       RelatedObjects : SET [1:?] OF IfcDefinitionSelect;
+      //     ENTITY IfcRelAssociatesMaterial SUBTYPE OF (IfcRelAssociates);
+      //       RelatingMaterial : IfcMaterialSelect;
+      //   The "standard" RelatingObject-then-RelatedObjects branch below only
+      //   holds for the IfcRelAggregates shape; applying it here read the
+      //   RelatedObjects list as the (single) relatingObject and the single
+      //   RelatingMaterial reference as the relatedObjects list, so every
+      //   `typeof relatingObject !== 'number'` / `!Array.isArray(relatedObjects)`
+      //   guard below failed and the association was silently dropped (#3253).
+
       let relatingObject: any;
       let relatedObjects: any;
 
@@ -111,6 +124,10 @@ export class RelationshipExtractor {
         relatingObject = this.getAttributeValue(entity, 5);
       } else if (entityTypeUpper === 'IFCRELCONTAINEDINSPATIALSTRUCTURE') {
         // RelatedElements at 4, RelatingStructure at 5
+        relatedObjects = this.getAttributeValue(entity, 4);
+        relatingObject = this.getAttributeValue(entity, 5);
+      } else if (entityTypeUpper === 'IFCRELASSOCIATESMATERIAL') {
+        // RelatedObjects at 4, RelatingMaterial at 5
         relatedObjects = this.getAttributeValue(entity, 4);
         relatingObject = this.getAttributeValue(entity, 5);
       } else {

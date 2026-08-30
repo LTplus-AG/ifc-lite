@@ -8,6 +8,7 @@
 
 import { createLogger } from '@ifc-lite/data';
 import { decodeIfcString } from '@ifc-lite/encoding';
+import { isIndexableExpressId } from './express-id.js';
 import type { IfcEntity, EntityRef } from './types.js';
 import { asSourceBytes, type IfcSourceBytes } from './source-bytes.js';
 
@@ -74,13 +75,13 @@ export class EntityExtractor {
       const match = entityText.match(/^#(\d+)\s*=\s*(\w+)\(([\s\S]*)\)/);
       if (!match) return null;
 
-      // `\d+` guarantees this is not NaN, but not that it is a safe integer:
-      // ids lose precision past 2^53 (~16 digits), long before 400 digits
-      // would overflow to Infinity. An entity keyed by a value another id also
-      // accumulates to would collide with it in the entity map, so refuse the
-      // record.
+      // `\d+` guarantees this is not NaN, but not that the id fits the 32-bit
+      // express-id columns every store below keys on: ids above 2^32 truncate
+      // mod 2^32 and collide with a real low id, and ids past 2^53 collide with
+      // each other while still accumulating. Refuse the record either way; see
+      // express-id.ts (#3395).
       const expressId = parseInt(match[1], 10);
-      if (!Number.isSafeInteger(expressId)) return null;
+      if (!isIndexableExpressId(expressId)) return null;
       const type = match[2];
       const paramsText = match[3];
 
@@ -258,14 +259,11 @@ export class EntityExtractor {
     // Reference: #123
     if (value.startsWith('#')) {
       const id = parseInt(value.substring(1), 10);
-      // Number.isSafeInteger, not !isNaN or Number.isFinite: a reference with
-      // enough digits to overflow the double range
-      // (`parseInt('1'.repeat(400), 10)` is `Infinity`) passes an isNaN guard,
-      // and an Infinity express id resolves to nothing — but two references
-      // that merely exceed 2^53 (~16 digits) accumulate to the SAME value and
-      // would resolve to the SAME (wrong) entity, which `isFinite` alone does
-      // not catch. Treat both as the dangling reference they are.
-      return Number.isSafeInteger(id) ? id : null;
+      // An out-of-contract reference is a dangling reference, not a number to
+      // carry: `Infinity` names no entity, two ids past 2^53 accumulate to the
+      // same double and would resolve to the same wrong entity, and an id above
+      // 2^32 can never be indexed at all (express-id.ts, #3395).
+      return isIndexableExpressId(id) ? id : null;
     }
 
     // String: 'text'

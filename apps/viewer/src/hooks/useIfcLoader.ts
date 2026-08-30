@@ -1566,10 +1566,10 @@ export function useIfcLoader() {
               // worker so it skips a duplicate ~10 s WASM scan. Safe even
               // when the parser falls back to main-thread (instance is
               // null then; the callback no-ops).
-              onEntityIndex: (ids, starts, lengths) => {
-                if (workerParserInstance) {
-                  workerParserInstance.setEntityIndex(ids, starts, lengths);
-                }
+              // #3395: the refusal count travels with the columns, because a
+              // refused record is not IN them.
+              onEntityIndex: (ids, starts, lengths, oversizedIdCount) => {
+                workerParserInstance?.setEntityIndex(ids, starts, lengths, oversizedIdCount);
               },
               // `?geomWorkers=N` A/B knob — overrides the cores/memory worker-
               // count heuristic so the host's thermal sweet spot can be measured.

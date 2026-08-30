@@ -68,7 +68,15 @@ export function sha256hex(data) {
  */
 export function canonicalIfc(content) {
   return content
-    .replace(/^(FILE_NAME\('created\.ifc'),'\d{8}T\d{6}'/m, "$1,'00000000T000000'")
+    // Accepts both header stamp shapes: the ISO 8601 date-time emitted
+    // since the time_stamp fix, and the separator-stripped digits emitted
+    // before it. Matching only one silently stops stripping the stamp, and
+    // an unstripped stamp fails re-verification a second later rather than
+    // reporting anything.
+    .replace(
+      /^(FILE_NAME\('created\.ifc'),'(?:\d{8}T\d{6}|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})'/m,
+      "$1,'00000000T000000'"
+    )
     .replace(/^(#\d+=IFCOWNERHISTORY\(.*),\d+\);$/m, '$1,0);')
     .replace(/^(#\d+=[A-Z0-9]+\()'[0-9A-Za-z_$]{22}'/gm, "$1'0000000000000000000000'");
 }

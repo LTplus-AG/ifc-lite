@@ -29,6 +29,7 @@ import {
   flattenCheckRunPages,
   STALE_REVIEW_POLICIES,
   SETTLE_HOLD_SECONDS,
+  pullRequestBranchFilterKeys,
 } from './pr-review-signal.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -1109,4 +1110,67 @@ test('FAIL CLOSED: a check-run walk that did not complete is NO_CHECK_RUNS', () 
       `pages ${JSON.stringify(bad)}`,
     );
   }
+});
+
+// ------------------------------------------- workflow base-branch filter (#3433)
+
+/**
+ * A regex over source text (`/^\s*branches:\s*(\[.*\])\s*$/m`) is what this
+ * function replaced. Measured against that regex directly, BEFORE this fix,
+ * to pin the failure it left rather than merely describe it: a `branches:`
+ * key written as a block sequence produced NO match, so a guard asserting
+ * "no base-branch filter present" stayed green over a workflow that in fact
+ * had one. #3433 measured this exact gap live on `pr-review-signal.yml` — the
+ * regression suite ran 48/48 with the filter reintroduced in block style, and
+ * only caught it (47/48) when the filter was reintroduced inline.
+ */
+const OLD_TEXT_REGEX_BRANCHES_OF = (text) => /^\s*branches:\s*(\[.*\])\s*$/m.exec(text)?.[1];
+
+test('RED: the old text-regex guard misses the block-sequence spelling (#3433)', () => {
+  const inline = 'on:\n  pull_request:\n    branches: [main]\n';
+  const block = 'on:\n  pull_request:\n    branches:\n      - main\n';
+  assert.ok(
+    OLD_TEXT_REGEX_BRANCHES_OF(inline),
+    'sanity: the old regex does catch the inline spelling it was written for',
+  );
+  assert.equal(
+    OLD_TEXT_REGEX_BRANCHES_OF(block),
+    undefined,
+    'this is the hole: the old regex reports NO filter on a workflow that has one, because the ' +
+      'value is a block sequence rather than `[...]` on the same line',
+  );
+});
+
+test('pullRequestBranchFilterKeys: every spelling GitHub Actions accepts resolves to `branches`', () => {
+  const cases = {
+    'inline flow sequence': 'on:\n  pull_request:\n    branches: [main]\njobs:\n  x: {}\n',
+    'block sequence': 'on:\n  pull_request:\n    branches:\n      - main\njobs:\n  x: {}\n',
+    'quoted flow sequence': 'on:\n  pull_request:\n    branches: ["main"]\njobs:\n  x: {}\n',
+    'single unbracketed scalar': 'on:\n  pull_request:\n    branches: main\njobs:\n  x: {}\n',
+    'reached through an alias': [
+      'anchors:',
+      '  bases: &bases [main]',
+      'on:',
+      '  pull_request:',
+      '    branches: *bases',
+      'jobs:',
+      '  x: {}',
+      '',
+    ].join('\n'),
+  };
+  for (const [label, yamlText] of Object.entries(cases)) {
+    assert.deepEqual(pullRequestBranchFilterKeys(yamlText), ['branches'], label);
+  }
+});
+
+test('pullRequestBranchFilterKeys: `branches-ignore` is its own key with the same filtering effect', () => {
+  const yamlText = 'on:\n  pull_request:\n    branches-ignore: [dev]\njobs:\n  x: {}\n';
+  assert.deepEqual(pullRequestBranchFilterKeys(yamlText), ['branches-ignore']);
+});
+
+test('pullRequestBranchFilterKeys: no filter on the trigger reports empty, not a false positive', () => {
+  const noFilter = 'on:\n  pull_request:\n    types: [opened]\njobs:\n  x: {}\n';
+  const bareTrigger = 'on:\n  pull_request:\njobs:\n  x: {}\n';
+  assert.deepEqual(pullRequestBranchFilterKeys(noFilter), []);
+  assert.deepEqual(pullRequestBranchFilterKeys(bareTrigger), []);
 });

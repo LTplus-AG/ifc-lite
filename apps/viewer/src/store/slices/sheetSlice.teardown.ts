@@ -7,7 +7,7 @@
  *
  * Beside the slice rather than inside it because `sheetSlice.ts` sits at its
  * recorded module-size budget (`scripts/module-size-allowlist.txt`), which
- * ratchets down only.
+ * ratchets down by default.
  *
  * `savedSheetTemplates` MUST SURVIVE and is absent from both `owns` and the
  * body. That is confirmed bug #1 in `scripts/check-whole-state-reset.mjs`'s
@@ -17,23 +17,23 @@
  * `clearSheet` now also uses, so the two paths cannot drift apart again.
  */
 
-import { defineSliceTeardown } from '../teardown.js';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 import { getClearedSheetState } from './sheetSlice.js';
 
 export const sheetTeardown = defineSliceTeardown(
   'sheetSlice',
   ['activeSheet', 'sheetEnabled', 'sheetPanelVisible', 'titleBlockEditorVisible'],
-  (scope) => {
-    // A sheet is a document laid out over the drawing, not a per-model
-    // artefact: removing one model from a federation, or clearing them all,
-    // leaves it alone. Only a file swap tears it down.
-    if (scope.kind !== 'session-reset') return {};
-
+  {
     // `getClearedSheetState()` returns exactly these four keys — it is typed
     // `Omit<SheetState, 'savedSheetTemplates'>`, which is what keeps the user's
     // saved templates out of both this and `clearSheet` (#2802's first bug).
     // Destructuring and rebuilding it here would be a second list to keep in
     // step with the first.
-    return getClearedSheetState();
+    'session-reset': getClearedSheetState,
+    // A sheet is a document laid out over the drawing, not a per-model
+    // artefact: removing one model from a federation, or clearing them all,
+    // leaves it alone. Only a file swap tears it down.
+    'model-removed': notApplicable,
+    'all-models-cleared': notApplicable,
   },
 );

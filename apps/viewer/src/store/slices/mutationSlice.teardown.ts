@@ -14,7 +14,7 @@
  * 'model-removed' arm here.
  */
 
-import { defineSliceTeardown } from '../teardown.js';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
 export const mutationTeardown = defineSliceTeardown(
   'mutationSlice',
@@ -27,11 +27,9 @@ export const mutationTeardown = defineSliceTeardown(
     'dirtyModels',
     'mutationVersion',
   ],
-  (scope, state) => {
+  {
     // Mutations - clear all mutation state so stale changes don't carry over
-    if (scope.kind !== 'session-reset') return {};
-
-    return {
+    'session-reset': (_scope, state) => ({
       mutationViews: new Map(),
       changeSets: new Map(),
       activeChangeSetId: null,
@@ -46,6 +44,8 @@ export const mutationTeardown = defineSliceTeardown(
       // drops it. Session reset only: bumping it on every model removal would
       // be a behaviour change, not a restructuring.
       mutationVersion: (state.mutationVersion ?? 0) + 1,
-    };
+    }),
+    'model-removed': notApplicable,
+    'all-models-cleared': notApplicable,
   },
 );

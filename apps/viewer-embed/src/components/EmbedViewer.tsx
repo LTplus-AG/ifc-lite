@@ -21,8 +21,10 @@ import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { parseUrlParams, assertFetchableUrl } from '../bridge/urlParams.js';
 import { initBridge, destroyBridge, emitEvent } from '../bridge/handler.js';
+import { aroundDestructiveLoad } from '../bridge/cameraIntent.js';
 import { mountBridgeLifecycle, unmountBridgeLifecycle } from '../bridge/lifecycle.js';
 import { useEmbedBridgeEvents } from './useEmbedBridgeEvents.js';
+import { useEmbedPostLoad } from './useEmbedPostLoad.js';
 import { useEmbedUrlParams, toHiddenTypeSet, isTypeHidden } from './useEmbedUrlParams.js';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 
@@ -40,6 +42,11 @@ export function EmbedViewer() {
   const [urlParams] = useState(() => parseUrlParams());
   const bridgeInitialized = useRef(false);
   const autoLoadAttempted = useRef(false);
+  // Seeded from ?bg=; can also be set at runtime via SET_THEME's/INIT's `bg`
+  // (see setBackgroundColor passed into initBridge below). Stored bare (no
+  // leading '#') to match the URL-param convention and normalized to CSS
+  // color the same way in both places.
+  const [customBgHex, setCustomBgHex] = useState<string | undefined>(urlParams.bg);
 
   // Apply URL params on mount. Embeds default to light unless ?theme=dark
   // (the surrounding viewer-core store may bootstrap to dark based on system
@@ -115,7 +122,7 @@ export function EmbedViewer() {
             vertices: gr?.totalVertices ?? 0,
           };
         },
-        addModelFromUrl: async (url: string) => {
+        addModelFromUrl: async (url: string, name?: string) => {
           // Federation-aware add: routes through useIfcFederation's addModel,
           // which loads with target `{ kind: 'federated' }` and therefore does
           // NOT clear existing models (unlike loadFile's default primary
@@ -125,7 +132,7 @@ export function EmbedViewer() {
           if (!response.ok) throw new Error(`Failed to fetch model: ${response.statusText}`);
           const buffer = await response.arrayBuffer();
           const filename = url.split('/').pop() || 'model.ifc';
-          const file = new File([buffer], filename);
+          const file = new File([buffer], name || filename);
           const modelId = await addModel(file);
           if (!modelId) throw new Error('Failed to add model');
           const added = useViewerStore.getState().models.get(modelId);
@@ -136,13 +143,20 @@ export function EmbedViewer() {
             vertices: added?.geometryResult?.totalVertices ?? 0,
           };
         },
+        setBackgroundColor: (bg: string | undefined) => setCustomBgHex(bg),
       }, {
         allowedOrigins: urlParams.allowOrigins,
         expectedParentOrigin,
       });
     });
 
-    return () => unmountBridgeLifecycle(bridgeInitialized, () => destroyBridge());
+    // The bridge only. The camera queue is NOT reset here: the `?modelUrl=`
+    // auto-load below drives it without the bridge ever seeing it, and this
+    // cleanup also fires on StrictMode's dev-only remount, mid-fetch, where
+    // zeroing it drops the held pose and un-counts the rest of the load
+    // (EmbedViewer.cameraIntent.test.ts pins that case). A real unmount needs
+    // no reset: the embed mounts once and the state dies with the page.
+    return () => unmountBridgeLifecycle(bridgeInitialized, destroyBridge);
   }, [loadFile, addModel, urlParams.allowOrigins, urlParams.parentOrigin]);
 
   // Auto-load model from URL param
@@ -156,12 +170,17 @@ export function EmbedViewer() {
     (async () => {
       try {
         emitEvent('MODEL_LOADING', { progress: 0, phase: 'Fetching model...' });
-        const response = await fetch(urlParams.modelUrl!, { signal: AbortSignal.timeout(60_000) });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const buffer = await response.arrayBuffer();
-        const filename = urlParams.modelUrl!.split('/').pop() || 'model.ifc';
-        const file = new File([buffer], filename);
-        await loadFile(file);
+        // Same scene-replacing window the bridge's LOAD_MODEL has (#3390): the
+        // fetch runs long before `loadFile`'s session reset, so a host
+        // SET_CAMERA arriving in between is held for the incoming model.
+        await aroundDestructiveLoad(useViewerStore.getState, async () => {
+          const response = await fetch(urlParams.modelUrl!, { signal: AbortSignal.timeout(60_000) });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const buffer = await response.arrayBuffer();
+          const filename = urlParams.modelUrl!.split('/').pop() || 'model.ifc';
+          const file = new File([buffer], filename);
+          await loadFile(file);
+        });
       } catch (err) {
         emitEvent('MODEL_ERROR', {
           error: {
@@ -180,72 +199,9 @@ export function EmbedViewer() {
     }
   }, [progress]);
 
-  // Emit model loaded event + auto-fit camera on the first model that lands.
-  // Unlike the full viewer (which has toolbar buttons for fit-all and a default
-  // load flow that fits), the embed has no chrome — so without an explicit fit
-  // call the camera stays at its initial position and the model renders off-frame.
-  // We only fit on the *first* successful load so host-driven SET_CAMERA / view
-  // params via the bridge aren't immediately overridden.
-  const autoFittedRef = useRef(false);
-  useEffect(() => {
-    if (loading) return;
-    const meshes = geometryResult?.meshes;
-    if (!meshes || meshes.length === 0) return;
-
-    emitEvent('MODEL_LOADED', {
-      entities: ifcDataStore?.entities?.count ?? 0,
-      triangles: geometryResult.totalTriangles,
-      vertices: geometryResult.totalVertices,
-    });
-
-    if (autoFittedRef.current) return;
-
-    // Viewport registers cameraCallbacks AFTER renderer.init() resolves (async).
-    // On a fast network + small model, geometry can land before that happens.
-    // Poll for up to ~2 s, checking each frame, then bail out so we never leak.
-    autoFittedRef.current = true;
-    const deadline = performance.now() + 2000;
-    let rafId = 0;
-    const tryFit = () => {
-      const cbs = useViewerStore.getState().cameraCallbacks;
-      const ready = Boolean(cbs.home || cbs.fitAll || cbs.setPresetView);
-      if (!ready) {
-        if (performance.now() < deadline) {
-          rafId = requestAnimationFrame(tryFit);
-        } else {
-          console.warn('[embed] auto-fit gave up — cameraCallbacks never registered');
-        }
-        return;
-      }
-      // Honour ?view= / ?camera= URL params first; only auto-fit if neither was set.
-      if (urlParams.view) {
-        cbs.setPresetView?.(urlParams.view);
-      } else if (urlParams.camera) {
-        // Orientation FIRST, then fit. `setCameraRotation` keeps the current
-        // target and orbit distance (Camera.setRotation), so on its own it
-        // aims an unframed camera at nothing; `fitAll` zooms to the model
-        // "without changing view direction", so it preserves the orientation
-        // we just asked for. The reverse order loses the rotation, because
-        // `home`/`fitAll` animate and the snap would be tweened away.
-        //
-        // The payload's `zoom` is NOT applied: there is no absolute-zoom
-        // actuator (`zoomIn`/`zoomOut` are unitless steppers) and the protocol
-        // gives the field no unit, so any mapping would be invented. Framing
-        // comes from `fitAll` instead. See #2934.
-        useViewerStore.getState().setCameraRotation({
-          azimuth: urlParams.camera.azimuth,
-          elevation: urlParams.camera.elevation,
-        });
-        cbs.fitAll?.();
-      } else if (cbs.home) {
-        cbs.home();
-      } else if (cbs.fitAll) {
-        cbs.fitAll();
-      }
-    };
-    rafId = requestAnimationFrame(tryFit);
-    return () => cancelAnimationFrame(rafId);
-  }, [loading, geometryResult, ifcDataStore, urlParams.view, urlParams.camera]);
+  // MODEL_LOADED, the camera pose a host queued against this load, and
+  // first-load framing — see useEmbedPostLoad.ts.
+  useEmbedPostLoad(loading, geometryResult, ifcDataStore, urlParams);
 
   // Outbound store-change events (ENTITY_SELECTED / ENTITY_HOVERED /
   // CAMERA_CHANGED / SECTION_CHANGED) — see useEmbedBridgeEvents.ts.
@@ -340,7 +296,7 @@ export function EmbedViewer() {
 
   // Background color
   const bgColor = theme === 'dark' ? '#1a1b26' : '#ffffff';
-  const customBg = urlParams.bg ? `#${urlParams.bg}` : undefined;
+  const customBg = customBgHex ? `#${customBgHex}` : undefined;
 
   return (
     <div

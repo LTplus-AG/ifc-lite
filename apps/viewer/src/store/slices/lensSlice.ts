@@ -15,7 +15,7 @@ import type { Lens, LensRule, LensCriteria, AutoColorSpec, AutoColorLegendEntry,
 import { BUILTIN_LENSES } from '@ifc-lite/lens';
 import { duplicateLensConfig, mergeImportedLenses, reserveUniqueId } from '@/components/viewer/lens-editor-utils';
 import { saveJson, type SaveResult } from '@/lib/storage/save-result';
-import { defineSliceTeardown } from '../teardown.js';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
 // Re-export types so existing consumer imports from this file still work
 export type { Lens, LensRule, LensCriteria, AutoColorSpec, AutoColorLegendEntry, DiscoveredLensData };
@@ -353,34 +353,44 @@ export const createLensSlice: StateCreator<LensSlice, [], [], LensSlice> = (set,
 /**
  * Lens — deactivate but keep saved lenses.
  *
- * `savedLenses`, `discoveredLensData`, `lensAppliedColors` and
- * `lensAutoColorLegend` are absent from both `owns` and the body: the first is
- * the user's work, and the other three are not part of the session-reset
- * payload today.
+ * `savedLenses` is absent from both `owns` and the body: the user's work,
+ * outliving any one session.
  *
- * `clearAllModels` drives most of these same fields through nine setters
- * guarded on `activeLensId != null`. That block stays where it is until an
- * `all-models-cleared` arm exists to replace it wholesale.
+ * `lensAppliedColors` / `lensAutoColorLegend` / `discoveredLensData` are
+ * model-derived and now owned here too (#3423) — stale the instant the model
+ * they describe is gone. `clearAllModels` already drives the first two
+ * through the same nine setters guarded on `activeLensId != null`, a block
+ * that stays until an `all-models-cleared` arm replaces it wholesale.
  */
 export const lensTeardown = defineSliceTeardown(
   'lensSlice',
   [
     'activeLensId', 'lensPanelVisible', 'lensColorMap', 'lensHiddenIds',
     'lensAppliedHiddenIds', 'lensRuleIsolation', 'lensRuleCounts', 'lensRuleEntityIds',
+    'lensAppliedColors', 'lensAutoColorLegend', 'discoveredLensData',
   ],
-  (scope) => scope.kind !== 'session-reset' ? {} : {
-    activeLensId: null,
-    lensPanelVisible: false,
-    lensColorMap: new Map<number, string>(),
-    lensHiddenIds: new Set<number>(),
-    // Ownership bookkeeping for the shared hidden/isolation channels — those
-    // channels are wiped by the same reset, so stale claims must not survive
-    // it: ownership is tested by VALUE, so a record left behind starts
-    // matching again the moment another owner installs equal content, and the
-    // next release destroys that owner's presentation (#2654 fourth review).
-    lensAppliedHiddenIds: [] as number[],
-    lensRuleIsolation: null,
-    lensRuleCounts: new Map<string, number>(),
-    lensRuleEntityIds: new Map<string, number[]>(),
+  {
+    'session-reset': () => ({
+      activeLensId: null,
+      lensPanelVisible: false,
+      lensColorMap: new Map<number, string>(),
+      lensHiddenIds: new Set<number>(),
+      // Ownership bookkeeping for the shared hidden/isolation channels — those
+      // channels are wiped by the same reset, so stale claims must not survive
+      // it: ownership is tested by VALUE, so a record left behind starts
+      // matching again the moment another owner installs equal content, and the
+      // next release destroys that owner's presentation (#2654 fourth review).
+      lensAppliedHiddenIds: [] as number[],
+      lensRuleIsolation: null,
+      lensRuleCounts: new Map<string, number>(),
+      lensRuleEntityIds: new Map<string, number[]>(),
+      // Model-derived (#3423): stale past a session reset the same way the
+      // ids above are.
+      lensAppliedColors: null,
+      lensAutoColorLegend: [] as AutoColorLegendEntry[],
+      discoveredLensData: null,
+    }),
+    'model-removed': notApplicable,
+    'all-models-cleared': notApplicable,
   },
 );

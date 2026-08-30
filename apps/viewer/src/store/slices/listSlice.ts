@@ -9,7 +9,7 @@
 import type { StateCreator } from 'zustand';
 import type { ListDefinition, ListResult } from '@ifc-lite/lists';
 import { loadListDefinitions, saveListDefinitions } from '../../lib/lists/persistence.js';
-import { defineSliceTeardown } from '../teardown.js';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
 export interface ListSlice {
   // State
@@ -95,15 +95,16 @@ export const createListSlice: StateCreator<ListSlice, [], [], ListSlice> = (set,
 export const listTeardown = defineSliceTeardown(
   'listSlice',
   ['listPanelVisible', 'activeListId', 'listResult', 'listExecuting'],
-  (scope) => {
-    if (scope.kind !== 'session-reset') return {};
-    return {
+  {
+    'session-reset': () => ({
       listPanelVisible: false,
       activeListId: null,
       // The rows reference the OUTGOING model's entities; the user re-runs
       // the definition against the new one.
       listResult: null,
       listExecuting: false,
-    };
+    }),
+    'model-removed': notApplicable,
+    'all-models-cleared': notApplicable,
   },
 );

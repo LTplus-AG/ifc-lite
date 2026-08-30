@@ -125,19 +125,31 @@ export interface AnonymizeOptions {
   /** Replace `Name`/`LongName`/`Description`/`Tag` on every exported
    *  `IfcRoot` with a `<IfcType>-<n>` pseudonym. Default `true`. */
   pseudonymizeNames?: boolean;
-  /** Also pseudonymize names OUTSIDE the `IfcRoot` text fields: `ObjectType`
-   *  and `IfcProject.Phase` on roots, and every quoted-string `Name` /
-   *  `Description` / `LongName` / `ProfileName` / `LayerSetName` on
-   *  non-`IfcRoot` entities (`IfcSurfaceStyle`, `IfcMaterial*`,
-   *  `IfcPresentationLayerAssignment`, `IfcProfileDef`, `IfcColourRgb`, …).
+  /** Also pseudonymize names OUTSIDE the `IfcRoot` text fields: `ObjectType`,
+   *  `IfcTypeObject.ApplicableOccurrence`, `IfcElementType.ElementType` and
+   *  `IfcProject.Phase` on roots, and every quoted-string `Name` /
+   *  `Description` / `LongName` / `ProfileName` / `LayerSetName` / `Category`
+   *  on non-`IfcRoot` entities — `Category` on ANY non-root class declaring it,
+   *  `IfcMaterialProfile` and `IfcMaterialConstituent` included, not only
+   *  `IfcMaterial` / `IfcMaterialLayer` —
+   *  (`IfcSurfaceStyle`, `IfcMaterial*`, `IfcPresentationLayerAssignment`,
+   *  `IfcProfileDef`, `IfcColourRgb`, …).
    *  A surface style called after the building it belongs to identifies the
-   *  project as surely as `IfcProject.Name` does. Enum-valued `Name`s
+   *  project as surely as `IfcProject.Name` does, and `ElementType` is the
+   *  type-side twin of `ObjectType`, carrying the same authored text
+   *  ("Basic Wall: <project> Exterior 300"). Enum-valued `Name`s
    *  (`IfcSIUnit.Name = .METRE.`) are never touched, nor are property /
    *  quantity names (schema semantics, only present under `keepPropertySets`)
    *  or `IfcApplication`. Default `true`; independent of `pseudonymizeNames`. */
   pseudonymizeAllNames?: boolean;
   /** Keep `IfcPropertySet`/`IfcElementQuantity` entities instead of dropping
-   *  them. Default `false` (i.e. psets are dropped by default). */
+   *  them. Default `false`: `exportAnonymizedSubset` excludes every such id
+   *  from `includedIds` before export, however it got there (a caller's own
+   *  `IfcRelDefinesByProperties` walk, or a hand-built id set) — the entity
+   *  never reaches the output, values included, at any `includedIds` (#3351
+   *  item 2). Property/quantity VALUES are unscrubbed by design, so setting
+   *  this `true` keeps them exactly as authored; there is no partial,
+   *  "kept but scrubbed" state. */
   keepPropertySets?: boolean;
   /** Regenerate every exported `IfcRoot`'s `GlobalId` (the old→new mapping
    *  comes back as `AnonymizeResult.guidMap`, never written into the file
@@ -202,6 +214,13 @@ export interface AnonymizeResult {
      *  reported so a caller can see WHICH associations the anonymization
      *  cost, not just that some file that changed. */
     prunedRelationshipIds: number[];
+    /** ExpressIds of `IfcPropertySet`/`IfcElementQuantity` entities excluded
+     *  from `includedIds` because `keepPropertySets` was falsy (the
+     *  default) — reported distinctly, the same way `prunedRelationshipIds`
+     *  is, so a caller can tell "this id is missing because it is a
+     *  property set" from any other exclusion reason without grepping
+     *  `warnings` text. Empty when `keepPropertySets` was `true`. */
+    droppedPropertySetIds: number[];
     /** Each root `IfcLocalPlacement` this export zeroed, and the translation
      *  it zeroed (the ORIGINAL, pre-zero coordinates) — reported because the
      *  translation was real coordinate data the caller may still want to log

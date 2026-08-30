@@ -612,3 +612,7 @@ pub(super) fn rotate_min_first(t: [Vid; 3]) -> [Vid; 3] {
 #[cfg(test)]
 #[path = "classify_tests.rs"]
 mod classify_tests;
+
+#[cfg(test)]
+#[path = "issue_3353_vid_census_tests.rs"]
+mod issue_3353_vid_census_tests;

@@ -14,6 +14,7 @@ import { PropertyValueType } from '@ifc-lite/data';
 import type { MutablePropertyView } from './mutable-property-view.js';
 import type { Mutation, PropertyValue } from './types.js';
 import { checkMutationGuard, type MutationGuard } from './mutation-guard.js';
+import { PARSE_INVALID, parseValue } from './csv-parse-value.js';
 
 /**
  * A parsed CSV row
@@ -250,9 +251,14 @@ export class CsvConnector {
   }
 
   /**
-   * Generate mutations from matched data
+   * Generate mutations from matched data.
+   *
+   * `warnings`, when passed, collects one message per skipped cell — a
+   * malformed Real/Integer value (see {@link parseValue}) that would
+   * otherwise have silently written `0`. Optional and additive: existing
+   * callers that only want the mutation list are unaffected.
    */
-  generateMutations(matches: MatchResult[], mapping: DataMapping): Mutation[] {
+  generateMutations(matches: MatchResult[], mapping: DataMapping, warnings?: string[]): Mutation[] {
     checkMutationGuard(this.canEdit);
     const mutations: Mutation[] = [];
 
@@ -266,7 +272,16 @@ export class CsvConnector {
 
           const value = propMapping.transform
             ? propMapping.transform(rawValue)
-            : this.parseValue(rawValue, propMapping.valueType);
+            : parseValue(rawValue, propMapping.valueType);
+
+          if (value === PARSE_INVALID) {
+            warnings?.push(
+              `Row ${match.rowIndex}: could not parse "${rawValue}" in column ` +
+                `"${propMapping.sourceColumn}" as ${PropertyValueType[propMapping.valueType]} ` +
+                `for ${propMapping.targetPset}.${propMapping.targetProperty} — skipped`
+            );
+            continue;
+          }
 
           const mutation = this.mutationView.setProperty(
             entityId,
@@ -323,7 +338,7 @@ export class CsvConnector {
       }
 
       // Generate and apply mutations
-      const mutations = this.generateMutations(matches, mapping);
+      const mutations = this.generateMutations(matches, mapping, stats.warnings);
       stats.mutationsCreated = mutations.length;
     } catch (error) {
       stats.errors.push(error instanceof Error ? error.message : 'Unknown error');
@@ -398,7 +413,7 @@ export class CsvConnector {
       let mutationCount = 0;
       for (let i = 0; i < allMatches.length; i += batchSize) {
         const batch = allMatches.slice(i, i + batchSize);
-        const mutations = this.generateMutations(batch, mapping);
+        const mutations = this.generateMutations(batch, mapping, stats.warnings);
         mutationCount += mutations.length;
 
         const applyProgress = Math.min(i + batchSize, allMatches.length) / allMatches.length;
@@ -472,36 +487,6 @@ export class CsvConnector {
     return values;
   }
 
-  /**
-   * Parse a string value to the appropriate type
-   */
-  private parseValue(value: string, type: PropertyValueType): PropertyValue {
-    switch (type) {
-      case PropertyValueType.Real:
-        return parseFloat(value) || 0;
-
-      case PropertyValueType.Integer:
-        return parseInt(value, 10) || 0;
-
-      case PropertyValueType.Boolean:
-      case PropertyValueType.Logical:
-        const lower = value.toLowerCase();
-        return lower === 'true' || lower === 'yes' || lower === '1';
-
-      case PropertyValueType.List:
-        try {
-          return JSON.parse(value);
-        } catch {
-          // Legitimately silent: two accepted CSV encodings for a list value,
-          // JSON first then semicolon-separated. A non-JSON cell is the normal
-          // second form, not a failure.
-          return value.split(';').map((s) => s.trim());
-        }
-
-      default:
-        return value;
-    }
-  }
 
   /**
    * Auto-detect column mappings based on column names

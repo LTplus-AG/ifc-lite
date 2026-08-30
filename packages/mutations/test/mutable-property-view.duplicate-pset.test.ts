@@ -345,3 +345,57 @@ describe('MutablePropertyView.deleteProperty — two same-named base psets both 
     expect(g2.properties.find((p) => p.name === 'FireRating')?.value).toBe('RF60');
   });
 });
+
+// Twin of the property block above: two same-named base qsets that BOTH
+// already carry a quantity of the same name. `setQuantity` keys its
+// mutation purely as `${entityId}:${qsetName}:${quantName}` -- same
+// no-instance-identity key as properties -- so `getQuantitiesForEntity`'s
+// per-qset loop used to re-apply a single SET to every same-named qset
+// instance whose quantities contained a matching name. There is no
+// single-quantity `deleteQuantity` method (only whole-set
+// `deleteQuantitySet`, which intentionally covers every same-named
+// instance -- see the "marks quantities on EVERY same-named qset deleted"
+// case above), so DELETE has no twin to pin here.
+describe('MutablePropertyView.setQuantity — two same-named base qsets both carrying the edited quantity', () => {
+  const twoQsets = (entityId: number) =>
+    entityId === 1
+      ? [
+          {
+            name: 'Qto_WallBaseQuantities',
+            quantities: [
+              { name: 'Length', type: QuantityType.Length, value: 3 },
+              { name: 'Width', type: QuantityType.Length, value: 1 },
+            ],
+          },
+          {
+            name: 'Qto_WallBaseQuantities',
+            quantities: [
+              { name: 'Height', type: QuantityType.Length, value: 5 },
+              { name: 'Width', type: QuantityType.Length, value: 2 },
+            ],
+          },
+        ]
+      : [];
+
+  it('mutates Width on only the FIRST same-named qset, not both', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setQuantityExtractor(twoQsets);
+
+    view.setQuantity(1, 'Qto_WallBaseQuantities', 'Width', 99, QuantityType.Length);
+
+    const result = view.getQuantitiesForEntity(1);
+    expect(result[0].quantities.find((q) => q.name === 'Width')?.value).toBe(99);
+    expect(result[1].quantities.find((q) => q.name === 'Width')?.value).toBe(2);
+  });
+
+  it('control: a quantity present on only ONE of the two sets mutates only that set', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setQuantityExtractor(twoQsets);
+
+    view.setQuantity(1, 'Qto_WallBaseQuantities', 'Height', 77, QuantityType.Length);
+
+    const result = view.getQuantitiesForEntity(1);
+    expect(result[0].quantities.find((q) => q.name === 'Height')).toBeUndefined();
+    expect(result[1].quantities.find((q) => q.name === 'Height')?.value).toBe(77);
+  });
+});

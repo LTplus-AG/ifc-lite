@@ -12,6 +12,25 @@ import type { MaterialData } from '@ifc-lite/sdk';
 import { materialFallbackName } from '../material-naming.js';
 
 /**
+ * Member list for one multi-material array, or undefined when the array is
+ * absent, empty, or names nothing.
+ *
+ * The last case matters: `IfcMaterialProfile.Material` and
+ * `IfcMaterialConstituent.Material` can be absent or fail to resolve, in
+ * which case `material-resolver.ts` leaves both `materialName` and `name`
+ * undefined on every member. A line of placeholders ("?, ?") names nothing,
+ * so it is worth less than the set-level `Name` the caller falls back to —
+ * report nothing here and let that fallback run.
+ */
+function memberLine(
+  members: ReadonlyArray<{ materialName?: string; name?: string }> | undefined,
+): string | undefined {
+  if (!Array.isArray(members) || members.length === 0) return undefined;
+  if (!members.some((m) => m.materialName ?? m.name)) return undefined;
+  return `  Materials: ${members.map((m) => m.materialName ?? m.name ?? '?').join(', ')}`;
+}
+
+/**
  * Format a `MaterialData` value as a single summary line, or undefined
  * when there is nothing to show. Every multi-material shape
  * `extractMaterialsOnDemand` can produce is listed by its member names
@@ -20,21 +39,19 @@ import { materialFallbackName } from '../material-naming.js';
  * `IfcMaterialConstituentSet` with no set-level `Name` used to fall
  * through to that single-name check alone, which found nothing and
  * dropped the whole line instead of naming the assigned material.
+ *
+ * The single-name fallback still runs when the member arrays name nothing,
+ * so a NAMED set whose members are all unnamed keeps printing its own
+ * `Name` rather than a row of `?` placeholders.
  */
 export function formatMaterialsBlock(mat: MaterialData | null | undefined): string | undefined {
   if (!mat) return undefined;
-  if (Array.isArray(mat.layers) && mat.layers.length > 0) {
-    return `  Materials: ${mat.layers.map((l) => l.materialName ?? l.name ?? '?').join(', ')}`;
-  }
-  if (Array.isArray(mat.profiles) && mat.profiles.length > 0) {
-    return `  Materials: ${mat.profiles.map((p) => p.materialName ?? p.name ?? '?').join(', ')}`;
-  }
-  if (Array.isArray(mat.constituents) && mat.constituents.length > 0) {
-    return `  Materials: ${mat.constituents.map((c) => c.materialName ?? c.name ?? '?').join(', ')}`;
-  }
-  if (Array.isArray(mat.materials) && mat.materials.length > 0) {
-    return `  Materials: ${mat.materials.map((m) => m.name ?? '?').join(', ')}`;
-  }
+  const line =
+    memberLine(mat.layers) ??
+    memberLine(mat.profiles) ??
+    memberLine(mat.constituents) ??
+    memberLine(mat.materials);
+  if (line) return line;
   const name = materialFallbackName(mat);
   return name ? `  Material: ${name}` : undefined;
 }

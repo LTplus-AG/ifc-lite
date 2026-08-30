@@ -32,6 +32,44 @@ describe('formatMaterialsBlock', () => {
     expect(formatMaterialsBlock(mat)).toBe('  Materials: Insulation, Gypsum');
   });
 
+  // Opposite direction: reordering the chain so the member arrays are
+  // consulted before the set-level name must not lose a set-level name that
+  // used to print. `IfcMaterialProfile.Material` is OPTIONAL in IFC4 (and a
+  // constituent's can fail to resolve), so a NAMED set whose members name
+  // nothing is ordinary valid IFC — "Materials: ?" names nothing, the set
+  // name does.
+  it('prefers the set-level name when no profile member is named', () => {
+    const mat = { type: 'MaterialProfileSet', name: 'Steel Columns', profiles: [{}] } as MaterialData;
+    expect(formatMaterialsBlock(mat)).toBe('  Material: Steel Columns');
+  });
+
+  it('prefers the set-level name when no constituent member is named', () => {
+    const mat = {
+      type: 'MaterialConstituentSet',
+      name: 'Facade Buildup',
+      constituents: [{}, {}],
+    } as MaterialData;
+    expect(formatMaterialsBlock(mat)).toBe('  Material: Facade Buildup');
+  });
+
+  it('prefers the set-level name when no layer member is named', () => {
+    const mat = { type: 'MaterialLayerSet', name: 'Wall Buildup', layers: [{}] } as MaterialData;
+    expect(formatMaterialsBlock(mat)).toBe('  Material: Wall Buildup');
+  });
+
+  it('still lists members, placeholders and all, when at least one is named', () => {
+    const mat = {
+      type: 'MaterialLayerSet',
+      name: 'Wall Buildup',
+      layers: [{ materialName: 'Brick' }, {}],
+    } as MaterialData;
+    expect(formatMaterialsBlock(mat)).toBe('  Materials: Brick, ?');
+  });
+
+  it('returns undefined for an unnamed set whose members are unnamed too', () => {
+    expect(formatMaterialsBlock({ type: 'MaterialProfileSet', profiles: [{}] } as MaterialData)).toBeUndefined();
+  });
+
   it('returns undefined when there is nothing to show', () => {
     expect(formatMaterialsBlock(undefined)).toBeUndefined();
     expect(formatMaterialsBlock({} as MaterialData)).toBeUndefined();

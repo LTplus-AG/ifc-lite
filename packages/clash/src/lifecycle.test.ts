@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { compareClashRuns } from './lifecycle.js';
+import { clashReviewKey } from './review.js';
 import { runClash } from './engine-ts/orchestrator.js';
 import { fromPositions } from './math/aabb.js';
 import type { ClashKernel, NarrowRecord, RuleDetection } from './engine-ts/kernel.js';
@@ -166,19 +167,28 @@ describe('compareClashRuns × the real engine (engine-ts/orchestrator.ts)', () =
       indices: new Uint32Array([0, 1, 2]),
     };
   }
-  const rec: NarrowRecord = {
-    a: 0,
-    b: 1,
-    status: 'hard',
-    distance: -0.1,
-    distanceKind: 'mesh',
-    point: [0, 0, 0] as Vec3,
-    bounds: fromPositions(new Float32Array([0, 0, 0, 1, 1, 1])),
-  };
-  class OneShotKernel implements ClashKernel {
+  function record(a: number, b: number): NarrowRecord {
+    return {
+      a,
+      b,
+      status: 'hard',
+      distance: -0.1,
+      distanceKind: 'mesh',
+      point: [0, 0, 0] as Vec3,
+      bounds: fromPositions(new Float32Array([0, 0, 0, 1, 1, 1])),
+    };
+  }
+  /** Feeds the orchestrator a fixed narrow-phase result, so the test controls
+   *  exactly which element pairs become clashes. */
+  class FixedKernel implements ClashKernel {
+    constructor(private readonly records: NarrowRecord[]) {}
     prepare(): void {}
     detectRule(): RuleDetection {
-      return { records: [rec], candidatesProcessed: 1, candidatesDropped: 0 };
+      return {
+        records: this.records,
+        candidatesProcessed: this.records.length,
+        candidatesDropped: 0,
+      };
     }
   }
   const rule: ClashRule = { id: 'r', name: 'r', a: 'IfcWall', b: 'IfcDuct', mode: 'hard' };
@@ -192,13 +202,13 @@ describe('compareClashRuns × the real engine (engine-ts/orchestrator.ts)', () =
       [element('wall-1', 'IfcWall', 'load-1'), element('duct-1', 'IfcDuct', 'load-1')],
       [rule],
       {},
-      new OneShotKernel(),
+      new FixedKernel([record(0, 1)]),
     );
     const next = await runClash(
       [element('wall-1', 'IfcWall', 'load-2'), element('duct-1', 'IfcDuct', 'load-2')],
       [rule],
       {},
-      new OneShotKernel(),
+      new FixedKernel([record(0, 1)]),
     );
 
     expect(previous.clashes).toHaveLength(1);
@@ -209,5 +219,70 @@ describe('compareClashRuns × the real engine (engine-ts/orchestrator.ts)', () =
     expect(diff.persistent).toHaveLength(1);
     expect(diff.resolved).toHaveLength(0);
     expect(diff.added).toHaveLength(0);
+  });
+
+  /**
+   * The other half of the same seam. `clashReviewKey` drops `ClashElement.
+   * model` — that is what makes it durable — but the engine treats
+   * `(model, key)` as element identity (`orchestrator.ts` skips a pair only
+   * when key AND model match), and `adapters/ifcx.ts` sets `key` to the bare
+   * USD prim path while a federated run gathers every loaded model. So one
+   * run legitimately holds two DISTINCT clashes under one review key: the
+   * wall against `/Duct` in layer-a, and the wall against `/Duct` in layer-b.
+   * `model` is held STABLE across both runs here, so nothing about the
+   * cross-load fix is in play — only whether multiplicity survives.
+   *
+   * Every assertion below is on the clash IDS, not just `diff.summary`: with
+   * counts alone, a diff that puts the right number of entries in the wrong
+   * buckets passes.
+   */
+  const wallA = () => element('/Wall', 'IfcWall', 'layer-a');
+  const ductA = () => element('/Duct', 'IfcDuct', 'layer-a');
+  const ductB = () => element('/Duct', 'IfcDuct', 'layer-b');
+  const CLASH_A = 'r layer-a /Duct layer-a /Wall';
+  const CLASH_B = 'r layer-a /Wall layer-b /Duct';
+
+  it('one federated run holds two distinct clashes under a single review key', async () => {
+    const run = await runClash(
+      [wallA(), ductA(), ductB()],
+      [rule],
+      {},
+      new FixedKernel([record(0, 1), record(0, 2)]),
+    );
+
+    expect(ids(run.clashes).sort()).toEqual([CLASH_A, CLASH_B]);
+    expect(new Set(run.clashes.map(clashReviewKey)).size).toBe(1);
+  });
+
+  it('a second clash under an already-present review key is added, not swallowed', async () => {
+    const previous = await runClash([wallA(), ductA()], [rule], {}, new FixedKernel([record(0, 1)]));
+    const next = await runClash(
+      [wallA(), ductA(), ductB()],
+      [rule],
+      {},
+      new FixedKernel([record(0, 1), record(0, 2)]),
+    );
+
+    const diff = compareClashRuns(previous, next);
+
+    expect(ids(diff.added)).toEqual([CLASH_B]);
+    expect(ids(diff.persistent)).toEqual([CLASH_A]);
+    expect(ids(diff.resolved)).toEqual([]);
+  });
+
+  it('one of two clashes under a shared review key going away is resolved, not lost', async () => {
+    const previous = await runClash(
+      [wallA(), ductA(), ductB()],
+      [rule],
+      {},
+      new FixedKernel([record(0, 1), record(0, 2)]),
+    );
+    const next = await runClash([wallA(), ductB()], [rule], {}, new FixedKernel([record(0, 1)]));
+
+    const diff = compareClashRuns(previous, next);
+
+    expect(ids(diff.added)).toEqual([]);
+    expect(ids(diff.persistent)).toEqual([CLASH_B]);
+    expect(ids(diff.resolved)).toEqual([CLASH_A]);
   });
 });

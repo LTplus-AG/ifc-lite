@@ -16,6 +16,19 @@
  * `clash.id`s for the same real-world clash. Matching on the review key keeps
  * the diff stable across loads: a clash that survives a revision is reported
  * as `persistent` rather than as a resolve-plus-add churn.
+ *
+ * The review key is NOT unique within a run, and the matching below is built
+ * around that. Dropping `model` is what makes the key durable, but the engine
+ * treats `(model, key)` as element identity — `orchestrator.ts` skips a pair
+ * only when `elA.key === elB.key && elA.model === elB.model` — and
+ * `adapters/ifcx.ts` keys on the bare USD prim path while `adapters/step.ts`
+ * keys on the bare IfcGUID (only its `syntheticKey` fallback folds in the
+ * model id). A federated run gathers every loaded model, so one run can
+ * legitimately hold several DISTINCT clashes under one review key: `/Duct` in
+ * layer-a and `/Duct` in layer-b each hitting the same wall. Matching by key
+ * membership alone would collapse those, silently swallowing a resolved clash
+ * and reporting a genuinely new one as pre-existing, so occurrences are
+ * grouped per key and paired (see `pairGroup`) instead.
  */
 
 import { clashReviewKey } from './review.js';
@@ -27,6 +40,9 @@ import type { Clash, ClashResult } from './types.js';
  * - `added`      clashes present in `next` but not in `previous` (new issues)
  * - `persistent` clashes present in both runs (still open; the `next` Clash)
  * - `resolved`   clashes present in `previous` but not in `next` (fixed/removed)
+ *
+ * "Present in" counts occurrences, not just review keys: two clashes sharing a
+ * review key in one run need a counterpart each to both be `persistent`.
  *
  * Each array is sorted by `clash.id` for deterministic, diff-friendly output.
  */
@@ -44,22 +60,75 @@ function byId(a: Clash, b: Clash): number {
   return 0;
 }
 
+/** The three output buckets, filled in as groups are paired up. */
+interface Buckets {
+  added: Clash[];
+  persistent: Clash[];
+  resolved: Clash[];
+}
+
 /**
- * Index a run's clashes by their durable review key (`clashReviewKey`, not
- * `clash.id` — see the module docstring) for O(1) membership checks. The
- * engine dedups clash ids within a run, and the review key is a function of
- * the same rule + durable element keys, so it is unique here too. If a caller
- * passed a hand-built run with a repeated key, the map keeps the last
- * occurrence for membership tests, while the added/persistent/resolved
- * buckets below iterate the raw clash arrays — so a duplicate key would
- * appear once per occurrence in its bucket and in the counts.
+ * Group a run's clashes by their durable review key (`clashReviewKey`, not
+ * `clash.id` — see the module docstring), keeping EVERY occurrence rather than
+ * the last one. The key is deliberately not unique within a run (module
+ * docstring), so the group length is the multiplicity that `pairGroup` needs
+ * in order to tell "the same clash, seen again" from "a second, different
+ * clash that happens to share a review key".
  */
-function indexByReviewKey(run: ClashResult): Map<string, Clash> {
-  const byKey = new Map<string, Clash>();
+function groupByReviewKey(run: ClashResult): Map<string, Clash[]> {
+  const groups = new Map<string, Clash[]>();
   for (const clash of run.clashes) {
-    byKey.set(clashReviewKey(clash), clash);
+    const key = clashReviewKey(clash);
+    const group = groups.get(key);
+    if (group) group.push(clash);
+    else groups.set(key, [clash]);
   }
-  return byKey;
+  return groups;
+}
+
+/**
+ * Pair one review key's previous-run occurrences against its next-run ones.
+ *
+ * Equal `clash.id`s are paired first. When `model` is stable across the two
+ * runs (a federated session that did not reload), that pairs each surviving
+ * clash with ITSELF, so the entry that falls out into `added` / `resolved` is
+ * the one that actually changed rather than an arbitrary group member.
+ *
+ * Whatever is left is paired in run order. That is the cross-load case the
+ * review key exists for: `model` was re-minted, so no id matches, and the same
+ * real-world clash still lands in `persistent`. With unequal counts and no id
+ * to go on there is nothing in the data that says which leftover is which, so
+ * the pairing is arbitrary — but the surplus, which is the part a reviewer
+ * acts on, is still reported: extra next-run occurrences are `added`, extra
+ * previous-run ones are `resolved`.
+ *
+ * `persistent` always receives the NEXT run's Clash (current geometry).
+ */
+function pairGroup(previous: Clash[], next: Clash[], out: Buckets): void {
+  const prevIndicesById = new Map<string, number[]>();
+  previous.forEach((clash, i) => {
+    const slot = prevIndicesById.get(clash.id);
+    if (slot) slot.push(i);
+    else prevIndicesById.set(clash.id, [i]);
+  });
+
+  const matchedPrev = new Array<boolean>(previous.length).fill(false);
+  const unmatchedNext: Clash[] = [];
+  for (const clash of next) {
+    const index = prevIndicesById.get(clash.id)?.shift();
+    if (index === undefined) {
+      unmatchedNext.push(clash);
+    } else {
+      matchedPrev[index] = true;
+      out.persistent.push(clash);
+    }
+  }
+
+  const unmatchedPrev = previous.filter((_, i) => !matchedPrev[i]);
+  const paired = Math.min(unmatchedPrev.length, unmatchedNext.length);
+  out.persistent.push(...unmatchedNext.slice(0, paired));
+  out.added.push(...unmatchedNext.slice(paired));
+  out.resolved.push(...unmatchedPrev.slice(paired));
 }
 
 /**
@@ -71,29 +140,19 @@ function indexByReviewKey(run: ClashResult): Map<string, Clash> {
  * caller can render the up-to-date state. Each array is sorted by id.
  */
 export function compareClashRuns(previous: ClashResult, next: ClashResult): ClashRevisionDiff {
-  const prevByKey = indexByReviewKey(previous);
-  const nextByKey = indexByReviewKey(next);
+  const prevGroups = groupByReviewKey(previous);
+  const nextGroups = groupByReviewKey(next);
 
-  const added: Clash[] = [];
-  const persistent: Clash[] = [];
-  const resolved: Clash[] = [];
+  const buckets: Buckets = { added: [], persistent: [], resolved: [] };
 
-  for (const clash of next.clashes) {
-    if (prevByKey.has(clashReviewKey(clash))) {
-      // Present in both runs: still open. Report the next run's Clash so the
-      // caller sees current geometry, not the stale previous-revision copy.
-      persistent.push(clash);
-    } else {
-      added.push(clash);
-    }
+  for (const [key, nextGroup] of nextGroups) {
+    pairGroup(prevGroups.get(key) ?? [], nextGroup, buckets);
+  }
+  for (const [key, prevGroup] of prevGroups) {
+    if (!nextGroups.has(key)) buckets.resolved.push(...prevGroup);
   }
 
-  for (const clash of previous.clashes) {
-    if (!nextByKey.has(clashReviewKey(clash))) {
-      resolved.push(clash);
-    }
-  }
-
+  const { added, persistent, resolved } = buckets;
   added.sort(byId);
   persistent.sort(byId);
   resolved.sort(byId);

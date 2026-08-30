@@ -213,30 +213,6 @@ function evaluateCriterion(criterion: OverrideCriterion, element: ElementData): 
       return exists;
     }
 
-    case 'material': {
-      if (!criterion.materialNames || !element.materials) {
-        return false;
-      }
-
-      return criterion.materialNames.some((pattern) =>
-        element.materials!.some((m) =>
-          m.toLowerCase().includes(pattern.toLowerCase())
-        )
-      );
-    }
-
-    case 'layer': {
-      if (!criterion.layerNames || !element.layers) {
-        return false;
-      }
-
-      return criterion.layerNames.some((pattern) =>
-        element.layers!.some((l) =>
-          l.toLowerCase().includes(pattern.toLowerCase())
-        )
-      );
-    }
-
     case 'expressId': {
       if (!criterion.expressIds) return false;
       return criterion.expressIds.includes(element.expressId);

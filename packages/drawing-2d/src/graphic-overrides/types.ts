@@ -46,12 +46,19 @@ export type CriteriaOperator =
   | 'in'
   | 'notIn';
 
+// `material` and `layer` criteria used to exist here, but no production
+// construction site of `ElementData` ever populated `.materials`/`.layers`
+// (only `expressId`/`ifcType` are ever set — see the construction sites in
+// apps/viewer/src/components/viewer/Drawing2DCanvas.tsx and
+// apps/viewer/src/hooks/useDrawingExport.ts), so those criteria could never
+// match anything. Removed rather than wired up: the material/layer names
+// aren't in reach at those call sites without threading a new per-entity
+// data source (a model reference or precomputed name map) through several
+// UI layers — a larger refactor than this fix, and out of scope here.
 export type CriteriaType =
   | 'ifcType'
   | 'property'
   | 'propertySet'
-  | 'material'
-  | 'layer'
   | 'expressId'
   | 'modelId'
   | 'all';
@@ -78,14 +85,6 @@ export interface OverrideCriterion {
   operator?: CriteriaOperator;
   /** Value to compare against */
   value?: string | number | boolean | string[] | number[];
-
-  // ─── Material matching ─────────────────────────────────────────────────────
-  /** Material name patterns (for type='material') */
-  materialNames?: string[];
-
-  // ─── Layer matching ────────────────────────────────────────────────────────
-  /** Layer/presentation layer names (for type='layer') */
-  layerNames?: string[];
 
   // ─── ID matching ───────────────────────────────────────────────────────────
   /** Express IDs to match (for type='expressId') */
@@ -223,10 +222,6 @@ export interface ElementData {
   ifcType: string;
   /** Properties organized by property set */
   properties?: Record<string, Record<string, unknown>>;
-  /** Material names */
-  materials?: string[];
-  /** Layer/presentation layer assignments */
-  layers?: string[];
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

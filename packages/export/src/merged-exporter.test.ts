@@ -1298,4 +1298,43 @@ describe('MergedExporter', () => {
       expect(findDanglingRefs(content)).toEqual([]);
     });
   });
+
+  // Cross-schema merge legality: merging an IFC4 model into an IFC2X3-targeted
+  // export must not silently paste IFC4-only entity types under an IFC2X3
+  // header. Before the `schema-untranslatable.ts` fix, `IfcTriangulatedFaceSet`
+  // (a tessellated-geometry representation item IFC2X3 never defined) survived
+  // `renderEntity`'s per-entity schema conversion unchanged — the merged file
+  // declared `FILE_SCHEMA(('IFC2X3'))` while its body contained a type from a
+  // schema that never had one.
+  describe('cross-schema merge legality', () => {
+    it('refuses rather than silently emitting an IFC4-only representation item under an IFC2X3 header', () => {
+      const wall = guid('crosswall');
+      const ifc4Model = buildModel('m1', 'A', [
+        [1, 'IFCWALL', `#1=IFCWALL('${wall}',$,'Wall',$,$,$,#2,$,$);`],
+        [2, 'IFCPRODUCTDEFINITIONSHAPE', '#2=IFCPRODUCTDEFINITIONSHAPE($,$,(#3));'],
+        [3, 'IFCSHAPEREPRESENTATION', "#3=IFCSHAPEREPRESENTATION($,'Body','Tessellation',(#4));"],
+        [4, 'IFCTRIANGULATEDFACESET', '#4=IFCTRIANGULATEDFACESET(#5,$,.F.,((1,2,3)),$);'],
+        [5, 'IFCCARTESIANPOINTLIST3D', '#5=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(0.,1.,0.)));'],
+      ]);
+
+      expect(() => new MergedExporter([ifc4Model]).export({ schema: 'IFC2X3' }))
+        .toThrow(/IFCTRIANGULATEDFACESET/);
+    });
+
+    it('control: the same model exports cleanly when the target schema stays IFC4', () => {
+      const wall = guid('crosswall2');
+      const ifc4Model = buildModel('m1', 'A', [
+        [1, 'IFCWALL', `#1=IFCWALL('${wall}',$,'Wall',$,$,$,#2,$,$);`],
+        [2, 'IFCPRODUCTDEFINITIONSHAPE', '#2=IFCPRODUCTDEFINITIONSHAPE($,$,(#3));'],
+        [3, 'IFCSHAPEREPRESENTATION', "#3=IFCSHAPEREPRESENTATION($,'Body','Tessellation',(#4));"],
+        [4, 'IFCTRIANGULATEDFACESET', '#4=IFCTRIANGULATEDFACESET(#5,$,.F.,((1,2,3)),$);'],
+        [5, 'IFCCARTESIANPOINTLIST3D', '#5=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(0.,1.,0.)));'],
+      ]);
+
+      const content = decode(new MergedExporter([ifc4Model]).export({ schema: 'IFC4' }).content);
+      expect(content).toContain('IFCTRIANGULATEDFACESET');
+      expect(content).toContain("FILE_SCHEMA(('IFC4'))");
+      expect(findDanglingRefs(content)).toEqual([]);
+    });
+  });
 });

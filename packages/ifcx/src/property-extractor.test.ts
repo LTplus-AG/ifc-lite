@@ -189,8 +189,9 @@ describe('extractProperties — typed records and internal carriers (#1031)', ()
 
   it('does not silently drop bsi::ifc::material (#PCERT real-world fixtures carry it)', () => {
     // Real buildingSMART sample scenes (tests/models/ifc5/PCERT-Sample-Scene_*)
-    // author `bsi::ifc::material` as `{ code, uri }` on every element — the
-    // only place IFCX carries which material an element is made of.
+    // author `bsi::ifc::material` as `{ code, uri }` on most physical
+    // elements — the only place IFCX carries which material an element is
+    // made of.
     // `SKIP_ATTRIBUTES` treats it as a non-property attribute (like the
     // graph-structural `bsi::ifc::class`/mesh/transform keys) with nothing
     // else in the package ever reading it, so it vanished entirely: no

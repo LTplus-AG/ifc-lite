@@ -19,7 +19,7 @@ import type { PropertyTable } from '@ifc-lite/data';
 // Attributes to skip (not properties). `ATTR.MATERIAL` is deliberately NOT
 // here: `bsi::ifc::material` ({code, uri}) is the only channel IFCX carries
 // an element's material on (buildingSMART's PCERT sample scenes author it on
-// nearly every element), and it gets unpacked into its own "Material" pset
+// most physical elements), and it gets unpacked into its own "Material" pset
 // below rather than treated as graph structure like CLASS/MESH/TRANSFORM.
 const SKIP_ATTRIBUTES: Set<string> = new Set([
   ATTR.CLASS,

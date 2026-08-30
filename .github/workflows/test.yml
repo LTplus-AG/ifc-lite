@@ -59,6 +59,7 @@ jobs:
       geometry: ${{ steps.filter.outputs.geometry }}
       plato: ${{ steps.filter.outputs.plato }}
       docs: ${{ steps.filter.outputs.docs }}
+      agents_md: ${{ steps.filter.outputs.agents_md }}
       # `true` when the WASM source is byte-identical to the published release
       # tag, so `build` can fetch the prebuilt bundle and run on a FREE runner
       # instead of compiling wasm32 on a paid Depot runner. See the `build`
@@ -85,20 +86,35 @@ jobs:
               - 'scripts/build-wasm.sh'
               - 'tests/models/manifest.json'
               - '.github/workflows/test.yml'
+            # AGENTS.md is the instruction file every agent reads, and
+            # scripts/check-agents-md-size.mjs gates its size and line length.
+            # It gets its OWN output rather than joining `frontend`: the gate is
+            # two `node` steps needing no build artifact and no install, and
+            # `frontend` fans out to nine jobs including four viewer shards and
+            # the e2e lane. Without a filter of its own, a PR editing only the
+            # root AGENTS.md would either run the whole frontend lane or match
+            # nothing at all -- and matching nothing is the #3314 class where a
+            # gate cannot fire on its own input.
+            agents_md:
+              - 'AGENTS.md'
+              - '**/AGENTS.md'
+              - 'scripts/agents-md-budget.txt'
+              - 'scripts/check-agents-md-size.mjs'
+              - 'scripts/check-agents-md-size.test.mjs'
+              - 'scripts/lib/module-size-ratchet.mjs'
+              # The gate composes its budget path from a bare 'scripts' literal,
+              # so check-ci-path-coverage derives every file under scripts/ as an
+              # input. Rather than exempt 165 prefix fragments by hand, name the
+              # tree: over-triggering is the safe direction for a reachability
+              # check (that allowlist's own header says so), and the cost is one
+              # 5-minute free-runner job with no install and no build artifact.
+              - 'scripts/**'
             frontend:
               # A changeset naming a package that does not exist fails the
               # RELEASE workflow, which only runs on main - so the Lint job has
               # to see changeset-only PRs, or the check it runs cannot fire on
               # the PR that introduces the mistake.
               - '.changeset/**'
-              # AGENTS.md is the instruction file every agent reads, and
-              # scripts/check-agents-md-size.mjs gates its size and line length.
-              # Without these two lines a PR editing ONLY the root AGENTS.md
-              # matches no filter at all, so no job runs and the gate cannot fire
-              # on its own input -- the #3314 class this filter block warns about.
-              - 'AGENTS.md'
-              - '**/AGENTS.md'
-              - 'scripts/agents-md-budget.txt'
               # scripts/check-changeset-bump.mjs reads the API-surface snapshot as
               # its baseline, so the snapshot must be able to trigger the job.
               - 'scripts/api-surface.json'
@@ -890,15 +906,6 @@ jobs:
       - name: Check CSV escaper gate regressions
         run: node --test scripts/check-csv-escaper-copies.test.mjs
 
-      # AGENTS.md grew 10,123 -> 48,066 bytes in 55 days across 26 commits,
-      # strictly monotonically -- not one shrink. An instruction file nobody
-      # finishes does not instruct. Budgets ratchet DOWN only, and the second
-      # tooth caps line length: the authoritative CI-gate list used to sit
-      # inside a single 4,893-character line where a skimming reader missed it.
-      - name: Check AGENTS.md size and line length
-        run: node scripts/check-agents-md-size.mjs
-      - name: Check AGENTS.md ratchet regressions
-        run: node --test scripts/check-agents-md-size.test.mjs
 
       # Same precedent, for the STEP (ISO 10303-21) string-literal escaper
       # (#3300, second half): the TypeScript and Rust implementations cannot
@@ -1563,9 +1570,37 @@ jobs:
       - name: Check crate semver against crates.io
         run: node scripts/check-rust-semver.mjs
 
+  # AGENTS.md grew 10,123 -> 48,066 bytes in 55 days across 26 commits, strictly
+  # monotonically -- not one shrink. An instruction file nobody finishes does not
+  # instruct. Budgets ratchet DOWN only, and the second tooth caps line length:
+  # the authoritative CI-gate list used to sit inside a single 4,893-character
+  # line where a skimming reader missed the whole enforcement map.
+  #
+  # Its own job, not a step in node-tests: the gate reads tracked files via
+  # `git ls-files` and imports node builtins plus one repo lib, so it needs no
+  # build artifact, no pnpm install, and no Depot runner.
+  agents-md:
+    name: AGENTS.md ratchet
+    needs: changes
+    if: needs.changes.outputs.agents_md == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Check AGENTS.md size and line length
+        run: node scripts/check-agents-md-size.mjs
+      - name: Check AGENTS.md ratchet regressions
+        run: node --test scripts/check-agents-md-size.test.mjs
+
   test:
     name: Build + WASM + Rust + Node
-    needs: [changes, build, typecheck, lint, node-tests, viewer-tests, viewer-e2e, rust-tests, rust-semver, geometry-census, plato-check, docs-checks]
+    needs: [changes, build, typecheck, lint, node-tests, viewer-tests, viewer-e2e, rust-tests, rust-semver, geometry-census, plato-check, docs-checks, agents-md]
     if: always()
     # Free runner — the gate just inspects upstream job results.
     runs-on: ubuntu-latest
@@ -1584,6 +1619,7 @@ jobs:
             [geometry-census]="${{ needs.geometry-census.result }}"
             [plato-check]="${{ needs.plato-check.result }}"
             [docs-checks]="${{ needs.docs-checks.result }}"
+            [agents-md]="${{ needs.agents-md.result }}"
           )
           fail=0
           for j in "${!results[@]}"; do

@@ -3695,6 +3695,7 @@
     "parseStepValue: function",
     "ref: function",
     "resolveAllMaterialDefIds: function",
+    "resolveEntityLengthUnitScale: function",
     "resolveEntityNameAlias: function",
     "resolveMaterialDefId: function",
     "scanIfcEntities: function",

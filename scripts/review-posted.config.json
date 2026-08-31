@@ -1,0 +1,41 @@
+{
+  "$comment": [
+    "Config for scripts/check-review-posted.mjs.",
+    "",
+    "WHAT THIS GATE ASSERTS: that a review REACHED this pull request for its exact head",
+    "commit. Not that the review was good -- that a comment exists carrying a marker the",
+    "reviewer writes at the end of a successful post.",
+    "",
+    "WHY IT IS NEEDED: anthropics/claude-code-action has three OPEN paths that report",
+    "success while reviewing nothing (#1644 p1, silent no-op after 5-10 turns; #1679,",
+    "'Posted 0/N' reported as success across forty consecutive runs; an unguarded",
+    "num_turns: 0). None is credential-specific, so an API key does not fix them either.",
+    "The job's exit code and its structured output are both satisfied on those paths."
+  ],
+
+  "$expectedAuthorsComment": [
+    "The logins whose marker counts. NOT DEFAULTED and not allowed to be empty: an empty",
+    "list would make every PR pass on any comment, which is a gate that cannot fail.",
+    "Matched case-insensitively with `[bot]` and `app/` stripped, so all three spellings",
+    "of a bot identity resolve to one entry.",
+    "",
+    "`github-actions` is listed because a workflow posting through the default GITHUB_TOKEN",
+    "comments under that identity. If the reviewer is moved to a GitHub App or a PAT, add",
+    "that login here -- the gate will start failing with NOT_POSTED until you do, which is",
+    "the correct direction to fail."
+  ],
+  "expectedAuthors": ["github-actions", "claude"],
+
+  "$modeComment": [
+    "ADVISORY or ENFORCING. Advisory prints the identical verdict and exits 0; enforcing",
+    "exits 1. Not defaulted in code: a missing value is a refusal, because defaulting",
+    "would let a corrupted config silently downgrade the gate to a no-op.",
+    "",
+    "SHIPS ADVISORY because the reviewer lane it adjudicates does not exist yet. This gate",
+    "is deliberately landed FIRST and separately: it is the piece that has to be trusted",
+    "before any reviewer can be, and building it after the reviewer would mean trusting the",
+    "reviewer's own report of itself in the interim. Flip to `enforcing` in the same PR",
+    "that turns the reviewer on."
+  ],
+  "mode": "advisory"
+}

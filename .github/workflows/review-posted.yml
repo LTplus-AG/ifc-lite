@@ -1,0 +1,66 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: Review posted
+
+# NO `paths:` FILTER AND NO `branches:` FILTER, for the reason
+# pr-review-signal.yml documents at length: a presence gate that can itself be
+# filtered out is the same defect it exists to catch (#3305). This one reads
+# scripts/review-posted.config.json, so with no filter, no edit to that config
+# can dodge the job that runs it ON THE PATH THAT MERGES IT.
+#
+# `synchronize` matters more here than anywhere else: the gate adjudicates a
+# verdict for a SPECIFIC head, so a new commit must re-open the question. Without
+# it a review of commit 1 would keep a PR green through commit 20.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  # Covers both reads: issue comments and PR reviews. `issues: read` is not
+  # requested; if the first runs report GH_ERROR mentioning permissions, add it.
+  # The gate fails closed, so that shows up as a visible refusal rather than a
+  # silently empty comment list.
+  pull-requests: read
+
+concurrency:
+  group: review-posted-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review-posted:
+    name: Review posted
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      # The harness runs BEFORE the gate, and in this job rather than only in the
+      # scripts/ glob catch-all, for the reason check-pr-review-signal.yml gives:
+      # relying on a path-filtered job to run this gate's tests would put them
+      # behind a filter this workflow deliberately does not have.
+      #
+      # No `pnpm install`: the gate and its harness import node builtins only and
+      # shell out to `gh`, which is preinstalled on GitHub runners. A gate that
+      # decides whether a review happened must not be able to fail because a
+      # registry was slow.
+      - name: Unit-test the gate itself
+        run: node --test scripts/check-review-posted.test.mjs
+
+      - name: Check a review was actually posted for this head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          node scripts/check-review-posted.mjs \
+            --pr "${{ github.event.pull_request.number }}" \
+            --sha "${{ github.event.pull_request.head.sha }}"

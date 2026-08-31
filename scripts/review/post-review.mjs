@@ -153,7 +153,7 @@ import { gh, GhError } from '../lib/gh.mjs';
 // The gate's own normaliser, pager and config reader, imported rather than
 // re-spelled. Two copies held together only by prose is how the poster and the
 // gate would come to disagree about who "we" are, or about where a page ends.
-import { pageAll, normaliseLogin, readConfig, ReviewPostedError } from '../check-review-posted.mjs';
+import { MARKER_RE, pageAll, normaliseLogin, readConfig, ReviewPostedError } from '../check-review-posted.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CONFIG = join(HERE, '..', 'review-posted.config.json');
@@ -264,7 +264,21 @@ export function readFindings(path) {
     if (typeof f.body !== 'string' || f.body.trim() === '') {
       throw new PostReviewError('BAD_FINDING', `${where} has an empty \`body\`. An empty finding is not a finding.`);
     }
-    return { path: f.path, line: f.line, body: f.body, title: typeof f.title === 'string' ? f.title : null };
+    // `class` is carried and RENDERED, not dropped. It was validated upstream and
+    // then discarded here, so the one field a precision-by-class tally needs
+    // never reached a durable surface -- and findings.json dies with the runner.
+    // The tag is appended AFTER upstream sanitisation and deliberately cannot
+    // match the review marker's grammar, so it can never be mistaken for one.
+    const cls = typeof f.class === 'string' && f.class.trim() !== '' ? f.class.trim().slice(0, 60) : 'unclassified';
+    return {
+      path: f.path,
+      line: f.line,
+      body: `${f.body}\n\n<!-- ifc-lite-finding v=1 class=${cls.replace(/[^a-z0-9-]/gi, '-')} -->`,
+      // The class IS the title. They were a dead pair: `class` was validated
+      // then dropped, while `title` was read by the summary index and never
+      // written, so the index always fell back to the first line of the body.
+      title: cls === 'unclassified' ? null : cls,
+    };
   });
 }
 
@@ -323,7 +337,12 @@ export function summaryBody({ sha, findings, count }) {
     '',
     `${count} inline comment${count === 1 ? '' : 's'} from this reviewer confirmed on this commit.`,
     '',
-    'React with 👎 on a finding to log it as a false positive.',
+    // Honest about what happens next. The earlier wording said a reaction would
+    // "log it as a false positive", and nothing logs anything: that is a note
+    // that fails to fire, which this repository has a name for. Reactions are a
+    // durable surface a later tally can read; until that tally exists, the line
+    // says only what is true today.
+    'React with 👎 on a finding you think is wrong. Reactions are read when this lane\'s precision is assessed.',
     '',
     marker(sha, 'findings', count),
   ].join('\n');
@@ -532,7 +551,7 @@ function main() {
   const carrier = fetchSurface(args.repo, args.pr, `issues/${args.pr}/comments`).find(
     (c) =>
       normaliseLogin(c?.user?.login) === author &&
-      new RegExp(`<!--\\s*ifc-lite-review\\s+sha=${args.sha}\\b`).test(String(c?.body ?? '')),
+      MARKER_RE.exec(String(c?.body ?? ''))?.[1] === args.sha,
   );
   const res = carrier
     ? gh(

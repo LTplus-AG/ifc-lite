@@ -29,6 +29,7 @@ import { mkdtempSync, writeFileSync, readFileSync, existsSync, mkdirSync, statSy
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { MARKER_RE as GATE_MARKER_RE } from '../check-review-posted.mjs';
 import {
   MAX_BODY_CHARS,
   MAX_FINDINGS,
@@ -485,15 +486,17 @@ test('the cap runs AFTER validation, so invalid findings cannot crowd out valid 
 // ======================================= 8. sanitisation, which is the security half
 
 /**
- * MARKER_RE as the SHIPPED GATE spells it, read out of its source text rather
- * than copied here. If the gate's pattern changes, this test changes with it or
- * goes red -- it cannot silently start testing a pattern nobody enforces.
+ * THE GATE'S OWN PATTERN, IMPORTED.
+ *
+ * This used to scrape `MARKER_RE` out of the gate's source text with a regex,
+ * which broke the moment the gate exported it -- a test that reads another
+ * file's source is coupled to its formatting, not its behaviour. Importing the
+ * real symbol keeps the property the scrape was reaching for and loses the
+ * fragility: the claim under test is "the sanitiser defeats the REAL gate", not
+ * "the sanitiser defeats a copy of the gate's regex".
  */
 function gateMarkerRe() {
-  const src = readFileSync(GATE, 'utf8');
-  const m = /^const MARKER_RE = \/(.+)\/;$/m.exec(src);
-  assert.ok(m, `could not extract MARKER_RE from ${GATE}; the sanitiser's target is unknown`);
-  return new RegExp(m[1]);
+  return new RegExp(GATE_MARKER_RE.source, GATE_MARKER_RE.flags);
 }
 
 /** The literal pattern named in the specification, as a second independent witness. */

@@ -231,6 +231,10 @@ test('PASS: a clean run posts exactly one marker comment and no inline comments'
   assert.match(r.out, /REVIEW_POSTED/);
 });
 
+/** The body the poster actually posts: sanitised text plus the class tag it
+ *  appends so a later precision tally has something durable to key on. */
+const posted = (f) => `${f.body}\n\n<!-- ifc-lite-finding v=1 class=${(f.class || 'unclassified').replace(/[^a-z0-9-]/gi, '-')} -->`;
+
 test('PASS: a findings run posts every finding with the fields GitHub requires', () => {
   const findings = [finding(1), finding(2), finding(3)];
   const r = runPoster({ findings });
@@ -241,7 +245,13 @@ test('PASS: a findings run posts every finding with the fields GitHub requires',
     assert.equal(c.side, 'RIGHT');
     assert.equal(c.path, findings[i].path);
     assert.equal(c.line, findings[i].line);
-    assert.equal(c.body, findings[i].body);
+    // The posted body is the finding text PLUS the class tag, which is what makes
+    // a later precision-by-class tally possible at all.
+    assert.equal(c.body, posted(findings[i]));
+    assert.match(c.body, /<!-- ifc-lite-finding v=1 class=/);
+    // ...and that tag must never be mistakable for a review MARKER, or the
+    // poster would be laundering a forged verdict through its own identity.
+    assert.doesNotMatch(c.body, /<!--\s*ifc-lite-review\s+sha=/);
   }
   assert.equal(r.state.issueComments.length, 1);
   assert.match(
@@ -255,7 +265,11 @@ test('the summary carries a numbered index and the false-positive footer', () =>
   const body = r.state.issueComments[0].body;
   assert.match(body, /1\. `packages\/a\/src\/f1\.ts:11`/);
   assert.match(body, /2\. `packages\/a\/src\/f2\.ts:12`/);
-  assert.match(body, /React with 👎 on a finding to log it as a false positive\./);
+  assert.match(body, /React with 👎 on a finding you think is wrong/);
+  // The footer must NOT claim a logging step that does not exist. An earlier
+  // wording said a reaction would "log it as a false positive"; nothing logged
+  // anything, which is a note that fails to fire.
+  assert.doesNotMatch(body, /log it as a false positive/);
 });
 
 test('a CLEAN summary omits the false-positive footer', () => {
@@ -426,7 +440,7 @@ test('a finding already present on this head is not posted twice', () => {
     path: findings[1].path,
     line: findings[1].line,
     side: 'RIGHT',
-    body: findings[1].body,
+    body: posted(findings[1]),
   };
   const r = runPoster({ findings, state: { reviewComments: [seeded] } });
   assert.equal(r.code, 0, r.out);

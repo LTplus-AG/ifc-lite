@@ -18,7 +18,8 @@ import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { addedLineRanges, buildInput, isExcluded, pageFiles, MAX_PATCH_BYTES } from './build-review-input.mjs';
+import { addedLineRanges, buildInput, isExcluded, MAX_PATCH_BYTES } from './build-review-input.mjs';
+import { pageAll as pageFiles } from '../check-review-posted.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, 'build-review-input.mjs');
@@ -94,7 +95,7 @@ test('a file with no patch is recorded as unreviewable, never silently absent', 
   // Structured, not an annotated string: the validator refuses an input where a
   // path is in both `files` and `unreviewable`, and against a string like
   // "src/huge.ts (too large)" that check can never match.
-  assert.deepEqual(r.result.unreviewable[0], { path: 'src/huge.ts', reason: 'no patch returned; too large' });
+  assert.deepEqual(r.result.unreviewable[0], { path: 'src/huge.ts', reason: 'no patch returned (too large, or a pure rename)' });
   assert.match(r.out, /NOT shown to the reviewer/);
 });
 
@@ -149,6 +150,15 @@ test('the pager stops at a short page and reports a complete read', () => {
 test('a file list past the page budget reports truncated, and the caller refuses', () => {
   const r = pageFiles(() => Array(10).fill({ filename: 'a' }), { maxPages: 3, perPage: 10 });
   assert.equal(r.truncated, true);
+});
+
+test('an EXACTLY full file list is a complete read, not a refusal', () => {
+  // The reason this uses the gate's pager rather than a local copy: the local
+  // one lacked the probe past a full final page, so a PR with exactly
+  // maxPages x perPage files was fully read and then refused as truncated.
+  const r = pageFiles((page) => (page <= 3 ? Array(10).fill({ filename: 'a' }) : []), { maxPages: 3, perPage: 10 });
+  assert.equal(r.truncated, false);
+  assert.equal(r.rows.length, 30);
 });
 
 test('a non-array page is BAD_PAYLOAD, not an empty read', () => {

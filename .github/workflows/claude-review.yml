@@ -60,13 +60,15 @@ jobs:
         with:
           node-version: 22
 
-      # Settle before reading the head. A push burst arrives as several events;
-      # cancel-in-progress kills most of them, and this window lets the last one
-      # win rather than racing a sibling that is already mid-review.
-      - name: Settle
-        run: sleep 90
-
-      # If the head moved while we settled, the newer event owns it. Exit rather
+      # NO SETTLE SLEEP. Correctness is already owned three times over:
+      # `cancel-in-progress` allows one live run per PR, the head check below
+      # exits a superseded run, and post-review re-reads the head immediately
+      # before posting. A sleep would buy only occasional model-quota insurance,
+      # and it is charged three ways -- runner minutes, time-to-green, and three
+      # EXTRA poll ticks on the sibling gate, which polls every 30s while this
+      # lane naps, against a repository-wide 1,000/hour API budget.
+      #
+      # If the head moved, the newer event owns it. Exit rather
       # than review a dead commit: a marker for a superseded head is one the gate
       # immediately calls STALE_REVIEW, which is noise, not signal.
       - name: Stop if the head moved
@@ -87,6 +89,28 @@ jobs:
       # `covered` OUTPUT rather than its exit code: in advisory mode a failing
       # verdict still exits 0, so the exit code would report every uncovered head
       # as covered and the lane would never run.
+      # DEDUP READS THE BASE-BRANCH CONFIG, and that is a security property, not
+      # tidiness. Resolving the script-relative default would read the PR's own
+      # copy: a contributor adds their login to `expectedAuthors`, posts a comment
+      # carrying a well-formed marker, dedup reports covered, and THE REVIEW OF
+      # THEIR OWN PR IS SKIPPED. That is the exact forgery class this branch
+      # exists to close, reopened in the lane's own dedup. Caught in review.
+      - name: Take the reviewer allowlist from the base branch
+        id: basecfg
+        if: steps.head.outputs.proceed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/review-posted.base.json"
+          if gh api "repos/${{ github.repository }}/contents/scripts/review-posted.config.json?ref=${{ github.event.pull_request.base.sha }}" \
+               --jq '.content' 2>/dev/null | base64 -d > "$out" 2>/dev/null && [ -s "$out" ]; then
+            echo "path=$out" >> "$GITHUB_OUTPUT"
+          else
+            echo "path=scripts/review-posted.config.json" >> "$GITHUB_OUTPUT"
+            echo "::notice::No allowlist on base yet (bootstrap); using this PR's copy."
+          fi
+
       - name: Skip if this head already has a verdict
         id: dedup
         if: steps.head.outputs.proceed == 'true'
@@ -98,6 +122,7 @@ jobs:
           node scripts/check-review-posted.mjs \
             --pr "${{ github.event.pull_request.number }}" \
             --sha "${{ github.event.pull_request.head.sha }}" \
+            --config "${{ steps.basecfg.outputs.path }}" \
             --timeout-seconds 0 || true
 
       - name: Take the rubric from the base branch
@@ -168,4 +193,4 @@ jobs:
             --sha "${{ github.event.pull_request.head.sha }}" \
             --findings "$RUNNER_TEMP/findings.json" \
             --author github-actions \
-            --config scripts/review-posted.config.json
+            --config "${{ steps.basecfg.outputs.path }}"

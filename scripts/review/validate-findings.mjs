@@ -410,7 +410,7 @@ export function readInput(path) {
   ) {
     throw new ValidateFindingsError(
       'INPUT_INVALID',
-      '`unreviewable` must be an array of `{path, reason}` objects. Annotated STRINGS were the ' +
+      '`unreviewable` must be an array of objects each carrying a non-empty `path`. Annotated STRINGS were the ' +
         'earlier shape and made the overlap check below unable to match anything -- an inert ' +
         'guard that reads as a live one.',
     );

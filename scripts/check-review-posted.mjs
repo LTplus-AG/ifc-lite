@@ -136,7 +136,7 @@ const PER_PAGE = 100;
  * both ends and tolerant of surrounding whitespace only -- a loose pattern here
  * would let a contributor hand-write a passing marker into a PR comment.
  */
-const MARKER_RE = /<!--\s*ifc-lite-review\s+sha=([0-9a-f]{40})\s+verdict=(clean|findings)\s+count=(\d+)\s*-->/;
+export const MARKER_RE = /<!--\s*ifc-lite-review\s+sha=([0-9a-f]{40})\s+verdict=(clean|findings)\s+count=(\d+)\s*-->/;
 
 /** Block the runner without a dependency. This job's whole purpose is to wait. */
 function sleepSync(ms) {

@@ -71,6 +71,12 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { gh, GhError } from '../lib/gh.mjs';
+// The gate's pager, not a second copy of it. An earlier version here duplicated
+// it MINUS the one thing it exists for: the probe past a full final page. A PR
+// with exactly MAX_PAGES x PER_PAGE files was therefore fully read and then
+// refused as truncated -- the permanent unclearable refusal pageAll's own
+// comment says was moved rather than fixed.
+import { pageAll } from '../check-review-posted.mjs';
 
 /** 600 KB of patch text. The largest PR observed on this repo is ~427 KB. */
 export const MAX_PATCH_BYTES = 600 * 1024;
@@ -150,24 +156,6 @@ export function addedLineRanges(patch) {
   return ranges;
 }
 
-/**
- * Walk every page of the PR's file list. Explicitly paged rather than
- * `--paginate`, so the bound this script reports is the bound it applies.
- *
- * @param {(page: number, perPage: number) => unknown[]} fetchPage
- */
-export function pageFiles(fetchPage, { maxPages = MAX_PAGES, perPage = PER_PAGE } = {}) {
-  const rows = [];
-  for (let page = 1; page <= maxPages; page += 1) {
-    const batch = fetchPage(page, perPage);
-    if (!Array.isArray(batch)) {
-      throw new BuildInputError('BAD_PAYLOAD', `file list page ${page} was not an array.`);
-    }
-    rows.push(...batch);
-    if (batch.length < perPage) return { rows, truncated: false };
-  }
-  return { rows, truncated: true };
-}
 
 /**
  * Pure over an already-fetched file list, so every branch is reachable in tests
@@ -197,7 +185,7 @@ export function buildInput(fileRows, headSha) {
       // GitHub omits `patch` on very large files. Recorded, never silently
       // dropped: a file the reviewer was not shown must not be reportable as
       // clean, and the reader has to be able to see which those were.
-      unreviewable.push({ path, reason: 'no patch returned; too large' });
+      unreviewable.push({ path, reason: 'no patch returned (too large, or a pure rename)' });
       continue;
     }
     bytes += Buffer.byteLength(row.patch, 'utf8');
@@ -251,7 +239,7 @@ function main() {
     rows = JSON.parse(readFileSync(args.filesFile, 'utf8'));
   } else {
     if (!args.pr || !args.repo) throw new BuildInputError('BAD_ARGS', 'Pass `--pr` and `--repo`.');
-    const { rows: fetched, truncated } = pageFiles((page, perPage) =>
+    const { rows: fetched, truncated } = pageAll((page, perPage) =>
       gh(
         ['api', `repos/${args.repo}/pulls/${args.pr}/files?per_page=${perPage}&page=${page}`, '--method', 'GET'],
         `the PR file list page ${page}`,

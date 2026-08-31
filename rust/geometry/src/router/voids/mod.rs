@@ -1103,7 +1103,6 @@ impl GeometryRouter {
         if ctx.merged_openings.iter().any(|op| matches!(op, OpeningType::Rectangular(..))) {
             return None;
         }
-
         let (mn, mx) = mesh.bounds();
         let center = Vector3::new(
             ((mn.x + mx.x) * 0.5) as f64,
@@ -1175,8 +1174,9 @@ impl GeometryRouter {
         // diagnostic reports world coords, not wall-frame (rotated/centred) ones.
         let result_local =
             self.apply_void_context_inner(host_local, &local_ctx, element_id, host_world_bounds);
+        let frame = Matrix3::from_columns(&axes);
         // Rotation-only positions retain the far centre in `Mesh::origin`.
-        Some(rotate_mesh_from_frame(&result_local, &Matrix3::from_columns(&axes), &Point3::from(center)))
+        Some(rotate_mesh_from_frame(&result_local, &frame, &Point3::from(center)))
     }
 
     // `host_mutated` is set just before an early `break`, so the final write is

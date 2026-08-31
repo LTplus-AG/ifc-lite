@@ -232,11 +232,11 @@
 # +27: #129 coaxial-union prepass wiring — module decl + feature-gated stats
 # re-export + the pre-batch `coaxial_union_prepass` call and its consumed-skip.
 # +6: the voided rebuild INHERITS the id discriminator instead of hard-coding rep-item, so a future layered producer cannot be silently relabelled (#3199).
-# +8: the local-frame cut returns through `rotate_mesh_from_frame` (centre in
+# -1 overall: the local-frame cut returns through `rotate_mesh_from_frame` (centre in
 # `Mesh::origin`) instead of a centre-baking transform, and the relativizing
 # branch now COMPOSES the inner cut's origin rather than assigning over it.
 # `voids/geom.rs` sheds 27 in the same change.
-    2068 rust/geometry/src/router/voids/mod.rs
+    2058 rust/geometry/src/router/voids/mod.rs
 # NEW: analytic prism (stepped-extrusion) subtraction on the host mesh — the
 # CSG-heavy-corpus lever (ISSUE_098/129: exact void booleans are ~75-82% of
 # geometry time; rebated masonry openings on brep/clipped hosts had no fast

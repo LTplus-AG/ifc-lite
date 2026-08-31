@@ -34,6 +34,8 @@ import {
   writePerspectiveCamera,
 } from './writer-camera.js';
 import { xsdDouble, xsdInt, xsdPointElement } from './numeric.js';
+import { escapeXml } from './xml-text.js';
+import { XML_WHITESPACE_ONLY, xsdDateTime, xsdRequiredString } from './xsd-required-string.js';
 import { generateUuid } from '@ifc-lite/encoding';
 
 /**
@@ -208,34 +210,6 @@ function snapshotExt(viewpoint: BCFViewpoint): 'png' | 'jpg' {
   return 'png';
 }
 
-// BCF 3.0's markup.xsd types `Topic/@TopicType` and `Topic/@TopicStatus` as
-// `NonEmptyOrBlankString`: after XML whitespace (#x9, #xA, #xD, #x20) is
-// collapsed, the value must have length >= 1. A value that is present but
-// consists entirely of XML whitespace collapses to nothing and is therefore
-// as invalid as an absent one -- which is why `xsdDateTime` reuses it below.
-const XML_WHITESPACE_ONLY = /^[\t\n\r ]*$/;
-
-/**
- * A required `xs:dateTime` on its way into an archive, escaped -- or an error.
- *
- * `markup.xsd` declares `Topic/CreationDate` and `Comment/Date` `minOccurs="1"`
- * with no default in BOTH 2.1 (:67, :107) and 3.0 (:73, :155), and reader.ts no
- * longer invents a wall-clock timestamp when the source omits one, so either can
- * arrive unset. Inventing one here is that same fabrication; dropping the
- * element hands the caller an archive we already know fails the schema. So we
- * refuse, as the TopicType/TopicStatus check below and `xsdDouble` do.
- */
-function xsdDateTime(value: string | undefined, element: string, where: string): string {
-  if (!value || XML_WHITESPACE_ONLY.test(value)) {
-    throw new Error(
-      `BCF requires ${element} (${where} has none). markup.xsd declares it ` +
-        `minOccurs="1" with no default, and a time the source never stated is ` +
-        `not the writer's to invent. Set it before writing.`
-    );
-  }
-  return escapeXml(value);
-}
-
 /** Write markup.bcf -- buildingSMART standard format. */
 function writeMarkupFile(
   folder: JSZip,
@@ -322,13 +296,13 @@ function writeMarkupFile(
   }
 
   content += `\n    <CreationDate>${xsdDateTime(topic.creationDate, 'Topic/CreationDate', `topic "${topic.guid}"`)}</CreationDate>`;
-  content += `\n    <CreationAuthor>${escapeXml(topic.creationAuthor)}</CreationAuthor>`;
+  content += `\n    <CreationAuthor>${xsdRequiredString(topic.creationAuthor, 'Topic/CreationAuthor', `topic "${topic.guid}"`)}</CreationAuthor>`;
 
   if (topic.modifiedDate) {
     content += `\n    <ModifiedDate>${escapeXml(topic.modifiedDate)}</ModifiedDate>`;
     // BCF spec requires ModifiedAuthor when ModifiedDate is present
     const modifiedAuthor = topic.modifiedAuthor || topic.creationAuthor;
-    content += `\n    <ModifiedAuthor>${escapeXml(modifiedAuthor)}</ModifiedAuthor>`;
+    content += `\n    <ModifiedAuthor>${xsdRequiredString(modifiedAuthor, 'Topic/ModifiedAuthor', `topic "${topic.guid}"`)}</ModifiedAuthor>`;
   }
 
   if (topic.dueDate) {
@@ -385,7 +359,7 @@ function writeMarkupFile(
       .map((comment) => {
         let c = `\n${indent}<Comment Guid="${escapeXml(comment.guid)}">`;
         c += `\n${indent}  <Date>${xsdDateTime(comment.date, 'Comment/Date', `comment "${comment.guid}"`)}</Date>`;
-        c += `\n${indent}  <Author>${escapeXml(comment.author)}</Author>`;
+        c += `\n${indent}  <Author>${xsdRequiredString(comment.author, 'Comment/Author', `comment "${comment.guid}"`)}</Author>`;
         c += `\n${indent}  <Comment>${escapeXml(comment.comment)}</Comment>`;
         if (comment.viewpointGuid) {
           c += `\n${indent}  <Viewpoint Guid="${escapeXml(comment.viewpointGuid)}"/>`;
@@ -863,16 +837,4 @@ function writeDocumentReference(docRef: BCFDocumentReference, version: '2.1' | '
   }
   content += `\n    </DocumentReference>`;
   return content;
-}
-
-/**
- * Escape XML special characters
- */
-function escapeXml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
 }

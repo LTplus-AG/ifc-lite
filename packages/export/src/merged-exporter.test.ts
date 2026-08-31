@@ -1418,6 +1418,9 @@ describe('MergedExporter', () => {
       expect(content.match(/=IFCGEOMETRICREPRESENTATIONCONTEXT\(/g)?.length).toBe(1);
       expect(content.match(/=IFCGEOMETRICREPRESENTATIONSUBCONTEXT\(/g)?.length).toBe(1);
       expect(findDanglingRefs(content)).toEqual([]);
+    });
+  });
+
   // Merge invariant lens pass 3, item 1: `IfcShapeRepresentation.ContextOfItems`
   // must point at a SURVIVING sub-context of the right kind ('Body'/'Axis'), not
   // at the wrong kind. `MergedExporter` deduplicates each unit-compatible

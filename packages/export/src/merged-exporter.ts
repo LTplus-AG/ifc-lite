@@ -1053,9 +1053,6 @@ export class MergedExporter {
         }
       }
 
-      // Remap and skip duplicate infrastructure; a context whose WCS disagrees is kept.
-      const modelInfra = this.findInfrastructureEntities(model.dataStore);
-      planInfrastructureUnify(model.dataStore, modelInfra, setup.firstModelInfraMap,
       // WCS frames must align; matching-frame subcontexts deduplicate by semantic key.
       const modelInfra = this.findInfrastructureEntities(model.dataStore);
       planInfrastructureUnify(model.dataStore, modelInfra, setup.firstModelInfraMap,

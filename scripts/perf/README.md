@@ -299,6 +299,18 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
   low hundreds of faces), not a measured optimum.
 
 ### Measured feature costs (not levers — recorded so nobody re-measures)
+- **Local-frame void-cut origin preservation** (#3446, measured 2026-08-31,
+  base = `2edd144329`, arm64 native). This correctness fix keeps a rotated
+  local-frame cut's centre and nested origin out of absolute-world `f32`.
+  `probe.sh --iters 5 --json` found no performance signal: AC20-FZK-Haus best
+  total/geometry was 10/5 -> 9/5 ms (base totals 14,10,10,10,10; branch
+  11,10,9,9,9); ISSUE_129 was 623/604 -> 627/608 ms, inside the base's
+  623..633 ms spread. Mesh/vertex/triangle counts match on both fixtures
+  (AC20 285/35940/19456; ISSUE_129 1402/218346/132673). The branch intentionally
+  changes the far-field void corpus, so the pinned native/wasm manifests and
+  arm64 determinism harness are the stronger output evidence. Holter was not
+  measured: its fixture endpoint repeatedly served a SHA-256 mismatch.
+
 - **Geometry fingerprint pass: world AABB + volume + closure verdict**
   (#1891/#1988, PR #1993, measured 2026-08-02, base = merge-base `8f139a8e`).
   The pass gained a per-triangle tetra determinant and a six-way bounds update.

@@ -155,6 +155,62 @@ function emptyLookupTable() {
   });
 }
 
+function emptyClassificationsTable() {
+  return new arrow.Table({
+    element_id: arrow.vectorFromArray([], new arrow.Uint32()),
+    system_name: arrow.vectorFromArray([], new arrow.Utf8()),
+    identification: arrow.vectorFromArray([], new arrow.Utf8()),
+    name: arrow.vectorFromArray([], new arrow.Utf8()),
+    location: arrow.vectorFromArray([], new arrow.Utf8()),
+  });
+}
+
+function emptyDocumentsTable() {
+  return new arrow.Table({
+    element_id: arrow.vectorFromArray([], new arrow.Uint32()),
+    identification: arrow.vectorFromArray([], new arrow.Utf8()),
+    name: arrow.vectorFromArray([], new arrow.Utf8()),
+    location: arrow.vectorFromArray([], new arrow.Utf8()),
+    description: arrow.vectorFromArray([], new arrow.Utf8()),
+  });
+}
+
+/**
+ * `__fixtures__/nodes-nullable-elevation.parquet` and
+ * `__fixtures__/materials-nullable-thickness.parquet` are authored by
+ * DuckDB (an independent Parquet writer, not this repo's own code), NOT via
+ * this file's `toParquetBytes` helper: the locked `parquet-wasm@0.5.0`'s
+ * `writeParquet` silently drops null-ness for a nullable Float64 column
+ * written through the `apache-arrow` Table -> IPC -> `Table.fromIPCStream`
+ * bridge (confirmed against DuckDB reading its own output back: the byte a
+ * "null" row lands on decodes as a real `0`, not a null). That is a
+ * write-side bug in the pinned `parquet-wasm` version, orthogonal to the
+ * read-side bug under test here, and DuckDB's own writer does not share it.
+ *
+ * Regenerate with DuckDB (`npm i --prefix /tmp/pq duckdb`, not a repo dep):
+ *   COPY (SELECT CAST(row_id AS UINTEGER) entity_id, CAST(0 AS UINTEGER)
+ *     parent_id, CAST(0 AS USMALLINT) level, path, type_name, name,
+ *     elevation, CAST([] AS UINTEGER[]) children_ids,
+ *     CAST([] AS UINTEGER[]) element_ids FROM (VALUES
+ *     (1, '/1', 'IfcBuildingStorey', 'Level 0', CAST(3.0 AS DOUBLE)),
+ *     (2, '/1/2', 'IfcBuildingStorey', 'Level 1 (no elevation)',
+ *       CAST(NULL AS DOUBLE))
+ *   ) AS t(row_id, path, type_name, name, elevation))
+ *   TO 'nodes-nullable-elevation.parquet' (FORMAT PARQUET);
+ *
+ *   COPY (SELECT CAST(element_id AS UINTEGER) element_id,
+ *     CAST(NULL AS VARCHAR) set_name, CAST(0 AS UINTEGER) layer_index,
+ *     material_name, thickness, CAST(NULL AS BOOLEAN) is_ventilated,
+ *     CAST(NULL AS VARCHAR) category FROM (VALUES
+ *     (1, 'Concrete Layer', CAST(0.2 AS DOUBLE)),
+ *     (1, 'Paint Finish', CAST(NULL AS DOUBLE))
+ *   ) AS t(element_id, material_name, thickness))
+ *   TO 'materials-nullable-thickness.parquet' (FORMAT PARQUET);
+ */
+function readFixture(name: string): Uint8Array {
+  return new Uint8Array(readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url)));
+}
+
 /**
  * Build a complete, well-formed `decodeDataModel` wire buffer.
  *
@@ -164,7 +220,16 @@ function emptyLookupTable() {
  * length non-zero, as every real Parquet-encoded table is.
  */
 function buildDataModelBuffer(
-  opts: { emptyQuantities?: boolean; emptyRelationships?: boolean } = {}
+  opts: {
+    emptyQuantities?: boolean;
+    emptyRelationships?: boolean;
+    /** Raw Parquet bytes for the spatial nodes table, replacing the default
+     *  single-project one — used to splice in a DuckDB-authored fixture. */
+    nodesBytes?: Uint8Array;
+    /** Raw Parquet bytes for the optional materials section; appending it
+     *  also appends empty classifications/documents (positional triplet). */
+    materialsBytes?: Uint8Array;
+  } = {}
 ): ArrayBuffer {
   const entities = toParquetBytes(
     entitiesTable([{ id: 1, type: 'IfcWall', globalId: 'GUID-1', name: 'Wall 1' }])
@@ -177,9 +242,9 @@ function buildDataModelBuffer(
       : relationshipsTable([{ relType: 'IfcRelAggregates', relatingId: 1, relatedId: 2 }])
   );
 
-  const nodes = toParquetBytes(
-    spatialNodesTable([{ id: 1, parentId: 0, level: 0, path: '/1', type: 'IfcProject' }])
-  );
+  const nodes =
+    opts.nodesBytes ??
+    toParquetBytes(spatialNodesTable([{ id: 1, parentId: 0, level: 0, path: '/1', type: 'IfcProject' }]));
   const lookup = toParquetBytes(emptyLookupTable());
 
   const spatialChunks: Uint8Array[] = [
@@ -200,14 +265,25 @@ function buildDataModelBuffer(
     }
   }
 
-  return concat([
+  const required = [
     ...section(entities),
     ...section(properties),
     ...section(opts.emptyQuantities ? quantities : toParquetBytes(emptyQuantitiesTable())),
     ...section(relationships),
     ...section(spatialBytes),
+  ];
+  if (!opts.materialsBytes) {
     // No optional classification/material/document sections appended —
     // exercises the "older payload" path (readOptionalSection returns null).
+    return concat(required);
+  }
+  // The three optional sections are positional (classifications, materials,
+  // documents), so appending materials requires the other two too.
+  return concat([
+    ...required,
+    ...section(toParquetBytes(emptyClassificationsTable())),
+    ...section(opts.materialsBytes),
+    ...section(toParquetBytes(emptyDocumentsTable())),
   ]);
 }
 
@@ -347,5 +423,40 @@ describe('decodeDataModel — bounding controls (well-formed buffers still decod
     // The rest of the model still decodes correctly around the empty tables.
     expect(model.entities.size).toBe(1);
     expect(model.spatialHierarchy.nodes).toHaveLength(1);
+  });
+});
+
+describe('decodeDataModel — nullable numeric columns (RED: null decodes as 0 -> GREEN: null stays undefined)', () => {
+  it('decodes a null (no-resolvable) elevation from an independently-authored spatial nodes table', async () => {
+    // `nodes-nullable-elevation.parquet` (DuckDB-authored, see readFixture's
+    // doc comment) carries one storey WITH an elevation and one WITHOUT —
+    // the legitimate "elevation could not be resolved" case
+    // (`apps/server/src/services/data_model/spatial.rs`'s
+    // `returns_none_when_neither_elevation_nor_placement_resolves`).
+    const buf = buildDataModelBuffer({ nodesBytes: readFixture('nodes-nullable-elevation.parquet') });
+    const model = await decodeDataModel(buf);
+
+    expect(model.spatialHierarchy.nodes).toHaveLength(2);
+    expect(model.spatialHierarchy.nodes[0].elevation).toBe(3);
+    expect(model.spatialHierarchy.nodes[1].elevation).toBeUndefined();
+  });
+
+  it('decodes a real layer thickness and a null (non-layer) thickness from the SAME materials table', async () => {
+    // `materials-nullable-thickness.parquet` (DuckDB-authored) mirrors what
+    // every non-layer material association (single material, list,
+    // constituent) writes server-side: `thickness: None`, a real Parquet
+    // NULL. `Vector.toArray()` on that nullable Float64 column silently
+    // returns the neighbouring bit pattern (0 in practice), so the non-layer
+    // material used to decode with a fabricated `thickness: 0`.
+    const buf = buildDataModelBuffer({
+      materialsBytes: readFixture('materials-nullable-thickness.parquet'),
+    });
+    const model = await decodeDataModel(buf);
+
+    expect(model.materials).toHaveLength(2);
+    expect(model.materials[0].material_name).toBe('Concrete Layer');
+    expect(model.materials[0].thickness).toBeCloseTo(0.2);
+    expect(model.materials[1].material_name).toBe('Paint Finish');
+    expect(model.materials[1].thickness).toBeUndefined();
   });
 });

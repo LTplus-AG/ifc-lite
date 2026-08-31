@@ -147,38 +147,6 @@ function parseMatrix(block) {
 }
 
 /**
- * The check-run names a fired run of this workflow is expected to publish.
- *
- * A job with no `name:` publishes under its key; a job with a matrix publishes
- * one check per combination. Path filters and `if:` conditions do NOT remove a
- * job from this set: GitHub publishes a skipped job as a check run with
- * conclusion `skipped`, so PRESENCE is exactly the "did the workflow fire"
- * question, independent of what any filter decided. Verified against PR #3305's
- * rollup, which carries `Docs checks (docs-only PRs)` at `SKIPPED`.
- *
- * THAT PREMISE HAS ONE EXCEPTION, AND THE EVIDENCE ABOVE COULD NOT SHOW IT.
- * `Docs checks (docs-only PRs)` is a PLAIN job, so its skipped check run carries
- * the same name a run one would. A job skipped by `if:` BEFORE its matrix
- * expands publishes ONE check run under the UNEXPANDED template, verbatim
- * braces and all. Measured on PR #3581, a `.coderabbit.yaml`-only change, whose
- * rollup carries:
- *
- *   Viewer tests (shard ${{ matrix.shard }})   COMPLETED/SKIPPED
- *
- * and no `Viewer tests (shard 0..3)` at all. So the four names this function
- * derives are unsatisfiable on any PR that touches neither `frontend` nor
- * `rust` paths, and the gate called that MISSING_LANES with a remedy -- "re-run
- * the workflow" -- that cannot work, because nothing failed to spawn.
- *
- * `matrixSkipAliases` below carries the mapping needed to close that, and
- * `missingLanes` accepts it. This function's own output is unchanged: the four
- * expansions are still what a job that DOES run must publish.
- *
- * @param {string} text - workflow file contents.
- * @param {{ exclude?: Iterable<string> }} [opts] - job KEYS to leave out.
- * @returns {string[]} sorted check names.
- */
-/**
  * One job's check names, and the TEMPLATE they came from.
  *
  * Split out of `expandJobNames` so that `matrixSkipAliases` derives its mapping
@@ -238,6 +206,47 @@ function jobCheckNames(job) {
   return { template, names: combos };
 }
 
+/**
+ * The check-run names a fired run of this workflow is expected to publish.
+ *
+ * A job with no `name:` publishes under its key; a job with a matrix publishes
+ * one check per combination. Path filters and `if:` conditions do NOT remove a
+ * job from this set: GitHub publishes a skipped job as a check run with
+ * conclusion `skipped`, so PRESENCE is exactly the "did the workflow fire"
+ * question, independent of what any filter decided. Verified against PR #3305's
+ * rollup, which carries `Docs checks (docs-only PRs)` at `SKIPPED`.
+ *
+ * THAT PREMISE HAS ONE EXCEPTION, AND THE EVIDENCE ABOVE COULD NOT SHOW IT.
+ * `Docs checks (docs-only PRs)` is a PLAIN job, so its skipped check run carries
+ * the same name a run one would. A job skipped by `if:` BEFORE its matrix
+ * expands publishes ONE check run under the UNEXPANDED template, verbatim
+ * braces and all. Measured on PR #3581, a `.coderabbit.yaml`-only change, whose
+ * rollup carries:
+ *
+ *   Viewer tests (shard ${{ matrix.shard }})   COMPLETED/SKIPPED
+ *
+ * and no `Viewer tests (shard 0..3)` at all. So the four names this function
+ * derives are unsatisfiable on any PR that touches neither `frontend` nor
+ * `rust` paths, and the gate called that MISSING_LANES with a remedy -- "re-run
+ * the workflow" -- that cannot work, because nothing failed to spawn.
+ *
+ * `matrixSkipAliases` below carries the mapping needed to close that, and
+ * `missingLanes` accepts it. This function's own output is unchanged: the four
+ * expansions are still what a job that DOES run must publish.
+ *
+ * THE HOLE THIS LEAVES, STATED. A wholesale skip is accepted without judging
+ * WHY the job was skipped, because nothing in the rollup says why. `if:` is one
+ * reason; an unsatisfied `needs:` is another, so a failed `build` also skips
+ * `viewer-tests` before expansion and its four shards then read present. That
+ * does not produce a green verdict over unexamined code -- the failed
+ * dependency is itself a required lane and sits in the rollup non-green -- but
+ * the four shards stop contributing, and the run prints the skip by name rather
+ * than absorbing it into a tick.
+ *
+ * @param {string} text - workflow file contents.
+ * @param {{ exclude?: Iterable<string> }} [opts] - job KEYS to leave out.
+ * @returns {string[]} sorted check names.
+ */
 export function expandJobNames(text, opts = {}) {
   const exclude = new Set(opts.exclude ?? []);
   const names = new Set();
@@ -299,9 +308,13 @@ export function matrixSkipAliases(text, opts = {}) {
 export function wholesaleSkippedTemplates(rollup, aliases) {
   const templates = new Set(aliases.values());
   const out = new Set();
-  if (!Array.isArray(rollup)) return out;
+  // NO `Array.isArray` GUARD. Every caller reaches here past `missingLanes`,
+  // which throws NO_ROLLUP on a non-array first, so the guard could not fire --
+  // and if it ever did, returning an empty set would be this file's own doctrine
+  // inverted: an unreadable rollup reported as "nothing was skipped". Iterating a
+  // non-array throws, which is the loud answer.
   for (const c of rollup) {
-    if (templates.has(c?.name) && String(c?.state ?? '').toLowerCase() === 'skipped') {
+    if (templates.has(c.name) && String(c.state ?? '').toLowerCase() === 'skipped') {
       out.add(c.name);
     }
   }

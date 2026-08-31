@@ -753,7 +753,13 @@ function main() {
     const state = JSON.parse(readFileSync(args.stateFile, 'utf8'));
     const { ok, lines } = evaluate({
       required: state.required ?? required,
-      aliases,
+      // PAIRED WITH `required`, deliberately. A fixture that overrides the lane
+      // set but inherits the REAL alias map is a fixture whose two halves
+      // describe different workflows: a case asserting MISSING_LANES on a real
+      // viewer-shard name would pass for the wrong reason if its rollup carried
+      // the real template at `skipped`. Overriding one without the other is
+      // therefore possible but never silent -- `aliases` follows `required`.
+      aliases: state.required === undefined ? aliases : new Map(Object.entries(state.aliases ?? {})),
       lanes: state.lanes,
       reviewChecks: state.reviewChecks ?? [],
       // NOT `?? []`. A state file that omits `reviews` has told this gate

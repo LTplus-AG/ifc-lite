@@ -244,15 +244,29 @@ test('the REAL test.yml maps every viewer shard to the template the REAL rollup 
   );
 });
 
-test('the whole real required set survives the real skipped rollup', () => {
-  // End to end over the shipped config: the lanes test.yml publishes, against
-  // the rollup PR #3581 published, must leave only lanes that genuinely never
-  // appeared -- and the four viewer shards must not be among them.
+test('`excludeJobKeys` must reach BOTH derivations, or the alias map stops covering a lane', () => {
+  // The one property no other test here pins: `main` passes the same exclude
+  // list to `expandJobNames` and to `matrixSkipAliases`. Passing it to only the
+  // first is a silent, asymmetric failure -- the lane stays required while its
+  // alias disappears -- so it is checked positively rather than by the absence
+  // of a complaint.
   const wf = readFileSync(join(REPO_ROOT, '.github/workflows/test.yml'), 'utf8');
-  const required = expandJobNames(wf, { exclude: CFG.excludeJobKeys ?? [] });
-  const missing = missingLanes(required, PR3581_ROLLUP, matrixSkipAliases(wf, { exclude: CFG.excludeJobKeys ?? [] }));
+  const exclude = CFG.excludeJobKeys ?? [];
+
+  const required = expandJobNames(wf, { exclude });
+  const missing = missingLanes(required, PR3581_ROLLUP, matrixSkipAliases(wf, { exclude }));
+  // Positive: name exactly what is still missing. Everything test.yml publishes
+  // that PR #3581's rollup did not carry, and not one viewer shard among them.
+  const carried = new Set(PR3581_ROLLUP.map((c) => c.name));
+  assert.deepEqual(
+    missing,
+    required.filter((n) => !carried.has(n) && !n.startsWith('Viewer tests (shard ')).sort(),
+  );
+
+  // Asymmetric: excluding the job from the ALIASES only puts the shards back.
+  const asymmetric = missingLanes(required, PR3581_ROLLUP, matrixSkipAliases(wf, { exclude: [...exclude, 'viewer-tests'] }));
   for (const shard of [0, 1, 2, 3]) {
-    assert.ok(!missing.includes(`Viewer tests (shard ${shard})`), `shard ${shard} must not be missing`);
+    assert.ok(asymmetric.includes(`Viewer tests (shard ${shard})`), `shard ${shard} uncovered`);
   }
 });
 

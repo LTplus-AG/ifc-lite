@@ -97,6 +97,68 @@ test('GREEN: every required lane present and no reviewer claims a verdict it lac
   assert.match(r.output, /none reports a passing state over a review it did not perform/);
 });
 
+// ------------------------------------- the wiring, not just the logic
+
+/**
+ * VERBATIM from PR #3581's rollup on 2026-08-31, a `.coderabbit.yaml`-only
+ * change. `Viewer tests (shard 0..3)` are absent and the UNEXPANDED template is
+ * present at `skipped`, because a matrix job skipped by its `if:` publishes one
+ * check run before the matrix expands.
+ */
+const SKIPPED_MATRIX_TEMPLATE = 'Viewer tests (shard ${{ matrix.shard }})';
+
+test('END TO END: a wholesale-skipped matrix job passes the REAL required set', () => {
+  // NO `required` OVERRIDE, and that is the entire point of this test. Every
+  // other case here supplies `HEALTHY`, which has no matrix lane, so the alias
+  // map is inert in all of them: deleting the three `aliases,` arguments in
+  // `main()` left all 122 tests green while the gate went back to failing every
+  // config-only PR. The fix has to be proved to ARRIVE, not merely to exist.
+  //
+  // Omitting `required` makes `main()` derive it from the real test.yml, so this
+  // runs the same wiring CI runs.
+  const wf = readFileSync(TEST_YML, 'utf8');
+  const lanes = expandJobNames(wf, { exclude: JSON.parse(readFileSync(CONFIG, 'utf8')).excludeJobKeys ?? [] })
+    .filter((n) => !n.startsWith('Viewer tests (shard '))
+    .map((n) => LANE(n, 'skipped'));
+  lanes.push(LANE(SKIPPED_MATRIX_TEMPLATE, 'skipped'));
+
+  const r = run({ lanes, reviewChecks: [] });
+  assert.equal(r.code, 0, r.output);
+  assert.match(r.output, /All \d+ required lane\(s\)/);
+  // Reported, never absorbed: the skip is named along with how many lanes it covered.
+  assert.match(r.output, /was SKIPPED as a whole job/);
+  assert.match(r.output, /its 4 lane\(s\)/);
+});
+
+test('END TO END: the same rollup WITHOUT the template still fails, naming all four shards', () => {
+  // The anti-vacuity pair. If the test above passed for any reason other than
+  // the alias map -- a required set that never contained the shards, say -- this
+  // one would pass too, and it must not.
+  const wf = readFileSync(TEST_YML, 'utf8');
+  const lanes = expandJobNames(wf, { exclude: JSON.parse(readFileSync(CONFIG, 'utf8')).excludeJobKeys ?? [] })
+    .filter((n) => !n.startsWith('Viewer tests (shard '))
+    .map((n) => LANE(n, 'skipped'));
+
+  const r = run({ lanes, reviewChecks: [] });
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /MISSING_LANES: 4 of/);
+  for (const shard of [0, 1, 2, 3]) {
+    assert.ok(r.output.includes(`Viewer tests (shard ${shard})`), `must name shard ${shard}`);
+  }
+});
+
+test('END TO END: the template at SUCCESS is not a skip, and does not cover the shards', () => {
+  const wf = readFileSync(TEST_YML, 'utf8');
+  const lanes = expandJobNames(wf, { exclude: JSON.parse(readFileSync(CONFIG, 'utf8')).excludeJobKeys ?? [] })
+    .filter((n) => !n.startsWith('Viewer tests (shard '))
+    .map((n) => LANE(n, 'skipped'));
+  lanes.push(LANE(SKIPPED_MATRIX_TEMPLATE, 'success'));
+
+  const r = run({ lanes, reviewChecks: [] });
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /MISSING_LANES: 4 of/);
+});
+
 // ------------------------------------------------- the two live failures
 
 test('RED, the #3294 shape: a rollup with no compile lanes fails and NAMES each one', () => {

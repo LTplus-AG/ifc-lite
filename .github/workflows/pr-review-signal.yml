@@ -84,7 +84,7 @@ jobs:
     runs-on: ubuntu-latest
     # Above the poll budget below, so a run that exhausts the budget still gets
     # to PRINT its verdict rather than being killed mid-wait with no output.
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -116,15 +116,32 @@ jobs:
       #      main's ruleset, so branch protection already blocks on it, and the
       #      #3294 total-absence shape still fails under this config naming all
       #      fifteen lanes.
-      #   2. 900 s, not 420 s. Excluding the aggregate is not enough on its own:
-      #      the last non-aggregate lane appeared at min 161 / median 190 /
-      #      p95 522 / max 845 s, so 420 s would still have false-failed 8 of
-      #      the 68. 900 s covers all 68 -- but the tail margin is 900/845 =
-      #      1.07x, NOT the 1.33x this comment used to claim off the `started_at`
-      #      numbers. It is thin, and measuring from run creation is the
-      #      conservative direction (this job's own deadline starts later still,
-      #      after its pickup and checkout), so the margin is worth stating
-      #      plainly rather than rounding up.
+      #   2. 2400 s, and THIS NUMBER HAS MOVED TWICE. Excluding the aggregate
+      #      is not enough on its own: the last non-aggregate lane appeared at
+      #      min 161 / median 190 / p95 522 / max 845 s over those 68 runs, so
+      #      420 s would still have false-failed 8 of them. 900 s covered all
+      #      68 -- at a tail margin of 900/845 = 1.07x, which this comment
+      #      called thin, and on 2026-08-31 it broke: re-measured that day,
+      #      7 of 45 runs exceeded 900 s, max 2028 s.
+      #
+      #      IT IS NOT MEASURING THE BUILD. On the slow runs 85-91% of the
+      #      number is RUNNER-POOL QUEUE (1837 s of queue against 176 s of
+      #      build on the worst one), so there is nothing to optimise and no
+      #      ceiling: queue depth grows with how many PRs are open, which is
+      #      when this gate is under load. A budget cannot bound that, so it
+      #      WILL breach again; the gate then says "within the poll budget"
+      #      rather than reporting a bare absence, and the remedy is a re-run,
+      #      because nothing failed.
+      #
+      #      Measuring from run creation is the CONSERVATIVE direction: this
+      #      job's own deadline starts later still, after its pickup and
+      #      checkout, so the measured number is an upper bound on what the
+      #      budget must cover. The 1.07x was itself a correction of a 1.33x
+      #      this comment once claimed off `started_at` numbers.
+      #
+      #      The budget, the job cap and the poll interval are asserted
+      #      against THIS FILE by the lib's budget tests, so reverting any of
+      #      them turns the suite red rather than leaving it green.
       # The poll normally returns in seconds via the settle rule; the budget is
       # the ceiling, not the expected cost. A settled-but-incomplete rollup is
       # confirmed across SETTLE_HOLD_SECONDS (60 s) before its absence counts,
@@ -151,4 +168,5 @@ jobs:
           node scripts/check-pr-review-signal.mjs \
             --pr "${{ github.event.pull_request.number }}" \
             --self-name 'PR review signal' \
-            --timeout-seconds 1800
+            --timeout-seconds 2400 \
+            --poll-seconds 30

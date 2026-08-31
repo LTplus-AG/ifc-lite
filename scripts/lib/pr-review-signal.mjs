@@ -497,7 +497,7 @@ export function rollupSettled(lanes) {
  * on an advisory benchmark being slow, and nothing pins it -- so it is not a
  * reason to leave the rule un-held.
  *
- * COST. 60 s off a 900 s budget, paid only on the genuine-absence path (#3294's
+ * COST. 60 s off the poll budget, paid only on the genuine-absence path (#3294's
  * shape), which otherwise decides on the first read. The lane-presence path is
  * unaffected: it returns the moment the last required name appears.
  */

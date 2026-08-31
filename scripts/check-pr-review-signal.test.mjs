@@ -402,7 +402,7 @@ test('FAIL CLOSED: an unknown flag exits 1 rather than being ignored', () => {
 
 test('FAIL CLOSED: an unreadable --timeout-seconds exits 1 as BAD_DURATION', () => {
   // `Number('soon')` is NaN, and `now() >= NaN` is false forever: the poll would
-  // spin silently until the job's own 20-minute timeout killed it, leaving the
+  // spin silently until the job's own timeout killed it, leaving the
   // PR with no verdict at all. Unreachable from the shipped workflow, which
   // passes a literal, but a gate about absent output must not have a mode that
   // produces none.
@@ -538,7 +538,7 @@ test('the shipped config EXCLUDES the `test` aggregate, and the exclusion is the
   // lane becomes PRESENT, the thing this gate polls for -- from each run's own
   // creation, over the 68 completed test.yml PR runs of 2026-08-25/26 that
   // published it: min 509 s, median 894 s, max 2067 s, and 33 of the 68 past
-  // the 900 s budget. Requiring it would false-fail half of every green PR.
+  // the 900 s budget then in force. Requiring it would false-fail half of every green PR.
   // The last NON-aggregate lane appeared at 161..845 s over the same runs: 0 of
   // 68 past the budget. Full numbers in scripts/lib/pr-review-signal.test.mjs.
   const cfg = JSON.parse(readFileSync(CONFIG, 'utf8'));

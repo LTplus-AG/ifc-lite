@@ -46,14 +46,17 @@
  *     `needs:` twelve others makes the budget cover the whole matrix: over the
  *     68 completed `test.yml` PR runs of 2026-08-25/26 that published it, the
  *     aggregate APPEARED (`created_at`, from each run's own creation) at 509 to
- *     2067 s, 33 of the 68 past even the current 900 s budget -- a gate
+ *     2067 s, 33 of the 68 past even the then-current 900 s budget -- a gate
  *     printing "the workflow never fired" over half of every green PR.
  *     `excludeJobKeys: ["test"]` ties the wait to how fast GitHub creates check
  *     runs (161-845 s over the same runs, 0 of 68 past 900 s) instead of to
  *     suite runtime, and nothing is lost: branch protection blocks on the
  *     aggregate anyway, it being one of only two contexts in main's ruleset.
- *     The budget is 900 s because 420 still false-failed 8 of those 68 even
- *     with the aggregate out; the tail margin is 900/845 = 1.07x.
+ *     The budget WAS 900 s because 420 still false-failed 8 of those 68 even
+ *     with the aggregate out. It is 2400 s now: re-measured on 2026-08-31, 7 of
+ *     45 runs that day exceeded 900 s (max 2028 s), and 85-91% of that number is
+ *     RUNNER QUEUE, not build. The budget tests assert it against the workflow
+ *     YAML rather than restating it here, so this line cannot go stale silently.
  *     Full measurement in .github/workflows/pr-review-signal.yml.
  *
  *     THE LOOP ITSELF IS `pollForLanes`, in the lib, over an injected clock and
@@ -178,7 +181,7 @@ const DEFAULT_CONFIG = join(SCRIPTS_DIR, 'pr-review-signal.config.json');
  *
  * `Number(undefined)` and `Number('soon')` are both `NaN`, and a NaN deadline
  * makes `now() >= deadline` false forever: the poll would spin until the job's
- * own 20-minute timeout killed it, printing nothing at all. That is the exact
+ * own job timeout killed it, printing nothing at all. That is the exact
  * "no output, no verdict" shape this gate exists to reject, so an unreadable
  * duration is an error rather than a silently infinite one. Zero and negatives
  * go the same way: a zero budget is a gate that never waits, and a zero poll

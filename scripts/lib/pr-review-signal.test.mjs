@@ -591,10 +591,14 @@ test('the poll treats an EMPTY rollup as "nothing has appeared yet", never as se
 /**
  * Run creation to the LAST non-aggregate lane's `created_at`, in seconds, over
  * the 68 completed `test.yml` PR runs of 2026-08-25/26 that published the
- * aggregate. Shared by the three budget tests below, which read it in different
- * directions: what 900 s covered, what 420 s false-failed, and what a re-measure
- * on 2026-08-31 found it no longer covers.
+ * aggregate. Read by TWO tests below, in opposite directions: what 900 s covered
+ * on this population, and what 420 s false-failed on it. The 2026-08-31
+ * re-measure does NOT read it -- it is a different population and carries its
+ * own array, which is the whole reason the two disagree about 900 s.
  */
+/** The budget the workflow ships; asserted against the YAML below, not restated. */
+const BUDGET_SECONDS = 2400;
+
 const LANE_APPEARED_SECONDS = [
   161, 162, 162, 162, 163, 164, 164, 165, 165, 165, 166, 166, 167, 167, 167, 167, 167, 169, 169,
   170, 170, 170, 170, 171, 171, 171, 172, 172, 175, 176, 177, 187, 188, 189, 190, 193, 198, 204,
@@ -602,7 +606,11 @@ const LANE_APPEARED_SECONDS = [
   388, 403, 416, 423, 426, 450, 451, 522, 523, 542, 845,
 ];
 
-test('MEASURED: 900 s covers every observed lane APPEARANCE, and 420 s did not', () => {
+test('MEASURED on 2026-08-25/26: 900 s covered every lane APPEARANCE in THAT population', () => {
+  // SCOPED TO ITS POPULATION ON PURPOSE. A later test re-measures on 2026-08-31
+  // and finds seven breaches of 900 s. The two do not contradict each other --
+  // different runs, different day, a busier pool -- but a title claiming "every
+  // observed" would, so it says which runs it observed.
   // THE METHODOLOGY HERE WAS WRONG ONCE, AND THE NUMBERS MOVED WHEN IT WAS
   // FIXED. The first version of this constant measured `started_at` — when a
   // runner picked the job up. The gate does not wait for that. It polls for
@@ -634,45 +642,117 @@ test('MEASURED: 900 s covers every observed lane APPEARANCE, and 420 s did not',
   assert.equal(Number((900 / max).toFixed(2)), 1.07, 'tail margin, stated honestly');
 });
 
-test('RE-MEASURED 2026-08-31: 900 s BREACHED, and the budget is now 1800 s', () => {
+test('RE-MEASURED 2026-08-31: 900 s BREACHED, and the budget is now 2400 s', () => {
   // A 1.07x margin is one busy afternoon from being wrong, and this was that
-  // afternoon. Same methodology as above -- run creation to the LAST
-  // non-aggregate lane's `created_at` -- over the 22 most recent completed
-  // test.yml PR runs, with three PRs of this rollout in flight at once:
+  // afternoon.
+  //
+  // THE FIRST RE-MEASURE OF THIS WAS CENSORED, and the censoring hid exactly the
+  // runs it was taken to find. Filtering the run list on `status == completed`
+  // at an instant drops the runs that are slow BECAUSE THEY ARE STILL RUNNING --
+  // it removes the tail, which is the only part of the distribution a budget
+  // cares about. It excluded five runs, and they were the five slowest of the
+  // afternoon (1276, 1387, 1503, 1786, 2028 s), including PR #3584's own. The
+  // number that draft landed on, 1800 s, would not have covered the worst run of
+  // the day it was measured on. Caught in review.
+  //
+  // Uncensored: same methodology (run creation to the LAST non-aggregate lane's
+  // `created_at`) over the 45 completed test.yml PR runs of 2026-08-31, with 15
+  // more still queued at the time of the read and therefore not measurable --
+  // stated, because that is the same exclusion that went wrong above.
   const RE_MEASURED = [
-    15, 162, 166, 171, 176, 185, 201, 205, 211, 264, 264, 282, 290, 375, 391, 418, 469, 622, 660,
-    814, 906, 1527,
+    15, 162, 166, 166, 169, 170, 170, 171, 173, 174, 175, 176, 176, 183, 185, 200, 201, 205, 211,
+    238, 264, 264, 282, 290, 308, 314, 317, 333, 375, 391, 418, 469, 473, 622, 660, 712, 814, 824,
+    906, 1172, 1387, 1503, 1527, 1786, 2028,
   ];
-  assert.equal(RE_MEASURED.length, 22);
+  assert.equal(RE_MEASURED.length, 45);
 
-  // TWO breach 900 s. The 1527 s run is PR #3584's own: `Build packages + WASM`
-  // completed at 18:38:31 and the gate gave up at 18:37:50, so eight lanes sat
-  // behind `needs: build` and could not exist yet. Nothing had failed.
-  const breaching = RE_MEASURED.filter((t) => t > 900);
-  assert.deepEqual(breaching, [906, 1527], '900 s is no longer a covering budget');
+  // 900 s no longer covers this population, and neither does 1800 s.
+  assert.deepEqual(
+    RE_MEASURED.filter((t) => t > 900),
+    [906, 1172, 1387, 1503, 1527, 1786, 2028],
+    '900 s breaches seven of 45',
+  );
+  assert.deepEqual(RE_MEASURED.filter((t) => t > 1800), [2028], '1800 s still breaches the max');
+  assert.deepEqual(RE_MEASURED.filter((t) => t > BUDGET_SECONDS), [], 'the shipped budget covers all 45');
 
-  // WHY IT MOVED, and why raising the number is the right response rather than
-  // re-tuning it downward later: the gate polls for lane APPEARANCE, and a lane
-  // behind `needs:` cannot appear until its dependency finishes. So this budget
-  // is not measuring flakiness, it is measuring the BUILD, and the build gets
-  // slower exactly when the runner pool is busy -- which is when several PRs
-  // are open, which is when the gate matters most.
+  // Both directions. A budget that covers everything proves nothing on its own,
+  // so the old ones are pinned as genuinely failing the runs they are claimed to.
   for (const t of RE_MEASURED) {
-    const d = driver(completesAt(t * 1000));
-    assert.equal(poll(d, { deadline: 1800_000 }).timedOut, false, `${t}s must fit in 1800 s`);
+    assert.equal(poll(driver(completesAt(t * 1000)), { deadline: BUDGET_SECONDS * 1000 }).timedOut, false, `${t}s`);
   }
-  // Both directions. A budget that covers everything proves nothing on its own;
-  // this pins that the OLD one genuinely fails the two runs it is claimed to.
-  for (const t of breaching) {
-    const d = driver(completesAt(t * 1000));
-    assert.equal(poll(d, { deadline: 900_000 }).timedOut, true, `${t}s must NOT fit in 900 s`);
+  for (const t of [906, 2028]) {
+    assert.equal(poll(driver(completesAt(t * 1000)), { deadline: 900_000 }).timedOut, true, `${t}s vs 900 s`);
   }
-  assert.equal(Number((1800 / 1527).toFixed(2)), 1.18, 'the new tail margin, stated the same way');
+  assert.equal(poll(driver(completesAt(2028_000)), { deadline: 1800_000 }).timedOut, true, '2028s vs 1800 s');
 });
 
-test('MEASURED: the aggregate lane is excluded, and that is the load-bearing half', () => {
+/**
+ * WHAT THIS BUDGET ACTUALLY MEASURES, and it is NOT the build.
+ *
+ * An earlier draft of this file asserted it was "measuring the BUILD", which was
+ * reasoning, not measurement, and it was wrong. The job timings say the number
+ * is almost entirely RUNNER-POOL QUEUE:
+ *
+ *   run           queue before the first job started   build itself   queue share
+ *   33422274815   1837 s                               176 s          91%
+ *   33421389375   1350 s                               162 s          88%
+ *   33424176735   1090 s                               165 s          85%
+ *
+ * The build is a near-constant ~170 s. Making it faster would move this budget
+ * by seconds. That matters for the remedy: there is nothing to optimise here,
+ * and the quantity has NO CEILING -- queue depth grows with how many PRs are
+ * open, which is precisely when this gate is under load.
+ *
+ * STATED HOLE: a budget cannot bound an unbounded quantity, so this WILL breach
+ * again on a busy enough day. When it does, the gate reports "within the poll
+ * budget" rather than a bare absence, and the remedy is a re-run once the lanes
+ * exist -- correct, because nothing failed.
+ */
+test('the budget the WORKFLOW ships is the budget this file tested', () => {
+  // WITHOUT THIS, REVERTING THE SHIPPED VALUE LEAVES THE SUITE GREEN. Measured:
+  // putting `--timeout-seconds 900` and `timeout-minutes: 20` back -- the exact
+  // regression this work exists to fix -- passed all 129 tests, because the only
+  // budget any test named was a literal inside itself. Third instance today of
+  // the same shape: a value tested in one place and shipped from another. See
+  // the WIRING test in check-pr-review-signal.test.mjs.
+  const wf = readFileSync(join(REPO_ROOT, '.github/workflows/pr-review-signal.yml'), 'utf8');
+  const budget = /--timeout-seconds[ \t]+(\d+)/.exec(wf);
+  assert.ok(budget, 'the workflow must pass an explicit --timeout-seconds');
+  assert.equal(Number(budget[1]), BUDGET_SECONDS, 'shipped budget vs the one measured above');
 
-  // AND THE AGGREGATE EXCLUSION IS MORE LOAD-BEARING THAN 420-vs-900 EVER WAS.
+  // The JOB cap must exceed the gate's own deadline, or the job is killed first
+  // and the run reports `cancelled` -- the same word `cancel-in-progress`
+  // produces for a superseded run, so a red check with no verdict and no way to
+  // tell the two apart.
+  const jobCap = /timeout-minutes:[ \t]+(\d+)/.exec(wf);
+  assert.ok(jobCap, 'the job must carry a timeout-minutes');
+  // >= 5 minutes of slack. Measured on the real failing run: set-up 2 s,
+  // checkout 4 s, `node --test` 5 s, and 3 s of trailing reads after the poll
+  // returned -- about 15 s beyond the budget, so 5 minutes is generous rather
+  // than tight. The assertion is on the SLACK, not on either number, so raising
+  // the budget later without raising the cap fails here instead of silently
+  // producing a `cancelled` run.
+  assert.ok(
+    Number(jobCap[1]) * 60 - BUDGET_SECONDS >= 300,
+    `timeout-minutes ${jobCap[1]} leaves ${Number(jobCap[1]) * 60 - BUDGET_SECONDS}s over the ` +
+      `${BUDGET_SECONDS}s budget; at least 300 s required`,
+  );
+
+  // The poll interval bounds API cost: GITHUB_TOKEN is 1,000 requests/hour PER
+  // REPOSITORY, shared with every other workflow, and the tail is CORRELATED
+  // across PRs -- one busy pool slows every run at once, which is when the most
+  // pollers are running at their cap. At 15 s this budget would be 160 reads a
+  // run, so ~6 concurrent full-budget pollers exhaust the repository. Exhaustion
+  // makes the gate fail closed on GH_ERROR: red, for a reason unrelated to the
+  // diff. 30 s halves it, and costs 15 s of resolution on a 2400 s budget.
+  const interval = /--poll-seconds[ \t]+(\d+)/.exec(wf);
+  assert.ok(interval, 'the workflow must pass an explicit --poll-seconds');
+  assert.ok(Number(interval[1]) >= 30, 'a faster poll multiplies the rate-limit risk');
+  assert.ok(BUDGET_SECONDS / Number(interval[1]) <= 90, 'reads per run stay under ~90');
+});
+
+test('MEASURED: excluding the aggregate matters more than any budget, and 420 s false-failed 8', () => {
+  // THE AGGREGATE EXCLUSION IS MORE LOAD-BEARING THAN 420-vs-900 EVER WAS.
   // Same 68 runs, when `Build + WASM + Rust + Node` itself appeared: min 509,
   // median 894, max 2067 s. Requiring it would false-fail 33 of the 68 at a
   // 900 s budget — half of every green PR — which is why `excludeJobKeys`

@@ -17,9 +17,35 @@ on:
 
 permissions:
   contents: read
-  # Both comment surfaces plus the review list.
-  pull-requests: read
-  # write, and ONLY for the stand-down label. See the label steps below.
+  # Both comment surfaces plus the review list, AND the stand-down label.
+  #
+  # `pull-requests: write` IS REQUIRED FOR THE LABEL, and this was established by
+  # measurement after two wrong answers. The original grant was `issues: write`,
+  # on the reasoning that a label is an issue resource; every label call has
+  # failed since the day it was written. Switching from `gh pr edit` (GraphQL) to
+  # the REST issue-labels endpoints did not help either -- same 403, measured on
+  # PR #3589:
+  #
+  #   gh: Resource not accessible by integration (HTTP 403)
+  #
+  # A reviewer had inferred from GitHub's `x-accepted-github-permissions:
+  # issues=write; pull_requests=write` that the semicolon meant OR, so
+  # `issues: write` would suffice. The live 403 says otherwise. Labelling a PULL
+  # REQUEST needs `pull-requests: write`, whatever the resource is called.
+  #
+  # THIS IS A WIDER GRANT THAN THE COMMENT IT REPLACES WANTED, and that is stated
+  # rather than glossed: the token can now comment on, close and retarget this
+  # PR, not merely label it. Two things make it acceptable. The surface already
+  # exists -- `claude-review.yml` holds `pull-requests: write` and also runs from
+  # the PR's checkout, so nothing new is reachable that was not before. And the
+  # alternative is not a smaller grant, it is a stand-down that never happens:
+  # CodeRabbit reviewing every PR forever while three green steps say otherwise.
+  #
+  # The repository default is `read`, and a workflow CAN elevate past it -- proved
+  # by `claude-review.yml` posting the marker on #3589 under exactly that setting.
+  # So the default was never the cap here, and raising it repo-wide is not needed.
+  pull-requests: write
+  # For `gh label create`, which is repository-level rather than PR-level.
   issues: write
 
 concurrency:

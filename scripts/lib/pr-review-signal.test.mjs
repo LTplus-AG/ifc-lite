@@ -162,6 +162,19 @@ test('presence counts a QUEUED lane: the workflow fired, which is the question',
 // ------------------------------------------- a matrix job skipped BEFORE expanding
 
 /**
+ * The check-run name PR #3581 actually published, verbatim.
+ *
+ * ONE constant rather than five literals, and deliberately NOT derived from
+ * `matrixSkipAliases` over the real test.yml: that is the function under test,
+ * and an expected value taken from it would agree with it whatever it did. This
+ * is the observed string, pinned by hand, which is the whole point.
+ */
+// The literal `${{ }}` below is DATA, not a template this file means to interpolate: it is what
+// GitHub publishes as the check-run name for a matrix job skipped before it expanded.
+// oxlint-disable-next-line no-template-curly-in-string
+const MATRIX_TEMPLATE = 'Viewer tests (shard ${{ matrix.shard }})';
+
+/**
  * VERBATIM from PR #3581's rollup on 2026-08-31 (a `.coderabbit.yaml`-only
  * change, so `needs.changes.outputs.frontend` was false). Note what is NOT here:
  * `Viewer tests (shard 0)` through `(shard 3)`. GitHub published ONE check run,
@@ -173,7 +186,7 @@ const PR3581_ROLLUP = [
   { name: 'Build + WASM + Rust + Node', state: 'success' },
   { name: 'Build packages + WASM', state: 'skipped' },
   { name: 'Viewer E2E smoke', state: 'skipped' },
-  { name: 'Viewer tests (shard ${{ matrix.shard }})', state: 'skipped' },
+  { name: MATRIX_TEMPLATE, state: 'skipped' },
 ];
 
 test('RED, the #3581 shape: a skipped MATRIX job publishes its template, not its expansions', () => {
@@ -198,7 +211,7 @@ test('the alias covers ONLY a skip: the template at any other state satisfies no
   const aliases = matrixSkipAliases(WF);
   const required = ['Viewer tests (shard 0)'];
   for (const state of ['success', 'queued', 'in_progress', 'failure', '']) {
-    const rollup = [{ name: 'Viewer tests (shard ${{ matrix.shard }})', state }];
+    const rollup = [{ name: MATRIX_TEMPLATE, state }];
     assert.deepEqual(missingLanes(required, rollup, aliases), required, `state "${state}"`);
   }
 });
@@ -219,7 +232,7 @@ test('a PLAIN job gets no alias, so nothing but its own name can satisfy it', ()
   const aliases = matrixSkipAliases(WF);
   assert.equal(aliases.has('Detect changes'), false);
   assert.equal(aliases.has('unnamed-job'), false);
-  assert.deepEqual([...new Set(aliases.values())], ['Viewer tests (shard ${{ matrix.shard }})']);
+  assert.deepEqual([...new Set(aliases.values())], [MATRIX_TEMPLATE]);
   assert.equal(aliases.size, 4, 'all four shards, and only those');
 });
 
@@ -233,7 +246,7 @@ test('the REAL test.yml maps every viewer shard to the template the REAL rollup 
   for (const shard of [0, 1, 2, 3]) {
     assert.equal(
       aliases.get(`Viewer tests (shard ${shard})`),
-      'Viewer tests (shard ${{ matrix.shard }})',
+      MATRIX_TEMPLATE,
       `shard ${shard}`,
     );
   }
@@ -296,7 +309,7 @@ test('a wholesale skip is REPORTED, never absorbed into a tick', () => {
   const aliases = matrixSkipAliases(WF);
   assert.deepEqual(
     [...wholesaleSkippedTemplates(PR3581_ROLLUP, aliases)],
-    ['Viewer tests (shard ${{ matrix.shard }})'],
+    [MATRIX_TEMPLATE],
   );
   // And nothing is reported when nothing was skipped wholesale.
   assert.equal(wholesaleSkippedTemplates([{ name: 'Detect changes', state: 'skipped' }], aliases).size, 0);

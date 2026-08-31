@@ -105,6 +105,9 @@ test('GREEN: every required lane present and no reviewer claims a verdict it lac
  * present at `skipped`, because a matrix job skipped by its `if:` publishes one
  * check run before the matrix expands.
  */
+// The literal `${{ }}` below is DATA, not a template this file means to interpolate: it is what
+// GitHub publishes as the check-run name for a matrix job skipped before it expanded.
+// oxlint-disable-next-line no-template-curly-in-string
 const SKIPPED_MATRIX_TEMPLATE = 'Viewer tests (shard ${{ matrix.shard }})';
 
 test('END TO END: a wholesale-skipped matrix job passes the REAL required set', () => {
@@ -128,6 +131,27 @@ test('END TO END: a wholesale-skipped matrix job passes the REAL required set', 
   // Reported, never absorbed: the skip is named along with how many lanes it covered.
   assert.match(r.output, /was SKIPPED as a whole job/);
   assert.match(r.output, /its 4 lane\(s\)/);
+});
+
+test('a fixture alias with a NON-STRING template is BAD_STATE_FILE, not MISSING_LANES', () => {
+  // CodeRabbit, PR #3584. Reproduced before fixing: a `null` template made the
+  // gate print MISSING_LANES -- a true verdict reached for a false reason, which
+  // is the thing refusing the malformed outer value was supposed to prevent.
+  // `undefined` is absent from this list on purpose: JSON.stringify DROPS the key,
+  // so it cannot reach a state file at all and asserting on it would test the harness.
+  for (const template of [null, 42, '', ['a'], true, {}]) {
+    const r = runRaw({
+      required: ['Viewer tests (shard 0)', 'Detect changes'],
+      lanes: [LANE('Detect changes'), LANE(SKIPPED_MATRIX_TEMPLATE, 'skipped')],
+      aliases: { 'Viewer tests (shard 0)': template },
+      reviewChecks: [],
+      reviews: [],
+      headSha: ANY_HEAD,
+    });
+    assert.equal(r.code, 1, r.output);
+    assert.match(r.output, /BAD_STATE_FILE/, `template ${JSON.stringify(template)}`);
+    assert.doesNotMatch(r.output, /MISSING_LANES/, 'the reason must be the malformed fixture');
+  }
 });
 
 test('END TO END: the same rollup WITHOUT the template still fails, naming all four shards', () => {

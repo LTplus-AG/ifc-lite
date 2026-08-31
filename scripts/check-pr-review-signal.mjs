@@ -763,6 +763,21 @@ function fixtureAliases(raw) {
         `matrix template; got ${Array.isArray(raw) ? 'an array' : typeof raw}.`,
     );
   }
+  for (const [lane, template] of Object.entries(raw)) {
+    // A NON-STRING TEMPLATE IS THE SAME BUG ONE LEVEL IN. `{"Viewer tests (shard
+    // 0)": null}` survives `Object.entries`, `skipped.has(null)` is false, and
+    // the fixture then fails as MISSING_LANES -- a true verdict with a false
+    // explanation, which is exactly what refusing the malformed OUTER value was
+    // meant to prevent. Raised by CodeRabbit on PR #3584 and reproduced before
+    // fixing: the run printed MISSING_LANES, not BAD_STATE_FILE.
+    if (typeof lane !== 'string' || lane === '' || typeof template !== 'string' || template === '') {
+      throw new ReviewSignalError(
+        'BAD_STATE_FILE',
+        `\`aliases\` maps \`${lane}\` to ${template === '' ? 'an empty string' : typeof template}; ` +
+          'every lane name and every matrix template must be a non-empty string.',
+      );
+    }
+  }
   return new Map(Object.entries(raw));
 }
 

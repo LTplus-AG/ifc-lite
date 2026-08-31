@@ -573,9 +573,7 @@ export function HierarchyPanel() {
       const storeyIds = unified
         ? unified.storeys.map(s => s.storeyId)
         : node.expressIds;
-      const storeyRefs: Array<{ modelId: string; expressId: number }> = unified
-        ? unified.storeys.map(s => ({ modelId: s.modelId, expressId: s.storeyId }))
-        : storeyIds.map((expressId, i) => ({ modelId: node.modelIds[i] ?? node.modelIds[0] ?? 'legacy', expressId }));
+      const storeyRefs: Array<{ modelId: string; expressId: number }> = unified ? unified.storeys.map(s => ({ modelId: s.modelId, expressId: s.storeyId })) : storeyIds.map((expressId, i) => ({ modelId: node.modelIds[i] ?? node.modelIds[0] ?? 'legacy', expressId }));
 
       // Update the shared active storey (model-aware) so Space Sketch, the
       // Solo level-display mode, and the floorplan all follow the storey the

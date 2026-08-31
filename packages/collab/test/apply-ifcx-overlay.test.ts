@@ -276,6 +276,22 @@ describe('applyIfcxOverlay', () => {
     expect(getAttribute(doc, 'wall', 'ifclite::name')).toBe('back-again');
   });
 
+  it('does not carry an old overlay tombstone across seedFromIfcx reset', () => {
+    const doc = createCollabDoc({ gc: false });
+    doc.transact(() => createEntity(doc, 'wall', { ifcClass: 'IfcWall' }));
+    applyIfcxOverlay(doc, layer([{ path: 'wall', attributes: { [IFCLITE_ATTR.DELETED]: true } }]));
+    expect(entitiesMap(doc).has('wall')).toBe(false);
+
+    // `reset` discards the prior entity universe. A later layer that creates
+    // a path with the same name belongs to the new snapshot, not the deleted
+    // one, and must not be mistaken for an implicit resurrection.
+    seedFromIfcx(doc, layer([]), { reset: true });
+    applyIfcxOverlay(doc, layer([{ path: 'wall', attributes: { 'ifclite::name': 'fresh wall' } }]));
+
+    expect(entitiesMap(doc).has('wall')).toBe(true);
+    expect(getAttribute(doc, 'wall', 'ifclite::name')).toBe('fresh wall');
+  });
+
   // The overlay applier and the seeder share a node decoder, so the
   // decoder's new tombstone awareness must stay on the overlay side.
   // `seedFromIfcx` never interpreted `ifclite::deleted` and must go on

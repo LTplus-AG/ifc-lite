@@ -32,6 +32,12 @@ export function writeOverlayTombstones(meta: Y.Map<unknown>, tombstones: Set<str
   meta.set(OVERLAY_TOMBSTONES_META_KEY, Array.from(tombstones));
 }
 
+/** A snapshot reset starts a new entity universe, so prior overlay deletions
+ * must not suppress a legitimate path in the freshly seeded snapshot. */
+export function clearOverlayTombstones(meta: Y.Map<unknown>): void {
+  meta.delete(OVERLAY_TOMBSTONES_META_KEY);
+}
+
 /**
  * True when a node touching `path` with no opinion on deletion (`opinion
  * === undefined`) must NOT resurrect it, because an earlier call left it

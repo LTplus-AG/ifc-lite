@@ -38,7 +38,7 @@ import {
   type MaterialAssignment,
 } from '../doc/schema.js';
 import { inflateStructuredAttributes } from './structured-attrs.js';
-import { readOverlayTombstones, resolveTombstoneOpinion, resurrectionBlocked, writeOverlayTombstones } from './overlay-tombstones.js';
+import { clearOverlayTombstones, readOverlayTombstones, resolveTombstoneOpinion, resurrectionBlocked, writeOverlayTombstones } from './overlay-tombstones.js';
 
 export interface SeedOptions {
   /** Origin tag for the seeding transaction. Defaults to SEED_ORIGIN. */
@@ -74,6 +74,7 @@ export function seedFromIfcx(doc: Y.Doc, input: IfcxInput, opts: SeedOptions = {
   assertSchemaInvariants(doc);
 
   doc.transact(() => {
+    const meta = metaMap(doc);
     if (opts.reset) {
       const ents = doc.getMap('entities');
       const rels = doc.getMap('relationships');
@@ -81,10 +82,13 @@ export function seedFromIfcx(doc: Y.Doc, input: IfcxInput, opts: SeedOptions = {
       ents.clear();
       rels.clear();
       geom.clear();
+      // Overlay tombstones describe deletions in the discarded entity
+      // universe; retaining them would block a same-path entity in this
+      // freshly seeded snapshot.
+      clearOverlayTombstones(meta);
     }
 
     // Stash file-level metadata so we can re-emit it during snapshotting.
-    const meta = metaMap(doc);
     if (file.header) meta.set('header', file.header);
     if (file.imports) meta.set('imports', file.imports);
     if (file.schemas) meta.set('schemas', file.schemas);

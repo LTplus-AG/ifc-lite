@@ -442,3 +442,59 @@ test('a marker must be an HTML COMMENT, not bare text a contributor can type', (
   assert.equal(r.code, 1, r.out);
   assert.match(r.out, /NOT_POSTED/);
 });
+
+// ============================================== fork PRs are never enforced
+
+test('ENFORCING: a fork PR reports the finding in full and does NOT fail the job', () => {
+  // `claude-review.yml` excludes fork PRs, because a fork's GITHUB_TOKEN is
+  // read-only whatever `permissions:` says. So no marker can EVER be posted on
+  // one, and enforcing would be a permanent red no outside contributor could
+  // clear -- the worst possible greeting, for a class the lane deliberately
+  // does not serve.
+  const r = run({ headRepo: 'someone-else/ifc-lite', issueComments: [], reviewComments: [], reviews: [] }, [
+    ...ENFORCING, '--repo', 'LTplus-AG/ifc-lite',
+  ]);
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /NOT_POSTED/, 'the verdict text is unchanged: this is a carve-out, not silence');
+  assert.match(r.out, /FORK PR/);
+  assert.match(r.out, /read-only/);
+});
+
+test('ENFORCING: a SAME-REPO PR with the same payload still fails', () => {
+  // The anti-vacuity pair. Without it the test above would pass for any reason,
+  // including the gate having stopped enforcing altogether.
+  const r = run({ headRepo: 'LTplus-AG/ifc-lite', issueComments: [], reviewComments: [], reviews: [] }, [
+    ...ENFORCING, '--repo', 'LTplus-AG/ifc-lite',
+  ]);
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /NOT_POSTED/);
+  assert.doesNotMatch(r.out, /FORK PR/);
+});
+
+test('a fork PR that DID somehow get a marker is a pass, not a carve-out', () => {
+  // The carve-out only ever suppresses a FAILING verdict. A fork that is covered
+  // passes on the merits, and must not be reported as excused.
+  const r = run({
+    headRepo: 'someone-else/ifc-lite',
+    issueComments: [{ user: { login: REVIEWER }, body: marker(SHA) }],
+    reviewComments: [],
+    reviews: [],
+  }, [...ENFORCING, '--repo', 'LTplus-AG/ifc-lite']);
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /REVIEW_POSTED/);
+  assert.doesNotMatch(r.out, /FORK PR/);
+});
+
+test('FAIL CLOSED: an unreadable head repository REFUSES rather than guessing either way', () => {
+  // Both guesses are wrong in a way that matters. "Not a fork" enforces against a
+  // PR that can never post a marker; "fork" silently downgrades the gate on every
+  // PR. So it refuses, in both modes -- a refusal is a fact about this gate's
+  // inputs, not a verdict on the diff.
+  for (const headRepo of ['', null, 42, []]) {
+    const r = run({ headRepo, issueComments: [], reviewComments: [], reviews: [] }, [
+      ...ENFORCING, '--repo', 'LTplus-AG/ifc-lite',
+    ]);
+    assert.equal(r.code, 1, `headRepo=${JSON.stringify(headRepo)}: ${r.out}`);
+    assert.match(r.out, /NO_HEAD_REPO/, JSON.stringify(headRepo));
+  }
+});

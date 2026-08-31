@@ -28,15 +28,15 @@
     "claude"
   ],
   "$standDownComment": [
-    "THE CODERABBIT HALF IS NOT IN THIS REPOSITORY YET, and saying so matters.",
-    "The workflow applies a `claude-reviewed` label when this gate verifies a review,",
-    "and clears it on every new head. That label only does anything once",
-    ".coderabbit.yaml carries `auto_review.labels: ['!claude-reviewed']`, a negative",
-    "match. That file is edited by PR #3576 and a second edit here would conflict, so",
-    "it lands after #3576 does. Until then the label is inert and the `issues: write`",
-    "permission the workflow requests buys nothing. Stated rather than implied,",
-    "because a workflow comment asserting a config that does not exist is the kind of",
-    "claim this repository's gates exist to catch."
+    "THE CODERABBIT HALF LANDS WITH PR #3581, not #3576, and this comment said #3576.",
+    "The workflow applies a `claude-reviewed` label when this gate verifies a review, and",
+    "clears it on every new head. That label only does anything once .coderabbit.yaml",
+    "carries `auto_review.labels: ['!claude-reviewed']`, a negative match. #3576 edited",
+    "that file for other reasons; the `labels:` key is added by #3581. Until #3581 merges",
+    "the label is inert and the `issues: write` permission the workflow requests buys",
+    "nothing. Stated rather than implied, because a workflow comment asserting a config",
+    "that does not exist is the kind of claim this repository's gates exist to catch --",
+    "and this one had already gone stale once by naming the wrong PR."
   ],
   "$modeComment": [
     "ADVISORY or ENFORCING. Advisory prints the identical verdict and exits 0; enforcing",
@@ -58,12 +58,25 @@
     "can halt the repository on a third party's capacity should earn that power by",
     "running quietly first. Promote it to required once it has a track record.",
     "",
-    "THE FAILURE MODES THAT ARE NOT THE AUTHOR'S FAULT, and what each looks like:",
-    "a drained model pool fails the lane job, so no marker is written and this gate says",
-    "NOT_POSTED; a fork PR never runs the lane at all and is excluded upstream. Neither",
-    "is a statement about the diff. If NOT_POSTED becomes routine rather than rare, the",
-    "answer is to turn the lane off or put this back to `advisory` -- not to ignore it,",
-    "which is the failure mode a noisy gate actually has."
+    "THE FAILURE MODES THAT ARE NOT THE AUTHOR'S FAULT, and what each does now:",
+    "",
+    "  - NOTHING REVIEWABLE (lockfiles, generated code, snapshots, fixtures, build output).",
+    "    The lane posts `verdict=nothing-to-review` and this gate PASSES. Before that marker",
+    "    existed the lane posted nothing, and enforcing would have made every such PR a red",
+    "    that no re-run and no author action could clear -- PR #3558, a Cargo.lock-only",
+    "    dependabot bump, is a live instance of the class.",
+    "  - FORK PR. The lane cannot run there (a fork's GITHUB_TOKEN is read-only whatever",
+    "    `permissions:` says), so no marker is possible. This gate reports the finding in full",
+    "    and does NOT fail the job, in either mode. Fork PRs stay on the CodeRabbit lane.",
+    "  - DRAINED MODEL POOL. The lane job fails, no marker is written, this gate says",
+    "    NOT_POSTED and goes red. That one IS a real red and it is the point of the gate: it",
+    "    is exactly the state where a review did not happen and nothing else says so.",
+    "",
+    "IF NOT_POSTED BECOMES ROUTINE, the remedy is to put THIS back to `advisory`. Turning the",
+    "lane off alone is the WRONG move, and worth stating because it is the reflex: this gate",
+    "has no kill switch of its own, so `CLAUDE_REVIEW_ENABLED=false` stops the lane, leaves",
+    "the gate enforcing, and turns EVERY pull request red. Reaching for the lane's switch",
+    "during an incident would be the maximal version of the problem it was reached for."
   ],
   "mode": "enforcing"
 }

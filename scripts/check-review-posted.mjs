@@ -43,7 +43,7 @@
  * THE ONE THING IT DOES ACCEPT is a marker the reviewer writes at the END of a
  * successful post, naming the exact commit it reviewed:
  *
- *     <!-- ifc-lite-review sha=<40-hex> verdict=clean|findings count=<n> -->
+ *     <!-- ifc-lite-review sha=<40-hex> verdict=clean|findings|nothing-to-review count=<n> -->
  *
  * THE CONTRACT THIS IMPLIES, and it is the load-bearing half: THE REVIEWER MUST
  * POST ON EVERY RUN, INCLUDING WHEN IT FINDS NOTHING. A reviewer that stays
@@ -136,7 +136,7 @@ const PER_PAGE = 100;
  * both ends and tolerant of surrounding whitespace only -- a loose pattern here
  * would let a contributor hand-write a passing marker into a PR comment.
  */
-export const MARKER_RE = /<!--\s*ifc-lite-review\s+sha=([0-9a-f]{40})\s+verdict=(clean|findings)\s+count=(\d+)\s*-->/;
+export const MARKER_RE = /<!--\s*ifc-lite-review\s+sha=([0-9a-f]{40})\s+verdict=(clean|findings|nothing-to-review)\s+count=(\d+)\s*-->/;
 
 /** Block the runner without a dependency. This job's whole purpose is to wait. */
 function sleepSync(ms) {
@@ -365,7 +365,7 @@ export function evaluate({ comments, cfg, headSha }) {
       '   REMEDY: ' +
         (sawUnparseable
           ? 'fix the reviewer\'s marker writer; the expected form is ' +
-            '`<!-- ifc-lite-review sha=<40-hex> verdict=clean|findings count=<n> -->`.'
+            '`<!-- ifc-lite-review sha=<40-hex> verdict=clean|findings|nothing-to-review count=<n> -->`.'
           : 're-run the review job.'),
     );
     return { ok: false, verdict: sawUnparseable ? 'MARKER_MALFORMED' : 'NOT_POSTED', lines };
@@ -422,8 +422,14 @@ export function evaluate({ comments, cfg, headSha }) {
   }
 
   lines.push(
-    `✅ REVIEW_POSTED: an expected reviewer posted a ${match.verdict} verdict for ${headSha.slice(0, 9)}` +
-      `${match.verdict === 'findings' ? ` with ${match.count} finding(s)` : ''}.`,
+    match.verdict === 'nothing-to-review'
+      ? `✅ REVIEW_POSTED: the reviewer reached ${headSha.slice(0, 9)} and reported NOTHING TO REVIEW — ` +
+        'every changed path is excluded (lockfiles, generated code, snapshots, fixtures, build output). ' +
+        'That is a decision the lane made and POSTED, not a statement that the diff was read and is fine. ' +
+        'The distinction is the point: a `clean` marker here would certify these PRs as reviewed, and an ' +
+        'exclusion-list bug would then do it silently for every PR it swallowed.'
+      : `✅ REVIEW_POSTED: an expected reviewer posted a ${match.verdict} verdict for ${headSha.slice(0, 9)}` +
+        `${match.verdict === 'findings' ? ` with ${match.count} finding(s)` : ''}.`,
     '   This proves a review REACHED the pull request for this exact commit. It proves nothing',
     '   about whether the review was any good; precision is a separate instrument.',
   );
@@ -489,6 +495,42 @@ function fetchPayload(repo, pr) {
     out[key] = rows;
   }
   return out;
+}
+
+/**
+ * Is this PR from a FORK? Asked of the API, never taken from the caller.
+ *
+ * It matters because the lane cannot post on a fork: claude-review.yml excludes
+ * fork PRs outright, since a fork's GITHUB_TOKEN is read-only whatever
+ * `permissions:` says. So under `mode: enforcing` every fork PR would be a
+ * NOT_POSTED red that no re-run and no contributor action could ever clear --
+ * the same unclearable-red class as a PR with nothing reviewable in it, and the
+ * worst possible greeting for an outside contributor.
+ *
+ * NOT read from the workflow. `review-posted.yml` runs from the PR's own
+ * checkout, so a flag passed there would be a flag a fork PR could edit. This
+ * asks the API.
+ *
+ * `headRepo` in a `--state-file` payload overrides the read, and ONLY there.
+ * That is what makes this branch reachable by the harness at all: gating it on
+ * `!args.stateFile` would have shipped an enforcement carve-out no test could
+ * execute, which is the shape this repository keeps paying for.
+ */
+function isForkPr(repo, pr, override) {
+  const data =
+    override === undefined
+      ? gh(['api', `repos/${repo}/pulls/${pr}`, '--method', 'GET'], 'the PR head repo', ReviewPostedError)
+      : { head: { repo: { full_name: override } } };
+  const headRepo = data?.head?.repo?.full_name;
+  if (typeof headRepo !== 'string' || headRepo === '') {
+    throw new ReviewPostedError(
+      'NO_HEAD_REPO',
+      `PR #${pr} returned no head repository, so this gate cannot tell a fork from a branch. It refuses ` +
+        'rather than guess: guessing "not a fork" would enforce against a PR that can never post a ' +
+        'marker, and guessing "fork" would silently downgrade the gate on every PR.',
+    );
+  }
+  return headRepo !== repo;
 }
 
 function main() {
@@ -601,6 +643,23 @@ function main() {
     console.log(
       'ADVISORY MODE: the finding above does not fail this job. Set `mode` to "enforcing" in ' +
         'scripts/review-posted.config.json once the reviewer lane is trusted.',
+    );
+    process.exit(0);
+  }
+
+  // FORK PRs ARE NEVER ENFORCED, in either mode, and the reason is the same one
+  // that makes an unreviewable PR post a marker rather than nothing: the lane
+  // CANNOT run here, so the red would be permanent and no contributor could
+  // clear it. Reported in full so it is not silence -- the verdict text above is
+  // unchanged -- but it does not fail the job. Checked only when the verdict is
+  // already failing, so the extra API read is not paid on the common path.
+  if (!ok && isForkPr(args.repo, args.pr, args.stateFile ? payload?.headRepo : undefined)) {
+    console.log('');
+    console.log(
+      'FORK PR: the finding above does not fail this job. `claude-review.yml` excludes fork PRs, because ' +
+        "a fork's GITHUB_TOKEN is read-only whatever `permissions:` says, so no marker can ever be posted " +
+        'here and enforcing would be a red nobody can clear. These PRs are covered by the CodeRabbit lane, ' +
+        'which is why the stand-down label is never applied to them.',
     );
     process.exit(0);
   }

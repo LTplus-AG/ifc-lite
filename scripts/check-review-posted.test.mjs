@@ -19,6 +19,7 @@ import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { pageAll } from './check-review-posted.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const GATE = join(HERE, 'check-review-posted.mjs');
@@ -56,6 +57,11 @@ function run(payload, extra = [...ENFORCING], sha = SHA) {
 
 const comments = (...cs) => ({ issueComments: cs.map(([user, body]) => ({ user: { login: user }, body })) });
 
+/** Inline review comments, which is the surface a FINDING lives on and the one #1679 drops. */
+const inline = (...cs) => ({
+  reviewComments: cs.map(([user, body, commit_id = SHA]) => ({ user: { login: user }, body, commit_id })),
+});
+
 // ============================================================ the core verdicts
 
 test('PASS: the expected reviewer posted a marker naming this head', () => {
@@ -65,15 +71,36 @@ test('PASS: the expected reviewer posted a marker naming this head', () => {
   assert.match(r.out, /clean verdict/);
 });
 
-test('PASS: a findings verdict backed by posted findings', () => {
-  const r = run(
-    comments(
-      [REVIEWER, 'This index can be negative.'],
-      [REVIEWER, `Summary.\n${marker(SHA, 'findings', 1)}`],
-    ),
-  );
+test('PASS: a findings verdict backed by an INLINE finding on this head', () => {
+  const r = run({
+    ...comments([REVIEWER, `Summary.\n${marker(SHA, 'findings', 1)}`]),
+    ...inline([REVIEWER, 'This index can be negative.']),
+  });
   assert.equal(r.code, 0, r.out);
   assert.match(r.out, /findings verdict.*with 1 finding/);
+});
+
+test('FAIL: a summary comment from another workflow does not count as a finding', () => {
+  // benchmark.yml posts as `github-actions` on any PR touching rust/, packages/,
+  // apps/viewer/ or Cargo.*, and that login is an expected reviewer. Counting any
+  // non-carrier comment made this check inert on most PRs in this repo.
+  const r = run({
+    ...comments(
+      [REVIEWER, 'Viewer benchmark: 12ms (advisory).'],
+      [REVIEWER, `Summary.\n${marker(SHA, 'findings', 3)}`],
+    ),
+  });
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /FINDINGS_NOT_POSTED/);
+});
+
+test('FAIL: findings anchored to an EARLIER head do not cover this one', () => {
+  const r = run({
+    ...comments([REVIEWER, `Summary.\n${marker(SHA, 'findings', 3)}`]),
+    ...inline([REVIEWER, 'stale finding', OTHER_SHA]),
+  });
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /FINDINGS_NOT_POSTED/);
 });
 
 test('FAIL: a findings verdict with NO finding posted is the #1679 shape', () => {
@@ -227,6 +254,35 @@ test('a NaN timeout is refused, because NaN never expires a deadline', () => {
   }
 });
 
+// ======================================================================= pager
+
+test('the pager walks pages and reports a complete read', () => {
+  const pages = { 1: Array(100).fill({ x: 1 }), 2: Array(7).fill({ x: 2 }) };
+  const seen = [];
+  const r = pageAll((page) => { seen.push(page); return pages[page] ?? []; });
+  assert.deepEqual(seen, [1, 2], 'stops at the first short page');
+  assert.equal(r.rows.length, 107);
+  assert.equal(r.truncated, false);
+});
+
+test('an exactly-full LAST page is a complete read, not a truncated one', () => {
+  // The previous shape called this truncated, which turned a fully-read surface
+  // into a permanent refusal nobody could clear -- the same defect the pager
+  // rewrite claimed to remove, at a different boundary.
+  const r = pageAll((page) => (page <= 3 ? Array(10).fill({}) : []), { maxPages: 3, perPage: 10 });
+  assert.equal(r.rows.length, 30);
+  assert.equal(r.truncated, false, 'the probe past the last page came back empty');
+});
+
+test('a surface with MORE than the budget reports truncated', () => {
+  const r = pageAll(() => Array(10).fill({}), { maxPages: 3, perPage: 10 });
+  assert.equal(r.truncated, true, 'the probe found more, so the read is incomplete');
+});
+
+test('a non-array page is BAD_PAYLOAD, not an empty read', () => {
+  assert.throws(() => pageAll(() => ({ nope: true })), (e) => e.reason === 'BAD_PAYLOAD');
+});
+
 // =================================================================== the config
 
 test('an EMPTY expectedAuthors list is refused, not treated as "anyone"', () => {
@@ -234,6 +290,22 @@ test('an EMPTY expectedAuthors list is refused, not treated as "anyone"', () => 
   assert.equal(r.code, 1, r.out);
   assert.match(r.out, /BAD_CONFIG/);
   assert.match(r.out, /every PR pass on any comment/);
+});
+
+test('a config that is null or an array is BAD_CONFIG, not a TypeError', () => {
+  // Reaching for `.expectedAuthors` on null throws past this file's catch and
+  // prints a stack trace instead of the remedy the config is written to give.
+  for (const body of ['null', '[]', '"a string"']) {
+    const path = join(TMP, `cfg-shape-${(seq += 1)}.json`);
+    writeFileSync(path, body);
+    const r = run(comments([REVIEWER, marker(SHA)]), ['--config', path]);
+    assert.equal(r.code, 1, `${body}: ${r.out}`);
+    assert.match(r.out, /BAD_CONFIG/, `${body} must be a classified refusal`);
+    // Asserting on a STACK FRAME, not on the word "TypeError": the BAD_CONFIG
+    // message deliberately explains what would otherwise be thrown, so matching
+    // the word matched this gate's own prose and failed on a correct run.
+    assert.doesNotMatch(r.out, /\n\s+at [A-Za-z]/, `${body} must not print a stack trace`);
+  }
 });
 
 test('a MISSING mode is refused, not defaulted to the lenient one', () => {

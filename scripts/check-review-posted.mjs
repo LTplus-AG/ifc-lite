@@ -116,8 +116,8 @@ const DEFAULT_CONFIG = join(SCRIPTS_DIR, 'review-posted.config.json');
  * guess at how long a review takes: on expiry the verdict is still NOT_POSTED,
  * which is the true answer at that moment, and the remedy re-runs.
  */
-const POLL_SECONDS = 15;
-const DEFAULT_TIMEOUT_SECONDS = 600;
+const POLL_SECONDS = 30;
+const DEFAULT_TIMEOUT_SECONDS = 300;
 
 /**
  * A page cap that is REAL. `gh api --paginate` follows Link headers to
@@ -184,6 +184,14 @@ export function readConfig(path) {
     cfg = JSON.parse(raw);
   } catch (err) {
     throw new ReviewPostedError('BAD_CONFIG', `Config \`${path}\` is not valid JSON: ${err.message}`);
+  }
+  if (cfg === null || typeof cfg !== 'object' || Array.isArray(cfg)) {
+    throw new ReviewPostedError(
+      'BAD_CONFIG',
+      `Config \`${path}\` parsed as ${cfg === null ? 'null' : Array.isArray(cfg) ? 'an array' : typeof cfg}, ` +
+        'not an object. Reaching for a key on it would throw a TypeError past this file\'s catch and ' +
+        'print a stack trace instead of a remedy.',
+    );
   }
   if (!Array.isArray(cfg.expectedAuthors) || cfg.expectedAuthors.length === 0) {
     throw new ReviewPostedError(
@@ -291,7 +299,15 @@ export function normaliseComments(payload) {
       );
     }
     for (const c of list) {
-      out.push({ author: normaliseLogin(c?.user?.login ?? c?.author?.login), body: String(c?.body ?? '') });
+      out.push({
+        author: normaliseLogin(c?.user?.login ?? c?.author?.login),
+        body: String(c?.body ?? ''),
+        // Which surface it came from, and which commit an inline comment is
+        // anchored to. Both are needed by the findings cross-check and neither
+        // survived the old shape, which is why that check could not be precise.
+        surface: key,
+        commitId: c?.commit_id ?? null,
+      });
     }
   }
   // Same list the loop walks. These had drifted: the loop read three surfaces
@@ -378,19 +394,30 @@ export function evaluate({ comments, cfg, headSha }) {
   // Counted across every comment from an expected author EXCEPT the marker's own
   // carrier, since a summary comment is not itself a finding.
   if (match.verdict === 'findings') {
-    const carriers = mine.filter((c) => MARKER_RE.test(c.body)).length;
-    const others = mine.length - carriers;
-    if (others === 0) {
+    // COUNTED FROM INLINE COMMENTS ON THIS HEAD ONLY. An earlier version counted
+    // every non-carrier comment from an expected author, which made the check
+    // inert on most PRs here: benchmark.yml posts a summary comment as
+    // `github-actions` on any PR touching rust/, packages/, apps/viewer/ or
+    // Cargo.*, and that one comment satisfied `others >= 1` forever. Stale
+    // findings from an earlier head did the same. Both let a marker claiming
+    // three findings pass with all three dropped -- the exact #1679 shape the
+    // check exists to catch.
+    const posted = comments.filter(
+      (c) => c.surface === 'reviewComments' && cfg.expectedAuthors.has(c.author) && c.commitId === headSha,
+    ).length;
+    if (posted === 0) {
       lines.push(
         `❌ FINDINGS_NOT_POSTED: the marker claims ${match.count} finding(s) for ` +
-          `${headSha.slice(0, 9)}, and no finding comment from an expected reviewer reached this PR.`,
+          `${headSha.slice(0, 9)}, and no inline finding from an expected reviewer is anchored to it.`,
         '   This is the #1679 shape exactly: the summary posts, the inline comments drop, the run',
         '   logs `Posted 0/N`, and the job exits 0. The count in the marker is the reviewer\'s own',
         '   claim; this is the check that it is true.',
+        '   Only INLINE comments on THIS head count. A summary comment is not a finding, and a',
+        '   finding on an earlier head is not a finding on this diff.',
         '   REMEDY: re-run the review job. If it recurs, the run log will show `Posted 0/N`; attach',
         '   it to claude-code-action#1679 rather than re-running indefinitely.',
       );
-      return { ok: false, verdict: 'FINDINGS_NOT_POSTED', lines };
+      return { ok: false, verdict: 'FINDINGS_NOT_POSTED', escapeHatch: null, lines };
     }
   }
 
@@ -415,6 +442,38 @@ export function evaluate({ comments, cfg, headSha }) {
  * Paged by hand rather than `--paginate --slurp` so the page bound this gate
  * reports is the page bound it applies.
  */
+/**
+ * Walk one surface, page by page, and say honestly whether it finished.
+ *
+ * Pure over an injected `fetchPage` so the pager is testable without a network.
+ * It was not, and that mattered: "the bound is now REAL" was asserted on a test
+ * that hand-fed `{ truncated: [...] }` straight to the evaluator and never ran a
+ * single page.
+ *
+ * @param {(page: number, perPage: number) => unknown[]} fetchPage
+ * @returns {{ rows: unknown[], truncated: boolean }}
+ */
+export function pageAll(fetchPage, { maxPages = MAX_PAGES, perPage = PER_PAGE } = {}) {
+  const rows = [];
+  for (let page = 1; page <= maxPages; page += 1) {
+    const batch = fetchPage(page, perPage);
+    if (!Array.isArray(batch)) {
+      throw new ReviewPostedError('BAD_PAYLOAD', `page ${page} was not an array.`);
+    }
+    rows.push(...batch);
+    if (batch.length < perPage) return { rows, truncated: false };
+    // Probe one past a full final page rather than calling it truncated: a
+    // surface holding exactly maxPages x perPage entries is FULLY READ, and
+    // reporting it unread is the permanent unclearable refusal this pager was
+    // written to remove -- moved, not fixed.
+    if (page === maxPages) {
+      const probe = fetchPage(maxPages * perPage + 1, 1);
+      if (Array.isArray(probe) && probe.length === 0) return { rows, truncated: false };
+    }
+  }
+  return { rows, truncated: true };
+}
+
 function fetchPayload(repo, pr) {
   const surfaces = {
     issueComments: `repos/${repo}/issues/${pr}/comments`,
@@ -423,21 +482,10 @@ function fetchPayload(repo, pr) {
   };
   const out = { truncated: [] };
   for (const [key, path] of Object.entries(surfaces)) {
-    const rows = [];
-    let page = 1;
-    for (; page <= MAX_PAGES; page += 1) {
-      const batch = gh(
-        ['api', `${path}?per_page=${PER_PAGE}&page=${page}`, '--method', 'GET'],
-        `${key} page ${page}`,
-        ReviewPostedError,
-      );
-      if (!Array.isArray(batch)) {
-        throw new ReviewPostedError('BAD_PAYLOAD', `${key} page ${page} was not an array.`);
-      }
-      rows.push(...batch);
-      if (batch.length < PER_PAGE) break;
-    }
-    if (page > MAX_PAGES) out.truncated.push(key);
+    const { rows, truncated } = pageAll((page, perPage) =>
+      gh(['api', `${path}?per_page=${perPage}&page=${page}`, '--method', 'GET'], `${key} page ${page}`, ReviewPostedError),
+    );
+    if (truncated) out.truncated.push(key);
     out[key] = rows;
   }
   return out;
@@ -471,7 +519,11 @@ function main() {
 
   let payload;
   if (args.stateFile) {
-    payload = JSON.parse(readFileSync(args.stateFile, 'utf8'));
+    try {
+      payload = JSON.parse(readFileSync(args.stateFile, 'utf8'));
+    } catch (err) {
+      throw new ReviewPostedError('BAD_STATE_FILE', `Cannot read \`${args.stateFile}\`: ${err.message}`);
+    }
   } else {
     if (!args.repo) {
       throw new ReviewPostedError(
@@ -495,6 +547,20 @@ function main() {
   while (!result.ok && !args.stateFile && Date.now() < deadline) {
     sleepSync(POLL_SECONDS * 1000);
     waited += POLL_SECONDS;
+    // ONE call per tick, not three. The marker lands on the issue-comment
+    // surface, so that is the only surface worth watching; the other two are
+    // fetched once, after it appears, for the findings cross-check. At three
+    // surfaces per tick this gate alone would have spent ~120 of the repository's
+    // 1,000/hour GITHUB_TOKEN budget per run, shared with benchmark.yml and two
+    // sibling gates, and exhausting it fails THEM as well as this.
+    const probe = normaliseComments({
+      issueComments: gh(
+        ['api', `repos/${args.repo}/issues/${args.pr}/comments?per_page=${PER_PAGE}&page=1`, '--method', 'GET'],
+        'the PR comment list',
+        ReviewPostedError,
+      ),
+    });
+    if (!probe.some((c) => cfg.expectedAuthors.has(c.author) && MARKER_RE.test(c.body))) continue;
     comments = normaliseComments(fetchPayload(args.repo, args.pr));
     result = evaluate({ comments, cfg, headSha: args.sha });
   }
@@ -537,6 +603,19 @@ if (isMainEntry(import.meta.url)) {
   } catch (err) {
     if (err instanceof ReviewPostedError || err instanceof GhError) {
       console.error(`❌ ${err.reason}: ${err.message}`);
+      // A REFUSAL IS NOT COVERAGE. Every refusal path -- GH_ERROR, truncation,
+      // a bad config, a killed poll -- previously left `covered` unwritten, and
+      // the label step skipped on an empty value, so a PR carrying the label
+      // from an earlier head kept it through any number of refused runs. That is
+      // a stale stand-down, which is what STALE_REVIEW exists to prevent.
+      if (process.env.GITHUB_OUTPUT) {
+        try {
+          appendFileSync(process.env.GITHUB_OUTPUT, 'covered=false\n');
+        } catch {
+          // The refusal above is the finding; failing to annotate it is not worth
+          // masking it with a second error.
+        }
+      }
       process.exit(1);
     }
     throw err;

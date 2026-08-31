@@ -5,27 +5,22 @@
 name: Review posted
 
 # NO `paths:` FILTER AND NO `branches:` FILTER, for the reason
-# pr-review-signal.yml documents at length: a presence gate that can itself be
-# filtered out is the same defect it exists to catch (#3305). This one reads
-# scripts/review-posted.config.json, so with no filter, no edit to that config
-# can dodge the job that runs it ON THE PATH THAT MERGES IT.
+# pr-review-signal.yml documents: a presence gate that can itself be filtered out
+# is the same defect it exists to catch (#3305).
 #
-# `synchronize` matters more here than anywhere else: the gate adjudicates a
-# verdict for a SPECIFIC head, so a new commit must re-open the question. Without
-# it a review of commit 1 would keep a PR green through commit 20.
+# `synchronize` is load-bearing here rather than incidental: the gate adjudicates
+# a verdict for ONE head, so a new commit must re-open the question. Without it a
+# review of commit 1 would hold a PR green through commit 20.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
-  # write, and ONLY for the stand-down label below. The gate itself reads.
-  issues: write
-  # Covers both reads: issue comments and PR reviews. `issues: read` is not
-  # requested; if the first runs report GH_ERROR mentioning permissions, add it.
-  # The gate fails closed, so that shows up as a visible refusal rather than a
-  # silently empty comment list.
+  # Both comment surfaces plus the review list.
   pull-requests: read
+  # write, and ONLY for the stand-down label. See the label steps below.
+  issues: write
 
 concurrency:
   group: review-posted-${{ github.event.pull_request.number }}
@@ -35,10 +30,30 @@ jobs:
   review-posted:
     name: Review posted
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # ABOVE the gate's poll budget (300s), deliberately, so a run that exhausts
+    # the budget still gets to PRINT its verdict rather than being killed
+    # mid-wait with no output and no `covered` value. The sibling gate states the
+    # same rule at pr-review-signal.yml (20 minutes against a 900s budget). An
+    # earlier version of this file had 5 minutes against a 600s budget, which
+    # would have killed the job on every PR before it could say anything.
+    timeout-minutes: 10
     steps:
+      # THE GATE, ITS TESTS AND ITS CONFIG COME FROM THE BASE BRANCH, NEVER FROM
+      # THE PR UNDER REVIEW.
+      #
+      # `actions/checkout` defaults to the PR's merge ref on `pull_request`, so
+      # the default would run this gate, its harness, and
+      # scripts/review-posted.config.json as the contributor wrote them. A
+      # contributor could then add their own login to `expectedAuthors`,
+      # hand-write a marker in a PR comment, and be validated by their own
+      # config. The missing `paths:` filter above does not close that -- running
+      # the job on the edited config IS the hole -- so the ref does.
+      #
+      # This is the rule adk-samples and supabase/cli both landed on
+      # independently: the rules that judge a PR must not be editable by it.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.pull_request.base.sha }}
           lfs: false
           persist-credentials: false
 
@@ -46,17 +61,37 @@ jobs:
         with:
           node-version: 22
 
-      # The harness runs BEFORE the gate, and in this job rather than only in the
-      # scripts/ glob catch-all, for the reason check-pr-review-signal.yml gives:
-      # relying on a path-filtered job to run this gate's tests would put them
-      # behind a filter this workflow deliberately does not have.
+      # Runs BEFORE the gate and in this job rather than only in the scripts/
+      # glob catch-all: relying on a path-filtered job to test this gate would put
+      # its harness behind a filter this workflow deliberately does not have.
       #
       # No `pnpm install`: the gate and its harness import node builtins only and
-      # shell out to `gh`, which is preinstalled on GitHub runners. A gate that
-      # decides whether a review happened must not be able to fail because a
-      # registry was slow.
+      # shell out to `gh`, preinstalled on runners. A gate that decides whether a
+      # review happened must not be able to fail because a registry was slow.
       - name: Unit-test the gate itself
         run: node --test scripts/check-review-posted.test.mjs
+
+      # CLEARED FIRST, BEFORE THE GATE WAITS. This is a race, not a tidy-up.
+      #
+      # CodeRabbit's `auto_review` reads labels at PUSH time. If the label were
+      # only reconciled after the poll, then on a new commit CodeRabbit would see
+      # the label left over from the PREVIOUS head, stand down immediately, and
+      # the gate would clear it minutes later -- after the decision it was meant
+      # to influence. CodeRabbit does not re-review on an `unlabeled` event, so
+      # that commit would ship read by neither reviewer.
+      #
+      # Clearing up front inverts the failure: the worst case is CodeRabbit
+      # reviewing a PR the Claude lane also covers, which costs quota. The other
+      # ordering costs a review.
+      - name: Clear the stand-down label for this new head
+        if: github.event.action == 'synchronize' || github.event.action == 'reopened'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr edit "${{ github.event.pull_request.number }}" \
+            --repo "${{ github.repository }}" --remove-label claude-reviewed \
+            || echo "No label to clear (or no write access on a fork PR); CodeRabbit will review."
 
       - name: Check a review was actually posted for this head
         id: gate
@@ -66,46 +101,43 @@ jobs:
         run: |
           node scripts/check-review-posted.mjs \
             --pr "${{ github.event.pull_request.number }}" \
-            --sha "${{ github.event.pull_request.head.sha }}"
+            --sha "${{ github.event.pull_request.head.sha }}" \
+            --timeout-seconds 300
 
-      # THE STAND-DOWN LABEL, AND WHY THE GATE DECIDES IT RATHER THAN THE REVIEWER.
+      # ADDS ONLY. The clearing half runs up front, above.
       #
-      # CodeRabbit is configured with `auto_review.labels: ['!claude-reviewed']`,
-      # a negative match, so it skips any PR carrying this label. That preserves
-      # its scarce Fair Usage allowance (both identities on this repo sit at the
-      # 1-2 reviews/hour floor permanently) for the PRs Claude did NOT cover.
+      # `continue-on-error` because both failure modes here land on the SUCCESS
+      # path and neither means the review is bad: a fork PR's GITHUB_TOKEN is
+      # read-only whatever `permissions:` says, and the label may not exist in the
+      # repository yet. Failing the job for either would turn a passing gate red.
+      # The cost of the label not being applied is that CodeRabbit reviews a PR
+      # that was already covered -- quota, not correctness.
       #
-      # The label follows the GATE'S VERDICT, never the reviewer's own report, and
-      # never merely the fact that a bot commented. CodeRabbit has no "skip if
-      # another bot reviewed" knob, so a label is the only signal available to it;
-      # if that label could be set by a reviewer that silently posted nothing
-      # (claude-code-action #1679: forty consecutive runs logging `Posted 0/N`
-      # while exiting 0) then BOTH reviewers would stand down and the PR would
-      # show green having been read by neither. That is a third route to the exact
-      # defect this gate closes, so the label is downstream of verification.
-      #
-      # IT IS REMOVED AS WELL AS ADDED, and that half is not optional. The gate
-      # adjudicates a verdict for ONE head. Without the removal, a PR reviewed at
-      # commit 1 keeps the label through commit 20 and CodeRabbit stands down for
-      # a diff nothing has read -- the stand-down would go stale in exactly the
-      # way STALE_REVIEW exists to catch.
-      #
-      # Reads `steps.gate.outputs.covered`, not the step's exit code: in advisory
-      # mode a failing verdict still exits 0, so the exit code would mark an
-      # unreviewed PR as covered.
-      - name: Sync the CodeRabbit stand-down label to the verdict
-        if: always() && steps.gate.outputs.covered != ''
+      # Reads `steps.gate.outputs.covered`, never the step's exit code: in
+      # advisory mode a failing verdict still exits 0, so the exit code would mark
+      # an unreviewed PR as covered.
+      - name: Mark covered so CodeRabbit can stand down
+        if: always() && steps.gate.outputs.covered == 'true'
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-          COVERED: ${{ steps.gate.outputs.covered }}
         run: |
-          set -euo pipefail
-          if [ "$COVERED" = "true" ]; then
-            gh pr edit "${{ github.event.pull_request.number }}" \
-              --repo "${{ github.repository }}" --add-label claude-reviewed
-            echo "Labelled: a verified review exists for this head."
-          else
-            gh pr edit "${{ github.event.pull_request.number }}" \
-              --repo "${{ github.repository }}" --remove-label claude-reviewed 2>/dev/null || true
-            echo "Label cleared: no verified review for this head, so CodeRabbit must not stand down."
-          fi
+          gh label create claude-reviewed --repo "${{ github.repository }}" \
+            --color 0e8a16 --description "A review was verified as posted for this PR's head." \
+            2>/dev/null || true
+          gh pr edit "${{ github.event.pull_request.number }}" \
+            --repo "${{ github.repository }}" --add-label claude-reviewed
+
+      # The refusal paths write `covered=false` too, so a stale label is cleared
+      # even when the gate could not read its own inputs. Without this a PR
+      # carrying the label from an earlier head would keep it through any number
+      # of refused runs.
+      - name: Clear the stand-down label when this head is not covered
+        if: always() && steps.gate.outputs.covered == 'false'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr edit "${{ github.event.pull_request.number }}" \
+            --repo "${{ github.repository }}" --remove-label claude-reviewed \
+            || echo "Nothing to clear."

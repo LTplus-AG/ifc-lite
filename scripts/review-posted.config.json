@@ -12,7 +12,6 @@
     "num_turns: 0). None is credential-specific, so an API key does not fix them either.",
     "The job's exit code and its structured output are both satisfied on those paths."
   ],
-
   "$expectedAuthorsComment": [
     "The logins whose marker counts. NOT DEFAULTED and not allowed to be empty: an empty",
     "list would make every PR pass on any comment, which is a gate that cannot fail.",
@@ -24,8 +23,21 @@
     "that login here -- the gate will start failing with NOT_POSTED until you do, which is",
     "the correct direction to fail."
   ],
-  "expectedAuthors": ["github-actions", "claude"],
-
+  "expectedAuthors": [
+    "github-actions",
+    "claude"
+  ],
+  "$standDownComment": [
+    "THE CODERABBIT HALF IS NOT IN THIS REPOSITORY YET, and saying so matters.",
+    "The workflow applies a `claude-reviewed` label when this gate verifies a review,",
+    "and clears it on every new head. That label only does anything once",
+    ".coderabbit.yaml carries `auto_review.labels: ['!claude-reviewed']`, a negative",
+    "match. That file is edited by PR #3576 and a second edit here would conflict, so",
+    "it lands after #3576 does. Until then the label is inert and the `issues: write`",
+    "permission the workflow requests buys nothing. Stated rather than implied,",
+    "because a workflow comment asserting a config that does not exist is the kind of",
+    "claim this repository's gates exist to catch."
+  ],
   "$modeComment": [
     "ADVISORY or ENFORCING. Advisory prints the identical verdict and exits 0; enforcing",
     "exits 1. Not defaulted in code: a missing value is a refusal, because defaulting",

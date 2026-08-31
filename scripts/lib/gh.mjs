@@ -3,16 +3,31 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * One fail-closed `gh` invoker, because there were four.
+ * One fail-closed `gh` invoker, and an honest count of what it consolidates.
  *
- * `check-coderabbit-review.mjs`, `lib/pr-green-sweep.mjs`,
- * `check-pr-review-signal.mjs` and `check-issue-queue.mjs` each grew their own
- * copy of this function, with three different `maxBuffer` values and three
- * different error vocabularies. This is the fifth caller, so it gets extracted
- * instead. The existing four are deliberately NOT migrated here: that would
- * widen a gate PR into a refactor of four unrelated gates, and each of them has
- * its own error class that its own tests assert on. Migrating them is a separate
- * change; this file exists so the count stops growing.
+ * Against `origin/main` there are THREE prior `gh` callers, not four. An earlier
+ * draft of this comment said four and named `check-issue-queue.mjs`, which exists
+ * only on an unmerged sibling branch -- a justification resting on a population
+ * one member short. Corrected rather than quietly dropped, because a docblock
+ * that overstates its own evidence is the thing this repository's gates exist to
+ * catch, and it does not stop applying to the gates themselves.
+ *
+ * The three, and why each is or is not migrated:
+ *
+ *   - `check-pr-review-signal.mjs` is byte-for-byte this function apart from a
+ *     32 MiB buffer and two prose tails, and its `ReviewSignalError` already has
+ *     the `(reason, message)` shape this signature takes. It is MIGRATABLE and is
+ *     deliberately not migrated here: this is a gate PR, and rewriting the
+ *     internals of the repo's most load-bearing CI gate belongs in its own change
+ *     where its own tests are the subject. Named as a follow-up rather than left
+ *     implied.
+ *   - `check-coderabbit-review.mjs` uses `execFileSync` and returns a RAW STRING,
+ *     with `JSON.parse` at three call sites. Migrating changes the thrown error
+ *     type at each of them, so it is a behaviour change, not a lift.
+ *   - `lib/pr-green-sweep.mjs` does not invoke `gh` at all. It takes an injected
+ *     `gh` callable so the module stays pure, which its own docblock states as a
+ *     design choice. It is STRUCTURALLY INCOMPATIBLE with a module that spawns
+ *     and parses internally, and should stay that way.
  *
  * THE ONE RULE: every failure throws. A `gh` call that cannot be made, exits
  * non-zero, or returns unparseable output must never be reported as an empty

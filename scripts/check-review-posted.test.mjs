@@ -65,10 +65,26 @@ test('PASS: the expected reviewer posted a marker naming this head', () => {
   assert.match(r.out, /clean verdict/);
 });
 
-test('PASS: a findings verdict carries its count', () => {
-  const r = run(comments([REVIEWER, `Three things.\n${marker(SHA, 'findings', 3)}`]));
+test('PASS: a findings verdict backed by posted findings', () => {
+  const r = run(
+    comments(
+      [REVIEWER, 'This index can be negative.'],
+      [REVIEWER, `Summary.\n${marker(SHA, 'findings', 1)}`],
+    ),
+  );
   assert.equal(r.code, 0, r.out);
-  assert.match(r.out, /findings verdict.*with 3 finding/);
+  assert.match(r.out, /findings verdict.*with 1 finding/);
+});
+
+test('FAIL: a findings verdict with NO finding posted is the #1679 shape', () => {
+  // The summary posts, the inline comments drop, the run logs `Posted 0/N`, and
+  // the job exits 0. The count in the marker is the reviewer's own claim; this is
+  // the check that it is true. Without it the gate cites #1679 as its founding
+  // case law and cannot see #1679.
+  const r = run(comments([REVIEWER, `Found 3 problems.\n${marker(SHA, 'findings', 3)}`]));
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /FINDINGS_NOT_POSTED/);
+  assert.match(r.out, /Posted 0\/N/);
 });
 
 test('FAIL: no comments at all -- the #1679 shape, Posted 0/N with a green job', () => {
@@ -124,9 +140,13 @@ test('normalisation is load-bearing, not covered by listing every spelling', () 
 
 // ============================================================ fail-closed paths
 
-test('FAIL-CLOSED: a comment list at the page limit refuses rather than reporting absence', () => {
-  const many = Array.from({ length: 200 }, () => ({ user: { login: STRANGER }, body: 'x' }));
-  const r = run({ issueComments: many });
+test('FAIL-CLOSED: an exhausted page budget refuses rather than reporting absence', () => {
+  // The bound is now REAL: the fetch pages explicitly and reports which surfaces
+  // it could not finish. The previous version applied a length check AFTER
+  // `--paginate` had already followed Link headers to exhaustion, so it bounded
+  // nothing and turned a fully-read busy PR into a permanent refusal it could
+  // never clear.
+  const r = run({ issueComments: [], truncated: ['issueComments'] });
   assert.equal(r.code, 1, r.out);
   assert.match(r.out, /COMMENTS_TRUNCATED/);
   assert.doesNotMatch(r.out, /NOT_POSTED/);
@@ -156,6 +176,55 @@ test('FAIL-CLOSED: a short or non-hex --sha is refused', () => {
   const r = run(comments([REVIEWER, marker(SHA)]), [...ENFORCING], 'abc123');
   assert.equal(r.code, 1, r.out);
   assert.match(r.out, /NO_SHA/);
+});
+
+test('an unknown flag that exists on Object.prototype is refused', () => {
+  // `{...}[name]` reached Object.prototype, so `--constructor x` returned a
+  // truthy key, sailed past the `!key` guard, and wrote a junk property instead
+  // of refusing. A guard that does not guard what it claims is the failure this
+  // whole file is about, one level down.
+  const r = spawnSync(
+    process.execPath,
+    [GATE, '--pr', '1', '--sha', SHA, '--constructor', 'x', '--state-file', '/dev/null'],
+    { encoding: 'utf8' },
+  );
+  assert.equal(r.status, 1);
+  assert.match(`${r.stdout}${r.stderr}`, /BAD_ARGS.*constructor/);
+});
+
+test('a MISSING config and an UNREADABLE one are different verdicts', () => {
+  // Different remedies: create the file, versus fix its permissions. Collapsing
+  // them into one would point half the readers at the wrong fix.
+  const missing = spawnSync(
+    process.execPath,
+    [GATE, '--pr', '1', '--sha', SHA, '--state-file', '/dev/null', '--config', '/nope/absent.json'],
+    { encoding: 'utf8' },
+  );
+  assert.equal(missing.status, 1);
+  assert.match(`${missing.stdout}${missing.stderr}`, /NO_CONFIG/);
+
+  const bad = join(TMP, 'cfg-not-json.json');
+  writeFileSync(bad, '{ not json');
+  const r = run(comments([REVIEWER, marker(SHA)]), ['--config', bad]);
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /BAD_CONFIG/);
+});
+
+test('a NaN timeout is refused, because NaN never expires a deadline', () => {
+  // `Date.now() < deadline` is FALSE forever when deadline is NaN, so the poll
+  // would exit immediately -- or, with the comparison the other way, run until
+  // the job is killed. Either way a coerced NaN silently changes what the gate
+  // does. This repo has the same lesson recorded for numeric config generally:
+  // bound both ends rather than trusting the value.
+  for (const bad of ['nope', '', '-5']) {
+    const r = spawnSync(
+      process.execPath,
+      [GATE, '--pr', '1', '--sha', SHA, '--state-file', '/dev/null', '--timeout-seconds', bad, ...ENFORCING],
+      { encoding: 'utf8' },
+    );
+    assert.equal(r.status, 1, `${JSON.stringify(bad)} should be refused`);
+    assert.match(`${r.stdout}${r.stderr}`, /BAD_ARGS/);
+  }
 });
 
 // =================================================================== the config

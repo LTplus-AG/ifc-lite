@@ -84,22 +84,52 @@
  *      funded by a consumer subscription whose pool can drain, the reviewer must
  *      itself fail rather than post an empty clean verdict; this gate cannot
  *      recover that distinction after the fact.
- *   4. Comment pagination is bounded (see PAGE_LIMIT). A PR whose comment list
- *      exceeds it fails closed with COMMENTS_TRUNCATED rather than guessing.
+ *   4. Comment pagination is bounded (MAX_PAGES x PER_PAGE). A PR busier than
+ *      that fails closed with COMMENTS_TRUNCATED rather than guessing.
+ *   5. It waits for the marker (POLL_SECONDS up to the timeout) because a
+ *      comment does not fire `pull_request`. On expiry NOT_POSTED is the true
+ *      answer at that moment, not a timeout dressed up as one.
  */
 
 import { readFileSync, appendFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMainEntry } from './lib/is-main-entry.mjs';
-import { existsOrThrow } from './lib/exists-or-throw.mjs';
 import { gh, GhError } from './lib/gh.mjs';
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CONFIG = join(SCRIPTS_DIR, 'review-posted.config.json');
 
-/** Bounded on purpose: an unbounded read that silently truncates is a false pass. */
-const PAGE_LIMIT = 200;
+/**
+ * THE POLL, AND WHY THIS GATE CANNOT BE A SINGLE READ.
+ *
+ * The workflow fires on `pull_request`, which means this gate starts SECONDS
+ * after a push while the reviewer takes minutes. Nothing re-fires it when the
+ * marker lands: posting a comment does not raise a `pull_request` event. A
+ * single-read version is therefore RED ON EVERY PUSH and green only after a
+ * human clicks re-run -- 1,200 manual re-runs a month here, which is how a gate
+ * stops being read at all. Advisory mode hides this completely, so it would have
+ * shipped broken on the day it was flipped to enforcing.
+ *
+ * So it waits, the way scripts/check-pr-review-signal.mjs waits for lanes. The
+ * budget is the honest question "has the reviewer had a fair chance yet", not a
+ * guess at how long a review takes: on expiry the verdict is still NOT_POSTED,
+ * which is the true answer at that moment, and the remedy re-runs.
+ */
+const POLL_SECONDS = 15;
+const DEFAULT_TIMEOUT_SECONDS = 600;
+
+/**
+ * A page cap that is REAL. `gh api --paginate` follows Link headers to
+ * exhaustion, so a guard applied after that call bounds nothing and merely turns
+ * a fully-read busy PR into a permanent refusal it can never clear. The fetch
+ * below is explicitly paged, and this is the number of pages it will walk before
+ * refusing -- so the limit the message names is the limit that exists.
+ */
+const COMMENT_KEYS = ['issueComments', 'reviewComments', 'reviews'];
+
+const MAX_PAGES = 10;
+const PER_PAGE = 100;
 
 /**
  * The marker the reviewer writes at the END of a successful post. Anchored at
@@ -107,6 +137,11 @@ const PAGE_LIMIT = 200;
  * would let a contributor hand-write a passing marker into a PR comment.
  */
 const MARKER_RE = /<!--\s*ifc-lite-review\s+sha=([0-9a-f]{40})\s+verdict=(clean|findings)\s+count=(\d+)\s*-->/;
+
+/** Block the runner without a dependency. This job's whole purpose is to wait. */
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
 
 export class ReviewPostedError extends Error {
   constructor(reason, message) {
@@ -125,20 +160,28 @@ export function normaliseLogin(login) {
 
 /** @param {string} path */
 export function readConfig(path) {
-  if (
-    !existsOrThrow(path, 'the review-posted config', (m) => {
-      throw new ReviewPostedError('BAD_CONFIG', m);
-    })
-  ) {
-    throw new ReviewPostedError(
-      'NO_CONFIG',
-      `Config \`${path}\` is missing. A missing reviewer list is NOT an empty one: with no ` +
-        'expected authors this gate would accept a marker from anybody, so it refuses instead.',
-    );
+  // Read once and branch on the error code, rather than stat-then-read.
+  // `existsOrThrow` exists for gates that DISCOVER paths by walking, where a
+  // false from `existsSync` silently drops a package from an audit. Here the
+  // file is opened on the next line and `readFileSync` already separates ENOENT
+  // from EACCES, so the extra syscall bought a TOCTOU window and a second throw
+  // site and nothing else.
+  let raw;
+  try {
+    raw = readFileSync(path, 'utf8');
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      throw new ReviewPostedError(
+        'NO_CONFIG',
+        `Config \`${path}\` is missing. A missing reviewer list is NOT an empty one: with no ` +
+          'expected authors this gate would accept a marker from anybody, so it refuses instead.',
+      );
+    }
+    throw new ReviewPostedError('BAD_CONFIG', `Cannot read config \`${path}\`: ${err.code || err.message}.`);
   }
   let cfg;
   try {
-    cfg = JSON.parse(readFileSync(path, 'utf8'));
+    cfg = JSON.parse(raw);
   } catch (err) {
     throw new ReviewPostedError('BAD_CONFIG', `Config \`${path}\` is not valid JSON: ${err.message}`);
   }
@@ -166,18 +209,52 @@ export function readConfig(path) {
 }
 
 /** @param {string[]} argv */
+/**
+ * A Map, not an object literal. `{...}[name]` reaches Object.prototype, so
+ * `--constructor x` returned a truthy key, sailed past the `!key` guard, and
+ * wrote a junk property instead of refusing -- a guard that did not guard what
+ * it claimed. There is also no `--` handling: nothing in this repo passes it,
+ * and the previous line skipped the token while continuing to parse everything
+ * after it as flags, which is the opposite of what `--` conventionally means.
+ */
+const FLAGS = new Map([
+  ['--pr', 'pr'],
+  ['--repo', 'repo'],
+  ['--sha', 'sha'],
+  ['--config', 'config'],
+  ['--state-file', 'stateFile'],
+  ['--timeout-seconds', 'timeoutSeconds'],
+]);
+
 export function parseArgs(argv) {
-  const out = { pr: null, repo: process.env.GITHUB_REPOSITORY || null, sha: null, config: DEFAULT_CONFIG, stateFile: null };
+  const out = {
+    pr: null,
+    repo: process.env.GITHUB_REPOSITORY || null,
+    sha: null,
+    config: DEFAULT_CONFIG,
+    stateFile: null,
+    timeoutSeconds: DEFAULT_TIMEOUT_SECONDS,
+  };
   for (let i = 0; i < argv.length; i += 1) {
-    const a = argv[i];
-    if (a === '--') continue;
-    const m = /^--([a-z-]+)$/.exec(a);
-    if (!m) throw new ReviewPostedError('BAD_ARGS', `Unrecognised argument \`${a}\`.`);
-    const key = { pr: 'pr', repo: 'repo', sha: 'sha', config: 'config', 'state-file': 'stateFile' }[m[1]];
-    if (!key) throw new ReviewPostedError('BAD_ARGS', `Unrecognised flag \`${a}\`.`);
+    const key = FLAGS.get(argv[i]);
+    if (!key) throw new ReviewPostedError('BAD_ARGS', `Unrecognised argument \`${argv[i]}\`.`);
     const v = argv[i + 1];
-    if (v === undefined) throw new ReviewPostedError('BAD_ARGS', `\`${a}\` needs a value.`);
-    out[key] = v;
+    if (v === undefined) throw new ReviewPostedError('BAD_ARGS', `\`${argv[i]}\` needs a value.`);
+    if (key === 'timeoutSeconds') {
+      // Rejected BEFORE coercion, because the dangerous value is not NaN, it is
+      // the EMPTY STRING: `Number('')` is 0, which is finite and non-negative, so
+      // an unset or blank CI variable would silently disable the poll -- and a
+      // gate that does not poll is red on every push, which is the exact fatal
+      // behaviour the poll exists to fix. An explicit `0` stays legal; a blank
+      // does not. NaN is rejected for the other half: it loses every comparison,
+      // so a NaN deadline never behaves like a deadline.
+      const trimmed = String(v).trim();
+      const n = trimmed === '' ? NaN : Number(trimmed);
+      if (!Number.isFinite(n) || n < 0) {
+        throw new ReviewPostedError('BAD_ARGS', `\`--timeout-seconds\` must be a non-negative number; got ${JSON.stringify(v)}.`);
+      }
+      out[key] = n;
+    } else out[key] = v;
     i += 1;
   }
   return out;
@@ -199,25 +276,28 @@ export function normaliseComments(payload) {
     throw new ReviewPostedError('NO_PAYLOAD', 'No comment payload to adjudicate.');
   }
   const out = [];
-  for (const key of ['issueComments', 'reviewComments', 'reviews']) {
+  for (const key of COMMENT_KEYS) {
     const list = payload[key];
     if (list === undefined) continue;
     if (!Array.isArray(list)) {
       throw new ReviewPostedError('BAD_PAYLOAD', `\`${key}\` is present but is not an array.`);
     }
-    if (list.length >= PAGE_LIMIT) {
+    if (payload.truncated?.includes(key)) {
       throw new ReviewPostedError(
         'COMMENTS_TRUNCATED',
-        `\`${key}\` returned ${list.length} entries, at or past the ${PAGE_LIMIT} page limit, so ` +
-          'the marker may be on a page this gate never read. Refusing to report "not posted" for ' +
-          'a list it could not finish reading.',
+        `\`${key}\` still had more pages after ${MAX_PAGES} x ${PER_PAGE} entries, so the marker ` +
+          'may be on a page this gate never read. Refusing to report "not posted" for a list it ' +
+          'could not finish reading. REMEDY: raise MAX_PAGES, or narrow what the reviewer posts.',
       );
     }
     for (const c of list) {
       out.push({ author: normaliseLogin(c?.user?.login ?? c?.author?.login), body: String(c?.body ?? '') });
     }
   }
-  if (out.length === 0 && payload.issueComments === undefined && payload.reviewComments === undefined) {
+  // Same list the loop walks. These had drifted: the loop read three surfaces
+  // and the guard checked two, so a payload carrying only an empty `reviews` was
+  // NO_PAYLOAD while a non-empty one was first-class.
+  if (out.length === 0 && !COMMENT_KEYS.some((k) => payload[k] !== undefined)) {
     throw new ReviewPostedError('NO_PAYLOAD', 'Payload carried no comment lists at all.');
   }
   return out;
@@ -278,14 +358,40 @@ export function evaluate({ comments, cfg, headSha }) {
   const match = markers.find((m) => m.sha === headSha);
   if (!match) {
     lines.push(
-      `❌ STALE_REVIEW: the newest review marker names ${markers[markers.length - 1].sha.slice(0, 9)}, ` +
+      `❌ STALE_REVIEW: the most recent marker this gate read names ${markers[markers.length - 1].sha.slice(0, 9)}, ` +
         `but this PR's head is ${headSha.slice(0, 9)}.`,
       '   A review of an earlier head has not reviewed this diff. The comment ANCHOR cannot settle',
       '   this either: a force-push re-anchors bot comments to the new SHA, so only the marker the',
-      '   reviewer wrote at review time says which commit it actually read.',
+      '   reviewer wrote at review time says which commit it read. ("Most recent" is fetch order, not',
+      '   timestamp: no timestamp survives normalisation, so the gate does not claim one.)',
       '   REMEDY: re-run the review job against the current head.',
     );
     return { ok: false, verdict: 'STALE_REVIEW', lines };
+  }
+
+  // THE #1679 CROSS-CHECK. A marker claiming `verdict=findings count=N` while N
+  // findings never reached the PR is precisely the shape #1679 describes: the
+  // summary posts, the inline comments drop, `Posted 0/N` is logged, and the job
+  // exits 0. The docblock cites that bug as founding case law, so the gate has to
+  // be able to see it rather than trusting the count the marker asserts.
+  //
+  // Counted across every comment from an expected author EXCEPT the marker's own
+  // carrier, since a summary comment is not itself a finding.
+  if (match.verdict === 'findings') {
+    const carriers = mine.filter((c) => MARKER_RE.test(c.body)).length;
+    const others = mine.length - carriers;
+    if (others === 0) {
+      lines.push(
+        `❌ FINDINGS_NOT_POSTED: the marker claims ${match.count} finding(s) for ` +
+          `${headSha.slice(0, 9)}, and no finding comment from an expected reviewer reached this PR.`,
+        '   This is the #1679 shape exactly: the summary posts, the inline comments drop, the run',
+        '   logs `Posted 0/N`, and the job exits 0. The count in the marker is the reviewer\'s own',
+        '   claim; this is the check that it is true.',
+        '   REMEDY: re-run the review job. If it recurs, the run log will show `Posted 0/N`; attach',
+        '   it to claude-code-action#1679 rather than re-running indefinitely.',
+      );
+      return { ok: false, verdict: 'FINDINGS_NOT_POSTED', lines };
+    }
   }
 
   lines.push(
@@ -297,19 +403,44 @@ export function evaluate({ comments, cfg, headSha }) {
   return { ok: true, verdict: 'REVIEW_POSTED', lines };
 }
 
+/**
+ * All THREE comment surfaces, explicitly paged.
+ *
+ * `pulls/{n}/comments` is the inline-review-comment surface and was missing while
+ * the docstring claimed both were read -- which mattered: it is where a reviewer
+ * posting per-finding comments puts them, and it is the surface #1679 drops
+ * ("Posted 0/N"). A gate that cites #1679 has to be able to see the thing #1679
+ * loses.
+ *
+ * Paged by hand rather than `--paginate --slurp` so the page bound this gate
+ * reports is the page bound it applies.
+ */
 function fetchPayload(repo, pr) {
-  return {
-    issueComments: gh(
-      ['api', `repos/${repo}/issues/${pr}/comments`, '--paginate', '--slurp'],
-      'the PR comment list',
-      ReviewPostedError,
-    ).flat(),
-    reviews: gh(
-      ['api', `repos/${repo}/pulls/${pr}/reviews`, '--paginate', '--slurp'],
-      'the PR review list',
-      ReviewPostedError,
-    ).flat(),
+  const surfaces = {
+    issueComments: `repos/${repo}/issues/${pr}/comments`,
+    reviews: `repos/${repo}/pulls/${pr}/reviews`,
+    reviewComments: `repos/${repo}/pulls/${pr}/comments`,
   };
+  const out = { truncated: [] };
+  for (const [key, path] of Object.entries(surfaces)) {
+    const rows = [];
+    let page = 1;
+    for (; page <= MAX_PAGES; page += 1) {
+      const batch = gh(
+        ['api', `${path}?per_page=${PER_PAGE}&page=${page}`, '--method', 'GET'],
+        `${key} page ${page}`,
+        ReviewPostedError,
+      );
+      if (!Array.isArray(batch)) {
+        throw new ReviewPostedError('BAD_PAYLOAD', `${key} page ${page} was not an array.`);
+      }
+      rows.push(...batch);
+      if (batch.length < PER_PAGE) break;
+    }
+    if (page > MAX_PAGES) out.truncated.push(key);
+    out[key] = rows;
+  }
+  return out;
 }
 
 function main() {
@@ -352,12 +483,28 @@ function main() {
     payload = fetchPayload(args.repo, args.pr);
   }
 
-  const comments = normaliseComments(payload);
+  // THE POLL. A single read races the reviewer and loses: this job starts seconds
+  // after the push, the reviewer takes minutes, and no event re-fires this gate
+  // when the comment lands. Re-read until the verdict is OK or the budget is
+  // spent. A REFUSAL (bad payload, truncation) throws out of here immediately --
+  // waiting cannot fix an input this gate could not read.
+  const deadline = Date.now() + args.timeoutSeconds * 1000;
+  let comments = normaliseComments(payload);
+  let result = evaluate({ comments, cfg, headSha: args.sha });
+  let waited = 0;
+  while (!result.ok && !args.stateFile && Date.now() < deadline) {
+    sleepSync(POLL_SECONDS * 1000);
+    waited += POLL_SECONDS;
+    comments = normaliseComments(fetchPayload(args.repo, args.pr));
+    result = evaluate({ comments, cfg, headSha: args.sha });
+  }
+
   console.log(`Comments read: ${comments.length}`);
   console.log(`Head: ${args.sha.slice(0, 9)}`);
+  if (waited > 0) console.log(`Waited ${waited}s for a verdict to appear.`);
   console.log('');
 
-  const { ok, lines } = evaluate({ comments, cfg, headSha: args.sha });
+  const { ok, lines } = result;
   for (const l of lines) console.log(l);
 
   // `covered` is the VERDICT, independent of the exit code, and the two differ on

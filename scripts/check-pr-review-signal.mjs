@@ -521,7 +521,7 @@ function sleepSync(ms) {
  */
 export function evaluate({
   required,
-  aliases = new Map(),
+  aliases,
   lanes,
   reviewChecks,
   reviews,
@@ -531,6 +531,16 @@ export function evaluate({
   timedOut,
   baseRefName,
 }) {
+  // NOT DEFAULTED -- see the identical refusal in `pollForLanes`. A default here
+  // is the difference between a wire-up that is forgotten loudly and one that is
+  // forgotten silently, and this function has exactly one live caller.
+  if (!(aliases instanceof Map)) {
+    throw new ReviewSignalError(
+      'MISSING_ALIASES',
+      'evaluate was called without a matrix alias Map. Pass the map from `matrixSkipAliases` ' +
+        'over the same workflow text `required` came from.',
+    );
+  }
   const lines = [];
   let ok = true;
 
@@ -733,6 +743,29 @@ export function evaluate({
   return { ok, lines };
 }
 
+/**
+ * A `--state-file` fixture's own alias map, refused rather than coerced.
+ *
+ * `Object.entries` accepts a string, a number and an array without complaint and
+ * yields keys no lane name can match, so a malformed value would quietly become
+ * "no aliases" -- safe in direction, wrong in explanation, and three lines from
+ * a comment saying `reviews` refuses a non-array loudly. Same doctrine here.
+ *
+ * @param {unknown} raw
+ * @returns {Map<string, string>}
+ */
+function fixtureAliases(raw) {
+  if (raw === undefined) return new Map();
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new ReviewSignalError(
+      'BAD_STATE_FILE',
+      `\`aliases\` in the state file must be an object mapping an expanded lane name to its ` +
+        `matrix template; got ${Array.isArray(raw) ? 'an array' : typeof raw}.`,
+    );
+  }
+  return new Map(Object.entries(raw));
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const cfg = readConfig(args.config);
@@ -759,7 +792,7 @@ function main() {
       // viewer-shard name would pass for the wrong reason if its rollup carried
       // the real template at `skipped`. Overriding one without the other is
       // therefore possible but never silent -- `aliases` follows `required`.
-      aliases: state.required === undefined ? aliases : new Map(Object.entries(state.aliases ?? {})),
+      aliases: state.required === undefined ? aliases : fixtureAliases(state.aliases),
       lanes: state.lanes,
       reviewChecks: state.reviewChecks ?? [],
       // NOT `?? []`. A state file that omits `reviews` has told this gate

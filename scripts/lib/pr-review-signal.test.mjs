@@ -270,6 +270,28 @@ test('`excludeJobKeys` must reach BOTH derivations, or the alias map stops cover
   }
 });
 
+test('FAIL CLOSED: pollForLanes REFUSES a missing alias map rather than defaulting', () => {
+  // The defect this closes was found by review, not by a test: three call sites
+  // wire the map, tests covered ONE, and deleting the other two left the suite
+  // green while the live gate regressed to failing every config-only PR. A
+  // default made that silent. It is now a named refusal.
+  for (const bad of [undefined, null, {}, new Set(), [['a', 'b']]]) {
+    assert.throws(
+      () => pollForLanes({
+        required: ['A'],
+        aliases: bad,
+        initialState: { lanes: [{ name: 'A', state: 'success' }] },
+        fetchState: () => ({ lanes: [] }),
+        deadline: Date.now() + 1000,
+        pollSeconds: 1,
+        sleep: () => {},
+      }),
+      (e) => e.reason === 'MISSING_ALIASES',
+      String(bad),
+    );
+  }
+});
+
 test('a wholesale skip is REPORTED, never absorbed into a tick', () => {
   const aliases = matrixSkipAliases(WF);
   assert.deepEqual(
@@ -475,9 +497,13 @@ function driver(readsAt, { pollMs = 15_000, startMs = 0 } = {}) {
 /** Lanes that are `in_progress` until `atMs`, complete from then on. */
 const completesAt = (atMs) => (clock) => (clock >= atMs ? POLL_COMPLETE : POLL_MOVING);
 
-function poll(d, { deadline = 900_000, pollSeconds = 15, required, settleHoldSeconds } = {}) {
+function poll(d, { deadline = 900_000, pollSeconds = 15, required, aliases, settleHoldSeconds } = {}) {
   return pollForLanes({
     required: required ?? POLL_REQUIRED,
+    // EXPLICIT, because `pollForLanes` refuses a missing map. These fixtures use
+    // plain lane names with no matrix job, so an empty map is the true answer
+    // here -- not a default standing in for one nobody thought about.
+    aliases: aliases ?? new Map(),
     initialState: d.state(),
     fetchState: d.state,
     deadline,

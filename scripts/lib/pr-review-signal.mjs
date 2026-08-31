@@ -237,11 +237,17 @@ function jobCheckNames(job) {
  * THE HOLE THIS LEAVES, STATED. A wholesale skip is accepted without judging
  * WHY the job was skipped, because nothing in the rollup says why. `if:` is one
  * reason; an unsatisfied `needs:` is another, so a failed `build` also skips
- * `viewer-tests` before expansion and its four shards then read present. That
- * does not produce a green verdict over unexamined code -- the failed
- * dependency is itself a required lane and sits in the rollup non-green -- but
- * the four shards stop contributing, and the run prints the skip by name rather
- * than absorbing it into a tick.
+ * `viewer-tests` before expansion and its four shards then read present.
+ *
+ * MEASURED, not assumed. With every lane present, `Build packages + WASM` at
+ * `failure` and the viewer template at `skipped`, this gate exits 0 and prints
+ * "All 16 required lane(s) ... are present": it does NOT read lane state for the
+ * presence verdict, so a failed dependency is simply present. What keeps such a
+ * PR red is BRANCH PROTECTION -- `Build + WASM + Rust + Node` is a required
+ * check in main's ruleset -- and not anything this gate does. An earlier draft
+ * of this paragraph credited that protection to the rollup reading here; it was
+ * wrong, and reproducing it is what showed it. The skip is printed by name
+ * either way, rather than absorbed into a tick.
  *
  * @param {string} text - workflow file contents.
  * @param {{ exclude?: Iterable<string> }} [opts] - job KEYS to leave out.
@@ -551,7 +557,7 @@ function laneSignature(lanes) {
  */
 export function pollForLanes({
   required,
-  aliases = new Map(),
+  aliases,
   initialState,
   fetchState,
   deadline,
@@ -561,6 +567,21 @@ export function pollForLanes({
   sleep,
   log = () => {},
 }) {
+  // NOT DEFAULTED, for the same reason `mode` is not defaulted in the config: a
+  // missing value here is a refusal. `aliases = new Map()` reads as harmless and
+  // is not -- it silently restores the pre-#3581 rule, failing every config-only
+  // PR with an unactionable remedy, and no test of this function can notice
+  // because every test builds its own map. Caught in review: the tests added
+  // with the alias map pinned the OFFLINE call site and left both LIVE ones
+  // deletable while the whole suite stayed green.
+  if (!(aliases instanceof Map)) {
+    throw new ReviewSignalError(
+      'MISSING_ALIASES',
+      'pollForLanes was called without a matrix alias Map. Pass the map from ' +
+        '`matrixSkipAliases` over the same workflow text `required` came from; pass an empty ' +
+        'Map only to mean "this workflow has no matrix jobs", and mean it.',
+    );
+  }
   let state = initialState;
   // A non-finite hold falls back to the shipped default rather than to the
   // weaker rule: an unreadable guard must never be a disabled guard.

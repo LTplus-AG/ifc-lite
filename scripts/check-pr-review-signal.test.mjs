@@ -159,6 +159,40 @@ test('END TO END: the template at SUCCESS is not a skip, and does not cover the 
   assert.match(r.output, /MISSING_LANES: 4 of/);
 });
 
+/**
+ * THE LIVE CALL SITES, ASSERTED STATICALLY, because nothing else can reach them.
+ *
+ * `main()` needs `gh`, so the harness drives `evaluate` only through
+ * `--state-file` and never drives `pollForLanes` at all. That left both LIVE
+ * wire-ups deletable with the suite green -- found in review, and the reason the
+ * two functions now refuse a missing map at run time. This test moves that
+ * refusal earlier, to CI, so a deleted argument is caught before it ships rather
+ * than by the first real run.
+ *
+ * Reading source is a blunt instrument and it is the honest one here: the claim
+ * is literally about what the source passes.
+ */
+test('WIRING: every call to pollForLanes and evaluate passes an alias map', () => {
+  const src = readFileSync(GATE, 'utf8');
+  // `function` excludes `evaluate`'s own definition, which otherwise matches --
+  // and matches WITH an `aliases` parameter, so only the count caught it.
+  const calls = [...src.matchAll(/(?<!function )\b(pollForLanes|evaluate)\(\{/g)];
+  assert.equal(calls.length, 3, 'two live call sites and the --state-file one; update this if that changes');
+
+  for (const m of calls) {
+    // Walk from the `({` to its matching `})` so a nested object cannot end it early.
+    let depth = 0;
+    let i = src.indexOf('{', m.index);
+    const start = i;
+    for (; i < src.length; i += 1) {
+      if (src[i] === '{') depth += 1;
+      else if (src[i] === '}') { depth -= 1; if (depth === 0) break; }
+    }
+    const args = src.slice(start, i + 1);
+    assert.match(args, /\baliases\b\s*[:,]/, `${m[1]}() at index ${m.index} passes no alias map`);
+  }
+});
+
 // ------------------------------------------------- the two live failures
 
 test('RED, the #3294 shape: a rollup with no compile lanes fails and NAMES each one', () => {

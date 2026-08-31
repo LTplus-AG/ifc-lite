@@ -583,10 +583,13 @@ function main() {
     process.exit(1);
   }
 
+  const seenRoutedCount = [...seenAllowlisted].filter((path) => REQUIRES_ROUTING_MARKER.has(path)).length;
+  const seenExemptCount = [...seenAllowlisted].filter((path) => NO_MARKER_REQUIRED.has(path)).length;
+
   console.log(
-    `check-isolate-expansion-routing: OK (${files.length} file(s) scanned, ${candidateCount} channel ` +
-    `file(s) calling isolateEntities( -- ${seenAllowlisted.size} allowlisted: ` +
-    `${REQUIRES_ROUTING_MARKER.size} routed, ${NO_MARKER_REQUIRED.size} exempt-with-reason)`,
+    `check-isolate-expansion-routing: OK (${files.length} file(s) scanned, ${candidateCount} candidate ` +
+    `channel file(s) calling a raw isolation action -- ${seenAllowlisted.size} allowlisted: ` +
+    `${seenRoutedCount} routed, ${seenExemptCount} exempt-with-reason)`,
   );
 }
 

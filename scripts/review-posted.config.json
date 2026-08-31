@@ -43,11 +43,27 @@
     "exits 1. Not defaulted in code: a missing value is a refusal, because defaulting",
     "would let a corrupted config silently downgrade the gate to a no-op.",
     "",
-    "SHIPS ADVISORY because the reviewer lane it adjudicates does not exist yet. This gate",
-    "is deliberately landed FIRST and separately: it is the piece that has to be trusted",
-    "before any reviewer can be, and building it after the reviewer would mean trusting the",
-    "reviewer's own report of itself in the interim. Flip to `enforcing` in the same PR",
-    "that turns the reviewer on."
+    "IT SHIPPED ADVISORY because the reviewer lane it adjudicates did not exist yet. That",
+    "gate was landed FIRST and separately (#3580): it is the piece that has to be trusted",
+    "before any reviewer can be, and building it after the reviewer would have meant",
+    "trusting the reviewer's own report of itself in the interim.",
+    "",
+    "NOW ENFORCING, with the lane live (#3582 merged, CLAUDE_REVIEW_ENABLED=true). From",
+    "here a head with no posted review is a RED check rather than a printed note.",
+    "",
+    "WHAT THIS DOES NOT BLOCK, stated so nobody reads more into the red than is there:",
+    "`Review posted` is NOT in main's required-status-checks ruleset, so an enforcing",
+    "failure is a visible row, not a merge block. That is deliberate for the first weeks:",
+    "the lane is new, its quota is a subscription rather than a contract, and a gate that",
+    "can halt the repository on a third party's capacity should earn that power by",
+    "running quietly first. Promote it to required once it has a track record.",
+    "",
+    "THE FAILURE MODES THAT ARE NOT THE AUTHOR'S FAULT, and what each looks like:",
+    "a drained model pool fails the lane job, so no marker is written and this gate says",
+    "NOT_POSTED; a fork PR never runs the lane at all and is excluded upstream. Neither",
+    "is a statement about the diff. If NOT_POSTED becomes routine rather than rare, the",
+    "answer is to turn the lane off or put this back to `advisory` -- not to ignore it,",
+    "which is the failure mode a noisy gate actually has."
   ],
-  "mode": "advisory"
+  "mode": "enforcing"
 }

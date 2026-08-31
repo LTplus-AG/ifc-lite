@@ -46,10 +46,28 @@ function cfgWith(patch, tag) {
 const ENFORCING = cfgWith({}, 'enforcing-base');
 
 /** Run the gate over a payload exactly as written. */
+/**
+ * `headRepo` IS DEFAULTED HERE, and it is not cosmetic.
+ *
+ * The fork carve-out reads `head.repo.full_name` from the API when the payload
+ * does not carry one. Without this default every enforcement test made a live
+ * `gh api` call, and in CI the "Unit-test the gate itself" step has NO GH_TOKEN
+ * -- so `gh` refused, the gate exited 1, and every `assert.equal(r.code, 1)`
+ * passed on a CREDENTIAL ERROR rather than on enforcement. A regression turning
+ * `process.exit(ok ? 0 : 1)` into `exit(0)` would have been invisible. Caught in
+ * review; measured at 13 unstubbed calls in this file and 1 in post-review's.
+ *
+ * `--repo` travels with it: without one `args.repo` is null, and a defaulted
+ * `headRepo` would then read as a FORK and excuse every failing verdict.
+ * A payload that sets `headRepo` explicitly still overrides this, which is what
+ * keeps the fork and NO_HEAD_REPO cases reachable.
+ */
+const SAME_REPO = 'LTplus-AG/ifc-lite';
+
 function run(payload, extra = [...ENFORCING], sha = SHA) {
   const path = join(TMP, `payload-${(seq += 1)}.json`);
-  writeFileSync(path, JSON.stringify(payload));
-  const r = spawnSync(process.execPath, [GATE, '--pr', '1', '--sha', sha, '--state-file', path, ...extra], {
+  writeFileSync(path, JSON.stringify({ headRepo: SAME_REPO, ...payload }));
+  const r = spawnSync(process.execPath, [GATE, '--pr', '1', '--sha', sha, '--repo', SAME_REPO, '--state-file', path, ...extra], {
     encoding: 'utf8',
   });
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
@@ -193,8 +211,8 @@ test('FAIL-CLOSED: a non-array comment list is BAD_PAYLOAD', () => {
 
 test('FAIL-CLOSED: a missing --sha refuses rather than deriving one', () => {
   const path = join(TMP, 'p-nosha.json');
-  writeFileSync(path, JSON.stringify(comments([REVIEWER, marker(SHA)])));
-  const r = spawnSync(process.execPath, [GATE, '--pr', '1', '--state-file', path, ...ENFORCING], { encoding: 'utf8' });
+  writeFileSync(path, JSON.stringify({ headRepo: SAME_REPO, ...comments([REVIEWER, marker(SHA)]) }));
+  const r = spawnSync(process.execPath, [GATE, '--pr', '1', '--repo', SAME_REPO, '--state-file', path, ...ENFORCING], { encoding: 'utf8' });
   assert.equal(r.status, 1);
   assert.match(`${r.stdout}${r.stderr}`, /NO_SHA/);
 });
@@ -323,8 +341,8 @@ test('the SHIPPED config is the one the gate validates', () => {
   // passes a temp COPY, so a shipped config its own validator rejects would be
   // invisible to all of them.
   const path = join(TMP, 'p-shipped.json');
-  writeFileSync(path, JSON.stringify(comments([REVIEWER, marker(SHA)])));
-  const r = spawnSync(process.execPath, [GATE, '--pr', '1', '--sha', SHA, '--state-file', path], { encoding: 'utf8' });
+  writeFileSync(path, JSON.stringify({ headRepo: SAME_REPO, ...comments([REVIEWER, marker(SHA)]) }));
+  const r = spawnSync(process.execPath, [GATE, '--pr', '1', '--sha', SHA, '--repo', SAME_REPO, '--state-file', path], { encoding: 'utf8' });
   const out = `${r.stdout}${r.stderr}`;
   assert.doesNotMatch(out, /BAD_CONFIG/, 'the shipped config must pass its own validator');
   assert.ok(Array.isArray(SHIPPED.expectedAuthors) && SHIPPED.expectedAuthors.length > 0);
@@ -379,10 +397,10 @@ test('the `covered` output tracks the VERDICT, not the exit code', () => {
 
   const runWithOutput = (payload, cfgArgs) => {
     writeFileSync(outPath, '');
-    writeFileSync(payloadPath, JSON.stringify(payload));
+    writeFileSync(payloadPath, JSON.stringify({ headRepo: SAME_REPO, ...payload }));
     const r = spawnSync(
       process.execPath,
-      [GATE, '--pr', '1', '--sha', SHA, '--state-file', payloadPath, ...cfgArgs],
+      [GATE, '--pr', '1', '--sha', SHA, '--repo', SAME_REPO, '--state-file', payloadPath, ...cfgArgs],
       { encoding: 'utf8', env: { ...process.env, GITHUB_OUTPUT: outPath } },
     );
     return { code: r.status, out: readOut() };
@@ -406,10 +424,10 @@ test('a STALE review reports covered=false, so the stand-down label is cleared',
   const outPath = join(TMP, `ghout-stale-${(seq += 1)}.txt`);
   const payloadPath = join(TMP, `p-stale-${seq}.json`);
   writeFileSync(outPath, '');
-  writeFileSync(payloadPath, JSON.stringify(comments([REVIEWER, marker(OTHER_SHA)])));
+  writeFileSync(payloadPath, JSON.stringify({ headRepo: SAME_REPO, ...comments([REVIEWER, marker(OTHER_SHA)]) }));
   const r = spawnSync(
     process.execPath,
-    [GATE, '--pr', '1', '--sha', SHA, '--state-file', payloadPath, ...ENFORCING],
+    [GATE, '--pr', '1', '--sha', SHA, '--repo', SAME_REPO, '--state-file', payloadPath, ...ENFORCING],
     { encoding: 'utf8', env: { ...process.env, GITHUB_OUTPUT: outPath } },
   );
   assert.equal(r.status, 1);
@@ -451,9 +469,7 @@ test('ENFORCING: a fork PR reports the finding in full and does NOT fail the job
   // one, and enforcing would be a permanent red no outside contributor could
   // clear -- the worst possible greeting, for a class the lane deliberately
   // does not serve.
-  const r = run({ headRepo: 'someone-else/ifc-lite', issueComments: [], reviewComments: [], reviews: [] }, [
-    ...ENFORCING, '--repo', 'LTplus-AG/ifc-lite',
-  ]);
+  const r = run({ headRepo: 'someone-else/ifc-lite', issueComments: [], reviewComments: [], reviews: [] });
   assert.equal(r.code, 0, r.out);
   assert.match(r.out, /NOT_POSTED/, 'the verdict text is unchanged: this is a carve-out, not silence');
   assert.match(r.out, /FORK PR/);
@@ -463,9 +479,7 @@ test('ENFORCING: a fork PR reports the finding in full and does NOT fail the job
 test('ENFORCING: a SAME-REPO PR with the same payload still fails', () => {
   // The anti-vacuity pair. Without it the test above would pass for any reason,
   // including the gate having stopped enforcing altogether.
-  const r = run({ headRepo: 'LTplus-AG/ifc-lite', issueComments: [], reviewComments: [], reviews: [] }, [
-    ...ENFORCING, '--repo', 'LTplus-AG/ifc-lite',
-  ]);
+  const r = run({ headRepo: 'LTplus-AG/ifc-lite', issueComments: [], reviewComments: [], reviews: [] });
   assert.equal(r.code, 1, r.out);
   assert.match(r.out, /NOT_POSTED/);
   assert.doesNotMatch(r.out, /FORK PR/);
@@ -479,7 +493,7 @@ test('a fork PR that DID somehow get a marker is a pass, not a carve-out', () =>
     issueComments: [{ user: { login: REVIEWER }, body: marker(SHA) }],
     reviewComments: [],
     reviews: [],
-  }, [...ENFORCING, '--repo', 'LTplus-AG/ifc-lite']);
+  });
   assert.equal(r.code, 0, r.out);
   assert.match(r.out, /REVIEW_POSTED/);
   assert.doesNotMatch(r.out, /FORK PR/);
@@ -491,9 +505,7 @@ test('FAIL CLOSED: an unreadable head repository REFUSES rather than guessing ei
   // PR. So it refuses, in both modes -- a refusal is a fact about this gate's
   // inputs, not a verdict on the diff.
   for (const headRepo of ['', null, 42, []]) {
-    const r = run({ headRepo, issueComments: [], reviewComments: [], reviews: [] }, [
-      ...ENFORCING, '--repo', 'LTplus-AG/ifc-lite',
-    ]);
+    const r = run({ headRepo, issueComments: [], reviewComments: [], reviews: [] });
     assert.equal(r.code, 1, `headRepo=${JSON.stringify(headRepo)}: ${r.out}`);
     assert.match(r.out, /NO_HEAD_REPO/, JSON.stringify(headRepo));
   }

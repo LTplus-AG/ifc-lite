@@ -592,6 +592,25 @@ function main() {
   // no inline anything. See `nothingToReviewBody` for why this is a verdict of
   // its own and not `clean`.
   if (args.nothingToReview) {
+    // A REAL VERDICT FOR THIS HEAD OUTRANKS THIS ONE. `upsertAndVerify` finds a
+    // carrier by sha alone, so without this it would PATCH an existing
+    // `verdict=findings count=3` summary into "nothing to review / count=0" --
+    // orphaning three inline comments and stepping around the
+    // FINDINGS_NOT_POSTED cross-check that exists to catch exactly that gap.
+    // Reachable only if the exclusion outcome flipped for one head, which needs
+    // dedup to have failed; narrow, and a downgrade this file must never make.
+    const existing = fetchSurface(args.repo, args.pr, `issues/${args.pr}/comments`).find((c) => {
+      const m = MARKER_RE.exec(String(c?.body ?? ''));
+      return normaliseLogin(c?.user?.login) === author && m?.[1] === args.sha && m[2] !== 'nothing-to-review';
+    });
+    if (existing) {
+      throw new PostReviewError(
+        'WOULD_DOWNGRADE_VERDICT',
+        `A \`${MARKER_RE.exec(existing.body)[2]}\` marker already stands for ${args.sha.slice(0, 9)}. ` +
+          'Overwriting it with `nothing-to-review` would retract a real verdict and orphan any inline ' +
+          'findings under it. Refused. REMEDY: this head was reviewed; nothing to do.',
+      );
+    }
     const liveHead = fetchHeadSha(args.repo, args.pr);
     if (liveHead !== args.sha) {
       console.log(

@@ -238,11 +238,11 @@ function runGate(state, sha = SHA) {
   const p = join(TMP, `gate-state-${(seq += 1)}.json`);
   writeFileSync(
     p,
-    JSON.stringify({ issueComments: state.issueComments, reviewComments: state.reviewComments, reviews: [] }),
+    JSON.stringify({ headRepo: 'LTplus-AG/ifc-lite', issueComments: state.issueComments, reviewComments: state.reviewComments, reviews: [] }),
   );
   const r = spawnSync(
     process.execPath,
-    [GATE, '--pr', PR, '--sha', sha, '--state-file', p, '--config', ENFORCING_CFG],
+    [GATE, '--pr', PR, '--sha', sha, '--repo', 'LTplus-AG/ifc-lite', '--state-file', p, '--config', ENFORCING_CFG],
     { encoding: 'utf8' },
   );
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
@@ -832,4 +832,18 @@ test('THE MATCHED PAIR: every identity the lane posts as is one the GATE accepts
         'Change BOTH or neither.',
     );
   }
+});
+
+test('a nothing-to-review run REFUSES to overwrite a real verdict for the same head', () => {
+  // `upsertAndVerify` finds its carrier by sha alone, so without a guard this
+  // would PATCH a `findings` summary into "nothing to review", retracting a real
+  // verdict and orphaning its inline comments.
+  const first = runPoster({ findings: [{ path: 'a.ts', line: 2, body: 'x' }] });
+  assert.equal(first.code, 0, first.out);
+  assert.match(allBodies(first.state), /verdict=findings/);
+
+  const second = runNothingToReview({ state: first.state });
+  assert.notEqual(second.code, 0, second.out);
+  assert.match(second.out, /WOULD_DOWNGRADE_VERDICT/);
+  assert.match(allBodies(second.state), /verdict=findings/, 'the real verdict must still stand');
 });

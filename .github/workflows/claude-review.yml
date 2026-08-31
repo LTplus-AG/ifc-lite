@@ -164,7 +164,11 @@ jobs:
             --out "$RUNNER_TEMP/review-input.json" 2>&1 | tee "$RUNNER_TEMP/build.log"
           rc=${PIPESTATUS[0]}
           if [ "$rc" -ne 0 ]; then
-            if grep -q 'NO_FILES' "$RUNNER_TEMP/build.log"; then
+            # ANCHORED. `REVIEW_TOO_LARGE` interpolates a FILE PATH into its
+            # message, so an unanchored match would let a PR containing a path
+            # with `NO_FILES` in it, and too large to review, post a
+            # nothing-to-review marker over real reviewable content.
+            if grep -q '^❌ NO_FILES:' "$RUNNER_TEMP/build.log"; then
               echo "::notice::Nothing reviewable in this PR; skipping the lane."
               echo "skip=true" >> "$GITHUB_OUTPUT"
               exit 0

@@ -634,6 +634,25 @@ function main() {
     appendFileSync(process.env.GITHUB_OUTPUT, `covered=${ok ? 'true' : 'false'}\n`);
   }
 
+  // FORK PRs ARE NEVER ENFORCED, in either mode, and the reason is the same one
+  // that makes an unreviewable PR post a marker rather than nothing: the lane
+  // CANNOT run here, so the red would be permanent and no contributor could
+  // clear it. Reported in full so it is not silence -- the verdict text above is
+  // unchanged -- but it does not fail the job. Checked only when the verdict is
+  // already failing, so THIS gate does not pay the extra API read on its common
+  // path. `claude-review.yml`'s dedup step is different: a failing verdict IS its
+  // common case, so once the base config is `enforcing` every lane run pays one
+  // `gh api pulls/<n>` there. One call, named rather than left to be discovered.
+  if (!ok && isForkPr(args.repo, args.pr, args.stateFile ? payload?.headRepo : undefined)) {
+    console.log('');
+    console.log(
+      'FORK PR: the finding above does not fail this job. `claude-review.yml` excludes fork PRs, because ' +
+        "a fork's GITHUB_TOKEN is read-only whatever `permissions:` says, so no marker can ever be posted " +
+        'here and enforcing would be a red nobody can clear. These PRs are covered by the CodeRabbit lane, ' +
+        'which is why the stand-down label is never applied to them.',
+    );
+    process.exit(0);
+  }
   // Advisory gates the EXIT CODE and nothing else. The verdict text is identical
   // in both modes, so a rollout state cannot quietly change what is reported. A
   // REFUSAL is a fact about this gate's inputs rather than a verdict on the PR,
@@ -647,22 +666,6 @@ function main() {
     process.exit(0);
   }
 
-  // FORK PRs ARE NEVER ENFORCED, in either mode, and the reason is the same one
-  // that makes an unreviewable PR post a marker rather than nothing: the lane
-  // CANNOT run here, so the red would be permanent and no contributor could
-  // clear it. Reported in full so it is not silence -- the verdict text above is
-  // unchanged -- but it does not fail the job. Checked only when the verdict is
-  // already failing, so the extra API read is not paid on the common path.
-  if (!ok && isForkPr(args.repo, args.pr, args.stateFile ? payload?.headRepo : undefined)) {
-    console.log('');
-    console.log(
-      'FORK PR: the finding above does not fail this job. `claude-review.yml` excludes fork PRs, because ' +
-        "a fork's GITHUB_TOKEN is read-only whatever `permissions:` says, so no marker can ever be posted " +
-        'here and enforcing would be a red nobody can clear. These PRs are covered by the CodeRabbit lane, ' +
-        'which is why the stand-down label is never applied to them.',
-    );
-    process.exit(0);
-  }
   process.exit(ok ? 0 : 1);
 }
 

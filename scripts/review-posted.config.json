@@ -77,7 +77,7 @@
     "IF NOT_POSTED BECOMES ROUTINE, the remedy is to put THIS back to `advisory`. Turning the",
     "lane off alone is the WRONG move, and worth stating because it is the reflex: this gate",
     "has no kill switch of its own, so `CLAUDE_REVIEW_ENABLED=false` stops the lane, leaves",
-    "the gate enforcing, and turns EVERY pull request red. Reaching for the lane's switch",
+    "the gate enforcing, and turns every NON-FORK pull request red. Reaching for the lane's switch",
     "during an incident would be the maximal version of the problem it was reached for."
   ],
   "mode": "enforcing"

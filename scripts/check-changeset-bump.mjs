@@ -429,7 +429,19 @@ function pendingBumps() {
     );
   }
   const files = entries
-    .filter((f) => f.endsWith('.md') && f.toLowerCase() !== 'readme.md')
+    // The README exclusion is a REGEX rather than a string, and that is
+    // load-bearing rather than style. check-ci-path-coverage.mjs derives a
+    // gate's inputs LEXICALLY from path-shaped string literals anywhere in the
+    // source, comments included. A quoted lowercase spelling of the README file
+    // name was therefore derived as an input this gate supposedly reads. It does
+    // not read that file, it EXCLUDES it, so the entry needed an exemption -- and
+    // the exemption then behaved differently per platform. On a case-insensitive
+    // macOS filesystem the lowercase spelling resolves to the real file and the
+    // exemption is used; on Linux it resolves to nothing, the derived input
+    // disappears, and the row becomes a STALE exemption, which that allowlist
+    // treats as a failure. Local runs passed and CI failed on exactly that.
+    // A regex is not a path literal, so nothing is derived and no row is needed.
+    .filter((f) => f.endsWith('.md') && !/^readme\.md$/i.test(f))
     .sort();
   const byPackage = new Map();
   const unreadable = [];

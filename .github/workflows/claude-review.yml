@@ -164,7 +164,11 @@ jobs:
             --out "$RUNNER_TEMP/review-input.json" 2>&1 | tee "$RUNNER_TEMP/build.log"
           rc=${PIPESTATUS[0]}
           if [ "$rc" -ne 0 ]; then
-            if grep -q 'NO_FILES' "$RUNNER_TEMP/build.log"; then
+            # ANCHORED. `REVIEW_TOO_LARGE` interpolates a FILE PATH into its
+            # message, so an unanchored match would let a PR containing a path
+            # with `NO_FILES` in it, and too large to review, post a
+            # nothing-to-review marker over real reviewable content.
+            if grep -q '^❌ NO_FILES:' "$RUNNER_TEMP/build.log"; then
               echo "::notice::Nothing reviewable in this PR; skipping the lane."
               echo "skip=true" >> "$GITHUB_OUTPUT"
               exit 0
@@ -178,7 +182,7 @@ jobs:
       # than floating: a reviewer whose behaviour changes under us is a reviewer
       # whose precision measurements mean nothing.
       - name: Install the reviewer CLI
-        if: steps.head.outputs.proceed == 'true' && steps.dedup.outputs.covered != 'true'
+        if: steps.head.outputs.proceed == 'true' && steps.dedup.outputs.covered != 'true' && steps.input.outputs.skip != 'true'
         run: npm install -g @anthropic-ai/claude-code@2.0.76
 
       # The model runs here, as a pure function: no tools, no shell, no MCP, no
@@ -207,6 +211,31 @@ jobs:
             --raw "$RUNNER_TEMP/raw-review.txt" \
             --input "$RUNNER_TEMP/review-input.json" \
             --out "$RUNNER_TEMP/findings.json"
+
+      # NOTHING REVIEWABLE STILL POSTS A MARKER, and that is not a formality.
+      # Without it a lockfile-only or generated-code-only PR gets no marker at
+      # all, and `review-posted.yml` under `mode: enforcing` reports NOT_POSTED
+      # on a red row that NO re-run and NO author action can ever clear -- the
+      # lane would skip identically every time, while the gate's printed remedy
+      # says "re-run the review job". PR #3558 (a Cargo.lock-only dependabot
+      # bump) is a live instance of the class.
+      #
+      # It posts `verdict=nothing-to-review`, NOT `verdict=clean`. The model was
+      # never run here, so "there was nothing to review" and "reviewed it and
+      # found nothing" are different statements, and a `clean` marker would make
+      # an exclusion-list bug certify every PR it swallowed as reviewed.
+      - name: Say so when there was nothing to review
+        if: steps.head.outputs.proceed == 'true' && steps.dedup.outputs.covered != 'true' && steps.input.outputs.skip == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/review/post-review.mjs \
+            --repo "${{ github.repository }}" \
+            --pr "${{ github.event.pull_request.number }}" \
+            --sha "${{ github.event.pull_request.head.sha }}" \
+            --nothing-to-review \
+            --author github-actions \
+            --config "${{ steps.basecfg.outputs.path }}"
 
       # The marker is written LAST, and only after the inline comments have been
       # read back off the PR. That ordering is the whole answer to #1679.

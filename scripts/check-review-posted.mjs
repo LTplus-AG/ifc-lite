@@ -43,7 +43,7 @@
  * THE ONE THING IT DOES ACCEPT is a marker the reviewer writes at the END of a
  * successful post, naming the exact commit it reviewed:
  *
- *     <!-- ifc-lite-review sha=<40-hex> verdict=clean|findings count=<n> -->
+ *     <!-- ifc-lite-review sha=<40-hex> verdict=clean|findings|nothing-to-review count=<n> -->
  *
  * THE CONTRACT THIS IMPLIES, and it is the load-bearing half: THE REVIEWER MUST
  * POST ON EVERY RUN, INCLUDING WHEN IT FINDS NOTHING. A reviewer that stays
@@ -136,7 +136,7 @@ const PER_PAGE = 100;
  * both ends and tolerant of surrounding whitespace only -- a loose pattern here
  * would let a contributor hand-write a passing marker into a PR comment.
  */
-export const MARKER_RE = /<!--\s*ifc-lite-review\s+sha=([0-9a-f]{40})\s+verdict=(clean|findings)\s+count=(\d+)\s*-->/;
+export const MARKER_RE = /<!--\s*ifc-lite-review\s+sha=([0-9a-f]{40})\s+verdict=(clean|findings|nothing-to-review)\s+count=(\d+)\s*-->/;
 
 /** Block the runner without a dependency. This job's whole purpose is to wait. */
 function sleepSync(ms) {
@@ -323,7 +323,11 @@ export function normaliseComments(payload) {
  * The verdict. `ok` is true only when an expected author posted a well-formed
  * marker naming exactly `headSha`.
  *
- * @returns {{ ok: boolean, verdict: string, lines: string[] }}
+ * @returns {{ ok: boolean, covered: boolean, verdict: string, lines: string[] }}
+ *   `ok` is "should this check go red"; `covered` is "has this head been
+ *   REVIEWED", which is what the workflow turns into the `claude-reviewed` label
+ *   and what CodeRabbit reads to stand down. They differ on exactly one verdict:
+ *   `nothing-to-review` is ok and NOT covered, because nothing read the diff.
  */
 export function evaluate({ comments, cfg, headSha }) {
   const lines = [];
@@ -339,7 +343,7 @@ export function evaluate({ comments, cfg, headSha }) {
       '   REMEDY: re-run the review job. If it recurs, read the run log for `Posted 0/N` or a low',
       '   `num_turns` and attach it to the upstream issue rather than re-running indefinitely.',
     );
-    return { ok: false, verdict: 'NOT_POSTED', lines };
+    return { ok: false, covered: false, verdict: 'NOT_POSTED', lines };
   }
 
   const markers = [];
@@ -365,10 +369,10 @@ export function evaluate({ comments, cfg, headSha }) {
       '   REMEDY: ' +
         (sawUnparseable
           ? 'fix the reviewer\'s marker writer; the expected form is ' +
-            '`<!-- ifc-lite-review sha=<40-hex> verdict=clean|findings count=<n> -->`.'
+            '`<!-- ifc-lite-review sha=<40-hex> verdict=clean|findings|nothing-to-review count=<n> -->`.'
           : 're-run the review job.'),
     );
-    return { ok: false, verdict: sawUnparseable ? 'MARKER_MALFORMED' : 'NOT_POSTED', lines };
+    return { ok: false, covered: false, verdict: sawUnparseable ? 'MARKER_MALFORMED' : 'NOT_POSTED', lines };
   }
 
   const match = markers.find((m) => m.sha === headSha);
@@ -382,7 +386,7 @@ export function evaluate({ comments, cfg, headSha }) {
       '   timestamp: no timestamp survives normalisation, so the gate does not claim one.)',
       '   REMEDY: re-run the review job against the current head.',
     );
-    return { ok: false, verdict: 'STALE_REVIEW', lines };
+    return { ok: false, covered: false, verdict: 'STALE_REVIEW', lines };
   }
 
   // THE #1679 CROSS-CHECK. A marker claiming `verdict=findings count=N` while N
@@ -417,17 +421,32 @@ export function evaluate({ comments, cfg, headSha }) {
         '   REMEDY: re-run the review job. If it recurs, the run log will show `Posted 0/N`; attach',
         '   it to claude-code-action#1679 rather than re-running indefinitely.',
       );
-      return { ok: false, verdict: 'FINDINGS_NOT_POSTED', escapeHatch: null, lines };
+      return { ok: false, covered: false, verdict: 'FINDINGS_NOT_POSTED', escapeHatch: null, lines };
     }
   }
 
   lines.push(
-    `✅ REVIEW_POSTED: an expected reviewer posted a ${match.verdict} verdict for ${headSha.slice(0, 9)}` +
-      `${match.verdict === 'findings' ? ` with ${match.count} finding(s)` : ''}.`,
-    '   This proves a review REACHED the pull request for this exact commit. It proves nothing',
-    '   about whether the review was any good; precision is a separate instrument.',
+    match.verdict === 'nothing-to-review'
+      ? `✅ REVIEW_POSTED: the reviewer reached ${headSha.slice(0, 9)} and reported NOTHING TO REVIEW — ` +
+        'every changed path is excluded (lockfiles, generated code, snapshots, fixtures, build output). ' +
+        'That is a decision the lane made and POSTED, not a statement that the diff was read and is fine. ' +
+        'The distinction is the point: a `clean` marker here would certify these PRs as reviewed, and an ' +
+        'exclusion-list bug would then do it silently for every PR it swallowed.'
+      : `✅ REVIEW_POSTED: an expected reviewer posted a ${match.verdict} verdict for ${headSha.slice(0, 9)}` +
+        `${match.verdict === 'findings' ? ` with ${match.count} finding(s)` : ''}.`,
+    match.verdict === 'nothing-to-review'
+      ? '   COVERED=FALSE, though: nobody read this diff, so CodeRabbit must NOT stand down on it.'
+      : '   This proves a review REACHED the pull request for this exact commit.',
+    '   It proves nothing about whether the review was any good; precision is a separate',
+    '   instrument.',
   );
-  return { ok: true, verdict: 'REVIEW_POSTED', lines };
+  // `ok` AND `covered` ARE DIFFERENT QUESTIONS, and conflating them was a hole.
+  // `ok` is "should this check go red"; `covered` is "has this head been REVIEWED",
+  // which is what `review-posted.yml` turns into the `claude-reviewed` label and
+  // what `.coderabbit.yaml` reads to stand down. A `nothing-to-review` head has
+  // NOT been reviewed -- the model never ran -- so standing CodeRabbit down on it
+  // would leave the PR reviewed by NOBODY. Raised by CodeRabbit on PR #3587.
+  return { ok: true, covered: match.verdict !== 'nothing-to-review', verdict: 'REVIEW_POSTED', lines };
 }
 
 /**
@@ -489,6 +508,60 @@ function fetchPayload(repo, pr) {
     out[key] = rows;
   }
   return out;
+}
+
+/**
+ * Is this PR from a FORK? Asked of the API, never taken from the caller.
+ *
+ * It matters because the lane cannot post on a fork: claude-review.yml excludes
+ * fork PRs outright, since a fork's GITHUB_TOKEN is read-only whatever
+ * `permissions:` says. So under `mode: enforcing` every fork PR would be a
+ * NOT_POSTED red that no re-run and no contributor action could ever clear --
+ * the same unclearable-red class as a PR with nothing reviewable in it, and the
+ * worst possible greeting for an outside contributor.
+ *
+ * NOT read from the workflow. `review-posted.yml` runs from the PR's own
+ * checkout, so a flag passed there would be a flag a fork PR could edit. This
+ * asks the API.
+ *
+ * `headRepo` in a `--state-file` payload overrides the read, and ONLY there.
+ * That is what makes this branch reachable by the harness at all: gating it on
+ * `!args.stateFile` would have shipped an enforcement carve-out no test could
+ * execute, which is the shape this repository keeps paying for.
+ */
+function isForkPr(repo, pr, override) {
+  // NO REPO, NO VERDICT. `args.repo` is only refused inside the live branch, so
+  // in `--state-file` mode it can be null -- and `headRepo !== null` is true for
+  // every value, which would excuse EVERY failing verdict. The invariant belongs
+  // here rather than in the harness's discipline of always passing `--repo`:
+  // discipline is prose holding two things together, and this gate exists
+  // because that does not hold. Raised by CodeRabbit on PR #3587.
+  if (typeof repo !== 'string' || repo === '') {
+    throw new ReviewPostedError(
+      'NO_REPO',
+      'The fork check needs a repository to compare the head against, and none was resolved. ' +
+        'Pass `--repo owner/name` or set GITHUB_REPOSITORY. Without it every failing verdict would ' +
+        'read as a fork and be excused, which is a gate that cannot fail.',
+    );
+  }
+  const data =
+    override === undefined
+      ? gh(['api', `repos/${repo}/pulls/${pr}`, '--method', 'GET'], 'the PR head repo', ReviewPostedError)
+      : { head: { repo: { full_name: override } } };
+  const headRepo = data?.head?.repo?.full_name;
+  if (typeof headRepo !== 'string' || headRepo === '') {
+    throw new ReviewPostedError(
+      'NO_HEAD_REPO',
+      `PR #${pr} returned no head repository, so this gate cannot tell a fork from a branch. It refuses ` +
+        'rather than guess: guessing "not a fork" would enforce against a PR that can never post a ' +
+        'marker, and guessing "fork" would silently downgrade the gate on every PR.',
+    );
+  }
+  // CASE-INSENSITIVE. GitHub repository names are case-insensitive, and `--repo`
+  // is caller-supplied: `ltplus-ag/ifc-lite` against a head repo of
+  // `LTplus-AG/ifc-lite` would otherwise read as a FORK and turn enforcement off
+  // for every PR. Same normalisation the author matching already uses.
+  return headRepo.toLowerCase() !== repo.toLowerCase();
 }
 
 function main() {
@@ -580,7 +653,7 @@ function main() {
   if (waited > 0) console.log(`Waited ${waited}s for a verdict to appear.`);
   console.log('');
 
-  const { ok, lines } = result;
+  const { ok, covered, lines } = result;
   for (const l of lines) console.log(l);
 
   // `covered` is the VERDICT, independent of the exit code, and the two differ on
@@ -589,9 +662,28 @@ function main() {
   // covered. Anything downstream that acts on "was this reviewed" -- the
   // CodeRabbit stand-down label, above all -- must read THIS, never `$?`.
   if (process.env.GITHUB_OUTPUT) {
-    appendFileSync(process.env.GITHUB_OUTPUT, `covered=${ok ? 'true' : 'false'}\n`);
+    appendFileSync(process.env.GITHUB_OUTPUT, `covered=${covered ? 'true' : 'false'}\n`);
   }
 
+  // FORK PRs ARE NEVER ENFORCED, in either mode, and the reason is the same one
+  // that makes an unreviewable PR post a marker rather than nothing: the lane
+  // CANNOT run here, so the red would be permanent and no contributor could
+  // clear it. Reported in full so it is not silence -- the verdict text above is
+  // unchanged -- but it does not fail the job. Checked only when the verdict is
+  // already failing, so THIS gate does not pay the extra API read on its common
+  // path. `claude-review.yml`'s dedup step is different: a failing verdict IS its
+  // common case, so once the base config is `enforcing` every lane run pays one
+  // `gh api pulls/<n>` there. One call, named rather than left to be discovered.
+  if (!ok && isForkPr(args.repo, args.pr, args.stateFile ? payload?.headRepo : undefined)) {
+    console.log('');
+    console.log(
+      'FORK PR: the finding above does not fail this job. `claude-review.yml` excludes fork PRs, because ' +
+        "a fork's GITHUB_TOKEN is read-only whatever `permissions:` says, so no marker can ever be posted " +
+        'here and enforcing would be a red nobody can clear. These PRs are covered by the CodeRabbit lane, ' +
+        'which is why the stand-down label is never applied to them.',
+    );
+    process.exit(0);
+  }
   // Advisory gates the EXIT CODE and nothing else. The verdict text is identical
   // in both modes, so a rollout state cannot quietly change what is reported. A
   // REFUSAL is a fact about this gate's inputs rather than a verdict on the PR,
@@ -604,6 +696,7 @@ function main() {
     );
     process.exit(0);
   }
+
   process.exit(ok ? 0 : 1);
 }
 

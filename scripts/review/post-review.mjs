@@ -183,6 +183,9 @@ const FLAGS = new Map([
   ['--config', 'config'],
 ]);
 
+/** Flags that take NO value. Kept separate so the value-consuming loop stays strict. */
+const BOOL_FLAGS = new Map([['--nothing-to-review', 'nothingToReview']]);
+
 /** @param {string[]} argv */
 export function parseArgs(argv) {
   const out = {
@@ -192,8 +195,14 @@ export function parseArgs(argv) {
     findings: null,
     author: null,
     config: DEFAULT_CONFIG,
+    nothingToReview: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
+    const boolKey = BOOL_FLAGS.get(argv[i]);
+    if (boolKey) {
+      out[boolKey] = true;
+      continue;
+    }
     const key = FLAGS.get(argv[i]);
     if (!key) throw new PostReviewError('BAD_ARGS', `Unrecognised argument \`${argv[i]}\`.`);
     const v = argv[i + 1];
@@ -294,6 +303,40 @@ export function fingerprint(path, line, body) {
 /** The marker the gate parses. Built in exactly one place; proved against the real gate by the harness. */
 export function marker(sha, verdict, count) {
   return `<!-- ifc-lite-review sha=${sha} verdict=${verdict} count=${count} -->`;
+}
+
+/**
+ * The comment for a head with NOTHING REVIEWABLE in it.
+ *
+ * WHY THIS IS NOT `verdict=clean`. A lockfile-only or generated-code-only PR
+ * makes `build-review-input.mjs` exit NO_FILES, so the model is never run. The
+ * honest statement about that head is "there was nothing to review", and it is
+ * NOT the same statement as "reviewed it and found nothing". Collapsing the two
+ * is the exact failure this whole system exists to prevent: if the exclusion
+ * list ever grows a bug that swallows real source, a `clean` marker would
+ * certify every one of those PRs as reviewed, silently, forever.
+ *
+ * So it gets its own verdict token. The gate accepts it as evidence that the
+ * LANE REACHED THIS HEAD and made a decision -- which is the question the gate
+ * actually asks -- and prints it as its own outcome rather than as a pass.
+ *
+ * The alternative was to leave these PRs with no marker at all. Under
+ * `mode: enforcing` that is a red row no re-run and no author action can ever
+ * clear, on a class that recurs (PR #3558, a Cargo.lock-only dependabot bump),
+ * with a printed remedy -- "re-run the review job" -- that cannot work.
+ */
+export function nothingToReviewBody(sha) {
+  const short = sha.slice(0, 9);
+  return [
+    `### Claude review - nothing to review for \`${short}\``,
+    '',
+    'Every changed path in this diff is excluded from review: lockfiles, generated',
+    'code, snapshots, fixtures and build output. The reviewer was NOT run, so this',
+    'is not a statement that the diff is fine -- it is a statement that there was',
+    'nothing here for it to read.',
+    '',
+    marker(sha, 'nothing-to-review', 0),
+  ].join('\n');
 }
 
 /** The one-line index entry for a finding. */
@@ -440,6 +483,57 @@ function postFinding(repo, pr, sha, f, n, total) {
   return res;
 }
 
+/**
+ * Write the marker comment and PROVE it is readable afterwards.
+ *
+ * ONE COPY, used by both the review path and the nothing-to-review path. The
+ * read-back is the whole contract this file exists to keep -- "it posted, trust
+ * me" is exactly the claim the gate refuses -- so a second path that wrote a
+ * marker without verifying it would be a hole in the shape of the bug.
+ *
+ * Idempotent by construction: a marker already written for THIS head is updated
+ * in place. Two markers for one sha would leave the gate reading whichever came
+ * first in fetch order, which is not a decision anyone made.
+ */
+function upsertAndVerify({ repo, pr, sha, author, body, want }) {
+  const carrier = fetchSurface(repo, pr, `issues/${pr}/comments`).find(
+    (c) =>
+      normaliseLogin(c?.user?.login) === author &&
+      MARKER_RE.exec(String(c?.body ?? ''))?.[1] === sha,
+  );
+  const res = carrier
+    ? gh(
+        ['api', `repos/${repo}/issues/comments/${carrier.id}`, '--method', 'PATCH', '-f', `body=${body}`],
+        'the review summary (update in place)',
+        PostReviewError,
+      )
+    : gh(
+        ['api', `repos/${repo}/issues/${pr}/comments`, '--method', 'POST', '-f', `body=${body}`],
+        'the review summary',
+        PostReviewError,
+      );
+  if (!res || res.id === undefined || res.id === null) {
+    throw new PostReviewError(
+      'SUMMARY_POST_FAILED',
+      'The marker comment returned no comment id, so the gate has nothing to read. REMEDY: check that the ' +
+        'posting workflow has write access to the pull request, then re-run.',
+    );
+  }
+  const readable = fetchSurface(repo, pr, `issues/${pr}/comments`).some(
+    (c) => normaliseLogin(c?.user?.login) === author && String(c?.body ?? '').includes(want),
+  );
+  if (!readable) {
+    throw new PostReviewError(
+      'MARKER_NOT_READ_BACK',
+      `The marker \`${want}\` is not readable on PR #${pr} one GET after it was written. A marker this ` +
+        'script cannot read is one the gate may not be able to read either, and reporting success here ' +
+        'would be the exact "it posted, trust me" claim this file exists to refuse. REMEDY: re-run; if ' +
+        '`--author` is wrong the marker is on the PR under a different login, and the gate will keep ' +
+        'reading NOT_POSTED until the login is fixed.',
+    );
+  }
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
 
@@ -460,7 +554,16 @@ function main() {
         'here would let the marker name a commit different from the one the model was shown.',
     );
   }
-  if (!args.findings) throw new PostReviewError('BAD_ARGS', 'Pass `--findings <findings.json>`.');
+  if (!args.findings && !args.nothingToReview) {
+    throw new PostReviewError('BAD_ARGS', 'Pass `--findings <findings.json>` or `--nothing-to-review`.');
+  }
+  if (args.findings && args.nothingToReview) {
+    throw new PostReviewError(
+      'BAD_ARGS',
+      '`--nothing-to-review` and `--findings` are mutually exclusive: one says the model never ran, the ' +
+        'other carries what it produced. Passing both means the caller does not know which happened.',
+    );
+  }
   if (!args.author) {
     throw new PostReviewError(
       'BAD_ARGS',
@@ -481,6 +584,58 @@ function main() {
         'REMEDY: add the login to the config on the BASE branch -- that is the copy the gate reads -- or ' +
         'fix `--author`.',
     );
+  }
+
+  // THE NOTHING-TO-REVIEW PATH, taken before any findings handling because there
+  // are none by construction. It still checks the head first -- a marker for a
+  // dead head is one the gate calls STALE_REVIEW -- and it posts ONE comment and
+  // no inline anything. See `nothingToReviewBody` for why this is a verdict of
+  // its own and not `clean`.
+  if (args.nothingToReview) {
+    // A REAL VERDICT FOR THIS HEAD OUTRANKS THIS ONE. `upsertAndVerify` finds a
+    // carrier by sha alone, so without this it would PATCH an existing
+    // `verdict=findings count=3` summary into "nothing to review / count=0" --
+    // orphaning three inline comments and stepping around the
+    // FINDINGS_NOT_POSTED cross-check that exists to catch exactly that gap.
+    // Reachable only if the exclusion outcome flipped for one head, which needs
+    // dedup to have failed; narrow, and a downgrade this file must never make.
+    const existing = fetchSurface(args.repo, args.pr, `issues/${args.pr}/comments`).find((c) => {
+      const m = MARKER_RE.exec(String(c?.body ?? ''));
+      return normaliseLogin(c?.user?.login) === author && m?.[1] === args.sha && m[2] !== 'nothing-to-review';
+    });
+    if (existing) {
+      // REPORTED, AND EXIT 0. The refusal is right -- overwriting a real verdict
+      // would retract it and orphan any inline findings under it -- but THROWING
+      // was wrong: it reddens the lane job for a state that needs no action, the
+      // gate is already satisfied by the standing marker, and no re-run could
+      // ever clear it. That is precisely the unclearable-red class this branch
+      // exists to remove, reintroduced by its own guard. Raised by CodeRabbit on
+      // PR #3587.
+      console.log(
+        `WOULD_DOWNGRADE_VERDICT: a \`${MARKER_RE.exec(existing.body)[2]}\` marker already stands for ` +
+          `${args.sha.slice(0, 9)}. Overwriting it with \`nothing-to-review\` would retract a real ` +
+          'verdict and orphan any inline findings under it, so nothing was posted. This head IS ' +
+          'covered and the gate reads it; there is nothing to do.',
+      );
+      process.exit(0);
+    }
+    const liveHead = fetchHeadSha(args.repo, args.pr);
+    if (liveHead !== args.sha) {
+      console.log(
+        `SKIPPED_STALE: this run read ${args.sha.slice(0, 9)}; the PR head is now ${liveHead.slice(0, 9)}.`,
+      );
+      process.exit(0);
+    }
+    upsertAndVerify({
+      repo: args.repo,
+      pr: args.pr,
+      sha: args.sha,
+      author,
+      body: nothingToReviewBody(args.sha),
+      want: marker(args.sha, 'nothing-to-review', 0),
+    });
+    console.log(`Posted a nothing-to-review marker for ${args.sha.slice(0, 9)}.`);
+    process.exit(0);
   }
 
   // Read BEFORE the first network call. A malformed findings file must refuse
@@ -542,51 +697,16 @@ function main() {
     );
   }
 
-  // ------------------------------------------------------------------ STEP 4
+  // ------------------------------------------------------------------ STEP 4+5
   const verdict = confirmed === 0 ? 'clean' : 'findings';
-  const body = summaryBody({ sha: args.sha, findings, count: confirmed });
-  // Idempotent by construction: a marker we already wrote for THIS head is
-  // updated in place. Two markers for one sha would leave the gate reading
-  // whichever came first in fetch order, which is not a decision anyone made.
-  const carrier = fetchSurface(args.repo, args.pr, `issues/${args.pr}/comments`).find(
-    (c) =>
-      normaliseLogin(c?.user?.login) === author &&
-      MARKER_RE.exec(String(c?.body ?? ''))?.[1] === args.sha,
-  );
-  const res = carrier
-    ? gh(
-        ['api', `repos/${args.repo}/issues/comments/${carrier.id}`, '--method', 'PATCH', '-f', `body=${body}`],
-        'the review summary (update in place)',
-        PostReviewError,
-      )
-    : gh(
-        ['api', `repos/${args.repo}/issues/${args.pr}/comments`, '--method', 'POST', '-f', `body=${body}`],
-        'the review summary',
-        PostReviewError,
-      );
-  if (!res || res.id === undefined || res.id === null) {
-    throw new PostReviewError(
-      'SUMMARY_POST_FAILED',
-      'The marker comment returned no comment id, so the gate has nothing to read. REMEDY: check that the ' +
-        'posting workflow has write access to the pull request, then re-run.',
-    );
-  }
-
-  // ------------------------------------------------------------------ STEP 5
-  const want = marker(args.sha, verdict, confirmed);
-  const readable = fetchSurface(args.repo, args.pr, `issues/${args.pr}/comments`).some(
-    (c) => normaliseLogin(c?.user?.login) === author && String(c?.body ?? '').includes(want),
-  );
-  if (!readable) {
-    throw new PostReviewError(
-      'MARKER_NOT_READ_BACK',
-      `The marker \`${want}\` is not readable on PR #${args.pr} one GET after it was written. A marker this ` +
-        'script cannot read is one the gate may not be able to read either, and reporting success here ' +
-        'would be the exact "it posted, trust me" claim this file exists to refuse. REMEDY: re-run; if ' +
-        '`--author` is wrong the marker is on the PR under a different login, and the gate will keep ' +
-        'reading NOT_POSTED until the login is fixed.',
-    );
-  }
+  upsertAndVerify({
+    repo: args.repo,
+    pr: args.pr,
+    sha: args.sha,
+    author,
+    body: summaryBody({ sha: args.sha, findings, count: confirmed }),
+    want: marker(args.sha, verdict, confirmed),
+  });
 
   console.log(`Head: ${args.sha.slice(0, 9)}`);
   console.log(`Findings: ${findings.length} (posted ${posted}, already present ${skipped})`);

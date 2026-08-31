@@ -184,6 +184,34 @@ function runPoster({ state = {}, findings = [], findingsRaw, findingsPath, args 
   };
 }
 
+
+/** The poster on the NOTHING-TO-REVIEW path: no findings file at all. */
+function runNothingToReview({ state = {}, sha = SHA, args = [], author = REVIEWER } = {}) {
+  const dir = join(TMP, `ntr-${(seq += 1)}`);
+  mkdirSync(dir);
+  const statePath = join(dir, 'state.json');
+  writeFileSync(
+    statePath,
+    JSON.stringify({
+      head: sha,
+      author: REVIEWER,
+      issueComments: [],
+      reviewComments: [],
+      calls: [],
+      nextId: 1000,
+      inlinePostCount: 0,
+      dropInlinePosts: [],
+      ...state,
+    }),
+  );
+  const r = spawnSync(
+    process.execPath,
+    [SCRIPT, '--pr', PR, '--repo', REPO, '--sha', sha, '--nothing-to-review', '--author', author, ...args],
+    { encoding: 'utf8', env: { ...process.env, PATH: `${BIN}:${process.env.PATH}`, FAKE_GH_STATE: statePath } },
+  );
+  return { code: r.status, out: `${r.stdout}${r.stderr}`, state: JSON.parse(readFileSync(statePath, 'utf8')) };
+}
+
 /** Re-run the poster against a world a previous run left behind. */
 function rerunPoster(statePath, findings, sha = SHA) {
   const fPath = join(TMP, `findings-rerun-${(seq += 1)}.json`);
@@ -210,11 +238,11 @@ function runGate(state, sha = SHA) {
   const p = join(TMP, `gate-state-${(seq += 1)}.json`);
   writeFileSync(
     p,
-    JSON.stringify({ issueComments: state.issueComments, reviewComments: state.reviewComments, reviews: [] }),
+    JSON.stringify({ headRepo: 'LTplus-AG/ifc-lite', issueComments: state.issueComments, reviewComments: state.reviewComments, reviews: [] }),
   );
   const r = spawnSync(
     process.execPath,
-    [GATE, '--pr', PR, '--sha', sha, '--state-file', p, '--config', ENFORCING_CFG],
+    [GATE, '--pr', PR, '--sha', sha, '--repo', 'LTplus-AG/ifc-lite', '--state-file', p, '--config', ENFORCING_CFG],
     { encoding: 'utf8' },
   );
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
@@ -686,4 +714,142 @@ test('the SHIPPED config is the one the poster runs against', () => {
   const r = runPoster({ findings: [] });
   assert.equal(r.code, 0, r.out);
   assert.ok(SHIPPED.expectedAuthors.includes(REVIEWER), 'the posting identity must be an expected author');
+});
+
+// ============================================ nothing to review is its OWN verdict
+
+test('END TO END: a nothing-to-review marker satisfies the REAL gate', () => {
+  // The defect this closes: a lockfile-only PR makes build-review-input exit
+  // NO_FILES, the lane skips posting, and under `mode: enforcing` the gate
+  // reports NOT_POSTED on a row NO re-run and NO author action can clear --
+  // the lane skips identically every time. PR #3558 is a live instance.
+  const r = runNothingToReview();
+  assert.equal(r.code, 0, r.out);
+  assert.match(allBodies(r.state), /verdict=nothing-to-review count=0/);
+  assert.equal(r.state.reviewComments.length, 0, 'no inline comments: nothing was read');
+
+  const g = runGate(r.state);
+  assert.equal(g.code, 0, g.out);
+  assert.match(g.out, /REVIEW_POSTED/);
+});
+
+test('the gate PRINTS it as its own outcome, never as "reviewed and clean"', () => {
+  // If this ever reads like a clean review, the distinction has collapsed and an
+  // exclusion-list bug would certify every PR it swallowed as reviewed.
+  const g = runGate(runNothingToReview().state);
+  assert.match(g.out, /NOTHING TO REVIEW/);
+  assert.match(g.out, /not a statement that the diff was read/);
+});
+
+test('it is NOT a `clean` marker, and that is the whole point', () => {
+  const bodies = allBodies(runNothingToReview().state);
+  assert.doesNotMatch(bodies, /verdict=clean/);
+  assert.match(bodies, /The reviewer was NOT run/);
+});
+
+test('a marker for a DEAD head is not written on this path either', () => {
+  // Same rule as the review path: a marker for a superseded head is one the gate
+  // calls STALE_REVIEW, and no re-run of this commit could clear it.
+  const r = runNothingToReview({ state: { head: 'b'.repeat(40) } });
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /SKIPPED_STALE/);
+  assertNoMarker(r.state, 'a dead head must leave the PR marker-less');
+});
+
+test('the read-back guards this path too: an unreadable marker REFUSES', () => {
+  // The nothing-to-review path shares `upsertAndVerify` with the review path
+  // precisely so it cannot skip the read-back. A second writer that posted
+  // without verifying would be a hole in the shape of the bug this file exists
+  // to refuse.
+  const r = runNothingToReview({ state: { dropSummaryPost: true } });
+  assert.notEqual(r.code, 0, r.out);
+  assert.match(r.out, /MARKER_NOT_READ_BACK|SUMMARY_POST_FAILED/);
+});
+
+test('`--nothing-to-review` and `--findings` together are refused', () => {
+  // One says the model never ran; the other carries what it produced. A caller
+  // passing both does not know which happened, and guessing would be the
+  // absence-reads-as-success shape at the CLI.
+  const dir = join(TMP, `both-${(seq += 1)}`);
+  mkdirSync(dir);
+  const f = join(dir, 'f.json');
+  writeFileSync(f, '[]');
+  const r = spawnSync(
+    process.execPath,
+    [SCRIPT, '--pr', PR, '--repo', REPO, '--sha', SHA, '--findings', f, '--nothing-to-review', '--author', REVIEWER],
+    { encoding: 'utf8' },
+  );
+  assert.notEqual(r.status, 0);
+  assert.match(`${r.stdout}${r.stderr}`, /mutually exclusive/);
+});
+
+test('THE WIRING: the workflow actually takes this path when the input step skips', () => {
+  // Static, because nothing else can reach it: the lane needs a runner and a
+  // token. Without the step the bug returns silently, and the whole point of
+  // this change is that a red nobody can clear must not come back.
+  const wf = readFileSync(join(HERE, '..', '..', '.github/workflows/claude-review.yml'), 'utf8');
+  const step = wf.split('- name: Say so when there was nothing to review')[1];
+  assert.ok(step, 'the nothing-to-review step must exist in claude-review.yml');
+  const guard = step.split('run:')[0];
+  assert.match(guard, /steps\.input\.outputs\.skip == 'true'/, 'it must run ONLY on the skip path');
+  assert.match(step, /--nothing-to-review/);
+  // And the reviewing steps must NOT run on that path, or the model is invoked
+  // with nothing to read.
+  for (const other of ['Run the reviewer', 'Validate the findings', 'Post the review', 'Install the reviewer CLI']) {
+    const s2 = wf.split(`- name: ${other}`)[1];
+    assert.ok(s2, `${other} must exist`);
+    assert.match(s2.split('run:')[0], /skip != 'true'/, `${other} must be excluded on the skip path`);
+  }
+});
+
+test('THE MATCHED PAIR: every identity the lane posts as is one the GATE accepts', () => {
+  // THE PAIR HAS NO OTHER GATE, and this repository has been bitten by that shape
+  // before: two changes, each green alone, fatal together. The lane names the
+  // identity it posts as in `claude-review.yml` (`--author`); the gate names the
+  // identities whose marker counts in `review-posted.config.json`. Nothing else
+  // connects them, so changing ONE is a silent break -- every marker the lane
+  // writes becomes invisible, the gate reads NOT_POSTED on every head, and under
+  // `mode: enforcing` that is the whole repository red.
+  //
+  // Live instance at the time of writing: PR #3583 replaces `expectedAuthors`
+  // with a dedicated GitHub App that does not exist yet. Its own description says
+  // the gate then "correctly reports NOT_POSTED" -- true and harmless under
+  // advisory, and the entire repository under enforcing. This test is what turns
+  // that from a surprise into a red line in whichever PR lands second.
+  const wf = readFileSync(join(HERE, '..', '..', '.github/workflows/claude-review.yml'), 'utf8');
+  const authors = [...wf.matchAll(/--author\s+(\S+)/g)].map((m) => m[1]);
+  assert.ok(authors.length > 0, 'the lane must name the identity it posts as');
+
+  const cfg = JSON.parse(readFileSync(join(HERE, '..', 'review-posted.config.json'), 'utf8'));
+  const accepted = (cfg.expectedAuthors ?? []).map((a) => String(a).toLowerCase());
+  assert.ok(accepted.length > 0, 'the gate must name at least one accepted identity');
+
+  for (const a of authors) {
+    assert.ok(
+      accepted.includes(a.toLowerCase()),
+      `the lane posts as \`${a}\`, which the gate does not accept (${accepted.join(', ')}). ` +
+        'Every marker it writes would be invisible and the gate would read NOT_POSTED on every PR. ' +
+        'Change BOTH or neither.',
+    );
+  }
+});
+
+test('a nothing-to-review run REFUSES to overwrite a real verdict for the same head', () => {
+  // `upsertAndVerify` finds its carrier by sha alone, so without a guard this
+  // would PATCH a `findings` summary into "nothing to review", retracting a real
+  // verdict and orphaning its inline comments.
+  const first = runPoster({ findings: [{ path: 'a.ts', line: 2, body: 'x' }] });
+  assert.equal(first.code, 0, first.out);
+  assert.match(allBodies(first.state), /verdict=findings/);
+
+  // EXIT 0, not a throw. The refusal is right; reddening the lane for a state
+  // that needs no action is not -- the gate is already satisfied by the standing
+  // marker, and no re-run could clear that red. Reintroducing the unclearable-red
+  // class inside the guard that removes it was the bug.
+  const second = runNothingToReview({ state: first.state });
+  assert.equal(second.code, 0, second.out);
+  assert.match(second.out, /WOULD_DOWNGRADE_VERDICT/);
+  assert.match(second.out, /nothing to do/);
+  assert.match(allBodies(second.state), /verdict=findings/, 'the real verdict must still stand');
+  assert.doesNotMatch(allBodies(second.state), /nothing-to-review/, 'and must not be overwritten');
 });

@@ -237,13 +237,7 @@ function matchesProperty(
     return value !== null && value !== undefined;
   }
 
-  // An absent property never satisfies a value comparison - not `contains`
-  // or `equals` either, even against an empty-string criteria value.
-  // Checked once, ahead of every operator below, so `String(value ?? '')`
-  // can never coerce "missing" into "present and empty" (that coercion made
-  // `contains ''` / `equals ''` match entities that never had the property -
-  // mirrors the search layer, where the rule matches over the rows that
-  // exist so a missing property fails even the negative ops).
+  // Absent never satisfies a comparison, incl. `contains ''`/`equals ''`.
   if (value === null || value === undefined) return false;
 
   if (criteria.operator === 'contains' && criteria.propertyValue !== undefined) {
@@ -319,11 +313,8 @@ function matchesAttribute(
     return value !== undefined && value !== '';
   }
 
-  // Absence for an attribute is undefined OR '' - the same test the `exists`
-  // branch above uses. Checked once, ahead of every operator below, so an
-  // absent attribute can never satisfy `contains`/`equals` against an
-  // empty-string criteria value either (see the parallel comment in
-  // matchesProperty for why that coercion was a real hole).
+  // Absence is undefined OR '' (same test as `exists` above); checked once
+  // here so `contains ''`/`equals ''` can't match it either.
   if (value === undefined || value === '') return false;
 
   if (criteria.operator === 'contains' && criteria.attributeValue !== undefined) {

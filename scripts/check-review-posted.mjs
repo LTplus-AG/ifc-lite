@@ -553,9 +553,19 @@ function main() {
     // surfaces per tick this gate alone would have spent ~120 of the repository's
     // 1,000/hour GITHUB_TOKEN budget per run, shared with benchmark.yml and two
     // sibling gates, and exhausting it fails THEM as well as this.
+    // THE LAST PAGE, NOT THE FIRST. GitHub returns issue comments oldest-first,
+    // so a marker posted DURING the wait lands at the end. Probing page 1 meant
+    // that on any PR with more than PER_PAGE comments the probe could never see
+    // the very comment it was waiting for: the full refetch never fired and the
+    // gate reported NOT_POSTED after a full budget of waiting, on a PR that had
+    // in fact been reviewed. Caught in review of #3580.
+    //
+    // Still one call per tick: `page=` past the end returns an empty array, and
+    // the count from the previous full read tells us where the end is.
+    const lastPage = Math.max(1, Math.ceil(comments.length / PER_PAGE));
     const probe = normaliseComments({
       issueComments: gh(
-        ['api', `repos/${args.repo}/issues/${args.pr}/comments?per_page=${PER_PAGE}&page=1`, '--method', 'GET'],
+        ['api', `repos/${args.repo}/issues/${args.pr}/comments?per_page=${PER_PAGE}&page=${lastPage}`, '--method', 'GET'],
         'the PR comment list',
         ReviewPostedError,
       ),

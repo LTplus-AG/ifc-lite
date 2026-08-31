@@ -119,7 +119,7 @@
    678 apps/viewer/src/hooks/useBCF.ts
   1374 apps/viewer/src/hooks/useClash.ts
    482 apps/viewer/src/hooks/useCompare.ts
-  1367 apps/viewer/src/hooks/useDrawingExport.ts
+  1359 apps/viewer/src/hooks/useDrawingExport.ts
   1036 apps/viewer/src/hooks/useDrawingGeneration.ts
   1416 apps/viewer/src/hooks/useIDS.ts
    591 apps/viewer/src/hooks/useIfcCache.ts

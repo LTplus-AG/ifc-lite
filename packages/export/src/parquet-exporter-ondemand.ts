@@ -43,7 +43,10 @@ export async function writePropertiesOnDemand(
     const propNameCol: string[] = [];
     const propTypeCol: PropertyValueType[] = [];
     const valueStringCol: (string | null)[] = [];
-    const valueRealCol: number[] = [];
+    // `IfcPropertyBoundedValue` is surfaced as a display string but retains
+    // the REAL type tag. Only a scalar numeric value belongs in ValueReal;
+    // writing 0 for the display-string form fabricates a measurement.
+    const valueRealCol: (number | null)[] = [];
     const valueIntCol: number[] = [];
     const valueBoolCol: (boolean | null)[] = [];
 
@@ -59,7 +62,7 @@ export async function writePropertiesOnDemand(
                 propTypeCol.push(prop.type);
                 const v = prop.value;
                 valueStringCol.push(typeof v === 'string' ? v : null);
-                valueRealCol.push(prop.type === PropertyValueType.Real && typeof v === 'number' ? v : 0);
+                valueRealCol.push(prop.type === PropertyValueType.Real && typeof v === 'number' ? v : null);
                 valueIntCol.push(prop.type === PropertyValueType.Integer && typeof v === 'number' ? v : 0);
                 valueBoolCol.push(typeof v === 'boolean' ? v : null);
             }

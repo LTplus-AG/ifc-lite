@@ -630,6 +630,10 @@ describe('ParquetExporter on-demand properties/quantities (independent-reader pa
           properties: [
             { name: 'IsExternal', type: PropertyValueType.Boolean, value: true },
             { name: 'Reference', type: PropertyValueType.String, value: 'Basic Wall' },
+            // IfcPropertyBoundedValue keeps a REAL type tag but its on-demand
+            // representation is a display string, not a scalar measurement.
+            { name: 'PermittedLength', type: PropertyValueType.Real, value: '0.25 [0.1 – 0.5]' },
+            { name: 'NominalLength', type: PropertyValueType.Real, value: 0.25 },
           ],
         }];
       },
@@ -652,13 +656,18 @@ describe('ParquetExporter on-demand properties/quantities (independent-reader pa
     const exporter = new ParquetExporter(dataStore);
     const rows = decodeParquet(await exporter.exportTable('properties'));
 
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(4);
     const isExternal = rows.find((r) => r.PropName === 'IsExternal');
     expect(isExternal?.EntityId).toBe(1);
     expect(isExternal?.PsetName).toBe('Pset_WallCommon');
     expect(isExternal?.ValueBool).toBe(true);
     const reference = rows.find((r) => r.PropName === 'Reference');
     expect(reference?.ValueString).toBe('Basic Wall');
+    const bounded = rows.find((r) => r.PropName === 'PermittedLength');
+    expect(bounded?.ValueString).toBe('0.25 [0.1 – 0.5]');
+    expect(bounded?.ValueReal).toBeNull();
+    const scalar = rows.find((r) => r.PropName === 'NominalLength');
+    expect(scalar?.ValueReal).toBeCloseTo(0.25);
   });
 
   it('reads Quantities.parquet through onDemandQuantityMap when the bulk table is empty', async () => {

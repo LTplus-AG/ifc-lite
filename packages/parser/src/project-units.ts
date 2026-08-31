@@ -36,8 +36,11 @@ export type MeasureUnit =
   | { kind: 'monetary' }
   | { kind: 'dimensionless' };
 
-interface EntityIndexLike {
+interface EntityByIdIndexLike {
   byId: { get(expressId: number): EntityRef | undefined };
+}
+
+interface EntityIndexLike extends EntityByIdIndexLike {
   byType: Map<string, number[]>;
 }
 
@@ -358,7 +361,7 @@ interface UnitEntry {
  *  for per-property / per-quantity `Unit` overrides). */
 export function resolveUnitByRef(
   extractor: EntityExtractor,
-  entityIndex: EntityIndexLike,
+  entityIndex: EntityByIdIndexLike,
   ref: number,
 ): UnitEntry | null {
   const entRef = entityIndex.byId.get(ref);
@@ -421,7 +424,7 @@ export function resolveUnitByRef(
 
 function resolveDerivedElement(
   extractor: EntityExtractor,
-  entityIndex: EntityIndexLike,
+  entityIndex: EntityByIdIndexLike,
   elemRef: number,
 ): { symbol: string; unitScale: number; exponent: number } | null {
   const ref = entityIndex.byId.get(elemRef);
@@ -439,7 +442,7 @@ function resolveDerivedElement(
 
 function conversionFactorScale(
   extractor: EntityExtractor,
-  entityIndex: EntityIndexLike,
+  entityIndex: EntityByIdIndexLike,
   measureRef: number,
 ): number | null {
   const ref = entityIndex.byId.get(measureRef);

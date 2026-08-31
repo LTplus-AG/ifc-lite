@@ -142,7 +142,7 @@ function buildDataInput(
       // the viewer: re-exporting a model with sub-tolerance float jitter must
       // not flip the data hash on an otherwise identical element, which on
       // this path would cost the pair its match.
-      value: roundQuantity(quantity.value * quantitySiScale(quantity.type, units)),
+      value: roundQuantity(quantity.value * quantitySiScale(quantity, units)),
     })),
   }));
 

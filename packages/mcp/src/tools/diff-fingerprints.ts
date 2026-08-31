@@ -314,7 +314,7 @@ function createdFingerprint(
       name: set.name,
       quantities: set.quantities.map((quantity) => ({
         name: quantity.name,
-        value: roundQuantity(quantity.value * quantitySiScale(quantity.type, units)),
+        value: roundQuantity(quantity.value * quantitySiScale(quantity, units)),
       })),
     })),
     typeAssignments: [],
@@ -393,7 +393,7 @@ function buildDataInput(
     name: set.name,
     // Scaled to base SI, then rounded — both stored and overlaid values, a
     // queued edit being authored in the project unit same as a parsed one.
-    quantities: set.quantities.map((quantity) => ({ name: quantity.name, value: roundQuantity(quantity.value * quantitySiScale(quantity.type, units)) })),
+    quantities: set.quantities.map((quantity) => ({ name: quantity.name, value: roundQuantity(quantity.value * quantitySiScale(quantity, units)) })),
   }));
 
   const typeAssignments = store.relationships

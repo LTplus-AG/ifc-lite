@@ -272,11 +272,19 @@ export const HEAD_MODEL = model(guid('NEWA'), guid('NEWB'));
  *  chosen project length unit and a chosen raw quantity value — for the
  *  unit-of-measure oracle case (a Qto_ value is stored in the project's raw
  *  author unit, not base SI; see `quantitySiScale`). */
-export function quantityModel(lengthUnit: 'METRE' | 'MILLIMETRE', qtyValue: number): string {
+export function quantityModel(
+  lengthUnit: 'METRE' | 'MILLIMETRE',
+  qtyValue: number,
+  explicitQuantityUnit?: 'METRE' | 'MILLIMETRE',
+): string {
   const unitDecl =
     lengthUnit === 'METRE'
       ? `#31= IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);`
       : `#31= IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);`;
+  const quantityUnitDecl = explicitQuantityUnit
+    ? `#32= IFCSIUNIT(*,.LENGTHUNIT.,${explicitQuantityUnit === 'METRE' ? '$' : '.MILLI.'},.METRE.);`
+    : '';
+  const quantityUnitRef = explicitQuantityUnit ? '#32' : '$';
   return `ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION((''),'2;1');
@@ -290,11 +298,12 @@ DATA;
 #22= IFCCARTESIANPOINT((0.,0.,0.));
 #30= IFCUNITASSIGNMENT((#31));
 ${unitDecl}
+${quantityUnitDecl}
 #40= IFCLOCALPLACEMENT($,#21);
 #41= IFCBUILDINGSTOREY('${guid('STOR')}',$,'L01',$,$,#40,$,$,.ELEMENT.,0.);
 #70= IFCWALL('${guid('WALL')}',$,'Wall A',$,$,#40,$,'tagA',$);
 #80= IFCELEMENTQUANTITY('${guid('QSET')}',$,'Qto_WallBaseQuantities',$,$,(#81));
-#81= IFCQUANTITYLENGTH('Length',$,$,${qtyValue.toFixed(3)});
+#81= IFCQUANTITYLENGTH('Length',$,${quantityUnitRef},${qtyValue.toFixed(3)});
 #82= IFCRELDEFINESBYPROPERTIES('${guid('RELQ')}',$,$,$,(#70),#80);
 #96= IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid('RELC')}',$,$,$,(#70),#41);
 ENDSEC;

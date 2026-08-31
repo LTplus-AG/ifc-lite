@@ -400,7 +400,7 @@ function buildDataInput(
       quantities: set.quantities
         .filter((quantity) => !isGeometricDataName(quantity.name))
         // Scaled to base SI, then rounded (`quantitySiScale`/`roundQuantity`).
-        .map((quantity) => ({ name: quantity.name, value: roundQuantity(quantity.value * quantitySiScale(quantity.type, units)) })),
+        .map((quantity) => ({ name: quantity.name, value: roundQuantity(quantity.value * quantitySiScale(quantity, units)) })),
     }))
     .filter((set) => set.quantities.length > 0);
 

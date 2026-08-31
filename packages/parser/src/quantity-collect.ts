@@ -16,13 +16,16 @@ import type { EntityRef } from './types.js';
 import type { EntityExtractor } from './entity-extractor.js';
 import { QUANTITY_TYPE_MAP } from './columnar-parser-indexes.js';
 import { isUnrepresentableNumericValue } from './attribute-helpers.js';
-import type { ProjectUnits } from './project-units.js';
+import { resolveUnitByRef, type ProjectUnits } from './project-units.js';
 
 /** One extracted quantity, in the shape both call sites report. */
 export interface CollectedQuantity {
     name: string;
     type: number;
     value: number;
+    /** SI factor of this quantity's explicit `Unit`, when it declares one.
+     *  An omitted unit inherits the project's unit assignment. */
+    explicitUnitSiScale?: number;
 }
 
 /**
@@ -125,6 +128,14 @@ export function collectQuantitiesFromRefs(
         if (!qtyName) continue;
 
         const qtyType = QUANTITY_TYPE_MAP[qtyTypeUpper] ?? QuantityType.Count;
+        // `IfcPhysicalSimpleQuantity.Unit` is optional, but it overrides the
+        // project assignment when present. Preserve its scale on the record so
+        // every downstream reader of this shared collection uses the same
+        // physical value rather than silently treating (say) 2000 mm as 2000 m.
+        const unitRef = qtyAttrs[2];
+        const unit = typeof unitRef === 'number'
+            ? resolveUnitByRef(extractor, store.entityIndex, unitRef)
+            : null;
         const rawValue = qtyAttrs[SIMPLE_QUANTITY_VALUE_SLOT];
 
         // A measure the double range cannot hold is dropped with a diagnostic,
@@ -162,7 +173,12 @@ export function collectQuantitiesFromRefs(
 
         const value = typeof rawValue === 'number' ? rawValue : 0;
 
-        quantities.push({ name: qtyName, type: qtyType, value });
+        quantities.push({
+            name: qtyName,
+            type: qtyType,
+            value,
+            ...(unit ? { explicitUnitSiScale: unit.resolved.siScale } : {}),
+        });
     }
 
     return quantities;
@@ -234,8 +250,8 @@ export function readQuantitySet(
 }
 
 /**
- * SI scale factor for a `Qto_` value of the given {@link QuantityType},
- * resolved against the project's declared units.
+ * SI scale factor for a `Qto_` value, preferring its explicit `Unit` and then
+ * resolving against the project's declared units.
  *
  * An `IfcQuantityLength`/`Area`/`Volume` is stored in the project's raw
  * author unit exactly like an `IfcPropertySingleValue` of the matching
@@ -254,10 +270,14 @@ export function readQuantitySet(
  * FALLBACK: `IFC` lets a project declare an explicit `AREAUNIT`/`VOLUMEUNIT`
  * with no arithmetic relationship to `LENGTHUNIT`, so the file's own
  * declaration is preferred and the length-derived power is used only when
- * the project declares none.
+ * the project declares none. An explicit member `Unit` always wins; IFC uses
+ * it specifically to let a quantity depart from its containing project's
+ * assignment.
  */
-export function quantitySiScale(quantityType: number, units: ProjectUnits): number {
-    switch (quantityType) {
+export function quantitySiScale(quantity: CollectedQuantity, units: ProjectUnits): number {
+    if (quantity.explicitUnitSiScale !== undefined) return quantity.explicitUnitSiScale;
+
+    switch (quantity.type) {
         case QuantityType.Length:
             return units.unitForMeasure('IfcLengthMeasure')?.siScale ?? 1;
         case QuantityType.Area: {

@@ -68,4 +68,20 @@ describe('oracle: quantity unit-of-measure', () => {
     const wall = diff.byKey.get(guid('WALL'));
     expect(wall?.state).toBe('modified');
   });
+
+  it('uses a quantity member’s explicit Unit before the project unit assignment', async () => {
+    // Both projects declare metres. The head quantity overrides that with
+    // millimetres, so its raw 2000 is still the base quantity’s physical 2 m.
+    const baseStore = await loadIfcBytes(
+      new TextEncoder().encode(quantityModel('METRE', 2)),
+      'base',
+    );
+    const headStore = await loadIfcBytes(
+      new TextEncoder().encode(quantityModel('METRE', 2000, 'MILLIMETRE')),
+      'head',
+    );
+
+    const diff = diffModels(buildFileFingerprints(baseStore), buildFileFingerprints(headStore));
+    expect(diff.byKey.get(guid('WALL'))?.state).toBe('unchanged');
+  });
 });

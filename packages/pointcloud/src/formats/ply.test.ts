@@ -205,6 +205,51 @@ describe('decodePly', () => {
     expect(chunk.colors![2]).toBeCloseTo(0.25, 5);
   });
 
+  it('decodes float RGB stored as 0..255 with one file-wide range decision', () => {
+    const header =
+      'ply\n' +
+      'format ascii 1.0\n' +
+      'element vertex 2\n' +
+      'property float x\nproperty float y\nproperty float z\n' +
+      'property float red\nproperty float green\nproperty float blue\n' +
+      'end_header\n';
+    const chunk = decodePly(enc.encode(header + '0 0 0 255 128 64\n1 1 1 1 0.5 0\n'));
+
+    // The second point's dark 0..255 channels deliberately sit in [0, 1].
+    // They must follow the first point's byte-range evidence, not be treated
+    // as a separate normalized triple.
+    expect(chunk.colors).toBeDefined();
+    expect(chunk.colors![0]).toBeCloseTo(1, 6);
+    expect(chunk.colors![1]).toBeCloseTo(128 / 255, 6);
+    expect(chunk.colors![3]).toBeCloseTo(1 / 255, 6);
+    expect(chunk.colors![4]).toBeCloseTo(0.5 / 255, 6);
+  });
+
+  it('applies the same float 0..255 policy to binary PLY', () => {
+    const header =
+      'ply\n' +
+      'format binary_little_endian 1.0\n' +
+      'element vertex 2\n' +
+      'property float x\nproperty float y\nproperty float z\n' +
+      'property float red\nproperty float green\nproperty float blue\n' +
+      'end_header\n';
+    const headerBytes = enc.encode(header);
+    const body = new ArrayBuffer(48);
+    const view = new DataView(body);
+    for (const [index, value] of [0, 0, 0, 255, 128, 64, 1, 1, 1, 1, 0.5, 0].entries()) {
+      view.setFloat32(index * 4, value, true);
+    }
+    const buffer = new Uint8Array(headerBytes.length + body.byteLength);
+    buffer.set(headerBytes);
+    buffer.set(new Uint8Array(body), headerBytes.length);
+
+    const chunk = decodePly(buffer);
+    expect(chunk.colors![0]).toBeCloseTo(1, 6);
+    expect(chunk.colors![1]).toBeCloseTo(128 / 255, 6);
+    expect(chunk.colors![3]).toBeCloseTo(1 / 255, 6);
+    expect(chunk.colors![4]).toBeCloseTo(0.5 / 255, 6);
+  });
+
   it('decodes ascii xyz + rgb stored as ushort 0..65535 without dividing by 255', () => {
     // Many Leica/FARO exports and CloudCompare's 16-bit RGB option declare
     // `property ushort red/green/blue` (0..65535, not 0..255). Dividing

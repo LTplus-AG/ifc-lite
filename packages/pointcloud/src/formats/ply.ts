@@ -18,7 +18,7 @@
  */
 
 import type { DecodedPointChunk, PointCloudBBox } from '../types.js';
-import { normalizeColorChannel } from './ply-color.js';
+import { normalizePlyColors } from './ply-color.js';
 
 /** Name → byte size for the PLY-defined scalar types. */
 const TYPE_SIZES: Record<string, number> = {
@@ -244,6 +244,10 @@ export function decodePly(
     );
   }
 
+  if (colors && rProp && gProp && bProp) {
+    normalizePlyColors(colors, [rProp.type, gProp.type, bProp.type]);
+  }
+
   return {
     positions,
     colors,
@@ -294,9 +298,9 @@ function decodeAsciiBody(
     positions[written * 3 + 1] = Number(parts[yCol]) - offY;
     positions[written * 3 + 2] = Number(parts[zCol]) - offZ;
     if (colors && rCol >= 0 && gCol >= 0 && bCol >= 0) {
-      colors[written * 3] = normalizeColorChannel(Number(parts[rCol]), vertex.properties[rCol].type);
-      colors[written * 3 + 1] = normalizeColorChannel(Number(parts[gCol]), vertex.properties[gCol].type);
-      colors[written * 3 + 2] = normalizeColorChannel(Number(parts[bCol]), vertex.properties[bCol].type);
+      colors[written * 3] = Number(parts[rCol]);
+      colors[written * 3 + 1] = Number(parts[gCol]);
+      colors[written * 3 + 2] = Number(parts[bCol]);
     }
     if (intensities && iCol >= 0) {
       intensities[written] = Math.min(65535, Math.max(0, Number(parts[iCol]) | 0));
@@ -345,9 +349,9 @@ function decodeBinaryBody(
     positions[i * 3 + 1] = readScalar(view, base + yProp.offset, yProp, littleEndian) - offY;
     positions[i * 3 + 2] = readScalar(view, base + zProp.offset, zProp, littleEndian) - offZ;
     if (colors && rProp && gProp && bProp) {
-      colors[i * 3] = normalizeColorChannel(readScalar(view, base + rProp.offset, rProp, littleEndian), rProp.type);
-      colors[i * 3 + 1] = normalizeColorChannel(readScalar(view, base + gProp.offset, gProp, littleEndian), gProp.type);
-      colors[i * 3 + 2] = normalizeColorChannel(readScalar(view, base + bProp.offset, bProp, littleEndian), bProp.type);
+      colors[i * 3] = readScalar(view, base + rProp.offset, rProp, littleEndian);
+      colors[i * 3 + 1] = readScalar(view, base + gProp.offset, gProp, littleEndian);
+      colors[i * 3 + 2] = readScalar(view, base + bProp.offset, bProp, littleEndian);
     }
     if (intensities && iProp) {
       intensities[i] = Math.min(65535, Math.max(0, readScalar(view, base + iProp.offset, iProp, littleEndian) | 0));

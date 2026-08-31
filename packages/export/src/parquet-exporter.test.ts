@@ -569,3 +569,131 @@ describe('ParquetExporter overlay retypes', () => {
     expect((unknownType as string).toLowerCase()).toContain('someunknown');
   });
 });
+
+// Independent-reader parity hunt: `IfcParser.parseColumnar` (`packages/parser`'s
+// only parse path, used by every real caller) never calls `.add()` on the
+// `PropertyTableBuilder`/`QuantityTableBuilder` it constructs — properties and
+// quantities are served lazily through `onDemandPropertyMap`/
+// `onDemandQuantityMap` + `store.getProperties()`/`store.getQuantities()`
+// instead. `writeProperties`/`writeQuantities` read `store.properties`/
+// `store.quantities` (the never-populated bulk table) directly, so
+// `Properties.parquet`/`Quantities.parquet` came out with zero rows for every
+// model parsed the normal way — verified independently: DuckDB opened the
+// exported `.bos` archive from `tests/models/ara3d/duplex.ifc` (a real parse,
+// not this file's hand-built fixtures) and read back 0 rows from both tables
+// despite the source file carrying 2,960 `IFCPROPERTYSET`/
+// `IFCRELDEFINESBYPROPERTIES`/`IFCELEMENTQUANTITY` lines. `Entities.parquet`
+// and `Relationships.parquet` — populated eagerly during parse, unaffected by
+// this gap — read back correctly throughout, so this test's mock leaves them
+// on the ordinary bulk-table path as the control.
+describe('ParquetExporter on-demand properties/quantities (independent-reader parity hunt)', () => {
+  function buildOnDemandDataStore(): MockDataStore {
+    const strings = new StringTable();
+
+    const entityBuilder = new EntityTableBuilder(1, strings);
+    entityBuilder.add(1, 'IFCWALL', 'wall-1-guid', 'Wall1', '', '');
+
+    const relBuilder = new RelationshipGraphBuilder();
+    relBuilder.addEdge(10, 1, RelationshipType.ContainsElements, 100);
+
+    // Empty bulk tables — exactly what `parseLite` produces: the builders
+    // exist but nothing was ever `.add()`-ed to them.
+    const emptyProperties = new PropertyTableBuilder(strings).build();
+    const emptyQuantities = new QuantityTableBuilder(strings).build();
+
+    const onDemandPropertyMap = new Map<number, number[]>([[1, [200]]]);
+    const onDemandQuantityMap = new Map<number, number[]>([[1, [300]]]);
+
+    const store = {
+      fileSize: 0,
+      schemaVersion: 'IFC4',
+      entityCount: 1,
+      parseTime: 0,
+      source: new Uint8Array(0),
+      entityIndex: { byId: new Map<number, EntityRef>(), byType: new Map<string, number[]>() },
+      strings,
+      entities: entityBuilder.build(),
+      properties: emptyProperties,
+      quantities: emptyQuantities,
+      relationships: relBuilder.build(),
+      onDemandPropertyMap,
+      onDemandQuantityMap,
+      // Stand in for `extractPropertiesOnDemand`/`extractQuantitiesOnDemand`
+      // without a real source buffer to re-parse — same shape the real
+      // accessor returns (`packages/data/src/property-table.ts`'s
+      // `PropertySet`/`packages/data/src/quantity-table.ts`'s `QuantitySet`).
+      getProperties: (expressId: number) => {
+        if (expressId !== 1) return [];
+        return [{
+          name: 'Pset_WallCommon',
+          globalId: 'pset-1-guid',
+          properties: [
+            { name: 'IsExternal', type: PropertyValueType.Boolean, value: true },
+            { name: 'Reference', type: PropertyValueType.String, value: 'Basic Wall' },
+          ],
+        }];
+      },
+      getQuantities: (expressId: number) => {
+        if (expressId !== 1) return [];
+        return [{
+          name: 'Qto_WallBaseQuantities',
+          quantities: [
+            { name: 'Length', type: QuantityType.Length, value: 4.2 },
+          ],
+        }];
+      },
+    } as unknown as MockDataStore;
+
+    return store;
+  }
+
+  it('reads Properties.parquet through onDemandPropertyMap when the bulk table is empty', async () => {
+    const dataStore = buildOnDemandDataStore();
+    const exporter = new ParquetExporter(dataStore);
+    const rows = decodeParquet(await exporter.exportTable('properties'));
+
+    expect(rows).toHaveLength(2);
+    const isExternal = rows.find((r) => r.PropName === 'IsExternal');
+    expect(isExternal?.EntityId).toBe(1);
+    expect(isExternal?.PsetName).toBe('Pset_WallCommon');
+    expect(isExternal?.ValueBool).toBe(true);
+    const reference = rows.find((r) => r.PropName === 'Reference');
+    expect(reference?.ValueString).toBe('Basic Wall');
+  });
+
+  it('reads Quantities.parquet through onDemandQuantityMap when the bulk table is empty', async () => {
+    const dataStore = buildOnDemandDataStore();
+    const exporter = new ParquetExporter(dataStore);
+    const rows = decodeParquet(await exporter.exportTable('quantities'));
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].EntityId).toBe(1);
+    expect(rows[0].QsetName).toBe('Qto_WallBaseQuantities');
+    expect(rows[0].QuantityName).toBe('Length');
+    expect(rows[0].Value).toBeCloseTo(4.2);
+  });
+
+  it('still exports Entities/Relationships (the bulk path, unaffected by this gap) alongside the on-demand tables', async () => {
+    const dataStore = buildOnDemandDataStore();
+    const exporter = new ParquetExporter(dataStore);
+
+    const entityRows = decodeParquet(await exporter.exportTable('entities'));
+    expect(entityRows.map((r) => r.Name)).toContain('Wall1');
+
+    const relRows = decodeParquet(await exporter.exportTable('relationships'));
+    expect(relRows.map((r) => r.TargetId)).toContain(1);
+  });
+
+  it('honours overlay deletions on the on-demand property/quantity path', async () => {
+    const dataStore = buildOnDemandDataStore();
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.deleteEntity(1);
+
+    const exporter = new ParquetExporter(dataStore, undefined, view);
+    const propRows = decodeParquet(await exporter.exportTable('properties'));
+    const qtyRows = decodeParquet(await exporter.exportTable('quantities'));
+
+    expect(propRows).toHaveLength(0);
+    expect(qtyRows).toHaveLength(0);
+  });
+});

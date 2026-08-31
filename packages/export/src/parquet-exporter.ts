@@ -7,9 +7,12 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { IfcTypeEnum, EntityFlags, PropertyValueType, QuantityType, RelationshipType, IFC_ENTITY_NAMES, exactTypeName } from '@ifc-lite/data';
+import { IfcTypeEnum, EntityFlags, RelationshipType, IFC_ENTITY_NAMES, exactTypeName } from '@ifc-lite/data';
 import { getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
 import { columnsToParquet } from './columns-to-parquet.js';
+import { PARQUET_UINT32_COLUMNS } from './parquet-uint32-columns.js';
+import { writePropertiesOnDemand, writeQuantitiesOnDemand } from './parquet-exporter-ondemand.js';
+import { propertyValueTypeToString, quantityTypeToString } from './parquet-type-strings.js';
 
 export interface ParquetExportOptions {
     includeGeometry?: boolean;
@@ -173,6 +176,23 @@ export class ParquetExporter {
         const { properties, strings } = this.store;
         const effective = this.getEffective();
 
+        // `IfcParser.parseColumnar` (the sole parse path every real caller of
+        // this exporter goes through — `packages/parser`'s `parseLite`) never
+        // populates `store.properties`: it builds a `PropertyTableBuilder` but
+        // never calls `.add()` on it, relying instead on lazy per-entity
+        // extraction via `onDemandPropertyMap` + `store.getProperties()`
+        // (`extractPropertiesOnDemand`, re-parsing the source buffer on
+        // access). Reading `store.properties` directly here — the bulk table
+        // — silently wrote a zero-row `Properties.parquet` for every model
+        // parsed the normal way, geometry/relationships/entities tables full
+        // alongside it. `store.properties` only carries real rows when a
+        // caller builds a store some other way (e.g. hand-built fixtures in
+        // this file's own tests). Route through the on-demand path first;
+        // fall back to the bulk table when it was actually populated.
+        if (properties.entityId.length === 0 && this.store.onDemandPropertyMap && this.store.onDemandPropertyMap.size > 0) {
+            return writePropertiesOnDemand(this.store, effective);
+        }
+
         const entityId = Array.from(properties.entityId);
         // A property row belongs to the entity named in its own EntityId
         // column, not to its own row index — filter on that, not on ExpressId.
@@ -183,7 +203,7 @@ export class ParquetExporter {
             PsetName: mapTypedArray(properties.psetName, i => strings.get(i)),
             PsetGlobalId: mapTypedArray(properties.psetGlobalId, i => strings.get(i)),
             PropName: mapTypedArray(properties.propName, i => strings.get(i)),
-            PropType: mapTypedArray(properties.propType, t => PropertyValueTypeToString(t)),
+            PropType: mapTypedArray(properties.propType, t => propertyValueTypeToString(t)),
             ValueString: mapTypedArray(properties.valueString, i => i >= 0 && i < strings.count ? strings.get(i) : null),
             ValueReal: Array.from(properties.valueReal),
             ValueInt: Array.from(properties.valueInt),
@@ -195,6 +215,15 @@ export class ParquetExporter {
         const { quantities, strings } = this.store;
         const effective = this.getEffective();
 
+        // Same gap as `writeProperties`: `store.quantities` is only ever
+        // populated when a caller bulk-builds it directly (this file's own
+        // tests); the real `parseColumnar` path leaves it empty and serves
+        // quantities lazily through `onDemandQuantityMap` +
+        // `store.getQuantities()`.
+        if (quantities.entityId.length === 0 && this.store.onDemandQuantityMap && this.store.onDemandQuantityMap.size > 0) {
+            return writeQuantitiesOnDemand(this.store, effective);
+        }
+
         const entityId = Array.from(quantities.entityId);
         const keep = effective ? entityId.map((id) => !effective.isDeleted(id)) : null;
 
@@ -202,7 +231,7 @@ export class ParquetExporter {
             EntityId: entityId,
             QsetName: mapTypedArray(quantities.qsetName, i => strings.get(i)),
             QuantityName: mapTypedArray(quantities.quantityName, i => strings.get(i)),
-            QuantityType: mapTypedArray(quantities.quantityType, t => QuantityTypeToString(t)),
+            QuantityType: mapTypedArray(quantities.quantityType, t => quantityTypeToString(t)),
             Value: Array.from(quantities.value),
             Formula: mapTypedArray(quantities.formula, i => i > 0 ? strings.get(i) : null),
         }, keep), new Set(['Value']));
@@ -509,42 +538,8 @@ export class ParquetExporter {
     // UTILITIES
     // ═══════════════════════════════════════════════════════════════
 
-    /**
-     * Column names whose domain is an unsigned 32-bit integer.
-     *
-     * Every one carries an IFC EXPRESS ID or an index into a geometry buffer,
-     * and both are `u32` everywhere else in this codebase - `Uint32Array` in
-     * the parser's entity index and its transports, `u32` in the Rust crates.
-     * Arrow's content inference reaches for Int32 on any whole number, so an
-     * express id at or above 2_147_483_648 came out NEGATIVE: an id-shaped
-     * number that joins to nothing. STEP puts no upper bound on an entity id
-     * below the `u32` the readers use, so that is reachable input rather than a
-     * hypothetical.
-     */
-    private static readonly UINT32_COLUMNS: ReadonlySet<string> = new Set([
-        'ExpressId', 'EntityId', 'SourceId', 'TargetId', 'RelId',
-        'ElementId', 'StoreyId',
-        'Index0', 'Index1', 'Index2',
-        'VertexStart', 'VertexCount', 'IndexStart', 'IndexCount',
-    ]);
-
-    /**
-     * NOT in the set above, deliberately: `BuildingId`, `SiteId` and `SpaceId`
-     * in `SpatialHierarchy.parquet` carry **-1 as "none"** (see
-     * `writeSpatialHierarchy` - a storey directly under the project has no
-     * building). Declaring those unsigned turned that sentinel into
-     * 4294967295: an id-shaped number where an obviously-absent marker used to
-     * be, which is the exact failure this class of change exists to prevent.
-     *
-     * The residual gap is the narrower one: a building or site id at or above
-     * 2^31 still wraps negative in those three columns. Fixing that properly
-     * means writing NULL rather than -1 for "none", which changes what every
-     * consumer reads for an absent parent and is a separate decision from the
-     * id width.
-     */
-
     private async toParquet(columns: Record<string, any[]>, floatColumns?: Set<string>): Promise<Uint8Array> {
-        return columnsToParquet(columns, floatColumns, ParquetExporter.UINT32_COLUMNS);
+        return columnsToParquet(columns, floatColumns, PARQUET_UINT32_COLUMNS);
     }
 
     private async createZipArchive(files: Map<string, Uint8Array>): Promise<Uint8Array> {
@@ -584,36 +579,12 @@ function filterColumns<T extends Record<string, unknown[]>>(columns: T, keep: bo
     return out;
 }
 
-function PropertyValueTypeToString(type: PropertyValueType): string {
-    const names: Record<PropertyValueType, string> = {
-        [PropertyValueType.String]: 'String',
-        [PropertyValueType.Real]: 'Real',
-        [PropertyValueType.Integer]: 'Integer',
-        [PropertyValueType.Boolean]: 'Boolean',
-        [PropertyValueType.Logical]: 'Logical',
-        [PropertyValueType.Label]: 'Label',
-        [PropertyValueType.Identifier]: 'Identifier',
-        [PropertyValueType.Text]: 'Text',
-        [PropertyValueType.Enum]: 'Enum',
-        [PropertyValueType.Reference]: 'Reference',
-        [PropertyValueType.List]: 'List',
-    };
-    return names[type] || 'Unknown';
-}
-
-// Quantity type conversion - exported for future use when quantities are implemented
-export function QuantityTypeToString(type: QuantityType): string {
-    const names: Record<QuantityType, string> = {
-        [QuantityType.Length]: 'Length',
-        [QuantityType.Area]: 'Area',
-        [QuantityType.Volume]: 'Volume',
-        [QuantityType.Count]: 'Count',
-        [QuantityType.Weight]: 'Weight',
-        [QuantityType.Time]: 'Time',
-        [QuantityType.Number]: 'Number',
-    };
-    return names[type] || 'Unknown';
-}
+// Kept exported under its original name here (moved to `parquet-type-strings.ts`
+// so the on-demand writers can share it without importing this file, which
+// imports them): nothing in-repo imports it from this path — index.ts never
+// re-exported it — but it was public `export function` surface before the
+// module split, so a re-export costs nothing to keep.
+export { quantityTypeToString as QuantityTypeToString } from './parquet-type-strings.js';
 
 function RelationshipTypeToString(type: RelationshipType): string {
     const names: Record<RelationshipType, string> = {

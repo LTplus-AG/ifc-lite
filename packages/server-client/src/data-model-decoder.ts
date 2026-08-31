@@ -7,6 +7,7 @@
  */
 
 import { ensureParquetInit } from './parquet-decoder.js';
+import { nullableFloat64Column } from './parquet-nullable.js';
 
 export interface EntityMetadata {
   entity_id: number;
@@ -316,11 +317,10 @@ export interface DataModel {
 }
 
 /**
- * Decode data model from Parquet buffer.
- *
- * OPTIMIZED: Uses toArray() for bulk string extraction instead of per-element .get() calls.
- * Arrow's .get(i) is slow for strings (offset lookup + UTF-8 decode per call).
- * toArray() decodes all strings in one pass which is 10-20x faster for large datasets.
+ * Decode data model from Parquet buffer. Bulk string columns use toArray()
+ * instead of per-element .get() (10-20x faster, no per-row UTF-8 decode); a
+ * NULLABLE numeric column is the exception — see `nullableFloat64Column` in
+ * `parquet-nullable.ts` for why toArray() alone silently turns a null into 0.
  *
  * Format: [entities_len][entities_data][properties_len][properties_data][quantities_len][quantities_data][relationships_len][relationships_data][spatial_len][spatial_data]
  */
@@ -609,7 +609,7 @@ export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
   const pathsArr = nodesArrow.getChild('path')?.toArray() as string[];
   const spatialTypeNamesArr = nodesArrow.getChild('type_name')?.toArray() as string[];
   const spatialNamesArr = nodesArrow.getChild('name')?.toArray() as (string | null)[];
-  const elevationsArr = nodesArrow.getChild('elevation')?.toArray() as (number | null)[];
+  const elevationsArr = nullableFloat64Column(nodesArrow, 'elevation');
   const childrenIdsList = nodesArrow.getChild('children_ids');
   const elementIdsList = nodesArrow.getChild('element_ids');
 
@@ -644,7 +644,7 @@ export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
       path: pathsArr[i] ?? '',
       type_name: spatialTypeNamesArr[i] ?? '',
       name: spatialNamesArr[i] || undefined,
-      elevation: elevationsArr[i] ?? undefined,
+      elevation: elevationsArr?.[i] ?? undefined,
       children_ids: childrenIds,
       element_ids: elementIds,
     };
@@ -700,7 +700,7 @@ export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
     const setNames = t.getChild('set_name')?.toArray() as (string | null)[];
     const layerIndices = t.getChild('layer_index')?.toArray() as Uint32Array;
     const materialNames = t.getChild('material_name')?.toArray() as (string | null)[];
-    const thicknesses = t.getChild('thickness')?.toArray() as (number | null)[];
+    const thicknesses = nullableFloat64Column(t, 'thickness');
     const ventChild = t.getChild('is_ventilated');
     const categories = t.getChild('category')?.toArray() as (string | null)[];
     for (let i = 0; i < elementIds.length; i++) {

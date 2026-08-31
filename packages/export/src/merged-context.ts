@@ -176,7 +176,7 @@ export function planInfrastructureUnify(
   dataStore: IfcDataStore,
   modelInfra: ReadonlyMap<string, number[]>,
   firstModelInfraMap: ReadonlyMap<string, number[]>,
-  firstModelSubContextsByKind: ReadonlyMap<string, number[]>,
+  firstModelSubContextsByKey: ReadonlyMap<string, number[]>,
   firstModelOffset: number,
   firstModelContextWcs: WcsSignature | null,
   lengthUnitScale: number,
@@ -193,7 +193,7 @@ export function planInfrastructureUnify(
     // the model's representations at the primary model's different frame.
     if (CONTEXT_TYPES.has(type) && !contextsCompatible) continue;
     if (type === 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT') {
-      planSubContextUnify(dataStore, thisIds, firstModelSubContextsByKind,
+      planSubContextUnify(dataStore, thisIds, firstModelSubContextsByKey,
         firstModelOffset, sharedRemap, skipEntityIds);
       continue;
     }

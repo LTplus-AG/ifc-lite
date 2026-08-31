@@ -26,9 +26,8 @@
  * geometry silently vanishes), with no dangling reference to reveal it.
  *
  * `planSubContextUnify` fixes this by matching on the subcontext's *kind*
- * (its `ContextIdentifier`, e.g. 'Body'/'Axis' — falling back to
- * `TargetView` when the identifier is unset, and finally to positional
- * matching only within same-kind buckets) rather than on raw array position.
+ * (its `ContextIdentifier` *and* `TargetView`, plus `UserDefinedTargetView`
+ * where applicable) rather than on raw array position.
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -39,6 +38,8 @@ import { splitTopLevelStepArguments } from './step-argument-parser.js';
 const CONTEXT_IDENTIFIER_ATTR = 0;
 /** 0-based attribute index of `IfcGeometricRepresentationSubContext.TargetView`. */
 const TARGET_VIEW_ATTR = 8;
+/** 0-based attribute index of `IfcGeometricRepresentationSubContext.UserDefinedTargetView`. */
+const USER_DEFINED_TARGET_VIEW_ATTR = 9;
 
 function decodeEntity(dataStore: IfcDataStore, expressId: number): string | null {
   const source = dataStore.source;
@@ -67,23 +68,26 @@ function normalizeLabel(raw: string | null): string {
 }
 
 /**
- * The matching "kind" of one `IfcGeometricRepresentationSubContext`:
- * `ContextIdentifier` when set (the conventional 'BODY'/'AXIS'/'FOOTPRINT'/…
- * discriminator), else `TargetView` (its enum, e.g. 'MODEL_VIEW'), else `''`
- * — a model's identifier-less subcontexts still bucket together so the
- * common single-subcontext-per-model case keeps matching exactly as before.
+ * The matching key of one `IfcGeometricRepresentationSubContext` combines its
+ * `ContextIdentifier` and `TargetView`: a Body representation for MODEL_VIEW
+ * is not interchangeable with one for PLAN_VIEW. `UserDefinedTargetView`
+ * distinguishes two USERDEFINED views. Empty pieces deliberately remain part
+ * of the key so identifier-less subcontexts still group by their view.
  */
-function subContextKind(dataStore: IfcDataStore, expressId: number): string {
+function subContextKey(dataStore: IfcDataStore, expressId: number): string {
   const identifier = normalizeLabel(getStepAttr(dataStore, expressId, CONTEXT_IDENTIFIER_ATTR));
-  if (identifier) return identifier;
-  return normalizeLabel(getStepAttr(dataStore, expressId, TARGET_VIEW_ATTR));
+  const targetView = normalizeLabel(getStepAttr(dataStore, expressId, TARGET_VIEW_ATTR));
+  const userDefinedTargetView = targetView === 'USERDEFINED'
+    ? normalizeLabel(getStepAttr(dataStore, expressId, USER_DEFINED_TARGET_VIEW_ATTR))
+    : '';
+  return `${identifier}\u0000${targetView}\u0000${userDefinedTargetView}`;
 }
 
-/** Group `ids` (a model's subcontext express ids) by {@link subContextKind}. */
-export function groupSubContextsByKind(dataStore: IfcDataStore, ids: readonly number[]): Map<string, number[]> {
+/** Group `ids` (a model's subcontext express ids) by {@link subContextKey}. */
+export function groupSubContextsByKey(dataStore: IfcDataStore, ids: readonly number[]): Map<string, number[]> {
   const map = new Map<string, number[]>();
   for (const id of ids) {
-    const key = subContextKind(dataStore, id);
+    const key = subContextKey(dataStore, id);
     const bucket = map.get(key);
     if (bucket) bucket.push(id); else map.set(key, [id]);
   }
@@ -91,10 +95,10 @@ export function groupSubContextsByKind(dataStore: IfcDataStore, ids: readonly nu
 }
 
 /**
- * Plan this model's subcontext dedup against the primary model, kind by
- * kind: a subcontext in `thisIds` is remapped+skipped only against an
- * unclaimed primary-model subcontext of the SAME kind (never a differently
- * ordered one of a different kind). A subcontext with no same-kind match in
+ * Plan this model's subcontext dedup against the primary model, key by key:
+ * a subcontext in `thisIds` is remapped+skipped only against an unclaimed
+ * primary-model subcontext with the SAME key (never a differently ordered one
+ * of a different kind or TargetView). A subcontext with no same-key match in
  * the primary model is left un-remapped — kept as its own (offset-only)
  * entity, exactly like today's "no shared infrastructure of this type"
  * fallback. Mutates `sharedRemap`/`skipEntityIds`.
@@ -102,15 +106,15 @@ export function groupSubContextsByKind(dataStore: IfcDataStore, ids: readonly nu
 export function planSubContextUnify(
   dataStore: IfcDataStore,
   thisIds: readonly number[],
-  firstModelSubContextsByKind: ReadonlyMap<string, number[]>,
+  firstModelSubContextsByKey: ReadonlyMap<string, number[]>,
   firstModelOffset: number,
   sharedRemap: Map<number, number>,
   skipEntityIds: Set<number>,
 ): void {
   const nextIndex = new Map<string, number>();
   for (const id of thisIds) {
-    const key = subContextKind(dataStore, id);
-    const pool = firstModelSubContextsByKind.get(key);
+    const key = subContextKey(dataStore, id);
+    const pool = firstModelSubContextsByKey.get(key);
     if (!pool || pool.length === 0) continue;
     const idx = nextIndex.get(key) ?? 0;
     if (idx >= pool.length) continue; // every same-kind primary target already claimed
@@ -126,14 +130,14 @@ export function planSubContextUnify(
  * the kind-vs-position distinction lives in one place. Every
  * {@link SHARED_INFRASTRUCTURE_TYPES}-listed type is unified by position
  * EXCEPT `IFCGEOMETRICREPRESENTATIONSUBCONTEXT`, which goes through
- * {@link planSubContextUnify} instead (kind-matched). Mutates
+ * {@link planSubContextUnify} instead (key-matched). Mutates
  * `sharedRemap`/`skipEntityIds`.
  */
 export function planInfrastructureUnify(
   dataStore: IfcDataStore,
   modelInfra: ReadonlyMap<string, number[]>,
   firstModelInfraMap: ReadonlyMap<string, number[]>,
-  firstModelSubContextsByKind: ReadonlyMap<string, number[]>,
+  firstModelSubContextsByKey: ReadonlyMap<string, number[]>,
   firstModelOffset: number,
   sharedRemap: Map<number, number>,
   skipEntityIds: Set<number>,
@@ -142,7 +146,7 @@ export function planInfrastructureUnify(
     const thisIds = modelInfra.get(type);
     if (!thisIds || firstIds.length === 0 || thisIds.length === 0) continue;
     if (type === 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT') {
-      planSubContextUnify(dataStore, thisIds, firstModelSubContextsByKind, firstModelOffset, sharedRemap, skipEntityIds);
+      planSubContextUnify(dataStore, thisIds, firstModelSubContextsByKey, firstModelOffset, sharedRemap, skipEntityIds);
       continue;
     }
     sharedRemap.set(thisIds[0], firstIds[0] + firstModelOffset);

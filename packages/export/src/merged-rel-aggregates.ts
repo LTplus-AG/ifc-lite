@@ -24,9 +24,9 @@ import { filterHiddenRefsFromRelationshipLine } from './reference-collector.js';
  * existing relationship, causing viewers to show Site multiple times.
  *
  * An IfcRelAggregates is fully redundant (skipped entirely) when its
- * RelatingObject (attr 4) AND ALL its RelatedObjects (attr 5) were
- * remapped via sharedRemap. When only the RelatingObject and SOME (not
- * all) of its RelatedObjects were remapped — e.g. Model2's Building
+ * RelatingObject (attr 4) AND ALL its RelatedObjects (attr 5) remap to an
+ * edge the primary model already declares. When only the RelatingObject and
+ * SOME (not all) of its RelatedObjects have such a primary edge — e.g. Model2's Building
  * unifies with Model1's, and one of its two Storeys matches Model1's by
  * name while the other is new — the rel is genuinely needed for its new
  * member(s), but Model1's own relationship already lists the remapped
@@ -40,6 +40,7 @@ export function skipRedundantRelAggregates(
   sharedRemap: Map<number, number>,
   skipEntityIds: Set<number>,
   relAggregateStrip: Map<number, Set<number>>,
+  primaryAggregatePairs: ReadonlySet<string>,
   findEntitiesByType: (dataStore: IfcDataStore, typeUpper: string) => number[],
   extractStepAttribute: (expressId: number, dataStore: IfcDataStore, attrIndex: number) => string | null,
 ): void {
@@ -61,16 +62,58 @@ export function skipRedundantRelAggregates(
     }
     if (refs.length === 0) continue;
 
-    const remappedRefs = refs.filter(ref => sharedRemap.has(ref));
-    if (remappedRefs.length === refs.length) {
-      // ALL related objects were also remapped — this rel is fully redundant.
+    const remappedRelatingObject = sharedRemap.get(parseInt(relatingRef[1], 10))!;
+    // An object identity match alone does not prove that the primary model
+    // already owns this aggregation edge. Preserve a matched member when this
+    // is the only relationship that establishes its parentage (#3550).
+    const redundantRefs = refs.filter(ref => {
+      const remappedRef = sharedRemap.get(ref);
+      return remappedRef !== undefined && primaryAggregatePairs.has(aggregatePairKey(remappedRelatingObject, remappedRef));
+    });
+    if (redundantRefs.length === refs.length) {
+      // Every edge already exists in the primary model — this rel is fully redundant.
       skipEntityIds.add(relId);
-    } else if (remappedRefs.length > 0) {
+    } else if (redundantRefs.length > 0) {
       // Some, not all — keep the rel for its new member(s), but drop the
       // ones Model1's own relationship already aggregates.
-      relAggregateStrip.set(relId, new Set(remappedRefs));
+      relAggregateStrip.set(relId, new Set(redundantRefs));
     }
   }
+}
+
+/** Encode one `RelatingObject → RelatedObject` aggregation edge for set lookup. */
+export function aggregatePairKey(relatingObjectId: number, relatedObjectId: number): string {
+  return `${relatingObjectId}:${relatedObjectId}`;
+}
+
+/**
+ * Collect the aggregation edges actually declared by the primary model.
+ *
+ * A later model may unify both endpoint entities without the primary model
+ * declaring their relationship. Callers use this set to distinguish a truly
+ * duplicate edge from the only surviving statement of parentage.
+ */
+export function collectRelAggregatePairs(
+  dataStore: IfcDataStore,
+  findEntitiesByType: (dataStore: IfcDataStore, typeUpper: string) => number[],
+  extractStepAttribute: (expressId: number, dataStore: IfcDataStore, attrIndex: number) => string | null,
+  idOffset: number,
+): Set<string> {
+  const pairs = new Set<string>();
+  for (const relId of findEntitiesByType(dataStore, 'IFCRELAGGREGATES')) {
+    const relatingAttr = extractStepAttribute(relId, dataStore, 4);
+    const relatingRef = relatingAttr?.match(/^#(\d+)$/);
+    if (!relatingRef) continue;
+    const relatedAttr = extractStepAttribute(relId, dataStore, 5);
+    if (!relatedAttr) continue;
+    const relatingId = parseInt(relatingRef[1], 10) + idOffset;
+    const refRegex = /#(\d+)/g;
+    let match: RegExpExecArray | null;
+    while ((match = refRegex.exec(relatedAttr)) !== null) {
+      pairs.add(aggregatePairKey(relatingId, parseInt(match[1], 10) + idOffset));
+    }
+  }
+  return pairs;
 }
 
 /**

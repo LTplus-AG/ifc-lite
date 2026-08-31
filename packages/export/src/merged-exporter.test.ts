@@ -342,6 +342,31 @@ describe('MergedExporter', () => {
     expect(findDanglingRefs(content)).toEqual([]);
   });
 
+  it('keeps a unified member when the primary model does not declare its aggregation edge', () => {
+    // The endpoint entities can match without the primary containing the
+    // corresponding relationship. In that case Model2's relationship is the
+    // only surviving parentage statement and must not be stripped or skipped.
+    const model1 = buildModel('m1', 'Arch', [
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g1',$,'P',$,$,$,$,$,$);"],
+      [2, 'IFCBUILDING', "#2=IFCBUILDING('g2',$,'B',$,$,$,$,$,$,$);"],
+      [3, 'IFCBUILDINGSTOREY', "#3=IFCBUILDINGSTOREY('g3',$,'GF',$,$,$,$,$,.ELEMENT.,0.);"],
+    ]);
+    const model2 = buildModel('m2', 'Struct', [
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g4',$,'P2',$,$,$,$,$,$);"],
+      [2, 'IFCBUILDING', "#2=IFCBUILDING('g5',$,'B',$,$,$,$,$,$,$);"],
+      [3, 'IFCBUILDINGSTOREY', "#3=IFCBUILDINGSTOREY('g6',$,'GF',$,$,$,$,$,.ELEMENT.,0.);"],
+      [4, 'IFCBUILDINGSTOREY', "#4=IFCBUILDINGSTOREY('g7',$,'Roof',$,$,$,$,$,.ELEMENT.,3000.);"],
+      [5, 'IFCRELAGGREGATES', "#5=IFCRELAGGREGATES('r2',$,$,$,#2,(#3,#4));"],
+    ]);
+
+    const content = decode(new MergedExporter([model1, model2]).export({ schema: 'IFC4', projectStrategy: 'keep-first' }).content);
+
+    // Model2's relation is retained in full: #3 has no primary-model B → GF
+    // edge to replace it, while #4 remains the new Roof storey.
+    expect(content).toContain("#8=IFCRELAGGREGATES('r2',$,$,$,#2,(#3,#7))");
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
   it('should unify storeys with matching names', () => {
     // Model1: maxId=4, offset=0
     const model1 = buildModel('m1', 'Arch', [

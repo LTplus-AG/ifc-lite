@@ -42,7 +42,7 @@ import {
   EMPTY_MODEL_VIEW,
   type EmptyContainerModelView,
 } from './merged-empty-containers.js';
-import { skipRedundantRelAggregates, applyRelAggregateStrip } from './merged-rel-aggregates.js';
+import { skipRedundantRelAggregates, applyRelAggregateStrip, collectRelAggregatePairs } from './merged-rel-aggregates.js';
 
 /**
  * UTF-8 decode of `[start, end)` of a model's source, accepting either the raw
@@ -104,6 +104,8 @@ interface MergeSetup {
   firstProjectIds: number[];
   /** Spatial lookup built from the primary model. */
   spatialLookup: SpatialLookup;
+  /** Aggregation edges actually declared by the primary model. */
+  primaryAggregatePairs: Set<string>;
   /** Length unit scale of the primary model — the unit other models merge into. */
   primaryScale: number;
   /** Area unit scale (m² per unit) of the primary model — target for area values. */
@@ -878,14 +880,18 @@ export class MergedExporter {
 
     const firstModel = models[0];
     const primaryScale = this.resolveUnitScale(firstModel);
+    const firstModelOffset = modelOffsets.get(firstModel.id)!;
     const firstModelInfraMap = this.findInfrastructureEntities(firstModel.dataStore);
     return {
       modelOffsets,
-      firstModelOffset: modelOffsets.get(firstModel.id)!,
+      firstModelOffset,
       firstModelInfraMap,
       firstModelSubContextsByKey: groupSubContextsByKey(firstModel.dataStore, firstModelInfraMap.get('IFCGEOMETRICREPRESENTATIONSUBCONTEXT') ?? []),
       firstProjectIds: this.findEntitiesByType(firstModel.dataStore, 'IFCPROJECT'),
       spatialLookup: this.buildSpatialLookup(firstModel.dataStore),
+      primaryAggregatePairs: collectRelAggregatePairs(
+        firstModel.dataStore, this.findEntitiesByType.bind(this), this.extractStepAttribute.bind(this), firstModelOffset,
+      ),
       primaryScale,
       primaryAreaScale: this.resolveDerivedUnitScale(firstModel.dataStore, 'AREAUNIT', primaryScale, 2),
       primaryVolumeScale: this.resolveDerivedUnitScale(firstModel.dataStore, 'VOLUMEUNIT', primaryScale, 3),
@@ -1119,6 +1125,7 @@ export class MergedExporter {
       // and strip individually-duplicated members from ones only partially so.
       skipRedundantRelAggregates(
         model.dataStore, sharedRemap, skipEntityIds, relAggregateStrip,
+        setup.primaryAggregatePairs,
         this.findEntitiesByType.bind(this), this.extractStepAttribute.bind(this),
       );
     }

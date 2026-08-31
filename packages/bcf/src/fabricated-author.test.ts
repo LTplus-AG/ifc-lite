@@ -28,8 +28,11 @@ import JSZip from 'jszip';
 import { readFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { validateXML } from 'xmllint-wasm';
 
 import { readBCF } from './reader.js';
+import { writeBCF } from './writer.js';
+import type { BCFProject } from './types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TEST_DATA_DIR = join(__dirname, '..', 'test-data');
@@ -45,6 +48,30 @@ async function archiveWithEditedMarkup(edit: (xml: string) => string): Promise<U
   expect(edited, 'the edit must actually change the XML').not.toBe(xml);
   zip.file(markupName, edited);
   return zip.generateAsync({ type: 'uint8array' });
+}
+
+async function markupOf(blob: Blob): Promise<string> {
+  const zip = await JSZip.loadAsync(await blob.arrayBuffer());
+  const name = Object.keys(zip.files).find((entry) => entry.endsWith('markup.bcf'));
+  if (!name) throw new Error('no markup.bcf in archive');
+  return zip.file(name)!.async('string');
+}
+
+async function validatesMarkup(version: '2.1' | '3.0', markup: string): Promise<boolean> {
+  const schemaDir = version === '2.1' ? 'v2_1' : 'v3_0';
+  const markupSchema = await readFile(join(__dirname, '__fixtures__', 'schemas', schemaDir, 'markup.xsd'), 'utf8');
+  const preload = version === '3.0'
+    ? [{
+        fileName: 'shared-types.xsd',
+        contents: await readFile(join(__dirname, '__fixtures__', 'schemas', schemaDir, 'shared-types.xsd'), 'utf8'),
+      }]
+    : [];
+  const result = await validateXML({
+    xml: [{ fileName: 'subject.xml', contents: markup }],
+    schema: [markupSchema],
+    preload,
+  });
+  return result.valid;
 }
 
 describe('BCF reader — CreationAuthor/Author fabrication (markup.xsd required, no default)', () => {
@@ -90,5 +117,40 @@ describe('BCF reader — CreationAuthor/Author fabrication (markup.xsd required,
 
     expect(comment.author).not.toBe('Unknown');
     expect(comment.author).toBeUndefined();
+  });
+});
+
+describe('BCF writer — version-aware required author strings (#3574)', () => {
+  it('preserves whitespace-only 2.1 authors and emits markup valid under the 2.1 schema', async () => {
+    const project = await readBCF(await readFile(join(TEST_DATA_DIR, 'PerspectiveCamera.bcf')));
+    const topic = Array.from(project.topics.values())[0];
+    topic.creationAuthor = ' \t\n ';
+    topic.comments = [{
+      guid: 'c1a2b3c4-0000-0000-0000-000000000003',
+      date: '2026-01-01T00:00:00Z',
+      author: '\t ',
+      comment: 'A schema-valid blank 2.1 author is still explicitly present.',
+    }];
+
+    const markup = await markupOf(await writeBCF(project));
+    expect(markup).toContain('<CreationAuthor> \t\n </CreationAuthor>');
+    expect(markup).toContain('<Author>\t </Author>');
+    expect(await validatesMarkup('2.1', markup)).toBe(true);
+  });
+
+  it('retains 3.0 NonEmptyOrBlankString rejection for whitespace-only authors', async () => {
+    const topic = {
+      guid: '11111111-1111-4111-8111-111111111111',
+      title: '3.0 author guard',
+      topicType: 'Issue',
+      topicStatus: 'Open',
+      creationDate: '2026-01-01T00:00:00Z',
+      creationAuthor: ' \t ',
+      comments: [],
+      viewpoints: [],
+    };
+    const project: BCFProject = { version: '3.0', topics: new Map([[topic.guid, topic]]) };
+
+    await expect(writeBCF(project)).rejects.toThrow(/Topic\/CreationAuthor/);
   });
 });

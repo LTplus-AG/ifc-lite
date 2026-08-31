@@ -296,13 +296,13 @@ function writeMarkupFile(
   }
 
   content += `\n    <CreationDate>${xsdDateTime(topic.creationDate, 'Topic/CreationDate', `topic "${topic.guid}"`)}</CreationDate>`;
-  content += `\n    <CreationAuthor>${xsdRequiredString(topic.creationAuthor, 'Topic/CreationAuthor', `topic "${topic.guid}"`)}</CreationAuthor>`;
+  content += `\n    <CreationAuthor>${xsdRequiredString(topic.creationAuthor, 'Topic/CreationAuthor', `topic "${topic.guid}"`, version)}</CreationAuthor>`;
 
   if (topic.modifiedDate) {
     content += `\n    <ModifiedDate>${escapeXml(topic.modifiedDate)}</ModifiedDate>`;
     // BCF spec requires ModifiedAuthor when ModifiedDate is present
     const modifiedAuthor = topic.modifiedAuthor || topic.creationAuthor;
-    content += `\n    <ModifiedAuthor>${xsdRequiredString(modifiedAuthor, 'Topic/ModifiedAuthor', `topic "${topic.guid}"`)}</ModifiedAuthor>`;
+    content += `\n    <ModifiedAuthor>${xsdRequiredString(modifiedAuthor, 'Topic/ModifiedAuthor', `topic "${topic.guid}"`, version)}</ModifiedAuthor>`;
   }
 
   if (topic.dueDate) {
@@ -359,7 +359,7 @@ function writeMarkupFile(
       .map((comment) => {
         let c = `\n${indent}<Comment Guid="${escapeXml(comment.guid)}">`;
         c += `\n${indent}  <Date>${xsdDateTime(comment.date, 'Comment/Date', `comment "${comment.guid}"`)}</Date>`;
-        c += `\n${indent}  <Author>${xsdRequiredString(comment.author, 'Comment/Author', `comment "${comment.guid}"`)}</Author>`;
+        c += `\n${indent}  <Author>${xsdRequiredString(comment.author, 'Comment/Author', `comment "${comment.guid}"`, version)}</Author>`;
         c += `\n${indent}  <Comment>${escapeXml(comment.comment)}</Comment>`;
         if (comment.viewpointGuid) {
           c += `\n${indent}  <Viewpoint Guid="${escapeXml(comment.viewpointGuid)}"/>`;

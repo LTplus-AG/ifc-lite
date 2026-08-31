@@ -41,9 +41,21 @@ export function xsdDateTime(value: string | undefined, element: string, where: s
   return escapeXml(value);
 }
 
-/** A required plain-string element on its way into an archive, escaped -- or an error. */
-export function xsdRequiredString(value: string | undefined, element: string, where: string): string {
-  if (!value || XML_WHITESPACE_ONLY.test(value)) {
+/**
+ * A required author-like string on its way into an archive, escaped -- or an error.
+ *
+ * BCF 2.1 uses `UserIdType`, an unrestricted `xs:string`, so an explicitly
+ * supplied empty or whitespace-only author is schema-valid. BCF 3.0 replaced
+ * it with `NonEmptyOrBlankString`, whose collapsed value must be non-empty.
+ * Absence is invalid in both versions because the element itself is required.
+ */
+export function xsdRequiredString(
+  value: string | undefined,
+  element: string,
+  where: string,
+  version: '2.1' | '3.0',
+): string {
+  if (value === undefined || (version === '3.0' && XML_WHITESPACE_ONLY.test(value))) {
     throw new Error(
       `BCF requires ${element} (${where} has none). markup.xsd declares it ` +
         `minOccurs="1" with no default, and a value the source never stated is ` +

@@ -339,9 +339,12 @@ export function BCFTopicDetail({
                       </div>
                     )}
                     <div className="flex items-center gap-2 mb-1 text-xs text-muted-foreground">
-                      <User className="h-3 w-3" />
-                      {comment.author && <span>{comment.author.split('@')[0]}</span>}
-                      {comment.date && <><span>-</span><span>{formatDateTime(comment.date)}</span></>}
+                      {comment.author && <>
+                        <User className="h-3 w-3" />
+                        <span>{comment.author.split('@')[0]}</span>
+                      </>}
+                      {comment.author && comment.date && <span>-</span>}
+                      {comment.date && <span>{formatDateTime(comment.date)}</span>}
                       {comment.viewpointGuid && (
                         <span className="flex items-center gap-0.5">
                           <Camera className="h-3 w-3" />

@@ -3865,16 +3865,19 @@
     "EntityNode: class",
     "EntityQuery: class",
     "EntityTable: class",
+    "FilterComparisonOp: type",
     "IfcQuery: class",
     "PropertyTable: class",
     "QueryBuilder: class",
     "QueryInterface: class",
     "QueryResultEntity: class",
     "SQLResult: interface",
+    "compareFilterValue: function",
     "findAllPropertiesInSets: function",
     "findAllQuantitiesInSets: function",
     "findPropertyInSets: function",
-    "findQuantityInSets: function"
+    "findQuantityInSets: function",
+    "normalizeBooleanValue: function"
   ],
   "@ifc-lite/renderer": [
     "AdapterInfoSnapshot: interface",

@@ -70,7 +70,7 @@ import {
   listStoreys,
   type GenerateSpacesAllOptions,
 } from '@ifc-lite/create';
-import { EntityNode, findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';
+import { EntityNode, findPropertyInSets, findQuantityInSets, normalizeBooleanValue } from '@ifc-lite/query';
 
 import {
   extractAllEntityAttributes,
@@ -120,12 +120,13 @@ export const isProductType = isQueryableObjectType;
 /**
  * Normalize boolean-like values for comparison.
  * IFC STEP files store booleans as .T./.F., but users pass true/false.
+ *
+ * Re-exported from `@ifc-lite/query` for existing importers of this module;
+ * the actual comparison the query filter runs lives there too
+ * (`compareFilterValue`), shared with the viewer and MCP `QueryBackendMethods`
+ * implementations so the three can't drift apart on `where()` semantics again.
  */
-export function normalizeBooleanValue(value: unknown): unknown {
-  if (value === true || value === '.T.' || value === 'true' || value === 'TRUE') return 'true';
-  if (value === false || value === '.F.' || value === 'false' || value === 'FALSE') return 'false';
-  return value;
-}
+export { normalizeBooleanValue };
 
 export function normalizePropertyValue(value: unknown): string | number | boolean | null {
   if (value == null) return null;

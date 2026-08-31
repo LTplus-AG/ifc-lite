@@ -33,7 +33,9 @@ jobs:
     # ABOVE the gate's poll budget (300s), deliberately, so a run that exhausts
     # the budget still gets to PRINT its verdict rather than being killed
     # mid-wait with no output and no `covered` value. The sibling gate states the
-    # same rule at pr-review-signal.yml (20 minutes against a 900s budget). An
+    # same rule at pr-review-signal.yml (a job cap comfortably over its own poll
+    # budget; that gate asserts the pairing against its own YAML rather than
+    # restating it, because this comment was stale about both numbers once). An
     # earlier version of this file had 5 minutes against a 600s budget, which
     # would have killed the job on every PR before it could say anything.
     timeout-minutes: 10

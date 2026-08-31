@@ -2721,13 +2721,12 @@ ENDSEC;
     }
     if (typeof val === 'number') {
       const typeName = prop.Type ?? (Number.isInteger(val) ? 'IfcInteger' : 'IfcReal');
-      if (typeName === 'IfcInteger') {
-        return `IFCINTEGER(${Math.round(val)})`;
-      }
-      return `IFCREAL(${num(val)})`;
+      return typeName === 'IfcInteger' ? `IFCINTEGER(${Math.round(val)})` : `IFCREAL(${num(val)})`;
     }
     if (typeof val === 'boolean') {
-      return `IFCBOOLEAN(${val ? '.T.' : '.F.'})`;
+      // `Type: 'IfcLogical'` (tri-state) must not be downgraded to IFCBOOLEAN.
+      const typeName = prop.Type === 'IfcLogical' ? 'IFCLOGICAL' : 'IFCBOOLEAN';
+      return `${typeName}(${val ? '.T.' : '.F.'})`;
     }
     return '$';
   }

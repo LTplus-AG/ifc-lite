@@ -20,6 +20,7 @@ import {
   ReviewSignalError,
   expandJobNames,
   flattenReviewPages,
+  matrixSkipAliases,
   missingLanes,
   noVerdictReviews,
   pollForLanes,
@@ -30,6 +31,7 @@ import {
   STALE_REVIEW_POLICIES,
   SETTLE_HOLD_SECONDS,
   pullRequestBranchFilterKeys,
+  wholesaleSkippedTemplates,
 } from './pr-review-signal.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -155,6 +157,179 @@ test('presence counts a SKIPPED lane: a path-filtered job still published a chec
 
 test('presence counts a QUEUED lane: the workflow fired, which is the question', () => {
   assert.deepEqual(missingLanes(['A'], [LANE('A', 'queued')]), []);
+});
+
+// ------------------------------------------- a matrix job skipped BEFORE expanding
+
+/**
+ * The check-run name PR #3581 actually published, verbatim.
+ *
+ * ONE constant rather than five literals, and deliberately NOT derived from
+ * `matrixSkipAliases` over the real test.yml: that is the function under test,
+ * and an expected value taken from it would agree with it whatever it did. This
+ * is the observed string, pinned by hand, which is the whole point.
+ */
+// The literal `${{ }}` below is DATA, not a template this file means to interpolate: it is what
+// GitHub publishes as the check-run name for a matrix job skipped before it expanded.
+// oxlint-disable-next-line no-template-curly-in-string
+const MATRIX_TEMPLATE = 'Viewer tests (shard ${{ matrix.shard }})';
+
+/**
+ * VERBATIM from PR #3581's rollup on 2026-08-31 (a `.coderabbit.yaml`-only
+ * change, so `needs.changes.outputs.frontend` was false). Note what is NOT here:
+ * `Viewer tests (shard 0)` through `(shard 3)`. GitHub published ONE check run,
+ * under the unexpanded template, because the job was skipped before its matrix
+ * expanded.
+ */
+const PR3581_ROLLUP = [
+  { name: 'Detect changes', state: 'success' },
+  { name: 'Build + WASM + Rust + Node', state: 'success' },
+  { name: 'Build packages + WASM', state: 'skipped' },
+  { name: 'Viewer E2E smoke', state: 'skipped' },
+  { name: MATRIX_TEMPLATE, state: 'skipped' },
+];
+
+test('RED, the #3581 shape: a skipped MATRIX job publishes its template, not its expansions', () => {
+  // The premise the gate shipped with -- "a skipped job still publishes a check
+  // run under the name we derived" -- was verified against `Docs checks
+  // (docs-only PRs)`, a PLAIN job, where it holds. It does not hold here, and
+  // the difference is invisible until a PR touches neither frontend nor rust.
+  const required = ['Viewer tests (shard 0)', 'Viewer tests (shard 1)'];
+  assert.deepEqual(
+    missingLanes(required, PR3581_ROLLUP),
+    required,
+    'without the alias map both shards read as never having run',
+  );
+  const aliases = matrixSkipAliases(WF);
+  assert.deepEqual(missingLanes(required, PR3581_ROLLUP, aliases), []);
+});
+
+test('the alias covers ONLY a skip: the template at any other state satisfies nothing', () => {
+  // A template name at `success` means a workflow really is publishing a literal
+  // `${{ ... }}` check, which is broken, not skipped. At `queued` the decision is
+  // not made yet, and calling that covered would let the poll stop mid-fan-out.
+  const aliases = matrixSkipAliases(WF);
+  const required = ['Viewer tests (shard 0)'];
+  for (const state of ['success', 'queued', 'in_progress', 'failure', '']) {
+    const rollup = [{ name: MATRIX_TEMPLATE, state }];
+    assert.deepEqual(missingLanes(required, rollup, aliases), required, `state "${state}"`);
+  }
+});
+
+test('the alias is not a blanket pass: a shard absent with NO check run of any kind still fails', () => {
+  const aliases = matrixSkipAliases(WF);
+  assert.deepEqual(
+    missingLanes(['Viewer tests (shard 0)'], [{ name: 'Detect changes', state: 'success' }], aliases),
+    ['Viewer tests (shard 0)'],
+    'this is the #3294 case the gate exists for, and it must be untouched',
+  );
+});
+
+test('a PLAIN job gets no alias, so nothing but its own name can satisfy it', () => {
+  // Giving a plain job an alias would be a real weakening: its skipped check run
+  // already carries the derived name, so an alias could only ever let some OTHER
+  // check stand in for it.
+  const aliases = matrixSkipAliases(WF);
+  assert.equal(aliases.has('Detect changes'), false);
+  assert.equal(aliases.has('unnamed-job'), false);
+  assert.deepEqual([...new Set(aliases.values())], [MATRIX_TEMPLATE]);
+  assert.equal(aliases.size, 4, 'all four shards, and only those');
+});
+
+test('the REAL test.yml maps every viewer shard to the template the REAL rollup published', () => {
+  // The pairing that matters: the SAME workflow file the gate derives from must
+  // produce the alias for the SAME string PR #3581 was observed carrying. A
+  // hand-written template in a fixture would prove nothing about that string.
+  const aliases = matrixSkipAliases(
+    readFileSync(join(REPO_ROOT, '.github/workflows/test.yml'), 'utf8'),
+  );
+  for (const shard of [0, 1, 2, 3]) {
+    assert.equal(
+      aliases.get(`Viewer tests (shard ${shard})`),
+      MATRIX_TEMPLATE,
+      `shard ${shard}`,
+    );
+  }
+  const observed = PR3581_ROLLUP.map((c) => c.name);
+  assert.ok(
+    observed.includes([...new Set(aliases.values())][0]),
+    'the derived template must be a string PR #3581 actually published',
+  );
+});
+
+test('`excludeJobKeys` must reach BOTH derivations, or the alias map stops covering a lane', () => {
+  // The one property no other test here pins: `main` passes the same exclude
+  // list to `expandJobNames` and to `matrixSkipAliases`. Passing it to only the
+  // first is a silent, asymmetric failure -- the lane stays required while its
+  // alias disappears -- so it is checked positively rather than by the absence
+  // of a complaint.
+  const wf = readFileSync(join(REPO_ROOT, '.github/workflows/test.yml'), 'utf8');
+  const exclude = CFG.excludeJobKeys ?? [];
+
+  const required = expandJobNames(wf, { exclude });
+  const missing = missingLanes(required, PR3581_ROLLUP, matrixSkipAliases(wf, { exclude }));
+  // Positive: name exactly what is still missing. Everything test.yml publishes
+  // that PR #3581's rollup did not carry, and not one viewer shard among them.
+  const carried = new Set(PR3581_ROLLUP.map((c) => c.name));
+  assert.deepEqual(
+    missing,
+    required.filter((n) => !carried.has(n) && !n.startsWith('Viewer tests (shard ')).sort(),
+  );
+
+  // Asymmetric: excluding the job from the ALIASES only puts the shards back.
+  const asymmetric = missingLanes(required, PR3581_ROLLUP, matrixSkipAliases(wf, { exclude: [...exclude, 'viewer-tests'] }));
+  for (const shard of [0, 1, 2, 3]) {
+    assert.ok(asymmetric.includes(`Viewer tests (shard ${shard})`), `shard ${shard} uncovered`);
+  }
+});
+
+test('FAIL CLOSED: pollForLanes REFUSES a missing alias map rather than defaulting', () => {
+  // The defect this closes was found by review, not by a test: three call sites
+  // wire the map, tests covered ONE, and deleting the other two left the suite
+  // green while the live gate regressed to failing every config-only PR. A
+  // default made that silent. It is now a named refusal.
+  for (const bad of [undefined, null, {}, new Set(), [['a', 'b']]]) {
+    assert.throws(
+      () => pollForLanes({
+        required: ['A'],
+        aliases: bad,
+        initialState: { lanes: [{ name: 'A', state: 'success' }] },
+        fetchState: () => ({ lanes: [] }),
+        deadline: Date.now() + 1000,
+        pollSeconds: 1,
+        sleep: () => {},
+      }),
+      (e) => e.reason === 'MISSING_ALIASES',
+      String(bad),
+    );
+  }
+});
+
+test('a wholesale skip is REPORTED, never absorbed into a tick', () => {
+  const aliases = matrixSkipAliases(WF);
+  assert.deepEqual(
+    [...wholesaleSkippedTemplates(PR3581_ROLLUP, aliases)],
+    [MATRIX_TEMPLATE],
+  );
+  // And nothing is reported when nothing was skipped wholesale.
+  assert.equal(wholesaleSkippedTemplates([{ name: 'Detect changes', state: 'skipped' }], aliases).size, 0);
+});
+
+test('the poll does not wait out its budget on a matrix that was skipped wholesale', () => {
+  // Before the alias map this was the lived cost of the bug: the lanes could
+  // never appear, so the poll ran the full 900 s before failing.
+  let slept = 0;
+  const r = pollForLanes({
+    required: ['Viewer tests (shard 0)', 'Detect changes'],
+    aliases: matrixSkipAliases(WF),
+    initialState: { lanes: PR3581_ROLLUP },
+    fetchState: () => ({ lanes: PR3581_ROLLUP }),
+    deadline: Date.now() + 900_000,
+    pollSeconds: 30,
+    sleep: (ms) => { slept += ms; },
+  });
+  assert.equal(r.timedOut, false);
+  assert.equal(slept, 0, 'it returns on the first read');
 });
 
 test('the #3294 shape: only deploy/review lanes present -> every compile lane named missing', () => {
@@ -335,9 +510,13 @@ function driver(readsAt, { pollMs = 15_000, startMs = 0 } = {}) {
 /** Lanes that are `in_progress` until `atMs`, complete from then on. */
 const completesAt = (atMs) => (clock) => (clock >= atMs ? POLL_COMPLETE : POLL_MOVING);
 
-function poll(d, { deadline = 900_000, pollSeconds = 15, required, settleHoldSeconds } = {}) {
+function poll(d, { deadline = 900_000, pollSeconds = 15, required, aliases, settleHoldSeconds } = {}) {
   return pollForLanes({
     required: required ?? POLL_REQUIRED,
+    // EXPLICIT, because `pollForLanes` refuses a missing map. These fixtures use
+    // plain lane names with no matrix job, so an empty map is the true answer
+    // here -- not a default standing in for one nobody thought about.
+    aliases: aliases ?? new Map(),
     initialState: d.state(),
     fetchState: d.state,
     deadline,
@@ -373,7 +552,7 @@ test('the poll STOPS EARLY once the rollup has settled — #3294 must not burn t
   const r = poll(d);
   assert.equal(r.timedOut, false, 'settled is an ANSWER, not a timeout');
   // It costs the HOLD and not one interval more. The first read cannot decide
-  // this — see the fan-out replay below — but 60 s out of a 900 s budget still
+  // this — see the fan-out replay below — but 60 s out of the poll budget still
   // leaves #3294's total-absence shape decided in seconds, not in fifteen
   // minutes, which is the property this test was written for.
   assert.deepEqual(d.slept, [15_000, 15_000, 15_000, 15_000], 'exactly SETTLE_HOLD_SECONDS');
@@ -409,7 +588,29 @@ test('the poll treats an EMPTY rollup as "nothing has appeared yet", never as se
   assert.match(d.logs[0], /3\/3 required lane\(s\) not yet published/);
 });
 
-test('MEASURED: 900 s covers every observed lane APPEARANCE, and 420 s did not', () => {
+/**
+ * Run creation to the LAST non-aggregate lane's `created_at`, in seconds, over
+ * the 68 completed `test.yml` PR runs of 2026-08-25/26 that published the
+ * aggregate. Read by TWO tests below, in opposite directions: what 900 s covered
+ * on this population, and what 420 s false-failed on it. The 2026-08-31
+ * re-measure does NOT read it -- it is a different population and carries its
+ * own array, which is the whole reason the two disagree about 900 s.
+ */
+/** The budget the workflow ships; asserted against the YAML below, not restated. */
+const BUDGET_SECONDS = 2400;
+
+const LANE_APPEARED_SECONDS = [
+  161, 162, 162, 162, 163, 164, 164, 165, 165, 165, 166, 166, 167, 167, 167, 167, 167, 169, 169,
+  170, 170, 170, 170, 171, 171, 171, 172, 172, 175, 176, 177, 187, 188, 189, 190, 193, 198, 204,
+  210, 221, 235, 237, 237, 241, 244, 276, 289, 290, 290, 297, 299, 310, 322, 334, 349, 362, 386,
+  388, 403, 416, 423, 426, 450, 451, 522, 523, 542, 845,
+];
+
+test('MEASURED on 2026-08-25/26: 900 s covered every lane APPEARANCE in THAT population', () => {
+  // SCOPED TO ITS POPULATION ON PURPOSE. A later test re-measures on 2026-08-31
+  // and finds eight breaches of 900 s. The two do not contradict each other --
+  // different runs, different day, a busier pool -- but a title claiming "every
+  // observed" would, so it says which runs it observed.
   // THE METHODOLOGY HERE WAS WRONG ONCE, AND THE NUMBERS MOVED WHEN IT WAS
   // FIXED. The first version of this constant measured `started_at` — when a
   // runner picked the job up. The gate does not wait for that. It polls for
@@ -418,12 +619,6 @@ test('MEASURED: 900 s covers every observed lane APPEARANCE, and 420 s did not',
   // Measured from each run's own `created_at` over the 68 completed `test.yml`
   // PR runs of 2026-08-25/26 that published the aggregate, here is when the
   // LAST NON-AGGREGATE lane appeared, in seconds:
-  const LANE_APPEARED_SECONDS = [
-    161, 162, 162, 162, 163, 164, 164, 165, 165, 165, 166, 166, 167, 167, 167, 167, 167, 169, 169,
-    170, 170, 170, 170, 171, 171, 171, 172, 172, 175, 176, 177, 187, 188, 189, 190, 193, 198, 204,
-    210, 221, 235, 237, 237, 241, 244, 276, 289, 290, 290, 297, 299, 310, 322, 334, 349, 362, 386,
-    388, 403, 416, 423, 426, 450, 451, 522, 523, 542, 845,
-  ];
   assert.equal(LANE_APPEARED_SECONDS.length, 68);
 
   for (const s of LANE_APPEARED_SECONDS) {
@@ -445,8 +640,152 @@ test('MEASURED: 900 s covers every observed lane APPEARANCE, and 420 s did not',
   const max = Math.max(...LANE_APPEARED_SECONDS);
   assert.equal(max, 845);
   assert.equal(Number((900 / max).toFixed(2)), 1.07, 'tail margin, stated honestly');
+});
 
-  // AND THE AGGREGATE EXCLUSION IS MORE LOAD-BEARING THAN 420-vs-900 EVER WAS.
+test('RE-MEASURED 2026-08-31: 900 s BREACHED, and the budget is now 2400 s', () => {
+  // A 1.07x margin is one busy afternoon from being wrong, and this was that
+  // afternoon.
+  //
+  // THIS ARRAY HAS BEEN CENSORED TWICE, BY THE SAME MECHANISM, AND THE SECOND
+  // TIME WAS AFTER WRITING THE PARAGRAPH WARNING ABOUT IT. Filtering a run list
+  // on `status == completed` at an instant drops the runs that are slow BECAUSE
+  // THEY ARE STILL RUNNING -- it removes the tail, which is the only part of the
+  // distribution a budget cares about.
+  //
+  //   first draft:  sampled the 60 most recent runs, kept the 22 completed.
+  //                 Dropped 1276, 1387, 1503, 1786, 2028 -- the five slowest of
+  //                 the day. Landed on 1800 s, which would not have covered the
+  //                 worst run of the afternoon it was measured on.
+  //   second draft: same filter, wider window, 45 kept. Dropped 1276 AGAIN --
+  //                 run 33424176735, PR #3584's own -- because it finished about
+  //                 50 s after the read. The docblock NAMED 1276 as a censored
+  //                 run in the same breath as an array that omitted it.
+  //
+  // Both caught in review, not by me. The fix is not a wider window, it is to
+  // stop sampling on a field that moves with the thing being measured: take the
+  // whole day, after the day is over.
+  //
+  // Below: every completed test.yml PR run created on 2026-08-31 -- 72 created,
+  // 57 completed, 56 with jobs to measure -- run creation to the LAST
+  // non-aggregate lane's `created_at`.
+  const RE_MEASURED = [
+    15, 162, 166, 166, 169, 170, 170, 170, 171, 173, 173, 174, 175, 176, 176, 183, 185, 200, 201,
+    201, 205, 211, 238, 264, 264, 269, 275, 282, 290, 308, 311, 314, 317, 333, 357, 375, 391, 418,
+    469, 469, 473, 496, 622, 660, 662, 712, 814, 824, 906, 1172, 1276, 1387, 1503, 1527, 1786, 2028,
+  ];
+  assert.equal(RE_MEASURED.length, 56);
+
+  // THE 12 RUNS THIS STILL CANNOT MEASURE, bounded rather than waved away --
+  // that silent exclusion is the whole defect above. They were still queued, so
+  // their last lane may yet appear later; so far they stand at 304..1145 s, and
+  // the budget would have to be wrong by more than 1255 s for one to breach.
+  const STILL_QUEUED_SO_FAR = [304, 306, 324, 374, 378, 397, 435, 446, 467, 485, 1102, 1145];
+  assert.ok(Math.max(...STILL_QUEUED_SO_FAR) < BUDGET_SECONDS, 'none of the unmeasurable runs is near the cap');
+
+  // EIGHT breach 900 s, not the seven an earlier censored draft claimed.
+  assert.deepEqual(
+    RE_MEASURED.filter((t) => t > 900),
+    [906, 1172, 1276, 1387, 1503, 1527, 1786, 2028],
+    '900 s breaches eight of 56',
+  );
+  assert.deepEqual(RE_MEASURED.filter((t) => t > 1800), [2028], '1800 s still breaches the max');
+  assert.deepEqual(RE_MEASURED.filter((t) => t > BUDGET_SECONDS), [], 'the shipped budget covers all 56');
+
+  // THE COVERING DIRECTION.
+  for (const t of RE_MEASURED) {
+    assert.equal(poll(driver(completesAt(t * 1000)), { deadline: BUDGET_SECONDS * 1000 }).timedOut, false, `${t}s`);
+  }
+  // THE FAILING DIRECTION, because a budget that covers everything proves
+  // nothing on its own: the two superseded budgets genuinely time out on the
+  // runs they are claimed to.
+  for (const t of [906, 2028]) {
+    assert.equal(poll(driver(completesAt(t * 1000)), { deadline: 900_000 }).timedOut, true, `${t}s vs 900 s`);
+  }
+  assert.equal(poll(driver(completesAt(2028_000)), { deadline: 1800_000 }).timedOut, true, '2028s vs 1800 s');
+});
+
+/**
+ * WHAT THIS BUDGET ACTUALLY MEASURES, and it is NOT the build.
+ *
+ * An earlier draft of this file asserted it was "measuring the BUILD", which was
+ * reasoning, not measurement, and it was wrong. The job timings say the number
+ * is almost entirely RUNNER-POOL QUEUE:
+ *
+ *   run           queue before the first job started   build itself   queue share
+ *   33422274815   1837 s                               176 s          91%
+ *   33421389375   1350 s                               162 s          88%
+ *   33424176735   1090 s                               165 s          85%
+ *
+ * The build is a near-constant ~170 s. Making it faster would move this budget
+ * by seconds. That matters for the remedy: there is nothing to optimise here,
+ * and the quantity has NO CEILING -- queue depth grows with how many PRs are
+ * open, which is precisely when this gate is under load.
+ *
+ * STATED HOLE: a budget cannot bound an unbounded quantity, so this WILL breach
+ * again on a busy enough day. When it does, the gate reports "within the poll
+ * budget" rather than a bare absence, and the remedy is a re-run once the lanes
+ * exist -- correct, because nothing failed.
+ */
+test('the budget the WORKFLOW ships is the budget this file tested', () => {
+  // WITHOUT THIS, REVERTING THE SHIPPED VALUE LEAVES THE SUITE GREEN. Measured:
+  // putting `--timeout-seconds 900` and `timeout-minutes: 20` back -- the exact
+  // regression this work exists to fix -- passed the whole suite, because the only
+  // budget any test named was a literal inside itself. Third instance today of
+  // the same shape: a value tested in one place and shipped from another. See
+  // the WIRING test in check-pr-review-signal.test.mjs.
+  const wf = readFileSync(join(REPO_ROOT, '.github/workflows/pr-review-signal.yml'), 'utf8');
+  // ANCHORED, and that is load-bearing rather than tidy. Unanchored, these
+  // matched the FIRST occurrence anywhere in a comment-dense file whose comments
+  // discuss these very numbers. Demonstrated in review: one line reading
+  // `# historical: timeout-minutes: 45` above a shipped `timeout-minutes: 20`
+  // passed all 78 tests while certifying a job that would be killed at 1200 s
+  // against a 2400 s budget -- the exact `cancelled` run the slack assertion
+  // below exists to prevent. `^[ \t]*` cannot match a `#`-prefixed line.
+  const budget = /^[ \t]*--timeout-seconds[ \t]+(\d+)/m.exec(wf);
+  assert.ok(budget, 'the workflow must pass an explicit --timeout-seconds');
+  assert.equal(Number(budget[1]), BUDGET_SECONDS, 'shipped budget vs the one measured above');
+
+  // The JOB cap must exceed the gate's own deadline, or the job is killed first
+  // and the run reports `cancelled` -- the same word `cancel-in-progress`
+  // produces for a superseded run, so a red check with no verdict and no way to
+  // tell the two apart.
+  const jobCap = /^[ \t]*timeout-minutes:[ \t]+(\d+)/m.exec(wf);
+  assert.ok(jobCap, 'the job must carry a timeout-minutes');
+  // >= 5 minutes of slack. Measured on the real failing run: set-up 2 s,
+  // checkout 4 s, `node --test` 5 s, and 3 s of trailing reads after the poll
+  // returned -- about 15 s beyond the budget, so 5 minutes is generous rather
+  // than tight. The assertion is on the SLACK, not on either number, so raising
+  // the budget later without raising the cap fails here instead of silently
+  // producing a `cancelled` run.
+  assert.ok(
+    Number(jobCap[1]) * 60 - BUDGET_SECONDS >= 300,
+    `timeout-minutes ${jobCap[1]} leaves ${Number(jobCap[1]) * 60 - BUDGET_SECONDS}s over the ` +
+      `${BUDGET_SECONDS}s budget; at least 300 s required`,
+  );
+
+  // The poll interval bounds API cost: GITHUB_TOKEN is 1,000 requests/hour PER
+  // REPOSITORY, shared with every other workflow, and the tail is CORRELATED
+  // across PRs -- one busy pool slows every run at once, which is when the most
+  // pollers are running at their cap. At 15 s this budget would be 160 reads a
+  // run, so ~6 concurrent full-budget pollers exhaust the repository. Exhaustion
+  // makes the gate fail closed on GH_ERROR: red, for a reason unrelated to the
+  // diff. 30 s halves it, and costs 15 s of resolution on a 2400 s budget.
+  const interval = /^[ \t]*--poll-seconds[ \t]+(\d+)/m.exec(wf);
+  assert.ok(interval, 'the workflow must pass an explicit --poll-seconds');
+  assert.ok(Number(interval[1]) >= 30, 'a faster poll multiplies the rate-limit risk');
+  assert.ok(BUDGET_SECONDS / Number(interval[1]) <= 90, 'reads per run stay under ~90');
+});
+
+test('MEASURED: excluding the aggregate matters more than any budget, and 420 s false-failed 8', () => {
+  // THE AGGREGATE EXCLUSION IS MORE LOAD-BEARING THAN ANY BUDGET EVER WAS, and
+  // the 900 s figure below no longer argues that, because 900 s is not the
+  // budget any more: at 2400 s, 0 of those 68 would breach and the evidence
+  // would be vacuous. Re-measured on the same 56 runs of 2026-08-31 as the
+  // budget above, the aggregate appeared at min 213 / median 1175 / MAX 3364 s,
+  // with TWELVE past 2400 s. So the exclusion still carries the fix at the
+  // budget actually in force, and the 68-run figure below is kept as the
+  // original finding rather than restated as a current one.
+  //
   // Same 68 runs, when `Build + WASM + Rust + Node` itself appeared: min 509,
   // median 894, max 2067 s. Requiring it would false-fail 33 of the 68 at a
   // 900 s budget — half of every green PR — which is why `excludeJobKeys`

@@ -17,7 +17,7 @@
     "lane becomes PRESENT, which is what this gate polls for, not `started_at` -- from each",
     "run's own creation, over the 68 completed test.yml PR runs of 2026-08-25/26 that",
     "published it: the aggregate appeared at min 509, median 894, max 2067 seconds, with 33",
-    "of the 68 past the 900 s budget. The last NON-aggregate lane appeared at min 161,",
+    "of the 68 past the 900 s budget then in force. The last NON-aggregate lane appeared at min 161,",
     "median 190, p95 522, max 845 seconds: 0 of the 68 past it. Requiring the aggregate makes",
     "the wait a function of the SUITE's total runtime, which grows, and would false-fail half",
     "of every green PR; requiring only the lanes makes it a function of how fast GitHub",

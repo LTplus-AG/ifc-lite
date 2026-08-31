@@ -97,6 +97,126 @@ test('GREEN: every required lane present and no reviewer claims a verdict it lac
   assert.match(r.output, /none reports a passing state over a review it did not perform/);
 });
 
+// ------------------------------------- the wiring, not just the logic
+
+/**
+ * VERBATIM from PR #3581's rollup on 2026-08-31, a `.coderabbit.yaml`-only
+ * change. `Viewer tests (shard 0..3)` are absent and the UNEXPANDED template is
+ * present at `skipped`, because a matrix job skipped by its `if:` publishes one
+ * check run before the matrix expands.
+ */
+// The literal `${{ }}` below is DATA, not a template this file means to interpolate: it is what
+// GitHub publishes as the check-run name for a matrix job skipped before it expanded.
+// oxlint-disable-next-line no-template-curly-in-string
+const SKIPPED_MATRIX_TEMPLATE = 'Viewer tests (shard ${{ matrix.shard }})';
+
+test('END TO END: a wholesale-skipped matrix job passes the REAL required set', () => {
+  // NO `required` OVERRIDE, and that is the entire point of this test. Every
+  // other case here supplies `HEALTHY`, which has no matrix lane, so the alias
+  // map is inert in all of them: deleting the three `aliases,` arguments in
+  // `main()` left all 122 tests green while the gate went back to failing every
+  // config-only PR. The fix has to be proved to ARRIVE, not merely to exist.
+  //
+  // Omitting `required` makes `main()` derive it from the real test.yml, so this
+  // runs the same wiring CI runs.
+  const wf = readFileSync(TEST_YML, 'utf8');
+  const lanes = expandJobNames(wf, { exclude: JSON.parse(readFileSync(CONFIG, 'utf8')).excludeJobKeys ?? [] })
+    .filter((n) => !n.startsWith('Viewer tests (shard '))
+    .map((n) => LANE(n, 'skipped'));
+  lanes.push(LANE(SKIPPED_MATRIX_TEMPLATE, 'skipped'));
+
+  const r = run({ lanes, reviewChecks: [] });
+  assert.equal(r.code, 0, r.output);
+  assert.match(r.output, /All \d+ required lane\(s\)/);
+  // Reported, never absorbed: the skip is named along with how many lanes it covered.
+  assert.match(r.output, /was SKIPPED as a whole job/);
+  assert.match(r.output, /its 4 lane\(s\)/);
+});
+
+test('a fixture alias with a NON-STRING template is BAD_STATE_FILE, not MISSING_LANES', () => {
+  // CodeRabbit, PR #3584. Reproduced before fixing: a `null` template made the
+  // gate print MISSING_LANES -- a true verdict reached for a false reason, which
+  // is the thing refusing the malformed outer value was supposed to prevent.
+  // `undefined` is absent from this list on purpose: JSON.stringify DROPS the key,
+  // so it cannot reach a state file at all and asserting on it would test the harness.
+  for (const template of [null, 42, '', ['a'], true, {}]) {
+    const r = runRaw({
+      required: ['Viewer tests (shard 0)', 'Detect changes'],
+      lanes: [LANE('Detect changes'), LANE(SKIPPED_MATRIX_TEMPLATE, 'skipped')],
+      aliases: { 'Viewer tests (shard 0)': template },
+      reviewChecks: [],
+      reviews: [],
+      headSha: ANY_HEAD,
+    });
+    assert.equal(r.code, 1, r.output);
+    assert.match(r.output, /BAD_STATE_FILE/, `template ${JSON.stringify(template)}`);
+    assert.doesNotMatch(r.output, /MISSING_LANES/, 'the reason must be the malformed fixture');
+  }
+});
+
+test('END TO END: the same rollup WITHOUT the template still fails, naming all four shards', () => {
+  // The anti-vacuity pair. If the test above passed for any reason other than
+  // the alias map -- a required set that never contained the shards, say -- this
+  // one would pass too, and it must not.
+  const wf = readFileSync(TEST_YML, 'utf8');
+  const lanes = expandJobNames(wf, { exclude: JSON.parse(readFileSync(CONFIG, 'utf8')).excludeJobKeys ?? [] })
+    .filter((n) => !n.startsWith('Viewer tests (shard '))
+    .map((n) => LANE(n, 'skipped'));
+
+  const r = run({ lanes, reviewChecks: [] });
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /MISSING_LANES: 4 of/);
+  for (const shard of [0, 1, 2, 3]) {
+    assert.ok(r.output.includes(`Viewer tests (shard ${shard})`), `must name shard ${shard}`);
+  }
+});
+
+test('END TO END: the template at SUCCESS is not a skip, and does not cover the shards', () => {
+  const wf = readFileSync(TEST_YML, 'utf8');
+  const lanes = expandJobNames(wf, { exclude: JSON.parse(readFileSync(CONFIG, 'utf8')).excludeJobKeys ?? [] })
+    .filter((n) => !n.startsWith('Viewer tests (shard '))
+    .map((n) => LANE(n, 'skipped'));
+  lanes.push(LANE(SKIPPED_MATRIX_TEMPLATE, 'success'));
+
+  const r = run({ lanes, reviewChecks: [] });
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /MISSING_LANES: 4 of/);
+});
+
+/**
+ * THE LIVE CALL SITES, ASSERTED STATICALLY, because nothing else can reach them.
+ *
+ * `main()` needs `gh`, so the harness drives `evaluate` only through
+ * `--state-file` and never drives `pollForLanes` at all. That left both LIVE
+ * wire-ups deletable with the suite green -- found in review, and the reason the
+ * two functions now refuse a missing map at run time. This test moves that
+ * refusal earlier, to CI, so a deleted argument is caught before it ships rather
+ * than by the first real run.
+ *
+ * Reading source is a blunt instrument and it is the honest one here: the claim
+ * is literally about what the source passes.
+ */
+test('WIRING: every call to pollForLanes and evaluate passes an alias map', () => {
+  const src = readFileSync(GATE, 'utf8');
+  // `function` excludes `evaluate`'s own definition, which otherwise matches --
+  // and matches WITH an `aliases` parameter, so only the count caught it.
+  const calls = [...src.matchAll(/(?<!function )\b(pollForLanes|evaluate)\(\{/g)];
+  assert.equal(calls.length, 3, 'two live call sites and the --state-file one; update this if that changes');
+
+  for (const m of calls) {
+    // Walk from the `({` to its matching `})` so a nested object cannot end it early.
+    let depth = 0;
+    let i = src.indexOf('{', m.index);
+    const start = i;
+    for (; i < src.length; i += 1) {
+      if (src[i] === '{') depth += 1;
+      else if (src[i] === '}') { depth -= 1; if (depth === 0) break; }
+    }
+    const args = src.slice(start, i + 1);
+    assert.match(args, /\baliases\b\s*[:,]/, `${m[1]}() at index ${m.index} passes no alias map`);
+  }
+});
+
 // ------------------------------------------------- the two live failures
 
 test('RED, the #3294 shape: a rollup with no compile lanes fails and NAMES each one', () => {
@@ -282,7 +402,7 @@ test('FAIL CLOSED: an unknown flag exits 1 rather than being ignored', () => {
 
 test('FAIL CLOSED: an unreadable --timeout-seconds exits 1 as BAD_DURATION', () => {
   // `Number('soon')` is NaN, and `now() >= NaN` is false forever: the poll would
-  // spin silently until the job's own 20-minute timeout killed it, leaving the
+  // spin silently until the job's own timeout killed it, leaving the
   // PR with no verdict at all. Unreachable from the shipped workflow, which
   // passes a literal, but a gate about absent output must not have a mode that
   // produces none.
@@ -418,7 +538,7 @@ test('the shipped config EXCLUDES the `test` aggregate, and the exclusion is the
   // lane becomes PRESENT, the thing this gate polls for -- from each run's own
   // creation, over the 68 completed test.yml PR runs of 2026-08-25/26 that
   // published it: min 509 s, median 894 s, max 2067 s, and 33 of the 68 past
-  // the 900 s budget. Requiring it would false-fail half of every green PR.
+  // the 900 s budget then in force. Requiring it would false-fail half of every green PR.
   // The last NON-aggregate lane appeared at 161..845 s over the same runs: 0 of
   // 68 past the budget. Full numbers in scripts/lib/pr-review-signal.test.mjs.
   const cfg = JSON.parse(readFileSync(CONFIG, 'utf8'));

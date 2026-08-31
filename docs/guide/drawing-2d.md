@@ -95,6 +95,22 @@ resolved to the nearest AutoCAD Color Index. Layer names follow the strict
 R12 symbol rules (31 chars, `A-Z a-z 0-9 $ - _`); names that collide after
 sanitizing get a numeric suffix instead of merging.
 
+The returned string declares `$DWGCODEPAGE ANSI_1252` in its HEADER — DXF
+has no UTF-8 support before R2007 (AC1021). Encode it with
+`encodeDxfCp1252` before writing it to a file or `Blob`; a plain UTF-8
+encoder mismatches that declared codepage, and any real DXF reader
+(AutoCAD, `ezdxf`, ...) then decodes non-ASCII text as mojibake:
+
+```typescript
+import { exportToDXF, encodeDxfCp1252 } from '@ifc-lite/drawing-2d';
+
+declare const dxf: ReturnType<typeof exportToDXF>;
+const { bytes, hadUnmappable } = encodeDxfCp1252(dxf);
+// bytes is a Uint8Array ready to write to disk or a Blob.
+// hadUnmappable is true if a character outside windows-1252 (e.g. CJK)
+// was replaced with '?' — R12 TEXT has no wider single-byte encoding.
+```
+
 ## Drawing Sheets
 
 For presentation-ready output, drawings can be placed on sheets with frames and title blocks:

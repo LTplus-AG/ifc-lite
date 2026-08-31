@@ -35,6 +35,7 @@ import type { GeometryResult } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { buildDxfExportTransform, resolveDxfExportGeoreference } from '@/hooks/dxfExportGeoref';
+import { downloadDxf } from '@/hooks/dxfDownload';
 import { DEFAULT_SCAN_SVG_CAP, type ScanBandPoint } from '@/hooks/scanSectionMath';
 import { computeSvgExportViewport, svgExportMmToWorld } from '@/hooks/svgExportViewport';
 import { makePropertiesGetter } from '@/hooks/drawingElementProperties';
@@ -984,9 +985,8 @@ function useDrawingExport({
   // map/CRS coordinates when the model has an IfcMapConversion). DXF
   // reference underlays are not embedded in this export; see PR notes.
   // The point-cloud scan overlay (issue #1805) is likewise deliberately
-  // excluded: it is a raster-like screen aid (up to tens of thousands of
-  // circles), not vector drawing content, and would bloat a CAD exchange
-  // file — SVG export carries it (opt-in) instead.
+  // excluded: it is a raster-like screen aid (tens of thousands of circles),
+  // not vector content — SVG export carries it (opt-in) instead.
   const handleExportDXF = useCallback(() => {
     if (!drawing) return;
     const isCustomPlane = sectionPlane.custom !== undefined;
@@ -1022,7 +1022,7 @@ function useDrawingExport({
       metadataComment,
     });
     const stem = `section-${sectionPlane.axis}-${sectionPlane.position}`;
-    downloadFile(dxf, `${stem}.dxf`, 'application/dxf');
+    downloadDxf(dxf, `${stem}.dxf`);
     posthog.capture('drawing_exported', {
       format: 'dxf',
       axis: sectionPlane.axis,

@@ -292,6 +292,20 @@ export interface CommutationVerifyOptions {
   /** Same for op set B / `certificate.b.client`. */
   expectedClientB?: string;
   /**
+   * Caller-owned policy epsilon (mm), checked against `certificate.epsilonMm`
+   * when supplied. Unlike `spatialRule`/`semantics` below, `epsilonMm` DOES
+   * travel in the certificate, but nothing binds it: a certificate creator
+   * picks its own value and self-verifies against exactly that value, so
+   * deriving the expectation from the certificate's own field would make this
+   * a tautology. A verifier that cares whether the certificate was minted
+   * under the real policy epsilon (not a silently looser one that dodges a
+   * conflict the intended epsilon would flag) supplies its own value here --
+   * same reasoning as `expectedTrustRoot`/`expectedKernelVersion` in
+   * certificate.ts. Without it, `epsilonMm` is unverifiable metadata, like
+   * the client labels.
+   */
+  expectedEpsilonMm?: number;
+  /**
    * Predicate configuration to re-check under. Default `'enabled'`, which is
    * the only sound choice for a real certificate. It is verifier-supplied for
    * the same reason the client labels are: the certificate does not record it
@@ -377,6 +391,9 @@ export async function verifyCommutationCertificate(
   }
   if (certificate.model !== 'merge-model-v0') {
     return fail('model-mismatch', { actual: certificate.model });
+  }
+  if (options.expectedEpsilonMm !== undefined && options.expectedEpsilonMm !== certificate.epsilonMm) {
+    return fail('epsilon-mismatch', { expected: options.expectedEpsilonMm, actual: certificate.epsilonMm });
   }
 
   const { fpsA, fpsB, conflicts } = analyzeCrossPairs(

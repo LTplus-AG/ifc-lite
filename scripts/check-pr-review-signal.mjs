@@ -53,10 +53,16 @@
  *     suite runtime, and nothing is lost: branch protection blocks on the
  *     aggregate anyway, it being one of only two contexts in main's ruleset.
  *     The budget WAS 900 s because 420 still false-failed 8 of those 68 even
- *     with the aggregate out. It is 2400 s now: re-measured on 2026-08-31, 7 of
- *     45 runs that day exceeded 900 s (max 2028 s), and 85-91% of that number is
- *     RUNNER QUEUE, not build. The budget tests assert it against the workflow
- *     YAML rather than restating it here, so this line cannot go stale silently.
+ *     with the aggregate out. It is 2400 s now, re-measured on 2026-08-31, and
+ *     85-91% of the number is RUNNER QUEUE rather than build -- so it has no
+ *     ceiling and will breach again; the remedy then is a re-run, because
+ *     nothing failed.
+ *
+ *     THE FIGURES ARE DELIBERATELY NOT REPEATED HERE. The population, the
+ *     breach counts and the margin live once, in the budget tests in
+ *     scripts/lib/pr-review-signal.test.mjs, which assert them AND assert the
+ *     workflow's shipped budget against them. A copy of a measurement in a
+ *     third file is a copy that goes stale, and this one did.
  *     Full measurement in .github/workflows/pr-review-signal.yml.
  *
  *     THE LOOP ITSELF IS `pollForLanes`, in the lib, over an injected clock and

@@ -608,7 +608,7 @@ const LANE_APPEARED_SECONDS = [
 
 test('MEASURED on 2026-08-25/26: 900 s covered every lane APPEARANCE in THAT population', () => {
   // SCOPED TO ITS POPULATION ON PURPOSE. A later test re-measures on 2026-08-31
-  // and finds seven breaches of 900 s. The two do not contradict each other --
+  // and finds eight breaches of 900 s. The two do not contradict each other --
   // different runs, different day, a busier pool -- but a title claiming "every
   // observed" would, so it says which runs it observed.
   // THE METHODOLOGY HERE WAS WRONG ONCE, AND THE NUMBERS MOVED WHEN IT WAS

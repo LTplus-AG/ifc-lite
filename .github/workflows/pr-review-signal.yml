@@ -121,8 +121,14 @@ jobs:
       #      min 161 / median 190 / p95 522 / max 845 s over those 68 runs, so
       #      420 s would still have false-failed 8 of them. 900 s covered all
       #      68 -- at a tail margin of 900/845 = 1.07x, which this comment
-      #      called thin, and on 2026-08-31 it broke: re-measured that day,
-      #      7 of 45 runs exceeded 900 s, max 2028 s.
+      #      called thin, and on 2026-08-31 it broke.
+      #
+      #      THE POPULATION, THE BREACH COUNT AND THE MARGIN ARE NOT RESTATED
+      #      HERE. They live once, in the budget tests in
+      #      scripts/lib/pr-review-signal.test.mjs, which ASSERT them and which
+      #      assert this file's own numbers against it. This paragraph carried a
+      #      copy twice and was stale both times -- the second time within an
+      #      hour, in the commit that corrected the first.
       #
       #      IT IS NOT MEASURING THE BUILD. On the slow runs 85-91% of the
       #      number is RUNNER-POOL QUEUE (1837 s of queue against 176 s of

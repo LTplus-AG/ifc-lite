@@ -98,9 +98,8 @@ interface MergeSetup {
   firstModelOffset: number;
   /** Infrastructure entities (units, contexts) of the primary model. */
   firstModelInfraMap: Map<string, number[]>;
-  /** Primary model's subcontexts grouped by matching key — see `merged-subcontext.ts`. */
+  /** Primary model's subcontexts-by-key (`merged-subcontext.ts`) and context WCS frame (`merged-context.ts`). */
   firstModelSubContextsByKey: Map<string, number[]>;
-  /** Primary model's representation context WCS origin (metres) — see `merged-context.ts`. */
   firstModelContextWcs: WcsSignature | null;
   /** IfcProject express ids of the primary model. */
   firstProjectIds: number[];
@@ -1100,14 +1099,8 @@ export class MergedExporter {
         }
       }
 
-      // Remap and skip duplicate infrastructure (units, contexts) — subcontexts
-      // kind-matched (merged-subcontext.ts), context/subcontext WCS-gated
-      // (merged-context.ts); a mismatched or wrong-kind pair is kept as its
-      // own model's root.
-      const modelInfra = this.findInfrastructureEntities(model.dataStore);
-      planInfrastructureUnify(model.dataStore, modelInfra, setup.firstModelInfraMap,
-        setup.firstModelSubContextsByKey, setup.firstModelOffset, setup.firstModelContextWcs,
-        this.resolveUnitScale(model), sharedRemap, skipEntityIds);
+      // Remap and skip duplicate infrastructure; see merged-context.ts.
+      planInfrastructureUnify(model.dataStore, this.findInfrastructureEntities(model.dataStore), setup.firstModelInfraMap, setup.firstModelSubContextsByKey, setup.firstModelOffset, setup.firstModelContextWcs, this.resolveUnitScale(model), sharedRemap, skipEntityIds);
 
       // Unify spatial hierarchy: match Site, Building, Storey to first model.
       // Under normalize, this model's raw elevations are in its own unit, so the

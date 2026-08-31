@@ -131,12 +131,16 @@ export function resolveContextWcsMetres(
   const scale = Number.isFinite(lengthUnitScale) && lengthUnitScale > 0 ? lengthUnitScale : 1;
   // Axis2Placement defaults omitted Axis and RefDirection to +Z and +X.
   // Treat omitted and explicit defaults identically, not as an unknown shape.
-  const axis = wcsType.includes('CARTESIANPOINT')
+  const isPoint = wcsType.includes('CARTESIANPOINT');
+  const is2dPlacement = wcsType.includes('AXIS2PLACEMENT2D');
+  // IFC2D places its sole RefDirection at attribute 1; treating that slot as
+  // a 3D Axis loses rotations in the XY frame and can wrongly unify contexts.
+  const axis = isPoint || is2dPlacement
     ? [0, 0, 1] as [number, number, number]
     : parseVector(dataStore, refId(getStepAttr(dataStore, wcsRef, 1)), [0, 0, 1]);
-  const refDirection = wcsType.includes('CARTESIANPOINT')
+  const refDirection = isPoint
     ? [1, 0, 0] as [number, number, number]
-    : parseVector(dataStore, refId(getStepAttr(dataStore, wcsRef, 2)), [1, 0, 0]);
+    : parseVector(dataStore, refId(getStepAttr(dataStore, wcsRef, is2dPlacement ? 1 : 2)), [1, 0, 0]);
   if (axis === null || refDirection === null) return null;
   return { x: x * scale, y: y * scale, z: z * scale, axis, refDirection };
 }

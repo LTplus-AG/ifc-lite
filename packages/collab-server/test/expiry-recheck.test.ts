@@ -22,6 +22,7 @@ import { WebsocketProvider } from 'y-websocket';
 import { MemoryPersistence, startCollabServer, type CollabServerHandle } from '../src/server.js';
 import { MemoryAuditSink } from '../src/audit-log.js';
 import type { Principal } from '../src/auth.js';
+import { closeExpiredConnections, sweepExpiredAcrossRooms } from '../src/principal-expiry.js';
 
 async function waitFor(check: () => boolean, timeoutMs: number, label: string) {
   const start = Date.now();
@@ -57,6 +58,39 @@ async function startWithPrincipal(
 }
 
 describe('Principal.expiresAt re-check', () => {
+  it('does not claim a throwing socket close succeeded and reports the failure', () => {
+    const expired: Principal = { userId: 'u-throwing-close', role: 'viewer', expiresAt: 0 };
+    const reported: Array<{ kind: string; error: unknown }> = [];
+    const closed = closeExpiredConnections(
+      [{ principal: expired, ws: { close: () => { throw new Error('already destroyed'); } } as never }],
+      Date.now(),
+      (kind, error) => reported.push({ kind, error }),
+    );
+
+    expect(closed).toBe(0);
+    expect(reported).toHaveLength(1);
+    expect(reported[0]?.kind).toBe('close');
+    expect(reported[0]?.error).toBeInstanceOf(Error);
+  });
+
+  it('reports a rejected room load while still sweeping every room that loaded', async () => {
+    const rejected = new Error('persistence unavailable');
+    const reported: Array<{ kind: string; error: unknown }> = [];
+    const swept: number[] = [];
+    const closed = await sweepExpiredAcrossRooms(
+      [
+        Promise.reject(rejected),
+        Promise.resolve({ sweepExpiredPrincipals: (now: number) => { swept.push(now); return 2; } }),
+      ],
+      123,
+      (kind, error) => reported.push({ kind, error }),
+    );
+
+    expect(closed).toBe(2);
+    expect(swept).toEqual([123]);
+    expect(reported).toEqual([{ kind: 'room-load', error: rejected }]);
+  });
+
   it('denies a write frame once expiresAt is in the past', async () => {
     const audit = new MemoryAuditSink();
     const expired: Principal = { userId: 'u-expired', role: 'editor', expiresAt: Date.now() - 60_000 };

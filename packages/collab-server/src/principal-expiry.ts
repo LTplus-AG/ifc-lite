@@ -37,6 +37,17 @@ export const EXPIRY_CLOCK_TOLERANCE_MS = DEFAULT_CLOCK_TOLERANCE_SEC * 1000;
  */
 export const EXPIRY_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
+/** The two failures a periodic expiry sweep can observe without aborting every other room. */
+export type ExpirySweepFailure = 'close' | 'room-load';
+
+/** Injectable so callers and behavioral tests can observe a failure rather than losing it in a catch. */
+export type ExpirySweepErrorReporter = (kind: ExpirySweepFailure, error: unknown) => void;
+
+const reportExpirySweepError: ExpirySweepErrorReporter = (kind, error) => {
+  // eslint-disable-next-line no-console
+  console.error(`[collab-server] expiry sweep ${kind} error:`, error);
+};
+
 /** Whether `expiresAt` (ms since epoch), if set, has passed `now` (ms). */
 export function isPrincipalExpired(principal: Principal, now: number): boolean {
   return principal.expiresAt !== undefined && now >= principal.expiresAt + EXPIRY_CLOCK_TOLERANCE_MS;
@@ -53,14 +64,18 @@ export function isPrincipalExpired(principal: Principal, now: number): boolean {
 export function closeExpiredConnections<C extends { ws: WebSocket; principal: Principal }>(
   conns: Iterable<C>,
   now: number,
+  reportError: ExpirySweepErrorReporter = reportExpirySweepError,
 ): number {
   let closed = 0;
   for (const conn of conns) {
     if (!isPrincipalExpired(conn.principal, now)) continue;
     try {
       conn.ws.close(4401, 'expired');
-    } catch {
-      /* socket may already be torn down */
+    } catch (err) {
+      // A synchronous close throw means the socket was NOT closed.  Do not
+      // inflate the returned count; callers use it as their expiry result.
+      reportError('close', err);
+      continue;
     }
     closed++;
   }
@@ -69,20 +84,25 @@ export function closeExpiredConnections<C extends { ws: WebSocket; principal: Pr
 
 /**
  * Await + sweep every room-like value in `rooms` (a `RoomManager`'s pending
- * `Room` promises), skipping one whose load promise rejected — a poisoned
+ * `Room` promises), reporting one whose load promise rejected — a poisoned
  * room is evicted elsewhere and must not abort the sweep for the rest.
  * Returns the total connections closed.
  */
 export async function sweepExpiredAcrossRooms<R extends { sweepExpiredPrincipals(now: number): number }>(
   rooms: Iterable<Promise<R>>,
   now: number,
+  reportError: ExpirySweepErrorReporter = reportExpirySweepError,
 ): Promise<number> {
   let closed = 0;
   for (const pending of rooms) {
     let room: R;
     try {
       room = await pending;
-    } catch {
+    } catch (err) {
+      // A room load failure does not stop other rooms being swept, but it is
+      // not a successful zero-connection result either.  Report it before
+      // continuing so operators can distinguish that state from no expiry.
+      reportError('room-load', err);
       continue;
     }
     closed += room.sweepExpiredPrincipals(now);

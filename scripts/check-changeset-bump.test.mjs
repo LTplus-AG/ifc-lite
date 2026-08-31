@@ -564,4 +564,9 @@ test('the real repository passes, and the run is not vacuous', () => {
   // so a run reporting zero shrinks here would mean the baseline derivation had
   // silently stopped finding anything to compare against.
   assert.match(out, /pending changeset\(s\)/);
+  // And the SHRINK RESULT itself, not merely that a changeset was found. Without
+  // this the test still passes if baseline derivation silently stops comparing
+  // API surfaces and reports zero shrunk packages: a green run over a check that
+  // did nothing, which is the shape this gate exists to prevent.
+  assert.match(out, /1 package\(s\) shrank/);
 });

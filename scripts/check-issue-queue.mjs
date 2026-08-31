@@ -29,6 +29,12 @@
  * BODY, AND THIS REPO HAS ALREADY PAID FOR THAT LESSON.
  *
  *   #2978: the PR body said `Closes ... #2934` on line 1 and, on line 37, "this
+ *   NO_LABELS / NO_TIMELINE / NO_CLOSING_ISSUES  A read came back without the
+ *                    field it must have. All three are REACHABLE and all three
+ *                    are gate bugs rather than contributor errors, so they carry
+ *                    the same remedy as the truncation reasons: file it against
+ *                    this gate and re-run the job. Named here because a refusal
+ *                    with no next action teaches people to ignore refusals.
  *   PR does not close #2934 on its own". Merging would have closed an issue
  *   that stays open. Changing line 1 to `Addresses` was NOT enough --
  *   `closingIssuesReferences` still returned 2934, because GitHub's keyword

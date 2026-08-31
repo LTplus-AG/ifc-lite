@@ -11,9 +11,7 @@ Everything here is agent-written, including the maintainer's own commits, so the
 
 **Every PR has an accountable submitter, and the test is answering, not authorship.** When review asks a question, the submitter answers with evidence: a test, a run, a measurement, a model file that reproduces it. "The agent wrote it" is never an answer. "Here is the run that proves it" always is. You do not need to be able to write the code. You do need to be able to demonstrate what it does. Unanswered questions block the merge.
 
-**A PR claiming user-visible behaviour shows that behaviour.** Not "should work". The verification section of the PR template asks what you ran and what you observed, and it means it. For this repo that usually means a real IFC model from a real authoring tool, an oracle run, or a viewer screenshot, because those are the ground truth an agent cannot fabricate for itself.
-
-**Ground truth is the contribution an agent cannot make.** The most valuable thing a human operator brings here is a file, a measurement, or a reproduction from the physical world of BIM software. Supplying one is worth more than another sweep.
+**A PR claiming user-visible behaviour shows that behaviour.** Not "should work". For this repo that usually means a real IFC model from a real authoring tool, an oracle run, or a viewer screenshot: ground truth an agent cannot fabricate, and the contribution it cannot make. Supplying one is worth more than another sweep.
 
 ## Work selection
 
@@ -23,7 +21,7 @@ Filing issues is welcome and unrestricted: an audit producing twenty good issue 
 
 **One defect class per issue, one issue per PR.** A defect class found once and paid for N times is N review contexts for one decision: nine separate PRs once landed one state-reset class, one call site at a time. Fix the class. Above roughly 1,500 changed lines, stack PRs against the same issue rather than shipping one unreviewable diff.
 
-**A sweep needs a charter.** Audit-driven work (mutation, coverage, conformance sweeps) is some of the most valuable work done here and is not discouraged. It has no natural stopping point, so it needs an issue that names one: what is being swept, and what condition ends it. The maintainer approves the charter once instead of adjudicating each of its PRs.
+**A sweep needs a charter.** Audit-driven work is valuable and not discouraged, but it has no natural stopping point, so it needs an issue naming one: what is swept, and what ends it. Approved once, instead of adjudicated per PR.
 
 ## Commands
 - Install: `corepack enable && pnpm install` (Node 22.x, `pnpm@10.8.1` pinned via `packageManager`).
@@ -241,7 +239,11 @@ If the account is assigned with no claim comment, ask on the issue rather than r
 Doing one does not do the other. Run both, every time:
 
     gh issue view <n> --json assignees      # is one of us on it
-    gh pr list --search "<n>"               # is anyone at all on it
+    gh pr list --search "<n>"               # CANDIDATES; confirm on the issue page
+
+That search is TEXT: it misses linked PRs that never name the number and returns
+unrelated ones that do. A hit is a reason to look, not an answer; the issue's
+linked-PR list is authoritative where they disagree.
 
 On #3012 the account was self-assigned and a PR appeared 47 minutes later. That looked like a session ignoring the claim; it was an outside contributor, who has no reason to know about an internal assignment. No assignee field would have helped, because no session held it. Only the PR search would have.
 
@@ -253,13 +255,18 @@ The expensive case is that both of you are already half-built when the claim app
 
 ### Helping on someone else's issue
 
-Helping is welcome. **Taking over is not.** Two things make it help: they accepted an offer (silence is not a yes), or it has genuinely gone quiet (no commits and no word for about a week, and even then comment first and give them a couple of days).
+Helping is welcome. **Taking over is not.** Two things make it help: they accepted an offer (silence is not a yes), or it has gone quiet (no commits, no word, about a week; even then comment first and wait a couple of days).
 
 Help, no permission needed: reviewing their PR including finding real defects; diagnosing a failing check and posting the cause; answering a question they asked; reporting a defect in shipped code even if their PR introduced it.
 
 Not help, however good the code: building a parallel implementation and announcing it afterwards; carrying an unraised branch that duplicates their work; pushing to their branch; opening a competing PR on their issue.
 
-If you built something before noticing, say so plainly, hand it over, and let them decide. That is recoverable; landing it is not. When you find you have duplicated someone: **the assignee keeps the work** (not whoever is further along, not whoever noticed first), do not close the duplicate silently but enumerate what it holds that the survivor does not, and never push to a branch you do not own to "help".
+If you built something before noticing, say so plainly, hand it over, and let them decide. That is recoverable; landing it is not. When you find you have duplicated someone, the owner follows the rules above in
+order: an outside contributor's PR beats any internal claim; else the earliest
+claim comment wins; the assignee field decides only when neither applies, since it
+cannot name a session. Never whoever is further along or noticed first. Do not
+close the duplicate silently: enumerate what it holds that the survivor does not,
+and never push to a branch you do not own to "help".
 
 This rule exists because it was broken twice in two days against the same external contributor (#2951 filed, assigned and implemented by them as #2952, with #2970 arriving fifteen hours later doing the same thing; and #2670, where they were mid-development when told a parallel implementation existed). The cost is not the wasted effort. It is that a contributor who did everything correctly had to be the one to raise it, twice.
 

@@ -1079,6 +1079,16 @@ jobs:
       # per-DIRECTORY, so it goes blind on the next subdirectory anyone adds.
       - name: Run every scripts/ test file (glob catch-all)
         run: node --test scripts/*.test.mjs scripts/lib/*.test.mjs scripts/fixtures/*.test.mjs scripts/docs/*.test.mjs
+      # Committed codegen output (packages/codegen/generated/**,
+      # packages/parser/src/generated/**, packages/data/src/ifc-schema/
+      # generated/**) had no CI freshness gate at all — a generator bug fixed
+      # by hand-patching the OUTPUT instead of the generator could live in the
+      # tree indefinitely (#3565). This regenerates every target from its
+      # committed .exp / upstream input and diffs against what's committed.
+      # Uses the codegen dist from the build artifact above when fresh, and
+      # rebuilds it (fast, single package) otherwise.
+      - name: Check codegen output freshness
+        run: pnpm run check:codegen-sync
       # The server-parse root-attribute table (attr_indices.rs) is generated
       # from @ifc-lite/parser's SCHEMA_REGISTRY — the SAME table the in-browser
       # parse resolves names against. Guard that the committed file is in sync

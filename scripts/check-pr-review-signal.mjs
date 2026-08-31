@@ -158,6 +158,8 @@ import {
   expandJobNames,
   flattenReviewPages,
   missingLanes,
+  wholesaleSkippedTemplates,
+  matrixSkipAliases,
   flattenCheckRunPages,
   noVerdictReviews,
   pollForLanes,
@@ -519,6 +521,7 @@ function sleepSync(ms) {
  */
 export function evaluate({
   required,
+  aliases = new Map(),
   lanes,
   reviewChecks,
   reviews,
@@ -531,7 +534,22 @@ export function evaluate({
   const lines = [];
   let ok = true;
 
-  const missing = missingLanes(required, lanes);
+  const missing = missingLanes(required, lanes, aliases);
+  // NAMED, NOT SILENT. A wholesale skip is the one way a required lane passes
+  // this gate without a check run of its own, so it is reported every time. If
+  // the path filter that skipped the job is itself wrong, this line is where
+  // that shows up -- the gate cannot adjudicate the filter, and says so rather
+  // than absorbing the skip into a tick.
+  const skippedWholesale = [...wholesaleSkippedTemplates(lanes, aliases)].sort();
+  for (const t of skippedWholesale) {
+    const covered = required.filter((n) => aliases.get(n) === t);
+    lines.push(
+      `➖ \`${t}\` was SKIPPED as a whole job, before its matrix expanded, so its ` +
+        `${covered.length} lane(s) published no check run of their own and are not ` +
+        'counted missing. Whether the `if:` that skipped it was RIGHT is not something ' +
+        'this gate can answer.',
+    );
+  }
   if (missing.length === 0) {
     lines.push(`✅ All ${required.length} required lane(s) from test.yml are present in the rollup.`);
   } else if (isFork && cfg.forkLanesAreAdvisory) {
@@ -725,9 +743,9 @@ function main() {
       `Workflow \`${args.workflow}\` does not exist, so the required lane set cannot be derived.`,
     );
   }
-  const required = expandJobNames(readFileSync(args.workflow, 'utf8'), {
-    exclude: cfg.excludeJobKeys ?? [],
-  });
+  const workflowText = readFileSync(args.workflow, 'utf8');
+  const required = expandJobNames(workflowText, { exclude: cfg.excludeJobKeys ?? [] });
+  const aliases = matrixSkipAliases(workflowText, { exclude: cfg.excludeJobKeys ?? [] });
 
   // Offline mode for the regression harness: a JSON blob standing in for the
   // three API reads, driving the identical `evaluate`.
@@ -735,6 +753,7 @@ function main() {
     const state = JSON.parse(readFileSync(args.stateFile, 'utf8'));
     const { ok, lines } = evaluate({
       required: state.required ?? required,
+      aliases,
       lanes: state.lanes,
       reviewChecks: state.reviewChecks ?? [],
       // NOT `?? []`. A state file that omits `reviews` has told this gate
@@ -791,6 +810,7 @@ function main() {
   const readState = () => fetchPrState({ pr: args.pr, repo, selfName: args.selfName });
   const { state, timedOut } = pollForLanes({
     required,
+    aliases,
     initialState: readState(),
     fetchState: readState,
     deadline: Date.now() + args.timeoutSeconds * 1000,
@@ -823,6 +843,7 @@ function main() {
 
   const { ok, lines } = evaluate({
     required,
+    aliases,
     lanes: state.lanes,
     reviewChecks,
     reviews,

@@ -156,62 +156,95 @@ function parseMatrix(block) {
  * question, independent of what any filter decided. Verified against PR #3305's
  * rollup, which carries `Docs checks (docs-only PRs)` at `SKIPPED`.
  *
+ * THAT PREMISE HAS ONE EXCEPTION, AND THE EVIDENCE ABOVE COULD NOT SHOW IT.
+ * `Docs checks (docs-only PRs)` is a PLAIN job, so its skipped check run carries
+ * the same name a run one would. A job skipped by `if:` BEFORE its matrix
+ * expands publishes ONE check run under the UNEXPANDED template, verbatim
+ * braces and all. Measured on PR #3581, a `.coderabbit.yaml`-only change, whose
+ * rollup carries:
+ *
+ *   Viewer tests (shard ${{ matrix.shard }})   COMPLETED/SKIPPED
+ *
+ * and no `Viewer tests (shard 0..3)` at all. So the four names this function
+ * derives are unsatisfiable on any PR that touches neither `frontend` nor
+ * `rust` paths, and the gate called that MISSING_LANES with a remedy -- "re-run
+ * the workflow" -- that cannot work, because nothing failed to spawn.
+ *
+ * `matrixSkipAliases` below carries the mapping needed to close that, and
+ * `missingLanes` accepts it. This function's own output is unchanged: the four
+ * expansions are still what a job that DOES run must publish.
+ *
  * @param {string} text - workflow file contents.
  * @param {{ exclude?: Iterable<string> }} [opts] - job KEYS to leave out.
  * @returns {string[]} sorted check names.
  */
+/**
+ * One job's check names, and the TEMPLATE they came from.
+ *
+ * Split out of `expandJobNames` so that `matrixSkipAliases` derives its mapping
+ * from the very same expansion rather than from a second copy of the rules. Two
+ * copies held together only by a comment drift, and drift here is silent: the
+ * alias map would stop covering a lane and the gate would fail a PR that is fine.
+ *
+ * @param {{ key: string, name: string | null, matrix: Record<string, string[]> }} job
+ * @returns {{ template: string, names: string[] }} `template` equals the single
+ *   name for a non-matrix job, and carries `${{ matrix.* }}` verbatim otherwise.
+ */
+function jobCheckNames(job) {
+  const template = job.name ?? job.key;
+  const keys = [...template.matchAll(/\$\{\{\s*matrix\.([A-Za-z0-9_-]+)\s*\}\}/g)].map(
+    (m) => m[1],
+  );
+
+  if (keys.length === 0) {
+    if (template.includes('${{')) {
+      throw new ReviewSignalError(
+        'UNRESOLVED_JOB_NAME',
+        `Job \`${job.key}\` has name \`${template}\`, which contains a GitHub Actions ` +
+          'expression this gate cannot resolve. Its check name is therefore unknown, and a ' +
+          'lane whose expected name is unknown cannot be checked for presence. Either give ' +
+          'the job a literal name or teach this function that expression.',
+      );
+    }
+    return { template, names: [template] };
+  }
+
+  let combos = [template];
+  for (const key of keys) {
+    const values = job.matrix[key];
+    if (!values || values.length === 0) {
+      throw new ReviewSignalError(
+        'UNRESOLVED_JOB_NAME',
+        `Job \`${job.key}\` names \`matrix.${key}\` in its check name but no inline ` +
+          `\`${key}: [...]\` list was found under \`strategy.matrix\`. The set of check ` +
+          'names it publishes is unknown; refusing to guess.',
+      );
+    }
+    combos = combos.flatMap((c) =>
+      values.map((v) =>
+        c.replaceAll(new RegExp(`\\$\\{\\{\\s*matrix\\.${key}\\s*\\}\\}`, 'g'), v),
+      ),
+    );
+  }
+  for (const c of combos) {
+    if (c.includes('${{')) {
+      throw new ReviewSignalError(
+        'UNRESOLVED_JOB_NAME',
+        `Job \`${job.key}\` still carries an unresolved expression after matrix expansion: ` +
+          `\`${c}\`.`,
+      );
+    }
+  }
+  return { template, names: combos };
+}
+
 export function expandJobNames(text, opts = {}) {
   const exclude = new Set(opts.exclude ?? []);
   const names = new Set();
 
   for (const job of parseWorkflowJobs(text)) {
     if (exclude.has(job.key)) continue;
-    const template = job.name ?? job.key;
-    const keys = [...template.matchAll(/\$\{\{\s*matrix\.([A-Za-z0-9_-]+)\s*\}\}/g)].map(
-      (m) => m[1],
-    );
-
-    if (keys.length === 0) {
-      if (template.includes('${{')) {
-        throw new ReviewSignalError(
-          'UNRESOLVED_JOB_NAME',
-          `Job \`${job.key}\` has name \`${template}\`, which contains a GitHub Actions ` +
-            'expression this gate cannot resolve. Its check name is therefore unknown, and a ' +
-            'lane whose expected name is unknown cannot be checked for presence. Either give ' +
-            'the job a literal name or teach this function that expression.',
-        );
-      }
-      names.add(template);
-      continue;
-    }
-
-    let combos = [template];
-    for (const key of keys) {
-      const values = job.matrix[key];
-      if (!values || values.length === 0) {
-        throw new ReviewSignalError(
-          'UNRESOLVED_JOB_NAME',
-          `Job \`${job.key}\` names \`matrix.${key}\` in its check name but no inline ` +
-            `\`${key}: [...]\` list was found under \`strategy.matrix\`. The set of check ` +
-            'names it publishes is unknown; refusing to guess.',
-        );
-      }
-      combos = combos.flatMap((c) =>
-        values.map((v) =>
-          c.replaceAll(new RegExp(`\\$\\{\\{\\s*matrix\\.${key}\\s*\\}\\}`, 'g'), v),
-        ),
-      );
-    }
-    for (const c of combos) {
-      if (c.includes('${{')) {
-        throw new ReviewSignalError(
-          'UNRESOLVED_JOB_NAME',
-          `Job \`${job.key}\` still carries an unresolved expression after matrix expansion: ` +
-            `\`${c}\`.`,
-        );
-      }
-      names.add(c);
-    }
+    for (const n of jobCheckNames(job).names) names.add(n);
   }
 
   if (names.size === 0) {
@@ -226,6 +259,56 @@ export function expandJobNames(text, opts = {}) {
 }
 
 /**
+ * Expanded check name -> the unexpanded template its job publishes when the
+ * WHOLE job is skipped before the matrix expands.
+ *
+ * Only matrix jobs appear here. A plain job's skipped check run already carries
+ * the name `expandJobNames` derives, so it needs no alias and gets none: adding
+ * one would let a plain lane be satisfied by something other than itself.
+ *
+ * @param {string} text - workflow file contents.
+ * @param {{ exclude?: Iterable<string> }} [opts] - job KEYS to leave out.
+ * @returns {Map<string, string>}
+ */
+export function matrixSkipAliases(text, opts = {}) {
+  const exclude = new Set(opts.exclude ?? []);
+  const aliases = new Map();
+  for (const job of parseWorkflowJobs(text)) {
+    if (exclude.has(job.key)) continue;
+    const { template, names } = jobCheckNames(job);
+    if (names.length === 1 && names[0] === template) continue; // not a matrix job
+    for (const n of names) aliases.set(n, template);
+  }
+  return aliases;
+}
+
+/**
+ * Templates present in the rollup with conclusion `skipped` -- GitHub saying it
+ * decided the whole job before expanding it.
+ *
+ * `skipped` AND NOTHING ELSE. The template name appearing at `success` would
+ * mean a job really is publishing under a literal `${{ ... }}` name, which is a
+ * broken workflow, not a skip; at `queued` it would mean the decision is not
+ * made yet, and treating that as covered would let the poll stop early on a
+ * matrix that is still about to fan out.
+ *
+ * @param {Array<{ name: string, state?: string }>} rollup
+ * @param {Map<string, string>} aliases
+ * @returns {Set<string>}
+ */
+export function wholesaleSkippedTemplates(rollup, aliases) {
+  const templates = new Set(aliases.values());
+  const out = new Set();
+  if (!Array.isArray(rollup)) return out;
+  for (const c of rollup) {
+    if (templates.has(c?.name) && String(c?.state ?? '').toLowerCase() === 'skipped') {
+      out.add(c.name);
+    }
+  }
+  return out;
+}
+
+/**
  * Which required lanes are absent from the rollup.
  *
  * "Present" means the name appears AT ALL -- queued, in progress, skipped or
@@ -234,11 +317,20 @@ export function expandJobNames(text, opts = {}) {
  * the `opened`/`synchronize` race, where the caller polls until this returns
  * empty or the budget runs out.
  *
+ * A required name is ALSO present when its job was skipped wholesale before the
+ * matrix expanded -- see `matrixSkipAliases`. That is not a weakening of the
+ * presence rule, it is the same rule read off the check run GitHub actually
+ * published: a skipped plain job satisfies its own name, and this lets a skipped
+ * matrix job satisfy the names it would have published. Absence with NO check
+ * run of either kind still fails, which is the case the gate exists for.
+ *
  * @param {string[]} required
- * @param {Array<{ name: string }>} rollup
+ * @param {Array<{ name: string, state?: string }>} rollup
+ * @param {Map<string, string>} [aliases] - from `matrixSkipAliases`; empty means
+ *   the strict name-for-name rule, which is what every caller had before.
  * @returns {string[]} sorted missing names.
  */
-export function missingLanes(required, rollup) {
+export function missingLanes(required, rollup, aliases = new Map()) {
   if (!Array.isArray(rollup) || rollup.length === 0) {
     throw new ReviewSignalError(
       'NO_ROLLUP',
@@ -248,7 +340,8 @@ export function missingLanes(required, rollup) {
     );
   }
   const present = new Set(rollup.map((c) => c.name));
-  return required.filter((n) => !present.has(n)).sort();
+  const skipped = wholesaleSkippedTemplates(rollup, aliases);
+  return required.filter((n) => !present.has(n) && !skipped.has(aliases.get(n))).sort();
 }
 
 /**
@@ -445,6 +538,7 @@ function laneSignature(lanes) {
  */
 export function pollForLanes({
   required,
+  aliases = new Map(),
   initialState,
   fetchState,
   deadline,
@@ -464,7 +558,7 @@ export function pollForLanes({
   for (;;) {
     let stillMissing;
     try {
-      stillMissing = missingLanes(required, state.lanes);
+      stillMissing = missingLanes(required, state.lanes, aliases);
     } catch {
       stillMissing = required; // NO_ROLLUP: treat as "nothing has appeared yet".
     }

@@ -20,6 +20,7 @@ import {
   ReviewSignalError,
   expandJobNames,
   flattenReviewPages,
+  matrixSkipAliases,
   missingLanes,
   noVerdictReviews,
   pollForLanes,
@@ -30,6 +31,7 @@ import {
   STALE_REVIEW_POLICIES,
   SETTLE_HOLD_SECONDS,
   pullRequestBranchFilterKeys,
+  wholesaleSkippedTemplates,
 } from './pr-review-signal.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -155,6 +157,130 @@ test('presence counts a SKIPPED lane: a path-filtered job still published a chec
 
 test('presence counts a QUEUED lane: the workflow fired, which is the question', () => {
   assert.deepEqual(missingLanes(['A'], [LANE('A', 'queued')]), []);
+});
+
+// ------------------------------------------- a matrix job skipped BEFORE expanding
+
+/**
+ * VERBATIM from PR #3581's rollup on 2026-08-31 (a `.coderabbit.yaml`-only
+ * change, so `needs.changes.outputs.frontend` was false). Note what is NOT here:
+ * `Viewer tests (shard 0)` through `(shard 3)`. GitHub published ONE check run,
+ * under the unexpanded template, because the job was skipped before its matrix
+ * expanded.
+ */
+const PR3581_ROLLUP = [
+  { name: 'Detect changes', state: 'success' },
+  { name: 'Build + WASM + Rust + Node', state: 'success' },
+  { name: 'Build packages + WASM', state: 'skipped' },
+  { name: 'Viewer E2E smoke', state: 'skipped' },
+  { name: 'Viewer tests (shard ${{ matrix.shard }})', state: 'skipped' },
+];
+
+test('RED, the #3581 shape: a skipped MATRIX job publishes its template, not its expansions', () => {
+  // The premise the gate shipped with -- "a skipped job still publishes a check
+  // run under the name we derived" -- was verified against `Docs checks
+  // (docs-only PRs)`, a PLAIN job, where it holds. It does not hold here, and
+  // the difference is invisible until a PR touches neither frontend nor rust.
+  const required = ['Viewer tests (shard 0)', 'Viewer tests (shard 1)'];
+  assert.deepEqual(
+    missingLanes(required, PR3581_ROLLUP),
+    required,
+    'without the alias map both shards read as never having run',
+  );
+  const aliases = matrixSkipAliases(WF);
+  assert.deepEqual(missingLanes(required, PR3581_ROLLUP, aliases), []);
+});
+
+test('the alias covers ONLY a skip: the template at any other state satisfies nothing', () => {
+  // A template name at `success` means a workflow really is publishing a literal
+  // `${{ ... }}` check, which is broken, not skipped. At `queued` the decision is
+  // not made yet, and calling that covered would let the poll stop mid-fan-out.
+  const aliases = matrixSkipAliases(WF);
+  const required = ['Viewer tests (shard 0)'];
+  for (const state of ['success', 'queued', 'in_progress', 'failure', '']) {
+    const rollup = [{ name: 'Viewer tests (shard ${{ matrix.shard }})', state }];
+    assert.deepEqual(missingLanes(required, rollup, aliases), required, `state "${state}"`);
+  }
+});
+
+test('the alias is not a blanket pass: a shard absent with NO check run of any kind still fails', () => {
+  const aliases = matrixSkipAliases(WF);
+  assert.deepEqual(
+    missingLanes(['Viewer tests (shard 0)'], [{ name: 'Detect changes', state: 'success' }], aliases),
+    ['Viewer tests (shard 0)'],
+    'this is the #3294 case the gate exists for, and it must be untouched',
+  );
+});
+
+test('a PLAIN job gets no alias, so nothing but its own name can satisfy it', () => {
+  // Giving a plain job an alias would be a real weakening: its skipped check run
+  // already carries the derived name, so an alias could only ever let some OTHER
+  // check stand in for it.
+  const aliases = matrixSkipAliases(WF);
+  assert.equal(aliases.has('Detect changes'), false);
+  assert.equal(aliases.has('unnamed-job'), false);
+  assert.deepEqual([...new Set(aliases.values())], ['Viewer tests (shard ${{ matrix.shard }})']);
+  assert.equal(aliases.size, 4, 'all four shards, and only those');
+});
+
+test('the REAL test.yml maps every viewer shard to the template the REAL rollup published', () => {
+  // The pairing that matters: the SAME workflow file the gate derives from must
+  // produce the alias for the SAME string PR #3581 was observed carrying. A
+  // hand-written template in a fixture would prove nothing about that string.
+  const aliases = matrixSkipAliases(
+    readFileSync(join(REPO_ROOT, '.github/workflows/test.yml'), 'utf8'),
+  );
+  for (const shard of [0, 1, 2, 3]) {
+    assert.equal(
+      aliases.get(`Viewer tests (shard ${shard})`),
+      'Viewer tests (shard ${{ matrix.shard }})',
+      `shard ${shard}`,
+    );
+  }
+  const observed = PR3581_ROLLUP.map((c) => c.name);
+  assert.ok(
+    observed.includes([...new Set(aliases.values())][0]),
+    'the derived template must be a string PR #3581 actually published',
+  );
+});
+
+test('the whole real required set survives the real skipped rollup', () => {
+  // End to end over the shipped config: the lanes test.yml publishes, against
+  // the rollup PR #3581 published, must leave only lanes that genuinely never
+  // appeared -- and the four viewer shards must not be among them.
+  const wf = readFileSync(join(REPO_ROOT, '.github/workflows/test.yml'), 'utf8');
+  const required = expandJobNames(wf, { exclude: CFG.excludeJobKeys ?? [] });
+  const missing = missingLanes(required, PR3581_ROLLUP, matrixSkipAliases(wf, { exclude: CFG.excludeJobKeys ?? [] }));
+  for (const shard of [0, 1, 2, 3]) {
+    assert.ok(!missing.includes(`Viewer tests (shard ${shard})`), `shard ${shard} must not be missing`);
+  }
+});
+
+test('a wholesale skip is REPORTED, never absorbed into a tick', () => {
+  const aliases = matrixSkipAliases(WF);
+  assert.deepEqual(
+    [...wholesaleSkippedTemplates(PR3581_ROLLUP, aliases)],
+    ['Viewer tests (shard ${{ matrix.shard }})'],
+  );
+  // And nothing is reported when nothing was skipped wholesale.
+  assert.equal(wholesaleSkippedTemplates([{ name: 'Detect changes', state: 'skipped' }], aliases).size, 0);
+});
+
+test('the poll does not wait out its budget on a matrix that was skipped wholesale', () => {
+  // Before the alias map this was the lived cost of the bug: the lanes could
+  // never appear, so the poll ran the full 900 s before failing.
+  let slept = 0;
+  const r = pollForLanes({
+    required: ['Viewer tests (shard 0)', 'Detect changes'],
+    aliases: matrixSkipAliases(WF),
+    initialState: { lanes: PR3581_ROLLUP },
+    fetchState: () => ({ lanes: PR3581_ROLLUP }),
+    deadline: Date.now() + 900_000,
+    pollSeconds: 30,
+    sleep: (ms) => { slept += ms; },
+  });
+  assert.equal(r.timedOut, false);
+  assert.equal(slept, 0, 'it returns on the first read');
 });
 
 test('the #3294 shape: only deploy/review lanes present -> every compile lane named missing', () => {

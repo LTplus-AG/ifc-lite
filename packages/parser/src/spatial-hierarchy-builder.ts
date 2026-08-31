@@ -205,9 +205,9 @@ export class SpatialHierarchyBuilder {
     // source bytes; the source-less buildFromCache fallback leaves it undefined,
     // exactly like storey elevation.
     const rawLongName = this.extractLongName(expressId, ctx);
-    // Fall back to LongName when Name is empty (common for IfcSpace), then to a
-    // stable placeholder, so every node still renders a label.
-    const name = rawName || rawLongName || `Entity #${expressId}`;
+    // Fall back to LongName when Name is empty (common for IfcSpace). Left
+    // empty, not a fabricated `Entity #<id>` — it flows into the export layer.
+    const name = rawName || rawLongName || '';
     // Only keep LongName as a distinct descriptor when it adds something beyond
     // the primary label (never duplicate it into the secondary slot).
     const longName = rawLongName && rawLongName !== name ? rawLongName : undefined;

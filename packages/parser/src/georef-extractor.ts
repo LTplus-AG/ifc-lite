@@ -184,6 +184,13 @@ function getAttributeValueByName(entity: IfcEntity, attributeName: string): unkn
   return entity.attributes[index];
 }
 
+// Canonical sign lives on the first non-zero component (`minutesRaw < 0`
+// below already handles it); this also defensively honours `-0` on a
+// zero-magnitude degree token, which `x < 0` alone misses (IEEE-754 -0).
+function isNegativeComponent(n: number): boolean {
+  return n < 0 || Object.is(n, -0);
+}
+
 function compoundPlaneAngleToDecimalDegrees(value: unknown): number | undefined {
   if (!Array.isArray(value) || value.length < 3) return undefined;
   const numbers = value
@@ -192,7 +199,13 @@ function compoundPlaneAngleToDecimalDegrees(value: unknown): number | undefined 
   if (numbers.length < 3) return undefined;
 
   const [degreesRaw, minutesRaw, secondsRaw, millionthsRaw = 0] = numbers;
-  const sign = degreesRaw < 0 || minutesRaw < 0 || secondsRaw < 0 || millionthsRaw < 0 ? -1 : 1;
+  const sign =
+    isNegativeComponent(degreesRaw) ||
+    isNegativeComponent(minutesRaw) ||
+    isNegativeComponent(secondsRaw) ||
+    isNegativeComponent(millionthsRaw)
+      ? -1
+      : 1;
   const degrees = Math.abs(degreesRaw);
   const minutes = Math.abs(minutesRaw);
   const seconds = Math.abs(secondsRaw);

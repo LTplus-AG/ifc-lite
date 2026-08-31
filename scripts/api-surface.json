@@ -1954,6 +1954,7 @@
     "isWasmAssetUnavailableError: function",
     "isWasmRuntimeTrap: function",
     "isWasmRuntimeUnrecoverableError: function",
+    "isWorkerScriptSkewMessage: function",
     "mergeGeometryDiagnostics: function",
     "pickWorkerCount: function",
     "prewarmSharedWasmModule: function"

@@ -9,9 +9,13 @@
 //! Supported escapes:
 //! - `\X2\HHHH..\X0\` UTF-16 code units, 4 hex digits each (surrogate pairs ok)
 //! - `\X4\HHHHHHHH..\X0\` Unicode scalar values, 8 hex digits each
-//! - `\X\HH` single ISO-8859-1 byte
-//! - `\S\C` extended ASCII: code point of `C` plus 128
-//! - `\PC\` code-page directive, consumed and dropped
+//! - `\X\HH` single ISO-8859-1 byte (NOT code-page dependent: always the ISO
+//!   10646 row-0 value, per ISO 10303-21 6.4.3)
+//! - `\S\C` extended ASCII: code point of `C` plus 128, mapped through the
+//!   currently selected `\P?\` code page (default ISO 8859-1)
+//! - `\PA\`..`\PI\` code-page directive (A=ISO 8859-1 .. I=ISO 8859-9):
+//!   tracked for subsequent `\S\` escapes, then dropped. Any other letter is
+//!   dropped without changing the active page.
 //!
 //! ISO 10303-21 also doubles the reverse solidus inside a string literal, so
 //! `\\` decodes to one `\`. That arm sits AFTER the directive arms: a directive
@@ -24,6 +28,10 @@
 //! the surrounding quotes and un-double before calling this.
 
 use std::borrow::Cow;
+
+#[path = "step_codepages.rs"]
+mod step_codepages;
+use step_codepages::resolve_extended_char;
 
 /// Decode IFC STEP string escapes to UTF-8.
 ///
@@ -43,6 +51,7 @@ pub fn decode_ifc_string(s: &str) -> Cow<'_, str> {
     let n = bytes.len();
     let mut out = String::with_capacity(n);
     let mut i = 0;
+    let mut codepage: u8 = 1;
 
     while i < n {
         if bytes[i] != b'\\' {
@@ -54,18 +63,26 @@ pub fn decode_ifc_string(s: &str) -> Cow<'_, str> {
             continue;
         }
 
-        // `\PC\` code-page directive: consume four bytes and drop.
+        // `\PC\` code-page directive: track A..I as codepage 1..9 for
+        // subsequent `\S\` escapes, then drop the four bytes. Any other
+        // letter (or an unrecognized custom-page form) is dropped without
+        // changing the active page.
         if i + 3 < n && bytes[i + 1] == b'P' && bytes[i + 3] == b'\\' {
+            let letter = bytes[i + 2];
+            if (b'A'..=b'I').contains(&letter) {
+                codepage = letter - b'A' + 1;
+            }
             i += 4;
             continue;
         }
 
-        // `\S\C`: byte value is the code point of `C` plus 128. Read `C` as a
-        // whole char and advance by its UTF-8 length so a malformed multi-byte
-        // `C` can't leave `i` mid-character (which would panic the next slice).
+        // `\S\C`: byte value is the code point of `C` plus 128, mapped
+        // through the active code page. Read `C` as a whole char and advance
+        // by its UTF-8 length so a malformed multi-byte `C` can't leave `i`
+        // mid-character (which would panic the next slice).
         if i + 3 < n && bytes[i + 1] == b'S' && bytes[i + 2] == b'\\' {
             let c = s[i + 3..].chars().next().unwrap();
-            let code = c as u32 + 128;
+            let code = resolve_extended_char(codepage, c as u32 + 128);
             out.push(char::from_u32(code).unwrap_or('\u{FFFD}'));
             i += 3 + c.len_utf8();
             continue;
@@ -271,6 +288,22 @@ mod tests {
         let _ = decode_ifc_string("x\\S\\\u{1F600}y");
         // The canonical single-ASCII form is unchanged.
         assert_eq!(decode_ifc_string(r"\S\a"), "\u{E1}");
+    }
+
+    #[test]
+    fn s_escape_honours_the_selected_code_page() {
+        // ISO 10303-21 6.4.3: \PE\ selects ISO 8859-5 (Cyrillic). Before
+        // codepage tracking, every \S\ was decoded as if the default page
+        // (ISO 8859-1) were active, giving U+00D0 (LATIN CAPITAL LETTER ETH)
+        // instead of the correct U+0430 (CYRILLIC SMALL LETTER A).
+        assert_eq!(decode_ifc_string(r"\PE\\S\P"), "\u{0430}");
+        // The page persists across multiple \S\ escapes in the same string...
+        assert_eq!(decode_ifc_string(r"\PE\\S\P\S\Q"), "\u{0430}\u{0431}");
+        // ...until another \P?\ directive switches it again.
+        assert_eq!(decode_ifc_string(r"\PE\\S\P\PA\\S\P"), "\u{0430}\u{00D0}");
+        // A byte position ISO 8859-6 (Arabic, \PF\) itself leaves unassigned
+        // falls back to the raw code point rather than U+FFFD.
+        assert_eq!(decode_ifc_string(r"\PF\\S\0"), "\u{00B0}");
     }
 
     #[test]

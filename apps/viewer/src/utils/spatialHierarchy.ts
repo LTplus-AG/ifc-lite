@@ -134,8 +134,8 @@ export interface SpatialAncestryIndex {
  *
  * `getName` resolves an entity's real IFC `Name` — pass the store's
  * `entities.getName` so an UNNAMED container resolves to '' (matching how the
- * storey column behaves), rather than the `SpatialNode.name` placeholder the
- * hierarchy builder synthesizes (`Entity #N`). `getClass` (optional) resolves an
+ * storey column behaves). The hierarchy builder no longer synthesizes an
+ * `Entity #N` placeholder for `SpatialNode.name` (#3530). `getClass` (optional) resolves an
  * entity's IFC class name, used only as the `containerOf` fallback for an
  * unnamed immediate container. "Building" spans every
  * building-like spatial type (IFC4X3 IfcFacility / IfcBridge / IfcRoad / …), so

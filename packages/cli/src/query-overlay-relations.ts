@@ -34,8 +34,10 @@ interface QueuedRelation {
 function refIds(value: unknown): number[] {
   if (typeof value === 'string') {
     const trimmed = value.trim();
-    const id = Number.parseInt(trimmed.slice(1), 10);
-    return trimmed.startsWith('#') && Number.isFinite(id) ? [id] : [];
+    const match = /^#(\d+)$/.exec(trimmed);
+    if (!match) return [];
+    const id = Number(match[1]);
+    return Number.isSafeInteger(id) ? [id] : [];
   }
   if (Array.isArray(value)) return value.flatMap((item) => refIds(item));
   return [];

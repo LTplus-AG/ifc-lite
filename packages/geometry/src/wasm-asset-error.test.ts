@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   isWasmAssetUnavailableError,
+  isWorkerScriptSkewMessage,
   notifyIfWorkerScriptUnavailable,
   notifyIfWasmAssetUnavailable,
   WASM_ASSET_UNAVAILABLE_EVENT,
@@ -75,6 +76,32 @@ describe('isWasmAssetUnavailableError', () => {
     expect(isWasmAssetUnavailableError('')).toBe(false);
     expect(isWasmAssetUnavailableError(null)).toBe(false);
     expect(isWasmAssetUnavailableError(undefined)).toBe(false);
+  });
+});
+
+describe('isWorkerScriptSkewMessage (#3533)', () => {
+  it('flags the pre-pass worker wrapper of the worker-script signature', () => {
+    expect(
+      isWorkerScriptSkewMessage(
+        'Pre-pass worker failed: worker script failed to load (possibly a stale deployment)',
+      ),
+    ).toBe(true);
+  });
+
+  it('flags the sibling geometry-worker-pool wrapper of the same signature', () => {
+    expect(
+      isWorkerScriptSkewMessage(
+        'Geometry worker failed: worker script failed to load (possibly a stale deployment)',
+      ),
+    ).toBe(true);
+  });
+
+  it('does NOT flag a genuine worker failure that merely shares the "worker" wrapper prefix', () => {
+    expect(isWorkerScriptSkewMessage('Pre-pass worker failed: RangeError: out of memory')).toBe(false);
+    expect(isWorkerScriptSkewMessage('Geometry worker failed: worker terminated unexpectedly')).toBe(false);
+    expect(isWorkerScriptSkewMessage('')).toBe(false);
+    expect(isWorkerScriptSkewMessage(null)).toBe(false);
+    expect(isWorkerScriptSkewMessage(undefined)).toBe(false);
   });
 });
 

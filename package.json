@@ -96,13 +96,13 @@
     "@changesets/cli": "^3.0.1",
     "@changesets/parse": "1.0.0",
     "@playwright/test": "^1.62.1",
-    "@posthog/cli": "0.14.1",
-    "@types/node": "^26.2.0",
+    "@posthog/cli": "0.16.0",
+    "@types/node": "^26.4.0",
     "gltf-validator": "2.0.0-dev.3.10",
-    "knip": "^6.32.2",
-    "oxlint": "^1.79.0",
+    "knip": "^6.32.3",
+    "oxlint": "^1.80.0",
     "tsx": "^4.23.12",
-    "turbo": "^2.10.11",
+    "turbo": "^2.10.12",
     "typescript": "^6.0.3"
   },
   "engines": {

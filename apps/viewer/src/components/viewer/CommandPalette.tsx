@@ -101,6 +101,7 @@ import { exportCsvFromBytes } from '@/lib/export/csv';
 import { downloadFile, buildExportFilename, stripExtension } from '@/lib/export/download';
 import { GeometryProcessor } from '@ifc-lite/geometry';
 import { isUsdExportableModel, resolveUsdExportBytes } from './usd-export-source';
+import { buildCommandPaletteJsonEntities } from './commandPaletteJsonExport';
 import { getRecentFiles, formatFileSize, getCachedFile, getCachedFileNames } from '@/lib/recent-files';
 import type { RecentFileEntry } from '@/lib/recent-files';
 import { closeActiveAnalysisExtension } from '@/services/analysis-extensions';
@@ -588,8 +589,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => {
           const d = useViewerStore.getState().ifcDataStore; if (!d) return;
           try {
-            const out: Record<string, unknown>[] = [];
-            for (let i = 0; i < d.entities.count; i++) { const id = d.entities.expressId[i]; out.push({ expressId: id, globalId: d.entities.getGlobalId(id), name: d.entities.getName(id), type: d.entities.getTypeName(id), properties: d.properties.getForEntity(id) }); }
+            const out = buildCommandPaletteJsonEntities(d);
             downloadFile(JSON.stringify({ entities: out }, null, 2), 'model-data.json', 'application/json');
           } catch (e) { console.error(e); }
         } },

@@ -30,7 +30,7 @@
   },
   "devDependencies": {
     "@ifc-lite/timing-ladder": "workspace:^",
-    "happy-dom": "^20.11.6",
+    "happy-dom": "^20.11.12",
     "typescript": "^6.0.3",
     "vitest": "^4.1.11",
     "xmllint-wasm": "5.3.0"

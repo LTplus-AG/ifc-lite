@@ -89,6 +89,7 @@ import {
 import { escapeCsvCell, exportToStep, StepExporter, type StepExportOptions } from '@ifc-lite/export';
 import { exportHbjson, exportDfjson } from './energy-export.js';
 import { foldQueuedRelated } from './query-overlay-relations.js';
+import { overlayEntityData, foldNewEntities } from './query-overlay.js';
 
 // `expandTypes` used to be defined here; it now comes from `@ifc-lite/parser`,
 // shared with the other query backends (see `query-backend-maps.ts`). Re-exported
@@ -239,8 +240,9 @@ export class HeadlessBackend implements BimBackend {
     const getMutationView = () => this.mutationView;
 
     function getEntityData(ref: EntityRef): EntityData | null {
-      // Verify the entity actually exists in the parsed data
-      if (!store.entityIndex.byId.has(ref.expressId)) return null;
+      const overlay = overlayEntityData(getMutationView(), ref);
+      if (overlay !== undefined) return overlay;
+      if (!store.entityIndex.byId.has(ref.expressId)) return null; // not parsed either
       const node = new EntityNode(store, ref.expressId);
       const type = node.type;
       if (!type || type === 'Unknown') return null;
@@ -282,6 +284,7 @@ export class HeadlessBackend implements BimBackend {
     return {
       entities(descriptor: QueryDescriptor): EntityData[] {
         const results: EntityData[] = [];
+        const view = getMutationView();
 
         let entityIds: number[];
         if (descriptor.types && descriptor.types.length > 0) {
@@ -301,6 +304,7 @@ export class HeadlessBackend implements BimBackend {
 
         for (const expressId of entityIds) {
           if (expressId === 0) continue;
+          if (view?.isDeleted(expressId)) continue; // tombstoned this session
           const node = new EntityNode(store, expressId);
           results.push({
             ref: { modelId: MODEL_ID, expressId },
@@ -311,7 +315,7 @@ export class HeadlessBackend implements BimBackend {
             objectType: node.objectType,
           });
         }
-
+        if (view) results.push(...foldNewEntities(view, descriptor.types, expandTypes, isProductType, MODEL_ID));
         let filtered = results;
         if (descriptor.filters && descriptor.filters.length > 0) {
           const propsCache = new Map<number, PropertySetData[]>();
@@ -354,8 +358,11 @@ export class HeadlessBackend implements BimBackend {
         // comparison is false) instead of rejecting it, and by the same
         // reasoning silently ignored a deliberate `limit: 0`. Reject
         // non-finite/negative values loudly instead of quietly serving the
-        // wrong slice. `@ifc-lite/mcp`'s parallel `backend-query.ts` carries
-        // the identical fix independently — same defect shape, own tests.
+        // wrong slice. The CLI's own `--limit`/`--offset` flags are validated
+        // before reaching this descriptor, so this guards direct SDK callers
+        // (`@ifc-lite/mcp`'s parallel `backend-query.ts` ported the identical
+        // fix independently — same defect shape, own tests and release
+        // cadence).
         if (descriptor.offset != null) {
           if (!Number.isFinite(descriptor.offset) || descriptor.offset < 0) {
             throw new TypeError(`Invalid offset: ${descriptor.offset} (must be a non-negative finite number)`);

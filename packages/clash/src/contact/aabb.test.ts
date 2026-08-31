@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { contains, intersects, longestAxis } from "./aabb.js";
+import { contains, intersects, longestAxis, unionAabb } from "./aabb.js";
 import type { AABB } from "./types.js";
 
 describe("intersects() — closed-interval face touch (aabb.ts:16)", () => {
@@ -44,5 +44,24 @@ describe("longestAxis() — tie-break order (aabb.ts:91)", () => {
     // to the y/z comparison and return 1 instead.
     const a: AABB = { min: [0, 0, 0], max: [4, 4, 1] };
     expect(longestAxis(a)).toBe(0);
+  });
+});
+
+describe("unionAabb() — a NaN operand does not poison the other box (aabb.ts:26)", () => {
+  it("returns the valid box unchanged when unioned with a fully-NaN box", () => {
+    // `Math.min`/`Math.max` propagate NaN through any operand; `Bvh.build`
+    // (bvh.ts) folds `unionAabb` over every ancestor, so a `Math.min`-based
+    // union would NaN the aggregate bounds of every node above a single
+    // degenerate triangle, pruning valid siblings out of every later query.
+    const valid: AABB = { min: [1, 2, 3], max: [4, 5, 6] };
+    const nan: AABB = { min: [NaN, NaN, NaN], max: [NaN, NaN, NaN] };
+    expect(unionAabb(valid, nan)).toEqual(valid);
+    expect(unionAabb(nan, valid)).toEqual(valid);
+  });
+
+  it("is NaN-safe per axis, not only for a wholly-NaN box", () => {
+    const a: AABB = { min: [NaN, 2, 3], max: [4, NaN, 6] };
+    const b: AABB = { min: [1, 0, NaN], max: [NaN, 5, 9] };
+    expect(unionAabb(a, b)).toEqual({ min: [1, 0, 3], max: [4, 5, 9] });
   });
 });

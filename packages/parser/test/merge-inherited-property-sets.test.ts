@@ -121,4 +121,21 @@ describe('mergeInheritedPropertySets', () => {
     const own = [set('Pset_WallCommon', [['IsExternal', true]])];
     expect(mergeInheritedPropertySets(own, [])).toEqual(own);
   });
+
+  // Since #3530 a set the source left without a Name reports '' rather than a
+  // `PropertySet #<id>` placeholder, so two unrelated unnamed sets now compare
+  // equal by name. An absent name is evidence of nothing: keep them apart, the
+  // way the distinct placeholders used to.
+  it('does not fold an unnamed inherited set into an unnamed occurrence set', () => {
+    const own = [set('', [['Shared', 'occurrence'], ['OwnOnly', 1]])];
+    const inherited = [set('', [['Shared', 'type'], ['TypeOnly', 2]])];
+
+    const merged = mergeInheritedPropertySets(own, inherited);
+
+    expect(merged).toHaveLength(2);
+    expect(merged[0].properties.map((p) => p.name)).toEqual(['Shared', 'OwnOnly']);
+    expect(merged[0].properties.find((p) => p.name === 'Shared')?.value).toBe('occurrence');
+    expect(merged[1].properties.map((p) => p.name)).toEqual(['Shared', 'TypeOnly']);
+    expect(merged[1].properties.find((p) => p.name === 'Shared')?.value).toBe('type');
+  });
 });

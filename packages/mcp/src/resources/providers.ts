@@ -11,10 +11,10 @@
  */
 
 import { extractGeoreferencingOnDemand } from '@ifc-lite/parser';
-import type { MaterialData } from '@ifc-lite/sdk';
 import { foldedEntityCount, pendingMutationsField, pendingOverlay } from '../overlay.js';
 import { buildSpatialTree } from '../spatial-tree.js';
 import { findByGlobalId } from '../tools/util.js';
+import { materialFallbackName } from '../material-naming.js';
 import type { ResourceContents, ResourceDefinition } from '../protocol/index.js';
 import type { LoadedModel, ToolContext } from '../context.js';
 import { modelAllowed } from '../auth/scope.js';
@@ -147,30 +147,6 @@ class SpatialTreeProvider implements ResourceProvider {
     // hangs from. `elements` stays off: this resource has never carried it.
     return [jsonContents(uri, buildSpatialTree(m))];
   }
-}
-
-/**
- * Grouping name for a `MaterialData` result, or undefined when none is
- * available. `.name` alone only covers a plain `Material` (and, when
- * authored in the source file, a LayerSet/ProfileSet/ConstituentSet) — an
- * `IfcMaterialList` never carries a list-level name, only `.materials[]`,
- * so reading `.name` alone mis-buckets every list-material entity as
- * unnamed. `computeMaterialSummary`
- * (`packages/cli/src/commands/stats-aggregation.ts`) already falls back to
- * `.materials[0]` for that case; the layer, profile and constituent
- * fallbacks below go beyond it. Local to this provider until `materialDisplayName()`
- * (proposed in #3515) lands in `packages/mcp/src/tools/util.ts`, at which
- * point this should be replaced with that shared helper.
- */
-function materialFallbackName(mat: MaterialData | null | undefined): string | undefined {
-  if (!mat) return undefined;
-  return (
-    mat.name ??
-    mat.materials?.[0]?.name ??
-    mat.layers?.find((l) => l.materialName)?.materialName ??
-    mat.profiles?.find((p) => p.materialName)?.materialName ??
-    mat.constituents?.find((c) => c.materialName)?.materialName
-  );
 }
 
 class MaterialsProvider implements ResourceProvider {

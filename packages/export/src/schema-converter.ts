@@ -23,6 +23,7 @@
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { deterministicGlobalId } from '@ifc-lite/parser';
 import { ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
+import { resolveUnrepresentedEntity } from './schema-untranslatable.js';
 
 export type IfcSchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
 
@@ -356,8 +357,16 @@ export function convertStepLine(
   // strictly shorter than the other, which no pair of lists can satisfy at once.
   // Source attrs keyed on the ORIGINAL type; target on the (possibly renamed) type.
   let finalAttrs = attrsRaw;
+  const targetTable = attrNameTable(toSchema);
   const srcAttrs = attrNameTable(fromSchema)?.get(entityType);
-  const tgtAttrs = attrNameTable(toSchema)?.get(newType);
+  const tgtAttrs = targetTable?.get(newType);
+  // `shouldSkipEntity` above only catches its hand-listed alignment types;
+  // a type entirely unknown to `targetTable` (not merely a strict-prefix
+  // attribute mismatch, handled below) has no representation in `toSchema` at
+  // all — see `resolveUnrepresentedEntity` for why it can't just pass through.
+  if (srcAttrs && targetTable && !tgtAttrs) {
+    return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random);
+  }
   if (srcAttrs && tgtAttrs) {
     if (isStrictAttrPrefix(tgtAttrs, srcAttrs)) {
       finalAttrs = trimAttributes(attrsRaw, tgtAttrs.length);

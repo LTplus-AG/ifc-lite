@@ -182,3 +182,72 @@ describe("queryMeshCross — leaves partition, so the traversal cannot emit a du
     expect([...seen].sort((x, y) => x - y)).toEqual([...Array(100).keys()]);
   });
 });
+
+/**
+ * Regression: one degenerate (NaN-vertexed) triangle in a mesh must not hide
+ * OTHER, perfectly valid triangles from `queryMeshCross` — the false-negative
+ * class fixed in `unionAabb` (`aabb.ts`). `buildNode` (`bvh.ts`) folds
+ * `unionAabb` bottom-up over every ancestor of a leaf, and with the old
+ * `Math.min`/`Math.max` implementation a single NaN leaf poisoned every
+ * ancestor's aggregate bounds up to and including the root — so
+ * `crossNode`'s `boundsOverlap(rootA.bounds, rootB.bounds)` failed and the
+ * traversal was pruned before visiting anything, silently reporting NO
+ * contact between two meshes that genuinely intersect.
+ */
+describe("queryMeshCross — a NaN-vertexed triangle does not poison sibling triangles", () => {
+  /**
+   * A mesh of `n` triangles spaced apart on a line (gap of 1 between each,
+   * so neighbours' AABBs neither touch nor overlap), one of which has NaN
+   * vertices.
+   */
+  function meshWithOneNanTriangle(id: string, n: number, nanAt: number): Mesh {
+    const positions: number[] = [];
+    const indices: number[] = [];
+    for (let i = 0; i < n; i++) {
+      if (i === nanAt) {
+        positions.push(NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN);
+      } else {
+        const x = i * 2;
+        positions.push(x, 0, 0, x + 1, 0, 0, x, 1, 0);
+      }
+      indices.push(i * 3, i * 3 + 1, i * 3 + 2);
+    }
+    return { id, positions: new Float64Array(positions), indices: new Uint32Array(indices) };
+  }
+
+  /** A single triangle exactly matching mesh index `i`'s slot from above. */
+  function overlappingTriangle(i: number): Mesh {
+    const x = i * 2;
+    return {
+      id: "B",
+      positions: new Float64Array([x, 0, 0, x + 1, 0, 0, x, 1, 0]),
+      indices: new Uint32Array([0, 1, 2]),
+    };
+  }
+
+  it("still reports a cross with a valid sibling triangle when another triangle is NaN-vertexed", () => {
+    // 12 triangles (> the default leafSize of 8) so the tree has internal
+    // nodes whose aggregate bounds is what a NaN would poison; the NaN
+    // triangle sits at index 0, the crossing triangle (index 5) is in a
+    // different subtree.
+    const meshA = meshWithOneNanTriangle("A", 12, 0);
+    const meshB = overlappingTriangle(5);
+    const bvhA = buildMeshBvh(meshA, 4);
+    const bvhB = buildMeshBvh(meshB, 4);
+
+    const pairs = queryMeshCross(bvhA, bvhB, 0);
+
+    expect(pairs).toEqual([[5, 0]]);
+  });
+
+  it("still reports a cross when the NaN triangle sits deep in the tree, not just at index 0", () => {
+    const meshA = meshWithOneNanTriangle("A", 20, 13);
+    const meshB = overlappingTriangle(2);
+    const bvhA = buildMeshBvh(meshA, 4);
+    const bvhB = buildMeshBvh(meshB, 4);
+
+    const pairs = queryMeshCross(bvhA, bvhB, 0);
+
+    expect(pairs).toEqual([[2, 0]]);
+  });
+});

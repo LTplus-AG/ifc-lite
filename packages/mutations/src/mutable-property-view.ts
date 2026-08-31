@@ -14,7 +14,7 @@
 
 import type { PropertyTable, PropertySet, Property, QuantitySet, Quantity } from '@ifc-lite/data';
 import { findQuantityInBaseSets } from './base-qset-lookup.js';
-import { newMemberPlacement } from './new-member-placement.js';
+import { computeSetClaims, mutatedMembersForInstance } from './same-name-set-claims.js';
 import { PropertyValueType, QuantityType } from '@ifc-lite/data';
 import type { IfcAttributeValue, PropertyValue, PropertyMutation, QuantityMutation, AttributeMutation, EntityTypeMutation, Mutation, NewEntity, EffectiveChange } from './types.js';
 import { propertyKey, quantityKey, attributeKey, generateMutationId } from './types.js';
@@ -309,10 +309,16 @@ export class MutablePropertyView {
     const seenPsets = new Set<string>();
     // First, add properties from base (on-demand or table) with mutations applied
     const basePsets = this.getBasePropertiesForEntity(entityId);
-    // Which same-named instance takes a brand-new property: see new-member-placement.ts.
-    const takesNewProperty = newMemberPlacement(basePsets, (pset) => pset.properties);
 
-    for (const [psetIndex, pset] of basePsets.entries()) {
+    // Two base psets can share a name (type pset + occurrence pset); a
+    // mutation key has no per-instance identity, so figure out up front
+    // which instance an edit -- or a brand-new property -- is claimed by:
+    // decides both an EXISTING property's SET/DELETE and where a brand-new
+    // property lands. Same mechanism `getQuantitiesForEntity` below uses,
+    // via `same-name-set-claims.ts`.
+    const claims = computeSetClaims(basePsets, pset => pset.properties);
+
+    for (const pset of basePsets) {
       // Skip deleted property sets
       if (this.deletedPsets.has(`${entityId}:${pset.name}`)) {
         continue;
@@ -320,47 +326,29 @@ export class MutablePropertyView {
 
       seenPsets.add(pset.name);
 
-      // Apply property mutations
-      const mutatedProperties: Property[] = [];
-      for (const prop of pset.properties) {
-        const key = propertyKey(entityId, pset.name, prop.name);
-        const mutation = this.propertyMutations.get(key);
-
-        if (mutation) {
-          if (mutation.operation === 'DELETE') {
-            continue; // Skip deleted properties
-          }
-          // Apply SET mutation
-          mutatedProperties.push({
-            name: prop.name,
-            type: mutation.valueType ?? prop.type,
-            value: mutation.value ?? null,
-            unit: mutation.unit ?? prop.unit,
-            dataType: prop.dataType,
-          });
-        } else {
-          mutatedProperties.push(prop);
-        }
-      }
-
-      // New properties on this pset; the per-entity key set keeps it O(M_entity).
-      const entityPropKeys = this.propertyKeysByEntity.get(entityId);
-      if (entityPropKeys) {
-        const psetPrefix = `${entityId}:${pset.name}:`;
-        for (const key of entityPropKeys) {
-          if (!key.startsWith(psetPrefix)) continue;
-          const mutation = this.propertyMutations.get(key);
-          if (!mutation || mutation.operation !== 'SET') continue;
-          const propName = key.slice(psetPrefix.length);
-          if (!takesNewProperty(psetIndex, propName)) continue;
-          mutatedProperties.push({
-            name: propName,
-            type: mutation.valueType ?? PropertyValueType.String,
-            value: mutation.value ?? null,
-            unit: mutation.unit,
-          });
-        }
-      }
+      const mutatedProperties = mutatedMembersForInstance<PropertySet, Property, PropertyMutation, Property>(
+        entityId,
+        pset,
+        pset.properties,
+        claims,
+        this.propertyMutations,
+        this.propertyKeysByEntity.get(entityId),
+        propertyKey,
+        (prop, mutation) => ({
+          name: prop.name,
+          type: mutation.valueType ?? prop.type,
+          value: mutation.value ?? null,
+          unit: mutation.unit ?? prop.unit,
+          dataType: prop.dataType,
+        }),
+        prop => prop,
+        (name, mutation) => ({
+          name,
+          type: mutation.valueType ?? PropertyValueType.String,
+          value: mutation.value ?? null,
+          unit: mutation.unit,
+        }),
+      );
 
       if (mutatedProperties.length > 0) {
         result.push({
@@ -765,51 +753,38 @@ export class MutablePropertyView {
     const seenQsets = new Set<string>();
 
     const baseQsets = this.getBaseQuantitiesForEntity(entityId);
-    // Same name-only key as the property path above, so the same rule.
-    const takesNewQuantity = newMemberPlacement(baseQsets, (qset) => qset.quantities);
+    // Same name-only key, and the same claiming rule, as the property path
+    // above (`same-name-set-claims.ts`): an edit or a brand-new quantity
+    // lands on exactly one same-named qset instance.
+    const claims = computeSetClaims(baseQsets, qset => qset.quantities);
 
-    for (const [qsetIndex, qset] of baseQsets.entries()) {
+    for (const qset of baseQsets) {
       if (this.deletedQsets.has(`${entityId}:${qset.name}`)) continue;
 
       seenQsets.add(qset.name);
 
-      const mutatedQuantities: Quantity[] = [];
-      for (const q of qset.quantities) {
-        const key = quantityKey(entityId, qset.name, q.name);
-        const mutation = this.quantityMutations.get(key);
-
-        if (mutation) {
-          if (mutation.operation === 'DELETE') continue;
-          mutatedQuantities.push({
-            name: q.name,
-            type: mutation.quantityType ?? q.type,
-            value: mutation.value ?? q.value,
-            unit: mutation.unit ?? q.unit,
-          });
-        } else {
-          mutatedQuantities.push(q);
-        }
-      }
-
-      // Check for new quantities added to this qset (per-entity index — see
-      // the property-mutations site above for rationale).
-      const entityQtyKeys = this.quantityKeysByEntity.get(entityId);
-      if (entityQtyKeys) {
-        const qsetPrefix = `${entityId}:${qset.name}:`;
-        for (const key of entityQtyKeys) {
-          if (!key.startsWith(qsetPrefix)) continue;
-          const mutation = this.quantityMutations.get(key);
-          if (!mutation || mutation.operation !== 'SET') continue;
-          const quantName = key.slice(qsetPrefix.length);
-          if (!takesNewQuantity(qsetIndex, quantName)) continue;
-          mutatedQuantities.push({
-            name: quantName,
-            type: mutation.quantityType ?? QuantityType.Count,
-            value: mutation.value ?? 0,
-            unit: mutation.unit,
-          });
-        }
-      }
+      const mutatedQuantities = mutatedMembersForInstance<QuantitySet, Quantity, QuantityMutation, Quantity>(
+        entityId,
+        qset,
+        qset.quantities,
+        claims,
+        this.quantityMutations,
+        this.quantityKeysByEntity.get(entityId),
+        quantityKey,
+        (q, mutation) => ({
+          name: q.name,
+          type: mutation.quantityType ?? q.type,
+          value: mutation.value ?? q.value,
+          unit: mutation.unit ?? q.unit,
+        }),
+        q => q,
+        (name, mutation) => ({
+          name,
+          type: mutation.quantityType ?? QuantityType.Count,
+          value: mutation.value ?? 0,
+          unit: mutation.unit,
+        }),
+      );
 
       if (mutatedQuantities.length > 0) {
         result.push({ name: qset.name, quantities: mutatedQuantities });

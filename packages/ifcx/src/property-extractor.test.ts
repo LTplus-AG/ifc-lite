@@ -186,6 +186,37 @@ describe('extractProperties — typed records and internal carriers (#1031)', ()
     assert.ok(netArea, `NetArea present in quantity table (got ${JSON.stringify(qsets)})`);
     assert.strictEqual(netArea.value, 12.5);
   });
+
+  it('does not silently drop bsi::ifc::material (#PCERT real-world fixtures carry it)', () => {
+    // Real buildingSMART sample scenes (tests/models/ifc5/PCERT-Sample-Scene_*)
+    // author `bsi::ifc::material` as `{ code, uri }` on most physical
+    // elements — the only place IFCX carries which material an element is
+    // made of.
+    // `SKIP_ATTRIBUTES` treats it as a non-property attribute (like the
+    // graph-structural `bsi::ifc::class`/mesh/transform keys) with nothing
+    // else in the package ever reading it, so it vanished entirely: no
+    // property, no relationship. A STEP-sourced model surfaces the same data
+    // via `IfcRelAssociatesMaterial` (query engine, viewer Material tab).
+    const node = createNode('wall');
+    node.attributes.set('bsi::ifc::material', {
+      code: 'concrete_reinforced_in_situ',
+      uri: 'https://identifier.buildingsmart.org/uri/buildingsmart-community/materials-demo/1.0/class/concrete_reinforced_in_situ',
+    });
+
+    const props = extract(node);
+    const material = props.find((p) => p.name === 'Material');
+    assert.ok(
+      material,
+      `material code reaches the property table (got ${JSON.stringify(props)})`
+    );
+    assert.strictEqual(material?.value, 'concrete_reinforced_in_situ');
+    const uri = props.find((p) => p.name === 'Uri');
+    assert.ok(uri, `material uri reaches the property table (got ${JSON.stringify(props)})`);
+    assert.strictEqual(
+      uri?.value,
+      'https://identifier.buildingsmart.org/uri/buildingsmart-community/materials-demo/1.0/class/concrete_reinforced_in_situ'
+    );
+  });
 });
 
 describe('parseV5aKey — malformed keys from third-party ifcx files', () => {

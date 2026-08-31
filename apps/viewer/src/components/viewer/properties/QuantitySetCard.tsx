@@ -11,6 +11,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import type { QuantitySet } from './encodingUtils';
 import type { ProjectUnits } from '@ifc-lite/parser';
 import { resolveQuantityDisplay, formatConverted } from '@/lib/units/display';
+import { setDisplayName } from './setDisplayName';
 
 /** Maps quantity type to friendly name for tooltip */
 const QUANTITY_TYPE_NAMES: Record<number, string> = {
@@ -41,7 +42,7 @@ export function QuantitySetCard({ qset, projectUnits, unitDisplayOverrides }: Qu
   return (
     <Collapsible defaultOpen className="border-2 border-blue-200 dark:border-blue-800 bg-blue-50/20 dark:bg-blue-950/20 w-full max-w-full overflow-hidden">
       <CollapsibleTrigger className="flex items-center gap-2 w-full p-2.5 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-left transition-colors overflow-hidden">
-        <span className="font-bold text-xs text-blue-700 dark:text-blue-400 truncate flex-1 min-w-0">{qset.name}</span>
+        <span className="font-bold text-xs text-blue-700 dark:text-blue-400 truncate flex-1 min-w-0">{setDisplayName(qset.name, 'Quantity Set')}</span>
         <span className="text-[10px] font-mono bg-blue-100 dark:bg-blue-900/50 px-1.5 py-0.5 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 shrink-0">{qset.quantities.length}</span>
       </CollapsibleTrigger>
       <CollapsibleContent>

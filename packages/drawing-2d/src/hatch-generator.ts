@@ -249,97 +249,101 @@ export class HatchGenerator {
    * @param inside If true, keep segments inside ring. If false, keep segments outside.
    */
   private clipLineToRing(line: Line2D, ring: Point2D[], inside: boolean): Line2D[] {
-    // Find all intersections with ring edges
-    const intersections: { t: number; entering: boolean }[] = [];
-
     const dx = line.end.x - line.start.x;
     const dy = line.end.y - line.start.y;
 
+    // Signed side of the (infinite) hatch line a ring vertex falls on. An
+    // edge counts as a crossing only when its two endpoints have opposite
+    // signs, with the tie-break "not > 0" applied to whatever the sign
+    // actually computes as. That is what makes a ring VERTEX sitting on the
+    // hatch line resolve correctly however it occurs: at a tangent spike
+    // (the ring stays on one side and only touches) the two adjacent edges
+    // contribute an EVEN number of crossings — zero when the vertex buckets
+    // with its neighbours, two when it buckets against them — so parity is
+    // unchanged; at a genuine pass-through (neighbours on opposite sides)
+    // exactly one of the two adjacent edges crosses, net 1. The previous
+    // implementation computed a literal geometric intersection per EDGE
+    // regardless of side and de-duplicated near-equal `t` values, which
+    // collapsed a spike's two touching intersections into ONE instead of
+    // zero, inverting the inside/outside sense of every segment built past
+    // it — including the final "run off the far end of the line" segment,
+    // which is how a hatch line ended up running dozens of units outside
+    // the polygon it was clipped to.
+    //
+    // The tie-break reads as an infinitesimal displacement of the hatch line
+    // BACKWARDS along the sweep direction — `sideOf`'s `> 0` half-plane is
+    // the `-perp` one, and `generateParallelLines` steps along `+perp` from
+    // the bounding-box minimum. Every ring is nudged by that same amount in
+    // that same direction, so a row lying exactly on an edge resolves to
+    // whichever side of the ring the sweep has not reached yet: the sweep's
+    // first line sits on the outer ring's minimum-side edge and falls
+    // outside the polygon, a line flush with a hole's minimum-side edge
+    // falls outside that hole and is kept, and a line flush with a hole's
+    // far edge falls inside it and is subtracted. All three are the one
+    // rule, and none of them moves a line off the boundary into an
+    // interior.
+    const sideOf = (p: Point2D): number =>
+      dx * (p.y - line.start.y) - dy * (p.x - line.start.x);
+
+    const lenSq = dx * dx + dy * dy;
+    // Crossings anywhere on the INFINITE line, not only the stretch between
+    // `line.start` and `line.end`. That is what lets the walk below seed
+    // itself: the ring is closed, so its vertices end in the bucket they
+    // started in, the crossing count is therefore even, and the state out at
+    // `t = -Infinity` is "outside the ring" for any ring whatever. The
+    // earlier version kept only crossings within `[0, 1]` and seeded the
+    // walk by ray-casting `line.start` instead, which decides a point lying
+    // exactly ON the ring by its own rule — the opposite of the tie-break
+    // above. On a row flush with a hole's edge the two disagreed: no
+    // crossings by side, `inside` by ray cast, so the whole row was thrown
+    // away, taking interior fill with it that never touched the hole.
+    const ts: number[] = [];
     for (let i = 0; i < ring.length; i++) {
       const j = (i + 1) % ring.length;
-      const p1 = ring[i];
-      const p2 = ring[j];
-
-      const intersection = this.lineLineIntersection(
-        line.start,
-        line.end,
-        p1,
-        p2
-      );
-
-      if (intersection !== null && intersection.t >= 0 && intersection.t <= 1) {
-        // Determine if entering or leaving the polygon
-        // Using edge normal direction
-        const edgeNormalX = -(p2.y - p1.y);
-        const edgeNormalY = p2.x - p1.x;
-        const entering = dx * edgeNormalX + dy * edgeNormalY > 0;
-
-        intersections.push({ t: intersection.t, entering });
-      }
+      const sa = sideOf(ring[i]);
+      const sb = sideOf(ring[j]);
+      if (sa > 0 === sb > 0) continue;
+      // Locate the crossing by interpolating the very side values the test
+      // above used, then project it back onto the line. Deriving `t` from a
+      // separate segment-intersection solve instead would let the two
+      // disagree: an edge nominally COLLINEAR with the hatch line still has
+      // endpoints a few ULPs either side of it, so the side test calls it a
+      // crossing while a cross-product test calls it parallel and drops it —
+      // one lost crossing inverts parity for the rest of the line.
+      const u = sa / (sa - sb);
+      const px = ring[i].x + u * (ring[j].x - ring[i].x);
+      const py = ring[i].y + u * (ring[j].y - ring[i].y);
+      ts.push(((px - line.start.x) * dx + (py - line.start.y) * dy) / lenSq);
     }
+    ts.sort((a, b) => a - b);
 
-    // Sort by t parameter
-    intersections.sort((a, b) => a.t - b.t);
+    // `t <= 0` and `t >= 1` return copies of the line's own endpoints rather
+    // than `start + t * d`, which in floating point is not exactly the
+    // endpoint. A segment handed on to the next ring's clip therefore
+    // carries the coordinates it arrived with, unrounded.
+    const pointAt = (t: number): Point2D => {
+      if (t <= 0) return { x: line.start.x, y: line.start.y };
+      if (t >= 1) return { x: line.end.x, y: line.end.y };
+      return { x: line.start.x + t * dx, y: line.start.y + t * dy };
+    };
 
-    // Remove duplicate intersections (at same t)
-    const uniqueIntersections: typeof intersections = [];
-    for (const int of intersections) {
-      if (
-        uniqueIntersections.length === 0 ||
-        Math.abs(int.t - uniqueIntersections[uniqueIntersections.length - 1].t) > EPSILON
-      ) {
-        uniqueIntersections.push(int);
-      }
-    }
-
-    if (uniqueIntersections.length === 0) {
-      // No intersections - line is either entirely inside or outside
-      const midpoint: Point2D = {
-        x: (line.start.x + line.end.x) / 2,
-        y: (line.start.y + line.end.y) / 2,
-      };
-      const isInside = this.pointInRing(midpoint, ring);
-      if (isInside === inside) {
-        return [line];
-      }
-      return [];
-    }
-
-    // Build segments based on intersections
     const segments: Line2D[] = [];
+    const keep = (from: number, to: number): void => {
+      const lo = Math.max(from, 0);
+      const hi = Math.min(to, 1);
+      if (hi > lo) segments.push({ start: pointAt(lo), end: pointAt(hi) });
+    };
 
-    // Check if we start inside
-    let currentlyInside = this.pointInRing(line.start, ring);
-    let lastT = 0;
-
-    for (const int of uniqueIntersections) {
-      if (currentlyInside === inside) {
-        // Add segment from lastT to this intersection
-        segments.push({
-          start: {
-            x: line.start.x + lastT * dx,
-            y: line.start.y + lastT * dy,
-          },
-          end: {
-            x: line.start.x + int.t * dx,
-            y: line.start.y + int.t * dy,
-          },
-        });
-      }
-      lastT = int.t;
+    // Walk the whole line from `t = -Infinity`, where every ring is outside,
+    // and clip each kept run back to the `[0, 1]` stretch that was asked for.
+    let currentlyInside = false;
+    let lastT = -Infinity;
+    for (const t of ts) {
+      if (currentlyInside === inside) keep(lastT, t);
+      lastT = t;
       currentlyInside = !currentlyInside;
     }
-
-    // Handle final segment to end
-    if (currentlyInside === inside) {
-      segments.push({
-        start: {
-          x: line.start.x + lastT * dx,
-          y: line.start.y + lastT * dy,
-        },
-        end: line.end,
-      });
-    }
+    if (currentlyInside === inside) keep(lastT, Infinity);
 
     // Filter out degenerate segments
     return segments.filter((seg) => {
@@ -347,62 +351,6 @@ export class HatchGenerator {
         Math.abs(seg.end.x - seg.start.x) + Math.abs(seg.end.y - seg.start.y);
       return len > EPSILON;
     });
-  }
-
-  /**
-   * Line-line intersection
-   * Returns t parameter on first line, or null if no intersection
-   */
-  private lineLineIntersection(
-    p1: Point2D,
-    p2: Point2D,
-    p3: Point2D,
-    p4: Point2D
-  ): { t: number; u: number } | null {
-    const d1x = p2.x - p1.x;
-    const d1y = p2.y - p1.y;
-    const d2x = p4.x - p3.x;
-    const d2y = p4.y - p3.y;
-
-    const cross = d1x * d2y - d1y * d2x;
-    if (Math.abs(cross) < EPSILON) {
-      return null; // Parallel
-    }
-
-    const dx = p3.x - p1.x;
-    const dy = p3.y - p1.y;
-
-    const t = (dx * d2y - dy * d2x) / cross;
-    const u = (dx * d1y - dy * d1x) / cross;
-
-    // Check if intersection is within edge segment
-    if (u < 0 || u > 1) {
-      return null;
-    }
-
-    return { t, u };
-  }
-
-  /**
-   * Point in polygon ring test (ray casting)
-   */
-  private pointInRing(point: Point2D, ring: Point2D[]): boolean {
-    let inside = false;
-    const n = ring.length;
-
-    for (let i = 0, j = n - 1; i < n; j = i++) {
-      const pi = ring[i];
-      const pj = ring[j];
-
-      if (
-        pi.y > point.y !== pj.y > point.y &&
-        point.x < ((pj.x - pi.x) * (point.y - pi.y)) / (pj.y - pi.y) + pi.x
-      ) {
-        inside = !inside;
-      }
-    }
-
-    return inside;
   }
 
   /**

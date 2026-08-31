@@ -137,28 +137,56 @@ jobs:
                --jq '.content' 2>/dev/null | base64 -d > "$out" 2>/dev/null && [ -s "$out" ]; then
             echo "path=$out" >> "$GITHUB_OUTPUT"
           else
-            echo "path=scripts/review/rubric.md" >> "$GITHUB_OUTPUT"
+            # ABSOLUTE. The consuming step runs with working-directory set to
+            # RUNNER_TEMP, so a relative path resolves there and throws a bare
+            # ENOENT past the error class -- a stack trace instead of a remedy,
+            # on the bootstrap run, which is the first run there will ever be.
+            echo "path=$GITHUB_WORKSPACE/scripts/review/rubric.md" >> "$GITHUB_OUTPUT"
             echo "::notice::No rubric on the base branch yet (bootstrap); using this PR's copy."
           fi
 
+      # NO_FILES is a SKIP, not a failure. Its own remedy says "nothing to do;
+      # the lane should skip this PR", and without this branch a dependabot
+      # lockfile-only PR -- or one touching only dist/, pkg/, snapshots or
+      # fixtures -- goes red with no marker, which reads as a broken lane rather
+      # than as nothing to review.
       - name: Build the review input
         id: input
         if: steps.head.outputs.proceed == 'true' && steps.dedup.outputs.covered != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set +e
           node scripts/review/build-review-input.mjs \
             --repo "${{ github.repository }}" \
             --pr "${{ github.event.pull_request.number }}" \
             --sha "${{ github.event.pull_request.head.sha }}" \
-            --out "$RUNNER_TEMP/review-input.json"
+            --out "$RUNNER_TEMP/review-input.json" 2>&1 | tee "$RUNNER_TEMP/build.log"
+          rc=${PIPESTATUS[0]}
+          if [ "$rc" -ne 0 ]; then
+            if grep -q 'NO_FILES' "$RUNNER_TEMP/build.log"; then
+              echo "::notice::Nothing reviewable in this PR; skipping the lane."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            exit "$rc"
+          fi
+
+      # WITHOUT THIS THE LANE CAN NEVER PRODUCE A REVIEW. `ubuntu-latest` has no
+      # `claude` on PATH, so `spawnSync` returned ENOENT, run-reviewer threw
+      # MODEL_ERROR, and the gate read NOT_POSTED on every head. Pinned rather
+      # than floating: a reviewer whose behaviour changes under us is a reviewer
+      # whose precision measurements mean nothing.
+      - name: Install the reviewer CLI
+        if: steps.head.outputs.proceed == 'true' && steps.dedup.outputs.covered != 'true'
+        run: npm install -g @anthropic-ai/claude-code@2.0.76
 
       # The model runs here, as a pure function: no tools, no shell, no MCP, no
       # repository access, empty cwd. Any failure -- including a drained
       # subscription pool -- fails the job. There is no path from here to a clean
       # verdict that the model did not produce.
       - name: Run the reviewer
-        if: steps.head.outputs.proceed == 'true' && steps.dedup.outputs.covered != 'true'
+        if: steps.head.outputs.proceed == 'true' && steps.dedup.outputs.covered != 'true' && steps.input.outputs.skip != 'true'
         working-directory: ${{ runner.temp }}
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -173,7 +201,7 @@ jobs:
       # line anchoring, the cap, and the sanitisation that stops a steered model
       # laundering a forged marker through our own trusted identity.
       - name: Validate the findings
-        if: steps.head.outputs.proceed == 'true' && steps.dedup.outputs.covered != 'true'
+        if: steps.head.outputs.proceed == 'true' && steps.dedup.outputs.covered != 'true' && steps.input.outputs.skip != 'true'
         run: |
           node scripts/review/validate-findings.mjs \
             --raw "$RUNNER_TEMP/raw-review.txt" \
@@ -183,7 +211,7 @@ jobs:
       # The marker is written LAST, and only after the inline comments have been
       # read back off the PR. That ordering is the whole answer to #1679.
       - name: Post the review
-        if: steps.head.outputs.proceed == 'true' && steps.dedup.outputs.covered != 'true'
+        if: steps.head.outputs.proceed == 'true' && steps.dedup.outputs.covered != 'true' && steps.input.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

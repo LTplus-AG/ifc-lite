@@ -69,6 +69,15 @@ test('a `+++` header line is not counted as an addition', () => {
   assert.deepEqual(ranges, [[2, 2]], 'only the real addition counts');
 });
 
+test('the no-newline marker is metadata, not a context line', () => {
+  // Counting it shifted every later range by one: a correct finding on the real
+  // line was dropped as out-of-range, and a finding one past EOF was posted and
+  // rejected 422. Fires on any file without a trailing newline.
+  const patch = ['@@ -1,3 +1,4 @@', ' a', ' b', '-c', '\\ No newline at end of file', '+c', '+d', '\\ No newline at end of file'].join('\n');
+  // new file: 1=' a', 2=' b', then '-c' consumes nothing, 3='+c', 4='+d'
+  assert.deepEqual(addedLineRanges(patch), [[3, 4]]);
+});
+
 // ============================================================== exclusions
 
 test('generated and vendored paths are excluded', () => {

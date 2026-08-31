@@ -135,6 +135,14 @@ export function addedLineRanges(patch) {
       newLine = Number(hunk[1]);
       continue;
     }
+    // `\ No newline at end of file` is diff METADATA, not a context line. Counting
+    // it advanced the new-file counter and shifted every later range by one,
+    // which fails two ways at once: a correct finding on the real line is dropped
+    // as "not inside an added range", and a finding one line past EOF is posted
+    // and rejected 422 by GitHub, reddening the job with no marker. It fires on
+    // any file lacking a trailing newline. validate-findings' `quotableLines`
+    // already skipped it, so the two halves disagreed about the same diff.
+    if (line.startsWith('\\')) continue;
     if (line.startsWith('+') && !line.startsWith('+++')) {
       if (start === null) start = newLine;
       newLine += 1;

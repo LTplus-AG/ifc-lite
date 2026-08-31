@@ -82,9 +82,14 @@ export class RunReviewerError extends Error {
 }
 
 /**
- * Every tool the CLI could otherwise offer. Named explicitly rather than relying
- * on a default: a default that changes in a future CLI version would hand the
- * reviewer a shell without anyone editing this file.
+ * A DENY-LIST, and it cannot promise completeness -- an earlier comment here
+ * claimed it named "every tool the CLI could offer", which no deny-list can
+ * guarantee: a tool added in a future CLI version is absent from this list and
+ * therefore allowed. What actually bounds the blast radius is `--max-turns 1`
+ * plus an empty MCP config and an empty cwd. The list is defence in depth over
+ * those, not the defence itself. An allow-list would be stronger; it is not used
+ * because the CLI's allow-list spelling is unverified at the pinned version, and
+ * asserting an unverified flag works is how a guard ends up inert.
  */
 export const DISALLOWED_TOOLS = [
   'Bash', 'Edit', 'Write', 'Read', 'Glob', 'Grep',
@@ -129,9 +134,13 @@ export function buildPrompt(rubric, input) {
   const files = input.files
     .map((f) => `--- FILE: ${f.path}\n${f.patch}`)
     .join('\n\n');
+  // JSON.stringify'd, because a path is PR-controlled bytes. Git permits any byte
+  // but NUL and `/` in a path, newlines included, so an interpolated filename
+  // could place arbitrary lines into the TRUSTED region of a prompt whose entire
+  // premise is that PR-controlled bytes never leave the fence.
   const unreviewable = (input.unreviewable ?? []).length
     ? `\nFiles in this PR you were NOT shown (do not comment on them, do not report them clean):\n` +
-      input.unreviewable.map((u) => `  - ${u.path} (${u.reason})`).join('\n')
+      input.unreviewable.map((u) => `  - ${JSON.stringify(String(u.path))} (${JSON.stringify(String(u.reason ?? 'unknown'))})`).join('\n')
     : '';
   return [
     rubric,

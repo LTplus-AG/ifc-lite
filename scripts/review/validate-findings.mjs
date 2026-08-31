@@ -758,13 +758,32 @@ export function validate({ response, input, onWarn = null }) {
     path: f.path,
     line: f.line,
     quote: sanitizeBody(f.quote),
+    // Sanitised FIRST, then required non-empty. Checking the raw body let a
+    // finding whose body is only an HTML comment pass validation, sanitise to the
+    // empty string, and be refused downstream by post-review as BAD_FINDING -- a
+    // red job with no marker, for input this validator had certified. Two files
+    // in one change disagreeing about the same contract.
     body: sanitizeBody(f.body),
     class: sanitizeLabel(f.class ?? 'unclassified') || 'unclassified',
   }));
 
+  // A finding whose body sanitises to nothing is DROPPED here rather than
+  // certified. It would otherwise reach post-review, which refuses an empty body
+  // as BAD_FINDING and reddens the job with no marker -- for input this file had
+  // just approved.
+  const nonEmpty = findings.filter((f) => f.body.trim() !== '');
+  if (findings.length > 0 && nonEmpty.length === 0) {
+    throw new ValidateFindingsError(
+      'VALIDATION_EMPTY',
+      'Every surviving finding sanitised to an empty body. Reporting `clean` here would be a lie ' +
+        'and reporting findings would name comments that cannot be posted. REMEDY: re-run.',
+    );
+  }
+
+
   return {
     verdict: response.verdict,
-    findings,
+    findings: nonEmpty,
     warnings,
     counts: { emitted: response.findings.length, surviving: survived, capped, kept: findings.length },
   };

@@ -27,6 +27,7 @@ import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { evaluate, normalisePullRequest, normaliseLogin } from './check-issue-queue.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..');
@@ -38,6 +39,13 @@ const TMP = mkdtempSync(join(tmpdir(), 'issue-queue-'));
 let seq = 0;
 
 const SHIPPED = JSON.parse(readFileSync(CONFIG, 'utf8'));
+/** The shipped config as `evaluate` wants it: Sets, and the rollout pinned. */
+const ENFORCING_CFG = {
+  ...SHIPPED,
+  mode: 'enforcing',
+  labelAuthorities: new Set(SHIPPED.labelAuthorities.map(normaliseLogin)),
+  exemptLogins: new Set(SHIPPED.exemptLogins.map(normaliseLogin)),
+};
 const READY = SHIPPED.readyLabel;
 const ESCAPE = SHIPPED.escapeLabel;
 const MAINTAINER = SHIPPED.labelAuthorities[0];
@@ -210,30 +218,30 @@ test('NO_LINKED_ISSUE does not deny a label the same output reports', () => {
 });
 
 test('escapeProblem is null when there is simply no escape label', () => {
-  // `adjudicateLabel` returns reason 'ABSENT' for the COMMON case of a PR that
-  // carries no escape label at all. Reporting that raw reason on the field put a
-  // truthy value there for every ordinary failure, so a job-summary step reading
-  // it would print an escape problem on PRs that have none -- the banner/field
-  // contradiction that moving this off `verdict` was meant to end.
-  const r = run(prPayload({ issues: [issue(3525, [])] }), ENFORCING);
-  assert.equal(r.code, 1, r.output);
-  assert.match(r.output, /UNQUEUED_WORK/);
-  assert.doesNotMatch(r.output, /ABSENT/);
+  // ASSERTED THROUGH evaluate() DIRECTLY, not through the output. `escapeProblem`
+  // is a RETURN FIELD and is never printed, so an output-based assertion for it
+  // is vacuous: the first version of this test passed with the bug fully
+  // restored. `evaluate` and `normalisePullRequest` are exported for exactly
+  // this, and the payload comes from the same builder the subprocess tests use,
+  // so the parser under test is the real one.
+  const pr = normalisePullRequest(prPayload({ issues: [issue(3525, [])] }));
+  const r = evaluate({ pr, cfg: ENFORCING_CFG });
+  assert.equal(r.ok, false);
+  assert.equal(r.verdict, 'UNQUEUED_WORK');
+  assert.equal(r.escapeProblem, null, 'ABSENT is not a problem, it is the common case');
 });
 
-test('a PASSING PR still reports a real escape problem', () => {
-  // The one passing path that can carry one. The field was omitted here while
-  // being present where no problem existed -- absent exactly where it mattered.
-  const r = run(
+test('a PASSING PR still reports a real escape problem on the field', () => {
+  const pr = normalisePullRequest(
     prPayload({
       prLabels: [[ESCAPE, CONTRIBUTOR]],
       issues: [issue(3525, [[READY, MAINTAINER]])],
     }),
-    ENFORCING,
   );
-  assert.equal(r.code, 0, r.output);
-  assert.match(r.output, /READY_ISSUE/);
-  assert.match(r.output, /SELF_APPLIED_LABEL/);
+  const r = evaluate({ pr, cfg: ENFORCING_CFG });
+  assert.equal(r.ok, true);
+  assert.equal(r.verdict, 'READY_ISSUE');
+  assert.equal(r.escapeProblem, 'SELF_APPLIED_LABEL', 'absent exactly where it matters');
 });
 
 test('the Mode line survives a fail-closed refusal', () => {

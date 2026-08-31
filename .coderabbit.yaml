@@ -62,36 +62,41 @@ reviews:
   auto_review:
     enabled: true
     drafts: false
-    # Dependency bumps do not need an LLM review and they draw on the same
-    # per-identity allowance the humans are throttled by. 21 PRs last month.
-    ignore_usernames:
-      - dependabot
-      - dependabot[bot]
-      - app/dependabot
+    # NO `ignore_usernames`, DELIBERATELY. Excluding dependabot was tried and
+    # reverted: it saves ~21 PRs/month of allowance and buys a silent blind spot.
+    # An ignored author gets no CodeRabbit CONTEXT at all, and nothing detects
+    # that: check-pr-review-signal.mjs part 1 checks lane names derived from
+    # test.yml, and part 2 adjudicates the description of contexts that are
+    # PRESENT. An absent reviewer is silent. Dependency bumps would become the one
+    # PR class with zero review signal and no marker saying so -- the class that
+    # produced the arrow/parquet lockstep and lockfile-drift incidents here.
     auto_incremental_review: true
-    # LOWERED TO 1, WHICH REVERSES AN EARLIER DECISION ON THIS BRANCH, because the
-    # measurement that decision was made without changes the answer.
+    # KEPT HIGH, AND THIS REVERSES A REVERSAL. It was raised to 30, then lowered
+    # to 1 on a Fair Usage argument, then put back. The Fair Usage economics are
+    # real -- CodeRabbit throttles PER DEVELOPER IDENTITY over a rolling 7-day
+    # window, both identities here sit at the floor, and every incremental
+    # re-review counts toward the total that sets the refill rate -- but they are
+    # not the deciding consideration, because the two failure modes are not
+    # equally visible.
     #
-    # It was first raised to 30 to stop `Reviews paused ... under active
-    # development` appearing alongside a passing status on long-running PRs. That
-    # reasoning treated review capacity as fixed. It is not: CodeRabbit's Fair
-    # Usage Policy is scoped PER DEVELOPER IDENTITY over a ROLLING 7-DAY WINDOW,
-    # and Pro+ degrades from 10 reviews/hour to 1 once an identity passes ~90
-    # reviews in 7 days. Both active identities here sit permanently at that floor;
-    # the gate's own rate-limit comments say so: "Your plan provides up to 2
-    # included reviews per hour" under "**Plan**: Pro Plus".
+    # A PAUSED review publishes `success / Review completed` on a head nothing
+    # read. That is recorded in this repo's own
+    # scripts/pr-review-signal.config.json, measured live on #3227 and #2952, and
+    # NOTHING CATCHES IT: the four `phrases` there cover rate-limited and skipped,
+    # not paused, and `staleReviewPolicy` ships `off`. So a low pause converts the
+    # rare false green into the DEFAULT one -- review commit 1, contributor pushes
+    # a fix, head goes green unread -- which is precisely the #3175 shape and
+    # precisely what this file's own header says must not happen.
     #
-    # Roughly 40% of review ATTEMPTS on this repo are incremental re-reviews on
-    # pushes rather than new PRs, and every one of them counts toward the 7-day
-    # total that sets the refill rate. Raising this number spends allowance on
-    # re-reviewing branches nobody asked about and pushes both identities deeper
-    # into the throttle band, which is paid for by the NEXT PR getting no review at
-    # all. Lowering it is the only lever that improves the throttle rather than
-    # paying around it, and it costs nothing.
+    # An EXHAUSTED allowance, by contrast, is visible: `fail_commit_status: true`
+    # above turns it red. Burning allowance is therefore the safer failure,
+    # because it is the honest one.
     #
-    # Batch pushes for the same reason: five commits pushed separately trigger five
-    # reviews, pushed together they trigger one.
-    auto_pause_after_reviewed_commits: 1
+    # The allowance lever is elsewhere and costs no visibility: batch pushes (five
+    # commits pushed separately trigger five reviews, pushed together one), and
+    # open fewer, larger PRs. Both lower the 7-day count without ever publishing a
+    # green tick over an unreviewed diff.
+    auto_pause_after_reviewed_commits: 30
 
   pre_merge_checks:
     # Only requested reviewers can wave a failing check through, never the PR author.

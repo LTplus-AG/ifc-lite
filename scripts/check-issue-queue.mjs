@@ -860,7 +860,11 @@ export function evaluate({ pr, cfg }) {
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const cfg = readConfig(args.config);
-  // PRINTED IMMEDIATELY AFTER readConfig, BEFORE anything that can refuse.
+  // PRINTED AS EARLY AS IT CAN BE, which is after readConfig -- the mode is read
+  // FROM that config, so `parseArgs` and `readConfig` refusals (BAD_ARGS,
+  // BAD_CONFIG, NO_CONFIG) necessarily print no mode line. That is a stated
+  // limit, not a closed hole: those two are broken-invocation errors, not
+  // verdicts on a PR, and a contributor never triggers them.
   // CONTRIBUTING.md and the PR template point readers at this line instead of
   // restating the mode, so it has to survive the fail-closed paths too: every
   // throw in normalisePullRequest (NO_AUTHOR on a deleted account,
@@ -869,7 +873,9 @@ function main() {
   // check, no mode line, and no document left saying the gate is advisory.
   console.log(
     `Mode: ${cfg.mode}${
-      cfg.mode === 'advisory' ? ' (a failing verdict prints but does not fail this job)' : ''
+      cfg.mode === 'advisory'
+        ? ' (a failing VERDICT prints but does not fail this job; a REFUSAL still does)'
+        : ''
     }`,
   );
 

@@ -636,6 +636,16 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
+          # scripts/check-changeset-bump.test.mjs asserts that the gate PASSES on
+          # the real repository and is not vacuous. The gate resolves its baseline
+          # from the last `chore: version packages` commit, so on the default
+          # depth-1 checkout it correctly REFUSES and that test fails. The gate
+          # itself runs in the `lint` job, which already carries this; its TEST
+          # runs here, via the scripts/ glob catch-all, and needs the same history.
+          #
+          # Not skipped on a shallow clone instead: a skipped test reads as green,
+          # which is the failure mode this repo's gates exist to prevent.
+          fetch-depth: 0
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:

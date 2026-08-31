@@ -363,13 +363,11 @@ test('report: both causes present are reported as separate groups with separate 
   assert.match(text, /only resolving the conflict/i);
 });
 
-test('pullRequestBaseBranches: reads test.yml`s own filter, not `push:`s', async () => {
-  const { readFileSync } = await import('node:fs');
-  const { dirname, join } = await import('node:path');
-  const { fileURLToPath } = await import('node:url');
-  const here = dirname(fileURLToPath(import.meta.url));
-  const text = readFileSync(join(here, '../../.github/workflows/test.yml'), 'utf8');
-  assert.deepEqual(pullRequestBaseBranches(text), ['main']);
+test('pullRequestBaseBranches: reads pull_request`s filter, not push`s', () => {
+  assert.deepEqual(
+    pullRequestBaseBranches('on:\n  push:\n    branches: [dev]\n  pull_request:\n    branches: [main]\njobs:\n'),
+    ['main'],
+  );
 });
 
 test('pullRequestBaseBranches: `pull_request:` with no `branches:` means no filter', () => {

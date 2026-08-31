@@ -271,6 +271,22 @@ export interface OverlayOptions {
  * an overlay cannot tell that apart from "no opinion". Deletions
  * therefore propagate only from layers that state them explicitly.
  */
+/**
+ * Meta key for paths a previous `applyIfcxOverlay` call deleted.
+ * `deleteEntity` purges the path from `entitiesMap`, so a later, separate
+ * call touching the same path with no deletion opinion of its own would
+ * otherwise read `hasEntity() === false` as "brand new" and silently
+ * resurrect it via `createNodeEntity`. This extends the "false is the
+ * revert opinion, omission is not" contract already enforced *within* one
+ * file to across calls. Cleared on revival. See `test/apply-ifcx-overlay.test.ts`.
+ */
+const OVERLAY_TOMBSTONES_META_KEY = 'overlay.tombstonedPaths';
+
+function readOverlayTombstones(meta: Y.Map<unknown>): Set<string> {
+  const stored = meta.get(OVERLAY_TOMBSTONES_META_KEY);
+  return new Set(Array.isArray(stored) ? (stored as string[]) : []);
+}
+
 export function applyIfcxOverlay(
   doc: Y.Doc,
   input: IfcxInput,
@@ -285,6 +301,8 @@ export function applyIfcxOverlay(
     if (file.imports) meta.set('imports', file.imports);
     if (file.schemas) meta.set('schemas', file.schemas);
 
+    const tombstonedFromEarlierCalls = readOverlayTombstones(meta);
+
     // Composition resolves `ifclite::deleted` after every node in the
     // layer has been applied — the strongest (last) opinion wins — so a
     // base → delete → resurrect sequence within one file must seed the
@@ -297,14 +315,23 @@ export function applyIfcxOverlay(
       if (opinion !== undefined) tombstoned.set(decoded.path, opinion);
       restoreGeometryCarriers(doc, decoded, upsertGeometry);
       if (!hasEntity(doc, decoded.path)) {
+        // Stays deleted for a node with no opinion on deletion; only an
+        // explicit opinion (revive with `false`, or a no-op `true`) acts.
+        if (opinion === undefined && tombstonedFromEarlierCalls.has(decoded.path)) continue;
         createNodeEntity(doc, decoded);
         continue;
       }
       overlayEntity(doc, decoded);
     }
     for (const [path, deleted] of tombstoned) {
-      if (deleted) deleteEntity(doc, path);
+      if (deleted) {
+        deleteEntity(doc, path);
+        tombstonedFromEarlierCalls.add(path);
+      } else {
+        tombstonedFromEarlierCalls.delete(path);
+      }
     }
+    meta.set(OVERLAY_TOMBSTONES_META_KEY, Array.from(tombstonedFromEarlierCalls));
   }, opts.origin ?? SEED_ORIGIN);
 
   return file;

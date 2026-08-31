@@ -207,7 +207,7 @@ const ALLOWLIST_DIGESTS = {
   'packages/clash': '781065910217740673',
   'packages/cli': '11939142867866651937',
   'packages/codegen': '18074740064258807121',
-  'packages/collab': '10345031293646670667',
+  'packages/collab': '4306782672121291805',
   'packages/collab-server': '6370800919640161263',
   'packages/create': '1037353628699503261',
   'packages/create-ifc-lite': '2641290854733608547',

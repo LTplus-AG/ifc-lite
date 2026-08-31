@@ -46,15 +46,25 @@
  *     `needs:` twelve others makes the budget cover the whole matrix: over the
  *     68 completed `test.yml` PR runs of 2026-08-25/26 that published it, the
  *     aggregate APPEARED (`created_at`, from each run's own creation) at 509 to
- *     2067 s, 33 of the 68 past even the current 900 s budget -- a gate
+ *     2067 s, 33 of the 68 past even the then-current 900 s budget -- a gate
  *     printing "the workflow never fired" over half of every green PR.
  *     `excludeJobKeys: ["test"]` ties the wait to how fast GitHub creates check
  *     runs (161-845 s over the same runs, 0 of 68 past 900 s) instead of to
  *     suite runtime, and nothing is lost: branch protection blocks on the
  *     aggregate anyway, it being one of only two contexts in main's ruleset.
- *     The budget is 900 s because 420 still false-failed 8 of those 68 even
- *     with the aggregate out; the tail margin is 900/845 = 1.07x.
- *     Full measurement in .github/workflows/pr-review-signal.yml.
+ *     The budget WAS 900 s because 420 still false-failed 8 of those 68 even
+ *     with the aggregate out. It is 2400 s now, re-measured on 2026-08-31, and
+ *     the number is overwhelmingly RUNNER QUEUE rather than build -- so it has
+ *     no ceiling and will breach again; the remedy then is a re-run, because
+ *     nothing failed.
+ *
+ *     THE 2026-08-31 FIGURES ARE DELIBERATELY NOT REPEATED HERE -- not the
+ *     population, not the breach count, not the margin, and not the queue share.
+ *     They live once, in the budget tests in scripts/lib/pr-review-signal.test.mjs.
+ *     A copy of a measurement in a file that cannot assert it is a copy that
+ *     goes stale, and this one did, twice. The 2026-08-25/26 figures above are
+ *     restated and stay: a closed historical finding cannot go stale.
+ *     Full measurement in scripts/lib/pr-review-signal.test.mjs, which asserts it.
  *
  *     THE LOOP ITSELF IS `pollForLanes`, in the lib, over an injected clock and
  *     sleep. Inline in `main()` it was the one branch with no test --
@@ -158,6 +168,8 @@ import {
   expandJobNames,
   flattenReviewPages,
   missingLanes,
+  wholesaleSkippedTemplates,
+  matrixSkipAliases,
   flattenCheckRunPages,
   noVerdictReviews,
   pollForLanes,
@@ -176,7 +188,7 @@ const DEFAULT_CONFIG = join(SCRIPTS_DIR, 'pr-review-signal.config.json');
  *
  * `Number(undefined)` and `Number('soon')` are both `NaN`, and a NaN deadline
  * makes `now() >= deadline` false forever: the poll would spin until the job's
- * own 20-minute timeout killed it, printing nothing at all. That is the exact
+ * own job timeout killed it, printing nothing at all. That is the exact
  * "no output, no verdict" shape this gate exists to reject, so an unreadable
  * duration is an error rather than a silently infinite one. Zero and negatives
  * go the same way: a zero budget is a gate that never waits, and a zero poll
@@ -519,6 +531,7 @@ function sleepSync(ms) {
  */
 export function evaluate({
   required,
+  aliases,
   lanes,
   reviewChecks,
   reviews,
@@ -528,10 +541,35 @@ export function evaluate({
   timedOut,
   baseRefName,
 }) {
+  // NOT DEFAULTED -- see the identical refusal in `pollForLanes`. A default here
+  // is the difference between a wire-up that is forgotten loudly and one that is
+  // forgotten silently, and this function has exactly one live caller.
+  if (!(aliases instanceof Map)) {
+    throw new ReviewSignalError(
+      'MISSING_ALIASES',
+      'evaluate was called without a matrix alias Map. Pass the map from `matrixSkipAliases` ' +
+        'over the same workflow text `required` came from.',
+    );
+  }
   const lines = [];
   let ok = true;
 
-  const missing = missingLanes(required, lanes);
+  const missing = missingLanes(required, lanes, aliases);
+  // NAMED, NOT SILENT. A wholesale skip is the one way a required lane passes
+  // this gate without a check run of its own, so it is reported every time. If
+  // the path filter that skipped the job is itself wrong, this line is where
+  // that shows up -- the gate cannot adjudicate the filter, and says so rather
+  // than absorbing the skip into a tick.
+  const skippedWholesale = [...wholesaleSkippedTemplates(lanes, aliases)].sort();
+  for (const t of skippedWholesale) {
+    const covered = required.filter((n) => aliases.get(n) === t);
+    lines.push(
+      `➖ \`${t}\` was SKIPPED as a whole job, before its matrix expanded, so its ` +
+        `${covered.length} lane(s) published no check run of their own and are not ` +
+        'counted missing. Whether the `if:` that skipped it was RIGHT is not something ' +
+        'this gate can answer.',
+    );
+  }
   if (missing.length === 0) {
     lines.push(`✅ All ${required.length} required lane(s) from test.yml are present in the rollup.`);
   } else if (isFork && cfg.forkLanesAreAdvisory) {
@@ -715,6 +753,61 @@ export function evaluate({
   return { ok, lines };
 }
 
+/**
+ * A `--state-file` fixture's own alias map, refused rather than coerced.
+ *
+ * `Object.entries` accepts a string, a number and an array without complaint and
+ * yields keys no lane name can match, so a malformed value would quietly become
+ * "no aliases" -- safe in direction, wrong in explanation, and three lines from
+ * a comment saying `reviews` refuses a non-array loudly. Same doctrine here.
+ *
+ * @param {unknown} raw
+ * @returns {Map<string, string>}
+ */
+function fixtureAliases(raw) {
+  if (raw === undefined) return new Map();
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new ReviewSignalError(
+      'BAD_STATE_FILE',
+      `\`aliases\` in the state file must be an object mapping an expanded lane name to its ` +
+        `matrix template; got ${Array.isArray(raw) ? 'an array' : typeof raw}.`,
+    );
+  }
+  const out = new Map();
+  for (const [lane, template] of Object.entries(raw)) {
+    // A NON-STRING TEMPLATE IS THE SAME BUG ONE LEVEL IN. `{"Viewer tests (shard
+    // 0)": null}` survives `Object.entries`, `skipped.has(null)` is false, and
+    // the fixture then fails as MISSING_LANES -- a true verdict with a false
+    // explanation, which is exactly what refusing the malformed OUTER value was
+    // meant to prevent. Raised by CodeRabbit on PR #3584 and reproduced before
+    // fixing: the run printed MISSING_LANES, not BAD_STATE_FILE.
+    //
+    // The KEY is not checked: `Object.entries` only ever yields strings, so a
+    // `typeof lane !== 'string'` clause here would be dead code pretending to
+    // guard something. An empty key is reachable (`{"": "x"}` is valid JSON) and
+    // is rejected.
+    if (lane === '' || typeof template !== 'string' || template === '') {
+      // `typeof []` is 'object', which tells a fixture author nothing. Named the
+      // way the outer refusal names it, so the two messages read alike.
+      const what =
+        template === ''
+          ? 'an empty string'
+          : Array.isArray(template)
+            ? 'an array'
+            : template === null
+              ? 'null'
+              : typeof template;
+      throw new ReviewSignalError(
+        'BAD_STATE_FILE',
+        `\`aliases\` maps \`${lane}\` to ${what}; every lane name and every matrix ` +
+          'template must be a non-empty string.',
+      );
+    }
+    out.set(lane, template);
+  }
+  return out;
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const cfg = readConfig(args.config);
@@ -725,9 +818,9 @@ function main() {
       `Workflow \`${args.workflow}\` does not exist, so the required lane set cannot be derived.`,
     );
   }
-  const required = expandJobNames(readFileSync(args.workflow, 'utf8'), {
-    exclude: cfg.excludeJobKeys ?? [],
-  });
+  const workflowText = readFileSync(args.workflow, 'utf8');
+  const required = expandJobNames(workflowText, { exclude: cfg.excludeJobKeys ?? [] });
+  const aliases = matrixSkipAliases(workflowText, { exclude: cfg.excludeJobKeys ?? [] });
 
   // Offline mode for the regression harness: a JSON blob standing in for the
   // three API reads, driving the identical `evaluate`.
@@ -735,6 +828,13 @@ function main() {
     const state = JSON.parse(readFileSync(args.stateFile, 'utf8'));
     const { ok, lines } = evaluate({
       required: state.required ?? required,
+      // PAIRED WITH `required`, deliberately. A fixture that overrides the lane
+      // set but inherits the REAL alias map is a fixture whose two halves
+      // describe different workflows: a case asserting MISSING_LANES on a real
+      // viewer-shard name would pass for the wrong reason if its rollup carried
+      // the real template at `skipped`. Overriding one without the other is
+      // therefore possible but never silent -- `aliases` follows `required`.
+      aliases: state.required === undefined ? aliases : fixtureAliases(state.aliases),
       lanes: state.lanes,
       reviewChecks: state.reviewChecks ?? [],
       // NOT `?? []`. A state file that omits `reviews` has told this gate
@@ -791,6 +891,7 @@ function main() {
   const readState = () => fetchPrState({ pr: args.pr, repo, selfName: args.selfName });
   const { state, timedOut } = pollForLanes({
     required,
+    aliases,
     initialState: readState(),
     fetchState: readState,
     deadline: Date.now() + args.timeoutSeconds * 1000,
@@ -823,6 +924,7 @@ function main() {
 
   const { ok, lines } = evaluate({
     required,
+    aliases,
     lanes: state.lanes,
     reviewChecks,
     reviews,

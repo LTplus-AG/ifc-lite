@@ -13,6 +13,7 @@ import {
   renderFrame,
   renderTitleBlock,
   exportToDXF,
+  encodeDxfCp1252,
   formatScaleFactorLabel,
   fitRasterPixels,
   type RasterFit,
@@ -1022,7 +1023,14 @@ function useDrawingExport({
       metadataComment,
     });
     const stem = `section-${sectionPlane.axis}-${sectionPlane.position}`;
-    downloadFile(dxf, `${stem}.dxf`, 'application/dxf');
+    // exportToDXF declares $DWGCODEPAGE ANSI_1252 (dxf/writer.ts), not
+    // UTF-8; downloadFile's default string encoding would mismatch it and
+    // mojibake non-ASCII TEXT in every real reader (AutoCAD, ezdxf, ...).
+    const { bytes, hadUnmappable } = encodeDxfCp1252(dxf);
+    if (hadUnmappable) {
+      toast.info('Some characters have no DXF R12 text encoding and were exported as "?".');
+    }
+    downloadFile(bytes, `${stem}.dxf`, 'application/dxf');
     posthog.capture('drawing_exported', {
       format: 'dxf',
       axis: sectionPlane.axis,

@@ -323,11 +323,11 @@ export class DxfWriter {
     const [minX, minY, maxX, maxY] = this.hasExtents()
       ? [this.minX, this.minY, this.maxX, this.maxY]
       : [0, 0, 0, 0];
-    // R12 (AC1009): no $INSUNITS (introduced R14) — see the `999` comment
-    // this.toString() prepends ahead of this section instead.
+    // R12: no $INSUNITS (unit is the `999` comment). $DWGCODEPAGE must match {@link encodeDxfCp1252}.
     return (
       '0\nSECTION\n2\nHEADER\n' +
       '9\n$ACADVER\n1\nAC1009\n' +
+      '9\n$DWGCODEPAGE\n3\nANSI_1252\n' +
       '9\n$EXTMIN\n10\n' + fmt(minX) + '\n20\n' + fmt(minY) + '\n30\n0.0\n' +
       '9\n$EXTMAX\n10\n' + fmt(maxX) + '\n20\n' + fmt(maxY) + '\n30\n0.0\n' +
       '0\nENDSEC\n'

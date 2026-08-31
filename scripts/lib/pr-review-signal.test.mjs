@@ -575,6 +575,20 @@ test('the poll treats an EMPTY rollup as "nothing has appeared yet", never as se
   assert.match(d.logs[0], /3\/3 required lane\(s\) not yet published/);
 });
 
+/**
+ * Run creation to the LAST non-aggregate lane's `created_at`, in seconds, over
+ * the 68 completed `test.yml` PR runs of 2026-08-25/26 that published the
+ * aggregate. Shared by the three budget tests below, which read it in different
+ * directions: what 900 s covered, what 420 s false-failed, and what a re-measure
+ * on 2026-08-31 found it no longer covers.
+ */
+const LANE_APPEARED_SECONDS = [
+  161, 162, 162, 162, 163, 164, 164, 165, 165, 165, 166, 166, 167, 167, 167, 167, 167, 169, 169,
+  170, 170, 170, 170, 171, 171, 171, 172, 172, 175, 176, 177, 187, 188, 189, 190, 193, 198, 204,
+  210, 221, 235, 237, 237, 241, 244, 276, 289, 290, 290, 297, 299, 310, 322, 334, 349, 362, 386,
+  388, 403, 416, 423, 426, 450, 451, 522, 523, 542, 845,
+];
+
 test('MEASURED: 900 s covers every observed lane APPEARANCE, and 420 s did not', () => {
   // THE METHODOLOGY HERE WAS WRONG ONCE, AND THE NUMBERS MOVED WHEN IT WAS
   // FIXED. The first version of this constant measured `started_at` — when a
@@ -584,12 +598,6 @@ test('MEASURED: 900 s covers every observed lane APPEARANCE, and 420 s did not',
   // Measured from each run's own `created_at` over the 68 completed `test.yml`
   // PR runs of 2026-08-25/26 that published the aggregate, here is when the
   // LAST NON-AGGREGATE lane appeared, in seconds:
-  const LANE_APPEARED_SECONDS = [
-    161, 162, 162, 162, 163, 164, 164, 165, 165, 165, 166, 166, 167, 167, 167, 167, 167, 169, 169,
-    170, 170, 170, 170, 171, 171, 171, 172, 172, 175, 176, 177, 187, 188, 189, 190, 193, 198, 204,
-    210, 221, 235, 237, 237, 241, 244, 276, 289, 290, 290, 297, 299, 310, 322, 334, 349, 362, 386,
-    388, 403, 416, 423, 426, 450, 451, 522, 523, 542, 845,
-  ];
   assert.equal(LANE_APPEARED_SECONDS.length, 68);
 
   for (const s of LANE_APPEARED_SECONDS) {
@@ -611,6 +619,45 @@ test('MEASURED: 900 s covers every observed lane APPEARANCE, and 420 s did not',
   const max = Math.max(...LANE_APPEARED_SECONDS);
   assert.equal(max, 845);
   assert.equal(Number((900 / max).toFixed(2)), 1.07, 'tail margin, stated honestly');
+});
+
+test('RE-MEASURED 2026-08-31: 900 s BREACHED, and the budget is now 1800 s', () => {
+  // A 1.07x margin is one busy afternoon from being wrong, and this was that
+  // afternoon. Same methodology as above -- run creation to the LAST
+  // non-aggregate lane's `created_at` -- over the 22 most recent completed
+  // test.yml PR runs, with three PRs of this rollout in flight at once:
+  const RE_MEASURED = [
+    15, 162, 166, 171, 176, 185, 201, 205, 211, 264, 264, 282, 290, 375, 391, 418, 469, 622, 660,
+    814, 906, 1527,
+  ];
+  assert.equal(RE_MEASURED.length, 22);
+
+  // TWO breach 900 s. The 1527 s run is PR #3584's own: `Build packages + WASM`
+  // completed at 18:38:31 and the gate gave up at 18:37:50, so eight lanes sat
+  // behind `needs: build` and could not exist yet. Nothing had failed.
+  const breaching = RE_MEASURED.filter((t) => t > 900);
+  assert.deepEqual(breaching, [906, 1527], '900 s is no longer a covering budget');
+
+  // WHY IT MOVED, and why raising the number is the right response rather than
+  // re-tuning it downward later: the gate polls for lane APPEARANCE, and a lane
+  // behind `needs:` cannot appear until its dependency finishes. So this budget
+  // is not measuring flakiness, it is measuring the BUILD, and the build gets
+  // slower exactly when the runner pool is busy -- which is when several PRs
+  // are open, which is when the gate matters most.
+  for (const t of RE_MEASURED) {
+    const d = driver(completesAt(t * 1000));
+    assert.equal(poll(d, { deadline: 1800_000 }).timedOut, false, `${t}s must fit in 1800 s`);
+  }
+  // Both directions. A budget that covers everything proves nothing on its own;
+  // this pins that the OLD one genuinely fails the two runs it is claimed to.
+  for (const t of breaching) {
+    const d = driver(completesAt(t * 1000));
+    assert.equal(poll(d, { deadline: 900_000 }).timedOut, true, `${t}s must NOT fit in 900 s`);
+  }
+  assert.equal(Number((1800 / 1527).toFixed(2)), 1.18, 'the new tail margin, stated the same way');
+});
+
+test('MEASURED: the aggregate lane is excluded, and that is the load-bearing half', () => {
 
   // AND THE AGGREGATE EXCLUSION IS MORE LOAD-BEARING THAN 420-vs-900 EVER WAS.
   // Same 68 runs, when `Build + WASM + Rust + Node` itself appeared: min 509,

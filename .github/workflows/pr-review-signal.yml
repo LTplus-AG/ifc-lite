@@ -84,7 +84,7 @@ jobs:
     runs-on: ubuntu-latest
     # Above the poll budget below, so a run that exhausts the budget still gets
     # to PRINT its verdict rather than being killed mid-wait with no output.
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -151,4 +151,4 @@ jobs:
           node scripts/check-pr-review-signal.mjs \
             --pr "${{ github.event.pull_request.number }}" \
             --self-name 'PR review signal' \
-            --timeout-seconds 900
+            --timeout-seconds 1800

@@ -8297,4 +8297,3 @@ export interface IfcZShapeProfileDef extends IfcParameterizedProfileDef {
 export interface IfcZone extends IfcSystem {
   LongName?: IfcLabel;
 }
-

@@ -31,6 +31,21 @@ describe('TypeScript Generator', () => {
       expect(code.entities).toContain('Name?: IfcLabel;');
     });
 
+    it('ends entity output with one POSIX newline', () => {
+      const schema = parseExpressSchema(`
+        SCHEMA TEST;
+
+        ENTITY IfcRoot;
+        END_ENTITY;
+
+        END_SCHEMA;
+      `);
+
+      const code = generateTypeScript(schema);
+
+      expect(code.entities).toMatch(/[^\n]\n$/);
+    });
+
     it('should generate interface with inheritance', () => {
       const schema = parseExpressSchema(`
         SCHEMA TEST;

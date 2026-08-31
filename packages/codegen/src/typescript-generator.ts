@@ -84,7 +84,9 @@ function generateEntityInterfaces(schema: ExpressSchema): string {
     code += '\n\n';
   }
 
-  return code;
+  // Each entity appends its separating newline. Normalize the final separator so
+  // all generated consumers have one POSIX EOF newline rather than a blank line.
+  return `${code.trimEnd()}\n`;
 }
 
 /**

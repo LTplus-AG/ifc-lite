@@ -31,7 +31,7 @@ import {
   type AuditOpType,
   type AuditSink,
 } from './audit-log.js';
-import { createRateLimiter, type RateLimitOptions, type RateLimiter } from './rate-limit.js';
+import { createRateLimiter, type RateLimitOptions } from './rate-limit.js';
 
 const MESSAGE_SYNC = 0;
 const MESSAGE_AWARENESS = 1;

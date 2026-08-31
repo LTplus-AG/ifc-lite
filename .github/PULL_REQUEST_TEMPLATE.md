@@ -5,11 +5,12 @@
 <!--
 The change and the problem it solves.
 
-Closes #<issue>   <- the issue needs the `ready` label.
+Closes #<issue>   <- required unless this PR carries the `unqueued` label.
+                     The issue needs the `ready` label; a maintainer applies both.
                      See CONTRIBUTING.md "Picking what to work on".
-                     Checked by CI, currently ADVISORY: a green `Issue queue`
-                     check does not yet mean this was satisfied, so read its
-                     verdict rather than its tick.
+                     The `Issue queue` check prints its own mode. While it says
+                     ADVISORY, a green tick does not mean the rule was met, so
+                     read the verdict rather than the tick.
 -->
 
 ## How it was verified

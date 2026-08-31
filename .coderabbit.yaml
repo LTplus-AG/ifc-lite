@@ -94,12 +94,21 @@ reviews:
         instructions: >-
           Applies only when the PR adds or edits a file under `.changeset/`.
 
-          SCOPE: judge ONLY behaviour changes on exports that still exist under the
-          same name. Name-level removals and renames belong to
-          `scripts/check-changeset-bump.mjs`, which decides them from the API-surface
-          snapshot and is right by construction. Do NOT re-derive those: agreeing is
-          noise and disagreeing is a false finding the maintainer has to triage, which
-          is the review burden this whole change exists to reduce.
+          SCOPE, and read the boundary carefully because it is not "all removals".
+          `scripts/check-changeset-bump.mjs` decides name-level removals and renames
+          from `scripts/api-surface.json`, and is right by construction FOR THE
+          PACKAGES THAT SNAPSHOT COVERS -- `packages/*` only. Do not re-derive those:
+          agreeing is noise, disagreeing is a false finding to triage.
+          It covers NOTHING ELSE, and those gaps are yours:
+            - `apps/*` workspace members. `@ifc-lite/viewer` and
+              `@ifc-lite/viewer-embed` are private but VERSIONED
+              (`privatePackages.version: true`, `ignore: []`), and neither is in the
+              snapshot. A removed export there declared `patch` is checked by no
+              deterministic gate at all.
+            - The Rust side of `@ifc-lite/wasm`. Its snapshot is the committed
+              `pkg/ifc-lite.d.ts`, so a signature change behind a `pub use` does not
+              move it.
+          For those, judge removals and renames as well as behaviour changes.
 
           What the snapshot CANNOT see, and what you are here for: an exported
           function that starts throwing where it returned a value; a return type

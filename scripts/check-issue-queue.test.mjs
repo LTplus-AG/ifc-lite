@@ -191,6 +191,20 @@ test('readyLabel and escapeLabel differing only by CASE are refused', () => {
   assert.match(r.output, /case-insensitively/);
 });
 
+test('NO_LINKED_ISSUE does not deny a label the same output reports', () => {
+  // The banner used to say "carries no `unqueued` label" while the lines below
+  // said "this PR carries `unqueued`, but ...", in one output, with the header
+  // already printing `PR labels: unqueued`. Three statements, two of them wrong.
+  const r = run(
+    prPayload({ prLabels: [[ESCAPE, CONTRIBUTOR]], issues: [] }),
+    ENFORCING,
+  );
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /NO_LINKED_ISSUE/);
+  assert.match(r.output, /SELF_APPLIED_LABEL/);
+  assert.doesNotMatch(r.output, /carries no `unqueued` label/);
+});
+
 // =========================================================== advisory mode
 //
 // These exist because the branch shipped BROKEN and every one of the 33 tests
@@ -527,12 +541,23 @@ test('config: an unknown flag is refused rather than ignored', () => {
 // ======================================= the shipped config and the workflow
 
 test('the SHIPPED config is the one the gate validates', () => {
-  // Not decoration: every test above patches this file, so a shipped config
-  // that its own validator rejects would be invisible here.
-  const r = run(prPayload({ issues: [issue(3525, [[READY, MAINTAINER]])] }), ENFORCING);
+  // NO `--config` HERE, DELIBERATELY, AND THAT IS THE WHOLE TEST. Every other
+  // test passes ENFORCING, i.e. a temp COPY, so a shipped config its own
+  // validator rejects would be invisible to all of them. This one run has to
+  // read scripts/issue-queue.config.json through the gate itself.
+  //
+  // It briefly stopped doing that: a sweep added ENFORCING to every `run(` call
+  // site including this one, which left the test passing, correctly named, and
+  // no longer holding the line it was named for.
+  const r = run(prPayload({ issues: [issue(3525, [[READY, MAINTAINER]])] }));
+  assert.doesNotMatch(r.output, /BAD_CONFIG/, 'the shipped config must pass its own validator');
   assert.equal(r.code, 0, r.output);
   assert.equal(SHIPPED.requireLabelAuthority, true, 'ships with the self-apply rule ARMED');
   assert.ok(SHIPPED.labelAuthorities.length > 0);
+  assert.ok(
+    SHIPPED.mode === 'advisory' || SHIPPED.mode === 'enforcing',
+    `shipped mode must be a valid rollout state, got ${JSON.stringify(SHIPPED.mode)}`,
+  );
 });
 
 test('the workflow has NO `paths:` filter, and that is asserted rather than intended', () => {

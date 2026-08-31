@@ -77,11 +77,11 @@ another sweep.
 
 **Default lane: your PR closes an issue labelled `ready`.** `ready` is applied by the
 maintainer and means: in scope, wanted now, scoped. That label is how project direction
-gets set, and it is the one thing not delegated. `scripts/check-issue-queue.mjs` checks it on every PR. It ships **advisory**
-during rollout: it prints the verdict and does not fail the job, so a green
-`Issue queue` check does NOT currently mean the rule was satisfied. Read the
-verdict, not the tick. The mode flips to enforcing in
-`scripts/issue-queue.config.json` once the queue is stocked. A genuine drive-by fix can be waved through with the
+gets set, and it is the one thing not delegated. `scripts/check-issue-queue.mjs` checks it on every PR, and **prints which mode
+it is in**. Read that line rather than this one: the mode lives in
+`scripts/issue-queue.config.json` and this paragraph cannot be kept in sync with
+it. While the check reports ADVISORY it prints its verdict and does not fail the
+job, so a green tick does not mean the rule was met. A genuine drive-by fix can be waved through with the
 `unqueued` label, applied by the maintainer.
 
 **Filing issues is unrestricted and welcome.** An audit that produces twenty good

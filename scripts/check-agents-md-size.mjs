@@ -409,7 +409,13 @@ for (const { rel, bytes } of measured) {
   } else if (bytes > budget) {
     grew.push(`  ${rel}: ${bytes} bytes, budget ${budget} (+${bytes - budget})`);
   } else if (bytes < budget) {
-    slack.push(`  ${rel}: ${bytes} bytes, budget ${budget} (${budget - bytes} bytes of headroom)`);
+    // Guarded by the clamp, as the --update branch is. A tracked EMPTY file
+    // measures 0 and is recorded as the clamped 1, so an unguarded check printed
+    // a permanent "1 bytes of headroom; re-record with --update" note whose
+    // stated remedy is a no-op. Same defect, other branch.
+    if (Math.max(1, bytes) !== budget) {
+      slack.push(`  ${rel}: ${bytes} bytes, budget ${budget} (${budget - bytes} bytes of headroom)`);
+    }
   }
 }
 

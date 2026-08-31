@@ -96,6 +96,12 @@ jobs:
             # nothing at all -- and matching nothing is the #3314 class where a
             # gate cannot fire on its own input.
             agents_md:
+              # test.yml DEFINES the agents-md job, so an edit that breaks, renames
+              # or deletes its steps must be able to run it. Without this line the
+              # filter is false, the job skips, the aggregate counts `skipped` as a
+              # pass, and the row is green -- the #3314 class one level up, in the
+              # one filter that had no workflow entry while the other five did.
+              - '.github/workflows/test.yml'
               - 'AGENTS.md'
               - '**/AGENTS.md'
               - 'scripts/agents-md-budget.txt'

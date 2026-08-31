@@ -237,24 +237,23 @@ function matchesProperty(
     return value !== null && value !== undefined;
   }
 
+  // Absent never satisfies a comparison, incl. `contains ''`/`equals ''`.
+  if (value === null || value === undefined) return false;
+
   if (criteria.operator === 'contains' && criteria.propertyValue !== undefined) {
-    return String(value ?? '').toLowerCase().includes(criteria.propertyValue.toLowerCase());
+    return String(value).toLowerCase().includes(criteria.propertyValue.toLowerCase());
   }
 
-  // An absent property never satisfies a comparison - mirroring the search
-  // layer, where the rule matches over the rows that exist so a missing
-  // property fails even the negative ops.
   if (isComparisonOperator(criteria.operator)) {
-    if (value === null || value === undefined) return false;
     return matchesComparison(criteria.operator, value, criteria.propertyValue);
   }
 
   // Default: equals
   if (criteria.propertyValue !== undefined) {
-    return valueEquals(String(value ?? ''), criteria.propertyValue);
+    return valueEquals(String(value), criteria.propertyValue);
   }
 
-  return value !== null && value !== undefined;
+  return true;
 }
 
 /** Match by material — prefers dedicated getMaterialName, falls back to pset scan */
@@ -314,23 +313,24 @@ function matchesAttribute(
     return value !== undefined && value !== '';
   }
 
+  // Absence is undefined OR '' (same test as `exists` above); checked once
+  // here so `contains ''`/`equals ''` can't match it either.
+  if (value === undefined || value === '') return false;
+
   if (criteria.operator === 'contains' && criteria.attributeValue !== undefined) {
-    return (value ?? '').toLowerCase().includes(criteria.attributeValue.toLowerCase());
+    return value.toLowerCase().includes(criteria.attributeValue.toLowerCase());
   }
 
-  // Absence for an attribute is undefined OR '' - the same test the `exists`
-  // branch above uses.
   if (isComparisonOperator(criteria.operator)) {
-    if (value === undefined || value === '') return false;
     return matchesComparison(criteria.operator, value, criteria.attributeValue);
   }
 
   // Default: equals
   if (criteria.attributeValue !== undefined) {
-    return valueEquals(value ?? '', criteria.attributeValue);
+    return valueEquals(value, criteria.attributeValue);
   }
 
-  return value !== undefined && value !== '';
+  return true;
 }
 
 /** Match by quantity value (equals, contains, exists, ne, gt, gte, lt, lte) */

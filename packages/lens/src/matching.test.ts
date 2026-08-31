@@ -1102,3 +1102,89 @@ describe('matchesCriteria — single-leaf compound ≡ plain leaf (bounding)', (
     });
   }
 });
+
+// ---------------------------------------------------------------------------
+// Absence vs. empty-string criteria value
+//
+// Reference semantics (pinned by `matchesQuantity`, which already guards
+// absence before any value comparison): a property/attribute/quantity that is
+// NOT PRESENT on an entity must never satisfy `equals`/`contains` with an
+// empty-string criteria value, exactly as it never satisfies a numeric
+// comparison or `ne`. `matchesProperty`/`matchesAttribute` checked
+// `contains`/`equals` before the absence guard, so `String(undefined ?? '')`
+// coerced an absent value to `''`, and `''.includes('')` / `'' === ''` made
+// an empty-string rule match entities that never had the field at all - the
+// one criteria type (`quantity`) that already guards absence first does not
+// have this hole, which is the reference this pins the other two to.
+// ---------------------------------------------------------------------------
+describe('matchesCriteria — absence never satisfies an empty-string value comparison', () => {
+  const provider = createMockProvider([
+    { id: 1, type: 'IfcWall', properties: { Pset_WallCommon: { FireRating: '60' } } },
+    { id: 2, type: 'IfcSlab' }, // no properties at all
+  ]);
+  provider.getEntityAttribute = (id: number, attrName: string) => {
+    if (id === 1 && attrName === 'Description') return 'Load-bearing';
+    return undefined; // id 2: attribute absent
+  };
+  provider.getQuantityValue = (id: number, qset: string, qname: string) => {
+    if (id === 1 && qset === 'Qto_WallBaseQuantities' && qname === 'Length') return 5.2;
+    return undefined; // id 2: quantity absent
+  };
+
+  it('property equals "" does not match an entity missing the property', () => {
+    const c: LensCriteria = {
+      type: 'property', propertySet: 'Pset_WallCommon', propertyName: 'FireRating',
+      operator: 'equals', propertyValue: '',
+    };
+    expect(matchesCriteria(c, 2, provider)).toBe(false);
+  });
+
+  it('property contains "" does not match an entity missing the property', () => {
+    const c: LensCriteria = {
+      type: 'property', propertySet: 'Pset_WallCommon', propertyName: 'FireRating',
+      operator: 'contains', propertyValue: '',
+    };
+    expect(matchesCriteria(c, 2, provider)).toBe(false);
+  });
+
+  it('attribute equals "" does not match an entity missing the attribute', () => {
+    const c: LensCriteria = {
+      type: 'attribute', attributeName: 'Description', operator: 'equals', attributeValue: '',
+    };
+    expect(matchesCriteria(c, 2, provider)).toBe(false);
+  });
+
+  it('attribute contains "" does not match an entity missing the attribute', () => {
+    const c: LensCriteria = {
+      type: 'attribute', attributeName: 'Description', operator: 'contains', attributeValue: '',
+    };
+    expect(matchesCriteria(c, 2, provider)).toBe(false);
+  });
+
+  it('quantity equals "" does not match an entity missing the quantity (the pre-existing, correct behaviour)', () => {
+    const c: LensCriteria = {
+      type: 'quantity', quantitySet: 'Qto_WallBaseQuantities', quantityName: 'Length',
+      operator: 'equals', quantityValue: '',
+    };
+    expect(matchesCriteria(c, 2, provider)).toBe(false);
+  });
+
+  it('quantity contains "" does not match an entity missing the quantity (the pre-existing, correct behaviour)', () => {
+    const c: LensCriteria = {
+      type: 'quantity', quantitySet: 'Qto_WallBaseQuantities', quantityName: 'Length',
+      operator: 'contains', quantityValue: '',
+    };
+    expect(matchesCriteria(c, 2, provider)).toBe(false);
+  });
+
+  it('a present property still matches equals "" only when its value truly is the empty string', () => {
+    const withEmpty = createMockProvider([
+      { id: 1, type: 'IfcWall', properties: { Pset_WallCommon: { Note: '' } } },
+    ]);
+    const c: LensCriteria = {
+      type: 'property', propertySet: 'Pset_WallCommon', propertyName: 'Note',
+      operator: 'equals', propertyValue: '',
+    };
+    expect(matchesCriteria(c, 1, withEmpty)).toBe(true);
+  });
+});

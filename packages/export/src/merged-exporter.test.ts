@@ -1362,11 +1362,11 @@ describe('MergedExporter', () => {
 
     // Same length unit as originModel, but its WCS origin is offset by 500 m —
     // e.g. a discipline model authored around its own project base point.
-    const offsetModel = (origin = 500, refDirection = '(1.,0.,0.)'): MergeModelInput => buildModel('offset', 'Offset', [
+    const offsetModel = (origin = 500, refDirection = '(1.,0.,0.)', twoDimensional = false): MergeModelInput => buildModel('offset', 'Offset', [
       [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('wcsProjB')}',$,'B',$,$,$,$,(#3),#2);`],
       [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#8));'],
-      [3, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#4,$);"],
-      [4, 'IFCAXIS2PLACEMENT3D', '#4=IFCAXIS2PLACEMENT3D(#5,#6,#7);'],
+      [3, 'IFCGEOMETRICREPRESENTATIONCONTEXT', `#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',${twoDimensional ? 2 : 3},1.E-5,#4,$);`],
+      [4, twoDimensional ? 'IFCAXIS2PLACEMENT2D' : 'IFCAXIS2PLACEMENT3D', twoDimensional ? '#4=IFCAXIS2PLACEMENT2D(#5,#7);' : '#4=IFCAXIS2PLACEMENT3D(#5,#6,#7);'],
       [5, 'IFCCARTESIANPOINT', `#5=IFCCARTESIANPOINT((${origin}.,0.,0.));`],
       [6, 'IFCDIRECTION', '#6=IFCDIRECTION((0.,0.,1.));'],
       [7, 'IFCDIRECTION', `#7=IFCDIRECTION(${refDirection});`],
@@ -1394,6 +1394,17 @@ describe('MergedExporter', () => {
 
       // Origin equality alone is insufficient: WCS orientation is part of the
       // frame. Both child subcontexts must stay with their respective parents.
+      expect(content.match(/=IFCGEOMETRICREPRESENTATIONCONTEXT\(/g)?.length).toBe(2);
+      expect(content.match(/=IFCGEOMETRICREPRESENTATIONSUBCONTEXT\(/g)?.length).toBe(2);
+      expect(findDanglingRefs(content)).toEqual([]);
+    });
+
+    it('keeps 2D contexts when their RefDirection differs at the same origin', () => {
+      const content = decode(new MergedExporter([originModel(), offsetModel(0, '(0.,1.)', true)])
+        .export({ schema: 'IFC4' }).content);
+
+      // IFCAXIS2PLACEMENT2D stores RefDirection at attribute 1 (not 2).
+      // Losing that distinction would collapse a rotated drawing frame.
       expect(content.match(/=IFCGEOMETRICREPRESENTATIONCONTEXT\(/g)?.length).toBe(2);
       expect(content.match(/=IFCGEOMETRICREPRESENTATIONSUBCONTEXT\(/g)?.length).toBe(2);
       expect(findDanglingRefs(content)).toEqual([]);

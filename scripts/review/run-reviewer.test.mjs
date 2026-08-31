@@ -14,7 +14,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classify, fenceUntrusted, buildPrompt, runReviewer, DISALLOWED_TOOLS } from './run-reviewer.mjs';
+import { classify, checkToken, fenceUntrusted, buildPrompt, runReviewer, DISALLOWED_TOOLS } from './run-reviewer.mjs';
 
 const ok = (result, extra = {}) => () => ({ status: 0, stdout: JSON.stringify({ result, ...extra }), stderr: '' });
 const INPUT = {
@@ -43,6 +43,55 @@ test('an UNRECOGNISED error is MODEL_ERROR, never a pass', () => {
   // unknown failure still fails.
   assert.equal(classify('something nobody has seen before'), 'MODEL_ERROR');
   assert.equal(classify(''), 'MODEL_ERROR');
+});
+
+// ============================================================== the credential
+
+test('a TRAILING NEWLINE is trimmed, because that is how the secret gets stored', () => {
+  // `echo token | gh secret set` stores a trailing newline, and a repository
+  // secret cannot be read back through the API to check. The failure it causes is
+  // an auth rejection whose message says nothing about whitespace, which is a long
+  // debugging session for one character. Trimmed so the class cannot bite.
+  const clean = checkToken('sk-ant-oat01-abc123');
+  const newline = checkToken('sk-ant-oat01-abc123\n');
+  assert.equal(newline.token, clean.token);
+  assert.match(newline.note, /trimmed/);
+  assert.doesNotMatch(newline.note, /sk-ant/, 'the note must never carry the credential');
+});
+
+test('whitespace INSIDE the token fails loudly rather than being trimmed away', () => {
+  // Trimming this would hide a real problem: it means the value was pasted
+  // wrapped or truncated, which is not the same as a trailing newline.
+  assert.throws(() => checkToken('sk-ant oat01-abc'), (e) => e.reason === 'AUTH_MALFORMED');
+  assert.throws(() => checkToken('   '), (e) => e.reason === 'AUTH_MALFORMED');
+});
+
+test('a missing credential is AUTH_MISSING, never a clean review', () => {
+  for (const v of [undefined, null, '']) {
+    assert.throws(() => checkToken(v), (e) => e.reason === 'AUTH_MISSING', String(v));
+  }
+});
+
+test('the TRIMMED credential is what reaches the CLI', () => {
+  // The mutation that survived before this test: passing the raw value to the
+  // spawn env. The trim existed and nothing proved it arrived, which makes the
+  // trim decorative.
+  let seenEnv = null;
+  const { token } = checkToken('sk-ant-oat01-abc123\n');
+  runReviewer({
+    prompt: 'p', model: 'sonnet', token,
+    spawn: (_c, _a, _stdin, env) => { seenEnv = env; return { status: 0, stdout: JSON.stringify({ result: '{}' }), stderr: '' }; },
+  });
+  assert.equal(seenEnv.CLAUDE_CODE_OAUTH_TOKEN, 'sk-ant-oat01-abc123');
+  assert.doesNotMatch(seenEnv.CLAUDE_CODE_OAUTH_TOKEN, /\s/, 'no whitespace may reach the CLI');
+});
+
+test('no failure message ever carries the credential', () => {
+  const secret = 'sk-ant-oat01-SUPERSECRETVALUE';
+  try { checkToken(`${secret} broken`); } catch (e) {
+    assert.doesNotMatch(e.message, /SUPERSECRET/, 'a secret in an error message is a leaked secret');
+    assert.match(e.message, /length \d+/, 'the length is a property of it, not it');
+  }
 });
 
 // ================================================================ the fence

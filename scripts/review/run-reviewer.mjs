@@ -160,7 +160,53 @@ export function buildPrompt(rubric, input) {
  *   Injected so every branch is reachable in tests without a model, a token, or
  *   a network. The shipped caller passes a real spawnSync wrapper.
  */
-export function runReviewer({ prompt, model, spawn }) {
+/**
+ * Check the credential's SHAPE without ever printing it, and hand back a trimmed
+ * copy.
+ *
+ * A repository secret cannot be read back through the API, by design, so a
+ * malformed one is invisible until it fails at run time -- and the most common
+ * way to malform it is invisible in a terminal too: `echo token | gh secret set`
+ * stores a TRAILING NEWLINE. That produces an auth rejection whose message says
+ * nothing about whitespace, which is a long debugging session for a one-character
+ * problem.
+ *
+ * So: trim first, so the whole whitespace class simply cannot bite, and then
+ * report the shape so a genuinely wrong value says so on the first run instead of
+ * looking like a quota problem. Nothing here logs the value, and the reported
+ * length is a property of the credential, not the credential.
+ *
+ * @returns {{ token: string, note: string }}
+ */
+export function checkToken(raw) {
+  if (raw === undefined || raw === null || String(raw) === '') {
+    throw new RunReviewerError(
+      'AUTH_MISSING',
+      'CLAUDE_CODE_OAUTH_TOKEN is unset or empty. REMEDY: `claude setup-token`, then ' +
+        '`gh secret set CLAUDE_CODE_OAUTH_TOKEN`. The lane cannot run without it, and it fails ' +
+        'here rather than posting a clean verdict it never earned.',
+    );
+  }
+  const token = String(raw).trim();
+  if (token === '') {
+    throw new RunReviewerError('AUTH_MALFORMED', 'CLAUDE_CODE_OAUTH_TOKEN is only whitespace.');
+  }
+  if (/\s/.test(token)) {
+    throw new RunReviewerError(
+      'AUTH_MALFORMED',
+      `CLAUDE_CODE_OAUTH_TOKEN contains whitespace INSIDE it (length ${token.length}). A trailing ` +
+        'newline is trimmed automatically; whitespace in the middle means the value was pasted ' +
+        'wrapped or truncated. REMEDY: re-set it with `printf %s "$TOKEN" | gh secret set ...`.',
+    );
+  }
+  const wrapped = String(raw) !== token;
+  return {
+    token,
+    note: `credential present, ${token.length} chars${wrapped ? ' (surrounding whitespace trimmed)' : ''}`,
+  };
+}
+
+export function runReviewer({ prompt, model, spawn, token = null }) {
   const args = [
     '-p',
     '--output-format', 'json',
@@ -170,7 +216,13 @@ export function runReviewer({ prompt, model, spawn }) {
     '--mcp-config', '{"mcpServers":{}}',
     '--disallowedTools', DISALLOWED_TOOLS,
   ];
-  const r = spawn('claude', args, prompt);
+  // The env is built HERE, not at the call site, so a test can observe that the
+  // TRIMMED credential is what reaches the CLI. It used to be assembled in
+  // `main`, outside the tested surface, and a mutation swapping the trimmed value
+  // for the raw one passed every test: the trim existed and nothing proved it
+  // arrived.
+  const env = token === null ? undefined : { ...process.env, CLAUDE_CODE_OAUTH_TOKEN: token };
+  const r = spawn('claude', args, prompt, env);
 
   if (r.error) {
     throw new RunReviewerError(
@@ -250,10 +302,15 @@ function main() {
   const input = JSON.parse(readFileSync(args.input, 'utf8'));
   const prompt = buildPrompt(rubric, input);
 
+  const { token, note } = checkToken(process.env.CLAUDE_CODE_OAUTH_TOKEN);
+  console.log(`auth: ${note}`);
+
   const { text, envelope } = runReviewer({
     prompt,
     model: args.model,
-    spawn: (cmd, a, stdin) => spawnSync(cmd, a, { input: stdin, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }),
+    token,
+    spawn: (cmd, a, stdin, env) =>
+      spawnSync(cmd, a, { input: stdin, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env }),
   });
 
   writeFileSync(args.out, text);

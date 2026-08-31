@@ -54,16 +54,17 @@
  *     aggregate anyway, it being one of only two contexts in main's ruleset.
  *     The budget WAS 900 s because 420 still false-failed 8 of those 68 even
  *     with the aggregate out. It is 2400 s now, re-measured on 2026-08-31, and
- *     85-91% of the number is RUNNER QUEUE rather than build -- so it has no
- *     ceiling and will breach again; the remedy then is a re-run, because
+ *     the number is overwhelmingly RUNNER QUEUE rather than build -- so it has
+ *     no ceiling and will breach again; the remedy then is a re-run, because
  *     nothing failed.
  *
- *     THE FIGURES ARE DELIBERATELY NOT REPEATED HERE. The population, the
- *     breach counts and the margin live once, in the budget tests in
- *     scripts/lib/pr-review-signal.test.mjs, which assert them AND assert the
- *     workflow's shipped budget against them. A copy of a measurement in a
- *     third file is a copy that goes stale, and this one did.
- *     Full measurement in .github/workflows/pr-review-signal.yml.
+ *     THE 2026-08-31 FIGURES ARE DELIBERATELY NOT REPEATED HERE -- not the
+ *     population, not the breach count, not the margin, and not the queue share.
+ *     They live once, in the budget tests in scripts/lib/pr-review-signal.test.mjs.
+ *     A copy of a measurement in a file that cannot assert it is a copy that
+ *     goes stale, and this one did, twice. The 2026-08-25/26 figures above are
+ *     restated and stay: a closed historical finding cannot go stale.
+ *     Full measurement in scripts/lib/pr-review-signal.test.mjs, which asserts it.
  *
  *     THE LOOP ITSELF IS `pollForLanes`, in the lib, over an injected clock and
  *     sleep. Inline in `main()` it was the one branch with no test --

@@ -123,16 +123,18 @@ jobs:
       #      68 -- at a tail margin of 900/845 = 1.07x, which this comment
       #      called thin, and on 2026-08-31 it broke.
       #
-      #      THE POPULATION, THE BREACH COUNT AND THE MARGIN ARE NOT RESTATED
-      #      HERE. They live once, in the budget tests in
-      #      scripts/lib/pr-review-signal.test.mjs, which ASSERT them and which
-      #      assert this file's own numbers against it. This paragraph carried a
-      #      copy twice and was stale both times -- the second time within an
-      #      hour, in the commit that corrected the first.
+      #      THE 2026-08-31 POPULATION, ITS BREACH COUNT AND ITS MARGIN ARE
+      #      NOT RESTATED HERE -- they live once, in the budget tests in
+      #      scripts/lib/pr-review-signal.test.mjs. This paragraph carried a
+      #      copy of them twice and was stale both times, the second time
+      #      within an hour, in the commit that corrected the first. The
+      #      2026-08-25/26 figures ABOVE are restated, and stay: they are a
+      #      closed historical finding, labelled as such, and cannot go stale.
       #
-      #      IT IS NOT MEASURING THE BUILD. On the slow runs 85-91% of the
-      #      number is RUNNER-POOL QUEUE (1837 s of queue against 176 s of
-      #      build on the worst one), so there is nothing to optimise and no
+      #      IT IS NOT MEASURING THE BUILD. On the slow runs the number is
+      #      overwhelmingly RUNNER-POOL QUEUE and the build is a near-constant
+      #      couple of minutes -- the per-run figures are in the test file with
+      #      the rest -- so there is nothing to optimise and no
       #      ceiling: queue depth grows with how many PRs are open, which is
       #      when this gate is under load. A budget cannot bound that, so it
       #      WILL breach again; the gate then says "within the poll budget"

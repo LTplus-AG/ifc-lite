@@ -262,6 +262,23 @@ export function mergeStoreyRefs(
   return merged;
 }
 
+/** Add a HierarchyPanel storey click to its mirrored `op:in` rule.
+ *
+ * A rule created by the hierarchy carries exact refs. A manually authored
+ * rule has no refs and deliberately matches by its names; changing that rule
+ * to ref mode would discard every existing manual selection. Keep it in name
+ * mode when extending it, while hierarchy-originated rules retain exact refs.
+ */
+export function addHierarchyStoreyToRule(
+  prior: StoreyRule | undefined,
+  name: string,
+  refs: ReadonlyArray<{ modelId: string; expressId: number }>,
+): StoreyRule {
+  const values = Array.from(new Set([...(prior?.values ?? []), name]));
+  if (prior && !prior.refs) return Rule.storey(values, 'in');
+  return Rule.storey(values, 'in', mergeStoreyRefs(prior?.refs ?? [], refs));
+}
+
 // ── Convenience constructors ──────────────────────────────────────────────────
 //
 // The chip UI builds rules via `set*` slice actions (see searchSlice.ts);

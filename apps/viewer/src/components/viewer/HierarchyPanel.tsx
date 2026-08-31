@@ -22,7 +22,7 @@ import { useViewerStore, resolveEntityRef } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
 import { useEntityListMultiSelect, type MultiSelectItem } from '@/hooks/useEntityListMultiSelect';
-import { Rule, mergeStoreyRefs, type FilterRule } from '@/lib/search/filter-rules';
+import { Rule, addHierarchyStoreyToRule, type FilterRule } from '@/lib/search/filter-rules';
 import { toast } from '@/components/ui/toast';
 import { useSourceHost } from '@/services/sources/SourceHostProvider';
 import { syncSourceModel } from '@/lib/sources/syncSourceModel';
@@ -612,9 +612,10 @@ export function HierarchyPanel() {
         setStoreysSelection([...Array.from(selectedStoreys), ...storeyIds]);
         // Mirror to the advanced filter — accumulate the storey name (issue #1107).
         const cur = useViewerStore.getState().searchFilter.rules.find((r) => r.kind === 'storey' && r.op === 'in');
-        const names = cur && cur.kind === 'storey' ? Array.from(new Set([...cur.values, node.name])) : [node.name];
-        const refs = mergeStoreyRefs(cur && cur.kind === 'storey' ? (cur.refs ?? []) : [], storeyRefs);
-        upsertSearchRule((r) => r.kind === 'storey' && r.op === 'in', Rule.storey(names, 'in', refs));
+        upsertSearchRule(
+          (r) => r.kind === 'storey' && r.op === 'in',
+          addHierarchyStoreyToRule(cur && cur.kind === 'storey' ? cur : undefined, node.name, storeyRefs),
+        );
         toast.success(`Filter → storey ${node.name}`);
       } else {
         // Single selection - toggle if already selected

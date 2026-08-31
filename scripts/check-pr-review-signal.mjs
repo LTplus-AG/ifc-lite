@@ -766,6 +766,7 @@ function fixtureAliases(raw) {
         `matrix template; got ${Array.isArray(raw) ? 'an array' : typeof raw}.`,
     );
   }
+  const out = new Map();
   for (const [lane, template] of Object.entries(raw)) {
     // A NON-STRING TEMPLATE IS THE SAME BUG ONE LEVEL IN. `{"Viewer tests (shard
     // 0)": null}` survives `Object.entries`, `skipped.has(null)` is false, and
@@ -773,15 +774,31 @@ function fixtureAliases(raw) {
     // explanation, which is exactly what refusing the malformed OUTER value was
     // meant to prevent. Raised by CodeRabbit on PR #3584 and reproduced before
     // fixing: the run printed MISSING_LANES, not BAD_STATE_FILE.
-    if (typeof lane !== 'string' || lane === '' || typeof template !== 'string' || template === '') {
+    //
+    // The KEY is not checked: `Object.entries` only ever yields strings, so a
+    // `typeof lane !== 'string'` clause here would be dead code pretending to
+    // guard something. An empty key is reachable (`{"": "x"}` is valid JSON) and
+    // is rejected.
+    if (lane === '' || typeof template !== 'string' || template === '') {
+      // `typeof []` is 'object', which tells a fixture author nothing. Named the
+      // way the outer refusal names it, so the two messages read alike.
+      const what =
+        template === ''
+          ? 'an empty string'
+          : Array.isArray(template)
+            ? 'an array'
+            : template === null
+              ? 'null'
+              : typeof template;
       throw new ReviewSignalError(
         'BAD_STATE_FILE',
-        `\`aliases\` maps \`${lane}\` to ${template === '' ? 'an empty string' : typeof template}; ` +
-          'every lane name and every matrix template must be a non-empty string.',
+        `\`aliases\` maps \`${lane}\` to ${what}; every lane name and every matrix ` +
+          'template must be a non-empty string.',
       );
     }
+    out.set(lane, template);
   }
-  return new Map(Object.entries(raw));
+  return out;
 }
 
 function main() {

@@ -510,3 +510,69 @@ test('FAIL CLOSED: an unreadable head repository REFUSES rather than guessing ei
     assert.match(r.out, /NO_HEAD_REPO/, JSON.stringify(headRepo));
   }
 });
+
+// ================================ `covered` is not the same question as `ok`
+
+test('nothing-to-review PASSES but reports covered=FALSE, so CodeRabbit does not stand down', () => {
+  // The hole this closes: `review-posted.yml` turns `covered` into the
+  // `claude-reviewed` label, and `.coderabbit.yaml` skips labelled PRs. A
+  // nothing-to-review head was never READ by anything, so claiming coverage
+  // would stand CodeRabbit down too and leave the PR reviewed by NOBODY.
+  const outPath = join(TMP, `ghout-ntr-${(seq += 1)}.txt`);
+  const payloadPath = join(TMP, `p-ntr-${seq}.json`);
+  writeFileSync(outPath, '');
+  writeFileSync(
+    payloadPath,
+    JSON.stringify({ headRepo: SAME_REPO, ...comments([REVIEWER, marker(SHA, 'nothing-to-review', 0)]) }),
+  );
+  const r = spawnSync(
+    process.execPath,
+    [GATE, '--pr', '1', '--sha', SHA, '--repo', SAME_REPO, '--state-file', payloadPath, ...ENFORCING],
+    { encoding: 'utf8', env: { ...process.env, GITHUB_OUTPUT: outPath } },
+  );
+  assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+  assert.match(readFileSync(outPath, 'utf8'), /covered=false/, 'nobody read this diff');
+  assert.match(`${r.stdout}${r.stderr}`, /COVERED=FALSE/);
+});
+
+test('a REAL clean review reports covered=true, or the stand-down never happens at all', () => {
+  // The anti-vacuity pair: if `covered` were false for everything, the test above
+  // would pass while the whole stand-down mechanism was dead.
+  const outPath = join(TMP, `ghout-clean-${(seq += 1)}.txt`);
+  const payloadPath = join(TMP, `p-clean-${seq}.json`);
+  writeFileSync(outPath, '');
+  writeFileSync(payloadPath, JSON.stringify({ headRepo: SAME_REPO, ...comments([REVIEWER, marker(SHA)]) }));
+  const r = spawnSync(
+    process.execPath,
+    [GATE, '--pr', '1', '--sha', SHA, '--repo', SAME_REPO, '--state-file', payloadPath, ...ENFORCING],
+    { encoding: 'utf8', env: { ...process.env, GITHUB_OUTPUT: outPath } },
+  );
+  assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+  assert.match(readFileSync(outPath, 'utf8'), /covered=true/);
+});
+
+test('the fork comparison is CASE-INSENSITIVE, or enforcement is off for everyone', () => {
+  // GitHub repo names are case-insensitive and `--repo` is caller-supplied, so
+  // `ltplus-ag/...` against a head repo of `LTplus-AG/...` would read as a fork
+  // and excuse every failing verdict.
+  const r = run({ headRepo: 'LTplus-AG/ifc-lite', issueComments: [], reviewComments: [], reviews: [] }, [
+    ...ENFORCING, '--repo', 'ltplus-ag/IFC-Lite',
+  ]);
+  assert.equal(r.code, 1, r.out);
+  assert.doesNotMatch(r.out, /FORK PR/, 'the same repo in another case is not a fork');
+});
+
+test('FAIL CLOSED: the fork check REFUSES when no repository was resolved', () => {
+  // `args.repo` is only refused inside the live branch, so a state-file run can
+  // reach here with null -- and `headRepo !== null` is true for every value,
+  // which would excuse every failing verdict. A gate that cannot fail.
+  const path = join(TMP, `p-norepo-${(seq += 1)}.json`);
+  writeFileSync(path, JSON.stringify({ headRepo: SAME_REPO, issueComments: [], reviewComments: [], reviews: [] }));
+  const r = spawnSync(
+    process.execPath,
+    [GATE, '--pr', '1', '--sha', SHA, '--state-file', path, ...ENFORCING],
+    { encoding: 'utf8', env: { ...process.env, GITHUB_REPOSITORY: '' } },
+  );
+  assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+  assert.match(`${r.stdout}${r.stderr}`, /NO_REPO/);
+});

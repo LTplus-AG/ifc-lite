@@ -842,8 +842,14 @@ test('a nothing-to-review run REFUSES to overwrite a real verdict for the same h
   assert.equal(first.code, 0, first.out);
   assert.match(allBodies(first.state), /verdict=findings/);
 
+  // EXIT 0, not a throw. The refusal is right; reddening the lane for a state
+  // that needs no action is not -- the gate is already satisfied by the standing
+  // marker, and no re-run could clear that red. Reintroducing the unclearable-red
+  // class inside the guard that removes it was the bug.
   const second = runNothingToReview({ state: first.state });
-  assert.notEqual(second.code, 0, second.out);
+  assert.equal(second.code, 0, second.out);
   assert.match(second.out, /WOULD_DOWNGRADE_VERDICT/);
+  assert.match(second.out, /nothing to do/);
   assert.match(allBodies(second.state), /verdict=findings/, 'the real verdict must still stand');
+  assert.doesNotMatch(allBodies(second.state), /nothing-to-review/, 'and must not be overwritten');
 });

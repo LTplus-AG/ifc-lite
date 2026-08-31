@@ -604,12 +604,20 @@ function main() {
       return normaliseLogin(c?.user?.login) === author && m?.[1] === args.sha && m[2] !== 'nothing-to-review';
     });
     if (existing) {
-      throw new PostReviewError(
-        'WOULD_DOWNGRADE_VERDICT',
-        `A \`${MARKER_RE.exec(existing.body)[2]}\` marker already stands for ${args.sha.slice(0, 9)}. ` +
-          'Overwriting it with `nothing-to-review` would retract a real verdict and orphan any inline ' +
-          'findings under it. Refused. REMEDY: this head was reviewed; nothing to do.',
+      // REPORTED, AND EXIT 0. The refusal is right -- overwriting a real verdict
+      // would retract it and orphan any inline findings under it -- but THROWING
+      // was wrong: it reddens the lane job for a state that needs no action, the
+      // gate is already satisfied by the standing marker, and no re-run could
+      // ever clear it. That is precisely the unclearable-red class this branch
+      // exists to remove, reintroduced by its own guard. Raised by CodeRabbit on
+      // PR #3587.
+      console.log(
+        `WOULD_DOWNGRADE_VERDICT: a \`${MARKER_RE.exec(existing.body)[2]}\` marker already stands for ` +
+          `${args.sha.slice(0, 9)}. Overwriting it with \`nothing-to-review\` would retract a real ` +
+          'verdict and orphan any inline findings under it, so nothing was posted. This head IS ' +
+          'covered and the gate reads it; there is nothing to do.',
       );
+      process.exit(0);
     }
     const liveHead = fetchHeadSha(args.repo, args.pr);
     if (liveHead !== args.sha) {

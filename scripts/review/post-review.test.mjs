@@ -801,3 +801,35 @@ test('THE WIRING: the workflow actually takes this path when the input step skip
     assert.match(s2.split('run:')[0], /skip != 'true'/, `${other} must be excluded on the skip path`);
   }
 });
+
+test('THE MATCHED PAIR: every identity the lane posts as is one the GATE accepts', () => {
+  // THE PAIR HAS NO OTHER GATE, and this repository has been bitten by that shape
+  // before: two changes, each green alone, fatal together. The lane names the
+  // identity it posts as in `claude-review.yml` (`--author`); the gate names the
+  // identities whose marker counts in `review-posted.config.json`. Nothing else
+  // connects them, so changing ONE is a silent break -- every marker the lane
+  // writes becomes invisible, the gate reads NOT_POSTED on every head, and under
+  // `mode: enforcing` that is the whole repository red.
+  //
+  // Live instance at the time of writing: PR #3583 replaces `expectedAuthors`
+  // with a dedicated GitHub App that does not exist yet. Its own description says
+  // the gate then "correctly reports NOT_POSTED" -- true and harmless under
+  // advisory, and the entire repository under enforcing. This test is what turns
+  // that from a surprise into a red line in whichever PR lands second.
+  const wf = readFileSync(join(HERE, '..', '..', '.github/workflows/claude-review.yml'), 'utf8');
+  const authors = [...wf.matchAll(/--author\s+(\S+)/g)].map((m) => m[1]);
+  assert.ok(authors.length > 0, 'the lane must name the identity it posts as');
+
+  const cfg = JSON.parse(readFileSync(join(HERE, '..', 'review-posted.config.json'), 'utf8'));
+  const accepted = (cfg.expectedAuthors ?? []).map((a) => String(a).toLowerCase());
+  assert.ok(accepted.length > 0, 'the gate must name at least one accepted identity');
+
+  for (const a of authors) {
+    assert.ok(
+      accepted.includes(a.toLowerCase()),
+      `the lane posts as \`${a}\`, which the gate does not accept (${accepted.join(', ')}). ` +
+        'Every marker it writes would be invisible and the gate would read NOT_POSTED on every PR. ' +
+        'Change BOTH or neither.',
+    );
+  }
+});

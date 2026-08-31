@@ -5,7 +5,7 @@
 # MSRV floor is 1.89.0 (nalgebra 0.35.0, PR #786). Pinning the bookworm
 # variant so the build glibc lines up with the bookworm-slim runtime stage
 # below.
-FROM lukemathwalker/cargo-chef:latest-rust-1.97-bookworm AS chef
+FROM lukemathwalker/cargo-chef:latest-rust-1.98-bookworm AS chef
 WORKDIR /app
 
 # Stage 2: Planner - create dependency recipe

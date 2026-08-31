@@ -922,7 +922,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
             <span className="text-xs text-muted-foreground">
               {effectiveResultView === 'issues'
                 ? `${issueCount === 1 ? 'issue' : 'issues'} · ${total} ${total === 1 ? 'pair' : 'pairs'}`
-                : `${total === 1 ? 'clash' : 'clashes'}${hideTouching && touchingCount > 0 ? ` · ${shown} shown` : ''}${
+                : `${total === 1 ? 'clash' : 'clashes'}${shown < total ? ` · ${shown} shown` : ''}${
                     groups && !isDuplicateSetView ? ` · ${issueCount} ${issueCount === 1 ? 'issue' : 'issues'}` : ''
                   }`}
             </span>

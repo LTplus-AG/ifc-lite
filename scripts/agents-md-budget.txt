@@ -1,0 +1,33 @@
+# Byte budgets for AGENTS.md (see scripts/check-agents-md-size.mjs).
+# The instruction-file member of the ratchet family that already holds
+# TypeScript modules (scripts/module-size-allowlist.txt) and Rust ones
+# (rust/processing/tests/module_size_allowlist.txt).
+#
+# Every TRACKED AGENTS.md gets a line of '<budget> <path>'; the budget is the
+# file's size in bytes at the moment it was recorded. The gate fails if a file
+# grows PAST its budget, if a new AGENTS.md appears with no row, or if ANY line
+# in any of them is over 2,000 characters.
+#
+# The rule: DELETE SOMETHING. Budgets ratchet DOWN only. A file may shrink or
+# stay flat, never grow, and `--update` refuses to raise a budget or record an
+# over-default new file, so the regeneration command cannot quietly undo the
+# ratchet. A raise IS sanctioned when it is deliberate — `--update
+# --allow-raise`, justified in the PR — and with six rows it costs a line of
+# diff that a reviewer cannot miss.
+#
+# WHY THE BUDGET IS FINITE: the root AGENTS.md went from 10,123 to 48,066 bytes
+# in 26 commits over 55 days without shrinking once. The admission rule this
+# enforces is that IF A LESSON CAN BE EXPRESSED AS A CI GATE, YOU BUILD THE GATE
+# AND WRITE NOTHING; prose is only for what no gate can express. The ratchet
+# cannot check that — it just makes room finite, so admitting a paragraph means
+# paying for it, and the cheapest way to pay is to turn an old paragraph into a
+# gate and delete it.
+#
+# Regenerate: node scripts/check-agents-md-size.mjs --update
+# A raise:    node scripts/check-agents-md-size.mjs --update --allow-raise
+ 47112 AGENTS.md
+  5430 apps/viewer/AGENTS.md
+  1638 packages/collab-server/AGENTS.md
+  2013 packages/collab/AGENTS.md
+  3815 packages/geometry/AGENTS.md
+  4170 rust/AGENTS.md

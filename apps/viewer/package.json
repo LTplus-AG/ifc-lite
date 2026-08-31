@@ -110,7 +110,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5",
     "@types/three": "^0.185.4",
-    "@vitejs/plugin-react": "^6.1.0",
+    "@vitejs/plugin-react": "^6.1.1",
     "fake-indexeddb": "^6.2.5",
     "happy-dom": "^20.11.12",
     "svgo": "^4.1.0",

@@ -62,12 +62,36 @@ reviews:
   auto_review:
     enabled: true
     drafts: false
+    # Dependency bumps do not need an LLM review and they draw on the same
+    # per-identity allowance the humans are throttled by. 21 PRs last month.
+    ignore_usernames:
+      - dependabot
+      - dependabot[bot]
+      - app/dependabot
     auto_incremental_review: true
-    # Default is 5. At this repo's cadence (peak 75 merges in one day, median PR open
-    # 6.4 hours) a 5-commit pause silently stops reviewing exactly the long-running
-    # PRs that most need it, and publishes `Reviews paused ... under active
-    # development` alongside a passing status. Raised so the pause is rare.
-    auto_pause_after_reviewed_commits: 30
+    # LOWERED TO 1, WHICH REVERSES AN EARLIER DECISION ON THIS BRANCH, because the
+    # measurement that decision was made without changes the answer.
+    #
+    # It was first raised to 30 to stop `Reviews paused ... under active
+    # development` appearing alongside a passing status on long-running PRs. That
+    # reasoning treated review capacity as fixed. It is not: CodeRabbit's Fair
+    # Usage Policy is scoped PER DEVELOPER IDENTITY over a ROLLING 7-DAY WINDOW,
+    # and Pro+ degrades from 10 reviews/hour to 1 once an identity passes ~90
+    # reviews in 7 days. Both active identities here sit permanently at that floor;
+    # the gate's own rate-limit comments say so: "Your plan provides up to 2
+    # included reviews per hour" under "**Plan**: Pro Plus".
+    #
+    # Roughly 40% of review ATTEMPTS on this repo are incremental re-reviews on
+    # pushes rather than new PRs, and every one of them counts toward the 7-day
+    # total that sets the refill rate. Raising this number spends allowance on
+    # re-reviewing branches nobody asked about and pushes both identities deeper
+    # into the throttle band, which is paid for by the NEXT PR getting no review at
+    # all. Lowering it is the only lever that improves the throttle rather than
+    # paying around it, and it costs nothing.
+    #
+    # Batch pushes for the same reason: five commits pushed separately trigger five
+    # reviews, pushed together they trigger one.
+    auto_pause_after_reviewed_commits: 1
 
   pre_merge_checks:
     # Only requested reviewers can wave a failing check through, never the PR author.

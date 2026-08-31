@@ -97,6 +97,33 @@ const HEADER = '# budgets\n';
 
 // --- tooth 1: the byte budget, in both directions -------------------------
 
+test('a tracked EMPTY AGENTS.md round-trips instead of deadlocking', () => {
+  // Both clamp guards, which shipped untested. parseAllowlist refuses `budget
+  // <= 0`, so recording a 0-byte file at its true size wrote a row this gate's
+  // own parser then rejects: --update exited 0 having written it and every later
+  // run died with "bad budget in", with no way out but hand-editing. The check
+  // branch had the twin defect, printing a permanent "1 bytes of headroom;
+  // re-record with --update" note whose remedy is a no-op.
+  const dir = repo({ tracked: { 'AGENTS.md': doc(100), 'sub/AGENTS.md': '' } });
+  // Seeded with a real row: the parser fail-closes on a zero-row budget file,
+  // so a header-only seed cannot bootstrap. That guard is correct and is not
+  // what this test is about.
+  const first = run(dir, `${HEADER}  6000 AGENTS.md\n`, ['--update']);
+  assert.equal(first.code, 0, first.out);
+
+  // The written row must be readable by the parser that wrote it.
+  const check = run(dir, null);
+  assert.equal(check.code, 0, check.out);
+  assert.doesNotMatch(check.out, /bad budget in/);
+  // ...and must not claim headroom it will never act on.
+  assert.doesNotMatch(check.out, /sub\/AGENTS\.md.*bytes of headroom/);
+
+  // A second --update changes nothing: the clamp is idempotent.
+  const second = run(dir, null, ['--update']);
+  assert.equal(second.code, 0, second.out);
+  assert.match(second.out, /0 lowered/);
+});
+
 test('a file at its recorded budget passes, and the run says what it measured', () => {
   const dir = repo({ tracked: { 'AGENTS.md': doc(5000), 'rust/AGENTS.md': doc(1200) } });
   const { code, out } = run(dir, `${HEADER}5000 AGENTS.md\n1200 rust/AGENTS.md\n`);

@@ -688,7 +688,7 @@ function adjudicateLabel(holder, label, cfg) {
  * The harness reaches it through that flag, not through an import.
  *
  * @param {{ pr: ReturnType<typeof normalisePullRequest>, cfg: ReturnType<typeof readConfig> }} args
- * @returns {{ ok: boolean, verdict: string, lines: string[] }}
+ * @returns {{ ok: boolean, verdict: string, escapeProblem: string|null, lines: string[] }}
  */
 export function evaluate({ pr, cfg }) {
   const lines = [];
@@ -699,7 +699,7 @@ export function evaluate({ pr, cfg }) {
       `ℹ️  EXEMPT_AUTHOR: \`${pr.author}\` is in \`exemptLogins\`, so this PR is not adjudicated.`,
       '   The maintainer sets direction by definition, and a bot has no work queue to steer.',
     );
-    return { ok: true, verdict: 'EXEMPT_AUTHOR', lines };
+    return { ok: true, verdict: 'EXEMPT_AUTHOR', escapeProblem: null, lines };
   }
 
   // ---- the escape hatch.
@@ -713,7 +713,7 @@ export function evaluate({ pr, cfg }) {
       '   This gate cannot tell an urgent drive-by fix from unwanted work — that judgement is ' +
         'the label, and it is a human one.',
     );
-    return { ok: true, verdict: 'ESCAPE_LABEL', lines };
+    return { ok: true, verdict: 'ESCAPE_LABEL', escapeProblem: null, lines };
   }
   // A BAD ESCAPE LABEL MUST NOT FAIL A PR THE QUEUE CHECK WOULD PASS.
   //
@@ -780,7 +780,11 @@ export function evaluate({ pr, cfg }) {
     // The PRIMARY failure is the verdict; the escape problem is carried in
     // `lines`. Returning escape.reason here made the field disagree with the
     // banner, which nothing reads today and a future job-summary step would.
-    return { ok: false, verdict: 'NO_LINKED_ISSUE', escapeProblem: escape.reason ?? null, lines };
+    // `escape.reason` is 'ABSENT' when the PR simply carries no escape label,
+    // which is the COMMON case and not a problem. Reporting it here put a
+    // truthy value on the field for every ordinary failure, re-creating the
+    // banner/field contradiction that moving this off `verdict` removed.
+    return { ok: false, verdict: 'NO_LINKED_ISSUE', escapeProblem: escapeProblem ? escape.reason : null, lines };
   }
 
   const verdicts = pr.issues.map((issue) => ({
@@ -808,7 +812,7 @@ export function evaluate({ pr, cfg }) {
     if (escapeProblem) {
       lines.push('', ...escapeProblem, '   This PR passes on its `ready` issue regardless.');
     }
-    return { ok: true, verdict: 'READY_ISSUE', lines };
+    return { ok: true, verdict: 'READY_ISSUE', escapeProblem: escapeProblem ? escape.reason : null, lines };
   }
 
   // Every linked issue failed. Name each one WITH ITS OWN reason: "none is
@@ -848,7 +852,7 @@ export function evaluate({ pr, cfg }) {
       'to, edited, relabelled, or re-run by hand.',
   );
   if (escapeProblem) lines.push('', ...escapeProblem);
-  return { ok: false, verdict: 'UNQUEUED_WORK', escapeProblem: escape.reason ?? null, lines };
+  return { ok: false, verdict: 'UNQUEUED_WORK', escapeProblem: escapeProblem ? escape.reason : null, lines };
 }
 
 // -------------------------------------------------------------------- main
@@ -856,6 +860,18 @@ export function evaluate({ pr, cfg }) {
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const cfg = readConfig(args.config);
+  // PRINTED IMMEDIATELY AFTER readConfig, BEFORE anything that can refuse.
+  // CONTRIBUTING.md and the PR template point readers at this line instead of
+  // restating the mode, so it has to survive the fail-closed paths too: every
+  // throw in normalisePullRequest (NO_AUTHOR on a deleted account,
+  // ISSUES_TRUNCATED, NO_CLOSING_ISSUES, a truncated label page) exits 1 even in
+  // advisory mode. Printed later, a contributor hitting one of those saw a red
+  // check, no mode line, and no document left saying the gate is advisory.
+  console.log(
+    `Mode: ${cfg.mode}${
+      cfg.mode === 'advisory' ? ' (a failing verdict prints but does not fail this job)' : ''
+    }`,
+  );
 
   let payload;
   if (args.stateFile) {
@@ -893,16 +909,6 @@ function main() {
     `Label authority required: ${cfg.requireLabelAuthority} (authorities: ${
       [...cfg.labelAuthorities].join(', ') || '(none)'
     })`,
-  );
-  // ALWAYS printed, on a pass as well as a failure. CONTRIBUTING.md and the PR
-  // template point readers at this line instead of restating the mode, because
-  // prose in two documents cannot be kept in sync with a config key and the
-  // one-word flip would otherwise leave both telling contributors the opposite
-  // of what the gate does.
-  console.log(
-    `Mode: ${cfg.mode}${
-      cfg.mode === 'advisory' ? ' (a failing verdict prints but does not fail this job)' : ''
-    }`,
   );
   console.log('');
 

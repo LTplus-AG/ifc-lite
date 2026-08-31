@@ -17,13 +17,13 @@ Everything here is agent-written, including the maintainer's own commits, so the
 
 ## Work selection
 
-**Default lane: a PR closes an issue carrying the `ready` label.** `ready` means the maintainer has decided it is in scope, wanted now, and scoped. It is applied by the maintainer only. `scripts/check-issue-queue.mjs` enforces this; the escape hatch is the `unqueued` label for a genuine drive-by fix, applied by the maintainer after the fact.
+**Default lane: a PR closes an issue carrying the `ready` label.** `ready` means the maintainer has decided it is in scope, wanted now, and scoped. `scripts/check-issue-queue.mjs` checks this and **prints its own mode**; read that line, not this one, because no prose here tracks a config key. The escape hatch is the `unqueued` label, applied by the maintainer.
 
-Filing issues is welcome and unrestricted: a swept audit that produces twenty good issue reports is a real contribution. Filing is not claiming, and an unlabelled issue is not a work item.
+Filing issues is welcome and unrestricted: an audit producing twenty good issue reports is a real contribution. Filing is not claiming, and an unlabelled issue is not a work item.
 
 **One defect class per issue, one issue per PR.** A defect class found once and paid for N times is N review contexts for one decision: nine separate PRs once landed one state-reset class, one call site at a time. Fix the class. Above roughly 1,500 changed lines, stack PRs against the same issue rather than shipping one unreviewable diff.
 
-**A sweep needs a charter.** Audit-driven work (mutation sweeps, coverage sweeps, conformance sweeps) is some of the most valuable work done here and it is not discouraged. It has no natural stopping point, so it needs an issue that names one: what is being swept, and what condition ends it. The maintainer approves the charter once instead of adjudicating each of its PRs.
+**A sweep needs a charter.** Audit-driven work (mutation, coverage, conformance sweeps) is some of the most valuable work done here and is not discouraged. It has no natural stopping point, so it needs an issue that names one: what is being swept, and what condition ends it. The maintainer approves the charter once instead of adjudicating each of its PRs.
 
 ## Commands
 - Install: `corepack enable && pnpm install` (Node 22.x, `pnpm@10.8.1` pinned via `packageManager`).

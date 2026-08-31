@@ -202,7 +202,51 @@ test('NO_LINKED_ISSUE does not deny a label the same output reports', () => {
   assert.equal(r.code, 1, r.output);
   assert.match(r.output, /NO_LINKED_ISSUE/);
   assert.match(r.output, /SELF_APPLIED_LABEL/);
-  assert.doesNotMatch(r.output, /carries no `unqueued` label/);
+  // Built from ESCAPE, not hardcoded: `escapeLabel` is advertised as a
+  // no-code-change knob, and a hardcoded label would make this assertion
+  // silently vacuous after a rename -- the test named for the contradiction
+  // no longer able to see it.
+  assert.doesNotMatch(r.output, new RegExp(`carries no \`${ESCAPE}\` label`));
+});
+
+test('escapeProblem is null when there is simply no escape label', () => {
+  // `adjudicateLabel` returns reason 'ABSENT' for the COMMON case of a PR that
+  // carries no escape label at all. Reporting that raw reason on the field put a
+  // truthy value there for every ordinary failure, so a job-summary step reading
+  // it would print an escape problem on PRs that have none -- the banner/field
+  // contradiction that moving this off `verdict` was meant to end.
+  const r = run(prPayload({ issues: [issue(3525, [])] }), ENFORCING);
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /UNQUEUED_WORK/);
+  assert.doesNotMatch(r.output, /ABSENT/);
+});
+
+test('a PASSING PR still reports a real escape problem', () => {
+  // The one passing path that can carry one. The field was omitted here while
+  // being present where no problem existed -- absent exactly where it mattered.
+  const r = run(
+    prPayload({
+      prLabels: [[ESCAPE, CONTRIBUTOR]],
+      issues: [issue(3525, [[READY, MAINTAINER]])],
+    }),
+    ENFORCING,
+  );
+  assert.equal(r.code, 0, r.output);
+  assert.match(r.output, /READY_ISSUE/);
+  assert.match(r.output, /SELF_APPLIED_LABEL/);
+});
+
+test('the Mode line survives a fail-closed refusal', () => {
+  // The docs point readers at this line instead of restating the mode, so it has
+  // to print before anything that can refuse. Every throw in
+  // normalisePullRequest exits 1 even in advisory mode; printed later, a
+  // contributor hitting one saw a red check and no statement of the mode.
+  const r = run(
+    prPayload({ issues: [issue(3525, [])], issuesTruncated: true }),
+    cfgWith({ mode: 'advisory' }, 'mode-before-refusal'),
+  );
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /^Mode: advisory/m);
 });
 
 // =========================================================== advisory mode

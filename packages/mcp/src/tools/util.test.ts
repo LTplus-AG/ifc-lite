@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
-import { okResult, paginate, fmtCount, materialDisplayName } from './util.js';
+import { okResult, paginate, fmtCount } from './util.js';
+import { materialFallbackName } from '../material-naming.js';
 
 describe('tool utilities', () => {
   it('paginates with truncation flag', () => {
@@ -55,37 +56,37 @@ describe('tool utilities', () => {
     expect(r.structuredContent).toEqual({ count: 1 });
   });
 
-  describe('materialDisplayName', () => {
+  describe('materialFallbackName', () => {
     it('reads the top-level name for a plain Material', () => {
-      expect(materialDisplayName({ type: 'Material', name: 'Steel' })).toBe('Steel');
+      expect(materialFallbackName({ type: 'Material', name: 'Steel' })).toBe('Steel');
     });
 
     it('undefined for null/undefined, not a thrown error', () => {
-      expect(materialDisplayName(null)).toBeUndefined();
-      expect(materialDisplayName(undefined)).toBeUndefined();
+      expect(materialFallbackName(null)).toBeUndefined();
+      expect(materialFallbackName(undefined)).toBeUndefined();
     });
 
     it('falls back to the first entry of an IfcMaterialList, which has no list-level name', () => {
       expect(
-        materialDisplayName({ type: 'MaterialList', materials: [{ name: 'Concrete' }, { name: 'Steel' }] }),
+        materialFallbackName({ type: 'MaterialList', materials: [{ name: 'Concrete' }, { name: 'Steel' }] }),
       ).toBe('Concrete');
     });
 
     it('falls back to a layer/profile/constituent materialName when the set itself is unnamed', () => {
       expect(
-        materialDisplayName({ type: 'MaterialLayerSet', layers: [{ materialName: 'Brick' }] }),
+        materialFallbackName({ type: 'MaterialLayerSet', layers: [{ materialName: 'Brick' }] }),
       ).toBe('Brick');
       expect(
-        materialDisplayName({ type: 'MaterialProfileSet', profiles: [{ materialName: 'Aluminium' }] }),
+        materialFallbackName({ type: 'MaterialProfileSet', profiles: [{ materialName: 'Aluminium' }] }),
       ).toBe('Aluminium');
       expect(
-        materialDisplayName({ type: 'MaterialConstituentSet', constituents: [{ materialName: 'Glass' }] }),
+        materialFallbackName({ type: 'MaterialConstituentSet', constituents: [{ materialName: 'Glass' }] }),
       ).toBe('Glass');
     });
 
     it('prefers a set-level name over its members when both are present', () => {
       expect(
-        materialDisplayName({
+        materialFallbackName({
           type: 'MaterialLayerSet',
           name: 'Exterior Wall Build-up',
           layers: [{ materialName: 'Brick' }],
@@ -95,7 +96,7 @@ describe('tool utilities', () => {
 
     it('uses a named IfcMaterialProfileSet when every profile material is unnamed', () => {
       expect(
-        materialDisplayName({
+        materialFallbackName({
           type: 'MaterialProfileSet',
           name: 'Primary framing',
           profiles: [{ materialName: undefined }, { materialName: undefined }],

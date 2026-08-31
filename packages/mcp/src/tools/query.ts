@@ -14,7 +14,8 @@
 import { extractGeoreferencingOnDemand, extractLengthUnitScale } from '@ifc-lite/parser';
 import type { ComparisonOp, EntityData, QueryFilter } from '@ifc-lite/sdk';
 import type { Tool } from './types.js';
-import { findByGlobalId, materialDisplayName, okResult, paginate, resolveGlobalIds, resolveModel } from './util.js';
+import { findByGlobalId, okResult, paginate, resolveGlobalIds, resolveModel } from './util.js';
+import { materialFallbackName } from '../material-naming.js';
 import { IFC_ENTITY_NAMES } from '@ifc-lite/data';
 import { foldedTypeCounts, pendingMutationsField, pendingOverlay } from '../overlay.js';
 import { expandTypes } from '../backend-query.js';
@@ -218,7 +219,7 @@ const countEntities: Tool = {
       const targets = typeFilter ? m.bim.query().byType(typeFilter).toArray() : m.bim.query().toArray();
       for (const e of targets) {
         const mat = m.bim.materials(e.ref);
-        const key = materialDisplayName(mat) ?? '(no material)';
+        const key = materialFallbackName(mat) ?? '(no material)';
         groups.set(key, (groups.get(key) ?? 0) + 1);
       }
     }
@@ -549,7 +550,7 @@ const materialsList: Tool = {
     for (const e of m.bim.query().toArray()) {
       const mat = m.bim.materials(e.ref);
       if (!mat) continue;
-      const key = materialDisplayName(mat) ?? '(unnamed)';
+      const key = materialFallbackName(mat) ?? '(unnamed)';
       counts.set(key, (counts.get(key) ?? 0) + 1);
     }
     const list = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count }));

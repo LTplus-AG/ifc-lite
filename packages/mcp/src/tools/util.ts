@@ -11,7 +11,6 @@
  */
 
 import { EntityNode } from '@ifc-lite/query';
-import type { MaterialData } from '@ifc-lite/sdk';
 import type { CallToolResult, ContentBlock } from '../protocol/index.js';
 import type { LoadedModel, ToolContext } from '../context.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
@@ -31,36 +30,6 @@ export function assertModelAccess(ctx: ToolContext, model: LoadedModel): LoadedM
     });
   }
   return model;
-}
-
-/**
- * Grouping/display name for a `MaterialData` result, or undefined when none
- * is available. `.name` only exists for a plain `Material` (and, when set in
- * the source file, a LayerSet/ProfileSet/ConstituentSet) — an
- * `IfcMaterialList` never carries a list-level name, only `.materials[]`, so
- * reading `.name` alone mis-buckets every list-material entity as
- * materialless.
- *
- * Only the `.materials[]` leg has a counterpart in `computeMaterialSummary`
- * (`packages/cli/src/commands/stats-aggregation.ts`), and even there the CLI
- * reads `.materials[0]` *before* `.name` rather than after. The layer,
- * profile and constituent legs go beyond it: an unnamed set that the CLI
- * skips entirely still gets a name here. So this is not parity with the CLI,
- * only agreement on the `IfcMaterialList` case that motivated it.
- *
- * Returns one name, never several: a multi-material `IfcMaterialList`
- * resolves to its first member, so a caller counting distinct materials
- * still under-counts such a model.
- */
-export function materialDisplayName(mat: MaterialData | null | undefined): string | undefined {
-  if (!mat) return undefined;
-  return (
-    mat.name ??
-    mat.materials?.[0]?.name ??
-    mat.layers?.find((l) => l.materialName)?.materialName ??
-    mat.profiles?.find((p) => p.materialName)?.materialName ??
-    mat.constituents?.find((c) => c.materialName)?.materialName
-  );
 }
 
 /** Model IDs the caller's scope permits — never leak identifiers outside scope. */

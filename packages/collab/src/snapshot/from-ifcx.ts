@@ -38,6 +38,7 @@ import {
   type MaterialAssignment,
 } from '../doc/schema.js';
 import { inflateStructuredAttributes } from './structured-attrs.js';
+import { readOverlayTombstones, resolveTombstoneOpinion, resurrectionBlocked, writeOverlayTombstones } from './overlay-tombstones.js';
 
 export interface SeedOptions {
   /** Origin tag for the seeding transaction. Defaults to SEED_ORIGIN. */
@@ -245,48 +246,29 @@ export interface OverlayOptions {
  * Apply an IFCX file to `doc` as a *layer of opinions* rather than as a
  * seed.
  *
- * `seedFromIfcx` routes every node through `createEntity`, which is a
- * deliberate no-op on a path the doc already has — right for seeding a
- * doc from a snapshot, wrong for merging a layer whose whole purpose is
- * to modify entities that already exist. This applier creates missing
- * entities exactly as the seeder does, and for entities that are already
- * present it writes the node's opinions on top: values overwrite, and
- * anything the node says nothing about is left alone.
+ * `seedFromIfcx` routes every node through `createEntity`, a deliberate
+ * no-op on a path the doc already has — right for seeding from a
+ * snapshot, wrong for merging a layer whose purpose is to modify entities
+ * that already exist. This applier creates missing entities exactly as
+ * the seeder does, and writes existing entities' opinions on top: values
+ * overwrite, anything unmentioned is left alone. `null` removes a FLAT
+ * attribute, child or inherit ONLY: a nulled pset/quantity property
+ * survives, silently (pinned in `test/apply-ifcx-overlay.test.ts`).
  *
- * `null` removes a FLAT attribute, child or inherit ONLY: a nulled
- * pset/quantity property survives, silently. Measured, and pinned with the
- * reason, in `test/apply-ifcx-overlay.test.ts`.
- *
- * Deliberately NOT part of `seedFromIfcx`'s option surface: the seeder's
- * additive-and-idempotent contract is what `apps/viewer` and
- * `snapshot/worker.ts` rely on when seeding a live session doc, and this
- * function is a different operation, not a mode of that one.
+ * Deliberately NOT part of `seedFromIfcx`'s option surface: the seeder is
+ * additive-and-idempotent (`apps/viewer`, `snapshot/worker.ts` seed a
+ * live session doc with it), and this is a different operation.
  *
  * Deletion opinions are honoured where the layer states them: an
- * `ifclite::deleted: true` node removes the entity, matching what
- * composition, `bakeLayers` and the MCP layer store already do. Note the
- * limit of the *representation* though, not of this code: a full IFCX
- * snapshot emits only what an entity has, so a key or entity deleted in
- * the source doc is simply absent rather than nulled or tombstoned, and
- * an overlay cannot tell that apart from "no opinion". Deletions
- * therefore propagate only from layers that state them explicitly.
+ * `ifclite::deleted: true` node removes the entity, matching composition,
+ * `bakeLayers` and the MCP layer store. A full IFCX snapshot emits only
+ * what an entity has though, so a key or entity deleted in the source doc
+ * is simply absent rather than nulled or tombstoned, and an overlay
+ * cannot tell that apart from "no opinion" — deletions propagate only
+ * from layers that state them explicitly. Across separate calls, a path
+ * this function itself deleted stays deleted regardless: see
+ * `overlay-tombstones.ts`.
  */
-/**
- * Meta key for paths a previous `applyIfcxOverlay` call deleted.
- * `deleteEntity` purges the path from `entitiesMap`, so a later, separate
- * call touching the same path with no deletion opinion of its own would
- * otherwise read `hasEntity() === false` as "brand new" and silently
- * resurrect it via `createNodeEntity`. This extends the "false is the
- * revert opinion, omission is not" contract already enforced *within* one
- * file to across calls. Cleared on revival. See `test/apply-ifcx-overlay.test.ts`.
- */
-const OVERLAY_TOMBSTONES_META_KEY = 'overlay.tombstonedPaths';
-
-function readOverlayTombstones(meta: Y.Map<unknown>): Set<string> {
-  const stored = meta.get(OVERLAY_TOMBSTONES_META_KEY);
-  return new Set(Array.isArray(stored) ? (stored as string[]) : []);
-}
-
 export function applyIfcxOverlay(
   doc: Y.Doc,
   input: IfcxInput,
@@ -301,7 +283,7 @@ export function applyIfcxOverlay(
     if (file.imports) meta.set('imports', file.imports);
     if (file.schemas) meta.set('schemas', file.schemas);
 
-    const tombstonedFromEarlierCalls = readOverlayTombstones(meta);
+    const tombstonesFromEarlierCalls = readOverlayTombstones(meta);
 
     // Composition resolves `ifclite::deleted` after every node in the
     // layer has been applied — the strongest (last) opinion wins — so a
@@ -315,23 +297,17 @@ export function applyIfcxOverlay(
       if (opinion !== undefined) tombstoned.set(decoded.path, opinion);
       restoreGeometryCarriers(doc, decoded, upsertGeometry);
       if (!hasEntity(doc, decoded.path)) {
-        // Stays deleted for a node with no opinion on deletion; only an
-        // explicit opinion (revive with `false`, or a no-op `true`) acts.
-        if (opinion === undefined && tombstonedFromEarlierCalls.has(decoded.path)) continue;
+        if (resurrectionBlocked(tombstonesFromEarlierCalls, decoded.path, opinion)) continue;
         createNodeEntity(doc, decoded);
         continue;
       }
       overlayEntity(doc, decoded);
     }
     for (const [path, deleted] of tombstoned) {
-      if (deleted) {
-        deleteEntity(doc, path);
-        tombstonedFromEarlierCalls.add(path);
-      } else {
-        tombstonedFromEarlierCalls.delete(path);
-      }
+      if (deleted) deleteEntity(doc, path);
+      resolveTombstoneOpinion(tombstonesFromEarlierCalls, path, deleted);
     }
-    meta.set(OVERLAY_TOMBSTONES_META_KEY, Array.from(tombstonedFromEarlierCalls));
+    writeOverlayTombstones(meta, tombstonesFromEarlierCalls);
   }, opts.origin ?? SEED_ORIGIN);
 
   return file;

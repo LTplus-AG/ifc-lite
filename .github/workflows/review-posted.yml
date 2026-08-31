@@ -17,9 +17,35 @@ on:
 
 permissions:
   contents: read
-  # Both comment surfaces plus the review list.
-  pull-requests: read
-  # write, and ONLY for the stand-down label. See the label steps below.
+  # Both comment surfaces plus the review list, AND the stand-down label.
+  #
+  # `pull-requests: write` IS REQUIRED FOR THE LABEL, and this was established by
+  # measurement after two wrong answers. The original grant was `issues: write`,
+  # on the reasoning that a label is an issue resource; every label call has
+  # failed since the day it was written. Switching from `gh pr edit` (GraphQL) to
+  # the REST issue-labels endpoints did not help either -- same 403, measured on
+  # PR #3589:
+  #
+  #   gh: Resource not accessible by integration (HTTP 403)
+  #
+  # A reviewer had inferred from GitHub's `x-accepted-github-permissions:
+  # issues=write; pull_requests=write` that the semicolon meant OR, so
+  # `issues: write` would suffice. The live 403 says otherwise. Labelling a PULL
+  # REQUEST needs `pull-requests: write`, whatever the resource is called.
+  #
+  # THIS IS A WIDER GRANT THAN THE COMMENT IT REPLACES WANTED, and that is stated
+  # rather than glossed: the token can now comment on, close and retarget this
+  # PR, not merely label it. Two things make it acceptable. The surface already
+  # exists -- `claude-review.yml` holds `pull-requests: write` and also runs from
+  # the PR's checkout, so nothing new is reachable that was not before. And the
+  # alternative is not a smaller grant, it is a stand-down that never happens:
+  # CodeRabbit reviewing every PR forever while three green steps say otherwise.
+  #
+  # The repository default is `read`, and a workflow CAN elevate past it -- proved
+  # by `claude-review.yml` posting the marker on #3589 under exactly that setting.
+  # So the default was never the cap here, and raising it repo-wide is not needed.
+  pull-requests: write
+  # For `gh label create`, which is repository-level rather than PR-level.
   issues: write
 
 concurrency:
@@ -97,8 +123,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh pr edit "${{ github.event.pull_request.number }}" \
-            --repo "${{ github.repository }}" --remove-label claude-reviewed \
+          # REST, not `gh pr edit`. `gh pr edit` goes through the GraphQL
+          # `removeLabelsFromLabelable` mutation, which needs `pull-requests:
+          # write`; this workflow holds `issues: write`, which is what the REST
+          # issue-labels endpoints require and is the smaller grant. Measured on
+          # PR #3587: every label call failed with "Resource not accessible by
+          # integration (removeLabelsFromLabelable)" while the step reported
+          # success, so the stand-down NEVER happened and CodeRabbit reviewed
+          # every PR anyway.
+          gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/labels/claude-reviewed" \
+            --method DELETE --silent \
             || echo "No label to clear (or no write access on a fork PR); CodeRabbit will review."
 
       # The config is the thing worth forging: it names who may post a marker.
@@ -159,8 +193,33 @@ jobs:
           gh label create claude-reviewed --repo "${{ github.repository }}" \
             --color 0e8a16 --description "A review was verified as posted for this PR's head." \
             2>/dev/null || true
-          gh pr edit "${{ github.event.pull_request.number }}" \
-            --repo "${{ github.repository }}" --add-label claude-reviewed
+          gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/labels" \
+            --method POST -f "labels[]=claude-reviewed" --silent || true
+
+          # READ IT BACK, because this step is `continue-on-error` and therefore
+          # cannot report its own failure. That is how the permission bug above
+          # survived: three green steps and no label on the PR. The stand-down is
+          # a CLAIM about another system's behaviour, so it is checked, not
+          # assumed -- the same rule the marker itself is held to.
+          # Read into a VARIABLE, not a pipeline into `grep -q`. That pipeline is
+          # correct today only because this step inherits `bash -e` WITHOUT
+          # pipefail: with pipefail on, `grep -q` exiting early can SIGPIPE `gh`
+          # and flip the whole read-back to permanently reporting "not on the
+          # PR". A correctness that depends on an unstated shell option is one
+          # `shell: bash` away from being wrong, silently, in the check whose
+          # entire job is to not be silently wrong. `per_page=100` because the
+          # default 30 would make a heavily-labelled PR warn while the label is
+          # actually there.
+          have=$(gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/labels?per_page=100" \
+                   --jq '.[].name' 2>/dev/null || true)
+          if printf '%s\n' "$have" | grep -qx 'claude-reviewed'; then
+            echo "✅ claude-reviewed is ON the PR: CodeRabbit will stand down for this head."
+          else
+            echo "⚠️  THE LABEL IS NOT ON THE PR, so CodeRabbit will review this PR as well."
+            echo "    Not a failure of the review -- the marker is verified either way -- but the"
+            echo "    quota saving did not happen. Most likely cause: the token lacks label write"
+            echo "    (fork PR), or the repository's default workflow permissions were tightened."
+          fi
 
       # The refusal paths write `covered=false` too, so a stale label is cleared
       # even when the gate could not read its own inputs. Without this a PR
@@ -172,6 +231,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh pr edit "${{ github.event.pull_request.number }}" \
-            --repo "${{ github.repository }}" --remove-label claude-reviewed \
+          gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/labels/claude-reviewed" \
+            --method DELETE --silent \
             || echo "Nothing to clear."

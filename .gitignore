@@ -134,3 +134,12 @@ apps/*/tsconfig.tests.json
 # tracked, every branch that adds or removes a test file carries a spurious
 # diff of a ~1.5k-line generated file, and those conflict between branches.
 /tsconfig.tests.json
+
+# Cursor's local tool output. `.cursorrules` is TRACKED and must stay so: it is the
+# pointer that sends Cursor at AGENTS.md. Only the log directory is ignored, and it
+# is ignored because this repository is public and nothing here reviews a 1.6 MB
+# debug log before `git add -A` publishes it.
+# Do NOT add a `!.cursorrules` negation here: `.cursor/` never matched that file, so
+# the negation is a no-op, and scripts/check-ci-path-coverage.mjs throws on any
+# negated pattern in this file.
+.cursor/

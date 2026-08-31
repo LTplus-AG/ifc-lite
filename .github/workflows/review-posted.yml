@@ -97,8 +97,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh pr edit "${{ github.event.pull_request.number }}" \
-            --repo "${{ github.repository }}" --remove-label claude-reviewed \
+          # REST, not `gh pr edit`. `gh pr edit` goes through the GraphQL
+          # `removeLabelsFromLabelable` mutation, which needs `pull-requests:
+          # write`; this workflow holds `issues: write`, which is what the REST
+          # issue-labels endpoints require and is the smaller grant. Measured on
+          # PR #3587: every label call failed with "Resource not accessible by
+          # integration (removeLabelsFromLabelable)" while the step reported
+          # success, so the stand-down NEVER happened and CodeRabbit reviewed
+          # every PR anyway.
+          gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/labels/claude-reviewed" \
+            --method DELETE --silent \
             || echo "No label to clear (or no write access on a fork PR); CodeRabbit will review."
 
       # The config is the thing worth forging: it names who may post a marker.
@@ -159,8 +167,23 @@ jobs:
           gh label create claude-reviewed --repo "${{ github.repository }}" \
             --color 0e8a16 --description "A review was verified as posted for this PR's head." \
             2>/dev/null || true
-          gh pr edit "${{ github.event.pull_request.number }}" \
-            --repo "${{ github.repository }}" --add-label claude-reviewed
+          gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/labels" \
+            --method POST -f "labels[]=claude-reviewed" --silent || true
+
+          # READ IT BACK, because this step is `continue-on-error` and therefore
+          # cannot report its own failure. That is how the permission bug above
+          # survived: three green steps and no label on the PR. The stand-down is
+          # a CLAIM about another system's behaviour, so it is checked, not
+          # assumed -- the same rule the marker itself is held to.
+          if gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/labels" \
+               --jq '.[].name' 2>/dev/null | grep -qx 'claude-reviewed'; then
+            echo "✅ claude-reviewed is ON the PR: CodeRabbit will stand down for this head."
+          else
+            echo "⚠️  THE LABEL IS NOT ON THE PR, so CodeRabbit will review this PR as well."
+            echo "    Not a failure of the review -- the marker is verified either way -- but the"
+            echo "    quota saving did not happen. Most likely cause: the token lacks label write"
+            echo "    (fork PR), or the repository's default workflow permissions were tightened."
+          fi
 
       # The refusal paths write `covered=false` too, so a stale label is cleared
       # even when the gate could not read its own inputs. Without this a PR
@@ -172,6 +195,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh pr edit "${{ github.event.pull_request.number }}" \
-            --repo "${{ github.repository }}" --remove-label claude-reviewed \
+          gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/labels/claude-reviewed" \
+            --method DELETE --silent \
             || echo "Nothing to clear."

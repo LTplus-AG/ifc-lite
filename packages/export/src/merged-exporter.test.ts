@@ -1348,25 +1348,33 @@ describe('MergedExporter', () => {
   describe('context WorldCoordinateSystem alignment', () => {
     const originModel = (): MergeModelInput => buildModel('origin', 'Origin', [
       [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('wcsProjA')}',$,'A',$,$,$,$,(#3),#2);`],
-      [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#7));'],
+      [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#8));'],
       [3, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#4,$);"],
-      [4, 'IFCCARTESIANPOINT', '#4=IFCCARTESIANPOINT((0.,0.,0.));'],
-      [5, 'IFCSITE', `#5=IFCSITE('${guid('wcsSiteA')}',$,'SiteA',$,$,$,$,$,$,$);`],
-      [6, 'IFCRELAGGREGATES', `#6=IFCRELAGGREGATES('${guid('wcsAggA')}',$,$,$,#1,(#5));`],
-      [7, 'IFCSIUNIT', '#7=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+      [4, 'IFCAXIS2PLACEMENT3D', '#4=IFCAXIS2PLACEMENT3D(#5,#6,#7);'],
+      [5, 'IFCCARTESIANPOINT', '#5=IFCCARTESIANPOINT((0.,0.,0.));'],
+      [6, 'IFCDIRECTION', '#6=IFCDIRECTION((0.,0.,1.));'],
+      [7, 'IFCDIRECTION', '#7=IFCDIRECTION((1.,0.,0.));'],
+      [8, 'IFCSIUNIT', '#8=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+      [9, 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT', "#9=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#3,$,.MODEL_VIEW.,$);"],
+      [10, 'IFCSITE', `#10=IFCSITE('${guid('wcsSiteA')}',$,'SiteA',$,$,$,$,$,$,$);`],
+      [11, 'IFCRELAGGREGATES', `#11=IFCRELAGGREGATES('${guid('wcsAggA')}',$,$,$,#1,(#10));`],
     ]);
 
     // Same length unit as originModel, but its WCS origin is offset by 500 m —
     // e.g. a discipline model authored around its own project base point.
-    const offsetModel = (): MergeModelInput => buildModel('offset', 'Offset', [
+    const offsetModel = (origin = 500, refDirection = '(1.,0.,0.)'): MergeModelInput => buildModel('offset', 'Offset', [
       [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('wcsProjB')}',$,'B',$,$,$,$,(#3),#2);`],
       [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#8));'],
       [3, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#4,$);"],
-      [4, 'IFCCARTESIANPOINT', '#4=IFCCARTESIANPOINT((500.,0.,0.));'],
-      [5, 'IFCSITE', `#5=IFCSITE('${guid('wcsSiteB')}',$,'SiteB',$,$,$,$,$,$,$);`],
-      [6, 'IFCRELAGGREGATES', `#6=IFCRELAGGREGATES('${guid('wcsAggB')}',$,$,$,#1,(#5));`],
-      [7, 'IFCWALL', `#7=IFCWALL('${guid('wcsWallB')}',$,'W',$,$,$,$,$);`],
+      [4, 'IFCAXIS2PLACEMENT3D', '#4=IFCAXIS2PLACEMENT3D(#5,#6,#7);'],
+      [5, 'IFCCARTESIANPOINT', `#5=IFCCARTESIANPOINT((${origin}.,0.,0.));`],
+      [6, 'IFCDIRECTION', '#6=IFCDIRECTION((0.,0.,1.));'],
+      [7, 'IFCDIRECTION', `#7=IFCDIRECTION(${refDirection});`],
       [8, 'IFCSIUNIT', '#8=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+      [9, 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT', "#9=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#3,$,.MODEL_VIEW.,$);"],
+      [10, 'IFCSITE', `#10=IFCSITE('${guid('wcsSiteB')}',$,'SiteB',$,$,$,$,$,$,$);`],
+      [11, 'IFCRELAGGREGATES', `#11=IFCRELAGGREGATES('${guid('wcsAggB')}',$,$,$,#1,(#10));`],
+      [12, 'IFCWALL', `#12=IFCWALL('${guid('wcsWallB')}',$,'W',$,$,$,$,$);`],
     ]);
 
     it('keeps the second model\'s own context when its WCS origin differs from the primary\'s', () => {
@@ -1376,26 +1384,28 @@ describe('MergedExporter', () => {
       // Exactly one context would mean the offset model's own frame was
       // silently discarded and pasted raw into the origin model's frame.
       expect(content.match(/=IFCGEOMETRICREPRESENTATIONCONTEXT\(/g)?.length).toBe(2);
+      expect(content.match(/=IFCGEOMETRICREPRESENTATIONSUBCONTEXT\(/g)?.length).toBe(2);
+      expect(findDanglingRefs(content)).toEqual([]);
+    });
+
+    it('keeps parent contexts and subcontexts when orientations differ at the same origin', () => {
+      const content = decode(new MergedExporter([originModel(), offsetModel(0, '(0.,1.,0.)')])
+        .export({ schema: 'IFC4' }).content);
+
+      // Origin equality alone is insufficient: WCS orientation is part of the
+      // frame. Both child subcontexts must stay with their respective parents.
+      expect(content.match(/=IFCGEOMETRICREPRESENTATIONCONTEXT\(/g)?.length).toBe(2);
+      expect(content.match(/=IFCGEOMETRICREPRESENTATIONSUBCONTEXT\(/g)?.length).toBe(2);
       expect(findDanglingRefs(content)).toEqual([]);
     });
 
     it('still unifies a matching (identical-origin) context, unchanged', () => {
       // Control: two models sharing the SAME WCS origin — the pre-existing
       // "one shared context" behaviour must not regress.
-      const sameOriginB = (): MergeModelInput => buildModel('same', 'Same', [
-        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('wcsProjC')}',$,'C',$,$,$,$,(#3),#2);`],
-        [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#8));'],
-        [3, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#4,$);"],
-        [4, 'IFCCARTESIANPOINT', '#4=IFCCARTESIANPOINT((0.,0.,0.));'],
-        [5, 'IFCSITE', `#5=IFCSITE('${guid('wcsSiteC')}',$,'SiteC',$,$,$,$,$,$,$);`],
-        [6, 'IFCRELAGGREGATES', `#6=IFCRELAGGREGATES('${guid('wcsAggC')}',$,$,$,#1,(#5));`],
-        [7, 'IFCWALL', `#7=IFCWALL('${guid('wcsWallC')}',$,'W',$,$,$,$,$);`],
-        [8, 'IFCSIUNIT', '#8=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
-      ]);
-
-      const content = decode(new MergedExporter([originModel(), sameOriginB()])
+      const content = decode(new MergedExporter([originModel(), offsetModel(0)])
         .export({ schema: 'IFC4' }).content);
       expect(content.match(/=IFCGEOMETRICREPRESENTATIONCONTEXT\(/g)?.length).toBe(1);
+      expect(content.match(/=IFCGEOMETRICREPRESENTATIONSUBCONTEXT\(/g)?.length).toBe(1);
       expect(findDanglingRefs(content)).toEqual([]);
     });
   });

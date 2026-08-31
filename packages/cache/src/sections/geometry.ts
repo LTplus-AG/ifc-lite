@@ -170,11 +170,30 @@ const ABSENT_SOURCE_ID = 0xffffffff;
 const MAX_VERTEX_COUNT = 100_000_000; // 100M vertices max per mesh
 const MAX_INDEX_COUNT = 300_000_000; // 300M indices max per mesh
 
+/** IEEE-754 single-precision: a value is NaN or ±Infinity exactly when its
+ *  8 exponent bits are all set, regardless of sign or mantissa. */
+const FLOAT32_EXPONENT_MASK = 0x7f800000;
+
 /**
  * Throw if any value in a decoded vertex-data array is non-finite (NaN or
  * ±Infinity). A legitimately-produced mesh never contains one (the WASM
  * geometry pipeline does not emit NaN/Infinity vertices), so a hit here means
  * corrupted or adversarial cache bytes, not a valid-but-unusual model.
+ *
+ * Checked via the raw bit pattern (a `Uint32Array` VIEW over the same buffer,
+ * no copy) rather than `Number.isFinite(values[i])` or a chain of
+ * `v !== v || v === Infinity || v === -Infinity` float comparisons: this
+ * runs on every cache read's hot path (once per mesh, over every
+ * position/normal float). Measured on a real 5,927-mesh/473K-vertex fixture
+ * (dental_clinic.ifc, `pnpm --filter @ifc-lite/cache exec node` a throwaway
+ * write+read harness, 20 iterations after 4 warmup reads): the bitwise
+ * exponent test was the fastest of the three forms tried, but a full linear
+ * scan of every position/normal float still measured ~15-20% over an
+ * unguarded read's ~30ms baseline for this fixture (see the changeset for
+ * the exact before/after numbers). Kept despite the cost: it is the only
+ * guard in this package that closes a mis-parse (not just a bounds/shape)
+ * class of corruption, and the viewer's cache-restore path already falls
+ * back to a fresh parse on any reader throw (see `readMeshRecord`'s callers).
  */
 function assertFiniteVertexData(
   values: Float32Array,
@@ -182,8 +201,9 @@ function assertFiniteVertexData(
   meshIndex: number,
   expressId: number,
 ): void {
-  for (let i = 0; i < values.length; i++) {
-    if (!Number.isFinite(values[i])) {
+  const bits = new Uint32Array(values.buffer, values.byteOffset, values.length);
+  for (let i = 0; i < bits.length; i++) {
+    if ((bits[i] & FLOAT32_EXPONENT_MASK) === FLOAT32_EXPONENT_MASK) {
       throw new Error(
         `Invalid cache: mesh ${meshIndex} (expressId=${expressId}) has a non-finite value ` +
           `(${values[i]}) in ${field}[${i}]. Cache may be corrupted.`,

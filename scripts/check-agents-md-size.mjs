@@ -335,7 +335,11 @@ if (args.update) {
       }
     } else if (bytes > budget) {
       raised.push(`  ${rel}: ${bytes} bytes, budget ${budget} (+${bytes - budget})`);
-    } else if (bytes < budget) {
+    } else if (bytes < budget && Math.max(1, bytes) !== budget) {
+      // Compared against the CLAMPED value, which is what actually gets written.
+      // A tracked empty file measures 0 and is recorded as 1, so an unguarded
+      // `bytes < budget` reported it as "lowered" on every run while the file
+      // stayed byte-identical -- a message claiming a change that did not happen.
       lowered.push(`  ${rel}: ${bytes} bytes, budget ${budget} (-${budget - bytes})`);
     }
   }

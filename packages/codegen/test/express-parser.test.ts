@@ -395,6 +395,79 @@ describe('EXPRESS Parser', () => {
     });
   });
 
+  describe('UNIQUE constraint inside a collection element type', () => {
+    /**
+     * EXPRESS allows a UNIQUE constraint directly in front of the element
+     * type of a LIST/ARRAY/SET, e.g. "LIST [1:?] OF UNIQUE IfcGridAxis"
+     * (real syntax from IfcGrid.UAxes in IFC4_ADD2_TC1.exp) — UNIQUE
+     * constrains the collection's elements, it is not part of the element
+     * type name. Before this fix, UNIQUE leaked into attr.type verbatim,
+     * producing the invalid TypeScript type `UNIQUE IfcGridAxis[]` in the
+     * generated entities.ts and schema-registry.ts (caught only by a
+     * hand-edit to entities.ts in one downstream package that never fixed
+     * the generator itself, so schema-registry.ts kept the bug).
+     */
+    it('strips UNIQUE from a simple collection element type', () => {
+      const schema = parseExpressSchema(`
+        SCHEMA TEST;
+
+        ENTITY IfcGrid
+          SUBTYPE OF (IfcRoot);
+          UAxes : LIST [1:?] OF UNIQUE IfcGridAxis;
+        END_ENTITY;
+
+        END_SCHEMA;
+      `);
+
+      const attrs = getAllAttributes(schema.entities.find(e => e.name === 'IfcGrid')!, schema);
+      const uAxes = attrs.find(a => a.name === 'UAxes')!;
+      expect(uAxes.type).toBe('IfcGridAxis');
+      expect(uAxes.type).not.toContain('UNIQUE');
+    });
+
+    it('strips UNIQUE from the innermost type of a nested collection', () => {
+      const schema = parseExpressSchema(`
+        SCHEMA TEST;
+
+        ENTITY IfcIndexedPolygonalFaceWithVoids
+          SUBTYPE OF (IfcRoot);
+          InnerCoordIndices : LIST [1:?] OF LIST [3:?] OF UNIQUE IfcPositiveInteger;
+        END_ENTITY;
+
+        END_SCHEMA;
+      `);
+
+      const attrs = getAllAttributes(
+        schema.entities.find(e => e.name === 'IfcIndexedPolygonalFaceWithVoids')!,
+        schema
+      );
+      const inner = attrs.find(a => a.name === 'InnerCoordIndices')!;
+      expect(inner.type).toBe('IfcPositiveInteger[]');
+      expect(inner.type).not.toContain('UNIQUE');
+    });
+
+    it('strips UNIQUE when it applies to a nested collection rather than a bare type', () => {
+      const schema = parseExpressSchema(`
+        SCHEMA TEST;
+
+        ENTITY IfcStructuralLoadConfiguration
+          SUBTYPE OF (IfcRoot);
+          Locations : OPTIONAL LIST [1:?] OF UNIQUE LIST [1:2] OF IfcLengthMeasure;
+        END_ENTITY;
+
+        END_SCHEMA;
+      `);
+
+      const attrs = getAllAttributes(
+        schema.entities.find(e => e.name === 'IfcStructuralLoadConfiguration')!,
+        schema
+      );
+      const locations = attrs.find(a => a.name === 'Locations')!;
+      expect(locations.type).toBe('IfcLengthMeasure[]');
+      expect(locations.type).not.toContain('UNIQUE');
+    });
+  });
+
   describe('Real IFC schema parsing', () => {
     it('should parse IfcWall from real schema', () => {
       const schema = parseExpressSchema(`

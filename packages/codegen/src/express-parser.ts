@@ -278,23 +278,23 @@ function parseAttribute(name: string, typeStr: string, optional: boolean): Attri
 }
 
 /**
- * Parse nested collection types
- * e.g., "LIST [2:?] OF IfcCartesianPoint" -> "IfcCartesianPoint[]"
+ * Parse nested collection types, e.g. "LIST [2:?] OF IfcCartesianPoint" ->
+ * "IfcCartesianPoint[]". A leading "UNIQUE" (e.g. "LIST [1:?] OF UNIQUE
+ * IfcGridAxis") constrains the elements, not the element type — strip it.
  */
 function parseNestedCollection(typeStr: string): string {
-  // Check if this is another collection
-  if (typeStr.match(/^(LIST|ARRAY|SET)\s+\[/)) {
-    // Match: LIST|ARRAY|SET [min:max] OF <innerType>
-    const match = typeStr.match(/^(?:LIST|ARRAY|SET)\s+\[(?:\d+|\?):(?:\d+|\?)\]\s+OF\s+(.*)/);
+  const stripped = typeStr.replace(/^UNIQUE\s+/, '');
+  // Check if this is another collection: LIST|ARRAY|SET [min:max] OF <innerType>
+  if (stripped.match(/^(LIST|ARRAY|SET)\s+\[/)) {
+    const match = stripped.match(/^(?:LIST|ARRAY|SET)\s+\[(?:\d+|\?):(?:\d+|\?)\]\s+OF\s+(.*)/);
     if (match) {
       const innerType = match[1].trim();
-      // Recursively parse and wrap in array
-      return `${parseNestedCollection(innerType)}[]`;
+      return `${parseNestedCollection(innerType)}[]`; // recursively parse and wrap in array
     }
   }
 
   // Base case: return the type as-is
-  return typeStr;
+  return stripped;
 }
 
 /**

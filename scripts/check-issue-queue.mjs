@@ -271,11 +271,17 @@ export function readConfig(path) {
       );
     }
   }
-  if (cfg.readyLabel === cfg.escapeLabel) {
+  // COMPARED CASE-INSENSITIVELY, because label MATCHING is. Once both lookups
+  // fold case, `ready` and `Ready` are the same label to this gate, so a
+  // case-sensitive equality check here would wave through exactly the collapse
+  // the message below warns about.
+  if (String(cfg.readyLabel).toLowerCase() === String(cfg.escapeLabel).toLowerCase()) {
     throw new IssueQueueError(
       'BAD_CONFIG',
       `\`readyLabel\` and \`escapeLabel\` in \`${path}\` are both ` +
-        `${JSON.stringify(cfg.readyLabel)}. They are applied to different objects -- one to an ` +
+        `${JSON.stringify(cfg.readyLabel)} and ${JSON.stringify(cfg.escapeLabel)}, which this ` +
+        'gate matches case-insensitively and therefore treats as one label. They are applied ' +
+        'to different objects -- one to an ' +
         'ISSUE to queue it, one to a PULL REQUEST to bypass the queue -- and collapsing them ' +
         'into one word means a contributor who can label their own PR has also granted ' +
         'themselves the queue.',

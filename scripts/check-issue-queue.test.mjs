@@ -177,6 +177,20 @@ test('label matching folds case, so `Ready` satisfies `ready`', () => {
   assert.match(r.output, /READY_ISSUE/);
 });
 
+test('readyLabel and escapeLabel differing only by CASE are refused', () => {
+  // Label matching folds case, so `ready` and `Ready` are one label to this gate.
+  // A case-sensitive equality check here would wave through exactly the collapse
+  // the refusal message warns about: a contributor who can label their own PR
+  // would have granted themselves the queue.
+  const r = run(
+    prPayload({ issues: [issue(3525, [])] }),
+    cfgWith({ readyLabel: 'ready', escapeLabel: 'Ready' }, 'case-collision'),
+  );
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /BAD_CONFIG/);
+  assert.match(r.output, /case-insensitively/);
+});
+
 // =========================================================== advisory mode
 //
 // These exist because the branch shipped BROKEN and every one of the 33 tests

@@ -175,8 +175,18 @@ jobs:
           # survived: three green steps and no label on the PR. The stand-down is
           # a CLAIM about another system's behaviour, so it is checked, not
           # assumed -- the same rule the marker itself is held to.
-          if gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/labels" \
-               --jq '.[].name' 2>/dev/null | grep -qx 'claude-reviewed'; then
+          # Read into a VARIABLE, not a pipeline into `grep -q`. That pipeline is
+          # correct today only because this step inherits `bash -e` WITHOUT
+          # pipefail: with pipefail on, `grep -q` exiting early can SIGPIPE `gh`
+          # and flip the whole read-back to permanently reporting "not on the
+          # PR". A correctness that depends on an unstated shell option is one
+          # `shell: bash` away from being wrong, silently, in the check whose
+          # entire job is to not be silently wrong. `per_page=100` because the
+          # default 30 would make a heavily-labelled PR warn while the label is
+          # actually there.
+          have=$(gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/labels?per_page=100" \
+                   --jq '.[].name' 2>/dev/null || true)
+          if printf '%s\n' "$have" | grep -qx 'claude-reviewed'; then
             echo "✅ claude-reviewed is ON the PR: CodeRabbit will stand down for this head."
           else
             echo "⚠️  THE LABEL IS NOT ON THE PR, so CodeRabbit will review this PR as well."

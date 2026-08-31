@@ -31,7 +31,8 @@ let seq = 0;
 
 const SHA = 'a'.repeat(40);
 const OTHER_SHA = 'b'.repeat(40);
-const REVIEWER = 'github-actions';
+const REVIEWER = 'ifc-lite-review[bot]';
+const REVIEWER_APP = 'ifc-lite-review';
 const STRANGER = 'someone-else';
 
 const marker = (sha, verdict = 'clean', count = 0) =>
@@ -55,11 +56,18 @@ function run(payload, extra = [...ENFORCING], sha = SHA) {
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
 }
 
-const comments = (...cs) => ({ issueComments: cs.map(([user, body]) => ({ user: { login: user }, body })) });
+const commentRow = ([user, body, appSlug = REVIEWER_APP]) => ({
+  user: { login: user }, body,
+  performed_via_github_app: appSlug ? { slug: appSlug } : null,
+});
+const comments = (...cs) => ({ issueComments: cs.map(commentRow) });
 
 /** Inline review comments, which is the surface a FINDING lives on and the one #1679 drops. */
 const inline = (...cs) => ({
-  reviewComments: cs.map(([user, body, commit_id = SHA]) => ({ user: { login: user }, body, commit_id })),
+  reviewComments: cs.map(([user, body, commit_id = SHA, appSlug = REVIEWER_APP]) => ({
+    user: { login: user }, body, commit_id,
+    performed_via_github_app: appSlug ? { slug: appSlug } : null,
+  })),
 });
 
 // ============================================================ the core verdicts
@@ -114,6 +122,16 @@ test('FAIL: a findings verdict with NO finding posted is the #1679 shape', () =>
   assert.match(r.out, /Posted 0\/N/);
 });
 
+test('FAIL: one of three claimed findings is partial evidence, not coverage', () => {
+  const r = run({
+    ...comments([REVIEWER, `Found 3 problems.\n${marker(SHA, 'findings', 3)}`]),
+    ...inline([REVIEWER, 'only one reached the PR']),
+  });
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /FINDINGS_NOT_POSTED/);
+  assert.match(r.out, /but 1 inline finding/);
+});
+
 test('FAIL: no comments at all -- the #1679 shape, Posted 0/N with a green job', () => {
   const r = run({ issueComments: [], reviews: [] });
   assert.equal(r.code, 1, r.out);
@@ -150,8 +168,8 @@ test('FAIL: MARKER_MALFORMED is reported separately from absence', () => {
 
 // ======================================================= identity normalisation
 
-test('the three spellings of a bot identity all resolve to one entry', () => {
-  for (const spelling of ['github-actions', 'github-actions[bot]', 'app/github-actions']) {
+test('the three spellings of a bot identity all resolve to one dedicated reviewer', () => {
+  for (const spelling of ['ifc-lite-review', 'ifc-lite-review[bot]', 'app/ifc-lite-review']) {
     const r = run(comments([spelling, marker(SHA)]));
     assert.equal(r.code, 0, `${spelling}: ${r.out}`);
   }
@@ -160,8 +178,8 @@ test('the three spellings of a bot identity all resolve to one entry', () => {
 test('normalisation is load-bearing, not covered by listing every spelling', () => {
   // Pinned independently: with the config narrowed to ONE spelling, a differently
   // spelled author must still match. Without normalisation this fails.
-  const one = cfgWith({ expectedAuthors: ['claude'] }, 'one-spelling');
-  const r = run(comments(['claude[bot]', marker(SHA)]), one);
+  const one = cfgWith({ expectedReviewer: { login: 'claude', appSlug: 'claude-review' } }, 'one-spelling');
+  const r = run(comments(['claude[bot]', marker(SHA), 'claude-review']), one);
   assert.equal(r.code, 0, r.out);
 });
 
@@ -285,15 +303,15 @@ test('a non-array page is BAD_PAYLOAD, not an empty read', () => {
 
 // =================================================================== the config
 
-test('an EMPTY expectedAuthors list is refused, not treated as "anyone"', () => {
-  const r = run(comments([STRANGER, marker(SHA)]), cfgWith({ expectedAuthors: [] }, 'empty-authors'));
+test('a reviewer without App provenance is refused, not treated as "anyone"', () => {
+  const r = run(comments([STRANGER, marker(SHA)]), cfgWith({ expectedReviewer: { login: '', appSlug: '' } }, 'empty-reviewer'));
   assert.equal(r.code, 1, r.out);
   assert.match(r.out, /BAD_CONFIG/);
-  assert.match(r.out, /every PR pass on any comment/);
+  assert.match(r.out, /login.*appSlug/);
 });
 
 test('a config that is null or an array is BAD_CONFIG, not a TypeError', () => {
-  // Reaching for `.expectedAuthors` on null throws past this file's catch and
+  // Reaching for `.expectedReviewer` on null throws past this file's catch and
   // prints a stack trace instead of the remedy the config is written to give.
   for (const body of ['null', '[]', '"a string"']) {
     const path = join(TMP, `cfg-shape-${(seq += 1)}.json`);
@@ -327,7 +345,7 @@ test('the SHIPPED config is the one the gate validates', () => {
   const r = spawnSync(process.execPath, [GATE, '--pr', '1', '--sha', SHA, '--state-file', path], { encoding: 'utf8' });
   const out = `${r.stdout}${r.stderr}`;
   assert.doesNotMatch(out, /BAD_CONFIG/, 'the shipped config must pass its own validator');
-  assert.ok(Array.isArray(SHIPPED.expectedAuthors) && SHIPPED.expectedAuthors.length > 0);
+  assert.ok(SHIPPED.expectedReviewer?.login && SHIPPED.expectedReviewer?.appSlug);
   assert.ok(SHIPPED.mode === 'advisory' || SHIPPED.mode === 'enforcing');
 });
 
@@ -426,6 +444,18 @@ test('a hand-written marker from a NON-reviewer does not pass', () => {
   assert.match(r.out, /NOT_POSTED/);
 });
 
+test('a shared github-actions marker cannot impersonate the dedicated reviewer', () => {
+  const r = run(comments(['github-actions', marker(SHA), REVIEWER_APP]));
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /NOT_POSTED/);
+});
+
+test('the right login without the configured GitHub App provenance does not pass', () => {
+  const r = run(comments([REVIEWER, marker(SHA), 'untrusted-workflow-app']));
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /NOT_POSTED/);
+});
+
 test('the marker pattern does not match a loose mention of the token', () => {
   const r = run(comments([REVIEWER, 'see ifc-lite-review sha=' + SHA + ' for details']));
   assert.equal(r.code, 1, r.out);
@@ -441,4 +471,18 @@ test('a marker must be an HTML COMMENT, not bare text a contributor can type', (
   const r = run(comments([REVIEWER, `all good\n${bare}`]));
   assert.equal(r.code, 1, r.out);
   assert.match(r.out, /NOT_POSTED/);
+});
+
+test('a marker is terminal: text after it is not a completed-review record', () => {
+  const r = run(comments([REVIEWER, `${marker(SHA)}\nworkflow status: success`]));
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /MARKER_MALFORMED/);
+});
+
+test('a clean marker cannot claim findings, and findings cannot claim zero', () => {
+  for (const [verdict, count] of [['clean', 1], ['findings', 0]]) {
+    const r = run(comments([REVIEWER, marker(SHA, verdict, count)]));
+    assert.equal(r.code, 1, `${verdict}/${count}: ${r.out}`);
+    assert.match(r.out, /MARKER_MALFORMED/);
+  }
 });

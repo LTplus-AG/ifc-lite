@@ -12,21 +12,18 @@
     "num_turns: 0). None is credential-specific, so an API key does not fix them either.",
     "The job's exit code and its structured output are both satisfied on those paths."
   ],
-  "$expectedAuthorsComment": [
-    "The logins whose marker counts. NOT DEFAULTED and not allowed to be empty: an empty",
-    "list would make every PR pass on any comment, which is a gate that cannot fail.",
-    "Matched case-insensitively with `[bot]` and `app/` stripped, so all three spellings",
-    "of a bot identity resolve to one entry.",
+  "$expectedReviewerComment": [
+    "One dedicated GitHub App reviewer, identified twice: by its login and by the",
+    "`performed_via_github_app.slug` GitHub returns on its comment. Both are mandatory.",
+    "Do not use `github-actions`: that is a shared workflow identity, so any same-repo PR",
+    "workflow with issue-comment write permission can forge the old marker.",
     "",
-    "`github-actions` is listed because a workflow posting through the default GITHUB_TOKEN",
-    "comments under that identity. If the reviewer is moved to a GitHub App or a PAT, add",
-    "that login here -- the gate will start failing with NOT_POSTED until you do, which is",
-    "the correct direction to fail."
+    "ACTIVATION BLOCKER: no dedicated marker-writing reviewer App is currently configured.",
+    "A maintainer must provision one, set its login and App slug here, and make it append the",
+    "terminal ifc-lite-review marker on every completed review. Until then this advisory gate",
+    "correctly reports NOT_POSTED and never applies the CodeRabbit stand-down label."
   ],
-  "expectedAuthors": [
-    "github-actions",
-    "claude"
-  ],
+  "expectedReviewer": { "login": "ifc-lite-review", "appSlug": "ifc-lite-review" },
   "$standDownComment": [
     "THE CODERABBIT HALF IS NOT IN THIS REPOSITORY YET, and saying so matters.",
     "The workflow applies a `claude-reviewed` label when this gate verifies a review,",

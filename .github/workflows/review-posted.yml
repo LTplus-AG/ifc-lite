@@ -53,7 +53,7 @@ jobs:
       # RESIDUAL RISK, STATED: the gate's CODE still comes from the PR, so an edit
       # to MARKER_RE or to `evaluate` is not neutralised by this split. That edit
       # is visible in the diff and is what human review is for. It is a smaller
-      # surface than the config (a one-word `expectedAuthors` addition is easy to
+      # surface than the config (a one-word `expectedReviewer` identity change is easy to
       # miss in a large diff; a change to the matching logic is not), and the
       # measured population here is 100% same-repo PRs over the last 80 merges.
       # If that changes, or if this gate goes enforcing on fork PRs, pin the code

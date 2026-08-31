@@ -133,10 +133,14 @@ const PER_PAGE = 100;
 
 /**
  * The marker the reviewer writes at the END of a successful post. Anchored at
- * both ends and tolerant of surrounding whitespace only -- a loose pattern here
- * would let a contributor hand-write a passing marker into a PR comment.
+ * the terminal end and tolerant of surrounding whitespace only -- a loose
+ * pattern here would let an incomplete post carry an earlier passing record.
  */
-const MARKER_RE = /<!--\s*ifc-lite-review\s+sha=([0-9a-f]{40})\s+verdict=(clean|findings)\s+count=(\d+)\s*-->/;
+// The marker is a terminal record, not a substring.  Accepting it in the
+// middle of a comment let a later, unrelated status block make a partial post
+// look complete.  The reviewer may put prose before it, but nothing may follow
+// it except whitespace.
+const MARKER_RE = /<!--\s*ifc-lite-review\s+sha=([0-9a-f]{40})\s+verdict=(clean|findings)\s+count=(\d+)\s*-->\s*$/;
 
 /** Block the runner without a dependency. This job's whole purpose is to wait. */
 function sleepSync(ms) {
@@ -193,11 +197,21 @@ export function readConfig(path) {
         'print a stack trace instead of a remedy.',
     );
   }
-  if (!Array.isArray(cfg.expectedAuthors) || cfg.expectedAuthors.length === 0) {
+  const reviewer = cfg.expectedReviewer;
+  if (!reviewer || typeof reviewer !== 'object' || Array.isArray(reviewer)) {
     throw new ReviewPostedError(
       'BAD_CONFIG',
-      `\`expectedAuthors\` in \`${path}\` must be a non-empty array of GitHub logins. ` +
-        'Not defaulted: an empty list would make every PR pass on any comment.',
+      `\`expectedReviewer\` in \`${path}\` must name one dedicated GitHub App reviewer. ` +
+        'A shared workflow identity is not review provenance.',
+    );
+  }
+  const login = normaliseLogin(reviewer.login);
+  const appSlug = String(reviewer.appSlug ?? '').trim().toLowerCase();
+  if (!login || !appSlug) {
+    throw new ReviewPostedError(
+      'BAD_CONFIG',
+      `\`expectedReviewer\` in \`${path}\` needs non-empty \`login\` and \`appSlug\` strings. ` +
+        'Both are required: a login alone cannot distinguish a dedicated reviewer from github-actions.',
     );
   }
   if (cfg.mode !== 'advisory' && cfg.mode !== 'enforcing') {
@@ -212,8 +226,13 @@ export function readConfig(path) {
     // key validated above but omitted here reads as `undefined` at the call site
     // while validation still passes -- a knob that silently does nothing.
     mode: cfg.mode,
-    expectedAuthors: new Set(cfg.expectedAuthors.map(normaliseLogin)),
+    expectedReviewer: { login, appSlug },
   };
+}
+
+/** A review marker is trustworthy only when GitHub attributes it to the configured App. */
+function isExpectedReviewer(comment, cfg) {
+  return comment.author === cfg.expectedReviewer.login && comment.appSlug === cfg.expectedReviewer.appSlug;
 }
 
 /** @param {string[]} argv */
@@ -307,6 +326,10 @@ export function normaliseComments(payload) {
         // survived the old shape, which is why that check could not be precise.
         surface: key,
         commitId: c?.commit_id ?? null,
+        // `github-actions` is shared by every workflow.  GitHub's App
+        // provenance is the discriminator a same-repository PR cannot forge
+        // merely by posting an issue comment with its workflow token.
+        appSlug: String(c?.performed_via_github_app?.slug ?? '').trim().toLowerCase(),
       });
     }
   }
@@ -327,12 +350,12 @@ export function normaliseComments(payload) {
  */
 export function evaluate({ comments, cfg, headSha }) {
   const lines = [];
-  const mine = comments.filter((c) => cfg.expectedAuthors.has(c.author));
+  const mine = comments.filter((c) => isExpectedReviewer(c, cfg));
 
   if (mine.length === 0) {
     lines.push(
       `❌ NOT_POSTED: no comment on this PR from any expected reviewer ` +
-        `(${[...cfg.expectedAuthors].join(', ')}).`,
+        `(${cfg.expectedReviewer.login} via GitHub App ${cfg.expectedReviewer.appSlug}).`,
       '   The review job\'s exit code is NOT evidence: claude-code-action #1644 exits success after',
       '   a partial run, and #1679 exits 0 after failing to post every comment (reported as forty',
       '   consecutive runs logging `Posted 0/N`). Both are open.',
@@ -385,6 +408,15 @@ export function evaluate({ comments, cfg, headSha }) {
     return { ok: false, verdict: 'STALE_REVIEW', lines };
   }
 
+  if ((match.verdict === 'clean' && match.count !== 0) || (match.verdict === 'findings' && match.count === 0)) {
+    lines.push(
+      `❌ MARKER_MALFORMED: a ${match.verdict} marker cannot carry count=${match.count}.`,
+      '   A clean review has zero findings; a findings review names every finding it says it posted.',
+      '   REMEDY: fix the reviewer marker writer and re-run the review.',
+    );
+    return { ok: false, verdict: 'MARKER_MALFORMED', lines };
+  }
+
   // THE #1679 CROSS-CHECK. A marker claiming `verdict=findings count=N` while N
   // findings never reached the PR is precisely the shape #1679 describes: the
   // summary posts, the inline comments drop, `Posted 0/N` is logged, and the job
@@ -403,12 +435,12 @@ export function evaluate({ comments, cfg, headSha }) {
     // three findings pass with all three dropped -- the exact #1679 shape the
     // check exists to catch.
     const posted = comments.filter(
-      (c) => c.surface === 'reviewComments' && cfg.expectedAuthors.has(c.author) && c.commitId === headSha,
+      (c) => c.surface === 'reviewComments' && isExpectedReviewer(c, cfg) && c.commitId === headSha,
     ).length;
-    if (posted === 0) {
+    if (posted !== match.count) {
       lines.push(
         `❌ FINDINGS_NOT_POSTED: the marker claims ${match.count} finding(s) for ` +
-          `${headSha.slice(0, 9)}, and no inline finding from an expected reviewer is anchored to it.`,
+          `${headSha.slice(0, 9)}, but ${posted} inline finding(s) from the dedicated reviewer are anchored to it.`,
         '   This is the #1679 shape exactly: the summary posts, the inline comments drop, the run',
         '   logs `Posted 0/N`, and the job exits 0. The count in the marker is the reviewer\'s own',
         '   claim; this is the check that it is true.',
@@ -570,7 +602,7 @@ function main() {
         ReviewPostedError,
       ),
     });
-    if (!probe.some((c) => cfg.expectedAuthors.has(c.author) && MARKER_RE.test(c.body))) continue;
+    if (!probe.some((c) => isExpectedReviewer(c, cfg) && MARKER_RE.test(c.body))) continue;
     comments = normaliseComments(fetchPayload(args.repo, args.pr));
     result = evaluate({ comments, cfg, headSha: args.sha });
   }

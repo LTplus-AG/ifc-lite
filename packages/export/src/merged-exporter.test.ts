@@ -1472,5 +1472,39 @@ describe('MergedExporter', () => {
       expect(contextDefMatch2).not.toBeNull();
       expect(contextDefMatch2![1]).toBe('FootPrint');
     });
+
+    it('keeps same-named subcontexts with different TargetView values separate', () => {
+      const planViewModel1 = () => buildModel('m1', 'Arch', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('subctxTargetViewProjA')}',$,'A',$,$,$,$,(#3),#2);`],
+        [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#8));'],
+        [3, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#9,$);"],
+        [4, 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT', "#4=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body',$,*,*,*,*,#3,$,.MODEL_VIEW.,$);"],
+        [8, 'IFCSIUNIT', '#8=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+        [9, 'IFCCARTESIANPOINT', '#9=IFCCARTESIANPOINT((0.,0.,0.));'],
+      ]);
+      const planViewModel2 = () => buildModel('m2', 'Struct', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('subctxTargetViewProjB')}',$,'B',$,$,$,$,(#3),#2);`],
+        [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#8));'],
+        [3, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#9,$);"],
+        [4, 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT', "#4=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body',$,*,*,*,*,#3,$,.PLAN_VIEW.,$);"],
+        [6, 'IFCWALL', `#6=IFCWALL('${guid('subctxTargetViewWall')}',$,'W',$,$,$,#7,$);`],
+        [7, 'IFCPRODUCTDEFINITIONSHAPE', '#7=IFCPRODUCTDEFINITIONSHAPE($,$,(#10));'],
+        [10, 'IFCSHAPEREPRESENTATION', "#10=IFCSHAPEREPRESENTATION(#4,'Body','GeometricCurveSet',$);"],
+        [8, 'IFCSIUNIT', '#8=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+        [9, 'IFCCARTESIANPOINT', '#9=IFCCARTESIANPOINT((0.,0.,0.));'],
+      ]);
+
+      const content = decode(new MergedExporter([planViewModel1(), planViewModel2()])
+        .export({ schema: 'IFC4' }).content);
+
+      expect(findDanglingRefs(content)).toEqual([]);
+      const shapeRepMatch = content.match(/#(\d+)=IFCSHAPEREPRESENTATION\(#(\d+),'Body','GeometricCurveSet'/);
+      expect(shapeRepMatch).not.toBeNull();
+      const contextDefMatch = content.match(
+        new RegExp(`#${shapeRepMatch![2]}=IFCGEOMETRICREPRESENTATIONSUBCONTEXT\\('Body',\\$,\\*,\\*,\\*,\\*,#\\d+,\\$,(\\.[A-Z_]+\\.)`),
+      );
+      expect(contextDefMatch).not.toBeNull();
+      expect(contextDefMatch![1]).toBe('.PLAN_VIEW.');
+    });
   });
 });

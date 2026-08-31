@@ -170,6 +170,28 @@ const ABSENT_SOURCE_ID = 0xffffffff;
 const MAX_VERTEX_COUNT = 100_000_000; // 100M vertices max per mesh
 const MAX_INDEX_COUNT = 300_000_000; // 300M indices max per mesh
 
+/**
+ * Throw if any value in a decoded vertex-data array is non-finite (NaN or
+ * ±Infinity). A legitimately-produced mesh never contains one (the WASM
+ * geometry pipeline does not emit NaN/Infinity vertices), so a hit here means
+ * corrupted or adversarial cache bytes, not a valid-but-unusual model.
+ */
+function assertFiniteVertexData(
+  values: Float32Array,
+  field: 'positions' | 'normals',
+  meshIndex: number,
+  expressId: number,
+): void {
+  for (let i = 0; i < values.length; i++) {
+    if (!Number.isFinite(values[i])) {
+      throw new Error(
+        `Invalid cache: mesh ${meshIndex} (expressId=${expressId}) has a non-finite value ` +
+          `(${values[i]}) in ${field}[${i}]. Cache may be corrupted.`,
+      );
+    }
+  }
+}
+
 /** Read one per-mesh record (see writeMeshRecord for the layout). */
 export function readMeshRecord(reader: BufferReader, version: number, meshIndex: number = 0): MeshData {
   const expressId = reader.readUint32();
@@ -230,6 +252,23 @@ export function readMeshRecord(reader: BufferReader, version: number, meshIndex:
   const positions = reader.readFloat32Array(vertexCount * 3);
   const normals = reader.readFloat32Array(vertexCount * 3);
   const indices = reader.readUint32Array(indexCount);
+
+  // Reject a NaN/Infinity-bombed vertex region instead of letting it flow
+  // downstream unfiltered. Structural guards elsewhere in this package (the
+  // chunk directory's contiguity check, string-offset monotonicity, row-index
+  // bounds) all validate that declared SHAPES are self-consistent, but none of
+  // them constrain the numeric DOMAIN of a position/normal float once its
+  // slot is legitimately in range -- a byte-flip that lands inside the
+  // position array itself passes every existing check and decodes as a
+  // syntactically valid, semantically poisoned float. Left unchecked, that
+  // reaches `packages/spatial`'s BVH (a NaN aggregate bound silently hides
+  // valid SIBLING meshes under the same node until #3547's NaN-safe compare)
+  // and the renderer/picking path, neither of which re-validates cache input.
+  // Failing here, at the boundary where untrusted bytes become a MeshData,
+  // keeps that contract in one place instead of relying on every downstream
+  // consumer to defend itself.
+  assertFiniteVertexData(positions, 'positions', meshIndex, expressId);
+  assertFiniteVertexData(normals, 'normals', meshIndex, expressId);
 
   return {
     expressId,

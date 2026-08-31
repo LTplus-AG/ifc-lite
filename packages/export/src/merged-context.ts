@@ -12,9 +12,9 @@
  * subcontexts — onto the primary model's instance whenever the model is
  * unit-compatible. `IfcUnitAssignment` unifies unconditionally (a pure unit
  * declaration), but a representation context also carries a
- * `WorldCoordinateSystem`: the root anchor every placement in that context
+ * `WorldCoordinateSystem`: the root frame (origin and orientation) every placement in that context
  * ultimately resolves against. Silently dropping a model's own context in
- * favour of the primary's — without checking the WCS origin matches — would
+ * favour of the primary's — without checking the WCS frame matches — would
  * re-interpret every one of that model's untouched coordinates against the
  * WRONG origin: a wrong-place bug, not merely a duplicate-entity one. A
  * context whose WCS disagrees keeps its own root, exactly like the
@@ -26,9 +26,11 @@
  * position, so two authoring tools that declared their subcontexts in a
  * different order never cross-wire a 'Body' representation onto an 'Axis'
  * context. That kind match is additionally gated on the parent context's WCS
- * compatibility: when the top-level context did not unify, this model's
- * subcontexts still reference its own (un-remapped) context, so unifying them
- * onto the primary's subcontexts would misplace them just the same.
+ * compatibility: a subcontext inherits its frame from `ParentContext`, so
+ * when the top-level context's frame disagrees with the primary's, this
+ * model's subcontexts still reference its own (un-remapped) context, and
+ * unifying them onto the primary's subcontexts would misplace them just the
+ * same.
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -36,14 +38,16 @@ import { asSourceBytes } from '@ifc-lite/parser';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { planSubContextUnify } from './merged-subcontext.js';
 
-/** A resolved WorldCoordinateSystem origin, in metres. */
+/** A resolved WorldCoordinateSystem frame: origin in metres and normalized axes. */
 export interface WcsSignature {
   x: number;
   y: number;
   z: number;
+  axis: [number, number, number];
+  refDirection: [number, number, number];
 }
 
-/** Tolerance (metres) for two WCS origins to be considered the same. */
+/** Tolerance for WCS origins (metres) and normalized directions. */
 const WCS_TOLERANCE_M = 1e-6;
 
 function decodeEntity(dataStore: IfcDataStore, expressId: number): string | null {
@@ -75,12 +79,28 @@ function parseCoord(raw: string | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function parseVector(dataStore: IfcDataStore, directionId: number | null, fallback: [number, number, number]): [number, number, number] | null {
+  if (directionId === null) return fallback;
+  const raw = getStepAttr(dataStore, directionId, 0);
+  const inner = raw?.replace(/^\(|\)$/g, '');
+  const parts = inner === undefined ? null : splitTopLevelStepArguments(inner);
+  if (!parts || parts.length < 2) return null;
+  const x = parseCoord(parts[0]);
+  const y = parseCoord(parts[1]);
+  const z = parts.length > 2 ? parseCoord(parts[2]) : 0;
+  if (x === null || y === null || z === null) return null;
+  const magnitude = Math.hypot(x, y, z);
+  if (magnitude === 0) return null;
+  return [x / magnitude, y / magnitude, z / magnitude];
+}
+
 /**
- * Resolve the WorldCoordinateSystem location of `contextId` (an
+ * Resolve the WorldCoordinateSystem frame of `contextId` (an
  * `IfcGeometricRepresentationContext`), in metres.
  *
  * Attr 4 is `WorldCoordinateSystem`, an `IfcAxis2Placement` (2D/3D) whose
- * attr 0 is `Location` (an `IfcCartesianPoint`) — but tolerates a context
+ * attr 0 is `Location` (an `IfcCartesianPoint`), attrs 1/2 are `Axis` and
+ * `RefDirection` — but tolerates a context
  * pointing straight at a point (no placement wrapper), the shape this
  * package's own test fixtures use. Returns null when any hop is
  * unresolvable (missing entity, `$`, non-numeric): callers must treat null
@@ -109,7 +129,16 @@ export function resolveContextWcsMetres(
   if (x === null || y === null || z === null) return null;
 
   const scale = Number.isFinite(lengthUnitScale) && lengthUnitScale > 0 ? lengthUnitScale : 1;
-  return { x: x * scale, y: y * scale, z: z * scale };
+  // Axis2Placement defaults omitted Axis and RefDirection to +Z and +X.
+  // Treat omitted and explicit defaults identically, not as an unknown shape.
+  const axis = wcsType.includes('CARTESIANPOINT')
+    ? [0, 0, 1] as [number, number, number]
+    : parseVector(dataStore, refId(getStepAttr(dataStore, wcsRef, 1)), [0, 0, 1]);
+  const refDirection = wcsType.includes('CARTESIANPOINT')
+    ? [1, 0, 0] as [number, number, number]
+    : parseVector(dataStore, refId(getStepAttr(dataStore, wcsRef, 2)), [1, 0, 0]);
+  if (axis === null || refDirection === null) return null;
+  return { x: x * scale, y: y * scale, z: z * scale, axis, refDirection };
 }
 
 /** `resolveContextWcsMetres` for a model's first `IfcGeometricRepresentationContext`, or null if it has none. */
@@ -119,7 +148,7 @@ export function resolveModelContextWcs(dataStore: IfcDataStore, lengthUnitScale:
 }
 
 /**
- * True when two resolved WCS origins are the same within tolerance, OR
+ * True when two resolved WCS frames are the same within tolerance, OR
  * either is null (unresolvable — permissive: never block a merge on a
  * context shape this reader couldn't fully parse).
  */
@@ -127,7 +156,9 @@ function wcsSignaturesCompatible(a: WcsSignature | null, b: WcsSignature | null)
   if (a === null || b === null) return true;
   return Math.abs(a.x - b.x) <= WCS_TOLERANCE_M
     && Math.abs(a.y - b.y) <= WCS_TOLERANCE_M
-    && Math.abs(a.z - b.z) <= WCS_TOLERANCE_M;
+    && Math.abs(a.z - b.z) <= WCS_TOLERANCE_M
+    && a.axis.every((value, index) => Math.abs(value - b.axis[index]) <= WCS_TOLERANCE_M)
+    && a.refDirection.every((value, index) => Math.abs(value - b.refDirection[index]) <= WCS_TOLERANCE_M);
 }
 
 /**
@@ -136,19 +167,20 @@ function wcsSignaturesCompatible(a: WcsSignature | null, b: WcsSignature | null)
  *
  * `IfcUnitAssignment` unifies by position unconditionally. The representation
  * context (`IFCGEOMETRICREPRESENTATIONCONTEXT`) unifies only when its resolved
- * WCS origin agrees with the primary model's (in metres, so a differing length
- * unit doesn't produce a false mismatch); a mismatch leaves it un-remapped —
- * kept as this model's own root — so its untouched coordinates are never
- * re-interpreted against the wrong origin.
+ * WCS frame agrees with the primary model's (origin in metres AND
+ * axis/refDirection orientation, so a differing length unit or a rotated frame
+ * doesn't produce a false match); a mismatch leaves it un-remapped — kept as
+ * this model's own root — so its untouched coordinates are never
+ * re-interpreted against the wrong frame.
  *
  * Its subcontexts (`IFCGEOMETRICREPRESENTATIONSUBCONTEXT`) go through
  * {@link planSubContextUnify} instead of positional matching — kind-matched by
  * `ContextIdentifier`/`TargetView` so a 'Body' subcontext never unifies onto an
- * 'Axis' one (merge invariant lens pass 3, item 1) — and inherit the parent
- * context's WCS gate: when the context itself did not unify, its subcontexts
- * reference THIS model's own (un-remapped) context, so unifying them onto the
- * primary's subcontexts would point them at the wrong origin's tree just the
- * same. Mutates `sharedRemap`/`skipEntityIds`.
+ * 'Axis' one (merge invariant lens pass 3, item 1) — gated on the SAME
+ * `contextsCompatible` computed once up front: a subcontext inherits its WCS
+ * from `ParentContext`, so when the parent root's frame disagrees, retaining
+ * the parent means every child must be retained too, not just remapped in
+ * isolation. Mutates `sharedRemap`/`skipEntityIds`.
  */
 export function planInfrastructureUnify(
   dataStore: IfcDataStore,
@@ -161,23 +193,20 @@ export function planInfrastructureUnify(
   sharedRemap: Map<number, number>,
   skipEntityIds: Set<number>,
 ): void {
-  // Permissive default: if the primary model declares no representation
-  // context at all, there is nothing for a subcontext's WCS to disagree
-  // with, so subcontext kind-matching proceeds unhindered.
-  let contextWcsCompatible = true;
+  // Computed once, up front — not per type in the loop below — so its result
+  // does not depend on `IFCGEOMETRICREPRESENTATIONCONTEXT` iterating before
+  // `IFCGEOMETRICREPRESENTATIONSUBCONTEXT` in `firstModelInfraMap`.
+  const contextsCompatible = wcsSignaturesCompatible(firstModelContextWcs,
+    resolveModelContextWcs(dataStore, lengthUnitScale));
   for (const [type, firstIds] of firstModelInfraMap) {
     const thisIds = modelInfra.get(type);
     if (!thisIds || firstIds.length === 0 || thisIds.length === 0) continue;
     if (type === 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT') {
-      if (!contextWcsCompatible) continue;
+      if (!contextsCompatible) continue;
       planSubContextUnify(dataStore, thisIds, firstModelSubContextsByKey, firstModelOffset, sharedRemap, skipEntityIds);
       continue;
     }
-    if (type === 'IFCGEOMETRICREPRESENTATIONCONTEXT') {
-      const thisWcs = resolveContextWcsMetres(dataStore, thisIds[0], lengthUnitScale);
-      contextWcsCompatible = wcsSignaturesCompatible(firstModelContextWcs, thisWcs);
-      if (!contextWcsCompatible) continue;
-    }
+    if (type === 'IFCGEOMETRICREPRESENTATIONCONTEXT' && !contextsCompatible) continue;
     sharedRemap.set(thisIds[0], firstIds[0] + firstModelOffset);
     skipEntityIds.add(thisIds[0]);
   }

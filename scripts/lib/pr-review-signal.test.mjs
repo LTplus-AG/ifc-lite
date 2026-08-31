@@ -77,7 +77,13 @@ test('job names expand: plain, matrix-sharded, and key-as-name', () => {
 test('the REAL test.yml derives the lane names the REAL rollup publishes', () => {
   // Not a synthetic tree: the point of this gate is that its expectation
   // matches what GitHub actually publishes, and a fixture cannot show that.
-  // These 16 are the names observed on PR #3305's rollup on 2026-08-26.
+  // These were the names observed on PR #3305's rollup on 2026-08-26, plus
+  // `AGENTS.md ratchet`, added when check-agents-md-size.mjs got its own job
+  // rather than riding in `Node tests` (it needs no build artifact and no
+  // install, and routing it through `frontend` fanned one gate out to nine
+  // jobs). The count is a TRIPWIRE for a lane appearing or vanishing unnoticed,
+  // so bumping it is a deliberate act: add the new name to the list below as
+  // well, or the count alone would pass while asserting nothing about identity.
   const names = expandJobNames(readFileSync(join(REPO_ROOT, '.github/workflows/test.yml'), 'utf8'));
   for (const observed of [
     'Detect changes',
@@ -91,11 +97,12 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
     'Viewer tests (shard 0)',
     'Viewer tests (shard 3)',
     'Docs checks (docs-only PRs)',
+    'AGENTS.md ratchet',
     'Build + WASM + Rust + Node',
   ]) {
     assert.ok(names.includes(observed), `derived set is missing the observed lane "${observed}"`);
   }
-  assert.equal(names.length, 16);
+  assert.equal(names.length, 17);
 });
 
 test('FAIL CLOSED: an empty workflow file is NO_WORKFLOW_TEXT, not an empty lane set', () => {

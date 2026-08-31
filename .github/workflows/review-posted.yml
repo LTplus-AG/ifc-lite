@@ -19,6 +19,8 @@ on:
 
 permissions:
   contents: read
+  # write, and ONLY for the stand-down label below. The gate itself reads.
+  issues: write
   # Covers both reads: issue comments and PR reviews. `issues: read` is not
   # requested; if the first runs report GH_ERROR mentioning permissions, add it.
   # The gate fails closed, so that shows up as a visible refusal rather than a
@@ -57,6 +59,7 @@ jobs:
         run: node --test scripts/check-review-posted.test.mjs
 
       - name: Check a review was actually posted for this head
+        id: gate
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -64,3 +67,45 @@ jobs:
           node scripts/check-review-posted.mjs \
             --pr "${{ github.event.pull_request.number }}" \
             --sha "${{ github.event.pull_request.head.sha }}"
+
+      # THE STAND-DOWN LABEL, AND WHY THE GATE DECIDES IT RATHER THAN THE REVIEWER.
+      #
+      # CodeRabbit is configured with `auto_review.labels: ['!claude-reviewed']`,
+      # a negative match, so it skips any PR carrying this label. That preserves
+      # its scarce Fair Usage allowance (both identities on this repo sit at the
+      # 1-2 reviews/hour floor permanently) for the PRs Claude did NOT cover.
+      #
+      # The label follows the GATE'S VERDICT, never the reviewer's own report, and
+      # never merely the fact that a bot commented. CodeRabbit has no "skip if
+      # another bot reviewed" knob, so a label is the only signal available to it;
+      # if that label could be set by a reviewer that silently posted nothing
+      # (claude-code-action #1679: forty consecutive runs logging `Posted 0/N`
+      # while exiting 0) then BOTH reviewers would stand down and the PR would
+      # show green having been read by neither. That is a third route to the exact
+      # defect this gate closes, so the label is downstream of verification.
+      #
+      # IT IS REMOVED AS WELL AS ADDED, and that half is not optional. The gate
+      # adjudicates a verdict for ONE head. Without the removal, a PR reviewed at
+      # commit 1 keeps the label through commit 20 and CodeRabbit stands down for
+      # a diff nothing has read -- the stand-down would go stale in exactly the
+      # way STALE_REVIEW exists to catch.
+      #
+      # Reads `steps.gate.outputs.covered`, not the step's exit code: in advisory
+      # mode a failing verdict still exits 0, so the exit code would mark an
+      # unreviewed PR as covered.
+      - name: Sync the CodeRabbit stand-down label to the verdict
+        if: always() && steps.gate.outputs.covered != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COVERED: ${{ steps.gate.outputs.covered }}
+        run: |
+          set -euo pipefail
+          if [ "$COVERED" = "true" ]; then
+            gh pr edit "${{ github.event.pull_request.number }}" \
+              --repo "${{ github.repository }}" --add-label claude-reviewed
+            echo "Labelled: a verified review exists for this head."
+          else
+            gh pr edit "${{ github.event.pull_request.number }}" \
+              --repo "${{ github.repository }}" --remove-label claude-reviewed 2>/dev/null || true
+            echo "Label cleared: no verified review for this head, so CodeRabbit must not stand down."
+          fi

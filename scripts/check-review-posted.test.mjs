@@ -225,6 +225,56 @@ test('ADVISORY does not print an advisory notice over a PASS', () => {
   assert.doesNotMatch(r.out, /ADVISORY MODE/);
 });
 
+// ============================================== the machine-readable verdict
+
+test('the `covered` output tracks the VERDICT, not the exit code', () => {
+  // The CodeRabbit stand-down label reads this. In advisory mode a failing
+  // verdict still exits 0, so a caller inferring coverage from `$?` would mark an
+  // unreviewed PR as covered and both reviewers would stand down -- a third route
+  // to an unreviewed merge. These two cases are the ones that must not agree.
+  const outPath = join(TMP, `ghout-${(seq += 1)}.txt`);
+  const payloadPath = join(TMP, `p-covered-${seq}.json`);
+  const readOut = () => readFileSync(outPath, 'utf8');
+
+  const runWithOutput = (payload, cfgArgs) => {
+    writeFileSync(outPath, '');
+    writeFileSync(payloadPath, JSON.stringify(payload));
+    const r = spawnSync(
+      process.execPath,
+      [GATE, '--pr', '1', '--sha', SHA, '--state-file', payloadPath, ...cfgArgs],
+      { encoding: 'utf8', env: { ...process.env, GITHUB_OUTPUT: outPath } },
+    );
+    return { code: r.status, out: readOut() };
+  };
+
+  const clean = runWithOutput(comments([REVIEWER, marker(SHA)]), ENFORCING);
+  assert.equal(clean.code, 0);
+  assert.match(clean.out, /covered=true/);
+
+  const missing = runWithOutput({ issueComments: [] }, ENFORCING);
+  assert.equal(missing.code, 1);
+  assert.match(missing.out, /covered=false/);
+
+  // The case the whole output exists for: advisory exits 0 on a FAILING verdict.
+  const advisory = runWithOutput({ issueComments: [] }, cfgWith({ mode: 'advisory' }, 'advisory-covered'));
+  assert.equal(advisory.code, 0, 'advisory exits 0');
+  assert.match(advisory.out, /covered=false/, 'but coverage must still read false');
+});
+
+test('a STALE review reports covered=false, so the stand-down label is cleared', () => {
+  const outPath = join(TMP, `ghout-stale-${(seq += 1)}.txt`);
+  const payloadPath = join(TMP, `p-stale-${seq}.json`);
+  writeFileSync(outPath, '');
+  writeFileSync(payloadPath, JSON.stringify(comments([REVIEWER, marker(OTHER_SHA)])));
+  const r = spawnSync(
+    process.execPath,
+    [GATE, '--pr', '1', '--sha', SHA, '--state-file', payloadPath, ...ENFORCING],
+    { encoding: 'utf8', env: { ...process.env, GITHUB_OUTPUT: outPath } },
+  );
+  assert.equal(r.status, 1);
+  assert.match(readFileSync(outPath, 'utf8'), /covered=false/);
+});
+
 // ====================================================== marker forgery boundary
 
 test('a hand-written marker from a NON-reviewer does not pass', () => {

@@ -88,7 +88,7 @@
  *      exceeds it fails closed with COMMENTS_TRUNCATED rather than guessing.
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, appendFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMainEntry } from './lib/is-main-entry.mjs';
@@ -359,6 +359,15 @@ function main() {
 
   const { ok, lines } = evaluate({ comments, cfg, headSha: args.sha });
   for (const l of lines) console.log(l);
+
+  // `covered` is the VERDICT, independent of the exit code, and the two differ on
+  // purpose in advisory mode: there, a failing verdict still exits 0, and a caller
+  // that inferred coverage from the exit code would mark an unreviewed PR as
+  // covered. Anything downstream that acts on "was this reviewed" -- the
+  // CodeRabbit stand-down label, above all -- must read THIS, never `$?`.
+  if (process.env.GITHUB_OUTPUT) {
+    appendFileSync(process.env.GITHUB_OUTPUT, `covered=${ok ? 'true' : 'false'}\n`);
+  }
 
   // Advisory gates the EXIT CODE and nothing else. The verdict text is identical
   // in both modes, so a rollout state cannot quietly change what is reported. A

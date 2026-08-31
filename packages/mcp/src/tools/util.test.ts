@@ -92,5 +92,15 @@ describe('tool utilities', () => {
         }),
       ).toBe('Exterior Wall Build-up');
     });
+
+    it('uses a named IfcMaterialProfileSet when every profile material is unnamed', () => {
+      expect(
+        materialDisplayName({
+          type: 'MaterialProfileSet',
+          name: 'Primary framing',
+          profiles: [{ materialName: undefined }, { materialName: undefined }],
+        }),
+      ).toBe('Primary framing');
+    });
   });
 });

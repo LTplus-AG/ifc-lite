@@ -323,7 +323,11 @@ export function normaliseComments(payload) {
  * The verdict. `ok` is true only when an expected author posted a well-formed
  * marker naming exactly `headSha`.
  *
- * @returns {{ ok: boolean, verdict: string, lines: string[] }}
+ * @returns {{ ok: boolean, covered: boolean, verdict: string, lines: string[] }}
+ *   `ok` is "should this check go red"; `covered` is "has this head been
+ *   REVIEWED", which is what the workflow turns into the `claude-reviewed` label
+ *   and what CodeRabbit reads to stand down. They differ on exactly one verdict:
+ *   `nothing-to-review` is ok and NOT covered, because nothing read the diff.
  */
 export function evaluate({ comments, cfg, headSha }) {
   const lines = [];

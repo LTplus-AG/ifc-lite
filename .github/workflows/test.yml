@@ -1078,7 +1078,7 @@ jobs:
       # scripts/docs/ joined it for the same reason in #3200 - the catch-all is
       # per-DIRECTORY, so it goes blind on the next subdirectory anyone adds.
       - name: Run every scripts/ test file (glob catch-all)
-        run: node --test scripts/*.test.mjs scripts/lib/*.test.mjs scripts/fixtures/*.test.mjs scripts/docs/*.test.mjs
+        run: node --test scripts/*.test.mjs scripts/lib/*.test.mjs scripts/fixtures/*.test.mjs scripts/docs/*.test.mjs scripts/review/*.test.mjs
       # Committed codegen output (packages/codegen/generated/**,
       # packages/parser/src/generated/**, packages/data/src/ifc-schema/
       # generated/**) had no CI freshness gate at all — a generator bug fixed

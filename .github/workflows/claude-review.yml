@@ -1,0 +1,171 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: Claude review
+
+# ONCE PER HEAD, NOT ONCE PER PUSH AND NOT ONCE PER PR.
+#
+# Once per PUSH is what Supabase measured Codex doing: 30 to 40 reviews of one
+# pull request, burning quota on unchanged heads. Once per PR is worse in the
+# other direction, because scripts/check-review-posted.mjs adjudicates a verdict
+# for ONE head: a review of commit 1 leaves commit 20 with STALE_REVIEW forever.
+#
+# So the dedup key is the head SHA and the dedup record is the marker itself.
+# That needs no state store, survives re-runs, and is the same artifact the gate
+# reads. A burst of five pushes produces five events; four die in cancellation or
+# the head check, one reviews the final head.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  # The poster writes inline comments and one summary comment. Nothing else.
+  pull-requests: write
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Claude review
+    # FORK PRs ARE EXCLUDED, and this is a correctness decision rather than a
+    # policy one: a fork PR's GITHUB_TOKEN is read-only whatever `permissions:`
+    # says, so the poster could not post and the lane would report a failure that
+    # means nothing about the code. Those PRs stay on the CodeRabbit lane, which
+    # is why the stand-down label is never applied to them.
+    #
+    # `CLAUDE_REVIEW_ENABLED` is the kill switch. Unset means off, so this lands
+    # dark and is turned on deliberately; flipping it back off stops the lane in
+    # seconds without a revert.
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      vars.CLAUDE_REVIEW_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # The SCRIPTS come from the PR so a change to the lane is exercised by its
+      # own PR. The RUBRIC comes from the base branch below, because it is the
+      # thing worth editing to weaken the review that judges you. Same split, and
+      # the same stated residual risk, as review-posted.yml.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      # Settle before reading the head. A push burst arrives as several events;
+      # cancel-in-progress kills most of them, and this window lets the last one
+      # win rather than racing a sibling that is already mid-review.
+      - name: Settle
+        run: sleep 90
+
+      # If the head moved while we settled, the newer event owns it. Exit rather
+      # than review a dead commit: a marker for a superseded head is one the gate
+      # immediately calls STALE_REVIEW, which is noise, not signal.
+      - name: Stop if the head moved
+        id: head
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          now=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}" --jq .head.sha)
+          if [ "$now" != "${{ github.event.pull_request.head.sha }}" ]; then
+            echo "Head moved to ${now:0:9}; the newer run owns it."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # DEDUP. Ask the gate whether this head is already covered, and read its
+      # `covered` OUTPUT rather than its exit code: in advisory mode a failing
+      # verdict still exits 0, so the exit code would report every uncovered head
+      # as covered and the lane would never run.
+      - name: Skip if this head already has a verdict
+        id: dedup
+        if: steps.head.outputs.proceed == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          node scripts/check-review-posted.mjs \
+            --pr "${{ github.event.pull_request.number }}" \
+            --sha "${{ github.event.pull_request.head.sha }}" \
+            --timeout-seconds 0 || true
+
+      - name: Take the rubric from the base branch
+        id: rubric
+        if: steps.head.outputs.proceed == 'true' && steps.dedup.outputs.covered != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/rubric.md"
+          if gh api "repos/${{ github.repository }}/contents/scripts/review/rubric.md?ref=${{ github.event.pull_request.base.sha }}" \
+               --jq '.content' 2>/dev/null | base64 -d > "$out" 2>/dev/null && [ -s "$out" ]; then
+            echo "path=$out" >> "$GITHUB_OUTPUT"
+          else
+            echo "path=scripts/review/rubric.md" >> "$GITHUB_OUTPUT"
+            echo "::notice::No rubric on the base branch yet (bootstrap); using this PR's copy."
+          fi
+
+      - name: Build the review input
+        id: input
+        if: steps.head.outputs.proceed == 'true' && steps.dedup.outputs.covered != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/review/build-review-input.mjs \
+            --repo "${{ github.repository }}" \
+            --pr "${{ github.event.pull_request.number }}" \
+            --sha "${{ github.event.pull_request.head.sha }}" \
+            --out "$RUNNER_TEMP/review-input.json"
+
+      # The model runs here, as a pure function: no tools, no shell, no MCP, no
+      # repository access, empty cwd. Any failure -- including a drained
+      # subscription pool -- fails the job. There is no path from here to a clean
+      # verdict that the model did not produce.
+      - name: Run the reviewer
+        if: steps.head.outputs.proceed == 'true' && steps.dedup.outputs.covered != 'true'
+        working-directory: ${{ runner.temp }}
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          node "$GITHUB_WORKSPACE/scripts/review/run-reviewer.mjs" \
+            --rubric "${{ steps.rubric.outputs.path }}" \
+            --input "$RUNNER_TEMP/review-input.json" \
+            --out "$RUNNER_TEMP/raw-review.txt" \
+            --model sonnet
+
+      # Mechanical validation before anything is posted: verbatim quotes, added-
+      # line anchoring, the cap, and the sanitisation that stops a steered model
+      # laundering a forged marker through our own trusted identity.
+      - name: Validate the findings
+        if: steps.head.outputs.proceed == 'true' && steps.dedup.outputs.covered != 'true'
+        run: |
+          node scripts/review/validate-findings.mjs \
+            --raw "$RUNNER_TEMP/raw-review.txt" \
+            --input "$RUNNER_TEMP/review-input.json" \
+            --out "$RUNNER_TEMP/findings.json"
+
+      # The marker is written LAST, and only after the inline comments have been
+      # read back off the PR. That ordering is the whole answer to #1679.
+      - name: Post the review
+        if: steps.head.outputs.proceed == 'true' && steps.dedup.outputs.covered != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/review/post-review.mjs \
+            --repo "${{ github.repository }}" \
+            --pr "${{ github.event.pull_request.number }}" \
+            --sha "${{ github.event.pull_request.head.sha }}" \
+            --findings "$RUNNER_TEMP/findings.json" \
+            --author github-actions \
+            --config scripts/review-posted.config.json

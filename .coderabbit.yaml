@@ -62,6 +62,30 @@ reviews:
   auto_review:
     enabled: true
     drafts: false
+
+    # THE STAND-DOWN, and the direction of the signal is the whole design.
+    #
+    # `!claude-reviewed` is a NEGATIVE match: CodeRabbit skips any PR carrying
+    # that label. It preserves this account's scarce Fair Usage allowance -- both
+    # identities on this repo sit at the 1-2 reviews/hour floor permanently, so
+    # roughly 444 of 1,200 monthly PRs is the ceiling whatever is paid -- for the
+    # PRs the Claude lane did NOT cover.
+    #
+    # THE LABEL IS APPLIED BY THE GATE, NEVER BY THE REVIEWER. scripts/
+    # check-review-posted.mjs sets it only after verifying a marker for the exact
+    # head, and clears it on every new head. The obvious wiring, letting the
+    # reviewer label its own PRs, would be a third route to an unreviewed merge:
+    # claude-code-action #1679 exits 0 after posting nothing, so a self-labelling
+    # reviewer that silently did nothing would suppress its own backup and the PR
+    # would show green having been read by neither.
+    #
+    # KNOWN GAP, STATED: CodeRabbit reads labels at PUSH time and does not
+    # re-review on `unlabeled`, so the gate clears the label up front on
+    # `synchronize` rather than after its poll. The worst case is therefore
+    # CodeRabbit reviewing a PR the Claude lane also covered, which costs quota;
+    # the other ordering costs a review.
+    labels:
+      - '!claude-reviewed'
     # NO `ignore_usernames`, DELIBERATELY. Excluding dependabot was tried and
     # reverted: it saves ~21 PRs/month of allowance and buys a silent blind spot.
     # An ignored author gets no CodeRabbit CONTEXT at all, and nothing detects

@@ -1612,8 +1612,8 @@ export async function* processParallel(
   if (loadDiagnostics && loadDiagnostics.totalCsgFailures > 0) {
     console.warn(
       `[ifc-lite] ${loadDiagnostics.totalCsgFailures} CSG failure(s) across ` +
-        `${loadDiagnostics.productsWithFailures} product(s) this load - some ` +
-        `openings/voids may be left uncut`,
+        `${loadDiagnostics.productsWithFailures} product(s) this load - see ` +
+        `diagnostics.failuresByReason; not every reason leaves an opening/void uncut`,
     );
   }
   yield {

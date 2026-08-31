@@ -1,0 +1,17 @@
+---
+'@ifc-lite/geometry': minor
+---
+
+Step 1 of #3440: report the boolean results that come back torn.
+
+Every boolean op's accept path validated its kernel output through `validate_mesh`, which checks position/normal finiteness and index bounds and nothing else, so a result with a hole in it was accepted silently and left no trace anywhere. The kernel's boolean entry points (`subtract_mesh`, `subtract_mesh_many`, `union_mesh`, `union_meshes`, `intersection_mesh`) now also run the closure audit the analytic prism-cut path rejects on — `directed_closed`, or failing that the hairline tolerance `closed_or_hairline` — over the mesh each op is about to return, and record a failure through the same channel the CSG diagnostics already report through. The hairline half is not decoration: without it every T-junction subdivision mismatch would be recorded, and tessellated hosts routinely carry those; the analytic path accepts them at every one of its own gates, so a census that counted them could not be read.
+
+This records, it does not gate. `validate_mesh` returns exactly what it returned before, and every op still returns the mesh it returned before. A hard gate here would silently reroute every currently-torn host onto its fallback path across difference, union and intersection at once, and nothing today can say whether those hosts would land better or worse. That measurement is what this diagnostic exists to produce, not something to assume in the same change that adds the check.
+
+Each op audits the mesh it hands back, once. `subtract_mesh_many` audits after the last chunk rather than per chunk, and `union_meshes` audits the union it returns rather than each pairwise intermediate the caller never sees — a record about a mesh nobody receives is noise the per-host count cannot correct for. A group the batched path rejects returns the host un-cut before the audit runs, so it still records nothing, as its contract says.
+
+What changes for you: hosts that previously loaded with no CSG failure recorded can now report one, which moves `totalCsgFailures`, `failuresByReason`, `worstHosts` and `silentNoOps` on the `complete` event's `diagnostics`, and trips the "N CSG failure(s)" console warning. No export is added, removed or renamed and the geometry handed to callers is unchanged, so nothing here forces a code change on your side. The level is `minor` rather than `patch` as a judgement call: a package that starts reporting a new class of diagnostic is doing something new, not correcting what it already reported.
+
+That console warning's wording is corrected in the same change. It claimed "some openings/voids may be left uncut", which was never true of every reason it counted — `CutterUnionUnavailable` and `PolygonalBoundedHalfSpaceFallback` both leave the cut applied — and is not true of the new record at all, where the cut is applied and only the tessellation is not closed. It now points at `diagnostics.failuresByReason` for which reason it actually is.
+
+Cost: one hash sweep over the returned triangles per accepted boolean op, plus the hairline sweep only when the strict audit fails. Measured base (`140a6d854`) versus this branch with `scripts/perf/probe.sh --iters 5`: FZK-Haus stayed at 9 ms best total (geometry 5 -> 4 ms), and the CSG-heavy ISSUE_129 stayed effectively flat at 605 -> 604 ms best total (geometry 586 -> 586 ms). Mesh, vertex and triangle counts were byte-for-byte identical in both runs; ISSUE_129's diagnostic count rose 1 -> 9, which is the intentional new observation rather than a geometry change.

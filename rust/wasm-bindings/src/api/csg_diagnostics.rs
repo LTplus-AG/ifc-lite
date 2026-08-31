@@ -35,10 +35,13 @@ pub(super) fn drain_and_log_csg_diagnostics(
     let cls_total = cls.rectangular + cls.diagonal + cls.non_rectangular;
     let total_failures: usize = csg_failures.values().map(|v| v.len()).sum();
 
-    // Only emit the headline at WARN level when the kernel actually
-    // dropped a cut. Zero-failure parses shouldn't spam every embedded
-    // viewer. The full diagnostics summary is still returned to JS so
-    // callers can opt into deeper inspection.
+    // Only emit the headline at WARN level when something was recorded.
+    // "Failure" here is the record channel, not "the kernel dropped a cut":
+    // `CutterUnionUnavailable`, `PolygonalBoundedHalfSpaceFallback` and
+    // #3440's open-topology record all leave the cut applied. The per-reason
+    // breakdown below is what says which. Zero-failure parses shouldn't spam
+    // every embedded viewer. The full diagnostics summary is still returned
+    // to JS so callers can opt into deeper inspection.
     if total_failures > 0 {
         web_sys::console::warn_1(
             &format!(

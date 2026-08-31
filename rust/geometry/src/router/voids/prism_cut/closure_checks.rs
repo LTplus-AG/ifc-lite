@@ -16,7 +16,7 @@ use rustc_hash::FxHashMap;
 /// surfaces (two triangles sharing an edge in the SAME direction), not just
 /// cracks. Triangles that collapse to a degenerate key on the grid are skipped
 /// (their edges net to zero).
-pub(super) fn directed_closed(mesh: &Mesh) -> bool {
+pub(crate) fn directed_closed(mesh: &Mesh) -> bool {
     let key = |i: u32| -> (i64, i64, i64) {
         let b = i as usize * 3;
         let q = |v: f32| (v as f64 / 1.0e-4).round() as i64;
@@ -48,7 +48,7 @@ pub(super) fn directed_closed(mesh: &Mesh) -> bool {
 /// boundary loop whose edges have nothing opposite along them and fails. The
 /// exact kernel's own output is routinely NOT even undirected-watertight on
 /// these hosts, so this gate is still far stricter than the status quo.
-pub(super) fn closed_or_hairline(mesh: &Mesh) -> bool {
+pub(crate) fn closed_or_hairline(mesh: &Mesh) -> bool {
     type K = (i64, i64, i64);
     let key = |i: u32| -> K {
         let b = i as usize * 3;

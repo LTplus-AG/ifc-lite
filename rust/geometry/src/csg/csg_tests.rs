@@ -7,6 +7,7 @@
 //! (module-size-ratchet exempt) and attached via `#[path]`, the same shape
 //! `bool2d_tests.rs` / `facet_weld_scoped_tests.rs` already use.
 
+use super::topology_diagnostic::OPEN_TOPOLOGY_MESSAGE;
 use super::*;
 /// Build a box mesh from AABB min/max bounds (12 triangles, 2 per face).
 /// Test-only fixture builder for `subtract_mesh_many_chunks_match_sequential`
@@ -371,6 +372,306 @@ fn difference_result_wrong_piece_check_is_per_axis_not_longest_dimension() {
         ClippingProcessor::difference_result_looks_degenerate(&host, &result),
         "a result overshooting the host's thin Y face by 1 cm (4 mm per-axis \
          slack on that axis) must be flagged as a wrong-piece degenerate result"
+    );
+}
+
+/// Build an open box: the same 6-face box as [`aabb_to_mesh`] minus its top
+/// face (z = max). Finite positions/normals and every index in bounds, so
+/// `validate_mesh` accepts it — but the missing face leaves a boundary loop
+/// with no reverse edge to cancel it, so `directed_closed` rejects it.
+fn open_box_mesh(min: Point3<f64>, max: Point3<f64>) -> Mesh {
+    let mut mesh = Mesh::with_capacity(8, 30);
+
+    let v0 = Point3::new(min.x, min.y, min.z);
+    let v1 = Point3::new(max.x, min.y, min.z);
+    let v2 = Point3::new(max.x, max.y, min.z);
+    let v3 = Point3::new(min.x, max.y, min.z);
+    let v4 = Point3::new(min.x, min.y, max.z);
+    let v5 = Point3::new(max.x, min.y, max.z);
+    let v6 = Point3::new(max.x, max.y, max.z);
+    let v7 = Point3::new(min.x, max.y, max.z);
+
+    // Bottom (z = min): present.
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v0, v2, v1));
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v0, v3, v2));
+    // Top (z = max): DELETED — this is the open edge.
+    // -X side.
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v0, v4, v7));
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v0, v7, v3));
+    // +X side.
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v1, v2, v6));
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v1, v6, v5));
+    // -Y side.
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v0, v1, v5));
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v0, v5, v4));
+    // +Y side.
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v3, v7, v6));
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v3, v6, v2));
+
+    mesh
+}
+
+/// Step 1 of #3440: every boolean op's ACCEPT path must record the tear, and
+/// must still return the kernel result it returned before. Driving the four
+/// public ops (not `record_topology_tear` directly) is the point — the call
+/// sites are the change, so reverting any one of them has to turn this red.
+#[test]
+fn topology_tear_recorded_by_every_boolean_op_without_gating() {
+    // An open host makes every op's kernel output open too, which is what
+    // `validate_mesh` cannot see: it accepts all four results below.
+    let open_host = open_box_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));
+    let through_cutter = aabb_to_mesh(Point3::new(0.4, 0.4, -0.1), Point3::new(0.6, 0.6, 1.1));
+    let overlapping = aabb_to_mesh(Point3::new(0.5, 0.5, 0.5), Point3::new(1.5, 1.5, 1.5));
+
+    let expected = BoolFailureReason::KernelError(OPEN_TOPOLOGY_MESSAGE.to_string());
+
+    let cases: Vec<(&str, BoolOp, Mesh)> = {
+        let p = ClippingProcessor::new();
+        let subtract = p.subtract_mesh(&open_host, &through_cutter).unwrap();
+        let batched = p.subtract_mesh_many(&open_host, &[&through_cutter]).unwrap();
+        let union = p.union_mesh(&open_host, &overlapping).unwrap();
+        let intersection = p.intersection_mesh(&open_host, &overlapping).unwrap();
+        // One processor, four ops, four records — in call order.
+        let failures = p.take_failures();
+        assert_eq!(
+            failures.iter().map(|f| (f.op, f.reason.clone())).collect::<Vec<_>>(),
+            vec![
+                (BoolOp::Difference, expected.clone()),
+                (BoolOp::Difference, expected.clone()),
+                (BoolOp::Union, expected.clone()),
+                (BoolOp::Intersection, expected.clone()),
+            ],
+            "each of the four accept paths must record exactly one open-topology tear"
+        );
+        vec![
+            ("subtract_mesh", BoolOp::Difference, subtract),
+            ("subtract_mesh_many", BoolOp::Difference, batched),
+            ("union_mesh", BoolOp::Union, union),
+            ("intersection_mesh", BoolOp::Intersection, intersection),
+        ]
+    };
+
+    // The recording half is above; this is the NOT-GATING half. Every op
+    // handed back a non-empty kernel result that `validate_mesh` accepts and
+    // `directed_closed` rejects — i.e. the torn mesh, not a fallback.
+    let p = ClippingProcessor::new();
+    for (name, _, mesh) in &cases {
+        assert!(!mesh.is_empty(), "{name} must return the kernel result, not an empty fallback");
+        assert!(p.validate_mesh(mesh), "{name}: validate_mesh must still accept the torn result");
+        assert!(
+            !crate::router::voids::prism_cut::closure_checks::directed_closed(mesh)
+                && !crate::router::voids::prism_cut::closure_checks::closed_or_hairline(mesh),
+            "{name}: the returned mesh must fail BOTH halves of the audit's predicate, \
+             or this test cannot tell the hairline tolerance from its absence"
+        );
+    }
+    assert!(p.take_failures().is_empty());
+}
+
+/// The same four ops on a CLOSED host record nothing — the diagnostic is
+/// specific to open topology, not a blanket record on every accepted mesh.
+/// Without this the test above would pass on a helper that always records.
+#[test]
+fn topology_tear_not_recorded_for_closed_results() {
+    let closed_host = aabb_to_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));
+    let through_cutter = aabb_to_mesh(Point3::new(0.4, 0.4, -0.1), Point3::new(0.6, 0.6, 1.1));
+    let overlapping = aabb_to_mesh(Point3::new(0.5, 0.5, 0.5), Point3::new(1.5, 1.5, 1.5));
+
+    let p = ClippingProcessor::new();
+    p.subtract_mesh(&closed_host, &through_cutter).unwrap();
+    p.subtract_mesh_many(&closed_host, &[&through_cutter]).unwrap();
+    p.union_mesh(&closed_host, &overlapping).unwrap();
+    p.intersection_mesh(&closed_host, &overlapping).unwrap();
+
+    assert_eq!(
+        p.take_failures(),
+        vec![],
+        "closed results must not record an open-topology tear"
+    );
+}
+
+/// `subtract_mesh_many` must audit the mesh it RETURNS, once — not each
+/// chunk's intermediate. The cutter cap per arrangement is 16, so 17 cutters
+/// run two chunks over one returned mesh; auditing intermediates records
+/// twice, inflating the very per-host census this diagnostic exists to feed.
+/// 16 cutters (one chunk) is the control: same host, same tear, one record
+/// either way.
+#[test]
+fn topology_tear_recorded_once_per_batched_subtract_not_once_per_chunk() {
+    let open_host = open_box_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(20.0, 1.0, 1.0));
+    // Disjoint slabs cutting clean through the host in Y, one per metre.
+    let cutters: Vec<Mesh> = (0..17)
+        .map(|i| {
+            let x = 0.5 + f64::from(i);
+            aabb_to_mesh(Point3::new(x, -0.1, 0.3), Point3::new(x + 0.4, 1.1, 0.7))
+        })
+        .collect();
+    let expected = vec![BoolFailure {
+        op: BoolOp::Difference,
+        reason: BoolFailureReason::KernelError(OPEN_TOPOLOGY_MESSAGE.to_string()),
+        product_id: None,
+    }];
+
+    for cutter_count in [16usize, 17] {
+        let refs: Vec<&Mesh> = cutters.iter().take(cutter_count).collect();
+        let p = ClippingProcessor::new();
+        let result = p.subtract_mesh_many(&open_host, &refs).unwrap();
+        // The group must have been CUT, not rejected — a rejected group returns
+        // the host un-cut and records nothing, which would make this vacuous.
+        assert!(
+            result.triangle_count() > open_host.triangle_count(),
+            "{cutter_count} cutters: the group was rejected, so this proves nothing"
+        );
+        assert!(
+            !crate::router::voids::prism_cut::closure_checks::directed_closed(&result)
+                && !crate::router::voids::prism_cut::closure_checks::closed_or_hairline(&result),
+            "{cutter_count} cutters: the returned mesh must fail BOTH halves of the predicate"
+        );
+        assert_eq!(
+            p.take_failures(),
+            expected,
+            "{cutter_count} cutters: one returned mesh, one record, whatever the chunk count"
+        );
+    }
+}
+
+/// The same closed unit box, but the -X face is FANNED through an extra vertex
+/// at the midpoint of the v0-v4 edge it shares with the -Y face, which keeps
+/// that edge undivided. No hole and no missing surface — a pure T-junction:
+/// the directed edge v4->v0 on -Y is answered by the two half-edges v0->m and
+/// m->v4 on -X, which `directed_closed` cannot cancel but the hairline
+/// tolerance covers exactly.
+fn t_junction_box_mesh(min: Point3<f64>, max: Point3<f64>) -> Mesh {
+    let mut mesh = Mesh::with_capacity(8, 39);
+
+    let v0 = Point3::new(min.x, min.y, min.z);
+    let v1 = Point3::new(max.x, min.y, min.z);
+    let v2 = Point3::new(max.x, max.y, min.z);
+    let v3 = Point3::new(min.x, max.y, min.z);
+    let v4 = Point3::new(min.x, min.y, max.z);
+    let v5 = Point3::new(max.x, min.y, max.z);
+    let v6 = Point3::new(max.x, max.y, max.z);
+    let v7 = Point3::new(min.x, max.y, max.z);
+    let m = Point3::new(min.x, min.y, 0.5 * (min.z + max.z)); // midpoint of v0-v4
+
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v0, v2, v1));
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v0, v3, v2));
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v4, v5, v6));
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v4, v6, v7));
+    // -X: (v0, v4, v7) fanned through `m` — the only change from `aabb_to_mesh`.
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v0, m, v7));
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(m, v4, v7));
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v0, v7, v3));
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v1, v2, v6));
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v1, v6, v5));
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v0, v1, v5));
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v0, v5, v4));
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v3, v7, v6));
+    add_triangle_to_mesh(&mut mesh, &Triangle::new(v3, v6, v2));
+
+    mesh
+}
+
+/// The audit's predicate must be the analytic path's REJECTION gate
+/// (`prism_cut.rs:2674`, `:2913` — `directed_closed` OR `closed_or_hairline`),
+/// not `directed_closed` alone. A T-junction host fails the strict half and
+/// passes the tolerant one; `prism_cut` accepts it at every gate, so recording
+/// it would fill the #3440 census — and the user-facing `totalCsgFailures`
+/// count that rides the same channel — with a class this crate already ruled
+/// benign, and the step-2 flip set could not be read off it.
+///
+/// Driven through `record_topology_tear` rather than a boolean op because the
+/// predicate is what is under test and no op can be made to hand back this
+/// exact mesh: the kernel re-meshes its output, and the empty-operand
+/// pass-throughs never reach the audit.
+#[test]
+fn hairline_t_junction_is_not_recorded_as_a_topology_tear() {
+    use crate::router::voids::prism_cut::closure_checks::{closed_or_hairline, directed_closed};
+    let hairline = t_junction_box_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));
+    assert!(
+        !directed_closed(&hairline),
+        "fixture must fail the strict audit, or it cannot separate the two predicates"
+    );
+    assert!(
+        closed_or_hairline(&hairline),
+        "fixture must pass the hairline gate, or it cannot separate the two predicates"
+    );
+
+    let p = ClippingProcessor::new();
+    p.record_topology_tear(BoolOp::Union, &hairline);
+    assert_eq!(
+        p.take_failures(),
+        vec![],
+        "a T-junction the analytic path accepts at every gate must not be recorded as a tear"
+    );
+}
+
+/// `union_meshes` must audit the mesh it RETURNS, once — not every
+/// intermediate its pairwise loop throws away. `processors/boolean` unions the
+/// cutter prisms through this method and drains the same clipper into the
+/// HOST's failure list, so an over-count here is attributed to a host whose
+/// own geometry may be perfectly closed, and the per-host census is the only
+/// deliverable of #3440 step 1.
+#[test]
+fn topology_tear_recorded_once_per_union_meshes_not_once_per_intermediate() {
+    use crate::router::voids::prism_cut::closure_checks::{closed_or_hairline, directed_closed};
+    // Three overlapping boxes, the first of them open: two pairwise unions run,
+    // so auditing per pair records the discarded first intermediate as well.
+    let parts = vec![
+        open_box_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0)),
+        aabb_to_mesh(Point3::new(0.5, 0.5, 0.5), Point3::new(1.5, 1.5, 1.5)),
+        aabb_to_mesh(Point3::new(1.2, 1.2, 1.2), Point3::new(2.2, 2.2, 2.2)),
+    ];
+
+    let p = ClippingProcessor::new();
+    let result = p.union_meshes(&parts).unwrap();
+    assert!(
+        !directed_closed(&result) && !closed_or_hairline(&result),
+        "the returned union must be torn, or one record is not the right answer either"
+    );
+    assert_eq!(
+        p.take_failures(),
+        vec![BoolFailure {
+            op: BoolOp::Union,
+            reason: BoolFailureReason::KernelError(OPEN_TOPOLOGY_MESSAGE.to_string()),
+            product_id: None,
+        }],
+        "one returned mesh, one record, whatever the intermediate count"
+    );
+
+    // A pass-through: nothing was unioned, so the torn mesh is the caller's
+    // own input and no union can be blamed for it.
+    let p = ClippingProcessor::new();
+    let passthrough = p.union_meshes(&[parts[0].clone(), Mesh::new()]).unwrap();
+    assert_eq!(passthrough.triangle_count(), parts[0].triangle_count());
+    assert_eq!(
+        p.take_failures(),
+        vec![],
+        "no pair ever met, so there is no union result to record a tear against"
+    );
+}
+
+/// `union_mesh` also audits the mesh it returns when `union_pair` takes an
+/// empty-operand fallback.  That return path can carry file-supplied malformed
+/// indices, while the closure predicates index positions directly.  Validation
+/// must therefore happen before the topology predicate: keep the legacy
+/// pass-through result and, most importantly, do not abort the process.
+#[test]
+fn union_fallback_validates_indices_before_topology_audit() {
+    let mut malformed = aabb_to_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));
+    malformed.indices[0] = malformed.vertex_count() as u32;
+
+    let p = ClippingProcessor::new();
+    let returned = p.union_mesh(&malformed, &Mesh::new()).unwrap();
+
+    assert_eq!(returned.indices, malformed.indices, "the fallback remains non-gating");
+    assert!(
+        !p.validate_mesh(&returned),
+        "fixture must retain the out-of-bounds index or it cannot prove the guard"
+    );
+    assert!(
+        p.take_failures().is_empty(),
+        "an empty-operand pass-through is not a kernel result and must not gain a diagnostic"
     );
 }
 

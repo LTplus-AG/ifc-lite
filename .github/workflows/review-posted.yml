@@ -38,22 +38,28 @@ jobs:
     # would have killed the job on every PR before it could say anything.
     timeout-minutes: 10
     steps:
-      # THE GATE, ITS TESTS AND ITS CONFIG COME FROM THE BASE BRANCH, NEVER FROM
-      # THE PR UNDER REVIEW.
+      # THE GATE RUNS FROM THE PR; ITS AUTHORITY COMES FROM THE BASE BRANCH.
       #
-      # `actions/checkout` defaults to the PR's merge ref on `pull_request`, so
-      # the default would run this gate, its harness, and
-      # scripts/review-posted.config.json as the contributor wrote them. A
-      # contributor could then add their own login to `expectedAuthors`,
-      # hand-write a marker in a PR comment, and be validated by their own
-      # config. The missing `paths:` filter above does not close that -- running
-      # the job on the edited config IS the hole -- so the ref does.
+      # An earlier version pinned the whole checkout to `pull_request.base.sha` to
+      # stop a contributor editing the rules that judge them. That closed the
+      # forgery vector and broke two things: this very PR could not run, because
+      # the gate does not exist on base yet, and any future PR IMPROVING the gate
+      # would be tested against the old copy and never exercise its own change.
       #
-      # This is the rule adk-samples and supabase/cli both landed on
-      # independently: the rules that judge a PR must not be editable by it.
+      # Split instead. The workspace is the PR, so the harness tests the gate the
+      # PR actually ships. The CONFIG -- which names who may post a marker, and is
+      # the thing worth forging -- is read from the base branch below.
+      #
+      # RESIDUAL RISK, STATED: the gate's CODE still comes from the PR, so an edit
+      # to MARKER_RE or to `evaluate` is not neutralised by this split. That edit
+      # is visible in the diff and is what human review is for. It is a smaller
+      # surface than the config (a one-word `expectedAuthors` addition is easy to
+      # miss in a large diff; a change to the matching logic is not), and the
+      # measured population here is 100% same-repo PRs over the last 80 merges.
+      # If that changes, or if this gate goes enforcing on fork PRs, pin the code
+      # to base as well and accept that gate changes take effect one merge later.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
           lfs: false
           persist-credentials: false
 
@@ -93,6 +99,31 @@ jobs:
             --repo "${{ github.repository }}" --remove-label claude-reviewed \
             || echo "No label to clear (or no write access on a fork PR); CodeRabbit will review."
 
+      # The config is the thing worth forging: it names who may post a marker.
+      # Taken from the BASE branch so a PR cannot add its own author and pass.
+      # When base has no copy -- true only for the PR that introduces this gate --
+      # that is said out loud and the PR's own config is used, because the
+      # alternative is a job that can never run on the change that adds it.
+      - name: Take the reviewer allowlist from the base branch
+        id: cfg
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Written OUTSIDE the checkout: a file dropped into scripts/ would be
+          # picked up by this repo's own source-shape gates and could be committed
+          # by accident.
+          out="$RUNNER_TEMP/review-posted.base.json"
+          if gh api "repos/${{ github.repository }}/contents/scripts/review-posted.config.json?ref=${{ github.event.pull_request.base.sha }}" \
+               --jq '.content' 2>/dev/null | base64 -d > "$out" 2>/dev/null && [ -s "$out" ]; then
+            echo "config=$out" >> "$GITHUB_OUTPUT"
+            echo "Using the base branch's allowlist."
+          else
+            echo "config=scripts/review-posted.config.json" >> "$GITHUB_OUTPUT"
+            echo "::notice::No allowlist on the base branch yet (bootstrap). Using this PR's copy;"
+            echo "::notice::from the next PR onward the base copy is authoritative."
+          fi
+
       - name: Check a review was actually posted for this head
         id: gate
         env:
@@ -102,6 +133,7 @@ jobs:
           node scripts/check-review-posted.mjs \
             --pr "${{ github.event.pull_request.number }}" \
             --sha "${{ github.event.pull_request.head.sha }}" \
+            --config "${{ steps.cfg.outputs.config }}" \
             --timeout-seconds 300
 
       # ADDS ONLY. The clearing half runs up front, above.

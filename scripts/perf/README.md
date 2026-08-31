@@ -113,6 +113,15 @@ WASM-specific structural cost (not in the native probe, by design):
 Encoded so a spike does not re-walk a dead end. History lives in the PRs cited.
 
 ### Shipped wins
+- **CSG topology diagnostic (#3442): no measurable pipeline regression.** The
+  record-not-gate closure audit adds a strict directed-edge hash sweep and only
+  runs the hairline sweep when strict closure fails. On `140a6d854` versus the
+  branch, five-iteration `perf_probe` runs were flat: FZK-Haus best total 9 ->
+  9 ms (geometry 5 -> 4 ms), CSG-heavy ISSUE_129 605 -> 604 ms (geometry 586
+  -> 586 ms). Mesh, vertex and triangle counts were identical; the only
+  intentional observable delta was ISSUE_129's new CSG diagnostic count, 1 ->
+  9. **Lesson:** keep this as an audit of the final result only — auditing
+  batch intermediates turns diagnostic volume into workload-dependent noise.
 - **Entity indexes built and never read** (`index_vs_scan.rs`): `relationships()`
   built a full parallel index and handed it to the decoder, but every decode in it
   is `decode_at_with_id` over the scanner's own spans and only `decode_by_id`

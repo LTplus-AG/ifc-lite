@@ -24,6 +24,7 @@ import {
 } from '@ifc-lite/embed-protocol';
 import { toGlobalIdFromModels, type ViewerState } from '@/store/index.js';
 import { aroundDestructiveLoad, offerHostPose } from './cameraIntent.js';
+import { applyInitConfig } from './initConfig.js';
 
 /** Reference to the store's getState / setState for imperative access */
 interface BridgeContext {
@@ -35,6 +36,7 @@ interface BridgeContext {
   // Adds a model to the federation alongside what's already loaded (unlike LOAD_MODEL); resolves the real minted model id for later REMOVE_MODEL targeting.
   addModelFromUrl: (url: string, name?: string) => Promise<{ modelId: string; entities: number; triangles: number; vertices: number }>;
   setBackgroundColor: (bg: string | undefined) => void; // set (or clear, with undefined) the embed's custom background colour
+  setOverlays: (overlays: { hideAxis?: boolean; hideScale?: boolean; hideTypes?: string[] }) => void; // hideAxis/hideScale/hideTypes, also settable from INIT's config (initConfig.ts)
 }
 
 /** Optional security knobs for the bridge (all opt-in; defaults preserve the public-widget behaviour). */
@@ -241,8 +243,7 @@ async function handleCommand(type: InboundCommandType, data: unknown, requestId?
         }
         return;
       }
-      // Apply initial config if provided
-      if (payload?.config?.theme) state.setTheme(payload.config.theme);
+      applyInitConfig(payload?.config, { setTheme: state.setTheme, setInteractionMode: state.setInteractionMode, setBackgroundColor: ctx.setBackgroundColor, setOverlays: ctx.setOverlays }); // every config field, not just theme (initConfig.ts)
       // ACK the init
       if (requestId) {
         emitToParent(createResponse(requestId));

@@ -153,6 +153,7 @@ function makeState() {
       setPresetView: rec('setPresetView'),
     },
     setTheme: rec('setTheme'),
+    setInteractionMode: rec('setInteractionMode'),
     // Mirrors the real implementation's Map.delete semantics exactly
     // (apps/viewer/src/store/slices/modelSlice.ts ~147-213): deleting an
     // absent key is a silent no-op, no throw. The bridge is responsible for
@@ -201,6 +202,7 @@ function makeCtx(state: any, overrides: Partial<Record<string, any>> = {}) {
     addModelFromUrl: overrides.addModelFromUrl
       ?? vi.fn(async () => ({ modelId: 'default-added-id', entities: 10, triangles: 20, vertices: 30 })),
     setBackgroundColor: overrides.setBackgroundColor ?? vi.fn(),
+    setOverlays: overrides.setOverlays ?? vi.fn(),
   };
 }
 
@@ -531,6 +533,39 @@ describe('INIT', () => {
     initBridge(makeCtx(state));
     await send(fw, cmd('INIT', { config: {} }, 'r1'));
     expect(called(state, 'setTheme')).toBe(false);
+  });
+
+  // #2934 follow-up: INIT's `config` is the published `EmbedConfig` type
+  // (packages/embed-protocol), and only `.theme` ever reached an actuator.
+  // `.bg`, `.controls`, `.hideAxis`, `.hideScale` and `.hideTypes` were
+  // declared and silently dropped for a host driving the postMessage
+  // protocol directly. Each now reuses the same actuator its `?param=` URL
+  // equivalent already calls.
+  it('applies config.bg via the same setBackgroundColor actuator SET_THEME uses', async () => {
+    const ctx = makeCtx(state);
+    initBridge(ctx);
+    await send(fw, cmd('INIT', { config: { bg: 'ff0000' } }, 'r1'));
+    expect(ctx.setBackgroundColor).toHaveBeenCalledWith('ff0000');
+  });
+
+  it('applies config.controls via the same setInteractionMode actuator ?controls= uses', async () => {
+    initBridge(makeCtx(state));
+    await send(fw, cmd('INIT', { config: { controls: 'none' } }, 'r1'));
+    expect(argsOf(state, 'setInteractionMode')).toEqual(['none']);
+  });
+
+  it('applies config.hideAxis/.hideScale/.hideTypes via the merged setOverlays actuator', async () => {
+    const ctx = makeCtx(state);
+    initBridge(ctx);
+    await send(fw, cmd('INIT', { config: { hideAxis: true, hideScale: true, hideTypes: ['IfcSpace'] } }, 'r1'));
+    expect(ctx.setOverlays).toHaveBeenCalledWith({ hideAxis: true, hideScale: true, hideTypes: ['IfcSpace'] });
+  });
+
+  it('does not call setOverlays when config has none of the three overlay fields', async () => {
+    const ctx = makeCtx(state);
+    initBridge(ctx);
+    await send(fw, cmd('INIT', { config: { theme: 'dark' } }, 'r1'));
+    expect(ctx.setOverlays).not.toHaveBeenCalled();
   });
 
   it('rejects a token mismatch without applying config or ACKing', async () => {

@@ -102,6 +102,7 @@ function makeCtx(state: any) {
       vertices: 0,
     }),
     setBackgroundColor: () => {},
+    setOverlays: () => {},
   };
 }
 

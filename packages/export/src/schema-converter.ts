@@ -24,6 +24,7 @@ import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { deterministicGlobalId } from '@ifc-lite/parser';
 import { ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
 import { resolveUnrepresentedEntity } from './schema-untranslatable.js';
+import { BY_NAME_ATTR_REMAP_TYPES, remapRenamedAttributesByName } from './schema-converter-attr-remap.js';
 
 export type IfcSchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
 
@@ -61,6 +62,15 @@ const IFC4_TO_IFC2X3: Map<string, string> = new Map([
   ['IFCCOURSE', 'IFCBUILDINGELEMENTPROXY'],
   ['IFCPAVEMENT', 'IFCSLAB'],
   ['IFCKERB', 'IFCBUILDINGELEMENTPROXY'],
+  // IFC4 renamed the IFC2X3 door/window type objects. Left unmapped,
+  // `resolveUnrepresentedEntity` treated them as having NO IFC2X3
+  // representation and replaced every one with an IFCPROXY carrying a
+  // freshly minted GlobalId — losing the source GlobalId, Name and psets —
+  // even though IfcDoorStyle/IfcWindowStyle are real targets. The attribute
+  // lists only partially overlap, so `BY_NAME_ATTR_REMAP_TYPES`
+  // (schema-converter-attr-remap.ts) also reconciles them by name.
+  ['IFCDOORTYPE', 'IFCDOORSTYLE'],
+  ['IFCWINDOWTYPE', 'IFCWINDOWSTYLE'],
   // IFC4X3 spatial structure → IFC2X3 equivalents
   ['IFCFACILITY', 'IFCBUILDING'],
   ['IFCFACILITYPART', 'IFCBUILDINGSTOREY'],
@@ -375,6 +385,9 @@ export function convertStepLine(
       if (currentCount > 0 && currentCount < tgtAttrs.length) {
         finalAttrs = `${finalAttrs}${',$'.repeat(tgtAttrs.length - currentCount)}`;
       }
+    } else if (entityType !== newType && BY_NAME_ATTR_REMAP_TYPES.has(entityType)) {
+      // Neither list is a prefix of the other; see `BY_NAME_ATTR_REMAP_TYPES`.
+      finalAttrs = remapRenamedAttributesByName(attrsRaw, srcAttrs, tgtAttrs);
     }
   }
 

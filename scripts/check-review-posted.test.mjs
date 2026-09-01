@@ -671,12 +671,39 @@ test('an EXEMPT run prints ONE remedy, not two that contradict each other', () =
   // marker the lane will not write. Printing both left the reader with two
   // instructions that disagree, which this repository treats as a defect in its
   // own right. Raised by CodeRabbit on PR #3598.
+  // ASSERT ON THE INSTRUCTION, NOT ON THE PREFIX. The first version of this test
+  // checked only that no line STARTS with `REMEDY:`, and passed while a remedy
+  // split across two array entries lost its head and printed the tail --
+  // "...rather than re-running indefinitely" dangling beside an exemption saying
+  // no re-run can help. 51 of 51 green with the defect live. Caught in review.
+  //
+  // The assertion is on the ORPHAN'S OWN TEXT, not on the word "re-run": the
+  // exemption legitimately says "no re-run could clear this", so a blanket match
+  // would fire on the correct output. These two fragments only ever appear in
+  // the tail of a split remedy.
+  const noReRunAdvice = (out, why) => {
+    assert.doesNotMatch(out, /REMEDY:/, `${why}: the re-run remedy cannot work here`);
+    assert.doesNotMatch(out, /rather than re-running indefinitely/, `${why}: orphaned remedy tail`);
+    assert.doesNotMatch(out, /attach it to/, `${why}: orphaned remedy tail`);
+  };
+
   const draft = run({ headRepo: SAME_REPO, draft: true, issueComments: [], reviewComments: [], reviews: [] });
-  assert.doesNotMatch(draft.out, /REMEDY:/, 'the re-run remedy cannot work on a draft');
+  noReRunAdvice(draft.out, 'draft, nothing posted');
   assert.match(draft.out, /Mark it ready for review/, 'and the one that CAN work is still there');
 
   const fork = run({ headRepo: 'someone/ifc-lite', issueComments: [], reviewComments: [], reviews: [] });
-  assert.doesNotMatch(fork.out, /REMEDY:/, 'nor on a fork');
+  noReRunAdvice(fork.out, 'fork, nothing posted');
+
+  // The OTHER multi-line remedy: FINDINGS_NOT_POSTED. Same orphan, different verdict.
+  const findings = run({
+    headRepo: SAME_REPO,
+    draft: true,
+    issueComments: [{ user: { login: REVIEWER }, body: marker(SHA, 'findings', 3) }],
+    reviewComments: [],
+    reviews: [],
+  });
+  assert.equal(findings.code, 0, findings.out);
+  noReRunAdvice(findings.out, 'draft, findings claimed but not posted');
 
   // ANTI-VACUITY: a real failure must KEEP its remedy, or this test would pass
   // by the gate having stopped printing remedies at all.

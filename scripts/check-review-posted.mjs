@@ -340,8 +340,14 @@ export function evaluate({ comments, cfg, headSha }) {
       '   The review job\'s exit code is NOT evidence: claude-code-action #1644 exits success after',
       '   a partial run, and #1679 exits 0 after failing to post every comment (reported as forty',
       '   consecutive runs logging `Posted 0/N`). Both are open.',
-      '   REMEDY: re-run the review job. If it recurs, read the run log for `Posted 0/N` or a low',
-      '   `num_turns` and attach it to the upstream issue rather than re-running indefinitely.',
+      // ONE ENTRY, not two. An exempt run filters `REMEDY:` lines out, and a
+      // remedy split across two array entries loses its head and prints the
+      // tail -- dangling prose that still said "rather than re-running
+      // indefinitely" beside an exemption saying no re-run can help. Caught in
+      // review; the test could not see it because it asserted only that no line
+      // STARTS with REMEDY.
+      '   REMEDY: re-run the review job. If it recurs, read the run log for `Posted 0/N` or a low ' +
+        '`num_turns` and attach it to the upstream issue rather than re-running indefinitely.',
     );
     return { ok: false, covered: false, verdict: 'NOT_POSTED', lines };
   }
@@ -418,8 +424,8 @@ export function evaluate({ comments, cfg, headSha }) {
         '   claim; this is the check that it is true.',
         '   Only INLINE comments on THIS head count. A summary comment is not a finding, and a',
         '   finding on an earlier head is not a finding on this diff.',
-        '   REMEDY: re-run the review job. If it recurs, the run log will show `Posted 0/N`; attach',
-        '   it to claude-code-action#1679 rather than re-running indefinitely.',
+        '   REMEDY: re-run the review job. If it recurs, the run log will show `Posted 0/N`; ' +
+          'attach it to claude-code-action#1679 rather than re-running indefinitely.',
       );
       return { ok: false, covered: false, verdict: 'FINDINGS_NOT_POSTED', escapeHatch: null, lines };
     }

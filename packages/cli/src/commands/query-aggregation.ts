@@ -82,6 +82,44 @@ export function getQuantityValue(bim: any, ref: any, quantityName: string): numb
   return null;
 }
 
+/** The numeric reductions `--sum/--avg/--min/--max` (and the schedule subtotals) share. */
+export type NumericAggMode = 'sum' | 'avg' | 'min' | 'max';
+
+/**
+ * Reduce a list of numbers to a single sum/avg/min/max, skipping every
+ * non-finite entry (`Infinity`, `-Infinity`, `NaN`) so one poisoned value can
+ * neither dominate a min/max nor turn a sum into `NaN`. Returns `null` when no
+ * finite value was seen (an empty list, or one that is all non-finite), which
+ * the caller renders as a blank cell / `null` rather than a fabricated `0`.
+ *
+ * This is the single numeric core behind both `query`'s `--sum/--avg/--min/--max`
+ * group aggregation and `schedule`'s `--subtotals`, so the two cannot drift.
+ */
+export function aggregateFinite(values: number[], mode: NumericAggMode): number | null {
+  let sum = 0;
+  let count = 0;
+  let min = Infinity;
+  let max = -Infinity;
+  for (const v of values) {
+    if (!Number.isFinite(v)) continue;
+    sum += v;
+    count++;
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  if (count === 0) return null;
+  switch (mode) {
+    case 'sum':
+      return sum;
+    case 'avg':
+      return sum / count;
+    case 'min':
+      return min;
+    case 'max':
+      return max;
+  }
+}
+
 /**
  * F7: Sort entities by quantity, attribute, or property value.
  * Supports: quantity names, entity attributes (name/type/globalId), PsetName.PropName

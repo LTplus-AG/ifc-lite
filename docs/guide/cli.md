@@ -1274,6 +1274,7 @@ Run `ifc-lite schema` to see the full API before writing eval expressions.
 | `query` | Query entities by type/properties/quantities |
 | `props` | All properties for a single entity |
 | `export` | Export data / geometry / energy model |
+| `schedule` | Tabular schedule of one class (csv/json) |
 | `diagnose-geometry` | CSG / opening diagnostics (failures, classification) |
 | `extract-entities` | Isolate entities into a small, viewable standalone IFC |
 | `anonymize` | Export selected objects + context as an anonymized IFC |

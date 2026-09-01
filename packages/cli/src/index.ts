@@ -13,6 +13,7 @@
 import { logger, parseVerbosity } from './logger.js';
 import { infoCommand } from './commands/info.js';
 import { queryCommand } from './commands/query.js';
+import { scheduleCommand } from './commands/schedule.js';
 import { propsCommand } from './commands/props.js';
 import { exportCommand } from './commands/export.js';
 import { diagnoseGeometryCommand } from './commands/diagnose-geometry.js';
@@ -63,6 +64,8 @@ const HELP = `
     query     <file.ifc> [--type T] [--json]      Query entities by type/properties/quantities
     props     <file.ifc> --id <N>                 All properties for a single entity
     export    <file.ifc> --format csv|json|ifc|obj|gltf|glb|jsonld|step|ifcx|usd|hbjson|dfjson  Export data / geometry / energy model
+    schedule  <file.ifc> --type T --columns "H=path,..."  Tabular schedule of one class (csv/json)
+              [--where PsetName.Prop=Value] [--format csv|json]  path = attr | Pset.Prop | Qto.Qty
     diagnose-geometry <file.ifc> [--json]        CSG / opening diagnostics (failures, classification)
                       [--product ID|GUID] [--type T]  Filter worst-hosts detail to one product/type
     extract-entities <file.ifc> --out F          Isolate entities into a small, viewable standalone IFC
@@ -124,6 +127,8 @@ const HELP = `
     ifc-lite props model.ifc --id 42
     ifc-lite export model.ifc --format csv --type IfcWall --columns Name,Type,GlobalId
     ifc-lite export model.ifc --format json --type IfcWall,IfcDoor
+    ifc-lite schedule model.ifc --type IfcDoor --columns "Name=Name, Mark=Pset_DoorCommon.Reference"
+    ifc-lite schedule model.ifc --type IfcWall --columns "Name,Qto_WallBaseQuantities.NetVolume" --where Pset_WallCommon.IsExternal=true --format json
     ifc-lite diagnose-geometry model.ifc --json
     ifc-lite diagnose-geometry model.ifc --type IfcWall
     ifc-lite diagnose-geometry model.ifc --product 0YvCT2_$X3_xJG3rzD8L_8
@@ -249,6 +254,9 @@ async function main(): Promise<void> {
       break;
     case 'export':
       await exportCommand(commandArgs);
+      break;
+    case 'schedule':
+      await scheduleCommand(commandArgs);
       break;
     case 'diagnose-geometry':
       await diagnoseGeometryCommand(commandArgs);

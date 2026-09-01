@@ -70,7 +70,7 @@ function normalizeTypeName(typeStr: string): string {
  * Resolve a column value from an entity, returning the raw value
  * (number, boolean, string, or null) to preserve types in JSON output.
  */
-function resolveColumnValue(entity: any, col: string, bim: any): unknown {
+export function resolveColumnValue(entity: any, col: string, bim: any): unknown {
   // Native entity attributes
   if (col === 'Name' || col === 'name') return entity.name ?? null;
   if (col === 'Type' || col === 'type') return entity.type ?? null;
@@ -116,7 +116,7 @@ function resolveColumnValue(entity: any, col: string, bim: any): unknown {
 }
 
 /** Stringify a column value for CSV output */
-function columnValueToCsv(value: unknown): string {
+export function columnValueToCsv(value: unknown): string {
   if (value == null) return '';
   return String(value);
 }

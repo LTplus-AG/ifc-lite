@@ -114,12 +114,15 @@ describe('SDK visibility adapter: isolate() and #3338 assembly expansion', () =>
     );
   });
 
-  it('a resolver that resolves to nothing must ALSO fall back to the raw ids, not isolate an empty set (#3338 follow-up)', () => {
-    // Viewport's resolveHighlightIds returns [] whenever geometryRef.current
-    // is null (the renderer-initialised-but-geometry-not-loaded window) or
-    // when every id resolves geometry-less. `??` only guards an ABSENT
-    // resolver, not one that runs and returns []: isolateEntities([]) hides
-    // the entire model, and it stays hidden after geometry finishes loading.
+  it('an empty resolve keeps the raw ids rather than isolating nothing (#3389)', () => {
+    // `[]` does not mean "geometry is in and nothing here renders": the
+    // resolver bounds-checks against the type-visibility FILTERED mesh list,
+    // so an IfcSpace at the shipped `typeVisibility.spaces === false` default,
+    // and a mesh that has not streamed in yet, both answer `[]` too. Dropping
+    // the isolate there makes `viewer.visibility.isolate()` a silent no-op for
+    // a space ref; keeping the raw ids costs nothing (an id with no mesh never
+    // matches the renderer's whitelist) and starts showing the right thing the
+    // moment the toggle flips or the batch lands.
     const emptyResolver = (_ids: number[]) => [];
     const store = makeStore(emptyResolver);
     const adapter = createVisibilityAdapter(store);
@@ -127,12 +130,7 @@ describe('SDK visibility adapter: isolate() and #3338 assembly expansion', () =>
     adapter.isolate([{ modelId: MODEL_ID, expressId: ASSEMBLY_EXPRESS_ID }]);
 
     const calls = (store.getState().isolateEntities as unknown as { calls: number[][] }).calls;
-    assert.equal(calls.length, 1);
-    assert.deepEqual(
-      calls[0],
-      [ASSEMBLY_GLOBAL_ID],
-      'an empty resolver result must fall back to the raw ids, exactly like an absent resolver — ' +
-      'isolating [] would hide the entire model instead of the requested ref',
-    );
+    assert.equal(calls.length, 1, 'isolate() must still install an isolation');
+    assert.deepEqual(calls[0], [ASSEMBLY_GLOBAL_ID], 'an empty resolve falls back to the raw ids');
   });
 });

@@ -50,6 +50,7 @@ import {
   buildRestoreColorUpdates,
 } from './ids/idsColorSystem';
 import { releaseOwnedIdsFocusVisibility } from '@/lib/ids/visibility-ownership';
+import { resolveIsolationIds } from '@/lib/isolation/resolveIsolationIds';
 import type { IDSFocusMode } from '@/store/slices/idsSlice';
 import type { ColorTuple } from './ids/idsColorSystem';
 import { downloadReportJSON, downloadReportHTML } from './ids/idsExportService';
@@ -672,7 +673,9 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
    */
   const installFocusIsolation = useCallback((ids: Set<number>): void => {
     const state = useViewerStore.getState();
-    state.setIsolatedEntities(ids);
+    // #3338: an IDS applicability filter matches any class, so the focused
+    // row can be a geometry-less assembly whose bare id draws nothing.
+    state.setIsolatedEntities(new Set(resolveIsolationIds(state.cameraCallbacks.resolveHighlightIds, [...ids])));
     const installed = useViewerStore.getState().isolatedEntities;
     state.setIdsFocusVisibilityOwned(installed ? { channel: 'isolate', ids: installed } : null);
   }, []);
@@ -689,8 +692,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   /**
    * Release the isolation/ghost the ROW FOCUS itself installed — and only
    * that. A clash focus, a spaces X-ray, "Isolate in 3D" or IDS's own
-   * set-level isolate buttons occupying the channel instead do not
-   * content-match the record and survive untouched.
+   * set-level isolate buttons instead survive untouched: no content match.
    */
   const releaseFocusVisibility = useCallback((): void => {
     releaseOwnedIdsFocusVisibility(useViewerStore.getState());
@@ -703,12 +705,10 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
    * The focus colour is ADDED to the report overlay rather than replacing it:
    * the surrounding red/green is the context that makes "this one is the row I
    * clicked" mean anything. Scoped exactly as the isolate actions are — the
-   * active spec's own verdict in 'spec' scope, the whole report otherwise — so
-   * activating a row never silently changes which verdict is on screen.
-   *
-   * Does nothing without a report: IDS is not colouring then, and pushing a
-   * map here would take the colour-override channel away from whoever is (a
-   * lens, clash) — the same reason `restoreReportColors` returns early.
+   * active spec's own verdict in 'spec' scope, the whole report otherwise —
+   * so activating a row never silently changes which verdict is on screen.
+   * Does nothing without a report, the same reason `restoreReportColors` bails:
+   * a map here would take the colour-override channel from whoever holds it.
    */
   const paintFocus = useCallback((focusedGlobalId: number | null): void => {
     if (!report) return;
@@ -724,11 +724,9 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
    * channels — the IDS spelling of `useClash.applyFocusMode`:
    *
    * - `highlight`: release whatever the row focus itself installed, and take
-   *   no claim. Unlike clash's `highlight`, this does NOT clear both channels
-   *   outright: IDS has set-level isolation of its own (`isolateFailed` and
-   *   friends) that the user may have established deliberately, and clicking a
-   *   row must not silently discard it. Releasing by ownership discards the
-   *   previous ROW presentation and nothing else.
+   *   no claim. Unlike clash's `highlight`, this does NOT clear both channels:
+   *   releasing by ownership never touches IDS's own set-level isolation
+   *   (`isolateFailed` and friends), which may be deliberate.
    * - `isolate`: hide everything except the activated element.
    * - `ghost`:   keep it solid and fade the rest to translucent context.
    *
@@ -875,13 +873,15 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   /**
    * Install a SET-level isolation (the isolate-failed / passed / involved
    * buttons). Unowned, exactly as before — but it replaces the channel
-   * wholesale, so any ROW-focus claim on it is now stale and must be dropped:
-   * a record that outlives its presentation starts matching again the moment
-   * another owner installs equal content, and the next release then destroys
-   * THAT owner's presentation (#2654 fourth review).
+   * wholesale, so any ROW-focus claim on it is stale and must be dropped: a
+   * record that outlives its presentation starts matching again once another
+   * owner installs equal content, and the next release then destroys THAT
+   * owner's presentation (#2654 fourth review).
    */
   const installSetIsolation = useCallback((ids: Set<number> | null) => {
-    setIsolatedEntities(ids);
+    // #3338: same for the failed/passed/involved sets; `null` only clears.
+    const resolver = useViewerStore.getState().cameraCallbacks.resolveHighlightIds;
+    setIsolatedEntities(ids === null ? null : new Set(resolveIsolationIds(resolver, [...ids])));
     useViewerStore.getState().setIdsFocusVisibilityOwned(null);
   }, [setIsolatedEntities]);
 

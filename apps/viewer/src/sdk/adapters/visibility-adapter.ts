@@ -8,6 +8,7 @@ import { getModelForRef, type ModelLike } from './model-compat.js';
 import { collectSpatialSubtreeElementsWithIfcSpace } from '../../store/basketVisibleSet.js';
 import { toGlobalIdForRef, toGlobalIdFromModels } from '../../store/globalId.js';
 import type { AggregationRelationships } from '../../utils/aggregation.js';
+import { resolveIsolationIds } from '../../lib/isolation/resolveIsolationIds.js';
 import { isSpaceLikeSpatialTypeName, isSpatialStructureTypeName, type SpatialNode } from '@ifc-lite/data';
 
 function findDescendantNode(root: SpatialNode, expressId: number): SpatialNode | null {
@@ -96,17 +97,13 @@ export function createVisibilityAdapter(store: StoreApi): VisibilityBackendMetho
         // resolve the same way they do — a geometry-less `IfcElementAssembly`
         // ref (spatial expansion above leaves it untouched) has to become its
         // geometry-bearing `IfcRelAggregates` parts, or the viewport isolates
-        // an id with nothing to render and shows an empty scene. Falling back
-        // to the unresolved ids when no renderer has registered
-        // `resolveHighlightIds` yet, OR when the resolver runs but resolves
-        // to nothing (the renderer-initialised-but-geometry-not-loaded
-        // window, or every id resolving geometry-less), matches every other
-        // channel's fallback — `??` alone only catches the former case, not
-        // the latter, and an empty isolation hides the entire model.
-        const resolved = state.cameraCallbacks.resolveHighlightIds?.(globalIds) ?? globalIds;
-        state.isolateEntities?.(
-          resolved.length > 0 ? [...new Set([...resolved, ...globalIds])] : globalIds,
-        );
+        // an id with nothing to render and shows an empty scene.
+        //
+        // #3382's union policy, now via the shared `resolveIsolationIds` so
+        // `check-isolate-expansion-routing.mjs` can require every channel to
+        // use the same one: the resolved ids are unioned with the raw ids, and
+        // an empty resolve keeps the raw ids rather than isolating nothing.
+        state.isolateEntities?.(resolveIsolationIds(state.cameraCallbacks.resolveHighlightIds, globalIds));
       }
       return undefined;
     },

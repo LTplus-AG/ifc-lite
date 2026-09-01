@@ -856,6 +856,52 @@ describe('selection and visibility commands', () => {
     expect(fw.posted.at(-1)!.msg.responseId).toBe('r1');
   });
 
+  /**
+   * #3338: `expandToGeometryBearingIds` (a geometry-less `IfcElementAssembly`
+   * → its `IfcRelAggregates` parts) has one shared implementation, reached
+   * through `cameraCallbacks.resolveHighlightIds` — the same channel
+   * LensPanel, PropertiesPanel, SearchModal and the SDK visibility adapter
+   * (#3382) route isolation through. This embed bridge shares `apps/viewer`'s
+   * store and Viewport (`vite.config.ts`'s `@` alias), so the resolver is
+   * reachable here too; before this fix ISOLATE forwarded the parent's raw
+   * ids straight to `isolateEntities`, so isolating an assembly by id over
+   * postMessage blanked the embed exactly like #2532 did for the Filter tab.
+   */
+  it('ISOLATE resolves a geometry-less assembly id to its geometry-bearing parts via resolveHighlightIds', async () => {
+    const resolveHighlightIds = (ids: number[]) =>
+      ids.flatMap((id) => (id === 1005 ? [9001, 9002] : [id]));
+    state.cameraCallbacks.resolveHighlightIds = resolveHighlightIds;
+    initBridge(makeCtx(state));
+    await send(fw, cmd('ISOLATE', { ids: [1005] }, 'r1'));
+    // The resolved parts are unioned with the raw (pre-resolution) id,
+    // matching every other isolation channel -- harmless here since the
+    // raw assembly id has no geometry of its own.
+    expect(argsOf(state, 'isolateEntities')).toEqual([[9001, 9002, 1005]]);
+  });
+
+  it('ISOLATE falls back to the raw ids when no renderer has registered resolveHighlightIds yet', async () => {
+    // Mirrors every other channel's fallback (LensPanel, PropertiesPanel,
+    // SearchModal, the SDK adapter): the default test state's
+    // `cameraCallbacks` carries no `resolveHighlightIds` at all.
+    initBridge(makeCtx(state));
+    await send(fw, cmd('ISOLATE', { ids: [1005] }, 'r1'));
+    expect(argsOf(state, 'isolateEntities')).toEqual([[1005]]);
+  });
+
+  it('ISOLATE keeps the raw ids when the resolver resolves to [] (#3389)', async () => {
+    // `[]` is not "geometry is in and nothing renders": the resolver
+    // bounds-checks against the type-visibility FILTERED mesh list, so an
+    // IfcSpace at the shipped `spaces: false` default -- and a mesh that has
+    // not streamed in yet -- answers `[]` too. Dropping the isolate there
+    // makes an ISOLATE of a space a silent no-op over postMessage; keeping
+    // the raw ids costs nothing and starts showing the right thing as soon as
+    // the host flips the toggle or the batch lands.
+    state.cameraCallbacks.resolveHighlightIds = () => [];
+    initBridge(makeCtx(state));
+    await send(fw, cmd('ISOLATE', { ids: [1005] }, 'r1'));
+    expect(argsOf(state, 'isolateEntities')).toEqual([[1005]]);
+  });
+
   it('SHOW_ALL restores visibility across every model', async () => {
     initBridge(makeCtx(state));
     await send(fw, cmd('SHOW_ALL', undefined, 'r1'));

@@ -44,6 +44,7 @@
     "check:collab-placement-sweep": "node scripts/check-collab-placement-sweep.mjs",
     "check:collab-room-model-target": "node scripts/check-collab-room-model-target.mjs",
     "check:loader-hook-specifier-match": "node scripts/check-loader-hook-specifier-match.mjs",
+    "check:isolate-expansion-routing": "node scripts/check-isolate-expansion-routing.mjs",
     "check:clash-degenerate-reason-parity": "node scripts/check-clash-degenerate-reason-parity.mjs",
     "check:csv-escapers": "node scripts/check-csv-escaper-copies.mjs",
     "check:step-escapers": "node scripts/check-step-escaper-copies.mjs",

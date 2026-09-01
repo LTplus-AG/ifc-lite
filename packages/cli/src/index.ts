@@ -66,6 +66,10 @@ const HELP = `
     export    <file.ifc> --format csv|json|ifc|obj|gltf|glb|jsonld|step|ifcx|usd|hbjson|dfjson  Export data / geometry / energy model
     schedule  <file.ifc> --type T --columns "H=path,..."  Tabular schedule of one class (csv/json)
               [--where PsetName.Prop=Value] [--format csv|json]  path = attr | Pset.Prop | Qto.Qty
+              [--sort "Header[:asc|desc],..."]  multi-key row sort by column HEADER (numbers numeric, nulls last)
+              [--group-by "Header,..."]  contiguous groups, ordered by group key (asc, or --sort's dir)
+              [--subtotals "count|sum:H|avg:H|min:H|max:H,..."]  subtotal row per group + grand total
+                 (without --group-by: grand total only; CSV labels the group column, JSON marks __row)
     diagnose-geometry <file.ifc> [--json]        CSG / opening diagnostics (failures, classification)
                       [--product ID|GUID] [--type T]  Filter worst-hosts detail to one product/type
     extract-entities <file.ifc> --out F          Isolate entities into a small, viewable standalone IFC
@@ -129,6 +133,7 @@ const HELP = `
     ifc-lite export model.ifc --format json --type IfcWall,IfcDoor
     ifc-lite schedule model.ifc --type IfcDoor --columns "Name=Name, Mark=Pset_DoorCommon.Reference"
     ifc-lite schedule model.ifc --type IfcWall --columns "Name,Qto_WallBaseQuantities.NetVolume" --where Pset_WallCommon.IsExternal=true --format json
+    ifc-lite schedule model.ifc --type IfcDoor --columns "Name=Name, Fire=Pset_DoorCommon.FireRating, Area=Qto_DoorBaseQuantities.Area" --group-by Fire --sort "Area:desc" --subtotals "count, sum:Area"
     ifc-lite diagnose-geometry model.ifc --json
     ifc-lite diagnose-geometry model.ifc --type IfcWall
     ifc-lite diagnose-geometry model.ifc --product 0YvCT2_$X3_xJG3rzD8L_8

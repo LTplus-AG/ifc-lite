@@ -84,8 +84,37 @@ reviews:
     # `synchronize` rather than after its poll. The worst case is therefore
     # CodeRabbit reviewing a PR the Claude lane also covered, which costs quota;
     # the other ordering costs a review.
-    labels:
-      - '!claude-reviewed'
+    # SUSPENDED 2026-09-01, ON MEASUREMENT, NOT ON PRINCIPLE.
+    #
+    # The stand-down assumed a `clean` verdict from the Claude lane means the
+    # diff is fine, so CodeRabbit could skip it and save quota. Measured on live
+    # traffic the day it went on:
+    #
+    #   21 open PRs carried `claude-reviewed`, so CodeRabbit skipped them.
+    #   The lane's verdict on all 21: `clean`. Total findings it produced: ZERO.
+    #   On six PRs where both reviewers ran, CodeRabbit produced ELEVEN findings
+    #   and the lane produced none -- including one Major defect that reopened a
+    #   hole, and one where the lane's own author had mis-described the design.
+    #
+    # So the label was suppressing the reviewer that finds things, in favour of
+    # one that had found nothing, on ~70% of new PRs. That is not a saving, it is
+    # review getting WORSE than before this system existed, compounding at
+    # several PRs an hour.
+    #
+    # The lane's rubric buys precision with recall deliberately, and that trade
+    # may be right for a repo whose PRs are already reviewed. It is the wrong
+    # trade here, where the alternative to a finding is often NO review: 174 PRs
+    # merged unreviewed in August, which is the problem this whole system exists
+    # to fix.
+    #
+    # WHAT IS NOT SUSPENDED: the lane still runs and still posts a marker, and
+    # `check-review-posted.mjs` still verifies a review reached each head. Only
+    # the stand-down is off, so both reviewers now see every PR. Re-enable it
+    # when the lane demonstrates recall worth trading for -- the marker's
+    # `count=` field is the measurement, and it currently reads 0 everywhere.
+    #
+    # labels:
+    #   - '!claude-reviewed'
     # NO `ignore_usernames`, DELIBERATELY. Excluding dependabot was tried and
     # reverted: it saves ~21 PRs/month of allowance and buys a silent blind spot.
     # An ignored author gets no CodeRabbit CONTEXT at all, and nothing detects

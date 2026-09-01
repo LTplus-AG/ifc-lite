@@ -163,3 +163,22 @@ test('a DIFFERENT finding in the same file is an EXTRA, never silently dropped',
   assert.equal(s2.extra, 1, 'it must be counted');
   assert.ok(s2.lines.some((l) => l.includes('➕ EXTRA')), 'and printed');
 });
+
+test('THE HARNESS RUNS THE LANE\'S REAL PIPELINE, both stages', () => {
+  // Made twice in one day, in two separate instruments: JSON.parsing the
+  // reviewer's RAW output. `run-reviewer.mjs --out` writes raw model text and
+  // the model FENCES it -- this harness died on its first live run with
+  // "Unexpected token '`', ```json" -- so `validate-findings.mjs` is what parses
+  // it. A harness that skips that stage scores a pipeline the lane does not have.
+  //
+  // Comments are stripped first: the docblock above DISCUSSES both stage names,
+  // and an assertion satisfied by prose about the call rather than the call is
+  // the shape this repository has paid for repeatedly today.
+  const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*(\/\/|#).*$/gm, '');
+  const harness = strip(readFileSync(join(HERE, 'rubric-eval.mjs'), 'utf8'));
+  const lane = strip(readFileSync(join(HERE, '..', '..', '.github/workflows/claude-review.yml'), 'utf8'));
+  for (const stage of ['run-reviewer.mjs', 'validate-findings.mjs']) {
+    assert.ok(lane.includes(stage), `the lane must still use ${stage}`);
+    assert.ok(harness.includes(stage), `the harness must RUN ${stage}, not merely mention it`);
+  }
+});

@@ -158,7 +158,36 @@ function main() {
       console.error(`${r.stdout || ''}${r.stderr || ''}`.trim());
       throw new Error(`Case ${f} did not run. The reviewer's own verdict is above; the score is not computable.`);
     }
-    const parsed = JSON.parse(readFileSync(outPath, 'utf8'));
+    // THROUGH `validate-findings`, EXACTLY AS THE LANE DOES -- and the canary
+    // had to learn this the same way an hour earlier. `run-reviewer.mjs --out`
+    // writes RAW model text, and the model FENCES it: this step failed on its
+    // first live run with
+    //
+    //   SyntaxError: Unexpected token '`', "```json ...
+    //
+    // even though rubric.md says "no prose, no markdown fence". That is worth
+    // knowing on its own -- the fence-stripping in `validate-findings` is
+    // load-bearing rather than defensive -- and it means any harness that parses
+    // the raw output is measuring a pipeline the lane does not have.
+    //
+    // Running the real chain also makes the score honest in a second way: the
+    // lane POSTS validated findings, so recall over unvalidated ones would credit
+    // the reviewer for findings that would have been dropped for quoting a line
+    // that is not in the diff.
+    const findingsPath = join(tmp, `${f}.findings.json`);
+    const v = spawnSync(
+      process.execPath,
+      [join(HERE, 'validate-findings.mjs'), '--raw', outPath, '--input', inputPath, '--out', findingsPath],
+      { encoding: 'utf8' },
+    );
+    if (v.status !== 0) {
+      console.error(`${v.stdout || ''}${v.stderr || ''}`.trim());
+      throw new Error(
+        `Case ${f}: the reviewer answered but the validator rejected it. That is a lane regression, ` +
+          'not a rubric score; the verdict is above.',
+      );
+    }
+    const parsed = JSON.parse(readFileSync(findingsPath, 'utf8'));
     results.push({ pr: c.pr, expected: c.expected, verdict: parsed.verdict, findings: parsed.findings ?? [] });
   }
 

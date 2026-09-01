@@ -401,8 +401,9 @@ const edited = new StepExporter(dataStore, mutationView)
 ```
 
 For quick scripts there is also `exportToStep(dataStore, options?)`, which
-returns the STEP text as a string (defaults to `schema: 'IFC4'`; prefer
-`StepExporter` and its `Uint8Array` output for very large files).
+returns the STEP text as a string (defaults `schema` to the source model's own
+schema, so a round-trip preserves it; pass `schema` explicitly to convert.
+Prefer `StepExporter` and its `Uint8Array` output for very large files).
 
 ### Visible-Only Export
 

@@ -47,6 +47,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      # Verify the shared producer/consumer time-budget invariant before asking
+      # the reviewer to start its potentially twenty-minute run.
+      - name: Verify review-lane time budget
+        run: node -e "import('./scripts/review-lane-budget.mjs').then(({ assertReviewLaneBudget }) => assertReviewLaneBudget())"
+
       # The SCRIPTS come from the PR so a change to the lane is exercised by its
       # own PR. The RUBRIC comes from the base branch below, because it is the
       # thing worth editing to weaken the review that judges you. Same split, and

@@ -20,6 +20,14 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pageAll } from './check-review-posted.mjs';
+import {
+  REVIEW_LANE_TIMEOUT_SECONDS,
+  REVIEW_POSTED_JOB_TIMEOUT_SECONDS,
+  REVIEW_POSTED_MINIMUM_GRACE_SECONDS,
+  REVIEW_POSTED_POLL_SECONDS,
+  assertReviewLaneBudget,
+  pollSecondsArgument,
+} from './review-lane-budget.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const GATE = join(HERE, 'check-review-posted.mjs');
@@ -579,7 +587,7 @@ test('FAIL CLOSED: the fork check REFUSES when no repository was resolved', () =
 
 // ============================ the gate must outwait the lane it is waiting FOR
 
-test('THE RACE: the gate\'s poll budget exceeds the LANE\'s own job timeout', () => {
+test('THE RACE: the shared producer/consumer budget rejects either side shrinking', () => {
   // MEASURED, on PR #3593, with the gate already enforcing:
   //
   //   gate gave up after 600 s   05:12:43
@@ -592,31 +600,33 @@ test('THE RACE: the gate\'s poll budget exceeds the LANE\'s own job timeout', ()
   // the gate was always going to lose eventually; observed lane runs that
   // actually reviewed took 525 s and 676 s, either side of it.
   //
-  // The relationship lives in TWO FILES and nothing connected them, which is the
-  // matched-pair shape this repository keeps paying for. Connected here.
-  const here = dirname(fileURLToPath(import.meta.url));
-  const wf = (n) => readFileSync(join(here, '..', '.github/workflows', n), 'utf8');
+  // The shared executable contract is used by both lanes; this tests the
+  // producer/consumer behaviour rather than parsing either workflow's text.
+  assert.doesNotThrow(assertReviewLaneBudget);
+  assert.equal(pollSecondsArgument(), String(REVIEW_POSTED_POLL_SECONDS));
 
-  const laneCap = /^[ \t]*timeout-minutes:[ \t]*(\d+)/m.exec(wf('claude-review.yml'));
-  assert.ok(laneCap, 'claude-review.yml must carry a job timeout');
-
-  const gateText = wf('review-posted.yml');
-  const budget = /^[ \t]*--timeout-seconds[ \t]+(\d+)/m.exec(gateText);
-  const gateCap = /^[ \t]*timeout-minutes:[ \t]*(\d+)/m.exec(gateText);
-  assert.ok(budget && gateCap, 'review-posted.yml must carry both an explicit budget and a job cap');
-
-  const laneSeconds = Number(laneCap[1]) * 60;
-  const budgetSeconds = Number(budget[1]);
-  assert.ok(
-    budgetSeconds > laneSeconds,
-    `the gate waits ${budgetSeconds}s but the lane may run ${laneSeconds}s: the gate can give up ` +
-      'while the reviewer is still legitimately working, and report NOT_POSTED on a good PR',
+  assert.throws(
+    () => assertReviewLaneBudget({ pollSeconds: REVIEW_LANE_TIMEOUT_SECONDS }),
+    /may run/,
+    'equal budgets reproduce the race',
   );
-  // And the gate's own job must outlive its poll, or it is killed mid-wait and
-  // reports `cancelled` with no verdict at all.
-  assert.ok(
-    Number(gateCap[1]) * 60 - budgetSeconds >= 300,
-    `job cap ${gateCap[1]}min leaves ${Number(gateCap[1]) * 60 - budgetSeconds}s over a ${budgetSeconds}s budget`,
+  assert.throws(
+    () => assertReviewLaneBudget({ laneTimeoutSeconds: REVIEW_POSTED_POLL_SECONDS }),
+    /may run/,
+    'raising the producer cap alone reproduces the race',
+  );
+  assert.throws(
+    () =>
+      assertReviewLaneBudget({
+        gateJobTimeoutSeconds: REVIEW_POSTED_POLL_SECONDS + REVIEW_POSTED_MINIMUM_GRACE_SECONDS - 1,
+      }),
+    /needs at least/,
+    'the gate cannot be killed before it prints its verdict',
+  );
+  assert.equal(
+    REVIEW_POSTED_JOB_TIMEOUT_SECONDS - REVIEW_POSTED_POLL_SECONDS,
+    REVIEW_POSTED_MINIMUM_GRACE_SECONDS,
+    'the shipped gate retains its promised grace period',
   );
 });
 

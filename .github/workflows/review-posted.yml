@@ -56,7 +56,7 @@ jobs:
   review-posted:
     name: Review posted
     runs-on: ubuntu-latest
-    # ABOVE the gate's poll budget (600s), deliberately, so a run that exhausts
+    # ABOVE the gate's poll budget (1500s), deliberately, so a run that exhausts
     # the budget still gets to PRINT its verdict rather than being killed
     # mid-wait with no output and no `covered` value. The sibling gate states the
     # same rule at pr-review-signal.yml (a job cap comfortably over its own poll
@@ -170,7 +170,7 @@ jobs:
             --pr "${{ github.event.pull_request.number }}" \
             --sha "${{ github.event.pull_request.head.sha }}" \
             --config "${{ steps.cfg.outputs.config }}" \
-            --timeout-seconds 1500
+            --timeout-seconds "$(node -e \"import('./scripts/review-lane-budget.mjs').then(({ pollSecondsArgument }) => console.log(pollSecondsArgument()))\")"
 
       # ADDS ONLY. The clearing half runs up front, above.
       #

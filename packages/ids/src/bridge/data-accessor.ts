@@ -301,7 +301,13 @@ export function createDataAccessor(store: IfcDataStore): IFCDataAccessor {
           return accessor.getDescription(expressId);
         case 'globalid':
           return accessor.getGlobalId(expressId);
-        case 'objecttype':
+        // `predefinedtype` deliberately resolves through
+        // `getObjectType` (the PredefinedType/USERDEFINED-name helper) —
+        // but `objecttype` must NOT: that would shadow the entity's
+        // actual `ObjectType` attribute with the PredefinedType enum
+        // whenever PredefinedType is a concrete, non-USERDEFINED,
+        // non-NOTDEFINED token. Let it fall through to the raw
+        // attribute extraction below, same as any other named attribute.
         case 'predefinedtype':
           return accessor.getObjectType(expressId);
         default: {

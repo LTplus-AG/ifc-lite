@@ -59,9 +59,10 @@
         // Should be very compact. Parquet has fixed per-column overhead, so
         // tiny fixtures are dominated by it — the per-instance placement columns
         // (origin_x/y/z + geometry_class, issue #1841) add four columns' worth of
-        // that fixed overhead, so the floor here is generous on purpose.
+        // that fixed overhead, and the nine rotation columns (issue #3575) add
+        // nine more, so the floor here is generous on purpose.
         assert!(
-            data.len() < 8000,
+            data.len() < 9000,
             "Expected compact output, got {} bytes",
             data.len()
         );
@@ -354,4 +355,272 @@
     #[test]
     fn all_small_section_lengths_pass_the_u32_wire_check() {
         assert!(check_optimized_section_lengths(4, 4, 4, 4, 4).is_ok());
+    }
+
+    /// Row-major mat4 (Z-up, `InstanceMeta::transform` convention): rotate
+    /// `deg` about Z, then translate by `t`.
+    fn rot_z_mat4(deg: f64, t: [f64; 3]) -> [f64; 16] {
+        let rad = deg.to_radians();
+        let (s, c) = (rad.sin(), rad.cos());
+        #[rustfmt::skip]
+        let m = [
+            c,  -s, 0.0, t[0],
+            s,   c, 0.0, t[1],
+            0.0, 0.0, 1.0, t[2],
+            0.0, 0.0, 0.0, 1.0,
+        ];
+        m
+    }
+
+    /// Bake a canonical (source-coords) triangle through a row-major mat4.
+    fn bake_triangle(canonical: &[[f64; 3]; 3], m: &[f64; 16]) -> Vec<f32> {
+        let r = [[m[0], m[1], m[2]], [m[4], m[5], m[6]], [m[8], m[9], m[10]]];
+        let t = [m[3], m[7], m[11]];
+        let mut out = Vec::with_capacity(9);
+        for p in canonical {
+            for (row, t_i) in r.iter().zip(t.iter()) {
+                out.push((row[0] * p[0] + row[1] * p[1] + row[2] * p[2] + t_i) as f32);
+            }
+        }
+        out
+    }
+
+    const CANON_TRIANGLE: [[f64; 3]; 3] =
+        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+
+    /// RED/GREEN for issue #3575: three occurrences of one `IfcMappedItem`
+    /// shape at DIFFERENT rotations (0°, 90°, 180° about Z) — exactly the
+    /// "furniture, pipe runs, repeated structural members" case the issue
+    /// reports. Before the fix these hash to three distinct mesh rows
+    /// (`mesh_reuse_ratio` ≈ 1.0, the bug); after it they collapse to ONE
+    /// template mesh with a per-instance rotation.
+    ///
+    /// Also the correctness gate: reconstructing `world = origin + R *
+    /// template_position` from the decoded instance/mesh/vertex tables must
+    /// reproduce each occurrence's ORIGINAL world position — wrong rotation
+    /// data would place the geometry, just in the wrong spot.
+    #[test]
+    fn rotated_mapped_item_repeats_dedup_and_reconstruct_correctly() {
+        use arrow::array::{Float32Array, Int32Array};
+        use ifc_lite_geometry::InstanceMeta;
+        use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+
+        let placements = [
+            rot_z_mat4(0.0, [0.0, 0.0, 0.0]),
+            rot_z_mat4(90.0, [5.0, 0.0, 0.0]),
+            rot_z_mat4(180.0, [0.0, 5.0, 0.0]),
+        ];
+        let meshes: Vec<MeshData> = placements
+            .iter()
+            .enumerate()
+            .map(|(i, m)| {
+                MeshData::new(
+                    100 + i as u32,
+                    "IfcFurniture".to_string(),
+                    bake_triangle(&CANON_TRIANGLE, m),
+                    vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+                    vec![0, 1, 2],
+                    [0.6, 0.4, 0.2, 1.0],
+                )
+                .with_instance(Some(InstanceMeta {
+                    transform: *m,
+                    local_transform: None,
+                    canonical_transform: None,
+                    rep_identity: 777,
+                    instanceable: true,
+                }))
+            })
+            .collect();
+        // Expected Y-up world position of each occurrence's vertices: the
+        // baked positions we just fed in ARE the Z-up world (origin is
+        // [0,0,0] here), so convert with the same swap the server applies.
+        let expected_yup: Vec<Vec<[f32; 3]>> = meshes
+            .iter()
+            .map(|m| {
+                (0..3)
+                    .map(|v| {
+                        let (x, y, z) =
+                            zup_to_yup(m.positions[v * 3], m.positions[v * 3 + 1], m.positions[v * 3 + 2]);
+                        [x, y, z]
+                    })
+                    .collect()
+            })
+            .collect();
+
+        let (data, stats) = serialize_to_parquet_optimized_with_stats(&meshes, false).unwrap();
+        assert_eq!(stats.input_meshes, 3);
+        assert_eq!(
+            stats.unique_meshes, 1,
+            "three rotated occurrences of one shape must dedup to ONE template mesh"
+        );
+        assert!(
+            (stats.mesh_reuse_ratio - 3.0).abs() < 1e-6,
+            "mesh_reuse_ratio must reflect the real 3x reuse, got {}",
+            stats.mesh_reuse_ratio
+        );
+
+        // Unframe: [version:u8][flags:u8][instance_len][mesh_len][material_len][vertex_len][index_len][...]
+        assert_eq!(data[0], 3, "format version must be bumped for the rotation column (#3575)");
+        let instance_len = u32::from_le_bytes(data[2..6].try_into().unwrap()) as usize;
+        let mesh_len = u32::from_le_bytes(data[6..10].try_into().unwrap()) as usize;
+        let material_len = u32::from_le_bytes(data[10..14].try_into().unwrap()) as usize;
+        let vertex_len = u32::from_le_bytes(data[14..18].try_into().unwrap()) as usize;
+        let header = 2 + 5 * 4;
+        let instance_bytes = Bytes::copy_from_slice(&data[header..header + instance_len]);
+        let mesh_start = header + instance_len;
+        let mesh_bytes = Bytes::copy_from_slice(&data[mesh_start..mesh_start + mesh_len]);
+        let vertex_start = mesh_start + mesh_len + material_len;
+
+        let instance_batch = ParquetRecordBatchReaderBuilder::try_new(instance_bytes)
+            .unwrap()
+            .build()
+            .unwrap()
+            .map(|b| b.unwrap())
+            .next()
+            .unwrap();
+        let mesh_batch = ParquetRecordBatchReaderBuilder::try_new(mesh_bytes)
+            .unwrap()
+            .build()
+            .unwrap()
+            .map(|b| b.unwrap())
+            .next()
+            .unwrap();
+
+        let icol = |name: &str| instance_batch.schema().index_of(name).expect(name);
+        let f32col = |name: &str| {
+            instance_batch
+                .column(icol(name))
+                .as_any()
+                .downcast_ref::<Float32Array>()
+                .unwrap()
+                .clone()
+        };
+        let f64col = |name: &str| {
+            instance_batch
+                .column(icol(name))
+                .as_any()
+                .downcast_ref::<Float64Array>()
+                .unwrap()
+                .clone()
+        };
+        let mesh_idx_col = instance_batch
+            .column(icol("mesh_index"))
+            .as_any()
+            .downcast_ref::<UInt32Array>()
+            .unwrap()
+            .clone();
+        let (ox, oy, oz) = (f64col("origin_x"), f64col("origin_y"), f64col("origin_z"));
+        let rot: Vec<Float32Array> = (0..9).map(|i| f32col(&format!("rot{i}"))).collect();
+
+        // Mesh table: one row (the deduplicated template), offset 0.
+        assert_eq!(mesh_batch.num_rows(), 1);
+        let mcol = |name: &str| mesh_batch.schema().index_of(name).expect(name);
+        let vertex_offset = mesh_batch
+            .column(mcol("vertex_offset"))
+            .as_any()
+            .downcast_ref::<UInt32Array>()
+            .unwrap()
+            .value(0);
+
+        // Vertex table (this test never sets include_normals, so x/y/z only).
+        let vertex_bytes = Bytes::copy_from_slice(&data[vertex_start..vertex_start + vertex_len]);
+        let vertex_batch = ParquetRecordBatchReaderBuilder::try_new(vertex_bytes)
+            .unwrap()
+            .build()
+            .unwrap()
+            .map(|b| b.unwrap())
+            .next()
+            .unwrap();
+        let vcol = |name: &str| vertex_batch.schema().index_of(name).expect(name);
+        let vint = |name: &str| {
+            vertex_batch
+                .column(vcol(name))
+                .as_any()
+                .downcast_ref::<Int32Array>()
+                .unwrap()
+                .clone()
+        };
+        let (vx, vy, vz) = (vint("x"), vint("y"), vint("z"));
+        let dequant = 1.0 / VERTEX_MULTIPLIER;
+
+        assert_eq!(instance_batch.num_rows(), 3);
+        for (i, expected_for_instance) in expected_yup.iter().enumerate() {
+            let mesh_index = mesh_idx_col.value(i);
+            assert_eq!(
+                mesh_index, 0,
+                "all three occurrences must point at the single template mesh"
+            );
+            let origin = [ox.value(i), oy.value(i), oz.value(i)];
+            let r = [
+                rot[0].value(i) as f64, rot[1].value(i) as f64, rot[2].value(i) as f64,
+                rot[3].value(i) as f64, rot[4].value(i) as f64, rot[5].value(i) as f64,
+                rot[6].value(i) as f64, rot[7].value(i) as f64, rot[8].value(i) as f64,
+            ];
+            for (v, expected) in expected_for_instance.iter().enumerate() {
+                let src = vertex_offset as usize + v;
+                let template = [
+                    vx.value(src) as f64 * dequant as f64,
+                    vy.value(src) as f64 * dequant as f64,
+                    vz.value(src) as f64 * dequant as f64,
+                ];
+                let reconstructed = [
+                    origin[0] + r[0] * template[0] + r[1] * template[1] + r[2] * template[2],
+                    origin[1] + r[3] * template[0] + r[4] * template[1] + r[5] * template[2],
+                    origin[2] + r[6] * template[0] + r[7] * template[1] + r[8] * template[2],
+                ];
+                for axis in 0..3 {
+                    assert!(
+                        (reconstructed[axis] - expected[axis] as f64).abs() < 1e-3,
+                        "instance {i} vertex {v} axis {axis}: reconstructed {:?} vs expected {:?}",
+                        reconstructed,
+                        expected
+                    );
+                }
+            }
+        }
+    }
+
+    /// Control for the test above: a RIGID-tier group (one occurrence carries
+    /// `canonical_transform`, meaning the template is congruent but not
+    /// bit-identical to this occurrence's own geometry) must NOT be
+    /// instanced — the per-vertex residual check has nothing bit-identical to
+    /// verify against, so #3575's dedup conservatively falls back to today's
+    /// content-hash behaviour (each occurrence keeps its own mesh row).
+    #[test]
+    fn rigid_tier_groups_are_not_rotation_instanced() {
+        use ifc_lite_geometry::InstanceMeta;
+
+        let m0 = rot_z_mat4(0.0, [0.0, 0.0, 0.0]);
+        let m1 = rot_z_mat4(90.0, [5.0, 0.0, 0.0]);
+        let meshes: Vec<MeshData> = [m0, m1]
+            .iter()
+            .enumerate()
+            .map(|(i, m)| {
+                MeshData::new(
+                    200 + i as u32,
+                    "IfcFurniture".to_string(),
+                    bake_triangle(&CANON_TRIANGLE, m),
+                    vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+                    vec![0, 1, 2],
+                    [0.6, 0.4, 0.2, 1.0],
+                )
+                .with_instance(Some(InstanceMeta {
+                    transform: *m,
+                    local_transform: None,
+                    // Rigid tier: a recovered congruence transform is present.
+                    canonical_transform: Some([
+                        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0,
+                        0.0, 1.0,
+                    ]),
+                    rep_identity: 888,
+                    instanceable: true,
+                }))
+            })
+            .collect();
+
+        let (_, stats) = serialize_to_parquet_optimized_with_stats(&meshes, false).unwrap();
+        assert_eq!(
+            stats.unique_meshes, 2,
+            "rigid-tier (congruent, non-bit-identical) groups must fall back to distinct mesh rows"
+        );
     }

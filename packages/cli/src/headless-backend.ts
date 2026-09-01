@@ -70,7 +70,7 @@ import {
   listStoreys,
   type GenerateSpacesAllOptions,
 } from '@ifc-lite/create';
-import { EntityNode, findPropertyInSets, findQuantityInSets, findAllPropertiesInSets } from '@ifc-lite/query';
+import { EntityNode, findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';
 
 import {
   extractAllEntityAttributes,
@@ -90,6 +90,7 @@ import { escapeCsvCell, exportToStep, StepExporter, type StepExportOptions } fro
 import { exportHbjson, exportDfjson } from './energy-export.js';
 import { foldQueuedRelated } from './query-overlay-relations.js';
 import { overlayEntityData, foldNewEntities } from './query-overlay.js';
+import { matchesPropertyFilter } from './property-filter-match.js';
 
 // `expandTypes` used to be defined here; it now comes from `@ifc-lite/parser`,
 // shared with the other query backends (see `query-backend-maps.ts`). Re-exported
@@ -331,29 +332,7 @@ export class HeadlessBackend implements BimBackend {
           for (const filter of descriptor.filters) {
             filtered = filtered.filter(entity => {
               const props = getCachedProps(entity.ref);
-              // Any-match, not first-match (#3490): an entity can carry two
-              // distinct same-named property sets (type + occurrence), so a
-              // filter predicate passes when ANY of them satisfies the
-              // condition, not just the first one found.
-              const matchingProps = findAllPropertiesInSets(props, filter.psetName, filter.propName);
-              if (matchingProps.length === 0) return false;
-              if (filter.operator === 'exists') return true;
-              const filterVal = filter.value;
-              const normFilterVal = normalizeBooleanValue(filterVal);
-              return matchingProps.some(prop => {
-                // Normalize booleans: .T./.F./true/false all compare equally
-                const normVal = normalizeBooleanValue(prop.value);
-                switch (filter.operator) {
-                  case '=': return String(normVal) === String(normFilterVal);
-                  case '!=': return String(normVal) !== String(normFilterVal);
-                  case '>': return Number(normVal) > Number(normFilterVal);
-                  case '<': return Number(normVal) < Number(normFilterVal);
-                  case '>=': return Number(normVal) >= Number(normFilterVal);
-                  case '<=': return Number(normVal) <= Number(normFilterVal);
-                  case 'contains': return String(normVal).toLowerCase().includes(String(normFilterVal).toLowerCase());
-                  default: return false;
-                }
-              });
+              return matchesPropertyFilter(props, filter);
             });
           }
         }

@@ -84,6 +84,24 @@ reviews:
     # `synchronize` rather than after its poll. The worst case is therefore
     # CodeRabbit reviewing a PR the Claude lane also covered, which costs quota;
     # the other ordering costs a review.
+    # AIMED, NOT STOOD DOWN. `!low-risk` is a NEGATIVE match: CodeRabbit skips a
+    # PR carrying `low-risk`, which `pr-risk-label.yml` applies only when EVERY
+    # file it touches is prose, a lockfile, or generated output -- things nobody
+    # reviews line by line anyway. The Claude lane still reviews them.
+    #
+    # THIS IS THE OPPOSITE OF THE RULE IT REPLACES, and the difference is what
+    # the label depends on. `!claude-reviewed` skipped a PR because the OTHER
+    # REVIEWER had an opinion about it, and measured on live traffic that
+    # forfeited the allowance rather than moving it: 21 PRs skipped on a `clean`
+    # verdict whose total findings were zero. `!low-risk` skips a PR because of
+    # what the DIFF IS, which no reviewer's verdict can move.
+    #
+    # The classifier fails toward reviewing: an unrecognised path, an unreadable
+    # file list, a changeset, a workflow file and a test-only diff all count as
+    # needing review. Losing a review is worse than wasting one.
+    labels:
+      - '!low-risk'
+
     # SUSPENDED 2026-09-01, ON MEASUREMENT, NOT ON PRINCIPLE.
     #
     # The stand-down assumed a `clean` verdict from the Claude lane means the

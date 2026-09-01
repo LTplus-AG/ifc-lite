@@ -13,8 +13,13 @@
  */
 
 import { test } from 'node:test';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
 import assert from 'node:assert/strict';
-import { classify, checkToken, fenceUntrusted, buildPrompt, runReviewer, DISALLOWED_TOOLS } from './run-reviewer.mjs';
+import { classify, checkToken, fenceUntrusted, buildPrompt, runReviewer, runReviewerWithFailover, resolveTokens, DISALLOWED_TOOLS } from './run-reviewer.mjs';
 
 const ok = (result, extra = {}) => () => ({ status: 0, stdout: JSON.stringify({ result, ...extra }), stderr: '' });
 const INPUT = {
@@ -191,4 +196,100 @@ test('the tool surface is pinned: deny-list, empty MCP, one turn', () => {
   assert.ok(seen.includes('--strict-mcp-config'), 'MCP is pinned empty');
   assert.equal(seen[seen.indexOf('--mcp-config') + 1], '{"mcpServers":{}}');
   assert.equal(seen[seen.indexOf('--max-turns') + 1], '1', 'single shot');
+});
+
+// ================================================= the second credential
+
+const TOKENS = [
+  { token: 'sk-ant-oat01-primary', label: 'the primary credential' },
+  { token: 'sk-ant-oat01-fallback', label: 'the fallback credential' },
+];
+const fail = (stderr) => () => ({ status: 1, stdout: '', stderr });
+const okOn = (which) => {
+  let n = 0;
+  return (_c, _a, _stdin, env) => {
+    n += 1;
+    if (n <= which) return { status: 1, stdout: '', stderr: 'Usage limit reached' };
+    return { status: 0, stdout: JSON.stringify({ result: JSON.stringify({ verdict: 'clean' }) }), stderr: '', env };
+  };
+};
+
+test('a DRAINED pool falls through to the second account', () => {
+  // The failure this exists for: one manually-refreshed subscription token, and
+  // the day it lapsed the lane was dark while every per-PR check looked like an
+  // ordinary transient red.
+  const r = runReviewerWithFailover({ prompt: 'p', model: 'sonnet', tokens: TOKENS, spawn: okOn(1) });
+  assert.match(r.text, /clean/);
+});
+
+test('a DEAD credential falls through too', () => {
+  let seen = [];
+  const spawn = (_c, _a, _s, env) => {
+    seen.push(env.CLAUDE_CODE_OAUTH_TOKEN);
+    return seen.length === 1
+      ? { status: 1, stdout: '', stderr: 'invalid api key' }
+      : { status: 0, stdout: JSON.stringify({ result: '{}' }), stderr: '' };
+  };
+  runReviewerWithFailover({ prompt: 'p', model: 'sonnet', tokens: TOKENS, spawn });
+  assert.deepEqual(seen, ['sk-ant-oat01-primary', 'sk-ant-oat01-fallback'], 'the SECOND token is what retried');
+});
+
+test('a MODEL error does NOT retry — it would burn a second pool for the same answer', () => {
+  // The retry list is deliberately two entries. A model or request failure is not
+  // a property of the credential, and retrying it turns a deterministic failure
+  // into an intermittent one, which is harder to diagnose than the failure.
+  let calls = 0;
+  const spawn = () => { calls += 1; return { status: 1, stdout: '', stderr: 'something nobody has seen' }; };
+  assert.throws(
+    () => runReviewerWithFailover({ prompt: 'p', model: 'sonnet', tokens: TOKENS, spawn }),
+    (e) => e.reason === 'MODEL_ERROR',
+  );
+  assert.equal(calls, 1, 'exactly one attempt');
+});
+
+test('with ONE token it behaves exactly as before', () => {
+  let calls = 0;
+  const spawn = () => { calls += 1; return { status: 1, stdout: '', stderr: 'Usage limit reached' }; };
+  assert.throws(
+    () => runReviewerWithFailover({ prompt: 'p', model: 'sonnet', tokens: [TOKENS[0]], spawn }),
+    (e) => e.reason === 'QUOTA_DRAINED',
+  );
+  assert.equal(calls, 1);
+});
+
+test('resolveTokens: the same secret in both slots is REFUSED, not treated as a fallback', () => {
+  // An easy mistake while wiring the second one up, and a fallback that shares
+  // the primary's pool and expiry fails at exactly the moment it is needed while
+  // looking like insurance.
+  assert.throws(
+    () => resolveTokens({ CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-same', CLAUDE_CODE_OAUTH_TOKEN_2: 'sk-ant-oat01-same' }),
+    (e) => e.reason === 'DUPLICATE_CREDENTIAL',
+  );
+});
+
+test('resolveTokens: an unset or blank fallback is simply absent, not an error', () => {
+  for (const second of [undefined, '', '   ']) {
+    const t = resolveTokens({ CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-a', CLAUDE_CODE_OAUTH_TOKEN_2: second });
+    assert.equal(t.length, 1, JSON.stringify(second));
+  }
+  const both = resolveTokens({ CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-a', CLAUDE_CODE_OAUTH_TOKEN_2: 'sk-ant-oat01-b' });
+  assert.equal(both.length, 2);
+});
+
+test('no credential value ever reaches a label or a log line', () => {
+  const t = resolveTokens({ CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-SUPERSECRET' });
+  assert.doesNotMatch(t[0].label, /SUPERSECRET/);
+  assert.doesNotMatch(t[0].note, /SUPERSECRET/, 'the note reports SHAPE, never the value');
+});
+
+test('THE WIRING: the workflow actually passes the fallback secret', () => {
+  // Without this the failover is dead code that tests green: `resolveTokens`
+  // reads the environment, and the environment is built by the workflow. Static,
+  // because nothing else can reach that step -- it needs a runner and a secret.
+  const wf = readFileSync(join(HERE, '..', '..', '.github/workflows/claude-review.yml'), 'utf8');
+  const step = wf.split('- name: Run the reviewer')[1];
+  assert.ok(step, 'the reviewer step must exist');
+  const env = step.split('run:')[0];
+  assert.match(env, /CLAUDE_CODE_OAUTH_TOKEN:\s*\$\{\{\s*secrets\.CLAUDE_CODE_OAUTH_TOKEN\s*\}\}/);
+  assert.match(env, /CLAUDE_CODE_OAUTH_TOKEN_2:\s*\$\{\{\s*secrets\.CLAUDE_CODE_OAUTH_TOKEN_2\s*\}\}/);
 });

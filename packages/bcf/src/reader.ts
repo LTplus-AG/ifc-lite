@@ -263,7 +263,7 @@ async function readProjectFile(zip: JSZip, budget: ExpansionBudget): Promise<{
 
   const content = await readEntryCapped(projectFile, 'string', budget);
 
-  const projectIdMatch = content.match(/ProjectId="([^"]+)"/);
+  const projectIdMatch = content.match(/ProjectId="([^"]+)"/); // unescaped below, same reason as extractElement underneath
   // extractElement, not a raw regex: writeProjectFile escapes the name with
   // escapeXml, so a raw match hands back the literal entities (`A &amp; B`) and
   // the next export escapes them again. Every other element in this reader goes
@@ -271,7 +271,7 @@ async function readProjectFile(zip: JSZip, budget: ExpansionBudget): Promise<{
   const name = extractElement(content, 'Name');
 
   return {
-    projectId: projectIdMatch?.[1],
+    projectId: projectIdMatch?.[1] !== undefined ? unescapeXml(projectIdMatch[1]) : undefined,
     name,
   };
 }

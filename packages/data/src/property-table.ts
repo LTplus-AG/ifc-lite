@@ -220,12 +220,12 @@ export function propertyTableFromColumns(columns: PropertyTableColumns, strings:
       const rowIndices = entityIndex.get(id) || [];
       const psets = new Map<string, PropertySet>();
       for (const idx of rowIndices) {
-        const psetNameStr = strings.get(psetName[idx]);
-        const psetGlobalIdStr = strings.get(psetGlobalId[idx]);
-        if (!psets.has(psetNameStr)) {
-          psets.set(psetNameStr, { name: psetNameStr, globalId: psetGlobalIdStr, properties: [] });
+        const psetNameStr = strings.get(psetName[idx]), psetGlobalIdStr = strings.get(psetGlobalId[idx]);
+        const key = psetNameStr + '\u0000' + psetGlobalIdStr;
+        if (!psets.has(key)) {
+          psets.set(key, { name: psetNameStr, globalId: psetGlobalIdStr, properties: [] });
         }
-        const pset = psets.get(psetNameStr)!;
+        const pset = psets.get(key)!;
         const propNameStr = strings.get(propName[idx]);
         pset.properties.push({
           name: propNameStr,

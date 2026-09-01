@@ -10,6 +10,7 @@
  * have and hash it here, so the base and head adapters (CLI, viewer) produce
  * byte-identical fingerprints for an unchanged entity.
  */
+import { stringifyIfNonFinite } from './nonfinite-value.js';
 
 export interface PropertyEntryInput {
   name: string;
@@ -168,15 +169,13 @@ function stableSerialize(value: unknown): string {
   return `{${keys.map((key) => `${JSON.stringify(key)}:${stableSerialize(record[key])}`).join(',')}}`;
 }
 
-/**
- * Normalize a property/quantity value to a stable scalar so that structurally
- * equal values hash identically regardless of object identity or key order.
- */
+/** Normalize a property/quantity value to a stable scalar (numbers route
+ * through {@link stringifyIfNonFinite}) so structurally equal values hash
+ * identically regardless of object identity or key order. */
 export function normalizeValue(value: unknown): string | number | boolean | null {
   if (value == null) return null;
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-    return value;
-  }
+  if (typeof value === 'number') return stringifyIfNonFinite(value);
+  if (typeof value === 'string' || typeof value === 'boolean') return value;
   try {
     return stableSerialize(value);
   } catch (error) {

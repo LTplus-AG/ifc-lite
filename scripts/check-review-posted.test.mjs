@@ -619,3 +619,48 @@ test('THE RACE: the gate\'s poll budget exceeds the LANE\'s own job timeout', ()
     `job cap ${gateCap[1]}min leaves ${Number(gateCap[1]) * 60 - budgetSeconds}s over a ${budgetSeconds}s budget`,
   );
 });
+
+// =============================== drafts are never enforced either
+
+test('ENFORCING: a DRAFT PR reports the finding in full and does NOT fail the job', () => {
+  // `claude-review.yml` gates on `draft == false`; this workflow has no `if:` and
+  // runs on drafts anyway. Under enforcing that made every same-repo draft a
+  // permanent red: the lane skips identically on every re-run, so the printed
+  // "re-run the review job" could never clear it. Third instance of the
+  // unclearable-red class, after nothing-reviewable and forks.
+  const r = run({ headRepo: SAME_REPO, draft: true, issueComments: [], reviewComments: [], reviews: [] });
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /NOT_POSTED/, 'the verdict text is unchanged: an exemption, not silence');
+  assert.match(r.out, /DRAFT PR/);
+  assert.match(r.out, /Mark it ready for review/);
+});
+
+test('ENFORCING: the SAME payload without the draft flag still fails', () => {
+  // Anti-vacuity. Without this the test above would pass even if the gate had
+  // stopped enforcing entirely.
+  const r = run({ headRepo: SAME_REPO, draft: false, issueComments: [], reviewComments: [], reviews: [] });
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /NOT_POSTED/);
+  assert.doesNotMatch(r.out, /DRAFT PR|FORK PR/);
+});
+
+test('a draft that IS covered passes on the merits, not as an exemption', () => {
+  // The exemption only ever suppresses a FAILING verdict; a covered draft must
+  // not be reported as excused.
+  const r = run({
+    headRepo: SAME_REPO,
+    draft: true,
+    issueComments: [{ user: { login: REVIEWER }, body: marker(SHA) }],
+    reviewComments: [],
+    reviews: [],
+  });
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /REVIEW_POSTED/);
+  assert.doesNotMatch(r.out, /DRAFT PR/);
+});
+
+test('DRAFT wins over FORK in the message, because it is the one the author can change', () => {
+  const r = run({ headRepo: 'someone/ifc-lite', draft: true, issueComments: [], reviewComments: [], reviews: [] });
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /DRAFT PR/);
+});

@@ -529,7 +529,7 @@ function fetchPayload(repo, pr) {
  * `!args.stateFile` would have shipped an enforcement carve-out no test could
  * execute, which is the shape this repository keeps paying for.
  */
-function isForkPr(repo, pr, override) {
+function prExemption(repo, pr, override) {
   // NO REPO, NO VERDICT. `args.repo` is only refused inside the live branch, so
   // in `--state-file` mode it can be null -- and `headRepo !== null` is true for
   // every value, which would excuse EVERY failing verdict. The invariant belongs
@@ -547,7 +547,7 @@ function isForkPr(repo, pr, override) {
   const data =
     override === undefined
       ? gh(['api', `repos/${repo}/pulls/${pr}`, '--method', 'GET'], 'the PR head repo', ReviewPostedError)
-      : { head: { repo: { full_name: override } } };
+      : { head: { repo: { full_name: override.headRepo } }, draft: override.draft === true };
   const headRepo = data?.head?.repo?.full_name;
   if (typeof headRepo !== 'string' || headRepo === '') {
     throw new ReviewPostedError(
@@ -561,7 +561,21 @@ function isForkPr(repo, pr, override) {
   // is caller-supplied: `ltplus-ag/ifc-lite` against a head repo of
   // `LTplus-AG/ifc-lite` would otherwise read as a FORK and turn enforcement off
   // for every PR. Same normalisation the author matching already uses.
-  return headRepo.toLowerCase() !== repo.toLowerCase();
+  // TWO EXEMPTIONS, ONE READ. Both are cases where the LANE cannot post, so the
+  // gate would be demanding a marker nobody is able to write.
+  //
+  // DRAFTS. `claude-review.yml` gates the job on `draft == false`; this workflow
+  // has no `if:` at all and runs on drafts anyway. Under `enforcing` that made
+  // every same-repo DRAFT PR a permanent red -- the lane skips identically on
+  // every re-run, so the printed "re-run the review job" could never clear it.
+  // Third instance of that class after nothing-reviewable and forks, missed
+  // because the first two were about WHO posts and this one is about WHEN.
+  // Found by review of the contributor docs, not by the gate's own tests.
+  if (data?.draft === true) return { exempt: true, why: 'DRAFT' };
+  return {
+    exempt: headRepo.toLowerCase() !== repo.toLowerCase(),
+    why: 'FORK',
+  };
 }
 
 function main() {
@@ -674,13 +688,25 @@ function main() {
   // path. `claude-review.yml`'s dedup step is different: a failing verdict IS its
   // common case, so once the base config is `enforcing` every lane run pays one
   // `gh api pulls/<n>` there. One call, named rather than left to be discovered.
-  if (!ok && isForkPr(args.repo, args.pr, args.stateFile ? payload?.headRepo : undefined)) {
+  const exemption =
+    ok
+      ? { exempt: false }
+      : prExemption(
+          args.repo,
+          args.pr,
+          args.stateFile ? { headRepo: payload?.headRepo, draft: payload?.draft } : undefined,
+        );
+  if (exemption.exempt) {
     console.log('');
     console.log(
-      'FORK PR: the finding above does not fail this job. `claude-review.yml` excludes fork PRs, because ' +
-        "a fork's GITHUB_TOKEN is read-only whatever `permissions:` says, so no marker can ever be posted " +
-        'here and enforcing would be a red nobody can clear. These PRs are covered by the CodeRabbit lane, ' +
-        'which is why the stand-down label is never applied to them.',
+      exemption.why === 'DRAFT'
+        ? 'DRAFT PR: the finding above does not fail this job. `claude-review.yml` skips drafts, so no ' +
+          'marker can be written while this PR is a draft and enforcing would be a red no re-run could ' +
+          'clear. Mark it ready for review and the lane will review the head.'
+        : 'FORK PR: the finding above does not fail this job. `claude-review.yml` excludes fork PRs, ' +
+          "because a fork's GITHUB_TOKEN is read-only whatever `permissions:` says, so no marker can " +
+          'ever be posted here and enforcing would be a red nobody can clear. These PRs are covered by ' +
+          'the CodeRabbit lane, which is why the stand-down label is never applied to them.',
     );
     process.exit(0);
   }

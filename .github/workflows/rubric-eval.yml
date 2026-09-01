@@ -1,0 +1,65 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: Rubric eval
+
+# MANUAL ONLY, AND THAT IS THE POINT.
+#
+# Every case is one model call against the same subscription pool the review lane
+# uses, so running this per-PR would spend the reviewer's quota measuring the
+# reviewer. It answers one question, asked deliberately: did a rubric change
+# recover recall, or only move the prose around?
+#
+# The ground truth is real: defects CodeRabbit found on this repository's own PRs
+# and the Claude lane, running the current rubric, MISSED. Recall against them is
+# currently zero, so the only direction that matters is up.
+on:
+  workflow_dispatch:
+    inputs:
+      rubric:
+        description: 'Path to the rubric to score (default: the shipped one)'
+        required: false
+        default: 'scripts/review/rubric.md'
+      model:
+        description: 'Model to score with'
+        required: false
+        default: 'sonnet'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rubric-eval
+  cancel-in-progress: false
+
+jobs:
+  eval:
+    name: Rubric eval
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      # The scorer is tested before it scores. A harness whose matcher has
+      # regressed would report a rubric as better or worse than it is, and the
+      # whole reason this exists is that prose cannot be judged by reading it.
+      - name: Unit-test the scorer itself
+        run: node --test scripts/review/rubric-eval.test.mjs
+
+      - name: Install the reviewer CLI
+        run: npm install -g @anthropic-ai/claude-code@2.0.76
+
+      - name: Score
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          CLAUDE_CODE_OAUTH_TOKEN_2: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_2 }}
+          EVAL_MODEL: ${{ inputs.model }}
+        run: node scripts/review/rubric-eval.mjs --rubric "${{ inputs.rubric }}"

@@ -163,16 +163,50 @@ For rendering BCF topics as markers in a 3D view, the package provides viewer-ag
 import { computeMarkerPositions, BCFOverlayRenderer } from '@ifc-lite/bcf';
 ```
 
+## BCF Servers (BCF API)
+
+Beyond `.bcfzip` files, the `@ifc-lite/bcf-api` package connects to [buildingSMART BCF API](https://github.com/buildingSMART/BCF-API) (OpenCDE) servers and pulls their topics into the same `BCFProject` model:
+
+```typescript
+import {
+  BcfApiClient,
+  normalizeBcfBaseUrl,
+  requestPasswordToken,
+  fetchProjectAsBCF,
+} from '@ifc-lite/bcf-api';
+
+const baseUrl = normalizeBcfBaseUrl('https://example.com/bcf');
+
+// Discover the token endpoint, then sign in with the OAuth2 password grant
+const auth = await new BcfApiClient({ baseUrl }).getAuthInfo();
+const token = await requestPasswordToken({
+  tokenUrl: auth.oauth2_token_url!,
+  username: 'you@example.com',
+  password: 'secret',
+});
+
+const client = new BcfApiClient({ baseUrl, getAccessToken: () => token.access_token });
+const projects = await client.getProjects();
+
+// Topics, comments, viewpoints (cameras, selection, coloring, visibility)
+// and snapshots, assembled into an @ifc-lite/bcf BCFProject
+const { project, warnings } = await fetchProjectAsBCF(client, projects[0].project_id);
+console.log(`Pulled ${project.topics.size} topics (${warnings.length} warnings)`);
+```
+
+The client implements the BCF API 2.1 routes (projects, extensions, topics with OData paging, comments, viewpoints, component subresources, snapshots). Non-authentication per-item failures — a missing snapshot, an unreadable components resource — degrade to `warnings` entries; authentication failures (401) and an unreachable topics collection reject the whole pull.
+
 ## Viewer Integration
 
 In the IFClite viewer, BCF is integrated through the BCF panel:
 
 1. **Load BCF** - Drag and drop a `.bcf` or `.bcfzip` file or use the BCF panel to import
-2. **Browse Topics** - View all issues with status, priority, and labels
-3. **Navigate Viewpoints** - Click a viewpoint to restore camera and visibility
-4. **Add Comments** - Discuss issues directly in the viewer
-5. **Create Topics** - Select entities, position camera, and create new issues
-6. **Export BCF** - Save the project as a `.bcfzip` file for sharing
+2. **Connect to a BCF server** - The cloud button in the panel header connects to a BCF API server — pick a known server (Aconex regions, BIMcollab, BIMData.io, BIM Track/Newforma Konekt, Catenda Hub, Dalux Field, OpenProject, StreamBIM) or enter a custom URL, sign in via the browser OAuth popup (authorization code + PKCE, with dynamic client registration where the server offers it), email & password, a pasted access token, or OAuth client credentials — then list its projects and load topics, viewpoints, and snapshots straight into the panel
+3. **Browse Topics** - View all issues with status, priority, and labels
+4. **Navigate Viewpoints** - Click a viewpoint to restore camera and visibility
+5. **Add Comments** - Discuss issues directly in the viewer
+6. **Create Topics** - Select entities, position camera, and create new issues
+7. **Export BCF** - Save the project as a `.bcfzip` file for sharing
 
 ## Key Types
 

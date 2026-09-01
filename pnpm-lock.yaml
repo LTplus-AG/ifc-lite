@@ -117,6 +117,9 @@ importers:
       '@ifc-lite/bcf':
         specifier: workspace:^
         version: link:../../packages/bcf
+      '@ifc-lite/bcf-api':
+        specifier: workspace:^
+        version: link:../../packages/bcf-api
       '@ifc-lite/cache':
         specifier: workspace:^
         version: link:../../packages/cache
@@ -171,6 +174,9 @@ importers:
       '@ifc-lite/mutations':
         specifier: workspace:^
         version: link:../../packages/mutations
+      '@ifc-lite/oauth-pkce':
+        specifier: workspace:^
+        version: link:../../packages/oauth-pkce
       '@ifc-lite/parser':
         specifier: workspace:^
         version: link:../../packages/parser
@@ -637,6 +643,19 @@ importers:
       xmllint-wasm:
         specifier: 5.3.0
         version: 5.3.0(@types/node@26.4.0)
+
+  packages/bcf-api:
+    dependencies:
+      '@ifc-lite/bcf':
+        specifier: workspace:^
+        version: link:../bcf
+    devDependencies:
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.0
+        version: 4.1.11(@edge-runtime/vm@3.2.0)(@types/node@26.4.0)(happy-dom@20.11.6)(vite@8.2.2(@types/node@26.4.0)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.12)(yaml@2.9.0))
 
   packages/cache:
     dependencies:

@@ -20,6 +20,7 @@ export function writeQuantities(writer: BufferWriter, quantities: QuantityTable)
 
   writer.writeTypedArray(quantities.entityId);
   writer.writeTypedArray(quantities.qsetName);
+  writer.writeTypedArray(quantities.qsetGlobalId);
   writer.writeTypedArray(quantities.quantityName);
   writer.writeTypedArray(quantities.quantityType);
   writer.writeTypedArray(quantities.value);
@@ -40,6 +41,7 @@ export function readQuantities(reader: BufferReader, strings: StringTable): Quan
 
   const entityId = reader.readUint32Array(count);
   const qsetName = reader.readUint32Array(count);
+  const qsetGlobalId = reader.readUint32Array(count);
   const quantityName = reader.readUint32Array(count);
   const quantityType = reader.readUint8Array(count);
   const value = reader.readFloat64Array(count);
@@ -54,6 +56,7 @@ export function readQuantities(reader: BufferReader, strings: StringTable): Quan
     count,
     entityId,
     qsetName,
+    qsetGlobalId,
     quantityName,
     quantityType,
     value,
@@ -69,15 +72,18 @@ export function readQuantities(reader: BufferReader, strings: StringTable): Quan
 
       for (const idx of rowIndices) {
         const qsetNameStr = strings.get(qsetName[idx]);
+        const qsetGlobalIdStr = strings.get(qsetGlobalId[idx]);
+        const key = qsetNameStr + '\u0000' + qsetGlobalIdStr;
 
-        if (!qsets.has(qsetNameStr)) {
-          qsets.set(qsetNameStr, {
+        if (!qsets.has(key)) {
+          qsets.set(key, {
             name: qsetNameStr,
+            globalId: qsetGlobalIdStr,
             quantities: [],
           });
         }
 
-        const qset = qsets.get(qsetNameStr)!;
+        const qset = qsets.get(key)!;
         const quantNameStr = strings.get(quantityName[idx]);
 
         qset.quantities.push({

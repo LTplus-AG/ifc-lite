@@ -63,7 +63,7 @@ export interface TypePropertyInfo {
 export interface TypeQuantityInfo {
     typeName: string;
     typeId: number;
-    quantities: Array<{ name: string; quantities: Array<{ name: string; type: number; value: number }> }>;
+    quantities: Array<{ name: string; globalId?: string; quantities: Array<{ name: string; type: number; value: number }> }>;
 }
 
 /**
@@ -314,8 +314,8 @@ export function extractQsetsFromIds(
     store: IfcDataStore,
     extractor: EntityExtractor,
     qsetIds: number[]
-): Array<{ name: string; quantities: Array<{ name: string; type: number; value: number }> }> {
-    const result: Array<{ name: string; quantities: Array<{ name: string; type: number; value: number }> }> = [];
+): Array<{ name: string; globalId?: string; quantities: Array<{ name: string; type: number; value: number }> }> {
+    const result: Array<{ name: string; globalId?: string; quantities: Array<{ name: string; type: number; value: number }> }> = [];
 
     for (const qsetId of qsetIds) {
         const qsetRef = store.entityIndex.byId.get(qsetId);
@@ -369,7 +369,7 @@ export function extractTypeQuantitiesOnDemand(
         ? typeEntity.attributes[2]
         : typeRef.type;
 
-    const allQsets: Array<{ name: string; quantities: Array<{ name: string; type: number; value: number }> }> = [];
+    const allQsets: Array<{ name: string; globalId?: string; quantities: Array<{ name: string; type: number; value: number }> }> = [];
     const seenQsetNames = new Set<string>();
     const ownSetIds = new Set<number>();
 

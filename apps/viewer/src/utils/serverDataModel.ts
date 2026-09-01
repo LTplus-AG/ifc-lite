@@ -561,8 +561,7 @@ export function convertServerDataModel(
 
   const quantities: QuantityTable = {
     count: 0,
-    entityId: new Uint32Array(0),
-    qsetName: new Uint32Array(0),
+    entityId: new Uint32Array(0), qsetName: new Uint32Array(0), qsetGlobalId: new Uint32Array(0),
     quantityName: new Uint32Array(0),
     quantityType: new Uint8Array(0),
     value: new Float64Array(0),
@@ -574,7 +573,7 @@ export function convertServerDataModel(
     getForEntity: (exprId: number): QuantitySet[] => {
       const qsets = entityToQsets.get(exprId) || [];
       return qsets.map((qset) => ({
-        name: qset.qset_name,
+        name: qset.qset_name, globalId: '',
         quantities: qset.quantities.map((q) => ({
           name: q.quantity_name,
           type: mapQuantityType(q.quantity_type),

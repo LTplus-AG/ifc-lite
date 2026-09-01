@@ -13,6 +13,8 @@ import { QuantityType } from './types.js';
 
 export interface QuantitySet {
   name: string;
+  /** GlobalId of the source `IfcElementQuantity` instance, when known. */
+  globalId?: string;
   quantities: Quantity[];
 }
 
@@ -29,12 +31,13 @@ export interface QuantityTable {
   
   entityId: Uint32Array;
   qsetName: Uint32Array;
+  qsetGlobalId: Uint32Array;
   quantityName: Uint32Array;
   quantityType: Uint8Array;
   value: Float64Array;
   unitId: Int32Array;
   formula: Uint32Array;
-  
+
   entityIndex: Map<number, number[]>;
   qsetIndex: Map<number, number[]>;
   quantityIndex: Map<number, number[]>;
@@ -93,6 +96,7 @@ export class QuantityTableBuilder {
 
     const entityId = new Uint32Array(count);
     const qsetName = new Uint32Array(count);
+    const qsetGlobalId = new Uint32Array(count);
     const quantityName = new Uint32Array(count);
     const quantityType = new Uint8Array(count);
     const value = new Float64Array(count);
@@ -103,6 +107,7 @@ export class QuantityTableBuilder {
       const row = this.rows[i];
       entityId[i] = row.entityId;
       qsetName[i] = this.strings.intern(row.qsetName);
+      qsetGlobalId[i] = this.strings.intern(row.qsetGlobalId ?? '');
       quantityName[i] = this.strings.intern(row.quantityName);
       quantityType[i] = row.quantityType;
       value[i] = row.value;
@@ -111,7 +116,7 @@ export class QuantityTableBuilder {
     }
 
     return quantityTableFromColumns(
-      { count, entityId, qsetName, quantityName, quantityType, value, unitId, formula },
+      { count, entityId, qsetName, qsetGlobalId, quantityName, quantityType, value, unitId, formula },
       this.strings,
     );
   }
@@ -125,6 +130,7 @@ export interface QuantityTableColumns {
   count: number;
   entityId: Uint32Array;
   qsetName: Uint32Array;
+  qsetGlobalId: Uint32Array;
   quantityName: Uint32Array;
   quantityType: Uint8Array;
   value: Float64Array;
@@ -134,7 +140,7 @@ export interface QuantityTableColumns {
 
 /** Rebuild a live `QuantityTable` (closures + indices) from column data. */
 export function quantityTableFromColumns(columns: QuantityTableColumns, strings: StringTable): QuantityTable {
-  const { count, entityId, qsetName, quantityName, quantityType, value, unitId, formula } = columns;
+  const { count, entityId, qsetName, qsetGlobalId, quantityName, quantityType, value, unitId, formula } = columns;
 
   const entityIndex = new Map<number, number[]>();
   const qsetIndex = new Map<number, number[]>();
@@ -149,6 +155,7 @@ export function quantityTableFromColumns(columns: QuantityTableColumns, strings:
     count,
     entityId,
     qsetName,
+    qsetGlobalId,
     quantityName,
     quantityType,
     value,
@@ -163,10 +170,12 @@ export function quantityTableFromColumns(columns: QuantityTableColumns, strings:
       const qsets = new Map<string, QuantitySet>();
       for (const idx of rowIndices) {
         const qsetNameStr = strings.get(qsetName[idx]);
-        if (!qsets.has(qsetNameStr)) {
-          qsets.set(qsetNameStr, { name: qsetNameStr, quantities: [] });
+        const qsetGlobalIdStr = strings.get(qsetGlobalId[idx]);
+        const key = qsetNameStr + '\u0000' + qsetGlobalIdStr;
+        if (!qsets.has(key)) {
+          qsets.set(key, { name: qsetNameStr, globalId: qsetGlobalIdStr, quantities: [] });
         }
-        const qset = qsets.get(qsetNameStr)!;
+        const qset = qsets.get(key)!;
         const quantNameStr = strings.get(quantityName[idx]);
         qset.quantities.push({
           name: quantNameStr,
@@ -228,6 +237,7 @@ export function quantityTableToColumns(table: QuantityTable): QuantityTableColum
     count: table.count,
     entityId: table.entityId,
     qsetName: table.qsetName,
+    qsetGlobalId: table.qsetGlobalId,
     quantityName: table.quantityName,
     quantityType: table.quantityType,
     value: table.value,
@@ -239,6 +249,7 @@ export function quantityTableToColumns(table: QuantityTable): QuantityTableColum
 interface QuantityRow {
   entityId: number;
   qsetName: string;
+  qsetGlobalId?: string;
   quantityName: string;
   quantityType: QuantityType;
   value: number;

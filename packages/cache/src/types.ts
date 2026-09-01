@@ -131,7 +131,7 @@ export const MAGIC = 0x4C434649; // "IFCL" in little-endian
  *   -- every existing entry re-meshes once -- because the alternative is a
  *   silent partial render on a bundle nobody can update.
  */
-export const FORMAT_VERSION = 16;
+export const FORMAT_VERSION = 17;
 
 /** Geometry chunking parameters (v13+). Grouping is a WRITE-side layout
  *  policy: readers only trust the directory, so these can change without a

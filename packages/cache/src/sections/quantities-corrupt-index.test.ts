@@ -39,6 +39,7 @@ function tableWithCorruptEntityIndex(): QuantityTable {
     count: 1,
     entityId: Uint32Array.from([100]),
     qsetName: Uint32Array.from([1]),
+    qsetGlobalId: Uint32Array.from([0]),
     quantityName: Uint32Array.from([2]),
     quantityType: Uint8Array.from([QuantityType.Length]),
     value: new Float64Array([3.5]),
@@ -74,7 +75,11 @@ describe('readQuantities row-index bounds', () => {
 
     const restored = readQuantities(new BufferReader(buffer), strings);
     expect(restored.getForEntity(100)).toEqual([
-      { name: 'Qto_Test', quantities: [{ name: 'Length', type: QuantityType.Length, value: 3.5, formula: undefined }] },
+      {
+        name: 'Qto_Test',
+        globalId: '',
+        quantities: [{ name: 'Length', type: QuantityType.Length, value: 3.5, formula: undefined }],
+      },
     ]);
   });
 });

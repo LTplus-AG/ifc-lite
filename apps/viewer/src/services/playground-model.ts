@@ -17,17 +17,21 @@ import { getByokModelsForSource } from '@/lib/llm/models';
 const STORAGE_KEY = 'ifc-lite:playground-model:v1';
 const CHANGED_EVENT = 'ifc-lite:playground-model-changed';
 
-/**
- * Default fallback when nothing is in storage. Sonnet hits the sweet spot for
- * tool-calling agentic loops — fast enough for 25 sequential tool calls,
- * smart enough to pick the right tool. Opus 4.7 is better at planning but
- * costs ~3x; Haiku is faster but more likely to mis-pick tools.
- */
-const FALLBACK_MODEL = 'claude-sonnet-4-6';
-
 function isValidAnthropicModel(id: string): boolean {
   return getByokModelsForSource('anthropic').some((m) => m.id === id);
 }
+
+/**
+ * Default when nothing is in storage. Opus 5 plans a 25-tool loop better than
+ * the cheaper entries and costs half what Fable 5 does, so it is worth naming
+ * rather than taking whatever sorts first. It is checked against the registry
+ * so a refresh that drops it degrades to the first Anthropic model instead of
+ * sending a dead id to the API.
+ */
+const PREFERRED_MODEL = 'claude-opus-5';
+const FALLBACK_MODEL = isValidAnthropicModel(PREFERRED_MODEL)
+  ? PREFERRED_MODEL
+  : (getByokModelsForSource('anthropic')[0]?.id ?? PREFERRED_MODEL);
 
 export function getPlaygroundModel(): string {
   try {

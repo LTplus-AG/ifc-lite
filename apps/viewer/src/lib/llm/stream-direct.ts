@@ -15,7 +15,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { readSseStream, type StreamMessage, type StreamOptions } from './stream-client.js';
-import { getModelById } from './models.js';
+import { getModelById, sendsSamplingParams } from './models.js';
 import { buildCacheableSystem, logCacheHit } from './prompt-cache.js';
 
 const STREAM_REQUEST_TIMEOUT_MS = 45_000;
@@ -73,18 +73,19 @@ export async function streamAnthropicChat(
     dangerouslyAllowBrowser: true,
   });
 
-  // Opus 4.7+ returns 400 if `temperature` (or `top_p`/`top_k`) is present.
-  // We gate on the per-model `acceptsSamplingParams` flag in models.ts so
-  // future Claude models that adopt the same policy only need a flag bump,
-  // and Opus 4.6 / Sonnet 4.6 / Haiku 4.5 keep their tuned temperature.
-  const modelDef = getModelById(model);
-  const sendSamplingParams = modelDef?.acceptsSamplingParams !== false;
+  // Send a tuned temperature only where the model is flagged for it. Naming
+  // the models here instead just grows a second registry nothing keeps honest.
+  const sendSamplingParams = sendsSamplingParams(model);
 
   let fullText = '';
   try {
     const stream = client.messages.stream({
       model,
-      max_tokens: 8192,
+      // Opus 5 (the default BYOK model) runs adaptive thinking when `thinking`
+      // is omitted; Opus 4.7/4.8 do not. Thinking spends this ceiling, and
+      // `display` defaults to omitted, so too low a value truncates the visible
+      // answer with nothing to show for the tokens. Safe to raise: we stream.
+      max_tokens: 32_000,
       ...(sendSamplingParams ? { temperature: 0.3 } : {}),
       // Wrap the system prompt in an ephemeral cache block when it's
       // long enough to be worth caching (Anthropic's minimum is ~1024
@@ -152,7 +153,7 @@ export async function streamOpenAiChat(
   return streamOpenAiChatCompletions(apiKey, options);
 }
 
-/** Standard Chat Completions API (GPT-5.4, GPT-5.4 Mini, etc.) */
+/** Standard Chat Completions API; the Responses variant is handled above. */
 async function streamOpenAiChatCompletions(
   apiKey: string,
   options: Omit<StreamOptions, 'proxyUrl' | 'authToken' | 'onUsageInfo'>,
@@ -163,11 +164,8 @@ async function streamOpenAiChatCompletions(
     ? [{ role: 'system', content: system }, ...messages]
     : [...messages];
 
-  // GPT-5 reasoning models (gpt-5.5, gpt-5.5-pro) only accept the default
-  // temperature; sending any other value returns 400. Mirror the Anthropic
-  // path: when the model is flagged `acceptsSamplingParams: false`, omit.
-  const modelDef = getModelById(model);
-  const sendSamplingParams = modelDef?.acceptsSamplingParams !== false;
+  // Mirror the Anthropic path.
+  const sendSamplingParams = sendsSamplingParams(model);
 
   const { response, cleanup } = await openAiFetch(
     'https://api.openai.com/v1/chat/completions',

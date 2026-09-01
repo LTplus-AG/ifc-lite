@@ -140,8 +140,8 @@ export const FREE_MODELS: LLMModel[] = rawFreeModels.map(applyCapabilities);
 
 const ANTHROPIC_BYOK_MODELS: LLMModel[] = [
   {
-    id: 'claude-opus-4-7',
-    name: 'Claude Opus 4.7',
+    id: 'claude-opus-5',
+    name: 'Claude Opus 5',
     provider: 'Anthropic',
     tier: 'byok',
     source: 'anthropic',
@@ -149,34 +149,31 @@ const ANTHROPIC_BYOK_MODELS: LLMModel[] = [
     supportsImages: true,
     supportsFileAttachments: true,
     cost: '$$$',
-    // Opus 4.7 returns 400 if temperature/top_p/top_k are present.
-    // See `whats-new-claude-4-7` docs § Sampling parameters removed.
-    acceptsSamplingParams: false,
   },
   {
-    id: 'claude-opus-4-6',
-    name: 'Claude Opus 4.6',
+    id: 'claude-opus-4-8',
+    name: 'Claude Opus 4.8',
     provider: 'Anthropic',
     tier: 'byok',
     source: 'anthropic',
-    contextWindow: 200_000,
+    contextWindow: 1_000_000,
     supportsImages: true,
     supportsFileAttachments: true,
     cost: '$$$',
   },
   {
-    id: 'claude-sonnet-4-6',
-    name: 'Claude Sonnet 4.6',
+    id: 'claude-fable-5',
+    name: 'Claude Fable 5',
     provider: 'Anthropic',
     tier: 'byok',
     source: 'anthropic',
-    contextWindow: 200_000,
+    contextWindow: 1_000_000,
     supportsImages: true,
     supportsFileAttachments: true,
-    cost: '$$',
+    cost: '$$$',
   },
   {
-    id: 'claude-haiku-4-5-20251001',
+    id: 'claude-haiku-4-5',
     name: 'Claude Haiku 4.5',
     provider: 'Anthropic',
     tier: 'byok',
@@ -185,34 +182,44 @@ const ANTHROPIC_BYOK_MODELS: LLMModel[] = [
     supportsImages: true,
     supportsFileAttachments: true,
     cost: '$',
+    // Predates Opus 4.7, so it still takes a tuned temperature.
+    acceptsSamplingParams: true,
   },
 ];
 
 const OPENAI_BYOK_MODELS: LLMModel[] = [
   {
-    id: 'gpt-5.5',
-    name: 'GPT-5.5',
+    id: 'gpt-5.6-sol',
+    name: 'GPT-5.6 Sol',
     provider: 'OpenAI',
     tier: 'byok',
     source: 'openai',
-    contextWindow: 1_000_000,
+    contextWindow: 1_050_000,
     supportsImages: true,
     supportsFileAttachments: true,
-    cost: '$$$',
-    // GPT-5 reasoning family only accepts the default temperature (1).
-    // Sending any other value returns 400 from /v1/chat/completions.
-    acceptsSamplingParams: false,
+    cost: '$$',
   },
   {
-    id: 'gpt-5.4',
-    name: 'GPT-5.4',
+    id: 'gpt-5.6-terra',
+    name: 'GPT-5.6 Terra',
     provider: 'OpenAI',
     tier: 'byok',
     source: 'openai',
-    contextWindow: 128_000,
+    contextWindow: 1_050_000,
     supportsImages: true,
     supportsFileAttachments: true,
-    cost: '$$$',
+    cost: '$$',
+  },
+  {
+    id: 'gpt-5.6-luna',
+    name: 'GPT-5.6 Luna',
+    provider: 'OpenAI',
+    tier: 'byok',
+    source: 'openai',
+    contextWindow: 1_050_000,
+    supportsImages: true,
+    supportsFileAttachments: true,
+    cost: '$',
   },
   {
     id: 'gpt-5.3-codex',
@@ -220,22 +227,12 @@ const OPENAI_BYOK_MODELS: LLMModel[] = [
     provider: 'OpenAI',
     tier: 'byok',
     source: 'openai',
-    contextWindow: 128_000,
+    contextWindow: 400_000,
     supportsImages: false,
     supportsFileAttachments: true,
     cost: '$$',
+    // Still current: there is no 5.6 Codex.
     openaiApi: 'responses',
-  },
-  {
-    id: 'gpt-5.4-mini-2026-03-17',
-    name: 'GPT-5.4 Mini',
-    provider: 'OpenAI',
-    tier: 'byok',
-    source: 'openai',
-    contextWindow: 128_000,
-    supportsImages: true,
-    supportsFileAttachments: true,
-    cost: '$',
   },
 ];
 
@@ -265,6 +262,17 @@ export function getModelById(id: string): LLMModel | undefined {
 export function requiresByokKey(modelId: string): boolean {
   const model = getModelById(modelId);
   return model?.tier === 'byok';
+}
+
+/**
+ * Whether to send `temperature`/`top_p`/`top_k` for a model id.
+ *
+ * Fails closed: an unknown or stale id gets no sampling params, because a
+ * dropped temperature is cheaper than the 400 every current frontier model
+ * returns when they are present. See `acceptsSamplingParams` in types.ts.
+ */
+export function sendsSamplingParams(modelId: string): boolean {
+  return getModelById(modelId)?.acceptsSamplingParams === true;
 }
 
 /** Get BYOK models available for a given provider source */

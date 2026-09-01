@@ -51,6 +51,19 @@ export interface StoreyRule {
   kind: 'storey';
   values: string[];
   op: SetOp;
+  /**
+   * Optional exact storey identity, set only when the rule was mirrored
+   * from a HierarchyPanel click (which holds the real `(modelId,
+   * expressId)` of the storey the user selected). `IfcBuildingStorey.Name`
+   * is optional and not unique — two distinct storeys, even within one
+   * model, routinely share a Name (repeated "Level 1" across wings, or
+   * federated buildings). When `refs` is present, the evaluator matches
+   * an element's storey by this exact identity instead of by name, so
+   * clicking one storey never silently pulls in a same-named sibling.
+   * Undefined for manually authored/typed rules (the chip UI only offers
+   * names to type against), which keep matching by name as before.
+   */
+  refs?: ReadonlyArray<{ modelId: string; expressId: number }>;
 }
 
 export interface IfcTypeRule {
@@ -233,6 +246,39 @@ export function combineRuleResults(combinator: Combinator, results: readonly boo
   return combinator === 'AND' ? results.every((r) => r) : results.some((r) => r);
 }
 
+/** Dedupe-merge two `StoreyRule.refs` lists by (modelId, expressId), used
+ *  when a Ctrl-click accumulates another storey into an existing filter
+ *  (HierarchyPanel). */
+export function mergeStoreyRefs(
+  prior: ReadonlyArray<{ modelId: string; expressId: number }>,
+  next: ReadonlyArray<{ modelId: string; expressId: number }>,
+): Array<{ modelId: string; expressId: number }> {
+  const seen = new Set(prior.map((r) => `${r.modelId}:${r.expressId}`));
+  const merged = [...prior];
+  for (const r of next) {
+    const key = `${r.modelId}:${r.expressId}`;
+    if (!seen.has(key)) { seen.add(key); merged.push(r); }
+  }
+  return merged;
+}
+
+/** Add a HierarchyPanel storey click to its mirrored `op:in` rule.
+ *
+ * A rule created by the hierarchy carries exact refs. A manually authored
+ * rule has no refs and deliberately matches by its names; changing that rule
+ * to ref mode would discard every existing manual selection. Keep it in name
+ * mode when extending it, while hierarchy-originated rules retain exact refs.
+ */
+export function addHierarchyStoreyToRule(
+  prior: StoreyRule | undefined,
+  name: string,
+  refs: ReadonlyArray<{ modelId: string; expressId: number }>,
+): StoreyRule {
+  const values = Array.from(new Set([...(prior?.values ?? []), name]));
+  if (prior && !prior.refs) return Rule.storey(values, 'in');
+  return Rule.storey(values, 'in', mergeStoreyRefs(prior?.refs ?? [], refs));
+}
+
 // ── Convenience constructors ──────────────────────────────────────────────────
 //
 // The chip UI builds rules via `set*` slice actions (see searchSlice.ts);
@@ -240,7 +286,11 @@ export function combineRuleResults(combinator: Combinator, results: readonly boo
 // rules from a different representation (URL state, presets).
 
 export const Rule = {
-  storey: (values: string[], op: SetOp = 'in'): StoreyRule => ({ kind: 'storey', values, op }),
+  storey: (
+    values: string[],
+    op: SetOp = 'in',
+    refs?: ReadonlyArray<{ modelId: string; expressId: number }>,
+  ): StoreyRule => ({ kind: 'storey', values, op, ...(refs ? { refs } : {}) }),
   ifcType: (values: string[], op: SetOp = 'in'): IfcTypeRule => ({ kind: 'ifcType', values, op }),
   predefinedType: (values: string[], op: SetOp = 'in'): PredefinedTypeRule =>
     ({ kind: 'predefinedType', values, op }),

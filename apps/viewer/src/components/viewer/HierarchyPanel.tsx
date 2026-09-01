@@ -22,7 +22,7 @@ import { useViewerStore, resolveEntityRef } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
 import { useEntityListMultiSelect, type MultiSelectItem } from '@/hooks/useEntityListMultiSelect';
-import { Rule, type FilterRule } from '@/lib/search/filter-rules';
+import { Rule, addHierarchyStoreyToRule, type FilterRule } from '@/lib/search/filter-rules';
 import { toast } from '@/components/ui/toast';
 import { useSourceHost } from '@/services/sources/SourceHostProvider';
 import { syncSourceModel } from '@/lib/sources/syncSourceModel';
@@ -573,6 +573,7 @@ export function HierarchyPanel() {
       const storeyIds = unified
         ? unified.storeys.map(s => s.storeyId)
         : node.expressIds;
+      const storeyRefs: Array<{ modelId: string; expressId: number }> = unified ? unified.storeys.map(s => ({ modelId: s.modelId, expressId: s.storeyId })) : storeyIds.map((expressId, i) => ({ modelId: node.modelIds[i] ?? node.modelIds[0] ?? 'legacy', expressId }));
 
       // Update the shared active storey (model-aware) so Space Sketch, the
       // Solo level-display mode, and the floorplan all follow the storey the
@@ -586,10 +587,7 @@ export function HierarchyPanel() {
       // Set entity refs for property panel display
       if (unified && unified.storeys.length > 1) {
         // Multi-model unified storey: show all storeys combined in property panel
-        const entityRefs = unified.storeys.map(s => ({
-          modelId: s.modelId,
-          expressId: s.storeyId,
-        }));
+        const entityRefs = unified.storeys.map(s => ({ modelId: s.modelId, expressId: s.storeyId }));
         setSelectedEntities(entityRefs);
         // Clear single entity selection (property panel will use selectedEntities)
         setSelectedEntityId(null);
@@ -612,8 +610,10 @@ export function HierarchyPanel() {
         setStoreysSelection([...Array.from(selectedStoreys), ...storeyIds]);
         // Mirror to the advanced filter — accumulate the storey name (issue #1107).
         const cur = useViewerStore.getState().searchFilter.rules.find((r) => r.kind === 'storey' && r.op === 'in');
-        const names = cur && cur.kind === 'storey' ? Array.from(new Set([...cur.values, node.name])) : [node.name];
-        upsertSearchRule((r) => r.kind === 'storey' && r.op === 'in', Rule.storey(names, 'in'));
+        upsertSearchRule(
+          (r) => r.kind === 'storey' && r.op === 'in',
+          addHierarchyStoreyToRule(cur && cur.kind === 'storey' ? cur : undefined, node.name, storeyRefs),
+        );
         toast.success(`Filter → storey ${node.name}`);
       } else {
         // Single selection - toggle if already selected
@@ -637,7 +637,7 @@ export function HierarchyPanel() {
           setStoreysSelection(storeyIds);
           setLevelDisplayMode('solo');
           // Mirror to the advanced filter: one storey rule = this storey (issue #1107).
-          upsertSearchRule((r) => r.kind === 'storey' && r.op === 'in', Rule.storey([node.name], 'in'));
+          upsertSearchRule((r) => r.kind === 'storey' && r.op === 'in', Rule.storey([node.name], 'in', storeyRefs));
           // Phrase it as Solo so the storey-row to Solo link is obvious (#1265).
           toast.success(`Solo: showing only ${node.name}`);
         }

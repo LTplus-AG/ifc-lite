@@ -64,6 +64,8 @@ import {
   matchPropertyRule,
   matchQuantityRule,
   defaultStoreyName,
+  storeyMatchesRefs,
+  unionByStorey,
   materialNamesOf,
   matchClassificationRule,
   elevationOf,
@@ -119,11 +121,12 @@ export function evaluateFilterRules(
   const limit = options.limit ?? DEFAULT_LIMIT;
   const orderedRules = orderRulesByCost(rules);
   const iterIds = toIterable(
-    selectIterationSource(store, rules, combinator, options.candidateExpressIds),
+    selectIterationSource(store, rules, combinator, options.candidateExpressIds, modelId),
   );
   const out: FilteredElement[] = [];
   const ctx: EvalContext = {
     store,
+    modelId,
     table: store.entities,
     options,
     hasPropertyRule: orderedRules.some((r) => r.kind === 'property'),
@@ -210,7 +213,7 @@ export async function evaluateFilterRulesFederated(
   for (const m of models) {
     if (!m.store) continue;
     const candidates = options.candidateExpressIdsByModel?.get(m.id);
-    const source = candidates ?? selectIterationSource(m.store, rules, combinator, undefined);
+    const source = candidates ?? selectIterationSource(m.store, rules, combinator, undefined, m.id);
     const arr = materialiseIterable(source);
     if (arr === null) {
       totalKnown = false;
@@ -229,6 +232,7 @@ export async function evaluateFilterRulesFederated(
 
     const ctx: EvalContext = {
       store: plan.store,
+      modelId: plan.modelId,
       table: plan.store.entities,
       options,
       hasPropertyRule: orderedRules.some((r) => r.kind === 'property'),
@@ -295,6 +299,7 @@ export function selectIterationSource(
   rules: readonly FilterRule[],
   combinator: Combinator,
   candidateExpressIds: Iterable<number> | undefined,
+  modelId?: string,
 ): ArrayLike<number> | Iterable<number> {
   // Caller-supplied narrowing wins (Tier-1 candidates).
   if (candidateExpressIds !== undefined) return candidateExpressIds;
@@ -315,7 +320,7 @@ export function selectIterationSource(
       const bucket = unionByType(store, rule.values);
       if (bucket && (best === null || bucket.length < best.length)) best = bucket;
     } else if (rule.kind === 'storey' && rule.op === 'in' && rule.values.length > 0) {
-      const bucket = unionByStorey(store, rule.values);
+      const bucket = unionByStorey(store, rule, modelId);
       if (bucket && (best === null || bucket.length < best.length)) best = bucket;
     }
   }
@@ -332,23 +337,6 @@ function unionByType(store: IfcDataStore, names: readonly string[]): number[] | 
   for (const name of names) {
     const bucket = byType.get(name.toUpperCase());
     if (bucket) for (const id of bucket) out.push(id);
-  }
-  return out.length > 0 ? out : null;
-}
-
-function unionByStorey(store: IfcDataStore, storeyNames: readonly string[]): number[] | null {
-  const hierarchy = store.spatialHierarchy;
-  if (!hierarchy) return null;
-  const wanted = new Set(storeyNames.map((n) => n.toLowerCase()));
-  const out: number[] = [];
-  // byStorey keys are storey expressIds; their name comes from the
-  // entity table. Models rarely have more than ~20 storeys, so this
-  // pass is essentially free.
-  for (const storeyId of hierarchy.byStorey.keys()) {
-    const name = store.entities.getName(storeyId);
-    if (!wanted.has(name.toLowerCase())) continue;
-    const elements = hierarchy.byStorey.get(storeyId);
-    if (elements) for (const id of elements) out.push(id);
   }
   return out.length > 0 ? out : null;
 }
@@ -400,6 +388,8 @@ type TypePsetList = ReturnType<typeof extractPropertiesOnDemand>;
 
 interface EvalContext {
   store: IfcDataStore;
+  /** Scopes a `StoreyRule.refs` exact match to this store's own model. */
+  modelId: string;
   table: IfcDataStore['entities'];
   options: EvaluateOptions;
   hasPropertyRule: boolean;
@@ -528,6 +518,11 @@ function evaluateRule(
 ): boolean {
   switch (rule.kind) {
     case 'storey': {
+      // Exact-identity mode (refs present): Name isn't unique.
+      if (rule.refs) {
+        const isMatch = storeyMatchesRefs(ctx.store, expressId, ctx.modelId, rule);
+        return rule.op === 'in' ? isMatch : !isMatch;
+      }
       const storeyName = ctx.options.storeyNameOf?.(expressId)
         ?? defaultStoreyName(ctx.store, expressId);
       return setOpMatches(rule.op, storeyName, rule.values);

@@ -22,9 +22,6 @@ import type {
   IDSPartOfFacet,
   IDSConstraint,
   IDSSimpleValue,
-  IDSPatternConstraint,
-  IDSEnumerationConstraint,
-  IDSBoundsConstraint,
   IFCVersion,
   RequirementOptionality,
   PartOfRelation,
@@ -34,7 +31,6 @@ import {
   getChildElement,
   getChildElements,
   getChildElementNS,
-  getChildElementsNS,
   getChildText,
 } from './dom.js';
 import { parseRestriction } from './parse-restriction.js';

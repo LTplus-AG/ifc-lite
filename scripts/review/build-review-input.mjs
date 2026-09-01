@@ -114,25 +114,53 @@ export function isExcluded(path) {
 }
 
 /**
- * Line ranges the PR ADDED, from the hunk headers. A finding may only anchor
- * inside one of these: a comment on a line the PR did not touch is noise at
- * best, and a line number the model invented at worst.
+ * Walk a patch and classify every line, numbering it AS IT WILL BE IN THE NEW FILE.
+ *
+ * This is the single counter. `addedLineRanges` is built on it, and so is the
+ * canary's check that its fixture's quote sits on the line the fixture claims,
+ * because a second hand-rolled counter is how an off-by-one gets certified: it
+ * agrees with this one on the easy patch it was written against and diverges on
+ * a hunk that does not start at line 1, on a second hunk, and on a file with no
+ * trailing newline.
+ *
+ * Match a quote against `text` for `added` lines only, and TRIM BOTH SIDES.
+ * `quotableLines` in validate-findings is a DIFFERENT GATE, and the list below
+ * is what has been measured rather than a proof of completeness. It accepts
+ * every context line, every removed line, and `diff --git` and `index` lines
+ * (though not `--- a/x` or `+++ b/x`); it strips a leading `+` or `-` as well
+ * as a space, so the two disagree on a REMOVED line whose content begins `--`
+ * and on an ADDED line whose content begins `++` -- the pairing matters, since
+ * an added `--foo` and a removed `++i;` agree; and it trims and drops blanks,
+ * so a consumer that corrects only for the marker still mismatches on every
+ * indented line.
+ * Do not treat one as a stand-in for the other.
+ *
+ * Splits on /\r?\n/, where the older walker split on '\n', so `text` carries no
+ * trailing `\r`. That is what makes it comparable to `quotableLines`.
+ *
+ * KNOWN, PRE-EXISTING, NOT FIXED HERE (see #3634): neither the `-`/`---` nor
+ * the `+`/`+++` test can tell a file header from content that starts the same
+ * way, and the two halves fail DIFFERENTLY, so a fix must cover both:
+ *
+ *   deleting a markdown `---` rule gives `----`, read as context, which
+ *     advances the counter and numbers every later line in that hunk too high;
+ *   adding `++i;` gives `+++i;`, which is dropped from the ranges, so
+ *     `lineIsAdded` refuses a CORRECT finding on a line the PR really added.
+ *
+ * `addedLineRanges` behaves exactly as it does on origin/main; the commit
+ * message carries the differential evidence.
  *
  * @param {string} patch a unified diff for ONE file
- * @returns {[number, number][]}
+ * @returns {{line: number, text: string, kind: 'added'|'context'|'removed'|'hunk'}[]}
  */
-export function addedLineRanges(patch) {
-  const ranges = [];
+export function newFileLines(patch) {
+  const out = [];
   let newLine = 0;
-  let start = null;
-  for (const line of String(patch).split('\n')) {
+  for (const line of String(patch).split(/\r?\n/)) {
     const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
     if (hunk) {
-      if (start !== null) {
-        ranges.push([start, newLine - 1]);
-        start = null;
-      }
       newLine = Number(hunk[1]);
+      out.push({ line: newLine, text: line, kind: 'hunk' });
       continue;
     }
     // `\ No newline at end of file` is diff METADATA, not a context line. Counting
@@ -144,23 +172,46 @@ export function addedLineRanges(patch) {
     // already skipped it, so the two halves disagreed about the same diff.
     if (line.startsWith('\\')) continue;
     if (line.startsWith('+') && !line.startsWith('+++')) {
-      if (start === null) start = newLine;
+      out.push({ line: newLine, text: line.slice(1), kind: 'added' });
       newLine += 1;
     } else if (line.startsWith('-') && !line.startsWith('---')) {
       // A removed line does not advance the new-file counter.
-      if (start !== null) {
-        ranges.push([start, newLine - 1]);
-        start = null;
-      }
+      out.push({ line: newLine, text: line.slice(1), kind: 'removed' });
     } else {
-      if (start !== null) {
-        ranges.push([start, newLine - 1]);
-        start = null;
-      }
+      // Strip only a leading SPACE, the marker a context line carries. Not
+      // `quotableLines`' rule; see the divergences listed above.
+      out.push({ line: newLine, text: line.startsWith(' ') ? line.slice(1) : line, kind: 'context' });
       newLine += 1;
     }
   }
-  if (start !== null) ranges.push([start, newLine - 1]);
+  return out;
+}
+
+/**
+ * Line ranges the PR ADDED, in NEW-FILE numbering.
+ *
+ * A run of added lines is broken by ANYTHING that is not an added line -- a
+ * removed line, a context line, a header, a hunk boundary -- which is what makes
+ * this exactly what it was before `newFileLines` was factored out of it. Merging
+ * runs across a removed line would be invisible to `lineIsAdded`, the only
+ * consumer, since that is a membership test; it would not be invisible to a
+ * caller that counts or serialises ranges, and there is no reason to leave that
+ * difference lying around.
+ *
+ * @param {string} patch a unified diff for ONE file
+ * @returns {[number, number][]}
+ */
+export function addedLineRanges(patch) {
+  const ranges = [];
+  let open = null;
+  for (const { line, kind } of newFileLines(patch)) {
+    if (kind !== 'added') {
+      open = null;
+      continue;
+    }
+    if (open) open[1] = line;
+    else ranges.push((open = [line, line]));
+  }
   return ranges;
 }
 

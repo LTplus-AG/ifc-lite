@@ -113,7 +113,7 @@ function writeProjectFile(zip: JSZip, project: BCFProject, version: '2.1' | '3.0
 
   const content = `<?xml version="1.0" encoding="UTF-8"?>
 <${rootElement} xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
-  <Project ProjectId="${projectId}">${nameElement}
+  <Project ProjectId="${escapeXml(projectId)}">${nameElement}
   </Project>
 </${rootElement}>`;
 

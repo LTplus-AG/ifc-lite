@@ -19,6 +19,7 @@ import {
   verifyCommutationCertificate,
   type CommutationCertificate,
 } from '../src/commutation.js';
+import { DEFAULT_EPSILON_MM } from '../src/footprint.js';
 import { canonicalStateBytes, hashModelState, type EntityState, type MergeOp, type ModelState } from '../src/merge-model.js';
 
 function mesh(expressId: number, origin: readonly [number, number, number]): GeometryMeshPayload {
@@ -228,5 +229,61 @@ describe('verifyCommutationCertificate', () => {
     // metadata: verification still passes, and callers must not trust them.
     const unchecked = await verifyCommutationCertificate(tampered, base, [editA], [editB]);
     expect(unchecked).toEqual({ ok: true });
+  });
+
+  it('rejects a certificate minted under a looser epsilon than the caller expects (policy downgrade)', async () => {
+    // Two geometry edits on two different elements, 20mm apart in x -- closer
+    // than DEFAULT_EPSILON_MM (50mm) but farther than a 20mm gap needs to be
+    // to actually touch. At the real default policy epsilon this pair is a
+    // genuine, correctly-flagged spatial conflict (see the sibling
+    // "spatially-colliding geometry edits" test above, same shape).
+    const base = baseState();
+    const geomA: MergeOp = { opId: 'a0', type: 'geometry-replace', meshNodeId: 'mesh:a', payload: mesh(1, [0, 0, 0]) };
+    const geomB: MergeOp = { opId: 'b0', type: 'geometry-replace', meshNodeId: 'mesh:b', payload: mesh(1, [1.02, 0, 0]) };
+
+    expect(findCrossConflicts(base, [geomA], [geomB], DEFAULT_EPSILON_MM).length).toBeGreaterThan(0);
+    const refusedAtPolicyEpsilon = await createCommutationCertificate({ base, opsA: [geomA], opsB: [geomB] });
+    expect(refusedAtPolicyEpsilon.ok).toBe(false);
+
+    // An adversarial (or merely misconfigured) certificate creator picks
+    // epsilonMm: 0 instead -- at that epsilon the same pair is NOT flagged,
+    // so a certificate is minted and self-verifies "ok: true" against the
+    // exact epsilon it chose.
+    const outcome = await createCommutationCertificate({ base, opsA: [geomA], opsB: [geomB], epsilonMm: 0 });
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.certificate.epsilonMm).toBe(0);
+
+    // A verifier with no opinion still accepts it -- expected, since it never
+    // stated a policy.
+    const noExpectation = await verifyCommutationCertificate(outcome.certificate, base, [geomA], [geomB]);
+    expect(noExpectation).toEqual({ ok: true });
+
+    // A verifier that DOES pin the real policy epsilon (the same 50mm
+    // DEFAULT_EPSILON_MM the certificate was supposed to represent) must
+    // reject a certificate minted under a silently looser one -- exactly the
+    // protection expectedTrustRoot/expectedKernelVersion give certificate.ts
+    // and expectedClientA/B give this file's attribution labels. Today
+    // nothing does: epsilonMm travels in the certificate but has no
+    // verifier-supplied expectation to check it against.
+    const pinned = await verifyCommutationCertificate(outcome.certificate, base, [geomA], [geomB], {
+      expectedEpsilonMm: DEFAULT_EPSILON_MM,
+    });
+    expect(pinned.ok).toBe(false);
+    if (!pinned.ok) expect(pinned.reason).toBe('epsilon-mismatch');
+
+    // Control: a certificate genuinely minted at the pinned epsilon still
+    // verifies (the check is a real equality test, not a blanket rejection).
+    // These two elements are far enough apart (>50mm) not to conflict even
+    // at the real policy epsilon.
+    const farB: MergeOp = { opId: 'b1', type: 'geometry-replace', meshNodeId: 'mesh:b', payload: mesh(1, [5, 0, 0]) };
+    const genuineOutcome = await createCommutationCertificate({ base, opsA: [geomA], opsB: [farB] });
+    expect(genuineOutcome.ok).toBe(true);
+    if (!genuineOutcome.ok) return;
+    expect(genuineOutcome.certificate.epsilonMm).toBe(DEFAULT_EPSILON_MM);
+    const genuinePinned = await verifyCommutationCertificate(genuineOutcome.certificate, base, [geomA], [farB], {
+      expectedEpsilonMm: DEFAULT_EPSILON_MM,
+    });
+    expect(genuinePinned).toEqual({ ok: true });
   });
 });

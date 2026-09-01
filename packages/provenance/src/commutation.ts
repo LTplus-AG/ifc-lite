@@ -32,6 +32,7 @@
  * reserved slot, actual signing lands with the M4 encrypted final).
  */
 
+import { checkEpsilonPin } from './commutation-epsilon-pin.js';
 import {
   conflictPredicate,
   unionAabb,
@@ -283,31 +284,28 @@ export type CommutationVerificationResult = CommutationVerificationOk | Commutat
 
 export interface CommutationVerifyOptions {
   /** Caller-owned identity for op set A. When supplied, `certificate.a.client`
-   *  must match exactly. The client labels are attribution METADATA: nothing
-   *  in the artifact cryptographically binds them (signing is out of scope
-   *  for v0, spec decision Q5), so the only sound check is against an
-   *  identity the VERIFIER already knows — deriving the expectation from the
-   *  certificate's own field would let a tampered label verify. */
+   *  must match exactly. The labels are attribution METADATA -- nothing binds
+   *  them (signing is out of scope for v0, decision Q5) -- so the only sound
+   *  check is against an identity the VERIFIER already knows. */
   expectedClientA?: string;
   /** Same for op set B / `certificate.b.client`. */
   expectedClientB?: string;
   /**
-   * Predicate configuration to re-check under. Default `'enabled'`, which is
-   * the only sound choice for a real certificate. It is verifier-supplied for
-   * the same reason the client labels are: the certificate does not record it
-   * (see {@link CommutationInput.spatialRule}), so deriving it from the
-   * artifact would let the artifact choose its own weaker rule. Only the B4.2
-   * ablation harness passes `'disabled'`, to re-check certificates it
-   * knowingly issued under the ablated predicate.
+   * Predicate configuration to re-check under. Default `'enabled'`, the only
+   * sound choice for a real certificate -- verifier-supplied for the same
+   * reason the client labels are: the certificate does not record it (see
+   * {@link CommutationInput.spatialRule}), so deriving it from the artifact
+   * would let the artifact choose its own weaker rule. Only the B4.2 ablation
+   * harness passes `'disabled'`, to re-check certificates it knowingly issued
+   * under the ablated predicate.
    */
   spatialRule?: SpatialRuleMode;
   /**
-   * Op-model semantics to re-replay under. Verifier-supplied for the same
-   * reason as {@link CommutationVerifyOptions.spatialRule}: the certificate
-   * does not record it, so deriving it from the artifact would let the
-   * artifact choose its own model. Default {@link DEFAULT_MERGE_SEMANTICS}.
+   * Op-model semantics to re-replay under, same reasoning as `spatialRule`
+   * (not recorded on the certificate). Default {@link DEFAULT_MERGE_SEMANTICS}.
    */
   semantics?: MergeSemantics;
+  // `expectedEpsilonMm` is declared via module augmentation in ./commutation-epsilon-pin.ts.
 }
 
 function fail(reason: string, details?: unknown): CommutationVerificationFailure {
@@ -378,6 +376,8 @@ export async function verifyCommutationCertificate(
   if (certificate.model !== 'merge-model-v0') {
     return fail('model-mismatch', { actual: certificate.model });
   }
+  const epsilonPinFailure = checkEpsilonPin(options.expectedEpsilonMm, certificate);
+  if (epsilonPinFailure) return fail(epsilonPinFailure.reason, epsilonPinFailure.details);
 
   const { fpsA, fpsB, conflicts } = analyzeCrossPairs(
     base,

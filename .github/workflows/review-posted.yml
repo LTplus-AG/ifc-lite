@@ -64,7 +64,7 @@ jobs:
     # restating it, because this comment was stale about both numbers once). An
     # earlier version of this file had 5 minutes against a 600s budget, which
     # would have killed the job on every PR before it could say anything.
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       # THE GATE RUNS FROM THE PR; ITS AUTHORITY COMES FROM THE BASE BRANCH.
       #
@@ -170,7 +170,7 @@ jobs:
             --pr "${{ github.event.pull_request.number }}" \
             --sha "${{ github.event.pull_request.head.sha }}" \
             --config "${{ steps.cfg.outputs.config }}" \
-            --timeout-seconds 600
+            --timeout-seconds 1500
 
       # ADDS ONLY. The clearing half runs up front, above.
       #

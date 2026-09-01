@@ -173,6 +173,17 @@ const ANTHROPIC_BYOK_MODELS: LLMModel[] = [
     cost: '$$$',
   },
   {
+    id: 'claude-sonnet-5',
+    name: 'Claude Sonnet 5',
+    provider: 'Anthropic',
+    tier: 'byok',
+    source: 'anthropic',
+    contextWindow: 1_000_000,
+    supportsImages: true,
+    supportsFileAttachments: true,
+    cost: '$$',
+  },
+  {
     id: 'claude-haiku-4-5',
     name: 'Claude Haiku 4.5',
     provider: 'Anthropic',
@@ -255,21 +266,31 @@ export const DEFAULT_FREE_MODEL = FREE_MODELS[0] ?? FALLBACK_MODEL;
 export const DEFAULT_BYOK_MODEL = BYOK_MODELS[0] ?? DEFAULT_FREE_MODEL;
 
 /**
- * Ids that moved, pointing at the same model under its current name.
+ * Where a retired id should land.
  *
  * A selection persists in localStorage, so dropping an id silently reassigns
  * whoever had it to the default. That default is Opus 5, which is why this
  * matters: a Haiku user (1/5 per MTok) would land on Opus 5 (5/25) without
- * being told, and BYOK means it is their bill.
+ * being told, and BYOK means it is their bill. An OpenAI user would land on an
+ * Anthropic model and be asked for a key they never needed.
+ *
+ * Two kinds of entry, and the difference is worth keeping straight: the first
+ * is the same model under a new name, the rest are a retired model's closest
+ * surviving neighbour, which is a different model at a similar price.
  */
-const RENAMED_MODEL_IDS: Record<string, string> = {
-  // The dated snapshot and the alias are the same model.
+const MODEL_ID_MIGRATIONS: Record<string, string> = {
+  // Same model: the dated snapshot and the alias.
   'claude-haiku-4-5-20251001': 'claude-haiku-4-5',
+  // Nearest surviving neighbour, staying with the provider and price tier.
+  'claude-sonnet-4-6': 'claude-sonnet-5',
+  'gpt-5.5': 'gpt-5.6-sol',
+  'gpt-5.4': 'gpt-5.6-sol',
+  'gpt-5.4-mini-2026-03-17': 'gpt-5.6-luna',
 };
 
-/** Resolve a possibly-retired id to the one the registry currently lists. */
+/** Resolve a retired id to the one the registry currently lists. */
 export function canonicalModelId(id: string): string {
-  return RENAMED_MODEL_IDS[id] ?? id;
+  return MODEL_ID_MIGRATIONS[id] ?? id;
 }
 
 export function getModelById(id: string): LLMModel | undefined {

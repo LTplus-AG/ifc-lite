@@ -18,7 +18,7 @@ const STORAGE_KEY = 'ifc-lite:playground-model:v1';
 const CHANGED_EVENT = 'ifc-lite:playground-model-changed';
 
 function isValidAnthropicModel(id: string): boolean {
-  // Via getModelById so a renamed id (see RENAMED_MODEL_IDS) still validates.
+  // Via getModelById so a retired id (see MODEL_ID_MIGRATIONS) still validates.
   return getModelById(id)?.source === 'anthropic';
 }
 

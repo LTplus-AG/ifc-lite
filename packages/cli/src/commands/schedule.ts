@@ -4,7 +4,9 @@
 
 /**
  * ifc-lite schedule <file.ifc> --type <IfcClass> --columns "<Header>=<path>[, ...]"
- *                    [--where "<expr>"] [--format csv|json]
+ *                    [--where "<expr>"] [--sort "<Header>[:asc|desc][, ...]"]
+ *                    [--group-by "<Header>[, ...]"]
+ *                    [--subtotals "<agg>[, ...]"] [--format csv|json]
  *
  * Produce a tabular schedule of one IFC class: pick the entities of `--type`,
  * (optionally) narrow them with the same `--where` filter `query` uses, and
@@ -13,6 +15,13 @@
  * through the SAME resolver the `export` command uses so schedule columns and
  * query filters agree on type-inheritance / same-named-pset / complex-property
  * behaviour.
+ *
+ * `--sort`, `--group-by` and `--subtotals` all name column HEADERS (never
+ * paths); a header that is not among `--columns` is a `fatal(...)`. Rows are
+ * ordered by group first (so each group is contiguous) then by the remaining
+ * sort keys, with the original entity order as the stable tiebreaker.
+ * `--subtotals` emits a subtotal row after each group and a grand-total row;
+ * without `--group-by` it emits only the grand total.
  */
 
 import { createHeadlessContext } from '../loader.js';
@@ -20,7 +29,15 @@ import { getFlag, fatal, printJson } from '../output.js';
 import { normalizeTypeName, parseWhereFilter, applyWhereFilter } from './query.js';
 import { resolveColumnValue } from './export.js';
 import { parseColumnSpec } from './schedule-columns.js';
-import { renderScheduleCsv, renderScheduleJson, type ScheduleRow } from './schedule-render.js';
+import {
+  renderScheduleCsv,
+  renderScheduleJson,
+  renderScheduleCsvWithSubtotals,
+  renderScheduleJsonWithSubtotals,
+  type ScheduleRow,
+} from './schedule-render.js';
+import { parseSortSpec, parseGroupBySpec, orderRows } from './schedule-group.js';
+import { parseSubtotalsSpec, buildSubtotalPlan } from './schedule-aggregate.js';
 
 /**
  * Resolve one column path against one entity.
@@ -66,6 +83,12 @@ export async function scheduleCommand(args: string[]): Promise<void> {
 
   const whereFilter = getFlag(args, '--where');
 
+  // --sort / --group-by / --subtotals name declared column HEADERS; an unknown
+  // header is a fatal(...) with the valid headers listed (raised during parse).
+  const sortKeys = parseSortSpec(getFlag(args, '--sort'), columns);
+  const groupKeys = parseGroupBySpec(getFlag(args, '--group-by'), columns);
+  const subtotalAggs = parseSubtotalsSpec(getFlag(args, '--subtotals'), columns);
+
   const { bim } = await createHeadlessContext(filePath);
 
   let entities = bim.query().byType(...type.split(',')).toArray();
@@ -76,10 +99,25 @@ export async function scheduleCommand(args: string[]): Promise<void> {
     entities = applyWhereFilter(entities, parsed, bim);
   }
 
-  // Preserve entity iteration order — no sorting in PR-1.
-  const rows: ScheduleRow[] = entities.map((e: any) =>
+  // One row per entity, in entity order — the stable tiebreaker for ordering.
+  let rows: ScheduleRow[] = entities.map((e: any) =>
     columns.map(col => resolveScheduleValue(e, col.path, bim)),
   );
+
+  // Order once, after row assembly: groups contiguous, then remaining sort keys.
+  if (sortKeys.length > 0 || groupKeys.length > 0) {
+    rows = orderRows(rows, sortKeys, groupKeys);
+  }
+
+  if (subtotalAggs.length > 0) {
+    const plan = buildSubtotalPlan(rows, groupKeys, subtotalAggs);
+    if (format === 'json') {
+      printJson(renderScheduleJsonWithSubtotals(columns, plan));
+      return;
+    }
+    process.stdout.write(renderScheduleCsvWithSubtotals(columns, plan) + '\n');
+    return;
+  }
 
   if (format === 'json') {
     printJson(renderScheduleJson(columns, rows));

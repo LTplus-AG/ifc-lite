@@ -8,7 +8,7 @@
  */
 
 import type { ComposedNode } from './types.js';
-import { ATTR, isTypedPropertyValue, parseV5aKey } from './types.js';
+import { ATTR, IFCLITE_ATTR, isTypedPropertyValue, parseV5aKey } from './types.js';
 import {
   StringTable,
   PropertyTableBuilder,
@@ -87,8 +87,36 @@ function groupAttributesByNamespace(
       continue;
     }
 
-    // `ifclite::*` keys are internal carriers (deletion/derived markers,
-    // collab classifications/materials/geometryRef) — never user
+    // `ifclite::classifications` is the one `ifclite::*` carrier with no
+    // spec-defined IFCX home to unpack from instead — unlike material,
+    // there is no `bsi::ifc::classification` in the v5a schema (#3608).
+    // Reading it back as real, queryable properties (instead of silently
+    // dropping it the way the blanket `ifclite::` skip below would) is
+    // what makes STEP -> IFCX -> re-import actually round-trip a
+    // classification, not just STEP -> IFCX -> the collab snapshot layer.
+    // One "Classification" pset per system, mirroring the Material unpack
+    // below; a ref with no `code` carries nothing to show and is skipped.
+    if (key === IFCLITE_ATTR.CLASSIFICATIONS && Array.isArray(value)) {
+      for (const item of value) {
+        if (!item || typeof item !== 'object') continue;
+        const ref = item as { system?: unknown; code?: unknown; uri?: unknown; description?: unknown };
+        if (typeof ref.code !== 'string' || !ref.code) continue;
+        const psetName = typeof ref.system === 'string' && ref.system
+          ? `Classification - ${ref.system}`
+          : 'Classification';
+        if (!grouped.has(psetName)) {
+          grouped.set(psetName, new Map());
+        }
+        const classificationProps = grouped.get(psetName)!;
+        classificationProps.set('Code', ref.code);
+        if (typeof ref.uri === 'string') classificationProps.set('Uri', ref.uri);
+        if (typeof ref.description === 'string') classificationProps.set('Description', ref.description);
+      }
+      continue;
+    }
+
+    // Remaining `ifclite::*` keys are internal carriers (deletion/derived
+    // markers, collab materials/geometryRef/provenance) — never user
     // properties (#1031).
     if (key.startsWith('ifclite::')) {
       continue;

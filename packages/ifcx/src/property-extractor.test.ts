@@ -41,9 +41,8 @@ describe('extractProperties — typed records and internal carriers (#1031)', ()
     assert.strictEqual(fireRating.value, 'F30');
   });
 
-  it('skips ifclite:: carrier attributes entirely', () => {
+  it('skips ifclite:: internal carriers other than classifications', () => {
     const node = createNode('wall');
-    node.attributes.set('ifclite::classifications', [{ system: 'eBKP-H', code: 'C2.1' }]);
     node.attributes.set('ifclite::materials', [{ materialId: 'mat-1' }]);
     node.attributes.set('ifclite::geometryRef', 'geom-1');
     node.attributes.set('ifclite::deleted', false);
@@ -57,6 +56,39 @@ describe('extractProperties — typed records and internal carriers (#1031)', ()
     assert.strictEqual(props.length, 1, 'only the real property surfaces');
     assert.strictEqual(props[0].name, 'IsExternal');
     assert.strictEqual(props[0].value, true);
+  });
+
+  it('unpacks ifclite::classifications into a per-system Classification pset (#3608)', () => {
+    const node = createNode('wall');
+    node.attributes.set('ifclite::classifications', [
+      { system: 'Uniclass 2015', code: 'Pr_20_93_47', uri: 'https://uniclass.thenbs.com/Pr_20_93_47' },
+      { system: 'eBKP-H', code: 'C2.1' },
+    ]);
+
+    const composed = new Map([[node.path, node]]);
+    const pathToId = new Map([[node.path, 1]]);
+    const table = extractProperties(composed, pathToId, new StringTable());
+    const psets = table.getForEntity(1);
+
+    const uniclass = psets.find((p) => p.name === 'Classification - Uniclass 2015');
+    assert.ok(uniclass, 'Uniclass pset present');
+    const uniclassCode = uniclass!.properties.find((p) => p.name === 'Code');
+    assert.strictEqual(uniclassCode?.value, 'Pr_20_93_47');
+    const uniclassUri = uniclass!.properties.find((p) => p.name === 'Uri');
+    assert.strictEqual(uniclassUri?.value, 'https://uniclass.thenbs.com/Pr_20_93_47');
+
+    const ebkp = psets.find((p) => p.name === 'Classification - eBKP-H');
+    assert.ok(ebkp, 'eBKP-H pset present');
+    const ebkpCode = ebkp!.properties.find((p) => p.name === 'Code');
+    assert.strictEqual(ebkpCode?.value, 'C2.1');
+  });
+
+  it('skips a classification ref with no code', () => {
+    const node = createNode('wall');
+    node.attributes.set('ifclite::classifications', [{ system: 'Uniclass 2015' }]);
+
+    const props = extract(node);
+    assert.strictEqual(props.length, 0, 'a codeless ref surfaces nothing');
   });
 
   it('v5a properties keep the exact authored Pset name, not a display-formatted one', () => {

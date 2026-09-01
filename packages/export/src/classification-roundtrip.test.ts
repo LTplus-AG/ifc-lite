@@ -5,19 +5,29 @@
 /**
  * A wall classified via `IfcClassificationReference` /
  * `IfcRelAssociatesClassification` (Uniclass 2015, `Pr_20_93_47`) must
- * survive a STEP → IFCX (IFC5) export: the classification is a real
- * attribute of the source model, not derived geometry, so dropping it is
- * metadata loss (round-trip fidelity oracle, see AGENTS.md classification
- * lens). `Ifc5Exporter.export()` currently walks psets, materials never
- * enter, and the mesh/colour block — but never reads
- * `onDemandClassificationMap` — so every classified entity loses its
- * classification on export, with no warning anywhere in the pipeline.
+ * survive STEP -> IFCX (IFC5) export AND a subsequent import through
+ * `@ifc-lite/ifcx` (the primary IFCX reader — the round-trip fidelity
+ * oracle, see AGENTS.md's classification lens): the classification is a
+ * real source-model attribute, not derived geometry, so dropping it at
+ * either end is metadata loss.
+ *
+ * This does a full write-then-read round trip, not just an assertion on
+ * the exporter's JSON output: `Ifc5Exporter.export()` alone writing
+ * `ifclite::classifications` would still leave the classification lost on
+ * re-import, because `property-extractor.ts`'s `groupAttributesByNamespace`
+ * treated every `ifclite::*` key as an internal, never-surfaced carrier
+ * (#1031) — including this one, which (unlike `bsi::ifc::material`, #3605)
+ * has no spec-defined IFCX home to unpack from instead. `#3608` unpacks
+ * `ifclite::classifications` into a per-system "Classification" pset in
+ * the reader specifically, so a plain (non-collab) re-import of the
+ * exported file resolves the classification through `parsed.properties`,
+ * the same table every other property comes back through.
  */
 
 import { describe, it, expect } from 'vitest';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { Ifc5Exporter } from './ifc5-exporter.js';
-import { IFCLITE_ATTR } from '@ifc-lite/ifcx';
+import { parseIfcx, IFCLITE_ATTR } from '@ifc-lite/ifcx';
 
 const enc = (s: string): ArrayBuffer => new TextEncoder().encode(s).buffer as ArrayBuffer;
 
@@ -57,25 +67,46 @@ DATA;
 ENDSEC;
 END-ISO-10303-21;`;
 
-describe('IFC5 export carries a source classification through, not just class/props/mesh', () => {
-  it('emits the wall\'s Uniclass classification as an ifclite::classifications attribute', async () => {
+describe('classification survives STEP -> IFCX export -> @ifc-lite/ifcx re-import', () => {
+  it('exports the wall\'s Uniclass classification, and the ifcx reader resolves it back as a property', async () => {
     const store = await parse(MODEL);
     const exporter = new Ifc5Exporter(store, { meshes: [] } as any);
     const result = exporter.export({ onlyTreeEntities: false, includeGeometry: false });
-    const doc = JSON.parse(result.content);
 
+    // Write side: the attribute is on the wall's node in the emitted JSON.
+    const doc = JSON.parse(result.content);
     const wallNode = doc.data.find(
       (n: any) => n.attributes?.['bsi::ifc::prop::Name'] === 'Wall-001',
     );
     expect(wallNode).toBeDefined();
-
-    const classifications = wallNode.attributes?.[IFCLITE_ATTR.CLASSIFICATIONS];
-    expect(classifications).toBeDefined();
-    expect(classifications).toEqual([
-      expect.objectContaining({
-        system: 'Uniclass 2015',
-        code: 'Pr_20_93_47',
-      }),
+    expect(wallNode.attributes?.[IFCLITE_ATTR.CLASSIFICATIONS]).toEqual([
+      expect.objectContaining({ system: 'Uniclass 2015', code: 'Pr_20_93_47' }),
     ]);
+
+    // Read side: re-import the exported IFCX through the real reader
+    // (`@ifc-lite/ifcx`'s `parseIfcx`, not a re-parse of the same JSON) and
+    // resolve the classification through the ordinary PropertyTable path —
+    // the one every other IFCX-derived property (Name, psets, ...) comes
+    // back through.
+    const reparsed = await parseIfcx(
+      new TextEncoder().encode(result.content).buffer as ArrayBuffer,
+    );
+    const { entities, strings } = reparsed;
+    let wallExpressId: number | undefined;
+    for (let i = 0; i < entities.count; i++) {
+      if (strings.get(entities.name[i]) === 'Wall-001') {
+        wallExpressId = entities.expressId[i];
+        break;
+      }
+    }
+    expect(wallExpressId).toBeDefined();
+
+    const psets = reparsed.properties.getForEntity(wallExpressId!);
+    const classificationPset = psets.find((p) => p.name === 'Classification - Uniclass 2015');
+    expect(classificationPset).toBeDefined();
+    const code = classificationPset!.properties.find((p) => p.name === 'Code');
+    expect(code?.value).toBe('Pr_20_93_47');
+    const uri = classificationPset!.properties.find((p) => p.name === 'Uri');
+    expect(uri?.value).toBe('https://uniclass.thenbs.com/Pr_20_93_47');
   });
 });

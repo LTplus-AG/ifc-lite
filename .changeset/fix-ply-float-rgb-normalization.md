@@ -1,0 +1,5 @@
+---
+'@ifc-lite/pointcloud': patch
+---
+
+Fix the PLY decoder mis-normalizing vertex colours declared with a type other than `uchar`. PLY has no single mandated colour encoding: `uchar` (0..255) is by far the most common, but writers that declare `property float red/green/blue` (or `double`) already store a 0..1 value, and 16-bit-colour exports (`property ushort red/green/blue`, e.g. many Leica/FARO scanner outputs and CloudCompare's 16-bit RGB option) store 0..65535. `decodePly` divided every RGB channel by 255 regardless of its declared type, so an already-normalized float `0.8` became `~0.0031` (crushed to near-black) and a `ushort` value like `32768` clamped to `1.0` (saturated to white). Colour channels are now normalized per their declared property type: `float`/`double` pass through (clamped to 0..1), `ushort`/`uint16` divide by 65535, `short`/`int16` divide by 32767, and the remaining integer types (`uchar` and friends, plus the undocumented 32-bit int types) still divide by 255 as before. Both the ascii and binary decode paths were affected.

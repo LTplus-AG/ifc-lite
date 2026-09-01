@@ -27,19 +27,6 @@
     "github-actions",
     "claude"
   ],
-  "$standDownComment": [
-    "THE CODERABBIT HALF IS LIVE. `.coderabbit.yaml` carries",
-    "`auto_review.labels: ['!claude-reviewed']`, a negative match, since PR #3581 merged",
-    "on 2026-08-31. The workflow applies a `claude-reviewed` label when this gate verifies",
-    "a review and clears it on every new head, so CodeRabbit now stands down on exactly",
-    "the heads this lane has covered and reviews the rest.",
-    "",
-    "THIS COMMENT HAS BEEN WRONG TWICE, which is the reason it is this specific. It first",
-    "said the label was inert 'until #3576', naming the wrong PR; then it said 'until",
-    "#3581 merges', which expired the moment #3581 merged. A comment asserting the state",
-    "of a config in ANOTHER file goes stale silently -- there is nothing to fail when it",
-    "does -- so check `.coderabbit.yaml` rather than trusting this paragraph."
-  ],
   "$modeComment": [
     "ADVISORY or ENFORCING. Advisory prints the identical verdict and exits 0; enforcing",
     "exits 1. Not defaulted in code: a missing value is a refusal, because defaulting",

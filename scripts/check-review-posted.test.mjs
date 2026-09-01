@@ -387,10 +387,8 @@ test('ADVISORY does not print an advisory notice over a PASS', () => {
 // ============================================== the machine-readable verdict
 
 test('the `covered` output tracks the VERDICT, not the exit code', () => {
-  // The CodeRabbit stand-down label reads this. In advisory mode a failing
-  // verdict still exits 0, so a caller inferring coverage from `$?` would mark an
-  // unreviewed PR as covered and both reviewers would stand down -- a third route
-  // to an unreviewed merge. These two cases are the ones that must not agree.
+  // In advisory mode a failing verdict still exits 0. Consumers that need the
+  // review-state diagnostic must therefore not infer it from `$?`.
   const outPath = join(TMP, `ghout-${(seq += 1)}.txt`);
   const payloadPath = join(TMP, `p-covered-${seq}.json`);
   const readOut = () => readFileSync(outPath, 'utf8');
@@ -420,7 +418,7 @@ test('the `covered` output tracks the VERDICT, not the exit code', () => {
   assert.match(advisory.out, /covered=false/, 'but coverage must still read false');
 });
 
-test('a STALE review reports covered=false, so the stand-down label is cleared', () => {
+test('a STALE review reports covered=false', () => {
   const outPath = join(TMP, `ghout-stale-${(seq += 1)}.txt`);
   const payloadPath = join(TMP, `p-stale-${seq}.json`);
   writeFileSync(outPath, '');
@@ -513,11 +511,10 @@ test('FAIL CLOSED: an unreadable head repository REFUSES rather than guessing ei
 
 // ================================ `covered` is not the same question as `ok`
 
-test('nothing-to-review PASSES but reports covered=FALSE, so CodeRabbit does not stand down', () => {
-  // The hole this closes: `review-posted.yml` turns `covered` into the
-  // `claude-reviewed` label, and `.coderabbit.yaml` skips labelled PRs. A
-  // nothing-to-review head was never READ by anything, so claiming coverage
-  // would stand CodeRabbit down too and leave the PR reviewed by NOBODY.
+test('nothing-to-review PASSES but reports covered=FALSE: nobody read the diff', () => {
+  // `ok` is a gate outcome; `covered` tells callers whether a review read the
+  // head. A nothing-to-review marker passes because the reviewer explicitly
+  // excluded every changed path, but it is not evidence of a read.
   const outPath = join(TMP, `ghout-ntr-${(seq += 1)}.txt`);
   const payloadPath = join(TMP, `p-ntr-${seq}.json`);
   writeFileSync(outPath, '');
@@ -535,9 +532,9 @@ test('nothing-to-review PASSES but reports covered=FALSE, so CodeRabbit does not
   assert.match(`${r.stdout}${r.stderr}`, /COVERED=FALSE/);
 });
 
-test('a REAL clean review reports covered=true, or the stand-down never happens at all', () => {
+test('a REAL clean review reports covered=true', () => {
   // The anti-vacuity pair: if `covered` were false for everything, the test above
-  // would pass while the whole stand-down mechanism was dead.
+  // would pass while the review-state diagnostic was dead.
   const outPath = join(TMP, `ghout-clean-${(seq += 1)}.txt`);
   const payloadPath = join(TMP, `p-clean-${seq}.json`);
   writeFileSync(outPath, '');

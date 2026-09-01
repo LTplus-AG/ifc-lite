@@ -325,9 +325,10 @@ export function normaliseComments(payload) {
  *
  * @returns {{ ok: boolean, covered: boolean, verdict: string, lines: string[] }}
  *   `ok` is "should this check go red"; `covered` is "has this head been
- *   REVIEWED", which is what the workflow turns into the `claude-reviewed` label
- *   and what CodeRabbit reads to stand down. They differ on exactly one verdict:
- *   `nothing-to-review` is ok and NOT covered, because nothing read the diff.
+ *   REVIEWED". They differ on exactly one verdict: `nothing-to-review` is ok
+ *   and NOT covered, because nothing read the diff. The workflow records this
+ *   distinction but does not turn it into a label: post-push label mutation
+ *   cannot safely control CodeRabbit's push-time decision.
  */
 export function evaluate({ comments, cfg, headSha }) {
   const lines = [];
@@ -435,17 +436,16 @@ export function evaluate({ comments, cfg, headSha }) {
       : `✅ REVIEW_POSTED: an expected reviewer posted a ${match.verdict} verdict for ${headSha.slice(0, 9)}` +
         `${match.verdict === 'findings' ? ` with ${match.count} finding(s)` : ''}.`,
     match.verdict === 'nothing-to-review'
-      ? '   COVERED=FALSE, though: nobody read this diff, so CodeRabbit must NOT stand down on it.'
+      ? '   COVERED=FALSE, though: nobody read this diff.'
       : '   This proves a review REACHED the pull request for this exact commit.',
     '   It proves nothing about whether the review was any good; precision is a separate',
     '   instrument.',
   );
   // `ok` AND `covered` ARE DIFFERENT QUESTIONS, and conflating them was a hole.
-  // `ok` is "should this check go red"; `covered` is "has this head been REVIEWED",
-  // which is what `review-posted.yml` turns into the `claude-reviewed` label and
-  // what `.coderabbit.yaml` reads to stand down. A `nothing-to-review` head has
-  // NOT been reviewed -- the model never ran -- so standing CodeRabbit down on it
-  // would leave the PR reviewed by NOBODY. Raised by CodeRabbit on PR #3587.
+  // A `nothing-to-review` head has NOT been read, even though it is a passing
+  // gate result. Callers retain the distinction for diagnostics; it must not be
+  // used to drive a post-push CodeRabbit stand-down, because that cannot protect
+  // the next head from a stale label.
   return { ok: true, covered: match.verdict !== 'nothing-to-review', verdict: 'REVIEW_POSTED', lines };
 }
 
@@ -659,8 +659,8 @@ function main() {
   // `covered` is the VERDICT, independent of the exit code, and the two differ on
   // purpose in advisory mode: there, a failing verdict still exits 0, and a caller
   // that inferred coverage from the exit code would mark an unreviewed PR as
-  // covered. Anything downstream that acts on "was this reviewed" -- the
-  // CodeRabbit stand-down label, above all -- must read THIS, never `$?`.
+  // covered. Downstream diagnostics that need to know whether the head was read
+  // must read THIS, never `$?`.
   if (process.env.GITHUB_OUTPUT) {
     appendFileSync(process.env.GITHUB_OUTPUT, `covered=${covered ? 'true' : 'false'}\n`);
   }
@@ -679,8 +679,7 @@ function main() {
     console.log(
       'FORK PR: the finding above does not fail this job. `claude-review.yml` excludes fork PRs, because ' +
         "a fork's GITHUB_TOKEN is read-only whatever `permissions:` says, so no marker can ever be posted " +
-        'here and enforcing would be a red nobody can clear. These PRs are covered by the CodeRabbit lane, ' +
-        'which is why the stand-down label is never applied to them.',
+        'here and enforcing would be a red nobody can clear. These PRs remain available to the CodeRabbit lane.',
     );
     process.exit(0);
   }
@@ -707,10 +706,8 @@ if (isMainEntry(import.meta.url)) {
     if (err instanceof ReviewPostedError || err instanceof GhError) {
       console.error(`❌ ${err.reason}: ${err.message}`);
       // A REFUSAL IS NOT COVERAGE. Every refusal path -- GH_ERROR, truncation,
-      // a bad config, a killed poll -- previously left `covered` unwritten, and
-      // the label step skipped on an empty value, so a PR carrying the label
-      // from an earlier head kept it through any number of refused runs. That is
-      // a stale stand-down, which is what STALE_REVIEW exists to prevent.
+      // a bad config, a killed poll -- writes that fact for diagnostics rather
+      // than leaving an absent output to be interpreted as a verdict.
       if (process.env.GITHUB_OUTPUT) {
         try {
           appendFileSync(process.env.GITHUB_OUTPUT, 'covered=false\n');

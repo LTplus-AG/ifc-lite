@@ -14,16 +14,22 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { judge } from './lane-canary.mjs';
+import { readInput, quotableLines } from './validate-findings.mjs';
+import { addedLineRanges, newFileLines } from './build-review-input.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const MUST = ['session-timeout', 'timeoutMs'];
+// One path, read fresh per test: a second literal is a second thing to drift.
+const FIXTURE = join(HERE, 'lane-canary-fixture.json');
+const fixture = () => JSON.parse(readFileSync(FIXTURE, 'utf8'));
 const finding = (extra = {}) => ({
   path: 'src/session-timeout.ts',
-  line: 4,
+  line: 3,
   quote: '  if (timeoutMs > 0) {',
   body: 'Number(undefined) is NaN and NaN > 0 is false, so this returns 0 and closes the session.',
   class: 'numeric-bound',
@@ -81,7 +87,7 @@ test('THE FIXTURE ACTUALLY CONTAINS THE DEFECT the canary demands be found', () 
   // If the fixture were ever edited to remove the bug, the canary would demand a
   // finding that is not there and go permanently red -- a false alarm that would
   // then be "fixed" by weakening the judge. Pin the input, not just the output.
-  const f = JSON.parse(readFileSync(join(HERE, 'lane-canary-fixture.json'), 'utf8'));
+  const f = fixture();
   const patch = f.files[0].patch;
   assert.match(patch, /Number\(raw\)/, 'the NaN source');
   assert.match(patch, /timeoutMs > 0/, 'the one-ended bound');
@@ -92,13 +98,44 @@ test('THE FIXTURE ACTUALLY CONTAINS THE DEFECT the canary demands be found', () 
   for (const m of MUST) assert.ok(JSON.stringify(f).includes(m), `fixture must contain ${m}`);
 });
 
-test('the added-line ranges cover the defect, or the validator would reject the finding', () => {
+test('the fixture\'s ranges are what the BUILDER emits, and the quote is where it says', () => {
   // `validate-findings.mjs` refuses any finding whose line falls outside an added
-  // range. A fixture whose ranges miss the defect would make a CORRECT review
-  // fail validation, and the canary would blame the reviewer.
-  const f = JSON.parse(readFileSync(join(HERE, 'lane-canary-fixture.json'), 'utf8'));
-  const [[lo, hi]] = f.files[0].addedLineRanges;
-  assert.ok(lo <= 4 && 4 <= hi, `the guard is on line 4; ranges are ${lo}..${hi}`);
+  // range, so a fixture whose ranges miss the defect makes a CORRECT review fail
+  // validation and the canary blames the reviewer.
+  //
+  // Both numbers are DERIVED, and derived from the LANE'S OWN counter. Written
+  // down by hand they were both wrong and nothing noticed: the ranges said
+  // `[[2, 8]]` where the builder emits `[[2, 7]]` -- new-file line 8 is the
+  // trailing `}`, a context line -- so the frozen fixture was LOOSER than any
+  // real review input and would have certified a finding on a line the PR never
+  // added. The quote's line was written as 4 in two places; it is 3.
+  //
+  // The first repair walked the patch here instead, which was the same mistake
+  // one level up: a second counter agrees with the builder on the easy patch it
+  // was written against and diverges on a hunk that does not start at line 1, on
+  // a second hunk, and on a file with no trailing newline -- and in each case
+  // lands INSIDE a valid range, so both assertions pass while certifying an
+  // off-by-one. `newFileLines` is now the one counter that `addedLineRanges` is
+  // itself built on.
+  const f = fixture();
+  const patch = f.files[0].patch;
+  assert.deepEqual(
+    f.files[0].addedLineRanges,
+    addedLineRanges(patch),
+    'the fixture must be a shape the builder can actually produce',
+  );
+
+  // Matched the way the LANE matches: `quotableLines` compares trimmed text and
+  // ignores diff metadata. Exact untrimmed equality here would be stricter than
+  // the gate it mirrors, so a trailing space or a CRLF fixture would redden this
+  // test while the real canary run stayed green -- a false alarm on the
+  // instrument whose whole purpose is that a fixture the pipeline refuses must
+  // not be mistaken for a reviewer that stopped working.
+  const want = finding().quote.trim();
+  const hits = newFileLines(patch).filter((l) => l.kind === 'added' && l.text.trim() === want);
+  assert.equal(hits.length, 1, 'the quote must identify exactly one ADDED line, or its position is ambiguous');
+  assert.equal(hits[0].line, finding().line, 'the finding\'s line must be where its quote actually is');
+  assert.ok(quotableLines(patch).includes(want), 'and the lane\'s own matcher must accept it');
 });
 
 test('THE CANARY RUNS THE LANE\'S REAL PIPELINE, not a shortcut past it', () => {
@@ -123,4 +160,27 @@ test('THE CANARY RUNS THE LANE\'S REAL PIPELINE, not a shortcut past it', () => 
     assert.ok(lane.includes(stage), `the lane must still use ${stage}`);
     assert.ok(canary.includes(stage), `the canary must RUN ${stage}, not merely mention it`);
   }
+});
+
+test('THE FIXTURE PASSES THE VALIDATOR THE LANE ACTUALLY RUNS, and it can still refuse', () => {
+  // The canary's third failure was a fixture the pipeline refused before the
+  // reviewer's verdict could be judged: `headSha` was `canary000...ca`, which
+  // reads well and is not hex. A fixture that cannot pass the pipeline it is fed
+  // to makes the canary permanently red for a reason that has nothing to do with
+  // the reviewer, which is how an alarm gets muted.
+  //
+  // `readInput` is called rather than re-checking the sha with a copied regex, so
+  // the assertion cannot drift from what the lane enforces. On THIS fixture the
+  // rules with teeth are the sha, non-empty `files`, and range shape; the
+  // duplicate-path and files/unreviewable-overlap rules are vacuous here because
+  // there is one file and `unreviewable` is empty. It is exercised in both
+  // directions, because an assertion that only ever sees a pass would stay green
+  // if `readInput` stopped refusing anything at all.
+  assert.doesNotThrow(() => readInput(FIXTURE));
+
+  const bad = fixture();
+  bad.headSha = 'canary00000000000000000000000000000000ca';
+  const tmp = join(mkdtempSync(join(tmpdir(), 'canary-fx-')), 'bad.json');
+  writeFileSync(tmp, JSON.stringify(bad));
+  assert.throws(() => readInput(tmp), (e) => e.reason === 'INPUT_INVALID');
 });

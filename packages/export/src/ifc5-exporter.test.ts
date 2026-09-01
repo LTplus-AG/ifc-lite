@@ -687,6 +687,61 @@ END-ISO-10303-21;`;
       expect(classCodes).toContain('IfcBuilding');
       expect(classCodes).toContain('IfcBuildingStorey');
     });
+
+    // bsi::ifc::material ({code, uri}) is the only channel IFCX carries which
+    // material an element is made of — our own reader (property-extractor.ts)
+    // already unpacks it into a "Material" pset, but the writer never emitted
+    // it: an IfcRelAssociatesMaterial association from the STEP source was
+    // silently dropped on export, so a round trip through our own writer lost
+    // every element's material.
+    it('emits bsi::ifc::material for an entity with an IfcRelAssociatesMaterial association', async () => {
+      const withMaterial = REAL_IFC4.replace(
+        'ENDSEC;\nEND-ISO-10303-21;',
+        "#500=IFCMATERIAL('Concrete',$,$);\n"
+        + "#501=IFCRELASSOCIATESMATERIAL('3xJf$b$MP7XLbaHy6XT9EM',#18,$,$,(#139),#500);\n"
+        + 'ENDSEC;\nEND-ISO-10303-21;',
+      );
+      const parser = new IfcParser();
+      const store = await parser.parseColumnar(
+        new TextEncoder().encode(withMaterial).buffer,
+      );
+
+      const exporter = new Ifc5Exporter(store);
+      const result = exporter.export({ includeGeometry: false });
+      const file = JSON.parse(result.content);
+
+      const wallNode = file.data.find(
+        (n: any) => n.attributes?.['bsi::ifc::class']?.code === 'IfcWall'
+          && n.attributes?.['bsi::ifc::prop::Name']?.startsWith('Basic Wall:Holz Aussenwand'),
+      );
+      expect(wallNode).toBeDefined();
+      expect(wallNode.attributes['bsi::ifc::material']).toEqual({ code: 'Concrete' });
+
+      // `code` matches the official schema's `String` restriction — `uri` is
+      // deliberately omitted rather than fabricated, since arbitrary IFC4
+      // material names have no buildingSMART identifier registry (unlike
+      // IFC classes, which resolve to a real one — see bsi::ifc::class above).
+      const schema = ALL_OFFICIAL_SCHEMAS['bsi::ifc::material'];
+      expect(schema.value.objectRestrictions?.values.code.dataType).toBe('String');
+    });
+
+    // Control: an entity with no material association still exports with no
+    // bsi::ifc::material attribute — proves the emission is conditional on a
+    // real association, not a blanket addition.
+    it('control: no bsi::ifc::material is emitted when nothing is associated', async () => {
+      const parser = new IfcParser();
+      const store = await parser.parseColumnar(
+        new TextEncoder().encode(REAL_IFC4).buffer,
+      );
+
+      const exporter = new Ifc5Exporter(store);
+      const result = exporter.export({ includeGeometry: false });
+      const file = JSON.parse(result.content);
+
+      for (const node of file.data) {
+        expect(node.attributes?.['bsi::ifc::material']).toBeUndefined();
+      }
+    });
   });
 
   // #2046: Ifc5Exporter never consulted the overlay for deletions — it walked

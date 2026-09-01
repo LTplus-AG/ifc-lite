@@ -619,3 +619,95 @@ test('THE RACE: the gate\'s poll budget exceeds the LANE\'s own job timeout', ()
     `job cap ${gateCap[1]}min leaves ${Number(gateCap[1]) * 60 - budgetSeconds}s over a ${budgetSeconds}s budget`,
   );
 });
+
+// =============================== drafts are never enforced either
+
+test('ENFORCING: a DRAFT PR reports the finding in full and does NOT fail the job', () => {
+  // `claude-review.yml` gates on `draft == false`; this workflow has no `if:` and
+  // runs on drafts anyway. Under enforcing that made every same-repo draft a
+  // permanent red: the lane skips identically on every re-run, so the printed
+  // "re-run the review job" could never clear it. Third instance of the
+  // unclearable-red class, after nothing-reviewable and forks.
+  const r = run({ headRepo: SAME_REPO, draft: true, issueComments: [], reviewComments: [], reviews: [] });
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /NOT_POSTED/, 'the verdict text is unchanged: an exemption, not silence');
+  assert.match(r.out, /DRAFT PR/);
+  assert.match(r.out, /Mark it ready for review/);
+});
+
+test('ENFORCING: the SAME payload without the draft flag still fails', () => {
+  // Anti-vacuity. Without this the test above would pass even if the gate had
+  // stopped enforcing entirely.
+  const r = run({ headRepo: SAME_REPO, draft: false, issueComments: [], reviewComments: [], reviews: [] });
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /NOT_POSTED/);
+  assert.doesNotMatch(r.out, /DRAFT PR|FORK PR/);
+});
+
+test('a draft that IS covered passes on the merits, not as an exemption', () => {
+  // The exemption only ever suppresses a FAILING verdict; a covered draft must
+  // not be reported as excused.
+  const r = run({
+    headRepo: SAME_REPO,
+    draft: true,
+    issueComments: [{ user: { login: REVIEWER }, body: marker(SHA) }],
+    reviewComments: [],
+    reviews: [],
+  });
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /REVIEW_POSTED/);
+  assert.doesNotMatch(r.out, /DRAFT PR/);
+});
+
+test('DRAFT wins over FORK in the message, because it is the one the author can change', () => {
+  const r = run({ headRepo: 'someone/ifc-lite', draft: true, issueComments: [], reviewComments: [], reviews: [] });
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /DRAFT PR/);
+});
+
+test('an EXEMPT run prints ONE remedy, not two that contradict each other', () => {
+  // The failing verdicts end in `REMEDY: re-run the review job`, which is right
+  // for a quota blip and wrong for a draft or a fork: no re-run can produce a
+  // marker the lane will not write. Printing both left the reader with two
+  // instructions that disagree, which this repository treats as a defect in its
+  // own right. Raised by CodeRabbit on PR #3598.
+  // ASSERT ON THE INSTRUCTION, NOT ON THE PREFIX. The first version of this test
+  // checked only that no line STARTS with `REMEDY:`, and passed while a remedy
+  // split across two array entries lost its head and printed the tail --
+  // "...rather than re-running indefinitely" dangling beside an exemption saying
+  // no re-run can help. 51 of 51 green with the defect live. Caught in review.
+  //
+  // The assertion is on the ORPHAN'S OWN TEXT, not on the word "re-run": the
+  // exemption legitimately says "no re-run could clear this", so a blanket match
+  // would fire on the correct output. These two fragments only ever appear in
+  // the tail of a split remedy.
+  const noReRunAdvice = (out, why) => {
+    assert.doesNotMatch(out, /REMEDY:/, `${why}: the re-run remedy cannot work here`);
+    assert.doesNotMatch(out, /rather than re-running indefinitely/, `${why}: orphaned remedy tail`);
+    assert.doesNotMatch(out, /attach it to/, `${why}: orphaned remedy tail`);
+  };
+
+  const draft = run({ headRepo: SAME_REPO, draft: true, issueComments: [], reviewComments: [], reviews: [] });
+  noReRunAdvice(draft.out, 'draft, nothing posted');
+  assert.match(draft.out, /Mark it ready for review/, 'and the one that CAN work is still there');
+
+  const fork = run({ headRepo: 'someone/ifc-lite', issueComments: [], reviewComments: [], reviews: [] });
+  noReRunAdvice(fork.out, 'fork, nothing posted');
+
+  // The OTHER multi-line remedy: FINDINGS_NOT_POSTED. Same orphan, different verdict.
+  const findings = run({
+    headRepo: SAME_REPO,
+    draft: true,
+    issueComments: [{ user: { login: REVIEWER }, body: marker(SHA, 'findings', 3) }],
+    reviewComments: [],
+    reviews: [],
+  });
+  assert.equal(findings.code, 0, findings.out);
+  noReRunAdvice(findings.out, 'draft, findings claimed but not posted');
+
+  // ANTI-VACUITY: a real failure must KEEP its remedy, or this test would pass
+  // by the gate having stopped printing remedies at all.
+  const real = run({ headRepo: SAME_REPO, draft: false, issueComments: [], reviewComments: [], reviews: [] });
+  assert.equal(real.code, 1);
+  assert.match(real.out, /REMEDY: re-run the review job/);
+});

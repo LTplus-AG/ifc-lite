@@ -34,11 +34,10 @@ import {
   SEED_ORIGIN,
   assertSchemaInvariants,
   metaMap,
-  type ClassificationRef,
-  type MaterialAssignment,
 } from '../doc/schema.js';
 import { inflateStructuredAttributes } from './structured-attrs.js';
 import { clearOverlayTombstones, readOverlayTombstones, resolveTombstoneOpinion, resurrectionBlocked, writeOverlayTombstones } from './overlay-tombstones.js';
+import { setClassifications, setMaterials, readIfcClass } from './overlay-entity-attrs.js';
 
 export interface SeedOptions {
   /** Origin tag for the seeding transaction. Defaults to SEED_ORIGIN. */
@@ -364,41 +363,4 @@ function overlayEntity(doc: Y.Doc, decoded: DecodedNode): void {
     const entityMeta = getEntity(doc, path)?.get(ENTITY_KEY.META) as Y.Map<unknown> | undefined;
     entityMeta?.set('ifcClass', decoded.ifcClass);
   }
-}
-
-function setClassifications(
-  doc: Y.Doc,
-  path: string,
-  refs: readonly ClassificationRef[],
-): void {
-  const arr = getEntity(doc, path)?.get(ENTITY_KEY.CLASSIFICATIONS) as
-    | Y.Array<ClassificationRef>
-    | undefined;
-  if (!arr) return;
-  if (arr.length > 0) arr.delete(0, arr.length);
-  arr.push([...refs]);
-}
-
-function setMaterials(
-  doc: Y.Doc,
-  path: string,
-  assignments: readonly MaterialAssignment[],
-): void {
-  const arr = getEntity(doc, path)?.get(ENTITY_KEY.MATERIALS) as
-    | Y.Array<MaterialAssignment>
-    | undefined;
-  if (!arr) return;
-  if (arr.length > 0) arr.delete(0, arr.length);
-  arr.push([...assignments]);
-}
-
-/** Read the IfcClass code out of the well-known `bsi::ifc::class` attribute. */
-function readIfcClass(attributes: Record<string, unknown> | undefined): string | undefined {
-  if (!attributes) return undefined;
-  const cls = attributes['bsi::ifc::class'];
-  if (cls && typeof cls === 'object' && 'code' in cls) {
-    const code = (cls as { code?: unknown }).code;
-    if (typeof code === 'string') return code;
-  }
-  return undefined;
 }

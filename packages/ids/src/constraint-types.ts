@@ -98,6 +98,10 @@ export interface IDSBoundsConstraint {
   minLength?: number;
   /** xs:maxLength — maximum string length */
   maxLength?: number;
+  /** xs:totalDigits — maximum number of significant decimal digits */
+  totalDigits?: number;
+  /** xs:fractionDigits — maximum number of digits after the decimal point */
+  fractionDigits?: number;
   /**
    * The originating `xs:restriction @base` (e.g. `xs:double`,
    * `xs:integer`). Set when the constraint came from an

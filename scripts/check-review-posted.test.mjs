@@ -664,3 +664,23 @@ test('DRAFT wins over FORK in the message, because it is the one the author can 
   assert.equal(r.code, 0, r.out);
   assert.match(r.out, /DRAFT PR/);
 });
+
+test('an EXEMPT run prints ONE remedy, not two that contradict each other', () => {
+  // The failing verdicts end in `REMEDY: re-run the review job`, which is right
+  // for a quota blip and wrong for a draft or a fork: no re-run can produce a
+  // marker the lane will not write. Printing both left the reader with two
+  // instructions that disagree, which this repository treats as a defect in its
+  // own right. Raised by CodeRabbit on PR #3598.
+  const draft = run({ headRepo: SAME_REPO, draft: true, issueComments: [], reviewComments: [], reviews: [] });
+  assert.doesNotMatch(draft.out, /REMEDY:/, 'the re-run remedy cannot work on a draft');
+  assert.match(draft.out, /Mark it ready for review/, 'and the one that CAN work is still there');
+
+  const fork = run({ headRepo: 'someone/ifc-lite', issueComments: [], reviewComments: [], reviews: [] });
+  assert.doesNotMatch(fork.out, /REMEDY:/, 'nor on a fork');
+
+  // ANTI-VACUITY: a real failure must KEEP its remedy, or this test would pass
+  // by the gate having stopped printing remedies at all.
+  const real = run({ headRepo: SAME_REPO, draft: false, issueComments: [], reviewComments: [], reviews: [] });
+  assert.equal(real.code, 1);
+  assert.match(real.out, /REMEDY: re-run the review job/);
+});

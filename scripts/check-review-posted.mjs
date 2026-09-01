@@ -668,7 +668,28 @@ function main() {
   console.log('');
 
   const { ok, covered, lines } = result;
-  for (const l of lines) console.log(l);
+
+  // THE EXEMPTION IS RESOLVED BEFORE THE VERDICT IS PRINTED, so a remedy that
+  // cannot work is never shown. The failing verdicts end in
+  // `REMEDY: re-run the review job`, which is right for a quota blip and WRONG
+  // for a draft or a fork: no re-run can produce a marker the lane will not
+  // write. Printing both left the reader with two instructions that contradict
+  // each other, which this repository treats as a defect in its own right --
+  // "each distinct failure class names a remedy, and the remedy does not
+  // contradict the finding". Raised by CodeRabbit on PR #3598.
+  const exemption =
+    ok
+      ? { exempt: false }
+      : prExemption(
+          args.repo,
+          args.pr,
+          args.stateFile ? { headRepo: payload?.headRepo, draft: payload?.draft } : undefined,
+        );
+
+  for (const l of lines) {
+    if (exemption.exempt && /^\s*REMEDY:/.test(l)) continue;
+    console.log(l);
+  }
 
   // `covered` is the VERDICT, independent of the exit code, and the two differ on
   // purpose in advisory mode: there, a failing verdict still exits 0, and a caller
@@ -688,14 +709,6 @@ function main() {
   // path. `claude-review.yml`'s dedup step is different: a failing verdict IS its
   // common case, so once the base config is `enforcing` every lane run pays one
   // `gh api pulls/<n>` there. One call, named rather than left to be discovered.
-  const exemption =
-    ok
-      ? { exempt: false }
-      : prExemption(
-          args.repo,
-          args.pr,
-          args.stateFile ? { headRepo: payload?.headRepo, draft: payload?.draft } : undefined,
-        );
   if (exemption.exempt) {
     console.log('');
     console.log(

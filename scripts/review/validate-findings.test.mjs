@@ -40,6 +40,7 @@ import {
   sanitizeBody,
   sanitizeLabel,
   stripFence,
+  REASONS,
 } from './validate-findings.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -787,4 +788,86 @@ test('stripFence removes one fence and refuses to guess at anything else', () =>
   // fails if it is not, which is the honest outcome either way.
   assert.equal(stripFence('```json\n{"a":1}'), '{"a":1}');
   assert.equal(stripFence('```json {"a":1} ```'), '```json {"a":1} ```', 'a one-line fence is not stripped');
+});
+
+test('REASONS covers EVERY raise site in this file, and names nothing that is not one', () => {
+  // `REASONS` is published for rubric-eval, which decides per reason whether a
+  // refusal means the reviewer answered badly or the harness broke. A reason
+  // added below and not added to the set would be classified as neither and stop
+  // the eval blaming the harness -- so the guard lives here, next to the raise
+  // sites, where the same commit that adds a reason has to walk past it.
+  //
+  // The first argument is read with a paren-balanced scan, not a regex: the
+  // earlier version of this lived in rubric-eval and used `[^,)]+`, which
+  // silently returns nothing when that argument contains a call.
+  //
+  // EVERY screaming-snake token in the argument must be known, and the site must
+  // name at least one. Requiring only one hit let a ternary carry a second,
+  // unclassified reason with every test green. Lowercase tokens are skipped,
+  // which is what lets a condition like `kind === 'raw' ? ...` through without
+  // a special case.
+  const src = readFileSync(new URL('./validate-findings.mjs', import.meta.url), 'utf8');
+  const NEEDLE = 'ValidateFindingsError(';
+  const seen = new Set();
+  const barren = [];
+  const computed = [];
+  let sites = 0;
+  // An INVENTORY check, not a behaviour check: it asks whether a published
+  // constant lists every reason this file can raise. There is no behavioural
+  // form of that question -- driving all fifteen would mean constructing fifteen
+  // failure inputs, several unreachable on purpose (OUT_UNWRITABLE). What it
+  // guards is a data structure, not a call.
+  // NOTE: the ratchet does not scan `.test.mjs` at all (#3639), so this marker
+  // documents intent rather than recording an approval that was granted.
+  // @source-text-assertion-ok inventory of raise sites against the REASONS export
+  for (let i = src.indexOf(NEEDLE); i !== -1; i = src.indexOf(NEEDLE, i + 1)) {
+    sites += 1;
+    let depth = 1;
+    let j = i + NEEDLE.length;
+    const start = j;
+    for (; j < src.length && depth > 0; j += 1) {
+      if (src[j] === '(') depth += 1;
+      else if (src[j] === ')') depth -= 1;
+      else if (src[j] === ',' && depth === 1) break;
+    }
+    // EVERY screaming-snake token in the argument must be a known reason, not
+    // just one of them. Accepting a site because it named one left a second,
+    // unclassified reason live in the code with all 59 tests green -- verified
+    // by mutating the ternary's else branch to a new name. A lowercase token is
+    // not reason-shaped, which is what lets the `kind === 'raw' ? ...` condition
+    // through without a special case.
+    const arg = src.slice(start, j);
+    const tokens = [...arg.matchAll(/['"]([A-Z][A-Z0-9_]{2,})['"]/g)].map((m) => m[1]);
+    const unknown = tokens.filter((r) => !REASONS.has(r));
+    if (unknown.length) barren.push(`${arg.trim().slice(0, 50)} -> ${unknown.join(', ')}`);
+    // A site whose first argument is a variable rather than a literal cannot be
+    // read this way. That is NOT a failure -- hoisting a reason to a const is
+    // behaviour-preserving and reddening it would train people to weaken this --
+    // but it is counted, so the blind spot stays visible instead of growing.
+    if (tokens.length === 0) computed.push(arg.trim().slice(0, 50));
+    for (const r of tokens) seen.add(r);
+  }
+  assert.ok(sites > 0, 'the scan found no raise sites at all, which means it is broken');
+  assert.deepEqual(barren, [], 'these raise sites name a reason that is not in REASONS');
+  assert.equal(
+    computed.length,
+    0,
+    `these raise sites build their reason from a variable, so this check cannot read them; ` +
+      `add any new reason to REASONS by hand and raise this count: ${JSON.stringify(computed)}`,
+  );
+
+  // The alphabet is a THIRD copy of the same convention: `validatorReason` in
+  // rubric-eval parses `[A-Z0-9_]+` off the printed line. A reason outside that
+  // shape would be in REASONS, be classified, be raised, and still parse as null
+  // at run time -- green everywhere, and the eval aborts calling it unknown.
+  for (const r of REASONS) {
+    // `r` comes from the imported REASONS constant, not from the file read
+    // above; this pins a naming convention on that constant.
+    // Marker documents intent; the ratchet cannot see this file (#3639).
+    // @source-text-assertion-ok naming convention on an imported constant
+    assert.match(r, /^[A-Z][A-Z0-9_]*$/, `${r} is outside the alphabet validatorReason parses`);
+  }
+
+  const phantom = [...REASONS].filter((r) => !seen.has(r));
+  assert.deepEqual(phantom, [], 'these are in REASONS but are never raised');
 });

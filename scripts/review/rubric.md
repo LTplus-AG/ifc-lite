@@ -140,6 +140,19 @@ commentary before or after:
 required even when `verdict` is `clean` — it is how a review that did not read
 the diff is told apart from one that read it and found nothing.
 
+**Nominate a `riskiest_change.quoted_line` you can reproduce EXACTLY.** It is
+checked character for character against the patch, and a line long enough that
+you would truncate it will fail that check however many times the review is
+re-run. "Riskiest" is relative, so if the line you would otherwise nominate is
+too long to reproduce, nominate a different line **from the same file** — a
+shorter one you can quote verbatim, though still a substantive one of a dozen
+characters or more, not `});` or `return;`. Any real line of the diff proves you
+read it, which is the whole job of this field. Do not truncate, and do not quote
+a fragment from the middle of a line.
+
+This applies to `riskiest_change` only. A finding's `quote` anchors an inline
+comment to a specific line, so it must be that line, exactly.
+
 **`riskiest_change` is required even when NOTHING in the diff is risky.** A diff
 of pure comments, documentation or configuration still has a most-substantive
 line: quote it. "Riskiest" is relative to the diff you were given, never an

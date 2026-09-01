@@ -41,6 +41,7 @@ import {
   sanitizeLabel,
   stripFence,
   REASONS,
+  validate,
 } from './validate-findings.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -870,4 +871,44 @@ test('REASONS covers EVERY raise site in this file, and names nothing that is no
 
   const phantom = [...REASONS].filter((r) => !seen.has(r));
   assert.deepEqual(phantom, [], 'these are in REASONS but are never raised');
+});
+
+test('PROOF_OF_WORK_FAILED names a remedy the model can actually carry out', () => {
+  // #3597 was blocked permanently, not transiently. Its riskiest line is 216
+  // characters; the model reproduced about 120 and the message said "quote a
+  // WHOLE line" -- which it cannot do, so `re-run` looped forever.
+  //
+  // The guard is unchanged: a truncated quote is still refused, because
+  // accepting a prefix turned out to be guessable from boilerplate (a standard
+  // XML namespace opening in the .ids corpus clears 40 characters with the diff
+  // unread). What changed is that the model is now told it may nominate a
+  // SHORTER line instead, which is always available and proves the same thing.
+  // The `${...}` sequences are literal source text copied from the PR, not
+  // interpolation -- that is the whole point of the fixture.
+  // oxlint-disable-next-line no-template-curly-in-string
+  const long = "      svg += `    <path d=\"${pathData}\" fill=\"${escapeXml(fillColor)}\" fill-opacity=\"${opacity.toFixed(2)}\" fill-rule=\"evenodd\" data-entity-id=\"${polygon.entityId}\" data-ifc-type=\"${escapeXml(polygon.ifcType)}\"/>\\n`;";
+  const patch = ['@@ -1,3 +1,4 @@', ' const before = 1;', '+const shortEnough = 2;', `+${long}`].join('\n');
+  const input = {
+    headSha: 'a'.repeat(40),
+    files: new Map([['src/a.ts', { path: 'src/a.ts', patch, addedLineRanges: [[2, 3]] }]]),
+    unreviewable: [],
+  };
+  const truncated = {
+    verdict: 'clean',
+    files_reviewed: ['src/a.ts'],
+    riskiest_change: { path: 'src/a.ts', quoted_line: long.trim().slice(0, 120) },
+    findings: [],
+    end: 'ifc-lite-review-v1',
+  };
+  let err;
+  assert.throws(() => validate({ response: truncated, input }), (e) => { err = e; return e.reason === 'PROOF_OF_WORK_FAILED'; });
+  assert.match(err.message, /SHORTER line/, 'the remedy must offer an achievable alternative');
+
+  // And that alternative genuinely works on this same patch.
+  const shorter = {
+    ...truncated,
+    // A shorter ADDED line -- what the rubric actually steers the model toward.
+    riskiest_change: { path: 'src/a.ts', quoted_line: 'const shortEnough = 2;' },
+  };
+  assert.doesNotThrow(() => validate({ response: shorter, input }));
 });

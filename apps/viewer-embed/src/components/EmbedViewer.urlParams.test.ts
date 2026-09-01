@@ -270,6 +270,61 @@ describe('EmbedViewer: ?isolate=', () => {
     // actuator that second call is what silently clears isolation.
     expect(setIsolatedEntitiesSpy).toHaveBeenCalledTimes(1);
   });
+
+  /**
+   * #3338 gap the review found: `useEmbedUrlParams` calls the ASSIGNING
+   * `setIsolatedEntities`, never `isolateEntities`, so
+   * `check-isolate-expansion-routing.mjs`'s literal-token match could not
+   * see this channel at all -- not even the destructure-alias widening
+   * caught it, because this is a different action name, not a rename. A
+   * `?isolate=` id naming a geometry-less IfcElementAssembly reproduced the
+   * #2531/#2532 blank-viewport failure here until this fix routed it through
+   * the same `cameraCallbacks.resolveHighlightIds` resolver the embed
+   * bridge's ISOLATE command already used.
+   */
+  it('resolves a geometry-less assembly id to its geometry-bearing parts via resolveHighlightIds', async () => {
+    const resolveHighlightIds = (ids: number[]) =>
+      ids.flatMap((id) => (id === 1005 ? [11, 12] : [id]));
+    useViewerStore.setState({ cameraCallbacks: { resolveHighlightIds } });
+
+    setSearch('?isolate=1005');
+    renderEmbedViewer();
+    await settle();
+
+    const isolated = useViewerStore.getState().isolatedEntities;
+    expect(isolated).not.toBeNull();
+    // The resolved parts are unioned with the raw (pre-resolution) id,
+    // matching every other isolation channel -- harmless here since the raw
+    // assembly id has no geometry of its own to draw.
+    expect([...isolated!].sort((a, b) => a - b)).toEqual([11, 12, 1005]);
+  });
+
+  it('falls back to the raw ids when no renderer has registered resolveHighlightIds yet', async () => {
+    // `beforeEach` sets `cameraCallbacks: {}` -- no resolver at all, mirroring
+    // a host page that isolates before the renderer has mounted.
+    setSearch('?isolate=1005');
+    renderEmbedViewer();
+    await settle();
+
+    const isolated = useViewerStore.getState().isolatedEntities;
+    expect(isolated).not.toBeNull();
+    expect([...isolated!]).toEqual([1005]);
+  });
+
+  it('keeps the raw ids when the resolver resolves to [] (#3389)', async () => {
+    // `[]` is also what a type-hidden id (spaces ship OFF) and a mesh that has
+    // not streamed in yet answer, so skipping the isolate would make
+    // `?isolate=<a space>` a silent no-op. The raw ids self-heal: they start
+    // matching the renderer's whitelist as soon as the mesh is there.
+    useViewerStore.setState({ cameraCallbacks: { resolveHighlightIds: () => [] } });
+    setSearch('?isolate=1005');
+    renderEmbedViewer();
+    await settle();
+
+    const isolated = useViewerStore.getState().isolatedEntities;
+    expect(isolated).not.toBeNull();
+    expect([...isolated!]).toEqual([1005]);
+  });
 });
 
 describe('EmbedViewer: ?hideTypes=', () => {

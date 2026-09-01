@@ -212,10 +212,12 @@ export function BCFTopicList({
                 )}
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <PriorityBadge priority={topic.priority} />
-                  <span className="flex items-center gap-1">
-                    <User className="h-3 w-3" />
-                    {topic.creationAuthor.split('@')[0]}
-                  </span>
+                  {topic.creationAuthor && (
+                    <span className="flex items-center gap-1">
+                      <User className="h-3 w-3" />
+                      {topic.creationAuthor.split('@')[0]}
+                    </span>
+                  )}
                   {topic.creationDate && (
                     <span className="flex items-center gap-1">
                       <Calendar className="h-3 w-3" />

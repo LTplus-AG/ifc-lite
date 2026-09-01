@@ -29,6 +29,7 @@ import {
 } from './comparators.js';
 import { isNumericXsdBase, isBooleanXsdBase } from './xsd-cast.js';
 import { translateXsdRegex } from './xsd-regex.js';
+import { matchDigitFacets } from './digit-facets.js';
 
 /** Tolerance for the bounds matcher's exclusive comparators. */
 export const NUMERIC_TOLERANCE = 1e-6;
@@ -299,13 +300,15 @@ function matchBounds(
       return false;
     }
     // Length-only restrictions don't impose numeric bounds; if the
-    // constraint also carries min/max we fall through to the numeric
-    // check below (rare in practice).
+    // constraint also carries min/max/totalDigits/fractionDigits we
+    // fall through to the numeric check below (rare in practice).
     if (
       constraint.minInclusive === undefined &&
       constraint.maxInclusive === undefined &&
       constraint.minExclusive === undefined &&
-      constraint.maxExclusive === undefined
+      constraint.maxExclusive === undefined &&
+      constraint.totalDigits === undefined &&
+      constraint.fractionDigits === undefined
     ) {
       return true;
     }
@@ -339,6 +342,9 @@ function matchBounds(
   if (constraint.maxExclusive !== undefined && num >= constraint.maxExclusive) {
     return false;
   }
+
+  const digitsOk = matchDigitFacets(constraint, actualValue);
+  if (digitsOk === false) return false;
 
   return true;
 }

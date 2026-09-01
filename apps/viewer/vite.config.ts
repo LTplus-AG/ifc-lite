@@ -14,7 +14,6 @@ import { oauthCallbackRoutes } from './vite-plugins/oauth-callback';
 import { daluxRelayRoute } from './vite-plugins/dalux-relay';
 
 // --- Build-time changelog parser ---
-
 interface ReleaseHighlight {
   type: 'feature' | 'fix' | 'perf';
   text: string;
@@ -40,12 +39,10 @@ const SKIP_BOLD_LOWER = new Set([
   'renderer fixes', 'parser fixes', 'viewer integration', 'fixes', 'features',
   'breaking', 'minor changes', 'patch changes', 'dependencies',
 ]);
-
 function isInternalName(text: string): boolean {
   // Skip PascalCase single-word class names like "PolygonalFaceSetProcessor"
   return /^[A-Z][a-zA-Z]+$/.test(text) && !text.includes(' ');
 }
-
 function categorizeHighlight(text: string): 'feature' | 'fix' | 'perf' {
   const lower = text.toLowerCase();
   if (lower.startsWith('fixed ') || lower.startsWith('fix ')) return 'fix';
@@ -283,6 +280,8 @@ export default defineConfig({
       '@ifc-lite/lens': path.resolve(__dirname, '../../packages/lens/src'),
       '@ifc-lite/mutations': path.resolve(__dirname, '../../packages/mutations/src'),
       '@ifc-lite/bcf': path.resolve(__dirname, '../../packages/bcf/src'),
+      '@ifc-lite/bcf-api': path.resolve(__dirname, '../../packages/bcf-api/src'),
+      '@ifc-lite/oauth-pkce': path.resolve(__dirname, '../../packages/oauth-pkce/src'),
       '@ifc-lite/drawing-2d': path.resolve(__dirname, '../../packages/drawing-2d/src'),
       '@ifc-lite/encoding': path.resolve(__dirname, '../../packages/encoding/src'),
       '@ifc-lite/ids': path.resolve(__dirname, '../../packages/ids/src'),
@@ -348,6 +347,7 @@ export default defineConfig({
           if (id.includes('/packages/sandbox/')) return 'sandbox';
           if (id.includes('/packages/export/')) return 'exporters';
           if (id.includes('/packages/server-client/')) return 'server-client';
+          if (id.includes('/packages/bcf-api/')) return 'bcf-api';
           if (id.includes('/packages/bcf/')) return 'bcf';
           if (id.includes('/packages/ids/')) return 'ids';
           if (id.includes('/packages/lens/')) return 'lens';

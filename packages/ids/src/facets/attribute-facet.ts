@@ -205,10 +205,18 @@ function getAttributeValue(
       return accessor.getEntityName(expressId);
     case 'description':
       return accessor.getDescription(expressId);
-    case 'objecttype':
-      return accessor.getObjectType(expressId);
     case 'globalid':
       return accessor.getGlobalId(expressId);
+    // Deliberately NOT `case 'objecttype'`: `accessor.getObjectType` is the
+    // PredefinedType USERDEFINED-fallback helper (its own doc: "entity
+    // object type (predefined type)"), not the literal IFC `ObjectType`
+    // attribute. For an entity whose raw PredefinedType is a concrete,
+    // non-USERDEFINED, non-NOTDEFINED enum token (e.g. `STANDARD`), that
+    // helper returns the enum token — never the entity's actual ObjectType
+    // text — so an `<attribute><name>ObjectType</name></attribute>`
+    // requirement was silently checked against the wrong IFC attribute.
+    // Route it through the generic accessor instead, same as any other
+    // named attribute.
     default:
       // Try generic attribute access
       return accessor.getAttribute(expressId, attrName);

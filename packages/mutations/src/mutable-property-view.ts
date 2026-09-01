@@ -15,6 +15,7 @@
 import type { PropertyTable, PropertySet, Property, QuantitySet, Quantity } from '@ifc-lite/data';
 import { findQuantityInBaseSets } from './base-qset-lookup.js';
 import { computeSetClaims, mutatedMembersForInstance } from './same-name-set-claims.js';
+import { encodeNonFiniteNumbers, decodeNonFiniteNumbers } from './nonfinite-json.js';
 import { PropertyValueType, QuantityType } from '@ifc-lite/data';
 import type { IfcAttributeValue, PropertyValue, PropertyMutation, QuantityMutation, AttributeMutation, EntityTypeMutation, Mutation, NewEntity, EffectiveChange } from './types.js';
 import { propertyKey, quantityKey, attributeKey, generateMutationId } from './types.js';
@@ -2064,7 +2065,7 @@ export class MutablePropertyView {
       modelId: this.modelId,
       mutations: this.mutationHistory,
       exportedAt: Date.now(),
-    }, null, 2);
+    }, encodeNonFiniteNumbers, 2);
   }
 
   /**
@@ -2087,7 +2088,7 @@ export class MutablePropertyView {
    * fires.
    */
   importMutations(json: string): void {
-    const data = JSON.parse(json);
+    const data = JSON.parse(json, decodeNonFiniteNumbers);
     if (data.mutations && Array.isArray(data.mutations)) {
       this.applyMutations(data.mutations);
     }

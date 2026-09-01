@@ -240,7 +240,7 @@ describe('buildTreeData', () => {
     assert.ok(spaceNode);
     assert.strictEqual(spaceNode.type, 'IfcSpace');
     assert.deepStrictEqual(spaceNode.expressIds, [5]);
-    assert.deepStrictEqual(spaceNode.globalIds, [105]);
+    assert.deepStrictEqual(spaceNode.globalIds, [1_000_105]);
     assert.strictEqual(spaceNode.elementCount, 1);
     assert.strictEqual(spaceNode.hasChildren, true);
 
@@ -249,7 +249,7 @@ describe('buildTreeData', () => {
     assert.strictEqual(windowNode.type, 'element');
     assert.strictEqual(windowNode.ifcType, 'IfcWindow');
     assert.deepStrictEqual(windowNode.expressIds, [7]);
-    assert.deepStrictEqual(windowNode.globalIds, [107]);
+    assert.deepStrictEqual(windowNode.globalIds, [1_000_107]);
     assert.strictEqual(windowNode.name, 'IfcWindow #7');
 
     assert.strictEqual(nodes.filter((node) => node.id === 'element-model-1-6').length, 1);

@@ -56,6 +56,7 @@ pub(crate) fn combined_pre_pass(
             "IFCRELVOIDSELEMENT" => spans.void_rels.push((id, start, end)),
             "IFCRELFILLSELEMENT" => spans.fills_rels.push((id, start, end)),
             "IFCRELAGGREGATES" => spans.aggregate_rels.push((id, start, end)),
+            "IFCRELDEFINESBYTYPE" => spans.defines_by_type.push((id, start, end)),
             "IFCPROJECT" => {
                 if project_id.is_none() {
                     project_id = Some(id);

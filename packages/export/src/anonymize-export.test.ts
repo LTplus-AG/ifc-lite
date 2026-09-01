@@ -152,6 +152,9 @@ DATA;
 #40=IFCMATERIAL('Concrete',$,'Category Marigold');
 #90=IFCELEMENTASSEMBLY('${guid(90)}',#74,'Assembly Cobalt',$,$,$,$,$,$,.RIGID.);
 #91=IFCPLATE('${guid(91)}',#74,'Plate Vertex',$,$,$,$,$,$);
+#95=IFCPROPERTYSET('${guid(95)}',#74,'Pset_AddressRef',$,(#96));
+#96=IFCPROPERTYREFERENCEVALUE('AddressRef',$,$,#51);
+#97=IFCRELDEFINESBYPROPERTIES('${guid(97)}',#74,$,$,(#6),#95);
 #50=IFCPOSTALADDRESS($,$,$,$,('742 Fictitious Lane'),$,'Fictitious Falls','Fictitious Province','00000','Fictitious Country');
 #51=IFCPOSTALADDRESS($,$,$,$,('99 Imaginary Boulevard'),$,'Imaginary Heights','Imaginary Province','11111','Imaginary Country');
 #52=IFCPROJECTEDCRS('EPSG:FICTITIOUS-9999',$,$,$,$,$,$);
@@ -354,6 +357,26 @@ describe('exportAnonymizedSubset — full-subset export invariants (#2934 A6)', 
     expect(parseSourceHeader(result.content)!.originatingSystem).toBe('Source Originating System');
   });
 
+  it('blanks header FILE_DESCRIPTION instead of carrying the source items verbatim', async () => {
+    // Same fixture, only the header's FILE_DESCRIPTION swapped for one
+    // carrying identifying free text — the shape an authoring tool's
+    // "Comment" field actually takes (project/client name, a contact
+    // address), same class of signal as the author/organization/
+    // authorization fields the sibling test above already proves blanked.
+    const identifyingDescriptionModel = FIXTURE_MODEL.replace(
+      "FILE_DESCRIPTION((''),'2;1');",
+      "FILE_DESCRIPTION(('ViewDefinition [CoordinationView]',"
+        + "'Comment [Property of Umbriel Nyx, contact nyx.umbriel@example-fictitious.test]'),'2;1');",
+    );
+    const store = await parse(identifyingDescriptionModel);
+    const result = exportAnonymizedSubset(store, FULL_INCLUDED_IDS, { guidRandom: seededRandom(7) });
+    const out = parseSourceHeader(result.content);
+    expect(out).not.toBeNull();
+    const description = out!.description.join(' ');
+    expect(description).not.toContain('Umbriel Nyx');
+    expect(description).not.toContain('nyx.umbriel@example-fictitious.test');
+  });
+
   it('is deterministic and byte-identical across two independent runs with the same seed', async () => {
     const opts: AnonymizeOptions = { guidRandom: seededRandom(42), timeStamp: '2024-01-01T00:00:00' };
     const storeA = await parse(FIXTURE_MODEL);
@@ -442,6 +465,52 @@ describe('exportAnonymizedSubset — occurrence-owned property sets reaching inc
     expect(result.stats.droppedPropertySetIds).toEqual([]);
     expect(content).toContain('jane.doe@acme-corp.example');
     expect(findDanglingRefs(content)).toEqual([]);
+  });
+});
+
+describe('exportAnonymizedSubset — IfcPropertyReferenceValue into an excluded target (#3439)', () => {
+  it('nulls a directly included property reference rather than emitting a dangling reference', async () => {
+    const store = await parse(FIXTURE_MODEL);
+    const result = exportAnonymizedSubset(store, new Set([1, 3, 95, 96]), {
+      keepPropertySets: true,
+      guidRandom: seededRandom(13),
+    });
+    const content = decode(result.content);
+
+    expect(findDanglingRefs(content)).toEqual([]);
+    expect(content).not.toContain('99 Imaginary Boulevard');
+    expect(lineArgs(content, 96)[3]).toBe('$');
+    expect(result.stats.droppedPropertyReferenceIds).toEqual([96]);
+  });
+
+  it('nulls a property value reached through an included defining relationship and property set', async () => {
+    const store = await parse(FIXTURE_MODEL);
+    const result = exportAnonymizedSubset(store, new Set([1, 3, 6, 95, 97]), {
+      keepPropertySets: true,
+      guidRandom: seededRandom(16),
+    });
+    const content = decode(result.content);
+
+    // #96 is deliberately not a caller seed. The exporter reaches it through
+    // #97 -> #95, so sanitization must run over the forward closure too.
+    expect(content).toContain('#96=IFCPROPERTYREFERENCEVALUE');
+    expect(findDanglingRefs(content)).toEqual([]);
+    expect(lineArgs(content, 96)[3]).toBe('$');
+    expect(result.stats.droppedPropertyReferenceIds).toEqual([96]);
+  });
+
+  it('leaves a property reference intact when the target is legitimately included', async () => {
+    const store = await parse(FIXTURE_MODEL);
+    const result = exportAnonymizedSubset(store, new Set([1, 3, 95, 96]), {
+      keepPropertySets: true,
+      removeGeoreferencing: false,
+      guidRandom: seededRandom(15),
+    });
+    const content = decode(result.content);
+
+    expect(findDanglingRefs(content)).toEqual([]);
+    expect(lineArgs(content, 96)[3]).toBe('#51');
+    expect(result.stats.droppedPropertyReferenceIds).toEqual([]);
   });
 });
 

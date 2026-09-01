@@ -1,0 +1,115 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: Review lane canary
+
+# THE LANE'S ONLY AGGREGATE SIGNAL.
+#
+# Every other check on the reviewer is PER-PR, and `Review posted` is not a
+# required check, so a dark lane renders exactly like a transient blip. The token
+# expired once already and the failure was invisible: individual reds that nobody
+# reads as "the reviewer has been gone since Tuesday". CodeRabbit covers roughly a
+# third of this repo's volume, so a dark lane means most PRs get no review while
+# every check still looks normal.
+#
+# So this runs on a clock, on ONE frozen input with a known answer, and opens an
+# issue when it fails. Daily rather than hourly: the failures it catches (an
+# expired token, a drained pool, a rubric regression) last hours or days, and an
+# hourly canary would spend subscription quota to find them a few hours sooner.
+on:
+  schedule:
+    # 06:20 UTC, before the working day here, so a dead lane is known before the
+    # day's PRs are opened rather than after they have merged.
+    - cron: '20 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # To open and update the ops issue. Nothing else.
+  issues: write
+
+concurrency:
+  group: review-lane-canary
+  cancel-in-progress: false
+
+jobs:
+  canary:
+    name: Review lane canary
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      # The judge is exercised before it judges. A canary whose own logic has
+      # regressed would otherwise report a healthy lane, which is the failure
+      # mode this whole repository exists to refuse.
+      - name: Unit-test the canary itself
+        run: node --test scripts/review/lane-canary.test.mjs
+
+      - name: Install the reviewer CLI
+        run: npm install -g @anthropic-ai/claude-code@2.0.76
+
+      - name: Ask the reviewer for a known answer
+        id: canary
+        continue-on-error: true
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          set +e
+          node scripts/review/lane-canary.mjs 2>&1 | tee "$RUNNER_TEMP/canary.log"
+          echo "rc=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      # AN ISSUE, NOT A RED RUN. A failed scheduled workflow is a row in a tab
+      # nobody opens; the point of this canary is to reach a human. The issue is
+      # updated in place rather than duplicated, so a week of failures is one
+      # thread and the close is the all-clear.
+      - name: Raise or update the ops issue
+        if: steps.canary.outputs.rc != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          body="$(printf 'The review lane failed its liveness canary at %s.\n\n```\n%s\n```\n\nThe canary runs one frozen diff with a known defect and requires the reviewer to find it. A failure here is NOT a per-PR blip: it means most PRs are currently getting no substantive review, because CodeRabbit covers only about a third of this volume.\n\nCheck, in order: the `CLAUDE_CODE_OAUTH_TOKEN` secret, the subscription pool, and any recent change to `rubric.md` or `run-reviewer.mjs`.\n\nThis issue is updated in place by each failing run, and closing it is the all-clear.\n' "$(date -u +%FT%TZ)" "$(tail -40 "$RUNNER_TEMP/canary.log")")"
+          existing="$(gh issue list --repo "${{ github.repository }}" --state open \
+            --label review-lane-down --limit 1 --json number --jq '.[0].number // empty')"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "${{ github.repository }}" --body "$body"
+          else
+            gh label create review-lane-down --repo "${{ github.repository }}" \
+              --color b60205 --description "The review lane failed its liveness canary." 2>/dev/null || true
+            gh issue create --repo "${{ github.repository }}" \
+              --title "Review lane is not reviewing (canary failed)" \
+              --label review-lane-down --body "$body"
+          fi
+
+      # Closing the loop: a canary that only ever shouts is one people mute. When
+      # it passes and an issue is open, say so and close it.
+      - name: All clear
+        if: steps.canary.outputs.rc == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          existing="$(gh issue list --repo "${{ github.repository }}" --state open \
+            --label review-lane-down --limit 1 --json number --jq '.[0].number // empty')"
+          if [ -n "$existing" ]; then
+            gh issue close "$existing" --repo "${{ github.repository }}" \
+              --comment "Canary passed at $(date -u +%FT%TZ): the reviewer found the planted defect again."
+          fi
+
+      # The job's own verdict, AFTER the issue is filed. Ordered this way so a
+      # failure still reaches a human even if this step is what someone later
+      # decides to make non-blocking.
+      - name: Fail the run if the lane is down
+        if: steps.canary.outputs.rc != '0'
+        run: |
+          echo "The lane canary failed; see the review-lane-down issue."
+          exit 1

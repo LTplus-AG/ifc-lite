@@ -26,6 +26,7 @@ import { mountBridgeLifecycle, unmountBridgeLifecycle } from '../bridge/lifecycl
 import { useEmbedBridgeEvents } from './useEmbedBridgeEvents.js';
 import { useEmbedPostLoad } from './useEmbedPostLoad.js';
 import { useEmbedUrlParams, toHiddenTypeSet, isTypeHidden } from './useEmbedUrlParams.js';
+import { useEmbedRuntimeOverlays } from './useEmbedRuntimeOverlays.js';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 
 export function EmbedViewer() {
@@ -47,6 +48,8 @@ export function EmbedViewer() {
   // leading '#') to match the URL-param convention and normalized to CSS
   // color the same way in both places.
   const [customBgHex, setCustomBgHex] = useState<string | undefined>(urlParams.bg);
+  // Same rationale as customBgHex above, for INIT's config.hideAxis/.hideScale/.hideTypes (#2934 follow-up).
+  const { hideAxis, hideScale, hideTypes, setOverlays } = useEmbedRuntimeOverlays(urlParams);
 
   // Apply URL params on mount. Embeds default to light unless ?theme=dark
   // (the surrounding viewer-core store may bootstrap to dark based on system
@@ -144,6 +147,7 @@ export function EmbedViewer() {
           };
         },
         setBackgroundColor: (bg: string | undefined) => setCustomBgHex(bg),
+        setOverlays,
       }, {
         allowedOrigins: urlParams.allowOrigins,
         expectedParentOrigin,
@@ -252,7 +256,7 @@ export function EmbedViewer() {
   // string[]` already ships as accepting), so it cannot go through
   // `typeVisibility`, whose six semantic toggles are a fixed set — it is a
   // case-folded membership test in this same pass instead.
-  const hiddenTypes = useMemo(() => toHiddenTypeSet(urlParams.hideTypes), [urlParams.hideTypes]);
+  const hiddenTypes = useMemo(() => toHiddenTypeSet(hideTypes), [hideTypes]);
   const filteredGeometry = useMemo(() => {
     if (!mergedGeometryResult?.meshes) return null;
     let meshes = mergedGeometryResult.meshes;
@@ -387,7 +391,7 @@ export function EmbedViewer() {
             computedIsolatedIds={computedIsolatedIds}
             modelIdToIndex={modelIdToIndex}
           />
-          <ViewportOverlays hideViewCube hideAxis={urlParams.hideAxis} hideScale={urlParams.hideScale} />
+          <ViewportOverlays hideViewCube hideAxis={hideAxis} hideScale={hideScale} />
         </div>
       )}
     </div>

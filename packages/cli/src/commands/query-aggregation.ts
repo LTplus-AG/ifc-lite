@@ -65,7 +65,18 @@ export function getQuantityValue(bim: any, ref: any, quantityName: string): numb
   const qsets = bim.quantities(ref);
   for (const qset of qsets) {
     for (const q of qset.quantities) {
-      if (q.name === quantityName) return Number(q.value) || 0;
+      if (q.name === quantityName) {
+        // `Number(x) || 0` only catches NaN (an unparseable value): an
+        // extreme STEP REAL literal (e.g. 1.0E400) parses to Infinity
+        // without erroring at the decode boundary, and `Number(Infinity) ||
+        // 0` stays Infinity because Infinity is truthy. Left uncaught, that
+        // one entity poisons every downstream sum/avg/min/max over the
+        // whole result set. Number.isFinite catches NaN and both infinities
+        // alike, so a present-but-non-finite value is treated the same as
+        // the existing present-but-unparseable case: substituted with 0.
+        const n = Number(q.value);
+        return Number.isFinite(n) ? n : 0;
+      }
     }
   }
   return null;

@@ -50,7 +50,8 @@ jobs:
     # Free GitHub-hosted runner. ifc-lite is a PUBLIC repo, so standard
     # `ubuntu-latest` runners are free + unlimited (GitHub only bills public
     # repos for *larger* runners). Light jobs — path filter, lint, the gate —
-    # don't need Depot's paid cores; only the Rust/WASM-compile jobs do.
+    # don't need a larger runner; Rust/WASM compilation also stays on the
+    # standard runner so routine CI remains within the Depot Developer tier.
     # See scripts/README-vercel-cost.md for the full runner-cost rationale.
     runs-on: ubuntu-latest
     outputs:
@@ -61,9 +62,8 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       agents_md: ${{ steps.filter.outputs.agents_md }}
       # `true` when the WASM source is byte-identical to the published release
-      # tag, so `build` can fetch the prebuilt bundle and run on a FREE runner
-      # instead of compiling wasm32 on a paid Depot runner. See the `build`
-      # job and scripts/ci-wasm-prebuilt-eligible.sh.
+      # tag, so `build` can fetch the prebuilt bundle instead of compiling
+      # wasm32. See the `build` job and scripts/ci-wasm-prebuilt-eligible.sh.
       wasm_prebuilt: ${{ steps.wasm.outputs.eligible }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -174,10 +174,8 @@ jobs:
               # `test.yml` are subsumed by this glob; test.yml stays named
               # individually in the OTHER filters below, which this does not
               # cover. COST: a workflow-only PR now runs the JS lane. Every job
-              # it adds is on a FREE ubuntu-latest runner except `build`, which
-              # only reaches Depot when the WASM source has drifted from the
-              # published release tag -- the same condition every frontend PR
-              # already pays. Workflow-only PRs are rare (dependabot bumps).
+              # it adds is on a FREE ubuntu-latest runner. Workflow-only PRs
+              # are rare (dependabot bumps).
               - '.github/workflows/**'
               - 'package.json'
               - 'pnpm-lock.yaml'
@@ -201,7 +199,7 @@ jobs:
               # Same trap this block warns about for `apps/`, `examples/` and
               # `.oxlintrc.json` above. It goes here rather than under `rust:`
               # because the gate is a Node step and `rust:` would additionally
-              # spin the paid Depot compile lane for a one-line JSON edit
+              # spin the WASM compile lane for a one-line JSON edit
               # (scripts/README-vercel-cost.md).
               - 'rust-major-offset.json'
               - 'tests/models/manifest.json'
@@ -246,8 +244,8 @@ jobs:
       # Decide whether `build` can skip the from-source wasm32 compile. The
       # probe emits `true` only when the WASM source is byte-identical to the
       # `@ifc-lite/wasm@<version>` release tag that produced the published
-      # bundle; any doubt emits `false` → build from source on Depot (unchanged
-      # behaviour). It can never green-light a stale bundle.
+      # bundle; any doubt emits `false` → build from source. It can never
+      # green-light a stale bundle.
       - name: Resolve prebuilt-WASM eligibility
         id: wasm
         run: echo "eligible=$(bash scripts/ci-wasm-prebuilt-eligible.sh)" >> "$GITHUB_OUTPUT"
@@ -259,16 +257,11 @@ jobs:
     name: Build packages + WASM
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.frontend == 'true'
-    # Runner is chosen by whether we can skip the wasm32 compile. When the WASM
-    # source is byte-identical to the published release tag (the common case on
-    # frontend-only PRs), we fetch the prebuilt @ifc-lite/wasm bundle and run on
-    # a FREE ubuntu-latest runner — no Rust toolchain, no wasm-pack, no Swatinem
-    # rust-cache write to Depot. When Rust changed we compile from source on the
-    # paid Depot runner (needs the cores + the uncapped cargo cache), exactly as
-    # before. This is the CI twin of the scripts/vercel-install.sh fast path and
-    # attacks the single largest Depot line — the wasm32 compile on ~2/3 of PRs.
-    runs-on: ${{ needs.changes.outputs.wasm_prebuilt == 'true' && 'ubuntu-latest' || 'depot-ubuntu-24.04-4' }}
-    timeout-minutes: 20
+    # Keep all routine CI on GitHub's free standard runner. This public repo's
+    # previous 4-vCPU Depot path consumed the Developer plan's included minutes
+    # in a few days; the prebuilt bundle remains a speed optimization only.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -294,9 +287,7 @@ jobs:
       # Rust + wasm-pack for the wasm32 build (pure-Rust CSG kernel — no
       # C++ toolchain needed since M9). Single-sourced in
       # .github/actions/setup-wasm-build so the four wasm-building
-      # workflows stay in lock-step. Skipped on the prebuilt fast path — that's
-      # where the Depot minutes AND the `ci-build` Swatinem rust-cache write to
-      # Depot both disappear.
+      # workflows stay in lock-step. Skipped on the prebuilt fast path.
       - name: Setup WASM build toolchain
         if: needs.changes.outputs.wasm_prebuilt != 'true'
         uses: ./.github/actions/setup-wasm-build
@@ -839,6 +830,22 @@ jobs:
       # the alias table in either direction must change the verdict.
       - name: Check loader hook specifier match gate regressions
         run: node --test scripts/check-loader-hook-specifier-match.test.mjs
+      # #3338: `expandToGeometryBearingIds` (a geometry-less `IfcElementAssembly`
+      # -> its `IfcRelAggregates` parts) is reached through exactly one
+      # production entry point, `cameraCallbacks.resolveHighlightIds`. #2531 and
+      # #2532 landed nine hours apart with no CI run containing both sides, and
+      # a fifth channel (the SDK/MCP `isolate()` call) carried the same gap
+      # until #3382. This gate scans every `isolateEntities(` call site under
+      # apps/viewer and apps/viewer-embed and fails on a new/unlisted channel
+      # or a listed one that lost its resolver routing.
+      - name: Check isolate() assembly-expansion routing
+        run: node scripts/check-isolate-expansion-routing.mjs
+      # Executable proof the guard above catches both failure modes it exists
+      # for -- an unlisted new channel calling isolateEntities( with raw ids,
+      # and a listed channel whose resolver call was dropped -- and does not
+      # fire on the compliant shapes each real allowlisted channel uses.
+      - name: Check isolate() assembly-expansion routing gate regressions
+        run: node --test scripts/check-isolate-expansion-routing.test.mjs
       # `degenerateReason` crosses the wasm boundary as an untyped string and is
       # cast to `ClashSolidDegenerateReason` on arrival, so TypeScript cannot see
       # a union that has drifted from the kernel -- `'malformed-operand'` was
@@ -1307,13 +1314,10 @@ jobs:
     name: Rust tests
     needs: changes
     if: needs.changes.outputs.rust == 'true'
-    # Stays on Depot for the uncapped, fast cargo cache (GitHub's free cache
-    # is 10 GB LRU and would thrash the Rust target dir). Right-sized 8→4
-    # cores: Depot bills minutes × (vCPU/2), so -8 is 4× and -4 is 2× the
-    # base rate — halving per-minute cost for ~1.5× wall-clock. Timeout
-    # bumped to absorb the slower wall-clock.
-    runs-on: depot-ubuntu-24.04-4
-    timeout-minutes: 28
+    # Standard GitHub runners keep routine Rust validation out of Depot's
+    # metered pool. The longer cap accommodates a cold GitHub cache restore.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1418,8 +1422,9 @@ jobs:
     needs: changes
     # PR-only — see viewer-e2e.
     if: needs.changes.outputs.geometry == 'true' && github.event_name == 'pull_request'
-    runs-on: depot-ubuntu-24.04-4
-    timeout-minutes: 45
+    # This high-volume PR gate must not consume metered runner minutes.
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

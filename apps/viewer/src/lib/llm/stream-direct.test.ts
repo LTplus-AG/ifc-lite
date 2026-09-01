@@ -128,3 +128,34 @@ test('streamOpenAiChat (Responses API) hits the /v1/responses endpoint for codex
   );
   assert.equal(capturedUrl, 'https://api.openai.com/v1/responses');
 });
+
+// The `acceptsSamplingParams` default was inverted (send only where flagged),
+// which changes the request body for every BYOK model and had no coverage.
+// Nothing else asserts what actually reaches the provider.
+test('sampling params are sent only for models flagged acceptsSamplingParams', async () => {
+  const bodyFor = async (model: string): Promise<Record<string, unknown>> => {
+    let captured: Record<string, unknown> = {};
+    await withMockFetch(
+      async (_input, init) => {
+        captured = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+        return sseResponse(['[DONE]']);
+      },
+      () => streamOpenAiChat('test-key', {
+        model,
+        messages: [{ role: 'user', content: 'hi' }],
+        onChunk: () => {},
+        onComplete: () => {},
+        onError: () => {},
+      } as unknown as Parameters<typeof streamOpenAiChat>[1]),
+    );
+    return captured;
+  };
+
+  // gpt-5.6-sol carries no flag, so it must not receive a temperature.
+  const reasoning = await bodyFor('gpt-5.6-sol');
+  assert.equal('temperature' in reasoning, false, 'reasoning models reject temperature with a 400');
+
+  // An id absent from the registry must fail closed the same way.
+  const unknown = await bodyFor('some/model-not-in-the-registry');
+  assert.equal('temperature' in unknown, false, 'an unknown model must not be sent sampling params');
+});

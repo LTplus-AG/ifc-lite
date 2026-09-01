@@ -23,13 +23,26 @@ impl Default for JsonOptions {
     }
 }
 
+/// Render an `f64` as a JSON `Value`, without the silent `null` that `serde_json`
+/// substitutes for a non-finite number (`Number::from_f64` returns `None` for
+/// NaN/±Infinity, and `json!`/`Value::from` map that to `Value::Null` — RFC 8259
+/// has no NaN/Infinity literal, but collapsing a *present* out-of-range measure to
+/// `null` is indistinguishable from the value being absent). A STEP `REAL` literal
+/// with an extreme exponent (e.g. `1.0E400`) parses to `f64::INFINITY` without
+/// erroring, so this is reachable from real (if adversarial) input, not only from
+/// a computed value. Falls back to the `f64::to_string()` form (`"inf"`/`"-inf"`/
+/// `"NaN"`) so the value survives as a string instead of vanishing.
+pub(crate) fn finite_json_number(n: f64) -> Value {
+    if n.is_finite() { json!(n) } else { json!(n.to_string()) }
+}
+
 /// Coerce a rendered property value to a typed JSON value using its IFC type tag.
 pub(crate) fn typed_value(p: &PropValue) -> Value {
     match p.value_type.as_str() {
         "IFCREAL" | "IFCINTEGER" | "IFCNUMBER" | "IFCLENGTHMEASURE" | "IFCAREAMEASURE"
         | "IFCVOLUMEMEASURE" | "IFCPOSITIVELENGTHMEASURE" | "IFCCOUNTMEASURE"
         | "IFCMASSMEASURE" | "IFCRATIOMEASURE" | "IFCNORMALISEDRATIOMEASURE" => {
-            p.value.parse::<f64>().map(|n| json!(n)).unwrap_or_else(|_| json!(p.value))
+            p.value.parse::<f64>().map(finite_json_number).unwrap_or_else(|_| json!(p.value))
         }
         "IFCBOOLEAN" | "IFCLOGICAL" => match p.value.as_str() {
             "true" => json!(true),
@@ -82,7 +95,7 @@ fn entity_to_json(e: &EntityRow, opts: &JsonOptions) -> Value {
                 let quants: Vec<Value> = qs
                     .quantities
                     .iter()
-                    .map(|q| json!({ "name": q.name, "value": q.value, "type": q.kind }))
+                    .map(|q| json!({ "name": q.name, "value": finite_json_number(q.value), "type": q.kind }))
                     .collect();
                 json!({ "name": qs.name, "quantities": quants })
             })
@@ -131,5 +144,38 @@ mod tests {
             })
         });
         assert!(has_typed_number, "expected at least one typed (number/bool) property value");
+    }
+
+    /// A STEP `REAL` literal with an extreme exponent (e.g.
+    /// `1.0E400`) parses to `f64::INFINITY` without erroring in the decoder, so
+    /// it is reachable from real (if adversarial) input, not just a computed
+    /// value. Before the fix, `json!(f64::INFINITY)` silently became JSON
+    /// `null` (`serde_json::Number::from_f64` returns `None` for a non-finite
+    /// float) — indistinguishable in the output from the quantity being
+    /// absent. The value must survive as a string instead of vanishing.
+    #[test]
+    fn a_non_finite_quantity_survives_instead_of_becoming_null() {
+        let ifc = "ISO-10303-21;\n\
+HEADER;\n\
+FILE_DESCRIPTION((''),'');\n\
+FILE_NAME('','',(''),(''),'','','');\n\
+FILE_SCHEMA(('IFC4'));\n\
+ENDSEC;\n\
+DATA;\n\
+#1=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n\
+#3=IFCUNITASSIGNMENT((#1));\n\
+#4=IFCPROJECT('0PROJECT0000000000000',$,'P',$,$,$,$,$,#3);\n\
+#5=IFCWALL('0WALL000000000000000A',$,'W',$,$,$,$,$,$);\n\
+#20=IFCQUANTITYLENGTH('Length',$,$,1.0E400);\n\
+#21=IFCELEMENTQUANTITY('0QTO00000000000000A',$,'Qto_WallBaseQuantities',$,$,(#20));\n\
+#22=IFCRELDEFINESBYPROPERTIES('0REL000000000000000A',$,$,$,(#5),#21);\n\
+ENDSEC;\n\
+END-ISO-10303-21;\n";
+        let s = export_json(ifc.as_bytes(), &JsonOptions::default());
+        let v: Value = serde_json::from_str(&s).expect("valid JSON");
+        let quantities = v[0]["quantitySets"][0]["quantities"].as_array().expect("quantities array");
+        let length = quantities.iter().find(|q| q["name"] == "Length").expect("Length quantity present");
+        assert!(!length["value"].is_null(), "an out-of-range REAL must not collapse to null");
+        assert_eq!(length["value"], json!("inf"));
     }
 }

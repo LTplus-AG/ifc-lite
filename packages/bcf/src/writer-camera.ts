@@ -85,6 +85,35 @@ function requireAspectRatioElement(aspectRatio: number | undefined, viewpointGui
 }
 
 /**
+ * Require a FINITE FieldOfView within BCF 3.0's `(0, 180)` exclusive facet and
+ * return the text `xsdDouble` will accept for it.
+ *
+ * v3_0/visinfo.xsd's `FieldOfView` simpleType is `xs:double` with
+ * `minExclusive value="0"` and `maxExclusive value="180"`. `xsdDouble` alone
+ * only rejects non-finite values (Infinity/-Infinity/NaN); it says nothing
+ * about a finite value that is merely out of range, so `0`, a negative number,
+ * or `180` and above walked straight through it and were emitted as-is --
+ * schema-invalid the same way an unset `AspectRatio` was before
+ * {@link requireAspectRatioElement} started refusing it. 2.1's own
+ * `FieldOfView` facet (`[45, 60]` inclusive) is deliberately NOT enforced
+ * here: its own schema annotation says "This limitation will be dropped in
+ * the next release and viewers should expect values outside this range in
+ * current implementations", so treating it as a hard constraint would reject
+ * legitimate 2.1 input the schema authors themselves disclaim.
+ */
+function requireFieldOfViewElement(fieldOfView: number, viewpointGuid: string): string {
+  const where = `viewpoint "${viewpointGuid}"`;
+  if (!(fieldOfView > 0 && fieldOfView < 180)) {
+    throw new Error(
+      `BCF 3.0 requires PerspectiveCamera/FieldOfView in (0, 180) exclusive (${where} has ` +
+        `${fieldOfView}). visinfo.xsd's FieldOfView simpleType declares minExclusive="0" and ` +
+        `maxExclusive="180"; set a value inside that range before writing a 3.0 file.`
+    );
+  }
+  return xsdDouble(fieldOfView, 'PerspectiveCamera/FieldOfView', where);
+}
+
+/**
  * Write perspective camera XML
  */
 export function writePerspectiveCamera(
@@ -94,8 +123,12 @@ export function writePerspectiveCamera(
 ): string {
   const aspectRatioElement = version === '3.0' ? requireAspectRatioElement(camera.aspectRatio, viewpointGuid) : '';
   const where = `viewpoint "${viewpointGuid}"`;
+  const fieldOfView =
+    version === '3.0'
+      ? requireFieldOfViewElement(camera.fieldOfView, viewpointGuid)
+      : xsdDouble(camera.fieldOfView, 'PerspectiveCamera/FieldOfView', where);
   return `\n  <PerspectiveCamera>${cameraVectors(camera, where)}
-    <FieldOfView>${xsdDouble(camera.fieldOfView, 'PerspectiveCamera/FieldOfView', where)}</FieldOfView>${aspectRatioElement}
+    <FieldOfView>${fieldOfView}</FieldOfView>${aspectRatioElement}
   </PerspectiveCamera>`;
 }
 

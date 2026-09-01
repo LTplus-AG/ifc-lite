@@ -176,10 +176,12 @@ export interface LLMModel {
   openaiApi?: 'chat' | 'responses';
   /**
    * Whether the model accepts the classic sampling parameters (`temperature`,
-   * `top_p`, `top_k`). Default: true. Set to `false` for models that reject
-   * them (Anthropic Claude Opus 4.7 and later — see
-   * https://platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-7).
-   * When `false`, the stream client omits these params from the request body.
+   * `top_p`, `top_k`). Defaults to false, because every current frontier model
+   * rejects them with a 400: Claude from Opus 4.7 on (see
+   * https://platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-7)
+   * and the GPT-5 reasoning family. Set it to `true` for a model that still
+   * takes a tuned temperature, and the stream client will send the params.
+   * Forgetting it costs a default temperature, not a failed request.
    */
   acceptsSamplingParams?: boolean;
 }

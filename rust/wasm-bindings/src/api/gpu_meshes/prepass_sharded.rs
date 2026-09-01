@@ -276,6 +276,11 @@ impl IfcAPI {
             void_rels: triples(void_spans),
             fills_rels: triples(fills_spans),
             aggregate_rels: triples(aggregate_spans),
+            // Not plumbed across this wasm_bindgen boundary (no
+            // rel-defines-by-type span param here yet): occurrences merged
+            // via this sharded-finalize path get no type-material fallback.
+            // The serial and columns-discovery paths (the common case) do.
+            defines_by_type: Vec::new(),
         };
         let index = {
             let slot = self

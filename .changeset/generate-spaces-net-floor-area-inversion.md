@@ -1,0 +1,5 @@
+---
+'@ifc-lite/create': patch
+---
+
+`generateSpacesFromWalls` (`ifc-lite generate-spaces` / `bim.spaces.generate`) no longer reports `NetFloorArea` larger than `GrossFloorArea` when `--boundary outer` (or `center`) is used. `addSpaceToStore` derives `NetFloorArea` from the emitted `OuterCurve` polygon's own area when a caller omits `netFloorArea`; the orchestrator passed only `grossFloorArea` (the centreline measure), assuming `OuterCurve` was always the inner (net) face — true only for the default `--boundary inner`. Under `outer`, `OuterCurve` is the outward-offset (larger) footprint, so the reported `NetFloorArea` came out bigger than `GrossFloorArea`, which `Qto_SpaceBaseQuantities` never allows. `generateSpacesFromWalls` now always computes the inner-face inset separately and passes its area as `netFloorArea`, independent of `boundaryMode`. The shared geometry helpers (`offsetRoomFootprint` and friends) moved unchanged to a new sibling module, `room-footprint-offset.ts`; the package's public exports are unchanged.

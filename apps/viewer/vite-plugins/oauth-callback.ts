@@ -22,6 +22,8 @@ const CALLBACK_PAGES: Record<string, string> = {
   '/oauth/dropbox/callback': '/oauth/dropbox/callback.html',
   // @ifc-lite/source-msgraph, REDIRECT_PATH in its src/auth.ts.
   '/oauth/msgraph/callback': '/oauth/msgraph/callback.html',
+  // BCF server connector, BCF_OAUTH_REDIRECT_PATH in src/services/bcf-server.ts.
+  '/oauth/bcf/callback': '/oauth/bcf/callback.html',
 };
 
 export function oauthCallbackRoutes(): Plugin {

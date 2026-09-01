@@ -158,6 +158,145 @@ describe('decodePly', () => {
     expect(chunk.colors![0]).toBeCloseTo(1.0, 2);
   });
 
+  it('decodes ascii xyz + rgb stored as float 0..1 without re-dividing by 255', () => {
+    // PLY has no single mandated colour encoding: `uchar` 0..255 is the
+    // overwhelming majority, but writers that declare `property float
+    // red/green/blue` mean 0..1 directly (CloudCompare, some photogrammetry
+    // exporters). Dividing an already-normalized 0.8 by 255 crushes every
+    // such file's colours to near-black.
+    const header =
+      'ply\n' +
+      'format ascii 1.0\n' +
+      'element vertex 1\n' +
+      'property float x\nproperty float y\nproperty float z\n' +
+      'property float red\nproperty float green\nproperty float blue\n' +
+      'end_header\n';
+    const chunk = decodePly(enc.encode(header + '1 2 3 1 0.5 0.25\n'));
+    expect(chunk.colors).toBeDefined();
+    expect(chunk.colors![0]).toBeCloseTo(1.0, 5);
+    expect(chunk.colors![1]).toBeCloseTo(0.5, 5);
+    expect(chunk.colors![2]).toBeCloseTo(0.25, 5);
+  });
+
+  it('decodes binary xyz + rgb stored as float 0..1 without re-dividing by 255', () => {
+    const header =
+      'ply\n' +
+      'format binary_little_endian 1.0\n' +
+      'element vertex 1\n' +
+      'property float x\nproperty float y\nproperty float z\n' +
+      'property float red\nproperty float green\nproperty float blue\n' +
+      'end_header\n';
+    const headerBytes = enc.encode(header);
+    const body = new ArrayBuffer(24);
+    const view = new DataView(body);
+    view.setFloat32(0, 0, true);
+    view.setFloat32(4, 0, true);
+    view.setFloat32(8, 0, true);
+    view.setFloat32(12, 1, true);
+    view.setFloat32(16, 0.5, true);
+    view.setFloat32(20, 0.25, true);
+    const buf = new Uint8Array(headerBytes.length + body.byteLength);
+    buf.set(headerBytes, 0);
+    buf.set(new Uint8Array(body), headerBytes.length);
+
+    const chunk = decodePly(buf);
+    expect(chunk.colors![0]).toBeCloseTo(1.0, 5);
+    expect(chunk.colors![1]).toBeCloseTo(0.5, 5);
+    expect(chunk.colors![2]).toBeCloseTo(0.25, 5);
+  });
+
+  it('decodes float RGB stored as 0..255 with one file-wide range decision', () => {
+    const header =
+      'ply\n' +
+      'format ascii 1.0\n' +
+      'element vertex 2\n' +
+      'property float x\nproperty float y\nproperty float z\n' +
+      'property float red\nproperty float green\nproperty float blue\n' +
+      'end_header\n';
+    const chunk = decodePly(enc.encode(header + '0 0 0 255 128 64\n1 1 1 1 0.5 0\n'));
+
+    // The second point's dark 0..255 channels deliberately sit in [0, 1].
+    // They must follow the first point's byte-range evidence, not be treated
+    // as a separate normalized triple.
+    expect(chunk.colors).toBeDefined();
+    expect(chunk.colors![0]).toBeCloseTo(1, 6);
+    expect(chunk.colors![1]).toBeCloseTo(128 / 255, 6);
+    expect(chunk.colors![3]).toBeCloseTo(1 / 255, 6);
+    expect(chunk.colors![4]).toBeCloseTo(0.5 / 255, 6);
+  });
+
+  it('applies the same float 0..255 policy to binary PLY', () => {
+    const header =
+      'ply\n' +
+      'format binary_little_endian 1.0\n' +
+      'element vertex 2\n' +
+      'property float x\nproperty float y\nproperty float z\n' +
+      'property float red\nproperty float green\nproperty float blue\n' +
+      'end_header\n';
+    const headerBytes = enc.encode(header);
+    const body = new ArrayBuffer(48);
+    const view = new DataView(body);
+    for (const [index, value] of [0, 0, 0, 255, 128, 64, 1, 1, 1, 1, 0.5, 0].entries()) {
+      view.setFloat32(index * 4, value, true);
+    }
+    const buffer = new Uint8Array(headerBytes.length + body.byteLength);
+    buffer.set(headerBytes);
+    buffer.set(new Uint8Array(body), headerBytes.length);
+
+    const chunk = decodePly(buffer);
+    expect(chunk.colors![0]).toBeCloseTo(1, 6);
+    expect(chunk.colors![1]).toBeCloseTo(128 / 255, 6);
+    expect(chunk.colors![3]).toBeCloseTo(1 / 255, 6);
+    expect(chunk.colors![4]).toBeCloseTo(0.5 / 255, 6);
+  });
+
+  it('decodes ascii xyz + rgb stored as ushort 0..65535 without dividing by 255', () => {
+    // Many Leica/FARO exports and CloudCompare's 16-bit RGB option declare
+    // `property ushort red/green/blue` (0..65535, not 0..255). Dividing
+    // those by 255 and clamping saturates every channel to 1.0 -- every
+    // point renders white instead of its real colour, the same bug class
+    // as the float case but on the opposite (too-large) side.
+    const header =
+      'ply\n' +
+      'format ascii 1.0\n' +
+      'element vertex 1\n' +
+      'property float x\nproperty float y\nproperty float z\n' +
+      'property ushort red\nproperty ushort green\nproperty ushort blue\n' +
+      'end_header\n';
+    const chunk = decodePly(enc.encode(header + '1 2 3 65535 32768 0\n'));
+    expect(chunk.colors).toBeDefined();
+    expect(chunk.colors![0]).toBeCloseTo(1.0, 4);
+    expect(chunk.colors![1]).toBeCloseTo(32768 / 65535, 4);
+    expect(chunk.colors![2]).toBeCloseTo(0.0, 4);
+  });
+
+  it('decodes binary xyz + rgb stored as ushort 0..65535 without dividing by 255', () => {
+    const header =
+      'ply\n' +
+      'format binary_little_endian 1.0\n' +
+      'element vertex 1\n' +
+      'property float x\nproperty float y\nproperty float z\n' +
+      'property ushort red\nproperty ushort green\nproperty ushort blue\n' +
+      'end_header\n';
+    const headerBytes = enc.encode(header);
+    const body = new ArrayBuffer(18);
+    const view = new DataView(body);
+    view.setFloat32(0, 0, true);
+    view.setFloat32(4, 0, true);
+    view.setFloat32(8, 0, true);
+    view.setUint16(12, 65535, true);
+    view.setUint16(14, 32768, true);
+    view.setUint16(16, 0, true);
+    const buf = new Uint8Array(headerBytes.length + body.byteLength);
+    buf.set(headerBytes, 0);
+    buf.set(new Uint8Array(body), headerBytes.length);
+
+    const chunk = decodePly(buf);
+    expect(chunk.colors![0]).toBeCloseTo(1.0, 4);
+    expect(chunk.colors![1]).toBeCloseTo(32768 / 65535, 4);
+    expect(chunk.colors![2]).toBeCloseTo(0.0, 4);
+  });
+
   it('throws when binary body is short', () => {
     const truncated = buildBinaryPlyLe([[0, 0, 0], [1, 1, 1]], false);
     // chop the last 4 bytes — now we're missing one float of point 2

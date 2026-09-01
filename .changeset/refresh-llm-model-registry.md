@@ -1,0 +1,29 @@
+---
+"@ifc-lite/viewer": minor
+---
+
+Refresh the LLM model registry, and stop the guard that should have caught its drift from lying.
+
+**BYOK models.** Anthropic is now Opus 5, Opus 4.8, Fable 5 and Haiku 4.5; OpenAI is the GPT-5.6 family (Sol, Terra, Luna) plus GPT-5.3 Codex, which stays because there is no 5.6 Codex. Sonnet 5 keeps the mid tier at $2/$10, between the Opus entries and Haiku 4.5. `claude-haiku-4-5-20251001` becomes `claude-haiku-4-5`: both resolve, but the dated form pins one snapshot while the alias is the id the docs tell you to use, and every other entry here is unsuffixed.
+
+**A retired id lands somewhere sensible.** A model selection persists in localStorage, so dropping an id silently reassigns whoever held it to `DEFAULT_BYOK_MODEL`. That default is Opus 5, so a Haiku user would have moved from $1/$5 to $5/$25 per MTok without being told, on their own key, and an OpenAI user would have landed on an Anthropic model and been asked for a key they never needed.
+
+`MODEL_ID_MIGRATIONS` covers both cases, and the two kinds of entry are worth keeping straight. `claude-haiku-4-5-20251001` to `claude-haiku-4-5` is the same model under a new name. `claude-sonnet-4-6` to `claude-sonnet-5`, and the GPT-5.4/5.5 entries to their 5.6 counterparts, are a retired model's nearest surviving neighbour: a different model, chosen to stay with the same provider and price tier. `getModelById`, `coerceModelForEntitlement` and the playground's validity check all resolve through it, and an id with no migration still falls back to the default, which is correct and asserted.
+
+**Output ceilings were sized for models that do not think.** Opus 4.7/4.8 run without thinking when `thinking` is omitted; Opus 5 runs adaptive. Making Opus 5 the default therefore started spending a fixed ceiling on reasoning at two call sites that pass no `thinking` and never budgeted for it. `streamAnthropicChat` goes 8,192 to 32,000 (it streams, so it can afford to be generous) and the MCP playground loop goes 4,096 to 16,384, which stays under the SDK's non-streaming timeout threshold of about 21,333. Because `display` defaults to `omitted`, those tokens were billed and invisible while the answer truncated.
+
+**`acceptsSamplingParams` now defaults to false.** It was an escape hatch for two models. After this refresh every model but Haiku 4.5 rejects `temperature`/`top_p`/`top_k` with a 400, so the default pointed at the minority case and the next model added would have 400'd unless someone remembered an opt-out line the file gave no cue about. Seven opt-out lines deleted, Haiku carries the single `true`. The decision moved into `sendsSamplingParams()` so both providers share one entry point, and it fails closed on an unknown id. Forgetting the flag now costs a default temperature instead of a failed request.
+
+**`playground-model.ts` was defaulting to `claude-sonnet-4-6`,** which this change removes from the list. Nothing validated that constant even though `isValidAnthropicModel()` sits eight lines below it, so a dead id went to the API as-is. The default is now checked against the registry and degrades to the first Anthropic model.
+
+**The OpenRouter catalog guard was passing on the wrong data.** `readConfiguredFreeModels()` prefers `process.env` over `.env.local`, and the capabilities test above it set `VITE_LLM_FREE_MODELS` to its own fixtures without restoring them. The catalog check therefore validated those fixtures, and passed only because they happened to be real model ids. Both tests now restore what they mutate. Verified by pointing the guard at a bogus id and watching it fail. Worth being plain about the limit: no workflow sets `IFC_LITE_VERIFY_OPENROUTER_MODELS` or `VITE_LLM_FREE_MODELS`, and CI has no `.env.local`, so both guards still skip in automation. This makes them correct for anyone who runs them by hand; it does not make them run.
+
+**Free (proxied) models** move from `qwen/qwen3-coder` + `mistralai/devstral-2512` to `z-ai/glm-5.3-flash`, `qwen/qwen3.7-flash` and `qwen/qwen3-coder-next`. That list lives in env, so it is not visible in this diff. Both old models are still served; qwen3-coder dates from July 2025 and `qwen3-coder-next` is its successor at 40% of the input price. All three new ones cost less per token than either model they replace, two of the three take images, and all three carry tool-use.
+
+Deliberately not in this change, all pre-existing and all now more likely to be hit:
+
+- A truncated or refused Anthropic turn is not surfaced. `streamAnthropicChat` forwards Anthropic's raw `max_tokens` while `ChatPanel` tests only the OpenAI spelling `length`, and a refusal arrives as HTTP 200 with empty content, so both render as a finished or blank answer. Fixing it means touching the chat state machine: `finalizeAssistantMessage` is the only thing on the success path that returns `chatStatus` to idle, so skipping it on empty text locks the composer, and enabling Continue after a zero-text truncation continues an unrelated earlier turn. That belongs in its own change, with tests, which this area does not currently have.
+- The playground tool-call cap sets a counter it never clears, so once tripped every later turn re-enters the cap branch. The loop has no hard iteration bound.
+- `contextWindow` feeds the per-turn history budget at `ChatPanel.tsx:666`, where `MAX_RECENT_MESSAGES` only applies inside the compaction loop, so the larger windows raise how much transcript each turn ships. This already shipped: Opus 4.7 was the default BYOK model at 1M.
+- `BYOK_MODELS` has no equivalent of the free list's catalog guard, which is why Sonnet 4.6 could sit in the picker after it was gone.
+- `claude-fable-5` shares the `$$$` badge with Opus 5 despite costing exactly twice as much, which a three-tier cost scale cannot express.

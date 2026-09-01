@@ -18,9 +18,11 @@ function square(x: number, y: number, size: number): Pt[] {
   return [[x, y], [x + size, y], [x + size, y + size], [x, y + size]];
 }
 
-/** A draft room whose emit boundary is inset from its centreline outline. */
-function room(outline: Pt[], boundary: Pt[] = outline): DraftRoom {
-  return { outline, boundary };
+/** A draft room whose emit boundary is inset from its centreline outline.
+ *  `inner` (the net face used for NetFloorArea) defaults to the outline
+ *  itself, matching a room with no wall-thickness data. */
+function room(outline: Pt[], boundary: Pt[] = outline, inner: Pt[] = outline): DraftRoom {
+  return { outline, boundary, inner };
 }
 
 describe('floorToFloorHeight', () => {
@@ -78,6 +80,21 @@ describe('planStoreySpaces', () => {
     const { planned } = planStoreySpaces([room(outline, boundary)], [], 3);
     assert.deepEqual(planned[0].OuterCurve, boundary, 'the inset face is what gets created');
     assert.equal(planned[0].grossFloorArea, 16, 'the area stays on the centreline');
+  });
+
+  it('measures NetFloorArea on the INNER face, never the emitted OUTER boundary', () => {
+    // Emitting the "outer" boundary as OuterCurve must not make NetFloorArea
+    // the outer-face area — that would put NetFloorArea above GrossFloorArea,
+    // an area a space physically cannot have (twin of #3656's inversion bug).
+    const outline = square(0, 0, 4);          // 16 m² on the centreline (gross)
+    const outerFace = square(-0.1, -0.1, 4.2); // 17.64 m² outer face (what gets emitted)
+    const innerFace = square(0.1, 0.1, 3.8);   // 14.44 m² inner face (net)
+    const rooms = [{ outline, boundary: outerFace, inner: innerFace }];
+    const { planned } = planStoreySpaces(rooms, [], 3);
+    assert.deepEqual(planned[0].OuterCurve, outerFace, 'the outer face is what gets created');
+    assert.equal(planned[0].grossFloorArea, 16);
+    assert.equal(planned[0].netFloorArea, 14.44, 'net stays on the inner face');
+    assert.ok(planned[0].netFloorArea < planned[0].grossFloorArea, 'net must not exceed gross');
   });
 
   it('skips a room whose centroid sits inside an already-authored space', () => {

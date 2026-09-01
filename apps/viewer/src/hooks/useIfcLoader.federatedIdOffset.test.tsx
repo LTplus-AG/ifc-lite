@@ -271,8 +271,8 @@ describe('useIfcLoader — the federation id-offset WRITE side (producer half of
     assert.equal(seededOffset, 0, 'sanity: the seed must be the FIRST registration, or the offset below is not the one this test controls');
 
     // Chosen so `local`, `local + offset`, and `local + 2*offset` are three
-    // unambiguous numbers: offset will be 1001 (seed's maxExpressId 1000 + 1
-    // gap), local is 42, so correct = 1043, doubled-defect = 2044, unshifted = 42.
+    // unambiguous numbers: offset will be 1_001_001 (seed's maxExpressId 1000
+    // + 1 gap + OVERLAY_ID_HEADROOM 1_000_000), local is 42.
     const localExpressId = 42;
     const file = glbFile('federated-fixture.glb', localExpressId);
 
@@ -290,7 +290,7 @@ describe('useIfcLoader — the federation id-offset WRITE side (producer half of
 
     const mesh = model.geometryResult!.meshes[0]!;
 
-    assert.equal(model.idOffset, 1001, 'the registered offset itself must be 1001 (seed maxExpressId 1000 + 1 gap) — if this fails, the seed setup changed, not the code under test');
+    assert.equal(model.idOffset, 1_001_001, 'the registered offset itself must be 1_001_001 (seed maxExpressId 1000 + 1 gap + OVERLAY_ID_HEADROOM 1_000_000) — if this fails, the seed setup changed, not the code under test');
 
     // The three-direction discrimination this file exists to provide:
     assert.equal(

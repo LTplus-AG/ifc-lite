@@ -62,7 +62,12 @@ export function createGeometry(
   const node = new Y.Map<unknown>();
   node.set(GEOMETRY_KEY.TYPE, opts.type);
   node.set(GEOMETRY_KEY.SOURCE, opts.source);
-  if (opts.blobHash) node.set(GEOMETRY_KEY.BLOB_HASH, opts.blobHash);
+  // `!== undefined`, not a truthiness check: an explicit `blobHash: ''`
+  // is a value the caller supplied and must survive, the same contract
+  // `upsertGeometry` already honours below. A truthy guard here silently
+  // drops it before the doc even exists to round-trip from (#1031-adjacent —
+  // see round-trip.test.ts).
+  if (opts.blobHash !== undefined) node.set(GEOMETRY_KEY.BLOB_HASH, opts.blobHash);
 
   const params = new Y.Map<unknown>();
   if (opts.params) {

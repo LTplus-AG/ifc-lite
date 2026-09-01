@@ -21,6 +21,8 @@
       "@ifc-lite/sdk": ["../../packages/sdk/src"],
       "@ifc-lite/lens": ["../../packages/lens/src"],
       "@ifc-lite/bcf": ["../../packages/bcf/src"],
+      "@ifc-lite/bcf-api": ["../../packages/bcf-api/src"],
+      "@ifc-lite/oauth-pkce": ["../../packages/oauth-pkce/src"],
       "@ifc-lite/mutations": ["../../packages/mutations/src"],
       "@ifc-lite/drawing-2d": ["../../packages/drawing-2d/src"],
       "@ifc-lite/server-client": ["../../packages/server-client/src"],

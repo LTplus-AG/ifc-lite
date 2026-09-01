@@ -27,32 +27,29 @@
  * the federation anchored on.
  *
  * The proved enclosed volume (#1993) rides on `MeshData.geometryVolume` from
- * that same pass, and is the one fingerprint that does NOT survive that trip:
- * the alignment rescales, and no re-measurement is available on this side. It
- * is therefore withheld for a re-baked model rather than re-derived — see
- * `geometryVolumesSurviveAlignment`.
+ * that same pass, and is the one fingerprint that does NOT survive a federation
+ * re-bake (the alignment rescales, and there is no re-measurement on this side),
+ * so it is withheld rather than re-derived — see `geometryVolumesSurviveAlignment`.
  *
  * Scope: every entity that produced at least one mesh, PLUS every `IfcProduct`
  * with a GlobalId — see `compareScope.ts` for why that second half exists and
  * where its line is drawn. The mesh-only enumeration this widens made "did it
  * change?" quietly mean "did a renderable thing change?", so a geometry-less
- * `IfcElementAssembly` could have its attributes rewritten, and a geometry-less
- * `IfcSite` could be deleted outright, with the panel reporting neither.
- * Data-only edits on meshed entities were, and remain, detected via the data
- * hash.
+ * `IfcElementAssembly` could have its attributes rewritten, or a geometry-less
+ * `IfcSite` deleted outright, with the panel reporting neither.
  *
  * A product with no mesh carries, in place of a WASM geometry hash, a
- * fingerprint of its COMPOSED WORLD PLACEMENT (`worldPlacement.ts`). Leaving it
- * with no geometry hash at all made the whole geometry channel silent for that
- * population, and an entire re-georeferenced `IfcSite` — moved 40 m, turned 60
- * degrees, subtree and all — was reported as unchanged. It must be the composed
- * transform rather than the local placement: re-georeferencing rewrites the
- * placement *expression* of objects that did not move, and flagging those cries
- * wolf on every corrected model.
+ * fingerprint of its COMPOSED WORLD PLACEMENT (`worldPlacement.ts`) — leaving it
+ * with none at all silenced the whole geometry channel for that population (a
+ * re-georeferenced `IfcSite`, moved and rotated, read as unchanged). It must be
+ * the composed transform, not the local one: re-georeferencing rewrites the
+ * placement *expression* of objects that did not move.
  *
- * The data fingerprint also carries the entity's RESOLVED MATERIAL NAMES,
- * through every `IfcMaterial*` indirection. Material was in no channel at all,
- * so re-specifying an element moved nothing.
+ * The data fingerprint also carries the entity's RESOLVED MATERIAL NAMES
+ * (through every `IfcMaterial*` indirection) and, for a Qto_ Length/Area/Volume
+ * quantity, the value SCALED TO BASE SI (`quantitySiScale`) rather than the raw
+ * project-unit number — so a model re-authored in a different length unit, with
+ * no physical quantity actually changed, does not read as modified.
  */
 
 import {
@@ -65,9 +62,11 @@ import { RelationshipType } from '@ifc-lite/data';
 import {
   extractAllEntityAttributes,
   extractAllMaterialsOnDemand,
+  extractProjectUnits,
   extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
-  type IfcDataStore,
+  quantitySiScale,
+  type IfcDataStore, type ProjectUnits,
 } from '@ifc-lite/parser';
 import { lensMaterialNames } from '../lens-material-names.js';
 import type { EntityWorldAabb, MeshData } from '@ifc-lite/geometry';
@@ -97,14 +96,12 @@ export interface CompareRef {
    * `setColorOverrides` on this id is a no-op and hiding it suppresses nothing.
    * The overlay needs that distinction: its rule for a modified element is
    * "colour the head copy, hide the base copy so the two do not z-fight", and
-   * that rests on the head copy being drawable. See `overlay.ts`.
-   *
-   * Distinct from `geometryHash === undefined`, which is also what a meshed
-   * entity carries when hashing is off — that entity is still drawn.
+   * that rests on the head copy being drawable (`overlay.ts`). Distinct from
+   * `geometryHash === undefined`, also true of a meshed entity when hashing is
+   * off — that entity is still drawn.
    *
    * OPTIONAL and read as "drawable unless explicitly `false`": a hand-built
-   * ref (tests, older call sites) keeps the pre-existing behaviour rather than
-   * being demoted to invisible by omission.
+   * ref (tests, older call sites) keeps the pre-existing behaviour.
    */
   meshed?: boolean;
 }
@@ -194,6 +191,7 @@ export async function buildEntityFingerprints(
   // alignment is a caller whose model was never re-baked, and defaulting to
   // "believe them" keeps the flag a statement about the one case that needs it.
   const volumesTrusted = model.geometryVolumesTrusted !== false;
+  const units = extractProjectUnits(store.source, store.entityIndex); // for quantitySiScale
 
   // local express id → first geometry hash seen for it (may be undefined when
   // hashing was disabled or the WASM build predates it — data diff still works)
@@ -310,7 +308,7 @@ export async function buildEntityFingerprints(
     // the 64-bit data hash cannot. Both are computed from the SAME input
     // object - a sub-hash over a different projection would stop being a
     // collision guard and start rejecting genuine re-export matches.
-    const dataInput = buildDataInput(store, localId, ifcType);
+    const dataInput = buildDataInput(store, localId, ifcType, units);
 
     // The box goes on ONLY when the pass produced one: the engine's contract is
     // that a missing box is `undefined`, and a NaN-bearing object would pass
@@ -356,6 +354,7 @@ function buildDataInput(
   store: IfcDataStore,
   localId: number,
   ifcType: string,
+  units: ProjectUnits, // scales Qto_ Length/Area/Volume values to base SI
 ): DataFingerprintInput {
   const predefinedType = extractAllEntityAttributes(store, localId).find(
     (attribute) => attribute.name === 'PredefinedType',
@@ -400,7 +399,8 @@ function buildDataInput(
       name: set.name,
       quantities: set.quantities
         .filter((quantity) => !isGeometricDataName(quantity.name))
-        .map((quantity) => ({ name: quantity.name, value: roundQuantity(quantity.value) })),
+        // Scaled to base SI, then rounded (`quantitySiScale`/`roundQuantity`).
+        .map((quantity) => ({ name: quantity.name, value: roundQuantity(quantity.value * quantitySiScale(quantity, units)) })),
     }))
     .filter((set) => set.quantities.length > 0);
 

@@ -407,6 +407,57 @@ describe('BCF 3.0 AspectRatio', () => {
 });
 
 /**
+ * `FieldOfView` is a facet-bearing simple type in BOTH versions -- v3_0/visinfo.xsd
+ * restricts it to `(0, 180)` exclusive -- yet, unlike `AspectRatio` right above,
+ * nothing on the write side ever checked the facet. "rejects a value outside a
+ * schema facet range" above only proves xmllint itself enforces the range on
+ * hand-mutated XML; it never asks the writer to refuse the value in the first
+ * place, so `writeBCF` happily emitted `<FieldOfView>0</FieldOfView>` or
+ * `<FieldOfView>200</FieldOfView>` -- a finite, well-formed `xs:double` that
+ * every other guard in this file (`xsdDouble`, the non-finite sweep) waves
+ * through, and that a 3.0 archive fails schema validation for. Same policy as
+ * `requireAspectRatioElement`: refuse rather than silently emit an archive a
+ * conforming BCF 3.0 reader may reject.
+ */
+describe('BCF 3.0 FieldOfView range', () => {
+  it('refuses a non-positive or >=180 FieldOfView rather than emitting an invalid archive', async () => {
+    for (const bad of [0, -10, 180, 200]) {
+      const topic = maximalTopic();
+      topic.viewpoints[0].perspectiveCamera!.fieldOfView = bad;
+      const project: BCFProject = { version: '3.0', topics: new Map([[TOPIC_GUID, topic]]) };
+      await expect(writeBCF(project)).rejects.toThrow(/FieldOfView/);
+    }
+  });
+
+  it('accepts the open interval boundaries a real fixture would sit just inside', async () => {
+    for (const good of [0.001, 90, 179.999]) {
+      const topic = maximalTopic();
+      topic.viewpoints[0].perspectiveCamera!.fieldOfView = good;
+      const project: BCFProject = { version: '3.0', topics: new Map([[TOPIC_GUID, topic]]) };
+      const entries = await writeAndUnzip(project);
+      const xml = entries.get(`${TOPIC_GUID}/Viewpoint_${VIEWPOINT_GUID}.bcfv`)!;
+      const { valid, messages } = await validate('3.0', 'visinfo.xsd', xml);
+      expect(messages.join('\n')).toBe('');
+      expect(valid).toBe(true);
+    }
+  });
+
+  it('does not restrict BCF 2.1, whose [45,60] facet the schema itself says will be dropped', async () => {
+    // v2_1/visinfo.xsd's own annotation on FieldOfView: "This limitation will
+    // be dropped in the next release and viewers should expect values outside
+    // this range in current implementations." Enforcing it here would reject
+    // legitimate 2.1 input the schema authors themselves disclaim.
+    const topic = maximalTopic();
+    topic.viewpoints[0].perspectiveCamera!.fieldOfView = 90;
+    const project: BCFProject = { version: '2.1', topics: new Map([[TOPIC_GUID, topic]]) };
+    const entries = await writeAndUnzip(project);
+    expect(entries.get(`${TOPIC_GUID}/Viewpoint_${VIEWPOINT_GUID}.bcfv`)).toContain(
+      '<FieldOfView>90</FieldOfView>'
+    );
+  });
+});
+
+/**
  * FINITENESS is the property, not sign and not schema-conformance.
  *
  * `AspectRatio` was guarded with `!(aspectRatio > 0)`, and `Infinity > 0` is

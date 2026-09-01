@@ -209,6 +209,89 @@ describe('applyIfcxOverlay', () => {
     expect(materials?.toArray()).toEqual([{ materialId: 'concrete' }]);
   });
 
+  // Two ops delivered as SEPARATE `applyIfcxOverlay` calls — the shape a
+  // per-op replicated log or a sequence of branch-merge layers arrives
+  // in — must converge to the same final state regardless of delivery
+  // order, the same convergence contract the intra-file "last opinion
+  // wins" tests above already pin. Before this test, a delete-op call
+  // purged the path entirely from `entitiesMap`, so a later, unrelated
+  // set-op call saw `hasEntity() === false` and read that as "brand new",
+  // silently resurrecting the entity via `createNodeEntity` with none of
+  // its prior state and no memory of the deletion at all — order A
+  // (delete then set) ended with the entity alive, order B (set then
+  // delete) ended with it gone.
+  it('a delete-op and an unrelated set-op on the same path converge regardless of call order', () => {
+    const deleteOp = layer([{ path: 'wall', attributes: { [IFCLITE_ATTR.DELETED]: true } }]);
+    const setOp = layer([{ path: 'wall', attributes: { 'ifclite::name': 'from-set-op' } }]);
+    const seedWall = (doc: Y.Doc): void => {
+      doc.transact(() => {
+        createEntity(doc, 'wall', { ifcClass: 'IfcWall' });
+        setAttribute(doc, 'wall', 'ifclite::tag', 'base-tag');
+      });
+    };
+
+    const deleteThenSet = createCollabDoc({ gc: false });
+    seedWall(deleteThenSet);
+    applyIfcxOverlay(deleteThenSet, deleteOp);
+    applyIfcxOverlay(deleteThenSet, setOp);
+
+    const setThenDelete = createCollabDoc({ gc: false });
+    seedWall(setThenDelete);
+    applyIfcxOverlay(setThenDelete, setOp);
+    applyIfcxOverlay(setThenDelete, deleteOp);
+
+    // The op that carries the delete opinion must win regardless of when
+    // the unrelated set-op is delivered: the entity stays deleted.
+    expect(entitiesMap(deleteThenSet).has('wall')).toBe(false);
+    expect(entitiesMap(setThenDelete).has('wall')).toBe(false);
+  });
+
+  // Control: a genuinely new path (never deleted) is unaffected by the
+  // tombstone bookkeeping the fix above adds — it still creates normally.
+  it('control: a genuinely new path is still created across separate overlay calls', () => {
+    const doc = createCollabDoc({ gc: false });
+    applyIfcxOverlay(doc, layer([{ path: 'door', attributes: { 'ifclite::name': 'Door A' } }]));
+    applyIfcxOverlay(doc, layer([{ path: 'door', attributes: { 'ifclite::tag': 'still-fine' } }]));
+
+    expect(getAttribute(doc, 'door', 'ifclite::name')).toBe('Door A');
+    expect(getAttribute(doc, 'door', 'ifclite::tag')).toBe('still-fine');
+  });
+
+  // Control: an explicit revive (`ifclite::deleted: false`) in a later,
+  // separate call still resurrects a path an earlier call deleted.
+  it('control: an explicit revive in a later call still resurrects a deleted path', () => {
+    const doc = createCollabDoc({ gc: false });
+    doc.transact(() => createEntity(doc, 'wall', { ifcClass: 'IfcWall' }));
+
+    applyIfcxOverlay(doc, layer([{ path: 'wall', attributes: { [IFCLITE_ATTR.DELETED]: true } }]));
+    expect(entitiesMap(doc).has('wall')).toBe(false);
+
+    applyIfcxOverlay(
+      doc,
+      layer([
+        { path: 'wall', attributes: { [IFCLITE_ATTR.DELETED]: false, 'ifclite::name': 'back-again' } },
+      ]),
+    );
+    expect(entitiesMap(doc).has('wall')).toBe(true);
+    expect(getAttribute(doc, 'wall', 'ifclite::name')).toBe('back-again');
+  });
+
+  it('does not carry an old overlay tombstone across seedFromIfcx reset', () => {
+    const doc = createCollabDoc({ gc: false });
+    doc.transact(() => createEntity(doc, 'wall', { ifcClass: 'IfcWall' }));
+    applyIfcxOverlay(doc, layer([{ path: 'wall', attributes: { [IFCLITE_ATTR.DELETED]: true } }]));
+    expect(entitiesMap(doc).has('wall')).toBe(false);
+
+    // `reset` discards the prior entity universe. A later layer that creates
+    // a path with the same name belongs to the new snapshot, not the deleted
+    // one, and must not be mistaken for an implicit resurrection.
+    seedFromIfcx(doc, layer([]), { reset: true });
+    applyIfcxOverlay(doc, layer([{ path: 'wall', attributes: { 'ifclite::name': 'fresh wall' } }]));
+
+    expect(entitiesMap(doc).has('wall')).toBe(true);
+    expect(getAttribute(doc, 'wall', 'ifclite::name')).toBe('fresh wall');
+  });
+
   // The overlay applier and the seeder share a node decoder, so the
   // decoder's new tombstone awareness must stay on the overlay side.
   // `seedFromIfcx` never interpreted `ifclite::deleted` and must go on

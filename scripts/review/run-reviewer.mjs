@@ -283,6 +283,87 @@ function remedyFor(reason) {
   return 'MODEL_ERROR. REMEDY: read the captured stderr below.';
 }
 
+/**
+ * Run the reviewer, falling back to a SECOND credential when the first is the
+ * thing that failed.
+ *
+ * WHY THIS EXISTS. The lane rests on one manually-refreshed subscription token.
+ * It expired once already, and the day it did the lane was dark while every
+ * per-PR check looked like an ordinary transient red. CodeRabbit covers about a
+ * third of this repository's volume, so a single dead credential means most PRs
+ * get no review at all.
+ *
+ * ONLY TWO REASONS RETRY, and the list is deliberately short:
+ *
+ *   AUTH_FAILED    - this credential is dead. A different one may not be.
+ *   QUOTA_DRAINED  - this POOL is empty. A different account has its own pool.
+ *
+ * Everything else -- MODEL_ERROR, EMPTY_RESPONSE, BAD_ENVELOPE -- is a property
+ * of the request or the model, not of the credential, and retrying it on a
+ * second account would burn a second pool to get the same answer. Worse, it
+ * would turn a deterministic failure into an intermittent one, which is harder
+ * to diagnose than the failure itself.
+ *
+ * THE FALLBACK IS OPTIONAL. With no second token configured this behaves exactly
+ * as before, and says so, because a silent single-credential setup that looks
+ * like a redundant one is the failure this whole function is about.
+ *
+ * @param {{ prompt: string, model: string, tokens: {token: string, label: string}[], spawn: Function }} o
+ */
+export function runReviewerWithFailover({ prompt, model, tokens, spawn }) {
+  if (!Array.isArray(tokens) || tokens.length === 0) {
+    throw new RunReviewerError('AUTH_MISSING', 'No usable credential was resolved.');
+  }
+  const RETRYABLE = new Set(['AUTH_FAILED', 'QUOTA_DRAINED']);
+  let last;
+  for (const [i, t] of tokens.entries()) {
+    try {
+      const r = runReviewer({ prompt, model, token: t.token, spawn });
+      if (i > 0) console.log(`auth: succeeded on ${t.label} after ${tokens[0].label} failed.`);
+      return r;
+    } catch (err) {
+      last = err;
+      const more = i + 1 < tokens.length;
+      if (!(err instanceof RunReviewerError) || !RETRYABLE.has(err.reason) || !more) throw err;
+      console.log(`auth: ${t.label} failed with ${err.reason}; trying ${tokens[i + 1].label}.`);
+    }
+  }
+  throw last;
+}
+
+/**
+ * Every credential this run may use, in order, with a LABEL that is safe to
+ * print. The value is never logged -- only which slot it came from -- because a
+ * secret in a log is a leaked secret and this repository is public.
+ */
+export function resolveTokens(env) {
+  const out = [];
+  const seen = new Set();
+  for (const [name, label] of [
+    ['CLAUDE_CODE_OAUTH_TOKEN', 'the primary credential'],
+    ['CLAUDE_CODE_OAUTH_TOKEN_2', 'the fallback credential'],
+  ]) {
+    const raw = env[name];
+    if (raw === undefined || String(raw).trim() === '') continue;
+    const { token, note } = checkToken(raw);
+    // THE SAME SECRET IN BOTH SLOTS IS NOT REDUNDANCY, and it is an easy mistake
+    // to make while wiring the second one up. Refused rather than retried,
+    // because a fallback that shares the primary's pool fails at exactly the
+    // moment it is needed while looking like insurance.
+    if (seen.has(token)) {
+      throw new RunReviewerError(
+        'DUPLICATE_CREDENTIAL',
+        `\`${name}\` holds the same value as an earlier slot. Two copies of one credential share ` +
+          'one quota pool and one expiry, so this is not a fallback. REMEDY: set a token from a ' +
+          'different account, or unset it.',
+      );
+    }
+    seen.add(token);
+    out.push({ token, label, note, name });
+  }
+  return out;
+}
+
 function main() {
   const args = { rubric: null, input: null, out: null, model: 'sonnet' };
   const FLAGS = new Map([['--rubric', 'rubric'], ['--input', 'input'], ['--out', 'out'], ['--model', 'model']]);
@@ -302,13 +383,23 @@ function main() {
   const input = JSON.parse(readFileSync(args.input, 'utf8'));
   const prompt = buildPrompt(rubric, input);
 
-  const { token, note } = checkToken(process.env.CLAUDE_CODE_OAUTH_TOKEN);
-  console.log(`auth: ${note}`);
+  const tokens = resolveTokens(process.env);
+  if (tokens.length === 0) {
+    // Unchanged message: `checkToken` owns this diagnosis, and it is the one a
+    // reader has already seen in the logs.
+    checkToken(process.env.CLAUDE_CODE_OAUTH_TOKEN);
+  }
+  console.log(
+    `auth: ${tokens[0].note}` +
+      (tokens.length > 1
+        ? `, plus ${tokens.length - 1} fallback credential(s)`
+        : ', NO fallback configured (set CLAUDE_CODE_OAUTH_TOKEN_2 from a second account)'),
+  );
 
-  const { text, envelope } = runReviewer({
+  const { text, envelope } = runReviewerWithFailover({
     prompt,
     model: args.model,
-    token,
+    tokens,
     spawn: (cmd, a, stdin, env) =>
       spawnSync(cmd, a, { input: stdin, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env }),
   });

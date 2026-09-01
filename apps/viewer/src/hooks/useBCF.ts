@@ -30,6 +30,7 @@ import {
   expressIdToGlobalId as expressIdToGlobalIdLookup,
 } from './bcfIdLookup';
 import { fromGlobalIdFromModels } from '@/store/globalId';
+import { resolveIsolationIds } from '@/lib/isolation/resolveIsolationIds';
 import { deriveHeaderFiles } from './bcfHeaderFiles';
 
 // ============================================================================
@@ -558,21 +559,20 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
         clearEntitySelection();
       }
 
-      // Apply visibility from BCF components
-      // Either isolation mode (visibleGuids with defaultVisibility=false)
-      // or normal mode (hiddenGuids with defaultVisibility=true)
+      // Apply visibility from BCF components: isolation mode (visibleGuids
+      // with defaultVisibility=false) or normal (hiddenGuids, default true).
       if (state.visibleGuids.length > 0) {
         // Isolation mode: only specified entities are visible
         const isolatedExpressIds = new Set<number>();
         for (const guid of state.visibleGuids) {
           const result = globalIdToExpressId(guid);
-          if (result) {
-            isolatedExpressIds.add(result.expressId);
-          }
+          if (result) isolatedExpressIds.add(result.expressId);
         }
 
         if (isolatedExpressIds.size > 0) {
-          setIsolatedEntities(isolatedExpressIds);
+          // #3338: a viewpoint guid may name a geometry-less assembly whose parts carry the mesh.
+          const resolver = useViewerStore.getState().cameraCallbacks.resolveHighlightIds;
+          setIsolatedEntities(new Set(resolveIsolationIds(resolver, [...isolatedExpressIds])));
         } else {
           setIsolatedEntities(null);
         }

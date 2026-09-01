@@ -360,7 +360,15 @@ export function exportToStep(
 ): string {
   const exporter = new StepExporter(dataStore);
   const result = exporter.export({
-    schema: 'IFC4',
+    // Default to the SOURCE schema, not a hardcoded 'IFC4'. A hardcoded
+    // default silently schema-CONVERTED every non-IFC4 file passed without an
+    // explicit `schema` (an IFC2X3 or IFC4X3 model re-emitted under a
+    // `FILE_SCHEMA(('IFC4'))` header — mislabeled, and invalid wherever the
+    // source used schema-specific entities). This matches `export()`'s own
+    // `options.schema || dataStore.schemaVersion || 'IFC4'` fallback and the
+    // `?? store.schemaVersion ?? 'IFC4'` every internal caller already spells
+    // out, so wrapper and class agree by construction.
+    schema: (dataStore.schemaVersion as IfcSchemaVersion) || 'IFC4',
     ...options,
   });
   return new TextDecoder().decode(result.content);

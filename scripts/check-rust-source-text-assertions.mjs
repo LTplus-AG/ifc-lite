@@ -8,9 +8,11 @@
  * unenforced across the whole `rust/` tree.
  *
  * `scripts/check-source-text-assertions.mjs` enforces that rule for `packages/`
- * and `apps/`, and says so in its own header -- "SCAN SCOPE is packages/ and
- * apps/ test files only". `grep -c rust` over that file returns 0. The
- * maintainer demonstrated the consequence rather than inferring it: a genuine
+ * and `apps/`. It also covers `scripts/` since #3639, but never Rust: its
+ * detector parses JavaScript, so a Rust test is invisible to it whatever the
+ * scan scope says.
+ *
+ * The maintainer demonstrated the consequence rather than inferring it: a genuine
  * source-text assertion (`fs::read_to_string("src/api/space_plate_input.rs")`
  * plus a `contains`) planted in a real Rust test left the gate exiting 0
  * without naming the file (#3129).

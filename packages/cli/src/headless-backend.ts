@@ -90,6 +90,7 @@ import { escapeCsvCell, exportToStep, StepExporter, type StepExportOptions } fro
 import { exportHbjson, exportDfjson } from './energy-export.js';
 import { foldQueuedRelated } from './query-overlay-relations.js';
 import { overlayEntityData, foldNewEntities } from './query-overlay.js';
+import { matchesPropertyFilter } from './property-filter-match.js';
 
 // `expandTypes` used to be defined here; it now comes from `@ifc-lite/parser`,
 // shared with the other query backends (see `query-backend-maps.ts`). Re-exported
@@ -331,24 +332,7 @@ export class HeadlessBackend implements BimBackend {
           for (const filter of descriptor.filters) {
             filtered = filtered.filter(entity => {
               const props = getCachedProps(entity.ref);
-              const prop = findPropertyInSets(props, filter.psetName, filter.propName);
-              if (!prop) return false;
-              if (filter.operator === 'exists') return true;
-              const val = prop.value;
-              const filterVal = filter.value;
-              // Normalize booleans: .T./.F./true/false all compare equally
-              const normVal = normalizeBooleanValue(val);
-              const normFilterVal = normalizeBooleanValue(filterVal);
-              switch (filter.operator) {
-                case '=': return String(normVal) === String(normFilterVal);
-                case '!=': return String(normVal) !== String(normFilterVal);
-                case '>': return Number(normVal) > Number(normFilterVal);
-                case '<': return Number(normVal) < Number(normFilterVal);
-                case '>=': return Number(normVal) >= Number(normFilterVal);
-                case '<=': return Number(normVal) <= Number(normFilterVal);
-                case 'contains': return String(normVal).toLowerCase().includes(String(normFilterVal).toLowerCase());
-                default: return false;
-              }
+              return matchesPropertyFilter(props, filter);
             });
           }
         }

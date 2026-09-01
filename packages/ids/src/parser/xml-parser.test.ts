@@ -432,6 +432,41 @@ describe('parseIDS — valid documents', () => {
     }
   });
 
+  it('parses XSD restriction with totalDigits/fractionDigits (a standalone digit facet used to fall through to an empty enumeration, which fails every value)', () => {
+    const xml = `<ids xmlns="http://standards.buildingsmart.org/IDS"
+     xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <info><title>T</title></info>
+  <specifications>
+    <specification name="Test" ifcVersion="IFC4">
+      <applicability>
+        <entity><name><simpleValue>IFCWALL</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <property>
+          <propertySet><simpleValue>Pset_WallCommon</simpleValue></propertySet>
+          <baseName><simpleValue>ThermalTransmittance</simpleValue></baseName>
+          <value>
+            <xs:restriction base="xs:decimal">
+              <xs:fractionDigits value="2"/>
+            </xs:restriction>
+          </value>
+        </property>
+      </requirements>
+    </specification>
+  </specifications>
+</ids>`;
+
+    const doc = parseIDS(xml);
+    const facet = doc.specifications[0].requirements[0].facet;
+    if (facet.type === 'property') {
+      expect(facet.value).toEqual({
+        type: 'bounds',
+        base: 'xs:decimal',
+        fractionDigits: 2,
+      });
+    }
+  });
+
   it('handles ArrayBuffer input', () => {
     const xml = `<ids xmlns="http://standards.buildingsmart.org/IDS">
   <info><title>Buffer Test</title></info>

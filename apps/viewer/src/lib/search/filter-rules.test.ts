@@ -14,6 +14,7 @@ import {
   isFilterRule,
   parseFilterRules,
   Rule,
+  addHierarchyStoreyToRule,
 } from './filter-rules.js';
 
 describe('op helpers tolerate an undefined candidate (#1195)', () => {
@@ -132,6 +133,55 @@ describe('combineRuleResults', () => {
   it('returns false on an empty list (no rule = no match)', () => {
     assert.strictEqual(combineRuleResults('AND', []), false);
     assert.strictEqual(combineRuleResults('OR', []), false);
+  });
+});
+
+describe('addHierarchyStoreyToRule', () => {
+  it('starts a hierarchy selection in exact-ref mode', () => {
+    const result = addHierarchyStoreyToRule(
+      undefined,
+      'Level 1',
+      [{ modelId: 'model-a', expressId: 100 }],
+    );
+
+    assert.deepStrictEqual(result, Rule.storey(
+      ['Level 1'],
+      'in',
+      [{ modelId: 'model-a', expressId: 100 }],
+    ));
+  });
+
+  it('keeps manual name selections in name mode when Ctrl/Cmd-click adds a storey (#3545)', () => {
+    const manual = Rule.storey(['Level 1']);
+    const result = addHierarchyStoreyToRule(
+      manual,
+      'Level 2',
+      [{ modelId: 'model-a', expressId: 200 }],
+    );
+
+    assert.deepStrictEqual(result, Rule.storey(['Level 1', 'Level 2']));
+  });
+
+  it('merges exact refs for a rule already created by the hierarchy', () => {
+    const hierarchyRule = Rule.storey(
+      ['Level 1'],
+      'in',
+      [{ modelId: 'model-a', expressId: 100 }],
+    );
+    const result = addHierarchyStoreyToRule(
+      hierarchyRule,
+      'Level 2',
+      [{ modelId: 'model-a', expressId: 200 }],
+    );
+
+    assert.deepStrictEqual(result, Rule.storey(
+      ['Level 1', 'Level 2'],
+      'in',
+      [
+        { modelId: 'model-a', expressId: 100 },
+        { modelId: 'model-a', expressId: 200 },
+      ],
+    ));
   });
 });
 

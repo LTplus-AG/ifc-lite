@@ -158,6 +158,48 @@ describe('evaluateFilterRules — storey & predefinedType resolvers', () => {
     ], 'AND', { predefinedTypeOf: (id) => ptByExpressId.get(id) ?? '' });
     assert.deepStrictEqual(out.map((r) => r.expressId), [10]);
   });
+
+  // `IfcBuildingStorey.Name` is optional and not unique — two distinct
+  // storeys in the SAME model routinely share a Name (duplicate "Level 1"
+  // across wings, or a copy-paste authoring slip). HierarchyPanel mirrors
+  // a storey click into a `Rule.storey` filter; before this fix it only
+  // carried the Name, so clicking one "Level 1" silently pulled in every
+  // other storey named "Level 1" too — not just the one the user clicked.
+  it('a storey rule with exact refs matches only the clicked storey, not a same-named sibling', () => {
+    const storeyRows = [
+      ...rows,
+      { expressId: 500, type: 'IFCBUILDINGSTOREY', globalId: '5abcdefghijklmnopqrstu', name: 'Level 1' },
+      { expressId: 700, type: 'IFCBUILDINGSTOREY', globalId: '7abcdefghijklmnopqrstu', name: 'Level 1' },
+    ];
+    const store = buildStore(storeyRows);
+    (store as unknown as { spatialHierarchy: unknown }).spatialHierarchy = {
+      byStorey: new Map<number, number[]>([
+        [500, [10, 30]], // Level 1 (east wing): Wall-EXT-001, Door-A-201
+        [700, [20]],     // Level 1 (west wing, distinct storey, same Name): Wall-INT-002
+      ]),
+      elementToStorey: new Map<number, number>([[10, 500], [30, 500], [20, 700]]),
+    };
+
+    // RED (pre-fix behaviour, still exercised here as the legacy/manual
+    // path): no refs -> matches by name alone -> both storeys' elements.
+    const byName = evaluateFilterRules('m1', store, [Rule.storey(['Level 1'])], 'AND');
+    assert.deepStrictEqual(byName.map((r) => r.expressId).sort(), [10, 20, 30]);
+
+    // GREEN: refs scope the match to the exact (modelId, expressId) the
+    // user clicked (storey 500), excluding storey 700's element (20)
+    // even though it shares the Name.
+    const byRef = evaluateFilterRules(
+      'm1', store, [Rule.storey(['Level 1'], 'in', [{ modelId: 'm1', expressId: 500 }])], 'AND',
+    );
+    assert.deepStrictEqual(byRef.map((r) => r.expressId).sort(), [10, 30]);
+
+    // A ref for a different model never matches here — no silent
+    // cross-model name fallback once refs are present.
+    const byOtherModelRef = evaluateFilterRules(
+      'm1', store, [Rule.storey(['Level 1'], 'in', [{ modelId: 'm2', expressId: 500 }])], 'AND',
+    );
+    assert.deepStrictEqual(byOtherModelRef.map((r) => r.expressId), []);
+  });
 });
 
 describe('evaluateFilterRulesFederated', () => {
@@ -586,6 +628,26 @@ describe('selectIterationSource — index prefilter (AND + op:in)', () => {
     const ids = Array.from(source as Iterable<number>);
     // The prefilter must pick the Level-1 bucket, not fall through to a
     // full-table scan (which would also include the two storey rows).
+    assert.deepStrictEqual(ids.sort(), [10, 30]);
+  });
+
+  it('storey refs scope the prefilter bucket to the exact ref\'d storey, even with a same-named sibling', () => {
+    const storeyRows = [
+      ...rows,
+      { expressId: 500, type: 'IFCBUILDINGSTOREY', globalId: '5abcdefghijklmnopqrstu', name: 'Level 1' },
+      { expressId: 700, type: 'IFCBUILDINGSTOREY', globalId: '7abcdefghijklmnopqrstu', name: 'Level 1' },
+    ];
+    const s2 = buildStore(storeyRows);
+    (s2 as unknown as { spatialHierarchy: unknown }).spatialHierarchy = {
+      byStorey: new Map<number, number[]>([
+        [500, [10, 30]],
+        [700, [20]],
+      ]),
+    };
+    const source = select(
+      s2, [Rule.storey(['Level 1'], 'in', [{ modelId: 'm1', expressId: 500 }])], 'AND', undefined, 'm1',
+    );
+    const ids = Array.from(source as Iterable<number>);
     assert.deepStrictEqual(ids.sort(), [10, 30]);
   });
 });

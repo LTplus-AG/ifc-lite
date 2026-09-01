@@ -3,10 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Inbound postMessage command handler.
- *
- * Receives commands from the parent SDK and dispatches them to the store
- * and renderer. Also handles the READY → INIT → INIT_ACK handshake.
+ * Inbound postMessage command handler: receives commands from the parent SDK,
+ * dispatches them to the store and renderer, and handles the
+ * READY → INIT → INIT_ACK handshake.
  */
 
 import {
@@ -22,8 +21,10 @@ import {
   type ViewPreset,
   type SectionAxis,
 } from '@ifc-lite/embed-protocol';
+import { resolveIsolationIds } from '@/lib/isolation/resolveIsolationIds.js';
 import { toGlobalIdFromModels, type ViewerState } from '@/store/index.js';
 import { aroundDestructiveLoad, offerHostPose } from './cameraIntent.js';
+import { applyInitConfig } from './initConfig.js';
 
 /** Reference to the store's getState / setState for imperative access */
 interface BridgeContext {
@@ -35,6 +36,7 @@ interface BridgeContext {
   // Adds a model to the federation alongside what's already loaded (unlike LOAD_MODEL); resolves the real minted model id for later REMOVE_MODEL targeting.
   addModelFromUrl: (url: string, name?: string) => Promise<{ modelId: string; entities: number; triangles: number; vertices: number }>;
   setBackgroundColor: (bg: string | undefined) => void; // set (or clear, with undefined) the embed's custom background colour
+  setOverlays: (overlays: { hideAxis?: boolean; hideScale?: boolean; hideTypes?: string[] }) => void; // hideAxis/hideScale/hideTypes, also settable from INIT's config (initConfig.ts)
 }
 
 /** Optional security knobs for the bridge (all opt-in; defaults preserve the public-widget behaviour). */
@@ -241,8 +243,7 @@ async function handleCommand(type: InboundCommandType, data: unknown, requestId?
         }
         return;
       }
-      // Apply initial config if provided
-      if (payload?.config?.theme) state.setTheme(payload.config.theme);
+      applyInitConfig(payload?.config, { setTheme: state.setTheme, setInteractionMode: state.setInteractionMode, setBackgroundColor: ctx.setBackgroundColor, setOverlays: ctx.setOverlays }); // every config field, not just theme (initConfig.ts)
       // ACK the init
       if (requestId) {
         emitToParent(createResponse(requestId));
@@ -340,8 +341,8 @@ async function handleCommand(type: InboundCommandType, data: unknown, requestId?
     }
 
     case 'ISOLATE': {
-      const payload = data as InboundPayloads['ISOLATE'];
-      state.isolateEntities(payload.ids);
+      const payload = data as InboundPayloads['ISOLATE']; // #3338: expand assemblies, matching LensPanel/PropertiesPanel/SearchModal/SDK.
+      state.isolateEntities(resolveIsolationIds(state.cameraCallbacks.resolveHighlightIds, payload.ids));
       if (requestId) emitToParent(createResponse(requestId));
       return;
     }

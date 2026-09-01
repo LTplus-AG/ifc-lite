@@ -1,0 +1,29 @@
+{
+  "$comment": [
+    "GROUND TRUTH FOR THE LANE CANARY. A diff carrying a defect this repository has",
+    "actually paid for, in a shape the rubric explicitly lists. If the reviewer cannot",
+    "find THIS, it is not reviewing.",
+    "",
+    "The defect: a numeric bound guarded at ONE end. `timeoutMs > 0` passes for NaN?",
+    "No -- NaN loses every comparison, so NaN takes the ELSE branch and the code falls",
+    "through to the destructive default. That is feedback_numeric_config_needs_both_ends,",
+    "a class this repo has shipped and fixed before, and rubric.md names it verbatim:",
+    "'A numeric bound guarded at one end. NaN loses every comparison, so it falls",
+    "through to whichever branch the author did not intend.'",
+    "",
+    "WHY A FIXTURE AND NOT A REAL PR. A canary must have a KNOWN answer that does not",
+    "move. Replaying a real PR would re-measure a diff whose findings depend on what",
+    "else changed around it; this input is frozen, so a failure means the REVIEWER",
+    "changed, never the input."
+  ],
+  "headSha": "ca11ab1e00000000000000000000000000000000",
+  "files": [
+    {
+      "path": "src/session-timeout.ts",
+      "patch": "@@ -1,3 +1,8 @@\n export function resolveTimeout(raw: string | undefined): number {\n-  return DEFAULT_TIMEOUT_MS;\n+  const timeoutMs = Number(raw);\n+  if (timeoutMs > 0) {\n+    return timeoutMs;\n+  }\n+  // Anything else falls back to closing the session immediately.\n+  return 0;\n }",
+      "addedLineRanges": [[2, 7]]
+    }
+  ],
+  "unreviewable": [],
+  "excluded": []
+}

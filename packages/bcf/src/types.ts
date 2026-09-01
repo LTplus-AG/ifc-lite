@@ -62,8 +62,13 @@ export interface BCFTopic {
    * the same untouched file).
    */
   creationDate?: string;
-  /** Author email */
-  creationAuthor: string;
+  /**
+   * Author email. `markup.xsd` declares `CreationAuthor` required with no
+   * default, but it comes through undefined when the source markup.bcf
+   * omits it — see {@link creationDate} for why the reader never fabricates
+   * a placeholder value ("Unknown") in its place.
+   */
+  creationAuthor?: string;
   /** Modification date (ISO 8601) */
   modifiedDate?: string;
   /** Modifier email */
@@ -133,8 +138,13 @@ export interface BCFComment {
    * never fabricates a read-time wall-clock timestamp in its place.
    */
   date?: string;
-  /** Author email */
-  author: string;
+  /**
+   * Author email. `markup.xsd` declares `Author` required with no default,
+   * but it comes through undefined when the source markup.bcf omits it —
+   * see `BCFTopic.creationAuthor` for why the reader never fabricates a
+   * placeholder value ("Unknown") in its place.
+   */
+  author?: string;
   /** Comment text */
   comment: string;
   /** Reference to a viewpoint GUID */

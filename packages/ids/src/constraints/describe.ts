@@ -19,6 +19,12 @@ import {
   matchOneFamily,
   NUMERIC_TOLERANCE,
 } from './match-family.js';
+import {
+  matchDigitFacets,
+  countDecimalDigits,
+  toFixedDecimalString,
+} from './digit-facets.js';
+import { isStrictNumericLiteral } from './comparators.js';
 
 /**
  * Cap enumeration rendering. These strings are embedded in per-entity
@@ -112,6 +118,29 @@ function getBoundsMismatchReason(
     violations.push(`must be < ${constraint.maxExclusive}`);
   }
 
+  if (matchDigitFacets(constraint, actualValue) === false) {
+    const decimalStr =
+      typeof actualValue === 'number'
+        ? toFixedDecimalString(actualValue)
+        : String(actualValue);
+    if (!isStrictNumericLiteral(decimalStr)) {
+      violations.push('must be a valid decimal literal');
+    } else {
+      const { total, fraction } = countDecimalDigits(decimalStr);
+      if (constraint.totalDigits !== undefined && total > constraint.totalDigits) {
+        violations.push(`must have at most ${constraint.totalDigits} total digits`);
+      }
+      if (
+        constraint.fractionDigits !== undefined &&
+        fraction > constraint.fractionDigits
+      ) {
+        violations.push(
+          `must have at most ${constraint.fractionDigits} fraction digits`
+        );
+      }
+    }
+  }
+
   return `${num} ${violations.join(' and ')}`;
 }
 
@@ -186,6 +215,14 @@ function formatBounds(constraint: IDSBoundsConstraint): string {
 
   if (constraint.maxExclusive !== undefined) {
     parts.push(`< ${constraint.maxExclusive}`);
+  }
+
+  if (constraint.totalDigits !== undefined) {
+    parts.push(`<= ${constraint.totalDigits} total digits`);
+  }
+
+  if (constraint.fractionDigits !== undefined) {
+    parts.push(`<= ${constraint.fractionDigits} fraction digits`);
   }
 
   return parts.join(' and ') || 'any value';

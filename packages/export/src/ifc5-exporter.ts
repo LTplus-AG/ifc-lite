@@ -20,13 +20,14 @@ import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { MeshData, GeometryResult } from '@ifc-lite/geometry';
 import {
   IfcTypeEnumToString,
-  IfcTypeEnumFromString,
   type IfcTypeEnum,
   PropertyValueType,
   IFCX_VERSION,
 } from '@ifc-lite/data';
 import { convertEntityType, type IfcSchemaVersion } from './schema-converter.js';
 import { getEffectiveEntityIndex } from './effective-index.js';
+import { buildMaterialAttribute } from './ifc5-material.js';
+import { collectRequiredImports, generateUuid, stepTypeToClassName } from './ifc5-export-helpers.js';
 
 /** Recursive spatial tree node type used when walking the hierarchy. */
 interface SpatialTreeNode {
@@ -34,20 +35,6 @@ interface SpatialTreeNode {
   name?: string;
   children: SpatialTreeNode[];
 }
-
-// ============================================================================
-// Standard IFCX schema imports
-// ============================================================================
-
-/** Standard IFC5 schema package URIs, keyed by the attribute prefix they provide. */
-const IFCX_SCHEMA_IMPORTS = {
-  /** Core IFC: bsi::ifc::class, bsi::ifc::presentation::*, bsi::ifc::material, bsi::ifc::spaceBoundary */
-  IFC_CORE: 'https://ifcx.dev/@standards.buildingsmart.org/ifc/core/ifc@v5a.ifcx',
-  /** IFC properties: bsi::ifc::prop::* */
-  IFC_PROP: 'https://ifcx.dev/@standards.buildingsmart.org/ifc/core/prop@v5a.ifcx',
-  /** OpenUSD geometry: usd::usdgeom::mesh, usd::xformop, usd::usdgeom::visibility */
-  USD: 'https://ifcx.dev/@openusd.org/usd@v1.ifcx',
-} as const;
 
 /**
  * Property names that have official IFC5 schema definitions in prop@v5a.ifcx.
@@ -312,6 +299,14 @@ export class Ifc5Exporter {
         for (const [key, value] of Object.entries(props)) {
           attributes[key] = value;
           propertyCount++;
+        }
+      }
+
+      // Material (bsi::ifc::material) — see ifc5-material.ts.
+      if (options.includeProperties !== false) {
+        const material = buildMaterialAttribute(this.dataStore, expressId);
+        if (material) {
+          attributes['bsi::ifc::material'] = material;
         }
       }
 
@@ -815,74 +810,4 @@ export class Ifc5Exporter {
 
     return visible;
   }
-}
-
-// ============================================================================
-// Helpers
-// ============================================================================
-
-/**
- * Scan data nodes and return the list of standard IFCX import URIs needed
- * for the attribute namespaces actually used.
- */
-function collectRequiredImports(nodes: IfcxNodeOutput[]): { uri: string }[] {
-  let needsIfcCore = false;
-  let needsIfcProp = false;
-  let needsUsd = false;
-
-  for (const node of nodes) {
-    if (!node.attributes) continue;
-    for (const key of Object.keys(node.attributes)) {
-      // IFC core schemas: class, presentation, material, spaceBoundary
-      if (!needsIfcCore && (
-        key === 'bsi::ifc::class' ||
-        key.startsWith('bsi::ifc::presentation::') ||
-        key === 'bsi::ifc::material' ||
-        key === 'bsi::ifc::spaceBoundary'
-      )) {
-        needsIfcCore = true;
-      }
-      // IFC property schemas: bsi::ifc::prop::*
-      if (!needsIfcProp && key.startsWith('bsi::ifc::prop::')) {
-        needsIfcProp = true;
-      }
-      // USD schemas: usd::*
-      if (!needsUsd && key.startsWith('usd::')) {
-        needsUsd = true;
-      }
-      if (needsIfcCore && needsIfcProp && needsUsd) break;
-    }
-    if (needsIfcCore && needsIfcProp && needsUsd) break;
-  }
-
-  const imports: { uri: string }[] = [];
-  if (needsIfcCore) imports.push({ uri: IFCX_SCHEMA_IMPORTS.IFC_CORE });
-  if (needsIfcProp) imports.push({ uri: IFCX_SCHEMA_IMPORTS.IFC_PROP });
-  if (needsUsd) imports.push({ uri: IFCX_SCHEMA_IMPORTS.USD });
-  return imports;
-}
-
-/**
- * Generate a deterministic UUID-like string from an expressId.
- * Format: 8-4-4-4-12 hex chars (UUID v4-like but deterministic).
- */
-function generateUuid(id: number): string {
-  const hex = id.toString(16).padStart(12, '0');
-  return `00000000-0000-4000-8000-${hex}`;
-}
-
-/**
- * Convert STEP uppercase type name (e.g. "IFCWALL") to PascalCase class name (e.g. "IfcWall").
- * Uses the IFC type enum lookup for canonical casing (e.g. "IfcRelAggregates", not "Ifcrelaggregates").
- */
-function stepTypeToClassName(stepType: string): string {
-  const enumVal = IfcTypeEnumFromString(stepType);
-  const name = IfcTypeEnumToString(enumVal);
-  if (name !== 'Unknown') return name;
-  // Fallback for types not in the enum: simple prefix normalisation
-  const lower = stepType.toLowerCase();
-  if (lower.startsWith('ifc')) {
-    return 'Ifc' + lower.charAt(3).toUpperCase() + lower.slice(4);
-  }
-  return stepType;
 }

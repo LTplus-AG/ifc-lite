@@ -50,8 +50,12 @@ import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import type { IfcSchemaVersion } from './schema-converter.js';
 import { getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
 import { getSubsetEntityIds, IFC_ROOT_TYPES, identifyingTypesFor } from './subset-roots.js';
-import { readEntityArgs } from './subset-entity-reader.js';
-import { refGroupFromArg, relationshipRefsSurviveExclusion } from './reference-collector.js';
+import { attrIndex, readEntityArgs, stepSourceSchema } from './subset-entity-reader.js';
+import {
+  collectReferencedEntityIds,
+  refGroupFromArg,
+  relationshipRefsSurviveExclusion,
+} from './reference-collector.js';
 import { applyPlacementAnonymization } from './anonymize-placement.js';
 import { applyScrub } from './anonymize-scrub.js';
 import { StepExporter } from './step-exporter.js';
@@ -111,6 +115,39 @@ function excludePropertySetsUnlessKept(
   }
   droppedPropertySetIds.sort((a, b) => a - b);
   return { includedIds: kept, droppedPropertySetIds };
+}
+
+/**
+ * Null `PropertyReference` when an emitted `IfcPropertyReferenceValue` names
+ * an entity the subset excludes. The value can be reached by the forward
+ * closure rather than appearing in the caller's seed set, hence `closureIds`.
+ */
+function dropExcludedPropertyReferences(
+  store: { readonly source: IfcSourceBytes },
+  index: EffectiveEntityIndex,
+  closureIds: ReadonlySet<number>,
+  excludedIds: ReadonlySet<number>,
+  view: MutablePropertyView,
+  schema: ReturnType<typeof stepSourceSchema>,
+): number[] {
+  const droppedIds: number[] = [];
+
+  for (const id of closureIds) {
+    if ((index.typeOf(id) ?? '') !== 'IFCPROPERTYREFERENCEVALUE') continue;
+    const record = readEntityArgs(store, index, id);
+    if (!record) continue;
+
+    const idx = attrIndex('IFCPROPERTYREFERENCEVALUE', 'PropertyReference', schema);
+    if (idx === -1 || idx >= record.args.length) continue;
+
+    const ref = refGroupFromArg(record.args[idx]);
+    if (typeof ref !== 'number' || !excludedIds.has(ref)) continue;
+
+    view.setPositionalAttribute(id, idx, null);
+    droppedIds.push(id);
+  }
+
+  return droppedIds;
 }
 
 /**
@@ -216,24 +253,49 @@ export function exportAnonymizedSubset(
     psetFilteredIds,
   );
 
+  const subsetIdentifyingTypes = identifyingTypesFor(options?.removeGeoreferencing !== false);
+  const subset = getSubsetEntityIds(index, finalIncludedIds, subsetIdentifyingTypes);
+  const exportClosure = collectReferencedEntityIds(
+    subset.roots,
+    store.source,
+    index,
+    subset.excludedIds,
+  );
+  const droppedPropertyReferenceIds = dropExcludedPropertyReferences(
+    store,
+    index,
+    exportClosure,
+    subset.excludedIds,
+    view,
+    stepSourceSchema(store.schemaVersion),
+  );
+
   const placementResult = applyPlacementAnonymization(store, index, finalIncludedIds, editor, view, options);
   const scrubResult = applyScrub(store, index, finalIncludedIds, view, options);
 
   const exportResult = new StepExporter(store, view).export({
     schema: store.schemaVersion as IfcSchemaVersion,
     subsetEntityIds: finalIncludedIds,
-    subsetIdentifyingTypes: identifyingTypesFor(options?.removeGeoreferencing !== false),
+    subsetIdentifyingTypes,
     filename: options.filename ?? 'anonymized.ifc',
     // Header scrub per the decision doc: author/organization/authorization
     // blanked outright (never inherited from the source header — an empty
     // string is a deliberate override, not "no override", per
-    // `step-header.ts`'s `??` wiring). `originating_system` is blanked under
-    // `scrubOwnerHistory` (a vendor build string such as `26.0.0 NOR FULL`
-    // encodes the licence region); `preprocessor_version` comes from
-    // `application`, left unset here (defaults to 'ifc-lite').
+    // `step-header.ts`'s `??` wiring). `description` gets the same
+    // unconditional override: `buildStepHeader` falls through to the SOURCE
+    // FILE_DESCRIPTION items verbatim whenever this orchestrator leaves
+    // `description` undefined — an authoring tool's free-text
+    // "Comment [...]" item there is exactly as identifying as the
+    // author/organization fields beside it, so it is blanked the same way,
+    // not merely left to whatever the source happened to carry.
+    // `originating_system` is blanked under `scrubOwnerHistory` (a
+    // vendor build string such as `26.0.0 NOR FULL` encodes the licence
+    // region); `preprocessor_version` comes from `application`, left unset
+    // here (defaults to 'ifc-lite').
     author: '',
     organization: '',
     authorization: '',
+    description: '',
     ...((options.scrubOwnerHistory ?? true) ? { originatingSystem: '' } : {}),
     timeStamp: options.timeStamp,
     guidRandom: options.guidRandom,
@@ -250,6 +312,7 @@ export function exportAnonymizedSubset(
       includedRootEntityCount,
       prunedRelationshipIds,
       droppedPropertySetIds,
+      droppedPropertyReferenceIds,
       zeroedPlacements: placementResult.zeroedPlacements,
       warnings: [
         ...placementResult.warnings,

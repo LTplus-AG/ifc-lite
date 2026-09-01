@@ -138,6 +138,34 @@ commentary before or after:
 
 `files_reviewed` must list every file you were given. `riskiest_change` is
 required even when `verdict` is `clean` — it is how a review that did not read
-the diff is told apart from one that read it and found nothing. `end` must be the
+the diff is told apart from one that read it and found nothing.
+
+**Nominate a `riskiest_change.quoted_line` you can reproduce EXACTLY.** It is
+checked character for character against the patch, and a line long enough that
+you would truncate it will fail that check however many times the review is
+re-run. "Riskiest" is relative, so if the line you would otherwise nominate is
+too long to reproduce, nominate a different line **from the same file** — a
+shorter one you can quote verbatim, though still a substantive one of a dozen
+characters or more, not `});` or `return;`. Any real line of the diff proves you
+read it, which is the whole job of this field. Do not truncate, and do not quote
+a fragment from the middle of a line.
+
+This applies to `riskiest_change` only. A finding's `quote` anchors an inline
+comment to a specific line, so it must be that line, exactly.
+
+**`riskiest_change` is required even when NOTHING in the diff is risky.** A diff
+of pure comments, documentation or configuration still has a most-substantive
+line: quote it. "Riskiest" is relative to the diff you were given, never an
+absolute claim that the line is dangerous — a comment-only change has a riskiest
+line in exactly the sense that a still pond has a deepest point. Omitting the
+field, or setting it to null, fails the review outright and posts nothing, so a
+diff you consider entirely safe is precisely where refusing to nominate one does
+the most damage.
+
+MEASURED: this happened. A pull request whose every added line was a YAML
+comment got `SCHEMA_INVALID: riskiest_change must be an object with non-empty
+path and quoted_line strings`, twice, deterministically — so the lane could not
+review config-only or docs-only changes at all, and those go to CodeRabbit or to
+nobody. `end` must be the
 last key and must be exactly `ifc-lite-review-v1`; without it the response is
 treated as truncated.

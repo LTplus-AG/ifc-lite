@@ -39,6 +39,7 @@ import { downloadDxf } from '@/hooks/dxfDownload';
 import { DEFAULT_SCAN_SVG_CAP, type ScanBandPoint } from '@/hooks/scanSectionMath';
 import { computeSvgExportViewport, svgExportMmToWorld } from '@/hooks/svgExportViewport';
 import { makePropertiesGetter } from '@/hooks/drawingElementProperties';
+import { titleBlockWithEffectiveScale } from '@/hooks/titleBlockScaleField';
 
 /** Map a DXF vertical justification onto an SVG dominant-baseline. */
 function dxfValignToBaseline(valign: 'baseline' | 'bottom' | 'middle' | 'top'): string {
@@ -947,8 +948,10 @@ function useDrawingExport({
       scale: activeSheet.scale,
       effectiveScaleFactor: scaleFactor,
     };
+    // Correct the "Scale" field for a viewport-fit-clamped sheet (#2131's
+    // defect class; see titleBlockScaleField.ts).
     const titleBlockResult = renderTitleBlock(
-      activeSheet.titleBlock,
+      titleBlockWithEffectiveScale(activeSheet.titleBlock, activeSheet.scale.factor, scaleFactor),
       frameResult.innerBounds,
       activeSheet.revisions,
       titleBlockExtras

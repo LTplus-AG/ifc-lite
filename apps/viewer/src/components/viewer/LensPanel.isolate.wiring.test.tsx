@@ -97,7 +97,7 @@ let initialState: ReturnType<typeof useViewerStore.getState>;
 function seedLens(options: {
   /** Viewport's aggregation resolver (#2531). Omitted = a renderer that has
    *  not registered its camera callbacks yet. */
-  resolveHighlightIds?: (ids: number[]) => number[];
+  resolveHighlightIds?: (ids: number[]) => number[] | null;
   /** Pre-existing hides, to prove the round-trip restores them untouched. */
   hiddenEntities?: Set<number>;
 } = {}) {
@@ -334,9 +334,12 @@ describe('LensPanel: isolating a rule resolves geometry-less assemblies to their
   });
 
   it('keeps the raw ids when the resolver returns nothing, rather than isolating an empty set', () => {
-    // An assembly with neither geometry nor geometry-bearing parts resolves to
-    // nothing at all (expandToGeometryBearingIds drops it). Isolating the empty
-    // set would hide the ENTIRE model, strictly worse than the raw id.
+    // A rule matching only hidden types (spaces ship OFF) resolves to nothing
+    // against the FILTERED mesh list even though those ids render the moment
+    // the toggle flips, and so does a mesh that has not streamed in yet.
+    // Isolating the empty set would hide the ENTIRE model; skipping the
+    // isolate would make the rule button do nothing at all. The raw ids are
+    // the answer that survives both.
     seedLens({ resolveHighlightIds: () => [] });
     const container = render(<LensPanel onClose={() => {}} />);
 

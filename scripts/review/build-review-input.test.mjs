@@ -18,7 +18,7 @@ import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { addedLineRanges, buildInput, isExcluded, MAX_PATCH_BYTES } from './build-review-input.mjs';
+import { addedLineRanges, newFileLines, buildInput, isExcluded, MAX_PATCH_BYTES } from './build-review-input.mjs';
 import { pageAll as pageFiles } from '../check-review-posted.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -191,4 +191,32 @@ test('the emitted input carries exactly what the reviewer may see', () => {
   // they are not in the shape at all rather than being sanitised later.
   assert.equal(r.result.title, undefined);
   assert.equal(r.result.body, undefined);
+});
+
+test('newFileLines pins the kind contract, since the JSDoc now promises one', () => {
+  // Nothing exercised `removed` or `hunk`, so a tidy-up of the walker would
+  // leave every test green and the documented contract false.
+  const patch = [
+    'diff --git a/x.md b/x.md',
+    '@@ -1,2 +1,2 @@',
+    ' ctx',
+    '-gone',
+    '+added',
+  ].join('\n');
+  const got = newFileLines(patch);
+  assert.deepEqual(got.map((l) => l.kind), ['context', 'hunk', 'context', 'removed', 'added']);
+
+  // Only a leading SPACE is stripped, so a line that never carried a diff
+  // marker keeps its first character. This fixture cannot tell that apart from
+  // `quotableLines`' rule, which also strips `+` and `-`: no line here begins
+  // with `+` or `-` while being classified as context, and that is the only
+  // place the two strip rules can disagree.
+  assert.equal(got[0].text, 'diff --git a/x.md b/x.md');
+  assert.equal(got[1].text, '@@ -1,2 +1,2 @@');
+  assert.equal(got[2].text, 'ctx');
+
+  // A removed line carries the NEXT new-file line number, because it occupies no
+  // line in the new file at all. Reading it as a position is a trap.
+  assert.equal(got[3].line, got[4].line);
+  assert.deepEqual(addedLineRanges(patch), [[2, 2]]);
 });

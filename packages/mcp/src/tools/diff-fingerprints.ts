@@ -101,12 +101,14 @@ import { RelationshipType } from '@ifc-lite/data';
 import {
   EntityExtractor,
   extractAllEntityAttributes,
+  extractProjectUnits,
   extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
   extractRootAttributesFromEntity,
   getAttributeNamesAcrossSchemas,
   getInheritanceChainAcrossSchemas,
-  type IfcDataStore,
+  quantitySiScale,
+  type IfcDataStore, type ProjectUnits,
 } from '@ifc-lite/parser';
 import type { CreatedEntity, PendingOverlay } from '../overlay.js';
 
@@ -204,10 +206,10 @@ export function buildModelFingerprints(
 ): EntityFingerprint<DiffRef>[] {
   const fingerprints: EntityFingerprint<DiffRef>[] = [];
   const seen = new Set<number>();
-  // One extractor for the whole model: it holds a buffer reference, and the
-  // source read below only fires for the (small) set of object types the
-  // EntityTable declines to hold.
+  // One extractor for the whole model: the source read below only fires for
+  // the (small) set of object types the EntityTable declines to hold.
   const extractor = new EntityExtractor(store.source);
+  const units = extractProjectUnits(store.source, store.entityIndex); // for quantitySiScale
 
   for (const [typeKey, ids] of store.entityIndex.byType) {
     // Classified once per type rather than once per entity — the geometry
@@ -241,7 +243,7 @@ export function buildModelFingerprints(
       // type name: `ifcType` is hashed into the fingerprint and cross-checked
       // on every content match, so 'Unknown' would pair a task with an actor.
       const ifcType = source && (!tableType || tableType === 'Unknown') ? type.name : tableType;
-      const input = buildDataInput(store, expressId, ifcType, source, type.typeObject, overlay);
+      const input = buildDataInput(store, expressId, ifcType, source, type.typeObject, overlay, units);
       fingerprints.push({
         key: globalId,
         ifcType,
@@ -253,7 +255,7 @@ export function buildModelFingerprints(
   }
 
   for (const entity of overlay?.created ?? []) {
-    const fingerprint = createdFingerprint(entity, overlay as PendingOverlay);
+    const fingerprint = createdFingerprint(entity, overlay as PendingOverlay, units);
     if (fingerprint) fingerprints.push(fingerprint);
   }
 
@@ -293,6 +295,7 @@ export function buildModelFingerprints(
 function createdFingerprint(
   entity: CreatedEntity,
   overlay: PendingOverlay,
+  units: ProjectUnits, // scales Qto_ Length/Area/Volume values to base SI
 ): EntityFingerprint<DiffRef> | null {
   const type = classifyType(entity.ifcType);
   if (type.role === 'dependent') return null;
@@ -311,7 +314,7 @@ function createdFingerprint(
       name: set.name,
       quantities: set.quantities.map((quantity) => ({
         name: quantity.name,
-        value: roundQuantity(quantity.value),
+        value: roundQuantity(quantity.value * quantitySiScale(quantity, units)),
       })),
     })),
     typeAssignments: [],
@@ -359,6 +362,7 @@ function buildDataInput(
   /** Set when the session has queued edits; its reads are base-merged, so it
    *  replaces the store read rather than being layered on top of it. */
   overlay: PendingOverlay | null | undefined,
+  units: ProjectUnits, // scales Qto_ Length/Area/Volume values to base SI
 ): DataFingerprintInput {
   const predefinedType = extractAllEntityAttributes(store, expressId).find(
     (attribute) => attribute.name === 'PredefinedType',
@@ -387,13 +391,9 @@ function buildDataInput(
     : extractQuantitiesOnDemand(store, expressId)
   ).map((set) => ({
     name: set.name,
-    quantities: set.quantities.map((quantity) => ({
-      name: quantity.name,
-      // Rounded to 4 dp, matching the viewer: re-exporting a model with
-      // sub-tolerance float jitter must not flip the data hash on an otherwise
-      // identical element, which on this path would cost the pair its match.
-      value: roundQuantity(quantity.value),
-    })),
+    // Scaled to base SI, then rounded — both stored and overlaid values, a
+    // queued edit being authored in the project unit same as a parsed one.
+    quantities: set.quantities.map((quantity) => ({ name: quantity.name, value: roundQuantity(quantity.value * quantitySiScale(quantity, units)) })),
   }));
 
   const typeAssignments = store.relationships

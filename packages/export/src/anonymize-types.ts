@@ -221,6 +221,10 @@ export interface AnonymizeResult {
      *  property set" from any other exclusion reason without grepping
      *  `warnings` text. Empty when `keepPropertySets` was `true`. */
     droppedPropertySetIds: number[];
+    /** ExpressIds of emitted `IfcPropertyReferenceValue` entities whose
+     *  optional `PropertyReference` was nulled because it named an entity the
+     *  subset excluded. */
+    droppedPropertyReferenceIds: number[];
     /** Each root `IfcLocalPlacement` this export zeroed, and the translation
      *  it zeroed (the ORIGINAL, pre-zero coordinates) — reported because the
      *  translation was real coordinate data the caller may still want to log

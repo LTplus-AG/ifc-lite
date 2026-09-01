@@ -1,0 +1,5 @@
+---
+'@ifc-lite/renderer': patch
+---
+
+`FederationRegistry` now reserves headroom after every federated model's own id range, so a mutation-overlay entity added to a non-last model (AddElement tool, IDS auto-fix, a script) can no longer collide with the next model's already-assigned, real entity ids. `StoreEditor.addEntity` (`@ifc-lite/mutations`) allocates new local expressIds from a per-model watermark that starts right after that model's own `maxExpressId`; with the previous bare `+1` gap between models, the very first entity added to a non-last model produced a global id that landed on the next model's real entity `#0` (and the second addition on its real `#1`, and so on) — the new entity silently resolved as a genuine, unrelated entity in the other model wherever a global id is looked up (annotation placement, storey inference for smart element placement, BCF markup id resolution). The registry now packs a 1,000,000-id reserved block after each model's range before the next model's offset begins, making that collision unreachable for any realistic number of overlay-added entities per model.

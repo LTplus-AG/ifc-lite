@@ -26,6 +26,7 @@ import {
   type PropertyRule,
   type QuantityRule,
   type ClassificationRule,
+  type StoreyRule,
 } from './filter-rules.js';
 import { lensMaterialNames } from '../lens-material-names.js';
 import { parsePropertyValue } from '@ifc-lite/encoding';
@@ -121,6 +122,39 @@ export function defaultStoreyName(store: IfcDataStore, expressId: number): strin
   const storeyId = hierarchy.elementToStorey.get(expressId);
   if (!storeyId) return '';
   return store.entities.getName(storeyId);
+}
+
+/** Does `expressId` (in `modelId`) sit in a storey ref'd by `rule.refs`?
+ *  `IfcBuildingStorey.Name` isn't unique, so once a `StoreyRule` carries
+ *  an exact (modelId, expressId) ref (mirrored from a HierarchyPanel
+ *  click), matching bypasses Name entirely. */
+export function storeyMatchesRefs(store: IfcDataStore, expressId: number, modelId: string, rule: StoreyRule): boolean {
+  const storeyId = store.spatialHierarchy?.elementToStorey.get(expressId);
+  return storeyId != null && !!rule.refs?.some((r) => r.modelId === modelId && r.expressId === storeyId);
+}
+
+/** Index-prefilter twin of {@link storeyMatchesRefs}/Name matching: the
+ *  bucket of elements a `storey op:'in'` rule narrows to for `modelId`. */
+export function unionByStorey(store: IfcDataStore, rule: StoreyRule, modelId: string | undefined): number[] | null {
+  const hierarchy = store.spatialHierarchy;
+  if (!hierarchy) return null;
+  const out: number[] = [];
+  if (rule.refs) {
+    for (const ref of rule.refs) {
+      if (ref.modelId !== modelId) continue;
+      const elements = hierarchy.byStorey.get(ref.expressId);
+      if (elements) for (const id of elements) out.push(id);
+    }
+    return out.length > 0 ? out : null;
+  }
+  const wanted = new Set(rule.values.map((n) => n.toLowerCase()));
+  for (const storeyId of hierarchy.byStorey.keys()) {
+    const name = store.entities.getName(storeyId);
+    if (!wanted.has(name.toLowerCase())) continue;
+    const elements = hierarchy.byStorey.get(storeyId);
+    if (elements) for (const id of elements) out.push(id);
+  }
+  return out.length > 0 ? out : null;
 }
 
 // ── Material / classification / elevation resolution ─────────────────────────

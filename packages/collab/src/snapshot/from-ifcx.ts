@@ -34,10 +34,10 @@ import {
   SEED_ORIGIN,
   assertSchemaInvariants,
   metaMap,
-  type ClassificationRef,
-  type MaterialAssignment,
 } from '../doc/schema.js';
 import { inflateStructuredAttributes } from './structured-attrs.js';
+import { clearOverlayTombstones, readOverlayTombstones, resolveTombstoneOpinion, resurrectionBlocked, writeOverlayTombstones } from './overlay-tombstones.js';
+import { setClassifications, setMaterials, readIfcClass } from './overlay-entity-attrs.js';
 
 export interface SeedOptions {
   /** Origin tag for the seeding transaction. Defaults to SEED_ORIGIN. */
@@ -73,6 +73,7 @@ export function seedFromIfcx(doc: Y.Doc, input: IfcxInput, opts: SeedOptions = {
   assertSchemaInvariants(doc);
 
   doc.transact(() => {
+    const meta = metaMap(doc);
     if (opts.reset) {
       const ents = doc.getMap('entities');
       const rels = doc.getMap('relationships');
@@ -80,10 +81,13 @@ export function seedFromIfcx(doc: Y.Doc, input: IfcxInput, opts: SeedOptions = {
       ents.clear();
       rels.clear();
       geom.clear();
+      // Overlay tombstones describe deletions in the discarded entity
+      // universe; retaining them would block a same-path entity in this
+      // freshly seeded snapshot.
+      clearOverlayTombstones(meta);
     }
 
     // Stash file-level metadata so we can re-emit it during snapshotting.
-    const meta = metaMap(doc);
     if (file.header) meta.set('header', file.header);
     if (file.imports) meta.set('imports', file.imports);
     if (file.schemas) meta.set('schemas', file.schemas);
@@ -245,31 +249,28 @@ export interface OverlayOptions {
  * Apply an IFCX file to `doc` as a *layer of opinions* rather than as a
  * seed.
  *
- * `seedFromIfcx` routes every node through `createEntity`, which is a
- * deliberate no-op on a path the doc already has — right for seeding a
- * doc from a snapshot, wrong for merging a layer whose whole purpose is
- * to modify entities that already exist. This applier creates missing
- * entities exactly as the seeder does, and for entities that are already
- * present it writes the node's opinions on top: values overwrite, and
- * anything the node says nothing about is left alone.
+ * `seedFromIfcx` routes every node through `createEntity`, a deliberate
+ * no-op on a path the doc already has — right for seeding from a
+ * snapshot, wrong for merging a layer whose purpose is to modify entities
+ * that already exist. This applier creates missing entities exactly as
+ * the seeder does, and writes existing entities' opinions on top: values
+ * overwrite, anything unmentioned is left alone. `null` removes a FLAT
+ * attribute, child or inherit ONLY: a nulled pset/quantity property
+ * survives, silently (pinned in `test/apply-ifcx-overlay.test.ts`).
  *
- * `null` removes a FLAT attribute, child or inherit ONLY: a nulled
- * pset/quantity property survives, silently. Measured, and pinned with the
- * reason, in `test/apply-ifcx-overlay.test.ts`.
- *
- * Deliberately NOT part of `seedFromIfcx`'s option surface: the seeder's
- * additive-and-idempotent contract is what `apps/viewer` and
- * `snapshot/worker.ts` rely on when seeding a live session doc, and this
- * function is a different operation, not a mode of that one.
+ * Deliberately NOT part of `seedFromIfcx`'s option surface: the seeder is
+ * additive-and-idempotent (`apps/viewer`, `snapshot/worker.ts` seed a
+ * live session doc with it), and this is a different operation.
  *
  * Deletion opinions are honoured where the layer states them: an
- * `ifclite::deleted: true` node removes the entity, matching what
- * composition, `bakeLayers` and the MCP layer store already do. Note the
- * limit of the *representation* though, not of this code: a full IFCX
- * snapshot emits only what an entity has, so a key or entity deleted in
- * the source doc is simply absent rather than nulled or tombstoned, and
- * an overlay cannot tell that apart from "no opinion". Deletions
- * therefore propagate only from layers that state them explicitly.
+ * `ifclite::deleted: true` node removes the entity, matching composition,
+ * `bakeLayers` and the MCP layer store. A full IFCX snapshot emits only
+ * what an entity has though, so a key or entity deleted in the source doc
+ * is simply absent rather than nulled or tombstoned, and an overlay
+ * cannot tell that apart from "no opinion" — deletions propagate only
+ * from layers that state them explicitly. Across separate calls, a path
+ * this function itself deleted stays deleted regardless: see
+ * `overlay-tombstones.ts`.
  */
 export function applyIfcxOverlay(
   doc: Y.Doc,
@@ -285,6 +286,8 @@ export function applyIfcxOverlay(
     if (file.imports) meta.set('imports', file.imports);
     if (file.schemas) meta.set('schemas', file.schemas);
 
+    const tombstonesFromEarlierCalls = readOverlayTombstones(meta);
+
     // Composition resolves `ifclite::deleted` after every node in the
     // layer has been applied — the strongest (last) opinion wins — so a
     // base → delete → resurrect sequence within one file must seed the
@@ -297,6 +300,7 @@ export function applyIfcxOverlay(
       if (opinion !== undefined) tombstoned.set(decoded.path, opinion);
       restoreGeometryCarriers(doc, decoded, upsertGeometry);
       if (!hasEntity(doc, decoded.path)) {
+        if (resurrectionBlocked(tombstonesFromEarlierCalls, decoded.path, opinion)) continue;
         createNodeEntity(doc, decoded);
         continue;
       }
@@ -304,7 +308,9 @@ export function applyIfcxOverlay(
     }
     for (const [path, deleted] of tombstoned) {
       if (deleted) deleteEntity(doc, path);
+      resolveTombstoneOpinion(tombstonesFromEarlierCalls, path, deleted);
     }
+    writeOverlayTombstones(meta, tombstonesFromEarlierCalls);
   }, opts.origin ?? SEED_ORIGIN);
 
   return file;
@@ -357,41 +363,4 @@ function overlayEntity(doc: Y.Doc, decoded: DecodedNode): void {
     const entityMeta = getEntity(doc, path)?.get(ENTITY_KEY.META) as Y.Map<unknown> | undefined;
     entityMeta?.set('ifcClass', decoded.ifcClass);
   }
-}
-
-function setClassifications(
-  doc: Y.Doc,
-  path: string,
-  refs: readonly ClassificationRef[],
-): void {
-  const arr = getEntity(doc, path)?.get(ENTITY_KEY.CLASSIFICATIONS) as
-    | Y.Array<ClassificationRef>
-    | undefined;
-  if (!arr) return;
-  if (arr.length > 0) arr.delete(0, arr.length);
-  arr.push([...refs]);
-}
-
-function setMaterials(
-  doc: Y.Doc,
-  path: string,
-  assignments: readonly MaterialAssignment[],
-): void {
-  const arr = getEntity(doc, path)?.get(ENTITY_KEY.MATERIALS) as
-    | Y.Array<MaterialAssignment>
-    | undefined;
-  if (!arr) return;
-  if (arr.length > 0) arr.delete(0, arr.length);
-  arr.push([...assignments]);
-}
-
-/** Read the IfcClass code out of the well-known `bsi::ifc::class` attribute. */
-function readIfcClass(attributes: Record<string, unknown> | undefined): string | undefined {
-  if (!attributes) return undefined;
-  const cls = attributes['bsi::ifc::class'];
-  if (cls && typeof cls === 'object' && 'code' in cls) {
-    const code = (cls as { code?: unknown }).code;
-    if (typeof code === 'string') return code;
-  }
-  return undefined;
 }

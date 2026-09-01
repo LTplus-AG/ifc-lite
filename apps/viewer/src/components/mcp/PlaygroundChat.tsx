@@ -62,7 +62,7 @@ import {
 import { Paperclip, X } from 'lucide-react';
 
 const MAX_TOOL_CALLS = 25;
-const MAX_TOKENS = 4096;
+const MAX_TOKENS = 16_384; // Opus 5 thinks by default; 4096 truncated the tool loop. Under the SDK's non-streaming cap.
 const SYSTEM_PROMPT = `You are a BIM/IFC analyst driving @ifc-lite/mcp tools against a pre-loaded model. Be terse — the user is technical and time-pressed.
 
 Voice rules (strict):

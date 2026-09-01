@@ -1,0 +1,55 @@
+{
+  "$comment": "Ground truth from PR #3598: findings CodeRabbit produced and the Claude lane missed.",
+  "pr": 3598,
+  "input": {
+    "headSha": "3598000000000000000000000000000000000000",
+    "files": [
+      {
+        "path": "scripts/check-review-posted.mjs",
+        "patch": "@@ -340,8 +340,14 @@ export function evaluate({ comments, cfg, headSha }) {\n       '   The review job\\'s exit code is NOT evidence: claude-code-action #1644 exits success after',\n       '   a partial run, and #1679 exits 0 after failing to post every comment (reported as forty',\n       '   consecutive runs logging `Posted 0/N`). Both are open.',\n-      '   REMEDY: re-run the review job. If it recurs, read the run log for `Posted 0/N` or a low',\n-      '   `num_turns` and attach it to the upstream issue rather than re-running indefinitely.',\n+      // ONE ENTRY, not two. An exempt run filters `REMEDY:` lines out, and a\n+      // remedy split across two array entries loses its head and prints the\n+      // tail -- dangling prose that still said \"rather than re-running\n+      // indefinitely\" beside an exemption saying no re-run can help. Caught in\n+      // review; the test could not see it because it asserted only that no line\n+      // STARTS with REMEDY.\n+      '   REMEDY: re-run the review job. If it recurs, read the run log for `Posted 0/N` or a low ' +\n+        '`num_turns` and attach it to the upstream issue rather than re-running indefinitely.',\n     );\n     return { ok: false, covered: false, verdict: 'NOT_POSTED', lines };\n   }\n@@ -418,8 +424,8 @@ export function evaluate({ comments, cfg, headSha }) {\n         '   claim; this is the check that it is true.',\n         '   Only INLINE comments on THIS head count. A summary comment is not a finding, and a',\n         '   finding on an earlier head is not a finding on this diff.',\n-        '   REMEDY: re-run the review job. If it recurs, the run log will show `Posted 0/N`; attach',\n-        '   it to claude-code-action#1679 rather than re-running indefinitely.',\n+        '   REMEDY: re-run the review job. If it recurs, the run log will show `Posted 0/N`; ' +\n+          'attach it to claude-code-action#1679 rather than re-running indefinitely.',\n       );\n       return { ok: false, covered: false, verdict: 'FINDINGS_NOT_POSTED', escapeHatch: null, lines };\n     }\n@@ -529,7 +535,7 @@ function fetchPayload(repo, pr) {\n  * `!args.stateFile` would have shipped an enforcement carve-out no test could\n  * execute, which is the shape this repository keeps paying for.\n  */\n-function isForkPr(repo, pr, override) {\n+function prExemption(repo, pr, override) {\n   // NO REPO, NO VERDICT. `args.repo` is only refused inside the live branch, so\n   // in `--state-file` mode it can be null -- and `headRepo !== null` is true for\n   // every value, which would excuse EVERY failing verdict. The invariant belongs\n@@ -547,7 +553,7 @@ function isForkPr(repo, pr, override) {\n   const data =\n     override === undefined\n       ? gh(['api', `repos/${repo}/pulls/${pr}`, '--method', 'GET'], 'the PR head repo', ReviewPostedError)\n-      : { head: { repo: { full_name: override } } };\n+      : { head: { repo: { full_name: override.headRepo } }, draft: override.draft === true };\n   const headRepo = data?.head?.repo?.full_name;\n   if (typeof headRepo !== 'string' || headRepo === '') {\n     throw new ReviewPostedError(\n@@ -561,7 +567,21 @@ function isForkPr(repo, pr, override) {\n   // is caller-supplied: `ltplus-ag/ifc-lite` against a head repo of\n   // `LTplus-AG/ifc-lite` would otherwise read as a FORK and turn enforcement off\n   // for every PR. Same normalisation the author matching already uses.\n-  return headRepo.toLowerCase() !== repo.toLowerCase();\n+  // TWO EXEMPTIONS, ONE READ. Both are cases where the LANE cannot post, so the\n+  // gate would be demanding a marker nobody is able to write.\n+  //\n+  // DRAFTS. `claude-review.yml` gates the job on `draft == false`; this workflow\n+  // has no `if:` at all and runs on drafts anyway. Under `enforcing` that made\n+  // every same-repo DRAFT PR a permanent red -- the lane skips identically on\n+  // every re-run, so the printed \"re-run the review job\" could never clear it.\n+  // Third instance of that class after nothing-reviewable and forks, missed\n+  // because the first two were about WHO posts and this one is about WHEN.\n+  // Found by review of the contributor docs, not by the gate's own tests.\n+  if (data?.draft === true) return { exempt: true, why: 'DRAFT' };\n+  return {\n+    exempt: headRepo.toLowerCase() !== repo.toLowerCase(),\n+    why: 'FORK',\n+  };\n }\n \n function main() {\n@@ -654,7 +674,28 @@ function main() {\n   console.log('');\n \n   const { ok, covered, lines } = result;\n-  for (const l of lines) console.log(l);\n+\n+  // THE EXEMPTION IS RESOLVED BEFORE THE VERDICT IS PRINTED, so a remedy that\n+  // cannot work is never shown. The failing verdicts end in\n+  // `REMEDY: re-run the review job`, which is right for a quota blip and WRONG\n+  // for a draft or a fork: no re-run can produce a marker the lane will not\n+  // write. Printing both left the reader with two instructions that contradict\n+  // each other, which this repository treats as a defect in its own right --\n+  // \"each distinct failure class names a remedy, and the remedy does not\n+  // contradict the finding\". Raised by CodeRabbit on PR #3598.\n+  const exemption =\n+    ok\n+      ? { exempt: false }\n+      : prExemption(\n+          args.repo,\n+          args.pr,\n+          args.stateFile ? { headRepo: payload?.headRepo, draft: payload?.draft } : undefined,\n+        );\n+\n+  for (const l of lines) {\n+    if (exemption.exempt && /^\\s*REMEDY:/.test(l)) continue;\n+    console.log(l);\n+  }\n \n   // `covered` is the VERDICT, independent of the exit code, and the two differ on\n   // purpose in advisory mode: there, a failing verdict still exits 0, and a caller\n@@ -674,13 +715,17 @@ function main() {\n   // path. `claude-review.yml`'s dedup step is different: a failing verdict IS its\n   // common case, so once the base config is `enforcing` every lane run pays one\n   // `gh api pulls/<n>` there. One call, named rather than left to be discovered.\n-  if (!ok && isForkPr(args.repo, args.pr, args.stateFile ? payload?.headRepo : undefined)) {\n+  if (exemption.exempt) {\n     console.log('');\n     console.log(\n-      'FORK PR: the finding above does not fail this job. `claude-review.yml` excludes fork PRs, because ' +\n-        \"a fork's GITHUB_TOKEN is read-only whatever `permissions:` says, so no marker can ever be posted \" +\n-        'here and enforcing would be a red nobody can clear. These PRs are covered by the CodeRabbit lane, ' +\n-        'which is why the stand-down label is never applied to them.',\n+      exemption.why === 'DRAFT'\n+        ? 'DRAFT PR: the finding above does not fail this job. `claude-review.yml` skips drafts, so no ' +\n+          'marker can be written while this PR is a draft and enforcing would be a red no re-run could ' +\n+          'clear. Mark it ready for review and the lane will review the head.'\n+        : 'FORK PR: the finding above does not fail this job. `claude-review.yml` excludes fork PRs, ' +\n+          \"because a fork's GITHUB_TOKEN is read-only whatever `permissions:` says, so no marker can \" +\n+          'ever be posted here and enforcing would be a red nobody can clear. These PRs are covered by ' +\n+          'the CodeRabbit lane, which is why the stand-down label is never applied to them.',\n     );\n     process.exit(0);\n   }",
+        "addedLineRanges": [
+          [
+            343,
+            350
+          ],
+          [
+            427,
+            428
+          ],
+          [
+            538,
+            538
+          ],
+          [
+            556,
+            556
+          ],
+          [
+            570,
+            584
+          ],
+          [
+            677,
+            698
+          ],
+          [
+            718,
+            718
+          ],
+          [
+            721,
+            728
+          ]
+        ]
+      }
+    ],
+    "unreviewable": [],
+    "excluded": []
+  },
+  "expected": [
+    {
+      "path": "scripts/check-review-posted.mjs",
+      "what": "the output prints REMEDY: re-run alongside an exemption saying no re-run can clear it: two contradictory remedies"
+    }
+  ]
+}

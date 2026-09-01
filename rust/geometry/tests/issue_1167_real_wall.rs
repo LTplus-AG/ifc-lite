@@ -380,7 +380,26 @@ fn rotated_wall_openings_not_overcut_or_fragmented() {
     let wall = decoder.decode_by_id(WALL_ID).expect("decode wall");
     let uncut = router.process_element(&wall, &mut decoder).expect("process wall");
     let uncut_vol = mesh_volume(&uncut);
-    let (umn, umx) = uncut.bounds();
+    // WORLD bounds: `Mesh` positions are relative to `Mesh::origin`, and the
+    // local-frame cut returns its centre there rather than in the coordinates,
+    // so a raw `bounds()` compares two different frames.
+    let world_bounds = |m: &Mesh| {
+        let (lo, hi) = m.bounds();
+        let o = m.origin;
+        (
+            [
+                lo.x as f64 + o[0],
+                lo.y as f64 + o[1],
+                lo.z as f64 + o[2],
+            ],
+            [
+                hi.x as f64 + o[0],
+                hi.y as f64 + o[1],
+                hi.z as f64 + o[2],
+            ],
+        )
+    };
+    let (umn, umx) = world_bounds(&uncut);
     assert!((uncut_vol - 25.995).abs() < 0.1, "uncut wall volume = {uncut_vol:.3}, expected ~25.995");
 
     let voided = router
@@ -406,11 +425,10 @@ fn rotated_wall_openings_not_overcut_or_fragmented() {
 
     // No fly-away geometry: the cut only removes material, so the result stays
     // within the host's bounds.
-    let (vmn, vmx) = voided.bounds();
-    let tol = 0.05_f32;
+    let (vmn, vmx) = world_bounds(&voided);
+    let tol = 0.05_f64;
     assert!(
-        vmn.x >= umn.x - tol && vmn.y >= umn.y - tol && vmn.z >= umn.z - tol
-            && vmx.x <= umx.x + tol && vmx.y <= umx.y + tol && vmx.z <= umx.z + tol,
+        (0..3).all(|i| vmn[i] >= umn[i] - tol && vmx[i] <= umx[i] + tol),
         "voided bounds ({vmn:?}..{vmx:?}) escaped host bounds ({umn:?}..{umx:?})"
     );
 }

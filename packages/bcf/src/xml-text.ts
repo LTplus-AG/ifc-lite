@@ -3,18 +3,18 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Reading text back out of BCF's XML.
+ * Reading text out of BCF's XML, and escaping it back in.
  *
  * Split out of `reader.ts` so the component parsers can share it without a
- * cycle. `writer.ts::escapeXml` is the inverse of `unescapeXml` here, and the
- * two are pinned against each other in `writer.test.ts`.
+ * cycle. `escapeXml` here is the inverse of `unescapeXml`, and the two are
+ * pinned against each other in `writer.test.ts`.
  */
 
 /**
  * Extract a simple element value from XML
  *
- * Values are unescaped so writer.ts's escapeXml() round-trips correctly
- * (see escapeXml/unescapeXml regression: & < > " ' in titles/descriptions/
+ * Values are unescaped so {@link escapeXml} round-trips correctly (see
+ * escapeXml/unescapeXml regression: & < > " ' in titles/descriptions/
  * comments must come back exactly as written, not as literal entities).
  */
 export function extractElement(content: string, elementName: string): string | undefined {
@@ -22,7 +22,19 @@ export function extractElement(content: string, elementName: string): string | u
   return match?.[1] !== undefined ? unescapeXml(match[1]) : undefined;
 }
 
-/** The five entities `writer.ts::escapeXml` produces. */
+/**
+ * Escape XML special characters
+ */
+export function escapeXml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+/** The five entities {@link escapeXml} produces. */
 const NAMED_ENTITIES: Record<string, string> = {
   lt: '<',
   gt: '>',

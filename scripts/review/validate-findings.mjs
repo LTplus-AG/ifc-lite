@@ -158,6 +158,36 @@ export const SENTINEL = 'ifc-lite-review-v1';
  */
 export const MAX_FINDINGS = 5;
 
+/**
+ * Every reason this module can exit with.
+ *
+ * Published rather than left to be scraped: `rubric-eval.mjs` has to decide, per
+ * reason, whether a refusal means the REVIEWER answered badly (score it zero and
+ * carry on) or the HARNESS broke (stop). It was recovering this list with a
+ * regex over this file's source, which failed silently in one direction -- a
+ * reason spelled with a digit, or in double quotes, was simply invisible.
+ *
+ * `validate-findings.test.mjs` holds the guard that this covers every raise
+ * site, because the raise sites live here and a new reason is added here.
+ */
+export const REASONS = new Set([
+  'BAD_ARGS',
+  'NO_RAW',
+  'NO_INPUT',
+  'NO_OUT',
+  'RAW_UNREADABLE',
+  'INPUT_UNREADABLE',
+  'RAW_EMPTY',
+  'RAW_UNPARSEABLE',
+  'RESPONSE_TRUNCATED',
+  'INPUT_INVALID',
+  'SCHEMA_INVALID',
+  'VERDICT_CONTRADICTS_FINDINGS',
+  'PROOF_OF_WORK_FAILED',
+  'VALIDATION_EMPTY',
+  'OUT_UNWRITABLE',
+]);
+
 /** GitHub renders long comments fine; a reviewer reading twenty of them does not. */
 export const MAX_BODY_CHARS = 1500;
 const TRUNCATION_NOTE = '\n\n[truncated by validate-findings]';
@@ -592,7 +622,9 @@ function checkProofOfWork({ response, input }) {
       `\`riskiest_change.quoted_line\` is not a line of \`${rc.path}\`'s patch (or is shorter than ` +
         `${MIN_PROOF_QUOTE_CHARS} characters, which would not be evidence of anything): ` +
         `${JSON.stringify(String(rc.quoted_line).slice(0, 120))}. This is the one thing a model that ` +
-        'quit early cannot fake. REMEDY: re-run; quote a WHOLE line, not a fragment.',
+        'quit early cannot fake. REMEDY: re-run. Quote a WHOLE line, not a fragment; and if the ' +
+        'line you nominated is too long to reproduce exactly, nominate a SHORTER line from the ' +
+        'same file instead -- any real line of the diff proves you read it.',
     );
   }
 }

@@ -216,7 +216,11 @@
 # surface here is not closed to a ray", which a single ray cannot answer, and
 # the alternative was a second copy of the crossing loop that nothing kept in
 # step with the first; 871 -> 907.
-     907 rust/geometry/src/router/voids/geom.rs
+# -25: `mesh_from_frame` deleted. It baked the frame centre into f32 positions,
+# collapsing thin cut geometry far from the project origin, and the correct
+# behaviour already existed next to it as `rotate_mesh_from_frame`, which now
+# also composes the input's own origin instead of assigning over it.
+     882 rust/geometry/src/router/voids/geom.rs
 # +10: extract min_opening_volume(quality) tier->floor helper shared by the batch
 # admission gate and the sequential CSG path so they can't diverge on the
 # High/Highest small-opening floor (B11 regression, issue #976).
@@ -228,7 +232,11 @@
 # +27: #129 coaxial-union prepass wiring — module decl + feature-gated stats
 # re-export + the pre-batch `coaxial_union_prepass` call and its consumed-skip.
 # +6: the voided rebuild INHERITS the id discriminator instead of hard-coding rep-item, so a future layered producer cannot be silently relabelled (#3199).
-     2060 rust/geometry/src/router/voids/mod.rs
+# -1 overall: the local-frame cut returns through `rotate_mesh_from_frame` (centre in
+# `Mesh::origin`) instead of a centre-baking transform, and the relativizing
+# branch now COMPOSES the inner cut's origin rather than assigning over it.
+# `voids/geom.rs` sheds 27 in the same change.
+    2058 rust/geometry/src/router/voids/mod.rs
 # NEW: analytic prism (stepped-extrusion) subtraction on the host mesh — the
 # CSG-heavy-corpus lever (ISSUE_098/129: exact void booleans are ~75-82% of
 # geometry time; rebated masonry openings on brep/clipped hosts had no fast

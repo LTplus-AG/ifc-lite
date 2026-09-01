@@ -266,7 +266,7 @@ export const DEFAULT_FREE_MODEL = FREE_MODELS[0] ?? FALLBACK_MODEL;
 export const DEFAULT_BYOK_MODEL = BYOK_MODELS[0] ?? DEFAULT_FREE_MODEL;
 
 /**
- * Where a retired id should land.
+ * Where an id this picker no longer offers should land.
  *
  * A selection persists in localStorage, so dropping an id silently reassigns
  * whoever had it to the default. That default is Opus 5, which is why this
@@ -275,20 +275,24 @@ export const DEFAULT_BYOK_MODEL = BYOK_MODELS[0] ?? DEFAULT_FREE_MODEL;
  * Anthropic model and be asked for a key they never needed.
  *
  * Two kinds of entry, and the difference is worth keeping straight: the first
- * is the same model under a new name, the rest are a retired model's closest
- * surviving neighbour, which is a different model at a similar price.
+ * is the same model under a new name, the rest are a different model at a
+ * similar price. "No longer offered here" is not the same as "retired" -- the
+ * provider still serves Sonnet 4.6 and GPT-5.4; this picker just does not list
+ * them any more, and their holders have to land somewhere. Same tier and same
+ * provider beats the Opus 5 default, which is dearer and, for the OpenAI rows,
+ * would demand a key the user never had.
  */
 const MODEL_ID_MIGRATIONS: Record<string, string> = {
   // Same model: the dated snapshot and the alias.
   'claude-haiku-4-5-20251001': 'claude-haiku-4-5',
-  // Nearest surviving neighbour, staying with the provider and price tier.
+  // Dropped from the picker: nearest listed model, same provider and tier.
   'claude-sonnet-4-6': 'claude-sonnet-5',
   'gpt-5.5': 'gpt-5.6-sol',
   'gpt-5.4': 'gpt-5.6-sol',
   'gpt-5.4-mini-2026-03-17': 'gpt-5.6-luna',
 };
 
-/** Resolve a retired id to the one the registry currently lists. */
+/** Resolve an id this picker no longer lists to one it does. */
 export function canonicalModelId(id: string): string {
   return MODEL_ID_MIGRATIONS[id] ?? id;
 }

@@ -10,10 +10,13 @@
  * failure stories are all decisions rather than plumbing: a room emitted on top
  * of an authored space (duplicate rooms in the file), a floor-to-floor taken
  * from a storey list that is unsorted or has a nonsense gap (spaces a hundred
- * metres tall, or the wall band the derive reads collapsing to nothing), and
- * gross floor area measured off the wrong outline (the display boundary rather
- * than the centreline, which would make the quantity describe the wall face).
- * Those are the decisions this module owns; `useSpaceBake` owns the emitting.
+ * metres tall, or the wall band the derive reads collapsing to nothing), gross
+ * floor area measured off the wrong outline (the display boundary rather than
+ * the centreline, which would make the quantity describe the wall face), and
+ * net floor area tracking the display boundary too closely — a user emitting
+ * the "outer" boundary as `OuterCurve` would otherwise make NetFloorArea the
+ * outer-face area, larger than GrossFloorArea. Those are the decisions this
+ * module owns; `useSpaceBake` owns the emitting.
  */
 
 import { centroid, pointInPoly, polyArea, type Pt } from '@/lib/space-sketch-geometry';
@@ -51,11 +54,15 @@ export function floorToFloorHeight(storeys: StoreyElevation[], sid: number): num
 
 /**
  * One drafted room as the bake sees it: the topology outline (always the wall
- * centreline) and the display/emit boundary at the user's chosen boundary mode.
+ * centreline), the display/emit boundary at the user's chosen boundary mode,
+ * and the inner-face outline (always net, regardless of that choice).
  */
 export interface DraftRoom {
   outline: Pt[];
   boundary: Pt[];
+  /** The room's inner-face outline — independent of `boundary`'s mode, so
+   *  NetFloorArea stays net even when the user draws/emits at "outer". */
+  inner: Pt[];
 }
 
 /** An IfcSpace footprint the caller is cleared to create. */
@@ -65,6 +72,10 @@ export interface PlannedSpace {
   Height: number;
   /** Measured on the CENTRELINE outline, so the quantity is the room. */
   grossFloorArea: number;
+  /** Measured on the INNER-FACE outline, so the quantity never exceeds
+   *  `grossFloorArea` — even when the user emits the "outer" boundary as
+   *  `OuterCurve`, which is larger than the centreline. */
+  netFloorArea: number;
 }
 
 /**
@@ -91,6 +102,7 @@ export function planStoreySpaces(
       OuterCurve: room.boundary,
       Height: height,
       grossFloorArea: polyArea(room.outline),
+      netFloorArea: polyArea(room.inner),
     });
   }
   return { planned, skipped };

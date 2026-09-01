@@ -202,16 +202,69 @@ describe('DXFExporter', () => {
     expect(texts[0].text).toBe('A');
     expect(texts[0].x).toBeCloseTo(0);
     expect(texts[0].y).toBeCloseTo(0);
-    // Local second-line anchor (0, -2.6), scaled by 2 then rotated 90deg
-    // clockwise (applyDxfPlacement: x' = x c + y s, y' = -x s + y c):
-    // (0, -5.2) -> (-5.2, 0). The old output-space offset would have put it
-    // at (0, -2.6).
+    // `DxfPlacement.rotationDeg` is documented as "counter-clockwise as seen
+    // on a plan view" (drawing/screen space, +Y down) — the same convention
+    // `applyDxfPlacement` implements directly and every OTHER consumer
+    // (svg-exporter.ts's underlay mapping, dxfUnderlayMath.ts's
+    // worldToDrawing) applies by negating Y, calling `applyDxfPlacement`,
+    // then negating back for a world-space (+Y up) output. Local
+    // second-line anchor (0, -2.6): negate Y -> (0, 2.6), scale by 2 ->
+    // (0, 5.2), rotate 90 deg CCW-as-seen-on-plan (applyDxfPlacement:
+    // x' = x c + y s, y' = -x s + y c) -> (5.2, 0), negate Y back -> (5.2, 0).
     expect(texts[1].text).toBe('B');
-    expect(texts[1].x).toBeCloseTo(-5.2);
+    expect(texts[1].x).toBeCloseTo(5.2);
     expect(texts[1].y).toBeCloseTo(0);
     // Glyph height follows the placement scale, like the SVG exporter.
     expect(texts[0].height).toBeCloseTo(4);
     expect(texts[1].height).toBeCloseTo(4);
+  });
+
+  it('applies underlay placement offset/rotation in the same sense as every other DxfPlacement consumer (world Y-up, not mirrored)', () => {
+    // `DxfPlacement` is documented as drawing space (+Y down): "Offset in
+    // metres (drawing space)" / "counter-clockwise as seen on a plan view".
+    // `svg-exporter.ts` and `dxfUnderlayMath.ts`'s `worldToDrawing` both
+    // negate Y before calling `applyDxfPlacement` (world +Y-up -> drawing
+    // +Y-down) so the SAME placement value produces the SAME visual result
+    // in the 2D canvas, the 3D overlay, and SVG export. The DXF exporter
+    // must match: it stays in world space (+Y up, no final flip — see the
+    // module docs), so it needs the negate/placement/negate-back round trip.
+    const offsetOnly = underlay();
+    offsetOnly.layers[0].texts = [];
+    offsetOnly.layers[0].paths = [{ points: [{ x: 0, y: 0 }, { x: 1, y: 0 }], closed: false }];
+    const offsetDxf = exportToDXF(emptyDrawing(), {
+      underlays: [{
+        underlay: offsetOnly,
+        placement: { offsetX: 0, offsetY: 10, rotationDeg: 0, scale: 1 },
+      }],
+    });
+    const offsetLine = parseDxf(offsetDxf).entities.find(
+      (e): e is DxfPolylineEntity => e.kind === 'polyline',
+    )!;
+    // A drawing-space offsetY of +10 shifts the underlay SOUTH (world -Y),
+    // matching worldToDrawing's `y: -(world.y - shiftY)` sign convention —
+    // not north (+Y), which is what applying the placement to the raw
+    // world point without the Y round trip would produce.
+    expect(offsetLine.vertices[0].y).toBeCloseTo(-10);
+    expect(offsetLine.vertices[1].y).toBeCloseTo(-10);
+
+    const rotateOnly = underlay();
+    rotateOnly.layers[0].texts = [];
+    // A single east-pointing (+X) segment.
+    rotateOnly.layers[0].paths = [{ points: [{ x: 0, y: 0 }, { x: 1, y: 0 }], closed: false }];
+    const rotateDxf = exportToDXF(emptyDrawing(), {
+      underlays: [{
+        underlay: rotateOnly,
+        placement: { offsetX: 0, offsetY: 0, rotationDeg: 90, scale: 1 },
+      }],
+    });
+    const rotatedLine = parseDxf(rotateDxf).entities.find(
+      (e): e is DxfPolylineEntity => e.kind === 'polyline',
+    )!;
+    // A 90-degree "counter-clockwise as seen on a plan view" rotation turns
+    // an east-pointing (+X) segment to point north (+Y) — not south (-Y),
+    // which a mirrored (clockwise) rotation would produce.
+    expect(rotatedLine.vertices[1].x).toBeCloseTo(0, 5);
+    expect(rotatedLine.vertices[1].y).toBeCloseTo(1);
   });
 
   it('honours underlay per-layer visibility overrides', () => {

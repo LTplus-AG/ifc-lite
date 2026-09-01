@@ -54,6 +54,7 @@ import {
   calculateViewportBounds,
   calculateOptimalScaleBarLength,
   calculateDrawingTransformForAxis,
+  formatScaleFactorLabel,
   type Drawing2D,
   type DrawingSheet,
 } from '@ifc-lite/drawing-2d';
@@ -676,5 +677,88 @@ describe('generateSheetSVG — pinned placement, shared with the preview', () =>
       cached: { ...held },
     });
     assert.deepEqual(after, held, 'the export path must not overwrite an existing cache entry');
+  });
+});
+
+/** The title block's "Scale" field text, read out of the rendered
+ *  `title-block-fields` group. The field's `<text>` label ("Scale") is
+ *  immediately followed by its value `<text>` — see
+ *  `title-block-renderer.ts`'s `renderTitleBlockFields`. */
+function parseTitleBlockScaleFieldText(svg: string): string {
+  const match = svg.match(/fill="#666666">Scale<\/text>\s*<text[^>]*>([^<]*)<\/text>/);
+  assert.ok(match, `expected a "Scale" title-block field in the exported sheet svg; got:\n${svg.slice(0, 2000)}`);
+  return match[1];
+}
+
+/** A drawing 1000m wide — far beyond what any sheet viewport can hold at a
+ *  requested named scale, so `calculateDrawingTransform`'s
+ *  `fitScale = min(scaleX, scaleY, 1)` (sheet-types.ts) must shrink it well
+ *  below the requested ratio to fit the fixed viewport. */
+function buildOversizedDrawing(): Drawing2D {
+  return {
+    ...buildDrawing(),
+    bounds: { min: { x: 0, y: 0 }, max: { x: 1000, y: 0 } },
+  };
+}
+
+/** `buildSheet()` reuses `DEFAULT_TITLE_BLOCK_FIELDS` verbatim, whose
+ *  'scale' field carries the hardcoded placeholder value `'1:100'`
+ *  (title-block-types.ts). Production sheets instead carry whatever
+ *  `sheetSlice.ts`'s `autoPopulateTitleBlock` wrote (`1:${scale.factor}`,
+ *  called when a project loads) — reproduce that here so the fixture
+ *  matches what a real sheet's title block actually holds, rather than
+ *  coincidentally matching (or missing) the '1:100' placeholder. */
+function withPopulatedScaleField(sheet: DrawingSheet): DrawingSheet {
+  return {
+    ...sheet,
+    titleBlock: {
+      ...sheet.titleBlock,
+      fields: sheet.titleBlock.fields.map((f) =>
+        f.id === 'scale' ? { ...f, value: `1:${sheet.scale.factor}` } : f
+      ),
+    },
+  };
+}
+
+describe('generateSheetSVG — title block "Scale" field vs. a fit-clamped drawing', () => {
+  it('prints the ACTUAL rendered ratio, not the requested one, when the viewport fit shrinks the drawing', async () => {
+    // Requested 1:100 on A3 landscape cannot hold a 1000m-wide drawing —
+    // `calculateDrawingTransform`'s fit clamp shrinks it. The scale BAR
+    // (`renderScaleBarInTitleBlock`, fed `effectiveScaleFactor`) already
+    // reflects that shrink; the field text populated once by
+    // `sheetSlice.ts`'s `autoPopulateTitleBlock` (`1:${scale.factor}`) does
+    // not — it is static content passed straight through to
+    // `renderTitleBlock`, unrelated to the transform actually used.
+    const sheet = withPopulatedScaleField(buildSheet('A3_LANDSCAPE', 100, '1:100'));
+    const drawing = buildOversizedDrawing();
+    const { svg } = await exportPdfForSheet(sheet, drawing);
+
+    const expected = calculateDrawingTransformForAxis(
+      { minX: drawing.bounds.min.x, minY: drawing.bounds.min.y, maxX: drawing.bounds.max.x, maxY: drawing.bounds.max.y },
+      sheet.viewportBounds,
+      sheet.scale,
+      false,
+    );
+    // Sanity: the fixture actually triggers the clamp this test targets.
+    const nominalScaleFactor = 1000 / sheet.scale.factor;
+    assert.ok(
+      expected.scaleFactor < nominalScaleFactor * 0.5,
+      `fixture does not exercise the fit clamp (effective ${expected.scaleFactor} vs nominal ${nominalScaleFactor} mm/m) — strengthen it`,
+    );
+    const expectedLabel = `1:${formatScaleFactorLabel(1000 / expected.scaleFactor)}`;
+
+    const printed = parseTitleBlockScaleFieldText(svg);
+    assert.equal(
+      printed,
+      expectedLabel,
+      `title block prints "${printed}" but the drawing was actually rendered at ${expectedLabel} — a silently wrong scale on the sheet`,
+    );
+    assert.notEqual(printed, sheet.scale.name, 'the requested (unclamped) label must not survive onto a clamped sheet');
+  });
+
+  it('control: prints the requested scale unchanged when the drawing fits without clamping', async () => {
+    const sheet = withPopulatedScaleField(buildSheet('A3_LANDSCAPE', 50, '1:50'));
+    const { svg } = await exportPdfForSheet(sheet); // buildDrawing()'s default 4m span fits comfortably
+    assert.equal(parseTitleBlockScaleFieldText(svg), '1:50');
   });
 });

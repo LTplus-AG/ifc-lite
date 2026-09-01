@@ -4,6 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { parseGLBToMeshData, loadGLBToMeshData } from './glb.js';
+import { linearToSrgb } from './glb-color.js';
 
 /**
  * Build a minimal valid GLB (binary glTF) by hand. Mirrors the structure
@@ -151,7 +152,10 @@ function buildGLB(materials: Array<[number, number, number, number]>): Uint8Arra
 describe('parseGLBToMeshData / loadGLBToMeshData — material colour round-trip', () => {
   // Regression for #688: GLB importer hardcoded grey, silently dropping the
   // exporter's per-mesh material colours on re-import.
-  it('reads pbrMetallicRoughness.baseColorFactor into MeshData.color', () => {
+  it('reads pbrMetallicRoughness.baseColorFactor into MeshData.color (linear → sRGB)', () => {
+    // glTF baseColorFactor is linear-light; the mesh colour pipeline is sRGB, so
+    // the reader encodes R/G/B back to sRGB (inverse of the exporter's
+    // srgb_to_linear) and leaves alpha untouched.
     const colors: Array<[number, number, number, number]> = [
       [0.8, 0.2, 0.2, 1.0],
       [0.1, 0.6, 0.3, 0.5],
@@ -162,11 +166,25 @@ describe('parseGLBToMeshData / loadGLBToMeshData — material colour round-trip'
     for (let i = 0; i < colors.length; i++) {
       const expected = colors[i];
       const actual = meshes[i].color;
-      expect(actual[0]).toBeCloseTo(expected[0]);
-      expect(actual[1]).toBeCloseTo(expected[1]);
-      expect(actual[2]).toBeCloseTo(expected[2]);
-      expect(actual[3]).toBeCloseTo(expected[3]);
+      expect(actual[0]).toBeCloseTo(linearToSrgb(expected[0]));
+      expect(actual[1]).toBeCloseTo(linearToSrgb(expected[1]));
+      expect(actual[2]).toBeCloseTo(linearToSrgb(expected[2]));
+      expect(actual[3]).toBeCloseTo(expected[3]); // alpha is not colour-managed
     }
+  });
+
+  it('decodes a known linear baseColorFactor to its sRGB value (0.2140 → ~0.5), alpha unchanged', () => {
+    // A mid-grey sRGB 0.5 decodes to linear ≈ 0.2140; the writer stores that in
+    // baseColorFactor, and the reader must return it to ~0.5. On the pre-fix
+    // reader (raw passthrough) color[0] would be 0.2140, not ~0.5 — RED before,
+    // GREEN after.
+    const meshes = loadGLBToMeshData(buildGLB([[0.2140, 0.2140, 0.2140, 0.5]]));
+    expect(meshes).toHaveLength(1);
+    const c = meshes[0].color;
+    expect(c[0]).toBeCloseTo(0.5, 3);
+    expect(c[1]).toBeCloseTo(0.5, 3);
+    expect(c[2]).toBeCloseTo(0.5, 3);
+    expect(c[3]).toBe(0.5); // alpha passes through untouched
   });
 
   it('falls back to default grey when a primitive has no material', () => {
@@ -357,8 +375,8 @@ describe('parseGLB — SharedArrayBuffer-backed input', () => {
     shared.set(glb);
     const meshes = loadGLBToMeshData(shared);
     expect(meshes).toHaveLength(1);
-    expect(meshes[0].color[0]).toBeCloseTo(0.2);
-    expect(meshes[0].color[2]).toBeCloseTo(0.6);
+    expect(meshes[0].color[0]).toBeCloseTo(linearToSrgb(0.2));
+    expect(meshes[0].color[2]).toBeCloseTo(linearToSrgb(0.6));
   });
 });
 

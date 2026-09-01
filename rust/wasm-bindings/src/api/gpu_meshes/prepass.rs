@@ -248,9 +248,8 @@ impl IfcAPI {
         // on their first batch to rebuild these three per-content structures
         // (referenced RepresentationMaps, instantiated type ids, the material-
         // layer index). Collect the spans they need HERE, during the one scan the
-        // pre-pass already runs, then build + ship each ONCE below so every
-        // worker skips its own full-file walk. `rel_associates_material` spans are
-        // already stashed in `prepass_spans`.
+        // pre-pass already runs, then build + ship each ONCE below (`rel_associates_material`
+        // spans are already stashed in `prepass_spans`).
         let mut mapped_item_spans: Vec<(u32, usize, usize)> = Vec::new();
         let mut rel_defines_by_type_spans: Vec<(u32, usize, usize)> = Vec::new();
         // #957/#962: IfcTypeProduct candidates (id, span, resolved type), stashed
@@ -376,6 +375,7 @@ impl IfcAPI {
                 }
                 "IFCRELDEFINESBYTYPE" => {
                     rel_defines_by_type_spans.push((id, start, end));
+                    prepass_spans.defines_by_type.push((id, start, end)); // material type-fallback
                 }
                 "IFCMATERIALLAYERSET" | "IFCMATERIALLAYERSETUSAGE" => {
                     has_layer_set = true;

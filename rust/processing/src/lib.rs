@@ -40,6 +40,7 @@ pub mod pipeline_diagnostics;
 pub mod prepass;
 mod prepass_styled;
 pub use prepass_styled::flat_styles_rgba8_from_geometry_columns;
+mod prepass_type_material;
 mod processor;
 pub(crate) mod simplify_math;
 pub mod simplify_session;

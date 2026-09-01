@@ -124,6 +124,10 @@ pub(super) fn discover_from_columns(
             }
             c if c == p::PREPASS_CLASS_REL_DEFINES_BY_TYPE => {
                 d.rel_defines_by_type_spans.push((id, start, end));
+                // Also feed the shared resolver's material type-fallback
+                // (an occurrence with no material of its own inherits its
+                // type's IfcRelAssociatesMaterial).
+                d.prepass_spans.defines_by_type.push((id, start, end));
                 continue;
             }
             _ => {}

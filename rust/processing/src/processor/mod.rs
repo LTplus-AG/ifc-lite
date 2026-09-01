@@ -798,6 +798,8 @@ pub fn process_geometry_streaming_filtered_with_options(
             if let Some(type_id) = args.get(5).and_then(|token| parse_step_ref(token)) {
                 instantiated_type_ids.insert(type_id);
             }
+            // Also feed the shared resolver's type-material fallback.
+            prepass_spans.defines_by_type.push((id, start, end));
         } else if let Some(type_ty) = ifc_lite_core::type_product_ifc_type(type_name) {
             let args = parse_step_arguments(&content[start..end]);
             // IfcTypeProduct.RepresentationMaps is attribute index 6.

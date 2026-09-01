@@ -50,14 +50,14 @@ function model(id: string, idOffset: number, maxExpressId: number): FederatedMod
 }
 
 /** Mirrors what `useConstructionSequence.ts` registers for a PAUSED
- *  animation frame: local product id 42 in model 'B' (offset 1000),
- *  translated to global id 1042 at registration time. */
+ *  animation frame: local product id 42 in model 'B' (offset 1_001_000),
+ *  translated to global id 1_001_042 at registration time. */
 function seedPausedAnimationLayer(): OverlayLayer {
   return {
     id: 'animation',
     priority: 100,
-    hiddenIds: new Set([1042]),
-    colorOverrides: new Map([[1042, [1, 0, 0, 1]]]),
+    hiddenIds: new Set([1_001_042]),
+    colorOverrides: new Map([[1_001_042, [1, 0, 0, 1]]]),
   };
 }
 
@@ -69,7 +69,7 @@ describe('overlaySlice.overlayLayers survives clearAllModels as a dangling — a
     useViewerStore.setState({
       models: new Map([
         ['A', model('A', 0, 100)],
-        ['B', model('B', 1000, 1100)],
+        ['B', model('B', 1_001_000, 1_001_100)],
       ]),
       activeModelId: 'A',
     });
@@ -89,15 +89,15 @@ describe('overlaySlice.overlayLayers survives clearAllModels as a dangling — a
   it('misresolution: a stale animation layer left behind lands its hide+colour on a reloaded, unrelated model\'s LIVE entity', () => {
     // Same repro shape as removeModel-compare-stale.test.ts: clearAllModels()
     // resets the offset counter, so the very first model registered
-    // afterward can land on offset 1000 again — the exact number the stale
-    // layer's global id 1042 was computed against.
+    // afterward can land on offset 1_001_000 again — the exact number the
+    // stale layer's global id 1_001_042 was computed against.
     federationRegistry.clear();
     federationRegistry.registerModel('A', 100);
     federationRegistry.registerModel('B', 100);
     useViewerStore.setState({
       models: new Map([
         ['A', model('A', 0, 100)],
-        ['B', model('B', 1000, 1100)],
+        ['B', model('B', 1_001_000, 1_001_100)],
       ]),
       activeModelId: 'A',
     });
@@ -106,37 +106,37 @@ describe('overlaySlice.overlayLayers survives clearAllModels as a dangling — a
     useViewerStore.getState().clearAllModels();
 
     // Reload: two fresh, UNRELATED models — offset space was reset, so the
-    // second one can land on 1000 again, same as `newOffsetC === 0` in
+    // second one can land on 1_001_000 again, same as `newOffsetC === 0` in
     // removeModel-compare-stale.test.ts.
     const offsetX = federationRegistry.registerModel('X', 999);
     const offsetC = federationRegistry.registerModel('C', 50);
-    assert.strictEqual(offsetC, 1000, 'offset space is not burned across a full clear — confirms the hazard is real');
+    assert.strictEqual(offsetC, 1_001_000, 'offset space is not burned across a full clear — confirms the hazard is real');
     useViewerStore.getState().addModel(model('X', offsetX, 999));
     useViewerStore.getState().addModel(model('C', offsetC, 50));
 
     const afterReload = useViewerStore.getState();
     // If the fix did its job the layer is gone and there is nothing left to
-    // misresolve. If it did not, the layer (and its stale global id 1042)
-    // is still sitting in the registry, and the compositor
+    // misresolve. If it did not, the layer (and its stale global id
+    // 1_001_042) is still sitting in the registry, and the compositor
     // (`useOverlayCompositor.ts`) would apply it verbatim.
     const stillRegistered = afterReload.overlayLayers.get('animation');
     if (stillRegistered) {
       const { hiddenIds, colorOverrides } = afterReload.computeCompositeOverlay();
-      assert.ok(hiddenIds.has(1042), 'sanity: composite still carries the stale global id');
-      // Resolve global id 1042 against the RELOADED federation — this is
+      assert.ok(hiddenIds.has(1_001_042), 'sanity: composite still carries the stale global id');
+      // Resolve global id 1_001_042 against the RELOADED federation — this is
       // exactly what a global-id-keyed hide/colour channel means once
       // applied to the renderer.
-      const resolved = fromGlobalIdFromModels(afterReload.models, 1042);
-      console.log('global id 1042 resolves, post-reload, to:', resolved);
+      const resolved = fromGlobalIdFromModels(afterReload.models, 1_001_042);
+      console.log('global id 1_001_042 resolves, post-reload, to:', resolved);
       assert.deepStrictEqual(
         resolved,
         { modelId: 'C', expressId: 42 },
-        'global id 1042 now names a LIVE entity in the reloaded model C — a task from the pre-clear schedule ' +
+        'global id 1_001_042 now names a LIVE entity in the reloaded model C — a task from the pre-clear schedule ' +
           'would hide/tint an entity that has nothing to do with it',
       );
-      assert.ok(colorOverrides.has(1042), 'and the stale RED colour override would land on that same live entity');
+      assert.ok(colorOverrides.has(1_001_042), 'and the stale RED colour override would land on that same live entity');
       assert.fail(
-        'DEFECT: clearAllModels left the animation overlay layer registered; its stale global id 1042 now ' +
+        'DEFECT: clearAllModels left the animation overlay layer registered; its stale global id 1_001_042 now ' +
           'misresolves onto model C\'s live entity 42 — same shape as the compareResult/lens defects fixed in #2854',
       );
     }
@@ -151,7 +151,7 @@ describe('overlaySlice.overlayLayers survives clearAllModels as a dangling — a
     useViewerStore.setState({
       models: new Map([
         ['A', model('A', 0, 100)],
-        ['B', model('B', 1000, 1100)],
+        ['B', model('B', 1_001_000, 1_001_100)],
       ]),
       activeModelId: 'A',
     });
@@ -169,11 +169,11 @@ describe('overlaySlice.overlayLayers survives clearAllModels as a dangling — a
     );
 
     // Prove the "cannot misresolve" half: register a brand new model and
-    // confirm the federation never hands out offset 1000 again.
+    // confirm the federation never hands out offset 1_001_000 again.
     const offsetC = federationRegistry.registerModel('C', 50);
     assert.notStrictEqual(
       offsetC,
-      1000,
+      1_001_000,
       'unregisterModel burns the offset space — a new model can never be handed the range the removed model owned, ' +
         'so the still-registered stale layer names a global id no live model can ever claim again',
     );

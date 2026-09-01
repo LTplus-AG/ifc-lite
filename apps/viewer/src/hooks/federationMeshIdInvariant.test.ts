@@ -83,7 +83,9 @@ beforeEach(() => {
   secondaryOffset = store.registerModelOffset('secondary', SECONDARY_MAX_EXPRESS_ID);
   assert.equal(
     secondaryOffset,
-    PRIMARY_MAX_EXPRESS_ID + 1,
+    // +1 gap, plus FederationRegistry's OVERLAY_ID_HEADROOM (1_000_000)
+    // reserved after every model's own range.
+    PRIMARY_MAX_EXPRESS_ID + 1 + 1_000_000,
     'sanity: the secondary must start after the primary\'s range — if this changes, the '
     + '"unshifted id lands in the primary" premise below is no longer set up',
   );

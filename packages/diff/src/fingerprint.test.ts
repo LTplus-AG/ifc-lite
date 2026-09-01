@@ -46,6 +46,73 @@ describe('normalizeValue', () => {
     expect(normalizeValue(true)).toBe(true);
     expect(normalizeValue({ a: 1 })).toBe('{"a":1}');
   });
+
+  it('stringifies a non-finite number instead of letting it collapse to null', () => {
+    // RED on the unfixed code: normalizeValue returned NaN/Infinity/-Infinity
+    // as-is, and JSON.stringify (in buildDataFingerprint) silently maps every
+    // one of them to `null` (RFC 8259 has no non-finite literal) — the same
+    // token an absent property serializes to. GREEN requires each non-finite
+    // value to survive as a distinct, non-null token.
+    expect(normalizeValue(NaN)).toBe('NaN');
+    expect(normalizeValue(Infinity)).toBe('Infinity');
+    expect(normalizeValue(-Infinity)).toBe('-Infinity');
+    expect(normalizeValue(NaN)).not.toBeNull();
+  });
+});
+
+describe('buildDataFingerprint — non-finite property value', () => {
+  const base: DataFingerprintInput = {
+    ifcType: 'IfcWall',
+    name: 'W1',
+    propertySets: [{ name: 'Pset_A', properties: [{ name: 'x', value: null }] }],
+  };
+
+  it('does not hash the same as a genuinely absent (null) property value', () => {
+    // A property whose value is Infinity (reachable from a STEP IfcReal with
+    // an extreme exponent, e.g. "1.0E400") must not fingerprint identically
+    // to the same entity with that property entirely null — collapsing the
+    // two lets matchUnpairedByContent retire a real added/deleted pair as
+    // "unchanged" on an unrelated dataHash coincidence.
+    const withNull = base;
+    const withInfinity: DataFingerprintInput = {
+      ...base,
+      propertySets: [{ name: 'Pset_A', properties: [{ name: 'x', value: Infinity }] }],
+    };
+    const withNaN: DataFingerprintInput = {
+      ...base,
+      propertySets: [{ name: 'Pset_A', properties: [{ name: 'x', value: NaN }] }],
+    };
+
+    const hashNull = buildDataFingerprint(withNull);
+    const hashInfinity = buildDataFingerprint(withInfinity);
+    const hashNaN = buildDataFingerprint(withNaN);
+
+    expect(hashInfinity).not.toBe(hashNull);
+    expect(hashNaN).not.toBe(hashNull);
+    expect(hashInfinity).not.toBe(hashNaN);
+  });
+
+  it('control: a finite value fingerprints as before (unaffected by the guard)', () => {
+    const withFinite: DataFingerprintInput = {
+      ...base,
+      propertySets: [{ name: 'Pset_A', properties: [{ name: 'x', value: 42 }] }],
+    };
+    expect(buildDataFingerprint(withFinite)).toBe(
+      stableHash(
+        JSON.stringify({
+          Type: 'IfcWall',
+          Name: 'W1',
+          Description: '',
+          ObjectType: '',
+          PredefinedType: '',
+          Tag: '',
+          TypeAssignments: [],
+          PropertySets: [{ name: 'Pset_A', properties: [{ name: 'x', value: 42 }] }],
+          QuantitySets: [],
+        }),
+      ),
+    );
+  });
 });
 
 describe('buildDataFingerprint', () => {

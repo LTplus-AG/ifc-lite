@@ -250,6 +250,10 @@ export function extensionsFromApi(dto: BcfExtensionsDto): BCFExtensions | undefi
     users: orUndefined(dto.user_id_type),
     stages: orUndefined(dto.stage),
   };
-  const hasAny = Object.values(extensions).some((list) => list && list.length > 0);
+  // Array.isArray, not a truthiness check: each value is string[] | undefined,
+  // and truthiness does not narrow it, so .length is read off {} and the
+  // Typecheck lane fails. This shipped in #3288 because a fork PR's workflows
+  // need maintainer approval, so that lane never ran on it.
+  const hasAny = Object.values(extensions).some((list) => Array.isArray(list) && list.length > 0);
   return hasAny ? extensions : undefined;
 }

@@ -39,10 +39,13 @@ import { RelationshipType } from '@ifc-lite/data';
 import {
   EntityExtractor,
   extractAllEntityAttributes,
+  extractProjectUnits,
   extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
   getAttributeNamesAcrossSchemas,
+  quantitySiScale,
   type IfcDataStore,
+  type ProjectUnits,
 } from '@ifc-lite/parser';
 import { comparableEntities, type RootAttributes } from './diff-scope.js';
 
@@ -71,9 +74,16 @@ export function modelIdentityOf(path: string, bytes: Uint8Array): ModelIdentity 
  * section of `docs/guide/model-diff.md`).
  */
 export function buildFileFingerprints(store: IfcDataStore): EntityFingerprint<DiffRef>[] {
+  // Resolved once per file: an IfcQuantityLength/Area/Volume is stored in the
+  // project's raw author unit, exactly like a length-typed property, so it
+  // needs the same base-SI conversion before it can be hashed — otherwise a
+  // model re-authored in a different project length unit, with no physical
+  // quantity actually changed, reports every quantified entity as `modified`
+  // (see `quantitySiScale`).
+  const units = extractProjectUnits(store.source, store.entityIndex);
   const fingerprints: EntityFingerprint<DiffRef>[] = [];
   for (const { expressId, globalId, ifcType, source, isTypeObject } of comparableEntities(store)) {
-    const input = buildDataInput(store, expressId, ifcType, source, isTypeObject);
+    const input = buildDataInput(store, expressId, ifcType, source, isTypeObject, units);
     fingerprints.push({
       key: globalId,
       ifcType,
@@ -103,6 +113,9 @@ function buildDataInput(
   source: RootAttributes | undefined,
   /** `IfcTypeObject` subtype? Gates `Tag` into the fingerprint (issue #2021). */
   isTypeObject: boolean,
+  /** The file's declared units, for scaling Qto_ Length/Area/Volume values to
+   *  base SI before hashing (see {@link buildFileFingerprints}). */
+  units: ProjectUnits,
 ): DataFingerprintInput {
   const predefinedType = extractAllEntityAttributes(store, expressId).find(
     (attribute) => attribute.name === 'PredefinedType',
@@ -124,10 +137,12 @@ function buildDataInput(
     name: set.name,
     quantities: set.quantities.map((quantity) => ({
       name: quantity.name,
-      // Rounded to 4 dp, matching the viewer: re-exporting a model with
-      // sub-tolerance float jitter must not flip the data hash on an otherwise
-      // identical element, which on this path would cost the pair its match.
-      value: roundQuantity(quantity.value),
+      // Scaled to base SI first (a Qto_ value is stored in the project's raw
+      // author unit, see `quantitySiScale`), then rounded to 4 dp, matching
+      // the viewer: re-exporting a model with sub-tolerance float jitter must
+      // not flip the data hash on an otherwise identical element, which on
+      // this path would cost the pair its match.
+      value: roundQuantity(quantity.value * quantitySiScale(quantity, units)),
     })),
   }));
 

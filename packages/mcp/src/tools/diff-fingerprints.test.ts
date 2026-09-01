@@ -34,6 +34,7 @@ import {
   guid,
   legacyScheduleModel,
   model,
+  quantityModel,
   railTypeModel,
   scheduleModel,
   typeTagModel,
@@ -99,6 +100,7 @@ beforeAll(async () => {
   await load('walls', model(guid('OLDA'), guid('OLDB')));
   await load('type-tags', typeTagModel());
   await load('rail-types', railTypeModel());
+  await load('qty-mm', quantityModel('MILLIMETRE', 2000));
 }, 60_000);
 
 afterAll(async () => {
@@ -188,7 +190,7 @@ describe('fingerprint parity with the CLI copy', () => {
   // codegen pin silently reads no Tag at all while every IFC2X3 and IFC4
   // fixture above still agrees. Without this row, fixing one copy's attribute
   // lookup and not the other's would pass.
-  it.each(['legacy-base', 'sched', 'walls', 'type-tags', 'rail-types'])(
+  it.each(['legacy-base', 'sched', 'walls', 'type-tags', 'rail-types', 'qty-mm'])(
     'answers as the CLI does on %s',
     (id) => {
       const mcp = new Map(

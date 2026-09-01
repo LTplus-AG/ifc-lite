@@ -3696,6 +3696,7 @@
     "parsePath: function",
     "parseSourceHeader: function",
     "parseStepValue: function",
+    "quantitySiScale: function",
     "ref: function",
     "resolveAllMaterialDefIds: function",
     "resolveEntityLengthUnitScale: function",

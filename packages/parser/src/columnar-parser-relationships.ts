@@ -43,7 +43,14 @@ export function extractRelFast(
         const [relating, _] = readRefId(buffer, pos, end);
         if (relating < 0 || related.length === 0) return null;
         return { relatingObject: relating, relatedObjects: related };
-    } else if (typeUpper === 'IFCRELASSIGNSTOGROUP' || typeUpper === 'IFCRELASSIGNSTOPRODUCT') {
+    } else if (
+        typeUpper === 'IFCRELASSIGNSTOGROUP'
+        // Subtype of IfcRelAssignsToGroup: same attr[4]=RelatedObjects,
+        // attr[5]=RelatedObjectsType, attr[6]=RelatingGroup layout, plus a
+        // trailing Factor we don't need to read.
+        || typeUpper === 'IFCRELASSIGNSTOGROUPBYFACTOR'
+        || typeUpper === 'IFCRELASSIGNSTOPRODUCT'
+    ) {
         const [related, rp] = readRefList(buffer, pos, end);
         // `readRefList` returns `rp` pointing AT the closing `)` of
         // the list. `skipCommas` tracks paren depth, so leaving `rp`

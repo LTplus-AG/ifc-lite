@@ -5,14 +5,70 @@
 /**
  * How property/quantity sets coming from two different sources compose: an
  * occurrence's own sets with the ones it inherits from its `IfcTypeProduct`
- * ({@link mergeInheritedPropertySets}), and a type's `HasPropertySets` list with
- * the sets attached to it by `IfcRelDefinesByProperties`
- * ({@link appendSetsFromSecondSource}).
+ * ({@link mergeInheritedPropertySets}, {@link mergeInheritedQuantitySets}),
+ * and a type's `HasPropertySets` list with the sets attached to it by
+ * `IfcRelDefinesByProperties` ({@link appendSetsFromSecondSource}).
  *
  * Their own module rather than a corner of `on-demand-extractors.ts`: the rules
  * are independent of how either side was extracted, and every consumer that
  * resolves sets from more than one source needs the same answer.
  */
+
+/**
+ * Compose an occurrence's own named sets with those it inherits from its
+ * `IfcTypeProduct`, the way IFC defines the inheritance: **per item (property
+ * or quantity), not per set**. Shared core for {@link mergeInheritedPropertySets}
+ * and {@link mergeInheritedQuantitySets} — see those for the rule this
+ * implements and why.
+ *
+ * `getItems`/`withItems` isolate the one difference between the two: which
+ * field holds the named children (`properties` vs `quantities`).
+ */
+function mergeInheritedNamedSets<T extends { name: string }, Item extends { name: string }>(
+    ownSets: readonly T[],
+    inheritedSets: readonly T[],
+    getItems: (set: T) => readonly Item[],
+    withItems: (set: T, items: readonly Item[]) => T,
+): T[] {
+    if (inheritedSets.length === 0) return ownSets.slice();
+
+    const merged = ownSets.slice();
+    const indicesByName = new Map<string, number[]>();
+    for (let i = 0; i < merged.length; i++) {
+        const bucket = indicesByName.get(merged[i].name);
+        if (bucket) bucket.push(i);
+        else indicesByName.set(merged[i].name, [i]);
+    }
+
+    for (const inherited of inheritedSets) {
+        // An UNNAMED set matches nothing: since #3530 every set the source left
+        // without a Name reports `''`, so keying on it would fold an unnamed
+        // inherited set into an unrelated unnamed occurrence set and lose any
+        // item the two happen to share. Before #3530 the two carried distinct
+        // placeholder names and were kept apart here; an absent name is
+        // evidence of nothing, least of all of sameness.
+        const indices = inherited.name ? indicesByName.get(inherited.name) : undefined;
+        if (!indices) {
+            // Appended as-is, and deliberately NOT recorded in `indicesByName`:
+            // that index tracks OCCURRENCE sets only. Recording it would make a
+            // second inherited set of the same name fold into this one, quietly
+            // collapsing two type-side sets into one — a different operation
+            // from "occurrence inherits from type".
+            merged.push(inherited);
+            continue;
+        }
+        for (const index of indices) {
+            const own = merged[index];
+            const ownItems = getItems(own);
+            const ownNames = new Set(ownItems.map((p) => p.name));
+            const additions = getItems(inherited).filter((p) => !ownNames.has(p.name));
+            if (additions.length === 0) continue;
+            merged[index] = withItems(own, [...ownItems, ...additions]);
+        }
+    }
+
+    return merged;
+}
 
 /**
  * Minimal shape the type/occurrence property merge needs. `properties` is
@@ -53,47 +109,51 @@ export function mergeInheritedPropertySets<T extends NamedPropertySet>(
     ownSets: readonly T[],
     inheritedSets: readonly T[],
 ): T[] {
-    if (inheritedSets.length === 0) return ownSets.slice();
+    return mergeInheritedNamedSets(
+        ownSets,
+        inheritedSets,
+        (set) => set.properties,
+        // `as T`: the spread reproduces every field of `set` and replaces only
+        // `properties` with a superset of the same element type, but
+        // TypeScript cannot narrow a spread of an unresolved generic back to
+        // that generic.
+        (set, properties) => ({ ...set, properties }) as T,
+    );
+}
 
-    const merged = ownSets.slice();
-    const indicesByName = new Map<string, number[]>();
-    for (let i = 0; i < merged.length; i++) {
-        const bucket = indicesByName.get(merged[i].name);
-        if (bucket) bucket.push(i);
-        else indicesByName.set(merged[i].name, [i]);
-    }
+/**
+ * Minimal shape the type/occurrence quantity merge needs — the quantity
+ * counterpart of {@link NamedPropertySet}.
+ */
+interface NamedQuantitySet {
+    name: string;
+    quantities: readonly { name: string }[];
+}
 
-    for (const inherited of inheritedSets) {
-        // An UNNAMED set matches nothing: since #3530 every set the source left
-        // without a Name reports `''`, so keying on it would fold an unnamed
-        // inherited set into an unrelated unnamed occurrence set and lose any
-        // property the two happen to share. Before #3530 the two carried
-        // distinct `PropertySet #<id>` placeholders and were kept apart here;
-        // an absent name is evidence of nothing, least of all of sameness.
-        const indices = inherited.name ? indicesByName.get(inherited.name) : undefined;
-        if (!indices) {
-            // Appended as-is, and deliberately NOT recorded in `indicesByName`:
-            // that index tracks OCCURRENCE sets only. Recording it would make a
-            // second inherited set of the same name fold into this one, quietly
-            // collapsing two type-side sets into one — a different operation
-            // from "occurrence inherits from type".
-            merged.push(inherited);
-            continue;
-        }
-        for (const index of indices) {
-            const own = merged[index];
-            const ownPropNames = new Set(own.properties.map((p) => p.name));
-            const additions = inherited.properties.filter((p) => !ownPropNames.has(p.name));
-            if (additions.length === 0) continue;
-            // `as T`: the spread reproduces every field of `own` and replaces
-            // only `properties` with a superset of the same element type, but
-            // TypeScript cannot narrow a spread of an unresolved generic back
-            // to that generic.
-            merged[index] = { ...own, properties: [...own.properties, ...additions] } as T;
-        }
-    }
-
-    return merged;
+/**
+ * Compose an occurrence's own quantity sets (`IfcElementQuantity`) with those
+ * it inherits from its `IfcTypeProduct`, applying the same per-item rule
+ * {@link mergeInheritedPropertySets} applies to property sets: a same-named
+ * set does not replace or get replaced wholesale, it is topped up quantity by
+ * quantity, and the occurrence wins a same-named-quantity collision.
+ *
+ * IFC does not distinguish properties from quantities for this purpose —
+ * both live in the type's `HasPropertySets` list alongside each other — so a
+ * consumer that resolves inherited properties this way but resolves
+ * quantities by only ever looking at the occurrence's own sets silently
+ * drops every quantity a type-level `Qto_*` set carries (e.g.
+ * `Qto_WallBaseQuantities` attached to `IfcWallType` rather than each wall).
+ */
+export function mergeInheritedQuantitySets<T extends NamedQuantitySet>(
+    ownSets: readonly T[],
+    inheritedSets: readonly T[],
+): T[] {
+    return mergeInheritedNamedSets(
+        ownSets,
+        inheritedSets,
+        (set) => set.quantities,
+        (set, quantities) => ({ ...set, quantities }) as T,
+    );
 }
 
 /**

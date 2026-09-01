@@ -95,3 +95,55 @@ describe('lens adapter: same-named occurrence and type property sets (#1913)', (
     }
   });
 });
+
+/**
+ * The quantity counterpart of the #1913 case above: `getPropertyValue`/
+ * `getPropertySets` fall back to type-inherited PROPERTY sets, but
+ * `getQuantityValue`/`getQuantitySets` looked only at the occurrence's own
+ * quantity sets — a type-level `Qto_*` set (`IfcElementQuantity` reached via
+ * `IfcTypeProduct.HasPropertySets`, e.g. Revit's `Qto_WallBaseQuantities` on
+ * `IfcWallType`) was invisible to every Lens coloring/filtering rule and to
+ * the rule-builder's own set/quantity discovery, even though IFC defines
+ * quantities as inherited exactly like properties.
+ */
+const QUANTITY_FIXTURE = `ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#10=IFCWALL('0wall000000000000000a',$,'wall',$,$,$,$,$,$);
+#20=IFCQUANTITYLENGTH('Width',$,$,0.2,$);
+#21=IFCELEMENTQUANTITY('0qto00000000000000inst',$,'Qto_WallBaseQuantities',$,$,(#20));
+#22=IFCRELDEFINESBYPROPERTIES('0rel00000000000000inst',$,$,$,(#10),#21);
+#30=IFCQUANTITYLENGTH('Width',$,$,3.0,$);
+#31=IFCQUANTITYLENGTH('Height',$,$,2.4,$);
+#32=IFCELEMENTQUANTITY('0qto00000000000000type',$,'Qto_WallBaseQuantities',$,$,(#30,#31));
+#40=IFCQUANTITYAREA('GrossFootprintArea',$,$,1.5,$);
+#41=IFCELEMENTQUANTITY('0qto00000000000000type2',$,'Qto_WallTypeExtra',$,$,(#40));
+#50=IFCWALLTYPE('0type000000000000000a',$,'wall type',$,$,(#32,#41),$,$,$,.STANDARD.);
+#51=IFCRELDEFINESBYTYPE('0rel00000000000000type',$,$,$,(#10),#50);
+ENDSEC;
+END-ISO-10303-21;`;
+
+describe('lens adapter: type-inherited quantity sets', () => {
+  it('merges the occurrence and type Qto_WallBaseQuantities, occurrence winning the Width collision', async () => {
+    const p = createLensDataProvider(new Map(), await parse(QUANTITY_FIXTURE));
+
+    const sets = (p.getQuantitySets?.(10) ?? []).filter((s) => s.name === 'Qto_WallBaseQuantities');
+    assert.equal(sets.length, 1);
+    assert.deepEqual(sets[0].quantities.map((q) => q.name).sort(), ['Height', 'Width']);
+
+    // Occurrence's own Width (0.2) wins over the type's Width (3.0); Height is
+    // type-only and must still be reachable.
+    assert.equal(p.getQuantityValue?.(10, 'Qto_WallBaseQuantities', 'Width'), 0.2);
+    assert.equal(p.getQuantityValue?.(10, 'Qto_WallBaseQuantities', 'Height'), 2.4);
+  });
+
+  it('exposes a quantity set that lives only on the type (no occurrence counterpart)', async () => {
+    const p = createLensDataProvider(new Map(), await parse(QUANTITY_FIXTURE));
+
+    assert.equal(p.getQuantityValue?.(10, 'Qto_WallTypeExtra', 'GrossFootprintArea'), 1.5);
+    const names = (p.getQuantitySets?.(10) ?? []).map((s) => s.name);
+    assert.ok(names.includes('Qto_WallTypeExtra'));
+  });
+});

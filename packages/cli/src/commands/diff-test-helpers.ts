@@ -310,3 +310,52 @@ ENDSEC;
 END-ISO-10303-21;
 `;
 }
+
+/**
+ * One wall, same `GlobalId` throughout, carrying a `Pset_X.Width` typed as
+ * `IfcLengthMeasure` — for probing whether a diff scales a project-scoped
+ * measure PROPERTY the way it already scales a `Qto_` quantity. `unitDef` is
+ * the file's `IFCUNITASSIGNMENT` member (metre vs. millimetre `IFCSIUNIT`) and
+ * `widthValue` is the raw author-unit number stored in the STEP record.
+ */
+export function unitScaledPropertyModel(unitDef: string, widthValue: string): string {
+  return `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('m','2026',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1= IFCPROJECT('${guid('PROJ')}',$,'Proj',$,$,$,$,(#20),#30);
+#20= IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#21,$);
+#21= IFCAXIS2PLACEMENT3D(#22,$,$);
+#22= IFCCARTESIANPOINT((0.,0.,0.));
+#30= IFCUNITASSIGNMENT((#31));
+${unitDef}
+#40= IFCLOCALPLACEMENT($,#21);
+#41= IFCBUILDINGSTOREY('${guid('STOR')}',$,'L01',$,$,#40,$,$,.ELEMENT.,0.);
+#70= IFCWALL('${guid('WALL')}',$,'Wall A',$,$,#40,$,'tagA',$);
+#81= IFCPROPERTYSET('${guid('PSET')}',$,'Pset_X',$,(#82));
+#82= IFCPROPERTYSINGLEVALUE('Width',$,IFCLENGTHMEASURE(${widthValue}),$);
+#83= IFCRELDEFINESBYPROPERTIES('${guid('RELP')}',$,$,$,(#70),#81);
+#96= IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid('RELC')}',$,$,$,(#70),#41);
+ENDSEC;
+END-ISO-10303-21;
+`;
+}
+
+/** `unitScaledPropertyModel`, declared in whole metres. */
+export const UNIT_SCALE_METRE_MODEL = unitScaledPropertyModel(
+  '#31= IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);',
+  '2.5',
+);
+/** Same wall, same physical width, re-authored in a millimetre-declared project. */
+export const UNIT_SCALE_MILLIMETRE_MODEL = unitScaledPropertyModel(
+  '#31= IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);',
+  '2500.',
+);
+/** Same millimetre project, but the width genuinely changed (2.5 m -> 3.0 m). */
+export const UNIT_SCALE_MILLIMETRE_EDITED_MODEL = unitScaledPropertyModel(
+  '#31= IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);',
+  '3000.',
+);

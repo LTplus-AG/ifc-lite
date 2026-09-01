@@ -44,6 +44,7 @@ import {
   extractQuantitiesOnDemand,
   getAttributeNamesAcrossSchemas,
   quantitySiScale,
+  scaleMeasureValue,
   type IfcDataStore,
   type ProjectUnits,
 } from '@ifc-lite/parser';
@@ -74,12 +75,14 @@ export function modelIdentityOf(path: string, bytes: Uint8Array): ModelIdentity 
  * section of `docs/guide/model-diff.md`).
  */
 export function buildFileFingerprints(store: IfcDataStore): EntityFingerprint<DiffRef>[] {
-  // Resolved once per file: an IfcQuantityLength/Area/Volume is stored in the
-  // project's raw author unit, exactly like a length-typed property, so it
-  // needs the same base-SI conversion before it can be hashed — otherwise a
-  // model re-authored in a different project length unit, with no physical
-  // quantity actually changed, reports every quantified entity as `modified`
-  // (see `quantitySiScale`).
+  // Resolved once per store, not per entity: the same `IFCUNITASSIGNMENT` walk
+  // every property in the file would otherwise repeat, and both `quantitySiScale`
+  // and `scaleMeasureValue` are pure over it. An IfcQuantityLength/Area/Volume
+  // is stored in the project's raw author unit, exactly like a measure-typed
+  // property, so both need the same base-SI conversion before hashing —
+  // otherwise a model re-authored in a different project length unit, with no
+  // physical quantity actually changed, reports every quantified/measured
+  // entity as `modified` (see `buildDataInput`'s scaling comment).
   const units = extractProjectUnits(store.source, store.entityIndex);
   const fingerprints: EntityFingerprint<DiffRef>[] = [];
   for (const { expressId, globalId, ifcType, source, isTypeObject } of comparableEntities(store)) {
@@ -113,8 +116,9 @@ function buildDataInput(
   source: RootAttributes | undefined,
   /** `IfcTypeObject` subtype? Gates `Tag` into the fingerprint (issue #2021). */
   isTypeObject: boolean,
-  /** The file's declared units, for scaling Qto_ Length/Area/Volume values to
-   *  base SI before hashing (see {@link buildFileFingerprints}). */
+  /** The file's declared units, resolved once by {@link buildFileFingerprints},
+   *  for scaling Qto_ Length/Area/Volume quantities and measure-typed Pset
+   *  properties to base SI before hashing. */
   units: ProjectUnits,
 ): DataFingerprintInput {
   const predefinedType = extractAllEntityAttributes(store, expressId).find(
@@ -130,7 +134,10 @@ function buildDataInput(
 
   const propertySets = extractPropertiesOnDemand(store, expressId).map((set) => ({
     name: set.name,
-    properties: set.properties.map((property) => ({ name: property.name, value: property.value })),
+    properties: set.properties.map((property) => ({
+      name: property.name,
+      value: scaledPropertyValue(property.value, property.dataType, units),
+    })),
   }));
 
   const quantitySets = extractQuantitiesOnDemand(store, expressId).map((set) => ({
@@ -169,6 +176,38 @@ function buildDataInput(
 
 function roundQuantity(value: number): number {
   return Number.isFinite(value) ? Math.round(value * 1e4) / 1e4 : value;
+}
+
+/**
+ * An `IfcPropertySingleValue` measure value (`IfcLengthMeasure`,
+ * `IfcAreaMeasure`, `IfcPositiveLengthMeasure`, …) is stored in the project's
+ * raw author unit, exactly like a `Qto_` quantity — IFC does not distinguish
+ * "unit of a quantity" from "unit of a property" for the same measure type.
+ * A wall re-exported from a metre-authored file (`IfcLengthMeasure(2.5)`) into
+ * a millimetre-authored one (`IfcLengthMeasure(2500.)`), with no edit to the
+ * design at all, hashed to two different values here before this scale ran —
+ * `dataHash` compared the raw author number, not the physical length.
+ *
+ * `dataType` is the on-demand extractor's IFC measure tag (see
+ * `parsePropertyValue` in `@ifc-lite/parser`), read off the typed STEP value
+ * itself, so this works for any project-scoped measure — length, area, volume,
+ * and every other unit `ProjectUnits.unitForMeasure` resolves — not only the
+ * three the `Qto_` quantity path (`extractQuantitiesOnDemand`) special-cases.
+ * A property whose declared type has no project-scoped unit (a label, an
+ * identifier, a dimensionless ratio) resolves no unit and passes through
+ * unscaled, same as one with no `dataType` at all.
+ *
+ * Delegates to `@ifc-lite/parser`'s `scaleMeasureValue` — the same function the
+ * viewer and MCP adapters call — rather than a local copy: three independent
+ * unit-scale implementations is how the three fingerprint paths drift apart.
+ */
+function scaledPropertyValue(
+  value: unknown,
+  dataType: string | undefined,
+  projectUnits: ProjectUnits,
+): unknown {
+  const scaled = scaleMeasureValue(value, dataType, projectUnits);
+  return typeof scaled === 'number' ? roundQuantity(scaled) : scaled;
 }
 
 /**

@@ -66,6 +66,7 @@ import {
   extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
   quantitySiScale,
+  scaleMeasureValue,
   type IfcDataStore, type ProjectUnits,
 } from '@ifc-lite/parser';
 import { lensMaterialNames } from '../lens-material-names.js';
@@ -191,7 +192,9 @@ export async function buildEntityFingerprints(
   // alignment is a caller whose model was never re-baked, and defaulting to
   // "believe them" keeps the flag a statement about the one case that needs it.
   const volumesTrusted = model.geometryVolumesTrusted !== false;
-  const units = extractProjectUnits(store.source, store.entityIndex); // for quantitySiScale
+  // Scales both Qto_ quantities (quantitySiScale) and measure-typed Pset
+  // properties (scaleMeasureValue, see buildDataInput) to base SI.
+  const units = extractProjectUnits(store.source, store.entityIndex);
 
   // local express id → first geometry hash seen for it (may be undefined when
   // hashing was disabled or the WASM build predates it — data diff still works)
@@ -354,7 +357,7 @@ function buildDataInput(
   store: IfcDataStore,
   localId: number,
   ifcType: string,
-  units: ProjectUnits, // scales Qto_ Length/Area/Volume values to base SI
+  units: ProjectUnits, // scales Qto_ quantities and measure-typed Pset properties to base SI
 ): DataFingerprintInput {
   const predefinedType = extractAllEntityAttributes(store, localId).find(
     (attribute) => attribute.name === 'PredefinedType',
@@ -381,7 +384,7 @@ function buildDataInput(
       name: set.name,
       properties: set.properties
         .filter((property) => !isGeometricDataName(property.name))
-        .map((property) => ({ name: property.name, value: property.value })),
+        .map((property) => ({ name: property.name, value: scaledPropertyValue(property.value, property.dataType, units) })),
     }))
     .filter((set) => set.properties.length > 0);
 
@@ -443,3 +446,6 @@ function buildDataInput(
 function roundQuantity(value: number): number {
   return Number.isFinite(value) ? Math.round(value * 1e4) / 1e4 : value;
 }
+/** Measure property scaled to base SI, rounded like `roundQuantity` (`buildDataInput`). */
+function scaledPropertyValue(value: unknown, dataType: string | undefined, units: ProjectUnits): unknown {
+  const s = scaleMeasureValue(value, dataType, units); return typeof s === 'number' ? roundQuantity(s) : s; }

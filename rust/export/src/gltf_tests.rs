@@ -1315,14 +1315,18 @@ fn emissive_option_sets_emissive_factor_to_base_colour() {
     );
     let (json, _) = parse_glb(&glb);
     let mats = json["materials"].as_array().unwrap();
-    // emissiveFactor == base colour RGB; base colour is preserved (safe fallback).
+    // emissiveFactor == baseColorFactor RGB (both linear-space per glTF 2.0 —
+    // the sRGB-authored input [0.25, 0.5, 0.75] decoded to linear light).
     let m = &mats[0];
     let ef = m["emissiveFactor"].as_array().unwrap();
-    assert!((ef[0].as_f64().unwrap() - 0.25).abs() < 1e-6);
-    assert!((ef[1].as_f64().unwrap() - 0.5).abs() < 1e-6);
-    assert!((ef[2].as_f64().unwrap() - 0.75).abs() < 1e-6);
+    assert!((ef[0].as_f64().unwrap() - 0.050_876_088).abs() < 1e-6);
+    assert!((ef[1].as_f64().unwrap() - 0.214_041_14).abs() < 1e-6);
+    assert!((ef[2].as_f64().unwrap() - 0.522_521_55).abs() < 1e-6);
     let bc = m["pbrMetallicRoughness"]["baseColorFactor"].as_array().unwrap();
-    assert!((bc[0].as_f64().unwrap() - 0.25).abs() < 1e-6, "base colour kept (no regression)");
+    assert!(
+        (bc[0].as_f64().unwrap() - ef[0].as_f64().unwrap()).abs() < 1e-9,
+        "base colour and emissive agree (no regression from the emissive path)"
+    );
     // emissive is core glTF: no extension is declared for it.
     assert!(json.get("extensionsUsed").is_none(), "emissive needs no extension");
 }
@@ -1359,6 +1363,103 @@ fn emissive_takes_precedence_over_unlit() {
         json["materials"].as_array().unwrap().iter().all(|m| m["emissiveFactor"].is_array()),
         "materials carry emissiveFactor"
     );
+}
+
+// ── colour VALUE fidelity: baseColorFactor is glTF-spec LINEAR ────────────
+//
+// `IfcColourRgb` is authored the way every BIM colour picker (and
+// IfcOpenShell/BlenderBIM) works: a perceptual sRGB swatch. glTF's
+// `baseColorFactor`/`emissiveFactor` are defined in LINEAR space (glTF 2.0
+// "Reference Material"), so the writer must apply the sRGB→linear transfer
+// function on write — a straight copy renders too bright/washed-out in any
+// spec-compliant external consumer (Blender, three.js, Cesium).
+
+#[test]
+fn base_color_factor_is_srgb_decoded_to_linear() {
+    // Oracle: a mid-grey (0.5) sits right at the sRGB/linear crossover, where a
+    // missing transfer function is most visible (0.5 sRGB ≈ 0.214 linear, not
+    // 0.5) — a good discriminator against "looks plausible either way" colours.
+    let positions: Vec<f32> = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0];
+    let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 0.0, 1.0], 4).flatten().collect();
+    let indices: Vec<u32> = vec![0, 1, 2, 0, 2, 3];
+    let (glb, _) = export_glb_from_meshes(
+        &positions, &normals, &indices, &[4], &[6],
+        &[0.5, 0.5, 0.5, 1.0], // sRGB-authored source colour
+        &[0.0, 0.0, 0.0], &[10], false, true, false,
+    );
+    let (json, _) = parse_glb(&glb);
+    let bc = json["materials"][0]["pbrMetallicRoughness"]["baseColorFactor"]
+        .as_array()
+        .unwrap();
+    let expected_linear = 0.214_041_14_f64; // srgb_to_linear(0.5), IEC 61966-2-1
+    assert!(
+        (bc[0].as_f64().unwrap() - expected_linear).abs() < 1e-4,
+        "R: got {}, want linear-decoded {expected_linear} (sRGB 0.5 copied straight through is the bug)",
+        bc[0]
+    );
+    assert!((bc[1].as_f64().unwrap() - expected_linear).abs() < 1e-4);
+    assert!((bc[2].as_f64().unwrap() - expected_linear).abs() < 1e-4);
+}
+
+#[test]
+fn base_color_factor_control_endpoints_are_unchanged() {
+    // Control: black and white are fixed points of the sRGB transfer function
+    // (0 -> 0, 1 -> 1), so a colour that's already correct at either endpoint
+    // must stay correct — the fix must not perturb values it shouldn't touch.
+    let positions: Vec<f32> = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0];
+    let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 0.0, 1.0], 4).flatten().collect();
+    let indices: Vec<u32> = vec![0, 1, 2, 0, 2, 3];
+    let (glb, _) = export_glb_from_meshes(
+        &positions, &normals, &indices, &[4], &[6],
+        &[1.0, 0.0, 1.0, 1.0],
+        &[0.0, 0.0, 0.0], &[10], false, true, false,
+    );
+    let (json, _) = parse_glb(&glb);
+    let bc = json["materials"][0]["pbrMetallicRoughness"]["baseColorFactor"]
+        .as_array()
+        .unwrap();
+    assert!((bc[0].as_f64().unwrap() - 1.0).abs() < 1e-6, "white channel stays 1.0");
+    assert!((bc[1].as_f64().unwrap() - 0.0).abs() < 1e-6, "black channel stays 0.0");
+    assert!((bc[2].as_f64().unwrap() - 1.0).abs() < 1e-6, "white channel stays 1.0");
+}
+
+#[test]
+fn alpha_channel_is_never_srgb_decoded() {
+    // Alpha is opacity, not gamma-encoded light — it must pass through
+    // unchanged and must equal the RAW source alpha, never the linear-decoded
+    // RGB curve applied by mistake.
+    let positions: Vec<f32> = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0];
+    let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 0.0, 1.0], 4).flatten().collect();
+    let indices: Vec<u32> = vec![0, 1, 2, 0, 2, 3];
+    let (glb, _) = export_glb_from_meshes(
+        &positions, &normals, &indices, &[4], &[6],
+        &[0.8, 0.2, 0.2, 0.5], // sRGB colour, 50% opacity
+        &[0.0, 0.0, 0.0], &[10], false, true, false,
+    );
+    let (json, _) = parse_glb(&glb);
+    let m = &json["materials"][0];
+    let bc = m["pbrMetallicRoughness"]["baseColorFactor"].as_array().unwrap();
+    assert!((bc[3].as_f64().unwrap() - 0.5).abs() < 1e-6, "alpha passes through raw, not decoded");
+    assert_eq!(m["alphaMode"], "BLEND", "alpha < 1.0 must set alphaMode BLEND");
+    // R/G/B still decoded: a red channel of 0.8 sRGB is NOT ~0.8 linear.
+    let expected_r = 0.603_827_34_f64; // srgb_to_linear(0.8)
+    assert!((bc[0].as_f64().unwrap() - expected_r).abs() < 1e-4);
+}
+
+#[test]
+fn opaque_material_omits_alpha_mode() {
+    // Control: a fully-opaque colour (alpha == 1.0) must default to glTF's
+    // implicit OPAQUE — no `alphaMode` key at all — regardless of the RGB fix.
+    let positions: Vec<f32> = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0];
+    let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 0.0, 1.0], 4).flatten().collect();
+    let indices: Vec<u32> = vec![0, 1, 2, 0, 2, 3];
+    let (glb, _) = export_glb_from_meshes(
+        &positions, &normals, &indices, &[4], &[6],
+        &[0.3, 0.6, 0.9, 1.0],
+        &[0.0, 0.0, 0.0], &[10], false, true, false,
+    );
+    let (json, _) = parse_glb(&glb);
+    assert!(json["materials"][0].get("alphaMode").is_none(), "opaque omits alphaMode");
 }
 
 #[test]

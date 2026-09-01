@@ -357,6 +357,26 @@ describe('exportAnonymizedSubset — full-subset export invariants (#2934 A6)', 
     expect(parseSourceHeader(result.content)!.originatingSystem).toBe('Source Originating System');
   });
 
+  it('blanks header FILE_DESCRIPTION instead of carrying the source items verbatim', async () => {
+    // Same fixture, only the header's FILE_DESCRIPTION swapped for one
+    // carrying identifying free text — the shape an authoring tool's
+    // "Comment" field actually takes (project/client name, a contact
+    // address), same class of signal as the author/organization/
+    // authorization fields the sibling test above already proves blanked.
+    const identifyingDescriptionModel = FIXTURE_MODEL.replace(
+      "FILE_DESCRIPTION((''),'2;1');",
+      "FILE_DESCRIPTION(('ViewDefinition [CoordinationView]',"
+        + "'Comment [Property of Umbriel Nyx, contact nyx.umbriel@example-fictitious.test]'),'2;1');",
+    );
+    const store = await parse(identifyingDescriptionModel);
+    const result = exportAnonymizedSubset(store, FULL_INCLUDED_IDS, { guidRandom: seededRandom(7) });
+    const out = parseSourceHeader(result.content);
+    expect(out).not.toBeNull();
+    const description = out!.description.join(' ');
+    expect(description).not.toContain('Umbriel Nyx');
+    expect(description).not.toContain('nyx.umbriel@example-fictitious.test');
+  });
+
   it('is deterministic and byte-identical across two independent runs with the same seed', async () => {
     const opts: AnonymizeOptions = { guidRandom: seededRandom(42), timeStamp: '2024-01-01T00:00:00' };
     const storeA = await parse(FIXTURE_MODEL);

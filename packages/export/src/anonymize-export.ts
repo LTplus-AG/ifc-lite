@@ -281,13 +281,21 @@ export function exportAnonymizedSubset(
     // Header scrub per the decision doc: author/organization/authorization
     // blanked outright (never inherited from the source header — an empty
     // string is a deliberate override, not "no override", per
-    // `step-header.ts`'s `??` wiring). `originating_system` is blanked under
-    // `scrubOwnerHistory` (a vendor build string such as `26.0.0 NOR FULL`
-    // encodes the licence region); `preprocessor_version` comes from
-    // `application`, left unset here (defaults to 'ifc-lite').
+    // `step-header.ts`'s `??` wiring). `description` gets the same
+    // unconditional override: `buildStepHeader` falls through to the SOURCE
+    // FILE_DESCRIPTION items verbatim whenever this orchestrator leaves
+    // `description` undefined — an authoring tool's free-text
+    // "Comment [...]" item there is exactly as identifying as the
+    // author/organization fields beside it, so it is blanked the same way,
+    // not merely left to whatever the source happened to carry.
+    // `originating_system` is blanked under `scrubOwnerHistory` (a
+    // vendor build string such as `26.0.0 NOR FULL` encodes the licence
+    // region); `preprocessor_version` comes from `application`, left unset
+    // here (defaults to 'ifc-lite').
     author: '',
     organization: '',
     authorization: '',
+    description: '',
     ...((options.scrubOwnerHistory ?? true) ? { originatingSystem: '' } : {}),
     timeStamp: options.timeStamp,
     guidRandom: options.guidRandom,

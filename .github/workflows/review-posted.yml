@@ -166,11 +166,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
+          poll_seconds="$(
+            node --input-type=module --eval \
+              'import { pollSecondsArgument } from "./scripts/review-lane-budget.mjs"; console.log(pollSecondsArgument());'
+          )"
           node scripts/check-review-posted.mjs \
             --pr "${{ github.event.pull_request.number }}" \
             --sha "${{ github.event.pull_request.head.sha }}" \
             --config "${{ steps.cfg.outputs.config }}" \
-            --timeout-seconds "$(node -e \"import('./scripts/review-lane-budget.mjs').then(({ pollSecondsArgument }) => console.log(pollSecondsArgument()))\")"
+            --timeout-seconds "$poll_seconds"
 
       # ADDS ONLY. The clearing half runs up front, above.
       #

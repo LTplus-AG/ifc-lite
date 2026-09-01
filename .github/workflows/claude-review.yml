@@ -47,11 +47,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      # Verify the shared producer/consumer time-budget invariant before asking
-      # the reviewer to start its potentially twenty-minute run.
-      - name: Verify review-lane time budget
-        run: node -e "import('./scripts/review-lane-budget.mjs').then(({ assertReviewLaneBudget }) => assertReviewLaneBudget())"
-
       # The SCRIPTS come from the PR so a change to the lane is exercised by its
       # own PR. The RUBRIC comes from the base branch below, because it is the
       # thing worth editing to weaken the review that judges you. Same split, and
@@ -78,13 +73,19 @@ jobs:
         with:
           node-version: 22
 
+      # The runner has no repository checkout before actions/checkout.  Verify
+      # the shared producer/consumer invariant from the same PR ref whose lane
+      # it governs, before asking the reviewer to start its twenty-minute run.
+      - name: Verify review-lane time budget
+        run: node --input-type=module --eval 'import { assertReviewLaneBudget } from "./scripts/review-lane-budget.mjs"; assertReviewLaneBudget();'
+
       # NO SETTLE SLEEP. Correctness is already owned three times over:
       # `cancel-in-progress` allows one live run per PR, the head check below
       # exits a superseded run, and post-review re-reads the head immediately
       # before posting. A sleep would buy only occasional model-quota insurance,
       # and it is charged three ways -- runner minutes, time-to-green, and three
-      # EXTRA poll ticks on the sibling gate, which polls every 30s while this
-      # lane naps, against a repository-wide 1,000/hour API budget.
+      # EXTRA poll work on the sibling gate while this lane naps, against a
+      # repository-wide 1,000/hour API budget.
       #
       # If the head moved, the newer event owns it. Exit rather
       # than review a dead commit: a marker for a superseded head is one the gate

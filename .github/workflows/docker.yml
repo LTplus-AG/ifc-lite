@@ -27,8 +27,8 @@ on:
   #
   # Deliberately much narrower than the push paths. Over the last 6 months the
   # push paths matched 447 commits and the Dockerfile alone matched ~6, so
-  # scoping to the Dockerfile is the difference between a Depot build on most
-  # PRs and roughly one a month. Source changes are already covered by
+  # scoping to the Dockerfile is the difference between a build on most PRs
+  # and roughly one a month. Source changes are already covered by
   # test.yml's "Validate Server Binary" jobs plus the post-merge build here;
   # the only unique signal this lane adds is "does the image still build".
   #
@@ -59,7 +59,9 @@ env:
 jobs:
   docker:
     name: Build & Push Docker Image
-    runs-on: depot-ubuntu-24.04-4
+    # Keep recurring image builds out of Depot's metered runner pool. This is
+    # a public repository, so GitHub's standard Ubuntu runner is free.
+    runs-on: ubuntu-latest
     # Cap a stuck "Build and push" so it can't run to GitHub's 6h default.
     # A *cold* build — cargo-chef cooking the whole workspace after a
     # deps-cache miss — is the long pole, and a cold build that gets cancelled
@@ -129,15 +131,9 @@ jobs:
           labels: |
             ${{ steps.meta.outputs.labels }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-          # Cache lives in GHCR (a `:buildcache` tag on the same package), NOT
-          # in the GitHub Actions cache. On a Depot runner `type=gha` is
-          # intercepted by Depot's cache backend and billed per-GB — with
-          # mode=max writing the multi-GB cargo-chef layer set on ~1/3 of main
-          # pushes, that was the single largest contributor to Depot's uncapped
-          # cache bill. `type=registry` writes straight to GHCR instead, which
-          # is free + unlimited for public packages, so the cache cost drops to
-          # $0 while warm builds stay fast. Trade: pushing the cache to GHCR
-          # adds ~1-3 min of network per build vs Depot's local cache.
+          # Cache lives in GHCR (a `:buildcache` tag on the same package), not
+          # in the GitHub Actions cache. `type=registry` is free for this public
+          # package and preserves the cargo-chef layers across standard runners.
           cache-from: type=registry,ref=${{ env.CACHE_IMAGE }}:buildcache
           # mode=max keeps the cargo-chef "cooked deps" stage in the cache —
           # that layer is what makes warm builds finish in minutes instead of
@@ -160,7 +156,6 @@ jobs:
           # Build arm64 only for actual releases (distribution images). On the
           # frequent push-to-main builds (~1/3 of commits touch rust/** and
           # trigger this workflow) we build amd64 only — the arm64 leg runs
-          # under slow QEMU emulation and roughly doubled build time (and, when
-          # the cache was on Depot, the cache bill too). The `latest`/sha main
+          # under slow QEMU emulation and roughly doubled build time. The `latest`/sha main
           # images stay amd64; multi-arch manifests ship on release.
           platforms: ${{ github.event_name == 'release' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}

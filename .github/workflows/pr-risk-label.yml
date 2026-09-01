@@ -100,7 +100,7 @@ jobs:
           have=$(gh api "repos/${{ github.repository }}/issues/$pr/labels?per_page=100" \
                    --jq '.[].name' 2>/dev/null || true)
           if printf '%s\n' "$have" | grep -qx 'low-risk'; then
-            echo "✅ low-risk is ON: CodeRabbit will skip this PR and the Claude lane still reviews it."
+            echo "✅ low-risk is ON: CodeRabbit skips this PR, and the Claude lane DOES review it."
           else
             echo "➖ low-risk is OFF: CodeRabbit reviews this PR."
           fi

@@ -11,9 +11,32 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { classify, isLowRiskPath } from './classify-pr-risk.mjs';
 
-test('prose and generated files are low risk', () => {
-  const v = classify(['docs/guide.md', 'README.md', 'pnpm-lock.yaml', 'packages/x/__snapshots__/a.snap']);
-  assert.equal(v.lowRisk, true, v.why);
+test('prose is low risk', () => {
+  assert.equal(classify(['docs/guide.md', 'README.md']).lowRisk, true);
+});
+
+test('ANYTHING THE LANE ALSO SKIPS IS HIGH RISK, or the PR is reviewed by NOBODY', () => {
+  // THE BUG THIS CATCHES, found in review before it shipped. The first version
+  // borrowed the lane's `isExcluded` with an OR, so `fixtures/`, `pkg/`, `dist/`,
+  // `.snap` and lockfiles counted as low-risk. But the LANE skips those too --
+  // `claude-review.yml` turns them into NO_FILES and never runs the model. So
+  // CodeRabbit would have been labelled off on a PR nothing else reviewed, while
+  // the workflow printed "the Claude lane still reviews it".
+  //
+  // Low-risk means "CodeRabbit may skip because the lane WILL read it". Where the
+  // lane does not read, CodeRabbit is the only reader left.
+  for (const p of [
+    'packages/viewer/src/fixtures/loader.ts',
+    'Cargo.lock',
+    'pnpm-lock.yaml',
+    'packages/x/pkg/a.d.ts',
+    'packages/x/dist/a.js',
+    'packages/x/__snapshots__/a.snap',
+    'scripts/api-surface.json',
+  ]) {
+    assert.equal(isLowRiskPath(p), false, `${p} must stay reviewable by CodeRabbit`);
+    assert.equal(classify([p]).lowRisk, false, p);
+  }
 });
 
 test('ONE real file makes the whole PR high risk', () => {

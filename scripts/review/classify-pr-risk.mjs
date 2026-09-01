@@ -70,10 +70,31 @@ const NEVER_LOW_RISK = [
   /^\.github\/workflows\//,
 ];
 
-/** @param {string} path */
+/**
+ * @param {string} path
+ *
+ * LOW-RISK MEANS "CODERABBIT MAY SKIP THIS BECAUSE THE CLAUDE LANE WILL READ
+ * IT". It does not mean "unimportant", and the first version got that backwards
+ * in a way that would have left PRs reviewed by nobody.
+ *
+ * That version wrote `isExcluded(path) || ...`, borrowing the lane's own
+ * exclusion list. But `isExcluded` answers a DIFFERENT question -- "is it worth
+ * spending model tokens on this" -- and it covers `fixtures/`, `pkg/`, `dist/`,
+ * `.snap` and lockfiles, all of which the LANE ALSO SKIPS: `claude-review.yml`
+ * turns them into `NO_FILES` and never runs the model. So a fixtures-only or
+ * `Cargo.lock`-only PR would have had CodeRabbit labelled off AND no Claude
+ * review -- reviewed by nobody, while the workflow printed "the Claude lane
+ * still reviews it". Absence reading as success, in the read-back step added to
+ * prevent exactly that. PR #3558 is a live instance of the lockfile shape.
+ *
+ * So the two predicates are ANDed, not ORed: a path is low-risk only when it is
+ * prose AND the lane will actually review it. Anything the lane skips is
+ * high-risk by construction, because there CodeRabbit is the only reader left.
+ */
 export function isLowRiskPath(path) {
   if (NEVER_LOW_RISK.some((re) => re.test(path))) return false;
-  return isExcluded(path) || LOW_RISK_EXTRA.some((re) => re.test(path));
+  if (isExcluded(path)) return false;
+  return LOW_RISK_EXTRA.some((re) => re.test(path));
 }
 
 /**

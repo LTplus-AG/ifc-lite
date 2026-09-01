@@ -32,11 +32,9 @@ pub type Span = (u32, usize, usize);
 #[derive(Debug, Default, Clone)]
 pub struct PrepassSpans {
     /// `IFCSTYLEDITEM` — geometry-attached AND orphan (material appearance);
-    /// the resolver classifies them (the classifying decode is the cost of
-    /// telling the two apart).
+    /// the resolver classifies them (decoding is the cost of telling them apart).
     pub styled_items: Vec<Span>,
-    /// `IFCINDEXEDCOLOURMAP` (#663/#858 — CATIA/3DEXPERIENCE per-triangle
-    /// palettes, IFC4's second colouring mechanism).
+    /// `IFCINDEXEDCOLOURMAP` (#663/#858 — CATIA/3DEXPERIENCE per-triangle palettes).
     pub indexed_colour_maps: Vec<Span>,
     /// `IFCMATERIALDEFINITIONREPRESENTATION` (#407 material chain).
     pub material_def_reprs: Vec<Span>,
@@ -50,6 +48,7 @@ pub struct PrepassSpans {
     /// `IFCRELAGGREGATES` — parent → children, for aggregate void
     /// propagation (#845, IfcWallElementedCase etc.).
     pub aggregate_rels: Vec<Span>,
+    pub defines_by_type: Vec<Span>, // IFCRELDEFINESBYTYPE, for prepass_type_material.
 }
 
 /// Resolution switches (both pipelines share the resolver).
@@ -187,6 +186,7 @@ pub fn resolve_prepass_with_style_seeds(
         }
     }
 
+    crate::prepass_type_material::propagate_type_material(&spans.defines_by_type, decoder, &mut out.element_to_material);
     // ── Voids + fills + aggregate propagation (#845) ──
     for &(id, start, end) in &spans.void_rels {
         if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
@@ -610,7 +610,7 @@ fn normalize_style_name(raw: Option<&str>) -> Option<String> {
 }
 
 /// Extract entity references from a list attribute.
-fn refs_from_list(entity: &DecodedEntity, index: usize) -> Option<Vec<u32>> {
+pub(crate) fn refs_from_list(entity: &DecodedEntity, index: usize) -> Option<Vec<u32>> {
     let list = entity.get_list(index)?;
     let refs: Vec<u32> = list.iter().filter_map(|v| v.as_entity_ref()).collect();
     if refs.is_empty() {

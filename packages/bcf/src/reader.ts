@@ -350,7 +350,7 @@ async function readTopic(zip: JSZip, topicFolder: string, budget: ExpansionBudge
   const priority = extractElement(topicContent, 'Priority');
   const index = extractElement(topicContent, 'Index');
   const creationDate = extractElement(topicContent, 'CreationDate'); // required no-default in markup.xsd; leave undefined, don't fabricate
-  const creationAuthor = extractElement(topicContent, 'CreationAuthor') || 'Unknown';
+  const creationAuthor = extractElement(topicContent, 'CreationAuthor'); // same: required no-default, don't fabricate 'Unknown'
   const modifiedDate = extractElement(topicContent, 'ModifiedDate');
   const modifiedAuthor = extractElement(topicContent, 'ModifiedAuthor');
   const dueDate = extractElement(topicContent, 'DueDate');
@@ -575,7 +575,7 @@ function parseComments(markupContent: string): BCFComment[] {
     const content = span.slice(0, close);
 
     const date = extractElement(content, 'Date'); // don't fabricate; see CreationDate above
-    const author = extractElement(content, 'Author') || 'Unknown';
+    const author = extractElement(content, 'Author'); // same: required no-default, don't fabricate 'Unknown'
     const comment = extractElement(content, 'Comment') || '';
     const modifiedDate = extractElement(content, 'ModifiedDate');
     const modifiedAuthor = extractElement(content, 'ModifiedAuthor');

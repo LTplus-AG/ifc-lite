@@ -576,3 +576,46 @@ test('FAIL CLOSED: the fork check REFUSES when no repository was resolved', () =
   assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
   assert.match(`${r.stdout}${r.stderr}`, /NO_REPO/);
 });
+
+// ============================ the gate must outwait the lane it is waiting FOR
+
+test('THE RACE: the gate\'s poll budget exceeds the LANE\'s own job timeout', () => {
+  // MEASURED, on PR #3593, with the gate already enforcing:
+  //
+  //   gate gave up after 600 s   05:12:43
+  //   lane posted the marker     05:13:12   <- 29 seconds later
+  //
+  // NOT_POSTED on a PR whose review was fine. And it is structural, not a tuning
+  // miss: `claude-review.yml` may legitimately run until ITS OWN
+  // `timeout-minutes`, so any gate budget below that number can expire while the
+  // producer is still working. 600 s against a 1200 s producer was a coin flip
+  // the gate was always going to lose eventually; observed lane runs that
+  // actually reviewed took 525 s and 676 s, either side of it.
+  //
+  // The relationship lives in TWO FILES and nothing connected them, which is the
+  // matched-pair shape this repository keeps paying for. Connected here.
+  const here = dirname(fileURLToPath(import.meta.url));
+  const wf = (n) => readFileSync(join(here, '..', '.github/workflows', n), 'utf8');
+
+  const laneCap = /^[ \t]*timeout-minutes:[ \t]*(\d+)/m.exec(wf('claude-review.yml'));
+  assert.ok(laneCap, 'claude-review.yml must carry a job timeout');
+
+  const gateText = wf('review-posted.yml');
+  const budget = /^[ \t]*--timeout-seconds[ \t]+(\d+)/m.exec(gateText);
+  const gateCap = /^[ \t]*timeout-minutes:[ \t]*(\d+)/m.exec(gateText);
+  assert.ok(budget && gateCap, 'review-posted.yml must carry both an explicit budget and a job cap');
+
+  const laneSeconds = Number(laneCap[1]) * 60;
+  const budgetSeconds = Number(budget[1]);
+  assert.ok(
+    budgetSeconds > laneSeconds,
+    `the gate waits ${budgetSeconds}s but the lane may run ${laneSeconds}s: the gate can give up ` +
+      'while the reviewer is still legitimately working, and report NOT_POSTED on a good PR',
+  );
+  // And the gate's own job must outlive its poll, or it is killed mid-wait and
+  // reports `cancelled` with no verdict at all.
+  assert.ok(
+    Number(gateCap[1]) * 60 - budgetSeconds >= 300,
+    `job cap ${gateCap[1]}min leaves ${Number(gateCap[1]) * 60 - budgetSeconds}s over a ${budgetSeconds}s budget`,
+  );
+});

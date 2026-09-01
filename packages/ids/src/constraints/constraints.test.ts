@@ -388,6 +388,44 @@ describe('matchConstraint — bounds: fractionDigits / totalDigits', () => {
     expect(matchConstraint(bounds({ totalDigits: 2 }), '007')).toBe(true);
   });
 
+  // XSD §4.3.11/§4.3.12: value = i × 10⁻ⁿ. `fractionDigits` is `n` (leading
+  // fraction zeros fix the magnitude, so they DO count); `totalDigits` is
+  // the digit count of `i` (leading zeros — integer part AND fraction,
+  // before the first non-zero digit — are absorbed into 10⁻ⁿ and do
+  // NOT count). The two facets disagree on a value like 0.0025: regression
+  // coverage for a totalDigits miscount that conflated the two rules.
+  it('totalDigits vs fractionDigits count leading fraction zeros differently', () => {
+    const cases: Array<[string, number, number]> = [
+      ['0.0025', 2, 4], // 0.0025 = 25 × 10⁻⁴: totalDigits 2, fractionDigits 4
+      ['0.250', 2, 2], // trailing fraction zero drops from both
+      ['100.5', 4, 1], // integer digits count fully toward totalDigits
+      ['1000', 4, 0], // trailing zeros in the INTEGER part stay significant
+      ['7', 1, 0],
+      ['0', 1, 0],
+    ];
+    for (const [value, expectedTotal, expectedFraction] of cases) {
+      // At the exact count, the facet passes; one below it, it fails.
+      expect(matchConstraint(bounds({ totalDigits: expectedTotal }), value)).toBe(true);
+      expect(matchConstraint(bounds({ totalDigits: expectedTotal - 1 }), value)).toBe(
+        false
+      );
+      expect(matchConstraint(bounds({ fractionDigits: expectedFraction }), value)).toBe(
+        true
+      );
+      if (expectedFraction > 0) {
+        expect(
+          matchConstraint(bounds({ fractionDigits: expectedFraction - 1 }), value)
+        ).toBe(false);
+      }
+    }
+  });
+
+  it('totalDigits — 0.0025 against progressively tighter limits (regression: a prior miscount reported this value as having 4 total digits, not 2)', () => {
+    expect(matchConstraint(bounds({ totalDigits: 3 }), '0.0025')).toBe(true);
+    expect(matchConstraint(bounds({ totalDigits: 2 }), '0.0025')).toBe(true);
+    expect(matchConstraint(bounds({ totalDigits: 1 }), '0.0025')).toBe(false);
+  });
+
   it('combined totalDigits + fractionDigits', () => {
     const c = bounds({ totalDigits: 5, fractionDigits: 2 });
     expect(matchConstraint(c, '123.45')).toBe(true);

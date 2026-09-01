@@ -40,12 +40,20 @@ export function toFixedDecimalString(num: number): string {
 }
 
 /**
- * Count significant decimal digits per XSD facet semantics: leading
- * zeros in the integer part are not significant (`007` → `7`), trailing
- * zeros in the fractional part are not significant (`1.4500` → `1.45`),
- * but zeros between the decimal point and the first non-zero fraction
- * digit ARE significant (`0.0025` has 4 digits, not 2) since dropping
- * them would change the value.
+ * Count decimal digits per XSD §4.3.11/§4.3.12 facet semantics. The two
+ * facets treat leading fraction zeros DIFFERENTLY:
+ *
+ *  - `fractionDigits` is `n` in value = i × 10⁻ⁿ: the count of digits
+ *    after the decimal point, full stop. Leading zeros in the fraction
+ *    DO count (`0.0025` → 4) since they fix the magnitude (`10⁻ⁿ`);
+ *    only trailing zeros are insignificant (`1.4500` → 2).
+ *  - `totalDigits` is the digit count of `i` in that same value = i ×
+ *    10⁻ⁿ. Leading zeros — in the integer part AND in the fraction
+ *    before the first non-zero digit — are absorbed into the `10⁻ⁿ`
+ *    scale factor and do NOT count (`0.0025 = 25 × 10⁻⁴` → 2, not 4).
+ *    Trailing zeros in the fraction are still dropped (`0.250` → `25`
+ *    → 2). Trailing zeros in the INTEGER part stay significant per the
+ *    digit-count reading (`1000` → 4): only leading zeros are stripped.
  */
 export function countDecimalDigits(decimalStr: string): {
   total: number;
@@ -54,10 +62,15 @@ export function countDecimalDigits(decimalStr: string): {
   const unsigned = decimalStr.replace(/^[+-]/, '');
   const [intPartRaw, fracPartRaw = ''] = unsigned.split('.');
   const fracTrimmed = fracPartRaw.replace(/0+$/, '');
-  const intTrimmed = intPartRaw.replace(/^0+(?=\d)/, '');
-  const intDigits = intTrimmed === '0' ? 0 : intTrimmed.length;
   const fraction = fracTrimmed.length;
-  return { total: Math.max(intDigits + fraction, 1), fraction };
+
+  // totalDigits: strip every leading zero — integer-part zeros AND any
+  // fraction zeros before the first significant digit — then count
+  // what's left of the (trailing-trimmed) digit string.
+  const totalTrimmed = (intPartRaw + fracTrimmed).replace(/^0+/, '');
+  const total = totalTrimmed.length === 0 ? 1 : totalTrimmed.length;
+
+  return { total, fraction };
 }
 
 /**

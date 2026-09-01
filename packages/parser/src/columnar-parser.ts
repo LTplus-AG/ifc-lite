@@ -14,7 +14,7 @@ import { SpatialHierarchyBuilder } from './spatial-hierarchy-builder.js';
 import { EntityExtractor } from './entity-extractor.js';
 import { extractLengthUnitScale } from './unit-extractor.js';
 import { getAttributeNames, getAttributeNamesAcrossSchemas, getInheritanceChain } from './ifc-schema.js';
-import { parsePropertyValue } from './on-demand-extractors.js';
+import { parsePropertyValueWithComplex } from './on-demand-extractors.js';
 import { readQuantitySet } from './quantity-collect.js';
 import { buildCompactEntityIndexAsync } from './compact-entity-index.js';
 import { yieldToEventLoop } from './yield-to-event-loop.js';
@@ -814,7 +814,7 @@ export class ColumnarParser {
                     const propName = typeof propAttrs[0] === 'string' ? propAttrs[0] : '';
                     if (!propName) continue;
 
-                    const parsed = parsePropertyValue(propEntity);
+                    const parsed = parsePropertyValueWithComplex(store, extractor, propEntity);
                     const entry: { name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string } = {
                         name: propName,
                         type: parsed.type,

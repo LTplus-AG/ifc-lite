@@ -211,6 +211,38 @@ END-ISO-10303-21;
     );
 }
 
+/// The leniency applies to every component, matching the TypeScript parser:
+/// writers which carry a hemisphere sign on a zero-magnitude minute, second,
+/// or millionth-second component must not have that sign discarded by the
+/// Rust integer tokenizer.
+#[test]
+fn test_extract_from_site_honours_negative_zero_in_each_compound_angle_component_ref3546() {
+    let cases = [
+        // A negative-zero minute signs the following non-zero seconds.
+        ("(0,-0,30)", -(30.0 / 3600.0)),
+        // A negative-zero second signs the following non-zero millionths.
+        ("(0,0,-0,30)", -(30.0 / 1_000_000.0 / 3600.0)),
+        // A negative-zero millionth-second signs the preceding non-zero seconds.
+        ("(0,0,30,-0)", -(30.0 / 3600.0)),
+    ];
+
+    for (angle, expected_northings) in cases {
+        let ifc_content = format!(
+            "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('Test'),'2;1');\nFILE_NAME('test.ifc','2024-01-01',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCSITE('1abc',$,'Site',$,$,$,$,$,.ELEMENT.,{angle},(14,28,0),0.,$,$);\nENDSEC;\nEND-ISO-10303-21;\n"
+        );
+        let mut decoder = EntityDecoder::new(&ifc_content);
+        let georef = GeoRefExtractor::extract(&mut decoder, &[(1, IfcType::IfcSite)])
+            .expect("decode ok")
+            .expect("legacy site georeference extracted");
+
+        assert!(
+            (georef.northings - expected_northings).abs() < 1e-12,
+            "{angle} should produce {expected_northings}, got {}",
+            georef.northings
+        );
+    }
+}
+
 /// Control: the spec-canonical encoding (sign on the first NON-ZERO
 /// component) must keep working exactly as before — the `-0` leniency must
 /// never flip an already-correct sign.

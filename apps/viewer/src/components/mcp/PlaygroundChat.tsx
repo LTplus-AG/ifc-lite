@@ -62,11 +62,7 @@ import {
 import { Paperclip, X } from 'lucide-react';
 
 const MAX_TOOL_CALLS = 25;
-// Opus 5 runs adaptive thinking when `thinking` is omitted, unlike Opus 4.7/4.8
-// which run without it. Those tokens come out of this ceiling, so 4096 left a
-// 25-tool loop truncating mid-turn once Opus 5 became the default. Kept under
-// the SDK's ~21,333 non-streaming timeout threshold; this path does not stream.
-const MAX_TOKENS = 16_384;
+const MAX_TOKENS = 16_384; // Opus 5 thinks by default; 4096 truncated the tool loop. Under the SDK's non-streaming cap.
 const SYSTEM_PROMPT = `You are a BIM/IFC analyst driving @ifc-lite/mcp tools against a pre-loaded model. Be terse — the user is technical and time-pressed.
 
 Voice rules (strict):

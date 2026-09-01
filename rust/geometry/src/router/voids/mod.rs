@@ -1015,7 +1015,8 @@ impl GeometryRouter {
         let local_ctx = ctx.relativized_by(origin);
         let mut result =
             self.apply_void_context_inner(mesh, &local_ctx, element_id, host_world_bounds);
-        result.origin = origin;
+        // Keep an inner local-frame cut's translation when restoring this frame.
+        result.origin = std::array::from_fn(|i| result.origin[i] + origin[i]);
         result
     }
 
@@ -1099,14 +1100,9 @@ impl GeometryRouter {
 
         // AABB-only `Rectangular` openings can't be rotated into the frame; a
         // plan-rotated wall never has them (they'd be diagonal), so bail.
-        if ctx
-            .merged_openings
-            .iter()
-            .any(|op| matches!(op, OpeningType::Rectangular(..)))
-        {
+        if ctx.merged_openings.iter().any(|op| matches!(op, OpeningType::Rectangular(..))) {
             return None;
         }
-
         let (mn, mx) = mesh.bounds();
         let center = Vector3::new(
             ((mn.x + mx.x) * 0.5) as f64,
@@ -1178,7 +1174,9 @@ impl GeometryRouter {
         // diagnostic reports world coords, not wall-frame (rotated/centred) ones.
         let result_local =
             self.apply_void_context_inner(host_local, &local_ctx, element_id, host_world_bounds);
-        Some(mesh_from_frame(&result_local, &axes, center))
+        let frame = Matrix3::from_columns(&axes);
+        // Rotation-only positions retain the far centre in `Mesh::origin`.
+        Some(rotate_mesh_from_frame(&result_local, &frame, &Point3::from(center)))
     }
 
     // `host_mutated` is set just before an early `break`, so the final write is

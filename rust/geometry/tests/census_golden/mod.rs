@@ -322,9 +322,10 @@ pub struct Diff {
     /// `open > 0` into four groups: rep not in `is_closed_solid`, else
     /// `pre == x`, else `coll == 1`, else eligible. The `pre` group is empty in
     /// the golden as checked in, which is exactly why it is easy to leave out of
-    /// a recount and wrong to. At the time of writing: 126 of 1170 rows are
-    /// eligible, 97 of them far-field. 966 have `open == 0` and at `0 -> 0` open cannot fall; of
-    /// the 204 that are torn, 46 are open shells whose boundary edges are
+    /// a recount and wrong to. Recounted after the local-frame cut stopped
+    /// baking its centre into f32: 86 of 1170 rows are eligible, 17 of them
+    /// far-field. 1005 have `open == 0` and at `0 -> 0` open cannot fall; of
+    /// the 165 that are torn, 35 are open shells whose boundary edges are
     /// structural. A shrink anywhere else still reads as geometry loss. The row
     /// vocabulary genuinely cannot tell a
     /// healed over-cut from a vanished component on a watertight host, and red
@@ -554,9 +555,9 @@ fn classify(g: &HostRow, r: &HostRow) -> Classified {
     // triangles, so every one of them removes edges from `open`, and
     // `HostRow.collapsed` is a BOOLEAN: on a host already at `coll=1`, going
     // from 10 degenerate triangles to 200 moves no axis at all, and the entire
-    // open drop can be collapse rather than repair. 32 golden rows would
+    // open drop can be collapse rather than repair. 44 golden rows would
     // otherwise be eligible and carry `coll=1`, so folding this into
-    // `open_is_comparable` took the eligible population from 158 to 126.
+    // `open_is_comparable` takes the eligible population from 130 to 86.
     // Carrying the degenerate COUNT instead of a flag would
     // let the axis fire on an increase and is the better fix, but it changes the
     // golden's schema and so needs its own re-bless.

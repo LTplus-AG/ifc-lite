@@ -10,7 +10,6 @@ use crate::{Error, Mesh, Point3, Result, Vector3};
 use nalgebra::{Matrix3, Matrix4};
 use rustc_hash::FxHashMap;
 
-
 /// Extract rotation columns from a 4x4 transform matrix.
 pub(super) fn extract_rotation_columns(m: &Matrix4<f64>) -> (Vector3<f64>, Vector3<f64>, Vector3<f64>) {
     (
@@ -29,7 +28,6 @@ pub(super) fn rotate_and_normalize(
         .try_normalize(NORMALIZE_EPSILON)
         .ok_or_else(|| Error::geometry("Zero-length direction vector".to_string()))
 }
-
 
 /// Pick a unit-vector along the wall's thinnest AABB axis. Used as a
 /// last-ditch extrusion direction for the issue #635 AABB fallback when
@@ -310,12 +308,17 @@ pub(super) fn rotate_mesh_from_frame(mesh: &Mesh, r: &Matrix3<f64>, center: &Poi
         normals.push(p[1] as f32);
         normals.push(p[2] as f32);
     }
+    // COMPOSE the input's own origin rather than assigning over it, and ROTATE
+    // it first: `mesh` is in frame F, so its origin is a frame-F offset. A
+    // nested local-frame cut returns a non-zero origin here and assigning would
+    // drop it. A no-op for the origin-0 callers.
+    let o = rotate_point(r, mesh.origin[0], mesh.origin[1], mesh.origin[2]);
     Mesh {
         positions,
         normals,
         indices: mesh.indices.clone(),
         rtc_applied: mesh.rtc_applied,
-        origin: [center.x, center.y, center.z],
+        origin: [center.x + o[0], center.y + o[1], center.z + o[2]],
         // Frame-transformed cut intermediate — not an instanceable occurrence,
         // and pre-placement (issue #1474 fields don't apply here either).
     instance_meta: None, local_bounds: None, local_to_world: None }
@@ -826,7 +829,8 @@ pub(super) fn wall_frame_from_depth(depth: Vector3<f64>) -> Option<[Vector3<f64>
 /// Express `mesh` in the orthonormal frame `axes = [a, b, c]` about `center`:
 /// `p' = [ (p-center)·a, (p-center)·b, (p-center)·c ]`. Centering keeps
 /// coordinates small (f32-precise) and the rotation makes a frame-oriented box
-/// axis-aligned. [`mesh_from_frame`] is the exact inverse.
+/// axis-aligned. [`rotate_mesh_from_frame`] inverts it, returning the centre
+/// in [`Mesh::origin`] rather than in the coordinates.
 pub(super) fn mesh_to_frame(mesh: &Mesh, axes: &[Vector3<f64>; 3], center: Vector3<f64>) -> Mesh {
     let mut positions = Vec::with_capacity(mesh.positions.len());
     for ch in mesh.positions.chunks_exact(3) {
@@ -841,35 +845,6 @@ pub(super) fn mesh_to_frame(mesh: &Mesh, axes: &[Vector3<f64>; 3], center: Vecto
         normals.push(n.dot(&axes[0]) as f32);
         normals.push(n.dot(&axes[1]) as f32);
         normals.push(n.dot(&axes[2]) as f32);
-    }
-    Mesh {
-        positions,
-        normals,
-        indices: mesh.indices.clone(),
-        rtc_applied: mesh.rtc_applied,
-        origin: mesh.origin,
-        // Frame-transformed cut intermediate — not an instanceable occurrence.
-        instance_meta: None,
-        local_bounds: None,
-        local_to_world: None,
-    }
-}
-
-/// Inverse of [`mesh_to_frame`]: `p = center + x·a + y·b + z·c`.
-pub(super) fn mesh_from_frame(mesh: &Mesh, axes: &[Vector3<f64>; 3], center: Vector3<f64>) -> Mesh {
-    let mut positions = Vec::with_capacity(mesh.positions.len());
-    for ch in mesh.positions.chunks_exact(3) {
-        let q = center + axes[0] * ch[0] as f64 + axes[1] * ch[1] as f64 + axes[2] * ch[2] as f64;
-        positions.push(q.x as f32);
-        positions.push(q.y as f32);
-        positions.push(q.z as f32);
-    }
-    let mut normals = Vec::with_capacity(mesh.normals.len());
-    for ch in mesh.normals.chunks_exact(3) {
-        let m = axes[0] * ch[0] as f64 + axes[1] * ch[1] as f64 + axes[2] * ch[2] as f64;
-        normals.push(m.x as f32);
-        normals.push(m.y as f32);
-        normals.push(m.z as f32);
     }
     Mesh {
         positions,

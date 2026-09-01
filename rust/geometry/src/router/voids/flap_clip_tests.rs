@@ -142,6 +142,25 @@ fn world_host_bounds_folds_the_origin_back_in() {
     assert!((mxz - 3001.5).abs() < 0.01, "max.z {mxz}");
 }
 
+/// A local-frame cut may itself carry an origin. Returning it through a rotated
+/// parent frame must rotate and compose that offset with the parent's centre;
+/// assigning the centre loses a nested cut's translation (#3446).
+#[test]
+fn rotate_mesh_from_frame_composes_a_nested_origin() {
+    let mut inner = Mesh::new();
+    inner.positions = vec![1.0, 0.0, 0.0];
+    inner.origin = [2.0, 3.0, 4.0];
+    let quarter_turn = Matrix3::new(0.0, -1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
+    let out = geom::rotate_mesh_from_frame(
+        &inner,
+        &quarter_turn,
+        &Point3::new(1000.0, 2000.0, 3000.0),
+    );
+
+    assert_eq!(out.positions, vec![0.0, 1.0, 0.0], "positions rotate without a far f32 translation");
+    assert_eq!(out.origin, [997.0, 2002.0, 3004.0], "parent centre must compose rotated inner origin");
+}
+
 /// End-to-end: a host stored in a per-element local frame (nonzero
 /// `mesh.origin`, the wasm default) reports a WORLD-space `bbox` in the
 /// drained per-host diagnostic — NOT the near-zero local box. Regression

@@ -45,3 +45,32 @@ apps/viewer/src/utils/aggregation.test.ts                                   # TW
 # assert on it".
 apps/viewer/src/components/viewer/toolbar-parity.test.ts                    # every assertion is on the TypeScript AST. The surviving hits are PATH checks (`spec.startsWith('@/')`, `base.endsWith('.js')`) and an array-key `.startsWith`, on names the flat taint set reaches from an unrelated read -- no assertion reads source text.
 packages/create-ifc-lite/test/config-fixers.test.ts                         # asserts on the `vite.config.ts` the scaffolder writes into a temp dir, i.e. on its OUTPUT. Nothing here reads a production source file.
+
+# --- Added by #3639, when TEST_FILE_RE finally included .mjs ---
+# These 14 were never scanned, because scripts/ was outside SEARCH_DIRS and
+# .mjs was outside TEST_FILE_RE. They are grandfathered so the widened scan can
+# land without 268 rewrites in one commit; the ceiling moved 8 -> 22 to match.
+#
+# NOT historical debt. Every one of these files was created AFTER this gate
+# landed on 2026-08-10 -- checked with `git log --diff-filter=A` -- and five of
+# the review/ rows were written in the 48 hours before the widening, one of them
+# the same day. 106 of the 268 hits come from files two days old. The gate was
+# blind for its whole life, so the debt accumulated behind it rather than
+# predating it, and the review/ rows are the ones to convert first.
+#
+# Each row carries its hit count at the time of widening. Nothing enforces the
+# count, so treat it as a size hint for whoever converts the file, not a fact.
+scripts/check-clash-degenerate-reason-parity.test.mjs  # 14 hits
+scripts/check-collab-room-model-target.test.mjs  # 6 hits
+scripts/check-legacy-entity-coverage.test.mjs  # 35 hits
+scripts/check-module-size.test.mjs  # 56 hits
+scripts/check-server-bin-targets.test.mjs  # 16 hits
+scripts/ci-wasm-prebuilt-eligible.test.mjs  # 1 hit
+scripts/docs/check-doc-samples.test.mjs  # 4 hits
+scripts/generate-server-attr-indices.test.mjs  # 12 hits
+scripts/lib/module-size-ratchet.test.mjs  # 3 hits
+scripts/review/build-review-input.test.mjs  # 5 hits
+scripts/review/lane-canary.test.mjs  # 7 hits
+scripts/review/post-review.test.mjs  # 60 hits
+scripts/review/run-reviewer.test.mjs  # 3 hits
+scripts/review/validate-findings.test.mjs  # 46 hits

@@ -818,8 +818,9 @@ test('REASONS covers EVERY raise site in this file, and names nothing that is no
   // form of that question -- driving all fifteen would mean constructing fifteen
   // failure inputs, several unreachable on purpose (OUT_UNWRITABLE). What it
   // guards is a data structure, not a call.
-  // NOTE: the ratchet does not scan `.test.mjs` at all (#3639), so this marker
-  // documents intent rather than recording an approval that was granted.
+  // The ratchet scans this file as of #3639, so this marker is enforced, not
+  // decorative: strip its reason text and CI fails on "markers that excuse
+  // nothing".
   // @source-text-assertion-ok inventory of raise sites against the REASONS export
   for (let i = src.indexOf(NEEDLE); i !== -1; i = src.indexOf(NEEDLE, i + 1)) {
     sites += 1;
@@ -864,7 +865,7 @@ test('REASONS covers EVERY raise site in this file, and names nothing that is no
   for (const r of REASONS) {
     // `r` comes from the imported REASONS constant, not from the file read
     // above; this pins a naming convention on that constant.
-    // Marker documents intent; the ratchet cannot see this file (#3639).
+    // Enforced by the ratchet as of #3639, not decorative.
     // @source-text-assertion-ok naming convention on an imported constant
     assert.match(r, /^[A-Z][A-Z0-9_]*$/, `${r} is outside the alphabet validatorReason parses`);
   }

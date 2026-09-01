@@ -3,10 +3,17 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * ifc-lite schedule <file.ifc> --type <IfcClass> --columns "<Header>=<path>[, ...]"
+ * ifc-lite schedule <file.ifc> [--preset <name>] --type <IfcClass>
+ *                    --columns "<Header>=<path>[, ...]"
  *                    [--where "<expr>"] [--sort "<Header>[:asc|desc][, ...]"]
  *                    [--group-by "<Header>[, ...]"]
  *                    [--subtotals "<agg>[, ...]"] [--format csv|json]
+ *
+ * `--preset door|window|space|wall|material-takeoff` supplies a default
+ * `--type` and `--columns` (and, for some presets, a default group-by/sort/
+ * subtotals) so a common schedule runs with no other flags. An explicit flag of
+ * the same name overrides the preset's default; `--where`/`--format` apply as
+ * normal. See `schedule-presets.ts`.
  *
  * Produce a tabular schedule of one IFC class: pick the entities of `--type`,
  * (optionally) narrow them with the same `--where` filter `query` uses, and
@@ -38,6 +45,7 @@ import {
 } from './schedule-render.js';
 import { parseSortSpec, parseGroupBySpec, orderRows } from './schedule-group.js';
 import { parseSubtotalsSpec, buildSubtotalPlan } from './schedule-aggregate.js';
+import { resolvePreset } from './schedule-presets.js';
 
 /**
  * Resolve one column path against one entity.
@@ -51,6 +59,21 @@ import { parseSubtotalsSpec, buildSubtotalPlan } from './schedule-aggregate.js';
  * missing value stays `null`.
  */
 export function resolveScheduleValue(entity: any, path: string, bim: any): unknown {
+  // `Material` is a pseudo-column: resolve the element's associated material
+  // name through the shared material accessor the `stats` command uses, rather
+  // than a native attribute or a same-named property set member. `materials`
+  // yields either a MaterialData whose `materials[]` list carries the leaf
+  // names, or a single-material `name` — mirror the stats resolution order.
+  if (path === 'Material') {
+    const mat = bim.materials(entity.ref) as
+      | { name?: string; materials?: Array<string | { name?: string }> }
+      | null
+      | undefined;
+    const first = mat?.materials?.[0];
+    const firstName = typeof first === 'string' ? first : first?.name;
+    return firstName ?? mat?.name ?? null;
+  }
+
   const viaColumn = resolveColumnValue(entity, path, bim);
   if (viaColumn != null) return viaColumn;
 
@@ -68,13 +91,18 @@ export async function scheduleCommand(args: string[]): Promise<void> {
     fatal('Usage: ifc-lite schedule <file.ifc> --type IfcDoor --columns "Name=Name, Mark=Pset_DoorCommon.Reference" [--where PsetName.Prop=Value] [--format csv|json]');
   }
 
-  let type = getFlag(args, '--type');
+  // --preset supplies default type/columns (and optionally group-by/sort/
+  // subtotals); an explicit flag of the same name overrides the preset default.
+  const presetName = getFlag(args, '--preset');
+  const preset = presetName ? resolvePreset(presetName) : undefined;
+
+  let type = getFlag(args, '--type') ?? preset?.type;
   if (!type) {
-    fatal('--type is required, e.g. --type IfcDoor');
+    fatal('--type is required (or pass --preset), e.g. --type IfcDoor or --preset door');
   }
   type = normalizeTypeName(type);
 
-  const columns = parseColumnSpec(getFlag(args, '--columns'));
+  const columns = parseColumnSpec(getFlag(args, '--columns') ?? preset?.columns);
 
   const format = (getFlag(args, '--format') ?? 'csv').toLowerCase();
   if (format !== 'csv' && format !== 'json') {
@@ -85,9 +113,9 @@ export async function scheduleCommand(args: string[]): Promise<void> {
 
   // --sort / --group-by / --subtotals name declared column HEADERS; an unknown
   // header is a fatal(...) with the valid headers listed (raised during parse).
-  const sortKeys = parseSortSpec(getFlag(args, '--sort'), columns);
-  const groupKeys = parseGroupBySpec(getFlag(args, '--group-by'), columns);
-  const subtotalAggs = parseSubtotalsSpec(getFlag(args, '--subtotals'), columns);
+  const sortKeys = parseSortSpec(getFlag(args, '--sort') ?? preset?.sort, columns);
+  const groupKeys = parseGroupBySpec(getFlag(args, '--group-by') ?? preset?.groupBy, columns);
+  const subtotalAggs = parseSubtotalsSpec(getFlag(args, '--subtotals') ?? preset?.subtotals, columns);
 
   const { bim } = await createHeadlessContext(filePath);
 

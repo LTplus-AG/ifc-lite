@@ -25,10 +25,14 @@ import {
   renderScheduleJsonWithSubtotals,
   type ScheduleRow,
 } from './schedule-render.js';
-import { resolveScheduleValue } from './schedule.js';
+import { resolveScheduleValue, scheduleCommand } from './schedule.js';
 import { parseWhereFilter, applyWhereFilter } from './query.js';
 import { parseSortSpec, parseGroupBySpec, orderRows } from './schedule-group.js';
 import { parseSubtotalsSpec, buildSubtotalPlan } from './schedule-aggregate.js';
+import { SCHEDULE_PRESETS, resolvePreset } from './schedule-presets.js';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 // A door carrying a Pset property (Reference), a boolean (IsExternal), a
 // quantity (Qto_DoorBaseQuantities.Area), a Tag attribute, plus a second door
@@ -398,5 +402,108 @@ describe('group-by + subtotals over a real fixture', () => {
     const json = renderScheduleJsonWithSubtotals(columns, plan);
     expect(json.filter(r => r.__row === 'subtotal')).toHaveLength(0);
     expect(json[json.length - 1]).toEqual({ __row: 'total', count: 4, 'sum:Area': 7 });
+  });
+});
+
+// ── PR-3: presets ───────────────────────────────────────────────────────────
+
+/** Header row produced by rendering a preset's declared columns, no data. */
+function presetHeaderRow(name: string): string {
+  const cols = parseColumnSpec(SCHEDULE_PRESETS[name].columns);
+  return renderScheduleCsv(cols, []).split('\n')[0];
+}
+
+describe('resolvePreset (declared type + columns)', () => {
+  it('door resolves IfcDoor with the standard door column set', () => {
+    expect(SCHEDULE_PRESETS.door.type).toBe('IfcDoor');
+    expect(presetHeaderRow('door')).toBe('Mark,Name,FireRating,IsExternal,Width,Height');
+  });
+
+  it('space resolves IfcSpace with the standard space columns and a NetFloorArea:desc default sort', () => {
+    expect(SCHEDULE_PRESETS.space.type).toBe('IfcSpace');
+    expect(presetHeaderRow('space')).toBe('Number,LongName,Category,NetFloorArea,NetVolume');
+    expect(SCHEDULE_PRESETS.space.sort).toBe('NetFloorArea:desc');
+  });
+
+  it('window and wall resolve their IFC types', () => {
+    expect(SCHEDULE_PRESETS.window.type).toBe('IfcWindow');
+    expect(SCHEDULE_PRESETS.wall.type).toBe('IfcWall');
+  });
+
+  it('material-takeoff groups a Material pseudo-column with a summed NetVolume', () => {
+    const p = SCHEDULE_PRESETS['material-takeoff'];
+    expect(presetHeaderRow('material-takeoff')).toBe('Material,NetVolume');
+    expect(p.groupBy).toBe('Material');
+    expect(p.subtotals).toBe('count, sum:NetVolume');
+  });
+
+  it('an unknown preset name is fatal, listing the valid presets', () => {
+    const err = expectFatal(() => resolvePreset('nope'));
+    expect(err).toContain('Unknown --preset "nope"');
+    expect(err).toContain('door');
+    expect(err).toContain('material-takeoff');
+  });
+});
+
+/** Run `scheduleCommand` against a temp fixture and capture its stdout. */
+async function runSchedule(content: string, args: string[]): Promise<string> {
+  const dir = mkdtempSync(join(tmpdir(), 'sched-'));
+  const file = join(dir, 't.ifc');
+  writeFileSync(file, content);
+  let out = '';
+  const spy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown) => {
+    out += String(chunk);
+    return true;
+  });
+  try {
+    await scheduleCommand([file, ...args]);
+  } finally {
+    spy.mockRestore();
+  }
+  return out;
+}
+
+describe('scheduleCommand --preset (end to end)', () => {
+  it('--preset door emits the preset header row and resolves its columns', async () => {
+    const out = await runSchedule(IFC, ['--preset', 'door']);
+    const lines = out.trimEnd().split('\n');
+    expect(lines[0]).toBe('Mark,Name,FireRating,IsExternal,Width,Height');
+    // D-01 door: Tag=D-01, Name='Door A', IsExternal=true; no FireRating/Width/Height.
+    expect(lines).toContain('D-01,Door A,,true,,');
+  });
+
+  it('explicit --columns overrides the preset column set (explicit flag wins)', async () => {
+    const out = await runSchedule(IFC, ['--preset', 'door', '--columns', 'X=Name']);
+    const lines = out.trimEnd().split('\n');
+    expect(lines[0]).toBe('X');
+    expect(lines).toContain('Door A');
+  });
+});
+
+// A wall carrying an associated IfcMaterial, to prove the `Material`
+// pseudo-column resolves through the shared material accessor.
+const IFC_MATERIAL = [
+  'ISO-10303-21;',
+  'HEADER;',
+  "FILE_DESCRIPTION((''),'2;1');",
+  "FILE_NAME('m.ifc','2026-01-01T00:00:00',(''),(''),'','','');",
+  "FILE_SCHEMA(('IFC4'));",
+  'ENDSEC;',
+  'DATA;',
+  '#1=IFCOWNERHISTORY($,$,$,$,$,$,$,0);',
+  "#10=IFCWALL('0Wall_M_00000000000001',#1,'Wall M',$,$,$,$,$);",
+  "#50=IFCMATERIAL('Concrete',$,$);",
+  "#51=IFCRELASSOCIATESMATERIAL('0Rel_M_00000000000001',#1,$,$,(#10),#50);",
+  'ENDSEC;',
+  'END-ISO-10303-21;',
+  '',
+].join('\n');
+
+describe('Material pseudo-column', () => {
+  it('resolves an element’s associated material name via bim.materials', async () => {
+    const { bim } = await makeBim(IFC_MATERIAL);
+    const walls = bim.query().byType('IfcWall').toArray();
+    expect(walls).toHaveLength(1);
+    expect(resolveScheduleValue(walls[0], 'Material', bim)).toBe('Concrete');
   });
 });

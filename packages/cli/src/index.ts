@@ -65,6 +65,7 @@ const HELP = `
     props     <file.ifc> --id <N>                 All properties for a single entity
     export    <file.ifc> --format csv|json|ifc|obj|gltf|glb|jsonld|step|ifcx|usd|hbjson|dfjson  Export data / geometry / energy model
     schedule  <file.ifc> --type T --columns "H=path,..."  Tabular schedule of one class (csv/json)
+              [--preset door|window|space|wall|material-takeoff]  default type+columns (flags override)
               [--where PsetName.Prop=Value] [--format csv|json]  path = attr | Pset.Prop | Qto.Qty
               [--sort "Header[:asc|desc],..."]  multi-key row sort by column HEADER (numbers numeric, nulls last)
               [--group-by "Header,..."]  contiguous groups, ordered by group key (asc, or --sort's dir)
@@ -134,6 +135,8 @@ const HELP = `
     ifc-lite schedule model.ifc --type IfcDoor --columns "Name=Name, Mark=Pset_DoorCommon.Reference"
     ifc-lite schedule model.ifc --type IfcWall --columns "Name,Qto_WallBaseQuantities.NetVolume" --where Pset_WallCommon.IsExternal=true --format json
     ifc-lite schedule model.ifc --type IfcDoor --columns "Name=Name, Fire=Pset_DoorCommon.FireRating, Area=Qto_DoorBaseQuantities.Area" --group-by Fire --sort "Area:desc" --subtotals "count, sum:Area"
+    ifc-lite schedule model.ifc --preset door
+    ifc-lite schedule model.ifc --preset material-takeoff --format json
     ifc-lite diagnose-geometry model.ifc --json
     ifc-lite diagnose-geometry model.ifc --type IfcWall
     ifc-lite diagnose-geometry model.ifc --product 0YvCT2_$X3_xJG3rzD8L_8

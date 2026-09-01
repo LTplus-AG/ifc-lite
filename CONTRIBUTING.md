@@ -124,10 +124,14 @@ change "lacks" a null check, an `await` or an error path that exists three lines
 above the hunk, it is wrong and you should say so — it is instructed not to make
 that claim, and doing it anyway is a bug worth reporting.
 
-It does not run on every PR: **drafts** and PRs from **forks** are excluded (a
-fork's token cannot post), and the lane sits behind a repository switch. When it
-does not run, CodeRabbit reviews you as before, and `Review posted` will not
-fail your PR for a missing review it was never going to get.
+It does not run on every PR. **Drafts** and PRs from **forks** are excluded (a
+fork's token cannot post); for those two, `Review posted` reports what it found
+but does not fail your PR, and CodeRabbit reviews you as before.
+
+The lane also sits behind a repository switch. If that is ever turned off,
+`Review posted` **does** start failing PRs — there is no exemption for it, on
+purpose, because a whole repository going red is the intended signal that the
+reviewer is gone. That is a maintainer's problem, not yours; say so on the PR.
 
 **`Review posted`** does not review anything. It checks that a review actually
 *reached* your PR, for your exact head commit, by looking for a marker the
@@ -143,7 +147,7 @@ and "nothing ran" look identical.
 | `Review posted` says `NOT_POSTED` | No **completed** review was verified for this commit. That covers both "nothing was posted" and "something was posted without a valid end-of-review marker" — a partial run looks like the second. Usually the same cause as above. Re-run the review job. |
 | `Review posted` says `STALE_REVIEW` | A review exists, but for an older commit. Push or re-run so the current head gets one. |
 | `Review posted` says `nothing-to-review` | Your PR changes only lockfiles, generated code, snapshots, fixtures, build output, images or other binary assets. Nothing to read, so nothing was read. This **passes**. |
-| any other `Review posted` verdict — `MARKER_MALFORMED`, `FINDINGS_NOT_POSTED`, `COMMENTS_TRUNCATED`, or a `❌` refusal | The reviewer or the gate itself misfired, not your code. Re-run; the check prints a `REMEDY:` line naming exactly what to do. |
+| any other `Review posted` verdict — `MARKER_MALFORMED`, `FINDINGS_NOT_POSTED`, `COMMENTS_TRUNCATED`, or a `❌` refusal | The reviewer or the gate itself misfired, not your code. Most of these print a `REMEDY:` line saying what to do, and for the common ones it is "re-run the review job". `MARKER_MALFORMED` is not one of those: it means the reviewer wrote a marker the gate cannot parse, which needs fixing rather than retrying. The refusals (`NO_PR`, `NO_SHA`, `NO_REPO`, `BAD_CONFIG`, `GH_ERROR`) print no remedy at all — flag them on the PR. |
 | your PR is a **draft**, or from a **fork** | `Review posted` reports what it found but does **not** fail the job, because the lane never runs on either and no re-run could produce a marker. Marking a draft ready for review gets it a real review. |
 
 Neither check is a merge blocker today. `Review posted` is deliberately not in

@@ -57,23 +57,36 @@ const CASE_DIR = join(HERE, 'eval-cases');
 export function matches(expected, findings) {
   const sameFile = findings.filter((f) => f.path === expected.path);
   if (sameFile.length === 0) return { hit: false, by: null };
-  // Distinctive terms, STEMMED to a prefix. Two reviewers describing one defect
-  // differ on word FORM as much as on wording -- "case-sensitive" against
-  // "sensitively", "disabled" against "disables" -- and an exact-word match
-  // scored those as misses, which would have made this harness report a rubric
-  // as worse than it is. Seven characters is long enough that a stem is still
-  // about this defect: "enforce" is shared by half this repository's prose, which
-  // is exactly why TWO distinct stems are required rather than one.
-  const terms = [
-    ...new Set(
-      (expected.what.match(/[A-Za-z_][A-Za-z0-9_]{5,}/g) || [])
-        .map((t) => t.toLowerCase().slice(0, 7))
-        .filter((t) => !['should ', 'because', 'without', 'nothing', 'cannot'].includes(t)),
-    ),
-  ];
+
+  // MATCHED ON `body` AND `class`, NEVER ON `quote`. `quote` is verbatim source
+  // from the diff under review, so folding it in made the finding's own evidence
+  // count as agreement: PR #3598's hunks literally contain `REMEDY: re-run the
+  // review job` and `exemption`, so ANY finding anchored near those lines scored
+  // as recall of the contradictory-remedy defect. A harness that credits a
+  // reviewer for quoting the diff is measuring nothing.
+  const blobOf = (f) => `${f.body ?? ''} ${f.class ?? ''}`.toLowerCase();
+
+  // STEMS BOTH WAYS. A 7-character prefix of the EXPECTED word, matched as a
+  // substring of the finding, fails on inflection in the direction that hurts
+  // most: "throws" does not appear in "Throwing", "reddeni" does not appear in
+  // "reddens", so a finding naming the defect exactly scored as a MISS -- and a
+  // miss is what gets a good rubric reverted. Stemming both sides to 5 and
+  // comparing prefixes matches word FORMS without matching different words.
+  const stem = (w) => w.toLowerCase().slice(0, 5);
+
+  // GENERIC REVIEW VOCABULARY IS NOT EVIDENCE. `output`, `prints`, `remedy`,
+  // `should` and friends appear in half this repository's prose, and two of them
+  // co-occurring in an unrelated finding scored as a hit on a shipped case.
+  const GENERIC = new Set(
+    ['output', 'print', 'remed', 'shoul', 'becau', 'witho', 'nothi', 'canno', 'sayin', 'along',
+     'happe', 'somet', 'chang', 'retur', 'value', 'metho', 'funct', 'callи'].map(stem),
+  );
+  const terms = [...new Set((expected.what.match(/[A-Za-z_][A-Za-z0-9_]{5,}/g) || []).map(stem))]
+    .filter((t) => !GENERIC.has(t));
+
   for (const f of sameFile) {
-    const blob = `${f.body ?? ''} ${f.quote ?? ''} ${f.class ?? ''}`.toLowerCase();
-    const hits = terms.filter((t) => blob.includes(t));
+    const words = new Set((blobOf(f).match(/[A-Za-z_][A-Za-z0-9_]{4,}/g) || []).map(stem));
+    const hits = terms.filter((t) => words.has(t));
     if (hits.length >= 2) return { hit: true, by: `${f.path}:${f.line} (${hits.slice(0, 3).join(', ')})` };
   }
   return { hit: false, by: null };
@@ -94,8 +107,17 @@ export function score(cases) {
       lines.push(`    ${m.hit ? '✅ FOUND   ' : '❌ MISSED  '} ${e.path}: ${e.what.slice(0, 88)}`);
       if (m.hit) lines.push(`               via ${m.by}`);
     }
-    const matchedPaths = new Set(c.expected.map((e) => e.path));
-    const others = c.findings.filter((f) => !matchedPaths.has(f.path));
+    // BUILT FROM WHAT ACTUALLY MATCHED, not from the expected paths. The first
+    // version excluded every finding in a file that HELD an expected finding, so
+    // a second, genuinely different defect in that same file was neither a hit,
+    // nor an extra, nor printed -- silently dropped, in exactly the files a rubric
+    // change is most likely to produce new findings in. The docblock's promise
+    // that "the harness prints each one so a human decides" failed precisely
+    // where it mattered.
+    const claimed = new Set(
+      c.expected.map((e) => matches(e, c.findings).by).filter(Boolean).map((by) => by.split(' ')[0]),
+    );
+    const others = c.findings.filter((f) => !claimed.has(`${f.path}:${f.line}`));
     extra += others.length;
     for (const o of others) {
       lines.push(`    ➕ EXTRA   ${o.path}:${o.line} ${String(o.body ?? '').slice(0, 70)}`);

@@ -90,3 +90,76 @@ test('every eval case is well-formed and carries at least one known finding', ()
     }
   }
 });
+
+// ========================= the three ways this scorer was wrong
+
+const E3598 = {
+  path: 'scripts/check-review-posted.mjs',
+  what: 'the output prints REMEDY: re-run alongside an exemption saying no re-run can clear it: two contradictory remedies',
+};
+
+test('GENERIC review vocabulary is not evidence — an unrelated finding is a MISS', () => {
+  // THE BUG. `output`, `prints` and `remedy` are ordinary review words, and two
+  // of them co-occurring in a finding about something else scored as recall of
+  // the contradictory-remedy defect. A rubric that only got noisier would have
+  // measured as recovered.
+  const m = matches(E3598, [{
+    path: E3598.path, line: 340,
+    body: 'The renamed helper still prints the old name, so the output disagrees with the code.',
+  }]);
+  assert.equal(m.hit, false, `scored as a hit via ${m.by}`);
+});
+
+test('a finding QUOTING the diff does not thereby match it', () => {
+  // `quote` is verbatim source from the diff under review, so folding it in made
+  // a finding's own evidence count as agreement. The quote below carries BOTH
+  // surviving terms for this case (`exemp`, `contr`) -- if quote were matched,
+  // this unrelated finding would score as a full hit.
+  const m = matches(E3598, [{
+    path: E3598.path, line: 427,
+    body: 'This branch is unreachable, so the code here is dead.',
+    quote: "'   if (exemption.exempt) { // contradictory branch }'",
+  }]);
+  assert.equal(m.hit, false, `scored as a hit via ${m.by}`);
+});
+
+test('THE STEM IS CALIBRATED IN BOTH DIRECTIONS, not just the tight one', () => {
+  // Seven characters lost correct findings to inflection; the fix was five. But
+  // a stem can be too SHORT as well, and nothing tested that direction -- a
+  // three-character stem left the whole suite green while matching almost
+  // anything. `exemp`/`contr` become `exe`/`con`, and this entirely unrelated
+  // finding would score as recall of the contradictory-remedy defect.
+  const m = matches(E3598, [{
+    path: E3598.path, line: 12,
+    body: 'The executor connects to the wrong socket when the config is absent.',
+  }]);
+  assert.equal(m.hit, false, `an unrelated finding scored as a hit via ${m.by}`);
+});
+
+test('INFLECTION does not lose a correct finding — that is what reverts a good rubric', () => {
+  // "Throwing" does not contain "throws"; "reddens" does not contain "reddeni".
+  // A finding that names the defect exactly scored as MISSED, and a miss is the
+  // direction that gets a rubric change reverted.
+  const expected = {
+    path: 'scripts/review/post-review.mjs',
+    what: 'WOULD_DOWNGRADE_VERDICT throws, reddening the job for a state that needs no action and that no re-run can clear',
+  };
+  const m = matches(expected, [{
+    path: expected.path, line: 88, class: 'Major',
+    body: 'Throwing on WOULD_DOWNGRADE_VERDICT reddens the job for a benign state nobody can clear by re-running. It should log and exit 0.',
+  }]);
+  assert.equal(m.hit, true, 'a finding naming the defect exactly must count');
+});
+
+test('a DIFFERENT finding in the same file is an EXTRA, never silently dropped', () => {
+  // The set was built from EXPECTED paths, so a second real defect in a file that
+  // also held an expected one vanished: not a hit, not an extra, not printed --
+  // in exactly the files a rubric change produces new findings in.
+  const s2 = score([{
+    pr: 3598, expected: [E3598], verdict: 'findings',
+    findings: [{ path: E3598.path, line: 1, body: 'an unrelated pagination truncation bug' }],
+  }]);
+  assert.equal(s2.hits, 0);
+  assert.equal(s2.extra, 1, 'it must be counted');
+  assert.ok(s2.lines.some((l) => l.includes('➕ EXTRA')), 'and printed');
+});

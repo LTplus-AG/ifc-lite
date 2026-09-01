@@ -62,4 +62,9 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           CLAUDE_CODE_OAUTH_TOKEN_2: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_2 }}
           EVAL_MODEL: ${{ inputs.model }}
-        run: node scripts/review/rubric-eval.mjs --rubric "${{ inputs.rubric }}"
+          # VIA env, NOT interpolated into the shell. `workflow_dispatch` needs
+          # write access so this is not an escalation today, but an input spliced
+          # into a `run:` block is a shape worth not having; `EVAL_MODEL` already
+          # travels this way and the rubric path should match it.
+          EVAL_RUBRIC: ${{ inputs.rubric }}
+        run: node scripts/review/rubric-eval.mjs --rubric "$EVAL_RUBRIC"

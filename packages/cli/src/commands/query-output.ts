@@ -42,7 +42,12 @@ export function outputSum(entities: any[], quantityName: string, bim: any, jsonO
           allQuantityNames.set(key, { qsetName: qset.name, count: 1 });
         }
         if (q.name === quantityName) {
-          total += Number(q.value) || 0;
+          // Mirrors getQuantityValue in query-aggregation.ts: `Number(x) ||
+          // 0` lets a present-but-Infinite value through (Infinity is
+          // truthy), which would poison `total` for every other entity in
+          // the sum. Number.isFinite catches NaN and both infinities.
+          const n = Number(q.value);
+          total += Number.isFinite(n) ? n : 0;
           matched++;
           matchedQsets.add(qset.name);
         }

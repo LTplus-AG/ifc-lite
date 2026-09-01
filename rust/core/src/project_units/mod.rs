@@ -176,7 +176,7 @@ fn resolve_unit_by_ref_depth(
             let symbol = conversion_unit_symbol(name);
             let conv_ref = entity.get_ref(3);
             let scale = conv_ref
-                .and_then(|r| conversion_factor_scale(decoder, r))
+                .and_then(|r| conversion_factor_scale(decoder, r, depth))
                 .unwrap_or(1.0);
             Some((unit_type, ResolvedUnit::new(symbol, scale), false))
         }
@@ -234,9 +234,13 @@ fn resolve_derived_element(
 }
 
 /// The SI scale of an `IFCCONVERSIONBASEDUNIT.ConversionFactor`
-/// (`IFCMEASUREWITHUNIT`): the value component expressed in the (possibly
-/// prefixed) SI unit component.
-fn conversion_factor_scale(decoder: &mut EntityDecoder, measure_ref: u32) -> Option<f64> {
+/// (`IFCMEASUREWITHUNIT`): the value component expressed in its `UnitComponent`,
+/// which per `IfcMeasureWithUnit` is any `IfcUnit` — a (possibly prefixed)
+/// `IfcSIUnit`, an `IfcDerivedUnit`, or *another* `IfcConversionBasedUnit`
+/// (a real-world chain, e.g. YARD defined as 3 FOOT where FOOT is itself
+/// conversion-based). Resolving through the shared dispatcher folds in every
+/// case uniformly instead of silently treating a non-SI component as scale 1.0.
+fn conversion_factor_scale(decoder: &mut EntityDecoder, measure_ref: u32, depth: u32) -> Option<f64> {
     let measure = decoder.decode_by_id(measure_ref).ok()?;
     if measure.ifc_type.as_str() != "IFCMEASUREWITHUNIT" {
         return None;
@@ -246,19 +250,10 @@ fn conversion_factor_scale(decoder: &mut EntityDecoder, measure_ref: u32) -> Opt
     if !(value.is_finite() && value > 0.0) {
         return None;
     }
-    // Fold the unit component's own SI scale (e.g. a value stated in millimetres).
     let component_scale = measure
         .get_ref(1)
-        .and_then(|r| {
-            let comp = decoder.decode_by_id(r).ok()?;
-            if comp.ifc_type.as_str() == "IFCSIUNIT" {
-                let name = comp.get(3).and_then(|a| a.as_enum())?;
-                let prefix = comp.get(2).filter(|a| !a.is_null()).and_then(|a| a.as_enum());
-                si_unit_symbol_and_scale(name, prefix).map(|(_, s)| s)
-            } else {
-                None
-            }
-        })
+        .and_then(|r| resolve_unit_by_ref_depth(decoder, r, depth + 1))
+        .map(|(_, resolved, _)| resolved.si_scale)
         .unwrap_or(1.0);
     Some(value * component_scale)
 }

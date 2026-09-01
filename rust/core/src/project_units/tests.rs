@@ -129,6 +129,40 @@ END-ISO-10303-21;
     assert!((len.si_scale - 0.0254).abs() < 1e-12, "expected 0.0254, got {}", len.si_scale);
 }
 
+/// `IFCMEASUREWITHUNIT.UnitComponent` (`IfcUnit`) is not restricted to
+/// `IfcSIUnit` — the spec allows any `IfcNamedUnit`, so a conversion-based unit
+/// can be defined relative to *another* conversion-based unit (a real-world
+/// chain: YARD = 3 FOOT, FOOT = 0.3048 METRE). `conversion_factor_scale` must
+/// resolve that chain, not just fold in a bare/prefixed SI component — else the
+/// derived unit's si_scale silently drops the FOOT factor entirely (3.0 instead
+/// of 0.9144, a ~3.3x error) rather than being flagged as unresolved.
+#[test]
+fn conversion_based_unit_resolves_chained_conversion_component() {
+    let ifc = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('t.ifc','2024-01-01',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('guid',$,'Test',$,$,$,$,(#2),#3);
+#3=IFCUNITASSIGNMENT((#20));
+#5=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#6=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(0.3048),#5);
+#7=IFCCONVERSIONBASEDUNIT(#11,.LENGTHUNIT.,'FOOT',#6);
+#9=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(3.0),#7);
+#20=IFCCONVERSIONBASEDUNIT(#11,.LENGTHUNIT.,'YARD',#9);
+#11=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+    let units = units_of(ifc);
+    let len = units.unit_for_measure("IfcLengthMeasure").unwrap();
+    // 1 YARD = 3 FOOT = 3 * 0.3048 m = 0.9144 m, NOT 3.0 m (chained
+    // conversion-based UnitComponent dropped to scale 1.0).
+    assert!((len.si_scale - 0.9144).abs() < 1e-12, "expected 0.9144, got {}", len.si_scale);
+}
+
 #[test]
 fn kilogram_mass_unit() {
     let ifc = r#"ISO-10303-21;

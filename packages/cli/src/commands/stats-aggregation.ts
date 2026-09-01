@@ -220,6 +220,34 @@ export function computeMaterialSummary<R>(
     }));
 }
 
+/**
+ * `bim.query()` with no type filter returns every entity the SDK treats as
+ * a "product" — which includes spatial-structure containers and groupings
+ * (IfcProject/IfcSite/IfcBuilding/IfcBuildingStorey/IfcSpace/IfcZone/
+ * IfcSystem/IfcDistributionSystem/IfcSpatialZone and their infrastructure
+ * counterparts) and 2D/3D drafting annotations (IfcAnnotation), none of
+ * which are physical building elements. Left in, they inflate the
+ * material summary and the "unnamedElements"/"duplicateGlobalIds"
+ * validation counts with entities a user would never call a "building
+ * element" (e.g. an `IfcAnnotation` dimension line never carries a Name
+ * and isn't a modeling defect).
+ */
+const NON_ELEMENT_TYPES = new Set([
+  'IfcProject', 'IfcSite', 'IfcBuilding', 'IfcBuildingStorey', 'IfcSpace',
+  'IfcSpatialZone', 'IfcZone', 'IfcSystem', 'IfcDistributionSystem',
+  'IfcFacility', 'IfcFacilityPart', 'IfcBridge', 'IfcBridgePart',
+  'IfcRoad', 'IfcRoadPart', 'IfcRailway', 'IfcRailwayPart', 'IfcMarineFacility',
+  'IfcAnnotation',
+]);
+
+/**
+ * Scope an unfiltered `bim.query().toArray()` result down to physical
+ * building elements, for the material summary and validation stats.
+ */
+export function filterBuildingElements<T extends { type: string }>(entities: T[]): T[] {
+  return entities.filter(e => !NON_ELEMENT_TYPES.has(e.type));
+}
+
 export interface ValidationSummary {
   duplicateGlobalIds: number;
   unnamedElements: number;

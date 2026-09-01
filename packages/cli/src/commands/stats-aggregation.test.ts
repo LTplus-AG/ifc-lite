@@ -26,6 +26,7 @@ import {
   computeStoreyNames,
   computeBuildingName,
   computeValidation,
+  filterBuildingElements,
   type QuantitySet,
   type PropertySet,
 } from './stats-aggregation.js';
@@ -299,6 +300,36 @@ describe('computeBuildingName', () => {
 
   it('returns "(unnamed)" when there is no building at all (control)', () => {
     expect(computeBuildingName([])).toBe('(unnamed)');
+  });
+});
+
+describe('filterBuildingElements', () => {
+  // ISSUE(AC20-FZK-Haus.ifc fixture): `bim.query()` with no type filter
+  // returns every "product" entity, including 14 unnamed IfcAnnotation
+  // (drafting) entities and the model's IfcProject/IfcSite/IfcBuilding/
+  // IfcBuildingStorey/IfcSpace containers — none of which are physical
+  // building elements. Passing that unfiltered set into computeValidation
+  // reported 19 "unnamed elements" for a model where only 5 physical
+  // elements actually lack a Name.
+  it('drops spatial-structure containers and drafting annotations, keeps physical elements', () => {
+    const entities = [
+      { type: 'IfcProject', name: undefined },
+      { type: 'IfcSite', name: undefined },
+      { type: 'IfcBuilding', name: 'Building' },
+      { type: 'IfcBuildingStorey', name: 'Level 1' },
+      { type: 'IfcSpace', name: 'Room 1' },
+      { type: 'IfcAnnotation', name: undefined },
+      { type: 'IfcAnnotation', name: undefined },
+      { type: 'IfcWall', name: 'Wall 1' },
+      { type: 'IfcRailing', name: undefined },
+    ];
+    const kept = filterBuildingElements(entities);
+    expect(kept.map(e => e.type)).toEqual(['IfcWall', 'IfcRailing']);
+  });
+
+  it('an all-physical-element input passes through unchanged', () => {
+    const entities = [{ type: 'IfcWall' }, { type: 'IfcDoor' }, { type: 'IfcWindow' }];
+    expect(filterBuildingElements(entities)).toEqual(entities);
   });
 });
 

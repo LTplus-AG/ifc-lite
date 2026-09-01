@@ -56,7 +56,26 @@ fn mesh_visible(mesh: &MeshData, isolated: &[u32], hidden: &[u32]) -> bool {
     if !isolated.is_empty() && !isolated.contains(&mesh.express_id) {
         return false;
     }
-    !mesh.indices.is_empty() && mesh.positions.len() >= 9
+    if mesh.indices.is_empty() || mesh.positions.len() < 9 {
+        return false;
+    }
+    // OBJ's `v`/`vn` tokens have no lexical form for a non-finite number (unlike
+    // `mesh_input::scrub_nonfinite`'s target formats, nothing here even reads
+    // "nan"/"inf" back as a number), and this exporter folds `mesh.origin` into
+    // every position before writing it, so a non-finite origin would poison every
+    // otherwise-good vertex in the mesh. `process_geometry` can hand back such a
+    // value only for a derived quantity like the mid-vertex normal of a
+    // zero-area face (see `usd::fmt::fmt_f32`'s comment on the same source).
+    // Gate the whole mesh out rather than write a token no reader accepts —
+    // mirrors `usd::mesh_emittable`, the sibling from-bytes exporter over the
+    // same `process_geometry` output.
+    if !mesh.origin.iter().all(|v| v.is_finite()) || !mesh.positions.iter().all(|v| v.is_finite()) {
+        return false;
+    }
+    if mesh.normals.len() == mesh.positions.len() && !mesh.normals.iter().all(|v| v.is_finite()) {
+        return false;
+    }
+    true
 }
 
 /// Export the render geometry in `content` (raw IFC/STEP bytes) as a Wavefront OBJ string.
@@ -223,5 +242,61 @@ mod tests {
         // reversal unobservable; assert the fixture is not that degenerate case.
         assert_ne!(tri[1], tri[2], "fixture triangle must distinguish b from c");
         assert_eq!(first_face, expected, "OBJ must emit a, c, b — winding reversed");
+    }
+
+    /// A minimal, otherwise-valid mesh — mirrors the fixture in
+    /// `usd::tests::mesh_emittable_rejects_pathological_meshes`.
+    fn good_mesh() -> MeshData {
+        MeshData {
+            express_id: 1,
+            ifc_type: "IfcWall".into(),
+            global_id: None,
+            name: None,
+            presentation_layer: None,
+            positions: vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+            normals: vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+            indices: vec![0, 1, 2],
+            color: [0.5, 0.5, 0.5, 1.0],
+            material_name: None,
+            geometry_item_id: None,
+            material_id: None,
+            properties: None,
+            uvs: None,
+            texture: None,
+            geometry_class: 0,
+            origin: [0.0, 0.0, 0.0],
+            instance: None,
+            local_bounds: None,
+            local_to_world: None,
+        }
+    }
+
+    /// `mesh_visible` must reject a mesh carrying a non-finite position, normal, or
+    /// origin — OBJ's `v`/`vn` tokens have no lexical form for `NaN`/`inf`/`-inf`, and
+    /// unlike `mesh_input::scrub_nonfinite` (the from-meshes GLB/COLLADA gate) or
+    /// `usd::mesh_emittable` (the sibling from-bytes exporter), this function let one
+    /// through untouched. Before the fix each of these five cases wrote the offending
+    /// float straight into a `v`/`vn` line (Rust's `Display` renders `NaN`/`inf`/`-inf`,
+    /// none of which OBJ readers accept as a number).
+    #[test]
+    fn mesh_visible_rejects_non_finite_geometry() {
+        let good = good_mesh();
+        assert!(mesh_visible(&good, &[], &[]), "the baseline fixture must itself be visible");
+
+        let mut bad = good.clone();
+        bad.positions[0] = f32::NAN;
+        assert!(!mesh_visible(&bad, &[], &[]), "NaN position must be rejected");
+
+        let mut bad = good.clone();
+        bad.positions[3] = f32::INFINITY;
+        assert!(!mesh_visible(&bad, &[], &[]), "Infinity position must be rejected");
+
+        let mut bad = good.clone();
+        bad.normals[1] = f32::NEG_INFINITY;
+        assert!(!mesh_visible(&bad, &[], &[]), "non-finite normal must be rejected");
+
+        let mut bad = good.clone();
+        bad.origin = [f64::NAN, 0.0, 0.0];
+        assert!(!mesh_visible(&bad, &[], &[]), "non-finite origin must be rejected — it poisons every vertex");
     }
 }

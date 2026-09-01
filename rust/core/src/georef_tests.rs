@@ -163,3 +163,109 @@ fn test_rtc_apply_z_channel_uses_z_offset() {
     assert!((positions[1] - 180.0).abs() < 1e-5);
     assert!((positions[2] - 270.0).abs() < 1e-5);
 }
+
+/// The `-0` leniency (#3546 residual): a writer that signs a zero-magnitude
+/// degree component of `IfcSite.RefLatitude`/`RefLongitude` (e.g. `(-0, 30,
+/// 0)` for 0°30'S) must still land the site in the correct hemisphere.
+///
+/// Unlike the TS `parseFloat`-based tokenizer (which keeps IEEE-754 `-0`),
+/// the Rust STEP tokenizer's `integer()` parses `-0` through
+/// `lexical_core::parse::<i64>`, which has no negative-zero representation,
+/// so `AttributeValue::Integer` never sees the sign at all —
+/// `compound_plane_angle_to_degrees` alone cannot recover it.
+/// `extract_from_site` closes the gap by re-scanning the entity's raw
+/// record bytes for the literal `-0` token, without touching the shared
+/// tokenizer. TS parity: the equivalent fixture in
+/// `packages/parser/test/georef-extractor.test.ts`.
+#[test]
+fn test_extract_from_site_honours_negative_zero_degree_ref3546() {
+    let ifc_content = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('Test'),'2;1');
+FILE_NAME('test.ifc','2024-01-01',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCSITE('1abc',$,'Site',$,$,$,$,$,.ELEMENT.,(-0,30,0),(-0,45,0),0.,$,$);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+    let mut decoder = EntityDecoder::new(ifc_content);
+    let entity_types = vec![(1u32, IfcType::IfcSite)];
+
+    let georef = GeoRefExtractor::extract(&mut decoder, &entity_types)
+        .expect("decode ok")
+        .expect("legacy site georeference extracted");
+
+    assert_eq!(georef.source, GeoRefSource::SiteLocation);
+    assert!(
+        (georef.northings - (-0.5)).abs() < 1e-9,
+        "expected northings -0.5 (0°30'S), got {}",
+        georef.northings
+    );
+    assert!(
+        (georef.eastings - (-0.75)).abs() < 1e-9,
+        "expected eastings -0.75 (0°45'W), got {}",
+        georef.eastings
+    );
+}
+
+/// Control: the spec-canonical encoding (sign on the first NON-ZERO
+/// component) must keep working exactly as before — the `-0` leniency must
+/// never flip an already-correct sign.
+#[test]
+fn test_extract_from_site_canonical_negative_degree_unaffected() {
+    let ifc_content = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('Test'),'2;1');
+FILE_NAME('test.ifc','2024-01-01',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCSITE('1abc',$,'Site',$,$,$,$,$,.ELEMENT.,(-50,2,20),(14,28,0),0.,$,$);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+    let mut decoder = EntityDecoder::new(ifc_content);
+    let entity_types = vec![(1u32, IfcType::IfcSite)];
+
+    let georef = GeoRefExtractor::extract(&mut decoder, &entity_types)
+        .expect("decode ok")
+        .expect("legacy site georeference extracted");
+
+    let expected_lat = -(50.0 + 2.0 / 60.0 + 20.0 / 3600.0);
+    let expected_lon = 14.0 + 28.0 / 60.0;
+    assert!((georef.northings - expected_lat).abs() < 1e-9);
+    assert!((georef.eastings - expected_lon).abs() < 1e-9);
+}
+
+/// Adversarial: a `Name`/`Description` string containing a literal comma or
+/// parenthesis must not throw off the raw-byte attribute-index walk that
+/// recovers the `-0` sign — the walk must be quote-aware, not just counting
+/// top-level commas blindly.
+#[test]
+fn test_extract_from_site_negative_zero_scan_ignores_commas_inside_quoted_strings() {
+    let ifc_content = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('Test'),'2;1');
+FILE_NAME('test.ifc','2024-01-01',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCSITE('1abc',$,'Site, (annex)',$,$,$,$,$,.ELEMENT.,(-0,30,0),(-0,45,0),0.,$,$);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+    let mut decoder = EntityDecoder::new(ifc_content);
+    let entity_types = vec![(1u32, IfcType::IfcSite)];
+
+    let georef = GeoRefExtractor::extract(&mut decoder, &entity_types)
+        .expect("decode ok")
+        .expect("legacy site georeference extracted");
+
+    assert!((georef.northings - (-0.5)).abs() < 1e-9);
+    assert!((georef.eastings - (-0.75)).abs() < 1e-9);
+}

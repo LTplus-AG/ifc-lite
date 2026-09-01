@@ -58,7 +58,8 @@ import {
   isQueryableObjectType,
 } from '@ifc-lite/parser';
 import { attributeNamesForSchema } from './schema-tables.js';
-import { EntityNode, findPropertyInSets } from '@ifc-lite/query';
+import { EntityNode } from '@ifc-lite/query';
+import { matchesPropertyFilter } from './property-filter-match.js';
 
 import { stepText, type CreatedEntity, type PendingOverlay } from './overlay.js';
 
@@ -75,12 +76,6 @@ export { expandTypes };
  * here because both packages already publish it under this name.
  */
 export const isProductType = isQueryableObjectType;
-
-function normalizeBoolean(value: unknown): unknown {
-  if (value === true || value === '.T.' || value === 'true' || value === 'TRUE') return 'true';
-  if (value === false || value === '.F.' || value === 'false' || value === 'FALSE') return 'false';
-  return value;
-}
 
 /** The overlay's answer for an entity it created, in `EntityData` shape. */
 function createdEntityData(created: CreatedEntity, ref: EntityRef): EntityData {
@@ -335,24 +330,7 @@ export function createQueryAdapter(
           return cached;
         };
         for (const filter of descriptor.filters) {
-          filtered = filtered.filter((entity) => {
-            const props = cachedProps(entity.ref);
-            const prop = findPropertyInSets(props, filter.psetName, filter.propName);
-            if (!prop) return false;
-            if (filter.operator === 'exists') return true;
-            const v = normalizeBoolean(prop.value);
-            const f = normalizeBoolean(filter.value);
-            switch (filter.operator) {
-              case '=': return String(v) === String(f);
-              case '!=': return String(v) !== String(f);
-              case '>': return Number(v) > Number(f);
-              case '<': return Number(v) < Number(f);
-              case '>=': return Number(v) >= Number(f);
-              case '<=': return Number(v) <= Number(f);
-              case 'contains': return String(v).toLowerCase().includes(String(f).toLowerCase());
-              default: return false;
-            }
-          });
+          filtered = filtered.filter((entity) => matchesPropertyFilter(cachedProps(entity.ref), filter));
         }
       }
       // `&&` alone lets a NaN offset/limit through silently: every NaN

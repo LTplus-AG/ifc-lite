@@ -3821,6 +3821,8 @@
     "QueryInterface: class",
     "QueryResultEntity: class",
     "SQLResult: interface",
+    "findAllPropertiesInSets: function",
+    "findAllQuantitiesInSets: function",
     "findPropertyInSets: function",
     "findQuantityInSets: function"
   ],

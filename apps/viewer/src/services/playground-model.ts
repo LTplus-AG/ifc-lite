@@ -12,13 +12,14 @@
  * users have already opted into BYOK by being here.
  */
 
-import { getByokModelsForSource } from '@/lib/llm/models';
+import { canonicalModelId, getByokModelsForSource, getModelById } from '@/lib/llm/models';
 
 const STORAGE_KEY = 'ifc-lite:playground-model:v1';
 const CHANGED_EVENT = 'ifc-lite:playground-model-changed';
 
 function isValidAnthropicModel(id: string): boolean {
-  return getByokModelsForSource('anthropic').some((m) => m.id === id);
+  // Via getModelById so a renamed id (see RENAMED_MODEL_IDS) still validates.
+  return getModelById(id)?.source === 'anthropic';
 }
 
 /**
@@ -36,7 +37,7 @@ const FALLBACK_MODEL = isValidAnthropicModel(PREFERRED_MODEL)
 export function getPlaygroundModel(): string {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored && isValidAnthropicModel(stored)) return stored;
+    if (stored && isValidAnthropicModel(stored)) return canonicalModelId(stored);
   } catch {
     /* localStorage blocked / quota-exceeded — fall through to default */
   }

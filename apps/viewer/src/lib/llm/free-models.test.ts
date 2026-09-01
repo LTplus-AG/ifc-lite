@@ -163,3 +163,27 @@ test('sendsSamplingParams is true only for the models flagged for it', async () 
   const optedIn = BYOK_MODELS.filter((m) => m.acceptsSamplingParams === true).map((m) => m.id);
   assert.deepEqual(optedIn, ['claude-haiku-4-5']);
 });
+
+// A selection persists in localStorage. Dropping an id silently reassigns
+// whoever had it to DEFAULT_BYOK_MODEL, which is Opus 5 at 5x Haiku's price
+// on the user's own key. Renamed ids must survive the refresh.
+test('a renamed model id keeps its identity instead of falling back', async () => {
+  const { canonicalModelId, getModelById, coerceModelForEntitlement, DEFAULT_BYOK_MODEL } =
+    await import(`./models.ts?ts=${Date.now()}`) as {
+      canonicalModelId: (id: string) => string;
+      getModelById: (id: string) => LLMModel | undefined;
+      coerceModelForEntitlement: (id: string | null | undefined, hasByok: boolean) => string;
+      DEFAULT_BYOK_MODEL: LLMModel;
+    };
+
+  const dated = 'claude-haiku-4-5-20251001';
+  assert.equal(canonicalModelId(dated), 'claude-haiku-4-5');
+  assert.equal(getModelById(dated)?.id, 'claude-haiku-4-5');
+
+  // The regression this guards: without the alias this returned Opus 5.
+  assert.notEqual(DEFAULT_BYOK_MODEL.id, 'claude-haiku-4-5');
+  assert.equal(coerceModelForEntitlement(dated, true), 'claude-haiku-4-5');
+
+  // An id that genuinely has no successor must still fall back.
+  assert.equal(coerceModelForEntitlement('claude-sonnet-4-6', true), DEFAULT_BYOK_MODEL.id);
+});

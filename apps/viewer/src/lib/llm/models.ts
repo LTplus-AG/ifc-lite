@@ -254,8 +254,27 @@ const FALLBACK_MODEL: LLMModel = {
 export const DEFAULT_FREE_MODEL = FREE_MODELS[0] ?? FALLBACK_MODEL;
 export const DEFAULT_BYOK_MODEL = BYOK_MODELS[0] ?? DEFAULT_FREE_MODEL;
 
+/**
+ * Ids that moved, pointing at the same model under its current name.
+ *
+ * A selection persists in localStorage, so dropping an id silently reassigns
+ * whoever had it to the default. That default is Opus 5, which is why this
+ * matters: a Haiku user (1/5 per MTok) would land on Opus 5 (5/25) without
+ * being told, and BYOK means it is their bill.
+ */
+const RENAMED_MODEL_IDS: Record<string, string> = {
+  // The dated snapshot and the alias are the same model.
+  'claude-haiku-4-5-20251001': 'claude-haiku-4-5',
+};
+
+/** Resolve a possibly-retired id to the one the registry currently lists. */
+export function canonicalModelId(id: string): string {
+  return RENAMED_MODEL_IDS[id] ?? id;
+}
+
 export function getModelById(id: string): LLMModel | undefined {
-  return ALL_MODELS.find((m) => m.id === id);
+  const canonical = canonicalModelId(id);
+  return ALL_MODELS.find((m) => m.id === canonical);
 }
 
 /** Check whether a model ID requires a user-provided API key (BYOK) */
@@ -286,9 +305,12 @@ export function getDefaultModelForEntitlement(hasByokKey: boolean): LLMModel {
 
 export function coerceModelForEntitlement(modelId: string | null | undefined, hasByokKey: boolean): string {
   if (modelId) {
-    const model = getModelById(modelId);
-    if (model && (!requiresByokKey(modelId) || hasByokKey)) {
-      return modelId;
+    // Return the canonical id, not what was stored: a renamed id must not be
+    // written back and re-resolved on every load.
+    const canonical = canonicalModelId(modelId);
+    const model = getModelById(canonical);
+    if (model && (!requiresByokKey(canonical) || hasByokKey)) {
+      return canonical;
     }
   }
   return getDefaultModelForEntitlement(hasByokKey).id;

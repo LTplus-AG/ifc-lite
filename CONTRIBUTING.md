@@ -110,6 +110,45 @@ merges land clean.
 - Keep client and project identifiers out of code, tests, commit messages, and
   PR text.
 
+## The two review checks on your PR
+
+Every PR gets **two** reviewers, and two checks you will not have seen elsewhere.
+
+**`Claude review`** reads your diff and posts findings as inline comments, plus
+one summary comment. An empty result is a normal, successful review — most PRs
+get no findings. It only ever sees the diff, never the rest of the file, so it
+is told not to claim something is missing unless the added lines prove it.
+
+**`Review posted`** does not review anything. It checks that a review actually
+*reached* your PR, for your exact head commit, by looking for a marker the
+reviewer writes only after its comments are confirmed posted. It exists because
+a review job can exit successfully having posted nothing, and then "no findings"
+and "nothing ran" look identical.
+
+### What to do when they are red
+
+| what you see | what it means |
+|---|---|
+| `Claude review` failed | The reviewer could not run — usually a drained quota or an expired token. **Not about your code.** Re-run it; if it recurs, say so on the PR. |
+| `Review posted` says `NOT_POSTED` | No review reached this commit. Usually the same cause as above. Re-run the review job. |
+| `Review posted` says `STALE_REVIEW` | A review exists, but for an older commit. Push or re-run so the current head gets one. |
+| `Review posted` says `nothing-to-review` | Your PR changes only lockfiles, generated code, snapshots, fixtures or build output. Nothing to read, so nothing was read. This **passes**. |
+
+Neither check is a merge blocker today. `Review posted` is deliberately not in
+the required set while the lane is new.
+
+### Why CodeRabbit sometimes says "Review skipped"
+
+When `Review posted` confirms a review reached your head, the PR gets a
+`claude-reviewed` label, and CodeRabbit stands down for that commit — it will
+say `Review skipped: auto reviews are limited based on label configuration`.
+That is deliberate, not a failure: it stops two reviewers spending quota on the
+same diff. The label is cleared on every new commit, so a fresh push is reviewed
+again.
+
+Fork PRs never get the Claude lane at all — a fork's token cannot post — so they
+stay on CodeRabbit and `Review posted` will not fail them.
+
 If your push fails with `You need Push access to upload Git LFS objects`: this
 repo retired Git LFS but its history still holds LFS pointer blobs, and a
 `pre-push` hook left by `git lfs install` asks git for the objects being pushed

@@ -116,6 +116,40 @@ describe('outputSum', () => {
    * (contains "area" but not "surface") stops being flagged as a possible
    * mix-up for a `--sum Area` query, silently dropping the warning.
    */
+  // Oracle test: compare the engine's --sum output against a plain loop
+  // over the same fixture. A STEP REAL literal with an extreme exponent
+  // (e.g. 1.0E400) parses to f64::INFINITY without erroring at the parse
+  // boundary, so an Infinity quantity value is reachable from a real file.
+  // `Number(q.value) || 0` in outputSum's own accumulation loop does not
+  // catch Infinity (it is truthy), so one bad entity poisons the total for
+  // every other entity in the query — a silent wrong number, not a crash.
+  it('does not let one non-finite quantity value poison the sum for every other entity', () => {
+    const bimWithInfinity = fakeBim({
+      quantities: {
+        1: [{ name: 'Qto_WallBaseQuantities', quantities: [{ name: 'NetVolume', value: 10 }] }],
+        2: [{ name: 'Qto_WallBaseQuantities', quantities: [{ name: 'NetVolume', value: Infinity }] }],
+        3: [{ name: 'Qto_WallBaseQuantities', quantities: [{ name: 'NetVolume', value: 5 }] }],
+      },
+    });
+    const entities = [{ ref: 1 }, { ref: 2 }, { ref: 3 }] as FakeEntity[];
+
+    // Direct-loop oracle: a non-finite value should not dominate the
+    // aggregate — it is treated the same as the existing, already-tested
+    // "present but unparseable" case (substituted with 0), not skipped and
+    // not propagated.
+    const oracleTotal = entities.reduce((sum, e) => {
+      const raw = bimWithInfinity.quantities(e.ref)[0]?.quantities[0]?.value;
+      const n = Number(raw);
+      return sum + (Number.isFinite(n) ? n : 0);
+    }, 0);
+    expect(oracleTotal).toBe(15);
+
+    const out = captureStdout();
+    outputSum(entities, 'NetVolume', bimWithInfinity, false);
+    out.spy.mockRestore();
+    expect(out.chunks.join('')).toBe(`${oracleTotal}\n`);
+  });
+
   it('warns about a similarly-named quantity that was not summed', () => {
     const bimWithAmbiguity = fakeBim({
       quantities: {

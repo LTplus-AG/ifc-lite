@@ -123,14 +123,41 @@ function main() {
     throw new CanaryError('LANE_DOWN', 'The reviewer did not complete. Its own verdict is above.');
   }
 
+  // THROUGH `validate-findings`, EXACTLY AS THE LANE DOES. The first version
+  // JSON.parsed the reviewer's RAW output and failed on its first live run with
+  // BAD_OUTPUT -- because `run-reviewer.mjs --out` writes raw model text, and it
+  // is `validate-findings.mjs` that parses it, strips fencing, checks the quotes
+  // against the diff and drops anything unanchored. So the canary was not merely
+  // failing to parse: it was testing a pipeline the lane does not have, and a
+  // canary that exercises a different path from the thing it watches is worth
+  // less than no canary.
+  //
+  // Running the real chain means the canary now also covers the validator: a
+  // regression that rejects every finding shows up here as "found nothing",
+  // which is the same red as a dead reviewer and wants the same look.
+  const findingsPath = join(dirname(out), 'findings.json');
+  const v = spawnSync(
+    process.execPath,
+    [join(HERE, 'validate-findings.mjs'), '--raw', out, '--input', fixture, '--out', findingsPath],
+    { encoding: 'utf8' },
+  );
+  if (v.status !== 0) {
+    console.error(`${v.stdout || ''}${v.stderr || ''}`.trim());
+    throw new CanaryError(
+      'VALIDATION_FAILED',
+      'The reviewer answered but the validator rejected it. Its verdict is above -- that is a lane ' +
+        'regression even though the reviewer itself exited 0.',
+    );
+  }
+
   let parsed;
   try {
-    parsed = JSON.parse(readFileSync(out, 'utf8'));
+    parsed = JSON.parse(readFileSync(findingsPath, 'utf8'));
   } catch {
     throw new CanaryError(
       'BAD_OUTPUT',
-      'The reviewer completed but its output is not JSON this canary can read. That is a lane ' +
-        'regression even though the job exited 0.',
+      'The validator exited 0 but wrote findings this canary cannot read, which should be impossible ' +
+        'and is a defect in the validator rather than in the review.',
     );
   }
 

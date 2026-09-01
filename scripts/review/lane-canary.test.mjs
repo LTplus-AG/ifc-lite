@@ -100,3 +100,27 @@ test('the added-line ranges cover the defect, or the validator would reject the 
   const [[lo, hi]] = f.files[0].addedLineRanges;
   assert.ok(lo <= 4 && 4 <= hi, `the guard is on line 4; ranges are ${lo}..${hi}`);
 });
+
+test('THE CANARY RUNS THE LANE\'S REAL PIPELINE, not a shortcut past it', () => {
+  // Its first live run failed BAD_OUTPUT because it JSON.parsed the reviewer's
+  // RAW text. `run-reviewer.mjs --out` writes raw model output; it is
+  // `validate-findings.mjs` that parses it, strips fencing, checks quotes
+  // against the diff and drops unanchored findings.
+  //
+  // So the canary was exercising a pipeline the lane does not have. A canary on
+  // a different path from the thing it watches is worth less than none, and this
+  // asserts the two stay the same shape. Static, because the alternative is a
+  // live model call per test run.
+  // COMMENTS STRIPPED FIRST. The first version of this assertion matched the
+  // string anywhere in the file, and the docblock above DISCUSSES
+  // `validate-findings.mjs` -- so deleting the actual call left the test green.
+  // A check satisfied by prose about the thing, rather than the thing, is the
+  // defect this repository has now paid for four times in one day.
+  const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*(\/\/|#).*$/gm, '');
+  const canary = strip(readFileSync(join(HERE, 'lane-canary.mjs'), 'utf8'));
+  const lane = strip(readFileSync(join(HERE, '..', '..', '.github/workflows/claude-review.yml'), 'utf8'));
+  for (const stage of ['run-reviewer.mjs', 'validate-findings.mjs']) {
+    assert.ok(lane.includes(stage), `the lane must still use ${stage}`);
+    assert.ok(canary.includes(stage), `the canary must RUN ${stage}, not merely mention it`);
+  }
+});

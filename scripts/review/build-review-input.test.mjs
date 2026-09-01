@@ -206,8 +206,11 @@ test('newFileLines pins the kind contract, since the JSDoc now promises one', ()
   const got = newFileLines(patch);
   assert.deepEqual(got.map((l) => l.kind), ['context', 'hunk', 'context', 'removed', 'added']);
 
-  // Only a real diff marker is stripped, the way `quotableLines` does it, so a
-  // line that never had one keeps its first character.
+  // Only a leading SPACE is stripped, so a line that never carried a diff
+  // marker keeps its first character. This fixture cannot tell that apart from
+  // `quotableLines`' rule, which also strips `+` and `-`: no line here begins
+  // with `+` or `-` while being classified as context, and that is the only
+  // place the two strip rules can disagree.
   assert.equal(got[0].text, 'diff --git a/x.md b/x.md');
   assert.equal(got[1].text, '@@ -1,2 +1,2 @@');
   assert.equal(got[2].text, 'ctx');

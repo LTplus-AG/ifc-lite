@@ -123,9 +123,33 @@ export function isExcluded(path) {
  * a hunk that does not start at line 1, on a second hunk, and on a file with no
  * trailing newline.
  *
- * Match a quote against `text` for `added` lines only. That is STRICTER than
- * `quotableLines` in validate-findings, which also accepts removed lines and
- * `diff --git` lines; the two are not the same gate.
+ * Match a quote against `text` for `added` lines only, and TRIM BOTH SIDES.
+ * That GATE is strictly stricter than `quotableLines` in validate-findings:
+ * every NON-EMPTY quote it accepts, `quotableLines` accepts too, and not the
+ * reverse. The exception is the one rule `quotableLines` has that the gate does
+ * not -- it drops what trims to empty -- so a blank added line gives a quote the
+ * gate accepts and the validator refuses.
+ *
+ * The two FUNCTIONS still differ, which matters the moment you read `text` for
+ * any other kind. `quotableLines` works on the RAW diff line: it discards
+ * anything beginning `@@`, `+++ `, `--- ` or `\`, strips one leading `+`, `-`
+ * or space from what is left, trims, and drops what is then empty.
+ * `newFileLines` classifies the line first and strips only a space from a
+ * context line. Measured on this commit:
+ *
+ *   raw          newFileLines   quotableLines
+ *   "---x"       "---x"         "--x"       strip rules differ
+ *   "--- x"      "--- x"        dropped     read as a file header
+ *   "+++i;"      "+++i;"        "++i;"      strip rules differ
+ *   "+++ i;"     "+++ i;"       dropped     read as a file header
+ *   "+--foo"     "--foo"        "--foo"     agree
+ *   "-++i;"      "++i;"         "++i;"      agree
+ *   "     deep"  "    deep"     "deep"      trimmed
+ *   " "          ""             dropped     blank
+ *
+ * A deleted `-- drop old table` becomes the raw line `--- drop old table`, and
+ * `quotableLines` refuses it outright -- worth knowing before reusing it to
+ * match anything that is not an added line.
  *
  * Splits on /\r?\n/, where the older walker split on '\n', so `text` carries no
  * trailing `\r`. That is what makes it comparable to `quotableLines`.
@@ -170,10 +194,8 @@ export function newFileLines(patch) {
       // A removed line does not advance the new-file counter.
       out.push({ line: newLine, text: line.slice(1), kind: 'removed' });
     } else {
-      // Strip only a leading SPACE, which is the marker a context line has.
-      // NOT the same rule as `quotableLines`, which also strips a leading `+`
-      // or `-` -- so on the ambiguous lines below the two disagree, and a
-      // consumer must not assume otherwise.
+      // Strip only a leading SPACE, the marker a context line carries. Not
+      // `quotableLines`' rule; see the divergences listed above.
       out.push({ line: newLine, text: line.startsWith(' ') ? line.slice(1) : line, kind: 'context' });
       newLine += 1;
     }

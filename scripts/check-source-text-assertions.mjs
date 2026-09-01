@@ -67,12 +67,20 @@
  * longer stand in for one, and a marker is read from comment trivia, so a
  * string can no longer forge one.
  *
- * SCAN SCOPE is packages/ and apps/ test files only; scripts/*.test.mjs are not
- * scanned. That is a deliberate limit, not an oversight: those files run gates
- * against real repo inputs through indirect mutator callbacks, and the taint
- * analysis has to fail closed there, so bringing them in scope would demand
- * markers on assertions that are about a gate's output rather than about source
- * text. Widening the scope means paying that down first.
+ * SCAN SCOPE is packages/, apps/ and scripts/ test files. `scripts/` came in
+ * with #3639. Before that this paragraph called its exclusion "a deliberate
+ * limit, not an oversight" -- it was an oversight, and a total one: TWO
+ * independent barriers hid the tree (scripts/ absent from SEARCH_DIRS, .mjs
+ * absent from TEST_FILE_RE), so the whole review lane sat behind both while
+ * this gate reported OK. The old paragraph's concern was real, though, and is
+ * why the 14 files went to the allowlist rather than being converted: several
+ * assert on a gate's OUTPUT through indirect mutator callbacks, where the taint
+ * analysis fails closed and a marker would be about output, not source text.
+ *
+ * `tests/` and `tools/` remain outside. All eight tracked test files there were
+ * clean when scripts/ was brought in, so nothing is hidden today -- but it is
+ * the same shape of hole, and `tools/**` would also need a row in the frontend
+ * CI path filter before a gate there could run.
  */
 
 import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
@@ -81,9 +89,20 @@ import { fileURLToPath } from 'node:url';
 import { analyze } from './source-text-assertion-detect.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const SEARCH_DIRS = ['packages', 'apps'];
+// TWO independent barriers hid the same tree, and fixing either alone changes
+// nothing: `scripts/` was never walked, AND `.mjs` was not a test extension.
+// Adding the extension first made this guard report the newly-allowlisted files
+// as stale entries -- it still could not see them -- which is how the second
+// barrier surfaced.
+const SEARCH_DIRS = ['packages', 'apps', 'scripts'];
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'pkg', 'build', 'coverage', '.turbo', 'generated']);
-const TEST_FILE_RE = /\.(test|spec)\.(ts|tsx|mts)$/;
+// `.mjs` was absent until #3639, and its absence was total: every test under
+// scripts/ is `.test.mjs`, so the entire tree -- the whole review lane included
+// -- had never been scanned by this guard. It reported "OK (8 allowlisted, 0
+// new)" while its own detector flagged 14 files it never opened. A prohibited
+// source-text assertion landed in #3633 and survived eight rounds of hardening
+// underneath that green.
+const TEST_FILE_RE = /\.(test|spec)\.(ts|tsx|mts|mjs)$/;
 
 const ALLOWLIST_PATH = join(ROOT, 'scripts', 'source-text-assertion-allowlist.txt');
 
@@ -135,7 +154,11 @@ const ALLOWLIST_PATH = join(ROOT, 'scripts', 'source-text-assertion-allowlist.tx
  * than shipped for the convenience of one file.
  * Raised in the same commit as the row, which is what this constant forces.
  */
-const ALLOWLIST_CEILING = 8;
+// 8 -> 22. The jump is not new debt: it is 14 files that were always in
+// violation and are only now visible, grandfathered in the same commit that
+// makes them visible, which is exactly what this constant exists to force. The
+// list still only ratchets DOWN from here.
+const ALLOWLIST_CEILING = 22;
 
 function walk(dir, found = []) {
   // Fail closed. Swallowing an unreadable directory would let this guard

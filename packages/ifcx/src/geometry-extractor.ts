@@ -15,6 +15,7 @@
 import type { ComposedNode, UsdMesh, UsdTransform } from './types.js';
 import { ATTR } from './types.js';
 import { getNodeLineage, type TraversalFrame, walkComposedFrames } from './traversal.js';
+import { computeNormalMatrix, computeNormals } from './geometry-normals.js';
 
 /**
  * MeshData interface compatible with @ifc-lite/geometry
@@ -311,66 +312,26 @@ function resolvePresentation(lineage: ComposedNode[]): [number, number, number, 
 }
 
 /**
- * Compute normals from triangle mesh.
- */
-function computeNormals(positions: Float32Array, indices: Uint32Array): Float32Array {
-  const normals = new Float32Array(positions.length);
-
-  for (let i = 0; i < indices.length; i += 3) {
-    const i0 = indices[i] * 3;
-    const i1 = indices[i + 1] * 3;
-    const i2 = indices[i + 2] * 3;
-
-    // Triangle vertices
-    const ax = positions[i0], ay = positions[i0 + 1], az = positions[i0 + 2];
-    const bx = positions[i1], by = positions[i1 + 1], bz = positions[i1 + 2];
-    const cx = positions[i2], cy = positions[i2 + 1], cz = positions[i2 + 2];
-
-    // Edge vectors
-    const e1x = bx - ax, e1y = by - ay, e1z = bz - az;
-    const e2x = cx - ax, e2y = cy - ay, e2z = cz - az;
-
-    // Cross product
-    const nx = e1y * e2z - e1z * e2y;
-    const ny = e1z * e2x - e1x * e2z;
-    const nz = e1x * e2y - e1y * e2x;
-
-    // Accumulate (will normalize later)
-    normals[i0] += nx; normals[i0 + 1] += ny; normals[i0 + 2] += nz;
-    normals[i1] += nx; normals[i1 + 1] += ny; normals[i1 + 2] += nz;
-    normals[i2] += nx; normals[i2 + 1] += ny; normals[i2 + 2] += nz;
-  }
-
-  // Normalize
-  for (let i = 0; i < normals.length; i += 3) {
-    const len = Math.sqrt(normals[i] ** 2 + normals[i + 1] ** 2 + normals[i + 2] ** 2);
-    if (len > 0) {
-      normals[i] /= len;
-      normals[i + 1] /= len;
-      normals[i + 2] /= len;
-    }
-  }
-
-  return normals;
-}
-
-/**
  * Flatten 2D normals array to 1D, transform, and convert to Y-up.
  */
 function flattenNormals(normals: number[][], transform: Float32Array | null): Float32Array {
   const result = new Float32Array(normals.length * 3);
 
-  const hasTransform = transform !== null;
+  const normalMatrix = transform ? computeNormalMatrix(transform) : null;
 
   for (let i = 0; i < normals.length; i++) {
     // Normal in Z-up space
     let [nx, ny, nz] = normals[i];
 
-    if (hasTransform && transform) {
-      // Transform normal by upper 3x3 of matrix (rotation only)
-      const tnx = transform[0] * nx + transform[4] * ny + transform[8] * nz;
-      const tny = transform[1] * nx + transform[5] * ny + transform[9] * nz;
-      const tnz = transform[2] * nx + transform[6] * ny + transform[10] * nz;
+    if (normalMatrix) {
+      // Transform by the inverse-transpose of the local-to-world linear
+      // map (see computeNormalMatrix): using the map itself, as positions
+      // do, only preserves perpendicularity to the surface when the map
+      // is orthogonal (rotation/translation only) — a non-uniform-scale
+      // or shearing usd::xformop rotates the normal off the surface.
+      const tnx = nx * normalMatrix[0] + ny * normalMatrix[3] + nz * normalMatrix[6];
+      const tny = nx * normalMatrix[1] + ny * normalMatrix[4] + nz * normalMatrix[7];
+      const tnz = nx * normalMatrix[2] + ny * normalMatrix[5] + nz * normalMatrix[8];
 
       // Renormalize
       const len = Math.sqrt(tnx ** 2 + tny ** 2 + tnz ** 2);

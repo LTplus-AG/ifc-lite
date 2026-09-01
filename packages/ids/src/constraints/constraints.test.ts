@@ -341,6 +341,72 @@ describe('matchConstraint — bounds', () => {
 });
 
 // ============================================================================
+// matchConstraint — bounds: totalDigits / fractionDigits
+//
+// Regression coverage: an `xs:restriction` carrying ONLY `totalDigits`
+// and/or `fractionDigits` (no min/max/enumeration/pattern) used to fall
+// through the parser to an empty `enumeration` constraint, which fails
+// EVERY value unconditionally — a spec-conforming value was reported
+// non-compliant (false FAIL on 100% of inputs).
+// ============================================================================
+
+describe('matchConstraint — bounds: fractionDigits / totalDigits', () => {
+  const bounds = (
+    opts: Partial<IDSBoundsConstraint>
+  ): IDSBoundsConstraint => ({
+    type: 'bounds',
+    ...opts,
+  });
+
+  it('fractionDigits — passes a value at or under the limit', () => {
+    const c = bounds({ fractionDigits: 2 });
+    expect(matchConstraint(c, '0.25')).toBe(true);
+    expect(matchConstraint(c, '0.2')).toBe(true);
+    expect(matchConstraint(c, '5')).toBe(true);
+  });
+
+  it('fractionDigits — fails a value with more fraction digits than the limit', () => {
+    expect(matchConstraint(bounds({ fractionDigits: 2 }), '0.256')).toBe(false);
+  });
+
+  it('fractionDigits — trailing zeros are not significant', () => {
+    // "1.4500" has 2 significant fraction digits (trailing zeros drop).
+    expect(matchConstraint(bounds({ fractionDigits: 2 }), '1.4500')).toBe(true);
+  });
+
+  it('totalDigits — passes a value at or under the limit', () => {
+    const c = bounds({ totalDigits: 4 });
+    expect(matchConstraint(c, '12.34')).toBe(true);
+    expect(matchConstraint(c, '0.0025')).toBe(true);
+  });
+
+  it('totalDigits — fails a value with more significant digits than the limit', () => {
+    expect(matchConstraint(bounds({ totalDigits: 4 }), '123.45')).toBe(false);
+  });
+
+  it('totalDigits — leading zeros in the integer part are not significant', () => {
+    expect(matchConstraint(bounds({ totalDigits: 2 }), '007')).toBe(true);
+  });
+
+  it('combined totalDigits + fractionDigits', () => {
+    const c = bounds({ totalDigits: 5, fractionDigits: 2 });
+    expect(matchConstraint(c, '123.45')).toBe(true);
+    expect(matchConstraint(c, '123.456')).toBe(false); // exceeds fractionDigits
+    expect(matchConstraint(c, '12345.6')).toBe(false); // exceeds totalDigits
+  });
+
+  it('rejects a non-numeric actual value', () => {
+    expect(matchConstraint(bounds({ fractionDigits: 2 }), 'abc')).toBe(false);
+  });
+
+  it('works against a number actual value, including scientific-notation magnitudes', () => {
+    expect(matchConstraint(bounds({ fractionDigits: 2 }), 0.25)).toBe(true);
+    expect(matchConstraint(bounds({ fractionDigits: 7 }), 1e-7)).toBe(true);
+    expect(matchConstraint(bounds({ fractionDigits: 6 }), 1e-7)).toBe(false);
+  });
+});
+
+// ============================================================================
 // matchConstraint — bounds (string-length facets: xs:length / xs:minLength /
 // xs:maxLength)
 // ============================================================================

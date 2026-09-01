@@ -265,6 +265,133 @@ mod tests {
 
     use super::*;
 
+    /// A minimal, independent RFC-4180 field splitter for ONE line — deliberately
+    /// NOT `escape_csv_cell`'s own logic, and deliberately not the `csv-parse`
+    /// npm package (kept out of this repo on purpose): this is the oracle the
+    /// writer is graded against, so it must not share code with the thing it is
+    /// checking. Handles a quoted field with embedded delimiters/quotes
+    /// (`""` -> `"`); does not span embedded raw newlines, which none of the
+    /// values in `adversarial_row_survives_the_real_export_pipeline` below
+    /// contain (RFC 4180 §2.6/§2.7).
+    fn parse_rfc4180_line(line: &str, delim: char) -> Vec<String> {
+        let mut fields = Vec::new();
+        let mut chars = line.chars().peekable();
+        loop {
+            let mut field = String::new();
+            if chars.peek() == Some(&'"') {
+                chars.next();
+                loop {
+                    match chars.next() {
+                        Some('"') => {
+                            if chars.peek() == Some(&'"') {
+                                field.push('"');
+                                chars.next();
+                            } else {
+                                break;
+                            }
+                        }
+                        Some(c) => field.push(c),
+                        None => break,
+                    }
+                }
+            } else {
+                while let Some(&c) = chars.peek() {
+                    if c == delim {
+                        break;
+                    }
+                    field.push(c);
+                    chars.next();
+                }
+            }
+            fields.push(field);
+            match chars.next() {
+                Some(c) if c == delim => continue,
+                Some(_) => unreachable!("stray character after a closed quoted field"),
+                None => break,
+            }
+        }
+        fields
+    }
+
+    /// A wall named `Wall "A", B` (RFC 4180 quote + delimiter), a formula-
+    /// injection description (`=SUM(A1)`), and a `Pset_Adversarial` property
+    /// whose Cyrillic NAME (#3556: non-ASCII must survive) carries a VALUE that
+    /// combines a formula trigger, a comma AND a quote in one cell
+    /// (`=1+1,"x"`) — exercised through the REAL `build_export_model` ->
+    /// `entities_csv`/`properties_csv` pipeline (STEP bytes in, CSV text out),
+    /// not by calling `escape()` on a hand-picked literal. Every field is
+    /// decoded back with an INDEPENDENT RFC-4180 splitter and checked against
+    /// the exact source string: a delimiter/quote that leaked past the quoting
+    /// would show up here as a field that decodes to the wrong (truncated or
+    /// merged) value, or as a row with the wrong field count.
+    #[test]
+    fn adversarial_row_survives_the_real_export_pipeline() {
+        let name = "Wall \"A\", B";
+        let description = "=SUM(A1)";
+        // \X2\...\X0\: buildingSMART's ISO-10303-21 6.3.3.4 encoding for a
+        // character outside decimal 32-126 (see `step_text::escape`'s doc
+        // comment) -- "Ставка" (Cyrillic, #3556).
+        let prop_name_encoded = "\\X2\\0421044204300432043A0430\\X0\\";
+        let prop_name_decoded = "Ставка";
+        let prop_value = "=1+1,\"x\"";
+
+        let ifc = format!(
+            "ISO-10303-21;\n\
+             HEADER;\n\
+             FILE_DESCRIPTION((''),'');\n\
+             FILE_NAME('','',(''),(''),'','','');\n\
+             FILE_SCHEMA(('IFC4'));\n\
+             ENDSEC;\n\
+             DATA;\n\
+             #1=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n\
+             #2=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);\n\
+             #3=IFCUNITASSIGNMENT((#1,#2));\n\
+             #4=IFCPROJECT('0PROJECT0000000000000',$,'P',$,$,$,$,$,#3);\n\
+             #5=IFCWALL('0WALL000000000000000A',$,'{name}','{description}',$,$,$,$,$);\n\
+             #10=IFCPROPERTYSINGLEVALUE('{prop_name_encoded}',$,IFCLABEL('{prop_value}'),$);\n\
+             #11=IFCPROPERTYSET('0PSET00000000000000A',$,'Pset_Adversarial',$,(#10));\n\
+             #12=IFCRELDEFINESBYPROPERTIES('0REL000000000000000A',$,$,$,(#5),#11);\n\
+             ENDSEC;\n\
+             END-ISO-10303-21;\n",
+        );
+
+        // --- Entities view: Name + Description columns ---
+        let entities = export_csv(ifc.as_bytes(), CsvMode::Entities, &CsvOptions::default());
+        let mut lines = entities.lines();
+        let header = parse_rfc4180_line(lines.next().unwrap(), ',');
+        let name_col = header.iter().position(|h| h == "name").unwrap();
+        let desc_col = header.iter().position(|h| h == "description").unwrap();
+        let wall_line = lines.find(|l| l.contains("0WALL")).expect("wall row present");
+        let fields = parse_rfc4180_line(wall_line, ',');
+        assert_eq!(fields.len(), header.len(), "wall row must have exactly as many fields as the header");
+        assert_eq!(fields[name_col], name, "the quote+comma name must round-trip exactly");
+        // The formula guard prefixes an apostrophe; strip it before comparing.
+        assert_eq!(
+            fields[desc_col].trim_start_matches('\''),
+            description,
+            "the formula-guarded description must decode back to the source text"
+        );
+
+        // --- Properties view: psetName/propName/value columns ---
+        let properties = export_csv(ifc.as_bytes(), CsvMode::Properties, &CsvOptions::default());
+        let mut plines = properties.lines();
+        let pheader = parse_rfc4180_line(plines.next().unwrap(), ',');
+        let prop_name_col = pheader.iter().position(|h| h == "propName").unwrap();
+        let value_col = pheader.iter().position(|h| h == "value").unwrap();
+        let prow = plines.next().expect("one property row");
+        let pfields = parse_rfc4180_line(prow, ',');
+        assert_eq!(pfields.len(), pheader.len(), "property row must have exactly as many fields as the header");
+        assert_eq!(
+            pfields[prop_name_col], prop_name_decoded,
+            "the \\X2\\ Cyrillic property name must decode back to the source text (#3556)"
+        );
+        assert_eq!(
+            pfields[value_col].trim_start_matches('\''),
+            prop_value,
+            "a value combining a formula trigger, a comma AND a quote must decode back to the source text"
+        );
+    }
+
     #[test]
     fn entities_csv_has_header_and_rows() {
         let csv = export_csv(&fixture_or_skip!("ara3d/duplex.ifc"), CsvMode::Entities, &CsvOptions::default());

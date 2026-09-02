@@ -196,6 +196,29 @@ describe('resolveListColumnUnits (issue #1573 follow-up)', () => {
     assert.ok(Math.abs((ftFirst.convertCell(0, 1000, 'mmModel') as number) - 3.280839895013123) < 1e-9); // 1000mm -> ft
   });
 
+  it('converts an Area quantity column when the file declares no explicit AREAUNIT (falls back to LENGTHUNIT²)', () => {
+    // MM_MODEL declares only LENGTHUNIT (millimetre) — no explicit AREAUNIT.
+    // Per IFC convention (and `quantitySiScale`/`resolveMeasureScales`'s
+    // documented fallback), an undeclared AREAUNIT derives from the length
+    // unit SQUARED: 1,000,000 mm² is stored as the raw value 1e6 and must
+    // read back as 1 m².
+    const columns: ColumnDefinition[] = [
+      { id: 'area', source: 'quantity', psetName: 'Qto', propertyName: 'Area', quantityType: QuantityType.Area },
+    ];
+    const resolver = resolveListColumnUnits(columns, new Map([['m1', MM_MODEL]]), {});
+    assert.strictEqual(resolver.unitSymbol(0), 'm²');
+    assert.ok(Math.abs((resolver.convertCell(0, 1_000_000, 'm1') as number) - 1) < 1e-9);
+  });
+
+  it('converts a Volume quantity column when the file declares no explicit VOLUMEUNIT (falls back to LENGTHUNIT³)', () => {
+    const columns: ColumnDefinition[] = [
+      { id: 'vol', source: 'quantity', psetName: 'Qto', propertyName: 'Volume', quantityType: QuantityType.Volume },
+    ];
+    const resolver = resolveListColumnUnits(columns, new Map([['m1', MM_MODEL]]), {});
+    assert.strictEqual(resolver.unitSymbol(0), 'm³');
+    assert.ok(Math.abs((resolver.convertCell(0, 1_000_000_000, 'm1') as number) - 1) < 1e-9);
+  });
+
   it('unitSymbol returns null for a non-convertible column', () => {
     const columns: ColumnDefinition[] = [{ id: 'name', source: 'attribute', propertyName: 'Name' }];
     const resolver = resolveListColumnUnits(columns, new Map([['m1', MM_MODEL]]), {});

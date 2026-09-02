@@ -28,7 +28,7 @@ viewer.on('entity-selected', (data) => console.log(data));
 - One-call setup: `IFCLiteEmbed.create({ container, modelUrl, theme, controls, view, camera, ... })`
 - Model loading: `loadModel(url)`, `loadModelBuffer(buffer)` (zero-copy transfer), federation via `addModel` / `removeModel`
 - Selection and visibility: `select`, `selectByGuid`, `clearSelection`, `isolate`, `hide`, `show`, `showAll`
-- Appearance: `setColors`, `resetColors`, `setTheme`, `setTypeVisibility` (all seven toggles: `spaces`, `spatialZones`, `openings`, `virtualElements`, `site`, `ifcAnnotations`, `ifcGrid`)
+- Appearance: `setColors`, `resetColors`, `setTheme`, `setTypeVisibility` (all seven toggles: `spaces`, `spatialZones`, `openings`, `virtualElements`, `site`, `ifcAnnotations`, `ifcGrid`). `hideTypes` wins over these where they overlap, and toggle state persists per viewer, so send `setTypeVisibility` on load if you need a deterministic starting state.
 - Camera and sections: `fitToView`, `setCamera`, `setView`, `setSection`
 - Data out: `getProperties(id)`, `getModelInfo()`, `getScreenshot()`
 - Events: `ready`, `model-loaded`, `entity-selected`, `entity-hovered`, `camera-changed`, `section-changed`, and more via `on(event, cb)`

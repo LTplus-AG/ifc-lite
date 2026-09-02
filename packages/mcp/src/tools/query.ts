@@ -224,9 +224,7 @@ const countEntities: Tool = {
       }
     }
 
-    const sorted = Array.from(groups.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([key, count]) => ({ key, count }));
+    const sorted = Array.from(groups.entries()).sort((a, b) => b[1] - a[1]).map(([key, count]) => ({ key, count }));
 
     return okResult(
       `Counted ${sorted.length} groups by ${groupBy}.`,

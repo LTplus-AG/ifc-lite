@@ -209,6 +209,9 @@ test('fails closed rather than guessing a remedy when `baseRefName` is absent', 
 
 // ------------------------------------- a matrix job skipped BEFORE expanding (#3584 shape)
 
+// The literal `${{ }}` below is DATA, not a template this file means to interpolate: it is what
+// GitHub publishes as the check-run name for a matrix job skipped before it expanded.
+// oxlint-disable-next-line no-template-curly-in-string
 const MATRIX_TEMPLATE = 'Viewer tests (shard ${{ matrix.shard }})';
 
 function matrixWorkflowFixture() {

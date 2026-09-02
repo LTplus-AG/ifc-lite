@@ -377,6 +377,9 @@ test('report: both causes present are reported as separate groups with separate 
  * lane the workflow actually publishes had run. See
  * scripts/lib/pr-review-signal.mjs's `matrixSkipAliases`/`missingLanes`.
  */
+// The literal `${{ }}` below is DATA, not a template this file means to interpolate: it is what
+// GitHub publishes as the check-run name for a matrix job skipped before it expanded.
+// oxlint-disable-next-line no-template-curly-in-string
 const MATRIX_TEMPLATE = 'Viewer tests (shard ${{ matrix.shard }})';
 const MATRIX_WF = `on:
   pull_request:

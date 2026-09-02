@@ -126,8 +126,11 @@ async function versionsAcrossRerender(list: MeshData[], next: MeshData[]): Promi
   mounted.push({ root, container });
   const before = lastContentVersion;
   meshes = next;
+  // No `key` on either render, deliberately. Giving only the second one a key
+  // changes the element identity from null, so React may unmount and remount,
+  // and the test would be back to two instances reporting two static values.
   await act(async () => {
-    root.render(React.createElement(EmbedViewer, { key: 'same' }));
+    root.render(React.createElement(EmbedViewer));
   });
   return [before, lastContentVersion];
 }

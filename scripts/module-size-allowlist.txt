@@ -241,7 +241,7 @@
    808 packages/drawing-2d/src/types.ts
    592 packages/export/src/effective-index.ts
    888 packages/export/src/ifc5-exporter.ts
-  1667 packages/export/src/merged-exporter.ts
+  1578 packages/export/src/merged-exporter.ts
    639 packages/export/src/parquet-exporter.ts
   1062 packages/export/src/reference-collector.ts
    524 packages/export/src/schema-converter.ts

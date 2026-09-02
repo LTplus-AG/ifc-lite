@@ -35,7 +35,12 @@ import {
 } from './writer-camera.js';
 import { xsdDouble, xsdInt, xsdPointElement } from './numeric.js';
 import { escapeXml } from './xml-text.js';
-import { XML_WHITESPACE_ONLY, xsdDateTime, xsdRequiredString } from './xsd-required-string.js';
+import {
+  XML_WHITESPACE_ONLY,
+  xsdDateTime,
+  xsdOptionalDateTime,
+  xsdRequiredString,
+} from './xsd-required-string.js';
 import { generateUuid } from '@ifc-lite/encoding';
 
 /**
@@ -311,15 +316,17 @@ function writeMarkupFile(
   content += `\n    <CreationDate>${xsdDateTime(topic.creationDate, 'Topic/CreationDate', `topic "${topic.guid}"`)}</CreationDate>`;
   content += `\n    <CreationAuthor>${xsdRequiredString(topic.creationAuthor, 'Topic/CreationAuthor', `topic "${topic.guid}"`, version)}</CreationAuthor>`;
 
-  if (topic.modifiedDate) {
-    content += `\n    <ModifiedDate>${escapeXml(topic.modifiedDate)}</ModifiedDate>`;
+  const topicModifiedDate = xsdOptionalDateTime(topic.modifiedDate);
+  if (topicModifiedDate) {
+    content += `\n    <ModifiedDate>${topicModifiedDate}</ModifiedDate>`;
     // BCF spec requires ModifiedAuthor when ModifiedDate is present
     const modifiedAuthor = topic.modifiedAuthor || topic.creationAuthor;
     content += `\n    <ModifiedAuthor>${xsdRequiredString(modifiedAuthor, 'Topic/ModifiedAuthor', `topic "${topic.guid}"`, version)}</ModifiedAuthor>`;
   }
 
-  if (topic.dueDate) {
-    content += `\n    <DueDate>${escapeXml(topic.dueDate)}</DueDate>`;
+  const dueDate = xsdOptionalDateTime(topic.dueDate);
+  if (dueDate) {
+    content += `\n    <DueDate>${dueDate}</DueDate>`;
   }
 
   if (topic.assignedTo) {
@@ -377,8 +384,9 @@ function writeMarkupFile(
         if (comment.viewpointGuid) {
           c += `\n${indent}  <Viewpoint Guid="${escapeXml(comment.viewpointGuid)}"/>`;
         }
-        if (comment.modifiedDate) {
-          c += `\n${indent}  <ModifiedDate>${escapeXml(comment.modifiedDate)}</ModifiedDate>`;
+        const commentModifiedDate = xsdOptionalDateTime(comment.modifiedDate);
+        if (commentModifiedDate) {
+          c += `\n${indent}  <ModifiedDate>${commentModifiedDate}</ModifiedDate>`;
         }
         if (comment.modifiedAuthor) {
           c += `\n${indent}  <ModifiedAuthor>${escapeXml(comment.modifiedAuthor)}</ModifiedAuthor>`;
@@ -783,8 +791,9 @@ function writeHeaderFile(file: BCFHeaderFile, indent: string, version: '2.1' | '
   if (file.filename) {
     content += `\n${indent}  <Filename>${escapeXml(file.filename)}</Filename>`;
   }
-  if (file.date) {
-    content += `\n${indent}  <Date>${escapeXml(file.date)}</Date>`;
+  const fileDate = xsdOptionalDateTime(file.date);
+  if (fileDate) {
+    content += `\n${indent}  <Date>${fileDate}</Date>`;
   }
   if (file.reference) {
     content += `\n${indent}  <Reference>${escapeXml(file.reference)}</Reference>`;

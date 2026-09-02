@@ -21,6 +21,14 @@
  * end to end, entry by entry?". This one does, and it fails if ANY entry
  * fails, so a violation cannot be scoped away one entry at a time.
  *
+ * The same reporter's archive failed validation a second way: `markup.bcf`'s
+ * `DueDate` was a bare `YYYY-MM-DD` (what an HTML `<input type="date">`
+ * yields, and exactly what `createBCFTopic`'s public `dueDate` option
+ * accepts), which `markup.xsd` types `xs:dateTime` — a plain date is not a
+ * valid `xs:dateTime`. The fixture below sets `dueDate` to a bare date for
+ * that reason: the original fixture never set a due date at all, so it was
+ * structurally incapable of observing this.
+ *
  * Validation runs against the vendored buildingSMART schemas through
  * `xmllint-wasm` — an authority independent of this codebase's own reader,
  * which is the only kind that can see an interop bug. A write/read round trip
@@ -75,12 +83,17 @@ function plainExport(version: '2.1' | '3.0'): BCFProject {
     title: 'Duct clashes with beam at grid B/3',
     description: 'The supply duct passes through the beam web.',
     author: 'reporter@example.invalid',
+    // Bare date, not a full xs:dateTime -- see the file-level comment above.
+    dueDate: '2026-10-16',
   });
   addTopicToProject(project, topic);
   addCommentToTopic(
     topic,
     createBCFComment({ author: 'reviewer@example.invalid', comment: 'Reroute below the beam.' })
   );
+  // addCommentToTopic just set topic.modifiedDate from the wall clock (a
+  // valid xs:dateTime); topic.modifiedAuthor is left unset deliberately so
+  // the writer's own fallback to creationAuthor stays covered.
   addViewpointToTopic(
     topic,
     createViewpoint({

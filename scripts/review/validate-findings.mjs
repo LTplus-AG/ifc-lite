@@ -133,8 +133,10 @@
  *      that wants to re-verify verbatimness must do it against the raw model
  *      output, not against findings.json. Validation here deliberately runs BEFORE
  *      sanitisation for exactly that reason.
- *   5. The cap keeps the FIRST five findings in the model's own order, which is
- *      not a severity order. Five arbitrary findings, not the five worst.
+ *   5. The cap keeps the FIRST `MAX_FINDINGS` findings in the model's own order,
+ *      which is not a severity order: arbitrary ones, not the worst ones. Stated
+ *      without a numeral because it said "five" for a while after the cap became
+ *      twelve, and this list exists to say what gets silently discarded.
  *   6. It cannot tell "the model had nothing to say" from "the model was throttled
  *      into saying nothing but still emitted valid JSON". PROOF_OF_WORK_FAILED
  *      catches the throttled case only when it also stopped quoting.
@@ -152,11 +154,18 @@ import { isMainEntry } from '../lib/is-main-entry.mjs';
 export const SENTINEL = 'ifc-lite-review-v1';
 
 /**
- * Five, because the poster posts one inline comment per finding and a review that
- * leaves twenty is not read. The cap is applied AFTER validation, never before:
- * capping first would let five invalid findings crowd out a valid sixth.
+ * What may survive VALIDATION. It was 5, which made sense when the reviewer was
+ * the last line of defence and every finding it wrote went straight onto the PR.
+ * With a judge downstream, capping here would throw candidates away before
+ * anything could weigh them -- precision enforced at generation time, which is
+ * what produced a 2% finding rate.
+ *
+ * The cap on what reaches a HUMAN is a different question and lives in
+ * post-review.mjs, the only module on the posting path that always runs. It was
+ * briefly declared here too; two constants of the same name and value in two
+ * modules agree only until someone edits one.
  */
-export const MAX_FINDINGS = 5;
+export const MAX_FINDINGS = 12;
 
 /**
  * Every reason this module can exit with.
@@ -454,7 +463,15 @@ export function readInput(path) {
       );
     }
   }
-  return { headSha: cfg.headSha, files, unreviewable };
+  // `contextPack` IS CARRIED. Without it `input.contextPack` is undefined at the
+  // siblingVerifies call, that helper takes its "no sibling excerpts were
+  // provided" branch every single time, and EVERY finding naming a sibling is
+  // dropped as fabricated -- including ones whose sibling is real and was in the
+  // pack the reviewer was shown. A review whose findings all name siblings then
+  // dies as VALIDATION_EMPTY: red job, no marker, and no re-run can clear it.
+  // The check was written, tested by hand, and wired to a value that never
+  // arrived.
+  return { headSha: cfg.headSha, files, unreviewable, contextPack: cfg.contextPack ?? null };
 }
 
 /**
@@ -663,6 +680,46 @@ function checkSchema(response) {
 }
 
 /**
+ * A cross-file claim is only admissible if the harness put the evidence there.
+ *
+ * The largest defect family in this repository is "the same fix applied at one
+ * site when there are two", and until the context pack the reviewer could not
+ * see the second site at all. Now it can -- but a model that has been TOLD
+ * about a sibling can also invent one, and a fabricated cross-file claim is
+ * worse than silence: it sends the author to a file that is fine.
+ *
+ * So the sibling is checked the same way the anchor quote is: against text the
+ * harness retrieved, never against the model's word for it. `path` and `line`
+ * must match an excerpt actually placed in the pack, and the quote must appear
+ * in that excerpt. A finding whose sibling does not verify is dropped as
+ * fabricated, exactly like a bad anchor.
+ */
+export function siblingVerifies(sibling, contextPack) {
+  if (sibling == null) return { ok: true, reason: null };       // absent is fine
+  if (typeof sibling !== 'object' || Array.isArray(sibling)) {
+    return { ok: false, reason: '`sibling` is not an object' };
+  }
+  const { path, line, quote } = sibling;
+  if (!isNonEmptyString(path)) return { ok: false, reason: '`sibling.path` is missing' };
+  if (!Number.isInteger(line) || line < 1) return { ok: false, reason: '`sibling.line` is not a line number' };
+  const excerpts = contextPack?.siblings ?? [];
+  if (excerpts.length === 0) {
+    return { ok: false, reason: 'no sibling excerpts were provided, so a cross-file claim has no evidence' };
+  }
+  const near = excerpts.filter((e) => e.path === path && Math.abs(e.line - line) <= 3);
+  if (near.length === 0) {
+    return { ok: false, reason: `no excerpt from \`${path}\` near line ${line} was in the pack` };
+  }
+  if (isNonEmptyString(quote)) {
+    const needle = quote.trim();
+    if (!near.some((e) => e.text.includes(needle) || needle.includes(e.text.trim()))) {
+      return { ok: false, reason: `\`sibling.quote\` is not in the excerpt from \`${path}\`` };
+    }
+  }
+  return { ok: true, reason: null };
+}
+
+/**
  * Per-finding validation. INVALID FINDINGS ARE DROPPED, NOT FATAL, and that is a
  * deliberate asymmetry: a model that gets three of four right should still deliver
  * the three. Every drop is warned about by name, so a silent drop is impossible.
@@ -675,6 +732,7 @@ function checkSchema(response) {
  * That is the intended trade. The verdict-level check (VALIDATION_EMPTY) is what
  * stands behind it when NOTHING survives.
  */
+
 function validateFindings({ response, input, warn }) {
   const kept = [];
   for (const [i, f] of response.findings.entries()) {
@@ -688,6 +746,11 @@ function validateFindings({ response, input, warn }) {
     }
     if (!isNonEmptyString(f.path)) {
       drop('`path` is missing or not a non-empty string.');
+      continue;
+    }
+    const sib = siblingVerifies(f.sibling, input.contextPack);
+    if (!sib.ok) {
+      drop(`\`sibling\` does not verify: ${sib.reason}. A cross-file claim the harness cannot confirm is fabricated.`);
       continue;
     }
     const file = input.files.get(f.path);
@@ -797,6 +860,25 @@ export function validate({ response, input, onWarn = null }) {
     // in one change disagreeing about the same contract.
     body: sanitizeBody(f.body),
     class: sanitizeLabel(f.class ?? 'unclassified') || 'unclassified',
+    // CARRIED THROUGH, because verifying it and then dropping it is worse than
+    // never checking. `siblingVerifies` above proves the excerpt the finding
+    // names is really in the pack at the line it claims -- and this map then
+    // emitted everything BUT the sibling, so the judge read "verified sibling:
+    // none" on every finding and post-review could not render one either. The
+    // defect family this repository calls its largest -- a fix applied at one of
+    // two sites -- reached the judge stripped of the single piece of evidence
+    // supporting it, beside a rubric that says to drop assertions the quoted
+    // lines do not show. It was the class most likely to be deleted, and the
+    // deletion is not fail-soft.
+    ...(f.sibling
+      ? {
+          sibling: {
+            path: f.sibling.path,
+            line: f.sibling.line,
+            ...(f.sibling.quote ? { quote: sanitizeBody(f.sibling.quote) } : {}),
+          },
+        }
+      : {}),
   }));
 
   // A finding whose body sanitises to nothing is DROPPED here rather than

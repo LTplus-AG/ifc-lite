@@ -214,6 +214,19 @@ export function parseArgs(argv) {
 }
 
 /**
+ * At most this many inline comments reach a human, and it is enforced HERE.
+ *
+ * It was enforced in the judge, which is the one step in the lane designed to be
+ * skippable: the workflow's crash backstop does `cp findings.json judged.json`,
+ * bypassing that module completely, and the validator's own ceiling is twelve.
+ * So the cap held only when the optional filter succeeded, and the failure path
+ * -- the one that runs when something has already gone wrong -- posted twelve.
+ *
+ * This module is the only one on the posting path that always runs.
+ */
+export const MAX_POSTED_FINDINGS = 5;
+
+/**
  * The findings the model produced.
  *
  * BOTH plausible spellings are accepted -- a bare array, and `{ findings: [...] }`
@@ -224,6 +237,7 @@ export function parseArgs(argv) {
  *
  * @returns {{ path: string, line: number, body: string, title: string|null }[]}
  */
+
 export function readFindings(path) {
   let raw;
   try {
@@ -254,8 +268,19 @@ export function readFindings(path) {
         'as "no findings" is the same lie as a review that never ran.',
     );
   }
-  return list.map((f, i) => {
-    const where = `finding ${i + 1} of ${list.length} in \`${path}\``;
+  // The cap is applied AFTER validation and AFTER the judge, never before either.
+  // Capping earlier discards candidates a later stage might have preferred to the
+  // ones it kept -- the judge rejecting the first seven of twelve should leave the
+  // remaining five, not nothing.
+  const capped = list.length > MAX_POSTED_FINDINGS ? list.slice(0, MAX_POSTED_FINDINGS) : list;
+  if (capped.length < list.length) {
+    console.log(
+      `CAPPED: ${list.length} findings reached the poster; posting the first ${MAX_POSTED_FINDINGS} ` +
+        'in the order they were given.',
+    );
+  }
+  return capped.map((f, i) => {
+    const where = `finding ${i + 1} of ${capped.length} in \`${path}\``;
     if (f === null || typeof f !== 'object' || Array.isArray(f)) {
       throw new PostReviewError('BAD_FINDING', `${where} is not an object.`);
     }
@@ -282,7 +307,19 @@ export function readFindings(path) {
     return {
       path: f.path,
       line: f.line,
-      body: `${f.body}\n\n<!-- ifc-lite-finding v=1 class=${cls.replace(/[^a-z0-9-]/gi, '-')} -->`,
+      // THE SIBLING IS RENDERED, because otherwise verifying it bought nothing a
+      // human ever sees. The validator proves the twin exists at that line in the
+      // pack the reviewer was shown, the judge is given it -- and the poster used
+      // to drop it, so on the second-site family this whole pack exists to catch,
+      // the twin's location died with the runner unless the model happened to
+      // repeat it in prose. The comment in validate-findings claimed post-review
+      // rendered it; it did not.
+      body:
+        `${f.body}` +
+        (f.sibling?.path && Number.isInteger(f.sibling.line)
+          ? `\n\nThe same shape is at \`${f.sibling.path}:${f.sibling.line}\`, which this PR does not change.`
+          : '') +
+        `\n\n<!-- ifc-lite-finding v=1 class=${cls.replace(/[^a-z0-9-]/gi, '-')} -->`,
       // The class IS the title. They were a dead pair: `class` was validated
       // then dropped, while `title` was read by the summary index and never
       // written, so the index always fell back to the first line of the body.
@@ -347,6 +384,42 @@ function indexLine(f, n) {
 }
 
 /**
+ * How many findings the judge removed, read from the same file the findings came
+ * from. Returns 0 for anything it cannot read: this decorates a message, and a
+ * malformed count must never be the reason a review fails to post.
+ */
+export function readJudgedAway(path) {
+  try {
+    const doc = JSON.parse(readFileSync(path, 'utf8'));
+    const n = doc?.counts?.dropped;
+    return Number.isInteger(n) && n > 0 ? n : 0;
+  } catch (err) {
+    // Still 0 -- but SAID. The poster read this same file moments ago, so this
+    // branch is a race or a corruption, and a summary that silently omits "the
+    // judge removed N" is metadata loss nothing downstream can detect.
+    console.warn(`readJudgedAway: could not re-read ${path} (${err?.message ?? 'unknown'}); reporting 0 judged away.`);
+    return 0;
+  }
+}
+
+/**
+ * How many validated findings the posting cap withheld. Read from the same file,
+ * and 0 for anything unreadable: this decorates a message and must never be the
+ * reason a review fails to post.
+ */
+export function readCappedCount(path, shown) {
+  try {
+    const doc = JSON.parse(readFileSync(path, 'utf8'));
+    const total = Array.isArray(doc) ? doc.length : doc?.findings?.length;
+    return Number.isInteger(total) && total > shown ? total - shown : 0;
+  } catch (err) {
+    // Same rule as readJudgedAway above: fail-soft, never fail-silent.
+    console.warn(`readCappedCount: could not re-read ${path} (${err?.message ?? 'unknown'}); reporting 0 capped.`);
+    return 0;
+  }
+}
+
+/**
  * The human half of the comment.
  *
  * TWO NUMBERS, KEPT APART ON PURPOSE. The heading and the index describe what
@@ -358,16 +431,32 @@ function indexLine(f, n) {
  * count is an observation and not a claim. Collapsing them into one number is
  * how the marker would quietly become a receipt for the model's own file again.
  */
-export function summaryBody({ sha, findings, count }) {
+export function summaryBody({ sha, findings, count, judgedAway = 0, capped = 0 }) {
   const short = sha.slice(0, 9);
   const n = findings.length;
   if (count === 0) {
     // Reachable only when `n` is 0 as well: the caller refuses CLEAN_CONTRADICTED
     // before it gets here, and `count >= n` is enforced one step earlier.
+    // A REVIEW JUDGED TO NOTHING IS NOT A REVIEW THAT FOUND NOTHING. The judge
+    // can reject every validated finding, and without this line the only record
+    // that they ever existed is a runner log that expires -- while the PR shows
+    // "found nothing to flag". That is the absence-reads-as-success shape this
+    // module is built around, and the judge is what created the path: before it,
+    // every validated finding was posted.
+    const judged =
+      judgedAway > 0
+        ? [
+            '',
+            `${judgedAway} finding(s) were written and then dropped as too vague or already ` +
+              'covered before this was posted. Nothing here is a claim that they were wrong, ' +
+              'only that they were not worth your time; the run log lists each one and why.',
+          ]
+        : [];
     return [
       `### Claude review - no findings for \`${short}\``,
       '',
       'Reviewed this diff and found nothing to flag.',
+      ...judged,
       '',
       // No thumbs-down footer here on purpose: see STATED HOLES 6.
       marker(sha, 'clean', 0),
@@ -379,6 +468,20 @@ export function summaryBody({ sha, findings, count }) {
     ...findings.map((f, i) => indexLine(f, i + 1)),
     '',
     `${count} inline comment${count === 1 ? '' : 's'} from this reviewer confirmed on this commit.`,
+    // THE CAP FIRES ROUTINELY NOW. Validation allows twelve and the rubric asks
+    // the model for up to twelve, where the poster shows five -- so the slice
+    // that used to be unreachable is the common path, and its only trace was a
+    // line in a runner log that expires. The clean branch above already discloses
+    // judge-dropped findings; saying nothing here would leave the disclosure on
+    // the branch where it happens least.
+    ...(capped > 0
+      ? [
+          '',
+          `${capped} further finding(s) passed validation and are not shown: this comment is capped ` +
+            `at ${MAX_POSTED_FINDINGS} so it stays readable. They are in the run log, and re-running after ` +
+            'these are addressed will surface them.',
+        ]
+      : []),
     '',
     // Honest about what happens next. The earlier wording said a reaction would
     // "log it as a false positive", and nothing logs anything: that is a note
@@ -704,7 +807,13 @@ function main() {
     pr: args.pr,
     sha: args.sha,
     author,
-    body: summaryBody({ sha: args.sha, findings, count: confirmed }),
+    body: summaryBody({
+      sha: args.sha,
+      findings,
+      count: confirmed,
+      judgedAway: readJudgedAway(args.findings),
+      capped: readCappedCount(args.findings, findings.length),
+    }),
     want: marker(args.sha, verdict, confirmed),
   });
 

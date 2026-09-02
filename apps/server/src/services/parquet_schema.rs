@@ -184,7 +184,13 @@ pub(super) fn shared_trailing_fields() -> Vec<Field> {
 /// which a quaternion cannot represent losslessly; identity
 /// (`1,0,0,0,1,0,0,0,1`) for every instance the server did not verify as a
 /// rotation-safe dedup, which is exactly today's `origin`-only placement.
-pub(super) fn instance_schema() -> Arc<Schema> {
+///
+/// `include_rotation` is false when the writer produced no non-identity
+/// rotation at all: the table is then byte-shaped exactly as it was before
+/// #3575 and ships under wire version 2, so a client that predates the
+/// rotation columns keeps decoding it (see `optimized_wire_version` in
+/// `parquet_optimized.rs`).
+pub(super) fn instance_schema(include_rotation: bool) -> Arc<Schema> {
     Arc::new(Schema::new(
         vec![
             Field::new("entity_id", DataType::UInt32, false),
@@ -194,7 +200,7 @@ pub(super) fn instance_schema() -> Arc<Schema> {
         ]
         .into_iter()
         .chain(shared_trailing_fields())
-        .chain(rotation_fields())
+        .chain(if include_rotation { rotation_fields() } else { Vec::new() })
         .collect::<Vec<_>>(),
     ))
 }

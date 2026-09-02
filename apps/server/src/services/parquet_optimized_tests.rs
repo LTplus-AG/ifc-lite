@@ -56,6 +56,12 @@
         assert_eq!(stats.unique_materials, 2);
         assert!(stats.mesh_reuse_ratio > 1.0);
 
+        // No mesh here carries `InstanceMeta`, so no rotation-aware placement is
+        // produced and the payload is v2-shaped (see the two-direction pair
+        // `translation_only_reuse_ships_wire_version_2` /
+        // `rotated_mapped_item_repeats_dedup_and_reconstruct_correctly`).
+        assert_eq!(data[0], 2, "a payload with no rotation data must stay wire version 2");
+
         // Should be very compact. Parquet has fixed per-column overhead, so
         // tiny fixtures are dominated by it — the per-instance placement columns
         // (origin_x/y/z + geometry_class, issue #1841) add four columns' worth of
@@ -623,4 +629,90 @@
             stats.unique_meshes, 2,
             "rigid-tier (congruent, non-bit-identical) groups must fall back to distinct mesh rows"
         );
+    }
+
+    /// Half of the version-byte pair with
+    /// `rotated_mapped_item_repeats_dedup_and_reconstruct_correctly` (which
+    /// asserts version 3 and reads `rot0..rot8`). The version byte must
+    /// describe what the payload CONTAINS, not which code built it: an
+    /// unconditional 3 breaks every already-published client
+    /// (`@ifc-lite/server-client` throws `Unsupported optimized Parquet
+    /// version: 3`) on models that carry no rotation at all.
+    ///
+    /// This fixture is the sharp case: `InstanceMeta` IS present and the
+    /// rotation-aware dedup DOES fire (two occurrences collapse to one
+    /// template), but every derived rotation is identity because the reuse is
+    /// pure translation. Gating on "the feature ran" or "the model has
+    /// instance metadata" would emit 3 here; gating on the emitted rotation
+    /// data emits 2, which is exactly what this payload is.
+    #[test]
+    fn translation_only_reuse_ships_wire_version_2() {
+        use ifc_lite_geometry::InstanceMeta;
+        use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+
+        let placements = [
+            rot_z_mat4(0.0, [0.0, 0.0, 0.0]),
+            rot_z_mat4(0.0, [7.0, 0.0, 0.0]),
+        ];
+        let meshes: Vec<MeshData> = placements
+            .iter()
+            .enumerate()
+            .map(|(i, m)| {
+                MeshData::new(
+                    300 + i as u32,
+                    "IfcFurniture".to_string(),
+                    bake_triangle(&CANON_TRIANGLE, m),
+                    vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+                    vec![0, 1, 2],
+                    [0.6, 0.4, 0.2, 1.0],
+                )
+                .with_instance(Some(InstanceMeta {
+                    transform: *m,
+                    local_transform: None,
+                    canonical_transform: None,
+                    rep_identity: 999,
+                    instanceable: true,
+                }))
+            })
+            .collect();
+
+        let (data, stats) = serialize_to_parquet_optimized_with_stats(&meshes, false).unwrap();
+        assert_eq!(
+            stats.unique_meshes, 1,
+            "translation-only reuse must still deduplicate to one template"
+        );
+        assert_eq!(
+            data[0], 2,
+            "no non-identity rotation was emitted, so this is a v2 payload and must say so"
+        );
+
+        // A v2 payload must also be v2-SHAPED: the rotation columns a v2
+        // client never saw must not be in the table.
+        let instance_len = u32::from_le_bytes(data[2..6].try_into().unwrap()) as usize;
+        let header = 2 + 5 * 4;
+        let instance_bytes = Bytes::copy_from_slice(&data[header..header + instance_len]);
+        let batch = ParquetRecordBatchReaderBuilder::try_new(instance_bytes)
+            .unwrap()
+            .build()
+            .unwrap()
+            .map(|b| b.unwrap())
+            .next()
+            .unwrap();
+        for i in 0..9 {
+            assert!(
+                batch.schema().index_of(&format!("rot{i}")).is_err(),
+                "rot{i} must be absent from a v2 payload"
+            );
+        }
+        // The placement columns a v2 client DOES read are still there, with
+        // the per-occurrence translation the dedup relies on. Origin [7,0,0]
+        // in IFC Z-up is [x, z, -y] = [7, 0, 0] in the Y-up wire frame.
+        let ox = batch
+            .column(batch.schema().index_of("origin_x").unwrap())
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .unwrap()
+            .clone();
+        assert_eq!(batch.num_rows(), 2);
+        assert!((ox.value(1) - 7.0).abs() < 1e-9, "got {}", ox.value(1));
     }

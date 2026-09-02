@@ -139,6 +139,30 @@ pub(super) fn rotation_zup_to_yup(rotation_zup: &[f64; 9]) -> [f32; 9] {
     ]
 }
 
+/// The optimized format's wire version, chosen by what the payload CONTAINS.
+///
+/// v2 is the pre-#3575 shape: an instance table without `rot0..rot8`, placed
+/// as `world = origin + template_position`. v3 adds the nine rotation columns
+/// and the placement becomes `world = origin + R * template_position`.
+///
+/// A response in which every instance came out identity IS a v2 payload in
+/// every observable respect, so it ships as one and an unchanged client keeps
+/// decoding every model it decoded before #3575. Only a payload that
+/// genuinely carries rotation declares 3, where a v2-only decoder fails loud
+/// on its version check (`Unsupported optimized Parquet version: 3`) instead
+/// of silently dropping the rotations and misplacing the geometry.
+///
+/// The argument is the rotation data actually emitted, NOT "the model has
+/// instance metadata" or "the feature is on": translation-only reuse runs the
+/// whole rotation-aware dedup and still produces identity everywhere.
+pub(super) fn optimized_wire_version(has_rotation: bool) -> u8 {
+    if has_rotation {
+        3
+    } else {
+        2
+    }
+}
+
 pub(super) const IDENTITY_ROTATION: [f32; 9] = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
 
 /// Group instanceable meshes by representation identity (`collate_refs`) and

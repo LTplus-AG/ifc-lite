@@ -301,10 +301,16 @@
         // The instance schema appends nine rotation columns AFTER the shared
         // block (issue #3575, `/optimized`-only -- see `instance_schema()`'s
         // doc comment for why they aren't folded into `shared_trailing_fields`
-        // itself), so strip those before comparing the shared tail.
-        let instance_without_rotation = &instance[..instance.len() - 9];
+        // itself), so strip those before comparing the shared tail. They are
+        // absent entirely from a v2-shaped payload, which this single
+        // non-instanced mesh produces, so strip by NAME rather than by count.
+        let instance_without_rotation: Vec<String> = instance
+            .iter()
+            .filter(|name| !name.starts_with("rot"))
+            .cloned()
+            .collect();
         assert_eq!(
-            tail(instance_without_rotation),
+            tail(&instance_without_rotation),
             shared,
             "the optimized instance schema stopped composing shared_trailing_fields()"
         );

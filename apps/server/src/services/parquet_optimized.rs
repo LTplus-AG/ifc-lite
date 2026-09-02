@@ -32,7 +32,7 @@ use super::ParquetError;
 
 #[path = "parquet_optimized_instancing.rs"]
 mod instancing;
-use instancing::{collate_rotation_aware_placements, rotation_zup_to_yup, IDENTITY_ROTATION};
+use instancing::{collate_rotation_aware_placements, optimized_wire_version, rotation_zup_to_yup, IDENTITY_ROTATION};
 
 /// Vertex multiplier for integer quantization. 10,000 = 0.1mm precision.
 pub const VERTEX_MULTIPLIER: f32 = 10_000.0;
@@ -162,6 +162,8 @@ fn serialize_to_parquet_optimized(
     // Per-instance rotation (#3575), row-major 3x3, Y-up: world = origin +
     // R * template_position. Identity where no verified placement applies.
     let mut instance_rotation: [Vec<f32>; 9] = Default::default();
+    // Gates both the wire version and the rotation columns' presence -- see `optimized_wire_version`.
+    let mut emitted_non_identity_rotation = false;
 
     for (mesh_index, mesh) in meshes.iter().enumerate() {
         let (mesh_idx, origin_yup, rotation_yup) = match rotated_placements.get(&mesh_index) {
@@ -211,6 +213,7 @@ fn serialize_to_parquet_optimized(
         instance_geometry_class.push(mesh.geometry_class);
         instance_geometry_item_ids.push(mesh.geometry_item_id.unwrap_or(ABSENT_SOURCE_ID));
         instance_material_ids.push(mesh.material_id.unwrap_or(ABSENT_SOURCE_ID));
+        emitted_non_identity_rotation |= rotation_yup != IDENTITY_ROTATION;
         for (col, value) in instance_rotation.iter_mut().zip(rotation_yup.iter()) {
             col.push(*value);
         }
@@ -303,8 +306,9 @@ fn serialize_to_parquet_optimized(
 
     // Phase 3: Create Parquet tables
 
-    // Instance table schema
-    let instance_schema = instance_schema();
+    // A v2-shaped payload carries no rotation columns (`optimized_wire_version`).
+    let rotation_column_count = if emitted_non_identity_rotation { 9 } else { 0 };
+    let instance_schema = instance_schema(emitted_non_identity_rotation);
 
     let instance_columns: Vec<Arc<dyn arrow::array::Array>> = vec![
         Arc::new(UInt32Array::from(instance_entity_ids)) as Arc<dyn arrow::array::Array>,
@@ -319,7 +323,7 @@ fn serialize_to_parquet_optimized(
         Arc::new(UInt32Array::from(instance_material_ids)),
     ]
     .into_iter()
-    .chain(instance_rotation.into_iter().map(|col| Arc::new(Float32Array::from(col)) as Arc<dyn arrow::array::Array>))
+    .chain(instance_rotation.into_iter().take(rotation_column_count).map(|col| Arc::new(Float32Array::from(col)) as Arc<dyn arrow::array::Array>))
     .collect();
 
     let instance_batch = RecordBatch::try_new(instance_schema, instance_columns)?;
@@ -415,6 +419,7 @@ fn serialize_to_parquet_optimized(
     let index_parquet = write_parquet_buffer(&index_batch)?;
 
     let data = assemble_optimized_output(
+        optimized_wire_version(emitted_non_identity_rotation),
         include_normals,
         &instance_parquet,
         &mesh_parquet,
@@ -450,6 +455,7 @@ fn check_optimized_section_lengths(
 /// appended below. Mirrors the guard `parquet::frame_sections`/
 /// `frame_combined_sections` apply to the non-optimized writer's sections.
 fn assemble_optimized_output(
+    version: u8,
     include_normals: bool,
     instance_parquet: &[u8],
     mesh_parquet: &[u8],
@@ -466,18 +472,11 @@ fn assemble_optimized_output(
     )?;
 
     let mut output = Vec::with_capacity(
-        2 + 20
-            + instance_parquet.len()
-            + mesh_parquet.len()
-            + material_parquet.len()
-            + vertex_parquet.len()
-            + index_parquet.len(),
+        2 + 20 + instance_parquet.len() + mesh_parquet.len() + material_parquet.len()
+            + vertex_parquet.len() + index_parquet.len(),
     );
 
-    // Version 3 = optimized format + rotation-aware instancing (#3575). A
-    // decoder that only knows v2 (no rot0..rot8) must reject v3, not
-    // silently ignore the rotation and misplace every rotated instance.
-    output.push(3u8);
+    output.push(version);
     // Flags: bit 0 = has_normals
     output.push(if include_normals { 1u8 } else { 0u8 });
 

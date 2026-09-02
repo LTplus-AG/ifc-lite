@@ -94,6 +94,10 @@ self.onmessage = function(e) {
   var count = 0;
   // Records refused by the express-id bound, reported back to the caller.
   var oversizedIds = 0;
+  // Records refused because a quoted string they opened never closed before
+  // end-of-buffer (see the note below where this increments). Reported back
+  // to the caller.
+  var malformedRecords = 0;
 
   // Type name cache (IFC files have ~776 unique types across millions of entities)
   var typeCache = new Map();
@@ -232,6 +236,7 @@ self.onmessage = function(e) {
 
       // Skip to semicolon (handling strings)
       var inString = false;
+      var foundTerminator = false;
       while (pos < len) {
         var c6 = buf[pos];
         if (c6 === 0x27) { // quote
@@ -268,12 +273,19 @@ self.onmessage = function(e) {
           count++;
 
           pos++;
+          foundTerminator = true;
           break;
         } else if (c6 === 0x0A) {
           line++;
         }
         pos++;
       }
+
+      // Ran off the end without an unquoted ';' -- usually an unescaped
+      // quote left open (tokenizer.ts's scanEntitiesFast has the same
+      // check). Not resynced: with no known terminator, guessing a resume
+      // point risks fabricating entities from misaligned bytes.
+      if (!foundTerminator) { malformedRecords++; }
     } else if (ch === 0x0A) {
       line++;
       pos++;
@@ -322,6 +334,7 @@ self.onmessage = function(e) {
     types: types.slice(0, count),
     count: count,
     oversizedIds: oversizedIds,
+    malformedRecords: malformedRecords,
   }, [
     trimmedIds.buffer,
     trimmedOffsets.buffer,

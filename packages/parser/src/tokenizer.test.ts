@@ -44,4 +44,34 @@ describe('StepTokenizer.scanEntitiesFast', () => {
     expect(refs[0].type).toBe(first);
     expect(refs[1].type).toBe(second);
   });
+
+  it('reports an unterminated string literal instead of silently ending the scan', () => {
+    // #1's Name opens a quote and never closes it. Before this fix, the
+    // "skip to the next ';'" loop just ran off the end of the buffer with
+    // `inString` still true, `#2` was never found, and the scan reported
+    // success with 1 entity — nothing distinguished that from a file that
+    // legitimately has only one entity. `malformedRecordCount` is the
+    // caller's only way to tell the two apart.
+    const text = [
+      "#1=IFCWALL('0000000000000000000001',$,'Wall unterminated,$,$,$,$,$,$);",
+      "#2=IFCWALL('0000000000000000000002',$,'Wall2',$,$,$,$,$,$);",
+    ].join('\n');
+    const buffer = new TextEncoder().encode(text);
+    const tokenizer = new StepTokenizer(buffer);
+    const refs = Array.from(tokenizer.scanEntitiesFast());
+    expect(refs.map((r) => r.expressId)).toEqual([]);
+    expect(tokenizer.malformedRecordCount).toBe(1);
+  });
+
+  it('does not report malformedRecordCount for a well-formed file', () => {
+    const text = [
+      "#1=IFCWALL('0000000000000000000001',$,'Wall1',$,$,$,$,$,$);",
+      "#2=IFCWALL('0000000000000000000002',$,'Wall2',$,$,$,$,$,$);",
+    ].join('\n');
+    const buffer = new TextEncoder().encode(text);
+    const tokenizer = new StepTokenizer(buffer);
+    const refs = Array.from(tokenizer.scanEntitiesFast());
+    expect(refs).toHaveLength(2);
+    expect(tokenizer.malformedRecordCount).toBe(0);
+  });
 });

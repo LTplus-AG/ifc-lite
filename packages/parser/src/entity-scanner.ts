@@ -63,6 +63,23 @@ export interface EntityScanResult {
    * the number is not — a zero on THAT path still is not proof of none.
    */
   oversizedIdCount: number;
+  /**
+   * How many records the scan gave up on because a quoted string they
+   * opened never closed before end-of-buffer, so the "skip to the next
+   * ';'" scan could not find a terminator for that record — and, because
+   * of it, scanning stopped there. Every entity after that point, even a
+   * well-formed one later in an otherwise-intact file, is NOT in
+   * `entityRefs` either: there is no reliable place to resume once a
+   * string has failed to close, so the scan does not guess. Before this
+   * field existed, that stop was completely silent — a shorter
+   * `entityRefs` with no signal that anything went wrong at all.
+   *
+   * `pre-scanned` does not carry this — same reasoning as
+   * `oversizedIdCount`'s doc: `PreScannedEntityIndex` predates this field,
+   * so a producer built before it sends none. Reads as `0`, which is
+   * indistinguishable from "none refused" for that one path.
+   */
+  malformedRecordCount: number;
 }
 
 type WasmScanFunction = () => unknown;
@@ -83,6 +100,7 @@ export async function scanIfcEntities(
   let processed = 0;
   let scanPath: EntityScanPath = 'tokenizer';
   let oversizedIdCount = 0;
+  let malformedRecordCount = 0;
   let preScanCountUnreported = false;
 
   if (options.preScannedEntityIndex) {
@@ -105,6 +123,7 @@ export async function scanIfcEntities(
       const scan = await scanEntitiesInWorker(buffer);
       entityRefs = scan.refs;
       oversizedIdCount = scan.oversizedIdCount;
+      malformedRecordCount = scan.malformedRecordCount;
       processed = entityRefs.length;
       scanPath = 'worker';
     } catch (error) {
@@ -112,6 +131,7 @@ export async function scanIfcEntities(
       entityRefs = [];
       processed = 0;
       oversizedIdCount = 0;
+      malformedRecordCount = 0;
     }
   }
 
@@ -157,6 +177,7 @@ export async function scanIfcEntities(
       }
     }
     oversizedIdCount = tokenizer.oversizedIdCount;
+    malformedRecordCount = tokenizer.malformedRecordCount;
   }
 
   // A refused record is a record the caller will not find. Say so on both
@@ -165,6 +186,21 @@ export async function scanIfcEntities(
   if (oversizedIdCount > 0) {
     const message =
       `scan: skipped ${oversizedIdCount} record(s) with an express id above ${MAX_EXPRESS_ID} (#3395)`;
+    console.warn(`[IfcParser] ${message}`);
+    options.onDiagnostic?.(message);
+  }
+
+  // Worse than the oversized-id case: this is not "one record the caller
+  // will not find", it is "scanning stopped here" — an unterminated string
+  // literal leaves no reliable resume point, so every entity after it,
+  // however well-formed, is also missing from this scan's result. Before
+  // this diagnostic existed, that stop was entirely silent: fewer entities
+  // came back, and nothing said the file might be incomplete.
+  if (malformedRecordCount > 0) {
+    const message =
+      `scan: stopped early — ${malformedRecordCount} record(s) had a string literal that never ` +
+      `closed before end of input, so scanning could not continue past the first one; the ` +
+      `entities returned may be an incomplete view of this file`;
     console.warn(`[IfcParser] ${message}`);
     options.onDiagnostic?.(message);
   } else if (preScanCountUnreported && scanPath === 'pre-scanned') {
@@ -182,7 +218,7 @@ export async function scanIfcEntities(
   options.onDiagnostic?.(`scan complete: entities=${processed} elapsed=${elapsedMs.toFixed(0)}ms`);
   options.onProgress?.({ phase: 'scanning', percent: 100 });
 
-  return { entityRefs, processed, elapsedMs, scanPath, oversizedIdCount };
+  return { entityRefs, processed, elapsedMs, scanPath, oversizedIdCount, malformedRecordCount };
 }
 
 /**

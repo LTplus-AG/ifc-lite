@@ -21,6 +21,7 @@ import {
 export class StepTokenizer {
   private buffer: Uint8Array;
   private oversizedIds: number = 0;
+  private malformedRecords: number = 0;
 
   constructor(buffer: Uint8Array) {
     this.buffer = buffer;
@@ -28,9 +29,11 @@ export class StepTokenizer {
 
   /** Records the last scan refused for an out-of-contract express id
    *  (express-id.ts, #3395). Reset per scan; the caller reports it. */
-  get oversizedIdCount(): number {
-    return this.oversizedIds;
-  }
+  get oversizedIdCount(): number { return this.oversizedIds; }
+
+  /** Records that `scanEntitiesFast` hit an unclosed `'` string and stopped
+   *  scanning there (see that loop). Reset per scan; the caller reports it. */
+  get malformedRecordCount(): number { return this.malformedRecords; }
 
   /**
    * Scan for all entity declarations (#EXPRESS_ID = TYPE(...))
@@ -57,6 +60,7 @@ export class StepTokenizer {
    */
   *scanEntitiesFast(): Generator<ScannedEntityRef> {
     this.oversizedIds = 0;
+    this.malformedRecords = 0;
 
     // Pre-compute common byte codes
     const HASH = 0x23;      // '#'
@@ -218,6 +222,7 @@ export class StepTokenizer {
 
         // FAST: Skip to semicolon (handling strings)
         let inString = false;
+        let foundTerminator = false;
         while (pos < len) {
           const c = buf[pos];
           if (c === QUOTE) {
@@ -246,12 +251,19 @@ export class StepTokenizer {
             const entityLength = pos - startOffset + 1; // Include semicolon
             yield { expressId, type, offset: startOffset, length: entityLength, line: startLine };
             pos++;
+            foundTerminator = true;
             break;
           } else if (c === NEWLINE) {
             line++;
           }
           pos++;
         }
+
+        // Ran off the end without an unquoted ';' — usually an unescaped `'`
+        // left open; `pos` is already `len`, ending the scan here. Not
+        // resynced: with no known terminator, guessing a resume point risks
+        // fabricating entities from misaligned bytes.
+        if (!foundTerminator) this.malformedRecords++;
       } else if (char === NEWLINE) {
         line++;
         pos++;

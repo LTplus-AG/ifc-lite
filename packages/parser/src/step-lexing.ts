@@ -62,8 +62,10 @@ export function skipComment(buf: Uint8Array, pos: number, len: number): number {
   return -1;
 }
 
-// Index just past the closing quote of the literal opening at `pos`, or `len`
-// when it never closes. A doubled '' is an escaped quote and stays inside.
+// Index just past the closing quote of the literal opening at `pos`, or `-1`
+// when it never closes — mirrors `skipComment`'s own -1-for-unterminated
+// convention below, which is what lets `skipLexical` treat the two cases
+// identically. A doubled '' is an escaped quote and stays inside.
 //
 // Scanners consume a literal whole so nothing inside it can be mistaken for
 // syntax. Without this, a HEADER description reading `'rev /* pending'` opens a
@@ -71,6 +73,12 @@ export function skipComment(buf: Uint8Array, pos: number, len: number): number {
 // a legal file. A `#12=` inside such a string was equally readable as a record.
 // The outer loops walk HEADER records byte by byte, since those carry no `#` to
 // consume them, so HEADER is exactly where this bites.
+//
+// Was `len` for the unterminated case, silently indistinguishable from "closed
+// exactly at the last byte of the buffer" to every caller — which is how a
+// single unpaired `'` in a DATA record used to swallow the rest of an
+// otherwise-intact file with the scan still reporting success (see
+// `skipLexical`'s `stop` for where the distinction now surfaces).
 export function skipStringLiteral(buf: Uint8Array, pos: number, len: number): number {
   let p = pos + 1;
   while (p < len) {
@@ -83,7 +91,7 @@ export function skipStringLiteral(buf: Uint8Array, pos: number, len: number): nu
     }
     p++;
   }
-  return len;
+  return -1;
 }
 
 export interface Skip {
@@ -91,9 +99,14 @@ export interface Skip {
   next: number;
   // Newlines crossed, to add to the caller's line counter.
   lines: number;
-  // True when scanning must stop: an unterminated comment runs to EOF, so
-  // there is nothing left to find. Matches the Rust scanner returning None.
+  // True when scanning must stop: an unterminated comment or string literal
+  // runs to EOF, so there is nothing left to find. Matches the Rust scanner
+  // returning None.
   stop: boolean;
+  // Which lexical form was unterminated, when `stop` is true. Lets a caller
+  // that wants to report this (entity-scanner.ts) say what actually broke,
+  // rather than a generic "scan stopped early".
+  unterminated?: 'string' | 'comment';
 }
 
 // Skip a string literal or a comment starting at `pos`. Callers test
@@ -102,11 +115,14 @@ export interface Skip {
 export function skipLexical(buf: Uint8Array, pos: number, len: number): Skip {
   if (buf[pos] === QUOTE) {
     const next = skipStringLiteral(buf, pos, len);
+    if (next < 0) {
+      return { next: len, lines: countNewlines(buf, pos, len), stop: true, unterminated: 'string' };
+    }
     return { next, lines: countNewlines(buf, pos, next), stop: false };
   }
   const next = skipComment(buf, pos, len);
   if (next < 0) {
-    return { next: len, lines: countNewlines(buf, pos, len), stop: true };
+    return { next: len, lines: countNewlines(buf, pos, len), stop: true, unterminated: 'comment' };
   }
   return { next, lines: countNewlines(buf, pos, next), stop: false };
 }
@@ -206,9 +222,11 @@ export function findEntityLength(buf: Uint8Array, pos: number, startOffset: numb
     const char = buf[pos];
 
     if (char === QUOTE) {
-      // Returns `len` on an unterminated literal, which ends the loop with no
-      // balancing ')' found -- the same 0 the open-coded version returned.
-      pos = skipStringLiteral(buf, pos, len);
+      // Returns `-1` on an unterminated literal (see skipStringLiteral's own
+      // doc): no balancing ')' can follow, same 0 as running off the end.
+      const next = skipStringLiteral(buf, pos, len);
+      if (next < 0) return 0;
+      pos = next;
     } else if (opensComment(buf, pos, len)) {
       const end = skipComment(buf, pos, len);
       // Unterminated: the rest of the input is inside the comment, so no

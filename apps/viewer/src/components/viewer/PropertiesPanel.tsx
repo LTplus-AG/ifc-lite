@@ -6,9 +6,6 @@ import { useMemo, useState, useCallback, useEffect } from 'react';
 import {
   Copy,
   Check,
-  Focus,
-  EyeOff,
-  Eye,
   Building2,
   Layers,
   Layers2,
@@ -62,6 +59,7 @@ import { BsddCard } from './properties/BsddCard';
 import { GeoreferencingPanel } from './properties/GeoreferencingPanel';
 import { RawStepCard } from './properties/RawStepCard';
 import { UnitDisplayControl } from './properties/UnitDisplayControl';
+import { EntityHeaderActions } from './properties/EntityHeaderActions';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { isMaterialDefinitionType } from '@/utils/materialDefinitionTypes';
 
@@ -150,8 +148,6 @@ export function PropertiesPanel() {
   const zoneAssignments = useViewerStore((s) => s.zoneAssignments);
   const selectedModelId = useViewerStore((s) => s.selectedModelId);
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
-  const toggleEntityVisibility = useViewerStore((s) => s.toggleEntityVisibility);
-  const isEntityVisible = useViewerStore((s) => s.isEntityVisible);
   // Relationship navigation: select a related entity (e.g. an IfcZone) to show
   // its attributes, or isolate a group's members in 3D (#1075).
   const setSelectedEntity = useViewerStore((s) => s.setSelectedEntity);
@@ -1320,46 +1316,7 @@ export function PropertiesPanel() {
             )}
           </div>
           <div className="flex gap-1 shrink-0">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  className="rounded-none hover:bg-zinc-200 dark:hover:bg-zinc-700"
-                  onClick={() => {
-                    if (selectedEntityId && cameraCallbacks.frameSelection) {
-                      cameraCallbacks.frameSelection();
-                    }
-                  }}
-                >
-                  <Focus className="h-3.5 w-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Zoom to</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  className="rounded-none hover:bg-zinc-200 dark:hover:bg-zinc-700"
-                  onClick={() => {
-                    if (selectedEntityId) {
-                      toggleEntityVisibility(selectedEntityId);
-                    }
-                  }}
-                >
-                  {selectedEntityId && isEntityVisible(selectedEntityId) ? (
-                    <EyeOff className="h-3.5 w-3.5" />
-                  ) : (
-                    <Eye className="h-3.5 w-3.5" />
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {selectedEntityId && isEntityVisible(selectedEntityId) ? 'Hide' : 'Show'}
-              </TooltipContent>
-            </Tooltip>
+            <EntityHeaderActions />
             {/* Display-unit converter (issue #1573 proposal 2) — covers both
                 the Properties and Quantities tabs below, so it lives in the
                 shared header rather than inside either TabsContent. */}

@@ -391,6 +391,15 @@ function indexLine(f, n) {
 export function readJudgedAway(path) {
   try {
     const doc = JSON.parse(readFileSync(path, 'utf8'));
+    // `counts.dropped` MEANS TWO DIFFERENT THINGS in the two files this poster
+    // can be handed. In judged.json it is findings the judge rejected as not
+    // worth a human's time. In the validator's findings.json -- which the
+    // workflow's crash backstop copies verbatim -- it is findings REFUSED as
+    // malformed. Reading it without checking `judged` told the author "N
+    // finding(s) were dropped as too vague" about findings that were actually
+    // rejected for quoting a line that is not in the diff. Only a real judging
+    // has judge-dropped findings to disclose.
+    if (doc?.judged !== true) return 0;
     const n = doc?.counts?.dropped;
     return Number.isInteger(n) && n > 0 ? n : 0;
   } catch (err) {

@@ -430,3 +430,17 @@ test('a 1-based shift WITHIN ONE FILE is caught by the line echo', () => {
   assert.equal(written.judged, false);
   assert.match(logs.join('\n'), /do not match the finding they index/);
 });
+
+test('a judge answering with NO indices is not a successful judging', () => {
+  // Such a verdict was neither misaligned nor applicable, so it never entered
+  // byIndex: the judge dropped nothing and the run was recorded `judged: true`.
+  // A judging that applied none of its own verdicts is not a judging.
+  const raw = JSON.stringify({
+    end: 'ifc-lite-judge-v1',
+    verdicts: [{ keep: false, why: 'no index at all', file: 'packages/a/f0.ts', line: 10 }],
+  });
+  const { written, log } = run(docOf(2), spawnSaying(raw));
+  assert.equal(written.findings.length, 2, 'nothing may be dropped on a set this malformed');
+  assert.equal(written.judged, false, 'and it must NOT be recorded as judged');
+  assert.match(log, /do not match the finding they index/); // @source-text-assertion-ok asserts on the CLI stdout this test just produced, not on a source file
+});

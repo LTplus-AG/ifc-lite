@@ -99,8 +99,14 @@ export function applyVerdicts(findings, raw) {
   // So alignment is VERIFIED, not assumed. A mismatch, or a verdict carrying no
   // echo, keeps everything and says so: an inert judge is loud -- `judged: false`
   // on every run -- where a misaligned one is silent.
+  // A VERDICT WITH NO INDEX IS MALFORMED, not merely inapplicable. Returning
+  // false here meant such a verdict was not misaligned, not a duplicate, and
+  // never entered byIndex -- so a judge answering entirely without `index` fields
+  // dropped nothing and was recorded as `judged: true`. A judging that applied
+  // none of its own verdicts is not a judging, and saying it succeeded is the
+  // absence-reads-as-success shape this module is built to refuse.
   const misaligned = parsed.verdicts.filter((v) => {
-    if (!Number.isInteger(v?.index)) return false;
+    if (!Number.isInteger(v?.index)) return true;
     const target = findings[v.index];
     // PATH AND LINE. Path alone left one shifted case alive: a 1-based,
   // drops-only reply whose misaligned pair happens to share a file still deleted the

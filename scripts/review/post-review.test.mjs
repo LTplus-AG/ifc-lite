@@ -932,9 +932,19 @@ test('readJudgedAway returns 0 for anything unreadable, and never throws', () =>
   assert.equal(readJudgedAway(bad), 0);
   assert.equal(readJudgedAway(join(TMP, 'does-not-exist.json')), 0);
 
+  // `judged: true` REQUIRED, and this test asserted the opposite by omission.
+  // `counts.dropped` means "the judge rejected these" in judged.json and
+  // "the validator refused these as malformed" in findings.json, which the
+  // workflow's crash backstop copies verbatim. Without the flag the poster told
+  // the author N findings were "dropped as too vague" about findings that had
+  // actually quoted a line not in the diff.
   const good = join(TMP, 'judged-good.json');
-  writeFileSync(good, JSON.stringify({ findings: [], counts: { dropped: 3 } }));
+  writeFileSync(good, JSON.stringify({ judged: true, findings: [], counts: { dropped: 3 } }));
   assert.equal(readJudgedAway(good), 3);
+
+  const unjudged = join(TMP, 'judged-fallback.json');
+  writeFileSync(unjudged, JSON.stringify({ findings: [], counts: { dropped: 3 } }));
+  assert.equal(readJudgedAway(unjudged), 0, 'the validator\'s own drops are not judge drops');
 });
 
 test('the VERIFIED SIBLING reaches the PR comment', () => {

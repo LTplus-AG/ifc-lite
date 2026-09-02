@@ -143,6 +143,8 @@ impl Default for HbjsonOptions {
 }
 
 /// Coverage stats for an HBJSON export.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HbjsonStats {
     /// `IfcSpace` profiles seen in the model.
     pub spaces: usize,

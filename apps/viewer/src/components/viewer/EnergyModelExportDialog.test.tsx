@@ -108,11 +108,23 @@ describe('EnergyModelExportDialog WASM disposal', () => {
     useViewerStore.setState({ models: new Map([['model-1', makeModel()]]) });
   });
 
+  const cleanStats = {
+    spaces: 0,
+    rooms: 0,
+    skipped: 0,
+    apertures: 0,
+    doors: 0,
+    shades: 0,
+    constructions: 0,
+    interiorAdjacencies: 0,
+  };
+
   it('disposes the GeometryProcessor WASM handle on the HBJSON success path', async () => {
     const initMock = mock.method(GeometryProcessor.prototype, 'init', async () => undefined);
-    const exportMock = mock.method(GeometryProcessor.prototype, 'exportHbjson', () =>
-      new TextEncoder().encode('{"rooms":[]}'),
-    );
+    const exportMock = mock.method(GeometryProcessor.prototype, 'exportHbjsonWithStats', () => ({
+      content: new TextEncoder().encode('{"rooms":[]}'),
+      stats: cleanStats,
+    }));
     const disposeMock = mock.method(GeometryProcessor.prototype, 'dispose', () => undefined);
     try {
       const container = renderDialog();
@@ -126,17 +138,62 @@ describe('EnergyModelExportDialog WASM disposal', () => {
     }
   });
 
-  it('disposes the GeometryProcessor WASM handle when exportHbjson returns null (throw path)', async () => {
+  it('disposes the GeometryProcessor WASM handle when exportHbjsonWithStats returns null (throw path)', async () => {
     const initMock = mock.method(GeometryProcessor.prototype, 'init', async () => undefined);
-    // Mirrors the real "geometry engine unavailable" case: exportHbjson
+    // Mirrors the real "geometry engine unavailable" case: exportHbjsonWithStats
     // returning null makes handleExport's own `throw new Error(...)` fire —
     // the early-return-via-throw the inner try/finally must cover.
-    const exportMock = mock.method(GeometryProcessor.prototype, 'exportHbjson', () => null);
+    const exportMock = mock.method(GeometryProcessor.prototype, 'exportHbjsonWithStats', () => null);
     const disposeMock = mock.method(GeometryProcessor.prototype, 'dispose', () => undefined);
     try {
       const container = renderDialog();
       await clickExport(container, 'HBJSON');
       assert.equal(disposeMock.mock.callCount(), 1, 'dispose runs exactly once even though export threw');
+    } finally {
+      initMock.mock.restore();
+      exportMock.mock.restore();
+      disposeMock.mock.restore();
+    }
+  });
+
+  it('reports the skip count in the success message when spaces were dropped (silent-drop fix)', async () => {
+    const initMock = mock.method(GeometryProcessor.prototype, 'init', async () => undefined);
+    const exportMock = mock.method(GeometryProcessor.prototype, 'exportHbjsonWithStats', () => ({
+      content: new TextEncoder().encode('{"rooms":[]}'),
+      stats: { ...cleanStats, spaces: 28, rooms: 23, skipped: 5 },
+    }));
+    const disposeMock = mock.method(GeometryProcessor.prototype, 'dispose', () => undefined);
+    try {
+      const container = renderDialog();
+      await clickExport(container, 'HBJSON');
+      const alertText = [...document.body.querySelectorAll('[role="alert"]')]
+        .map((el) => el.textContent ?? '')
+        .join(' ');
+      assert.ok(
+        alertText.includes('5 of 28 IfcSpace skipped as degenerate'),
+        `expected the skip count in the result message, got: ${alertText}`,
+      );
+    } finally {
+      initMock.mock.restore();
+      exportMock.mock.restore();
+      disposeMock.mock.restore();
+    }
+  });
+
+  it('says nothing about skipped spaces on a clean export (control)', async () => {
+    const initMock = mock.method(GeometryProcessor.prototype, 'init', async () => undefined);
+    const exportMock = mock.method(GeometryProcessor.prototype, 'exportHbjsonWithStats', () => ({
+      content: new TextEncoder().encode('{"rooms":[]}'),
+      stats: { ...cleanStats, spaces: 12, rooms: 12, skipped: 0 },
+    }));
+    const disposeMock = mock.method(GeometryProcessor.prototype, 'dispose', () => undefined);
+    try {
+      const container = renderDialog();
+      await clickExport(container, 'HBJSON');
+      const alertText = [...document.body.querySelectorAll('[role="alert"]')]
+        .map((el) => el.textContent ?? '')
+        .join(' ');
+      assert.ok(!alertText.includes('skipped'), `expected no skip mention, got: ${alertText}`);
     } finally {
       initMock.mock.restore();
       exportMock.mock.restore();

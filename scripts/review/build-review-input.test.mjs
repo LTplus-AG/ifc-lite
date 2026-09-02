@@ -18,14 +18,7 @@ import { mkdtempSync, writeFileSync, readFileSync , readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  addedLineRanges,
-  newFileLines,
-  buildInput,
-  isExcluded,
-  MAX_PATCH_BYTES,
-  OMITTED_FOR_PROMPT_REASON,
-} from './build-review-input.mjs';
+import { addedLineRanges, newFileLines, buildInput, isExcluded, MAX_PATCH_BYTES, OMITTED_FOR_PROMPT_REASON, fitFilesToPrompt } from './build-review-input.mjs';
 import { buildPack, MAX_PROMPT_BYTES } from './build-context-pack.mjs';
 import { buildPrompt } from './run-reviewer.mjs';
 import { pageAll as pageFiles } from '../check-review-posted.mjs';
@@ -453,4 +446,38 @@ test('the PROCESS says PARTIAL loudly and keeps the emitted shape stable', () =>
   // Same top-level shape as a full review: downstream readers (validate-findings
   // readInput, the eval) must not need a second schema for the degraded case.
   assert.deepEqual(Object.keys(r.result).sort(), ['excluded', 'files', 'headSha', 'unreviewable']);
+});
+
+test('an omitted path with QUOTES or BACKSLASHES is charged as RENDERED', () => {
+  // Through the shipped `fitFilesToPrompt`, differentially. The first version of
+  // this test reimplemented the charge formula locally and asserted on its own
+  // copy, so reverting the source to raw bytes failed nothing -- two copies held
+  // together by prose, in the test guarding the arithmetic.
+  //
+  // `buildPrompt` emits the path JSON-escaped, so a quote costs three bytes where
+  // the raw string costs one and a backslash two. Same size files, same count,
+  // only the path shape differs: charging the escaped form must keep FEWER.
+  const mk = (name, n, per) =>
+    Array.from({ length: n }, (_, i) => ({
+      path: name(i),
+      patch: `@@ -1,1 +1,2 @@\n+${'x'.repeat(per)}\n`,
+    }));
+  // IDENTICAL RAW LENGTH, different escaped length -- 30 bytes each, 32 vs 48
+  // once JSON-escaped. The first attempt used paths that were longer raw too, so
+  // it discriminated on length and passed with the escaping ignored.
+  const plain = (i) => `vendor/aaaaaaaaaaaaaaaa${String(i).padStart(4, '0')}.ts`;
+  const nasty = (i) => `vendor/""""""""""""""""${String(i).padStart(4, '0')}.ts`;
+  assert.equal(
+    Buffer.byteLength(plain(1), 'utf8'),
+    Buffer.byteLength(nasty(1), 'utf8'),
+    'fixture: same raw size, or this measures length rather than escaping',
+  );
+
+  const a = fitFilesToPrompt(mk(plain, 900, 380), []);
+  const b = fitFilesToPrompt(mk(nasty, 900, 380), []);
+  assert.ok(
+    b.kept.length < a.kept.length,
+    `escape-heavy paths kept ${b.kept.length} against ${a.kept.length} for plain ones: the charge is ` +
+      'counting raw bytes, so the budget is being spent on characters the prompt renders larger',
+  );
 });

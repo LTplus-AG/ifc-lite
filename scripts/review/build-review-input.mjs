@@ -317,8 +317,15 @@ export function fitFilesToPrompt(candidates, unreviewable) {
   // omitting it here would let the fit overshoot by `reason` bytes per dropped
   // file, which on a 200-file omission is tens of kilobytes.
   const reasonBytes = Buffer.byteLength(OMITTED_FOR_PROMPT_REASON, 'utf8');
+  // CHARGED AS RENDERED, not as stored. `buildPrompt` emits the path
+  // JSON-escaped, so a quote costs three bytes where the raw string costs one and
+  // a backslash costs two. Measured: a path with quotes undercounts by 3 bytes a
+  // row and one with backslashes by 6, which on a 900-row omission is kilobytes
+  // of budget that does not exist -- the same undercharge that let long paths push
+  // a passing prompt over the ceiling. `- 2` drops the surrounding quotes, which
+  // the fixed part already covers.
   const rowCharge = (path) =>
-    PROMPT_UNREVIEWABLE_ROW_FIXED + Buffer.byteLength(path, 'utf8') + reasonBytes;
+    PROMPT_UNREVIEWABLE_ROW_FIXED + Buffer.byteLength(JSON.stringify(path), 'utf8') - 2 + reasonBytes;
   let budget = MAX_PROMPT_BYTES - PROMPT_BASE_OVERHEAD_BYTES;
   for (const u of unreviewable) budget -= rowCharge(u.path);
   for (const c of candidates) budget -= rowCharge(c.path);

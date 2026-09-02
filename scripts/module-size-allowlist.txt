@@ -128,7 +128,7 @@
   2247 apps/viewer/src/hooks/useIfcLoader.ts
    436 apps/viewer/src/hooks/useIfcServer.ts
    488 apps/viewer/src/hooks/useKeyboardShortcuts.ts
-   493 apps/viewer/src/hooks/useSymbolicAnnotations.ts
+   496 apps/viewer/src/hooks/useSymbolicAnnotations.ts
    629 apps/viewer/src/lib/analytics-scrub.ts
    651 apps/viewer/src/lib/clash/persistence.ts
    427 apps/viewer/src/lib/collab/geometry-sync.ts
@@ -147,7 +147,7 @@
   1141 apps/viewer/src/lib/llm/script-preflight.ts
    410 apps/viewer/src/lib/llm/stream-client.ts
    809 apps/viewer/src/lib/llm/system-prompt.ts
-   406 apps/viewer/src/lib/overlay-parse/symbolic-flat.ts
+   403 apps/viewer/src/lib/overlay-parse/symbolic-flat.ts
    491 apps/viewer/src/lib/scripts/templates/create-building.ts
    663 apps/viewer/src/lib/search/filter-evaluate.ts
    450 apps/viewer/src/lib/search/tier1-index.ts
@@ -176,7 +176,7 @@
    574 apps/viewer/src/store/slices/sectionSlice.ts
    571 apps/viewer/src/store/slices/sheetSlice.ts
    414 apps/viewer/src/store/slices/uiSlice.ts
-   485 apps/viewer/src/store/slices/visibilitySlice.ts
+   497 apps/viewer/src/store/slices/visibilitySlice.ts
    415 apps/viewer/src/store/teardown.ts
    696 apps/viewer/src/store/types.ts
    662 apps/viewer/src/utils/serverDataModel.ts

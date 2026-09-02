@@ -209,8 +209,10 @@ function parseVisibility(content: string, versionId: '2.1' | '3.0'): BCFVisibili
   // `<Selection>` component, say) won the match and inverted the answer, so a
   // file saying show-all hid everything.
   const defaultVisMatch = visibilityMatch[0].match(/DefaultVisibility="([^"]+)"/);
+  // xs:boolean's lexical space is {true, false, 1, 0}: '0' must read as
+  // false, not fall through a bare `!== 'false'` comparison as true.
   const defaultVisibility = defaultVisMatch
-    ? defaultVisMatch[1] !== 'false'
+    ? defaultVisMatch[1] !== 'false' && defaultVisMatch[1] !== '0'
     : defaultVisibilityFallback(versionId);
 
   const exceptions = parseComponentList(visibilityMatch[0], 'Exceptions');

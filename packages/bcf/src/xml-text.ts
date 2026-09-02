@@ -82,17 +82,49 @@ export function unescapeXml(str: string): string {
  * 3.0 archive, since its `<Labels>` is immediately followed by a nested `<`,
  * not text. This walks each `<Labels>` block and prefers nested `<Label>`
  * children when present, falling back to the 2.1 direct-text shape.
+ *
+ * Label content goes through {@link decodeXmlCharData} rather than a bare
+ * `[^<]*` match, so a CDATA label (`<Label><![CDATA[Urgent & Important]]>
+ * </Label>` — whose content starts with `<`) is read instead of dropped.
  */
 export function parseLabels(topicContent: string): string[] {
   const labels: string[] = [];
   for (const block of topicContent.matchAll(/<Labels>([\s\S]*?)<\/Labels>/g)) {
     const inner = block[1];
-    const nested = [...inner.matchAll(/<Label>([^<]*)<\/Label>/g)];
+    const nested = [...inner.matchAll(/<Label>([\s\S]*?)<\/Label>/g)];
     if (nested.length > 0) {
-      for (const label of nested) labels.push(unescapeXml(label[1]));
-    } else if (inner.length > 0 && !inner.includes('<')) {
-      labels.push(unescapeXml(inner));
+      for (const label of nested) {
+        const text = decodeXmlCharData(label[1]);
+        if (text !== null) labels.push(text);
+      }
+    } else {
+      const text = decodeXmlCharData(inner);
+      if (text !== null && text.length > 0) labels.push(text);
     }
   }
   return labels;
+}
+
+/**
+ * Decode element content that should be XML character data, tolerating CDATA
+ * sections.
+ *
+ * Per the XML spec, CDATA content is literal — `&amp;` inside CDATA stays
+ * `&amp;` — while text outside CDATA is entity-decoded via
+ * {@link unescapeXml}. Returns `null` when the content holds real markup (a
+ * `<` outside any CDATA section): that is child elements, not character
+ * data, and the caller should not treat it as a text value.
+ */
+function decodeXmlCharData(raw: string): string | null {
+  let out = '';
+  let last = 0;
+  for (const m of raw.matchAll(/<!\[CDATA\[([\s\S]*?)\]\]>/g)) {
+    const text = raw.slice(last, m.index);
+    if (text.includes('<')) return null;
+    out += unescapeXml(text) + m[1];
+    last = m.index + m[0].length;
+  }
+  const tail = raw.slice(last);
+  if (tail.includes('<')) return null;
+  return out + unescapeXml(tail);
 }

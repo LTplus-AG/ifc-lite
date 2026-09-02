@@ -379,6 +379,61 @@ describe('BCF Reader - buildingSMART Test Files', () => {
       const topic = Array.from(project.topics.values())[0];
       expect(topic.labels).toEqual(['Structural', 'Urgent & Important']);
     });
+
+    it('reads a CDATA label without dropping it or entity-decoding its content', async () => {
+      // A CDATA section starts with `<`, so a label content regex of
+      // `[^<]*` rejects it outright and the label vanishes. Per the XML
+      // spec CDATA content is literal: `&amp;` inside CDATA must stay
+      // `&amp;`, while text outside CDATA is still entity-decoded.
+      const markup = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<Markup>',
+        '  <Topic Guid="topic-1" TopicType="Issue" TopicStatus="Open">',
+        '    <Title>CDATA labels</Title>',
+        '    <Labels>',
+        '      <Label><![CDATA[Urgent & Important]]></Label>',
+        '      <Label>plain &amp; decoded <![CDATA[literal &amp; kept]]></Label>',
+        '    </Labels>',
+        '  </Topic>',
+        '</Markup>',
+      ].join('\n');
+
+      const zip = new JSZip();
+      zip.file('bcf.version', '<?xml version="1.0"?><Version VersionId="3.0"></Version>');
+      zip.file('topic-1/markup.bcf', markup);
+      const buffer = await zip.generateAsync({ type: 'arraybuffer' });
+
+      const project = await readBCF(buffer);
+      const topic = Array.from(project.topics.values())[0];
+      expect(topic.labels).toEqual([
+        'Urgent & Important',
+        'plain & decoded literal &amp; kept',
+      ]);
+    });
+
+    it('reads a CDATA label in the BCF 2.1 direct-text shape', async () => {
+      // The 2.1 fallback path guarded on `!inner.includes('<')`, so a
+      // 2.1 `<Labels><![CDATA[...]]></Labels>` was dropped the same way.
+      const markup = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<Markup>',
+        '  <Topic Guid="topic-1" TopicType="Issue" TopicStatus="Open">',
+        '    <Title>2.1 CDATA label</Title>',
+        '    <Labels><![CDATA[Cost < Budget]]></Labels>',
+        '    <Labels>Structural</Labels>',
+        '  </Topic>',
+        '</Markup>',
+      ].join('\n');
+
+      const zip = new JSZip();
+      zip.file('bcf.version', '<?xml version="1.0"?><Version VersionId="2.1"></Version>');
+      zip.file('topic-1/markup.bcf', markup);
+      const buffer = await zip.generateAsync({ type: 'arraybuffer' });
+
+      const project = await readBCF(buffer);
+      const topic = Array.from(project.topics.values())[0];
+      expect(topic.labels).toEqual(['Cost < Budget', 'Structural']);
+    });
   });
 
   describe('resource caps (zip-bomb guard)', () => {
@@ -735,6 +790,51 @@ describe('BCF Reader - buildingSMART Test Files', () => {
 
       expect(visibility).toBeDefined();
       expect(visibility?.defaultVisibility).toBe(true);
+      expect(visibility?.exceptions).toHaveLength(1);
+    });
+
+    it('reads the xs:boolean numeral form DefaultVisibility="0" as false, not inverted to true', async () => {
+      // xs:boolean's lexical space is {true, false, 1, 0}. Comparing only
+      // against the literal 'false' read a third-party file's
+      // DefaultVisibility="0" as TRUE — inverting the viewpoint from
+      // "show only the exceptions" to "show everything".
+      const topicGuid = '55555555-5555-5555-5555-555555555555';
+      const vpGuid = '66666666-6666-6666-6666-666666666666';
+      const zip = new JSZip();
+      zip.file('bcf.version', '<?xml version="1.0"?><Version VersionId="2.1"/>');
+      zip.file(
+        `${topicGuid}/markup.bcf`,
+        `<?xml version="1.0" encoding="UTF-8"?>
+<Markup>
+  <Topic Guid="${topicGuid}" TopicType="Issue" TopicStatus="Open">
+    <Title>Numeral xs:boolean</Title>
+  </Topic>
+  <Viewpoints Guid="${vpGuid}">
+    <Viewpoint>viewpoint.bcfv</Viewpoint>
+  </Viewpoints>
+</Markup>`
+      );
+      zip.file(
+        `${topicGuid}/viewpoint.bcfv`,
+        `<?xml version="1.0" encoding="UTF-8"?>
+<VisualizationInfo Guid="${vpGuid}">
+  <Components>
+    <Visibility DefaultVisibility="0">
+      <Exceptions>
+        <Component IfcGuid="1RvVRIfDrAmhnJqDD6mvGD"/>
+      </Exceptions>
+    </Visibility>
+  </Components>
+</VisualizationInfo>`
+      );
+      const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+
+      const project = await readBCF(buffer);
+      const topic = [...project.topics.values()][0];
+      const visibility = topic.viewpoints[0].components?.visibility;
+
+      expect(visibility).toBeDefined();
+      expect(visibility?.defaultVisibility).toBe(false);
       expect(visibility?.exceptions).toHaveLength(1);
     });
   });

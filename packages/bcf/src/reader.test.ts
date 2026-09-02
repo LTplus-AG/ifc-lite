@@ -328,6 +328,57 @@ describe('BCF Reader - buildingSMART Test Files', () => {
       expect(topic.comments.length).toBe(1);
       expect(topic.comments[0].comment).toBe('vendor-followed comment');
     });
+
+    it('reads repeated <Labels>text</Labels> elements (BCF 2.1 shape)', async () => {
+      const markup = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<Markup>',
+        '  <Topic Guid="topic-1" TopicType="Issue" TopicStatus="Open">',
+        '    <Title>2.1 labels</Title>',
+        '    <Labels>Structural</Labels>',
+        '    <Labels>Urgent &amp; Important</Labels>',
+        '  </Topic>',
+        '</Markup>',
+      ].join('\n');
+
+      const zip = new JSZip();
+      zip.file('bcf.version', '<?xml version="1.0"?><Version VersionId="2.1"></Version>');
+      zip.file('topic-1/markup.bcf', markup);
+      const buffer = await zip.generateAsync({ type: 'arraybuffer' });
+
+      const project = await readBCF(buffer);
+      const topic = Array.from(project.topics.values())[0];
+      expect(topic.labels).toEqual(['Structural', 'Urgent & Important']);
+    });
+
+    it('reads a <Labels><Label>...</Label></Labels> container (BCF 3.0 shape)', async () => {
+      // BCF 3.0's markup.xsd wraps repeated <Label> children in ONE <Labels>
+      // container, unlike 2.1's repeated <Labels>text</Labels> element. A
+      // reader that only matches the 2.1 shape sees `<Labels><Label>` (a `<`
+      // immediately after the opening tag, not text) and silently drops
+      // every label in a conformant 3.0 archive.
+      const markup = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<Markup>',
+        '  <Topic Guid="topic-1" TopicType="Issue" TopicStatus="Open">',
+        '    <Title>3.0 labels</Title>',
+        '    <Labels>',
+        '      <Label>Structural</Label>',
+        '      <Label>Urgent &amp; Important</Label>',
+        '    </Labels>',
+        '  </Topic>',
+        '</Markup>',
+      ].join('\n');
+
+      const zip = new JSZip();
+      zip.file('bcf.version', '<?xml version="1.0"?><Version VersionId="3.0"></Version>');
+      zip.file('topic-1/markup.bcf', markup);
+      const buffer = await zip.generateAsync({ type: 'arraybuffer' });
+
+      const project = await readBCF(buffer);
+      const topic = Array.from(project.topics.values())[0];
+      expect(topic.labels).toEqual(['Structural', 'Urgent & Important']);
+    });
   });
 
   describe('resource caps (zip-bomb guard)', () => {

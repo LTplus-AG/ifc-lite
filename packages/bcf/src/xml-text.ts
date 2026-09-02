@@ -70,3 +70,29 @@ export function unescapeXml(str: string): string {
     },
   );
 }
+
+/**
+ * Extract topic `<Labels>` values, tolerant of both BCF markup.xsd shapes.
+ *
+ * BCF 2.1 repeats the label element itself: `<Labels>Structural</Labels>
+ * <Labels>Urgent</Labels>`. BCF 3.0 instead wraps ONE `<Labels>` container
+ * around repeated `<Label>` children: `<Labels><Label>Structural</Label>
+ * <Label>Urgent</Label></Labels>`. A regex that only matched the 2.1 shape
+ * (immediate non-tag text) silently dropped every label from a conformant
+ * 3.0 archive, since its `<Labels>` is immediately followed by a nested `<`,
+ * not text. This walks each `<Labels>` block and prefers nested `<Label>`
+ * children when present, falling back to the 2.1 direct-text shape.
+ */
+export function parseLabels(topicContent: string): string[] {
+  const labels: string[] = [];
+  for (const block of topicContent.matchAll(/<Labels>([\s\S]*?)<\/Labels>/g)) {
+    const inner = block[1];
+    const nested = [...inner.matchAll(/<Label>([^<]*)<\/Label>/g)];
+    if (nested.length > 0) {
+      for (const label of nested) labels.push(unescapeXml(label[1]));
+    } else if (inner.length > 0 && !inner.includes('<')) {
+      labels.push(unescapeXml(inner));
+    }
+  }
+  return labels;
+}

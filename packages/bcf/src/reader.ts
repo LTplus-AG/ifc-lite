@@ -10,7 +10,7 @@
 
 import JSZip from 'jszip';
 import { parseComponents } from './reader-components.js';
-import { extractElement, unescapeXml } from './xml-text.js';
+import { extractElement, unescapeXml, parseLabels } from './xml-text.js';
 import type {
   BCFProject,
   BCFTopic,
@@ -357,12 +357,8 @@ async function readTopic(zip: JSZip, topicFolder: string, budget: ExpansionBudge
   const assignedTo = extractElement(topicContent, 'AssignedTo');
   const stage = extractElement(topicContent, 'Stage');
 
-  // Extract labels
-  const labels: string[] = [];
-  const labelMatches = topicContent.matchAll(/<Labels>([^<]+)<\/Labels>/g);
-  for (const match of labelMatches) {
-    labels.push(unescapeXml(match[1]));
-  }
+  // Extract labels (tolerant of both BCF 2.1 and 3.0 markup.xsd shapes; see parseLabels)
+  const labels = parseLabels(topicContent);
 
   // Extract BIM snippet
   const bimSnippet = extractBimSnippet(topicContent);

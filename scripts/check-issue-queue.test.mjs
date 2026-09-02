@@ -607,8 +607,14 @@ test('the SHIPPED config is the one the gate validates', () => {
   assert.equal(SHIPPED.requireLabelAuthority, true, 'ships with the self-apply rule ARMED');
   assert.ok(SHIPPED.labelAuthorities.length > 0);
   assert.ok(
-    SHIPPED.mode === 'advisory' || SHIPPED.mode === 'enforcing',
-    `shipped mode must be a valid rollout state, got ${JSON.stringify(SHIPPED.mode)}`,
+    SHIPPED.mode === 'enforcing',
+    `the shipped mode must be \`enforcing\`, got ${JSON.stringify(SHIPPED.mode)}. ` +
+      'This was `advisory || enforcing`, which both sides of the rollout satisfy -- so ' +
+      'reverting the flip failed NOTHING, and the one thing the enforcing change exists to ' +
+      'set was the one thing no test held. A bad merge resolution could have undone it ' +
+      'silently. If the gate is ever deliberately returned to advisory, change this ' +
+      'assertion in the same commit, so the rollback is a decision someone made rather ' +
+      'than a diff nobody noticed.',
   );
 });
 

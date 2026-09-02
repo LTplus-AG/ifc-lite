@@ -1573,6 +1573,7 @@
     "StepExporter: class",
     "Vec3: type",
     "applySimplifiedGeometry: function",
+    "collectGeoreferencingEntities: function",
     "collectReferencedEntityIds: function",
     "collectRelatedEntities: function",
     "collectStyleEntities: function",

@@ -36,14 +36,12 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ByokTrustDiagram } from './ByokTrustDiagram';
 import { ByokCredentialForm } from './ByokCredentialForm';
+import { CLIENT_FILES, DEFAULT_REQUEST_SOURCE } from './byok-audit-sources';
 import { getByokModelsForSource } from '@/lib/llm/models';
 import { getApiKeys, subscribeApiKeys, type ApiKeyConfig } from '@/services/api-keys';
 import { type BYOKProvider } from '@/lib/llm/clipboard-detect';
 
 const REPO_BLOB = 'https://github.com/LTplus-AG/ifc-lite/blob/main';
-
-/** Where a BYOK key is sent from unless the surface says otherwise. */
-const DEFAULT_REQUEST_SOURCE = 'lib/llm/stream-direct.ts';
 
 const PROVIDER_META: Record<BYOKProvider, {
   label: string;
@@ -53,12 +51,6 @@ const PROVIDER_META: Record<BYOKProvider, {
   consoleUrl: string;
   consoleLabel: string;
   pricingHint: string;
-  /**
-   * Files the key passes through before the request is built, relative to
-   * `apps/viewer/src`. The file that sends it is per-surface — see
-   * `requestSource` — so it is not listed here.
-   */
-  clientFiles: string[];
 }> = {
   anthropic: {
     label: 'Anthropic',
@@ -68,7 +60,6 @@ const PROVIDER_META: Record<BYOKProvider, {
     consoleUrl: 'https://console.anthropic.com/settings/keys',
     consoleLabel: 'console.anthropic.com',
     pricingHint: 'Pay-as-you-go on Anthropic billing. New accounts get $5 free credit.',
-    clientFiles: ['lib/llm/anthropic-client.ts'],
   },
   openai: {
     label: 'OpenAI',
@@ -78,7 +69,6 @@ const PROVIDER_META: Record<BYOKProvider, {
     consoleUrl: 'https://platform.openai.com/api-keys',
     consoleLabel: 'platform.openai.com',
     pricingHint: 'OpenAI requires prepaid credits or a payment method on your OpenAI account.',
-    clientFiles: [],
   },
 };
 
@@ -216,7 +206,7 @@ function ProviderTab({ provider, savedKey, savedWorkspaceId = '', requestSource 
         </TrustBullet>
         <TrustBullet>
           The whole BYOK code path is short enough to read.{' '}
-          {[...meta.clientFiles, requestSource].map((file, i) => (
+          {[...CLIENT_FILES[provider], requestSource].map((file, i) => (
             <span key={file}>
               {i > 0 && ' and '}
               <a

@@ -6,7 +6,7 @@ Let a BYOK Anthropic key that spans several workspaces authenticate at all.
 
 Anthropic keys come in two shapes. One is created against a single workspace and carries that binding itself. The other — an identity-linked key, personal or service-account, with access to more than one workspace — carries no binding, so the API cannot tell which workspace a request acts in and rejects every one of them:
 
-```
+```text
 400 anthropic-workspace-id is required when authenticating with an identity-linked
 API key; send the id of the workspace this request acts in.
 ```

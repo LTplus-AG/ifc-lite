@@ -43,6 +43,7 @@ import {
 } from '@/services/playground-model';
 import { getByokModelsForSource } from '@/lib/llm/models';
 import { ByokKeyModal } from '@/components/viewer/chat/ByokKeyModal';
+import { PLAYGROUND_REQUEST_SOURCE } from '@/components/viewer/chat/byok-audit-sources';
 import {
   anthropicToolDefinitions,
   dispatch,
@@ -336,7 +337,7 @@ export function PlaygroundChat({
         anthropicModels={anthropicModels}
         onChangeModel={setPlaygroundModel}
       />
-      <ByokKeyModal open={keyModalOpen} onOpenChange={setKeyModalOpen} initialProvider="anthropic" requestSource={{ anthropic: 'components/mcp/PlaygroundChat.tsx' }} />
+      <ByokKeyModal open={keyModalOpen} onOpenChange={setKeyModalOpen} initialProvider="anthropic" requestSource={PLAYGROUND_REQUEST_SOURCE} />
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-5">
         {messages.length === 0 ? (

@@ -950,20 +950,24 @@ function propagateOpeningExclusions(
 }
 
 // ---------------------------------------------------------------------------
-// Style entity collection (reverse pass)
+// Style / layer entity collection (reverse pass)
 // ---------------------------------------------------------------------------
 
 /**
- * Collect style entities (IFCSTYLEDITEM, etc.) that reference geometry already
- * in the closure, then transitively follow their style references.
+ * Collect style and presentation-layer entities (IFCSTYLEDITEM,
+ * IFCSTYLEDREPRESENTATION, IFCPRESENTATIONLAYERASSIGNMENT) that reference
+ * geometry already in the closure, then transitively follow their own
+ * references.
  *
  * In IFC STEP, IFCSTYLEDITEM references a geometry RepresentationItem, but
- * nothing references the StyledItem back. So the forward closure walk misses
- * them entirely. This function does a reverse pass using the byType index:
- * for each styled item, check if any referenced ID is in the closure. If yes,
- * add the styled item and walk its style chain into the closure.
+ * nothing references the StyledItem back — and IFCPRESENTATIONLAYERASSIGNMENT
+ * is the same shape: it names the representation/items assigned to a layer
+ * (`AssignedItems`) but nothing points back at the assignment itself. So the
+ * forward closure walk misses both entirely. This function does one reverse
+ * pass using the byType index: for each candidate, check if any referenced ID
+ * is in the closure. If yes, add it and walk its own reference chain in.
  *
- * Uses byType for O(styledItems) instead of O(allEntities), and byte-level
+ * Uses byType for O(candidates) instead of O(allEntities), and byte-level
  * scanning for #ID extraction.
  *
  * Must be called AFTER collectReferencedEntityIds so the closure is complete.
@@ -997,11 +1001,16 @@ export function collectStyleEntities(
     }
   };
 
-  // Use byType index for direct lookup — O(styledItems) not O(allEntities)
+  // Use byType index for direct lookup — O(candidates) not O(allEntities)
   const styledItemIds = entityIndex.byType.get('IFCSTYLEDITEM') ?? [];
   const styledRepIds = entityIndex.byType.get('IFCSTYLEDREPRESENTATION') ?? [];
+  const layerAssignmentIds = entityIndex.byType.get('IFCPRESENTATIONLAYERASSIGNMENT') ?? [];
+  // IFCPRESENTATIONLAYERWITHSTYLE is a subtype (adds LayerOn/LayerFrozen/
+  // LayerBlocked/LayerStyles) indexed under its own STEP type name, not
+  // IFCPRESENTATIONLAYERASSIGNMENT's — a separate byType lookup, same rescue.
+  const layerWithStyleIds = entityIndex.byType.get('IFCPRESENTATIONLAYERWITHSTYLE') ?? [];
 
-  for (const ids of [styledItemIds, styledRepIds]) {
+  for (const ids of [styledItemIds, styledRepIds, layerAssignmentIds, layerWithStyleIds]) {
     for (const expressId of ids) {
       if (closure.has(expressId)) continue;
 

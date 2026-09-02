@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import {
   PRODUCT_TYPES,
   collectReferencedEntityIds,
+  collectStyleEntities,
   getVisibleEntityIds,
 } from './reference-collector.js';
 import { EMPTY_SOURCE_BYTES, type IfcDataStore } from '@ifc-lite/parser';
@@ -708,5 +709,76 @@ describe('product-type classification vs the generated IFC schema', () => {
     expect(hidden.roots.has(3)).toBe(false);
     expect(hidden.hiddenProductIds.has(3)).toBe(true);
     expect(hidden.roots.has(4)).toBe(true);
+  });
+});
+
+describe('collectStyleEntities rescues IFCPRESENTATIONLAYERASSIGNMENT', () => {
+  /**
+   * A subset-export closure the forward walk from a product cannot reach:
+   * IfcPresentationLayerAssignment.AssignedItems (#20 -> #10, the shape
+   * representation already in the closure) is the only reference between the
+   * two, and it points the wrong direction for a forward walk to find —
+   * exactly the shape #3696 fixed for IfcMapConversion, this time for a
+   * non-`IFCREL*` entity `getVisibleEntityIds` cannot root unconditionally.
+   */
+  function buildIndex(entries: Array<[number, string, string]>) {
+    const { source, entityIndex } = buildTestData(entries);
+    const byType = new Map<string, number[]>();
+    for (const [id, type] of entries) {
+      const list = byType.get(type);
+      if (list) list.push(id);
+      else byType.set(type, [id]);
+    }
+    return { source, byId: entityIndex, byType };
+  }
+
+  it('rescues IFCPRESENTATIONLAYERASSIGNMENT referencing a shape already in the closure', () => {
+    const entries: Array<[number, string, string]> = [
+      [10, 'IFCSHAPEREPRESENTATION', "#10=IFCSHAPEREPRESENTATION(#1,'Body','SweptSolid',(#11));"],
+      [11, 'IFCEXTRUDEDAREASOLID', '#11=IFCEXTRUDEDAREASOLID(#12,#13,#14,3.);'],
+      [20, 'IFCPRESENTATIONLAYERASSIGNMENT', "#20=IFCPRESENTATIONLAYERASSIGNMENT('Layer_Walls',$,(#10),$);"],
+    ];
+    const { source, byId, byType } = buildIndex(entries);
+
+    // RED: the closure has the shape but not the layer assignment naming it —
+    // nothing in the closure points back at #20.
+    const closure = new Set([10, 11]);
+    expect(closure.has(20)).toBe(false);
+
+    collectStyleEntities(closure, source, { byId, byType });
+
+    // GREEN: rescued by the reverse pass.
+    expect(closure.has(20)).toBe(true);
+  });
+
+  it('rescues the IFCPRESENTATIONLAYERWITHSTYLE subtype the same way', () => {
+    const entries: Array<[number, string, string]> = [
+      [10, 'IFCSHAPEREPRESENTATION', "#10=IFCSHAPEREPRESENTATION(#1,'Body','SweptSolid',(#11));"],
+      [11, 'IFCEXTRUDEDAREASOLID', '#11=IFCEXTRUDEDAREASOLID(#12,#13,#14,3.);'],
+      [21, 'IFCPRESENTATIONLAYERWITHSTYLE', "#21=IFCPRESENTATIONLAYERWITHSTYLE('Layer_Styled',$,(#10),$,.T.,.F.,.F.,$);"],
+    ];
+    const { source, byId, byType } = buildIndex(entries);
+    const closure = new Set([10, 11]);
+
+    collectStyleEntities(closure, source, { byId, byType });
+
+    expect(closure.has(21)).toBe(true);
+  });
+
+  it('does not rescue a layer assignment naming only entities outside the closure (control)', () => {
+    const entries: Array<[number, string, string]> = [
+      [10, 'IFCSHAPEREPRESENTATION', "#10=IFCSHAPEREPRESENTATION(#1,'Body','SweptSolid',(#11));"],
+      [11, 'IFCEXTRUDEDAREASOLID', '#11=IFCEXTRUDEDAREASOLID(#12,#13,#14,3.);'],
+      [99, 'IFCSHAPEREPRESENTATION', "#99=IFCSHAPEREPRESENTATION(#1,'Body','SweptSolid',(#98));"],
+      [20, 'IFCPRESENTATIONLAYERASSIGNMENT', "#20=IFCPRESENTATIONLAYERASSIGNMENT('Layer_Elsewhere',$,(#99),$);"],
+    ];
+    const { source, byId, byType } = buildIndex(entries);
+    // Closure excludes #99 — the layer assignment names only entities
+    // that never made it into this export's closure, so it must stay out too.
+    const closure = new Set([10, 11]);
+
+    collectStyleEntities(closure, source, { byId, byType });
+
+    expect(closure.has(20)).toBe(false);
   });
 });

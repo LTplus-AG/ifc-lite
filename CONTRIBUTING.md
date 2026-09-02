@@ -155,33 +155,27 @@ the required set while the lane is new.
 
 ### Why CodeRabbit sometimes says "Review skipped"
 
-When `Review posted` confirms a review reached your head, the workflow adds an
-`llm-reviewed` label and clears it on every new commit.
-
-**CodeRabbit does not currently stand down for it.** The rule that made it do so
-is commented out in `.coderabbit.yaml` under a block dated 2026-09-01, so both
-reviewers see every PR today. If you do see `Review skipped: auto reviews are
+**The Claude-lane stand-down is currently OFF.** `.coderabbit.yaml` carries the
+`!llm-reviewed` rule commented out under a block dated 2026-09-01, so both
+reviewers look at every PR today. If you see `Review skipped: auto reviews are
 limited based on label configuration`, that is the separate `!low-risk` rule,
-which is live. This section described the suspended behaviour as current; check
-`.coderabbit.yaml` rather than this paragraph. The label is cleared on every new commit, so a
-fresh push is reviewed again.
+which is live.
 
-**It usually does not apply to the commit you just pushed.** CodeRabbit reads
-labels when your push arrives; the label is cleared on that push and only goes
-back on minutes later, once the review is verified. So the skip you see is
-normally on a *later* trigger, and the common case is both reviewers looking at
-a fresh commit. The saving shows up over a PR's life, not on every push.
+Check `.coderabbit.yaml` rather than this paragraph — it is the fact, and this
+section has been wrong about it before.
 
-CodeRabbit also stands down **only when the label is actually present**, and it
-is not always applied:
+The rest of this section describes how the stand-down behaves **when it is
+re-enabled**, because the label machinery is live either way:
 
-- A `nothing-to-review` pass does not get it. Nothing read your diff, so nothing
-  may stand down on that basis — CodeRabbit reviews you normally.
-- The label step is allowed to fail without failing your PR (a fork's token
-  cannot write labels). It prints whether the label went on, so the run log
-  tells you which happened.
-
-No label means CodeRabbit reviews the PR.
+- When `Review posted` confirms a review reached your head, the workflow *tries*
+  to add an `llm-reviewed` label, and clears it on every new commit. It only
+  tries: a `nothing-to-review` pass writes `covered=false` and no label is added,
+  and a fork's token cannot write labels at all. The run log says which happened.
+- It would not usually apply to the commit you just pushed. CodeRabbit reads
+  labels when your push arrives; the label is cleared on that push and only goes
+  back on minutes later, once the review is verified. The saving would show up
+  over a PR's life, not on every push.
+- No label means CodeRabbit reviews the PR.
 
 Fork PRs never get the Claude lane at all — a fork's token cannot post — so they
 stay on CodeRabbit and `Review posted` will not fail them.

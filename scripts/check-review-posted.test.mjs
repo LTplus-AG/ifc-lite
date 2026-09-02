@@ -739,7 +739,18 @@ test('THE LABEL NAME IS ONE NAME: the workflow that writes it and the config tha
   // matched -- the same "asserts less than its name claims" shape this session
   // has already found twice.
   const labelPaths = [...wf.matchAll(/\/labels\/([A-Za-z0-9._-]+)/g)].map((m) => m[1]);
-  assert.ok(labelPaths.length > 0, 'the workflow must clear the label it applies');
+  // BOTH clear paths, counted. `> 0` asserted less than its own message: deleting
+  // one of the two DELETE steps outright left this green, mutation-proven. That is
+  // the second time this exact test has asserted less than it claims -- the first
+  // was `includes` passing while a path pointed elsewhere. The workflow clears the
+  // label on a new head AND when the gate reports not-covered; losing either
+  // leaves the label stuck on a commit nothing vouches for.
+  assert.equal(
+    labelPaths.length,
+    2,
+    `the workflow has ${labelPaths.length} \`/labels/<name>\` paths; it needs both clear steps ` +
+      '(new-head and not-covered), so a count other than two means one was lost or added silently',
+  );
   for (const p of labelPaths) {
     assert.equal(p, label, `a label path targets \`${p}\` while the workflow applies \`${label}\``);
   }

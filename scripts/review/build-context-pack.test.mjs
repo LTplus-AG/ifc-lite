@@ -304,7 +304,13 @@ test('THE REAL PROMPT stays under the ceiling whenever the DIFF alone does', () 
   // That is pre-existing -- the lane sent diffs that size long before a pack
   // existed -- and the pack's contract is only that it never makes things worse.
   const rubric = readFileSync(join(HERE, 'rubric.md'), 'utf8');
-  const fileCount = 400;
+  // A THOUSAND, not four hundred. At 400 the envelope reserve stops being
+  // load-bearing -- the budget re-hits the MAX_PACK_BYTES clamp and the prompt
+  // fits whether or not a byte is reserved per file -- so BOTH envelope
+  // constants could be zeroed with this suite green. The reserve exists because
+  // a 1,000-file diff once shipped a 765,620-byte prompt; the fixture has to
+  // reach the size that produced it.
+  const fileCount = 1_000;
   const diffTarget = 250_000;
   const per = Math.floor(diffTarget / fileCount);
   const files = Array.from({ length: fileCount }, (_, i) => ({
@@ -327,11 +333,67 @@ test('THE REAL PROMPT stays under the ceiling whenever the DIFF alone does', () 
   );
 });
 
-test('when the diff ALONE exceeds the ceiling the pack contributes nothing', () => {
-  // The pack must never be the reason a prompt overruns. On a diff that is
-  // already too big it yields entirely rather than adding to the overrun.
-  assert.equal(packBudgetFor(MAX_PROMPT_BYTES + 1, 10), 0);
-  assert.equal(packBudgetFor(600 * 1024, 500), 0, 'a maximal diff leaves the pack nothing');
+test('THE BASE ENVELOPE RESERVE is load-bearing too, on a FEW-file diff', () => {
+  // The 1,000-file case above guards PROMPT_PER_FILE_BYTES, because the per-file
+  // term dominates there -- and it leaves PROMPT_BASE_OVERHEAD_BYTES free to be
+  // zeroed with the suite green. The base only bites when there are few headers
+  // and the diff is near the ceiling, so that is what this builds: the rubric is
+  // ~10.6 KB of the reserve, and it is present on every single review.
+  const rubric = readFileSync(join(HERE, 'rubric.md'), 'utf8');
+  const fileCount = 10;
+  const diffTarget = 400_000;
+  const per = Math.floor(diffTarget / fileCount);
+  const files = Array.from({ length: fileCount }, (_, i) => ({
+    path: `packages/a/f${i}.ts`,
+    patch: `@@ -1,1 +1,2 @@\n+${'x'.repeat(per - 20)}\n`,
+  }));
+  const patchBytes = files.reduce((n, f) => n + Buffer.byteLength(f.patch, 'utf8'), 0);
+  assert.ok(patchBytes < MAX_PROMPT_BYTES, 'fixture precondition: the diff itself must fit');
+  const input = { headSha: 'a'.repeat(40), files, unreviewable: [] };
+  input.contextPack = buildPack(input, {
+    baseRef: 'HEAD',
+    body: 'B'.repeat(60_000),
+    patchBytes,
+    exec: (_cmd, args) => (args[0] === 'show' ? 'y'.repeat(4_000) : ''),
+  });
+  const bytes = Buffer.byteLength(buildPrompt(rubric, input), 'utf8');
+  assert.ok(
+    bytes <= MAX_PROMPT_BYTES,
+    `the assembled prompt is ${bytes} bytes, over the ${MAX_PROMPT_BYTES} ceiling by ${bytes - MAX_PROMPT_BYTES}`,
+  );
+});
+
+test('when the diff ALONE exceeds the ceiling the pack ADDS NOTHING to the prompt', () => {
+  // Measured, because the previous version of this test asserted only
+  // `packBudgetFor(...) === 0` while its comment made a claim about the assembled
+  // prompt -- re-committing, one test later, exactly the "true by construction of
+  // packBudgetFor and never touching buildPrompt" sin the test above it was
+  // written to condemn.
+  const rubric = readFileSync(join(HERE, 'rubric.md'), 'utf8');
+  const files = Array.from({ length: 20 }, (_, i) => ({
+    path: `packages/a/f${i}.ts`,
+    patch: `@@ -1,1 +1,2 @@\n+${'x'.repeat(30_000)}\n`,
+  }));
+  const patchBytes = files.reduce((n, f) => n + Buffer.byteLength(f.patch, 'utf8'), 0);
+  assert.ok(patchBytes > MAX_PROMPT_BYTES, 'fixture precondition: this diff must already be over');
+  const input = { headSha: 'a'.repeat(40), files, unreviewable: [] };
+  const withPack = { ...input };
+  withPack.contextPack = buildPack(input, {
+    baseRef: 'HEAD',
+    body: 'B'.repeat(60_000),
+    patchBytes,
+    exec: (_cmd, args) => (args[0] === 'show' ? 'y'.repeat(4_000) : ''),
+  });
+  const pack = withPack.contextPack;
+  assert.equal(pack.siblings.length, 0);
+  assert.equal(pack.fileEvidence.length, 0);
+  assert.equal(pack.body, null, 'not even the description, once the diff is already over');
+
+  // The prompt is over the ceiling either way -- that is the pre-existing patch
+  // cap, filed as #3679 -- but the pack must not be what put it there.
+  const bare = Buffer.byteLength(buildPrompt(rubric, input), 'utf8');
+  const full = Buffer.byteLength(buildPrompt(rubric, withPack), 'utf8');
+  assert.ok(full - bare < 200, `the pack added ${full - bare} bytes to an already-oversized prompt`);
 });
 
 test('a near-maximal diff shrinks the pack rather than the review', () => {

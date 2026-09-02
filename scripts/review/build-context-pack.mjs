@@ -62,15 +62,29 @@ export const MAX_PACK_BYTES = 160_000;
  * at ~298k input tokens, or 1.95 bytes per token. 700,000 bytes is therefore
  * ~360k tokens -- past any context window, and the arithmetic said it was fine.
  *
- * 450,000 keeps the total near the 421 KB that demonstrably works, while leaving
- * a full pack for the small and medium PRs that are nearly all of them: a 50 KB
- * diff still gets the whole 160 KB, and only a near-maximal diff squeezes the
- * pack down. The diff is the subject and never yields; the pack is the optional
- * half and always does.
+ * 450,000 keeps the total near the 421 KB that demonstrably works. A 50 KB diff
+ * still gets the whole 160 KB pack, which covers nearly every PR -- but be exact
+ * about the tail, because "only a near-maximal diff squeezes it" was wrong: the
+ * pack starts shrinking at ~257 KB of diff and reaches ZERO at ~413 KB (measured
+ * at 50 changed files; the exact points move with file count), and the
+ * largest PR observed on this repo is ~427 KB. So the biggest real PRs get NO
+ * pack, not a smaller one. That is the correct answer at that size -- 421 KB of
+ * diff alone is already what demonstrably works -- but it is a cliff, not a
+ * gradient, and the PRs it applies to are the ones where a second site is most
+ * likely to hide.
  *
- * Cost matters too, and is why this is not tuned to the maximum that merely
- * works. The 580 KB prompt cost $1.49 and took 5.2 minutes to complete locally.
- * At this repository's PR volume that is not a lane, it is a budget line.
+ * WHAT THE EVIDENCE DOES AND DOES NOT SHOW. #3668 passed at 421 KB and failed at
+ * 580 KB on consecutive runs of the same PR, which pins the cause to the pack.
+ * But the same 580 KB prompt COMPLETED when run locally, metering ~298k input
+ * tokens -- so the mechanism is not simply "too many bytes for any model". The
+ * runner's credential and the local CLI evidently do not resolve to the same
+ * context limit, and this comment does not know which differs. What is measured
+ * is the correlation and the token ratio; the rest is unproven and is written
+ * here as unproven.
+ *
+ * Cost is the other reason not to tune to the largest value that merely works:
+ * that 580 KB prompt cost $1.49 and took 5.2 minutes. At this repository's PR
+ * volume that is a budget line, not a lane.
  */
 export const MAX_PROMPT_BYTES = 450_000;
 
@@ -94,6 +108,11 @@ export const PROMPT_BASE_OVERHEAD_BYTES = 24_000;
  * files-reviewed list. Headers dominate the envelope on a large PR -- a flat
  * reserve of 60,000 left a 1,000-file diff 8,050 bytes over the ceiling, which
  * the measured test caught and the arithmetic one never could.
+ *
+ * BOTH terms are guarded, by two different fixtures, and it takes two: the
+ * 1,000-file case pins the per-file term (which dominates there) and cannot see
+ * the base at all, while a 10-file 400 KB case pins the base. Zeroing either
+ * constant fails exactly one of them.
  */
 export const PROMPT_PER_FILE_BYTES = 70;
 

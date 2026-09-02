@@ -255,9 +255,6 @@ export function EmbedViewer() {
   // Then type visibility, plus the host's ?hideTypes=: ARBITRARY IFC class
   // names (the SDK ships `hideTypes?: string[]`), so not a `typeVisibility`
   // toggle but a case-folded membership test merged into that same filter pass.
-  // Then type visibility, plus the host's ?hideTypes=: ARBITRARY IFC class
-  // names (the SDK ships `hideTypes?: string[]`), so not a `typeVisibility`
-  // toggle but a case-folded membership test merged into that same filter pass.
   const hiddenTypes = useMemo(() => toHiddenTypeSet(hideTypes), [hideTypes]);
   const { geometry: filteredGeometry, contentVersion } = useModelViewGeometry(
     mergedGeometryResult,

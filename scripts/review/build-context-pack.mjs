@@ -344,9 +344,21 @@ export const MAX_SEARCH_KEYS = 150;
 export function siblingSites(key, changedPaths, ref, { cwd = process.cwd(), exec = execFileSync, keep = 6 } = {}) {
   // `git grep <pattern> <ref>` searches that COMMIT'S TREE. No working tree, no
   // checkout, no dependency on ripgrep being installed on the runner. It also
-  // makes the security posture stricter rather than weaker: the base tree is
-  // read out of the object database, so there is never a moment where PR
-  // content sits on disk for a config-autoloading tool to find.
+  // makes the security posture stricter rather than weaker: the tree is read out
+  // of the object database, so there is never a moment where PR content sits on
+  // disk for a config-autoloading tool to find.
+  //
+  // TWO REFS, ON PURPOSE. This said only "the base tree", which reads as though
+  // all retrieval used it -- the lane's own review of the PR that added this
+  // flagged the mismatch. Siblings come from `baseRef`, because a sibling is by
+  // definition a site the PR did NOT touch. Whole-file evidence comes from
+  // `input.headSha`, because that section is the changed files AFTER the PR and
+  // reading them from the base would show the reviewer the wrong content. So
+  // file evidence IS author-controlled text; it is nonce-fenced as untrusted
+  // like the diff, and that is what makes it safe, not its provenance.
+  //
+  // The no-checkout property holds for both: `git show <sha>:<path>` and
+  // `git grep <sha>` read the object database either way.
   let out;
   try {
     out = exec('git', ['grep', '-n', '--fixed-strings', '--no-color', '-I', '-e', key, ref],

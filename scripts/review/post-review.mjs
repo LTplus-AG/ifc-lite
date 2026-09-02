@@ -411,6 +411,21 @@ export function marker(sha, verdict, count, omitted = 0) {
 const MAX_OMITTED_LISTED = 20;
 
 /**
+ * A Markdown inline code span that survives backticks IN the text. A git path
+ * may contain backticks, and `` `${p}` `` lets such a path close the span at
+ * its own backtick -- spilling the tail into the comment as live Markdown
+ * (#3688 review). CommonMark's remedy: fence with a run one longer than the
+ * longest run in the content, padded with one space each side so an edge
+ * backtick cannot fuse with the fence; the renderer strips that pad.
+ */
+function inlineCode(text) {
+  const runs = String(text).match(/`+/g);
+  if (runs === null) return `\`${text}\``;
+  const fence = '`'.repeat(Math.max(...runs.map((r) => r.length)) + 1);
+  return `${fence} ${text} ${fence}`;
+}
+
+/**
  * The human half of the partial-review disclosure. The marker's `omitted=<n>`
  * is the machine half; this is the part that tells the author WHICH files
  * nobody read, so "reviewed" cannot quietly mean "reviewed some of it".
@@ -421,7 +436,7 @@ function omittedSection(omitted) {
   return [
     `⚠️ PARTIAL REVIEW: ${omitted.length} changed file(s) were too large to fit the model prompt and were NOT reviewed (#3679):`,
     '',
-    ...shown.map((p) => `- \`${p}\``),
+    ...shown.map((p) => `- ${inlineCode(p)}`),
     ...(rest > 0 ? [`- ...and ${rest} more (listed in the review job's log)`] : []),
     '',
     'Nothing vouches for those files. This verdict covers only the files that were reviewed.',

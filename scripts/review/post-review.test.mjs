@@ -1242,3 +1242,37 @@ test('a LONG omitted list is capped in prose but exact in the marker', () => {
   assert.equal(g.code, 0, g.out);
   assert.match(g.out, /PARTIAL: 25 changed file\(s\)/);
 });
+
+test('an omitted PATH containing a backtick cannot close its code span early (#3688 review)', () => {
+  // A git path may contain a backtick. The omitted list renders each path as a
+  // Markdown inline code span, and a single-backtick pair lets the path close
+  // the span at ITS backtick -- spilling the rest of the path (and anything an
+  // author put after it) into the surrounding comment as live Markdown. The
+  // fix is CommonMark's: fence with a run longer than the longest run in the
+  // content, padded with one space each side.
+  //
+  // `codeSpan` below decodes the bullet line the way a CommonMark renderer
+  // would: the span must open at the fence, close at the FIRST same-length run,
+  // and that close must be the end of the line. A same-length run INSIDE the
+  // content means a real renderer would have closed the span early -- exactly
+  // the defect -- so that decodes to null rather than to the path.
+  const codeSpan = (line) => {
+    const m = line.match(/^- (`+)([\s\S]+?)\1$/);
+    if (m === null) return null;
+    const [, fence, raw] = m;
+    const runs = raw.match(/`+/g) ?? [];
+    if (runs.some((r) => r.length >= fence.length)) return null; // closed early
+    return raw.startsWith(' ') && raw.endsWith(' ') && raw.trim() !== '' ? raw.slice(1, -1) : raw;
+  };
+
+  for (const evil of ['packages/a/we`ird.ts', 'packages/a/tw``o.ts', 'packages/a/ends`', '`starts/a.ts']) {
+    const body = summaryBody({ sha: SHA, findings: [], count: 0, omitted: [evil] });
+    const line = body.split('\n').find((l) => l.startsWith('- '));
+    assert.equal(codeSpan(line), evil, `the whole path must survive as ONE code span: ${line}`);
+  }
+
+  // The plain path keeps its plain single-backtick rendering: no fence inflation
+  // on the common case, which every existing fixture in this file relies on.
+  const plain = summaryBody({ sha: SHA, findings: [], count: 0, omitted: ['packages/a/plain.ts'] });
+  assert.match(plain, /^- `packages\/a\/plain\.ts`$/m);
+});

@@ -62,16 +62,24 @@ describe('HeadlessBackend query.properties()/quantities() overlay visibility', (
   it('control: an unedited entity still reads its base properties through bim.properties()', async () => {
     const { bim } = await createHeadlessContext(SAMPLE_IFC);
     const walls = bim.query().byType('IfcWall').toArray();
-    expect(walls.length).toBeGreaterThan(0);
+    // The destructuring below needs a victim AND a distinct control.
+    expect(walls.length).toBeGreaterThanOrEqual(2);
 
     // Mutate a DIFFERENT wall so a mutation view exists this session, then
     // confirm an untouched wall's properties are unaffected (still routed
     // correctly through the overlay's base-merge, not just returning empty).
+    // The baseline is read BEFORE the mutation — two post-mutation reads of
+    // the same entity are equal by construction and could not catch the
+    // overlay corrupting the control entity.
     const [victim, control] = walls;
+    const before = bim.properties(control.ref);
+    expect(before.length).toBeGreaterThan(0);
+
     bim.mutate.setProperty(victim.ref, 'Pset_RoundTripAudit', 'AuditMarker', 'edited-value');
 
-    const before = bim.properties(control.ref);
     const after = bim.properties(control.ref);
     expect(after).toEqual(before);
+    // And the control never grew the victim's mutated pset.
+    expect(after.find((ps) => ps.name === 'Pset_RoundTripAudit')).toBeUndefined();
   });
 });

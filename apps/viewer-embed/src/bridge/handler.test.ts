@@ -1001,8 +1001,9 @@ describe('selection and visibility commands', () => {
     // Compile-time half, checked by scripts/typecheck-tests.mjs (#2457). Kills a
     // protocol key the store lacks AND a store key the protocol lacks, in one
     // assertion, because type equality is checked both ways. The set equality
-    // above already catches both at runtime, and handler.ts is a third guard,
-    // since it indexes TypeVisibility by the key and would not compile.
+    // above already catches both at runtime. handler.ts is a third guard for the
+    // extra-protocol-key direction only, since it indexes TypeVisibility by the
+    // key; dropping a key the store has compiles there fine.
     expectTypeOf<(typeof TYPE_VISIBILITY_FLAG_KEYS)[number]>().toEqualTypeOf<keyof TypeVisibility>();
   });
 

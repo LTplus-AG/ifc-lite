@@ -44,7 +44,8 @@ import {
   extractQuantitiesOnDemand,
   getAttributeNamesAcrossSchemas,
   quantitySiScale,
-  scaleMeasureValue,
+  roundToScale,
+  scaledPropertyValue,
   type IfcDataStore,
   type ProjectUnits,
 } from '@ifc-lite/parser';
@@ -149,7 +150,7 @@ function buildDataInput(
       // the viewer: re-exporting a model with sub-tolerance float jitter must
       // not flip the data hash on an otherwise identical element, which on
       // this path would cost the pair its match.
-      value: roundQuantity(quantity.value * quantitySiScale(quantity, units)),
+      value: roundToScale(quantity.value * quantitySiScale(quantity, units)),
     })),
   }));
 
@@ -172,42 +173,6 @@ function buildDataInput(
     quantitySets,
     typeAssignments,
   };
-}
-
-function roundQuantity(value: number): number {
-  return Number.isFinite(value) ? Math.round(value * 1e4) / 1e4 : value;
-}
-
-/**
- * An `IfcPropertySingleValue` measure value (`IfcLengthMeasure`,
- * `IfcAreaMeasure`, `IfcPositiveLengthMeasure`, …) is stored in the project's
- * raw author unit, exactly like a `Qto_` quantity — IFC does not distinguish
- * "unit of a quantity" from "unit of a property" for the same measure type.
- * A wall re-exported from a metre-authored file (`IfcLengthMeasure(2.5)`) into
- * a millimetre-authored one (`IfcLengthMeasure(2500.)`), with no edit to the
- * design at all, hashed to two different values here before this scale ran —
- * `dataHash` compared the raw author number, not the physical length.
- *
- * `dataType` is the on-demand extractor's IFC measure tag (see
- * `parsePropertyValue` in `@ifc-lite/parser`), read off the typed STEP value
- * itself, so this works for any project-scoped measure — length, area, volume,
- * and every other unit `ProjectUnits.unitForMeasure` resolves — not only the
- * three the `Qto_` quantity path (`extractQuantitiesOnDemand`) special-cases.
- * A property whose declared type has no project-scoped unit (a label, an
- * identifier, a dimensionless ratio) resolves no unit and passes through
- * unscaled, same as one with no `dataType` at all.
- *
- * Delegates to `@ifc-lite/parser`'s `scaleMeasureValue` — the same function the
- * viewer and MCP adapters call — rather than a local copy: three independent
- * unit-scale implementations is how the three fingerprint paths drift apart.
- */
-function scaledPropertyValue(
-  value: unknown,
-  dataType: string | undefined,
-  projectUnits: ProjectUnits,
-): unknown {
-  const scaled = scaleMeasureValue(value, dataType, projectUnits);
-  return typeof scaled === 'number' ? roundQuantity(scaled) : scaled;
 }
 
 /**

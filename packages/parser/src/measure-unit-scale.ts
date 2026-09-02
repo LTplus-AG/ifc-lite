@@ -35,3 +35,30 @@ export function scaleMeasureValue(
   const unit = projectUnits.unitForMeasure(dataType);
   return unit && unit.siScale !== 1 ? value * unit.siScale : value;
 }
+
+/**
+ * Round a base-SI-scaled numeric value to 4 decimal places, same precision the
+ * `Qto_` quantity path rounds to, so a measure property and a quantity that
+ * describe the same physical value hash identically. Non-finite input (NaN,
+ * Infinity — a malformed STEP value) passes through unrounded rather than
+ * collapsing to 0, so it still hashes as the distinct, non-numeric-looking
+ * value it is instead of silently matching every other malformed one.
+ */
+export function roundToScale(value: number): number {
+  return Number.isFinite(value) ? Math.round(value * 1e4) / 1e4 : value;
+}
+
+/**
+ * {@link scaleMeasureValue} followed by {@link roundToScale} — the exact
+ * transform every model-diff fingerprint adapter (CLI, viewer, MCP) applies to
+ * a measure-typed `IfcPropertySingleValue` before hashing it. Shared here so
+ * the three adapters cannot drift the way three independent copies would.
+ */
+export function scaledPropertyValue(
+  value: unknown,
+  dataType: string | undefined,
+  projectUnits: ProjectUnits,
+): unknown {
+  const scaled = scaleMeasureValue(value, dataType, projectUnits);
+  return typeof scaled === 'number' ? roundToScale(scaled) : scaled;
+}

@@ -108,7 +108,8 @@ import {
   getAttributeNamesAcrossSchemas,
   getInheritanceChainAcrossSchemas,
   quantitySiScale,
-  scaleMeasureValue,
+  roundToScale,
+  scaledPropertyValue,
   type IfcDataStore, type ProjectUnits,
 } from '@ifc-lite/parser';
 import type { CreatedEntity, PendingOverlay } from '../overlay.js';
@@ -210,9 +211,7 @@ export function buildModelFingerprints(
   // One extractor for the whole model: the source read below only fires for
   // the (small) set of object types the EntityTable declines to hold.
   const extractor = new EntityExtractor(store.source);
-  // Scales both Qto_ quantities (quantitySiScale) and measure-typed Pset
-  // properties (scaleMeasureValue, see buildDataInput) to base SI.
-  const units = extractProjectUnits(store.source, store.entityIndex);
+  const units = extractProjectUnits(store.source, store.entityIndex); // for quantitySiScale/scaledPropertyValue
 
   for (const [typeKey, ids] of store.entityIndex.byType) {
     // Classified once per type rather than once per entity — the geometry
@@ -317,7 +316,7 @@ function createdFingerprint(
       name: set.name,
       quantities: set.quantities.map((quantity) => ({
         name: quantity.name,
-        value: roundQuantity(quantity.value * quantitySiScale(quantity, units)),
+        value: roundToScale(quantity.value * quantitySiScale(quantity, units)),
       })),
     })),
     typeAssignments: [],
@@ -396,7 +395,7 @@ function buildDataInput(
     name: set.name,
     // Scaled to base SI, then rounded — both stored and overlaid values, a
     // queued edit being authored in the project unit same as a parsed one.
-    quantities: set.quantities.map((quantity) => ({ name: quantity.name, value: roundQuantity(quantity.value * quantitySiScale(quantity, units)) })),
+    quantities: set.quantities.map((quantity) => ({ name: quantity.name, value: roundToScale(quantity.value * quantitySiScale(quantity, units)) })),
   }));
 
   const typeAssignments = store.relationships
@@ -428,12 +427,6 @@ function buildDataInput(
   };
 }
 
-function roundQuantity(value: number): number {
-  return Number.isFinite(value) ? Math.round(value * 1e4) / 1e4 : value;
-}
-/** Measure property scaled to base SI, rounded like `roundQuantity` (`buildDataInput`). */
-function scaledPropertyValue(value: unknown, dataType: string | undefined, units: ProjectUnits): unknown {
-  const s = scaleMeasureValue(value, dataType, units); return typeof s === 'number' ? roundQuantity(s) : s; }
 
 /**
  * One named attribute, read positionally through the **cross-schema** attribute

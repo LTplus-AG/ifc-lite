@@ -101,22 +101,35 @@ function writeVersionFile(zip: JSZip, version: '2.1' | '3.0'): void {
  * Uses buildingSMART standard format
  *
  * The root element is renamed between versions: 2.1's project.xsd declares
- * root element `<ProjectExtension>` (and requires a following
- * `<ExtensionSchema>` sibling of `<Project>`, which we deliberately do not
- * emit -- out of scope here); 3.0's project.xsd instead declares root
+ * root element `<ProjectExtension>` as the sequence `Project?`,
+ * `ExtensionSchema` -- where `ExtensionSchema` is an `xs:anyURI` with no
+ * `minOccurs`, so it is REQUIRED; 3.0's project.xsd instead declares root
  * element `<ProjectInfo>` containing just a required `<Project>`, and has no
  * `ProjectExtension`/`ExtensionSchema` concept at all. The inner
  * `<Project ProjectId="...">`/`<Name>` shape is unchanged between versions.
+ *
+ * `<ExtensionSchema>` used to be omitted entirely, which made `project.bcfp`
+ * fail 2.1 validation ("Element 'ProjectExtension': Missing child element(s).
+ * Expected is ( ExtensionSchema )") in EVERY 2.1 archive this package writes
+ * -- 2.1 is the default version and `createBCFProject` always sets a project
+ * id, so the file is always present. It is now emitted empty. An empty
+ * `xs:anyURI` is a valid instance of the type (verified against the vendored
+ * schema), and it is the honest value here: this writer ships no
+ * `extensions.xsd`, and `BCFProject.extensions` is not serialized, so there is
+ * no extension schema to point at. Naming a file we do not write would trade
+ * the schema error for a dangling reference; omitting the element keeps the
+ * schema error. Empty does neither.
  */
 function writeProjectFile(zip: JSZip, project: BCFProject, version: '2.1' | '3.0'): void {
   const projectId = project.projectId || generateUuid();
   const nameElement = project.name ? `\n    <Name>${escapeXml(project.name)}</Name>` : '';
   const rootElement = version === '3.0' ? 'ProjectInfo' : 'ProjectExtension';
+  const extensionSchema = version === '3.0' ? '' : '\n  <ExtensionSchema/>';
 
   const content = `<?xml version="1.0" encoding="UTF-8"?>
 <${rootElement} xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <Project ProjectId="${escapeXml(projectId)}">${nameElement}
-  </Project>
+  </Project>${extensionSchema}
 </${rootElement}>`;
 
   zip.file('project.bcfp', content);

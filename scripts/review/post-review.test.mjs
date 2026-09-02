@@ -1251,24 +1251,25 @@ test('an omitted PATH containing a backtick cannot close its code span early (#3
   // fix is CommonMark's: fence with a run longer than the longest run in the
   // content, padded with one space each side.
   //
-  // `codeSpan` below decodes the bullet line the way a CommonMark renderer
-  // would: the span must open at the fence, close at the FIRST same-length run,
-  // and that close must be the end of the line. A same-length run INSIDE the
-  // content means a real renderer would have closed the span early -- exactly
-  // the defect -- so that decodes to null rather than to the path.
-  const codeSpan = (line) => {
-    const m = line.match(/^- (`+)([\s\S]+?)\1$/);
-    if (m === null) return null;
-    const [, fence, raw] = m;
-    const runs = raw.match(/`+/g) ?? [];
-    if (runs.some((r) => r.length >= fence.length)) return null; // closed early
-    return raw.startsWith(' ') && raw.endsWith(' ') && raw.trim() !== '' ? raw.slice(1, -1) : raw;
-  };
+  // Decoded by the module-level `firstCodeSpan` (hoisted, defined below). This
+  // file used to carry a SECOND, local decoder here whose close rule was
+  // `run.length >= fence.length`. That is not CommonMark: a span closes only on
+  // a run of EXACTLY the fence length, so the local one called a 2-run inside a
+  // 1-fence "closed early" when a real renderer would not. Two oracles for one
+  // format drift apart silently, and a wrong oracle can just as easily
+  // manufacture a failure as hide one. One decoder, and it is the correct one.
 
   for (const evil of ['packages/a/we`ird.ts', 'packages/a/tw``o.ts', 'packages/a/ends`', '`starts/a.ts']) {
     const body = summaryBody({ sha: SHA, findings: [], count: 0, omitted: [evil] });
     const line = body.split('\n').find((l) => l.startsWith('- '));
-    assert.equal(codeSpan(line), evil, `the whole path must survive as ONE code span: ${line}`);
+    assert.match(line, /^- /, 'the omitted entry must render as a bullet');
+    // Equality IS the early-close check: a span that closed at the path's own
+    // backtick decodes to a prefix, not to `evil`.
+    assert.equal(
+      firstCodeSpan(line.slice(2)),
+      evil,
+      `the whole path must survive as ONE code span: ${line}`,
+    );
   }
 
   // The plain path keeps its plain single-backtick rendering: no fence inflation
@@ -1321,13 +1322,22 @@ const EVIL = [
   ['a leading backtick', '`packages/a/weird.ts'],
 ];
 
+// `indexLine` is reached through `summaryBody`, which is exported and pure, so
+// these decode its return value directly. The four SIBLING cases below must
+// stay on `readFindings` because that is where the sibling sentence is built.
+// ONE end-to-end case follows the loop: enough to prove an evil path survives
+// argv -> readFindings -> post, without paying a ~190 ms spawn per input for a
+// defect that lives in a pure function.
+const indexEntry = (body) => body.split('\n').find((l) => /^1\. /.test(l.trim()));
+
 for (const [label, evilPath] of EVIL) {
   test(`the SUMMARY INDEX keeps a whole path in one span: ${label}`, () => {
-    const r = runPoster({ findings: [{ path: evilPath, line: 11, body: 'Body.' }] });
-    assert.equal(r.code, 0, r.out);
-    const line = r.state.issueComments[0].body
-      .split('\n')
-      .find((l) => /^1\. /.test(l.trim()));
+    const body = summaryBody({
+      sha: SHA,
+      findings: [{ path: evilPath, line: 11, body: 'Body.' }],
+      count: 1,
+    });
+    const line = indexEntry(body);
     assert.ok(line, 'the numbered index entry must exist');
     assert.equal(
       firstCodeSpan(line),
@@ -1364,7 +1374,19 @@ test('a backtick-free path still renders as a plain one-backtick span', () => {
   // The fence widens ONLY when the text needs it. Existing fixtures assert the
   // byte-exact single-backtick form, so a helper that always padded would be a
   // silent format change across every comment this poster has ever written.
-  const r = runPoster({ findings: [finding(1)] });
-  const line = r.state.issueComments[0].body.split('\n').find((l) => /^1\. /.test(l.trim()));
-  assert.match(line, /^1\. `packages\/a\/src\/f1\.ts:11` - /);
+  const body = summaryBody({ sha: SHA, findings: [finding(1)], count: 1 });
+  assert.match(indexEntry(body), /^1\. `packages\/a\/src\/f1\.ts:11` - /);
+});
+
+test('END TO END: an evil path survives argv -> readFindings -> the posted comment', () => {
+  // The loop above proves the RENDERING. This proves the evil path actually
+  // reaches that renderer through the real CLI, the real findings file and the
+  // fake-`gh` world -- the one thing an in-process call to `summaryBody`
+  // cannot tell you. One spawn buys it; four more would re-buy the same thing.
+  const evilPath = 'packages/a/we`ird.ts';
+  const r = runPoster({ findings: [{ path: evilPath, line: 11, body: 'Body.' }] });
+  assert.equal(r.code, 0, r.out);
+  const line = indexEntry(r.state.issueComments[0].body);
+  assert.ok(line, 'the numbered index entry must exist');
+  assert.equal(firstCodeSpan(line), `${evilPath}:11`);
 });

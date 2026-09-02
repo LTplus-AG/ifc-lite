@@ -418,3 +418,14 @@ test('a finding that only PARAPHRASES THE PR BODY does not score as recall', () 
   const real = [{ path: 'apps/a/resolve.ts', line: 3, body: 'This returns [] so callers cannot distinguish unresolved from resolved-to-nothing.', class: 'x' }];
   assert.equal(matches(expected, real, body).hit, true, 'the code vocabulary still scores');
 });
+
+test('the EVAL workflow asks for a context pack too', () => {
+  // `--base` is explicit by design, so that the diff-only baseline stays
+  // reproducible. The cost of that choice is that the flag can go missing without
+  // anything failing -- which is exactly what happened when the default was
+  // removed and the only automated caller was not updated.
+  const yml = readFileSync(join(HERE, '..', '..', '.github/workflows/rubric-eval.yml'), 'utf8');
+  const i = yml.indexOf('rubric-eval.mjs');
+  assert.notEqual(i, -1);
+  assert.match(yml.slice(i, i + 400), /--base /, 'the eval would silently score the diff-only baseline');
+});

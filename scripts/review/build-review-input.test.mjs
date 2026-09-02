@@ -220,3 +220,25 @@ test('newFileLines pins the kind contract, since the JSDoc now promises one', ()
   assert.equal(got[3].line, got[4].line);
   assert.deepEqual(addedLineRanges(patch), [[2, 2]]);
 });
+
+/**
+ * THE PACK IS ONLY REAL IF A WORKFLOW ASKS FOR ONE.
+ *
+ * `build-review-input.mjs` builds a context pack only when given `--base`, and it
+ * fails soft when the pack cannot be built. The production lane passed neither
+ * `--base` nor `--body-file`, so every line of this module was dead in
+ * production: written, tested, and measured at 7% -> 20% recall on an eval that
+ * did pass the flag, while the lane that actually reviews pull requests carried
+ * on reviewing the diff alone. Nothing was red. Nothing could be.
+ *
+ * A unit test cannot see a missing command-line flag in YAML, so it is asserted
+ * here, statically, next to the code whose existence depends on it.
+ */
+test('the PRODUCTION lane asks build-review-input for a context pack', () => {
+  const yml = readFileSync(join(HERE, '..', '..', '.github/workflows/claude-review.yml'), 'utf8');
+  const i = yml.indexOf('build-review-input.mjs');
+  assert.notEqual(i, -1, 'the lane must invoke build-review-input');
+  const call = yml.slice(i, i + 700);
+  assert.match(call, /--base /, 'without --base the lane builds no pack at all');
+  assert.match(call, /--body-file /, 'without --body-file the PR description never reaches the reviewer');
+});

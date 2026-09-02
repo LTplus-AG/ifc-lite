@@ -13,7 +13,6 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { searchKeys, hunkLines, fileEvidence, MAX_WHOLE_FILE_LINES, buildPack, truncateUtf8, BODY_RESERVE_BYTES, MAX_PACK_BYTES } from './build-context-pack.mjs';
 
 test('search keys come from REMOVED lines first, because the sibling still has them', () => {
@@ -221,35 +220,3 @@ test('the body reserve is a CEILING as well as a floor', () => {
   assert.ok(pack.truncated.includes('PR description'));
 });
 
-/**
- * THE PACK IS ONLY REAL IF A WORKFLOW ASKS FOR ONE.
- *
- * `build-review-input.mjs` builds a context pack only when given `--base`, and it
- * fails soft when the pack cannot be built. The production lane passed neither
- * `--base` nor `--body-file`, so every line of this module was dead in
- * production: written, tested, and measured at 7% -> 20% recall on an eval that
- * did pass the flag, while the lane that actually reviews pull requests carried
- * on reviewing the diff alone. Nothing was red. Nothing could be.
- *
- * A unit test cannot see a missing command-line flag in YAML, so it is asserted
- * here, statically, next to the code whose existence depends on it.
- */
-test('the PRODUCTION lane asks build-review-input for a context pack', () => {
-  const yml = readFileSync('.github/workflows/claude-review.yml', 'utf8');
-  const i = yml.indexOf('build-review-input.mjs');
-  assert.notEqual(i, -1, 'the lane must invoke build-review-input');
-  const call = yml.slice(i, i + 700);
-  assert.match(call, /--base /, 'without --base the lane builds no pack at all');
-  assert.match(call, /--body-file /, 'without --body-file the PR description never reaches the reviewer');
-});
-
-test('the EVAL workflow asks for a context pack too', () => {
-  // `--base` is explicit by design, so that the diff-only baseline stays
-  // reproducible. The cost of that choice is that the flag can go missing without
-  // anything failing -- which is exactly what happened when the default was
-  // removed and the only automated caller was not updated.
-  const yml = readFileSync('.github/workflows/rubric-eval.yml', 'utf8');
-  const i = yml.indexOf('rubric-eval.mjs');
-  assert.notEqual(i, -1);
-  assert.match(yml.slice(i, i + 400), /--base /, 'the eval would silently score the diff-only baseline');
-});

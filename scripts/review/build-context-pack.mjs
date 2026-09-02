@@ -350,18 +350,17 @@ export function buildPack(input, { baseRef, body = null, cwd = process.cwd(), ex
   };
   candidates.sort((a, b) => rank(b) - rank(a));
 
-  // One row per site. The list is already ranked, so the row kept is the one
-  // whose key scored highest.
+  // One row per site, collapsed INSIDE the loop below rather than into a second
+  // full-length array. The list is already ranked, so the row kept is still the
+  // one whose key scored highest; the filter walked all 14,400 candidates a large
+  // PR produces when the consumer reads at most 40 of them.
   const seenSite = new Set();
-  const ranked = candidates.filter((h) => {
-    const id = `${h.path}:${h.line}`;
-    if (seenSite.has(id)) return false;
-    seenSite.add(id);
-    return true;
-  });
 
   const siblings = [];
-  for (const h of ranked) {
+  for (const h of candidates) {
+    const id = `${h.path}:${h.line}`;
+    if (seenSite.has(id)) continue;
+    seenSite.add(id);
     const cost = Buffer.byteLength(h.text, 'utf8') + 120;
     if (cost > budget || siblings.length >= 40) { truncated.push('sibling excerpts'); break; }
     budget -= cost;
@@ -380,7 +379,11 @@ export function buildPack(input, { baseRef, body = null, cwd = process.cwd(), ex
   }
 
   let packBody = null;
-  if (typeof body === 'string' && body.trim() !== '') {
+  // `bodyReserve > 0` holds exactly when the reservation above fired. Restating
+  // the predicate meant two copies of one rule that must not drift: change what
+  // counts as a blank body in one place and the pack either reserves bytes it
+  // never spends or spends bytes it never reserved, with nothing observing it.
+  if (bodyReserve > 0) {
     // BY BYTES, like every other budget here. `slice` counts UTF-16 code units,
     // so a description of 4,000 emoji passed an 8,000-"byte" check at 16,000
     // actual bytes and the pack could exceed MAX_PACK_BYTES.

@@ -147,12 +147,20 @@ export function matches(expected, findings, body = null) {
   // supplied 6 of 13 expected terms, and two are enough to score, so a reviewer
   // that paraphrased the description and never opened the file scored a hit.
   // What survives is the vocabulary only the CODE can supply.
-  const fromBody = new Set((String(body ?? '').match(/[A-Za-z_][A-Za-z0-9_]{4,}/g) || []).map(stem));
-  const terms = [...new Set((expected.what.match(/[A-Za-z_][A-Za-z0-9_]{5,}/g) || []).map(stem))]
-    .filter((t) => !GENERIC.has(t) && !fromBody.has(t));
+  // ONE TOKENIZER. This expression appeared three times, differing only in the
+  // minimum length, and the relationship that makes the body exclusion sound --
+  // the body must be tokenized at least as permissively as the expected terms --
+  // was held by nothing but the lines being adjacent. Raising the body's minimum
+  // to 5 would have silently stopped the exclusion catching anything, with every
+  // test still green.
+  const tokens = (text, min) =>
+    new Set((String(text ?? '').match(new RegExp(`[A-Za-z_][A-Za-z0-9_]{${min - 1},}`, 'g')) || []).map(stem));
+
+  const fromBody = tokens(body, 5);
+  const terms = [...tokens(expected.what, 6)].filter((t) => !GENERIC.has(t) && !fromBody.has(t));
 
   for (const f of sameFile) {
-    const words = new Set((blobOf(f).match(/[A-Za-z_][A-Za-z0-9_]{4,}/g) || []).map(stem));
+    const words = tokens(blobOf(f), 5);
     const hits = terms.filter((t) => words.has(t));
     if (hits.length >= 2) return { hit: true, by: `${f.path}:${f.line} (${hits.slice(0, 3).join(', ')})` };
   }
@@ -167,9 +175,15 @@ export function score(cases) {
   let extra = 0;
   for (const c of cases) {
     lines.push(`  PR #${c.pr}: verdict=${c.verdict}, ${c.findings.length} finding(s)`);
-    for (const e of c.expected) {
+    // MATCHED ONCE. It used to be called here and again below with identical
+    // arguments, so threading the PR body through required editing both sites --
+    // and missing one would have been silent: `claimed` would have been built
+    // without the body exclusion, the EXTRA list would have quietly shrunk, and
+    // recall would have printed the same number either way.
+    const ms = c.expected.map((e) => matches(e, c.findings, c.body));
+    for (const [i, e] of c.expected.entries()) {
       total += 1;
-      const m = matches(e, c.findings, c.body);
+      const m = ms[i];
       if (m.hit) hits += 1;
       lines.push(`    ${m.hit ? '✅ FOUND   ' : '❌ MISSED  '} ${e.path}: ${e.what.slice(0, 88)}`);
       if (m.hit) lines.push(`               via ${m.by}`);
@@ -182,7 +196,7 @@ export function score(cases) {
     // that "the harness prints each one so a human decides" failed precisely
     // where it mattered.
     const claimed = new Set(
-      c.expected.map((e) => matches(e, c.findings, c.body).by).filter(Boolean).map((by) => by.split(' ')[0]),
+      ms.map((m) => m.by).filter(Boolean).map((by) => by.split(' ')[0]),
     );
     const others = c.findings.filter((f) => !claimed.has(`${f.path}:${f.line}`));
     extra += others.length;

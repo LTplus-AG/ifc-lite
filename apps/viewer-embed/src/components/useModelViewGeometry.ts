@@ -18,6 +18,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { geometryClassOf } from '@ifc-lite/geometry/geometry-class';
 import { isMeshVisibleInViewMode, meshClassIsPlaced } from '@/lib/type-view-visibility';
 import type { TypeVisibility } from '@/store/types';
+import { isTypeVisible } from '@/store/typeVisibilityFilter';
 import { isTypeHidden } from './useEmbedUrlParams.js';
 
 interface GeometryResultLike {
@@ -64,13 +65,13 @@ export function useModelViewGeometry(
     let meshes = merged.meshes.filter((m) =>
       isMeshVisibleInViewMode(geometryClassOf(m), 'model', hasPlacedGeometry),
     );
-    meshes = meshes.filter((mesh) => {
-      if (isTypeHidden(mesh.ifcType, hiddenTypes)) return false;
-      if (mesh.ifcType === 'IfcSpace' && !typeVisibility.spaces) return false;
-      if (mesh.ifcType === 'IfcOpeningElement' && !typeVisibility.openings) return false;
-      if (mesh.ifcType === 'IfcSite' && !typeVisibility.site) return false;
-      return true;
-    });
+    // The toggle half goes through `isTypeVisible`, the store's single source of
+    // truth for the class -> toggle mapping. A private copy here named three of
+    // the seven mapped classes, so IfcSpatialZone, IfcVirtualElement,
+    // IfcGeographicElement and 3D IfcAnnotation solids ignored their toggles.
+    meshes = meshes.filter(
+      (mesh) => !isTypeHidden(mesh.ifcType, hiddenTypes) && isTypeVisible(mesh.ifcType, typeVisibility),
+    );
 
     return meshes.map((mesh) => {
       if (mesh.ifcType === 'IfcSpace' || mesh.ifcType === 'IfcOpeningElement') {

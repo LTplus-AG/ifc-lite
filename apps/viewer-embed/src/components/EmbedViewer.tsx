@@ -20,6 +20,7 @@ import { useWebGPU } from '@/hooks/useWebGPU';
 import { useViewerStore } from '@/store';
 import { useModelViewGeometry } from './useModelViewGeometry.js';
 import { toGlobalIdFromModels } from '@/store/globalId';
+import { isTypeVisible } from '@/store/typeVisibilityFilter';
 import { parseUrlParams, assertFetchableUrl } from '../bridge/urlParams.js';
 import { initBridge, destroyBridge, emitEvent } from '../bridge/handler.js';
 import { aroundDestructiveLoad } from '../bridge/cameraIntent.js';

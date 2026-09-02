@@ -14,6 +14,7 @@ import {
   createEvent,
   EMBED_SOURCE,
   PROTOCOL_VERSION,
+  TYPE_VISIBILITY_FLAG_KEYS,
   type EmbedMessageEnvelope,
   type InboundCommandType,
   type InboundPayloads,
@@ -444,10 +445,9 @@ async function handleCommand(type: InboundCommandType, data: unknown, requestId?
 
     case 'SET_TYPE_VISIBILITY': {
       const payload = data as InboundPayloads['SET_TYPE_VISIBILITY'];
-      const tv = state.typeVisibility;
-      if (payload.spaces !== undefined && tv.spaces !== payload.spaces) state.toggleTypeVisibility('spaces');
-      if (payload.openings !== undefined && tv.openings !== payload.openings) state.toggleTypeVisibility('openings');
-      if (payload.site !== undefined && tv.site !== payload.site) state.toggleTypeVisibility('site');
+      for (const key of TYPE_VISIBILITY_FLAG_KEYS) { // every flag the protocol declares, so a toggle added to store + protocol needs no edit here
+        if (payload[key] !== undefined && state.typeVisibility[key] !== payload[key]) state.toggleTypeVisibility(key); // omitted flags are left alone; toggleTypeVisibility FLIPS, so only a differing flag may be sent to it
+      }
       if (requestId) emitToParent(createResponse(requestId));
       return;
     }

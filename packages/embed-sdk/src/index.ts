@@ -34,6 +34,7 @@ import {
   type ModelStats,
   type EntityProperties,
   type ModelInfo,
+  type TypeVisibilityFlags,
 } from '@ifc-lite/embed-protocol';
 import { embedUrlSearchParams, type EmbedOptions } from './options.js';
 
@@ -238,8 +239,12 @@ export class IFCLiteEmbed {
     return this.request('SET_THEME', { theme, bg }) as Promise<void>;
   }
 
-  /** Toggle IFC type visibility */
-  setTypeVisibility(opts: { spaces?: boolean; openings?: boolean; site?: boolean }): Promise<void> {
+  /**
+   * Toggle IFC type visibility: `spaces`, `spatialZones`, `openings`,
+   * `virtualElements`, `site`, `ifcAnnotations`, `ifcGrid`. Omitted flags are
+   * left as they are. See `TypeVisibilityFlags` for the classes each one gates.
+   */
+  setTypeVisibility(opts: TypeVisibilityFlags): Promise<void> {
     return this.request('SET_TYPE_VISIBILITY', opts) as Promise<void>;
   }
 

@@ -1238,6 +1238,12 @@ export class ProfileCollection {
      * Number of profiles.
      */
     readonly length: number;
+    /**
+     * Express IDs of elements that had an `IfcExtrudedAreaSolid` (direct or
+     * mapped) but whose profile could not be extracted, so they are MISSING
+     * from this collection. Empty on a clean model.
+     */
+    readonly skippedExpressIds: Uint32Array;
 }
 
 /**
@@ -2052,6 +2058,7 @@ export interface InitOutput {
     readonly partitionedbatch_takeShard: (a: number, b: number) => void;
     readonly profilecollection_get: (a: number, b: number) => number;
     readonly profilecollection_length: (a: number) => number;
+    readonly profilecollection_skippedExpressIds: (a: number) => number;
     readonly profileentryjs_expressId: (a: number) => number;
     readonly profileentryjs_extrusionDepth: (a: number) => number;
     readonly profileentryjs_extrusionDir: (a: number) => number;

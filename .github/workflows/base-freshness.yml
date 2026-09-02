@@ -1,0 +1,70 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: Base freshness
+
+# ISSUE #3726: a PR's checks certify a tree that stops existing the moment the
+# base moves, and nothing re-checks. `main` sat red on the module-size ratchet
+# for ~4 hours because three individually-green merges composed.
+#
+# A MERGE LANDING is the only moment an open PR's green verdict can go stale,
+# which is why this runs on `push: main` and not in the PR lane. Run inside the
+# PR lane it would compare the base against itself and always say OK.
+#
+# It costs no build minutes: no install, no build, no test suite -- a checkout
+# for the snapshot files plus a handful of API reads per open PR. That is the
+# whole reason it is a display and not the ruleset's
+# `strict_required_status_checks_policy`, which is off deliberately: measured
+# over all 55 open PRs, every single one was behind main, so enforcing on
+# "behind" would rebase and re-run the entire queue after every merge.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # The signal is delivered as a label on the PR, so whoever runs `gh pr merge`
+  # sees it without knowing this workflow exists. Labels are `pull-requests`,
+  # not `issues`, however the REST path is spelled.
+  pull-requests: write
+
+concurrency:
+  # Only the newest main matters here: a superseded run would label against a
+  # base that has already moved again.
+  group: base-freshness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sweep:
+    name: Base freshness
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Unit-test the signal itself
+        run: node --test scripts/check-base-freshness.test.mjs
+
+      - name: Ensure the label exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh label create base-stale --repo "${{ github.repository }}" --color d4c5f9 \
+            --description "Tested against a base that has since moved in a way a whole-tree snapshot cares about (#3726)." \
+            2>/dev/null || true
+
+      - name: Sweep the open PRs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node scripts/check-base-freshness.mjs --all --label

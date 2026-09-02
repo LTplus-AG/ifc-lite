@@ -31,12 +31,10 @@ import type { ZoneSet, ZoneAssignmentsByElement, ZoneApportionmentCache } from '
 import { validEntry } from '../zones/index.js';
 
 /**
- * Zone assignment data (issue #1810), threaded in from the store so the
- * `zone` column/condition source can resolve without the adapter knowing
- * anything about how zones are authored. `toGlobalId` converts THIS model's
- * local express id to the federated global id `zoneAssignments` is keyed by
- * (single-model fallback: `globalId === expressId`, same contract as
- * `FederationRegistry`).
+ * Per-model list context: zone data (issue #1810) plus later loosely-related
+ * extras (volume units, World Coordinates — issue #3671) threaded the same
+ * way. `toGlobalId` maps THIS model's local express id to the federated
+ * global id these are keyed by (single-model fallback: identity).
  */
 export interface ZoneListContext {
   zoneSets: ZoneSet[];
@@ -53,6 +51,8 @@ export interface ZoneListContext {
    *  the model's own `NetVolume` is in, so the shared per-column resolver
    *  converts and labels it identically instead of needing a second path. */
   volumeSiScale?: number;
+  /** World Coordinate in the model's own unit (issue #3671). */
+  getWorldPosition?: (expressId: number) => { x: number; y: number; z: number } | null;
   toGlobalId: (expressId: number) => number;
 }
 
@@ -79,10 +79,9 @@ function materialNamesOf(info: MaterialInfo | null): string[] {
  * several models can tell which file each row came from. Defaults to '' for the
  * single-model legacy path where there's nothing to disambiguate.
  *
- * `zoneContext`, when supplied, enables the `zone` column/condition source
- * (issue #1810). Omit it (the default) and every `zone` column simply
- * resolves to `null` — the same graceful-degradation contract every other
- * optional `ListDataProvider` accessor follows.
+ * `zoneContext`, when supplied, enables the `zone`/`geometry` column sources
+ * (issues #1810, #3671); omitted fields resolve to `null`, same as every
+ * other optional `ListDataProvider` accessor.
  */
 export function createListDataProvider(
   store: IfcDataStore,
@@ -298,6 +297,7 @@ export function createListDataProvider(
     getModelName(): string {
       return modelName;
     },
+    getWorldPosition: (id) => zoneContext?.getWorldPosition?.(id) ?? null,
 
     discoverAllColumns(): DiscoveredColumns {
       if (columnsCache) return columnsCache;

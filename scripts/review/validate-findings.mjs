@@ -494,10 +494,50 @@ export function quotableLines(patch) {
  * @param {string} quote
  * @param {number} minChars
  */
-export function quoteAppearsIn(patch, quote, minChars) {
+export const MIN_UNIQUE_QUOTE_CHARS = 4;
+
+/** Alphanumerics a line must carry before uniqueness can vouch for it. */
+const MIN_UNIQUE_QUOTE_ALNUM = 2;
+
+export function quoteAppearsIn(patch, quote, minChars, { allowUniqueShort = false } = {}) {
   const needle = String(quote).trim();
-  if (needle.length < minChars) return false;
-  return quotableLines(patch).includes(needle);
+  const lines = quotableLines(patch);
+  if (needle.length >= minChars) return lines.includes(needle);
+  if (!allowUniqueShort) return false;
+
+  // A SHORT LINE THAT OCCURS EXACTLY ONCE IS STILL PROOF, and rejecting it cost a
+  // real PR a red nobody could clear. #3591's diff contains `+    inner` -- a
+  // function's tail expression, a faithful whole line. The model nominated it,
+  // the trim took it to five characters, and the review died as
+  // PROOF_OF_WORK_FAILED. Two independent re-runs produced the identical error,
+  // so it is deterministic: the marker stays stale and no re-run can help.
+  //
+  // The length floor was always a PROXY for unguessability, and it is the wrong
+  // one. What makes a quote evidence is that a model which quit early could not
+  // have produced it. Measured across 25 real commits on this repository: of 302
+  // distinct sub-eight-character lines, 120 (40%) occur exactly once in their own
+  // patch, and the repeats are precisely the boilerplate anyone could guess --
+  // `}` x20, `});` x19, `};` x12, `*/` x12, `/**` x11. Uniqueness separates the
+  // two cleanly where length does not.
+  //
+  // So: short is allowed when it is UNIQUE in this patch. `}` still fails, and it
+  // fails on the property that actually matters rather than on a character count.
+  // UNIQUENESS ALONE IS NOT ENOUGH, and the first cut of this got it wrong: in a
+  // small patch `}` occurs exactly once, so uniqueness would have promoted the
+  // one string this check exists to refuse. The line also has to look like code
+  // rather than punctuation -- four characters carrying at least two
+  // alphanumerics. `inner` and `pos++;` qualify; `}`, `});`, `*/`, `/**` and
+  // `---` carry none and never will.
+  if (needle.length < MIN_UNIQUE_QUOTE_CHARS) return false;
+  if ((needle.match(/[A-Za-z0-9]/g) || []).length < MIN_UNIQUE_QUOTE_ALNUM) return false;
+  // Counted, with an early exit. The exit and the final comparison are mutually
+  // redundant on purpose -- mutating either alone changes nothing, and removing
+  // both fails the repeated-line test.
+  let seen = 0;
+  for (const l of lines) {
+    if (l === needle && ++seen > 1) return false;
+  }
+  return seen === 1;
 }
 
 /** @param {number} line @param {[number, number][]} ranges */
@@ -616,7 +656,7 @@ function checkProofOfWork({ response, input }) {
       `\`riskiest_change.path\` is \`${rc.path}\`, which was never sent. REMEDY: re-run.`,
     );
   }
-  if (!quoteAppearsIn(file.patch, rc.quoted_line, MIN_PROOF_QUOTE_CHARS)) {
+  if (!quoteAppearsIn(file.patch, rc.quoted_line, MIN_PROOF_QUOTE_CHARS, { allowUniqueShort: true })) {
     throw new ValidateFindingsError(
       'PROOF_OF_WORK_FAILED',
       `\`riskiest_change.quoted_line\` is not a line of \`${rc.path}\`'s patch (or is shorter than ` +

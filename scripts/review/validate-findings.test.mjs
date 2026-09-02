@@ -30,19 +30,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MARKER_RE as GATE_MARKER_RE } from '../check-review-posted.mjs';
-import {
-  MAX_BODY_CHARS,
-  MAX_FINDINGS,
-  SENTINEL,
-  lineIsAdded,
-  quotableLines,
-  quoteAppearsIn,
-  sanitizeBody,
-  sanitizeLabel,
-  stripFence,
-  REASONS,
-  validate,
-} from './validate-findings.mjs';
+import { MAX_BODY_CHARS, MAX_FINDINGS, SENTINEL, lineIsAdded, quotableLines, quoteAppearsIn, sanitizeBody, sanitizeLabel, stripFence, REASONS, validate } from './validate-findings.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, 'validate-findings.mjs');
@@ -912,4 +900,83 @@ test('PROOF_OF_WORK_FAILED names a remedy the model can actually carry out', () 
     riskiest_change: { path: 'src/a.ts', quoted_line: 'const shortEnough = 2;' },
   };
   assert.doesNotThrow(() => validate({ response: shorter, input }));
+});
+
+// ============================ proof-of-work: short lines that are still evidence
+
+/** Only the proof-of-work check opts into the uniqueness path. */
+const UNIQ = { allowUniqueShort: true };
+
+test('a SHORT line that occurs exactly ONCE in the patch is proof', () => {
+  // #3591 died on this. Its diff contains `+    inner` -- a function's tail
+  // expression, a faithful whole line of the patch. The trim took it to five
+  // characters, the eight-character floor rejected it, and the review failed as
+  // PROOF_OF_WORK_FAILED. Two independent re-runs produced the identical error,
+  // so it was deterministic: an unclearable red on a PR whose code lanes were all
+  // green.
+  const patch = ['@@ -1,4 +1,8 @@', ' fn f() {', '+    let x = compute();', '+    inner', '+}'].join('\n');
+  assert.equal(quoteAppearsIn(patch, '    inner', 8, UNIQ), true, 'a unique short line is evidence');
+  assert.equal(quoteAppearsIn(patch, 'inner', 8, UNIQ), true, 'and the trim must not change that');
+  assert.equal(quoteAppearsIn(patch, '    inner', 8), false, 'and ONLY the proof-of-work caller opts in');
+});
+
+test('a short line that REPEATS is still refused: that is the guessable case', () => {
+  // The floor was a proxy for unguessability and uniqueness is the real property.
+  // Measured over 25 real commits here: of 302 distinct sub-eight-character
+  // lines, 120 occur exactly once in their own patch; the repeats are the
+  // boilerplate anyone could guess without reading anything -- `}` x20, `});`
+  // x19, `};` x12, `*/` x12, `/**` x11.
+  const patch = ['@@ -1,6 +1,9 @@', '+fn f() {', '+    a()', '+}', '+fn g() {', '+    b()', '+}'].join('\n');
+  assert.equal(quoteAppearsIn(patch, '}', 8, UNIQ), false, 'a brace appearing twice proves nothing');
+  assert.equal(quoteAppearsIn(patch, '    a()', 8, UNIQ), false, 'one alphanumeric is not code enough');
+  const real = ['@@ -1,3 +1,5 @@', '+fn f() {', '+    pos++;', '+}'].join('\n');
+  assert.equal(quoteAppearsIn(real, '    pos++;', 8, UNIQ), true, 'a real short statement does qualify');
+});
+
+test('EACH condition is load-bearing on its own', () => {
+  // The first version of these tests let four of five mutations survive, because
+  // every case was rejected by MORE THAN ONE condition -- drop any single one and
+  // another still refused it. Each case below is isolated so exactly one
+  // condition stands between it and acceptance.
+
+  // Only the alnum rule refuses this: `}` is UNIQUE here and is 4+ chars with
+  // padding, so length and uniqueness both pass.
+  // FOUR characters so the floor cannot be what rejects it, ZERO alphanumerics,
+  // and unique. `}` alone is one character, so the floor refused it and the alnum
+  // rule could be deleted with every test still green.
+  const loneBrace = ['@@ -1,3 +1,4 @@', '+fn f() {', '+    let x = compute_the_thing();', '+  }));  '].join('\n');
+  assert.equal(quoteAppearsIn(loneBrace, '}));', 8, UNIQ), false, 'punctuation is never evidence, however unique');
+
+  // Only the 4-char floor refuses this: `ok` is unique and carries two alnums.
+  const tiny = ['@@ -1,3 +1,4 @@', '+fn f() {', '+ok', '+    let y = other_thing();'].join('\n');
+  assert.equal(quoteAppearsIn(tiny, 'ok', 8, UNIQ), false, 'two characters is not a line worth quoting');
+
+  // Only uniqueness refuses this: `i += 1;` is 7 chars with two alnums, and it
+  // appears TWICE.
+  const twice = ['@@ -1,5 +1,7 @@', '+fn f() {', '+i += 1;', '+}', '+fn g() {', '+i += 1;'].join('\n');
+  assert.equal(quoteAppearsIn(twice, 'i += 1;', 8, UNIQ), false, 'a line the diff repeats can be guessed');
+  const once = ['@@ -1,3 +1,4 @@', '+fn f() {', '+i += 1;', '+}'].join('\n');
+  assert.equal(quoteAppearsIn(once, 'i += 1;', 8, UNIQ), true, 'the same line, appearing once, is evidence');
+});
+
+test('THE PROOF-OF-WORK CHECK opts in, end to end through the validator', () => {
+  // #3591's actual shape, driven through the real binary rather than the helper:
+  // without the opt-in this exits 1 with PROOF_OF_WORK_FAILED on a faithful whole
+  // line of the diff, and no re-run can clear it.
+  const patch = ['@@ -1,4 +1,7 @@', ' fn parse() {', '+    let v = compute_value();', '+    inner', '+}'].join('\n');
+  const path = 'rust/georef/src/georef_parse.rs';
+  const input = { headSha: SHA, files: [{ path, patch, addedLineRanges: [[2, 4]] }], unreviewable: [] };
+  const r = run(
+    response({ riskiest_change: { path, quoted_line: '    inner' }, files_reviewed: [path] }),
+    { input },
+  );
+  assert.equal(r.code, 0, r.out);
+  assert.doesNotMatch(r.out, /PROOF_OF_WORK_FAILED/);
+});
+
+test('a long line still needs only to appear, and an absent line is still refused', () => {
+  const patch = ['@@ -1,2 +1,4 @@', '+const scaled = n * FACTOR;', '+const scaled = n * FACTOR;'].join('\n');
+  assert.equal(quoteAppearsIn(patch, 'const scaled = n * FACTOR;', 8, UNIQ), true, 'length path ignores repetition');
+  assert.equal(quoteAppearsIn(patch, 'never in this patch at all', 8, UNIQ), false);
+  assert.equal(quoteAppearsIn(patch, '', 8, UNIQ), false, 'the empty quote is never evidence');
 });

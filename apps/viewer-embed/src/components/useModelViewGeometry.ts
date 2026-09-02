@@ -16,7 +16,7 @@
 import { useMemo } from 'react';
 import type { MeshData } from '@ifc-lite/geometry';
 import { geometryClassOf } from '@ifc-lite/geometry/geometry-class';
-import { meshClassIsPlaced, selectModelMeshes } from '@/lib/type-view-visibility';
+import { isMeshVisibleInViewMode, meshClassIsPlaced } from '@/lib/type-view-visibility';
 import type { TypeVisibility } from '@/store/types';
 import { isTypeHidden } from './useEmbedUrlParams.js';
 
@@ -45,17 +45,25 @@ export function useModelViewGeometry(
   hiddenTypes: Set<string> | null,
   typeVisibility: TypeVisibility,
 ): ModelViewGeometry {
-  const contentVersion = useMemo(
-    () => ((merged?.meshes ?? []).some((m) => meshClassIsPlaced(geometryClassOf(m))) ? 1 : 0),
+  // One scan, two consumers. `selectModelMeshes` would compute exactly this
+  // internally and the version needs it too, so calling the wrapper here would
+  // walk the list twice per streaming batch for the same answer.
+  // `isMeshVisibleInViewMode` is the predicate underneath it, and taking it
+  // directly is what `ViewportContainer` does for the same reason.
+  const hasPlacedGeometry = useMemo(
+    () => (merged?.meshes ?? []).some((m) => meshClassIsPlaced(geometryClassOf(m))),
     [merged],
   );
+  const contentVersion = hasPlacedGeometry ? 1 : 0;
 
   const geometry = useMemo(() => {
     if (!merged?.meshes) return null;
     // The embed renders the Model view: placed occurrences and material-layer
     // slices; type-library geometry is never drawn (#957, #1353). The full
     // viewer's predicate, whole: a file with nothing placed keeps its orphans.
-    let meshes = selectModelMeshes(merged.meshes);
+    let meshes = merged.meshes.filter((m) =>
+      isMeshVisibleInViewMode(geometryClassOf(m), 'model', hasPlacedGeometry),
+    );
     meshes = meshes.filter((mesh) => {
       if (isTypeHidden(mesh.ifcType, hiddenTypes)) return false;
       if (mesh.ifcType === 'IfcSpace' && !typeVisibility.spaces) return false;
@@ -73,7 +81,7 @@ export function useModelViewGeometry(
       }
       return mesh;
     });
-  }, [merged, typeVisibility, hiddenTypes]);
+  }, [merged, typeVisibility, hiddenTypes, hasPlacedGeometry]);
 
   return { geometry, contentVersion };
 }

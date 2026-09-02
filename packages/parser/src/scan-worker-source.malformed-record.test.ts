@@ -27,7 +27,15 @@ interface WorkerScanMessage {
 /** Runs `WORKER_CODE` against a mock `self`, the same way the Blob worker
  *  runtime would, and returns what it posted back. */
 function runWorkerCode(text: string): WorkerScanMessage {
-  const source = WORKER_CODE.replace('${MAX_EXPRESS_ID}', String(MAX_EXPRESS_ID));
+  // Built from concatenated pieces, not a literal '${MAX_EXPRESS_ID}' string:
+  // that literal trips eslint(no-template-curly-in-string), which assumes a
+  // string containing "${...}" is a forgotten template literal. Here it is
+  // deliberately a plain-string needle for the unsubstituted placeholder that
+  // would remain in WORKER_CODE if scan-worker-source.ts's own template
+  // interpolation of MAX_EXPRESS_ID ever regressed into emitting the raw
+  // placeholder text instead of the numeric value.
+  const placeholder = '$' + '{MAX_EXPRESS_ID}';
+  const source = WORKER_CODE.replace(placeholder, String(MAX_EXPRESS_ID));
   let result: WorkerScanMessage | undefined;
   const self = {
     onmessage: null as ((e: { data: ArrayBuffer }) => void) | null,

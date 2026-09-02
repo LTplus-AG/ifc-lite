@@ -431,24 +431,20 @@ describe('IDS documents against buildingSMART ids.xsd 1.0', () => {
 /**
  * Where `auditIDSDocument` and the real schema disagree.
  *
- * These are NOT endorsed behaviours. Each is a document that `ids.xsd`
+ * These are NOT endorsed behaviours. Each entry is a document that `ids.xsd`
  * rejects and that `auditIDSDocument` currently reports as clean, i.e. a hole
  * in the hand-written XSD reimplementation. They are pinned here so the gap is
  * a visible, countable list instead of an unknown, and so that closing any one
  * of them turns this test red and forces the entry to be deleted. The list may
  * only ever shrink.
  *
- * Root causes, one line each:
- *   - `<specifications>` with no children: nothing walks the empty case, so
- *     `runXsdAudit` iterates zero specifications and reports nothing.
- *   - classification `<system>` missing: the required-field check is not
- *     applied to the classification facet's `system`.
- *   - `dataType` case: matched case-insensitively against the IFC measure
- *     list, while the schema's `[A-Z]+` pattern makes case load-bearing.
- *   - `<date>` / `<author>`: `<info>` children are parsed but never checked
- *     against their `xs:date` and pattern-restricted types.
+ * Currently empty: the five gaps this test used to pin (`<specifications>`
+ * with no children, classification `<system>` missing, `dataType` case,
+ * `<date>` not `xs:date`, `<author>` not an e-mail address) were all real
+ * bugs — the audit accepted what the schema rejects — and are now fixed in
+ * `audit/xsd/index.ts`.
  *
- * `partOf cardinality="optional"` used to be here: `audit/coherence/index.ts`
+ * `partOf cardinality="optional"` used to be here too: `audit/coherence/index.ts`
  * treated every requirement facet as taking the three-value
  * `conditionalCardinality`, but `partOf` is typed `simpleCardinality`
  * (`{required, prohibited}`) in ids.xsd, so `optional` is not one of its
@@ -456,13 +452,7 @@ describe('IDS documents against buildingSMART ids.xsd 1.0', () => {
  * closing the gap — the case stays in the table below only as a
  * genuinely-rejected-by-schema fixture, not as a known miss.
  */
-const KNOWN_AUDIT_GAPS = [
-  'classification requirement without <system>',
-  'dataType in mixed case',
-  'empty <specifications>',
-  'info/author that is not an e-mail address',
-  'info/date that is not an xs:date',
-] as const;
+const KNOWN_AUDIT_GAPS = [] as const;
 
 describe('divergence between auditIDSDocument and ids.xsd', () => {
   const APPLICABILITY = `<applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>`;

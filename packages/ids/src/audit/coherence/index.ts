@@ -330,7 +330,7 @@ const XS_VALUE_REGEX: Record<string, RegExp> = {
   'xs:duration': /^[-+]?P(\d+Y)?(\d+M)?(\d+D)?(T(\d+H)?(\d+M)?(\d+S)?)?$/,
 };
 
-function isValidLexicalForXsType(value: string, base: string): boolean {
+export function isValidLexicalForXsType(value: string, base: string): boolean {
   const rx = XS_VALUE_REGEX[base];
   if (!rx) return true; // base we don't recognise → don't fabricate errors
   if (base === 'xs:double' || base === 'xs:float' || base === 'xs:decimal') {

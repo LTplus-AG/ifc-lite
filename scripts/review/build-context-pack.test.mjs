@@ -105,6 +105,7 @@ test('the fixture actually exhausts the budget, or the tests below prove nothing
   // first written, and both mutations passed.
   const pack = packUnderPressure(null);
   assert.ok(
+    // @source-text-assertion-ok asserts on the pack's own truncation list, a runtime value, not on any file's text
     pack.truncated.some((t) => t.startsWith('full content of')),
     `nothing was truncated, so there is no budget pressure: ${JSON.stringify(pack.truncated)}`,
   );
@@ -146,6 +147,7 @@ test('THE CALL SITE truncates the body by BYTES, not by UTF-16 code units', () =
   const pack = packUnderPressure('😀'.repeat(20_000));
   const kept = Buffer.byteLength(pack.body ?? '', 'utf8');
   assert.ok(kept <= MAX_PACK_BYTES, `the body alone is ${kept} bytes, over the whole pack cap`);
+  // @source-text-assertion-ok asserts the pack body has no replacement char -- a property of the assembled output
   assert.ok(!(pack.body ?? '').includes('\uFFFD'), 'a multi-byte character was split');
   const textBytes =
     pack.siblings.reduce((n, h) => n + Buffer.byteLength(h.text, 'utf8'), 0) +
@@ -223,6 +225,7 @@ test('the body reserve is a CEILING as well as a floor', () => {
     `the body claimed ${kept} bytes against a ${BODY_RESERVE_BYTES} reserve; untrusted prose must not ` +
       'expand into whatever the rest of the pack left unspent',
   );
+  // @source-text-assertion-ok the truncation list is buildPack's output, not source text
   assert.ok(pack.truncated.includes('PR description'));
 });
 
@@ -271,6 +274,7 @@ test('the global key cap is RECORDED, not silent', () => {
   });
   assert.ok(greps <= MAX_SEARCH_KEYS, `${greps} greps exceeds the ${MAX_SEARCH_KEYS} cap`);
   assert.ok(
+    // @source-text-assertion-ok same: the pack's own record of what it dropped
     pack.truncated.some((t) => t.startsWith('sibling search for')),
     `the cap fired but nothing recorded it: ${JSON.stringify(pack.truncated)}`,
   );

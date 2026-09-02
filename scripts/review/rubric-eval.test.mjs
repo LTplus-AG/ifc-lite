@@ -428,7 +428,9 @@ test('the EVAL workflow asks for a context pack too', () => {
   // Every invocation, not the first mention: see the same note in
   // build-review-input.test.mjs.
   const windows = [];
-  for (let i = yml.indexOf('rubric-eval.mjs'); i !== -1; i = yml.indexOf('rubric-eval.mjs', i + 1)) {
+  // A missing CLI flag in YAML has no behaviour to test, and its absence silently
+  // disabled the context pack in production. The file's text IS the mechanism.
+  for (let i = yml.indexOf('rubric-eval.mjs'); i !== -1; i = yml.indexOf('rubric-eval.mjs', i + 1)) { // @source-text-assertion-ok a workflow flag has no behaviour to assert on; its absence is the defect
     windows.push(yml.slice(i, i + 400));
   }
   assert.ok(windows.length > 0, 'the eval workflow must invoke rubric-eval');

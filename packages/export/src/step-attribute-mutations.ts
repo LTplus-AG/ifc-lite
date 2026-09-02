@@ -19,7 +19,7 @@
 import { splitTopLevelArgs } from './step-argument-parser.js';
 import { getRealTypedSlots } from './attribute-real-slots.js';
 import { retypeStepLine } from './retype.js';
-import { getAttributeNamesAcrossSchemas } from '@ifc-lite/parser';
+import { attrIndex, stepSourceSchema } from './subset-entity-reader.js';
 import type { IfcAttributeValue } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcSchemaVersion } from './schema-converter.js';
@@ -148,16 +148,6 @@ function applyAttributeMutations(
     return entityText;
   }
 
-  // Cross-schema, not the IFC4 pin: an IFC4X3-only class (IfcCourse, IfcRoad,
-  // IfcBridge, …) resolves no slots under the pin, so every named edit on one
-  // was silently discarded here too. Identical for the 755 pinned classes
-  // that declare attributes — `attribute-slot-types.test.ts` measures that —
-  // so no IFC4 export changes; this only stops dropping edits it used to drop.
-  const attrNames = getAttributeNamesAcrossSchemas(entityType);
-  if (attrNames.length === 0) {
-    return entityText;
-  }
-
   const args = splitTopLevelArgs(entityText.slice(openParen + 1, closeParen));
   // A source line NEVER pads (unlike the overlay-created path): a short
   // argument list here means the file speaks a different schema, and growing
@@ -165,8 +155,20 @@ function applyAttributeMutations(
   let changed = false;
   const realSlots = getRealTypedSlots(entityType, schemaVersion);
 
+  // Resolve each name against THIS record's own schema first (`attrIndex`,
+  // `subset-entity-reader.ts`) — the bundled schemas do not always agree on a
+  // class's attribute order (IFC2X3's `IfcTask.Status` sits at slot 6; IFC4
+  // inserts `Identification`/`LongDescription` ahead of it, pushing `Status`
+  // to slot 7). Resolving against a fixed IFC4-pinned order regardless of
+  // `schemaVersion` writes the new value into a DIFFERENT, unrelated
+  // attribute of the true record: silent corruption, not a dropped edit —
+  // exactly the write-side pitfall `attrIndex`'s own doc comment warned this
+  // function used to fall into (fixed here). Falls back to the pinned-first
+  // cross-schema union (via `attrIndex`'s own fallback) only when the source
+  // schema's own table doesn't know the type at all.
+  const sourceSchema = stepSourceSchema(schemaVersion);
   for (const [attrName, value] of attributeMutations) {
-    const index = attrNames.indexOf(attrName);
+    const index = attrIndex(entityType, attrName, sourceSchema);
     if (index < 0 || index >= args.length) continue;
     // The source path shares every `$`-slot hole with the overlay-created
     // path, because a source record has plenty of `$` slots of its own. Both

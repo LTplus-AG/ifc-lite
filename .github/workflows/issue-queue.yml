@@ -68,8 +68,12 @@ name: Issue queue
 # The deeper fix, not taken here: subscribe to `issues: [labeled, unlabeled]`,
 # resolve issue -> linked PRs and re-dispatch. That is a second query, a second
 # permission, and a fan-out on an event firing for every label on every issue.
-# Worth doing when this gate goes enforcing; while it is advisory a stale row
-# blocks nothing.
+# NOW LIVE, and not fixed here. The gate went enforcing on 2026-09-02, so a
+# stale row is no longer harmless: labelling the linked ISSUE `ready` does not
+# re-fire this workflow (it subscribes to pull_request events only), and a fork
+# contributor cannot re-run it. The red persists until someone pushes to, edits
+# or relabels the PR. Subscribing to `issues: [labeled]` is the fix and is its
+# own change.
 #
 # `ready_for_review` covers the draft->ready transition, same as
 # pr-review-signal.yml.

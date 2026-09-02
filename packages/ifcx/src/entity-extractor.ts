@@ -79,8 +79,15 @@ export function extractEntities(
     pathToId.set(node.path, expressId);
     idToPath.set(expressId, node.path);
 
-    // Extract name from attributes
-    const name = extractName(node, incomingEdgeNames.get(node.path) ?? []) ?? node.path.slice(0, 8);
+    // Extract name from attributes. No source attribute and no usable
+    // incoming edge name means the entity genuinely has no Name — stay
+    // '' (the STEP parser's own convention for a missing Name, see
+    // `columnar-parser.ts`'s `addEntityBatch`) rather than fabricating one
+    // from a slice of the internal IFCX path, which reads as a plausible
+    // short name/code no source data backs and pre-empts the viewer's own
+    // "Name absent" display convention (`getName(id) || '${type} #${id}'`
+    // in treeDataBuilder.ts).
+    const name = extractName(node, incomingEdgeNames.get(node.path) ?? []) ?? '';
 
     // Extract description from attributes (writer.ts writes it to the same
     // `bsi::ifc::prop::Description` attribute it writes name to under

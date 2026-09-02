@@ -11,7 +11,7 @@ const ANTHROPIC_MODEL = BYOK_MODELS.find((m) => m.source === 'anthropic')!;
 const OPENAI_MODEL = BYOK_MODELS.find((m) => m.source === 'openai')!;
 
 test('resolveStreamRoute returns proxy route for free models', () => {
-  const route = resolveStreamRoute('openai/gpt-free', { anthropicKey: '', openaiKey: '' });
+  const route = resolveStreamRoute('openai/gpt-free', { anthropicKey: '', anthropicWorkspaceId: '', openaiKey: '' });
   assert.equal(route.kind, 'proxy');
   if (route.kind === 'proxy') {
     assert.equal(route.model, 'openai/gpt-free');
@@ -19,25 +19,52 @@ test('resolveStreamRoute returns proxy route for free models', () => {
 });
 
 test('resolveStreamRoute returns proxy route for unknown model ids', () => {
-  const route = resolveStreamRoute('made-up-model', { anthropicKey: 'sk-ant-...', openaiKey: '' });
+  const route = resolveStreamRoute('made-up-model', { anthropicKey: 'sk-ant-...', anthropicWorkspaceId: '', openaiKey: '' });
   assert.equal(route.kind, 'proxy');
 });
 
 test('resolveStreamRoute returns anthropic route when key present', () => {
   const route = resolveStreamRoute(ANTHROPIC_MODEL.id, {
     anthropicKey: 'sk-ant-abc',
+    anthropicWorkspaceId: '',
     openaiKey: '',
   });
   assert.equal(route.kind, 'anthropic');
   if (route.kind === 'anthropic') {
-    assert.equal(route.apiKey, 'sk-ant-abc');
+    assert.equal(route.credentials.apiKey, 'sk-ant-abc');
+    assert.equal(route.credentials.workspaceId, '');
     assert.equal(route.model, ANTHROPIC_MODEL.id);
   }
+});
+
+test('resolveStreamRoute carries the workspace id alongside the anthropic key', () => {
+  const route = resolveStreamRoute(ANTHROPIC_MODEL.id, {
+    anthropicKey: '  sk-ant-abc  ',
+    anthropicWorkspaceId: '  wrkspc_01abc  ',
+    openaiKey: '',
+  });
+  assert.equal(route.kind, 'anthropic');
+  if (route.kind === 'anthropic') {
+    assert.equal(route.credentials.apiKey, 'sk-ant-abc');
+    assert.equal(route.credentials.workspaceId, 'wrkspc_01abc');
+  }
+});
+
+test('resolveStreamRoute still routes when only the workspace id is set', () => {
+  // A workspace id without a key is not a credential — the missing-key branch
+  // must win, or the modal never opens and the send fails at the API instead.
+  const route = resolveStreamRoute(ANTHROPIC_MODEL.id, {
+    anthropicKey: '',
+    anthropicWorkspaceId: 'wrkspc_01abc',
+    openaiKey: '',
+  });
+  assert.equal(route.kind, 'missing-key');
 });
 
 test('resolveStreamRoute returns missing-key when anthropic model selected without key', () => {
   const route = resolveStreamRoute(ANTHROPIC_MODEL.id, {
     anthropicKey: '',
+    anthropicWorkspaceId: '',
     openaiKey: 'sk-openai-xyz',
   });
   assert.equal(route.kind, 'missing-key');
@@ -49,6 +76,7 @@ test('resolveStreamRoute returns missing-key when anthropic model selected witho
 test('resolveStreamRoute returns openai route when key present', () => {
   const route = resolveStreamRoute(OPENAI_MODEL.id, {
     anthropicKey: '',
+    anthropicWorkspaceId: '',
     openaiKey: 'sk-openai-xyz',
   });
   assert.equal(route.kind, 'openai');
@@ -60,6 +88,7 @@ test('resolveStreamRoute returns openai route when key present', () => {
 test('resolveStreamRoute returns missing-key when openai model selected without key', () => {
   const route = resolveStreamRoute(OPENAI_MODEL.id, {
     anthropicKey: 'sk-ant-abc',
+    anthropicWorkspaceId: '',
     openaiKey: '',
   });
   assert.equal(route.kind, 'missing-key');
@@ -71,6 +100,7 @@ test('resolveStreamRoute returns missing-key when openai model selected without 
 test('resolveStreamRoute treats whitespace-only keys as missing', () => {
   const route = resolveStreamRoute(DEFAULT_BYOK_MODEL.id, {
     anthropicKey: '   ',
+    anthropicWorkspaceId: '',
     openaiKey: '   ',
   });
   assert.equal(route.kind, 'missing-key');

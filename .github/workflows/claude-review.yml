@@ -157,10 +157,26 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set +e
+          # THE PR BODY, VIA A FILE. Never an argument: it is author-controlled
+          # text, and `jq -r` to a file keeps it out of the command line and out
+          # of any shell interpolation. build-review-input fences it before it
+          # reaches the model, and labels it a claim to check rather than an
+          # instruction.
+          gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}" \
+            --jq '.body // ""' > "$RUNNER_TEMP/pr-body.md" || : > "$RUNNER_TEMP/pr-body.md"
+
+          # `--base` IS WHAT MAKES THE CONTEXT PACK EXIST. Without it
+          # build-review-input skips the pack entirely and the lane reviews the
+          # diff alone -- which is what it did here until now, so the whole pack
+          # was dead code in production: built, tested, measured at 7% -> 20%
+          # recall, and never once constructed on a real PR. It fails soft, so
+          # nothing about its absence was visible.
           node scripts/review/build-review-input.mjs \
             --repo "${{ github.repository }}" \
             --pr "${{ github.event.pull_request.number }}" \
             --sha "${{ github.event.pull_request.head.sha }}" \
+            --base "${{ github.event.pull_request.base.sha }}" \
+            --body-file "$RUNNER_TEMP/pr-body.md" \
             --out "$RUNNER_TEMP/review-input.json" 2>&1 | tee "$RUNNER_TEMP/build.log"
           rc=${PIPESTATUS[0]}
           if [ "$rc" -ne 0 ]; then

@@ -384,7 +384,13 @@ export function buildPack(input, { baseRef, body = null, cwd = process.cwd(), ex
     // BY BYTES, like every other budget here. `slice` counts UTF-16 code units,
     // so a description of 4,000 emoji passed an 8,000-"byte" check at 16,000
     // actual bytes and the pack could exceed MAX_PACK_BYTES.
-    const trimmed = truncateUtf8(body, Math.max(0, bodyReserve + budget));
+    // ITS RESERVE, AND NOTHING MORE. This was `bodyReserve + budget`, which
+    // handed the body every byte siblings and evidence had not spent: on a small
+    // PR with a long description that measured 159,908 bytes of author-written
+    // prose in a 160,000-byte pack, with the diff and the retrieved siblings
+    // rounding to nothing. A reservation is a floor; it must not also be a claim
+    // on the remainder, least of all for the one input this file calls untrusted.
+    const trimmed = truncateUtf8(body, bodyReserve);
     if (trimmed) packBody = trimmed;
     if (trimmed.length < body.length) truncated.push('PR description');
   }

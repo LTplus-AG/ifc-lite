@@ -67,4 +67,10 @@ jobs:
           # into a `run:` block is a shape worth not having; `EVAL_MODEL` already
           # travels this way and the rubric path should match it.
           EVAL_RUBRIC: ${{ inputs.rubric }}
-        run: node scripts/review/rubric-eval.mjs --rubric "$EVAL_RUBRIC"
+        # `--base` decides which arm this run measures. With it the eval scores
+        # the pipeline the lane ships; without it, the diff-only baseline. It
+        # used to default to HEAD, which made the documented baseline
+        # unreachable; explicit means BOTH arms are runnable, but it also means
+        # this line is the only thing standing between the eval and silently
+        # scoring a pack that was never built.
+        run: node scripts/review/rubric-eval.mjs --rubric "$EVAL_RUBRIC" --base HEAD

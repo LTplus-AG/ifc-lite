@@ -113,7 +113,7 @@ export function validatorReason(said) {
  *
  * @returns {{ hit: boolean, by: string|null }}
  */
-export function matches(expected, findings) {
+export function matches(expected, findings, body = null) {
   const sameFile = findings.filter((f) => f.path === expected.path);
   if (sameFile.length === 0) return { hit: false, by: null };
 
@@ -140,8 +140,16 @@ export function matches(expected, findings) {
     ['output', 'print', 'remed', 'shoul', 'becau', 'witho', 'nothi', 'canno', 'sayin', 'along',
      'happe', 'somet', 'chang', 'retur', 'value', 'metho', 'funct', 'callи'].map(stem),
   );
+  // WORDS THE PR BODY ALREADY SUPPLIES ARE NOT EVIDENCE EITHER, for exactly the
+  // reason `quote` is excluded above: the body is handed to the reviewer, so
+  // crediting it for repeating the body measures copying, not review. It matters
+  // on the one case whose defect IS a body/diff contradiction -- there the body
+  // supplied 6 of 13 expected terms, and two are enough to score, so a reviewer
+  // that paraphrased the description and never opened the file scored a hit.
+  // What survives is the vocabulary only the CODE can supply.
+  const fromBody = new Set((String(body ?? '').match(/[A-Za-z_][A-Za-z0-9_]{4,}/g) || []).map(stem));
   const terms = [...new Set((expected.what.match(/[A-Za-z_][A-Za-z0-9_]{5,}/g) || []).map(stem))]
-    .filter((t) => !GENERIC.has(t));
+    .filter((t) => !GENERIC.has(t) && !fromBody.has(t));
 
   for (const f of sameFile) {
     const words = new Set((blobOf(f).match(/[A-Za-z_][A-Za-z0-9_]{4,}/g) || []).map(stem));
@@ -161,7 +169,7 @@ export function score(cases) {
     lines.push(`  PR #${c.pr}: verdict=${c.verdict}, ${c.findings.length} finding(s)`);
     for (const e of c.expected) {
       total += 1;
-      const m = matches(e, c.findings);
+      const m = matches(e, c.findings, c.body);
       if (m.hit) hits += 1;
       lines.push(`    ${m.hit ? '✅ FOUND   ' : '❌ MISSED  '} ${e.path}: ${e.what.slice(0, 88)}`);
       if (m.hit) lines.push(`               via ${m.by}`);
@@ -174,7 +182,7 @@ export function score(cases) {
     // that "the harness prints each one so a human decides" failed precisely
     // where it mattered.
     const claimed = new Set(
-      c.expected.map((e) => matches(e, c.findings).by).filter(Boolean).map((by) => by.split(' ')[0]),
+      c.expected.map((e) => matches(e, c.findings, c.body).by).filter(Boolean).map((by) => by.split(' ')[0]),
     );
     const others = c.findings.filter((f) => !claimed.has(`${f.path}:${f.line}`));
     extra += others.length;
@@ -212,8 +220,6 @@ function main() {
     // still runs as a genuine child process. Nothing is mocked, so a test can ask
     // what the harness DOES rather than what its source says.
     const caseDir = arg('--cases', CASE_DIR);
-  // Default to the current HEAD of the checkout: in CI that is the commit under
-  // test, which is the right tree to look for siblings in.
   // EXPLICIT ONLY. This defaulted to HEAD, which silently turned the documented
   // diff-only baseline into a context-enabled run -- the comment below said
   // "without it the eval measures the old behaviour" while the code three lines
@@ -306,7 +312,7 @@ function main() {
         // NOT `verdict: 'findings'`. On RAW_EMPTY the model said nothing at all,
         // and printing a verdict it never gave is the same fabrication
         // validate-findings refuses to make. `null` is what actually happened.
-        results.push({ pr: c.pr, expected: c.expected, verdict: null, findings: [] });
+        results.push({ pr: c.pr, body: c.body ?? null, expected: c.expected, verdict: null, findings: [] });
         continue;
       }
       // PARTIAL losses exit 0. DROPPED is one finding refused; CAPPED is the
@@ -316,7 +322,7 @@ function main() {
       const lost = said.split('\n').filter((l) => /DROPPED|CAPPED/.test(l));
       if (lost.length) console.log(lost.map((l) => `    ${f}: ${l.trim()}`).join('\n'));
       const parsed = JSON.parse(readFileSync(findingsPath, 'utf8'));
-      results.push({ pr: c.pr, expected: c.expected, verdict: parsed.verdict, findings: parsed.findings ?? [] });
+      results.push({ pr: c.pr, body: c.body ?? null, expected: c.expected, verdict: parsed.verdict, findings: parsed.findings ?? [] });
     }
 
     const s = score(results);

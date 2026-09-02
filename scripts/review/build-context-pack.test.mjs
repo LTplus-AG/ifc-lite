@@ -13,6 +13,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { searchKeys, hunkLines, fileEvidence, MAX_WHOLE_FILE_LINES, buildPack, truncateUtf8, BODY_RESERVE_BYTES, MAX_PACK_BYTES } from './build-context-pack.mjs';
 
 test('search keys come from REMOVED lines first, because the sibling still has them', () => {
@@ -169,9 +170,10 @@ test('truncateUtf8 cuts on a character boundary, never mid-sequence', () => {
 test('a sibling site keeps its HIGHEST-RANKED key, not the first key that found it', () => {
   // De-duplication used to happen while collecting candidates, so a site was
   // claimed by whichever key reached it first -- and `rank` then scored the site
-  // on that key. Iteration is per changed file, so a four-letter token in the
+  // on that key. Iteration is per changed file, so a five-letter token in the
   // first file could claim a site that a 27-character function name in the second
-  // file also matched, and score it at +8 instead of +30. On a pack under
+  // file also matched, and score it at +10 instead of +30 (searchKeys drops any
+  // token under five characters, so five is the shortest a key can be). On a pack under
   // pressure that is the difference between the sibling appearing and being cut,
   // which is the entire purpose of the retrieval.
   const one = { path: 'packages/a/one.ts', patch: '@@ -1,1 +1,2 @@\n+  const cache = 1;\n' };
@@ -196,4 +198,58 @@ test('a sibling site keeps its HIGHEST-RANKED key, not the first key that found 
     'resolveHighlightIdentifiers',
     'the site must carry the key that scores it highest, not the one that reached it first',
   );
+});
+
+test('the body reserve is a CEILING as well as a floor', () => {
+  // The other direction, and the one that was missing. The reservation was
+  // written as `bodyReserve + budget`, handing the body every byte the greedy
+  // stages had not spent: on a small PR with a long description that measured
+  // 159,908 bytes of author-written prose in a 160,000-byte pack, with the diff
+  // and the siblings rounding to nothing. The old tests asserted only
+  // `kept >= BODY_RESERVE_BYTES`, which that passes.
+  const input = {
+    headSha: 'a'.repeat(40),
+    files: [{ path: 'packages/a/f.ts', patch: '@@ -1,1 +1,2 @@\n+const x = 1;\n' }],
+  };
+  const pack = buildPack(input, { baseRef: 'HEAD', body: 'B'.repeat(300_000), exec: () => '' });
+  const kept = Buffer.byteLength(pack.body ?? '', 'utf8');
+  assert.ok(
+    kept <= BODY_RESERVE_BYTES,
+    `the body claimed ${kept} bytes against a ${BODY_RESERVE_BYTES} reserve; untrusted prose must not ` +
+      'expand into whatever the rest of the pack left unspent',
+  );
+  assert.ok(pack.truncated.includes('PR description'));
+});
+
+/**
+ * THE PACK IS ONLY REAL IF A WORKFLOW ASKS FOR ONE.
+ *
+ * `build-review-input.mjs` builds a context pack only when given `--base`, and it
+ * fails soft when the pack cannot be built. The production lane passed neither
+ * `--base` nor `--body-file`, so every line of this module was dead in
+ * production: written, tested, and measured at 7% -> 20% recall on an eval that
+ * did pass the flag, while the lane that actually reviews pull requests carried
+ * on reviewing the diff alone. Nothing was red. Nothing could be.
+ *
+ * A unit test cannot see a missing command-line flag in YAML, so it is asserted
+ * here, statically, next to the code whose existence depends on it.
+ */
+test('the PRODUCTION lane asks build-review-input for a context pack', () => {
+  const yml = readFileSync('.github/workflows/claude-review.yml', 'utf8');
+  const i = yml.indexOf('build-review-input.mjs');
+  assert.notEqual(i, -1, 'the lane must invoke build-review-input');
+  const call = yml.slice(i, i + 700);
+  assert.match(call, /--base /, 'without --base the lane builds no pack at all');
+  assert.match(call, /--body-file /, 'without --body-file the PR description never reaches the reviewer');
+});
+
+test('the EVAL workflow asks for a context pack too', () => {
+  // `--base` is explicit by design, so that the diff-only baseline stays
+  // reproducible. The cost of that choice is that the flag can go missing without
+  // anything failing -- which is exactly what happened when the default was
+  // removed and the only automated caller was not updated.
+  const yml = readFileSync('.github/workflows/rubric-eval.yml', 'utf8');
+  const i = yml.indexOf('rubric-eval.mjs');
+  assert.notEqual(i, -1);
+  assert.match(yml.slice(i, i + 400), /--base /, 'the eval would silently score the diff-only baseline');
 });

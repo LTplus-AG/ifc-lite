@@ -398,3 +398,23 @@ test('a VALIDATION failure on the harness\'s own input is a HARD ERROR', (t) => 
   assert.match(said, /INPUT_INVALID/, said);
   assert.doesNotMatch(said, /RECALL of known findings/, 'no recall number may be printed from a run that did not happen');
 });
+
+test('a finding that only PARAPHRASES THE PR BODY does not score as recall', () => {
+  // The body is handed to the reviewer, so crediting it for repeating the body
+  // measures copying. This is the same rule that already excludes `quote`: a
+  // harness that credits a reviewer for quoting its own input measures nothing.
+  const expected = {
+    path: 'apps/a/resolve.ts',
+    what: 'the helper returns an empty array where the description promises a null sentinel, so callers cannot distinguish unresolved from resolved-to-nothing',
+  };
+  const body = 'This PR introduces a null sentinel meaning the helper cannot answer yet, and describes what callers should do.';
+
+  // A reviewer that read only the description and echoed it back.
+  const parrot = [{ path: 'apps/a/resolve.ts', line: 3, body: 'The description promises a null sentinel meaning it cannot answer yet.', class: 'x' }];
+  assert.equal(matches(expected, parrot, body).hit, false, 'echoing the body is not a finding');
+  assert.equal(matches(expected, parrot, null).hit, true, 'and without the exclusion it would have scored');
+
+  // A reviewer that actually looked at the code.
+  const real = [{ path: 'apps/a/resolve.ts', line: 3, body: 'This returns [] so callers cannot distinguish unresolved from resolved-to-nothing.', class: 'x' }];
+  assert.equal(matches(expected, real, body).hit, true, 'the code vocabulary still scores');
+});

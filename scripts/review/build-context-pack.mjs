@@ -245,7 +245,7 @@ export function siblingSites(key, changedPaths, ref, { cwd = process.cwd(), exec
     let s = 0;
     if (changedBases.has(base)) s += 100;
     if (/\.(test|spec)\./.test(base)) s -= 50;
-    if (/^packages\//.test(h.path)) s += 10;
+    if (h.path.startsWith('packages/')) s += 10;
     if (/^(apps|rust)\//.test(h.path)) s += 5;
     return s;
   };
@@ -345,7 +345,7 @@ export function buildPack(input, { baseRef, body = null, cwd = process.cwd(), ex
     if (changedDirs.has(dir)) s2 += 60;
     if (/\.(test|spec)\./.test(base)) s2 -= 50;
     s2 += Math.min(30, h.key.length * 2);
-    if (/^packages\//.test(h.path)) s2 += 10;
+    if (h.path.startsWith('packages/')) s2 += 10;
     return s2;
   };
   candidates.sort((a, b) => rank(b) - rank(a));

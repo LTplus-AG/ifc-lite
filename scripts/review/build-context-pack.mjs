@@ -96,7 +96,7 @@ export const MAX_PACK_BYTES = 160_000;
 export const MAX_PROMPT_BYTES = 390_000;
 
 /**
- * The FLAT part of the prompt's structure: the rubric (~10.6 KB), the section
+ * The FLAT part of the prompt's structure: the rubric (~12.5 KB), the section
  * prose and the fence markers. Per-item costs are charged separately -- a
  * `--- FILE:` header per changed file, and an unreviewable row at its own,
  * higher rate, because one costs nearly twice a file header.

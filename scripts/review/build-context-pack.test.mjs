@@ -327,7 +327,7 @@ test('THE REAL PROMPT stays under the ceiling whenever the DIFF alone does', () 
   // Measured, not derived. The arithmetic version asserted
   // `maxDiff + packBudgetFor(maxDiff) <= MAX_PROMPT_BYTES`, true by construction
   // of packBudgetFor and never touching buildPrompt -- so it could not see that
-  // the rubric (~10.6 KB), a header per file, fences and prose were uncounted.
+  // the rubric (~12.5 KB), a header per file, fences and prose were uncounted.
   //
   // Scoped to diffs that fit, deliberately. A diff too large for the ceiling no
   // longer reaches buildPrompt whole -- build-review-input degrades it, keeping
@@ -377,7 +377,7 @@ test('THE BASE ENVELOPE RESERVE is load-bearing too, on a FEW-file diff', () => 
   // term dominates there -- and it leaves PROMPT_BASE_OVERHEAD_BYTES free to be
   // zeroed with the suite green. The base only bites when there are few headers
   // and the diff is near the ceiling, so that is what this builds: the rubric is
-  // ~10.6 KB of the reserve, and it is present on every single review.
+  // ~12.5 KB of the reserve, and it is present on every single review.
   const rubric = readFileSync(join(HERE, 'rubric.md'), 'utf8');
   const fileCount = 10;
   const diffTarget = 350_000;

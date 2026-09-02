@@ -326,6 +326,148 @@ describe('decodeE57Scan (uncompressed Float64)', () => {
     expect(chunk.positions[5]).toBeCloseTo(1.55, 5);
   });
 
+  it('CONTROL: a conformant ScaledInteger cartesian prototype (minimum/scale both present) decodes byte-identically', () => {
+    // Same fixture as "decodes ScaledInteger cartesian streams" above,
+    // but parsed through the REAL XML pipeline (parseE57Xml), not a
+    // hand-built PrototypeField — proving the minimum/maximum requiredness
+    // fix does not touch the codepath a conformant producer exercises.
+    // This is the important half of this change: the risk is breaking
+    // valid files, not failing to catch invalid ones.
+    const buf = new ArrayBuffer(22);
+    const view = new DataView(buf);
+    const bytes = new Uint8Array(buf);
+    view.setUint8(0, 1);
+    view.setUint8(1, 0);
+    view.setUint16(2, 21, true);
+    view.setUint16(4, 3, true);
+    view.setUint16(6, 2, true);
+    view.setUint16(8, 2, true);
+    view.setUint16(10, 2, true);
+    bytes[12] = 50; bytes[13] = 100;   // X raw
+    bytes[14] = 110; bytes[15] = 120;  // Y raw
+    bytes[16] = 200; bytes[17] = 255;  // Z raw
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<e57Root type="Structure">
+  <data3D type="Vector">
+    <vectorChild type="Structure">
+      <guid type="String">{conformant}</guid>
+      <points type="CompressedVector" fileOffset="0" recordCount="2">
+        <prototype type="Structure">
+          <cartesianX type="ScaledInteger" scale="0.01" offset="0" minimum="-100" maximum="155"/>
+          <cartesianY type="ScaledInteger" scale="0.01" offset="0" minimum="-100" maximum="155"/>
+          <cartesianZ type="ScaledInteger" scale="0.01" offset="0" minimum="-100" maximum="155"/>
+        </prototype>
+      </points>
+    </vectorChild>
+  </data3D>
+</e57Root>`;
+    const entries = parseE57Xml(xml);
+    expect(entries[0].prototype[0]).toMatchObject({ minimum: -100, maximum: 155, scale: 0.01 });
+
+    const chunk = decodeE57Scan(bytes, entries[0]);
+    expect(chunk.pointCount).toBe(2);
+    // Identical to the hand-built-prototype fixture's expectations above —
+    // byte-for-byte the same decode result via the real XML → decode path.
+    expect(chunk.positions[0]).toBeCloseTo(-0.5, 5);
+    expect(chunk.positions[1]).toBeCloseTo(0.10, 5);
+    expect(chunk.positions[2]).toBeCloseTo(1.00, 5);
+    expect(chunk.positions[3]).toBeCloseTo(0.0, 5);
+    expect(chunk.positions[4]).toBeCloseTo(0.20, 5);
+    expect(chunk.positions[5]).toBeCloseTo(1.55, 5);
+  });
+
+  it('refuses a ScaledInteger cartesian field whose XML omits minimum/maximum, instead of silently shifting/mis-scaling every point', () => {
+    // Same raw bytes/packet layout as the conformant fixture above, but
+    // the XML omits `minimum`/`maximum` on cartesianX — a non-conformant
+    // producer (E57 spec ASTM E2807 §6.3.4 requires both; the bitpack
+    // codec needs the declared range to know how many bits a record is).
+    //
+    // On unmodified `main`, e57-xml.ts parsed the missing attributes as
+    // `Number(undefined ?? '0')` = 0, so decodeE57Scan silently decoded
+    // raw=50 as (50 + 0) * 0.01 + 0 = 0.50 instead of the true -0.5 (the
+    // whole cloud is shifted by exactly `minimum`, here 1.0m on X) — no
+    // error, no way for a user to notice from the output. This test pins
+    // the fix: parseE57Xml now leaves `minimum`/`maximum` undefined when
+    // the attribute is absent, and decodeE57Scan refuses to decode rather
+    // than guess.
+    const buf = new ArrayBuffer(22);
+    const view = new DataView(buf);
+    const bytes = new Uint8Array(buf);
+    view.setUint8(0, 1);
+    view.setUint8(1, 0);
+    view.setUint16(2, 21, true);
+    view.setUint16(4, 3, true);
+    view.setUint16(6, 2, true);
+    view.setUint16(8, 2, true);
+    view.setUint16(10, 2, true);
+    bytes[12] = 50; bytes[13] = 100;
+    bytes[14] = 110; bytes[15] = 120;
+    bytes[16] = 200; bytes[17] = 255;
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<e57Root type="Structure">
+  <data3D type="Vector">
+    <vectorChild type="Structure">
+      <guid type="String">{non-conformant}</guid>
+      <points type="CompressedVector" fileOffset="0" recordCount="2">
+        <prototype type="Structure">
+          <cartesianX type="ScaledInteger" scale="0.01" offset="0"/>
+          <cartesianY type="ScaledInteger" scale="0.01" offset="0" minimum="-100" maximum="155"/>
+          <cartesianZ type="ScaledInteger" scale="0.01" offset="0" minimum="-100" maximum="155"/>
+        </prototype>
+      </points>
+    </vectorChild>
+  </data3D>
+</e57Root>`;
+    const entries = parseE57Xml(xml);
+    // minimum/maximum stay undefined instead of defaulting to 0 — pins
+    // the e57-xml.ts half of the fix independently of decode.ts.
+    expect(entries[0].prototype[0].minimum).toBeUndefined();
+    expect(entries[0].prototype[0].maximum).toBeUndefined();
+    // scale keeps defaulting — it DOES have a spec default (1.0), unlike
+    // minimum/maximum which have none.
+    expect(entries[0].prototype[0].scale).toBe(0.01);
+
+    expect(() => decodeE57Scan(bytes, entries[0])).toThrow(
+      /cartesianX.*missing minimum\/maximum/,
+    );
+  });
+
+  it('refuses a ScaledInteger cartesian field with a hand-built prototype missing minimum, instead of defaulting to 0', () => {
+    // Same as the XML-level test above, but exercising decodeE57Scan
+    // directly against a hand-built PrototypeField (mirrors this file's
+    // other decodeE57Scan tests) so the refusal is pinned independently
+    // of the XML parser.
+    const buf = new ArrayBuffer(22);
+    const view = new DataView(buf);
+    const bytes = new Uint8Array(buf);
+    view.setUint8(0, 1);
+    view.setUint8(1, 0);
+    view.setUint16(2, 21, true);
+    view.setUint16(4, 3, true);
+    view.setUint16(6, 2, true);
+    view.setUint16(8, 2, true);
+    view.setUint16(10, 2, true);
+    bytes[12] = 50; bytes[13] = 100;
+    bytes[14] = 110; bytes[15] = 120;
+    bytes[16] = 200; bytes[17] = 255;
+
+    const entry: Data3DEntry = {
+      guid: 'test',
+      recordCount: 2,
+      binaryFileOffset: 0,
+      prototype: [
+        // minimum/maximum omitted entirely (as if a non-conformant
+        // producer's XML never declared them).
+        { name: 'cartesianX', kind: 'ScaledInteger', scale: 0.01, offset: 0 },
+        { name: 'cartesianY', kind: 'ScaledInteger', scale: 0.01, offset: 0, minimum: -100, maximum: 155 },
+        { name: 'cartesianZ', kind: 'ScaledInteger', scale: 0.01, offset: 0, minimum: -100, maximum: 155 },
+      ],
+    };
+    expect(() => decodeE57Scan(bytes, entry)).toThrow(/cartesianX.*missing minimum\/maximum/);
+  });
+
   it('rejects a ScaledInteger field whose minimum/maximum range needs more than 53 bits per record', () => {
     // Mutation testing: `scaledIntegerBitsPerRecord`'s `bits > 53` check
     // had zero coverage. Disabling it left the full suite green.

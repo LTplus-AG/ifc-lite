@@ -1,0 +1,5 @@
+---
+'@ifc-lite/pointcloud': patch
+---
+
+The E57 decoder defaulted a ScaledInteger/Integer prototype field's `minimum`/`maximum` to `0` when a producer's XML omitted them, instead of refusing. Those attributes have no valid default under the E57 spec (ASTM E2807 §6.3.4) — the bitpack codec needs the declared range to know how many bits a record occupies, and the ScaledInteger decode formula `(raw + minimum) * scale + offset` uses `minimum` directly — so a non-conformant file that omits them was decoded anyway, silently shifting or mis-scaling every point, colour, intensity, and classification value with no error and nothing in the output to indicate it. `parseE57Xml` now leaves `minimum`/`maximum` undefined rather than defaulting them, and the decoder throws a clear error identifying the field instead of guessing. `scale`/`offset` keep their spec-defined defaults of `1.0`/`0.0`, which were already correct. This only affects a non-conformant producer that omits a required attribute; a conformant file decodes exactly as before.

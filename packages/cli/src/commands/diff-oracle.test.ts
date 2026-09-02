@@ -14,7 +14,7 @@ import { describe, expect, it } from 'vitest';
 import { diffModels } from '@ifc-lite/diff';
 import { buildFileFingerprints } from './diff-engine.js';
 import { loadIfcBytes } from '../loader.js';
-import { guid, quantityModel } from './diff-test-helpers.js';
+import { classificationModel, guid, quantityModel } from './diff-test-helpers.js';
 
 describe('oracle: quantity unit-of-measure', () => {
   it('a Qto_ length quantity re-authored in a different project length unit, same physical length, classifies as unchanged', async () => {
@@ -83,5 +83,44 @@ describe('oracle: quantity unit-of-measure', () => {
 
     const diff = diffModels(buildFileFingerprints(baseStore), buildFileFingerprints(headStore));
     expect(diff.byKey.get(guid('WALL'))?.state).toBe('unchanged');
+  });
+});
+
+describe('oracle: classification re-coding', () => {
+  it('re-coding a wall\'s classification, nothing else touched, classifies as modified', async () => {
+    // Base: classified Ss_25_10_30. Head: re-coded to Ss_25_10_90 — same wall,
+    // same geometry, same properties/quantities (this fixture has none), only
+    // the IfcRelAssociatesClassification target changed. A coordinator relying
+    // on `ifc-lite diff --by-content` to catch a re-classification must see
+    // this as a change; before the fix nothing in the fingerprint carried
+    // classification at all, so it read as `unchanged`.
+    const baseStore = await loadIfcBytes(
+      new TextEncoder().encode(classificationModel('Ss_25_10_30')),
+      'base',
+    );
+    const headStore = await loadIfcBytes(
+      new TextEncoder().encode(classificationModel('Ss_25_10_90')),
+      'head',
+    );
+
+    const diff = diffModels(buildFileFingerprints(baseStore), buildFileFingerprints(headStore));
+    const wall = diff.byKey.get(guid('WALL'));
+    expect(wall?.state).toBe('modified');
+    expect(wall?.changeKinds).toEqual(['data']);
+  });
+
+  it('control: an unmutated pair (same classification both sides) still reports no differences', async () => {
+    const baseStore = await loadIfcBytes(
+      new TextEncoder().encode(classificationModel('Ss_25_10_30')),
+      'base',
+    );
+    const headStore = await loadIfcBytes(
+      new TextEncoder().encode(classificationModel('Ss_25_10_30')),
+      'head',
+    );
+
+    const diff = diffModels(buildFileFingerprints(baseStore), buildFileFingerprints(headStore));
+    const wall = diff.byKey.get(guid('WALL'));
+    expect(wall?.state).toBe('unchanged');
   });
 });

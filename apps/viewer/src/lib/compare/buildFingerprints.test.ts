@@ -839,6 +839,60 @@ describe('buildEntityFingerprints - resolved materials', () => {
   });
 });
 
+describe('buildEntityFingerprints - resolved classifications', () => {
+  /** A proxy associated with a classification through
+   *  `IfcRelAssociatesClassification` -> `IfcClassificationReference` ->
+   *  `IfcClassification`. `base` shifts express ids, same renumbering control
+   *  as the materials suite above. */
+  function classifiedProxy(identification: string, base: number): string {
+    const n = (offset: number) => `#${base + offset}`;
+    return [
+      `${n(1)}=IFCBUILDINGELEMENTPROXY('0proxyproxyproxyproxy',$,'road - roadside verge - soil',$,$,$,$,$,.NOTDEFINED.);`,
+      `${n(2)}=IFCCLASSIFICATION('Uniclass2015',$,$,'Uniclass2015',$,$,$);`,
+      `${n(3)}=IFCCLASSIFICATIONREFERENCE($,'${identification}','Timber wall',${n(2)},$);`,
+      `${n(4)}=IFCRELASSOCIATESCLASSIFICATION('0relclarelclarelclar',$,$,$,(${n(1)}),${n(3)});`,
+    ].join('\n');
+  }
+
+  async function side(step: string, modelId: string) {
+    const store = await storeFromStep(step);
+    const built = await buildEntityFingerprints({ modelId, store, meshes: [], idOffset: 0 });
+    const proxy = built.find((f) => f.key === '0proxyproxyproxyproxy');
+    assert.ok(proxy, `expected the proxy in ${modelId}`);
+    return proxy;
+  }
+
+  it('reports a re-coded classification as a data change', async () => {
+    // Same shape as the material gap above: re-coding an element from one
+    // Uniclass group to another, geometry and every property untouched, went
+    // unreported before classifications had a channel.
+    const a = await side(classifiedProxy('Ss_25_10_30', 0), 'A');
+    const b = await side(classifiedProxy('Ss_25_10_90', 0), 'B');
+    assert.notStrictEqual(a.dataHash, b.dataHash, 'a classification edit must move the data hash');
+    const diff = diffModels([a], [b], { scope: 'both' });
+    const entry = diff.byKey.get('0proxyproxyproxyproxy');
+    assert.strictEqual(entry!.state, 'modified');
+    assert.deepStrictEqual(entry!.changeKinds, ['data']);
+    assert.deepStrictEqual(entry!.changedComponents, ['classification']);
+  });
+
+  it('stays SILENT when the classification entities are renumbered but the code is not', async () => {
+    const a = await side(classifiedProxy('Ss_25_10_30', 0), 'A');
+    const b = await side(classifiedProxy('Ss_25_10_30', 500), 'B');
+    assert.strictEqual(a.dataHash, b.dataHash);
+    assert.strictEqual(diffModels([a], [b], { scope: 'both' }).byKey.get('0proxyproxyproxyproxy')!.state, 'unchanged');
+  });
+
+  it('reports gaining a classification, and losing one', async () => {
+    const bare = "#1=IFCBUILDINGELEMENTPROXY('0proxyproxyproxyproxy',$,'road - roadside verge - soil',$,$,$,$,$,.NOTDEFINED.);";
+    const withClass = await side(classifiedProxy('Ss_25_10_30', 0), 'A');
+    const without = await side(bare, 'B');
+    assert.notStrictEqual(withClass.dataHash, without.dataHash);
+    assert.ok(withClass.components!['classification'], 'the classified side carries the key');
+    assert.strictEqual(without.components!['classification'], undefined, 'the bare side carries none');
+  });
+});
+
 describe('buildEntityFingerprints - placement of a geometry-less product', () => {
   /**
    * A site under a two-link placement chain, holding one meshed member.

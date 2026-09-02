@@ -76,6 +76,50 @@ export type InboundCommandType =
   | 'GET_SCREENSHOT'
   | 'GET_MODEL_INFO';
 
+/**
+ * Every `SET_TYPE_VISIBILITY` flag, in declaration order.
+ *
+ * This list mirrors the viewer store's `TypeVisibility` one-to-one. It exists
+ * as a runtime value, not just a type, so the embed's command handler can loop
+ * it instead of naming flags by hand: three of the seven were named and the
+ * other four were silently dropped for as long as the store had them, because
+ * nothing tied the protocol's spelling of the set to the store's. The bridge
+ * test pins that equality in both directions, at compile time and at runtime.
+ *
+ * Which IFC classes each flag gates:
+ *
+ * - `spaces` - `IfcSpace`.
+ * - `spatialZones` - `IfcSpatialZone`, the modelled gross-area volumes; a
+ *   separate toggle from `spaces` so net and gross can be shown apart (#1075).
+ * - `openings` - `IfcOpeningElement`.
+ * - `virtualElements` - `IfcVirtualElement`, the non-physical space-boundary
+ *   and clearance placeholders (#1133).
+ * - `site` - `IfcSite` and `IfcGeographicElement`; the row is "Terrain &
+ *   context", and modelled terrain disappears with it (#1480).
+ * - `ifcAnnotations` - `IfcAnnotation`: both the 2D symbolic curve/text
+ *   overlay and the 3D annotation solids some exporters write (#1354, #1480).
+ * - `ifcGrid` - `IfcGrid` axis lines and bubble tags. It has no mesh class of
+ *   its own; it gates an overlay, and was split out of `ifcAnnotations` so a
+ *   dense-grid model can lose grids without losing dimensions (#862).
+ */
+export const TYPE_VISIBILITY_FLAG_KEYS = [
+  'spaces',
+  'spatialZones',
+  'openings',
+  'virtualElements',
+  'site',
+  'ifcAnnotations',
+  'ifcGrid',
+] as const;
+
+/**
+ * The `SET_TYPE_VISIBILITY` payload: any subset of the flags above. An omitted
+ * flag is left alone, so a host can drive one toggle without restating the rest.
+ */
+export type TypeVisibilityFlags = {
+  [K in (typeof TYPE_VISIBILITY_FLAG_KEYS)[number]]?: boolean;
+};
+
 /** Payload types for each inbound command */
 export interface InboundPayloads {
   INIT: { token?: string; config?: EmbedConfig };
@@ -107,7 +151,7 @@ export interface InboundPayloads {
   SET_VIEW: { preset: ViewPreset };
   SET_SECTION: { axis?: SectionAxis; position?: number; enabled?: boolean; flipped?: boolean };
   SET_THEME: { theme: 'light' | 'dark'; bg?: string };
-  SET_TYPE_VISIBILITY: { spaces?: boolean; openings?: boolean; site?: boolean };
+  SET_TYPE_VISIBILITY: TypeVisibilityFlags;
   GET_PROPERTIES: { id: number };
   GET_SCREENSHOT: { width?: number; height?: number };
   GET_MODEL_INFO: void;

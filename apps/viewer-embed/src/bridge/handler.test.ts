@@ -12,7 +12,7 @@
  * silent relaxation of the boundary fails the suite.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, expectTypeOf } from 'vitest';
 
 // The bridge only needs one value from the viewer store barrel; importing the
 // real barrel would drag in zustand + renderer + wasm. Mirror the real
@@ -30,7 +30,9 @@ vi.mock('@/store/index.js', () => ({
   },
 }));
 
-import { EMBED_SOURCE, PROTOCOL_VERSION } from '@ifc-lite/embed-protocol';
+import { EMBED_SOURCE, PROTOCOL_VERSION, TYPE_VISIBILITY_FLAG_KEYS } from '@ifc-lite/embed-protocol';
+import { TYPE_VISIBILITY_SEMANTIC_DEFAULTS } from '@/store/constants.js';
+import type { TypeVisibility } from '@/store/types.js';
 import { initBridge, destroyBridge, emitEvent, emitToParent } from './handler.js';
 
 // ---------------------------------------------------------------------------
@@ -146,7 +148,12 @@ function makeState() {
     entities,
     calls,
     sectionPlane: { enabled: false, flipped: false },
-    typeVisibility: { spaces: true, openings: false, site: true },
+    // All seven store toggles, not the three the protocol used to name: a
+    // handler that reads only three has to be visibly wrong here.
+    typeVisibility: {
+      spaces: true, spatialZones: false, openings: false, virtualElements: true,
+      site: true, ifcAnnotations: false, ifcGrid: true,
+    },
     cameraCallbacks: {
       frameSelection: rec('frameSelection'),
       fitAll: rec('fitAll'),
@@ -945,6 +952,59 @@ describe('selection and visibility commands', () => {
     initBridge(makeCtx(state));
     await send(fw, cmd('SET_TYPE_VISIBILITY', {}, 'r1'));
     expect(called(state, 'toggleTypeVisibility')).toBe(false);
+  });
+
+  it('SET_TYPE_VISIBILITY reaches every flag the protocol declares, not just spaces/openings/site', async () => {
+    // Fixture: spaces=true, spatialZones=false, openings=false,
+    // virtualElements=true, site=true, ifcAnnotations=false, ifcGrid=true.
+    // Every flag is sent INVERTED, so a correct handler toggles all seven.
+    // Kills: the three hardcoded `if (payload.spaces …)` branches this
+    // replaced — under them `toggled` was ['spaces', 'openings', 'site'] and
+    // the other four commands were accepted, answered OK, and dropped. Also
+    // kills a loop that iterates a shorter list than TYPE_VISIBILITY_FLAG_KEYS.
+    initBridge(makeCtx(state));
+    await send(fw, cmd('SET_TYPE_VISIBILITY', {
+      spaces: false, spatialZones: true, openings: true, virtualElements: false,
+      site: false, ifcAnnotations: true, ifcGrid: false,
+    }, 'r1'));
+    const toggled = state.calls
+      .filter(([n]: [string]) => n === 'toggleTypeVisibility')
+      .map(([, arg]: [string, string]) => arg);
+    expect([...toggled].sort()).toEqual([...TYPE_VISIBILITY_FLAG_KEYS].sort());
+  });
+
+  it('SET_TYPE_VISIBILITY leaves a matching flag alone on every key, not only the first three', async () => {
+    // Same seven flags, each sent at the value the fixture already holds.
+    // `toggleTypeVisibility` FLIPS, so a handler that called it unconditionally
+    // would invert all seven while looking like it "applied" the request.
+    // Kills: dropping the `state.typeVisibility[key] !== payload[key]` half of
+    // the guard, which the old three-branch code had and a naive loop loses.
+    initBridge(makeCtx(state));
+    await send(fw, cmd('SET_TYPE_VISIBILITY', {
+      spaces: true, spatialZones: false, openings: false, virtualElements: true,
+      site: true, ifcAnnotations: false, ifcGrid: true,
+    }, 'r1'));
+    expect(called(state, 'toggleTypeVisibility')).toBe(false);
+  });
+
+  it('the protocol flag list and the store TypeVisibility are the same set', () => {
+    // This is the check that stops defect 2 recurring. The protocol was written
+    // when the store had three toggles; four were added to the store later and
+    // nothing failed, so the embed silently exposed three of seven for months.
+    //
+    // Runtime half. Kills: adding a store toggle (a new key in
+    // TYPE_VISIBILITY_SEMANTIC_DEFAULTS) without adding the protocol key —
+    // the exact drift that produced this defect.
+    expect([...TYPE_VISIBILITY_FLAG_KEYS].sort())
+      .toEqual(Object.keys(TYPE_VISIBILITY_SEMANTIC_DEFAULTS).sort());
+
+    // Compile-time half, checked by scripts/typecheck-tests.mjs (#2457). Kills a
+    // protocol key the store lacks AND a store key the protocol lacks, in one
+    // assertion, because type equality is checked both ways. The set equality
+    // above already catches both at runtime. handler.ts is a third guard for the
+    // extra-protocol-key direction only, since it indexes TypeVisibility by the
+    // key; dropping a key the store has compiles there fine.
+    expectTypeOf<(typeof TYPE_VISIBILITY_FLAG_KEYS)[number]>().toEqualTypeOf<keyof TypeVisibility>();
   });
 
   it('SET_THEME forwards the theme', async () => {

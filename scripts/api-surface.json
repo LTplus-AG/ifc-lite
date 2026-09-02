@@ -1497,6 +1497,8 @@
     "PropertySet: interface",
     "QuantitySet: interface",
     "SectionAxis: type",
+    "TYPE_VISIBILITY_FLAG_KEYS: const",
+    "TypeVisibilityFlags: type",
     "ViewPreset: type",
     "createCommand: function",
     "createEvent: function",
@@ -1511,6 +1513,7 @@
     "ModelInfo: interface",
     "ModelStats: interface",
     "SectionAxis: type",
+    "TypeVisibilityFlags: type",
     "ViewPreset: type"
   ],
   "@ifc-lite/encoding": [

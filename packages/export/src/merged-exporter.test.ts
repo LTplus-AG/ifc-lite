@@ -1590,4 +1590,94 @@ describe('MergedExporter', () => {
       expect(findDanglingRefs(content)).toEqual([]);
     });
   });
+
+  // planInfrastructureUnify (merged-context.ts) is two gates layered on the
+  // same call: WCS-frame compatibility (gates the whole context/subcontext
+  // pair) and, once that gate is open, subcontext KIND matching (which of the
+  // primary's subcontexts a given one may unify onto). A rebase that combines
+  // this file's WCS fix with the kind-matching fix landed on `main`
+  // (#3552) once already threaded both through one shared function; these
+  // pin each gate firing on its OWN condition, independent of the other, so a
+  // future merge collapsing them back into one undifferentiated check would
+  // fail here first.
+  describe('planInfrastructureUnify: WCS gating and kind matching are independent', () => {
+    // WCS mismatch, kinds otherwise identical ('Body'/'Body') and in the SAME
+    // order both sides — the one case kind-matching alone would happily unify.
+    // The WCS gate must still hold both subcontexts back.
+    it('a WCS mismatch withholds a subcontext even when its kind matches exactly', () => {
+      const base = (): MergeModelInput => buildModel('wcsKindA', 'A', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('wcsKindProjA')}',$,'A',$,$,$,$,(#3),#2);`],
+        [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#8));'],
+        [3, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#4,$);"],
+        [4, 'IFCAXIS2PLACEMENT3D', '#4=IFCAXIS2PLACEMENT3D(#5,#6,#7);'],
+        [5, 'IFCCARTESIANPOINT', '#5=IFCCARTESIANPOINT((0.,0.,0.));'],
+        [6, 'IFCDIRECTION', '#6=IFCDIRECTION((0.,0.,1.));'],
+        [7, 'IFCDIRECTION', '#7=IFCDIRECTION((1.,0.,0.));'],
+        [8, 'IFCSIUNIT', '#8=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+        [9, 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT', "#9=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#3,$,.MODEL_VIEW.,$);"],
+      ]);
+      const offset = (): MergeModelInput => buildModel('wcsKindB', 'B', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('wcsKindProjB')}',$,'B',$,$,$,$,(#3),#2);`],
+        [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#8));'],
+        [3, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#4,$);"],
+        [4, 'IFCAXIS2PLACEMENT3D', '#4=IFCAXIS2PLACEMENT3D(#5,#6,#7);'],
+        // Same kind ('Body'/MODEL_VIEW) as the base model — a 500 m origin
+        // offset is the ONLY difference.
+        [5, 'IFCCARTESIANPOINT', '#5=IFCCARTESIANPOINT((500.,0.,0.));'],
+        [6, 'IFCDIRECTION', '#6=IFCDIRECTION((0.,0.,1.));'],
+        [7, 'IFCDIRECTION', '#7=IFCDIRECTION((1.,0.,0.));'],
+        [8, 'IFCSIUNIT', '#8=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+        [9, 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT', "#9=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#3,$,.MODEL_VIEW.,$);"],
+      ]);
+
+      const content = decode(new MergedExporter([base(), offset()]).export({ schema: 'IFC4' }).content);
+      // Both models' contexts AND both models' 'Body' subcontexts survive —
+      // kind matching never got a chance to run because the WCS gate closed first.
+      expect(content.match(/=IFCGEOMETRICREPRESENTATIONCONTEXT\(/g)?.length).toBe(2);
+      expect(content.match(/=IFCGEOMETRICREPRESENTATIONSUBCONTEXT\('Body'/g)?.length).toBe(2);
+      expect(findDanglingRefs(content)).toEqual([]);
+    });
+
+    // WCS matches exactly (same origin, same orientation) — the gate is open —
+    // but the two models declare their subcontexts in reversed kind order.
+    // Kind matching, not raw position, must still decide the pairing.
+    it('a matching WCS still routes subcontext pairing through kind matching, not position', () => {
+      const arch = () => buildModel('kindWcsArch', 'Arch', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('kindWcsProjA')}',$,'A',$,$,$,$,(#3),#2);`],
+        [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#8));'],
+        [3, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#9,$);"],
+        [4, 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT', "#4=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Axis',$,*,*,*,*,#3,$,.MODEL_VIEW.,$);"],
+        [5, 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT', "#5=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body',$,*,*,*,*,#3,$,.MODEL_VIEW.,$);"],
+        [8, 'IFCSIUNIT', '#8=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+        [9, 'IFCCARTESIANPOINT', '#9=IFCCARTESIANPOINT((0.,0.,0.));'],
+      ]);
+      const struct = () => buildModel('kindWcsStruct', 'Struct', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('kindWcsProjB')}',$,'B',$,$,$,$,(#3),#2);`],
+        [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#8));'],
+        [3, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#9,$);"],
+        // Reversed order relative to `arch`, but the SAME WCS origin/orientation.
+        [4, 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT', "#4=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body',$,*,*,*,*,#3,$,.MODEL_VIEW.,$);"],
+        [5, 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT', "#5=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Axis',$,*,*,*,*,#3,$,.MODEL_VIEW.,$);"],
+        [6, 'IFCWALL', `#6=IFCWALL('${guid('kindWcsWallB')}',$,'W',$,$,$,#7,$);`],
+        [7, 'IFCPRODUCTDEFINITIONSHAPE', '#7=IFCPRODUCTDEFINITIONSHAPE($,$,(#10));'],
+        [10, 'IFCSHAPEREPRESENTATION', "#10=IFCSHAPEREPRESENTATION(#4,'Body','SweptSolid',$);"],
+        [8, 'IFCSIUNIT', '#8=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+        [9, 'IFCCARTESIANPOINT', '#9=IFCCARTESIANPOINT((0.,0.,0.));'],
+      ]);
+
+      const content = decode(new MergedExporter([arch(), struct()]).export({ schema: 'IFC4' }).content);
+      expect(findDanglingRefs(content)).toEqual([]);
+      // One shared context (WCS matched) but the wall's representation must
+      // still resolve to a 'Body'-kind subcontext, never the primary's 'Axis'
+      // one a positional (index-0) pairing would have produced.
+      expect(content.match(/=IFCGEOMETRICREPRESENTATIONCONTEXT\(/g)?.length).toBe(1);
+      const shapeRepMatch = content.match(/#(\d+)=IFCSHAPEREPRESENTATION\(#(\d+),'Body'/);
+      expect(shapeRepMatch).not.toBeNull();
+      const contextDefMatch = content.match(
+        new RegExp(`#${shapeRepMatch![2]}=IFCGEOMETRICREPRESENTATIONSUBCONTEXT\\('([^']*)'`),
+      );
+      expect(contextDefMatch).not.toBeNull();
+      expect(contextDefMatch![1]).toBe('Body');
+    });
+  });
 });

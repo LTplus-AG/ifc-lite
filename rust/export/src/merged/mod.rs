@@ -23,7 +23,9 @@
 //! (kept as its own project, never mis-scaled) and [`MergedStats::unit_rescale_required`]
 //! is set so the caller can gate that case to the JS path.
 
+mod empty;
 mod guid;
+mod line_edit;
 mod plan;
 mod spatial;
 mod units;
@@ -35,8 +37,9 @@ use crate::step_text::escape;
 
 use guid::{read_leading_guid, replace_global_id, GuidMinter};
 pub use guid::{deterministic_global_id, leading_rooted_global_id};
+use line_edit::{rewrite_refs, LineDecision};
 use plan::{build_plan, model_salt, ModelIndex, PlanCtx};
-use units::{resolve_length_scale, units_compatible};
+use units::{resolve_length_scale, resolve_model_modes};
 
 pub use spatial::{ContainerMergeStrategy, StoreyMergeStrategy};
 
@@ -90,6 +93,14 @@ pub struct MergedOptions {
     pub merge_buildings: ContainerMergeStrategy,
     /// `IfcBuildingStorey` matching strategy.
     pub merge_storeys: StoreyMergeStrategy,
+    /// Drop spatial containers (`IfcSite` / `IfcBuilding` / `IfcBuildingStorey` /
+    /// `IfcSpace`) that the merge leaves holding nothing — the "Merge Projects"
+    /// recipe step that container matching alone does not cover (#3643).
+    /// Emptiness is judged on the MERGED model, after visibility filtering and
+    /// spatial unification, and an emptied container is simply never planned, so
+    /// nothing is written referencing it. Off by default: output is byte-identical
+    /// to a merge that never asked for it.
+    pub drop_empty_containers: bool,
 }
 
 impl Default for MergedOptions {
@@ -102,6 +113,7 @@ impl Default for MergedOptions {
             merge_sites: ContainerMergeStrategy::default(),
             merge_buildings: ContainerMergeStrategy::default(),
             merge_storeys: StoreyMergeStrategy::default(),
+            drop_empty_containers: false,
         }
     }
 }
@@ -123,6 +135,10 @@ pub struct MergedStats {
     /// that was federated rather than rescaled — the caller should route that
     /// case to the JS path if true single-project normalization is required.
     pub unit_rescale_required: bool,
+    /// Spatial containers dropped for holding nothing, counted in the merged
+    /// model (a container unified across three inputs counts once). Always 0
+    /// unless [`MergedOptions::drop_empty_containers`] is set.
+    pub dropped_container_count: usize,
     /// Human-readable notes (e.g. federation relaxing `IfcSingleProjectInstance`).
     pub warnings: Vec<String>,
 }
@@ -168,6 +184,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
         federated_model_count: 0,
         unmerged_model_count: 0,
         unit_rescale_required: false,
+        dropped_container_count: 0,
         warnings: Vec::new(),
     };
 
@@ -200,6 +217,13 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     let primary_scale = resolve_length_scale(models[0].content);
     drop(first);
 
+    // Unit verdicts for every model, resolved once: the empty-container pre-pass
+    // has to know which models unify before anything is written, and the emit
+    // loop below must reach the same verdict — so both read this one answer.
+    let modes = resolve_model_modes(models, opts.unit_reconciliation, primary_scale);
+    let drop_plan = empty::plan_drops(models, opts, &spatial_lookup, &modes);
+    stats.dropped_container_count = drop_plan.as_ref().map_or(0, |p| p.count);
+
     // Running cross-model state.
     let mut guid_to_final: HashMap<String, (u32, f64)> = HashMap::new();
     let mut emitted_guids: HashSet<String> = HashSet::new();
@@ -210,15 +234,11 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
         let is_first = i == 0;
         let index = ModelIndex::build(model.content);
         let included = plan::resolve_included(&index, &model.included);
-        // Placing this model would push the merged EXPRESS-id space past u32::MAX.
-        // Wrapping the offset would silently duplicate ids and rewrite references
-        // to the wrong entities (CR #2952), so stop here instead: the file emitted
-        // so far is valid, and the unmerged tail is reported for the caller to gate.
-        // Bound by the largest VISIBLE id, not `index.max_id`: an excluded high id
-        // is never emitted, so it must not consume id space or omit a later model
-        // that would actually fit (CR #2952).
-        let max_visible_id = included.iter().copied().max().unwrap_or(0);
-        let Some(next_offset) = offset.checked_add(max_visible_id) else {
+        // Placing this model would push the merged EXPRESS-id space past u32::MAX,
+        // so stop here instead: the file emitted so far is valid, and the unmerged
+        // tail is reported for the caller to gate. `plan::next_offset` is the single
+        // home for that bound — the drop pre-pass stops at the same model.
+        let Some(next) = plan::next_offset(offset, &included) else {
             stats.unmerged_model_count = models.len() - i;
             stats.warnings.push(format!(
                 "merged EXPRESS id space would exceed u32::MAX; stopped after {i} model(s), {} model(s) not merged.",
@@ -227,31 +247,22 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
             break;
         };
 
-        // Unit mode.
-        let this_scale = resolve_length_scale(model.content);
-        let (compatible, effective_scale) = if is_first {
-            (true, primary_scale)
-        } else {
-            match opts.unit_reconciliation {
-                // AssumeShared unifies regardless of the declared unit, so the
-                // model's entities join the FIRST model's unit space: store
-                // `primary_scale`, not the model's own. Storing `this_scale` would
-                // make a later model's duplicate GlobalId fail the
-                // `units_compatible(scale, primary_scale)` gate and be re-stamped
-                // instead of unified (CR #2952).
-                UnitReconciliation::AssumeShared => (true, primary_scale),
-                _ if units_compatible(this_scale, primary_scale) => (true, this_scale),
-                UnitReconciliation::Normalize => {
-                    stats.federated_model_count += 1;
-                    stats.unit_rescale_required = true;
-                    (false, this_scale)
-                }
-                UnitReconciliation::Auto => {
-                    stats.federated_model_count += 1;
-                    (false, this_scale)
-                }
-            }
-        };
+        // Unit mode. Counted here, not where the verdicts are resolved, so an
+        // id-space break above still reports only the models actually merged.
+        let mode = &modes[i];
+        let (compatible, effective_scale) = (mode.compatible, mode.scale);
+        if mode.federated {
+            stats.federated_model_count += 1;
+        }
+        if mode.rescale_required {
+            stats.unit_rescale_required = true;
+        }
+
+        // Empty spatial containers this model must not write (#3643). The plan
+        // covers only the models that will actually be emitted, so a model past
+        // the id-space cut has no entry — `get` rather than index.
+        let dropped_containers =
+            drop_plan.as_ref().and_then(|p| p.per_model.get(i)).filter(|d| !d.is_empty());
 
         let salt = model_salt(model, i);
         let plan = build_plan(&index, is_first, compatible, PlanCtx {
@@ -276,10 +287,25 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                 continue;
             }
             let Some(bytes) = index.line_bytes(id) else { continue };
+            // A dropped container is never written, and any line naming one is
+            // rewritten without it (or dropped with it), so the merge emits no
+            // reference to a line it did not write — no clean-up pass needed.
+            let mut pruned: Option<String> = None;
+            if let Some(dropped) = dropped_containers {
+                if dropped.contains(&id) {
+                    continue;
+                }
+                match line_edit::decide_line(&String::from_utf8_lossy(bytes), dropped) {
+                    LineDecision::Skip => continue,
+                    LineDecision::Rewrite(text) => pruned = Some(text),
+                    LineDecision::Keep => {}
+                }
+            }
+            let bytes: &[u8] = pruned.as_deref().map_or(bytes, str::as_bytes);
             let remapped = if offset == 0 && plan.shared_remap.is_empty() {
                 String::from_utf8_lossy(bytes).into_owned()
             } else {
-                plan::rewrite_refs(bytes, offset, &|n| plan.shared_remap.get(&n).copied())
+                rewrite_refs(bytes, offset, &|n| plan.shared_remap.get(&n).copied())
             };
             let after_guid = match plan.guid_rewrite.get(&id) {
                 Some(g) => replace_global_id(&remapped, g),
@@ -334,7 +360,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
             stats.written += 1;
         }
 
-        offset = next_offset;
+        offset = next;
     }
 
     if stats.federated_model_count > 0 {

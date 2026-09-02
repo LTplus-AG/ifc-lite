@@ -229,7 +229,7 @@ const ALLOWLIST_DIGESTS = {
   'packages/data': '7334937001846380278',
   'packages/diff': '935169126877539347',
   'packages/drawing-2d': '1202507408514109964',
-  'packages/export': '8294779133777308773',
+  'packages/export': '6651271583538625536',
   'packages/extensions': '8156044843525017433',
   'packages/geometry': '12847835029883478945',
   'packages/ids': '9562546445799669442',

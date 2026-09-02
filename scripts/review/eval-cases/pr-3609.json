@@ -1,0 +1,135 @@
+{
+  "$comment": "Held from the merge train of 2026-09-01 on a merge-blocking defect that all ~91 deterministic gates passed. Defect class: second-site. `what` is written from the reviewer's file:line and failing input, never from the PR body. Anchored at the CHANGED importer, not the unfixed one: a finding can only be anchored to a line in the diff, so a second-site finding has to be reported at the site that was touched, naming the sibling that was not. The harness's own well-formedness test caught this when the expected path pointed at the file the PR never opened.",
+  "pr": 3609,
+  "input": {
+    "headSha": "7b5d91673045267d362d5b5ddb0a1b4d1b5fdff0",
+    "files": [
+      {
+        "path": ".changeset/glb-basecolor-linear-srgb-reader.md",
+        "patch": "@@ -0,0 +1,5 @@\n+---\n+'@ifc-lite/cache': patch\n+---\n+\n+Fixed the GLB reader (`resolveMaterialColor` in `parseGLBToMeshData`) copying `pbrMetallicRoughness.baseColorFactor` straight into `MeshData.color`. `baseColorFactor` is defined in LINEAR colour space (glTF 2.0 spec), while the mesh-colour pipeline the viewer consumes is sRGB \u2014 so after the exporter fix that emits linear factors, an export \u2192 re-import round-trip read linear values as sRGB and rendered too dark, and any spec-conformant external GLB was mis-read the same way. The reader now applies the inverse IEC 61966-2-1 encode (linear \u2192 sRGB) to the R/G/B channels only, clamped to [0, 1]; alpha passes through untouched. This is the reader half of the writer fix in `@ifc-lite/wasm`.",
+        "addedLineRanges": [
+          [
+            1,
+            5
+          ]
+        ]
+      },
+      {
+        "path": ".changeset/gltf-basecolor-srgb-linear.md",
+        "patch": "@@ -0,0 +1,5 @@\n+---\n+'@ifc-lite/wasm': patch\n+---\n+\n+Fixed the glTF/GLB exporter (`export_glb_from_meshes`, the streaming/bounded and type-library-instanced paths) copying an element's `IfcColourRgb`-sourced colour straight into `pbrMetallicRoughness.baseColorFactor` and `emissiveFactor`. Those two glTF fields are defined in LINEAR colour space (glTF 2.0 spec), while `IfcColourRgb` is authored perceptually \u2014 the sRGB convention every BIM colour picker (and IfcOpenShell/BlenderBIM) uses. Without the sRGB\u2192linear transfer function, the emitted GLB rendered too bright/washed-out in any spec-compliant external viewer (Blender, three.js, Cesium \u2014 the point of exporting glTF at all). The writer now applies the standard IEC 61966-2-1 decode to the R/G/B channels only; alpha (opacity, not a light quantity) and `alphaMode` are unchanged, and metallic/roughness factors were never colour and stay untouched.",
+        "addedLineRanges": [
+          [
+            1,
+            5
+          ]
+        ]
+      },
+      {
+        "path": "packages/cache/src/glb-color.ts",
+        "patch": "@@ -0,0 +1,23 @@\n+/* This Source Code Form is subject to the terms of the Mozilla Public\n+ * License, v. 2.0. If a copy of the MPL was not distributed with this\n+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */\n+\n+/**\n+ * Colour-space helpers for the GLB reader.\n+ *\n+ * glTF's `baseColorFactor` is defined in linear-light space, while IFC colours\n+ * (and the mesh colours the viewer consumes) are sRGB-encoded. The GLB exporter\n+ * decodes sRGB into linear on write via `srgb_to_linear`; the reader applies the\n+ * inverse on read so an export -> re-import round-trip is lossless and any\n+ * spec-conformant external GLB is interpreted correctly.\n+ */\n+\n+/**\n+ * Encode a single linear-light channel value to sRGB, clamped to [0, 1].\n+ * Inverse of the exporter's `srgb_to_linear`.\n+ */\n+export function linearToSrgb(c: number): number {\n+  const x = c <= 0 ? 0 : c >= 1 ? 1 : c;\n+  const encoded = x <= 0.0031308 ? x * 12.92 : 1.055 * Math.pow(x, 1 / 2.4) - 0.055;\n+  return encoded < 0 ? 0 : encoded > 1 ? 1 : encoded;\n+}",
+        "addedLineRanges": [
+          [
+            1,
+            23
+          ]
+        ]
+      },
+      {
+        "path": "packages/cache/src/glb.test.ts",
+        "patch": "@@ -4,6 +4,7 @@\n \n import { describe, it, expect } from 'vitest';\n import { parseGLBToMeshData, loadGLBToMeshData } from './glb.js';\n+import { linearToSrgb } from './glb-color.js';\n \n /**\n  * Build a minimal valid GLB (binary glTF) by hand. Mirrors the structure\n@@ -151,7 +152,10 @@ function buildGLB(materials: Array<[number, number, number, number]>): Uint8Arra\n describe('parseGLBToMeshData / loadGLBToMeshData \u2014 material colour round-trip', () => {\n   // Regression for #688: GLB importer hardcoded grey, silently dropping the\n   // exporter's per-mesh material colours on re-import.\n-  it('reads pbrMetallicRoughness.baseColorFactor into MeshData.color', () => {\n+  it('reads pbrMetallicRoughness.baseColorFactor into MeshData.color (linear \u2192 sRGB)', () => {\n+    // glTF baseColorFactor is linear-light; the mesh colour pipeline is sRGB, so\n+    // the reader encodes R/G/B back to sRGB (inverse of the exporter's\n+    // srgb_to_linear) and leaves alpha untouched.\n     const colors: Array<[number, number, number, number]> = [\n       [0.8, 0.2, 0.2, 1.0],\n       [0.1, 0.6, 0.3, 0.5],\n@@ -162,13 +166,27 @@ describe('parseGLBToMeshData / loadGLBToMeshData \u2014 material colour round-trip'\n     for (let i = 0; i < colors.length; i++) {\n       const expected = colors[i];\n       const actual = meshes[i].color;\n-      expect(actual[0]).toBeCloseTo(expected[0]);\n-      expect(actual[1]).toBeCloseTo(expected[1]);\n-      expect(actual[2]).toBeCloseTo(expected[2]);\n-      expect(actual[3]).toBeCloseTo(expected[3]);\n+      expect(actual[0]).toBeCloseTo(linearToSrgb(expected[0]));\n+      expect(actual[1]).toBeCloseTo(linearToSrgb(expected[1]));\n+      expect(actual[2]).toBeCloseTo(linearToSrgb(expected[2]));\n+      expect(actual[3]).toBeCloseTo(expected[3]); // alpha is not colour-managed\n     }\n   });\n \n+  it('decodes a known linear baseColorFactor to its sRGB value (0.2140 \u2192 ~0.5), alpha unchanged', () => {\n+    // A mid-grey sRGB 0.5 decodes to linear \u2248 0.2140; the writer stores that in\n+    // baseColorFactor, and the reader must return it to ~0.5. On the pre-fix\n+    // reader (raw passthrough) color[0] would be 0.2140, not ~0.5 \u2014 RED before,\n+    // GREEN after.\n+    const meshes = loadGLBToMeshData(buildGLB([[0.2140, 0.2140, 0.2140, 0.5]]));\n+    expect(meshes).toHaveLength(1);\n+    const c = meshes[0].color;\n+    expect(c[0]).toBeCloseTo(0.5, 3);\n+    expect(c[1]).toBeCloseTo(0.5, 3);\n+    expect(c[2]).toBeCloseTo(0.5, 3);\n+    expect(c[3]).toBe(0.5); // alpha passes through untouched\n+  });\n+\n   it('falls back to default grey when a primitive has no material', () => {\n     const glb = buildGLB([[0.5, 0.5, 0.5, 1.0]]);\n     // Hand-strip material from the primitive to simulate a 3rd-party GLB.\n@@ -357,8 +375,8 @@ describe('parseGLB \u2014 SharedArrayBuffer-backed input', () => {\n     shared.set(glb);\n     const meshes = loadGLBToMeshData(shared);\n     expect(meshes).toHaveLength(1);\n-    expect(meshes[0].color[0]).toBeCloseTo(0.2);\n-    expect(meshes[0].color[2]).toBeCloseTo(0.6);\n+    expect(meshes[0].color[0]).toBeCloseTo(linearToSrgb(0.2));\n+    expect(meshes[0].color[2]).toBeCloseTo(linearToSrgb(0.6));\n   });\n });\n ",
+        "addedLineRanges": [
+          [
+            7,
+            7
+          ],
+          [
+            155,
+            158
+          ],
+          [
+            169,
+            172
+          ],
+          [
+            176,
+            189
+          ],
+          [
+            378,
+            379
+          ]
+        ]
+      },
+      {
+        "path": "packages/cache/src/glb.ts",
+        "patch": "@@ -11,6 +11,7 @@\n \n import type { MeshData } from '@ifc-lite/geometry';\n import { safeUtf8Decode } from '@ifc-lite/data';\n+import { linearToSrgb } from './glb-color.js';\n \n // glTF 2.0 constants\n const GLB_MAGIC = 0x46546c67; // 'glTF'\n@@ -468,8 +469,7 @@ export function parseGLBToMeshData(gltf: GLTFDocument, bin: Uint8Array): MeshDat\n     const material = gltf.materials?.[materialIdx];\n     const factor = material?.pbrMetallicRoughness?.baseColorFactor;\n     if (!Array.isArray(factor) || factor.length < 3) return [...DEFAULT_COLOR];\n-    const r = factor[0], g = factor[1], b = factor[2];\n-    const a = factor.length >= 4 ? factor[3] : 1.0;\n+    const r = factor[0], g = factor[1], b = factor[2], a = factor.length >= 4 ? factor[3] : 1.0;\n     if (\n       typeof r !== 'number' || !Number.isFinite(r) ||\n       typeof g !== 'number' || !Number.isFinite(g) ||\n@@ -478,7 +478,7 @@ export function parseGLBToMeshData(gltf: GLTFDocument, bin: Uint8Array): MeshDat\n     ) {\n       return [...DEFAULT_COLOR];\n     }\n-    return [r, g, b, a];\n+    return [linearToSrgb(r), linearToSrgb(g), linearToSrgb(b), a];\n   };\n \n   for (let nodeIdx = 0; nodeIdx < gltf.nodes.length; nodeIdx++) {",
+        "addedLineRanges": [
+          [
+            14,
+            14
+          ],
+          [
+            472,
+            472
+          ],
+          [
+            481,
+            481
+          ]
+        ]
+      },
+      {
+        "path": "rust/export/src/gltf.rs",
+        "patch": "@@ -421,19 +421,44 @@ fn color_key(c: [f32; 4]) -> (i32, i32, i32, i32) {\n     (r(c[0]), r(c[1]), r(c[2]), r(c[3]))\n }\n \n+/// IEC 61966-2-1 sRGB electro-optical transfer function (decode): maps a\n+/// gamma-encoded channel in `[0, 1]` to linear light. `IfcColourRgb` components\n+/// are authored the way every BIM tool's colour picker works \u2014 a perceptual\n+/// (sRGB) swatch, the same convention IfcOpenShell/BlenderBIM follow when\n+/// building a renderer's albedo input \u2014 while glTF's `baseColorFactor` and\n+/// `emissiveFactor` are defined in LINEAR space (glTF 2.0 spec, \"Reference\n+/// Material\"). Copying the sRGB value straight into `baseColorFactor` skips\n+/// this decode and renders every colour too bright/washed out in any\n+/// spec-compliant consumer (Blender, three.js, Cesium \u2014 the whole point of\n+/// exporting glTF for tools outside this repo). Metallic/roughness factors are\n+/// NOT colour and must never go through this \u2014 only RGB channels that end up\n+/// as a `*Factor` colour do.\n+fn srgb_to_linear(c: f32) -> f32 {\n+    let c = c.clamp(0.0, 1.0);\n+    if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }\n+}\n+\n /// One material for a mesh colour: the single source of the lit / unlit / emissive\n /// rules, shared by every assembler so the paths cannot drift. `emissive` takes\n /// precedence over `unlit` because the KHR_materials_unlit spec mandates\n /// `emissiveFactor = 0`, making the two mutually exclusive; never emit a\n /// spec-violating material that declares unlit AND a non-zero emissiveFactor (#1427).\n fn make_material(color: [f32; 4], lit: bool, emissive: bool) -> Material {\n+    // Alpha is opacity, not a gamma-encoded light quantity \u2014 never run it through\n+    // the sRGB transfer function; only R/G/B convert.\n+    let linear_rgb = [\n+        srgb_to_linear(color[0]),\n+        srgb_to_linear(color[1]),\n+        srgb_to_linear(color[2]),\n+        color[3],\n+    ];\n     Material {\n         pbr: Pbr {\n-            base_color_factor: color,\n+            base_color_factor: linear_rgb,\n             metallic_factor: 0.0,\n             roughness_factor: 1.0,\n         },\n-        emissive_factor: emissive.then_some([color[0], color[1], color[2]]),\n+        emissive_factor: emissive.then_some([linear_rgb[0], linear_rgb[1], linear_rgb[2]]),\n         extensions: if lit || emissive {\n             None\n         } else {",
+        "addedLineRanges": [
+          [
+            424,
+            440
+          ],
+          [
+            447,
+            454
+          ],
+          [
+            457,
+            457
+          ],
+          [
+            461,
+            461
+          ]
+        ]
+      },
+      {
+        "path": "rust/export/src/gltf_tests.rs",
+        "patch": "@@ -1315,14 +1315,18 @@ fn emissive_option_sets_emissive_factor_to_base_colour() {\n     );\n     let (json, _) = parse_glb(&glb);\n     let mats = json[\"materials\"].as_array().unwrap();\n-    // emissiveFactor == base colour RGB; base colour is preserved (safe fallback).\n+    // emissiveFactor == baseColorFactor RGB (both linear-space per glTF 2.0 \u2014\n+    // the sRGB-authored input [0.25, 0.5, 0.75] decoded to linear light).\n     let m = &mats[0];\n     let ef = m[\"emissiveFactor\"].as_array().unwrap();\n-    assert!((ef[0].as_f64().unwrap() - 0.25).abs() < 1e-6);\n-    assert!((ef[1].as_f64().unwrap() - 0.5).abs() < 1e-6);\n-    assert!((ef[2].as_f64().unwrap() - 0.75).abs() < 1e-6);\n+    assert!((ef[0].as_f64().unwrap() - 0.050_876_088).abs() < 1e-6);\n+    assert!((ef[1].as_f64().unwrap() - 0.214_041_14).abs() < 1e-6);\n+    assert!((ef[2].as_f64().unwrap() - 0.522_521_55).abs() < 1e-6);\n     let bc = m[\"pbrMetallicRoughness\"][\"baseColorFactor\"].as_array().unwrap();\n-    assert!((bc[0].as_f64().unwrap() - 0.25).abs() < 1e-6, \"base colour kept (no regression)\");\n+    assert!(\n+        (bc[0].as_f64().unwrap() - ef[0].as_f64().unwrap()).abs() < 1e-9,\n+        \"base colour and emissive agree (no regression from the emissive path)\"\n+    );\n     // emissive is core glTF: no extension is declared for it.\n     assert!(json.get(\"extensionsUsed\").is_none(), \"emissive needs no extension\");\n }\n@@ -1361,6 +1365,103 @@ fn emissive_takes_precedence_over_unlit() {\n     );\n }\n \n+// \u2500\u2500 colour VALUE fidelity: baseColorFactor is glTF-spec LINEAR \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n+//\n+// `IfcColourRgb` is authored the way every BIM colour picker (and\n+// IfcOpenShell/BlenderBIM) works: a perceptual sRGB swatch. glTF's\n+// `baseColorFactor`/`emissiveFactor` are defined in LINEAR space (glTF 2.0\n+// \"Reference Material\"), so the writer must apply the sRGB\u2192linear transfer\n+// function on write \u2014 a straight copy renders too bright/washed-out in any\n+// spec-compliant external consumer (Blender, three.js, Cesium).\n+\n+#[test]\n+fn base_color_factor_is_srgb_decoded_to_linear() {\n+    // Oracle: a mid-grey (0.5) sits right at the sRGB/linear crossover, where a\n+    // missing transfer function is most visible (0.5 sRGB \u2248 0.214 linear, not\n+    // 0.5) \u2014 a good discriminator against \"looks plausible either way\" colours.\n+    let positions: Vec<f32> = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0];\n+    let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 0.0, 1.0], 4).flatten().collect();\n+    let indices: Vec<u32> = vec![0, 1, 2, 0, 2, 3];\n+    let (glb, _) = export_glb_from_meshes(\n+        &positions, &normals, &indices, &[4], &[6],\n+        &[0.5, 0.5, 0.5, 1.0], // sRGB-authored source colour\n+        &[0.0, 0.0, 0.0], &[10], false, true, false,\n+    );\n+    let (json, _) = parse_glb(&glb);\n+    let bc = json[\"materials\"][0][\"pbrMetallicRoughness\"][\"baseColorFactor\"]\n+        .as_array()\n+        .unwrap();\n+    let expected_linear = 0.214_041_14_f64; // srgb_to_linear(0.5), IEC 61966-2-1\n+    assert!(\n+        (bc[0].as_f64().unwrap() - expected_linear).abs() < 1e-4,\n+        \"R: got {}, want linear-decoded {expected_linear} (sRGB 0.5 copied straight through is the bug)\",\n+        bc[0]\n+    );\n+    assert!((bc[1].as_f64().unwrap() - expected_linear).abs() < 1e-4);\n+    assert!((bc[2].as_f64().unwrap() - expected_linear).abs() < 1e-4);\n+}\n+\n+#[test]\n+fn base_color_factor_control_endpoints_are_unchanged() {\n+    // Control: black and white are fixed points of the sRGB transfer function\n+    // (0 -> 0, 1 -> 1), so a colour that's already correct at either endpoint\n+    // must stay correct \u2014 the fix must not perturb values it shouldn't touch.\n+    let positions: Vec<f32> = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0];\n+    let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 0.0, 1.0], 4).flatten().collect();\n+    let indices: Vec<u32> = vec![0, 1, 2, 0, 2, 3];\n+    let (glb, _) = export_glb_from_meshes(\n+        &positions, &normals, &indices, &[4], &[6],\n+        &[1.0, 0.0, 1.0, 1.0],\n+        &[0.0, 0.0, 0.0], &[10], false, true, false,\n+    );\n+    let (json, _) = parse_glb(&glb);\n+    let bc = json[\"materials\"][0][\"pbrMetallicRoughness\"][\"baseColorFactor\"]\n+        .as_array()\n+        .unwrap();\n+    assert!((bc[0].as_f64().unwrap() - 1.0).abs() < 1e-6, \"white channel stays 1.0\");\n+    assert!((bc[1].as_f64().unwrap() - 0.0).abs() < 1e-6, \"black channel stays 0.0\");\n+    assert!((bc[2].as_f64().unwrap() - 1.0).abs() < 1e-6, \"white channel stays 1.0\");\n+}\n+\n+#[test]\n+fn alpha_channel_is_never_srgb_decoded() {\n+    // Alpha is opacity, not gamma-encoded light \u2014 it must pass through\n+    // unchanged and must equal the RAW source alpha, never the linear-decoded\n+    // RGB curve applied by mistake.\n+    let positions: Vec<f32> = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0];\n+    let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 0.0, 1.0], 4).flatten().collect();\n+    let indices: Vec<u32> = vec![0, 1, 2, 0, 2, 3];\n+    let (glb, _) = export_glb_from_meshes(\n+        &positions, &normals, &indices, &[4], &[6],\n+        &[0.8, 0.2, 0.2, 0.5], // sRGB colour, 50% opacity\n+        &[0.0, 0.0, 0.0], &[10], false, true, false,\n+    );\n+    let (json, _) = parse_glb(&glb);\n+    let m = &json[\"materials\"][0];\n+    let bc = m[\"pbrMetallicRoughness\"][\"baseColorFactor\"].as_array().unwrap();\n+    assert!((bc[3].as_f64().unwrap() - 0.5).abs() < 1e-6, \"alpha passes through raw, not decoded\");\n+    assert_eq!(m[\"alphaMode\"], \"BLEND\", \"alpha < 1.0 must set alphaMode BLEND\");\n+    // R/G/B still decoded: a red channel of 0.8 sRGB is NOT ~0.8 linear.\n+    let expected_r = 0.603_827_34_f64; // srgb_to_linear(0.8)\n+    assert!((bc[0].as_f64().unwrap() - expected_r).abs() < 1e-4);\n+}\n+\n+#[test]\n+fn opaque_material_omits_alpha_mode() {\n+    // Control: a fully-opaque colour (alpha == 1.0) must default to glTF's\n+    // implicit OPAQUE \u2014 no `alphaMode` key at all \u2014 regardless of the RGB fix.\n+    let positions: Vec<f32> = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0];\n+    let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 0.0, 1.0], 4).flatten().collect();\n+    let indices: Vec<u32> = vec![0, 1, 2, 0, 2, 3];\n+    let (glb, _) = export_glb_from_meshes(\n+        &positions, &normals, &indices, &[4], &[6],\n+        &[0.3, 0.6, 0.9, 1.0],\n+        &[0.0, 0.0, 0.0], &[10], false, true, false,\n+    );\n+    let (json, _) = parse_glb(&glb);\n+    assert!(json[\"materials\"][0].get(\"alphaMode\").is_none(), \"opaque omits alphaMode\");\n+}\n+\n #[test]\n fn metadata_and_isolation() {\n     let with_meta = export_glb_with_stats(",
+        "addedLineRanges": [
+          [
+            1318,
+            1319
+          ],
+          [
+            1322,
+            1324
+          ],
+          [
+            1326,
+            1329
+          ],
+          [
+            1368,
+            1464
+          ]
+        ]
+      }
+    ],
+    "unreviewable": [],
+    "excluded": []
+  },
+  "expected": [
+    {
+      "path": "packages/cache/src/glb.ts",
+      "what": "the sRGB to linear conversion is added to this importer only; the sibling parseGLBToMeshData in packages/export/src/glb.ts is the published one and still copies baseColorFactor raw, so a mid-grey round-trips about 2.3x too dark through the export package"
+    }
+  ]
+}

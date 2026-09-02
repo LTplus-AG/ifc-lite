@@ -68,12 +68,20 @@ test('isExempt covers generated, declaration and test files only', () => {
     'apps/viewer/src/__mocks__/x.ts',
     'tests/e2e/x.ts',
     'packages/x/fixtures/model.ts',
+    // The .mjs/.cjs population joined in #3672, and its test files must be as
+    // exempt as TS ones — scripts/ alone holds ~70 *.test.mjs.
+    'scripts/check-module-size.test.mjs',
+    'scripts/lib/pr-review-signal.spec.cjs',
+    'scripts/fixtures/sample.mjs',
   ]) {
     assert.equal(isExempt(rel), true, rel);
   }
   for (const rel of [
     'packages/export/src/step-exporter.ts',
     'apps/viewer/src/components/viewer/Viewport.tsx',
+    // A non-test .mjs module is measured like any other source file (#3672).
+    'scripts/check-module-size.mjs',
+    'scripts/space-dcel-e2e.cjs',
     // "generated" must be a path SEGMENT, not a substring: a module that
     // generates something is production code.
     'apps/viewer/src/components/viewer/schedule/generate-schedule.ts',

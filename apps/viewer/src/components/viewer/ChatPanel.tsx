@@ -1000,7 +1000,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     // for free models. The route was already resolved (and the missing-key
     // case handled) at the top of doSend, so this dispatch is total.
     if (route.kind === 'anthropic') {
-      await streamAnthropicChat(route.apiKey, {
+      await streamAnthropicChat(route.credentials, {
         model: activeModel,
         messages: streamMessages,
         system: systemPrompt,

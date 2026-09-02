@@ -5,7 +5,8 @@
 /**
  * Direct browser-to-provider streaming for BYOK (Bring Your Own Key) models.
  *
- * Anthropic: Uses the official @anthropic-ai/sdk with `dangerouslyAllowBrowser`.
+ * Anthropic: Uses the official @anthropic-ai/sdk with `dangerouslyAllowBrowser`,
+ *            constructed in ./anthropic-client.ts.
  * OpenAI:    Uses fetch against the OpenAI chat completions API (same SSE format
  *            the proxy already returns, so SSE parsing is shared).
  *
@@ -13,7 +14,11 @@
  * They never pass through our server.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import {
+  anthropicErrorMessage,
+  createAnthropicClient,
+  type AnthropicCredentials,
+} from './anthropic-client.js';
 import { readSseStream, type StreamMessage, type StreamOptions } from './stream-client.js';
 import { getModelById, sendsSamplingParams } from './models.js';
 import { buildCacheableSystem, logCacheHit } from './prompt-cache.js';
@@ -63,15 +68,10 @@ function toAnthropicMessages(
 }
 
 export async function streamAnthropicChat(
-  apiKey: string,
+  credentials: AnthropicCredentials,
   options: Omit<StreamOptions, 'proxyUrl' | 'authToken' | 'onUsageInfo'>,
 ): Promise<void> {
   const { model, messages, system, signal, onChunk, onComplete, onError, onFinishReason } = options;
-
-  const client = new Anthropic({
-    apiKey,
-    dangerouslyAllowBrowser: true,
-  });
 
   // Send a tuned temperature only where the model is flagged for it. Naming
   // the models here instead just grows a second registry nothing keeps honest.
@@ -79,6 +79,10 @@ export async function streamAnthropicChat(
 
   let fullText = '';
   try {
+    // Inside the try: constructing the client rejects a workspace id that
+    // cannot go in a header, and that belongs on `onError` like every other
+    // failure rather than escaping as an unhandled throw.
+    const client = createAnthropicClient(credentials);
     const stream = client.messages.stream({
       model,
       // Opus 5 (the default BYOK model) runs adaptive thinking when `thinking`
@@ -122,16 +126,7 @@ export async function streamAnthropicChat(
   } catch (err) {
     if (signal?.aborted) return;
 
-    if (err instanceof Anthropic.APIError) {
-      const msg = err.status === 401
-        ? 'Invalid Anthropic API key. Check your key in Settings.'
-        : err.status === 429
-          ? 'Anthropic rate limit reached. Please wait and try again.'
-          : `Anthropic error (${err.status}): ${err.message}`;
-      onError(new Error(msg));
-    } else {
-      onError(err instanceof Error ? err : new Error(String(err)));
-    }
+    onError(new Error(anthropicErrorMessage(err, credentials.workspaceId)));
   }
 }
 

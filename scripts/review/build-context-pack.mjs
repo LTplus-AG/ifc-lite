@@ -157,6 +157,11 @@ export function searchKeys(patch, { path = '', max = 12 } = {}) {
     const body = line.slice(1);
     // Licence headers and comment prose are not evidence of a second site.
     if (/^\s*(\/\*|\*|\/\/|#)/.test(body)) continue;
+    // Neither is an import line. `@ifc-lite/data` appears in every consumer of
+    // that package, so it retrieves the whole dependency graph and crowds the
+    // pack with sites that share a dependency rather than an implementation --
+    // measured: it took all four top slots and pushed the real sibling out.
+    if (/^\s*(import|export)\s|require\(/.test(body)) continue;
     for (const m of body.matchAll(/[A-Za-z_$][A-Za-z0-9_$]{4,}/g)) bucket.push(m[0]);
     for (const m of body.matchAll(/'([^'\n]{6,60})'|"([^"\n]{6,60})"/g)) bucket.push(m[1] ?? m[2]);
   }
@@ -169,6 +174,7 @@ export function searchKeys(patch, { path = '', max = 12 } = {}) {
   for (const raw of [...removed, ...added]) {
     const t = String(raw).trim();
     if (t.length < 5 || seen.has(t)) continue;
+    if (t.startsWith('@') || t.includes('/')) continue;   // package or path, not an identifier
     if (/^(const|return|function|import|export|require|string|number|boolean|undefined|null|true|false|class|interface|extends|public|license|Mozilla|Source)$/i.test(t)) continue;
     seen.add(t);
     (isIdentifier(t) ? strong : weak).push(t);
@@ -212,7 +218,7 @@ export function siblingSites(key, changedPaths, ref, { cwd = process.cwd(), exec
     // not a second implementation of anything.
     if (/(^|\/)(CHANGELOG\.md|.*\.changeset\/)/.test(path)) continue;
     if (/\.(md|txt|json|lock|snap)$/.test(path)) continue;
-    hits.push({ path, line: Number(num), text: text.trim().slice(0, 200) });
+    hits.push({ path, line: Number(num), text: text.trim().slice(0, 120) });
   }
 
   // RANK, DO NOT DISCARD. The first version dropped any key with more than
@@ -237,4 +243,101 @@ export function siblingSites(key, changedPaths, ref, { cwd = process.cwd(), exec
   };
   hits.sort((a, b) => score(b) - score(a) || a.path.localeCompare(b.path));
   return hits.slice(0, keep);
+}
+
+/**
+ * Assemble the pack for one PR. Every retrieval happens HERE, in the harness.
+ *
+ * Priority order is fixed and truncation is recorded, never silent: siblings
+ * first because they are the family nothing else catches, then whole-file
+ * evidence, then the body. A pack that quietly dropped its most valuable half
+ * would look exactly like one that found nothing.
+ */
+export function buildPack(input, { baseRef, body = null, cwd = process.cwd(), exec = execFileSync } = {}) {
+  const changed = input.files.map((f) => f.path);
+  const changedBases = new Set(changed.map((p) => p.split('/').pop()));
+  const truncated = [];
+  let budget = MAX_PACK_BYTES;
+
+  // GATHER EVERYTHING FIRST, THEN RANK GLOBALLY. Capping in iteration order let
+  // low-value hits from an early key crowd out the best hit of a late one --
+  // measured: the real #3609 sibling dropped out of the pack entirely because
+  // `baseColorFactor` is not the first key in the file. Order of extraction is
+  // not order of value.
+  const candidates = [];
+  const seenKey = new Set();
+  const seenSite = new Set();
+  for (const f of input.files) {
+    for (const key of searchKeys(f.patch, { path: f.path, max: 12 })) {
+      if (seenKey.has(key)) continue;
+      seenKey.add(key);
+      let hits = [];
+      try {
+        hits = siblingSites(key, changed, baseRef, { cwd, exec, keep: 6 });
+      } catch {
+        continue;
+      }
+      for (const h of hits) {
+        const id = `${h.path}:${h.line}`;
+        if (seenSite.has(id)) continue;
+        seenSite.add(id);
+        candidates.push({ ...h, key });
+      }
+    }
+  }
+  // Three signals, learned from the five real second-site cases rather than
+  // guessed. Ranked by how much each one moved the measurement:
+  //
+  //   same BASENAME in another package  glb.ts -> glb.ts, a copied module
+  //   same DIRECTORY                    scripts/lib/dirty-pr-scan.mjs ->
+  //                                     scripts/lib/pr-review-signal.mjs, and
+  //                                     measure-unit-scale.ts ->
+  //                                     quantity-collect.ts. Neighbours in a
+  //                                     directory are the same layer, and a
+  //                                     duplicated implementation usually lives
+  //                                     one file over rather than one package over
+  //   a LONG key                        `getForEntity` and `missingLanes` are
+  //                                     claims about a specific function; a
+  //                                     five-character token is not
+  const changedDirs = new Set(changed.map((p) => p.slice(0, p.lastIndexOf('/'))));
+  const rank = (h) => {
+    const base = h.path.split('/').pop();
+    const dir = h.path.slice(0, h.path.lastIndexOf('/'));
+    let s2 = 0;
+    if (changedBases.has(base)) s2 += 100;
+    if (changedDirs.has(dir)) s2 += 60;
+    if (/\.(test|spec)\./.test(base)) s2 -= 50;
+    s2 += Math.min(30, h.key.length * 2);
+    if (/^packages\//.test(h.path)) s2 += 10;
+    return s2;
+  };
+  candidates.sort((a, b) => rank(b) - rank(a));
+
+  const siblings = [];
+  for (const h of candidates) {
+    const cost = Buffer.byteLength(h.text, 'utf8') + 120;
+    if (cost > budget || siblings.length >= 40) { truncated.push('sibling excerpts'); break; }
+    budget -= cost;
+    siblings.push(h);
+  }
+
+  const evidence = [];
+  for (const f of input.files) {
+    const content = showAtRef(input.headSha, f.path, { cwd, exec });
+    const e = fileEvidence(f.patch, content);
+    if (!e) continue;
+    const cost = Buffer.byteLength(e.text, 'utf8') + 80;
+    if (cost > budget) { truncated.push(`full content of ${f.path}`); continue; }
+    budget -= cost;
+    evidence.push({ path: f.path, ...e });
+  }
+
+  let packBody = null;
+  if (typeof body === 'string' && body.trim() !== '') {
+    const trimmed = body.slice(0, Math.min(8_000, Math.max(0, budget)));
+    if (trimmed) packBody = trimmed;
+    if (trimmed.length < body.length) truncated.push('PR description');
+  }
+
+  return { siblings, fileEvidence: evidence, body: packBody, truncated: [...new Set(truncated)] };
 }

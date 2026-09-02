@@ -70,6 +70,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
+import { buildPack } from './build-context-pack.mjs';
 import { gh, GhError } from '../lib/gh.mjs';
 // The gate's pager, not a second copy of it. An earlier version here duplicated
 // it MINUS the one thing it exists for: the probe past a full final page. A PR
@@ -294,6 +295,8 @@ function main() {
     ['--repo', 'repo'],
     ['--sha', 'sha'],
     ['--out', 'out'],
+    ['--base', 'base'],
+    ['--body-file', 'bodyFile'],
     ['--files-file', 'filesFile'],
   ]);
   const argv = process.argv.slice(2);
@@ -332,6 +335,32 @@ function main() {
   }
 
   const input = buildInput(rows, args.sha);
+  // THE CONTEXT PACK. Built here, in the harness, never by the model.
+  //
+  // Optional: without --base the lane behaves exactly as it did before, which
+  // keeps every existing caller (and the eval harness) working unchanged. When
+  // a base IS given, retrieval failures degrade to a smaller pack rather than
+  // failing the review -- a lane that goes red because a grep found nothing
+  // would be worse than one that reviews with less evidence, and the pack
+  // records what it dropped either way.
+  if (args.base) {
+    let body = null;
+    if (args.bodyFile) {
+      try { body = readFileSync(args.bodyFile, 'utf8'); } catch { body = null; }
+    }
+    try {
+      input.contextPack = buildPack(input, { baseRef: args.base, body });
+      const p2 = input.contextPack;
+      console.log(
+        `context-pack: ${p2.siblings.length} sibling excerpt(s), ${p2.fileEvidence.length} file(s) in full` +
+          (p2.body ? ', description included' : '') +
+          (p2.truncated.length ? `, omitted for size: ${p2.truncated.join('; ')}` : ''),
+      );
+    } catch (err) {
+      console.log(`context-pack: unavailable (${err?.message ?? 'unknown'}); reviewing from the diff alone`);
+    }
+  }
+
   writeFileSync(args.out, JSON.stringify(input, null, 2));
   console.log(
     `review-input: ${input.files.length} file(s), ${input.unreviewable.length} unreviewable, ` +

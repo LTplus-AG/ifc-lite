@@ -1,0 +1,161 @@
+{
+  "$comment": "Held from the merge train of 2026-09-01 on a merge-blocking defect that all ~91 deterministic gates passed. Defect class: second-site. `what` is written from the reviewer's file:line and failing input, never from the PR body.",
+  "pr": 3577,
+  "input": {
+    "headSha": "ed644f2b6ab2f3a6feedb21f3be0c3dd823f8c6d",
+    "files": [
+      {
+        "path": ".changeset/query-where-filter-boolean-parity.md",
+        "patch": "@@ -0,0 +1,5 @@\n+---\n+'@ifc-lite/query': minor\n+---\n+\n+Add `compareFilterValue`/`normalizeBooleanValue` (and the `FilterComparisonOp` type), the shared implementation of the `QueryDescriptor.filters` comparison the CLI (`HeadlessBackend`), MCP, and `ifc-lite query --where` backends each carried a private copy of. The viewer's embedded SDK backend \u2014 the one behind `bim.query().where(...)` in sandbox/playground scripts, the SDK's primary consumption path \u2014 never picked up the boolean-normalization or case-insensitive-`contains` fix the other backends have independently landed, so an identical `where()` call could silently match a different result set depending on which host ran the script. That backend now uses this shared function, and the CLI/MCP backends were switched to it too so the four implementations can't drift apart again.",
+        "addedLineRanges": [
+          [
+            1,
+            5
+          ]
+        ]
+      },
+      {
+        "path": "apps/viewer/src/sdk/adapters/query-adapter.boolean-filter.test.ts",
+        "patch": "@@ -0,0 +1,81 @@\n+/* This Source Code Form is subject to the terms of the Mozilla Public\n+ * License, v. 2.0. If a copy of the MPL was not distributed with this\n+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */\n+\n+/**\n+ * `queryEntities()`'s `where(..., '=', true)` filter must behave the same\n+ * everywhere the public SDK `QueryDescriptor` contract is implemented.\n+ * `packages/cli/src/headless-backend.ts` and `packages/mcp/src/backend-query.ts`\n+ * both normalize boolean-ish spellings (`.T.`, `'true'`, `'TRUE'`, JS `true`)\n+ * to the same value before comparing (a deliberate, independently landed\n+ * fix on each). This adapter \u2014 the one that backs the browser-embedded\n+ * `bim.query()` SDK surface (viewer sandbox/playground scripts) \u2014 never got\n+ * that fix, so a caller-supplied filter value spelled differently than the\n+ * stored value's spelling silently returns a different result set depending\n+ * on which host runs the identical script.\n+ */\n+\n+import test from 'node:test';\n+import assert from 'node:assert/strict';\n+import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';\n+import { createQueryAdapter } from './query-adapter.js';\n+import type { StoreApi } from './types.js';\n+\n+function guid(mnemonic: string): string {\n+  return (mnemonic + '0'.repeat(22)).slice(0, 22);\n+}\n+\n+const MODEL = `ISO-10303-21;\n+HEADER;\n+FILE_DESCRIPTION((''),'2;1');\n+FILE_NAME('m','2026',(''),(''),'','','');\n+FILE_SCHEMA(('IFC4'));\n+ENDSEC;\n+DATA;\n+#1= IFCPROJECT('${guid('PROJ')}',$,'Proj',$,$,$,$,(#20),#30);\n+#20= IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#21,$);\n+#21= IFCAXIS2PLACEMENT3D(#22,$,$);\n+#22= IFCCARTESIANPOINT((0.,0.,0.));\n+#30= IFCUNITASSIGNMENT((#31));\n+#31= IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n+#40= IFCLOCALPLACEMENT($,#21);\n+#41= IFCBUILDINGSTOREY('${guid('STOR')}',$,'L01',$,$,#40,$,$,.ELEMENT.,0.);\n+#42= IFCBUILDING('${guid('BLDG')}',$,'B',$,$,#40,$,$,.ELEMENT.,$,$,$);\n+#43= IFCRELAGGREGATES('${guid('AGG1')}',$,$,$,#1,(#42));\n+#44= IFCRELAGGREGATES('${guid('AGG2')}',$,$,$,#42,(#41));\n+#45= IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid('RELC')}',$,$,$,(#72),#41);\n+#72= IFCWALL('${guid('WALA')}',$,'Wall A',$,$,#40,$,'tagA',$);\n+#84= IFCPROPERTYSINGLEVALUE('IsExternal',$,IFCBOOLEAN(.T.),$);\n+#83= IFCPROPERTYSET('${guid('PST1')}',$,'Pset_WallCommon',$,(#84));\n+#85= IFCRELDEFINESBYPROPERTIES('${guid('RDP1')}',$,$,$,(#72),#83);\n+ENDSEC;\n+END-ISO-10303-21;\n+`;\n+\n+function makeStore(dataStore: IfcDataStore): StoreApi {\n+  return {\n+    getState: () => ({ ifcDataStore: dataStore, models: new Map() }),\n+    subscribe: () => () => {},\n+  } as unknown as StoreApi;\n+}\n+\n+test('queryEntities \"=\" filter matches an uppercase \"TRUE\" filter value against a parsed IFCBOOLEAN(.T.) property, like the CLI and MCP backends', async () => {\n+  // The on-demand extractor already turns IFCBOOLEAN(.T.) into a real JS\n+  // `true`, so `.where(..., '=', true)` matches with or without boolean\n+  // normalization \u2014 it isn't a repro. What normalization actually buys is\n+  // spelling tolerance on the *filter value* a caller supplies (a CLI\n+  // `--where` flag is always a string, and callers write 'true'/'TRUE'/'.T.'\n+  // interchangeably): `String(true) === String('TRUE')` is false without it.\n+  const parser = new IfcParser();\n+  const buffer = new TextEncoder().encode(MODEL).buffer as ArrayBuffer;\n+  const dataStore = await parser.parseColumnar(buffer);\n+\n+  const adapter = createQueryAdapter(makeStore(dataStore));\n+  const results = adapter.entities({\n+    modelId: 'default',\n+    types: ['IfcWall'],\n+    filters: [{ psetName: 'Pset_WallCommon', propName: 'IsExternal', operator: '=', value: 'TRUE' }],\n+  });\n+\n+  assert.deepEqual(results.map((e) => e.name), ['Wall A']);\n+});",
+        "addedLineRanges": [
+          [
+            1,
+            81
+          ]
+        ]
+      },
+      {
+        "path": "apps/viewer/src/sdk/adapters/query-adapter.contains-case.test.ts",
+        "patch": "@@ -0,0 +1,75 @@\n+/* This Source Code Form is subject to the terms of the Mozilla Public\n+ * License, v. 2.0. If a copy of the MPL was not distributed with this\n+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */\n+\n+/**\n+ * `queryEntities()`'s `where(..., 'contains', ...)` filter must behave the\n+ * same everywhere the public SDK `QueryDescriptor` contract is implemented.\n+ * `packages/cli/src/headless-backend.ts` and `packages/mcp/src/backend-query.ts`\n+ * both lowercase both sides before `.includes()` (a deliberate, independently\n+ * landed fix on each \u2014 see the `normalizeBoolean`/`normalizeBooleanValue`\n+ * comments in those files). This adapter \u2014 the one that backs the\n+ * browser-embedded `bim.query()` SDK surface (viewer sandbox/playground\n+ * scripts) \u2014 never got that fix and compared case-sensitively, so the same\n+ * `.where('Pset_WallCommon', 'FireRating', 'contains', 'rei')` call silently\n+ * returns a different result set depending on which host runs the script.\n+ */\n+\n+import test from 'node:test';\n+import assert from 'node:assert/strict';\n+import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';\n+import { createQueryAdapter } from './query-adapter.js';\n+import type { StoreApi } from './types.js';\n+\n+function guid(mnemonic: string): string {\n+  return (mnemonic + '0'.repeat(22)).slice(0, 22);\n+}\n+\n+const MODEL = `ISO-10303-21;\n+HEADER;\n+FILE_DESCRIPTION((''),'2;1');\n+FILE_NAME('m','2026',(''),(''),'','','');\n+FILE_SCHEMA(('IFC4'));\n+ENDSEC;\n+DATA;\n+#1= IFCPROJECT('${guid('PROJ')}',$,'Proj',$,$,$,$,(#20),#30);\n+#20= IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#21,$);\n+#21= IFCAXIS2PLACEMENT3D(#22,$,$);\n+#22= IFCCARTESIANPOINT((0.,0.,0.));\n+#30= IFCUNITASSIGNMENT((#31));\n+#31= IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n+#40= IFCLOCALPLACEMENT($,#21);\n+#41= IFCBUILDINGSTOREY('${guid('STOR')}',$,'L01',$,$,#40,$,$,.ELEMENT.,0.);\n+#42= IFCBUILDING('${guid('BLDG')}',$,'B',$,$,#40,$,$,.ELEMENT.,$,$,$);\n+#43= IFCRELAGGREGATES('${guid('AGG1')}',$,$,$,#1,(#42));\n+#44= IFCRELAGGREGATES('${guid('AGG2')}',$,$,$,#42,(#41));\n+#45= IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid('RELC')}',$,$,$,(#72),#41);\n+#72= IFCWALL('${guid('WALA')}',$,'Wall A',$,$,#40,$,'tagA',$);\n+#84= IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('REI60'),$);\n+#83= IFCPROPERTYSET('${guid('PST1')}',$,'Pset_WallCommon',$,(#84));\n+#85= IFCRELDEFINESBYPROPERTIES('${guid('RDP1')}',$,$,$,(#72),#83);\n+ENDSEC;\n+END-ISO-10303-21;\n+`;\n+\n+function makeStore(dataStore: IfcDataStore): StoreApi {\n+  return {\n+    getState: () => ({ ifcDataStore: dataStore, models: new Map() }),\n+    subscribe: () => () => {},\n+  } as unknown as StoreApi;\n+}\n+\n+test('queryEntities \"contains\" filter matches case-insensitively, like the CLI and MCP backends', async () => {\n+  const parser = new IfcParser();\n+  const buffer = new TextEncoder().encode(MODEL).buffer as ArrayBuffer;\n+  const dataStore = await parser.parseColumnar(buffer);\n+\n+  const adapter = createQueryAdapter(makeStore(dataStore));\n+  const results = adapter.entities({\n+    modelId: 'default',\n+    types: ['IfcWall'],\n+    filters: [{ psetName: 'Pset_WallCommon', propName: 'FireRating', operator: 'contains', value: 'rei' }],\n+  });\n+\n+  assert.deepEqual(results.map((e) => e.name), ['Wall A']);\n+});",
+        "addedLineRanges": [
+          [
+            1,
+            75
+          ]
+        ]
+      },
+      {
+        "path": "apps/viewer/src/sdk/adapters/query-adapter.offset-limit-validation.test.ts",
+        "patch": "@@ -0,0 +1,76 @@\n+/* This Source Code Form is subject to the terms of the Mozilla Public\n+ * License, v. 2.0. If a copy of the MPL was not distributed with this\n+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */\n+\n+/**\n+ * `queryEntities()`'s `offset`/`limit` validation must match the CLI\n+ * (`packages/cli/src/headless-backend.ts`) and MCP (`packages/mcp/src/backend-query.ts`)\n+ * backends: a non-finite or negative value is a caller bug and should throw,\n+ * not be silently coerced to \"no offset/limit applied\" (which used to serve\n+ * MORE rows than a caller who passed a bad computed value asked for, and made\n+ * a deliberate `limit: 0` behave like \"no limit\" instead of \"zero rows\").\n+ */\n+\n+import test from 'node:test';\n+import assert from 'node:assert/strict';\n+import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';\n+import { createQueryAdapter } from './query-adapter.js';\n+import type { StoreApi } from './types.js';\n+\n+function guid(mnemonic: string): string {\n+  return (mnemonic + '0'.repeat(22)).slice(0, 22);\n+}\n+\n+const MODEL = `ISO-10303-21;\n+HEADER;\n+FILE_DESCRIPTION((''),'2;1');\n+FILE_NAME('m','2026',(''),(''),'','','');\n+FILE_SCHEMA(('IFC4'));\n+ENDSEC;\n+DATA;\n+#1= IFCPROJECT('${guid('PROJ')}',$,'Proj',$,$,$,$,(#20),#30);\n+#20= IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#21,$);\n+#21= IFCAXIS2PLACEMENT3D(#22,$,$);\n+#22= IFCCARTESIANPOINT((0.,0.,0.));\n+#30= IFCUNITASSIGNMENT((#31));\n+#31= IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n+#40= IFCLOCALPLACEMENT($,#21);\n+#41= IFCBUILDINGSTOREY('${guid('STOR')}',$,'L01',$,$,#40,$,$,.ELEMENT.,0.);\n+#42= IFCBUILDING('${guid('BLDG')}',$,'B',$,$,#40,$,$,.ELEMENT.,$,$,$);\n+#43= IFCRELAGGREGATES('${guid('AGG1')}',$,$,$,#1,(#42));\n+#44= IFCRELAGGREGATES('${guid('AGG2')}',$,$,$,#42,(#41));\n+#45= IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid('RELC')}',$,$,$,(#72,#73),#41);\n+#72= IFCWALL('${guid('WALA')}',$,'Wall A',$,$,#40,$,'tagA',$);\n+#73= IFCWALL('${guid('WALB')}',$,'Wall B',$,$,#40,$,'tagB',$);\n+ENDSEC;\n+END-ISO-10303-21;\n+`;\n+\n+function makeStore(dataStore: IfcDataStore): StoreApi {\n+  return {\n+    getState: () => ({ ifcDataStore: dataStore, models: new Map() }),\n+    subscribe: () => () => {},\n+  } as unknown as StoreApi;\n+}\n+\n+test('queryEntities throws on a negative/non-finite offset or limit instead of silently ignoring it', async () => {\n+  const parser = new IfcParser();\n+  const buffer = new TextEncoder().encode(MODEL).buffer as ArrayBuffer;\n+  const dataStore = await parser.parseColumnar(buffer);\n+  const adapter = createQueryAdapter(makeStore(dataStore));\n+\n+  assert.throws(() => adapter.entities({ modelId: 'default', types: ['IfcWall'], offset: NaN }), TypeError);\n+  assert.throws(() => adapter.entities({ modelId: 'default', types: ['IfcWall'], offset: -1 }), TypeError);\n+  assert.throws(() => adapter.entities({ modelId: 'default', types: ['IfcWall'], limit: NaN }), TypeError);\n+  assert.throws(() => adapter.entities({ modelId: 'default', types: ['IfcWall'], limit: -1 }), TypeError);\n+});\n+\n+test('queryEntities treats limit: 0 as zero rows, not \"no limit\"', async () => {\n+  const parser = new IfcParser();\n+  const buffer = new TextEncoder().encode(MODEL).buffer as ArrayBuffer;\n+  const dataStore = await parser.parseColumnar(buffer);\n+  const adapter = createQueryAdapter(makeStore(dataStore));\n+\n+  const results = adapter.entities({ modelId: 'default', types: ['IfcWall'], limit: 0 });\n+  assert.deepEqual(results, []);\n+});",
+        "addedLineRanges": [
+          [
+            1,
+            76
+          ]
+        ]
+      },
+      {
+        "path": "apps/viewer/src/sdk/adapters/query-adapter.ts",
+        "patch": "@@ -17,7 +17,7 @@ import type {\n   QueryBackendMethods,\n } from '@ifc-lite/sdk';\n import type { StoreApi } from './types.js';\n-import { EntityNode, findPropertyInSets } from '@ifc-lite/query';\n+import { EntityNode, findPropertyInSets, compareFilterValue } from '@ifc-lite/query';\n import { IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';\n import { getModelForRef, getAllModelEntries } from './model-compat.js';\n import {\n@@ -244,25 +244,29 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {\n           const props = getCachedProps(entity.ref);\n           const prop = findPropertyInSets(props, filter.psetName, filter.propName);\n           if (!prop) return false;\n-          if (filter.operator === 'exists') return true;\n-\n-          const val = prop.value;\n-          switch (filter.operator) {\n-            case '=': return String(val) === String(filter.value);\n-            case '!=': return String(val) !== String(filter.value);\n-            case '>': return Number(val) > Number(filter.value);\n-            case '<': return Number(val) < Number(filter.value);\n-            case '>=': return Number(val) >= Number(filter.value);\n-            case '<=': return Number(val) <= Number(filter.value);\n-            case 'contains': return String(val).includes(String(filter.value));\n-            default: return false;\n-          }\n+          return compareFilterValue(prop.value, filter.operator, filter.value);\n         });\n       }\n     }\n \n-    if (descriptor.offset != null && descriptor.offset > 0) filtered = filtered.slice(descriptor.offset);\n-    if (descriptor.limit != null && descriptor.limit > 0) filtered = filtered.slice(0, descriptor.limit);\n+    // `!= null` alone lets a NaN offset/limit through (neither null nor\n+    // undefined); a bare `> 0` then silently drops it instead of rejecting\n+    // it, and by the same reasoning silently ignored a deliberate `limit: 0`.\n+    // Matches `packages/cli/src/headless-backend.ts` and\n+    // `packages/mcp/src/backend-query.ts` \u2014 the three `QueryBackendMethods`\n+    // implementations of this same `QueryDescriptor` contract must agree.\n+    if (descriptor.offset != null) {\n+      if (!Number.isFinite(descriptor.offset) || descriptor.offset < 0) {\n+        throw new TypeError(`Invalid offset: ${descriptor.offset} (must be a non-negative finite number)`);\n+      }\n+      if (descriptor.offset > 0) filtered = filtered.slice(descriptor.offset);\n+    }\n+    if (descriptor.limit != null) {\n+      if (!Number.isFinite(descriptor.limit) || descriptor.limit < 0) {\n+        throw new TypeError(`Invalid limit: ${descriptor.limit} (must be a non-negative finite number)`);\n+      }\n+      filtered = filtered.slice(0, descriptor.limit);\n+    }\n \n     return filtered;\n   }",
+        "addedLineRanges": [
+          [
+            20,
+            20
+          ],
+          [
+            247,
+            247
+          ],
+          [
+            252,
+            269
+          ]
+        ]
+      },
+      {
+        "path": "packages/cli/src/commands/query.ts",
+        "patch": "@@ -10,7 +10,7 @@\n  * classifications, attributes, relationships, type properties.\n  */\n \n-import { findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';\n+import { findPropertyInSets, findQuantityInSets, compareFilterValue, normalizeBooleanValue, type FilterComparisonOp } from '@ifc-lite/query';\n import { createHeadlessContext } from '../loader.js';\n import { printJson, getFlag, hasFlag, fatal, validateLimit } from '../output.js';\n import { STANDARD_QTO_MAP, sortEntities } from './query-aggregation.js';\n@@ -97,25 +97,14 @@ export function applyWhereFilter(entities: any[], parsed: ReturnType<typeof pars\n \n export function compareValues(actual: any, operator: string, expected: string | undefined): boolean {\n   if (expected === undefined) return actual != null;\n-  const normActual = normalizeBooleanValue(actual);\n-  const normExpected = normalizeBooleanValue(expected);\n-  switch (operator) {\n-    case '=': return String(normActual) === String(normExpected);\n-    case '!=': return String(normActual) !== String(normExpected);\n-    case '>': return Number(normActual) > Number(normExpected);\n-    case '<': return Number(normActual) < Number(normExpected);\n-    case '>=': return Number(normActual) >= Number(normExpected);\n-    case '<=': return Number(normActual) <= Number(normExpected);\n-    case 'contains': return String(normActual).toLowerCase().includes(String(normExpected).toLowerCase());\n-    default: return false;\n-  }\n+  return compareFilterValue(actual, operator as FilterComparisonOp, expected);\n }\n \n-export function normalizeBooleanValue(value: unknown): unknown {\n-  if (value === true || value === '.T.' || value === 'true' || value === 'TRUE') return 'true';\n-  if (value === false || value === '.F.' || value === 'false' || value === 'FALSE') return 'false';\n-  return value;\n-}\n+// Re-exported for existing importers of this module; the real implementation\n+// is shared with the CLI/MCP/viewer `QueryBackendMethods` adapters in\n+// `@ifc-lite/query` so `--where` and `bim.query().where()` can't drift apart\n+// on boolean-comparison semantics again.\n+export { normalizeBooleanValue };\n \n export async function queryCommand(args: string[]): Promise<void> {\n   const filePath = args.find(a => !a.startsWith('-'));",
+        "addedLineRanges": [
+          [
+            13,
+            13
+          ],
+          [
+            100,
+            100
+          ],
+          [
+            103,
+            107
+          ]
+        ]
+      },
+      {
+        "path": "packages/cli/src/headless-backend.ts",
+        "patch": "@@ -70,7 +70,7 @@ import {\n   listStoreys,\n   type GenerateSpacesAllOptions,\n } from '@ifc-lite/create';\n-import { EntityNode, findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';\n+import { EntityNode, findPropertyInSets, findQuantityInSets, normalizeBooleanValue, compareFilterValue } from '@ifc-lite/query';\n \n import {\n   extractAllEntityAttributes,\n@@ -119,12 +119,13 @@ export const isProductType = isQueryableObjectType;\n /**\n  * Normalize boolean-like values for comparison.\n  * IFC STEP files store booleans as .T./.F., but users pass true/false.\n+ *\n+ * Re-exported from `@ifc-lite/query` for existing importers of this module;\n+ * the actual comparison the query filter runs lives there too\n+ * (`compareFilterValue`), shared with the viewer and MCP `QueryBackendMethods`\n+ * implementations so the three can't drift apart on `where()` semantics again.\n  */\n-export function normalizeBooleanValue(value: unknown): unknown {\n-  if (value === true || value === '.T.' || value === 'true' || value === 'TRUE') return 'true';\n-  if (value === false || value === '.F.' || value === 'false' || value === 'FALSE') return 'false';\n-  return value;\n-}\n+export { normalizeBooleanValue };\n \n export function normalizePropertyValue(value: unknown): string | number | boolean | null {\n   if (value == null) return null;\n@@ -333,22 +334,7 @@ export class HeadlessBackend implements BimBackend {\n               const props = getCachedProps(entity.ref);\n               const prop = findPropertyInSets(props, filter.psetName, filter.propName);\n               if (!prop) return false;\n-              if (filter.operator === 'exists') return true;\n-              const val = prop.value;\n-              const filterVal = filter.value;\n-              // Normalize booleans: .T./.F./true/false all compare equally\n-              const normVal = normalizeBooleanValue(val);\n-              const normFilterVal = normalizeBooleanValue(filterVal);\n-              switch (filter.operator) {\n-                case '=': return String(normVal) === String(normFilterVal);\n-                case '!=': return String(normVal) !== String(normFilterVal);\n-                case '>': return Number(normVal) > Number(normFilterVal);\n-                case '<': return Number(normVal) < Number(normFilterVal);\n-                case '>=': return Number(normVal) >= Number(normFilterVal);\n-                case '<=': return Number(normVal) <= Number(normFilterVal);\n-                case 'contains': return String(normVal).toLowerCase().includes(String(normFilterVal).toLowerCase());\n-                default: return false;\n-              }\n+              return compareFilterValue(prop.value, filter.operator, filter.value);\n             });\n           }\n         }",
+        "addedLineRanges": [
+          [
+            73,
+            73
+          ],
+          [
+            122,
+            126
+          ],
+          [
+            128,
+            128
+          ],
+          [
+            337,
+            337
+          ]
+        ]
+      },
+      {
+        "path": "packages/mcp/src/backend-query.ts",
+        "patch": "@@ -58,7 +58,7 @@ import {\n   isQueryableObjectType,\n } from '@ifc-lite/parser';\n import { attributeNamesForSchema } from './schema-tables.js';\n-import { EntityNode, findPropertyInSets } from '@ifc-lite/query';\n+import { EntityNode, findPropertyInSets, compareFilterValue } from '@ifc-lite/query';\n \n import { stepText, type CreatedEntity, type PendingOverlay } from './overlay.js';\n \n@@ -76,12 +76,6 @@ export { expandTypes };\n  */\n export const isProductType = isQueryableObjectType;\n \n-function normalizeBoolean(value: unknown): unknown {\n-  if (value === true || value === '.T.' || value === 'true' || value === 'TRUE') return 'true';\n-  if (value === false || value === '.F.' || value === 'false' || value === 'FALSE') return 'false';\n-  return value;\n-}\n-\n /** The overlay's answer for an entity it created, in `EntityData` shape. */\n function createdEntityData(created: CreatedEntity, ref: EntityRef): EntityData {\n   return {\n@@ -339,19 +333,7 @@ export function createQueryAdapter(\n             const props = cachedProps(entity.ref);\n             const prop = findPropertyInSets(props, filter.psetName, filter.propName);\n             if (!prop) return false;\n-            if (filter.operator === 'exists') return true;\n-            const v = normalizeBoolean(prop.value);\n-            const f = normalizeBoolean(filter.value);\n-            switch (filter.operator) {\n-              case '=': return String(v) === String(f);\n-              case '!=': return String(v) !== String(f);\n-              case '>': return Number(v) > Number(f);\n-              case '<': return Number(v) < Number(f);\n-              case '>=': return Number(v) >= Number(f);\n-              case '<=': return Number(v) <= Number(f);\n-              case 'contains': return String(v).toLowerCase().includes(String(f).toLowerCase());\n-              default: return false;\n-            }\n+            return compareFilterValue(prop.value, filter.operator, filter.value);\n           });\n         }\n       }",
+        "addedLineRanges": [
+          [
+            61,
+            61
+          ],
+          [
+            336,
+            336
+          ]
+        ]
+      },
+      {
+        "path": "packages/query/src/filter-predicate.test.ts",
+        "patch": "@@ -0,0 +1,51 @@\n+/* This Source Code Form is subject to the terms of the Mozilla Public\n+ * License, v. 2.0. If a copy of the MPL was not distributed with this\n+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */\n+\n+import { describe, it, expect } from 'vitest';\n+import { compareFilterValue, normalizeBooleanValue } from './filter-predicate.js';\n+\n+describe('normalizeBooleanValue', () => {\n+  it('collapses every true-spelling to the same string', () => {\n+    expect(normalizeBooleanValue(true)).toBe('true');\n+    expect(normalizeBooleanValue('.T.')).toBe('true');\n+    expect(normalizeBooleanValue('true')).toBe('true');\n+    expect(normalizeBooleanValue('TRUE')).toBe('true');\n+  });\n+\n+  it('collapses every false-spelling to the same string', () => {\n+    expect(normalizeBooleanValue(false)).toBe('false');\n+    expect(normalizeBooleanValue('.F.')).toBe('false');\n+    expect(normalizeBooleanValue('false')).toBe('false');\n+    expect(normalizeBooleanValue('FALSE')).toBe('false');\n+  });\n+\n+  it('passes non-boolean values through unchanged', () => {\n+    expect(normalizeBooleanValue('IfcWall')).toBe('IfcWall');\n+    expect(normalizeBooleanValue(42)).toBe(42);\n+    expect(normalizeBooleanValue(null)).toBe(null);\n+  });\n+});\n+\n+describe('compareFilterValue', () => {\n+  it('exists ignores the operand and checks non-null', () => {\n+    expect(compareFilterValue('REI60', 'exists', undefined)).toBe(true);\n+    expect(compareFilterValue(null, 'exists', undefined)).toBe(false);\n+  });\n+\n+  it('= treats .T./true/TRUE as equal', () => {\n+    expect(compareFilterValue(true, '=', '.T.')).toBe(true);\n+    expect(compareFilterValue('.F.', '=', false)).toBe(true);\n+  });\n+\n+  it('contains is case-insensitive', () => {\n+    expect(compareFilterValue('REI60', 'contains', 'rei')).toBe(true);\n+    expect(compareFilterValue('rei60', 'contains', 'REI')).toBe(true);\n+    expect(compareFilterValue('REI60', 'contains', 'xyz')).toBe(false);\n+  });\n+\n+  it('numeric comparisons coerce both sides', () => {\n+    expect(compareFilterValue(5, '>', '3')).toBe(true);\n+    expect(compareFilterValue('2', '<', 3)).toBe(true);\n+  });\n+});",
+        "addedLineRanges": [
+          [
+            1,
+            51
+          ]
+        ]
+      },
+      {
+        "path": "packages/query/src/filter-predicate.ts",
+        "patch": "@@ -0,0 +1,53 @@\n+/* This Source Code Form is subject to the terms of the Mozilla Public\n+ * License, v. 2.0. If a copy of the MPL was not distributed with this\n+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */\n+\n+/**\n+ * A `where(...)` / `--where` predicate needs to compare a stored property or\n+ * quantity value against a caller-supplied filter value. Three call sites\n+ * implemented this independently (the CLI's `HeadlessBackend`, the MCP\n+ * backend, and the `ifc-lite query --where` flag), and a fourth \u2014 the\n+ * viewer's embedded SDK backend, `bim`'s primary consumption path \u2014 never\n+ * picked up the boolean-normalization/case-insensitive-`contains` fix the\n+ * other three carry, so the identical `bim.query().where(...)` call silently\n+ * matched fewer rows there than in the CLI/MCP. This module is the single\n+ * home for that comparison so the four call sites can't drift apart again.\n+ */\n+\n+export type FilterComparisonOp = '=' | '!=' | '>' | '<' | '>=' | '<=' | 'contains' | 'exists';\n+\n+/**\n+ * Normalize boolean-like values for comparison. IFC STEP encodes booleans as\n+ * `.T.`/`.F.` tokens; parsed property values are typically real JS booleans\n+ * by the time they reach a filter, but a caller-supplied filter value (a CLI\n+ * flag, a raw mutation) may arrive as one of the string spellings instead.\n+ * Collapsing every spelling to the same `'true'`/`'false'` string lets the\n+ * `String(a) === String(b)` comparisons below treat them all as equal.\n+ */\n+export function normalizeBooleanValue(value: unknown): unknown {\n+  if (value === true || value === '.T.' || value === 'true' || value === 'TRUE') return 'true';\n+  if (value === false || value === '.F.' || value === 'false' || value === 'FALSE') return 'false';\n+  return value;\n+}\n+\n+/**\n+ * Evaluate a single comparison operator against a stored value and a\n+ * filter value. Booleans are normalized first (see {@link normalizeBooleanValue}),\n+ * and `contains` is case-insensitive \u2014 the settled semantics across the\n+ * CLI/MCP query backends, now shared rather than duplicated.\n+ */\n+export function compareFilterValue(actual: unknown, operator: FilterComparisonOp, expected: unknown): boolean {\n+  if (operator === 'exists') return actual != null;\n+  const normActual = normalizeBooleanValue(actual);\n+  const normExpected = normalizeBooleanValue(expected);\n+  switch (operator) {\n+    case '=': return String(normActual) === String(normExpected);\n+    case '!=': return String(normActual) !== String(normExpected);\n+    case '>': return Number(normActual) > Number(normExpected);\n+    case '<': return Number(normActual) < Number(normExpected);\n+    case '>=': return Number(normActual) >= Number(normExpected);\n+    case '<=': return Number(normActual) <= Number(normExpected);\n+    case 'contains': return String(normActual).toLowerCase().includes(String(normExpected).toLowerCase());\n+    default: return false;\n+  }\n+}",
+        "addedLineRanges": [
+          [
+            1,
+            53
+          ]
+        ]
+      },
+      {
+        "path": "packages/query/src/index.ts",
+        "patch": "@@ -15,3 +15,4 @@ export { EntityNode } from './entity-node.js';\n export { QueryResultEntity } from './query-result-entity.js';\n export { DuckDBIntegration, type SQLResult } from './duckdb-integration.js';\n export { findPropertyInSets, findQuantityInSets } from './pset-lookup.js';\n+export { normalizeBooleanValue, compareFilterValue, type FilterComparisonOp } from './filter-predicate.js';",
+        "addedLineRanges": [
+          [
+            18,
+            18
+          ]
+        ]
+      }
+    ],
+    "unreviewable": [],
+    "excluded": [
+      "scripts/api-surface.json"
+    ]
+  },
+  "expected": [
+    {
+      "path": "packages/query/src/filter-predicate.ts",
+      "what": "de-duplicating the backends silently changes exists semantics from true-when-present to true-when-non-null across three query paths, so a property with a $ null value stops matching, while the changeset claims same public behaviour and patch bumps"
+    }
+  ]
+}

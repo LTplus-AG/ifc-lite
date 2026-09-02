@@ -74,16 +74,29 @@ test('recall is reported as a fraction, so a change of denominator is visible', 
 
 // ================================================ the cases are real
 
-test('every eval case is well-formed and carries at least one known finding', () => {
+test('every eval case is well-formed, and an empty one is DECLARED, never inferred', () => {
   // A case file with no `expected` would quietly raise recall by shrinking the
   // denominator -- a measurement that improves by measuring less.
+  //
+  // Negative cases are legitimate and necessary: without PRs that SHOULD score
+  // zero, the EXTRA column means nothing and a rubric change can buy recall by
+  // inventing findings. But "empty means negative" is absence reading as
+  // success -- a case whose findings were dropped in an edit would look
+  // identical to one deliberately left empty. So a negative must say so.
   const dir = join(HERE, 'eval-cases');
   const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
   assert.ok(files.length > 0, 'no cases means a vacuous 0/0');
+  let positives = 0;
   for (const f of files) {
     const c = JSON.parse(readFileSync(join(dir, f), 'utf8'));
     assert.ok(Number.isInteger(c.pr), `${f}: needs the PR it came from`);
-    assert.ok(Array.isArray(c.expected) && c.expected.length > 0, `${f}: needs known findings`);
+    assert.ok(Array.isArray(c.expected), `${f}: needs an expected array`);
+    if (c.negative === true) {
+      assert.equal(c.expected.length, 0, `${f}: a negative case must expect nothing`);
+    } else {
+      assert.ok(c.expected.length > 0, `${f}: needs known findings, or "negative": true`);
+      positives += 1;
+    }
     assert.ok(c.input?.files?.length > 0, `${f}: needs a diff`);
     for (const e of c.expected) {
       assert.ok(
@@ -92,6 +105,9 @@ test('every eval case is well-formed and carries at least one known finding', ()
       );
     }
   }
+  // And the set must still be mostly positive, or recall is measured over a
+  // denominator small enough to move by luck.
+  assert.ok(positives >= files.length / 2, `only ${positives} of ${files.length} cases carry findings`);
 });
 
 // ========================= the three ways this scorer was wrong

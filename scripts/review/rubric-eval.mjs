@@ -40,7 +40,8 @@ import { readFileSync, writeFileSync, readdirSync, mkdtempSync, rmSync } from 'n
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
+import { spawnSync, execFileSync } from 'node:child_process';
+import { buildPack } from './build-context-pack.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CASE_DIR = join(HERE, 'eval-cases');
@@ -211,6 +212,12 @@ function main() {
     // still runs as a genuine child process. Nothing is mocked, so a test can ask
     // what the harness DOES rather than what its source says.
     const caseDir = arg('--cases', CASE_DIR);
+  // Default to the current HEAD of the checkout: in CI that is the commit under
+  // test, which is the right tree to look for siblings in.
+  let baseRef = arg('--base', null);
+  if (baseRef === null) {
+    try { baseRef = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(); } catch { baseRef = null; }
+  }
     const reviewer = arg('--reviewer', join(HERE, 'run-reviewer.mjs'));
 
     const files = readdirSync(caseDir).filter((f) => f.endsWith('.json')).sort();
@@ -219,7 +226,18 @@ function main() {
     const results = [];
     for (const f of files) {
       const c = JSON.parse(readFileSync(join(caseDir, f), 'utf8'));
-      const inputPath = join(tmp, `${f}.input.json`);
+      // THE CONTEXT PACK, built per case so the eval measures the pipeline the
+    // lane actually runs rather than a diff-only ghost of it. `--base` names
+    // the tree siblings are retrieved from; without it the eval measures the
+    // old behaviour, which is exactly what the baseline run did.
+    if (baseRef) {
+      try {
+        c.input.contextPack = buildPack(c.input, { baseRef });
+      } catch (err) {
+        console.log(`  ${f}: context pack unavailable (${err?.message ?? 'unknown'})`);
+      }
+    }
+    const inputPath = join(tmp, `${f}.input.json`);
       const outPath = join(tmp, `${f}.out.txt`);
       writeFileSync(inputPath, JSON.stringify(c.input));
       const r = spawnSync(

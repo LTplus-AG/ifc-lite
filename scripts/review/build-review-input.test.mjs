@@ -299,7 +299,9 @@ test('the lane checks out FULL HISTORY, or the context pack is silently empty', 
     assert.notEqual(i, -1, `${wf} must check out the repository`);
     while (i !== -1) {
       const rest = yml.slice(i);
-      const end = rest.search(/\n\s*- (uses|name|run):/);
+      // ANY step-shaped key, not an enumeration. `- if:`-first steps exist, and
+      // a missed spelling re-opens the window this bound exists to close.
+      const end = rest.search(/\n\s*- [a-zA-Z_-]+:/);
       assert.match(
         end === -1 ? rest : rest.slice(0, end),
         /fetch-depth: 0/,

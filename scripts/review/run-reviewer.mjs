@@ -129,6 +129,18 @@ export function fenceUntrusted(body) {
   ].join('\n');
 }
 
+/**
+ * A path rendered into the TRUSTED region. `JSON.stringify` escapes every ASCII
+ * control character including \n, but leaves U+2028/U+2029 raw -- they are legal
+ * in JSON strings -- and both render as line breaks in enough contexts that a
+ * PR-controlled path could visually open a new line outside the fence. Escaped
+ * to their \u forms so the trusted region stays one line per entry, bytes on
+ * screen, not characters interpreted.
+ */
+export function promptSafePath(path) {
+  return JSON.stringify(String(path)).replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+}
+
 /** Assemble the full prompt: trusted rubric, then fenced untrusted diff. */
 export function buildPrompt(rubric, input) {
   const files = input.files
@@ -140,7 +152,7 @@ export function buildPrompt(rubric, input) {
   // premise is that PR-controlled bytes never leave the fence.
   const unreviewable = (input.unreviewable ?? []).length
     ? `\nFiles in this PR you were NOT shown (do not comment on them, do not report them clean):\n` +
-      input.unreviewable.map((u) => `  - ${JSON.stringify(String(u.path))} (${JSON.stringify(String(u.reason ?? 'unknown'))})`).join('\n')
+      input.unreviewable.map((u) => `  - ${promptSafePath(u.path)} (${promptSafePath(u.reason ?? 'unknown')})`).join('\n')
     : '';
 
   // THE CANONICAL `files_reviewed` LIST, handed over verbatim. Asking the model
@@ -156,7 +168,7 @@ export function buildPrompt(rubric, input) {
   const roster =
     `\nYour \`files_reviewed\` array must contain EXACTLY these ${input.files.length} path(s), ` +
     'verbatim -- nothing added, nothing dropped:\n' +
-    input.files.map((f) => `  ${JSON.stringify(String(f.path))}`).join('\n');
+    input.files.map((f) => `  ${promptSafePath(f.path)}`).join('\n');
 
   // THE CONTEXT PACK, fenced with the diff because it is the same trust class.
   //

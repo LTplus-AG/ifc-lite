@@ -577,8 +577,13 @@ test('LONG PATHS: the pack cannot turn a passing prompt into a failing one', () 
   // every existing test sat on the safe side of the cliff.
   const rubric = readFileSync(join(HERE, 'rubric.md'), 'utf8');
   const deep = 'packages/some/very/deeply/nested/generated/module/directory/tree';
+  // 700, not 1,000: the roster now spends every path a second time, and at
+  // 1,000 files BOTH cases sat over the ceiling diff-only, so `continue`
+  // skipped the assertion in every iteration and the test measured nothing.
+  // The counter below is what keeps that from happening again.
+  let exercised = 0;
   for (const pathLen of [110, 188]) {
-    const files = Array.from({ length: 1_000 }, (_, i) => {
+    const files = Array.from({ length: 700 }, (_, i) => {
       const stem = `${deep}/file-${i}`;
       const p = (stem + 'x'.repeat(Math.max(0, pathLen - stem.length - 3))).slice(0, pathLen - 3) + '.ts';
       return { path: p, patch: `@@ -1,1 +1,2 @@\n+${'x'.repeat(230)}\n` };
@@ -601,7 +606,9 @@ test('LONG PATHS: the pack cannot turn a passing prompt into a failing one', () 
       `${pathLen}-byte paths: diff-only was ${bare} (under ${MAX_PROMPT_BYTES}), with the pack ` +
         `${full}, over by ${full - MAX_PROMPT_BYTES}. The pack made a passing prompt fail.`,
     );
+    exercised += 1;
   }
+  assert.ok(exercised >= 1, 'every case skipped as over-ceiling diff-only; the assertion never ran');
 });
 
 test('promptEnvelopeBytes scales with PATH LENGTH, not just row count', () => {

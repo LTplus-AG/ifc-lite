@@ -1,0 +1,65 @@
+{
+  "$comment": "Held from the merge train of 2026-09-01 on a merge-blocking defect that all ~91 deterministic gates passed. Defect class: count-distortion. `what` is written from the reviewer's file:line and failing input, never from the PR body.",
+  "pr": 3650,
+  "input": {
+    "headSha": "2413e6442d33155b7f811a124f1db019fc49cac1",
+    "files": [
+      {
+        "path": ".changeset/stats-material-validation-scope-elements.md",
+        "patch": "@@ -0,0 +1,5 @@\n+---\n+'@ifc-lite/cli': patch\n+---\n+\n+`ifc-lite stats` no longer inflates the material summary and the `unnamedElements`/`duplicateGlobalIds` validation counts with non-physical entities. `bim.query()` with no type filter returns every \"product\" the SDK tracks, including spatial-structure containers (`IfcProject`/`IfcSite`/`IfcBuilding`/`IfcBuildingStorey`/`IfcSpace` and their infrastructure counterparts), groupings (`IfcZone`/`IfcSystem`/`IfcDistributionSystem`), and 2D/3D drafting annotations (`IfcAnnotation`) \u2014 none of which are physical building elements. On the `AC20-FZK-Haus` fixture this reported `unnamedElements: 19` (14 of them unnamed `IfcAnnotation` dimension lines, which never carry a `Name`) when only 5 physical elements actually lacked one. `filterBuildingElements` (`packages/cli/src/commands/stats-aggregation.ts`) now scopes both stats to the same physical-element population `elementCounts` already reports on.",
+        "addedLineRanges": [
+          [
+            1,
+            5
+          ]
+        ]
+      },
+      {
+        "path": "packages/cli/src/commands/stats-aggregation.test.ts",
+        "patch": "@@ -24,6 +24,7 @@ import {\n   computeGrossFloorArea,\n   computeMaterialSummary,\n   computeValidation,\n+  filterBuildingElements,\n   type QuantitySet,\n   type PropertySet,\n } from './stats-aggregation.js';\n@@ -248,6 +249,36 @@ describe('computeMaterialSummary', () => {\n   });\n });\n \n+describe('filterBuildingElements', () => {\n+  // ISSUE(AC20-FZK-Haus.ifc fixture): `bim.query()` with no type filter\n+  // returns every \"product\" entity, including 14 unnamed IfcAnnotation\n+  // (drafting) entities and the model's IfcProject/IfcSite/IfcBuilding/\n+  // IfcBuildingStorey/IfcSpace containers \u2014 none of which are physical\n+  // building elements. Passing that unfiltered set into computeValidation\n+  // reported 19 \"unnamed elements\" for a model where only 5 physical\n+  // elements actually lack a Name.\n+  it('drops spatial-structure containers and drafting annotations, keeps physical elements', () => {\n+    const entities = [\n+      { type: 'IfcProject', name: undefined },\n+      { type: 'IfcSite', name: undefined },\n+      { type: 'IfcBuilding', name: 'Building' },\n+      { type: 'IfcBuildingStorey', name: 'Level 1' },\n+      { type: 'IfcSpace', name: 'Room 1' },\n+      { type: 'IfcAnnotation', name: undefined },\n+      { type: 'IfcAnnotation', name: undefined },\n+      { type: 'IfcWall', name: 'Wall 1' },\n+      { type: 'IfcRailing', name: undefined },\n+    ];\n+    const kept = filterBuildingElements(entities);\n+    expect(kept.map(e => e.type)).toEqual(['IfcWall', 'IfcRailing']);\n+  });\n+\n+  it('an all-physical-element input passes through unchanged', () => {\n+    const entities = [{ type: 'IfcWall' }, { type: 'IfcDoor' }, { type: 'IfcWindow' }];\n+    expect(filterBuildingElements(entities)).toEqual(entities);\n+  });\n+});\n+\n describe('computeValidation', () => {\n   it('counts offending GlobalIds once each, not once per duplicate row', () => {\n     const elements = [",
+        "addedLineRanges": [
+          [
+            27,
+            27
+          ],
+          [
+            252,
+            281
+          ]
+        ]
+      },
+      {
+        "path": "packages/cli/src/commands/stats-aggregation.ts",
+        "patch": "@@ -197,6 +197,34 @@ export function computeMaterialSummary<R>(\n     }));\n }\n \n+/**\n+ * `bim.query()` with no type filter returns every entity the SDK treats as\n+ * a \"product\" \u2014 which includes spatial-structure containers and groupings\n+ * (IfcProject/IfcSite/IfcBuilding/IfcBuildingStorey/IfcSpace/IfcZone/\n+ * IfcSystem/IfcDistributionSystem/IfcSpatialZone and their infrastructure\n+ * counterparts) and 2D/3D drafting annotations (IfcAnnotation), none of\n+ * which are physical building elements. Left in, they inflate the\n+ * material summary and the \"unnamedElements\"/\"duplicateGlobalIds\"\n+ * validation counts with entities a user would never call a \"building\n+ * element\" (e.g. an `IfcAnnotation` dimension line never carries a Name\n+ * and isn't a modeling defect).\n+ */\n+const NON_ELEMENT_TYPES = new Set([\n+  'IfcProject', 'IfcSite', 'IfcBuilding', 'IfcBuildingStorey', 'IfcSpace',\n+  'IfcSpatialZone', 'IfcZone', 'IfcSystem', 'IfcDistributionSystem',\n+  'IfcFacility', 'IfcFacilityPart', 'IfcBridge', 'IfcBridgePart',\n+  'IfcRoad', 'IfcRoadPart', 'IfcRailway', 'IfcRailwayPart', 'IfcMarineFacility',\n+  'IfcAnnotation',\n+]);\n+\n+/**\n+ * Scope an unfiltered `bim.query().toArray()` result down to physical\n+ * building elements, for the material summary and validation stats.\n+ */\n+export function filterBuildingElements<T extends { type: string }>(entities: T[]): T[] {\n+  return entities.filter(e => !NON_ELEMENT_TYPES.has(e.type));\n+}\n+\n export interface ValidationSummary {\n   duplicateGlobalIds: number;\n   unnamedElements: number;",
+        "addedLineRanges": [
+          [
+            200,
+            227
+          ]
+        ]
+      },
+      {
+        "path": "packages/cli/src/commands/stats.ts",
+        "patch": "@@ -17,6 +17,7 @@ import {\n   computeGrossFloorArea,\n   computeMaterialSummary,\n   computeValidation,\n+  filterBuildingElements,\n   sumQuantity,\n } from './stats-aggregation.js';\n \n@@ -83,7 +84,7 @@ export async function statsCommand(args: string[]): Promise<void> {\n   }\n \n   // Material summary with volumes\n-  const allBuildingElements = bim.query().toArray();\n+  const allBuildingElements = filterBuildingElements(bim.query().toArray());\n   const materialSummary = computeMaterialSummary(bim, allBuildingElements, round);\n \n   // Validation checks",
+        "addedLineRanges": [
+          [
+            20,
+            20
+          ],
+          [
+            87,
+            87
+          ]
+        ]
+      }
+    ],
+    "unreviewable": [],
+    "excluded": []
+  },
+  "expected": [
+    {
+      "path": "packages/cli/src/commands/stats.ts",
+      "what": "the building-element filter is applied to the duplicateGlobalIds computation as well as unnamedElements, so real GlobalId collisions on non-element entities stop being reported while validate and the MCP audit still report them"
+    }
+  ]
+}

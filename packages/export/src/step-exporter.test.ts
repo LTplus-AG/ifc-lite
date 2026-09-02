@@ -212,6 +212,39 @@ describe('StepExporter', () => {
     expect(result.stats.modifiedEntityCount).toBe(1);
   });
 
+  // `IfcTask`'s attribute order DIFFERS between IFC2X3 and IFC4: IFC2X3 has
+  // `Status` at index 6 (GlobalId,OwnerHistory,Name,Description,ObjectType,
+  // TaskId,Status,WorkMethod,IsMilestone,Priority — verified against
+  // `entities-ifc2x3.ts`); IFC4 inserts `Identification`/`LongDescription`
+  // ahead of it, pushing `Status` to index 7 (`entities-ifc4.ts`). A named
+  // attribute override resolved against a fixed IFC4-pinned order — rather
+  // than the SOURCE entity's own `dataStore.schemaVersion` — writes the new
+  // value into `WorkMethod`'s slot instead: silent corruption of an
+  // unrelated attribute, not a dropped edit and not a visible error.
+  it('resolves a named attribute override against the source entity\'s own schema version (IFC2X3 IfcTask)', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCTASK', "#1=IFCTASK('g',$,'Old Name','Old Desc','Type','TASK-1','OLD-STATUS','OLD-METHOD',.F.,5);"],
+    ]);
+    (dataStore as unknown as { schemaVersion: string }).schemaVersion = 'IFC2X3';
+    const mutationView = new LiveMutablePropertyView(null, 'model-1');
+    mutationView.setAttribute(1, 'Status', 'NEW-STATUS');
+
+    const exporter = new StepExporter(dataStore, mutationView);
+    const result = exporter.export({
+      schema: 'IFC2X3',
+      includeGeometry: true,
+      includeProperties: true,
+      includeQuantities: true,
+      includeRelationships: true,
+      applyMutations: true,
+    });
+
+    const content = decode(result.content);
+    expect(content).toContain(
+      "#1=IFCTASK('g',$,'Old Name','Old Desc','Type','TASK-1','NEW-STATUS','OLD-METHOD',.F.,5);",
+    );
+  });
+
   it('rejects georeferencing edits for IFC2X3 export', async () => {
     const parser = new IfcParser();
     const store = await parser.parseColumnar(new TextEncoder().encode(SIMPLE_TYPE_INHERITANCE_IFC).buffer);

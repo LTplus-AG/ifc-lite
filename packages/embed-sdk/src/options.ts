@@ -39,7 +39,18 @@ export interface EmbedOptions {
   hideAxis?: boolean;
   /** Hide the scale bar. */
   hideScale?: boolean;
-  /** IFC class names to hide, matched case-insensitively (`IFCSPACE` === `IfcSpace`). */
+  /**
+   * IFC class names to hide, matched case-insensitively (`IFCSPACE` === `IfcSpace`).
+   *
+   * Takes precedence over `setTypeVisibility`: the two are ANDed, so naming a class
+   * here that also has a visibility toggle keeps it hidden even after a later
+   * `setTypeVisibility({ spaces: true })`. There is no call that un-hides a
+   * `hideTypes` entry; re-initialise the embed to change the list.
+   *
+   * Hides meshes. The symbolic 2D overlay (dimension lines, drawing text, grid
+   * bubbles) is not a mesh, so naming `IfcAnnotation` here does not remove it; use
+   * `setTypeVisibility({ ifcAnnotations: false })`.
+   */
   hideTypes?: string[];
   /**
    * Entity ids to select once the first model is on screen. The viewer keeps

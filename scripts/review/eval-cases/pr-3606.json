@@ -1,0 +1,279 @@
+{
+  "$comment": "Held from the merge train of 2026-09-01 on a merge-blocking defect that all ~91 deterministic gates passed. Defect class: bump-too-low. `what` is written from the reviewer's file:line and failing input, never from the PR body.",
+  "pr": 3606,
+  "input": {
+    "headSha": "5f6a19aedd5605ca2195affd77ac49f138c695ac",
+    "files": [
+      {
+        "path": ".changeset/cache-quantity-qset-globalid.md",
+        "patch": "@@ -0,0 +1,5 @@\n+---\n+'@ifc-lite/cache': patch\n+---\n+\n+Persist the new `QuantityTable.qsetGlobalId` column through the binary cache format and restore the same distinct-instance grouping in `readQuantities`'s `getForEntity`, mirroring `properties.ts`'s `psetGlobalId` handling. Bumps `FORMAT_VERSION` from 16 to 17 (a wire-format-breaking column addition); `FORMAT_VERSION` is embedded in the cache key, so old-format entries simply never key a hit \u2014 no read-side migration.",
+        "addedLineRanges": [
+          [
+            1,
+            5
+          ]
+        ]
+      },
+      {
+        "path": ".changeset/ifcx-quantity-qset-globalid.md",
+        "patch": "@@ -0,0 +1,5 @@\n+---\n+'@ifc-lite/ifcx': patch\n+---\n+\n+`buildQuantities` now passes `qsetGlobalId: ''` explicitly when building `QuantityTable` rows, documenting (rather than silently defaulting) that IFCX's flat node-attribute model has no distinct backing qset entity with its own GlobalId \u2014 mirroring `property-extractor.ts`'s existing `psetGlobalId: ''`.",
+        "addedLineRanges": [
+          [
+            1,
+            5
+          ]
+        ]
+      },
+      {
+        "path": ".changeset/quantity-collect-thread-globalid.md",
+        "patch": "@@ -0,0 +1,5 @@\n+---\n+'@ifc-lite/parser': patch\n+---\n+\n+Thread `IfcElementQuantity.GlobalId` through `readQuantitySet` (`CollectedQuantitySet.globalId`) and the on-demand quantity extractors (`extractQuantitiesOnDemand`, `extractQsetsFromIds`, `TypeQuantityInfo.quantities`), so callers can distinguish two same-named-but-distinct quantity-set instances on one entity \u2014 feeding `@ifc-lite/data`'s `QuantityTable.getForEntity` identity fix. The field is optional and additive; no existing caller's behavior changes.",
+        "addedLineRanges": [
+          [
+            1,
+            5
+          ]
+        ]
+      },
+      {
+        "path": ".changeset/quantity-table-duplicate-qset-instance.md",
+        "patch": "@@ -0,0 +1,9 @@\n+---\n+'@ifc-lite/data': minor\n+---\n+\n+Fix `QuantityTable.getForEntity` silently merging two distinct `IfcElementQuantity` instances into one when they share a literal name, misattributing the second instance's quantities to the first instance's GlobalId \u2014 the quantity-side counterpart of the same fix on `PropertyTable`.\n+\n+An entity can carry two rows whose `qsetName` is identical but whose `qsetGlobalId` (the real quantity-set identity) differs \u2014 a federated merge of two files, or an exporter that emits the same `Qto_` set twice on one element, both produce this. `getForEntity` grouped rows into a `Map<string, QuantitySet>` keyed on `qsetName` alone, so the second instance's rows landed in the first instance's bucket. `getForEntity` now groups on `(qsetName, qsetGlobalId)`, so two same-named-but-distinct instances stay separate while rows that genuinely belong to one instance still merge exactly as before.\n+\n+`QuantityTable`/`QuantityTableColumns` gain a `qsetGlobalId: Uint32Array` column (mirroring `PropertyTable.psetGlobalId`), and `QuantitySet` gains an optional `globalId?: string` field reporting the resolved identity. The row-builder field is optional (`qsetGlobalId?: string`, defaulting to `''`), so every existing `QuantityTableBuilder.add(...)` call site in the repo keeps compiling unchanged; two rows that both omit it still merge as before.",
+        "addedLineRanges": [
+          [
+            1,
+            9
+          ]
+        ]
+      },
+      {
+        "path": "apps/viewer/src/utils/serverDataModel.ts",
+        "patch": "@@ -561,8 +561,7 @@ export function convertServerDataModel(\n \n   const quantities: QuantityTable = {\n     count: 0,\n-    entityId: new Uint32Array(0),\n-    qsetName: new Uint32Array(0),\n+    entityId: new Uint32Array(0), qsetName: new Uint32Array(0), qsetGlobalId: new Uint32Array(0),\n     quantityName: new Uint32Array(0),\n     quantityType: new Uint8Array(0),\n     value: new Float64Array(0),\n@@ -574,7 +573,7 @@ export function convertServerDataModel(\n     getForEntity: (exprId: number): QuantitySet[] => {\n       const qsets = entityToQsets.get(exprId) || [];\n       return qsets.map((qset) => ({\n-        name: qset.qset_name,\n+        name: qset.qset_name, globalId: '',\n         quantities: qset.quantities.map((q) => ({\n           name: q.quantity_name,\n           type: mapQuantityType(q.quantity_type),",
+        "addedLineRanges": [
+          [
+            564,
+            564
+          ],
+          [
+            576,
+            576
+          ]
+        ]
+      },
+      {
+        "path": "packages/cache/src/sections/header.test.ts",
+        "patch": "@@ -72,9 +72,10 @@ describe('writeHeader', () => {\n     // version: uint16 LE at byte 4. Moved 13 -> 14 with the #3199 mesh-record\n     // change, 14 -> 15 with the Entities `rawTypeName` column, 15 -> 16 with\n     // the #2985 IFNS v2 shards (a shared key would let a pre-#2985 bundle\n-    // throw away every instanced occurrence); update this literal only\n-    // alongside a types.ts ledger entry.\n-    expect(view.getUint16(4, true)).toBe(16);\n+    // throw away every instanced occurrence), 16 -> 17 with the QuantityTable\n+    // `qsetGlobalId` column; update this literal only alongside a types.ts\n+    // ledger entry.\n+    expect(view.getUint16(4, true)).toBe(17);\n   });\n \n   it('writes each section-table entry field at its documented byte offset within the 16-byte entry', () => {",
+        "addedLineRanges": [
+          [
+            75,
+            78
+          ]
+        ]
+      },
+      {
+        "path": "packages/cache/src/sections/quantities-corrupt-index.test.ts",
+        "patch": "@@ -39,6 +39,7 @@ function tableWithCorruptEntityIndex(): QuantityTable {\n     count: 1,\n     entityId: Uint32Array.from([100]),\n     qsetName: Uint32Array.from([1]),\n+    qsetGlobalId: Uint32Array.from([0]),\n     quantityName: Uint32Array.from([2]),\n     quantityType: Uint8Array.from([QuantityType.Length]),\n     value: new Float64Array([3.5]),\n@@ -74,7 +75,11 @@ describe('readQuantities row-index bounds', () => {\n \n     const restored = readQuantities(new BufferReader(buffer), strings);\n     expect(restored.getForEntity(100)).toEqual([\n-      { name: 'Qto_Test', quantities: [{ name: 'Length', type: QuantityType.Length, value: 3.5, formula: undefined }] },\n+      {\n+        name: 'Qto_Test',\n+        globalId: '',\n+        quantities: [{ name: 'Length', type: QuantityType.Length, value: 3.5, formula: undefined }],\n+      },\n     ]);\n   });\n });",
+        "addedLineRanges": [
+          [
+            42,
+            42
+          ],
+          [
+            78,
+            82
+          ]
+        ]
+      },
+      {
+        "path": "packages/cache/src/sections/quantities.ts",
+        "patch": "@@ -20,6 +20,7 @@ export function writeQuantities(writer: BufferWriter, quantities: QuantityTable)\n \n   writer.writeTypedArray(quantities.entityId);\n   writer.writeTypedArray(quantities.qsetName);\n+  writer.writeTypedArray(quantities.qsetGlobalId);\n   writer.writeTypedArray(quantities.quantityName);\n   writer.writeTypedArray(quantities.quantityType);\n   writer.writeTypedArray(quantities.value);\n@@ -40,6 +41,7 @@ export function readQuantities(reader: BufferReader, strings: StringTable): Quan\n \n   const entityId = reader.readUint32Array(count);\n   const qsetName = reader.readUint32Array(count);\n+  const qsetGlobalId = reader.readUint32Array(count);\n   const quantityName = reader.readUint32Array(count);\n   const quantityType = reader.readUint8Array(count);\n   const value = reader.readFloat64Array(count);\n@@ -54,6 +56,7 @@ export function readQuantities(reader: BufferReader, strings: StringTable): Quan\n     count,\n     entityId,\n     qsetName,\n+    qsetGlobalId,\n     quantityName,\n     quantityType,\n     value,\n@@ -69,15 +72,18 @@ export function readQuantities(reader: BufferReader, strings: StringTable): Quan\n \n       for (const idx of rowIndices) {\n         const qsetNameStr = strings.get(qsetName[idx]);\n+        const qsetGlobalIdStr = strings.get(qsetGlobalId[idx]);\n+        const key = qsetNameStr + '\\^@' + qsetGlobalIdStr;\n \n-        if (!qsets.has(qsetNameStr)) {\n-          qsets.set(qsetNameStr, {\n+        if (!qsets.has(key)) {\n+          qsets.set(key, {\n             name: qsetNameStr,\n+            globalId: qsetGlobalIdStr,\n             quantities: [],\n           });\n         }\n \n-        const qset = qsets.get(qsetNameStr)!;\n+        const qset = qsets.get(key)!;\n         const quantNameStr = strings.get(quantityName[idx]);\n \n         qset.quantities.push({",
+        "addedLineRanges": [
+          [
+            23,
+            23
+          ],
+          [
+            44,
+            44
+          ],
+          [
+            59,
+            59
+          ],
+          [
+            75,
+            76
+          ],
+          [
+            78,
+            79
+          ],
+          [
+            81,
+            81
+          ],
+          [
+            86,
+            86
+          ]
+        ]
+      },
+      {
+        "path": "packages/cache/src/types.ts",
+        "patch": "@@ -131,7 +131,7 @@ export const MAGIC = 0x4C434649; // \"IFCL\" in little-endian\n  *   -- every existing entry re-meshes once -- because the alternative is a\n  *   silent partial render on a bundle nobody can update.\n  */\n-export const FORMAT_VERSION = 16;\n+export const FORMAT_VERSION = 17;\n \n /** Geometry chunking parameters (v13+). Grouping is a WRITE-side layout\n  *  policy: readers only trust the directory, so these can change without a",
+        "addedLineRanges": [
+          [
+            134,
+            134
+          ]
+        ]
+      },
+      {
+        "path": "packages/data/src/quantity-table.test.ts",
+        "patch": "@@ -0,0 +1,106 @@\n+/* This Source Code Form is subject to the terms of the Mozilla Public\n+ * License, v. 2.0. If a copy of the MPL was not distributed with this\n+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */\n+\n+import { describe, it, expect } from 'vitest';\n+import { StringTable } from './string-table.js';\n+import { QuantityTableBuilder } from './quantity-table.js';\n+import { QuantityType } from './types.js';\n+\n+describe('QuantityTable.getForEntity distinct-instance grouping', () => {\n+  it('keeps two distinct qset INSTANCES that share a literal name separate, not merged', () => {\n+    // A federated merge, or an exporter that emits the same Qto_ set twice on\n+    // one element, can put two rows on one entity whose qsetName is\n+    // identical but whose qsetGlobalId (the real IfcElementQuantity\n+    // identity) differs. Grouping by name alone previously merged them into\n+    // one QuantitySet reporting only the first row's GlobalId, so a\n+    // quantity that actually belonged to the second instance came back\n+    // attributed to the wrong qset.\n+    const strings = new StringTable();\n+    const builder = new QuantityTableBuilder(strings);\n+    builder.add({\n+      entityId: 100,\n+      qsetName: 'Qto_WallBaseQuantities',\n+      qsetGlobalId: 'gid-AAA',\n+      quantityName: 'NetVolume',\n+      quantityType: QuantityType.Volume,\n+      value: 1.25,\n+    });\n+    builder.add({\n+      entityId: 100,\n+      qsetName: 'Qto_WallBaseQuantities',\n+      qsetGlobalId: 'gid-BBB',\n+      quantityName: 'NetArea',\n+      quantityType: QuantityType.Area,\n+      value: 5.0,\n+    });\n+    const table = builder.build();\n+\n+    const sets = table.getForEntity(100);\n+    expect(sets).toHaveLength(2);\n+    const byGlobalId = new Map(sets.map((s) => [s.globalId, s]));\n+    expect(byGlobalId.get('gid-AAA')?.quantities).toEqual([\n+      { name: 'NetVolume', type: QuantityType.Volume, value: 1.25, formula: undefined },\n+    ]);\n+    expect(byGlobalId.get('gid-BBB')?.quantities).toEqual([\n+      { name: 'NetArea', type: QuantityType.Area, value: 5.0, formula: undefined },\n+    ]);\n+  });\n+\n+  it('merges rows that genuinely belong to one qset instance (same name and globalId)', () => {\n+    const strings = new StringTable();\n+    const builder = new QuantityTableBuilder(strings);\n+    builder.add({\n+      entityId: 100,\n+      qsetName: 'Qto_WallBaseQuantities',\n+      qsetGlobalId: 'gid-AAA',\n+      quantityName: 'NetVolume',\n+      quantityType: QuantityType.Volume,\n+      value: 1.25,\n+    });\n+    builder.add({\n+      entityId: 100,\n+      qsetName: 'Qto_WallBaseQuantities',\n+      qsetGlobalId: 'gid-AAA',\n+      quantityName: 'NetArea',\n+      quantityType: QuantityType.Area,\n+      value: 5.0,\n+    });\n+    const table = builder.build();\n+\n+    const sets = table.getForEntity(100);\n+    expect(sets).toHaveLength(1);\n+    expect(sets[0].globalId).toBe('gid-AAA');\n+    expect(sets[0].quantities).toEqual([\n+      { name: 'NetVolume', type: QuantityType.Volume, value: 1.25, formula: undefined },\n+      { name: 'NetArea', type: QuantityType.Area, value: 5.0, formula: undefined },\n+    ]);\n+  });\n+\n+  it('still merges rows with no qsetGlobalId supplied at all (existing-producer regression guard)', () => {\n+    // Producers with no real qset identity (e.g. IFCX's buildQuantities)\n+    // omit qsetGlobalId, which defaults to '' for both rows and so still\n+    // collides into one QuantitySet \u2014 matching pre-fix behavior exactly.\n+    const strings = new StringTable();\n+    const builder = new QuantityTableBuilder(strings);\n+    builder.add({\n+      entityId: 100,\n+      qsetName: 'Qto_WallBaseQuantities',\n+      quantityName: 'NetVolume',\n+      quantityType: QuantityType.Volume,\n+      value: 1.25,\n+    });\n+    builder.add({\n+      entityId: 100,\n+      qsetName: 'Qto_WallBaseQuantities',\n+      quantityName: 'NetArea',\n+      quantityType: QuantityType.Area,\n+      value: 5.0,\n+    });\n+    const table = builder.build();\n+\n+    const sets = table.getForEntity(100);\n+    expect(sets).toHaveLength(1);\n+    expect(sets[0].quantities).toHaveLength(2);\n+  });\n+});",
+        "addedLineRanges": [
+          [
+            1,
+            106
+          ]
+        ]
+      },
+      {
+        "path": "packages/data/src/quantity-table.ts",
+        "patch": "@@ -13,6 +13,8 @@ import { QuantityType } from './types.js';\n \n export interface QuantitySet {\n   name: string;\n+  /** GlobalId of the source `IfcElementQuantity` instance, when known. */\n+  globalId?: string;\n   quantities: Quantity[];\n }\n \n@@ -29,12 +31,13 @@ export interface QuantityTable {\n   \n   entityId: Uint32Array;\n   qsetName: Uint32Array;\n+  qsetGlobalId: Uint32Array;\n   quantityName: Uint32Array;\n   quantityType: Uint8Array;\n   value: Float64Array;\n   unitId: Int32Array;\n   formula: Uint32Array;\n-  \n+\n   entityIndex: Map<number, number[]>;\n   qsetIndex: Map<number, number[]>;\n   quantityIndex: Map<number, number[]>;\n@@ -93,6 +96,7 @@ export class QuantityTableBuilder {\n \n     const entityId = new Uint32Array(count);\n     const qsetName = new Uint32Array(count);\n+    const qsetGlobalId = new Uint32Array(count);\n     const quantityName = new Uint32Array(count);\n     const quantityType = new Uint8Array(count);\n     const value = new Float64Array(count);\n@@ -103,6 +107,7 @@ export class QuantityTableBuilder {\n       const row = this.rows[i];\n       entityId[i] = row.entityId;\n       qsetName[i] = this.strings.intern(row.qsetName);\n+      qsetGlobalId[i] = this.strings.intern(row.qsetGlobalId ?? '');\n       quantityName[i] = this.strings.intern(row.quantityName);\n       quantityType[i] = row.quantityType;\n       value[i] = row.value;\n@@ -111,7 +116,7 @@ export class QuantityTableBuilder {\n     }\n \n     return quantityTableFromColumns(\n-      { count, entityId, qsetName, quantityName, quantityType, value, unitId, formula },\n+      { count, entityId, qsetName, qsetGlobalId, quantityName, quantityType, value, unitId, formula },\n       this.strings,\n     );\n   }\n@@ -125,6 +130,7 @@ export interface QuantityTableColumns {\n   count: number;\n   entityId: Uint32Array;\n   qsetName: Uint32Array;\n+  qsetGlobalId: Uint32Array;\n   quantityName: Uint32Array;\n   quantityType: Uint8Array;\n   value: Float64Array;\n@@ -134,7 +140,7 @@ export interface QuantityTableColumns {\n \n /** Rebuild a live `QuantityTable` (closures + indices) from column data. */\n export function quantityTableFromColumns(columns: QuantityTableColumns, strings: StringTable): QuantityTable {\n-  const { count, entityId, qsetName, quantityName, quantityType, value, unitId, formula } = columns;\n+  const { count, entityId, qsetName, qsetGlobalId, quantityName, quantityType, value, unitId, formula } = columns;\n \n   const entityIndex = new Map<number, number[]>();\n   const qsetIndex = new Map<number, number[]>();\n@@ -149,6 +155,7 @@ export function quantityTableFromColumns(columns: QuantityTableColumns, strings:\n     count,\n     entityId,\n     qsetName,\n+    qsetGlobalId,\n     quantityName,\n     quantityType,\n     value,\n@@ -163,10 +170,12 @@ export function quantityTableFromColumns(columns: QuantityTableColumns, strings:\n       const qsets = new Map<string, QuantitySet>();\n       for (const idx of rowIndices) {\n         const qsetNameStr = strings.get(qsetName[idx]);\n-        if (!qsets.has(qsetNameStr)) {\n-          qsets.set(qsetNameStr, { name: qsetNameStr, quantities: [] });\n+        const qsetGlobalIdStr = strings.get(qsetGlobalId[idx]);\n+        const key = qsetNameStr + '\\^@' + qsetGlobalIdStr;\n+        if (!qsets.has(key)) {\n+          qsets.set(key, { name: qsetNameStr, globalId: qsetGlobalIdStr, quantities: [] });\n         }\n-        const qset = qsets.get(qsetNameStr)!;\n+        const qset = qsets.get(key)!;\n         const quantNameStr = strings.get(quantityName[idx]);\n         qset.quantities.push({\n           name: quantNameStr,\n@@ -228,6 +237,7 @@ export function quantityTableToColumns(table: QuantityTable): QuantityTableColum\n     count: table.count,\n     entityId: table.entityId,\n     qsetName: table.qsetName,\n+    qsetGlobalId: table.qsetGlobalId,\n     quantityName: table.quantityName,\n     quantityType: table.quantityType,\n     value: table.value,\n@@ -239,6 +249,7 @@ export function quantityTableToColumns(table: QuantityTable): QuantityTableColum\n interface QuantityRow {\n   entityId: number;\n   qsetName: string;\n+  qsetGlobalId?: string;\n   quantityName: string;\n   quantityType: QuantityType;\n   value: number;",
+        "addedLineRanges": [
+          [
+            16,
+            17
+          ],
+          [
+            34,
+            34
+          ],
+          [
+            40,
+            40
+          ],
+          [
+            99,
+            99
+          ],
+          [
+            110,
+            110
+          ],
+          [
+            119,
+            119
+          ],
+          [
+            133,
+            133
+          ],
+          [
+            143,
+            143
+          ],
+          [
+            158,
+            158
+          ],
+          [
+            173,
+            176
+          ],
+          [
+            178,
+            178
+          ],
+          [
+            240,
+            240
+          ],
+          [
+            252,
+            252
+          ]
+        ]
+      },
+      {
+        "path": "packages/ifcx/src/index.ts",
+        "patch": "@@ -384,9 +384,9 @@ function buildQuantities(\n \n       builder.add({\n         entityId: expressId,\n-        // Keep the authored set name (Qto_* or custom) when the key\n-        // carries one; only heuristic-routed keys get the synthesized set.\n+        // Keep the authored set name (Qto_* or custom) when the key carries one; else the synthesized set.\n         qsetName: v5a ? v5a.setName : qsetName,\n+        qsetGlobalId: '', // IFCX's flat model has no qset GlobalId; parity with property-extractor.ts's psetGlobalId.\n         quantityName: propName,\n         quantityType: getQuantityType(propName, v5a ? v5a.setName.startsWith('Qto_') : true),\n         value: effective as number,",
+        "addedLineRanges": [
+          [
+            387,
+            387
+          ],
+          [
+            389,
+            389
+          ]
+        ]
+      },
+      {
+        "path": "packages/parser/src/columnar-parser.ts",
+        "patch": "@@ -841,7 +841,7 @@ export class ColumnarParser {\n     extractQuantitiesOnDemand(\n         store: IfcDataStore,\n         entityId: number\n-    ): Array<{ name: string; quantities: Array<{ name: string; type: number; value: number }> }> {\n+    ): Array<{ name: string; globalId?: string; quantities: Array<{ name: string; type: number; value: number }> }> {\n         // Use on-demand extraction if map is available (preferred for single-entity access)\n         if (!store.onDemandQuantityMap || !store.source?.length) {\n             // Fallback to pre-computed quantity table (e.g., server-parsed data)\n@@ -854,7 +854,7 @@ export class ColumnarParser {\n         }\n \n         const extractor = new EntityExtractor(store.source);\n-        const result: Array<{ name: string; quantities: Array<{ name: string; type: number; value: number }> }> = [];\n+        const result: Array<{ name: string; globalId?: string; quantities: Array<{ name: string; type: number; value: number }> }> = [];\n \n         for (const qsetId of qsetIds) {\n             const qsetRef = getEntityRefFromStore(store, qsetId);\n@@ -887,7 +887,7 @@ export function extractPropertiesOnDemand(\n export function extractQuantitiesOnDemand(\n     store: IfcDataStore,\n     entityId: number\n-): Array<{ name: string; quantities: Array<{ name: string; type: number; value: number }> }> {\n+): Array<{ name: string; globalId?: string; quantities: Array<{ name: string; type: number; value: number }> }> {\n     const parser = new ColumnarParser();\n     return parser.extractQuantitiesOnDemand(store, entityId);\n }",
+        "addedLineRanges": [
+          [
+            844,
+            844
+          ],
+          [
+            857,
+            857
+          ],
+          [
+            890,
+            890
+          ]
+        ]
+      },
+      {
+        "path": "packages/parser/src/on-demand-extractors.ts",
+        "patch": "@@ -65,7 +65,7 @@ export interface TypePropertyInfo {\n export interface TypeQuantityInfo {\n     typeName: string;\n     typeId: number;\n-    quantities: Array<{ name: string; quantities: Array<{ name: string; type: number; value: number }> }>;\n+    quantities: Array<{ name: string; globalId?: string; quantities: Array<{ name: string; type: number; value: number }> }>;\n }\n \n /**\n@@ -511,8 +511,8 @@ export function extractQsetsFromIds(\n     store: IfcDataStore,\n     extractor: EntityExtractor,\n     qsetIds: number[]\n-): Array<{ name: string; quantities: Array<{ name: string; type: number; value: number }> }> {\n-    const result: Array<{ name: string; quantities: Array<{ name: string; type: number; value: number }> }> = [];\n+): Array<{ name: string; globalId?: string; quantities: Array<{ name: string; type: number; value: number }> }> {\n+    const result: Array<{ name: string; globalId?: string; quantities: Array<{ name: string; type: number; value: number }> }> = [];\n \n     for (const qsetId of qsetIds) {\n         const qsetRef = store.entityIndex.byId.get(qsetId);\n@@ -566,7 +566,7 @@ export function extractTypeQuantitiesOnDemand(\n         ? typeEntity.attributes[2]\n         : typeRef.type;\n \n-    const allQsets: Array<{ name: string; quantities: Array<{ name: string; type: number; value: number }> }> = [];\n+    const allQsets: Array<{ name: string; globalId?: string; quantities: Array<{ name: string; type: number; value: number }> }> = [];\n     const seenQsetNames = new Set<string>();\n     const ownSetIds = new Set<number>();\n ",
+        "addedLineRanges": [
+          [
+            68,
+            68
+          ],
+          [
+            514,
+            515
+          ],
+          [
+            569,
+            569
+          ]
+        ]
+      },
+      {
+        "path": "packages/parser/src/quantity-collect.ts",
+        "patch": "@@ -170,13 +170,16 @@ export function collectQuantitiesFromRefs(\n /**\n  * `Quantities` slot on `IfcElementQuantity`: GlobalId[0], OwnerHistory[1],\n  * Name[2], Description[3] inherited from `IfcRoot`, then MethodOfMeasurement[4]\n- * and Quantities[5].\n+ * and Quantities[5]. GlobalId[0] is the identity of the `IfcElementQuantity`\n+ * instance itself, not any of its quantities.\n  */\n const QUANTITIES_SLOT = 5;\n \n /** One extracted quantity set, in the shape both call sites report. */\n export interface CollectedQuantitySet {\n     name: string;\n+    /** `GlobalId` of the source `IfcElementQuantity` instance, when read as a string. */\n+    globalId?: string;\n     quantities: CollectedQuantity[];\n }\n \n@@ -226,8 +229,9 @@ export function readQuantitySet(\n     // verbatim downstream (MCP tool responses, `bim.quantities()`) as though\n     // the model had genuinely declared that name (#3530 census).\n     const qsetName = typeof qsetAttrs[2] === 'string' ? qsetAttrs[2] : '';\n+    const qsetGlobalId = typeof qsetAttrs[0] === 'string' ? qsetAttrs[0] : undefined;\n     const quantities = collectQuantitiesFromRefs(store, extractor, qsetAttrs[QUANTITIES_SLOT]);\n \n     if (quantities.length === 0) return null;\n-    return { name: qsetName, quantities };\n+    return { name: qsetName, globalId: qsetGlobalId, quantities };\n }",
+        "addedLineRanges": [
+          [
+            173,
+            174
+          ],
+          [
+            181,
+            182
+          ],
+          [
+            232,
+            232
+          ],
+          [
+            236,
+            236
+          ]
+        ]
+      }
+    ],
+    "unreviewable": [],
+    "excluded": []
+  },
+  "expected": [
+    {
+      "path": "packages/data/src/quantity-table.ts",
+      "what": "a required qsetGlobalId field is added to exported types that consumers construct, shipped as minor; an external caller building QuantityTableColumns stops compiling and getForEntity throws a TypeError at runtime, so this needs a major bump"
+    }
+  ]
+}

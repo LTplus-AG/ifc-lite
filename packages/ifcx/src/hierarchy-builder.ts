@@ -142,7 +142,12 @@ function buildSpatialNode(
   const typeEnum = IfcTypeEnumFromString(ifcClass?.code ?? '');
   const elementIds = new Set<number>();
 
-  const name = extractName(node) ?? node.path.slice(0, 8);
+  // No source attribute means the spatial node genuinely has no Name —
+  // stay '' rather than fabricating one from a slice of the internal IFCX
+  // path (a plausible-looking short name no source data backs, which also
+  // pre-empts treeDataBuilder.ts's own "Name absent" fallback to the type,
+  // e.g. "IfcBuildingStorey", since that only fires on a falsy name).
+  const name = extractName(node) ?? '';
   // Keep LongName as a distinct descriptor (Name "01" / LongName "Main
   // Residence") so the hierarchy panel can show both (issue #1634); drop it when
   // it just duplicates the primary label.

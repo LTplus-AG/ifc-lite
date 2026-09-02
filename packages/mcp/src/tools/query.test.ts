@@ -150,11 +150,30 @@ const GROUP_MODEL = step(`
 #77= IFCWALL('${guid('WD2')}',$,'D2',$,$,#40,$,'tD2',$);
 `);
 
+// -- Fixture 4: count_entities/materials_list group_by material -----------
+//
+// #72's material resolves to an `IfcMaterialList` (two named materials, no
+// list-level Name — MaterialData carries the names under `.materials[]`,
+// not `.name`) and #73's to a plain `IfcMaterial` (name at the top level).
+// A consumer that only reads `mat?.name` sees #72 as materialless.
+const MATERIAL_MODEL = step(`
+#41= IFCBUILDINGSTOREY('${guid('STOR')}',$,'L01',$,$,#40,$,$,.ELEMENT.,0.);
+#72= IFCWALL('${guid('WALL')}',$,'Listed Wall',$,$,#40,$,'tagL',$);
+#73= IFCWALL('${guid('WALP')}',$,'Plain Wall',$,$,#40,$,'tagP',$);
+#80= IFCMATERIAL('Steel',$,$);
+#81= IFCMATERIAL('Concrete',$,$);
+#82= IFCMATERIALLIST((#80,#81));
+#83= IFCMATERIAL('Timber',$,$);
+#90= IFCRELASSOCIATESMATERIAL('${guid('RAM1')}',$,$,$,(#72),#82);
+#91= IFCRELASSOCIATESMATERIAL('${guid('RAM2')}',$,$,$,(#73),#83);
+`);
+
 beforeAll(async () => {
   tmp = await mkdtemp(join(tmpdir(), 'ifc-lite-mcp-query-'));
   await load('shape', SHAPE_MODEL);
   await load('many', MANY_MODEL);
   await load('group', GROUP_MODEL);
+  await load('material', MATERIAL_MODEL);
 }, 60_000);
 
 afterAll(async () => {
@@ -287,6 +306,30 @@ describe('count_entities → group_by sort', () => {
     const out = await call('count_entities', { model_id: 'group', type: 'IfcWall', group_by: 'storey' });
     const structured = out.structuredContent as { total: number };
     expect(structured.total).toBe(8);
+  });
+});
+
+describe('count_entities → group_by material', () => {
+  it('groups an IfcMaterialList entity under its material names, not "(no material)"', async () => {
+    const out = await call('count_entities', { model_id: 'material', type: 'IfcWall', group_by: 'material' });
+    const groups = (out.structuredContent as { groups: Array<{ key: string; count: number }> }).groups;
+    const keys = groups.map((g) => g.key);
+    expect(keys).not.toContain('(no material)');
+    expect(keys).toContain('Timber');
+    // The list-material wall must land under one of its real material names,
+    // not be silently dropped into the "no material" bucket.
+    expect(keys.some((k) => k === 'Steel' || k === 'Concrete')).toBe(true);
+  });
+});
+
+describe('materials_list', () => {
+  it('reports the IfcMaterialList wall under a real material name, not "(unnamed)"', async () => {
+    const out = await call('materials_list', { model_id: 'material' });
+    const materials = (out.structuredContent as { materials: Array<{ name: string; count: number }> }).materials;
+    const names = materials.map((m) => m.name);
+    expect(names).not.toContain('(unnamed)');
+    expect(names).toContain('Timber');
+    expect(names.some((n) => n === 'Steel' || n === 'Concrete')).toBe(true);
   });
 });
 

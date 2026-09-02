@@ -86,6 +86,26 @@ export function press(target: EventTarget, key: string, init: KeyboardEventInit 
 }
 
 /**
+ * Type into a controlled input or textarea the way a user does.
+ *
+ * Assigning `.value` directly leaves React's internal value tracker believing
+ * nothing changed, so `onChange` never fires and the field silently stays
+ * empty — a test that then asserts on the result passes or fails for the wrong
+ * reason. Going through the prototype setter is what makes React notice.
+ */
+export function type(el: HTMLInputElement | HTMLTextAreaElement, value: string): void {
+  const proto = el instanceof window.HTMLTextAreaElement
+    ? window.HTMLTextAreaElement.prototype
+    : window.HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+  if (!setter) throw new Error('no value setter on the element prototype');
+  act(() => {
+    setter.call(el, value);
+    el.dispatchEvent(new window.Event('input', { bubbles: true }));
+  });
+}
+
+/**
  * Advance React past a `setTimeout(..., ms)` scheduled by the code under test.
  * Several selection paths frame the camera on a trailing timer.
  */

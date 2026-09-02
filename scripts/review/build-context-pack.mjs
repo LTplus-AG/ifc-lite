@@ -51,25 +51,28 @@ export const BODY_RESERVE_BYTES = 8_000;
 export const MAX_PACK_BYTES = 160_000;
 
 /**
- * The ceiling on EVERYTHING the reviewer is handed: diff plus pack.
+ * The ceiling on everything the reviewer is handed: diff, pack, rubric, headers.
  *
- * The pack was originally added on top of the 600 KB patch cap, which moved the
- * real bound to 760 KB -- past a 200k-token window at this repo's measured ~3.5
- * bytes per token, whose failure mode is a MODEL_ERROR with no path to a marker.
+ * MEASURED, after this constant broke the lane on a real pull request. #3668's
+ * own review passed at 421 KB (diff only) and FAILED at 580 KB once the pack was
+ * added -- same PR, consecutive runs, the only variable being the pack.
  *
- * The first fix charged the pack against the patch budget instead, cutting the
- * diff allowance to 454,400 bytes. That was worse: the largest PR observed here
- * is ~427 KB, 96% of the new cap, so a PR the lane used to review would start
- * throwing REVIEW_TOO_LARGE -- and `claude-review.yml` special-cases only
- * NO_FILES, so the job goes red with NO marker, which no re-run and no author
- * action can clear. Fixing a token ceiling by making the lane refuse work it
- * used to do is not a fix.
+ * The first value here was 700,000, derived from an assumed 3.5 bytes per token.
+ * That ratio is wrong for source code by about half: the 580 KB prompt metered
+ * at ~298k input tokens, or 1.95 bytes per token. 700,000 bytes is therefore
+ * ~360k tokens -- past any context window, and the arithmetic said it was fine.
  *
- * So the DIFF keeps its full allowance and the PACK yields. A small PR gets the
- * whole pack; a near-maximal diff gets whatever is left. The pack is the
- * optional half, and it already records everything it drops.
+ * 450,000 keeps the total near the 421 KB that demonstrably works, while leaving
+ * a full pack for the small and medium PRs that are nearly all of them: a 50 KB
+ * diff still gets the whole 160 KB, and only a near-maximal diff squeezes the
+ * pack down. The diff is the subject and never yields; the pack is the optional
+ * half and always does.
+ *
+ * Cost matters too, and is why this is not tuned to the maximum that merely
+ * works. The 580 KB prompt cost $1.49 and took 5.2 minutes to complete locally.
+ * At this repository's PR volume that is not a lane, it is a budget line.
  */
-export const MAX_PROMPT_BYTES = 700_000;
+export const MAX_PROMPT_BYTES = 450_000;
 
 /**
  * Everything in the prompt that is neither diff nor pack: the rubric (~10.6 KB),

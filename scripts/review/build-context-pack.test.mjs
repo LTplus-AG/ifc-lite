@@ -293,22 +293,26 @@ test('NO PR THAT WAS REVIEWABLE BECOMES UNREVIEWABLE: the pack yields, the diff 
   }
 });
 
-test('THE REAL PROMPT stays under the ceiling, measured rather than derived', () => {
-  // The arithmetic version of this test asserted
-  // `maxDiff + packBudgetFor(maxDiff) <= MAX_PROMPT_BYTES`, which is true by
-  // construction of packBudgetFor and never touches buildPrompt. It therefore
-  // could not see that the constant bounded two of the prompt's four terms while
-  // calling itself "the ceiling on EVERYTHING the reviewer is handed": the rubric
-  // (~10.6 KB), a header per file, fences and prose were all uncounted, and a
-  // 1,000-file maximal diff really produced 765,620 bytes.
+test('THE REAL PROMPT stays under the ceiling whenever the DIFF alone does', () => {
+  // Measured, not derived. The arithmetic version asserted
+  // `maxDiff + packBudgetFor(maxDiff) <= MAX_PROMPT_BYTES`, true by construction
+  // of packBudgetFor and never touching buildPrompt -- so it could not see that
+  // the rubric (~10.6 KB), a header per file, fences and prose were uncounted.
+  //
+  // Scoped to diffs that fit, deliberately. MAX_PATCH_BYTES (600 KB) is larger
+  // than this ceiling, so a maximal diff overruns it whatever the pack does.
+  // That is pre-existing -- the lane sent diffs that size long before a pack
+  // existed -- and the pack's contract is only that it never makes things worse.
   const rubric = readFileSync(join(HERE, 'rubric.md'), 'utf8');
-  const fileCount = 1_000;
-  const per = Math.floor((600 * 1024) / fileCount);
+  const fileCount = 400;
+  const diffTarget = 250_000;
+  const per = Math.floor(diffTarget / fileCount);
   const files = Array.from({ length: fileCount }, (_, i) => ({
     path: `packages/some/deeply/nested/module/file-${i}.ts`,
     patch: `@@ -1,1 +1,2 @@\n+${'x'.repeat(Math.max(1, per - 20))}\n`,
   }));
   const patchBytes = files.reduce((n, f) => n + Buffer.byteLength(f.patch, 'utf8'), 0);
+  assert.ok(patchBytes < MAX_PROMPT_BYTES, 'fixture precondition: the diff itself must fit');
   const input = { headSha: 'a'.repeat(40), files, unreviewable: [] };
   input.contextPack = buildPack(input, {
     baseRef: 'HEAD',
@@ -321,6 +325,13 @@ test('THE REAL PROMPT stays under the ceiling, measured rather than derived', ()
     bytes <= MAX_PROMPT_BYTES,
     `the assembled prompt is ${bytes} bytes, over the ${MAX_PROMPT_BYTES} ceiling by ${bytes - MAX_PROMPT_BYTES}`,
   );
+});
+
+test('when the diff ALONE exceeds the ceiling the pack contributes nothing', () => {
+  // The pack must never be the reason a prompt overruns. On a diff that is
+  // already too big it yields entirely rather than adding to the overrun.
+  assert.equal(packBudgetFor(MAX_PROMPT_BYTES + 1, 10), 0);
+  assert.equal(packBudgetFor(600 * 1024, 500), 0, 'a maximal diff leaves the pack nothing');
 });
 
 test('a near-maximal diff shrinks the pack rather than the review', () => {

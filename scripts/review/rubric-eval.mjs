@@ -41,7 +41,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { buildPack } from './build-context-pack.mjs';
+import { buildPack, retrievalFailed, RETRIEVAL_FAILED_REMEDY } from './build-context-pack.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CASE_DIR = join(HERE, 'eval-cases');
@@ -262,6 +262,14 @@ function main() {
         // a permanent miss no rubric change could ever convert, quietly
         // depressing recall and inviting a rubric "fix" for a harness defect.
         c.input.contextPack = buildPack(c.input, { baseRef, body: c.body ?? null });
+        // The eval scores a pack the same way the lane builds one, so it has to be
+        // able to say when no pack was built. Its own workflow comment describes this
+        // exact symptom -- a shallow checkout leaves every case's file evidence empty
+        // -- and without this the harness prints a recall number for a pack that was
+        // never assembled, which is how the 7% -> 20% figure came to be wrong twice.
+        if (retrievalFailed(c.input.contextPack, c.input.files.length)) {
+          console.log(`  ${f}: NO file evidence retrievable. ${RETRIEVAL_FAILED_REMEDY}`);
+        }
       } catch (err) {
         console.log(`  ${f}: context pack unavailable (${err?.message ?? 'unknown'})`);
       }

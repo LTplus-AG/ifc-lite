@@ -79,7 +79,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
-import { buildPack, patchBudgetFor } from './build-context-pack.mjs';
+import { buildPack, retrievalFailed, RETRIEVAL_FAILED_REMEDY } from './build-context-pack.mjs';
 import { gh, GhError } from '../lib/gh.mjs';
 // The gate's pager, not a second copy of it. An earlier version here duplicated
 // it MINUS the one thing it exists for: the probe past a full final page. A PR
@@ -90,6 +90,7 @@ import { pageAll } from '../check-review-posted.mjs';
 
 /** 600 KB of patch text. The largest PR observed on this repo is ~427 KB. */
 export const MAX_PATCH_BYTES = 600 * 1024;
+
 
 const PER_PAGE = 100;
 const MAX_PAGES = 10;
@@ -274,17 +275,10 @@ export function buildInput(fileRows, headSha) {
       continue;
     }
     bytes += Buffer.byteLength(row.patch, 'utf8');
-    // AGAINST THE SAME CEILING THE PACK SPENDS FROM. `MAX_PATCH_BYTES` was the
-    // documented bound on what reaches the model; adding a 160 KB pack beside it
-    // moved the real bound to 760 KB without anything saying so -- past a 200k
-    // token window at this repo's measured bytes-per-token, whose failure mode is
-    // a MODEL_ERROR on a large PR the lane used to review, with no path from there
-    // to a marker.
-    const patchBudget = patchBudgetFor(MAX_PATCH_BYTES);
-    if (bytes > patchBudget) {
+    if (bytes > MAX_PATCH_BYTES) {
       throw new BuildInputError(
         'REVIEW_TOO_LARGE',
-        `Patch text exceeds ${patchBudget} bytes at \`${path}\`. Not chunked on purpose: 0 of ` +
+        `Patch text exceeds ${MAX_PATCH_BYTES} bytes at \`${path}\`. Not chunked on purpose: 0 of ` +
           '90 sampled PRs on this repository come near this, so chunking would be machinery for a ' +
           'case that does not occur, and reviewing half a diff silently is worse than refusing. ' +
           'REMEDY: split the PR.',
@@ -365,7 +359,10 @@ function main() {
       try { body = readFileSync(args.bodyFile, 'utf8'); } catch { body = null; }
     }
     try {
-      input.contextPack = buildPack(input, { baseRef: args.base, body });
+      // The pack sizes itself from what the diff already spent, so the two
+        // together stay under one ceiling without the diff ever losing room.
+        const patchBytes = input.files.reduce((n, f) => n + Buffer.byteLength(f.patch, 'utf8'), 0);
+        input.contextPack = buildPack(input, { baseRef: args.base, body, patchBytes });
       const p2 = input.contextPack;
       console.log(
         `context-pack: ${p2.siblings.length} sibling excerpt(s), ${p2.fileEvidence.length} file(s) in full` +
@@ -375,22 +372,11 @@ function main() {
       // AN EMPTY PACK IS A FAULT REPORT, NOT A QUIET ZERO. `0 sibling excerpt(s),
       // 0 file(s)` is what a PR with no siblings logs AND what a shallow checkout
       // logs -- and the shallow checkout is what production had, so the pack was
-      // empty on every pull request while this line read perfectly normal. `git
-      // show` and `git grep` against a sha that is not in the object database exit
-      // 128, and both call sites catch and return nothing.
-      //
-      // File evidence is the discriminator: siblings can legitimately be zero (a PR
-      // of genuinely new code), but every reviewable PR has at least one changed
-      // file whose content `git show <headSha>:<path>` can return. Zero of those
-      // means the refs are missing, not that the repository is empty.
-      if (p2.fileEvidence.length === 0 && input.files.length > 0) {
+      // empty on every pull request while this line read perfectly normal.
+      if (retrievalFailed(p2, input.files.length)) {
         console.log(
-          '::warning::context-pack: NO file evidence was retrievable for any of the ' +
-            `${input.files.length} changed file(s). That is not an empty diff -- it means ` +
-            `\`git show ${String(input.headSha).slice(0, 9)}:<path>\` returned nothing, which on ` +
-            'CI almost always means the checkout is shallow (actions/checkout defaults to ' +
-            'fetch-depth: 1, and a pull_request event fetches only refs/pull/N/merge). ' +
-            'REMEDY: set fetch-depth: 0. The review continues from the diff alone.',
+          `::warning::context-pack: NO file evidence was retrievable for any of the ${input.files.length} ` +
+            `changed file(s). ${RETRIEVAL_FAILED_REMEDY} The review continues from the diff alone.`,
         );
       }
     } catch (err) {

@@ -14,7 +14,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync , readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -267,19 +267,34 @@ test('the lane checks out FULL HISTORY, or the context pack is silently empty', 
   // no spawn, the lane with no --base, and a checkout with no history. Each
   // failed soft; each looked healthy. Asserted statically because no unit test
   // can see a missing YAML key, which is how all three survived.
-  for (const wf of ['.github/workflows/claude-review.yml', '.github/workflows/rubric-eval.yml']) {
-    const yml = readFileSync(join(HERE, '..', '..', wf), 'utf8');
+  // DERIVED, not hand-listed. The rule is "any workflow that invokes these
+  // scripts needs full history"; a hardcoded pair means a lane added later
+  // inherits the rule and not the assertion, and its failure is silent by
+  // construction -- which is the property that made this the THIRD way the
+  // feature was inert in production.
+  const dir = join(HERE, '..', '..', '.github/workflows');
+  const wfs = readdirSync(dir).filter((f) => {
+    if (!f.endsWith('.yml') && !f.endsWith('.yaml')) return false;
+    const text = readFileSync(join(dir, f), 'utf8');
+    // build-review-input only. The eval also builds packs, but its cases name
+    // squash-merged head shas that no clone depth can reach (measured: 0 of 18
+    // are ancestors of origin/main), so full history would be a remedy for
+    // nothing there -- and asserting it would pin a workflow to a setting that
+    // does not help it.
+    return text.includes('build-review-input.mjs');
+  });
+  assert.ok(wfs.length > 0, 'no workflow invokes these scripts -- this test would pass vacuously');
+  for (const wf of wfs) {
+    const yml = readFileSync(join(dir, wf), 'utf8');
     // BOUNDED BY THE STEP, not by a character count. A 700-char window passed
     // until the explanatory comment above `fetch-depth: 0` grew past it, at which
-    // point this guard went blind on the very file it exists for -- a fixed
-    // window measures whatever happens to be near, and comments move.
+    // point this guard went blind on the very file it exists for.
     const i = yml.indexOf('actions/checkout');
     assert.notEqual(i, -1, `${wf} must check out the repository`);
     const rest = yml.slice(i);
     const end = rest.search(/\n\s*- (uses|name):/);
-    const step = end === -1 ? rest : rest.slice(0, end);
     assert.match(
-      step,
+      end === -1 ? rest : rest.slice(0, end),
       /fetch-depth: 0/,
       `${wf}: without fetch-depth: 0 the context pack is empty on every run, and says nothing about it`,
     );

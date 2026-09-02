@@ -13,7 +13,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { searchKeys, hunkLines, fileEvidence, MAX_WHOLE_FILE_LINES, buildPack, truncateUtf8, BODY_RESERVE_BYTES, MAX_PACK_BYTES, siblingSitesBatch, MAX_KEYS_PER_GREP } from './build-context-pack.mjs';
+import { searchKeys, hunkLines, fileEvidence, MAX_WHOLE_FILE_LINES, buildPack, truncateUtf8, BODY_RESERVE_BYTES, MAX_PACK_BYTES, siblingSites, MAX_SEARCH_KEYS, packBudgetFor, MAX_PROMPT_BYTES } from './build-context-pack.mjs';
 
 test('search keys come from REMOVED lines first, because the sibling still has them', () => {
   const patch = [
@@ -221,47 +221,92 @@ test('the body reserve is a CEILING as well as a floor', () => {
 });
 
 
-test('siblingSitesBatch attributes each hit to the LONGEST key it contains', () => {
-  // One `git grep -e k1 -e k2 ...` returns lines matching ANY key, so the hit has
-  // to be attributed after the fact. Longest wins: a long identifier is a claim
-  // about a specific function, a five-character token is not. This replaces the
-  // per-key subprocess -- 274 of them, 22.9 seconds, on one real pull request.
-  const line = 'HEAD:packages/z/sibling.ts:42:  const cache = resolveHighlightIdentifiers(y);';
-  const byKey = siblingSitesBatch(['cache', 'resolveHighlightIdentifiers'], [], 'HEAD', { exec: () => line });
-  assert.deepEqual([...byKey.keys()], ['resolveHighlightIdentifiers']);
-  assert.equal(byKey.get('resolveHighlightIdentifiers')[0].path, 'packages/z/sibling.ts');
-});
-
-test('siblingSitesBatch runs ONE subprocess regardless of key count', () => {
-  let calls = 0;
-  siblingSitesBatch(Array.from({ length: 50 }, (_, i) => `identifier${i}`), [], 'HEAD', {
-    exec: () => {
-      calls += 1;
+test('one grep PER KEY, because the batched form is dramatically slower', () => {
+  // Measured on this repo with the real key set searchKeys produces: 10 keys,
+  // 748 ms per-key against 2,026 ms batched; 54 keys, 3,955 ms against 26,020 ms.
+  // git's fixed-string matcher degrades superlinearly in pattern count. The batch
+  // had been written against a "274 keys, 22.9 seconds" figure measured on a
+  // SHALLOW checkout, where every grep exited in milliseconds having found
+  // nothing -- it timed the bug, not the work.
+  let greps = 0;
+  const files = Array.from({ length: 3 }, (_, i) => ({
+    path: `packages/a/f${i}.ts`,
+    patch: `@@ -1,1 +1,2 @@\n+  const resolveHighlight${i} = compute${i}();\n`,
+  }));
+  buildPack({ headSha: 'a'.repeat(40), files }, {
+    baseRef: 'HEAD',
+    body: null,
+    exec: (_cmd, args) => {
+      if (args[0] === 'grep') {
+        greps += 1;
+        assert.equal(args.filter((a) => a === '-e').length, 1, 'one pattern per grep');
+      }
       return '';
     },
   });
-  assert.equal(calls, 1, 'the whole point of batching');
+  assert.ok(greps >= 3, `expected one grep per key, saw ${greps}`);
 });
 
-test('siblingSitesBatch caps the key list so a huge PR cannot build an unbounded command line', () => {
-  let args = null;
-  siblingSitesBatch(Array.from({ length: MAX_KEYS_PER_GREP + 40 }, (_, i) => `identifier${i}`), [], 'HEAD', {
-    exec: (_cmd, a) => {
-      args = a;
+test('the global key cap is RECORDED, not silent', () => {
+  // A cap that drops keys without saying so is a retrieval that searched half the
+  // diff and reported success.
+  const files = Array.from({ length: 200 }, (_, i) => ({
+    path: `packages/a/f${i}.ts`,
+    patch: `@@ -1,1 +1,2 @@\n+  const uniqueIdentifier${i} = compute${i}();\n`,
+  }));
+  let greps = 0;
+  const pack = buildPack({ headSha: 'a'.repeat(40), files }, {
+    baseRef: 'HEAD',
+    body: null,
+    exec: (_cmd, args) => {
+      if (args[0] === 'grep') greps += 1;
       return '';
     },
   });
-  assert.equal(args.filter((a) => a === '-e').length, MAX_KEYS_PER_GREP);
+  assert.ok(greps <= MAX_SEARCH_KEYS, `${greps} greps exceeds the ${MAX_SEARCH_KEYS} cap`);
+  assert.ok(
+    pack.truncated.some((t) => t.startsWith('sibling search for')),
+    `the cap fired but nothing recorded it: ${JSON.stringify(pack.truncated)}`,
+  );
 });
 
-test('a grep that FAILS yields no siblings rather than throwing', () => {
-  // Exit 1 is "no matches" and is normal; exit 128 is a missing ref and is not,
-  // but neither may take down a review. The empty-pack warning in
-  // build-review-input is what makes the second case visible.
-  const byKey = siblingSitesBatch(['anything'], [], 'HEAD', {
-    exec: () => {
-      throw Object.assign(new Error('fatal: unable to parse object'), { status: 128 });
-    },
-  });
-  assert.equal(byKey.size, 0);
+
+test('NO PR THAT WAS REVIEWABLE BECOMES UNREVIEWABLE: the pack yields, the diff does not', () => {
+  // The first attempt charged the pack against the diff budget, cutting the diff
+  // allowance from 600 KB to 454,400 bytes. The largest PR observed on this repo
+  // is ~427 KB -- 96% of that -- and a PR crossing it throws REVIEW_TOO_LARGE,
+  // which claude-review.yml turns into a red job with NO marker that no re-run
+  // can clear. Fixing a token ceiling by refusing work the lane used to do is not
+  // a fix.
+  assert.equal(packBudgetFor(0), MAX_PACK_BYTES, 'a tiny diff gets the whole pack');
+  assert.equal(packBudgetFor(100_000), MAX_PACK_BYTES, 'a normal diff still gets the whole pack');
+
+  const maxDiff = 600 * 1024;
+  assert.ok(packBudgetFor(maxDiff) >= 0, 'a maximal diff must still be reviewable');
+  assert.ok(
+    maxDiff + packBudgetFor(maxDiff) <= MAX_PROMPT_BYTES,
+    'diff plus pack must stay under the prompt ceiling at every size',
+  );
+  for (const bytes of [0, 1, 200_000, 427 * 1024, maxDiff, maxDiff * 2]) {
+    assert.ok(bytes + packBudgetFor(bytes) <= Math.max(MAX_PROMPT_BYTES, bytes), `ceiling broken at ${bytes}`);
+    assert.ok(packBudgetFor(bytes) >= 0, `negative pack budget at ${bytes}`);
+  }
+});
+
+test('a near-maximal diff shrinks the pack rather than the review', () => {
+  const input = {
+    headSha: 'a'.repeat(40),
+    files: [{ path: 'packages/a/f.ts', patch: '@@ -1,1 +1,2 @@\n+const x = 1;\n' }],
+  };
+  // Squeezed hard enough to bite: at 650 KB the remaining pack budget still
+  // covers the body's full reserve, so the two runs came out identical and the
+  // assertion below could not fail. The diff has to be large enough to cut into
+  // the reserve itself.
+  const squeeze = MAX_PROMPT_BYTES - 4_000;
+  const big = buildPack(input, { baseRef: 'HEAD', body: 'B'.repeat(50_000), patchBytes: squeeze, exec: () => '' });
+  const small = buildPack(input, { baseRef: 'HEAD', body: 'B'.repeat(50_000), patchBytes: 0, exec: () => '' });
+  assert.ok(
+    Buffer.byteLength(big.body ?? '', 'utf8') < Buffer.byteLength(small.body ?? '', 'utf8'),
+    'the pack must give way when the diff is large',
+  );
 });

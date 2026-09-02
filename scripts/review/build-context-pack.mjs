@@ -50,25 +50,35 @@ export const BODY_RESERVE_BYTES = 8_000;
 /** Total pack budget. Truncation is recorded, never silent. */
 export const MAX_PACK_BYTES = 160_000;
 
+/**
+ * The ceiling on EVERYTHING the reviewer is handed: diff plus pack.
+ *
+ * The pack was originally added on top of the 600 KB patch cap, which moved the
+ * real bound to 760 KB -- past a 200k-token window at this repo's measured ~3.5
+ * bytes per token, whose failure mode is a MODEL_ERROR with no path to a marker.
+ *
+ * The first fix charged the pack against the patch budget instead, cutting the
+ * diff allowance to 454,400 bytes. That was worse: the largest PR observed here
+ * is ~427 KB, 96% of the new cap, so a PR the lane used to review would start
+ * throwing REVIEW_TOO_LARGE -- and `claude-review.yml` special-cases only
+ * NO_FILES, so the job goes red with NO marker, which no re-run and no author
+ * action can clear. Fixing a token ceiling by making the lane refuse work it
+ * used to do is not a fix.
+ *
+ * So the DIFF keeps its full allowance and the PACK yields. A small PR gets the
+ * whole pack; a near-maximal diff gets whatever is left. The pack is the
+ * optional half, and it already records everything it drops.
+ */
+export const MAX_PROMPT_BYTES = 680_000;
+
+/** What the pack may spend once the diff has taken its share. */
+export function packBudgetFor(patchBytes) {
+  return Math.max(0, Math.min(MAX_PACK_BYTES, MAX_PROMPT_BYTES - (patchBytes || 0)));
+}
+
 /** How many "omitted for size" notes the pack will list before summarising. */
 export const MAX_TRUNCATION_NOTES = 20;
 
-/**
- * The pack is charged AGAINST the diff budget, not added on top of it.
- *
- * `build-review-input` caps patches at MAX_PATCH_BYTES (600 KB) and that number
- * is the documented ceiling on what reaches the model. Adding a 160 KB pack
- * beside it silently moved the real ceiling to 760 KB -- roughly 215k tokens at
- * this repo's measured ~3.5 bytes per token, over a 200k window. The failure
- * mode is a MODEL_ERROR on a large PR the lane used to review fine, and
- * run-reviewer has no path from that to a marker.
- *
- * `patchBudgetFor` is what build-review-input uses instead of the bare constant,
- * so the two cannot drift apart again.
- */
-export function patchBudgetFor(maxPatchBytes) {
-  return Math.max(0, maxPatchBytes - MAX_PACK_BYTES);
-}
 /** A file longer than this is windowed around its hunks instead of sent whole. */
 export const MAX_WHOLE_FILE_LINES = 1_500;
 /** Lines of context either side of a hunk when windowing. */
@@ -211,62 +221,38 @@ export function searchKeys(patch, { path = '', max = 12 } = {}) {
 }
 
 /**
- * Sites matching a key that this PR did NOT change.
+ * A GLOBAL CEILING ON KEYS, not on greps.
  *
- * A key appearing everywhere proves nothing, so anything over `maxHits` is
- * dropped as non-distinctive rather than truncated -- truncating would leave
- * the reviewer a biased sample of a common token and invite a confident wrong
- * claim about "the other site".
+ * Sibling search costs one `git grep` per key, and key count scales with file
+ * count, so an unbounded PR is an unbounded number of subprocesses. The cap is
+ * global rather than per-file and what it drops is RECORDED, because a retrieval
+ * that quietly searched half the diff is the failure this module exists to make
+ * impossible.
  */
-/**
- * The most keys one `git grep` will carry. Keys are a few dozen bytes, so this
- * is nowhere near ARG_MAX; it exists so a 1,000-file PR cannot assemble an
- * unbounded command line.
- */
-export const MAX_KEYS_PER_GREP = 200;
+export const MAX_SEARCH_KEYS = 150;
 
 /**
- * Sites for MANY keys in ONE `git grep`.
+ * Sites matching one key that this PR did NOT change.
  *
- * It used to be one subprocess per key. Measured on this pull request against a
- * real base: 274 unique keys, 22.9 seconds, about 79 ms of process startup each.
- * Key count scales with file count and `build-review-input` accepts up to 1,000
- * files, so a large PR on a two-core runner would have walked into the job's
- * 20-minute timeout -- failing the lane red, with no marker, on exactly the pull
- * requests that most need reviewing. It was invisible because every grep was
- * also failing in ten milliseconds against a shallow checkout.
+ * ONE GREP PER KEY, and that is deliberate after measuring the alternative.
+ * A batched `git grep -e k1 -e k2 ...` looks obviously cheaper -- one process
+ * instead of N -- and is dramatically worse, because git's fixed-string matcher
+ * degrades superlinearly in pattern count. Measured on this repo with the real
+ * key set `searchKeys` produces:
  *
- * `git grep -e k1 -e k2 ...` returns lines matching ANY key, so each hit is
- * attributed to the LONGEST key it contains. That is the same key the ranking
- * would have preferred anyway: a long identifier is a claim about a specific
- * function, a short one is not.
+ *   keys   per-key loop   one batched grep
+ *     10        748 ms           2,026 ms
+ *     25      1,832 ms           5,615 ms
+ *     54      3,955 ms          26,020 ms
+ *
+ * The batch was written against a figure of "274 keys, 22.9 seconds, ~79 ms
+ * each" that had been measured on a SHALLOW checkout, where every grep exited in
+ * milliseconds having found nothing. It timed the bug, not the work. Batching
+ * also broke retrieval three ways: attribution ran against a 120-char-truncated
+ * line so hits with the key past column 120 were dropped, the per-key `keep` cap
+ * became a cap on a partition so crowded-out sites vanished, and one shared
+ * maxBuffer meant an overflow silently returned zero siblings.
  */
-export function siblingSitesBatch(keys, changedPaths, ref, { cwd = process.cwd(), exec = execFileSync, keep = 6 } = {}) {
-  const wanted = [...new Set(keys)].slice(0, MAX_KEYS_PER_GREP);
-  if (wanted.length === 0) return new Map();
-  const args = ['grep', '-n', '--fixed-strings', '--no-color', '-I'];
-  for (const k of wanted) args.push('-e', k);
-  args.push(ref);
-  let out;
-  try {
-    out = exec('git', args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-  } catch {
-    return new Map();                // exit 1 means no matches, which is normal
-  }
-  // Longest first, so the first key found in a line is the strongest one there.
-  const byLength = [...wanted].sort((a, b) => b.length - a.length);
-  const perKey = new Map(wanted.map((k) => [k, []]));
-  for (const h of parseGrep(out, changedPaths)) {
-    const key = byLength.find((k) => h.text.includes(k));
-    if (key) perKey.get(key).push(h);
-  }
-  const out2 = new Map();
-  for (const [k, hits] of perKey) {
-    if (hits.length > 0) out2.set(k, rankHits(hits, changedPaths).slice(0, keep));
-  }
-  return out2;
-}
-
 export function siblingSites(key, changedPaths, ref, { cwd = process.cwd(), exec = execFileSync, keep = 6 } = {}) {
   // `git grep <pattern> <ref>` searches that COMMIT'S TREE. No working tree, no
   // checkout, no dependency on ripgrep being installed on the runner. It also
@@ -276,7 +262,7 @@ export function siblingSites(key, changedPaths, ref, { cwd = process.cwd(), exec
   let out;
   try {
     out = exec('git', ['grep', '-n', '--fixed-strings', '--no-color', '-I', '-e', key, ref],
-      { cwd, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+      { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   } catch {
     return [];                       // exit 1 means no matches, which is normal
   }
@@ -354,7 +340,37 @@ export function truncateUtf8(text, maxBytes) {
   return buf.subarray(0, end).toString('utf8');
 }
 
-export function buildPack(input, { baseRef, body = null, cwd = process.cwd(), exec = execFileSync } = {}) {
+/**
+ * Did retrieval fail outright, as opposed to finding nothing?
+ *
+ * Siblings can legitimately be zero -- a PR of genuinely new code has none. But
+ * every reviewable PR has at least one changed file whose content
+ * `git show <headSha>:<path>` can return, so zero file evidence across a
+ * non-empty diff means the refs are not reachable, not that the diff is small.
+ *
+ * It lives here because this module owns the retrieval that swallows the exit
+ * 128, and it is shared because the eval calls `buildPack` directly: a warning
+ * wired into only one of two callers leaves the other scoring a pack that was
+ * never assembled, which is the exact failure this whole change exists to end.
+ */
+export function retrievalFailed(pack, changedFileCount) {
+  if (changedFileCount === 0) return false;
+  // NOT WHEN THE BUDGET ATE IT. File evidence is also dropped for size, so a PR
+  // whose files are all large yields zero evidence on a perfectly healthy
+  // checkout -- and the warning would then tell its author to set fetch-depth: 0,
+  // which is a remedy for a problem they do not have. A budget drop always leaves
+  // a note behind; a missing ref never does.
+  const droppedForSize = pack.truncated.some((t) => t.startsWith('full content of') || t.startsWith('and '));
+  return pack.fileEvidence.length === 0 && !droppedForSize;
+}
+
+export const RETRIEVAL_FAILED_REMEDY =
+  'That is not an empty diff -- it means `git show <headSha>:<path>` returned nothing for every ' +
+  'changed file, which on CI almost always means the checkout is shallow (actions/checkout ' +
+  'defaults to fetch-depth: 1, and a pull_request event fetches only refs/pull/N/merge). ' +
+  'REMEDY: set fetch-depth: 0.';
+
+export function buildPack(input, { baseRef, body = null, patchBytes = 0, cwd = process.cwd(), exec = execFileSync } = {}) {
   const changed = input.files.map((f) => f.path);
   const changedBases = new Set(changed.map((p) => p.split('/').pop()));
   const truncated = [];
@@ -371,9 +387,9 @@ export function buildPack(input, { baseRef, body = null, cwd = process.cwd(), ex
   // its slice first; siblings and file evidence divide what is left.
   const bodyReserve =
     typeof body === 'string' && body.trim() !== ''
-      ? Math.min(BODY_RESERVE_BYTES, Buffer.byteLength(body, 'utf8'))
+      ? Math.min(BODY_RESERVE_BYTES, Buffer.byteLength(body, 'utf8'), packBudgetFor(patchBytes))
       : 0;
-  let budget = MAX_PACK_BYTES - bodyReserve;
+  let budget = packBudgetFor(patchBytes) - bodyReserve;
 
   // GATHER EVERYTHING FIRST, THEN RANK GLOBALLY. Capping in iteration order let
   // low-value hits from an early key crowd out the best hit of a late one --
@@ -387,14 +403,25 @@ export function buildPack(input, { baseRef, body = null, cwd = process.cwd(), ex
   // alone -- into a single `git grep`.
   for (const f of input.files) {
     for (const key of searchKeys(f.patch, { path: f.path, max: 12 })) {
-      if (!seenKey.has(key)) seenKey.add(key);
+      seenKey.add(key);
     }
   }
-  let byKey = new Map();
-  try {
-    byKey = siblingSitesBatch([...seenKey], changed, baseRef, { cwd, exec, keep: 6 });
-  } catch {
-    byKey = new Map();
+  // THE CAP IS GLOBAL AND ITS LOSS IS RECORDED. A per-file cap let later files in
+  // a large PR contribute nothing while the pack reported no omission, which is a
+  // retrieval that quietly searched half the diff.
+  const searched = [...seenKey].slice(0, MAX_SEARCH_KEYS);
+  if (seenKey.size > searched.length) {
+    truncated.push(`sibling search for ${seenKey.size - searched.length} further key(s)`);
+  }
+  const byKey = new Map();
+  for (const key of searched) {
+    let hits = [];
+    try {
+      hits = siblingSites(key, changed, baseRef, { cwd, exec, keep: 6 });
+    } catch {
+      continue;
+    }
+    if (hits.length > 0) byKey.set(key, hits);
   }
   // EVERY key that hit a site is kept here. De-duplicating during collection kept
   // whichever key was found FIRST, and `rank` then scored the sibling on that key
@@ -484,8 +511,19 @@ export function buildPack(input, { baseRef, body = null, cwd = process.cwd(), ex
   // the budget, and it grows precisely when the pack is already full: a 500-file
   // PR whose evidence is all dropped adds one line per file, ~25 KB, to a pack
   // whose whole contract is a 160 KB ceiling.
-  const notes = [...new Set(truncated)];
-  const shown = notes.slice(0, MAX_TRUNCATION_NOTES);
-  if (notes.length > shown.length) shown.push(`and ${notes.length - shown.length} more`);
+  // No dedup: the three pushes into `truncated` are one break-guarded sibling
+  // note, one per changed path (each listed once), and one description note. A
+  // Set here removed nothing and implied duplicates were possible.
+  // THE DESCRIPTION NOTE SURVIVES THE CAP. `truncated` is appended in order --
+  // siblings, then one note per dropped file, then the body -- so on a large PR
+  // the body's note fell outside the first twenty and was replaced by "and N
+  // more". That note is the reviewer's ONLY signal that the description was cut,
+  // and it went missing on exactly the PRs where cutting happens, leaving a "the
+  // description says X" claim to be made against a truncated description.
+  const BODY_NOTE = 'PR description';
+  const rest = truncated.filter((t) => t !== BODY_NOTE);
+  const shown = rest.slice(0, MAX_TRUNCATION_NOTES);
+  if (rest.length > shown.length) shown.push(`and ${rest.length - shown.length} more`);
+  if (truncated.includes(BODY_NOTE)) shown.push(BODY_NOTE);
   return { siblings, fileEvidence: evidence, body: packBody, truncated: shown };
 }

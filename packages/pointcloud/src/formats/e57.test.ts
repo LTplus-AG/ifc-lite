@@ -434,6 +434,57 @@ describe('decodeE57Scan (uncompressed Float64)', () => {
     );
   });
 
+  it('refuses a ScaledInteger cartesian field whose XML declares blank minimum/maximum, and blank scale/offset fall back to their spec defaults', () => {
+    // `Number('')` and `Number('  \t ')` are both 0, so a blank attribute
+    // slipped past the absent-attribute check as an invented minimum=0 —
+    // the exact silent-shift failure this PR refuses for absent
+    // attributes, reachable via `minimum=""` instead. Blank must behave
+    // exactly like absent: undefined for required attrs (decode refuses),
+    // spec default for optional attrs (scale=1, offset=0).
+    const buf = new ArrayBuffer(22);
+    const view = new DataView(buf);
+    const bytes = new Uint8Array(buf);
+    view.setUint8(0, 1);
+    view.setUint8(1, 0);
+    view.setUint16(2, 21, true);
+    view.setUint16(4, 3, true);
+    view.setUint16(6, 2, true);
+    view.setUint16(8, 2, true);
+    view.setUint16(10, 2, true);
+    bytes[12] = 50; bytes[13] = 100;
+    bytes[14] = 110; bytes[15] = 120;
+    bytes[16] = 200; bytes[17] = 255;
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<e57Root type="Structure">
+  <data3D type="Vector">
+    <vectorChild type="Structure">
+      <guid type="String">{blank-attrs}</guid>
+      <points type="CompressedVector" fileOffset="0" recordCount="2">
+        <prototype type="Structure">
+          <cartesianX type="ScaledInteger" scale="" offset=" 	" minimum="" maximum="	 "/>
+          <cartesianY type="ScaledInteger" scale="0.01" offset="0" minimum="-100" maximum="155"/>
+          <cartesianZ type="ScaledInteger" scale="0.01" offset="0" minimum="-100" maximum="155"/>
+        </prototype>
+      </points>
+    </vectorChild>
+  </data3D>
+</e57Root>`;
+    const entries = parseE57Xml(xml);
+    // Blank required attrs (empty and whitespace-only) parse as undefined,
+    // not Number('') === 0.
+    expect(entries[0].prototype[0].minimum).toBeUndefined();
+    expect(entries[0].prototype[0].maximum).toBeUndefined();
+    // Blank optional attrs use their spec defaults, not 0-from-blank
+    // (scale=0 would flatten every point onto the offset).
+    expect(entries[0].prototype[0].scale).toBe(1);
+    expect(entries[0].prototype[0].offset).toBe(0);
+
+    expect(() => decodeE57Scan(bytes, entries[0])).toThrow(
+      /cartesianX.*missing minimum\/maximum/,
+    );
+  });
+
   it('refuses a ScaledInteger cartesian field with a hand-built prototype missing minimum, instead of defaulting to 0', () => {
     // Same as the XML-level test above, but exercising decodeE57Scan
     // directly against a hand-built PrototypeField (mirrors this file's

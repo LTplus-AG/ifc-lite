@@ -174,7 +174,10 @@ export function findField(proto: PrototypeField[], name: string): PrototypeField
 
 /** Parse an attribute that has a spec-defined default when absent/unparseable. */
 function parseOptionalAttr(raw: string | undefined, fallback: number): number {
-  if (raw === undefined) return fallback;
+  // Blank/whitespace-only must behave like absent: Number('') === 0, so a
+  // bare Number() would silently turn `scale=""` into 0 instead of the
+  // spec default.
+  if (raw === undefined || raw.trim() === '') return fallback;
   const n = Number(raw);
   return Number.isFinite(n) ? n : fallback;
 }
@@ -186,7 +189,9 @@ function parseOptionalAttr(raw: string | undefined, fallback: number): number {
  * `requireRange` in e57-decode.ts.
  */
 function parseRequiredAttr(raw: string | undefined): number | undefined {
-  if (raw === undefined) return undefined;
+  // Blank/whitespace-only must behave like absent: Number('') === 0, which
+  // would pass `requireRange` as an invented minimum/maximum of 0.
+  if (raw === undefined || raw.trim() === '') return undefined;
   const n = Number(raw);
   return Number.isFinite(n) ? n : undefined;
 }

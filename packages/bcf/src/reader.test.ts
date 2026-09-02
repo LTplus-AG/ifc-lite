@@ -794,17 +794,19 @@ describe('BCF Reader - buildingSMART Test Files', () => {
     });
 
     it('reads the xs:boolean numeral form DefaultVisibility="0" as false, not inverted to true', async () => {
-      // xs:boolean's lexical space is {true, false, 1, 0}. Comparing only
-      // against the literal 'false' read a third-party file's
-      // DefaultVisibility="0" as TRUE — inverting the viewpoint from
-      // "show only the exceptions" to "show everything".
-      const topicGuid = '55555555-5555-5555-5555-555555555555';
-      const vpGuid = '66666666-6666-6666-6666-666666666666';
-      const zip = new JSZip();
-      zip.file('bcf.version', '<?xml version="1.0"?><Version VersionId="2.1"/>');
-      zip.file(
-        `${topicGuid}/markup.bcf`,
-        `<?xml version="1.0" encoding="UTF-8"?>
+      // xs:boolean's lexical space is {true, false, 1, 0}, and its
+      // whiteSpace facet is `collapse`, so a padded " 0 " is spec-valid
+      // too. Comparing only against the literal 'false' read a
+      // third-party file's DefaultVisibility="0" as TRUE — inverting the
+      // viewpoint from "show only the exceptions" to "show everything".
+      for (const rawValue of ['0', ' 0 ']) {
+        const topicGuid = '55555555-5555-5555-5555-555555555555';
+        const vpGuid = '66666666-6666-6666-6666-666666666666';
+        const zip = new JSZip();
+        zip.file('bcf.version', '<?xml version="1.0"?><Version VersionId="2.1"/>');
+        zip.file(
+          `${topicGuid}/markup.bcf`,
+          `<?xml version="1.0" encoding="UTF-8"?>
 <Markup>
   <Topic Guid="${topicGuid}" TopicType="Issue" TopicStatus="Open">
     <Title>Numeral xs:boolean</Title>
@@ -813,29 +815,30 @@ describe('BCF Reader - buildingSMART Test Files', () => {
     <Viewpoint>viewpoint.bcfv</Viewpoint>
   </Viewpoints>
 </Markup>`
-      );
-      zip.file(
-        `${topicGuid}/viewpoint.bcfv`,
-        `<?xml version="1.0" encoding="UTF-8"?>
+        );
+        zip.file(
+          `${topicGuid}/viewpoint.bcfv`,
+          `<?xml version="1.0" encoding="UTF-8"?>
 <VisualizationInfo Guid="${vpGuid}">
   <Components>
-    <Visibility DefaultVisibility="0">
+    <Visibility DefaultVisibility="${rawValue}">
       <Exceptions>
         <Component IfcGuid="1RvVRIfDrAmhnJqDD6mvGD"/>
       </Exceptions>
     </Visibility>
   </Components>
 </VisualizationInfo>`
-      );
-      const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+        );
+        const buffer = await zip.generateAsync({ type: 'nodebuffer' });
 
-      const project = await readBCF(buffer);
-      const topic = [...project.topics.values()][0];
-      const visibility = topic.viewpoints[0].components?.visibility;
+        const project = await readBCF(buffer);
+        const topic = [...project.topics.values()][0];
+        const visibility = topic.viewpoints[0].components?.visibility;
 
-      expect(visibility).toBeDefined();
-      expect(visibility?.defaultVisibility).toBe(false);
-      expect(visibility?.exceptions).toHaveLength(1);
+        expect(visibility).toBeDefined();
+        expect(visibility?.defaultVisibility).toBe(false);
+        expect(visibility?.exceptions).toHaveLength(1);
+      }
     });
   });
 });

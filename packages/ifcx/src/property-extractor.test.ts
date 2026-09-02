@@ -116,6 +116,45 @@ describe('extractProperties — typed records and internal carriers (#1031)', ()
     assert.strictEqual(products!.properties.find((p) => p.name === 'Uri'), undefined);
   });
 
+  it('discriminates a constructed-name collision instead of overwriting (#3608)', () => {
+    // The constructed name space can collide: system "Acme" with codes A and B
+    // yields "Classification - Acme - A"/"... - B", and a system literally
+    // named "Acme - A" with single code C yields "Classification - Acme - A"
+    // too. Without a discriminator the C ref would overwrite the A ref's
+    // Code and pair it with the wrong Uri.
+    const node = createNode('wall');
+    node.attributes.set('ifclite::classifications', [
+      { system: 'Acme', code: 'A', uri: 'https://acme.example/A' },
+      { system: 'Acme', code: 'B' },
+      { system: 'Acme - A', code: 'C', uri: 'https://acme-a.example/C' },
+    ]);
+
+    const composed = new Map([[node.path, node]]);
+    const pathToId = new Map([[node.path, 1]]);
+    const table = extractProperties(composed, pathToId, new StringTable());
+    const psets = table.getForEntity(1);
+
+    const a = psets.find((p) => p.name === 'Classification - Acme - A');
+    assert.ok(a, 'the Acme/A ref keeps the plain constructed name');
+    assert.strictEqual(a!.properties.find((p) => p.name === 'Code')?.value, 'A');
+    assert.strictEqual(
+      a!.properties.find((p) => p.name === 'Uri')?.value,
+      'https://acme.example/A'
+    );
+
+    const b = psets.find((p) => p.name === 'Classification - Acme - B');
+    assert.ok(b, 'the Acme/B ref is untouched by the collision');
+    assert.strictEqual(b!.properties.find((p) => p.name === 'Code')?.value, 'B');
+
+    const c = psets.find((p) => p.name === 'Classification - Acme - A (2)');
+    assert.ok(c, 'the colliding "Acme - A" system ref gets a discriminator');
+    assert.strictEqual(c!.properties.find((p) => p.name === 'Code')?.value, 'C');
+    assert.strictEqual(
+      c!.properties.find((p) => p.name === 'Uri')?.value,
+      'https://acme-a.example/C'
+    );
+  });
+
   it('skips a classification ref with no code', () => {
     const node = createNode('wall');
     node.attributes.set('ifclite::classifications', [{ system: 'Uniclass 2015' }]);

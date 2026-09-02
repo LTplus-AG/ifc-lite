@@ -127,16 +127,24 @@ function groupAttributesByNamespace(
       for (const [system, refs] of bySystem) {
         const multiple = refs.length > 1;
         for (const ref of refs) {
-          const psetName = system
+          const baseName = system
             ? multiple
               ? `Classification - ${system} - ${ref.code}`
               : `Classification - ${system}`
             : multiple
               ? `Classification - ${ref.code}`
               : 'Classification';
-          if (!grouped.has(psetName)) {
-            grouped.set(psetName, new Map());
+          // The constructed name space can collide: a system literally named
+          // "Acme - A" clashes with system "Acme" + code "A", and two refs
+          // sharing both system and code map to the same name. Reusing the
+          // existing map would overwrite its Code and pair it with the other
+          // ref's Uri, so a colliding name takes a deterministic " (n)"
+          // discriminator (insertion order fixes n) and keeps its own pairing.
+          let psetName = baseName;
+          for (let n = 2; grouped.has(psetName); n++) {
+            psetName = `${baseName} (${n})`;
           }
+          grouped.set(psetName, new Map());
           const classificationProps = grouped.get(psetName)!;
           classificationProps.set('Code', ref.code);
           if (ref.uri !== undefined) classificationProps.set('Uri', ref.uri);

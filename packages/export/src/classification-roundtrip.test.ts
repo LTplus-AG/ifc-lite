@@ -70,7 +70,7 @@ END-ISO-10303-21;`;
 describe('classification survives STEP -> IFCX export -> @ifc-lite/ifcx re-import', () => {
   it('exports the wall\'s Uniclass classification, and the ifcx reader resolves it back as a property', async () => {
     const store = await parse(MODEL);
-    const exporter = new Ifc5Exporter(store, { meshes: [] } as any);
+    const exporter = new Ifc5Exporter(store);
     const result = exporter.export({ onlyTreeEntities: false, includeGeometry: false });
 
     // Write side: the attribute is on the wall's node in the emitted JSON.

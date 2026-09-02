@@ -716,3 +716,144 @@
         assert_eq!(batch.num_rows(), 2);
         assert!((ox.value(1) - 7.0).abs() < 1e-9, "got {}", ox.value(1));
     }
+
+    /// Exercises the residual-rejection fallback that
+    /// `rotated_mapped_item_repeats_dedup_and_reconstruct_correctly` never
+    /// reaches (it always verifies) and `rigid_tier_groups_are_not_rotation_instanced`
+    /// short-circuits before (it returns at the `canonical_transform` guard,
+    /// never calling `verify_and_derive_placement`). Two occurrences share
+    /// `rep_identity`, so `collate_refs` groups them, but occurrence 1's own
+    /// baked vertices do NOT match `transform` applied to the template — a
+    /// stand-in for a stale/corrupt `InstanceMeta::transform` — so its
+    /// residual is `1.0` metre, far past `RECOMPOSITION_TOLERANCE_M`
+    /// (1e-4 m). `verify_and_derive_placement`'s `!(max_err <= TOL)` gate
+    /// (not `max_err > TOL`) is what must reject this: the same form of
+    /// comparison that also rejects a NaN residual, since `NaN <= TOL` is
+    /// `false` either way.
+    ///
+    /// The group-scoped fallback (this module's doc comment above
+    /// `collate_rotation_aware_placements`) means the WHOLE group falls back
+    /// to content-hash dedup, not just the failing occurrence — occurrence 0
+    /// would reconstruct fine on its own but is discarded too, because a
+    /// client has no way to trust a rotation-aware template it can only
+    /// verify for some of its occurrences.
+    #[test]
+    fn a_group_with_one_unverifiable_occurrence_falls_back_for_the_whole_group() {
+        use ifc_lite_geometry::InstanceMeta;
+
+        let m0 = rot_z_mat4(0.0, [0.0, 0.0, 0.0]);
+        let m1 = rot_z_mat4(90.0, [5.0, 0.0, 0.0]);
+        // Occurrence 1's baked triangle is the CANONICAL one translated by
+        // 1m on X in addition to m1's own placement — `transform` (m1) says
+        // where it should be; its own baked vertices disagree by 1m, well
+        // past the 1e-4m tolerance.
+        let mismatched_triangle: Vec<f32> = bake_triangle(&CANON_TRIANGLE, &m1)
+            .iter()
+            .enumerate()
+            .map(|(i, v)| if i % 3 == 0 { v + 1.0 } else { *v })
+            .collect();
+
+        let meshes: Vec<MeshData> = vec![
+            MeshData::new(
+                400,
+                "IfcFurniture".to_string(),
+                bake_triangle(&CANON_TRIANGLE, &m0),
+                vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+                vec![0, 1, 2],
+                [0.6, 0.4, 0.2, 1.0],
+            )
+            .with_instance(Some(InstanceMeta {
+                transform: m0,
+                local_transform: None,
+                canonical_transform: None,
+                rep_identity: 555,
+                instanceable: true,
+            })),
+            MeshData::new(
+                401,
+                "IfcFurniture".to_string(),
+                mismatched_triangle,
+                vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+                vec![0, 1, 2],
+                [0.6, 0.4, 0.2, 1.0],
+            )
+            .with_instance(Some(InstanceMeta {
+                transform: m1,
+                local_transform: None,
+                canonical_transform: None,
+                rep_identity: 555,
+                instanceable: true,
+            })),
+        ];
+
+        let (_, stats) = serialize_to_parquet_optimized_with_stats(&meshes, false).unwrap();
+        assert_eq!(
+            stats.unique_meshes, 2,
+            "an unverifiable occurrence must reject rotation-aware dedup for its \
+             ENTIRE group (both occurrences), not just itself — a partially \
+             trusted template is not a safe thing to ship"
+        );
+    }
+
+    /// Control for the test above, at the OTHER guard: `collate_refs` itself
+    /// (`rust/geometry/src/instancing/collate.rs`) checks each occurrence's
+    /// vertex/index count against the template BEFORE this module ever runs
+    /// `verify_and_derive_placement` — so a real vertex-count mismatch never
+    /// reaches this module's `target.positions.len() / 3 != n` guard at all;
+    /// `collate_refs` routes the whole group to `flat_indices` first. (That
+    /// guard here is defensive dead code on the current caller contract, not
+    /// something this fixture can exercise — the count check one layer up is
+    /// what actually protects a real shape mismatch.) Either way, the
+    /// invariant under test holds: a real vertex-count mismatch must not
+    /// produce a trusted rotation-aware template.
+    #[test]
+    fn a_group_with_a_vertex_count_mismatch_also_falls_back() {
+        use ifc_lite_geometry::InstanceMeta;
+
+        let m0 = rot_z_mat4(0.0, [0.0, 0.0, 0.0]);
+        let m1 = rot_z_mat4(90.0, [5.0, 0.0, 0.0]);
+        // Occurrence 1 carries a FOURTH vertex the template never had —
+        // caught by `collate_refs`'s own same-shape guard.
+        let mut extra_vertex_triangle = bake_triangle(&CANON_TRIANGLE, &m1);
+        extra_vertex_triangle.extend_from_slice(&[0.0, 0.0, 0.0]);
+
+        let meshes: Vec<MeshData> = vec![
+            MeshData::new(
+                410,
+                "IfcFurniture".to_string(),
+                bake_triangle(&CANON_TRIANGLE, &m0),
+                vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+                vec![0, 1, 2],
+                [0.6, 0.4, 0.2, 1.0],
+            )
+            .with_instance(Some(InstanceMeta {
+                transform: m0,
+                local_transform: None,
+                canonical_transform: None,
+                rep_identity: 556,
+                instanceable: true,
+            })),
+            MeshData::new(
+                411,
+                "IfcFurniture".to_string(),
+                extra_vertex_triangle,
+                vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+                vec![0, 1, 2, 0, 1, 3],
+                [0.6, 0.4, 0.2, 1.0],
+            )
+            .with_instance(Some(InstanceMeta {
+                transform: m1,
+                local_transform: None,
+                canonical_transform: None,
+                rep_identity: 556,
+                instanceable: true,
+            })),
+        ];
+
+        let (_, stats) = serialize_to_parquet_optimized_with_stats(&meshes, false).unwrap();
+        assert_eq!(
+            stats.unique_meshes, 2,
+            "a vertex-count mismatch must reject the group exactly like an \
+             over-tolerance residual does, never producing a trusted template"
+        );
+    }

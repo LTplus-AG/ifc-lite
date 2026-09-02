@@ -68,6 +68,17 @@ function isIdentityRow(rot: RotationColumns, index: number): boolean {
  * transpose for normals specifically; this matches the convention the
  * existing GPU-instancing wire format (`ifc_lite_geometry::instancing`)
  * already uses, so it is not a new approximation this fix introduces.
+ *
+ * `isIdentityRow` already refuses to call a row with a NaN cell "identity"
+ * (`NaN !== 1` is true, so the row fails the comparison and falls through
+ * here) — a NaN can never silently render as an unrotated placement. But
+ * multiplying it through `rotateTriplets` would still corrupt every vertex
+ * of THIS instance to NaN, uncontrolled: no error, a mesh that may vanish
+ * or wreck a shared bounding-box computation with no signal why. A row that
+ * isn't finite is malformed wire data — the same class of fault
+ * `buildMeshesFromOptimizedTables` already fails loudly on for a bad
+ * mesh/material index — so it throws here too, instead of writing NaN
+ * silently into the buffer.
  */
 export function applyInstanceRotation(
   positions: Float32Array,
@@ -77,6 +88,11 @@ export function applyInstanceRotation(
 ): void {
   if (isIdentityRow(rot, index)) return;
   const r = rot.map((col) => col[index]);
+  if (!r.every(Number.isFinite)) {
+    throw new Error(
+      `Malformed optimized Parquet geometry: non-finite rotation value for instance ${index} (rot=[${r.join(', ')}])`
+    );
+  }
   rotateTriplets(positions, r);
   if (normals) rotateTriplets(normals, r);
 }

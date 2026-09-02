@@ -110,4 +110,37 @@ describe('buildMeshesFromOptimizedTables rotation (#3575)', () => {
     expect(Array.from(positions)).toEqual([0, 1, 0]);
     expect(Array.from(normals)).toEqual([0, 1, 0]);
   });
+
+  // A NaN rotation cell must never render as a silently-unrotated (identity)
+  // placement, and must never be applied either — both leave the viewer
+  // showing plausible-looking but wrong geometry with no error. Malformed
+  // wire data throws, matching this function's other malformed-input checks.
+  it('applyInstanceRotation throws on a NaN rotation cell instead of applying it or treating it as identity', () => {
+    const positions = new Float32Array([1, 0, 0]);
+    // Otherwise identity except rot4 (row-major [1,1], the y->y term) is NaN.
+    const cols = [1, 0, 0, 0, NaN, 0, 0, 0, 1].map((v) => new Float32Array([v]));
+    expect(() => applyInstanceRotation(positions, undefined, cols, 0)).toThrow(/non-finite/i);
+    // Not applied: the buffer is untouched, not silently corrupted to NaN.
+    expect(Array.from(positions)).toEqual([1, 0, 0]);
+  });
+
+  it('applyInstanceRotation throws on an Infinity rotation cell the same way', () => {
+    const positions = new Float32Array([1, 0, 0]);
+    const cols = [1, 0, 0, 0, 1, 0, 0, 0, Infinity].map((v) => new Float32Array([v]));
+    expect(() => applyInstanceRotation(positions, undefined, cols, 0)).toThrow(/non-finite/i);
+  });
+
+  it('control: a genuine identity row is still treated as identity (no throw, no mutation)', () => {
+    const positions = new Float32Array([1, 2, 3]);
+    const cols = IDENTITY.map((v) => new Float32Array([v]));
+    expect(() => applyInstanceRotation(positions, undefined, cols, 0)).not.toThrow();
+    expect(Array.from(positions)).toEqual([1, 2, 3]);
+  });
+
+  it('control: a genuine non-identity rotation still rotates (no throw)', () => {
+    const positions = new Float32Array([1, 0, 0]);
+    const cols = CYCLE_XYZ.map((v) => new Float32Array([v]));
+    expect(() => applyInstanceRotation(positions, undefined, cols, 0)).not.toThrow();
+    expect(Array.from(positions)).toEqual([0, 1, 0]);
+  });
 });

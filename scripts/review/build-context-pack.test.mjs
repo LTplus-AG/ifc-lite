@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { buildPrompt } from './run-reviewer.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-import { searchKeys, hunkLines, fileEvidence, MAX_WHOLE_FILE_LINES, buildPack, truncateUtf8, BODY_RESERVE_BYTES, MAX_PACK_BYTES, MAX_SEARCH_KEYS, packBudgetFor, MAX_PROMPT_BYTES, retrievalFailed, retrievalFailedMessage, SHALLOW_CHECKOUT_REMEDY, PROMPT_BASE_OVERHEAD_BYTES, PROMPT_PER_FILE_BYTES, promptEnvelopeBytes } from './build-context-pack.mjs';
+import { searchKeys, hunkLines, fileEvidence, MAX_WHOLE_FILE_LINES, buildPack, truncateUtf8, BODY_RESERVE_BYTES, MAX_PACK_BYTES, MAX_SEARCH_KEYS, packBudgetFor, MAX_PROMPT_BYTES, retrievalFailed, retrievalFailedMessage, SHALLOW_CHECKOUT_REMEDY, PROMPT_BASE_OVERHEAD_BYTES, promptEnvelopeBytes } from './build-context-pack.mjs';
 
 test('search keys come from REMOVED lines first, because the sibling still has them', () => {
   const patch = [
@@ -283,12 +283,12 @@ test('NO PR THAT WAS REVIEWABLE BECOMES UNREVIEWABLE: the pack yields, the diff 
   // is ~427 KB -- 96% of that -- and crossing it throws REVIEW_TOO_LARGE, which
   // claude-review.yml turns into a red job with NO marker that no re-run clears.
   // Fixing a token ceiling by refusing work the lane used to do is not a fix.
-  assert.equal(packBudgetFor(0, PROMPT_BASE_OVERHEAD_BYTES + 1 * PROMPT_PER_FILE_BYTES), MAX_PACK_BYTES, 'a tiny diff gets the whole pack');
-  assert.equal(packBudgetFor(100_000, PROMPT_BASE_OVERHEAD_BYTES + 30 * PROMPT_PER_FILE_BYTES), MAX_PACK_BYTES, 'a normal diff still gets the whole pack');
+  assert.equal(packBudgetFor(0, promptEnvelopeBytes({ files: [{ path: 'a.ts' }] })), MAX_PACK_BYTES, 'a tiny diff gets the whole pack');
+  assert.equal(packBudgetFor(100_000, promptEnvelopeBytes({ files: Array.from({ length: 30 }, () => ({ path: 'packages/a/b.ts' })) })), MAX_PACK_BYTES, 'a normal diff still gets the whole pack');
   const maxDiff = 600 * 1024;
   assert.ok(packBudgetFor(maxDiff) >= 0, 'a maximal diff must still be reviewable');
   for (const bytes of [0, 1, 200_000, 427 * 1024, maxDiff, maxDiff * 2, NaN, undefined]) {
-    const v = packBudgetFor(bytes, PROMPT_BASE_OVERHEAD_BYTES + 50 * PROMPT_PER_FILE_BYTES);
+    const v = packBudgetFor(bytes, promptEnvelopeBytes({ files: Array.from({ length: 50 }, () => ({ path: 'packages/a/b.ts' })) }));
     assert.ok(Number.isFinite(v) && v >= 0 && v <= MAX_PACK_BYTES, `nonsensical budget at ${bytes}: ${v}`);
   }
 });
@@ -324,7 +324,7 @@ test('THE REAL PROMPT stays under the ceiling whenever the DIFF alone does', () 
   // because the rubric and the per-file headers are not free. The property that
   // is actually true is the one asserted here.
   assert.ok(
-    patchBytes + PROMPT_BASE_OVERHEAD_BYTES + files.length * PROMPT_PER_FILE_BYTES <= MAX_PROMPT_BYTES,
+    patchBytes + promptEnvelopeBytes({ files }) <= MAX_PROMPT_BYTES,
     'fixture precondition: the diff AND its envelope must fit, or no pack size can save it',
   );
   const input = { headSha: 'a'.repeat(40), files, unreviewable: [] };
@@ -342,7 +342,7 @@ test('THE REAL PROMPT stays under the ceiling whenever the DIFF alone does', () 
 });
 
 test('THE BASE ENVELOPE RESERVE is load-bearing too, on a FEW-file diff', () => {
-  // The 1,000-file case above guards PROMPT_PER_FILE_BYTES, because the per-file
+  // The 1,000-file case above guards PROMPT_FILE_ROW_FIXED, because the per-file
   // term dominates there -- and it leaves PROMPT_BASE_OVERHEAD_BYTES free to be
   // zeroed with the suite green. The base only bites when there are few headers
   // and the diff is near the ceiling, so that is what this builds: the rubric is
@@ -558,4 +558,91 @@ test('a FALSY envelope charges the base reserve rather than dropping it', () => 
       `an envelope of ${String(bad)} produced a different budget: the base reserve was dropped`,
     );
   }
+});
+
+test('LONG PATHS: the pack cannot turn a passing prompt into a failing one', () => {
+  // The defect a flat per-file charge hid. `buildPrompt` spends 13 + the path's
+  // own bytes per row; a flat 70 covers a 57-byte path and this repository has
+  // 1,476 of 6,590 tracked paths longer than that, up to 188. Past 57 the
+  // envelope was undercharged, packBudgetFor handed back room that did not
+  // exist, and the pack spent it for real.
+  //
+  // Measured on the pre-fix code: 1,000 files with 110-byte paths on a 248 KB
+  // diff gave 381,865 bytes diff-only -- UNDER the ceiling -- and 430,410 with
+  // the pack, over by 40,410. The committed fixtures all used ~55-byte paths, so
+  // every existing test sat on the safe side of the cliff.
+  const rubric = readFileSync(join(HERE, 'rubric.md'), 'utf8');
+  const deep = 'packages/some/very/deeply/nested/generated/module/directory/tree';
+  for (const pathLen of [110, 188]) {
+    const files = Array.from({ length: 1_000 }, (_, i) => {
+      const stem = `${deep}/file-${i}`;
+      const p = (stem + 'x'.repeat(Math.max(0, pathLen - stem.length - 3))).slice(0, pathLen - 3) + '.ts';
+      return { path: p, patch: `@@ -1,1 +1,2 @@\n+${'x'.repeat(230)}\n` };
+    });
+    const patchBytes = files.reduce((n, f) => n + Buffer.byteLength(f.patch, 'utf8'), 0);
+    const input = { headSha: 'a'.repeat(40), files, unreviewable: [] };
+    const bare = Buffer.byteLength(buildPrompt(rubric, input), 'utf8');
+    if (bare > MAX_PROMPT_BYTES) continue; // only the case where diff-only PASSES matters
+
+    const withPack = { ...input };
+    withPack.contextPack = buildPack(input, {
+      baseRef: 'HEAD',
+      body: 'B'.repeat(60_000),
+      patchBytes,
+      exec: (_c, a) => (a[0] === 'show' ? 'y'.repeat(4_000) : ''),
+    });
+    const full = Buffer.byteLength(buildPrompt(rubric, withPack), 'utf8');
+    assert.ok(
+      full <= MAX_PROMPT_BYTES,
+      `${pathLen}-byte paths: diff-only was ${bare} (under ${MAX_PROMPT_BYTES}), with the pack ` +
+        `${full}, over by ${full - MAX_PROMPT_BYTES}. The pack made a passing prompt fail.`,
+    );
+  }
+});
+
+test('promptEnvelopeBytes scales with PATH LENGTH, not just row count', () => {
+  const short = { files: Array.from({ length: 100 }, () => ({ path: 'a/b.ts' })) };
+  const long = { files: Array.from({ length: 100 }, () => ({ path: `a/${'p'.repeat(180)}.ts` })) };
+  assert.ok(
+    promptEnvelopeBytes(long) > promptEnvelopeBytes(short) + 100 * 150,
+    'a hundred long paths must be charged far more than a hundred short ones',
+  );
+  // The unreviewable side scales too: buildPrompt renders the path AND the reason
+  // per row, and a flat charge undercounts both the same way it did for files.
+  const shortU = { unreviewable: Array.from({ length: 100 }, () => ({ path: 'v/x.ts', reason: 'deleted' })) };
+  const longU = {
+    unreviewable: Array.from({ length: 100 }, () => ({
+      path: `vendor/${'p'.repeat(170)}.ts`,
+      reason: 'no patch returned (too large, or a pure rename)',
+    })),
+  };
+  assert.ok(
+    promptEnvelopeBytes(longU) > promptEnvelopeBytes(shortU) + 100 * 150,
+    'a hundred long unreviewable rows must cost far more than a hundred short ones',
+  );
+});
+
+test('THE OTHER DIRECTION: an inflated envelope must not starve the pack', () => {
+  // A threshold has two directions and the suite probed one. Every guard here
+  // asserts the envelope is charged ENOUGH; inflating a constant -- say
+  // PROMPT_UNREVIEWABLE_ROW_FIXED to a billion -- silently drove the budget to
+  // zero for any PR with unreviewable files, which is the inert-pack failure this
+  // whole branch exists to prevent, and it passed every test.
+  //
+  // So: an ordinary PR must still get a real pack. This is deliberately loose --
+  // it is a floor against absurdity, not a tuning knob.
+  const ordinary = {
+    files: Array.from({ length: 12 }, (_, i) => ({ path: `packages/data/src/module-${i}.ts` })),
+    unreviewable: Array.from({ length: 3 }, (_, i) => ({ path: `pkg/gen-${i}.ts`, reason: 'generated' })),
+  };
+  const envelope = promptEnvelopeBytes(ordinary);
+  assert.ok(
+    envelope < MAX_PROMPT_BYTES / 4,
+    `the envelope for a 12-file PR is ${envelope}, over a quarter of the whole prompt ceiling`,
+  );
+  assert.equal(
+    packBudgetFor(40_000, envelope),
+    MAX_PACK_BYTES,
+    'a 40 KB diff on a 12-file PR must still receive the FULL pack',
+  );
 });

@@ -112,36 +112,37 @@ export const MAX_PROMPT_BYTES = 390_000;
 export const PROMPT_BASE_OVERHEAD_BYTES = 24_000;
 
 /**
- * Per rendered row: a changed file's `--- FILE: <path>` header and fences, or an
- * unreviewable entry's JSON line. Both are emitted per item by buildPrompt, so
- * both are charged -- see `promptEnvelopeBytes`. Headers dominate the envelope on a large PR -- a flat
- * reserve of 60,000 left a 1,000-file diff over the ceiling, which the measured
- * test caught and the arithmetic one never could.
+ * The FIXED part of a changed-file row. `buildPrompt` renders
+ * `--- FILE: <path>\n` plus the join, measured at exactly 13 + the path's own
+ * bytes; 16 is that with a little margin.
  *
- * BOTH terms are guarded, by two different fixtures, and it takes two: the
- * 1,000-file case pins the per-file term (which dominates there) and cannot see
- * the base at all, while a 10-file 350 KB case pins the base. Zeroing either
- * constant fails exactly one of them.
+ * PATH BYTES ARE CHARGED SEPARATELY, and a flat 70 here was a real defect, not a
+ * rounding choice. 70 covers a path of 57 bytes; this repository has 1,476 of
+ * 6,590 tracked paths longer than that, up to 188. Beyond 57 the envelope was
+ * undercharged, `packBudgetFor` handed back room that does not exist, and the
+ * pack spent it in real bytes -- measured, 1,000 files with 110-byte paths on a
+ * 248 KB diff produced a 381,865-byte prompt diff-only (under the ceiling) and
+ * 430,410 with the pack, over by 40,410. That is the pack making a passing
+ * prompt fail, which is the one thing it must never do.
  */
-export const PROMPT_PER_FILE_BYTES = 70;
+export const PROMPT_FILE_ROW_FIXED = 16;
 
 /**
- * Per unreviewable entry: one JSON line naming the path and why it was skipped.
- * Measured at ~102 bytes/row with this harness's longest reason string, against
- * ~51 for a changed-file row -- almost exactly 2x, which is why it is charged
- * separately instead of sharing the file rate. 120 is deliberate headroom over
- * the measured 102, not itself a measurement. At the shared rate, 100 reviewable files on a 200 KB diff plus
- * 900 unreviewable rows rendered 404,747 bytes -- 14,747 over the ceiling, with
- * no refusal anywhere to catch it. (Re-measured against the pre-fix module; the
- * figure first written here overstated the overrun by about 2x.)
+ * The FIXED part of an unreviewable row: one JSON line naming the path and the
+ * reason. Measured at ~15 plus both strings' own bytes; 20 is that with margin.
+ * Same reasoning as the file row -- the variable parts are charged as themselves.
  */
-export const PROMPT_PER_UNREVIEWABLE_BYTES = 120;
+export const PROMPT_UNREVIEWABLE_ROW_FIXED = 20;
 
 /** What the prompt spends on structure, before any diff or pack content. */
 export function promptEnvelopeBytes(input) {
-  const files = input?.files?.length ?? 0;
-  const unreviewable = input?.unreviewable?.length ?? 0;
-  return PROMPT_BASE_OVERHEAD_BYTES + files * PROMPT_PER_FILE_BYTES + unreviewable * PROMPT_PER_UNREVIEWABLE_BYTES;
+  const bytes = (v) => Buffer.byteLength(String(v ?? ''), 'utf8');
+  let total = PROMPT_BASE_OVERHEAD_BYTES;
+  for (const f of input?.files ?? []) total += PROMPT_FILE_ROW_FIXED + bytes(f?.path);
+  for (const u of input?.unreviewable ?? []) {
+    total += PROMPT_UNREVIEWABLE_ROW_FIXED + bytes(u?.path) + bytes(u?.reason);
+  }
+  return total;
 }
 
 /** What the pack may spend once the diff and the envelope have taken their share. */

@@ -90,11 +90,12 @@ const entityProjectScaleCache = new WeakMap<object, Map<number, EntityMeasureSca
  * to that later project was previously scaled by the FIRST project's units
  * regardless — silently wrong, not absent, and compliance-critical for IDS
  * (a `Width >= 100mm` requirement evaluates against the wrongly-scaled raw
- * value). This resolves the entity's OWN owning project via
- * `resolveOwningIfcProjectId` (a minimal reimplementation of the walk in PR
- * #3554, not yet on `main` at the time of writing — unify once it lands)
- * and reads THAT project's units, falling back to the store-wide default
- * when the walk can't place the entity (matches prior behaviour).
+ * value). This resolves the entity's OWN owning project via the shared
+ * `resolveOwningIfcProjectId` (`@ifc-lite/parser`'s `owning-project.ts`,
+ * also used by `resolveEntityLengthUnitScale` for #3554's material-layer
+ * fix — one containment walk, not a per-caller copy) and reads THAT
+ * project's units, falling back to the store-wide default when the walk
+ * can't place the entity (matches prior behaviour).
  */
 export function resolveEntityMeasureScales(
   store: IfcDataStore,

@@ -12,8 +12,9 @@
  * occurrence that places it. On `tests/models/ara3d/AC20-FZK-Haus.ifc` that is
  * an upside-down roof plane and a floating slab, and a pick there returns
  * `IfcSlabType`/`IfcWallType`, which are not building elements. The full
- * viewer never had this because it routes the same mesh list through
- * `selectModelMeshes` (`apps/viewer/src/lib/type-view-visibility.ts`).
+ * viewer never had this: its 3D view applies the same predicate directly as
+ * `isMeshVisibleInViewMode` (`ViewportContainer.tsx:831-856`), and
+ * `selectModelMeshes` is the one-pass wrapper the 2D drawings use (#2058).
  *
  * These assert on the mesh list actually handed to `Viewport` — what the embed
  * draws — rather than on the call. A test that only checked
@@ -115,8 +116,11 @@ beforeEach(() => {
     selectedEntityId: null,
     isolatedEntities: null,
     cameraCallbacks: {},
-    // Every semantic toggle ON, so the only thing removing a mesh here is the
-    // geometry-class gate under test.
+    // The three toggles these fixtures can trip, forced ON, so the only thing
+    // removing a mesh here is the geometry-class gate under test. NOT every
+    // toggle: `spatialZones` and `virtualElements` default to false, so a case
+    // added with an `IfcSpatialZone` or `IfcVirtualElement` mesh would see it
+    // dropped by type visibility and read as a geometry-class bug.
     typeVisibility: {
       ...useViewerStore.getState().typeVisibility,
       spaces: true,

@@ -64,7 +64,7 @@ export const MAX_PACK_BYTES = 160_000;
  *
  * 390,000 is 200k tokens at the measured 1.95 bytes per token, and it sits
  * BELOW the 421,355-byte prompt that is the only one ever observed to succeed --
- * which is the point. 450,000 was tried first and was indefensible: it is 6.9%
+ * which is the point. 450,000 was tried first and was indefensible: it is 6.8%
  * above that single good data point and ~230k tokens at the corrected ratio, so
  * it was a bound chosen above all of its own evidence. A ceiling that only
  * permits sizes already known to work is the whole job. A 50 KB diff
@@ -94,14 +94,17 @@ export const MAX_PACK_BYTES = 160_000;
 export const MAX_PROMPT_BYTES = 390_000;
 
 /**
- * Everything in the prompt that is neither diff nor pack: the rubric (~10.6 KB),
- * a `--- FILE: <path>` header per file, the fence markers, the section prose and
- * the unreviewable list.
+ * The FLAT part of the prompt's structure: the rubric (~10.6 KB), the section
+ * prose and the fence markers. Per-item costs are charged separately -- a
+ * `--- FILE:` header per changed file, and an unreviewable row at its own,
+ * higher rate, because one costs nearly twice a file header.
  *
  * Without this reserve the ceiling above bounded two of the prompt's four terms
  * and called itself "the ceiling on EVERYTHING the reviewer is handed". Measured
  * with the real `buildPrompt` and rubric: a 1,000-file, 608,000-byte diff
- * produced a 765,620-byte prompt. The arithmetic test could not catch it --
+ * produced a prompt well over it. (The byte figure that stood here was taken
+ * against the 700,000 ceiling and does not reproduce; the test is the live
+ * measurement, not this sentence.) The arithmetic test could not catch it --
  * `maxDiff + packBudgetFor(maxDiff) <= MAX_PROMPT_BYTES` is true by construction
  * and never touches `buildPrompt`. The test that replaces it builds a real
  * prompt and measures it.
@@ -111,33 +114,37 @@ export const PROMPT_BASE_OVERHEAD_BYTES = 24_000;
 /**
  * Per rendered row: a changed file's `--- FILE: <path>` header and fences, or an
  * unreviewable entry's JSON line. Both are emitted per item by buildPrompt, so
- * both are charged -- see `promptRowCount`. Headers dominate the envelope on a large PR -- a flat
+ * both are charged -- see `promptEnvelopeBytes`. Headers dominate the envelope on a large PR -- a flat
  * reserve of 60,000 left a 1,000-file diff 8,050 bytes over the ceiling, which
  * the measured test caught and the arithmetic one never could.
  *
  * BOTH terms are guarded, by two different fixtures, and it takes two: the
  * 1,000-file case pins the per-file term (which dominates there) and cannot see
- * the base at all, while a 10-file 400 KB case pins the base. Zeroing either
+ * the base at all, while a 10-file 350 KB case pins the base. Zeroing either
  * constant fails exactly one of them.
  */
 export const PROMPT_PER_FILE_BYTES = 70;
 
+/**
+ * Per unreviewable entry: one JSON line naming the path and why it was skipped.
+ * Measured at ~111 bytes with this harness's real path lengths and its most
+ * common reason string, so it is charged at nearly twice the file rate instead
+ * of sharing it. At the shared rate, 100 reviewable files on a 200 KB diff plus
+ * 900 unreviewable rows rendered 418,134 bytes -- 28,134 over the ceiling, with
+ * no refusal anywhere to catch it.
+ */
+export const PROMPT_PER_UNREVIEWABLE_BYTES = 120;
+
 /** What the pack may spend once the diff has taken its share. */
-/** Rows buildPrompt renders per file: the changed files AND the unreviewable list. */
-export function promptRowCount(input) {
-  return (input?.files?.length ?? 0) + (input?.unreviewable?.length ?? 0);
+/** What the prompt spends on structure, before any diff or pack content. */
+export function promptEnvelopeBytes(input) {
+  const files = input?.files?.length ?? 0;
+  const unreviewable = input?.unreviewable?.length ?? 0;
+  return PROMPT_BASE_OVERHEAD_BYTES + files * PROMPT_PER_FILE_BYTES + unreviewable * PROMPT_PER_UNREVIEWABLE_BYTES;
 }
 
-export function packBudgetFor(patchBytes, fileCount = 0) {
-  // `fileCount` counts EVERY row buildPrompt renders, reviewable or not. The
-  // unreviewable list gets one JSON line per entry and used to be charged to
-  // nothing, while this constant's docblock claimed the flat base covered it.
-  // Measured: 200 reviewable files on a 400 KB diff plus 2,800 unreviewable rows
-  // rendered a 610,899-byte prompt -- larger than the one that MODEL_ERRORed --
-  // with the pack correctly at zero. 2,800 is reachable under GitHub's 3,000-file
-  // cap by deleting a vendored tree.
-  const envelope = PROMPT_BASE_OVERHEAD_BYTES + Math.max(0, fileCount || 0) * PROMPT_PER_FILE_BYTES;
-  const room = MAX_PROMPT_BYTES - envelope - (patchBytes || 0);
+export function packBudgetFor(patchBytes, envelopeBytes = PROMPT_BASE_OVERHEAD_BYTES) {
+  const room = MAX_PROMPT_BYTES - (envelopeBytes || 0) - (patchBytes || 0);
   return Math.max(0, Math.min(MAX_PACK_BYTES, room));
 }
 
@@ -470,9 +477,9 @@ export function buildPack(input, { baseRef, body = null, patchBytes = 0, cwd = p
   // its slice first; siblings and file evidence divide what is left.
   const bodyReserve =
     typeof body === 'string' && body.trim() !== ''
-      ? Math.min(BODY_RESERVE_BYTES, Buffer.byteLength(body, 'utf8'), packBudgetFor(patchBytes, promptRowCount(input)))
+      ? Math.min(BODY_RESERVE_BYTES, Buffer.byteLength(body, 'utf8'), packBudgetFor(patchBytes, promptEnvelopeBytes(input)))
       : 0;
-  let budget = packBudgetFor(patchBytes, promptRowCount(input)) - bodyReserve;
+  let budget = packBudgetFor(patchBytes, promptEnvelopeBytes(input)) - bodyReserve;
 
   // GATHER EVERYTHING FIRST, THEN RANK GLOBALLY. Capping in iteration order let
   // low-value hits from an early key crowd out the best hit of a late one --

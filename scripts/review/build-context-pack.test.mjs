@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { buildPrompt } from './run-reviewer.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-import { searchKeys, hunkLines, fileEvidence, MAX_WHOLE_FILE_LINES, buildPack, truncateUtf8, BODY_RESERVE_BYTES, MAX_PACK_BYTES, MAX_SEARCH_KEYS, packBudgetFor, MAX_PROMPT_BYTES, retrievalFailed, retrievalFailedMessage, SHALLOW_CHECKOUT_REMEDY, PROMPT_BASE_OVERHEAD_BYTES, PROMPT_PER_FILE_BYTES, promptRowCount } from './build-context-pack.mjs';
+import { searchKeys, hunkLines, fileEvidence, MAX_WHOLE_FILE_LINES, buildPack, truncateUtf8, BODY_RESERVE_BYTES, MAX_PACK_BYTES, MAX_SEARCH_KEYS, packBudgetFor, MAX_PROMPT_BYTES, retrievalFailed, retrievalFailedMessage, SHALLOW_CHECKOUT_REMEDY, PROMPT_BASE_OVERHEAD_BYTES, PROMPT_PER_FILE_BYTES, promptEnvelopeBytes } from './build-context-pack.mjs';
 
 test('search keys come from REMOVED lines first, because the sibling still has them', () => {
   const patch = [
@@ -283,12 +283,12 @@ test('NO PR THAT WAS REVIEWABLE BECOMES UNREVIEWABLE: the pack yields, the diff 
   // is ~427 KB -- 96% of that -- and crossing it throws REVIEW_TOO_LARGE, which
   // claude-review.yml turns into a red job with NO marker that no re-run clears.
   // Fixing a token ceiling by refusing work the lane used to do is not a fix.
-  assert.equal(packBudgetFor(0, 1), MAX_PACK_BYTES, 'a tiny diff gets the whole pack');
-  assert.equal(packBudgetFor(100_000, 30), MAX_PACK_BYTES, 'a normal diff still gets the whole pack');
+  assert.equal(packBudgetFor(0, PROMPT_BASE_OVERHEAD_BYTES + 1 * PROMPT_PER_FILE_BYTES), MAX_PACK_BYTES, 'a tiny diff gets the whole pack');
+  assert.equal(packBudgetFor(100_000, PROMPT_BASE_OVERHEAD_BYTES + 30 * PROMPT_PER_FILE_BYTES), MAX_PACK_BYTES, 'a normal diff still gets the whole pack');
   const maxDiff = 600 * 1024;
   assert.ok(packBudgetFor(maxDiff) >= 0, 'a maximal diff must still be reviewable');
   for (const bytes of [0, 1, 200_000, 427 * 1024, maxDiff, maxDiff * 2, NaN, undefined]) {
-    const v = packBudgetFor(bytes, 50);
+    const v = packBudgetFor(bytes, PROMPT_BASE_OVERHEAD_BYTES + 50 * PROMPT_PER_FILE_BYTES);
     assert.ok(Number.isFinite(v) && v >= 0 && v <= MAX_PACK_BYTES, `nonsensical budget at ${bytes}: ${v}`);
   }
 });
@@ -446,23 +446,99 @@ test('retrievalFailed does not blame the checkout when the BUDGET was simply ful
 });
 
 test('the UNREVIEWABLE list is charged too, not rendered for free', () => {
-  // buildPrompt emits one JSON line per unreviewable entry, and those rows were
-  // charged to nothing while the base reserve's docblock claimed to cover them.
-  // Measured before the fix: 200 reviewable files on a 400 KB diff plus 2,800
-  // unreviewable rows rendered 610,899 bytes -- larger than the prompt that
-  // MODEL_ERRORed -- with the pack correctly at zero. 2,800 rows is reachable
-  // under GitHub's 3,000-file cap by deleting a vendored tree.
-  const files = [{ path: 'packages/a/f.ts', patch: '@@ -1,1 +1,2 @@\n+const x = 1;\n' }];
-  const bare = { headSha: 'a'.repeat(40), files, unreviewable: [] };
-  const many = {
+  // THROUGH buildPack, and with a diff big enough to matter. The first version
+  // called the helpers directly, so deleting the fix left every test green; the
+  // second went through buildPack but used a tiny diff, where both budgets clamp
+  // at MAX_PACK_BYTES and the difference cannot show. A fixture that cannot
+  // exhaust the budget cannot test the budget.
+  const fileCount = 100;
+  const per = 2_000;
+  const files = Array.from({ length: fileCount }, (_, i) => ({
+    path: `packages/some/nested/module/file-${i}.ts`,
+    patch: `@@ -1,1 +1,2 @@\n+${'x'.repeat(per)}\n`,
+  }));
+  const patchBytes = files.reduce((n, f) => n + Buffer.byteLength(f.patch, 'utf8'), 0);
+  const rows = Array.from({ length: 900 }, (_, i) => ({
+    path: `vendor/generated/deeply/nested/thing-${i}.ts`,
+    reason: 'no patch returned (too large, or a pure rename)',
+  }));
+  const pack = (unreviewable) =>
+    buildPack(
+      { headSha: 'a'.repeat(40), files, unreviewable },
+      { baseRef: 'HEAD', body: 'B'.repeat(60_000), patchBytes, exec: (_c, a) => (a[0] === 'show' ? 'y'.repeat(4_000) : '') },
+    );
+  const size = (pk) =>
+    Buffer.byteLength(pk.body ?? '', 'utf8') + pk.fileEvidence.reduce((n, e) => n + Buffer.byteLength(e.text, 'utf8'), 0);
+  assert.ok(
+    size(pack(rows)) < size(pack([])),
+    `900 unreviewable rows left the pack the same room (${size(pack(rows))} vs ${size(pack([]))}): rendered free`,
+  );
+});
+
+test('THE ASSEMBLED PROMPT fits even when most rows are UNREVIEWABLE', () => {
+  // The monotonicity check above says the rows cost something; it never says
+  // they cost ENOUGH. Charging them at the file rate was still 28,134 bytes over
+  // on this exact shape -- 100 reviewable files on a 200 KB diff plus 900
+  // unreviewable rows, which is 1,000 files, the paging cap, so no truncation
+  // refusal fires either.
+  const rubric = readFileSync(join(HERE, 'rubric.md'), 'utf8');
+  const files = Array.from({ length: 100 }, (_, i) => ({
+    path: `packages/some/nested/module/file-${i}.ts`,
+    patch: `@@ -1,1 +1,2 @@\n+${'x'.repeat(2_000)}\n`,
+  }));
+  const patchBytes = files.reduce((n, f) => n + Buffer.byteLength(f.patch, 'utf8'), 0);
+  const input = {
     headSha: 'a'.repeat(40),
     files,
-    unreviewable: Array.from({ length: 2_000 }, (_, i) => ({ path: `vendor/x${i}.ts`, reason: 'too large' })),
+    unreviewable: Array.from({ length: 900 }, (_, i) => ({
+      path: `vendor/generated/deeply/nested/thing-${i}.ts`,
+      reason: 'no patch returned (too large, or a pure rename)',
+    })),
   };
-  assert.equal(promptRowCount(bare), 1);
-  assert.equal(promptRowCount(many), 2_001);
+  input.contextPack = buildPack(input, {
+    baseRef: 'HEAD',
+    body: 'B'.repeat(60_000),
+    patchBytes,
+    exec: (_c, a) => (a[0] === 'show' ? 'y'.repeat(4_000) : ''),
+  });
+  const bytes = Buffer.byteLength(buildPrompt(rubric, input), 'utf8');
   assert.ok(
-    packBudgetFor(100_000, promptRowCount(many)) < packBudgetFor(100_000, promptRowCount(bare)),
-    'a diff with thousands of unreviewable rows must leave the pack less room, not the same room',
+    bytes <= MAX_PROMPT_BYTES,
+    `the assembled prompt is ${bytes} bytes, over the ${MAX_PROMPT_BYTES} ceiling by ${bytes - MAX_PROMPT_BYTES}`,
   );
+});
+
+test('promptEnvelopeBytes AGREES with what buildPrompt actually renders', () => {
+  // Two models of one structure in two modules, joined by prose: buildPrompt
+  // emits the rows, promptEnvelopeBytes predicts their cost. If buildPrompt grows
+  // a third per-item section the prediction silently under-charges and nothing
+  // fails -- one layer up from the bug this commit fixed.
+  const rubric = readFileSync(join(HERE, 'rubric.md'), 'utf8');
+  const mk = (nFiles, nUnrev) => ({
+    headSha: 'a'.repeat(40),
+    files: Array.from({ length: nFiles }, (_, i) => ({
+      path: `packages/some/nested/module/file-${i}.ts`,
+      patch: '@@ -1,1 +1,2 @@\n+const x = 1;\n',
+    })),
+    unreviewable: Array.from({ length: nUnrev }, (_, i) => ({
+      path: `vendor/generated/deeply/nested/thing-${i}.ts`,
+      reason: 'no patch returned (too large, or a pure rename)',
+    })),
+  });
+  const bare = mk(1, 0);
+  for (const [nf, nu] of [[101, 0], [1, 100]]) {
+    const grown = mk(nf, nu);
+    const actual =
+      Buffer.byteLength(buildPrompt(rubric, grown), 'utf8') - Buffer.byteLength(buildPrompt(rubric, bare), 'utf8');
+    const patchDelta = grown.files.reduce((n, f) => n + Buffer.byteLength(f.patch, 'utf8'), 0)
+      - bare.files.reduce((n, f) => n + Buffer.byteLength(f.patch, 'utf8'), 0);
+    const charged = promptEnvelopeBytes(grown) - promptEnvelopeBytes(bare);
+    assert.ok(
+      charged >= actual - patchDelta,
+      `${nf} files / ${nu} unreviewable: buildPrompt spent ${actual - patchDelta} bytes of structure, ` +
+        `promptEnvelopeBytes charged only ${charged}`,
+    );
+  }
+  assert.equal(promptEnvelopeBytes(undefined), PROMPT_BASE_OVERHEAD_BYTES, 'a missing input must not throw');
+  assert.equal(promptEnvelopeBytes({}), PROMPT_BASE_OVERHEAD_BYTES);
 });

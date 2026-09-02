@@ -3,6 +3,17 @@
 //! `packages/export/src/parquet-exporter.ts` (BIM Open Schema): Entities / Properties /
 //! Quantities + optional geometry (VertexBuffer / IndexBuffer / Meshes) + Metadata.json.
 //!
+//! **Known gap vs. the TS twin (unverified whether intentional):** on the same
+//! fixture (`tests/models/ara3d/duplex.ifc`), `ParquetExporter.exportBOS()` in
+//! `packages/export/src/parquet-exporter.ts` additionally writes
+//! `Relationships.parquet`, `Strings.parquet`, and — when the source store carries
+//! one — `SpatialHierarchy.parquet`. Those three tables are not produced here, so
+//! a `.bos` archive produced through the CLI/native path (this file) is missing
+//! relationship, string-dedup, and spatial-hierarchy data that a browser export of
+//! the identical model would contain. See `duplex_exports_valid_bos` below, which
+//! asserts the current (narrower) table set explicitly so this gap can't widen
+//! further without a test failure.
+//!
 //! Native-only (feature `parquet-bos`): parquet's native compression and the zip writer
 //! don't target wasm32 cleanly, and `.bos` isn't a browser-exposed format, so this stays
 //! out of the wasm bundle. Server / CLI builds opt in.
@@ -315,6 +326,20 @@ mod tests {
             "Metadata.json",
         ] {
             assert!(names.iter().any(|n| n == expected), "missing {expected}");
+        }
+
+        // TS/Rust BOS parity check: running the same `ara3d/duplex.ifc` fixture
+        // through `packages/export/src/parquet-exporter.ts` also produces
+        // `Relationships.parquet`, `Strings.parquet`, and `SpatialHierarchy.parquet`.
+        // This crate does not yet write those three tables — pin that explicitly
+        // so a future silent narrowing (or widening) of the gap fails a test
+        // instead of going unnoticed.
+        for not_yet_ported in ["Relationships.parquet", "Strings.parquet", "SpatialHierarchy.parquet"] {
+            assert!(
+                !names.iter().any(|n| n == not_yet_ported),
+                "{not_yet_ported} is now written here — the TS/Rust BOS parity gap noted \
+                 in this file's module doc comment has narrowed; update the doc comment"
+            );
         }
 
         // Each parquet entry starts + ends with the PAR1 magic.

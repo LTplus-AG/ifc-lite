@@ -47,10 +47,12 @@ vi.mock('@/hooks/useWebGPU', () => ({
 }));
 
 /**
- * `geometryClass` ordinals are named in `@ifc-lite/geometry/geometry-class`;
- * spelled out here as literals on purpose, so a renumbering on the Rust side
- * shows up as a failing expectation in this file rather than as a filter that
- * quietly reclassifies geometry and keeps every assertion green.
+ * `geometryClass` ordinals are named in `@ifc-lite/geometry/geometry-class` and
+ * spelled out here as literals on purpose, matching `type-view-visibility.test.ts`.
+ * Importing the constants would make the expectations move with whatever the
+ * constants say, so a change to them could not fail this file. These literals do
+ * NOT verify anything against Rust; only an assertion at the real boundary can,
+ * as `geometry-class.ts` says itself.
  */
 const OCCURRENCE = 0;
 const ORPHAN_TYPE = 1;
@@ -141,6 +143,11 @@ describe('EmbedViewer: Model-view geometry-class gate', () => {
     // Class 3 is in the list because it is PLACED despite not being class 0:
     // narrowing the gate to `geometryClass === 0` would drop every layered
     // wall and slab, and only this assertion notices.
+    // Mesh 5 is untagged, which is what meshes built on the TS side and models
+    // processed before the tag existed look like. It must read as an occurrence:
+    // mutating that default to orphan hides it here, because the list already
+    // has placed geometry. Verified by applying that mutation, which fails this
+    // case alone.
     const ids = await drawnIds([
       mesh(1, 'IfcWall', OCCURRENCE),
       mesh(2, 'IfcSlab', LAYER_SLICE),
@@ -150,15 +157,6 @@ describe('EmbedViewer: Model-view geometry-class gate', () => {
     ]);
 
     expect(ids).toEqual([1, 2, 5]);
-  });
-
-  it('keeps an untagged mesh, which is a real occurrence', async () => {
-    // KILLS: treating a missing `geometryClass` as anything but class 0.
-    // Meshes built on the TS side and models processed before the tag existed
-    // carry no class; a gate that dropped them would blank those models.
-    const ids = await drawnIds([mesh(7, 'IfcWall'), mesh(8, 'IfcSlab')]);
-
-    expect(ids).toEqual([7, 8]);
   });
 
   it('still renders a pure type-library file, which has nothing else to show', async () => {

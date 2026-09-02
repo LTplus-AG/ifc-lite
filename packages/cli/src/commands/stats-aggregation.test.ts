@@ -250,6 +250,19 @@ describe('computeMaterialSummary', () => {
     expect(summary).toEqual([{ name: 'Wood', count: 1, volume: 0 }]);
   });
 
+  it('does not double-count a volume when one element carries TWO quantity sets that both report GrossVolume (issue: a vendor-specific Qto_ set alongside the standard one restates, not adds, the physical volume)', () => {
+    const bim = fakeBim({
+      1: [
+        { name: 'Qto_WallBaseQuantities', quantities: [{ name: 'GrossVolume', value: 10 }] },
+        { name: 'BaseQuantities', quantities: [{ name: 'GrossVolume', value: 10 }] },
+      ],
+    }, {}, { 1: { name: 'Concrete' } });
+    const summary = computeMaterialSummary(bim, [{ ref: 1 }], n => n);
+    // The element's real volume is 10 m3 (one wall), not 20 — a naive
+    // per-qset accumulation over both quantity sets doubles it.
+    expect(summary).toEqual([{ name: 'Concrete', count: 1, volume: 10 }]);
+  });
+
   /**
    * Regression: `firstName ?? mat?.name` followed by `if (!matName)
    * continue;` skips a plain empty-string name (falsy) but a

@@ -200,12 +200,20 @@ export function computeMaterialSummary<R>(
 
     materialCounts.set(matName, (materialCounts.get(matName) ?? 0) + 1);
 
+    // One volume per element, same single-slot rule as `aggregateWalls`'s
+    // wallVolume: Gross/Net are alternative names for the same slot, and a
+    // second IfcElementQuantity set on the same element (e.g. a
+    // vendor-specific set alongside the standard Qto_ set) restates the same
+    // physical volume rather than adding to it. The un-labelled `break`
+    // below only left the inner (per-qset) loop, so a second qset with its
+    // own Gross/NetVolume kept accumulating — take the first match across
+    // every qset on this element, then stop.
     const qsets = bim.quantities(e.ref);
-    for (const qset of qsets) {
+    qsetLoop: for (const qset of qsets) {
       for (const q of qset.quantities) {
         if (q.name === 'GrossVolume' || q.name === 'NetVolume') {
           materialVolumes.set(matName, (materialVolumes.get(matName) ?? 0) + (Number(q.value) || 0));
-          break;
+          break qsetLoop;
         }
       }
     }

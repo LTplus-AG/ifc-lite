@@ -28,6 +28,7 @@ import {
   scanPrs,
   report,
 } from './dirty-pr-scan.mjs';
+import { matrixSkipAliases } from './pr-review-signal.mjs';
 
 const REQUIRED = ['Lint', 'Node tests', 'Rust tests', 'Typecheck'];
 const BASES = ['main'];
@@ -361,6 +362,54 @@ test('report: both causes present are reported as separate groups with separate 
   assert.equal(ok, false);
   assert.match(text, /retarget the PR/i);
   assert.match(text, /only resolving the conflict/i);
+});
+
+// ------------------------------------- a matrix job skipped BEFORE expanding (#3584 shape)
+
+/**
+ * Verbatim shape of PR #3581's rollup: a matrix job skipped by `if:` before
+ * its `strategy.matrix` fanned out publishes ONE check run, under the
+ * unexpanded template, never the per-shard names. `expandJobNames` derives
+ * `Viewer tests (shard 0)`..`(shard 3)`; this file's own `missingLanes` used
+ * to compare those names against the rollup with plain Set membership, which
+ * could never find them present -- a conflicted PR touching neither
+ * `frontend` nor `rust` paths would report `CONFLICTED` even though every
+ * lane the workflow actually publishes had run. See
+ * scripts/lib/pr-review-signal.mjs's `matrixSkipAliases`/`missingLanes`.
+ */
+const MATRIX_TEMPLATE = 'Viewer tests (shard ${{ matrix.shard }})';
+const MATRIX_WF = `on:
+  pull_request:
+jobs:
+  viewer-tests:
+    name: ${MATRIX_TEMPLATE}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - run: true
+`;
+const MATRIX_REQUIRED = [0, 1, 2, 3].map((n) => `Viewer tests (shard ${n})`);
+
+test('missingLanes: a wholesale-skipped matrix job counts as present given its aliases', () => {
+  const aliases = matrixSkipAliases(MATRIX_WF);
+  const rollup = [{ name: MATRIX_TEMPLATE, state: 'skipped' }];
+  assert.deepEqual(missingLanes(MATRIX_REQUIRED, rollup, aliases), []);
+});
+
+test('classifyPr: GREEN -- a PR whose matrix job skipped wholesale before expanding is not silent', () => {
+  const pr = {
+    number: 3581,
+    baseRefName: 'main',
+    mergeable: 'CONFLICTING',
+    mergeStateStatus: 'DIRTY',
+    statusCheckRollup: [{ name: MATRIX_TEMPLATE, state: 'skipped' }],
+  };
+  const aliases = matrixSkipAliases(MATRIX_WF);
+  const result = classifyPr(pr, MATRIX_REQUIRED, BASES, aliases);
+  assert.equal(result.silent, false, 'every shard is covered by the wholesale-skip alias');
+  assert.deepEqual(result.missing, []);
 });
 
 test('pullRequestBaseBranches: reads pull_request`s filter, not push`s', () => {

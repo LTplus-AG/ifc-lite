@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { missingLanes as reviewSignalMissingLanes } from './pr-review-signal.mjs';
+
 /**
  * Pure classification for `scripts/scan-dirty-prs.mjs` (issue #3443).
  *
@@ -60,13 +62,42 @@ export class DirtyPrScanError extends Error {
 /**
  * Required lane names absent from a PR's status-check rollup.
  *
+ * Delegates to `pr-review-signal.mjs`'s `missingLanes`, the sibling module
+ * this file already imports `expandJobNames` from, rather than re-deriving
+ * presence with a plain name-set test. That matters for one shape a plain
+ * test cannot see: a matrix job skipped by `if:` BEFORE `strategy.matrix`
+ * expands publishes ONE check run, under the unexpanded template, never the
+ * per-shard names `expandJobNames` derives -- measured on PR #3581. Without
+ * the alias map from `matrixSkipAliases`, any conflicted PR of that shape
+ * (touching neither `frontend` nor `rust` paths, so `viewer-tests` skips
+ * wholesale) reported every shard missing and misclassified as `CONFLICTED`.
+ *
+ * TWO DIVERGENCES FROM THE SHARED FUNCTION, BOTH DELIBERATE:
+ *
+ * - An EMPTY rollup is not an error here, it is the flagship case. The
+ *   shared `missingLanes` throws `NO_ROLLUP` on `[]`, because for its own
+ *   caller an empty rollup is indistinguishable from an API failure. Here a
+ *   conflicted PR whose `pull_request` CI never fired can legitimately
+ *   publish nothing but a couple of unrelated bot checks (or none at all --
+ *   see this file's own docblock), and "every required lane is missing" is
+ *   the correct read of that, not a crash. Handled locally before delegating.
+ * - A rollup entry's name falls back to `context` for commit-status style
+ *   entries (`{ context: 'CodeRabbit' }`), which `gh pr list`'s
+ *   `statusCheckRollup` can carry alongside check-run style ones; the shared
+ *   function reads only `name`, since `pr-review-signal.mjs`'s own caller
+ *   never sees that shape.
+ *
  * @param {string[]} required
- * @param {Array<{ name?: string, context?: string }>} rollup
+ * @param {Array<{ name?: string, context?: string, state?: string }>} rollup
+ * @param {Map<string, string>} [aliases] - from `matrixSkipAliases`; empty
+ *   means the strict name-for-name rule.
  * @returns {string[]}
  */
-export function missingLanes(required, rollup) {
-  const present = new Set((Array.isArray(rollup) ? rollup : []).map((c) => c.name ?? c.context ?? ''));
-  return required.filter((n) => !present.has(n)).sort();
+export function missingLanes(required, rollup, aliases = new Map()) {
+  const list = Array.isArray(rollup) ? rollup : [];
+  if (list.length === 0) return [...required].sort();
+  const normalized = list.map((c) => ({ ...c, name: c.name ?? c.context ?? '' }));
+  return reviewSignalMissingLanes(required, normalized, aliases);
 }
 
 /**
@@ -212,12 +243,15 @@ function finishBranches(branches) {
  *
  * @param {{ number: number, title?: string, url?: string, baseRefName?: string,
  *   mergeable?: string, mergeStateStatus?: string, isDraft?: boolean,
- *   statusCheckRollup?: Array<{ name?: string, context?: string }> }} pr
+ *   statusCheckRollup?: Array<{ name?: string, context?: string, state?: string }> }} pr
  * @param {string[]} required
  * @param {string[] | null} baseBranches - from `pullRequestBaseBranches`;
  *   `null` means the workflow carries no base filter, so nothing is base-filtered.
+ * @param {Map<string, string>} [aliases] - from `pr-review-signal.mjs`'s
+ *   `matrixSkipAliases`, over the same workflow text `required` was derived
+ *   from; empty means the strict name-for-name rule.
  */
-export function classifyPr(pr, required, baseBranches) {
+export function classifyPr(pr, required, baseBranches, aliases = new Map()) {
   if (typeof pr?.number !== 'number') {
     throw new DirtyPrScanError('BAD_PR', `A PR object is missing a numeric \`number\`: ${JSON.stringify(pr)}`);
   }
@@ -246,7 +280,7 @@ export function classifyPr(pr, required, baseBranches) {
   }
 
   const rollup = Array.isArray(pr.statusCheckRollup) ? pr.statusCheckRollup : [];
-  const missing = missingLanes(required, rollup);
+  const missing = missingLanes(required, rollup, aliases);
   const isConflicted = pr.mergeable === 'CONFLICTING' || pr.mergeStateStatus === 'DIRTY';
   const isUnknown = pr.mergeable === 'UNKNOWN' || pr.mergeStateStatus === 'UNKNOWN';
   const isBaseFiltered = baseBranches !== null && !baseBranches.includes(pr.baseRefName);
@@ -291,8 +325,9 @@ export function classifyPr(pr, required, baseBranches) {
  * @param {unknown} prs
  * @param {string[]} required
  * @param {string[] | null} baseBranches
+ * @param {Map<string, string>} [aliases] - from `matrixSkipAliases`, see `classifyPr`.
  */
-export function scanPrs(prs, required, baseBranches) {
+export function scanPrs(prs, required, baseBranches, aliases = new Map()) {
   if (!Array.isArray(prs)) {
     throw new DirtyPrScanError(
       'BAD_INPUT',
@@ -300,7 +335,7 @@ export function scanPrs(prs, required, baseBranches) {
         'must never be read as "no open PRs".',
     );
   }
-  return prs.map((pr) => classifyPr(pr, required, baseBranches));
+  return prs.map((pr) => classifyPr(pr, required, baseBranches, aliases));
 }
 
 /**

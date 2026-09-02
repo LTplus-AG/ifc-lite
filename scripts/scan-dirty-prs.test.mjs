@@ -206,3 +206,46 @@ test('fails closed rather than guessing a remedy when `baseRefName` is absent', 
   assert.equal(code, 1, output);
   assert.match(output, /NO_BASE_REF/);
 });
+
+// ------------------------------------- a matrix job skipped BEFORE expanding (#3584 shape)
+
+const MATRIX_TEMPLATE = 'Viewer tests (shard ${{ matrix.shard }})';
+
+function matrixWorkflowFixture() {
+  const path = join(TMP, `workflow-${(seq += 1)}.yml`);
+  writeFileSync(
+    path,
+    `on:\n  pull_request:\n    branches: [main]\njobs:\n  lint:\n    name: Lint\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n  viewer-tests:\n    name: ${MATRIX_TEMPLATE}\n    runs-on: ubuntu-latest\n    strategy:\n      matrix:\n        shard: [0, 1, 2, 3]\n    steps:\n      - run: true\n`,
+  );
+  return path;
+}
+
+test('GREEN: a matrix job skipped wholesale before expanding is not silent CI (the #3581 shape)', () => {
+  // Measured on PR #3581: a docs/scripts/config-only change (no `frontend` or
+  // `rust` paths touched) skips `viewer-tests` via `if:` before its
+  // `strategy.matrix` fans out, so GitHub publishes ONE check run under the
+  // unexpanded template -- never `Viewer tests (shard 0)`..`(shard 3)`, the
+  // names `expandJobNames` derives. Before this scan reused
+  // `pr-review-signal.mjs`'s alias-aware `missingLanes`, its own local,
+  // plain-membership version could never match those four names against
+  // anything, so a conflicted PR of this shape misreported `CONFLICTED` even
+  // though every lane the workflow actually publishes had run.
+  const { code, output } = run(
+    [
+      {
+        number: 3581,
+        baseRefName: 'main',
+        mergeable: 'CONFLICTING',
+        mergeStateStatus: 'DIRTY',
+        isDraft: false,
+        statusCheckRollup: [
+          { name: 'Lint', state: 'success' },
+          { name: MATRIX_TEMPLATE, state: 'skipped' },
+        ],
+      },
+    ],
+    { workflow: matrixWorkflowFixture() },
+  );
+  assert.equal(code, 0, output);
+  assert.match(output, /✅/, output);
+});

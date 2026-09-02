@@ -39,7 +39,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { DirtyPrScanError, pullRequestBaseBranches, scanPrs, report } from './lib/dirty-pr-scan.mjs';
-import { expandJobNames } from './lib/pr-review-signal.mjs';
+import { expandJobNames, matrixSkipAliases } from './lib/pr-review-signal.mjs';
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(SCRIPTS_DIR, '..');
@@ -143,6 +143,10 @@ async function main() {
   const workflowText = readFileSync(args.workflow, 'utf8');
   const required = expandJobNames(workflowText, { exclude: EXCLUDE_JOB_KEYS });
   const baseBranches = pullRequestBaseBranches(workflowText);
+  // Same exclude list as `expandJobNames` above -- passing it to only one of
+  // the two derivations is a silent, asymmetric failure: the lane would stay
+  // required while its wholesale-skip alias disappears.
+  const aliases = matrixSkipAliases(workflowText, { exclude: EXCLUDE_JOB_KEYS });
 
   let prs;
   if (args.stateFile) {
@@ -159,7 +163,7 @@ async function main() {
     prs = fetchOpenPrs({ repo: args.repo, limit: args.limit });
   }
 
-  const results = scanPrs(prs, required, baseBranches);
+  const results = scanPrs(prs, required, baseBranches, aliases);
   const { ok, lines } = report(results, required, baseBranches);
   for (const l of lines) console.log(l);
 

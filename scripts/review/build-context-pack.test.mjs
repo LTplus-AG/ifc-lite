@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { buildPrompt } from './run-reviewer.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-import { searchKeys, hunkLines, fileEvidence, MAX_WHOLE_FILE_LINES, buildPack, truncateUtf8, BODY_RESERVE_BYTES, MAX_PACK_BYTES, MAX_SEARCH_KEYS, packBudgetFor, MAX_PROMPT_BYTES, retrievalFailed, retrievalFailedMessage, SHALLOW_CHECKOUT_REMEDY } from './build-context-pack.mjs';
+import { searchKeys, hunkLines, fileEvidence, MAX_WHOLE_FILE_LINES, buildPack, truncateUtf8, BODY_RESERVE_BYTES, MAX_PACK_BYTES, MAX_SEARCH_KEYS, packBudgetFor, MAX_PROMPT_BYTES, retrievalFailed, retrievalFailedMessage, SHALLOW_CHECKOUT_REMEDY, PROMPT_BASE_OVERHEAD_BYTES, PROMPT_PER_FILE_BYTES, promptRowCount } from './build-context-pack.mjs';
 
 test('search keys come from REMOVED lines first, because the sibling still has them', () => {
   const patch = [
@@ -318,7 +318,15 @@ test('THE REAL PROMPT stays under the ceiling whenever the DIFF alone does', () 
     patch: `@@ -1,1 +1,2 @@\n+${'x'.repeat(Math.max(1, per - 20))}\n`,
   }));
   const patchBytes = files.reduce((n, f) => n + Buffer.byteLength(f.patch, 'utf8'), 0);
-  assert.ok(patchBytes < MAX_PROMPT_BYTES, 'fixture precondition: the diff itself must fit');
+  // THE DIFF PLUS ITS ENVELOPE, not the diff alone. `patchBytes < MAX_PROMPT_BYTES`
+  // is not the real precondition: at 400 files and 430,000 patch bytes it holds,
+  // the pack correctly yields to zero, and the prompt still lands 14,420 over --
+  // because the rubric and the per-file headers are not free. The property that
+  // is actually true is the one asserted here.
+  assert.ok(
+    patchBytes + PROMPT_BASE_OVERHEAD_BYTES + files.length * PROMPT_PER_FILE_BYTES <= MAX_PROMPT_BYTES,
+    'fixture precondition: the diff AND its envelope must fit, or no pack size can save it',
+  );
   const input = { headSha: 'a'.repeat(40), files, unreviewable: [] };
   input.contextPack = buildPack(input, {
     baseRef: 'HEAD',
@@ -341,7 +349,7 @@ test('THE BASE ENVELOPE RESERVE is load-bearing too, on a FEW-file diff', () => 
   // ~10.6 KB of the reserve, and it is present on every single review.
   const rubric = readFileSync(join(HERE, 'rubric.md'), 'utf8');
   const fileCount = 10;
-  const diffTarget = 400_000;
+  const diffTarget = 350_000;
   const per = Math.floor(diffTarget / fileCount);
   const files = Array.from({ length: fileCount }, (_, i) => ({
     path: `packages/a/f${i}.ts`,
@@ -435,4 +443,26 @@ test('retrievalFailed does not blame the checkout when the BUDGET was simply ful
   assert.equal(retrievalFailed(shallow, 3), true, 'no evidence and nothing dropped means missing refs');
   assert.equal(retrievalFailed(budgetFull, 3), false, 'evidence dropped for size is not a broken checkout');
   assert.equal(retrievalFailed(shallow, 0), false, 'an empty diff is not a retrieval failure');
+});
+
+test('the UNREVIEWABLE list is charged too, not rendered for free', () => {
+  // buildPrompt emits one JSON line per unreviewable entry, and those rows were
+  // charged to nothing while the base reserve's docblock claimed to cover them.
+  // Measured before the fix: 200 reviewable files on a 400 KB diff plus 2,800
+  // unreviewable rows rendered 610,899 bytes -- larger than the prompt that
+  // MODEL_ERRORed -- with the pack correctly at zero. 2,800 rows is reachable
+  // under GitHub's 3,000-file cap by deleting a vendored tree.
+  const files = [{ path: 'packages/a/f.ts', patch: '@@ -1,1 +1,2 @@\n+const x = 1;\n' }];
+  const bare = { headSha: 'a'.repeat(40), files, unreviewable: [] };
+  const many = {
+    headSha: 'a'.repeat(40),
+    files,
+    unreviewable: Array.from({ length: 2_000 }, (_, i) => ({ path: `vendor/x${i}.ts`, reason: 'too large' })),
+  };
+  assert.equal(promptRowCount(bare), 1);
+  assert.equal(promptRowCount(many), 2_001);
+  assert.ok(
+    packBudgetFor(100_000, promptRowCount(many)) < packBudgetFor(100_000, promptRowCount(bare)),
+    'a diff with thousands of unreviewable rows must leave the pack less room, not the same room',
+  );
 });

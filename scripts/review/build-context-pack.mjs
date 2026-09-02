@@ -62,7 +62,12 @@ export const MAX_PACK_BYTES = 160_000;
  * at ~298k input tokens, or 1.95 bytes per token. 700,000 bytes is therefore
  * ~360k tokens -- past any context window, and the arithmetic said it was fine.
  *
- * 450,000 keeps the total near the 421 KB that demonstrably works. A 50 KB diff
+ * 390,000 is 200k tokens at the measured 1.95 bytes per token, and it sits
+ * BELOW the 421,355-byte prompt that is the only one ever observed to succeed --
+ * which is the point. 450,000 was tried first and was indefensible: it is 6.9%
+ * above that single good data point and ~230k tokens at the corrected ratio, so
+ * it was a bound chosen above all of its own evidence. A ceiling that only
+ * permits sizes already known to work is the whole job. A 50 KB diff
  * still gets the whole 160 KB pack, which covers nearly every PR -- but be exact
  * about the tail, because "only a near-maximal diff squeezes it" was wrong: the
  * pack starts shrinking at ~257 KB of diff and reaches ZERO at ~413 KB (measured
@@ -86,7 +91,7 @@ export const MAX_PACK_BYTES = 160_000;
  * that 580 KB prompt cost $1.49 and took 5.2 minutes. At this repository's PR
  * volume that is a budget line, not a lane.
  */
-export const MAX_PROMPT_BYTES = 450_000;
+export const MAX_PROMPT_BYTES = 390_000;
 
 /**
  * Everything in the prompt that is neither diff nor pack: the rubric (~10.6 KB),
@@ -104,8 +109,9 @@ export const MAX_PROMPT_BYTES = 450_000;
 export const PROMPT_BASE_OVERHEAD_BYTES = 24_000;
 
 /**
- * Per changed file: its `--- FILE: <path>` header, fences, and the entry in the
- * files-reviewed list. Headers dominate the envelope on a large PR -- a flat
+ * Per rendered row: a changed file's `--- FILE: <path>` header and fences, or an
+ * unreviewable entry's JSON line. Both are emitted per item by buildPrompt, so
+ * both are charged -- see `promptRowCount`. Headers dominate the envelope on a large PR -- a flat
  * reserve of 60,000 left a 1,000-file diff 8,050 bytes over the ceiling, which
  * the measured test caught and the arithmetic one never could.
  *
@@ -117,7 +123,19 @@ export const PROMPT_BASE_OVERHEAD_BYTES = 24_000;
 export const PROMPT_PER_FILE_BYTES = 70;
 
 /** What the pack may spend once the diff has taken its share. */
+/** Rows buildPrompt renders per file: the changed files AND the unreviewable list. */
+export function promptRowCount(input) {
+  return (input?.files?.length ?? 0) + (input?.unreviewable?.length ?? 0);
+}
+
 export function packBudgetFor(patchBytes, fileCount = 0) {
+  // `fileCount` counts EVERY row buildPrompt renders, reviewable or not. The
+  // unreviewable list gets one JSON line per entry and used to be charged to
+  // nothing, while this constant's docblock claimed the flat base covered it.
+  // Measured: 200 reviewable files on a 400 KB diff plus 2,800 unreviewable rows
+  // rendered a 610,899-byte prompt -- larger than the one that MODEL_ERRORed --
+  // with the pack correctly at zero. 2,800 is reachable under GitHub's 3,000-file
+  // cap by deleting a vendored tree.
   const envelope = PROMPT_BASE_OVERHEAD_BYTES + Math.max(0, fileCount || 0) * PROMPT_PER_FILE_BYTES;
   const room = MAX_PROMPT_BYTES - envelope - (patchBytes || 0);
   return Math.max(0, Math.min(MAX_PACK_BYTES, room));
@@ -452,9 +470,9 @@ export function buildPack(input, { baseRef, body = null, patchBytes = 0, cwd = p
   // its slice first; siblings and file evidence divide what is left.
   const bodyReserve =
     typeof body === 'string' && body.trim() !== ''
-      ? Math.min(BODY_RESERVE_BYTES, Buffer.byteLength(body, 'utf8'), packBudgetFor(patchBytes, input.files.length))
+      ? Math.min(BODY_RESERVE_BYTES, Buffer.byteLength(body, 'utf8'), packBudgetFor(patchBytes, promptRowCount(input)))
       : 0;
-  let budget = packBudgetFor(patchBytes, input.files.length) - bodyReserve;
+  let budget = packBudgetFor(patchBytes, promptRowCount(input)) - bodyReserve;
 
   // GATHER EVERYTHING FIRST, THEN RANK GLOBALLY. Capping in iteration order let
   // low-value hits from an early key crowd out the best hit of a late one --

@@ -715,12 +715,14 @@ END-ISO-10303-21;`;
           && n.attributes?.['bsi::ifc::prop::Name']?.startsWith('Basic Wall:Holz Aussenwand'),
       );
       expect(wallNode).toBeDefined();
-      expect(wallNode.attributes['bsi::ifc::material']).toEqual({ code: 'Concrete' });
+      // `uri` is a required key per the official schema (same convention as
+      // `bsi::ifc::class` right above), but an arbitrary IFC4 material name
+      // cannot be resolved into a real buildingSMART `midas-materials`
+      // registry entry, so it is emitted empty rather than fabricated — see
+      // `ifc5-material.ts` and `ifc5-material.test.ts` for the full schema
+      // conformance check via `validateValue`.
+      expect(wallNode.attributes['bsi::ifc::material']).toEqual({ code: 'Concrete', uri: '' });
 
-      // `code` matches the official schema's `String` restriction — `uri` is
-      // deliberately omitted rather than fabricated, since arbitrary IFC4
-      // material names have no buildingSMART identifier registry (unlike
-      // IFC classes, which resolve to a real one — see bsi::ifc::class above).
       const schema = ALL_OFFICIAL_SCHEMAS['bsi::ifc::material'];
       expect(schema.value.objectRestrictions?.values.code.dataType).toBe('String');
     });

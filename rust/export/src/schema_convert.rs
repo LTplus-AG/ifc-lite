@@ -41,8 +41,70 @@ fn map_4_to_2x3(t: &str) -> Option<&'static str> {
         "IFCFACILITY" | "IFCBRIDGE" | "IFCROAD" | "IFCRAILWAY" | "IFCMARINEFACILITY" => "IFCBUILDING",
         "IFCFACILITYPART" | "IFCFACILITYPARTCOMMON" | "IFCBRIDGEPART" | "IFCROADPART"
         | "IFCRAILWAYPART" | "IFCMARINEPART" => "IFCBUILDINGSTOREY",
+        // IFC4 renamed the IFC2X3 door/window type objects. Left unmapped,
+        // `should_skip_entity`-adjacent proxy fallback below treated them as
+        // having no IFC2X3 representation and replaced every one with an
+        // IFCPROXY carrying a freshly minted GlobalId (mirrors TS #3653).
+        // `BY_NAME_ATTR_REMAP_TYPES` reconciles their attribute lists by
+        // name since IFC4 inserted ElementType/PredefinedType mid-list.
+        "IFCDOORTYPE" => "IFCDOORSTYLE",
+        "IFCWINDOWTYPE" => "IFCWINDOWSTYLE",
         _ => return None,
     })
+}
+
+/// Source (IFC4) and target (IFC2X3) EXPRESS attribute names for the two
+/// door/window-type renames above, in the order STEP encodes them. Neither
+/// list is a positional prefix of the other (IFC4 inserted `ElementType`/
+/// `PredefinedType` ahead of the attributes it kept), so
+/// `convert_step_line` reconciles them by NAME rather than trimming a
+/// positional suffix like every other IFC2X3-downgrade rename.
+fn by_name_attr_remap_names(entity_type: &str) -> Option<(&'static [&'static str], &'static [&'static str])> {
+    match entity_type {
+        "IFCDOORTYPE" => Some((
+            &[
+                "GlobalId", "OwnerHistory", "Name", "Description", "ApplicableOccurrence",
+                "HasPropertySets", "RepresentationMaps", "Tag", "ElementType", "PredefinedType",
+                "OperationType", "ParameterTakesPrecedence", "UserDefinedOperationType",
+            ],
+            &[
+                "GlobalId", "OwnerHistory", "Name", "Description", "ApplicableOccurrence",
+                "HasPropertySets", "RepresentationMaps", "Tag", "OperationType", "ConstructionType",
+                "ParameterTakesPrecedence", "Sizeable",
+            ],
+        )),
+        "IFCWINDOWTYPE" => Some((
+            &[
+                "GlobalId", "OwnerHistory", "Name", "Description", "ApplicableOccurrence",
+                "HasPropertySets", "RepresentationMaps", "Tag", "ElementType", "PredefinedType",
+                "PartitioningType", "ParameterTakesPrecedence", "UserDefinedPartitioningType",
+            ],
+            &[
+                "GlobalId", "OwnerHistory", "Name", "Description", "ApplicableOccurrence",
+                "HasPropertySets", "RepresentationMaps", "Tag", "ConstructionType", "OperationType",
+                "ParameterTakesPrecedence", "Sizeable",
+            ],
+        )),
+        _ => None,
+    }
+}
+
+/// Reconcile a renamed entity's attribute list by matching attribute NAMES
+/// between the source and target schema tables, rather than by position.
+/// A target attribute with no same-named source attribute becomes `$`
+/// (unknown); a source attribute with no same-named target slot is dropped.
+/// Mirrors TS `schema-converter-attr-remap.ts`'s `remapRenamedAttributesByName`.
+fn remap_attrs_by_name(attrs: &str, src_names: &[&str], tgt_names: &[&str]) -> String {
+    let values = split_top_level(attrs);
+    let mut by_name: std::collections::HashMap<&str, &str> = std::collections::HashMap::new();
+    for (name, value) in src_names.iter().zip(values.iter()) {
+        by_name.insert(*name, value.as_str());
+    }
+    tgt_names
+        .iter()
+        .map(|name| by_name.get(name).copied().unwrap_or("$"))
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 fn map_4x3_to_4(t: &str) -> Option<&'static str> {
@@ -134,10 +196,13 @@ pub(crate) fn placeholder_guid(id: u32) -> String {
     String::from_utf8(s.to_vec()).unwrap()
 }
 
-/// Trim a STEP attribute list to `max_count` top-level attributes (STEP-nesting aware).
-fn trim_attributes(attrs: &str, max_count: usize) -> String {
+/// Split a raw STEP attribute list into its top-level (comma-separated)
+/// value strings, respecting nested parentheses and single-quoted strings.
+/// Empty list -> `[]`. Shared by `trim_attributes` (positional truncation)
+/// and `remap_attrs_by_name` (by-name reconciliation).
+fn split_top_level(attrs: &str) -> Vec<String> {
     if attrs.trim().is_empty() {
-        return attrs.to_string();
+        return Vec::new();
     }
     let bytes = attrs.as_bytes();
     let mut out: Vec<String> = Vec::new();
@@ -168,15 +233,21 @@ fn trim_attributes(attrs: &str, max_count: usize) -> String {
             current.push(ch);
         } else if ch == ',' && depth == 0 {
             out.push(std::mem::take(&mut current));
-            if out.len() >= max_count {
-                return out.join(",");
-            }
         } else {
             current.push(ch);
         }
         i += 1;
     }
     out.push(current);
+    out
+}
+
+/// Trim a STEP attribute list to `max_count` top-level attributes (STEP-nesting aware).
+fn trim_attributes(attrs: &str, max_count: usize) -> String {
+    if attrs.trim().is_empty() {
+        return attrs.to_string();
+    }
+    let out = split_top_level(attrs);
     if out.len() > max_count {
         out[..max_count].join(",")
     } else {
@@ -233,7 +304,22 @@ pub fn convert_step_line(line: &str, from: &str, to: &str, express_id: u32) -> S
         );
     }
 
-    let mut final_attrs = if cto == "IFC2X3" {
+    // IFCDOORTYPE/IFCWINDOWTYPE -> IFCDOORSTYLE/IFCWINDOWSTYLE: neither
+    // attribute list is a positional prefix of the other (IFC4 inserted
+    // ElementType/PredefinedType mid-list), so reconcile by name instead of
+    // the generic positional trim below.
+    let mut final_attrs = if new_type != entity_type {
+        if let Some((src_names, tgt_names)) = by_name_attr_remap_names(&entity_type) {
+            remap_attrs_by_name(attrs, src_names, tgt_names)
+        } else if cto == "IFC2X3" {
+            match ifc2x3_attr_count(&new_type) {
+                Some(max) => trim_attributes(attrs, max),
+                None => attrs.to_string(),
+            }
+        } else {
+            attrs.to_string()
+        }
+    } else if cto == "IFC2X3" {
         match ifc2x3_attr_count(&new_type) {
             Some(max) => trim_attributes(attrs, max),
             None => attrs.to_string(),

@@ -14,7 +14,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync , readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -81,7 +81,7 @@ test('the no-newline marker is metadata, not a context line', () => {
 // ============================================================== exclusions
 
 test('generated and vendored paths are excluded', () => {
-  for (const p of ['pnpm-lock.yaml', 'Cargo.lock', 'packages/x/__snapshots__/a.snap', 'tests/fixtures/a.ts', 'packages/wasm/pkg/x.d.ts', 'docs/a.png', 'scripts/api-surface.json']) {
+  for (const p of ['pnpm-lock.yaml', 'Cargo.lock', 'packages/x/__snapshots__/a.snap', 'tests/fixtures/a.ts', 'packages/wasm/pkg/x.d.ts', 'docs/a.png', 'scripts/api-surface.json', 'scripts/review/eval-cases/pr-3595.json']) {
     assert.equal(isExcluded(p), true, `${p} should be excluded`);
   }
 });
@@ -219,4 +219,95 @@ test('newFileLines pins the kind contract, since the JSDoc now promises one', ()
   // line in the new file at all. Reading it as a position is a trap.
   assert.equal(got[3].line, got[4].line);
   assert.deepEqual(addedLineRanges(patch), [[2, 2]]);
+});
+
+/**
+ * THE PACK IS ONLY REAL IF A WORKFLOW ASKS FOR ONE.
+ *
+ * `build-review-input.mjs` builds a context pack only when given `--base`, and it
+ * fails soft when the pack cannot be built. The production lane passed neither
+ * `--base` nor `--body-file`, so every line of this module was dead in
+ * production: written, tested, and measured at 7% -> 20% recall on an eval that
+ * did pass the flag, while the lane that actually reviews pull requests carried
+ * on reviewing the diff alone. Nothing was red. Nothing could be.
+ *
+ * A unit test cannot see a missing command-line flag in YAML, so it is asserted
+ * here, statically, next to the code whose existence depends on it.
+ */
+test('the PRODUCTION lane asks build-review-input for a context pack', () => {
+  const yml = readFileSync(join(HERE, '..', '..', '.github/workflows/claude-review.yml'), 'utf8');
+  // SCANNED FOR AN INVOCATION, not anchored on the first mention. This worked
+  // only because the comment above the call happens to write the name without
+  // `.mjs`; adding the extension there would have made the test measure prose and
+  // go on passing. run-judge.test.mjs documents falling into the same trap twice,
+  // from both ends of the file.
+  const windows = [];
+  for (let i = yml.indexOf('build-review-input.mjs'); i !== -1; i = yml.indexOf('build-review-input.mjs', i + 1)) {
+    windows.push(yml.slice(i, i + 700));
+  }
+  assert.ok(windows.length > 0, 'the lane must invoke build-review-input');
+  const calls = windows.filter((w) => w.includes('--out '));
+  assert.ok(calls.length > 0, 'no window looks like an invocation (none carries --out)');
+  for (const call of calls) {
+    assert.match(call, /--base /, 'without --base the lane builds no pack at all');
+    assert.match(call, /--body-file /, 'without --body-file the PR description never reaches the reviewer');
+  }
+});
+
+test('the lane checks out FULL HISTORY, or the context pack is silently empty', () => {
+  // actions/checkout defaults to fetch-depth: 1, and on a pull_request event that
+  // fetches only refs/pull/N/merge -- so neither base.sha nor head.sha is in the
+  // object database. `git grep <base.sha>` and `git show <head.sha>:path` then
+  // exit 128 ("unable to parse object", reproduced in a real depth-1 clone), both
+  // callers catch and return nothing, and the pack holds zero siblings and zero
+  // file evidence while logging "0 sibling excerpt(s), 0 file(s)" -- exactly what
+  // a PR with genuinely no siblings logs.
+  //
+  // This was the THIRD way this feature was inert in production: the judge with
+  // no spawn, the lane with no --base, and a checkout with no history. Each
+  // failed soft; each looked healthy. Asserted statically because no unit test
+  // can see a missing YAML key, which is how all three survived.
+  // DERIVED, not hand-listed. The rule is "any workflow that invokes these
+  // scripts needs full history"; a hardcoded pair means a lane added later
+  // inherits the rule and not the assertion, and its failure is silent by
+  // construction -- which is the property that made this the THIRD way the
+  // feature was inert in production.
+  const dir = join(HERE, '..', '..', '.github/workflows');
+  const wfs = readdirSync(dir).filter((f) => {
+    if (!f.endsWith('.yml') && !f.endsWith('.yaml')) return false;
+    const text = readFileSync(join(dir, f), 'utf8');
+    // build-review-input only. The eval also builds packs, but its cases name
+    // squash-merged head shas that no clone depth can reach (measured: 0 of 18
+    // are ancestors of origin/main), so full history would be a remedy for
+    // nothing there -- and asserting it would pin a workflow to a setting that
+    // does not help it.
+    return text.includes('build-review-input.mjs');
+  });
+  assert.ok(wfs.length > 0, 'no workflow invokes these scripts -- this test would pass vacuously');
+  for (const wf of wfs) {
+    const yml = readFileSync(join(dir, wf), 'utf8');
+    // BOUNDED BY THE STEP, not by a character count. A 700-char window passed
+    // until the explanatory comment above `fetch-depth: 0` grew past it, at which
+    // point this guard went blind on the very file it exists for.
+    // EVERY checkout, not the first. A workflow can hold two jobs; if the first
+    // job's checkout is full-history and the job that actually invokes this
+    // script keeps the shallow default, keying on the first occurrence passes
+    // exactly where retrieval fails. `- run:` bounds a step too -- without it a
+    // later run step's text sits inside the window and can satisfy the match on
+    // the checkout's behalf.
+    let i = yml.indexOf('actions/checkout');
+    assert.notEqual(i, -1, `${wf} must check out the repository`);
+    while (i !== -1) {
+      const rest = yml.slice(i);
+      // ANY step-shaped key, not an enumeration. `- if:`-first steps exist, and
+      // a missed spelling re-opens the window this bound exists to close.
+      const end = rest.search(/\n\s*- [a-zA-Z_-]+:/);
+      assert.match(
+        end === -1 ? rest : rest.slice(0, end),
+        /fetch-depth: 0/,
+        `${wf}: without fetch-depth: 0 the context pack is empty on every run, and says nothing about it`,
+      );
+      i = yml.indexOf('actions/checkout', i + 1);
+    }
+  }
 });

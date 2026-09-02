@@ -13,11 +13,12 @@
  */
 
 import { getModelById } from './models.js';
+import type { AnthropicCredentials } from './anthropic-client.js';
 import type { ApiKeyConfig } from '../../services/api-keys.js';
 
 export type StreamRoute =
   | { kind: 'proxy'; model: string }
-  | { kind: 'anthropic'; model: string; apiKey: string }
+  | { kind: 'anthropic'; model: string; credentials: AnthropicCredentials }
   | { kind: 'openai'; model: string; apiKey: string }
   | { kind: 'missing-key'; provider: 'anthropic' | 'openai' };
 
@@ -28,7 +29,12 @@ export function resolveStreamRoute(modelId: string, keys: ApiKeyConfig): StreamR
   if (source === 'anthropic') {
     const apiKey = keys.anthropicKey.trim();
     if (!apiKey) return { kind: 'missing-key', provider: 'anthropic' };
-    return { kind: 'anthropic', model: modelId, apiKey };
+    // The workspace id rides with the key — see `anthropic-client.ts`.
+    return {
+      kind: 'anthropic',
+      model: modelId,
+      credentials: { apiKey, workspaceId: keys.anthropicWorkspaceId.trim() },
+    };
   }
   if (source === 'openai') {
     const apiKey = keys.openaiKey.trim();

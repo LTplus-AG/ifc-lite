@@ -43,6 +43,8 @@ import {
 import type { ListDefinition, ListResult, ListDataProvider, ListGrouping } from '@/lib/lists';
 import { mergeResultColumns } from '@/lib/lists/merge-result-columns';
 import { extractProjectUnits, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
+import { useRenderFrameOffsets } from '@/hooks/useRenderFrameOffsets';
+import { makeWorldPositionGetter } from '@/lib/geo/entity-world-position';
 import { ListBuilder } from './ListBuilder';
 import { ListResultsTable } from './ListResultsTable';
 
@@ -53,7 +55,8 @@ interface ListPanelProps {
 type PanelView = 'library' | 'builder' | 'results';
 
 export function ListPanel({ onClose }: ListPanelProps) {
-  const { ifcDataStore, models } = useIfc();
+  const { ifcDataStore, models, geometryResult } = useIfc();
+  const renderFrame = useRenderFrameOffsets(); // scene-wide frame for World X/Y/Z (issue #3671)
   const [view, setView] = useState<PanelView>('library');
   const [editingList, setEditingList] = useState<ListDefinition | null>(null);
 
@@ -89,13 +92,8 @@ export function ListPanel({ onClose }: ListPanelProps) {
   const zoneApportionment = useViewerStore((s) => s.zoneApportionment);
   const toGlobalId = useViewerStore((s) => s.toGlobalId);
 
-  // Build the {modelId, provider} pairs in a single pass so the two
-  // arrays can never drift out of alignment (skipping a model without
-  // an ifcDataStore must not shift every later model's provider index).
-  // Declared VOLUMEUNIT scale per model, for the zone volume columns (#2508).
-  // Memoized on the MODELS alone: the zone context below is rebuilt whenever
-  // zones or assignments change, and re-extracting a model's unit assignment on
-  // every geometry tick would be real work for a value that cannot have moved.
+  // Declared VOLUMEUNIT scale per model (#2508), memoized on MODELS alone so
+  // zone/assignment changes don't re-derive a value that cannot have moved.
   const volumeScaleByModelId = useMemo(() => {
     const map = new Map<string, number>();
     const scaleOf = (store: IfcDataStore) => (store.source.length > 0
@@ -112,18 +110,19 @@ export function ListPanel({ onClose }: ListPanelProps) {
     return map;
   }, [models, ifcDataStore]);
 
+  // {modelId, provider} pairs, built in one pass so the two arrays can never
+  // drift out of alignment.
   const modelProviderPairs = useMemo(() => {
     const pairs: Array<{ modelId: string; provider: ListDataProvider; store: IfcDataStore }> = [];
     if (models.size > 0) {
       for (const [modelId, model] of models) {
-        // Skip native-metadata models — they don't have a parsed
-        // IfcDataStore, so the list provider can't query them.
-        if (!model.ifcDataStore) continue;
+        if (!model.ifcDataStore) continue; // native-metadata model, nothing to query
         const zoneContext = {
           zoneSets, zoneAssignments,
           apportionment: zoneApportionment,
           volumeSiScale: volumeScaleByModelId.get(modelId) ?? 1,
           toGlobalId: (expressId: number) => toGlobalId(modelId, expressId),
+          getWorldPosition: makeWorldPositionGetter(model.ifcDataStore, model.geometryResult ?? geometryResult, renderFrame, (id) => toGlobalId(modelId, id)),
         };
         pairs.push({ modelId, provider: createListDataProvider(model.ifcDataStore, model.name, zoneContext), store: model.ifcDataStore });
       }
@@ -133,11 +132,12 @@ export function ListPanel({ onClose }: ListPanelProps) {
         apportionment: zoneApportionment,
         volumeSiScale: volumeScaleByModelId.get('default') ?? 1,
         toGlobalId: (expressId: number) => toGlobalId('default', expressId),
+        getWorldPosition: makeWorldPositionGetter(ifcDataStore, geometryResult, renderFrame, (id) => toGlobalId('default', id)),
       };
       pairs.push({ modelId: 'default', provider: createListDataProvider(ifcDataStore, '', zoneContext), store: ifcDataStore });
     }
     return pairs;
-  }, [models, ifcDataStore, zoneSets, zoneAssignments, zoneApportionment, volumeScaleByModelId, toGlobalId]);
+  }, [models, ifcDataStore, geometryResult, renderFrame, zoneSets, zoneAssignments, zoneApportionment, volumeScaleByModelId, toGlobalId]);
 
   const allProviders = useMemo(() => modelProviderPairs.map((p) => p.provider), [modelProviderPairs]);
   const allStores = useMemo(() => modelProviderPairs.map((p) => p.store), [modelProviderPairs]);

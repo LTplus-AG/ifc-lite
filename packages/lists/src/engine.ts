@@ -12,6 +12,7 @@
 import type { PropertySet, Property, QuantitySet, Quantity } from '@ifc-lite/data';
 import { isWhollyNumeric, parsePropertyValue } from '@ifc-lite/encoding';
 import { compileNameMatcher } from './name-pattern.js';
+import { getWorldCoordinateValue, extractGeometryColumnValue } from './geometry-column.js';
 import type {
   ListDataProvider,
   ListDefinition,
@@ -372,12 +373,12 @@ function getConditionValue(
       return getPropertyValue(entityId, condition.psetName ?? '', condition.propertyName, provider);
     case 'quantity':
       return getQuantityValue(entityId, condition.psetName ?? '', condition.propertyName, provider);
-    case 'spatial':
-      return getSpatialValue(entityId, condition.propertyName, provider);
-    case 'model':
-      return provider.getModelName?.() || null;
+    case 'spatial': return getSpatialValue(entityId, condition.propertyName, provider);
+    case 'model': return provider.getModelName?.() || null;
     case 'zone':
       return getZoneValue(entityId, condition.psetName ?? '', condition.propertyName, provider);
+    case 'geometry':
+      return getWorldCoordinateValue(entityId, condition.propertyName, provider);
     default:
       return null;
   }
@@ -594,17 +595,16 @@ function extractColumnValues(
         values[i] = codes.length > 0 ? uniqueJoin(codes) : null;
         break;
       }
-      case 'spatial':
-        values[i] = getSpatialValue(entityId, col.propertyName, provider);
-        break;
-      case 'model':
-        values[i] = provider.getModelName?.() || null;
-        break;
+      case 'spatial': values[i] = getSpatialValue(entityId, col.propertyName, provider); break;
+      case 'model': values[i] = provider.getModelName?.() || null; break;
       case 'zone':
         values[i] = getZoneValue(entityId, col.psetName ?? '', col.propertyName, provider);
         if (isZoneVolumeMode(col.propertyName) && columnMeta[i].quantityType === undefined) {
           columnMeta[i].quantityType = VOLUME_QUANTITY_TYPE;
         }
+        break;
+      case 'geometry':
+        values[i] = extractGeometryColumnValue(entityId, col.propertyName, provider, columnMeta[i]);
         break;
       default:
         values[i] = null;

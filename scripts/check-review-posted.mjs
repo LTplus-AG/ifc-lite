@@ -48,6 +48,10 @@
  *
  *     <!-- ifc-lite-review sha=<40-hex> verdict=clean|findings|nothing-to-review count=<n> -->
  *
+ *     An optional trailing ` omitted=<n>` (present only when n > 0) records how
+ *     many changed files were too large to fit the model prompt and were NOT
+ *     reviewed (#3679). The verdict then covers only the files that were.
+ *
  * THE CONTRACT THIS IMPLIES, and it is the load-bearing half: THE REVIEWER MUST
  * POST ON EVERY RUN, INCLUDING WHEN IT FINDS NOTHING. A reviewer that stays
  * silent when clean makes "reviewed and found nothing" byte-identical to "never
@@ -141,7 +145,7 @@ const PER_PAGE = 100;
  * both ends and tolerant of surrounding whitespace only -- a loose pattern here
  * would let a contributor hand-write a passing marker into a PR comment.
  */
-export const MARKER_RE = /<!--\s*ifc-lite-review\s+sha=([0-9a-f]{40})\s+verdict=(clean|findings|nothing-to-review)\s+count=(\d+)\s*-->/;
+export const MARKER_RE = /<!--\s*ifc-lite-review\s+sha=([0-9a-f]{40})\s+verdict=(clean|findings|nothing-to-review)\s+count=(\d+)(?:\s+omitted=(\d+))?\s*-->/;
 
 /** Block the runner without a dependency. This job's whole purpose is to wait. */
 function sleepSync(ms) {
@@ -367,7 +371,7 @@ export function evaluate({ comments, cfg, headSha }) {
   let sawUnparseable = false;
   for (const c of mine) {
     const m = MARKER_RE.exec(c.body);
-    if (m) markers.push({ sha: m[1], verdict: m[2], count: Number(m[3]) });
+    if (m) markers.push({ sha: m[1], verdict: m[2], count: Number(m[3]), omitted: m[4] ? Number(m[4]) : 0 });
     // Only an ATTEMPTED marker counts as malformed: an HTML comment carrying the
     // token but not parsing. A prose mention of the token is not a broken marker
     // writer, and the two have different remedies -- "fix the writer" versus
@@ -386,7 +390,8 @@ export function evaluate({ comments, cfg, headSha }) {
       '   REMEDY: ' +
         (sawUnparseable
           ? 'fix the reviewer\'s marker writer; the expected form is ' +
-            '`<!-- ifc-lite-review sha=<40-hex> verdict=clean|findings|nothing-to-review count=<n> -->`.'
+            '`<!-- ifc-lite-review sha=<40-hex> verdict=clean|findings|nothing-to-review count=<n>' +
+            '[ omitted=<n>] -->`.'
           : 're-run the review job.'),
     );
     return { ok: false, covered: false, verdict: sawUnparseable ? 'MARKER_MALFORMED' : 'NOT_POSTED', lines };
@@ -469,6 +474,16 @@ export function evaluate({ comments, cfg, headSha }) {
     '   It proves nothing about whether the review was any good; precision is a separate',
     '   instrument.',
   );
+  // ABSENCE STAYS VISIBLE AT THIS SURFACE TOO. The marker's `omitted` count is
+  // how a degraded review (#3679) says which part of the diff nothing vouches
+  // for; swallowing it here would let a partial review read as a full one.
+  if (match.omitted > 0) {
+    lines.push(
+      `   ⚠️ PARTIAL: ${match.omitted} changed file(s) were too large to fit the model prompt and were ` +
+        'NOT reviewed (#3679). The review comment names them; the verdict above covers only the files ' +
+        'that were sent.',
+    );
+  }
   // `ok` AND `covered` ARE DIFFERENT QUESTIONS, and conflating them was a hole.
   // `ok` is "should this check go red"; `covered` is "has this head been REVIEWED",
   // which is what `review-posted.yml` turns into the `llm-reviewed` label and

@@ -346,9 +346,86 @@ export function fingerprint(path, line, body) {
   return createHash('sha256').update(`${path}\u0000${line}\u0000${body}`).digest('hex');
 }
 
+/**
+ * The files the review DID NOT read, dropped upstream to fit the model prompt
+ * (#3679). Read from the same findings.json the findings come from, because
+ * that file is the only artefact that crosses from the validator to this
+ * poster.
+ *
+ * REFUSES rather than defaults on a malformed shape: a partial review whose
+ * omission list is unreadable would post a marker byte-identical to a full
+ * review's, which is the absence-reads-as-success shape this lane exists to
+ * close. An ABSENT field is fine -- the bare-array findings shape and every
+ * findings.json written before #3679 mean "nothing was omitted", and treating
+ * that as an error would redden every legacy re-run.
+ *
+ * Each entry is also required to be already-defanged: validate-findings
+ * sanitises these paths before writing them, and a raw `<!--` or marker token
+ * here means the two files have drifted -- rendering it anyway would open the
+ * marker-forgery channel the sanitiser closes.
+ *
+ * @returns {string[]}
+ */
+export function readOmitted(path) {
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    // readFindings runs first on the same file and owns the diagnosis for an
+    // unreadable or unparseable one; reaching here without it throwing means a
+    // race rewrote the file mid-run, and its error text still fits.
+    throw new PostReviewError('NO_FINDINGS_FILE', `Cannot re-read \`${path}\` for the omitted-file list.`);
+  }
+  const omitted = Array.isArray(parsed) ? undefined : parsed?.omitted;
+  if (omitted === undefined) return [];
+  if (!Array.isArray(omitted) || omitted.some((p) => typeof p !== 'string' || p.trim() === '')) {
+    throw new PostReviewError(
+      'BAD_FINDINGS',
+      `\`omitted\` in \`${path}\` must be an array of non-empty strings when present. Defaulting to ` +
+        '"nothing omitted" would post a full-review marker over a partial review. REMEDY: fix ' +
+        'validate-findings, which writes this field.',
+    );
+  }
+  for (const p of omitted) {
+    if (/<!--|ifc-lite-review/i.test(p)) {
+      throw new PostReviewError(
+        'BAD_FINDINGS',
+        `An \`omitted\` entry in \`${path}\` carries an HTML comment opener or the marker token, which ` +
+          'validate-findings is required to defang before writing. Rendering it would let a PR-chosen ' +
+          'file path forge a review marker through our own identity. REMEDY: fix the sanitisation in ' +
+          'validate-findings.',
+      );
+    }
+  }
+  return omitted;
+}
+
 /** The marker the gate parses. Built in exactly one place; proved against the real gate by the harness. */
-export function marker(sha, verdict, count) {
-  return `<!-- ifc-lite-review sha=${sha} verdict=${verdict} count=${count} -->`;
+export function marker(sha, verdict, count, omitted = 0) {
+  // `omitted=` appears ONLY on a partial review: a full review's marker stays
+  // byte-identical to what every earlier version of the gate parses.
+  return `<!-- ifc-lite-review sha=${sha} verdict=${verdict} count=${count}${omitted > 0 ? ` omitted=${omitted}` : ''} -->`;
+}
+
+/** How many omitted paths the summary names before summarising the rest. */
+const MAX_OMITTED_LISTED = 20;
+
+/**
+ * The human half of the partial-review disclosure. The marker's `omitted=<n>`
+ * is the machine half; this is the part that tells the author WHICH files
+ * nobody read, so "reviewed" cannot quietly mean "reviewed some of it".
+ */
+function omittedSection(omitted) {
+  const shown = omitted.slice(0, MAX_OMITTED_LISTED);
+  const rest = omitted.length - shown.length;
+  return [
+    `⚠️ PARTIAL REVIEW: ${omitted.length} changed file(s) were too large to fit the model prompt and were NOT reviewed (#3679):`,
+    '',
+    ...shown.map((p) => `- \`${p}\``),
+    ...(rest > 0 ? [`- ...and ${rest} more (listed in the review job's log)`] : []),
+    '',
+    'Nothing vouches for those files. This verdict covers only the files that were reviewed.',
+  ];
 }
 
 /**
@@ -449,9 +526,14 @@ export function readCappedCount(path, shown) {
  * count is an observation and not a claim. Collapsing them into one number is
  * how the marker would quietly become a receipt for the model's own file again.
  */
-export function summaryBody({ sha, findings, count, judgedAway = 0, capped = 0 }) {
+export function summaryBody({ sha, findings, count, judgedAway = 0, capped = 0, omitted = [] }) {
   const short = sha.slice(0, 9);
   const n = findings.length;
+  // The partial-review block sits ABOVE the marker in both branches, and the
+  // marker carries `omitted=<n>` whenever it is non-empty, so a clean-but-
+  // partial run can never read as a silent clean -- on either the human or the
+  // machine surface. A full review renders byte-identically to before.
+  const partial = omitted.length > 0 ? ['', ...omittedSection(omitted)] : [];
   if (count === 0) {
     // Reachable only when `n` is 0 as well: `count >= n` is enforced one step
     // earlier, and the `n === 0 && count > 0` case is handled by the branch below.
@@ -471,13 +553,16 @@ export function summaryBody({ sha, findings, count, judgedAway = 0, capped = 0 }
           ]
         : [];
     return [
-      `### Claude review - no findings for \`${short}\``,
+      `### Claude review - no findings for \`${short}\`${omitted.length > 0 ? ' (partial)' : ''}`,
       '',
-      'Reviewed this diff and found nothing to flag.',
+      omitted.length > 0
+        ? 'Reviewed everything that fit the model prompt and found nothing to flag there.'
+        : 'Reviewed this diff and found nothing to flag.',
       ...judged,
+      ...partial,
       '',
       // No thumbs-down footer here on purpose: see STATED HOLES 6.
-      marker(sha, 'clean', 0),
+      marker(sha, 'clean', 0, omitted.length),
     ].join('\n');
   }
   if (n === 0) {
@@ -501,7 +586,7 @@ export function summaryBody({ sha, findings, count, judgedAway = 0, capped = 0 }
     ].join('\n');
   }
   return [
-    `### Claude review - ${n} finding${n === 1 ? '' : 's'} for \`${short}\``,
+    `### Claude review - ${n} finding${n === 1 ? '' : 's'} for \`${short}\`${omitted.length > 0 ? ' (partial)' : ''}`,
     '',
     ...findings.map((f, i) => indexLine(f, i + 1)),
     '',
@@ -520,6 +605,7 @@ export function summaryBody({ sha, findings, count, judgedAway = 0, capped = 0 }
             'these are addressed will surface them.',
         ]
       : []),
+    ...partial,
     '',
     // Honest about what happens next. The earlier wording said a reaction would
     // "log it as a false positive", and nothing logs anything: that is a note
@@ -528,7 +614,7 @@ export function summaryBody({ sha, findings, count, judgedAway = 0, capped = 0 }
     // says only what is true today.
     'React with 👎 on a finding you think is wrong. Reactions are read when this lane\'s precision is assessed.',
     '',
-    marker(sha, 'findings', count),
+    marker(sha, 'findings', count, omitted.length),
   ].join('\n');
 }
 
@@ -797,6 +883,7 @@ function main() {
   // Read BEFORE the first network call. A malformed findings file must refuse
   // with nothing posted, not halfway through the loop.
   const findings = readFindings(args.findings);
+  const omitted = readOmitted(args.findings);
 
   // ------------------------------------------------------------------ STEP 1
   const head = fetchHeadSha(args.repo, args.pr);
@@ -870,13 +957,17 @@ function main() {
       count: confirmed,
       judgedAway: readJudgedAway(args.findings),
       capped: readCappedCount(args.findings, findings.length),
+      omitted,
     }),
-    want: marker(args.sha, verdict, confirmed),
+    want: marker(args.sha, verdict, confirmed, omitted.length),
   });
 
   console.log(`Head: ${args.sha.slice(0, 9)}`);
   console.log(`Findings: ${findings.length} (posted ${posted}, already present ${skipped})`);
   console.log(`Confirmed on this head: ${confirmed}`);
+  if (omitted.length > 0) {
+    console.log(`PARTIAL: ${omitted.length} file(s) were never sent to the reviewer; the marker says so.`);
+  }
   console.log('');
   console.log(
     `✅ REVIEW_POSTED: wrote a ${verdict} marker for ${args.sha.slice(0, 9)} with count=${confirmed}, AFTER ` +

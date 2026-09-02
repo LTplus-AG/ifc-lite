@@ -104,6 +104,26 @@ const inline = (...cs) => ({
 
 // ============================================================ the core verdicts
 
+test('a marker carrying `omitted=N` parses, passes, and NAMES the partial (#3679)', () => {
+  // A degraded review posts `omitted=<n>` so a partial review can never read as
+  // a full one at this surface. Parsing it here is backward-compatible on
+  // purpose: the field is optional in MARKER_RE, so every pre-#3679 marker
+  // still parses (the test above this one is that proof).
+  const r = run(comments([REVIEWER, `Partial.\n<!-- ifc-lite-review sha=${SHA} verdict=clean count=0 omitted=3 -->`]));
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /REVIEW_POSTED/);
+  assert.match(r.out, /PARTIAL: 3 changed file\(s\)/);
+  assert.match(r.out, /NOT reviewed/);
+});
+
+test('a marker WITHOUT `omitted` prints no partial line', () => {
+  // The partial note must fire only when the marker claims an omission; on
+  // every full review it would be noise that trains readers to ignore it.
+  const r = run(comments([REVIEWER, `Full.\n${marker(SHA)}`]));
+  assert.equal(r.code, 0, r.out);
+  assert.doesNotMatch(r.out, /PARTIAL:/);
+});
+
 test('PASS: the expected reviewer posted a marker naming this head', () => {
   const r = run(comments([REVIEWER, `Looks fine.\n${marker(SHA)}`]));
   assert.equal(r.code, 0, r.out);

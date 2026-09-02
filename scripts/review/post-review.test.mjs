@@ -1153,3 +1153,92 @@ test('readCappedCount counts what the cap withheld, and never throws', () => {
   writeFileSync(join(TMP, 'capbad.json'), 'not json');
   assert.equal(readCappedCount(join(TMP, 'capbad.json'), 5), 0);
 });
+
+// ====================================== the partial-review disclosure (#3679)
+
+test('PARTIAL CLEAN: the marker carries omitted=N and the REAL gate reads posted AND partial', () => {
+  // The #3679 contract end to end: a review that could not read the whole diff
+  // must end with a marker that says so -- never a silent clean and never an
+  // unclearable red. `omitted` is what validate-findings copies out of the
+  // degraded review-input; the gate below is the REAL gate over exactly what
+  // this run posted.
+  const r = runPoster({
+    findingsRaw: JSON.stringify({ findings: [], omitted: ['packages/a/big.ts', 'packages/b/huge.ts'] }),
+  });
+  assert.equal(r.code, 0, r.out);
+  assert.equal(r.state.issueComments.length, 1);
+  const body = r.state.issueComments[0].body;
+  assert.match(body, new RegExp(`<!-- ifc-lite-review sha=${SHA} verdict=clean count=0 omitted=2 -->`));
+  assert.match(body, /PARTIAL REVIEW: 2 changed file/);
+  assert.match(body, /packages\/a\/big\.ts/);
+  assert.match(body, /packages\/b\/huge\.ts/);
+  assert.match(body, /Nothing vouches for those files/);
+  assert.doesNotMatch(body, /Reviewed this diff and found nothing to flag/, 'the full-review sentence would be a lie here');
+  const g = runGate(r.state);
+  assert.equal(g.code, 0, g.out);
+  assert.match(g.out, /REVIEW_POSTED/);
+  assert.match(g.out, /PARTIAL: 2 changed file\(s\)/);
+});
+
+test('PARTIAL FINDINGS: the disclosure and the findings coexist on one marker', () => {
+  const r = runPoster({
+    findingsRaw: JSON.stringify({ findings: [finding(1)], omitted: ['packages/a/big.ts'] }),
+  });
+  assert.equal(r.code, 0, r.out);
+  const body = r.state.issueComments[0].body;
+  assert.match(body, new RegExp(`<!-- ifc-lite-review sha=${SHA} verdict=findings count=1 omitted=1 -->`));
+  assert.match(body, /PARTIAL REVIEW: 1 changed file/);
+  const g = runGate(r.state);
+  assert.equal(g.code, 0, g.out);
+  assert.match(g.out, /findings verdict.*with 1 finding/);
+  assert.match(g.out, /PARTIAL: 1 changed file\(s\)/);
+});
+
+test('a FULL review still writes the marker BYTE-IDENTICAL to before #3679', () => {
+  // Backwards compatibility is a property, not a hope: `omitted=` appears only
+  // on a partial review, so every marker written for a fully-reviewed head
+  // parses under the gate exactly as it always has -- including gates checked
+  // out from branches that predate this change.
+  const r = runPoster({ findings: [] });
+  assert.equal(r.code, 0, r.out);
+  const body = r.state.issueComments[0].body;
+  assert.match(body, new RegExp(`<!-- ifc-lite-review sha=${SHA} verdict=clean count=0 -->`));
+  assert.doesNotMatch(body, /omitted=/);
+  assert.doesNotMatch(body, /PARTIAL/);
+});
+
+test('FAIL: a malformed `omitted` refuses with NO marker rather than defaulting to a full review', () => {
+  // Defaulting would post a marker byte-identical to a full review's over a
+  // review that was partial -- absence reading as success, in the one field
+  // whose whole job is to keep absence visible.
+  for (const omitted of ['nope', [''], [42], {}]) {
+    const r = runPoster({ findingsRaw: JSON.stringify({ findings: [], omitted }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /BAD_FINDINGS/);
+    assertNoMarker(r.state, 'a refused omitted list must leave the PR marker-less');
+  }
+});
+
+test('FAIL: an undefanged `omitted` entry refuses -- the sanitiser lives upstream and is REQUIRED', () => {
+  // validate-findings defangs these paths before writing them. An entry that
+  // still carries `<!--` or the marker token means the two files drifted, and
+  // rendering it would hand a PR-chosen file path our posting identity.
+  for (const evil of ['a<!--b.ts', `x-ifc-lite-review-y.ts`]) {
+    const r = runPoster({ findingsRaw: JSON.stringify({ findings: [], omitted: [evil] }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /BAD_FINDINGS/);
+    assertNoMarker(r.state, 'a forged omitted entry must never reach the PR');
+  }
+});
+
+test('a LONG omitted list is capped in prose but exact in the marker', () => {
+  const omitted = Array.from({ length: 25 }, (_, i) => `packages/a/f${i}.ts`);
+  const r = runPoster({ findingsRaw: JSON.stringify({ findings: [], omitted }) });
+  assert.equal(r.code, 0, r.out);
+  const body = r.state.issueComments[0].body;
+  assert.match(body, /omitted=25 -->/);
+  assert.match(body, /and 5 more/);
+  const g = runGate(r.state);
+  assert.equal(g.code, 0, g.out);
+  assert.match(g.out, /PARTIAL: 25 changed file\(s\)/);
+});

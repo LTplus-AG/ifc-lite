@@ -18,7 +18,16 @@ import { mkdtempSync, writeFileSync, readFileSync , readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { addedLineRanges, newFileLines, buildInput, isExcluded, MAX_PATCH_BYTES } from './build-review-input.mjs';
+import {
+  addedLineRanges,
+  newFileLines,
+  buildInput,
+  isExcluded,
+  MAX_PATCH_BYTES,
+  OMITTED_FOR_PROMPT_REASON,
+} from './build-review-input.mjs';
+import { buildPack, MAX_PROMPT_BYTES } from './build-context-pack.mjs';
+import { buildPrompt } from './run-reviewer.mjs';
 import { pageAll as pageFiles } from '../check-review-posted.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -310,4 +319,138 @@ test('the lane checks out FULL HISTORY, or the context pack is silently empty', 
       i = yml.indexOf('actions/checkout', i + 1);
     }
   }
+});
+
+// =========================================== degrade to fit the model prompt (#3679)
+
+/**
+ * A file row whose patch is EXACTLY `bytes` bytes. The 20-byte prefix is one
+ * hunk header, one context line and the `+` marker, so the padding is a single
+ * added line -- the shape a large generated-ish source diff actually has.
+ */
+const sizedRow = (name, bytes) => ({
+  filename: name,
+  status: 'modified',
+  patch: `@@ -1,1 +1,2 @@\n a\n+${'x'.repeat(bytes - 20)}`,
+});
+
+test('MEASURED (#3679): a diff AT the patch cap becomes a REAL prompt under MAX_PROMPT_BYTES', () => {
+  // The defect, measured on PR #3668: MAX_PATCH_BYTES (600 KB) is bigger than
+  // the prompt the model accepts (a 421,355-byte prompt passed; 580,241 failed
+  // MODEL_ERROR), and run-reviewer has no path from MODEL_ERROR to a marker --
+  // an unclearable red. So this drives the REAL pipeline exactly as main() and
+  // the workflow do -- buildInput, then buildPack, then buildPrompt with the
+  // shipped rubric -- at the largest diff the lane accepts, and measures the
+  // artefact. The arithmetic version of this claim has been true by
+  // construction twice in this file's history; only the assembled prompt
+  // counts.
+  const rubric = readFileSync(join(HERE, 'rubric.md'), 'utf8');
+  // MIXED granularity, and the small files are the load-bearing half: with only
+  // 15 KB files the greedy fill stops ~6 KB short of whichever budget it is
+  // given, so a mutation that stops charging the per-row envelope (a ~28 KB
+  // error at this row count) still keeps the same file set and this test stays
+  // green -- measured, that exact mutation survived the coarse fixture. 1 KB
+  // files make the fill track the budget to within a kilobyte, so a budget
+  // inflated by an uncharged envelope overfills the prompt and the byte
+  // assertion below goes red.
+  const rows = [
+    ...Array.from({ length: 30 }, (_, i) => sizedRow(`packages/some/nested/module/file-${i}.ts`, 15 * 1024)),
+    ...Array.from({ length: 150 }, (_, i) => sizedRow(`packages/some/nested/module/small-${i}.ts`, 1_024)),
+  ];
+  const total = rows.reduce((n, r) => n + Buffer.byteLength(r.patch, 'utf8'), 0);
+  assert.equal(total, MAX_PATCH_BYTES, 'fixture precondition: exactly the acceptance bound');
+
+  const input = buildInput(rows, SHA);
+  const patchBytes = input.files.reduce((n, f) => n + Buffer.byteLength(f.patch, 'utf8'), 0);
+  input.contextPack = buildPack(input, {
+    baseRef: 'HEAD',
+    body: 'B'.repeat(20_000),
+    patchBytes,
+    exec: (_c, a) => (a[0] === 'show' ? 'y'.repeat(4_000) : ''),
+  });
+  const rendered = buildPrompt(rubric, input);
+  const bytes = Buffer.byteLength(rendered, 'utf8');
+  assert.ok(
+    bytes <= MAX_PROMPT_BYTES,
+    `the assembled prompt is ${bytes} bytes, over the ${MAX_PROMPT_BYTES} ceiling by ${bytes - MAX_PROMPT_BYTES}`,
+  );
+
+  // AND THE ABSENCE IS VISIBLE. A 600 KB diff cannot fully fit a 390 KB prompt,
+  // so files MUST have been dropped, every drop must be recorded under the
+  // constant reason, and the prompt itself must tell the model not to vouch for
+  // them. A degrade that fit by silently discarding would pass the byte
+  // assertion above and be the worse defect.
+  const omitted = input.unreviewable.filter((u) => u.reason === OMITTED_FOR_PROMPT_REASON);
+  assert.ok(omitted.length > 0, 'a diff at the cap cannot fully fit; something must be recorded as omitted');
+  assert.equal(input.files.length + omitted.length, rows.length, 'kept + omitted must account for every candidate');
+  const sent = new Set(input.files.map((f) => f.path));
+  for (const o of omitted) {
+    assert.ok(!sent.has(o.path), `${o.path} is both sent and omitted`);
+    assert.ok(rendered.includes(JSON.stringify(o.path)), `the prompt must name ${o.path} as NOT shown`);
+  }
+});
+
+test('a NORMAL diff is untouched by the fit: every file reviewed, nothing omitted', () => {
+  // The other direction, so an over-eager budget cannot ship: 200 KB across 20
+  // files is the fat end of this repository's ordinary PRs and must keep the
+  // exact behaviour the lane had before #3679.
+  const rows = Array.from({ length: 20 }, (_, i) => sizedRow(`packages/a/f${i}.ts`, 10_000));
+  const input = buildInput(rows, SHA);
+  assert.equal(input.files.length, 20);
+  assert.deepEqual(input.unreviewable, []);
+});
+
+test('the fit keeps the LARGEST files, deterministically', () => {
+  // Largest first because the largest files carry the most changed lines: for a
+  // fixed byte budget that ordering maximises how much of the diff is read. The
+  // small file is listed FIRST in the row order to prove selection is by size,
+  // not by position.
+  const input = buildInput(
+    [
+      sizedRow('packages/a/small.ts', 40_000),
+      sizedRow('packages/a/big.ts', 200_000),
+      sizedRow('packages/a/mid.ts', 150_000),
+    ],
+    SHA,
+  );
+  assert.deepEqual(input.files.map((f) => f.path), ['packages/a/big.ts', 'packages/a/mid.ts']);
+  assert.deepEqual(input.unreviewable, [{ path: 'packages/a/small.ts', reason: OMITTED_FOR_PROMPT_REASON }]);
+});
+
+test('one file too big for the budget does not block the files behind it', () => {
+  // Greedy, not prefix: a 380 KB file exceeds the whole diff budget on its own.
+  // Refusing the PR for it would re-create the unclearable red for the two
+  // ten-KB files that review fine.
+  const input = buildInput(
+    [
+      sizedRow('packages/a/giant.ts', 380_000),
+      sizedRow('packages/a/one.ts', 10_000),
+      sizedRow('packages/a/two.ts', 10_000),
+    ],
+    SHA,
+  );
+  assert.deepEqual(input.files.map((f) => f.path), ['packages/a/one.ts', 'packages/a/two.ts']);
+  assert.deepEqual(input.unreviewable, [{ path: 'packages/a/giant.ts', reason: OMITTED_FOR_PROMPT_REASON }]);
+});
+
+test('NOTHING fits: a single oversized file refuses REVIEW_TOO_LARGE, never an empty review', () => {
+  // files=[] here must NOT fall through to NO_FILES: the workflow turns
+  // NO_FILES into a `nothing-to-review` marker whose text claims every path is
+  // excluded generated content -- a lying marker over 380 KB of real source.
+  const r = run([sizedRow('packages/a/giant.ts', 380_000)]);
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /REVIEW_TOO_LARGE/);
+  assert.match(r.out, /No single file/);
+  assert.match(r.out, /split the PR/);
+});
+
+test('the PROCESS says PARTIAL loudly and keeps the emitted shape stable', () => {
+  const rows = Array.from({ length: 40 }, (_, i) => sizedRow(`packages/some/nested/module/file-${i}.ts`, 15 * 1024));
+  const r = run(rows);
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /::warning::.*PARTIAL REVIEW/, 'a silent degrade is the absence-reads-as-success shape');
+  assert.match(r.out, /NOT shown to the reviewer/);
+  // Same top-level shape as a full review: downstream readers (validate-findings
+  // readInput, the eval) must not need a second schema for the degraded case.
+  assert.deepEqual(Object.keys(r.result).sort(), ['excluded', 'files', 'headSha', 'unreviewable']);
 });

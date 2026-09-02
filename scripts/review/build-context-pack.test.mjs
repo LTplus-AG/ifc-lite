@@ -329,10 +329,11 @@ test('THE REAL PROMPT stays under the ceiling whenever the DIFF alone does', () 
   // of packBudgetFor and never touching buildPrompt -- so it could not see that
   // the rubric (~10.6 KB), a header per file, fences and prose were uncounted.
   //
-  // Scoped to diffs that fit, deliberately. MAX_PATCH_BYTES (600 KB) is larger
-  // than this ceiling, so a maximal diff overruns it whatever the pack does.
-  // That is pre-existing -- the lane sent diffs that size long before a pack
-  // existed -- and the pack's contract is only that it never makes things worse.
+  // Scoped to diffs that fit, deliberately. A diff too large for the ceiling no
+  // longer reaches buildPrompt whole -- build-review-input degrades it, keeping
+  // the largest files that fit and recording the rest (#3679) -- and that path
+  // has its own measured test in build-review-input.test.mjs. The pack's
+  // contract here is only that it never makes a fitting diff overrun.
   const rubric = readFileSync(join(HERE, 'rubric.md'), 'utf8');
   // A THOUSAND, not four hundred. At 400 the envelope reserve stops being
   // load-bearing -- the budget re-hits the MAX_PACK_BYTES clamp and the prompt
@@ -427,8 +428,9 @@ test('when the diff ALONE exceeds the ceiling the pack ADDS NOTHING to the promp
   assert.equal(pack.fileEvidence.length, 0);
   assert.equal(pack.body, null, 'not even the description, once the diff is already over');
 
-  // The prompt is over the ceiling either way -- that is the pre-existing patch
-  // cap, filed as #3679 -- but the pack must not be what put it there.
+  // An input this oversized can no longer come out of buildInput -- it degrades
+  // to the files that fit (#3679) -- but buildPrompt is callable without it, so
+  // the pack's own contract still holds: it must not be what put a prompt over.
   const bare = Buffer.byteLength(buildPrompt(rubric, input), 'utf8');
   const full = Buffer.byteLength(buildPrompt(rubric, withPack), 'utf8');
   assert.ok(full - bare < 200, `the pack added ${full - bare} bytes to an already-oversized prompt`);

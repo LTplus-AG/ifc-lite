@@ -58,11 +58,14 @@
  *                     of nothing is not a clean review, and the caller must
  *                     decide, not this script.
  *                     REMEDY: nothing to do; the lane should skip this PR.
- *   REVIEW_TOO_LARGE  Total patch text over the cap.
- *                     REMEDY: split the PR. Not chunked on purpose -- measured
- *                     here, 0 of 90 sampled PRs come near the cap, so chunking
- *                     would be machinery for a case that does not occur, and
- *                     silently reviewing half a diff is worse than refusing.
+ *   REVIEW_TOO_LARGE  Total patch text over MAX_PATCH_BYTES, or no single
+ *                     file's patch fits the model prompt on its own.
+ *                     REMEDY: split the PR. Below the cap the lane DEGRADES
+ *                     instead (see the omission note above `fitFilesToPrompt`):
+ *                     it reviews the largest files that fit the prompt and
+ *                     records the rest as unreviewable, so a near-cap PR gets a
+ *                     partial review with a marker instead of a MODEL_ERROR red
+ *                     that no re-run can clear (#3679).
  *   GH_*              Propagated from lib/gh.mjs. All fail closed.
  *
  * STATED HOLES:
@@ -79,7 +82,15 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
-import { buildPack, retrievalFailed, retrievalFailedMessage, SHALLOW_CHECKOUT_REMEDY } from './build-context-pack.mjs';
+import {
+  buildPack,
+  retrievalFailed,
+  retrievalFailedMessage,
+  SHALLOW_CHECKOUT_REMEDY,
+  MAX_PROMPT_BYTES,
+  PROMPT_BASE_OVERHEAD_BYTES,
+  PROMPT_PER_UNREVIEWABLE_BYTES,
+} from './build-context-pack.mjs';
 import { gh, GhError } from '../lib/gh.mjs';
 // The gate's pager, not a second copy of it. An earlier version here duplicated
 // it MINUS the one thing it exists for: the probe past a full final page. A PR
@@ -88,8 +99,28 @@ import { gh, GhError } from '../lib/gh.mjs';
 // comment says was moved rather than fixed.
 import { pageAll } from '../check-review-posted.mjs';
 
-/** 600 KB of patch text. The largest PR observed on this repo is ~427 KB. */
+/**
+ * 600 KB of patch text; the largest PR observed on this repo is ~427 KB. This is
+ * the REFUSAL bound, not the review bound: a diff under it that still cannot fit
+ * the model prompt (MAX_PROMPT_BYTES is smaller than this, measured at ~1.95
+ * bytes per token -- #3679) is DEGRADED by `fitFilesToPrompt` below, never
+ * refused. Do not lower this to "fix" a prompt overrun: that makes the lane
+ * refuse PRs it used to review, the trade already made and reverted once here.
+ */
 export const MAX_PATCH_BYTES = 600 * 1024;
+
+/**
+ * The reason string on an unreviewable row for a file DROPPED to fit the model
+ * prompt. A constant, compared with `===` downstream: validate-findings copies
+ * exactly these rows into findings.json so the posted marker can say the review
+ * was partial. A reworded copy would silently vanish from the marker, which is
+ * the absence-reads-as-success shape one layer down.
+ *
+ * Kept short on purpose: every unreviewable row is charged at
+ * PROMPT_PER_UNREVIEWABLE_BYTES plus its path, and a reason longer than the
+ * measured ~102-byte worst case would quietly break that charge.
+ */
+export const OMITTED_FOR_PROMPT_REASON = 'omitted: too large to fit the model prompt with the rest of this diff';
 
 const PER_PAGE = 100;
 const MAX_PAGES = 10;
@@ -249,13 +280,68 @@ export function addedLineRanges(patch) {
 }
 
 /**
+ * Which candidate files fit the model prompt, and which must be dropped.
+ *
+ * WHY THIS EXISTS (#3679). MAX_PATCH_BYTES (600 KB) is larger than the prompt
+ * the model actually accepts: source code meters at ~1.95 bytes per token, so a
+ * near-cap diff alone is ~300k input tokens. PR #3668's own review passed at a
+ * 421,355-byte prompt and failed MODEL_ERROR at 580,241 bytes -- and
+ * run-reviewer has NO path from MODEL_ERROR to a marker, so the job went red
+ * with nothing posted and nothing any re-run could clear. Refusing instead
+ * (lowering the cap) is the same trade already made and reverted once here.
+ * So the lane DEGRADES: it reviews the largest files that fit and RECORDS the
+ * rest, and the recorded rows travel all the way to the posted marker.
+ *
+ * LARGEST FIRST, because the largest files carry the most changed lines: for a
+ * fixed byte budget that ordering maximises how much of the diff is actually
+ * read. Greedy, so a file too big for the remaining room does not block a
+ * smaller one behind it. Ties break on path so two runs of one head agree.
+ *
+ * THE CHARGE IS DELIBERATELY THE WORST-CASE RATE. Every row -- kept or dropped,
+ * candidate or already-unreviewable -- is charged PROMPT_PER_UNREVIEWABLE_BYTES
+ * plus its path bytes. A kept file's real header costs less (~12 bytes plus the
+ * path against 120), but rows MOVE between the two sets while this runs, and
+ * charging each set its own rate would make the budget depend on the answer.
+ * The slack also covers the per-file joiner bytes buildPrompt spends. The pack
+ * needs no reservation: packBudgetFor already yields to the diff and reaches
+ * zero exactly on the PRs this function bites on.
+ *
+ * @param {{path: string, patch: string}[]} candidates
+ * @param {{path: string}[]} unreviewable rows already recorded for other reasons
+ * @returns {{ kept: typeof candidates, omitted: typeof candidates }}
+ */
+export function fitFilesToPrompt(candidates, unreviewable) {
+  const rowCharge = (path) => PROMPT_PER_UNREVIEWABLE_BYTES + Buffer.byteLength(path, 'utf8');
+  let budget = MAX_PROMPT_BYTES - PROMPT_BASE_OVERHEAD_BYTES;
+  for (const u of unreviewable) budget -= rowCharge(u.path);
+  for (const c of candidates) budget -= rowCharge(c.path);
+
+  const sized = candidates.map((c) => ({ c, bytes: Buffer.byteLength(c.patch, 'utf8') }));
+  if (sized.reduce((n, s) => n + s.bytes, 0) <= budget) return { kept: candidates, omitted: [] };
+
+  const bySize = [...sized].sort((a, b) => b.bytes - a.bytes || a.c.path.localeCompare(b.c.path));
+  const keep = new Set();
+  let spent = 0;
+  for (const { c, bytes } of bySize) {
+    if (spent + bytes <= budget) {
+      keep.add(c.path);
+      spent += bytes;
+    }
+  }
+  return {
+    kept: candidates.filter((c) => keep.has(c.path)),
+    omitted: candidates.filter((c) => !keep.has(c.path)),
+  };
+}
+
+/**
  * Pure over an already-fetched file list, so every branch is reachable in tests
  * without a network.
  *
  * @returns {{ headSha: string, files: object[], unreviewable: string[], excluded: string[] }}
  */
 export function buildInput(fileRows, headSha) {
-  const files = [];
+  const candidates = [];
   const unreviewable = [];
   const excluded = [];
   let bytes = 0;
@@ -283,16 +369,16 @@ export function buildInput(fileRows, headSha) {
     if (bytes > MAX_PATCH_BYTES) {
       throw new BuildInputError(
         'REVIEW_TOO_LARGE',
-        `Patch text exceeds ${MAX_PATCH_BYTES} bytes at \`${path}\`. Not chunked on purpose: 0 of ` +
-          '90 sampled PRs on this repository come near this, so chunking would be machinery for a ' +
-          'case that does not occur, and reviewing half a diff silently is worse than refusing. ' +
-          'REMEDY: split the PR.',
+        `Patch text exceeds ${MAX_PATCH_BYTES} bytes at \`${path}\`. Below this cap the lane degrades ` +
+          'to reviewing the largest files that fit the model prompt and marks the rest omitted; past ' +
+          'it, less than ~60% of the diff could be read, and a review that thin would mislead more ' +
+          'than it helps. REMEDY: split the PR.',
       );
     }
-    files.push({ path, patch: row.patch, addedLineRanges: addedLineRanges(row.patch) });
+    candidates.push({ path, patch: row.patch });
   }
 
-  if (files.length === 0) {
+  if (candidates.length === 0) {
     throw new BuildInputError(
       'NO_FILES',
       'No reviewable files after exclusions. A review of nothing is not a clean review, so this ' +
@@ -300,6 +386,22 @@ export function buildInput(fileRows, headSha) {
         'REMEDY: the lane should skip this PR; nothing here needs fixing.',
     );
   }
+
+  const { kept, omitted } = fitFilesToPrompt(candidates, unreviewable);
+  if (kept.length === 0) {
+    throw new BuildInputError(
+      'REVIEW_TOO_LARGE',
+      `No single file's patch fits the ${MAX_PROMPT_BYTES}-byte model prompt on its own, so there is ` +
+        'nothing to degrade to: a review that read none of the diff would be a clean verdict it never ' +
+        'earned. REMEDY: split the PR.',
+    );
+  }
+  // RECORDED, NEVER SILENTLY DROPPED -- the same rule as the no-patch rows
+  // above, and the reason is a CONSTANT so downstream can tell "dropped to fit
+  // the prompt" from "GitHub sent no patch" and put it in the marker.
+  for (const o of omitted) unreviewable.push({ path: o.path, reason: OMITTED_FOR_PROMPT_REASON });
+
+  const files = kept.map(({ path, patch }) => ({ path, patch, addedLineRanges: addedLineRanges(patch) }));
   return { headSha, files, unreviewable, excluded };
 }
 
@@ -350,6 +452,14 @@ function main() {
   }
 
   const input = buildInput(rows, args.sha);
+  const omittedRows = input.unreviewable.filter((u) => u.reason === OMITTED_FOR_PROMPT_REASON);
+  if (omittedRows.length > 0) {
+    console.log(
+      `::warning::review-input: PARTIAL REVIEW -- ${omittedRows.length} file(s) dropped to fit the ` +
+        'model prompt (#3679). They are recorded as unreviewable and the posted marker will name them; ' +
+        'nothing vouches for those files.',
+    );
+  }
   // THE CONTEXT PACK. Built here, in the harness, never by the model.
   //
   // Optional: without --base the lane behaves exactly as it did before, which

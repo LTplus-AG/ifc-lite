@@ -154,6 +154,10 @@ import { isMainEntry } from '../lib/is-main-entry.mjs';
 // from`) because this file also calls them itself, and re-exported below so
 // every existing import of them from this file keeps working unchanged.
 import { quotableLines, quoteAppearsIn, lineIsAdded, addedLinesMatching } from './quote-line-coupling.mjs';
+// One constant, imported rather than re-spelled: a reworded copy here would
+// stop matching the rows build-review-input writes, and the partial-review
+// marker would silently claim a full review (#3679).
+import { OMITTED_FOR_PROMPT_REASON } from './build-review-input.mjs';
 
 /**
  * The terminal sentinel the prompt requires as the LAST field. Its whole job is to
@@ -896,6 +900,27 @@ export function validate({ response, input, onWarn = null }) {
   };
 }
 
+/**
+ * The paths build-review-input DROPPED to fit the model prompt (#3679), ready
+ * for a posted comment body.
+ *
+ * Sanitised HERE, because this file is the boundary between model-or-PR
+ * controlled bytes and the poster: a git path may contain any byte but NUL and
+ * `/`, including `-->` and the literal marker token, and an unsanitised path in
+ * the summary would be a marker-forgery channel opened by the very feature
+ * whose job is to keep absence visible. `sanitizeLabel` defangs the token,
+ * strips HTML comments and caps the length; a path that sanitises to nothing
+ * still has to appear, so it is named as unprintable rather than dropped.
+ *
+ * @param {{path: string, reason?: string}[]} unreviewable
+ * @returns {string[]}
+ */
+export function omittedForPromptPaths(unreviewable) {
+  return unreviewable
+    .filter((u) => u.reason === OMITTED_FOR_PROMPT_REASON)
+    .map((u) => sanitizeLabel(u.path) || '(a path that sanitised to nothing)');
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args.raw) throw new ValidateFindingsError('NO_RAW', 'Pass `--raw <path>`, the model\'s raw output.');
@@ -916,6 +941,11 @@ function main() {
     headSha: input.headSha,
     verdict: result.verdict,
     findings: result.findings,
+    // What the review DID NOT read, dropped upstream to fit the model prompt
+    // (#3679). Carried here because findings.json is the only artefact the
+    // poster sees: without this row the marker for a partial review would be
+    // byte-identical to a full one.
+    omitted: omittedForPromptPaths(input.unreviewable),
     counts: result.counts,
     warnings: result.warnings,
   };
@@ -938,6 +968,12 @@ function main() {
     '   This proves the model READ the diff and that each surviving finding is ANCHORED to it. It ' +
       'proves nothing about whether the findings are CORRECT.',
   );
+  if (doc.omitted.length > 0) {
+    console.log(
+      `   PARTIAL: ${doc.omitted.length} file(s) were dropped upstream to fit the model prompt and were ` +
+        'NOT reviewed; the poster will say so on the PR.',
+    );
+  }
   process.exit(0);
 }
 

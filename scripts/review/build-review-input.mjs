@@ -17,10 +17,19 @@
  *
  * WHAT IT REFUSES TO INCLUDE:
  *
- *   - THE PR TITLE AND BODY. Both are attacker-controlled free text with no
- *     review value, and the title is the exact field the CVSS 9.4 exploit used.
- *     The diff has to be included because it is the subject; the title does not,
- *     so it is not.
+ *   - THE PR TITLE. Attacker-controlled free text, and the exact field the
+ *     CVSS 9.4 exploit used. The diff has to be included because it is the
+ *     subject; the title does not, so it is not.
+ *
+ *     THE BODY IS NOW INCLUDED, deliberately, and this paragraph used to say it
+ *     was refused. It is passed with `--body-file`, capped, fenced with a nonce,
+ *     and labelled in the prompt as a claim to check rather than an instruction
+ *     -- because "the description says X, the diff does Y" is a defect class the
+ *     rubric now names, and one that is invisible without it. The title is still
+ *     refused: it carries no such claim and buys nothing.
+ *
+ *     A safety comment that was true when written and quietly became false is
+ *     the thing that gets a later reader to skip the guard it describes.
  *   - GENERATED AND VENDORED FILES. Measured on this repo, excluding them moves
  *     the mean diff by about 5%, so this is not a cost lever -- it is an
  *     attention lever. A lockfile in the prompt is 40k tokens of noise competing
@@ -70,7 +79,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
-import { buildPack } from './build-context-pack.mjs';
+import { buildPack, patchBudgetFor } from './build-context-pack.mjs';
 import { gh, GhError } from '../lib/gh.mjs';
 // The gate's pager, not a second copy of it. An earlier version here duplicated
 // it MINUS the one thing it exists for: the probe past a full final page. A PR
@@ -265,10 +274,17 @@ export function buildInput(fileRows, headSha) {
       continue;
     }
     bytes += Buffer.byteLength(row.patch, 'utf8');
-    if (bytes > MAX_PATCH_BYTES) {
+    // AGAINST THE SAME CEILING THE PACK SPENDS FROM. `MAX_PATCH_BYTES` was the
+    // documented bound on what reaches the model; adding a 160 KB pack beside it
+    // moved the real bound to 760 KB without anything saying so -- past a 200k
+    // token window at this repo's measured bytes-per-token, whose failure mode is
+    // a MODEL_ERROR on a large PR the lane used to review, with no path from there
+    // to a marker.
+    const patchBudget = patchBudgetFor(MAX_PATCH_BYTES);
+    if (bytes > patchBudget) {
       throw new BuildInputError(
         'REVIEW_TOO_LARGE',
-        `Patch text exceeds ${MAX_PATCH_BYTES} bytes at \`${path}\`. Not chunked on purpose: 0 of ` +
+        `Patch text exceeds ${patchBudget} bytes at \`${path}\`. Not chunked on purpose: 0 of ` +
           '90 sampled PRs on this repository come near this, so chunking would be machinery for a ' +
           'case that does not occur, and reviewing half a diff silently is worse than refusing. ' +
           'REMEDY: split the PR.',
@@ -356,6 +372,27 @@ function main() {
           (p2.body ? ', description included' : '') +
           (p2.truncated.length ? `, omitted for size: ${p2.truncated.join('; ')}` : ''),
       );
+      // AN EMPTY PACK IS A FAULT REPORT, NOT A QUIET ZERO. `0 sibling excerpt(s),
+      // 0 file(s)` is what a PR with no siblings logs AND what a shallow checkout
+      // logs -- and the shallow checkout is what production had, so the pack was
+      // empty on every pull request while this line read perfectly normal. `git
+      // show` and `git grep` against a sha that is not in the object database exit
+      // 128, and both call sites catch and return nothing.
+      //
+      // File evidence is the discriminator: siblings can legitimately be zero (a PR
+      // of genuinely new code), but every reviewable PR has at least one changed
+      // file whose content `git show <headSha>:<path>` can return. Zero of those
+      // means the refs are missing, not that the repository is empty.
+      if (p2.fileEvidence.length === 0 && input.files.length > 0) {
+        console.log(
+          '::warning::context-pack: NO file evidence was retrievable for any of the ' +
+            `${input.files.length} changed file(s). That is not an empty diff -- it means ` +
+            `\`git show ${String(input.headSha).slice(0, 9)}:<path>\` returned nothing, which on ` +
+            'CI almost always means the checkout is shallow (actions/checkout defaults to ' +
+            'fetch-depth: 1, and a pull_request event fetches only refs/pull/N/merge). ' +
+            'REMEDY: set fetch-depth: 0. The review continues from the diff alone.',
+        );
+      }
     } catch (err) {
       console.log(`context-pack: unavailable (${err?.message ?? 'unknown'}); reviewing from the diff alone`);
     }

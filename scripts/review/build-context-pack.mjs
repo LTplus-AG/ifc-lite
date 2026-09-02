@@ -49,6 +49,26 @@ export const BODY_RESERVE_BYTES = 8_000;
 
 /** Total pack budget. Truncation is recorded, never silent. */
 export const MAX_PACK_BYTES = 160_000;
+
+/** How many "omitted for size" notes the pack will list before summarising. */
+export const MAX_TRUNCATION_NOTES = 20;
+
+/**
+ * The pack is charged AGAINST the diff budget, not added on top of it.
+ *
+ * `build-review-input` caps patches at MAX_PATCH_BYTES (600 KB) and that number
+ * is the documented ceiling on what reaches the model. Adding a 160 KB pack
+ * beside it silently moved the real ceiling to 760 KB -- roughly 215k tokens at
+ * this repo's measured ~3.5 bytes per token, over a 200k window. The failure
+ * mode is a MODEL_ERROR on a large PR the lane used to review fine, and
+ * run-reviewer has no path from that to a marker.
+ *
+ * `patchBudgetFor` is what build-review-input uses instead of the bare constant,
+ * so the two cannot drift apart again.
+ */
+export function patchBudgetFor(maxPatchBytes) {
+  return Math.max(0, maxPatchBytes - MAX_PACK_BYTES);
+}
 /** A file longer than this is windowed around its hunks instead of sent whole. */
 export const MAX_WHOLE_FILE_LINES = 1_500;
 /** Lines of context either side of a hunk when windowing. */
@@ -198,6 +218,55 @@ export function searchKeys(patch, { path = '', max = 12 } = {}) {
  * the reviewer a biased sample of a common token and invite a confident wrong
  * claim about "the other site".
  */
+/**
+ * The most keys one `git grep` will carry. Keys are a few dozen bytes, so this
+ * is nowhere near ARG_MAX; it exists so a 1,000-file PR cannot assemble an
+ * unbounded command line.
+ */
+export const MAX_KEYS_PER_GREP = 200;
+
+/**
+ * Sites for MANY keys in ONE `git grep`.
+ *
+ * It used to be one subprocess per key. Measured on this pull request against a
+ * real base: 274 unique keys, 22.9 seconds, about 79 ms of process startup each.
+ * Key count scales with file count and `build-review-input` accepts up to 1,000
+ * files, so a large PR on a two-core runner would have walked into the job's
+ * 20-minute timeout -- failing the lane red, with no marker, on exactly the pull
+ * requests that most need reviewing. It was invisible because every grep was
+ * also failing in ten milliseconds against a shallow checkout.
+ *
+ * `git grep -e k1 -e k2 ...` returns lines matching ANY key, so each hit is
+ * attributed to the LONGEST key it contains. That is the same key the ranking
+ * would have preferred anyway: a long identifier is a claim about a specific
+ * function, a short one is not.
+ */
+export function siblingSitesBatch(keys, changedPaths, ref, { cwd = process.cwd(), exec = execFileSync, keep = 6 } = {}) {
+  const wanted = [...new Set(keys)].slice(0, MAX_KEYS_PER_GREP);
+  if (wanted.length === 0) return new Map();
+  const args = ['grep', '-n', '--fixed-strings', '--no-color', '-I'];
+  for (const k of wanted) args.push('-e', k);
+  args.push(ref);
+  let out;
+  try {
+    out = exec('git', args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  } catch {
+    return new Map();                // exit 1 means no matches, which is normal
+  }
+  // Longest first, so the first key found in a line is the strongest one there.
+  const byLength = [...wanted].sort((a, b) => b.length - a.length);
+  const perKey = new Map(wanted.map((k) => [k, []]));
+  for (const h of parseGrep(out, changedPaths)) {
+    const key = byLength.find((k) => h.text.includes(k));
+    if (key) perKey.get(key).push(h);
+  }
+  const out2 = new Map();
+  for (const [k, hits] of perKey) {
+    if (hits.length > 0) out2.set(k, rankHits(hits, changedPaths).slice(0, keep));
+  }
+  return out2;
+}
+
 export function siblingSites(key, changedPaths, ref, { cwd = process.cwd(), exec = execFileSync, keep = 6 } = {}) {
   // `git grep <pattern> <ref>` searches that COMMIT'S TREE. No working tree, no
   // checkout, no dependency on ripgrep being installed on the runner. It also
@@ -211,8 +280,12 @@ export function siblingSites(key, changedPaths, ref, { cwd = process.cwd(), exec
   } catch {
     return [];                       // exit 1 means no matches, which is normal
   }
+  return rankHits(parseGrep(out, changedPaths), changedPaths).slice(0, keep);
+}
+
+/** Hits from `git grep <ref>` output, minus the paths a sibling is never in. */
+function parseGrep(out, changedPaths) {
   const changed = new Set(changedPaths);
-  const changedBases = new Set([...changed].map((p) => p.split('/').pop()));
   const hits = [];
   for (const line of out.split('\n')) {
     // `git grep <ref>` prefixes every hit with `<ref>:`
@@ -229,6 +302,12 @@ export function siblingSites(key, changedPaths, ref, { cwd = process.cwd(), exec
     hits.push({ path, line: Number(num), text: text.trim().slice(0, 120) });
   }
 
+  return hits;
+}
+
+/** Rank by shape, never by rarity. */
+function rankHits(hits, changedPaths) {
+  const changedBases = new Set(changedPaths.map((p) => p.split('/').pop()));
   // RANK, DO NOT DISCARD. The first version dropped any key with more than
   // eight hits as "not distinctive", and that rule threw away the exact key
   // that finds the real #3609 sibling: `baseColorFactor` has 33 hits across 17
@@ -249,8 +328,7 @@ export function siblingSites(key, changedPaths, ref, { cwd = process.cwd(), exec
     if (/^(apps|rust)\//.test(h.path)) s += 5;
     return s;
   };
-  hits.sort((a, b) => score(b) - score(a) || a.path.localeCompare(b.path));
-  return hits.slice(0, keep);
+  return [...hits].sort((a, b) => score(b) - score(a) || a.path.localeCompare(b.path));
 }
 
 /**
@@ -304,23 +382,27 @@ export function buildPack(input, { baseRef, body = null, cwd = process.cwd(), ex
   // not order of value.
   const candidates = [];
   const seenKey = new Set();
+  // KEYS FIRST, THEN ONE GREP. Collecting every key before searching turns what
+  // was one subprocess per key -- 274 of them, 22.9 seconds, on this pull request
+  // alone -- into a single `git grep`.
   for (const f of input.files) {
     for (const key of searchKeys(f.patch, { path: f.path, max: 12 })) {
-      if (seenKey.has(key)) continue;
-      seenKey.add(key);
-      let hits = [];
-      try {
-        hits = siblingSites(key, changed, baseRef, { cwd, exec, keep: 6 });
-      } catch {
-        continue;
-      }
-      // EVERY key that hit this site is kept. De-duplicating here kept whichever
-      // key was found FIRST, and `rank` then scored the sibling on that key -- so
-      // a five-character token could claim a site and sink it below the cutoff
-      // while `resolveHighlightIds` matched the same line and was discarded. The
-      // site is collapsed after ranking instead, keeping its best-scoring key.
-      for (const h of hits) candidates.push({ ...h, key });
+      if (!seenKey.has(key)) seenKey.add(key);
     }
+  }
+  let byKey = new Map();
+  try {
+    byKey = siblingSitesBatch([...seenKey], changed, baseRef, { cwd, exec, keep: 6 });
+  } catch {
+    byKey = new Map();
+  }
+  // EVERY key that hit a site is kept here. De-duplicating during collection kept
+  // whichever key was found FIRST, and `rank` then scored the sibling on that key
+  // -- so a five-character token could claim a site and sink it below the cutoff
+  // while `resolveHighlightIds` matched the same line and was discarded. Sites
+  // are collapsed after ranking instead, keeping each one's best-scoring key.
+  for (const [key, hits] of byKey) {
+    for (const h of hits) candidates.push({ ...h, key });
   }
   // Three signals, learned from the five real second-site cases rather than
   // guessed. Ranked by how much each one moved the measurement:
@@ -398,5 +480,12 @@ export function buildPack(input, { baseRef, body = null, cwd = process.cwd(), ex
     if (trimmed.length < body.length) truncated.push('PR description');
   }
 
-  return { siblings, fileEvidence: evidence, body: packBody, truncated: [...new Set(truncated)] };
+  // CAPPED. `truncated` is rendered into the prompt but was never charged against
+  // the budget, and it grows precisely when the pack is already full: a 500-file
+  // PR whose evidence is all dropped adds one line per file, ~25 KB, to a pack
+  // whose whole contract is a 160 KB ceiling.
+  const notes = [...new Set(truncated)];
+  const shown = notes.slice(0, MAX_TRUNCATION_NOTES);
+  if (notes.length > shown.length) shown.push(`and ${notes.length - shown.length} more`);
+  return { siblings, fileEvidence: evidence, body: packBody, truncated: shown };
 }

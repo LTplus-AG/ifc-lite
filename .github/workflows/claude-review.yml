@@ -55,6 +55,16 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
+          # FULL HISTORY, or the context pack is silently empty on every PR.
+          # The default is depth 1, which on a pull_request event fetches only
+          # refs/pull/N/merge -- so neither base.sha nor head.sha is in the
+          # object database. `git grep <base.sha>` and `git show <head.sha>:path`
+          # then exit 128 with "unable to parse object", both callers catch and
+          # return nothing, and the pack contains zero siblings and zero file
+          # evidence while logging "0 sibling excerpt(s), 0 file(s)" -- exactly
+          # what a PR with genuinely no siblings logs. Reproduced in a real
+          # depth-1 clone.
+          fetch-depth: 0
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:

@@ -43,6 +43,11 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
+          # Same reason as the lane: the eval cases name real historical head
+          # shas, and a depth-1 clone has none of them, so every case's file
+          # evidence comes back empty and the score is of a pack that was never
+          # assembled.
+          fetch-depth: 0
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:

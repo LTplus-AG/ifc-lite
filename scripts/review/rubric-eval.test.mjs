@@ -425,7 +425,16 @@ test('the EVAL workflow asks for a context pack too', () => {
   // anything failing -- which is exactly what happened when the default was
   // removed and the only automated caller was not updated.
   const yml = readFileSync(join(HERE, '..', '..', '.github/workflows/rubric-eval.yml'), 'utf8');
-  const i = yml.indexOf('rubric-eval.mjs');
-  assert.notEqual(i, -1);
-  assert.match(yml.slice(i, i + 400), /--base /, 'the eval would silently score the diff-only baseline');
+  // Every invocation, not the first mention: see the same note in
+  // build-review-input.test.mjs.
+  const windows = [];
+  for (let i = yml.indexOf('rubric-eval.mjs'); i !== -1; i = yml.indexOf('rubric-eval.mjs', i + 1)) {
+    windows.push(yml.slice(i, i + 400));
+  }
+  assert.ok(windows.length > 0, 'the eval workflow must invoke rubric-eval');
+  const calls = windows.filter((w) => w.includes('--rubric '));
+  assert.ok(calls.length > 0, 'no window looks like an invocation (none carries --rubric)');
+  for (const call of calls) {
+    assert.match(call, /--base /, 'the eval would silently score the diff-only baseline');
+  }
 });

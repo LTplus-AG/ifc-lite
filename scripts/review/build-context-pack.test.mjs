@@ -13,7 +13,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { searchKeys, hunkLines, fileEvidence, MAX_WHOLE_FILE_LINES, buildPack, truncateUtf8, BODY_RESERVE_BYTES, MAX_PACK_BYTES } from './build-context-pack.mjs';
+import { searchKeys, hunkLines, fileEvidence, MAX_WHOLE_FILE_LINES, buildPack, truncateUtf8, BODY_RESERVE_BYTES, MAX_PACK_BYTES, siblingSitesBatch, MAX_KEYS_PER_GREP } from './build-context-pack.mjs';
 
 test('search keys come from REMOVED lines first, because the sibling still has them', () => {
   const patch = [
@@ -220,3 +220,48 @@ test('the body reserve is a CEILING as well as a floor', () => {
   assert.ok(pack.truncated.includes('PR description'));
 });
 
+
+test('siblingSitesBatch attributes each hit to the LONGEST key it contains', () => {
+  // One `git grep -e k1 -e k2 ...` returns lines matching ANY key, so the hit has
+  // to be attributed after the fact. Longest wins: a long identifier is a claim
+  // about a specific function, a five-character token is not. This replaces the
+  // per-key subprocess -- 274 of them, 22.9 seconds, on one real pull request.
+  const line = 'HEAD:packages/z/sibling.ts:42:  const cache = resolveHighlightIdentifiers(y);';
+  const byKey = siblingSitesBatch(['cache', 'resolveHighlightIdentifiers'], [], 'HEAD', { exec: () => line });
+  assert.deepEqual([...byKey.keys()], ['resolveHighlightIdentifiers']);
+  assert.equal(byKey.get('resolveHighlightIdentifiers')[0].path, 'packages/z/sibling.ts');
+});
+
+test('siblingSitesBatch runs ONE subprocess regardless of key count', () => {
+  let calls = 0;
+  siblingSitesBatch(Array.from({ length: 50 }, (_, i) => `identifier${i}`), [], 'HEAD', {
+    exec: () => {
+      calls += 1;
+      return '';
+    },
+  });
+  assert.equal(calls, 1, 'the whole point of batching');
+});
+
+test('siblingSitesBatch caps the key list so a huge PR cannot build an unbounded command line', () => {
+  let args = null;
+  siblingSitesBatch(Array.from({ length: MAX_KEYS_PER_GREP + 40 }, (_, i) => `identifier${i}`), [], 'HEAD', {
+    exec: (_cmd, a) => {
+      args = a;
+      return '';
+    },
+  });
+  assert.equal(args.filter((a) => a === '-e').length, MAX_KEYS_PER_GREP);
+});
+
+test('a grep that FAILS yields no siblings rather than throwing', () => {
+  // Exit 1 is "no matches" and is normal; exit 128 is a missing ref and is not,
+  // but neither may take down a review. The empty-pack warning in
+  // build-review-input is what makes the second case visible.
+  const byKey = siblingSitesBatch(['anything'], [], 'HEAD', {
+    exec: () => {
+      throw Object.assign(new Error('fatal: unable to parse object'), { status: 128 });
+    },
+  });
+  assert.equal(byKey.size, 0);
+});

@@ -236,9 +236,52 @@ test('newFileLines pins the kind contract, since the JSDoc now promises one', ()
  */
 test('the PRODUCTION lane asks build-review-input for a context pack', () => {
   const yml = readFileSync(join(HERE, '..', '..', '.github/workflows/claude-review.yml'), 'utf8');
-  const i = yml.indexOf('build-review-input.mjs');
-  assert.notEqual(i, -1, 'the lane must invoke build-review-input');
-  const call = yml.slice(i, i + 700);
-  assert.match(call, /--base /, 'without --base the lane builds no pack at all');
-  assert.match(call, /--body-file /, 'without --body-file the PR description never reaches the reviewer');
+  // SCANNED FOR AN INVOCATION, not anchored on the first mention. This worked
+  // only because the comment above the call happens to write the name without
+  // `.mjs`; adding the extension there would have made the test measure prose and
+  // go on passing. run-judge.test.mjs documents falling into the same trap twice,
+  // from both ends of the file.
+  const windows = [];
+  for (let i = yml.indexOf('build-review-input.mjs'); i !== -1; i = yml.indexOf('build-review-input.mjs', i + 1)) {
+    windows.push(yml.slice(i, i + 700));
+  }
+  assert.ok(windows.length > 0, 'the lane must invoke build-review-input');
+  const calls = windows.filter((w) => w.includes('--out '));
+  assert.ok(calls.length > 0, 'no window looks like an invocation (none carries --out)');
+  for (const call of calls) {
+    assert.match(call, /--base /, 'without --base the lane builds no pack at all');
+    assert.match(call, /--body-file /, 'without --body-file the PR description never reaches the reviewer');
+  }
+});
+
+test('the lane checks out FULL HISTORY, or the context pack is silently empty', () => {
+  // actions/checkout defaults to fetch-depth: 1, and on a pull_request event that
+  // fetches only refs/pull/N/merge -- so neither base.sha nor head.sha is in the
+  // object database. `git grep <base.sha>` and `git show <head.sha>:path` then
+  // exit 128 ("unable to parse object", reproduced in a real depth-1 clone), both
+  // callers catch and return nothing, and the pack holds zero siblings and zero
+  // file evidence while logging "0 sibling excerpt(s), 0 file(s)" -- exactly what
+  // a PR with genuinely no siblings logs.
+  //
+  // This was the THIRD way this feature was inert in production: the judge with
+  // no spawn, the lane with no --base, and a checkout with no history. Each
+  // failed soft; each looked healthy. Asserted statically because no unit test
+  // can see a missing YAML key, which is how all three survived.
+  for (const wf of ['.github/workflows/claude-review.yml', '.github/workflows/rubric-eval.yml']) {
+    const yml = readFileSync(join(HERE, '..', '..', wf), 'utf8');
+    // BOUNDED BY THE STEP, not by a character count. A 700-char window passed
+    // until the explanatory comment above `fetch-depth: 0` grew past it, at which
+    // point this guard went blind on the very file it exists for -- a fixed
+    // window measures whatever happens to be near, and comments move.
+    const i = yml.indexOf('actions/checkout');
+    assert.notEqual(i, -1, `${wf} must check out the repository`);
+    const rest = yml.slice(i);
+    const end = rest.search(/\n\s*- (uses|name):/);
+    const step = end === -1 ? rest : rest.slice(0, end);
+    assert.match(
+      step,
+      /fetch-depth: 0/,
+      `${wf}: without fetch-depth: 0 the context pack is empty on every run, and says nothing about it`,
+    );
+  }
 });

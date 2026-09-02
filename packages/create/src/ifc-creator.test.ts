@@ -336,14 +336,62 @@ describe('IfcCreator', () => {
     expect(result.content).toContain("'Qto_SlabBaseQuantities'");
 
     // IfcPhysicalSimpleQuantity subtypes (IfcQuantityArea/Volume/…) declare
-    // 5 attributes: Name, Description, Unit, <Value>, Formula. Formula is
-    // trailing-optional but STEP still requires an explicit `$` slot for
-    // it — a record with only 4 fields is one attribute short of what the
-    // schema declares (packages/data/src/ifc-schema/generated/entities-ifc4.ts).
+    // 5 attributes from IFC4 on: Name, Description, Unit, <Value>, Formula.
+    // Formula is trailing-optional but STEP still requires an explicit `$`
+    // slot for it — a record with only 4 fields is one attribute short of
+    // what the default IFC4 schema declares
+    // (packages/data/src/ifc-schema/generated/entities-ifc4.ts).
     const areaLine = result.content.split('\n').find(l => l.includes('IFCQUANTITYAREA('));
     const volumeLine = result.content.split('\n').find(l => l.includes('IFCQUANTITYVOLUME('));
     expect(areaLine).toMatch(/^#\d+=IFCQUANTITYAREA\('GrossArea',\$,\$,80\.,\$\);$/);
     expect(volumeLine).toMatch(/^#\d+=IFCQUANTITYVOLUME\('GrossVolume',\$,\$,24\.,\$\);$/);
+  });
+
+  it('attaches quantity sets in IFC2X3 without the Formula attribute', () => {
+    // entities-ifc2x3.ts declares only 4 attributes for IfcQuantityArea/
+    // Volume/…: Name, Description, Unit, <Value> — no Formula (added in
+    // IFC4). A creator targeting IFC2X3 must NOT write the trailing `$`
+    // the IFC4 branch needs, or the record has one attribute too many.
+    const creator = new IfcCreator({ Schema: 'IFC2X3' });
+    const storey = creator.addIfcBuildingStorey({ Name: 'GF', Elevation: 0 });
+    const slabId = creator.addIfcSlab(storey, {
+      Position: [0, 0, 0], Thickness: 0.3, Width: 10, Depth: 8,
+    });
+
+    creator.addIfcElementQuantity(slabId, {
+      Name: 'Qto_SlabBaseQuantities',
+      Quantities: [
+        { Name: 'GrossArea', Value: 80, Kind: 'IfcQuantityArea' },
+        { Name: 'GrossVolume', Value: 24, Kind: 'IfcQuantityVolume' },
+      ],
+    });
+
+    const result = creator.toIfc();
+    const areaLine = result.content.split('\n').find(l => l.includes('IFCQUANTITYAREA('));
+    const volumeLine = result.content.split('\n').find(l => l.includes('IFCQUANTITYVOLUME('));
+    expect(areaLine).toMatch(/^#\d+=IFCQUANTITYAREA\('GrossArea',\$,\$,80\.\);$/);
+    expect(volumeLine).toMatch(/^#\d+=IFCQUANTITYVOLUME\('GrossVolume',\$,\$,24\.\);$/);
+  });
+
+  it('drops the trailing IFC4-only attribute for IfcWall/Column/Beam/RelSequence in IFC2X3', () => {
+    // entities-ifc2x3.ts gives IfcWall/IfcColumn/IfcBeam 8 attributes (no
+    // PredefinedType) and IfcRelSequence 8 (no UserDefinedSequenceType) —
+    // all four gained one trailing attribute only from IFC4 on.
+    const creator = new IfcCreator({ Schema: 'IFC2X3' });
+    const storey = creator.addIfcBuildingStorey({ Name: 'GF', Elevation: 0 });
+    creator.addIfcWall(storey, { Start: [0, 0, 0], End: [5, 0, 0], Thickness: 0.2, Height: 3 });
+    creator.addIfcColumn(storey, { Position: [0, 0, 0], Width: 0.3, Depth: 0.3, Height: 3 });
+    creator.addIfcBeam(storey, { Start: [0, 0, 0], End: [3, 0, 0], Width: 0.2, Height: 0.4 });
+    const t1 = creator.addIfcTask({ Name: 'T1' });
+    const t2 = creator.addIfcTask({ Name: 'T2' });
+    creator.addIfcRelSequence(t1, t2, { UserDefinedSequenceType: 'custom' });
+
+    const result = creator.toIfc();
+    const find = (tag: string) => result.content.split('\n').find(l => l.includes(`${tag}(`));
+    expect(find('IFCWALL')).toMatch(/,\$\);$/);
+    expect(find('IFCCOLUMN')).toMatch(/,\$\);$/);
+    expect(find('IFCBEAM')).toMatch(/,\$\);$/);
+    expect(find('IFCRELSEQUENCE')).toMatch(/,\.FINISH_START\.\);$/);
   });
 
   it('attaches a simple material via IfcRelAssociatesMaterial', () => {

@@ -275,7 +275,7 @@ export class IfcCreator {
     const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
 
     this.line(wallId, 'IFCWALL',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},.STANDARD.`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag}${this.ifc4Only('.STANDARD.')}`);
 
     this.elementSolids.set(wallId, [solidId]);
     this.trackElement(storeyId, wallId);
@@ -390,7 +390,7 @@ export class IfcCreator {
     const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
 
     this.line(colId, 'IFCCOLUMN',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},.COLUMN.`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag}${this.ifc4Only('.COLUMN.')}`);
 
     this.elementSolids.set(colId, [solidId]);
     this.trackElement(storeyId, colId);
@@ -433,7 +433,7 @@ export class IfcCreator {
     const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
 
     this.line(beamId, 'IFCBEAM',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},.BEAM.`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag}${this.ifc4Only('.BEAM.')}`);
 
     this.elementSolids.set(beamId, [solidId]);
     this.trackElement(storeyId, beamId);
@@ -1234,7 +1234,7 @@ export class IfcCreator {
     const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
 
     this.line(colId, 'IFCCOLUMN',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},.COLUMN.`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag}${this.ifc4Only('.COLUMN.')}`);
 
     this.elementSolids.set(colId, [solidId]);
     this.trackElement(storeyId, colId);
@@ -1291,7 +1291,7 @@ export class IfcCreator {
     const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
 
     this.line(beamId, 'IFCBEAM',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},.BEAM.`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag}${this.ifc4Only('.BEAM.')}`);
 
     this.elementSolids.set(beamId, [solidId]);
     this.trackElement(storeyId, beamId);
@@ -1489,7 +1489,7 @@ export class IfcCreator {
     const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
 
     this.line(colId, 'IFCCOLUMN',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},.COLUMN.`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag}${this.ifc4Only('.COLUMN.')}`);
 
     this.elementSolids.set(colId, [solidId]);
     this.trackElement(storeyId, colId);
@@ -1545,7 +1545,7 @@ export class IfcCreator {
     const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
 
     this.line(beamId, 'IFCBEAM',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},.BEAM.`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag}${this.ifc4Only('.BEAM.')}`);
 
     this.elementSolids.set(beamId, [solidId]);
     this.trackElement(storeyId, beamId);
@@ -1590,9 +1590,8 @@ export class IfcCreator {
     for (const qty of qset.Quantities) {
       const qtyId = this.id();
       const valueField = this.quantityValueField(qty);
-      // Trailing Formula attribute needs an explicit `$`, not omission.
       this.line(qtyId, qty.Kind.toUpperCase(),
-        `'${esc(qty.Name)}',$,${valueField},$`);
+        `'${esc(qty.Name)}',$,${valueField}${this.ifc4Only('$')}`);
       qtyIds.push(qtyId);
     }
 
@@ -1798,7 +1797,7 @@ export class IfcCreator {
     }
 
     this.line(relId, 'IFCRELSEQUENCE',
-      `'${globalId}',#${this.ownerHistoryId},$,$,#${predecessorTaskId},#${successorTaskId},${lagRef},${seqType},${userDef}`);
+      `'${globalId}',#${this.ownerHistoryId},$,$,#${predecessorTaskId},#${successorTaskId},${lagRef},${seqType}${this.ifc4Only(userDef)}`);
     return relId;
   }
 
@@ -2732,6 +2731,7 @@ ENDSEC;
     return '$';
   }
 
+  private ifc4Only(v: string): string { return this.schema === 'IFC2X3' ? '' : `,${v}`; } // trailing IFC4/4X3-only attribute
   private quantityValueField(qty: QuantityDef): string {
     switch (qty.Kind) {
       case 'IfcQuantityLength':

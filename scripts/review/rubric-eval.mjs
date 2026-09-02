@@ -41,6 +41,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { buildPack, retrievalFailed, retrievalFailedMessage } from './build-context-pack.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CASE_DIR = join(HERE, 'eval-cases');
@@ -112,7 +113,7 @@ export function validatorReason(said) {
  *
  * @returns {{ hit: boolean, by: string|null }}
  */
-export function matches(expected, findings) {
+export function matches(expected, findings, body = null) {
   const sameFile = findings.filter((f) => f.path === expected.path);
   if (sameFile.length === 0) return { hit: false, by: null };
 
@@ -139,11 +140,27 @@ export function matches(expected, findings) {
     ['output', 'print', 'remed', 'shoul', 'becau', 'witho', 'nothi', 'canno', 'sayin', 'along',
      'happe', 'somet', 'chang', 'retur', 'value', 'metho', 'funct', 'callи'].map(stem),
   );
-  const terms = [...new Set((expected.what.match(/[A-Za-z_][A-Za-z0-9_]{5,}/g) || []).map(stem))]
-    .filter((t) => !GENERIC.has(t));
+  // WORDS THE PR BODY ALREADY SUPPLIES ARE NOT EVIDENCE EITHER, for exactly the
+  // reason `quote` is excluded above: the body is handed to the reviewer, so
+  // crediting it for repeating the body measures copying, not review. It matters
+  // on the one case whose defect IS a body/diff contradiction -- there the body
+  // supplied 6 of 13 expected terms, and two are enough to score, so a reviewer
+  // that paraphrased the description and never opened the file scored a hit.
+  // What survives is the vocabulary only the CODE can supply.
+  // ONE TOKENIZER. This expression appeared three times, differing only in the
+  // minimum length, and the relationship that makes the body exclusion sound --
+  // the body must be tokenized at least as permissively as the expected terms --
+  // was held by nothing but the lines being adjacent. Raising the body's minimum
+  // to 5 would have silently stopped the exclusion catching anything, with every
+  // test still green.
+  const tokens = (text, min) =>
+    new Set((String(text ?? '').match(new RegExp(`[A-Za-z_][A-Za-z0-9_]{${min - 1},}`, 'g')) || []).map(stem));
+
+  const fromBody = tokens(body, 5);
+  const terms = [...tokens(expected.what, 6)].filter((t) => !GENERIC.has(t) && !fromBody.has(t));
 
   for (const f of sameFile) {
-    const words = new Set((blobOf(f).match(/[A-Za-z_][A-Za-z0-9_]{4,}/g) || []).map(stem));
+    const words = tokens(blobOf(f), 5);
     const hits = terms.filter((t) => words.has(t));
     if (hits.length >= 2) return { hit: true, by: `${f.path}:${f.line} (${hits.slice(0, 3).join(', ')})` };
   }
@@ -158,9 +175,15 @@ export function score(cases) {
   let extra = 0;
   for (const c of cases) {
     lines.push(`  PR #${c.pr}: verdict=${c.verdict}, ${c.findings.length} finding(s)`);
-    for (const e of c.expected) {
+    // MATCHED ONCE. It used to be called here and again below with identical
+    // arguments, so threading the PR body through required editing both sites --
+    // and missing one would have been silent: `claimed` would have been built
+    // without the body exclusion, the EXTRA list would have quietly shrunk, and
+    // recall would have printed the same number either way.
+    const ms = c.expected.map((e) => matches(e, c.findings, c.body));
+    for (const [i, e] of c.expected.entries()) {
       total += 1;
-      const m = matches(e, c.findings);
+      const m = ms[i];
       if (m.hit) hits += 1;
       lines.push(`    ${m.hit ? '✅ FOUND   ' : '❌ MISSED  '} ${e.path}: ${e.what.slice(0, 88)}`);
       if (m.hit) lines.push(`               via ${m.by}`);
@@ -173,7 +196,7 @@ export function score(cases) {
     // that "the harness prints each one so a human decides" failed precisely
     // where it mattered.
     const claimed = new Set(
-      c.expected.map((e) => matches(e, c.findings).by).filter(Boolean).map((by) => by.split(' ')[0]),
+      ms.map((m) => m.by).filter(Boolean).map((by) => by.split(' ')[0]),
     );
     const others = c.findings.filter((f) => !claimed.has(`${f.path}:${f.line}`));
     extra += others.length;
@@ -211,6 +234,12 @@ function main() {
     // still runs as a genuine child process. Nothing is mocked, so a test can ask
     // what the harness DOES rather than what its source says.
     const caseDir = arg('--cases', CASE_DIR);
+  // EXPLICIT ONLY. This defaulted to HEAD, which silently turned the documented
+  // diff-only baseline into a context-enabled run -- the comment below said
+  // "without it the eval measures the old behaviour" while the code three lines
+  // up guaranteed it never could. A baseline you cannot reproduce is not a
+  // baseline. Pass `--base HEAD` to retrieve siblings from the current checkout.
+  const baseRef = arg('--base', null);
     const reviewer = arg('--reviewer', join(HERE, 'run-reviewer.mjs'));
 
     const files = readdirSync(caseDir).filter((f) => f.endsWith('.json')).sort();
@@ -219,7 +248,38 @@ function main() {
     const results = [];
     for (const f of files) {
       const c = JSON.parse(readFileSync(join(caseDir, f), 'utf8'));
-      const inputPath = join(tmp, `${f}.input.json`);
+      // THE CONTEXT PACK, built per case so the eval measures the pipeline the
+    // lane actually runs rather than a diff-only ghost of it. `--base` names
+    // the tree siblings are retrieved from; without it the eval measures the
+    // old behaviour, which is exactly what the baseline run did.
+    if (baseRef) {
+      try {
+        // `body` MATTERS, and its absence was not merely an untested prompt
+        // section. pr-3389's expected defect IS "the PR body describes a null
+        // sentinel meaning cannot answer yet, but the helper treats null and
+        // empty array identically" -- detectable only by comparing the
+        // description against the diff. With no body that case was unscoreable:
+        // a permanent miss no rubric change could ever convert, quietly
+        // depressing recall and inviting a rubric "fix" for a harness defect.
+        const patchBytes = c.input.files.reduce((n, ff) => n + Buffer.byteLength(ff.patch, 'utf8'), 0);
+        c.input.contextPack = buildPack(c.input, { baseRef, body: c.body ?? null, patchBytes });
+        // The eval scores a pack the same way the lane builds one, so it has to be
+        // able to say when no pack was built. Its own workflow comment describes this
+        // exact symptom -- a shallow checkout leaves every case's file evidence empty
+        // -- and without this the harness prints a recall number for a pack that was
+        // never assembled, which is how the 7% -> 20% figure came to be wrong twice.
+        if (retrievalFailed(c.input.contextPack, c.input.files.length)) {
+          console.log(
+            `  ${f}: ${retrievalFailedMessage(c.input.headSha, c.input.files.length)} Expected here: ` +
+              'every eval case names a squash-merged PR head, which no clone depth reaches. Siblings ' +
+              'and the description are still scored; whole-file evidence is not.',
+          );
+        }
+      } catch (err) {
+        console.log(`  ${f}: context pack unavailable (${err?.message ?? 'unknown'})`);
+      }
+    }
+    const inputPath = join(tmp, `${f}.input.json`);
       const outPath = join(tmp, `${f}.out.txt`);
       writeFileSync(inputPath, JSON.stringify(c.input));
       const r = spawnSync(
@@ -279,7 +339,12 @@ function main() {
         // NOT `verdict: 'findings'`. On RAW_EMPTY the model said nothing at all,
         // and printing a verdict it never gave is the same fabrication
         // validate-findings refuses to make. `null` is what actually happened.
-        results.push({ pr: c.pr, expected: c.expected, verdict: null, findings: [] });
+        //
+        // `body` IS WHAT THE REVIEWER SAW, not the fixture's. The pack truncates
+        // the description, and a diff-only run carries none at all -- scoring
+        // against text the reviewer never received excludes vocabulary it could
+        // not have copied, and that reads as a false miss.
+        results.push({ pr: c.pr, body: c.input.contextPack?.body ?? null, expected: c.expected, verdict: null, findings: [] });
         continue;
       }
       // PARTIAL losses exit 0. DROPPED is one finding refused; CAPPED is the
@@ -289,7 +354,9 @@ function main() {
       const lost = said.split('\n').filter((l) => /DROPPED|CAPPED/.test(l));
       if (lost.length) console.log(lost.map((l) => `    ${f}: ${l.trim()}`).join('\n'));
       const parsed = JSON.parse(readFileSync(findingsPath, 'utf8'));
-      results.push({ pr: c.pr, expected: c.expected, verdict: parsed.verdict, findings: parsed.findings ?? [] });
+      // Same rule as the failure record above: the exclusion is keyed to what
+      // the reviewer RECEIVED, `c.input.contextPack?.body`, never the fixture.
+      results.push({ pr: c.pr, body: c.input.contextPack?.body ?? null, expected: c.expected, verdict: parsed.verdict, findings: parsed.findings ?? [] });
     }
 
     const s = score(results);

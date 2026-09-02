@@ -1,0 +1,53 @@
+{
+  "$comment": "NEGATIVE CASE. Reviewed on 2026-09-01 and found clean by an adversarial pass prompted with this repo's defect families, then merged. `expected` is empty on purpose: every finding here counts as EXTRA, which is how a rubric change that buys recall by inventing findings is caught. A negative set is what makes the EXTRA column mean anything.",
+  "pr": 3619,
+  "negative": true,
+  "input": {
+    "headSha": "1e2eff4d0733db28d625ae0156963ca974c0c711",
+    "files": [
+      {
+        "path": ".changeset/ids-attribute-facet-objecttype-predefinedtype-shadow.md",
+        "patch": "@@ -0,0 +1,9 @@\n+---\n+'@ifc-lite/ids': patch\n+---\n+\n+Fix an IDS `<attribute><name>ObjectType</name></attribute>` requirement reading the wrong IFC attribute when the entity's `PredefinedType` is a concrete, non-`USERDEFINED`, non-`NOTDEFINED` enum token.\n+\n+`checkAttributeFacet`'s `ObjectType` lookup went through `accessor.getObjectType`, the helper `matchPredefinedType` uses to resolve the USERDEFINED-name fallback (its own doc: \"entity object type (predefined type)\"). For an entity like `IfcWall` with `PredefinedType = STANDARD` and its own, unrelated `ObjectType = 'Steel I-Beam 200x100'`, that helper short-circuits on the `PredefinedType` enum and never looks at the entity's actual `ObjectType` attribute \u2014 so a required-and-present `ObjectType` value requirement was checked against `'STANDARD'` instead, and failed. The bridge's generic `getAttribute('ObjectType', \u2026)` had the same conflation.\n+\n+`ObjectType` now routes through the plain attribute path (the same one `Tag`, `LongName`, and every other named attribute uses), which reads the entity's real attribute value; `PredefinedType` requirement checks are unaffected. Same root cause as #2316 (`getAncestors` sourcing a partOf parent's predefined-type match from `getObjectType` instead of the raw enum), here on the plain attribute-facet path instead of `partOf`.",
+        "addedLineRanges": [
+          [
+            1,
+            9
+          ]
+        ]
+      },
+      {
+        "path": "packages/ids/src/bridge/attribute-facet-objecttype-shadow.test.ts",
+        "patch": "@@ -0,0 +1,90 @@\n+/* This Source Code Form is subject to the terms of the Mozilla Public\n+ * License, v. 2.0. If a copy of the MPL was not distributed with this\n+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */\n+\n+/**\n+ * IDS `<attribute><name>ObjectType</name></attribute>` requirement,\n+ * checked against a REAL parsed store (not the mock accessor\n+ * `facets.test.ts` uses \u2014 that mock hands `ObjectType` to the checker\n+ * through a dedicated `objectType` field, so it cannot see a bug in how\n+ * the bridge POPULATES that value from the raw entity).\n+ *\n+ * `checkAttributeFacet`'s `getAttributeValue('objecttype', \u2026)` reads\n+ * `accessor.getObjectType(expressId)`, which is `resolveObjectType` \u2014\n+ * a helper built for the *PredefinedType* USERDEFINED-fallback lookup\n+ * (`matchPredefinedType`'s `userDefinedType` argument), documented in\n+ * `IFCDataAccessor.getObjectType` as \"entity object type (predefined\n+ * type)\". For an entity whose raw `PredefinedType` is a concrete,\n+ * non-`USERDEFINED`, non-`NOTDEFINED` enum token (e.g. `STANDARD`),\n+ * `resolveObjectType` returns that enum token immediately \u2014 it never\n+ * looks at the entity's actual `ObjectType` *attribute* at all. So an\n+ * IDS spec checking the real `ObjectType` attribute value on such an\n+ * entity is silently checked against the `PredefinedType` enum instead\n+ * \u2014 two distinct IFC attributes conflated into one, exactly the shape\n+ * `partof-predefined-type.test.ts` already pinned for `getAncestors`\n+ * (#2316) but here for the plain attribute-facet path.\n+ */\n+\n+import { describe, it, expect } from 'vitest';\n+import { StepTokenizer, ColumnarParser } from '@ifc-lite/parser';\n+import type { EntityRef } from '@ifc-lite/parser';\n+import { createDataAccessor } from './data-accessor.js';\n+import { checkAttributeFacet } from '../facets/attribute-facet.js';\n+import type { IDSAttributeFacet, IDSSimpleValue } from '../types.js';\n+\n+const sv = (value: string): IDSSimpleValue => ({ type: 'simpleValue', value });\n+\n+async function parse(ifc: string) {\n+  const source = new TextEncoder().encode(ifc);\n+  const tokenizer = new StepTokenizer(source);\n+  const entityRefs: EntityRef[] = [];\n+  for (const ref of tokenizer.scanEntitiesFast()) {\n+    entityRefs.push({\n+      expressId: ref.expressId,\n+      type: ref.type,\n+      byteOffset: ref.offset,\n+      byteLength: ref.length,\n+      lineNumber: ref.line,\n+    });\n+  }\n+  const parser = new ColumnarParser();\n+  return parser.parseLite(source.buffer.slice(0) as ArrayBuffer, entityRefs, {});\n+}\n+\n+// A wall with a concrete PredefinedType enum (STANDARD \u2014 not USERDEFINED,\n+// not NOTDEFINED) AND its own, unrelated ObjectType free-text value.\n+// Attribute order (IFC4 IfcWall): GlobalId, OwnerHistory, Name,\n+// Description, ObjectType, ObjectPlacement, Representation, Tag,\n+// PredefinedType.\n+const IFC = `#100=IFCWALL('0Wall00000000000000001',$,'Wall_001',$,'Steel I-Beam 200x100',$,$,$,.STANDARD.);`;\n+\n+describe('IDS attribute facet \u2014 ObjectType must not read the PredefinedType enum', () => {\n+  it('reads the real ObjectType attribute, not the concrete PredefinedType token, for a required-and-present value check', async () => {\n+    const store = await parse(IFC);\n+    const accessor = createDataAccessor(store);\n+\n+    const facet: IDSAttributeFacet = {\n+      type: 'attribute',\n+      name: sv('ObjectType'),\n+      value: sv('Steel I-Beam 200x100'),\n+    };\n+    const result = checkAttributeFacet(facet, 100, accessor);\n+\n+    expect(result.passed).toBe(true);\n+    expect(result.actualValue).toBe('Steel I-Beam 200x100');\n+  });\n+\n+  it('control: an unrelated required-and-present attribute (Name) still passes', async () => {\n+    const store = await parse(IFC);\n+    const accessor = createDataAccessor(store);\n+\n+    const facet: IDSAttributeFacet = {\n+      type: 'attribute',\n+      name: sv('Name'),\n+      value: sv('Wall_001'),\n+    };\n+    const result = checkAttributeFacet(facet, 100, accessor);\n+\n+    expect(result.passed).toBe(true);\n+  });\n+});",
+        "addedLineRanges": [
+          [
+            1,
+            90
+          ]
+        ]
+      },
+      {
+        "path": "packages/ids/src/bridge/data-accessor.ts",
+        "patch": "@@ -301,7 +301,13 @@ export function createDataAccessor(store: IfcDataStore): IFCDataAccessor {\n           return accessor.getDescription(expressId);\n         case 'globalid':\n           return accessor.getGlobalId(expressId);\n-        case 'objecttype':\n+        // `predefinedtype` deliberately resolves through\n+        // `getObjectType` (the PredefinedType/USERDEFINED-name helper) \u2014\n+        // but `objecttype` must NOT: that would shadow the entity's\n+        // actual `ObjectType` attribute with the PredefinedType enum\n+        // whenever PredefinedType is a concrete, non-USERDEFINED,\n+        // non-NOTDEFINED token. Let it fall through to the raw\n+        // attribute extraction below, same as any other named attribute.\n         case 'predefinedtype':\n           return accessor.getObjectType(expressId);\n         default: {",
+        "addedLineRanges": [
+          [
+            304,
+            310
+          ]
+        ]
+      },
+      {
+        "path": "packages/ids/src/facets/attribute-facet.ts",
+        "patch": "@@ -205,10 +205,18 @@ function getAttributeValue(\n       return accessor.getEntityName(expressId);\n     case 'description':\n       return accessor.getDescription(expressId);\n-    case 'objecttype':\n-      return accessor.getObjectType(expressId);\n     case 'globalid':\n       return accessor.getGlobalId(expressId);\n+    // Deliberately NOT `case 'objecttype'`: `accessor.getObjectType` is the\n+    // PredefinedType USERDEFINED-fallback helper (its own doc: \"entity\n+    // object type (predefined type)\"), not the literal IFC `ObjectType`\n+    // attribute. For an entity whose raw PredefinedType is a concrete,\n+    // non-USERDEFINED, non-NOTDEFINED enum token (e.g. `STANDARD`), that\n+    // helper returns the enum token \u2014 never the entity's actual ObjectType\n+    // text \u2014 so an `<attribute><name>ObjectType</name></attribute>`\n+    // requirement was silently checked against the wrong IFC attribute.\n+    // Route it through the generic accessor instead, same as any other\n+    // named attribute.\n     default:\n       // Try generic attribute access\n       return accessor.getAttribute(expressId, attrName);",
+        "addedLineRanges": [
+          [
+            210,
+            219
+          ]
+        ]
+      }
+    ],
+    "unreviewable": [],
+    "excluded": []
+  },
+  "expected": []
+}

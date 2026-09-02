@@ -1,0 +1,65 @@
+{
+  "$comment": "Held from the merge train of 2026-09-01 on a merge-blocking defect that all ~91 deterministic gates passed. Defect class: count-distortion. `what` is written from the reviewer's file:line and failing input, never from the PR body.",
+  "pr": 3617,
+  "input": {
+    "headSha": "79aed261f66afe36921dc61fbcc0d603094201a7",
+    "files": [
+      {
+        "path": ".changeset/query-storey-same-name.md",
+        "patch": "@@ -0,0 +1,17 @@\n+---\n+'@ifc-lite/cli': patch\n+---\n+\n+Fix: `ifc-lite query --storey <name>` no longer drops elements from a second storey that shares the same `Name`.\n+\n+`IfcBuildingStorey.Name` is not unique \u2014 two storeys legally share a `Name` as\n+siblings under different buildings, and a malformed or federated file can\n+duplicate a level name outright. `--storey` resolved its argument to a single\n+storey via `Array.find`, so when two storeys shared a `Name` only the first one\n+(by internal array order) was used; every entity in the second, same-named\n+storey was silently excluded from the result with no error and no warning.\n+\n+`--storey` now resolves an unambiguous `expressId` to exactly one storey, but\n+resolves a `Name` (exact or substring match) to every storey with that name and\n+unions their contained elements. A single unique storey name behaves exactly as\n+before.",
+        "addedLineRanges": [
+          [
+            1,
+            17
+          ]
+        ]
+      },
+      {
+        "path": "packages/cli/src/commands/query-storey.ts",
+        "patch": "@@ -0,0 +1,53 @@\n+/* This Source Code Form is subject to the terms of the Mozilla Public\n+ * License, v. 2.0. If a copy of the MPL was not distributed with this\n+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */\n+\n+/**\n+ * `query --storey` resolution \u2014 extracted from `query.ts` (module-size\n+ * ratchet) but otherwise unchanged behavior.\n+ *\n+ * IfcBuildingStorey.Name is not unique: two storeys legally share a Name as\n+ * siblings under different buildings, or a malformed/federated file can\n+ * duplicate a level name outright. Matching by GlobalId/expressId is\n+ * unambiguous; matching by Name is not, so every storey with that Name is\n+ * included rather than picking an arbitrary first match and silently\n+ * dropping the rest (a same-named-storey element would otherwise vanish\n+ * from the result depending on array order).\n+ */\n+\n+import { fatal } from '../output.js';\n+\n+/**\n+ * Resolve `--storey <filter>` to the set of expressIds of every entity\n+ * directly contained in the matching storey/storeys.\n+ *\n+ * Resolution order:\n+ *  1. An exact expressId match (unambiguous \u2014 expressIds are unique) wins\n+ *     outright and resolves to that single storey.\n+ *  2. Otherwise, every storey with an exact Name match.\n+ *  3. Otherwise, every storey whose Name contains the filter (case-insensitive).\n+ *\n+ * Exits via `fatal()` (never returns) if no storey matches at all.\n+ */\n+export function resolveStoreyIds(bim: any, storeyFilter: string): Set<number> {\n+  const storeys = bim.storeys();\n+  const byExpressId = storeys.find((s: any) => String(s.ref.expressId) === storeyFilter);\n+  let matchedStoreys: any[];\n+  if (byExpressId) {\n+    matchedStoreys = [byExpressId];\n+  } else {\n+    const exactNameMatches = storeys.filter((s: any) => s.name === storeyFilter);\n+    matchedStoreys = exactNameMatches.length > 0\n+      ? exactNameMatches\n+      : storeys.filter((s: any) => s.name.toLowerCase().includes(storeyFilter.toLowerCase()));\n+  }\n+  if (matchedStoreys.length === 0) {\n+    const names = storeys.map((s: any) => s.name).filter(Boolean).join(', ');\n+    fatal(`Storey \"${storeyFilter}\" not found. Available: ${names || '(none)'}`);\n+  }\n+  const storeyIds = new Set<number>();\n+  for (const storey of matchedStoreys) {\n+    for (const e of bim.contains(storey.ref)) storeyIds.add(e.ref.expressId);\n+  }\n+  return storeyIds;\n+}",
+        "addedLineRanges": [
+          [
+            1,
+            53
+          ]
+        ]
+      },
+      {
+        "path": "packages/cli/src/commands/query.storey-same-name.test.ts",
+        "patch": "@@ -0,0 +1,102 @@\n+/* This Source Code Form is subject to the terms of the Mozilla Public\n+ * License, v. 2.0. If a copy of the MPL was not distributed with this\n+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */\n+\n+/**\n+ * `query --storey` resolved a name to a single storey via `Array.find`.\n+ * `IfcBuildingStorey.Name` is not unique \u2014 two storeys legally share a Name\n+ * as siblings under different buildings (or a malformed/federated file\n+ * duplicates a level name). `--storey \"Level 1\"` silently returned only the\n+ * FIRST matching storey's elements and dropped the second storey's elements\n+ * with no error and no warning \u2014 an \"exit 0, wrong (incomplete) answer\"\n+ * failure, the same shape as the same-named-sibling collapse already fixed\n+ * for the viewer's HierarchyPanel (#3545).\n+ */\n+\n+import { mkdtemp, writeFile } from 'node:fs/promises';\n+import { tmpdir } from 'node:os';\n+import { join } from 'node:path';\n+import { afterEach, describe, expect, it, vi } from 'vitest';\n+import { queryCommand } from './query.js';\n+\n+const guid = (n: number): string => `SAME${String(n).padStart(19, '0')}`;\n+\n+/**\n+ * Project -> Building -> two IfcBuildingStorey BOTH named \"Level 1\"\n+ * (a legal, if confusing, shape: e.g. two separate wings each starting\n+ * their own numbering). Storey #4 contains Wall A; storey #5 contains\n+ * Column C. Distinct TYPE keywords keep each element's storey membership\n+ * unambiguous in assertions.\n+ */\n+const FIXTURE_MODEL = `ISO-10303-21;\n+HEADER;\n+FILE_DESCRIPTION((''),'2;1');\n+FILE_NAME('same-named-storey-fixture.ifc','2024-01-01T00:00:00',(''),(''),'','','');\n+FILE_SCHEMA(('IFC4'));\n+ENDSEC;\n+DATA;\n+#1=IFCPROJECT('${guid(1)}',$,'Project',$,$,$,$,$,$);\n+#3=IFCBUILDING('${guid(3)}',$,'Building',$,$,$,$,$,.ELEMENT.,$,$,$);\n+#4=IFCBUILDINGSTOREY('${guid(4)}',$,'Level 1',$,$,$,$,$,.ELEMENT.,0.);\n+#5=IFCBUILDINGSTOREY('${guid(5)}',$,'Level 1',$,$,$,$,$,.ELEMENT.,3.);\n+#10=IFCWALL('${guid(10)}',$,'Wall A',$,$,$,$,'TAG-A');\n+#17=IFCCOLUMN('${guid(17)}',$,'Column C',$,$,$,$,'TAG-C');\n+#30=IFCRELAGGREGATES('${guid(30)}',$,$,$,#1,(#3));\n+#31=IFCRELAGGREGATES('${guid(31)}',$,$,$,#3,(#4,#5));\n+#33=IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid(33)}',$,$,$,(#10),#4);\n+#34=IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid(34)}',$,$,$,(#17),#5);\n+ENDSEC;\n+END-ISO-10303-21;\n+`;\n+\n+const FIXTURE_MODEL_UNIQUE = FIXTURE_MODEL.replace(\n+  `#5=IFCBUILDINGSTOREY('${guid(5)}',$,'Level 1',$,$,$,$,$,.ELEMENT.,3.);`,\n+  `#5=IFCBUILDINGSTOREY('${guid(5)}',$,'Level 2',$,$,$,$,$,.ELEMENT.,3.);`,\n+);\n+\n+async function writeFixture(content: string): Promise<string> {\n+  const dir = await mkdtemp(join(tmpdir(), 'ifc-lite-storey-samename-'));\n+  const path = join(dir, 'fixture.ifc');\n+  await writeFile(path, content, 'utf8');\n+  return path;\n+}\n+\n+function captureStdout(): { out: string } {\n+  const state = { out: '' };\n+  vi.spyOn(process.stdout, 'write').mockImplementation(((chunk: string) => {\n+    state.out += chunk;\n+    return true;\n+  }) as typeof process.stdout.write);\n+  return state;\n+}\n+\n+function names(jsonOut: string): string[] {\n+  const parsed = JSON.parse(jsonOut);\n+  return (Array.isArray(parsed) ? parsed : []).map((e: any) => e.name).sort();\n+}\n+\n+describe('query --storey with two same-named storeys', () => {\n+  afterEach(() => {\n+    vi.restoreAllMocks();\n+  });\n+\n+  it('includes elements from BOTH storeys named \"Level 1\", not just the first', async () => {\n+    const fixture = await writeFixture(FIXTURE_MODEL);\n+    const stdout = captureStdout();\n+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true);\n+\n+    await queryCommand([fixture, '--storey', 'Level 1', '--json']);\n+\n+    expect(names(stdout.out)).toEqual(['Column C', 'Wall A']);\n+  });\n+\n+  it('control: an unambiguous storey name still resolves correctly', async () => {\n+    const fixture = await writeFixture(FIXTURE_MODEL_UNIQUE);\n+    const stdout = captureStdout();\n+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true);\n+\n+    await queryCommand([fixture, '--storey', 'Level 1', '--json']);\n+\n+    expect(names(stdout.out)).toEqual(['Wall A']);\n+  });\n+});",
+        "addedLineRanges": [
+          [
+            1,
+            102
+          ]
+        ]
+      },
+      {
+        "path": "packages/cli/src/commands/query.ts",
+        "patch": "@@ -14,6 +14,7 @@ import { findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';\n import { createHeadlessContext } from '../loader.js';\n import { printJson, getFlag, hasFlag, fatal, validateLimit } from '../output.js';\n import { STANDARD_QTO_MAP, sortEntities } from './query-aggregation.js';\n+import { resolveStoreyIds } from './query-storey.js';\n import { VALID_GROUP_BY_KEYS, outputCount, outputSum, outputAggregation, outputGroupBy, outputEntities } from './query-output.js';\n \n /**\n@@ -412,20 +413,10 @@ export async function queryCommand(args: string[]): Promise<void> {\n     q = q.byType(...types);\n   }\n \n-  // --storey filter: restrict to entities in a specific storey\n+  // --storey filter: restrict to entities in a specific storey (or storeys\n+  // sharing a Name \u2014 see resolveStoreyIds).\n   if (storeyFilter) {\n-    const storeys = bim.storeys();\n-    const matchedStorey = storeys.find((s: any) =>\n-      s.name === storeyFilter ||\n-      s.name.toLowerCase().includes(storeyFilter.toLowerCase()) ||\n-      String(s.ref.expressId) === storeyFilter\n-    );\n-    if (!matchedStorey) {\n-      const names = storeys.map((s: any) => s.name).filter(Boolean).join(', ');\n-      fatal(`Storey \"${storeyFilter}\" not found. Available: ${names || '(none)'}`);\n-    }\n-    const contained = bim.contains(matchedStorey.ref);\n-    const storeyIds = new Set(contained.map((e: any) => e.ref.expressId));\n+    const storeyIds = resolveStoreyIds(bim, storeyFilter);\n     // Post-filter: only keep entities that are in this storey\n     const baseEntities = q.toArray();\n     let storeyEntities = baseEntities.filter((e: any) => storeyIds.has(e.ref.expressId));",
+        "addedLineRanges": [
+          [
+            17,
+            17
+          ],
+          [
+            416,
+            417
+          ],
+          [
+            419,
+            419
+          ]
+        ]
+      }
+    ],
+    "unreviewable": [],
+    "excluded": []
+  },
+  "expected": [
+    {
+      "path": "packages/cli/src/commands/query-storey.ts",
+      "what": "the same-name union is applied to the substring matching tier as well as exact match, so a storey filter like Level unions Level 1 Level 2 and Level 3 and silently multiplies the count with exit zero"
+    }
+  ]
+}

@@ -47,9 +47,18 @@ export interface EmbedOptions {
    * `setTypeVisibility({ spaces: true })`. There is no call that un-hides a
    * `hideTypes` entry; re-initialise the embed to change the list.
    *
-   * Hides meshes. The symbolic 2D overlay (dimension lines, drawing text, grid
-   * bubbles) is not a mesh, so naming `IfcAnnotation` here does not remove it; use
-   * `setTypeVisibility({ ifcAnnotations: false })`.
+   * Hides meshes AND the symbolic 2D overlay (dimension lines, drawing text,
+   * grid bubbles), which is not a mesh and so needed a route of its own (#2934).
+   *
+   * For the overlay, matching is on the class that OWNS the drawn content, which
+   * is worth spelling out. Dimensions, leaders and room tags are owned by
+   * `IfcAnnotation`; grid axes and their bubbles by `IfcGridAxis` — NOT by
+   * `IfcGrid`, which owns no drawn content and therefore hides nothing. Naming a
+   * wall or a space removes their meshes and no 2D content: their `Axis` and
+   * `FootPrint` representations are not drawn in the 3D viewport at all.
+   *
+   * An overlay channel switches off only when every owner class it draws is
+   * named, so hiding one class can never take another's content with it.
    */
   hideTypes?: string[];
   /**

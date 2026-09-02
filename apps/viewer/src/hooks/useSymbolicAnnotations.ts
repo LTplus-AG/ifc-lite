@@ -24,6 +24,7 @@ import {
   type AnnotationsForStorey,
 } from '../lib/overlay-parse/symbolic-parse.js';
 import { ensureParseFor, getParseFor, subscribeToParseCache } from './symbolic-parse-cache.js';
+import { useOverlayChannelGate } from './useOverlayChannelGate.js';
 import {
   buildSymbolicLineChannels,
   type SymbolicLineChannels,
@@ -231,8 +232,9 @@ export function useSymbolicAnnotations(params: {
   /** World Y to use for annotations with no resolvable storey. Defaults to 0. */
   fallbackY?: number;
 }): SymbolicLineChannels {
-  const { enabled, gridEnabled, gridSectionClip, fallbackY = 0 } = params;
-  const effectiveGridEnabled = gridEnabled ?? enabled;
+  const { gridSectionClip, fallbackY = 0 } = params;
+  const { annotation: enabled, grid: effectiveGridEnabled } =
+    useOverlayChannelGate(params.enabled, params.gridEnabled ?? params.enabled);
   const stores = useActiveStores();
   const hiddenSets = useHiddenOwnerSets();
   // Trigger parse if EITHER subset is enabled — the parse pass is shared.
@@ -460,8 +462,9 @@ export function useSymbolicAnnotationsRichData(params: {
   gridSectionClip?: SectionClipForGrid;
   fallbackY?: number;
 }): SymbolicRichChannels {
-  const { enabled, gridEnabled, gridSectionClip, fallbackY = 0 } = params;
-  const effectiveGridEnabled = gridEnabled ?? enabled;
+  const { gridSectionClip, fallbackY = 0 } = params;
+  const { annotation: enabled, grid: effectiveGridEnabled } =
+    useOverlayChannelGate(params.enabled, params.gridEnabled ?? params.enabled);
   const stores = useActiveStores();
   const hiddenSets = useHiddenOwnerSets();
   const version = useAnnotationParseTrigger(enabled || effectiveGridEnabled, stores);

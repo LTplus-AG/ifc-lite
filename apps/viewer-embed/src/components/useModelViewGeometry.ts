@@ -19,7 +19,7 @@ import { geometryClassOf } from '@ifc-lite/geometry/geometry-class';
 import { isMeshVisibleInViewMode, meshClassIsPlaced } from '@/lib/type-view-visibility';
 import type { TypeVisibility } from '@/store/types';
 import { isTypeVisible } from '@/store/typeVisibilityFilter';
-import { isTypeHidden } from './useEmbedUrlParams.js';
+import { isIfcTypeHiddenByHost } from '@/lib/host-hidden-ifc-types.js';
 
 interface GeometryResultLike {
   meshes?: MeshData[];
@@ -43,7 +43,7 @@ export interface ModelViewGeometry {
 
 export function useModelViewGeometry(
   merged: GeometryResultLike | null | undefined,
-  hiddenTypes: Set<string> | null,
+  hiddenTypes: ReadonlySet<string> | null,
   typeVisibility: TypeVisibility,
 ): ModelViewGeometry {
   // One scan, two consumers. `selectModelMeshes` would compute exactly this
@@ -70,7 +70,7 @@ export function useModelViewGeometry(
     // the seven mapped classes, so IfcSpatialZone, IfcVirtualElement,
     // IfcGeographicElement and 3D IfcAnnotation solids ignored their toggles.
     meshes = meshes.filter(
-      (mesh) => !isTypeHidden(mesh.ifcType, hiddenTypes) && isTypeVisible(mesh.ifcType, typeVisibility),
+      (mesh) => !isIfcTypeHiddenByHost(mesh.ifcType, hiddenTypes) && isTypeVisible(mesh.ifcType, typeVisibility),
     );
 
     return meshes.map((mesh) => {

@@ -40,6 +40,7 @@ import {
   quoteAppearsIn,
   sanitizeBody,
   sanitizeLabel,
+  sanitizePath,
   stripFence,
   REASONS,
   validate,
@@ -1270,4 +1271,44 @@ test('an omitted PATH cannot carry a forged marker into the summary comment', ()
   assert.doesNotMatch(r.doc.omitted[0], GATE_MARKER_RE);
   assert.ok(!r.doc.omitted[0].includes('<!--'), 'no comment opener may survive into a posted body');
   assert.ok(!r.doc.omitted[0].includes('ifc-lite-review'), 'the literal token must be defanged');
+});
+
+test('a LONG omitted path survives VERBATIM: no truncation into a name that exists nowhere', () => {
+  // The section's whole purpose is telling the author WHICH files nobody read.
+  // 1,251 of 6,633 tracked paths here exceed `class`'s 60-char cap; run through
+  // it, `.../property/property-cell-editor.tsx` and `.../property-cell-header.tsx`
+  // both rendered as the same non-existent `.../property-cell`, so a reader
+  // could neither open the named file nor map `omitted=N` to N distinct names.
+  const stem = 'packages/viewer/src/components/panels/property/property-cell'; // 60 chars
+  assert.equal(stem.length, 60, 'fixture precondition: the shared prefix fills the old cap exactly');
+  const editor = `${stem}-editor.tsx`;
+  const header = `${stem}-header.tsx`;
+  const input = {
+    ...INPUT,
+    unreviewable: [
+      { path: editor, reason: OMITTED_FOR_PROMPT_REASON },
+      { path: header, reason: OMITTED_FOR_PROMPT_REASON },
+    ],
+  };
+  const r = run(response(), { input });
+  assert.equal(r.code, 0, r.out);
+  assert.deepEqual(r.doc.omitted, [editor, header], 'each path must name the real file, distinctly');
+});
+
+test('a HOSTILE overlong path is cut unambiguously, and the cut stays defanged', () => {
+  // The longest tracked path here is 188 bytes, so the 500-char cap is
+  // unreachable for real paths; it exists against a PR-crafted name padding
+  // the posted summary. When it does fire, two distinct paths must never
+  // render identically -- the tail carries the full length and a digest of the
+  // whole sanitised string.
+  const stem = `packages/${'x'.repeat(600)}`;
+  const a = sanitizePath(`${stem}/a.ts`);
+  const b = sanitizePath(`${stem}/b.ts`);
+  assert.ok(a.length < 600, 'the cap must actually cut');
+  assert.match(a, /truncated: \d+ chars, sha256 [0-9a-f]{12}/, 'the cut must announce itself');
+  assert.notEqual(a, b, 'two distinct paths must never render as the same string');
+  // The token straddles the boundary so the slice lands INSIDE it: the cut
+  // must leave a harmless fragment, never restore what defanging removed.
+  const straddling = sanitizePath(`${'y'.repeat(490)}ifc-lite-review${'z'.repeat(600)}`);
+  assert.ok(!straddling.includes('<!--') && !straddling.includes('ifc-lite-review'), 'defanging survives the cut');
 });

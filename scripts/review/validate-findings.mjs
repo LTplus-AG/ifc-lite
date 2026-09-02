@@ -148,6 +148,7 @@
  */
 
 import { readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 // quotableLines/quoteAppearsIn/lineIsAdded/addedLinesMatching moved to
 // ./quote-line-coupling.mjs (module-size budget). Imported (not `export ...
@@ -543,6 +544,23 @@ export function sanitizeBody(text) {
 }
 
 /**
+ * The defanging every model-or-PR-controlled short string gets before a poster
+ * may render it: comment openers, the marker token and @-mentions cannot
+ * survive. Length policy is NOT here -- it belongs to the caller, because a
+ * `class` label and a file path have opposite needs (a label is a tag to cap
+ * hard; a path is an identity to keep whole).
+ */
+function defangInline(text) {
+  return String(text ?? '')
+    .replace(HTML_COMMENT_RE, '')
+    .replace(DANGLING_COMMENT_OPEN_RE, '<!‑-')
+    .replace(MARKER_TOKEN_RE, DEFANGED_TOKEN)
+    .replace(/@(?=[A-Za-z0-9])/g, '@​')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
  * A short label, held to a tighter budget than a body. Same defanging: `class` is
  * model-controlled and a poster that renders it into the comment would carry a
  * marker just as well as `body` would.
@@ -550,14 +568,34 @@ export function sanitizeBody(text) {
  * @param {unknown} text
  */
 export function sanitizeLabel(text) {
-  const out = String(text ?? '')
-    .replace(HTML_COMMENT_RE, '')
-    .replace(DANGLING_COMMENT_OPEN_RE, '<!‑-')
-    .replace(MARKER_TOKEN_RE, DEFANGED_TOKEN)
-    .replace(/@(?=[A-Za-z0-9])/g, '@​')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return out.slice(0, MAX_CLASS_CHARS);
+  return defangInline(text).slice(0, MAX_CLASS_CHARS);
+}
+
+/**
+ * A file path budget. Borrowing `class`'s 60-char cap here truncated
+ * `.../property/property-table.tsx` to a name that exists nowhere, and let two
+ * sibling files render as the SAME string -- 1,251 of 6,633 tracked paths
+ * exceed 60 chars. The longest tracked path is 188 bytes, so at 500 the cap is
+ * unreachable for any real path and exists only against a hostile one padding
+ * the posted summary.
+ */
+const MAX_PATH_CHARS = 500;
+
+/**
+ * A path a poster will render: defanged like a label, but kept WHOLE -- its
+ * entire job is naming a real file the reviewer never read. If a hostile path
+ * does exceed the cap, the truncation says so and stays unambiguous: the tail
+ * carries the cut length and a digest of the full sanitised string, so two
+ * distinct paths cannot render identically the way the 60-char slice made
+ * `property-table.tsx` and `property-header.tsx` collapse into one.
+ *
+ * @param {unknown} text
+ */
+export function sanitizePath(text) {
+  const out = defangInline(text);
+  if (out.length <= MAX_PATH_CHARS) return out;
+  const digest = createHash('sha256').update(out).digest('hex').slice(0, 12);
+  return `${out.slice(0, MAX_PATH_CHARS)} [truncated: ${out.length} chars, sha256 ${digest}]`;
 }
 
 /**
@@ -908,9 +946,12 @@ export function validate({ response, input, onWarn = null }) {
  * controlled bytes and the poster: a git path may contain any byte but NUL and
  * `/`, including `-->` and the literal marker token, and an unsanitised path in
  * the summary would be a marker-forgery channel opened by the very feature
- * whose job is to keep absence visible. `sanitizeLabel` defangs the token,
- * strips HTML comments and caps the length; a path that sanitises to nothing
- * still has to appear, so it is named as unprintable rather than dropped.
+ * whose job is to keep absence visible. `sanitizePath` defangs the token and
+ * strips HTML comments but keeps the path WHOLE (`sanitizeLabel`'s 60-char
+ * `class` cap stood here once and rewrote real paths into names that exist
+ * nowhere -- and collapsed sibling files into one string); a path that
+ * sanitises to nothing still has to appear, so it is named as unprintable
+ * rather than dropped.
  *
  * @param {{path: string, reason?: string}[]} unreviewable
  * @returns {string[]}
@@ -918,7 +959,7 @@ export function validate({ response, input, onWarn = null }) {
 export function omittedForPromptPaths(unreviewable) {
   return unreviewable
     .filter((u) => u.reason === OMITTED_FOR_PROMPT_REASON)
-    .map((u) => sanitizeLabel(u.path) || '(a path that sanitised to nothing)');
+    .map((u) => sanitizePath(u.path) || '(a path that sanitised to nothing)');
 }
 
 function main() {

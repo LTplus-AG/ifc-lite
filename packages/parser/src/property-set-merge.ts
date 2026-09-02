@@ -157,32 +157,52 @@ export function mergeInheritedQuantitySets<T extends NamedQuantitySet>(
 }
 
 /**
+ * Identity key for a property/quantity set: `(name, globalId)` joined with a
+ * NUL separator, the same convention `groupPropertySetsByInstance`/
+ * `groupQuantitySetsByInstance` (`@ifc-lite/data`) use for the occurrence-level
+ * `PropertyTable`/`QuantityTable` (#3603, #3606). A name alone is only a proxy
+ * for identity: two distinct `IfcPropertySet`/`IfcElementQuantity` instances
+ * routinely share a literal name (a federated merge, or an exporter emitting
+ * the same `Qto_` set twice), and a name-only key folds one into the other,
+ * silently dropping whichever loses (#3722). Those helpers operate on
+ * columnar `Uint32Array` string-table indices and this module on
+ * already-extracted set objects, so the identity-key SHAPE is shared but not
+ * the function itself.
+ */
+export function setIdentityKey(set: { name: string; globalId?: string }): string {
+    return set.name + '\u0000' + (set.globalId ?? '');
+}
+
+/**
  * Append the sets a type carries via `IfcRelDefinesByProperties` to the ones
  * already collected from its `HasPropertySets` attribute, listing a set that is
  * reachable BOTH ways only once.
  *
- * The dedupe is by express id, not by name. A name is only a proxy for identity,
- * and since #3530 it stopped being even that: every set the source left unnamed
- * now reports `''`, so a name-keyed check folds every unnamed set from the
- * second source into the first unnamed one from the first and drops its
- * properties outright. The name check is still applied on top for genuinely
- * named sets, where an empty set from one source must not shadow a populated
- * same-named set from the other.
+ * The dedupe is by express id first. A name is only a proxy for identity, and
+ * since #3530 it stopped being even that: every set the source left unnamed
+ * now reports `''`, so a name-only check would fold every unnamed set from the
+ * second source into the first unnamed one from the first and drop its
+ * properties outright. The identity-key check ({@link setIdentityKey}) is still
+ * applied on top for genuinely named sets, where an empty set from one source
+ * must not shadow a populated same-named set from the other -- but it keys on
+ * `(name, globalId)`, not name alone, so two distinct same-named instances
+ * (different GlobalId) both survive (#3722); only a second row of the SAME
+ * instance still collapses.
  *
  * `extract` is called at most once, with the ids the first source did not
  * already contribute.
  */
-export function appendSetsFromSecondSource<T extends { name: string }>(
+export function appendSetsFromSecondSource<T extends { name: string; globalId?: string }>(
     into: T[],
     firstSourceIds: ReadonlySet<number>,
-    firstSourceNames: ReadonlySet<string>,
+    firstSourceKeys: ReadonlySet<string>,
     candidateIds: readonly number[],
     extract: (ids: number[]) => T[],
 ): void {
     const fresh = candidateIds.filter((id) => !firstSourceIds.has(id));
     if (fresh.length === 0) return;
     for (const set of extract(fresh)) {
-        if (set.name && firstSourceNames.has(set.name)) continue;
+        if (set.name && firstSourceKeys.has(setIdentityKey(set))) continue;
         into.push(set);
     }
 }

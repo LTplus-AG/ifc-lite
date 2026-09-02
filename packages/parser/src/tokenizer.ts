@@ -20,8 +20,6 @@ import {
 
 export class StepTokenizer {
   private buffer: Uint8Array;
-  private position: number = 0;
-  private lineNumber: number = 1;
   private oversizedIds: number = 0;
 
   constructor(buffer: Uint8Array) {
@@ -58,8 +56,6 @@ export class StepTokenizer {
    * ~5-10x faster for large files, yields length=0 (calculate on-demand)
    */
   *scanEntitiesFast(): Generator<ScannedEntityRef> {
-    this.position = 0;
-    this.lineNumber = 1;
     this.oversizedIds = 0;
 
     // Pre-compute common byte codes
@@ -120,7 +116,7 @@ export class StepTokenizer {
           const t = skipTrivia(buf, pos, len);
           line += t.lines;
           pos = t.next;
-          if (t.stop) { this.position = len; this.lineNumber = line; return; }
+          if (t.stop) return;
         }
 
         // Check for '='
@@ -150,7 +146,7 @@ export class StepTokenizer {
           const t = skipTrivia(buf, pos, len);
           line += t.lines;
           pos = t.next;
-          if (t.stop) { this.position = len; this.lineNumber = line; return; }
+          if (t.stop) return;
         }
 
         // Read type name (inline)
@@ -210,7 +206,7 @@ export class StepTokenizer {
           const t = skipTrivia(buf, pos, len);
           line += t.lines;
           pos = t.next;
-          if (t.stop) { this.position = len; this.lineNumber = line; return; }
+          if (t.stop) return;
         }
 
         // Check for '('
@@ -236,8 +232,6 @@ export class StepTokenizer {
               // Unterminated: this record has no terminator, and neither has
               // anything after it. Drop it and stop, which is the None Rust's
               // find_entity_end returns on the same input.
-              this.position = len;
-              this.lineNumber = line;
               return;
             }
             line += countNewlines(buf, pos, end);
@@ -265,17 +259,11 @@ export class StepTokenizer {
         const skip = skipLexical(buf, pos, len);
         line += skip.lines;
         pos = skip.next;
-        if (skip.stop) {
-          this.position = len;
-          this.lineNumber = line;
-          return;
-        }
+        if (skip.stop) return;
       } else {
         pos++;
       }
     }
 
-    this.position = pos;
-    this.lineNumber = line;
   }
 }

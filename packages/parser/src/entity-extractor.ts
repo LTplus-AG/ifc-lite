@@ -9,6 +9,7 @@
 import { createLogger } from '@ifc-lite/data';
 import { decodeIfcString } from '@ifc-lite/encoding';
 import { isIndexableExpressId } from './express-id.js';
+import { StepTextScan } from './step-lexing.js';
 import type { IfcEntity, EntityRef } from './types.js';
 import { asSourceBytes, type IfcSourceBytes } from './source-bytes.js';
 
@@ -123,9 +124,29 @@ export class EntityExtractor {
     let depth = 0;
     let current = '';
     let inString = false;
+    // Shared with source-header.ts's HEADER prescan: one comment-skip rule for
+    // decoded STEP text, not a fourth hand-rolled copy of it (#3673's
+    // follow-up). A comment's ',', "'", '(' or ')' must not be read as
+    // structure -- `#1=IFCWALL('a', /* rev; b */ $)` is one attribute pair,
+    // not a truncated one polluted with the comment's own text.
+    const trivia = new StepTextScan(paramsText);
 
     for (let i = 0; i < paramsText.length; i++) {
       const char = paramsText[i];
+
+      if (!inString && char === '/' && paramsText[i + 1] === '*') {
+        const end = trivia.skipLexicalAt(i);
+        if (end > i) {
+          // A comment is trivia, collapsed to one separator like whitespace --
+          // not omitted outright, so two tokens a comment sits between
+          // (`5/* c */6`) don't get spliced into one (`56`).
+          current += ' ';
+          i = end - 1;
+          continue;
+        }
+        // Unterminated: not a comment, per StepTextScan -- falls through and
+        // the lone '/' is read as ordinary text below.
+      }
 
       if (char === "'") {
         if (inString) {
@@ -211,9 +232,21 @@ export class EntityExtractor {
       let parenDepth = 0;
       let current = '';
       let inString = false;
+      // Same rule as parseAttributes above: a comment nested inside a list is
+      // trivia too, e.g. `(#1, /* skip */ #2)`.
+      const listTrivia = new StepTextScan(listContent);
 
       for (let i = 0; i < listContent.length; i++) {
         const char = listContent[i];
+
+        if (!inString && char === '/' && listContent[i + 1] === '*') {
+          const end = listTrivia.skipLexicalAt(i);
+          if (end > i) {
+            current += ' ';
+            i = end - 1;
+            continue;
+          }
+        }
 
         if (char === "'") {
           if (inString) {

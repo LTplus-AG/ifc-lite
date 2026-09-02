@@ -1,5 +1,5 @@
 ---
-'@ifc-lite/data': patch
+'@ifc-lite/data': minor
 ---
 
 Fix `PropertyTable.getForEntity` silently merging two distinct `IfcPropertySet` instances into one when they share a literal name, misattributing the second instance's properties to the first instance's GlobalId.

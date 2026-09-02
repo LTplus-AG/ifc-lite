@@ -1090,6 +1090,7 @@
     "getInheritanceChain: function",
     "getPartOfRelations: function",
     "getPropertySets: function",
+    "groupPropertySetsByInstance: function",
     "isBuildingLikeSpatialType: function",
     "isEntityRef: function",
     "isEntitySubtypeOf: function",

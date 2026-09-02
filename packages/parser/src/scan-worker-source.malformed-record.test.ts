@@ -1,0 +1,73 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * `WORKER_CODE` is a template-literal STRING (a Blob worker cannot import at
+ * runtime), so `tokenizer.test.ts` and `entity-scanner.malformed-record.test.ts`
+ * exercising `StepTokenizer`/`scanIfcEntities` never touch this copy of the
+ * scan loop at all — the browser's actual Web Worker load path. This test
+ * evaluates the template directly (mocking `self`) so the unterminated-string
+ * fix (tokenizer.ts's `scanEntitiesFast`) has a counterpart proving the third
+ * copy of the same loop was not missed, the way it was easy to miss during
+ * the #3675 rebase.
+ */
+
+import { describe, expect, it } from 'vitest';
+import { WORKER_CODE } from './scan-worker-source.js';
+import { MAX_EXPRESS_ID } from './express-id.js';
+
+interface WorkerScanMessage {
+  ids: ArrayBuffer;
+  count: number;
+  oversizedIds: number;
+  malformedRecords: number;
+}
+
+/** Runs `WORKER_CODE` against a mock `self`, the same way the Blob worker
+ *  runtime would, and returns what it posted back. */
+function runWorkerCode(text: string): WorkerScanMessage {
+  const source = WORKER_CODE.replace('${MAX_EXPRESS_ID}', String(MAX_EXPRESS_ID));
+  let result: WorkerScanMessage | undefined;
+  const self = {
+    onmessage: null as ((e: { data: ArrayBuffer }) => void) | null,
+    postMessage(data: WorkerScanMessage) {
+      result = data;
+    },
+  };
+  // eslint-disable-next-line @typescript-eslint/no-implied-eval -- this
+  // template IS a worker script, evaluating it is the only way to exercise it.
+  new Function('self', `${source}\nreturn self;`)(self);
+  const buffer = new TextEncoder().encode(text);
+  self.onmessage!({ data: buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) });
+  if (!result) throw new Error('WORKER_CODE never posted a result');
+  return result;
+}
+
+describe('scan-worker-source WORKER_CODE: unterminated string literal', () => {
+  it('stops at the broken record and reports malformedRecords, like tokenizer.ts', () => {
+    const text = [
+      "#1=IFCPROJECT('0000000000000000000001',$,'P',$,$,$,$,$,$);",
+      // Opens a quote in the Name argument and never closes it.
+      "#2=IFCWALL('0000000000000000000002',$,'Wall2 unterminated,$,$,$,$,$,$);",
+      "#3=IFCWALL('0000000000000000000003',$,'Wall3',$,$,$,$,$,$);",
+    ].join('\n');
+
+    const result = runWorkerCode(text);
+    expect(result.count).toBe(1);
+    expect(result.malformedRecords).toBe(1);
+    expect(Array.from(new Uint32Array(result.ids))).toEqual([1]);
+  });
+
+  it('reports malformedRecords 0 for a well-formed file', () => {
+    const text = [
+      "#1=IFCPROJECT('0000000000000000000001',$,'P',$,$,$,$,$,$);",
+      "#2=IFCWALL('0000000000000000000002',$,'Wall2',$,$,$,$,$,$);",
+      "#3=IFCWALL('0000000000000000000003',$,'Wall3',$,$,$,$,$,$);",
+    ].join('\n');
+
+    const result = runWorkerCode(text);
+    expect(result.count).toBe(3);
+    expect(result.malformedRecords).toBe(0);
+  });
+});

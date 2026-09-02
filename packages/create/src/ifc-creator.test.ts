@@ -334,6 +334,16 @@ describe('IfcCreator', () => {
     expect(result.content).toContain('IFCQUANTITYAREA');
     expect(result.content).toContain('IFCQUANTITYVOLUME');
     expect(result.content).toContain("'Qto_SlabBaseQuantities'");
+
+    // IfcPhysicalSimpleQuantity subtypes (IfcQuantityArea/Volume/…) declare
+    // 5 attributes: Name, Description, Unit, <Value>, Formula. Formula is
+    // trailing-optional but STEP still requires an explicit `$` slot for
+    // it — a record with only 4 fields is one attribute short of what the
+    // schema declares (packages/data/src/ifc-schema/generated/entities-ifc4.ts).
+    const areaLine = result.content.split('\n').find(l => l.includes('IFCQUANTITYAREA('));
+    const volumeLine = result.content.split('\n').find(l => l.includes('IFCQUANTITYVOLUME('));
+    expect(areaLine).toMatch(/^#\d+=IFCQUANTITYAREA\('GrossArea',\$,\$,80\.,\$\);$/);
+    expect(volumeLine).toMatch(/^#\d+=IFCQUANTITYVOLUME\('GrossVolume',\$,\$,24\.,\$\);$/);
   });
 
   it('attaches a simple material via IfcRelAssociatesMaterial', () => {

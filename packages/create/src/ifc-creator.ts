@@ -1590,8 +1590,9 @@ export class IfcCreator {
     for (const qty of qset.Quantities) {
       const qtyId = this.id();
       const valueField = this.quantityValueField(qty);
+      // Trailing Formula attribute needs an explicit `$`, not omission.
       this.line(qtyId, qty.Kind.toUpperCase(),
-        `'${esc(qty.Name)}',$,${valueField}`);
+        `'${esc(qty.Name)}',$,${valueField},$`);
       qtyIds.push(qtyId);
     }
 

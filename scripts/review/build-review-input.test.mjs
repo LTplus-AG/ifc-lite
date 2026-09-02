@@ -81,7 +81,7 @@ test('the no-newline marker is metadata, not a context line', () => {
 // ============================================================== exclusions
 
 test('generated and vendored paths are excluded', () => {
-  for (const p of ['pnpm-lock.yaml', 'Cargo.lock', 'packages/x/__snapshots__/a.snap', 'tests/fixtures/a.ts', 'packages/wasm/pkg/x.d.ts', 'docs/a.png', 'scripts/api-surface.json']) {
+  for (const p of ['pnpm-lock.yaml', 'Cargo.lock', 'packages/x/__snapshots__/a.snap', 'tests/fixtures/a.ts', 'packages/wasm/pkg/x.d.ts', 'docs/a.png', 'scripts/api-surface.json', 'scripts/review/eval-cases/pr-3595.json']) {
     assert.equal(isExcluded(p), true, `${p} should be excluded`);
   }
 });

@@ -105,6 +105,13 @@ export const EXCLUDED = [
   /(^|\/)package-lock\.json$/,
   /\.snap$/,
   /(^|\/)fixtures?\//,
+  // Captured review-input fixtures: each one EMBEDS the diffs of a historical
+  // PR, and a reviewer shown diffs-inside-a-diff misattributes them. Measured
+  // on this rule's own PR: the CI reviewer quoted a line of pr-3595.json's
+  // embedded patch as its `riskiest_change` in build-context-pack.mjs, and
+  // proof-of-work refused the review. Same category as `fixtures/`: excluded
+  // for attention, and here for attribution.
+  /(^|\/)eval-cases\//,
   /(^|\/)pkg\//,
   /\.(ifc|ifcx|glb|gltf|png|jpg|jpeg|svg|pdf|zip|wasm)$/i,
   /(^|\/)dist\//,

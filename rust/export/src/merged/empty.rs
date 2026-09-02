@@ -25,7 +25,7 @@ use std::collections::{HashMap, HashSet};
 
 use super::guid::extract_global_id_fast;
 use super::line_edit::{arg_refs, classify_refs, RefSlot};
-use super::plan::{resolve_included, unify_spatial, ModelIndex};
+use super::plan::{next_offset, resolve_included, unify_spatial, ModelIndex};
 use super::spatial::{nth_attr, ContainerMergeStrategy, SpatialLookup, StoreyMergeStrategy};
 use super::units::ModelUnitMode;
 use super::{MergedModel, MergedOptions};
@@ -107,10 +107,17 @@ fn plan_container_drops(models: &[MergedModel], ctx: &DropCtx) -> DropPlan {
     // are cheap to retain; the byte-indexed models are not, and are dropped as
     // soon as each model's contribution to the graph is recorded.
     let mut per_model_containers: Vec<Vec<(u32, Node)>> = Vec::with_capacity(models.len());
+    let mut offset: u32 = 0;
 
     for (i, model) in models.iter().enumerate() {
         let index = ModelIndex::build(model.content);
         let included = resolve_included(&index, &model.included);
+        // Stop where the emit loop will stop. A model past the EXPRESS-id cut is
+        // never written, so counting its content here would keep a container
+        // nothing in the output actually fills — and report it as surviving.
+        // Same rule, one home (`plan::next_offset`), so the two cannot disagree.
+        let Some(next) = next_offset(offset, &included) else { break };
+        offset = next;
         let compatible = ctx.compatible.get(i).copied().unwrap_or(false);
         let mut remap: HashMap<u32, u32> = HashMap::new();
         if i > 0 && compatible {

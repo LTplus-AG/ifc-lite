@@ -160,6 +160,23 @@ pub fn rewrite_refs(line: &[u8], offset: u32, remap: &impl Fn(u32) -> Option<u32
     String::from_utf8_lossy(&out).into_owned()
 }
 
+/// The EXPRESS-id offset the NEXT model would use, or `None` when placing this
+/// model would push the merged id space past `u32::MAX`. Wrapping the offset
+/// would silently duplicate ids and rewrite references to the wrong entities
+/// (CR #2952), so a `None` here stops the merge instead.
+///
+/// Bound by the largest VISIBLE id, not `index.max_id`: an excluded high id is
+/// never emitted, so it must not consume id space or omit a later model that
+/// would actually fit (CR #2952).
+///
+/// Single home for the rule because two callers must agree on it exactly: the
+/// emit loop, and the empty-container pre-pass (#3643), which has to stop at
+/// the same model — a plan covering models that are never emitted would keep a
+/// container only the unmerged tail fills, and count it as dropped.
+pub(super) fn next_offset(offset: u32, included: &HashSet<u32>) -> Option<u32> {
+    offset.checked_add(included.iter().copied().max().unwrap_or(0))
+}
+
 /// Match this model's `IfcSite` / `IfcBuilding` / `IfcBuildingStorey` onto the
 /// first model's (via `lookup`), recording each match in `shared_remap` (local
 /// id → first-model id) and `skip` (the local line is not emitted).

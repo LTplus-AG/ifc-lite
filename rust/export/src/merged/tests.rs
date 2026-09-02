@@ -1337,6 +1337,33 @@ fn dropping_is_off_by_default_and_inert_when_nothing_is_empty() {
     assert_eq!(dropped, baseline, "output is byte-identical when nothing is empty");
 }
 
+/// The drop plan must cover only the models the merge actually EMITS. A model
+/// past the EXPRESS-id cut is never written, so treating its content as present
+/// would keep a container nothing in the output fills — and report it as
+/// surviving. Found in review of #3643.
+#[test]
+fn a_model_past_the_id_space_cut_does_not_keep_a_container_alive() {
+    // The first model's near-max id leaves no room for the second, so the merge
+    // stops after model A. A's storey is empty; only the unmerged B fills it.
+    let a = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#4294967295=IFCBUILDINGSTOREY('STOREYA000000000000001',$,'Level 0',$,$,$,$,$,$,0.);\n\
+ENDSEC;\nEND-ISO-10303-21;\n";
+    let b = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#1=IFCBUILDINGSTOREY('STOREYB000000000000001',$,'Level 0',$,$,$,$,$,$,0.);\n\
+#2=IFCWALL('WALLB00000000000000001',$,'Wall',$,$,$,$,$,$);\n\
+#3=IFCRELCONTAINEDINSPATIALSTRUCTURE('RELB000000000000000001',$,$,$,(#2),#1);\n\
+ENDSEC;\nEND-ISO-10303-21;\n";
+    let opts = MergedOptions { drop_empty_containers: true, ..Default::default() };
+    let (merged, stats) = export_merged_with_stats(&[a.as_bytes(), b.as_bytes()], &opts);
+
+    assert_eq!(stats.unmerged_model_count, 1, "the second model cannot be placed");
+    // Model B's wall is never emitted, so the storey it would have filled is
+    // genuinely empty in the OUTPUT and must go.
+    assert_eq!(stats.dropped_container_count, 1, "the storey no emitted model fills is dropped");
+    assert_eq!(type_count(&merged, "=IFCBUILDINGSTOREY("), 0, "and is not written");
+    assert_no_dangling(&merged);
+}
+
 /// A real authoring-tool model, self-merged with the flag on: the drop must not
 /// remove anything a model actually uses, and must not dangle a reference.
 #[test]

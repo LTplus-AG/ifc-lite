@@ -127,6 +127,10 @@ describe('MergedExporter dropEmptyContainers', () => {
     const asked = new MergedExporter(models()).export({ ...OPTIONS, dropEmptyContainers: true });
 
     expect(baseline.stats.droppedContainerCount).toBe(0);
+    // The run that ASKED is the one that could misreport: with the flag absent
+    // the count is 0 by construction, so only this assertion can catch a planner
+    // that claims a drop it did not make.
+    expect(asked.stats.droppedContainerCount).toBe(0);
     // Byte-identical: asking for the drop cannot perturb a merge with nothing
     // to drop (the header is deterministic apart from the timestamp, which both
     // exports take in the same test tick).

@@ -234,15 +234,11 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
         let is_first = i == 0;
         let index = ModelIndex::build(model.content);
         let included = plan::resolve_included(&index, &model.included);
-        // Placing this model would push the merged EXPRESS-id space past u32::MAX.
-        // Wrapping the offset would silently duplicate ids and rewrite references
-        // to the wrong entities (CR #2952), so stop here instead: the file emitted
-        // so far is valid, and the unmerged tail is reported for the caller to gate.
-        // Bound by the largest VISIBLE id, not `index.max_id`: an excluded high id
-        // is never emitted, so it must not consume id space or omit a later model
-        // that would actually fit (CR #2952).
-        let max_visible_id = included.iter().copied().max().unwrap_or(0);
-        let Some(next_offset) = offset.checked_add(max_visible_id) else {
+        // Placing this model would push the merged EXPRESS-id space past u32::MAX,
+        // so stop here instead: the file emitted so far is valid, and the unmerged
+        // tail is reported for the caller to gate. `plan::next_offset` is the single
+        // home for that bound — the drop pre-pass stops at the same model.
+        let Some(next) = plan::next_offset(offset, &included) else {
             stats.unmerged_model_count = models.len() - i;
             stats.warnings.push(format!(
                 "merged EXPRESS id space would exceed u32::MAX; stopped after {i} model(s), {} model(s) not merged.",
@@ -262,8 +258,11 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
             stats.unit_rescale_required = true;
         }
 
-        // Empty spatial containers this model must not write (#3643).
-        let dropped_containers = drop_plan.as_ref().map(|p| &p.per_model[i]).filter(|d| !d.is_empty());
+        // Empty spatial containers this model must not write (#3643). The plan
+        // covers only the models that will actually be emitted, so a model past
+        // the id-space cut has no entry — `get` rather than index.
+        let dropped_containers =
+            drop_plan.as_ref().and_then(|p| p.per_model.get(i)).filter(|d| !d.is_empty());
 
         let salt = model_salt(model, i);
         let plan = build_plan(&index, is_first, compatible, PlanCtx {
@@ -361,7 +360,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
             stats.written += 1;
         }
 
-        offset = next_offset;
+        offset = next;
     }
 
     if stats.federated_model_count > 0 {

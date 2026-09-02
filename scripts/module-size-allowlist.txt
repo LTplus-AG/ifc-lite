@@ -1,8 +1,9 @@
-# Module-size ratchet allowlist for TypeScript (see scripts/check-module-size.mjs).
-# The TS twin of rust/processing/tests/module_size_allowlist.txt.
+# Module-size ratchet allowlist for TypeScript and Node scripts
+# (see scripts/check-module-size.mjs).
+# The non-Rust twin of rust/processing/tests/module_size_allowlist.txt.
 #
-# Non-generated, non-test .ts/.tsx files currently over the ~400-line house
-# rule (AGENTS.md). Each line is '<budget> <path>'; the budget is the line
+# Non-generated, non-test .ts/.tsx/.mts/.cts/.mjs/.cjs files currently over the
+# ~400-line house rule (AGENTS.md). Each line is '<budget> <path>'; the budget is the line
 # count at the moment it was recorded. The gate fails if any of these grows
 # PAST its budget, or if a NEW file crosses 400 without an entry.
 #
@@ -336,3 +337,56 @@
    432 packages/source-dropbox/src/provider.ts
    415 packages/viewer/src/server.ts
   1486 packages/viewer/src/viewer-html.ts
+   501 scripts/check-agents-md-size.mjs
+   680 scripts/check-changeset-bump.mjs
+   523 scripts/check-ci-path-coverage.mjs
+   574 scripts/check-collab-room-model-target.mjs
+   529 scripts/check-generated.mjs
+   430 scripts/check-git-lfs.mjs
+   598 scripts/check-isolate-expansion-routing.mjs
+   957 scripts/check-issue-queue.mjs
+   448 scripts/check-legacy-entity-coverage.mjs
+  1145 scripts/check-loader-hook-specifier-match.mjs
+   694 scripts/check-module-size.mjs
+   951 scripts/check-pr-review-signal.mjs
+   771 scripts/check-review-posted.mjs
+   423 scripts/check-test-glob-coverage.mjs
+   612 scripts/check-test-revert-oracle.mjs
+   703 scripts/check-test-wiring.mjs
+   488 scripts/check-wasm-disposal.mjs
+   506 scripts/generate-bim-globals.mjs
+   423 scripts/generate-epsg-index.ts
+   403 scripts/lib/ci-path-coverage.mjs
+   472 scripts/lib/pr-green-sweep.mjs
+  1077 scripts/lib/pr-review-signal.mjs
+   443 scripts/lib/prepass-class-boundary.mjs
+   734 scripts/lib/refwalk-classify.mjs
+   518 scripts/lib/revert-oracle.mjs
+   494 scripts/lib/rust-source-text-detect.mjs
+  1165 scripts/lib/vitest-timeout-audit.mjs
+  1304 scripts/moonshot/b45-m1-midterm/run.mjs
+   422 scripts/moonshot/b51-real-merge-traces/identifier-guard.mjs
+   617 scripts/moonshot/b51-real-merge-traces/run.mjs
+   790 scripts/moonshot/b52-foreign-ifc/build-scorecard.mjs
+   605 scripts/moonshot/b55-scan-to-parametric/extract-rooms.mjs
+   889 scripts/moonshot/ci/assert-b35-golden.mjs
+   402 scripts/moonshot/ci/b55-pipeline-regression.mjs
+  1363 scripts/moonshot/ci/check-report-numerals.mjs
+   408 scripts/moonshot/diff-spike/trajectory.mjs
+   511 scripts/moonshot/g0-certificate-demo.mjs
+   533 scripts/moonshot/g1-memoized-recompute.mjs
+   465 scripts/moonshot/g2-footprint-tightness.mjs
+   515 scripts/moonshot/g2-merge-soundness.mjs
+   807 scripts/moonshot/gpu-predicates/b25-page-main.mjs
+   626 scripts/moonshot/gpu-predicates/harness.mjs
+   415 scripts/moonshot/m5-constrained-decoding/dsl.mjs
+   621 scripts/moonshot/m5-constrained-decoding/run-tier2.mjs
+   980 scripts/moonshot/m5-constrained-decoding/tasks-tier2.mjs
+   733 scripts/review/post-review.mjs
+   427 scripts/review/run-reviewer.mjs
+   892 scripts/review/validate-findings.mjs
+   688 scripts/source-text-assertion-detect.mjs
+   504 scripts/test-geometry-regression.mjs
+  2196 scripts/test-wasm-contract.mjs
+   678 scripts/typecheck-tests.mjs
+   467 scripts/xmatch/score.mjs

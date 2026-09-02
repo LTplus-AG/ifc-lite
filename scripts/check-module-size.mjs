@@ -4,8 +4,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Module-size ratchet for TypeScript — the TS half of the rule that
- * `rust/processing/tests/module_size_ratchet.rs` already enforces for Rust.
+ * Module-size ratchet for TypeScript and Node scripts — the non-Rust half of
+ * the rule that `rust/processing/tests/module_size_ratchet.rs` already
+ * enforces for Rust.
  *
  * WHY THIS EXISTS: the Rust gate's `collect_rs_files` filters on
  * `extension == "rs"`, and the allowlist it reads is Rust-only, so the
@@ -17,9 +18,9 @@
  * the new shape.
  *
  * The gate has two teeth, identical to the Rust one:
- *  1. A NEW non-generated, non-test TS/TSX file that crosses 400 lines and has
- *     no allowlist row fails. This is the load-bearing guarantee: no new god
- *     files.
+ *  1. A NEW non-generated, non-test TS/TSX/MJS/CJS file that crosses 400 lines
+ *     and has no allowlist row fails. This is the load-bearing guarantee: no
+ *     new god files.
  *  2. An allowlisted file that GROWS past its recorded budget fails. Existing
  *     debt is frozen; a listed file may stay flat or shrink, never grow.
  *
@@ -63,8 +64,9 @@
  * Neither is licence to raise a budget for growth the PR itself introduced,
  * which is why the regeneration command refuses a raise unless asked twice.
  *
- * What the step breaks on afterwards, by design: any PR adding a TS/TSX file
- * over 400 lines, any PR growing a listed file past its recorded budget, and
+ * What the step breaks on afterwards, by design: any PR adding a TS/TSX/MJS/
+ * CJS file over 400 lines, any PR growing a listed file past its recorded
+ * budget, and
  * any PR editing the allowlist without moving that scope's ALLOWLIST_DIGESTS
  * entry — including a
  * rebase that lands after someone else's shrink, which requires recomputing
@@ -73,9 +75,18 @@
  *
  * WHAT THIS GATE CANNOT SEE: it counts lines, nothing else. A 400-line file
  * doing five jobs passes; a cohesive 900-line table fails. It does not look at
- * .js/.mjs/.cjs, at anything outside packages/ and apps/, at generated,
- * declaration or test files, or at whether a "split" merely moved lines into a
- * sibling file. Freezing a size is not the same as enforcing a design.
+ * plain .js (four hand-written ones under scripts/ at last count — #3672 left
+ * them out deliberately), at anything outside packages/, apps/ and scripts/
+ * (tools/ holds ~26 more .mjs), at generated, declaration or test files, or at
+ * whether a "split" merely moved lines into a sibling file. Freezing a size is
+ * not the same as enforcing a design.
+ *
+ * .mjs/.cjs became part of the population in #3672: this script's own header
+ * describes the "extension filter hides a whole tree" defect it was written to
+ * close for TypeScript, and it then reported `OK (2084 files measured)` while
+ * 208 non-test .mjs files — several over 1,000 lines, this tree's CI gates
+ * among them — were invisible to it. Same shape as #3639/#3662
+ * (check-source-text-assertions).
  *
  * Run: node scripts/check-module-size.mjs
  * Regenerate: pnpm lint:module-size-baseline   (node scripts/check-module-size.mjs --update)
@@ -138,8 +149,12 @@ import {
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(SCRIPTS_DIR, '..');
 
-/** Trees walked. `apps/server` is a Rust crate and contributes no TS files. */
-const SEARCH_DIRS = ['packages', 'apps'];
+/**
+ * Trees walked. `apps/server` is a Rust crate and contributes no TS files.
+ * `scripts` is almost entirely .mjs and is where the CI gates themselves live,
+ * which is why it joined the walk in #3672.
+ */
+const SEARCH_DIRS = ['packages', 'apps', 'scripts'];
 
 /** Build output, vendored code and caches — never hand-written modules. */
 const SKIP_DIRS = new Set([
@@ -154,7 +169,7 @@ const SKIP_DIRS = new Set([
   '.git',
 ]);
 
-const SOURCE_RE = /\.(ts|tsx|mts|cts)$/;
+const SOURCE_RE = /\.(ts|tsx|mts|cts|mjs|cjs)$/;
 
 /**
  * Digest of every `(path, budget)` pair in the allowlist, pinned HERE rather
@@ -237,6 +252,7 @@ const ALLOWLIST_DIGESTS = {
   'packages/source-dalux': '11927553717016520308',
   'packages/source-dropbox': '13897585807232807340',
   'packages/viewer': '17290688824834287099',
+  'scripts': '7432628421945259767',
 };
 
 function parseArgs(argv) {
@@ -454,7 +470,7 @@ const files = paths
 
 if (files.length === 0) {
   fail(
-    `no TypeScript files matched under ${SEARCH_DIRS.join(', ')} in ${args.root}. ` +
+    `no TypeScript or Node-script files matched under ${SEARCH_DIRS.join(', ')} in ${args.root}. ` +
       'Exiting 0 here would certify a tree nobody looked at.',
   );
 }
@@ -638,7 +654,7 @@ const { newOffenders, grew, shrunk, missing, slack } = evaluate(files, allowlist
 if (newOffenders.length > 0) {
   failed = true;
   console.error(`
-New TypeScript file(s) over ${LIMIT} lines with no allowlist row:\n
+New source file(s) over ${LIMIT} lines with no allowlist row:\n
 ${newOffenders.join('\n')}
 
 Split them (AGENTS.md house rule), or — only with a written justification in

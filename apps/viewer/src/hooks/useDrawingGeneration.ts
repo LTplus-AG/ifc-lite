@@ -34,7 +34,7 @@ import {
   parseProfilesFlat,
   parseSymbolicFlat,
 } from '@/lib/overlay-parse/index.js';
-import { buildProfileEntries } from '@/lib/overlay-parse/profile-entries.js';
+import { buildProfileEntries, warnAboutSkippedProfiles } from '@/lib/overlay-parse/profile-entries.js';
 import {
   buildSymbolicDrawingLines,
   type SymbolicDrawingLine,
@@ -330,13 +330,12 @@ export function useDrawingGeneration({
           // `coordinateInfo` is main-thread state the worker cannot see.
           const ci = geometryResult.coordinateInfo;
           const rtc = ci.wasmRtcOffset;
-          const shift = rtc
-            ? { x: rtc.x, y: rtc.z, z: -rtc.y }
-            : ci.originShift;
+          const shift = rtc ? { x: rtc.x, y: rtc.z, z: -rtc.y } : ci.originShift;
           // Single-model (legacy) mode, so model index is always 0. Multi-model
           // profile extraction would require iterating over each model separately.
           profiles = buildProfileEntries(flat, shift, 0);
           profileCacheRef.current = { profiles, sourceId: modelCacheKey };
+          warnAboutSkippedProfiles(flat); // #3691-class silent-drop signal, one layer over
         } catch (error) {
           // Degrade gracefully: the drawing still renders without projection.
           console.warn('Profile extraction failed:', error);

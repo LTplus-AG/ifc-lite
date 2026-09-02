@@ -509,6 +509,7 @@ function extractDocumentReferences(content: string): BCFDocumentReference[] {
 
   for (const match of matches) {
     const guidMatch = match[0].match(/Guid="([^"]+)"/);
+    // xs:boolean's lexical space is {true, false, 1, 0}; see isExternal above.
     const isExternalMatch = match[0].match(/\bisExternal="([^"]+)"/);
     const referencedDoc = extractElement(match[1], 'ReferencedDocument');
     const documentGuid = extractElement(match[1], 'DocumentGuid');
@@ -518,7 +519,7 @@ function extractDocumentReferences(content: string): BCFDocumentReference[] {
     if (referencedDoc || documentGuid || url) {
       refs.push({
         guid: guidMatch?.[1],
-        isExternal: isExternalMatch ? isExternalMatch[1] === 'true' : undefined,
+        isExternal: isExternalMatch ? isExternalMatch[1] === 'true' || isExternalMatch[1] === '1' : undefined,
         referencedDocument: referencedDoc,
         documentGuid,
         url,

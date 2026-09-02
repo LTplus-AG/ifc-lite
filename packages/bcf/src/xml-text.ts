@@ -16,10 +16,20 @@
  * Values are unescaped so {@link escapeXml} round-trips correctly (see
  * escapeXml/unescapeXml regression: & < > " ' in titles/descriptions/
  * comments must come back exactly as written, not as literal entities).
+ *
+ * The content between the tags is read with {@link decodeXmlCharData}
+ * rather than a bare `[^<]*` match, so a CDATA-wrapped value (whose content
+ * starts with the literal `<![CDATA[`) is read instead of silently
+ * rejected -- the same defect `parseLabels` was fixed for, but present on
+ * every other caller of this function (Title, Comment, and the rest).
+ * `decodeXmlCharData` still returns `null`, and this still returns
+ * `undefined`, when the content holds real child-element markup.
  */
 export function extractElement(content: string, elementName: string): string | undefined {
-  const match = content.match(new RegExp(`<${elementName}>([^<]*)<\\/${elementName}>`));
-  return match?.[1] !== undefined ? unescapeXml(match[1]) : undefined;
+  const match = content.match(new RegExp(`<${elementName}>([\\s\\S]*?)<\\/${elementName}>`));
+  if (match?.[1] === undefined) return undefined;
+  const decoded = decodeXmlCharData(match[1]);
+  return decoded ?? undefined;
 }
 
 /**

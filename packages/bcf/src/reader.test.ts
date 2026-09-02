@@ -840,5 +840,275 @@ describe('BCF Reader - buildingSMART Test Files', () => {
         expect(visibility?.exceptions).toHaveLength(1);
       }
     });
+
+    it('reads a whitespace-only DefaultVisibility as absent, falling back to the version default', async () => {
+      // xs:boolean's lexical space is {true, false, 0, 1}; a whitespace-only
+      // value collapses (whiteSpace=collapse) to the empty string, which is
+      // not a member of that space at all -- the same as the attribute being
+      // absent. `defaultVisMatch?.[1].trim()` produces '', and '' !== undefined
+      // is true, so the reader fell into the explicit-value branch instead of
+      // the version-default fallback, and '' !== 'false' && '' !== '0' both
+      // held, so defaultVisibility came back true even for a 3.0 archive
+      // whose schema-declared default is false.
+      const topicGuid = '77777777-7777-7777-7777-777777777777';
+      const vpGuid = '88888888-8888-8888-8888-888888888888';
+      const zip = new JSZip();
+      zip.file('bcf.version', '<?xml version="1.0"?><Version VersionId="3.0"/>');
+      zip.file(
+        `${topicGuid}/markup.bcf`,
+        `<?xml version="1.0" encoding="UTF-8"?>
+<Markup>
+  <Topic Guid="${topicGuid}" TopicType="Issue" TopicStatus="Open">
+    <Title>Whitespace-only DefaultVisibility</Title>
+  </Topic>
+  <Viewpoints Guid="${vpGuid}">
+    <Viewpoint>viewpoint.bcfv</Viewpoint>
+  </Viewpoints>
+</Markup>`
+      );
+      zip.file(
+        `${topicGuid}/viewpoint.bcfv`,
+        `<?xml version="1.0" encoding="UTF-8"?>
+<VisualizationInfo Guid="${vpGuid}">
+  <Components>
+    <Visibility DefaultVisibility="   ">
+      <Exceptions>
+        <Component IfcGuid="1RvVRIfDrAmhnJqDD6mvGD"/>
+      </Exceptions>
+    </Visibility>
+  </Components>
+</VisualizationInfo>`
+      );
+      const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+
+      const project = await readBCF(buffer);
+      const topic = [...project.topics.values()][0];
+      const visibility = topic.viewpoints[0].components?.visibility;
+
+      expect(visibility).toBeDefined();
+      // BCF 3.0's schema-declared default (visinfo.xsd) is false.
+      expect(visibility?.defaultVisibility).toBe(false);
+      expect(visibility?.exceptions).toHaveLength(1);
+    });
+
+    it('control: an explicit false/0 DefaultVisibility still reads false', async () => {
+      for (const rawValue of ['false', '0']) {
+        const topicGuid = `9${rawValue === 'false' ? '1' : '2'}999999-9999-9999-9999-999999999999`;
+        const vpGuid = `9${rawValue === 'false' ? '3' : '4'}999999-9999-9999-9999-999999999999`;
+        const zip = new JSZip();
+        zip.file('bcf.version', '<?xml version="1.0"?><Version VersionId="3.0"/>');
+        zip.file(
+          `${topicGuid}/markup.bcf`,
+          `<?xml version="1.0" encoding="UTF-8"?>
+<Markup>
+  <Topic Guid="${topicGuid}" TopicType="Issue" TopicStatus="Open">
+    <Title>Explicit false DefaultVisibility</Title>
+  </Topic>
+  <Viewpoints Guid="${vpGuid}">
+    <Viewpoint>viewpoint.bcfv</Viewpoint>
+  </Viewpoints>
+</Markup>`
+        );
+        zip.file(
+          `${topicGuid}/viewpoint.bcfv`,
+          `<?xml version="1.0" encoding="UTF-8"?>
+<VisualizationInfo Guid="${vpGuid}">
+  <Components>
+    <Visibility DefaultVisibility="${rawValue}">
+      <Exceptions>
+        <Component IfcGuid="1RvVRIfDrAmhnJqDD6mvGD"/>
+      </Exceptions>
+    </Visibility>
+  </Components>
+</VisualizationInfo>`
+        );
+        const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+
+        const project = await readBCF(buffer);
+        const topic = [...project.topics.values()][0];
+        const visibility = topic.viewpoints[0].components?.visibility;
+
+        expect(visibility).toBeDefined();
+        expect(visibility?.defaultVisibility).toBe(false);
+        expect(visibility?.exceptions).toHaveLength(1);
+      }
+    });
+  });
+
+  describe('CDATA in Topic Title and Comment text', () => {
+    // extractElement's content regex is `[^<]*`, which rejects a CDATA
+    // section outright (its opener is `<![CDATA[`). parseLabels was given a
+    // CDATA-aware extractor in this PR, but Title and Comment still go
+    // through plain extractElement, so a conformant CDATA-wrapped Title or
+    // Comment silently falls back to 'Untitled' / '' with no warning.
+    it('reads a CDATA-wrapped Title instead of falling back to Untitled', async () => {
+      const markup = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<Markup>',
+        '  <Topic Guid="topic-1" TopicType="Issue" TopicStatus="Open">',
+        '    <Title><![CDATA[Fire & Smoke <Wall>]]></Title>',
+        '  </Topic>',
+        '</Markup>',
+      ].join('\n');
+
+      const zip = new JSZip();
+      zip.file('bcf.version', '<?xml version="1.0"?><Version VersionId="3.0"></Version>');
+      zip.file('topic-1/markup.bcf', markup);
+      const buffer = await zip.generateAsync({ type: 'arraybuffer' });
+
+      const project = await readBCF(buffer);
+      const topic = Array.from(project.topics.values())[0];
+      expect(topic.title).toBe('Fire & Smoke <Wall>');
+    });
+
+    it('control: an ordinary (non-CDATA) Title still reads and entity-decodes', async () => {
+      const markup = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<Markup>',
+        '  <Topic Guid="topic-1" TopicType="Issue" TopicStatus="Open">',
+        '    <Title>Fire &amp; Smoke</Title>',
+        '  </Topic>',
+        '</Markup>',
+      ].join('\n');
+
+      const zip = new JSZip();
+      zip.file('bcf.version', '<?xml version="1.0"?><Version VersionId="3.0"></Version>');
+      zip.file('topic-1/markup.bcf', markup);
+      const buffer = await zip.generateAsync({ type: 'arraybuffer' });
+
+      const project = await readBCF(buffer);
+      const topic = Array.from(project.topics.values())[0];
+      expect(topic.title).toBe('Fire & Smoke');
+    });
+
+    it('reads a CDATA-wrapped Comment instead of falling back to empty string', async () => {
+      const markup = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<Markup>',
+        '  <Topic Guid="topic-1" TopicType="Issue" TopicStatus="Open">',
+        '    <Title>t</Title>',
+        '  </Topic>',
+        '  <Comment Guid="comment-1">',
+        '    <Date>2026-01-01T00:00:00Z</Date>',
+        '    <Author>bob@example.com</Author>',
+        '    <Comment><![CDATA[Needs REI 90 & a <review>]]></Comment>',
+        '  </Comment>',
+        '</Markup>',
+      ].join('\n');
+
+      const zip = new JSZip();
+      zip.file('bcf.version', '<?xml version="1.0"?><Version VersionId="3.0"></Version>');
+      zip.file('topic-1/markup.bcf', markup);
+      const buffer = await zip.generateAsync({ type: 'arraybuffer' });
+
+      const project = await readBCF(buffer);
+      const topic = Array.from(project.topics.values())[0];
+      expect(topic.comments.length).toBe(1);
+      expect(topic.comments[0].comment).toBe('Needs REI 90 & a <review>');
+    });
+
+    it('control: an ordinary (non-CDATA) Comment still reads and entity-decodes', async () => {
+      const markup = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<Markup>',
+        '  <Topic Guid="topic-1" TopicType="Issue" TopicStatus="Open">',
+        '    <Title>t</Title>',
+        '  </Topic>',
+        '  <Comment Guid="comment-1">',
+        '    <Date>2026-01-01T00:00:00Z</Date>',
+        '    <Author>bob@example.com</Author>',
+        '    <Comment>Needs REI 90 &amp; a &quot;review&quot;</Comment>',
+        '  </Comment>',
+        '</Markup>',
+      ].join('\n');
+
+      const zip = new JSZip();
+      zip.file('bcf.version', '<?xml version="1.0"?><Version VersionId="3.0"></Version>');
+      zip.file('topic-1/markup.bcf', markup);
+      const buffer = await zip.generateAsync({ type: 'arraybuffer' });
+
+      const project = await readBCF(buffer);
+      const topic = Array.from(project.topics.values())[0];
+      expect(topic.comments.length).toBe(1);
+      expect(topic.comments[0].comment).toBe('Needs REI 90 & a "review"');
+    });
+  });
+
+  describe('DocumentReference isExternal (xs:boolean numeral form)', () => {
+    // markup.xsd's DocumentReference isExternal attribute is xs:boolean
+    // (2.1: `<xs:attribute name="isExternal" type="xs:boolean" default="false"/>`
+    // in the DocumentReferenceAttributes group), whose lexical space is
+    // {true, false, 1, 0}. extractDocumentReferences compared only against
+    // the literal 'true', so a spec-legal isExternal="1" read back as
+    // isExternal: false -- an externally-hosted document misreported as
+    // living inside the BCF archive.
+    it('reads DocumentReference isExternal="1" as true, not false', async () => {
+      const markup = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<Markup>',
+        '  <Topic Guid="topic-1" TopicType="Issue" TopicStatus="Open">',
+        '    <Title>t</Title>',
+        '    <DocumentReference Guid="doc-1" isExternal="1">',
+        '      <ReferencedDocument>https://example.com/spec.pdf</ReferencedDocument>',
+        '    </DocumentReference>',
+        '  </Topic>',
+        '</Markup>',
+      ].join('\n');
+
+      const zip = new JSZip();
+      zip.file('bcf.version', '<?xml version="1.0"?><Version VersionId="2.1"></Version>');
+      zip.file('topic-1/markup.bcf', markup);
+      const buffer = await zip.generateAsync({ type: 'arraybuffer' });
+
+      const project = await readBCF(buffer);
+      const topic = Array.from(project.topics.values())[0];
+      expect(topic.documentReferences?.[0]?.isExternal).toBe(true);
+    });
+
+    it('reads DocumentReference isExternal="0" as false', async () => {
+      const markup = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<Markup>',
+        '  <Topic Guid="topic-1" TopicType="Issue" TopicStatus="Open">',
+        '    <Title>t</Title>',
+        '    <DocumentReference Guid="doc-1" isExternal="0">',
+        '      <DocumentGuid>11111111-1111-1111-1111-111111111111</DocumentGuid>',
+        '    </DocumentReference>',
+        '  </Topic>',
+        '</Markup>',
+      ].join('\n');
+
+      const zip = new JSZip();
+      zip.file('bcf.version', '<?xml version="1.0"?><Version VersionId="3.0"></Version>');
+      zip.file('topic-1/markup.bcf', markup);
+      const buffer = await zip.generateAsync({ type: 'arraybuffer' });
+
+      const project = await readBCF(buffer);
+      const topic = Array.from(project.topics.values())[0];
+      expect(topic.documentReferences?.[0]?.isExternal).toBe(false);
+    });
+
+    it('control: an ordinary true/false DocumentReference isExternal still reads correctly', async () => {
+      const markup = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<Markup>',
+        '  <Topic Guid="topic-1" TopicType="Issue" TopicStatus="Open">',
+        '    <Title>t</Title>',
+        '    <DocumentReference Guid="doc-1" isExternal="true">',
+        '      <ReferencedDocument>https://example.com/spec.pdf</ReferencedDocument>',
+        '    </DocumentReference>',
+        '  </Topic>',
+        '</Markup>',
+      ].join('\n');
+
+      const zip = new JSZip();
+      zip.file('bcf.version', '<?xml version="1.0"?><Version VersionId="2.1"></Version>');
+      zip.file('topic-1/markup.bcf', markup);
+      const buffer = await zip.generateAsync({ type: 'arraybuffer' });
+
+      const project = await readBCF(buffer);
+      const topic = Array.from(project.topics.values())[0];
+      expect(topic.documentReferences?.[0]?.isExternal).toBe(true);
+    });
   });
 });

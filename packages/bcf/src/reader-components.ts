@@ -211,9 +211,12 @@ function parseVisibility(content: string, versionId: '2.1' | '3.0'): BCFVisibili
   const defaultVisMatch = visibilityMatch[0].match(/DefaultVisibility="([^"]+)"/);
   // xs:boolean's lexical space is {true, false, 1, 0} with whiteSpace=
   // collapse: '0', however padded, must read as false, not fall through a
-  // bare `!== 'false'` comparison as true.
+  // bare `!== 'false'` comparison as true. A whitespace-only value collapses
+  // to '', which is not in that lexical space at all -- the same as the
+  // attribute being absent -- so it falls back to the per-version default
+  // rather than surviving into the explicit-value branch as truthy.
   const rawDefaultVis = defaultVisMatch?.[1].trim();
-  const defaultVisibility = rawDefaultVis !== undefined
+  const defaultVisibility = rawDefaultVis !== undefined && rawDefaultVis !== ''
     ? rawDefaultVis !== 'false' && rawDefaultVis !== '0'
     : defaultVisibilityFallback(versionId);
 

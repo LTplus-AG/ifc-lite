@@ -324,3 +324,6 @@ fn ref_list(arg: &str) -> Vec<u32> {
         .collect()
 }
 
+#[cfg(test)]
+#[path = "empty_tests.rs"]
+mod empty_tests;

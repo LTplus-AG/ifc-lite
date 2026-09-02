@@ -215,3 +215,6 @@ pub(super) fn decide_line(line: &str, dropped: &HashSet<u32>) -> LineDecision {
     LineDecision::Rewrite(rebuilt)
 }
 
+#[cfg(test)]
+#[path = "line_edit_tests.rs"]
+mod line_edit_tests;

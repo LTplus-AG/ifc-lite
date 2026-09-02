@@ -1261,3 +1261,108 @@ ENDSEC;\nEND-ISO-10303-21;\n"
         "control: the shared wall is likewise unified to a single surviving entity"
     );
 }
+
+/// A federation whose spatial trees unify: model A carries the whole
+/// project→site→building→two-storey tree with a wall on Level 0, model B repeats
+/// the tree (matched by name) and adds nothing to Level 1.
+fn two_models_with_an_empty_storey() -> (String, String) {
+    let head = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n";
+    let tail = "ENDSEC;\nEND-ISO-10303-21;\n";
+    let tree = |salt: &str, wall: &str| {
+        format!(
+            "{head}\
+#1=IFCPROJECT('p{salt}',$,'P',$,$,$,$,$,$);\n\
+#2=IFCSITE('s{salt}',$,'Site',$,$,$,$,$,$,$,$,$,$,$);\n\
+#3=IFCBUILDING('b{salt}',$,'Building',$,$,$,$,$,$,$,$,$);\n\
+#4=IFCBUILDINGSTOREY('g{salt}',$,'Level 0',$,$,$,$,$,$,0.);\n\
+#5=IFCBUILDINGSTOREY('f{salt}',$,'Level 1',$,$,$,$,$,$,3.);\n\
+#6=IFCWALL('{wall}',$,'Wall',$,$,$,$,$,$);\n\
+#7=IFCRELAGGREGATES('a{salt}',$,$,$,#1,(#2));\n\
+#8=IFCRELAGGREGATES('c{salt}',$,$,$,#2,(#3));\n\
+#9=IFCRELAGGREGATES('d{salt}',$,$,$,#3,(#4,#5));\n\
+#10=IFCRELCONTAINEDINSPATIALSTRUCTURE('e{salt}',$,$,$,(#6),#4);\n\
+{tail}"
+        )
+    };
+    (tree("0", "wall000000000000000000"), tree("1", "wall111111111111111111"))
+}
+
+/// #3643: the "Merge Projects" recipe step container matching leaves behind —
+/// a storey no model puts anything in is not written at all, and the merge
+/// emits nothing referencing it, so no clean-up pass has to follow.
+#[test]
+fn empty_container_is_dropped_and_leaves_no_dangling_reference() {
+    let (a, b) = two_models_with_an_empty_storey();
+    let opts = MergedOptions { drop_empty_containers: true, ..Default::default() };
+    let (merged, stats) = export_merged_with_stats(&[a.as_bytes(), b.as_bytes()], &opts);
+
+    // Level 1 is empty in BOTH models, so the one unified storey goes.
+    assert_eq!(stats.dropped_container_count, 1, "one merged container dropped");
+    assert_eq!(type_count(&merged, "'Level 1'"), 0, "the empty storey is not written");
+    assert_eq!(type_count(&merged, "'Level 0'"), 1, "the populated storey survives");
+    assert_eq!(type_count(&merged, "=IFCSITE("), 1, "its site is kept — it holds a storey");
+    assert_eq!(type_count(&merged, "=IFCBUILDING("), 1, "so is its building");
+    assert_eq!(type_count(&merged, "=IFCWALL("), 2, "no element is lost");
+
+    // The aggregation that named it is rewritten without it, not left dangling.
+    let storey = sole_id_of_type(&merged, "'Level 0'");
+    let aggregates: Vec<&str> =
+        merged.lines().filter(|l| l.contains("=IFCRELAGGREGATES(")).collect();
+    assert!(
+        aggregates.iter().any(|l| refs_in_line(l).contains(&storey)),
+        "the surviving storey keeps its parent aggregation: {aggregates:?}"
+    );
+    assert_no_dangling(&merged);
+}
+
+/// The flag is off by default and changes nothing when there is nothing to drop:
+/// asking for the drop on a model whose every container is populated must return
+/// byte-identical output, so enabling it can never perturb an unrelated merge.
+#[test]
+fn dropping_is_off_by_default_and_inert_when_nothing_is_empty() {
+    let (a, b) = two_models_with_an_empty_storey();
+    // Give Level 1 an occupant in model B, so no container is empty any more.
+    let b = b.replace(
+        "#10=IFCRELCONTAINEDINSPATIALSTRUCTURE('e1',$,$,$,(#6),#4);",
+        "#10=IFCRELCONTAINEDINSPATIALSTRUCTURE('e1',$,$,$,(#6),#5);",
+    );
+    let models = [a.as_bytes(), b.as_bytes()];
+
+    let (baseline, base_stats) = export_merged_with_stats(&models, &MergedOptions::default());
+    assert_eq!(base_stats.dropped_container_count, 0, "default drops nothing");
+
+    let opts = MergedOptions { drop_empty_containers: true, ..Default::default() };
+    let (dropped, stats) = export_merged_with_stats(&models, &opts);
+    assert_eq!(stats.dropped_container_count, 0, "every container holds something");
+    assert_eq!(dropped, baseline, "output is byte-identical when nothing is empty");
+}
+
+/// A real authoring-tool model, self-merged with the flag on: the drop must not
+/// remove anything a model actually uses, and must not dangle a reference.
+#[test]
+fn dropping_containers_keeps_a_real_model_intact() {
+    let bytes = fixture_or_skip!("ara3d/duplex.ifc");
+    let models = [bytes.as_slice(), bytes.as_slice()];
+    let baseline = export_merged(&models, &MergedOptions::default());
+    let opts = MergedOptions { drop_empty_containers: true, ..Default::default() };
+    let (merged, stats) = export_merged_with_stats(&models, &opts);
+
+    assert_no_dangling(&merged);
+    assert_eq!(
+        type_count(&merged, "=IFCWALL("),
+        type_count(&baseline, "=IFCWALL("),
+        "no element is lost to the container drop"
+    );
+    let containers = |step: &str| {
+        ["=IFCSITE(", "=IFCBUILDING(", "=IFCBUILDINGSTOREY(", "=IFCSPACE("]
+            .iter()
+            .map(|needle| type_count(step, needle))
+            .sum::<usize>()
+    };
+    assert_eq!(
+        containers(&merged),
+        containers(&baseline) - stats.dropped_container_count,
+        "the containers that disappear are exactly the ones counted as dropped"
+    );
+}
+

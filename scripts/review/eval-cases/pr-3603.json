@@ -45,7 +45,7 @@
   "expected": [
     {
       "path": "packages/data/src/property-table.ts",
-      "what": "the qset grouping fix lands on one of two getForEntity copies; the duplicate in packages/cache/src/sections/properties.ts still merges by name alone, so the same model answers differently from cache than from a fresh parse"
+      "what": "the pset grouping fix lands on one of two getForEntity copies; the duplicate in packages/cache/src/sections/properties.ts still merges by name alone, so the same model answers differently from cache than from a fresh parse"
     }
   ]
 }

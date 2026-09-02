@@ -40,7 +40,7 @@ import { readFileSync, writeFileSync, readdirSync, mkdtempSync, rmSync } from 'n
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawnSync, execFileSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { buildPack } from './build-context-pack.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -214,10 +214,12 @@ function main() {
     const caseDir = arg('--cases', CASE_DIR);
   // Default to the current HEAD of the checkout: in CI that is the commit under
   // test, which is the right tree to look for siblings in.
-  let baseRef = arg('--base', null);
-  if (baseRef === null) {
-    try { baseRef = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(); } catch { baseRef = null; }
-  }
+  // EXPLICIT ONLY. This defaulted to HEAD, which silently turned the documented
+  // diff-only baseline into a context-enabled run -- the comment below said
+  // "without it the eval measures the old behaviour" while the code three lines
+  // up guaranteed it never could. A baseline you cannot reproduce is not a
+  // baseline. Pass `--base HEAD` to retrieve siblings from the current checkout.
+  const baseRef = arg('--base', null);
     const reviewer = arg('--reviewer', join(HERE, 'run-reviewer.mjs'));
 
     const files = readdirSync(caseDir).filter((f) => f.endsWith('.json')).sort();
@@ -232,7 +234,14 @@ function main() {
     // old behaviour, which is exactly what the baseline run did.
     if (baseRef) {
       try {
-        c.input.contextPack = buildPack(c.input, { baseRef });
+        // `body` MATTERS, and its absence was not merely an untested prompt
+        // section. pr-3389's expected defect IS "the PR body describes a null
+        // sentinel meaning cannot answer yet, but the helper treats null and
+        // empty array identically" -- detectable only by comparing the
+        // description against the diff. With no body that case was unscoreable:
+        // a permanent miss no rubric change could ever convert, quietly
+        // depressing recall and inviting a rubric "fix" for a harness defect.
+        c.input.contextPack = buildPack(c.input, { baseRef, body: c.body ?? null });
       } catch (err) {
         console.log(`  ${f}: context pack unavailable (${err?.message ?? 'unknown'})`);
       }

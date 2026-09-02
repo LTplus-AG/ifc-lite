@@ -13,7 +13,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { searchKeys, hunkLines, fileEvidence, MAX_WHOLE_FILE_LINES } from './build-context-pack.mjs';
+import { searchKeys, hunkLines, fileEvidence, MAX_WHOLE_FILE_LINES, buildPack, truncateUtf8, BODY_RESERVE_BYTES, MAX_PACK_BYTES } from './build-context-pack.mjs';
 
 test('search keys come from REMOVED lines first, because the sibling still has them', () => {
   const patch = [
@@ -64,4 +64,136 @@ test('a long file is windowed around its hunks, not truncated from the top', () 
 
 test('hunkLines numbers the NEW file, so a window lands where the reader will look', () => {
   assert.deepEqual(hunkLines('@@ -1,2 +10,4 @@\n ctx\n+one\n+two'), [11, 12]);
+});
+
+/**
+ * A pack under REAL budget pressure, which is the only condition the reservation
+ * has any effect under. The first version of these tests supplied `exec: () => ''`
+ * -- no siblings, no file content, nothing competing -- so the body got its bytes
+ * whether or not anything was reserved for it, and BOTH mutations passed. A
+ * fixture that cannot exhaust the budget cannot test a budget.
+ *
+ * `exec` answers `git show` with a large file so the evidence stage spends
+ * heavily, exactly as the real pr-3389 pack did.
+ */
+function packUnderPressure(body) {
+  // MANY SMALL FILES, not a few huge ones. The evidence loop `continue`s past a
+  // file that does not fit and tries the next, so a handful of oversized files
+  // leaves tens of kilobytes unspent -- enough that the body got its 8,000 bytes
+  // with or without a reservation, and the mutation passed. Small files pack the
+  // budget tight, which is the state the reservation exists for.
+  const smallFile = Array.from({ length: 60 }, (_, i) => `const line${i} = ${i}; // padding`).join('\n');
+  const files = Array.from({ length: 400 }, (_, i) => ({
+    path: `packages/a/f${i}.ts`,
+    patch: `@@ -1,1 +1,2 @@\n+const changed${i} = 1;\n+const other${i} = 2;`,
+  }));
+  return buildPack(
+    { headSha: 'a'.repeat(40), files },
+    { baseRef: 'HEAD', body, exec: (_cmd, args) => (args[0] === 'show' ? smallFile : '') },
+  );
+}
+
+test('the fixture actually exhausts the budget, or the tests below prove nothing', () => {
+  // THE META-CHECK. If this stops holding, the reservation tests silently stop
+  // testing the reservation -- which is exactly what happened when they were
+  // first written, and both mutations passed.
+  const pack = packUnderPressure(null);
+  assert.ok(
+    pack.truncated.some((t) => t.startsWith('full content of')),
+    `nothing was truncated, so there is no budget pressure: ${JSON.stringify(pack.truncated)}`,
+  );
+  // Sharper: with NO body reserved, the bytes left over must be less than the
+  // reserve. Otherwise a reservation changes nothing and its test cannot fail.
+  const spent =
+    pack.siblings.reduce((n, h) => n + Buffer.byteLength(h.text, 'utf8') + 120, 0) +
+    pack.fileEvidence.reduce((n, e) => n + Buffer.byteLength(e.text, 'utf8') + 80, 0);
+  assert.ok(
+    MAX_PACK_BYTES - spent < BODY_RESERVE_BYTES,
+    `${MAX_PACK_BYTES - spent} bytes left unspent, more than the ${BODY_RESERVE_BYTES} reserve: ` +
+      'a body would fit without reserving anything, so the reservation test is vacuous',
+  );
+});
+
+test('THE PR BODY IS RESERVED BEFORE THE GREEDY SPENDERS RUN', () => {
+  // Siblings and file evidence are allocated first. On a large PR they exhausted
+  // the pack and the description, allocated last, got the scraps: measured on
+  // pr-3389 -- whose expected defect IS a contradiction between the description
+  // and the diff -- 964 bytes of a 12,427-byte body survived, and the sentence
+  // the defect turns on was not among them. Wiring the body through without a
+  // reservation would have fixed the plumbing and left the case unscoreable.
+  const body = 'B'.repeat(20_000);
+  const pack = packUnderPressure(body);
+  const kept = Buffer.byteLength(pack.body ?? '', 'utf8');
+  assert.ok(kept >= BODY_RESERVE_BYTES, `the body kept ${kept} bytes, under its ${BODY_RESERVE_BYTES} reserve`);
+
+  const textBytes =
+    pack.siblings.reduce((n, h) => n + Buffer.byteLength(h.text, 'utf8'), 0) +
+    pack.fileEvidence.reduce((n, e) => n + Buffer.byteLength(e.text, 'utf8'), 0) +
+    kept;
+  assert.ok(textBytes <= MAX_PACK_BYTES, `pack text is ${textBytes}, over the ${MAX_PACK_BYTES} cap`);
+});
+
+test('THE CALL SITE truncates the body by BYTES, not by UTF-16 code units', () => {
+  // Aimed at the call site, not at `truncateUtf8`. Testing the helper alone left
+  // the call site free to go back to `slice` -- the mutation passed, because the
+  // helper it exercised was never the thing that changed.
+  const pack = packUnderPressure('😀'.repeat(20_000));
+  const kept = Buffer.byteLength(pack.body ?? '', 'utf8');
+  assert.ok(kept <= MAX_PACK_BYTES, `the body alone is ${kept} bytes, over the whole pack cap`);
+  assert.ok(!(pack.body ?? '').includes('\uFFFD'), 'a multi-byte character was split');
+  const textBytes =
+    pack.siblings.reduce((n, h) => n + Buffer.byteLength(h.text, 'utf8'), 0) +
+    pack.fileEvidence.reduce((n, e) => n + Buffer.byteLength(e.text, 'utf8'), 0) +
+    kept;
+  assert.ok(textBytes <= MAX_PACK_BYTES, `pack text is ${textBytes}, over the ${MAX_PACK_BYTES} cap`);
+});
+
+test('no body means no reservation, so siblings and evidence get the whole pack', () => {
+  // The other direction: the reserve must not be withheld from a PR with no
+  // description, which would shrink every pack to pay for an absent section.
+  const withNone = packUnderPressure(null);
+  assert.equal(withNone.body, null);
+  assert.ok(!withNone.truncated.includes('PR description'));
+});
+
+test('truncateUtf8 cuts on a character boundary, never mid-sequence', () => {
+  const emoji = '😀'.repeat(10);
+  for (const limit of [0, 1, 3, 4, 5, 7, 8, 39, 40]) {
+    const out = truncateUtf8(emoji, limit);
+    assert.ok(Buffer.byteLength(out, 'utf8') <= limit, `${limit}: produced ${Buffer.byteLength(out, 'utf8')} bytes`);
+    assert.ok(!out.includes('\uFFFD'), `${limit}: split a character`);
+    assert.equal(out, '😀'.repeat(Math.floor(limit / 4)), `${limit}: wrong number of whole characters`);
+  }
+});
+
+test('a sibling site keeps its HIGHEST-RANKED key, not the first key that found it', () => {
+  // De-duplication used to happen while collecting candidates, so a site was
+  // claimed by whichever key reached it first -- and `rank` then scored the site
+  // on that key. Iteration is per changed file, so a four-letter token in the
+  // first file could claim a site that a 27-character function name in the second
+  // file also matched, and score it at +8 instead of +30. On a pack under
+  // pressure that is the difference between the sibling appearing and being cut,
+  // which is the entire purpose of the retrieval.
+  const one = { path: 'packages/a/one.ts', patch: '@@ -1,1 +1,2 @@\n+  const cache = 1;\n' };
+  const two = { path: 'packages/b/two.ts', patch: '@@ -1,1 +1,2 @@\n+  resolveHighlightIdentifiers(x);\n' };
+  assert.deepEqual(searchKeys(one.patch, { path: one.path, max: 12 }), ['cache'], 'fixture: weak key first');
+  assert.deepEqual(
+    searchKeys(two.patch, { path: two.path, max: 12 }),
+    ['resolveHighlightIdentifiers'],
+    'fixture: strong key second',
+  );
+
+  // Both keys match the SAME sibling line.
+  const site = 'HEAD:packages/z/sibling.ts:42:  const cache = resolveHighlightIdentifiers(y);';
+  const pack = buildPack(
+    { headSha: 'a'.repeat(40), files: [one, two] },
+    { baseRef: 'HEAD', body: null, exec: (_cmd, args) => (args[0] === 'grep' ? site : '') },
+  );
+
+  assert.equal(pack.siblings.length, 1, 'one row per site');
+  assert.equal(
+    pack.siblings[0].key,
+    'resolveHighlightIdentifiers',
+    'the site must carry the key that scores it highest, not the one that reached it first',
+  );
 });

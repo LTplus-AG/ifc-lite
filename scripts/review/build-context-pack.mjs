@@ -39,6 +39,14 @@
 
 import { execFileSync } from 'node:child_process';
 
+/**
+ * What the PR description may claim before the siblings compete for the rest.
+ * See the reservation in `buildPack`: without it a large PR starved the body to
+ * nothing, and the body is the only evidence for the class of defect where the
+ * description and the diff disagree.
+ */
+export const BODY_RESERVE_BYTES = 8_000;
+
 /** Total pack budget. Truncation is recorded, never silent. */
 export const MAX_PACK_BYTES = 160_000;
 /** A file longer than this is windowed around its hunks instead of sent whole. */
@@ -253,11 +261,41 @@ export function siblingSites(key, changedPaths, ref, { cwd = process.cwd(), exec
  * evidence, then the body. A pack that quietly dropped its most valuable half
  * would look exactly like one that found nothing.
  */
+/**
+ * Cut `text` to at most `maxBytes` UTF-8 bytes without splitting a character.
+ * A plain Buffer slice halves a multi-byte sequence and leaves U+FFFD in the
+ * prompt, so the cut is walked back to a character boundary.
+ */
+export function truncateUtf8(text, maxBytes) {
+  if (maxBytes <= 0) return '';
+  const buf = Buffer.from(text, 'utf8');
+  if (buf.length <= maxBytes) return text;
+  let end = maxBytes;
+  // Continuation bytes are 10xxxxxx; step back off one we landed inside.
+  while (end > 0 && (buf[end] & 0b1100_0000) === 0b1000_0000) end -= 1;
+  return buf.subarray(0, end).toString('utf8');
+}
+
 export function buildPack(input, { baseRef, body = null, cwd = process.cwd(), exec = execFileSync } = {}) {
   const changed = input.files.map((f) => f.path);
   const changedBases = new Set(changed.map((p) => p.split('/').pop()));
   const truncated = [];
-  let budget = MAX_PACK_BYTES;
+  // RESERVED BEFORE THE GREEDY SPENDERS RUN. Siblings are allocated first and
+  // take up to forty slots; on a large PR they exhausted the pack, and the PR
+  // description -- allocated last -- got the scraps. Measured on pr-3389, whose
+  // expected defect IS a contradiction between the description and the diff:
+  // 964 bytes of a 12,427-byte body survived, the sentence the defect turns on
+  // was not among them, and every file's full content was dropped too. Wiring
+  // the body through without this would have fixed the plumbing and left the
+  // case exactly as unscoreable.
+  //
+  // The body is the ONLY evidence for its defect class, and it is cheap. It gets
+  // its slice first; siblings and file evidence divide what is left.
+  const bodyReserve =
+    typeof body === 'string' && body.trim() !== ''
+      ? Math.min(BODY_RESERVE_BYTES, Buffer.byteLength(body, 'utf8'))
+      : 0;
+  let budget = MAX_PACK_BYTES - bodyReserve;
 
   // GATHER EVERYTHING FIRST, THEN RANK GLOBALLY. Capping in iteration order let
   // low-value hits from an early key crowd out the best hit of a late one --
@@ -266,7 +304,6 @@ export function buildPack(input, { baseRef, body = null, cwd = process.cwd(), ex
   // not order of value.
   const candidates = [];
   const seenKey = new Set();
-  const seenSite = new Set();
   for (const f of input.files) {
     for (const key of searchKeys(f.patch, { path: f.path, max: 12 })) {
       if (seenKey.has(key)) continue;
@@ -277,12 +314,12 @@ export function buildPack(input, { baseRef, body = null, cwd = process.cwd(), ex
       } catch {
         continue;
       }
-      for (const h of hits) {
-        const id = `${h.path}:${h.line}`;
-        if (seenSite.has(id)) continue;
-        seenSite.add(id);
-        candidates.push({ ...h, key });
-      }
+      // EVERY key that hit this site is kept. De-duplicating here kept whichever
+      // key was found FIRST, and `rank` then scored the sibling on that key -- so
+      // a five-character token could claim a site and sink it below the cutoff
+      // while `resolveHighlightIds` matched the same line and was discarded. The
+      // site is collapsed after ranking instead, keeping its best-scoring key.
+      for (const h of hits) candidates.push({ ...h, key });
     }
   }
   // Three signals, learned from the five real second-site cases rather than
@@ -313,8 +350,18 @@ export function buildPack(input, { baseRef, body = null, cwd = process.cwd(), ex
   };
   candidates.sort((a, b) => rank(b) - rank(a));
 
+  // One row per site. The list is already ranked, so the row kept is the one
+  // whose key scored highest.
+  const seenSite = new Set();
+  const ranked = candidates.filter((h) => {
+    const id = `${h.path}:${h.line}`;
+    if (seenSite.has(id)) return false;
+    seenSite.add(id);
+    return true;
+  });
+
   const siblings = [];
-  for (const h of candidates) {
+  for (const h of ranked) {
     const cost = Buffer.byteLength(h.text, 'utf8') + 120;
     if (cost > budget || siblings.length >= 40) { truncated.push('sibling excerpts'); break; }
     budget -= cost;
@@ -334,7 +381,10 @@ export function buildPack(input, { baseRef, body = null, cwd = process.cwd(), ex
 
   let packBody = null;
   if (typeof body === 'string' && body.trim() !== '') {
-    const trimmed = body.slice(0, Math.min(8_000, Math.max(0, budget)));
+    // BY BYTES, like every other budget here. `slice` counts UTF-16 code units,
+    // so a description of 4,000 emoji passed an 8,000-"byte" check at 16,000
+    // actual bytes and the pack could exceed MAX_PACK_BYTES.
+    const trimmed = truncateUtf8(body, Math.max(0, bodyReserve + budget));
     if (trimmed) packBody = trimmed;
     if (trimmed.length < body.length) truncated.push('PR description');
   }

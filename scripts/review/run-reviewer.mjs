@@ -143,6 +143,21 @@ export function buildPrompt(rubric, input) {
       input.unreviewable.map((u) => `  - ${JSON.stringify(String(u.path))} (${JSON.stringify(String(u.reason ?? 'unknown'))})`).join('\n')
     : '';
 
+  // THE CANONICAL `files_reviewed` LIST, handed over verbatim. Asking the model
+  // to reconstruct it failed in both directions on one real PR: the CI model
+  // compressed fifteen near-identical fixture paths out of its answer four runs
+  // straight, and a newer CLI copied the "NOT shown" file in from the note
+  // above. Either way validate-findings refuses the review and the lane goes
+  // red on a paraphrase, not on the work. The list was never the proof of work
+  // -- the verbatim quotes from the patches are -- so there is nothing to prove
+  // by making the model type it from memory. JSON.stringify for the same reason
+  // as the unreviewable list: a path is PR-controlled bytes in the trusted
+  // region.
+  const roster =
+    `\nYour \`files_reviewed\` array must contain EXACTLY these ${input.files.length} path(s), ` +
+    'verbatim -- nothing added, nothing dropped:\n' +
+    input.files.map((f) => `  ${JSON.stringify(String(f.path))}`).join('\n');
+
   // THE CONTEXT PACK, fenced with the diff because it is the same trust class.
   //
   // Base-tree excerpts are merged, reviewed text and lower risk than the head,
@@ -206,6 +221,7 @@ export function buildPrompt(rubric, input) {
     '',
     fenceUntrusted(files),
     unreviewable,
+    roster,
     ...sections,
     '',
     'Emit the JSON described above and nothing else.',

@@ -134,11 +134,24 @@ export const PROMPT_FILE_ROW_FIXED = 16;
  */
 export const PROMPT_UNREVIEWABLE_ROW_FIXED = 20;
 
+/**
+ * The FIXED part of a roster row. `buildPrompt` renders the canonical
+ * `files_reviewed` list as `  <JSON path>\n` per file, so every changed file's
+ * path is spent TWICE -- once in its `--- FILE:` header and once here. The
+ * variable part is charged as `JSON.stringify` of the path, which is what the
+ * roster actually emits, escaping included; 6 covers the indent, the join and
+ * margin.
+ */
+export const PROMPT_ROSTER_ROW_FIXED = 6;
+
 /** What the prompt spends on structure, before any diff or pack content. */
 export function promptEnvelopeBytes(input) {
   const bytes = (v) => Buffer.byteLength(String(v ?? ''), 'utf8');
   let total = PROMPT_BASE_OVERHEAD_BYTES;
-  for (const f of input?.files ?? []) total += PROMPT_FILE_ROW_FIXED + bytes(f?.path);
+  for (const f of input?.files ?? []) {
+    total += PROMPT_FILE_ROW_FIXED + bytes(f?.path);
+    total += PROMPT_ROSTER_ROW_FIXED + bytes(JSON.stringify(String(f?.path ?? '')));
+  }
   for (const u of input?.unreviewable ?? []) {
     total += PROMPT_UNREVIEWABLE_ROW_FIXED + bytes(u?.path) + bytes(u?.reason);
   }

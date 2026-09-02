@@ -13,12 +13,19 @@ import type { MaterialData } from '@ifc-lite/sdk';
  * and is returned verbatim instead of falling through to the next
  * candidate.
  */
-function isBlank(name: string | undefined | null): boolean {
+export function isBlank(name: string | undefined | null): boolean {
   return name === undefined || name === null || name.trim() === '';
 }
 
-/** First candidate that is not blank per `isBlank`, or undefined if none. */
-function firstNonBlank(...candidates: Array<string | undefined>): string | undefined {
+/**
+ * First candidate that is not blank per `isBlank`, or undefined if none.
+ * Exported for reuse at every other MCP call site with the same "blank
+ * name should fall through to the caller's own placeholder" shape
+ * (`quantity_diff`'s group-by-storey, `playground-dispatcher`'s
+ * group-by-storey and entity/selection name summaries) — not just
+ * material names.
+ */
+export function firstNonBlank(...candidates: Array<string | undefined>): string | undefined {
   for (const candidate of candidates) {
     if (!isBlank(candidate)) return candidate;
   }

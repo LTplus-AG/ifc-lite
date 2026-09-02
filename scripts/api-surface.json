@@ -2382,6 +2382,8 @@
     "ToolErrorOptions: interface",
     "ToolExecutionError: class",
     "expandTypes: function",
+    "firstNonBlank: function",
+    "isBlank: function",
     "isProductType: const",
     "toolError: function"
   ],

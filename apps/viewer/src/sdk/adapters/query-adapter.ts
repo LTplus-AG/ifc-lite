@@ -253,7 +253,6 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
           const matchingProps = findAllPropertiesInSets(props, filter.psetName, filter.propName);
           if (matchingProps.length === 0) return false;
           if (filter.operator === 'exists') return true;
-
           return matchingProps.some(prop => compareFilterValue(prop.value, filter.operator, filter.value));
         });
       }

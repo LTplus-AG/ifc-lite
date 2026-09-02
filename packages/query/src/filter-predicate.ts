@@ -35,9 +35,15 @@ export function normalizeBooleanValue(value: unknown): unknown {
  * filter value. Booleans are normalized first (see {@link normalizeBooleanValue}),
  * and `contains` is case-insensitive — the settled semantics across the
  * CLI/MCP query backends, now shared rather than duplicated.
+ *
+ * `exists` answers "is this property/quantity present", not "does it carry a
+ * non-null value" — a caller passes `actual` here only once it has already
+ * confirmed the property was found (e.g. `IFCPROPERTYSINGLEVALUE('FireRating',
+ * $,$,$)` is present in its pset with a `$` nominal value, which parses to
+ * `null`; it still exists). So `exists` is unconditional true once reached.
  */
 export function compareFilterValue(actual: unknown, operator: FilterComparisonOp, expected: unknown): boolean {
-  if (operator === 'exists') return actual != null;
+  if (operator === 'exists') return true;
   const normActual = normalizeBooleanValue(actual);
   const normExpected = normalizeBooleanValue(expected);
   switch (operator) {

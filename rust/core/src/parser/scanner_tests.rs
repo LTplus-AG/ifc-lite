@@ -329,3 +329,53 @@ fn comment_free_records_scan_unchanged() {
         ]
     );
 }
+
+// ---------------------------------------------------------------------------
+// `has_non_null_attribute`: the scanner's span is now comment-aware (above),
+// but the attribute-decode layer -- this function included -- was still
+// comment-blind (#3673's follow-up note). A comment preceding a `$` used to
+// read as a non-null value, because the leading-whitespace skip stopped at
+// the comment's own `/` rather than treating the comment as trivia too.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn has_non_null_attribute_treats_a_comment_before_dollar_as_still_null() {
+    let content = "#1=IFCWALL(/* c1 */ $);";
+    let scanner = EntityScanner::new(content);
+    assert!(!scanner.has_non_null_attribute(0, content.len(), 0));
+}
+
+#[test]
+fn has_non_null_attribute_treats_a_comment_before_a_value_as_non_null() {
+    let content = "#1=IFCWALL(/* c1 */ 'a');";
+    let scanner = EntityScanner::new(content);
+    assert!(scanner.has_non_null_attribute(0, content.len(), 0));
+}
+
+/// A comma inside a comment must not count as an attribute separator: the
+/// real target attribute (index 1) is the `$` after the comment, not the
+/// comment's own `b'` fragment.
+#[test]
+fn has_non_null_attribute_comma_inside_a_comment_does_not_split_attributes() {
+    let content = "#1=IFCWALL('a', /* x, y */ $);";
+    let scanner = EntityScanner::new(content);
+    assert!(!scanner.has_non_null_attribute(0, content.len(), 1));
+}
+
+/// A `$` written literally inside a comment must not fool the check the other
+/// way: attribute 0 here is `'a'`, not the comment's `$`.
+#[test]
+fn has_non_null_attribute_dollar_inside_a_comment_is_comment_text() {
+    let content = "#1=IFCWALL(/* was $ */ 'a');";
+    let scanner = EntityScanner::new(content);
+    assert!(scanner.has_non_null_attribute(0, content.len(), 0));
+}
+
+#[test]
+fn has_non_null_attribute_comment_free_records_unchanged() {
+    let content = "#1=IFCWALL('a',$,5);";
+    let scanner = EntityScanner::new(content);
+    assert!(scanner.has_non_null_attribute(0, content.len(), 0));
+    assert!(!scanner.has_non_null_attribute(0, content.len(), 1));
+    assert!(scanner.has_non_null_attribute(0, content.len(), 2));
+}

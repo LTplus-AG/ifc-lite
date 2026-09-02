@@ -404,16 +404,15 @@ impl<'a> EntityScanner<'a> {
         // Helper to check if we're at target attribute and return result
         let check_target = |pos: usize, current_attr: usize, depth: usize| -> Option<bool> {
             if current_attr == attr_index && depth == 0 {
-                // Skip whitespace
-                let mut p = pos;
-                while p < content.len() && content[p].is_ascii_whitespace() {
-                    p += 1;
-                }
-                // Check if it's '$' (null)
-                if p < content.len() {
-                    return Some(content[p] != b'$');
-                }
-                return Some(false);
+                // Skip whitespace AND comments (`skip_step_trivia`, shared with
+                // the scanner's other trivia points): `/* c1 */ $` is still the
+                // null slot, not a non-null value starting with '/'. An
+                // unterminated comment leaves nothing certain after it, so
+                // treat the slot as absent rather than reading into the void.
+                return Some(match super::lexical::skip_step_trivia(content, pos) {
+                    Some(p) if p < content.len() => content[p] != b'$',
+                    _ => false,
+                });
             }
             None
         };
@@ -444,6 +443,19 @@ impl<'a> EntityScanner<'a> {
                     in_string = true;
                     pos += 1;
                 }
+                b'/' if content.get(pos + 1) == Some(&b'*') => {
+                    // A comment is consumed as a region -- the other half of
+                    // the rule the quote branch above gives in the opposite
+                    // direction. A ',', '(' or ')' inside it must not move
+                    // current_attr or depth, or `#1=IFCWALL($, /* a, b */ 'x');`
+                    // would count the comment's comma as an attribute
+                    // separator. Unterminated: nothing after it is certain, so
+                    // give up rather than guess.
+                    match super::lexical::skip_step_comment(content, pos) {
+                        Some(next) => pos = next,
+                        None => return false,
+                    }
+                }
                 b'(' => {
                     depth += 1;
                     pos += 1;
@@ -459,9 +471,11 @@ impl<'a> EntityScanner<'a> {
                 b',' if depth == 0 => {
                     current_attr += 1;
                     pos += 1;
-                    // Skip whitespace after comma
-                    while pos < content.len() && content[pos].is_ascii_whitespace() {
-                        pos += 1;
+                    // Skip whitespace and comments after the comma (same rule
+                    // as check_target's leading skip).
+                    match super::lexical::skip_step_trivia(content, pos) {
+                        Some(p) => pos = p,
+                        None => return false,
                     }
                     // Check if we're now at target attribute
                     if let Some(result) = check_target(pos, current_attr, depth) {

@@ -156,7 +156,7 @@ the required set while the lane is new.
 ### Why CodeRabbit sometimes says "Review skipped"
 
 When `Review posted` confirms a review reached your head, the workflow **tries**
-to add a `claude-reviewed` label, and CodeRabbit stands down for that commit —
+to add an `llm-reviewed` label, and CodeRabbit stands down for that commit —
 it will say `Review skipped: auto reviews are limited based on label
 configuration`. That is deliberate, not a failure: it stops two reviewers
 spending quota on the same diff. The label is cleared on every new commit, so a

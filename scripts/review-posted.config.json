@@ -29,8 +29,8 @@
   ],
   "$standDownComment": [
     "THE CODERABBIT HALF IS LIVE. `.coderabbit.yaml` carries",
-    "`auto_review.labels: ['!claude-reviewed']`, a negative match, since PR #3581 merged",
-    "on 2026-08-31. The workflow applies a `claude-reviewed` label when this gate verifies",
+    "`auto_review.labels: ['!llm-reviewed']`, a negative match, since PR #3581 merged",
+    "on 2026-08-31. The workflow applies an `llm-reviewed` label when this gate verifies",
     "a review and clears it on every new head, so CodeRabbit now stands down on exactly",
     "the heads this lane has covered and reviews the rest.",
     "",

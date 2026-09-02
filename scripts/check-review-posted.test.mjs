@@ -515,7 +515,7 @@ test('FAIL CLOSED: an unreadable head repository REFUSES rather than guessing ei
 
 test('nothing-to-review PASSES but reports covered=FALSE, so CodeRabbit does not stand down', () => {
   // The hole this closes: `review-posted.yml` turns `covered` into the
-  // `claude-reviewed` label, and `.coderabbit.yaml` skips labelled PRs. A
+  // `llm-reviewed` label, and `.coderabbit.yaml` skips labelled PRs. A
   // nothing-to-review head was never READ by anything, so claiming coverage
   // would stand CodeRabbit down too and leave the PR reviewed by NOBODY.
   const outPath = join(TMP, `ghout-ntr-${(seq += 1)}.txt`);

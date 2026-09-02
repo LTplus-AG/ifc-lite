@@ -73,15 +73,14 @@ export function useModelViewGeometry(
       (mesh) => !isTypeHidden(mesh.ifcType, hiddenTypes) && isTypeVisible(mesh.ifcType, typeVisibility),
     );
 
-    return meshes.map((mesh) => {
-      if (mesh.ifcType === 'IfcSpace' || mesh.ifcType === 'IfcOpeningElement') {
-        return {
-          ...mesh,
-          color: [mesh.color[0], mesh.color[1], mesh.color[2], Math.min(mesh.color[3] * 0.3, 0.3)] as [number, number, number, number],
-        };
-      }
-      return mesh;
-    });
+    // Mesh alpha flows through unchanged. The embed used to re-multiply IfcSpace
+    // and IfcOpeningElement down to `min(alpha * 0.3, 0.3)` here; the full viewer
+    // dropped exactly that under #677 because it stomped lens and property-set
+    // colour rules even when the caller had explicitly chosen alpha 1.0. Defaults
+    // still come from styling.rs, which already assigns IfcSpace 0.3 and
+    // IfcOpeningElement 0.4, so the translucency survives without being applied
+    // twice.
+    return meshes;
   }, [merged, typeVisibility, hiddenTypes, hasPlacedGeometry]);
 
   return { geometry, contentVersion };

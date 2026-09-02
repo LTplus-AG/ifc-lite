@@ -10,6 +10,20 @@ fn dropped(ids: &[u32]) -> HashSet<u32> {
 }
 
 #[test]
+fn rewrite_refs_offsets_and_redirects() {
+    let mut remap = std::collections::HashMap::new();
+    remap.insert(2u32, 100u32);
+    let out = rewrite_refs(
+        b"#3=IFCRELAGGREGATES('r #2',$,$,$,#1,(#2));",
+        10,
+        &|n| remap.get(&n).copied(),
+    );
+    // #1 offset by 10 → #11; #2 redirected → #100; '#2' in the string untouched.
+    assert!(out.contains("#11,(#100))"));
+    assert!(out.contains("'r #2'"));
+}
+
+#[test]
 fn classifies_single_list_and_nested_references() {
     let line = "#9=IFCRELAGGREGATES('g',$,$,$,#1,(#2,#3));";
     let slots = classify_refs(line).expect("parseable line");

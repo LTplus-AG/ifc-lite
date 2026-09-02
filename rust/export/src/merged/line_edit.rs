@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
-//! STEP entity-line surgery for the merged exporter's container drop
-//! ([`super::empty`]): classify where a `#N` reference sits in the argument
-//! list, and rewrite a line that references a dropped entity.
+//! STEP entity-line surgery for the merged exporter: rewrite the `#N`
+//! references of one model's line into the merged file's id space, classify
+//! where a reference sits in the argument list, and rewrite a line that
+//! references an entity being dropped ([`super::empty`]).
 //!
 //! Slot classification is what makes dropping safe. A reference in a *list*
 //! (`(#7,#8)`) can be removed and the line kept; a reference in a *single-valued*
@@ -10,6 +11,48 @@
 //! all.
 
 use std::collections::HashSet;
+
+/// Rewrite every `#N` reference in a STEP entity line. `remap(n)` returns
+/// `Some(absolute_id)` to redirect a reference (no offset), or `None` to apply
+/// `offset`. Single-quoted strings are passed through as raw bytes (a `#` there
+/// is literal text), tracking only in/out-of-string state.
+pub fn rewrite_refs(line: &[u8], offset: u32, remap: &impl Fn(u32) -> Option<u32>) -> String {
+    let mut out: Vec<u8> = Vec::with_capacity(line.len() + 8);
+    let mut i = 0;
+    let mut in_string = false;
+    while i < line.len() {
+        let b = line[i];
+        if b == b'\'' {
+            in_string = !in_string;
+            out.push(b'\'');
+            i += 1;
+            continue;
+        }
+        if !in_string && b == b'#' {
+            let mut j = i + 1;
+            let mut n: u32 = 0;
+            let mut any = false;
+            while j < line.len() && line[j].is_ascii_digit() {
+                // Saturate rather than wrap: a malformed reference number wider than
+                // u32 must not silently wrap onto a small, valid id (CR #2952). A
+                // clamped id stays dangling (caught downstream), never mis-pointed.
+                n = n.saturating_mul(10).saturating_add((line[j] - b'0') as u32);
+                j += 1;
+                any = true;
+            }
+            if any {
+                let target = remap(n).unwrap_or_else(|| n.saturating_add(offset));
+                out.push(b'#');
+                out.extend_from_slice(target.to_string().as_bytes());
+                i = j;
+                continue;
+            }
+        }
+        out.push(b);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
 
 /// Where a `#N` reference sits in an entity's top-level argument list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

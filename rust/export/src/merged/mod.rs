@@ -37,7 +37,7 @@ use crate::step_text::escape;
 
 use guid::{read_leading_guid, replace_global_id, GuidMinter};
 pub use guid::{deterministic_global_id, leading_rooted_global_id};
-use line_edit::LineDecision;
+use line_edit::{rewrite_refs, LineDecision};
 use plan::{build_plan, model_salt, ModelIndex, PlanCtx};
 use units::{resolve_length_scale, resolve_model_modes};
 
@@ -305,7 +305,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
             let remapped = if offset == 0 && plan.shared_remap.is_empty() {
                 String::from_utf8_lossy(bytes).into_owned()
             } else {
-                plan::rewrite_refs(bytes, offset, &|n| plan.shared_remap.get(&n).copied())
+                rewrite_refs(bytes, offset, &|n| plan.shared_remap.get(&n).copied())
             };
             let after_guid = match plan.guid_rewrite.get(&id) {
                 Some(g) => replace_global_id(&remapped, g),

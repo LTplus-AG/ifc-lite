@@ -118,48 +118,6 @@ pub fn resolve_included(index: &ModelIndex, roots: &Option<Vec<u32>>) -> HashSet
     }
 }
 
-/// Rewrite every `#N` reference in a STEP entity line. `remap(n)` returns
-/// `Some(absolute_id)` to redirect a reference (no offset), or `None` to apply
-/// `offset`. Single-quoted strings are passed through as raw bytes (a `#` there
-/// is literal text), tracking only in/out-of-string state.
-pub fn rewrite_refs(line: &[u8], offset: u32, remap: &impl Fn(u32) -> Option<u32>) -> String {
-    let mut out: Vec<u8> = Vec::with_capacity(line.len() + 8);
-    let mut i = 0;
-    let mut in_string = false;
-    while i < line.len() {
-        let b = line[i];
-        if b == b'\'' {
-            in_string = !in_string;
-            out.push(b'\'');
-            i += 1;
-            continue;
-        }
-        if !in_string && b == b'#' {
-            let mut j = i + 1;
-            let mut n: u32 = 0;
-            let mut any = false;
-            while j < line.len() && line[j].is_ascii_digit() {
-                // Saturate rather than wrap: a malformed reference number wider than
-                // u32 must not silently wrap onto a small, valid id (CR #2952). A
-                // clamped id stays dangling (caught downstream), never mis-pointed.
-                n = n.saturating_mul(10).saturating_add((line[j] - b'0') as u32);
-                j += 1;
-                any = true;
-            }
-            if any {
-                let target = remap(n).unwrap_or_else(|| n.saturating_add(offset));
-                out.push(b'#');
-                out.extend_from_slice(target.to_string().as_bytes());
-                i = j;
-                continue;
-            }
-        }
-        out.push(b);
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
-}
-
 /// The EXPRESS-id offset the NEXT model would use, or `None` when placing this
 /// model would push the merged id space past `u32::MAX`. Wrapping the offset
 /// would silently duplicate ids and rewrite references to the wrong entities

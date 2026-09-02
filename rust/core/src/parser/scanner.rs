@@ -113,10 +113,20 @@ impl<'a> EntityScanner<'a> {
         //      up — `/* previous #12= IFCWALL */` was the canonical example
         //      where the original `#N=` shape check still false-positived).
         //   2. After comment-skipping locates a candidate '#', validate it
-        //      starts a real `#<digits>[ws]*=` pattern. Catches embedded
+        //      starts a real `#<trivia>=` pattern. Catches embedded
         //      references inside STEP strings (CATIA `'…\X0\2#.ifc'`) AND
         //      any comment-shaped tokens the comment skipper missed (mostly
         //      a fallback now — true `/* */` regions never reach this check).
+        //
+        // "Trivia", not whitespace: 10303-21 allows a comment wherever
+        // whitespace is allowed, INCLUDING inside a record, so
+        // `#1 /* was #7 */ = IFCWALL(…);` is a legal declaration and used to
+        // produce no record at all. The same rule governs the gap between the
+        // '=' and the type name, and `find_entity_end` skips a comment for it
+        // in the record body — otherwise a ';' written inside one ends the
+        // record early and the span handed to the decoder is truncated. The
+        // matched TypeScript half is `skipTrivia` in
+        // `packages/parser/src/step-lexing.ts`; change the two together.
         //
         // Both checks together keep `next_entity` aligned with
         // `build_entity_index` which is comment-blind today; if a stray
@@ -127,7 +137,7 @@ impl<'a> EntityScanner<'a> {
         // Outer loop so a record this scanner refuses (an oversized
         // instance name, below) is SKIPPED rather than ending the scan.
         loop {
-            let (line_start, id_end_validated) = loop {
+            let (line_start, id_end_validated, eq_pos) = loop {
                 // Step (1): jump past any `/* … */` comment that starts at or
                 // before the next candidate '#'. Use memchr2 so we look for
                 // '#' and '/' in one SIMD pass — whichever comes first
@@ -166,13 +176,14 @@ impl<'a> EntityScanner<'a> {
                 while digit_end < len && bytes[digit_end].is_ascii_digit() {
                     digit_end += 1;
                 }
-                // Skip optional whitespace and verify the next byte is '='.
-                let mut probe = digit_end;
-                while probe < len && bytes[probe].is_ascii_whitespace() {
-                    probe += 1;
-                }
+                // Skip optional trivia and verify the next byte is '='.
+                // `None` means a comment opened here and never closes, which
+                // is not a declaration either — fall through to the rescan
+                // below, where the outer memchr2 finds the same '/*' and
+                // `skip_step_comment` ends the scan on it.
+                let probe = super::lexical::skip_step_trivia(bytes, digit_end).unwrap_or(len);
                 if probe < len && bytes[probe] == b'=' {
-                    break (candidate, digit_end);
+                    break (candidate, digit_end, probe);
                 }
                 // '#<digits>' not followed by '=' — this is a comment or string
                 // reference, not an entity definition. Skip past the digits and
@@ -201,21 +212,27 @@ impl<'a> EntityScanner<'a> {
                 continue;
             };
 
-            // Find '=' after ID using SIMD
-            let eq_search = &self.bytes[id_end..line_end];
-            let eq_offset = memchr::memchr(b'=', eq_search)?;
-            let mut type_start = id_end + eq_offset + 1;
+            // `eq_pos` is the '=' the candidate loop validated, NOT the first
+            // '=' in the record. This used to `memchr` for one, which finds
+            // the one inside the comment in `#1 /* a=b */ = IFCWALL(…)` and
+            // reads `b` as the type name.
+            //
+            // Skip trivia between the '=' and the type name. The comments in
+            // this record all closed — `find_entity_end` above would have
+            // refused the record otherwise — so `None` is unreachable, and
+            // `line_end` is the conservative answer if it ever were not.
+            let type_start = super::lexical::skip_step_trivia(&self.bytes[..line_end], eq_pos + 1)
+                .unwrap_or(line_end);
 
-            // Skip whitespace (inline)
-            while type_start < line_end && self.bytes[type_start].is_ascii_whitespace() {
-                type_start += 1;
-            }
-
-            // Find end of type name (at '(' or whitespace)
+            // Find end of type name (at '(', whitespace, or a comment opener:
+            // `IFCWALL/* n */(…)` is legal and its type name is IFCWALL).
             let mut type_end = type_start;
             while type_end < line_end {
                 let b = self.bytes[type_end];
                 if b == b'(' || b.is_ascii_whitespace() {
+                    break;
+                }
+                if b == b'/' && self.bytes.get(type_end + 1) == Some(&b'*') {
                     break;
                 }
                 type_end += 1;
@@ -253,26 +270,51 @@ impl<'a> EntityScanner<'a> {
     /// IFC strings are enclosed in single quotes ('...') and can contain semicolons.
     /// Returns the offset of the semicolon from the start of the slice.
     ///
-    /// SIMD scan: instead of inspecting every byte, `memchr2` jumps straight to
-    /// the next quote or semicolon. The overwhelming majority of records are
-    /// string-free geometry primitives (`#7=IFCCARTESIANPOINT((1.,2.,3.));`), so
-    /// the common case resolves the terminator in a single vectorized hop rather
-    /// than a per-byte loop. Semantics are byte-identical to the scalar walk:
-    /// the first `;` outside a quoted string, with doubled `''` treated as an
-    /// escaped in-string quote per STEP (ISO 10303-21). This is the single
-    /// hottest structural-scan function and runs on every entity of every model
-    /// (native and wasm), through both `build_entity_index` and the processor
-    /// scan loop, which share this scanner.
+    /// A `/* ... */` comment is skipped whole, so a `;` written inside one does
+    /// not end the record — `#1=IFCWALL('a', /* pending; revise */ $);` is
+    /// legal 10303-21 and used to come back truncated at that inner `;`. The
+    /// two skips compose in one direction only, and the order below is what
+    /// fixes it: a quote is tested first, so a `/*` inside a string literal is
+    /// text; the comment is then consumed as a region, so a quote inside a
+    /// comment is text and cannot open a literal.
+    ///
+    /// SIMD scan: instead of inspecting every byte, `memchr3` jumps straight to
+    /// the next quote, comment opener or semicolon. The overwhelming majority
+    /// of records are string-free geometry primitives
+    /// (`#7=IFCCARTESIANPOINT((1.,2.,3.));`), so the common case resolves the
+    /// terminator in a single vectorized hop rather than a per-byte loop.
+    /// Widening `memchr2` to `memchr3` costs one more comparison per SIMD
+    /// block; on a comment-free file the only extra work beyond that is one
+    /// byte test per `'/'` that is not followed by `'*'` (STEP division), which
+    /// records essentially never contain. Semantics are otherwise unchanged:
+    /// the first `;` outside a quoted string and outside a comment, with
+    /// doubled `''` treated as an escaped in-string quote per STEP
+    /// (ISO 10303-21). This is the single hottest structural-scan function and
+    /// runs on every entity of every model (native and wasm), through both
+    /// `build_entity_index` and the processor scan loop, which share this
+    /// scanner.
     #[inline]
     fn find_entity_end(&self, content: &[u8]) -> Option<usize> {
         let mut pos = 0;
 
         loop {
-            // Outside a quoted string: jump to the next quote or the
-            // terminating semicolon in one SIMD pass.
-            pos += memchr::memchr2(b'\'', b';', &content[pos..])?;
+            // Outside a quoted string: jump to the next quote, comment opener
+            // or terminating semicolon in one SIMD pass.
+            pos += memchr::memchr3(b'\'', b';', b'/', &content[pos..])?;
             if content[pos] == b';' {
                 return Some(pos);
+            }
+            if content[pos] == b'/' {
+                if content.get(pos + 1) == Some(&b'*') {
+                    // Unterminated: the rest of the input is inside the
+                    // comment, so this record has no terminator. `None` drops
+                    // it and ends the scan rather than inventing an end.
+                    pos = super::lexical::skip_step_comment(content, pos)?;
+                } else {
+                    // A lone '/' is STEP division inside a value list.
+                    pos += 1;
+                }
+                continue;
             }
 
             // content[pos] == b'\'' : entered a quoted string. Scan to the

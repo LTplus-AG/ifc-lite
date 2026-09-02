@@ -7,10 +7,16 @@
  * Leverages Spike 1 approach: ~1,259 MB/s throughput
  */
 
-import { safeUtf8Decode } from '@ifc-lite/data';
-
 import { isIndexableExpressId } from './express-id.js';
-import { countNewlines, findEntityLength, opensLiteralOrComment, skipLexical } from './step-lexing.js';
+import { BalancedEntityScan, type ScannedEntityRef } from './scan-entities-balanced.js';
+import {
+  countNewlines,
+  opensComment,
+  opensLiteralOrComment,
+  skipComment,
+  skipLexical,
+  skipTrivia,
+} from './step-lexing.js';
 
 export class StepTokenizer {
   private buffer: Uint8Array;
@@ -30,96 +36,20 @@ export class StepTokenizer {
 
   /**
    * Scan for all entity declarations (#EXPRESS_ID = TYPE(...))
-   * Returns entity references without parsing full content
+   * Returns entity references without parsing full content.
+   *
+   * Closes each record on the ')' balancing its argument list. The scan itself
+   * lives in `scan-entities-balanced.ts`; only the refusal count comes back
+   * here, and it comes back in a `finally` so an abandoned generator still
+   * reports what it refused.
    */
-  *scanEntities(): Generator<{ expressId: number; type: string; offset: number; length: number; line: number }> {
-    this.position = 0;
-    this.lineNumber = 1;
+  *scanEntities(): Generator<ScannedEntityRef> {
+    const scan = new BalancedEntityScan(this.buffer);
     this.oversizedIds = 0;
-
-    while (this.position < this.buffer.length) {
-      // Look for '#' character (entity ID marker)
-      if (this.buffer[this.position] === 0x23) { // '#'
-        const startOffset = this.position;
-        const startLine = this.lineNumber;
-
-        // Read express ID
-        const expressId = this.readExpressId();
-        if (expressId === null) {
-          this.position++;
-          continue;
-        }
-
-        // Skip whitespace
-        this.skipWhitespace();
-
-        // Check for '=' (assignment)
-        if (this.position >= this.buffer.length || this.buffer[this.position] !== 0x3D) {
-          this.position++;
-          continue;
-        }
-        this.position++; // Skip '='
-
-        // Skip whitespace
-        this.skipWhitespace();
-
-        // Read type name
-        const type = this.readTypeName();
-        if (!type) {
-          this.position++;
-          continue;
-        }
-
-        // Skip whitespace
-        this.skipWhitespace();
-
-        // Check for '(' (start of parameters)
-        if (this.position >= this.buffer.length || this.buffer[this.position] !== 0x28) {
-          this.position++;
-          continue;
-        }
-
-        // Find matching closing parenthesis to get full entity length
-        const entityLength = findEntityLength(this.buffer, this.position, startOffset);
-        if (entityLength > 0) {
-          // Step past the whole record, as Rust's next_entity does. Leaving
-          // `position` at the '(' made this loop re-walk the body, which was
-          // harmless only while it ignored quotes and comments.
-          //
-          // Count from `position`, not from `startOffset`: `position` is on the
-          // '(' here, and every newline before it was already counted by the
-          // three skipWhitespace calls above. Counting the whole record instead
-          // double-counts a newline written between `#1=` and its type name,
-          // which is ordinary whitespace and legal.
-          this.lineNumber += countNewlines(
-            this.buffer,
-            this.position,
-            startOffset + entityLength,
-          );
-          this.position = startOffset + entityLength;
-          yield {
-            expressId,
-            type,
-            offset: startOffset,
-            length: entityLength,
-            line: startLine,
-          };
-        }
-      } else if (this.buffer[this.position] === 0x0A) {
-        // Newline
-        this.lineNumber++;
-        this.position++;
-      } else if (opensLiteralOrComment(this.buffer, this.position, this.buffer.length)) {
-        // A commented-out record satisfies every check above, so a comment has
-        // to be skipped as a region; a literal has to be skipped so its
-        // contents cannot look like one. See step-lexing.
-        const skip = skipLexical(this.buffer, this.position, this.buffer.length);
-        this.lineNumber += skip.lines;
-        this.position = skip.next;
-        if (skip.stop) return;
-      } else {
-        this.position++;
-      }
+    try {
+      yield* scan.run();
+    } finally {
+      this.oversizedIds = scan.oversizedIdCount;
     }
   }
 
@@ -127,7 +57,7 @@ export class StepTokenizer {
    * FAST scan - skips to semicolon instead of matching parentheses
    * ~5-10x faster for large files, yields length=0 (calculate on-demand)
    */
-  *scanEntitiesFast(): Generator<{ expressId: number; type: string; offset: number; length: number; line: number }> {
+  *scanEntitiesFast(): Generator<ScannedEntityRef> {
     this.position = 0;
     this.lineNumber = 1;
     this.oversizedIds = 0;
@@ -139,6 +69,7 @@ export class StepTokenizer {
     const SEMICOLON = 0x3B; // ';'
     const QUOTE = 0x27;     // '\''
     const NEWLINE = 0x0A;   // '\n'
+    const SLASH = 0x2F;     // '/'
 
     const buf = this.buffer;
     const len = buf.length;
@@ -181,6 +112,17 @@ export class StepTokenizer {
           else break;
         }
 
+        // 10303-21 allows a comment wherever whitespace is allowed, so
+        // `#1 /* was #7 */ =` is a declaration. The inline loop above stays
+        // for the common case; this runs only once a comment actually opens,
+        // and skipTrivia (step-lexing) then takes the whole run of both.
+        if (opensComment(buf, pos, len)) {
+          const t = skipTrivia(buf, pos, len);
+          line += t.lines;
+          pos = t.next;
+          if (t.stop) { this.position = len; this.lineNumber = line; return; }
+        }
+
         // Check for '='
         if (pos >= len || buf[pos] !== EQUALS) continue;
         pos++;
@@ -202,6 +144,13 @@ export class StepTokenizer {
           if (c === 0x20 || c === 0x09 || c === 0x0D) { pos++; }
           else if (c === NEWLINE) { line++; pos++; }
           else break;
+        }
+
+        if (opensComment(buf, pos, len)) {
+          const t = skipTrivia(buf, pos, len);
+          line += t.lines;
+          pos = t.next;
+          if (t.stop) { this.position = len; this.lineNumber = line; return; }
         }
 
         // Read type name (inline)
@@ -257,6 +206,13 @@ export class StepTokenizer {
           else break;
         }
 
+        if (opensComment(buf, pos, len)) {
+          const t = skipTrivia(buf, pos, len);
+          line += t.lines;
+          pos = t.next;
+          if (t.stop) { this.position = len; this.lineNumber = line; return; }
+        }
+
         // Check for '('
         if (pos >= len || buf[pos] !== LPAREN) continue;
 
@@ -270,6 +226,23 @@ export class StepTokenizer {
               continue;
             }
             inString = !inString;
+          } else if (c === SLASH && !inString && opensComment(buf, pos, len)) {
+            // The ';' that ends a record can be preceded by a comment holding
+            // its own ';'. Take the comment whole -- which also makes the
+            // quotes and parens inside it text, the other half of the rule the
+            // literal skip above provides in the opposite direction.
+            const end = skipComment(buf, pos, len);
+            if (end < 0) {
+              // Unterminated: this record has no terminator, and neither has
+              // anything after it. Drop it and stop, which is the None Rust's
+              // find_entity_end returns on the same input.
+              this.position = len;
+              this.lineNumber = line;
+              return;
+            }
+            line += countNewlines(buf, pos, end);
+            pos = end;
+            continue;
           } else if (c === SEMICOLON && !inString) {
             // Found end of entity
             const entityLength = pos - startOffset + 1; // Include semicolon
@@ -304,85 +277,5 @@ export class StepTokenizer {
 
     this.position = pos;
     this.lineNumber = line;
-  }
-
-  private readExpressId(): number | null {
-    let id = 0;
-    let digits = 0;
-    let pos = this.position + 1; // Skip '#'
-
-    while (pos < this.buffer.length) {
-      const char = this.buffer[pos];
-      if (char >= 0x30 && char <= 0x39) { // '0'-'9'
-        id = id * 10 + (char - 0x30);
-        digits++;
-        pos++;
-      } else {
-        break;
-      }
-    }
-
-    if (digits === 0) return null;
-    // Same storage contract as scanEntitiesFast; see express-id.ts (#3395).
-    // And the same rule about WHICH refusals count: only a declaration,
-    // `#<digits>[ws]*=`. `scanEntities` resumes one byte into a refused
-    // record and walks its argument list, so an oversized `#ref` in there
-    // reaches this method too. Look ahead rather than consume — `position`
-    // must stay where the caller's recovery expects it.
-    if (!isIndexableExpressId(id)) {
-      let probe = pos;
-      while (probe < this.buffer.length) {
-        const c = this.buffer[probe];
-        if (c === 0x20 || c === 0x09 || c === 0x0D || c === 0x0A) probe++;
-        else break;
-      }
-      if (probe < this.buffer.length && this.buffer[probe] === 0x3D) this.oversizedIds++;
-      return null;
-    }
-    this.position = pos;
-    return id;
-  }
-
-  private readTypeName(): string | null {
-    let start = this.position;
-    let end = start;
-
-    // Type names start with uppercase letter
-    if (this.position >= this.buffer.length || this.buffer[this.position] < 0x41 || this.buffer[this.position] > 0x5A) {
-      return null;
-    }
-
-    while (end < this.buffer.length) {
-      const char = this.buffer[end];
-      // Allow letters, numbers, and underscore
-      if (
-        (char >= 0x41 && char <= 0x5A) || // A-Z
-        (char >= 0x61 && char <= 0x7A) || // a-z
-        (char >= 0x30 && char <= 0x39) || // 0-9
-        char === 0x5F // _
-      ) {
-        end++;
-      } else {
-        break;
-      }
-    }
-
-    if (end === start) return null;
-
-    const typeName = safeUtf8Decode(this.buffer, start, end);
-    this.position = end;
-    return typeName;
-  }
-
-  private skipWhitespace(): void {
-    while (this.position < this.buffer.length) {
-      const char = this.buffer[this.position];
-      if (char === 0x20 || char === 0x09 || char === 0x0D || char === 0x0A) { // space, tab, CR, LF
-        if (char === 0x0A) this.lineNumber++;
-        this.position++;
-      } else {
-        break;
-      }
-    }
   }
 }

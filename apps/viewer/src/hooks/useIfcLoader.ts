@@ -15,7 +15,7 @@ import { flushSync } from 'react-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { getViewerStoreApi, useViewerStore, type FederatedModel } from '@/store';
 import { getGeomWorkerOverride, resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
-import { buildModelLoadedGeometryProps } from './modelLoadedGeometryProps.js';
+import { buildModelLoadedGeometryProps, warnUnsupportedItems } from './modelLoadedGeometryProps.js';
 import { planCacheWrite, decideMeshOnlyCacheHit, decideCacheLoadOutcome } from './cacheTier.js';
 import { computeSourceFingerprint } from './sourceFingerprint.js';
 import { computeFullSourceHash } from '../utils/sourceContentHash.js';
@@ -1867,13 +1867,7 @@ export function useIfcLoader() {
                     d,
                   );
                 }
-                if ((d.totalUnsupportedItems ?? 0) > 0) {
-                  console.warn(
-                    `[useIfc] ${file.name}: ${d.totalUnsupportedItems} representation item(s) dropped ` +
-                      `(unsupported type or failed geometry) — these elements are missing or incomplete`,
-                    d.unsupportedItemsByType,
-                  );
-                }
+                warnUnsupportedItems(file.name, d);
               }
 
               if (target.kind === 'primary') {

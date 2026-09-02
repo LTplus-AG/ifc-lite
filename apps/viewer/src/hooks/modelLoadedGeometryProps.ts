@@ -75,3 +75,18 @@ export function buildModelLoadedGeometryProps(
     is_resource_retry: inputs.isResourceRetry,
   };
 }
+
+/**
+ * Surface a concise main-thread warning when the streaming `complete` event's
+ * diagnostics recorded dropped representation items (unsupported type or
+ * failed geometry) — the affected elements are missing or incomplete.
+ * `fileName` disambiguates the primary model from a federated add.
+ */
+export function warnUnsupportedItems(fileName: string, diagnostics: GeometryDiagnostics): void {
+  if ((diagnostics.totalUnsupportedItems ?? 0) <= 0) return;
+  console.warn(
+    `[useIfc] ${fileName}: ${diagnostics.totalUnsupportedItems} representation item(s) dropped ` +
+      `(unsupported type or failed geometry) — these elements are missing or incomplete`,
+    diagnostics.unsupportedItemsByType,
+  );
+}

@@ -383,6 +383,43 @@ test('MEASURED (#3679): a diff AT the patch cap becomes a REAL prompt under MAX_
   }
 });
 
+test('MEASURED: LONG paths (188 bytes), spent twice per kept file, still fit MAX_PROMPT_BYTES', () => {
+  // The long-path case the 40-byte fixture above cannot see. `buildPrompt`
+  // spends a KEPT file's path TWICE -- once in its `--- FILE:` header and once
+  // in the `files_reviewed` roster -- so a kept row's true envelope cost grows
+  // at ~2 bytes per path byte, while a charge modelled on the unreviewable row
+  // grows at ~1. Any such charge is conservative only below the path length
+  // where the two lines cross; this repository has 1,070 tracked paths longer
+  // than 63 bytes, up to 188. Same real pipeline as above, at the same
+  // acceptance bound, with every path at the repository's maximum.
+  const rubric = readFileSync(join(HERE, 'rubric.md'), 'utf8');
+  const longPath = (i) => `packages/${'d'.repeat(170)}/f-${String(i).padStart(3, '0')}.ts`;
+  assert.equal(Buffer.byteLength(longPath(0), 'utf8'), 188, 'fixture precondition: paths at the repo maximum');
+  const rows = Array.from({ length: 600 }, (_, i) => sizedRow(longPath(i), 1_024));
+  const total = rows.reduce((n, r) => n + Buffer.byteLength(r.patch, 'utf8'), 0);
+  assert.equal(total, MAX_PATCH_BYTES, 'fixture precondition: exactly the acceptance bound');
+
+  const input = buildInput(rows, SHA);
+  const patchBytes = input.files.reduce((n, f) => n + Buffer.byteLength(f.patch, 'utf8'), 0);
+  input.contextPack = buildPack(input, {
+    baseRef: 'HEAD',
+    body: 'B'.repeat(20_000),
+    patchBytes,
+    exec: (_c, a) => (a[0] === 'show' ? 'y'.repeat(4_000) : ''),
+  });
+  const rendered = buildPrompt(rubric, input);
+  const bytes = Buffer.byteLength(rendered, 'utf8');
+  assert.ok(
+    bytes <= MAX_PROMPT_BYTES,
+    `the assembled prompt is ${bytes} bytes, over the ${MAX_PROMPT_BYTES} ceiling by ${bytes - MAX_PROMPT_BYTES}`,
+  );
+
+  // The degrade must still account for every candidate, exactly as above.
+  const omitted = input.unreviewable.filter((u) => u.reason === OMITTED_FOR_PROMPT_REASON);
+  assert.ok(omitted.length > 0, 'a diff at the cap cannot fully fit; something must be recorded as omitted');
+  assert.equal(input.files.length + omitted.length, rows.length, 'kept + omitted must account for every candidate');
+});
+
 test('a NORMAL diff is untouched by the fit: every file reviewed, nothing omitted', () => {
   // The other direction, so an over-eager budget cannot ship: 200 KB across 20
   // files is the fat end of this repository's ordinary PRs and must keep the

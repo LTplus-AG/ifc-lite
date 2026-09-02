@@ -143,9 +143,24 @@ export function promptSafePath(path) {
   return JSON.stringify(String(path)).replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 }
 
+/**
+ * THE THREE PER-ROW RENDERINGS, exported because they are also the per-row
+ * COST MODEL: build-review-input's `fitFilesToPrompt` charges each candidate
+ * by rendering these exact strings and measuring them, so the budget cannot
+ * drift from the prompt. A hand-written constant modelling these did drift --
+ * it charged a kept file's path ONCE while `fileHeader` plus `rosterRow` spend
+ * it TWICE, and 600 kept files with 188-byte paths pushed a "fits" verdict
+ * 8,476 bytes over MAX_PROMPT_BYTES. Change how a row renders and the charge
+ * follows by construction; that is the point of these being shared.
+ */
+export const fileHeader = (path) => `--- FILE: ${path}\n`;
+export const rosterRow = (path) => `  ${promptSafePath(path)}`;
+export const unreviewableRow = (u) => `  - ${promptSafePath(u.path)} (${promptSafePath(u.reason ?? 'unknown')})`;
+
+/** Assemble the full prompt: trusted rubric, then fenced untrusted diff. */
 export function buildPrompt(rubric, input, opts = {}) { // trusted rubric + fenced diff; opts.retryNote: see retry-prompt.mjs
   const files = input.files
-    .map((f) => `--- FILE: ${f.path}\n${f.patch}`)
+    .map((f) => `${fileHeader(f.path)}${f.patch}`)
     .join('\n\n');
   // JSON.stringify'd, because a path is PR-controlled bytes. Git permits any byte
   // but NUL and `/` in a path, newlines included, so an interpolated filename
@@ -153,7 +168,7 @@ export function buildPrompt(rubric, input, opts = {}) { // trusted rubric + fenc
   // premise is that PR-controlled bytes never leave the fence.
   const unreviewable = (input.unreviewable ?? []).length
     ? `\nFiles in this PR you were NOT shown (do not comment on them, do not report them clean):\n` +
-      input.unreviewable.map((u) => `  - ${promptSafePath(u.path)} (${promptSafePath(u.reason ?? 'unknown')})`).join('\n')
+      input.unreviewable.map(unreviewableRow).join('\n')
     : '';
 
   // THE CANONICAL `files_reviewed` LIST, handed over verbatim. Asking the model
@@ -169,7 +184,7 @@ export function buildPrompt(rubric, input, opts = {}) { // trusted rubric + fenc
   const roster =
     `\nYour \`files_reviewed\` array must contain EXACTLY these ${input.files.length} path(s), ` +
     'verbatim -- nothing added, nothing dropped:\n' +
-    input.files.map((f) => `  ${promptSafePath(f.path)}`).join('\n');
+    input.files.map((f) => rosterRow(f.path)).join('\n');
 
   // THE CONTEXT PACK, fenced with the diff because it is the same trust class.
   // Base-tree excerpts are merged, reviewed text and lower risk than the head,

@@ -89,8 +89,13 @@ import {
   SHALLOW_CHECKOUT_REMEDY,
   MAX_PROMPT_BYTES,
   PROMPT_BASE_OVERHEAD_BYTES,
-  PROMPT_UNREVIEWABLE_ROW_FIXED,
 } from './build-context-pack.mjs';
+// The renderers, not a byte model OF the renderers. fitFilesToPrompt charges
+// each row by measuring the exact strings buildPrompt will emit, because two
+// copies held together by prose drifted once already: a constant that charged
+// a kept file's path once, where the prompt spends it twice, declared a
+// 600-file long-path diff "fits" 8,476 bytes over the ceiling.
+import { fileHeader, rosterRow, unreviewableRow } from './run-reviewer.mjs';
 import { gh, GhError } from '../lib/gh.mjs';
 // The gate's pager, not a second copy of it. An earlier version here duplicated
 // it MINUS the one thing it exists for: the probe past a full final page. A PR
@@ -297,38 +302,38 @@ export function addedLineRanges(patch) {
  * read. Greedy, so a file too big for the remaining room does not block a
  * smaller one behind it. Ties break on path so two runs of one head agree.
  *
- * THE CHARGE IS DELIBERATELY THE WORST-CASE RATE. Every row -- kept or dropped,
- * candidate or already-unreviewable -- is charged PROMPT_UNREVIEWABLE_ROW_FIXED
- * plus its path bytes. A kept file's real header costs less (~12 bytes plus the
- * path against 120), but rows MOVE between the two sets while this runs, and
- * charging each set its own rate would make the budget depend on the answer.
- * The slack also covers the per-file joiner bytes buildPrompt spends. The pack
- * needs no reservation: packBudgetFor already yields to the diff and reaches
- * zero exactly on the PRs this function bites on.
+ * THE CHARGE IS MEASURED, PER ROLE, AND EACH CANDIDATE PAYS THE DEARER ONE.
+ * A candidate ends up either KEPT (a `--- FILE:` header plus a roster row --
+ * its path spent TWICE) or OMITTED (one unreviewable row -- its path once,
+ * plus the reason). Which one costs more depends on the path's length against
+ * the reason's, and rows MOVE between the two sets while this runs, so each
+ * candidate is charged max(kept, omitted), both measured by rendering the
+ * exact strings buildPrompt emits plus that row's join bytes. A hand-written
+ * constant stood here and drifted: it charged every row at the unreviewable
+ * rate, which undercharges a kept file once its path outgrows the reason, and
+ * 600 candidates with 188-byte paths were declared to fit 8,476 bytes over
+ * MAX_PROMPT_BYTES -- measured through buildInput -> buildPack -> buildPrompt
+ * with the shipped rubric. Rows unreviewable for OTHER reasons never move, so
+ * they pay exactly their own rendering. The pack needs no reservation:
+ * packBudgetFor already yields to the diff and reaches zero exactly on the
+ * PRs this function bites on.
  *
  * @param {{path: string, patch: string}[]} candidates
  * @param {{path: string}[]} unreviewable rows already recorded for other reasons
  * @returns {{ kept: typeof candidates, omitted: typeof candidates }}
  */
 export function fitFilesToPrompt(candidates, unreviewable) {
-  // WORST CASE PER ROW, and it must stay worst-case: a file can move between kept
-  // and omitted during selection, so each is charged at the dearer unreviewable
-  // rate. The reason string is charged too -- the envelope model bills it, and
-  // omitting it here would let the fit overshoot by `reason` bytes per dropped
-  // file, which on a 200-file omission is tens of kilobytes.
-  const reasonBytes = Buffer.byteLength(OMITTED_FOR_PROMPT_REASON, 'utf8');
-  // CHARGED AS RENDERED, not as stored. `buildPrompt` emits the path
-  // JSON-escaped, so a quote costs three bytes where the raw string costs one and
-  // a backslash costs two. Measured: a path with quotes undercounts by 3 bytes a
-  // row and one with backslashes by 6, which on a 900-row omission is kilobytes
-  // of budget that does not exist -- the same undercharge that let long paths push
-  // a passing prompt over the ceiling. `- 2` drops the surrounding quotes, which
-  // the fixed part already covers.
-  const rowCharge = (path) =>
-    PROMPT_UNREVIEWABLE_ROW_FIXED + Buffer.byteLength(JSON.stringify(path), 'utf8') - 2 + reasonBytes;
+  const rendered = (s) => Buffer.byteLength(s, 'utf8');
+  // The join bytes are part of the row: files join on `\n\n`, the roster and
+  // the unreviewable list on `\n`. Charged per row rather than per gap, which
+  // over-reserves by one joiner per section -- conservative by bytes, not
+  // kilobytes.
+  const keptCharge = (path) => rendered(fileHeader(path)) + 2 + rendered(rosterRow(path)) + 1;
+  const omittedCharge = (path) =>
+    rendered(unreviewableRow({ path, reason: OMITTED_FOR_PROMPT_REASON })) + 1;
   let budget = MAX_PROMPT_BYTES - PROMPT_BASE_OVERHEAD_BYTES;
-  for (const u of unreviewable) budget -= rowCharge(u.path);
-  for (const c of candidates) budget -= rowCharge(c.path);
+  for (const u of unreviewable) budget -= rendered(unreviewableRow(u)) + 1;
+  for (const c of candidates) budget -= Math.max(keptCharge(c.path), omittedCharge(c.path));
 
   const sized = candidates.map((c) => ({ c, bytes: Buffer.byteLength(c.patch, 'utf8') }));
   if (sized.reduce((n, s) => n + s.bytes, 0) <= budget) return { kept: candidates, omitted: [] };

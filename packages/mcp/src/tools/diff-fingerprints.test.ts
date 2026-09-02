@@ -38,8 +38,8 @@ import {
   railTypeModel,
   scheduleModel,
   typeTagModel,
-  UNIT_SCALE_MILLIMETRE_MODEL,
 } from '../../../cli/src/commands/diff-test-helpers.js';
+import { UNIT_SCALE_MILLIMETRE_MODEL } from '../../../cli/src/commands/diff-unit-scale-fixtures.js';
 import type { CallToolResult } from '../protocol/index.js';
 import type { ToolContext } from '../context.js';
 import { DEFAULT_CONFIG, InMemoryModelRegistry, NOOP_PROGRESS, SILENT_LOGGER } from '../context.js';

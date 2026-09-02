@@ -25,8 +25,8 @@ import { describe, expect, it } from 'vitest';
 import { diffModels } from '@ifc-lite/diff';
 import { buildFileFingerprints } from './diff-engine.js';
 import { loadIfcBytes } from '../loader.js';
+import { guid } from './diff-test-helpers.js';
 import {
-  guid,
   UNIT_SCALE_COMBINED_METRE_MODEL,
   UNIT_SCALE_COMBINED_MILLIMETRE_MODEL,
   UNIT_SCALE_COMBINED_PROPERTY_EDITED_MODEL,
@@ -34,7 +34,7 @@ import {
   UNIT_SCALE_METRE_MODEL,
   UNIT_SCALE_MILLIMETRE_EDITED_MODEL,
   UNIT_SCALE_MILLIMETRE_MODEL,
-} from './diff-test-helpers.js';
+} from './diff-unit-scale-fixtures.js';
 
 async function fingerprintsOf(source: string) {
   const store = await loadIfcBytes(new TextEncoder().encode(source), 'model');

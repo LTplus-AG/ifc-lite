@@ -10,6 +10,7 @@
 import type { StringTable } from './string-table.js';
 import { comparePropertyValues, type PropertyValue } from './property-table.js';
 import { QuantityType } from './types.js';
+import { groupQuantitySetsByInstance } from './group-quantity-sets.js';
 
 export interface QuantitySet {
   name: string;
@@ -167,24 +168,16 @@ export function quantityTableFromColumns(columns: QuantityTableColumns, strings:
 
     getForEntity: (id) => {
       const rowIndices = entityIndex.get(id) || [];
-      const qsets = new Map<string, QuantitySet>();
-      for (const idx of rowIndices) {
-        const qsetNameStr = strings.get(qsetName[idx]);
-        const qsetGlobalIdStr = strings.get(qsetGlobalId[idx]);
-        const key = qsetNameStr + '\u0000' + qsetGlobalIdStr;
-        if (!qsets.has(key)) {
-          qsets.set(key, { name: qsetNameStr, globalId: qsetGlobalIdStr, quantities: [] });
-        }
-        const qset = qsets.get(key)!;
-        const quantNameStr = strings.get(quantityName[idx]);
-        qset.quantities.push({
-          name: quantNameStr,
-          type: quantityType[idx],
-          value: value[idx],
-          formula: formula[idx] > 0 ? strings.get(formula[idx]) : undefined,
-        });
-      }
-      return Array.from(qsets.values());
+      return groupQuantitySetsByInstance(
+        rowIndices,
+        qsetName,
+        qsetGlobalId,
+        quantityName,
+        quantityType,
+        value,
+        formula,
+        strings,
+      );
     },
 
     getQuantityValue: (id, qset, quant) => {

@@ -16,6 +16,7 @@ export { PropertyTableBuilder, propertyTableFromColumns, propertyTableToColumns,
 export { groupPropertySetsByInstance } from './group-property-sets.js';
 export type { PropertyTable, PropertyTableColumns, PropertySet, Property, PropertyValue } from './property-table.js';
 export { QuantityTableBuilder, quantityTableFromColumns, quantityTableToColumns } from './quantity-table.js';
+export { groupQuantitySetsByInstance } from './group-quantity-sets.js';
 export type { QuantityTable, QuantityTableColumns, QuantitySet, Quantity } from './quantity-table.js';
 export {
   RelationshipGraphBuilder,

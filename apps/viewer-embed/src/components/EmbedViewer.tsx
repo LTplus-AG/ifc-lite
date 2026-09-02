@@ -18,6 +18,7 @@ import { ViewportOverlays } from '@/components/viewer/ViewportOverlays';
 import { useIfc } from '@/hooks/useIfc';
 import { useWebGPU } from '@/hooks/useWebGPU';
 import { useViewerStore } from '@/store';
+import { selectModelMeshes } from '@/lib/type-view-visibility';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { parseUrlParams, assertFetchableUrl } from '../bridge/urlParams.js';
 import { initBridge, destroyBridge, emitEvent } from '../bridge/handler.js';
@@ -251,16 +252,16 @@ export function EmbedViewer() {
     return geometryResult;
   }, [storeModels, geometryResult, modelIdToIndex]);
 
-  // Filter by type visibility, plus the host's ?hideTypes= list. The latter
-  // takes ARBITRARY IFC class names (that is what the SDK's `hideTypes?:
-  // string[]` already ships as accepting), so it cannot go through
-  // `typeVisibility`, whose six semantic toggles are a fixed set — it is a
-  // case-folded membership test in this same pass instead.
+  // Then type visibility, plus the host's ?hideTypes=, which takes ARBITRARY
+  // IFC class names (the SDK ships `hideTypes?: string[]`) and so cannot go
+  // through `typeVisibility`'s fixed semantic toggles: a case-folded test here.
   const hiddenTypes = useMemo(() => toHiddenTypeSet(hideTypes), [hideTypes]);
   const filteredGeometry = useMemo(() => {
     if (!mergedGeometryResult?.meshes) return null;
-    let meshes = mergedGeometryResult.meshes;
-
+    // The embed renders the Model view: placed occurrences and material-layer
+    // slices; type-library geometry is never drawn (#957, #1353). The full
+    // viewer's predicate, whole: a file with nothing placed keeps its orphans.
+    let meshes = selectModelMeshes(mergedGeometryResult.meshes);
     meshes = meshes.filter(mesh => {
       if (isTypeHidden(mesh.ifcType, hiddenTypes)) return false;
       if (mesh.ifcType === 'IfcSpace' && !typeVisibility.spaces) return false;

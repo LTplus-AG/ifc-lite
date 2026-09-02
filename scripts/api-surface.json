@@ -1513,6 +1513,7 @@
     "ModelInfo: interface",
     "ModelStats: interface",
     "SectionAxis: type",
+    "TypeVisibilityFlags: type",
     "ViewPreset: type"
   ],
   "@ifc-lite/encoding": [

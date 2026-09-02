@@ -58,7 +58,7 @@ type EventCallback<T> = (data: T) => void;
 
 // Re-export types consumers might need
 export type { EmbedOptions };
-export type { ViewPreset, SectionAxis, ModelStats, EntityProperties, ModelInfo };
+export type { ViewPreset, SectionAxis, ModelStats, EntityProperties, ModelInfo, TypeVisibilityFlags };
 
 // ============================================================================
 // Default embed origin

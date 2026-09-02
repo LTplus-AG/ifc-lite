@@ -12,7 +12,9 @@
 import type { EntityRef } from './types.js';
 import { EntityExtractor } from './entity-extractor.js';
 import type { IfcSourceBytes } from './source-bytes.js';
-import { RelationshipType } from '@ifc-lite/data';
+import { resolveOwningProjectId, type RelatedLookup } from './owning-project.js';
+
+export { resolveOwningProjectId, type RelatedLookup } from './owning-project.js';
 
 /**
  * SI Prefix multipliers, keyed by the members of the `IfcSIPrefix` EXPRESS
@@ -328,89 +330,6 @@ function extractLengthUnitScaleForProjectId(
   // No length unit found, default to meters
   warnUnknownUnit(entityIndex, 'No LENGTHUNIT found in IFCUNITASSIGNMENT');
   return 1.0;
-}
-
-/** Minimal relationship-graph surface {@link resolveOwningProjectId} needs. */
-interface RelatedLookup {
-  getRelated(entityId: number, relType: RelationshipType, direction: 'forward' | 'inverse'): number[];
-}
-
-/** Upper bound on the containment walk in {@link resolveOwningProjectId}, so a
- *  malformed file with a containment cycle that the visited-set guard doesn't
- *  catch on its first pass still terminates. Real spatial hierarchies (site →
- *  building → storey → element, occasionally one assembly level deeper) never
- *  come close to this depth. */
-const MAX_OWNING_PROJECT_WALK_STEPS = 64;
-
-/**
- * Resolve the express id of the `IFCPROJECT` that owns `expressId`, for files
- * that legitimately contain more than one `IFCPROJECT` — the shape
- * `MergedExporter`'s documented `auto` unit-reconciliation mode produces for
- * a federated merge of differently-unit'd models (see issue #1332). An
- * ordinary IFC file has exactly one `IFCPROJECT` by EXPRESS invariant, so
- * this is a no-op fast path there.
- *
- * `extractLengthUnitScale`/`extractProjectUnits` resolve the file's FIRST
- * `IFCPROJECT` only unless given an explicit `projectId`; every entity
- * belonging to a LATER project in a multi-project file was silently read
- * against the first project's units. Callers needing per-entity correctness
- * (both {@link resolveEntityLengthUnitScale} below and `@ifc-lite/ids`'s
- * area/volume resolution, which needs the project id itself rather than
- * just a length scale) resolve this id first and pass it on to
- * `extractLengthUnitScale`/`extractProjectUnits`'s `projectId` parameter.
- *
- * Walks the entity's real spatial containment up to its own project:
- * `IfcRelContainedInSpatialStructure` (element → structure), then
- * `IfcRelAggregates` (child → parent, repeated to the project), with an
- * `IfcRelDefinesByType` (type → one of the objects it defines) hop for a
- * type entity that has no containment of its own. Containment is tried
- * first since it's the one-hop case for the common "element straight into
- * its storey" shape.
- *
- * @returns The owning project's express id, or `undefined` when the file has
- *   zero or one `IFCPROJECT` (nothing to resolve) or the walk can't reach one
- *   (e.g. a resource-level entity with no containment, a cyclic/malformed
- *   graph). Callers should fall back to the file's default project on
- *   `undefined`, matching prior single-project behaviour.
- */
-export function resolveOwningProjectId(
-  entityIndex: { byId: { get(expressId: number): EntityRef | undefined }; byType: Map<string, number[]> },
-  relationships: RelatedLookup | undefined,
-  expressId: number
-): number | undefined {
-  const projectIds = entityIndex.byType.get('IFCPROJECT') || [];
-  if (projectIds.length <= 1) return undefined;
-  if (!relationships) return undefined;
-
-  const projectIdSet = new Set(projectIds);
-  const visited = new Set<number>();
-  let current: number | undefined = expressId;
-
-  for (let step = 0; current !== undefined && step < MAX_OWNING_PROJECT_WALK_STEPS; step++) {
-    if (projectIdSet.has(current)) return current;
-    if (visited.has(current)) return undefined; // containment cycle
-    visited.add(current);
-
-    const containers = relationships.getRelated(current, RelationshipType.ContainsElements, 'inverse');
-    if (containers.length > 0) {
-      current = containers[0];
-      continue;
-    }
-    const parents = relationships.getRelated(current, RelationshipType.Aggregates, 'inverse');
-    if (parents.length > 0) {
-      current = parents[0];
-      continue;
-    }
-    // Resource-level entity with no containment of its own (e.g. a type
-    // like IfcWallType): hop to an object it defines and keep walking.
-    const definedObjects = relationships.getRelated(current, RelationshipType.DefinesByType, 'forward');
-    if (definedObjects.length > 0) {
-      current = definedObjects[0];
-      continue;
-    }
-    return undefined;
-  }
-  return undefined;
 }
 
 /**

@@ -165,6 +165,28 @@ export function validateLimit(raw: string | undefined, flagName = '--limit'): nu
 }
 
 /**
+ * A candidate string is absent for display/grouping purposes when it is
+ * undefined/null OR blank/whitespace-only (`IFCMATERIAL('',$,$)`,
+ * `IFCBUILDINGSTOREY('...','',...)`, or a whitespace-only source value — a
+ * real shape, see #3714). Chaining raw candidates with `??` only falls
+ * through on null/undefined, so a present-but-blank `Name` short-circuits
+ * the chain and is emitted verbatim (an empty-string JSON key, a blank
+ * label) where a placeholder belongs. Mirrors the shape introduced in
+ * `packages/mcp/src/material-naming.ts` for the same defect family.
+ */
+export function isBlank(value: string | undefined | null): boolean {
+  return value === undefined || value === null || value.trim() === '';
+}
+
+/** First candidate that is not blank per `isBlank`, or undefined if none. */
+export function firstNonBlank(...candidates: Array<string | undefined | null>): string | undefined {
+  for (const candidate of candidates) {
+    if (!isBlank(candidate)) return candidate ?? undefined;
+  }
+  return undefined;
+}
+
+/**
  * Get positional arguments (non-flag arguments).
  */
 export function getPositionalArgs(args: string[]): string[] {

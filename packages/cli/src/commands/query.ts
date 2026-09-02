@@ -10,11 +10,10 @@
  * classifications, attributes, relationships, type properties.
  */
 
-import { findPropertyInSets } from '@ifc-lite/query';
 import { createHeadlessContext } from '../loader.js';
 import { printJson, getFlag, hasFlag, fatal, validateLimit } from '../output.js';
 import { STANDARD_QTO_MAP, sortEntities } from './query-aggregation.js';
-import { VALID_GROUP_BY_KEYS, outputCount, outputSum, outputAggregation, outputGroupBy, outputEntities } from './query-output.js';
+import { VALID_GROUP_BY_KEYS, outputCount, outputSum, outputAggregation, outputGroupBy, outputEntities, computeUniqueValues } from './query-output.js';
 import { applyWhereFilter, parseWhereFilter, compareValues, normalizeBooleanValue } from './where-filter.js';
 
 export { applyWhereFilter, parseWhereFilter, compareValues, normalizeBooleanValue };
@@ -215,40 +214,7 @@ export async function queryCommand(args: string[]): Promise<void> {
     if (!targetType) fatal('--unique requires --type (e.g., --type IfcWall --unique material)');
 
     const entities = bim.query().byType(...targetType.split(',')).toArray();
-    const valueCounts = new Map<string, number>();
-
-    if (uniqueProp === 'material') {
-      // B6: Support --unique material
-      for (const e of entities) {
-        const mat = bim.materials(e.ref);
-        const first = mat?.materials?.[0];
-        const firstName = typeof first === 'string' ? first : first?.name;
-        const val = firstName ?? mat?.name ?? '(no material)';
-        valueCounts.set(val, (valueCounts.get(val) ?? 0) + 1);
-      }
-    } else if (uniqueProp === 'storey') {
-      for (const e of entities) {
-        const storey = bim.storey(e.ref);
-        const val = storey?.name ?? '(no storey)';
-        valueCounts.set(val, (valueCounts.get(val) ?? 0) + 1);
-      }
-    } else if (uniqueProp === 'type') {
-      for (const e of entities) {
-        valueCounts.set(e.type, (valueCounts.get(e.type) ?? 0) + 1);
-      }
-    } else {
-      const dotIdx = uniqueProp.indexOf('.');
-      if (dotIdx <= 0) fatal(`Invalid --unique path: "${uniqueProp}". Expected: PsetName.PropName, or one of: material, storey, type`);
-      const psetName = uniqueProp.slice(0, dotIdx);
-      const propName = uniqueProp.slice(dotIdx + 1);
-
-      for (const e of entities) {
-        const psets = bim.properties(e.ref);
-        const prop = findPropertyInSets<any>(psets, psetName, propName);
-        const val = prop?.value != null ? String(prop.value) : '(no value)';
-        valueCounts.set(val, (valueCounts.get(val) ?? 0) + 1);
-      }
-    }
+    const valueCounts = computeUniqueValues(entities, uniqueProp, bim);
 
     if (jsonOutput) {
       const result: Record<string, number> = {};

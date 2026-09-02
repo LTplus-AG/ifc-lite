@@ -8,7 +8,7 @@
  */
 
 import { findPropertyInSets } from '@ifc-lite/query';
-import { printJson, formatTable, hasFlag, fatal } from '../output.js';
+import { printJson, formatTable, hasFlag, fatal, firstNonBlank } from '../output.js';
 import { getQuantityValue } from './query-aggregation.js';
 
 /** Valid built-in grouping keys */
@@ -201,10 +201,12 @@ export function outputGroupBy(entities: any[], groupByKey: string, sumQuantity: 
       groupValue = e.type;
     } else if (groupByKey === 'storey') {
       const storey = bim.storey(e.ref);
-      groupValue = storey?.name ?? '(no storey)';
+      groupValue = firstNonBlank(storey?.name) ?? '(no storey)';
     } else if (groupByKey === 'material') {
       const mat = bim.materials(e.ref);
-      groupValue = mat?.materials?.[0] ?? mat?.name ?? '(no material)';
+      const first = mat?.materials?.[0];
+      const firstMatName = typeof first === 'string' ? first : first?.name;
+      groupValue = firstNonBlank(firstMatName, mat?.name) ?? '(no material)';
     } else if (groupByKey.includes('.')) {
       // PsetName.PropName
       const [psetName, propName] = groupByKey.split('.', 2);
@@ -286,6 +288,50 @@ export function outputGroupBy(entities: any[], groupByKey: string, sumQuantity: 
       process.stdout.write(`\n  Total: ${entities.length} entities in ${groups.size} groups\n\n`);
     }
   }
+}
+
+/**
+ * B6/F8: `--unique` distinct-value counts for `material`, `storey`, `type`,
+ * or a `PsetName.PropName` path. Pulled out of `queryCommand` so the
+ * blank/whitespace-name handling (`firstNonBlank`) is unit-testable without
+ * a fixture model.
+ */
+export function computeUniqueValues(entities: any[], uniqueProp: string, bim: any): Map<string, number> {
+  const valueCounts = new Map<string, number>();
+
+  if (uniqueProp === 'material') {
+    for (const e of entities) {
+      const mat = bim.materials(e.ref);
+      const first = mat?.materials?.[0];
+      const firstName = typeof first === 'string' ? first : first?.name;
+      const val = firstNonBlank(firstName, mat?.name) ?? '(no material)';
+      valueCounts.set(val, (valueCounts.get(val) ?? 0) + 1);
+    }
+  } else if (uniqueProp === 'storey') {
+    for (const e of entities) {
+      const storey = bim.storey(e.ref);
+      const val = firstNonBlank(storey?.name) ?? '(no storey)';
+      valueCounts.set(val, (valueCounts.get(val) ?? 0) + 1);
+    }
+  } else if (uniqueProp === 'type') {
+    for (const e of entities) {
+      valueCounts.set(e.type, (valueCounts.get(e.type) ?? 0) + 1);
+    }
+  } else {
+    const dotIdx = uniqueProp.indexOf('.');
+    if (dotIdx <= 0) fatal(`Invalid --unique path: "${uniqueProp}". Expected: PsetName.PropName, or one of: material, storey, type`);
+    const psetName = uniqueProp.slice(0, dotIdx);
+    const propName = uniqueProp.slice(dotIdx + 1);
+
+    for (const e of entities) {
+      const psets = bim.properties(e.ref);
+      const prop = findPropertyInSets<any>(psets, psetName, propName);
+      const val = prop?.value != null ? String(prop.value) : '(no value)';
+      valueCounts.set(val, (valueCounts.get(val) ?? 0) + 1);
+    }
+  }
+
+  return valueCounts;
 }
 
 export function outputEntities(entities: any[], args: string[], bim: any, jsonOutput: boolean): void {

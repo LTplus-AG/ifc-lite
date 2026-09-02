@@ -18,8 +18,7 @@ import { ViewportOverlays } from '@/components/viewer/ViewportOverlays';
 import { useIfc } from '@/hooks/useIfc';
 import { useWebGPU } from '@/hooks/useWebGPU';
 import { useViewerStore } from '@/store';
-import { selectModelMeshes, meshClassIsPlaced } from '@/lib/type-view-visibility';
-import { geometryClassOf } from '@ifc-lite/geometry/geometry-class';
+import { useModelViewGeometry } from './useModelViewGeometry.js';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { parseUrlParams, assertFetchableUrl } from '../bridge/urlParams.js';
 import { initBridge, destroyBridge, emitEvent } from '../bridge/handler.js';
@@ -256,42 +255,15 @@ export function EmbedViewer() {
   // Then type visibility, plus the host's ?hideTypes=: ARBITRARY IFC class
   // names (the SDK ships `hideTypes?: string[]`), so not a `typeVisibility`
   // toggle but a case-folded membership test merged into that same filter pass.
-  // `selectModelMeshes` drops orphan type geometry the moment the first placed
-  // mesh arrives, so the filtered list can change COMPOSITION between streaming
-  // batches, not just grow. The upload path classifies by array length and
-  // appends `slice(oldLength)` (`useGeometryStreaming.ts:321,516`), which assumes
-  // growth at the tail: on the flip it would leave the dropped orphans on screen
-  // and skip the placed meshes that took their indices. `geometryContentVersion`
-  // is the existing escape hatch for a list whose content changed under a stable
-  // length, so flipping it forces the full re-upload.
-  const hasPlacedGeometry = useMemo(
-    () => (mergedGeometryResult?.meshes ?? []).some((m) => meshClassIsPlaced(geometryClassOf(m))),
-    [mergedGeometryResult],
-  );
+  // Then type visibility, plus the host's ?hideTypes=: ARBITRARY IFC class
+  // names (the SDK ships `hideTypes?: string[]`), so not a `typeVisibility`
+  // toggle but a case-folded membership test merged into that same filter pass.
   const hiddenTypes = useMemo(() => toHiddenTypeSet(hideTypes), [hideTypes]);
-  const filteredGeometry = useMemo(() => {
-    if (!mergedGeometryResult?.meshes) return null;
-    // The embed renders the Model view: placed occurrences and material-layer
-    // slices; type-library geometry is never drawn (#957, #1353). The full
-    // viewer's predicate, whole: a file with nothing placed keeps its orphans.
-    let meshes = selectModelMeshes(mergedGeometryResult.meshes);
-    meshes = meshes.filter(mesh => {
-      if (isTypeHidden(mesh.ifcType, hiddenTypes)) return false;
-      if (mesh.ifcType === 'IfcSpace' && !typeVisibility.spaces) return false;
-      if (mesh.ifcType === 'IfcOpeningElement' && !typeVisibility.openings) return false;
-      if (mesh.ifcType === 'IfcSite' && !typeVisibility.site) return false;
-      return true;
-    });
-
-    meshes = meshes.map(mesh => {
-      if (mesh.ifcType === 'IfcSpace' || mesh.ifcType === 'IfcOpeningElement') {
-        return { ...mesh, color: [mesh.color[0], mesh.color[1], mesh.color[2], Math.min(mesh.color[3] * 0.3, 0.3)] as [number, number, number, number] };
-      }
-      return mesh;
-    });
-
-    return meshes;
-  }, [mergedGeometryResult, typeVisibility, hiddenTypes]);
+  const { geometry: filteredGeometry, contentVersion } = useModelViewGeometry(
+    mergedGeometryResult,
+    hiddenTypes,
+    typeVisibility,
+  );
 
   // Compute isolation set
   const computedIsolatedIds = useMemo(() => {
@@ -401,7 +373,7 @@ export function EmbedViewer() {
         <div style={{ position: 'absolute', inset: 0 }}>
           <Viewport
             geometry={filteredGeometry}
-            geometryContentVersion={hasPlacedGeometry ? 1 : 0}
+            geometryContentVersion={contentVersion}
             coordinateInfo={mergedGeometryResult?.coordinateInfo}
             computedIsolatedIds={computedIsolatedIds}
             modelIdToIndex={modelIdToIndex}

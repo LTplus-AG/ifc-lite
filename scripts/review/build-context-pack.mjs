@@ -70,8 +70,8 @@ export const MAX_PACK_BYTES = 160_000;
  * permits sizes already known to work is the whole job. A 50 KB diff
  * still gets the whole 160 KB pack, which covers nearly every PR -- but be exact
  * about the tail, because "only a near-maximal diff squeezes it" was wrong: the
- * pack starts shrinking at ~257 KB of diff and reaches ZERO at ~413 KB (measured
- * at 50 changed files; the exact points move with file count), and the
+ * pack starts shrinking at ~198 KiB of diff and reaches ZERO at ~354 KiB
+ * (measured at 50 changed files; the exact points move with file count), and the
  * largest PR observed on this repo is ~427 KB. So the biggest real PRs get NO
  * pack, not a smaller one. That is the correct answer at that size -- 421 KB of
  * diff alone is already what demonstrably works -- but it is a cliff, not a
@@ -115,8 +115,8 @@ export const PROMPT_BASE_OVERHEAD_BYTES = 24_000;
  * Per rendered row: a changed file's `--- FILE: <path>` header and fences, or an
  * unreviewable entry's JSON line. Both are emitted per item by buildPrompt, so
  * both are charged -- see `promptEnvelopeBytes`. Headers dominate the envelope on a large PR -- a flat
- * reserve of 60,000 left a 1,000-file diff 8,050 bytes over the ceiling, which
- * the measured test caught and the arithmetic one never could.
+ * reserve of 60,000 left a 1,000-file diff over the ceiling, which the measured
+ * test caught and the arithmetic one never could.
  *
  * BOTH terms are guarded, by two different fixtures, and it takes two: the
  * 1,000-file case pins the per-file term (which dominates there) and cannot see
@@ -127,15 +127,16 @@ export const PROMPT_PER_FILE_BYTES = 70;
 
 /**
  * Per unreviewable entry: one JSON line naming the path and why it was skipped.
- * Measured at ~111 bytes with this harness's real path lengths and its most
- * common reason string, so it is charged at nearly twice the file rate instead
- * of sharing it. At the shared rate, 100 reviewable files on a 200 KB diff plus
- * 900 unreviewable rows rendered 418,134 bytes -- 28,134 over the ceiling, with
- * no refusal anywhere to catch it.
+ * Measured at ~102 bytes/row with this harness's longest reason string, against
+ * ~51 for a changed-file row -- almost exactly 2x, which is why it is charged
+ * separately instead of sharing the file rate. 120 is deliberate headroom over
+ * the measured 102, not itself a measurement. At the shared rate, 100 reviewable files on a 200 KB diff plus
+ * 900 unreviewable rows rendered 404,747 bytes -- 14,747 over the ceiling, with
+ * no refusal anywhere to catch it. (Re-measured against the pre-fix module; the
+ * figure first written here overstated the overrun by about 2x.)
  */
 export const PROMPT_PER_UNREVIEWABLE_BYTES = 120;
 
-/** What the pack may spend once the diff has taken its share. */
 /** What the prompt spends on structure, before any diff or pack content. */
 export function promptEnvelopeBytes(input) {
   const files = input?.files?.length ?? 0;
@@ -143,8 +144,20 @@ export function promptEnvelopeBytes(input) {
   return PROMPT_BASE_OVERHEAD_BYTES + files * PROMPT_PER_FILE_BYTES + unreviewable * PROMPT_PER_UNREVIEWABLE_BYTES;
 }
 
+/** What the pack may spend once the diff and the envelope have taken their share. */
 export function packBudgetFor(patchBytes, envelopeBytes = PROMPT_BASE_OVERHEAD_BYTES) {
-  const room = MAX_PROMPT_BYTES - (envelopeBytes || 0) - (patchBytes || 0);
+  // `|| 0` let an explicit 0 or a NaN silently DROP the base reserve and hand back
+  // a budget 24,000 bytes too large -- a falsy input failing OPEN, in the one
+  // function whose job is to keep the prompt small. The previous row-count
+  // signature could not do that (a falsy count zeroed the per-file term and left
+  // the base standing), so changing the parameter's meaning created a new way to
+  // be wrong.
+  // `> 0`, not merely finite: an explicit 0 is not a legitimate envelope. Every
+  // real caller goes through `promptEnvelopeBytes`, which always includes the base
+  // and so can never return 0, and Number.isFinite(0) is true -- so a bare 0 would
+  // have slipped the guard and dropped the reserve exactly as `|| 0` did.
+  const envelope = Number.isFinite(envelopeBytes) && envelopeBytes > 0 ? envelopeBytes : PROMPT_BASE_OVERHEAD_BYTES;
+  const room = MAX_PROMPT_BYTES - envelope - (patchBytes || 0);
   return Math.max(0, Math.min(MAX_PACK_BYTES, room));
 }
 

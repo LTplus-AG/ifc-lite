@@ -308,7 +308,7 @@ test('THE REAL PROMPT stays under the ceiling whenever the DIFF alone does', () 
   // load-bearing -- the budget re-hits the MAX_PACK_BYTES clamp and the prompt
   // fits whether or not a byte is reserved per file -- so BOTH envelope
   // constants could be zeroed with this suite green. The reserve exists because
-  // a 1,000-file diff once shipped a 765,620-byte prompt; the fixture has to
+  // a 1,000-file diff once shipped a prompt far over the ceiling; the fixture has to
   // reach the size that produced it.
   const fileCount = 1_000;
   const diffTarget = 250_000;
@@ -477,7 +477,7 @@ test('the UNREVIEWABLE list is charged too, not rendered for free', () => {
 
 test('THE ASSEMBLED PROMPT fits even when most rows are UNREVIEWABLE', () => {
   // The monotonicity check above says the rows cost something; it never says
-  // they cost ENOUGH. Charging them at the file rate was still 28,134 bytes over
+  // they cost ENOUGH. Charging them at the file rate was still 14,747 bytes over
   // on this exact shape -- 100 reviewable files on a 200 KB diff plus 900
   // unreviewable rows, which is 1,000 files, the paging cap, so no truncation
   // refusal fires either.
@@ -541,4 +541,21 @@ test('promptEnvelopeBytes AGREES with what buildPrompt actually renders', () => 
   }
   assert.equal(promptEnvelopeBytes(undefined), PROMPT_BASE_OVERHEAD_BYTES, 'a missing input must not throw');
   assert.equal(promptEnvelopeBytes({}), PROMPT_BASE_OVERHEAD_BYTES);
+});
+
+test('a FALSY envelope charges the base reserve rather than dropping it', () => {
+  // `|| 0` would have let an explicit 0 or a NaN silently remove the 24,000-byte
+  // base and hand back a budget that much too large -- a falsy input failing OPEN
+  // in the one function whose job is to keep the prompt small. The previous
+  // row-count signature could not do this: a falsy count zeroed the per-file term
+  // and left the base standing, so the new signature made a new way to be wrong.
+  const patch = 250_000;
+  const charged = packBudgetFor(patch, PROMPT_BASE_OVERHEAD_BYTES);
+  for (const bad of [NaN, undefined, null, 0]) {
+    assert.equal(
+      packBudgetFor(patch, bad),
+      charged,
+      `an envelope of ${String(bad)} produced a different budget: the base reserve was dropped`,
+    );
+  }
 });

@@ -42,6 +42,7 @@ import {
   HeadlessLikeBackend,
   ToolErrorCode,
   ToolExecutionError,
+  firstNonBlank,
 } from '@ifc-lite/mcp/browser';
 import {
   addCommentToTopic,
@@ -585,7 +586,7 @@ const IMPLS: Record<string, ToolImpl> = {
       for (const e of m.bim.query().toArray()) {
         const node = new EntityNode(m.store, e.ref.expressId);
         const storey = node.storey();
-        const key = storey?.name ?? '(no storey)';
+        const key = firstNonBlank(storey?.name) ?? '(no storey)';
         counts.set(key, (counts.get(key) ?? 0) + 1);
       }
     } else if (groupBy === 'material') {
@@ -614,7 +615,7 @@ const IMPLS: Record<string, ToolImpl> = {
       });
     }
     return {
-      text: `${data.type} '${data.name ?? '(unnamed)'}' (#${data.ref.expressId})`,
+      text: `${data.type} '${firstNonBlank(data.name) ?? '(unnamed)'}' (#${data.ref.expressId})`,
       structured: data,
     };
   },
@@ -1524,7 +1525,7 @@ const IMPLS: Record<string, ToolImpl> = {
     const lines: string[] = [head];
     for (const e of enriched) {
       const data = e.entity as { type?: string; name?: string; globalId?: string } | null;
-      lines.push(`• ${data?.type ?? '?'} #${e.expressId} '${data?.name ?? '(unnamed)'}'`);
+      lines.push(`• ${data?.type ?? '?'} #${e.expressId} '${firstNonBlank(data?.name) ?? '(unnamed)'}'`);
       if (data?.globalId) lines.push(`  GlobalId: ${data.globalId}`);
       if (e.properties && e.properties.length > 0) {
         const psets = e.properties.map((p) => `${p.name} (${p.properties.length})`);

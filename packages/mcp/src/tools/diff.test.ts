@@ -139,6 +139,18 @@ async function diff(input: Record<string, unknown>): Promise<DiffShape> {
   return result.structuredContent as unknown as DiffShape;
 }
 
+/**
+ * A wall on a storey whose Name is blank (`IFCBUILDINGSTOREY('...','',...)`),
+ * for `quantity_diff`'s group-by-storey regression coverage. Overrides the
+ * shared PREAMBLE's storey (`#41`, Name 'L01') with a second, blank-named one
+ * (`#42`) that the wall is actually placed under.
+ */
+function blankStoreyWallBody(wallGuid: string): string {
+  return `#42= IFCBUILDINGSTOREY('${guid('BLKS')}',$,'',$,$,#40,$,$,.ELEMENT.,0.);
+#72= IFCWALL('${wallGuid}',$,'Wall',$,$,#40,$,'tag',$);
+#80= IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid('RCBS')}',$,$,$,(#72),#42);`;
+}
+
 beforeAll(async () => {
   tmp = await mkdtemp(join(tmpdir(), 'ifc-lite-mcp-diff-'));
   await load('base', step(twoWallsBody(guid('OLDA'), guid('OLDB'))));
@@ -147,6 +159,8 @@ beforeAll(async () => {
   await load('twins-head', step(twinWallsBody(guid('TWC'), guid('TWD'))));
   await load('sched-base', scheduleModel(guid('OLDT'), guid('PSTA'), guid('RELA')));
   await load('sched-head', scheduleModel(guid('NEWT'), guid('PSTB'), guid('RELB')));
+  await load('blank-storey-a', step(blankStoreyWallBody(guid('BSWA'))));
+  await load('blank-storey-b', step(blankStoreyWallBody(guid('BSWB'))));
 }, 60_000);
 
 afterAll(async () => {
@@ -342,4 +356,34 @@ ${twinWallsBody(guid('MXE'), guid('MXF'))}`));
     expect(content.contentMatches[0].kind).toBe('ambiguous');
     expect(content.truncatedMatches).toBe(2);
   }, 30_000);
+});
+
+describe('quantity_diff group_by storey — blank storey Name (regression: #3515-family)', () => {
+  interface QuantityDiffRow {
+    key: string;
+    left: number;
+    right: number;
+    delta: number;
+    deltaPct: number | null;
+  }
+
+  /**
+   * `model.bim.storey(e.ref)?.name ?? '(none)'` only falls through on
+   * null/undefined; a present-but-blank storey Name
+   * (`IFCBUILDINGSTOREY('...','',...)`) short-circuited the chain and was
+   * used verbatim as the group-by-storey key instead of falling through to
+   * the "(none)" placeholder.
+   */
+  it('falls a blank storey Name through to "(none)", not an empty-string group key', async () => {
+    const tool = diffTools.find((t) => t.name === 'quantity_diff');
+    if (!tool) throw new Error('quantity_diff not registered');
+    const result: CallToolResult = await tool.handler(
+      { a: 'blank-storey-a', b: 'blank-storey-b', type: 'IfcWall', group_by: 'storey' },
+      ctx,
+    );
+    expect(result.isError).toBeUndefined();
+    const rows = (result.structuredContent as { rows: QuantityDiffRow[] }).rows;
+    expect(rows.map(r => r.key)).not.toContain('');
+    expect(rows.map(r => r.key)).toContain('(none)');
+  });
 });

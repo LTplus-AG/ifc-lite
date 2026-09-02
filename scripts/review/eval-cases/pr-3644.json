@@ -1,0 +1,217 @@
+{
+  "$comment": "Held from the merge train of 2026-09-01 on a merge-blocking defect that all ~91 deterministic gates passed. Defect class: second-site. `what` is written from the reviewer's file:line and failing input, never from the PR body.",
+  "pr": 3644,
+  "input": {
+    "headSha": "9a397a28c71c49aa05dddd564722671540d6cd9d",
+    "files": [
+      {
+        "path": ".changeset/cli-diff-property-unit-scale.md",
+        "patch": "@@ -0,0 +1,5 @@\n+---\n+'@ifc-lite/cli': patch\n+---\n+\n+Fix `ifc-lite diff --by-content` reporting a re-exported model as `modified \u00b7 data` on every measure-propertied element when only the project's declared length/area/volume unit changed. `Pset_*` `IfcPropertySingleValue`s typed `IfcLengthMeasure`/`IfcAreaMeasure`/`IfcPositiveLengthMeasure`/\u2026 now scale to base SI (via `@ifc-lite/parser`'s `scaleMeasureValue`) before hashing, the same way an `IfcElementQuantity` (`Qto_*`) quantity already did.",
+        "addedLineRanges": [
+          [
+            1,
+            5
+          ]
+        ]
+      },
+      {
+        "path": ".changeset/diff-property-unit-scale.md",
+        "patch": "@@ -0,0 +1,7 @@\n+---\n+'@ifc-lite/parser': minor\n+---\n+\n+New export `scaleMeasureValue(value, dataType, projectUnits)`: scales a property value declared with a project-scoped IFC measure type (`IfcLengthMeasure`, `IfcAreaMeasure`, `IfcPositiveLengthMeasure`, \u2026) to base SI, using `ProjectUnits.unitForMeasure`. A no-op for a value with no numeric type, no `dataType`, or a `dataType` with no project-scoped unit.\n+\n+Added to fix a false positive in every model-diff adapter (`ifc-lite diff --by-content`, the viewer's compare panel, `model_diff`): an `IfcPropertySingleValue` measure is stored in the project's raw author unit exactly like an `IfcElementQuantity` (`Qto_*`) quantity, which the diff engine's quantity path already scaled \u2014 nothing scaled the property path. A wall re-exported from a metre-authored file into a millimetre-authored one, with no design edit at all, hashed to two different `dataHash` values and was reported `modified \u00b7 data` on every measure-propertied element in the model.",
+        "addedLineRanges": [
+          [
+            1,
+            7
+          ]
+        ]
+      },
+      {
+        "path": ".changeset/mcp-diff-property-unit-scale.md",
+        "patch": "@@ -0,0 +1,5 @@\n+---\n+'@ifc-lite/mcp': patch\n+---\n+\n+Fix `model_diff` reporting a re-exported model as `modified \u00b7 data` on every measure-propertied element when only the project's declared length/area/volume unit changed \u2014 the same fix as `@ifc-lite/cli`'s `ifc-lite diff --by-content`, applied to both the stored-entity and the overlay-created (`entity_create`) fingerprint paths, which this server's adapter is a documented byte-for-byte twin of.",
+        "addedLineRanges": [
+          [
+            1,
+            5
+          ]
+        ]
+      },
+      {
+        "path": "apps/viewer/src/lib/compare/buildFingerprints.ts",
+        "patch": "@@ -63,11 +63,7 @@ import {\n } from '@ifc-lite/diff';\n import { RelationshipType } from '@ifc-lite/data';\n import {\n-  extractAllEntityAttributes,\n-  extractAllMaterialsOnDemand,\n-  extractPropertiesOnDemand,\n-  extractQuantitiesOnDemand,\n-  type IfcDataStore,\n+  extractAllEntityAttributes, extractAllMaterialsOnDemand, extractProjectUnits, extractPropertiesOnDemand, extractQuantitiesOnDemand, scaleMeasureValue, type IfcDataStore, type ProjectUnits,\n } from '@ifc-lite/parser';\n import { lensMaterialNames } from '../lens-material-names.js';\n import type { EntityWorldAabb, MeshData } from '@ifc-lite/geometry';\n@@ -194,6 +190,7 @@ export async function buildEntityFingerprints(\n   // alignment is a caller whose model was never re-baked, and defaulting to\n   // \"believe them\" keeps the flag a statement about the one case that needs it.\n   const volumesTrusted = model.geometryVolumesTrusted !== false;\n+  const projectUnits = extractProjectUnits(store.source, store.entityIndex); // scales measure properties to SI, see buildDataInput\n \n   // local express id \u2192 first geometry hash seen for it (may be undefined when\n   // hashing was disabled or the WASM build predates it \u2014 data diff still works)\n@@ -310,7 +307,7 @@ export async function buildEntityFingerprints(\n     // the 64-bit data hash cannot. Both are computed from the SAME input\n     // object - a sub-hash over a different projection would stop being a\n     // collision guard and start rejecting genuine re-export matches.\n-    const dataInput = buildDataInput(store, localId, ifcType);\n+    const dataInput = buildDataInput(store, localId, ifcType, projectUnits);\n \n     // The box goes on ONLY when the pass produced one: the engine's contract is\n     // that a missing box is `undefined`, and a NaN-bearing object would pass\n@@ -355,7 +352,7 @@ export async function buildEntityFingerprints(\n function buildDataInput(\n   store: IfcDataStore,\n   localId: number,\n-  ifcType: string,\n+  ifcType: string, projectUnits: ProjectUnits,\n ): DataFingerprintInput {\n   const predefinedType = extractAllEntityAttributes(store, localId).find(\n     (attribute) => attribute.name === 'PredefinedType',\n@@ -382,7 +379,7 @@ function buildDataInput(\n       name: set.name,\n       properties: set.properties\n         .filter((property) => !isGeometricDataName(property.name))\n-        .map((property) => ({ name: property.name, value: property.value })),\n+        .map((property) => ({ name: property.name, value: scaledPropertyValue(property.value, property.dataType, projectUnits) })),\n     }))\n     .filter((set) => set.properties.length > 0);\n \n@@ -443,3 +440,6 @@ function buildDataInput(\n function roundQuantity(value: number): number {\n   return Number.isFinite(value) ? Math.round(value * 1e4) / 1e4 : value;\n }\n+/** Measure property scaled to base SI, rounded like `roundQuantity` (`buildDataInput`). */\n+function scaledPropertyValue(value: unknown, dataType: string | undefined, units: ProjectUnits): unknown {\n+  const s = scaleMeasureValue(value, dataType, units); return typeof s === 'number' ? roundQuantity(s) : s; }",
+        "addedLineRanges": [
+          [
+            66,
+            66
+          ],
+          [
+            193,
+            193
+          ],
+          [
+            310,
+            310
+          ],
+          [
+            355,
+            355
+          ],
+          [
+            382,
+            382
+          ],
+          [
+            443,
+            445
+          ]
+        ]
+      },
+      {
+        "path": "packages/cli/src/commands/diff-engine.ts",
+        "patch": "@@ -39,10 +39,13 @@ import { RelationshipType } from '@ifc-lite/data';\n import {\n   EntityExtractor,\n   extractAllEntityAttributes,\n+  extractProjectUnits,\n   extractPropertiesOnDemand,\n   extractQuantitiesOnDemand,\n   getAttributeNamesAcrossSchemas,\n+  scaleMeasureValue,\n   type IfcDataStore,\n+  type ProjectUnits,\n } from '@ifc-lite/parser';\n import { comparableEntities, type RootAttributes } from './diff-scope.js';\n \n@@ -71,9 +74,14 @@ export function modelIdentityOf(path: string, bytes: Uint8Array): ModelIdentity\n  * section of `docs/guide/model-diff.md`).\n  */\n export function buildFileFingerprints(store: IfcDataStore): EntityFingerprint<DiffRef>[] {\n+  // Resolved once per store, not per entity: the same `IFCUNITASSIGNMENT` walk\n+  // every property in the file would otherwise repeat, and `unitForMeasure` is\n+  // pure over it \u2014 see `buildDataInput`'s scaling comment for why it is needed\n+  // at all.\n+  const projectUnits = extractProjectUnits(store.source, store.entityIndex);\n   const fingerprints: EntityFingerprint<DiffRef>[] = [];\n   for (const { expressId, globalId, ifcType, source, isTypeObject } of comparableEntities(store)) {\n-    const input = buildDataInput(store, expressId, ifcType, source, isTypeObject);\n+    const input = buildDataInput(store, expressId, ifcType, source, isTypeObject, projectUnits);\n     fingerprints.push({\n       key: globalId,\n       ifcType,\n@@ -103,6 +111,8 @@ function buildDataInput(\n   source: RootAttributes | undefined,\n   /** `IfcTypeObject` subtype? Gates `Tag` into the fingerprint (issue #2021). */\n   isTypeObject: boolean,\n+  /** The file's declared units, resolved once by {@link buildFileFingerprints}. */\n+  projectUnits: ProjectUnits,\n ): DataFingerprintInput {\n   const predefinedType = extractAllEntityAttributes(store, expressId).find(\n     (attribute) => attribute.name === 'PredefinedType',\n@@ -117,7 +127,10 @@ function buildDataInput(\n \n   const propertySets = extractPropertiesOnDemand(store, expressId).map((set) => ({\n     name: set.name,\n-    properties: set.properties.map((property) => ({ name: property.name, value: property.value })),\n+    properties: set.properties.map((property) => ({\n+      name: property.name,\n+      value: scaledPropertyValue(property.value, property.dataType, projectUnits),\n+    })),\n   }));\n \n   const quantitySets = extractQuantitiesOnDemand(store, expressId).map((set) => ({\n@@ -156,6 +169,38 @@ function roundQuantity(value: number): number {\n   return Number.isFinite(value) ? Math.round(value * 1e4) / 1e4 : value;\n }\n \n+/**\n+ * An `IfcPropertySingleValue` measure value (`IfcLengthMeasure`,\n+ * `IfcAreaMeasure`, `IfcPositiveLengthMeasure`, \u2026) is stored in the project's\n+ * raw author unit, exactly like a `Qto_` quantity \u2014 IFC does not distinguish\n+ * \"unit of a quantity\" from \"unit of a property\" for the same measure type.\n+ * A wall re-exported from a metre-authored file (`IfcLengthMeasure(2.5)`) into\n+ * a millimetre-authored one (`IfcLengthMeasure(2500.)`), with no edit to the\n+ * design at all, hashed to two different values here before this scale ran \u2014\n+ * `dataHash` compared the raw author number, not the physical length.\n+ *\n+ * `dataType` is the on-demand extractor's IFC measure tag (see\n+ * `parsePropertyValue` in `@ifc-lite/parser`), read off the typed STEP value\n+ * itself, so this works for any project-scoped measure \u2014 length, area, volume,\n+ * and every other unit `ProjectUnits.unitForMeasure` resolves \u2014 not only the\n+ * three the `Qto_` quantity path (`extractQuantitiesOnDemand`) special-cases.\n+ * A property whose declared type has no project-scoped unit (a label, an\n+ * identifier, a dimensionless ratio) resolves no unit and passes through\n+ * unscaled, same as one with no `dataType` at all.\n+ *\n+ * Delegates to `@ifc-lite/parser`'s `scaleMeasureValue` \u2014 the same function the\n+ * viewer and MCP adapters call \u2014 rather than a local copy: three independent\n+ * unit-scale implementations is how the three fingerprint paths drift apart.\n+ */\n+function scaledPropertyValue(\n+  value: unknown,\n+  dataType: string | undefined,\n+  projectUnits: ProjectUnits,\n+): unknown {\n+  const scaled = scaleMeasureValue(value, dataType, projectUnits);\n+  return typeof scaled === 'number' ? roundQuantity(scaled) : scaled;\n+}\n+\n /**\n  * One named attribute, read positionally through the **cross-schema** attribute\n  * list (issue #2021).",
+        "addedLineRanges": [
+          [
+            42,
+            42
+          ],
+          [
+            46,
+            46
+          ],
+          [
+            48,
+            48
+          ],
+          [
+            77,
+            81
+          ],
+          [
+            84,
+            84
+          ],
+          [
+            114,
+            115
+          ],
+          [
+            130,
+            133
+          ],
+          [
+            172,
+            203
+          ]
+        ]
+      },
+      {
+        "path": "packages/cli/src/commands/diff-property-unit-scale.test.ts",
+        "patch": "@@ -0,0 +1,68 @@\n+/* This Source Code Form is subject to the terms of the Mozilla Public\n+ * License, v. 2.0. If a copy of the MPL was not distributed with this\n+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */\n+\n+/**\n+ * `ifc-lite diff --by-content` is a differ against a known-edit oracle: apply\n+ * one known edit to a fixture and the diff must report exactly that edit, no\n+ * more and no less.\n+ *\n+ * An `IfcPropertySingleValue` measure (`IfcLengthMeasure`, `IfcAreaMeasure`,\n+ * \u2026) is stored in the project's raw author unit, exactly like an\n+ * `IfcElementQuantity` (`Qto_`) quantity. Before `diff-engine.ts` scaled it,\n+ * a wall re-exported from a metre-authored file into a millimetre-authored\n+ * one \u2014 same physical width, zero design edits \u2014 hashed to two different\n+ * `dataHash` values and was reported `modified \u00b7 data`, on every quantified\n+ * *and* every measure-propertied element in the model.\n+ *\n+ * | Case | Expected | Before this fix | After |\n+ * |---|---|---|---|\n+ * | `Width` re-authored in a different project length unit (2.5 m \u2194 2500 mm), same physical width | `unchanged` | `modified \u00b7 data` (RED) | `unchanged` (GREEN) |\n+ * | Control: genuine edit within one unit (2500 mm \u2192 3000 mm) | `modified \u00b7 data` | `modified \u00b7 data` | `modified \u00b7 data` (unaffected) |\n+ */\n+\n+import { describe, expect, it } from 'vitest';\n+import { diffModels } from '@ifc-lite/diff';\n+import { buildFileFingerprints } from './diff-engine.js';\n+import { loadIfcBytes } from '../loader.js';\n+import {\n+  guid,\n+  UNIT_SCALE_METRE_MODEL,\n+  UNIT_SCALE_MILLIMETRE_EDITED_MODEL,\n+  UNIT_SCALE_MILLIMETRE_MODEL,\n+} from './diff-test-helpers.js';\n+\n+async function fingerprintsOf(source: string) {\n+  const store = await loadIfcBytes(new TextEncoder().encode(source), 'model');\n+  return buildFileFingerprints(store);\n+}\n+\n+describe('diff --by-content: measure-property unit scale', () => {\n+  it('does not report a re-export as changed when only the project length unit changed', async () => {\n+    const base = await fingerprintsOf(UNIT_SCALE_METRE_MODEL);\n+    const head = await fingerprintsOf(UNIT_SCALE_MILLIMETRE_MODEL);\n+    const diff = diffModels(base, head, { scope: 'data' });\n+    const wall = diff.byKey.get(guid('WALL'));\n+    expect(wall?.state).toBe('unchanged');\n+    expect(wall?.changeKinds).toEqual([]);\n+  });\n+\n+  it('control: a genuine width edit riding on the same unit is still reported', async () => {\n+    const base = await fingerprintsOf(UNIT_SCALE_MILLIMETRE_MODEL);\n+    const head = await fingerprintsOf(UNIT_SCALE_MILLIMETRE_EDITED_MODEL);\n+    const diff = diffModels(base, head, { scope: 'data' });\n+    const wall = diff.byKey.get(guid('WALL'));\n+    expect(wall?.state).toBe('modified');\n+    expect(wall?.changeKinds).toEqual(['data']);\n+    expect(wall?.changedComponents).toContain('pset:Pset_X');\n+  });\n+\n+  it('control: a genuine width edit AND a unit change together are still reported', async () => {\n+    const base = await fingerprintsOf(UNIT_SCALE_METRE_MODEL);\n+    const head = await fingerprintsOf(UNIT_SCALE_MILLIMETRE_EDITED_MODEL);\n+    const diff = diffModels(base, head, { scope: 'data' });\n+    const wall = diff.byKey.get(guid('WALL'));\n+    expect(wall?.state).toBe('modified');\n+    expect(wall?.changedComponents).toContain('pset:Pset_X');\n+  });\n+});",
+        "addedLineRanges": [
+          [
+            1,
+            68
+          ]
+        ]
+      },
+      {
+        "path": "packages/cli/src/commands/diff-test-helpers.ts",
+        "patch": "@@ -267,3 +267,52 @@ END-ISO-10303-21;\n export const BASE_MODEL = model(guid('OLDA'), guid('OLDB'));\n /** Same building, re-exported: the two walls carry brand-new GlobalIds. */\n export const HEAD_MODEL = model(guid('NEWA'), guid('NEWB'));\n+\n+/**\n+ * One wall, same `GlobalId` throughout, carrying a `Pset_X.Width` typed as\n+ * `IfcLengthMeasure` \u2014 for probing whether a diff scales a project-scoped\n+ * measure PROPERTY the way it already scales a `Qto_` quantity. `unitDef` is\n+ * the file's `IFCUNITASSIGNMENT` member (metre vs. millimetre `IFCSIUNIT`) and\n+ * `widthValue` is the raw author-unit number stored in the STEP record.\n+ */\n+export function unitScaledPropertyModel(unitDef: string, widthValue: string): string {\n+  return `ISO-10303-21;\n+HEADER;\n+FILE_DESCRIPTION((''),'2;1');\n+FILE_NAME('m','2026',(''),(''),'','','');\n+FILE_SCHEMA(('IFC4'));\n+ENDSEC;\n+DATA;\n+#1= IFCPROJECT('${guid('PROJ')}',$,'Proj',$,$,$,$,(#20),#30);\n+#20= IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#21,$);\n+#21= IFCAXIS2PLACEMENT3D(#22,$,$);\n+#22= IFCCARTESIANPOINT((0.,0.,0.));\n+#30= IFCUNITASSIGNMENT((#31));\n+${unitDef}\n+#40= IFCLOCALPLACEMENT($,#21);\n+#41= IFCBUILDINGSTOREY('${guid('STOR')}',$,'L01',$,$,#40,$,$,.ELEMENT.,0.);\n+#70= IFCWALL('${guid('WALL')}',$,'Wall A',$,$,#40,$,'tagA',$);\n+#81= IFCPROPERTYSET('${guid('PSET')}',$,'Pset_X',$,(#82));\n+#82= IFCPROPERTYSINGLEVALUE('Width',$,IFCLENGTHMEASURE(${widthValue}),$);\n+#83= IFCRELDEFINESBYPROPERTIES('${guid('RELP')}',$,$,$,(#70),#81);\n+#96= IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid('RELC')}',$,$,$,(#70),#41);\n+ENDSEC;\n+END-ISO-10303-21;\n+`;\n+}\n+\n+/** `unitScaledPropertyModel`, declared in whole metres. */\n+export const UNIT_SCALE_METRE_MODEL = unitScaledPropertyModel(\n+  '#31= IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);',\n+  '2.5',\n+);\n+/** Same wall, same physical width, re-authored in a millimetre-declared project. */\n+export const UNIT_SCALE_MILLIMETRE_MODEL = unitScaledPropertyModel(\n+  '#31= IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);',\n+  '2500.',\n+);\n+/** Same millimetre project, but the width genuinely changed (2.5 m -> 3.0 m). */\n+export const UNIT_SCALE_MILLIMETRE_EDITED_MODEL = unitScaledPropertyModel(\n+  '#31= IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);',\n+  '3000.',\n+);",
+        "addedLineRanges": [
+          [
+            270,
+            318
+          ]
+        ]
+      },
+      {
+        "path": "packages/mcp/src/tools/diff-fingerprints.test.ts",
+        "patch": "@@ -37,6 +37,7 @@ import {\n   railTypeModel,\n   scheduleModel,\n   typeTagModel,\n+  UNIT_SCALE_MILLIMETRE_MODEL,\n } from '../../../cli/src/commands/diff-test-helpers.js';\n import type { CallToolResult } from '../protocol/index.js';\n import type { ToolContext } from '../context.js';\n@@ -99,6 +100,7 @@ beforeAll(async () => {\n   await load('walls', model(guid('OLDA'), guid('OLDB')));\n   await load('type-tags', typeTagModel());\n   await load('rail-types', railTypeModel());\n+  await load('unit-scale', UNIT_SCALE_MILLIMETRE_MODEL);\n }, 60_000);\n \n afterAll(async () => {\n@@ -188,7 +190,7 @@ describe('fingerprint parity with the CLI copy', () => {\n   // codegen pin silently reads no Tag at all while every IFC2X3 and IFC4\n   // fixture above still agrees. Without this row, fixing one copy's attribute\n   // lookup and not the other's would pass.\n-  it.each(['legacy-base', 'sched', 'walls', 'type-tags', 'rail-types'])(\n+  it.each(['legacy-base', 'sched', 'walls', 'type-tags', 'rail-types', 'unit-scale'])(\n     'answers as the CLI does on %s',\n     (id) => {\n       const mcp = new Map(",
+        "addedLineRanges": [
+          [
+            40,
+            40
+          ],
+          [
+            103,
+            103
+          ],
+          [
+            193,
+            193
+          ]
+        ]
+      },
+      {
+        "path": "packages/mcp/src/tools/diff-fingerprints.ts",
+        "patch": "@@ -99,14 +99,7 @@ import {\n } from '@ifc-lite/diff';\n import { RelationshipType } from '@ifc-lite/data';\n import {\n-  EntityExtractor,\n-  extractAllEntityAttributes,\n-  extractPropertiesOnDemand,\n-  extractQuantitiesOnDemand,\n-  extractRootAttributesFromEntity,\n-  getAttributeNamesAcrossSchemas,\n-  getInheritanceChainAcrossSchemas,\n-  type IfcDataStore,\n+  EntityExtractor, extractAllEntityAttributes, extractProjectUnits, extractPropertiesOnDemand, extractQuantitiesOnDemand, extractRootAttributesFromEntity, getAttributeNamesAcrossSchemas, getInheritanceChainAcrossSchemas, scaleMeasureValue, type IfcDataStore, type ProjectUnits,\n } from '@ifc-lite/parser';\n import type { CreatedEntity, PendingOverlay } from '../overlay.js';\n \n@@ -208,6 +201,7 @@ export function buildModelFingerprints(\n   // source read below only fires for the (small) set of object types the\n   // EntityTable declines to hold.\n   const extractor = new EntityExtractor(store.source);\n+  const projectUnits = extractProjectUnits(store.source, store.entityIndex);\n \n   for (const [typeKey, ids] of store.entityIndex.byType) {\n     // Classified once per type rather than once per entity \u2014 the geometry\n@@ -241,7 +235,7 @@ export function buildModelFingerprints(\n       // type name: `ifcType` is hashed into the fingerprint and cross-checked\n       // on every content match, so 'Unknown' would pair a task with an actor.\n       const ifcType = source && (!tableType || tableType === 'Unknown') ? type.name : tableType;\n-      const input = buildDataInput(store, expressId, ifcType, source, type.typeObject, overlay);\n+      const input = buildDataInput(store, expressId, ifcType, source, type.typeObject, overlay, projectUnits);\n       fingerprints.push({\n         key: globalId,\n         ifcType,\n@@ -253,7 +247,7 @@ export function buildModelFingerprints(\n   }\n \n   for (const entity of overlay?.created ?? []) {\n-    const fingerprint = createdFingerprint(entity, overlay as PendingOverlay);\n+    const fingerprint = createdFingerprint(entity, overlay as PendingOverlay, projectUnits);\n     if (fingerprint) fingerprints.push(fingerprint);\n   }\n \n@@ -292,7 +286,7 @@ export function buildModelFingerprints(\n  */\n function createdFingerprint(\n   entity: CreatedEntity,\n-  overlay: PendingOverlay,\n+  overlay: PendingOverlay, projectUnits: ProjectUnits,\n ): EntityFingerprint<DiffRef> | null {\n   const type = classifyType(entity.ifcType);\n   if (type.role === 'dependent') return null;\n@@ -305,7 +299,7 @@ function createdFingerprint(\n     tag: type.typeObject ? override(edited.get('Tag'), undefined) : undefined,\n     propertySets: overlay.propertySets(entity.expressId).map((set) => ({\n       name: set.name,\n-      properties: set.properties.map((property) => ({ name: property.name, value: property.value })),\n+      properties: set.properties.map((property) => ({ name: property.name, value: scaledPropertyValue(property.value, property.dataType, projectUnits) })),\n     })),\n     quantitySets: overlay.quantitySets(entity.expressId).map((set) => ({\n       name: set.name,\n@@ -358,7 +352,7 @@ function buildDataInput(\n   isTypeObject: boolean,\n   /** Set when the session has queued edits; its reads are base-merged, so it\n    *  replaces the store read rather than being layered on top of it. */\n-  overlay: PendingOverlay | null | undefined,\n+  overlay: PendingOverlay | null | undefined, projectUnits: ProjectUnits,\n ): DataFingerprintInput {\n   const predefinedType = extractAllEntityAttributes(store, expressId).find(\n     (attribute) => attribute.name === 'PredefinedType',\n@@ -379,7 +373,7 @@ function buildDataInput(\n     : extractPropertiesOnDemand(store, expressId)\n   ).map((set) => ({\n     name: set.name,\n-    properties: set.properties.map((property) => ({ name: property.name, value: property.value })),\n+    properties: set.properties.map((property) => ({ name: property.name, value: scaledPropertyValue(property.value, property.dataType, projectUnits) })),\n   }));\n \n   const quantitySets = (overlay\n@@ -428,6 +422,9 @@ function buildDataInput(\n function roundQuantity(value: number): number {\n   return Number.isFinite(value) ? Math.round(value * 1e4) / 1e4 : value;\n }\n+/** Measure property scaled to base SI, rounded like `roundQuantity` (`buildDataInput`). */\n+function scaledPropertyValue(value: unknown, dataType: string | undefined, units: ProjectUnits): unknown {\n+  const s = scaleMeasureValue(value, dataType, units); return typeof s === 'number' ? roundQuantity(s) : s; }\n \n /**\n  * One named attribute, read positionally through the **cross-schema** attribute",
+        "addedLineRanges": [
+          [
+            102,
+            102
+          ],
+          [
+            204,
+            204
+          ],
+          [
+            238,
+            238
+          ],
+          [
+            250,
+            250
+          ],
+          [
+            289,
+            289
+          ],
+          [
+            302,
+            302
+          ],
+          [
+            355,
+            355
+          ],
+          [
+            376,
+            376
+          ],
+          [
+            425,
+            427
+          ]
+        ]
+      },
+      {
+        "path": "packages/parser/src/index.ts",
+        "patch": "@@ -64,6 +64,7 @@ export {\n   type ResolvedUnit,\n   type MeasureUnit,\n } from './project-units.js';\n+export { scaleMeasureValue } from './measure-unit-scale.js';\n export { ColumnarParser, type IfcDataStore, type EntityByIdIndex, extractPropertiesOnDemand, extractQuantitiesOnDemand, extractEntityAttributesOnDemand, extractAllEntityAttributes, getRawNamedAttributes, extractRootAttributesFromEntity, extractClassificationsOnDemand, extractClassificationSystemsOnDemand, extractMaterialsOnDemand, extractAllMaterialsOnDemand, extractMaterialPropertiesOnDemand, extractMaterialPropertiesForMaterialId, resolveMaterialDefId, resolveAllMaterialDefIds, collectMaterialLeaves, buildMaterialUsageIndex, getMaterialDisplay, extractTypePropertiesOnDemand, extractTypeEntityOwnProperties, extractTypeQuantitiesOnDemand, mergeInheritedPropertySets, extractDocumentsOnDemand, extractRelationshipsOnDemand, extractGroupMembersOnDemand, extractGeoreferencingOnDemand, type ClassificationInfo, type MaterialInfo, type MaterialLayerInfo, type MaterialProfileInfo, type MaterialConstituentInfo, type MaterialPsetGroup, type MaterialLeaf, type MaterialUsage, type TypePropertyInfo, type TypeQuantityInfo, type DocumentInfo, type EntityRelationships, type GroupMember } from './columnar-parser.js';\n export type { IfcStoreBase, IfcSourceHeader, SpatialHierarchy, EntityTable } from '@ifc-lite/data';\n export { parseSourceHeader } from './source-header.js';",
+        "addedLineRanges": [
+          [
+            67,
+            67
+          ]
+        ]
+      },
+      {
+        "path": "packages/parser/src/measure-unit-scale.ts",
+        "patch": "@@ -0,0 +1,37 @@\n+/* This Source Code Form is subject to the terms of the Mozilla Public\n+ * License, v. 2.0. If a copy of the MPL was not distributed with this\n+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */\n+\n+import type { ProjectUnits } from './project-units.js';\n+\n+/**\n+ * Scale a property value to base SI, using the file's declared units.\n+ *\n+ * An `IfcPropertySingleValue` measure (`IfcLengthMeasure`, `IfcAreaMeasure`,\n+ * `IfcPositiveLengthMeasure`, \u2026) is stored in the project's raw author unit \u2014\n+ * exactly like an `IfcElementQuantity` (`Qto_`) quantity, which the IDS\n+ * property bridge and the model-diff quantity path both already scale before\n+ * comparing. Nothing scaled the property-value path: a wall re-exported from a\n+ * metre-authored file (`IfcLengthMeasure(2.5)`) into a millimetre-authored one\n+ * (`IfcLengthMeasure(2500.)`), with no edit to the design at all, hashed to two\n+ * different `dataHash` values in every model-diff adapter \u2014 the file was\n+ * misreported as `modified \u00b7 data` on every quantified element.\n+ *\n+ * `dataType` is the on-demand extractor's IFC measure tag, read off the typed\n+ * STEP value itself (`parsePropertyValue`, `on-demand-extractors.ts`), so this\n+ * resolves for any project-scoped measure `ProjectUnits.unitForMeasure` knows \u2014\n+ * length, area, volume, and the rest of the measure table \u2014 not only the three\n+ * the `Qto_` quantity path special-cases. A property whose declared type has no\n+ * project-scoped unit (a label, an identifier, a dimensionless ratio) resolves\n+ * no unit and passes through unscaled, same as a value with no `dataType` at\n+ * all \u2014 this function is a no-op for every property it should not touch.\n+ */\n+export function scaleMeasureValue(\n+  value: unknown,\n+  dataType: string | undefined,\n+  projectUnits: ProjectUnits,\n+): unknown {\n+  if (typeof value !== 'number' || !dataType) return value;\n+  const unit = projectUnits.unitForMeasure(dataType);\n+  return unit && unit.siScale !== 1 ? value * unit.siScale : value;\n+}",
+        "addedLineRanges": [
+          [
+            1,
+            37
+          ]
+        ]
+      }
+    ],
+    "unreviewable": [],
+    "excluded": [
+      "scripts/api-surface.json"
+    ]
+  },
+  "expected": [
+    {
+      "path": "packages/parser/src/measure-unit-scale.ts",
+      "what": "measure values are scaled by the project unit with no way to read the per-property IfcPropertySingleValue Unit override that the sibling quantity path already honours, so a metre-declared property is rescaled and reports modified on an untouched element"
+    }
+  ]
+}

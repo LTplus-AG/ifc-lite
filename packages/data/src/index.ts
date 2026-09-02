@@ -13,6 +13,7 @@ export { exactTypeName, exactNameOfRow } from './exact-type-name.js';
 export type { ExactTypeNameSource } from './exact-type-name.js';
 export type { EntityTable, EntityTableColumns } from './entity-table.js';
 export { PropertyTableBuilder, propertyTableFromColumns, propertyTableToColumns, comparePropertyValues } from './property-table.js';
+export { groupPropertySetsByInstance } from './group-property-sets.js';
 export type { PropertyTable, PropertyTableColumns, PropertySet, Property, PropertyValue } from './property-table.js';
 export { QuantityTableBuilder, quantityTableFromColumns, quantityTableToColumns } from './quantity-table.js';
 export type { QuantityTable, QuantityTableColumns, QuantitySet, Quantity } from './quantity-table.js';

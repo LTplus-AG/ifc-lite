@@ -52,6 +52,31 @@ describe('PropertyTable round-trip', () => {
     expect(table.getPropertyValue(100, 'Pset_SlabCommon', 'Reference')).toBe(null);
   });
 
+  it('keeps two distinct pset INSTANCES that share a literal name separate, not merged', () => {
+    // A federated merge, or an exporter that emits the same Pset_ twice on
+    // one element, can put two rows on one entity whose psetName is
+    // identical but whose psetGlobalId (the real IfcPropertySet identity)
+    // differs. Grouping by name alone previously merged them into one
+    // PropertySet reporting only the first row's GlobalId, so a property
+    // that actually belonged to the second instance came back attributed
+    // to the wrong pset.
+    const strings = new StringTable();
+    const builder = new PropertyTableBuilder(strings);
+    builder.add({ entityId: 100, psetName: 'Pset_WallCommon', psetGlobalId: 'gid-AAA', propName: 'FireRating', propType: PropertyValueType.String, value: 'F90' });
+    builder.add({ entityId: 100, psetName: 'Pset_WallCommon', psetGlobalId: 'gid-BBB', propName: 'IsExternal', propType: PropertyValueType.Boolean, value: true });
+    const table = builder.build();
+
+    const sets = table.getForEntity(100);
+    expect(sets).toHaveLength(2);
+    const byGlobalId = new Map(sets.map((s) => [s.globalId, s]));
+    expect(byGlobalId.get('gid-AAA')?.properties).toEqual([
+      { name: 'FireRating', type: PropertyValueType.String, value: 'F90' },
+    ]);
+    expect(byGlobalId.get('gid-BBB')?.properties).toEqual([
+      { name: 'IsExternal', type: PropertyValueType.Boolean, value: true },
+    ]);
+  });
+
   it('handles empty tables (lite-mode default)', () => {
     const strings = new StringTable();
     const empty = new PropertyTableBuilder(strings).build();

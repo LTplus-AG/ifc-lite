@@ -58,7 +58,7 @@ function writeSource(dir, rel, lines) {
 function makeTree(files) {
   const dir = mkdtempSync(join(tmpdir(), 'module-size-'));
   for (const [rel, lines] of Object.entries(files)) writeSource(dir, rel, lines);
-  for (const d of ['packages', 'apps']) mkdirSync(join(dir, d), { recursive: true });
+  for (const d of ['packages', 'apps', 'scripts']) mkdirSync(join(dir, d), { recursive: true });
   return dir;
 }
 
@@ -130,8 +130,33 @@ test('a new file over the limit fails', () => {
   const dir = tree({ 'packages/a/big.ts': 500, 'apps/v/new_god.tsx': 401 });
   const { code, out } = run(dir, '500 packages/a/big.ts\n');
   assert.equal(code, 1, out);
-  assert.match(out, /New TypeScript file\(s\) over 400 lines with no allowlist row/);
+  assert.match(out, /New source file\(s\) over 400 lines with no allowlist row/);
   assert.match(out, /apps\/v\/new_god\.tsx: 401 lines/);
+});
+
+test('a new .mjs file over the limit fails too (#3672)', () => {
+  // The defect this gate itself shipped: SOURCE_RE was TS/TSX-only, so 208
+  // .mjs files — the tree the CI gates live in — were outside the population
+  // it printed OK for. Same shape as #3639 in check-source-text-assertions.
+  const dir = tree({ 'packages/a/big.ts': 500, 'scripts/god-gate.mjs': 401 });
+  const { code, out } = run(dir, '500 packages/a/big.ts\n');
+  assert.equal(code, 1, out);
+  assert.match(out, /scripts\/god-gate\.mjs: 401 lines/);
+});
+
+test('a .test.mjs file of any size is exempt, and .cjs is in the population', () => {
+  // One case, both carve-out edges: the test-file exemption must match the new
+  // extensions (or seeding day one would have swept ~70 *.test.mjs files into
+  // the allowlist), while a plain .cjs module is measured like any other.
+  const dir = tree({
+    'packages/a/big.ts': 500,
+    'scripts/god-gate.test.mjs': 900,
+    'scripts/legacy.cjs': 401,
+  });
+  const { code, out } = run(dir, '500 packages/a/big.ts\n');
+  assert.equal(code, 1, out);
+  assert.match(out, /scripts\/legacy\.cjs: 401 lines/);
+  assert.doesNotMatch(out, /god-gate\.test\.mjs/);
 });
 
 test('exactly 400 lines is not over the limit', () => {
@@ -197,7 +222,7 @@ test('VACUOUS: no TypeScript files at all fails', () => {
   const dir = tree({ 'packages/a/readme.md': 3 });
   const { code, out } = run(dir, '500 packages/a/big.ts\n');
   assert.equal(code, 1, out);
-  assert.match(out, /no TypeScript files matched/);
+  assert.match(out, /no TypeScript or Node-script files matched/);
   assert.match(out, /Exiting 0 here would certify a tree nobody looked at/);
 });
 
@@ -208,10 +233,11 @@ test('VACUOUS: only exempt TypeScript files fails', () => {
     'packages/a/x.test.ts': 900,
     'packages/a/x.d.ts': 900,
     'packages/a/generated/y.ts': 900,
+    'scripts/x.test.mjs': 900,
   });
   const { code, out } = run(dir, '500 packages/a/big.ts\n');
   assert.equal(code, 1, out);
-  assert.match(out, /no TypeScript files matched/);
+  assert.match(out, /no TypeScript or Node-script files matched/);
 });
 
 test('VACUOUS: a missing search root fails instead of scanning nothing', () => {
@@ -585,7 +611,7 @@ test('--update refuses a --root that is not the top of its worktree', () => {
   const nested = join(dir, 'nested');
   writeSource(nested, 'packages/a/big.ts', 500);
   writeSource(nested, 'packages/b/slack.ts', 450);
-  mkdirSync(join(nested, 'apps'), { recursive: true });
+  for (const d of ['apps', 'scripts']) mkdirSync(join(nested, d), { recursive: true });
 
   const { code, out, allowlistPath } = run(nested, SCOPED_BEFORE, { extra: ['--update'] });
   assert.equal(code, 1, out);

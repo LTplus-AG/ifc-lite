@@ -1,0 +1,5 @@
+---
+'@ifc-lite/export': patch
+---
+
+`Ifc5Exporter` emitted `bsi::ifc::material` as `{ code }`, omitting the `uri` key. The vendored buildingSMART schema (`packages/export/src/__fixtures__/schemas/ifc@v5a.ifcx`) declares `bsi::ifc::material` as an Object with both `code` and `uri` required — neither key is marked `optional`, the same convention `bsi::ifc::class` uses right next to it, and that attribute already emits both. The real buildingSMART reference sample committed at `apps/viewer/public/samples/hello-wall.ifcx` confirms a registry exists for materials too: every `bsi::ifc::material` value there carries a `uri` resolving into buildingSMART's `midas-materials` identifier registry. `uri` is now always present, emitted as an empty string when the material name cannot be resolved into a real registry entry (this package has no lookup service for arbitrary IFC4 material names), rather than omitted outright — so IFC5 output for any element with a material association now matches the required shape of the schema it is imported against.

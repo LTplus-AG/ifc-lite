@@ -47,12 +47,16 @@ export function countLines(source) {
  *    e2e|fixtures` directories: test code, matching the Rust gate's `/tests/`,
  *    `/examples/`, `/benches/`, `/fuzz/` and `*_test.rs` exemptions. A long
  *    table-driven test is not the debt this rule targets.
+ *
+ * The suffix regexes carry `.mjs`/`.cjs` since #3672 brought Node scripts into
+ * the walk; a `*.test.mjs` that stayed non-exempt would have seeded ~70 test
+ * files into the allowlist on day one.
  */
 export function isExempt(rel) {
   return (
     /(^|\/)generated\//.test(rel) ||
     /\.d\.(ts|tsx|mts|cts)$/.test(rel) ||
-    /\.(test|spec|bench)\.(ts|tsx|mts|cts)$/.test(rel) ||
+    /\.(test|spec|bench)\.(ts|tsx|mts|cts|mjs|cjs)$/.test(rel) ||
     /(^|\/)(test|tests|__tests__|__mocks__|e2e|fixtures)\//.test(rel)
   );
 }

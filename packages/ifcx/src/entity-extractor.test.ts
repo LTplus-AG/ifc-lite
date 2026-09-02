@@ -155,4 +155,26 @@ describe('extractEntities', () => {
     assert.strictEqual(entities.getName(wallId), 'Wall-01');
     assert.strictEqual(entities.getObjectType(wallId), 'Basic Wall:Generic 200mm');
   });
+
+  it('does not fabricate Name from the node path when the source has none', () => {
+    // `extractName` returning null (no bsi::ifc::name / prop::Name /
+    // prop::TypeName / prop::ObjectName, and no usable incoming edge name)
+    // used to fall back to `node.path.slice(0, 8)` — an 8-char slice of the
+    // IFCX path that reads as a plausible short name/code no source
+    // attribute backs, indistinguishable from an authored one. Worse: it
+    // pre-empts the viewer's own "Name absent" convention
+    // (`getName(id) || '${typeName} #${expressId}'` in treeDataBuilder.ts),
+    // which never fires because getName() no longer returns '' here. Name
+    // must stay '' — the STEP parser's own convention for a missing Name
+    // (`columnar-parser.ts`) — like ObjectType/Description above.
+    const wall = createNode('4f9c1a3e-unnamed-wall-node-path');
+    wall.attributes.set(ATTR.CLASS, ifcClass('IfcWall'));
+
+    const strings = new StringTable();
+    const { entities, pathToId } = extractEntities(new Map([[wall.path, wall]]), strings);
+
+    const wallId = pathToId.get(wall.path);
+    assert.ok(wallId !== undefined);
+    assert.strictEqual(entities.getName(wallId), '');
+  });
 });

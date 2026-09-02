@@ -93,6 +93,114 @@ impl DiskCache {
         tracing::debug!(key = %key, size = data.len(), "Cached raw bytes");
         Ok(())
     }
+
+    /// Remove every index entry whose key is `key_prefix` itself or starts with
+    /// `"{key_prefix}-"` (issue #3636). One source file fans out into several
+    /// entries under the same hash prefix -- the plain request key, the
+    /// `-json-v2`, `-parquet-vN`, `-parquet-metadata-v4` and `-symbolic-v1`
+    /// variants, each combination of opening-filter and quality suffix -- and
+    /// `DELETE /api/v1/cache/{sha256}` is meant to drop all of them for that
+    /// file in one call.
+    ///
+    /// The underlying store is content-addressable: two different source
+    /// files can produce byte-identical output (the issue's example is two
+    /// different IFCs that both emit an empty symbolic-data payload) and then
+    /// share one content blob across two index entries. So this removes
+    /// INDEX ENTRIES first -- an index-only removal (`cacache::remove`) is
+    /// exactly the operation the issue's own hand-pruning experiment found
+    /// safe: leaving a blob temporarily orphaned makes it unreachable but
+    /// never makes a *surviving* entry read as corrupt, whereas removing a
+    /// blob a live index entry still points at does (their write-up
+    /// reproduced the resulting 500s). Only once every matching index entry
+    /// is gone does this walk the remaining index and drop content blobs
+    /// that nothing references any more; a blob still referenced by an
+    /// unrelated entry is left alone.
+    ///
+    /// Returns the number of index entries removed. Zero is a normal,
+    /// successful result for a prefix nothing was ever cached under, or that
+    /// already had its entries removed -- deleting an absent entry is a
+    /// no-op, not an error, so a retried or duplicate `DELETE` stays safe.
+    pub async fn remove_by_key_prefix(&self, key_prefix: &str) -> Result<usize, ApiError> {
+        let cache_dir = self.cache_dir.clone();
+        let prefix = format!("{key_prefix}-");
+        let exact = key_prefix.to_string();
+
+        // `cacache` only exposes a synchronous index iterator (it walks the
+        // index directory on disk); run the scan + index-entry removal on a
+        // blocking thread so it doesn't stall the async runtime. Integrities
+        // are tracked by their string form (`Integrity` itself carries no
+        // `Hash`/`Eq` impl) and re-parsed just before the hash-addressed
+        // removal call, which is the only place that needs the typed value.
+        let removed_integrities: Vec<String> = tokio::task::spawn_blocking(move || {
+            let mut removed = Vec::new();
+            for entry in cacache::list_sync(&cache_dir) {
+                let Ok(meta) = entry else { continue };
+                if meta.key == exact || meta.key.starts_with(&prefix) {
+                    // Index-only removal: the content blob is left in place
+                    // until the GC pass below confirms nothing else needs it.
+                    if cacache::remove_sync(&cache_dir, &meta.key).is_ok() {
+                        removed.push(meta.integrity.to_string());
+                    }
+                }
+            }
+            removed
+        })
+        .await?;
+
+        if removed_integrities.is_empty() {
+            return Ok(0);
+        }
+
+        let cache_dir = self.cache_dir.clone();
+        tokio::task::spawn_blocking(move || {
+            // Re-scan: whatever is still in the index after the removals
+            // above is still live and its content must be kept, no matter
+            // which key it is filed under.
+            let mut still_referenced = std::collections::HashSet::new();
+            for meta in cacache::list_sync(&cache_dir).flatten() {
+                still_referenced.insert(meta.integrity.to_string());
+            }
+            for integrity_str in &removed_integrities {
+                if !still_referenced.contains(integrity_str) {
+                    // Best-effort: an orphaned blob left behind on a rare
+                    // removal failure just wastes disk space, it never makes
+                    // a surviving entry read as corrupt.
+                    if let Ok(integrity) = integrity_str.parse::<cacache::Integrity>() {
+                        let _ = cacache::remove_hash_sync(&cache_dir, &integrity);
+                    }
+                }
+            }
+            removed_integrities.len()
+        })
+        .await
+        .map_err(ApiError::from)
+    }
+
+    /// Cache-wide entry count and total content size in bytes, for the
+    /// `/api/v1/metrics` gauges (issue #3636). Sums `Metadata::size` across
+    /// every index entry; entries sharing a deduplicated content blob are
+    /// each counted once (as stored), matching what `remove_by_key_prefix`
+    /// treats as "still referenced".
+    pub async fn stats(&self) -> Result<CacheStats, ApiError> {
+        let cache_dir = self.cache_dir.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut stats = CacheStats::default();
+            for meta in cacache::list_sync(&cache_dir).flatten() {
+                stats.entries += 1;
+                stats.bytes += meta.size as u64;
+            }
+            stats
+        })
+        .await
+        .map_err(ApiError::from)
+    }
+}
+
+/// Cache-wide totals reported by [`DiskCache::stats`].
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CacheStats {
+    pub entries: u64,
+    pub bytes: u64,
 }
 
 #[cfg(test)]
@@ -208,5 +316,138 @@ mod cache_tests {
             key,
             "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
         );
+    }
+
+    /// `DELETE /api/v1/cache/{hash}` (issue #3636) must remove every entry
+    /// fanned out under one hash -- the bare request key plus the `-json-v2`,
+    /// `-parquet-v5`, `-symbolic-v1`-shaped suffixes a real parse writes --
+    /// while a DIFFERENT hash's entries (the control) survive untouched.
+    #[tokio::test]
+    async fn remove_by_key_prefix_deletes_every_suffixed_entry_for_one_hash_only() {
+        let (cache, _dir) = fresh_cache("prefix-removal").await;
+        let hash = "abc123";
+        let other_hash = "def456";
+
+        cache.set_bytes(hash, b"request-key-entry").await.unwrap();
+        cache.set_bytes(&format!("{hash}-default"), b"filtered-entry").await.unwrap();
+        cache
+            .set_bytes(&format!("{hash}-default-json-v2"), b"json-entry")
+            .await
+            .unwrap();
+        cache
+            .set_bytes(&format!("{hash}-default-parquet-v5"), b"parquet-entry")
+            .await
+            .unwrap();
+        cache
+            .set_bytes(&format!("{hash}-default-symbolic-v1"), b"symbolic-entry")
+            .await
+            .unwrap();
+        // Control: a different file's entry, which must survive.
+        cache
+            .set_bytes(&format!("{other_hash}-default"), b"unrelated-entry")
+            .await
+            .unwrap();
+
+        let deleted = cache.remove_by_key_prefix(hash).await.unwrap();
+        assert_eq!(deleted, 5, "expected all 5 entries under {hash} to be removed");
+
+        assert!(cache.get_bytes(hash).await.unwrap().is_none());
+        assert!(cache.get_bytes(&format!("{hash}-default")).await.unwrap().is_none());
+        assert!(cache
+            .get_bytes(&format!("{hash}-default-json-v2"))
+            .await
+            .unwrap()
+            .is_none());
+        assert!(cache
+            .get_bytes(&format!("{hash}-default-parquet-v5"))
+            .await
+            .unwrap()
+            .is_none());
+        assert!(cache
+            .get_bytes(&format!("{hash}-default-symbolic-v1"))
+            .await
+            .unwrap()
+            .is_none());
+
+        // Control survives.
+        assert_eq!(
+            cache.get_bytes(&format!("{other_hash}-default")).await.unwrap(),
+            Some(b"unrelated-entry".to_vec())
+        );
+    }
+
+    /// Deleting a hash nothing was ever cached under is a no-op, not an
+    /// error -- a client that just tells the server "drop this model, if
+    /// anything is cached for it" must be able to call it unconditionally
+    /// and retry safely.
+    #[tokio::test]
+    async fn remove_by_key_prefix_on_an_absent_hash_is_a_no_op() {
+        let (cache, _dir) = fresh_cache("prefix-removal-absent").await;
+        let deleted = cache.remove_by_key_prefix("never-cached-hash").await.unwrap();
+        assert_eq!(deleted, 0);
+    }
+
+    /// Two different source files can produce byte-identical cached output
+    /// (the issue's example: two IFCs that both emit an empty symbolic-data
+    /// payload) and then share one content-addressed blob. Deleting one
+    /// file's entries must NOT take the shared blob out from under the
+    /// other's surviving entry.
+    #[tokio::test]
+    async fn remove_by_key_prefix_leaves_a_blob_shared_with_a_surviving_entry_intact() {
+        let (cache, _dir) = fresh_cache("prefix-removal-shared-blob").await;
+        let shared_payload = b"{}";
+        cache.set_bytes("model-a-symbolic-v1", shared_payload).await.unwrap();
+        cache.set_bytes("model-b-symbolic-v1", shared_payload).await.unwrap();
+
+        let deleted = cache.remove_by_key_prefix("model-a").await.unwrap();
+        assert_eq!(deleted, 1);
+
+        assert!(cache.get_bytes("model-a-symbolic-v1").await.unwrap().is_none());
+        // The other file's entry must still read back the shared blob.
+        assert_eq!(
+            cache.get_bytes("model-b-symbolic-v1").await.unwrap(),
+            Some(shared_payload.to_vec())
+        );
+    }
+
+    /// Once nothing references a blob any more, the GC pass reclaims it --
+    /// not just the index entry.
+    #[tokio::test]
+    async fn remove_by_key_prefix_reclaims_a_blob_nothing_references_any_more() {
+        let (cache, dir) = fresh_cache("prefix-removal-gc").await;
+        let key = "solo-model-symbolic-v1";
+        cache.set_bytes(key, b"unique payload, not shared").await.unwrap();
+        let entry = cacache::index::find_async(&dir, key)
+            .await
+            .unwrap()
+            .expect("index entry must exist before deletion");
+        assert!(cacache::exists(&dir, &entry.integrity).await, "blob should exist before delete");
+
+        let deleted = cache.remove_by_key_prefix("solo-model").await.unwrap();
+        assert_eq!(deleted, 1);
+
+        assert!(
+            !cacache::exists(&dir, &entry.integrity).await,
+            "blob should be reclaimed once nothing references it"
+        );
+    }
+
+    #[tokio::test]
+    async fn stats_reports_zero_for_an_empty_cache() {
+        let (cache, _dir) = fresh_cache("stats-empty").await;
+        let stats = cache.stats().await.unwrap();
+        assert_eq!(stats.entries, 0);
+        assert_eq!(stats.bytes, 0);
+    }
+
+    #[tokio::test]
+    async fn stats_counts_entries_and_sums_their_sizes() {
+        let (cache, _dir) = fresh_cache("stats-populated").await;
+        cache.set_bytes("key-a", b"12345").await.unwrap(); // 5 bytes
+        cache.set_bytes("key-b", b"1234567890").await.unwrap(); // 10 bytes
+
+        let stats = cache.stats().await.unwrap();
+        assert_eq!(stats.entries, 2);
+        assert_eq!(stats.bytes, 15);
     }
 }

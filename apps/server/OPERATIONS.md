@@ -53,7 +53,25 @@ your corpus. Concretely for a single-replica box:
 - `GET /api/v1/metrics` - admission gauges/counters + resident memory
   (`ifc_server_resident_bytes`, `ifc_server_admission_in_flight`,
   `ifc_server_admission_queued`, `ifc_server_admission_rejected_total{reason}`,
-  `ifc_server_mem_budget_bytes`), when `IFC_METRICS_ENABLED=1`.
+  `ifc_server_mem_budget_bytes`), plus cache size gauges
+  (`ifc_server_cache_entries`, `ifc_server_cache_bytes`), when
+  `IFC_METRICS_ENABLED=1`.
+
+## Cache
+
+The disk cache (`CACHE_DIR`, default eviction by `CACHE_MAX_AGE_DAYS`) has no
+size limit and, until issue #3636, no way to remove an entry other than
+waiting for it to age out. `DELETE /api/v1/cache/{sha256}` removes every
+cache entry derived from one source file's content hash (the request,
+`-json-v2`, `-parquet-vN`, `-parquet-metadata-vN` and `-symbolic-v1` entries,
+across every opening-filter/tessellation-quality combination) and reclaims
+any content blob none of them, or any unrelated entry, still references. It
+is idempotent: deleting a hash nothing is cached under is a `200` with
+`{"deleted": 0}`, not a `404`, so a caller can invoke it unconditionally (e.g.
+"the model behind this hash was removed, drop whatever is cached for it")
+without checking existence first. Use it to bound cache size from an
+external job, or to invalidate the geometry for a model an application has
+deleted, without waiting out `CACHE_MAX_AGE_DAYS`.
 
 ## Behavior notes
 

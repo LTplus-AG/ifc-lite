@@ -17,10 +17,28 @@ pub async fn metrics(State(state): State<AppState>) -> Response {
     if !state.config.metrics_enabled {
         return (StatusCode::NOT_FOUND, "metrics disabled").into_response();
     }
+
+    let mut body = state.admission.metrics_text();
+
+    // Cache size gauges (issue #3636): the index already carries a `size` per
+    // entry, so this is a directory scan, not new bookkeeping. A scan failure
+    // (e.g. an unreadable cache dir) drops just these two lines rather than
+    // failing the whole scrape -- the admission gauges above are still useful
+    // on their own.
+    if let Ok(stats) = state.cache.stats().await {
+        body.push_str(&format!(
+            "# TYPE ifc_server_cache_entries gauge\n\
+             ifc_server_cache_entries {}\n\
+             # TYPE ifc_server_cache_bytes gauge\n\
+             ifc_server_cache_bytes {}\n",
+            stats.entries, stats.bytes,
+        ));
+    }
+
     (
         StatusCode::OK,
         [(header::CONTENT_TYPE, "text/plain; version=0.0.4")],
-        state.admission.metrics_text(),
+        body,
     )
         .into_response()
 }

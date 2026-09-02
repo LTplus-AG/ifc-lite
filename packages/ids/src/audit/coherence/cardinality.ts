@@ -32,10 +32,17 @@ export function auditRequirementCardinality(
   // can flag mistakes here (`Required`, `Invalid`, empty string, …)
   // rather than silently defaulting to `required`.
   if (req.cardinalityRaw !== undefined) {
+    // <partOf> takes ids:simpleCardinality ({required, prohibited}) — see the
+    // partOf case below; every other facet takes the three-value
+    // conditionalCardinality. Report the set that is actually allowed here.
+    const expected =
+      req.facet.type === 'partOf'
+        ? '{required, prohibited}'
+        : '{required, optional, prohibited}';
     issues.push({
       severity: 'error',
       code: 'E_CARDINALITY_INVALID',
-      message: `@cardinality="${req.cardinalityRaw}" is not a valid value; expected one of {required, optional, prohibited}`,
+      message: `@cardinality="${req.cardinalityRaw}" is not a valid value; expected one of ${expected}`,
       path: `${path}.cardinality`,
       facetType: req.facet.type,
       detail: { value: req.cardinalityRaw },

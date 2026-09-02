@@ -35,12 +35,46 @@
 import { escapeXml } from './xml-text.js';
 
 // A full `xs:dateTime`: date, mandatory 'T', time, optional fractional
-// seconds, optional timezone (Z or ±HH:MM). Deliberately permissive about
-// what counts as "already valid" -- this only decides pass-through-unchanged
-// vs normalize-or-reject, never reformats a value that already matches.
-const XSD_DATETIME_RE = /^-?\d{4,}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/;
+// seconds, optional timezone (Z or ±HH:MM). The lexical match only decides
+// pass-through-unchanged vs normalize-or-reject and never reformats a value
+// that already matches; `isCalendarValid` below then rejects lexically-valid
+// but calendar-impossible values the xs:dateTime VALUE space excludes.
+const XSD_DATETIME_RE = /^-?(\d{4,})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-]\d{2}:\d{2})?$/;
 // A bare xs:date, e.g. what an HTML `<input type="date">` yields.
-const BARE_DATE_RE = /^-?\d{4,}-\d{2}-\d{2}$/;
+const BARE_DATE_RE = /^-?(\d{4,})-(\d{2})-(\d{2})$/;
+
+const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+/**
+ * Value-space check behind the lexical regexes: the xs:dateTime/xs:date VALUE
+ * space excludes calendar-impossible lexemes (month 13, February 30, minute
+ * 99, a timezone beyond ±14:00), and a schema validator rejects them — so a
+ * writer that emitted one would hand the caller an archive that fails
+ * validation, exactly what this module exists to refuse. Hour 24 is legal in
+ * XSD only as 24:00:00 (end of day).
+ */
+function isCalendarValid(m: RegExpMatchArray, hasTime: boolean): boolean {
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  if (month < 1 || month > 12 || day < 1) return false;
+  const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  const maxDay = month === 2 && leap ? 29 : DAYS_IN_MONTH[month - 1];
+  if (day > maxDay) return false;
+  if (!hasTime) return true;
+  const hour = Number(m[4]);
+  const minute = Number(m[5]);
+  const second = Number(m[6]);
+  if (minute > 59 || second > 59) return false;
+  if (hour > 24 || (hour === 24 && (minute !== 0 || second !== 0))) return false;
+  const tz = m[7];
+  if (tz !== undefined && tz !== 'Z') {
+    const tzHour = Number(tz.slice(1, 3));
+    const tzMinute = Number(tz.slice(4, 6));
+    if (tzHour > 14 || tzMinute > 59 || (tzHour === 14 && tzMinute !== 0)) return false;
+  }
+  return true;
+}
 
 /**
  * Normalize a date-ish string to a valid `xs:dateTime`, or `undefined` if it
@@ -53,8 +87,10 @@ const BARE_DATE_RE = /^-?\d{4,}-\d{2}-\d{2}$/;
  */
 export function normalizeXsdDateTime(value: string): string | undefined {
   const trimmed = value.trim();
-  if (XSD_DATETIME_RE.test(trimmed)) return trimmed;
-  if (BARE_DATE_RE.test(trimmed)) return `${trimmed}T00:00:00Z`;
+  const dateTime = trimmed.match(XSD_DATETIME_RE);
+  if (dateTime) return isCalendarValid(dateTime, true) ? trimmed : undefined;
+  const bareDate = trimmed.match(BARE_DATE_RE);
+  if (bareDate) return isCalendarValid(bareDate, false) ? `${trimmed}T00:00:00Z` : undefined;
   return undefined;
 }
 

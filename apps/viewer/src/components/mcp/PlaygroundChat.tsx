@@ -30,7 +30,7 @@ import {
   useState,
 } from 'react';
 import { modelSwapNotice, type SwapModelRef } from './playground-model-swap.js';
-import Anthropic from '@anthropic-ai/sdk';
+import { anthropicErrorMessage, createAnthropicClient, type AnthropicCredentials } from '@/lib/llm/anthropic-client';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ArrowUp, Check, ChevronDown, ChevronRight, Download, KeyRound, Loader2, RefreshCcw, Wrench } from 'lucide-react';
@@ -228,20 +228,19 @@ export function PlaygroundChat({
       };
       setMessages((m) => [...m, userMessage, assistantMessage]);
 
+      const credentials = { apiKey: keys.anthropicKey, workspaceId: keys.anthropicWorkspaceId };
       try {
         await runConversation({
-          apiKey: keys.anthropicKey,
+          credentials,
           modelId: selectedModel,
           tools,
           history: [...messages, userMessage],
           model,
           assistantId: assistantMessage.id,
           getDispatchContext: dispatchContext ?? (() => ({})),
-          onUpdate: (patch) => {
-            setMessages((m) =>
-              m.map((msg) => (msg.id === assistantMessage.id ? { ...msg, ...patch } : msg)),
-            );
-          },
+          onUpdate: (patch) => setMessages((m) =>
+            m.map((msg) => (msg.id === assistantMessage.id ? { ...msg, ...patch } : msg)),
+          ),
         });
       } catch (err) {
         setMessages((m) =>
@@ -251,12 +250,12 @@ export function PlaygroundChat({
               : msg,
           ),
         );
-        setError(err instanceof Error ? err.message : String(err));
+        setError(anthropicErrorMessage(err, credentials.workspaceId));
       } finally {
         setStreaming(false);
       }
     },
-    [keys.anthropicKey, selectedModel, model, tools, messages, dispatchContext],
+    [keys.anthropicKey, keys.anthropicWorkspaceId, selectedModel, model, tools, messages, dispatchContext],
   );
 
   const onSubmit = (e: React.FormEvent) => {
@@ -337,7 +336,7 @@ export function PlaygroundChat({
         anthropicModels={anthropicModels}
         onChangeModel={setPlaygroundModel}
       />
-      <ByokKeyModal open={keyModalOpen} onOpenChange={setKeyModalOpen} initialProvider="anthropic" />
+      <ByokKeyModal open={keyModalOpen} onOpenChange={setKeyModalOpen} initialProvider="anthropic" requestSource={{ anthropic: 'components/mcp/PlaygroundChat.tsx' }} />
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-5">
         {messages.length === 0 ? (
@@ -761,7 +760,7 @@ interface AnthropicToolResultBlock {
 }
 
 interface RunOpts {
-  apiKey: string;
+  credentials: AnthropicCredentials;
   /** Anthropic model id (e.g. `claude-sonnet-4-6`, `claude-opus-4-7`). */
   modelId: string;
   tools: AnthropicToolDef[];
@@ -894,7 +893,7 @@ function assertToolUseShape(messages: ApiMessage[]): void {
 }
 
 async function runConversation(opts: RunOpts): Promise<void> {
-  const client = new Anthropic({ apiKey: opts.apiKey, dangerouslyAllowBrowser: true });
+  const client = createAnthropicClient(opts.credentials);
   const apiMessages = buildApiMessages(opts.history);
 
   // Compact, opt-in diagnostic logging. The previous version dumped the

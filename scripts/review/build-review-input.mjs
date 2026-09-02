@@ -89,7 +89,7 @@ import {
   SHALLOW_CHECKOUT_REMEDY,
   MAX_PROMPT_BYTES,
   PROMPT_BASE_OVERHEAD_BYTES,
-  PROMPT_PER_UNREVIEWABLE_BYTES,
+  PROMPT_UNREVIEWABLE_ROW_FIXED,
 } from './build-context-pack.mjs';
 import { gh, GhError } from '../lib/gh.mjs';
 // The gate's pager, not a second copy of it. An earlier version here duplicated
@@ -117,7 +117,7 @@ export const MAX_PATCH_BYTES = 600 * 1024;
  * the absence-reads-as-success shape one layer down.
  *
  * Kept short on purpose: every unreviewable row is charged at
- * PROMPT_PER_UNREVIEWABLE_BYTES plus its path, and a reason longer than the
+ * PROMPT_UNREVIEWABLE_ROW_FIXED plus its path and reason, and a reason longer than the
  * measured ~102-byte worst case would quietly break that charge.
  */
 export const OMITTED_FOR_PROMPT_REASON = 'omitted: too large to fit the model prompt with the rest of this diff';
@@ -298,7 +298,7 @@ export function addedLineRanges(patch) {
  * smaller one behind it. Ties break on path so two runs of one head agree.
  *
  * THE CHARGE IS DELIBERATELY THE WORST-CASE RATE. Every row -- kept or dropped,
- * candidate or already-unreviewable -- is charged PROMPT_PER_UNREVIEWABLE_BYTES
+ * candidate or already-unreviewable -- is charged PROMPT_UNREVIEWABLE_ROW_FIXED
  * plus its path bytes. A kept file's real header costs less (~12 bytes plus the
  * path against 120), but rows MOVE between the two sets while this runs, and
  * charging each set its own rate would make the budget depend on the answer.
@@ -311,7 +311,14 @@ export function addedLineRanges(patch) {
  * @returns {{ kept: typeof candidates, omitted: typeof candidates }}
  */
 export function fitFilesToPrompt(candidates, unreviewable) {
-  const rowCharge = (path) => PROMPT_PER_UNREVIEWABLE_BYTES + Buffer.byteLength(path, 'utf8');
+  // WORST CASE PER ROW, and it must stay worst-case: a file can move between kept
+  // and omitted during selection, so each is charged at the dearer unreviewable
+  // rate. The reason string is charged too -- the envelope model bills it, and
+  // omitting it here would let the fit overshoot by `reason` bytes per dropped
+  // file, which on a 200-file omission is tens of kilobytes.
+  const reasonBytes = Buffer.byteLength(OMITTED_FOR_PROMPT_REASON, 'utf8');
+  const rowCharge = (path) =>
+    PROMPT_UNREVIEWABLE_ROW_FIXED + Buffer.byteLength(path, 'utf8') + reasonBytes;
   let budget = MAX_PROMPT_BYTES - PROMPT_BASE_OVERHEAD_BYTES;
   for (const u of unreviewable) budget -= rowCharge(u.path);
   for (const c of candidates) budget -= rowCharge(c.path);

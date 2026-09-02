@@ -18,7 +18,8 @@ import { ViewportOverlays } from '@/components/viewer/ViewportOverlays';
 import { useIfc } from '@/hooks/useIfc';
 import { useWebGPU } from '@/hooks/useWebGPU';
 import { useViewerStore } from '@/store';
-import { selectModelMeshes } from '@/lib/type-view-visibility';
+import { selectModelMeshes, meshClassIsPlaced } from '@/lib/type-view-visibility';
+import { geometryClassOf } from '@ifc-lite/geometry/geometry-class';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { parseUrlParams, assertFetchableUrl } from '../bridge/urlParams.js';
 import { initBridge, destroyBridge, emitEvent } from '../bridge/handler.js';
@@ -255,6 +256,18 @@ export function EmbedViewer() {
   // Then type visibility, plus the host's ?hideTypes=: ARBITRARY IFC class
   // names (the SDK ships `hideTypes?: string[]`), so not a `typeVisibility`
   // toggle but a case-folded membership test merged into that same filter pass.
+  // `selectModelMeshes` drops orphan type geometry the moment the first placed
+  // mesh arrives, so the filtered list can change COMPOSITION between streaming
+  // batches, not just grow. The upload path classifies by array length and
+  // appends `slice(oldLength)` (`useGeometryStreaming.ts:321,516`), which assumes
+  // growth at the tail: on the flip it would leave the dropped orphans on screen
+  // and skip the placed meshes that took their indices. `geometryContentVersion`
+  // is the existing escape hatch for a list whose content changed under a stable
+  // length, so flipping it forces the full re-upload.
+  const hasPlacedGeometry = useMemo(
+    () => (mergedGeometryResult?.meshes ?? []).some((m) => meshClassIsPlaced(geometryClassOf(m))),
+    [mergedGeometryResult],
+  );
   const hiddenTypes = useMemo(() => toHiddenTypeSet(hideTypes), [hideTypes]);
   const filteredGeometry = useMemo(() => {
     if (!mergedGeometryResult?.meshes) return null;
@@ -388,6 +401,7 @@ export function EmbedViewer() {
         <div style={{ position: 'absolute', inset: 0 }}>
           <Viewport
             geometry={filteredGeometry}
+            geometryContentVersion={hasPlacedGeometry ? 1 : 0}
             coordinateInfo={mergedGeometryResult?.coordinateInfo}
             computedIsolatedIds={computedIsolatedIds}
             modelIdToIndex={modelIdToIndex}

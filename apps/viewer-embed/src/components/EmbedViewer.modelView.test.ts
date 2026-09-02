@@ -35,9 +35,11 @@ import type { MeshData } from '@ifc-lite/geometry';
 
 /** Captured props of the last `Viewport` render — what the embed actually draws. */
 let lastViewportGeometry: MeshData[] | null = null;
+let lastContentVersion: number | undefined;
 vi.mock('@/components/viewer/Viewport', () => ({
-  Viewport: (props: { geometry: MeshData[] | null }) => {
+  Viewport: (props: { geometry: MeshData[] | null; geometryContentVersion?: number }) => {
     lastViewportGeometry = props.geometry;
+    lastContentVersion = props.geometryContentVersion;
     return null;
   },
 }));
@@ -109,6 +111,7 @@ async function drawnIds(list: MeshData[]): Promise<number[]> {
 
 beforeEach(() => {
   lastViewportGeometry = null;
+  lastContentVersion = undefined;
   meshes = [];
   window.history.replaceState({}, '', '/');
   useViewerStore.setState({
@@ -216,5 +219,24 @@ describe('EmbedViewer: Model-view geometry-class gate', () => {
     ]);
 
     expect(ids).toEqual([]);
+  });
+
+  it('flips geometryContentVersion when the first placed mesh arrives', async () => {
+    // KILLS: dropping the `geometryContentVersion` prop, which is what makes the
+    // gate safe while geometry streams. `selectModelMeshes` changes which meshes
+    // it keeps at the moment the first placed mesh shows up: before, a list of
+    // orphans is kept whole; after, every one is dropped. The upload path
+    // classifies by array LENGTH and appends `slice(oldLength)`
+    // (useGeometryStreaming.ts:321,516), so a composition change under a growing
+    // length leaves the dropped orphans on screen and never uploads the placed
+    // meshes that took their index range. Without the flip this test sees the
+    // same version in both states and nothing downstream forces a rebuild.
+    await drawnIds([mesh(60, 'IfcWallType', ORPHAN_TYPE)]);
+    const orphansOnly = lastContentVersion;
+
+    await drawnIds([mesh(60, 'IfcWallType', ORPHAN_TYPE), mesh(61, 'IfcWall', OCCURRENCE)]);
+
+    expect(orphansOnly).toBe(0);
+    expect(lastContentVersion).toBe(1);
   });
 });

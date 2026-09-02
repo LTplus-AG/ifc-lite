@@ -30,19 +30,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MARKER_RE as GATE_MARKER_RE } from '../check-review-posted.mjs';
-import {
-  MAX_BODY_CHARS,
-  MAX_FINDINGS,
-  SENTINEL,
-  lineIsAdded,
-  quotableLines,
-  quoteAppearsIn,
-  sanitizeBody,
-  sanitizeLabel,
-  stripFence,
-  REASONS,
-  validate,
-} from './validate-findings.mjs';
+import { MAX_BODY_CHARS, MAX_FINDINGS, SENTINEL, lineIsAdded, quotableLines, quoteAppearsIn, sanitizeBody, sanitizeLabel, stripFence, REASONS, validate, siblingVerifies } from './validate-findings.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, 'validate-findings.mjs');
@@ -966,4 +954,26 @@ test('a finding with NO sibling is unaffected, and emits no sibling key', () => 
   const r = run(response({ verdict: 'findings', findings: [finding()] }), { input: INPUT_WITH_PACK });
   assert.equal(r.code, 0, r.out);
   assert.equal('sibling' in r.doc.findings[0], false, 'absent must stay absent, not become null');
+});
+
+test('a FABRICATED sibling quote cannot pass by merely containing a real excerpt line', () => {
+  // The containment ran both ways, so a model could wrap one real line in any
+  // amount of invented prose and the harness would certify the lot. Reproduced:
+  // "the importer does cache.set(n, scaled); and then silently drops the alpha
+  // channel" verified against an excerpt of `cache.set(n, scaled);`.
+  //
+  // That defeats the point of the check. The reviewer is SHOWN these excerpts, so
+  // quoting from one is the only honest direction; a quote longer than the
+  // excerpt is not evidence of anything the harness put there.
+  const pack = { siblings: [{ path: 'packages/cache/src/glb.ts', line: 88, text: 'cache.set(n, scaled);' }] };
+  const at = (quote) => siblingVerifies({ path: 'packages/cache/src/glb.ts', line: 88, quote }, pack);
+
+  assert.equal(
+    at('the importer does cache.set(n, scaled); and then drops the alpha channel').ok,
+    false,
+    'invented prose wrapping a real line is not evidence',
+  );
+  assert.equal(at('cache.set(n, scaled);').ok, true, 'the excerpt itself still verifies');
+  assert.equal(at('cache.set').ok, true, 'and so does a substring of it');
+  assert.equal(at('entirely invented').ok, false);
 });

@@ -712,7 +712,18 @@ export function siblingVerifies(sibling, contextPack) {
   }
   if (isNonEmptyString(quote)) {
     const needle = quote.trim();
-    if (!near.some((e) => e.text.includes(needle) || needle.includes(e.text.trim()))) {
+    // ONE WAY ONLY: the excerpt must contain the quote, never the reverse. The
+    // second direction let a fabricated quote pass by merely CONTAINING a real
+    // excerpt line -- "the importer does cache.set(n, scaled); and then silently
+    // drops the alpha channel" verified against an excerpt of
+    // `cache.set(n, scaled);`, because the invented sentence contains it. That
+    // defeats the whole check: the model can wrap one real line in any amount of
+    // invented prose and the harness certifies the lot.
+    //
+    // The reviewer is shown these excerpts, so quoting FROM one is the only
+    // honest direction. A quote longer than the excerpt is not evidence of
+    // anything the harness put there.
+    if (!near.some((e) => e.text.includes(needle))) {
       return { ok: false, reason: `\`sibling.quote\` is not in the excerpt from \`${path}\`` };
     }
   }

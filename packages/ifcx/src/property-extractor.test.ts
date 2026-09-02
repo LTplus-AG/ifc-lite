@@ -83,6 +83,39 @@ describe('extractProperties — typed records and internal carriers (#1031)', ()
     assert.strictEqual(ebkpCode?.value, 'C2.1');
   });
 
+  it('keeps two refs sharing a system separate, each with its own Code/Uri (#3608)', () => {
+    // Ordinary Uniclass practice: an element carries both a Systems code
+    // (with a URI) and a Products code (without one) under the same
+    // system name. `set()`-ing a single 'Code'/'Uri' pair per system would
+    // collapse these into one pset — dropping a code and pairing the
+    // survivor with the wrong URI.
+    const node = createNode('wall');
+    node.attributes.set('ifclite::classifications', [
+      { system: 'Uniclass 2015', code: 'Ss_25_10_30', uri: 'https://uniclass.thenbs.com/Ss_25_10_30' },
+      { system: 'Uniclass 2015', code: 'Pr_20_93_47' },
+    ]);
+
+    const composed = new Map([[node.path, node]]);
+    const pathToId = new Map([[node.path, 1]]);
+    const table = extractProperties(composed, pathToId, new StringTable());
+    const psets = table.getForEntity(1);
+
+    const systems = psets.find((p) => p.name === 'Classification - Uniclass 2015 - Ss_25_10_30');
+    assert.ok(systems, 'the Systems ref (Ss_25_10_30) has its own pset');
+    assert.strictEqual(systems!.properties.find((p) => p.name === 'Code')?.value, 'Ss_25_10_30');
+    assert.strictEqual(
+      systems!.properties.find((p) => p.name === 'Uri')?.value,
+      'https://uniclass.thenbs.com/Ss_25_10_30'
+    );
+
+    const products = psets.find((p) => p.name === 'Classification - Uniclass 2015 - Pr_20_93_47');
+    assert.ok(products, 'the Products ref (Pr_20_93_47) has its own pset');
+    assert.strictEqual(products!.properties.find((p) => p.name === 'Code')?.value, 'Pr_20_93_47');
+    // The Products ref carries no URI — it must not inherit the Systems
+    // ref's URI.
+    assert.strictEqual(products!.properties.find((p) => p.name === 'Uri'), undefined);
+  });
+
   it('skips a classification ref with no code', () => {
     const node = createNode('wall');
     node.attributes.set('ifclite::classifications', [{ system: 'Uniclass 2015' }]);

@@ -96,21 +96,52 @@ function groupAttributesByNamespace(
     // classification, not just STEP -> IFCX -> the collab snapshot layer.
     // One "Classification" pset per system, mirroring the Material unpack
     // below; a ref with no `code` carries nothing to show and is skipped.
+    //
+    // Ordinary Uniclass practice puts two refs under one system on the
+    // same element (a Systems code and a Products code) — `set()`-ing a
+    // single 'Code'/'Uri' pair per system would collapse them, dropping
+    // one code and pairing the survivor with the wrong URI. So refs are
+    // grouped by system first; a system with exactly one ref keeps the
+    // plain `Classification - <system>` name (the common case looks
+    // unchanged), while a system with more than one ref disambiguates
+    // each into its own `Classification - <system> - <code>` pset so
+    // every ref keeps its own Code/Uri pairing.
     if (key === IFCLITE_ATTR.CLASSIFICATIONS && Array.isArray(value)) {
+      const bySystem = new Map<
+        string,
+        Array<{ code: string; uri?: string; description?: string }>
+      >();
       for (const item of value) {
         if (!item || typeof item !== 'object') continue;
         const ref = item as { system?: unknown; code?: unknown; uri?: unknown; description?: unknown };
         if (typeof ref.code !== 'string' || !ref.code) continue;
-        const psetName = typeof ref.system === 'string' && ref.system
-          ? `Classification - ${ref.system}`
-          : 'Classification';
-        if (!grouped.has(psetName)) {
-          grouped.set(psetName, new Map());
+        const system = typeof ref.system === 'string' && ref.system ? ref.system : '';
+        if (!bySystem.has(system)) bySystem.set(system, []);
+        bySystem.get(system)!.push({
+          code: ref.code,
+          uri: typeof ref.uri === 'string' ? ref.uri : undefined,
+          description: typeof ref.description === 'string' ? ref.description : undefined,
+        });
+      }
+
+      for (const [system, refs] of bySystem) {
+        const multiple = refs.length > 1;
+        for (const ref of refs) {
+          const psetName = system
+            ? multiple
+              ? `Classification - ${system} - ${ref.code}`
+              : `Classification - ${system}`
+            : multiple
+              ? `Classification - ${ref.code}`
+              : 'Classification';
+          if (!grouped.has(psetName)) {
+            grouped.set(psetName, new Map());
+          }
+          const classificationProps = grouped.get(psetName)!;
+          classificationProps.set('Code', ref.code);
+          if (ref.uri !== undefined) classificationProps.set('Uri', ref.uri);
+          if (ref.description !== undefined) classificationProps.set('Description', ref.description);
         }
-        const classificationProps = grouped.get(psetName)!;
-        classificationProps.set('Code', ref.code);
-        if (typeof ref.uri === 'string') classificationProps.set('Uri', ref.uri);
-        if (typeof ref.description === 'string') classificationProps.set('Description', ref.description);
       }
       continue;
     }

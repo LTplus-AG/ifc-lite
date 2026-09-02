@@ -711,3 +711,45 @@ test('an EXEMPT run prints ONE remedy, not two that contradict each other', () =
   assert.equal(real.code, 1);
   assert.match(real.out, /REMEDY: re-run the review job/);
 });
+
+test('THE LABEL NAME IS ONE NAME: the workflow that writes it and the config that reads it agree', () => {
+  // Nothing asserted this. `review-posted.yml` creates, applies, reads back and
+  // clears the label; `.coderabbit.yaml` is the only consumer, and no code reads
+  // that file — so producer and consumer were held together by prose alone. A
+  // rename touching one and not the other shipped green, which is exactly the
+  // shape a vendor-agnostic rename walks into.
+  //
+  // Mutation-checked when written: renaming the label in the workflow alone
+  // failed no test at all.
+  const wf = readFileSync(join(HERE, '..', '.github/workflows/review-posted.yml'), 'utf8');
+  const cr = readFileSync(join(HERE, '..', '.coderabbit.yaml'), 'utf8');
+
+  // Every label the workflow creates or applies, taken from the commands
+  // themselves rather than from a constant this test could get wrong too.
+  const created = [...wf.matchAll(/gh label create ([A-Za-z0-9._-]+)/g)].map((m) => m[1]);
+  const applied = [...wf.matchAll(/labels\[\]=([A-Za-z0-9._-]+)/g)].map((m) => m[1]);
+  const names = new Set([...created, ...applied]);
+  assert.equal(names.size, 1, `the workflow handles more than one label name: ${[...names].join(', ')}`);
+  const label = [...names][0];
+
+  // The read-back grep and both clear paths must name the same one.
+  assert.match(wf, new RegExp(`grep -qx '${label}'`), `the read-back does not check \`${label}\``);
+  // EVERY `/labels/<name>` path, not just one of them. `includes` passed while a
+  // clear step pointed at a different name, because the other occurrence still
+  // matched -- the same "asserts less than its name claims" shape this session
+  // has already found twice.
+  const labelPaths = [...wf.matchAll(/\/labels\/([A-Za-z0-9._-]+)/g)].map((m) => m[1]);
+  assert.ok(labelPaths.length > 0, 'the workflow must clear the label it applies');
+  for (const p of labelPaths) {
+    assert.equal(p, label, `a label path targets \`${p}\` while the workflow applies \`${label}\``);
+  }
+
+  // And the consumer, whose rule is currently commented out under the
+  // stand-down — the name still has to match, or re-enabling it silently
+  // stops matching anything.
+  assert.ok(
+    cr.includes(`'!${label}'`),
+    `.coderabbit.yaml does not reference \`!${label}\`; the stand-down rule would match nothing when re-enabled`,
+  );
+  assert.ok(!/claude-reviewed/.test(wf + cr), 'a vendor-named label survives in the workflow or the CodeRabbit config');
+});

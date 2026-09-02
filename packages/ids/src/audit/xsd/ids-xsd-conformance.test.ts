@@ -443,15 +443,18 @@ describe('IDS documents against buildingSMART ids.xsd 1.0', () => {
  *     `runXsdAudit` iterates zero specifications and reports nothing.
  *   - classification `<system>` missing: the required-field check is not
  *     applied to the classification facet's `system`.
- *   - `partOf cardinality="optional"`: `audit/coherence/index.ts` treats every
- *     facet as taking the three-value `conditionalCardinality`; `partOf` takes
- *     the two-value `simpleCardinality`. The comment on the `case 'partOf'`
- *     branch states the three-value set explicitly, so this is a wrong
- *     premise rather than an oversight.
  *   - `dataType` case: matched case-insensitively against the IFC measure
  *     list, while the schema's `[A-Z]+` pattern makes case load-bearing.
  *   - `<date>` / `<author>`: `<info>` children are parsed but never checked
  *     against their `xs:date` and pattern-restricted types.
+ *
+ * `partOf cardinality="optional"` used to be here: `audit/coherence/index.ts`
+ * treated every requirement facet as taking the three-value
+ * `conditionalCardinality`, but `partOf` is typed `simpleCardinality`
+ * (`{required, prohibited}`) in ids.xsd, so `optional` is not one of its
+ * values. `auditRequirementCardinality` now flags it (`case 'partOf'`),
+ * closing the gap — the case stays in the table below only as a
+ * genuinely-rejected-by-schema fixture, not as a known miss.
  */
 const KNOWN_AUDIT_GAPS = [
   'classification requirement without <system>',
@@ -459,7 +462,6 @@ const KNOWN_AUDIT_GAPS = [
   'empty <specifications>',
   'info/author that is not an e-mail address',
   'info/date that is not an xs:date',
-  'partOf with cardinality="optional"',
 ] as const;
 
 describe('divergence between auditIDSDocument and ids.xsd', () => {

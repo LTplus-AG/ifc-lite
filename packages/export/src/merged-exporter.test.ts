@@ -1555,6 +1555,14 @@ describe('MergedExporter', () => {
       // silently discarded and pasted raw into the origin model's frame.
       expect(content.match(/=IFCGEOMETRICREPRESENTATIONCONTEXT\(/g)?.length).toBe(2);
       expect(content.match(/=IFCGEOMETRICREPRESENTATIONSUBCONTEXT\(/g)?.length).toBe(2);
+      // Counting alone cannot see a cross-wired parent: each retained
+      // subcontext must still reference its OWN parent context — the offset
+      // model's 'Body' stays under the retained offset context, not the
+      // primary's.
+      const subParents = [...content.matchAll(/=IFCGEOMETRICREPRESENTATIONSUBCONTEXT\('Body','Model',\*,\*,\*,\*,#(\d+)/g)].map((m) => m[1]);
+      const contextIds = [...content.matchAll(/#(\d+)=IFCGEOMETRICREPRESENTATIONCONTEXT\(/g)].map((m) => m[1]);
+      expect(subParents).toHaveLength(2);
+      expect(new Set(subParents)).toEqual(new Set(contextIds));
       expect(findDanglingRefs(content)).toEqual([]);
     });
 
@@ -1587,6 +1595,107 @@ describe('MergedExporter', () => {
         .export({ schema: 'IFC4' }).content);
       expect(content.match(/=IFCGEOMETRICREPRESENTATIONCONTEXT\(/g)?.length).toBe(1);
       expect(content.match(/=IFCGEOMETRICREPRESENTATIONSUBCONTEXT\(/g)?.length).toBe(1);
+      expect(findDanglingRefs(content)).toEqual([]);
+    });
+
+    // Only a model's FIRST context is unified; a later sibling context is
+    // always retained. A subcontext parented to that retained sibling must
+    // stay with it — unifying the child while retaining the parent would
+    // re-anchor its shape representations onto the primary's frame.
+    it('keeps a subcontext whose parent is a retained sibling context, even when the first context unifies', () => {
+      const siblingModel = (): MergeModelInput => buildModel('sibling', 'Sibling', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('wcsProjSib')}',$,'S',$,$,$,$,(#3,#12),#2);`],
+        [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#8));'],
+        // First context: identical frame to the primary — unifies.
+        [3, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#4,$);"],
+        [4, 'IFCAXIS2PLACEMENT3D', '#4=IFCAXIS2PLACEMENT3D(#5,#6,#7);'],
+        [5, 'IFCCARTESIANPOINT', '#5=IFCCARTESIANPOINT((0.,0.,0.));'],
+        [6, 'IFCDIRECTION', '#6=IFCDIRECTION((0.,0.,1.));'],
+        [7, 'IFCDIRECTION', '#7=IFCDIRECTION((1.,0.,0.));'],
+        [8, 'IFCSIUNIT', '#8=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+        // Sibling context: 500 m offset frame — always retained.
+        [12, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#12=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Plan',3,1.E-5,#13,$);"],
+        [13, 'IFCAXIS2PLACEMENT3D', '#13=IFCAXIS2PLACEMENT3D(#14,#6,#7);'],
+        [14, 'IFCCARTESIANPOINT', '#14=IFCCARTESIANPOINT((500.,0.,0.));'],
+        // The subcontext's kind matches the primary's 'Body', but its parent
+        // is the RETAINED sibling context #12 — it must not unify.
+        [9, 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT', "#9=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#12,$,.MODEL_VIEW.,$);"],
+        [10, 'IFCWALL', `#10=IFCWALL('${guid('wcsWallSib')}',$,'W',$,$,$,#15,$);`],
+        [15, 'IFCPRODUCTDEFINITIONSHAPE', '#15=IFCPRODUCTDEFINITIONSHAPE($,$,(#16));'],
+        [16, 'IFCSHAPEREPRESENTATION', "#16=IFCSHAPEREPRESENTATION(#9,'Body','SweptSolid',$);"],
+      ]);
+
+      const content = decode(new MergedExporter([originModel(), siblingModel()])
+        .export({ schema: 'IFC4' }).content);
+
+      // Primary context unified (1 shared) + the retained sibling = 2.
+      expect(content.match(/=IFCGEOMETRICREPRESENTATIONCONTEXT\(/g)?.length).toBe(2);
+      // The sibling's child subcontext is retained alongside the primary's.
+      expect(content.match(/=IFCGEOMETRICREPRESENTATIONSUBCONTEXT\(/g)?.length).toBe(2);
+      // And it still references its retained parent, not the shared context.
+      const planContext = content.match(/#(\d+)=IFCGEOMETRICREPRESENTATIONCONTEXT\(\$,'Plan'/);
+      expect(planContext).not.toBeNull();
+      const siblingChild = content.match(
+        new RegExp(`=IFCGEOMETRICREPRESENTATIONSUBCONTEXT\\('Body','Model',\\*,\\*,\\*,\\*,#${planContext![1]}`),
+      );
+      expect(siblingChild).not.toBeNull();
+      expect(findDanglingRefs(content)).toEqual([]);
+    });
+
+    // Under assume-shared the caller asserts raw coordinates already share the
+    // primary's unit, and they are copied verbatim — so WCS frames compare by
+    // RAW value in the primary's scale, not by each model's declared unit.
+    it('assume-shared: differing raw WCS origins stay separate even when declared-unit scaling makes them collide', () => {
+      // Primary (offsetModel) declares metres, origin (500,0,0). The second declares
+      // MILLImetres with raw origin (500000,0,0): scaled by its own declared
+      // unit both are "500 m", but assume-shared copies 500000 verbatim into
+      // a metre file — a genuinely different frame that must be retained.
+      const mmModel = (): MergeModelInput => buildModel('mm', 'MM', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('wcsProjMm')}',$,'B',$,$,$,$,(#3),#2);`],
+        [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#8));'],
+        [3, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#4,$);"],
+        [4, 'IFCAXIS2PLACEMENT3D', '#4=IFCAXIS2PLACEMENT3D(#5,#6,#7);'],
+        [5, 'IFCCARTESIANPOINT', '#5=IFCCARTESIANPOINT((500000.,0.,0.));'],
+        [6, 'IFCDIRECTION', '#6=IFCDIRECTION((0.,0.,1.));'],
+        [7, 'IFCDIRECTION', '#7=IFCDIRECTION((1.,0.,0.));'],
+        [8, 'IFCSIUNIT', '#8=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);'],
+        [9, 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT', "#9=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#3,$,.MODEL_VIEW.,$);"],
+      ]);
+
+      const primary = offsetModel(500);
+      primary.lengthUnitScale = 1.0; // metres
+      const mm = mmModel();
+      mm.lengthUnitScale = 0.001; // millimetres — the unit assume-shared overrides
+      const content = decode(new MergedExporter([primary, mm])
+        .export({ schema: 'IFC4', unitReconciliation: 'assume-shared' }).content);
+
+      expect(content.match(/=IFCGEOMETRICREPRESENTATIONCONTEXT\(/g)?.length).toBe(2);
+      expect(findDanglingRefs(content)).toEqual([]);
+    });
+
+    it('assume-shared: identical raw WCS origins unify despite differing declared units', () => {
+      // Same raw origin (500,0,0) both sides; the second model's declared
+      // MILLI prefix is exactly what assume-shared tells the merge to ignore.
+      const mmModel = (): MergeModelInput => buildModel('mm2', 'MM2', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('wcsProjMm2')}',$,'B',$,$,$,$,(#3),#2);`],
+        [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#8));'],
+        [3, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#4,$);"],
+        [4, 'IFCAXIS2PLACEMENT3D', '#4=IFCAXIS2PLACEMENT3D(#5,#6,#7);'],
+        [5, 'IFCCARTESIANPOINT', '#5=IFCCARTESIANPOINT((500.,0.,0.));'],
+        [6, 'IFCDIRECTION', '#6=IFCDIRECTION((0.,0.,1.));'],
+        [7, 'IFCDIRECTION', '#7=IFCDIRECTION((1.,0.,0.));'],
+        [8, 'IFCSIUNIT', '#8=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);'],
+        [9, 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT', "#9=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#3,$,.MODEL_VIEW.,$);"],
+      ]);
+
+      const primary = offsetModel(500);
+      primary.lengthUnitScale = 1.0; // metres
+      const mm = mmModel();
+      mm.lengthUnitScale = 0.001; // millimetres — the unit assume-shared overrides
+      const content = decode(new MergedExporter([primary, mm])
+        .export({ schema: 'IFC4', unitReconciliation: 'assume-shared' }).content);
+
+      expect(content.match(/=IFCGEOMETRICREPRESENTATIONCONTEXT\(/g)?.length).toBe(1);
       expect(findDanglingRefs(content)).toEqual([]);
     });
   });

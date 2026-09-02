@@ -50,6 +50,9 @@ export interface WcsSignature {
 /** Tolerance for WCS origins (metres) and normalized directions. */
 const WCS_TOLERANCE_M = 1e-6;
 
+/** 0-based attribute index of `IfcGeometricRepresentationSubContext.ParentContext`. */
+const SUBCONTEXT_PARENT_CONTEXT_ATTR = 6;
+
 function decodeEntity(dataStore: IfcDataStore, expressId: number): string | null {
   const source = dataStore.source;
   if (!source) return null;
@@ -202,12 +205,32 @@ export function planInfrastructureUnify(
   // `IFCGEOMETRICREPRESENTATIONSUBCONTEXT` in `firstModelInfraMap`.
   const contextsCompatible = wcsSignaturesCompatible(firstModelContextWcs,
     resolveModelContextWcs(dataStore, lengthUnitScale));
+  // Only the model's FIRST top-level context is (positionally) unified below;
+  // any later sibling context — a model with both a 'Model' and a 'Plan'
+  // context, say — is always retained. A subcontext may therefore unify ONLY
+  // when its own `ParentContext` is the context actually being remapped: a
+  // child of a retained sibling must stay with its parent, or its shape
+  // representations get re-anchored onto the primary's frame while the parent
+  // keeps its own.
+  const modelContextIds = modelInfra.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [];
+  const firstContextIds = firstModelInfraMap.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [];
+  const unifiedContextId = contextsCompatible && modelContextIds.length > 0 && firstContextIds.length > 0
+    ? modelContextIds[0]
+    : null;
   for (const [type, firstIds] of firstModelInfraMap) {
     const thisIds = modelInfra.get(type);
     if (!thisIds || firstIds.length === 0 || thisIds.length === 0) continue;
     if (type === 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT') {
-      if (!contextsCompatible) continue;
-      planSubContextUnify(dataStore, thisIds, firstModelSubContextsByKey, firstModelOffset, sharedRemap, skipEntityIds);
+      if (unifiedContextId === null) continue;
+      // An unreadable ParentContext stays permissive (treated as a child of
+      // the unified context), matching this file's null-handling doctrine.
+      const childIds = thisIds.filter((id) => {
+        const parentId = refId(getStepAttr(dataStore, id, SUBCONTEXT_PARENT_CONTEXT_ATTR));
+        return parentId === null || parentId === unifiedContextId;
+      });
+      if (childIds.length > 0) {
+        planSubContextUnify(dataStore, childIds, firstModelSubContextsByKey, firstModelOffset, sharedRemap, skipEntityIds);
+      }
       continue;
     }
     if (type === 'IFCGEOMETRICREPRESENTATIONCONTEXT' && !contextsCompatible) continue;

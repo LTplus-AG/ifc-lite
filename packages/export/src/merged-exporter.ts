@@ -1100,7 +1100,15 @@ export class MergedExporter {
       }
 
       // Remap and skip duplicate infrastructure; see merged-context.ts.
-      planInfrastructureUnify(model.dataStore, this.findInfrastructureEntities(model.dataStore), setup.firstModelInfraMap, setup.firstModelSubContextsByKey, setup.firstModelOffset, setup.firstModelContextWcs, this.resolveUnitScale(model), sharedRemap, skipEntityIds);
+      // Under assume-shared the caller asserts raw coordinates are already in
+      // the primary's unit, and they are copied verbatim — so the WCS frame
+      // must be resolved with the PRIMARY scale (matching how
+      // firstModelContextWcs was computed), not the model's own declared
+      // unit, or two frames that agree raw-value-for-raw-value can compare
+      // unequal (and vice versa: differing raw origins can collide once
+      // scaled). auto/normalize compare true metric frames via the model's
+      // own declared scale.
+      planInfrastructureUnify(model.dataStore, this.findInfrastructureEntities(model.dataStore), setup.firstModelInfraMap, setup.firstModelSubContextsByKey, setup.firstModelOffset, setup.firstModelContextWcs, setup.assumeShared ? setup.primaryScale : this.resolveUnitScale(model), sharedRemap, skipEntityIds);
 
       // Unify spatial hierarchy: match Site, Building, Storey to first model.
       // Under normalize, this model's raw elevations are in its own unit, so the

@@ -38,6 +38,32 @@ const value = view.getPropertyValue(entityId, 'Pset_WallCommon', 'FireRating');
 // Returns 'REI 120'
 ```
 
+### Changing a property's declared IFC type
+
+The fifth argument is the property's `PropertyValueType`. Most of its members
+are *shapes* (`String`, `Real`, `Integer`, …) — what the parser collapses a
+source token into — but `Label`, `Identifier` and `Text` each *name* one
+`IfcValue` member, so passing one of those sets the type the exported file
+declares:
+
+```typescript
+import { PropertyValueType } from '@ifc-lite/data';
+
+// A value that outgrew IfcLabel's 255 characters: export it as IfcText.
+view.setProperty(entityId, 'Pset_WallCommon', 'Reference', 'a long description…', PropertyValueType.Text);
+```
+
+The exported line becomes `IFCTEXT('…')` where the source declared
+`IFCLABEL('…')` — which is what an IDS `property` facet with
+`dataType="IFCTEXT"` checks.
+
+Passing a *shape* instead leaves the declared type alone: a value-only edit
+(`String`, the default) keeps whatever token the source line carried, so
+re-serializing a property set never rewrites the declared types of the
+neighbours you did not touch. For the same reason a numeric type cannot be
+changed this way — `Real` names neither `IfcLengthMeasure` nor `IfcReal`, so
+the source token wins.
+
 ### Mutation History
 
 ```typescript

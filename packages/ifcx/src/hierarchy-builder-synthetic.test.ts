@@ -256,6 +256,22 @@ describe('buildHierarchy — synthetic (no fixture required)', () => {
       assert.strictEqual(hierarchy.project.name, 'Type Name');
     });
 
+    it('does not fabricate a name from the node path when the source has none', () => {
+      // `extractName` returning null used to fall back to
+      // `node.path.slice(0, 8)` — an 8-char slice of the IFCX path that
+      // reads as a plausible short name/code no source attribute backs,
+      // indistinguishable from an authored one in the hierarchy panel.
+      // Worse: it pre-empts treeDataBuilder.ts's own "Name absent"
+      // convention (`(spatialNode.name && ... !== 'unknown') ? ... :
+      // nodeType`), which never fires because name is never falsy here.
+      // Name must stay '' so that convention decides what the user sees.
+      const project = node('4f9c1a3e-unnamed-project-node-path', 'IfcProject');
+      const composed = new Map([[project.path, project]]);
+      const pathToId = new Map([[project.path, 1]]);
+      const hierarchy = buildHierarchy(composed, pathToId);
+      assert.strictEqual(hierarchy.project.name, '');
+    });
+
     it('keeps LongName as a distinct descriptor when it differs from the resolved name', () => {
       const project = node('project', 'IfcProject', {
         'bsi::ifc::prop::Name': '01',

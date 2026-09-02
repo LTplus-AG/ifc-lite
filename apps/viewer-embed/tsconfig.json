@@ -9,6 +9,7 @@
       "@/*": ["../viewer/src/*"],
       "@ifc-lite/parser": ["../../packages/parser/src"],
       "@ifc-lite/geometry": ["../../packages/geometry/src"],
+      "@ifc-lite/geometry/geometry-class": ["../../packages/geometry/src/geometry-class"],
       "@ifc-lite/renderer": ["../../packages/renderer/src"],
       "@ifc-lite/query": ["../../packages/query/src"],
       "@ifc-lite/spatial": ["../../packages/spatial/src"],

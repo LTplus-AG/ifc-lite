@@ -17,10 +17,19 @@
  *
  * WHAT IT REFUSES TO INCLUDE:
  *
- *   - THE PR TITLE AND BODY. Both are attacker-controlled free text with no
- *     review value, and the title is the exact field the CVSS 9.4 exploit used.
- *     The diff has to be included because it is the subject; the title does not,
- *     so it is not.
+ *   - THE PR TITLE. Attacker-controlled free text, and the exact field the
+ *     CVSS 9.4 exploit used. The diff has to be included because it is the
+ *     subject; the title does not, so it is not.
+ *
+ *     THE BODY IS NOW INCLUDED, deliberately, and this paragraph used to say it
+ *     was refused. It is passed with `--body-file`, capped, fenced with a nonce,
+ *     and labelled in the prompt as a claim to check rather than an instruction
+ *     -- because "the description says X, the diff does Y" is a defect class the
+ *     rubric now names, and one that is invisible without it. The title is still
+ *     refused: it carries no such claim and buys nothing.
+ *
+ *     A safety comment that was true when written and quietly became false is
+ *     the thing that gets a later reader to skip the guard it describes.
  *   - GENERATED AND VENDORED FILES. Measured on this repo, excluding them moves
  *     the mean diff by about 5%, so this is not a cost lever -- it is an
  *     attention lever. A lockfile in the prompt is 40k tokens of noise competing
@@ -70,6 +79,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
+import { buildPack, retrievalFailed, retrievalFailedMessage, SHALLOW_CHECKOUT_REMEDY } from './build-context-pack.mjs';
 import { gh, GhError } from '../lib/gh.mjs';
 // The gate's pager, not a second copy of it. An earlier version here duplicated
 // it MINUS the one thing it exists for: the probe past a full final page. A PR
@@ -95,6 +105,13 @@ export const EXCLUDED = [
   /(^|\/)package-lock\.json$/,
   /\.snap$/,
   /(^|\/)fixtures?\//,
+  // Captured review-input fixtures: each one EMBEDS the diffs of a historical
+  // PR, and a reviewer shown diffs-inside-a-diff misattributes them. Measured
+  // on this rule's own PR: the CI reviewer quoted a line of pr-3595.json's
+  // embedded patch as its `riskiest_change` in build-context-pack.mjs, and
+  // proof-of-work refused the review. Same category as `fixtures/`: excluded
+  // for attention, and here for attribution.
+  /(^|\/)eval-cases\//,
   /(^|\/)pkg\//,
   /\.(ifc|ifcx|glb|gltf|png|jpg|jpeg|svg|pdf|zip|wasm)$/i,
   /(^|\/)dist\//,
@@ -231,7 +248,6 @@ export function addedLineRanges(patch) {
   return ranges;
 }
 
-
 /**
  * Pure over an already-fetched file list, so every branch is reachable in tests
  * without a network.
@@ -294,6 +310,8 @@ function main() {
     ['--repo', 'repo'],
     ['--sha', 'sha'],
     ['--out', 'out'],
+    ['--base', 'base'],
+    ['--body-file', 'bodyFile'],
     ['--files-file', 'filesFile'],
   ]);
   const argv = process.argv.slice(2);
@@ -332,6 +350,45 @@ function main() {
   }
 
   const input = buildInput(rows, args.sha);
+  // THE CONTEXT PACK. Built here, in the harness, never by the model.
+  //
+  // Optional: without --base the lane behaves exactly as it did before, which
+  // keeps every existing caller (and the eval harness) working unchanged. When
+  // a base IS given, retrieval failures degrade to a smaller pack rather than
+  // failing the review -- a lane that goes red because a grep found nothing
+  // would be worse than one that reviews with less evidence, and the pack
+  // records what it dropped either way.
+  if (args.base) {
+    let body = null;
+    if (args.bodyFile) {
+      try { body = readFileSync(args.bodyFile, 'utf8'); } catch { body = null; }
+    }
+    try {
+      // The pack sizes itself from what the diff already spent, so the two
+        // together stay under one ceiling without the diff ever losing room.
+        const patchBytes = input.files.reduce((n, f) => n + Buffer.byteLength(f.patch, 'utf8'), 0);
+        input.contextPack = buildPack(input, { baseRef: args.base, body, patchBytes });
+      const p2 = input.contextPack;
+      console.log(
+        `context-pack: ${p2.siblings.length} sibling excerpt(s), ${p2.fileEvidence.length} file(s) in full` +
+          (p2.body ? ', description included' : '') +
+          (p2.truncated.length ? `, omitted for size: ${p2.truncated.join('; ')}` : ''),
+      );
+      // AN EMPTY PACK IS A FAULT REPORT, NOT A QUIET ZERO. `0 sibling excerpt(s),
+      // 0 file(s)` is what a PR with no siblings logs AND what a shallow checkout
+      // logs -- and the shallow checkout is what production had, so the pack was
+      // empty on every pull request while this line read perfectly normal.
+      if (retrievalFailed(p2, input.files.length)) {
+        console.log(
+          `::warning::context-pack: ${retrievalFailedMessage(input.headSha, input.files.length)} ` +
+            `${SHALLOW_CHECKOUT_REMEDY} The review continues from the diff alone.`,
+        );
+      }
+    } catch (err) {
+      console.log(`context-pack: unavailable (${err?.message ?? 'unknown'}); reviewing from the diff alone`);
+    }
+  }
+
   writeFileSync(args.out, JSON.stringify(input, null, 2));
   console.log(
     `review-input: ${input.files.length} file(s), ${input.unreviewable.length} unreviewable, ` +

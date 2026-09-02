@@ -14,8 +14,79 @@
 
 use ifc_lite_core::EntityDecoder;
 
+use super::{MergedModel, UnitReconciliation};
+
 /// Relative tolerance for comparing two length unit scale factors (JS `1e-6`).
 const UNIT_SCALE_TOLERANCE: f64 = 1e-6;
+
+/// The unit verdict for one input model of a merged export.
+pub struct ModelUnitMode {
+    /// The model unifies into the first model's project / unit space.
+    pub compatible: bool,
+    /// The unit scale the model's entities live in once merged.
+    pub scale: f64,
+    /// The model is kept as its own `IfcProject` (incompatible length unit).
+    pub federated: bool,
+    /// `Normalize` was requested but the model was federated instead.
+    pub rescale_required: bool,
+}
+
+/// Resolve the unit verdict of every input model in one place, so the emit loop
+/// and the empty-container pre-pass (which has to know which models unify before
+/// anything is written) cannot disagree about what unifies.
+pub fn resolve_model_modes(
+    models: &[MergedModel],
+    reconciliation: UnitReconciliation,
+    primary_scale: f64,
+) -> Vec<ModelUnitMode> {
+    models
+        .iter()
+        .enumerate()
+        .map(|(i, model)| {
+            let scale = resolve_length_scale(model.content);
+            if i == 0 {
+                return ModelUnitMode {
+                    compatible: true,
+                    scale: primary_scale,
+                    federated: false,
+                    rescale_required: false,
+                };
+            }
+            match reconciliation {
+                // AssumeShared unifies regardless of the declared unit, so the
+                // model's entities join the FIRST model's unit space: report
+                // `primary_scale`, not the model's own. Reporting `this_scale`
+                // would make a later model's duplicate GlobalId fail the
+                // `units_compatible(scale, primary_scale)` gate and be re-stamped
+                // instead of unified (CR #2952).
+                UnitReconciliation::AssumeShared => ModelUnitMode {
+                    compatible: true,
+                    scale: primary_scale,
+                    federated: false,
+                    rescale_required: false,
+                },
+                _ if units_compatible(scale, primary_scale) => ModelUnitMode {
+                    compatible: true,
+                    scale,
+                    federated: false,
+                    rescale_required: false,
+                },
+                UnitReconciliation::Normalize => ModelUnitMode {
+                    compatible: false,
+                    scale,
+                    federated: true,
+                    rescale_required: true,
+                },
+                UnitReconciliation::Auto => ModelUnitMode {
+                    compatible: false,
+                    scale,
+                    federated: true,
+                    rescale_required: false,
+                },
+            }
+        })
+        .collect()
+}
 
 /// Resolve a model's length unit SI scale (metres per length unit, e.g. `0.001`
 /// for a millimetre file). Falls back to `1.0` when no length unit is declared.

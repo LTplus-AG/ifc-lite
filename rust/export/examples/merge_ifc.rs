@@ -9,10 +9,12 @@
 //! the webview JS `MergedExporter`.
 //!
 //!     cargo run --release -p ifc-lite-export --example merge_ifc -- \
-//!         [--assume-shared] <a.ifc> <b.ifc> [more.ifc ...] <out.ifc>
+//!         [--assume-shared] [--drop-empty-containers] <a.ifc> <b.ifc> [more.ifc ...] <out.ifc>
 //!
 //! The last path is the output. `--assume-shared` treats every model as sharing
 //! the first model's unit (skips the compatibility check).
+//! `--drop-empty-containers` leaves out spatial containers the merge finds
+//! holding nothing (issue #3643).
 
 use std::collections::HashMap;
 use std::time::Instant;
@@ -22,11 +24,12 @@ use ifc_lite_export::{export_merged_models, MergedModel, MergedOptions, UnitReco
 fn main() {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     let assume_shared = args.iter().any(|a| a == "--assume-shared");
-    args.retain(|a| a != "--assume-shared");
+    let drop_empty_containers = args.iter().any(|a| a == "--drop-empty-containers");
+    args.retain(|a| a != "--assume-shared" && a != "--drop-empty-containers");
 
     if args.len() < 3 {
         eprintln!(
-            "usage: merge_ifc [--assume-shared] <a.ifc> <b.ifc> [more.ifc ...] <out.ifc>\n\
+            "usage: merge_ifc [--assume-shared] [--drop-empty-containers] <a.ifc> <b.ifc> [more.ifc ...] <out.ifc>\n\
              (need at least two input files plus an output path)"
         );
         std::process::exit(2);
@@ -66,6 +69,7 @@ fn main() {
         } else {
             UnitReconciliation::Auto
         },
+        drop_empty_containers,
         ..Default::default()
     };
 
@@ -86,6 +90,7 @@ fn main() {
     println!("entities written    : {}", stats.written);
     println!("IfcProject count    : {projects}");
     println!("federated models    : {}", stats.federated_model_count);
+    println!("empty containers dropped: {}", stats.dropped_container_count);
     println!("unit_rescale_required: {}", stats.unit_rescale_required);
     for w in &stats.warnings {
         println!("warning             : {w}");

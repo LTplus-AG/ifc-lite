@@ -26,7 +26,7 @@ import { aroundDestructiveLoad } from '../bridge/cameraIntent.js';
 import { mountBridgeLifecycle, unmountBridgeLifecycle } from '../bridge/lifecycle.js';
 import { useEmbedBridgeEvents } from './useEmbedBridgeEvents.js';
 import { useEmbedPostLoad } from './useEmbedPostLoad.js';
-import { useEmbedUrlParams, toHiddenTypeSet, isTypeHidden } from './useEmbedUrlParams.js';
+import { useEmbedUrlParams, toHiddenTypeSet } from './useEmbedUrlParams.js';
 import { useEmbedRuntimeOverlays } from './useEmbedRuntimeOverlays.js';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 

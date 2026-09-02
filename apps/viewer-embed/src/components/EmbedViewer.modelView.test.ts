@@ -198,4 +198,21 @@ describe('EmbedViewer: Model-view geometry-class gate', () => {
 
     expect(ids).toEqual([]);
   });
+
+  it('applies the gate before ?hideTypes=, so hiding every placed class does not surface the type library', async () => {
+    // KILLS: moving `selectModelMeshes` after the `hideTypes` filter. Every
+    // other case here passes with the two swapped, because they never hide a
+    // placed mesh. Here the host hides the only occurrence, so a gate run on
+    // the already-filtered list sees "nothing is placed", takes the #1353
+    // annex-E branch, and keeps the orphan type. The host asking to hide walls
+    // would get a floating `IfcWallType` instead of an empty scene.
+    window.history.replaceState({}, '', '/?hideTypes=IfcWall');
+
+    const ids = await drawnIds([
+      mesh(50, 'IfcWall', OCCURRENCE),
+      mesh(51, 'IfcWallType', ORPHAN_TYPE),
+    ]);
+
+    expect(ids).toEqual([]);
+  });
 });

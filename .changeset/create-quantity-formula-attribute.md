@@ -2,4 +2,9 @@
 '@ifc-lite/create': patch
 ---
 
-`addIfcElementQuantity` wrote `IfcQuantityLength`/`Area`/`Volume`/`Weight`/`Count` records with only 4 attributes (`Name`, `Description`, `Unit`, `<Value>`) instead of the 5 the schema declares — `IfcPhysicalSimpleQuantity`'s trailing `Formula` attribute was omitted entirely rather than written as an unset `$`. STEP part 21 requires every declared attribute position to be present (`$` for unset), so the emitted record was one field short of what `IfcQuantityLength`/etc. need; a strict reader can reject the entity outright. Every quantity attached via the public `addIfcElementQuantity` API now writes the trailing `$` for `Formula`.
+Several `IfcCreator` element/relationship writers wrote an attribute count that only matched the IFC4/IFC4X3 schema, not IFC2X3, for entities whose trailing attribute list genuinely differs between schema versions:
+
+- `addIfcElementQuantity` omitted `IfcQuantityLength`/`Area`/`Volume`/`Weight`/`Count`'s trailing `Formula` attribute entirely (added in IFC4) instead of writing it as an unset `$` — every quantity record was one attribute short of the IFC4/IFC4X3 declaration.
+- `addIfcWall`/`addIfcColumn`/`addIfcBeam` and `addIfcRelSequence` always wrote a trailing `PredefinedType`/`UserDefinedSequenceType` value, an attribute IFC2X3 does not declare at all — so a creator targeting `Schema: 'IFC2X3'` emitted one attribute too *many* for those entities, which is exactly as invalid as writing too few.
+
+STEP part 21 requires an explicit slot for every attribute a schema version declares — no more, no fewer. The trailing attribute is now written only for schemas that declare it (IFC4/IFC4X3), driven off the creator's own `Schema` field, and omitted for IFC2X3.

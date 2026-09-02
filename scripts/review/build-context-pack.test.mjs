@@ -888,5 +888,50 @@ test('a long sibling PATH must be charged too, not just a long key -- text-only 
   assert.ok(
     renderedBytes <= availableBudget,
     `siblings alone render to ${renderedBytes} bytes, over the ${availableBudget}-byte budget they were charged against`,
+test('the envelope charges an ESCAPED path as rendered, not as stored', () => {
+  // The regression that the agreement test above CANNOT see. Its fixture paths
+  // (`vendor/generated/.../thing-0.ts`) need no JSON escaping, so charging the
+  // raw bytes and charging the rendered bytes give the identical number and the
+  // defect is invisible. Mutation-checked: restoring the raw charge leaves that
+  // test green.
+  //
+  // `unreviewableRow` renders path and reason through `promptSafePath`, which
+  // JSON-escapes. A path containing a quote, a backslash or a control character
+  // therefore COSTS more than a raw charge reserves -- the same undercharge
+  // class that let a 600-file diff be declared to fit and then assemble 8,476
+  // bytes over the ceiling.
+  const rubric = readFileSync(join(HERE, 'rubric.md'), 'utf8');
+  // MANY escapes, deliberately. A handful would be absorbed by any fixed-part
+  // margin in a wrong charge, leaving the test unable to fail -- which is
+  // exactly what the first version of it did. Each `"` costs one extra byte
+  // rendered, so 60 of them put the escaping delta well past any plausible
+  // constant.
+  const nasty = {
+    path: `src/${'q"'.repeat(60)}.ts`,
+    reason: `no patch returned ${'"'.repeat(60)}`,
+  };
+  const input = {
+    headSha: 'a'.repeat(40),
+    files: [{ path: 'packages/p/f.ts', patch: '@@\n+x\n' }],
+    unreviewable: [nasty],
+  };
+  const without = { ...input, unreviewable: [] };
+
+  const actual =
+    Buffer.byteLength(buildPrompt(rubric, input), 'utf8')
+    - Buffer.byteLength(buildPrompt(rubric, without), 'utf8');
+  const charged = promptEnvelopeBytes(input) - promptEnvelopeBytes(without);
+
+  // The charge must still be an UPPER bound once escaping enters the picture.
+  assert.ok(
+    charged >= actual,
+    `an escaped path costs ${actual} rendered bytes but was charged ${charged}`,
+  );
+
+  // And the escaping must actually be exercised, or this test is the same
+  // no-pressure fixture as the one above wearing a different name.
+  assert.ok(
+    Buffer.byteLength(JSON.stringify(nasty.path), 'utf8') > Buffer.byteLength(nasty.path, 'utf8') + 2,
+    'the fixture path must genuinely require escaping',
   );
 });

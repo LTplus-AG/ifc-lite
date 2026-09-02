@@ -11,6 +11,7 @@
 
 import type { MeshData } from '@ifc-lite/geometry';
 import { safeUtf8Decode } from '@ifc-lite/data';
+import { linearToSrgb } from './glb-color.js';
 
 // glTF 2.0 constants
 const GLB_MAGIC = 0x46546c67; // 'glTF'
@@ -468,8 +469,7 @@ export function parseGLBToMeshData(gltf: GLTFDocument, bin: Uint8Array): MeshDat
     const material = gltf.materials?.[materialIdx];
     const factor = material?.pbrMetallicRoughness?.baseColorFactor;
     if (!Array.isArray(factor) || factor.length < 3) return [...DEFAULT_COLOR];
-    const r = factor[0], g = factor[1], b = factor[2];
-    const a = factor.length >= 4 ? factor[3] : 1.0;
+    const r = factor[0], g = factor[1], b = factor[2], a = factor.length >= 4 ? factor[3] : 1.0;
     if (
       typeof r !== 'number' || !Number.isFinite(r) ||
       typeof g !== 'number' || !Number.isFinite(g) ||
@@ -478,7 +478,7 @@ export function parseGLBToMeshData(gltf: GLTFDocument, bin: Uint8Array): MeshDat
     ) {
       return [...DEFAULT_COLOR];
     }
-    return [r, g, b, a];
+    return [linearToSrgb(r), linearToSrgb(g), linearToSrgb(b), a];
   };
 
   for (let nodeIdx = 0; nodeIdx < gltf.nodes.length; nodeIdx++) {

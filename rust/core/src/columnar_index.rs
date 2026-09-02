@@ -178,7 +178,10 @@ impl ColumnarEntityIndex {
             starts.push(start as u32);
             lengths.push((end - start) as u32);
         }
-        crate::parser::report_oversized_ids(scanner.skipped_oversized_ids());
+        crate::parser::report_scan_diagnostics(
+            scanner.skipped_oversized_ids(),
+            scanner.malformed_record_start().is_some(),
+        );
         Self::from_unsorted(ids, starts, lengths)
     }
 

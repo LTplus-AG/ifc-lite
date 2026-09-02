@@ -98,7 +98,8 @@ pub use legacy_entities::{
 };
 pub use model_bounds::{scan_model_bounds, scan_placement_bounds, ModelBounds};
 pub use parser::{
-    entity_count, oversized_id_report, parse_entity, report_oversized_ids, set_report_sink,
+    entity_count, malformed_record_report, oversized_id_report, parse_entity,
+    report_malformed_records, report_oversized_ids, report_scan_diagnostics, set_report_sink,
     skip_step_comment, EntityScanner, Token,
 };
 pub use project_units::{

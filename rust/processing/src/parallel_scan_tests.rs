@@ -28,7 +28,7 @@ fn assert_parallel_matches_serial(content: &[u8], label: &str) {
     let serial = build_entity_index(content);
     let serial_refused = serial_refusals(content);
     for n in [1usize, 2, 3, 4, 5, 7, 8, 11, 16, 32, 64] {
-        let (par, refused) = with_chunks_counted(content, n);
+        let (par, refused, malformed) = with_chunks_counted(content, n);
         assert_eq!(
             par, serial,
             "parallel index (n_chunks={n}) != serial for {label}"
@@ -36,6 +36,11 @@ fn assert_parallel_matches_serial(content: &[u8], label: &str) {
         assert_eq!(
             refused, serial_refused,
             "attributed refusals (n_chunks={n}) != serial ({serial_refused}) for {label}"
+        );
+        assert!(
+            !malformed,
+            "n_chunks={n}: {label} must not report a malformed-record stop — none of \
+             this file's `assert_parallel_matches_serial` fixtures declare one"
         );
     }
 }
@@ -405,6 +410,101 @@ fn record_larger_than_chunk() {
         content.push_str(&format!("#{id}=IFCDOOR('g{id}',$,$,$,$,$,$,$);\n"));
     }
     assert_parallel_matches_serial(content.as_bytes(), "record-larger-than-chunk");
+}
+
+// ---------------------------------------------------------------------------
+// #3695's Rust twin: a record with an unterminated `'` string (or `/* … */`
+// comment) has no terminator for `find_entity_end` to find, so the SERIAL
+// scanner stops the whole scan there — nothing past that byte is ever in the
+// serial index, unlike an oversized-id refusal, which skips one record and
+// keeps going. Byte-identity with serial (this module's whole contract)
+// means the parallel path must reproduce that same truncation point AND
+// report that it happened, at every chunk count and wherever the malformed
+// record lands relative to a shard boundary.
+// ---------------------------------------------------------------------------
+
+fn malformed_record_fixture() -> (String, u32, u32) {
+    let mut content = String::from("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n");
+    for id in 1..=200u32 {
+        content.push_str(&format!("#{id}=IFCDOOR('g{id}',$,$,$,$,$,$,$);\n"));
+    }
+    // #201's string never closes.
+    content.push_str("#201=IFCWALL('never closes,$,$,$,$,$,$,$);\n");
+    for id in 202..=400u32 {
+        content.push_str(&format!("#{id}=IFCDOOR('g{id}',$,$,$,$,$,$,$);\n"));
+    }
+    (content, 200, 201)
+}
+
+#[test]
+fn malformed_record_truncates_and_is_reported_at_every_chunk_count() {
+    let (content, last_good_id, malformed_id) = malformed_record_fixture();
+    let bytes = content.as_bytes();
+
+    let serial = build_entity_index(bytes);
+    // Guard the fixture: the serial scanner really does stop AT the
+    // malformed record, not before or after it, or nothing below is testing
+    // the shape this test is named for.
+    assert!(serial.contains_key(&last_good_id), "the record before the malformed one must survive");
+    assert!(!serial.contains_key(&malformed_id), "the malformed record itself must not appear");
+    assert!(!serial.contains_key(&(malformed_id + 1)), "every record after the malformed one must be gone");
+
+    for n in [1usize, 2, 3, 4, 5, 7, 8, 11, 16, 32, 64] {
+        let (par, refused, malformed) = with_chunks_counted(bytes, n);
+        assert_eq!(
+            par, serial,
+            "n_chunks={n}: parallel index must match the serial truncation exactly"
+        );
+        assert_eq!(refused, 0, "n_chunks={n}: this fixture has no oversized ids");
+        assert!(
+            malformed,
+            "n_chunks={n}: the malformed record must be attributed, not silently dropped \
+             the way the pre-#3695 scanner dropped it"
+        );
+    }
+
+    // The public, thread-count-driven entry point must agree too.
+    assert_eq!(
+        super::build_entity_index_parallel(bytes),
+        serial,
+        "build_entity_index_parallel must match the serial truncation exactly"
+    );
+}
+
+/// The same fixture, but reported through [`ifc_lite_core::set_report_sink`]
+/// — the stitched flag must actually reach the diagnostic, not just the
+/// return value `with_chunks_counted` hands back for tests to inspect.
+#[test]
+fn malformed_record_reaches_the_report_sink_through_the_parallel_path() {
+    use std::sync::{Mutex, OnceLock};
+
+    static CAPTURED: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+    fn capture(message: &str) {
+        CAPTURED
+            .get_or_init(|| Mutex::new(Vec::new()))
+            .lock()
+            .unwrap()
+            .push(message.to_string());
+    }
+    // `set_report_sink` is first-wins process-global — installing it here is
+    // only safe/meaningful if no other test in this binary raced it in
+    // first; skip rather than false-fail if that happens.
+    if !ifc_lite_core::set_report_sink(capture) {
+        eprintln!("skipping: another test already installed the report sink");
+        return;
+    }
+
+    let (content, _last_good_id, _malformed_id) = malformed_record_fixture();
+    let bytes = content.as_bytes();
+    let (_index, _refused, malformed) = with_chunks_counted(bytes, 8);
+    assert!(malformed, "fixture must trigger the stitched malformed flag");
+    ifc_lite_core::report_malformed_records(malformed);
+
+    let messages = CAPTURED.get().unwrap().lock().unwrap();
+    assert!(
+        messages.iter().any(|m| m.contains("stopped early")),
+        "the malformed-record report must have reached the installed sink: {messages:?}"
+    );
 }
 
 /// Fixture leg: byte-identical over real models when present. Sweeps chunk

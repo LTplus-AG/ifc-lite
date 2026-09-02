@@ -20,6 +20,9 @@ pub struct EntityScanner<'a> {
     /// [`Self::skipped_oversized_id_starts`]. It never allocates on a file
     /// with nothing to refuse, which is every real file.
     skipped_oversized_id_starts: Vec<usize>,
+    /// `line_start` of the first record that made [`Self::find_entity_end`]
+    /// fail — see [`Self::malformed_record_start`].
+    malformed_record_start: Option<usize>,
 }
 
 impl<'a> EntityScanner<'a> {
@@ -38,6 +41,7 @@ impl<'a> EntityScanner<'a> {
             bytes,
             position: data_section_start(bytes),
             skipped_oversized_id_starts: Vec::new(),
+            malformed_record_start: None,
         }
     }
 
@@ -61,6 +65,7 @@ impl<'a> EntityScanner<'a> {
             bytes,
             position: clamped,
             skipped_oversized_id_starts: Vec::new(),
+            malformed_record_start: None,
         }
     }
 
@@ -97,6 +102,22 @@ impl<'a> EntityScanner<'a> {
     /// retained from that shard (issue #3395/#3430).
     pub fn skipped_oversized_id_starts(&self) -> &[usize] {
         &self.skipped_oversized_id_starts
+    }
+
+    /// The `line_start` byte offset of the record that stopped this scan
+    /// because [`find_entity_end`](Self::find_entity_end) found no
+    /// terminator, or `None` otherwise. A whole-file scan needs only
+    /// `is_some()`; a SHARDED scan needs the offset, for the reason
+    /// [`Self::skipped_oversized_id_starts`] does.
+    pub fn malformed_record_start(&self) -> Option<usize> {
+        self.malformed_record_start
+    }
+
+    /// Record `at` as this scan's stop point, the first time only.
+    fn mark_malformed(&mut self, at: usize) {
+        if self.malformed_record_start.is_none() {
+            self.malformed_record_start = Some(at);
+        }
     }
 
     /// Scan for the next entity
@@ -152,13 +173,18 @@ impl<'a> EntityScanner<'a> {
                     // past `*/`; if not, it's a STEP arithmetic '/' inside a
                     // value list (rare; just step past it).
                     if candidate + 1 < len && bytes[candidate + 1] == b'*' {
-                        // An unterminated `/*` here means corrupt input.
-                        // `skip_step_comment` refuses (returns `None`) rather
-                        // than silently consuming the rest of the file — see
-                        // its doc comment for why that's the right call for a
-                        // scanner (issue #3303).
-                        self.position = super::lexical::skip_step_comment(bytes, candidate)?;
-                        continue;
+                        // An unterminated `/*` means corrupt input (#3303) —
+                        // same "no resume point" shape as `find_entity_end`.
+                        match super::lexical::skip_step_comment(bytes, candidate) {
+                            Some(next_pos) => {
+                                self.position = next_pos;
+                                continue;
+                            }
+                            None => {
+                                self.mark_malformed(candidate);
+                                return None;
+                            }
+                        }
                     }
                     // Lone '/' — not a comment. Skip past.
                     self.position = candidate + 1;
@@ -194,7 +220,15 @@ impl<'a> EntityScanner<'a> {
             // Find the end of the entity (semicolon) while respecting quoted strings
             // IFC strings use single quotes and can contain semicolons
             let line_content = &bytes[line_start..];
-            let end_offset = self.find_entity_end(line_content)?;
+            let end_offset = match self.find_entity_end(line_content) {
+                Some(o) => o,
+                None => {
+                    // No terminator found (see `find_entity_end`'s doc
+                    // comment) — record and stop, per `tokenizer.ts`.
+                    self.mark_malformed(line_start);
+                    return None;
+                }
+            };
             let line_end = line_start + end_offset + 1;
 
             // Parse entity ID — digit range already validated in the candidate loop.
@@ -384,6 +418,7 @@ impl<'a> EntityScanner<'a> {
     pub fn reset(&mut self) {
         self.position = data_section_start(self.bytes);
         self.skipped_oversized_id_starts.clear();
+        self.malformed_record_start = None;
     }
 
     /// Fast check if attribute at given index is non-null (not '$')

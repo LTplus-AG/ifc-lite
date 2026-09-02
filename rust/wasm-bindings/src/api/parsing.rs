@@ -78,13 +78,15 @@ impl IfcAPI {
         }
 
         // The scanner drops records whose instance name does not fit `u32`
-        // (issue #3395). Dropping them is the only outcome the u32 express-id
-        // columns can hold, but a load that comes back quietly short reads
-        // exactly like a load that had nothing to drop — so say it. The message
-        // and its destination are core's (the module's `init` bound the sink to
-        // the browser console), so this entry point cannot word it differently
-        // from the four others that now report the same refusal.
-        ifc_lite_core::report_oversized_ids(scanner.skipped_oversized_ids());
+        // (#3395), and may have stopped the whole scan early on a malformed
+        // record (#3695) — the Rust twin of the TS fix on
+        // `EntityScanResult.malformedRecordCount`. Either way `refs` can come
+        // back quietly short, so say it: the message and its destination are
+        // core's (the module's `init` bound the sink to the browser console).
+        ifc_lite_core::report_scan_diagnostics(
+            scanner.skipped_oversized_ids(),
+            scanner.malformed_record_start().is_some(),
+        );
 
         to_value(&refs).unwrap_or_else(|_| js_sys::Array::new().into())
     }
@@ -124,10 +126,13 @@ impl IfcAPI {
             }
         }
 
-        // Same refusal, same report: this scan filters to geometry-bearing
-        // entities, but the records the scanner refused never reached the
-        // filter, so a caller here is as short as one on the full scan (#3395).
-        ifc_lite_core::report_oversized_ids(scanner.skipped_oversized_ids());
+        // Same refusals, same reports: this scan filters to geometry-bearing
+        // entities, but the records the scanner refused or never reached
+        // (past a #3695 malformed stop) are equally missing here (#3395).
+        ifc_lite_core::report_scan_diagnostics(
+            scanner.skipped_oversized_ids(),
+            scanner.malformed_record_start().is_some(),
+        );
 
         to_value(&refs).unwrap_or_else(|_| js_sys::Array::new().into())
     }

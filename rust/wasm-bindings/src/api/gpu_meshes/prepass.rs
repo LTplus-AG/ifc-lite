@@ -18,8 +18,7 @@ fn fold_u128_to_u32(h: u128) -> u32 {
     (h as u32) ^ ((h >> 32) as u32) ^ ((h >> 64) as u32) ^ ((h >> 96) as u32)
 }
 
-// The per-submesh #858 palette split lives inside the canonical per-element
-// producer (`ifc_lite_processing::element`) — shared with the native pipeline.
+// The per-submesh #858 palette split lives in the canonical per-element producer (`ifc_lite_processing::element`) — shared with the native pipeline.
 
 #[wasm_bindgen]
 impl IfcAPI {
@@ -522,7 +521,7 @@ impl IfcAPI {
         }
 
         let oversized_id_count = scanner.skipped_oversized_ids(); // #3395, reported + exported below
-        ifc_lite_core::report_oversized_ids(oversized_id_count);
+        ifc_lite_core::report_scan_diagnostics(oversized_id_count, scanner.malformed_record_start().is_some()); // #3695
         // Cache for processGeometryBatch reuse. Convert the scan's FxHashMap
         // into a compact columnar index (sorted u32 columns + binary search):
         // ~229 MB vs the hashmap's ~436 MB on a 19.1 M-entity model (#1682).
@@ -569,6 +568,7 @@ impl IfcAPI {
             crate::api::set_js_prop(&index_event, "starts", &starts_arr);
             crate::api::set_js_prop(&index_event, "lengths", &lengths_arr);
             crate::api::set_js_prop(&index_event, "oversizedIdCount", &(oversized_id_count as f64).into()); // #3395: the parser worker sees only these columns
+            crate::api::set_js_prop(&index_event, "malformedRecordFound", &scanner.malformed_record_start().is_some().into()); // #3695
             on_event.call1(&JsValue::NULL, &index_event.into())?;
         }
 

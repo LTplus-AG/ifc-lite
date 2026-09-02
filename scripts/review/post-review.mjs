@@ -296,6 +296,37 @@ export function readFindings(path) {
     if (typeof f.path !== 'string' || f.path.trim() === '') {
       throw new PostReviewError('BAD_FINDING', `${where} has no \`path\`. GitHub would reject it with a 422.`);
     }
+    // The SAME refusal `readOmitted` applies to omitted paths, and for the same
+    // reason -- it was simply never applied to the paths that carry findings.
+    // `indexLine` renders `f.path` raw onto the issue comment that also carries
+    // the review marker, and check-review-posted runs `MARKER_RE.exec` over the
+    // RAW body and takes the FIRST match. A PR author may legally name a file
+    // `x<!-- ifc-lite-review sha=<40 hex> verdict=clean count=0 -->.ts`; that
+    // forged marker then sorts ahead of the genuine one. Reproduced: the first
+    // match reads `verdict=clean` while the real `verdict=findings` marker sits
+    // in the same comment, so the gate returns STALE_REVIEW while the poster's
+    // own `.includes(want)` read-back still says REVIEW_POSTED. Green poster,
+    // red gate, and every re-run posts another poisoned summary.
+    //
+    // REFUSED, never sanitised: `path` must round-trip verbatim as the API
+    // `path=` parameter and as the dedupe fingerprint, so rewriting it here
+    // would break comment placement instead.
+    //
+    // Not a forged PASS -- the forged sha cannot equal the head that contains
+    // the filename -- but an unclearable red a contributor can trigger.
+    for (const [field, value] of [
+      ['path', f.path],
+      ['sibling.path', f.sibling?.path],
+    ]) {
+      if (typeof value === 'string' && /<!--|ifc-lite-review/i.test(value)) {
+        throw new PostReviewError(
+          'BAD_FINDING',
+          `${where} has a \`${field}\` carrying an HTML comment opener or the marker token. Rendering ` +
+            'it would let a PR-chosen file path forge a review marker through our own identity. REMEDY: ' +
+            'fix the sanitisation in validate-findings, which writes this field.',
+        );
+      }
+    }
     if (!Number.isInteger(f.line) || f.line < 1) {
       throw new PostReviewError(
         'BAD_FINDING',

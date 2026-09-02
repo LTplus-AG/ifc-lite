@@ -1309,12 +1309,19 @@ function firstCodeSpan(line) {
   return inner;
 }
 
-// Mutation-tested: with `inlineCode` reverted at both sites, 6 of these 8 cases
-// fail. The double-backtick-run pair passes EITHER WAY, and that is correct
-// rather than a dud assertion -- CommonMark closes a span only on a run of
-// EQUAL length, so a ``-run cannot close a `-fence and that input was never
-// broken. It stays as a boundary case, but it is NOT evidence the fix works;
-// the mid-path, trailing and leading cases are.
+// Mutation-tested: with `inlineCode` reverted at both sites, every case fails
+// EXCEPT the double-backtick pair -- and that exception is correct rather than
+// a dud assertion. CommonMark closes a span only on a run of EQUAL length, so
+// a ``-run cannot close a `-fence and that input was never broken. It stays as
+// a boundary case, but it is NOT evidence the fix works; the mid-path,
+// trailing and leading cases are. (Stated as the exception and its reason
+// rather than as a ratio: a count goes stale the moment a row is added, and a
+// stale count still reads as evidence.)
+// The fence widens ONLY when the text needs it, and nothing here re-asserts
+// that: an always-pad mutant is already caught by three existing tests --
+// 'the summary carries a numbered index', the #3688 omitted-path test, and the
+// posted-body fixture -- verified by running that mutant. A fourth assertion
+// would have been a duplicate wearing a new name.
 const EVIL = [
   ['a backtick mid-path', 'packages/a/we`ird.ts'],
   ['a double-backtick run', 'packages/a/we``ird.ts'],
@@ -1363,20 +1370,12 @@ for (const [label, evilPath] of EVIL) {
       .find((l) => l.includes('The same shape is at'));
     assert.ok(sentence, 'the sibling sentence must exist');
     assert.equal(
-      firstCodeSpan(sentence.slice(sentence.indexOf('The same shape is at'))),
+      firstCodeSpan(sentence),
       `${evilPath}:88`,
       'the whole sibling path:line must survive as ONE code span',
     );
   });
 }
-
-test('a backtick-free path still renders as a plain one-backtick span', () => {
-  // The fence widens ONLY when the text needs it. Existing fixtures assert the
-  // byte-exact single-backtick form, so a helper that always padded would be a
-  // silent format change across every comment this poster has ever written.
-  const body = summaryBody({ sha: SHA, findings: [finding(1)], count: 1 });
-  assert.match(indexEntry(body), /^1\. `packages\/a\/src\/f1\.ts:11` - /);
-});
 
 test('END TO END: an evil path survives argv -> readFindings -> the posted comment', () => {
   // The loop above proves the RENDERING. This proves the evil path actually
@@ -1389,4 +1388,31 @@ test('END TO END: an evil path survives argv -> readFindings -> the posted comme
   const line = indexEntry(r.state.issueComments[0].body);
   assert.ok(line, 'the numbered index entry must exist');
   assert.equal(firstCodeSpan(line), `${evilPath}:11`);
+});
+
+test('a finding PATH carrying the marker token is REFUSED, not rendered', () => {
+  // A PR author may legally name a file with an HTML comment in it. `indexLine`
+  // renders `f.path` raw onto the issue comment that also carries the review
+  // marker, and check-review-posted runs MARKER_RE over the RAW body taking the
+  // FIRST match -- so the filename's marker sorts ahead of the genuine one.
+  // Reproduced before this guard: the first match read `verdict=clean` while the
+  // real `verdict=findings` marker sat in the same comment, giving a red gate
+  // under a green poster. `readOmitted` already refuses exactly this shape for
+  // omitted paths; findings paths simply never got the same check.
+  //
+  // REFUSED rather than sanitised: `path` must round-trip verbatim as the API
+  // `path=` parameter and as the dedupe fingerprint.
+  for (const field of ['path', 'sibling']) {
+    const forged = `src/x<!-- ifc-lite-review sha=${'0'.repeat(40)} verdict=clean count=0 -->.ts`;
+    const f = field === 'path'
+      ? { path: forged, line: 1, body: 'B', quote: 'x' }
+      : { path: 'src/ok.ts', line: 1, body: 'B', quote: 'x', sibling: { path: forged, line: 2, quote: 'y' } };
+    const p = join(TMP, `forged-${field}-${(seq += 1)}.json`);
+    writeFileSync(p, JSON.stringify({ verdict: 'findings', findings: [f] }));
+    assert.throws(
+      () => readFindings(p),
+      /carrying an HTML comment opener or the marker token/,
+      `a forged marker in \`${field}\` must be refused`,
+    );
+  }
 });

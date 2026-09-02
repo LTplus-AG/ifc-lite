@@ -10,6 +10,7 @@
  */
 
 import { findPropertyInSets } from '@ifc-lite/query';
+import { firstNonBlank, isBlank } from '../output.js';
 
 export interface QuantitySet {
   name: string;
@@ -147,6 +148,24 @@ export function computeGrossFloorArea<R>(
   return grossFloorArea === 0 ? fallbackTotalFloorArea : grossFloorArea;
 }
 
+/**
+ * Distinct, display-ready storey names: blank/whitespace-only Names
+ * (`IFCBUILDINGSTOREY('...','',...)`) are dropped, same as a genuinely
+ * absent one, rather than surfacing as a blank entry in the storey list.
+ */
+export function computeStoreyNames(storeys: Array<{ name?: string | null }>): string[] {
+  return storeys.map(s => s.name).filter((name): name is string => !isBlank(name));
+}
+
+/**
+ * The first `IfcBuilding`'s display name, or `'(unnamed)'` when absent OR
+ * blank/whitespace-only — `?? '(unnamed)'` alone only falls through on
+ * null/undefined, so a present-but-blank `Name` was returned verbatim.
+ */
+export function computeBuildingName(buildings: Array<{ name?: string | null }>): string {
+  return firstNonBlank(buildings[0]?.name) ?? '(unnamed)';
+}
+
 export interface MaterialSummaryEntry {
   name: string;
   count: number;
@@ -172,7 +191,11 @@ export function computeMaterialSummary<R>(
     const mat = bim.materials(e.ref);
     const first = mat?.materials?.[0];
     const firstName = typeof first === 'string' ? first : first?.name;
-    const matName = firstName ?? mat?.name;
+    // A whitespace-only name (`IFCMATERIAL('   ',$,$)`) is falsy-but-truthy
+    // — a bare `!matName` guard on `firstName ?? mat?.name` let it through
+    // as a whitespace-string map key instead of skipping it like a
+    // genuinely blank/absent one.
+    const matName = firstNonBlank(firstName, mat?.name);
     if (!matName) continue;
 
     materialCounts.set(matName, (materialCounts.get(matName) ?? 0) + 1);

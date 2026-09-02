@@ -28,17 +28,23 @@
     "claude"
   ],
   "$standDownComment": [
-    "THE CODERABBIT HALF IS LIVE. `.coderabbit.yaml` carries",
-    "`auto_review.labels: ['!llm-reviewed']`, a negative match, since PR #3581 merged",
-    "on 2026-08-31. The workflow applies an `llm-reviewed` label when this gate verifies",
-    "a review and clears it on every new head, so CodeRabbit now stands down on exactly",
-    "the heads this lane has covered and reviews the rest.",
+    "THE CODERABBIT HALF IS SUSPENDED, and this paragraph said it was live.",
+    "Measured, not assumed: `.coderabbit.yaml` sets",
+    "`reviews.auto_review.labels: ['!low-risk']`, and the `- '!llm-reviewed'` rule is",
+    "COMMENTED OUT under a block dated 2026-09-01 ('SUSPENDED ... ON MEASUREMENT').",
+    "So the workflow still applies and clears the label, and CodeRabbit does not read",
+    "it: both reviewers see every PR.",
     "",
-    "THIS COMMENT HAS BEEN WRONG TWICE, which is the reason it is this specific. It first",
-    "said the label was inert 'until #3576', naming the wrong PR; then it said 'until",
-    "#3581 merges', which expired the moment #3581 merged. A comment asserting the state",
-    "of a config in ANOTHER file goes stale silently -- there is nothing to fail when it",
-    "does -- so check `.coderabbit.yaml` rather than trusting this paragraph."
+    "THIS COMMENT HAS NOW BEEN WRONG THREE TIMES, the third time in the very commit",
+    "that edited it -- a rename touched two of its lines, which re-dated the claim and",
+    "made a false statement read as freshly checked. Its previous version already told",
+    "the reader to check `.coderabbit.yaml` rather than trust it. That instruction",
+    "stands, and is the only durable thing here: the config is the fact, this is a",
+    "note about the fact, and notes go stale in a way YAML does not.",
+    "",
+    "The suspension's own stated exit condition is the marker's `count=` field, which",
+    "read 0 everywhere when it was written. That number is what the context pack and",
+    "the judge exist to move; re-enable the stand-down when it does."
   ],
   "$modeComment": [
     "ADVISORY or ENFORCING. Advisory prints the identical verdict and exits 0; enforcing",

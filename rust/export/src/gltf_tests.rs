@@ -1327,6 +1327,14 @@ fn emissive_option_sets_emissive_factor_to_base_colour() {
         (bc[0].as_f64().unwrap() - ef[0].as_f64().unwrap()).abs() < 1e-9,
         "base colour and emissive agree (no regression from the emissive path)"
     );
+    assert!(
+        (bc[1].as_f64().unwrap() - ef[1].as_f64().unwrap()).abs() < 1e-9,
+        "green channel: base colour and emissive agree"
+    );
+    assert!(
+        (bc[2].as_f64().unwrap() - ef[2].as_f64().unwrap()).abs() < 1e-9,
+        "blue channel: base colour and emissive agree"
+    );
     // emissive is core glTF: no extension is declared for it.
     assert!(json.get("extensionsUsed").is_none(), "emissive needs no extension");
 }

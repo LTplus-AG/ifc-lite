@@ -17,7 +17,6 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { linearToSrgb } from '@ifc-lite/data';
 import { parseGLB, extractGlbMapping, parseGLBToMeshData, countGlbMeshes } from './glb.js';
 
 const FLOAT = 5126;
@@ -150,24 +149,25 @@ describe('parseGLBToMeshData', () => {
     // Alpha 0.5: an opaque fixture makes the alpha slot an identity against
     // the hard-coded 1 fallback and cannot see it being dropped. baseColorFactor
     // is linear-light per the glTF 2.0 spec (the exporter writes sRGB decoded
-    // to linear); RGB must come back through `linearToSrgb`, alpha untouched.
+    // to linear); RGB must come back sRGB-encoded, alpha untouched.
+    // Expected values are independent IEC 61966-2-1 constants (computed
+    // outside this codebase), not linearToSrgb — the parser calls that same
+    // helper, so using it here would let the oracle share its defect.
     const meshes = parseGLBToMeshData(buildMeshGlb({ material: 0, expressId: 42 }));
-    expect(meshes[0].color).toEqual([
-      linearToSrgb(0.2),
-      linearToSrgb(0.4),
-      linearToSrgb(0.6),
-      0.5,
-    ]);
+    const c = meshes[0].color;
+    expect(c[0]).toBeCloseTo(0.484529, 4); // sRGB(0.2)
+    expect(c[1]).toBeCloseTo(0.665185, 4); // sRGB(0.4)
+    expect(c[2]).toBeCloseTo(0.797738, 4); // sRGB(0.6)
+    expect(c[3]).toBe(0.5);
   });
 
   it('defaults alpha to 1 for an RGB-only baseColorFactor, decoding linear RGB to sRGB', () => {
     const meshes = parseGLBToMeshData(buildMeshGlb({ material: 1, expressId: 42 }));
-    expect(meshes[0].color).toEqual([
-      linearToSrgb(0.1),
-      linearToSrgb(0.3),
-      linearToSrgb(0.5),
-      1,
-    ]);
+    const c = meshes[0].color;
+    expect(c[0]).toBeCloseTo(0.34919, 4); // sRGB(0.1) — independent constant
+    expect(c[1]).toBeCloseTo(0.583831, 4); // sRGB(0.3)
+    expect(c[2]).toBeCloseTo(0.735357, 4); // sRGB(0.5)
+    expect(c[3]).toBe(1);
   });
 
   it('falls back to the neutral grey default when the primitive names no material', () => {

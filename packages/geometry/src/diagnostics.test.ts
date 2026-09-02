@@ -83,6 +83,34 @@ describe('mergeGeometryDiagnostics', () => {
     ]);
   });
 
+  it('sums totalUnsupportedItems and merges unsupportedItemsByType by IfcType, re-sorted desc', () => {
+    const a = make({
+      totalUnsupportedItems: 2,
+      unsupportedItemsByType: [{ reason: 'IfcGeometricSet', count: 2 }],
+    });
+    const b = make({
+      totalUnsupportedItems: 4,
+      unsupportedItemsByType: [
+        { reason: 'IfcGeometricSet', count: 1 },
+        { reason: 'IfcAnnotationFillArea', count: 3 },
+      ],
+    });
+    const m = mergeGeometryDiagnostics(a, b)!;
+    expect(m.totalUnsupportedItems).toBe(6);
+    expect(m.unsupportedItemsByType).toEqual([
+      { reason: 'IfcAnnotationFillArea', count: 3 },
+      { reason: 'IfcGeometricSet', count: 3 },
+    ]);
+  });
+
+  it('treats totalUnsupportedItems/unsupportedItemsByType as absent-safe (pre-schemaVersion-3 payloads)', () => {
+    const a = make();
+    const b = make({ totalUnsupportedItems: 1, unsupportedItemsByType: [{ reason: 'IfcGeometricSet', count: 1 }] });
+    const m = mergeGeometryDiagnostics(a, b)!;
+    expect(m.totalUnsupportedItems).toBe(1);
+    expect(m.unsupportedItemsByType).toEqual([{ reason: 'IfcGeometricSet', count: 1 }]);
+  });
+
   it('folds worstHosts by productId across operands (no duplicate rows, no mutation)', () => {
     const a = make({ worstHosts: [{ productId: 5, ifcType: 'IfcWall', openings: 1, csgFailures: 2, firstFailureLabel: 'KernelError' }] });
     const b = make({ worstHosts: [{ productId: 5, ifcType: 'IfcWall', openings: 2, csgFailures: 3 }] });

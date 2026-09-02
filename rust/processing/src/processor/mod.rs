@@ -29,6 +29,7 @@ mod opening_filter;
 mod properties;
 mod quick_metadata;
 mod site_local;
+mod unsupported_items;
 
 pub use quick_metadata::is_quick_spatial_type_ci;
 pub use site_local::convert_mesh_to_site_local;
@@ -1169,12 +1170,9 @@ pub fn process_geometry_streaming_filtered_with_options(
     // the loop into ProcessingStats + one tracing summary).
     let csg_failure_collector: std::sync::Mutex<FxHashMap<u32, Vec<ifc_lite_geometry::BoolFailure>>> =
         std::sync::Mutex::new(FxHashMap::default());
-    // Opening-classification + per-host opening diagnostics sinks, drained from
-    // each fresh per-job router and merged here, so the native pass can build the
-    // SAME `GeometryDiagnostics` the WASM batch path produces. Drained from the
-    // local router (not inside `produce_element_meshes`) because the WASM batch path
-    // shares that function and drains classification/host from its own warm router
-    // at batch end — draining there would empty it.
+    // Opening-classification + per-host opening diagnostics sinks, drained from each
+    // fresh per-job router and merged here (not inside `produce_element_meshes`,
+    // which the WASM batch path also shares and drains from its own warm router).
     let classification_collector: std::sync::Mutex<ifc_lite_geometry::ClassificationStats> =
         std::sync::Mutex::new(ifc_lite_geometry::ClassificationStats::default());
     let host_diag_collector: std::sync::Mutex<FxHashMap<u32, ifc_lite_geometry::HostOpeningDiagnostic>> =
@@ -1183,6 +1181,10 @@ pub fn process_geometry_streaming_filtered_with_options(
     // this pass's `rectFast` from any concurrent geometry pass.
     let rect_fast_collector: std::sync::Mutex<ifc_lite_geometry::RectFastStats> =
         std::sync::Mutex::new(ifc_lite_geometry::RectFastStats::default());
+    // Dropped representation items by IFC type (request-local, like the other
+    // sinks); non-empty means the router refused geometry it could not build.
+    let unsupported_item_collector: std::sync::Mutex<FxHashMap<String, u64>> =
+        std::sync::Mutex::new(FxHashMap::default());
     // Degenerate-backstop drop tally (request-local, like the other sinks);
     // non-zero means the f32-collapse safety net engaged for this model.
     let backstop_collector = std::sync::atomic::AtomicU64::new(0);
@@ -1445,6 +1447,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                     &classification_collector,
                     &host_diag_collector,
                     &rect_fast_collector,
+                    &unsupported_item_collector,
                     &backstop_collector,
                     &oversized_ref_drop_collector,
                     &item_dedup_cache,
@@ -1572,6 +1575,8 @@ pub fn process_geometry_streaming_filtered_with_options(
         let rect_fast = rect_fast_collector
             .into_inner()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let unsupported_items = unsupported_item_collector.into_inner().unwrap_or_else(|p| p.into_inner());
+        unsupported_items::warn_if_dropped(&unsupported_items);
         let diag = ifc_lite_geometry::aggregate_diagnostics(
             classification,
             &csg_failures,
@@ -1579,6 +1584,7 @@ pub fn process_geometry_streaming_filtered_with_options(
             rect_fast,
             WORST_HOSTS_LIMIT,
             oversized_ref_drops,
+            &unsupported_items,
         );
         (!diag.is_empty()).then_some(diag)
     });

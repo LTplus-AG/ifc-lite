@@ -85,6 +85,16 @@ export interface GeometryDiagnostics {
      *  subtraction ran, otherwise the pre-cut count). */
     triangleCount?: number;
   }>;
+  /**
+   * Representation items dropped from the output: no processor is registered
+   * for the IFC type, or the registered processor errored (degenerate/failed
+   * geometry). Excludes elements with no Body representation at all — those
+   * are correctly absent from the 3D view and never counted here. Absent on
+   * a payload produced before this counter existed (schemaVersion < 3).
+   */
+  totalUnsupportedItems?: number;
+  /** `totalUnsupportedItems` broken down by IFC type, sorted desc by count. */
+  unsupportedItemsByType?: Array<{ reason: string; count: number }>;
 }
 
 /** Cap on the merged worst-hosts detail list (matches the Rust WORST_HOSTS_LIMIT). */
@@ -136,6 +146,14 @@ export function mergeGeometryDiagnostics(
     .sort((x, y) => y.csgFailures - x.csgFailures || x.productId - y.productId)
     .slice(0, WORST_HOSTS_LIMIT);
 
+  const unsupportedByType = new Map<string, number>();
+  for (const r of [...(a.unsupportedItemsByType ?? []), ...(b.unsupportedItemsByType ?? [])]) {
+    unsupportedByType.set(r.reason, (unsupportedByType.get(r.reason) ?? 0) + r.count);
+  }
+  const unsupportedItemsByType = [...unsupportedByType.entries()]
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((x, y) => y.count - x.count || x.reason.localeCompare(y.reason));
+
   return {
     schemaVersion,
     totalCsgFailures: a.totalCsgFailures + b.totalCsgFailures,
@@ -161,6 +179,8 @@ export function mergeGeometryDiagnostics(
     },
     oversizedRefDrops: (a.oversizedRefDrops ?? 0) + (b.oversizedRefDrops ?? 0),
     worstHosts,
+    totalUnsupportedItems: (a.totalUnsupportedItems ?? 0) + (b.totalUnsupportedItems ?? 0),
+    unsupportedItemsByType,
   };
 }
 

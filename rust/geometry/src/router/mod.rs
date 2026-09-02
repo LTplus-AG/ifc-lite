@@ -229,12 +229,11 @@ pub struct GeometryRouter {
     /// same shard), so a batch never depends on a template materialized in another
     /// batch. Both modes emit geometrically identical world triangles.
     instancing_batch_local: bool,
-    /// #1623 Phase 3 (batch-local mode only): the `IfcRepresentationMap` source ids
-    /// this router has already materialized as a batch-local template. The first
-    /// occurrence of a source inserts its id (materializes); later occurrences see
-    /// the id present and don't-bake. Reset implicitly per batch — a fresh router is
-    /// built per `produce_batch`. Unused (stays empty) in the native global mode.
+    /// #1623 Phase 3 (batch-local mode only): source ids this router has already
+    /// materialized as a batch-local template; later occurrences don't-bake.
+    /// Reset per batch. Unused in the native global mode.
     instanced_sources_materialized: RefCell<FxHashSet<u32>>,
+    unsupported_items: RefCell<FxHashMap<String, u64>>, // dropped items (no processor / errored), by `IfcType`
 }
 
 impl GeometryRouter {
@@ -266,6 +265,7 @@ impl GeometryRouter {
             indexed_colour_split_ids: None, // armed by `enable_indexed_colour_split_guard`
             instancing_batch_local: false, // native global-template mode by default
             instanced_sources_materialized: RefCell::new(FxHashSet::default()),
+            unsupported_items: RefCell::new(FxHashMap::default()),
         };
 
         // Register default P0 processors

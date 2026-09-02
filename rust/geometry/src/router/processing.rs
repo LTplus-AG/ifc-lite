@@ -487,6 +487,7 @@ impl GeometryRouter {
                         false,
                         texture_index,
                     ) {
+                        self.record_unsupported_item(nested_item.ifc_type);
                         crate::diag::diag_debug!(
                             { item_id = nested_item.id, ifc_type = ?nested_item.ifc_type,
                               error = %_e, "skipping unsupported nested geometry item" }
@@ -585,6 +586,7 @@ impl GeometryRouter {
                     }
                 }
                 Err(_e) => {
+                    self.record_unsupported_item(item.ifc_type);
                     crate::diag::diag_debug!(
                         { item_id = item.id, ifc_type = ?item.ifc_type, error = %_e,
                           "skipping unsupported geometry item" }

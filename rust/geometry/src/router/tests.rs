@@ -582,3 +582,57 @@ END-ISO-10303-21;
         );
     }
 }
+
+#[test]
+fn router_records_and_drains_unsupported_items() {
+    let router = GeometryRouter::new();
+    assert!(router.take_unsupported_items().is_empty());
+
+    router.record_unsupported_item(ifc_lite_core::IfcType::IfcGeometricSet);
+    router.record_unsupported_item(ifc_lite_core::IfcType::IfcGeometricSet);
+    router.record_unsupported_item(ifc_lite_core::IfcType::IfcAnnotationFillArea);
+
+    let drained = router.take_unsupported_items();
+    assert_eq!(drained.get("IfcGeometricSet"), Some(&2));
+    assert_eq!(drained.get("IfcAnnotationFillArea"), Some(&1));
+
+    // Drain clears the log.
+    assert!(router.take_unsupported_items().is_empty());
+}
+
+/// RED (pre-fix): a Body representation item of a genuinely unsupported IFC
+/// type (no registered processor, e.g. `IfcGeometricSet` used directly as a
+/// body item rather than inside a non-body `GeometricCurveSet` context) was
+/// silently skipped by `collect_submeshes_from_item_inner` with zero counter
+/// anywhere the caller could read — only a `debug_assertions`/`observability`
+/// eprintln, compiled out of every release/wasm build. GREEN (post-fix): the
+/// drop is counted and attributable by IFC type, without changing the mesh
+/// output (the item is still correctly absent — this is observability, not a
+/// behavior change).
+#[test]
+fn unsupported_body_item_is_dropped_and_counted_not_silent() {
+    let content = r#"
+#1=IFCGEOMETRICSET(());
+#2=IFCSHAPEREPRESENTATION($,'Body','Body',(#1));
+#3=IFCPRODUCTDEFINITIONSHAPE($,$,(#2));
+#4=IFCWALL('guid',$,$,$,$,$,#3,$);
+"#;
+    let mut decoder = EntityDecoder::new(content);
+    let router = GeometryRouter::new();
+    let wall = decoder.decode_by_id(4).unwrap();
+
+    let sub_meshes = router
+        .process_element_with_submeshes(&wall, &mut decoder)
+        .expect("router walks the representation without erroring the whole element");
+    assert!(
+        sub_meshes.is_empty(),
+        "an all-unsupported-item element still produces no geometry (behavior unchanged)"
+    );
+
+    let unsupported = router.take_unsupported_items();
+    assert_eq!(
+        unsupported.get("IfcGeometricSet"),
+        Some(&1),
+        "the drop must be attributable, not merely silent: {unsupported:?}"
+    );
+}

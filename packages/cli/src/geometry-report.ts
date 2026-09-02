@@ -45,6 +45,14 @@ export function formatGeometryReport(d: GeometryDiagnostics): string {
       `too-many ${rf.deferTooManyOpenings ?? 0})`,
   );
 
+  if ((d.totalUnsupportedItems ?? 0) > 0) {
+    lines.push('');
+    lines.push(`Dropped representation items: ${d.totalUnsupportedItems} (no processor, or the processor failed)`);
+    for (const r of d.unsupportedItemsByType ?? []) {
+      lines.push(`  ${r.count.toString().padStart(6)}  ${r.reason}`);
+    }
+  }
+
   if (d.worstHosts.length > 0) {
     lines.push('');
     lines.push('Worst-failing hosts:');

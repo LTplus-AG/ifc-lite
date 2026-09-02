@@ -400,7 +400,8 @@ pub struct WorstHost {
 ///   passed `false`, so `OpeningDiagnostic.guard_saved` and the
 ///   `floor_opening_guard_saved` counter were always 0. Field removal, not
 ///   just a rename, hence the bump.
-pub const GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION: u32 = 2;
+/// - 3: added `total_unsupported_items` / `unsupported_items_by_type` (previously uncounted drops).
+pub const GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION: u32 = 3;
 
 /// Aggregate CSG / opening diagnostics for one geometry pass — the public
 /// diagnostics contract. Built by [`aggregate_diagnostics`] from drained router
@@ -437,6 +438,9 @@ pub struct GeometryDiagnostics {
     /// Refs the content-hash pass refused (`u32::MAX`, #3421/#3752). Additive.
     #[serde(default)]
     pub oversized_ref_drops: u64,
+    /// Items dropped: no processor, or the processor errored. `_by_type` breaks it down.
+    #[serde(default)] pub total_unsupported_items: u64,
+    #[serde(default)] pub unsupported_items_by_type: Vec<ReasonCount>,
 }
 
 impl Default for GeometryDiagnostics {
@@ -452,15 +456,15 @@ impl Default for GeometryDiagnostics {
             rect_fast: RectFastSummary::default(),
             worst_hosts: Vec::new(),
             oversized_ref_drops: 0,
+            total_unsupported_items: 0, unsupported_items_by_type: Vec::new(),
         }
     }
 }
 
 impl GeometryDiagnostics {
-    /// Whether any CSG failure or silent no-op was recorded — a cheap gate for
-    /// "should this be surfaced to the user".
+    /// Whether any CSG failure, silent no-op, or dropped item was recorded.
     pub fn has_issues(&self) -> bool {
-        self.total_csg_failures > 0 || self.silent_no_ops > 0
+        self.total_csg_failures > 0 || self.silent_no_ops > 0 || self.total_unsupported_items > 0
     }
 
     /// Whether nothing diagnostic-worthy happened this pass — no openings
@@ -474,6 +478,7 @@ impl GeometryDiagnostics {
             && self.silent_no_ops == 0
             && self.rect_fast.fired == 0
             && self.oversized_ref_drops == 0
+            && self.total_unsupported_items == 0
     }
 }
 
@@ -488,6 +493,7 @@ pub fn aggregate_diagnostics(
     rect_fast: crate::rect_fast::RectFastStats,
     worst_hosts_limit: usize,
     oversized_ref_drops: u64,
+    unsupported_items: &FxHashMap<String, u64>,
 ) -> GeometryDiagnostics {
     let total_csg_failures = csg_failures.values().map(Vec::len).sum::<usize>() as u64;
     let products_with_failures = count_attributed_products(csg_failures);
@@ -514,6 +520,8 @@ pub fn aggregate_diagnostics(
         .collect();
     failures_by_reason
         .sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.reason.cmp(&b.reason)));
+
+    let (total_unsupported_items, unsupported_items_by_type) = unsupported_items::summarize(unsupported_items);
 
     let silent_no_ops = host_diags
         .values()
@@ -573,11 +581,13 @@ pub fn aggregate_diagnostics(
         },
         worst_hosts,
         oversized_ref_drops,
+        total_unsupported_items, unsupported_items_by_type,
     }
 }
 
 mod attribution;
 mod processor_failures;
+mod unsupported_items;
 
 pub use attribution::{count_attributed_products, UNATTRIBUTED_PRODUCT_ID};
 

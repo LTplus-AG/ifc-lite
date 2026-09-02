@@ -4,11 +4,10 @@
 
 //! Per-entity geometry job execution.
 //!
-//! Split out of `processor/mod.rs` (module-size ratchet). `process_entity_job`
-//! is the body of the parallel batch loop's `map_init` closure — one job = one
-//! product, meshed on a fresh router with the worker's warm CartesianPoint
-//! cache moved in and back out. `build_color_updates_for_jobs` backfills
-//! deferred/orphan-type colours.
+//! Split out of `processor/mod.rs` (module-size ratchet). `process_entity_job` is
+//! the body of the parallel batch loop's `map_init` closure — one job = one product,
+//! meshed on a fresh router with the worker's warm CartesianPoint cache moved in and
+//! back out. `build_color_updates_for_jobs` backfills deferred/orphan-type colours.
 
 use super::*;
 
@@ -16,10 +15,9 @@ use super::*;
 /// worker thread, indexed by `rayon::current_thread_index()`.
 pub(super) type WorkerPointCaches = Vec<std::sync::Mutex<FxHashMap<u32, (f64, f64, f64)>>>;
 
-/// Per-rayon-worker placement-transform caches: one `FxHashMap` behind a `Mutex`
-/// per worker thread, indexed by `rayon::current_thread_index()`. Mirrors
-/// [`WorkerPointCaches`] exactly; the value is the opaque column-major `[f64; 16]`
-/// world transform the geometry router memoizes per IfcObjectPlacement id.
+/// Per-rayon-worker placement-transform caches, indexed like [`WorkerPointCaches`];
+/// value is the opaque column-major `[f64; 16]` world transform the geometry
+/// router memoizes per IfcObjectPlacement id.
 pub(super) type WorkerPlacementCaches = Vec<std::sync::Mutex<FxHashMap<u32, [f64; 16]>>>;
 
 /// One persistent CartesianPoint cache per rayon worker thread, indexed by
@@ -126,6 +124,9 @@ pub(super) fn process_entity_job(
     host_diag_collector: &std::sync::Mutex<FxHashMap<u32, ifc_lite_geometry::HostOpeningDiagnostic>>,
     rect_fast_collector: &std::sync::Mutex<ifc_lite_geometry::RectFastStats>,
     // Shared tally of degenerate-backstop triangle drops (`element::build_mesh_data`).
+    unsupported_item_collector: &std::sync::Mutex<FxHashMap<String, u64>>,
+    // Shared tally of degenerate-backstop triangle drops (see
+    // `element::build_mesh_data`); relaxed atomic, added to only when non-zero.
     backstop_collector: &std::sync::atomic::AtomicU64,
     // Content-hash refs refused above u32::MAX (#3421/#3752), request-local.
     oversized_ref_drop_collector: &std::sync::atomic::AtomicU64,
@@ -349,6 +350,7 @@ pub(super) fn process_entity_job(
             acc.defer_no_openings += rf.defer_no_openings;
         }
     }
+    super::unsupported_items::drain_unsupported_items(&local_router, unsupported_item_collector);
 
     // #1623 Phase 2: hand this element's don't-bake occurrences to the shared
     // collector (resolved into InstanceRecords later; empty on the flat path).

@@ -1867,6 +1867,13 @@ export function useIfcLoader() {
                     d,
                   );
                 }
+                if ((d.totalUnsupportedItems ?? 0) > 0) {
+                  console.warn(
+                    `[useIfc] ${file.name}: ${d.totalUnsupportedItems} representation item(s) dropped ` +
+                      `(unsupported type or failed geometry) — these elements are missing or incomplete`,
+                    d.unsupportedItemsByType,
+                  );
+                }
               }
 
               if (target.kind === 'primary') {

@@ -79,7 +79,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
-import { buildPack, retrievalFailed, RETRIEVAL_FAILED_REMEDY } from './build-context-pack.mjs';
+import { buildPack, retrievalFailed, retrievalFailedMessage, SHALLOW_CHECKOUT_REMEDY } from './build-context-pack.mjs';
 import { gh, GhError } from '../lib/gh.mjs';
 // The gate's pager, not a second copy of it. An earlier version here duplicated
 // it MINUS the one thing it exists for: the probe past a full final page. A PR
@@ -90,7 +90,6 @@ import { pageAll } from '../check-review-posted.mjs';
 
 /** 600 KB of patch text. The largest PR observed on this repo is ~427 KB. */
 export const MAX_PATCH_BYTES = 600 * 1024;
-
 
 const PER_PAGE = 100;
 const MAX_PAGES = 10;
@@ -242,7 +241,6 @@ export function addedLineRanges(patch) {
   return ranges;
 }
 
-
 /**
  * Pure over an already-fetched file list, so every branch is reachable in tests
  * without a network.
@@ -375,8 +373,8 @@ function main() {
       // empty on every pull request while this line read perfectly normal.
       if (retrievalFailed(p2, input.files.length)) {
         console.log(
-          `::warning::context-pack: NO file evidence was retrievable for any of the ${input.files.length} ` +
-            `changed file(s). ${RETRIEVAL_FAILED_REMEDY} The review continues from the diff alone.`,
+          `::warning::context-pack: ${retrievalFailedMessage(input.headSha, input.files.length)} ` +
+            `${SHALLOW_CHECKOUT_REMEDY} The review continues from the diff alone.`,
         );
       }
     } catch (err) {

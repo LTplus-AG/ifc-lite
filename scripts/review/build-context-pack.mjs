@@ -69,15 +69,43 @@ export const MAX_PACK_BYTES = 160_000;
  * whole pack; a near-maximal diff gets whatever is left. The pack is the
  * optional half, and it already records everything it drops.
  */
-export const MAX_PROMPT_BYTES = 680_000;
+export const MAX_PROMPT_BYTES = 700_000;
+
+/**
+ * Everything in the prompt that is neither diff nor pack: the rubric (~10.6 KB),
+ * a `--- FILE: <path>` header per file, the fence markers, the section prose and
+ * the unreviewable list.
+ *
+ * Without this reserve the ceiling above bounded two of the prompt's four terms
+ * and called itself "the ceiling on EVERYTHING the reviewer is handed". Measured
+ * with the real `buildPrompt` and rubric: a 1,000-file, 608,000-byte diff
+ * produced a 765,620-byte prompt. The arithmetic test could not catch it --
+ * `maxDiff + packBudgetFor(maxDiff) <= MAX_PROMPT_BYTES` is true by construction
+ * and never touches `buildPrompt`. The test that replaces it builds a real
+ * prompt and measures it.
+ */
+export const PROMPT_BASE_OVERHEAD_BYTES = 24_000;
+
+/**
+ * Per changed file: its `--- FILE: <path>` header, fences, and the entry in the
+ * files-reviewed list. Headers dominate the envelope on a large PR -- a flat
+ * reserve of 60,000 left a 1,000-file diff 8,050 bytes over the ceiling, which
+ * the measured test caught and the arithmetic one never could.
+ */
+export const PROMPT_PER_FILE_BYTES = 70;
 
 /** What the pack may spend once the diff has taken its share. */
-export function packBudgetFor(patchBytes) {
-  return Math.max(0, Math.min(MAX_PACK_BYTES, MAX_PROMPT_BYTES - (patchBytes || 0)));
+export function packBudgetFor(patchBytes, fileCount = 0) {
+  const envelope = PROMPT_BASE_OVERHEAD_BYTES + Math.max(0, fileCount || 0) * PROMPT_PER_FILE_BYTES;
+  const room = MAX_PROMPT_BYTES - envelope - (patchBytes || 0);
+  return Math.max(0, Math.min(MAX_PACK_BYTES, room));
 }
 
 /** How many "omitted for size" notes the pack will list before summarising. */
 export const MAX_TRUNCATION_NOTES = 20;
+
+/** Bytes charged per whole-file evidence entry on top of its text. */
+export const FILE_ENTRY_OVERHEAD = 80;
 
 /** A file longer than this is windowed around its hunks instead of sent whole. */
 export const MAX_WHOLE_FILE_LINES = 1_500;
@@ -364,11 +392,26 @@ export function retrievalFailed(pack, changedFileCount) {
   return pack.fileEvidence.length === 0 && !droppedForSize;
 }
 
-export const RETRIEVAL_FAILED_REMEDY =
-  'That is not an empty diff -- it means `git show <headSha>:<path>` returned nothing for every ' +
-  'changed file, which on CI almost always means the checkout is shallow (actions/checkout ' +
-  'defaults to fetch-depth: 1, and a pull_request event fetches only refs/pull/N/merge). ' +
-  'REMEDY: set fetch-depth: 0.';
+export function retrievalFailedMessage(headSha, fileCount) {
+  return (
+    `NO file evidence was retrievable for any of the ${fileCount} changed file(s). That is not an ` +
+    `empty diff -- \`git show ${String(headSha).slice(0, 9)}:<path>\` returned nothing for every one ` +
+    'of them, which means those refs are not in the object database.'
+  );
+}
+
+/**
+ * The LANE's remedy, and only the lane's. It used to be one shared constant
+ * ending "REMEDY: set fetch-depth: 0" -- which the eval printed on every run,
+ * eight lines below a workflow comment recording that full history buys the eval
+ * nothing (0 of 18 case head shas are reachable at any depth). A remedy that
+ * contradicts its own finding is worse than none.
+ */
+export const SHALLOW_CHECKOUT_REMEDY =
+  'On CI this almost always means the checkout is shallow: actions/checkout defaults to ' +
+  'fetch-depth: 1, and a pull_request event fetches only refs/pull/N/merge. REMEDY: set ' +
+  'fetch-depth: 0.';
+
 
 export function buildPack(input, { baseRef, body = null, patchBytes = 0, cwd = process.cwd(), exec = execFileSync } = {}) {
   const changed = input.files.map((f) => f.path);
@@ -387,9 +430,9 @@ export function buildPack(input, { baseRef, body = null, patchBytes = 0, cwd = p
   // its slice first; siblings and file evidence divide what is left.
   const bodyReserve =
     typeof body === 'string' && body.trim() !== ''
-      ? Math.min(BODY_RESERVE_BYTES, Buffer.byteLength(body, 'utf8'), packBudgetFor(patchBytes))
+      ? Math.min(BODY_RESERVE_BYTES, Buffer.byteLength(body, 'utf8'), packBudgetFor(patchBytes, input.files.length))
       : 0;
-  let budget = packBudgetFor(patchBytes) - bodyReserve;
+  let budget = packBudgetFor(patchBytes, input.files.length) - bodyReserve;
 
   // GATHER EVERYTHING FIRST, THEN RANK GLOBALLY. Capping in iteration order let
   // low-value hits from an early key crowd out the best hit of a late one --
@@ -398,9 +441,6 @@ export function buildPack(input, { baseRef, body = null, patchBytes = 0, cwd = p
   // not order of value.
   const candidates = [];
   const seenKey = new Set();
-  // KEYS FIRST, THEN ONE GREP. Collecting every key before searching turns what
-  // was one subprocess per key -- 274 of them, 22.9 seconds, on this pull request
-  // alone -- into a single `git grep`.
   for (const f of input.files) {
     for (const key of searchKeys(f.patch, { path: f.path, max: 12 })) {
       seenKey.add(key);
@@ -478,10 +518,16 @@ export function buildPack(input, { baseRef, body = null, patchBytes = 0, cwd = p
 
   const evidence = [];
   for (const f of input.files) {
+    // STOP SPAWNING ONCE NOTHING CAN FIT. `showAtRef` is a subprocess per file
+    // and the loop `continue`s past a file too large for the remaining budget --
+    // so a 1,000-file PR ran 1,000 `git show` calls, at ~66 ms each, long after
+    // the budget could hold anything. Below the per-entry overhead nothing can
+    // fit however small the file is.
+    if (budget <= FILE_ENTRY_OVERHEAD) { truncated.push('full content of the remaining files'); break; }
     const content = showAtRef(input.headSha, f.path, { cwd, exec });
     const e = fileEvidence(f.patch, content);
     if (!e) continue;
-    const cost = Buffer.byteLength(e.text, 'utf8') + 80;
+    const cost = Buffer.byteLength(e.text, 'utf8') + FILE_ENTRY_OVERHEAD;
     if (cost > budget) { truncated.push(`full content of ${f.path}`); continue; }
     budget -= cost;
     evidence.push({ path: f.path, ...e });
@@ -511,9 +557,9 @@ export function buildPack(input, { baseRef, body = null, patchBytes = 0, cwd = p
   // the budget, and it grows precisely when the pack is already full: a 500-file
   // PR whose evidence is all dropped adds one line per file, ~25 KB, to a pack
   // whose whole contract is a 160 KB ceiling.
-  // No dedup: the three pushes into `truncated` are one break-guarded sibling
-  // note, one per changed path (each listed once), and one description note. A
-  // Set here removed nothing and implied duplicates were possible.
+  // No dedup: the four pushes into `truncated` are one break-guarded sibling
+  // note, one key-cap note, one per changed path (each listed once), and one
+  // description note. A Set removed nothing and implied duplicates were possible.
   // THE DESCRIPTION NOTE SURVIVES THE CAP. `truncated` is appended in order --
   // siblings, then one note per dropped file, then the body -- so on a large PR
   // the body's note fell outside the first twenty and was replaced by "and N

@@ -13,7 +13,13 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { searchKeys, hunkLines, fileEvidence, MAX_WHOLE_FILE_LINES, buildPack, truncateUtf8, BODY_RESERVE_BYTES, MAX_PACK_BYTES, siblingSites, MAX_SEARCH_KEYS, packBudgetFor, MAX_PROMPT_BYTES } from './build-context-pack.mjs';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { buildPrompt } from './run-reviewer.mjs';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+import { searchKeys, hunkLines, fileEvidence, MAX_WHOLE_FILE_LINES, buildPack, truncateUtf8, BODY_RESERVE_BYTES, MAX_PACK_BYTES, MAX_SEARCH_KEYS, packBudgetFor, MAX_PROMPT_BYTES, retrievalFailed, retrievalFailedMessage, SHALLOW_CHECKOUT_REMEDY } from './build-context-pack.mjs';
 
 test('search keys come from REMOVED lines first, because the sibling still has them', () => {
   const patch = [
@@ -272,25 +278,49 @@ test('the global key cap is RECORDED, not silent', () => {
 
 
 test('NO PR THAT WAS REVIEWABLE BECOMES UNREVIEWABLE: the pack yields, the diff does not', () => {
-  // The first attempt charged the pack against the diff budget, cutting the diff
+  // An earlier attempt charged the pack against the diff budget, cutting the diff
   // allowance from 600 KB to 454,400 bytes. The largest PR observed on this repo
-  // is ~427 KB -- 96% of that -- and a PR crossing it throws REVIEW_TOO_LARGE,
-  // which claude-review.yml turns into a red job with NO marker that no re-run
-  // can clear. Fixing a token ceiling by refusing work the lane used to do is not
-  // a fix.
-  assert.equal(packBudgetFor(0), MAX_PACK_BYTES, 'a tiny diff gets the whole pack');
-  assert.equal(packBudgetFor(100_000), MAX_PACK_BYTES, 'a normal diff still gets the whole pack');
-
+  // is ~427 KB -- 96% of that -- and crossing it throws REVIEW_TOO_LARGE, which
+  // claude-review.yml turns into a red job with NO marker that no re-run clears.
+  // Fixing a token ceiling by refusing work the lane used to do is not a fix.
+  assert.equal(packBudgetFor(0, 1), MAX_PACK_BYTES, 'a tiny diff gets the whole pack');
+  assert.equal(packBudgetFor(100_000, 30), MAX_PACK_BYTES, 'a normal diff still gets the whole pack');
   const maxDiff = 600 * 1024;
   assert.ok(packBudgetFor(maxDiff) >= 0, 'a maximal diff must still be reviewable');
-  assert.ok(
-    maxDiff + packBudgetFor(maxDiff) <= MAX_PROMPT_BYTES,
-    'diff plus pack must stay under the prompt ceiling at every size',
-  );
-  for (const bytes of [0, 1, 200_000, 427 * 1024, maxDiff, maxDiff * 2]) {
-    assert.ok(bytes + packBudgetFor(bytes) <= Math.max(MAX_PROMPT_BYTES, bytes), `ceiling broken at ${bytes}`);
-    assert.ok(packBudgetFor(bytes) >= 0, `negative pack budget at ${bytes}`);
+  for (const bytes of [0, 1, 200_000, 427 * 1024, maxDiff, maxDiff * 2, NaN, undefined]) {
+    const v = packBudgetFor(bytes, 50);
+    assert.ok(Number.isFinite(v) && v >= 0 && v <= MAX_PACK_BYTES, `nonsensical budget at ${bytes}: ${v}`);
   }
+});
+
+test('THE REAL PROMPT stays under the ceiling, measured rather than derived', () => {
+  // The arithmetic version of this test asserted
+  // `maxDiff + packBudgetFor(maxDiff) <= MAX_PROMPT_BYTES`, which is true by
+  // construction of packBudgetFor and never touches buildPrompt. It therefore
+  // could not see that the constant bounded two of the prompt's four terms while
+  // calling itself "the ceiling on EVERYTHING the reviewer is handed": the rubric
+  // (~10.6 KB), a header per file, fences and prose were all uncounted, and a
+  // 1,000-file maximal diff really produced 765,620 bytes.
+  const rubric = readFileSync(join(HERE, 'rubric.md'), 'utf8');
+  const fileCount = 1_000;
+  const per = Math.floor((600 * 1024) / fileCount);
+  const files = Array.from({ length: fileCount }, (_, i) => ({
+    path: `packages/some/deeply/nested/module/file-${i}.ts`,
+    patch: `@@ -1,1 +1,2 @@\n+${'x'.repeat(Math.max(1, per - 20))}\n`,
+  }));
+  const patchBytes = files.reduce((n, f) => n + Buffer.byteLength(f.patch, 'utf8'), 0);
+  const input = { headSha: 'a'.repeat(40), files, unreviewable: [] };
+  input.contextPack = buildPack(input, {
+    baseRef: 'HEAD',
+    body: 'B'.repeat(20_000),
+    patchBytes,
+    exec: (_cmd, args) => (args[0] === 'show' ? 'y'.repeat(4_000) : ''),
+  });
+  const bytes = Buffer.byteLength(buildPrompt(rubric, input), 'utf8');
+  assert.ok(
+    bytes <= MAX_PROMPT_BYTES,
+    `the assembled prompt is ${bytes} bytes, over the ${MAX_PROMPT_BYTES} ceiling by ${bytes - MAX_PROMPT_BYTES}`,
+  );
 });
 
 test('a near-maximal diff shrinks the pack rather than the review', () => {
@@ -309,4 +339,27 @@ test('a near-maximal diff shrinks the pack rather than the review', () => {
     Buffer.byteLength(big.body ?? '', 'utf8') < Buffer.byteLength(small.body ?? '', 'utf8'),
     'the pack must give way when the diff is large',
   );
+});
+
+test('the retrieval-failure DIAGNOSTIC itself works, and names the sha', () => {
+  // It did not. A rename left the warning path calling a constant that had been
+  // deleted -- a ReferenceError on the one message whose entire job is to explain
+  // why the pack is empty, and 205 tests passed because nothing exercised it. The
+  // only signal was a lint warning about an unused import.
+  const msg = retrievalFailedMessage('abcdef1234567890abcdef1234567890abcdef12', 7);
+  assert.match(msg, /abcdef123/, 'the sha is the whole diagnostic value');
+  assert.match(msg, /7 changed file\(s\)/);
+  assert.doesNotMatch(msg, /<headSha>/, 'the placeholder must be substituted, not printed');
+  assert.match(SHALLOW_CHECKOUT_REMEDY, /fetch-depth: 0/);
+});
+
+test('retrievalFailed does not blame the checkout when the BUDGET was simply full', () => {
+  // The false positive: file evidence is also dropped for size, so a PR of large
+  // files yields zero evidence on a perfectly healthy checkout -- and would have
+  // told its author to set fetch-depth: 0 for a problem they do not have.
+  const shallow = { fileEvidence: [], truncated: [] };
+  const budgetFull = { fileEvidence: [], truncated: ['full content of packages/a/big.ts'] };
+  assert.equal(retrievalFailed(shallow, 3), true, 'no evidence and nothing dropped means missing refs');
+  assert.equal(retrievalFailed(budgetFull, 3), false, 'evidence dropped for size is not a broken checkout');
+  assert.equal(retrievalFailed(shallow, 0), false, 'an empty diff is not a retrieval failure');
 });

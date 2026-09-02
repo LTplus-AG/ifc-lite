@@ -48,7 +48,7 @@ jobs:
           # head shas need full history. They are not reachable either way:
           # measured, 0 of 18 case head shas are ancestors of origin/main -- every
           # one was squash-merged -- refs/pull/N/head has since moved to each PR's
-          # current head, and one case carries a synthetic sha. A full-history
+          # current head, and two cases carry synthetic shas. A full-history
           # clone of this monorepo would buy the eval nothing and cost minutes.
           #
           # So the eval scores siblings (retrieved with `--base HEAD`, which

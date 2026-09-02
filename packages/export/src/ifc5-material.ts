@@ -19,16 +19,29 @@ import { extractMaterialsOnDemand } from '@ifc-lite/parser';
  * Build the `bsi::ifc::material` attribute value for an entity, or
  * `undefined` when it has no material association.
  *
- * `uri` is deliberately omitted rather than fabricated: unlike an IFC class
- * name (`bsi::ifc::class`, which resolves to a real buildingSMART identifier
- * registry entry), a freeform IFC4 `IfcMaterial.Name` has no such registry —
- * inventing a resolvable-looking URI for it would misrepresent the material
- * as officially registered.
+ * The vendored buildingSMART schema
+ * (`packages/export/src/__fixtures__/schemas/ifc@v5a.ifcx`) declares
+ * `bsi::ifc::material` as an Object with both `code` and `uri` required
+ * (neither key carries `optional: true` — the same convention `bsi::ifc::class`
+ * uses right next to it, and that attribute emits both). The real
+ * buildingSMART reference sample committed at
+ * `apps/viewer/public/samples/hello-wall.ifcx` confirms a registry exists:
+ * every `bsi::ifc::material` value there carries a `uri` resolving into
+ * buildingSMART's `midas-materials` identifier registry (e.g.
+ * `.../uri/fish/midas-materials/26/class/CONCRETE`).
+ *
+ * We cannot resolve an arbitrary IFC4 `IfcMaterial.Name` (freeform text, not
+ * a midas-materials catalog code) into a real registry entry without a
+ * lookup service this package does not have, so `uri` is emitted as an empty
+ * string rather than a fabricated URL that would misrepresent the material
+ * as officially matched to a registry entry it was never checked against.
+ * An empty string still satisfies the schema's declared shape (`uri` present,
+ * typed `String`), unlike omitting the key outright.
  */
 export function buildMaterialAttribute(
   dataStore: IfcDataStore,
   expressId: number,
-): { code: string } | undefined {
+): { code: string; uri: string } | undefined {
   const material = extractMaterialsOnDemand(dataStore, expressId);
-  return material?.name ? { code: material.name } : undefined;
+  return material?.name ? { code: material.name, uri: '' } : undefined;
 }

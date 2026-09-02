@@ -15,12 +15,12 @@
 import type { EntityRef } from './types.js';
 import { RelationshipType } from '@ifc-lite/data';
 
-/** Minimal relationship-graph surface {@link resolveOwningProjectId} needs. */
+/** Minimal relationship-graph surface {@link resolveOwningIfcProjectId} needs. */
 export interface RelatedLookup {
   getRelated(entityId: number, relType: RelationshipType, direction: 'forward' | 'inverse'): number[];
 }
 
-/** Upper bound on the containment walk in {@link resolveOwningProjectId}, so a
+/** Upper bound on the containment walk in {@link resolveOwningIfcProjectId}, so a
  *  malformed file with a containment cycle that the visited-set guard doesn't
  *  catch on its first pass still terminates. Real spatial hierarchies (site →
  *  building → storey → element, occasionally one assembly level deeper) never
@@ -59,7 +59,7 @@ const MAX_OWNING_PROJECT_WALK_STEPS = 64;
  *   graph). Callers should fall back to the file's default project on
  *   `undefined`, matching prior single-project behaviour.
  */
-export function resolveOwningProjectId(
+export function resolveOwningIfcProjectId(
   entityIndex: { byId: { get(expressId: number): EntityRef | undefined }; byType: Map<string, number[]> },
   relationships: RelatedLookup | undefined,
   expressId: number

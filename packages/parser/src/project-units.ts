@@ -221,7 +221,7 @@ function conversionFactorScale(
 /**
  * Resolve the file's declared units from `IFCPROJECT → IFCUNITASSIGNMENT`.
  * `projectId` defaults to the file's first IFCPROJECT (pass explicitly,
- * from `resolveOwningProjectId`, for an entity owning a later one). Never
+ * from `resolveOwningIfcProjectId`, for an entity owning a later one). Never
  * throws: an absent/malformed assignment yields an empty {@link ProjectUnits}.
  */
 export function extractProjectUnits(

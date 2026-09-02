@@ -12,9 +12,9 @@
 import type { EntityRef } from './types.js';
 import { EntityExtractor } from './entity-extractor.js';
 import type { IfcSourceBytes } from './source-bytes.js';
-import { resolveOwningProjectId, type RelatedLookup } from './owning-project.js';
+import { resolveOwningIfcProjectId, type RelatedLookup } from './owning-project.js';
 
-export { resolveOwningProjectId, type RelatedLookup } from './owning-project.js';
+export { resolveOwningIfcProjectId, type RelatedLookup } from './owning-project.js';
 
 /**
  * SI Prefix multipliers, keyed by the members of the `IfcSIPrefix` EXPRESS
@@ -116,7 +116,7 @@ function warnUnknownUnit(entityIndex: object, reason: string): void {
  *   first `IFCPROJECT`) is correct for the overwhelmingly common case; pass
  *   this explicitly when resolving units for an entity that may belong to a
  *   later `IFCPROJECT` in a multi-project (federated-merge, see #1332) file
- *   — see {@link resolveOwningProjectId}.
+ *   — see {@link resolveOwningIfcProjectId}.
  * @returns Scale factor to apply to length values (e.g., 0.001 for millimeters)
  */
 export function extractLengthUnitScale(
@@ -138,7 +138,7 @@ export function extractLengthUnitScale(
 /**
  * Same resolution as {@link extractLengthUnitScale}, but for an EXPLICIT
  * `IFCPROJECT` id rather than always the first one found. Factored out so
- * {@link resolveEntityLengthUnitScale} and other {@link resolveOwningProjectId}
+ * {@link resolveEntityLengthUnitScale} and other {@link resolveOwningIfcProjectId}
  * callers can resolve the scale of a specific project in a multi-project
  * file (a {@link MergedExporter} federated output — see that module)
  * without duplicating the unit-chain walk.
@@ -348,7 +348,7 @@ function extractLengthUnitScaleForProjectId(
  * separates the two units (a millimetre federated model read back with the
  * metres factor turns a 300 mm layer into a fabricated "300 m" one).
  *
- * Resolves the entity's owning project via {@link resolveOwningProjectId} and
+ * Resolves the entity's owning project via {@link resolveOwningIfcProjectId} and
  * reads that project's units, falling back to the first project's scale when
  * the walk can't place the entity — the same safe-miss direction
  * {@link extractLengthUnitScale} already documents for every other ambiguous
@@ -360,6 +360,6 @@ export function resolveEntityLengthUnitScale(
   relationships: RelatedLookup,
   expressId: number,
 ): number {
-  const ownerId = resolveOwningProjectId(entityIndex, relationships, expressId);
+  const ownerId = resolveOwningIfcProjectId(entityIndex, relationships, expressId);
   return extractLengthUnitScale(source, entityIndex, ownerId);
 }

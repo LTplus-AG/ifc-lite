@@ -5,7 +5,7 @@
 import {
   extractLengthUnitScale,
   extractProjectUnits,
-  resolveOwningProjectId,
+  resolveOwningIfcProjectId,
   type IfcDataStore,
 } from '@ifc-lite/parser';
 
@@ -91,7 +91,7 @@ const entityProjectScaleCache = new WeakMap<object, Map<number, EntityMeasureSca
  * regardless — silently wrong, not absent, and compliance-critical for IDS
  * (a `Width >= 100mm` requirement evaluates against the wrongly-scaled raw
  * value). This resolves the entity's OWN owning project via
- * `resolveOwningProjectId` (a minimal reimplementation of the walk in PR
+ * `resolveOwningIfcProjectId` (a minimal reimplementation of the walk in PR
  * #3554, not yet on `main` at the time of writing — unify once it lands)
  * and reads THAT project's units, falling back to the store-wide default
  * when the walk can't place the entity (matches prior behaviour).
@@ -109,7 +109,7 @@ export function resolveEntityMeasureScales(
   const projectIds = store.entityIndex.byType.get('IFCPROJECT') ?? [];
   if (projectIds.length <= 1) return fallback();
 
-  const ownerId = resolveOwningProjectId(store.entityIndex, store.relationships, expressId);
+  const ownerId = resolveOwningIfcProjectId(store.entityIndex, store.relationships, expressId);
   if (ownerId === undefined) return fallback();
 
   let byProject = entityProjectScaleCache.get(store);

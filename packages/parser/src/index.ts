@@ -59,7 +59,7 @@ export { SpatialHierarchyBuilder } from './spatial-hierarchy-builder.js';
 export {
   extractLengthUnitScale,
   resolveEntityLengthUnitScale,
-  resolveOwningProjectId,
+  resolveOwningIfcProjectId,
 } from './unit-extractor.js';
 export {
   extractProjectUnits,

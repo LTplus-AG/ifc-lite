@@ -23,6 +23,17 @@
 //! floating point; [`verify_recomposition`] bounds the residual and the unit
 //! tests assert it stays within a micrometre.
 //!
+//! `rep_identity` (a 128-bit geometry hash for direct items) is not proven
+//! collision-free, and a merged multi-model file has measured one (#3666):
+//! two unrelated occurrences shared a hash and one reconstructed up to 2m
+//! away from where it actually was, with nothing erroring. `collate_refs`
+//! therefore does not just trust the identity for the exact tier: it
+//! reconstructs each candidate occurrence from `(template, rel)` and
+//! verifies it against that occurrence's own baked vertices before trusting
+//! the group, falling the WHOLE group back to the flat path on any failure
+//! (a mis-grouped occurrence means the template pairing is in doubt, not
+//! just the one member that happened to fail first).
+//!
 //! ## Instanced wire format ("IFNS")
 //!
 //! Little-endian, mirroring the packed-shard conventions (header + tables +
@@ -91,6 +102,7 @@
 //! [`InstanceMeta`]: crate::mesh::InstanceMeta
 
 mod collate;
+mod verify;
 mod wire;
 
 #[cfg(test)]

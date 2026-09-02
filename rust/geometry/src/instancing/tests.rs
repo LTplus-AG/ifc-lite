@@ -288,8 +288,9 @@ fn dump_instanced_fixture() {
 fn collate_count_guard_drops_mismatched_group_to_flat() {
     // A rep_identity grouping with mismatched vertex/index counts (e.g. a
     // hash collision that survived the count differing) must NOT instance —
-    // the cheap count guard falls the whole group to flat. (Same-count content
-    // collisions are prevented upstream by the 128-bit rep_identity hash.)
+    // the cheap count guard falls the whole group to flat. (A same-count
+    // content collision is caught downstream by the #3666 reconstruction
+    // check — see `same_count_rep_identity_collision_falls_back_to_flat`.)
     let p = Matrix4::new_translation(&nalgebra::Vector3::new(1.0, 0.0, 0.0));
     let meta = |rep| InstanceMeta {
         transform: mat_rm(&p),
@@ -312,6 +313,45 @@ fn collate_count_guard_drops_mismatched_group_to_flat() {
 }
 
 #[test]
+fn same_count_rep_identity_collision_falls_back_to_flat() {
+    // #3666: a real merged-model run measured a `rep_identity` collision
+    // between two UNRELATED occurrences from different source models — same
+    // vertex/index counts (so the cheap count guard above lets it through),
+    // genuinely different geometry. Before the #3666 fix, `collate_refs`
+    // trusted the shared identity outright and would have instanced this
+    // pair, silently reconstructing occurrence B as a copy of occurrence A's
+    // shape at B's placement — exactly the "renders, just in the wrong
+    // place" defect the issue reports (up to 2m of displacement on the real
+    // model). The fix reconstructs each occurrence from (template, rel) and
+    // verifies it against its OWN baked vertices; a mismatch drops the WHOLE
+    // group to flat rather than keeping the member that happens to agree.
+    let p = Matrix4::new_translation(&nalgebra::Vector3::new(3.0, 0.0, 0.0));
+    let meta = |rep| InstanceMeta {
+        transform: mat_rm(&p),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: rep,
+        instanceable: true,
+    };
+    // Same vertex COUNT (4) and index COUNT as CANON, but a genuinely
+    // different tetrahedron (apex moved) — the shape a hash collision
+    // between two same-topology-but-different elements would produce.
+    const CANON_COLLIDING: [f32; 12] =
+        [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 5.0, 5.0, 5.0];
+    let meshes = vec![
+        mesh_from(baked(&CANON, &p), meta(888)),
+        mesh_from(baked(&CANON_COLLIDING, &p), meta(888)), // same rep, same counts, different shape
+    ];
+    let collated = collate_instances(&meshes, 2, [0.0, 0.0, 0.0]);
+    assert_eq!(
+        collated.templates.len(),
+        0,
+        "a same-count content collision must NOT form a template"
+    );
+    assert_eq!(collated.flat_indices.len(), 2, "the whole colliding group falls back flat, not just one member");
+}
+
+#[test]
 fn collate_reduces_georeferenced_rotated_occurrence_to_post_rtc_frame() {
     // Regression for the GLB-export collapse: a rotated occurrence at a
     // georeferenced placement. Computing `rel = m_k · m_ref⁻¹` on the raw
@@ -324,9 +364,18 @@ fn collate_reduces_georeferenced_rotated_occurrence_to_post_rtc_frame() {
     let t_template = Matrix4::new_translation(&nalgebra::Vector3::new(rtc[0], rtc[1], rtc[2]));
     // Same placement, rotated 180° about Z — the worst case (sign flip).
     let t_occ = t_template * Matrix4::from_euler_angles(0.0, 0.0, std::f64::consts::PI);
-    let mk = |m: &Matrix4<f64>| {
+    // `InstanceMeta.transform` is always the RAW pre-RTC placement (per its
+    // own doc comment) regardless of which `rtc` collate_refs is later asked
+    // to reduce by; only the mesh's BAKED positions need to already sit in
+    // whatever frame the caller is going to reconstruct them in — `bake_rtc`
+    // lets this helper build a mesh set for either frame.
+    let mk = |m: &Matrix4<f64>, bake_rtc: [f64; 3]| {
+        let mut baked_m = *m;
+        baked_m[(0, 3)] -= bake_rtc[0];
+        baked_m[(1, 3)] -= bake_rtc[1];
+        baked_m[(2, 3)] -= bake_rtc[2];
         mesh_from(
-            baked(&CANON, m),
+            baked(&CANON, &baked_m),
             InstanceMeta {
                 transform: mat_rm(m),
                 local_transform: None,
@@ -336,7 +385,6 @@ fn collate_reduces_georeferenced_rotated_occurrence_to_post_rtc_frame() {
             },
         )
     };
-    let meshes = vec![mk(&t_template), mk(&t_occ)];
     // occurrence transform translation magnitude (row-major mat4 → [3],[7],[11]).
     let occ_trans = |c: &Collated| -> f64 {
         let occ = &c.templates[0].occurrences;
@@ -346,13 +394,18 @@ fn collate_reduces_georeferenced_rotated_occurrence_to_post_rtc_frame() {
     };
 
     // Without the rtc reduction (legacy behaviour) the rotated occurrence blows
-    // up to ~2× the georef offset.
-    let raw = collate_instances(&meshes, 2, [0.0, 0.0, 0.0]);
+    // up to ~2× the georef offset. Baked at the SAME (unreduced) scale `rel`
+    // is computed in here, so #3666's verification still reconstructs them.
+    let meshes_raw = vec![mk(&t_template, [0.0, 0.0, 0.0]), mk(&t_occ, [0.0, 0.0, 0.0])];
+    let raw = collate_instances(&meshes_raw, 2, [0.0, 0.0, 0.0]);
     assert_eq!(raw.templates.len(), 1, "the two congruent meshes instance");
     assert!(occ_trans(&raw) > 1_000_000.0, "legacy: rotated occurrence reaches ~2× rtc");
 
-    // With the applied rtc the relative transform stays building-scale.
-    let fixed = collate_instances(&meshes, 2, rtc);
+    // With the applied rtc the relative transform stays building-scale — baked
+    // at the reduced scale too, matching the real pipeline's small post-RTC
+    // `Mesh.positions` invariant that `rel` relies on.
+    let meshes_fixed = vec![mk(&t_template, rtc), mk(&t_occ, rtc)];
+    let fixed = collate_instances(&meshes_fixed, 2, rtc);
     assert_eq!(fixed.templates.len(), 1, "still instances after the reduction");
     assert!(occ_trans(&fixed) < 10.0, "fixed: rel translation is building-scale, got {}", occ_trans(&fixed));
 }

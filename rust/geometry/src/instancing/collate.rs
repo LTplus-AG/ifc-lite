@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use super::verify::verify_pairing;
 use crate::mesh::{InstanceMeta, Mesh};
 use nalgebra::Matrix4;
 use rustc_hash::FxHashMap;
@@ -248,6 +249,27 @@ pub fn collate_refs(meshes: &[InstanceMeshRef], min_group: usize, rtc: [f64; 3])
             }
             let m_k = to_post_rtc(compose_world(mesh.instance_meta.unwrap()), rtc);
             let rel = m_k * m_ref_inv;
+            // #3666: a shared `rep_identity` is not proof of shared geometry —
+            // a 128-bit direct-geometry hash collision has been measured on a
+            // real merged model. The count check above still lets a same-
+            // shaped colliding pair through, so reconstruct this occurrence
+            // from (template, rel) and verify it against its OWN baked
+            // vertices before trusting the pairing. Scoped to the exact tier
+            // (rigid-tier members can legitimately carry a different raw
+            // vertex count than the template by design — see module docs).
+            if !pose_only
+                && !is_rigid
+                && !verify_pairing(
+                    template.origin,
+                    template.positions,
+                    mesh.origin,
+                    mesh.positions,
+                    &rel,
+                )
+            {
+                shapes_match = false;
+                break;
+            }
             occurrences.push(InstanceOccurrence {
                 mesh_index: i,
                 transform: mat4_to_row_major_f32(&rel),
@@ -356,45 +378,7 @@ pub fn collate_instances(meshes: &[Mesh], min_group: usize, rtc: [f64; 3]) -> Co
     collate_refs(&refs, min_group, rtc)
 }
 
-/// Maximum per-vertex world-space error (in mesh units) when each occurrence is
-/// reconstructed by applying its instance transform to the template's baked
-/// world geometry, versus the occurrence's own baked world geometry. The
-/// template-relative transform operates on world coords, so each mesh's `origin`
-/// is folded in. Used by tests + as a runtime diagnostic.
-pub fn verify_recomposition(meshes: &[Mesh], collated: &Collated) -> f64 {
-    let mut max_err = 0.0f64;
-    for tmpl in &collated.templates {
-        let template = &meshes[tmpl.template_index];
-        for occ in &tmpl.occurrences {
-            let target = &meshes[occ.mesh_index];
-            let rel = Matrix4::from_row_slice(&occ.transform.map(|v| v as f64));
-            // A valid template↔occurrence pair shares the same geometry (same
-            // vertex count, different transform). If the counts differ the
-            // occurrence can't be recomposed from the template — flag it as an
-            // unbounded error instead of panicking on an out-of-bounds index,
-            // so the diagnostic surfaces the mismatch. (#1238 review)
-            let n = template.positions.len() / 3;
-            if target.positions.len() / 3 != n {
-                max_err = f64::INFINITY;
-                continue;
-            }
-            for v in 0..n {
-                // Template world vertex = template.origin + position.
-                let tx = template.origin[0] + template.positions[v * 3] as f64;
-                let ty = template.origin[1] + template.positions[v * 3 + 1] as f64;
-                let tz = template.origin[2] + template.positions[v * 3 + 2] as f64;
-                let w = rel * nalgebra::Vector4::new(tx, ty, tz, 1.0);
-                let (rx, ry, rz) = (w.x / w.w, w.y / w.w, w.z / w.w);
-                // Target world vertex.
-                let gx = target.origin[0] + target.positions[v * 3] as f64;
-                let gy = target.origin[1] + target.positions[v * 3 + 1] as f64;
-                let gz = target.origin[2] + target.positions[v * 3 + 2] as f64;
-                let err = ((rx - gx).powi(2) + (ry - gy).powi(2) + (rz - gz).powi(2)).sqrt();
-                if err > max_err {
-                    max_err = err;
-                }
-            }
-        }
-    }
-    max_err
-}
+// verify_recomposition moved to super::verify (kept as a re-export below) —
+// the module-size ratchet budget pushed it out once #3666's inline pairing
+// check landed here; it belongs next to that check's shared math anyway.
+pub use super::verify::verify_recomposition;

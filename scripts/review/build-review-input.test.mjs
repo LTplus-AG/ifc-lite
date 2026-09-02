@@ -578,6 +578,13 @@ test('PRE-EXISTING unreviewable rows are charged before the candidates are', () 
   }));
   const { kept, omitted } = fitFilesToPrompt(candidates, unreviewable);
   assert.ok(kept.length > 0, 'the fixture must keep something, or the budget is never spent');
+  // The decay guard its sibling already had, and this one did not. Demonstrated:
+  // with MAX_PROMPT_BYTES raised back to its historical 700,000 AND the debit
+  // deleted, every candidate is kept, `omitted` is empty, there is no pressure
+  // left and the mutation goes undetected while the test stays green. Today six
+  // other tests fail loudly on a ceiling change so it is not silent yet -- but
+  // once those are retuned this becomes a green no-op.
+  assert.ok(omitted.length > 0, 'the fixture must force omissions, or there is no pressure to measure');
 
   const bytes = Buffer.byteLength(buildPrompt(readFileSync(join(HERE, 'rubric.md'), 'utf8'), {
     headSha: 'a'.repeat(40),

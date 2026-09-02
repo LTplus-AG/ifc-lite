@@ -373,7 +373,7 @@ test('THE REAL PROMPT stays under the ceiling whenever the DIFF alone does', () 
 });
 
 test('THE BASE ENVELOPE RESERVE is load-bearing too, on a FEW-file diff', () => {
-  // The 1,000-file case above guards PROMPT_FILE_ROW_FIXED, because the per-file
+  // The 1,000-file case above guards the per-file row charge, because the per-file
   // term dominates there -- and it leaves PROMPT_BASE_OVERHEAD_BYTES free to be
   // zeroed with the suite green. The base only bites when there are few headers
   // and the diff is near the ceiling, so that is what this builds: the rubric is
@@ -663,10 +663,12 @@ test('promptEnvelopeBytes scales with PATH LENGTH, not just row count', () => {
 
 test('THE OTHER DIRECTION: an inflated envelope must not starve the pack', () => {
   // A threshold has two directions and the suite probed one. Every guard here
-  // asserts the envelope is charged ENOUGH; inflating a constant -- say
-  // PROMPT_UNREVIEWABLE_ROW_FIXED to a billion -- silently drove the budget to
-  // zero for any PR with unreviewable files, which is the inert-pack failure this
-  // whole branch exists to prevent, and it passed every test.
+  // asserts the envelope is charged ENOUGH; inflating the unreviewable row's
+  // charge to a billion silently drove the budget to zero for any PR with
+  // unreviewable files, which is the inert-pack failure this whole branch exists
+  // to prevent, and it passed every test. (That charge was a named constant when
+  // this was written; it is now derived from `unreviewableRow`, but the two
+  // directions and this test's job are unchanged.)
   //
   // So: an ordinary PR must still get a real pack. This is deliberately loose --
   // it is a floor against absurdity, not a tuning knob.

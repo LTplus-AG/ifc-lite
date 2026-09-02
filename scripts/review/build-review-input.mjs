@@ -121,11 +121,11 @@ export const MAX_PATCH_BYTES = 600 * 1024;
  * was partial. A reworded copy would silently vanish from the marker, which is
  * the absence-reads-as-success shape one layer down.
  *
- * Kept short on purpose: every unreviewable row is charged at
- * every unreviewable row is charged at the bytes `unreviewableRow` actually
- * renders, so a longer reason costs more and is charged more. It used to be a
- * fixed constant plus the raw strings, which a reason past its measured worst
- * case would have quietly broken; that constant is gone.
+ * Length no longer needs policing. Every unreviewable row is charged at the
+ * bytes `unreviewableRow` actually renders, so a longer reason costs more AND
+ * is charged more. It used to be a fixed constant plus the raw strings, which
+ * a reason past its measured worst case would have quietly broken; that
+ * constant is gone.
  */
 export const OMITTED_FOR_PROMPT_REASON = 'omitted: too large to fit the model prompt with the rest of this diff';
 

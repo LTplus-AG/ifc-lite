@@ -593,16 +593,23 @@ const MAX_PATH_CHARS = 500;
  * render distinctly". DEFANGING is lossy and runs BEFORE the digest, so paths
  * differing only in what defanging removes still collide -- measured, all legal
  * git paths: `dir/a<!--x-->b.ts` vs `dir/ab.ts`; two spaces vs one; a tab vs a
- * space; a leading space vs none; `IFC-LITE-REVIEW.ts` vs the U+2011
- * non-breaking-hyphen lookalike. Sub-cap paths get no digest at all, so nothing
+ * space; a leading space vs none; and `ifc-lite-review.ts` vs its U+2011
+ * non-breaking-hyphen lookalike -- that last pair in LOWERCASE, because
+ * `DEFANGED_TOKEN` is a fixed lowercase string, so the uppercase pair does NOT
+ * collide. Sub-cap paths get no digest at all, so nothing
  * disambiguates them. A reader can therefore still see `omitted=2` above two
  * identical-looking entries.
  *
  * Accepted rather than fixed: defanging is load-bearing (it is what stops a
  * path forging a marker) and it must stay lossy to do that job. The cost is
- * cosmetic -- a duplicate-looking line in an advisory list -- and the
- * alternative, digesting the raw path, would print the very bytes defanging
- * exists to remove.
+ * cosmetic -- a duplicate-looking line in an advisory list.
+ *
+ * Digesting the RAW path instead would in fact disambiguate these, and safely:
+ * a sha256 hex digest is `[0-9a-f]` only, so it cannot reproduce `<!--`, the
+ * marker token or an @-mention. An earlier version of this comment claimed
+ * otherwise and was simply wrong. The real cost is that it would hang a digest
+ * suffix on EVERY row to disambiguate a case nobody has hit, which is a poor
+ * trade for an advisory list.
  *
  * @param {unknown} text
  */

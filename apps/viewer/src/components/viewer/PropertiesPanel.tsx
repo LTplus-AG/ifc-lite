@@ -16,7 +16,6 @@ import {
   Calculator,
   Tag,
   MousePointer2,
-  ArrowUpDown,
   PenLine,
   Crosshair,
   Box,
@@ -57,6 +56,8 @@ import { ScheduleCard } from './properties/ScheduleCard';
 import { TaskEditCard } from './properties/TaskEditCard';
 import { DocumentCard } from './properties/DocumentCard';
 import { RelationshipsCard } from './properties/RelationshipsCard';
+import { SpatialLocationBadge } from './properties/SpatialLocationBadge';
+import { AssemblyBadge } from './properties/AssemblyBadge';
 import type { PropertySet, QuantitySet } from './properties/encodingUtils';
 import { BsddCard } from './properties/BsddCard';
 import { GeoreferencingPanel } from './properties/GeoreferencingPanel';
@@ -155,6 +156,7 @@ export function PropertiesPanel() {
   // Relationship navigation: select a related entity (e.g. an IfcZone) to show
   // its attributes, or isolate a group's members in 3D (#1075).
   const setSelectedEntity = useViewerStore((s) => s.setSelectedEntity);
+  const setSelectedEntityId = useViewerStore((s) => s.setSelectedEntityId);
   const setSelectedEntityIds = useViewerStore((s) => s.setSelectedEntityIds);
   const isolateEntities = useViewerStore((s) => s.isolateEntities);
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
@@ -451,6 +453,16 @@ export function PropertiesPanel() {
     if (!originalExpressId || !modelQuery) return null;
     return modelQuery.entity(originalExpressId);
   }, [selectedEntity, modelQuery]);
+
+  // Issue #3620: the selected element gives no indication it is a member of
+  // an IfcElementAssembly, nor a way to select that assembly. `decomposedBy`
+  // walks the IfcRelAggregates edge to the parent; gate on the parent's type
+  // so a plain spatial/aggregation parent that isn't an assembly stays quiet.
+  const assemblyParent = useMemo(() => {
+    const parent = entityNode?.decomposedBy();
+    if (!parent || parent.type !== 'IfcElementAssembly') return null;
+    return { expressId: parent.expressId, name: parent.name || undefined };
+  }, [entityNode]);
 
   // Overlay-only entity record (duplicates, scripted adds). Carries
   // the type + positional attributes the StoreEditor recorded — used
@@ -752,6 +764,22 @@ export function PropertiesPanel() {
       window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
     }
   }, [selectedEntity, setSelectedEntity, setSelectedEntityIds, cameraCallbacks]);
+
+  // Issue #3620: select the parent IfcElementAssembly from the badge below.
+  // NOT `handleSelectRelatedEntity` above -- that leaves `selectedEntityId`
+  // (the globalId this panel's own render gate requires) at whatever
+  // `setSelectedEntityIds([])` derives, which is null, so its target never
+  // becomes visible in THIS panel. `setSelectedEntityId` is the field every
+  // 3D-pick and search entry point sets first for exactly that reason.
+  const handleSelectAssembly = useCallback((expressId: number) => {
+    if (!selectedEntity) return;
+    setSelectedEntityIds([]);
+    setSelectedEntityId(toGlobalIdFromModels(models, selectedEntity.modelId, expressId));
+    setSelectedEntity({ modelId: selectedEntity.modelId, expressId });
+    if (cameraCallbacks.frameSelection) {
+      window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
+    }
+  }, [selectedEntity, models, setSelectedEntity, setSelectedEntityId, setSelectedEntityIds, cameraCallbacks]);
 
   // Isolate + select all member objects of a group/zone (the IfcSpace /
   // IfcSpatialZone in an IfcZone — e.g. one dwelling, house number or fire
@@ -1397,40 +1425,10 @@ export function PropertiesPanel() {
         )}
 
         {/* Spatial Location */}
-        {renderedSpatialInfo && (
-          <div className="flex items-center gap-2 text-xs border border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-900/10 px-2 py-1.5 text-emerald-800 dark:text-emerald-400 min-w-0">
-            <Layers className="h-3.5 w-3.5 shrink-0" />
-            <span className="font-bold uppercase tracking-wide truncate min-w-0 flex-1">{renderedSpatialInfo.storeyName}</span>
-            <div className="flex items-center gap-1.5 shrink-0">
-              {renderedSpatialInfo.elevation !== undefined && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="text-emerald-600/70 dark:text-emerald-500/70 font-mono whitespace-nowrap">
-                      {renderedSpatialInfo.elevation >= 0 ? '+' : ''}{renderedSpatialInfo.elevation.toFixed(2)}m
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p className="text-xs">Elevation: {renderedSpatialInfo.elevation >= 0 ? '+' : ''}{renderedSpatialInfo.elevation.toFixed(2)}m from ground</p>
-                  </TooltipContent>
-                </Tooltip>
-              )}
-              {renderedSpatialInfo.height !== undefined && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="flex items-center gap-1 text-emerald-500/60 dark:text-emerald-400/60 font-mono text-[10px] whitespace-nowrap">
-                      <ArrowUpDown className="h-2.5 w-2.5 shrink-0" />
-                      <span className="hidden sm:inline">{renderedSpatialInfo.height.toFixed(2)}m</span>
-                      <span className="sm:hidden">{renderedSpatialInfo.height.toFixed(1)}m</span>
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p className="text-xs">Height: {renderedSpatialInfo.height.toFixed(2)}m to next storey</p>
-                  </TooltipContent>
-                </Tooltip>
-              )}
-            </div>
-          </div>
-        )}
+        <SpatialLocationBadge spatialInfo={renderedSpatialInfo} />
+
+        {/* Part of Assembly (#3620) */}
+        <AssemblyBadge assembly={assemblyParent} onSelect={handleSelectAssembly} />
 
         {/* World coordinates + Georeferencing — single consolidated section */}
         {(entityCoordinates || renderedGeoref || editMode) && (

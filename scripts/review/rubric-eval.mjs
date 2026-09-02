@@ -339,7 +339,12 @@ function main() {
         // NOT `verdict: 'findings'`. On RAW_EMPTY the model said nothing at all,
         // and printing a verdict it never gave is the same fabrication
         // validate-findings refuses to make. `null` is what actually happened.
-        results.push({ pr: c.pr, body: c.body ?? null, expected: c.expected, verdict: null, findings: [] });
+        //
+        // `body` IS WHAT THE REVIEWER SAW, not the fixture's. The pack truncates
+        // the description, and a diff-only run carries none at all -- scoring
+        // against text the reviewer never received excludes vocabulary it could
+        // not have copied, and that reads as a false miss.
+        results.push({ pr: c.pr, body: c.input.contextPack?.body ?? null, expected: c.expected, verdict: null, findings: [] });
         continue;
       }
       // PARTIAL losses exit 0. DROPPED is one finding refused; CAPPED is the
@@ -349,7 +354,9 @@ function main() {
       const lost = said.split('\n').filter((l) => /DROPPED|CAPPED/.test(l));
       if (lost.length) console.log(lost.map((l) => `    ${f}: ${l.trim()}`).join('\n'));
       const parsed = JSON.parse(readFileSync(findingsPath, 'utf8'));
-      results.push({ pr: c.pr, body: c.body ?? null, expected: c.expected, verdict: parsed.verdict, findings: parsed.findings ?? [] });
+      // Same rule as the failure record above: the exclusion is keyed to what
+      // the reviewer RECEIVED, `c.input.contextPack?.body`, never the fixture.
+      results.push({ pr: c.pr, body: c.input.contextPack?.body ?? null, expected: c.expected, verdict: parsed.verdict, findings: parsed.findings ?? [] });
     }
 
     const s = score(results);

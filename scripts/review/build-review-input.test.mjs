@@ -289,14 +289,23 @@ test('the lane checks out FULL HISTORY, or the context pack is silently empty', 
     // BOUNDED BY THE STEP, not by a character count. A 700-char window passed
     // until the explanatory comment above `fetch-depth: 0` grew past it, at which
     // point this guard went blind on the very file it exists for.
-    const i = yml.indexOf('actions/checkout');
+    // EVERY checkout, not the first. A workflow can hold two jobs; if the first
+    // job's checkout is full-history and the job that actually invokes this
+    // script keeps the shallow default, keying on the first occurrence passes
+    // exactly where retrieval fails. `- run:` bounds a step too -- without it a
+    // later run step's text sits inside the window and can satisfy the match on
+    // the checkout's behalf.
+    let i = yml.indexOf('actions/checkout');
     assert.notEqual(i, -1, `${wf} must check out the repository`);
-    const rest = yml.slice(i);
-    const end = rest.search(/\n\s*- (uses|name):/);
-    assert.match(
-      end === -1 ? rest : rest.slice(0, end),
-      /fetch-depth: 0/,
-      `${wf}: without fetch-depth: 0 the context pack is empty on every run, and says nothing about it`,
-    );
+    while (i !== -1) {
+      const rest = yml.slice(i);
+      const end = rest.search(/\n\s*- (uses|name|run):/);
+      assert.match(
+        end === -1 ? rest : rest.slice(0, end),
+        /fetch-depth: 0/,
+        `${wf}: without fetch-depth: 0 the context pack is empty on every run, and says nothing about it`,
+      );
+      i = yml.indexOf('actions/checkout', i + 1);
+    }
   }
 });

@@ -12,6 +12,10 @@ use crate::error::Result;
 use crate::generated::IfcType;
 use crate::schema_gen::{AttributeValue, DecodedEntity};
 
+#[path = "georef_parse.rs"]
+mod georef_parse;
+use georef_parse::{compound_angle_has_literal_negative_zero, compound_plane_angle_to_degrees};
+
 /// Read an `IfcPropertySingleValue.NominalValue` (index 2) as a string,
 /// unwrapping the typed-value wrapper `IFCLABEL('…')` / `IFCIDENTIFIER('…')`
 /// (parsed as a `List([type-name, value])`) that plain `get_string` doesn't
@@ -650,11 +654,33 @@ impl GeoRefExtractor {
             }
             let site = decoder.decode_by_id(*id)?;
             // IfcSite: RefLatitude (9), RefLongitude (10), RefElevation (11).
-            let latitude = Self::compound_plane_angle_to_degrees(&site, 9);
-            let longitude = Self::compound_plane_angle_to_degrees(&site, 10);
-            let (Some(latitude), Some(longitude)) = (latitude, longitude) else {
+            let latitude = compound_plane_angle_to_degrees(&site, 9);
+            let longitude = compound_plane_angle_to_degrees(&site, 10);
+            let (Some(mut latitude), Some(mut longitude)) = (latitude, longitude) else {
                 continue;
             };
+
+            // The `-0` leniency (TS parity, see `compoundPlaneAngleToDecimalDegrees`
+            // in `georef-extractor.ts`): a writer that signs a zero-magnitude
+            // component of the compound angle (e.g. `(-0, 30, 0)` for 0°30'S)
+            // survives here only via the entity's RAW record bytes.
+            // `compound_plane_angle_to_degrees` above already lost that sign —
+            // its components come from `AttributeValue::Integer(i64)`, and the
+            // shared tokenizer's `integer()` parses `-0` through
+            // `lexical_core::parse::<i64>`, which has no negative-zero
+            // representation, so the sign never reaches `AttributeValue` at
+            // all. Re-scanning the raw bytes for this one legacy-site
+            // attribute pair (RefLatitude/RefLongitude only, not the hot
+            // tokenizer) recovers it without touching the shared integer path.
+            if let Some(bytes) = decoder.get_raw_bytes(*id) {
+                if latitude >= 0.0 && compound_angle_has_literal_negative_zero(bytes, 9) {
+                    latitude = -latitude;
+                }
+                if longitude >= 0.0 && compound_angle_has_literal_negative_zero(bytes, 10) {
+                    longitude = -longitude;
+                }
+            }
+
             let elevation = site.get_float(11).unwrap_or(0.0);
 
             let mut georef = GeoReference::new();
@@ -670,35 +696,6 @@ impl GeoRefExtractor {
             return Ok(Some(georef));
         }
         Ok(None)
-    }
-
-    /// Convert an `IfcCompoundPlaneAngleMeasure` attribute (list of 3-4
-    /// integers: degrees, minutes, seconds, optional millionth-seconds) to
-    /// decimal degrees. Same sign handling as the TS parser: any negative
-    /// component makes the whole angle negative.
-    fn compound_plane_angle_to_degrees(entity: &DecodedEntity, index: usize) -> Option<f64> {
-        let list = entity.get_list(index)?;
-        let mut numbers = Vec::with_capacity(4);
-        for value in list {
-            if let Some(v) = value.as_float() {
-                numbers.push(v);
-            }
-        }
-        if numbers.len() < 3 {
-            return None;
-        }
-        let millionths = numbers.get(3).copied().unwrap_or(0.0);
-        let sign = if numbers[0] < 0.0 || numbers[1] < 0.0 || numbers[2] < 0.0 || millionths < 0.0
-        {
-            -1.0
-        } else {
-            1.0
-        };
-        let degrees = numbers[0].abs();
-        let minutes = numbers[1].abs();
-        let seconds = numbers[2].abs();
-        let millionths = millionths.abs();
-        Some(sign * (degrees + minutes / 60.0 + (seconds + millionths / 1_000_000.0) / 3600.0))
     }
 }
 

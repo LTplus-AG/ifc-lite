@@ -122,8 +122,10 @@ export const MAX_PATCH_BYTES = 600 * 1024;
  * the absence-reads-as-success shape one layer down.
  *
  * Kept short on purpose: every unreviewable row is charged at
- * PROMPT_UNREVIEWABLE_ROW_FIXED plus its path and reason, and a reason longer than the
- * measured ~102-byte worst case would quietly break that charge.
+ * every unreviewable row is charged at the bytes `unreviewableRow` actually
+ * renders, so a longer reason costs more and is charged more. It used to be a
+ * fixed constant plus the raw strings, which a reason past its measured worst
+ * case would have quietly broken; that constant is gone.
  */
 export const OMITTED_FOR_PROMPT_REASON = 'omitted: too large to fit the model prompt with the rest of this diff';
 

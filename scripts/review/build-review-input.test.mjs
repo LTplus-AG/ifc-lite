@@ -518,3 +518,77 @@ test('an omitted path with QUOTES or BACKSLASHES is charged as RENDERED', () => 
       'counting raw bytes, so the budget is being spent on characters the prompt renders larger',
   );
 });
+
+// ============ THE ARMS OF `max(keptCharge, omittedCharge)`, EACH PINNED
+//
+// Both arms are load-bearing and NEITHER was reachable by an existing test:
+// deleting either left the whole suite green while the real pipeline blew
+// through MAX_PROMPT_BYTES. The long-path test above pressures only the KEPT
+// arm, because a long path makes kept the larger of the two and its fixture
+// carries no pre-existing unreviewable rows.
+//
+// The crossover sits near a 56-byte path: BELOW it an omitted row costs MORE
+// than a kept one, because the omitted row carries a fixed ~69-byte reason
+// while a kept row is mostly the path itself. So SHORT paths exercise the
+// omitted arm -- the opposite of the intuition behind the existing fixtures.
+//
+// Both fixtures below are tuned so the CORRECT charge leaves real headroom and
+// the wrong one overruns. That tuning is the whole difficulty: a first attempt
+// used patches at MAX_PATCH_BYTES (614,400), where every patch exceeds the
+// entire prompt budget, so kept === 0 under both correct and mutated charging
+// and the assembled prompt was byte-identical. It could not fail. Patches must
+// be small enough that the freed budget is actually SPENT on kept files.
+
+test('the OMITTED arm holds when short paths make omission the dearer role', () => {
+  // Mutation-measured: correct 376,363 bytes (13,637 under the ceiling);
+  // charging the kept rate only admits 129 files instead of 48 and assembles
+  // 533,990 -- 143,990 OVER.
+  const candidates = Array.from({ length: 3000 }, (_, i) => ({
+    path: `s/${String(i).padStart(4, '0')}.ts`,
+    patch: 'x'.repeat(2000),
+  }));
+  const { kept, omitted } = fitFilesToPrompt(candidates, []);
+  assert.ok(kept.length > 0, 'the fixture must keep something, or the budget is never spent');
+  assert.ok(omitted.length > 0, 'the fixture must actually force omissions');
+
+  const bytes = Buffer.byteLength(buildPrompt(readFileSync(join(HERE, 'rubric.md'), 'utf8'), {
+    headSha: 'a'.repeat(40),
+    files: kept,
+    unreviewable: omitted.map((c) => ({ path: c.path, reason: OMITTED_FOR_PROMPT_REASON })),
+  }), 'utf8');
+  assert.ok(
+    bytes <= MAX_PROMPT_BYTES,
+    `short-path mass omission assembled ${bytes} bytes, over the ${MAX_PROMPT_BYTES} ceiling by ${bytes - MAX_PROMPT_BYTES}`,
+  );
+});
+
+test('PRE-EXISTING unreviewable rows are charged before the candidates are', () => {
+  // The other unpinned arm: the `for (const u of unreviewable)` debit. Deleted
+  // files arrive as unreviewable rather than as candidates, so nothing else
+  // charges them. Mutation-measured: correct keeps 102 files for 374,740 bytes
+  // (15,260 under); removing the debit keeps 172 and assembles 511,804 --
+  // 121,804 OVER.
+  const unreviewable = Array.from({ length: 800 }, (_, i) => ({
+    path: `packages/deep/nested/mod/deleted-${i}-${'x'.repeat(100)}.ts`,
+    reason: 'file deleted in this diff',
+  }));
+  const candidates = Array.from({ length: 200 }, (_, i) => ({
+    path: `packages/p/keep-${i}.ts`,
+    patch: 'y'.repeat(2000),
+  }));
+  const { kept, omitted } = fitFilesToPrompt(candidates, unreviewable);
+  assert.ok(kept.length > 0, 'the fixture must keep something, or the budget is never spent');
+
+  const bytes = Buffer.byteLength(buildPrompt(readFileSync(join(HERE, 'rubric.md'), 'utf8'), {
+    headSha: 'a'.repeat(40),
+    files: kept,
+    unreviewable: [
+      ...unreviewable,
+      ...omitted.map((c) => ({ path: c.path, reason: OMITTED_FOR_PROMPT_REASON })),
+    ],
+  }), 'utf8');
+  assert.ok(
+    bytes <= MAX_PROMPT_BYTES,
+    `pre-existing unreviewable rows assembled ${bytes} bytes, over the ${MAX_PROMPT_BYTES} ceiling by ${bytes - MAX_PROMPT_BYTES}`,
+  );
+});

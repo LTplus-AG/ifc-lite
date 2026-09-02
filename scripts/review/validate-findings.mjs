@@ -585,9 +585,24 @@ const MAX_PATH_CHARS = 500;
  * A path a poster will render: defanged like a label, but kept WHOLE -- its
  * entire job is naming a real file the reviewer never read. If a hostile path
  * does exceed the cap, the truncation says so and stays unambiguous: the tail
- * carries the cut length and a digest of the full sanitised string, so two
- * distinct paths cannot render identically the way the 60-char slice made
+ * carries the cut length and a digest of the full sanitised string, so
+ * TRUNCATION cannot collapse two paths the way the 60-char slice made
  * `property-table.tsx` and `property-header.tsx` collapse into one.
+ *
+ * That is the whole guarantee, and it is narrower than "distinct paths always
+ * render distinctly". DEFANGING is lossy and runs BEFORE the digest, so paths
+ * differing only in what defanging removes still collide -- measured, all legal
+ * git paths: `dir/a<!--x-->b.ts` vs `dir/ab.ts`; two spaces vs one; a tab vs a
+ * space; a leading space vs none; `IFC-LITE-REVIEW.ts` vs the U+2011
+ * non-breaking-hyphen lookalike. Sub-cap paths get no digest at all, so nothing
+ * disambiguates them. A reader can therefore still see `omitted=2` above two
+ * identical-looking entries.
+ *
+ * Accepted rather than fixed: defanging is load-bearing (it is what stops a
+ * path forging a marker) and it must stay lossy to do that job. The cost is
+ * cosmetic -- a duplicate-looking line in an advisory list -- and the
+ * alternative, digesting the raw path, would print the very bytes defanging
+ * exists to remove.
  *
  * @param {unknown} text
  */

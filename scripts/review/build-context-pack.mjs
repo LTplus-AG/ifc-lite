@@ -167,9 +167,14 @@ export function promptEnvelopeBytes(input) {
     total += 128;
     for (const u of unreviewable) total += rendered(unreviewableRow(u)) + 1;
   }
-  // Only for sections that actually render. An empty input must charge exactly
-  // PROMPT_BASE_OVERHEAD_BYTES -- a test pins that, and it is the right contract:
-  // a prompt with no files renders no file count to pay for.
+  // Only for sections that actually render, because an empty input must charge
+  // exactly PROMPT_BASE_OVERHEAD_BYTES and a test pins that.
+  //
+  // NOT because a zero-file prompt renders no count -- it does render one
+  // ("EXACTLY these 0 path(s)"), verified by running buildPrompt. That single
+  // uncharged byte only arises on an input `buildInput` already refuses with
+  // NO_FILES. The contract is right; an earlier version of this comment gave
+  // the wrong reason for it.
   if ((input?.files ?? []).length > 0) total += countDigits(input.files.length);
   if (unreviewable.length > 0) total += countDigits(unreviewable.length);
   return total;

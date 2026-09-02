@@ -1100,6 +1100,7 @@
     "isSpatialStructureTypeName: function",
     "isStoreyLikeSpatialType: function",
     "isStoreyLikeSpatialTypeName: function",
+    "linearToSrgb: function",
     "loadEpsgIndex: function",
     "loadEpsgIndexByCode: function",
     "loadEpsgIndexDatasetVersion: function",

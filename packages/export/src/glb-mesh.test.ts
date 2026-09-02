@@ -17,6 +17,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { linearToSrgb } from '@ifc-lite/data';
 import { parseGLB, extractGlbMapping, parseGLBToMeshData, countGlbMeshes } from './glb.js';
 
 const FLOAT = 5126;
@@ -145,16 +146,28 @@ describe('parseGLBToMeshData', () => {
     expect(parseGLBToMeshData(buildMeshGlb())[0].expressId).toBe(0);
   });
 
-  it('resolves the material baseColorFactor including a non-1 alpha', () => {
+  it('resolves the material baseColorFactor including a non-1 alpha, decoding linear RGB to sRGB', () => {
     // Alpha 0.5: an opaque fixture makes the alpha slot an identity against
-    // the hard-coded 1 fallback and cannot see it being dropped.
+    // the hard-coded 1 fallback and cannot see it being dropped. baseColorFactor
+    // is linear-light per the glTF 2.0 spec (the exporter writes sRGB decoded
+    // to linear); RGB must come back through `linearToSrgb`, alpha untouched.
     const meshes = parseGLBToMeshData(buildMeshGlb({ material: 0, expressId: 42 }));
-    expect(meshes[0].color).toEqual([0.2, 0.4, 0.6, 0.5]);
+    expect(meshes[0].color).toEqual([
+      linearToSrgb(0.2),
+      linearToSrgb(0.4),
+      linearToSrgb(0.6),
+      0.5,
+    ]);
   });
 
-  it('defaults alpha to 1 for an RGB-only baseColorFactor', () => {
+  it('defaults alpha to 1 for an RGB-only baseColorFactor, decoding linear RGB to sRGB', () => {
     const meshes = parseGLBToMeshData(buildMeshGlb({ material: 1, expressId: 42 }));
-    expect(meshes[0].color).toEqual([0.1, 0.3, 0.5, 1]);
+    expect(meshes[0].color).toEqual([
+      linearToSrgb(0.1),
+      linearToSrgb(0.3),
+      linearToSrgb(0.5),
+      1,
+    ]);
   });
 
   it('falls back to the neutral grey default when the primitive names no material', () => {

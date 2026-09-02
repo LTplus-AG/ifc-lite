@@ -57,6 +57,18 @@ function matchesIfc2x3Mapping(
 
 /**
  * Check if an entity matches an entity facet
+ *
+ * Deliberately exact-match, not subtype-aware: buildingSMART's IDS spec is
+ * explicit that entity facet matching has no automatic inheritance —
+ * `Documentation/UserManual/entity-facet.md` (buildingSMART/IDS) says "There
+ * is no automatic inheritance in IDS entity facet interpretation. In other
+ * words, all the entities need to be listed explicitly. […] to create a
+ * requirement applicable to all IfcElement objects, one should list all
+ * IfcElement sub-entities, such as IfcWall, IfcDoor, etc. Also, the
+ * IfcElement should not be listed, as it is an abstract entity […] and would
+ * not appear in a model." Do not "fix" this into a descendant-closure match
+ * the way `@ifc-lite/parser`'s `expandTypes` (a different, non-IDS query
+ * surface) does — that would make this checker non-conformant.
  */
 export function checkEntityFacet(
   facet: IDSEntityFacet,

@@ -16,13 +16,14 @@
  * they are written against.
  */
 
-import { RelationshipType } from '@ifc-lite/data';
+import { RelationshipType, expandTypeNamesToDescendants } from '@ifc-lite/data';
 
 /**
  * IFC4 subtype map — parent types to their StandardCase/ElementedCase
- * subtypes. In IFC4 many element types have `*StandardCase` subtypes that the
- * parser stores under the full type name, so `byType('IfcWall')` has to look
- * for `IfcWallStandardCase` as well to answer what the caller meant.
+ * subtypes, kept for backward compatibility (`@ifc-lite/cli`'s
+ * `validate-subtypes.test.ts` reads this table directly as ground truth) and
+ * as a fixed, hand-legible cross-check of the schema-driven expansion below.
+ * `expandTypes` no longer walks this table itself — see its doc comment.
  *
  * Keys and values are UPPERCASE because `entityIndex.byType` is keyed by the
  * raw STEP type name (e.g. `IFCWALLSTANDARDCASE`).
@@ -44,20 +45,26 @@ export const IFC_SUBTYPES: Record<string, string[]> = {
 };
 
 /**
- * Expand a caller's type list to include the known IFC subtypes, uppercasing
- * PascalCase input (`'IfcWall'`) for the `entityIndex` lookup.
+ * Expand a caller's type list to every schema-declared descendant (itself
+ * plus every type that has it as an ancestor, direct or indirect), so
+ * `byType('IfcBuildingElement')` finds the concrete leaves a model actually
+ * contains instead of matching nothing — `IfcBuildingElement`/`IfcElement`
+ * are abstract EXPRESS supertypes, never a literal STEP entity type, so a
+ * caller asking for one always meant its subtypes.
+ *
+ * Delegates to `@ifc-lite/data`'s `expandTypeNamesToDescendants`, the single
+ * schema-authority resolver every `byType()` backend now shares — this used
+ * to be a fixed nine-entry `IFC_SUBTYPES` table (still above, unused here)
+ * that only aliased `*StandardCase`/`*ElementedCase` pairs and silently
+ * dropped every abstract-supertype query.
+ *
+ * `schemaVersion` should be the queried model's own `store.schemaVersion` —
+ * descendant sets differ by IFC version (e.g. IFC4X3 renamed
+ * `IfcBuildingElement` to `IfcBuiltElement`). Omitted/unrecognized falls back
+ * to IFC4, matching what the old hardcoded table implicitly assumed.
  */
-export function expandTypes(types: string[]): string[] {
-  const result: string[] = [];
-  for (const type of types) {
-    const upper = type.toUpperCase();
-    result.push(upper);
-    const subtypes = IFC_SUBTYPES[upper];
-    if (subtypes) {
-      for (const sub of subtypes) result.push(sub);
-    }
-  }
-  return result;
+export function expandTypes(types: string[], schemaVersion?: string): string[] {
+  return expandTypeNamesToDescendants(types, schemaVersion);
 }
 
 /**

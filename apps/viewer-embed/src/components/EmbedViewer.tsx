@@ -18,6 +18,7 @@ import { ViewportOverlays } from '@/components/viewer/ViewportOverlays';
 import { useIfc } from '@/hooks/useIfc';
 import { useWebGPU } from '@/hooks/useWebGPU';
 import { useViewerStore } from '@/store';
+import { useModelViewGeometry } from './useModelViewGeometry.js';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { parseUrlParams, assertFetchableUrl } from '../bridge/urlParams.js';
 import { initBridge, destroyBridge, emitEvent } from '../bridge/handler.js';
@@ -25,7 +26,7 @@ import { aroundDestructiveLoad } from '../bridge/cameraIntent.js';
 import { mountBridgeLifecycle, unmountBridgeLifecycle } from '../bridge/lifecycle.js';
 import { useEmbedBridgeEvents } from './useEmbedBridgeEvents.js';
 import { useEmbedPostLoad } from './useEmbedPostLoad.js';
-import { useEmbedUrlParams, toHiddenTypeSet, isTypeHidden } from './useEmbedUrlParams.js';
+import { useEmbedUrlParams, toHiddenTypeSet } from './useEmbedUrlParams.js';
 import { useEmbedRuntimeOverlays } from './useEmbedRuntimeOverlays.js';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 
@@ -251,33 +252,18 @@ export function EmbedViewer() {
     return geometryResult;
   }, [storeModels, geometryResult, modelIdToIndex]);
 
-  // Filter by type visibility, plus the host's ?hideTypes= list. The latter
-  // takes ARBITRARY IFC class names (that is what the SDK's `hideTypes?:
-  // string[]` already ships as accepting), so it cannot go through
-  // `typeVisibility`, whose six semantic toggles are a fixed set — it is a
-  // case-folded membership test in this same pass instead.
+  // Then type visibility, plus the host's ?hideTypes=: ARBITRARY IFC class
+  // names (the SDK ships `hideTypes?: string[]`), so not a `typeVisibility`
+  // toggle but a case-folded membership test merged into that same filter pass.
+  // Then type visibility, plus the host's ?hideTypes=: ARBITRARY IFC class
+  // names (the SDK ships `hideTypes?: string[]`), so not a `typeVisibility`
+  // toggle but a case-folded membership test merged into that same filter pass.
   const hiddenTypes = useMemo(() => toHiddenTypeSet(hideTypes), [hideTypes]);
-  const filteredGeometry = useMemo(() => {
-    if (!mergedGeometryResult?.meshes) return null;
-    let meshes = mergedGeometryResult.meshes;
-
-    meshes = meshes.filter(mesh => {
-      if (isTypeHidden(mesh.ifcType, hiddenTypes)) return false;
-      if (mesh.ifcType === 'IfcSpace' && !typeVisibility.spaces) return false;
-      if (mesh.ifcType === 'IfcOpeningElement' && !typeVisibility.openings) return false;
-      if (mesh.ifcType === 'IfcSite' && !typeVisibility.site) return false;
-      return true;
-    });
-
-    meshes = meshes.map(mesh => {
-      if (mesh.ifcType === 'IfcSpace' || mesh.ifcType === 'IfcOpeningElement') {
-        return { ...mesh, color: [mesh.color[0], mesh.color[1], mesh.color[2], Math.min(mesh.color[3] * 0.3, 0.3)] as [number, number, number, number] };
-      }
-      return mesh;
-    });
-
-    return meshes;
-  }, [mergedGeometryResult, typeVisibility, hiddenTypes]);
+  const { geometry: filteredGeometry, contentVersion } = useModelViewGeometry(
+    mergedGeometryResult,
+    hiddenTypes,
+    typeVisibility,
+  );
 
   // Compute isolation set
   const computedIsolatedIds = useMemo(() => {
@@ -387,6 +373,7 @@ export function EmbedViewer() {
         <div style={{ position: 'absolute', inset: 0 }}>
           <Viewport
             geometry={filteredGeometry}
+            geometryContentVersion={contentVersion}
             coordinateInfo={mergedGeometryResult?.coordinateInfo}
             computedIsolatedIds={computedIsolatedIds}
             modelIdToIndex={modelIdToIndex}

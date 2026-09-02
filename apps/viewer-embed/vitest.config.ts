@@ -16,6 +16,12 @@ export default defineConfig({
   resolve: {
     alias: {
       '@ifc-lite/embed-protocol': path.resolve(__dirname, '../../packages/embed-protocol/src/index.ts'),
+      // Matches vite.config.ts:29 and tsconfig.json:11, which both point this at
+      // `src`. Without it the suite resolves through node_modules to
+      // packages/geometry/dist, so the tests need a prior build and can run
+      // against a stale artefact. `@/lib/type-view-visibility` made this the
+      // first runtime dependency the embed tests have on the geometry package.
+      '@ifc-lite/geometry': path.resolve(__dirname, '../../packages/geometry/src'),
       '@': path.resolve(__dirname, '../viewer/src'),
     },
   },

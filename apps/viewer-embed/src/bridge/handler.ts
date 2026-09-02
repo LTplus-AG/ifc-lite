@@ -445,8 +445,10 @@ async function handleCommand(type: InboundCommandType, data: unknown, requestId?
 
     case 'SET_TYPE_VISIBILITY': {
       const payload = data as InboundPayloads['SET_TYPE_VISIBILITY'];
-      for (const key of TYPE_VISIBILITY_FLAG_KEYS) { // every flag the protocol declares, so a toggle added to store + protocol needs no edit here
-        if (payload[key] !== undefined && state.typeVisibility[key] !== payload[key]) state.toggleTypeVisibility(key); // omitted flags are left alone; toggleTypeVisibility FLIPS, so only a differing flag may be sent to it
+      // Every flag the protocol declares. `toggleTypeVisibility` FLIPS rather than
+      // assigns, so a flag is only passed when the request actually changes it.
+      for (const key of TYPE_VISIBILITY_FLAG_KEYS) {
+        if (payload[key] !== undefined && state.typeVisibility[key] !== payload[key]) state.toggleTypeVisibility(key);
       }
       if (requestId) emitToParent(createResponse(requestId));
       return;

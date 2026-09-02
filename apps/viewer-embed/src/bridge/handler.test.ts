@@ -12,7 +12,7 @@
  * silent relaxation of the boundary fails the suite.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, expectTypeOf } from 'vitest';
 
 // The bridge only needs one value from the viewer store barrel; importing the
 // real barrel would drag in zustand + renderer + wasm. Mirror the real
@@ -998,22 +998,12 @@ describe('selection and visibility commands', () => {
     expect([...TYPE_VISIBILITY_FLAG_KEYS].sort())
       .toEqual(Object.keys(TYPE_VISIBILITY_SEMANTIC_DEFAULTS).sort());
 
-    // Compile-time half, checked by scripts/typecheck-tests.mjs (#2457).
-    // Kills: a protocol key the store does NOT have. The set equality above
-    // already catches that direction, and handler.ts is a third guard, since it
-    // indexes TypeVisibility by the key and would not compile. This is the
-    // cheapest of the three to read when one of them fires.
-    //
-    // The two expects below cannot fail. They exist so the type-only bindings
-    // above are used rather than stripped; the assertions that bite are the
-    // types themselves and the set equality.
-    const protocolKeysAreStoreKeys: readonly (keyof TypeVisibility)[] = TYPE_VISIBILITY_FLAG_KEYS;
-    const noStoreKeyOmitted: Exclude<
-      keyof TypeVisibility,
-      (typeof TYPE_VISIBILITY_FLAG_KEYS)[number]
-    > extends never ? true : never = true;
-    expect(protocolKeysAreStoreKeys).toHaveLength(Object.keys(TYPE_VISIBILITY_SEMANTIC_DEFAULTS).length);
-    expect(noStoreKeyOmitted).toBe(true);
+    // Compile-time half, checked by scripts/typecheck-tests.mjs (#2457). Kills a
+    // protocol key the store lacks AND a store key the protocol lacks, in one
+    // assertion, because type equality is checked both ways. The set equality
+    // above already catches both at runtime, and handler.ts is a third guard,
+    // since it indexes TypeVisibility by the key and would not compile.
+    expectTypeOf<(typeof TYPE_VISIBILITY_FLAG_KEYS)[number]>().toEqualTypeOf<keyof TypeVisibility>();
   });
 
   it('SET_THEME forwards the theme', async () => {

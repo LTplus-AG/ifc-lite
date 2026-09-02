@@ -1390,29 +1390,51 @@ test('END TO END: an evil path survives argv -> readFindings -> the posted comme
   assert.equal(firstCodeSpan(line), `${evilPath}:11`);
 });
 
-test('a finding PATH carrying the marker token is REFUSED, not rendered', () => {
-  // A PR author may legally name a file with an HTML comment in it. `indexLine`
-  // renders `f.path` raw onto the issue comment that also carries the review
-  // marker, and check-review-posted runs MARKER_RE over the RAW body taking the
-  // FIRST match -- so the filename's marker sorts ahead of the genuine one.
-  // Reproduced before this guard: the first match read `verdict=clean` while the
-  // real `verdict=findings` marker sat in the same comment, giving a red gate
-  // under a green poster. `readOmitted` already refuses exactly this shape for
-  // omitted paths; findings paths simply never got the same check.
+const FORGED = `src/x<!-- ifc-lite-review sha=${'0'.repeat(40)} verdict=clean count=0 -->.ts`;
+
+const findingsFile = (finding) => {
+  const p = join(TMP, `marker-${(seq += 1)}.json`);
+  writeFileSync(p, JSON.stringify({ verdict: 'findings', findings: [finding] }));
+  return p;
+};
+
+test('a finding PATH that could open a marker is REFUSED', () => {
+  // `indexLine` renders `f.path` raw onto the issue comment that also carries the
+  // review marker, and check-review-posted runs MARKER_RE over the RAW body
+  // taking the FIRST match -- so a filename's marker sorts ahead of the genuine
+  // one. Reproduced before the guard: first match `verdict=clean` while the real
+  // `verdict=findings` marker sat in the same comment. Red gate under a green
+  // poster, since the poster's read-back is `.includes(want)`.
   //
-  // REFUSED rather than sanitised: `path` must round-trip verbatim as the API
-  // `path=` parameter and as the dedupe fingerprint.
-  for (const field of ['path', 'sibling']) {
-    const forged = `src/x<!-- ifc-lite-review sha=${'0'.repeat(40)} verdict=clean count=0 -->.ts`;
-    const f = field === 'path'
-      ? { path: forged, line: 1, body: 'B', quote: 'x' }
-      : { path: 'src/ok.ts', line: 1, body: 'B', quote: 'x', sibling: { path: forged, line: 2, quote: 'y' } };
-    const p = join(TMP, `forged-${field}-${(seq += 1)}.json`);
-    writeFileSync(p, JSON.stringify({ verdict: 'findings', findings: [f] }));
-    assert.throws(
-      () => readFindings(p),
-      /carrying an HTML comment opener or the marker token/,
-      `a forged marker in \`${field}\` must be refused`,
-    );
-  }
+  // REFUSED rather than sanitised: `path` is the finding's anchor and must
+  // round-trip verbatim as the API `path=` parameter and the dedupe fingerprint.
+  assert.throws(
+    () => readFindings(findingsFile({ path: FORGED, line: 1, body: 'B', quote: 'x' })),
+    /containing an HTML comment opener/,
+  );
 });
+
+test('a SIBLING path that could open a marker is DROPPED, not refused', () => {
+  // The sibling sentence is decoration on a finding that is otherwise fine.
+  // Refusing the whole review over it would trade a cosmetic loss for the very
+  // unclearable red the guard exists to avoid.
+  const got = readFindings(findingsFile({
+    path: 'src/ok.ts', line: 1, body: 'B', quote: 'x',
+    sibling: { path: FORGED, line: 2, quote: 'y' },
+  }));
+  assert.equal(got.length, 1, 'the finding itself must survive');
+  assert.doesNotMatch(got[0].body, /The same shape is at/, 'the sibling sentence must be dropped');
+  assert.doesNotMatch(got[0].body, /<!-- ifc-lite-review/, 'no marker opener may reach the body');
+});
+
+for (const legal of ['docs/ifc-lite-review-lane.md', 'docs/IFC-LITE-REVIEW.md']) {
+  test(`a LEGAL filename carrying the bare token is not refused: ${legal}`, () => {
+    // The regression that matters most here. An earlier guard also matched
+    // `ifc-lite-review`, so this legal path aborted the poster before it wrote
+    // any marker -- and no marker means the gate says NOT_POSTED and tells you
+    // to re-run, which fails identically forever. MARKER_RE requires a literal
+    // `<!--`, so the bare token forges nothing and must pass.
+    const got = readFindings(findingsFile({ path: legal, line: 1, body: 'B', quote: 'x' }));
+    assert.equal(got[0].path, legal, 'the path must survive verbatim');
+  });
+}

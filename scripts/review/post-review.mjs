@@ -296,8 +296,6 @@ export function readFindings(path) {
     if (typeof f.path !== 'string' || f.path.trim() === '') {
       throw new PostReviewError('BAD_FINDING', `${where} has no \`path\`. GitHub would reject it with a 422.`);
     }
-    // The SAME refusal `readOmitted` applies to omitted paths, and for the same
-    // reason -- it was simply never applied to the paths that carry findings.
     // `indexLine` renders `f.path` raw onto the issue comment that also carries
     // the review marker, and check-review-posted runs `MARKER_RE.exec` over the
     // RAW body and takes the FIRST match. A PR author may legally name a file
@@ -308,24 +306,23 @@ export function readFindings(path) {
     // own `.includes(want)` read-back still says REVIEW_POSTED. Green poster,
     // red gate, and every re-run posts another poisoned summary.
     //
-    // REFUSED, never sanitised: `path` must round-trip verbatim as the API
-    // `path=` parameter and as the dedupe fingerprint, so rewriting it here
-    // would break comment placement instead.
-    //
-    // Not a forged PASS -- the forged sha cannot equal the head that contains
-    // the filename -- but an unclearable red a contributor can trigger.
-    for (const [field, value] of [
-      ['path', f.path],
-      ['sibling.path', f.sibling?.path],
-    ]) {
-      if (typeof value === 'string' && /<!--|ifc-lite-review/i.test(value)) {
-        throw new PostReviewError(
-          'BAD_FINDING',
-          `${where} has a \`${field}\` carrying an HTML comment opener or the marker token. Rendering ` +
-            'it would let a PR-chosen file path forge a review marker through our own identity. REMEDY: ' +
-            'fix the sanitisation in validate-findings, which writes this field.',
-        );
-      }
+    // MATCHED ON `<!--` ALONE, deliberately. `MARKER_RE` and the `sawUnparseable`
+    // probe both require a literal `<!--`, so the bare token forges nothing. An
+    // earlier version of this guard also refused `ifc-lite-review`, which made
+    // a legal filename like `docs/ifc-lite-review-lane.md` abort the poster
+    // before it wrote any marker -- no marker means the gate reports NOT_POSTED
+    // and tells you to re-run, and the re-run fails identically. That is the
+    // very unclearable red this guard exists to prevent, re-created by the
+    // guard. Narrow to the character sequence that can actually open a marker.
+    if (typeof f.path === 'string' && f.path.includes('<!--')) {
+      throw new PostReviewError(
+        'BAD_FINDING',
+        `${where} has a \`path\` containing an HTML comment opener. Rendered onto the summary it would ` +
+          'let a PR-chosen filename forge a review marker ahead of the genuine one. REMEDY: rename the ' +
+          'file, or drop this finding. NOT a sanitisation bug -- `path` must round-trip verbatim as the ' +
+          'API `path=` parameter and as the dedupe fingerprint, so rewriting it here would misplace the ' +
+          'comment instead.',
+      );
     }
     if (!Number.isInteger(f.line) || f.line < 1) {
       throw new PostReviewError(
@@ -356,7 +353,13 @@ export function readFindings(path) {
       // rendered it; it did not.
       body:
         `${f.body}` +
-        (f.sibling?.path && Number.isInteger(f.sibling.line)
+        // A sibling whose path could open a marker is DROPPED, not refused. The
+        // sibling sentence is decoration on a finding that is otherwise fine, so
+        // refusing the whole review over it would trade a cosmetic loss for the
+        // unclearable red this guard exists to avoid. `f.path` cannot be dropped
+        // the same way -- it IS the finding's anchor -- which is why that one
+        // refuses above.
+        (f.sibling?.path && !f.sibling.path.includes('<!--') && Number.isInteger(f.sibling.line)
           ? `\n\nThe same shape is at ${inlineCode(`${f.sibling.path}:${f.sibling.line}`)}, which this PR does not change.`
           : '') +
         `\n\n<!-- ifc-lite-finding v=1 class=${cls.replace(/[^a-z0-9-]/gi, '-')} -->`,

@@ -34,6 +34,7 @@ import {
   MAX_BODY_CHARS,
   MAX_FINDINGS,
   SENTINEL,
+  addedLinesMatching,
   lineIsAdded,
   quotableLines,
   quoteAppearsIn,
@@ -43,6 +44,7 @@ import {
   REASONS,
   validate,
 } from './validate-findings.mjs';
+import { addedLineRanges } from './build-review-input.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, 'validate-findings.mjs');
@@ -72,15 +74,23 @@ const PATH_A = 'packages/x/y.ts';
 const PATH_B = 'packages/x/z.ts';
 const UNREVIEWABLE = 'big/generated.ts';
 
+// DERIVED, not hand-picked. Before #3658 these ranges were arbitrary numbers
+// disconnected from PATCH_A/PATCH_B's real content -- which is exactly how the
+// bug this file now guards against got past a full test suite: `lineIsAdded`
+// only ever saw the range, never the patch, so nothing here could have noticed
+// a claimed line that did not match the claimed quote. Computing the ranges
+// from the same patch the fixture ships makes that impossible to reintroduce.
 const INPUT = {
   headSha: SHA,
   files: [
-    { path: PATH_A, patch: PATCH_A, addedLineRanges: [[10, 14], [22, 22]] },
-    { path: PATH_B, patch: PATCH_B, addedLineRanges: [[3, 5]] },
+    { path: PATH_A, patch: PATCH_A, addedLineRanges: addedLineRanges(PATCH_A) },
+    { path: PATH_B, patch: PATCH_B, addedLineRanges: addedLineRanges(PATCH_B) },
   ],
   unreviewable: [{ path: UNREVIEWABLE, reason: 'no patch returned; too large' }],
 };
 
+// PATCH_A's hunk opens at new-file line 1: 1 is the context line, 2-5 are the
+// four added lines, 6 is the trailing context. PROOF_LINE is the first of them.
 const PROOF_LINE = 'const scaled = n * FACTOR;';
 
 /** A response that passes everything, so each test can break exactly one thing. */
@@ -95,7 +105,7 @@ const response = (patch = {}) => ({
 
 const finding = (patch = {}) => ({
   path: PATH_A,
-  line: 11,
+  line: 2, // the real new-file line of PROOF_LINE -- see the comment above it
   quote: PROOF_LINE,
   body: 'FACTOR is not defined in this scope.',
   class: 'correctness',
@@ -153,7 +163,7 @@ test('PASS: a findings verdict with one valid finding', () => {
   assert.equal(r.code, 0, r.out);
   assert.equal(r.doc.findings.length, 1);
   assert.equal(r.doc.findings[0].path, PATH_A);
-  assert.equal(r.doc.findings[0].line, 11);
+  assert.equal(r.doc.findings[0].line, 2);
 });
 
 // ========================================================== 1. strict JSON only
@@ -376,10 +386,10 @@ test('THE ASYMMETRY: 3 of 4 valid findings still delivers the 3', () => {
     response({
       verdict: 'findings',
       findings: [
-        finding({ line: 10 }),
+        finding(),
         finding({ path: 'packages/x/never-sent.ts' }),
-        finding({ line: 12, quote: 'cache.set(n, scaled);' }),
-        finding({ line: 22, quote: 'return scaled;' }),
+        finding({ line: 4, quote: 'cache.set(n, scaled);' }),
+        finding({ line: 5, quote: 'return scaled;' }),
       ],
     }),
   );
@@ -393,15 +403,20 @@ test('THE ASYMMETRY: 3 of 4 valid findings still delivers the 3', () => {
 test('each drop reason fires on its own, and the same finding passes once fixed', () => {
   const cases = [
     ['path never sent', { path: 'packages/x/never-sent.ts' }, /never sent to the model/],
-    ['quote not in the patch', { quote: 'const invented = true;' }, /not a line of/],
+    ['quote not in the patch at all', { quote: 'const invented = true;' }, /not the text of any added line/],
     // `}` IS a line of this patch. It is dropped by the length floor alone, which
     // is what separates this case from the one above -- a quote that fails the
     // floor and the patch at once cannot tell you which check did the work.
-    ['quote below the floor', { quote: '}' }, /not a line of/],
+    ['quote below the floor', { quote: '}' }, /under 3 characters/],
     ['line outside every added range', { line: 15 }, /not inside an added range/],
-    ['line below the first range', { line: 9 }, /not inside an added range/],
+    ['line below the first range', { line: 1 }, /not inside an added range/],
     ['line not an integer', { line: '11' }, /not inside an added range/],
     ['line fractional', { line: 11.5 }, /not inside an added range/],
+    // #3658: THE COUPLING CHECK. A REAL quote, in the added-line-range, but
+    // anchored to a DIFFERENT added line than the one it actually is. The old
+    // independent checks both passed this; the message must name the line the
+    // quote actually sits on so the drop is diagnosable.
+    ['quote real, but anchored to the wrong added line', { line: 4, quote: PROOF_LINE }, /it IS the text of added line\(s\) 2 instead/],
     ['empty body', { body: '   ' }, /says nothing/],
     ['not an object', null, /not an object/],
   ];
@@ -409,11 +424,81 @@ test('each drop reason fires on its own, and the same finding passes once fixed'
     const bad = patch === null ? 'nope' : finding(patch);
     // Paired with a VALID finding so the run does not end in VALIDATION_EMPTY:
     // this test is about the DROP, and a fatal exit would hide which happened.
-    const r = run(response({ verdict: 'findings', findings: [finding({ line: 10 }), bad] }));
+    const r = run(response({ verdict: 'findings', findings: [finding(), bad] }));
     assert.equal(r.code, 0, `${name}: ${r.out}`);
     assert.equal(r.doc.findings.length, 1, `${name} should have been dropped: ${r.out}`);
     assert.match(r.out, why, name);
   }
+});
+
+// ==================================== #3658: the quote/line coupling, on its own
+
+// A patch whose two added lines are IDENTICAL text. Before #3658 this was
+// exactly the case `quoteAppearsIn` could not disambiguate -- "the quote
+// appears somewhere" says nothing about WHICH somewhere.
+const DUP_PATCH = ['@@ -1,2 +1,5 @@', ' function f() {', '+  retry();', '+  retry();', '+  done();', ' }'].join(
+  '\n',
+);
+const DUP_PATH = 'packages/x/dup.ts';
+const DUP_INPUT = {
+  headSha: SHA,
+  files: [{ path: DUP_PATH, patch: DUP_PATCH, addedLineRanges: addedLineRanges(DUP_PATCH) }],
+  unreviewable: [],
+};
+const dupResponse = (findings) => ({
+  verdict: 'findings',
+  files_reviewed: [DUP_PATH],
+  riskiest_change: { path: DUP_PATH, quoted_line: 'retry();' },
+  findings,
+  end: SENTINEL,
+});
+
+test('addedLinesMatching finds BOTH occurrences of a repeated added line', () => {
+  assert.deepEqual(addedLinesMatching(DUP_PATCH, 'retry();'), [2, 3]);
+  assert.deepEqual(addedLinesMatching(DUP_PATCH, '  retry();  '), [2, 3], 'trimmed the same as quotableLines');
+  assert.deepEqual(addedLinesMatching(DUP_PATCH, 'done();'), [4]);
+  assert.deepEqual(addedLinesMatching(DUP_PATCH, 'never appears'), []);
+  // A context line matching the quote text is NOT a match -- only added lines
+  // count, same as `lineIsAdded` would refuse it anyway.
+  assert.deepEqual(addedLinesMatching(DUP_PATCH, 'function f() {'), []);
+});
+
+test('CONTROL: a repeated quote anchored at EITHER of its real lines is valid', () => {
+  const r = run(
+    dupResponse([
+      { path: DUP_PATH, line: 2, quote: 'retry();', body: 'First call.', class: 'nit' },
+      { path: DUP_PATH, line: 3, quote: 'retry();', body: 'Second call.', class: 'nit' },
+    ]),
+    { input: DUP_INPUT },
+  );
+  assert.equal(r.code, 0, r.out);
+  assert.equal(r.doc.findings.length, 2);
+  assert.deepEqual(r.doc.findings.map((f) => f.line).sort(), [2, 3]);
+});
+
+test('DISAGREE: a repeated quote anchored at a line it does NOT occupy is dropped, loudly', () => {
+  // `retry();` is real and it IS an added line -- just not line 4, which is
+  // `done();`. The old independent checks both passed this (quote is somewhere
+  // in the patch; line 4 is inside the added range); the coupled check must not.
+  const r = run(
+    dupResponse([{ path: DUP_PATH, line: 4, quote: 'retry();', body: 'Wrong anchor.', class: 'nit' }]),
+    { input: DUP_INPUT },
+  );
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /VALIDATION_EMPTY/);
+  assert.match(r.out, /DROPPED findings\[0\]/);
+  // Loud, not a bare refusal: the log names where the quote actually IS.
+  assert.match(r.out, /it IS the text of added line\(s\) 2, 3 instead/);
+  assert.equal(r.wrote, false);
+});
+
+test('ABSENT: a quote that matches no added line anywhere is dropped, not guessed at', () => {
+  const r = run(
+    dupResponse([{ path: DUP_PATH, line: 2, quote: 'retryLater();', body: 'Invented.', class: 'nit' }]),
+    { input: DUP_INPUT },
+  );
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /not the text of any added line/);
 });
 
 test('the range boundaries are INCLUSIVE at both ends, and one past each is out', () => {
@@ -465,7 +550,7 @@ test('a CLEAN verdict with zero findings is NOT VALIDATION_EMPTY', () => {
 // ===================================================================== 7. cap
 
 test(`more than ${MAX_FINDINGS} valid findings keeps the first ${MAX_FINDINGS} and says so`, () => {
-  const many = Array.from({ length: 8 }, (_, i) => finding({ line: 10, body: `finding number ${i}` }));
+  const many = Array.from({ length: 8 }, (_, i) => finding({ body: `finding number ${i}` }));
   const r = run(response({ verdict: 'findings', findings: many }));
   assert.equal(r.code, 0, r.out);
   assert.equal(r.doc.findings.length, MAX_FINDINGS);
@@ -479,7 +564,7 @@ test('the cap runs AFTER validation, so invalid findings cannot crowd out valid 
   // deliver zero and then fail VALIDATION_EMPTY on a response that had two real
   // findings in it.
   const junk = Array.from({ length: 5 }, () => finding({ path: 'packages/x/never-sent.ts' }));
-  const good = [finding({ line: 10 }), finding({ line: 12, quote: 'cache.set(n, scaled);' })];
+  const good = [finding(), finding({ line: 4, quote: 'cache.set(n, scaled);' })];
   const r = run(response({ verdict: 'findings', findings: [...junk, ...good] }));
   assert.equal(r.code, 0, r.out);
   assert.equal(r.doc.findings.length, 2);

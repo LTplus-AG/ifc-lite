@@ -999,9 +999,14 @@ describe('selection and visibility commands', () => {
       .toEqual(Object.keys(TYPE_VISIBILITY_SEMANTIC_DEFAULTS).sort());
 
     // Compile-time half, checked by scripts/typecheck-tests.mjs (#2457).
-    // Kills: a protocol key the store does NOT have. That direction is invisible
-    // at runtime here — the handler would call `toggleTypeVisibility('foo')`,
-    // which the slice ignores, so a host would get a silent no-op and an OK.
+    // Kills: a protocol key the store does NOT have. The set equality above
+    // already catches that direction, and handler.ts is a third guard, since it
+    // indexes TypeVisibility by the key and would not compile. This is the
+    // cheapest of the three to read when one of them fires.
+    //
+    // The two expects below cannot fail. They exist so the type-only bindings
+    // above are used rather than stripped; the assertions that bite are the
+    // types themselves and the set equality.
     const protocolKeysAreStoreKeys: readonly (keyof TypeVisibility)[] = TYPE_VISIBILITY_FLAG_KEYS;
     const noStoreKeyOmitted: Exclude<
       keyof TypeVisibility,

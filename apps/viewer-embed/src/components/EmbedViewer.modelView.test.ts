@@ -109,6 +109,29 @@ async function drawnIds(list: MeshData[]): Promise<number[]> {
   return (lastViewportGeometry ?? []).map((m) => m.expressId);
 }
 
+/**
+ * Renders `list`, then re-renders `next` into the SAME root, and returns the
+ * `geometryContentVersion` seen before and after. Distinct from `drawnIds`,
+ * which mounts a fresh root per call: two mounts each report a static value and
+ * cannot show that one mounted viewport observes the transition.
+ */
+async function versionsAcrossRerender(list: MeshData[], next: MeshData[]): Promise<[number | undefined, number | undefined]> {
+  meshes = list;
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(React.createElement(EmbedViewer));
+  });
+  mounted.push({ root, container });
+  const before = lastContentVersion;
+  meshes = next;
+  await act(async () => {
+    root.render(React.createElement(EmbedViewer, { key: 'same' }));
+  });
+  return [before, lastContentVersion];
+}
+
 beforeEach(() => {
   lastViewportGeometry = null;
   lastContentVersion = undefined;
@@ -221,22 +244,30 @@ describe('EmbedViewer: Model-view geometry-class gate', () => {
     expect(ids).toEqual([]);
   });
 
-  it('flips geometryContentVersion when the first placed mesh arrives', async () => {
-    // KILLS: dropping the `geometryContentVersion` prop, which is what makes the
-    // gate safe while geometry streams. `selectModelMeshes` changes which meshes
-    // it keeps at the moment the first placed mesh shows up: before, a list of
-    // orphans is kept whole; after, every one is dropped. The upload path
+  it('flips geometryContentVersion within one mounted viewport when the first placed mesh arrives', async () => {
+    // KILLS: dropping the `geometryContentVersion` prop, and also a version that is
+    // computed once per mount and never moves. `selectModelMeshes` changes which
+    // meshes it keeps at the moment the first placed mesh shows up: before, a list
+    // of orphans is kept whole; after, every one is dropped. The upload path
     // classifies by array LENGTH and appends `slice(oldLength)`
     // (useGeometryStreaming.ts:321,516), so a composition change under a growing
     // length leaves the dropped orphans on screen and never uploads the placed
-    // meshes that took their index range. Without the flip this test sees the
-    // same version in both states and nothing downstream forces a rebuild.
-    await drawnIds([mesh(60, 'IfcWallType', ORPHAN_TYPE)]);
-    const orphansOnly = lastContentVersion;
-
-    await drawnIds([mesh(60, 'IfcWallType', ORPHAN_TYPE), mesh(61, 'IfcWall', OCCURRENCE)]);
+    // meshes that took their index range.
+    //
+    // Re-renders the SAME root rather than mounting twice, so a single component
+    // instance observes 0 then 1, which is what the streaming hook downstream
+    // needs in order to reset its length tracking.
+    //
+    // What this canNOT pin, stated rather than implied: that the real `Viewport`
+    // acts on the value. Every embed test mocks `Viewport` and nothing in the repo
+    // mounts it, because it needs a WebGPU device. That link is covered by the
+    // acceptance run, not by this file.
+    const [orphansOnly, afterPlaced] = await versionsAcrossRerender(
+      [mesh(60, 'IfcWallType', ORPHAN_TYPE)],
+      [mesh(60, 'IfcWallType', ORPHAN_TYPE), mesh(61, 'IfcWall', OCCURRENCE)],
+    );
 
     expect(orphansOnly).toBe(0);
-    expect(lastContentVersion).toBe(1);
+    expect(afterPlaced).toBe(1);
   });
 });

@@ -940,6 +940,48 @@ describe('parseE57Xml (worker-safe; no DOMParser dependency)', () => {
     expect(entries[0].pose!.translation.z).toBe(-2);
     expect(entries[1].pose).toBeUndefined();
   });
+
+  it('skips a scan whose fileOffset or recordCount is whitespace-only, same as if absent (#3714)', () => {
+    // Number(' ') === 0 and Number('\t') === 0, so a whitespace-only
+    // attribute previously slipped past `!fileOffsetAttr` (a non-empty
+    // string is truthy) and then past the `Number.isFinite(x) && x >= 0`
+    // guard (0 is finite and non-negative) — decoding the scan from
+    // logical offset 0 (the file header) instead of being skipped like
+    // a genuinely-empty `fileOffset=""` already is.
+    const whitespaceOffset = `<?xml version="1.0" encoding="UTF-8"?>
+<e57Root type="Structure">
+  <data3D type="Vector">
+    <vectorChild type="Structure">
+      <guid type="String">{ws-offset}</guid>
+      <points type="CompressedVector" fileOffset=" " recordCount="2">
+        <prototype type="Structure">
+          <cartesianX type="Float" precision="double"/>
+        </prototype>
+      </points>
+    </vectorChild>
+  </data3D>
+</e57Root>`;
+    const emptyOffset = whitespaceOffset.replace('fileOffset=" "', 'fileOffset=""');
+    expect(parseE57Xml(whitespaceOffset)).toEqual(parseE57Xml(emptyOffset));
+    expect(parseE57Xml(whitespaceOffset)).toHaveLength(0);
+
+    const whitespaceCount = `<?xml version="1.0" encoding="UTF-8"?>
+<e57Root type="Structure">
+  <data3D type="Vector">
+    <vectorChild type="Structure">
+      <guid type="String">{ws-count}</guid>
+      <points type="CompressedVector" fileOffset="1024" recordCount="&#9;">
+        <prototype type="Structure">
+          <cartesianX type="Float" precision="double"/>
+        </prototype>
+      </points>
+    </vectorChild>
+  </data3D>
+</e57Root>`;
+    const emptyCount = whitespaceCount.replace('recordCount="&#9;"', 'recordCount=""');
+    expect(parseE57Xml(whitespaceCount)).toEqual(parseE57Xml(emptyCount));
+    expect(parseE57Xml(whitespaceCount)).toHaveLength(0);
+  });
 });
 
 describe('applyPoseInPlace', () => {

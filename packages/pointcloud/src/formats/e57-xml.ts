@@ -81,7 +81,12 @@ export function parseE57Xml(xmlText: string): Data3DEntry[] {
     }
     const fileOffsetAttr = points.attrs.get('fileOffset');
     const recordCountAttr = points.attrs.get('recordCount');
-    if (!fileOffsetAttr || !recordCountAttr) continue;
+    // Blank/whitespace-only must behave like absent: `!fileOffsetAttr`
+    // alone lets a whitespace-only string (truthy) through to `Number(...)`
+    // below, where `Number(' ')` is 0 — a value that then passes the
+    // finite/non-negative guard and decodes the scan from logical offset 0
+    // (the file header) instead of being skipped (#3714).
+    if (!fileOffsetAttr?.trim() || !recordCountAttr?.trim()) continue;
     // Reject NaN / negative parses up front. Without this guard a
     // malformed XML attribute (e.g. fileOffset="-1" or
     // recordCount="bogus") would flow into decodeE57Scan and either

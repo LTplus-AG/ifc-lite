@@ -210,7 +210,7 @@ export async function readBCF(
   const { projectId, name, extensions } = await readProjectFile(zip, budget);
 
   // Read topics
-  const topics = await readTopics(zip, budget);
+  const topics = await readTopics(zip, budget, version.versionId);
 
   return {
     version: version.versionId,
@@ -279,7 +279,7 @@ async function readProjectFile(zip: JSZip, budget: ExpansionBudget): Promise<{
 /**
  * Read all topics from the BCF archive
  */
-async function readTopics(zip: JSZip, budget: ExpansionBudget): Promise<Map<string, BCFTopic>> {
+async function readTopics(zip: JSZip, budget: ExpansionBudget, versionId: '2.1' | '3.0'): Promise<Map<string, BCFTopic>> {
   const topics = new Map<string, BCFTopic>();
 
   // Find all topic folders (folders with markup.bcf)
@@ -295,7 +295,7 @@ async function readTopics(zip: JSZip, budget: ExpansionBudget): Promise<Map<stri
   // Parse each topic
   for (const topicGuid of topicFolders) {
     try {
-      const topic = await readTopic(zip, topicGuid, budget);
+      const topic = await readTopic(zip, topicGuid, budget, versionId);
       if (topic) {
         topics.set(topic.guid, topic);
       }
@@ -311,7 +311,7 @@ async function readTopics(zip: JSZip, budget: ExpansionBudget): Promise<Map<stri
 /**
  * Read a single topic from the BCF archive
  */
-async function readTopic(zip: JSZip, topicFolder: string, budget: ExpansionBudget): Promise<BCFTopic | null> {
+async function readTopic(zip: JSZip, topicFolder: string, budget: ExpansionBudget, versionId: '2.1' | '3.0'): Promise<BCFTopic | null> {
   const markupFile = zip.file(`${topicFolder}/markup.bcf`);
   if (!markupFile) {
     return null;
@@ -378,7 +378,7 @@ async function readTopic(zip: JSZip, topicFolder: string, budget: ExpansionBudge
   const comments = parseComments(markupContent);
 
   // Parse viewpoints
-  const viewpoints = await parseViewpoints(zip, topicFolder, markupContent, budget);
+  const viewpoints = await parseViewpoints(zip, topicFolder, markupContent, budget, versionId);
 
   return {
     guid,
@@ -601,7 +601,8 @@ async function parseViewpoints(
   zip: JSZip,
   topicFolder: string,
   markupContent: string,
-  budget: ExpansionBudget
+  budget: ExpansionBudget,
+  versionId: '2.1' | '3.0',
 ): Promise<BCFViewpoint[]> {
   const viewpoints: BCFViewpoint[] = [];
 
@@ -689,7 +690,7 @@ async function parseViewpoints(
       if (!viewpointFile) continue;
 
       const viewpointContent = await readEntryCapped(viewpointFile, 'string', budget);
-      const viewpoint = parseViewpointContent(viewpointContent);
+      const viewpoint = parseViewpointContent(viewpointContent, versionId);
 
       if (viewpoint) {
         // Get snapshot filename from markup.bcf if available
@@ -779,7 +780,7 @@ async function parseViewpoints(
 /**
  * Parse viewpoint XML content
  */
-function parseViewpointContent(content: string): BCFViewpoint | null {
+function parseViewpointContent(content: string, versionId: '2.1' | '3.0'): BCFViewpoint | null {
   // Extract viewpoint GUID from root element (Guid can be anywhere in the tag)
   const guidMatch = content.match(/<VisualizationInfo[^>]+Guid="([^"]+)"/);
   const guid = guidMatch?.[1] || crypto.randomUUID?.() || `vp-${Date.now()}`;
@@ -791,7 +792,7 @@ function parseViewpointContent(content: string): BCFViewpoint | null {
   const orthogonalCamera = parseOrthogonalCamera(content);
 
   // Parse components
-  const components = parseComponents(content);
+  const components = parseComponents(content, versionId);
 
   // Parse lines
   const lines = parseLines(content);

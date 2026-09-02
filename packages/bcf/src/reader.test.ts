@@ -665,4 +665,77 @@ describe('BCF Reader - buildingSMART Test Files', () => {
       expect(vp.snapshotData).toBeDefined();
     });
   });
+
+  describe('viewpoint <Visibility DefaultVisibility> omitted (schema-declared default)', () => {
+    // Hand-written to the vendored XSDs (packages/bcf/src/__fixtures__/schemas),
+    // not generated with our own writer: writer.ts always emits the
+    // DefaultVisibility attribute explicitly (writeVisibility), so a
+    // self-round-trip can never exercise the omitted-attribute case and
+    // would not have caught this.
+    //
+    // 2.1's markup.xsd/visinfo.xsd declares
+    // `<xs:attribute name="DefaultVisibility" type="xs:boolean"/>` -- no
+    // schema default. 3.0's visinfo.xsd changes this to
+    // `<xs:attribute name="DefaultVisibility" type="xs:boolean" default="false"/>`.
+    // Per XML Schema attribute defaulting, an omitted attribute with a
+    // declared default takes that default value, so a spec-legal 3.0 file
+    // that omits DefaultVisibility means "hide everything except the listed
+    // exceptions" (false), while the same omission on a 2.1 file carries no
+    // schema-mandated meaning.
+
+    function buildArchive(versionId: '2.1' | '3.0'): Promise<Buffer | ArrayBuffer> {
+      const topicGuid = '33333333-3333-3333-3333-333333333333';
+      const vpGuid = '44444444-4444-4444-4444-444444444444';
+      const zip = new JSZip();
+      zip.file('bcf.version', `<?xml version="1.0"?><Version VersionId="${versionId}"/>`);
+      zip.file(
+        `${topicGuid}/markup.bcf`,
+        `<?xml version="1.0" encoding="UTF-8"?>
+<Markup>
+  <Topic Guid="${topicGuid}" TopicType="Issue" TopicStatus="Open">
+    <Title>Omitted DefaultVisibility</Title>
+  </Topic>
+  <Viewpoints Guid="${vpGuid}">
+    <Viewpoint>viewpoint.bcfv</Viewpoint>
+  </Viewpoints>
+</Markup>`
+      );
+      zip.file(
+        `${topicGuid}/viewpoint.bcfv`,
+        `<?xml version="1.0" encoding="UTF-8"?>
+<VisualizationInfo Guid="${vpGuid}">
+  <Components>
+    <Visibility>
+      <Exceptions>
+        <Component IfcGuid="1RvVRIfDrAmhnJqDD6mvGD"/>
+      </Exceptions>
+    </Visibility>
+  </Components>
+</VisualizationInfo>`
+      );
+      return zip.generateAsync({ type: 'nodebuffer' });
+    }
+
+    it('reads a BCF 3.0 archive that omits DefaultVisibility as false (the schema-declared default)', async () => {
+      const buffer = await buildArchive('3.0');
+      const project = await readBCF(buffer);
+      const topic = [...project.topics.values()][0];
+      const visibility = topic.viewpoints[0].components?.visibility;
+
+      expect(visibility).toBeDefined();
+      expect(visibility?.defaultVisibility).toBe(false);
+      expect(visibility?.exceptions).toHaveLength(1);
+    });
+
+    it('control: a BCF 2.1 archive with the same omission keeps the pre-existing true default', async () => {
+      const buffer = await buildArchive('2.1');
+      const project = await readBCF(buffer);
+      const topic = [...project.topics.values()][0];
+      const visibility = topic.viewpoints[0].components?.visibility;
+
+      expect(visibility).toBeDefined();
+      expect(visibility?.defaultVisibility).toBe(true);
+      expect(visibility?.exceptions).toHaveLength(1);
+    });
+  });
 });

@@ -51,7 +51,10 @@ function parseComponentElements(xml: string): BCFComponent[] {
 /**
  * Parse components (selection/visibility/coloring)
  */
-export function parseComponents(content: string): BCFComponents | undefined {
+export function parseComponents(
+  content: string,
+  versionId: '2.1' | '3.0',
+): BCFComponents | undefined {
   const componentsMatch = content.match(/<Components>([\s\S]*?)<\/Components>/);
   if (!componentsMatch) return undefined;
 
@@ -61,7 +64,7 @@ export function parseComponents(content: string): BCFComponents | undefined {
   const selection = parseComponentList(componentsContent, 'Selection');
 
   // Parse visibility
-  let visibility = parseVisibility(componentsContent);
+  let visibility = parseVisibility(componentsContent, versionId);
 
   // Parse coloring
   const coloring = parseColoring(componentsContent);
@@ -78,9 +81,13 @@ export function parseComponents(content: string): BCFComponents | undefined {
   // read half the files we produce.
   const viewSetupHints = parseViewSetupHints(componentsContent);
   if (viewSetupHints) {
-    // Visibility is required by the schema, but tolerate a file that omits it:
-    // DefaultVisibility's schema default is true.
-    visibility = { ...(visibility ?? { defaultVisibility: true }), viewSetupHints };
+    // Visibility is required by the schema, but tolerate a file that omits
+    // it entirely: fall back to the same per-version DefaultVisibility
+    // default used below when the attribute itself is present-but-omitted.
+    visibility = {
+      ...(visibility ?? { defaultVisibility: defaultVisibilityFallback(versionId) }),
+      viewSetupHints,
+    };
   }
 
   if (!selection && !visibility && !coloring) {
@@ -163,9 +170,29 @@ function parseComponent(content: string): BCFComponent | undefined {
 }
 
 /**
+ * The `DefaultVisibility` attribute's value when a `<Visibility>` element
+ * omits it entirely.
+ *
+ * visinfo.xsd disagrees by version: 2.1 declares
+ * `<xs:attribute name="DefaultVisibility" type="xs:boolean"/>` with no
+ * schema default, while 3.0 changes this to
+ * `<xs:attribute name="DefaultVisibility" type="xs:boolean" default="false"/>`.
+ * Per XML Schema attribute defaulting, an omitted attribute with a declared
+ * default takes that default, so a spec-legal 3.0 file that omits it means
+ * "hide everything except the listed exceptions". ifc-lite's own writer
+ * always emits the attribute explicitly (writeVisibility in writer.ts), so
+ * this only matters for a third-party file -- which is why no round-trip
+ * fixture caught the reader treating every omission as `true` regardless of
+ * version.
+ */
+function defaultVisibilityFallback(versionId: '2.1' | '3.0'): boolean {
+  return versionId !== '3.0';
+}
+
+/**
  * Parse visibility settings
  */
-function parseVisibility(content: string): BCFVisibility | undefined {
+function parseVisibility(content: string, versionId: '2.1' | '3.0'): BCFVisibility | undefined {
   // Both branches, for the same reason as `COMPONENT_ELEMENT`: `<Exceptions>`
   // and `<ViewSetupHints>` are optional, so `<Visibility DefaultVisibility=
   // "false"/>` is schema-legal. Matching only the paired form made the whole
@@ -182,7 +209,9 @@ function parseVisibility(content: string): BCFVisibility | undefined {
   // `<Selection>` component, say) won the match and inverted the answer, so a
   // file saying show-all hid everything.
   const defaultVisMatch = visibilityMatch[0].match(/DefaultVisibility="([^"]+)"/);
-  const defaultVisibility = defaultVisMatch?.[1] !== 'false';
+  const defaultVisibility = defaultVisMatch
+    ? defaultVisMatch[1] !== 'false'
+    : defaultVisibilityFallback(versionId);
 
   const exceptions = parseComponentList(visibilityMatch[0], 'Exceptions');
 

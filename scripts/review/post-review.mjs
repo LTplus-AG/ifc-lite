@@ -326,7 +326,7 @@ export function readFindings(path) {
       body:
         `${f.body}` +
         (f.sibling?.path && Number.isInteger(f.sibling.line)
-          ? `\n\nThe same shape is at \`${f.sibling.path}:${f.sibling.line}\`, which this PR does not change.`
+          ? `\n\nThe same shape is at ${inlineCode(`${f.sibling.path}:${f.sibling.line}`)}, which this PR does not change.`
           : '') +
         `\n\n<!-- ifc-lite-finding v=1 class=${cls.replace(/[^a-z0-9-]/gi, '-')} -->`,
       // The class IS the title. They were a dead pair: `class` was validated
@@ -481,7 +481,7 @@ export function nothingToReviewBody(sha) {
 function indexLine(f, n) {
   const text = (f.title ?? f.body.split('\n').find((l) => l.trim() !== '') ?? '').trim();
   const short = text.length > INDEX_BODY_CHARS ? `${text.slice(0, INDEX_BODY_CHARS - 3)}...` : text;
-  return `${n}. \`${f.path}:${f.line}\` - ${short}`;
+  return `${n}. ${inlineCode(`${f.path}:${f.line}`)} - ${short}`;
 }
 
 /**

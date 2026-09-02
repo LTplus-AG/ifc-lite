@@ -1276,3 +1276,95 @@ test('an omitted PATH containing a backtick cannot close its code span early (#3
   const plain = summaryBody({ sha: SHA, findings: [], count: 0, omitted: ['packages/a/plain.ts'] });
   assert.match(plain, /^- `packages\/a\/plain\.ts`$/m);
 });
+
+// ============================== UNTRUSTED TEXT IN A CODE SPAN, at every site
+//
+// #3688 fixed ONE site: the omitted-path list. `inlineCode` existed from that
+// commit, but the two sites that render DIFF-DERIVED paths still used a bare
+// `` `${p}` `` -- the summary index (every findings run) and the sibling
+// sentence. That split left the RARE path fixed and the COMMON one broken,
+// which reads as fixed to the next person who greps and finds `inlineCode`.
+//
+// A git path may legally contain a backtick. Rendered into a one-backtick
+// span, the path's own backtick CLOSES the span and the tail spills into the
+// comment as live Markdown.
+
+/**
+ * Decode the first inline code span on a line the way CommonMark does: a span
+ * opened by a run of N backticks closes at the next run of EXACTLY N, and the
+ * renderer strips one space of padding at each end. Returns null when the span
+ * never closes. Deliberately NOT the production helper -- an oracle that
+ * shares the code under test cannot fail.
+ */
+function firstCodeSpan(line) {
+  const open = /`+/.exec(line);
+  if (open === null) return null;
+  const fence = open[0];
+  const rest = line.slice(open.index + fence.length);
+  const close = new RegExp(`(?<!\`)${fence}(?!\`)`).exec(rest);
+  if (close === null) return null;
+  let inner = rest.slice(0, close.index);
+  if (inner.startsWith(' ') && inner.endsWith(' ') && inner.trim() !== '') inner = inner.slice(1, -1);
+  return inner;
+}
+
+// Mutation-tested: with `inlineCode` reverted at both sites, 6 of these 8 cases
+// fail. The double-backtick-run pair passes EITHER WAY, and that is correct
+// rather than a dud assertion -- CommonMark closes a span only on a run of
+// EQUAL length, so a ``-run cannot close a `-fence and that input was never
+// broken. It stays as a boundary case, but it is NOT evidence the fix works;
+// the mid-path, trailing and leading cases are.
+const EVIL = [
+  ['a backtick mid-path', 'packages/a/we`ird.ts'],
+  ['a double-backtick run', 'packages/a/we``ird.ts'],
+  ['a trailing backtick', 'packages/a/weird.ts`'],
+  ['a leading backtick', '`packages/a/weird.ts'],
+];
+
+for (const [label, evilPath] of EVIL) {
+  test(`the SUMMARY INDEX keeps a whole path in one span: ${label}`, () => {
+    const r = runPoster({ findings: [{ path: evilPath, line: 11, body: 'Body.' }] });
+    assert.equal(r.code, 0, r.out);
+    const line = r.state.issueComments[0].body
+      .split('\n')
+      .find((l) => /^1\. /.test(l.trim()));
+    assert.ok(line, 'the numbered index entry must exist');
+    assert.equal(
+      firstCodeSpan(line),
+      `${evilPath}:11`,
+      'the whole path:line must survive as ONE code span',
+    );
+  });
+
+  test(`the SIBLING sentence keeps a whole path in one span: ${label}`, () => {
+    const p = join(TMP, `evil-sibling-${(seq += 1)}.json`);
+    writeFileSync(p, JSON.stringify({
+      verdict: 'findings',
+      findings: [{
+        path: 'packages/data/src/property-table.ts',
+        line: 12,
+        quote: 'const key = psetName;',
+        body: 'Body.',
+        sibling: { path: evilPath, line: 88, quote: 'x' },
+      }],
+    }));
+    const sentence = readFindings(p)[0].body
+      .split('\n')
+      .find((l) => l.includes('The same shape is at'));
+    assert.ok(sentence, 'the sibling sentence must exist');
+    assert.equal(
+      firstCodeSpan(sentence.slice(sentence.indexOf('The same shape is at'))),
+      `${evilPath}:88`,
+      'the whole sibling path:line must survive as ONE code span',
+    );
+  });
+}
+
+test('a backtick-free path still renders as a plain one-backtick span', () => {
+  // The fence widens ONLY when the text needs it. Existing fixtures assert the
+  // byte-exact single-backtick form, so a helper that always padded would be a
+  // silent format change across every comment this poster has ever written.
+  const r = runPoster({ findings: [finding(1)] });
+  const line = r.state.issueComments[0].body.split('\n').find((l) => /^1\. /.test(l.trim()));
+  assert.match(line, /^1\. `packages\/a\/src\/f1\.ts:11` - /);
+});

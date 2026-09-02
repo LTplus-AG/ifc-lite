@@ -146,10 +146,11 @@ describe('a plainly-exported archive validates entry by entry', () => {
           // contain `/`; a fixed inert name keeps both out of the argv.
           xml: [{ fileName: 'subject.xml', contents: xml }],
           schema: [schema(version, xsd)],
-          preload:
-            version === '3.0'
-              ? [{ fileName: 'shared-types.xsd', contents: schema('3.0', 'shared-types.xsd') }]
-              : [],
+          // No preload needed: this sweep is 2.1-only (see the block comment
+          // above), and 2.1's schemas are self-contained. A 3.0 archive would
+          // need shared-types.xsd preloaded for its cross-schema references;
+          // `schema-validation.test.ts` covers that case.
+          preload: [],
         });
         if (!result.valid) {
           failures.push(`${name} [${xsd}]: ${result.errors.map((e) => e.message).join(' | ')}`);

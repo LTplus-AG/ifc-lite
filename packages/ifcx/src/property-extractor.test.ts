@@ -41,9 +41,8 @@ describe('extractProperties — typed records and internal carriers (#1031)', ()
     assert.strictEqual(fireRating.value, 'F30');
   });
 
-  it('skips ifclite:: carrier attributes entirely', () => {
+  it('skips ifclite:: internal carriers other than classifications', () => {
     const node = createNode('wall');
-    node.attributes.set('ifclite::classifications', [{ system: 'eBKP-H', code: 'C2.1' }]);
     node.attributes.set('ifclite::materials', [{ materialId: 'mat-1' }]);
     node.attributes.set('ifclite::geometryRef', 'geom-1');
     node.attributes.set('ifclite::deleted', false);
@@ -57,6 +56,111 @@ describe('extractProperties — typed records and internal carriers (#1031)', ()
     assert.strictEqual(props.length, 1, 'only the real property surfaces');
     assert.strictEqual(props[0].name, 'IsExternal');
     assert.strictEqual(props[0].value, true);
+  });
+
+  it('unpacks ifclite::classifications into a per-system Classification pset (#3608)', () => {
+    const node = createNode('wall');
+    node.attributes.set('ifclite::classifications', [
+      { system: 'Uniclass 2015', code: 'Pr_20_93_47', uri: 'https://uniclass.thenbs.com/Pr_20_93_47' },
+      { system: 'eBKP-H', code: 'C2.1' },
+    ]);
+
+    const composed = new Map([[node.path, node]]);
+    const pathToId = new Map([[node.path, 1]]);
+    const table = extractProperties(composed, pathToId, new StringTable());
+    const psets = table.getForEntity(1);
+
+    const uniclass = psets.find((p) => p.name === 'Classification - Uniclass 2015');
+    assert.ok(uniclass, 'Uniclass pset present');
+    const uniclassCode = uniclass!.properties.find((p) => p.name === 'Code');
+    assert.strictEqual(uniclassCode?.value, 'Pr_20_93_47');
+    const uniclassUri = uniclass!.properties.find((p) => p.name === 'Uri');
+    assert.strictEqual(uniclassUri?.value, 'https://uniclass.thenbs.com/Pr_20_93_47');
+
+    const ebkp = psets.find((p) => p.name === 'Classification - eBKP-H');
+    assert.ok(ebkp, 'eBKP-H pset present');
+    const ebkpCode = ebkp!.properties.find((p) => p.name === 'Code');
+    assert.strictEqual(ebkpCode?.value, 'C2.1');
+  });
+
+  it('keeps two refs sharing a system separate, each with its own Code/Uri (#3608)', () => {
+    // Ordinary Uniclass practice: an element carries both a Systems code
+    // (with a URI) and a Products code (without one) under the same
+    // system name. `set()`-ing a single 'Code'/'Uri' pair per system would
+    // collapse these into one pset — dropping a code and pairing the
+    // survivor with the wrong URI.
+    const node = createNode('wall');
+    node.attributes.set('ifclite::classifications', [
+      { system: 'Uniclass 2015', code: 'Ss_25_10_30', uri: 'https://uniclass.thenbs.com/Ss_25_10_30' },
+      { system: 'Uniclass 2015', code: 'Pr_20_93_47' },
+    ]);
+
+    const composed = new Map([[node.path, node]]);
+    const pathToId = new Map([[node.path, 1]]);
+    const table = extractProperties(composed, pathToId, new StringTable());
+    const psets = table.getForEntity(1);
+
+    const systems = psets.find((p) => p.name === 'Classification - Uniclass 2015 - Ss_25_10_30');
+    assert.ok(systems, 'the Systems ref (Ss_25_10_30) has its own pset');
+    assert.strictEqual(systems!.properties.find((p) => p.name === 'Code')?.value, 'Ss_25_10_30');
+    assert.strictEqual(
+      systems!.properties.find((p) => p.name === 'Uri')?.value,
+      'https://uniclass.thenbs.com/Ss_25_10_30'
+    );
+
+    const products = psets.find((p) => p.name === 'Classification - Uniclass 2015 - Pr_20_93_47');
+    assert.ok(products, 'the Products ref (Pr_20_93_47) has its own pset');
+    assert.strictEqual(products!.properties.find((p) => p.name === 'Code')?.value, 'Pr_20_93_47');
+    // The Products ref carries no URI — it must not inherit the Systems
+    // ref's URI.
+    assert.strictEqual(products!.properties.find((p) => p.name === 'Uri'), undefined);
+  });
+
+  it('discriminates a constructed-name collision instead of overwriting (#3608)', () => {
+    // The constructed name space can collide: system "Acme" with codes A and B
+    // yields "Classification - Acme - A"/"... - B", and a system literally
+    // named "Acme - A" with single code C yields "Classification - Acme - A"
+    // too. Without a discriminator the C ref would overwrite the A ref's
+    // Code and pair it with the wrong Uri.
+    const node = createNode('wall');
+    node.attributes.set('ifclite::classifications', [
+      { system: 'Acme', code: 'A', uri: 'https://acme.example/A' },
+      { system: 'Acme', code: 'B' },
+      { system: 'Acme - A', code: 'C', uri: 'https://acme-a.example/C' },
+    ]);
+
+    const composed = new Map([[node.path, node]]);
+    const pathToId = new Map([[node.path, 1]]);
+    const table = extractProperties(composed, pathToId, new StringTable());
+    const psets = table.getForEntity(1);
+
+    const a = psets.find((p) => p.name === 'Classification - Acme - A');
+    assert.ok(a, 'the Acme/A ref keeps the plain constructed name');
+    assert.strictEqual(a!.properties.find((p) => p.name === 'Code')?.value, 'A');
+    assert.strictEqual(
+      a!.properties.find((p) => p.name === 'Uri')?.value,
+      'https://acme.example/A'
+    );
+
+    const b = psets.find((p) => p.name === 'Classification - Acme - B');
+    assert.ok(b, 'the Acme/B ref is untouched by the collision');
+    assert.strictEqual(b!.properties.find((p) => p.name === 'Code')?.value, 'B');
+
+    const c = psets.find((p) => p.name === 'Classification - Acme - A (2)');
+    assert.ok(c, 'the colliding "Acme - A" system ref gets a discriminator');
+    assert.strictEqual(c!.properties.find((p) => p.name === 'Code')?.value, 'C');
+    assert.strictEqual(
+      c!.properties.find((p) => p.name === 'Uri')?.value,
+      'https://acme-a.example/C'
+    );
+  });
+
+  it('skips a classification ref with no code', () => {
+    const node = createNode('wall');
+    node.attributes.set('ifclite::classifications', [{ system: 'Uniclass 2015' }]);
+
+    const props = extract(node);
+    assert.strictEqual(props.length, 0, 'a codeless ref surfaces nothing');
   });
 
   it('v5a properties keep the exact authored Pset name, not a display-formatted one', () => {

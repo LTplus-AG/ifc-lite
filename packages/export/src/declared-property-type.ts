@@ -39,6 +39,21 @@
  *    both from the same token — the source token is the more specific of the
  *    two and wins.
  *
+ *    **Unless the caller NAMED a member** ({@link NAMED_MEMBERS}, #3715). Gate 2
+ *    as written could not express `IfcLabel` → `IfcText`: both are STRING, so
+ *    "the two agree" and the source token won, silently discarding the request.
+ *    The information it was missing is whether the caller CHOSE the type or
+ *    merely echoed the shape the extractor derived — and that is already in the
+ *    `PropertyValueType`, because the two are different members of it.
+ *    `String` / `Real` are SHAPES, which is all the extractor can produce (it
+ *    collapses `IFCLABEL`, `IFCTEXT` and `IFCIDENTIFIER` to `String` and keeps
+ *    the token only in `dataType`); `Label` / `Identifier` / `Text` NAME one
+ *    `IfcValue` member each and no extraction path produces them, so one of
+ *    those can only have come from a caller who asked for it. A named member is
+ *    therefore authoritative over the source token; a shape keeps gate 2's
+ *    precedence, which is what stops a value-only edit — the UI passes `String`
+ *    — from rewriting a neighbouring `IFCTEXT` as `IFCLABEL` all over again.
+ *
  * 3. **The VALUE must be representable in that base.** `serializeTypedMarker`
  *    coerces, so without this an `IFCLENGTHMEASURE` carrying a non-numeric
  *    value would be written as `IFCLENGTHMEASURE(NaN)`, where the shape-derived
@@ -106,6 +121,27 @@ import { serializePropertyValue } from './property-value-serialization.js';
 
 /** The SELECT `IfcPropertySingleValue.NominalValue` is declared as. */
 const NOMINAL_VALUE_SELECT = 'IfcValue';
+
+/**
+ * The `IfcValue` member each `PropertyValueType` NAMES OUTRIGHT — as opposed to
+ * the shapes (`String`, `Real`, `Integer`, …) an extractor collapses a source
+ * token into. See gate 2 in the module docstring: this map is what lets a caller
+ * change a property's declared type WITHIN one EXPRESS base (#3715), which the
+ * base-agreement rule alone made unexpressible.
+ *
+ * Only the string family appears, and that is not an omission: these three are
+ * the only `PropertyValueType` members that name exactly one `IfcValue` member.
+ * There is deliberately no entry for `Real` or `Integer` — `IfcLengthMeasure`,
+ * `IfcReal` and every other numeric leaf all collapse to `Real`, so it names
+ * nothing and must keep gate 2's "source token wins", which is #2482's whole
+ * point. `Enum`, `Reference` and `List` are property CLASSES rather than
+ * `NominalValue` tokens and are handled by {@link serializePropertyValue}.
+ */
+const NAMED_MEMBERS: ReadonlyMap<PropertyValueType, string> = new Map([
+  [PropertyValueType.Label, 'IfcLabel'],
+  [PropertyValueType.Identifier, 'IfcIdentifier'],
+  [PropertyValueType.Text, 'IfcText'],
+]);
 
 /** UPPERCASE STEP token → `[schema-cased type name, EXPRESS base]`. */
 let nominalValueLeaves: Map<string, readonly [string, string]> | null = null;
@@ -238,6 +274,13 @@ export function declaredNominalValueType(
   dataType: string | undefined,
 ): string | null {
   if (value === null || value === undefined) return null;
+  // The caller NAMED a member rather than echoing a shape (#3715), so it
+  // outranks the source token even inside one EXPRESS base — see gate 2.
+  // A non-string value is left exactly where it was: `valueFitsBase` would
+  // have rejected it below, and `serializePropertyValue` writes the same
+  // token for these three anyway, so this branch changes nothing for it.
+  const named = NAMED_MEMBERS.get(type);
+  if (named !== undefined) return typeof value === 'string' ? named : null;
   if (!dataType) return null;
   const leaf = lookupNominalValueLeaf(dataType.trim().toUpperCase());
   if (!leaf) return null;

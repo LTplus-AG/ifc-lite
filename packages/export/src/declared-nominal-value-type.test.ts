@@ -216,10 +216,21 @@ describe('declaredNominalValueType: which source tokens are written back', () =>
 
   it('rejects a member whose family disagrees with the value type', () => {
     // A session that retyped the property explicitly. The caller wins.
-    expect(declaredNominalValueType('x', PropertyValueType.Label, 'IFCLENGTHMEASURE')).toBeNull();
     expect(declaredNominalValueType(1, PropertyValueType.Real, 'IFCTEXT')).toBeNull();
     expect(declaredNominalValueType(true, PropertyValueType.Boolean, 'IFCLOGICAL')).toBeNull();
     expect(declaredNominalValueType(true, PropertyValueType.Logical, 'IFCBOOLEAN')).toBeNull();
+  });
+
+  it('a caller-named member outranks a disagreeing source token, and emits the same text', () => {
+    // `Label` over an `IFCLENGTHMEASURE` is the same "caller retyped it, caller
+    // wins" case as the test above, but since #3715 the answer is reached by
+    // NAMING `IfcLabel` rather than by falling through to the shape-derived
+    // path. Both write the identical line, which is the assertion that matters
+    // — the return value is an implementation detail, the emitted token is not.
+    expect(declaredNominalValueType('x', PropertyValueType.Label, 'IFCLENGTHMEASURE')).toBe('IfcLabel');
+    expect(serializeNominalValue('x', PropertyValueType.Label, 'IFCLENGTHMEASURE')).toBe(
+      "IFCLABEL('x')",
+    );
   });
 
   it('rejects a value that does not fit the member’s base', () => {
@@ -248,8 +259,11 @@ describe('declaredNominalValueType: which source tokens are written back', () =>
 
   it('a property with no dataType is unchanged', () => {
     // Every AUTHORED property, and every property read through a base table
-    // that does not carry the token.
-    expect(declaredNominalValueType('x', PropertyValueType.Text, undefined)).toBeNull();
+    // that does not carry the token. A caller-NAMED member answers with its own
+    // member here since #3715 (there is no source token to outrank), and the
+    // emitted text is the same one the shape-derived fallback wrote.
+    expect(declaredNominalValueType('x', PropertyValueType.String, undefined)).toBeNull();
+    expect(serializeNominalValue('x', PropertyValueType.Text, undefined)).toBe("IFCTEXT('x')");
     expect(serializeNominalValue('x', PropertyValueType.Text, undefined)).toBe(
       serializeNominalValue('x', PropertyValueType.Text, ''),
     );
@@ -268,5 +282,47 @@ describe('declaredNominalValueType: which source tokens are written back', () =>
     expect(serializeNominalValue(1.5e-7, PropertyValueType.Real, 'IFCACMEWIDGETCODE')).toBe(
       'IFCREAL(1.5E-7)',
     );
+  });
+});
+
+describe('a caller-named member changes the declared type within one EXPRESS base (#3715)', () => {
+  // `IfcLabel` -> `IfcText` (a value outgrowing 255 characters) and
+  // `IfcLabel` -> `IfcIdentifier` are ordinary corrections. Both were
+  // unexpressible: the two agree on STRING, so gate 2 handed it to the source
+  // token and the request was discarded with nothing reported.
+  it('honours Text and Identifier over a source IFCLABEL', () => {
+    expect(serializeNominalValue('42', PropertyValueType.Text, 'IFCLABEL')).toBe("IFCTEXT('42')");
+    expect(serializeNominalValue('42', PropertyValueType.Identifier, 'IFCLABEL')).toBe(
+      "IFCIDENTIFIER('42')",
+    );
+    // …in both directions, and onto itself.
+    expect(serializeNominalValue('42', PropertyValueType.Label, 'IFCTEXT')).toBe("IFCLABEL('42')");
+    expect(serializeNominalValue('42', PropertyValueType.Label, 'IFCLABEL')).toBe("IFCLABEL('42')");
+  });
+
+  it('does NOT let a bare shape rewrite a neighbour’s token (#2482 stands)', () => {
+    // The regression this fix had to avoid. Editing one property regenerates
+    // the whole set, and a value-only edit passes `String` — the shape the
+    // extractor collapses every string token into. If a shape outranked the
+    // source token, every untouched `IFCTEXT` / `IFCIDENTIFIER` neighbour would
+    // be rewritten `IFCLABEL`, which is #2482 verbatim.
+    expect(serializeNominalValue('prose', PropertyValueType.String, 'IFCTEXT')).toBe(
+      "IFCTEXT('prose')",
+    );
+    expect(serializeNominalValue('id-7', PropertyValueType.String, 'IFCIDENTIFIER')).toBe(
+      "IFCIDENTIFIER('id-7')",
+    );
+    // Numerics have no named member at all — `Real` collapses `IfcLengthMeasure`
+    // and `IfcReal` alike — so the source token keeps winning there.
+    expect(serializeNominalValue(2500, PropertyValueType.Real, 'IFCLENGTHMEASURE')).toBe(
+      'IFCLENGTHMEASURE(2500.)',
+    );
+  });
+
+  it('a named member does not smuggle a non-string value into a string token', () => {
+    // Gate 3's job, unchanged: the value still has to fit STRING. These take
+    // the shape-derived path exactly as they did before.
+    expect(declaredNominalValueType(42, PropertyValueType.Text, 'IFCLABEL')).toBeNull();
+    expect(declaredNominalValueType(null, PropertyValueType.Text, 'IFCLABEL')).toBeNull();
   });
 });

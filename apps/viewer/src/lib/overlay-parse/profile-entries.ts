@@ -85,3 +85,19 @@ export function buildProfileEntries(
 
   return profiles;
 }
+
+/**
+ * Report elements dropped from a `FlatProfiles` extraction — a genuine
+ * extraction failure or an over-deep mapped-item chain, not a type this
+ * extractor deliberately excludes. Without this the only trace is a Rust
+ * `diag_debug!` compiled out of the shipped wasm build (no `debug_geometry`/
+ * `observability` feature), so a dropped element was silently missing from
+ * the generated drawing. No-op on a clean model.
+ */
+export function warnAboutSkippedProfiles(flat: FlatProfiles): void {
+  if (flat.skippedExpressIds.length === 0) return;
+  console.warn(
+    `Construction projection: ${flat.skippedExpressIds.length} element(s) could not be projected and are missing from this drawing`,
+    Array.from(flat.skippedExpressIds),
+  );
+}

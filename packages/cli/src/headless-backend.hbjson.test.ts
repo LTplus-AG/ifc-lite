@@ -23,6 +23,7 @@ import { StepExporter } from '@ifc-lite/export';
 import { GeometryProcessor } from '@ifc-lite/geometry';
 import { createHeadlessContext } from './loader.js';
 import { exportHbjson } from './energy-export.js';
+import { logger } from './logger.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // Committed viewer demo sample (not the network-fetched tests/models/ fixture
@@ -171,13 +172,13 @@ describe('HeadlessBackend hbjson export (#1908)', () => {
   }, 30_000);
 
   it('disposes the GeometryProcessor WASM handle even when exportHbjson throws (#1956 review fix)', async () => {
-    // `GeometryProcessor.exportHbjson` returning null (engine unavailable)
+    // `GeometryProcessor.exportHbjsonWithStats` returning null (engine unavailable)
     // makes `exportHbjson` in energy-export.ts throw. Stub the prototype
     // method to force that path deterministically — this is the early-return
     // the fix's try/finally must cover, not just the happy path.
     const { store } = await createHeadlessContext(SAMPLE_IFC);
     const disposeSpy = vi.spyOn(GeometryProcessor.prototype, 'dispose');
-    const exportSpy = vi.spyOn(GeometryProcessor.prototype, 'exportHbjson').mockReturnValue(null);
+    const exportSpy = vi.spyOn(GeometryProcessor.prototype, 'exportHbjsonWithStats').mockReturnValue(null);
     try {
       await expect(exportHbjson(store, null, 'dispose-throw')).rejects.toThrow(
         'Geometry engine unavailable for HBJSON export.',
@@ -188,4 +189,75 @@ describe('HeadlessBackend hbjson export (#1908)', () => {
       disposeSpy.mockRestore();
     }
   }, 30_000);
+
+  describe('coverage warning (silent-drop fix)', () => {
+    // Regression: HBJSON export used to discard `HbjsonStats` at the wasm boundary, so
+    // a model with degenerate `IfcSpace` profiles produced a truncated-but-"successful"
+    // file with zero signal. `exportHbjson` must now warn via the CLI's shared `logger`
+    // exactly when `stats.skipped > 0`, and stay silent on a clean export (the required
+    // control case — see AGENTS.md guardrail against noisy warnings on paths that lose
+    // nothing).
+    function statsResult(content: string, stats: Partial<Parameters<typeof mkStats>[0]> = {}) {
+      return { content: new TextEncoder().encode(content), stats: mkStats(stats) };
+    }
+    function mkStats(partial: {
+      spaces?: number;
+      rooms?: number;
+      skipped?: number;
+    }): {
+      spaces: number;
+      rooms: number;
+      skipped: number;
+      apertures: number;
+      doors: number;
+      shades: number;
+      constructions: number;
+      interiorAdjacencies: number;
+    } {
+      return {
+        spaces: partial.spaces ?? 0,
+        rooms: partial.rooms ?? 0,
+        skipped: partial.skipped ?? 0,
+        apertures: 0,
+        doors: 0,
+        shades: 0,
+        constructions: 0,
+        interiorAdjacencies: 0,
+      };
+    }
+
+    it('logs a warning with the exact skip/room/space counts when spaces were dropped', async () => {
+      const { store } = await createHeadlessContext(SAMPLE_IFC);
+      const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+      const exportSpy = vi
+        .spyOn(GeometryProcessor.prototype, 'exportHbjsonWithStats')
+        .mockReturnValue(statsResult('{"rooms":[]}', { spaces: 40, rooms: 34, skipped: 6 }));
+      try {
+        const hbjson = await exportHbjson(store, null, 'warn-on-skip');
+        expect(hbjson).toBe('{"rooms":[]}');
+        expect(warnSpy).toHaveBeenCalledTimes(1);
+        expect(warnSpy.mock.calls[0][0]).toBe(
+          'HBJSON export: 6 of 40 IfcSpace skipped as degenerate (malformed footprint / holes / non-extrusion); 34 rooms written.',
+        );
+      } finally {
+        exportSpy.mockRestore();
+        warnSpy.mockRestore();
+      }
+    }, 30_000);
+
+    it('emits no warning when nothing was skipped (control)', async () => {
+      const { store } = await createHeadlessContext(SAMPLE_IFC);
+      const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+      const exportSpy = vi
+        .spyOn(GeometryProcessor.prototype, 'exportHbjsonWithStats')
+        .mockReturnValue(statsResult('{"rooms":[]}', { spaces: 12, rooms: 12, skipped: 0 }));
+      try {
+        await exportHbjson(store, null, 'no-skip');
+        expect(warnSpy).not.toHaveBeenCalled();
+      } finally {
+        exportSpy.mockRestore();
+        warnSpy.mockRestore();
+      }
+    }, 30_000);
+  });
 });

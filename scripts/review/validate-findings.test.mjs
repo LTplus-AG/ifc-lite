@@ -30,19 +30,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MARKER_RE as GATE_MARKER_RE } from '../check-review-posted.mjs';
-import {
-  MAX_BODY_CHARS,
-  MAX_FINDINGS,
-  SENTINEL,
-  lineIsAdded,
-  quotableLines,
-  quoteAppearsIn,
-  sanitizeBody,
-  sanitizeLabel,
-  stripFence,
-  REASONS,
-  validate,
-} from './validate-findings.mjs';
+import { MAX_BODY_CHARS, MAX_FINDINGS, SENTINEL, lineIsAdded, quotableLines, quoteAppearsIn, sanitizeBody, sanitizeLabel, stripFence, REASONS, validate, siblingVerifies } from './validate-findings.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, 'validate-findings.mjs');
@@ -465,13 +453,20 @@ test('a CLEAN verdict with zero findings is NOT VALIDATION_EMPTY', () => {
 // ===================================================================== 7. cap
 
 test(`more than ${MAX_FINDINGS} valid findings keeps the first ${MAX_FINDINGS} and says so`, () => {
-  const many = Array.from({ length: 8 }, (_, i) => finding({ line: 10, body: `finding number ${i}` }));
+  // Derived from MAX_FINDINGS, not hardcoded. This test built exactly 8 findings
+  // against a cap of 5; the moment the cap moved to 12 it stopped testing the cap
+  // and started failing for the wrong reason. A test pinned to a literal that
+  // shadows the constant it guards is the shape this repo keeps paying for.
+  const over = 3;
+  const many = Array.from({ length: MAX_FINDINGS + over }, (_, i) =>
+    finding({ line: 10, body: `finding number ${i}` }),
+  );
   const r = run(response({ verdict: 'findings', findings: many }));
   assert.equal(r.code, 0, r.out);
   assert.equal(r.doc.findings.length, MAX_FINDINGS);
-  assert.equal(r.doc.counts.capped, 3);
+  assert.equal(r.doc.counts.capped, over);
   assert.match(r.out, /CAPPED/);
-  assert.match(r.doc.findings[0].body, /finding number 0/, 'the FIRST five, in the model order');
+  assert.match(r.doc.findings[0].body, /finding number 0/, 'the first ones, in the model order');
 });
 
 test('the cap runs AFTER validation, so invalid findings cannot crowd out valid ones', () => {
@@ -912,4 +907,73 @@ test('PROOF_OF_WORK_FAILED names a remedy the model can actually carry out', () 
     riskiest_change: { path: 'src/a.ts', quoted_line: 'const shortEnough = 2;' },
   };
   assert.doesNotThrow(() => validate({ response: shorter, input }));
+});
+
+// ==================================== the sibling: verified, and CARRIED THROUGH
+
+/**
+ * A pack whose sibling excerpts name one real other site. `siblingVerifies`
+ * checks a finding's `sibling` against exactly this.
+ */
+const PACK = {
+  siblings: [
+    { path: 'packages/cache/src/glb.ts', line: 88, text: 'cache.set(n, scaled);' },
+  ],
+  fileEvidence: [],
+  body: null,
+  truncated: [],
+};
+const INPUT_WITH_PACK = { ...INPUT, contextPack: PACK };
+
+test('a VERIFIED sibling survives into findings.json', () => {
+  // It used to be verified and then dropped by the emit map, so every finding
+  // reached the judge saying "verified sibling: none" -- the second-site defect
+  // family handed to a filter stripped of the one thing supporting it. Nothing
+  // failed; the evidence just was not there.
+  const f = finding({ sibling: { path: 'packages/cache/src/glb.ts', line: 88, quote: 'cache.set(n, scaled);' } });
+  const r = run(response({ verdict: 'findings', findings: [f] }), { input: INPUT_WITH_PACK });
+  assert.equal(r.code, 0, r.out);
+  assert.equal(r.doc.findings.length, 1);
+  assert.deepEqual(r.doc.findings[0].sibling, {
+    path: 'packages/cache/src/glb.ts',
+    line: 88,
+    quote: 'cache.set(n, scaled);',
+  });
+});
+
+test('an INVENTED sibling still drops the finding', () => {
+  // The other direction: carrying the field through must not have loosened the
+  // check that makes it trustworthy.
+  const f = finding({ sibling: { path: 'packages/nope/imaginary.ts', line: 3, quote: 'nothing()' } });
+  const r = run(response({ verdict: 'findings', findings: [f] }), { input: INPUT_WITH_PACK });
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /VALIDATION_EMPTY/);
+});
+
+test('a finding with NO sibling is unaffected, and emits no sibling key', () => {
+  const r = run(response({ verdict: 'findings', findings: [finding()] }), { input: INPUT_WITH_PACK });
+  assert.equal(r.code, 0, r.out);
+  assert.equal('sibling' in r.doc.findings[0], false, 'absent must stay absent, not become null');
+});
+
+test('a FABRICATED sibling quote cannot pass by merely containing a real excerpt line', () => {
+  // The containment ran both ways, so a model could wrap one real line in any
+  // amount of invented prose and the harness would certify the lot. Reproduced:
+  // "the importer does cache.set(n, scaled); and then silently drops the alpha
+  // channel" verified against an excerpt of `cache.set(n, scaled);`.
+  //
+  // That defeats the point of the check. The reviewer is SHOWN these excerpts, so
+  // quoting from one is the only honest direction; a quote longer than the
+  // excerpt is not evidence of anything the harness put there.
+  const pack = { siblings: [{ path: 'packages/cache/src/glb.ts', line: 88, text: 'cache.set(n, scaled);' }] };
+  const at = (quote) => siblingVerifies({ path: 'packages/cache/src/glb.ts', line: 88, quote }, pack);
+
+  assert.equal(
+    at('the importer does cache.set(n, scaled); and then drops the alpha channel').ok,
+    false,
+    'invented prose wrapping a real line is not evidence',
+  );
+  assert.equal(at('cache.set(n, scaled);').ok, true, 'the excerpt itself still verifies');
+  assert.equal(at('cache.set').ok, true, 'and so does a substring of it');
+  assert.equal(at('entirely invented').ok, false);
 });

@@ -1,0 +1,51 @@
+{
+  "$comment": "Held from the merge train of 2026-09-01 on a merge-blocking defect that all ~91 deterministic gates passed. Defect class: second-site. `what` is written from the reviewer's file:line and failing input, never from the PR body.",
+  "pr": 3603,
+  "input": {
+    "headSha": "7aecd93ae26046cef2e911887e469457348599c5",
+    "files": [
+      {
+        "path": ".changeset/property-table-duplicate-pset-name.md",
+        "patch": "@@ -0,0 +1,7 @@\n+---\n+'@ifc-lite/data': patch\n+---\n+\n+Fix `PropertyTable.getForEntity` silently merging two distinct `IfcPropertySet` instances into one when they share a literal name, misattributing the second instance's properties to the first instance's GlobalId.\n+\n+An entity can carry two rows whose `psetName` is identical but whose `psetGlobalId` (the real property-set identity) differs \u2014 a federated merge of two files, or an exporter that emits the same `Pset_` twice on one element, both produce this. `getForEntity` grouped rows into a `Map<string, PropertySet>` keyed on `psetName` alone, so the second instance's rows landed in the first instance's bucket and the returned `PropertySet.globalId` answered the wrong pset for them \u2014 a silent identity mix-up, not a crash. `getForEntity` now groups on `(psetName, psetGlobalId)`, so two same-named-but-distinct instances stay separate while rows that genuinely belong to one instance still merge exactly as before.",
+        "addedLineRanges": [
+          [
+            1,
+            7
+          ]
+        ]
+      },
+      {
+        "path": "packages/data/src/property-table.test.ts",
+        "patch": "@@ -52,6 +52,31 @@ describe('PropertyTable round-trip', () => {\n     expect(table.getPropertyValue(100, 'Pset_SlabCommon', 'Reference')).toBe(null);\n   });\n \n+  it('keeps two distinct pset INSTANCES that share a literal name separate, not merged', () => {\n+    // A federated merge, or an exporter that emits the same Pset_ twice on\n+    // one element, can put two rows on one entity whose psetName is\n+    // identical but whose psetGlobalId (the real IfcPropertySet identity)\n+    // differs. Grouping by name alone previously merged them into one\n+    // PropertySet reporting only the first row's GlobalId, so a property\n+    // that actually belonged to the second instance came back attributed\n+    // to the wrong pset.\n+    const strings = new StringTable();\n+    const builder = new PropertyTableBuilder(strings);\n+    builder.add({ entityId: 100, psetName: 'Pset_WallCommon', psetGlobalId: 'gid-AAA', propName: 'FireRating', propType: PropertyValueType.String, value: 'F90' });\n+    builder.add({ entityId: 100, psetName: 'Pset_WallCommon', psetGlobalId: 'gid-BBB', propName: 'IsExternal', propType: PropertyValueType.Boolean, value: true });\n+    const table = builder.build();\n+\n+    const sets = table.getForEntity(100);\n+    expect(sets).toHaveLength(2);\n+    const byGlobalId = new Map(sets.map((s) => [s.globalId, s]));\n+    expect(byGlobalId.get('gid-AAA')?.properties).toEqual([\n+      { name: 'FireRating', type: PropertyValueType.String, value: 'F90' },\n+    ]);\n+    expect(byGlobalId.get('gid-BBB')?.properties).toEqual([\n+      { name: 'IsExternal', type: PropertyValueType.Boolean, value: true },\n+    ]);\n+  });\n+\n   it('handles empty tables (lite-mode default)', () => {\n     const strings = new StringTable();\n     const empty = new PropertyTableBuilder(strings).build();",
+        "addedLineRanges": [
+          [
+            55,
+            79
+          ]
+        ]
+      },
+      {
+        "path": "packages/data/src/property-table.ts",
+        "patch": "@@ -220,12 +220,12 @@ export function propertyTableFromColumns(columns: PropertyTableColumns, strings:\n       const rowIndices = entityIndex.get(id) || [];\n       const psets = new Map<string, PropertySet>();\n       for (const idx of rowIndices) {\n-        const psetNameStr = strings.get(psetName[idx]);\n-        const psetGlobalIdStr = strings.get(psetGlobalId[idx]);\n-        if (!psets.has(psetNameStr)) {\n-          psets.set(psetNameStr, { name: psetNameStr, globalId: psetGlobalIdStr, properties: [] });\n+        const psetNameStr = strings.get(psetName[idx]), psetGlobalIdStr = strings.get(psetGlobalId[idx]);\n+        const key = psetNameStr + '\\^@' + psetGlobalIdStr;\n+        if (!psets.has(key)) {\n+          psets.set(key, { name: psetNameStr, globalId: psetGlobalIdStr, properties: [] });\n         }\n-        const pset = psets.get(psetNameStr)!;\n+        const pset = psets.get(key)!;\n         const propNameStr = strings.get(propName[idx]);\n         pset.properties.push({\n           name: propNameStr,",
+        "addedLineRanges": [
+          [
+            223,
+            226
+          ],
+          [
+            228,
+            228
+          ]
+        ]
+      }
+    ],
+    "unreviewable": [],
+    "excluded": []
+  },
+  "expected": [
+    {
+      "path": "packages/data/src/property-table.ts",
+      "what": "the pset grouping fix lands on one of two getForEntity copies; the duplicate in packages/cache/src/sections/properties.ts still merges by name alone, so the same model answers differently from cache than from a fresh parse"
+    }
+  ]
+}

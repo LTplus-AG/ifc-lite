@@ -17,9 +17,9 @@ seed: rerun the command and the hashes, scores and counts reproduce exactly.
 ## Act 1 -- BIRTH (M2 world-gym)
 
 Seed 20260724 deterministically births an **office** building: 548
-entities, 1 storey(s), 28008 bytes.
+entities, 1 storey(s), 28208 bytes.
 
-- model sha256: `7fdb6b6032c6333baf071d6bb5d37a308b53debffdc4fad36d70119cea3f450e` (regenerable from the seed alone)
+- model sha256: `0754b4686d5f77a6fb7bac98e0bff9d12d1b038b765b6922a2b7f9289c262877` (regenerable from the seed alone)
 - schema: valid=true (0 errors, 0 warnings); clashes: 0
 - ground-truth totals (m3 / m2): slabCount=1, slabGrossArea=214.212816, slabGrossVolume=62.550142, wallCount=4, wallGrossSideArea=427.1124, wallGrossVolume=68.594251, partitionWallCount=6, roomCount=16, roomNetFloorArea=214.212816, roomNetVolume=617.361336
 - reward channels: schemaValidity=1, clashScore=1, determinismHashMatch=1, quantityAccuracy=1, defectDetection=1
@@ -90,8 +90,8 @@ differentiable building with exact dual-number gradients:
 
 Wall clocks and the timestamp below change run to run; nothing above does.
 
-- generated at: 2026-08-29T21:07:30.298Z (node v22.14.0)
-- total wall clock: 6.2s
-- per act: act1=0.0s, act2=0.1s, act3=0.2s, act4=2.3s, act5=3.6s
-- artifacts (outside the repo): /var/folders/nv/01qd6gt17wzcc99yqf12gr940000gn/T/ifc-lite-b35-demo
+- generated at: 2026-09-02T16:15:26.331Z (node v22.13.1)
+- total wall clock: 6.9s
+- per act: act1=0.0s, act2=0.1s, act3=0.3s, act4=2.5s, act5=4.0s
+- artifacts (outside the repo): /var/folders/pf/_t1ndxkx1sv0nmyhtcsfr_lr0000gn/T/ifc-lite-b35-demo
 

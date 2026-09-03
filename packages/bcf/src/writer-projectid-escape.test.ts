@@ -39,10 +39,10 @@ import type { BCFProject } from './types.js';
 /**
  * Well-formedness only, independent of schema conformance: `xmllint --format`
  * requires the input to parse as XML before it can reformat it, but does not
- * apply any XSD content-model rules (2.1's `project.xsd` requires a sibling
- * `<ExtensionSchema>` this writer deliberately omits -- see
- * `schema-validation.test.ts`'s "known gap" test -- which is irrelevant to
- * whether `ProjectId` was escaped correctly).
+ * apply any XSD content-model rules. Schema conformance of `project.bcfp` is
+ * `schema-validation.test.ts`'s and `interop-conformance.test.ts`'s job;
+ * whether `ProjectId` was escaped correctly is this file's, and an unescaped
+ * quote breaks parsing before any content model is reached.
  */
 async function assertWellFormed(xml: string): Promise<void> {
   const { valid, errors } = await validateXML({

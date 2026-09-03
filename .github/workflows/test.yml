@@ -700,6 +700,13 @@ jobs:
       # it must not.
       - name: Check the source-text detector's own regressions
         run: node --test scripts/check-source-text-assertions.test.mjs
+      # ALLOWLIST_CEILING is a count, so a commit that removes one row and adds
+      # a DIFFERENT one leaves the count untouched and the swap invisible
+      # (#3664). This pins the allowlist IDENTITY check that catches it,
+      # against real synthetic git history (same method as
+      # check-module-size.test.mjs's gitTree()).
+      - name: Check the source-text allowlist identity ratchet
+        run: node --test scripts/check-source-text-assertions-identity.test.mjs
       # That gate's SCAN SCOPE is packages/ and apps/ only -- `grep -c rust` over
       # it returns 0 -- so the same AGENTS.md rule was unenforced across the
       # whole rust/ tree, demonstrated rather than inferred: a genuine

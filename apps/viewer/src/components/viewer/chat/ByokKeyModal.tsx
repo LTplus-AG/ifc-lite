@@ -22,8 +22,8 @@
  * desktop-only and not deployed on Vercel).
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronDown, ChevronUp, ExternalLink, Eye, EyeOff, Key, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Check, ChevronDown, ChevronUp, ExternalLink, Key } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -34,20 +34,12 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { toast } from '@/components/ui/toast';
 import { ByokTrustDiagram } from './ByokTrustDiagram';
+import { ByokCredentialForm } from './ByokCredentialForm';
+import { CLIENT_FILES, DEFAULT_REQUEST_SOURCE } from './byok-audit-sources';
 import { getByokModelsForSource } from '@/lib/llm/models';
-import {
-  getApiKeys,
-  updateApiKeys,
-  subscribeApiKeys,
-  type ApiKeyConfig,
-} from '@/services/api-keys';
-import {
-  looksLikeProviderKey,
-  maskKey,
-  type BYOKProvider,
-} from '@/lib/llm/clipboard-detect';
+import { getApiKeys, subscribeApiKeys, type ApiKeyConfig } from '@/services/api-keys';
+import { type BYOKProvider } from '@/lib/llm/clipboard-detect';
 
 const REPO_BLOB = 'https://github.com/LTplus-AG/ifc-lite/blob/main';
 
@@ -84,9 +76,23 @@ interface ByokKeyModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialProvider?: BYOKProvider;
+  /**
+   * Per provider, the file that sends that provider's key on this surface,
+   * relative to `apps/viewer/src`. The audit link is this modal's whole point,
+   * so it has to name the code that actually runs — and a surface can differ
+   * for one provider and not another: the MCP playground drives its own
+   * Anthropic loop but never issues an OpenAI request at all, so its OpenAI tab
+   * must keep the default. Unlisted providers fall back to `stream-direct.ts`.
+   */
+  requestSource?: Partial<Record<BYOKProvider, string>>;
 }
 
-export function ByokKeyModal({ open, onOpenChange, initialProvider = 'anthropic' }: ByokKeyModalProps) {
+export function ByokKeyModal({
+  open,
+  onOpenChange,
+  initialProvider = 'anthropic',
+  requestSource,
+}: ByokKeyModalProps) {
   const [provider, setProvider] = useState<BYOKProvider>(initialProvider);
   const [apiKeys, setApiKeys] = useState<ApiKeyConfig>(() => getApiKeys());
 
@@ -134,10 +140,19 @@ export function ByokKeyModal({ open, onOpenChange, initialProvider = 'anthropic'
           </TabsList>
 
           <TabsContent value="anthropic" className="mt-4">
-            <ProviderTab provider="anthropic" savedKey={apiKeys.anthropicKey} />
+            <ProviderTab
+              provider="anthropic"
+              savedKey={apiKeys.anthropicKey}
+              savedWorkspaceId={apiKeys.anthropicWorkspaceId}
+              requestSource={requestSource?.anthropic ?? DEFAULT_REQUEST_SOURCE}
+            />
           </TabsContent>
           <TabsContent value="openai" className="mt-4">
-            <ProviderTab provider="openai" savedKey={apiKeys.openaiKey} />
+            <ProviderTab
+              provider="openai"
+              savedKey={apiKeys.openaiKey}
+              requestSource={requestSource?.openai ?? DEFAULT_REQUEST_SOURCE}
+            />
           </TabsContent>
         </Tabs>
       </DialogContent>
@@ -147,44 +162,20 @@ export function ByokKeyModal({ open, onOpenChange, initialProvider = 'anthropic'
 
 // ── Per-provider tab body ──────────────────────────────────────────────────
 
-function ProviderTab({ provider, savedKey }: { provider: BYOKProvider; savedKey: string }) {
+function ProviderTab({ provider, savedKey, savedWorkspaceId = '', requestSource }: {
+  provider: BYOKProvider;
+  savedKey: string;
+  savedWorkspaceId?: string;
+  requestSource: string;
+}) {
   const meta = PROVIDER_META[provider];
 
-  const [value, setValue] = useState('');
-  const [show, setShow] = useState(false);
-  const [walkthroughOpen, setWalkthroughOpen] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
   const unlockedModels = useMemo(() => getByokModelsForSource(provider), [provider]);
+  const [walkthroughOpen, setWalkthroughOpen] = useState(false);
 
-  // Autofocus the input so the user's Cmd+V lands directly in the field
-  // without an extra click. Re-runs on tab switch.
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, [provider]);
-
-  const handleSave = useCallback((next: string) => {
-    const trimmed = next.trim();
-    if (!trimmed) return;
-    const field = provider === 'anthropic' ? 'anthropicKey' : 'openaiKey';
-    updateApiKeys({ [field]: trimmed });
-    setValue('');
-    toast.success(`${PROVIDER_META[provider].label} key saved`);
-  }, [provider]);
-
-  const handleClear = useCallback(() => {
-    const field = provider === 'anthropic' ? 'anthropicKey' : 'openaiKey';
-    updateApiKeys({ [field]: '' });
-    toast.success(`${PROVIDER_META[provider].label} key removed`);
-  }, [provider]);
-
-  const handleOpenConsole = useCallback(() => {
+  const handleOpenConsole = () => {
     window.open(meta.consoleUrl, '_blank', 'noopener,noreferrer');
-  }, [meta.consoleUrl]);
-
-  const trimmedValue = value.trim();
-  const inputIsValid = trimmedValue.length === 0 || looksLikeProviderKey(provider, value);
-  const inputLooksGood = trimmedValue.length > 0 && looksLikeProviderKey(provider, value) && trimmedValue !== savedKey;
+  };
 
   return (
     <div className="space-y-4">
@@ -214,79 +205,29 @@ function ProviderTab({ provider, savedKey }: { provider: BYOKProvider; savedKey:
           Network → filter <code className="bg-muted px-1 rounded">{meta.apiHost.split('.').slice(-2).join('.')}</code>.
         </TrustBullet>
         <TrustBullet>
-          The whole BYOK code path is ~60 lines.{' '}
-          <a
-            href={`${REPO_BLOB}/apps/viewer/src/lib/llm/stream-direct.ts`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline inline-flex items-center gap-0.5 hover:text-foreground"
-          >
-            Read it on GitHub <ExternalLink className="h-2.5 w-2.5" />
-          </a>
+          The whole BYOK code path is short enough to read.{' '}
+          {[...CLIENT_FILES[provider], requestSource].map((file, i) => (
+            <span key={file}>
+              {i > 0 && ' and '}
+              <a
+                href={`${REPO_BLOB}/apps/viewer/src/${file}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline inline-flex items-center gap-0.5 hover:text-foreground"
+              >
+                {file.split('/').pop()} <ExternalLink className="h-2.5 w-2.5" />
+              </a>
+            </span>
+          ))}
         </TrustBullet>
       </ul>
 
-      {/* Paste-driven key entry. The input is autofocused on mount so Cmd+V
-          lands here immediately after the user returns from the provider
-          console — no extra click required. */}
-      <div className="space-y-1.5">
-        <label className="text-xs font-medium" htmlFor={`byok-${provider}-input`}>
-          {savedKey ? 'Replace existing key' : 'Paste your key'}
-        </label>
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <input
-              ref={inputRef}
-              id={`byok-${provider}-input`}
-              type={show ? 'text' : 'password'}
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && inputIsValid) handleSave(value); }}
-              placeholder={meta.placeholder}
-              autoComplete="off"
-              spellCheck={false}
-              className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring pr-8"
-            />
-            <button
-              type="button"
-              onClick={() => setShow(!show)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              aria-label={show ? 'Hide key' : 'Show key'}
-            >
-              {show ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-            </button>
-          </div>
-          <Button size="sm" onClick={() => handleSave(value)} disabled={!inputIsValid || trimmedValue.length === 0}>
-            Save
-          </Button>
-        </div>
-        {inputLooksGood && (
-          <p className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-            <Check className="h-3 w-3" />
-            Looks like a {meta.label} key (<code className="font-mono">{maskKey(trimmedValue)}</code>) — press Enter or Save.
-          </p>
-        )}
-        {!inputIsValid && (
-          <p className="text-[11px] text-destructive">
-            That doesn&apos;t look like a {meta.label} key (expected prefix{' '}
-            <code className="font-mono">{meta.keyPrefix}</code>).
-          </p>
-        )}
-      </div>
-
-      {/* Currently configured key + remove */}
-      {savedKey && (
-        <div className="flex items-center justify-between gap-3 rounded-md border p-3 text-xs">
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Check className="h-3.5 w-3.5 text-emerald-500" />
-            Configured: <code className="font-mono text-foreground">{maskKey(savedKey)}</code>
-          </div>
-          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={handleClear}>
-            <Trash2 className="mr-1 h-3 w-3" />
-            Remove
-          </Button>
-        </div>
-      )}
+      <ByokCredentialForm
+        provider={provider}
+        meta={meta}
+        savedKey={savedKey}
+        savedWorkspaceId={savedWorkspaceId}
+      />
 
       {/* Walkthrough */}
       <div className="rounded-md border bg-muted/20">
@@ -308,6 +249,7 @@ function ProviderTab({ provider, savedKey }: { provider: BYOKProvider; savedKey:
               </li>
               <li>
                 Click <strong>Create Key</strong>, name it <code className="bg-muted px-1 rounded">ifc-lite</code>.
+                {provider === 'anthropic' && ' Scope it to a single workspace — a key that spans several needs a Workspace ID here as well.'}
               </li>
               <li>
                 Set a spending limit (e.g.&nbsp;$10/month) so a leaked key can&apos;t burn you. The provider enforces it.

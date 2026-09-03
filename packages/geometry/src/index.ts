@@ -30,6 +30,7 @@ export {
 // event and the native ProcessingStats).
 export type { GeometryDiagnostics } from './diagnostics.js';
 export { mergeGeometryDiagnostics } from './diagnostics.js';
+export type { HbjsonStats } from './hbjson-stats.js'; // consumed by the CLI + viewer energy-export UI
 
 // Typed export-failure contract (fail-closed empty exports, mirrors Rust ExportError).
 export { NO_RENDER_GEOMETRY, isNoRenderGeometryError } from './export-errors.js';
@@ -88,6 +89,7 @@ import { CoordinateHandler } from './coordinate-handler.js';
 import { GEOM_CLASS_OCCURRENCE, geometryClassOf } from './geometry-class.js';
 import { createPlatformBridge, isTauri, type GeometryStats as PlatformGeometryStats, type IPlatformBridge } from './platform-bridge.js';
 import type { GeometryResult, MeshData, CoordinateInfo, GridAxis, TessellationQuality, KmzAltitudeMode, SimplifyMeshesResult } from './types.js';
+import type { HbjsonStats } from './hbjson-stats.js';
 
 // Extracted sub-modules
 import { getStreamingBatchSize, convertMeshCollectionToBatch, withBuildingRotation } from './geometry-coordinate.js';
@@ -1481,17 +1483,14 @@ export class GeometryProcessor {
     );
   }
 
-  /**
-   * Export the `IfcSpace` volumes in `buffer` as a Honeybee HBJSON string
-   * (Ladybug Tools energy/daylight model). Returns null if not initialized.
-   * @param buffer IFC file buffer
-   * @param name Model identifier / display name
-   */
+  /** Export the `IfcSpace` volumes in `buffer` as Honeybee HBJSON. Null if not initialized. */
   exportHbjson(buffer: Uint8Array, name: string): Uint8Array | null {
-    if (!this.bridge || !this.bridge.isInitialized()) {
-      return null;
-    }
-    return this.bridge.exportHbjson(buffer, name);
+    return this.bridge?.isInitialized() ? this.bridge.exportHbjson(buffer, name) : null;
+  }
+
+  /** Like {@link exportHbjson}; also returns `HbjsonStats`. Null if not initialized. */
+  exportHbjsonWithStats(buffer: Uint8Array, name: string): { content: Uint8Array; stats: HbjsonStats } | null {
+    return this.bridge?.isInitialized() ? this.bridge.exportHbjsonWithStats(buffer, name) : null;
   }
 
   /**

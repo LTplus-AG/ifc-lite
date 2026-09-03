@@ -41,6 +41,8 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { buildPack, retrievalFailed, retrievalFailedMessage } from './build-context-pack.mjs';
+import { MAX_POSTED_FINDINGS } from './post-review.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CASE_DIR = join(HERE, 'eval-cases');
@@ -112,7 +114,17 @@ export function validatorReason(said) {
  *
  * @returns {{ hit: boolean, by: string|null }}
  */
-export function matches(expected, findings) {
+/**
+ * Judge output the eval echoes. `JUDGE[: ]` and not `JUDGE (DROPPED|...)`,
+ * because a judge that ran and removed nothing prints only `JUDGE: n in, n out`
+ * -- under the narrower pattern a clean judging produced no output at all and the
+ * log could not answer whether judging happened. Exported so its test cannot
+ * quietly hold a second copy: the first version of that test inlined the regex,
+ * so reverting this line failed nothing.
+ */
+export const JUDGE_LOG_RE = /JUDGE[: ]|CAPPED/;
+
+export function matches(expected, findings, body = null) {
   const sameFile = findings.filter((f) => f.path === expected.path);
   if (sameFile.length === 0) return { hit: false, by: null };
 
@@ -139,11 +151,27 @@ export function matches(expected, findings) {
     ['output', 'print', 'remed', 'shoul', 'becau', 'witho', 'nothi', 'canno', 'sayin', 'along',
      'happe', 'somet', 'chang', 'retur', 'value', 'metho', 'funct', 'callи'].map(stem),
   );
-  const terms = [...new Set((expected.what.match(/[A-Za-z_][A-Za-z0-9_]{5,}/g) || []).map(stem))]
-    .filter((t) => !GENERIC.has(t));
+  // WORDS THE PR BODY ALREADY SUPPLIES ARE NOT EVIDENCE EITHER, for exactly the
+  // reason `quote` is excluded above: the body is handed to the reviewer, so
+  // crediting it for repeating the body measures copying, not review. It matters
+  // on the one case whose defect IS a body/diff contradiction -- there the body
+  // supplied 6 of 13 expected terms, and two are enough to score, so a reviewer
+  // that paraphrased the description and never opened the file scored a hit.
+  // What survives is the vocabulary only the CODE can supply.
+  // ONE TOKENIZER. This expression appeared three times, differing only in the
+  // minimum length, and the relationship that makes the body exclusion sound --
+  // the body must be tokenized at least as permissively as the expected terms --
+  // was held by nothing but the lines being adjacent. Raising the body's minimum
+  // to 5 would have silently stopped the exclusion catching anything, with every
+  // test still green.
+  const tokens = (text, min) =>
+    new Set((String(text ?? '').match(new RegExp(`[A-Za-z_][A-Za-z0-9_]{${min - 1},}`, 'g')) || []).map(stem));
+
+  const fromBody = tokens(body, 5);
+  const terms = [...tokens(expected.what, 6)].filter((t) => !GENERIC.has(t) && !fromBody.has(t));
 
   for (const f of sameFile) {
-    const words = new Set((blobOf(f).match(/[A-Za-z_][A-Za-z0-9_]{4,}/g) || []).map(stem));
+    const words = tokens(blobOf(f), 5);
     const hits = terms.filter((t) => words.has(t));
     if (hits.length >= 2) return { hit: true, by: `${f.path}:${f.line} (${hits.slice(0, 3).join(', ')})` };
   }
@@ -158,9 +186,15 @@ export function score(cases) {
   let extra = 0;
   for (const c of cases) {
     lines.push(`  PR #${c.pr}: verdict=${c.verdict}, ${c.findings.length} finding(s)`);
-    for (const e of c.expected) {
+    // MATCHED ONCE. It used to be called here and again below with identical
+    // arguments, so threading the PR body through required editing both sites --
+    // and missing one would have been silent: `claimed` would have been built
+    // without the body exclusion, the EXTRA list would have quietly shrunk, and
+    // recall would have printed the same number either way.
+    const ms = c.expected.map((e) => matches(e, c.findings, c.body));
+    for (const [i, e] of c.expected.entries()) {
       total += 1;
-      const m = matches(e, c.findings);
+      const m = ms[i];
       if (m.hit) hits += 1;
       lines.push(`    ${m.hit ? '✅ FOUND   ' : '❌ MISSED  '} ${e.path}: ${e.what.slice(0, 88)}`);
       if (m.hit) lines.push(`               via ${m.by}`);
@@ -173,7 +207,7 @@ export function score(cases) {
     // that "the harness prints each one so a human decides" failed precisely
     // where it mattered.
     const claimed = new Set(
-      c.expected.map((e) => matches(e, c.findings).by).filter(Boolean).map((by) => by.split(' ')[0]),
+      ms.map((m) => m.by).filter(Boolean).map((by) => by.split(' ')[0]),
     );
     const others = c.findings.filter((f) => !claimed.has(`${f.path}:${f.line}`));
     extra += others.length;
@@ -197,6 +231,7 @@ function main() {
   };
   const rubric = arg('--rubric', join(HERE, 'rubric.md'));
   const model = process.env.EVAL_MODEL || 'sonnet';
+  const noJudge = process.argv.includes('--no-judge');
   const tmp = mkdtempSync(join(tmpdir(), 'rubric-eval-'));
   // Removed on SUCCESS only. It holds each case's raw reviewer output and
   // validated findings, which is exactly what you need when a case fails --
@@ -211,6 +246,12 @@ function main() {
     // still runs as a genuine child process. Nothing is mocked, so a test can ask
     // what the harness DOES rather than what its source says.
     const caseDir = arg('--cases', CASE_DIR);
+  // EXPLICIT ONLY. This defaulted to HEAD, which silently turned the documented
+  // diff-only baseline into a context-enabled run -- the comment below said
+  // "without it the eval measures the old behaviour" while the code three lines
+  // up guaranteed it never could. A baseline you cannot reproduce is not a
+  // baseline. Pass `--base HEAD` to retrieve siblings from the current checkout.
+  const baseRef = arg('--base', null);
     const reviewer = arg('--reviewer', join(HERE, 'run-reviewer.mjs'));
 
     const files = readdirSync(caseDir).filter((f) => f.endsWith('.json')).sort();
@@ -219,7 +260,38 @@ function main() {
     const results = [];
     for (const f of files) {
       const c = JSON.parse(readFileSync(join(caseDir, f), 'utf8'));
-      const inputPath = join(tmp, `${f}.input.json`);
+      // THE CONTEXT PACK, built per case so the eval measures the pipeline the
+    // lane actually runs rather than a diff-only ghost of it. `--base` names
+    // the tree siblings are retrieved from; without it the eval measures the
+    // old behaviour, which is exactly what the baseline run did.
+    if (baseRef) {
+      try {
+        // `body` MATTERS, and its absence was not merely an untested prompt
+        // section. pr-3389's expected defect IS "the PR body describes a null
+        // sentinel meaning cannot answer yet, but the helper treats null and
+        // empty array identically" -- detectable only by comparing the
+        // description against the diff. With no body that case was unscoreable:
+        // a permanent miss no rubric change could ever convert, quietly
+        // depressing recall and inviting a rubric "fix" for a harness defect.
+        const patchBytes = c.input.files.reduce((n, ff) => n + Buffer.byteLength(ff.patch, 'utf8'), 0);
+        c.input.contextPack = buildPack(c.input, { baseRef, body: c.body ?? null, patchBytes });
+        // The eval scores a pack the same way the lane builds one, so it has to be
+        // able to say when no pack was built. Its own workflow comment describes this
+        // exact symptom -- a shallow checkout leaves every case's file evidence empty
+        // -- and without this the harness prints a recall number for a pack that was
+        // never assembled, which is how the 7% -> 20% figure came to be wrong twice.
+        if (retrievalFailed(c.input.contextPack, c.input.files.length)) {
+          console.log(
+            `  ${f}: ${retrievalFailedMessage(c.input.headSha, c.input.files.length)} Expected here: ` +
+              'every eval case names a squash-merged PR head, which no clone depth reaches. Siblings ' +
+              'and the description are still scored; whole-file evidence is not.',
+          );
+        }
+      } catch (err) {
+        console.log(`  ${f}: context pack unavailable (${err?.message ?? 'unknown'})`);
+      }
+    }
+    const inputPath = join(tmp, `${f}.input.json`);
       const outPath = join(tmp, `${f}.out.txt`);
       writeFileSync(inputPath, JSON.stringify(c.input));
       const r = spawnSync(
@@ -279,7 +351,12 @@ function main() {
         // NOT `verdict: 'findings'`. On RAW_EMPTY the model said nothing at all,
         // and printing a verdict it never gave is the same fabrication
         // validate-findings refuses to make. `null` is what actually happened.
-        results.push({ pr: c.pr, expected: c.expected, verdict: null, findings: [] });
+        //
+        // `body` IS WHAT THE REVIEWER SAW, not the fixture's. The pack truncates
+        // the description, and a diff-only run carries none at all -- scoring
+        // against text the reviewer never received excludes vocabulary it could
+        // not have copied, and that reads as a false miss.
+        results.push({ pr: c.pr, body: c.input.contextPack?.body ?? null, expected: c.expected, verdict: null, findings: [] });
         continue;
       }
       // PARTIAL losses exit 0. DROPPED is one finding refused; CAPPED is the
@@ -288,8 +365,59 @@ function main() {
       // missed it" from "the pipeline discarded it".
       const lost = said.split('\n').filter((l) => /DROPPED|CAPPED/.test(l));
       if (lost.length) console.log(lost.map((l) => `    ${f}: ${l.trim()}`).join('\n'));
-      const parsed = JSON.parse(readFileSync(findingsPath, 'utf8'));
-      results.push({ pr: c.pr, expected: c.expected, verdict: parsed.verdict, findings: parsed.findings ?? [] });
+      // THE JUDGE RUNS HERE FOR THE SAME REASON THE VALIDATOR DOES: the lane posts
+      // judged findings, so scoring unjudged ones measures a pipeline that does not
+      // exist. It matters more than the validator did, because the judge is the half
+      // of the inversion that can LOWER recall -- if it is eating real findings, this
+      // is the only place that shows up before a human's PR does. `--no-judge` scores
+      // the generator alone, which is how you tell "the reviewer missed it" from "the
+      // judge threw it away".
+      let parsed = JSON.parse(readFileSync(findingsPath, 'utf8'));
+      // Nothing to judge costs no process. `judge()` short-circuits on an empty
+      // list anyway, so this only saves a node start -- but four of the fixtures
+      // expect zero findings and more come back clean in practice.
+      if (!noJudge && parsed.findings?.length > 0) {
+        const judgedPath = join(tmp, `${f}.judged.json`);
+        const j = spawnSync(
+          process.execPath,
+          [join(HERE, 'run-judge.mjs'), '--findings', findingsPath,
+           '--judge-rubric', join(HERE, 'judge.md'), '--out', judgedPath, '--model', 'haiku'],
+          { encoding: 'utf8' },
+        );
+        const jsaid = `${j.stdout || ''}${j.stderr || ''}`.trim();
+        // `JUDGE:` IS IN THE FILTER, and leaving it out made the instrument
+        // unreadable. A judge that ran and dropped nothing prints only
+        // `JUDGE: n in, n out`, which the old pattern did not match -- so a clean
+        // judging produced NO output at all, and a whole CI eval could not answer
+        // "did the judge run". I read one such log as evidence the judge had eaten
+        // a finding, when it had run and removed nothing. The instrument has to
+        // say what it did, including when it did nothing.
+        const jlost = jsaid.split('\n').filter((l) => JUDGE_LOG_RE.test(l));
+        if (jlost.length) console.log(jlost.map((l) => `    ${f}: ${l.trim()}`).join('\n'));
+        // READ THE RECORD, DO NOT INFER FROM THE EXIT CODE. Every likely judge
+        // failure -- no credential, quota drained, CLI missing -- is caught inside
+        // run-judge.mjs and exits 0, so a status check could never fire for any of
+        // them: the loud warning was structurally unreachable while the quiet
+        // stdout line said the opposite. `judged` is written by the thing that
+        // knows.
+        if (j.status === 0) parsed = JSON.parse(readFileSync(judgedPath, 'utf8'));
+        if (j.status !== 0 || parsed.judged !== true) {
+          console.log(`  ${f}: THE JUDGE DID NOT RUN. Scoring unjudged findings; this is not a Stage 3 number.`);
+        }
+      }
+      // CAPPED LIKE THE POSTER, for the same reason the judge runs here at all: the
+      // lane posts five, and scoring twelve credits the reviewer for findings no
+      // author ever sees. `validate-findings` states outright that the order is the
+      // model's, not a severity ranking, so a defect matched at position nine counts
+      // as recall of something production drops.
+      const all = parsed.findings ?? [];
+      const posted = all.slice(0, MAX_POSTED_FINDINGS);
+      if (all.length > posted.length) {
+        console.log(`  ${f}: ${all.length - posted.length} finding(s) beyond the posting cap are not scored.`);
+      }
+      // Same rule as the failure record above: the exclusion is keyed to what
+      // the reviewer RECEIVED, `c.input.contextPack?.body`, never the fixture.
+      results.push({ pr: c.pr, body: c.input.contextPack?.body ?? null, expected: c.expected, verdict: parsed.verdict, findings: posted });
     }
 
     const s = score(results);

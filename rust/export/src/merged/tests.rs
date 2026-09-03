@@ -6,7 +6,7 @@
 //! the `_tests.rs` suffix convention.
 
 use super::*;
-use ifc_lite_core::EntityScanner;
+use ifc_lite_core::{express_id::parse_express_id, EntityScanner};
 
 fn scan_ids(step: &str) -> Vec<u32> {
     let bytes = step.as_bytes();
@@ -55,36 +55,7 @@ fn merge_two_models_unifies_project_and_offsets_ids() {
     );
 
     // No dangling references: every #ref resolves to a written id.
-    let idset: std::collections::HashSet<u32> = ids.into_iter().collect();
-    for line in merged.lines().filter(|l| l.starts_with('#')) {
-        // collect refs after the leading id
-        let body = &line[1..];
-        let after_eq = body.find('=').map(|e| &body[e..]).unwrap_or(body);
-        let mut i = 0;
-        let bytes = after_eq.as_bytes();
-        let mut in_str = false;
-        while i < bytes.len() {
-            let c = bytes[i];
-            if c == b'\'' {
-                in_str = !in_str;
-            } else if !in_str && c == b'#' {
-                let mut j = i + 1;
-                let mut n = 0u32;
-                let mut any = false;
-                while j < bytes.len() && bytes[j].is_ascii_digit() {
-                    n = n * 10 + (bytes[j] - b'0') as u32;
-                    j += 1;
-                    any = true;
-                }
-                if any {
-                    assert!(idset.contains(&n), "dangling ref #{n}");
-                    i = j;
-                    continue;
-                }
-            }
-            i += 1;
-        }
-    }
+    assert_no_dangling(&merged);
 }
 // `escape()` and `detect_schema()` are no longer private forks of this
 // module: `merged.rs` imports `escape` from `step_text.rs` and `detect_schema`
@@ -399,14 +370,22 @@ fn assert_no_dangling(step: &str) {
                 in_str = !in_str;
             } else if !in_str && c == b'#' {
                 let mut j = i + 1;
-                let mut n = 0u32;
-                let mut any = false;
                 while j < bytes.len() && bytes[j].is_ascii_digit() {
-                    n = n * 10 + (bytes[j] - b'0') as u32;
                     j += 1;
-                    any = true;
                 }
-                if any {
+                if j > i + 1 {
+                    // Through the shared express-id home, so the oracle holds the
+                    // same bound as the code it audits (#3421). A run past
+                    // u32::MAX is dangling by construction — no id column can
+                    // hold it — and `rewrite_refs` now emits such a run
+                    // verbatim, so this is the assertion that would see it. The
+                    // old `n * 10 + d` accumulator could not: it overflowed
+                    // (a debug panic) or wrapped onto a real written id and
+                    // passed.
+                    let digits = String::from_utf8_lossy(&bytes[i + 1..j]);
+                    let n = parse_express_id(&bytes[i + 1..j]).unwrap_or_else(|| {
+                        panic!("dangling ref #{digits} (above u32::MAX) in {line:?}")
+                    });
                     assert!(ids.contains(&n), "dangling ref #{n} in {line:?}");
                     i = j;
                     continue;
@@ -415,6 +394,27 @@ fn assert_no_dangling(step: &str) {
             i += 1;
         }
     }
+}
+
+#[test]
+#[should_panic(expected = "above u32::MAX")]
+fn the_dangling_oracle_reports_a_reference_past_the_id_space() {
+    // `rewrite_refs` now emits a reference above u32::MAX verbatim (#3421), so
+    // this oracle is the assertion that has to see it, and the 20-odd tests that
+    // call it are only as good as its bound. `#4294967297` is 2^32+1: the old
+    // `n * 10 + d` accumulator wrapped it onto the real, written `#1` and let the
+    // merged file pass as free of dangling references.
+    assert_no_dangling("#1=IFCPROJECT('g',$);\n#2=IFCSHAPEREPRESENTATION(#4294967297);\n");
+}
+
+#[test]
+fn the_dangling_oracle_resolves_a_reference_at_exactly_u32_max() {
+    // The other direction: u32::MAX is a legal express id on both sides, so a
+    // record written under it must satisfy a reference naming it rather than be
+    // reported as dangling.
+    assert_no_dangling(
+        "#4294967295=IFCPROJECT('g',$);\n#2=IFCSHAPEREPRESENTATION(#4294967295);\n",
+    );
 }
 
 /// Every `#N` reference in a line's attribute list (after `=`), skipping the
@@ -431,15 +431,15 @@ fn refs_in_line(line: &str) -> Vec<u32> {
             in_str = !in_str;
         } else if !in_str && c == b'#' {
             let mut j = i + 1;
-            let mut n = 0u32;
-            let mut any = false;
             while j < bytes.len() && bytes[j].is_ascii_digit() {
-                n = n * 10 + (bytes[j] - b'0') as u32;
                 j += 1;
-                any = true;
             }
-            if any {
-                out.push(n);
+            if j > i + 1 {
+                // Drops a run past u32::MAX, mirroring the production
+                // `step_text::refs_in_line` this helper stands in for (#3421).
+                if let Some(n) = parse_express_id(&bytes[i + 1..j]) {
+                    out.push(n);
+                }
                 i = j;
                 continue;
             }
@@ -1261,3 +1261,135 @@ ENDSEC;\nEND-ISO-10303-21;\n"
         "control: the shared wall is likewise unified to a single surviving entity"
     );
 }
+
+/// A federation whose spatial trees unify: model A carries the whole
+/// project→site→building→two-storey tree with a wall on Level 0, model B repeats
+/// the tree (matched by name) and adds nothing to Level 1.
+fn two_models_with_an_empty_storey() -> (String, String) {
+    let head = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n";
+    let tail = "ENDSEC;\nEND-ISO-10303-21;\n";
+    let tree = |salt: &str, wall: &str| {
+        format!(
+            "{head}\
+#1=IFCPROJECT('p{salt}',$,'P',$,$,$,$,$,$);\n\
+#2=IFCSITE('s{salt}',$,'Site',$,$,$,$,$,$,$,$,$,$,$);\n\
+#3=IFCBUILDING('b{salt}',$,'Building',$,$,$,$,$,$,$,$,$);\n\
+#4=IFCBUILDINGSTOREY('g{salt}',$,'Level 0',$,$,$,$,$,$,0.);\n\
+#5=IFCBUILDINGSTOREY('f{salt}',$,'Level 1',$,$,$,$,$,$,3.);\n\
+#6=IFCWALL('{wall}',$,'Wall',$,$,$,$,$,$);\n\
+#7=IFCRELAGGREGATES('a{salt}',$,$,$,#1,(#2));\n\
+#8=IFCRELAGGREGATES('c{salt}',$,$,$,#2,(#3));\n\
+#9=IFCRELAGGREGATES('d{salt}',$,$,$,#3,(#4,#5));\n\
+#10=IFCRELCONTAINEDINSPATIALSTRUCTURE('e{salt}',$,$,$,(#6),#4);\n\
+{tail}"
+        )
+    };
+    (tree("0", "wall000000000000000000"), tree("1", "wall111111111111111111"))
+}
+
+/// #3643: the "Merge Projects" recipe step container matching leaves behind —
+/// a storey no model puts anything in is not written at all, and the merge
+/// emits nothing referencing it, so no clean-up pass has to follow.
+#[test]
+fn empty_container_is_dropped_and_leaves_no_dangling_reference() {
+    let (a, b) = two_models_with_an_empty_storey();
+    let opts = MergedOptions { drop_empty_containers: true, ..Default::default() };
+    let (merged, stats) = export_merged_with_stats(&[a.as_bytes(), b.as_bytes()], &opts);
+
+    // Level 1 is empty in BOTH models, so the one unified storey goes.
+    assert_eq!(stats.dropped_container_count, 1, "one merged container dropped");
+    assert_eq!(type_count(&merged, "'Level 1'"), 0, "the empty storey is not written");
+    assert_eq!(type_count(&merged, "'Level 0'"), 1, "the populated storey survives");
+    assert_eq!(type_count(&merged, "=IFCSITE("), 1, "its site is kept — it holds a storey");
+    assert_eq!(type_count(&merged, "=IFCBUILDING("), 1, "so is its building");
+    assert_eq!(type_count(&merged, "=IFCWALL("), 2, "no element is lost");
+
+    // The aggregation that named it is rewritten without it, not left dangling.
+    let storey = sole_id_of_type(&merged, "'Level 0'");
+    let aggregates: Vec<&str> =
+        merged.lines().filter(|l| l.contains("=IFCRELAGGREGATES(")).collect();
+    assert!(
+        aggregates.iter().any(|l| refs_in_line(l).contains(&storey)),
+        "the surviving storey keeps its parent aggregation: {aggregates:?}"
+    );
+    assert_no_dangling(&merged);
+}
+
+/// The flag is off by default and changes nothing when there is nothing to drop:
+/// asking for the drop on a model whose every container is populated must return
+/// byte-identical output, so enabling it can never perturb an unrelated merge.
+#[test]
+fn dropping_is_off_by_default_and_inert_when_nothing_is_empty() {
+    let (a, b) = two_models_with_an_empty_storey();
+    // Give Level 1 an occupant in model B, so no container is empty any more.
+    let b = b.replace(
+        "#10=IFCRELCONTAINEDINSPATIALSTRUCTURE('e1',$,$,$,(#6),#4);",
+        "#10=IFCRELCONTAINEDINSPATIALSTRUCTURE('e1',$,$,$,(#6),#5);",
+    );
+    let models = [a.as_bytes(), b.as_bytes()];
+
+    let (baseline, base_stats) = export_merged_with_stats(&models, &MergedOptions::default());
+    assert_eq!(base_stats.dropped_container_count, 0, "default drops nothing");
+
+    let opts = MergedOptions { drop_empty_containers: true, ..Default::default() };
+    let (dropped, stats) = export_merged_with_stats(&models, &opts);
+    assert_eq!(stats.dropped_container_count, 0, "every container holds something");
+    assert_eq!(dropped, baseline, "output is byte-identical when nothing is empty");
+}
+
+/// The drop plan must cover only the models the merge actually EMITS. A model
+/// past the EXPRESS-id cut is never written, so treating its content as present
+/// would keep a container nothing in the output fills — and report it as
+/// surviving. Found in review of #3643.
+#[test]
+fn a_model_past_the_id_space_cut_does_not_keep_a_container_alive() {
+    // The first model's near-max id leaves no room for the second, so the merge
+    // stops after model A. A's storey is empty; only the unmerged B fills it.
+    let a = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#4294967295=IFCBUILDINGSTOREY('STOREYA000000000000001',$,'Level 0',$,$,$,$,$,$,0.);\n\
+ENDSEC;\nEND-ISO-10303-21;\n";
+    let b = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#1=IFCBUILDINGSTOREY('STOREYB000000000000001',$,'Level 0',$,$,$,$,$,$,0.);\n\
+#2=IFCWALL('WALLB00000000000000001',$,'Wall',$,$,$,$,$,$);\n\
+#3=IFCRELCONTAINEDINSPATIALSTRUCTURE('RELB000000000000000001',$,$,$,(#2),#1);\n\
+ENDSEC;\nEND-ISO-10303-21;\n";
+    let opts = MergedOptions { drop_empty_containers: true, ..Default::default() };
+    let (merged, stats) = export_merged_with_stats(&[a.as_bytes(), b.as_bytes()], &opts);
+
+    assert_eq!(stats.unmerged_model_count, 1, "the second model cannot be placed");
+    // Model B's wall is never emitted, so the storey it would have filled is
+    // genuinely empty in the OUTPUT and must go.
+    assert_eq!(stats.dropped_container_count, 1, "the storey no emitted model fills is dropped");
+    assert_eq!(type_count(&merged, "=IFCBUILDINGSTOREY("), 0, "and is not written");
+    assert_no_dangling(&merged);
+}
+
+/// A real authoring-tool model, self-merged with the flag on: the drop must not
+/// remove anything a model actually uses, and must not dangle a reference.
+#[test]
+fn dropping_containers_keeps_a_real_model_intact() {
+    let bytes = fixture_or_skip!("ara3d/duplex.ifc");
+    let models = [bytes.as_slice(), bytes.as_slice()];
+    let baseline = export_merged(&models, &MergedOptions::default());
+    let opts = MergedOptions { drop_empty_containers: true, ..Default::default() };
+    let (merged, stats) = export_merged_with_stats(&models, &opts);
+
+    assert_no_dangling(&merged);
+    assert_eq!(
+        type_count(&merged, "=IFCWALL("),
+        type_count(&baseline, "=IFCWALL("),
+        "no element is lost to the container drop"
+    );
+    let containers = |step: &str| {
+        ["=IFCSITE(", "=IFCBUILDING(", "=IFCBUILDINGSTOREY(", "=IFCSPACE("]
+            .iter()
+            .map(|needle| type_count(step, needle))
+            .sum::<usize>()
+    };
+    assert_eq!(
+        containers(&merged),
+        containers(&baseline) - stats.dropped_container_count,
+        "the containers that disappear are exactly the ones counted as dropped"
+    );
+}
+

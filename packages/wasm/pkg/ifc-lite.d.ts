@@ -395,6 +395,24 @@ export class IfcAPI {
      */
     exportHbjson(content: Uint8Array, name: string): Uint8Array;
     /**
+     * Like [`Self::export_hbjson`], but also returns the export's coverage stats
+     * (`HbjsonStats`: spaces seen, rooms emitted, spaces skipped as degenerate, plus
+     * apertures / doors / shades / constructions / interior adjacencies) so a caller
+     * can tell whether the "success" result silently dropped input.
+     *
+     * Returns a plain JS object `{ content: Uint8Array, stats: HbjsonStats }`; `content`
+     * is UTF-8 HBJSON bytes (same encoding rationale as [`Self::export_hbjson`] — not
+     * capped by the V8 max-string ceiling). Runs the export once — `content` and `stats`
+     * come from the same pass, not two separate exports.
+     *
+     * ```javascript
+     * const api = new IfcAPI();
+     * const { content, stats } = api.exportHbjsonWithStats(ifcContent, "my_model");
+     * if (stats.skipped > 0) console.warn(`${stats.skipped} spaces skipped as degenerate`);
+     * ```
+     */
+    exportHbjsonWithStats(content: Uint8Array, name: string): any;
+    /**
      * Export **IFC5 / IFCX** (the USD-style node graph). `only_known_properties` keeps
      * only properties with an official IFC5 schema.
      */
@@ -1238,6 +1256,12 @@ export class ProfileCollection {
      * Number of profiles.
      */
     readonly length: number;
+    /**
+     * Express IDs of elements that had an `IfcExtrudedAreaSolid` (direct or
+     * mapped) but whose profile could not be extracted, so they are MISSING
+     * from this collection. Empty on a clean model.
+     */
+    readonly skippedExpressIds: Uint32Array;
 }
 
 /**
@@ -1959,6 +1983,7 @@ export interface InitOutput {
     readonly ifcapi_exportGlb: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number) => void;
     readonly ifcapi_exportGlbFromMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number) => void;
     readonly ifcapi_exportHbjson: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+    readonly ifcapi_exportHbjsonWithStats: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly ifcapi_exportIfcx: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_exportJson: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly ifcapi_exportJsonld: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => void;
@@ -2052,6 +2077,7 @@ export interface InitOutput {
     readonly partitionedbatch_takeShard: (a: number, b: number) => void;
     readonly profilecollection_get: (a: number, b: number) => number;
     readonly profilecollection_length: (a: number) => number;
+    readonly profilecollection_skippedExpressIds: (a: number) => number;
     readonly profileentryjs_expressId: (a: number) => number;
     readonly profileentryjs_extrusionDepth: (a: number) => number;
     readonly profileentryjs_extrusionDir: (a: number) => number;

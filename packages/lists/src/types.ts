@@ -162,6 +162,7 @@ export interface ListDataProvider {
     homeValue: number | null;
     shares: Array<{ zoneName: string; value: number }>;
   } | null;
+  getWorldPosition?(expressId: number): { x: number; y: number; z: number } | null; // World Coordinate, PROJECT-space not map/WGS84 (#3671)
 }
 
 /** A classification reference exposed to the list engine (code + name). */
@@ -253,9 +254,9 @@ export interface PropertyCondition {
    * - `zone` — a location-zone assignment (issue #1810); `psetName` holds the
    *   zone-SET id, `propertyName` selects `Zone` (default, the zone name —
    *   or the straddled zones joined when the element crosses a boundary) or
-   *   `Straddles` (boolean)
+   *   `Straddles` (boolean); `geometry` is the World Coordinate (#3671) — `propertyName` selects axis `X` (default) | `Y` | `Z`
    */
-  source: 'attribute' | 'property' | 'quantity' | 'material' | 'classification' | 'spatial' | 'model' | 'zone';
+  source: 'attribute' | 'property' | 'quantity' | 'material' | 'classification' | 'spatial' | 'model' | 'zone' | 'geometry';
   /** Property set name (for property/quantity sources); the zone-SET id for `zone`. */
   psetName?: string;
   /** Attribute / property / quantity name, the spatial level for `spatial`
@@ -287,12 +288,11 @@ export interface ColumnDefinition {
    * Where the column value comes from. `material` / `classification` are
    * multi-valued (joined with ", "); `spatial` is a spatial-container name at
    * the level named by `propertyName` (`Container` | `Storey` (default) |
-   * `Building` | `Site` | `Project`); `model` is the source model / file name
-   * (federation identity); `zone` is a location-zone assignment (issue
-   * #1810) — see `PropertyCondition.source` for the exact `psetName`/
-   * `propertyName` contract, shared verbatim between conditions and columns.
+   * `Building` | `Site` | `Project`); `model`/`zone`/`geometry` — see
+   * `PropertyCondition.source` for the exact `psetName`/`propertyName`
+   * contract, shared verbatim between conditions and columns.
    */
-  source: 'attribute' | 'property' | 'quantity' | 'material' | 'classification' | 'spatial' | 'model' | 'zone';
+  source: 'attribute' | 'property' | 'quantity' | 'material' | 'classification' | 'spatial' | 'model' | 'zone' | 'geometry';
   /** For property: pset name. For quantity: qset name. For zone: the zone-SET id. */
   psetName?: string;
   /** Attribute / property / quantity name, the spatial level for `spatial`

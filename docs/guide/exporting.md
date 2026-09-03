@@ -479,6 +479,42 @@ instance of that container type. `'by-name'` requires a Name match with no
 single-instance fallback. All three fields are optional; omitting one keeps
 the pre-existing combined heuristic for that container type.
 
+#### Dropping empty containers
+
+Matching decides which containers *are the same*; it says nothing about the ones
+that end up holding nothing. `dropEmptyContainers` is the recipe's other step:
+
+```typescript
+import { MergedExporter } from '@ifc-lite/export';
+
+const exporter = new MergedExporter([
+  { id: 'arch', name: 'Architecture', dataStore: store1 },
+  { id: 'struct', name: 'Structure', dataStore: store2 },
+]);
+
+const result = exporter.export({ schema: 'IFC4', dropEmptyContainers: true });
+console.log(result.stats.droppedContainerCount);
+```
+
+An `IfcSite` / `IfcBuilding` / `IfcBuildingStorey` / `IfcSpace` is empty when it
+contains no surviving element (`IfcRelContainedInSpatialStructure`), directly
+aggregates no surviving non-spatial object, and transitively aggregates no
+non-empty spatial child. `IfcProject` is never a candidate. Note this makes a
+room with no element inside it a candidate: spaces are usually contained by a
+storey, not by their own contents.
+
+Emptiness is judged on the **merged** model, after visibility filtering and
+spatial unification — a container that only a later model fills is kept. The
+dropped containers are excluded from the merge plan rather than deleted
+afterwards, so nothing is ever written referencing them: a relationship that
+named one is narrowed, and one left with no subject is dropped with it. A
+dropped container's own placement / representation entities are left behind
+unreferenced (valid STEP, just inert). The flag is off by default, and a merge
+with nothing to drop produces byte-identical output either way.
+
+The CLI exposes the same step as `ifc-lite merge … --drop-empty-containers`, and
+the native (Rust) merge as `MergedOptions::drop_empty_containers`.
+
 `'normalize'` rescales all `IfcCartesianPoint`/`IfcCartesianPointList` coordinates,
 scalar lengths (extrusion depths, profile dimensions, radii, thicknesses, storey
 elevations, `IfcVector.Magnitude`, CSG primitive sizes), `IfcLengthMeasure`

@@ -1,0 +1,107 @@
+{
+  "$comment": "Held from the merge train of 2026-09-01 on a merge-blocking defect that all ~91 deterministic gates passed. Defect class: dedup-merges-distinct. `what` is written from the reviewer's file:line and failing input, never from the PR body.",
+  "pr": 3608,
+  "input": {
+    "headSha": "0aae2b79bc2df8c5c5ceb5229c44bef367318742",
+    "files": [
+      {
+        "path": ".changeset/ifc5-export-classification.md",
+        "patch": "@@ -0,0 +1,7 @@\n+---\n+'@ifc-lite/export': minor\n+---\n+\n+`Ifc5Exporter.export()` (STEP \u2192 IFCX/IFC5) no longer drops an entity's `IfcClassificationReference`s. Every other source attribute the exporter carries \u2014 class, name, description, properties, mesh \u2014 had a path into the IFCX output; classification (`IfcClassificationReference` via `IfcRelAssociatesClassification`, including type-level associations) had none, so a classified wall exported to IFCX silently lost its classification with no warning anywhere in the pipeline.\n+\n+Classified entities now carry an `ifclite::classifications` attribute (`{ system, code, uri?, description? }[]`), the same key and shape `@ifc-lite/collab`'s snapshot layer already uses for its structured classification branch. Paired with the companion `@ifc-lite/ifcx` change in this release (which stops skipping that key on read), the classification now survives a re-import through `parseIfcx` too, not just through the collab layer. An entity with no classification is unaffected \u2014 no attribute is added.",
+        "addedLineRanges": [
+          [
+            1,
+            7
+          ]
+        ]
+      },
+      {
+        "path": ".changeset/ifcx-read-back-classification.md",
+        "patch": "@@ -0,0 +1,7 @@\n+---\n+'@ifc-lite/ifcx': minor\n+---\n+\n+`extractProperties` (the `PropertyTable` a `.ifcx` file resolves through, `packages/ifcx/src/property-extractor.ts`) no longer silently drops `ifclite::classifications`. The blanket `ifclite::*` skip added for #1031's internal carriers (deletion/derived markers, collab materials/geometryRef/provenance) also caught this key, but \u2014 unlike `bsi::ifc::material`, which has a real v5a schema attribute to unpack \u2014 there is no `bsi::ifc::classification` in the spec to fall back to, so a classification written under `ifclite::classifications` (as `@ifc-lite/export`'s `Ifc5Exporter` now does, #3608) was write-only: present in the file, invisible to every reader of `parsed.properties`.\n+\n+Each classification ref (`{ system, code, uri?, description? }`) now unpacks into a `Classification - <system>` pset (`Code`/`Uri`/`Description` properties), the same way `bsi::ifc::material` already unpacks into a `Material` pset. A ref with no `code` carries nothing to show and is skipped, matching how a codeless material is already handled. Every other `ifclite::*` key is still skipped as before.",
+        "addedLineRanges": [
+          [
+            1,
+            7
+          ]
+        ]
+      },
+      {
+        "path": "packages/export/src/classification-roundtrip.test.ts",
+        "patch": "@@ -0,0 +1,112 @@\n+/* This Source Code Form is subject to the terms of the Mozilla Public\n+ * License, v. 2.0. If a copy of the MPL was not distributed with this\n+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */\n+\n+/**\n+ * A wall classified via `IfcClassificationReference` /\n+ * `IfcRelAssociatesClassification` (Uniclass 2015, `Pr_20_93_47`) must\n+ * survive STEP -> IFCX (IFC5) export AND a subsequent import through\n+ * `@ifc-lite/ifcx` (the primary IFCX reader \u2014 the round-trip fidelity\n+ * oracle, see AGENTS.md's classification lens): the classification is a\n+ * real source-model attribute, not derived geometry, so dropping it at\n+ * either end is metadata loss.\n+ *\n+ * This does a full write-then-read round trip, not just an assertion on\n+ * the exporter's JSON output: `Ifc5Exporter.export()` alone writing\n+ * `ifclite::classifications` would still leave the classification lost on\n+ * re-import, because `property-extractor.ts`'s `groupAttributesByNamespace`\n+ * treated every `ifclite::*` key as an internal, never-surfaced carrier\n+ * (#1031) \u2014 including this one, which (unlike `bsi::ifc::material`, #3605)\n+ * has no spec-defined IFCX home to unpack from instead. `#3608` unpacks\n+ * `ifclite::classifications` into a per-system \"Classification\" pset in\n+ * the reader specifically, so a plain (non-collab) re-import of the\n+ * exported file resolves the classification through `parsed.properties`,\n+ * the same table every other property comes back through.\n+ */\n+\n+import { describe, it, expect } from 'vitest';\n+import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';\n+import { Ifc5Exporter } from './ifc5-exporter.js';\n+import { parseIfcx, IFCLITE_ATTR } from '@ifc-lite/ifcx';\n+\n+const enc = (s: string): ArrayBuffer => new TextEncoder().encode(s).buffer as ArrayBuffer;\n+\n+async function parse(model: string): Promise<IfcDataStore> {\n+  return new IfcParser().parseColumnar(enc(model));\n+}\n+\n+const MODEL = `ISO-10303-21;\n+HEADER;\n+FILE_DESCRIPTION((''),'2;1');\n+FILE_NAME('test','2023-01-17T16:18:54+01:00',(''),(''),'','','');\n+FILE_SCHEMA(('IFC4'));\n+ENDSEC;\n+DATA;\n+#1=IFCORGANIZATION($,'Org',$,$,$);\n+#2=IFCAPPLICATION(#1,'1','App','App');\n+#3=IFCCARTESIANPOINT((0.,0.,0.));\n+#15=IFCPERSON($,'Author','IFC',(),$,$,$,$);\n+#16=IFCORGANIZATION($,'TestOrg','',$,$);\n+#17=IFCPERSONANDORGANIZATION(#15,#16,$);\n+#18=IFCOWNERHISTORY(#17,#2,$,.NOCHANGE.,$,$,$,1673968733);\n+#19=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n+#82=IFCUNITASSIGNMENT((#19));\n+#83=IFCAXIS2PLACEMENT3D(#3,$,$);\n+#85=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-05,#83,$);\n+#90=IFCPROJECT('3k3rYVmQDDW90hT9pdtv9K',#18,'Project',$,$,$,$,(#85),#82);\n+#92=IFCAXIS2PLACEMENT3D(#3,$,$);\n+#112=IFCLOCALPLACEMENT($,#92);\n+#95=IFCBUILDING('3k3rYVmQDDW90hT9pdtv9L',#18,'TestBuilding',$,$,#112,$,'TestBuilding',.ELEMENT.,$,$,$);\n+#119=IFCLOCALPLACEMENT(#112,#92);\n+#139=IFCWALL('3DqaUydM99ehywE4_2hm1u',#18,'Wall-001',$,'Wall',#119,$,'2270026',.NOTDEFINED.);\n+#200=IFCCLASSIFICATION('BuildingSmart','2015',$,'Uniclass 2015',$,'https://uniclass.thenbs.com',$);\n+#201=IFCCLASSIFICATIONREFERENCE('https://uniclass.thenbs.com/Pr_20_93_47','Pr_20_93_47','Wall products',#200,$,$);\n+#202=IFCRELASSOCIATESCLASSIFICATION('3k3rYVmQDDW90hT9pdtv9Z',#18,$,$,(#139),#201);\n+#300=IFCRELAGGREGATES('3k3rYVmQDDW90hT9pdtv9A',#18,$,$,#95,(#139));\n+#301=IFCRELAGGREGATES('3k3rYVmQDDW90hT9pdtv9B',#18,$,$,#90,(#95));\n+ENDSEC;\n+END-ISO-10303-21;`;\n+\n+describe('classification survives STEP -> IFCX export -> @ifc-lite/ifcx re-import', () => {\n+  it('exports the wall\\'s Uniclass classification, and the ifcx reader resolves it back as a property', async () => {\n+    const store = await parse(MODEL);\n+    const exporter = new Ifc5Exporter(store, { meshes: [] } as any);\n+    const result = exporter.export({ onlyTreeEntities: false, includeGeometry: false });\n+\n+    // Write side: the attribute is on the wall's node in the emitted JSON.\n+    const doc = JSON.parse(result.content);\n+    const wallNode = doc.data.find(\n+      (n: any) => n.attributes?.['bsi::ifc::prop::Name'] === 'Wall-001',\n+    );\n+    expect(wallNode).toBeDefined();\n+    expect(wallNode.attributes?.[IFCLITE_ATTR.CLASSIFICATIONS]).toEqual([\n+      expect.objectContaining({ system: 'Uniclass 2015', code: 'Pr_20_93_47' }),\n+    ]);\n+\n+    // Read side: re-import the exported IFCX through the real reader\n+    // (`@ifc-lite/ifcx`'s `parseIfcx`, not a re-parse of the same JSON) and\n+    // resolve the classification through the ordinary PropertyTable path \u2014\n+    // the one every other IFCX-derived property (Name, psets, ...) comes\n+    // back through.\n+    const reparsed = await parseIfcx(\n+      new TextEncoder().encode(result.content).buffer as ArrayBuffer,\n+    );\n+    const { entities, strings } = reparsed;\n+    let wallExpressId: number | undefined;\n+    for (let i = 0; i < entities.count; i++) {\n+      if (strings.get(entities.name[i]) === 'Wall-001') {\n+        wallExpressId = entities.expressId[i];\n+        break;\n+      }\n+    }\n+    expect(wallExpressId).toBeDefined();\n+\n+    const psets = reparsed.properties.getForEntity(wallExpressId!);\n+    const classificationPset = psets.find((p) => p.name === 'Classification - Uniclass 2015');\n+    expect(classificationPset).toBeDefined();\n+    const code = classificationPset!.properties.find((p) => p.name === 'Code');\n+    expect(code?.value).toBe('Pr_20_93_47');\n+    const uri = classificationPset!.properties.find((p) => p.name === 'Uri');\n+    expect(uri?.value).toBe('https://uniclass.thenbs.com/Pr_20_93_47');\n+  });\n+});",
+        "addedLineRanges": [
+          [
+            1,
+            112
+          ]
+        ]
+      },
+      {
+        "path": "packages/export/src/ifc5-classification.ts",
+        "patch": "@@ -0,0 +1,76 @@\n+/* This Source Code Form is subject to the terms of the Mozilla Public\n+ * License, v. 2.0. If a copy of the MPL was not distributed with this\n+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */\n+\n+/**\n+ * Classification carrier for the IFC5 (IFCX) exporter (`ifc5-exporter.ts`,\n+ * split out to stay under the module-size budget).\n+ *\n+ * Resolves an entity's `IfcClassificationReference`s (via\n+ * `IfcRelAssociatesClassification`, including type-level associations) into\n+ * the `ifclite::classifications` wire shape (`{ system, code, uri?,\n+ * description? }[]`), the same shape and attribute key\n+ * `@ifc-lite/collab`'s snapshot layer (`structured-attrs.ts`) already uses\n+ * for its structured classification branch \u2014 so a classified entity reads\n+ * back the same way whether the IFCX came from this exporter or from a\n+ * collab snapshot.\n+ */\n+\n+import type { IfcDataStore } from '@ifc-lite/parser';\n+import { extractClassificationsOnDemand } from '@ifc-lite/parser';\n+import { IFCLITE_ATTR } from '@ifc-lite/ifcx';\n+\n+export interface Ifc5ClassificationRef {\n+  system: string;\n+  code: string;\n+  uri?: string;\n+  description?: string;\n+}\n+\n+/**\n+ * `extractClassificationsOnDemand` needs the source STEP buffer plus the\n+ * `onDemandClassificationMap` built during columnar parsing; an IFCX-sourced\n+ * `IfcDataStore` (round-tripping an already-IFC5 model) has neither, so this\n+ * resolves to an empty list there rather than throwing \u2014 that input never\n+ * carried a classification to lose in the first place.\n+ */\n+export function getClassificationsForEntity(\n+  dataStore: IfcDataStore,\n+  entityId: number,\n+): Ifc5ClassificationRef[] {\n+  const infos = extractClassificationsOnDemand(dataStore, entityId);\n+  const refs: Ifc5ClassificationRef[] = [];\n+\n+  for (const info of infos) {\n+    // A classification with neither a code nor a name carries nothing a\n+    // reader could show or match against \u2014 skip it rather than emit a\n+    // `{ system, code: '' }` placeholder that looks like real data.\n+    const code = info.identification || info.name;\n+    if (!code) continue;\n+\n+    const ref: Ifc5ClassificationRef = {\n+      system: info.system || 'Unknown',\n+      code,\n+    };\n+    if (info.location) ref.uri = info.location;\n+    if (info.description) ref.description = info.description;\n+    refs.push(ref);\n+  }\n+\n+  return refs;\n+}\n+\n+/**\n+ * Mutates `attributes` in place with the entity's classifications under\n+ * `ifclite::classifications` (the exporter's `attributes` record is built\n+ * incrementally per node, so this mirrors how Name/Description are set\n+ * directly rather than returned and merged).\n+ */\n+export function addClassificationAttribute(\n+  dataStore: IfcDataStore,\n+  entityId: number,\n+  attributes: Record<string, unknown>,\n+): void {\n+  const classifications = getClassificationsForEntity(dataStore, entityId);\n+  if (classifications.length > 0) attributes[IFCLITE_ATTR.CLASSIFICATIONS] = classifications;\n+}",
+        "addedLineRanges": [
+          [
+            1,
+            76
+          ]
+        ]
+      },
+      {
+        "path": "packages/export/src/ifc5-exporter.ts",
+        "patch": "@@ -27,6 +27,7 @@ import {\n } from '@ifc-lite/data';\n import { convertEntityType, type IfcSchemaVersion } from './schema-converter.js';\n import { getEffectiveEntityIndex } from './effective-index.js';\n+import { addClassificationAttribute } from './ifc5-classification.js';\n \n /** Recursive spatial tree node type used when walking the hierarchy. */\n interface SpatialTreeNode {\n@@ -315,14 +316,14 @@ export class Ifc5Exporter {\n         }\n       }\n \n+      addClassificationAttribute(this.dataStore, expressId, attributes);\n+\n       // Build node\n       const node: IfcxNodeOutput = { path };\n \n       // Children from spatial hierarchy\n       const children = this.getChildrenForEntity(expressId);\n-      if (Object.keys(children).length > 0) {\n-        node.children = children;\n-      }\n+      if (Object.keys(children).length > 0) node.children = children;\n \n       // Geometry as USD mesh\n       if (options.includeGeometry !== false) {\n@@ -341,9 +342,7 @@ export class Ifc5Exporter {\n         }\n       }\n \n-      if (Object.keys(attributes).length > 0) {\n-        node.attributes = attributes;\n-      }\n+      if (Object.keys(attributes).length > 0) node.attributes = attributes;\n \n       nodes.push(node);\n       emittedIds.add(expressId);",
+        "addedLineRanges": [
+          [
+            30,
+            30
+          ],
+          [
+            319,
+            320
+          ],
+          [
+            326,
+            326
+          ],
+          [
+            345,
+            345
+          ]
+        ]
+      },
+      {
+        "path": "packages/ifcx/src/property-extractor.test.ts",
+        "patch": "@@ -41,9 +41,8 @@ describe('extractProperties \u2014 typed records and internal carriers (#1031)', ()\n     assert.strictEqual(fireRating.value, 'F30');\n   });\n \n-  it('skips ifclite:: carrier attributes entirely', () => {\n+  it('skips ifclite:: internal carriers other than classifications', () => {\n     const node = createNode('wall');\n-    node.attributes.set('ifclite::classifications', [{ system: 'eBKP-H', code: 'C2.1' }]);\n     node.attributes.set('ifclite::materials', [{ materialId: 'mat-1' }]);\n     node.attributes.set('ifclite::geometryRef', 'geom-1');\n     node.attributes.set('ifclite::deleted', false);\n@@ -59,6 +58,39 @@ describe('extractProperties \u2014 typed records and internal carriers (#1031)', ()\n     assert.strictEqual(props[0].value, true);\n   });\n \n+  it('unpacks ifclite::classifications into a per-system Classification pset (#3608)', () => {\n+    const node = createNode('wall');\n+    node.attributes.set('ifclite::classifications', [\n+      { system: 'Uniclass 2015', code: 'Pr_20_93_47', uri: 'https://uniclass.thenbs.com/Pr_20_93_47' },\n+      { system: 'eBKP-H', code: 'C2.1' },\n+    ]);\n+\n+    const composed = new Map([[node.path, node]]);\n+    const pathToId = new Map([[node.path, 1]]);\n+    const table = extractProperties(composed, pathToId, new StringTable());\n+    const psets = table.getForEntity(1);\n+\n+    const uniclass = psets.find((p) => p.name === 'Classification - Uniclass 2015');\n+    assert.ok(uniclass, 'Uniclass pset present');\n+    const uniclassCode = uniclass!.properties.find((p) => p.name === 'Code');\n+    assert.strictEqual(uniclassCode?.value, 'Pr_20_93_47');\n+    const uniclassUri = uniclass!.properties.find((p) => p.name === 'Uri');\n+    assert.strictEqual(uniclassUri?.value, 'https://uniclass.thenbs.com/Pr_20_93_47');\n+\n+    const ebkp = psets.find((p) => p.name === 'Classification - eBKP-H');\n+    assert.ok(ebkp, 'eBKP-H pset present');\n+    const ebkpCode = ebkp!.properties.find((p) => p.name === 'Code');\n+    assert.strictEqual(ebkpCode?.value, 'C2.1');\n+  });\n+\n+  it('skips a classification ref with no code', () => {\n+    const node = createNode('wall');\n+    node.attributes.set('ifclite::classifications', [{ system: 'Uniclass 2015' }]);\n+\n+    const props = extract(node);\n+    assert.strictEqual(props.length, 0, 'a codeless ref surfaces nothing');\n+  });\n+\n   it('v5a properties keep the exact authored Pset name, not a display-formatted one', () => {\n     const node = createNode('wall');\n     node.attributes.set('bsi::ifc::v5a::Pset_WallCommon::IsExternal', {",
+        "addedLineRanges": [
+          [
+            44,
+            44
+          ],
+          [
+            61,
+            93
+          ]
+        ]
+      },
+      {
+        "path": "packages/ifcx/src/property-extractor.ts",
+        "patch": "@@ -8,7 +8,7 @@\n  */\n \n import type { ComposedNode } from './types.js';\n-import { ATTR, isTypedPropertyValue, parseV5aKey } from './types.js';\n+import { ATTR, IFCLITE_ATTR, isTypedPropertyValue, parseV5aKey } from './types.js';\n import {\n   StringTable,\n   PropertyTableBuilder,\n@@ -87,8 +87,36 @@ function groupAttributesByNamespace(\n       continue;\n     }\n \n-    // `ifclite::*` keys are internal carriers (deletion/derived markers,\n-    // collab classifications/materials/geometryRef) \u2014 never user\n+    // `ifclite::classifications` is the one `ifclite::*` carrier with no\n+    // spec-defined IFCX home to unpack from instead \u2014 unlike material,\n+    // there is no `bsi::ifc::classification` in the v5a schema (#3608).\n+    // Reading it back as real, queryable properties (instead of silently\n+    // dropping it the way the blanket `ifclite::` skip below would) is\n+    // what makes STEP -> IFCX -> re-import actually round-trip a\n+    // classification, not just STEP -> IFCX -> the collab snapshot layer.\n+    // One \"Classification\" pset per system, mirroring the Material unpack\n+    // below; a ref with no `code` carries nothing to show and is skipped.\n+    if (key === IFCLITE_ATTR.CLASSIFICATIONS && Array.isArray(value)) {\n+      for (const item of value) {\n+        if (!item || typeof item !== 'object') continue;\n+        const ref = item as { system?: unknown; code?: unknown; uri?: unknown; description?: unknown };\n+        if (typeof ref.code !== 'string' || !ref.code) continue;\n+        const psetName = typeof ref.system === 'string' && ref.system\n+          ? `Classification - ${ref.system}`\n+          : 'Classification';\n+        if (!grouped.has(psetName)) {\n+          grouped.set(psetName, new Map());\n+        }\n+        const classificationProps = grouped.get(psetName)!;\n+        classificationProps.set('Code', ref.code);\n+        if (typeof ref.uri === 'string') classificationProps.set('Uri', ref.uri);\n+        if (typeof ref.description === 'string') classificationProps.set('Description', ref.description);\n+      }\n+      continue;\n+    }\n+\n+    // Remaining `ifclite::*` keys are internal carriers (deletion/derived\n+    // markers, collab materials/geometryRef/provenance) \u2014 never user\n     // properties (#1031).\n     if (key.startsWith('ifclite::')) {\n       continue;",
+        "addedLineRanges": [
+          [
+            11,
+            11
+          ],
+          [
+            90,
+            119
+          ]
+        ]
+      }
+    ],
+    "unreviewable": [],
+    "excluded": []
+  },
+  "expected": [
+    {
+      "path": "packages/ifcx/src/property-extractor.ts",
+      "what": "classifications are unpacked into one property set per system name with a single Code key, so two classification references sharing a system collapse and one code is dropped while the surviving code is paired with the wrong Uri"
+    }
+  ]
+}

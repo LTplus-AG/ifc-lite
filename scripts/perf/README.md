@@ -311,6 +311,18 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
   arm64 determinism harness are the stronger output evidence. Holter was not
   measured: its fixture endpoint repeatedly served a SHA-256 mismatch.
 
+- **Legacy-site georeference negative-zero recovery (#3546 residual): no
+  measurable geometry-pipeline regression.** The localized raw-record scan runs
+  only while extracting `IfcSite.RefLatitude`/`RefLongitude`; it deliberately
+  leaves the shared integer tokenizer untouched. Interleaved five-round native
+  `perf_probe` A/B (`3d9ab0e30` -> `e81f41d66`, Apple Silicon) was below the
+  harness's noise threshold: FZK-Haus total 10 -> 10 ms (mesh/vertex/triangle
+  counts 285/35,940/19,456 on both); CSG-heavy ISSUE_129 total 608 -> 609 ms
+  (+0.16%, base spread 2.96%) and geometry 591 -> 592 ms (+0.17%, base spread
+  3.38%), with identical 1,402/218,346/132,673 output counts. **Lesson:** this
+  compatibility recovery is metadata-only and too rare/small for this coarse
+  end-to-end probe to distinguish from run noise; retain the behavioral fixtures
+  rather than treating the apparent one-millisecond movement as a regression.
 - **Geometry fingerprint pass: world AABB + volume + closure verdict**
   (#1891/#1988, PR #1993, measured 2026-08-02, base = merge-base `8f139a8e`).
   The pass gained a per-triangle tetra determinant and a six-way bounds update.

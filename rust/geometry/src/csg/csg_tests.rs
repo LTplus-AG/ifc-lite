@@ -7,6 +7,7 @@
 //! (module-size-ratchet exempt) and attached via `#[path]`, the same shape
 //! `bool2d_tests.rs` / `facet_weld_scoped_tests.rs` already use.
 
+#[cfg(not(feature = "csg_topology_gate"))]
 use super::topology_diagnostic::OPEN_TOPOLOGY_MESSAGE;
 use super::*;
 /// Build a box mesh from AABB min/max bounds (12 triangles, 2 per face).
@@ -415,6 +416,7 @@ fn open_box_mesh(min: Point3<f64>, max: Point3<f64>) -> Mesh {
 /// must still return the kernel result it returned before. Driving the four
 /// public ops (not `record_topology_tear` directly) is the point — the call
 /// sites are the change, so reverting any one of them has to turn this red.
+#[cfg(not(feature = "csg_topology_gate"))] // step-1-only: asserts the non-gating KernelError record; superseded under the feature by OpenTopologyRejected + fallback
 #[test]
 fn topology_tear_recorded_by_every_boolean_op_without_gating() {
     // An open host makes every op's kernel output open too, which is what
@@ -496,6 +498,7 @@ fn topology_tear_not_recorded_for_closed_results() {
 /// twice, inflating the very per-host census this diagnostic exists to feed.
 /// 16 cutters (one chunk) is the control: same host, same tear, one record
 /// either way.
+#[cfg(not(feature = "csg_topology_gate"))] // step-1-only: asserts the non-gating KernelError record; superseded under the feature by OpenTopologyRejected + fallback
 #[test]
 fn topology_tear_recorded_once_per_batched_subtract_not_once_per_chunk() {
     let open_host = open_box_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(20.0, 1.0, 1.0));
@@ -612,6 +615,7 @@ fn hairline_t_junction_is_not_recorded_as_a_topology_tear() {
 /// HOST's failure list, so an over-count here is attributed to a host whose
 /// own geometry may be perfectly closed, and the per-host census is the only
 /// deliverable of #3440 step 1.
+#[cfg(not(feature = "csg_topology_gate"))] // step-1-only: asserts the non-gating KernelError record; superseded under the feature by OpenTopologyRejected + fallback
 #[test]
 fn topology_tear_recorded_once_per_union_meshes_not_once_per_intermediate() {
     use crate::router::voids::prism_cut::closure_checks::{closed_or_hairline, directed_closed};
@@ -672,6 +676,86 @@ fn union_fallback_validates_indices_before_topology_audit() {
     assert!(
         p.take_failures().is_empty(),
         "an empty-operand pass-through is not a kernel result and must not gain a diagnostic"
+    );
+}
+
+/// #3440 step 2, WITHOUT the `csg_topology_gate` feature: `topology_gate_reject`
+/// must be a true no-op, not merely a flag checked after the work. Reuses the
+/// exact fixtures `topology_tear_recorded_by_every_boolean_op_without_gating`
+/// (above) proves make every op's kernel output torn, and re-asserts the SAME
+/// invariant that test already pins — every op still hands back the torn
+/// kernel result, none falls back — so a default (non-feature) build stays
+/// byte-identical to what step 1 shipped. Compiled in EVERY build (this is
+/// the "gate off" proof, so it must run without the feature); the mirror
+/// below only compiles under the feature.
+#[cfg(not(feature = "csg_topology_gate"))]
+#[test]
+fn topology_gate_is_a_true_noop_without_the_feature() {
+    let open_host = open_box_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));
+    let through_cutter = aabb_to_mesh(Point3::new(0.4, 0.4, -0.1), Point3::new(0.6, 0.6, 1.1));
+    let overlapping = aabb_to_mesh(Point3::new(0.5, 0.5, 0.5), Point3::new(1.5, 1.5, 1.5));
+
+    let p = ClippingProcessor::new();
+    let subtract = p.subtract_mesh(&open_host, &through_cutter).unwrap();
+    let batched = p.subtract_mesh_many(&open_host, &[&through_cutter]).unwrap();
+    let union = p.union_mesh(&open_host, &overlapping).unwrap();
+    let intersection = p.intersection_mesh(&open_host, &overlapping).unwrap();
+
+    for (name, mesh) in [
+        ("subtract_mesh", &subtract),
+        ("subtract_mesh_many", &batched),
+        ("union_mesh", &union),
+        ("intersection_mesh", &intersection),
+    ] {
+        assert!(
+            !mesh.is_empty() && mesh.triangle_count() > 4,
+            "{name}: gate must not have rejected this torn result without the feature"
+        );
+    }
+    assert!(
+        p.take_failures().iter().all(|f| f.reason != BoolFailureReason::OpenTopologyRejected),
+        "OpenTopologyRejected must never be recorded without csg_topology_gate"
+    );
+}
+
+/// The `csg_topology_gate` mirror of the test above: WITH the feature, the
+/// same four torn results are REJECTED — each op falls back exactly like an
+/// existing `KernelOutputInvalid` (un-cut host / empty / plain merge) — and
+/// each records the dedicated `OpenTopologyRejected` reason once.
+#[cfg(feature = "csg_topology_gate")]
+#[test]
+fn topology_gate_rejects_every_torn_boolean_result_when_enabled() {
+    let open_host = open_box_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));
+    let through_cutter = aabb_to_mesh(Point3::new(0.4, 0.4, -0.1), Point3::new(0.6, 0.6, 1.1));
+    let overlapping = aabb_to_mesh(Point3::new(0.5, 0.5, 0.5), Point3::new(1.5, 1.5, 1.5));
+
+    let p = ClippingProcessor::new();
+    let subtract = p.subtract_mesh(&open_host, &through_cutter).unwrap();
+    let batched = p.subtract_mesh_many(&open_host, &[&through_cutter]).unwrap();
+    let union = p.union_mesh(&open_host, &overlapping).unwrap();
+    let intersection = p.intersection_mesh(&open_host, &overlapping).unwrap();
+
+    assert_eq!(subtract.indices, open_host.indices, "subtract_mesh must fall back to the un-cut host");
+    assert_eq!(batched.indices, open_host.indices, "subtract_mesh_many must fall back to the un-cut host");
+    assert!(intersection.is_empty(), "intersection_mesh must fall back to an empty mesh");
+    let mut expected_union_merge = open_host.clone();
+    expected_union_merge.merge(&overlapping);
+    assert_eq!(
+        union.triangle_count(),
+        expected_union_merge.triangle_count(),
+        "union_mesh must fall back to the plain merge"
+    );
+
+    let failures = p.take_failures();
+    assert_eq!(
+        failures.iter().map(|f| (f.op, f.reason.clone())).collect::<Vec<_>>(),
+        vec![
+            (BoolOp::Difference, BoolFailureReason::OpenTopologyRejected),
+            (BoolOp::Difference, BoolFailureReason::OpenTopologyRejected),
+            (BoolOp::Union, BoolFailureReason::OpenTopologyRejected),
+            (BoolOp::Intersection, BoolFailureReason::OpenTopologyRejected),
+        ],
+        "each of the four accept paths must reject and record OpenTopologyRejected exactly once"
     );
 }
 

@@ -8,9 +8,11 @@
  *
  * `urlParams.ts` has parsed these since the embed shipped and nothing ever
  * read them (#2934): the parser is thoroughly tested, the application of the
- * parsed value did not exist. `?hideTypes=` and `?camera=` are applied at
- * their own actuators in `EmbedViewer.tsx` (the geometry filter and the
- * camera-callback poll respectively) rather than here.
+ * parsed value did not exist. `?camera=` is applied at its own actuator in
+ * `EmbedViewer.tsx` (the camera-callback poll) rather than here;
+ * `?hideTypes=` is normalised by `useHostHiddenIfcTypes` below and applied at
+ * two actuators, the mesh filter in `useModelViewGeometry.ts` and the store
+ * field the symbolic 2D overlay reads.
  *
  * Two things this hook is deliberate about:
  *
@@ -32,35 +34,34 @@
  *    ASSIGNING `setIsolatedEntities`, never `isolateEntities`).
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { resolveIsolationIds } from '@/lib/isolation/resolveIsolationIds.js';
 import { useViewerStore } from '@/store';
+import { toHostHiddenIfcTypes } from '@/lib/host-hidden-ifc-types.js';
 import type { EmbedViewerUrlParams } from '../bridge/urlParams.js';
 
 /**
- * Normalise `?hideTypes=` names into a lookup set.
+ * The host's `hideTypes` list, normalised, and PUBLISHED to the viewer store.
  *
- * Case-folded on purpose. `mesh.ifcType` is PascalCase (`IfcSpace`), while the
- * embed SDK's own documented example passes SCREAMING_CASE (`IFCSPACE`, the
- * spelling STEP files use). A raw string comparison would match neither the
- * SDK's example nor a host page typing `ifcspace`, and would hide nothing
- * while reporting no error. Returns `null` when there is nothing to hide, so
- * the caller can skip the filter entirely.
+ * Two consumers need it and they are nowhere near each other. The mesh filter
+ * in `useModelViewGeometry` takes the returned set directly. The symbolic 2D
+ * overlay cannot: it is not a mesh, so no filter over the mesh list reaches it
+ * (#2934, `lib/symbolic-overlay-gate.ts`), and the hooks that build it sit two
+ * levels below `Viewport`. They read `store.hostHiddenIfcTypes`, which is what
+ * this writes — the route `?controls=` already takes below, and one that needs
+ * no prop threaded through a component no test mounts, because mounting it
+ * needs a WebGPU device.
+ *
+ * The folding itself is `apps/viewer`'s (`toHostHiddenIfcTypes`), because both
+ * consumers must agree on it and one of them lives there.
  */
-export function toHiddenTypeSet(names: string[] | undefined): Set<string> | null {
-  if (!names || names.length === 0) return null;
-  const set = new Set<string>();
-  for (const name of names) {
-    const trimmed = name.trim();
-    if (trimmed.length > 0) set.add(trimmed.toLowerCase());
-  }
-  return set.size > 0 ? set : null;
-}
-
-/** True when `ifcType` is named by a `toHiddenTypeSet` result. */
-export function isTypeHidden(ifcType: string | undefined, hidden: Set<string> | null): boolean {
-  if (!hidden || !ifcType) return false;
-  return hidden.has(ifcType.toLowerCase());
+export function useHostHiddenIfcTypes(names: string[] | undefined): ReadonlySet<string> | null {
+  const hidden = useMemo(() => toHostHiddenIfcTypes(names), [names]);
+  const setHostHiddenIfcTypes = useViewerStore((s) => s.setHostHiddenIfcTypes);
+  useEffect(() => {
+    setHostHiddenIfcTypes(hidden);
+  }, [hidden, setHostHiddenIfcTypes]);
+  return hidden;
 }
 
 /**

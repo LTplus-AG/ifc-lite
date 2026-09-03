@@ -64,6 +64,7 @@ scripts/check-module-size.mjs apps/landing # walks apps/ for .ts/.tsx; apps/land
 scripts/check-module-size.test.mjs apps/landing # same walk, in the harness
 scripts/check-wasm-disposal.mjs apps/landing # walks apps/ for WASM handles; apps/landing holds none
 scripts/check-source-text-assertions.mjs apps/landing # walks apps/ for test files; apps/landing has none
+scripts/check-source-text-assertions-identity.test.mjs apps/landing # same walk, in the harness
 scripts/check-loader-hook-specifier-match.mjs apps/landing # walks apps/ for loader hooks; apps/landing has none
 scripts/check-loader-hook-specifier-match.test.mjs apps/landing # same walk, in the harness
 scripts/check-tla-chunk-await.test.mjs apps/landing # same walk, in the harness

@@ -16,7 +16,7 @@
  * `getNewEntities()`/`isDeleted()`.
  */
 
-import type { EntityData, EntityRef } from '@ifc-lite/sdk';
+import type { EntityData, EntityRef, PropertySetData, QuantitySetData } from '@ifc-lite/sdk';
 import type { MutablePropertyView, NewEntity } from '@ifc-lite/mutations';
 
 function scalarAttr(value: unknown): string {
@@ -73,4 +73,46 @@ export function foldNewEntities(
     if (matches) out.push(createdEntityData(created, modelId));
   }
   return out;
+}
+
+/**
+ * `getProperties`/`getQuantities`'s overlay half. Unlike {@link overlayEntityData},
+ * this has no per-entity "not in the overlay" case to fall through on:
+ * `MutablePropertyView.getForEntity`/`getQuantitiesForEntity` already merge the
+ * wired on-demand extractor's base data with any SET/DELETE mutations (the same
+ * merge `StepExporter` reads for `bim.export.ifc()`), so once a session has a
+ * mutation view at all, it is the whole answer for every entity — mutated or
+ * not. `undefined` here means only "no mutation view exists yet" (a read-only
+ * session), the one case that still falls through to the parsed store.
+ *
+ * Before this, `getProperties`/`getQuantities` read `EntityNode` directly and
+ * never consulted the overlay at all: `bim.mutate.setProperty(...)` followed by
+ * `bim.properties(ref)` (or `bim.quantities`, or anything built on them —
+ * `export --format csv|json`, `props`, `query --where`) silently returned the
+ * pre-edit value in the same process, even though `bim.export.ifc()` on that
+ * same session already reflected the edit. #3498 folded the overlay into
+ * entity add/remove visibility and explicitly left this half out of scope.
+ */
+export function overlayProperties(view: MutablePropertyView | null, ref: EntityRef): PropertySetData[] | undefined {
+  if (!view) return undefined;
+  if (view.isDeleted(ref.expressId)) return [];
+  return view.getForEntity(ref.expressId).map((pset) => ({
+    name: pset.name,
+    globalId: pset.globalId,
+    properties: pset.properties.map((p) => ({
+      name: p.name,
+      type: p.type,
+      value: p.value as string | number | boolean | null,
+    })),
+  }));
+}
+
+/** `getQuantities`'s overlay half — see {@link overlayProperties}. */
+export function overlayQuantities(view: MutablePropertyView | null, ref: EntityRef): QuantitySetData[] | undefined {
+  if (!view) return undefined;
+  if (view.isDeleted(ref.expressId)) return [];
+  return view.getQuantitiesForEntity(ref.expressId).map((qset) => ({
+    name: qset.name,
+    quantities: qset.quantities.map((q) => ({ name: q.name, type: q.type, value: q.value })),
+  }));
 }

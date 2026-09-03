@@ -129,6 +129,7 @@ containers.
 | `--merge-sites` | `single` / `by-name` | combined heuristic | How `IfcSite` records are matched across models |
 | `--merge-buildings` | `single` / `by-name` | combined heuristic | How `IfcBuilding` records are matched |
 | `--merge-storeys` | `by-name` / `by-elevation` / `by-name-then-elevation` | combined heuristic | How `IfcBuildingStorey` records are matched |
+| `--drop-empty-containers` | flag | off | Leave out sites, buildings, storeys and spaces the merged model leaves holding nothing (the "Merge Projects" recipe step matching alone does not cover) |
 | `--json` | flag | off | Emit machine-readable stats (entity counts, warnings) to stdout |
 
 ## FederatedModel Type

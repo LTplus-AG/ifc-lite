@@ -34,6 +34,8 @@ import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
 import type { MeshData } from '@ifc-lite/geometry';
+import { EMBED_SOURCE, PROTOCOL_VERSION } from '@ifc-lite/embed-protocol';
+import { symbolicOverlayGate } from '@/lib/symbolic-overlay-gate.js';
 
 /** Captured props of the last `Viewport` render — what the embed actually draws. */
 let lastViewportGeometry: MeshData[] | null = null;
@@ -148,6 +150,7 @@ async function nextFrame(): Promise<void> {
 beforeEach(() => {
   lastViewportGeometry = null;
   useViewerStore.setState({
+    hostHiddenIfcTypes: null,
     selectedEntityIds: new Set<number>(),
     selectedEntityId: null,
     isolatedEntities: null,
@@ -359,6 +362,76 @@ describe('EmbedViewer: ?hideTypes=', () => {
 
     const drawn = (lastViewportGeometry ?? []).map((m) => m.ifcType);
     expect(drawn).toEqual(['IfcWall', 'IfcSpace', 'IfcDoor', 'IfcOpeningElement']);
+  });
+
+  /**
+   * What the 2D overlay ends up drawing, decided by the same function the
+   * viewer's overlay hooks call, over the set this embed published.
+   *
+   * Asserting the CONSEQUENCE rather than the stored value is the point. The
+   * overlay is not a mesh, so the three assertions above cannot see it; and a
+   * check that merely read a Set back would survive the folding being dropped
+   * or the wrong class being asked about.
+   */
+  function overlayChannels(): { annotation: boolean; grid: boolean } {
+    return symbolicOverlayGate(
+      { annotation: true, grid: true },
+      useViewerStore.getState().hostHiddenIfcTypes,
+    );
+  }
+
+  it('publishes the hidden classes to the store, which is what reaches the 2D overlay', async () => {
+    // KILLS: dropping the `useHostHiddenIfcTypes` publish (back to a plain
+    // `useMemo` for the mesh filter, as shipped). `IfcAnnotation` 2D content is
+    // a line overlay, not a mesh, so the mesh filter above cannot touch it.
+    // Measured through the real embed build on AC20-FZK-Haus: before this
+    // change `hideTypes=IfcAnnotation` moved 0 of 960,000 pixels, where hiding
+    // the same class through the store toggle moved 6,492 -- exactly what
+    // stripping the 14 IFCANNOTATION instances out of the bytes moves. This
+    // store field is the only route there.
+    setSearch('?hideTypes=IfcAnnotation');
+    renderEmbedViewer();
+    await settle();
+
+    expect(overlayChannels()).toEqual({ annotation: false, grid: true });
+  });
+
+  it('leaves the overlay alone when ?hideTypes= names none of its classes', async () => {
+    setSearch('?hideTypes=IfcSpace');
+    renderEmbedViewer();
+    await settle();
+
+    expect(overlayChannels()).toEqual({ annotation: true, grid: true });
+  });
+
+  it('tracks a later INIT config.hideTypes, not just the mount-time URL value', async () => {
+    // KILLS: publishing `urlParams.hideTypes` instead of the runtime-overlay
+    // state -- the shape where INIT's `config` has a documented type and no
+    // write site. A host that never uses `?hideTypes=` and sends INIT alone
+    // would get the overlay back.
+    setSearch('');
+    renderEmbedViewer();
+    await settle();
+    expect(overlayChannels()).toEqual({ annotation: true, grid: true });
+
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: {
+            source: EMBED_SOURCE,
+            version: PROTOCOL_VERSION,
+            type: 'INIT',
+            requestId: 'r1',
+            data: { config: { hideTypes: ['IFCANNOTATION'] } },
+          },
+          origin: 'https://parent.example',
+          source: window.parent,
+        }),
+      );
+    });
+    await settle();
+
+    expect(overlayChannels()).toEqual({ annotation: false, grid: true });
   });
 });
 

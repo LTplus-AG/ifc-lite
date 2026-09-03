@@ -16,9 +16,11 @@
 //! [`parse_express_id`] is called from both sides of that contract: the
 //! definition scanner ([`crate::parser::scanner::EntityScanner`]) and every
 //! `#<digits>` reference reader in [`crate::fast_parse`] and
-//! [`crate::decoder`]. A second, independently-written copy of this
-//! accumulation is exactly the drift #3395 was careful to avoid, so a new
-//! caller must reuse this function rather than writing its own loop.
+//! [`crate::decoder`], and — now that it is `pub` — the REFERENCE readers in
+//! `ifc-lite-geometry`, `ifc-lite-export` and `ifc-lite-processing` that read
+//! raw STEP bytes outside this crate. A second, independently-written copy of
+//! this accumulation is exactly the drift #3395 was careful to avoid, so a
+//! new caller must reuse this function rather than writing its own loop.
 //!
 //! The bound is inclusive: `u32::MAX` is a legitimate express id and parses
 //! successfully. Refusal (`None`) is the only outcome for anything past it —
@@ -46,7 +48,7 @@
 /// treating it as absent — callers that treat id `0` as "no reference" must
 /// check that themselves, the same way they did before this helper existed.
 #[inline]
-pub(crate) fn parse_express_id(digits: &[u8]) -> Option<u32> {
+pub fn parse_express_id(digits: &[u8]) -> Option<u32> {
     debug_assert!(
         !digits.is_empty() && digits.iter().all(u8::is_ascii_digit),
         "parse_express_id expects a validated, non-empty digit run"

@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { matches, score, validatorReason, REVIEWER_FAULT, INSTRUMENT_FAULT } from './rubric-eval.mjs';
+import { matches, score, validatorReason, REVIEWER_FAULT, INSTRUMENT_FAULT, JUDGE_LOG_RE } from './rubric-eval.mjs';
 import { REASONS } from './validate-findings.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -74,16 +74,29 @@ test('recall is reported as a fraction, so a change of denominator is visible', 
 
 // ================================================ the cases are real
 
-test('every eval case is well-formed and carries at least one known finding', () => {
+test('every eval case is well-formed, and an empty one is DECLARED, never inferred', () => {
   // A case file with no `expected` would quietly raise recall by shrinking the
   // denominator -- a measurement that improves by measuring less.
+  //
+  // Negative cases are legitimate and necessary: without PRs that SHOULD score
+  // zero, the EXTRA column means nothing and a rubric change can buy recall by
+  // inventing findings. But "empty means negative" is absence reading as
+  // success -- a case whose findings were dropped in an edit would look
+  // identical to one deliberately left empty. So a negative must say so.
   const dir = join(HERE, 'eval-cases');
   const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
   assert.ok(files.length > 0, 'no cases means a vacuous 0/0');
+  let positives = 0;
   for (const f of files) {
     const c = JSON.parse(readFileSync(join(dir, f), 'utf8'));
     assert.ok(Number.isInteger(c.pr), `${f}: needs the PR it came from`);
-    assert.ok(Array.isArray(c.expected) && c.expected.length > 0, `${f}: needs known findings`);
+    assert.ok(Array.isArray(c.expected), `${f}: needs an expected array`);
+    if (c.negative === true) {
+      assert.equal(c.expected.length, 0, `${f}: a negative case must expect nothing`);
+    } else {
+      assert.ok(c.expected.length > 0, `${f}: needs known findings, or "negative": true`);
+      positives += 1;
+    }
     assert.ok(c.input?.files?.length > 0, `${f}: needs a diff`);
     for (const e of c.expected) {
       assert.ok(
@@ -92,6 +105,9 @@ test('every eval case is well-formed and carries at least one known finding', ()
       );
     }
   }
+  // And the set must still be mostly positive, or recall is measured over a
+  // denominator small enough to move by luck.
+  assert.ok(positives >= files.length / 2, `only ${positives} of ${files.length} cases carry findings`);
 });
 
 // ========================= the three ways this scorer was wrong
@@ -285,7 +301,14 @@ writeFileSync(out, ${JSON.stringify(body)});
 
 const runHarness = (dir, reviewer) => spawnSync(
   process.execPath,
-  [join(HERE, 'rubric-eval.mjs'), '--cases', dir, '--reviewer', reviewer, '--rubric', join(HERE, 'rubric.md')],
+  // `--no-judge`, or this unit test SPAWNS THE REAL MODEL. spawnSync inherits
+  // process.env, so on any machine with CLAUDE_CODE_OAUTH_TOKEN exported -- the
+  // normal state for anyone working on this lane -- the harness would make a live
+  // billed call and the `RECALL 1/1` assertion below would be at the judge's
+  // discretion. It passes today only because an absent token fails soft. This
+  // test is about the validate-then-score wiring; run-judge has its own suite.
+  [join(HERE, 'rubric-eval.mjs'), '--cases', dir, '--reviewer', reviewer,
+   '--rubric', join(HERE, 'rubric.md'), '--no-judge'],
   { encoding: 'utf8' },
 );
 
@@ -381,4 +404,63 @@ test('a VALIDATION failure on the harness\'s own input is a HARD ERROR', (t) => 
   assert.notEqual(r.status, 0, `an INPUT_INVALID refusal must stop the run:\n${said}`);
   assert.match(said, /INPUT_INVALID/, said);
   assert.doesNotMatch(said, /RECALL of known findings/, 'no recall number may be printed from a run that did not happen');
+});
+
+test('a finding that only PARAPHRASES THE PR BODY does not score as recall', () => {
+  // The body is handed to the reviewer, so crediting it for repeating the body
+  // measures copying. This is the same rule that already excludes `quote`: a
+  // harness that credits a reviewer for quoting its own input measures nothing.
+  const expected = {
+    path: 'apps/a/resolve.ts',
+    what: 'the helper returns an empty array where the description promises a null sentinel, so callers cannot distinguish unresolved from resolved-to-nothing',
+  };
+  const body = 'This PR introduces a null sentinel meaning the helper cannot answer yet, and describes what callers should do.';
+
+  // A reviewer that read only the description and echoed it back.
+  const parrot = [{ path: 'apps/a/resolve.ts', line: 3, body: 'The description promises a null sentinel meaning it cannot answer yet.', class: 'x' }];
+  assert.equal(matches(expected, parrot, body).hit, false, 'echoing the body is not a finding');
+  assert.equal(matches(expected, parrot, null).hit, true, 'and without the exclusion it would have scored');
+
+  // A reviewer that actually looked at the code.
+  const real = [{ path: 'apps/a/resolve.ts', line: 3, body: 'This returns [] so callers cannot distinguish unresolved from resolved-to-nothing.', class: 'x' }];
+  assert.equal(matches(expected, real, body).hit, true, 'the code vocabulary still scores');
+});
+
+test('the EVAL workflow asks for a context pack too', () => {
+  // `--base` is explicit by design, so that the diff-only baseline stays
+  // reproducible. The cost of that choice is that the flag can go missing without
+  // anything failing -- which is exactly what happened when the default was
+  // removed and the only automated caller was not updated.
+  const yml = readFileSync(join(HERE, '..', '..', '.github/workflows/rubric-eval.yml'), 'utf8');
+  // Every invocation, not the first mention: see the same note in
+  // build-review-input.test.mjs.
+  const windows = [];
+  // A missing CLI flag in YAML has no behaviour to test, and its absence silently
+  // disabled the context pack in production. The file's text IS the mechanism.
+  for (let i = yml.indexOf('rubric-eval.mjs'); i !== -1; i = yml.indexOf('rubric-eval.mjs', i + 1)) { // @source-text-assertion-ok a workflow flag has no behaviour to assert on; its absence is the defect
+    windows.push(yml.slice(i, i + 400));
+  }
+  assert.ok(windows.length > 0, 'the eval workflow must invoke rubric-eval');
+  const calls = windows.filter((w) => w.includes('--rubric '));
+  assert.ok(calls.length > 0, 'no window looks like an invocation (none carries --rubric)');
+  for (const call of calls) {
+    assert.match(call, /--base /, 'the eval would silently score the diff-only baseline');
+  }
+});
+
+test('the eval reports a CLEAN judging, not only a lossy one', () => {
+  // The filter was /JUDGE (DROPPED|UNAVAILABLE|NOTE)|CAPPED/, so a judge that ran
+  // and removed nothing -- which prints only `JUDGE: n in, n out` -- produced no
+  // output whatsoever. A whole CI eval then could not answer "did the judge run",
+  // and I misread one such log as the judge having eaten a finding when it had
+  // run and dropped none. An instrument has to report doing nothing.
+  // THE SHIPPED regex, imported. Inlining a copy here made this test pass while
+  // the source reverted to the narrow pattern -- it guarded nothing.
+  const shown = (l) => JUDGE_LOG_RE.test(l);
+  assert.equal(shown('JUDGE: 3 in, 3 out.'), true, 'a clean judging must appear');
+  assert.equal(shown('JUDGE DROPPED a.ts:1 -- vague'), true);
+  assert.equal(shown('JUDGE UNAVAILABLE: quota drained'), true);
+  assert.equal(shown('JUDGE NOTE: keeping all findings'), true);
+  assert.equal(shown('CAPPED: 7 findings, posting 5'), true);
+  assert.equal(shown('some unrelated reviewer output'), false, 'and it must not print everything');
 });

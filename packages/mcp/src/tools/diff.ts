@@ -18,6 +18,7 @@ import { buildModelFingerprints, type DiffRef } from './diff-fingerprints.js';
 import { foldedTypeCounts, pendingMutationsField, pendingOverlay, type PendingOverlay } from '../overlay.js';
 import type { LoadedModel, ToolContext } from '../context.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
+import { firstNonBlank } from '../material-naming.js';
 
 function resolveTwo(ctx: ToolContext, a: string, b: string) {
   const left = ctx.registry.get(a);
@@ -321,7 +322,7 @@ const quantityDiff: Tool = {
           // `model.bim.storey`, not a raw EntityNode: the SDK walk folds the
           // session's queued and deleted relationships, the store walk does not
           // (#2014).
-          ? (model.bim.storey(e.ref)?.name ?? '(none)')
+          ? (firstNonBlank(model.bim.storey(e.ref)?.name) ?? '(none)')
           : e.type;
         let value: number | null = null;
         for (const qset of model.bim.quantities(e.ref)) {

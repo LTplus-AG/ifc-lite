@@ -17,7 +17,7 @@ import type {
   QueryBackendMethods,
 } from '@ifc-lite/sdk';
 import type { StoreApi } from './types.js';
-import { EntityNode, findAllPropertiesInSets } from '@ifc-lite/query';
+import { EntityNode, findAllPropertiesInSets, compareFilterValue } from '@ifc-lite/query';
 import { IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';
 import { getModelForRef, getAllModelEntries } from './model-compat.js';
 import {
@@ -245,30 +245,37 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
           // Any-match, not first-match (#3490): an entity can carry two
           // distinct same-named property sets (type + occurrence), so a
           // filter predicate passes when ANY of them satisfies the
-          // condition, not just the first one found.
+          // condition, not just the first one found. compareFilterValue is
+          // the shared comparison logic (unified across all QueryBackendMethods
+          // implementations) so 'contains'/boolean normalization can't drift
+          // between hosts; its `exists` branch is unconditional (a property
+          // that parses to null still exists).
           const matchingProps = findAllPropertiesInSets(props, filter.psetName, filter.propName);
           if (matchingProps.length === 0) return false;
           if (filter.operator === 'exists') return true;
-
-          return matchingProps.some(prop => {
-            const val = prop.value;
-            switch (filter.operator) {
-              case '=': return String(val) === String(filter.value);
-              case '!=': return String(val) !== String(filter.value);
-              case '>': return Number(val) > Number(filter.value);
-              case '<': return Number(val) < Number(filter.value);
-              case '>=': return Number(val) >= Number(filter.value);
-              case '<=': return Number(val) <= Number(filter.value);
-              case 'contains': return String(val).includes(String(filter.value));
-              default: return false;
-            }
-          });
+          return matchingProps.some(prop => compareFilterValue(prop.value, filter.operator, filter.value));
         });
       }
     }
 
-    if (descriptor.offset != null && descriptor.offset > 0) filtered = filtered.slice(descriptor.offset);
-    if (descriptor.limit != null && descriptor.limit > 0) filtered = filtered.slice(0, descriptor.limit);
+    // `!= null` alone lets a NaN offset/limit through (neither null nor
+    // undefined); a bare `> 0` then silently drops it instead of rejecting
+    // it, and by the same reasoning silently ignored a deliberate `limit: 0`.
+    // Matches `packages/cli/src/headless-backend.ts` and
+    // `packages/mcp/src/backend-query.ts` — the three `QueryBackendMethods`
+    // implementations of this same `QueryDescriptor` contract must agree.
+    if (descriptor.offset != null) {
+      if (!Number.isFinite(descriptor.offset) || descriptor.offset < 0) {
+        throw new TypeError(`Invalid offset: ${descriptor.offset} (must be a non-negative finite number)`);
+      }
+      if (descriptor.offset > 0) filtered = filtered.slice(descriptor.offset);
+    }
+    if (descriptor.limit != null) {
+      if (!Number.isFinite(descriptor.limit) || descriptor.limit < 0) {
+        throw new TypeError(`Invalid limit: ${descriptor.limit} (must be a non-negative finite number)`);
+      }
+      filtered = filtered.slice(0, descriptor.limit);
+    }
 
     return filtered;
   }

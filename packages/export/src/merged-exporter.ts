@@ -13,10 +13,8 @@
 import type { IfcDataStore, IfcSourceBytes } from '@ifc-lite/parser';
 import {
   generateHeader,
-  deterministicGlobalId,
   IfcParser,
   asSourceBytes,
-  getInheritanceChainAcrossSchemas,
 } from '@ifc-lite/parser';
 import { decodeIfcString } from '@ifc-lite/encoding';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
@@ -31,7 +29,20 @@ import { assembleStepBytes, assembleStepBlob } from './step-file-assembly.js';
 import { getCompleteEntityIndex, getMaxExpressId, type CompleteEntityIndex, type ExportEntityRef } from './entity-iteration.js';
 import { StepExporter } from './step-exporter.js';
 import { rescaleEntityLengths, computeNormalizeFactor } from './unit-normalize.js';
-import { groupSubContextsByKey, planInfrastructureUnify } from './merged-subcontext.js';
+import { planInfrastructureUnify, resolvePrimaryContextState, type PrimaryContextState } from './merged-context.js';
+import { remapEntityText } from './merged-remap.js';
+import {
+  extractGlobalIdFast,
+  mintUniqueGuid,
+  readLeadingGuid,
+  replaceGlobalId,
+} from './merged-guid.js';
+import {
+  planEmptyContainerDrops,
+  EMPTY_MODEL_VIEW,
+  type EmptyContainerModelView,
+} from './merged-empty-containers.js';
+import { skipRedundantRelAggregates, applyRelAggregateStrip, collectRelAggregatePairs } from './merged-rel-aggregates.js';
 
 /**
  * UTF-8 decode of `[start, end)` of a model's source, accepting either the raw
@@ -50,40 +61,6 @@ const SHARED_INFRASTRUCTURE_TYPES = new Set([
   'IFCGEOMETRICREPRESENTATIONCONTEXT',
   'IFCGEOMETRICREPRESENTATIONSUBCONTEXT',
 ]);
-
-/**
- * An IfcGloballyUniqueId is exactly 22 characters of the buildingSMART base64
- * alphabet. We use this to recognise a rooted entity (IfcRoot subtype) by its
- * first attribute. Geometry/list entities never carry a string there, but some
- * non-rooted RESOURCE entities lead with a Name/Identifier string that can
- * legitimately be 22 charset chars (e.g. a coded property key). Those are
- * excluded with a schema-derived rootedness check ({@link isRootedType}) so
- * their Name is never mistaken for a GlobalId — otherwise the GlobalId
- * reconciliation could drop or rename them.
- */
-const GLOBAL_ID_RE = /^[0-9A-Za-z_$]{22}$/;
-
-/**
- * Whether `type` is an IfcRoot subtype — a schema-derived replacement for a
- * hand-maintained denylist of "non-rooted types whose first attribute happens
- * to be a string". A denylist has to be told about every such type by hand and
- * silently under-covers as the schema grows — `IfcMaterialProfileWithOffsets`
- * and several other resource types were missing and got their leading Name
- * treated as a GlobalId, corrupting ordinary model data on a collision.
- *
- * `getInheritanceChainAcrossSchemas` walks the bundled IFC2X3/IFC4/IFC4X3
- * schema union to the entity's root ancestor; a rooted entity's chain always
- * ends in `IfcRoot`. This mirrors the Rust side's `IfcType::is_subtype_of`
- * schema check, so the two implementations of "is this rooted" agree instead
- * of drifting apart as separate hand-maintained lists.
- *
- * A type unknown to every bundled schema (typo, vendor extension) yields an
- * empty chain and is treated as non-rooted — the same safe-miss direction the
- * old denylist documented: it just skips one GlobalId reconciliation.
- */
-export function isRootedType(type: string): boolean {
-  return getInheritanceChainAcrossSchemas(type).includes('IfcRoot');
-}
 
 /** True for IfcRelationship subtypes (objectified relationships). */
 function isRelationshipType(typeUpper: string): boolean {
@@ -121,12 +98,14 @@ interface MergeSetup {
   firstModelOffset: number;
   /** Infrastructure entities (units, contexts) of the primary model. */
   firstModelInfraMap: Map<string, number[]>;
-  /** Primary model's subcontexts grouped by matching key — see `merged-subcontext.ts`. */
-  firstModelSubContextsByKey: Map<string, number[]>;
+  /** Primary model's subcontexts-by-key and context WCS frame — see `merged-context.ts`. */
+  firstModelContext: PrimaryContextState;
   /** IfcProject express ids of the primary model. */
   firstProjectIds: number[];
   /** Spatial lookup built from the primary model. */
   spatialLookup: SpatialLookup;
+  /** Aggregation edges actually declared by the primary model. */
+  primaryAggregatePairs: Set<string>;
   /** Length unit scale of the primary model — the unit other models merge into. */
   primaryScale: number;
   /** Area unit scale (m² per unit) of the primary model — target for area values. */
@@ -189,6 +168,18 @@ interface ModelMergePlan {
   guidRewrite: Map<number, string>;
   /** Local express id → original GlobalId (rooted entities only). */
   localGuids: Map<number, string>;
+  /** Empty spatial containers this model must not write (#3643); every line
+   *  naming one is narrowed, or withheld with it. */
+  droppedContainerIds?: ReadonlySet<number>;
+  /**
+   * Local express id of a kept (not fully redundant) IFCRELAGGREGATES → the
+   * local ids of its RelatedObjects members that must be dropped from the
+   * emitted list because they were unified with an object the first model's
+   * OWN relationship already aggregates the same RelatingObject to (see
+   * {@link MergedExporter.skipRedundantRelAggregates}). Emitting them
+   * unmodified would list that member twice under the same parent.
+   */
+  relAggregateStrip: Map<number, Set<number>>;
 }
 
 /**
@@ -355,6 +346,17 @@ export interface MergeExportOptions {
    */
   mergeStoreys?: 'by-name' | 'by-elevation' | 'by-name-then-elevation';
 
+  /**
+   * Drop spatial containers (`IfcSite` / `IfcBuilding` / `IfcBuildingStorey` /
+   * `IfcSpace`) the merge leaves holding nothing — the "Merge Projects" recipe
+   * step the matching options above do not cover (#3643). Emptiness is judged on
+   * the MERGED model, after visibility filtering and spatial unification, so a
+   * container only a later model fills is kept; see
+   * `merged-empty-containers.ts` for the exact rule. Off by default: output is
+   * byte-identical to a merge that never asked for it.
+   */
+  dropEmptyContainers?: boolean;
+
   /** Apply visibility filtering to each model before merging */
   visibleOnly?: boolean;
   /** Hidden entity IDs per model (local expressIds) */
@@ -407,6 +409,12 @@ export interface MergeExportResult {
      * modes (or when every model already shared the first model's unit).
      */
     normalizedModelCount: number;
+    /**
+     * Spatial containers dropped for holding nothing, counted in the merged
+     * model (a container unified across three inputs counts once). Always 0
+     * unless {@link MergeExportOptions.dropEmptyContainers} is set.
+     */
+    droppedContainerCount: number;
     /**
      * Human-readable advisories about the merge (empty on a clean single-unit
      * merge). Notably flags when federation produced more than one IfcProject,
@@ -493,6 +501,7 @@ export class MergedExporter {
     }
     const models = withUsableSource(this.models);
     const setup = this.buildMergeSetup(options, models);
+    const containerDrops = this.planContainerDrops(options, models, setup);
 
     const allEntityLines: string[] = [];
     // Tracks every GlobalId already emitted → its final express id + unit scale,
@@ -518,6 +527,7 @@ export class MergedExporter {
       if (!isFirstModel && !mode.compatible) federatedModelCount++;
       if (mode.normalized) { normalizedModelCount++; this.collectNormalizeCaveats(model, normalizeWarnings); }
       const plan = this.planModel(model, completeIndex, isFirstModel, mode.compatible, mode.lengthFactor, setup, guidToFinalId);
+      this.applyContainerDrops(plan, containerDrops?.byModel.get(model.id));
 
       const sourceSchema = (model.dataStore.schemaVersion as IfcSchemaVersion) || 'IFC4';
       for (const [expressId, entityRef] of completeIndex) {
@@ -539,7 +549,7 @@ export class MergedExporter {
 
     return {
       content,
-      stats: this.buildStats(allEntityLines.length, content.byteLength, federatedModelCount, normalizedModelCount, normalizeWarnings),
+      stats: this.buildStats(allEntityLines.length, content.byteLength, federatedModelCount, normalizedModelCount, normalizeWarnings, containerDrops?.count ?? 0),
     };
   }
 
@@ -556,7 +566,7 @@ export class MergedExporter {
     }
     return {
       content,
-      stats: this.buildStats(doc.allEntityLines.length, content.byteLength, doc.federatedModelCount, doc.normalizedModelCount, doc.normalizeWarnings),
+      stats: this.buildStats(doc.allEntityLines.length, content.byteLength, doc.federatedModelCount, doc.normalizedModelCount, doc.normalizeWarnings, doc.droppedContainerCount),
     };
   }
 
@@ -578,7 +588,7 @@ export class MergedExporter {
     }
     return {
       content,
-      stats: this.buildStats(doc.allEntityLines.length, content.size, doc.federatedModelCount, doc.normalizedModelCount, doc.normalizeWarnings),
+      stats: this.buildStats(doc.allEntityLines.length, content.size, doc.federatedModelCount, doc.normalizedModelCount, doc.normalizeWarnings, doc.droppedContainerCount),
     };
   }
 
@@ -597,6 +607,7 @@ export class MergedExporter {
     federatedModelCount: number;
     normalizedModelCount: number;
     normalizeWarnings: Set<string>;
+    droppedContainerCount: number;
     totalEntities: number;
   }> {
     const onProgress = options.onProgress;
@@ -610,6 +621,7 @@ export class MergedExporter {
     // without edits pass through unchanged (no export/parse cost).
     const models = withUsableSource(await this.bakeMutatedModels());
     const setup = this.buildMergeSetup(options, models);
+    const containerDrops = this.planContainerDrops(options, models, setup);
 
     const allEntityLines: string[] = [];
     const guidToFinalId = new Map<string, GuidRecord>();
@@ -651,6 +663,7 @@ export class MergedExporter {
       if (!isFirstModel && !mode.compatible) federatedModelCount++;
       if (mode.normalized) { normalizedModelCount++; this.collectNormalizeCaveats(model, normalizeWarnings); }
       const plan = this.planModel(model, completeIndex, isFirstModel, mode.compatible, mode.lengthFactor, setup, guidToFinalId);
+      this.applyContainerDrops(plan, containerDrops?.byModel.get(model.id));
       const sourceSchema = (model.dataStore.schemaVersion as IfcSchemaVersion) || 'IFC4';
 
       let entityCount = 0;
@@ -691,7 +704,7 @@ export class MergedExporter {
     }
     await new Promise(r => setTimeout(r, 0));
 
-    return { header, allEntityLines, federatedModelCount, normalizedModelCount, normalizeWarnings, totalEntities };
+    return { header, allEntityLines, federatedModelCount, normalizedModelCount, normalizeWarnings, droppedContainerCount: containerDrops?.count ?? 0, totalEntities };
   }
 
   /**
@@ -747,6 +760,7 @@ export class MergedExporter {
     federatedModelCount: number,
     normalizedModelCount: number,
     normalizeWarnings: Set<string>,
+    droppedContainerCount: number,
   ): MergeExportResult['stats'] {
     const warnings: string[] = [];
     if (federatedModelCount > 0) {
@@ -760,7 +774,52 @@ export class MergedExporter {
       );
     }
     warnings.push(...normalizeWarnings);
-    return { modelCount: this.models.length, totalEntityCount, fileSize, federatedModelCount, normalizedModelCount, warnings };
+    return { modelCount: this.models.length, totalEntityCount, fileSize, federatedModelCount, normalizedModelCount, droppedContainerCount, warnings };
+  }
+
+  /**
+   * Plan the empty spatial containers of the whole merge (#3643), or `null` when
+   * the caller did not ask for the drop. Reproduces the same spatial unification
+   * {@link planModel} will, so emptiness is judged on the containers the merge
+   * actually keeps rather than on each file in isolation.
+   */
+  private planContainerDrops(
+    options: MergeExportOptions,
+    models: MergeModelInput[],
+    setup: MergeSetup,
+  ): { byModel: Map<string, Set<number>>; count: number } | null {
+    if (!options.dropEmptyContainers) return null;
+    const views: EmptyContainerModelView[] = models.map((model, index) => {
+      const source = model.dataStore.source;
+      if (!source || source.length === 0) return EMPTY_MODEL_VIEW;
+      const entities = getCompleteEntityIndex(model.dataStore);
+      const mode = this.resolveModelMode(model, index === 0, setup);
+      const sharedRemap = new Map<number, number>();
+      if (index > 0 && mode.compatible) {
+        this.unifySpatialEntities(model.dataStore, setup.spatialLookup, setup.firstModelOffset, mode.lengthFactor, sharedRemap, new Set(), setup);
+      }
+      return {
+        entities,
+        source: asSourceBytes(source),
+        included: this.computeIncludedEntityIds(model, options, entities, source)?.included ?? null,
+        sharedRemap,
+        offset: setup.modelOffsets.get(model.id)!,
+        compatible: mode.compatible,
+      };
+    });
+    const plan = planEmptyContainerDrops(views);
+    return {
+      byModel: new Map(models.map((model, index) => [model.id, plan.droppedByModel[index]])),
+      count: plan.droppedCount,
+    };
+  }
+
+  /** Fold a model's dropped containers into its plan: the container lines are
+   *  skipped outright, and {@link renderEntity} narrows every line naming one. */
+  private applyContainerDrops(plan: ModelMergePlan, dropped: ReadonlySet<number> | undefined): void {
+    if (dropped === undefined || dropped.size === 0) return;
+    plan.droppedContainerIds = dropped;
+    for (const id of dropped) plan.skipEntityIds.add(id);
   }
 
   /**
@@ -821,14 +880,18 @@ export class MergedExporter {
 
     const firstModel = models[0];
     const primaryScale = this.resolveUnitScale(firstModel);
+    const firstModelOffset = modelOffsets.get(firstModel.id)!;
     const firstModelInfraMap = this.findInfrastructureEntities(firstModel.dataStore);
     return {
       modelOffsets,
-      firstModelOffset: modelOffsets.get(firstModel.id)!,
+      firstModelOffset,
       firstModelInfraMap,
-      firstModelSubContextsByKey: groupSubContextsByKey(firstModel.dataStore, firstModelInfraMap.get('IFCGEOMETRICREPRESENTATIONSUBCONTEXT') ?? []),
+      firstModelContext: resolvePrimaryContextState(firstModel.dataStore, firstModelInfraMap.get('IFCGEOMETRICREPRESENTATIONSUBCONTEXT') ?? [], primaryScale),
       firstProjectIds: this.findEntitiesByType(firstModel.dataStore, 'IFCPROJECT'),
       spatialLookup: this.buildSpatialLookup(firstModel.dataStore),
+      primaryAggregatePairs: collectRelAggregatePairs(
+        firstModel.dataStore, this.findEntitiesByType.bind(this), this.extractStepAttribute.bind(this), firstModelOffset,
+      ),
       primaryScale,
       primaryAreaScale: this.resolveDerivedUnitScale(firstModel.dataStore, 'AREAUNIT', primaryScale, 2),
       primaryVolumeScale: this.resolveDerivedUnitScale(firstModel.dataStore, 'VOLUMEUNIT', primaryScale, 3),
@@ -1031,11 +1094,12 @@ export class MergedExporter {
     const sharedRemap = new Map<number, number>();
     const skipEntityIds = new Set<number>();
     const guidRewrite = new Map<number, string>();
+    const relAggregateStrip = new Map<number, Set<number>>();
 
     // One cheap pass to read each rooted entity's GlobalId (first attribute).
     const localGuids = new Map<number, string>();
     for (const [id, ref] of completeIndex) {
-      const guid = this.extractGlobalIdFast(ref, source);
+      const guid = extractGlobalIdFast(ref, source);
       if (guid !== null) localGuids.set(id, guid);
     }
 
@@ -1049,16 +1113,21 @@ export class MergedExporter {
         }
       }
 
-      // Remap and skip duplicate infrastructure (units, contexts) — subcontexts kind-matched, see merged-subcontext.ts.
-      planInfrastructureUnify(model.dataStore, this.findInfrastructureEntities(model.dataStore), setup.firstModelInfraMap, setup.firstModelSubContextsByKey, setup.firstModelOffset, sharedRemap, skipEntityIds);
+      // Remap and skip duplicate infrastructure (units, contexts) — WCS-gated; scale choice documented on planInfrastructureUnify (merged-context.ts).
+      planInfrastructureUnify(model.dataStore, this.findInfrastructureEntities(model.dataStore), setup.firstModelInfraMap, setup.firstModelContext, setup.firstModelOffset, setup.assumeShared ? setup.primaryScale : this.resolveUnitScale(model), sharedRemap, skipEntityIds);
 
       // Unify spatial hierarchy: match Site, Building, Storey to first model.
       // Under normalize, this model's raw elevations are in its own unit, so the
       // elevation match is done in the primary unit (rawElevation * lengthFactor).
       this.unifySpatialEntities(model.dataStore, setup.spatialLookup, setup.firstModelOffset, lengthFactor, sharedRemap, skipEntityIds, setup);
 
-      // Skip IfcRelAggregates that become fully redundant after unification.
-      this.skipRedundantRelAggregates(model.dataStore, sharedRemap, skipEntityIds);
+      // Skip IfcRelAggregates that become fully redundant after unification,
+      // and strip individually-duplicated members from ones only partially so.
+      skipRedundantRelAggregates(
+        model.dataStore, sharedRemap, skipEntityIds, relAggregateStrip,
+        setup.primaryAggregatePairs,
+        this.findEntitiesByType.bind(this), this.extractStepAttribute.bind(this),
+      );
     }
 
     if (!isFirstModel) {
@@ -1085,12 +1154,12 @@ export class MergedExporter {
           sharedRemap.set(id, prior.finalId);
           skipEntityIds.add(id);
         } else {
-          guidRewrite.set(id, this.mintUniqueGuid(guid, model.id, guidToFinalId, pendingMinted));
+          guidRewrite.set(id, mintUniqueGuid(guid, model.id, guidToFinalId, pendingMinted));
         }
       }
     }
 
-    return { sharedRemap, skipEntityIds, guidRewrite, localGuids };
+    return { sharedRemap, skipEntityIds, guidRewrite, localGuids, relAggregateStrip };
   }
 
   /**
@@ -1139,18 +1208,38 @@ export class MergedExporter {
       entityText = filtered;
     }
 
+    // A dropped empty spatial container (#3643) is never written, so any line
+    // naming one is narrowed the same way — or withheld with it. Runs in LOCAL
+    // id space, before the remap below, like the visibility narrowing above.
+    if (plan.droppedContainerIds !== undefined) {
+      const kept = filterHiddenRefsFromRelationshipLine(entityText, id => plan.droppedContainerIds!.has(id));
+      if (kept === null) return null;
+      entityText = kept;
+    }
+
+    // Drop RelatedObjects members a partially redundant IFCRELAGGREGATES
+    // already shares with the first model's OWN relationship to the same
+    // (now-unified) RelatingObject — see skipRedundantRelAggregates /
+    // applyRelAggregateStrip (merged-rel-aggregates.ts). Runs in LOCAL id
+    // space, before the remap below. `null` (the filter would withhold the
+    // whole line) propagates like the two passes above: every edge the line
+    // declared already exists in the primary model.
+    const stripped = applyRelAggregateStrip(entityText, localId, plan.relAggregateStrip);
+    if (stripped === null) return null;
+    entityText = stripped;
+
     // Remap ids. Fast path: the first model (offset 0, no remaps) is byte-identical.
     let finalText: string;
     if (offset === 0 && plan.sharedRemap.size === 0) {
       finalText = entityText;
     } else {
-      finalText = this.remapEntityText(entityText, offset, plan.sharedRemap);
+      finalText = remapEntityText(entityText, offset, plan.sharedRemap);
     }
 
     // Re-stamp the GlobalId for a federated entity whose id collides.
     const mintedGuid = plan.guidRewrite.get(localId);
     if (mintedGuid !== undefined) {
-      finalText = this.replaceGlobalId(finalText, mintedGuid);
+      finalText = replaceGlobalId(finalText, mintedGuid);
     }
 
     // Normalize units: rescale every length/area/volume-valued datum into the
@@ -1174,7 +1263,7 @@ export class MergedExporter {
     // Emitted entities are not sharedRemap keys, so their final id is
     // localId + offset.
     if (plan.localGuids.has(localId)) {
-      const emittedGuid = this.readLeadingGuid(finalText)
+      const emittedGuid = readLeadingGuid(finalText)
         ?? mintedGuid ?? plan.localGuids.get(localId);
       if (emittedGuid !== undefined) {
         guidToFinalId.set(emittedGuid, { finalId: localId + offset, scale: mode.effectiveScale });
@@ -1182,148 +1271,6 @@ export class MergedExporter {
     }
 
     return finalText;
-  }
-
-  /**
-   * Read the GlobalId (first quoted attribute) from an already-rendered STEP
-   * line. Used to register the id that was actually emitted, after any id
-   * remap, GlobalId re-stamp, or schema conversion. Returns null if the first
-   * quoted token is not a 22-char GlobalId.
-   */
-  private readLeadingGuid(entityText: string): string | null {
-    const open = entityText.indexOf('(');
-    if (open === -1) return null;
-    const q1 = entityText.indexOf("'", open + 1);
-    if (q1 === -1) return null;
-    const q2 = entityText.indexOf("'", q1 + 1);
-    if (q2 === -1) return null;
-    const raw = entityText.slice(q1 + 1, q2);
-    return GLOBAL_ID_RE.test(raw) ? raw : null;
-  }
-
-  /**
-   * Mint a fresh, deterministic, collision-free GlobalId for an entity whose id
-   * collides. Seeded from the original GlobalId and the model's stable id so the
-   * output is reproducible and does not churn when an unrelated earlier model
-   * changes size; checked against both already-emitted ids and the ids minted
-   * so far for this model.
-   */
-  private mintUniqueGuid(
-    original: string,
-    modelId: string,
-    guidToFinalId: Map<string, GuidRecord>,
-    pendingMinted: Set<string>,
-  ): string {
-    let candidate = deterministicGlobalId(`${original}#${modelId}`);
-    let n = 0;
-    while (guidToFinalId.has(candidate) || pendingMinted.has(candidate)) {
-      candidate = deterministicGlobalId(`${original}#${modelId}#${n++}`);
-    }
-    pendingMinted.add(candidate);
-    return candidate;
-  }
-
-  /**
-   * Read an entity's GlobalId (first attribute) by decoding only its head.
-   * Returns the 22-char id for a rooted entity, or `null` for any entity whose
-   * first attribute is not a GlobalId (geometry, lists, property atoms, …).
-   */
-  private extractGlobalIdFast(ref: ExportEntityRef, source: IfcSourceBytes): string | null {
-    // Non-rooted resource entities (property/quantity/material/style/actor …)
-    // lead with a Name string that can itself be 22 charset chars; never treat
-    // those as a GlobalId or reconciliation would drop/rename them.
-    if (!isRootedType(ref.type ?? '')) return null;
-    // 128 bytes comfortably spans `#<id>=<LONGEST_TYPE_NAME>('<22-char id>'`,
-    // so the GlobalId is always fully inside the window.
-    const end = Math.min(ref.byteOffset + 128, ref.byteOffset + ref.byteLength);
-    const head = decodeRange(source, ref.byteOffset, end);
-    const open = head.indexOf('(');
-    if (open === -1) return null;
-    let i = open + 1;
-    while (i < head.length && (head[i] === ' ' || head[i] === '\t' || head[i] === '\n' || head[i] === '\r')) i++;
-    if (head[i] !== "'") return null;
-    // A GlobalId never contains a quote (charset excludes it), so the next
-    // quote closes it.
-    const close = head.indexOf("'", i + 1);
-    if (close === -1) return null;
-    const raw = head.slice(i + 1, close);
-    return GLOBAL_ID_RE.test(raw) ? raw : null;
-  }
-
-  /**
-   * Replace an entity's GlobalId (first quoted attribute) with `newGuid`.
-   * `newGuid` is a 22-char IFC id (no quote in its charset), so this is safe.
-   */
-  private replaceGlobalId(entityText: string, newGuid: string): string {
-    const open = entityText.indexOf('(');
-    if (open === -1) return entityText;
-    const q1 = entityText.indexOf("'", open + 1);
-    if (q1 === -1) return entityText;
-    const q2 = entityText.indexOf("'", q1 + 1);
-    if (q2 === -1) return entityText;
-    return entityText.slice(0, q1 + 1) + newGuid + entityText.slice(q2);
-  }
-
-  /**
-   * Remap all #ID references in a STEP entity line.
-   * Applies offset to all IDs, then overrides with specific remappings.
-   *
-   * Only `#<digits>` tokens in code positions are rewritten; tokens inside
-   * single-quoted STEP strings (e.g. a 'Room #205' Name or a 'http://x#42'
-   * URL) are left untouched so string attribute values are not corrupted.
-   */
-  private remapEntityText(
-    entityText: string,
-    offset: number,
-    sharedRemap: Map<number, number>,
-  ): string {
-    const remapId = (originalId: number): string => {
-      // Check if this ID has a specific remap (project, shared infrastructure)
-      const remapped = sharedRemap.get(originalId);
-      if (remapped !== undefined) {
-        return `#${remapped}`;
-      }
-      // Apply offset
-      return `#${originalId + offset}`;
-    };
-
-    let out = '';
-    let inString = false;
-    for (let i = 0; i < entityText.length; i++) {
-      const char = entityText[i];
-
-      if (inString) {
-        out += char;
-        if (char === "'") {
-          // STEP escapes a literal quote by doubling it ('').
-          if (entityText[i + 1] === "'") {
-            out += entityText[i + 1];
-            i++;
-          } else {
-            inString = false;
-          }
-        }
-        continue;
-      }
-
-      if (char === "'") {
-        inString = true;
-        out += char;
-        continue;
-      }
-
-      if (char === '#' && entityText[i + 1] >= '0' && entityText[i + 1] <= '9') {
-        let j = i + 1;
-        while (j < entityText.length && entityText[j] >= '0' && entityText[j] <= '9') j++;
-        const originalId = parseInt(entityText.slice(i + 1, j), 10);
-        out += remapId(originalId);
-        i = j - 1;
-        continue;
-      }
-
-      out += char;
-    }
-    return out;
   }
 
   /**
@@ -1525,46 +1472,6 @@ export class MergedExporter {
     if (mergeMode === 'single') return bySingle();
     if (mergeMode === 'by-name') return byName();
     return byName() ?? bySingle();
-  }
-
-  /**
-   * Skip IfcRelAggregates that become fully redundant after spatial unification.
-   *
-   * When Model2's `IfcRelAggregates(Project, (Site))` gets remapped to
-   * `IfcRelAggregates(FirstProject, (FirstSite))`, it duplicates Model1's
-   * existing relationship, causing viewers to show Site multiple times.
-   *
-   * An IfcRelAggregates is redundant if both its RelatingObject (attr 4)
-   * and ALL its RelatedObjects (attr 5) were remapped via sharedRemap.
-   */
-  private skipRedundantRelAggregates(
-    dataStore: IfcDataStore,
-    sharedRemap: Map<number, number>,
-    skipEntityIds: Set<number>,
-  ): void {
-    for (const relId of this.findEntitiesByType(dataStore, 'IFCRELAGGREGATES')) {
-      // RelatingObject is attr 4 — single #ref
-      const relatingAttr = this.extractStepAttribute(relId, dataStore, 4);
-      if (!relatingAttr) continue;
-      const relatingRef = relatingAttr.match(/^#(\d+)$/);
-      if (!relatingRef || !sharedRemap.has(parseInt(relatingRef[1], 10))) continue;
-
-      // RelatedObjects is attr 5 — list of #refs like (#2,#3)
-      const relatedAttr = this.extractStepAttribute(relId, dataStore, 5);
-      if (!relatedAttr) continue;
-      const refs: number[] = [];
-      const refRegex = /#(\d+)/g;
-      let m;
-      while ((m = refRegex.exec(relatedAttr)) !== null) {
-        refs.push(parseInt(m[1], 10));
-      }
-      if (refs.length === 0) continue;
-
-      // If ALL related objects were also remapped, this rel is fully redundant
-      if (refs.every(ref => sharedRemap.has(ref))) {
-        skipEntityIds.add(relId);
-      }
-    }
   }
 
   /**

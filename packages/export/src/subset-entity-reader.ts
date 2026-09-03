@@ -129,15 +129,16 @@ export function stepSourceSchema(schemaVersion: string | undefined): SourceStepS
  * `anonymize-placement.ts` and `anonymize-scrub.ts` do exactly that, each
  * noting at the call site why its type is fixed rather than caller-supplied.
  *
- * WRITE-SIDE PITFALL a caller resolving a slot via this function must not
- * fall into: `MutablePropertyView.setAttribute(id, name, value)` re-resolves
- * `name` to a slot by ITS OWN lookup at STEP-serialize time
- * (`step-attribute-mutations.ts`'s `applyAttributeMutations`), which is not
- * schema-aware — so an edit queued that way can still land on the wrong slot
- * even after reading the right one here. Write with
- * `MutablePropertyView.setPositionalAttribute(id, index, value)` and this
- * function's resolved `index` instead; `anonymize-scrub.ts` does exactly
- * that for every slot it resolves through a `schema` argument (#3309).
+ * `MutablePropertyView.setAttribute(id, name, value)` re-resolves `name` to a
+ * slot by its own lookup at STEP-serialize time
+ * (`step-attribute-mutations.ts`'s `applyAttributeMutations`), which now
+ * calls THIS function with the source entity's own `stepSourceSchema` too —
+ * so a `setAttribute` edit resolves the same slot this function would report
+ * for the same type/schema. `anonymize-scrub.ts` still writes through
+ * `MutablePropertyView.setPositionalAttribute(id, index, value)` with an
+ * `index` resolved here directly (#3309); that path needs no re-resolution
+ * at serialize time at all, so it stays the more direct choice for a caller
+ * that already has the index in hand.
  */
 export function attrIndex(type: string, name: string, schema?: SourceStepSchema): number {
   if (schema) {

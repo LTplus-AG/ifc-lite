@@ -2,6 +2,19 @@
 //! Tests for [`super::schema_convert`]. Split out of `schema_convert.rs` to
 //! keep that module under the 400-line rule (AGENTS.md), matching the
 //! `schema_helpers.rs` / `schema_helpers_tests.rs` pattern.
+//!
+//! Includes the Rust twin of TS PR #3653
+//! (`schema-converter-door-window-type.test.ts`): `ifc-lite export --format
+//! step` on an IFC4 model downgraded to IFC2X3 silently destroyed every
+//! IfcDoorType/IfcWindowType. `map_4_to_2x3` had no entry for either, so
+//! `convert_entity_type` left the type name unchanged, `should_skip_entity`
+//! never matched it either, and the un-renamed type sailed through
+//! `convert_step_line` as an unrecognized IFC2X3 type name — producing an
+//! invalid `IFCDOORTYPE(...)` line in an IFC2X3 file (the TS side
+//! additionally fell through to an IFCPROXY substitution via a different
+//! code path, `resolveUnrepresentedEntity`; the net defect is the same: the
+//! door/window type's own identity is not carried into IFC2X3 as
+//! `IfcDoorStyle`/`IfcWindowStyle`).
 
 use super::*;
 
@@ -133,4 +146,67 @@ fn no_conversion_is_identity() {
     assert_eq!(convert_step_line(line, "IFC4", "IFC4", 1), line);
     assert!(!needs_conversion("IFC4", "IFC4"));
     assert!(needs_conversion("IFC2X3", "IFC4"));
+}
+
+#[test]
+fn ifcdoortype_maps_to_ifcdoorstyle_preserving_globalid_and_name() {
+    // IfcDoorType(IFC4) attrs: GlobalId,OwnerHistory,Name,Description,
+    // ApplicableOccurrence,HasPropertySets,RepresentationMaps,Tag,
+    // ElementType,PredefinedType,OperationType,ParameterTakesPrecedence,
+    // UserDefinedOperationType
+    let line = "#1=IFCDOORTYPE('1mW6gHB0W7lxCAqIKVEzia',#2,'Door Type',$,$,(#3),(#4),'tag',\
+                $,.DOOR.,.SINGLE_SWING_LEFT.,.T.,$);";
+    let out = convert_step_line(line, "IFC4", "IFC2X3", 1);
+
+    assert!(!out.contains("IFCPROXY"), "must not fall back to a proxy: {out}");
+    assert!(out.starts_with("#1=IFCDOORSTYLE("), "renamed to IfcDoorStyle: {out}");
+    // GlobalId, Name, HasPropertySets, RepresentationMaps, Tag all survive.
+    assert!(out.contains("'1mW6gHB0W7lxCAqIKVEzia'"), "GlobalId preserved: {out}");
+    assert!(out.contains("'Door Type'"), "Name preserved: {out}");
+    assert!(out.contains("(#3)"), "HasPropertySets preserved: {out}");
+    assert!(out.contains("(#4)"), "RepresentationMaps preserved: {out}");
+    assert!(out.contains("'tag'"), "Tag preserved: {out}");
+    // IfcDoorStyle(IFC2X3) attrs: GlobalId,OwnerHistory,Name,Description,
+    // ApplicableOccurrence,HasPropertySets,RepresentationMaps,Tag,
+    // OperationType,ConstructionType,ParameterTakesPrecedence,Sizeable
+    assert_eq!(
+        out,
+        "#1=IFCDOORSTYLE('1mW6gHB0W7lxCAqIKVEzia',#2,'Door Type',$,$,(#3),(#4),'tag',\
+         .SINGLE_SWING_LEFT.,$,.T.,$);"
+    );
+}
+
+#[test]
+fn ifcwindowtype_maps_to_ifcwindowstyle_preserving_globalid_and_name() {
+    // IfcWindowType(IFC4) attrs: …,Tag,ElementType,PredefinedType,
+    // PartitioningType,ParameterTakesPrecedence,UserDefinedPartitioningType
+    let line = "#1=IFCWINDOWTYPE('3Vnz8SzMO$_GklsTTZo$zj',#2,'Window Type',$,$,$,$,'tag',\
+                $,.WINDOW.,.SINGLE_PANEL.,.T.,$);";
+    let out = convert_step_line(line, "IFC4", "IFC2X3", 1);
+
+    assert!(!out.contains("IFCPROXY"), "must not fall back to a proxy: {out}");
+    assert!(out.starts_with("#1=IFCWINDOWSTYLE("), "renamed to IfcWindowStyle: {out}");
+    assert!(out.contains("'3Vnz8SzMO$_GklsTTZo$zj'"), "GlobalId preserved: {out}");
+    assert!(out.contains("'Window Type'"), "Name preserved: {out}");
+}
+
+#[test]
+fn ifcdoorstyle_upgrade_leg_is_a_pure_pass_through() {
+    // IfcDoorStyle is valid (deprecated) in IFC4 too, so IFC2X3 -> IFC4 was
+    // never the buggy direction: no rename entry, no attribute remap.
+    let line = "#1=IFCDOORSTYLE('1mW6gHB0W7lxCAqIKVEzia',#2,'Door Style',$,$,$,$,$,\
+                .SINGLE_SWING_LEFT.,$,.T.,$);";
+    let out = convert_step_line(line, "IFC2X3", "IFC4", 1);
+    assert_eq!(out, line, "upgrade leg is untouched: {out}");
+}
+
+#[test]
+fn other_ifc2x3_downgrade_renames_still_use_positional_trim() {
+    // Control: the by-name remap is scoped to exactly IFCDOORTYPE/
+    // IFCWINDOWTYPE, not applied to every IFC4->IFC2X3 rename.
+    let line = "#5=IFCCHIMNEY('g',$,'C1',$,$,#6,#7,'tag',.USERDEFINED.);";
+    let out = convert_step_line(line, "IFC4", "IFC2X3", 5);
+    assert!(out.starts_with("#5=IFCBUILDINGELEMENTPROXY("), "renamed via positional path: {out}");
+    // IfcBuildingElementProxy caps at 9 IFC2X3 attrs; this line has exactly 9, so nothing trims.
+    assert!(out.contains(".USERDEFINED."), "positional trim/pass-through unaffected: {out}");
 }

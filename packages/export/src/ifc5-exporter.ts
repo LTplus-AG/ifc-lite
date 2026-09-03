@@ -28,6 +28,7 @@ import { convertEntityType, type IfcSchemaVersion } from './schema-converter.js'
 import { getEffectiveEntityIndex } from './effective-index.js';
 import { buildMaterialAttribute } from './ifc5-material.js';
 import { collectRequiredImports, generateUuid, stepTypeToClassName } from './ifc5-export-helpers.js';
+import { addClassificationAttribute } from './ifc5-classification.js';
 
 /** Recursive spatial tree node type used when walking the hierarchy. */
 interface SpatialTreeNode {
@@ -310,14 +311,14 @@ export class Ifc5Exporter {
         }
       }
 
+      addClassificationAttribute(this.dataStore, expressId, attributes);
+
       // Build node
       const node: IfcxNodeOutput = { path };
 
       // Children from spatial hierarchy
       const children = this.getChildrenForEntity(expressId);
-      if (Object.keys(children).length > 0) {
-        node.children = children;
-      }
+      if (Object.keys(children).length > 0) node.children = children;
 
       // Geometry as USD mesh
       if (options.includeGeometry !== false) {
@@ -336,9 +337,7 @@ export class Ifc5Exporter {
         }
       }
 
-      if (Object.keys(attributes).length > 0) {
-        node.attributes = attributes;
-      }
+      if (Object.keys(attributes).length > 0) node.attributes = attributes;
 
       nodes.push(node);
       emittedIds.add(expressId);

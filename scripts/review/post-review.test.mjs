@@ -37,6 +37,11 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, 'post-review.mjs');
+
+// The rest of this file drives the script as a SUBPROCESS, which is right for the
+// GitHub-facing behaviour. The posting cap is a pure function of the findings
+// file, so it is exercised directly.
+import { readFindings, MAX_POSTED_FINDINGS, summaryBody, readJudgedAway, readCappedCount } from './post-review.mjs';
 const GATE = join(HERE, '..', 'check-review-posted.mjs');
 const SHIPPED_CFG = join(HERE, '..', 'review-posted.config.json');
 const SHIPPED = JSON.parse(readFileSync(SHIPPED_CFG, 'utf8'));
@@ -852,4 +857,148 @@ test('a nothing-to-review run REFUSES to overwrite a real verdict for the same h
   assert.match(second.out, /nothing to do/);
   assert.match(allBodies(second.state), /verdict=findings/, 'the real verdict must still stand');
   assert.doesNotMatch(allBodies(second.state), /nothing-to-review/, 'and must not be overwritten');
+});
+
+// ============================================ the posting cap, on BOTH lane paths
+
+/**
+ * THE CAP LIVES HERE BECAUSE THIS MODULE ALWAYS RUNS.
+ *
+ * It used to live in run-judge.mjs. The workflow's crash backstop does
+ * `cp findings.json judged.json` and never touches that module, and the
+ * validator's own ceiling is twelve -- so the "at most five comments reach a
+ * human" invariant held only when the optional filter succeeded, and the failure
+ * path, the one that runs when something has already gone wrong, posted twelve.
+ */
+test('more findings than the cap are trimmed to the cap', () => {
+  const p = join(TMP, 'cap-many.json');
+  const many = Array.from({ length: MAX_POSTED_FINDINGS + 7 }, (_, i) => ({
+    path: 'packages/a/f.ts',
+    line: 1 + i,
+    quote: `q${i}`,
+    body: `body ${i}`,
+  }));
+  writeFileSync(p, JSON.stringify({ verdict: 'findings', findings: many }));
+  const got = readFindings(p);
+  assert.equal(got.length, MAX_POSTED_FINDINGS);
+  assert.match(got[0].body, /body 0/, 'the first ones, in the order given');
+});
+
+test('THE BYPASS PATH: an UNJUDGED file straight from the validator is still capped', () => {
+  // This is the exact artefact the workflow copies when the judge crashes: the
+  // validator's output, ceiling twelve, no `judged` field. Before the cap moved
+  // here, this posted twelve inline comments.
+  const p = join(TMP, 'cap-unjudged.json');
+  const twelve = Array.from({ length: 12 }, (_, i) => ({
+    path: 'packages/a/f.ts',
+    line: 1 + i,
+    quote: `q${i}`,
+    body: `body ${i}`,
+  }));
+  writeFileSync(p, JSON.stringify({ verdict: 'findings', findings: twelve, counts: { valid: 12 } }));
+  assert.equal(readFindings(p).length, MAX_POSTED_FINDINGS);
+});
+
+test('at or under the cap nothing is trimmed', () => {
+  const p = join(TMP, 'cap-few.json');
+  const few = Array.from({ length: MAX_POSTED_FINDINGS }, (_, i) => ({
+    path: 'packages/a/f.ts',
+    line: 1 + i,
+    quote: `q${i}`,
+    body: `body ${i}`,
+  }));
+  writeFileSync(p, JSON.stringify({ verdict: 'findings', findings: few }));
+  assert.equal(readFindings(p).length, MAX_POSTED_FINDINGS);
+});
+
+test('a review the judge emptied does NOT read as a review that found nothing', () => {
+  // The judge can reject every validated finding. Without this the PR shows
+  // "found nothing to flag" and the only record that they existed is a runner
+  // log that expires -- absence reading as success, on a path the judge created.
+  const plain = summaryBody({ sha: 'a'.repeat(40), findings: [], count: 0 });
+  assert.match(plain, /found nothing to flag/);
+  assert.doesNotMatch(plain, /dropped as too vague/, 'a genuinely clean review must not claim drops');
+
+  const judged = summaryBody({ sha: 'a'.repeat(40), findings: [], count: 0, judgedAway: 4 });
+  assert.match(judged, /4 finding\(s\) were written and then dropped/);
+  assert.match(judged, /ifc-lite-review sha=/, 'the marker must still be written');
+});
+
+test('readJudgedAway returns 0 for anything unreadable, and never throws', () => {
+  // It decorates a message. A malformed count must never be why a review fails
+  // to post -- that would trade a cosmetic line for a missing marker.
+  const bad = join(TMP, 'judged-bad.json');
+  writeFileSync(bad, 'not json at all');
+  assert.equal(readJudgedAway(bad), 0);
+  assert.equal(readJudgedAway(join(TMP, 'does-not-exist.json')), 0);
+
+  // `judged: true` REQUIRED, and this test asserted the opposite by omission.
+  // `counts.dropped` means "the judge rejected these" in judged.json and
+  // "the validator refused these as malformed" in findings.json, which the
+  // workflow's crash backstop copies verbatim. Without the flag the poster told
+  // the author N findings were "dropped as too vague" about findings that had
+  // actually quoted a line not in the diff.
+  const good = join(TMP, 'judged-good.json');
+  writeFileSync(good, JSON.stringify({ judged: true, findings: [], counts: { dropped: 3 } }));
+  assert.equal(readJudgedAway(good), 3);
+
+  const unjudged = join(TMP, 'judged-fallback.json');
+  writeFileSync(unjudged, JSON.stringify({ findings: [], counts: { dropped: 3 } }));
+  assert.equal(readJudgedAway(unjudged), 0, 'the validator\'s own drops are not judge drops');
+});
+
+test('the VERIFIED SIBLING reaches the PR comment', () => {
+  // The validator proves the twin exists in the pack the reviewer was shown and
+  // the judge is given it -- and the poster used to drop it again, so on the
+  // second-site family the whole context pack exists to catch, the twin's
+  // location died with the runner. A comment in validate-findings claimed this
+  // module rendered it. It did not.
+  const p = join(TMP, 'sibling.json');
+  writeFileSync(p, JSON.stringify({
+    verdict: 'findings',
+    findings: [{
+      path: 'packages/data/src/property-table.ts',
+      line: 12,
+      quote: 'const key = psetName;',
+      body: 'The duplicate in packages/cache still merges by name alone.',
+      sibling: { path: 'packages/cache/src/sections/properties.ts', line: 88, quote: 'x' },
+    }],
+  }));
+  const got = readFindings(p);
+  assert.match(got[0].body, /packages\/cache\/src\/sections\/properties\.ts:88/, 'the twin must be named');
+  assert.match(got[0].body, /this PR does not change/);
+});
+
+test('a finding with no sibling gains no stray sentence', () => {
+  const p = join(TMP, 'nosibling.json');
+  writeFileSync(p, JSON.stringify({
+    verdict: 'findings',
+    findings: [{ path: 'packages/a/f.ts', line: 1, quote: 'q', body: 'A plain finding.' }],
+  }));
+  assert.doesNotMatch(readFindings(p)[0].body, /same shape is at/);
+});
+
+test('the cap disclosure quotes the CONSTANT, not the word five', () => {
+  // It said "capped at five" while the number came from MAX_POSTED_FINDINGS, so
+  // changing the constant would have stated a false number to the author. This
+  // branch had no coverage at all, on a PR whose previous round shipped a
+  // ReferenceError on exactly such an uncovered path.
+  const body = summaryBody({
+    sha: 'a'.repeat(40),
+    findings: [{ path: 'packages/a/f.ts', line: 1, body: 'x', title: null }],
+    count: 1,
+    capped: 3,
+  });
+  assert.match(body, /3 further finding\(s\) passed validation/);
+  assert.match(body, new RegExp(`capped\\s+at ${MAX_POSTED_FINDINGS}`));
+});
+
+test('readCappedCount counts what the cap withheld, and never throws', () => {
+  const p = join(TMP, 'capcount.json');
+  writeFileSync(p, JSON.stringify({ findings: Array.from({ length: 9 }, () => ({})) }));
+  assert.equal(readCappedCount(p, 5), 4);
+  assert.equal(readCappedCount(p, 9), 0, 'nothing withheld when all were shown');
+  assert.equal(readCappedCount(join(TMP, 'no-such-file.json'), 5), 0);
+  writeFileSync(join(TMP, 'capbad.json'), 'not json');
+  assert.equal(readCappedCount(join(TMP, 'capbad.json'), 5), 0);
 });

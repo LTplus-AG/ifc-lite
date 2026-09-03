@@ -5,7 +5,8 @@
 //! The two union entry points, moved out of `csg/mod.rs` (which sits at its
 //! module-size budget) so the pair-vs-batch split the #3440 audit needs is
 //! visible in one place: `union_pair` does the work and records nothing,
-//! `union_mesh` and `union_meshes` each audit exactly the mesh they return.
+//! `union_mesh` and `union_meshes` each audit — and, under `csg_topology_gate`
+//! (step 2), gate — exactly the mesh they return.
 
 use super::{record_csg_op, ClippingProcessor};
 use crate::diagnostics::{BoolFailureReason, BoolOp};
@@ -18,8 +19,12 @@ impl ClippingProcessor {
     ///
     /// Empty operands are handled silently — they have a unique correct answer.
     pub fn union_mesh(&self, mesh_a: &Mesh, mesh_b: &Mesh) -> Result<Mesh> {
-        self.union_pair(mesh_a, mesh_b)
-            .inspect(|m| self.audit_returned_union(m))
+        let result = self.union_pair(mesh_a, mesh_b)?;
+        Ok(self.audit_and_gate_union(result, || {
+            let mut merged = mesh_a.clone();
+            merged.merge(mesh_b);
+            merged
+        }))
     }
 
     /// [`Self::union_mesh`] minus the #3440 audit, so `union_meshes` can drive
@@ -86,8 +91,19 @@ impl ClippingProcessor {
         // `directed_closed` indexes `positions` straight from `indices`, so a
         // caller mesh with an out-of-bounds index would abort the process
         // rather than be recorded.
+        //
+        // Under `csg_topology_gate`, a rejected fold has no single operand
+        // pair to fall back to — `result` folded however many meshes ran —
+        // so the fallback is the plain merge of every non-empty input, the
+        // N-way generalisation of `union_pair`'s own 2-way fallback above.
         if unioned {
-            self.audit_returned_union(&result);
+            result = self.audit_and_gate_union(result, || {
+                let mut merged = Mesh::new();
+                for mesh in meshes.iter().filter(|m| !m.is_empty()) {
+                    merged.merge(mesh);
+                }
+                merged
+            });
         }
         Ok(result)
     }
@@ -98,9 +114,22 @@ impl ClippingProcessor {
     /// the mesh's untrusted indices.  This is diagnostic-only: the malformed
     /// result remains the legacy return value and the existing invalid-output
     /// record from `union_pair` remains the only failure record added there.
-    fn audit_returned_union(&self, mesh: &Mesh) {
-        if self.validate_mesh(mesh) {
-            self.record_topology_tear(BoolOp::Union, mesh);
+    ///
+    /// #3440 step 2: also the ONE place union gates. `topology_gate_reject`
+    /// itself records on a hit, so when it does this returns `fallback()`
+    /// WITHOUT also calling `record_topology_tear` — recording both would
+    /// double-count the same tear as two unrelated incidents. Without the
+    /// `csg_topology_gate` feature `topology_gate_reject` is the zero-cost
+    /// always-`false` stub, so this is exactly the step-1 behaviour above,
+    /// unchanged.
+    fn audit_and_gate_union(&self, mesh: Mesh, fallback: impl FnOnce() -> Mesh) -> Mesh {
+        if !self.validate_mesh(&mesh) {
+            return mesh;
         }
+        if self.topology_gate_reject(BoolOp::Union, &mesh) {
+            return fallback();
+        }
+        self.record_topology_tear(BoolOp::Union, &mesh);
+        mesh
     }
 }

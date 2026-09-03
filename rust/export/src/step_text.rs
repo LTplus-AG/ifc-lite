@@ -16,6 +16,8 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 
+use ifc_lite_core::express_id::parse_express_id;
+
 /// The edits that apply to one record, where a caller's attribute mutation and
 /// a copy-on-write repointing can both land on it. The repointing wins: it was
 /// computed from the caller's value rather than instead of it.
@@ -94,15 +96,18 @@ pub(crate) fn refs_in_line(line: &[u8], out: &mut Vec<u32>) {
         }
         if !in_quote && b == b'#' {
             let mut j = i + 1;
-            let mut n: u32 = 0;
-            let mut any = false;
             while j < line.len() && line[j].is_ascii_digit() {
-                n = n.wrapping_mul(10).wrapping_add((line[j] - b'0') as u32);
                 j += 1;
-                any = true;
             }
-            if any {
-                out.push(n);
+            if j > i + 1 {
+                // A ref above `u32::MAX` refuses rather than wrapping onto a
+                // real low-numbered entity (issue #3421): it is dropped from
+                // the reference list instead of being followed to the wrong
+                // entity, the same "no third policy" refusal
+                // `parse_express_id` establishes everywhere else.
+                if let Some(n) = parse_express_id(&line[i + 1..j]) {
+                    out.push(n);
+                }
                 i = j;
                 continue;
             }

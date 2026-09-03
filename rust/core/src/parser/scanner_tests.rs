@@ -195,3 +195,187 @@ ENDSEC;\n";
     let counts = scanner.count_by_type();
     assert_eq!(counts.get("IFCDOOR"), Some(&1));
 }
+
+// ---------------------------------------------------------------------------
+// A comment is trivia INSIDE a record too.
+//
+// ISO 10303-21 allows a comment anywhere whitespace is allowed. This scanner
+// used to skip one only BETWEEN records, so two spec-legal shapes misparsed:
+// `#1 /* n */ = IFCWALL(…);` failed the '=' check and produced no record at
+// all, and `#2=IFCWALL('a', /* n; */ $);` ended at the ';' inside the comment,
+// handing a truncated span to every downstream decoder.
+//
+// The TypeScript twins of these cases live in
+// `packages/parser/test/step-comment-trivia.test.ts`; the two halves are a
+// matched pair and must be changed together.
+// ---------------------------------------------------------------------------
+
+/// Every record `content` declares, as `(id, type, the bytes the scanner
+/// claims it spans)`.
+fn scan_spans(content: &str) -> Vec<(u32, String, String)> {
+    let mut scanner = EntityScanner::new(content);
+    let mut out = Vec::new();
+    while let Some((id, type_name, start, end)) = scanner.next_entity() {
+        out.push((id, type_name.to_string(), content[start..end].to_string()));
+    }
+    out
+}
+
+const DATA_PREAMBLE: &str = "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n";
+
+fn data_file(records: &[&str]) -> String {
+    format!(
+        "{DATA_PREAMBLE}{}\nENDSEC;\nEND-ISO-10303-21;\n",
+        records.join("\n")
+    )
+}
+
+#[test]
+fn comment_between_instance_name_and_equals_is_trivia() {
+    let record = "#1 /* was #7 */ = IFCWALL('a',$);";
+    assert_eq!(
+        scan_spans(&data_file(&[record])),
+        vec![(1, "IFCWALL".to_string(), record.to_string())]
+    );
+}
+
+#[test]
+fn semicolon_inside_a_comment_does_not_end_the_record() {
+    let record = "#2=IFCWALL('a', /* pending; revise */ $);";
+    assert_eq!(
+        scan_spans(&data_file(&[record])),
+        vec![(2, "IFCWALL".to_string(), record.to_string())]
+    );
+}
+
+/// A comment between the `=` and the type name must not be read AS the type
+/// name, and an `=` inside such a comment must not be mistaken for the
+/// record's own — the `=` position comes from the validating walk, not from a
+/// search over the record's bytes.
+#[test]
+fn comment_between_equals_and_type_name_is_trivia() {
+    let record = "#3 /* a=b */ = /* c */ IFCWALL /* d */ ('a',$);";
+    assert_eq!(
+        scan_spans(&data_file(&[record])),
+        vec![(3, "IFCWALL".to_string(), record.to_string())]
+    );
+}
+
+/// Composition, direction one: a comment opener inside a string literal is
+/// ordinary text.
+#[test]
+fn comment_opener_inside_a_string_literal_is_literal_text() {
+    let record = "#4=IFCWALL('rev /* pending */ note',$);";
+    assert_eq!(
+        scan_spans(&data_file(&[record])),
+        vec![(4, "IFCWALL".to_string(), record.to_string())]
+    );
+}
+
+/// Composition, direction two: a quote inside a comment does not open a
+/// string. An in-comment apostrophe used to flip the terminator scan's quote
+/// parity and swallow the record's `;`.
+#[test]
+fn quote_inside_a_comment_is_comment_text() {
+    let record = "#5=IFCWALL(/* don't reuse */ 'a',$);";
+    assert_eq!(
+        scan_spans(&data_file(&[record])),
+        vec![(5, "IFCWALL".to_string(), record.to_string())]
+    );
+}
+
+#[test]
+fn records_after_a_commented_one_still_scan() {
+    let first = "#7 /* x */ = IFCWALL('a', /* y; */ $);";
+    let second = "#8=IFCSLAB('b',$);";
+    assert_eq!(
+        scan_spans(&data_file(&[first, second])),
+        vec![
+            (7, "IFCWALL".to_string(), first.to_string()),
+            (8, "IFCSLAB".to_string(), second.to_string()),
+        ]
+    );
+}
+
+/// The pre-existing rule this must not break: a record that is entirely
+/// inside a comment is not a record.
+#[test]
+fn a_commented_out_record_is_still_not_a_record() {
+    let live = "#10=IFCSLAB('b',$);";
+    assert_eq!(
+        scan_spans(&data_file(&["/* #9=IFCWALL('x',$); */", live])),
+        vec![(10, "IFCSLAB".to_string(), live.to_string())]
+    );
+}
+
+/// An unterminated comment inside a record leaves it with no terminator, so
+/// the record is refused and the scan ends — the same answer
+/// `skip_step_comment` gives, rather than inventing an end.
+#[test]
+fn unterminated_comment_inside_a_record_ends_the_scan() {
+    let content = data_file(&["#11=IFCWALL('a', /* never closes $);"]);
+    assert_eq!(scan_spans(&content), vec![]);
+}
+
+#[test]
+fn comment_free_records_scan_unchanged() {
+    let first = "#11=IFCWALL('a',$);";
+    let second = "#12=IFCSLAB($,$);";
+    assert_eq!(
+        scan_spans(&data_file(&[first, second])),
+        vec![
+            (11, "IFCWALL".to_string(), first.to_string()),
+            (12, "IFCSLAB".to_string(), second.to_string()),
+        ]
+    );
+}
+
+// ---------------------------------------------------------------------------
+// `has_non_null_attribute`: the scanner's span is now comment-aware (above),
+// but the attribute-decode layer -- this function included -- was still
+// comment-blind (#3673's follow-up note). A comment preceding a `$` used to
+// read as a non-null value, because the leading-whitespace skip stopped at
+// the comment's own `/` rather than treating the comment as trivia too.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn has_non_null_attribute_treats_a_comment_before_dollar_as_still_null() {
+    let content = "#1=IFCWALL(/* c1 */ $);";
+    let scanner = EntityScanner::new(content);
+    assert!(!scanner.has_non_null_attribute(0, content.len(), 0));
+}
+
+#[test]
+fn has_non_null_attribute_treats_a_comment_before_a_value_as_non_null() {
+    let content = "#1=IFCWALL(/* c1 */ 'a');";
+    let scanner = EntityScanner::new(content);
+    assert!(scanner.has_non_null_attribute(0, content.len(), 0));
+}
+
+/// A comma inside a comment must not count as an attribute separator: the
+/// real target attribute (index 1) is the `$` after the comment, not the
+/// comment's own `b'` fragment.
+#[test]
+fn has_non_null_attribute_comma_inside_a_comment_does_not_split_attributes() {
+    let content = "#1=IFCWALL('a', /* x, y */ $);";
+    let scanner = EntityScanner::new(content);
+    assert!(!scanner.has_non_null_attribute(0, content.len(), 1));
+}
+
+/// A `$` written literally inside a comment must not fool the check the other
+/// way: attribute 0 here is `'a'`, not the comment's `$`.
+#[test]
+fn has_non_null_attribute_dollar_inside_a_comment_is_comment_text() {
+    let content = "#1=IFCWALL(/* was $ */ 'a');";
+    let scanner = EntityScanner::new(content);
+    assert!(scanner.has_non_null_attribute(0, content.len(), 0));
+}
+
+#[test]
+fn has_non_null_attribute_comment_free_records_unchanged() {
+    let content = "#1=IFCWALL('a',$,5);";
+    let scanner = EntityScanner::new(content);
+    assert!(scanner.has_non_null_attribute(0, content.len(), 0));
+    assert!(!scanner.has_non_null_attribute(0, content.len(), 1));
+    assert!(scanner.has_non_null_attribute(0, content.len(), 2));
+}

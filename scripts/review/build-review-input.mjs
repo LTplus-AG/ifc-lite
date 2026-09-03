@@ -105,6 +105,7 @@ import {
 // 600-file long-path diff "fits" 8,476 bytes over the ceiling.
 import { keptRowCharge, unreviewableRowCharge } from './run-reviewer.mjs';
 import { gh, GhError } from '../lib/gh.mjs';
+import { unifiedDiffLineKind } from '../lib/unified-diff.mjs';
 // The gate's pager, not a second copy of it. An earlier version here duplicated
 // it MINUS the one thing it exists for: the probe past a full final page. A PR
 // with exactly MAX_PAGES x PER_PAGE files was therefore fully read and then
@@ -262,27 +263,17 @@ export function isExcluded(path) {
  * Splits on /\r?\n/, where the older walker split on '\n', so `text` carries no
  * trailing `\r`. That is what makes it comparable to `quotableLines`.
  *
- * KNOWN, PRE-EXISTING, NOT FIXED HERE (see #3634): neither the `-`/`---` nor
- * the `+`/`+++` test can tell a file header from content that starts the same
- * way, and the two halves fail DIFFERENTLY, so a fix must cover both:
- *
- *   deleting a markdown `---` rule gives `----`, read as context, which
- *     advances the counter and numbers every later line in that hunk too high;
- *   adding `++i;` gives `+++i;`, which is dropped from the ranges, so
- *     `lineIsAdded` refuses a CORRECT finding on a line the PR really added.
- *
- * `addedLineRanges` behaves exactly as it does on origin/main; the commit
- * message carries the differential evidence.
- *
  * @param {string} patch a unified diff for ONE file
  * @returns {{line: number, text: string, kind: 'added'|'context'|'removed'|'hunk'}[]}
  */
 export function newFileLines(patch) {
   const out = [];
   let newLine = 0;
+  let insideHunk = false;
   for (const line of String(patch).split(/\r?\n/)) {
     const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
     if (hunk) {
+      insideHunk = true;
       newLine = Number(hunk[1]);
       out.push({ line: newLine, text: line, kind: 'hunk' });
       continue;
@@ -294,11 +285,12 @@ export function newFileLines(patch) {
     // and rejected 422 by GitHub, reddening the job with no marker. It fires on
     // any file lacking a trailing newline. validate-findings' `quotableLines`
     // already skipped it, so the two halves disagreed about the same diff.
-    if (line.startsWith('\\')) continue;
-    if (line.startsWith('+') && !line.startsWith('+++')) {
+    const kind = unifiedDiffLineKind(line, insideHunk);
+    if (kind === 'metadata' || kind === 'header') continue;
+    if (kind === 'added') {
       out.push({ line: newLine, text: line.slice(1), kind: 'added' });
       newLine += 1;
-    } else if (line.startsWith('-') && !line.startsWith('---')) {
+    } else if (kind === 'removed') {
       // A removed line does not advance the new-file counter.
       out.push({ line: newLine, text: line.slice(1), kind: 'removed' });
     } else {

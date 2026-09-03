@@ -102,6 +102,7 @@
 //! [`InstanceMeta`]: crate::mesh::InstanceMeta
 
 mod collate;
+mod dont_bake;
 mod verify;
 mod wire;
 

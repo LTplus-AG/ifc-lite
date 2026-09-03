@@ -15,7 +15,7 @@ const IDENTITY16: [f64; 16] = [
 ];
 
 /// Full world transform `transform · local_transform` for an occurrence.
-fn compose_world(meta: &InstanceMeta) -> Matrix4<f64> {
+pub(super) fn compose_world(meta: &InstanceMeta) -> Matrix4<f64> {
     let t = Matrix4::from_row_slice(&meta.transform);
     let l = Matrix4::from_row_slice(meta.local_transform.as_ref().unwrap_or(&IDENTITY16));
     // Rigid tier: canonical->local transform, composed innermost. For occurrences
@@ -121,7 +121,7 @@ impl<'a> InstanceMeshRef<'a> {
 /// Subtract the model RTC offset from a composed (pre-RTC) world transform's
 /// translation column, giving the post-RTC placement that matches the post-RTC
 /// per-mesh `origin` the renderer applies the relative transform to.
-fn to_post_rtc(mut m: Matrix4<f64>, rtc: [f64; 3]) -> Matrix4<f64> {
+pub(super) fn to_post_rtc(mut m: Matrix4<f64>, rtc: [f64; 3]) -> Matrix4<f64> {
     m[(0, 3)] -= rtc[0];
     m[(1, 3)] -= rtc[1];
     m[(2, 3)] -= rtc[2];
@@ -156,7 +156,33 @@ pub fn collate_refs_verified_in(
     rtc: [f64; 3],
     verify_basis: Option<&Matrix4<f64>>,
 ) -> Collated {
-    let verify_conjugate = verify_basis.and_then(|s| s.try_inverse().map(|s_inv| (*s, s_inv)));
+    let verify_conjugate = verify_basis.and_then(|s| {
+        let inv = s.try_inverse();
+        if inv.is_none() {
+            // A singular `verify_basis` silently falls through to `None` below —
+            // the SAME conjugation-free comparison used when the caller passes no
+            // basis at all, which the module docs call out as the
+            // maximally-rejecting mode (a native-frame `rel` compared against a
+            // converted-frame vertex reads as a collision on nearly every
+            // rotated group). A caller-supplied basis is expected to always be
+            // invertible (a change of basis, e.g. `S_YUP` or `S_YUP · T(-rtc)`),
+            // so a singular one signals a caller bug — surface it instead of
+            // quietly degrading every group in the model with nothing on the
+            // path erroring, warning, or logging (the exact failure mode #3666
+            // itself was: a wrong result with no signal).
+            crate::diag::diag_warn!(
+                { "instancing: verify_basis is singular; falling back to no basis (every rotated group will read as a collision)" }
+                else {
+                    #[cfg(any(debug_assertions, test))]
+                    eprintln!(
+                        "[instancing] verify_basis is singular; falling back to no basis \
+                         (every rotated group will read as a rep_identity collision)"
+                    );
+                }
+            );
+        }
+        inv.map(|s_inv| (*s, s_inv))
+    });
     // First-seen order keeps output deterministic regardless of hash iteration.
     let mut order: Vec<u128> = Vec::new();
     let mut groups: FxHashMap<u128, Vec<usize>> = FxHashMap::default();
@@ -232,19 +258,25 @@ pub fn collate_refs_verified_in(
             continue;
         };
 
-        // A rigid-tier group (rotation-normalized) holds occurrences that are
-        // congruent but NOT bit-identical, so their raw vertex counts can differ —
-        // the renderer substitutes the template's geometry at each occurrence's
-        // pose (rel_k is pose-only). The exact-bit tier keeps the defensive
-        // same-count check (a mismatch there means something is wrong).
-        let is_rigid = members
-            .iter()
-            .any(|&i| meshes[i].instance_meta.and_then(|m| m.canonical_transform).is_some());
+        // Rigidity is a PER-MEMBER property, not a group-level one: a
+        // rep_identity group can legitimately mix a rigid-tier member
+        // (rotation-normalized, congruent but NOT bit-identical — the
+        // renderer substitutes the template's geometry at its pose, so
+        // rel_k is pose-only) alongside exact-tier members that ARE
+        // bit-identical to the template. Gating the count check / pairing
+        // verification on whether ANY member of the group is rigid would
+        // skip both for every non-rigid member too, just because one
+        // sibling happens to be rigid — check each member's own
+        // `canonical_transform` instead.
         let (vlen, ilen) = (template.positions.len(), template.indices.len());
         let mut occurrences = Vec::with_capacity(members.len());
         let mut shapes_match = true;
         for &i in members {
             let mesh = &meshes[i];
+            let member_is_rigid = mesh
+                .instance_meta
+                .and_then(|m| m.canonical_transform)
+                .is_some();
             // A #1623 Phase 3 don't-bake placeholder (empty geometry) is pose-only:
             // its geometry IS the template, so skip the same-shape guard (like the
             // rigid tier). Exact-tier materialized occurrences share the SAME local
@@ -256,7 +288,7 @@ pub fn collate_refs_verified_in(
             // guard. Rigid-tier occurrences are intentionally non-identical (verified).
             let pose_only = mesh.positions.is_empty();
             if !pose_only
-                && !is_rigid
+                && !member_is_rigid
                 && (mesh.positions.len() != vlen || mesh.indices.len() != ilen)
             {
                 shapes_match = false;
@@ -272,7 +304,7 @@ pub fn collate_refs_verified_in(
             // vertices before trusting the pairing. Scoped to the exact tier
             // (rigid-tier members can legitimately carry a different raw
             // vertex count than the template by design — see module docs).
-            if !pose_only && !is_rigid {
+            if !pose_only && !member_is_rigid {
                 let verify_rel =
                     verify_conjugate.as_ref().map_or(rel, |(s, s_inv)| s * rel * s_inv);
                 if !verify_pairing(
@@ -299,94 +331,45 @@ pub fn collate_refs_verified_in(
                 occurrences,
             });
         } else {
+            // A #1623 Phase 3 don't-bake placeholder (empty geometry) carries
+            // no geometry of its own — its only geometry was the template this
+            // group just failed to verify against, and `drawable` filters it
+            // back out here. Unlike a materialized member (which still draws
+            // flat on its own baked vertices), a failed placeholder has NO
+            // fallback: it is dropped from the export entirely, invisible,
+            // with nothing on the path erroring, warning, or logging — the
+            // exact silent-loss shape #3666 itself was, just for a different
+            // reason (an unverifiable group instead of an unverified one).
+            let dropped_placeholders =
+                members.iter().filter(|&&i| meshes[i].positions.is_empty()).count();
+            if dropped_placeholders > 0 {
+                crate::diag::diag_warn!(
+                    { rep_identity = rep, dropped_placeholders,
+                      "instancing: rep_identity group failed reconstruction verification; \
+                       dropping don't-bake placeholder occurrence(s) with no fallback geometry" }
+                    else {
+                        #[cfg(any(debug_assertions, test))]
+                        eprintln!(
+                            "[instancing] rep_identity {rep} failed verification: dropping \
+                             {dropped_placeholders} don't-bake placeholder occurrence(s) \
+                             (no fallback geometry)"
+                        );
+                    }
+                );
+            }
             out.flat_indices.extend(drawable(members));
         }
     }
     out
 }
 
-/// Compose an occurrence's full PRE-RTC world transform `transform·local·canonical`
-/// as a row-major `[f64; 16]`. Public so the processing crate's don't-bake finalize
-/// (#1623 Phase 2) can record the SAME world placement `collate_refs` computes for a
-/// baked occurrence — without materializing the occurrence's vertices.
-pub fn compose_instance_world_row_major(meta: &InstanceMeta) -> [f64; 16] {
-    let m = compose_world(meta);
-    let mut out = [0.0f64; 16];
-    for r in 0..4 {
-        for c in 0..4 {
-            out[r * 4 + c] = m[(r, c)];
-        }
-    }
-    out
-}
-
-/// Template-relative instance transform `rel = post_rtc(M_k) · post_rtc(M_ref)⁻¹`
-/// as a row-major `[f32; 16]`, or `None` when `M_ref` is singular. `m_k` / `m_ref`
-/// are PRE-RTC row-major world transforms (see [`compose_instance_world_row_major`]);
-/// `rtc` is the model offset. This is EXACTLY `collate_refs`' per-occurrence `rel`,
-/// exposed for the don't-bake finalize where the occurrence carries no geometry to
-/// group — the template's baked world geometry placed by `rel` reproduces the
-/// occurrence's world geometry (bounded by `verify_recomposition`). #1623 Phase 2.
-pub fn instance_rel_row_major_f32(
-    m_k: &[f64; 16],
-    m_ref: &[f64; 16],
-    rtc: [f64; 3],
-) -> Option<[f32; 16]> {
-    let mk = to_post_rtc(Matrix4::from_row_slice(m_k), rtc);
-    let mref = to_post_rtc(Matrix4::from_row_slice(m_ref), rtc);
-    let mref_inv = mref.try_inverse()?;
-    Some(mat4_to_row_major_f32(&(mk * mref_inv)))
-}
-
-/// Bake a SOURCE-coords `Mesh` at a PRE-RTC row-major world transform into absolute
-/// POST-RTC world geometry `(positions, normals, indices)` — the #1623 Phase 2
-/// finalize fallback for a don't-bake instance whose template occurrence never
-/// materialized (an orphan; effectively unreachable for the eligible single-solid
-/// type-instanced set, but kept so geometry is NEVER silently lost). The affine part
-/// transforms positions; the inverse-transpose of the linear part transforms normals
-/// (renormalized). Geometrically equal to the baked flat occurrence (same triangles);
-/// the registry source is pre-weld, so vertices are unwelded — that changes only the
-/// vertex count, not the rendered surface.
-pub fn bake_source_at_world(
-    source: &Mesh,
-    world_row_major: &[f64; 16],
-    rtc: [f64; 3],
-) -> (Vec<f32>, Vec<f32>, Vec<u32>) {
-    let m = to_post_rtc(Matrix4::from_row_slice(world_row_major), rtc);
-    let vcount = source.positions.len() / 3;
-    let mut positions = Vec::with_capacity(source.positions.len());
-    for v in 0..vcount {
-        let p = m * nalgebra::Vector4::new(
-            source.positions[v * 3] as f64,
-            source.positions[v * 3 + 1] as f64,
-            source.positions[v * 3 + 2] as f64,
-            1.0,
-        );
-        positions.push((p.x / p.w) as f32);
-        positions.push((p.y / p.w) as f32);
-        positions.push((p.z / p.w) as f32);
-    }
-    let linear = m.fixed_view::<3, 3>(0, 0).into_owned();
-    let nmat = linear
-        .try_inverse()
-        .map(|inv| inv.transpose())
-        .unwrap_or(linear);
-    let ncount = source.normals.len() / 3;
-    let mut normals = Vec::with_capacity(source.normals.len());
-    for v in 0..ncount {
-        let nv = nmat
-            * nalgebra::Vector3::new(
-                source.normals[v * 3] as f64,
-                source.normals[v * 3 + 1] as f64,
-                source.normals[v * 3 + 2] as f64,
-            );
-        let nv = nv.try_normalize(0.0).unwrap_or(nv);
-        normals.push(nv.x as f32);
-        normals.push(nv.y as f32);
-        normals.push(nv.z as f32);
-    }
-    (positions, normals, source.indices.clone())
-}
+// The #1623 Phase 2 don't-bake finalize helpers (`compose_instance_world_row_major`,
+// `instance_rel_row_major_f32`, `bake_source_at_world`) moved to `super::dont_bake`
+// (kept re-exported below) — the module-size ratchet budget pushed them out once
+// the per-member rigidity fix and its diagnostics landed here.
+pub use super::dont_bake::{
+    bake_source_at_world, compose_instance_world_row_major, instance_rel_row_major_f32,
+};
 
 /// `collate_refs` over geometry `Mesh` values (thin wrapper, no geometry clone).
 pub fn collate_instances(meshes: &[Mesh], min_group: usize, rtc: [f64; 3]) -> Collated {

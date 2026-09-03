@@ -174,6 +174,68 @@ fn rigid_canonical_transform_recomposes() {
 }
 
 #[test]
+fn a_colliding_exact_member_is_still_caught_when_the_group_also_has_a_rigid_member() {
+    // Rigidity is per-member: a rep_identity group can mix a rigid-tier
+    // member (canonical_transform Some) with exact-tier members that must
+    // still be bit-identical to the template. Before the fix, `is_rigid`
+    // was computed group-wide via `.any(...)`, so ONE rigid member disabled
+    // the exact-tier pairing verification for every OTHER member too — a
+    // same-shaped colliding exact member (the #3666 shape) would sail
+    // through unverified purely because a sibling happened to be rigid.
+    let c_b = Matrix4::from_euler_angles(0.3, 0.9, 0.2)
+        * Matrix4::new_translation(&nalgebra::Vector3::new(0.4, -0.2, 0.1));
+    let m_a = Matrix4::new_translation(&nalgebra::Vector3::new(5.0, 0.0, 0.0));
+    let m_b = Matrix4::from_euler_angles(0.0, 0.0, 1.2)
+        * Matrix4::new_translation(&nalgebra::Vector3::new(-3.0, 8.0, 2.0));
+    // Third occurrence: exact tier (canonical_transform None), same vertex
+    // COUNT as the template, but genuinely different content — the same
+    // shape a real rep_identity hash collision produces. Its placement
+    // transform is otherwise unremarkable; only the baked geometry is wrong.
+    let m_c = Matrix4::new_translation(&nalgebra::Vector3::new(20.0, 0.0, 0.0));
+    let colliding_shape: [f32; 12] =
+        [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 5.0];
+    let meshes = vec![
+        mesh_from(
+            baked(&CANON, &m_a),
+            InstanceMeta {
+                transform: mat_rm(&m_a),
+                local_transform: None,
+                canonical_transform: None, // template
+                rep_identity: 99,
+                instanceable: true,
+            },
+        ),
+        mesh_from(
+            baked(&CANON, &(m_b * c_b)),
+            InstanceMeta {
+                transform: mat_rm(&m_b),
+                local_transform: None,
+                canonical_transform: Some(mat_rm(&c_b)), // rigid member
+                rep_identity: 99,
+                instanceable: true,
+            },
+        ),
+        mesh_from(
+            baked(&colliding_shape, &m_c),
+            InstanceMeta {
+                transform: mat_rm(&m_c),
+                local_transform: None,
+                canonical_transform: None, // exact tier, must be verified
+                rep_identity: 99,
+                instanceable: true,
+            },
+        ),
+    ];
+    let collated = collate_instances(&meshes, 2, [0.0, 0.0, 0.0]);
+    assert_eq!(
+        collated.templates.len(),
+        0,
+        "the colliding exact member must still fail verification and route the whole group flat"
+    );
+    assert_eq!(collated.flat_indices.len(), 3, "all three members fall back to flat");
+}
+
+#[test]
 fn instanced_wire_format_roundtrips_and_expands_to_flat() {
     // Two occurrences sharing rep 50 (exact tier, bit-identical local) + a
     // singleton rep 60 (flat). entity_id == input mesh index.
@@ -428,6 +490,81 @@ fn verify_basis_still_catches_a_genuine_collision() {
         "a genuine collision still falls back to flat, basis hint or not"
     );
     assert_eq!(aware.flat_indices.len(), 2);
+}
+
+#[test]
+fn verify_basis_must_also_conjugate_the_rtc_offset_or_a_rotated_group_falls_flat() {
+    // The glTF exporter's `verify_basis` doubled as BOTH the Z-up->Y-up basis
+    // conversion (what the tests above cover) AND the frame `InstanceMeta.transform`
+    // is expressed in. It is NOT: `InstanceMeta.transform` (hence `rel`, built with
+    // rtc [0,0,0] so `rel` is the RAW pre-RTC ratio here too) is pre-RTC, while the
+    // baked positions this compares against are POST-RTC (rtc subtracted). The
+    // shipped node matrix (`occurrence_node_matrix_composed` in the export crate)
+    // reconciles that with a `T(-rtc)·rel·T(rtc)` conjugation BEFORE the `S·…·S⁻¹`
+    // basis conjugation — passing `verify_basis = S` alone (as the exporter used
+    // to) omits the RTC half, leaving a residual of `(R_rel − I)·rtc` between the
+    // reconstructed and actual vertices. For a translation-only `rel` (R_rel = I)
+    // the residual vanishes and the check still passes, which is why this is easy
+    // to miss; a ROTATED sibling exposes it. At a national-grid-scale rtc, the
+    // residual is metres — indistinguishable from a genuine #3666 collision, so
+    // the fix must not weaken tolerance either, it must fix the frame.
+    let rtc = [2_600_000.0, 1_200_000.0, 400.0];
+    let s = Matrix4::from_euler_angles(std::f64::consts::FRAC_PI_2, 0.0, 0.0);
+    // POST-RTC (local, baked) placements: what the geometry is actually baked at.
+    let local_a = Matrix4::new_translation(&nalgebra::Vector3::new(10.0, 0.0, 0.0));
+    let local_b = Matrix4::from_euler_angles(0.0, 0.0, std::f64::consts::FRAC_PI_2)
+        * Matrix4::new_translation(&nalgebra::Vector3::new(-5.0, 7.0, 2.0));
+    // PRE-RTC placements recorded in `InstanceMeta.transform`: same rotation,
+    // translation shifted by +rtc (mirrors `to_post_rtc`'s subtraction, inverted).
+    let pre_rtc = |local: &Matrix4<f64>| -> Matrix4<f64> {
+        let mut m = *local;
+        m[(0, 3)] += rtc[0];
+        m[(1, 3)] += rtc[1];
+        m[(2, 3)] += rtc[2];
+        m
+    };
+    let meta = |local: &Matrix4<f64>| InstanceMeta {
+        transform: mat_rm(&pre_rtc(local)),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 4545,
+        instanceable: true,
+    };
+    // Baked positions are POST-RTC and basis-converted: `S · local · CANON`.
+    let meshes = [
+        mesh_from(baked(&CANON, &(s * local_a)), meta(&local_a)),
+        mesh_from(baked(&CANON, &(s * local_b)), meta(&local_b)),
+    ];
+    let refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
+
+    // `verify_basis = S` alone (the pre-fix exporter behaviour): the rotated
+    // sibling's rtc residual reads as a collision and the WHOLE group — including
+    // the genuinely-shared template — falls flat.
+    let basis_only = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&s));
+    assert_eq!(
+        basis_only.templates.len(),
+        0,
+        "S alone (no RTC conjugation) must reproduce the reported false rejection"
+    );
+
+    // `verify_basis = S · T(-rtc)`: with the RTC conjugation folded in, `s.try_inverse()`
+    // (computed inside `collate_refs_verified_in`) recovers `T(rtc) · S⁻¹`, so
+    // `s · rel · s⁻¹` reproduces exactly the node matrix's `S · T(-rtc) · rel · T(rtc) · S⁻¹`
+    // -- the genuine pairing must now be recognized and instanced.
+    let t_neg_rtc = Matrix4::new(
+        1.0, 0.0, 0.0, -rtc[0], //
+        0.0, 1.0, 0.0, -rtc[1], //
+        0.0, 0.0, 1.0, -rtc[2], //
+        0.0, 0.0, 0.0, 1.0,
+    );
+    let basis_with_rtc = s * t_neg_rtc;
+    let fixed = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&basis_with_rtc));
+    assert_eq!(
+        fixed.templates.len(),
+        1,
+        "S · T(-rtc) must recognize the genuinely shared, rotated, georeferenced pairing"
+    );
+    assert_eq!(fixed.templates[0].occurrences.len(), 2);
 }
 
 #[test]
@@ -735,6 +872,117 @@ fn dont_bake_empty_occurrence_refs_recompose_like_materialized() {
             assert!(err < 1e-4, "don't-bake recompose vertex error {err}");
         }
     }
+}
+
+#[test]
+fn a_dont_bake_placeholder_is_dropped_when_its_group_fails_verification() {
+    // Companion to `dont_bake_empty_occurrence_refs_recompose_like_materialized`:
+    // here the group's #3666 reconstruction check FAILS (a same-count exact
+    // collision), rather than genuinely sharing geometry. A don't-bake
+    // placeholder carries no baked geometry of its own -- once its group is
+    // untrustworthy there is no fallback geometry to draw it flat with, so
+    // it is documented (not silently, per the diag_warn! at the drop site) to
+    // fall out of BOTH `templates` and `flat_indices`: it renders nowhere.
+    // This asserts today's actual (signaled) behaviour so a future change
+    // that quietly starts drawing wrong geometry, or one that starts padding
+    // `flat_indices` with an empty mesh nothing can render, is caught.
+    let template = mesh_from(
+        baked(&CANON, &Matrix4::identity()),
+        InstanceMeta {
+            transform: mat_rm(&Matrix4::identity()),
+            local_transform: None,
+            canonical_transform: None,
+            rep_identity: 4646,
+            instanceable: true,
+        },
+    );
+    // The materialized second member: same vertex COUNT, genuinely different
+    // content (the #3666 collision shape), so verification must fail.
+    const COLLIDING: [f32; 12] = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 9.0, 9.0, 9.0];
+    let m_colliding = Matrix4::new_translation(&nalgebra::Vector3::new(3.0, 0.0, 0.0));
+    let colliding = mesh_from(
+        baked(&COLLIDING, &m_colliding),
+        InstanceMeta {
+            transform: mat_rm(&m_colliding),
+            local_transform: None,
+            canonical_transform: None,
+            rep_identity: 4646,
+            instanceable: true,
+        },
+    );
+    // The don't-bake placeholder: empty geometry, only a placement.
+    let placeholder_meta = InstanceMeta {
+        transform: mat_rm(&Matrix4::new_translation(&nalgebra::Vector3::new(-3.0, 0.0, 0.0))),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 4646,
+        instanceable: true,
+    };
+
+    let refs: Vec<InstanceMeshRef> = vec![
+        InstanceMeshRef::from_mesh(&template),
+        InstanceMeshRef::from_mesh(&colliding),
+        InstanceMeshRef {
+            positions: &[],
+            normals: &[],
+            indices: &[],
+            origin: [0.0; 3],
+            instance_meta: Some(&placeholder_meta),
+            entity_id: 2,
+            color: [0.0; 4],
+            item_id: None,
+        },
+    ];
+    let collated = collate_refs(&refs, 2, [0.0, 0.0, 0.0]);
+    assert_eq!(collated.templates.len(), 0, "the collision must still fail verification");
+    // The two MATERIALIZED members (indices 0, 1) still draw flat on their own
+    // baked vertices; the placeholder (index 2, empty geometry) has none and is
+    // dropped -- it appears in neither list.
+    assert_eq!(
+        collated.flat_indices,
+        vec![0, 1],
+        "the empty-geometry placeholder must not appear in flat_indices (nothing to draw)"
+    );
+}
+
+#[test]
+fn a_singular_verify_basis_degrades_like_no_basis_rather_than_panicking_or_hanging() {
+    // Companion to the wrong-basis tests above: a caller-supplied basis that is
+    // singular (non-invertible) cannot be conjugated with at all. It must fall
+    // back to the SAME behaviour as `verify_basis: None` (documented at the drop
+    // site as the maximally-rejecting mode via a `diag_warn!`, not a panic and
+    // not a hang), and — like a wrong-but-invertible basis — must never flip a
+    // genuine collision into a false accept.
+    let occ_a = Matrix4::new_translation(&nalgebra::Vector3::new(10.0, 0.0, 0.0));
+    let occ_b = Matrix4::from_euler_angles(0.0, 0.0, std::f64::consts::FRAC_PI_3)
+        * Matrix4::new_translation(&nalgebra::Vector3::new(-5.0, 7.0, 2.0));
+    // Rank-deficient (all zero): definitely singular.
+    let singular_basis = Matrix4::<f64>::zeros();
+    assert!(singular_basis.try_inverse().is_none(), "fixture must actually be singular");
+    let meta = |m: &Matrix4<f64>| InstanceMeta {
+        transform: mat_rm(m),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 4747,
+        instanceable: true,
+    };
+    const CANON_COLLIDING: [f32; 12] =
+        [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 5.0, 5.0, 5.0];
+    let meshes = [
+        mesh_from(baked(&CANON, &occ_a), meta(&occ_a)),
+        mesh_from(baked(&CANON_COLLIDING, &occ_b), meta(&occ_b)),
+    ];
+    let refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
+    let without_basis = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], None);
+    let with_singular_basis =
+        collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&singular_basis));
+    assert_eq!(without_basis.templates.len(), 0, "genuine collision, no basis");
+    assert_eq!(
+        with_singular_basis.templates.len(),
+        0,
+        "a singular basis must degrade like no basis, not falsely accept the collision"
+    );
+    assert_eq!(with_singular_basis.flat_indices.len(), 2);
 }
 
 #[test]

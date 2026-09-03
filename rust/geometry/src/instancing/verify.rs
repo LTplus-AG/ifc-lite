@@ -117,7 +117,12 @@ pub(super) fn verify_pairing(
             .max((target_positions[v * 3 + 1] as f64).abs())
             .max((target_positions[v * 3 + 2] as f64).abs())
             .max(1.0);
-        if err > tolerance(mag) {
+        // `err.is_nan()` must be checked explicitly: `err > tolerance(mag)`
+        // is false whenever `err` is NaN (a NaN transform or position
+        // propagates through the matrix multiply and subtraction into a NaN
+        // `err`), so an unguarded comparison here is fail-open in the one
+        // check that exists to fail closed on a bad reconstruction.
+        if err.is_nan() || err > tolerance(mag) {
             return false;
         }
     }
@@ -218,5 +223,58 @@ mod tests {
             &target,
             &identity,
         ));
+    }
+
+    #[test]
+    fn a_nan_in_the_transform_fails_verification_instead_of_passing() {
+        // `err > tolerance(mag)` alone is false for NaN, so a NaN anywhere in
+        // `rel` must be caught explicitly rather than silently verifying.
+        let template: [f32; 3] = [0.0, 0.0, 0.0];
+        let target: [f32; 3] = [0.0, 0.0, 0.0];
+        let mut rel = Matrix4::identity();
+        rel[(0, 0)] = f64::NAN;
+        assert!(
+            !verify_pairing([0.0, 0.0, 0.0], &template, [0.0, 0.0, 0.0], &target, &rel),
+            "a NaN transform must not pass reconstruction verification"
+        );
+    }
+
+    #[test]
+    fn a_nan_in_a_position_fails_verification_instead_of_passing() {
+        // Same fail-open shape, sourced from a NaN baked coordinate rather
+        // than a NaN transform.
+        let template: [f32; 3] = [f64::NAN as f32, 0.0, 0.0];
+        let target: [f32; 3] = [0.0, 0.0, 0.0];
+        let identity = Matrix4::identity();
+        assert!(
+            !verify_pairing(
+                [0.0, 0.0, 0.0],
+                &template,
+                [0.0, 0.0, 0.0],
+                &target,
+                &identity,
+            ),
+            "a NaN position must not pass reconstruction verification"
+        );
+    }
+
+    #[test]
+    fn a_genuine_match_still_passes_after_the_nan_guard() {
+        // The NaN guard must not turn into a guard that rejects everything —
+        // a real matching pair (non-trivial transform, non-zero vertices)
+        // still has to clear verification.
+        let template: [f32; 6] = [0.0, 0.0, 0.0, 1.0, 2.0, 3.0];
+        let rel = Matrix4::new_translation(&nalgebra::Vector3::new(5.0, -2.0, 0.5));
+        let target: [f32; 6] = [5.0, -2.0, 0.5, 6.0, 0.0, 3.5];
+        assert!(
+            verify_pairing(
+                [0.0, 0.0, 0.0],
+                &template,
+                [0.0, 0.0, 0.0],
+                &target,
+                &rel,
+            ),
+            "a genuine matching pair must still pass verification"
+        );
     }
 }

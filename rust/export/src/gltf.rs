@@ -1160,16 +1160,33 @@ fn build_gltf(
     // here too would conjugate twice. The wasm GPU-shard path, which consumes the
     // relative transform directly (no downstream conjugation), passes the real rtc.
     //
-    // `verify_basis = S_YUP`: `visible`'s positions/origin were already converted
-    // Z-up→Y-up above (`with_result_views`), but `InstanceMeta.transform` (hence
-    // `rel`) stays Z-up throughout — the per-occurrence node matrix is
-    // independently recomposed and Y-up-conjugated downstream in
-    // `occurrence_node_matrix`, never read back from here. Without telling the
-    // #3666 reconstruction check which basis `refs[i].positions` are actually in,
-    // it compares a Z-up `rel` against Y-up baked vertices and (falsely) rejects
-    // nearly every rotated group on a real model.
+    // `verify_basis = S_YUP · T(-rtc_zup)`: `visible`'s positions/origin were
+    // already converted Z-up→Y-up above (`with_result_views`), but
+    // `InstanceMeta.transform` (hence `rel`, computed above with rtc [0,0,0] so
+    // it is still the RAW pre-RTC ratio) stays Z-up AND pre-RTC throughout. The
+    // shipped node matrix (`occurrence_node_matrix_composed`) reconciles both:
+    // it conjugates `rel` by `T(-rtc)·…·T(rtc)` into the POST-RTC baked frame
+    // BEFORE the `S·…·S⁻¹` Z-up→Y-up conjugation — `S_YUP` alone omits the RTC
+    // half. On a georeferenced model (`rtc` at national-grid magnitude) that
+    // leaves a residual of `(R_rel − I)·rtc` between the two conjugations,
+    // which reads as a #3666 collision on nearly every ROTATED group (a
+    // translation-only `rel` has `R_rel = I` and the residual vanishes, which
+    // is why this was missed) and silently defeats the instancing this
+    // verification exists to protect, at every real georeferenced offset.
+    // `verify_conjugate` in `collate_refs_verified_in` accepts any invertible
+    // matrix (not just a rotation) and inverts it itself, so composing the RTC
+    // translation into `verify_basis` — `s = S_YUP · T(-rtc_zup)`, giving
+    // `s⁻¹ = T(rtc_zup) · S_YUP⁻¹` — reproduces the exact conjugation the node
+    // matrix applies without any change to `verify.rs`/`collate.rs`.
     let s_yup = Matrix4::from_row_slice(&matrix::S_YUP);
-    let collated = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&s_yup));
+    let t_neg_rtc = Matrix4::new(
+        1.0, 0.0, 0.0, -rtc_zup[0], //
+        0.0, 1.0, 0.0, -rtc_zup[1], //
+        0.0, 0.0, 1.0, -rtc_zup[2], //
+        0.0, 0.0, 0.0, 1.0,
+    );
+    let verify_basis = s_yup * t_neg_rtc;
+    let collated = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&verify_basis));
 
     // Partition into instanced templates (non-rigid, exact-bit) and a flat remainder.
     // Only EXACT-bit groups are instanced: the template's local geometry IS each

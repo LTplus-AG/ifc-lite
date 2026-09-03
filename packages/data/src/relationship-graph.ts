@@ -21,7 +21,8 @@ export interface Edge {
    * needs to know whether the *connection* still exists after a delete —
    * not just whether `relationshipId` was deleted — must check these too:
    * use `edgeSurvives` (`relationship-graph-helpers.js`) rather than
-   * testing `relationshipId` alone.
+   * testing `relationshipId` alone. Invariant: present implies non-empty —
+   * `undefined` means "nothing collapsed into this edge", never `[]`.
    */
   shadowedRelationshipIds?: number[];
 }

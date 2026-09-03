@@ -75,13 +75,17 @@ export interface ShadowedColumns {
  * the three sparse typed-array columns `RelationshipEdges` stores them as.
  * `buildCSR`'s only caller in-package; not re-exported from the package
  * index (see `binarySearchU32`, which the `@ifc-lite/cache` reader does
- * share). `pairs` need not be pre-sorted by position. Returns `undefined`
- * for an empty input so a caller can omit the columns entirely rather than
+ * share). `pairs` need not be pre-sorted by position. An entry with an
+ * empty `ids` array is dropped rather than packed as an empty group — it
+ * would violate `Edge.shadowedRelationshipIds`'s "present implies
+ * non-empty" invariant (#3782 review). Returns `undefined` when nothing is
+ * left to pack, so a caller can omit the columns entirely rather than
  * write out empty arrays — they're optional on `RelationshipEdges`.
  */
 export function buildShadowedColumns(pairs: Array<[position: number, ids: number[]]>): ShadowedColumns | undefined {
-  if (pairs.length === 0) return undefined;
-  const sorted = [...pairs].sort((a, b) => a[0] - b[0]);
+  const nonEmpty = pairs.filter(([, ids]) => ids.length > 0);
+  if (nonEmpty.length === 0) return undefined;
+  const sorted = nonEmpty.sort((a, b) => a[0] - b[0]);
   const shadowedEdgeIndex = new Uint32Array(sorted.length);
   const shadowedGroupOffsets = new Uint32Array(sorted.length + 1);
   let totalIds = 0;

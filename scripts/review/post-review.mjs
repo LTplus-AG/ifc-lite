@@ -478,11 +478,9 @@ export function summaryBody({ sha, findings, count, judgedAway = 0, capped = 0 }
   }
   if (n === 0) {
     // `count > 0` with `n === 0`: this run found nothing while earlier findings
-    // from this reviewer stand on the same commit. Without this branch the
-    // generic form below renders "0 findings" as a heading and then "1 inline
-    // comment confirmed" underneath -- a body that contradicts itself in two
-    // consecutive lines, which is what the old CLEAN_CONTRADICTED throw was
-    // really protecting the reader from. Say the actual state instead.
+    // stand on the same commit. Without this branch the generic form below
+    // renders "0 findings" as a heading over "1 inline comment confirmed" -- a
+    // body contradicting itself in two consecutive lines. Say the state instead.
     return [
       `### Claude review - ${count} standing finding${count === 1 ? '' : 's'} for \`${short}\``,
       '',
@@ -492,7 +490,7 @@ export function summaryBody({ sha, findings, count, judgedAway = 0, capped = 0 }
       '',
       'They stand. Two runs disagreed about the same code, and this note records that rather than ' +
         'resolving it by fiat: the marker below says `findings`, so nothing reads this as a pass. ' +
-        'If the earlier findings are wrong, delete those inline comments and re-run — the verdict ' +
+        'If the earlier findings are wrong, delete those inline comments and re-run; the verdict ' +
         'becomes `clean` on its own once they are gone.',
       '',
       marker(sha, 'findings', count),
@@ -826,20 +824,11 @@ function main() {
         'attach the log to anthropics/claude-code-action#1679 rather than re-running indefinitely.',
     );
   }
-  // This run found nothing while our own findings stand on this commit.
-  //
-  // This used to throw CLEAN_CONTRADICTED, which DEADLOCKED: its remedy said
-  // "re-run", but a re-run reproduces the state exactly, so the lane failed
-  // forever until a human deleted a comment. Three consecutive runs on #3669.
-  // Its premise was wrong too -- it warned a `verdict=clean` marker would bury
-  // the disagreement, but the verdict below derives from `confirmed`, so it was
-  // already going to be `findings`.
-  //
-  // The findings are anchored to this head and nobody withdrew them, so they
+  // This run found nothing while our own findings stand on this commit. They
   // STAND: marker `findings`, summary states the disagreement, exit 0. A
   // disagreement between two runs is a fact to record, not a failure to post.
-  // Withdrawal still works and still needs a human -- delete the comments,
-  // re-run, `confirmed` drops to 0 -- but it is no longer the only way out.
+  // Withdrawal still needs a human but is no longer the only way out of a red
+  // lane. Why this replaced a throw: see CLEAN_CONTRADICTED in the header.
   if (findings.length === 0 && confirmed > 0) {
     console.log(
       `CONTRADICTED: this run found nothing, yet ${confirmed} inline finding(s) from ` +

@@ -41,7 +41,7 @@ const SCRIPT = join(HERE, 'post-review.mjs');
 // The rest of this file drives the script as a SUBPROCESS, which is right for the
 // GitHub-facing behaviour. The posting cap is a pure function of the findings
 // file, so it is exercised directly.
-import { readFindings, MAX_POSTED_FINDINGS, summaryBody, readJudgedAway, readCappedCount } from './post-review.mjs';
+import { readFindings, MAX_POSTED_FINDINGS, summaryBody, readJudgedAway, readCappedCount, marker } from './post-review.mjs';
 const GATE = join(HERE, '..', 'check-review-posted.mjs');
 const SHIPPED_CFG = join(HERE, '..', 'review-posted.config.json');
 const SHIPPED = JSON.parse(readFileSync(SHIPPED_CFG, 'utf8'));
@@ -585,16 +585,48 @@ test('a clean run over our OWN standing findings records them instead of deadloc
   // "0 findings" as a heading over "1 inline comment confirmed".
   assert.doesNotMatch(bodies, /### Claude review - 0 finding/);
   assert.match(bodies, /standing finding/);
+
+  // The file's stated last defence: run the REAL gate over what was posted.
+  // A marker this module considers well-formed is worth nothing if the gate
+  // that reads it disagrees, and that pairing is what this suite exists for.
+  const g = runGate(r.state);
+  assert.equal(g.code, 0, `the gate must accept the contradicted end state:\n${g.out}`);
 });
 
-test('the withdrawal path still reaches clean once the comments are gone', () => {
-  // The escape hatch the old error described is the ONLY thing that still needs
-  // a human, and it must keep working: delete the inline comments, re-run, and
-  // the verdict becomes clean through the ordinary path. Without this test the
-  // fix above could have made `clean` unreachable and nothing would say so.
-  const r = runPoster({ findings: [], state: { reviewComments: [] } });
+test('WITHDRAWAL: a standing findings marker is DOWNGRADED to clean once the comments go', () => {
+  // The escape hatch the old error described is the only thing that still needs
+  // a human, and it must keep working. An earlier version of this test ran
+  // `runPoster({ findings: [], state: { reviewComments: [] } })`, which is
+  // byte-identical to the happy-path test above -- it exercised the code and
+  // put NO pressure on the withdrawal property, and its comment claimed a
+  // coverage it did not have. Mutation-checked: only a verdict-always-findings
+  // mutant killed it, which the happy-path test already caught.
+  //
+  // The state that actually matters is the TRANSITION: a `findings` marker is
+  // already standing from the contradicted run, the human deletes the inline
+  // comment, and the re-run must PATCH that marker DOWN to clean rather than
+  // leave a findings marker over a PR with no findings on it.
+  const standing = {
+    id: 700,
+    user: { login: REVIEWER },
+    body: `### Claude review - 1 standing finding for \`${SHA.slice(0, 9)}\`\n\n${'x'}\n\n${marker(SHA, 'findings', 1)}`,
+  };
+  const r = runPoster({ findings: [], state: { issueComments: [standing], reviewComments: [] } });
   assert.equal(r.code, 0, r.out);
-  assert.match(allBodies(r.state), new RegExp(`<!-- ifc-lite-review sha=${SHA} verdict=clean count=0`));
+
+  const bodies = allBodies(r.state);
+  assert.match(
+    bodies,
+    new RegExp(`<!-- ifc-lite-review sha=${SHA} verdict=clean count=0`),
+    'the standing findings marker must be downgraded to clean',
+  );
+  assert.doesNotMatch(bodies, /verdict=findings/, 'no findings marker may survive the withdrawal');
+  // One marker comment, PATCHed in place -- not a second one posted alongside.
+  assert.equal(
+    r.state.issueComments.filter((c) => /ifc-lite-review sha=/.test(c.body ?? '')).length,
+    1,
+    'the withdrawal must PATCH the standing marker, not post a rival',
+  );
 });
 
 // ========================================================= identity boundaries

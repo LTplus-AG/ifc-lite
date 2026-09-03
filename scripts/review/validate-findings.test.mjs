@@ -1090,12 +1090,19 @@ test('THE WIRING: claude-review.yml retries on EXACTLY the reasons RETRYABLE_VAL
   // block -- guards against someone turning this into an unbounded/`while`
   // retry that could hammer the model on a truly permanent failure.
   const retryBlock = step.slice(step.indexOf('retry_reason='), step.indexOf('exit "$rc"'));
-  assert.doesNotMatch(retryBlock, /\bwhile\b|\buntil\b|\bfor\b/, 'the retry must be a single bounded attempt, never a loop');
+  // COMMENTS STRIPPED FIRST. The guard is about shell CONSTRUCTS, and the prose
+  // around this block is English: "for it", "waited out", "the reasons for" all
+  // contain a loop keyword and none of them is a loop. Leaving them in made the
+  // assertion fire on documentation (#3775's downgrade block), which is a false
+  // positive that invites someone to delete the comment rather than the loop.
+  // Stripping `#` lines keeps every real `while`/`for`/`until` in scope.
+  const retryShell = retryBlock.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  assert.doesNotMatch(retryShell, /\bwhile\b|\buntil\b|\bfor\b/, 'the retry must be a single bounded attempt, never a loop');
   // Exactly one nested reviewer invocation and one nested validator
   // invocation inside the retry branch -- two of either would mean it retries
   // more than once.
-  assert.equal((retryBlock.match(/run-reviewer\.mjs/g) || []).length, 1, 'exactly one retried reviewer call');
-  assert.equal((retryBlock.match(/validate-findings\.mjs/g) || []).length, 1, 'exactly one retried validator call');
+  assert.equal((retryShell.match(/run-reviewer\.mjs/g) || []).length, 1, 'exactly one retried reviewer call');
+  assert.equal((retryShell.match(/validate-findings\.mjs/g) || []).length, 1, 'exactly one retried validator call');
 });
 
 test('PROOF_OF_WORK_FAILED names a remedy the model can actually carry out', () => {

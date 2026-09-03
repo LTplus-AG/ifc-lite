@@ -19,7 +19,7 @@ import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { pageAll } from './check-review-posted.mjs';
+import { pageAll, evaluate, shouldKeepPolling } from './check-review-posted.mjs';
 import {
   REVIEW_LANE_TIMEOUT_SECONDS,
   REVIEW_POSTED_JOB_TIMEOUT_SECONDS,
@@ -1121,4 +1121,62 @@ test('THE LABEL NAME IS ONE NAME: the workflow that writes it and the config tha
     `.coderabbit.yaml does not reference \`!${label}\`; the stand-down rule would match nothing when re-enabled`,
   );
   assert.ok(!/claude-reviewed/.test(wf + cr), 'a vendor-named label survives in the workflow or the CodeRabbit config');
+});
+
+
+// ============ `dropped`: a decision that must NOT seal the head (#3775)
+
+test('a `dropped` marker reports covered=FALSE, so the next run reviews the head again', () => {
+  // #3775 needs an all-findings-dropped run to leave a RECORD rather than an
+  // unclearable red. Reusing `nothing-to-review` for it would be wrong in a way
+  // that is quiet rather than loud: that verdict is `ok`, `main()` writes
+  // `covered=${ok}`, and claude-review.yml gates its whole job on that output --
+  // so the first all-dropped run would SEAL the head, and a harness regression
+  // dropping every finding on every PR would go silent instead of red.
+  const out = runOut(comments([REVIEWER, marker(SHA, 'dropped', 0)]));
+  assert.match(out.gh, /covered=false/, 'the lane must be free to review this head again');
+  assert.match(out.gh, /full=false/, 'and CodeRabbit must not stand down on it');
+  assert.match(out.out, /FINDINGS_ALL_DROPPED/);
+  assert.match(out.out, /re-run/i, 'a remedy a re-run can actually carry out');
+});
+
+test('a `dropped` marker is well-formed, not MARKER_MALFORMED', () => {
+  // The gate must PARSE it. If MARKER_RE did not accept the verdict, the marker
+  // would read as garbage from an expected author and the diagnosis would send
+  // the reader to fix the poster rather than the review.
+  const out = runOut(comments([REVIEWER, marker(SHA, 'dropped', 0)]));
+  assert.doesNotMatch(out.out, /MARKER_MALFORMED/);
+});
+
+test('shouldKeepPolling: a `dropped` verdict ends the wait, an absent one does not', () => {
+  // `dropped` is not `ok`, and the loop waits on `!ok` alone -- so this gate
+  // would sit out its whole 25-minute budget, about 200 API calls against a
+  // 1,000/hour token shared with three other jobs, before printing a verdict it
+  // already had on the first read. The lane job that wrote that marker has
+  // EXITED; nothing is coming.
+  assert.equal(shouldKeepPolling({ ok: false, verdict: 'FINDINGS_ALL_DROPPED', terminal: true }), false);
+
+  // The anti-vacuity half: the verdicts the poll exists FOR must still wait.
+  assert.equal(shouldKeepPolling({ ok: false, verdict: 'NOT_POSTED' }), true);
+  assert.equal(shouldKeepPolling({ ok: false, verdict: 'STALE_REVIEW' }), true);
+  assert.equal(shouldKeepPolling({ ok: false, verdict: 'FINDINGS_NOT_POSTED' }), true);
+  assert.equal(shouldKeepPolling({ ok: true, verdict: 'REVIEW_POSTED' }), false);
+});
+
+test('evaluate marks a `dropped` result terminal, and nothing else', () => {
+  // The flag and the loop are two halves of one behaviour; testing the predicate
+  // alone would pass with `terminal` never set by anybody.
+  const cfg = { expectedAuthors: new Set([REVIEWER]), mode: 'enforcing' };
+  const dropped = evaluate({
+    comments: [{ author: REVIEWER, body: marker(SHA, 'dropped', 0), surface: 'issueComments', raw: {} }],
+    cfg,
+    headSha: SHA,
+  });
+  assert.equal(dropped.verdict, 'FINDINGS_ALL_DROPPED');
+  assert.equal(dropped.terminal, true);
+  assert.equal(shouldKeepPolling(dropped), false);
+
+  const absent = evaluate({ comments: [], cfg, headSha: SHA });
+  assert.notEqual(absent.terminal, true);
+  assert.equal(shouldKeepPolling(absent), true);
 });

@@ -190,7 +190,8 @@ export function upsertAndVerify({ repo, pr, sha, author, body, want }) {
  * early-exit paths in `main()` (e.g. the STALE_REVIEW check on the findings
  * path) -- control never returns to the caller.
  */
-export function postNothingToReview({ repo, pr, sha, author, reason }) {
+export function postNothingToReview({ repo, pr, sha, author, reason, allFindingsDropped = false }) {
+  const verdictToken = allFindingsDropped ? 'dropped' : 'nothing-to-review';
   // A REAL VERDICT FOR THIS HEAD OUTRANKS THIS ONE. `upsertAndVerify` finds a
   // carrier by sha alone, so without this it would PATCH an existing
   // `verdict=findings count=3` summary into "nothing to review / count=0" --
@@ -200,7 +201,12 @@ export function postNothingToReview({ repo, pr, sha, author, reason }) {
   // dedup to have failed; narrow, and a downgrade this file must never make.
   const existing = fetchSurface(repo, pr, `issues/${pr}/comments`).find((c) => {
     const m = MARKER_RE.exec(String(c?.body ?? ''));
-    return normaliseLogin(c?.user?.login) === author && m?.[1] === sha && m[2] !== 'nothing-to-review';
+    return (
+      normaliseLogin(c?.user?.login) === author &&
+      m?.[1] === sha &&
+      m[2] !== 'nothing-to-review' &&
+      m[2] !== 'dropped'
+    );
   });
   if (existing) {
     // REPORTED, AND EXIT 0. The refusal is right -- overwriting a real verdict
@@ -212,7 +218,7 @@ export function postNothingToReview({ repo, pr, sha, author, reason }) {
     // PR #3587.
     console.log(
       `WOULD_DOWNGRADE_VERDICT: a \`${MARKER_RE.exec(existing.body)[2]}\` marker already stands for ` +
-        `${sha.slice(0, 9)}. Overwriting it with \`nothing-to-review\` would retract a real ` +
+        `${sha.slice(0, 9)}. Overwriting it with \`${verdictToken}\` would retract a real ` +
         'verdict and orphan any inline findings under it, so nothing was posted. This head IS ' +
         'covered and the gate reads it; there is nothing to do.',
     );
@@ -228,10 +234,10 @@ export function postNothingToReview({ repo, pr, sha, author, reason }) {
     pr,
     sha,
     author,
-    body: nothingToReviewBody(sha, reason),
-    want: marker(sha, 'nothing-to-review', 0),
+    body: nothingToReviewBody(sha, reason, { allFindingsDropped }),
+    want: marker(sha, verdictToken, 0),
   });
-  console.log(`Posted a nothing-to-review marker for ${sha.slice(0, 9)}.`);
+  console.log(`Posted a ${verdictToken} marker for ${sha.slice(0, 9)}.`);
   process.exit(0);
 }
 

@@ -148,13 +148,12 @@
  *      harness pins exactly that rule for its advisory notice. A deliberate
  *      deviation from the brief, stated rather than silently applied.
  */
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { GhError } from '../lib/gh.mjs';
 import { ReviewProvenanceError } from '../lib/review-provenance.mjs';
 import { normaliseLogin, readConfig, ReviewPostedError } from '../check-review-posted.mjs';
 import { PostReviewError } from './lib/post-review-error.mjs';
+import { parseArgs } from './lib/review-args.mjs';
 // readFindingsDoc/readFindings/readOmitted/marker/MAX_POSTED_FINDINGS moved to
 // ./lib/review-findings.mjs (module-size budget, #3795). Imported (not
 // `export ... from`) because main() below calls several of them itself, and
@@ -174,59 +173,7 @@ import { fetchHeadSha, upsertAndVerify, postNothingToReview, postFindingsAndConf
 // it is re-exported directly.
 import { summaryBody, readJudgedAway, readCappedCount } from './lib/review-summary.mjs';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_CONFIG = join(HERE, '..', 'review-posted.config.json');
-
-/**
- * A Map, not an object literal, for the reason the sibling gate records: a
- * `{...}[name]` lookup reaches Object.prototype, so `--constructor x` returns a
- * truthy key, sails past the `!key` guard and writes a junk property instead of
- * refusing.
- */
-const FLAGS = new Map([
-  ['--pr', 'pr'],
-  ['--repo', 'repo'],
-  ['--sha', 'sha'],
-  ['--findings', 'findings'],
-  ['--author', 'author'],
-  ['--config', 'config'],
-  // The human half of a nothing-to-review marker. Optional, and PASSED THROUGH
-  // `sanitizeBody`: it reaches the comment body, and the only caller that sets
-  // it interpolates a build-input message that carries a PR-chosen file path.
-  ['--reason', 'reason'],
-]);
-
-/** Flags that take NO value. Kept separate so the value-consuming loop stays strict. */
-const BOOL_FLAGS = new Map([['--nothing-to-review', 'nothingToReview']]);
-
-/** @param {string[]} argv */
-export function parseArgs(argv) {
-  const out = {
-    pr: null,
-    repo: process.env.GITHUB_REPOSITORY || null,
-    sha: null,
-    findings: null,
-    author: null,
-    config: DEFAULT_CONFIG,
-    reason: null,
-    nothingToReview: false,
-  };
-  for (let i = 0; i < argv.length; i += 1) {
-    const boolKey = BOOL_FLAGS.get(argv[i]);
-    if (boolKey) {
-      out[boolKey] = true;
-      continue;
-    }
-    const key = FLAGS.get(argv[i]);
-    if (!key) throw new PostReviewError('BAD_ARGS', `Unrecognised argument \`${argv[i]}\`.`);
-    const v = argv[i + 1];
-    if (v === undefined) throw new PostReviewError('BAD_ARGS', `\`${argv[i]}\` needs a value.`);
-    out[key] = v;
-    i += 1;
-  }
-  return out;
-}
-
+export { parseArgs, DEFAULT_CONFIG } from './lib/review-args.mjs';
 export { PostReviewError };
 export { MAX_POSTED_FINDINGS, readFindingsDoc, readFindings, readOmitted, marker };
 export { fingerprint } from './lib/review-findings.mjs';
@@ -254,14 +201,30 @@ function main() {
         'here would let the marker name a commit different from the one the model was shown.',
     );
   }
-  if (!args.findings && !args.nothingToReview) {
-    throw new PostReviewError('BAD_ARGS', 'Pass `--findings <findings.json>` or `--nothing-to-review`.');
-  }
-  if (args.findings && args.nothingToReview) {
+  // ONE MARKER-ONLY PATH, TWO REASONS FOR TAKING IT. `--nothing-to-review` says
+  // the model was never run; `--all-findings-dropped` says it ran and nothing it
+  // produced survived. They post different bodies under different verdicts, and
+  // neither may be combined with `--findings`.
+  const markerOnly = args.nothingToReview || args.allFindingsDropped;
+  if (!args.findings && !markerOnly) {
     throw new PostReviewError(
       'BAD_ARGS',
-      '`--nothing-to-review` and `--findings` are mutually exclusive: one says the model never ran, the ' +
-        'other carries what it produced. Passing both means the caller does not know which happened.',
+      'Pass `--findings <findings.json>`, `--nothing-to-review`, or `--all-findings-dropped`.',
+    );
+  }
+  if (args.findings && markerOnly) {
+    throw new PostReviewError(
+      'BAD_ARGS',
+      '`--nothing-to-review`/`--all-findings-dropped` and `--findings` are mutually exclusive: one says ' +
+        'nothing reviewable reached a conclusion, the other carries what it produced. Passing both means ' +
+        'the caller does not know which happened.',
+    );
+  }
+  if (args.nothingToReview && args.allFindingsDropped) {
+    throw new PostReviewError(
+      'BAD_ARGS',
+      '`--nothing-to-review` and `--all-findings-dropped` are mutually exclusive: the first says the ' +
+        'model never ran, the second says it ran and everything it produced was refused.',
     );
   }
   if (!args.author) {
@@ -290,8 +253,15 @@ function main() {
   // are none by construction. Extracted to `postNothingToReview`
   // (lib/review-comments.mjs, module-size budget, #3795); every branch inside
   // it calls `process.exit(0)` itself, so control never returns here.
-  if (args.nothingToReview) {
-    postNothingToReview({ repo: args.repo, pr: args.pr, sha: args.sha, author, reason: args.reason });
+  if (markerOnly) {
+    postNothingToReview({
+      repo: args.repo,
+      pr: args.pr,
+      sha: args.sha,
+      author,
+      reason: args.reason,
+      allFindingsDropped: args.allFindingsDropped,
+    });
   }
 
   // Read BEFORE the first network call. A malformed findings file must refuse

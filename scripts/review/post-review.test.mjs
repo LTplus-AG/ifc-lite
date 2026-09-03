@@ -231,7 +231,7 @@ function runPoster({ state = {}, findings = [], findingsRaw, findingsPath, args 
 
 
 /** The poster on the NOTHING-TO-REVIEW path: no findings file at all. */
-function runNothingToReview({ state = {}, sha = SHA, args = [], author = REVIEWER } = {}) {
+function runNothingToReview({ state = {}, sha = SHA, args = [], author = REVIEWER, ntr = true } = {}) {
   const dir = join(TMP, `ntr-${(seq += 1)}`);
   mkdirSync(dir);
   const statePath = join(dir, 'state.json');
@@ -251,7 +251,7 @@ function runNothingToReview({ state = {}, sha = SHA, args = [], author = REVIEWE
   );
   const r = spawnSync(
     process.execPath,
-    [SCRIPT, '--pr', PR, '--repo', REPO, '--sha', sha, '--nothing-to-review', '--author', author, ...args],
+    [SCRIPT, '--pr', PR, '--repo', REPO, '--sha', sha, ...(ntr ? ['--nothing-to-review'] : []), '--author', author, ...args],
     { encoding: 'utf8', env: { ...process.env, PATH: `${BIN}:${process.env.PATH}`, FAKE_GH_STATE: statePath } },
   );
   return { code: r.status, out: `${r.stdout}${r.stderr}`, state: JSON.parse(readFileSync(statePath, 'utf8')) };
@@ -1638,4 +1638,103 @@ test('#3768 round 3: the count line does not claim resolved threads are always e
   assert.match(body, /verdict=findings count=1/);
   assert.match(body, /unless this run reported them again/);
   assert.doesNotMatch(body, /\(resolved threads are not counted\)/);
+});
+
+
+// ============ #3775: every finding dropped, so the head carries a MARKER not a red
+//
+// A finding citing a file that was never sent is correctly dropped, and a run
+// with nothing left correctly refuses to invent a verdict. #3801 gave that shape
+// a retry. What is left over is what happens when the RETRY is refused too: the
+// PR then has no path to a verdict on that commit at all -- a red `Claude review`
+// whose printed remedy ("read the DROPPED warnings") is addressed to a human
+// reading logs, and a cascade into `STALE_REVIEW` from `Review posted` waiting
+// out its full poll budget with no independent cause. #3801's own message names
+// this as the follow-on it does not fix.
+
+test('#3775: --all-findings-dropped posts a `dropped` marker, which does NOT cover the head', () => {
+  const why = '⚠️  DROPPED findings[0]: `rust/processing/src/lib.rs` was never sent to the model.\n❌ VALIDATION_EMPTY: 1 finding(s), NONE survived.';
+  const r = runNothingToReview({ args: ['--all-findings-dropped', '--reason', why], ntr: false });
+  assert.equal(r.code, 0, r.out);
+  const body = allBodies(r.state);
+  // `dropped`, NOT `nothing-to-review`. The gate reads the latter as covered, so
+  // reusing it would have sealed the head against ever being reviewed.
+  assert.match(body, /ifc-lite-review sha=[0-9a-f]{40} verdict=dropped count=0/);
+  // The dropped reasons travel to the PR, so the remedy is readable where the
+  // problem is rather than only in a log nobody opens.
+  assert.match(body, /rust\/processing\/src\/lib\.rs/);
+  // And the body must NOT assert the reviewer was never run, because it was.
+  assert.doesNotMatch(body, /The reviewer was NOT run/);
+  assert.match(body, /must NOT stand down/, 'the stand-down warning still has to be there');
+});
+
+test('#3775: THE GATE agrees — a `dropped` marker leaves the head uncovered', () => {
+  // The poster and the gate are two files that must agree about one token. Prose
+  // cannot keep them in step, so the marker this poster actually wrote is fed to
+  // the real gate.
+  const r = runNothingToReview({ args: ['--all-findings-dropped', '--reason', 'x'], ntr: false });
+  assert.equal(r.code, 0, r.out);
+  const g = runGate(r.state);
+  assert.notEqual(g.code, 0, g.out);
+  assert.match(g.out, /FINDINGS_ALL_DROPPED/);
+});
+
+test('#3775: the plain nothing-to-review marker still says the reviewer was never run', () => {
+  const r = runNothingToReview();
+  assert.equal(r.code, 0, r.out);
+  const body = allBodies(r.state);
+  assert.match(body, /The reviewer was NOT run/);
+  assert.match(body, /verdict=nothing-to-review/);
+});
+
+test('#3775: the two marker-only flags are mutually exclusive', () => {
+  const r = runNothingToReview({ args: ['--all-findings-dropped'] });
+  assert.notEqual(r.code, 0);
+  assert.match(r.out, /mutually exclusive/);
+});
+
+test('#3775 THE WIRING: a refused RETRY reaches the marker path instead of failing the job', () => {
+  const wf = readFileSync(join(HERE, '..', '..', '.github/workflows/claude-review.yml'), 'utf8');
+  const validate = wf.split('- name: Validate the findings')[1].split('- name:')[0];
+  assert.match(validate, /uncovered=true/, 'the step must hand the outcome downstream as an output');
+  assert.match(validate, /skip-reason\.txt/, 'carrying the dropped reasons to the marker body');
+
+  // THE RETRY COMES FIRST. A marker is the LAST resort: without this the model
+  // never gets told its findings were refused, and the head carries a record of
+  // a failure nothing tried to fix.
+  const reviewerCall = validate.indexOf('node "$GITHUB_WORKSPACE/scripts/review/run-reviewer.mjs"');
+  const downgrade = validate.indexOf('uncovered=true');
+  assert.ok(reviewerCall > -1 && downgrade > reviewerCall, 'the downgrade must read the log the RETRY left behind');
+
+  // A CRASHED retry reviewer must NOT reach it. validate.log is rewritten by the
+  // second VALIDATE, not by the attempt, so a crash leaves the FIRST attempt's
+  // reason line sitting there and an unguarded grep would post a marker
+  // asserting a retry that never produced an answer refused everything.
+  assert.match(validate, /revalidated=1/, 'the retry must record that it re-validated');
+  const setIdx = validate.indexOf('revalidated=1');
+  const elseIdx = validate.indexOf('else', setIdx);
+  const reviewerRcIdx = validate.indexOf('rc=$reviewer_rc');
+  assert.ok(reviewerRcIdx > setIdx && elseIdx > -1 && elseIdx < reviewerRcIdx);
+  assert.doesNotMatch(
+    validate.slice(elseIdx, reviewerRcIdx + 20),
+    /revalidated=1/,
+    'the crash branch must NOT record a re-validation',
+  );
+  const condition = validate.slice(validate.lastIndexOf('if [', downgrade), downgrade);
+  assert.match(condition, /revalidated/, 'the downgrade must require that a retry actually re-validated');
+
+  // "read the DROPPED warnings above" has to be true in the comment body too.
+  const droppedGrep = validate.indexOf("grep '^⚠️  DROPPED'");
+  assert.ok(droppedGrep > -1, 'the DROPPED lines must be collected');
+  assert.ok(validate.indexOf('| head -1', droppedGrep) > droppedGrep, 'and written ABOVE the reason line');
+
+  const ntr = wf.split('- name: Say so when there was nothing to review')[1];
+  assert.match(ntr.split('run:')[0], /steps\.validate\.outputs\.uncovered == 'true'/);
+  assert.match(ntr, /--all-findings-dropped/, 'the marker must not claim the model never ran, nor cover the head');
+
+  // The steps that would act on a findings.json that does not exist must be off.
+  for (const other of ['Judge the findings', 'Post the review']) {
+    const s2 = wf.split(`- name: ${other}`)[1].split('run:')[0];
+    assert.match(s2, /steps\.validate\.outputs\.uncovered != 'true'/, `${other} must be excluded on the uncovered path`);
+  }
 });

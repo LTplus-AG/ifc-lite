@@ -58,11 +58,20 @@ function omittedSection(omitted) {
  * `mode: enforcing` that is a red row no re-run and no author action can ever
  * clear, on a class that recurs (PR #3558, a Cargo.lock-only dependabot bump),
  * with a printed remedy -- "re-run the review job" -- that cannot work.
+ *
+ * `allFindingsDropped` RENDERS A DIFFERENT BODY UNDER A DIFFERENT VERDICT
+ * (#3775). There the model DID run, was retried once, and every finding it
+ * produced was refused -- so the fixed sentence "the reviewer was NOT run" would
+ * be false, and the marker is `dropped` rather than `nothing-to-review`. The gate
+ * treats `dropped` as NOT covered, so the head stays open for a real review
+ * instead of being sealed by a run that posted nothing.
  */
-export function nothingToReviewBody(sha, why = null) {
+export function nothingToReviewBody(sha, why = null, { allFindingsDropped = false } = {}) {
   const short = sha.slice(0, 9);
   return [
-    `### Claude review - nothing to review for \`${short}\``,
+    allFindingsDropped
+      ? `### Claude review - every finding dropped for \`${short}\``
+      : `### Claude review - nothing to review for \`${short}\``,
     '',
     // WHY, NOT A GUESS AT WHY. This used to assert the cause -- "every changed
     // path is excluded: lockfiles, generated code, snapshots, fixtures and build
@@ -76,11 +85,23 @@ export function nothingToReviewBody(sha, why = null) {
       : 'Every changed path in this diff is excluded from review: lockfiles, generated\n' +
         'code, snapshots, fixtures and build output.',
     '',
-    'The reviewer was NOT run, so this is not a statement that the diff is fine -- it',
-    'is a statement that nothing here was read. Another reviewer must NOT stand down',
-    'on this head.',
+    ...(allFindingsDropped
+      ? [
+          // The reviewer ran and produced findings; none survived validation, so
+          // there is nothing to post and no verdict the model actually gave.
+          // Saying "the reviewer was NOT run" here would be false, and the reason
+          // above already names what was dropped.
+          'The reviewer DID run, and none of what it produced survived validation, so nothing on this',
+          'head has been reviewed to a posted conclusion. This is not a statement that the diff is',
+          'fine. Another reviewer must NOT stand down on this head.',
+        ]
+      : [
+          'The reviewer was NOT run, so this is not a statement that the diff is fine -- it',
+          'is a statement that nothing here was read. Another reviewer must NOT stand down',
+          'on this head.',
+        ]),
     '',
-    marker(sha, 'nothing-to-review', 0),
+    marker(sha, allFindingsDropped ? 'dropped' : 'nothing-to-review', 0),
   ].join('\n');
 }
 

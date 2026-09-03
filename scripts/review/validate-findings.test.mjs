@@ -917,7 +917,21 @@ test('REASONS covers EVERY raise site in this file, and names nothing that is no
   // unclassified reason with every test green. Lowercase tokens are skipped,
   // which is what lets a condition like `kind === 'raw' ? ...` through without
   // a special case.
-  const src = readFileSync(new URL('./validate-findings.mjs', import.meta.url), 'utf8');
+  //
+  // SCANS FOUR FILES, NOT ONE, as of #3795: `checkSchema`/`checkProofOfWork`/
+  // `validate`/`readText`/`stripFence`/`parseRaw`/`readInput` -- the raise
+  // sites this guard exists to inventory -- moved to ./lib/finding-schema.mjs,
+  // ./lib/finding-proof-of-work.mjs and ./lib/review-input-reader.mjs for the
+  // module-size budget. Concatenated so "every raise site" still means every
+  // raise site of THIS MODULE, not just of this one physical file.
+  const src = [
+    './validate-findings.mjs',
+    './lib/finding-schema.mjs',
+    './lib/finding-proof-of-work.mjs',
+    './lib/review-input-reader.mjs',
+  ]
+    .map((p) => readFileSync(new URL(p, import.meta.url), 'utf8'))
+    .join('\n');
   const NEEDLE = 'ValidateFindingsError(';
   const seen = new Set();
   const barren = [];

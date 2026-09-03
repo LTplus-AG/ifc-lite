@@ -148,35 +148,34 @@
  *      harness pins exactly that rule for its advisory notice. A deliberate
  *      deviation from the brief, stated rather than silently applied.
  */
-
-import { readFileSync } from 'node:fs';
-import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
-import { gh, GhError } from '../lib/gh.mjs';
-// The one home for "which commit did this row see" (#3729), shared with
-// check-review-posted.mjs so the two predicates are one function, not two
-// spellings held together by a comment.
-import { ReviewProvenanceError, wroteAtCommit } from '../lib/review-provenance.mjs';
-// The gate's own normaliser, pager and config reader, imported rather than
-// re-spelled. Two copies held together only by prose is how the poster and the
-// gate would come to disagree about who "we" are, or about where a page ends.
-import { MARKER_RE, pageAll, normaliseLogin, readConfig, ReviewPostedError } from '../check-review-posted.mjs';
-import { sanitizeBody } from './validate-findings.mjs';
+import { GhError } from '../lib/gh.mjs';
+import { ReviewProvenanceError } from '../lib/review-provenance.mjs';
+import { normaliseLogin, readConfig, ReviewPostedError } from '../check-review-posted.mjs';
+import { PostReviewError } from './lib/post-review-error.mjs';
+// readFindingsDoc/readFindings/readOmitted/marker/MAX_POSTED_FINDINGS moved to
+// ./lib/review-findings.mjs (module-size budget, #3795). Imported (not
+// `export ... from`) because main() below calls several of them itself, and
+// re-exported so every existing import of these names from this file keeps
+// working unchanged. `fingerprint` is used only inside
+// `postFindingsAndConfirm` now, so it is re-exported directly rather than
+// imported.
+import { MAX_POSTED_FINDINGS, readFindingsDoc, readFindings, readOmitted, marker } from './lib/review-findings.mjs';
+// fetchHeadSha/upsertAndVerify/postNothingToReview/postFindingsAndConfirm
+// moved to ./lib/review-comments.mjs (module-size budget, #3795). Imported
+// for the same reason as above. `confirmedOnHead` is used only inside that
+// module's own helpers now, so it is re-exported directly.
+import { fetchHeadSha, upsertAndVerify, postNothingToReview, postFindingsAndConfirm } from './lib/review-comments.mjs';
+// summaryBody/readJudgedAway/readCappedCount moved to ./lib/review-summary.mjs
+// (module-size budget, #3795). Imported for the same reason as above.
+// `nothingToReviewBody` is called only inside `postNothingToReview` now, so
+// it is re-exported directly.
+import { summaryBody, readJudgedAway, readCappedCount } from './lib/review-summary.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CONFIG = join(HERE, '..', 'review-posted.config.json');
-
-/** Longest index line in the summary. A summary that scrolls is a summary nobody reads. */
-const INDEX_BODY_CHARS = 110;
-
-export class PostReviewError extends Error {
-  constructor(reason, message) {
-    super(message);
-    this.reason = reason;
-  }
-}
 
 /**
  * A Map, not an object literal, for the reason the sibling gate records: a
@@ -228,619 +227,12 @@ export function parseArgs(argv) {
   return out;
 }
 
-/**
- * At most this many inline comments reach a human, and it is enforced HERE.
- *
- * It was enforced in the judge, which is the one step in the lane designed to be
- * skippable: the workflow's crash backstop does `cp findings.json judged.json`,
- * bypassing that module completely, and the validator's own ceiling is twelve.
- * So the cap held only when the optional filter succeeded, and the failure path
- * -- the one that runs when something has already gone wrong -- posted twelve.
- *
- * This module is the only one on the posting path that always runs.
- */
-export const MAX_POSTED_FINDINGS = 5;
-
-/**
- * The findings the model produced.
- *
- * BOTH plausible spellings are accepted -- a bare array, and `{ findings: [...] }`
- * -- and everything else REFUSES. The component writing this file is precisely
- * the unreliable one, so the failure that must not exist is a shape mismatch
- * read as "no findings": that would post a `verdict=clean` marker over a review
- * that found things, and nothing downstream can tell those two apart afterwards.
- *
- * @returns {{ path: string, line: number, body: string, title: string|null }[]}
- */
-
-/**
- * READ AND PARSE findings.json ONCE, for every reader below.
- *
- * There were four independent `readFileSync` + `JSON.parse` calls on this one
- * path -- the findings, the omitted list, the judge's drop count and the cap's
- * -- so the poster read the same file four times per run and each reader carried
- * its own answer to "what if it is unreadable". Two of them fail soft with a
- * warning, one throws, and one threw a message about a race that could only
- * happen BECAUSE it re-read. Parsing here deletes the race rather than handling
- * it: every reader now sees the same bytes by construction, and the diagnosis
- * for an unreadable or malformed file lives in exactly one place.
- *
- * @returns {unknown} the parsed document, whatever shape it is; each reader
- *   below owns what it will accept.
- */
-export function readFindingsDoc(path) {
-  let raw;
-  try {
-    raw = readFileSync(path, 'utf8');
-  } catch (err) {
-    if (err.code === 'ENOENT') {
-      throw new PostReviewError(
-        'NO_FINDINGS_FILE',
-        `Findings file \`${path}\` is missing. A missing findings file is NOT an empty one: treating it ` +
-          'as clean would post a clean marker over a review whose findings never left the runner. ' +
-          'REMEDY: fix the reviewer step that was meant to write it.',
-      );
-    }
-    throw new PostReviewError('NO_FINDINGS_FILE', `Cannot read \`${path}\`: ${err.code || err.message}.`);
-  }
-  try {
-    return JSON.parse(raw);
-  } catch (err) {
-    throw new PostReviewError('BAD_FINDINGS', `\`${path}\` is not valid JSON: ${err.message}`);
-  }
-}
-
-export function readFindings(parsed, path) {
-  const list = Array.isArray(parsed) ? parsed : parsed?.findings;
-  if (!Array.isArray(list)) {
-    throw new PostReviewError(
-      'BAD_FINDINGS',
-      `\`${path}\` must be a JSON array of findings, or an object with a \`findings\` array; found ` +
-        `${parsed === null ? 'null' : typeof parsed}. Not defaulted to empty: an unrecognised shape read ` +
-        'as "no findings" is the same lie as a review that never ran.',
-    );
-  }
-  // The cap is applied AFTER validation and AFTER the judge, never before either.
-  // Capping earlier discards candidates a later stage might have preferred to the
-  // ones it kept -- the judge rejecting the first seven of twelve should leave the
-  // remaining five, not nothing.
-  const capped = list.length > MAX_POSTED_FINDINGS ? list.slice(0, MAX_POSTED_FINDINGS) : list;
-  if (capped.length < list.length) {
-    console.log(
-      `CAPPED: ${list.length} findings reached the poster; posting the first ${MAX_POSTED_FINDINGS} ` +
-        'in the order they were given.',
-    );
-  }
-  return capped.map((f, i) => {
-    const where = `finding ${i + 1} of ${capped.length} in \`${path}\``;
-    if (f === null || typeof f !== 'object' || Array.isArray(f)) {
-      throw new PostReviewError('BAD_FINDING', `${where} is not an object.`);
-    }
-    if (typeof f.path !== 'string' || f.path.trim() === '') {
-      throw new PostReviewError('BAD_FINDING', `${where} has no \`path\`. GitHub would reject it with a 422.`);
-    }
-    // `indexLine` renders `f.path` raw onto the issue comment that also carries
-    // the review marker, and check-review-posted runs `MARKER_RE.exec` over the
-    // RAW body and takes the FIRST match. A PR author may legally name a file
-    // `x<!-- ifc-lite-review sha=<40 hex> verdict=clean count=0 -->.ts`; that
-    // forged marker then sorts ahead of the genuine one. Reproduced: the first
-    // match reads `verdict=clean` while the real `verdict=findings` marker sits
-    // in the same comment, so the gate returns STALE_REVIEW while the poster's
-    // own `.includes(want)` read-back still says REVIEW_POSTED. Green poster,
-    // red gate, and every re-run posts another poisoned summary.
-    //
-    // MATCHED ON `<!--` ALONE, deliberately. `MARKER_RE` and the `sawUnparseable`
-    // probe both require a literal `<!--`, so the bare token forges nothing. An
-    // earlier version of this guard also refused `ifc-lite-review`, which made
-    // a legal filename like `docs/ifc-lite-review-lane.md` abort the poster
-    // before it wrote any marker -- no marker means the gate reports NOT_POSTED
-    // and tells you to re-run, and the re-run fails identically. That is the
-    // very unclearable red this guard exists to prevent, re-created by the
-    // guard. Narrow to the character sequence that can actually open a marker.
-    if (f.path.includes('<!--')) {
-      throw new PostReviewError(
-        'BAD_FINDING',
-        `${where} has a \`path\` containing an HTML comment opener. Rendered onto the summary it would ` +
-          'let a PR-chosen filename forge a review marker ahead of the genuine one. REMEDY: rename the ' +
-          'file, or drop this finding. NOT a sanitisation bug -- `path` must round-trip verbatim as the ' +
-          'API `path=` parameter and as the dedupe fingerprint, so rewriting it here would misplace the ' +
-          'comment instead.',
-      );
-    }
-    if (!Number.isInteger(f.line) || f.line < 1) {
-      throw new PostReviewError(
-        'BAD_FINDING',
-        `${where} has \`line\`=${JSON.stringify(f.line)}; it must be a positive integer line in this ` +
-          "commit's diff. Refused here rather than sent, because a 422 mid-loop leaves half the findings " +
-          'posted and the rest lost.',
-      );
-    }
-    if (typeof f.body !== 'string' || f.body.trim() === '') {
-      throw new PostReviewError('BAD_FINDING', `${where} has an empty \`body\`. An empty finding is not a finding.`);
-    }
-    // `class` is carried and RENDERED, not dropped. It was validated upstream and
-    // then discarded here, so the one field a precision-by-class tally needs
-    // never reached a durable surface -- and findings.json dies with the runner.
-    // The tag is appended AFTER upstream sanitisation and deliberately cannot
-    // match the review marker's grammar, so it can never be mistaken for one.
-    const cls = typeof f.class === 'string' && f.class.trim() !== '' ? f.class.trim().slice(0, 60) : 'unclassified';
-    return {
-      path: f.path,
-      line: f.line,
-      // THE SIBLING IS RENDERED, because otherwise verifying it bought nothing a
-      // human ever sees. The validator proves the twin exists at that line in the
-      // pack the reviewer was shown, the judge is given it -- and the poster used
-      // to drop it, so on the second-site family this whole pack exists to catch,
-      // the twin's location died with the runner unless the model happened to
-      // repeat it in prose. The comment in validate-findings claimed post-review
-      // rendered it; it did not.
-      body:
-        `${f.body}` +
-        // A sibling whose path could open a marker is DROPPED, not refused. The
-        // sibling sentence is decoration on a finding that is otherwise fine, so
-        // refusing the whole review over it would trade a cosmetic loss for the
-        // unclearable red this guard exists to avoid. `f.path` cannot be dropped
-        // the same way -- it IS the finding's anchor -- which is why that one
-        // refuses above.
-        (f.sibling?.path && !f.sibling.path.includes('<!--') && Number.isInteger(f.sibling.line)
-          ? `\n\nThe same shape is at ${inlineCode(`${f.sibling.path}:${f.sibling.line}`)}, which this PR does not change.`
-          : '') +
-        `\n\n<!-- ifc-lite-finding v=1 class=${cls.replace(/[^a-z0-9-]/gi, '-')} -->`,
-      // The class IS the title. They were a dead pair: `class` was validated
-      // then dropped, while `title` was read by the summary index and never
-      // written, so the index always fell back to the first line of the body.
-      title: cls === 'unclassified' ? null : cls,
-    };
-  });
-}
-
-/**
- * What makes two findings "the same one" for dedupe. Path and line are in the
- * key as well as the body: two findings can legitimately share wording on
- * different lines, and a body-only key would silently drop the second.
- */
-export function fingerprint(path, line, body) {
-  return createHash('sha256').update(`${path}\u0000${line}\u0000${body}`).digest('hex');
-}
-
-/**
- * The files the review DID NOT read, dropped upstream to fit the model prompt
- * (#3679). Read from the same findings.json the findings come from, because
- * that file is the only artefact that crosses from the validator to this
- * poster.
- *
- * REFUSES rather than defaults on a malformed shape: a partial review whose
- * omission list is unreadable would post a marker byte-identical to a full
- * review's, which is the absence-reads-as-success shape this lane exists to
- * close. An ABSENT field is fine -- the bare-array findings shape and every
- * findings.json written before #3679 mean "nothing was omitted", and treating
- * that as an error would redden every legacy re-run.
- *
- * Each entry is also required to be already-defanged: validate-findings
- * sanitises these paths before writing them, and a raw `<!--` or marker token
- * here means the two files have drifted -- rendering it anyway would open the
- * marker-forgery channel the sanitiser closes.
- *
- * @returns {string[]}
- */
-export function readOmitted(parsed, path) {
-  const omitted = Array.isArray(parsed) ? undefined : parsed?.omitted;
-  if (omitted === undefined) return [];
-  if (!Array.isArray(omitted) || omitted.some((p) => typeof p !== 'string' || p.trim() === '')) {
-    throw new PostReviewError(
-      'BAD_FINDINGS',
-      `\`omitted\` in \`${path}\` must be an array of non-empty strings when present. Defaulting to ` +
-        '"nothing omitted" would post a full-review marker over a partial review. REMEDY: fix ' +
-        'validate-findings, which writes this field.',
-    );
-  }
-  for (const p of omitted) {
-    if (/<!--|ifc-lite-review/i.test(p)) {
-      throw new PostReviewError(
-        'BAD_FINDINGS',
-        `An \`omitted\` entry in \`${path}\` carries an HTML comment opener or the marker token, which ` +
-          'validate-findings is required to defang before writing. Rendering it would let a PR-chosen ' +
-          'file path forge a review marker through our own identity. REMEDY: fix the sanitisation in ' +
-          'validate-findings.',
-      );
-    }
-  }
-  return omitted;
-}
-
-/** The marker the gate parses. Built in exactly one place; proved against the real gate by the harness. */
-export function marker(sha, verdict, count, omitted = 0) {
-  // `omitted=` appears ONLY on a partial review: a full review's marker stays
-  // byte-identical to what every earlier version of the gate parses.
-  return `<!-- ifc-lite-review sha=${sha} verdict=${verdict} count=${count}${omitted > 0 ? ` omitted=${omitted}` : ''} -->`;
-}
-
-/** How many omitted paths the summary names before summarising the rest. */
-const MAX_OMITTED_LISTED = 20;
-
-/**
- * A Markdown inline code span that survives backticks IN the text. A git path
- * may contain backticks, and `` `${p}` `` lets such a path close the span at
- * its own backtick -- spilling the tail into the comment as live Markdown
- * (#3688 review). CommonMark's remedy: fence with a run one longer than the
- * longest run in the content, padded with one space each side so an edge
- * backtick cannot fuse with the fence; the renderer strips that pad.
- */
-function inlineCode(text) {
-  const runs = String(text).match(/`+/g);
-  if (runs === null) return `\`${text}\``;
-  const fence = '`'.repeat(Math.max(...runs.map((r) => r.length)) + 1);
-  return `${fence} ${text} ${fence}`;
-}
-
-/**
- * The human half of the partial-review disclosure. The marker's `omitted=<n>`
- * is the machine half; this is the part that tells the author WHICH files
- * nobody read, so "reviewed" cannot quietly mean "reviewed some of it".
- */
-function omittedSection(omitted) {
-  const shown = omitted.slice(0, MAX_OMITTED_LISTED);
-  const rest = omitted.length - shown.length;
-  return [
-    `⚠️ PARTIAL REVIEW: ${omitted.length} changed file(s) were NOT shown to the reviewer -- too large to fit the model prompt, or too large for GitHub to return a patch for (#3679):`,
-    '',
-    ...shown.map((p) => `- ${inlineCode(p)}`),
-    ...(rest > 0 ? [`- ...and ${rest} more (listed in the review job's log)`] : []),
-    '',
-    'Nothing vouches for those files. This verdict covers only the files that were reviewed.',
-  ];
-}
-
-/**
- * The comment for a head with NOTHING REVIEWABLE in it.
- *
- * WHY THIS IS NOT `verdict=clean`. A lockfile-only or generated-code-only PR
- * makes `build-review-input.mjs` exit NO_FILES, so the model is never run. The
- * honest statement about that head is "there was nothing to review", and it is
- * NOT the same statement as "reviewed it and found nothing". Collapsing the two
- * is the exact failure this whole system exists to prevent: if the exclusion
- * list ever grows a bug that swallows real source, a `clean` marker would
- * certify every one of those PRs as reviewed, silently, forever.
- *
- * So it gets its own verdict token. The gate accepts it as evidence that the
- * LANE REACHED THIS HEAD and made a decision -- which is the question the gate
- * actually asks -- and prints it as its own outcome rather than as a pass.
- *
- * The alternative was to leave these PRs with no marker at all. Under
- * `mode: enforcing` that is a red row no re-run and no author action can ever
- * clear, on a class that recurs (PR #3558, a Cargo.lock-only dependabot bump),
- * with a printed remedy -- "re-run the review job" -- that cannot work.
- */
-export function nothingToReviewBody(sha, why = null) {
-  const short = sha.slice(0, 9);
-  return [
-    `### Claude review - nothing to review for \`${short}\``,
-    '',
-    // WHY, NOT A GUESS AT WHY. This used to assert the cause -- "every changed
-    // path is excluded: lockfiles, generated code, snapshots, fixtures and build
-    // output" -- because exclusion was the only caller. It is not any more:
-    // NOTHING_FITS reaches here when a single patch is larger than the whole
-    // model prompt, and the fixed sentence would have described 500 KB of real
-    // source as generated content. A marker whose text is wrong about its own
-    // cause is the shape this lane keeps finding in other people's gates.
-    why
-      ? sanitizeBody(String(why))
-      : 'Every changed path in this diff is excluded from review: lockfiles, generated\n' +
-        'code, snapshots, fixtures and build output.',
-    '',
-    'The reviewer was NOT run, so this is not a statement that the diff is fine -- it',
-    'is a statement that nothing here was read. Another reviewer must NOT stand down',
-    'on this head.',
-    '',
-    marker(sha, 'nothing-to-review', 0),
-  ].join('\n');
-}
-
-/** The one-line index entry for a finding. */
-function indexLine(f, n) {
-  const text = (f.title ?? f.body.split('\n').find((l) => l.trim() !== '') ?? '').trim();
-  const short = text.length > INDEX_BODY_CHARS ? `${text.slice(0, INDEX_BODY_CHARS - 3)}...` : text;
-  return `${n}. ${inlineCode(`${f.path}:${f.line}`)} - ${short}`;
-}
-
-/**
- * How many findings the judge removed, taken from the document the findings came
- * from. Returns 0 for any shape that does not carry the count: this decorates a
- * message, and a malformed count must never be the reason a review fails to post.
- *
- * It used to re-read the file and warn when it could not, which was the right
- * behaviour for a reader that re-read; now that `readFindingsDoc` has already
- * parsed it, there is no such failure left to report.
- */
-export function readJudgedAway(doc) {
-  // `counts.dropped` MEANS TWO DIFFERENT THINGS in the two files this poster
-  // can be handed. In judged.json it is findings the judge rejected as not
-  // worth a human's time. In the validator's findings.json -- which the
-  // workflow's crash backstop copies verbatim -- it is findings REFUSED as
-  // malformed. Reading it without checking `judged` told the author "N
-  // finding(s) were dropped as too vague" about findings that were actually
-  // rejected for quoting a line that is not in the diff. Only a real judging
-  // has judge-dropped findings to disclose.
-  if (doc?.judged !== true) return 0;
-  const n = doc?.counts?.dropped;
-  return Number.isInteger(n) && n > 0 ? n : 0;
-}
-
-/**
- * How many validated findings the posting cap withheld. 0 for any shape that
- * does not say: this decorates a message and must never be the reason a review
- * fails to post.
- */
-export function readCappedCount(doc, shown) {
-  const total = Array.isArray(doc)
-    ? doc.length
-    : Array.isArray(doc?.findings)
-      ? doc.findings.length
-      : undefined;
-  return Number.isInteger(total) && total > shown ? total - shown : 0;
-}
-
-/**
- * The human half of the comment.
- *
- * TWO NUMBERS, KEPT APART ON PURPOSE. The heading and the index describe what
- * THIS REVIEW FOUND (`findings.length`); the confirmed line and the marker
- * describe WHAT IS ON THE PULL REQUEST (`count`, straight from the read-back).
- * They are usually equal. When they are not -- a finding from an earlier run of
- * the same head that this run no longer lists -- the difference is PRINTED
- * rather than reconciled, because the whole point of the marker is that its
- * count is an observation and not a claim. Collapsing them into one number is
- * how the marker would quietly become a receipt for the model's own file again.
- */
-export function summaryBody({ sha, findings, count, judgedAway = 0, capped = 0, omitted = [] }) {
-  const short = sha.slice(0, 9);
-  const n = findings.length;
-  // The partial-review block sits ABOVE the marker in both branches, and the
-  // marker carries `omitted=<n>` whenever it is non-empty, so a clean-but-
-  // partial run can never read as a silent clean -- on either the human or the
-  // machine surface. A full review renders byte-identically to before.
-  const partial = omitted.length > 0 ? ['', ...omittedSection(omitted)] : [];
-  if (count === 0) {
-    // Reachable only when `n` is 0 as well: `count >= n` is enforced one step
-    // earlier, and the `n === 0 && count > 0` case is handled by the branch below.
-    // A REVIEW JUDGED TO NOTHING IS NOT A REVIEW THAT FOUND NOTHING. The judge
-    // can reject every validated finding, and without this line the only record
-    // that they ever existed is a runner log that expires -- while the PR shows
-    // "found nothing to flag". That is the absence-reads-as-success shape this
-    // module is built around, and the judge is what created the path: before it,
-    // every validated finding was posted.
-    const judged =
-      judgedAway > 0
-        ? [
-            '',
-            `${judgedAway} finding(s) were written and then dropped as too vague or already ` +
-              'covered before this was posted. Nothing here is a claim that they were wrong, ' +
-              'only that they were not worth your time; the run log lists each one and why.',
-          ]
-        : [];
-    return [
-      `### Claude review - no findings for \`${short}\`${omitted.length > 0 ? ' (partial)' : ''}`,
-      '',
-      omitted.length > 0
-        ? 'Reviewed everything that fit the model prompt and found nothing to flag there.'
-        : 'Reviewed this diff and found nothing to flag.',
-      ...judged,
-      ...partial,
-      '',
-      // No thumbs-down footer here on purpose: see STATED HOLES 6.
-      marker(sha, 'clean', 0, omitted.length),
-    ].join('\n');
-  }
-  if (n === 0) {
-    // `count > 0` with `n === 0`: this run found nothing while earlier findings
-    // stand on the same commit. Without this branch the generic form below
-    // renders "0 findings" as a heading over "1 inline comment confirmed" -- a
-    // body contradicting itself in two consecutive lines. Say the state instead.
-    return [
-      `### Claude review - ${count} standing finding${count === 1 ? '' : 's'} for \`${short}\``,
-      '',
-      `This run reviewed the diff and found nothing to flag, but ${count} inline ` +
-        `comment${count === 1 ? '' : 's'} from an earlier run ${count === 1 ? 'is' : 'are'} still ` +
-        'anchored to this commit and nobody has withdrawn them.',
-      '',
-      'They stand. Two runs disagreed about the same code, and this note records that rather than ' +
-        'resolving it by fiat: the marker below says `findings`, so nothing reads this as a pass. ' +
-        'If the earlier findings are wrong, delete those inline comments and re-run; the verdict ' +
-        'becomes `clean` on its own once they are gone.',
-      '',
-      marker(sha, 'findings', count),
-    ].join('\n');
-  }
-  return [
-    `### Claude review - ${n} finding${n === 1 ? '' : 's'} for \`${short}\`${omitted.length > 0 ? ' (partial)' : ''}`,
-    '',
-    ...findings.map((f, i) => indexLine(f, i + 1)),
-    '',
-    `${count} inline comment${count === 1 ? '' : 's'} from this reviewer confirmed on this commit.`,
-    // THE CAP FIRES ROUTINELY NOW. Validation allows twelve and the rubric asks
-    // the model for up to twelve, where the poster shows five -- so the slice
-    // that used to be unreachable is the common path, and its only trace was a
-    // line in a runner log that expires. The clean branch above already discloses
-    // judge-dropped findings; saying nothing here would leave the disclosure on
-    // the branch where it happens least.
-    ...(capped > 0
-      ? [
-          '',
-          `${capped} further finding(s) passed validation and are not shown: this comment is capped ` +
-            `at ${MAX_POSTED_FINDINGS} so it stays readable. They are in the run log, and re-running after ` +
-            'these are addressed will surface them.',
-        ]
-      : []),
-    ...partial,
-    '',
-    // Honest about what happens next. The earlier wording said a reaction would
-    // "log it as a false positive", and nothing logs anything: that is a note
-    // that fails to fire, which this repository has a name for. Reactions are a
-    // durable surface a later tally can read; until that tally exists, the line
-    // says only what is true today.
-    'React with 👎 on a finding you think is wrong. Reactions are read when this lane\'s precision is assessed.',
-    '',
-    marker(sha, 'findings', count, omitted.length),
-  ].join('\n');
-}
-
-/**
- * Walk one comment surface to exhaustion within a REAL page bound.
- *
- * `pageAll` is the gate's, imported: a second pager would be a second set of
- * boundary conditions to get wrong, and this one is already pinned by tests at
- * the exactly-full-last-page boundary.
- */
-function fetchSurface(repo, pr, surface) {
-  const base = `repos/${repo}/${surface}`;
-  const { rows, truncated } = pageAll((page, perPage) =>
-    gh(
-      ['api', `${base}?per_page=${perPage}&page=${page}`, '--method', 'GET'],
-      `${surface} page ${page}`,
-      PostReviewError,
-    ),
-  );
-  if (truncated) {
-    throw new PostReviewError(
-      'COMMENTS_TRUNCATED',
-      `\`${surface}\` still had pages after the bounded walk, so a finding may sit on a page this script ` +
-        'never read. Refusing to count what it could not finish reading. REMEDY: raise the pager budget ' +
-        'in check-review-posted.mjs, or narrow what the reviewer posts.',
-    );
-  }
-  return rows;
-}
-
-/** STEP 1. The head as GitHub sees it now, not as the workflow was told at dispatch. */
-function fetchHeadSha(repo, pr) {
-  const pull = gh(['api', `repos/${repo}/pulls/${pr}`, '--method', 'GET'], `pull request #${pr}`, PostReviewError);
-  const sha = pull?.head?.sha;
-  if (typeof sha !== 'string' || !/^[0-9a-f]{40}$/.test(sha)) {
-    throw new PostReviewError(
-      'HEAD_UNREADABLE',
-      `\`repos/${repo}/pulls/${pr}\` returned no 40-hex \`head.sha\` (got ${JSON.stringify(sha)}). ` +
-        'Proceeding on a head this script never confirmed would post findings against a guess. REMEDY: ' +
-        "check the token's `pull-requests` scope and re-run.",
-    );
-  }
-  return sha;
-}
-
-/**
- * THE GATE'S OWN PREDICATE, and now literally the same code rather than the same
- * SPELLING. Both sides call `wroteAtCommit`, so they cannot drift.
- *
- * IT USED TO READ `commit_id === sha`, AND THAT DEFEATED THREE THINGS AT ONCE
- * (#3729 -- the measurement is in scripts/lib/review-provenance.mjs). A stale
- * row relocated onto this head:
- *
- *   - STEP 2 (dedup) read as "already present at this head", so the finding was
- *     SKIPPED and never posted -- and step 3 then counted that same stale row as
- *     the confirmation that it had been. The two cancel.
- *   - STEP 3 (read-back), the check that exists because #1679 reports success
- *     over comments that do not exist, was satisfied by comments on another
- *     commit.
- *   - `CLEAN_CONTRADICTED` fired on a genuinely clean run, because someone
- *     else's stale finding had been relocated onto its head.
- *
- * THE VISIBLE CONSEQUENCE, STATED RATHER THAN DISCOVERED: after a rebase, rows
- * GitHub relocated onto the new head no longer dedup, so a re-run POSTS the
- * findings again and the PR carries the relocated copies alongside the new
- * ones. That is the intended reading -- a row written against a tree that no
- * longer exists is not a review of this one -- but it is duplication a reader
- * will see, and it is the price of the read-back meaning what it says.
- */
-export function confirmedOnHead(rows, author, sha) {
-  return rows.filter((r) => normaliseLogin(r?.user?.login) === author && wroteAtCommit(r, sha));
-}
-
-/** STEP 2. One finding, posted and checked. */
-function postFinding(repo, pr, sha, f, n, total) {
-  const res = gh(
-    [
-      'api',
-      `repos/${repo}/pulls/${pr}/comments`,
-      '--method',
-      'POST',
-      '-f',
-      `commit_id=${sha}`,
-      '-f',
-      `path=${f.path}`,
-      '-F',
-      `line=${f.line}`,
-      '-f',
-      'side=RIGHT',
-      '-f',
-      `body=${f.body}`,
-    ],
-    `inline finding ${n}/${total} at ${f.path}:${f.line}`,
-    PostReviewError,
-  );
-  // A 2xx with no id is not a posted comment. #1679's whole shape is a success
-  // report over a comment that does not exist, so the RESPONSE is checked rather
-  // than the exit code -- the exit code is exactly the evidence that bug teaches
-  // us not to accept.
-  if (!res || res.id === undefined || res.id === null) {
-    throw new PostReviewError(
-      'INLINE_POST_FAILED',
-      `POST of finding ${n}/${total} at ${f.path}:${f.line} returned no comment id. Aborting with NO ` +
-        'MARKER, so the gate reads NOT_POSTED and a re-run is safe. REMEDY: re-run. A 422 here usually ' +
-        `means line ${f.line} is not in this commit's diff; fix the finding's anchor.`,
-    );
-  }
-  return res;
-}
-
-/**
- * Write the marker comment and PROVE it is readable afterwards.
- *
- * ONE COPY, used by both the review path and the nothing-to-review path. The
- * read-back is the whole contract this file exists to keep -- "it posted, trust
- * me" is exactly the claim the gate refuses -- so a second path that wrote a
- * marker without verifying it would be a hole in the shape of the bug.
- *
- * Idempotent by construction: a marker already written for THIS head is updated
- * in place. Two markers for one sha would leave the gate reading whichever came
- * first in fetch order, which is not a decision anyone made.
- */
-function upsertAndVerify({ repo, pr, sha, author, body, want }) {
-  const carrier = fetchSurface(repo, pr, `issues/${pr}/comments`).find(
-    (c) =>
-      normaliseLogin(c?.user?.login) === author &&
-      MARKER_RE.exec(String(c?.body ?? ''))?.[1] === sha,
-  );
-  const res = carrier
-    ? gh(
-        ['api', `repos/${repo}/issues/comments/${carrier.id}`, '--method', 'PATCH', '-f', `body=${body}`],
-        'the review summary (update in place)',
-        PostReviewError,
-      )
-    : gh(
-        ['api', `repos/${repo}/issues/${pr}/comments`, '--method', 'POST', '-f', `body=${body}`],
-        'the review summary',
-        PostReviewError,
-      );
-  if (!res || res.id === undefined || res.id === null) {
-    throw new PostReviewError(
-      'SUMMARY_POST_FAILED',
-      'The marker comment returned no comment id, so the gate has nothing to read. REMEDY: check that the ' +
-        'posting workflow has write access to the pull request, then re-run.',
-    );
-  }
-  const readable = fetchSurface(repo, pr, `issues/${pr}/comments`).some(
-    (c) => normaliseLogin(c?.user?.login) === author && String(c?.body ?? '').includes(want),
-  );
-  if (!readable) {
-    throw new PostReviewError(
-      'MARKER_NOT_READ_BACK',
-      `The marker \`${want}\` is not readable on PR #${pr} one GET after it was written. A marker this ` +
-        'script cannot read is one the gate may not be able to read either, and reporting success here ' +
-        'would be the exact "it posted, trust me" claim this file exists to refuse. REMEDY: re-run; if ' +
-        '`--author` is wrong the marker is on the PR under a different login, and the gate will keep ' +
-        'reading NOT_POSTED until the login is fixed.',
-    );
-  }
-}
+export { PostReviewError };
+export { MAX_POSTED_FINDINGS, readFindingsDoc, readFindings, readOmitted, marker };
+export { fingerprint } from './lib/review-findings.mjs';
+export { confirmedOnHead } from './lib/review-comments.mjs';
+export { nothingToReviewBody } from './lib/review-summary.mjs';
+export { summaryBody, readJudgedAway, readCappedCount };
 
 function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -895,55 +287,11 @@ function main() {
   }
 
   // THE NOTHING-TO-REVIEW PATH, taken before any findings handling because there
-  // are none by construction. It still checks the head first -- a marker for a
-  // dead head is one the gate calls STALE_REVIEW -- and it posts ONE comment and
-  // no inline anything. See `nothingToReviewBody` for why this is a verdict of
-  // its own and not `clean`.
+  // are none by construction. Extracted to `postNothingToReview`
+  // (lib/review-comments.mjs, module-size budget, #3795); every branch inside
+  // it calls `process.exit(0)` itself, so control never returns here.
   if (args.nothingToReview) {
-    // A REAL VERDICT FOR THIS HEAD OUTRANKS THIS ONE. `upsertAndVerify` finds a
-    // carrier by sha alone, so without this it would PATCH an existing
-    // `verdict=findings count=3` summary into "nothing to review / count=0" --
-    // orphaning three inline comments and stepping around the
-    // FINDINGS_NOT_POSTED cross-check that exists to catch exactly that gap.
-    // Reachable only if the exclusion outcome flipped for one head, which needs
-    // dedup to have failed; narrow, and a downgrade this file must never make.
-    const existing = fetchSurface(args.repo, args.pr, `issues/${args.pr}/comments`).find((c) => {
-      const m = MARKER_RE.exec(String(c?.body ?? ''));
-      return normaliseLogin(c?.user?.login) === author && m?.[1] === args.sha && m[2] !== 'nothing-to-review';
-    });
-    if (existing) {
-      // REPORTED, AND EXIT 0. The refusal is right -- overwriting a real verdict
-      // would retract it and orphan any inline findings under it -- but THROWING
-      // was wrong: it reddens the lane job for a state that needs no action, the
-      // gate is already satisfied by the standing marker, and no re-run could
-      // ever clear it. That is precisely the unclearable-red class this branch
-      // exists to remove, reintroduced by its own guard. Raised by CodeRabbit on
-      // PR #3587.
-      console.log(
-        `WOULD_DOWNGRADE_VERDICT: a \`${MARKER_RE.exec(existing.body)[2]}\` marker already stands for ` +
-          `${args.sha.slice(0, 9)}. Overwriting it with \`nothing-to-review\` would retract a real ` +
-          'verdict and orphan any inline findings under it, so nothing was posted. This head IS ' +
-          'covered and the gate reads it; there is nothing to do.',
-      );
-      process.exit(0);
-    }
-    const liveHead = fetchHeadSha(args.repo, args.pr);
-    if (liveHead !== args.sha) {
-      console.log(
-        `SKIPPED_STALE: this run read ${args.sha.slice(0, 9)}; the PR head is now ${liveHead.slice(0, 9)}.`,
-      );
-      process.exit(0);
-    }
-    upsertAndVerify({
-      repo: args.repo,
-      pr: args.pr,
-      sha: args.sha,
-      author,
-      body: nothingToReviewBody(args.sha, args.reason),
-      want: marker(args.sha, 'nothing-to-review', 0),
-    });
-    console.log(`Posted a nothing-to-review marker for ${args.sha.slice(0, 9)}.`);
-    process.exit(0);
+    postNothingToReview({ repo: args.repo, pr: args.pr, sha: args.sha, author, reason: args.reason });
   }
 
   // Read BEFORE the first network call. A malformed findings file must refuse
@@ -963,40 +311,19 @@ function main() {
     process.exit(0);
   }
 
-  // ------------------------------------------------------------------ STEP 2
-  const before = fetchSurface(args.repo, args.pr, `pulls/${args.pr}/comments`);
-  const already = new Set(
-    confirmedOnHead(before, author, args.sha).map((r) => fingerprint(r.path, r.line, String(r.body ?? ''))),
-  );
-  let posted = 0;
-  let skipped = 0;
-  for (const [i, f] of findings.entries()) {
-    if (already.has(fingerprint(f.path, f.line, f.body))) {
-      skipped += 1;
-      continue;
-    }
-    postFinding(args.repo, args.pr, args.sha, f, i + 1, findings.length);
-    posted += 1;
-  }
+  // ------------------------------------------------------------ STEPS 2 + 3
+  // Extracted to `postFindingsAndConfirm` (lib/review-comments.mjs,
+  // module-size budget, #3795): posts every not-yet-present finding, then
+  // reads the surface back and confirms what is on the pull request. Throws
+  // READBACK_SHORT with no marker written -- see that function's own comment.
+  const { posted, skipped, confirmed } = postFindingsAndConfirm({
+    repo: args.repo,
+    pr: args.pr,
+    sha: args.sha,
+    author,
+    findings,
+  });
 
-  // ------------------------------------------------------------------ STEP 3
-  const after = fetchSurface(args.repo, args.pr, `pulls/${args.pr}/comments`);
-  const confirmed = confirmedOnHead(after, author, args.sha).length;
-
-  // `>= findings.length`, not `>= posted`: deliberately STRONGER than "what this
-  // run sent". Measuring against `posted` would let a re-run launder a comment
-  // lost by an earlier attempt -- it would skip the finding as a duplicate,
-  // require zero, and write a marker for a finding nobody can see.
-  if (confirmed < findings.length) {
-    throw new PostReviewError(
-      'READBACK_SHORT',
-      `Read back ${confirmed} inline comment(s) from \`${author}\` on ${args.sha.slice(0, 9)}; the review ` +
-        `has ${findings.length} finding(s) (${posted} posted this run, ${skipped} already present). Every ` +
-        'POST reported success, so this is the #1679 shape exactly: `Posted 0/N` under a green job. NO ' +
-        'MARKER WRITTEN, so the gate reads NOT_POSTED and a re-run is safe. REMEDY: re-run. If it recurs, ' +
-        'attach the log to anthropics/claude-code-action#1679 rather than re-running indefinitely.',
-    );
-  }
   // This run found nothing while our own findings stand on this commit. They
   // STAND: marker `findings`, summary states the disagreement, exit 0. A
   // disagreement between two runs is a fact to record, not a failure to post.

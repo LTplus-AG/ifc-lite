@@ -48,13 +48,40 @@ export interface RelationshipInfo {
  * small object allocations. Build phase uses counting sort (O(n)) instead
  * of comparison sort (O(n log n)) for massive speedup on large files.
  */
+/** Multiplier that keeps `type` in its own digit range of the dedupe key. */
+const TYPE_SPAN = 1 << 16;
+
 export class RelationshipGraphBuilder {
   private _sources: number[] = [];
   private _targets: number[] = [];
   private _types: number[] = [];
   private _relIds: number[] = [];
 
+  /**
+   * Edges already recorded, keyed by source, then by `target * TYPE_SPAN + type`.
+   * Nothing in EXPRESS forbids two `IfcRel*` instances from naming the same
+   * (relating, related) pair, so a schema-legal file can hand us the same edge
+   * twice; every consumer that walks the raw edge list would then count the
+   * target twice (#3760).
+   */
+  private _seen = new Map<number, Set<number>>();
+
+  /**
+   * Adds one edge, ignoring a repeat of a `(source, target, type)` triple
+   * already present. The first instance wins, so the surviving edge keeps the
+   * express id of the first `IfcRel*` that declared it.
+   */
   addEdge(source: number, target: number, type: RelationshipType, relId: number): void {
+    let seenForSource = this._seen.get(source);
+    if (seenForSource === undefined) {
+      seenForSource = new Set<number>();
+      this._seen.set(source, seenForSource);
+    }
+    // Express ids are u32, so this stays well inside Number.MAX_SAFE_INTEGER.
+    const key = target * TYPE_SPAN + type;
+    if (seenForSource.has(key)) return;
+    seenForSource.add(key);
+
     this._sources.push(source);
     this._targets.push(target);
     this._types.push(type);

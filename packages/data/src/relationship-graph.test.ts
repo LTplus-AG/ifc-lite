@@ -230,4 +230,38 @@ describe('buildCSR determinism and edge presence', () => {
     expect(g.forward.getTargets(200, RelationshipType.Aggregates)).toEqual([]);
     expect(g.forward.getTargets(200).sort()).toEqual([301, 302]);
   });
+  // Two schema-legal IfcRel* instances may name the same (relating, related)
+  // pair — nothing in EXPRESS forbids it (see #3760). Before the dedupe the
+  // builder pushed both, so every consumer that walks the raw edge list
+  // (spatial hierarchy, schedules, Parquet, property/classification reads)
+  // counted the element twice.
+  it('collapses a repeated (source, target, type) edge to one', () => {
+    const builder = new RelationshipGraphBuilder();
+    builder.addEdge(200, 301, RelationshipType.ContainsElements, 5001);
+    builder.addEdge(200, 301, RelationshipType.ContainsElements, 5002); // redundant IfcRel
+    const g = builder.build();
+
+    expect(g.getRelated(200, RelationshipType.ContainsElements, 'forward')).toEqual([301]);
+    expect(g.getRelated(301, RelationshipType.ContainsElements, 'inverse')).toEqual([200]);
+    expect(g.forward.counts.get(200)).toBe(1);
+    // The first relationship instance wins, so the surviving edge keeps a
+    // real IfcRel express id rather than a synthesised one.
+    expect(g.forward.getEdges(200)).toEqual([
+      { target: 301, type: RelationshipType.ContainsElements, relationshipId: 5001 },
+    ]);
+    expect(g.getRelationshipsBetween(200, 301)).toHaveLength(1);
+  });
+
+  it('keeps edges that differ only by type, target, or source', () => {
+    const builder = new RelationshipGraphBuilder();
+    builder.addEdge(200, 301, RelationshipType.ContainsElements, 1);
+    builder.addEdge(200, 301, RelationshipType.Aggregates, 2); // same pair, other type
+    builder.addEdge(200, 302, RelationshipType.ContainsElements, 3); // other target
+    builder.addEdge(201, 301, RelationshipType.ContainsElements, 4); // other source
+    const g = builder.build();
+
+    expect(g.forward.getEdges(200)).toHaveLength(3);
+    expect(g.forward.getTargets(200, RelationshipType.ContainsElements)).toEqual([301, 302]);
+    expect(g.inverse.getTargets(301, RelationshipType.ContainsElements).sort()).toEqual([200, 201]);
+  });
 });

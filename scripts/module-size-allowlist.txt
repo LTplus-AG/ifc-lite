@@ -10,8 +10,8 @@
 # The rule: SHRINK OR SPLIT. Budgets ratchet DOWN by default: `--update`
 # refuses to raise a budget or add a row, so the regeneration command cannot
 # quietly undo the ratchet. A raise or a new row IS sanctioned, deliberately —
-# `--update --allow-raise`, justified per file in the PR. Either way it costs
-# the reviewable digest line described below. When a file drops to <= 400,
+# `--update --allow-raise`, justified per file in the PR — the row's own diff
+# is the reviewable line. When a file drops to <= 400,
 # DELETE its row (the gate prints a note telling you to); a stale exemption is
 # permanent slack.
 #
@@ -26,12 +26,14 @@
 # `--allow-raise` is not optional there — re-recording a file that GREW is a
 # raise, so without it the sweep writes nothing and exits 1.
 #
-# Any edit here moves that row's SCOPE entry in ALLOWLIST_DIGESTS in
-# scripts/check-module-size.mjs, which must be updated in the same commit —
-# that is the point: loosening the ratchet costs a reviewable line. The pin is
-# sharded per packages/<name>, apps/<name> and rust/<crate>, so an edit here
-# moves ONE of its entries. Two PRs in different scopes then merge cleanly
-# unless their entries sit on ADJACENT lines, which git cannot auto-merge.
+# There is no separate digest to re-pin (removed by #3745): a row edit here
+# is the whole change. The gate used to also require moving a per-scope hash
+# stored in scripts/check-module-size.mjs, which was a pure function of these
+# rows anyway — deriving a value from this file and then storing it back in a
+# DIFFERENT file bought no extra review signal (the row diff above already
+# says what changed) while making any two PRs touching the same scope collide
+# on that single pinned line, even when their row edits were disjoint. See
+# scripts/check-module-size.mjs for the two teeth this gate still has.
    524 apps/viewer-embed/src/bridge/handler.ts
    481 apps/viewer/src/components/extensions/ExtensionsPanel.tsx
    431 apps/viewer/src/components/extensions/FlavorDialog.tsx
@@ -347,7 +349,7 @@
    957 scripts/check-issue-queue.mjs
    448 scripts/check-legacy-entity-coverage.mjs
   1145 scripts/check-loader-hook-specifier-match.mjs
-   723 scripts/check-module-size.mjs
+   557 scripts/check-module-size.mjs
    951 scripts/check-pr-review-signal.mjs
    771 scripts/check-review-posted.mjs
    446 scripts/check-source-text-assertions.mjs

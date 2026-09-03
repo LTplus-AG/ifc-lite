@@ -18,7 +18,25 @@ import type { CellValue, ListDataProvider } from './types.js';
 const WORLD_COORDINATE_QUANTITY_TYPE = QuantityType.Length;
 
 /** Resolve a `geometry` column/condition to one axis of the element's World
- *  Coordinate. `axis` is matched case-insensitively (`X` default). */
+ *  Coordinate. `axis` is matched case-insensitively; absent or blank means X.
+ *
+ *  AN AXIS THAT IS NOT X/Y/Z RESOLVES TO NULL, NOT TO X (#3734). It used to
+ *  share the `default` arm with `case 'X'`, so a column whose axis was `Q` --
+ *  a hand-edited saved list, a definition from a schema that grew an axis this
+ *  build does not know -- reported the X coordinate under a header saying
+ *  something else. An empty cell is a visible gap; a plausible number under
+ *  the wrong label is a wrong answer that reads as a right one, and nothing
+ *  downstream can tell them apart. Blank still means X, which is the
+ *  documented default for a column created without an axis.
+ *
+ *  A DELIBERATE ASYMMETRY WITH THE SIBLING SOURCES, named so it is not read as
+ *  an oversight: `getStoreyName` and the zone resolver in `engine.ts` keep the
+ *  shared `case X: default:` shape and substitute their default for an
+ *  unrecognised selector, which their own doc blocks call intentional. The
+ *  difference is what a wrong answer costs. A storey name under a mislabelled
+ *  header is visibly a name; an X coordinate under a `Q` header is a number
+ *  that looks exactly as right as the correct one. Whether the siblings should
+ *  follow is a separate question and is noted on #3734. */
 export function getWorldCoordinateValue(
   entityId: number,
   axis: string,
@@ -26,11 +44,12 @@ export function getWorldCoordinateValue(
 ): CellValue {
   const pos = provider.getWorldPosition?.(entityId);
   if (!pos) return null;
-  switch (axis.toUpperCase()) {
+  switch (axis.trim().toUpperCase()) {
     case 'Y': return pos.y;
     case 'Z': return pos.z;
     case 'X':
-    default: return pos.x;
+    case '': return pos.x;
+    default: return null;
   }
 }
 

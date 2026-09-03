@@ -142,6 +142,7 @@
     "HeaderFlags: enum",
     "MAGIC: const",
     "ParsedGLB: interface",
+    "ParsedIfcStore: interface",
     "SECTION_ENTRY_SIZE: const",
     "SchemaVersion: enum",
     "SectionEntry: interface",
@@ -157,6 +158,7 @@
     "parseGLBToMeshData: function",
     "readGeometryHeadV13: function",
     "readInstancedShards: function",
+    "toCacheDataStore: function",
     "xxhash64: function",
     "xxhash64Hex: function"
   ],

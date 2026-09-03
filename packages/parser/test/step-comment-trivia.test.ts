@@ -131,8 +131,8 @@ describe.each(scanners)('$name: a comment is trivia inside a record too', ({ run
     // Composition, direction one: a comment opener inside a string literal is
     // ordinary text. Skipping the literal first is what keeps it that way.
     //
-    // The fixture is deliberately a *complete* `/* ... */` with no closing `*/`
-    // anywhere else in the record: `'rev /* pending note'` never closes the
+    // The fixture deliberately carries an *unterminated* `/*` opener with no
+    // closing `*/` anywhere in the record: `'rev /* pending note'` never closes the
     // comment it would open under the wrong precedence. A scanner that checked
     // for a comment opener before finishing the string literal would treat the
     // record as carrying an unterminated comment and refuse it (the same

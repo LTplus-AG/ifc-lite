@@ -1091,6 +1091,7 @@
     "getPartOfRelations: function",
     "getPropertySets: function",
     "groupPropertySetsByInstance: function",
+    "groupQuantitySetsByInstance: function",
     "isBuildingLikeSpatialType: function",
     "isEntityRef: function",
     "isEntitySubtypeOf: function",

@@ -384,9 +384,9 @@ function buildQuantities(
 
       builder.add({
         entityId: expressId,
-        // Keep the authored set name (Qto_* or custom) when the key
-        // carries one; only heuristic-routed keys get the synthesized set.
+        // Keep the authored set name (Qto_* or custom) when the key carries one; else the synthesized set.
         qsetName: v5a ? v5a.setName : qsetName,
+        qsetGlobalId: '', // IFCX's flat model has no qset GlobalId; parity with property-extractor.ts's psetGlobalId.
         quantityName: propName,
         quantityType: getQuantityType(propName, v5a ? v5a.setName.startsWith('Qto_') : true),
         value: effective as number,

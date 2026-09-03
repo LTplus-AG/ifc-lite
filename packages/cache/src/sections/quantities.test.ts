@@ -87,3 +87,53 @@ describe('cache QuantityTable.sumByType', () => {
     expect(() => restored.sumByType('NetArea', 42)).toThrow(/elementType/);
   });
 });
+
+
+describe('cache QuantityTable.getForEntity distinct-instance grouping (parity with @ifc-lite/data)', () => {
+  it('keeps two distinct same-named qset instances separate after a cache round-trip, matching the fresh-parse result', () => {
+    // Same fixture shape as `@ifc-lite/data`'s
+    // `quantity-table.test.ts` ("keeps two distinct qset INSTANCES that
+    // share a literal name separate, not merged"): a federated merge, or an
+    // exporter emitting the same Qto_ set twice on one element, puts two
+    // rows on one entity whose qsetName is identical but whose
+    // qsetGlobalId differs. `readQuantities`'s `getForEntity` must key on
+    // (qsetName, qsetGlobalId), same as the columnar implementation, or a
+    // cache-loaded model answers differently than a fresh parse.
+    const strings = new StringTable();
+    const builder = new QuantityTableBuilder(strings);
+    builder.add({
+      entityId: 100,
+      qsetName: 'Qto_WallBaseQuantities',
+      qsetGlobalId: 'gid-AAA',
+      quantityName: 'NetVolume',
+      quantityType: QuantityType.Volume,
+      value: 1.25,
+    });
+    builder.add({
+      entityId: 100,
+      qsetName: 'Qto_WallBaseQuantities',
+      qsetGlobalId: 'gid-BBB',
+      quantityName: 'NetArea',
+      quantityType: QuantityType.Area,
+      value: 5.0,
+    });
+    const table = builder.build();
+
+    // Parity assertion: the cache-loaded result must equal the fresh-parse
+    // result for this fixture -- that is the guard that actually prevents
+    // the two grouping loops from re-diverging, not just this one fixture
+    // passing.
+    const fresh = table.getForEntity(100);
+    const restored = roundTrip(strings, table).getForEntity(100);
+    expect(restored).toEqual(fresh);
+
+    expect(restored).toHaveLength(2);
+    const byGlobalId = new Map(restored.map((s) => [s.globalId, s]));
+    expect(byGlobalId.get('gid-AAA')?.quantities).toEqual([
+      { name: 'NetVolume', type: QuantityType.Volume, value: 1.25, formula: undefined },
+    ]);
+    expect(byGlobalId.get('gid-BBB')?.quantities).toEqual([
+      { name: 'NetArea', type: QuantityType.Area, value: 5.0, formula: undefined },
+    ]);
+  });
+});

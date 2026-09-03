@@ -6,8 +6,8 @@
  * QuantityTable serialization
  */
 
-import type { QuantityTable, QuantitySet, StringTable } from '@ifc-lite/data';
-import { comparePropertyValues } from '@ifc-lite/data';
+import type { QuantityTable, StringTable } from '@ifc-lite/data';
+import { comparePropertyValues, groupQuantitySetsByInstance } from '@ifc-lite/data';
 import { BufferWriter, BufferReader } from '../utils/buffer-utils.js';
 
 /**
@@ -20,6 +20,7 @@ export function writeQuantities(writer: BufferWriter, quantities: QuantityTable)
 
   writer.writeTypedArray(quantities.entityId);
   writer.writeTypedArray(quantities.qsetName);
+  writer.writeTypedArray(quantities.qsetGlobalId);
   writer.writeTypedArray(quantities.quantityName);
   writer.writeTypedArray(quantities.quantityType);
   writer.writeTypedArray(quantities.value);
@@ -40,6 +41,7 @@ export function readQuantities(reader: BufferReader, strings: StringTable): Quan
 
   const entityId = reader.readUint32Array(count);
   const qsetName = reader.readUint32Array(count);
+  const qsetGlobalId = reader.readUint32Array(count);
   const quantityName = reader.readUint32Array(count);
   const quantityType = reader.readUint8Array(count);
   const value = reader.readFloat64Array(count);
@@ -54,6 +56,7 @@ export function readQuantities(reader: BufferReader, strings: StringTable): Quan
     count,
     entityId,
     qsetName,
+    qsetGlobalId,
     quantityName,
     quantityType,
     value,
@@ -65,30 +68,16 @@ export function readQuantities(reader: BufferReader, strings: StringTable): Quan
 
     getForEntity: (id) => {
       const rowIndices = entityIndex.get(id) || [];
-      const qsets = new Map<string, QuantitySet>();
-
-      for (const idx of rowIndices) {
-        const qsetNameStr = strings.get(qsetName[idx]);
-
-        if (!qsets.has(qsetNameStr)) {
-          qsets.set(qsetNameStr, {
-            name: qsetNameStr,
-            quantities: [],
-          });
-        }
-
-        const qset = qsets.get(qsetNameStr)!;
-        const quantNameStr = strings.get(quantityName[idx]);
-
-        qset.quantities.push({
-          name: quantNameStr,
-          type: quantityType[idx],
-          value: value[idx],
-          formula: formula[idx] > 0 ? strings.get(formula[idx]) : undefined,
-        });
-      }
-
-      return Array.from(qsets.values());
+      return groupQuantitySetsByInstance(
+        rowIndices,
+        qsetName,
+        qsetGlobalId,
+        quantityName,
+        quantityType,
+        value,
+        formula,
+        strings,
+      );
     },
 
     getQuantityValue: (id, qset, quant) => {

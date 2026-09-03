@@ -17,7 +17,7 @@ import {
 import type { PropertyValue } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
 import { readQuantitySet } from './quantity-collect.js';
-import { appendSetsFromSecondSource } from './property-set-merge.js';
+import { appendSetsFromSecondSource, setIdentityKey } from './property-set-merge.js';
 import type { GeoreferenceInfo } from './georef-extractor.js';
 
 // Re-export classification and material resolvers
@@ -63,7 +63,7 @@ export interface TypePropertyInfo {
 export interface TypeQuantityInfo {
     typeName: string;
     typeId: number;
-    quantities: Array<{ name: string; quantities: Array<{ name: string; type: number; value: number }> }>;
+    quantities: Array<{ name: string; globalId?: string; quantities: Array<{ name: string; type: number; value: number }> }>;
 }
 
 /**
@@ -181,8 +181,9 @@ export function extractPsetsFromIds(
 
         // Only surface sets that actually carry properties. An empty, named set
         // contributes nothing and — because extractTypePropertiesOnDemand dedups
-        // by name — an empty set from one source could otherwise suppress a
-        // populated same-named set from another (symmetric with extractQsetsFromIds).
+        // by (name, globalId) identity — an empty set from one source could
+        // otherwise suppress a populated same-identity set from another
+        // (symmetric with extractQsetsFromIds).
         if (properties.length > 0) {
             result.push({ name: psetName, globalId: psetGlobalId, properties });
         }
@@ -227,7 +228,7 @@ export function extractTypePropertiesOnDemand(
         : typeRef.type;
 
     const allPsets: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> }> = [];
-    const seenPsetNames = new Set<string>();
+    const seenPsetKeys = new Set<string>();
     const ownPsetIds = new Set<number>();
 
     // Source 1: HasPropertySets attribute on the type entity (index 5 for IfcTypeObject subtypes)
@@ -237,7 +238,7 @@ export function extractTypePropertiesOnDemand(
         if (Array.isArray(hasPropertySets)) {
             for (const id of hasPropertySets) if (typeof id === 'number') ownPsetIds.add(id);
             for (const pset of extractPsetsFromIds(store, extractor, [...ownPsetIds])) {
-                seenPsetNames.add(pset.name);
+                seenPsetKeys.add(setIdentityKey(pset));
                 allPsets.push(pset);
             }
         }
@@ -246,7 +247,7 @@ export function extractTypePropertiesOnDemand(
     // Source 2: onDemandPropertyMap for the type entity (IFC4: via IFCRELDEFINESBYPROPERTIES)
     const typePsetIds = store.onDemandPropertyMap?.get(typeId);
     if (typePsetIds && typePsetIds.length > 0) {
-        appendSetsFromSecondSource(allPsets, ownPsetIds, seenPsetNames, typePsetIds,
+        appendSetsFromSecondSource(allPsets, ownPsetIds, seenPsetKeys, typePsetIds,
             (ids) => extractPsetsFromIds(store, extractor, ids));
     }
 
@@ -277,7 +278,7 @@ export function extractTypeEntityOwnProperties(
     if (!typeEntity) return [];
 
     const allPsets: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> }> = [];
-    const seenPsetNames = new Set<string>();
+    const seenPsetKeys = new Set<string>();
     const ownPsetIds = new Set<number>();
 
     // Source 1: HasPropertySets attribute (index 5 for IfcTypeObject subtypes)
@@ -285,7 +286,7 @@ export function extractTypeEntityOwnProperties(
     if (Array.isArray(hasPropertySets)) {
         for (const id of hasPropertySets) if (typeof id === 'number') ownPsetIds.add(id);
         for (const pset of extractPsetsFromIds(store, extractor, [...ownPsetIds])) {
-            seenPsetNames.add(pset.name);
+            seenPsetKeys.add(setIdentityKey(pset));
             allPsets.push(pset);
         }
     }
@@ -293,7 +294,7 @@ export function extractTypeEntityOwnProperties(
     // Source 2: onDemandPropertyMap (IFC4: via IFCRELDEFINESBYPROPERTIES)
     const typePsetIds = store.onDemandPropertyMap?.get(typeEntityId);
     if (typePsetIds && typePsetIds.length > 0) {
-        appendSetsFromSecondSource(allPsets, ownPsetIds, seenPsetNames, typePsetIds,
+        appendSetsFromSecondSource(allPsets, ownPsetIds, seenPsetKeys, typePsetIds,
             (ids) => extractPsetsFromIds(store, extractor, ids));
     }
 
@@ -314,8 +315,8 @@ export function extractQsetsFromIds(
     store: IfcDataStore,
     extractor: EntityExtractor,
     qsetIds: number[]
-): Array<{ name: string; quantities: Array<{ name: string; type: number; value: number }> }> {
-    const result: Array<{ name: string; quantities: Array<{ name: string; type: number; value: number }> }> = [];
+): Array<{ name: string; globalId?: string; quantities: Array<{ name: string; type: number; value: number }> }> {
+    const result: Array<{ name: string; globalId?: string; quantities: Array<{ name: string; type: number; value: number }> }> = [];
 
     for (const qsetId of qsetIds) {
         const qsetRef = store.entityIndex.byId.get(qsetId);
@@ -326,9 +327,9 @@ export function extractQsetsFromIds(
 
         // A set that walks to zero quantities is dropped — see
         // {@link readQuantitySet}. Here that also stops an empty set from one
-        // source suppressing a populated same-named set from another, since
-        // `extractTypeQuantitiesOnDemand` still dedups NAMED sets by name (see
-        // {@link appendSetsFromSecondSource}).
+        // source suppressing a populated same-identity set from another, since
+        // `extractTypeQuantitiesOnDemand` still dedups NAMED sets by
+        // `(name, globalId)` identity (see {@link appendSetsFromSecondSource}).
         const qset = readQuantitySet(store, extractor, qsetRef);
         if (qset) result.push(qset);
     }
@@ -369,8 +370,8 @@ export function extractTypeQuantitiesOnDemand(
         ? typeEntity.attributes[2]
         : typeRef.type;
 
-    const allQsets: Array<{ name: string; quantities: Array<{ name: string; type: number; value: number }> }> = [];
-    const seenQsetNames = new Set<string>();
+    const allQsets: Array<{ name: string; globalId?: string; quantities: Array<{ name: string; type: number; value: number }> }> = [];
+    const seenQsetKeys = new Set<string>();
     const ownSetIds = new Set<number>();
 
     // Source 1: HasPropertySets attribute on the type (index 5) — quantity sets
@@ -380,7 +381,7 @@ export function extractTypeQuantitiesOnDemand(
         if (Array.isArray(hasPropertySets)) {
             for (const id of hasPropertySets) if (typeof id === 'number') ownSetIds.add(id);
             for (const qset of extractQsetsFromIds(store, extractor, [...ownSetIds])) {
-                seenQsetNames.add(qset.name);
+                seenQsetKeys.add(setIdentityKey(qset));
                 allQsets.push(qset);
             }
         }
@@ -389,7 +390,7 @@ export function extractTypeQuantitiesOnDemand(
     // Source 2: onDemandQuantityMap for the type entity (IFC4 IfcRelDefinesByProperties).
     const typeQsetIds = store.onDemandQuantityMap?.get(typeId);
     if (typeQsetIds && typeQsetIds.length > 0) {
-        appendSetsFromSecondSource(allQsets, ownSetIds, seenQsetNames, typeQsetIds,
+        appendSetsFromSecondSource(allQsets, ownSetIds, seenQsetKeys, typeQsetIds,
             (ids) => extractQsetsFromIds(store, extractor, ids));
     }
 

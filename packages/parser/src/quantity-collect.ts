@@ -187,13 +187,16 @@ export function collectQuantitiesFromRefs(
 /**
  * `Quantities` slot on `IfcElementQuantity`: GlobalId[0], OwnerHistory[1],
  * Name[2], Description[3] inherited from `IfcRoot`, then MethodOfMeasurement[4]
- * and Quantities[5].
+ * and Quantities[5]. GlobalId[0] is the identity of the `IfcElementQuantity`
+ * instance itself, not any of its quantities.
  */
 const QUANTITIES_SLOT = 5;
 
 /** One extracted quantity set, in the shape both call sites report. */
 export interface CollectedQuantitySet {
     name: string;
+    /** `GlobalId` of the source `IfcElementQuantity` instance, when read as a string. */
+    globalId?: string;
     quantities: CollectedQuantity[];
 }
 
@@ -243,10 +246,11 @@ export function readQuantitySet(
     // verbatim downstream (MCP tool responses, `bim.quantities()`) as though
     // the model had genuinely declared that name (#3530 census).
     const qsetName = typeof qsetAttrs[2] === 'string' ? qsetAttrs[2] : '';
+    const qsetGlobalId = typeof qsetAttrs[0] === 'string' ? qsetAttrs[0] : undefined;
     const quantities = collectQuantitiesFromRefs(store, extractor, qsetAttrs[QUANTITIES_SLOT]);
 
     if (quantities.length === 0) return null;
-    return { name: qsetName, quantities };
+    return { name: qsetName, globalId: qsetGlobalId, quantities };
 }
 
 /**

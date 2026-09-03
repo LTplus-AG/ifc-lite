@@ -46,6 +46,13 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
+          # The moved-file set is read from local git, not from GitHub's
+          # `compare` endpoint, which caps `files` at 300 (measured: PR #3610's
+          # base returned exactly 300) and omits it entirely past 250 commits.
+          # An open PR's tested base is an ancestor of main, so full history is
+          # what makes it diffable; a shallow clone would report every PR as
+          # `unfetched`.
+          fetch-depth: 0
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:

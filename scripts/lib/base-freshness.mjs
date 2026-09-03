@@ -143,14 +143,21 @@ export function evaluateFreshness({ prFiles, movedFiles, snapshots, rowsChangedO
 /** One line per verdict, and the two lines must not be confusable. */
 export function formatVerdict({ pr, baseSha, commitsBehind, movedFileCount, result }) {
   const base = baseSha ? baseSha.slice(0, 9) : 'unknown';
-  const head = `PR #${pr} was tested against ${base}; main has gained ${commitsBehind} commit(s) touching ${movedFileCount} file(s) since.`;
+  // `commitsBehind` is null exactly when the base is not in the checkout, so
+  // there is no count to print and printing `null commit(s)` would read as a
+  // bug in the sweep rather than as the outcome it is.
+  const gained =
+    commitsBehind === null
+      ? 'how far main has moved since is unknown'
+      : `main has gained ${commitsBehind} commit(s) touching ${movedFileCount} file(s) since`;
+  const head = `PR #${pr} was tested against ${base}; ${gained}.`;
   if (!result.stale) {
     return `base-freshness: OK -- ${head} None of them couples to a whole-tree snapshot this PR records or is recorded by.`;
   }
   const why = result.couplings
     .map(({ snapshot, direction, overlap }) => {
-      if (direction === 'truncated') {
-        return 'the base moved past what GitHub will compare (250 commits), so no snapshot could be checked; rebase';
+      if (direction === 'unfetched') {
+        return 'the tested base is not in this checkout, so no snapshot could be compared -- deepen the checkout (fetch-depth: 0) or rebase the PR';
       }
       if (direction === 'both-recorded') {
         return `${snapshot}: this PR and main each re-recorded it, from two different trees`;

@@ -78,13 +78,28 @@ const STALE_LABEL = 'base-stale';
 const SNAPSHOT_FLOOR = 3;
 
 /**
- * GitHub's compare endpoint returns at most 250 commits and will not show more
- * of the diff than that. Its FILE list paginates, so that cap is the only one
- * left -- and past it the comparison under-reports, which reads as OK. A branch
- * this far back needs a rebase before any of this is the interesting question,
- * so it is reported STALE rather than quietly compared against a partial view.
+ * WHY THE MOVED-FILE SET COMES FROM LOCAL GIT AND NOT FROM `compare`.
+ *
+ * An earlier draft read it from `repos/:o/:r/compare/base...main` and was wrong
+ * in two ways at once, one loud and one silent. Measured 2026-09-03 on PR
+ * #3610's base (107 commits behind): the response carries `files` with EXACTLY
+ * 300 entries. 300 is the endpoint's hard cap on that array and `--paginate`
+ * does not lift it -- an earlier comment here asserted the file list paginates,
+ * and that claim was simply false. Past 300 files the comparison UNDER-reports,
+ * a coupling beyond the cap is invisible, and the verdict prints OK. That is
+ * the silent miss this whole script exists to avoid, arriving through its own
+ * front door.
+ *
+ * The loud half: over 250 commits GitHub drops `files` entirely, `--jq
+ * '.files[]'` fails with "cannot iterate over: null", and the PR gets no
+ * verdict at all. 7 of 36 open PRs came back that way in the first live sweep.
+ *
+ * The sweep runs on `push: main` with the repository already checked out, so
+ * the local object database answers the same question exactly, with no cap, no
+ * pagination and no request. The workflow therefore checks out with
+ * `fetch-depth: 0`; a base commit that is somehow still absent is reported as
+ * its own outcome rather than being quietly treated as "nothing moved".
  */
-const COMPARE_COMMIT_CAP = 250;
 
 function gh(args) {
   return execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
@@ -92,6 +107,27 @@ function gh(args) {
 
 function ghJson(path) {
   return JSON.parse(gh(['api', path]));
+}
+
+function git(args) {
+  return execFileSync('git', args, {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+  });
+}
+
+/** Is this commit in the local object database? */
+function haveCommit(sha) {
+  try {
+    execFileSync('git', ['cat-file', '-e', `${sha}^{commit}`], {
+      cwd: REPO_ROOT,
+      stdio: 'ignore',
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function isRepoFile(p) {
@@ -156,50 +192,53 @@ function prChangedFiles(repo, number) {
     .filter(Boolean);
 }
 
-/** Every file main changed since `base`, with the patch for the snapshots. */
-function movedSince(repo, base, mainTip) {
-  return gh([
-    'api',
-    '--paginate',
-    `repos/${repo}/compare/${base}...${mainTip}?per_page=100`,
-    '--jq',
-    '.files[] | {filename, patch}',
-  ])
+/**
+ * Every file main changed since `base`, plus the rows moved in each snapshot.
+ *
+ * Read from local git, so there is no 300-file cap and no 250-commit cliff. The
+ * per-snapshot patch is asked for only for paths that ARE snapshots, which is a
+ * handful, and `-U0` keeps it to the changed rows.
+ */
+function movedSince(base, mainTip, snapshotPaths) {
+  const movedFiles = git(['diff', '--name-only', `${base}..${mainTip}`])
     .split('\n')
-    .filter(Boolean)
-    .map((line) => JSON.parse(line));
+    .filter(Boolean);
+
+  const rowsChangedOnMain = new Map();
+  for (const path of movedFiles) {
+    if (!snapshotPaths.has(path)) continue;
+    const patch = git(['diff', '-U0', `${base}..${mainTip}`, '--', path]);
+    rowsChangedOnMain.set(path, rowsChangedInPatch(patch, isRepoFile));
+  }
+  return { movedFiles, rowsChangedOnMain };
 }
 
 function evaluatePr(repo, pr, mainTip, snapshots) {
   const base = testedBase(repo, pr, mainTip);
-  const meta = ghJson(`repos/${repo}/compare/${base.sha}...${mainTip}?per_page=1`);
-  const commitsBehind = meta.ahead_by ?? 0;
 
-  if (commitsBehind > COMPARE_COMMIT_CAP) {
+  // A base we do not have locally cannot be diffed, and "no diff" is
+  // indistinguishable from "nothing moved" once it reaches the verdict. So it
+  // is its own outcome, named, rather than an OK nobody can audit.
+  if (!haveCommit(base.sha)) {
     return {
       pr: pr.number,
       baseSha: base.sha,
       baseSource: base.source,
-      commitsBehind,
+      commitsBehind: null,
       movedFileCount: 0,
       result: {
         stale: true,
-        couplings: [{ snapshot: null, direction: 'truncated', overlap: [] }],
+        couplings: [{ snapshot: null, direction: 'unfetched', overlap: [] }],
       },
     };
   }
 
-  const moved = movedSince(repo, base.sha, mainTip);
-  const movedFiles = moved.map((f) => f.filename);
+  const commitsBehind = Number(
+    git(['rev-list', '--count', `${base.sha}..${mainTip}`]).trim()
+  );
 
-  // The compare response already carries each changed file's patch, so row
-  // granularity for the snapshots main touched costs no extra request.
-  const rowsChangedOnMain = new Map();
   const snapshotPaths = new Set(snapshots.map((s) => s.path));
-  for (const file of moved) {
-    if (!snapshotPaths.has(file.filename) || !file.patch) continue;
-    rowsChangedOnMain.set(file.filename, rowsChangedInPatch(file.patch, isRepoFile));
-  }
+  const { movedFiles, rowsChangedOnMain } = movedSince(base.sha, mainTip, snapshotPaths);
 
   const prFiles = prChangedFiles(repo, pr.number);
   return {

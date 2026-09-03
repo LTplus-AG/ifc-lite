@@ -273,3 +273,29 @@ test('#3726: the CLI exits 1 on STALE and 0 on OK', () => {
   assert.equal(ok.code, 0);
   assert.match(ok.stdout, /base-freshness: OK/);
 });
+
+test('#3726: a base missing from the checkout is its own verdict, not an OK', () => {
+  // The moved-file set is read from local git. If the tested base is not in the
+  // object database there is no diff to take, and "no diff" is byte-identical
+  // to "nothing moved" by the time it reaches the verdict. It therefore gets a
+  // named outcome that says what to do, rather than the OK it would otherwise
+  // be indistinguishable from.
+  const line = formatVerdict({
+    pr: 3610,
+    baseSha: '605f3946e09042230ff16b66577f57aa8bf77362',
+    commitsBehind: null,
+    movedFileCount: 0,
+    result: {
+      stale: true,
+      couplings: [{ snapshot: null, direction: 'unfetched', overlap: [] }],
+    },
+  });
+
+  assert.match(line, /base-freshness: STALE/);
+  assert.match(line, /not in this checkout/);
+  assert.match(line, /fetch-depth: 0/);
+  // The count is unknown here, and printing `null commit(s)` would read as a
+  // bug in the sweep rather than as the outcome it is.
+  assert.doesNotMatch(line, /null commit/);
+  assert.match(line, /how far main has moved since is unknown/);
+});

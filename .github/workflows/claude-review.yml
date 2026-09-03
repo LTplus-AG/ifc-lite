@@ -168,8 +168,27 @@ jobs:
         if: steps.head.outputs.proceed == 'true' && steps.dedup.outputs.covered != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           set +e
+          # The rolling changesets PR is generated release metadata, not a new
+          # authored code change. Sending it through the model on every refresh
+          # caused 13 of 23 measured review failures (#3771), and its accumulated
+          # changelogs now exceed the harness's hard patch ceiling. Classify the
+          # exact branch+title pair before downloading or prompting. A near-match
+          # stays on the normal path, and the skip still posts an explicit marker
+          # below, so this can never become an absence that looks like success.
+          target=$(node scripts/review/classify-review-target.mjs \
+            --head-ref "$PR_HEAD_REF" \
+            --title "$PR_TITLE")
+          if [ "$(jq -r .skip <<<"$target")" = "true" ]; then
+            jq -r .reason <<<"$target" > "$RUNNER_TEMP/skip-reason.txt"
+            echo "::notice::$(cat "$RUNNER_TEMP/skip-reason.txt")"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           # THE PR BODY, VIA A FILE. Never an argument: it is author-controlled
           # text, and `jq -r` to a file keeps it out of the command line and out
           # of any shell interpolation. build-review-input fences it before it

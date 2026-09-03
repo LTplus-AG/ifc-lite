@@ -46,6 +46,12 @@ fn mesh_from(positions: Vec<f32>, meta: InstanceMeta) -> Mesh {
 // A canonical unit tetra in source coords.
 const CANON: [f32; 12] = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
 
+/// Same vertex COUNT (4) and index COUNT as [`CANON`], but a genuinely different
+/// tetrahedron (apex moved): the shape a `rep_identity` hash collision between
+/// two same-topology-but-different elements produces, and what every #3666
+/// collision fixture below is built from.
+const CANON_COLLIDING: [f32; 12] = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 5.0, 5.0, 5.0];
+
 #[test]
 fn collates_repeated_representation_and_recomposes_within_a_micrometre() {
     use std::f64::consts::FRAC_PI_3;
@@ -398,8 +404,6 @@ fn same_count_rep_identity_collision_falls_back_to_flat() {
     // Same vertex COUNT (4) and index COUNT as CANON, but a genuinely
     // different tetrahedron (apex moved) — the shape a hash collision
     // between two same-topology-but-different elements would produce.
-    const CANON_COLLIDING: [f32; 12] =
-        [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 5.0, 5.0, 5.0];
     let meshes = vec![
         mesh_from(baked(&CANON, &p), meta(888)),
         mesh_from(baked(&CANON_COLLIDING, &p), meta(888)), // same rep, same counts, different shape
@@ -507,8 +511,6 @@ fn verify_basis_still_catches_a_genuine_collision() {
     let occ_a = Matrix4::new_translation(&nalgebra::Vector3::new(10.0, 0.0, 0.0));
     let occ_b = Matrix4::from_euler_angles(0.0, 0.0, std::f64::consts::FRAC_PI_3)
         * Matrix4::new_translation(&nalgebra::Vector3::new(-5.0, 7.0, 2.0));
-    const CANON_COLLIDING: [f32; 12] =
-        [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 5.0, 5.0, 5.0];
     let meta = |m: &Matrix4<f64>| InstanceMeta {
         transform: mat_rm(m),
         local_transform: None,
@@ -618,8 +620,6 @@ fn a_wrong_verify_basis_never_falsely_accepts_a_collision() {
     let occ_a = Matrix4::new_translation(&nalgebra::Vector3::new(10.0, 0.0, 0.0));
     let occ_b = Matrix4::from_euler_angles(0.0, 0.0, std::f64::consts::FRAC_PI_3)
         * Matrix4::new_translation(&nalgebra::Vector3::new(-5.0, 7.0, 2.0));
-    const CANON_COLLIDING: [f32; 12] =
-        [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 5.0, 5.0, 5.0];
     let meta = |m: &Matrix4<f64>| InstanceMeta {
         transform: mat_rm(m),
         local_transform: None,
@@ -665,7 +665,12 @@ fn a_wrong_verify_basis_does_not_coincidentally_accept_a_genuine_pairing() {
         mesh_from(baked(&CANON, &(s * occ_b)), meta(&occ_b)),
     ];
     let refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
-    let _ = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&wrong_basis));
+    let wrongly_aware = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&wrong_basis));
+    assert!(
+        wrongly_aware.templates.is_empty(),
+        "a wrong basis must fail to reconcile (flat), never reconcile by coincidence"
+    );
+    assert_eq!(wrongly_aware.flat_indices, vec![0, 1], "both members still draw");
 }
 
 #[test]
@@ -689,12 +694,14 @@ fn verify_pairing_tolerance_scales_with_the_stored_position_not_the_georeference
         rep_identity: rep,
         instanceable: true,
     };
-    // Apex moved by 2m (Z: 1.0 -> 3.0).
-    const CANON_COLLIDING: [f32; 12] =
+    // Apex moved by 2m (Z: 1.0 -> 3.0) -- deliberately NOT the module-level
+    // `CANON_COLLIDING`, whose apex is 5m out: this test needs the residual to
+    // be exactly the 2.0m #3666 measured on the real model.
+    const CANON_APEX_MOVED_2M: [f32; 12] =
         [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 3.0];
     let mut m0 = mesh_from(baked(&CANON, &p), meta(9191));
     m0.origin = big_origin;
-    let mut m1 = mesh_from(baked(&CANON_COLLIDING, &p), meta(9191));
+    let mut m1 = mesh_from(baked(&CANON_APEX_MOVED_2M, &p), meta(9191));
     m1.origin = big_origin;
     let meshes = vec![m0, m1];
     let collated = collate_instances(&meshes, 2, [0.0, 0.0, 0.0]);
@@ -1673,8 +1680,6 @@ fn one_rigid_member_does_not_disable_verification_for_the_others() {
         rep_identity: 5150,
         instanceable: true,
     };
-    const CANON_COLLIDING: [f32; 12] =
-        [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 5.0, 5.0, 5.0];
     let identity = mat_rm(&Matrix4::identity());
     let meshes = vec![
         // 0: the template (exact tier).
@@ -1759,8 +1764,6 @@ fn a_failing_group_still_places_its_pose_only_placeholders() {
         rep_identity: 7272,
         instanceable: true,
     };
-    const CANON_COLLIDING: [f32; 12] =
-        [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 5.0, 5.0, 5.0];
     let template = mesh_from(baked(&CANON, &p0), meta(&p0));
     let colliding = mesh_from(baked(&CANON_COLLIDING, &p2), meta(&p2));
     let placeholder_meta = meta(&p1);

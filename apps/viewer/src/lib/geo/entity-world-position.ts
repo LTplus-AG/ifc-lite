@@ -136,26 +136,22 @@ export function makeWorldPositionGetter(
     else byId.set(mesh.expressId, [mesh]);
   }
 
-  // One entity is asked for up to three times (X, Y, Z), and re-sorting or
-  // re-rendering the list asks again, so the centre is worth keeping. `null` is
-  // cached too: "no geometry" is the common answer for a spatial or metadata-only
-  // row and it must not re-derive on every pass.
-  const cache = new Map<number, Vec3 | null>();
-
+  // The INDEX is cached; the computed centre deliberately is not. Moving an
+  // element through the gizmo or the numeric position editor mutates
+  // `MeshData.positions` IN PLACE, leaving `geometryResult` and `models` at the
+  // same identities the provider memo keys on, so the memo does not rebuild and
+  // a cached centre would keep reporting the pre-move coordinate. The index
+  // survives that safely because it holds the same MeshData objects, whose
+  // contents the mutation updates; only a cached VALUE would go stale.
+  //
+  // Recomputing costs the vertices of one entity, not a scan of every mesh in
+  // the model, which is where the original cost was: 0.114 ms/call before,
+  // 0.0013 ms/call with the index and no value cache.
   return (expressId) => {
-    const globalId = toGlobalId(expressId);
-    const hit = cache.get(globalId);
-    if (hit !== undefined) return hit;
-
-    const local = centerOfMeshes(byId.get(globalId) ?? []);
-    let out: Vec3 | null = null;
-    if (local) {
-      const zup = viewerToIfcAxes(renderToWorldViewer(local, frame));
-      out = lengthScale > 0
-        ? { x: zup.x / lengthScale, y: zup.y / lengthScale, z: zup.z / lengthScale }
-        : zup; // defensive: never divide by 0/NaN
-    }
-    cache.set(globalId, out);
-    return out;
+    const local = centerOfMeshes(byId.get(toGlobalId(expressId)) ?? []);
+    if (!local) return null;
+    const zup = viewerToIfcAxes(renderToWorldViewer(local, frame));
+    if (!(lengthScale > 0)) return zup; // defensive: never divide by 0/NaN
+    return { x: zup.x / lengthScale, y: zup.y / lengthScale, z: zup.z / lengthScale };
   };
 }

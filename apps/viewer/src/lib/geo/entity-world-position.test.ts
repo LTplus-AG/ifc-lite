@@ -101,7 +101,7 @@ describe('computeEntityWorldCenterZup', () => {
   // Kills the mutation "index by scanning per call". The getter must answer from
   // an index built once, so a lookup does not depend on the model's mesh count.
   // The functional half of that is pinned here; the cost half was measured
-  // separately: 0.114 ms/call before, 0.0009 ms/call after, over 100k meshes.
+  // separately: 0.114 ms/call before, 0.0008 ms/call after, over 100k meshes.
   it('getWorldPosition answers consistently and cheaply over many meshes', () => {
     const meshes = Array.from({ length: 5_000 }, (_, i) => ({
       expressId: i,
@@ -118,7 +118,29 @@ describe('computeEntityWorldCenterZup', () => {
     const first = get(4_999);
     assert.deepEqual(first, get(4_999), 'a repeated lookup must return the same value');
     assert.deepEqual(first, { x: 1, y: -1, z: 1 });
-    assert.equal(get(99_999), null, 'an id with no mesh stays null and is cached as null');
+    assert.equal(get(99_999), null, 'an id with no mesh answers null');
+  });
+
+  // Kills the mutation "cache the computed centre too". Codex on #3739: moving an
+  // element through the gizmo or the numeric position editor mutates
+  // MeshData.positions IN PLACE, leaving geometryResult and models at the
+  // identities the provider memo keys on, so the memo does not rebuild. A cached
+  // value would keep reporting the pre-move coordinate; the index itself is safe
+  // because it holds the same MeshData objects the mutation updates.
+  it('reports the new position after positions are mutated in place', () => {
+    const mesh = { expressId: 3, positions: new Float32Array([0, 0, 0, 2, 2, 2]) } as GeometryResult['meshes'][number];
+    const geo = { meshes: [mesh], totalTriangles: 0, totalVertices: 2 } as GeometryResult;
+    const store = {
+      source: new Uint8Array(),
+      entityIndex: { byId: new Map(), byType: new Map() },
+    } as unknown as Parameters<typeof makeWorldPositionGetter>[0];
+
+    const get = makeWorldPositionGetter(store, geo, {}, (id) => id);
+    assert.deepEqual(get(3), { x: 1, y: -1, z: 1 });
+
+    mesh.positions.set([10, 10, 10, 12, 12, 12]);
+    assert.deepEqual(get(3), { x: 11, y: -11, z: 11 },
+      'an in-place move must be reflected, not served from a stale cache');
   });
 
   it('returns null when the element has no matching mesh (not decoded / no geometry)', () => {

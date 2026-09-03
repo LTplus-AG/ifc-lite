@@ -48,7 +48,7 @@
  * allowlist row diff is still visible in every PR, exactly as it was before.
  * THE RUST TWIN STILL HAS ITS PIN (`ALLOWLIST_DIGESTS` in
  * rust/processing/tests/module_size_ratchet.rs), so the two gates deliberately
- * disagree for now: its table is 6 entries against 38 here and its allowlist is
+ * disagree for now: its table is 6 entries against the 38 this file used to pin, and its allowlist is
  * a fraction of the size, so it has not shown the contention #3745 measured on
  * this side. Retiring it is a separate, deferred change, not an oversight in
  * this one -- a reader landing in that header first should not conclude this

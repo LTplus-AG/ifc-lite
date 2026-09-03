@@ -214,6 +214,33 @@ describe('the streaming `complete` event payload (buildGeometryWorkerCompleteMes
     expect(typeof wh.ifcType).toBe('string');
   });
 
+  it('does NOT fabricate a counted zero when merging two pre-v3 payloads', () => {
+    // Both operands predate the drop counter, so neither field is present and the
+    // merged schemaVersion stays 2. Writing `totalUnsupportedItems: 0` here would
+    // say "we counted, nothing was dropped" on a payload that never counted —
+    // absence has to stay distinguishable from a real zero, which is the whole
+    // reason v3 was a version bump rather than a silent additive field.
+    const merged = mergeGeometryDiagnostics(
+      make({ schemaVersion: 2, totalCsgFailures: 1 }),
+      make({ schemaVersion: 2, totalCsgFailures: 2 }),
+    )!;
+    expect(merged.schemaVersion).toBe(2);
+    expect('totalUnsupportedItems' in merged).toBe(false);
+    expect('unsupportedItemsByType' in merged).toBe(false);
+  });
+
+  it('keeps a real zero from a v3 producer that counted and found nothing', () => {
+    // The mirror case: a v3 operand DID count. Its 0 is a measurement and must
+    // survive, so the field is present and the merge stays additive.
+    const merged = mergeGeometryDiagnostics(
+      make({ schemaVersion: 3, totalUnsupportedItems: 0, unsupportedItemsByType: [] }),
+      make({ schemaVersion: 2 }),
+    )!;
+    expect(merged.schemaVersion).toBe(3);
+    expect(merged.totalUnsupportedItems).toBe(0);
+    expect(merged.unsupportedItemsByType).toEqual([]);
+  });
+
   it('leaves bbox/triangleCount absent on a worstHosts entry that never captured a cut effect', () => {
     const diagnostics = make({
       worstHosts: [{ productId: 7, ifcType: 'IfcSlab', openings: 1, csgFailures: 1 }],

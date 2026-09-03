@@ -164,6 +164,24 @@ export function mergeGeometryDiagnostics(
     .map(([reason, count]) => ({ reason, count }))
     .sort((x, y) => y.count - x.count || x.reason.localeCompare(y.reason));
 
+  // Whether EITHER operand actually carried the counter. Folding an absent field
+  // to 0 here would hand back `totalUnsupportedItems: 0` on a payload still
+  // labelled `schemaVersion: 2` — "we counted, and nothing was dropped" built out
+  // of "this producer never counted". That is the precise confusion the v3 bump
+  // exists to prevent, so absence has to survive the merge: the fields are
+  // omitted unless at least one side supplied one.
+  const countedUnsupported =
+    a.totalUnsupportedItems !== undefined ||
+    b.totalUnsupportedItems !== undefined ||
+    a.unsupportedItemsByType !== undefined ||
+    b.unsupportedItemsByType !== undefined;
+  const unsupportedFields = countedUnsupported
+    ? {
+        totalUnsupportedItems: (a.totalUnsupportedItems ?? 0) + (b.totalUnsupportedItems ?? 0),
+        unsupportedItemsByType,
+      }
+    : {};
+
   return {
     schemaVersion,
     totalCsgFailures: a.totalCsgFailures + b.totalCsgFailures,
@@ -189,8 +207,7 @@ export function mergeGeometryDiagnostics(
     },
     oversizedRefDrops: (a.oversizedRefDrops ?? 0) + (b.oversizedRefDrops ?? 0),
     worstHosts,
-    totalUnsupportedItems: (a.totalUnsupportedItems ?? 0) + (b.totalUnsupportedItems ?? 0),
-    unsupportedItemsByType,
+    ...unsupportedFields,
   };
 }
 

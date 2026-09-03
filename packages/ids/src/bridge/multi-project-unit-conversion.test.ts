@@ -28,7 +28,11 @@ import { validateIDS } from '../validation/validator.js';
 import { createDataAccessor } from './index.js';
 
 // Two IFCPROJECTs, each with its OWN IFCUNITASSIGNMENT:
-//  - Project 1 (first in the file): LENGTHUNIT = millimetres.
+//  - Project 1 (first in the file): LENGTHUNIT = millimetres, and owns Wall #7
+//    via IFCSITE #24 -> IFCRELAGGREGATES #25 -> IFCRELCONTAINEDINSPATIALSTRUCTURE #26.
+//    Wall #7 is CONTAINED deliberately: with no containment edge it resolves to
+//    no owner and reads the store-wide fallback, so it would stay green even if
+//    a first-project entity were mis-resolved to the second project.
 //  - Project 2 (second in the file): LENGTHUNIT = metres, and owns Wall #19
 //    via IFCSITE #17 -> IFCRELAGGREGATES #18 -> IFCRELCONTAINEDINSPATIALSTRUCTURE #20.
 // Wall #19's Pset_WallCommon.Width is authored as 0.4 (already metres, per
@@ -68,9 +72,22 @@ DATA;
 #21=IFCPROPERTYSINGLEVALUE('Width',$,IFCLENGTHMEASURE(0.4),$);
 #22=IFCPROPERTYSET('7z6M0fVLDCPBUYwtcqp5fq',$,'Pset_WallCommon',$,(#21));
 #23=IFCRELDEFINESBYPROPERTIES('8z6M0fVLDCPBUYwtcqp5gq',$,$,$,(#19),#22);
+#24=IFCSITE('9z6M0fVLDCPBUYwtcqp5hq',$,$,$,$,$,$,$,$);
+#25=IFCRELAGGREGATES('Az6M0fVLDCPBUYwtcqp5iq',$,$,$,#1,(#24));
+#26=IFCRELCONTAINEDINSPATIALSTRUCTURE('Bz6M0fVLDCPBUYwtcqp5jq',$,$,$,(#7),#24);
 ENDSEC;
 END-ISO-10303-21;
 `;
+
+// Project 2 here declares NO `UnitsInContext` at all (OPTIONAL on IfcContext).
+// Wall #19 is owned by it and authored 300., which is millimetres per the only
+// unit declaration in the file. Resolving "this project's length unit" to an
+// unconfirmed 1.0 would report 300 m for a 0.3 m wall.
+const IFC_OWNER_DECLARES_NO_UNITS = IFC
+  .replace("#11=IFCPROJECT('0hqIFTRjfV6AWq_bMtnZw2',$,'Secondary-m',$,$,$,$,$,#16);",
+           "#11=IFCPROJECT('0hqIFTRjfV6AWq_bMtnZw2',$,'Secondary-none',$,$,$,$,$,$);")
+  .replace("#21=IFCPROPERTYSINGLEVALUE('Width',$,IFCLENGTHMEASURE(0.4),$);",
+           "#21=IFCPROPERTYSINGLEVALUE('Width',$,IFCLENGTHMEASURE(300.),$);");
 
 const IDS_WIDTH_AT_LEAST_200MM = `<?xml version="1.0" encoding="utf-8"?>
 <ids xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd" xmlns="http://standards.buildingsmart.org/IDS">
@@ -124,6 +141,20 @@ describe('IDS property scale on a multi-IFCPROJECT (federated-merge) file', () =
     const width = pset?.properties.find((p) => p.name === 'Width');
 
     // Wall #7 belongs to the FIRST project (millimetres); 300 mm -> 0.3 m.
+    expect(width?.value).toBe(0.3);
+  });
+
+  it('falls back to the file-wide scale when the OWNING project declares no length unit', async () => {
+    // ABSENCE MUST NOT READ AS SUCCESS. `extractLengthUnitScale` answers an
+    // unconfirmed 1.0 both for "declares metres" and "declares nothing", so
+    // taking it unconditionally turns this 300 mm wall into a 300 m one — a
+    // silent 1000x, on the exact shape MergedExporter produces when it
+    // federates a model that carries no unit declaration.
+    const store = await parseIfc(IFC_OWNER_DECLARES_NO_UNITS);
+    const accessor = createDataAccessor(store);
+    const pset = accessor.getPropertySets(19).find((p) => p.name === 'Pset_WallCommon');
+    const width = pset?.properties.find((p) => p.name === 'Width');
+
     expect(width?.value).toBe(0.3);
   });
 

@@ -121,8 +121,19 @@ export function resolveEntityMeasureScales(
   let scales = byProject.get(ownerId);
   if (!scales) {
     const units = extractProjectUnits(store.source, store.entityIndex, ownerId);
+    // `extractLengthUnitScale` answers an unconfirmed 1.0 both for "this
+    // project declares metres" and "this project declares no LENGTHUNIT at
+    // all" — absence reading as success. `UnitsInContext` is OPTIONAL on
+    // `IfcContext`, so a federated model CAN arrive with none, and taking the
+    // 1.0 would silently rescale a millimetre value by 1000x. `ProjectUnits`
+    // tells the two apart, so only a DECLARED length unit overrides the
+    // store-wide scale; an undeclared one keeps the file-wide answer, which is
+    // the same safe-miss direction the walk-failed fallback already takes.
+    const declaresLengthUnit = units.resolvedForUnitType('LENGTHUNIT') !== undefined;
     scales = {
-      length: extractLengthUnitScale(store.source, store.entityIndex, ownerId),
+      length: declaresLengthUnit
+        ? extractLengthUnitScale(store.source, store.entityIndex, ownerId)
+        : store.lengthUnitScale,
       area: units.resolvedForUnitType('AREAUNIT')?.siScale,
       volume: units.resolvedForUnitType('VOLUMEUNIT')?.siScale,
     };

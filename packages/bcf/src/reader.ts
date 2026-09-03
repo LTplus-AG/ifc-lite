@@ -510,8 +510,8 @@ function extractDocumentReferences(content: string): BCFDocumentReference[] {
   for (const match of matches) {
     const guidMatch = match[0].match(/Guid="([^"]+)"/);
     // xs:boolean's lexical space is {true, false, 1, 0}; see isExternal above.
-    // Trimmed because xs:boolean has whiteSpace=collapse: " true " is true.
-    const isExternalRaw = match[0].match(/\bisExternal="([^"]+)"/)?.[1].trim();
+    // Blank is absent, per parseXsBoolean (same as the header <File> site).
+    const isExternalRaw = match[0].match(/\bisExternal="([^"]*)"/)?.[1];
     const referencedDoc = extractElement(match[1], 'ReferencedDocument');
     const documentGuid = extractElement(match[1], 'DocumentGuid');
     const url = extractElement(match[1], 'Url');
@@ -520,7 +520,7 @@ function extractDocumentReferences(content: string): BCFDocumentReference[] {
     if (referencedDoc || documentGuid || url) {
       refs.push({
         guid: guidMatch?.[1],
-        isExternal: isExternalRaw === undefined ? undefined : isExternalRaw === 'true' || isExternalRaw === '1',
+        isExternal: isExternalRaw?.trim() ? parseXsBoolean(isExternalRaw, { ifUnrecognized: false }) : undefined,
         referencedDocument: referencedDoc,
         documentGuid,
         url,

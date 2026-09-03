@@ -1338,5 +1338,33 @@ describe('BCF Reader - buildingSMART Test Files', () => {
       const hints = topic.viewpoints[0].components?.visibility?.viewSetupHints;
       expect(hints?.spacesVisible).toBe(expected);
     });
+
+    // The fifth site #3713 missed: extractDocumentReferences had its own
+    // hand-rolled isExternal parse, never migrated to parseXsBoolean, so it
+    // carried the same whitespace-blank-reads-as-false bug the other four
+    // were fixed for. Optional field, same absent/blank default as the
+    // header <File> site above.
+    it.each([
+      ['isExternal="0"', ' isExternal="0"', false],
+      ['isExternal absent', '', undefined],
+      ['isExternal whitespace-only', ' isExternal="   "', undefined],
+      ['isExternal unrecognized (garbage)', ' isExternal="maybe"', false],
+    ])('<DocumentReference %s> reads isExternal as %s (this site\'s documented default)', async (_label, attr, expected) => {
+      const project = await readArchive({
+        'topic-1/markup.bcf': [
+          '<?xml version="1.0" encoding="UTF-8"?>',
+          '<Markup>',
+          '  <Topic Guid="topic-1" TopicType="Issue" TopicStatus="Open">',
+          '    <Title>t</Title>',
+          `    <DocumentReference Guid="doc-1"${attr}>`,
+          '      <ReferencedDocument>https://example.com/doc.pdf</ReferencedDocument>',
+          '    </DocumentReference>',
+          '  </Topic>',
+          '</Markup>',
+        ].join('\n'),
+      });
+      const topic = Array.from(project.topics.values())[0];
+      expect(topic.documentReferences?.[0]?.isExternal).toBe(expected);
+    });
   });
 });

@@ -45,57 +45,17 @@ import {
 } from '@ifc-lite/data';
 
 import { CompactEntityIndex } from './compact-entity-index.js';
+import {
+  type CompactEntityIndexColumns,
+  compactEntityIndexFromColumns,
+  compactEntityIndexToColumns,
+} from './compact-entity-index-transport.js';
 import type { EntityRef } from './types.js';
 import { asSourceBytes, type IfcSourceBytes } from './source-bytes.js';
 import type { IfcDataStore, EntityByIdIndex } from './columnar-parser.js';
 import { attachDataStoreAccessors } from './data-store-accessors.js';
 
-// ────────────────────────────────────────────────────────────────────────────
-// CompactEntityIndex transport
-// ────────────────────────────────────────────────────────────────────────────
-
-/**
- * Plain-data column representation of a `CompactEntityIndex`. Holds the
- * five backing arrays plus the deduplicated type-string list. All four
- * typed arrays are transferable.
- */
-export interface CompactEntityIndexColumns {
-  expressIds: Uint32Array;
-  byteOffsets: Uint32Array;
-  byteLengths: Uint32Array;
-  typeIndices: Uint16Array;
-  typeStrings: string[];
-}
-
-function compactEntityIndexToColumns(index: CompactEntityIndex): CompactEntityIndexColumns {
-  // CompactEntityIndex stores its arrays as private fields; access them
-  // through the prototype's documented columns. We rely on the public
-  // constructor's parameter order to define this contract.
-  const internal = index as unknown as {
-    expressIds: Uint32Array;
-    byteOffsets: Uint32Array;
-    byteLengths: Uint32Array;
-    typeIndices: Uint16Array;
-    typeStrings: string[];
-  };
-  return {
-    expressIds: internal.expressIds,
-    byteOffsets: internal.byteOffsets,
-    byteLengths: internal.byteLengths,
-    typeIndices: internal.typeIndices,
-    typeStrings: internal.typeStrings.slice(),
-  };
-}
-
-function compactEntityIndexFromColumns(columns: CompactEntityIndexColumns): CompactEntityIndex {
-  return new CompactEntityIndex(
-    columns.expressIds,
-    columns.byteOffsets,
-    columns.byteLengths,
-    columns.typeIndices,
-    columns.typeStrings,
-  );
-}
+export type { CompactEntityIndexColumns };
 
 // ────────────────────────────────────────────────────────────────────────────
 // SpatialHierarchy transport

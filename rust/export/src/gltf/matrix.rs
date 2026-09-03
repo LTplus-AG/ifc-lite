@@ -24,7 +24,7 @@
 use ifc_lite_geometry::InstanceMeta;
 
 /// Z-up→Y-up basis as a row-major 4x4 (linear part only; `(x,y,z) → (x, z, -y)`).
-const S_YUP: [f64; 16] = [
+pub(super) const S_YUP: [f64; 16] = [
     1.0, 0.0, 0.0, 0.0, //
     0.0, 0.0, 1.0, 0.0, //
     0.0, -1.0, 0.0, 0.0, //

@@ -31,6 +31,23 @@
 //! template — this check would reject correct rigid groups, not just
 //! colliding ones. Rigid-tier congruence is established (and, per its own
 //! doc comment, verified) upstream of collation via `canonical_transform`.
+//!
+//! **Frame contract.** `verify_pairing` reconstructs by applying `rel` — which
+//! is always computed from `InstanceMeta.transform`, native-frame (IFC Z-up) —
+//! to the template's OWN baked vertices, so the comparison is only valid when
+//! the baked vertices it is handed (`template.positions`/`mesh.positions`) are
+//! ALSO in that native frame. `collate_refs_verified_in`'s `verify_basis`
+//! parameter exists because the glTF exporter's in-memory assembler converts
+//! every visible mesh's baked positions Z-up→Y-up BEFORE calling in (so the
+//! template/flat geometry it emits is already Y-up), while `InstanceMeta`
+//! itself stays Z-up throughout — the per-occurrence node matrix is
+//! independently recomposed and Y-up-conjugated downstream (`occurrence_node_matrix`
+//! in the export crate), never reading this module's `rel` back. Left
+//! unaccounted for, that frame mismatch reads as a `rep_identity` collision on
+//! nearly every rotated group in a real model (a Z-up `rel` reconstructing
+//! against Y-up vertices), which is what motivated this parameter rather than
+//! loosening [`tolerance`] — the mismatch is orders of magnitude larger than
+//! any plausible tolerance, in either direction, at every coordinate scale.
 
 use super::collate::Collated;
 use crate::mesh::Mesh;

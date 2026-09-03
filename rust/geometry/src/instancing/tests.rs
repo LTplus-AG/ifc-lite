@@ -4,9 +4,9 @@
 
 use super::collate::mat4_to_row_major_f32;
 use super::{
-    collate_and_encode, collate_instances, collate_refs, decode_instanced, encode_instanced,
-    encode_refs, verify_recomposition, Collated, InstanceMeshRef, INSTANCED_MAGIC,
-    INSTANCED_VERSION,
+    collate_and_encode, collate_instances, collate_refs, collate_refs_verified_in,
+    decode_instanced, encode_instanced, encode_refs, verify_recomposition, Collated,
+    InstanceMeshRef, INSTANCED_MAGIC, INSTANCED_VERSION,
 };
 use crate::mesh::{InstanceMeta, Mesh};
 use nalgebra::Matrix4;
@@ -349,6 +349,85 @@ fn same_count_rep_identity_collision_falls_back_to_flat() {
         "a same-count content collision must NOT form a template"
     );
     assert_eq!(collated.flat_indices.len(), 2, "the whole colliding group falls back flat, not just one member");
+}
+
+#[test]
+fn verify_basis_reconciles_a_caller_that_baked_positions_in_a_different_frame() {
+    // The glTF in-memory assembler Z-up→Y-up-converts every visible mesh's baked
+    // positions/origin BEFORE calling `collate_refs` in, while `InstanceMeta.transform`
+    // (hence `rel`) stays native/Z-up throughout (the per-occurrence node matrix is
+    // independently recomposed and Y-up-conjugated downstream, never read back from
+    // here). `S` below stands in for that conversion — what matters is only that it's
+    // a non-identity change of basis applied to the baked vertices but NOT to
+    // `InstanceMeta.transform`.
+    let s = Matrix4::from_euler_angles(std::f64::consts::FRAC_PI_2, 0.0, 0.0);
+    let occ_a = Matrix4::new_translation(&nalgebra::Vector3::new(10.0, 0.0, 0.0));
+    let occ_b = Matrix4::from_euler_angles(0.0, 0.0, std::f64::consts::FRAC_PI_3)
+        * Matrix4::new_translation(&nalgebra::Vector3::new(-5.0, 7.0, 2.0));
+    let meta = |m: &Matrix4<f64>| InstanceMeta {
+        transform: mat_rm(m),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 4242,
+        instanceable: true,
+    };
+    // Baked positions are in the CONVERTED (S-applied) frame: `S · occ · canon`.
+    let meshes = vec![
+        mesh_from(baked(&CANON, &(s * occ_a)), meta(&occ_a)),
+        mesh_from(baked(&CANON, &(s * occ_b)), meta(&occ_b)),
+    ];
+    let refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
+
+    // Without the basis hint, the reconstruction check compares a native-frame
+    // `rel` against converted-frame vertices and (wrongly) rejects genuinely
+    // shared geometry — this is the bug `verify_basis` exists to close.
+    let unaware = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], None);
+    assert_eq!(
+        unaware.templates.len(),
+        0,
+        "without the basis hint, a frame mismatch reads as a rep_identity collision"
+    );
+
+    // With the basis, it correctly reconstructs and instances.
+    let aware = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&s));
+    assert_eq!(
+        aware.templates.len(),
+        1,
+        "with the basis hint, genuinely shared geometry still instances"
+    );
+    assert_eq!(aware.templates[0].occurrences.len(), 2);
+}
+
+#[test]
+fn verify_basis_still_catches_a_genuine_collision() {
+    // Same converted-frame setup as above, but occurrence B's baked geometry is a
+    // genuinely different shape (a #3666-style rep_identity collision) — the basis
+    // hint must correct the comparison's frame, not blanket-disable it.
+    let s = Matrix4::from_euler_angles(std::f64::consts::FRAC_PI_2, 0.0, 0.0);
+    let occ_a = Matrix4::new_translation(&nalgebra::Vector3::new(10.0, 0.0, 0.0));
+    let occ_b = Matrix4::from_euler_angles(0.0, 0.0, std::f64::consts::FRAC_PI_3)
+        * Matrix4::new_translation(&nalgebra::Vector3::new(-5.0, 7.0, 2.0));
+    const CANON_COLLIDING: [f32; 12] =
+        [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 5.0, 5.0, 5.0];
+    let meta = |m: &Matrix4<f64>| InstanceMeta {
+        transform: mat_rm(m),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 4343,
+        instanceable: true,
+    };
+    let meshes = vec![
+        mesh_from(baked(&CANON, &(s * occ_a)), meta(&occ_a)),
+        mesh_from(baked(&CANON_COLLIDING, &(s * occ_b)), meta(&occ_b)),
+    ];
+    let refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
+    let aware = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&s));
+    assert_eq!(
+        aware.templates.len(),
+        0,
+        "a genuine collision still falls back to flat, basis hint or not"
+    );
+    assert_eq!(aware.flat_indices.len(), 2);
 }
 
 #[test]

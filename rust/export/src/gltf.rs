@@ -31,7 +31,9 @@ const _: () = assert!(
 
 use crate::error::ExportError;
 use ifc_lite_core::EntityIndex;
-use ifc_lite_geometry::{collate_refs, InstanceMeshRef, InstanceMeta, InstanceTemplate};
+use ifc_lite_geometry::{
+    collate_refs_verified_in, InstanceMeshRef, InstanceMeta, InstanceTemplate, Matrix4,
+};
 use ifc_lite_processing::{
     build_entity_index_parallel, process_geometry_filtered_with_quality,
     process_geometry_streaming_filtered_with_options, MeshData, OpeningFilterMode,
@@ -1157,7 +1159,17 @@ fn build_gltf(
     // `occurrence_node_matrix` (it has the Z-up model rtc there). Passing the rtc
     // here too would conjugate twice. The wasm GPU-shard path, which consumes the
     // relative transform directly (no downstream conjugation), passes the real rtc.
-    let collated = collate_refs(&refs, 2, [0.0, 0.0, 0.0]);
+    //
+    // `verify_basis = S_YUP`: `visible`'s positions/origin were already converted
+    // Z-up→Y-up above (`with_result_views`), but `InstanceMeta.transform` (hence
+    // `rel`) stays Z-up throughout — the per-occurrence node matrix is
+    // independently recomposed and Y-up-conjugated downstream in
+    // `occurrence_node_matrix`, never read back from here. Without telling the
+    // #3666 reconstruction check which basis `refs[i].positions` are actually in,
+    // it compares a Z-up `rel` against Y-up baked vertices and (falsely) rejects
+    // nearly every rotated group on a real model.
+    let s_yup = Matrix4::from_row_slice(&matrix::S_YUP);
+    let collated = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&s_yup));
 
     // Partition into instanced templates (non-rigid, exact-bit) and a flat remainder.
     // Only EXACT-bit groups are instanced: the template's local geometry IS each

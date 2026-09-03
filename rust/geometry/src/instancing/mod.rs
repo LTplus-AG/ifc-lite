@@ -109,9 +109,9 @@ mod wire;
 mod tests;
 
 pub use collate::{
-    bake_source_at_world, collate_instances, collate_refs, compose_instance_world_row_major,
-    instance_rel_row_major_f32, verify_recomposition, Collated, InstanceMeshRef,
-    InstanceOccurrence, InstanceTemplate,
+    bake_source_at_world, collate_instances, collate_refs, collate_refs_verified_in,
+    compose_instance_world_row_major, instance_rel_row_major_f32, verify_recomposition, Collated,
+    InstanceMeshRef, InstanceOccurrence, InstanceTemplate,
 };
 pub use wire::{
     collate_and_encode, decode_instanced, encode_instanced, encode_refs, DecodedInstance,

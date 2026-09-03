@@ -141,7 +141,22 @@ fn to_post_rtc(mut m: Matrix4<f64>, rtc: [f64; 3]) -> Matrix4<f64> {
 /// georeference and collapses f32 GLB exports. Reducing both transforms by `rtc`
 /// first keeps `rel.translation` at building scale and consistent with the small
 /// template origin.
+///
+/// `InstanceMeta.transform` (hence `rel`) is native-frame (IFC Z-up); positions
+/// must share that frame — see [`collate_refs_verified_in`] otherwise.
 pub fn collate_refs(meshes: &[InstanceMeshRef], min_group: usize, rtc: [f64; 3]) -> Collated {
+    collate_refs_verified_in(meshes, min_group, rtc, None)
+}
+
+/// [`collate_refs`], but the #3666 reconstruction check compares in a
+/// caller-supplied basis — see [`super::verify`]'s module doc.
+pub fn collate_refs_verified_in(
+    meshes: &[InstanceMeshRef],
+    min_group: usize,
+    rtc: [f64; 3],
+    verify_basis: Option<&Matrix4<f64>>,
+) -> Collated {
+    let verify_conjugate = verify_basis.and_then(|s| s.try_inverse().map(|s_inv| (*s, s_inv)));
     // First-seen order keeps output deterministic regardless of hash iteration.
     let mut order: Vec<u128> = Vec::new();
     let mut groups: FxHashMap<u128, Vec<usize>> = FxHashMap::default();
@@ -257,18 +272,19 @@ pub fn collate_refs(meshes: &[InstanceMeshRef], min_group: usize, rtc: [f64; 3])
             // vertices before trusting the pairing. Scoped to the exact tier
             // (rigid-tier members can legitimately carry a different raw
             // vertex count than the template by design — see module docs).
-            if !pose_only
-                && !is_rigid
-                && !verify_pairing(
+            if !pose_only && !is_rigid {
+                let verify_rel =
+                    verify_conjugate.as_ref().map_or(rel, |(s, s_inv)| s * rel * s_inv);
+                if !verify_pairing(
                     template.origin,
                     template.positions,
                     mesh.origin,
                     mesh.positions,
-                    &rel,
-                )
-            {
-                shapes_match = false;
-                break;
+                    &verify_rel,
+                ) {
+                    shapes_match = false;
+                    break;
+                }
             }
             occurrences.push(InstanceOccurrence {
                 mesh_index: i,

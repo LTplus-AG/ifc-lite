@@ -62,8 +62,10 @@ export function skipComment(buf: Uint8Array, pos: number, len: number): number {
   return -1;
 }
 
-// Index just past the closing quote of the literal opening at `pos`, or `len`
-// when it never closes. A doubled '' is an escaped quote and stays inside.
+// Index just past the closing quote of the literal opening at `pos`, or -1
+// when it never closes -- the same signal `skipComment` gives, not the old
+// `len` return that read as "closed at the last byte". A doubled '' is an
+// escaped quote and stays inside.
 //
 // Scanners consume a literal whole so nothing inside it can be mistaken for
 // syntax. Without this, a HEADER description reading `'rev /* pending'` opens a
@@ -83,7 +85,7 @@ export function skipStringLiteral(buf: Uint8Array, pos: number, len: number): nu
     }
     p++;
   }
-  return len;
+  return -1;
 }
 
 export interface Skip {
@@ -91,8 +93,10 @@ export interface Skip {
   next: number;
   // Newlines crossed, to add to the caller's line counter.
   lines: number;
-  // True when scanning must stop: an unterminated comment runs to EOF, so
-  // there is nothing left to find. Matches the Rust scanner returning None.
+  // True when scanning must stop: an unterminated comment or string literal
+  // runs to EOF, so there is nothing left to find. Matches the Rust scanner
+  // returning None. No per-kind field: every caller reports this with one
+  // generic message, so nothing downstream reads which construct it was.
   stop: boolean;
 }
 
@@ -102,6 +106,9 @@ export interface Skip {
 export function skipLexical(buf: Uint8Array, pos: number, len: number): Skip {
   if (buf[pos] === QUOTE) {
     const next = skipStringLiteral(buf, pos, len);
+    if (next < 0) {
+      return { next: len, lines: countNewlines(buf, pos, len), stop: true };
+    }
     return { next, lines: countNewlines(buf, pos, next), stop: false };
   }
   const next = skipComment(buf, pos, len);
@@ -206,9 +213,11 @@ export function findEntityLength(buf: Uint8Array, pos: number, startOffset: numb
     const char = buf[pos];
 
     if (char === QUOTE) {
-      // Returns `len` on an unterminated literal, which ends the loop with no
-      // balancing ')' found -- the same 0 the open-coded version returned.
-      pos = skipStringLiteral(buf, pos, len);
+      // Returns `-1` on an unterminated literal (see skipStringLiteral's own
+      // doc): no balancing ')' can follow, same 0 as running off the end.
+      const next = skipStringLiteral(buf, pos, len);
+      if (next < 0) return 0;
+      pos = next;
     } else if (opensComment(buf, pos, len)) {
       const end = skipComment(buf, pos, len);
       // Unterminated: the rest of the input is inside the comment, so no

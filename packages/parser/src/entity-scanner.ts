@@ -63,6 +63,25 @@ export interface EntityScanResult {
    * the number is not — a zero on THAT path still is not proof of none.
    */
   oversizedIdCount: number;
+  /**
+   * 0 or 1, never a count of how many: whether the scan stopped early
+   * because a quoted string or a block comment opened and never closed
+   * before end of buffer, or a `#id=TYPE(` declaration was cut off
+   * before its own '(' was found. Once any of those happens there is no
+   * reliable place to resume, so the scan stops there rather than guessing
+   * -- every entity after that point, even a well-formed one later in an
+   * otherwise-intact file, is NOT in `entityRefs` either. Before this field
+   * existed, that stop was completely silent -- a shorter `entityRefs` with
+   * no signal that anything went wrong at all.
+   *
+   * `pre-scanned` and `wasm` do not carry this. `pre-scanned`: same
+   * reasoning as `oversizedIdCount`'s doc -- `PreScannedEntityIndex`
+   * predates this field, so a producer built before it sends none. `wasm`:
+   * `scanEntitiesFast`/`scanEntitiesFastBytes` return refs and nothing
+   * else. Both read as `0`, indistinguishable from "scan completed clean"
+   * for those two paths.
+   */
+  malformedRecordCount: number;
 }
 
 type WasmScanFunction = () => unknown;
@@ -83,6 +102,7 @@ export async function scanIfcEntities(
   let processed = 0;
   let scanPath: EntityScanPath = 'tokenizer';
   let oversizedIdCount = 0;
+  let malformedRecordCount = 0;
   let preScanCountUnreported = false;
 
   if (options.preScannedEntityIndex) {
@@ -105,6 +125,7 @@ export async function scanIfcEntities(
       const scan = await scanEntitiesInWorker(buffer);
       entityRefs = scan.refs;
       oversizedIdCount = scan.oversizedIdCount;
+      malformedRecordCount = scan.malformedRecordCount;
       processed = entityRefs.length;
       scanPath = 'worker';
     } catch (error) {
@@ -112,6 +133,7 @@ export async function scanIfcEntities(
       entityRefs = [];
       processed = 0;
       oversizedIdCount = 0;
+      malformedRecordCount = 0;
     }
   }
 
@@ -122,12 +144,15 @@ export async function scanIfcEntities(
       processed = entityRefs.length;
       scanPath = 'wasm';
       // Cleared, not carried: `scanEntitiesFast` hands back refs and nothing
-      // else, so this path has no count of its own (Rust reports the refusal
-      // straight to the console instead). Leaving an earlier path's number
-      // here would attribute it to a scan that never produced it. The two
-      // sibling branches already set their own; this one says zero out loud
-      // rather than by omission (#3395).
+      // else, so this path has no count of its own (Rust reports both
+      // refusals straight to the console instead). Leaving an earlier path's
+      // number here would attribute it to a scan that never produced it --
+      // the worker branch above may have run first, found zero refs, and set
+      // `malformedRecordCount` to 1 before falling through to this one. The
+      // two sibling branches already set their own; this one says zero out
+      // loud rather than by omission (#3395).
       oversizedIdCount = 0;
+      malformedRecordCount = 0;
     } catch (error) {
       console.warn('[IfcParser] WASM scan failed, falling back to TypeScript:', error);
       entityRefs = [];
@@ -157,6 +182,7 @@ export async function scanIfcEntities(
       }
     }
     oversizedIdCount = tokenizer.oversizedIdCount;
+    malformedRecordCount = tokenizer.malformedRecordCount;
   }
 
   // A refused record is a record the caller will not find. Say so on both
@@ -167,10 +193,33 @@ export async function scanIfcEntities(
       `scan: skipped ${oversizedIdCount} record(s) with an express id above ${MAX_EXPRESS_ID} (#3395)`;
     console.warn(`[IfcParser] ${message}`);
     options.onDiagnostic?.(message);
+  }
+
+  // Worse than the oversized-id case: this is not "one record the caller
+  // will not find", it is "scanning stopped here", so every entity after the
+  // break, however well-formed, is also missing from this scan's result.
+  // Before this diagnostic existed, that stop was entirely silent: fewer
+  // entities came back, and nothing said the file might be incomplete.
+  //
+  // Deliberately singular and generic, not "N record(s)": the scan always
+  // stops at the first one it hits (there is no reliable place to resume),
+  // so malformedRecordCount is 0 or 1, never a density, and it covers three
+  // shapes -- an unterminated string, an unterminated comment, and a
+  // declaration cut off before its own '(' -- collapsed into one flag, so a
+  // message naming only one of them would misdescribe the other two every
+  // time it fires.
+  if (malformedRecordCount > 0) {
+    const message =
+      'scan: stopped early, a record had a string literal or comment that never closed, or ' +
+      'was cut off, before end of input, so scanning could not continue past it; the entities ' +
+      'returned may be an incomplete view of this file';
+    console.warn(`[IfcParser] ${message}`);
+    options.onDiagnostic?.(message);
   } else if (preScanCountUnreported && scanPath === 'pre-scanned') {
     // Absence has to look different from success. This producer sent the
-    // columns without a refusal count, so a zero here is not evidence of none
-    // — say that, rather than returning a result that reads like a clean scan.
+    // columns without a refusal count, so a zero here is not evidence of
+    // none, say that, rather than returning a result that reads like a clean
+    // scan.
     const message =
       'scan: the pre-pass that produced this entity index does not report refused ' +
       `express ids (#3395), so a count of 0 is not proof that none were skipped`;
@@ -182,7 +231,7 @@ export async function scanIfcEntities(
   options.onDiagnostic?.(`scan complete: entities=${processed} elapsed=${elapsedMs.toFixed(0)}ms`);
   options.onProgress?.({ phase: 'scanning', percent: 100 });
 
-  return { entityRefs, processed, elapsedMs, scanPath, oversizedIdCount };
+  return { entityRefs, processed, elapsedMs, scanPath, oversizedIdCount, malformedRecordCount };
 }
 
 /**

@@ -44,4 +44,129 @@ describe('StepTokenizer.scanEntitiesFast', () => {
     expect(refs[0].type).toBe(first);
     expect(refs[1].type).toBe(second);
   });
+
+  it('reports an unterminated string literal instead of silently ending the scan', () => {
+    // #1's Name opens a quote and never closes it. Before this fix, the
+    // "skip to the next ';'" loop just ran off the end of the buffer with
+    // `inString` still true, `#2` was never found, and the scan reported
+    // success with 1 entity — nothing distinguished that from a file that
+    // legitimately has only one entity. `malformedRecordCount` is the
+    // caller's only way to tell the two apart.
+    const text = [
+      "#1=IFCWALL('0000000000000000000001',$,'Wall unterminated,$,$,$,$,$,$);",
+      "#2=IFCWALL('0000000000000000000002',$,'Wall2',$,$,$,$,$,$);",
+    ].join('\n');
+    const buffer = new TextEncoder().encode(text);
+    const tokenizer = new StepTokenizer(buffer);
+    const refs = Array.from(tokenizer.scanEntitiesFast());
+    expect(refs.map((r) => r.expressId)).toEqual([]);
+    expect(tokenizer.malformedRecordCount).toBe(1);
+  });
+
+  it('does not report malformedRecordCount for a well-formed file', () => {
+    const text = [
+      "#1=IFCWALL('0000000000000000000001',$,'Wall1',$,$,$,$,$,$);",
+      "#2=IFCWALL('0000000000000000000002',$,'Wall2',$,$,$,$,$,$);",
+    ].join('\n');
+    const buffer = new TextEncoder().encode(text);
+    const tokenizer = new StepTokenizer(buffer);
+    const refs = Array.from(tokenizer.scanEntitiesFast());
+    expect(refs).toHaveLength(2);
+    expect(tokenizer.malformedRecordCount).toBe(0);
+  });
+
+  it('reports malformedRecordCount for an unterminated comment inside a record, not just an unterminated string', () => {
+    // Before this fix, the `end < 0` (unterminated `/* ... */`) branch inside
+    // the "skip to semicolon" loop `return`ed straight out of the generator,
+    // skipping the `if (!foundTerminator) this.malformedRecords++` check
+    // below the loop -- so the scan still stopped silently (0 entities, 0
+    // reported) for this shape, even though the sibling unterminated-string
+    // shape right above it was fixed in the same PR. The Web Worker copy of
+    // this loop (scan-worker-source.ts) never had the bug: it does
+    // `pos = len; break;` instead of an early `return`, so it already fell
+    // through to the count -- see scan-worker-source.malformed-record.test.ts
+    // for the identical fixture passing there even before this fix.
+    const text = [
+      "#1=IFCWALL('0000000000000000000001', /* never closes $,$,$,$,$,$,$);",
+      "#2=IFCWALL('0000000000000000000002',$,'Wall2',$,$,$,$,$,$);",
+    ].join('\n');
+    const buffer = new TextEncoder().encode(text);
+    const tokenizer = new StepTokenizer(buffer);
+    const refs = Array.from(tokenizer.scanEntitiesFast());
+    expect(refs.map((r) => r.expressId)).toEqual([]);
+    expect(tokenizer.malformedRecordCount).toBe(1);
+  });
+
+  it('reports malformedRecordCount for an unterminated comment before the record body opens', () => {
+    // `#1 /* was #7 */ =` is valid -- a comment is allowed wherever
+    // whitespace is, per skipTrivia's callers above. But if that comment
+    // never closes, `#1` has neither an '=' nor a body to scan, and the
+    // scanner's own resync point (skip-to-';') is never reached. Before this
+    // fix, `skipTrivia`'s `t.stop` branches (there are three: before '=',
+    // before the type name, before '(') `return`ed uncounted, so this shape
+    // silently ended the scan with malformedRecordCount still 0 -- the same
+    // defect class the record-body branches above were fixed for, just one
+    // step earlier in the same entity.
+    const text = "#1 /* never closes\n#2=IFCWALL('0000000000000000000002',$,'Wall2',$,$,$,$,$,$);";
+    const buffer = new TextEncoder().encode(text);
+    const tokenizer = new StepTokenizer(buffer);
+    const refs = Array.from(tokenizer.scanEntitiesFast());
+    expect(refs.map((r) => r.expressId)).toEqual([]);
+    expect(tokenizer.malformedRecordCount).toBe(1);
+  });
+
+  it('does not read a stale malformedRecordCount from a scanEntitiesFast run when scanEntities runs next on the same instance', () => {
+    // Missing the terminating ';' but balanced on '(' / ')': scanEntitiesFast
+    // requires a semicolon (see the "declaration cut off" tests above) and
+    // reports malformedRecordCount 1 for this input; scanEntities (the
+    // balanced-parenthesis path in scan-entities-balanced.ts) only needs the
+    // matching ')' and accepts this one cleanly. One StepTokenizer instance
+    // running both, in that order, is exactly the "fast scan = 1, then
+    // balanced scan still reads 1" bug report: before this fix, scanEntities
+    // neither reset nor recomputed malformedRecords, so the stale 1 from the
+    // fast scan leaked into the balanced scan's result even though nothing
+    // about the balanced scan itself was malformed.
+    const text = '#1=IFCWALL($,$,$)';
+    const tokenizer = new StepTokenizer(new TextEncoder().encode(text));
+
+    Array.from(tokenizer.scanEntitiesFast());
+    expect(tokenizer.malformedRecordCount).toBe(1);
+
+    const refs = Array.from(tokenizer.scanEntities());
+    expect(refs.map((r) => r.expressId)).toEqual([1]);
+    expect(tokenizer.malformedRecordCount).toBe(0);
+  });
+});
+
+describe('StepTokenizer.scanEntities (balanced-parenthesis path)', () => {
+  it('does not report malformedRecordCount when the LAST record is refused for an oversized express id (round 3)', () => {
+    // #4294967297 is refused (#3395) after the '=' check passes, so
+    // BalancedEntityScan resumes right past the '=' and walks
+    // "IFCWALL(#1,#2);..." byte by byte. The '#1' and '#2' reference tokens
+    // inside that abandoned record's own argument list each look like a
+    // fresh declaration start, with buffer still left after the mismatch
+    // that ends each one. Before this fix, declOpen stayed armed on that
+    // non-EOF mismatch with nothing later to clear it, so a file whose scan
+    // ran cleanly to the end still reported 1.
+    const text =
+      "#1=IFCPROJECT('0000000000000000000001',$,'P',$,$,$,$,$,$);\n" +
+      '#4294967297=IFCWALL(#1,#2);\n';
+    const tokenizer = new StepTokenizer(new TextEncoder().encode(text));
+
+    const refs = Array.from(tokenizer.scanEntities());
+
+    expect(tokenizer.oversizedIdCount).toBe(1);
+    expect(tokenizer.malformedRecordCount).toBe(0);
+    expect(refs.map((r) => r.expressId)).toEqual([1]);
+  });
+
+  it('control: a declaration genuinely cut off at EOF still reports malformedRecordCount 1', () => {
+    const text = "#1=IFCPROJECT('0000000000000000000001',$,'P',$,$,$,$,$,$);\n#2=IFCWA";
+    const tokenizer = new StepTokenizer(new TextEncoder().encode(text));
+
+    const refs = Array.from(tokenizer.scanEntities());
+
+    expect(tokenizer.malformedRecordCount).toBe(1);
+    expect(refs.map((r) => r.expressId)).toEqual([1]);
+  });
 });

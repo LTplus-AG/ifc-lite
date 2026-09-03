@@ -107,6 +107,17 @@
  * that shows up in the shell history and still costs a reviewable line in the
  * digest pin. `check-unused-locals.mjs --update` has no such safeguard.
  *
+ * `--update` MEASURES THIS FILE AND REWRITES IT IN THE SAME RUN, so its own row
+ * is a fixed point rather than a measurement (`lib/module-size-self-pin.mjs`).
+ * The ALLOWLIST_DIGESTS block below is one line per scope, so a sweep that adds
+ * or removes a scope changes this file's length AFTER its row would have been
+ * written. It used to write the pre-rewrite count, report success and exit 0;
+ * the next plain run measured the real file and failed, on the one gate whose
+ * job is to stop exactly that (#3727, #3693). Two consequences to expect: a
+ * sweep that adds a scope prints a RAISED line for this file, which is honest
+ * rather than the tool exempting itself, and it needs `--allow-raise` like any
+ * other raise -- which the new scope's own row needed anyway.
+ *
  * `--update` IS SCOPED to the files your change touched (#3398), derived from
  * `git diff` against the merge base with main plus anything untracked. It used
  * to re-record every row in the tree, which sounds harmless — it only ever
@@ -142,9 +153,9 @@ import {
   allowlistDigests,
   evaluate,
   staleRows,
-  planUpdate,
   renderAllowlist,
 } from './lib/module-size-ratchet.mjs';
+import { readSelfPin, renderPinBlock, settleUpdate } from './lib/module-size-self-pin.mjs';
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(SCRIPTS_DIR, '..');
@@ -186,6 +197,14 @@ const SOURCE_RE = /\.(ts|tsx|mts|cts|mjs|cjs)$/;
  * by 100 leaves the total unchanged. A scope's digest moves for ANY change to
  * ANY of its rows, so loosening the ratchet always costs one reviewable line
  * here.
+ *
+ * HERE is not the only non-circular home, and the third one is on the record
+ * rather than chosen: an unmeasured sidecar (`SOURCE_RE` matches only TS and
+ * Node sources, so a `.json` beside this file is walked past) would keep the
+ * anti-circularity and the reviewable line while dissolving the self-reference
+ * that `lib/module-size-self-pin.mjs` exists to settle. It is not free -- it
+ * retargets the regeneration contract and every message naming this file -- so
+ * it is a follow-up, not a fix smuggled into one.
  *
  * SHARDED BY SCOPE, one entry per `packages/<name>` / `apps/<name>` /
  * `rust/<crate>` (#3291). A single repo-wide digest had the same visibility but
@@ -252,7 +271,7 @@ const ALLOWLIST_DIGESTS = {
   'packages/source-dalux': '11927553717016520308',
   'packages/source-dropbox': '13897585807232807340',
   'packages/viewer': '17290688824834287099',
-  'scripts': '10576945509463692918',
+  'scripts': '15076856583646664407',
 };
 
 function parseArgs(argv) {
@@ -509,7 +528,17 @@ if (args.update) {
   }
   console.log(scopeNote);
 
-  const { next, raised, added, lowered, removed } = planUpdate(files, allowlist, changed);
+  // This script IS one of the measured files, and the digest block it is about
+  // to rewrite sits inside it, so the rows and its own size determine each
+  // other. Settle that loop before writing anything (lib/module-size-self-pin.mjs).
+  const self = readSelfPin(args.root);
+  let settled;
+  try {
+    settled = settleUpdate({ files, allowlist, changed, self });
+  } catch (err) {
+    fail(`${err.message}\n\nNothing was written.`);
+  }
+  const { next, raised, added, lowered, removed } = settled.plan;
 
   const loosening = [...raised, ...added];
   if (loosening.length > 0 && !args.allowRaise) {
@@ -541,29 +570,24 @@ if (args.update) {
   // The pin lives in this script, not in the allowlist (see ALLOWLIST_DIGESTS):
   // a digest stored beside the rows it guards is circular. Rewrite it here so
   // the regeneration is one command, not one command plus a hand edit that the
-  // next reader has to remember.
-  const nextDigests = allowlistDigests(next);
-  const nextBlock = `const ALLOWLIST_DIGESTS = {\n${[...nextDigests]
-    .map(([scope, d]) => `  '${scope}': '${d}',`)
-    .join('\n')}\n};`;
+  // next reader has to remember. `settled.selfText` is the exact content the
+  // rows above were planned against, so the two cannot disagree.
+  const nextDigests = settled.digests;
   const nextDigest = [...nextDigests].map(([s2, d]) => `${s2}=${d}`).join(' ');
-  const selfPath = join(args.root, 'scripts', 'check-module-size.mjs');
-  const PIN_RE = /^const ALLOWLIST_DIGESTS = \{[\s\S]*?^\};$/m;
-  let pinned = false;
-  try {
-    const selfText = readFileSync(selfPath, 'utf8');
-    if (PIN_RE.test(selfText)) {
-      // A replacer FUNCTION, not a string: `$&` and friends are substitution
-      // patterns in a string replacement, so a scope containing `$&` would
-      // splice the matched block back into itself. Needs a directory named
-      // with `$&`, so it is unlikely rather than impossible -- and free to rule
-      // out. (The old code passed a pure-digit string, which had no such hazard.)
-      writeFileSync(selfPath, selfText.replace(PIN_RE, () => nextBlock));
-      pinned = true;
+  const pinned = settled.selfText !== null;
+  if (pinned) {
+    try {
+      writeFileSync(self.path, settled.selfText);
+    } catch (err) {
+      // The allowlist is already on disk and was written for the file this
+      // write was meant to produce. Saying so is the whole point: a swallowed
+      // failure here leaves exactly the mismatch #3727 is about.
+      fail(
+        `wrote ${args.allowlist} but could not re-pin ${self.path}: ${err.message}\n\n` +
+          `The allowlist now describes a digest block that was never written. Set it by hand ` +
+          `to:\n\n${renderPinBlock(nextDigests)}`,
+      );
     }
-  } catch {
-    // --root points at a synthetic tree (the test harness does exactly this),
-    // so there is no pin to move. Print the value instead of pretending.
   }
 
   for (const row of lowered) console.log(`lowered:${row}`);
@@ -576,7 +600,7 @@ if (args.update) {
   );
   console.log(
     pinned
-      ? `check-module-size: ALLOWLIST_DIGESTS re-pinned in ${selfPath} (${nextDigests.size} scopes). Commit both.`
+      ? `check-module-size: ALLOWLIST_DIGESTS re-pinned in ${self.path} (${nextDigests.size} scopes). Commit both.`
       : `check-module-size: no ALLOWLIST_DIGESTS pin found under ${args.root}; the new digests are ${nextDigest}.`,
   );
 
@@ -586,7 +610,12 @@ if (args.update) {
   // success for a run that fixed nothing the contributor was failing on. The
   // docstring admitted this in prose and the code did not act on it, which is
   // the same shape as the header claim this whole issue is about.
-  const after = evaluate(files, next);
+  //
+  // `settled.files` carries the count of the exact text written above, so it IS
+  // the tree on disk and a second walk would re-derive the same answer. The
+  // measurement this run STARTED from would not: that is how the check could
+  // confirm a baseline the same run had broken (#3727).
+  const after = evaluate(settled.files, next);
   if (after.newOffenders.length > 0 || after.grew.length > 0) {
     console.error(`
 check-module-size: the allowlist was rewritten, but the gate is STILL RED for

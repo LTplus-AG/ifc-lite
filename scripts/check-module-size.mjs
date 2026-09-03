@@ -252,7 +252,7 @@ const ALLOWLIST_DIGESTS = {
   'packages/source-dalux': '11927553717016520308',
   'packages/source-dropbox': '13897585807232807340',
   'packages/viewer': '17290688824834287099',
-  'scripts': '4386814201325981117',
+  'scripts': '10576945509463692918',
 };
 
 function parseArgs(argv) {

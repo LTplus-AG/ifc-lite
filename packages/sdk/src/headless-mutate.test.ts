@@ -181,7 +181,7 @@ describe('createEffectiveEntityCheck', () => {
   it('reports an unknown model id as its own failure, listing the ids it does answer for', () => {
     // Not "no entity #70": #70 exists, and in the multi-model case it exists in
     // the model the caller named too. What is wrong is that this backend does
-    // not hold that model, so that is what the message has to say — with the
+    // not hold that model, so that is what the message has to say, with the
     // ids it does hold, since the caller has no other way to find them.
     const check = build(overlayWith([9001], []));
     expect(check({ modelId: 'other', expressId: 70 }))

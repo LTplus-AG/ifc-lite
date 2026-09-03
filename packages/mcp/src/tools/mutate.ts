@@ -57,8 +57,8 @@ function resolveExpressId(m: ReturnType<typeof resolveModel>, input: Record<stri
 /**
  * The same id, checked against the model before anything is written to it.
  *
- * The write tools below do not go through `bim.mutate.*` — they reach
- * `backend.getMutationView()` directly — so the guard that refuses a phantom
+ * The write tools below do not go through `bim.mutate.*`: they reach
+ * `backend.getMutationView()` directly, so the guard that refuses a phantom
  * write on the SDK path did not cover them. `entity_set_property` with an
  * express id nothing holds created the overlay entry, answered "Queued", and
  * was then dropped by the exporter (which only visits entities the effective

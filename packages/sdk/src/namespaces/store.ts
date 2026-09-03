@@ -54,8 +54,12 @@ export class StoreNamespace {
    *   - arrays → STEP list `(a,b,c)` (recursed)
    *   - any other string → quoted STEP string
    *
+   * `modelId` must be one the backend answers for: the headless CLI backend
+   * takes `'default'` or the file basename and throws on anything else, rather
+   * than minting a ref that `bim.mutate.*` would then refuse.
+   *
    * @example
-   *   const profile = bim.store.addEntity('arch', {
+   *   const profile = bim.store.addEntity('default', {
    *     type: 'IfcRectangleProfileDef',
    *     attributes: ['.AREA.', null, '#34', 0.6, 0.4],
    *   });
@@ -125,7 +129,7 @@ export class StoreNamespace {
    *
    * @example
    *   const storeyId = bim.query.byType('IfcBuildingStorey')[0].ref.expressId;
-   *   const col = bim.store.addColumn('arch', storeyId, {
+   *   const col = bim.store.addColumn('default', storeyId, {
    *     Position: [1, 1, 0],
    *     Width: 0.3, Depth: 0.4, Height: 3,
    *     Name: 'Column 1',
@@ -141,7 +145,7 @@ export class StoreNamespace {
    * and is extruded upward by `Height`.
    *
    * @example
-   *   bim.store.addWall('arch', storeyId, {
+   *   bim.store.addWall('default', storeyId, {
    *     Start: [0, 0, 0], End: [5, 0, 0],
    *     Thickness: 0.2, Height: 3, Name: 'North Wall',
    *   });

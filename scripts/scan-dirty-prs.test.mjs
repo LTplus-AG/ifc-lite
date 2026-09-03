@@ -16,6 +16,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { requiredWorkflowTriggers } from './lib/workflow-triggers.mjs';
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const GATE = join(HERE, 'scan-dirty-prs.mjs');
 
@@ -275,4 +277,29 @@ test('GREEN: a matrix job skipped wholesale before expanding is not silent CI (t
   );
   assert.equal(code, 0, output);
   assert.match(output, /✅/, output);
+});
+
+// ------------------------------------------------- the scan's own liveness
+
+test('the scan has a trigger that does not depend on GitHub cron delivery', () => {
+  // #3776: `gh run list --workflow "Silent PR CI visibility"` showed ONE run in
+  // total, four hours into a 30-minute cron, so the only thing on `main` was
+  // that run's four-hour-old failure -- naming PRs that had since been
+  // retargeted and gone green. A scheduled trigger is best-effort, and a
+  // workflow whose output is read as a `main` health signal cannot rest on one
+  // alone: a stale failure and a live one are the same row in the workflow
+  // list. The GAP REPORT is a pure function, tested in
+  // scripts/lib/dirty-pr-scan.test.mjs; this is the one thing about it that
+  // only the YAML can answer.
+  //
+  // Asserted against the PARSED trigger list (`requiredWorkflowTriggers`,
+  // scripts/lib/workflow-triggers.mjs) rather than the workflow's raw text --
+  // a source-text regex match here is exactly what
+  // scripts/check-source-text-assertions.mjs (#2434) exists to ratchet out.
+  const triggers = requiredWorkflowTriggers(join(HERE, '..', '.github/workflows/dirty-pr-scan.yml'));
+  assert.ok(triggers.includes('workflow_dispatch'), 'the scan must be startable by hand');
+  assert.ok(
+    triggers.includes('push'),
+    'the scan must also fire on a real repository event, not on `schedule` alone',
+  );
 });

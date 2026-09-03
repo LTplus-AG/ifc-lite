@@ -3,8 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { missingLanes as reviewSignalMissingLanes } from './pr-review-signal.mjs';
 import { pullRequestBaseBranches } from './workflow-base-branches.mjs';
+import { cadenceReport } from './scan-cadence.mjs';
 
-export { pullRequestBaseBranches };
+export { pullRequestBaseBranches, cadenceReport };
 
 /**
  * Pure classification for `scripts/scan-dirty-prs.mjs` (issue #3443).
@@ -318,3 +319,4 @@ export function report(results, required, baseBranches = null) {
 
   return { ok: silent.length === 0, lines };
 }
+

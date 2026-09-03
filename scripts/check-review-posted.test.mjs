@@ -608,8 +608,9 @@ test('THE RACE: the shared producer/consumer budget rejects either side shrinkin
   // returns its own input, and stays green through any constant change. 1500 s
   // is the budget the two workflow caps below (20 min lane, 30 min job) were
   // chosen against, so changing it must be acknowledged here.
-  assert.equal(pollSecondsArgument(), '1500');
-  assert.equal(REVIEW_POSTED_POLL_SECONDS, 1500);
+  const REMEDY = 'the poll budget is a contract with the two workflow caps below: restore 1500, or change the constant, this pin and both caps together';
+  assert.equal(pollSecondsArgument(), '1500', REMEDY);
+  assert.equal(REVIEW_POSTED_POLL_SECONDS, 1500, REMEDY);
 
   assert.throws(
     () => assertReviewLaneBudget({ pollSeconds: REVIEW_LANE_TIMEOUT_SECONDS }),

@@ -157,6 +157,28 @@ describe('the mutation tools over an express id the model does not hold', () => 
     expect(steps[1].error).toMatch(/999999/);
   });
 
+  it('leaves the session untouched when a write is refused', async () => {
+    // A refused write must not be half-done. `entity_delete_property` and
+    // `entity_set_attribute` materialised the editor and the mutation view
+    // BEFORE checking the id, so a refusal still left an empty overlay behind
+    // and `mutation_diff` reported "0 pending mutation(s)" where an untouched
+    // session says "No pending mutations." That is a small lie with a real
+    // cost: it is the difference between "you edited nothing" and "your edits
+    // are queued and empty".
+    await session();
+    for (const [name, args] of [
+      ['entity_set_property', { express_id: PHANTOM, pset: 'P', name: 'F', value: 'v' }],
+      ['entity_delete_property', { express_id: PHANTOM, pset: 'P', name: 'F' }],
+      ['entity_set_attribute', { express_id: PHANTOM, attribute: 'Name', value: 'Ghost' }],
+      ['entity_delete', { express_id: PHANTOM }],
+    ] as const) {
+      expect((await call(name, args)).isError, name).toBe(true);
+    }
+
+    const diff = await call('mutation_diff', {});
+    expect(diff.content?.[0]).toMatchObject({ text: 'No pending mutations.' });
+  });
+
   it('still queues a write to an id the model does hold', async () => {
     // Guards the four above: they have to refuse the phantom id, not every id.
     await session();

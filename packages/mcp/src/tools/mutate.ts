@@ -146,10 +146,14 @@ const entityDeleteProperty: Tool = {
   handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const backend = getBackend(m);
+    // Check BEFORE materialising the editor: `ensureEditor` creates the
+    // overlay, so checking second left an empty one behind on a refusal and
+    // `mutation_diff` then said "0 pending mutation(s)" where an untouched
+    // session says "No pending mutations."
+    const expressId = resolveWritableExpressId(m, input);
     backend.ensureEditor();
     const view = backend.getMutationView();
     if (!view) throw new Error('Mutation view not available');
-    const expressId = resolveWritableExpressId(m, input);
     const result = view.deleteProperty(expressId, input.pset as string, input.name as string);
     return okResult(
       result ? 'Property delete queued.' : 'Property was not present; no-op.',
@@ -177,10 +181,12 @@ const entitySetAttribute: Tool = {
   handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const backend = getBackend(m);
+    // Checked before `ensureEditor` for the same reason as above: a refused
+    // write must leave the session as it found it.
+    const expressId = resolveWritableExpressId(m, input);
     backend.ensureEditor();
     const view = backend.getMutationView();
     if (!view) throw new Error('Mutation view not available');
-    const expressId = resolveWritableExpressId(m, input);
     const attribute = input.attribute as string;
     // Capture the value as it stood right before this write so the mutation
     // record's `oldValue` is the true prior value — `mutation_undo` (and any

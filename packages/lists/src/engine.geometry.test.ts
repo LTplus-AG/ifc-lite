@@ -65,10 +65,37 @@ describe('geometry (World Coordinate) column/condition (#3671)', () => {
   it('a blank axis still means X, which is the documented default (#3734)', () => {
     // The narrowing above must not swallow the default. Whitespace-only counts
     // as absent, matching how a blank name is treated elsewhere in the repo.
-    for (const axis of ['', '  ', 'x']) {
+    for (const axis of ['', '  ', '\t']) {
       const result = executeList(walls([{ id: 'g', source: 'geometry', propertyName: axis }]), createProvider(positions));
       expect(result.rows.find(r => r.entityId === 1)!.values[0], `axis ${JSON.stringify(axis)}`).toBe(100.5);
     }
+  });
+
+  it('an unknown-axis CONDITION matches nothing, including exists (#3734)', () => {
+    // The same resolver backs conditions, so narrowing the cell narrows the
+    // filter too. `exists` is the one worth pinning: it now answers "no element
+    // has a world position" for a bad axis, which is chosen behaviour, not
+    // inherited. The builder cannot construct a geometry condition at all, so
+    // this is reachable only from a hand-edited or imported definition.
+    const unknown = (operator: 'exists' | 'equals', value?: number) =>
+      executeList(
+        walls([{ id: 'g', source: 'geometry', propertyName: 'X' }], [
+          { id: 'c', source: 'geometry', propertyName: 'Q', operator, value } as never,
+        ]),
+        createProvider(positions),
+      ).rows.length;
+    expect(unknown('exists')).toBe(0);
+    expect(unknown('equals', 100.5)).toBe(0);
+
+    // A known axis still filters, so the zero above is the axis and not a
+    // condition path that stopped working.
+    const known = executeList(
+      walls([{ id: 'g', source: 'geometry', propertyName: 'X' }], [
+        { id: 'c', source: 'geometry', propertyName: 'X', operator: 'equals', value: 100.5 } as never,
+      ]),
+      createProvider(positions),
+    );
+    expect(known.rows.length).toBe(1);
   });
 
   it('resolves the Y axis', () => {

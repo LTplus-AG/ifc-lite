@@ -9,7 +9,10 @@
  * newest run for a context; counting every historical row instead makes a
  * green replacement look failed (#3792).
  *
- * Deduplication requires both a stable context name and parseable timestamps.
+ * Deduplication requires a reporting API type, a stable context name, and
+ * parseable timestamps. A Checks API run and a legacy Status API context with
+ * the same label are independent signals and must never supersede each other
+ * (#3817).
  * Unknown rows stay visible and ties stay together, preserving the sweep's
  * fail-closed direction instead of guessing which ambiguous row superseded
  * which.
@@ -18,14 +21,16 @@ export function currentRollupChecks(rollup) {
   const unnamed = [];
   const groups = new Map();
   for (const check of rollup ?? []) {
-    const name = check?.__typename === 'StatusContext' ? check?.context : check?.name;
+    const type = check?.__typename === 'StatusContext' ? 'StatusContext' : 'CheckRun';
+    const name = type === 'StatusContext' ? check?.context : check?.name;
     if (typeof name !== 'string' || name === '') {
       unnamed.push(check);
       continue;
     }
-    const group = groups.get(name) ?? [];
+    const key = `${type}\x00${name}`;
+    const group = groups.get(key) ?? [];
     group.push(check);
-    groups.set(name, group);
+    groups.set(key, group);
   }
 
   const current = [...unnamed];

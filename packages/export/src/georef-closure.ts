@@ -23,6 +23,20 @@ import type { IfcSourceBytes } from '@ifc-lite/parser';
 import { collectRefsInByteRange } from './reference-collector.js';
 
 /**
+ * Every concrete STEP type name an `IfcMapConversion` can be written as.
+ * `entityIndex.byType` is keyed by the RAW STEP type name, not resolved to a
+ * supertype, so asking for `IFCMAPCONVERSION` alone misses every file
+ * written with IFC4X3's concrete subtype `IfcMapConversionScaled` — the same
+ * mistake `step-georeferencing.ts`'s `MAP_CONVERSION_STEP_TYPES`,
+ * `subset-roots.ts`'s `IDENTIFYING_TYPES`/`COORDINATE_REFERENCE_TYPES`, and
+ * `on-demand-georeferencing.ts`'s `GEOREF_TYPES` all guard against (#3243).
+ */
+const MAP_CONVERSION_STEP_TYPES: readonly string[] = [
+  'IFCMAPCONVERSION',
+  'IFCMAPCONVERSIONSCALED',
+];
+
+/**
  * Collect `IFCMAPCONVERSION` (and, transitively, the `IFCPROJECTEDCRS` it
  * names) when the closure already contains the `IFCGEOMETRICREPRESENTATIONCONTEXT`
  * it converts.
@@ -60,7 +74,9 @@ export function collectGeoreferencingEntities(
   },
   excludeIds?: ReadonlySet<number>,
 ): void {
-  const mapConversionIds = entityIndex.byType.get('IFCMAPCONVERSION') ?? [];
+  const mapConversionIds = MAP_CONVERSION_STEP_TYPES.flatMap(
+    (typeName) => entityIndex.byType.get(typeName) ?? [],
+  );
   if (mapConversionIds.length === 0) return;
 
   const queue: number[] = [];

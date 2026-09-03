@@ -123,6 +123,28 @@ describe('collectGeoreferencingEntities', () => {
     expect(closure.has(2)).toBe(false); // and must not then pull the context in via #3
   });
 
+  it('rescues IFCMAPCONVERSIONSCALED (IFC4X3 concrete subtype) the same as IFCMAPCONVERSION', () => {
+    // `entityIndex.byType` is keyed by the raw STEP type name, not resolved
+    // to a supertype, so a file written with IFC4X3's concrete subtype
+    // IfcMapConversionScaled must be looked up under its own name too —
+    // same fix as step-georeferencing.ts's MAP_CONVERSION_STEP_TYPES,
+    // subset-roots.ts's IDENTIFYING_TYPES, and
+    // on-demand-georeferencing.ts's GEOREF_TYPES (#3243).
+    const entries: Array<[number, string, string]> = [
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g',$,'Proj',$,$,$,$,(#2),$);"],
+      [2, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,$,$);"],
+      [3, 'IFCMAPCONVERSIONSCALED', '#3=IFCMAPCONVERSIONSCALED(#2,#5,160000.,450000.,0.,$,$,$,1.);'],
+      [5, 'IFCPROJECTEDCRS', "#5=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,$);"],
+    ];
+    const { source, byId, byType } = buildIndex(entries);
+    const closure = new Set<number>([1, 2]);
+
+    collectGeoreferencingEntities(closure, source, { byId, byType });
+
+    expect(closure.has(3)).toBe(true); // IfcMapConversionScaled rescued
+    expect(closure.has(5)).toBe(true); // its IfcProjectedCRS (TargetCRS) too
+  });
+
   it('is a no-op when the file has no IFCMAPCONVERSION', () => {
     const entries: Array<[number, string, string]> = [
       [1, 'IFCPROJECT', "#1=IFCPROJECT('g',$,'Proj',$,$,$,$,$,$);"],

@@ -13,6 +13,25 @@ import {
 } from '@ifc-lite/data';
 import { toCacheDataStore, type ParsedIfcStore } from './adapt.js';
 import { SchemaVersion } from './types.js';
+import type { SpatialHierarchy } from '@ifc-lite/data';
+
+function buildSpatialHierarchy(): SpatialHierarchy {
+  const project = { id: 1, type: 'IfcProject', name: 'Project', children: [], elements: [] };
+  return {
+    project,
+    byStorey: new Map([[2, [1]]]),
+    byBuilding: new Map(),
+    bySite: new Map(),
+    bySpace: new Map(),
+    storeyElevations: new Map([[2, 0]]),
+    storeyHeights: new Map(),
+    elementToStorey: new Map([[1, 2]]),
+    getStoreyElements: () => [1],
+    getStoreyByElevation: () => 2,
+    getContainingSpace: () => null,
+    getPath: () => [project],
+  } as unknown as SpatialHierarchy;
+}
 
 function buildParsedStore(overrides: Partial<ParsedIfcStore> = {}): ParsedIfcStore {
   const strings = new StringTable();
@@ -67,6 +86,20 @@ describe('toCacheDataStore', () => {
     expect(store.properties.count).toBe(0);
     const cacheStore = toCacheDataStore(store);
     expect(cacheStore.properties.count).toBe(0);
+  });
+
+  it('passes a present spatialHierarchy through unchanged', () => {
+    const spatialHierarchy = buildSpatialHierarchy();
+    const store = buildParsedStore({ spatialHierarchy });
+    const cacheStore = toCacheDataStore(store);
+    expect(cacheStore.spatialHierarchy).toBe(spatialHierarchy);
+  });
+
+  it('leaves spatialHierarchy undefined when the source has none', () => {
+    const store = buildParsedStore();
+    expect(store.spatialHierarchy).toBeUndefined();
+    const cacheStore = toCacheDataStore(store);
+    expect(cacheStore.spatialHierarchy).toBeUndefined();
   });
 
   it('does not touch a property table that is already populated (a pre-materialized/columnar source)', () => {

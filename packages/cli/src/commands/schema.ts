@@ -18,19 +18,28 @@ import { printJson, hasFlag } from '../output.js';
  * method LIST itself is reflected off the runtime classes below, so a method
  * added or removed upstream changes the dump without an edit here, and
  * `schema.runtime-shape.test.ts` fails if the two ever disagree.
+ *
+ * Keyed per class, like `RUNTIME_METHOD_SIGNATURES` below (#3763 follow-up):
+ * `bim` and `query` are reflected off two different prototypes, so a bare
+ * name shared between them (there is none today, but nothing prevented it)
+ * would otherwise read whichever entry came first.
  */
-const RUNTIME_METHOD_DOCS: Record<string, string> = {
-  query: 'Start a query chain: bim.query().byType(...).toArray()',
-  model: 'Restrict the chain to one model',
-  byType: "Filter by IFC type e.g. 'IfcWall'",
-  where: 'Filter by a property-set value',
-  limit: 'Cap the number of results',
-  offset: 'Skip the first n results',
-  toArray: 'Run the chain and return the entities',
-  first: 'Run the chain and return the first entity, or null',
-  count: 'Run the chain and return the number of matches',
-  refs: 'Run the chain and return entity refs only',
-  on: 'Subscribe to an event, e.g. bim.on("selection:changed", handler)',
+const RUNTIME_METHOD_DOCS: { bim: Record<string, string>; query: Record<string, string> } = {
+  bim: {
+    query: 'Start a query chain: bim.query().byType(...).toArray()',
+    on: 'Subscribe to an event, e.g. bim.on("selection:changed", handler)',
+  },
+  query: {
+    model: 'Restrict the chain to one model',
+    byType: "Filter by IFC type e.g. 'IfcWall'",
+    where: 'Filter by a property-set value',
+    limit: 'Cap the number of results',
+    offset: 'Skip the first n results',
+    toArray: 'Run the chain and return the entities',
+    first: 'Run the chain and return the first entity, or null',
+    count: 'Run the chain and return the number of matches',
+    refs: 'Run the chain and return entity refs only',
+  },
 };
 
 type MethodSignature = { paramNames?: string[]; tsReturn: string };
@@ -136,9 +145,20 @@ function prototypeMethods(proto: object, instance?: object): string[] {
  * transcribed, so this cannot drift from the runtime. Params and return types
  * come from `RUNTIME_METHOD_SIGNATURES`, not the bridge schema: the bridge
  * describes its own (different) call shape, and copying its `paramNames` /
- * `tsReturn` here just relabelled the wrong signature (#3763 follow-up). Only
- * `llmSemantics` (`useWhen`, `taskTags`) is still carried over from the
- * bridge entry by name, where it has one.
+ * `tsReturn` here just relabelled the wrong signature (#3763 follow-up).
+ *
+ * The bridge's `query` namespace (`bridgeQuery` below) is a flat list of the
+ * same ~20 entity-lookup methods that sit at the top level of `bim`
+ * (`entity`, `properties`, `quantities`, ...). That is the namespace those
+ * methods belong to on the bridge, and it is only ever used as a `doc` /
+ * `llmSemantics` fallback for the `bim` prototype. It is never consulted for
+ * the `query` builder-chain prototype: `QueryBuilder`'s `byType`/`where`/
+ * `limit`/… have no counterpart there (the bridge runs a whole chain
+ * synchronously instead of building one), so reading `bridgeMethods` by bare
+ * name for that prototype could silently attach an unrelated bridge method's
+ * doc to a same-named builder method. `RUNTIME_METHOD_DOCS.query` documents
+ * every builder method already, so restricting the fallback to `bim` needs
+ * no "no entry" carve-out.
  */
 function withRuntimeQueryShape(schemas: any[]): any[] {
   const bridgeQuery = schemas.find((ns) => ns?.name === 'query');
@@ -147,7 +167,7 @@ function withRuntimeQueryShape(schemas: any[]): any[] {
   );
 
   const describe = (proto: 'bim' | 'query') => (name: string) => {
-    const fromBridge = bridgeMethods.get(name);
+    const fromBridge = proto === 'bim' ? bridgeMethods.get(name) : undefined;
     const signature = RUNTIME_METHOD_SIGNATURES[proto][name];
     if (!signature) {
       // A method exists on the runtime prototype but nobody transcribed its
@@ -161,7 +181,7 @@ function withRuntimeQueryShape(schemas: any[]): any[] {
       );
     }
     return {
-      doc: RUNTIME_METHOD_DOCS[name] ?? fromBridge?.doc ?? name,
+      doc: RUNTIME_METHOD_DOCS[proto][name] ?? fromBridge?.doc ?? name,
       name,
       paramNames: signature.paramNames,
       tsReturn: signature.tsReturn,

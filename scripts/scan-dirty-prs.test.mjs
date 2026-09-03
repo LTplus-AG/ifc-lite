@@ -16,6 +16,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { requiredWorkflowTriggers } from './lib/workflow-triggers.mjs';
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const GATE = join(HERE, 'scan-dirty-prs.mjs');
 
@@ -289,14 +291,15 @@ test('the scan has a trigger that does not depend on GitHub cron delivery', () =
   // list. The GAP REPORT is a pure function, tested in
   // scripts/lib/dirty-pr-scan.test.mjs; this is the one thing about it that
   // only the YAML can answer.
-  const yml = readFileSync(join(HERE, '..', '.github/workflows/dirty-pr-scan.yml'), 'utf8');
-  // Bounded at `concurrency:`, the next top-level key, so this cannot match a
-  // `push:` that belongs to some later block.
-  const on = /\non:\n([\s\S]*?)\nconcurrency:/.exec(yml)?.[1];
-  assert.ok(on, 'dirty-pr-scan.yml must have a top-level `on:` block followed by `concurrency:`');
-  assert.ok(/^\s{2}workflow_dispatch:/m.test(on), 'the scan must be startable by hand');
+  //
+  // Asserted against the PARSED trigger list (`requiredWorkflowTriggers`,
+  // scripts/lib/workflow-triggers.mjs) rather than the workflow's raw text --
+  // a source-text regex match here is exactly what
+  // scripts/check-source-text-assertions.mjs (#2434) exists to ratchet out.
+  const triggers = requiredWorkflowTriggers(join(HERE, '..', '.github/workflows/dirty-pr-scan.yml'));
+  assert.ok(triggers.includes('workflow_dispatch'), 'the scan must be startable by hand');
   assert.ok(
-    /^\s{2}push:/m.test(on),
+    triggers.includes('push'),
     'the scan must also fire on a real repository event, not on `schedule` alone',
   );
 });

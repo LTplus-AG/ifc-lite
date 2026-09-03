@@ -100,7 +100,7 @@ export class HeadlessLikeBackend implements BimBackend {
     this.mutate = createHeadlessMutateAdapter(
       () => this.getOrCreateMutationView(),
       createEffectiveEntityExists({
-        acceptsModelId: id => id === this.modelId || id === this.modelName,
+        acceptsModelId: id => this.acceptsModelId(id),
         hasSourceEntity: id => this.dataStore.entityIndex.byId.has(id),
         overlay: () => this.mutationView,
       }),
@@ -225,10 +225,32 @@ export class HeadlessLikeBackend implements BimBackend {
     this.visibility = { hide() {}, show() {}, isolate() {}, reset() {} };
   }
 
+  /**
+   * Whether `modelId` names the one model this backend holds.
+   *
+   * One answer per backend: the schedule assert, the `bim.mutate.*` guard and
+   * `bim.store.addEntity` all call this, so a ref minted under an id one of
+   * them accepts cannot be refused by another (#3764).
+   */
+  private acceptsModelId(modelId: string): boolean {
+    return modelId === this.modelId;
+  }
+
+  /** Refuse an unknown model id loudly, at whichever surface was handed it. */
+  private assertKnownModelId(modelId: string): void {
+    if (this.acceptsModelId(modelId)) return;
+    throw new Error(`Unknown modelId '${modelId}': this backend answers for '${this.modelId}'`);
+  }
+
   private createStoreAdapter(): StoreBackendMethods {
     const get = () => this.getOrCreateStoreEditor();
     return {
       addEntity: (modelId, def) => {
+        // The ref this returns carries `modelId`, and `bim.mutate.*` refuses a
+        // ref whose model id this backend does not answer for. Echoing the
+        // caller's id back would mint a ref the very next write rejects, with
+        // the entity already created, so an unknown id is refused here (#3764).
+        this.assertKnownModelId(modelId);
         const ref = get().addEntity(def.type, def.attributes as Parameters<StoreEditor['addEntity']>[1]);
         return { modelId, expressId: ref.expressId };
       },
@@ -351,12 +373,9 @@ export class HeadlessLikeBackend implements BimBackend {
 
   private createScheduleAdapter(): ScheduleBackendMethods {
     const store = this.dataStore;
-    const id = this.modelId;
     let cached: ReturnType<ScheduleBackendMethods['data']> | null = null;
     const assert = (modelId?: string): void => {
-      if (modelId && modelId !== id) {
-        throw new Error(`Unknown modelId '${modelId}' — this backend only has '${id}'`);
-      }
+      if (modelId) this.assertKnownModelId(modelId);
     };
     const extract = (modelId?: string): ReturnType<ScheduleBackendMethods['data']> => {
       assert(modelId);

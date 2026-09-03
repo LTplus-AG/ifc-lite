@@ -109,6 +109,38 @@ describe('bim.mutate through the headless context', () => {
     expect(step).toContain("'Renamed Fresh Wall'");
   });
 
+  it('refuses a create under a model id the backend does not answer for', async () => {
+    // The ref-minting side of the same guard. `bim.store.addEntity` used to echo
+    // the caller's model id back verbatim, so a create under any other spelling
+    // handed out a ref that `bim.mutate.*` then refused, with the entity already
+    // in the overlay and in the export. docs/guide/mutations.md teaches 'arch'
+    // for exactly this call, so that is the id the mistake arrives under.
+    const { bim } = await loadModel();
+    const wallDef = {
+      type: 'IfcWall',
+      attributes: ["2N1x3zzzzzzzzzzzzzzzzz", null, "'Arch Wall'", null, null, null, null, null, null],
+    };
+
+    expect(() => bim.store.addEntity('arch', wallDef)).toThrow(/Unknown modelId 'arch'/);
+    // Nothing was created under the rejected id: the assert runs before the
+    // StoreEditor is touched, so a refused create is not a half-done one.
+    expect(exportStep(bim)).not.toContain("'Arch Wall'");
+  });
+
+  it('accepts a create under the file-name spelling and the ref it returns', async () => {
+    // The other spelling `assertModel` admits. Its whole point is that the ref
+    // comes back usable: create, then decorate, then export.
+    const { bim } = await loadModel();
+    const ref = bim.store.addEntity('model.ifc', {
+      type: 'IfcWall',
+      attributes: ["2N1x3zzzzzzzzzzzzzzzzz", null, "'Named Wall'", null, null, null, null, null, null],
+    });
+
+    expect(ref.modelId).toBe('model.ifc');
+    bim.mutate.setProperty(ref, 'Pset_FireRating', 'FireRating', 'EI 30');
+    expect(exportStep(bim)).toContain("IFCLABEL('EI 30')");
+  });
+
   it('refuses a write to an entity removed earlier in the same session', async () => {
     // The other direction of the same asymmetry, and the reason the base index
     // is not the answer either: a tombstoned SOURCE entity is still in

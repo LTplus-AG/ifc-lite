@@ -64,11 +64,17 @@ self.onmessage = function(e) {
   // comment wherever whitespace is allowed, INCLUDING inside a record.
   // Returns -1 when a comment opens and never closes: everything from there on
   // is inside it, so there is nothing left to find.
+  //
+  // The whitespace byte set (space, tab, CR, LF, form feed, vertical tab) is
+  // kept byte-for-byte in sync with isSpaceByte in step-lexing.ts and its
+  // three inline twins in tokenizer.ts's scanEntitiesFast -- this file is a
+  // string because a Blob worker cannot import at runtime, not a reason for
+  // the rule itself to drift.
   function skipTriviaAt(p) {
     for (;;) {
       while (p < len) {
         var t = buf[p];
-        if (t === 0x20 || t === 0x09 || t === 0x0D) { p++; }
+        if (t === 0x20 || t === 0x09 || t === 0x0D || t === 0x0C || t === 0x0B) { p++; }
         else if (t === 0x0A) { line++; p++; }
         else break;
       }
@@ -137,7 +143,7 @@ self.onmessage = function(e) {
       // comment actually opens. Mirrors tokenizer.ts's scanEntitiesFast.
       while (pos < len) {
         var c2 = buf[pos];
-        if (c2 === 0x20 || c2 === 0x09 || c2 === 0x0D) { pos++; }
+        if (c2 === 0x20 || c2 === 0x09 || c2 === 0x0D || c2 === 0x0C || c2 === 0x0B) { pos++; }
         else if (c2 === 0x0A) { line++; pos++; }
         else break;
       }
@@ -165,7 +171,7 @@ self.onmessage = function(e) {
       // Skip whitespace and comments
       while (pos < len) {
         var c3 = buf[pos];
-        if (c3 === 0x20 || c3 === 0x09 || c3 === 0x0D) { pos++; }
+        if (c3 === 0x20 || c3 === 0x09 || c3 === 0x0D || c3 === 0x0C || c3 === 0x0B) { pos++; }
         else if (c3 === 0x0A) { line++; pos++; }
         else break;
       }
@@ -215,7 +221,7 @@ self.onmessage = function(e) {
       // Skip whitespace and comments
       while (pos < len) {
         var c5 = buf[pos];
-        if (c5 === 0x20 || c5 === 0x09 || c5 === 0x0D) { pos++; }
+        if (c5 === 0x20 || c5 === 0x09 || c5 === 0x0D || c5 === 0x0C || c5 === 0x0B) { pos++; }
         else if (c5 === 0x0A) { line++; pos++; }
         else break;
       }

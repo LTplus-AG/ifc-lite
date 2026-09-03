@@ -27,6 +27,13 @@ const SPACE = 0x20;
 const TAB = 0x09;
 const LF = 0x0a;
 const CR = 0x0d;
+// Kept in sync with isSpaceByte in step-lexing.ts. Without these two, a form
+// feed or vertical tab right after '=' stays attached to the type token this
+// function extracts, so the pre-pass fast path would read a wall's type as
+// e.g. "\fIFCWALL" instead of "IFCWALL" while the full scanner path reads it
+// correctly -- same rule, two byte sets, one wrong answer.
+const FORM_FEED = 0x0c;
+const VTAB = 0x0b;
 
 function bytesToAsciiKey(bytes: Uint8Array, start: number, end: number): string {
   // String.fromCharCode loop is the fastest portable way to build a short
@@ -99,7 +106,8 @@ export function buildEntityRefsFromIndex(
     p++;
     while (
       p < limit
-      && (record[p] === SPACE || record[p] === TAB || record[p] === LF || record[p] === CR)
+      && (record[p] === SPACE || record[p] === TAB || record[p] === LF || record[p] === CR
+        || record[p] === FORM_FEED || record[p] === VTAB)
     ) p++;
     const typeStart = p;
     while (
@@ -109,6 +117,8 @@ export function buildEntityRefsFromIndex(
       && record[p] !== TAB
       && record[p] !== LF
       && record[p] !== CR
+      && record[p] !== FORM_FEED
+      && record[p] !== VTAB
     ) p++;
     const typeEnd = p;
 

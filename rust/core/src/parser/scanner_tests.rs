@@ -379,3 +379,39 @@ fn has_non_null_attribute_comment_free_records_unchanged() {
     assert!(!scanner.has_non_null_attribute(0, content.len(), 1));
     assert!(scanner.has_non_null_attribute(0, content.len(), 2));
 }
+
+/// Issue #3733: a form feed (0x0C) or vertical tab (0x0B) is a legal STEP
+/// token separator, matched pair of the TS-side tests in
+/// `packages/parser/test/step-trivia-form-feed-vertical-tab.test.ts`. Kept
+/// here rather than only as a `skip_step_trivia` unit test because the
+/// original defect was an END-TO-END disagreement between engines on whether
+/// an entity is found at all, not just where a byte index lands.
+#[test]
+fn entity_scanner_reads_a_type_name_preceded_by_a_form_feed() {
+    let content = "#1=\x0cIFCWALL('a',$);";
+    let mut scanner = EntityScanner::new(content);
+    let (id, type_name, _, _) = scanner.next_entity().unwrap();
+    assert_eq!(id, 1);
+    assert_eq!(type_name, "IFCWALL");
+}
+
+#[test]
+fn entity_scanner_reads_a_type_name_preceded_by_a_vertical_tab() {
+    let content = "#1=\x0bIFCWALL('a',$);";
+    let mut scanner = EntityScanner::new(content);
+    let (id, type_name, _, _) = scanner.next_entity().unwrap();
+    assert_eq!(id, 1);
+    assert_eq!(type_name, "IFCWALL");
+}
+
+/// The boundary case the fix must not get wrong the other way: a form feed
+/// INSIDE a quoted string is string content, not trivia.
+#[test]
+fn entity_scanner_does_not_treat_a_form_feed_inside_a_string_as_trivia() {
+    let content = "#1=IFCWALL('a\x0cb',$);";
+    let mut scanner = EntityScanner::new(content);
+    let (id, type_name, start, end) = scanner.next_entity().unwrap();
+    assert_eq!(id, 1);
+    assert_eq!(type_name, "IFCWALL");
+    assert_eq!(&content[start..end], content);
+}

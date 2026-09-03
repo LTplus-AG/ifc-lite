@@ -10,7 +10,7 @@
 
 import JSZip from 'jszip';
 import { parseComponents } from './reader-components.js';
-import { extractElement, unescapeXml, parseLabels } from './xml-text.js';
+import { extractElement, unescapeXml, parseLabels, parseXsBoolean } from './xml-text.js';
 import type {
   BCFProject,
   BCFTopic,
@@ -425,14 +425,13 @@ function parseHeaderFiles(markupContent: string): BCFHeaderFile[] {
     const ifcProject = attrs.match(/IfcProject="([^"]*)"/)?.[1];
     const ifcSpatial = attrs.match(/IfcSpatialStructureElement="([^"]*)"/)?.[1];
     // BCF 2.1 spells this `isExternal`, 3.0 `IsExternal`; accept either casing
-    // (and the xs:boolean `1`/`0` forms a foreign tool may emit).
-    // Trimmed: xs:boolean has whiteSpace=collapse, so " true " reads true.
-    const isExternalRaw = attrs.match(/\b[Ii]sExternal="([^"]*)"/)?.[1].trim();
+    // and the xs:boolean `1`/`0` forms. Blank is absent, per parseXsBoolean.
+    const isExternalRaw = attrs.match(/\b[Ii]sExternal="([^"]*)"/)?.[1];
 
     files.push({
       ifcProject: ifcProject || undefined,
       ifcSpatialStructureElement: ifcSpatial || undefined,
-      isExternal: isExternalRaw === undefined ? undefined : (isExternalRaw === 'true' || isExternalRaw === '1'),
+      isExternal: isExternalRaw?.trim() ? parseXsBoolean(isExternalRaw, { ifUnrecognized: false }) : undefined,
       filename: extractElement(body, 'Filename'),
       date: extractElement(body, 'Date'),
       reference: extractElement(body, 'Reference'),
@@ -475,16 +474,16 @@ function extractBimSnippet(content: string): BCFBimSnippet | undefined {
   if (!snippetType) return undefined;
 
   // BCF 2.1 spells this `isExternal`, 3.0 `IsExternal` (same rename as the
-  // Header `<File>` attribute in reader.ts's parseHeaderFiles); accept either
-  // casing so a spec-correct 3.0 file's flag isn't silently read as false, and
-  // the xs:boolean `1`/`0` forms alongside `true`/`false`.
-  const isExternalRaw = match[1].match(/\b[Ii]sExternal="([^"]*)"/)?.[1].trim();
+  // Header `<File>` site above); accept either casing and `1`/`0`. Unlike
+  // that site, `isExternal` here is a required boolean, so absent and blank
+  // both resolve to `false`, not `undefined`.
+  const isExternalRaw = match[1].match(/\b[Ii]sExternal="([^"]*)"/)?.[1];
   const reference = extractElement(match[2], 'Reference');
   const referenceSchema = extractElement(match[2], 'ReferenceSchema');
 
   return {
     snippetType,
-    isExternal: isExternalRaw === 'true' || isExternalRaw === '1',
+    isExternal: isExternalRaw?.trim() ? parseXsBoolean(isExternalRaw, { ifUnrecognized: false }) : false,
     reference: reference || '',
     referenceSchema,
   };

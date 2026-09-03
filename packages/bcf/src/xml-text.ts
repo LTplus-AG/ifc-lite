@@ -33,6 +33,38 @@ export function extractElement(content: string, elementName: string): string | u
 }
 
 /**
+ * Parse a captured `xs:boolean` value per its lexical space
+ * `{true, false, 1, 0}` (whiteSpace=collapse, so leading/trailing
+ * whitespace is ignored; matched case-sensitively, per the XSD's literal
+ * lexical space -- BCF markup never emits `True`/`TRUE`).
+ *
+ * Does NOT decide what an *absent* attribute means, nor a *blank* one: a
+ * value that collapses to the empty string is schema-invalid for
+ * `xs:boolean` and is treated the same as absent, not as recognised-false or
+ * as garbage -- so every caller checks `raw === undefined` (or blank, after
+ * a `.trim()`) itself and supplies its own absent-case default, which
+ * differs by call site (`DefaultVisibility` leans true on BCF 2.1, false on
+ * 3.0; the others are `undefined`-optional or lean false). This unifies the
+ * four hand-rolled xs:boolean parses this package had (`parseVisibility`,
+ * `parseViewSetupHints`'s `flag()`, and the two `isExternal` sites in
+ * `reader.ts`), which is exactly the drift #3713 warns about: one behaviour,
+ * several hand-rolled implementations, each patched independently.
+ *
+ * A present value outside the lexical space (garbage, e.g. `"yes"`) resolves
+ * to `ifUnrecognized` rather than a hardcoded pick, because callers
+ * genuinely disagree on which way an unrecognised value should lean.
+ *
+ * @param raw a non-blank, already-captured attribute or element value (the
+ *   caller has already ruled out absent/blank)
+ */
+export function parseXsBoolean(raw: string, { ifUnrecognized }: { ifUnrecognized: boolean }): boolean {
+  const trimmed = raw.trim();
+  if (trimmed === 'true' || trimmed === '1') return true;
+  if (trimmed === 'false' || trimmed === '0') return false;
+  return ifUnrecognized;
+}
+
+/**
  * Escape XML special characters
  */
 export function escapeXml(str: string): string {

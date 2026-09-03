@@ -1214,4 +1214,129 @@ describe('BCF Reader - buildingSMART Test Files', () => {
       expect(hints?.openingsVisible).toBe(false);
     });
   });
+
+  describe('parseXsBoolean unification (#3713 item 3)', () => {
+    // The four sites parseXsBoolean now shares -- parseVisibility's
+    // DefaultVisibility, parseViewSetupHints's flag(), and the header <File>
+    // and <BimSnippet> isExternal reads in reader.ts -- each keep their own
+    // absent-case default (per-version fallback / undefined / undefined /
+    // false respectively) and each treat blank the same as absent. Only
+    // DefaultVisibility already had coverage for its own absent/blank/
+    // unrecognized cases (above); this fills in the other three sites plus
+    // the unrecognized-value branch DefaultVisibility itself was missing.
+    async function readArchive(files: Record<string, string>) {
+      const zip = new JSZip();
+      zip.file('bcf.version', '<?xml version="1.0"?><Version VersionId="2.1"></Version>');
+      for (const [name, content] of Object.entries(files)) zip.file(name, content);
+      const buffer = await zip.generateAsync({ type: 'arraybuffer' });
+      return readBCF(buffer);
+    }
+
+    it('reads an unrecognized DefaultVisibility as true (this site\'s documented ifUnrecognized)', async () => {
+      const project = await readArchive({
+        'topic-1/markup.bcf': [
+          '<?xml version="1.0" encoding="UTF-8"?>',
+          '<Markup>',
+          '  <Topic Guid="topic-1" TopicType="Issue" TopicStatus="Open">',
+          '    <Title>t</Title>',
+          '  </Topic>',
+          '  <Viewpoints Guid="vp-1">',
+          '    <Viewpoint>viewpoint.bcfv</Viewpoint>',
+          '  </Viewpoints>',
+          '</Markup>',
+        ].join('\n'),
+        'topic-1/viewpoint.bcfv': [
+          '<?xml version="1.0" encoding="UTF-8"?>',
+          '<VisualizationInfo Guid="vp-1">',
+          '  <Components>',
+          '    <Visibility DefaultVisibility="yes"/>',
+          '  </Components>',
+          '</VisualizationInfo>',
+        ].join('\n'),
+      });
+      const topic = Array.from(project.topics.values())[0];
+      expect(topic.viewpoints[0].components?.visibility?.defaultVisibility).toBe(true);
+    });
+
+    it.each([
+      ['isExternal="0"', ' isExternal="0"', false],
+      ['isExternal absent', '', undefined],
+      ['isExternal whitespace-only', ' isExternal="   "', undefined],
+      ['isExternal unrecognized (garbage)', ' isExternal="maybe"', false],
+    ])('header <File %s> reads isExternal as %s (this site\'s documented default)', async (_label, attr, expected) => {
+      const project = await readArchive({
+        'topic-1/markup.bcf': [
+          '<?xml version="1.0" encoding="UTF-8"?>',
+          '<Markup>',
+          '  <Header>',
+          `    <File${attr}>`,
+          '      <Filename>model.ifc</Filename>',
+          '    </File>',
+          '  </Header>',
+          '  <Topic Guid="topic-1" TopicType="Issue" TopicStatus="Open">',
+          '    <Title>t</Title>',
+          '  </Topic>',
+          '</Markup>',
+        ].join('\n'),
+      });
+      const topic = Array.from(project.topics.values())[0];
+      expect(topic.header?.[0]?.isExternal).toBe(expected);
+    });
+
+    it.each([
+      ['isExternal="0"', ' isExternal="0"', false],
+      ['isExternal absent (required boolean, no undefined state)', '', false],
+      ['isExternal whitespace-only', ' isExternal="   "', false],
+      ['isExternal unrecognized (garbage)', ' isExternal="maybe"', false],
+    ])('<BimSnippet %s> reads isExternal as %s', async (_label, attr, expected) => {
+      const project = await readArchive({
+        'topic-1/markup.bcf': [
+          '<?xml version="1.0" encoding="UTF-8"?>',
+          '<Markup>',
+          '  <Topic Guid="topic-1" TopicType="Issue" TopicStatus="Open">',
+          '    <Title>t</Title>',
+          `    <BimSnippet SnippetType="JSON"${attr}>`,
+          '      <Reference>https://example.com/snippet.json</Reference>',
+          '    </BimSnippet>',
+          '  </Topic>',
+          '</Markup>',
+        ].join('\n'),
+      });
+      const topic = Array.from(project.topics.values())[0];
+      expect(topic.bimSnippet?.isExternal).toBe(expected);
+    });
+
+    it.each([
+      ['SpacesVisible="0"', ' SpacesVisible="0"', false],
+      ['SpacesVisible absent', '', undefined],
+      ['SpacesVisible whitespace-only', ' SpacesVisible="   "', undefined],
+      ['SpacesVisible unrecognized (garbage)', ' SpacesVisible="maybe"', false],
+    ])('<ViewSetupHints %s> reads spacesVisible as %s (this site\'s documented default)', async (_label, attr, expected) => {
+      const project = await readArchive({
+        'topic-1/markup.bcf': [
+          '<?xml version="1.0" encoding="UTF-8"?>',
+          '<Markup>',
+          '  <Topic Guid="topic-1" TopicType="Issue" TopicStatus="Open">',
+          '    <Title>t</Title>',
+          '  </Topic>',
+          '  <Viewpoints Guid="vp-1">',
+          '    <Viewpoint>viewpoint.bcfv</Viewpoint>',
+          '  </Viewpoints>',
+          '</Markup>',
+        ].join('\n'),
+        'topic-1/viewpoint.bcfv': [
+          '<?xml version="1.0" encoding="UTF-8"?>',
+          '<VisualizationInfo Guid="vp-1">',
+          '  <Components>',
+          `    <ViewSetupHints${attr} OpeningsVisible="true"/>`,
+          '    <Visibility DefaultVisibility="true"/>',
+          '  </Components>',
+          '</VisualizationInfo>',
+        ].join('\n'),
+      });
+      const topic = Array.from(project.topics.values())[0];
+      const hints = topic.viewpoints[0].components?.visibility?.viewSetupHints;
+      expect(hints?.spacesVisible).toBe(expected);
+    });
+  });
 });

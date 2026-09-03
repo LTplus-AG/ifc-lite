@@ -18,7 +18,7 @@ import type {
   BCFViewSetupHints,
   BCFVisibility,
 } from './types.js';
-import { extractElement, unescapeXml } from './xml-text.js';
+import { extractElement, parseXsBoolean, unescapeXml } from './xml-text.js';
 
 /**
  * Every `<Component>` element in an XML fragment.
@@ -209,15 +209,17 @@ function parseVisibility(content: string, versionId: '2.1' | '3.0'): BCFVisibili
   // `<Selection>` component, say) won the match and inverted the answer, so a
   // file saying show-all hid everything.
   const defaultVisMatch = visibilityMatch[0].match(/DefaultVisibility="([^"]+)"/);
-  // xs:boolean's lexical space is {true, false, 1, 0} with whiteSpace=
-  // collapse: '0', however padded, must read as false, not fall through a
-  // bare `!== 'false'` comparison as true. A whitespace-only value collapses
-  // to '', which is not in that lexical space at all -- the same as the
-  // attribute being absent -- so it falls back to the per-version default
-  // rather than surviving into the explicit-value branch as truthy.
+  // A whitespace-only value collapses to '' under xs:boolean's whiteSpace=
+  // collapse, which is not in the {true, false, 1, 0} lexical space at all --
+  // the same as the attribute being absent -- so both fall back to the
+  // per-version default via parseXsBoolean's caller-owns-absent contract,
+  // rather than surviving into parseXsBoolean's unrecognized-value branch.
+  // An unrecognized but non-blank value (e.g. "yes") leans true here: this
+  // site's existing behavior for garbage input, preserved via
+  // `ifUnrecognized: true`.
   const rawDefaultVis = defaultVisMatch?.[1].trim();
   const defaultVisibility = rawDefaultVis !== undefined && rawDefaultVis !== ''
-    ? rawDefaultVis !== 'false' && rawDefaultVis !== '0'
+    ? parseXsBoolean(rawDefaultVis, { ifUnrecognized: true })
     : defaultVisibilityFallback(versionId);
 
   const exceptions = parseComponentList(visibilityMatch[0], 'Exceptions');
@@ -262,11 +264,14 @@ function parseViewSetupHints(content: string): BCFViewSetupHints | undefined {
 
   const attrs = match[1];
   const flag = (name: string): boolean | undefined => {
-    // Trimmed for xs:boolean whiteSpace=collapse (" 1 " is true), the same
-    // way parseVisibility's DefaultVisibility read is.
-    const raw = attrs.match(new RegExp(`\\b${name}="([^"]*)"`))?.[1].trim();
-    if (raw === undefined) return undefined;
-    return raw === 'true' || raw === '1';
+    const raw = attrs.match(new RegExp(`\\b${name}="([^"]*)"`))?.[1];
+    // Blank (whitespace-only, or empty) is treated the same as absent -- see
+    // parseXsBoolean's absent-vs-blank note -- so both stay `undefined` here
+    // rather than reading as false. Unrecognized-but-non-blank content also
+    // leans false: unlike DefaultVisibility, an unset hint should not be
+    // read as an emphatic "show it".
+    if (raw === undefined || raw.trim() === '') return undefined;
+    return parseXsBoolean(raw, { ifUnrecognized: false });
   };
 
   const spacesVisible = flag('SpacesVisible');

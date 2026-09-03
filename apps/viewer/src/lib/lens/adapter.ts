@@ -18,10 +18,12 @@ import {
   extractPropertiesOnDemand,
   extractTypePropertiesOnDemand,
   extractQuantitiesOnDemand,
+  extractTypeQuantitiesOnDemand,
   extractClassificationsOnDemand,
   extractMaterialsOnDemand,
   extractAllMaterialsOnDemand,
   mergeInheritedPropertySets,
+  mergeInheritedQuantitySets,
 } from '@ifc-lite/parser';
 import { resolveEntityPredefinedType } from '@/lib/entity-predefined-type';
 import { lensMaterialNames } from '@/lib/lens-material-names';
@@ -226,31 +228,34 @@ export function createLensDataProvider(
       if (!resolved) return undefined;
       const store = resolved.entry.ifcDataStore;
       const id = resolved.expressId;
-
-      // On-demand quantity extraction
-      if (store.onDemandQuantityMap && store.source?.length > 0) {
-        const qsets = extractQuantitiesOnDemand(store, id);
+      const findIn = (qsets: ReadonlyArray<{ name: string; quantities: ReadonlyArray<{ name: string; value: number | string }> }>) => {
         for (const qset of qsets) {
-          if (qset.name === qsetName) {
-            for (const q of qset.quantities) {
-              if (q.name === quantName) return q.value;
-            }
-          }
-        }
-        return undefined;
-      }
-
-      // Fallback: pre-built quantity tables
-      const qsets = store.quantities?.getForEntity?.(id);
-      if (!qsets) return undefined;
-      for (const qset of qsets) {
-        if (qset.name === qsetName) {
+          if (qset.name !== qsetName) continue;
           for (const q of qset.quantities) {
             if (q.name === quantName) return q.value;
           }
         }
+        return undefined;
+      };
+
+      // On-demand quantity extraction
+      if (store.onDemandQuantityMap && store.source?.length > 0) {
+        const own = findIn(extractQuantitiesOnDemand(store, id));
+        if (own !== undefined) return own;
+        // Fall through to type-inherited qsets (Qto_*BaseQuantities is
+        // sometimes attached to the IfcTypeProduct rather than the occurrence,
+        // the same shape Pset_*Common uses above).
+        const typeQtys = extractTypeQuantitiesOnDemand(store, id);
+        return typeQtys ? findIn(typeQtys.quantities) : undefined;
       }
-      return undefined;
+
+      // Fallback: pre-built quantity tables
+      const own = findIn(store.quantities?.getForEntity?.(id) ?? []);
+      if (own !== undefined) return own;
+      const typeIds = store.relationships?.getRelated(id, RelationshipType.DefinesByType, 'inverse') ?? [];
+      const typeId = typeIds[0];
+      if (typeId === undefined) return undefined;
+      return findIn(store.quantities?.getForEntity?.(typeId) ?? []);
     },
 
     getClassifications(globalId: number): ClassificationInfo[] {
@@ -269,15 +274,27 @@ export function createLensDataProvider(
       const store = resolved.entry.ifcDataStore;
       const id = resolved.expressId;
 
-      // On-demand quantity extraction
+      // On-demand quantity extraction, merged with type-inherited qsets the
+      // same way getPropertySets merges psets: occurrence wins per QUANTITY,
+      // not per set (mirrors mergeInheritedPropertySets — see there for why a
+      // whole-set replacement on a name collision hides type-only quantities).
       if (store.onDemandQuantityMap && store.source?.length > 0) {
-        return extractQuantitiesOnDemand(store, id);
+        const instanceQsets = extractQuantitiesOnDemand(store, id) as ReadonlyArray<{ name: string; quantities: ReadonlyArray<{ name: string }> }>;
+        const typeQtys = extractTypeQuantitiesOnDemand(store, id);
+        return mergeInheritedQuantitySets(
+          instanceQsets,
+          (typeQtys?.quantities ?? []) as ReadonlyArray<{ name: string; quantities: ReadonlyArray<{ name: string }> }>,
+        );
       }
 
       // Fallback: pre-built quantity tables
-      const qsets = store.quantities?.getForEntity?.(id);
-      if (!qsets) return [];
-      return qsets as ReadonlyArray<{ name: string; quantities: ReadonlyArray<{ name: string }> }>;
+      const ownQsets = (store.quantities?.getForEntity?.(id) ?? []) as ReadonlyArray<{ name: string; quantities: ReadonlyArray<{ name: string }> }>;
+      const typeIds = store.relationships?.getRelated(id, RelationshipType.DefinesByType, 'inverse') ?? [];
+      const typeId = typeIds[0];
+      const typeQsets = typeId !== undefined
+        ? (store.quantities?.getForEntity?.(typeId) ?? []) as ReadonlyArray<{ name: string; quantities: ReadonlyArray<{ name: string }> }>
+        : [];
+      return mergeInheritedQuantitySets(ownQsets, typeQsets);
     },
 
     getMaterialName(globalId: number): string | undefined {

@@ -3745,6 +3745,7 @@
     "isSourceBytes: function",
     "measureUnit: function",
     "mergeInheritedPropertySets: function",
+    "mergeInheritedQuantitySets: function",
     "normalizeIfcTypeName: function",
     "parseAuto: function",
     "parseFederatedIfcx: function",

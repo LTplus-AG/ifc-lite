@@ -77,3 +77,27 @@ async fn enabled_advertises_prometheus_text_exposition_content_type() {
         .unwrap();
     assert_eq!(content_type, "text/plain; version=0.0.4");
 }
+
+/// Cache size gauges (issue #3636): the scrape body must reflect the ACTUAL
+/// cache contents, not just be present -- a gauge that never changes value
+/// would be as useless as a missing one.
+#[tokio::test]
+async fn enabled_body_reports_cache_entries_and_bytes() {
+    let state = test_state("cache-gauges", true).await;
+    state.cache.set_bytes("key-a", b"12345").await.unwrap(); // 5 bytes
+    state.cache.set_bytes("key-b", b"1234567890").await.unwrap(); // 10 bytes
+
+    let response = metrics(axum::extract::State(state)).await.into_response();
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let text = std::str::from_utf8(&body).unwrap();
+
+    assert!(
+        text.contains("ifc_server_cache_entries 2\n"),
+        "expected 2 cache entries in:\n{text}"
+    );
+    assert!(
+        text.contains("ifc_server_cache_bytes 15\n"),
+        "expected 15 cache bytes in:\n{text}"
+    );
+}

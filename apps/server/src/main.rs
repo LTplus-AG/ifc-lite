@@ -21,6 +21,7 @@
 //! - `POST /api/v1/parse/parquet/optimized` - ara3d BOS-optimized format (~50x smaller)
 //! - `GET /api/v1/parse/symbolic/:cache_key` - 2D symbol stream (IfcAnnotation + IfcGrid) as JSON
 //! - `GET /api/v1/cache/:key` - Retrieve cached result
+//! - `DELETE /api/v1/cache/:hash` - Invalidate every cache entry for one source file
 
 // Native global allocator (#1623): the platform system heap's global lock was
 // ~70% of native geometry self-time and capped rayon scaling to ~1.8x on
@@ -91,7 +92,7 @@ fn build_cors_layer(config: &Config) -> CorsLayer {
 
         CorsLayer::new()
             .allow_origin(origins)
-            .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+            .allow_methods([Method::GET, Method::POST, Method::DELETE, Method::OPTIONS])
             .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION, header::ACCEPT])
             .max_age(Duration::from_secs(3600))
     }
@@ -188,7 +189,10 @@ fn build_router(state: AppState) -> Router {
             get(routes::parse::get_symbolic),
         )
         // Cache endpoints
-        .route("/api/v1/cache/{key}", get(routes::cache::get_cached))
+        .route(
+            "/api/v1/cache/{key}",
+            get(routes::cache::get_cached).delete(routes::cache::delete_cached),
+        )
         .route("/api/v1/cache/check/{hash}", get(routes::parse::check_cache))
         .route(
             "/api/v1/cache/geometry/{hash}",

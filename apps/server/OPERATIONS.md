@@ -53,7 +53,40 @@ your corpus. Concretely for a single-replica box:
 - `GET /api/v1/metrics` - admission gauges/counters + resident memory
   (`ifc_server_resident_bytes`, `ifc_server_admission_in_flight`,
   `ifc_server_admission_queued`, `ifc_server_admission_rejected_total{reason}`,
-  `ifc_server_mem_budget_bytes`), when `IFC_METRICS_ENABLED=1`.
+  `ifc_server_mem_budget_bytes`), plus cache size gauges
+  (`ifc_server_cache_entries`, `ifc_server_cache_bytes`), when
+  `IFC_METRICS_ENABLED=1`.
+
+## Cache
+
+The disk cache (`CACHE_DIR`) has no size limit and NEVER self-prunes.
+`CACHE_MAX_AGE_DAYS` is parsed into `Config` and read by nothing else -- no
+code path evicts on age, so an entry written today is still there next year
+unless something removes it. `DELETE /api/v1/cache/{sha256}` is the only
+removal path the server offers (short of deleting `CACHE_DIR` on disk). It
+removes every cache entry derived from one source file's content hash (the
+request, `-json-v2`, `-parquet-vN`, `-parquet-metadata-vN` and `-symbolic-v1`
+entries, across every opening-filter/tessellation-quality combination) and
+reclaims any content blob none of them, or any unrelated entry, still
+references. It
+is idempotent: deleting a hash nothing is cached under is a `200` with
+`{"deleted": 0}`, not a `404`, so a caller can invoke it unconditionally (e.g.
+"the model behind this hash was removed, drop whatever is cached for it")
+without checking existence first. Use it to bound cache size from an
+external job, or to invalidate the geometry for a model an application has
+deleted.
+
+Like every other route, `DELETE` is UNAUTHENTICATED when
+`IFC_SERVER_API_TOKEN` is unset -- anyone who can reach the port can empty
+the cache hash by hash. Set the token on any deployment whose port is not
+already private.
+
+`DELETE` does not cancel or outrank an in-flight parse for the same hash: a
+cache fill that is already running (or queued behind the reclaim lock)
+re-inserts its entries after the `200` returns. If you are invalidating
+because the source bytes changed, note that different bytes hash to a
+different key anyway; if you are invalidating to reclaim space, re-issue the
+`DELETE` once the in-flight parse has finished.
 
 ## Behavior notes
 

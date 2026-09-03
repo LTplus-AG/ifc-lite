@@ -38,12 +38,40 @@ import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { DirtyPrScanError, pullRequestBaseBranches, scanPrs, report } from './lib/dirty-pr-scan.mjs';
+import {
+  DirtyPrScanError,
+  cadenceReport,
+  pullRequestBaseBranches,
+  report,
+  scanPrs,
+} from './lib/dirty-pr-scan.mjs';
 import { expandJobNames, matrixSkipAliases } from './lib/pr-review-signal.mjs';
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(SCRIPTS_DIR, '..');
 const DEFAULT_WORKFLOW = join(REPO_ROOT, '.github/workflows/test.yml');
+// This scan's OWN workflow, for the cadence report (#3776).
+const OWN_WORKFLOW_FILE = 'dirty-pr-scan.yml';
+const OWN_WORKFLOW = join(REPO_ROOT, '.github/workflows', OWN_WORKFLOW_FILE);
+const FALLBACK_CRON_MINUTES = 30;
+
+/**
+ * The declared cron interval, read from the workflow rather than pinned here:
+ * a constant that drifts from the schedule reports a wrong staleness threshold,
+ * and a wrong threshold is worse than a missing one. Falls back when the
+ * schedule is not the simple every-N-minutes form this understands.
+ *
+ * @param {string} path
+ */
+function cronMinutesFrom(path) {
+  try {
+    const m = /^\s*-\s*cron:\s*['"]\*\/(\d+) \* \* \* \*['"]/m.exec(readFileSync(path, 'utf8'));
+    const n = m ? Number(m[1]) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : FALLBACK_CRON_MINUTES;
+  } catch {
+    return FALLBACK_CRON_MINUTES;
+  }
+}
 
 // Same exclusion as scripts/pr-review-signal.config.json's `excludeJobKeys`,
 // and the same reason: the `test` aggregate `needs:` every other job and
@@ -131,6 +159,61 @@ function fetchOpenPrs({ repo, limit }) {
   );
 }
 
+/**
+ * The cadence half (#3776): when did this workflow last run, and was the gap
+ * long enough that `main` was carrying a stale verdict?
+ *
+ * IT NEVER FAILS THE SCAN. `gh()` is fail-closed by design -- the lane verdict
+ * must not rest on a half-read API -- but a cadence line is commentary about
+ * the scan rather than part of it, so a `gh` failure is caught here and handed
+ * to `cadenceReport` as an explicit UNKNOWN. Letting it throw would replace the
+ * PR findings with an error about the reporting of them.
+ *
+ * ONLY `success`/`failure` RUNS COUNT. This workflow now has a `concurrency`
+ * block, so a cron tick landing next to a push leaves CANCELLED runs behind; a
+ * cancelled run never scanned anything, and counting one as "the last run"
+ * would report a healthy cadence over a window where nothing was checked.
+ * `--status completed` does NOT exclude them -- cancelled IS completed -- so
+ * the filter is on `conclusion`.
+ *
+ * @param {{ repo: string, workflowFile: string, runId: string | undefined, cronMinutes: number }} o
+ */
+function cadence({ repo, workflowFile, runId, cronMinutes }) {
+  let previousCreatedAt = null;
+  let ghError = null;
+  try {
+    const runs = gh(
+      [
+        'run',
+        'list',
+        '--workflow',
+        workflowFile,
+        '--repo',
+        repo,
+        // Well above the number of runs a single cron window can produce, so a
+        // burst of cancelled or in-progress runs cannot push the last real one
+        // off the end of the page and fake a first-run report.
+        '--limit',
+        '60',
+        '--json',
+        'databaseId,createdAt,conclusion',
+      ],
+      "this workflow's own run history",
+    );
+    const previous = (Array.isArray(runs) ? runs : [])
+      .filter((r) => String(r?.databaseId) !== String(runId))
+      .filter((r) => r?.conclusion === 'success' || r?.conclusion === 'failure')
+      .map((r) => r?.createdAt)
+      .filter((t) => typeof t === 'string' && t !== '')
+      .sort()
+      .pop();
+    previousCreatedAt = previous ?? null;
+  } catch (err) {
+    ghError = err instanceof DirtyPrScanError ? `${err.reason}: ${err.message}` : String(err);
+  }
+  return cadenceReport({ previousCreatedAt, now: new Date(), cronMinutes, ghError });
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
 
@@ -165,11 +248,29 @@ async function main() {
 
   const results = scanPrs(prs, required, baseBranches, aliases);
   const { ok, lines } = report(results, required, baseBranches);
-  for (const l of lines) console.log(l);
+
+  // Live mode only: offline `--state-file` runs are the regression harness,
+  // which has no run history to ask about and must not shell out to `gh`.
+  const cadenceLines = [];
+  if (!args.stateFile && args.repo) {
+    const c = cadence({
+      repo: args.repo,
+      workflowFile: OWN_WORKFLOW_FILE,
+      runId: process.env.GITHUB_RUN_ID,
+      cronMinutes: cronMinutesFrom(OWN_WORKFLOW),
+    });
+    cadenceLines.push('', ...c.lines);
+    // The annotation goes to STDOUT and only there. Written into the summary
+    // file instead it would be a staleness report that is itself invisible.
+    if (c.warning) console.log(`::warning::${c.warning}`);
+  }
+
+  const out = [...lines, ...cadenceLines];
+  for (const l of out) console.log(l);
 
   if (args.summaryFile) {
     try {
-      appendFileSync(args.summaryFile, `\n${lines.join('\n')}\n`);
+      appendFileSync(args.summaryFile, `\n${out.join('\n')}\n`);
     } catch {
       // A summary write failing is not itself a reason to fail the scan.
     }

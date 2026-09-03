@@ -276,3 +276,27 @@ test('GREEN: a matrix job skipped wholesale before expanding is not silent CI (t
   assert.equal(code, 0, output);
   assert.match(output, /✅/, output);
 });
+
+// ------------------------------------------------- the scan's own liveness
+
+test('the scan has a trigger that does not depend on GitHub cron delivery', () => {
+  // #3776: `gh run list --workflow "Silent PR CI visibility"` showed ONE run in
+  // total, four hours into a 30-minute cron, so the only thing on `main` was
+  // that run's four-hour-old failure -- naming PRs that had since been
+  // retargeted and gone green. A scheduled trigger is best-effort, and a
+  // workflow whose output is read as a `main` health signal cannot rest on one
+  // alone: a stale failure and a live one are the same row in the workflow
+  // list. The GAP REPORT is a pure function, tested in
+  // scripts/lib/dirty-pr-scan.test.mjs; this is the one thing about it that
+  // only the YAML can answer.
+  const yml = readFileSync(join(HERE, '..', '.github/workflows/dirty-pr-scan.yml'), 'utf8');
+  // Bounded at `concurrency:`, the next top-level key, so this cannot match a
+  // `push:` that belongs to some later block.
+  const on = /\non:\n([\s\S]*?)\nconcurrency:/.exec(yml)?.[1];
+  assert.ok(on, 'dirty-pr-scan.yml must have a top-level `on:` block followed by `concurrency:`');
+  assert.ok(/^\s{2}workflow_dispatch:/m.test(on), 'the scan must be startable by hand');
+  assert.ok(
+    /^\s{2}push:/m.test(on),
+    'the scan must also fire on a real repository event, not on `schedule` alone',
+  );
+});

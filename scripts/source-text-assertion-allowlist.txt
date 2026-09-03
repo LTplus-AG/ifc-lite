@@ -118,3 +118,11 @@ scripts/release-crates-order.test.mjs  # 12 hits
 scripts/release-tag-commit.test.mjs  # 8 hits
 scripts/release-version-changed.test.mjs  # 6 hits
 scripts/sync-versions.test.mjs  # 15 hits
+
+# --- Added by #3754's follow-up, when TEST_FILE_RE/SOURCE_LITERAL finally
+# included `cjs`/`js` (an adversarial review of #3754 found the same blindness
+# one extension short of closed) ---
+# Same shape as the `mjs` row above, on the two extensions that round it out.
+# The ceiling moved 31 -> 33 to match.
+packages/pointcloud/src/streaming/worker-bundle.test.ts  # 5 hits -- reads dist/streaming/inline-worker.js, the published bundle, and asserts on its literal text (contains "export const INLINE_WORKER_CODE", is >50KB, does not start with import/export). Genuinely source-text: this IS the artifact under test, and there is no behaviour to drive instead -- the test exists specifically to pin the shape of a build output.
+scripts/check-benchmark-regression.test.mjs  # 4 hits -- same detector-false-positive class as packages/create-ifc-lite/test/config-fixers.test.ts above: every hit is on `report`/`out`, the markdown/stdout that a spawned `check-benchmark-regression.js` child process GENERATED, not on any file this test's own source reads. The `.js` literal that now names a "source file" is the spawned script's path, never read as text.

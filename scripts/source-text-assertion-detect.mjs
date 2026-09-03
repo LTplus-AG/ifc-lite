@@ -157,13 +157,13 @@ const READ_NAMES = new Set(['readFileSync', 'readFile']);
 /**
  * Names a SOURCE file as a literal. Fixture formats (.ifc, .json, .csv, …) are
  * deliberately absent: reading a fixture and asserting on it is a normal test.
- * `mjs` joined the list for #3754 -- `scripts/` is 271 `.mjs` files against 5
- * `.ts`, so this half of the pairing rule never matched what it read.
+ * `mjs` joined for #3754 -- `scripts/` is 271 `.mjs` against 5 `.ts`, so this
+ * half never matched what it read. `cjs`/`js` joined for the same follow-up.
  *
  * Applied to string/template-literal CONTENT, not PROSE -- load-bearing:
  * three tests once got flagged by a `.ts` filename in a comment.
  */
-const SOURCE_LITERAL = /^[^'"`\n]*\.(ts|tsx|mts|mjs|rs|css|scss)$/;
+const SOURCE_LITERAL = /^[^'"`\n]*\.(ts|tsx|mts|mjs|cjs|js|rs|css|scss)$/;
 
 /**
  * Text predicates. `test` and `exec` are here because this repo already writes

@@ -154,7 +154,7 @@ const SKIP_DIRS = new Set(['node_modules', 'dist', 'pkg', 'build', 'coverage', '
 // new)" while its own detector flagged 14 files it never opened. A prohibited
 // source-text assertion landed in #3633 and survived eight rounds of hardening
 // underneath that green.
-const TEST_FILE_RE = /\.(test|spec)\.(ts|tsx|mts|mjs)$/;
+const TEST_FILE_RE = /\.(test|spec)\.(ts|tsx|mts|mjs|cjs|js)$/;
 
 const ALLOWLIST_PATH = join(ROOT, 'scripts', 'source-text-assertion-allowlist.txt');
 
@@ -208,9 +208,9 @@ const ALLOWLIST_PATH = join(ROOT, 'scripts', 'source-text-assertion-allowlist.tx
  */
 // 8 -> 22. Not new debt: 14 files always in violation, only now visible,
 // grandfathered in the commit that makes them visible. Ratchets DOWN only.
-// 22 -> 31 (#3754): SOURCE_LITERAL lacked `mjs`, so scripts/'s all-.mjs files
-// named no "source file" -- same shape, 9 more always-violating files.
-const ALLOWLIST_CEILING = 31;
+// 22 -> 31 (#3754): SOURCE_LITERAL lacked `mjs` -- same shape, 9 more files.
+// 31 -> 33 (#3754 follow-up): still lacked `cjs`/`js` -- 2 more, same shape.
+const ALLOWLIST_CEILING = 33;
 
 function walk(dir, found = []) {
   // Fail closed. Swallowing an unreadable directory would let this guard

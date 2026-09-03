@@ -22,8 +22,28 @@
  * `stdout`. `.ts`/`.tsx`/`.mts` never hit this because this repo's TS imports
  * omit the extension, so the same hole was latent there too and this closes it
  * for every extension, not only the new one.
+ *
+ * `cjs`/`js` joining SOURCE_LITERAL for the same follow-up brought the CommonJS
+ * analogue of the same problem: `require('./sibling.cjs')` LOADS a module, the
+ * same act an `import` specifier performs, so it belongs in this exclusion
+ * too -- a bare `require(...)` call's first argument is treated exactly like an
+ * import/export specifier or a dynamic `import(...)` argument below.
+ *
+ * Deliberately NOT extended to `require.resolve(...)`: that call returns a
+ * PATH, not a loaded module, and is this codebase's CommonJS spelling of the
+ * `join(dirname(fileURLToPath(import.meta.url)), 'thing.mjs')` idiom the
+ * detect module's own docblock says resolves taint correctly once the literal
+ * is recognised -- `readFileSync(require.resolve('./thing.cjs'), 'utf8')`
+ * naming and then reading its own sibling is exactly the pairing rule's
+ * subject, and excluding it here would reopen the hole this file exists to
+ * close.
  */
 import ts from 'typescript';
+
+/** TRUE for the bare identifier `require`, never `require.resolve` or similar. */
+function isBareRequireCallee(expr) {
+  return ts.isIdentifier(expr) && expr.text === 'require';
+}
 
 export function isModuleSpecifierLiteral(node) {
   const parent = node.parent;
@@ -35,6 +55,8 @@ export function isModuleSpecifierLiteral(node) {
     parent.expression.kind === ts.SyntaxKind.ImportKeyword &&
     parent.arguments[0] === node
   )
+    return true;
+  if (ts.isCallExpression(parent) && isBareRequireCallee(parent.expression) && parent.arguments[0] === node)
     return true;
   return false;
 }

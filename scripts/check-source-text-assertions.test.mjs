@@ -1341,6 +1341,36 @@ assert.match(cfg, /x/);
   );
 });
 
+// The CommonJS analogue of the import-specifier false positive above (#3754
+// follow-up): a bare `require('./sibling.cjs')` LOADS a module, same as an
+// `import` specifier, and every `.cjs`/`.js` test in this repo opens with one.
+test('a require(".../x.cjs") specifier alone does not name a source file', () => {
+  assert.equal(
+    flagged(`
+const { evaluate } = require('./check-issue-queue.cjs');
+const { readFileSync } = require('node:fs');
+const cfg = readFileSync('./x.json', 'utf8');
+assert.match(cfg, /x/);
+`),
+    false,
+  );
+});
+
+// The exclusion must stay narrow: `require.resolve(...)` returns a PATH, not a
+// loaded module -- the CommonJS spelling of `join(dirname(...), 'x.cjs')` --
+// and reading THAT path is exactly the pairing rule's subject. Excluding it
+// too would reopen the hole isModuleSpecifierLiteral exists to close.
+test('require.resolve(".../x.cjs") is not excluded — reading through it is still caught', () => {
+  assert.equal(
+    flagged(`
+const { readFileSync } = require('node:fs');
+const body = readFileSync(require.resolve('./sibling.cjs'), 'utf8');
+assert.match(body, /function evaluate/);
+`),
+    true,
+  );
+});
+
 // ---------------------------------------------------------------------------
 // 6. End to end: the probe above, inverted (#3754). Plants the issue's exact
 // shape in a synthetic scripts/ tree and asserts the UNMODIFIED gate goes RED
@@ -1393,4 +1423,65 @@ test('PLANTED PROBE - delete me', () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// ---------------------------------------------------------------------------
+// 7. Same end-to-end shape, on the two extensions an adversarial review of
+// #3754 found still uncovered: TEST_FILE_RE/SOURCE_LITERAL gained `mjs` but
+// not `cjs` or plain `js`, so scripts/space-dcel-e2e.cjs's shape was still
+// invisible after #3754 landed.
+// ---------------------------------------------------------------------------
+
+function plantEndToEnd(extension) {
+  const dir = mkdtempSync(join(tmpdir(), `source-text-${extension}-plant-`));
+  try {
+    for (const d of ['packages', 'apps', 'scripts']) mkdirSync(join(dir, d), { recursive: true });
+    writeFileSync(
+      join(dir, 'scripts', `plant-subject.${extension}`),
+      'module.exports.evaluate = function evaluate() { return true; };\n',
+    );
+    // CommonJS `require`, which #3754's follow-up must not treat as a module
+    // specifier exclusion the way it treats an ESM import: it reads its own
+    // sibling via `require.resolve`, a path lookup, not a module load.
+    writeFileSync(
+      join(dir, 'scripts', `plant-subject.test.${extension}`),
+      `const { test } = require('node:test');
+const { readFileSync } = require('node:fs');
+const assert = require('node:assert/strict');
+
+test('PLANTED PROBE - delete me', () => {
+  const body = readFileSync(require.resolve('./plant-subject.${extension}'), 'utf8');
+  assert.match(body, /function evaluate/);
+});
+`,
+    );
+    writeFileSync(join(dir, 'scripts', 'source-text-assertion-allowlist.txt'), '');
+    const realGateSrc = readFileSync(GATE, 'utf8');
+    const gateSrc = realGateSrc
+      .replace("from './source-text-assertion-detect.mjs'", `from ${JSON.stringify(pathToFileURL(DETECT).href)}`)
+      .replace(/const ALLOWLIST_CEILING = \d+;/, 'const ALLOWLIST_CEILING = 0;');
+    assert.notEqual(gateSrc, realGateSrc, 'ceiling/import rewrite did not match the real gate source');
+    const gateCopy = join(dir, 'scripts', 'check-source-text-assertions.mjs');
+    writeFileSync(gateCopy, gateSrc);
+
+    const r = spawnSync(process.execPath, [gateCopy, '--root', dir], { encoding: 'utf8', timeout: 120_000 });
+    const output = `${r.stdout}${r.stderr}`;
+    assert.notEqual(r.status, 0, `the planted assertion must fail the gate, got exit 0:\n${output}`);
+    assert.match(
+      output,
+      new RegExp(`scripts/plant-subject\\.test\\.${extension}:\\d+`),
+      `the offending file:line must be named in the output:\n${output}`,
+    );
+    assert.doesNotMatch(output, /0 new\)/, 'must not report the planted violation as "0 new"');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('a planted .cjs source-text assertion in scripts/ is caught end to end, not reported as "0 new"', () => {
+  plantEndToEnd('cjs');
+});
+
+test('a planted .js source-text assertion in scripts/ is caught end to end, not reported as "0 new"', () => {
+  plantEndToEnd('js');
 });

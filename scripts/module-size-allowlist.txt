@@ -194,7 +194,7 @@
    414 packages/clash/src/adapters/step.ts
    441 packages/clash/src/bcf-bridge.ts
    433 packages/clash/src/duplicates.ts
-   546 packages/cli/src/commands/ask.ts
+   547 packages/cli/src/commands/ask.ts
    495 packages/cli/src/commands/create.ts
    436 packages/cli/src/commands/export.ts
    518 packages/cli/src/commands/extract-entities.ts

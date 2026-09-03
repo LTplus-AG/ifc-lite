@@ -170,6 +170,9 @@ pub(super) const IDENTITY_ROTATION: [f32; 9] = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.
 /// geometry (issue #3575). Returns a map from a mesh's index in `meshes` to
 /// the verified placement it should be emitted with; a mesh absent from the
 /// map falls back to the pre-#3575 content-hash dedup in `parquet_optimized.rs`.
+/// Verification is all-or-nothing per group: one occurrence over tolerance
+/// drops the ENTIRE representation group from the map, not just that
+/// occurrence, so a group never ships half-instanced.
 ///
 /// Deliberately excludes the RIGID tier (`InstanceMeta::canonical_transform`
 /// set): those groups substitute a congruent-but-not-bit-identical template,

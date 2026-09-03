@@ -19,6 +19,13 @@ use std::sync::Mutex;
 /// static (one sink per process, shared across every test in this binary).
 static REPORTS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
+/// Both tests below share `REPORTS` and the process-wide report sink through
+/// `drain()`. Cargo runs tests in one binary on multiple threads by default,
+/// so without this lock one test's `drain()` can race another's `capture()`
+/// and steal or lose its report (CodeRabbit, PR #3766). Held for each test's
+/// full body, including its own setup and `drain()` calls.
+static TEST_LOCK: Mutex<()> = Mutex::new(());
+
 fn capture(message: &str) {
     REPORTS.lock().unwrap().push(message.to_string());
 }
@@ -32,6 +39,7 @@ fn drain() -> Vec<String> {
 /// no trace anywhere. It must now reach the installed report sink.
 #[test]
 fn an_oversized_ifcproject_id_is_reported() {
+    let _guard = TEST_LOCK.lock().unwrap();
     let _ = ifc_lite_core::set_report_sink(capture);
     drain(); // clear anything a sibling test in this binary already left.
 
@@ -50,6 +58,7 @@ fn an_oversized_ifcproject_id_is_reported() {
 /// Control: a file with no oversized id reports nothing.
 #[test]
 fn an_ordinary_ifcproject_id_reports_nothing() {
+    let _guard = TEST_LOCK.lock().unwrap();
     let _ = ifc_lite_core::set_report_sink(capture);
     drain();
 

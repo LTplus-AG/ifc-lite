@@ -626,6 +626,14 @@ ENDSEC;\nEND-ISO-10303-21;\n";
         "an oversized reference must be reported in warnings, not silently dropped (#3752): {:?}",
         stats.warnings
     );
+    // Exactly one oversized reference exists in this model, and it must be
+    // counted once — not twice, from a stray prepass scan over model 0
+    // (CodeRabbit, PR #3766).
+    assert!(
+        stats.warnings.iter().any(|w| w.starts_with("1 reference(s)")),
+        "the single oversized reference must be counted exactly once, not double-counted: {:?}",
+        stats.warnings
+    );
 }
 
 /// Control: a filtered model whose root's references are all ordinary

@@ -204,9 +204,11 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     // for why this is a diagnostic about the source file, not a completeness
     // gap in the merge (#3752).
     let mut refused_refs_total = 0usize;
-
+    // Own counter, not refused_refs_total: the emit loop re-resolves model 0
+    // at i == 0 and is the scan that gets reported (CodeRabbit, PR #3766).
+    let mut refused_refs_prepass = 0usize;
     let first = ModelIndex::build(models[0].content);
-    let first_included = plan::resolve_included(&first, &models[0].included, &mut refused_refs_total);
+    let first_included = plan::resolve_included(&first, &models[0].included, &mut refused_refs_prepass);
     let canonical_project = first.projects.iter().copied().find(|id| first_included.contains(id));
     let first_infra: HashMap<&'static str, u32> = first
         .first_infra

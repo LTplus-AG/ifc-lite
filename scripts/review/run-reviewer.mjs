@@ -53,7 +53,8 @@
  *                    CLAUDE_CODE_OAUTH_TOKEN with `claude setup-token`.
  *   MODEL_ERROR      Any other non-zero exit or `is_error`. REMEDY: read the
  *                    captured stderr, which is printed verbatim.
- *   CLI_SILENT_EXIT  Non-zero with no output. The live session-limit shape.
+ *   CLI_SILENT_EXIT  Non-zero with no diagnostic stderr. The live session-limit
+ *                    shape may still leave an opaque JSON envelope on stdout.
  *   EMPTY_RESPONSE   The CLI succeeded and produced nothing. Treated as failure
  *                    rather than as an empty review.
  *   BAD_ENVELOPE     The CLI's own JSON wrapper did not parse.
@@ -361,7 +362,18 @@ export function runReviewer({ prompt, model, spawn = realSpawn, token = null }) 
   const stderr = String(r.stderr ?? '');
   if (r.status !== 0) {
     const output = `${stderr}\n${r.stdout ?? ''}`;
-    const reason = output.trim() === '' ? 'CLI_SILENT_EXIT' : classify(output);
+    const classified = classify(output);
+    // Run 33802488121 measured the second early-exit shape: exit 1 and empty
+    // stderr, but an opaque stdout envelope that contains no recognised
+    // diagnostic. It is still an exit before a usable review, and treating the
+    // envelope's mere bytes as MODEL_ERROR prevents the independent provider
+    // from taking over. Preserve specific auth/quota text wherever the CLI
+    // writes it; only the otherwise-unclassified, stderr-empty shape is silent.
+    const reason = classified !== 'MODEL_ERROR'
+      ? classified
+      : stderr.trim() === ''
+        ? 'CLI_SILENT_EXIT'
+        : 'MODEL_ERROR';
     throw new RunReviewerError(
       reason,
       `The reviewer CLI exited ${r.status}. ${remedyFor(reason)}\n--- stderr ---\n${stderr.trim() || '(empty)'}`,
@@ -407,6 +419,9 @@ function remedyFor(reason) {
   }
   if (reason === 'AUTH_FAILED') {
     return 'AUTH_FAILED. REMEDY: refresh the token with `claude setup-token` and update the CLAUDE_CODE_OAUTH_TOKEN secret.';
+  }
+  if (reason === 'CLI_SILENT_EXIT') {
+    return 'CLI_SILENT_EXIT: the CLI exited before producing a usable review. REMEDY: use an independent provider or inspect the captured process output.';
   }
   return 'MODEL_ERROR. REMEDY: read the captured stderr below.';
 }

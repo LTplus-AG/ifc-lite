@@ -188,6 +188,17 @@ test('#3803: the measured exit-1-with-no-output shape is CLI_SILENT_EXIT', () =>
   );
 });
 
+test('#3812: exit 1 with empty stderr and an opaque stdout envelope is CLI_SILENT_EXIT', () => {
+  assert.throws(
+    () => runReviewer({
+      prompt: 'x',
+      model: 'sonnet',
+      spawn: () => ({ status: 1, stdout: '{"type":"result","subtype":"error"}', stderr: '' }),
+    }),
+    (error) => error.reason === 'CLI_SILENT_EXIT' && /independent provider/.test(error.message),
+  );
+});
+
 test('`is_error: true` alongside EXIT 0 still fails', () => {
   // This is the claude-code-action #1644 shape: success by exit code, nothing by
   // content. An exit code alone is not evidence here either.
@@ -323,6 +334,17 @@ test('#3803: a silent Claude CLI exit invokes the independent provider', () => {
     providerFallback: () => '{"verdict":"clean"}',
   });
   assert.equal(result.text, '{"verdict":"clean"}');
+});
+
+test('#3812: an opaque stdout envelope with empty stderr invokes the independent provider', () => {
+  let fallbackCalls = 0;
+  const result = runReviewerWithFailover({
+    prompt: 'p', model: 'sonnet', tokens: [TOKENS[0]],
+    spawn: () => ({ status: 1, stdout: '{"type":"result","subtype":"error"}', stderr: '' }),
+    providerFallback: () => { fallbackCalls += 1; return '{"verdict":"clean"}'; },
+  });
+  assert.equal(result.text, '{"verdict":"clean"}');
+  assert.equal(fallbackCalls, 1);
 });
 
 test('#3803: independent-provider failure is explicit, never a clean verdict', () => {

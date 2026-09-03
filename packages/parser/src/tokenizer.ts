@@ -100,10 +100,14 @@ export class StepTokenizer {
 
         if (!hasDigits) continue;
 
-        // Skip whitespace (inline)
+        // Skip whitespace (inline). Kept byte-for-byte in sync with
+        // `isSpaceByte` in step-lexing.ts (space, tab, CR, LF, form feed,
+        // vertical tab) -- this loop, its two twins below in this method, and
+        // the worker's copy in scan-worker-source.ts are the same rule
+        // hand-duplicated for speed, not four independent decisions.
         while (pos < len) {
           const c = buf[pos];
-          if (c === 0x20 || c === 0x09 || c === 0x0D) { pos++; }
+          if (c === 0x20 || c === 0x09 || c === 0x0D || c === 0x0C || c === 0x0B) { pos++; }
           else if (c === NEWLINE) { line++; pos++; }
           else break;
         }
@@ -137,7 +141,7 @@ export class StepTokenizer {
         // Skip whitespace
         while (pos < len) {
           const c = buf[pos];
-          if (c === 0x20 || c === 0x09 || c === 0x0D) { pos++; }
+          if (c === 0x20 || c === 0x09 || c === 0x0D || c === 0x0C || c === 0x0B) { pos++; }
           else if (c === NEWLINE) { line++; pos++; }
           else break;
         }
@@ -197,7 +201,7 @@ export class StepTokenizer {
         // Skip whitespace
         while (pos < len) {
           const c = buf[pos];
-          if (c === 0x20 || c === 0x09 || c === 0x0D) { pos++; }
+          if (c === 0x20 || c === 0x09 || c === 0x0D || c === 0x0C || c === 0x0B) { pos++; }
           else if (c === NEWLINE) { line++; pos++; }
           else break;
         }

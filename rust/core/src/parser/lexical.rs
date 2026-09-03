@@ -77,7 +77,7 @@ pub fn skip_step_trivia(bytes: &[u8], i: usize) -> Option<usize> {
     let len = bytes.len();
     let mut p = i;
     loop {
-        while p < len && bytes[p].is_ascii_whitespace() {
+        while p < len && is_step_space(bytes[p]) {
             p += 1;
         }
         if bytes.get(p) != Some(&b'/') || bytes.get(p + 1) != Some(&b'*') {
@@ -85,6 +85,24 @@ pub fn skip_step_trivia(bytes: &[u8], i: usize) -> Option<usize> {
         }
         p = skip_step_comment(bytes, p)?;
     }
+}
+
+/// ASCII whitespace per ISO 10303-21: space, tab, LF, CR, form feed, vertical
+/// tab.
+///
+/// Spelled out rather than `u8::is_ascii_whitespace`, which follows the
+/// WhatWG Infra Standard's definition and EXCLUDES vertical tab (0x0B) — its
+/// docs say as much. `ifc-lite-export`'s `source_header::is_step_space`
+/// already carries this exact set for this exact reason (see its doc
+/// comment): reaching for a stdlib predicate here once mismatched the
+/// TypeScript half's `isSpaceByte`/`isAsciiSpace` on `\x0B` and, before that
+/// mismatch was found, TypeScript's `isSpaceByte` itself omitted both `\x0C`
+/// and `\x0B` — issue #3733, a form feed silently dropping an entity that
+/// this scanner parsed. Keep this set and `isSpaceByte` in
+/// `packages/parser/src/step-lexing.ts` identical.
+#[inline]
+pub fn is_step_space(b: u8) -> bool {
+    matches!(b, b' ' | b'\t' | b'\n' | b'\r' | 0x0b | 0x0c)
 }
 
 #[cfg(test)]
@@ -108,6 +126,17 @@ mod tests {
     #[test]
     fn trivia_refuses_an_unterminated_comment() {
         assert_eq!(skip_step_trivia(b" /* never closes", 0), None);
+    }
+
+    /// Issue #3733: form feed (0x0C) and vertical tab (0x0B) are both trivia.
+    /// `u8::is_ascii_whitespace` (the WhatWG set) includes the former and
+    /// excludes the latter, which is exactly the shape of bug this guards --
+    /// see `is_step_space`'s doc comment.
+    #[test]
+    fn trivia_skips_form_feed_and_vertical_tab() {
+        assert_eq!(skip_step_trivia(b"\x0c=X", 0), Some(1));
+        assert_eq!(skip_step_trivia(b"\x0b=X", 0), Some(1));
+        assert_eq!(skip_step_trivia(b"\x0c\x0b =X", 0), Some(3));
     }
 
     #[test]

@@ -121,6 +121,36 @@ export function resolveEntityMeasureScales(
   let scales = byProject.get(ownerId);
   if (!scales) {
     const units = extractProjectUnits(store.source, store.entityIndex, ownerId);
+    // `extractLengthUnitScale` answers an unconfirmed 1.0 both for "this
+    // project declares metres" and "this project declares no LENGTHUNIT at
+    // all" - absence reading as success. `UnitsInContext` is OPTIONAL on
+    // `IfcContext`, so a federated model CAN arrive with none, and taking the
+    // 1.0 would silently rescale a millimetre value by 1000x. `ProjectUnits`
+    // tells the two apart, so only a DECLARED length unit overrides the
+    // store-wide scale; an undeclared one keeps the file-wide answer, which is
+    // the same safe-miss direction the walk-failed fallback already takes.
+    const declaresLengthUnit = units.resolvedForUnitType('LENGTHUNIT') !== undefined;
+    if (!declaresLengthUnit) {
+      // The owner's UnitsInContext is missing or declares no LENGTHUNIT at
+      // all, so it has no AREAUNIT/VOLUMEUNIT either (both are read off that
+      // same, absent-or-empty assignment). Falling back to
+      // store.lengthUnitScale for length ALONE while leaving area/volume
+      // undefined would make callers derive area/volume from THIS scale
+      // squared/cubed - the file-wide length scale, not the file-wide
+      // area/volume scale, which IFC does not require to be related by that
+      // exponent (see the module doc above). Take the file-wide answer for
+      // all three together, matching the walk-failed fallback exactly.
+      scales = fallback();
+      byProject.set(ownerId, scales);
+      return scales;
+    }
+    // Deliberately re-derives the scale via extractLengthUnitScale rather
+    // than reading units.resolvedForUnitType('LENGTHUNIT').siScale: for an
+    // IfcConversionBasedUnit the two resolvers can disagree - this one
+    // prefers a name-keyed table (e.g. 'FOOT' -> 0.3048) over a non-standard
+    // declared ConversionFactor, while ProjectUnits always computes the
+    // declared factor (proven, with the disagreeing case, in
+    // length-unit-resolvers-agreement.test.ts).
     scales = {
       length: extractLengthUnitScale(store.source, store.entityIndex, ownerId),
       area: units.resolvedForUnitType('AREAUNIT')?.siScale,

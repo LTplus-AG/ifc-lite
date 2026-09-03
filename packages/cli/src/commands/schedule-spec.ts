@@ -25,6 +25,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { fatal } from '../output.js';
 import { logger } from '../logger.js';
+import { parseWhereFilter } from './where-filter.js';
 
 /** The reusable definition persisted by `--save` and consumed by `--spec`. */
 export interface ScheduleSpec {
@@ -71,6 +72,18 @@ export async function loadScheduleSpec(path: string): Promise<ScheduleSpec> {
   }
 
   const obj = parsed as Record<string, unknown>;
+
+  // An unrecognised key (a mistyped "group-by" instead of "groupBy", say) used
+  // to be silently ignored by the loop below, which only ever reads the
+  // fields it already knows about — the mistyped key had no effect and the
+  // command exited 0 with whatever the OTHER, correctly-spelled fields
+  // produced (an ungrouped schedule, for a mistyped "groupBy"), never
+  // surfacing that the field was dropped. Reject it up front instead.
+  const unknownKeys = Object.keys(obj).filter(k => !(SPEC_FIELDS as string[]).includes(k));
+  if (unknownKeys.length > 0) {
+    fatal(`--spec "${path}" has unrecognised field(s): ${unknownKeys.join(', ')}. Valid fields: ${SPEC_FIELDS.join(', ')}.`);
+  }
+
   const spec: ScheduleSpec = {};
   for (const field of SPEC_FIELDS) {
     if (!(field in obj)) continue;
@@ -83,6 +96,15 @@ export async function loadScheduleSpec(path: string): Promise<ScheduleSpec> {
 
   if (spec.preset === undefined && spec.type === undefined) {
     fatal(`--spec "${path}" declares neither "preset" nor "type" — nothing to schedule. Expected at least one, plus "columns" unless a preset supplies it.`);
+  }
+
+  // Validate `where` the same way an explicit --where flag is (schedule.ts
+  // calls the identical parseWhereFilter once it applies the filter) —
+  // eagerly here, rather than deferring the same fatal(...) until the run
+  // gets around to using it (by which point --save, if also given, may
+  // already have written a spec built from this same broken value).
+  if (spec.where !== undefined) {
+    parseWhereFilter(spec.where);
   }
 
   return spec;

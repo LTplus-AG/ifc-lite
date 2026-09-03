@@ -34,7 +34,7 @@ import { SCHEDULE_PRESETS, resolvePreset } from './schedule-presets.js';
 import { renderScheduleMarkdown, renderScheduleMarkdownWithSubtotals } from './schedule-render-md.js';
 import { renderScheduleHtml, renderScheduleHtmlWithSubtotals } from './schedule-render-html.js';
 import { loadScheduleSpec, saveScheduleSpec } from './schedule-spec.js';
-import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -938,6 +938,41 @@ describe('--spec / --save', () => {
     expect(spec.format).toBe('csv');
   });
 
+  /**
+   * Bug: --save wrote the spec file BEFORE --where was parsed and before the
+   * input .ifc was even opened. An invalid --where (or a nonexistent input
+   * file) still fatals, but only after a spec file already landed on disk —
+   * a broken definition persisted despite the command's own non-zero exit.
+   * --save must only happen once the run it is capturing has actually
+   * succeeded.
+   */
+  it('--save does not leave a spec file on disk when --where is invalid', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sched-spec-'));
+    const specPath = join(dir, 'broken.json');
+    await expectFatalAsync(() =>
+      runSchedule(IFC, ['--type', 'IfcDoor', '--columns', 'Name=Name', '--where', 'NotAValidWhereExpr', '--save', specPath]),
+    );
+    expect(existsSync(specPath)).toBe(false);
+  });
+
+  it('--save does not leave a spec file on disk when the input file does not exist', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sched-spec-'));
+    const specPath = join(dir, 'broken2.json');
+    const errSpy = vi.spyOn(process.stderr, 'write').mockImplementation((() => true) as never);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`process.exit(${code})`);
+    }) as never);
+    try {
+      await expect(
+        scheduleCommand(['/nonexistent/model.ifc', '--type', 'IfcDoor', '--columns', 'Name=Name', '--save', specPath]),
+      ).rejects.toThrow();
+    } finally {
+      errSpy.mockRestore();
+      exitSpy.mockRestore();
+    }
+    expect(existsSync(specPath)).toBe(false);
+  });
+
   it('an explicit flag overrides the loaded spec (explicit flag wins)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'sched-spec-'));
     const specPath = join(dir, 'door.json');
@@ -982,6 +1017,32 @@ describe('--spec / --save', () => {
   it('a nonexistent --spec file is fatal, not a silently empty schedule', async () => {
     const err = await expectFatalAsync(() => runSchedule(IFC, ['--spec', '/nonexistent/spec.json']));
     expect(err).toContain('--spec "/nonexistent/spec.json" could not be read');
+  });
+
+  /**
+   * Bug: an unrecognised field (a mistyped "group-by" instead of the real
+   * "groupBy") used to be silently ignored by the `field in obj` / `for
+   * (const field of SPEC_FIELDS)` loop, which only reads the fields it
+   * already knows about — so the mistyped key had no effect and the command
+   * exited 0 with an ungrouped schedule instead of the grouped one the
+   * author of the spec clearly intended. Any key outside SPEC_FIELDS is now
+   * a fatal(...) naming the bad key.
+   */
+  it('a spec with an unrecognised field (mistyped "group-by") is fatal, not a silent no-op', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sched-spec-'));
+    const specPath = join(dir, 'typo.json');
+    writeFileSync(specPath, JSON.stringify({ type: 'IfcDoor', columns: 'Name=Name', 'group-by': 'Name' }));
+    const err = await expectFatalAsync(() => loadScheduleSpec(specPath));
+    expect(err).toContain('group-by');
+  });
+
+  /** A spec's `where` is validated the same way an explicit --where is (parseWhereFilter), not deferred until the run tries to apply it. */
+  it('a spec with an invalid `where` expression is fatal at load time', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sched-spec-'));
+    const specPath = join(dir, 'bad-where.json');
+    writeFileSync(specPath, JSON.stringify({ type: 'IfcDoor', columns: 'Name=Name', where: 'NotAValidWhereExpr' }));
+    const err = await expectFatalAsync(() => loadScheduleSpec(specPath));
+    expect(err).toContain('Invalid --where syntax');
   });
 
   it('invalid JSON in --spec is fatal with a clear message', async () => {

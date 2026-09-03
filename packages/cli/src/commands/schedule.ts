@@ -173,16 +173,10 @@ export async function scheduleCommand(args: string[]): Promise<void> {
   const groupKeys = parseGroupBySpec(groupBySpec, columns);
   const subtotalAggs = parseSubtotalsSpec(subtotalsSpec, columns);
 
-  // --save persists the definition this invocation actually resolved to (after
-  // --preset/--spec defaults are folded in), so the written file is self-
-  // contained and reloadable with --spec alone.
+  // --save's target path is captured here (so --save itself is validated up
+  // front, same as every other flag) but the file is written only once this
+  // run has actually succeeded — see below.
   const savePath = getFlag(args, '--save');
-  if (savePath) {
-    await saveScheduleSpec(savePath, {
-      type, columns: columnsSpec, where: whereFilter,
-      sort: sortSpec, groupBy: groupBySpec, subtotals: subtotalsSpec, format,
-    });
-  }
 
   const { bim } = await createHeadlessContext(filePath);
 
@@ -202,6 +196,21 @@ export async function scheduleCommand(args: string[]): Promise<void> {
   // Order once, after row assembly: groups contiguous, then remaining sort keys.
   if (sortKeys.length > 0 || groupKeys.length > 0) {
     rows = orderRows(rows, sortKeys, groupKeys);
+  }
+
+  // --save persists the definition this invocation actually resolved to
+  // (after --preset/--spec defaults are folded in), so the written file is
+  // self-contained and reloadable with --spec alone. Written only here, once
+  // --type/--where/--sort/--group-by/--subtotals have all parsed AND the
+  // input file has loaded successfully — writing it any earlier (its
+  // original position, before --where was even parsed and before the input
+  // file was opened) could persist a broken spec despite the run's own
+  // non-zero exit.
+  if (savePath) {
+    await saveScheduleSpec(savePath, {
+      type, columns: columnsSpec, where: whereFilter,
+      sort: sortSpec, groupBy: groupBySpec, subtotals: subtotalsSpec, format,
+    });
   }
 
   if (subtotalAggs.length > 0) {

@@ -139,7 +139,7 @@
  *     has re-reviewed the newest push is transient GitHub state, not a fact
  *     about the diff.
  *
- * FAIL-CLOSED, EVERY PATH. `gh` missing, `gh` erroring, unparseable JSON, an
+ * FAIL-CLOSED ON READABLE FACTS. `gh` missing, `gh` erroring, unparseable JSON, an
  * empty rollup, a head SHA that will not resolve, a reviewer that passed with no
  * description, a job name this parser cannot expand, a reviews walk that did not
  * complete, a review whose `commit_id` is unreadable -- each exits non-zero with
@@ -191,7 +191,11 @@ const DEFAULT_CONFIG = join(SCRIPTS_DIR, 'pr-review-signal.config.json');
  * makes `now() >= deadline` false forever: the poll would spin until the job's
  * own job timeout killed it, printing nothing at all. That is the exact
  * "no output, no verdict" shape this gate exists to reject, so an unreadable
- * duration is an error rather than a silently infinite one. Zero and negatives
+ * duration is an error rather than a silently infinite one. Exhausting that
+ * duration while the rollup is still moving is reported as an explicit
+ * LANE_PUBLICATION_TIMEOUT advisory: absence has not become evidence yet, and
+ * the independent push/scheduled dirty-PR scan remains the eventual backstop.
+ * Zero and negatives
  * go the same way: a zero budget is a gate that never waits, and a zero poll
  * interval is a busy loop against the API.
  *
@@ -653,6 +657,24 @@ export function evaluate({
         'normal for a fork and is reported without failing:',
     );
     for (const n of missing) lines.push(`      - ${n}`);
+  } else if (timedOut) {
+    // A moving rollup at the deadline is UNKNOWN, not MISSING. Five live runs
+    // in #3810 crossed the 2400 s budget while Build packages + WASM was still
+    // queued; every named lane appeared later and largely passed. Rendering
+    // that queue condition as MISSING_LANES makes a red check indistinguishable
+    // from settled absence. The dirty-PR scan independently rechecks actual
+    // missing lanes on main pushes and schedule, so this is reported loudly
+    // without pretending the code failed.
+    lines.push(
+      `⚠️  LANE_PUBLICATION_TIMEOUT: ${missing.length} of ${required.length} required lane(s) ` +
+        'had not appeared before the poll budget expired, while the rollup was still unsettled. ' +
+        'This is an unknown queue state, not evidence that the lanes will never run:',
+    );
+    for (const n of missing) lines.push(`      - ${n}`);
+    lines.push(
+      '   Re-run this signal for an immediate answer. The independent silent-PR scan will fail ' +
+        'on settled missing lanes without turning hosted-runner delay into a code failure.',
+    );
   } else {
     ok = false;
     lines.push(

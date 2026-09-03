@@ -20,6 +20,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { expandJobNames, pullRequestBranchFilterKeys } from './lib/pr-review-signal.mjs';
+import { evaluate } from './check-pr-review-signal.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..');
@@ -97,6 +98,26 @@ const FATAL = () => ['--config', cfgWith({ reviewVerdictSeverity: 'fail' }, 'fat
 
 const LANE = (name, state = 'success') => ({ name, state });
 const HEALTHY = ['Typecheck', 'Lint', 'Node tests'];
+
+test('#3810: a poll-budget breach is visibly unknown, not a false MISSING_LANES failure', () => {
+  const cfg = JSON.parse(readFileSync(CONFIG, 'utf8'));
+  const result = evaluate({
+    required: HEALTHY,
+    aliases: new Map(),
+    lanes: [LANE('Typecheck', 'in_progress')],
+    reviewChecks: [],
+    reviews: [],
+    headSha: ANY_HEAD,
+    headCommittedAt: ANY_HEAD_COMMITTED_AT,
+    isFork: false,
+    cfg,
+    timedOut: true,
+    baseRefName: 'main',
+  });
+  assert.equal(result.ok, true);
+  assert.match(result.lines.join('\n'), /LANE_PUBLICATION_TIMEOUT/);
+  assert.doesNotMatch(result.lines.join('\n'), /MISSING_LANES/);
+});
 
 // -------------------------------------------------------------- happy path
 

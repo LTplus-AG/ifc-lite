@@ -13,6 +13,7 @@ import type { EntityRef } from './types.js';
 import { EntityExtractor } from './entity-extractor.js';
 import type { IfcSourceBytes } from './source-bytes.js';
 import { resolveOwningIfcProjectId, type RelatedLookup } from './owning-project.js';
+import { extractProjectUnits } from './project-units.js';
 
 export { resolveOwningIfcProjectId, type RelatedLookup } from './owning-project.js';
 
@@ -350,7 +351,13 @@ function extractLengthUnitScaleForProjectId(
  *
  * Resolves the entity's owning project via {@link resolveOwningIfcProjectId} and
  * reads that project's units, falling back to the first project's scale when
- * the walk can't place the entity — the same safe-miss direction
+ * the walk can't place the entity, OR when the owning project's own
+ * `UnitsInContext` declares no `LENGTHUNIT` at all (`UnitsInContext` is
+ * OPTIONAL on `IfcContext`, so a federated model can legitimately arrive
+ * with none). {@link extractLengthUnitScale} answers an unconfirmed `1.0`
+ * for that case too - absence reading as success - which would silently
+ * rescale a millimetre-authored value owned by such a project by 1000x
+ * instead of taking the file-wide answer, the same safe-miss direction
  * {@link extractLengthUnitScale} already documents for every other ambiguous
  * case.
  */
@@ -361,5 +368,11 @@ export function resolveEntityLengthUnitScale(
   expressId: number,
 ): number {
   const ownerId = resolveOwningIfcProjectId(entityIndex, relationships, expressId);
-  return extractLengthUnitScale(source, entityIndex, ownerId);
+  if (ownerId === undefined) return extractLengthUnitScale(source, entityIndex);
+
+  const declaresLengthUnit = extractProjectUnits(source, entityIndex, ownerId)
+    .resolvedForUnitType('LENGTHUNIT') !== undefined;
+  return declaresLengthUnit
+    ? extractLengthUnitScale(source, entityIndex, ownerId)
+    : extractLengthUnitScale(source, entityIndex);
 }

@@ -176,4 +176,51 @@ describe('IDS property scale on a multi-IFCPROJECT (federated-merge) file', () =
     expect(spec.status).toBe('pass');
     expect(spec.failedCount).toBe(0);
   });
+
+  it('falls back to the file-wide AREA scale (not lengthScale squared) when the owner declares no units', async () => {
+    // Project 1: LENGTHUNIT millimetres, AREAUNIT plain (unprefixed) square
+    // metres -- an area scale of 1.0, deliberately NOT lengthScale**2
+    // (0.001**2 = 1e-6), so a fallback that derives area from the length
+    // scale instead of reading the file's own AREAUNIT is distinguishable.
+    // Project 2 declares NO UnitsInContext at all and owns Wall #19, with a
+    // GrossArea of 12 (already m<sup>2</sup>, since project 1's declared
+    // AREAUNIT is the file's only one).
+    const ifcNoUnitsWithArea = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
+FILE_NAME('','2022-10-07T13:48:43',(),(),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('1hqIFTRjfV6AWq_bMtnZwI',$,'Primary-mm',$,$,$,$,$,#6);
+#2=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#3=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);
+#4=IFCSIUNIT(*,.VOLUMEUNIT.,.MILLI.,.CUBIC_METRE.);
+#5=IFCSIUNIT(*,.TIMEUNIT.,$,.SECOND.);
+#6=IFCUNITASSIGNMENT((#4,#2,#5,#3));
+#7=IFCWALL('2nJrDaLQfJ1QPhdJR0o97J',$,$,$,$,$,$,$,$);
+#11=IFCPROJECT('0hqIFTRjfV6AWq_bMtnZw2',$,'Secondary-none',$,$,$,$,$,$);
+#17=IFCSITE('3z6M0fVLDCPBUYwtcqp5bq',$,$,$,$,$,$,$,$);
+#18=IFCRELAGGREGATES('4z6M0fVLDCPBUYwtcqp5cq',$,$,$,#11,(#17));
+#19=IFCWALL('5z6M0fVLDCPBUYwtcqp5dq',$,$,$,$,$,$,$,$);
+#20=IFCRELCONTAINEDINSPATIALSTRUCTURE('6z6M0fVLDCPBUYwtcqp5eq',$,$,$,(#19),#17);
+#21=IFCPROPERTYSINGLEVALUE('GrossArea',$,IFCAREAMEASURE(12.),$);
+#22=IFCPROPERTYSET('7z6M0fVLDCPBUYwtcqp5fq',$,'Pset_WallCommon',$,(#21));
+#23=IFCRELDEFINESBYPROPERTIES('8z6M0fVLDCPBUYwtcqp5gq',$,$,$,(#19),#22);
+#24=IFCSITE('9z6M0fVLDCPBUYwtcqp5hq',$,$,$,$,$,$,$,$);
+#25=IFCRELAGGREGATES('Az6M0fVLDCPBUYwtcqp5iq',$,$,$,#1,(#24));
+#26=IFCRELCONTAINEDINSPATIALSTRUCTURE('Bz6M0fVLDCPBUYwtcqp5jq',$,$,$,(#7),#24);
+ENDSEC;
+END-ISO-10303-21;
+`;
+
+    const store = await parseIfc(ifcNoUnitsWithArea);
+    const accessor = createDataAccessor(store);
+    const pset = accessor.getPropertySets(19).find((p) => p.name === 'Pset_WallCommon');
+    const area = pset?.properties.find((p) => p.name === 'GrossArea');
+
+    // 12 read with project 1's own AREAUNIT (1.0), not 12 * lengthScale**2
+    // (0.001**2 = 1e-6, which would report 0.000012).
+    expect(area?.value).toBe(12);
+  });
 });

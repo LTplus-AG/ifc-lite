@@ -14,7 +14,8 @@
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { extractLengthUnitScale } from '../src/unit-extractor.js';
+import { RelationshipType } from '@ifc-lite/data';
+import { extractLengthUnitScale, resolveEntityLengthUnitScale } from '../src/unit-extractor.js';
 import type { EntityIndex, EntityRef } from '../src/types.js';
 
 /** Build source bytes + EntityIndex from a synthetic STEP DATA section. */
@@ -224,5 +225,64 @@ describe('extractLengthUnitScale', () => {
       extractLengthUnitScale(fresh.source, fresh.entityIndex);
       expect(warn).toHaveBeenCalledTimes(2);
     });
+  });
+});
+
+describe('resolveEntityLengthUnitScale', () => {
+  // Same absence-must-not-read-as-success shape as #3554/#3555: project 1
+  // (first in the file) declares millimetres; project 2 declares NO
+  // UnitsInContext at all (OPTIONAL on IfcContext, the shape a federated
+  // model can legitimately arrive in) and owns element #19 via
+  // IFCSITE #17 -> IFCRELCONTAINEDINSPATIALSTRUCTURE #20.
+  const PROJECT_1 = "#1=IFCPROJECT('proj-mm',$,'Primary-mm',$,$,$,$,$,#2);";
+  const PROJECT_1_MM_UNITS = [
+    '#2=IFCUNITASSIGNMENT((#3));',
+    '#3=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);',
+  ];
+  const PROJECT_2_NO_UNITS = "#11=IFCPROJECT('proj-none',$,'Secondary-none',$,$,$,$,$,$);";
+  const CONTAINMENT = [
+    '#17=IFCSITE(*);',
+    '#20=IFCRELCONTAINEDINSPATIALSTRUCTURE($,$,$,$,(19),#17);',
+  ];
+
+  function relationshipsFor(edges: Record<string, number[]>) {
+    return {
+      getRelated: (id: number, type: RelationshipType, direction: 'forward' | 'inverse') =>
+        edges[`${id}:${type}:${direction}`] ?? [],
+    };
+  }
+
+  it('falls back to the FIRST project scale (not an unconfirmed 1.0) when the owning project declares no units', () => {
+    const { source, entityIndex } = harness([PROJECT_1, ...PROJECT_1_MM_UNITS, PROJECT_2_NO_UNITS, ...CONTAINMENT]);
+    const relationships = relationshipsFor({
+      [`19:${RelationshipType.ContainsElements}:inverse`]: [17],
+      [`17:${RelationshipType.Aggregates}:inverse`]: [11],
+    });
+
+    // Material layer thickness 300, owned by project 2 (no declared units).
+    // The old behaviour returned an unconfirmed 1.0 for "no UnitsInContext",
+    // reporting 300 (metres) for what the file's only declared LENGTHUNIT
+    // (project 1's millimetres) makes a 0.3 m value.
+    const scale = resolveEntityLengthUnitScale(source, entityIndex, relationships, 19);
+    expect(scale).toBeCloseTo(0.001, 10);
+    expect(300 * scale).toBeCloseTo(0.3, 10);
+  });
+
+  it('still uses the OWNING project scale when that project does declare a length unit', () => {
+    const { source, entityIndex } = harness([
+      PROJECT_1,
+      ...PROJECT_1_MM_UNITS,
+      "#11=IFCPROJECT('proj-m',$,'Secondary-m',$,$,$,$,$,#12);",
+      '#12=IFCUNITASSIGNMENT((#13));',
+      '#13=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);',
+      ...CONTAINMENT,
+    ]);
+    const relationships = relationshipsFor({
+      [`19:${RelationshipType.ContainsElements}:inverse`]: [17],
+      [`17:${RelationshipType.Aggregates}:inverse`]: [11],
+    });
+
+    const scale = resolveEntityLengthUnitScale(source, entityIndex, relationships, 19);
+    expect(scale).toBe(1.0);
   });
 });

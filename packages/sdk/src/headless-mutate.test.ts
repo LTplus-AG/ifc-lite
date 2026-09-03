@@ -5,7 +5,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { PropertyValueType } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { createEffectiveEntityExists, createHeadlessMutateAdapter, propertyValueTypeOf } from './headless-mutate.js';
+import { createEffectiveEntityCheck, createHeadlessMutateAdapter, propertyValueTypeOf } from './headless-mutate.js';
 
 describe('propertyValueTypeOf', () => {
   it('classifies each JavaScript value the backend interface allows', () => {
@@ -35,7 +35,7 @@ describe('createHeadlessMutateAdapter', () => {
     const view = fakeView();
     const mutate = createHeadlessMutateAdapter(
       () => view as unknown as MutablePropertyView,
-      ref => ref.modelId === 'default' && ref.expressId === 42,
+      ref => (ref.modelId === 'default' && ref.expressId === 42 ? null : 'nope'),
     );
     const ref = { modelId: 'default', expressId: 42 };
 
@@ -52,7 +52,7 @@ describe('createHeadlessMutateAdapter', () => {
 
   it('does not build the view until something is written', () => {
     const getView = vi.fn(() => fakeView() as unknown as MutablePropertyView);
-    const mutate = createHeadlessMutateAdapter(getView, () => true);
+    const mutate = createHeadlessMutateAdapter(getView, () => null);
 
     mutate.batchBegin('label');
     mutate.batchEnd('label');
@@ -75,7 +75,10 @@ describe('createHeadlessMutateAdapter', () => {
       const view = fakeView();
       const mutate = createHeadlessMutateAdapter(
         () => view as unknown as MutablePropertyView,
-        ref => ref.modelId === 'default' && ref.expressId === 42,
+        ref => {
+          if (ref.modelId !== 'default') return `unknown model '${ref.modelId}' (this backend answers for 'default')`;
+          return ref.expressId === 42 ? null : `no entity #${ref.expressId} in model '${ref.modelId}'`;
+        },
       );
       return { view, mutate };
     };
@@ -99,9 +102,11 @@ describe('createHeadlessMutateAdapter', () => {
       // which is a wrong edit rather than a dropped one.
       const { view, mutate } = adapterOverOneEntity();
 
+      // And it is reported as its own failure: #42 exists, so a message that
+      // called it missing would send the caller after the wrong problem.
       expect(() => mutate.setProperty(
         { modelId: 'other', expressId: 42 }, 'Pset_Bogus', 'Foo', 'bar',
-      )).toThrow(/#42.*'other'/);
+      )).toThrow(/setProperty: unknown model 'other'/);
       expect(view.setProperty).not.toHaveBeenCalled();
     });
 
@@ -137,7 +142,7 @@ describe('createHeadlessMutateAdapter', () => {
   });
 });
 
-describe('createEffectiveEntityExists', () => {
+describe('createEffectiveEntityCheck', () => {
   // `MutablePropertyView`'s two overlay questions, faked. The real view keeps
   // created ids OUT of `store.entityIndex.byId` on purpose, so these are the
   // only place either answer can come from.
@@ -147,48 +152,54 @@ describe('createEffectiveEntityExists', () => {
   }) as unknown as MutablePropertyView;
 
   const source = new Set([70, 71]);
-  const build = (overlay: MutablePropertyView | null) => createEffectiveEntityExists({
-    acceptsModelId: id => id === 'default' || id === 'model.ifc',
+  const build = (overlay: MutablePropertyView | null) => createEffectiveEntityCheck({
+    acceptedModelIds: ['default', 'model.ifc'],
     hasSourceEntity: id => source.has(id),
     overlay: () => overlay,
   });
 
   it('accepts a source entity and refuses an id nothing holds', () => {
-    const exists = build(null);
-    expect(exists({ modelId: 'default', expressId: 70 })).toBe(true);
-    expect(exists({ modelId: 'default', expressId: 999999 })).toBe(false);
+    const check = build(null);
+    expect(check({ modelId: 'default', expressId: 70 })).toBeNull();
+    expect(check({ modelId: 'default', expressId: 999999 }))
+      .toMatch(/no entity #999999 in model 'default'/);
   });
 
   it('accepts an overlay-created id the base index has never heard of', () => {
-    // The create-then-decorate workflow. A predicate that asked
-    // `entityIndex.byId` alone would reject the id the session just handed out.
-    const exists = build(overlayWith([9001], []));
-    expect(exists({ modelId: 'default', expressId: 9001 })).toBe(true);
+    // The create-then-decorate workflow. A check that asked `entityIndex.byId`
+    // alone would reject the id the session just handed out.
+    const check = build(overlayWith([9001], []));
+    expect(check({ modelId: 'default', expressId: 9001 })).toBeNull();
   });
 
   it('refuses a tombstoned source id the base index still holds', () => {
-    const exists = build(overlayWith([], [70]));
-    expect(exists({ modelId: 'default', expressId: 70 })).toBe(false);
-    expect(exists({ modelId: 'default', expressId: 71 })).toBe(true);
+    const check = build(overlayWith([], [70]));
+    expect(check({ modelId: 'default', expressId: 70 })).toMatch(/no entity #70/);
+    expect(check({ modelId: 'default', expressId: 71 })).toBeNull();
   });
 
-  it('refuses every id under a model id the backend does not answer for', () => {
-    const exists = build(overlayWith([9001], []));
-    expect(exists({ modelId: 'other', expressId: 70 })).toBe(false);
-    expect(exists({ modelId: 'other', expressId: 9001 })).toBe(false);
+  it('reports an unknown model id as its own failure, listing the ids it does answer for', () => {
+    // Not "no entity #70": #70 exists, and in the multi-model case it exists in
+    // the model the caller named too. What is wrong is that this backend does
+    // not hold that model, so that is what the message has to say — with the
+    // ids it does hold, since the caller has no other way to find them.
+    const check = build(overlayWith([9001], []));
+    expect(check({ modelId: 'other', expressId: 70 }))
+      .toBe("unknown model 'other' (this backend answers for 'default' or 'model.ifc')");
+    expect(check({ modelId: 'other', expressId: 9001 })).toMatch(/^unknown model 'other'/);
     // Both accepted spellings of the one model still pass.
-    expect(exists({ modelId: 'model.ifc', expressId: 70 })).toBe(true);
+    expect(check({ modelId: 'model.ifc', expressId: 70 })).toBeNull();
   });
 
   it('never builds the overlay for a session that has not written', () => {
     const overlay = vi.fn(() => null);
-    const exists = createEffectiveEntityExists({
-      acceptsModelId: () => true,
+    const check = createEffectiveEntityCheck({
+      acceptedModelIds: ['default'],
       hasSourceEntity: () => true,
       overlay,
     });
 
-    expect(exists({ modelId: 'default', expressId: 70 })).toBe(true);
+    expect(check({ modelId: 'default', expressId: 70 })).toBeNull();
     // The thunk is called, but it hands back the field as it stands — it is not
     // `getOrCreateMutationView`, so asking never creates one.
     expect(overlay).toHaveBeenCalledTimes(1);

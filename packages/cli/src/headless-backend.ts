@@ -40,7 +40,7 @@ import type {
   QueryDescriptor,
   ModelInfo,
 } from '@ifc-lite/sdk';
-import { createEffectiveEntityExists, createHeadlessMutateAdapter } from '@ifc-lite/sdk';
+import { createEffectiveEntityCheck, createHeadlessMutateAdapter } from '@ifc-lite/sdk';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import {
@@ -496,8 +496,8 @@ export class HeadlessBackend implements BimBackend {
   private createMutateAdapter(): MutateBackendMethods {
     return createHeadlessMutateAdapter(
       () => this.getOrCreateMutationView(),
-      createEffectiveEntityExists({
-        acceptsModelId: id => this.acceptsModelId(id),
+      createEffectiveEntityCheck({
+        acceptedModelIds: this.acceptedModelIds,
         hasSourceEntity: id => this.dataStore.entityIndex.byId.has(id),
         overlay: () => this.mutationView,
       }),

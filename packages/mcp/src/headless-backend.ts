@@ -37,7 +37,7 @@ import type {
   QuantitySetData,
   ModelInfo,
 } from '@ifc-lite/sdk';
-import { createEffectiveEntityExists, createHeadlessMutateAdapter, type StyleBackendMethods } from '@ifc-lite/sdk';
+import { createEffectiveEntityCheck, createHeadlessMutateAdapter, type StyleBackendMethods } from '@ifc-lite/sdk';
 import { applyStylesInStore } from '@ifc-lite/create';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
@@ -77,6 +77,13 @@ export class HeadlessLikeBackend implements BimBackend {
   private dataStore: IfcDataStore;
   private modelName: string;
   private modelId: string;
+  /**
+   * Every spelling of the one model this backend answers for. One list, so the
+   * schedule assert, the `bim.mutate.*` guard and `bim.store.addEntity` cannot
+   * give different answers (#3764). The file name is NOT one of them: no other
+   * MCP site accepts a basename, and the tools address models by id.
+   */
+  private readonly acceptedModelIds: readonly string[];
   private mutationView: MutablePropertyView | null = null;
   private storeEditor: StoreEditor | null = null;
 
@@ -84,6 +91,7 @@ export class HeadlessLikeBackend implements BimBackend {
     this.dataStore = store;
     this.modelName = modelName;
     this.modelId = modelId;
+    this.acceptedModelIds = [modelId];
     this.model = this.createModelAdapter();
     // The read surface folds this session's queued mutations in (#2004). The
     // overlay is passed as a getter because it is built lazily on the first
@@ -99,8 +107,8 @@ export class HeadlessLikeBackend implements BimBackend {
     };
     this.mutate = createHeadlessMutateAdapter(
       () => this.getOrCreateMutationView(),
-      createEffectiveEntityExists({
-        acceptsModelId: id => this.acceptsModelId(id),
+      createEffectiveEntityCheck({
+        acceptedModelIds: this.acceptedModelIds,
         hasSourceEntity: id => this.dataStore.entityIndex.byId.has(id),
         overlay: () => this.mutationView,
       }),
@@ -225,21 +233,17 @@ export class HeadlessLikeBackend implements BimBackend {
     this.visibility = { hide() {}, show() {}, isolate() {}, reset() {} };
   }
 
-  /**
-   * Whether `modelId` names the one model this backend holds.
-   *
-   * One answer per backend: the schedule assert, the `bim.mutate.*` guard and
-   * `bim.store.addEntity` all call this, so a ref minted under an id one of
-   * them accepts cannot be refused by another (#3764).
-   */
-  private acceptsModelId(modelId: string): boolean {
-    return modelId === this.modelId;
+  /** Whether `modelId` names the one model this backend holds. */
+  acceptsModelId(modelId: string): boolean {
+    return this.acceptedModelIds.includes(modelId);
   }
 
   /** Refuse an unknown model id loudly, at whichever surface was handed it. */
   private assertKnownModelId(modelId: string): void {
     if (this.acceptsModelId(modelId)) return;
-    throw new Error(`Unknown modelId '${modelId}': this backend answers for '${this.modelId}'`);
+    throw new Error(
+      `Unknown modelId '${modelId}': this backend answers for ${this.acceptedModelIds.map(id => `'${id}'`).join(' or ')}`,
+    );
   }
 
   private createStoreAdapter(): StoreBackendMethods {

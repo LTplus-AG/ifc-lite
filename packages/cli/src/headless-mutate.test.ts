@@ -187,15 +187,19 @@ describe('bim.mutate through the headless context', () => {
     expect(step).toContain("'W-01'");
   });
 
-  it('refuses a real express id carried on an unknown model id', async () => {
+  it('refuses a real express id carried on an unknown model id, and says so as such', async () => {
     // `bim.mutate.*` forwards only `ref.expressId` into this backend's one
     // overlay, so an unchecked model id does not miss — it edits this model's
     // #70 while the caller believes it addressed another file.
     const { bim, wall } = await loadModel();
 
+    // The two ways a reference can be wrong are not the same failure, so they
+    // must not share a message: the entity here EXISTS, and reporting it as a
+    // missing #70 sends the caller looking for the wrong problem. The message
+    // names the ids this backend does answer for, which is the fix.
     expect(() => bim.mutate.setAttribute(
       { modelId: 'some-other-model', expressId: wall.ref.expressId }, 'Name', 'Wrong Model',
-    )).toThrow(/no entity #\d+ in model 'some-other-model'/);
+    )).toThrow(/setAttribute: unknown model 'some-other-model' \(this backend answers for 'default' or 'model\.ifc'\)/);
     expect(exportStep(bim)).toContain("'Original Name'");
   });
 

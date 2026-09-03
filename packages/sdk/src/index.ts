@@ -206,8 +206,8 @@ export { StyleNamespace, type ColorBatch } from './namespaces/style.js';
 // Re-exported so a TypeScript consumer can name `bim.style.apply`'s return
 // type without taking a direct dependency on @ifc-lite/create.
 export type { ApplyStyleOptions, ApplyStyleResult, SurfaceStyleColor } from '@ifc-lite/create';
-export { createEffectiveEntityExists, createHeadlessMutateAdapter, propertyValueTypeOf } from './headless-mutate.js';
-export type { EntityExistsPredicate } from './headless-mutate.js';
+export { createEffectiveEntityCheck, createHeadlessMutateAdapter, propertyValueTypeOf } from './headless-mutate.js';
+export type { EntityRefCheck } from './headless-mutate.js';
 export type { ClashGroupBy, ClashRunOptions, ClashMatrixOptions } from './namespaces/clash.js';
 // Re-export the clash core types so hosts can type elements/rules/results
 // without taking a second direct dependency on @ifc-lite/clash.

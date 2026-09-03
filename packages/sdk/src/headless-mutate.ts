@@ -36,14 +36,28 @@ export function propertyValueTypeOf(value: unknown): PropertyValueType {
 }
 
 /**
- * Answers whether a reference names an entity a backend can actually write to —
- * BOTH halves of the reference, not just the express id.
- * {@link createEffectiveEntityExists} builds the one both headless backends use.
+ * Checks BOTH halves of a reference, not just the express id, and says which
+ * one is wrong: `null` when the backend can write to it, otherwise the reason,
+ * phrased as the clause a write method puts after its own name.
+ *
+ * A reason rather than a boolean because the two failures are different
+ * problems and a single message misdescribes one of them: an unknown model id
+ * does not mean the entity is missing (it usually exists, in the model the
+ * caller meant), and telling them it is missing sends them hunting for the
+ * wrong thing. {@link createEffectiveEntityCheck} builds the one both headless
+ * backends use.
  */
-export type EntityExistsPredicate = (ref: EntityRef) => boolean;
+export type EntityRefCheck = (ref: EntityRef) => string | null;
 
 /**
- * The `entityExists` predicate both headless backends need, written once.
+ * The reference check both headless backends need, written once.
+ *
+ * `packages/export/src/effective-index.ts` is the authority on the same
+ * question for the exporter, and answering it twice is a real hazard: it is not
+ * called here because it is not exported from `@ifc-lite/export`, and because
+ * it answers about express ids only, with no notion of a model id, which is
+ * half of what a reference has to be checked for. If it is ever exported, this
+ * is the call site to move onto it.
  *
  * Neither question it answers has an obvious source to read, which is why this
  * is shared rather than re-derived per backend:
@@ -57,33 +71,38 @@ export type EntityExistsPredicate = (ref: EntityRef) => boolean;
  * - The model id is checked because the write methods do not pass it on — they
  *   forward `ref.expressId` into the one overlay the backend holds. A reference
  *   carrying another model's id, left unchecked, is not a dropped write but a
- *   write to the wrong entity.
+ *   write to the wrong entity. It is reported as its own reason, naming the ids
+ *   the backend does answer for, because it is not a missing entity.
  *
  * `overlay` is a thunk and is consulted only once it exists: no overlay means
  * nothing was created or deleted this session, so `hasSourceEntity` is the
  * whole truth and a read-only session still never builds one.
  */
-export function createEffectiveEntityExists(input: {
-  acceptsModelId: (modelId: string) => boolean;
+export function createEffectiveEntityCheck(input: {
+  acceptedModelIds: readonly string[];
   hasSourceEntity: (expressId: number) => boolean;
   overlay: () => MutablePropertyView | null;
-}): EntityExistsPredicate {
-  return (ref: EntityRef): boolean => {
-    if (!input.acceptsModelId(ref.modelId)) return false;
+}): EntityRefCheck {
+  const known = input.acceptedModelIds.map(id => `'${id}'`).join(' or ');
+  return (ref: EntityRef): string | null => {
+    if (!input.acceptedModelIds.includes(ref.modelId)) {
+      return `unknown model '${ref.modelId}' (this backend answers for ${known})`;
+    }
+    const missing = `no entity #${ref.expressId} in model '${ref.modelId}' — the write would be silently dropped on export`;
     const view = input.overlay();
     if (view) {
-      if (view.getNewEntity(ref.expressId) !== null) return true;
-      if (view.isDeleted(ref.expressId)) return false;
+      if (view.getNewEntity(ref.expressId) !== null) return null;
+      if (view.isDeleted(ref.expressId)) return missing;
     }
-    return input.hasSourceEntity(ref.expressId);
+    return input.hasSourceEntity(ref.expressId) ? null : missing;
   };
 }
 
 /**
  * Build a `MutateBackendMethods` over a lazily-created mutation view.
  *
- * `entityExists` is what every write method is gated on, so a write to an
- * entity the model does not hold is refused at the call site. It is a required
+ * `checkRef` is what every write method is gated on, so a write to an entity
+ * the model does not hold is refused at the call site. It is a required
  * parameter rather than an optional one: a backend that forgot to pass it would
  * otherwise go back to accepting phantom writes with nothing to say it had.
  *
@@ -101,7 +120,7 @@ export function createEffectiveEntityExists(input: {
  */
 export function createHeadlessMutateAdapter(
   getView: () => MutablePropertyView,
-  entityExists: EntityExistsPredicate,
+  checkRef: EntityRefCheck,
 ): MutateBackendMethods {
   // A write to an entity the model does not hold used to be accepted in
   // silence: `MutablePropertyView` created the overlay entry for it, the query
@@ -114,11 +133,14 @@ export function createHeadlessMutateAdapter(
   // `deleteProperty` reach the same overlay through the same unvalidated
   // `ref.expressId` and are dropped by the same exporter walk, so guarding one
   // of the three would leave the defect class intact behind a fixed instance.
+  //
+  // The message is the check's, not this function's: a bad model id and a
+  // missing entity are different mistakes to recover from, and only the check
+  // knows which one it found.
   const requireEntity = (method: string, ref: EntityRef): void => {
-    if (entityExists(ref)) return;
-    throw new Error(
-      `${method}: no entity #${ref.expressId} in model '${ref.modelId}' — the write would be silently dropped on export`,
-    );
+    const reason = checkRef(ref);
+    if (reason === null) return;
+    throw new Error(`${method}: ${reason}`);
   };
   return {
     setProperty(ref: EntityRef, psetName: string, propName: string, value: string | number | boolean): void {

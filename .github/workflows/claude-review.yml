@@ -276,6 +276,7 @@ jobs:
           # which it is on every run rather than leaving a single-credential setup
           # looking like a redundant one.
           CLAUDE_CODE_OAUTH_TOKEN_2: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_2 }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           node "$GITHUB_WORKSPACE/scripts/review/run-reviewer.mjs" \
             --rubric "${{ steps.rubric.outputs.path }}" \
@@ -314,6 +315,7 @@ jobs:
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           CLAUDE_CODE_OAUTH_TOKEN_2: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_2 }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           set +e
           node "$GITHUB_WORKSPACE/scripts/review/validate-findings.mjs" \

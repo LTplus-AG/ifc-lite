@@ -26,8 +26,21 @@ on:
 permissions:
   contents: read
   # The signal is delivered as a label on the PR, so whoever runs `gh pr merge`
-  # sees it without knowing this workflow exists. Labels are `pull-requests`,
-  # not `issues`, however the REST path is spelled.
+  # sees it without knowing this workflow exists.
+  #
+  # BOTH scopes, and the reason is measured rather than guessed. Applying a
+  # label to a PR is `pull-requests`. CREATING the repository label is a
+  # different endpoint (`POST /repos/:o/:r/labels`) that GitHub files under
+  # Issues, and `base-stale` does not exist in this repo yet (`gh label list`,
+  # checked). Granting one and needing the other is a 403 that the bootstrap
+  # step below would swallow.
+  #
+  # Measured, and it is why this is belt-and-braces rather than load-bearing:
+  # `POST /repos/:o/:r/issues/:n/labels` AUTO-CREATES a missing label. So the
+  # sweep would limp along without the bootstrap step, but the label would
+  # arrive with no colour and no description, which is a worse artifact than
+  # the one step costs.
+  issues: write
   pull-requests: write
 
 concurrency:
@@ -66,9 +79,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh label create base-stale --repo "${{ github.repository }}" --color d4c5f9 \
-            --description "Tested against a base that has since moved in a way a whole-tree snapshot cares about (#3726)." \
-            2>/dev/null || true
+          # `|| true` because a re-run finds the label already there, which is
+          # success, not failure. It does mean a genuine permissions failure is
+          # swallowed here -- that is tolerable ONLY because the label add in
+          # the sweep auto-creates the label and reports its own failure, so a
+          # missing permission surfaces there rather than vanishing.
+          if ! gh label create base-stale --repo "${{ github.repository }}" --color d4c5f9 \
+              --description "Tested against a base that has since moved in a way a whole-tree snapshot cares about (#3726)." 2>/tmp/label-err; then
+            echo "note: could not create the label (it may already exist):"
+            sed 's/^/      /' /tmp/label-err
+          fi
 
       - name: Sweep the open PRs
         env:

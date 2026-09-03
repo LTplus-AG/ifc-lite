@@ -22,7 +22,7 @@
 //! this resolution layer, not in the span stashing.
 
 use crate::style::{FullIndexedColourMap, GeometryStyleInfo};
-use ifc_lite_core::{DecodedEntity, EntityDecoder};
+use ifc_lite_core::{express_id::parse_express_id, DecodedEntity, EntityDecoder};
 use rustc_hash::FxHashMap;
 
 /// One stashed entity span: `(express_id, start, end)`.
@@ -385,11 +385,14 @@ pub fn find_ifcproject_id(content: &[u8]) -> Option<u32> {
                 i -= 1;
             }
             if i > 0 && content[i - 1] == b'#' && i < digits_end {
-                let mut id: u32 = 0;
-                for &b in &content[i..digits_end] {
-                    id = id.wrapping_mul(10).wrapping_add((b - b'0') as u32);
+                // A ref above `u32::MAX` refuses rather than wrapping onto a
+                // real low-numbered entity (issue #3421); this function
+                // already returns `None` on "not found", so refusal here
+                // just keeps searching rather than binding to the wrong
+                // IfcProject.
+                if let Some(id) = parse_express_id(&content[i..digits_end]) {
+                    return Some(id);
                 }
-                return Some(id);
             }
         }
         // `IFCPROJECT(` not preceded by `#<digits>=` (e.g. inside a string)

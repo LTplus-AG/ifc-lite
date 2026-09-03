@@ -190,6 +190,10 @@ const FLAGS = new Map([
   ['--findings', 'findings'],
   ['--author', 'author'],
   ['--config', 'config'],
+  // The human half of a nothing-to-review marker. Optional, and PASSED THROUGH
+  // `sanitizeBody`: it reaches the comment body, and the only caller that sets
+  // it interpolates a build-input message that carries a PR-chosen file path.
+  ['--reason', 'reason'],
 ]);
 
 /** Flags that take NO value. Kept separate so the value-consuming loop stays strict. */
@@ -204,6 +208,7 @@ export function parseArgs(argv) {
     findings: null,
     author: null,
     config: DEFAULT_CONFIG,
+    reason: null,
     nothingToReview: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
@@ -247,7 +252,22 @@ export const MAX_POSTED_FINDINGS = 5;
  * @returns {{ path: string, line: number, body: string, title: string|null }[]}
  */
 
-export function readFindings(path) {
+/**
+ * READ AND PARSE findings.json ONCE, for every reader below.
+ *
+ * There were four independent `readFileSync` + `JSON.parse` calls on this one
+ * path -- the findings, the omitted list, the judge's drop count and the cap's
+ * -- so the poster read the same file four times per run and each reader carried
+ * its own answer to "what if it is unreadable". Two of them fail soft with a
+ * warning, one throws, and one threw a message about a race that could only
+ * happen BECAUSE it re-read. Parsing here deletes the race rather than handling
+ * it: every reader now sees the same bytes by construction, and the diagnosis
+ * for an unreadable or malformed file lives in exactly one place.
+ *
+ * @returns {unknown} the parsed document, whatever shape it is; each reader
+ *   below owns what it will accept.
+ */
+export function readFindingsDoc(path) {
   let raw;
   try {
     raw = readFileSync(path, 'utf8');
@@ -262,12 +282,14 @@ export function readFindings(path) {
     }
     throw new PostReviewError('NO_FINDINGS_FILE', `Cannot read \`${path}\`: ${err.code || err.message}.`);
   }
-  let parsed;
   try {
-    parsed = JSON.parse(raw);
+    return JSON.parse(raw);
   } catch (err) {
     throw new PostReviewError('BAD_FINDINGS', `\`${path}\` is not valid JSON: ${err.message}`);
   }
+}
+
+export function readFindings(parsed, path) {
   const list = Array.isArray(parsed) ? parsed : parsed?.findings;
   if (!Array.isArray(list)) {
     throw new PostReviewError(
@@ -400,16 +422,7 @@ export function fingerprint(path, line, body) {
  *
  * @returns {string[]}
  */
-export function readOmitted(path) {
-  let parsed;
-  try {
-    parsed = JSON.parse(readFileSync(path, 'utf8'));
-  } catch {
-    // readFindings runs first on the same file and owns the diagnosis for an
-    // unreadable or unparseable one; reaching here without it throwing means a
-    // race rewrote the file mid-run, and its error text still fits.
-    throw new PostReviewError('NO_FINDINGS_FILE', `Cannot re-read \`${path}\` for the omitted-file list.`);
-  }
+export function readOmitted(parsed, path) {
   const omitted = Array.isArray(parsed) ? undefined : parsed?.omitted;
   if (omitted === undefined) return [];
   if (!Array.isArray(omitted) || omitted.some((p) => typeof p !== 'string' || p.trim() === '')) {
@@ -468,7 +481,7 @@ function omittedSection(omitted) {
   const shown = omitted.slice(0, MAX_OMITTED_LISTED);
   const rest = omitted.length - shown.length;
   return [
-    `⚠️ PARTIAL REVIEW: ${omitted.length} changed file(s) were too large to fit the model prompt and were NOT reviewed (#3679):`,
+    `⚠️ PARTIAL REVIEW: ${omitted.length} changed file(s) were NOT shown to the reviewer -- too large to fit the model prompt, or too large for GitHub to return a patch for (#3679):`,
     '',
     ...shown.map((p) => `- ${inlineCode(p)}`),
     ...(rest > 0 ? [`- ...and ${rest} more (listed in the review job's log)`] : []),
@@ -497,15 +510,39 @@ function omittedSection(omitted) {
  * clear, on a class that recurs (PR #3558, a Cargo.lock-only dependabot bump),
  * with a printed remedy -- "re-run the review job" -- that cannot work.
  */
-export function nothingToReviewBody(sha) {
+/**
+ * Neutralise the ONE thing a `--reason` string can do to this comment: open an
+ * HTML comment. The reason interpolates a build-input message that carries a
+ * PR-chosen file path, and this body also carries the review marker, which
+ * check-review-posted finds with the FIRST `MARKER_RE.exec` over the raw body.
+ * A path able to write `<!--` could therefore forge a marker that sorts ahead of
+ * the genuine one -- the same attack `assertFindings` refuses a finding path for.
+ * Refusing is wrong HERE, though: this is the path that exists so a PR the lane
+ * cannot review still gets a marker, so it must not be the path that throws.
+ * Defanged, not rejected.
+ */
+const defangMarkerText = (text) => text.replace(/<!--/g, '<\u2011!--');
+
+export function nothingToReviewBody(sha, why = null) {
   const short = sha.slice(0, 9);
   return [
     `### Claude review - nothing to review for \`${short}\``,
     '',
-    'Every changed path in this diff is excluded from review: lockfiles, generated',
-    'code, snapshots, fixtures and build output. The reviewer was NOT run, so this',
-    'is not a statement that the diff is fine -- it is a statement that there was',
-    'nothing here for it to read.',
+    // WHY, NOT A GUESS AT WHY. This used to assert the cause -- "every changed
+    // path is excluded: lockfiles, generated code, snapshots, fixtures and build
+    // output" -- because exclusion was the only caller. It is not any more:
+    // NOTHING_FITS reaches here when a single patch is larger than the whole
+    // model prompt, and the fixed sentence would have described 500 KB of real
+    // source as generated content. A marker whose text is wrong about its own
+    // cause is the shape this lane keeps finding in other people's gates.
+    why
+      ? defangMarkerText(String(why))
+      : 'Every changed path in this diff is excluded from review: lockfiles, generated\n' +
+        'code, snapshots, fixtures and build output.',
+    '',
+    'The reviewer was NOT run, so this is not a statement that the diff is fine -- it',
+    'is a statement that nothing here was read. Another reviewer must NOT stand down',
+    'on this head.',
     '',
     marker(sha, 'nothing-to-review', 0),
   ].join('\n');
@@ -519,48 +556,40 @@ function indexLine(f, n) {
 }
 
 /**
- * How many findings the judge removed, read from the same file the findings came
- * from. Returns 0 for anything it cannot read: this decorates a message, and a
- * malformed count must never be the reason a review fails to post.
+ * How many findings the judge removed, taken from the document the findings came
+ * from. Returns 0 for any shape that does not carry the count: this decorates a
+ * message, and a malformed count must never be the reason a review fails to post.
+ *
+ * It used to re-read the file and warn when it could not, which was the right
+ * behaviour for a reader that re-read; now that `readFindingsDoc` has already
+ * parsed it, there is no such failure left to report.
  */
-export function readJudgedAway(path) {
-  try {
-    const doc = JSON.parse(readFileSync(path, 'utf8'));
-    // `counts.dropped` MEANS TWO DIFFERENT THINGS in the two files this poster
-    // can be handed. In judged.json it is findings the judge rejected as not
-    // worth a human's time. In the validator's findings.json -- which the
-    // workflow's crash backstop copies verbatim -- it is findings REFUSED as
-    // malformed. Reading it without checking `judged` told the author "N
-    // finding(s) were dropped as too vague" about findings that were actually
-    // rejected for quoting a line that is not in the diff. Only a real judging
-    // has judge-dropped findings to disclose.
-    if (doc?.judged !== true) return 0;
-    const n = doc?.counts?.dropped;
-    return Number.isInteger(n) && n > 0 ? n : 0;
-  } catch (err) {
-    // Still 0 -- but SAID. The poster read this same file moments ago, so this
-    // branch is a race or a corruption, and a summary that silently omits "the
-    // judge removed N" is metadata loss nothing downstream can detect.
-    console.warn(`readJudgedAway: could not re-read ${path} (${err?.message ?? 'unknown'}); reporting 0 judged away.`);
-    return 0;
-  }
+export function readJudgedAway(doc) {
+  // `counts.dropped` MEANS TWO DIFFERENT THINGS in the two files this poster
+  // can be handed. In judged.json it is findings the judge rejected as not
+  // worth a human's time. In the validator's findings.json -- which the
+  // workflow's crash backstop copies verbatim -- it is findings REFUSED as
+  // malformed. Reading it without checking `judged` told the author "N
+  // finding(s) were dropped as too vague" about findings that were actually
+  // rejected for quoting a line that is not in the diff. Only a real judging
+  // has judge-dropped findings to disclose.
+  if (doc?.judged !== true) return 0;
+  const n = doc?.counts?.dropped;
+  return Number.isInteger(n) && n > 0 ? n : 0;
 }
 
 /**
- * How many validated findings the posting cap withheld. Read from the same file,
- * and 0 for anything unreadable: this decorates a message and must never be the
- * reason a review fails to post.
+ * How many validated findings the posting cap withheld. 0 for any shape that
+ * does not say: this decorates a message and must never be the reason a review
+ * fails to post.
  */
-export function readCappedCount(path, shown) {
-  try {
-    const doc = JSON.parse(readFileSync(path, 'utf8'));
-    const total = Array.isArray(doc) ? doc.length : doc?.findings?.length;
-    return Number.isInteger(total) && total > shown ? total - shown : 0;
-  } catch (err) {
-    // Same rule as readJudgedAway above: fail-soft, never fail-silent.
-    console.warn(`readCappedCount: could not re-read ${path} (${err?.message ?? 'unknown'}); reporting 0 capped.`);
-    return 0;
-  }
+export function readCappedCount(doc, shown) {
+  const total = Array.isArray(doc)
+    ? doc.length
+    : Array.isArray(doc?.findings)
+      ? doc.findings.length
+      : undefined;
+  return Number.isInteger(total) && total > shown ? total - shown : 0;
 }
 
 /**
@@ -922,7 +951,7 @@ function main() {
       pr: args.pr,
       sha: args.sha,
       author,
-      body: nothingToReviewBody(args.sha),
+      body: nothingToReviewBody(args.sha, args.reason),
       want: marker(args.sha, 'nothing-to-review', 0),
     });
     console.log(`Posted a nothing-to-review marker for ${args.sha.slice(0, 9)}.`);
@@ -931,8 +960,9 @@ function main() {
 
   // Read BEFORE the first network call. A malformed findings file must refuse
   // with nothing posted, not halfway through the loop.
-  const findings = readFindings(args.findings);
-  const omitted = readOmitted(args.findings);
+  const doc = readFindingsDoc(args.findings);
+  const findings = readFindings(doc, args.findings);
+  const omitted = readOmitted(doc, args.findings);
 
   // ------------------------------------------------------------------ STEP 1
   const head = fetchHeadSha(args.repo, args.pr);
@@ -1004,8 +1034,8 @@ function main() {
       sha: args.sha,
       findings,
       count: confirmed,
-      judgedAway: readJudgedAway(args.findings),
-      capped: readCappedCount(args.findings, findings.length),
+      judgedAway: readJudgedAway(doc),
+      capped: readCappedCount(doc, findings.length),
       omitted,
     }),
     want: marker(args.sha, verdict, confirmed, omitted.length),

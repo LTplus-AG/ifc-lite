@@ -1236,14 +1236,65 @@ test('rows dropped to FIT THE PROMPT reach findings.json; other unreviewable rea
     ...INPUT,
     unreviewable: [
       ...INPUT.unreviewable,
-      { path: 'packages/big/huge.ts', reason: OMITTED_FOR_PROMPT_REASON },
-      { path: 'packages/big/gone.ts', reason: 'deleted' },
+      { path: 'packages/big/huge.ts', reason: OMITTED_FOR_PROMPT_REASON, kind: 'unread' },
+      { path: 'packages/big/gone.ts', reason: 'deleted', kind: 'no-content' },
     ],
   };
   const r = run(response(), { input });
   assert.equal(r.code, 0, r.out);
   assert.deepEqual(r.doc.omitted, ['packages/big/huge.ts']);
   assert.match(r.out, /PARTIAL: 1 file/);
+});
+
+test('REGRESSION (#3688): a file GitHub sent NO PATCH for counts as omitted', () => {
+  // The filter matched `reason === OMITTED_FOR_PROMPT_REASON` and nothing else,
+  // so only the rows build-review-input dropped to fit the prompt reached the
+  // marker. A file GitHub declined to send a patch for -- content that exists,
+  // that the reviewer never saw -- produced a marker byte-identical to a full
+  // review's, and CodeRabbit stood down on it. Absence reading as success, one
+  // layer under where #3679 fixed it.
+  const input = {
+    ...INPUT,
+    unreviewable: [{ path: 'packages/big/no-patch.ts', reason: 'no patch returned (too large)', kind: 'unread' }],
+  };
+  const r = run(response(), { input });
+  assert.equal(r.code, 0, r.out);
+  assert.deepEqual(r.doc.omitted, ['packages/big/no-patch.ts']);
+  assert.match(r.out, /PARTIAL: 1 file/);
+});
+
+test('REGRESSION (#3688): a pure RENAME does not count as omitted', () => {
+  // The other half, and the reason a `kind` field was needed rather than a
+  // second reason string. GitHub returns no patch for a pure rename either, but
+  // nothing changed in it, so nothing was withheld -- counting it would call
+  // every PR containing a rename a partial review and train readers to ignore
+  // the warning. `status: 'renamed'` is what separates the two; the old single
+  // reason string ("too large, or a pure rename") could not.
+  const input = {
+    ...INPUT,
+    unreviewable: [{ path: 'packages/big/moved.ts', reason: 'a pure rename: no content changed', kind: 'no-content' }],
+  };
+  const r = run(response(), { input });
+  assert.equal(r.code, 0, r.out);
+  assert.deepEqual(r.doc.omitted, []);
+  assert.doesNotMatch(r.out, /PARTIAL/);
+});
+
+test('an input with NO `kind` field falls back to the old reason match, unchanged', () => {
+  // Backward compatibility, asserted rather than assumed: a review-input written
+  // before `kind` existed must produce exactly what it produced then, so an
+  // in-flight run across the deploy cannot start claiming a partial review it
+  // did not have -- or stop claiming one it did.
+  const input = {
+    ...INPUT,
+    unreviewable: [
+      { path: 'packages/big/huge.ts', reason: OMITTED_FOR_PROMPT_REASON },
+      { path: 'packages/big/legacy.ts', reason: 'no patch returned (too large, or a pure rename)' },
+    ],
+  };
+  const r = run(response(), { input });
+  assert.equal(r.code, 0, r.out);
+  assert.deepEqual(r.doc.omitted, ['packages/big/huge.ts']);
 });
 
 test('a full review writes `omitted: []`, present and empty, never absent', () => {
@@ -1253,6 +1304,22 @@ test('a full review writes `omitted: []`, present and empty, never absent', () =
   const r = run(response());
   assert.equal(r.code, 0, r.out);
   assert.deepEqual(r.doc.omitted, []);
+});
+
+test('REGRESSION (#3688): defanging a MIXED-CASE path preserves its case', () => {
+  // `MARKER_TOKEN_RE` is case-insensitive and the replacement was a fixed
+  // lowercase string, so defanging rewrote what it was defanging:
+  // `docs/IFC-Lite-Review-Lane.md` came out `docs/ifc-lite‑review-Lane.md`, a
+  // name that exists nowhere -- on the advisory list whose whole job is naming
+  // files a human then goes and opens. Same class as the 60-char `class` cap
+  // this file already records for exactly that.
+  const real = 'docs/IFC-Lite-Review-Lane.md';
+  const out = sanitizePath(real);
+  // Still defanged: the gate's pattern must not match what comes out.
+  assert.doesNotMatch(out, /ifc-lite-review/i, 'the token survived, so the defanging is gone');
+  // ...and defanged by ONE character, with everything else byte-identical.
+  assert.equal(out, real.replace('Lite-Review', 'Lite\u2011Review'));
+  assert.equal(out.length, real.length, 'defanging must not change a path\'s length');
 });
 
 test('an omitted PATH cannot carry a forged marker into the summary comment', () => {

@@ -106,7 +106,13 @@ test('a file with no patch is recorded as unreviewable, never silently absent', 
   // Structured, not an annotated string: the validator refuses an input where a
   // path is in both `files` and `unreviewable`, and against a string like
   // "src/huge.ts (too large)" that check can never match.
-  assert.deepEqual(r.result.unreviewable[0], { path: 'src/huge.ts', reason: 'no patch returned (too large, or a pure rename)' });
+  assert.deepEqual(r.result.unreviewable[0], {
+    path: 'src/huge.ts',
+    reason: 'no patch returned (too large)',
+    // UNREAD, not no-content: GitHub had content here and declined to send it,
+    // so this row must reach the marker's `omitted=` count (#3688).
+    kind: 'unread',
+  });
   assert.match(r.out, /NOT shown to the reviewer/);
 });
 
@@ -116,7 +122,7 @@ test('a deleted file is unreviewable, not a phantom clean file', () => {
     { filename: 'src/gone.ts', status: 'removed', patch: '@@ -1,2 +0,0 @@\n-a\n-b' },
   ]);
   assert.equal(r.code, 0, r.out);
-  assert.deepEqual(r.result.unreviewable[0], { path: 'src/gone.ts', reason: 'deleted' });
+  assert.deepEqual(r.result.unreviewable[0], { path: 'src/gone.ts', reason: 'deleted', kind: 'no-content' });
 });
 
 // ============================================================ refusals
@@ -444,7 +450,9 @@ test('the fit keeps the LARGEST files, deterministically', () => {
     SHA,
   );
   assert.deepEqual(input.files.map((f) => f.path), ['packages/a/big.ts', 'packages/a/mid.ts']);
-  assert.deepEqual(input.unreviewable, [{ path: 'packages/a/small.ts', reason: OMITTED_FOR_PROMPT_REASON }]);
+  assert.deepEqual(input.unreviewable, [
+    { path: 'packages/a/small.ts', reason: OMITTED_FOR_PROMPT_REASON, kind: 'unread' },
+  ]);
 });
 
 test('one file too big for the budget does not block the files behind it', () => {
@@ -460,18 +468,79 @@ test('one file too big for the budget does not block the files behind it', () =>
     SHA,
   );
   assert.deepEqual(input.files.map((f) => f.path), ['packages/a/one.ts', 'packages/a/two.ts']);
-  assert.deepEqual(input.unreviewable, [{ path: 'packages/a/giant.ts', reason: OMITTED_FOR_PROMPT_REASON }]);
+  assert.deepEqual(input.unreviewable, [
+    { path: 'packages/a/giant.ts', reason: OMITTED_FOR_PROMPT_REASON, kind: 'unread' },
+  ]);
 });
 
-test('NOTHING fits: a single oversized file refuses REVIEW_TOO_LARGE, never an empty review', () => {
-  // files=[] here must NOT fall through to NO_FILES: the workflow turns
-  // NO_FILES into a `nothing-to-review` marker whose text claims every path is
-  // excluded generated content -- a lying marker over 380 KB of real source.
+test('NOTHING fits: a single oversized file is a SKIP with a marker, never an empty review', () => {
+  // files=[] here must NOT fall through to NO_FILES, whose marker body asserts
+  // the exclusion-list cause -- that sentence over 380 KB of real source would
+  // be a lying marker. NOTHING_FITS is its own reason code and carries its own
+  // sentence to the comment, which is what made the marker route honest.
+  //
+  // It is a SKIP rather than a red because no re-run can clear it: the cause is
+  // a property of the PR. Failing left the review-posted gate printing "REMEDY:
+  // re-run the review job" against a red only splitting the PR could remove.
   const r = run([sizedRow('packages/a/giant.ts', 380_000)]);
   assert.equal(r.code, 1, r.out);
-  assert.match(r.out, /REVIEW_TOO_LARGE/);
+  assert.match(r.out, /NOTHING_FITS/);
   assert.match(r.out, /No single file/);
+  assert.match(r.out, /nothing-to-review/, 'the message must name the route, not just refuse');
   assert.match(r.out, /split the PR/);
+});
+
+test('REGRESSION (#3688): a 500 KB single file is refused, and says so as a SKIP not a red', () => {
+  // The bound this branch silently moved. `MAX_PATCH_BYTES` is 600 KB and the
+  // module docblock said a sub-cap diff is "DEGRADED, never refused"; the
+  // up-front charge dropped the real single-file bound to ~357 KB, so 360/400/
+  // 500/590 KB single-file PRs all went from reviewed to an unclearable red.
+  //
+  // 500 KB genuinely cannot be reviewed -- MAX_PROMPT_BYTES is 390,000, so no
+  // budget arithmetic makes it fit, and that half of the claim was simply
+  // false. What it CAN have is an honest posted marker instead of a red, and
+  // the message must name the real number rather than a fixed sentence.
+  const r = run([sizedRow('packages/a/huge.ts', 500 * 1024)]);
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /NOTHING_FITS/);
+  assert.match(r.out, /the smallest of the 1 is 512000 bytes/, 'the message must state the measurement');
+});
+
+test('REGRESSION (#3688): 1,000 tiny files with long paths BUILD, and keep every one', () => {
+  // 29 bytes of patch each, 29 KB in total against a 390,000-byte prompt --
+  // nothing here is close to any limit. The up-front `max(kept, omitted)` charge
+  // billed every candidate for a role it does not end up in, so the row
+  // overhead alone drove the budget down and files were dropped (and at 2,000
+  // the whole PR was refused). A file pays for the role it lands in.
+  const long = 'packages/some-really-quite-long-package-name/src/features/deeply/nested/area';
+  const rows = Array.from({ length: 1000 }, (_, i) => ({
+    filename: `${long}/module-${i}/component-implementation-${i}.tsx`,
+    status: 'modified',
+    patch: '@@ -1,1 +1,1 @@\n+abcdefghijkl',
+  }));
+  const total = rows.reduce((n, r) => n + Buffer.byteLength(r.patch, 'utf8'), 0);
+  assert.ok(total < 30_000, `the fixture must be trivially small; it is ${total} bytes`);
+  const r = run(rows);
+  assert.equal(r.code, 0, r.out);
+  assert.equal(r.result.files.length, 1000, 'every file fits, so every file must be kept');
+  assert.equal(r.result.unreviewable.length, 0);
+});
+
+test('REGRESSION (#3688): when the PATHS are what does not fit, the message says so', () => {
+  // The old message was "No single file's patch fits the model prompt", printed
+  // for 2,000 files whose patches are 13 bytes each. It was false about all
+  // 2,000, and it sent the reader looking for a large file that is not there.
+  const long = 'packages/some-really-quite-long-package-name/src/features/deeply/nested/area';
+  const rows = Array.from({ length: 3000 }, (_, i) => ({
+    filename: `${long}/module-${i}/component-implementation-${i}.tsx`,
+    status: 'modified',
+    patch: '@@ -1,1 +1,1 @@\n+x',
+  }));
+  const r = run(rows);
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /NOTHING_FITS/);
+  assert.match(r.out, /It is the FILE COUNT, not the diff/);
+  assert.doesNotMatch(r.out, /No single file/, 'the other cause must not be claimed here');
 });
 
 test('the PROCESS says PARTIAL loudly and keeps the emitted shape stable', () => {

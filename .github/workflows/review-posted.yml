@@ -188,11 +188,19 @@ jobs:
       # The cost of the label not being applied is that CodeRabbit reviews a PR
       # that was already covered -- quota, not correctness.
       #
-      # Reads `steps.gate.outputs.covered`, never the step's exit code: in
-      # advisory mode a failing verdict still exits 0, so the exit code would mark
-      # an unreviewed PR as covered.
+      # Reads `steps.gate.outputs.full`, never the step's exit code: in advisory
+      # mode a failing verdict still exits 0, so the exit code would mark an
+      # unreviewed PR as reviewed.
+      #
+      # `full`, NOT `covered`. `covered` answers "does a verdict exist for this
+      # head" and is claude-review.yml's dedup key; `full` answers "was the WHOLE
+      # diff reviewed", which is the only thing that entitles another reviewer to
+      # stand down. They part company on a degraded review (#3679): the lane
+      # reviewed the files that fit, so the head is covered and must not be
+      # re-reviewed, while the omitted files were read by nobody and CodeRabbit
+      # must still look at the PR.
       - name: Mark covered so CodeRabbit can stand down
-        if: always() && steps.gate.outputs.covered == 'true'
+        if: always() && steps.gate.outputs.full == 'true'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -228,12 +236,13 @@ jobs:
             echo "    (fork PR), or the repository's default workflow permissions were tightened."
           fi
 
-      # The refusal paths write `covered=false` too, so a stale label is cleared
-      # even when the gate could not read its own inputs. Without this a PR
-      # carrying the label from an earlier head would keep it through any number
-      # of refused runs.
-      - name: Clear the stand-down label when this head is not covered
-        if: always() && steps.gate.outputs.covered == 'false'
+      # The refusal paths write `full=false` too, so a stale label is cleared even
+      # when the gate could not read its own inputs. Without this a PR carrying
+      # the label from an earlier head would keep it through any number of
+      # refused runs. A head that degrades from full to partial clears it here
+      # for the same reason.
+      - name: Clear the stand-down label when this head is not fully reviewed
+        if: always() && steps.gate.outputs.full == 'false'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}

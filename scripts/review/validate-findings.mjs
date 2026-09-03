@@ -158,7 +158,7 @@ import { quotableLines, quoteAppearsIn, lineIsAdded, addedLinesMatching } from '
 // One constant, imported rather than re-spelled: a reworded copy here would
 // stop matching the rows build-review-input writes, and the partial-review
 // marker would silently claim a full review (#3679).
-import { OMITTED_FOR_PROMPT_REASON } from './build-review-input.mjs';
+import { OMITTED_FOR_PROMPT_REASON, UNREVIEWABLE_UNREAD } from './build-review-input.mjs';
 
 /**
  * The terminal sentinel the prompt requires as the LAST field. Its whole job is to
@@ -248,7 +248,19 @@ const MAX_CLASS_CHARS = 60;
  * gate ignored it.
  */
 const MARKER_TOKEN_RE = /ifc-lite-review/gi;
-const DEFANGED_TOKEN = 'ifc-lite‑review';
+/**
+ * A REPLACER, not a fixed string, and that is the correction. The pattern is
+ * case-INSENSITIVE while the replacement was a lowercase literal, so defanging
+ * REWROTE the text it was defanging: `docs/IFC-Lite-Review-Lane.md` came out as
+ * `docs/ifc-lite‑review-Lane.md`, a name that exists nowhere. That is the same
+ * class as the 60-char `class` cap this file already records for rewriting real
+ * paths into names that exist nowhere, arriving by a different door -- and it
+ * lands on an advisory list whose whole job is naming files a human then reads.
+ *
+ * Swaps the SECOND ASCII hyphen of whatever was matched for U+2011 and touches
+ * nothing else, so case survives.
+ */
+const defangToken = (match) => `${match.slice(0, 8)}\u2011${match.slice(9)}`;
 
 /** Whole HTML comments, non-greedy, including multi-line ones. */
 const HTML_COMMENT_RE = /<!--[\s\S]*?-->/g;
@@ -532,11 +544,7 @@ export { quotableLines, quoteAppearsIn, lineIsAdded, addedLinesMatching };
  * @param {unknown} text
  */
 export function sanitizeBody(text) {
-  let out = String(text ?? '')
-    .replace(HTML_COMMENT_RE, '')
-    .replace(DANGLING_COMMENT_OPEN_RE, '<!‑-')
-    .replace(MARKER_TOKEN_RE, DEFANGED_TOKEN)
-    .replace(/@(?=[A-Za-z0-9])/g, '@​');
+  let out = defangDangerous(text);
   if (out.length > MAX_BODY_CHARS) {
     out = out.slice(0, MAX_BODY_CHARS - TRUNCATION_NOTE.length) + TRUNCATION_NOTE;
   }
@@ -544,20 +552,31 @@ export function sanitizeBody(text) {
 }
 
 /**
- * The defanging every model-or-PR-controlled short string gets before a poster
- * may render it: comment openers, the marker token and @-mentions cannot
- * survive. Length policy is NOT here -- it belongs to the caller, because a
- * `class` label and a file path have opposite needs (a label is a tag to cap
- * hard; a path is an identity to keep whole).
+ * THE FOUR DEFANGING STEPS, in one place. `sanitizeBody` and `defangInline` each
+ * carried a verbatim copy of the chain, so the numbered contract on
+ * `sanitizeBody` described one of them and was true of the other only by
+ * inspection -- two copies held together by prose. Steps 1-4 of that list ARE
+ * this function; each caller owns only what it adds afterwards.
+ *
+ * @param {unknown} text
  */
-function defangInline(text) {
+function defangDangerous(text) {
   return String(text ?? '')
     .replace(HTML_COMMENT_RE, '')
     .replace(DANGLING_COMMENT_OPEN_RE, '<!‑-')
-    .replace(MARKER_TOKEN_RE, DEFANGED_TOKEN)
-    .replace(/@(?=[A-Za-z0-9])/g, '@​')
-    .replace(/\s+/g, ' ')
-    .trim();
+    .replace(MARKER_TOKEN_RE, defangToken)
+    .replace(/@(?=[A-Za-z0-9])/g, '@​');
+}
+
+/**
+ * The defanging every model-or-PR-controlled short string gets before a poster
+ * may render it, plus the whitespace collapse a one-line field needs. Length
+ * policy is NOT here -- it belongs to the caller, because a `class` label and a
+ * file path have opposite needs (a label is a tag to cap hard; a path is an
+ * identity to keep whole).
+ */
+function defangInline(text) {
+  return defangDangerous(text).replace(/\s+/g, ' ').trim();
 }
 
 /**
@@ -594,11 +613,13 @@ const MAX_PATH_CHARS = 500;
  * differing only in what defanging removes still collide -- measured, all legal
  * git paths: `dir/a<!--x-->b.ts` vs `dir/ab.ts`; two spaces vs one; a tab vs a
  * space; a leading space vs none; and `ifc-lite-review.ts` vs its U+2011
- * non-breaking-hyphen lookalike -- that last pair in LOWERCASE, because
- * `DEFANGED_TOKEN` is a fixed lowercase string, so the uppercase pair does NOT
- * collide. Sub-cap paths get no digest at all, so nothing
- * disambiguates them. A reader can therefore still see `omitted=2` above two
- * identical-looking entries.
+ * non-breaking-hyphen lookalike -- IN ANY CASE now, not only in lowercase. The
+ * replacement used to be a fixed lowercase string, which spared the uppercase
+ * pair by rewriting its case; that was a worse bug than the collision it
+ * avoided, so `defangToken` preserves the match and the pair collides like every
+ * other. Sub-cap paths get no digest at all, so nothing disambiguates them. A
+ * reader can therefore still see `omitted=2` above two identical-looking
+ * entries.
  *
  * Accepted rather than fixed: defanging is load-bearing (it is what stops a
  * path forging a marker) and it must stay lossy to do that job. The cost is
@@ -961,8 +982,22 @@ export function validate({ response, input, onWarn = null }) {
 }
 
 /**
- * The paths build-review-input DROPPED to fit the model prompt (#3679), ready
- * for a posted comment body.
+ * The paths the reviewer NEVER SAW THE CONTENT OF, ready for a posted comment
+ * body. Both ways that happens count: dropped to fit the model prompt (#3679),
+ * and refused a patch by GitHub for being too large.
+ *
+ * IT USED TO BE ONLY THE FIRST, matched by `reason === OMITTED_FOR_PROMPT_REASON`.
+ * A PR whose one unreviewable file was one GitHub declined to send therefore
+ * produced a marker byte-identical to a full review's, and CodeRabbit stood down
+ * on it -- the absence-reads-as-success shape one layer below where #3679 put
+ * the disclosure. Branching on a `kind` field rather than on a reason string is
+ * what makes the two cases distinguishable at all: the old single reason string
+ * said "too large, or a pure rename", which are opposite answers to "was
+ * anything withheld".
+ *
+ * A deletion or a pure rename is NOT counted: there was no changed content for
+ * the reviewer to read, so nothing is being withheld and disclosing it would
+ * train readers to ignore the warning.
  *
  * Sanitised HERE, because this file is the boundary between model-or-PR
  * controlled bytes and the poster: a git path may contain any byte but NUL and
@@ -980,7 +1015,13 @@ export function validate({ response, input, onWarn = null }) {
  */
 export function omittedForPromptPaths(unreviewable) {
   return unreviewable
-    .filter((u) => u.reason === OMITTED_FOR_PROMPT_REASON)
+    .filter((u) =>
+      // `kind` is authoritative when present. The reason-string fallback is for
+      // an input built before the field existed, where the prompt-dropped rows
+      // are the only ones that were ever counted anyway -- it reproduces the old
+      // behaviour exactly rather than guessing at the new one.
+      u?.kind ? u.kind === UNREVIEWABLE_UNREAD : u?.reason === OMITTED_FOR_PROMPT_REASON,
+    )
     .map((u) => sanitizePath(u.path) || '(a path that sanitised to nothing)');
 }
 

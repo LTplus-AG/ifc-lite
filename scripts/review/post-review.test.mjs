@@ -41,7 +41,23 @@ const SCRIPT = join(HERE, 'post-review.mjs');
 // The rest of this file drives the script as a SUBPROCESS, which is right for the
 // GitHub-facing behaviour. The posting cap is a pure function of the findings
 // file, so it is exercised directly.
-import { readFindings, MAX_POSTED_FINDINGS, summaryBody, readJudgedAway, readCappedCount, marker } from './post-review.mjs';
+import {
+  readFindings,
+  readFindingsDoc,
+  MAX_POSTED_FINDINGS,
+  summaryBody,
+  readJudgedAway,
+  readCappedCount,
+  marker,
+} from './post-review.mjs';
+
+/**
+ * `readFindings` takes the PARSED document now, not a path: findings.json is
+ * read and parsed once per run by `readFindingsDoc` and handed to all four
+ * readers. This keeps each test writing a real file, so the parse is still
+ * exercised, without repeating the two-call shape at every site.
+ */
+const readFindingsFile = (path) => readFindings(readFindingsDoc(path), path);
 const GATE = join(HERE, '..', 'check-review-posted.mjs');
 const SHIPPED_CFG = join(HERE, '..', 'review-posted.config.json');
 const SHIPPED = JSON.parse(readFileSync(SHIPPED_CFG, 'utf8'));
@@ -1030,7 +1046,7 @@ test('more findings than the cap are trimmed to the cap', () => {
     body: `body ${i}`,
   }));
   writeFileSync(p, JSON.stringify({ verdict: 'findings', findings: many }));
-  const got = readFindings(p);
+  const got = readFindingsFile(p);
   assert.equal(got.length, MAX_POSTED_FINDINGS);
   assert.match(got[0].body, /body 0/, 'the first ones, in the order given');
 });
@@ -1047,7 +1063,7 @@ test('THE BYPASS PATH: an UNJUDGED file straight from the validator is still cap
     body: `body ${i}`,
   }));
   writeFileSync(p, JSON.stringify({ verdict: 'findings', findings: twelve, counts: { valid: 12 } }));
-  assert.equal(readFindings(p).length, MAX_POSTED_FINDINGS);
+  assert.equal(readFindingsFile(p).length, MAX_POSTED_FINDINGS);
 });
 
 test('at or under the cap nothing is trimmed', () => {
@@ -1059,7 +1075,7 @@ test('at or under the cap nothing is trimmed', () => {
     body: `body ${i}`,
   }));
   writeFileSync(p, JSON.stringify({ verdict: 'findings', findings: few }));
-  assert.equal(readFindings(p).length, MAX_POSTED_FINDINGS);
+  assert.equal(readFindingsFile(p).length, MAX_POSTED_FINDINGS);
 });
 
 test('a review the judge emptied does NOT read as a review that found nothing', () => {
@@ -1075,13 +1091,14 @@ test('a review the judge emptied does NOT read as a review that found nothing', 
   assert.match(judged, /ifc-lite-review sha=/, 'the marker must still be written');
 });
 
-test('readJudgedAway returns 0 for anything unreadable, and never throws', () => {
+test('readJudgedAway returns 0 for any document that does not say, and never throws', () => {
   // It decorates a message. A malformed count must never be why a review fails
-  // to post -- that would trade a cosmetic line for a missing marker.
-  const bad = join(TMP, 'judged-bad.json');
-  writeFileSync(bad, 'not json at all');
-  assert.equal(readJudgedAway(bad), 0);
-  assert.equal(readJudgedAway(join(TMP, 'does-not-exist.json')), 0);
+  // to post -- that would trade a cosmetic line for a missing marker. It takes
+  // the parsed document now (#3688): the file is read once per run, so "could
+  // not re-read it" is a failure that no longer exists rather than one handled.
+  assert.equal(readJudgedAway(null), 0);
+  assert.equal(readJudgedAway(undefined), 0);
+  assert.equal(readJudgedAway([]), 0, 'a bare array carries no counts');
 
   // `judged: true` REQUIRED, and this test asserted the opposite by omission.
   // `counts.dropped` means "the judge rejected these" in judged.json and
@@ -1089,13 +1106,27 @@ test('readJudgedAway returns 0 for anything unreadable, and never throws', () =>
   // workflow's crash backstop copies verbatim. Without the flag the poster told
   // the author N findings were "dropped as too vague" about findings that had
   // actually quoted a line not in the diff.
-  const good = join(TMP, 'judged-good.json');
-  writeFileSync(good, JSON.stringify({ judged: true, findings: [], counts: { dropped: 3 } }));
-  assert.equal(readJudgedAway(good), 3);
+  assert.equal(readJudgedAway({ judged: true, findings: [], counts: { dropped: 3 } }), 3);
+  assert.equal(
+    readJudgedAway({ findings: [], counts: { dropped: 3 } }),
+    0,
+    "the validator's own drops are not judge drops",
+  );
+});
 
-  const unjudged = join(TMP, 'judged-fallback.json');
-  writeFileSync(unjudged, JSON.stringify({ findings: [], counts: { dropped: 3 } }));
-  assert.equal(readJudgedAway(unjudged), 0, 'the validator\'s own drops are not judge drops');
+test('readFindingsDoc owns the diagnosis for an unreadable or unparseable file', () => {
+  // The four readers each carried their own answer to "what if this file is
+  // bad", and one of them threw a message about a race that could only happen
+  // BECAUSE it re-read. One read, one diagnosis (#3688).
+  const bad = join(TMP, 'doc-bad.json');
+  writeFileSync(bad, 'not json at all');
+  assert.throws(() => readFindingsDoc(bad), /is not valid JSON/);
+  assert.throws(() => readFindingsDoc(join(TMP, 'does-not-exist.json')), /is missing/);
+  // The happy path, so the two assertions above cannot both be passing on a
+  // function that throws unconditionally.
+  const good = join(TMP, 'doc-good.json');
+  writeFileSync(good, JSON.stringify({ findings: [], omitted: ['a.ts'] }));
+  assert.deepEqual(readFindingsDoc(good), { findings: [], omitted: ['a.ts'] });
 });
 
 test('the VERIFIED SIBLING reaches the PR comment', () => {
@@ -1115,7 +1146,7 @@ test('the VERIFIED SIBLING reaches the PR comment', () => {
       sibling: { path: 'packages/cache/src/sections/properties.ts', line: 88, quote: 'x' },
     }],
   }));
-  const got = readFindings(p);
+  const got = readFindingsFile(p);
   assert.match(got[0].body, /packages\/cache\/src\/sections\/properties\.ts:88/, 'the twin must be named');
   assert.match(got[0].body, /this PR does not change/);
 });
@@ -1126,7 +1157,7 @@ test('a finding with no sibling gains no stray sentence', () => {
     verdict: 'findings',
     findings: [{ path: 'packages/a/f.ts', line: 1, quote: 'q', body: 'A plain finding.' }],
   }));
-  assert.doesNotMatch(readFindings(p)[0].body, /same shape is at/);
+  assert.doesNotMatch(readFindingsFile(p)[0].body, /same shape is at/);
 });
 
 test('the cap disclosure quotes the CONSTANT, not the word five', () => {
@@ -1145,13 +1176,15 @@ test('the cap disclosure quotes the CONSTANT, not the word five', () => {
 });
 
 test('readCappedCount counts what the cap withheld, and never throws', () => {
-  const p = join(TMP, 'capcount.json');
-  writeFileSync(p, JSON.stringify({ findings: Array.from({ length: 9 }, () => ({})) }));
-  assert.equal(readCappedCount(p, 5), 4);
-  assert.equal(readCappedCount(p, 9), 0, 'nothing withheld when all were shown');
-  assert.equal(readCappedCount(join(TMP, 'no-such-file.json'), 5), 0);
-  writeFileSync(join(TMP, 'capbad.json'), 'not json');
-  assert.equal(readCappedCount(join(TMP, 'capbad.json'), 5), 0);
+  const doc = { findings: Array.from({ length: 9 }, () => ({})) };
+  assert.equal(readCappedCount(doc, 5), 4);
+  assert.equal(readCappedCount(doc, 9), 0, 'nothing withheld when all were shown');
+  // Shapes that carry no total, which is what "unreadable" collapses to now
+  // that the file is parsed once upstream (#3688).
+  assert.equal(readCappedCount(null, 5), 0);
+  assert.equal(readCappedCount({ findings: 'not an array' }, 5), 0);
+  // A bare array is the other accepted spelling and must still count.
+  assert.equal(readCappedCount(Array.from({ length: 9 }, () => ({})), 5), 4);
 });
 
 // ====================================== the partial-review disclosure (#3679)
@@ -1365,7 +1398,7 @@ for (const [label, evilPath] of EVIL) {
         sibling: { path: evilPath, line: 88, quote: 'x' },
       }],
     }));
-    const sentence = readFindings(p)[0].body
+    const sentence = readFindingsFile(p)[0].body
       .split('\n')
       .find((l) => l.includes('The same shape is at'));
     assert.ok(sentence, 'the sibling sentence must exist');
@@ -1409,7 +1442,7 @@ test('a finding PATH that could open a marker is REFUSED', () => {
   // REFUSED rather than sanitised: `path` is the finding's anchor and must
   // round-trip verbatim as the API `path=` parameter and the dedupe fingerprint.
   assert.throws(
-    () => readFindings(findingsFile({ path: FORGED, line: 1, body: 'B', quote: 'x' })),
+    () => readFindingsFile(findingsFile({ path: FORGED, line: 1, body: 'B', quote: 'x' })),
     /containing an HTML comment opener/,
   );
 });
@@ -1418,7 +1451,7 @@ test('a SIBLING path that could open a marker is DROPPED, not refused', () => {
   // The sibling sentence is decoration on a finding that is otherwise fine.
   // Refusing the whole review over it would trade a cosmetic loss for the very
   // unclearable red the guard exists to avoid.
-  const got = readFindings(findingsFile({
+  const got = readFindingsFile(findingsFile({
     path: 'src/ok.ts', line: 1, body: 'B', quote: 'x',
     sibling: { path: FORGED, line: 2, quote: 'y' },
   }));
@@ -1434,7 +1467,7 @@ for (const legal of ['docs/ifc-lite-review-lane.md', 'docs/IFC-LITE-REVIEW.md'])
     // any marker -- and no marker means the gate says NOT_POSTED and tells you
     // to re-run, which fails identically forever. MARKER_RE requires a literal
     // `<!--`, so the bare token forges nothing and must pass.
-    const got = readFindings(findingsFile({ path: legal, line: 1, body: 'B', quote: 'x' }));
+    const got = readFindingsFile(findingsFile({ path: legal, line: 1, body: 'B', quote: 'x' }));
     assert.equal(got[0].path, legal, 'the path must survive verbatim');
   });
 }

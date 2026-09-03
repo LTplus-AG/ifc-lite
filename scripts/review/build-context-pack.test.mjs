@@ -890,6 +890,9 @@ test('a long sibling PATH must be charged too, not just a long key -- text-only 
   assert.ok(
     renderedBytes <= availableBudget,
     `siblings alone render to ${renderedBytes} bytes, over the ${availableBudget}-byte budget they were charged against`,
+  );
+});
+
 test('the envelope charges an ESCAPED path as rendered, not as stored', () => {
   // The regression that the agreement test above CANNOT see. Its fixture paths
   // (`vendor/generated/.../thing-0.ts`) need no JSON escaping, so charging the

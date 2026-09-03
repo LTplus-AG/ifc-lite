@@ -14,7 +14,7 @@
 import { escapeCsvCell } from '@ifc-lite/export';
 import { columnValueToCsv } from './export.js';
 import type { ScheduleColumn } from './schedule-columns.js';
-import type { SubtotalPlan, SubtotalRowData } from './schedule-aggregate.js';
+import type { SubtotalPlan, SubtotalRowData, SubtotalValue } from './schedule-aggregate.js';
 
 /** One resolved row: the raw value for each column, in column order. */
 export type ScheduleRow = unknown[];
@@ -69,6 +69,15 @@ function subtotalLabel(data: SubtotalRowData): string {
  * group column (column 0 for the grand total); each numeric aggregation fills
  * its target column; every other column is blank.
  *
+ * `--subtotals` allows more than one aggregation on the same `--columns`
+ * header (`sum:Area,avg:Area` is a reasonable request, and the JSON renderer
+ * already keys those by `spec` without collision — see `subtotalToJson`).
+ * The tabular formats have only one cell per column, so when two or more
+ * aggregations target the same column their values are joined into one cell
+ * as `"sum: 30, avg: 15"` instead of the second one silently overwriting the
+ * first. A single aggregation on a column keeps rendering as its bare value
+ * (a number, same as before) so the common case is unaffected.
+ *
  * Exported so the Markdown/HTML renderers (`schedule-render-md.ts`,
  * `schedule-render-html.ts`) lay out subtotal/total rows identically to CSV —
  * same label, same column placement — instead of re-deriving the shape.
@@ -77,12 +86,30 @@ export function subtotalCells(columns: ScheduleColumn[], data: SubtotalRowData):
   const cells: unknown[] = columns.map(() => '');
   const labelCol = data.groupValues.length > 0 ? data.groupValues[0].index : 0;
   cells[labelCol] = subtotalLabel(data);
+
+  // Group every non-count aggregation by its target column index so a
+  // collision can be detected before any cell is written.
+  const byIdx = new Map<number, SubtotalValue[]>();
   for (const v of data.values) {
     if (v.spec === 'count') continue;
     const header = v.spec.slice(v.spec.indexOf(':') + 1);
     const idx = columns.findIndex(c => c.header === header);
     if (idx === -1 || idx === labelCol) continue; // label column keeps the label
-    cells[idx] = v.value == null ? '' : v.value;
+    const bucket = byIdx.get(idx);
+    if (bucket) bucket.push(v);
+    else byIdx.set(idx, [v]);
+  }
+
+  for (const [idx, values] of byIdx) {
+    if (values.length === 1) {
+      cells[idx] = values[0].value == null ? '' : values[0].value;
+      continue;
+    }
+    // Two-plus aggregations on one column: join as "mode: value" pairs so
+    // every value survives instead of the last one winning.
+    cells[idx] = values
+      .map(v => `${v.spec.slice(0, v.spec.indexOf(':'))}: ${v.value == null ? '' : v.value}`)
+      .join(', ');
   }
   return cells;
 }

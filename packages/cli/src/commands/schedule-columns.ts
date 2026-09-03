@@ -32,6 +32,10 @@ export function parseColumnSpec(spec: string | undefined): ScheduleColumn[] {
   }
 
   const columns: ScheduleColumn[] = [];
+  // Header (case-sensitive, matching every --sort/--group-by/--subtotals
+  // header lookup elsewhere in this command) -> the raw "Header=path" segment
+  // that first declared it, so a collision can be reported with both specs.
+  const bySegment = new Map<string, string>();
   for (const rawSegment of spec.split(',')) {
     const segment = rawSegment.trim();
     if (segment === '') {
@@ -39,17 +43,28 @@ export function parseColumnSpec(spec: string | undefined): ScheduleColumn[] {
     }
 
     const eqIdx = segment.indexOf('=');
+    let header: string;
+    let path: string;
     if (eqIdx === -1) {
       // Bare path: the path is its own header.
-      columns.push({ header: segment, path: segment });
-      continue;
+      header = segment;
+      path = segment;
+    } else {
+      header = segment.slice(0, eqIdx).trim();
+      path = segment.slice(eqIdx + 1).trim();
+      if (header === '' || path === '') {
+        fatal(`Invalid --columns entry "${segment}": expected "Header=path" with both sides non-empty.`);
+      }
     }
 
-    const header = segment.slice(0, eqIdx).trim();
-    const path = segment.slice(eqIdx + 1).trim();
-    if (header === '' || path === '') {
-      fatal(`Invalid --columns entry "${segment}": expected "Header=path" with both sides non-empty.`);
+    const firstSegment = bySegment.get(header);
+    if (firstSegment !== undefined) {
+      fatal(
+        `Duplicate --columns header "${header}": "${firstSegment}" and "${segment}" both declare it. ` +
+          `Every column needs a distinct header — give one an explicit "Header=path" with a different name.`,
+      );
     }
+    bySegment.set(header, segment);
     columns.push({ header, path });
   }
 

@@ -23,6 +23,7 @@ import {
   renderScheduleJson,
   renderScheduleCsvWithSubtotals,
   renderScheduleJsonWithSubtotals,
+  subtotalCells,
   type ScheduleRow,
 } from './schedule-render.js';
 import { resolveScheduleValue, scheduleCommand } from './schedule.js';
@@ -99,6 +100,21 @@ describe('parseColumnSpec', () => {
   it('splits only on the first = so a dotted path stays intact', () => {
     expect(parseColumnSpec('Area=Qto_DoorBaseQuantities.Area')).toEqual([
       { header: 'Area', path: 'Qto_DoorBaseQuantities.Area' },
+    ]);
+  });
+
+  it('rejects a duplicate header naming both colliding specs', () => {
+    const err = expectFatal(() =>
+      parseColumnSpec('Area=Qto_WallBaseQuantities.NetArea, Area=Qto_WallBaseQuantities.GrossArea'),
+    );
+    expect(err).toContain('Area=Qto_WallBaseQuantities.NetArea');
+    expect(err).toContain('Area=Qto_WallBaseQuantities.GrossArea');
+  });
+
+  it('is case-sensitive: "Area" and "area" are distinct headers', () => {
+    expect(parseColumnSpec('Area=X, area=Y')).toEqual([
+      { header: 'Area', path: 'X' },
+      { header: 'area', path: 'Y' },
     ]);
   });
 });
@@ -427,6 +443,78 @@ describe('group-by + subtotals over a real fixture', () => {
     const json = renderScheduleJsonWithSubtotals(columns, plan);
     expect(json.filter(r => r.__row === 'subtotal')).toHaveLength(0);
     expect(json[json.length - 1]).toEqual({ __row: 'total', count: 4, 'sum:Area': 7 });
+  });
+});
+
+describe('two --subtotals aggregations targeting the same column do not collide', () => {
+  const columns = [
+    { header: 'Name', path: 'Name' },
+    { header: 'Area', path: 'Area' },
+  ];
+
+  // total.values = [{ spec: 'sum:Area', value: 30 }, { spec: 'avg:Area', value: 15 }]
+  const total = {
+    kind: 'total' as const,
+    groupValues: [],
+    values: [
+      { spec: 'sum:Area', value: 30 },
+      { spec: 'avg:Area', value: 15 },
+    ],
+  };
+
+  it('subtotalCells keeps both values instead of the second silently overwriting the first', () => {
+    const cells = subtotalCells(columns, total);
+    const areaCell = String(cells[1]);
+    expect(areaCell).toContain('30');
+    expect(areaCell).toContain('15');
+  });
+
+  it('CSV keeps both aggregations in the Total row', () => {
+    const rows: ScheduleRow[] = [['Door A', 10], ['Door B', 20]];
+    const plan = { rows, groups: [], total };
+    const csv = renderScheduleCsvWithSubtotals(columns, plan);
+    const totalLine = csv.split('\n').find(l => l.startsWith('Total'))!;
+    expect(totalLine).toContain('30');
+    expect(totalLine).toContain('15');
+  });
+
+  it('Markdown keeps both aggregations in the Total row', () => {
+    const rows: ScheduleRow[] = [['Door A', 10], ['Door B', 20]];
+    const plan = { rows, groups: [], total };
+    const md = renderScheduleMarkdownWithSubtotals(columns, plan);
+    const totalLine = md.split('\n').find(l => l.startsWith('| Total'))!;
+    expect(totalLine).toContain('30');
+    expect(totalLine).toContain('15');
+  });
+
+  it('HTML keeps both aggregations in the Total row', () => {
+    const rows: ScheduleRow[] = [['Door A', 10], ['Door B', 20]];
+    const plan = { rows, groups: [], total };
+    const html = renderScheduleHtmlWithSubtotals(columns, plan);
+    // Find the Total row's Area cell content: it must contain both values.
+    const totalRowMatch = html.match(/<tr[^>]*>\s*<td[^>]*>Total<\/td>[\s\S]*?<\/tr>/);
+    expect(totalRowMatch).not.toBeNull();
+    expect(totalRowMatch![0]).toContain('30');
+    expect(totalRowMatch![0]).toContain('15');
+  });
+
+  it('JSON already keeps both (spec-keyed) — control, must keep passing', () => {
+    const rows: ScheduleRow[] = [['Door A', 10], ['Door B', 20]];
+    const plan = { rows, groups: [], total };
+    const json = renderScheduleJsonWithSubtotals(columns, plan);
+    const totalRow = json[json.length - 1];
+    expect(totalRow['sum:Area']).toBe(30);
+    expect(totalRow['avg:Area']).toBe(15);
+  });
+
+  it('control: a single sum:Area still renders as a plain numeric-looking cell', () => {
+    const singleTotal = {
+      kind: 'total' as const,
+      groupValues: [],
+      values: [{ spec: 'sum:Area', value: 30 }],
+    };
+    const cells = subtotalCells(columns, singleTotal);
+    expect(cells[1]).toBe(30);
   });
 });
 

@@ -77,11 +77,28 @@ describe('isValidXsdDateTimeLiteral (#3721)', () => {
   });
 
   it('names exactly the three bases whose value space is a calendar', () => {
-    // The coherence audit dispatches on this: a base that answers false there
+    // The coherence audit dispatches on this: a base that answers false here
     // falls through to the regex table, so a missing entry is a silent hole.
-    expect(['xs:date', 'xs:dateTime', 'xs:time'].every(isXsdDateTimeBase)).toBe(true);
-    expect(isXsdDateTimeBase('xs:duration')).toBe(false);
-    expect(isXsdDateTimeBase('xs:double')).toBe(false);
+    // Asserted as an exact PARTITION rather than as `.every(...)` on the three
+    // — `every` proves the three are in and proves nothing about what is out,
+    // so a wrong `xs:gYear` classification would pass it. The gregorian family
+    // is the realistic mistake: those types look date-shaped and are date
+    // adjacent, but their value space is not a calendar date and the regex
+    // table is the right home for them.
+    expect(
+      [
+        'xs:date',
+        'xs:dateTime',
+        'xs:time',
+        'xs:gYear',
+        'xs:gYearMonth',
+        'xs:gMonth',
+        'xs:gMonthDay',
+        'xs:gDay',
+        'xs:duration',
+        'xs:double',
+      ].filter(isXsdDateTimeBase)
+    ).toEqual(['xs:date', 'xs:dateTime', 'xs:time']);
   });
 });
 

@@ -114,3 +114,52 @@ export function addedLinesMatching(patch, quote) {
   return out;
 }
 
+/**
+ * The `PROOF_OF_WORK_FAILED` message for a `riskiest_change.quoted_line` that
+ * failed `quoteAppearsIn` against the file it was attributed to (#3769).
+ * DIAGNOSTIC ONLY: by the time this runs the quote has already been rejected
+ * -- nothing here decides pass or fail, only what the model is TOLD about
+ * why, so `claude-review.yml`'s existing one-time retry for this reason
+ * (#3757) gets a targeted correction instead of "pick a different line",
+ * which does not address a wrong-file cause at all.
+ *
+ * #3769 measured this shape deterministically, three times on one PR: an
+ * extraction refactor where the quoted line moved into a NEW file, but the
+ * model named the OLD file it used to live in. So before falling back to the
+ * original "quit early" remedy, check whether the quote is a whole line of
+ * some OTHER reviewed file's patch -- if it is, that is strictly more useful
+ * to a retry than "try again", and #3769 itself notes a same-prompt retry
+ * has no particular reason to fix an attribution it was never told was wrong.
+ *
+ * @param {Map<string, {patch: string}>} files every file sent to the model
+ * @param {string} claimedPath the file `riskiest_change.path` named
+ * @param {string} quote `riskiest_change.quoted_line`
+ * @param {number} minChars
+ * @returns {string}
+ */
+export function quotedLineFailureMessage(files, claimedPath, quote, minChars) {
+  let elsewhere = null;
+  for (const [path, file] of files) {
+    if (path === claimedPath) continue;
+    if (quoteAppearsIn(file.patch, quote, minChars)) {
+      elsewhere = path;
+      break;
+    }
+  }
+  const base =
+    `\`riskiest_change.quoted_line\` is not a line of \`${claimedPath}\`'s patch (or is shorter than ` +
+    `${minChars} characters, which would not be evidence of anything): ` +
+    `${JSON.stringify(String(quote).slice(0, 120))}.`;
+  if (elsewhere) {
+    return (
+      `${base} This exact line IS in \`${elsewhere}\`'s patch instead -- the file attribution is wrong, ` +
+      `not the quote. REMEDY: re-run; the correct \`riskiest_change.path\` is \`${elsewhere}\`.`
+    );
+  }
+  return (
+    `${base} This is the one thing a model that quit early cannot fake. REMEDY: re-run. Quote a WHOLE ` +
+    'line, not a fragment; and if the line you nominated is too long to reproduce exactly, nominate a ' +
+    'SHORTER line from the same file instead -- any real line of the diff proves you read it.'
+  );
+}
+

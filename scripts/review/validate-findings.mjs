@@ -154,7 +154,7 @@ import { isMainEntry } from '../lib/is-main-entry.mjs';
 // ./quote-line-coupling.mjs (module-size budget). Imported (not `export ...
 // from`) because this file also calls them itself, and re-exported below so
 // every existing import of them from this file keeps working unchanged.
-import { quotableLines, quoteAppearsIn, lineIsAdded, addedLinesMatching } from './quote-line-coupling.mjs';
+import { quotableLines, quoteAppearsIn, lineIsAdded, addedLinesMatching, quotedLineFailureMessage } from './quote-line-coupling.mjs';
 // One constant, imported rather than re-spelled: a reworded copy here would
 // stop matching the rows build-review-input writes, and the partial-review
 // marker would silently claim a full review (#3679).
@@ -682,14 +682,11 @@ function checkProofOfWork({ response, input }) {
     );
   }
   if (!quoteAppearsIn(file.patch, rc.quoted_line, MIN_PROOF_QUOTE_CHARS)) {
+    // Message-building (including the #3769 wrong-file lookup) lives in
+    // quotedLineFailureMessage: this file is at zero module-size headroom.
     throw new ValidateFindingsError(
       'PROOF_OF_WORK_FAILED',
-      `\`riskiest_change.quoted_line\` is not a line of \`${rc.path}\`'s patch (or is shorter than ` +
-        `${MIN_PROOF_QUOTE_CHARS} characters, which would not be evidence of anything): ` +
-        `${JSON.stringify(String(rc.quoted_line).slice(0, 120))}. This is the one thing a model that ` +
-        'quit early cannot fake. REMEDY: re-run. Quote a WHOLE line, not a fragment; and if the ' +
-        'line you nominated is too long to reproduce exactly, nominate a SHORTER line from the ' +
-        'same file instead -- any real line of the diff proves you read it.',
+      quotedLineFailureMessage(input.files, rc.path, rc.quoted_line, MIN_PROOF_QUOTE_CHARS),
     );
   }
 }

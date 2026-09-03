@@ -47,6 +47,7 @@ import {
   siblingVerifies,
 } from './validate-findings.mjs';
 import { addedLineRanges, OMITTED_FOR_PROMPT_REASON } from './build-review-input.mjs';
+import { quotedLineFailureMessage } from './quote-line-coupling.mjs'; // #3769: direct unit coverage below
 // #3652: the retry prompt this file's own tests exercise below.
 import { buildPrompt } from './run-reviewer.mjs';
 
@@ -1079,6 +1080,71 @@ test('RED, shape 3: a `//!` doc-comment quoted without its marker', () => {
     riskiest_change: { path: PATH_C, quoted_line: 'Handles the georeferenced wall placement path.' },
   });
   assert.throws(() => validate({ response: res, input }), (e) => e.reason === 'PROOF_OF_WORK_FAILED');
+});
+
+// ============================================================ #3769: WRONG FILE
+//
+// A real, whole, long-enough quote -- but `riskiest_change.path` names a
+// DIFFERENT file than the one the quote's patch actually contains it in.
+// checkProofOfWork correctly refuses this (the quote is not a line of the
+// NAMED file's patch), so the check is not loosened here. What changes is the
+// message: when the quote IS a whole line of some OTHER reviewed file's
+// patch, the failure names that file, so the retry #3757 already runs for
+// PROOF_OF_WORK_FAILED gets a corrected attribution instead of "pick a
+// different line" -- which does not address a wrong-file cause at all.
+
+test('quotedLineFailureMessage: direct unit coverage of the lookup, both outcomes', () => {
+  const files = new Map([[PATH_A, { patch: PATCH_A }], [PATH_B, { patch: PATCH_B }]]);
+  const found = quotedLineFailureMessage(files, PATH_A, 'registry.set("wall", parseWall);', 8);
+  assert.match(found, new RegExp(`This exact line IS in \`${PATH_B}\`'s patch instead`));
+  const notFound = quotedLineFailureMessage(files, PATH_A, 'nowhere at all in either patch', 8);
+  assert.doesNotMatch(notFound, /This exact line IS in/);
+  assert.match(notFound, /quit early cannot fake/);
+  // Excluded path is never checked against itself, even if the quote happens
+  // to be a real line of ITS OWN patch -- checkProofOfWork only calls this
+  // once quoteAppearsIn(file.patch, ...) against claimedPath already failed,
+  // so a match there would be a contradiction, not a genuine "elsewhere".
+  const selfMatch = quotedLineFailureMessage(files, PATH_A, PROOF_LINE, 8);
+  assert.doesNotMatch(selfMatch, new RegExp(`IS in \`${PATH_A}\`'s patch instead`));
+});
+
+test('RED, shape 4 (#3769): a real quote attributed to the wrong file is still refused, and names the right one', () => {
+  const input = { headSha: SHA, files: new Map([[PATH_A, { path: PATH_A, patch: PATCH_A, addedLineRanges: addedLineRanges(PATCH_A) }], [PATH_B, { path: PATH_B, patch: PATCH_B, addedLineRanges: addedLineRanges(PATCH_B) }]]), unreviewable: [] };
+  // The quote is real and whole -- it is PATCH_B's added line -- but attributed
+  // to PATH_A, exactly #3769's shape (an extracted function narrated by the
+  // file it used to live in).
+  const res = response({
+    files_reviewed: [PATH_A, PATH_B],
+    riskiest_change: { path: PATH_A, quoted_line: 'registry.set("wall", parseWall);' },
+  });
+  let err;
+  assert.throws(() => validate({ response: res, input }), (e) => { err = e; return e.reason === 'PROOF_OF_WORK_FAILED'; });
+  // The check still refuses it -- this is diagnostics, not a loosened gate.
+  assert.match(err.message, /is not a line of `packages\/x\/y\.ts`'s patch/);
+  // But the message now names the file the quote actually IS in.
+  assert.match(err.message, new RegExp(`This exact line IS in \`${PATH_B}\`'s patch instead`));
+  assert.match(err.message, new RegExp(`the correct \`riskiest_change\\.path\` is \`${PATH_B}\``));
+});
+
+test('CONTROL (#3769): a quote that is fabricated -- real in NO reviewed file -- gets the original remedy, no false file name', () => {
+  const input = { headSha: SHA, files: new Map([[PATH_A, { path: PATH_A, patch: PATCH_A, addedLineRanges: addedLineRanges(PATCH_A) }], [PATH_B, { path: PATH_B, patch: PATCH_B, addedLineRanges: addedLineRanges(PATCH_B) }]]), unreviewable: [] };
+  const res = response({
+    files_reviewed: [PATH_A, PATH_B],
+    riskiest_change: { path: PATH_A, quoted_line: 'this line appears nowhere in any patch' },
+  });
+  let err;
+  assert.throws(() => validate({ response: res, input }), (e) => { err = e; return e.reason === 'PROOF_OF_WORK_FAILED'; });
+  assert.doesNotMatch(err.message, /This exact line IS in/, 'must not invent a file when the quote is genuinely nowhere');
+  assert.match(err.message, /Quote a WHOLE line, not a fragment/, 'falls back to the original remedy text');
+});
+
+test('CONTROL (#3769): a correct citation -- right file, real line -- still passes', () => {
+  const input = { headSha: SHA, files: new Map([[PATH_A, { path: PATH_A, patch: PATCH_A, addedLineRanges: addedLineRanges(PATCH_A) }], [PATH_B, { path: PATH_B, patch: PATCH_B, addedLineRanges: addedLineRanges(PATCH_B) }]]), unreviewable: [] };
+  const res = response({
+    files_reviewed: [PATH_A, PATH_B],
+    riskiest_change: { path: PATH_B, quoted_line: 'registry.set("wall", parseWall);' },
+  });
+  assert.doesNotThrow(() => validate({ response: res, input }));
 });
 
 test('GREEN: the retry prompt fences the failure and asks for a DIFFERENT real line', () => {

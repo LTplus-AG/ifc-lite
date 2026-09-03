@@ -121,21 +121,27 @@ export function collectRelAggregatePairs(
  * RelatedObjects members a partially redundant IFCRELAGGREGATES already
  * shares with the first model's OWN relationship to the same (now-unified)
  * RelatingObject. Reuses the same list/scalar-aware ref filter the
- * `visibleOnly`/deletion dangling-ref path uses; the strip set never
- * includes the RelatingObject's own id (only RelatedObjects members), so
- * this can only narrow the list, never null out the whole line. Must run in
- * LOCAL id space, before any id offset/remap — `localId` and the ids inside
+ * `visibleOnly`/deletion dangling-ref path uses. Must run in LOCAL id
+ * space, before any id offset/remap — `localId` and the ids inside
  * `relAggregateStrip` are both local to the model being rendered.
  *
- * Returns `entityText` unchanged when `localId` has no strip entry.
+ * Returns `entityText` unchanged when `localId` has no strip entry, and
+ * `null` when the filter would withhold the whole line — a strip set built
+ * by {@link skipRedundantRelAggregates} is a strict subset of the
+ * RelatedObjects list, so for well-formed input the filter only narrows,
+ * but a degenerate file (a stripped member id that also appears as a
+ * single-valued ref, e.g. self-aggregation) can null the line. The caller
+ * must withhold it, like every other user of the filter: every edge the
+ * line declared is already declared by the primary model, and emitting the
+ * unfiltered bytes instead would reintroduce the duplicate membership this
+ * module exists to remove.
  */
 export function applyRelAggregateStrip(
   entityText: string,
   localId: number,
   relAggregateStrip: ReadonlyMap<number, ReadonlySet<number>>,
-): string {
+): string | null {
   const toStrip = relAggregateStrip.get(localId);
   if (toStrip === undefined) return entityText;
-  const filtered = filterHiddenRefsFromRelationshipLine(entityText, id => toStrip.has(id));
-  return filtered !== null ? filtered : entityText;
+  return filterHiddenRefsFromRelationshipLine(entityText, id => toStrip.has(id));
 }

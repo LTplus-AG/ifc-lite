@@ -1221,8 +1221,12 @@ export class MergedExporter {
     // already shares with the first model's OWN relationship to the same
     // (now-unified) RelatingObject — see skipRedundantRelAggregates /
     // applyRelAggregateStrip (merged-rel-aggregates.ts). Runs in LOCAL id
-    // space, before the remap below.
-    entityText = applyRelAggregateStrip(entityText, localId, plan.relAggregateStrip);
+    // space, before the remap below. `null` (the filter would withhold the
+    // whole line) propagates like the two passes above: every edge the line
+    // declared already exists in the primary model.
+    const stripped = applyRelAggregateStrip(entityText, localId, plan.relAggregateStrip);
+    if (stripped === null) return null;
+    entityText = stripped;
 
     // Remap ids. Fast path: the first model (offset 0, no remaps) is byte-identical.
     let finalText: string;

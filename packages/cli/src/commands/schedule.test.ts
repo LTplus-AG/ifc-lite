@@ -30,7 +30,10 @@ import { parseWhereFilter, applyWhereFilter } from './query.js';
 import { parseSortSpec, parseGroupBySpec, orderRows } from './schedule-group.js';
 import { parseSubtotalsSpec, buildSubtotalPlan } from './schedule-aggregate.js';
 import { SCHEDULE_PRESETS, resolvePreset } from './schedule-presets.js';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { renderScheduleMarkdown, renderScheduleMarkdownWithSubtotals } from './schedule-render-md.js';
+import { renderScheduleHtml, renderScheduleHtmlWithSubtotals } from './schedule-render-html.js';
+import { loadScheduleSpec, saveScheduleSpec } from './schedule-spec.js';
+import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -199,6 +202,28 @@ function expectFatal(fn: () => unknown): string {
   }) as never);
   try {
     fn();
+    throw new Error('expected fatal() to exit, but it returned');
+  } catch (err) {
+    if (!(err instanceof Error) || !err.message.startsWith('process.exit(')) throw err;
+  } finally {
+    errSpy.mockRestore();
+    exitSpy.mockRestore();
+  }
+  return stderr;
+}
+
+/** Async twin of `expectFatal` for `fatal()` calls reached through an `await` (spec loading, `scheduleCommand`). */
+async function expectFatalAsync(fn: () => Promise<unknown>): Promise<string> {
+  let stderr = '';
+  const errSpy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk: unknown) => {
+    stderr += String(chunk);
+    return true;
+  });
+  const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+    throw new Error(`process.exit(${code})`);
+  }) as never);
+  try {
+    await fn();
     throw new Error('expected fatal() to exit, but it returned');
   } catch (err) {
     if (!(err instanceof Error) || !err.message.startsWith('process.exit(')) throw err;
@@ -505,5 +530,237 @@ describe('Material pseudo-column', () => {
     const walls = bim.query().byType('IfcWall').toArray();
     expect(walls).toHaveLength(1);
     expect(resolveScheduleValue(walls[0], 'Material', bim)).toBe('Concrete');
+  });
+});
+
+// ── PR-4: Markdown / HTML renderers, --save/--spec ──────────────────────────
+
+describe('renderScheduleMarkdown', () => {
+  const cols = [
+    { header: 'Name', path: 'Name' },
+    { header: 'Mark', path: 'X' },
+  ];
+
+  it('renders a GFM table with header, separator, and data rows', () => {
+    const md = renderScheduleMarkdown(cols, [['Door A', 'D-01'], ['Door B', 'D-02']]);
+    expect(md.split('\n')).toEqual([
+      '| Name | Mark |',
+      '| --- | --- |',
+      '| Door A | D-01 |',
+      '| Door B | D-02 |',
+    ]);
+  });
+
+  it('renders a missing value as an empty cell', () => {
+    const md = renderScheduleMarkdown(cols, [['Door A', null]]);
+    expect(md.split('\n')[2]).toBe('| Door A |  |');
+  });
+
+  it('escapes a `|` in a value so it cannot fracture the table row', () => {
+    const md = renderScheduleMarkdown(cols, [['A|B', 'X']]);
+    expect(md.split('\n')[2]).toBe('| A\\|B | X |');
+  });
+
+  it('escapes a backslash before escaping `|`, and turns an embedded newline into <br>', () => {
+    const md = renderScheduleMarkdown(cols, [['back\\slash', 'line1\nline2']]);
+    const dataLine = md.split('\n')[2];
+    expect(dataLine).toBe('| back\\\\slash | line1<br>line2 |');
+  });
+});
+
+describe('renderScheduleMarkdownWithSubtotals', () => {
+  const columns = [
+    { header: 'Name', path: 'Name' },
+    { header: 'Fire', path: 'Fire' },
+    { header: 'Area', path: 'Area' },
+  ];
+
+  it('groups contiguously with a subtotal row per group and a grand total, same shape as CSV', () => {
+    const rows: ScheduleRow[] = [
+      ['Door B', 'REI30', 2.5],
+      ['Door D', 'REI30', null],
+      ['Door A', 'REI60', 1.5],
+      ['Door C', 'REI60', 3],
+    ];
+    const groupKeys = parseGroupBySpec('Fire', columns);
+    const aggs = parseSubtotalsSpec('count, sum:Area', columns);
+    const plan = buildSubtotalPlan(rows, groupKeys, aggs);
+    const lines = renderScheduleMarkdownWithSubtotals(columns, plan).split('\n');
+
+    expect(lines).toEqual([
+      '| Name | Fire | Area |',
+      '| --- | --- | --- |',
+      '| Door B | REI30 | 2.5 |',
+      '| Door D | REI30 |  |',
+      '|  | Subtotal (Fire=REI30): 2 | 2.5 |',
+      '| Door A | REI60 | 1.5 |',
+      '| Door C | REI60 | 3 |',
+      '|  | Subtotal (Fire=REI60): 2 | 4.5 |',
+      '| Total: 4 |  | 7 |',
+    ]);
+  });
+});
+
+describe('renderScheduleHtml', () => {
+  const cols = [
+    { header: 'Name', path: 'Name' },
+    { header: 'Mark', path: 'X' },
+  ];
+
+  it('renders a standalone HTML document with a header row and data rows', () => {
+    const html = renderScheduleHtml(cols, [['Door A', 'D-01']]);
+    expect(html).toContain('<!doctype html>');
+    expect(html).toContain('<title>Schedule</title>');
+    expect(html).toContain('<thead><tr><th>Name</th><th>Mark</th></tr></thead>');
+    expect(html).toContain('<tr><td>Door A</td><td>D-01</td></tr>');
+  });
+
+  it('renders a missing value as an empty cell', () => {
+    const html = renderScheduleHtml(cols, [['Door A', null]]);
+    expect(html).toContain('<tr><td>Door A</td><td></td></tr>');
+  });
+
+  it('escapes &, <, > and quotes so untrusted model text cannot break out of the cell', () => {
+    const html = renderScheduleHtml(cols, [['<script>alert(1)</script>', 'A & B "C" \'D\'']]);
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+    expect(html).toContain('A &amp; B &quot;C&quot; &#39;D&#39;');
+  });
+});
+
+describe('renderScheduleHtmlWithSubtotals', () => {
+  const columns = [
+    { header: 'Name', path: 'Name' },
+    { header: 'Fire', path: 'Fire' },
+    { header: 'Area', path: 'Area' },
+  ];
+
+  it('groups contiguously with a subtotal <tr> per group and a grand-total <tr>, same shape as CSV', () => {
+    const rows: ScheduleRow[] = [
+      ['Door B', 'REI30', 2.5],
+      ['Door D', 'REI30', null],
+      ['Door A', 'REI60', 1.5],
+      ['Door C', 'REI60', 3],
+    ];
+    const groupKeys = parseGroupBySpec('Fire', columns);
+    const aggs = parseSubtotalsSpec('count, sum:Area', columns);
+    const plan = buildSubtotalPlan(rows, groupKeys, aggs);
+    const html = renderScheduleHtmlWithSubtotals(columns, plan);
+
+    expect(html).toContain('<tr><td>Door B</td><td>REI30</td><td>2.5</td></tr>');
+    expect(html).toContain('<tr class="subtotal"><td></td><td>Subtotal (Fire=REI30): 2</td><td>2.5</td></tr>');
+    expect(html).toContain('<tr class="subtotal"><td></td><td>Subtotal (Fire=REI60): 2</td><td>4.5</td></tr>');
+    expect(html).toContain('<tr class="total"><td>Total: 4</td><td></td><td>7</td></tr>');
+  });
+});
+
+describe('scheduleCommand --format md/html (end to end)', () => {
+  it('--format md emits a GFM table for the preset door schedule', async () => {
+    const out = await runSchedule(IFC, ['--preset', 'door', '--format', 'md']);
+    const lines = out.trimEnd().split('\n');
+    expect(lines[0]).toBe('| Mark | Name | FireRating | IsExternal | Width | Height |');
+    expect(lines[1]).toBe('| --- | --- | --- | --- | --- | --- |');
+    expect(lines).toContain('| D-01 | Door A |  | true |  |  |');
+  });
+
+  it('--format html emits a standalone document escaping the comma+quote door name', async () => {
+    const out = await runSchedule(IFC, ['--preset', 'door', '--format', 'html']);
+    expect(out).toContain('<!doctype html>');
+    // Door B's Name is `Door, "B"` — the quotes must be entity-escaped, not raw.
+    expect(out).toContain('Door, &quot;B&quot;');
+    expect(out).not.toContain('Door, "B"');
+  });
+});
+
+describe('--spec / --save', () => {
+  it('--save writes a spec that --spec reloads to the identical output', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sched-spec-'));
+    const specPath = join(dir, 'door.json');
+
+    const saved = await runSchedule(IFC, ['--preset', 'door', '--save', specPath]);
+    const reloaded = await runSchedule(IFC, ['--spec', specPath]);
+    expect(reloaded).toBe(saved);
+
+    const spec = JSON.parse(readFileSync(specPath, 'utf-8'));
+    expect(spec.type).toBe('IfcDoor');
+    expect(spec.columns).toContain('Mark=Tag');
+    expect(spec.format).toBe('csv');
+  });
+
+  it('an explicit flag overrides the loaded spec (explicit flag wins)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sched-spec-'));
+    const specPath = join(dir, 'door.json');
+    await saveScheduleSpec(specPath, { type: 'IfcDoor', columns: 'Name=Name' });
+
+    const out = await runSchedule(IFC, ['--spec', specPath, '--columns', 'X=Name']);
+    expect(out.trimEnd().split('\n')[0]).toBe('X');
+  });
+
+  it('loadScheduleSpec round-trips every field saveScheduleSpec writes', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sched-spec-'));
+    const specPath = join(dir, 'full.json');
+    await saveScheduleSpec(specPath, {
+      type: 'IfcDoor', columns: 'Name=Name', where: 'Pset_DoorCommon.IsExternal=true',
+      sort: 'Name', groupBy: 'Name', subtotals: 'count', format: 'json',
+    });
+    const spec = await loadScheduleSpec(specPath);
+    expect(spec).toEqual({
+      type: 'IfcDoor', columns: 'Name=Name', where: 'Pset_DoorCommon.IsExternal=true',
+      sort: 'Name', groupBy: 'Name', subtotals: 'count', format: 'json',
+    });
+  });
+
+  it('a nonexistent --spec file is fatal, not a silently empty schedule', async () => {
+    const err = await expectFatalAsync(() => runSchedule(IFC, ['--spec', '/nonexistent/spec.json']));
+    expect(err).toContain('--spec "/nonexistent/spec.json" could not be read');
+  });
+
+  it('invalid JSON in --spec is fatal with a clear message', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sched-spec-'));
+    const specPath = join(dir, 'bad.json');
+    writeFileSync(specPath, '{not json');
+    const err = await expectFatalAsync(() => loadScheduleSpec(specPath));
+    expect(err).toContain('is not valid JSON');
+  });
+
+  it('a --spec that is a JSON array (not an object) is fatal', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sched-spec-'));
+    const specPath = join(dir, 'array.json');
+    writeFileSync(specPath, '[1, 2, 3]');
+    const err = await expectFatalAsync(() => loadScheduleSpec(specPath));
+    expect(err).toContain('must be a JSON object');
+  });
+
+  it('a --spec field with the wrong type is fatal', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sched-spec-'));
+    const specPath = join(dir, 'wrong-type.json');
+    writeFileSync(specPath, JSON.stringify({ type: 'IfcDoor', columns: ['Name=Name'] }));
+    const err = await expectFatalAsync(() => loadScheduleSpec(specPath));
+    expect(err).toContain('field "columns" must be a string');
+  });
+
+  it('a --spec with neither "type" nor "preset" is fatal', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sched-spec-'));
+    const specPath = join(dir, 'empty.json');
+    writeFileSync(specPath, JSON.stringify({ where: 'x=1' }));
+    const err = await expectFatalAsync(() => loadScheduleSpec(specPath));
+    expect(err).toContain('declares neither "preset" nor "type"');
+  });
+
+  it('a --spec naming an unresolvable preset is fatal, listing the valid presets (not an empty schedule)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sched-spec-'));
+    const specPath = join(dir, 'bad-preset.json');
+    writeFileSync(specPath, JSON.stringify({ preset: 'nonexistent-preset' }));
+    const err = await expectFatalAsync(() => runSchedule(IFC, ['--spec', specPath]));
+    expect(err).toContain('Unknown --preset "nonexistent-preset"');
+    expect(err).toContain('door');
+  });
+
+  it('--spec preset field resolves the same as --preset', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sched-spec-'));
+    const specPath = join(dir, 'preset-ref.json');
+    writeFileSync(specPath, JSON.stringify({ preset: 'door' }));
+    const out = await runSchedule(IFC, ['--spec', specPath]);
+    expect(out.trimEnd().split('\n')[0]).toBe('Mark,Name,FireRating,IsExternal,Width,Height');
   });
 });

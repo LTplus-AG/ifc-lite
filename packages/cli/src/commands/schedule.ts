@@ -7,7 +7,8 @@
  *                    --columns "<Header>=<path>[, ...]"
  *                    [--where "<expr>"] [--sort "<Header>[:asc|desc][, ...]"]
  *                    [--group-by "<Header>[, ...]"]
- *                    [--subtotals "<agg>[, ...]"] [--format csv|json]
+ *                    [--subtotals "<agg>[, ...]"] [--format csv|json|md|html]
+ *                    [--spec <file.json>] [--save <file.json>]
  *
  * `--preset door|window|space|wall|material-takeoff` supplies a default
  * `--type` and `--columns` (and, for some presets, a default group-by/sort/
@@ -15,13 +16,26 @@
  * the same name overrides the preset's default; `--where`/`--format` apply as
  * normal. See `schedule-presets.ts`.
  *
+ * `--spec <file.json>` loads a saved schedule definition (see
+ * `schedule-spec.ts`) supplying the same defaults a preset would (lower
+ * priority than an explicit flag, higher priority than `--preset`); `--save
+ * <file.json>` writes the definition this invocation resolved to — after any
+ * `--preset`/`--spec` defaults are folded in — so it can be re-run later with
+ * `--spec` alone. A spec that names an unresolvable preset, isn't valid JSON,
+ * or is missing both `type` and `preset` is a `fatal(...)`, never a silent
+ * empty schedule.
+ *
  * Produce a tabular schedule of one IFC class: pick the entities of `--type`,
  * (optionally) narrow them with the same `--where` filter `query` uses, and
  * emit one row per entity with the requested columns. A column path is a plain
  * attribute name, a `PsetName.PropName`, or a `QtoName.QtyName`, resolved
  * through the SAME resolver the `export` command uses so schedule columns and
  * query filters agree on type-inheritance / same-named-pset / complex-property
- * behaviour.
+ * behaviour. `--format md` emits a GFM table; `--format html` emits a
+ * standalone HTML document — both lay out `--group-by`/`--subtotals` rows
+ * identically to CSV/JSON (see `schedule-render-md.ts`/`schedule-render-html.ts`)
+ * and escape cell text for their format (`|`/newline for Markdown;
+ * `&`/`<`/`>`/quotes for HTML — model text is untrusted).
  *
  * `--sort`, `--group-by` and `--subtotals` all name column HEADERS (never
  * paths); a header that is not among `--columns` is a `fatal(...)`. Rows are
@@ -43,9 +57,15 @@ import {
   renderScheduleJsonWithSubtotals,
   type ScheduleRow,
 } from './schedule-render.js';
+import { renderScheduleMarkdown, renderScheduleMarkdownWithSubtotals } from './schedule-render-md.js';
+import { renderScheduleHtml, renderScheduleHtmlWithSubtotals } from './schedule-render-html.js';
 import { parseSortSpec, parseGroupBySpec, orderRows } from './schedule-group.js';
 import { parseSubtotalsSpec, buildSubtotalPlan } from './schedule-aggregate.js';
 import { resolvePreset } from './schedule-presets.js';
+import { loadScheduleSpec, saveScheduleSpec, type ScheduleSpec } from './schedule-spec.js';
+
+const FORMATS = ['csv', 'json', 'md', 'html'] as const;
+type ScheduleFormat = (typeof FORMATS)[number];
 
 /**
  * Resolve one column path against one entity.
@@ -91,31 +111,53 @@ export async function scheduleCommand(args: string[]): Promise<void> {
     fatal('Usage: ifc-lite schedule <file.ifc> --type IfcDoor --columns "Name=Name, Mark=Pset_DoorCommon.Reference" [--where PsetName.Prop=Value] [--format csv|json]');
   }
 
+  // --spec loads a saved definition (see schedule-spec.ts); its fields sit
+  // between an explicit flag (wins) and a --preset default (loses) in
+  // precedence, whether the preset comes from --preset or the spec's own
+  // "preset" field.
+  const specPath = getFlag(args, '--spec');
+  const spec: ScheduleSpec | undefined = specPath ? await loadScheduleSpec(specPath) : undefined;
+
   // --preset supplies default type/columns (and optionally group-by/sort/
   // subtotals); an explicit flag of the same name overrides the preset default.
-  const presetName = getFlag(args, '--preset');
+  const presetName = getFlag(args, '--preset') ?? spec?.preset;
   const preset = presetName ? resolvePreset(presetName) : undefined;
 
-  let type = getFlag(args, '--type') ?? preset?.type;
-  if (!type) {
-    fatal('--type is required (or pass --preset), e.g. --type IfcDoor or --preset door');
+  const typeRaw = getFlag(args, '--type') ?? spec?.type ?? preset?.type;
+  if (!typeRaw) {
+    fatal('--type is required (or pass --preset/--spec), e.g. --type IfcDoor or --preset door');
   }
-  type = normalizeTypeName(type);
+  const type = normalizeTypeName(typeRaw);
 
-  const columns = parseColumnSpec(getFlag(args, '--columns') ?? preset?.columns);
+  const columnsSpec = getFlag(args, '--columns') ?? spec?.columns ?? preset?.columns;
+  const columns = parseColumnSpec(columnsSpec);
 
-  const format = (getFlag(args, '--format') ?? 'csv').toLowerCase();
-  if (format !== 'csv' && format !== 'json') {
-    fatal(`Unknown --format "${format}". Expected csv or json.`);
+  const format = (getFlag(args, '--format') ?? spec?.format ?? 'csv').toLowerCase();
+  if (!FORMATS.includes(format as ScheduleFormat)) {
+    fatal(`Unknown --format "${format}". Expected ${FORMATS.join(', ')}.`);
   }
 
-  const whereFilter = getFlag(args, '--where');
+  const whereFilter = getFlag(args, '--where') ?? spec?.where;
 
   // --sort / --group-by / --subtotals name declared column HEADERS; an unknown
   // header is a fatal(...) with the valid headers listed (raised during parse).
-  const sortKeys = parseSortSpec(getFlag(args, '--sort') ?? preset?.sort, columns);
-  const groupKeys = parseGroupBySpec(getFlag(args, '--group-by') ?? preset?.groupBy, columns);
-  const subtotalAggs = parseSubtotalsSpec(getFlag(args, '--subtotals') ?? preset?.subtotals, columns);
+  const sortSpec = getFlag(args, '--sort') ?? spec?.sort ?? preset?.sort;
+  const groupBySpec = getFlag(args, '--group-by') ?? spec?.groupBy ?? preset?.groupBy;
+  const subtotalsSpec = getFlag(args, '--subtotals') ?? spec?.subtotals ?? preset?.subtotals;
+  const sortKeys = parseSortSpec(sortSpec, columns);
+  const groupKeys = parseGroupBySpec(groupBySpec, columns);
+  const subtotalAggs = parseSubtotalsSpec(subtotalsSpec, columns);
+
+  // --save persists the definition this invocation actually resolved to (after
+  // --preset/--spec defaults are folded in), so the written file is self-
+  // contained and reloadable with --spec alone.
+  const savePath = getFlag(args, '--save');
+  if (savePath) {
+    await saveScheduleSpec(savePath, {
+      type, columns: columnsSpec, where: whereFilter,
+      sort: sortSpec, groupBy: groupBySpec, subtotals: subtotalsSpec, format,
+    });
+  }
 
   const { bim } = await createHeadlessContext(filePath);
 
@@ -143,12 +185,28 @@ export async function scheduleCommand(args: string[]): Promise<void> {
       printJson(renderScheduleJsonWithSubtotals(columns, plan));
       return;
     }
+    if (format === 'md') {
+      process.stdout.write(renderScheduleMarkdownWithSubtotals(columns, plan) + '\n');
+      return;
+    }
+    if (format === 'html') {
+      process.stdout.write(renderScheduleHtmlWithSubtotals(columns, plan));
+      return;
+    }
     process.stdout.write(renderScheduleCsvWithSubtotals(columns, plan) + '\n');
     return;
   }
 
   if (format === 'json') {
     printJson(renderScheduleJson(columns, rows));
+    return;
+  }
+  if (format === 'md') {
+    process.stdout.write(renderScheduleMarkdown(columns, rows) + '\n');
+    return;
+  }
+  if (format === 'html') {
+    process.stdout.write(renderScheduleHtml(columns, rows));
     return;
   }
 

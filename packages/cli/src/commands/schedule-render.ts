@@ -68,8 +68,12 @@ function subtotalLabel(data: SubtotalRowData): string {
  * A subtotal/total row as a full-width cell array. The label sits in the first
  * group column (column 0 for the grand total); each numeric aggregation fills
  * its target column; every other column is blank.
+ *
+ * Exported so the Markdown/HTML renderers (`schedule-render-md.ts`,
+ * `schedule-render-html.ts`) lay out subtotal/total rows identically to CSV —
+ * same label, same column placement — instead of re-deriving the shape.
  */
-function subtotalCells(columns: ScheduleColumn[], data: SubtotalRowData): unknown[] {
+export function subtotalCells(columns: ScheduleColumn[], data: SubtotalRowData): unknown[] {
   const cells: unknown[] = columns.map(() => '');
   const labelCol = data.groupValues.length > 0 ? data.groupValues[0].index : 0;
   cells[labelCol] = subtotalLabel(data);

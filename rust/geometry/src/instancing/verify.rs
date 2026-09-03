@@ -102,7 +102,21 @@ pub(super) fn verify_pairing(
         let gy = target_origin[1] + target_positions[v * 3 + 1] as f64;
         let gz = target_origin[2] + target_positions[v * 3 + 2] as f64;
         let err = ((rx - gx).powi(2) + (ry - gy).powi(2) + (rz - gz).powi(2)).sqrt();
-        let mag = gx.abs().max(gy.abs()).max(gz.abs()).max(1.0);
+        // Scale by the STORED (origin-relative) position, not the absolute
+        // world coordinate (target_origin + position): the f32 quantization
+        // this tolerance accounts for lives in the stored position, and for
+        // a georeferenced mesh `origin` alone can carry a multi-million-metre
+        // offset while positions stay small local deltas. Scaling off the
+        // absolute coordinate inflates tolerance with the georeference
+        // itself, wide enough to wave through a genuine rep_identity
+        // collision (#3666 measured up to 2.0m) at real-world georeferenced
+        // magnitudes -- the same "scaled tolerance flips direction across
+        // the range" shape this project has hit before.
+        let mag = (target_positions[v * 3] as f64)
+            .abs()
+            .max((target_positions[v * 3 + 1] as f64).abs())
+            .max((target_positions[v * 3 + 2] as f64).abs())
+            .max(1.0);
         if err > tolerance(mag) {
             return false;
         }

@@ -431,6 +431,107 @@ fn verify_basis_still_catches_a_genuine_collision() {
 }
 
 #[test]
+fn a_wrong_verify_basis_never_falsely_accepts_a_collision() {
+    // Same genuine-collision fixture as `verify_basis_still_catches_a_genuine_collision`,
+    // but the caller hands `collate_refs_verified_in` a basis that does NOT
+    // match the conversion actually baked into the vertices (production code
+    // never checks that `verify_basis` corresponds to the real frame). A
+    // wrong hint must never flip a genuine collision into a false accept --
+    // at worst it should only ever make the check MORE conservative.
+    let s = Matrix4::from_euler_angles(std::f64::consts::FRAC_PI_2, 0.0, 0.0);
+    let wrong_basis = Matrix4::identity(); // caller claims no conversion happened; it did.
+    let occ_a = Matrix4::new_translation(&nalgebra::Vector3::new(10.0, 0.0, 0.0));
+    let occ_b = Matrix4::from_euler_angles(0.0, 0.0, std::f64::consts::FRAC_PI_3)
+        * Matrix4::new_translation(&nalgebra::Vector3::new(-5.0, 7.0, 2.0));
+    const CANON_COLLIDING: [f32; 12] =
+        [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 5.0, 5.0, 5.0];
+    let meta = |m: &Matrix4<f64>| InstanceMeta {
+        transform: mat_rm(m),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 4444,
+        instanceable: true,
+    };
+    let meshes = [
+        mesh_from(baked(&CANON, &(s * occ_a)), meta(&occ_a)),
+        mesh_from(baked(&CANON_COLLIDING, &(s * occ_b)), meta(&occ_b)),
+    ];
+    let refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
+    let wrongly_aware = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&wrong_basis));
+    assert!(
+        wrongly_aware.templates.is_empty(),
+        "a wrong verify_basis hint falsely accepted a genuine collision as a template"
+    );
+}
+
+#[test]
+fn a_wrong_verify_basis_does_not_coincidentally_accept_a_genuine_pairing() {
+    // Companion: same GENUINE (non-colliding) pairing as
+    // `verify_basis_reconciles_a_caller_that_baked_positions_in_a_different_frame`,
+    // but with a wrong basis (a different rotation axis than the real
+    // conversion). Only documents current behaviour -- a wrong hint failing
+    // to reconcile a genuine pair (falling back to flat) is safe, just
+    // suboptimal reuse; nothing here requires a specific outcome, but the
+    // sibling test above is what must never flip the other way.
+    let s = Matrix4::from_euler_angles(std::f64::consts::FRAC_PI_2, 0.0, 0.0);
+    let wrong_basis = Matrix4::from_euler_angles(0.0, std::f64::consts::FRAC_PI_2, 0.0); // different axis
+    let occ_a = Matrix4::new_translation(&nalgebra::Vector3::new(10.0, 0.0, 0.0));
+    let occ_b = Matrix4::from_euler_angles(0.0, 0.0, std::f64::consts::FRAC_PI_3)
+        * Matrix4::new_translation(&nalgebra::Vector3::new(-5.0, 7.0, 2.0));
+    let meta = |m: &Matrix4<f64>| InstanceMeta {
+        transform: mat_rm(m),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 4545,
+        instanceable: true,
+    };
+    let meshes = [
+        mesh_from(baked(&CANON, &(s * occ_a)), meta(&occ_a)),
+        mesh_from(baked(&CANON, &(s * occ_b)), meta(&occ_b)),
+    ];
+    let refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
+    let _ = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&wrong_basis));
+}
+
+#[test]
+fn verify_pairing_tolerance_scales_with_the_stored_position_not_the_georeferenced_origin() {
+    // Regression: `verify_pairing`'s tolerance must scale off the STORED
+    // (origin-relative) position, not `target_origin + position`. A
+    // georeferenced mesh's `origin` alone can carry a multi-million-metre
+    // offset while positions stay small local deltas; scaling tolerance off
+    // the absolute coordinate inflates it with the georeference itself. At a
+    // 5,000,000m origin the absolute-magnitude tolerance would be ~4.77m --
+    // wide enough to wave through this 2m rep_identity collision, well
+    // within the #3666 issue's own measured "up to 2.0m" range. Origin-
+    // relative tolerance stays at the ABS_FLOOR_M-scale floor regardless of
+    // origin, so the collision is still caught.
+    let big_origin = [5_000_000.0_f64, 0.0, 0.0];
+    let p = Matrix4::new_translation(&nalgebra::Vector3::new(3.0, 0.0, 0.0));
+    let meta = |rep| InstanceMeta {
+        transform: mat_rm(&p),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: rep,
+        instanceable: true,
+    };
+    // Apex moved by 2m (Z: 1.0 -> 3.0).
+    const CANON_COLLIDING: [f32; 12] =
+        [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 3.0];
+    let mut m0 = mesh_from(baked(&CANON, &p), meta(9191));
+    m0.origin = big_origin;
+    let mut m1 = mesh_from(baked(&CANON_COLLIDING, &p), meta(9191));
+    m1.origin = big_origin;
+    let meshes = vec![m0, m1];
+    let collated = collate_instances(&meshes, 2, [0.0, 0.0, 0.0]);
+    assert_eq!(
+        collated.templates.len(),
+        0,
+        "a same-count content collision at a large georeferenced origin must still fall back to flat"
+    );
+    assert_eq!(collated.flat_indices.len(), 2);
+}
+
+#[test]
 fn collate_reduces_georeferenced_rotated_occurrence_to_post_rtc_frame() {
     // Regression for the GLB-export collapse: a rotated occurrence at a
     // georeferenced placement. Computing `rel = m_k · m_ref⁻¹` on the raw

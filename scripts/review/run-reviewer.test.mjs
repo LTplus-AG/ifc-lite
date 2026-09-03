@@ -181,6 +181,13 @@ test('a non-zero exit with a usage limit is QUOTA_DRAINED, not an empty review',
   );
 });
 
+test('#3803: the measured exit-1-with-no-output shape is CLI_SILENT_EXIT', () => {
+  assert.throws(
+    () => runReviewer({ prompt: 'x', model: 'sonnet', spawn: () => ({ status: 1, stdout: '', stderr: '' }) }),
+    (error) => error.reason === 'CLI_SILENT_EXIT',
+  );
+});
+
 test('`is_error: true` alongside EXIT 0 still fails', () => {
   // This is the claude-code-action #1644 shape: success by exit code, nothing by
   // content. An exit code alone is not evidence here either.
@@ -245,7 +252,6 @@ const TOKENS = [
   { token: 'sk-ant-oat01-primary', label: 'the primary credential' },
   { token: 'sk-ant-oat01-fallback', label: 'the fallback credential' },
 ];
-const fail = (stderr) => () => ({ status: 1, stdout: '', stderr });
 const okOn = (which) => {
   let n = 0;
   return (_c, _a, _stdin, env) => {
@@ -298,6 +304,51 @@ test('with ONE token it behaves exactly as before', () => {
   assert.equal(calls, 1);
 });
 
+test('#3803: an exhausted Claude pool invokes the independent provider once', () => {
+  let fallbackCalls = 0;
+  const result = runReviewerWithFailover({
+    prompt: 'exact prompt', model: 'sonnet', tokens: [TOKENS[0]],
+    spawn: () => ({ status: 1, stdout: '', stderr: 'Usage limit reached' }),
+    providerFallback: (prompt) => { fallbackCalls += 1; assert.equal(prompt, 'exact prompt'); return '{"findings":[]}'; },
+  });
+  assert.equal(result.text, '{"findings":[]}');
+  assert.equal(result.envelope.provider, 'openai-fallback');
+  assert.equal(fallbackCalls, 1);
+});
+
+test('#3803: a silent Claude CLI exit invokes the independent provider', () => {
+  const result = runReviewerWithFailover({
+    prompt: 'p', model: 'sonnet', tokens: [TOKENS[0]],
+    spawn: () => ({ status: 1, stdout: '', stderr: '' }),
+    providerFallback: () => '{"verdict":"clean"}',
+  });
+  assert.equal(result.text, '{"verdict":"clean"}');
+});
+
+test('#3803: independent-provider failure is explicit, never a clean verdict', () => {
+  assert.throws(
+    () => runReviewerWithFailover({
+      prompt: 'p', model: 'sonnet', tokens: [TOKENS[0]],
+      spawn: () => ({ status: 1, stdout: '', stderr: '429 quota exceeded' }),
+      providerFallback: () => { throw new Error('HTTP 500'); },
+    }),
+    (error) => error.reason === 'FALLBACK_ERROR' && /HTTP 500/.test(error.message),
+  );
+});
+
+test('#3803: model errors never switch providers', () => {
+  let fallbackCalls = 0;
+  assert.throws(
+    () => runReviewerWithFailover({
+      prompt: 'p', model: 'sonnet', tokens: [TOKENS[0]],
+      spawn: () => ({ status: 1, stdout: '', stderr: 'unknown model failure' }),
+      providerFallback: () => { fallbackCalls += 1; return 'wrong'; },
+    }),
+    (error) => error.reason === 'MODEL_ERROR',
+  );
+  assert.equal(fallbackCalls, 0);
+});
+
 test('resolveTokens: the same secret in both slots is REFUSED, not treated as a fallback', () => {
   // An easy mistake while wiring the second one up, and a fallback that shares
   // the primary's pool and expiry fails at exactly the moment it is needed while
@@ -333,4 +384,5 @@ test('THE WIRING: the workflow actually passes the fallback secret', () => {
   const env = step.split('run:')[0];
   assert.match(env, /CLAUDE_CODE_OAUTH_TOKEN:\s*\$\{\{\s*secrets\.CLAUDE_CODE_OAUTH_TOKEN\s*\}\}/);
   assert.match(env, /CLAUDE_CODE_OAUTH_TOKEN_2:\s*\$\{\{\s*secrets\.CLAUDE_CODE_OAUTH_TOKEN_2\s*\}\}/);
+  assert.match(env, /OPENAI_API_KEY:\s*\$\{\{\s*secrets\.OPENAI_API_KEY\s*\}\}/);
 });

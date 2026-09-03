@@ -70,3 +70,28 @@ export function resolveIsolationIds(
   const resolved = resolver?.([...rawIds]) ?? [];
   return [...new Set([...resolved, ...rawIds])];
 }
+
+/**
+ * Whether an isolate/highlight request resolved to a set with nothing that can
+ * render right now. This is the condition `resolveRenderableIds`
+ * (`Viewport.tsx`) warns on once geometry streaming has finished, i.e. the
+ * fourth situation above plus its post-#3426 sibling.
+ *
+ * `resolved.length === 0` is NOT that condition any more. Since #3426 the
+ * resolver falls back to ALL of a geometry-less id's aggregated parts, so a
+ * NON-empty `resolved` can still be entirely mesh-less — an assembly whose
+ * parts never render is exactly the blank viewport the warning exists to
+ * surface, and counting the result would step straight past it. Renderability
+ * has to be asked per resolved id instead.
+ *
+ * An empty request is not a defect, so it never warns. The caller owns the
+ * streaming gate: mid-stream, "nothing renders yet" is the expected state.
+ */
+export function hasNoRenderableTarget(
+  requested: readonly number[],
+  resolved: readonly number[],
+  hasGeometry: (id: number) => boolean,
+): boolean {
+  if (requested.length === 0) return false;
+  return !resolved.some(hasGeometry);
+}

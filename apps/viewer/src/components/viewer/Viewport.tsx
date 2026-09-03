@@ -47,6 +47,7 @@ import {
 } from '../../utils/viewportUtils.js';
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '../../hooks/useBCF.js';
 import { expandToGeometryBearingIds } from '../../utils/aggregation.js';
+import { hasNoRenderableTarget } from '@/lib/isolation/resolveIsolationIds';
 import { toGlobalIdFromModels } from '@/store/globalId';
 
 import { useMouseControls, type MouseState } from './useMouseControls.js';
@@ -1022,10 +1023,16 @@ export function Viewport({
           toGlobalId: (modelId, expressId) =>
             toGlobalIdFromModels(useViewerStore.getState().models, modelId, expressId),
         });
-        // Empty here + streaming finished means truly nothing to expand to
-        // (#3426 residual — see aggregation.ts's doc on the fallback above).
+        // Nothing in the RESOLVED set can render + streaming finished means a
+        // genuinely blank isolate (#3426 residual — see aggregation.ts's doc on
+        // the fallback above). Counting `resolved` would miss the case the
+        // fallback itself creates: all of a geometry-less assembly's parts are
+        // carried forward, so the set is non-empty while still holding no mesh.
         // Gated on streaming so the ordinary "hasn't arrived yet" case is silent.
-        if (resolved.length === 0 && ids.length > 0 && !isGeometryLoadStreaming(useViewerStore.getState())) {
+        if (
+          hasNoRenderableTarget(ids, resolved, hasGeometry) &&
+          !isGeometryLoadStreaming(useViewerStore.getState())
+        ) {
           console.warn('[Viewport] resolveHighlightIds: nothing renderable for', ids);
         }
         return resolved;

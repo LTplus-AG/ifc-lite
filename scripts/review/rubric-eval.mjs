@@ -43,6 +43,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { buildPack, retrievalFailed, retrievalFailedMessage } from './build-context-pack.mjs';
 import { validateWithOneRetry, validatorReason, REVIEWER_FAULT } from './eval-validation.mjs';
+import { ensureEvalCommit } from './eval-commit.mjs';
 import { MAX_POSTED_FINDINGS } from './post-review.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -240,6 +241,7 @@ function main() {
     // the tree siblings are retrieved from; without it the eval measures the
     // old behaviour, which is exactly what the baseline run did.
     if (baseRef) {
+      ensureEvalCommit(c.input.headSha);
       try {
         // `body` MATTERS, and its absence was not merely an untested prompt
         // section. pr-3389's expected defect IS "the PR body describes a null

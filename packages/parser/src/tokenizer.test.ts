@@ -114,4 +114,26 @@ describe('StepTokenizer.scanEntitiesFast', () => {
     expect(refs.map((r) => r.expressId)).toEqual([]);
     expect(tokenizer.malformedRecordCount).toBe(1);
   });
+
+  it('does not read a stale malformedRecordCount from a scanEntitiesFast run when scanEntities runs next on the same instance', () => {
+    // Missing the terminating ';' but balanced on '(' / ')': scanEntitiesFast
+    // requires a semicolon (see the "declaration cut off" tests above) and
+    // reports malformedRecordCount 1 for this input; scanEntities (the
+    // balanced-parenthesis path in scan-entities-balanced.ts) only needs the
+    // matching ')' and accepts this one cleanly. One StepTokenizer instance
+    // running both, in that order, is exactly the "fast scan = 1, then
+    // balanced scan still reads 1" bug report: before this fix, scanEntities
+    // neither reset nor recomputed malformedRecords, so the stale 1 from the
+    // fast scan leaked into the balanced scan's result even though nothing
+    // about the balanced scan itself was malformed.
+    const text = '#1=IFCWALL($,$,$)';
+    const tokenizer = new StepTokenizer(new TextEncoder().encode(text));
+
+    Array.from(tokenizer.scanEntitiesFast());
+    expect(tokenizer.malformedRecordCount).toBe(1);
+
+    const refs = Array.from(tokenizer.scanEntities());
+    expect(refs.map((r) => r.expressId)).toEqual([1]);
+    expect(tokenizer.malformedRecordCount).toBe(0);
+  });
 });

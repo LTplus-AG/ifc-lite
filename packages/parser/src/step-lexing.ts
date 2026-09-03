@@ -62,10 +62,10 @@ export function skipComment(buf: Uint8Array, pos: number, len: number): number {
   return -1;
 }
 
-// Index just past the closing quote of the literal opening at `pos`, or `-1`
-// when it never closes — mirrors `skipComment`'s own -1-for-unterminated
-// convention below, which is what lets `skipLexical` treat the two cases
-// identically. A doubled '' is an escaped quote and stays inside.
+// Index just past the closing quote of the literal opening at `pos`, or -1
+// when it never closes -- the same signal `skipComment` gives, not the old
+// `len` return that read as "closed at the last byte". A doubled '' is an
+// escaped quote and stays inside.
 //
 // Scanners consume a literal whole so nothing inside it can be mistaken for
 // syntax. Without this, a HEADER description reading `'rev /* pending'` opens a
@@ -73,12 +73,6 @@ export function skipComment(buf: Uint8Array, pos: number, len: number): number {
 // a legal file. A `#12=` inside such a string was equally readable as a record.
 // The outer loops walk HEADER records byte by byte, since those carry no `#` to
 // consume them, so HEADER is exactly where this bites.
-//
-// Was `len` for the unterminated case, silently indistinguishable from "closed
-// exactly at the last byte of the buffer" to every caller — which is how a
-// single unpaired `'` in a DATA record used to swallow the rest of an
-// otherwise-intact file with the scan still reporting success (see
-// `skipLexical`'s `stop` for where the distinction now surfaces).
 export function skipStringLiteral(buf: Uint8Array, pos: number, len: number): number {
   let p = pos + 1;
   while (p < len) {
@@ -101,10 +95,8 @@ export interface Skip {
   lines: number;
   // True when scanning must stop: an unterminated comment or string literal
   // runs to EOF, so there is nothing left to find. Matches the Rust scanner
-  // returning None. Which lexical form it was is not tracked here — every
-  // caller (entity-scanner.ts included) reports `stop` with a single generic
-  // "record had a string literal or comment that never closed" message, so
-  // there is nothing downstream that reads a per-kind distinction.
+  // returning None. No per-kind field: every caller reports this with one
+  // generic message, so nothing downstream reads which construct it was.
   stop: boolean;
 }
 

@@ -43,6 +43,7 @@ export class BalancedEntityScan {
   private position = 0;
   private lineNumber = 1;
   private oversizedIds = 0;
+  private malformed = 0;
 
   constructor(private readonly buffer: Uint8Array) {}
 
@@ -51,11 +52,25 @@ export class BalancedEntityScan {
     return this.oversizedIds;
   }
 
+  /** Mirrors `StepTokenizer.malformedRecordCount`'s contract: 0 or 1, set by
+   *  the single post-loop check at the end of `run()`. */
+  get malformedRecordCount(): number {
+    return this.malformed;
+  }
+
   /** Every entity declaration (`#EXPRESS_ID = TYPE(...)`) in the buffer. */
   *run(): Generator<ScannedEntityRef> {
     this.position = 0;
     this.lineNumber = 1;
     this.oversizedIds = 0;
+    this.malformed = 0;
+
+    // Set on the way to the single post-loop check below: `stopped` for an
+    // unclosed string or comment that ran the scan to end of buffer with
+    // nothing left to find, `declOpen` while a `#id=TYPE(` header is
+    // incomplete (cleared once its '(' is found; re-armed by the next '#').
+    let stopped = false;
+    let declOpen = false;
 
     while (this.position < this.buffer.length) {
       // Look for '#' character (entity ID marker)
@@ -69,10 +84,11 @@ export class BalancedEntityScan {
           this.position++;
           continue;
         }
+        declOpen = true;
 
         // Whitespace AND comments: 10303-21 allows a comment wherever
         // whitespace is allowed, so `#1 /* was #7 */ =` is a declaration.
-        this.skipTrivia();
+        if (this.skipTrivia()) { stopped = true; break; }
 
         // Check for '=' (assignment)
         if (this.position >= this.buffer.length || this.buffer[this.position] !== 0x3D) {
@@ -81,7 +97,7 @@ export class BalancedEntityScan {
         }
         this.position++; // Skip '='
 
-        this.skipTrivia();
+        if (this.skipTrivia()) { stopped = true; break; }
 
         // Read type name
         const type = this.readTypeName();
@@ -90,13 +106,14 @@ export class BalancedEntityScan {
           continue;
         }
 
-        this.skipTrivia();
+        if (this.skipTrivia()) { stopped = true; break; }
 
         // Check for '(' (start of parameters)
         if (this.position >= this.buffer.length || this.buffer[this.position] !== 0x28) {
           this.position++;
           continue;
         }
+        declOpen = false; // header complete: '(' found
 
         // Find matching closing parenthesis to get full entity length
         const entityLength = findEntityLength(this.buffer, this.position, startOffset);
@@ -123,6 +140,14 @@ export class BalancedEntityScan {
             length: entityLength,
             line: startLine,
           };
+        } else {
+          // 0 means findEntityLength ran off the end of the buffer without
+          // ever balancing the '(' -- an unterminated literal or comment
+          // inside the argument list, or no closing ')' at all. Its own loop
+          // has no other exit, so this is always the EOF case, never a
+          // mid-file syntax choice to resume past.
+          stopped = true;
+          break;
         }
       } else if (this.buffer[this.position] === 0x0A) {
         // Newline
@@ -135,11 +160,18 @@ export class BalancedEntityScan {
         const skip = skipLexical(this.buffer, this.position, this.buffer.length);
         this.lineNumber += skip.lines;
         this.position = skip.next;
-        if (skip.stop) return;
+        if (skip.stop) { stopped = true; break; }
       } else {
         this.position++;
       }
     }
+
+    // ONE post-loop check, not an increment at every exit site above: the
+    // scan stopped early if it hit an explicit "no terminator" boundary, or
+    // the last `#id=TYPE(` header was cut short before its '(' was found.
+    // Always 0 or 1 -- the scan stops at the first one, so there is nothing
+    // to accumulate past that.
+    if (stopped || declOpen) this.malformed = 1;
   }
 
   private readExpressId(): number | null {
@@ -210,14 +242,14 @@ export class BalancedEntityScan {
 
   /**
    * Advance past whitespace and comments (see `skipTrivia` in step-lexing).
-   *
-   * An unterminated comment leaves `position` at end of buffer, so the check
-   * that follows every call site fails and the scan runs out -- which is what
-   * "everything after this point is inside a comment" should look like.
+   * Returns true when the comment it was in never closed, so the caller's
+   * single post-loop check can count it instead of reading a false '0' from
+   * a scan that actually ran out of buffer mid-header.
    */
-  private skipTrivia(): void {
+  private skipTrivia(): boolean {
     const skip = skipTrivia(this.buffer, this.position, this.buffer.length);
     this.lineNumber += skip.lines;
     this.position = skip.next;
+    return skip.stop;
   }
 }

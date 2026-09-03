@@ -108,4 +108,36 @@ describe('scan-worker-source WORKER_CODE: unterminated string literal', () => {
     expect(result.count).toBe(0);
     expect(result.malformedRecords).toBe(1);
   });
+
+  it('reports malformedRecords for an unterminated quote in the HEADER section', () => {
+    // WORKER_CODE's own quote-consuming loop for non-entity text (its 0x27
+    // branch) used to have no stop signal at all: it just walked to `sp ===
+    // len` and carried on. This is the same "it's a file" shape as the
+    // entity-scanner-level test, moved to a bare quote for simplicity.
+    const text = "HEADER;\nFILE_NAME('it's a file',$);\n";
+
+    const result = runWorkerCode(text);
+    expect(result.count).toBe(0);
+    expect(result.malformedRecords).toBe(1);
+  });
+
+  it('reports malformedRecords for a stray unclosed comment between two DATA records', () => {
+    const text = "#1=IFCWALL($,$,$);\n/* never closes\n#2=IFCWALL($,$,$);\n";
+
+    const result = runWorkerCode(text);
+    expect(result.count).toBe(1);
+    expect(result.malformedRecords).toBe(1);
+  });
+
+  it.each([
+    ['#2 at EOF, before any =', '#2'],
+    ['#2= at EOF, before the type name', '#2='],
+    ['#2=IFCWA at EOF, mid type name, before (', '#2=IFCWA'],
+  ])('reports malformedRecords for a declaration cut off: %s', (_label, cutoff) => {
+    const text = `#1=IFCWALL($,$,$);\n${cutoff}`;
+
+    const result = runWorkerCode(text);
+    expect(result.count).toBe(1);
+    expect(result.malformedRecords).toBe(1);
+  });
 });

@@ -64,20 +64,22 @@ export interface EntityScanResult {
    */
   oversizedIdCount: number;
   /**
-   * How many records the scan gave up on because a quoted string they
-   * opened never closed before end-of-buffer, so the "skip to the next
-   * ';'" scan could not find a terminator for that record — and, because
-   * of it, scanning stopped there. Every entity after that point, even a
-   * well-formed one later in an otherwise-intact file, is NOT in
-   * `entityRefs` either: there is no reliable place to resume once a
-   * string has failed to close, so the scan does not guess. Before this
-   * field existed, that stop was completely silent — a shorter
-   * `entityRefs` with no signal that anything went wrong at all.
+   * 0 or 1, never a count of how many: whether the scan stopped early
+   * because a quoted string or a block comment opened and never closed
+   * before end of buffer, or a `#id=TYPE(` declaration was cut off
+   * before its own '(' was found. Once any of those happens there is no
+   * reliable place to resume, so the scan stops there rather than guessing
+   * -- every entity after that point, even a well-formed one later in an
+   * otherwise-intact file, is NOT in `entityRefs` either. Before this field
+   * existed, that stop was completely silent -- a shorter `entityRefs` with
+   * no signal that anything went wrong at all.
    *
-   * `pre-scanned` does not carry this — same reasoning as
-   * `oversizedIdCount`'s doc: `PreScannedEntityIndex` predates this field,
-   * so a producer built before it sends none. Reads as `0`, which is
-   * indistinguishable from "none refused" for that one path.
+   * `pre-scanned` and `wasm` do not carry this. `pre-scanned`: same
+   * reasoning as `oversizedIdCount`'s doc -- `PreScannedEntityIndex`
+   * predates this field, so a producer built before it sends none. `wasm`:
+   * `scanEntitiesFast`/`scanEntitiesFastBytes` return refs and nothing
+   * else. Both read as `0`, indistinguishable from "scan completed clean"
+   * for those two paths.
    */
   malformedRecordCount: number;
 }
@@ -142,12 +144,15 @@ export async function scanIfcEntities(
       processed = entityRefs.length;
       scanPath = 'wasm';
       // Cleared, not carried: `scanEntitiesFast` hands back refs and nothing
-      // else, so this path has no count of its own (Rust reports the refusal
-      // straight to the console instead). Leaving an earlier path's number
-      // here would attribute it to a scan that never produced it. The two
-      // sibling branches already set their own; this one says zero out loud
-      // rather than by omission (#3395).
+      // else, so this path has no count of its own (Rust reports both
+      // refusals straight to the console instead). Leaving an earlier path's
+      // number here would attribute it to a scan that never produced it --
+      // the worker branch above may have run first, found zero refs, and set
+      // `malformedRecordCount` to 1 before falling through to this one. The
+      // two sibling branches already set their own; this one says zero out
+      // loud rather than by omission (#3395).
       oversizedIdCount = 0;
+      malformedRecordCount = 0;
     } catch (error) {
       console.warn('[IfcParser] WASM scan failed, falling back to TypeScript:', error);
       entityRefs = [];
@@ -191,28 +196,30 @@ export async function scanIfcEntities(
   }
 
   // Worse than the oversized-id case: this is not "one record the caller
-  // will not find", it is "scanning stopped here" — an unterminated string
-  // literal or comment leaves no reliable resume point, so every entity
-  // after it, however well-formed, is also missing from this scan's result.
+  // will not find", it is "scanning stopped here", so every entity after the
+  // break, however well-formed, is also missing from this scan's result.
   // Before this diagnostic existed, that stop was entirely silent: fewer
   // entities came back, and nothing said the file might be incomplete.
   //
-  // Deliberately generic ("string literal or comment"), not per-kind: the
-  // scanners collapse both into one malformedRecordCount, so a message
-  // naming only one construct would misdescribe the other every time it
-  // fires (an unclosed `/* ... */` was reported here as a string literal
-  // until this wording changed).
+  // Deliberately singular and generic, not "N record(s)": the scan always
+  // stops at the first one it hits (there is no reliable place to resume),
+  // so malformedRecordCount is 0 or 1, never a density, and it covers three
+  // shapes -- an unterminated string, an unterminated comment, and a
+  // declaration cut off before its own '(' -- collapsed into one flag, so a
+  // message naming only one of them would misdescribe the other two every
+  // time it fires.
   if (malformedRecordCount > 0) {
     const message =
-      `scan: stopped early — ${malformedRecordCount} record(s) had a string literal or comment ` +
-      `that never closed before end of input, so scanning could not continue past the first ` +
-      `one; the entities returned may be an incomplete view of this file`;
+      'scan: stopped early, a record had a string literal or comment that never closed, or ' +
+      'was cut off, before end of input, so scanning could not continue past it; the entities ' +
+      'returned may be an incomplete view of this file';
     console.warn(`[IfcParser] ${message}`);
     options.onDiagnostic?.(message);
   } else if (preScanCountUnreported && scanPath === 'pre-scanned') {
     // Absence has to look different from success. This producer sent the
-    // columns without a refusal count, so a zero here is not evidence of none
-    // — say that, rather than returning a result that reads like a clean scan.
+    // columns without a refusal count, so a zero here is not evidence of
+    // none, say that, rather than returning a result that reads like a clean
+    // scan.
     const message =
       'scan: the pre-pass that produced this entity index does not report refused ' +
       `express ids (#3395), so a count of 0 is not proof that none were skipped`;

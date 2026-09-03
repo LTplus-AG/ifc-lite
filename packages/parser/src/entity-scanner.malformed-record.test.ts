@@ -60,7 +60,7 @@ describe('scanIfcEntities: unterminated string literal', () => {
     // #3 is not recovered — asserting that honestly, so a future resync
     // attempt has to update this test rather than silently regress it.
     expect(result.entityRefs.map((r) => r.expressId)).toEqual([1]);
-    expect(diagnostics.some((m) => m.includes('stopped early') && m.includes('1 record'))).toBe(true);
+    expect(diagnostics.some((m) => m.includes('stopped early') && m.includes('a record had'))).toBe(true);
   });
 
   it('does not report malformedRecordCount, or emit its diagnostic, for a well-formed file', async () => {
@@ -106,7 +106,7 @@ describe('scanIfcEntities: unterminated comment inside a record', () => {
     expect(result.scanPath).toBe('tokenizer');
     expect(result.malformedRecordCount).toBe(1);
     expect(result.entityRefs.map((r) => r.expressId)).toEqual([1]);
-    expect(diagnostics.some((m) => m.includes('stopped early') && m.includes('1 record'))).toBe(true);
+    expect(diagnostics.some((m) => m.includes('stopped early') && m.includes('a record had'))).toBe(true);
   });
 });
 
@@ -131,10 +131,76 @@ describe('scanIfcEntities: unterminated comment before the record body opens', (
     expect(result.scanPath).toBe('tokenizer');
     expect(result.malformedRecordCount).toBe(1);
     expect(result.entityRefs.map((r) => r.expressId)).toEqual([1]);
-    expect(diagnostics.some((m) => m.includes('stopped early') && m.includes('1 record'))).toBe(true);
+    expect(diagnostics.some((m) => m.includes('stopped early') && m.includes('a record had'))).toBe(true);
     // The message must not claim the construct was a string literal when it
     // was actually a comment -- the whole point of #3695's remaining
     // review finding.
     expect(diagnostics.some((m) => m.includes('string literal or comment'))).toBe(true);
+  });
+});
+
+describe('scanIfcEntities: shapes the per-site increments missed (round 2)', () => {
+  // These three shapes are none of the ones already covered above: they run
+  // through the outer, non-entity part of the loop (a HEADER string, or a
+  // stray literal between two DATA records), or through the '#id=TYPE('
+  // header itself being cut off before any of the record-body logic runs.
+  // The single post-loop check (`stopped`/`declOpen` in scanEntitiesFast)
+  // catches all of them; the old per-exit-site increments caught none.
+
+  it('reports malformedRecordCount for an unterminated quote in the HEADER section', async () => {
+    // An unescaped apostrophe splits one string into two: 'it' closes
+    // immediately (no doubled quote follows), then the bare "s a file"
+    // opens a second string at its own trailing quote, and that one never
+    // closes before EOF. The classic real-world trigger this whole PR is
+    // about, just above DATA rather than inside a record.
+    const text = "ISO-10303-21;\nHEADER;\nFILE_NAME('it's a file',$,$,$,$,$,$);\n";
+    const buffer = new TextEncoder().encode(text).buffer;
+
+    const diagnostics: string[] = [];
+    const result = await scanIfcEntities(buffer, {
+      disableWorkerScan: true,
+      onDiagnostic: (m) => diagnostics.push(m),
+    });
+
+    expect(result.scanPath).toBe('tokenizer');
+    expect(result.malformedRecordCount).toBe(1);
+    expect(result.entityRefs).toEqual([]);
+    expect(diagnostics.some((m) => m.includes('stopped early'))).toBe(true);
+  });
+
+  it('reports malformedRecordCount for a stray unclosed comment between two DATA records', async () => {
+    const text = "#1=IFCWALL($,$,$);\n/* never closes\n#2=IFCWALL($,$,$);\n";
+    const buffer = new TextEncoder().encode(text).buffer;
+
+    const diagnostics: string[] = [];
+    const result = await scanIfcEntities(buffer, {
+      disableWorkerScan: true,
+      onDiagnostic: (m) => diagnostics.push(m),
+    });
+
+    expect(result.scanPath).toBe('tokenizer');
+    expect(result.malformedRecordCount).toBe(1);
+    expect(result.entityRefs.map((r) => r.expressId)).toEqual([1]);
+    expect(diagnostics.some((m) => m.includes('stopped early'))).toBe(true);
+  });
+
+  it.each([
+    ['#2 at EOF, before any =', '#2'],
+    ['#2= at EOF, before the type name', '#2='],
+    ['#2=IFCWA at EOF, mid type name, before (', '#2=IFCWA'],
+  ])('reports malformedRecordCount for a declaration cut off: %s', async (_label, cutoff) => {
+    const text = `#1=IFCWALL($,$,$);\n${cutoff}`;
+    const buffer = new TextEncoder().encode(text).buffer;
+
+    const diagnostics: string[] = [];
+    const result = await scanIfcEntities(buffer, {
+      disableWorkerScan: true,
+      onDiagnostic: (m) => diagnostics.push(m),
+    });
+
+    expect(result.scanPath).toBe('tokenizer');
+    expect(result.malformedRecordCount).toBe(1);
+    expect(result.entityRefs.map((r) => r.expressId)).toEqual([1]);
+    expect(diagnostics.some((m) => m.includes('stopped early'))).toBe(true);
   });
 });

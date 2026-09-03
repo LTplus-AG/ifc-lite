@@ -185,6 +185,43 @@ test('a CANCELLED check counts as failing, not as passing', () => {
   );
 });
 
+test('a CANCELLED run superseded by a fresh SUCCESS under the same name does not count as failing', () => {
+  // GitHub does not remove the check runs of a cancelled workflow run: when a
+  // push cancels an in-flight run under concurrency, the CANCELLED run's check
+  // runs stay attached to the head commit alongside the fresh SUCCESS ones
+  // under the same names. The rollup then carries two rows for one lane -- the
+  // newest startedAt is the one that decides the lane's verdict, matching how
+  // GitHub's required-status-check evaluation resolves duplicates. Refs #3792.
+  const counts = countRollup([
+    { name: 'PR review signal', status: 'COMPLETED', conclusion: 'CANCELLED', startedAt: '2026-09-03T18:00:00Z' },
+    { name: 'PR review signal', status: 'COMPLETED', conclusion: 'SUCCESS', startedAt: '2026-09-03T18:05:00Z' },
+    { name: 'Issue queue', status: 'COMPLETED', conclusion: 'CANCELLED', startedAt: '2026-09-03T18:00:00Z' },
+    { name: 'Issue queue', status: 'IN_PROGRESS', conclusion: null, startedAt: '2026-09-03T18:05:00Z' },
+  ]);
+  assert.deepEqual(counts, { fail: 0, pending: 1, pass: 1 });
+});
+
+test('a lone CANCELLED check with no fresher duplicate of the same name still counts as failing', () => {
+  // Control: dedupe must not launder a genuine cancellation that nothing
+  // superseded -- only a same-named newer row may excuse an older CANCELLED one.
+  const counts = countRollup([
+    { name: 'Typecheck', status: 'COMPLETED', conclusion: 'CANCELLED', startedAt: '2026-09-03T18:00:00Z' },
+    { name: 'Rust tests', status: 'COMPLETED', conclusion: 'SUCCESS', startedAt: '2026-09-03T18:05:00Z' },
+  ]);
+  assert.deepEqual(counts, { fail: 1, pending: 0, pass: 1 });
+});
+
+test('duplicate check rows without a usable name fall back to counting every row (no silent merge)', () => {
+  // StatusContext rows key off `context`, not `name`; entries with neither are
+  // never merged with anything, so an ungrouped duplicate cannot be silently
+  // dropped by a key that does not actually identify the lane.
+  const counts = countRollup([
+    { status: 'COMPLETED', conclusion: 'CANCELLED' },
+    { status: 'COMPLETED', conclusion: 'SUCCESS' },
+  ]);
+  assert.deepEqual(counts, { fail: 1, pending: 0, pass: 1 });
+});
+
 // --- the three refuse-to-pass-vacuously paths --------------------------------
 
 /** A `gh` stub that answers each call from a table keyed by a substring. */

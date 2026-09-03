@@ -830,3 +830,47 @@ test('a normal sibling still renders the same content it always did', () => {
     '--- SIBLING: packages/z/sibling.ts:7 (key "missingLanes")\nconst rows = missingLanes(input);',
   );
 });
+
+// The "THE FIX" test above stresses a LONG KEY, which `capKey` bounds to
+// MAX_KEY_LENGTH -- so even the pre-fix charge (`Buffer.byteLength(h.text) +
+// 120`) stays a safe overestimate for it, because 120 already covers a
+// header built from a <=60-byte key. Nothing bounds a sibling's PATH the same
+// way: `git grep` can hand back a hit at any path length, and the header
+// `renderSiblingRow` builds is `path + ':' + line + ' (key "..."))'`. Reverting
+// the charge to text-only (the item 1 regression) undercounts a long-path row
+// by its entire header and lets more of them through than the budget can
+// hold -- caught here with 40 identical-length-path candidates, never with
+// the long-KEY fixture above.
+function longPathFixture(n) {
+  const longPath = 'packages/' + 'x'.repeat(4_050) + '.ts'; // path alone dwarfs the old +120 margin
+  const files = Array.from({ length: n }, (_, i) => ({
+    path: `packages/a/f${i}.ts`,
+    patch: `@@ -1,1 +1,2 @@\n-  const uniqueTok${i} = 1;\n+  const uniqueTok${i} = 2;\n`,
+  }));
+  const grepOut = (args) => {
+    const pattern = args[args.length - 2];
+    const m = /^uniqueTok(\d+)$/.exec(pattern);
+    if (!m) return ''; // only this fixture's own keys hit; everything else is a miss
+    const line = Number(m[1]) + 1; // distinct line per file keeps each site un-collapsed
+    return `HEAD:${longPath}:${line}:  use(x);`;
+  };
+  return buildPack(
+    { headSha: 'a'.repeat(40), files },
+    { baseRef: 'HEAD', body: null, exec: (_cmd, args) => (args[0] === 'grep' ? grepOut(args) : '') },
+  );
+}
+
+test('a long sibling PATH must be charged too, not just a long key -- text-only charge overruns the budget', () => {
+  const pack = longPathFixture(40);
+  assert.ok(pack.siblings.length > 0, 'fixture: at least one site retrieved');
+  const rendered = pack.siblings.map((h) => renderSiblingRow(h)).join('\n\n');
+  const renderedBytes = Buffer.byteLength(rendered, 'utf8');
+  const availableBudget = packBudgetFor(
+    0,
+    promptEnvelopeBytes({ files: Array.from({ length: 40 }, (_, i) => ({ path: `packages/a/f${i}.ts` })) }),
+  );
+  assert.ok(
+    renderedBytes <= availableBudget,
+    `siblings alone render to ${renderedBytes} bytes, over the ${availableBudget}-byte budget they were charged against`,
+  );
+});

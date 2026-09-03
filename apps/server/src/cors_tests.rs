@@ -138,6 +138,37 @@ async fn near_miss_wildcards_do_not_enable_permissive_cors() {
     assert_eq!(allow_origin_for(state, OTHER).await, None);
 }
 
+/// A CORS preflight (`OPTIONS` with `Access-Control-Request-Method`) for
+/// `DELETE`, the method `DELETE /api/v1/cache/{sha256}` (#3636) actually
+/// uses. A restrictive allow-list that omitted `Method::DELETE` from
+/// `build_cors_layer` would answer this preflight with no
+/// `Access-Control-Allow-Methods: ... DELETE ...`, and a browser from an
+/// otherwise-allowed origin would refuse to send the real request at all —
+/// the endpoint would be unusable from any non-permissive deployment, with
+/// no server-side error to point at.
+#[tokio::test]
+async fn an_allowed_origin_may_preflight_delete_on_the_cache_route() {
+    let state = state_with_origins("preflight-delete", &[ALLOWED]).await;
+    let request = Request::builder()
+        .method("OPTIONS")
+        .uri("/api/v1/cache/deadbeef")
+        .header(header::ORIGIN, ALLOWED)
+        .header(header::ACCESS_CONTROL_REQUEST_METHOD, "DELETE")
+        .body(Body::empty())
+        .unwrap();
+    let response = build_router(state).oneshot(request).await.unwrap();
+    let allow_methods = response
+        .headers()
+        .get(header::ACCESS_CONTROL_ALLOW_METHODS)
+        .map(|v| v.to_str().unwrap().to_string())
+        .unwrap_or_default();
+    assert!(
+        allow_methods.contains("DELETE"),
+        "preflight for DELETE on the cache route must be granted; got \
+         Access-Control-Allow-Methods: {allow_methods:?}"
+    );
+}
+
 /// The default `CORS_ORIGINS` (nothing configured) is a localhost allow-list,
 /// never permissive — a wildcard default would expose every self-hosted
 /// deployment that never sets the variable.

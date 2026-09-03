@@ -179,6 +179,34 @@
         );
     }
 
+    /// The `-` separator in `remove_by_key_prefix` exists specifically to
+    /// reject a TRUNCATED prefix: `"abc"` must not match `"abc123-..."`
+    /// entries just because it is a string prefix of the key. A client
+    /// sending `DELETE /api/v1/cache/abc` (a truncated or mistyped hash)
+    /// must not be able to reach a hash it never had -- it should delete
+    /// nothing, and the real entry must stay readable.
+    #[tokio::test]
+    async fn remove_by_key_prefix_does_not_match_a_truncated_prefix() {
+        let (cache, _dir) = fresh_cache("prefix-removal-truncated").await;
+        let hash = "abc123";
+        cache
+            .set_bytes(&format!("{hash}-default"), b"filtered-entry")
+            .await
+            .unwrap();
+
+        let deleted = cache.remove_by_key_prefix("abc").await.unwrap();
+        assert_eq!(
+            deleted, 0,
+            "a truncated prefix must match nothing, not every key it happens \
+             to be a string-prefix of"
+        );
+        assert_eq!(
+            cache.get_bytes(&format!("{hash}-default")).await.unwrap(),
+            Some(b"filtered-entry".to_vec()),
+            "the real entry must survive a delete on its truncated prefix"
+        );
+    }
+
     /// Deleting a hash nothing was ever cached under is a no-op, not an
     /// error -- a client that just tells the server "drop this model, if
     /// anything is cached for it" must be able to call it unconditionally

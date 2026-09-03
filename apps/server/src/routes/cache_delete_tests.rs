@@ -99,9 +99,17 @@ async fn test_state(label: &str) -> AppState {
     ));
     let _ = std::fs::remove_dir_all(&dir);
     let cache = Arc::new(DiskCache::new(dir.to_str().unwrap()).await);
+    // Pinned, not read from the environment: a bearer token set in the
+    // process's own env (`IFC_SERVER_API_TOKEN`) would make every request
+    // below need an `Authorization` header it doesn't send, and this suite
+    // would fail under that env the same way `config.rs:96` already
+    // documents other pre-existing suites doing (confirmed: exporting
+    // `IFC_SERVER_API_TOKEN` fails all three tests in this file).
+    let mut config = Config::from_env();
+    config.api_token = None;
     AppState {
         cache,
-        config: Arc::new(Config::from_env()),
+        config: Arc::new(config),
         admission: Arc::new(crate::admission::Admission::new(
             crate::admission::AdmissionCfg {
                 max_concurrent_parses: 4,

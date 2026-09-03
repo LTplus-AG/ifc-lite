@@ -8,11 +8,32 @@ use crate::error::ApiError;
 use serde::{de::DeserializeOwned, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 /// Content-addressable disk cache.
 #[derive(Debug, Clone)]
 pub struct DiskCache {
     cache_dir: PathBuf,
+    // Excludes a `set`/`set_bytes` write from `remove_by_key_prefix`'s GC
+    // pass, and nothing else. `cacache::write` commits in two steps -- the
+    // content blob is finalized first, the index entry inserted second
+    // (`Writer::commit` in the vendored cacache) -- so a write and a GC pass
+    // CAN interleave: the GC pass's "list index, drop blobs nothing
+    // references" scan can run between those two halves of a concurrent
+    // write, see the blob but no index entry pointing at it yet, and unlink
+    // it out from under the writer that is about to insert that very entry.
+    // The blob is content-addressed, so this only bites when the concurrent
+    // write's bytes hash to a blob the GC pass just unreferenced -- exactly
+    // the case `remove_by_key_prefix`'s own docstring calls out (two source
+    // files sharing one output blob) -- but when it does, the surviving
+    // entry then reads as corrupt on every later `get`/`get_bytes`, which is
+    // the one failure mode that method's ordering was written to prevent.
+    // `read()` here is shared among concurrent writers (they may still race
+    // each other inside `cacache::write`, which is safe on its own); only
+    // the GC pass takes `write()`, so it runs with no write in flight and no
+    // write can start until it finishes.
+    write_gc_lock: Arc<RwLock<()>>,
 }
 
 impl DiskCache {
@@ -29,7 +50,10 @@ impl DiskCache {
             );
         }
 
-        Self { cache_dir: path }
+        Self {
+            cache_dir: path,
+            write_gc_lock: Arc::new(RwLock::new(())),
+        }
     }
 
     /// Generate a cache key from file content (SHA256 hash).
@@ -54,6 +78,9 @@ impl DiskCache {
     /// Set a cached value.
     pub async fn set<T: Serialize>(&self, key: &str, value: &T) -> Result<(), ApiError> {
         let data = serde_json::to_vec(value)?;
+        // Excludes `remove_by_key_prefix`'s GC pass, not other concurrent
+        // writers -- see `write_gc_lock`'s docstring.
+        let _guard = self.write_gc_lock.read().await;
         cacache::write(&self.cache_dir, key, &data).await?;
         tracing::debug!(key = %key, size = data.len(), "Cached result");
         Ok(())
@@ -89,6 +116,9 @@ impl DiskCache {
 
     /// Set raw bytes in cache.
     pub async fn set_bytes(&self, key: &str, data: &[u8]) -> Result<(), ApiError> {
+        // Excludes `remove_by_key_prefix`'s GC pass, not other concurrent
+        // writers -- see `write_gc_lock`'s docstring.
+        let _guard = self.write_gc_lock.read().await;
         cacache::write(&self.cache_dir, key, data).await?;
         tracing::debug!(key = %key, size = data.len(), "Cached raw bytes");
         Ok(())
@@ -121,6 +151,13 @@ impl DiskCache {
     /// already had its entries removed -- deleting an absent entry is a
     /// no-op, not an error, so a retried or duplicate `DELETE` stays safe.
     pub async fn remove_by_key_prefix(&self, key_prefix: &str) -> Result<usize, ApiError> {
+        // Held across BOTH spawn_blocking phases below, so no `set`/
+        // `set_bytes` write can start (and no write already past its own
+        // `read()` acquisition, since a write cannot begin its GC-visible
+        // work before it acquires that guard) while this scan-and-remove
+        // runs -- see `write_gc_lock`'s docstring for the race this closes.
+        let _guard = self.write_gc_lock.write().await;
+
         let cache_dir = self.cache_dir.clone();
         let prefix = format!("{key_prefix}-");
         let exact = key_prefix.to_string();

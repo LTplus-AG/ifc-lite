@@ -210,6 +210,35 @@ describe('EntityHeaderActions — "Show in context"', () => {
     assert.strictEqual(useViewerStore.getState().ghostExceptEntities, null);
   });
 
+  // Kills the mutation "install B's fade without releasing A's first". Moving the
+  // context view from A to B read the isolation A had already widened and recorded
+  // THAT as B's prior, so clearing restored the A-widened set and left A admitted
+  // permanently. CodeRabbit CLI on #3737, major.
+  it('A -> B -> clear leaves the original isolation, with neither A nor B admitted', () => {
+    resetStore();
+    const original = new Set([9_999]);
+    useViewerStore.setState({ selectedEntityId: SELECTED, isolatedEntities: original });
+
+    const container = render(<EntityHeaderActions />);
+    const ghostButton = Array.from(container.querySelectorAll('button'))[1];
+
+    click(ghostButton); // fade on A (SELECTED), isolation widened by A
+    assert.ok(useViewerStore.getState().isolatedEntities?.has(SELECTED));
+
+    // Selection moves to B and the user clicks again: the button is OFF for B,
+    // so this installs B's fade rather than clearing.
+    useViewerStore.setState({ selectedEntityId: OTHER });
+    const c2 = render(<EntityHeaderActions />);
+    click(Array.from(c2.querySelectorAll('button'))[1]);
+
+    click(Array.from(c2.querySelectorAll('button'))[1]); // clear B
+
+    const iso = useViewerStore.getState().isolatedEntities;
+    assert.ok(iso?.has(9_999), 'the original isolation survives');
+    assert.ok(!iso?.has(SELECTED), 'A must not be left admitted');
+    assert.ok(!iso?.has(OTHER), 'B must not be left admitted');
+  });
+
   // CodeRabbit on #3737 reported the mirror-image bug: recording ownership on
   // every render meant that with the fade on A and the selection moved to B,
   // cleanup compared B against A's set and left the model faded forever.

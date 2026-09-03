@@ -167,10 +167,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
-          poll_seconds="$(
-            node --input-type=module --eval \
-              'import { pollSecondsArgument } from "./scripts/review-lane-budget.mjs"; console.log(pollSecondsArgument());'
-          )"
+          poll_seconds="$(node scripts/review-lane-budget.mjs --poll-seconds)"
           node scripts/check-review-posted.mjs \
             --pr "${{ github.event.pull_request.number }}" \
             --sha "${{ github.event.pull_request.head.sha }}" \

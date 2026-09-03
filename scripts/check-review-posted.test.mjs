@@ -603,7 +603,13 @@ test('THE RACE: the shared producer/consumer budget rejects either side shrinkin
   // The shared executable contract is used by both lanes. THE COPIES below
   // pins it to the two workflow literals it cannot read at run time.
   assert.doesNotThrow(assertReviewLaneBudget);
-  assert.equal(pollSecondsArgument(), String(REVIEW_POSTED_POLL_SECONDS));
+  // THE CONCRETE NUMBER, not `String(REVIEW_POSTED_POLL_SECONDS)`: deriving the
+  // expectation from the thing under test asserts only that the function
+  // returns its own input, and stays green through any constant change. 1500 s
+  // is the budget the two workflow caps below (20 min lane, 30 min job) were
+  // chosen against, so changing it must be acknowledged here.
+  assert.equal(pollSecondsArgument(), '1500');
+  assert.equal(REVIEW_POSTED_POLL_SECONDS, 1500);
 
   assert.throws(
     () => assertReviewLaneBudget({ pollSeconds: REVIEW_LANE_TIMEOUT_SECONDS }),
@@ -633,9 +639,53 @@ test('THE RACE: the shared producer/consumer budget rejects either side shrinkin
 // the duplication the design cannot remove, not a restatement of the module.
 const GATE_STEP = 'Check a review was actually posted for this head';
 
-/** The wiring the gate step's shell must actually execute. */
-const WIRED_POLL =
-  /poll_seconds="\$\([\s\S]*?review-lane-budget\.mjs[\s\S]*?\)"[\s\S]*?--timeout-seconds "\$poll_seconds"/;
+const BUDGET_CLI = join(HERE, 'review-lane-budget.mjs');
+const budgetCli = (...args) => {
+  const r = spawnSync(process.execPath, [BUDGET_CLI, ...args], { encoding: 'utf8' });
+  return { code: r.status, out: r.stdout.trim(), err: r.stderr.trim() };
+};
+
+/**
+ * THE COMMAND LINE, not the exported function. Every other test here imports
+ * `pollSecondsArgument()`, and all of them stayed green while the module had no
+ * CLI at all: `node scripts/review-lane-budget.mjs --poll-seconds` printed
+ * NOTHING and exited 0, so the workflow's command substitution would have set an
+ * empty `poll_seconds` and the gate would have exited BAD_ARGS on every PR. The
+ * wiring pin cannot see that -- it reads the workflow's text, and the text was
+ * right. Only spawning the thing catches it. Raised by /simplify on PR #3610.
+ */
+test('THE CLI: the spelling the workflow runs prints the poll budget', () => {
+  const ok = budgetCli('--poll-seconds');
+  assert.equal(ok.code, 0, ok.err);
+  assert.equal(ok.out, '1500', 'the workflow captures stdout; an empty capture is BAD_ARGS on every PR');
+  assert.equal(ok.out, String(REVIEW_POSTED_POLL_SECONDS), 'the CLI and the constant are one number');
+});
+
+test('THE CLI: an argument it does not implement FAILS rather than printing nothing', () => {
+  // The silent-exit-0 shape is the whole defect: with `set -e` a non-zero exit
+  // stops the step loudly, while an empty stdout travels on and misconfigures
+  // the gate. Both an unknown flag and no flag at all must take the loud path.
+  for (const args of [['--bogus'], [], ['--poll-seconds', 'extra']]) {
+    const r = budgetCli(...args);
+    assert.notEqual(r.code, 0, `\`${args.join(' ')}\` must not exit 0: ${r.out}`);
+    assert.equal(r.out, '', 'nothing may reach stdout on the failure path');
+    assert.match(r.err, /usage: node scripts\/review-lane-budget\.mjs --poll-seconds/);
+  }
+});
+
+
+/**
+ * The wiring the gate step's shell must actually execute, pinned to the EXACT
+ * spelling that ships. A loose `[\s\S]*?` between the halves let any invocation
+ * of the module count -- including the `node --input-type=module --eval` form
+ * this replaced, and including a `--poll-seconds` flag the module does not
+ * implement. There is one command line CI runs; this is it.
+ */
+const WIRED_ASSIGNMENT = 'poll_seconds="$(node scripts/review-lane-budget.mjs --poll-seconds)"';
+const WIRED_PASS = '--timeout-seconds "$poll_seconds"';
+const WIRED_POLL = new RegExp(
+  `${WIRED_ASSIGNMENT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]*?${WIRED_PASS.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`,
+);
 
 /**
  * The EXECUTED shell of one workflow step: its `run:` block scalar with comment
@@ -672,8 +722,8 @@ test('THE COPIES: a COMMENT naming the module cannot satisfy the wiring pin', ()
     '    steps:',
     `      - name: ${GATE_STEP}`,
     '        run: |',
-    '          # poll_seconds="$(node scripts/review-lane-budget.mjs --poll-seconds)"',
-    '          # node scripts/check-review-posted.mjs --timeout-seconds "$poll_seconds"',
+    `          # ${WIRED_ASSIGNMENT}`,
+    `          # node scripts/check-review-posted.mjs ${WIRED_PASS}`,
     '          node scripts/check-review-posted.mjs --timeout-seconds 600',
     '      - name: something after',
     '        run: echo done',
@@ -747,9 +797,9 @@ test('THE COPIES: both workflows carry the job caps the budget module assumes', 
     runScript,
     WIRED_POLL,
     `the '${GATE_STEP}' step must pass --timeout-seconds the value it read, in that same step, ` +
-      'from review-lane-budget.mjs. REMEDY: inside that one step, set ' +
-      '`poll_seconds="$(node scripts/review-lane-budget.mjs --poll-seconds)"` and pass ' +
-      '`--timeout-seconds "$poll_seconds"`. IN THAT SAME STEP is the whole point: a shell ' +
+      `from review-lane-budget.mjs. REMEDY: inside that one step, set \`${WIRED_ASSIGNMENT}\` ` +
+      `and pass \`${WIRED_PASS}\`. THE REMEDY IS BUILT FROM THE MATCHER, so it cannot ` +
+      'describe a spelling the pin would reject. IN THAT SAME STEP is the whole point: a shell ' +
       'variable does not survive across steps, so splitting them expands to empty and the ' +
       'gate exits BAD_ARGS on every PR while still looking wired.',
   );

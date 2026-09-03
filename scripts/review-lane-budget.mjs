@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { isMainEntry } from './lib/is-main-entry.mjs';
+
 /**
  * The Claude lane may run for twenty minutes. The review-posted gate must wait
  * longer than that, and its job must leave enough time to print a verdict.
@@ -15,6 +17,10 @@
  * of the YAML and fails when either drifts from the constant here. That test is
  * load-bearing -- deleting it silently reopens the 600s-vs-1200s race this
  * module exists to close.
+ *
+ * The sibling `pr-review-signal` lane is deliberately NOT covered by
+ * `assertReviewLaneBudget` yet: it reads a verdict rather than waiting on one,
+ * so it has no poll budget to reconcile. Bringing it in is separate work.
  */
 export const REVIEW_LANE_TIMEOUT_SECONDS = 20 * 60;
 export const REVIEW_POSTED_POLL_SECONDS = 25 * 60;
@@ -48,4 +54,36 @@ export function assertReviewLaneBudget({
 export function pollSecondsArgument() {
   assertReviewLaneBudget();
   return String(REVIEW_POSTED_POLL_SECONDS);
+}
+
+const USAGE = 'usage: node scripts/review-lane-budget.mjs --poll-seconds';
+
+/**
+ * THE CLI IS THE WORKFLOW'S ONLY DOOR IN, so it must never exit 0 saying
+ * nothing. `poll_seconds="$(node scripts/review-lane-budget.mjs ...)"` captures
+ * stdout; an unrecognised flag that fell through silently would set an EMPTY
+ * variable, and the gate would then be handed `--timeout-seconds ""` and exit
+ * BAD_ARGS on every PR -- while every test here stayed green, because they all
+ * call the module's functions rather than the command line CI actually runs.
+ * That is exactly the shape this module was written to prevent, so: print, or
+ * fail loudly.
+ */
+export function runCli(argv) {
+  if (argv.length !== 1 || argv[0] !== '--poll-seconds') {
+    console.error(`${USAGE} (got: ${argv.join(' ') || 'no arguments'})`);
+    return 2;
+  }
+  console.log(pollSecondsArgument());
+  return 0;
+}
+
+if (isMainEntry(import.meta.url)) {
+  try {
+    process.exitCode = runCli(process.argv.slice(2));
+  } catch (err) {
+    // A budget violation must reach the operator as text, not as a stack trace
+    // swallowed by command substitution.
+    console.error(`❌ ${err.message}`);
+    process.exitCode = 1;
+  }
 }

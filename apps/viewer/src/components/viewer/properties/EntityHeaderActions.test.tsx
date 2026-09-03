@@ -103,6 +103,78 @@ describe('EntityHeaderActions — "Show in context"', () => {
     );
   });
 
+  // Kills the mutation `restoreVisibilityState({isolated, ...})` ->
+  // `setGhostExceptEntities(...)`. That setter nulls `isolatedEntities`
+  // unconditionally and nothing captured it, so isolating and then fading
+  // destroyed the isolation for good -- the whole building reappeared faded,
+  // and toggling back left it solid with the isolation gone.
+  it('preserves an active isolation when entering and leaving "Show in context"', () => {
+    resetStore();
+    const isolation = new Set([SELECTED, OTHER]);
+    useViewerStore.setState({ selectedEntityId: SELECTED, isolatedEntities: isolation });
+
+    const container = render(<EntityHeaderActions />);
+    const ghostButton = Array.from(container.querySelectorAll('button'))[1];
+
+    click(ghostButton);
+    const entered = useViewerStore.getState();
+    assert.deepStrictEqual(
+      entered.isolatedEntities && [...entered.isolatedEntities].sort(),
+      [...isolation].sort(),
+      'entering must not destroy the isolation',
+    );
+    assert.deepStrictEqual(entered.ghostExceptEntities && [...entered.ghostExceptEntities], [SELECTED]);
+
+    click(ghostButton);
+    const left = useViewerStore.getState();
+    assert.strictEqual(left.ghostExceptEntities, null, 'leaving clears the fade');
+    assert.deepStrictEqual(
+      left.isolatedEntities && [...left.isolatedEntities].sort(),
+      [...isolation].sort(),
+      'leaving must leave the isolation standing',
+    );
+  });
+
+  // Kills the mutation "drop the unmount teardown". PropertiesPanel renders
+  // nothing without a selection, so the button unmounts on deselect; without
+  // teardown the model stayed faded with no control able to undo it.
+  it('tears its own fade down when the panel unmounts (deselection)', () => {
+    resetStore();
+    useViewerStore.setState({ selectedEntityId: SELECTED });
+
+    const container = render(<EntityHeaderActions />);
+    click(Array.from(container.querySelectorAll('button'))[1]);
+    assert.deepStrictEqual(
+      useViewerStore.getState().ghostExceptEntities &&
+        [...useViewerStore.getState().ghostExceptEntities!],
+      [SELECTED],
+    );
+
+    cleanup();
+    assert.strictEqual(
+      useViewerStore.getState().ghostExceptEntities,
+      null,
+      'a fade with no control left to clear it must not survive the panel',
+    );
+  });
+
+  // The teardown must be narrow: a clash/IDS fade holds many entities and owns
+  // its own release, so unmounting the properties panel must not wipe it.
+  it('leaves a foreign multi-entity ghost standing on unmount', () => {
+    resetStore();
+    const foreign = new Set([SELECTED, OTHER]);
+    useViewerStore.setState({ selectedEntityId: SELECTED, ghostExceptEntities: foreign });
+
+    render(<EntityHeaderActions />);
+    cleanup();
+    const after = useViewerStore.getState().ghostExceptEntities;
+    assert.deepStrictEqual(
+      after && [...after].sort(),
+      [...foreign].sort(),
+      "another feature's ghost must survive this panel unmounting",
+    );
+  });
+
   it('control: "Zoom to" and "Hide" keep their existing, unrelated behaviour', () => {
     let framed = 0;
     resetStore();

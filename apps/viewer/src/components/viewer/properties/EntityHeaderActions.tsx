@@ -18,6 +18,7 @@
  * surroundings.
  */
 
+import { useEffect, useRef } from 'react';
 import { Focus, EyeOff, Eye, Ghost } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -29,7 +30,25 @@ export function EntityHeaderActions() {
   const toggleEntityVisibility = useViewerStore((s) => s.toggleEntityVisibility);
   const isEntityVisible = useViewerStore((s) => s.isEntityVisible);
   const ghostExceptEntities = useViewerStore((s) => s.ghostExceptEntities);
-  const setGhostExceptEntities = useViewerStore((s) => s.setGhostExceptEntities);
+  const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
+  const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
+  const restoreVisibilityState = useViewerStore((s) => s.restoreVisibilityState);
+  const clearGhost = useViewerStore((s) => s.clearGhost);
+
+  // The fade outlives this component: PropertiesPanel renders nothing without a
+  // selection, so deselecting leaves the whole model translucent with its only
+  // control gone (there is no other UI caller of clearGhost and no shortcut).
+  // Tear down on unmount, but only OUR fade -- a singleton set holding exactly
+  // the entity we were showing. A clash or IDS ghost holds many entities and
+  // owns its own teardown, so it is left standing.
+  const ghostRef = useRef<{ id: number | null; set: ReadonlySet<number> | null }>({ id: null, set: null });
+  ghostRef.current = { id: selectedEntityId ?? null, set: ghostExceptEntities };
+  useEffect(() => () => {
+    const { id, set } = ghostRef.current;
+    if (id != null && set !== null && set.size === 1 && set.has(id)) {
+      useViewerStore.getState().clearGhost();
+    }
+  }, []);
 
   const isGhosted = selectedEntityId != null &&
     ghostExceptEntities !== null &&
@@ -64,9 +83,21 @@ export function EntityHeaderActions() {
             onClick={() => {
               if (!selectedEntityId) return;
               if (isGhosted) {
-                setGhostExceptEntities(null);
+                // clearGhost, not setGhostExceptEntities(null): it preserves
+                // isolation, which the setter clears.
+                clearGhost();
               } else {
-                setGhostExceptEntities(new Set([selectedEntityId]));
+                // Not setGhostExceptEntities: that clears isolatedEntities
+                // unconditionally and nothing captured it, so isolating a zone
+                // and then fading around a member destroyed the isolation for
+                // good. Writing both channels keeps it. The pair is coherent --
+                // isolation filters, ghosting fades what survived it -- and
+                // restoreVisibilityState documents it as reachable and legal.
+                restoreVisibilityState({
+                  isolated: isolatedEntities,
+                  ghostExcept: new Set([selectedEntityId]),
+                  hidden: hiddenEntities,
+                });
                 cameraCallbacks.frameSelection?.();
               }
             }}

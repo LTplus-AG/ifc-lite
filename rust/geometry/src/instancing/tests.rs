@@ -1814,3 +1814,58 @@ fn a_failing_group_still_places_its_pose_only_placeholders() {
         }
     }
 }
+
+/// Six canonical vertices whose f32 rounding at an 80m offset is large enough
+/// to matter. Plain `CANON`'s coordinates are all exactly representable at every
+/// offset used here, so it cannot express this case at all.
+const CANON_AWKWARD: [f32; 18] = [
+    0.729_107, 2.194_468, 0.351_403, //
+    0.068_348, 1.276_856, 0.304_501, //
+    0.623_532, 1.761_377, 0.026_691, //
+    0.356_731, 1.193_861, 0.621_696, //
+    0.396_701, 0.061_649, 0.233_763, //
+    1.111, 2.222, 0.333, //
+];
+
+#[test]
+fn a_far_template_and_a_near_sibling_still_instance() {
+    // The reconstruction residual comes from the f32 rounding in BOTH baked
+    // meshes, and the bigger of the two dominates: a template stored at ~80m
+    // rounds to a ~4e-6 m grid, a sibling stored at ~2m to a ~2e-7 m one. The
+    // tolerance was scaled off the TARGET's stored magnitude alone, so the
+    // near sibling got a ~3e-6 tolerance for an error the FAR template put
+    // there — a pure translation between two genuinely shared meshes failing
+    // verification, and (worse) failing ORDER-DEPENDENTLY: the same pair
+    // verifies when the near mesh happens to be first and becomes the
+    // template. The magnitude is the larger of the two stored positions.
+    let far = Matrix4::new_translation(&nalgebra::Vector3::new(80.0, 40.0, 3.0));
+    let near = Matrix4::new_translation(&nalgebra::Vector3::new(2.0, 1.0, 3.0));
+    let meta = |m: &Matrix4<f64>| InstanceMeta {
+        transform: mat_rm(m),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 8181,
+        instanceable: true,
+    };
+    // Absolute world coordinates, no RTC and no per-mesh origin — the native
+    // path the WASM viewer and the Parquet routes take.
+    let far_first = vec![
+        mesh_from(baked(&CANON_AWKWARD, &far), meta(&far)),
+        mesh_from(baked(&CANON_AWKWARD, &near), meta(&near)),
+    ];
+    let collated = collate_instances(&far_first, 2, [0.0, 0.0, 0.0]);
+    assert_eq!(
+        collated.templates.len(),
+        1,
+        "a pure translation between two shared meshes must verify whichever is the template"
+    );
+    assert_eq!(collated.flat_indices.len(), 0);
+
+    // ...and the verdict must not depend on which one collation picked first.
+    let near_first = vec![far_first[1].clone(), far_first[0].clone()];
+    assert_eq!(
+        collate_instances(&near_first, 2, [0.0, 0.0, 0.0]).templates.len(),
+        1,
+        "verification is order-dependent"
+    );
+}

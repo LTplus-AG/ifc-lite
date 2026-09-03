@@ -74,6 +74,14 @@ fn tolerance(mag: f64) -> f64 {
     (mag * ULP_FACTOR).max(ABS_FLOOR_M)
 }
 
+/// Largest absolute component of vertex `v`'s STORED (origin-relative) position.
+fn stored_magnitude(positions: &[f32], v: usize) -> f64 {
+    (positions[v * 3] as f64)
+        .abs()
+        .max((positions[v * 3 + 1] as f64).abs())
+        .max((positions[v * 3 + 2] as f64).abs())
+}
+
 /// Reconstructed world-space error of vertex `v`: applies `rel` to the
 /// template's own baked world vertex (`template_origin + template_positions[v]`)
 /// and returns its distance from the occurrence's own baked world vertex
@@ -138,10 +146,24 @@ pub(super) fn verify_pairing(
         // collision (#3666 measured up to 2.0m) at real-world georeferenced
         // magnitudes -- the same "scaled tolerance flips direction across
         // the range" shape this project has hit before.
-        let mag = (target_positions[v * 3] as f64)
-            .abs()
-            .max((target_positions[v * 3 + 1] as f64).abs())
-            .max((target_positions[v * 3 + 2] as f64).abs());
+        //
+        // The magnitude is the LARGER of the two stored positions, not the
+        // target's alone. The residual being bounded here is the f32 rounding
+        // in BOTH baked meshes, and the coarser grid dominates: a template
+        // stored at 80m rounds to a ~4e-6 m grid while a sibling stored at 2m
+        // rounds to a ~2e-7 one, so scaling off the near sibling alone charged
+        // it for an error the far template put there. That rejected genuinely
+        // shared geometry under a pure translation, and did it
+        // ORDER-DEPENDENTLY — the same pair verifies when the near mesh happens
+        // to be collated first and becomes the template.
+        let mag = stored_magnitude(template_positions, v).max(stored_magnitude(target_positions, v));
+        // A non-finite magnitude makes the tolerance infinite, and `err <= inf`
+        // holds for any finite error AND for `err == inf` — so a +/-inf baked
+        // position sailed through the comparison below (unlike a NaN, which the
+        // explicit `is_nan` check already rejects). Fail closed on it too.
+        if !mag.is_finite() {
+            return false;
+        }
         // `err.is_nan()` must be checked explicitly: `err > tolerance(mag)`
         // is false whenever `err` is NaN (a NaN transform or position
         // propagates through the matrix multiply and subtraction into a NaN
@@ -272,6 +294,26 @@ mod tests {
                 &Matrix4::identity()
             ),
             "a NaN baked position must not pass verification"
+        );
+    }
+
+    #[test]
+    fn an_infinite_target_position_is_rejected() {
+        // `+/-inf` is the non-finite case the NaN guard does NOT cover: the
+        // reconstructed vertex stays finite, so `err` is `+inf` — but the
+        // magnitude is `inf` too, so the tolerance is `inf` and `err <= tol`
+        // HOLDS. The magnitude has to be checked for finiteness in its own right.
+        let template: [f32; 3] = [0.0, 0.0, 0.0];
+        let target: [f32; 3] = [f32::INFINITY, 0.0, 0.0];
+        assert!(
+            !verify_pairing(
+                [0.0; 3],
+                &template,
+                [0.0; 3],
+                &target,
+                &Matrix4::identity()
+            ),
+            "an infinite baked position must not pass verification"
         );
     }
 

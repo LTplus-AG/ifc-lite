@@ -326,3 +326,63 @@ describe('flattenRelationshipEdges', () => {
     expect(flattenRelationshipEdges(empty.forward)).toEqual([]);
   });
 });
+
+// Every shadowed-id test above uses exactly ONE deduped edge per CSR half —
+// buildShadowedColumns's sort, the per-group cursor advance in
+// flattenRelationshipEdges/getEdges, the shadowedGroupOffsets[g+1] boundary
+// between two groups, and a binarySearchU32 over more than one entry are
+// all no-ops with a single group (#3782 round 3 review). This exercises all
+// four with three sources feeding the SAME target, each with its own
+// shadowed group of a DIFFERENT size (1, 2, 1), added in an order that
+// interleaves across sources so insertion order and final CSR-sorted
+// position order disagree in both directions.
+describe('multiple shadowed groups on one RelationshipGraph', () => {
+  function buildInterleavedGraph() {
+    const builder = new RelationshipGraphBuilder();
+    // Source 200's group (size 2) and source 300's group (size 1) and
+    // source 100's group (size 1), inserted out of source order and with
+    // each source's own edges non-contiguous, so buildShadowedColumns must
+    // actually sort by final scatter position rather than insertion order.
+    builder.addEdge(200, 301, RelationshipType.ContainsElements, 10); // survivor, source 200
+    builder.addEdge(300, 301, RelationshipType.ContainsElements, 1); // survivor, source 300
+    builder.addEdge(100, 301, RelationshipType.ContainsElements, 20); // survivor, source 100
+    builder.addEdge(200, 301, RelationshipType.ContainsElements, 11); // shadow of 10
+    builder.addEdge(300, 301, RelationshipType.ContainsElements, 2); // shadow of 1
+    builder.addEdge(100, 301, RelationshipType.ContainsElements, 21); // shadow of 20
+    builder.addEdge(200, 301, RelationshipType.ContainsElements, 12); // second shadow of 10
+    return builder.build();
+  }
+
+  it('forward: each source keeps its own group, sorted into ascending source order', () => {
+    const g = buildInterleavedGraph();
+    // Ascending source order (100, 200, 300), per buildCSR's key sort.
+    expect(g.forward.getEdges(100, RelationshipType.ContainsElements)).toEqual([
+      { target: 301, type: RelationshipType.ContainsElements, relationshipId: 20, shadowedRelationshipIds: [21] },
+    ]);
+    expect(g.forward.getEdges(200, RelationshipType.ContainsElements)).toEqual([
+      { target: 301, type: RelationshipType.ContainsElements, relationshipId: 10, shadowedRelationshipIds: [11, 12] },
+    ]);
+    expect(g.forward.getEdges(300, RelationshipType.ContainsElements)).toEqual([
+      { target: 301, type: RelationshipType.ContainsElements, relationshipId: 1, shadowedRelationshipIds: [2] },
+    ]);
+  });
+
+  it('inverse: three groups of different sizes land under ONE key (301), exercising the multi-group binary search', () => {
+    const g = buildInterleavedGraph();
+    const edges = g.inverse.getEdges(301, RelationshipType.ContainsElements);
+    expect(edges).toHaveLength(3);
+    const bySurvivor = new Map(edges.map((e) => [e.relationshipId, e.shadowedRelationshipIds]));
+    expect(bySurvivor.get(20)).toEqual([21]);
+    expect(bySurvivor.get(10)).toEqual([11, 12]);
+    expect(bySurvivor.get(1)).toEqual([2]);
+  });
+
+  it('flattenRelationshipEdges: one row per IfcRel id across all three groups, both directions', () => {
+    const g = buildInterleavedGraph();
+    const forwardIds = flattenRelationshipEdges(g.forward).map((r) => r.relationshipId).sort((a, b) => a - b);
+    expect(forwardIds).toEqual([1, 2, 10, 11, 12, 20, 21]);
+    // Inverse walks the same 7 IfcRel* records from the other direction.
+    const inverseIds = flattenRelationshipEdges(g.inverse).map((r) => r.relationshipId).sort((a, b) => a - b);
+    expect(inverseIds).toEqual([1, 2, 10, 11, 12, 20, 21]);
+  });
+});

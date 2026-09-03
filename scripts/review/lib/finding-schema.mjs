@@ -17,6 +17,9 @@ import { lineIsAdded, addedLinesMatching } from '../quote-line-coupling.mjs';
 import { sanitizeBody, sanitizeLabel, sanitizePath } from './finding-sanitizers.mjs';
 import { checkProofOfWork, siblingVerifies } from './finding-proof-of-work.mjs';
 import { isUnread } from '../build-review-input.mjs';
+// One spelling of the drop warning, shared with the sink that prefixes it and the
+// CLI that reads it back out of the log.
+import { DROPPED_LABEL } from './dropped-warning.mjs';
 
 /** @param {unknown} v */
 const isNonEmptyString = (v) => typeof v === 'string' && v.trim() !== '';
@@ -92,19 +95,6 @@ function checkSchema(response) {
  * That is the intended trade. The verdict-level check (VALIDATION_EMPTY) is what
  * stands behind it when NOTHING survives.
  */
-
-/**
- * The word every per-finding drop starts its warning with.
- *
- * A CONSTANT BECAUSE THE WORKFLOW GREPS IT. claude-review.yml copies these lines
- * into the posted marker body so a reader sees WHY every finding was dropped, and
- * it selects them by prefix. Spelled inline in both places, a reword here would
- * leave the marker silently carrying an EMPTY reason -- the run still posts, the
- * body just stops saying why. `DROPPED_LOG_PREFIX` in validate-findings.mjs
- * composes this with the warning sink's own prefix, and a test pins the result
- * against the YAML.
- */
-export const DROPPED_LABEL = 'DROPPED';
 
 function validateFindings({ response, input, warn }) {
   const kept = [];

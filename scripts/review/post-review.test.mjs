@@ -1695,40 +1695,20 @@ test('#3775: the two marker-only flags are mutually exclusive', () => {
   assert.match(r.out, /mutually exclusive/);
 });
 
-test('#3775 THE WIRING: a refused RETRY reaches the marker path instead of failing the job', () => {
+test('#3775 THE WIRING: the marker path is reachable, and the decision is a SCRIPT', () => {
+  // MINIMAL ON PURPOSE. What to do after the retry -- post, fail, or leave a
+  // `dropped` marker -- is decided by scripts/review/lib/retry-outcome.mjs and
+  // tested by EXECUTING it there, with all four inputs the step can produce. This
+  // asserts only the two things that script cannot assert about itself: that the
+  // workflow calls it, and that the step it feeds is wired to the flag it sets.
+  //
+  // Everything this test used to do -- string ordering, `revalidated=1`
+  // placement, which grep sits where -- was a source-text assertion: it passed
+  // when the step was reworded into something broken and failed when it was
+  // reformatted into something correct. Deleted rather than tightened.
   const wf = readFileSync(join(HERE, '..', '..', '.github/workflows/claude-review.yml'), 'utf8');
   const validate = wf.split('- name: Validate the findings')[1].split('- name:')[0];
-  assert.match(validate, /uncovered=true/, 'the step must hand the outcome downstream as an output');
-  assert.match(validate, /skip-reason\.txt/, 'carrying the dropped reasons to the marker body');
-
-  // THE RETRY COMES FIRST. A marker is the LAST resort: without this the model
-  // never gets told its findings were refused, and the head carries a record of
-  // a failure nothing tried to fix.
-  const reviewerCall = validate.indexOf('node "$GITHUB_WORKSPACE/scripts/review/run-reviewer.mjs"');
-  const downgrade = validate.indexOf('uncovered=true');
-  assert.ok(reviewerCall > -1 && downgrade > reviewerCall, 'the downgrade must read the log the RETRY left behind');
-
-  // A CRASHED retry reviewer must NOT reach it. validate.log is rewritten by the
-  // second VALIDATE, not by the attempt, so a crash leaves the FIRST attempt's
-  // reason line sitting there and an unguarded grep would post a marker
-  // asserting a retry that never produced an answer refused everything.
-  assert.match(validate, /revalidated=1/, 'the retry must record that it re-validated');
-  const setIdx = validate.indexOf('revalidated=1');
-  const elseIdx = validate.indexOf('else', setIdx);
-  const reviewerRcIdx = validate.indexOf('rc=$reviewer_rc');
-  assert.ok(reviewerRcIdx > setIdx && elseIdx > -1 && elseIdx < reviewerRcIdx);
-  assert.doesNotMatch(
-    validate.slice(elseIdx, reviewerRcIdx + 20),
-    /revalidated=1/,
-    'the crash branch must NOT record a re-validation',
-  );
-  const condition = validate.slice(validate.lastIndexOf('if [', downgrade), downgrade);
-  assert.match(condition, /revalidated/, 'the downgrade must require that a retry actually re-validated');
-
-  // "read the DROPPED warnings above" has to be true in the comment body too.
-  const droppedGrep = validate.indexOf("grep '^⚠️  DROPPED'");
-  assert.ok(droppedGrep > -1, 'the DROPPED lines must be collected');
-  assert.ok(validate.indexOf('| head -1', droppedGrep) > droppedGrep, 'and written ABOVE the reason line');
+  assert.match(validate, /scripts\/review\/lib\/retry-outcome\.mjs/, 'the step must call the decision script');
 
   const ntr = wf.split('- name: Say so when there was nothing to review')[1];
   assert.match(ntr.split('run:')[0], /steps\.validate\.outputs\.uncovered == 'true'/);

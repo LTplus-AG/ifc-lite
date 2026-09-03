@@ -403,45 +403,19 @@ jobs:
             fi
           fi
 
-          # ONLY AFTER THE RETRY HAS ALSO FAILED (#3775). `revalidated` is the
-          # whole guard: this block reads validate.log, which is rewritten by the
-          # second VALIDATE, not by the attempt.
+          # THE DECISION IS A SCRIPT, NOT AN `if` HERE (#3775). What to do after
+          # the retry -- post, fail, or leave a `dropped` marker -- is testable
+          # by EXECUTION in scripts/review/lib/retry-outcome.test.mjs; an `if` in
+          # this file could only ever be tested by reading the YAML as text.
           #
-          # VALIDATION_EMPTY is then not a failure of this head, it is an OUTCOME
-          # for it. Every finding was dropped -- one cited a file that was never
-          # sent, another quoted the wrong added line -- and refusing to invent a
-          # verdict from that is right (#3801 left that throw untouched, and so
-          # does this). What was wrong was what happened next: the job went red
-          # with NOTHING on the head, so `Review posted` waited out its full poll
-          # budget and reported STALE_REVIEW as a second red with no independent
-          # cause, and the printed remedy ("read the DROPPED warnings") was
-          # addressed to a human reading logs rather than to anything the lane
-          # could act on. #3801's own message names this as its known follow-on.
-          #
-          # The marker is `verdict=dropped`, which check-review-posted treats as
-          # NOT COVERED, NOT full and TERMINAL. That is the whole point: the record
-          # exists for a reader, the head stays open, and a harness regression that
-          # drops every finding on every PR still goes red rather than sealing each
-          # head as reviewed. `nothing-to-review` would have covered it.
-          #
-          # The DROPPED lines are written ABOVE the ❌ line, because the reason
-          # text says "read the DROPPED warnings above" and in the comment body
-          # that has to be true.
-          #
-          # ANCHORED, like the NO_FILES grep above and the retry_reason grep: the
-          # reason is only ever at the start of a line, and the paths inside those
-          # warnings are sanitised by validate-findings.mjs so PR-controlled text
-          # cannot forge one.
-          if [ "$rc" -ne 0 ] && [ "$revalidated" -eq 1 ] && grep -q '^❌ VALIDATION_EMPTY:' "$RUNNER_TEMP/validate.log"; then
-            echo "::notice::Every finding was dropped, and the retry did not change that; posting a dropped marker instead of a red nobody can clear."
-            {
-              grep '^⚠️  DROPPED' "$RUNNER_TEMP/validate.log" || true
-              grep '^❌ VALIDATION_EMPTY:' "$RUNNER_TEMP/validate.log" | head -1
-            } > "$RUNNER_TEMP/skip-reason.txt"
-            echo "uncovered=true" >> "$GITHUB_OUTPUT"
-            rc=0
-          fi
-          exit "$rc"
+          # `revalidated` is the input that matters: validate.log is rewritten by
+          # the second VALIDATE, not by the attempt, so a retry whose reviewer
+          # crashed leaves the FIRST attempt's reason line in the file.
+          node "$GITHUB_WORKSPACE/scripts/review/lib/retry-outcome.mjs" \
+            --rc "$rc" \
+            $([ "$revalidated" -eq 1 ] && echo --revalidated) \
+            --log "$RUNNER_TEMP/validate.log" \
+            --reason-out "$RUNNER_TEMP/skip-reason.txt"
 
       # The second half of the precision/recall inversion. The generator is now
       # told to report what it cannot rule out (up to twelve), the validator has

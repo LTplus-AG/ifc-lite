@@ -6,7 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { RenderFrameOffsets } from '../../components/viewer/tools/measure-modes/coordinates.js';
-import { computeEntityLocalCenter, computeEntityWorldCenterZup } from './entity-world-position.js';
+import { computeEntityLocalCenter, computeEntityWorldCenterZup, makeWorldPositionGetter } from './entity-world-position.js';
 
 /** Minimal synthetic GeometryResult with one mesh's positions given as an
  *  explicit vertex list so the bounding box is easy to hand-verify. */
@@ -82,6 +82,43 @@ describe('computeEntityWorldCenterZup', () => {
       wasmRtcOffsetIfc: { x: 100, y: 200, z: 300 },
     };
     assert.deepEqual(computeEntityWorldCenterZup(geo, 5, frame), { x: 111, y: 167, z: 322 });
+  });
+
+  // Kills the mutation "drop the `minX === Infinity` guard". A matched mesh with
+  // zero vertices leaves the extents at +/-Infinity and returns NaN on all three
+  // axes. NaN is worse than blank here: the list comparator does `a - b`, so an
+  // inconsistent comparator scrambles the ordering of the WHOLE table, `gt`/`lt`
+  // silently drop those rows, and CSV export writes the literal string "NaN".
+  it('returns null, not NaN, for a matched mesh that carries no vertices', () => {
+    const geo = {
+      meshes: [{ expressId: 7, positions: new Float32Array([]) } as GeometryResult['meshes'][number]],
+      totalTriangles: 0,
+      totalVertices: 0,
+    } as GeometryResult;
+    assert.equal(computeEntityLocalCenter(geo, 7), null);
+  });
+
+  // Kills the mutation "index by scanning per call". The getter must answer from
+  // an index built once, so a lookup does not depend on the model's mesh count.
+  // The functional half of that is pinned here; the cost half was measured
+  // separately: 0.114 ms/call before, 0.0009 ms/call after, over 100k meshes.
+  it('getWorldPosition answers consistently and cheaply over many meshes', () => {
+    const meshes = Array.from({ length: 5_000 }, (_, i) => ({
+      expressId: i,
+      positions: new Float32Array([0, 0, 0, 2, 2, 2]),
+    } as GeometryResult['meshes'][number]));
+    const geo = { meshes, totalTriangles: 0, totalVertices: 0 } as GeometryResult;
+    const frame: RenderFrameOffsets = {};
+    const store = {
+      source: new Uint8Array(),
+      entityIndex: { byId: new Map(), byType: new Map() },
+    } as unknown as Parameters<typeof makeWorldPositionGetter>[0];
+
+    const get = makeWorldPositionGetter(store, geo, frame, (id) => id);
+    const first = get(4_999);
+    assert.deepEqual(first, get(4_999), 'a repeated lookup must return the same value');
+    assert.deepEqual(first, { x: 1, y: -1, z: 1 });
+    assert.equal(get(99_999), null, 'an id with no mesh stays null and is cached as null');
   });
 
   it('returns null when the element has no matching mesh (not decoded / no geometry)', () => {

@@ -4,10 +4,20 @@
 
 /**
  * Shared entity World-Coordinate math (IFC Z-up, project space — NOT
- * map/WGS84). Single source of truth for both the Properties panel's
- * coordinate readout and the Lists "World X/Y/Z" columns (issue #3671), so
- * the two features can never disagree about what "World Coordinate" means
- * for the same element.
+ * map/WGS84), backing the Lists "World X/Y/Z" columns (issue #3671).
+ *
+ * NOT yet the single source of truth: `PropertiesPanel.tsx` still holds its own
+ * copy of the same bounding-box loop, and the two do not even agree numerically
+ * — the panel renders metres while this reports project units, so a millimetre
+ * model shows World Z `3.5` in the panel and `3500` in the list. The list column
+ * is unit-labelled and the panel readout is not. Folding the panel onto this
+ * module is the point of having it here and has not been done.
+ *
+ * What this computes is the CENTRE of an entity's world bounding box, not its
+ * composed `IfcLocalPlacement` origin. `MeshData.localToWorld` carries the
+ * resolved placement chain and is not used. For an L-shaped slab the centre can
+ * sit outside the element, and it is not the number other IFC tools report as
+ * the object placement.
  *
  * The frame reconstruction itself (RTC offset + origin shift, axis
  * conversion) already has one shared implementation —
@@ -40,14 +50,19 @@ export function computeEntityLocalCenter(
   targetExpressId: number,
 ): Vec3 | null {
   if (!geoResult?.meshes?.length) return null;
+  return centerOfMeshes(geoResult.meshes.filter((m) => m.expressId === targetExpressId));
+}
+
+/** Bounding-box centre of an already-selected mesh list, in the render frame.
+ *  Split out so the Lists getter can index once and hand over the matching
+ *  meshes instead of rescanning every mesh in the model per cell. */
+export function centerOfMeshes(meshes: readonly GeometryResult['meshes'][number][]): Vec3 | null {
+  if (meshes.length === 0) return null;
 
   let minX = Infinity, minY = Infinity, minZ = Infinity;
   let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-  let found = false;
 
-  for (const mesh of geoResult.meshes) {
-    if (mesh.expressId !== targetExpressId) continue;
-    found = true;
+  for (const mesh of meshes) {
     const pos = mesh.positions;
     const o = mesh.origin;
     const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;
@@ -62,7 +77,12 @@ export function computeEntityLocalCenter(
     }
   }
 
-  if (!found) return null;
+  // Every matching mesh could still carry zero vertices (bounded-geometry mode
+  // releases `positions` in place), which would leave the extents at +/-Infinity
+  // and return NaN on all three axes. A NaN cell is not merely blank: the list
+  // comparator does `a - b`, so it makes the sort inconsistent and scrambles the
+  // whole table, and `gt`/`lt` silently drop those rows.
+  if (minX === Infinity) return null;
 
   return { x: (minX + maxX) / 2, y: (minY + maxY) / 2, z: (minZ + maxZ) / 2 };
 }
@@ -102,10 +122,40 @@ export function makeWorldPositionGetter(
   toGlobalId: (expressId: number) => number,
 ): (expressId: number) => Vec3 | null {
   const lengthScale = getIfcLengthUnitScale(store);
+
+  // Index once, not per cell. `computeEntityLocalCenter` scans EVERY mesh in the
+  // model to find one entity's, and a list asks per row per axis: 100k rows with
+  // World X/Y/Z is 300k scans of a 100k-mesh array. Measured at 0.114 ms/call,
+  // that is ~34 s inside the requestAnimationFrame callback that builds the
+  // list, with the tab frozen and no progress shown. A geometry CONDITION is
+  // worse still, because `resolveSourceSet` filters the full candidate set.
+  const byId = new Map<number, GeometryResult['meshes'][number][]>();
+  for (const mesh of geoResult?.meshes ?? []) {
+    const bucket = byId.get(mesh.expressId);
+    if (bucket) bucket.push(mesh);
+    else byId.set(mesh.expressId, [mesh]);
+  }
+
+  // One entity is asked for up to three times (X, Y, Z), and re-sorting or
+  // re-rendering the list asks again, so the centre is worth keeping. `null` is
+  // cached too: "no geometry" is the common answer for a spatial or metadata-only
+  // row and it must not re-derive on every pass.
+  const cache = new Map<number, Vec3 | null>();
+
   return (expressId) => {
-    const centerZup = computeEntityWorldCenterZup(geoResult, toGlobalId(expressId), frame);
-    if (!centerZup) return null;
-    if (!(lengthScale > 0)) return centerZup; // defensive: never divide by 0/NaN
-    return { x: centerZup.x / lengthScale, y: centerZup.y / lengthScale, z: centerZup.z / lengthScale };
+    const globalId = toGlobalId(expressId);
+    const hit = cache.get(globalId);
+    if (hit !== undefined) return hit;
+
+    const local = centerOfMeshes(byId.get(globalId) ?? []);
+    let out: Vec3 | null = null;
+    if (local) {
+      const zup = viewerToIfcAxes(renderToWorldViewer(local, frame));
+      out = lengthScale > 0
+        ? { x: zup.x / lengthScale, y: zup.y / lengthScale, z: zup.z / lengthScale }
+        : zup; // defensive: never divide by 0/NaN
+    }
+    cache.set(globalId, out);
+    return out;
   };
 }

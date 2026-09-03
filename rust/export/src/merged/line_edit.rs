@@ -12,10 +12,21 @@
 
 use std::collections::HashSet;
 
+use ifc_lite_core::express_id::parse_express_id;
+
 /// Rewrite every `#N` reference in a STEP entity line. `remap(n)` returns
 /// `Some(absolute_id)` to redirect a reference (no offset), or `None` to apply
 /// `offset`. Single-quoted strings are passed through as raw bytes (a `#` there
 /// is literal text), tracking only in/out-of-string state.
+///
+/// A reference above `u32::MAX` is copied through verbatim (#3421). It used to
+/// saturate (CR #2952), which beats the wrapping this file's siblings did but is
+/// still wrong here: `u32::MAX` is itself a legal express id, so the clamped
+/// value went on to `remap` and `offset` like any other and could be redirected
+/// onto a real entity — the same collision, moved onto the sentinel. Emitting
+/// the digits unchanged leaves the reference exactly as authored and exactly as
+/// dangling, and agrees with [`crate::step_text::refs_in_line`], which no longer
+/// collects it (#3740).
 pub fn rewrite_refs(line: &[u8], offset: u32, remap: &impl Fn(u32) -> Option<u32>) -> String {
     let mut out: Vec<u8> = Vec::with_capacity(line.len() + 8);
     let mut i = 0;
@@ -30,20 +41,18 @@ pub fn rewrite_refs(line: &[u8], offset: u32, remap: &impl Fn(u32) -> Option<u32
         }
         if !in_string && b == b'#' {
             let mut j = i + 1;
-            let mut n: u32 = 0;
-            let mut any = false;
             while j < line.len() && line[j].is_ascii_digit() {
-                // Saturate rather than wrap: a malformed reference number wider than
-                // u32 must not silently wrap onto a small, valid id (CR #2952). A
-                // clamped id stays dangling (caught downstream), never mis-pointed.
-                n = n.saturating_mul(10).saturating_add((line[j] - b'0') as u32);
                 j += 1;
-                any = true;
             }
-            if any {
-                let target = remap(n).unwrap_or_else(|| n.saturating_add(offset));
-                out.push(b'#');
-                out.extend_from_slice(target.to_string().as_bytes());
+            if j > i + 1 {
+                match parse_express_id(&line[i + 1..j]) {
+                    Some(n) => {
+                        let target = remap(n).unwrap_or_else(|| n.saturating_add(offset));
+                        out.push(b'#');
+                        out.extend_from_slice(target.to_string().as_bytes());
+                    }
+                    None => out.extend_from_slice(&line[i..j]),
+                }
                 i = j;
                 continue;
             }
@@ -160,13 +169,22 @@ fn split_args(args: &str) -> Vec<&str> {
 }
 
 /// Parse an argument that is exactly one reference (`"#7"` → `7`).
+///
+/// The digit run goes to the workspace's one express-id home rather than to a
+/// local `str::parse` (#3421). Both refuse above `u32::MAX` today, so this is
+/// not a behaviour fix; it is here so this file states the bound once, in
+/// `rewrite_refs` and in the drop analysis that has to agree with it.
+///
+/// `empty::single_ref` and `plan::parse_single_ref` are the same three lines
+/// against `str::parse` and are deliberately left alone: they are correct at
+/// the bound, so folding them in would be a pure refactor riding on a fix.
 fn parse_ref(arg: &str) -> Option<u32> {
     let t = arg.trim();
     let digits = t.strip_prefix('#')?;
     if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
         return None;
     }
-    digits.parse().ok()
+    parse_express_id(digits.as_bytes())
 }
 
 /// True when `arg` is a list literal (`(…)`).

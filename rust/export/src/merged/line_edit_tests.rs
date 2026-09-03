@@ -97,3 +97,83 @@ fn rewriting_preserves_every_other_attribute_verbatim() {
     };
     assert_eq!(out, "#9=IFCRELDEFINESBYPROPERTIES('g',$,'A, (b) #2',$,(#3),#4);");
 }
+
+/// #3421, both directions of the express-id bound in `rewrite_refs`.
+///
+/// #3740 migrated this crate's other reference reader (`step_text::refs_in_line`)
+/// off wrapping arithmetic and left this one, which had been given a different
+/// third policy: saturate (CR #2952). Saturating removed the wrap but clamped to
+/// `u32::MAX`, which is itself a legal express id and goes through `remap` and
+/// `offset` like any other — the same collision with a real entity, moved onto
+/// the sentinel.
+#[test]
+fn an_oversized_reference_is_neither_wrapped_nor_clamped_onto_a_real_id() {
+    let mut remap = std::collections::HashMap::new();
+    remap.insert(2u32, 100u32);
+    remap.insert(u32::MAX, 200u32);
+    let out = rewrite_refs(
+        b"#3=IFCRELAGGREGATES('g',$,$,$,#4294967298,(#1));",
+        10,
+        &|n| remap.get(&n).copied(),
+    );
+    assert!(
+        !out.contains("#100"),
+        "wrapping 2^32+2 to #2 puts the reference through #2's remap: {out}"
+    );
+    assert!(
+        !out.contains("#200"),
+        "clamping to u32::MAX puts the reference through u32::MAX's remap: {out}"
+    );
+    assert!(
+        out.contains("#4294967298"),
+        "the digits must survive as authored, so the reference stays exactly \
+         as dangling as it was: {out}"
+    );
+    assert!(out.contains("(#11)"), "real references still shift: {out}");
+
+    // The other half of the saturating path, which the remap above shadows:
+    // with NOTHING mapped for u32::MAX the clamp fell through to `offset`, and
+    // `u32::MAX.saturating_add(offset)` is still u32::MAX — a legal express id
+    // another model in the merge may really hold.
+    let unmapped = rewrite_refs(b"#3=IFCX(#4294967298);", 10, &|_| None);
+    assert_eq!(
+        unmapped, "#13=IFCX(#4294967298);",
+        "clamping to u32::MAX and offsetting it lands the reference on a legal \
+         express id instead of leaving it dangling"
+    );
+}
+
+#[test]
+fn a_reference_at_exactly_u32_max_is_still_remapped() {
+    // The other direction: u32::MAX is a legal express id, so it must still be
+    // read as one and go through the remap rather than being dropped.
+    let mut remap = std::collections::HashMap::new();
+    remap.insert(u32::MAX, 200u32);
+    // The line's own id shifts by the offset like any other reference.
+    let out = rewrite_refs(b"#3=IFCX(#4294967295);", 10, &|n| remap.get(&n).copied());
+    assert_eq!(out, "#13=IFCX(#200);");
+}
+
+#[test]
+fn classify_refs_holds_the_same_bound_as_the_rewrite() {
+    // `parse_ref` shares the bound, so the drop analysis and the rewrite cannot
+    // disagree about which digit runs are references at all (#3421).
+    let slots = classify_refs("#9=IFCRELAGGREGATES('g',$,$,$,#4294967298,(#4294967297));")
+        .expect("parseable line");
+    assert!(
+        slots.is_empty(),
+        "2^32+2 and 2^32+1 must not wrap onto the real #2 and #1, which would \
+         let the drop analysis rewrite or delete a line over an entity it never \
+         referenced: {slots:?}"
+    );
+
+    // And a legal u32::MAX argument is still a reference in the slot it sits in.
+    let at_bound = classify_refs("#9=IFCX(#4294967295,(#4294967294));").expect("parseable line");
+    assert_eq!(
+        at_bound,
+        vec![
+            (u32::MAX, RefSlot::Single),
+            (u32::MAX - 1, RefSlot::ListElement)
+        ]
+    );
+}

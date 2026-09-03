@@ -6,7 +6,7 @@
 //! the `_tests.rs` suffix convention.
 
 use super::*;
-use ifc_lite_core::EntityScanner;
+use ifc_lite_core::{express_id::parse_express_id, EntityScanner};
 
 fn scan_ids(step: &str) -> Vec<u32> {
     let bytes = step.as_bytes();
@@ -55,36 +55,7 @@ fn merge_two_models_unifies_project_and_offsets_ids() {
     );
 
     // No dangling references: every #ref resolves to a written id.
-    let idset: std::collections::HashSet<u32> = ids.into_iter().collect();
-    for line in merged.lines().filter(|l| l.starts_with('#')) {
-        // collect refs after the leading id
-        let body = &line[1..];
-        let after_eq = body.find('=').map(|e| &body[e..]).unwrap_or(body);
-        let mut i = 0;
-        let bytes = after_eq.as_bytes();
-        let mut in_str = false;
-        while i < bytes.len() {
-            let c = bytes[i];
-            if c == b'\'' {
-                in_str = !in_str;
-            } else if !in_str && c == b'#' {
-                let mut j = i + 1;
-                let mut n = 0u32;
-                let mut any = false;
-                while j < bytes.len() && bytes[j].is_ascii_digit() {
-                    n = n * 10 + (bytes[j] - b'0') as u32;
-                    j += 1;
-                    any = true;
-                }
-                if any {
-                    assert!(idset.contains(&n), "dangling ref #{n}");
-                    i = j;
-                    continue;
-                }
-            }
-            i += 1;
-        }
-    }
+    assert_no_dangling(&merged);
 }
 // `escape()` and `detect_schema()` are no longer private forks of this
 // module: `merged.rs` imports `escape` from `step_text.rs` and `detect_schema`
@@ -399,14 +370,22 @@ fn assert_no_dangling(step: &str) {
                 in_str = !in_str;
             } else if !in_str && c == b'#' {
                 let mut j = i + 1;
-                let mut n = 0u32;
-                let mut any = false;
                 while j < bytes.len() && bytes[j].is_ascii_digit() {
-                    n = n * 10 + (bytes[j] - b'0') as u32;
                     j += 1;
-                    any = true;
                 }
-                if any {
+                if j > i + 1 {
+                    // Through the shared express-id home, so the oracle holds the
+                    // same bound as the code it audits (#3421). A run past
+                    // u32::MAX is dangling by construction — no id column can
+                    // hold it — and `rewrite_refs` now emits such a run
+                    // verbatim, so this is the assertion that would see it. The
+                    // old `n * 10 + d` accumulator could not: it overflowed
+                    // (a debug panic) or wrapped onto a real written id and
+                    // passed.
+                    let digits = String::from_utf8_lossy(&bytes[i + 1..j]);
+                    let n = parse_express_id(&bytes[i + 1..j]).unwrap_or_else(|| {
+                        panic!("dangling ref #{digits} (above u32::MAX) in {line:?}")
+                    });
                     assert!(ids.contains(&n), "dangling ref #{n} in {line:?}");
                     i = j;
                     continue;
@@ -415,6 +394,27 @@ fn assert_no_dangling(step: &str) {
             i += 1;
         }
     }
+}
+
+#[test]
+#[should_panic(expected = "above u32::MAX")]
+fn the_dangling_oracle_reports_a_reference_past_the_id_space() {
+    // `rewrite_refs` now emits a reference above u32::MAX verbatim (#3421), so
+    // this oracle is the assertion that has to see it, and the 20-odd tests that
+    // call it are only as good as its bound. `#4294967297` is 2^32+1: the old
+    // `n * 10 + d` accumulator wrapped it onto the real, written `#1` and let the
+    // merged file pass as free of dangling references.
+    assert_no_dangling("#1=IFCPROJECT('g',$);\n#2=IFCSHAPEREPRESENTATION(#4294967297);\n");
+}
+
+#[test]
+fn the_dangling_oracle_resolves_a_reference_at_exactly_u32_max() {
+    // The other direction: u32::MAX is a legal express id on both sides, so a
+    // record written under it must satisfy a reference naming it rather than be
+    // reported as dangling.
+    assert_no_dangling(
+        "#4294967295=IFCPROJECT('g',$);\n#2=IFCSHAPEREPRESENTATION(#4294967295);\n",
+    );
 }
 
 /// Every `#N` reference in a line's attribute list (after `=`), skipping the
@@ -431,15 +431,15 @@ fn refs_in_line(line: &str) -> Vec<u32> {
             in_str = !in_str;
         } else if !in_str && c == b'#' {
             let mut j = i + 1;
-            let mut n = 0u32;
-            let mut any = false;
             while j < bytes.len() && bytes[j].is_ascii_digit() {
-                n = n * 10 + (bytes[j] - b'0') as u32;
                 j += 1;
-                any = true;
             }
-            if any {
-                out.push(n);
+            if j > i + 1 {
+                // Drops a run past u32::MAX, mirroring the production
+                // `step_text::refs_in_line` this helper stands in for (#3421).
+                if let Some(n) = parse_express_id(&bytes[i + 1..j]) {
+                    out.push(n);
+                }
                 i = j;
                 continue;
             }

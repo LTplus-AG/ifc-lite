@@ -90,6 +90,7 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
   for (const observed of [
     'Detect changes',
     'Build packages + WASM',
+    'Changed tests observe production',
     'Typecheck',
     'Lint',
     'Node tests',
@@ -104,7 +105,7 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
   ]) {
     assert.ok(names.includes(observed), `derived set is missing the observed lane "${observed}"`);
   }
-  assert.equal(names.length, 17);
+  assert.equal(names.length, 18);
 });
 
 test('FAIL CLOSED: an empty workflow file is NO_WORKFLOW_TEXT, not an empty lane set', () => {

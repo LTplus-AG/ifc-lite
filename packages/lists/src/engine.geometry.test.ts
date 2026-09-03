@@ -53,6 +53,24 @@ describe('geometry (World Coordinate) column/condition (#3671)', () => {
     expect(result.rows.find(r => r.entityId === 1)!.values[0]).toBe(100.5);
   });
 
+  it('an axis that is not X/Y/Z resolves to null, not to X (#3734)', () => {
+    // `case 'X'` and `default` used to share a body, so a column whose axis is
+    // anything else reported the X coordinate under a header saying something
+    // else. A blank cell is a visible gap; a plausible number under the wrong
+    // label is a wrong answer that reads as a right one.
+    const result = executeList(walls([{ id: 'g', source: 'geometry', propertyName: 'Q' }]), createProvider(positions));
+    expect(result.rows.find(r => r.entityId === 1)!.values[0]).toBeNull();
+  });
+
+  it('a blank axis still means X, which is the documented default (#3734)', () => {
+    // The narrowing above must not swallow the default. Whitespace-only counts
+    // as absent, matching how a blank name is treated elsewhere in the repo.
+    for (const axis of ['', '  ', 'x']) {
+      const result = executeList(walls([{ id: 'g', source: 'geometry', propertyName: axis }]), createProvider(positions));
+      expect(result.rows.find(r => r.entityId === 1)!.values[0], `axis ${JSON.stringify(axis)}`).toBe(100.5);
+    }
+  });
+
   it('resolves the Y axis', () => {
     const result = executeList(walls([{ id: 'g', source: 'geometry', propertyName: 'Y' }]), createProvider(positions));
     expect(result.rows.find(r => r.entityId === 1)!.values[0]).toBe(-25.25);

@@ -18,7 +18,16 @@ import type { CellValue, ListDataProvider } from './types.js';
 const WORLD_COORDINATE_QUANTITY_TYPE = QuantityType.Length;
 
 /** Resolve a `geometry` column/condition to one axis of the element's World
- *  Coordinate. `axis` is matched case-insensitively (`X` default). */
+ *  Coordinate. `axis` is matched case-insensitively; absent or blank means X.
+ *
+ *  AN AXIS THAT IS NOT X/Y/Z RESOLVES TO NULL, NOT TO X (#3734). It used to
+ *  share the `default` arm with `case 'X'`, so a column whose axis was `Q` --
+ *  a hand-edited saved list, a definition from a schema that grew an axis this
+ *  build does not know -- reported the X coordinate under a header saying
+ *  something else. An empty cell is a visible gap; a plausible number under
+ *  the wrong label is a wrong answer that reads as a right one, and nothing
+ *  downstream can tell them apart. Blank still means X, which is the
+ *  documented default for a column created without an axis. */
 export function getWorldCoordinateValue(
   entityId: number,
   axis: string,
@@ -26,11 +35,12 @@ export function getWorldCoordinateValue(
 ): CellValue {
   const pos = provider.getWorldPosition?.(entityId);
   if (!pos) return null;
-  switch (axis.toUpperCase()) {
+  switch (axis.trim().toUpperCase()) {
     case 'Y': return pos.y;
     case 'Z': return pos.z;
     case 'X':
-    default: return pos.x;
+    case '': return pos.x;
+    default: return null;
   }
 }
 

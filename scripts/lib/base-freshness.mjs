@@ -63,7 +63,15 @@ export function discoverSnapshots({ trackedFiles, readFile, isRepoFile }) {
   const snapshots = [];
   for (const path of trackedFiles) {
     if (!/\.(txt|json)$/.test(path)) continue;
-    if (!/(allowlist|baseline)/i.test(path)) continue;
+    // F4 (#3726 review): the name filter is a PREFILTER, not the definition.
+    // It missed `scripts/agents-md-budget.txt`, which is a genuine whole-tree
+    // snapshot -- rows of ` <budget> <path>`, an "AGENTS.md ratchet" lane on
+    // every PR head, and therefore exactly the incident shape: a PR grows
+    // `apps/viewer/AGENTS.md` while main re-records the budget. `budget` and
+    // `ratchet` are added because the family is named three different ways in
+    // this repo. The real test is still the one below -- the file must record
+    // paths that exist -- which is what keeps this from matching prose.
+    if (!/(allowlist|baseline|budget|ratchet)/i.test(path)) continue;
     const inputs = recordedFiles(readFile(path), isRepoFile);
     if (inputs.size === 0) continue;
     snapshots.push({ path, inputs });

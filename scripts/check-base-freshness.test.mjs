@@ -291,3 +291,80 @@ test('#3726: an unevaluated PR is counted, and never labelled STALE', () => {
   assert.match(clean, /0 of 36 open PR\(s\) STALE\./);
   assert.doesNotMatch(clean, /COULD NOT BE EVALUATED/);
 });
+
+test('#3726: the PR-side row granularity is load-bearing, not decorative', () => {
+  // Mutating `rowsChangedInPr` away left the whole suite green (F3 of the
+  // pre-flight review), which is the shape this repo keeps paying for: the
+  // narrowing that stops 12 of 20 false positives had nothing holding it.
+  //
+  // The PR re-records the allowlist but only moves the row for `a.ts`. Main
+  // changed `b.ts`, which the allowlist also pins. At whole-file granularity
+  // that is a coupling; at row granularity it is not, because the PR's own
+  // edit and main's change touch different pinned files.
+  const snapshots = [{ path: ALLOWLIST, inputs: new Set(['a.ts', 'b.ts']) }];
+  const shared = { prFiles: [ALLOWLIST], movedFiles: ['b.ts'], snapshots };
+
+  const rowGranular = evaluateFreshness({
+    ...shared,
+    rowsChangedInPr: new Map([[ALLOWLIST, new Set(['a.ts'])]]),
+  });
+  assert.equal(rowGranular.stale, false, 'the PR moved a row main did not touch');
+
+  // Same inputs, no PR rows recorded: falls back to the whole pinned set and
+  // fires. This is the pre-fix behaviour, and it is what the fallback must
+  // still do for a replay that carries no rows.
+  const wholeFile = evaluateFreshness({ ...shared, rowsChangedInPr: new Map() });
+  assert.equal(wholeFile.stale, true);
+  assert.equal(wholeFile.couplings[0].direction, 'pr-recorded');
+
+  // And the narrowing must not swallow a REAL coupling: the PR moves the row
+  // for the very file main changed.
+  const realCoupling = evaluateFreshness({
+    ...shared,
+    rowsChangedInPr: new Map([[ALLOWLIST, new Set(['b.ts'])]]),
+  });
+  assert.equal(realCoupling.stale, true);
+  assert.equal(realCoupling.couplings[0].direction, 'pr-recorded');
+});
+
+test('#3726: the two patch shapes yield identical rows', () => {
+  // The same parser reads GitHub's `patch` (starts at `@@`) and `git diff -U0`
+  // (carries `diff --git`, `index`, `---`, `+++`). The property that matters is
+  // that they agree -- one side of this gate is fed from each. Verified on real
+  // PRs during review (#3723: 6/6 rows, #3689: 53/53); pinned here so a change
+  // to the line classifier cannot silently split them.
+  const rows = [
+    '-  400 scripts/check-module-size.mjs',
+    '+  446 scripts/check-module-size.mjs',
+  ];
+  const githubPatch = ['@@ -1 +1 @@', ...rows].join('\n');
+  const gitPatch = [
+    'diff --git a/scripts/module-size-allowlist.txt b/scripts/module-size-allowlist.txt',
+    'index 1111111..2222222 100644',
+    '--- a/scripts/module-size-allowlist.txt',
+    '+++ b/scripts/module-size-allowlist.txt',
+    '@@ -1 +1 @@',
+    ...rows,
+  ].join('\n');
+  const isRepoFile = (p) =>
+    p === 'scripts/check-module-size.mjs' || p === 'scripts/module-size-allowlist.txt';
+
+  assert.deepEqual(
+    [...rowsChangedInPatch(gitPatch, isRepoFile)],
+    [...rowsChangedInPatch(githubPatch, isRepoFile)]
+  );
+  assert.deepEqual([...rowsChangedInPatch(gitPatch, isRepoFile)], [
+    'scripts/check-module-size.mjs',
+  ]);
+
+  // The `---`/`+++` skip cannot be killed by mutation and that is worth stating
+  // rather than contriving a test for: git's headers carry `a/` and `b/`
+  // prefixes, so they resolve to `a/scripts/...` and fail `isRepoFile` anyway,
+  // and GitHub's patches have no header lines at all. The skip is defensive
+  // against a `--no-prefix` diff, which nothing here produces today.
+  const noPrefix = ['--- scripts/module-size-allowlist.txt', '@@ -1 +0 @@', ...rows].join('\n');
+  assert.ok(
+    !rowsChangedInPatch(noPrefix, isRepoFile).has('scripts/module-size-allowlist.txt'),
+    'a --no-prefix header must not be read as a moved row'
+  );
+});

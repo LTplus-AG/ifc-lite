@@ -123,6 +123,48 @@ function git(args) {
   });
 }
 
+/**
+ * Refuse to run against a checkout that is not main.
+ *
+ * `mainTip` is the checkout's HEAD, which on `push: main` is the commit that
+ * triggered the run. From anywhere else it is a lie with a confident verdict
+ * attached. Measured on PR #3710, which is STALE on main: from the PR's branch
+ * tip it reads "OK, main has gained 4 commit(s)"; from a checkout at the PR's
+ * own base, "OK, 0 commit(s)"; from a checkout 30 commits older, "STALE, 0
+ * commit(s) touching 209 file(s)", citing a snapshot out of a REVERSED diff.
+ * Three different answers, none of them flagged as suspect.
+ *
+ * This matters in CI and not only locally: the workflow carries
+ * `workflow_dispatch`, and its concurrency group is keyed on `github.ref`, so a
+ * dispatch on a feature branch runs `--all --label` alongside main's own sweep
+ * and DELETEs correct `base-stale` labels on its way through.
+ */
+function resolveMainTip(repo) {
+  // `refs/remotes/origin/main` first, so a run from a feature branch still
+  // measures against main. HEAD is the fallback for the sweep's own checkout,
+  // where `push: main` means HEAD IS main and a remote-tracking ref may not
+  // have been created.
+  let tip;
+  try {
+    tip = git(['rev-parse', 'refs/remotes/origin/main']).trim();
+  } catch {
+    tip = git(['rev-parse', 'HEAD']).trim();
+  }
+
+  // Whichever it came from, it must actually BE main, and that is checked
+  // against the API rather than assumed. A local ref can be stale by days.
+  const remote = ghJson(['api', `repos/${repo}/commits/main`], "main's tip").sha;
+  if (tip === remote) return tip;
+  console.error(
+    `check-base-freshness: the local main this run would measure against is ${tip.slice(0, 9)}, ` +
+      `but ${repo}'s main is at ${remote.slice(0, 9)}. Every diff here comes from the local ` +
+      'object database, so measuring against the wrong tree produces a verdict that is wrong ' +
+      'with full confidence -- one PR read OK, OK and STALE from three different checkouts. ' +
+      'Run `git fetch origin main` and try again.'
+  );
+  process.exit(2);
+}
+
 /** Is this commit in the local object database? */
 function haveCommit(sha) {
   try {
@@ -378,18 +420,22 @@ function main() {
   // same window between its checkout and an API read, and
   // `cancel-in-progress` does not close it. So the tip is the checkout's own
   // HEAD, which on `push: main` IS the commit that triggered the run.
-  const mainTip = git(['rev-parse', 'HEAD']).trim();
+  const mainTip = resolveMainTip(repo);
 
   if (opts.pr) {
     const pr = ghJson(['api', `repos/${repo}/pulls/${opts.pr}`], `PR #${opts.pr}`);
-    const report = evaluatePr(
-      repo,
-      { number: pr.number, headRefOid: pr.head.sha },
-      mainTip,
-      snapshots
-    );
-    const verdict = formatVerdict(report);
-    console.log(verdict);
+    let report;
+    try {
+      report = evaluatePr(repo, { number: pr.number, headRefOid: pr.head.sha }, mainTip, snapshots);
+    } catch (err) {
+      // Exit 2, NOT 1. Exit 1 is the STALE verdict, so crashing with it tells a
+      // caller reading the exit code that the PR is stale -- a verdict this run
+      // never reached. Unevaluated is its own outcome here exactly as it is in
+      // the sweep.
+      console.error(`check-base-freshness: PR #${opts.pr} could not be evaluated: ${err.message}`);
+      process.exit(2);
+    }
+    console.log(formatVerdict(report));
     process.exit(report.result.stale ? 1 : 0);
   }
 
@@ -399,10 +445,19 @@ function main() {
   }
 
   // NDJSON, one PR per line: `--jq` and `--slurp` are mutually exclusive in gh.
+  // `base=main` IS LOAD-BEARING, not tidiness. A stacked PR's tested base is
+  // its parent FEATURE BRANCH, and `git diff base..main` between two tips that
+  // are not ancestors reverses the parent branch's own edits into the result --
+  // so main appears to have touched files it never touched. Measured: 5 of 36
+  // open PRs are stacked, and 4 of their base branches differ from main on a
+  // snapshot; for #3405 the phantom "main moved" rows included
+  // `apps/viewer/src/hooks/useBCF.ts` and `useIDS.ts`, which main never
+  // touched -- the base branch added them. A PR stacked on that branch and
+  // editing `useBCF.ts` would be labelled for a coupling that does not exist.
   const open = ghText([
     'api',
     '--paginate',
-    `repos/${repo}/pulls?state=open&per_page=100`,
+    `repos/${repo}/pulls?state=open&base=main&per_page=100`,
     '--jq',
     '.[] | {number, headRefOid: .head.sha}',
   ])

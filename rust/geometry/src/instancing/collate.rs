@@ -250,6 +250,19 @@ pub fn collate_refs_verified_in(
         // place the group's pose-only placeholders (see `fall_back`).
         let m_ref_inv = m_ref.try_inverse();
 
+        // The template is the geometry EVERY occurrence in this group will be
+        // drawn with, and it is the one member nothing checks: it pairs with
+        // itself trivially (the `i == t_idx` short-circuit below), while
+        // pose-only and rigid members are exempt by design. So a group of a
+        // non-finite template plus placeholders had no member the reconstruction
+        // check ever looked at, and substituted the NaN geometry once per
+        // occurrence. Check it once, here, and refuse the group — with `None`,
+        // because placing anything against untrustworthy geometry is the thing
+        // being prevented.
+        if !template.positions.iter().all(|p| p.is_finite()) {
+            fall_back(&mut out, meshes, rep, members, t_idx, None, rtc);
+            continue;
+        }
         if members.len() < min_group.max(1) {
             fall_back(&mut out, meshes, rep, members, t_idx, m_ref_inv.as_ref(), rtc);
             continue;

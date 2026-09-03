@@ -1955,3 +1955,43 @@ fn a_singular_template_placement_counts_the_placeholders_it_cannot_place() {
         "the placeholder that could not be placed is reported, not silently gone"
     );
 }
+
+#[test]
+fn a_non_finite_template_is_never_substituted_into_its_occurrences() {
+    // The template is the geometry EVERY occurrence in the group is drawn with,
+    // and nothing verifies it: it pairs with itself trivially, so the `i ==
+    // t_idx` short-circuit skips it, and pose-only and rigid members are exempt
+    // by design. A group of one NaN template plus placeholders therefore had no
+    // member the reconstruction check ever looked at, and shipped the NaN
+    // geometry once per occurrence. Check the template's own positions once, up
+    // front, and fail the group closed.
+    let p0 = Matrix4::new_translation(&nalgebra::Vector3::new(3.0, 0.0, 0.0));
+    let p1 = Matrix4::new_translation(&nalgebra::Vector3::new(0.0, 6.0, 0.0));
+    let p2 = Matrix4::new_translation(&nalgebra::Vector3::new(0.0, 0.0, 9.0));
+    let meta = |m: &Matrix4<f64>| InstanceMeta {
+        transform: mat_rm(m),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 9393,
+        instanceable: true,
+    };
+    let mut template = mesh_from(baked(&CANON, &p0), meta(&p0));
+    template.positions[4] = f32::NAN;
+    let (m1, m2) = (meta(&p1), meta(&p2));
+    let refs = vec![
+        InstanceMeshRef::from_mesh(&template),
+        placeholder_ref(&m1, 1),
+        placeholder_ref(&m2, 2),
+    ];
+    let collated = collate_refs(&refs, 2, [0.0, 0.0, 0.0]);
+    assert_eq!(
+        collated.templates.len(),
+        0,
+        "a NaN template must not be substituted into its occurrences"
+    );
+    assert_eq!(collated.flat_indices, vec![0], "the template still draws its own geometry");
+    assert_eq!(
+        collated.dropped_placeholders, 2,
+        "the placeholders it could not be trusted to supply are reported"
+    );
+}

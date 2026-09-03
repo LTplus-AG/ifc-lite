@@ -552,7 +552,16 @@ test('a re-run after a TRANSIENT drop re-posts the finding and then passes', () 
   assert.match(second.state.issueComments[0].body, /count=2 -->/);
 });
 
-test('FAIL: a clean verdict over our OWN findings on this head is refused', () => {
+test('a clean run over our OWN standing findings records them instead of deadlocking', () => {
+  // This used to throw CLEAN_CONTRADICTED and exit 1. The remedy it printed was
+  // "re-run the review", but a re-run reproduces the state exactly: the prior
+  // comment is still anchored, this run still finds nothing. So the lane failed
+  // FOREVER on that commit until a human deleted a comment. Measured on #3669:
+  // three consecutive runs, identical failure, no path out.
+  //
+  // The requirement that mattered has not changed and is still asserted below:
+  // a `verdict=clean` marker must never bury a live finding. What changed is
+  // that the honest outcome -- the findings STAND -- is now reachable.
   const seeded = {
     id: 901,
     user: { login: REVIEWER },
@@ -563,9 +572,29 @@ test('FAIL: a clean verdict over our OWN findings on this head is refused', () =
     body: 'An earlier run of this same head found this.',
   };
   const r = runPoster({ findings: [], state: { reviewComments: [seeded] } });
-  assert.equal(r.code, 1, r.out);
-  assert.match(r.out, /CLEAN_CONTRADICTED/);
-  assert.doesNotMatch(allBodies(r.state), /verdict=clean/, 'a clean marker must not bury a live finding');
+
+  assert.equal(r.code, 0, `the lane must not deadlock:\n${r.out}`);
+  assert.match(r.out, /CONTRADICTED/, 'the disagreement must be stated in the log, not swallowed');
+
+  const bodies = allBodies(r.state);
+  // THE ORIGINAL INVARIANT, unchanged.
+  assert.doesNotMatch(bodies, /verdict=clean/, 'a clean marker must not bury a live finding');
+  // ...and the marker the gate reads says findings, with the confirmed count.
+  assert.match(bodies, new RegExp(`<!-- ifc-lite-review sha=${SHA} verdict=findings count=1`));
+  // The summary must not contradict itself the way the generic body would:
+  // "0 findings" as a heading over "1 inline comment confirmed".
+  assert.doesNotMatch(bodies, /### Claude review - 0 finding/);
+  assert.match(bodies, /standing finding/);
+});
+
+test('the withdrawal path still reaches clean once the comments are gone', () => {
+  // The escape hatch the old error described is the ONLY thing that still needs
+  // a human, and it must keep working: delete the inline comments, re-run, and
+  // the verdict becomes clean through the ordinary path. Without this test the
+  // fix above could have made `clean` unreachable and nothing would say so.
+  const r = runPoster({ findings: [], state: { reviewComments: [] } });
+  assert.equal(r.code, 0, r.out);
+  assert.match(allBodies(r.state), new RegExp(`<!-- ifc-lite-review sha=${SHA} verdict=clean count=0`));
 });
 
 // ========================================================= identity boundaries

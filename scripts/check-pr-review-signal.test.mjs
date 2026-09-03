@@ -886,6 +886,34 @@ test('#3729: where the clock CANNOT rule the review out, the finding says so ins
   assert.match(r.output, /the clock cannot rule out that it saw the head/);
 });
 
+test('#3729: an UNREADABLE `submitted_at` is undated too, not "not older than the head"', () => {
+  // The renderer used to ask `submittedAt === null`, which is a narrower
+  // question than "is this a readable time". Offline state and a malformed API
+  // row can both carry `''` or `'not-a-date'`: not null, so the old shape fell
+  // through to "its `submitted_at` is not older than the head commit" — a
+  // claim about a comparison that never ran, since `ageAgainstCommit` returns
+  // null for these exactly as it does for a missing value.
+  // NOT included: the string '0'. `Date.parse('0')` is a real date (the year
+  // 2000), so it is readable-but-absurd rather than unreadable, and it takes
+  // the predates-head branch instead. `review-provenance.test.mjs` covers the
+  // numeric-zero case on its own; conflating the two here would assert a
+  // behaviour this renderer does not have.
+  for (const bad of ['', '   ', 'not-a-date']) {
+    const broken = {
+      ...STATE_3276(OLD_3276),
+      reviews: [{ ...REVIEW_3276(OLD_3276), submitted_at: bad }],
+    };
+    const r = run(broken, ON());
+    assert.match(r.output, /STALE_REVIEW: `CodeRabbit`/, `submitted_at=${JSON.stringify(bad)}`);
+    assert.match(
+      r.output,
+      /carries no readable `submitted_at`, so the clock was not consulted at all/,
+      `submitted_at=${JSON.stringify(bad)}`
+    );
+    assert.doesNotMatch(r.output, /is not older than the head commit/, `submitted_at=${JSON.stringify(bad)}`);
+  }
+});
+
 test('#3729: an UNDATED review gets the third sentence — the clock was not consulted at all', () => {
   // `predatesHeadBy` is `null` for TWO different reasons and they are not the
   // same statement: "submitted after the head commit, so this proves nothing"
@@ -899,7 +927,7 @@ test('#3729: an UNDATED review gets the third sentence — the clock was not con
   };
   const r = run(undated, ON());
   assert.match(r.output, /STALE_REVIEW: `CodeRabbit`/);
-  assert.match(r.output, /carries no `submitted_at`, so the clock was not consulted at all/);
+  assert.match(r.output, /carries no readable `submitted_at`, so the clock was not consulted at all/);
   assert.doesNotMatch(r.output, /is not older than the head commit/);
   assert.doesNotMatch(r.output, /BEFORE the head commit was made/);
 

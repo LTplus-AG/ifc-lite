@@ -74,6 +74,7 @@ import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { renderSiblingRow } from './sibling-row.mjs';
+import { buildRetrySection } from './retry-prompt.mjs';
 
 export class RunReviewerError extends Error {
   constructor(reason, message) {
@@ -142,8 +143,7 @@ export function promptSafePath(path) {
   return JSON.stringify(String(path)).replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 }
 
-/** Assemble the full prompt: trusted rubric, then fenced untrusted diff. */
-export function buildPrompt(rubric, input) {
+export function buildPrompt(rubric, input, opts = {}) { // trusted rubric + fenced diff; opts.retryNote: see retry-prompt.mjs
   const files = input.files
     .map((f) => `--- FILE: ${f.path}\n${f.patch}`)
     .join('\n\n');
@@ -234,7 +234,7 @@ export function buildPrompt(rubric, input) {
     fenceUntrusted(files),
     unreviewable,
     roster,
-    ...sections,
+    ...sections, ...buildRetrySection(opts.retryNote, fenceUntrusted), // #3652 retry, sibling-extracted
     '',
     'Emit the JSON described above and nothing else.',
   ].join('\n');
@@ -465,8 +465,8 @@ export function resolveTokens(env) {
 }
 
 function main() {
-  const args = { rubric: null, input: null, out: null, model: 'sonnet' };
-  const FLAGS = new Map([['--rubric', 'rubric'], ['--input', 'input'], ['--out', 'out'], ['--model', 'model']]);
+  const args = { rubric: null, input: null, out: null, model: 'sonnet', retryNote: null };
+  const FLAGS = new Map([['--rubric', 'rubric'], ['--input', 'input'], ['--out', 'out'], ['--model', 'model'], ['--retry-note', 'retryNote']]); // optional: retry-prompt.mjs
   const argv = process.argv.slice(2);
   for (let i = 0; i < argv.length; i += 1) {
     const key = FLAGS.get(argv[i]);
@@ -481,7 +481,7 @@ function main() {
 
   const rubric = readFileSync(args.rubric, 'utf8');
   const input = JSON.parse(readFileSync(args.input, 'utf8'));
-  const prompt = buildPrompt(rubric, input);
+  const prompt = buildPrompt(rubric, input, { retryNote: args.retryNote ? readFileSync(args.retryNote, 'utf8') : null });
 
   const tokens = resolveTokens(process.env);
   if (tokens.length === 0) {

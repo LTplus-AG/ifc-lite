@@ -152,3 +152,111 @@ describe('shadowed rel ids survive a cache round-trip (#3782)', () => {
     expect(edge.shadowedRelationshipIds).toBeUndefined();
   });
 });
+
+/**
+ * `readEdges`'s v17 shadow-id trailer had the SAME gap the (offset, count)
+ * guard above closed for the base edge arrays: `readUint32Array` bounds-
+ * checks against the buffer's remaining bytes, not against whether the
+ * VALUES it read are internally consistent. Probed against `getEdges`'s
+ * `binarySearchU32` + `shadowedRelIds.subarray(...)` before the guard
+ * existed: a non-ascending `shadowedEdgeIndex` attaches an id to the WRONG
+ * edge and loses another; a `shadowedGroupOffsets` entry past the real
+ * `shadowedRelIds` length silently clamps the slice; a `shadowedEdgeIndex`
+ * entry past `edgeCount` makes the whole group unreachable (never found by
+ * binary search, silently dropped); `shadowedGroupOffsets` not starting at
+ * 0, or two equal neighbours (an empty group), corrupt the layout the same
+ * way — all four are wrong data returned with no error, not a crash.
+ */
+describe('shadowed-rel-ids trailer corruption guard (#3782 round 3)', () => {
+  /** One forward node (entityId=1) with two well-formed edges (targets 42,
+   *  43; rel ids 100, 200) — a real edgeCount of 2 for the trailer to be
+   *  validated against. Inverse half is empty and well-formed. The shadow
+   *  trailer itself is exactly what `opts` supplies, unvalidated by this
+   *  helper — the corruption under test. */
+  function buildV17Buffer(opts: {
+    shadowedEdgeIndex: number[];
+    shadowedGroupOffsets: number[];
+    shadowedRelIds: number[];
+  }): ArrayBuffer {
+    const w = new BufferWriter();
+    w.writeUint32(1); // nodeCount
+    w.writeUint32(1); // entityId
+    w.writeUint32(0); // offset
+    w.writeUint32(2); // count
+    w.writeUint32(2); // edgeCount
+    w.writeTypedArray(new Uint32Array([42, 43])); // edgeTargets
+    w.writeTypedArray(new Uint16Array([RelationshipType.ContainsElements, RelationshipType.ContainsElements])); // edgeTypes
+    w.writeTypedArray(new Uint32Array([100, 200])); // edgeRelIds
+    w.writeUint32(opts.shadowedEdgeIndex.length);
+    w.writeTypedArray(new Uint32Array(opts.shadowedEdgeIndex));
+    w.writeTypedArray(new Uint32Array(opts.shadowedGroupOffsets));
+    w.writeUint32(opts.shadowedRelIds.length);
+    w.writeTypedArray(new Uint32Array(opts.shadowedRelIds));
+    // inverse: empty, well-formed, zero-group trailer.
+    w.writeUint32(0);
+    w.writeUint32(0);
+    w.writeUint32(0);
+    w.writeTypedArray(new Uint32Array(0));
+    w.writeTypedArray(new Uint32Array([0]));
+    w.writeUint32(0);
+    w.writeTypedArray(new Uint32Array(0));
+    return w.build();
+  }
+
+  it('accepts a well-formed multi-group trailer (sanity check for the helper below)', () => {
+    const buf = buildV17Buffer({
+      shadowedEdgeIndex: [0, 1],
+      shadowedGroupOffsets: [0, 1, 3],
+      shadowedRelIds: [7001, 8001, 8002],
+    });
+    const reader = new BufferReader(buf);
+    const graph = readRelationships(reader, 17);
+    expect(graph.forward.getEdges(1, RelationshipType.ContainsElements)[0].shadowedRelationshipIds).toEqual([7001]);
+    expect(graph.forward.getEdges(1, RelationshipType.ContainsElements)[1].shadowedRelationshipIds).toEqual([8001, 8002]);
+  });
+
+  it('rejects a non-ascending shadowedEdgeIndex (would attach an id to the wrong edge)', () => {
+    const buf = buildV17Buffer({
+      shadowedEdgeIndex: [1, 0],
+      shadowedGroupOffsets: [0, 1, 2],
+      shadowedRelIds: [7777, 8888],
+    });
+    expect(() => readRelationships(new BufferReader(buf), 17)).toThrow(/Corrupt cache RelationshipGraph/);
+  });
+
+  it('rejects a shadowedGroupOffsets tail that does not match shadowedRelIds.length (silent clamp)', () => {
+    const buf = buildV17Buffer({
+      shadowedEdgeIndex: [0],
+      shadowedGroupOffsets: [0, 99],
+      shadowedRelIds: [7777],
+    });
+    expect(() => readRelationships(new BufferReader(buf), 17)).toThrow(/Corrupt cache RelationshipGraph/);
+  });
+
+  it('rejects a shadowedEdgeIndex entry past edgeCount (the group becomes unreachable)', () => {
+    const buf = buildV17Buffer({
+      shadowedEdgeIndex: [99],
+      shadowedGroupOffsets: [0, 1],
+      shadowedRelIds: [7777],
+    });
+    expect(() => readRelationships(new BufferReader(buf), 17)).toThrow(/Corrupt cache RelationshipGraph/);
+  });
+
+  it('rejects shadowedGroupOffsets not starting at 0', () => {
+    const buf = buildV17Buffer({
+      shadowedEdgeIndex: [0],
+      shadowedGroupOffsets: [1, 2],
+      shadowedRelIds: [7777],
+    });
+    expect(() => readRelationships(new BufferReader(buf), 17)).toThrow(/Corrupt cache RelationshipGraph/);
+  });
+
+  it('rejects an empty group (two equal neighbouring offsets)', () => {
+    const buf = buildV17Buffer({
+      shadowedEdgeIndex: [0, 1],
+      shadowedGroupOffsets: [0, 0, 1],
+      shadowedRelIds: [7777],
+    });
+    expect(() => readRelationships(new BufferReader(buf), 17)).toThrow(/Corrupt cache RelationshipGraph/);
+  });
+});

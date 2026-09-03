@@ -132,6 +132,72 @@ export function readRelationships(reader: BufferReader, version: number = FORMAT
   };
 }
 
+/**
+ * Fail fast on a corrupt shadowed-rel-ids trailer (v17+, #3782), the same
+ * way the (offset, count) guard above does for the base edge arrays:
+ * `readUint32Array` only bounds-checks against the buffer's remaining
+ * bytes, it says nothing about whether the VALUES it read are internally
+ * consistent. Without this, `getEdges`'s `binarySearchU32` +
+ * `shadowedRelIds.subarray(...)` silently attaches the wrong ids to the
+ * wrong edge, clamps or overruns the slice, or (an out-of-range
+ * `shadowedEdgeIndex` entry) drops a group's shadowed ids entirely — every
+ * one of those is wrong data returned without an error, not a crash.
+ *
+ * Checks, in the order a corrupt encoder is most likely to break them:
+ *  - `shadowedGroupOffsets.length === shadowedEdgeIndex.length + 1`
+ *  - `shadowedGroupOffsets[0] === 0`
+ *  - `shadowedGroupOffsets` strictly increasing (equal neighbours would be
+ *    an empty group, which `buildShadowedColumns` never emits — see its
+ *    "present implies non-empty" invariant)
+ *  - `shadowedGroupOffsets[last] === shadowedRelIds.length`
+ *  - `shadowedEdgeIndex` strictly ascending and every entry `< edgeCount`
+ */
+function validateShadowedColumns(
+  shadowedEdgeIndex: Uint32Array,
+  shadowedGroupOffsets: Uint32Array,
+  shadowedRelIds: Uint32Array,
+  edgeCount: number,
+): void {
+  const groupCount = shadowedEdgeIndex.length;
+  if (shadowedGroupOffsets.length !== groupCount + 1) {
+    throw new Error(
+      `Corrupt cache RelationshipGraph: shadowedGroupOffsets has ${shadowedGroupOffsets.length} ` +
+        `entries, expected ${groupCount + 1} for ${groupCount} shadowed group(s)`,
+    );
+  }
+  if (shadowedGroupOffsets[0] !== 0) {
+    throw new Error(`Corrupt cache RelationshipGraph: shadowedGroupOffsets[0] must be 0, got ${shadowedGroupOffsets[0]}`);
+  }
+  if (shadowedGroupOffsets[groupCount] !== shadowedRelIds.length) {
+    throw new Error(
+      `Corrupt cache RelationshipGraph: shadowedGroupOffsets[${groupCount}] ` +
+        `(${shadowedGroupOffsets[groupCount]}) does not match shadowedRelIds length ${shadowedRelIds.length}`,
+    );
+  }
+  let prevEdgeIndex = -1;
+  for (let g = 0; g < groupCount; g++) {
+    const edgeIndex = shadowedEdgeIndex[g];
+    if (edgeIndex <= prevEdgeIndex) {
+      throw new Error(
+        `Corrupt cache RelationshipGraph: shadowedEdgeIndex is not strictly ascending ` +
+          `at group ${g} (${edgeIndex} <= ${prevEdgeIndex})`,
+      );
+    }
+    if (edgeIndex >= edgeCount) {
+      throw new Error(
+        `Corrupt cache RelationshipGraph: shadowedEdgeIndex[${g}] = ${edgeIndex} is out of range for edgeCount ${edgeCount}`,
+      );
+    }
+    prevEdgeIndex = edgeIndex;
+    if (shadowedGroupOffsets[g + 1] <= shadowedGroupOffsets[g]) {
+      throw new Error(
+        `Corrupt cache RelationshipGraph: shadowed group ${g} is empty ` +
+          `[${shadowedGroupOffsets[g]}, ${shadowedGroupOffsets[g + 1]})`,
+      );
+    }
+  }
+}
+
 function readEdges(reader: BufferReader, version: number): {
   offsets: Map<number, number>;
   counts: Map<number, number>;
@@ -192,6 +258,7 @@ function readEdges(reader: BufferReader, version: number): {
     shadowedGroupOffsets = reader.readUint32Array(shadowedGroupCount + 1);
     const shadowedIdCount = reader.readUint32();
     shadowedRelIds = reader.readUint32Array(shadowedIdCount);
+    validateShadowedColumns(shadowedEdgeIndex, shadowedGroupOffsets, shadowedRelIds, edgeCount);
   }
 
   const edges = {

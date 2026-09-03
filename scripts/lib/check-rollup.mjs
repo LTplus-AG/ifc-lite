@@ -12,6 +12,14 @@
  * Unknown rows stay visible and ties stay together, preserving the sweep's
  * fail-closed direction instead of guessing which ambiguous row superseded
  * which.
+ *
+ * @unwired-by-design this is a helper for the PR-sweep toolchain
+ * (`scripts/lib/pr-green-sweep.mjs`, invoked from `scripts/check-pr-green.mjs`,
+ * which carries the same marker for the same reason: every verdict depends on
+ * transient GitHub state, so a required check built on it would fail for
+ * reasons that have nothing to do with the diff under test). The logic here
+ * IS wired: `scripts/lib/pr-green-sweep.test.mjs` runs in CI and exercises
+ * `currentRollupChecks` directly (see its `#3792` cases).
  */
 export function currentRollupChecks(rollup) {
   const unnamed = [];

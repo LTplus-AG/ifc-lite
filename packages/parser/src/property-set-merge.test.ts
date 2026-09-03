@@ -81,6 +81,16 @@ describe('appendSetsFromSecondSource', () => {
         expect(into).toHaveLength(1);
     });
 
+    it('deduplicates an UNNAMED second-source set on its globalId (PRRT_kwDOQ3UF-86fAszI)', () => {
+        // An empty name used to skip both identity checks, so a nameless set
+        // with a globalId reached twice via two rels was appended twice.
+        const into: Set_[] = [];
+        appendSetsFromSecondSource(into, new Set<number>(), new Set<string>(), [300, 300], (ids) =>
+            ids.map(() => set('', '2AbCdEfGhIjKlMnOpQrStU', 'Length=5')),
+        );
+        expect(into).toHaveLength(1);
+    });
+
     it('does not append the same second-source instance twice when its id appears twice in candidateIds', () => {
         // `onDemandPropertyMap`/`onDemandQuantityMap` (columnar-parser.ts) push
         // `relatingDef` once per `IfcRelDefinesByProperties` relationship that

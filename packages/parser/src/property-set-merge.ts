@@ -203,7 +203,9 @@ export function appendSetsFromSecondSource<T extends { name: string; globalId?: 
     if (fresh.length === 0) return;
     const acceptedKeys = new Set<string>();
     for (const set of extract(fresh)) {
-        if (set.name) {
+        // A set with either a name or a globalId has an identity worth
+        // deduplicating on; only a set with neither passes through unkeyed.
+        if (set.name || set.globalId) {
             const key = setIdentityKey(set);
             if (firstSourceKeys.has(key) || acceptedKeys.has(key)) continue;
             acceptedKeys.add(key);

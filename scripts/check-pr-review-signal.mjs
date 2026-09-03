@@ -577,17 +577,10 @@ function clockLine(f) {
       'this tree.'
     );
   }
-  // `=== null` is not the same question as "is this a readable time". Offline
-  // state and a malformed API row can both carry `""` or `"not-a-date"`, which
-  // survive to here and are NOT null, so the old shape fell through to the
-  // "not older than the head" sentence — a claim about a comparison that never
-  // happened. `ageAgainstCommit` already returns null for those, so the clock
-  // was equally unconsulted; only the message disagreed (#3749 review).
+  // NOT `=== null`: `""` is not null but is equally unreadable, and fell through
+  // to "not older than the head" — a comparison never actually made (#3749).
   if (!isCommitTime(f.submittedAt)) {
-    return (
-      '   The review carries no readable `submitted_at`, so the clock was not consulted at all; ' +
-      'the SHA is carrying this finding alone.'
-    );
+    return '   The review carries no readable `submitted_at`, so the clock was not consulted at all; the SHA is carrying this finding alone.';
   }
   return (
     '   Its `submitted_at` is not older than the head commit, so the clock cannot rule out that ' +

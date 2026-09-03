@@ -200,6 +200,47 @@ describe('schedule value resolution (real fixture)', () => {
   });
 });
 
+// A door carrying a user-authored Pset property literally named "Tag" whose
+// value differs from the door's own schema Tag attribute ('D-99') — proves a
+// bare (dot-free) path resolves the canonical schema attribute, not
+// whichever property set happens to share its name.
+const IFC_TAG_SHADOW = [
+  'ISO-10303-21;',
+  'HEADER;',
+  "FILE_DESCRIPTION((''),'2;1');",
+  "FILE_NAME('shadow.ifc','2026-01-01T00:00:00',(''),(''),'','','');",
+  "FILE_SCHEMA(('IFC4'));",
+  'ENDSEC;',
+  'DATA;',
+  '#1=IFCOWNERHISTORY($,$,$,$,$,$,$,0);',
+  "#10=IFCDOOR('0Door_S_00000000000001',#1,'Door S',$,$,$,$,'D-99',2100.,900.,.DOOR.,$,$);",
+  "#20=IFCPROPERTYSINGLEVALUE('Tag',$,IFCLABEL('PSET-TAG-VALUE'),$);",
+  "#21=IFCPROPERTYSET('0Pset_S_0000000000001',#1,'Pset_Custom',$,(#20));",
+  "#22=IFCRELDEFINESBYPROPERTIES('0Rel_S_00000000000001',#1,$,$,(#10),#21);",
+  'ENDSEC;',
+  'END-ISO-10303-21;',
+  '',
+].join('\n');
+
+describe('bare-path resolution reads the schema attribute before a same-named pset property', () => {
+  /**
+   * Bug: resolveScheduleValue consulted resolveColumnValue's pset/qset sweep
+   * BEFORE the canonical entity-attribute list for a bare (dot-free) path.
+   * resolveColumnValue's own bare-name fallback sweeps EVERY property set
+   * for a property with that literal name, so a pset property named "Tag"
+   * (not among resolveColumnValue's 5-attribute native whitelist) shadowed
+   * IfcDoor.Tag itself — --preset door's Mark=Tag column resolved to the
+   * pset value instead of the schema attribute the doc comment already
+   * claimed it would.
+   */
+  it('IfcDoor.Tag wins over a Pset property also named "Tag"', async () => {
+    const { bim } = await makeBim(IFC_TAG_SHADOW);
+    const doors = bim.query().byType('IfcDoor').toArray();
+    expect(doors).toHaveLength(1);
+    expect(resolveScheduleValue(doors[0], 'Tag', bim)).toBe('D-99');
+  });
+});
+
 // ── PR-2: sorting, grouping, subtotals ──────────────────────────────────────
 
 /**

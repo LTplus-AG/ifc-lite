@@ -119,14 +119,23 @@ export function resolveScheduleValue(entity: any, path: string, bim: any): unkno
     );
   }
 
-  const viaColumn = resolveColumnValue(entity, path, bim);
-  if (viaColumn != null) return viaColumn;
-
+  // A dot-free path checks the canonical entity-attribute list FIRST.
+  // resolveColumnValue's own bare-name fallback (below) sweeps EVERY property
+  // and quantity set for a member with that literal name — a user-authored
+  // pset property that happens to share a schema attribute's name (e.g. a
+  // "Tag" property in some custom Pset) would otherwise shadow the real
+  // IfcDoor.Tag attribute that a column like --preset door's `Mark=Tag`
+  // means. A dotted `Pset.Prop`/`Qto.Qty` path is unambiguous and always
+  // goes straight through resolveColumnValue.
   if (!path.includes('.')) {
     const attrs = bim.attributes(entity.ref) as Array<{ name: string; value: unknown }>;
     const hit = attrs.find(a => a.name === path);
     if (hit && hit.value != null) return hit.value;
   }
+
+  const viaColumn = resolveColumnValue(entity, path, bim);
+  if (viaColumn != null) return viaColumn;
+
   return null;
 }
 

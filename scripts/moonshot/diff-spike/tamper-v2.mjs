@@ -229,7 +229,7 @@ export async function runV2Battery(original, sidecarLines, full) {
 
   for (const tamper of TAMPERS_V2) {
     const ctx = makeCtx();
-    const snapshot = () => `${JSON.stringify(ctx.chain)} ${ctx.lines.join('\n')}`;
+    const snapshot = () => `${JSON.stringify(ctx.chain)}\x00${ctx.lines.join('\n')}`;
     const before = snapshot();
     const desc = tamper.apply(ctx);
     // A forgery that mutates nothing cannot be "not detected", and scoring it

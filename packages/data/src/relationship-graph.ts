@@ -13,6 +13,16 @@ export interface Edge {
   target: number;
   type: RelationshipType;
   relationshipId: number;
+  /**
+   * Express ids of other `IfcRel*` instances that named the same
+   * (source, target, type) triple and were collapsed into this edge by the
+   * dedupe in `RelationshipGraphBuilder.addEdge` (#3760). A consumer that
+   * needs to know whether the *connection* still exists after a delete —
+   * not just whether `relationshipId` was deleted — must check these too:
+   * the edge survives as long as any one of `relationshipId` or
+   * `shadowedRelationshipIds` still exists.
+   */
+  shadowedRelationshipIds?: number[];
 }
 
 export interface RelationshipEdges {
@@ -21,6 +31,8 @@ export interface RelationshipEdges {
   edgeTargets: Uint32Array;
   edgeTypes: Uint16Array;
   edgeRelIds: Uint32Array;
+  /** Sparse, index-aligned with the arrays above; see `Edge.shadowedRelationshipIds`. */
+  edgeShadowedRelIds: (number[] | undefined)[];
 
   getEdges(entityId: number, type?: RelationshipType): Edge[];
   getTargets(entityId: number, type?: RelationshipType): number[];
@@ -56,42 +68,58 @@ export class RelationshipGraphBuilder {
   private _targets: number[] = [];
   private _types: number[] = [];
   private _relIds: number[] = [];
+  /** Sparse, index-aligned with `_relIds`; see `Edge.shadowedRelationshipIds`. */
+  private _shadowedRelIds: (number[] | undefined)[] = [];
 
   /**
-   * Edges already recorded, keyed by source, then by `target * TYPE_SPAN + type`.
+   * Edges already recorded, keyed by source, then by `target * TYPE_SPAN + type`,
+   * mapping to the edge's index in `_sources`/`_targets`/`_types`/`_relIds`.
    * Nothing in EXPRESS forbids two `IfcRel*` instances from naming the same
    * (relating, related) pair, so a schema-legal file can hand us the same edge
    * twice; every consumer that walks the raw edge list would then count the
    * target twice (#3760).
    */
-  private _seen = new Map<number, Set<number>>();
+  private _seen = new Map<number, Map<number, number>>();
 
   /**
-   * Adds one edge, ignoring a repeat of a `(source, target, type)` triple
-   * already present. The first instance wins, so the surviving edge keeps the
-   * express id of the first `IfcRel*` that declared it.
+   * Adds one edge, folding a repeat of a `(source, target, type)` triple
+   * already present into the surviving edge instead of dropping it outright.
+   * The first instance's express id becomes `relationshipId`; later repeats
+   * are kept in `shadowedRelationshipIds` so deleting one of several
+   * `IfcRel*` instances that named the same pair doesn't make the connection
+   * disappear while a sibling instance still exists (#3782 review).
    */
   addEdge(source: number, target: number, type: RelationshipType, relId: number): void {
     let seenForSource = this._seen.get(source);
     if (seenForSource === undefined) {
-      seenForSource = new Set<number>();
+      seenForSource = new Map<number, number>();
       this._seen.set(source, seenForSource);
     }
     // Express ids are u32, so this stays well inside Number.MAX_SAFE_INTEGER.
     const key = target * TYPE_SPAN + type;
-    if (seenForSource.has(key)) return;
-    seenForSource.add(key);
+    const existingIndex = seenForSource.get(key);
+    if (existingIndex !== undefined) {
+      let shadowed = this._shadowedRelIds[existingIndex];
+      if (shadowed === undefined) {
+        shadowed = [];
+        this._shadowedRelIds[existingIndex] = shadowed;
+      }
+      shadowed.push(relId);
+      return;
+    }
+    seenForSource.set(key, this._sources.length);
 
     this._sources.push(source);
     this._targets.push(target);
     this._types.push(type);
     this._relIds.push(relId);
+    this._shadowedRelIds.push(undefined);
   }
 
   build(): RelationshipGraph {
     const n = this._sources.length;
-    const forward = buildCSR(n, this._sources, this._targets, this._types, this._relIds);
-    const inverse = buildCSR(n, this._targets, this._sources, this._types, this._relIds);
+    const forward = buildCSR(n, this._sources, this._targets, this._types, this._relIds, this._shadowedRelIds);
+    const inverse = buildCSR(n, this._targets, this._sources, this._types, this._relIds, this._shadowedRelIds);
     return relationshipGraphFromEdges(forward, inverse);
   }
 }
@@ -107,6 +135,8 @@ export interface RelationshipEdgesColumns {
   edgeTargets: Uint32Array;
   edgeTypes: Uint16Array;
   edgeRelIds: Uint32Array;
+  /** Sparse, index-aligned with the arrays above; see `Edge.shadowedRelationshipIds`. */
+  edgeShadowedRelIds: (number[] | undefined)[];
 }
 
 /**
@@ -133,6 +163,7 @@ export function buildCSR(
   values: number[] | Uint32Array,
   types: number[] | Uint16Array,
   relIds: number[] | Uint32Array,
+  shadowedRelIds?: (number[] | undefined)[],
 ): RelationshipEdges {
   if (n === 0) return emptyRelationshipEdges();
 
@@ -158,6 +189,7 @@ export function buildCSR(
   const edgeTargets = new Uint32Array(n);
   const edgeTypes = new Uint16Array(n);
   const edgeRelIds = new Uint32Array(n);
+  const edgeShadowedRelIds: (number[] | undefined)[] = new Array(n);
   const writePos = new Map<number, number>();
   for (const [k, o] of offsets) writePos.set(k, o);
 
@@ -167,10 +199,11 @@ export function buildCSR(
     edgeTargets[pos] = values[i];
     edgeTypes[pos] = types[i];
     edgeRelIds[pos] = relIds[i];
+    edgeShadowedRelIds[pos] = shadowedRelIds?.[i];
     writePos.set(k, pos + 1);
   }
 
-  return relationshipEdgesFromColumns({ offsets, counts, edgeTargets, edgeTypes, edgeRelIds });
+  return relationshipEdgesFromColumns({ offsets, counts, edgeTargets, edgeTypes, edgeRelIds, edgeShadowedRelIds });
 }
 
 function emptyRelationshipEdges(): RelationshipEdges {
@@ -180,6 +213,7 @@ function emptyRelationshipEdges(): RelationshipEdges {
     edgeTargets: new Uint32Array(0),
     edgeTypes: new Uint16Array(0),
     edgeRelIds: new Uint32Array(0),
+    edgeShadowedRelIds: [],
   });
 }
 
@@ -189,7 +223,7 @@ function emptyRelationshipEdges(): RelationshipEdges {
  * the parser-worker transport layer.
  */
 export function relationshipEdgesFromColumns(columns: RelationshipEdgesColumns): RelationshipEdges {
-  const { offsets, counts, edgeTargets, edgeTypes, edgeRelIds } = columns;
+  const { offsets, counts, edgeTargets, edgeTypes, edgeRelIds, edgeShadowedRelIds } = columns;
 
   const edges: RelationshipEdges = {
     offsets,
@@ -197,6 +231,7 @@ export function relationshipEdgesFromColumns(columns: RelationshipEdgesColumns):
     edgeTargets,
     edgeTypes,
     edgeRelIds,
+    edgeShadowedRelIds,
 
     getEdges(entityId: number, type?: RelationshipType): Edge[] {
       const o = offsets.get(entityId);
@@ -205,7 +240,13 @@ export function relationshipEdgesFromColumns(columns: RelationshipEdgesColumns):
       const out: Edge[] = [];
       for (let i = o; i < o + c; i++) {
         if (type === undefined || edgeTypes[i] === type) {
-          out.push({ target: edgeTargets[i], type: edgeTypes[i], relationshipId: edgeRelIds[i] });
+          const shadowed = edgeShadowedRelIds[i];
+          out.push({
+            target: edgeTargets[i],
+            type: edgeTypes[i],
+            relationshipId: edgeRelIds[i],
+            ...(shadowed !== undefined ? { shadowedRelationshipIds: shadowed } : {}),
+          });
         }
       }
       return out;
@@ -283,6 +324,7 @@ export function relationshipGraphToColumns(graph: RelationshipGraph): Relationsh
       edgeTargets: graph.forward.edgeTargets,
       edgeTypes: graph.forward.edgeTypes,
       edgeRelIds: graph.forward.edgeRelIds,
+      edgeShadowedRelIds: graph.forward.edgeShadowedRelIds,
     },
     inverse: {
       offsets: graph.inverse.offsets,
@@ -290,6 +332,7 @@ export function relationshipGraphToColumns(graph: RelationshipGraph): Relationsh
       edgeTargets: graph.inverse.edgeTargets,
       edgeTypes: graph.inverse.edgeTypes,
       edgeRelIds: graph.inverse.edgeRelIds,
+      edgeShadowedRelIds: graph.inverse.edgeShadowedRelIds,
     },
   };
 }

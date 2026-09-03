@@ -444,7 +444,13 @@ export function createQueryAdapter(
         out.push(expressId);
       };
       for (const edge of half.getEdges(ref.expressId, relEnum)) {
-        if (pending?.deleted.has(edge.relationshipId)) continue;
+        // Two `IfcRel*` instances can name the same triple; the graph keeps
+        // only one as `relationshipId` and folds the rest into
+        // `shadowedRelationshipIds` (#3760). The connection survives a
+        // delete as long as any one of them still exists (#3782 review).
+        if (pending?.deleted.has(edge.relationshipId) && !edge.shadowedRelationshipIds?.some((id) => !pending.deleted.has(id))) {
+          continue;
+        }
         take(edge.target);
       }
       for (const relation of pending?.queuedRelations(relType) ?? []) {

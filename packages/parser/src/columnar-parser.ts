@@ -649,7 +649,11 @@ export class ColumnarParser {
                         for (const objId of relatedObjects) {
                             let list = targetMap.get(objId);
                             if (!list) { list = []; targetMap.set(objId, list); }
-                            list.push(relatingDef);
+                            // Two `IfcRelDefinesByProperties` instances can name the
+                            // same (pset, object) pair (#3760/#3782 review); this map
+                            // is read in preference to the deduped graph, so it needs
+                            // its own dedup or the pset/qset comes back twice.
+                            if (!list.includes(relatingDef)) list.push(relatingDef);
                         }
                     }
                 }
@@ -688,7 +692,10 @@ export class ColumnarParser {
                     for (const objId of relatedObjects) {
                         let list = onDemandClassificationMap.get(objId);
                         if (!list) { list = []; onDemandClassificationMap.set(objId, list); }
-                        list.push(relatingRef);
+                        // Two `IfcRelAssociatesClassification` instances can name the
+                        // same (classification, object) pair (#3760/#3782 review);
+                        // dedup here too since this map wins over the graph.
+                        if (!list.includes(relatingRef)) list.push(relatingRef);
                         relationshipGraphBuilder.addEdge(relatingRef, objId, RelationshipType.AssociatesClassification, ref.expressId);
                     }
                 } else if (typeUpper === 'IFCRELASSOCIATESMATERIAL') {
@@ -711,7 +718,10 @@ export class ColumnarParser {
                     for (const objId of relatedObjects) {
                         let list = onDemandDocumentMap.get(objId);
                         if (!list) { list = []; onDemandDocumentMap.set(objId, list); }
-                        list.push(relatingRef);
+                        // Two `IfcRelAssociatesDocument` instances can name the same
+                        // (document, object) pair (#3760/#3782 review); dedup here
+                        // too since this map wins over the graph.
+                        if (!list.includes(relatingRef)) list.push(relatingRef);
                         relationshipGraphBuilder.addEdge(relatingRef, objId, RelationshipType.AssociatesDocument, ref.expressId);
                     }
                 }

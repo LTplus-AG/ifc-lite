@@ -245,11 +245,44 @@ describe('buildCSR determinism and edge presence', () => {
     expect(g.getRelated(301, RelationshipType.ContainsElements, 'inverse')).toEqual([200]);
     expect(g.forward.counts.get(200)).toBe(1);
     // The first relationship instance wins, so the surviving edge keeps a
-    // real IfcRel express id rather than a synthesised one.
+    // real IfcRel express id rather than a synthesised one; the second is
+    // kept on shadowedRelationshipIds rather than dropped (#3782 review).
     expect(g.forward.getEdges(200)).toEqual([
-      { target: 301, type: RelationshipType.ContainsElements, relationshipId: 5001 },
+      {
+        target: 301,
+        type: RelationshipType.ContainsElements,
+        relationshipId: 5001,
+        shadowedRelationshipIds: [5002],
+      },
     ]);
     expect(g.getRelationshipsBetween(200, 301)).toHaveLength(1);
+  });
+
+  // A deduped edge keeps every collapsed IfcRel id in
+  // `shadowedRelationshipIds`, not just the survivor, so a consumer that
+  // filters by "is this specific IfcRel deleted" can still tell the
+  // connection survives while a sibling instance exists (#3782 review).
+  it('keeps every collapsed IfcRel id, not just the survivor', () => {
+    const builder = new RelationshipGraphBuilder();
+    builder.addEdge(200, 301, RelationshipType.ContainsElements, 5001);
+    builder.addEdge(200, 301, RelationshipType.ContainsElements, 5002); // redundant IfcRel
+    builder.addEdge(200, 301, RelationshipType.ContainsElements, 5003); // and a third
+    const g = builder.build();
+
+    expect(g.forward.getEdges(200)).toEqual([
+      {
+        target: 301,
+        type: RelationshipType.ContainsElements,
+        relationshipId: 5001,
+        shadowedRelationshipIds: [5002, 5003],
+      },
+    ]);
+    // Inverse direction carries the same shadowed ids.
+    expect(g.inverse.getEdges(301)[0].shadowedRelationshipIds).toEqual([5002, 5003]);
+
+    // Round-trips through the columnar transport representation.
+    const roundTripped = relationshipGraphFromColumns(relationshipGraphToColumns(g));
+    expect(roundTripped.forward.getEdges(200)[0].shadowedRelationshipIds).toEqual([5002, 5003]);
   });
 
   it('keeps edges that differ only by type, target, or source', () => {

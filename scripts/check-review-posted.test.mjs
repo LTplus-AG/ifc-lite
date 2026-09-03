@@ -637,7 +637,15 @@ test('THE COPIES: both workflows carry the job caps the budget module assumes', 
     // Job keys sit at 4-space indent, step keys at 8: anchoring to the job
     // level lets a step carry its own timeout-minutes without a false red.
     const found = [...text.matchAll(/^ {4}timeout-minutes:[ \t]*(\d+)/gm)];
-    assert.equal(found.length, 1, `${name} must declare exactly one JOB timeout`);
+    assert.equal(
+      found.length,
+      1,
+      `${name} must declare exactly one JOB timeout, found ${found.length}. ` +
+        'REMEDY: keep exactly one 4-space-indented `timeout-minutes:` in that workflow. ' +
+        'A step-level cap belongs at 8-space indent and is not what the budget module reads; ' +
+        'two job-level caps make "the job timeout" ambiguous and this module would pick one ' +
+        'arbitrarily.',
+    );
     return Number(found[0][1]) * 60;
   };
   const gateText = workflow('review-posted.yml');
@@ -666,7 +674,13 @@ test('THE COPIES: both workflows carry the job caps the budget module assumes', 
   // BAD_ARGS on every PR.
   const STEP = 'Check a review was actually posted for this head';
   const start = gateText.indexOf(`- name: ${STEP}`);
-  assert.notEqual(start, -1, `review-posted.yml must carry the step '${STEP}'`);
+  assert.notEqual(
+    start,
+    -1,
+    `review-posted.yml must carry the step '${STEP}'. REMEDY: restore that step by name. ` +
+      'The budget contract is asserted against THAT step, so renaming it silently detaches ' +
+      'the contract from the thing it governs rather than failing loudly.',
+  );
   const after = gateText.slice(start + 1);
   const nextStep = after.search(/\n {6}- /);
   const step = nextStep === -1 ? after : after.slice(0, nextStep);
@@ -674,7 +688,11 @@ test('THE COPIES: both workflows carry the job caps the budget module assumes', 
     step,
     /poll_seconds="\$\([\s\S]*?review-lane-budget\.mjs[\s\S]*?\)"[\s\S]*?--timeout-seconds "\$poll_seconds"/,
     `the '${STEP}' step must pass --timeout-seconds the value it read, in that same step, ` +
-      'from review-lane-budget.mjs',
+      'from review-lane-budget.mjs. REMEDY: inside that one step, set ' +
+      '`poll_seconds="$(node scripts/review-lane-budget.mjs --poll-seconds)"` and pass ' +
+      '`--timeout-seconds "$poll_seconds"`. IN THAT SAME STEP is the whole point: a shell ' +
+      'variable does not survive across steps, so splitting them expands to empty and the ' +
+      'gate exits BAD_ARGS on every PR while still looking wired.',
   );
 });
 

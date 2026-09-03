@@ -158,8 +158,25 @@ describe('EntityHeaderActions — "Show in context"', () => {
     );
   });
 
-  // The teardown must be narrow: a clash/IDS fade holds many entities and owns
-  // its own release, so unmounting the properties panel must not wipe it.
+  // The teardown must not fire on someone else's fade. Ownership is recorded when
+  // this control installs one, so a foreign ghost -- of ANY size -- survives.
+  // Codex on #3737: IDS row focus and Layer Diff both install SINGLETON ghosts
+  // and record their own ownership, so a "size === 1 and has(selection)" test
+  // would have torn down their presentation.
+  it('leaves a foreign singleton ghost standing on unmount', () => {
+    resetStore();
+    const foreign = new Set([SELECTED]);
+    useViewerStore.setState({ selectedEntityId: SELECTED, ghostExceptEntities: foreign });
+
+    render(<EntityHeaderActions />);
+    cleanup();
+    assert.strictEqual(
+      useViewerStore.getState().ghostExceptEntities,
+      foreign,
+      "a singleton ghost this control did not install must survive -- contents are not ownership",
+    );
+  });
+
   it('leaves a foreign multi-entity ghost standing on unmount', () => {
     resetStore();
     const foreign = new Set([SELECTED, OTHER]);
@@ -167,12 +184,52 @@ describe('EntityHeaderActions — "Show in context"', () => {
 
     render(<EntityHeaderActions />);
     cleanup();
-    const after = useViewerStore.getState().ghostExceptEntities;
-    assert.deepStrictEqual(
-      after && [...after].sort(),
-      [...foreign].sort(),
-      "another feature's ghost must survive this panel unmounting",
+    assert.strictEqual(useViewerStore.getState().ghostExceptEntities, foreign);
+  });
+
+  // CodeRabbit on #3737 reported the mirror-image bug: recording ownership on
+  // every render meant that with the fade on A and the selection moved to B,
+  // cleanup compared B against A's set and left the model faded forever.
+  // Identity-based ownership makes the current selection irrelevant by
+  // construction, which is what this pins. It is NOT a killing test for that
+  // mutation -- the harness only flushes inside act(), which it does not export,
+  // so no re-render happens between the setState and cleanup and the stale-ref
+  // version passes it too. The mutation is killed by the foreign-singleton test
+  // above, which fails without identity ownership.
+  it('tears its own fade down regardless of the current selection', () => {
+    resetStore();
+    useViewerStore.setState({ selectedEntityId: SELECTED });
+    const container = render(<EntityHeaderActions />);
+    click(Array.from(container.querySelectorAll('button'))[1]);
+
+    // Selection moves while the fade stays installed for SELECTED.
+    useViewerStore.setState({ selectedEntityId: OTHER });
+    cleanup();
+
+    assert.strictEqual(
+      useViewerStore.getState().ghostExceptEntities,
+      null,
+      'our own fade must still be torn down once the selection has moved on',
     );
+  });
+
+  // Codex on #3737: preserving an isolation that excludes the selection hides the
+  // very entity being shown -- isEntityVisible rejects ids absent from
+  // isolatedEntities, and ghosting only fades what survived that filter, so the
+  // camera framed something invisible.
+  it('admits the selected entity into a preserved isolation that excludes it', () => {
+    resetStore();
+    useViewerStore.setState({
+      selectedEntityId: SELECTED,
+      isolatedEntities: new Set([OTHER]),
+    });
+
+    const container = render(<EntityHeaderActions />);
+    click(Array.from(container.querySelectorAll('button'))[1]);
+
+    const iso = useViewerStore.getState().isolatedEntities;
+    assert.ok(iso?.has(SELECTED), 'the entity being shown must be inside the isolation');
+    assert.ok(iso?.has(OTHER), 'the rest of the isolation must be preserved');
   });
 
   it('control: "Zoom to" and "Hide" keep their existing, unrelated behaviour', () => {

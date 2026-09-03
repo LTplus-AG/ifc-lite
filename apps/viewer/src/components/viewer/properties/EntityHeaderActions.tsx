@@ -38,14 +38,22 @@ export function EntityHeaderActions() {
   // The fade outlives this component: PropertiesPanel renders nothing without a
   // selection, so deselecting leaves the whole model translucent with its only
   // control gone (there is no other UI caller of clearGhost and no shortcut).
-  // Tear down on unmount, but only OUR fade -- a singleton set holding exactly
-  // the entity we were showing. A clash or IDS ghost holds many entities and
-  // owns its own teardown, so it is left standing.
-  const ghostRef = useRef<{ id: number | null; set: ReadonlySet<number> | null }>({ id: null, set: null });
-  ghostRef.current = { id: selectedEntityId ?? null, set: ghostExceptEntities };
+  //
+  // Ownership is recorded when THIS control installs the fade, not derived from
+  // the set's contents at cleanup time. Content is not proof of ownership: IDS
+  // row focus (useIDS.ts:685-689) and Layer Diff (LayerDiffView.tsx:92-96) both
+  // install singleton ghosts and record their own ownership, so a
+  // "size === 1 and has(selection)" test at unmount would tear down THEIR
+  // presentation. Recording it per render had the mirror-image bug: with the
+  // fade on A and the selection moved to B, cleanup compared B against A's set,
+  // matched nothing, and left the model faded forever.
+  const ownedGhost = useRef<ReadonlySet<number> | null>(null);
   useEffect(() => () => {
-    const { id, set } = ghostRef.current;
-    if (id != null && set !== null && set.size === 1 && set.has(id)) {
+    const owned = ownedGhost.current;
+    if (!owned) return;
+    // Identity, not contents: if anything replaced the channel since, it is
+    // theirs to clear.
+    if (useViewerStore.getState().ghostExceptEntities === owned) {
       useViewerStore.getState().clearGhost();
     }
   }, []);
@@ -85,6 +93,7 @@ export function EntityHeaderActions() {
               if (isGhosted) {
                 // clearGhost, not setGhostExceptEntities(null): it preserves
                 // isolation, which the setter clears.
+                ownedGhost.current = null;
                 clearGhost();
               } else {
                 // Not setGhostExceptEntities: that clears isolatedEntities
@@ -93,11 +102,24 @@ export function EntityHeaderActions() {
                 // good. Writing both channels keeps it. The pair is coherent --
                 // isolation filters, ghosting fades what survived it -- and
                 // restoreVisibilityState documents it as reachable and legal.
+                // An isolation that does not contain the selection would hide
+                // the very entity being shown: isEntityVisible rejects every id
+                // absent from isolatedEntities, and ghosting only fades what
+                // survived that filter, so the camera would frame something
+                // invisible. Admit the selection rather than drop the isolation.
+                const isolated = isolatedEntities === null
+                  ? null
+                  : isolatedEntities.has(selectedEntityId)
+                    ? isolatedEntities
+                    : new Set([...isolatedEntities, selectedEntityId]);
                 restoreVisibilityState({
-                  isolated: isolatedEntities,
+                  isolated,
                   ghostExcept: new Set([selectedEntityId]),
                   hidden: hiddenEntities,
                 });
+                // Read the identity BACK: restoreVisibilityState copies the set
+                // it is given, so the object handed in is not the one installed.
+                ownedGhost.current = useViewerStore.getState().ghostExceptEntities;
                 cameraCallbacks.frameSelection?.();
               }
             }}

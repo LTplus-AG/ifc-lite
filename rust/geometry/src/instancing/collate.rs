@@ -268,7 +268,7 @@ pub fn collate_refs_verified_in(
         // skip both for every non-rigid member too, just because one
         // sibling happens to be rigid — check each member's own
         // `canonical_transform` instead.
-        let (vlen, ilen) = (template.positions.len(), template.indices.len());
+        let vlen = template.positions.len();
         let mut occurrences = Vec::with_capacity(members.len());
         let mut shapes_match = true;
         for &i in members {
@@ -280,16 +280,16 @@ pub fn collate_refs_verified_in(
             // A #1623 Phase 3 don't-bake placeholder (empty geometry) is pose-only:
             // its geometry IS the template, so skip the same-shape guard (like the
             // rigid tier). Exact-tier materialized occurrences share the SAME local
-            // geometry (so same counts), differing only by placement — we can't
-            // byte-compare their BAKED positions (those legitimately differ).
-            // Content-equality is guaranteed upstream: rep_identity is a FULL 128-bit
-            // content hash (or the RepresentationMap id), so a same-counts/
-            // different-content collision is ~2^-127. The count check stays a cheap
-            // guard. Rigid-tier occurrences are intentionally non-identical (verified).
+            // geometry, differing only by placement — their BAKED positions
+            // legitimately differ (verified below against `rel` instead), but their
+            // TOPOLOGY does not: baking transforms positions and never rewrites the
+            // index buffer, so a genuine group's indices are byte-identical. Compare
+            // them outright, not just their length — identical positions under a
+            // different connectivity would be handed the template's topology.
             let pose_only = mesh.positions.is_empty();
             if !pose_only
                 && !member_is_rigid
-                && (mesh.positions.len() != vlen || mesh.indices.len() != ilen)
+                && (mesh.positions.len() != vlen || mesh.indices != template.indices)
             {
                 shapes_match = false;
                 break;

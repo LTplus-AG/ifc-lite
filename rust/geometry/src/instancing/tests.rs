@@ -414,6 +414,44 @@ fn same_count_rep_identity_collision_falls_back_to_flat() {
 }
 
 #[test]
+fn same_positions_different_connectivity_falls_back_to_flat() {
+    // The position-reconstruction check above compares vertices only, so a
+    // collision whose two meshes carry the SAME vertex buffer under a
+    // different triangulation reconstructs perfectly and would still be
+    // grouped — and an `InstanceOccurrence` has no per-occurrence indices, so
+    // the target would then be drawn with the TEMPLATE's connectivity (a
+    // different solid over the same corners). Baking never rewrites an index
+    // buffer, so a genuine exact-tier group's indices are byte-identical;
+    // compare them outright rather than by length.
+    let p = Matrix4::new_translation(&nalgebra::Vector3::new(3.0, 0.0, 0.0));
+    let meta = InstanceMeta {
+        transform: mat_rm(&p),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 999,
+        instanceable: true,
+    };
+    // Five non-coplanar vertices, two triangles each: same positions, same
+    // vertex and index COUNTS, different triangles.
+    const VERTS: [f32; 15] =
+        [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
+    let with_indices = |indices: Vec<u32>| {
+        let mut m = mesh_from(baked(&VERTS, &p), meta.clone());
+        m.indices = indices;
+        m
+    };
+    let meshes =
+        vec![with_indices(vec![0, 1, 2, 0, 3, 4]), with_indices(vec![0, 1, 3, 2, 3, 4])];
+    let collated = collate_instances(&meshes, 2, [0.0, 0.0, 0.0]);
+    assert_eq!(
+        collated.templates.len(),
+        0,
+        "same positions under a different connectivity must NOT form a template"
+    );
+    assert_eq!(collated.flat_indices.len(), 2, "the whole group falls back flat");
+}
+
+#[test]
 fn verify_basis_reconciles_a_caller_that_baked_positions_in_a_different_frame() {
     // The glTF in-memory assembler Z-up→Y-up-converts every visible mesh's baked
     // positions/origin BEFORE calling `collate_refs` in, while `InstanceMeta.transform`

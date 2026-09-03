@@ -1160,6 +1160,7 @@ fn build_gltf(
     // here too would conjugate twice. The wasm GPU-shard path, which consumes the
     // relative transform directly (no downstream conjugation), passes the real rtc.
     //
+<<<<<<< HEAD
     // `verify_basis = S_YUP · T(-rtc_zup)`: `visible`'s positions/origin were
     // already converted Z-up→Y-up above (`with_result_views`), but
     // `InstanceMeta.transform` (hence `rel`, computed above with rtc [0,0,0] so
@@ -1178,6 +1179,19 @@ fn build_gltf(
     // translation into `verify_basis` — `s = S_YUP · T(-rtc_zup)`, giving
     // `s⁻¹ = T(rtc_zup) · S_YUP⁻¹` — reproduces the exact conjugation the node
     // matrix applies without any change to `verify.rs`/`collate.rs`.
+=======
+    // `verify_basis = S_YUP`: `visible`'s positions/origin were already converted
+    // Z-up→Y-up before this function was entered — `with_result_views` (this file)
+    // runs `crate::frame::to_yup_in_place` over every visible mesh in `result` and
+    // only then hands the borrowed `MeshView`s here, so the conversion is NOT
+    // visible in `build_gltf` itself. `InstanceMeta.transform` (hence `rel`)
+    // stays Z-up throughout — the per-occurrence node matrix is
+    // independently recomposed and Y-up-conjugated downstream in
+    // `occurrence_node_matrix`, never read back from here. Without telling the
+    // #3666 reconstruction check which basis `refs[i].positions` are actually in,
+    // it compares a Z-up `rel` against Y-up baked vertices and (falsely) rejects
+    // nearly every rotated group on a real model.
+>>>>>>> e8775c376 (fix(geometry): compare index CONTENT, not length, before exact-tier instancing)
     let s_yup = Matrix4::from_row_slice(&matrix::S_YUP);
     let t_neg_rtc = Matrix4::new(
         1.0, 0.0, 0.0, -rtc_zup[0], //
@@ -2340,6 +2354,18 @@ fn plan_bounded_glb(
     // occurrence has no instance side-channel, and this one drops that
     // occurrence and keeps the rest. See
     // `the_bounded_path_shares_at_least_as_much`, which pins that difference.
+    //
+    // The other difference, and it is a KNOWN GAP (#3666 follow-up): the
+    // in-memory path additionally reconstructs each occurrence from
+    // `(template, rel)` and compares it against that occurrence's own baked
+    // vertices (`ifc_lite_geometry::instancing::verify_pairing`), so a
+    // same-count rep_identity COLLISION is caught there and falls back to
+    // flat. This path cannot run that check as written: it holds a plan, not
+    // geometry — `retain_emitted_meshes: false` is the whole reason it bounds
+    // memory — so nothing here has an occurrence's vertices to compare. Closing
+    // it needs a streaming variant that retains one template's vertices per live
+    // rep group and verifies each later occurrence as it streams past, which is
+    // a memory-budget decision of its own, not a drop-in of the same call.
     let refused: FxHashSet<u128> = {
         let mut seen: FxHashMap<u128, (u32, u32)> = FxHashMap::default();
         let mut bad: FxHashSet<u128> = FxHashSet::default();

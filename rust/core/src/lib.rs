@@ -65,7 +65,7 @@
 pub mod columnar_index;
 pub mod decoder;
 pub mod error;
-pub(crate) mod express_id;
+pub mod express_id;
 pub mod fast_parse;
 pub mod generated;
 pub mod georef;

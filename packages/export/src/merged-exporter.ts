@@ -42,6 +42,7 @@ import {
   EMPTY_MODEL_VIEW,
   type EmptyContainerModelView,
 } from './merged-empty-containers.js';
+import { skipRedundantRelAggregates, applyRelAggregateStrip, collectRelAggregatePairs } from './merged-rel-aggregates.js';
 
 /**
  * UTF-8 decode of `[start, end)` of a model's source, accepting either the raw
@@ -103,6 +104,8 @@ interface MergeSetup {
   firstProjectIds: number[];
   /** Spatial lookup built from the primary model. */
   spatialLookup: SpatialLookup;
+  /** Aggregation edges actually declared by the primary model. */
+  primaryAggregatePairs: Set<string>;
   /** Length unit scale of the primary model — the unit other models merge into. */
   primaryScale: number;
   /** Area unit scale (m² per unit) of the primary model — target for area values. */
@@ -168,6 +171,15 @@ interface ModelMergePlan {
   /** Empty spatial containers this model must not write (#3643); every line
    *  naming one is narrowed, or withheld with it. */
   droppedContainerIds?: ReadonlySet<number>;
+  /**
+   * Local express id of a kept (not fully redundant) IFCRELAGGREGATES → the
+   * local ids of its RelatedObjects members that must be dropped from the
+   * emitted list because they were unified with an object the first model's
+   * OWN relationship already aggregates the same RelatingObject to (see
+   * {@link MergedExporter.skipRedundantRelAggregates}). Emitting them
+   * unmodified would list that member twice under the same parent.
+   */
+  relAggregateStrip: Map<number, Set<number>>;
 }
 
 /**
@@ -868,14 +880,18 @@ export class MergedExporter {
 
     const firstModel = models[0];
     const primaryScale = this.resolveUnitScale(firstModel);
+    const firstModelOffset = modelOffsets.get(firstModel.id)!;
     const firstModelInfraMap = this.findInfrastructureEntities(firstModel.dataStore);
     return {
       modelOffsets,
-      firstModelOffset: modelOffsets.get(firstModel.id)!,
+      firstModelOffset,
       firstModelInfraMap,
       firstModelContext: resolvePrimaryContextState(firstModel.dataStore, firstModelInfraMap.get('IFCGEOMETRICREPRESENTATIONSUBCONTEXT') ?? [], primaryScale),
       firstProjectIds: this.findEntitiesByType(firstModel.dataStore, 'IFCPROJECT'),
       spatialLookup: this.buildSpatialLookup(firstModel.dataStore),
+      primaryAggregatePairs: collectRelAggregatePairs(
+        firstModel.dataStore, this.findEntitiesByType.bind(this), this.extractStepAttribute.bind(this), firstModelOffset,
+      ),
       primaryScale,
       primaryAreaScale: this.resolveDerivedUnitScale(firstModel.dataStore, 'AREAUNIT', primaryScale, 2),
       primaryVolumeScale: this.resolveDerivedUnitScale(firstModel.dataStore, 'VOLUMEUNIT', primaryScale, 3),
@@ -1078,6 +1094,7 @@ export class MergedExporter {
     const sharedRemap = new Map<number, number>();
     const skipEntityIds = new Set<number>();
     const guidRewrite = new Map<number, string>();
+    const relAggregateStrip = new Map<number, Set<number>>();
 
     // One cheap pass to read each rooted entity's GlobalId (first attribute).
     const localGuids = new Map<number, string>();
@@ -1104,8 +1121,13 @@ export class MergedExporter {
       // elevation match is done in the primary unit (rawElevation * lengthFactor).
       this.unifySpatialEntities(model.dataStore, setup.spatialLookup, setup.firstModelOffset, lengthFactor, sharedRemap, skipEntityIds, setup);
 
-      // Skip IfcRelAggregates that become fully redundant after unification.
-      this.skipRedundantRelAggregates(model.dataStore, sharedRemap, skipEntityIds);
+      // Skip IfcRelAggregates that become fully redundant after unification,
+      // and strip individually-duplicated members from ones only partially so.
+      skipRedundantRelAggregates(
+        model.dataStore, sharedRemap, skipEntityIds, relAggregateStrip,
+        setup.primaryAggregatePairs,
+        this.findEntitiesByType.bind(this), this.extractStepAttribute.bind(this),
+      );
     }
 
     if (!isFirstModel) {
@@ -1137,7 +1159,7 @@ export class MergedExporter {
       }
     }
 
-    return { sharedRemap, skipEntityIds, guidRewrite, localGuids };
+    return { sharedRemap, skipEntityIds, guidRewrite, localGuids, relAggregateStrip };
   }
 
   /**
@@ -1194,6 +1216,17 @@ export class MergedExporter {
       if (kept === null) return null;
       entityText = kept;
     }
+
+    // Drop RelatedObjects members a partially redundant IFCRELAGGREGATES
+    // already shares with the first model's OWN relationship to the same
+    // (now-unified) RelatingObject — see skipRedundantRelAggregates /
+    // applyRelAggregateStrip (merged-rel-aggregates.ts). Runs in LOCAL id
+    // space, before the remap below. `null` (the filter would withhold the
+    // whole line) propagates like the two passes above: every edge the line
+    // declared already exists in the primary model.
+    const stripped = applyRelAggregateStrip(entityText, localId, plan.relAggregateStrip);
+    if (stripped === null) return null;
+    entityText = stripped;
 
     // Remap ids. Fast path: the first model (offset 0, no remaps) is byte-identical.
     let finalText: string;
@@ -1439,46 +1472,6 @@ export class MergedExporter {
     if (mergeMode === 'single') return bySingle();
     if (mergeMode === 'by-name') return byName();
     return byName() ?? bySingle();
-  }
-
-  /**
-   * Skip IfcRelAggregates that become fully redundant after spatial unification.
-   *
-   * When Model2's `IfcRelAggregates(Project, (Site))` gets remapped to
-   * `IfcRelAggregates(FirstProject, (FirstSite))`, it duplicates Model1's
-   * existing relationship, causing viewers to show Site multiple times.
-   *
-   * An IfcRelAggregates is redundant if both its RelatingObject (attr 4)
-   * and ALL its RelatedObjects (attr 5) were remapped via sharedRemap.
-   */
-  private skipRedundantRelAggregates(
-    dataStore: IfcDataStore,
-    sharedRemap: Map<number, number>,
-    skipEntityIds: Set<number>,
-  ): void {
-    for (const relId of this.findEntitiesByType(dataStore, 'IFCRELAGGREGATES')) {
-      // RelatingObject is attr 4 — single #ref
-      const relatingAttr = this.extractStepAttribute(relId, dataStore, 4);
-      if (!relatingAttr) continue;
-      const relatingRef = relatingAttr.match(/^#(\d+)$/);
-      if (!relatingRef || !sharedRemap.has(parseInt(relatingRef[1], 10))) continue;
-
-      // RelatedObjects is attr 5 — list of #refs like (#2,#3)
-      const relatedAttr = this.extractStepAttribute(relId, dataStore, 5);
-      if (!relatedAttr) continue;
-      const refs: number[] = [];
-      const refRegex = /#(\d+)/g;
-      let m;
-      while ((m = refRegex.exec(relatedAttr)) !== null) {
-        refs.push(parseInt(m[1], 10));
-      }
-      if (refs.length === 0) continue;
-
-      // If ALL related objects were also remapped, this rel is fully redundant
-      if (refs.every(ref => sharedRemap.has(ref))) {
-        skipEntityIds.add(relId);
-      }
-    }
   }
 
   /**

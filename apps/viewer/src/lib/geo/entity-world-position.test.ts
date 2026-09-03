@@ -109,8 +109,14 @@ describe('computeEntityWorldCenterZup', () => {
     // through the Map and then touches only that entity's positions. A timing
     // assertion would be flaky; this states the property directly.
     let idReads = 0;
+    // Every mesh gets a DISTINCT box, keyed off its index, so a byId mapping that
+    // returns the wrong bucket produces the wrong coordinate instead of the right
+    // one by coincidence. With one shared payload the assertions below hold for
+    // any mesh the lookup happens to land on.
     const meshes = Array.from({ length: 5_000 }, (_, i) => {
-      const mesh = { positions: new Float32Array([0, 0, 0, 2, 2, 2]) } as Record<string, unknown>;
+      const mesh = {
+        positions: new Float32Array([i, i, i, i + 2, i + 2, i + 2]),
+      } as Record<string, unknown>;
       Object.defineProperty(mesh, 'expressId', { get() { idReads += 1; return i; }, enumerable: true });
       return mesh as unknown as GeometryResult['meshes'][number];
     });
@@ -124,8 +130,11 @@ describe('computeEntityWorldCenterZup', () => {
     assert.equal(idReads, 5_000, 'construction reads every expressId exactly once');
 
     idReads = 0;
+    // Mesh 4999 spans [4999,5001] on each axis, so its local centre is 5000 and
+    // the Z-up remap gives {x:5000, y:-5000, z:5000}. Any other bucket answers
+    // with different numbers.
     const first = get(4_999);
-    assert.deepEqual(first, { x: 1, y: -1, z: 1 });
+    assert.deepEqual(first, { x: 5_000, y: -5_000, z: 5_000 });
     for (let i = 0; i < 100; i++) get(4_999);
     assert.deepEqual(get(4_999), first, 'repeated lookups agree');
     assert.equal(get(99_999), null, 'an id with no mesh answers null');

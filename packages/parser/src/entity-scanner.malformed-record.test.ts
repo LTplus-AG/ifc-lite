@@ -81,3 +81,31 @@ describe('scanIfcEntities: unterminated string literal', () => {
     expect(diagnostics.some((m) => m.includes('stopped early'))).toBe(false);
   });
 });
+
+describe('scanIfcEntities: unterminated comment inside a record', () => {
+  it('reports malformedRecordCount and a diagnostic too, not just for an unterminated string', async () => {
+    // Same silent-drop shape as the unterminated string above, but through
+    // tokenizer.ts's OTHER "no terminator" branch (an unclosed `/* ... */`
+    // rather than an unclosed `'`). That branch used to `return` out of the
+    // generator before reaching the `malformedRecords++` it shares with the
+    // string case, so this shape reached `scanIfcEntities` as a quiet,
+    // successful-looking short result -- see tokenizer.test.ts for the
+    // isolated repro.
+    const buffer = ifcBuffer([
+      "#1=IFCPROJECT('0000000000000000000001',$,'P',$,$,$,$,$,$);",
+      "#2=IFCWALL('0000000000000000000002', /* never closes $,$,$,$,$,$,$);",
+      "#3=IFCWALL('0000000000000000000003',$,'Wall3',$,$,$,$,$,$);",
+    ]);
+
+    const diagnostics: string[] = [];
+    const result = await scanIfcEntities(buffer, {
+      disableWorkerScan: true,
+      onDiagnostic: (m) => diagnostics.push(m),
+    });
+
+    expect(result.scanPath).toBe('tokenizer');
+    expect(result.malformedRecordCount).toBe(1);
+    expect(result.entityRefs.map((r) => r.expressId)).toEqual([1]);
+    expect(diagnostics.some((m) => m.includes('stopped early') && m.includes('1 record'))).toBe(true);
+  });
+});

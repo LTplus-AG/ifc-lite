@@ -240,8 +240,13 @@ export class StepTokenizer {
             if (end < 0) {
               // Unterminated: this record has no terminator, and neither has
               // anything after it. Drop it and stop, which is the None Rust's
-              // find_entity_end returns on the same input.
-              return;
+              // find_entity_end returns on the same input. `break` (not an
+              // early `return`) so the `!foundTerminator` check below still
+              // runs and reports it — the scan-worker-source.ts copy of this
+              // loop already does this the right way (`pos = len; break;`);
+              // this bare `return` skipped that count.
+              pos = len;
+              break;
             }
             line += countNewlines(buf, pos, end);
             pos = end;

@@ -78,4 +78,21 @@ describe('scan-worker-source WORKER_CODE: unterminated string literal', () => {
     expect(result.count).toBe(3);
     expect(result.malformedRecords).toBe(0);
   });
+
+  it('reports malformedRecords for an unterminated comment inside a record (already correct here; tokenizer.ts was not)', () => {
+    // WORKER_CODE's copy of this branch does `pos = len; break;`, which falls
+    // through to the count below the loop -- unlike tokenizer.ts's matching
+    // branch, which used to `return` early and skip it. This fixture already
+    // passed before the tokenizer.ts fix; kept as the cross-copy control that
+    // proves the two scan loops now agree, not just on the unterminated-
+    // string shape both had a test for already, but on this one too.
+    const text = [
+      "#1=IFCWALL('0000000000000000000001', /* never closes $,$,$,$,$,$,$);",
+      "#2=IFCWALL('0000000000000000000002',$,'Wall2',$,$,$,$,$,$);",
+    ].join('\n');
+
+    const result = runWorkerCode(text);
+    expect(result.count).toBe(0);
+    expect(result.malformedRecords).toBe(1);
+  });
 });

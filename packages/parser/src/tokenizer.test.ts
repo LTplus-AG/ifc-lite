@@ -74,4 +74,26 @@ describe('StepTokenizer.scanEntitiesFast', () => {
     expect(refs).toHaveLength(2);
     expect(tokenizer.malformedRecordCount).toBe(0);
   });
+
+  it('reports malformedRecordCount for an unterminated comment inside a record, not just an unterminated string', () => {
+    // Before this fix, the `end < 0` (unterminated `/* ... */`) branch inside
+    // the "skip to semicolon" loop `return`ed straight out of the generator,
+    // skipping the `if (!foundTerminator) this.malformedRecords++` check
+    // below the loop -- so the scan still stopped silently (0 entities, 0
+    // reported) for this shape, even though the sibling unterminated-string
+    // shape right above it was fixed in the same PR. The Web Worker copy of
+    // this loop (scan-worker-source.ts) never had the bug: it does
+    // `pos = len; break;` instead of an early `return`, so it already fell
+    // through to the count -- see scan-worker-source.malformed-record.test.ts
+    // for the identical fixture passing there even before this fix.
+    const text = [
+      "#1=IFCWALL('0000000000000000000001', /* never closes $,$,$,$,$,$,$);",
+      "#2=IFCWALL('0000000000000000000002',$,'Wall2',$,$,$,$,$,$);",
+    ].join('\n');
+    const buffer = new TextEncoder().encode(text);
+    const tokenizer = new StepTokenizer(buffer);
+    const refs = Array.from(tokenizer.scanEntitiesFast());
+    expect(refs.map((r) => r.expressId)).toEqual([]);
+    expect(tokenizer.malformedRecordCount).toBe(1);
+  });
 });

@@ -43,6 +43,8 @@
  */
 
 import { classifyReviewState } from './coderabbit-review-state.mjs';
+import { countCurrentRollup } from './check-rollup.mjs';
+export { currentRollupChecks } from './check-rollup.mjs';
 
 export const DEFAULT_REPO = 'LTplus-AG/ifc-lite';
 
@@ -201,21 +203,7 @@ export function severityOf(row, repo = DEFAULT_REPO) {
  * "nothing failed" from "nothing ran".
  */
 export function countRollup(rollup) {
-  let fail = 0;
-  let pending = 0;
-  let pass = 0;
-  for (const check of rollup ?? []) {
-    const status = String(check?.status ?? '').toUpperCase();
-    if (status && status !== 'COMPLETED') {
-      pending += 1;
-      continue;
-    }
-    const verdict = String(check?.conclusion ?? check?.state ?? '').toUpperCase();
-    if (verdict === 'SUCCESS' || verdict === 'NEUTRAL' || verdict === 'SKIPPED') pass += 1;
-    else if (verdict === '' || verdict === 'PENDING' || verdict === 'EXPECTED') pending += 1;
-    else fail += 1;
-  }
-  return { fail, pending, pass };
+  return countCurrentRollup(rollup);
 }
 
 /** The later of two ISO-8601 instants, ignoring absent/unparseable ones. */

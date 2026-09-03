@@ -10,6 +10,7 @@ import {
   SweepError,
   actionable,
   countRollup,
+  currentRollupChecks,
   disqualify,
   isStaleRun,
   severityOf,
@@ -183,6 +184,34 @@ test('a CANCELLED check counts as failing, not as passing', () => {
     countRollup([{ status: 'COMPLETED', conclusion: 'CANCELLED' }]),
     { fail: 1, pending: 0, pass: 0 },
   );
+});
+
+test('#3792: a successful replacement supersedes a cancelled run with the same name', () => {
+  const counts = countRollup([
+    { name: 'Issue queue', status: 'COMPLETED', conclusion: 'CANCELLED', startedAt: '2026-09-03T18:00:00Z' },
+    { name: 'Issue queue', status: 'COMPLETED', conclusion: 'SUCCESS', startedAt: '2026-09-03T18:01:00Z' },
+    { name: 'PR review signal', status: 'COMPLETED', conclusion: 'FAILURE', startedAt: '2026-09-03T18:00:00Z' },
+    { name: 'PR review signal', status: 'IN_PROGRESS', conclusion: null, startedAt: '2026-09-03T18:01:00Z' },
+  ]);
+  assert.deepEqual(counts, { fail: 0, pending: 1, pass: 1 });
+});
+
+test('#3792: ambiguous duplicate rows fail closed instead of hiding an old failure', () => {
+  const rows = [
+    { name: 'Test', status: 'COMPLETED', conclusion: 'FAILURE', startedAt: null },
+    { name: 'Test', status: 'COMPLETED', conclusion: 'SUCCESS', startedAt: '2026-09-03T18:01:00Z' },
+  ];
+  assert.equal(currentRollupChecks(rows).length, 2);
+  assert.deepEqual(countRollup(rows), { fail: 1, pending: 0, pass: 1 });
+});
+
+test('#3792: status contexts dedupe by context while distinct lane names remain distinct', () => {
+  const rows = [
+    { __typename: 'StatusContext', context: 'Vercel', state: 'ERROR', startedAt: '2026-09-03T18:00:00Z' },
+    { __typename: 'StatusContext', context: 'Vercel', state: 'SUCCESS', startedAt: '2026-09-03T18:01:00Z' },
+    { __typename: 'CheckRun', name: 'Test', status: 'COMPLETED', conclusion: 'SUCCESS', startedAt: '2026-09-03T18:01:00Z' },
+  ];
+  assert.deepEqual(countRollup(rows), { fail: 0, pending: 0, pass: 2 });
 });
 
 // --- the three refuse-to-pass-vacuously paths --------------------------------

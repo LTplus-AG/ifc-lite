@@ -3760,6 +3760,7 @@
     "resolveEntityLengthUnitScale: function",
     "resolveEntityNameAlias: function",
     "resolveMaterialDefId: function",
+    "resolveOwningIfcProjectId: function",
     "roundToScale: function",
     "scaleMeasureValue: function",
     "scaledPropertyValue: function",

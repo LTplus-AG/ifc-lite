@@ -273,6 +273,17 @@ pub fn collate_refs_verified_in(
         let mut shapes_match = true;
         for &i in members {
             let mesh = &meshes[i];
+            if i == t_idx {
+                // The template against itself: the shape check compares it with
+                // its own buffers and `rel` is the identity, so both checks are
+                // tautologies. Emit the identity occurrence without walking the
+                // template's vertices a second time.
+                occurrences.push(InstanceOccurrence {
+                    mesh_index: i,
+                    transform: mat4_to_row_major_f32(&(m_ref * m_ref_inv)),
+                });
+                continue;
+            }
             let member_is_rigid = mesh
                 .instance_meta
                 .and_then(|m| m.canonical_transform)

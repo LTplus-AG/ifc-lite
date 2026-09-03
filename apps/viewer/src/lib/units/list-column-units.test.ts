@@ -62,8 +62,10 @@ ENDSEC;
 END-ISO-10303-21;
 `);
 
-// LENGTHUNIT in mm AND an explicit VOLUMEUNIT (mm3). Same numeric scale as the
-// LENGTHUNIT-cubed fallback, so only the DECLARED branch can distinguish them.
+// LENGTHUNIT in mm AND an explicit VOLUMEUNIT in CUBIC METRES (scale 1). The two
+// branches disagree here on purpose: declared gives 1, the LENGTHUNIT-cubed
+// fallback would give 1e-9, so an implementation that ignored the declaration
+// and always cubed the length unit fails rather than coincidentally passing.
 const MM_VOLUME_MODEL = unitsFromSource(`ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION((''),'2;1');
@@ -74,7 +76,7 @@ DATA;
 #1=IFCPROJECT('0001projectaaaaaaaaaaa',$,'P',$,$,$,$,$,#2);
 #2=IFCUNITASSIGNMENT((#3,#4));
 #3=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
-#4=IFCSIUNIT(*,.VOLUMEUNIT.,.MILLI.,.CUBIC_METRE.);
+#4=IFCSIUNIT(*,.VOLUMEUNIT.,$,.CUBIC_METRE.);
 ENDSEC;
 END-ISO-10303-21;
 `);
@@ -261,10 +263,9 @@ describe('resolveListColumnUnits (issue #1573 follow-up)', () => {
 
   it('zoneVolumeSiScale prefers an explicitly declared VOLUMEUNIT over the fallback', () => {
     const pu = MM_VOLUME_MODEL;
-    // Explicit IFCSIUNIT(.VOLUMEUNIT.,.MILLI.,.CUBIC_METRE.) is 1e-9 as well,
-    // but it must come from the DECLARED branch: assert the declaration is seen.
     assert.notStrictEqual(pu.resolvedForUnitType('VOLUMEUNIT'), undefined);
-    assert.ok(Math.abs(zoneVolumeSiScale(pu) - 1e-9) < 1e-18);
+    // 1, not the 1e-9 the LENGTHUNIT-cubed fallback would produce for this model.
+    assert.strictEqual(zoneVolumeSiScale(pu), 1);
   });
 
   it('unitSymbol returns null for a non-convertible column', () => {

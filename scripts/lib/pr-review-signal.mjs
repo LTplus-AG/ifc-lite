@@ -39,10 +39,21 @@
  * to catch, so every route to "nothing to report" is a distinct named reason:
  * `NO_WORKFLOW_TEXT`, `NO_WORKFLOW_JOBS`, `UNRESOLVED_JOB_NAME`,
  * `EMPTY_REQUIRED_SET`, `NO_ROLLUP`, `UNREADABLE_DESCRIPTION`, `NO_HEAD_SHA`,
- * `NO_REVIEWS`, `REVIEWS_TRUNCATED`, `EMPTY_REVIEW_AUTHORS`,
- * `UNREADABLE_COMMIT_ID`, `UNREADABLE_REVIEW_ID`. None of them is reachable by a
- * code path that prints OK.
+ * `NO_REVIEWS`, `NO_HEAD_COMMIT_TIME`, `REVIEWS_TRUNCATED`,
+ * `EMPTY_REVIEW_AUTHORS`, `UNREADABLE_COMMIT_ID`, `UNREADABLE_REVIEW_ID`,
+ * `NO_CHECK_RUNS`, `BAD_CONFIG`, `MISSING_ALIASES` -- fifteen in this file, and
+ * seventeen more in the gate that calls it. None of them is reachable by a code
+ * path that prints OK.
+ *
+ * THIS LIST IS PROSE AND IT HAD ALREADY DRIFTED before #3729 added to it
+ * (`BAD_CONFIG`, `MISSING_ALIASES` and `NO_CHECK_RUNS` were all missing, and
+ * `UNREADABLE_DESCRIPTION` was listed here while living in the gate). The
+ * authority is the `throw` sites; regenerate with
+ * `grep -o "ReviewSignalError(\s*'[A-Z_]*'" scripts/lib/pr-review-signal.mjs`
+ * rather than trusting the sentence above.
  */
+
+import { ageAgainstCommit, isCommitTime } from './review-provenance.mjs';
 
 /** Thrown for every fail-closed condition; `reason` is the machine-readable tag. */
 export class ReviewSignalError extends Error {
@@ -707,12 +718,12 @@ export function pollForLanes({
  * ruled out for gating -- and the only other one is the reviewer's PROSE, which
  * the config note rules out on purpose.
  *
- * A gate cannot be shipped on a premise that is wrong half the time, and this
- * one cannot be repaired without a discriminator that does not exist. So the
- * machinery, the three scopings and the four worked examples all ship, and the
- * default is `off`: the rule is not adjudicated unless a maintainer opts in,
- * and `off` NEVER prints a pass -- see the caller. #3227 and #2952 remain
- * catchable by anyone who sets it.
+ * A gate cannot BLOCK on a premise that is wrong half the time, and this one
+ * cannot be repaired without a discriminator that does not exist. That is why
+ * the SEVERITY is `warn`, and it is the whole of what the measurement above
+ * buys. It is NOT why the rule was off: #3730 closed that open call with four
+ * PRs merged unreviewed behind a green required check, so the shipped policy is
+ * `claimed-verdict`. `off` stays reachable and still NEVER prints a pass.
  *
  * @type {ReadonlySet<string>}
  */
@@ -760,6 +771,8 @@ const NON_VERDICT_REVIEW_STATES = new Set(['dismissed', 'pending']);
  *                 state?: string, user?: { login?: string } }>} reviews
  * @param {object} cfg
  * @param {string} cfg.headSha - the PR head, 40 hex.
+ * @param {string} cfg.headCommittedAt - when the head commit was made
+ *   (`commit.committer.date`). Required, never defaulted: see the refusal.
  * @param {string} cfg.policy - one of `STALE_REVIEW_POLICIES`.
  * @param {Array<{ login: string, context: string }>} cfg.authors
  * @param {Array<{ name: string, state: string }>} [cfg.checks] - head-SHA rollup,
@@ -778,10 +791,14 @@ const NON_VERDICT_REVIEW_STATES = new Set(['dismissed', 'pending']);
  * the VERDICT.
  *
  * @returns {Array<{ login: string, context: string | null, reviewedSha: string,
- *                   submittedAt: string | null, suppressedBy: string | null }>}
+ *                   submittedAt: string | null, predatesHeadBy: string | null,
+ *                   suppressedBy: string | null }>} `predatesHeadBy` is how long
+ *   before the head commit the review was submitted, or `null` when the clock
+ *   cannot rule out that it saw the head (#3729).
  */
 export function staleReviews(reviews, cfg) {
-  const { headSha, policy, authors, checks = [], alreadyFlagged = [] } = cfg ?? {};
+  const { headSha, policy, authors, checks = [], alreadyFlagged = [], headCommittedAt } =
+    cfg ?? {};
 
   if (!STALE_REVIEW_POLICIES.has(policy)) {
     throw new ReviewSignalError(
@@ -804,6 +821,16 @@ export function staleReviews(reviews, cfg) {
       `Staleness is defined against the PR head, and the head came back as ` +
         `${JSON.stringify(headSha)}. Every review would compare unequal to an unreadable head, ` +
         'so this refuses rather than reporting every review stale.',
+    );
+  }
+  // THE CLOCK IS REQUIRED, NOT OPTIONAL (#3729): a missing head commit time
+  // would drop the corroborating half of every finding SILENTLY.
+  if (!isCommitTime(headCommittedAt)) {
+    throw new ReviewSignalError(
+      'NO_HEAD_COMMIT_TIME',
+      `Staleness is stated against when the head commit was made, and \`headCommittedAt\` came ` +
+        `back as ${JSON.stringify(headCommittedAt)}. Fetch \`commit.committer.date\` for the head ` +
+        'rather than defaulting it.',
     );
   }
   if (!Array.isArray(reviews)) {
@@ -880,11 +907,20 @@ export function staleReviews(reviews, cfg) {
       if (flagged.has(context)) suppressedBy = context;
     }
     if (review.sha === headSha) continue;
+    // TWO INDEPENDENT FACTS, and the SHA still carries the finding: `commit_id`
+    // is FROZEN on THIS surface -- it is the sibling field on
+    // `pulls/{n}/comments` that relocates (#3729). The CLOCK corroborates, ONE
+    // WAY ONLY, so a null age narrows the claim instead of dropping the
+    // finding. Both halves are measured in scripts/lib/review-provenance.mjs.
+    const age = ageAgainstCommit(review.at, headCommittedAt);
     findings.push({
       login,
       context,
       reviewedSha: review.sha,
       submittedAt: review.at,
+      // How long before the head commit this review was submitted, or `null`
+      // when the clock cannot rule out that it saw the head.
+      predatesHeadBy: age,
       suppressedBy,
     });
   }

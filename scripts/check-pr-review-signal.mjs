@@ -176,6 +176,7 @@ import {
   staleReviews,
   STALE_REVIEW_POLICIES,
 } from './lib/pr-review-signal.mjs';
+import { isCommitTime } from './lib/review-provenance.mjs';
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(SCRIPTS_DIR, '..');
@@ -484,6 +485,47 @@ function fetchCheckRunDescriptions(opts) {
 }
 
 /**
+ * WHEN THE HEAD COMMIT WAS MADE -- the clock part 3 states its findings against
+ * (#3729; see scripts/lib/review-provenance.mjs for why a clock is needed at
+ * all). `commit.committer.date`, NOT `author.date`: a rebase rewrites the
+ * committer date and leaves the author date at the original authoring time, and
+ * it is the moment the commit CAME INTO EXISTENCE that bounds what read it.
+ *
+ * `git/commits/{sha}`, NOT `commits/{sha}`. The latter ships the commit's whole
+ * file list with patches, and `--jq` filters CLIENT-side, so the body crosses
+ * the wire regardless: measured on this repo 2026-09-03, 242,817 bytes against
+ * 2,585 for the same field. Both resolve a FORK PR's head from the base repo --
+ * checked on #2931, which returned the identical timestamp from either.
+ *
+ * Projected to an OBJECT rather than a bare `--jq '.committer.date'`, which
+ * prints a raw string that is not JSON.
+ *
+ * `git/commits` TAKES A FULL 40-HEX SHA AND NOTHING ELSE -- it 404s on an
+ * abbreviated one where `commits/{ref}` would resolve it. `state.sha` is
+ * `headRefOid`, always 40 hex, so that is safe here and is the reason this must
+ * not be repointed at a branch name or a short SHA.
+ *
+ * @param {{ repo: string, sha: string }} opts
+ * @returns {string}
+ */
+function fetchHeadCommittedAt(opts) {
+  const data = gh(
+    ['api', `repos/${opts.repo}/git/commits/${opts.sha}`, '--jq', '{committedAt:.committer.date}'],
+    `commit ${opts.sha}`,
+  );
+  const at = data?.committedAt;
+  if (!isCommitTime(at)) {
+    throw new ReviewSignalError(
+      'NO_HEAD_COMMIT_TIME',
+      `The commit API returned ${JSON.stringify(at)} for ${opts.sha}'s committer date. Part 3 ` +
+        'compares review evidence to that moment; without it a stale review and a current one ' +
+        'are the same row.',
+    );
+  }
+  return at;
+}
+
+/**
  * Every review EVENT on the PR, across every page.
  *
  * PAGINATION IS NOT OPTIONAL HERE and is not left to a `per_page` guess. Part 3
@@ -516,6 +558,38 @@ function sleepSync(ms) {
 }
 
 /**
+ * PART 3'S CLOCK SENTENCE, over the three answers the clock actually has.
+ *
+ * `ageAgainstCommit` returns `null` for two different reasons and the finding
+ * must not merge them: "submitted after the head commit existed, so this proves
+ * nothing" is a comparison that was MADE, and "no `submitted_at` on the review"
+ * is one that was not. `staleReviews` carries the raw `submittedAt` for exactly
+ * this. (Reachable only from a review the API returned undated; the verdict
+ * does not move either way, the SENTENCE does.)
+ *
+ * @param {{ submittedAt: string | null, predatesHeadBy: string | null }} f
+ * @returns {string}
+ */
+function clockLine(f) {
+  if (f.predatesHeadBy) {
+    return (
+      `   Submitted ${f.predatesHeadBy} BEFORE the head commit was made — it cannot have seen ` +
+      'this tree.'
+    );
+  }
+  if (f.submittedAt === null) {
+    return (
+      '   The review carries no `submitted_at`, so the clock was not consulted at all; the SHA ' +
+      'is carrying this finding alone.'
+    );
+  }
+  return (
+    '   Its `submitted_at` is not older than the head commit, so the clock cannot rule out that ' +
+    'it saw the head; the SHA is carrying this finding alone.'
+  );
+}
+
+/**
  * The whole check, over data already fetched. Split out so the regression
  * harness can drive every branch -- including every fail-closed one -- without
  * a network, a token, or a real PR.
@@ -536,6 +610,7 @@ export function evaluate({
   reviewChecks,
   reviews,
   headSha,
+  headCommittedAt,
   isFork,
   cfg,
   timedOut,
@@ -669,6 +744,7 @@ export function evaluate({
   // obvious answers.
   const stale = staleReviews(reviews, {
     headSha,
+    headCommittedAt,
     policy: cfg.staleReviewPolicy,
     authors: cfg.reviewAuthors,
     checks: reviewChecks,
@@ -690,15 +766,16 @@ export function evaluate({
   if (cfg.staleReviewPolicy === 'off') {
     // NOT a tick. `off` means this question was not asked; saying "no reviewer
     // claims a verdict from an older review" would be an answer nobody
-    // computed. See the config for why `off` is the shipped default.
+    // computed. `off` is no longer the shipped policy (#3730) but is still a
+    // reachable one, and this branch is what stops it reading as a pass.
     lines.push(
       '➖ STALE_REVIEW not adjudicated: `staleReviewPolicy` is "off", so this gate does NOT ' +
         'tell you whether a',
       '   review of an older commit is standing in for a review of the head. That is a hole, ' +
         'stated rather than',
-      '   papered over with a tick — see the config for the measured premise defect that turned ' +
-        'it off, and the',
-      '   knob that opts back in.',
+      '   papered over with a tick — see the config for the measured premise defect that keeps ' +
+        'this rule ADVISORY,',
+      '   and for why #3730 turned it back on.',
     );
   } else if (stale.length === 0) {
     lines.push(
@@ -715,6 +792,14 @@ export function evaluate({
           `${f.login}'s newest review is of ${f.reviewedSha.slice(0, 8)}` +
           `${f.submittedAt ? ` (${f.submittedAt})` : ''}, not of the head ` +
           `${headSha.slice(0, 8)}.`,
+        // THE CLOCK, STATED SEPARATELY FROM THE SHA (#3729): the half no
+        // anchoring mechanism can move. THREE STATES, NOT TWO -- `predatesHeadBy`
+        // is `null` both when the review is NEWER than the head commit and when
+        // there was no timestamp to compare, and printing "not older than the
+        // head commit" over the second is a claim about a comparison nobody
+        // made. That is the same absence-reads-as-an-answer shape the lib
+        // refuses to collapse, so the caller must not collapse it either.
+        clockLine(f),
       );
     }
     // The SENTENCE is the duplicate, not the finding. Part 2 has already
@@ -844,6 +929,10 @@ function main() {
       // non-array with `NO_REVIEWS`, and `headSha` likewise with `NO_HEAD_SHA`.
       reviews: state.reviews,
       headSha: state.headSha,
+      // NOT `?? <now>`, for the same reason as `reviews` above: `staleReviews`
+      // refuses an unreadable one, so a fixture that forgets the clock fails
+      // loudly rather than dropping half of every finding in silence (#3729).
+      headCommittedAt: state.headCommittedAt,
       isFork: state.isFork === true,
       baseRefName: typeof state.baseRefName === 'string' ? state.baseRefName : undefined,
       cfg,
@@ -904,11 +993,14 @@ function main() {
     ...fetchStatusDescriptions({ repo, sha: state.sha }),
     ...fetchCheckRunDescriptions({ repo, sha: state.sha }),
   ];
-  // `off` READS NOTHING. The policy adjudicates nothing, so paying for a
-  // paginated walk — and, worse, letting its REVIEWS_TRUNCATED refusal take the
-  // gate down — over a question this run does not ask would be noise. Parts 1
-  // and 2 are untouched.
-  const reviews = cfg.staleReviewPolicy === 'off' ? [] : fetchReviews({ repo, pr: args.pr });
+  // `off` READS NOTHING, and that now covers BOTH reads. The policy adjudicates
+  // nothing, so paying for a paginated walk — and, worse, letting its
+  // REVIEWS_TRUNCATED or NO_HEAD_COMMIT_TIME refusal take the gate down — over
+  // a question this run does not ask would be noise. Parts 1 and 2 are
+  // untouched. Both sit AFTER the poll, so neither is paid per tick.
+  const adjudicating = cfg.staleReviewPolicy !== 'off';
+  const reviews = adjudicating ? fetchReviews({ repo, pr: args.pr }) : [];
+  const headCommittedAt = adjudicating ? fetchHeadCommittedAt({ repo, sha: state.sha }) : null;
 
   console.log(
     `PR #${args.pr} @ ${state.sha}${state.isFork ? ' (fork)' : ''} -> base \`${state.baseRefName ?? '(unknown)'}\``,
@@ -916,9 +1008,9 @@ function main() {
   console.log(`Required lanes derived from ${args.workflow}: ${required.length}`);
   console.log(`Rollup lanes seen: ${state.lanes.length}`);
   console.log(
-    cfg.staleReviewPolicy === 'off'
-      ? 'Review events read: none (staleReviewPolicy is "off")'
-      : `Review events read: ${reviews.length}`,
+    adjudicating
+      ? `Review events read: ${reviews.length}; head committed ${headCommittedAt}`
+      : 'Review events read: none (staleReviewPolicy is "off")',
   );
   console.log('');
 
@@ -929,6 +1021,7 @@ function main() {
     reviewChecks,
     reviews,
     headSha: state.sha,
+    headCommittedAt,
     isFork: state.isFork,
     baseRefName: state.baseRefName,
     cfg,

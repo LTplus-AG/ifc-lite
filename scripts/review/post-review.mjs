@@ -38,13 +38,13 @@
  *      this head (fingerprinted) are SKIPPED, so a crash-and-rerun does not
  *      double-post.
  *   3. READ BACK. `GET pulls/{n}/comments`, count comments from our identity
- *      whose `commit_id` is exactly this head. This DELIBERATELY DUPLICATES the
- *      gate's own FINDINGS_NOT_POSTED predicate -- same surface, same author
- *      filter, same commit-id filter -- so a green poster implies a green gate
- *      and the two cannot drift into disagreement. The duplication is checked by
- *      EXECUTION, not by prose: post-review.test.mjs feeds what this script
- *      actually posted straight into the real gate as a process and asserts
- *      REVIEW_POSTED.
+ *      whose `original_commit_id` is exactly this head -- NOT `commit_id`,
+ *      which GitHub relocates onto a later head (#3729). This is the gate's own
+ *      FINDINGS_NOT_POSTED predicate, and now literally the same FUNCTION
+ *      (`wroteAtCommit`) rather than the same spelling, so the two cannot
+ *      drift. Still checked by EXECUTION, not by prose: post-review.test.mjs
+ *      feeds what this script actually posted into the real gate as a process
+ *      and asserts REVIEW_POSTED.
  *   4. ONLY THEN write one issue comment carrying the marker, whose `count` is
  *      the number CONFIRMED in step 3 -- never the number the model claimed.
  *      That is the whole difference between a marker and a receipt.
@@ -155,6 +155,10 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { gh, GhError } from '../lib/gh.mjs';
+// The one home for "which commit did this row see" (#3729), shared with
+// check-review-posted.mjs so the two predicates are one function, not two
+// spellings held together by a comment.
+import { ReviewProvenanceError, wroteAtCommit } from '../lib/review-provenance.mjs';
 // The gate's own normaliser, pager and config reader, imported rather than
 // re-spelled. Two copies held together only by prose is how the poster and the
 // gate would come to disagree about who "we" are, or about where a page ends.
@@ -571,16 +575,31 @@ function fetchHeadSha(repo, pr) {
 }
 
 /**
- * THE GATE'S OWN PREDICATE, spelled the same way on purpose.
+ * THE GATE'S OWN PREDICATE, and now literally the same code rather than the same
+ * SPELLING. Both sides call `wroteAtCommit`, so they cannot drift.
  *
- * check-review-posted.mjs counts inline comments as
- * `surface === 'reviewComments' && expectedAuthors.has(author) && commitId === headSha`.
- * This is that filter over that surface. If the two ever diverge, a green poster
- * stops implying a green gate -- which is why the harness runs the REAL gate over
- * what this script actually posted rather than trusting this comment.
+ * IT USED TO READ `commit_id === sha`, AND THAT DEFEATED THREE THINGS AT ONCE
+ * (#3729 -- the measurement is in scripts/lib/review-provenance.mjs). A stale
+ * row relocated onto this head:
+ *
+ *   - STEP 2 (dedup) read as "already present at this head", so the finding was
+ *     SKIPPED and never posted -- and step 3 then counted that same stale row as
+ *     the confirmation that it had been. The two cancel.
+ *   - STEP 3 (read-back), the check that exists because #1679 reports success
+ *     over comments that do not exist, was satisfied by comments on another
+ *     commit.
+ *   - `CLEAN_CONTRADICTED` fired on a genuinely clean run, because someone
+ *     else's stale finding had been relocated onto its head.
+ *
+ * THE VISIBLE CONSEQUENCE, STATED RATHER THAN DISCOVERED: after a rebase, rows
+ * GitHub relocated onto the new head no longer dedup, so a re-run POSTS the
+ * findings again and the PR carries the relocated copies alongside the new
+ * ones. That is the intended reading -- a row written against a tree that no
+ * longer exists is not a review of this one -- but it is duplication a reader
+ * will see, and it is the price of the read-back meaning what it says.
  */
 export function confirmedOnHead(rows, author, sha) {
-  return rows.filter((r) => normaliseLogin(r?.user?.login) === author && r?.commit_id === sha);
+  return rows.filter((r) => normaliseLogin(r?.user?.login) === author && wroteAtCommit(r, sha));
 }
 
 /** STEP 2. One finding, posted and checked. */
@@ -871,7 +890,12 @@ if (isMainEntry(import.meta.url)) {
   try {
     main();
   } catch (err) {
-    if (err instanceof PostReviewError || err instanceof GhError || err instanceof ReviewPostedError) {
+    if (
+      err instanceof PostReviewError ||
+      err instanceof GhError ||
+      err instanceof ReviewPostedError ||
+      err instanceof ReviewProvenanceError
+    ) {
       console.error(`❌ ${err.reason}: ${err.message}`);
       process.exit(1);
     }

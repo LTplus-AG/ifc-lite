@@ -1042,6 +1042,14 @@ test('THE ASSUMPTION, PINNED: a fan-out gap wider than the hold would defeat it'
  * it is why the scoping rule cannot drop `COMMENTED`. (The SHAs of the older
  * commits are padded to 40 hex here; the head is verbatim.)
  */
+/**
+ * When #3276's head commit was made: `commit.committer.date` on `1305f778`,
+ * read back from the API rather than plausibly invented. LATER than every
+ * `submitted_at` below, so the default fixture exercises the clock's `predates`
+ * branch; the tests that want the other branch override it (#3729).
+ */
+const HEAD_COMMITTED_AT = '2026-08-26T14:09:20Z';
+
 const SHA = {
   head: '1305f778c0dc817bb344e23f881c2a30963c14c2',
   c26e453d: 'c26e453d00000000000000000000000000000000',
@@ -1077,12 +1085,13 @@ const AUTHORS = [
 /** The status #3276's head actually carried. */
 const COMPLETED = [{ name: 'CodeRabbit', state: 'success', description: 'Review completed' }];
 
-/** The shipped default. Adjudicates nothing — see the config's premise note. */
+/** Adjudicates nothing — and therefore refuses nothing either. */
 const OFF = { headSha: SHA.head, policy: 'off', authors: AUTHORS, checks: COMPLETED };
 
 const stale = (reviews, over = {}) =>
   staleReviews(reviews, {
     headSha: SHA.head,
+    headCommittedAt: HEAD_COMMITTED_AT,
     policy: 'claimed-verdict',
     authors: AUTHORS,
     checks: COMPLETED,
@@ -1241,7 +1250,12 @@ test('POLICY: the three policies scope differently, and each is exercised', () =
       submitted_at: '2026-08-26T12:46:19Z',
     },
   ];
-  const base = { headSha: SHA.head, authors: AUTHORS, checks: [] };
+  const base = {
+    headSha: SHA.head,
+    headCommittedAt: HEAD_COMMITTED_AT,
+    authors: AUTHORS,
+    checks: [],
+  };
 
   // `claimed-verdict`: no configured context claims a verdict, so nothing.
   assert.deepEqual(staleReviews(humanApproved, { ...base, policy: 'claimed-verdict' }), []);
@@ -1260,6 +1274,47 @@ test('POLICY: the three policies scope differently, and each is exercised', () =
   // context — otherwise the two `deepEqual([])` above would prove nothing.
   const cr = staleReviews(REVIEWS_3276, { ...base, policy: 'configured-authors' });
   assert.equal(cr.length, 1, 'clause (b) is genuinely dropped by this policy');
+});
+
+test('#3729: a finding carries the CLOCK as a second, independent fact', () => {
+  // The SHA carries the finding and remains sound on THIS surface: `commit_id`
+  // on `pulls/{n}/reviews` is frozen, and it is the sibling field on
+  // `pulls/{n}/comments` that relocates (#3729; the measured rows live in
+  // scripts/lib/review-provenance.mjs). The clock is added because a SHA
+  // mismatch cannot say a review was IMPOSSIBLE, and a review submitted before
+  // the head commit existed demonstrably was.
+  const found = stale(REVIEWS_3276);
+  assert.equal(found.length, 1);
+  // 12:46:19Z against a head committed 14:09:20Z — 4981 s.
+  assert.equal(found[0].predatesHeadBy, '83m');
+});
+
+test('#3729: the clock is ONE-WAY — submitted AFTER the head commit proves nothing', () => {
+  // NOT HYPOTHETICAL — fact 4 in scripts/lib/review-provenance.mjs names the PR
+  // whose comments were created seconds AFTER its head commit while pointing at
+  // a different one. So `predatesHeadBy` is `null` here rather than a negative
+  // duration or a dropped finding: the finding stands on the SHA alone and says
+  // so.
+  const found = stale(REVIEWS_3276, { headCommittedAt: '2026-08-26T12:00:00Z' });
+  assert.equal(found.length, 1);
+  assert.equal(found[0].predatesHeadBy, null);
+  assert.equal(found[0].reviewedSha, SHA.c26e453d);
+});
+
+test('FAIL CLOSED (#3729): an unreadable `headCommittedAt` is NO_HEAD_COMMIT_TIME, never a silent skip', () => {
+  // A DEFAULT HERE WOULD BE THE WHOLE DEFECT. Substituting `now`, the review's
+  // own timestamp, or `null` drops the corroborating half of every finding
+  // while leaving prose that still reads correct — a forgotten wire-up that
+  // looks exactly like a healthy run.
+  for (const bad of [undefined, null, '', 'yesterday', 0]) {
+    assert.throws(
+      () => stale(REVIEWS_3276, { headCommittedAt: bad }),
+      (e) => e instanceof ReviewSignalError && e.reason === 'NO_HEAD_COMMIT_TIME',
+      JSON.stringify(bad),
+    );
+  }
+  // …and `off` still refuses NOTHING, because it adjudicates nothing.
+  assert.deepEqual(staleReviews(REVIEWS_3276, { ...OFF, headCommittedAt: undefined }), []);
 });
 
 test('DISMISSED and PENDING reviews are not verdicts on a commit', () => {
@@ -1324,6 +1379,7 @@ test('FAIL CLOSED: an empty reviewer identity list examines nothing, so it refus
   assert.equal(
     staleReviews(REVIEWS_3276, {
       headSha: SHA.head,
+      headCommittedAt: HEAD_COMMITTED_AT,
       policy: 'all-authors',
       authors: [],
       checks: COMPLETED,
@@ -1371,12 +1427,14 @@ test('FAIL CLOSED: a review with no usable id has no defensible "newest"', () =>
 });
 
 test('the shipped config is a valid part 3 config, and its policy is the stated default', () => {
-  // Pins the DEFAULT itself, once, so moving it is a deliberate edit here.
-  // `off`, and the premise defect that put it there is in the config's own
-  // note: CodeRabbit submits no review event when a run finds nothing
-  // actionable, so 2 of `claimed-verdict`'s 4 live fires (#3276, #3288) are
-  // false and no structured field separates them from the 2 real ones.
-  assert.equal(CFG.staleReviewPolicy, 'off');
+  // Pins the SHIPPED policy itself, once, so moving it is a deliberate edit
+  // here. `claimed-verdict` since #3730: `off` meant a REQUIRED check named
+  // "review signal" reported SUCCESS on PRs whose only reviews read a tree that
+  // no longer exists, and four PRs merged behind it on 2026-09-02 carrying real
+  // defects. The measured false-positive rate that once argued for `off` — 2 of
+  // `claimed-verdict`'s 4 live fires (#3276, #3288) — is now what keeps the
+  // SEVERITY at `warn`, which is the trade #3730 item 1 asks for.
+  assert.equal(CFG.staleReviewPolicy, 'claimed-verdict');
   assert.equal(CFG.staleReviewSeverity, 'warn');
   assert.ok(STALE_REVIEW_POLICIES.has(CFG.staleReviewPolicy));
   // The two identity spaces really are different, which is why `reviewAuthors`

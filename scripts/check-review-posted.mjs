@@ -37,8 +37,11 @@
  *     and drops every comment on the floor afterwards. The schema describes what
  *     the model PRODUCED, not what the pull request RECEIVED.
  *   - A COMMENT EXISTING AT ALL. A comment from an earlier head is not a review
- *     of this one, and a force-push re-anchors bot comments to the new SHA, so
- *     the comment's own anchor cannot be trusted to say which diff was read.
+ *     of this one, and GitHub relocates a bot comment's `commit_id` onto a
+ *     later head -- with or without a force-push -- so THAT field cannot say
+ *     which diff was read (#3729). The frozen `original_commit_id` can, and the
+ *     findings cross-check uses it -- but the VERDICT still turns on a marker
+ *     naming the reviewed commit, because nothing relocates that.
  *
  * THE ONE THING IT DOES ACCEPT is a marker the reviewer writes at the END of a
  * successful post, naming the exact commit it reviewed:
@@ -96,6 +99,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 import { gh, GhError } from './lib/gh.mjs';
+// ONE HOME FOR "which commit did this row see" (#3729), shared with post-review.
+import { ReviewProvenanceError, inlineCommentAnchors } from './lib/review-provenance.mjs';
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CONFIG = join(SCRIPTS_DIR, 'review-posted.config.json');
@@ -277,7 +282,10 @@ export function parseArgs(argv) {
  * without a network, a token, or a real PR. The harness reaches it through
  * `--state-file`, not through an import.
  *
- * @returns {{ author: string, body: string }[]}
+ * @returns {{ author: string, body: string, surface: string,
+ *             raw: object | null }[]} `raw` is the untouched API row for an
+ *   inline comment and `null` for an issue comment, which has no anchor at all.
+ *   It is carried rather than adjudicated -- see the note at the push below.
  */
 export function normaliseComments(payload) {
   if (!payload || typeof payload !== 'object') {
@@ -302,11 +310,14 @@ export function normaliseComments(payload) {
       out.push({
         author: normaliseLogin(c?.user?.login ?? c?.author?.login),
         body: String(c?.body ?? ''),
-        // Which surface it came from, and which commit an inline comment is
-        // anchored to. Both are needed by the findings cross-check and neither
-        // survived the old shape, which is why that check could not be precise.
         surface: key,
-        commitId: c?.commit_id ?? null,
+        // THE RAW ROW, CARRIED RATHER THAN ADJUDICATED HERE. `writtenAtSha` is
+        // read through `inlineCommentAnchors` at the one place that counts
+        // findings, AFTER the author scope -- see `evaluate`. Reading it here
+        // would refuse the whole gate over a malformed comment by someone this
+        // check never counts, which is the blast radius `staleReviews` already
+        // rules out in as many words ("scope FIRST, then validate").
+        raw: key === 'reviewComments' ? c : null,
       });
     }
   }
@@ -386,10 +397,11 @@ export function evaluate({ comments, cfg, headSha }) {
     lines.push(
       `❌ STALE_REVIEW: the most recent marker this gate read names ${markers[markers.length - 1].sha.slice(0, 9)}, ` +
         `but this PR's head is ${headSha.slice(0, 9)}.`,
-      '   A review of an earlier head has not reviewed this diff. The comment ANCHOR cannot settle',
-      '   this either: a force-push re-anchors bot comments to the new SHA, so only the marker the',
+      '   A review of an earlier head has not reviewed this diff. A comment\'s `commit_id` cannot',
+      '   settle this either: GitHub relocates that field onto a later head (#3729), with or without',
+      '   a force-push, so only the marker the',
       '   reviewer wrote at review time says which commit it read. ("Most recent" is fetch order, not',
-      '   timestamp: no timestamp survives normalisation, so the gate does not claim one.)',
+      '   timestamp: this gate reads no timestamp at all, so it does not claim one.)',
       '   REMEDY: re-run the review job against the current head.',
     );
     return { ok: false, covered: false, verdict: 'STALE_REVIEW', lines };
@@ -412,8 +424,19 @@ export function evaluate({ comments, cfg, headSha }) {
     // findings from an earlier head did the same. Both let a marker claiming
     // three findings pass with all three dropped -- the exact #1679 shape the
     // check exists to catch.
+    //
+    // AND COUNTED FROM `original_commit_id`, NOT `commit_id` (#3729). The prose
+    // above was already right; the FIELD was wrong -- a finding from an earlier
+    // head REPORTED this head and satisfied the very clause this paragraph says
+    // it must not. The measurement is in scripts/lib/review-provenance.mjs.
     const posted = comments.filter(
-      (c) => c.surface === 'reviewComments' && cfg.expectedAuthors.has(c.author) && c.commitId === headSha,
+      (c) =>
+        c.surface === 'reviewComments' &&
+        cfg.expectedAuthors.has(c.author) &&
+        // SCOPED FIRST, THEN READ. `inlineCommentAnchors` refuses an
+        // unreadable row, and only a row this check would have COUNTED may
+        // take the gate down.
+        inlineCommentAnchors(c.raw).written === headSha,
     ).length;
     if (posted === 0) {
       lines.push(
@@ -749,7 +772,11 @@ if (isMainEntry(import.meta.url)) {
   try {
     main();
   } catch (err) {
-    if (err instanceof ReviewPostedError || err instanceof GhError) {
+    if (
+      err instanceof ReviewPostedError ||
+      err instanceof GhError ||
+      err instanceof ReviewProvenanceError
+    ) {
       console.error(`❌ ${err.reason}: ${err.message}`);
       // A REFUSAL IS NOT COVERAGE. Every refusal path -- GH_ERROR, truncation,
       // a bad config, a killed poll -- previously left `covered` unwritten, and

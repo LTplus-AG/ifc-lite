@@ -37,6 +37,17 @@ let seq = 0;
  */
 const ANY_HEAD = '0'.repeat(40);
 
+/**
+ * When the head commit was made, for the state files that are not about part 3.
+ *
+ * `commit.committer.date` on PR #3276's head `1305f778`, read back from the API
+ * rather than plausibly invented — an earlier draft of this line said "real"
+ * over `14:08:00Z`, which is 80 seconds off the actual `14:09:20Z`. It is LATER
+ * than `REVIEW_3276`'s `submitted_at`, so the #3276 fixture exercises the
+ * clock's `predates` branch rather than its "cannot rule it out" one (#3729).
+ */
+const ANY_HEAD_COMMITTED_AT = '2026-08-26T14:09:20Z';
+
 /** Run the gate over a state file EXACTLY as written — no defaults injected. */
 function runRaw(state, extra = []) {
   const path = join(TMP, `state-${(seq += 1)}.json`);
@@ -57,7 +68,10 @@ function runRaw(state, extra = []) {
  * made it print a part 3 success line over a question nobody answered.
  */
 function run(state, extra = []) {
-  return runRaw({ reviews: [], headSha: ANY_HEAD, ...state }, extra);
+  return runRaw(
+    { reviews: [], headSha: ANY_HEAD, headCommittedAt: ANY_HEAD_COMMITTED_AT, ...state },
+    extra,
+  );
 }
 
 /** Write a config variant and return its path. */
@@ -636,6 +650,9 @@ test('the two diagnoses are mutually exclusive — no rollup gets both', () => {
  * reads the live path makes. Placed first on PATH, so the gate spawns it
  * instead of the real client and no network is touched.
  */
+/** What `fakeGh`'s commit read answers with. */
+const COMMITTED_AT = '2026-09-03T04:32:55Z';
+
 function fakeGh(tag) {
   const dir = join(TMP, `gh-${tag}`);
   mkdirSync(dir, { recursive: true });
@@ -646,9 +663,14 @@ function fakeGh(tag) {
     [
       '#!/bin/sh',
       `printf '%s\\n' "$*" >> ${JSON.stringify(log)}`,
-      'case "$1 $2" in',
-      `  "pr view") printf '%s' '{"headRefOid":"${sha}","isCrossRepository":false,` +
+      'case "$*" in',
+      `  "pr view"*) printf '%s' '{"headRefOid":"${sha}","isCrossRepository":false,` +
         '"statusCheckRollup":[{"name":"Only Lane","conclusion":"success"}]}\' ;;',
+      // THE HEAD COMMIT READ (#3729), projected exactly as the gate's `--jq`
+      // asks: a stub answering `[]` here is the shape that let
+      // `fetchHeadCommittedAt` sit in the file unreached. `git/commits`, not
+      // `commits` — see the gate for the 242,817-vs-2,585-byte measurement.
+      `  *"/git/commits/${sha} "*) printf '%s' '{"committedAt":"${COMMITTED_AT}"}' ;;`,
       "  *) printf '%s' '[]' ;;",
       'esac',
     ].join('\n'),
@@ -699,6 +721,25 @@ test('the resolved repo reaches the PR read, not just the commit-status reads', 
     calls.some((c) => c.includes(`repos/owner/from-env/commits/${sha}/check-runs`)),
     `check-runs read missing from:\n${calls.join('\n')}`,
   );
+  // THE HEAD COMMIT TIME IS ACTUALLY FETCHED (#3729, #3730). This is the
+  // mutation guard for the wiring, not for the logic: a helper can be written,
+  // imported and exercised by unit tests while `main()` never supplies its
+  // input, and a half-wired helper reads as correct in a diff. Deleting the
+  // `fetchHeadCommittedAt` call in
+  // `main()` turns this assertion red; nothing else in this file notices,
+  // because every other case here is driven through `--state-file`.
+  assert.ok(
+    calls.some((c) => c.includes(`repos/owner/from-env/git/commits/${sha} `)),
+    `head-commit read missing from:\n${calls.join('\n')}`,
+  );
+  // …and it is the CHEAP endpoint. `repos/{r}/commits/{sha}` carries the whole
+  // file list and `--jq` filters client-side, so reverting to it is invisible
+  // in the output and costs 242,817 bytes against 2,585 (measured 2026-09-03).
+  assert.ok(
+    !calls.some((c) => /(?<!git\/)commits\/[0-9a-f]{40} /.test(c)),
+    `the expensive commit endpoint is back:\n${calls.join('\n')}`,
+  );
+  assert.match(r.stdout, new RegExp(`head committed ${COMMITTED_AT}`));
 });
 
 
@@ -765,16 +806,16 @@ const STATE_3276 = (commitId) => ({
   reviewChecks: COMPLETED_3276,
   reviews: [REVIEW_3276(commitId)],
   headSha: HEAD_3276,
+  headCommittedAt: ANY_HEAD_COMMITTED_AT,
 });
 
 /**
- * PART 3 OPTED IN.
+ * PART 3 PINNED TO `claimed-verdict`.
  *
- * The SHIPPED default is `off` — see the config's premise note: CodeRabbit
- * submits no review event when a run finds nothing actionable, so 2 of
- * `claimed-verdict`'s 4 live fires were false. The rule still ships, and every
- * test below that exercises it therefore says so explicitly rather than
- * inheriting a default. The `off` behaviour is asserted separately.
+ * That IS the shipped policy since #3730, and these tests still name it rather
+ * than inheriting it: a test that inherits the default silently changes meaning
+ * when the default moves, which is exactly what happened when it moved from
+ * `off` to here. Which policy ships is asserted on its own, once, below.
  */
 const ON = (patch = {}, tag = 'part3-on') => [
   '--config',
@@ -815,14 +856,111 @@ test('ESCALATION: `staleReviewSeverity: fail` turns the same finding red', () =>
   assert.equal(green.code, 0, green.output);
 });
 
-test('the SHIPPED default for part 3 is `off`, and `off` NEVER prints a tick', () => {
-  const cfg = JSON.parse(readFileSync(CONFIG, 'utf8'));
-  assert.equal(cfg.staleReviewSeverity, 'warn');
-  assert.equal(cfg.staleReviewPolicy, 'off');
+test('#3729: the finding states the CLOCK as well as the SHA, and the clock is the half that cannot move', () => {
+  // WHY THE CLOCK IS THERE AT ALL. The review EVENT surface this gate reads has
+  // a FROZEN `commit_id`, so the SHA still carries the finding; it is the
+  // sibling field on `pulls/{n}/comments` that relocates (#3729 — the rows are
+  // in scripts/lib/review-provenance.mjs). `submitted_at` against the head
+  // COMMIT TIME is the second, independent fact: monotone, and untouched by any
+  // anchoring mechanism. This asserts it reaches the RENDERED line.
+  const r = run(STATE_3276(OLD_3276), ON());
+  assert.match(r.output, /STALE_REVIEW: `CodeRabbit`/);
+  assert.match(r.output, /BEFORE the head commit was made — it cannot have seen this tree/);
+});
 
-  // #3276's own shape, the one `claimed-verdict` fires on, under the shipped
-  // config. It must say the question was not asked — not answer it.
+test('#3729: where the clock CANNOT rule the review out, the finding says so instead of implying a proof', () => {
+  // ONE-WAY, AND THE OTHER DIRECTION IS NOT HYPOTHETICAL — see fact 4 in
+  // scripts/lib/review-provenance.mjs for the PR that shows it. A reviewer can
+  // submit against the commit its UI was showing seconds after a push, so
+  // "submitted after the head commit" proves nothing, and the gate must not
+  // round that up into a proof it does not have.
+  const late = {
+    ...STATE_3276(OLD_3276),
+    headCommittedAt: '2026-08-26T12:00:00Z', // BEFORE the review's submitted_at
+  };
+  const r = run(late, ON());
+  // The finding still stands — the SHA is sound on this surface…
+  assert.match(r.output, /STALE_REVIEW: `CodeRabbit`/);
+  // …and the sentence is the honest one, not the strong one.
+  assert.doesNotMatch(r.output, /BEFORE the head commit was made/);
+  assert.match(r.output, /the clock cannot rule out that it saw the head/);
+});
+
+test('#3729: an UNDATED review gets the third sentence — the clock was not consulted at all', () => {
+  // `predatesHeadBy` is `null` for TWO different reasons and they are not the
+  // same statement: "submitted after the head commit, so this proves nothing"
+  // is a comparison that was MADE, and "the review carries no `submitted_at`"
+  // is one that was not. Printing the first over the second is a claim about a
+  // comparison nobody performed — the exact shape `predatesCommit` refuses to
+  // collapse in the lib, so the RENDERER must not collapse it either.
+  const undated = {
+    ...STATE_3276(OLD_3276),
+    reviews: [{ ...REVIEW_3276(OLD_3276), submitted_at: undefined }],
+  };
+  const r = run(undated, ON());
+  assert.match(r.output, /STALE_REVIEW: `CodeRabbit`/);
+  assert.match(r.output, /carries no `submitted_at`, so the clock was not consulted at all/);
+  assert.doesNotMatch(r.output, /is not older than the head commit/);
+  assert.doesNotMatch(r.output, /BEFORE the head commit was made/);
+
+  // ANTI-VACUITY, both other states, so this tracks the DATE and not the branch.
+  assert.match(run(STATE_3276(OLD_3276), ON()).output, /BEFORE the head commit was made/);
+  const newer = { ...STATE_3276(OLD_3276), headCommittedAt: '2026-08-26T12:00:00Z' };
+  assert.match(run(newer, ON()).output, /is not older than the head commit/);
+});
+
+test('FAIL CLOSED (#3729): a state file that omits `headCommittedAt` gets NO_HEAD_COMMIT_TIME', () => {
+  // A MISSING CLOCK MUST NOT DEGRADE SILENTLY. Defaulting it — to `now`, to the
+  // review's own timestamp, to `null` — would drop the corroborating half of
+  // every finding while leaving text that still reads correct, which is the
+  // "absence looks like success" shape this whole gate exists to reject.
+  const { headCommittedAt, ...noClock } = STATE_3276(OLD_3276);
+  assert.ok(headCommittedAt, 'fixture must have had one to remove');
+  const r = runRaw(noClock, ON());
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /NO_HEAD_COMMIT_TIME/);
+  assert.doesNotMatch(r.output, /No reviewer claims a verdict/);
+});
+
+test('#3730: the SHIPPED config ADJUDICATES staleness — `off` passed reviews that never saw the head', () => {
+  // THE ISSUE, AS A PIN. #3730: `PR review signal` is one of three required
+  // checks on main and its `staleReviewPolicy` was `off`, so the required check
+  // named "review signal" reported SUCCESS on PRs whose only reviews read a
+  // tree that no longer exists — #3720 (head 490e79e5b committed 19:01:05Z,
+  // both reviews at 4d2cfbcac ~90 minutes earlier), and four PRs merged behind
+  // it on 2026-09-02, all four carrying real defects.
+  const cfg = JSON.parse(readFileSync(CONFIG, 'utf8'));
+  assert.equal(cfg.staleReviewPolicy, 'claimed-verdict');
+  // The SEVERITY is a separate, deliberately unchanged decision — see the
+  // config note and #3730 item 1: surface first, promote to `fail` after the
+  // false-positive rate has been measured on real traffic.
+  assert.equal(cfg.staleReviewSeverity, 'warn');
+  // …and `reviewVerdictSeverity` is NOT collateral damage of that change.
+  assert.equal(cfg.reviewVerdictSeverity, 'warn');
+
+  // #3276's shape under the SHIPPED config, with nothing pinned by the test.
+  // Before #3730 this printed "STALE_REVIEW not adjudicated" and said nothing
+  // about the head.
   const r = run(STATE_3276(OLD_3276));
+  assert.doesNotMatch(r.output, /STALE_REVIEW not adjudicated/);
+  assert.match(r.output, /STALE_REVIEW: `CodeRabbit`/);
+  assert.match(r.output, /not of the head 1305f778/);
+  assert.equal(r.code, 0, r.output);
+
+  // ANTI-VACUITY on the shipped config itself: the identical PR reviewed AT the
+  // head is silent, so the line above tracks the finding and not the policy.
+  const clean = run(STATE_3276(HEAD_3276));
+  assert.doesNotMatch(clean.output, /STALE_REVIEW/);
+  assert.match(clean.output, /policy: claimed-verdict/);
+  assert.equal(clean.code, 0, clean.output);
+});
+
+test('`off` is still reachable, and it NEVER prints a tick', () => {
+  const OFF = ['--config', cfgWith({ staleReviewPolicy: 'off' }, 'part3-off')];
+
+  // #3276's own shape under `off`. It must say the question was not asked —
+  // not answer it.
+  const r = run(STATE_3276(OLD_3276), OFF);
   assert.doesNotMatch(r.output, /No reviewer claims a verdict/, 'a tick nobody earned');
   assert.doesNotMatch(r.output, /STALE_REVIEW: /);
   assert.match(r.output, /STALE_REVIEW not adjudicated/);
@@ -831,11 +969,12 @@ test('the SHIPPED default for part 3 is `off`, and `off` NEVER prints a tick', (
 
   // MUTATION GUARD: `off` is inert, not merely silent. Under `claimed-verdict`
   // each of these is a refusal (asserted below); under `off` the gate does not
-  // fall over on a question it never asks.
-  const inert = runRaw({ required: HEALTHY, lanes: HEALTHY.map((n) => LANE(n)) });
+  // fall over on a question it never asks — including the head COMMIT TIME,
+  // which `off` does not read either.
+  const inert = runRaw({ required: HEALTHY, lanes: HEALTHY.map((n) => LANE(n)) }, OFF);
   assert.equal(inert.code, 0, inert.output);
   assert.match(inert.output, /STALE_REVIEW not adjudicated/);
-  assert.doesNotMatch(inert.output, /NO_REVIEWS|NO_HEAD_SHA/);
+  assert.doesNotMatch(inert.output, /NO_REVIEWS|NO_HEAD_SHA|NO_HEAD_COMMIT_TIME/);
 });
 
 test('NO NAG: a reviewer with no review event and a `Review completed` status is silent', () => {
@@ -896,7 +1035,12 @@ test('FAIL CLOSED: a state file that omits `reviews` gets NO_REVIEWS, not a succ
   // supplying a value (`timedOut: false`) the real path computes. Defaulting
   // `reviews` to `[]` inside the gate would repeat it.
   const r = runRaw(
-    { required: HEALTHY, lanes: HEALTHY.map((n) => LANE(n)), headSha: HEAD_3276 },
+    {
+      required: HEALTHY,
+      lanes: HEALTHY.map((n) => LANE(n)),
+      headSha: HEAD_3276,
+      headCommittedAt: ANY_HEAD_COMMITTED_AT,
+    },
     ON(),
   );
   assert.equal(r.code, 1, r.output);

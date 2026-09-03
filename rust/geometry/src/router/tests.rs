@@ -766,3 +766,77 @@ fn unsupported_textured_representation_map_items_are_dropped_and_counted_not_sil
         "exactly two items were unsupported — a reporter firing for the supported item too is as wrong as one firing for none: {unsupported:?}"
     );
 }
+
+/// RED (pre-fix): a CLEAN model warned. `plan_type_geometry` selects a type's
+/// `IfcRepresentationMap`s by reference/instantiation only — it never looks at
+/// the representation identifier, unlike the occurrence path which filters with
+/// `is_body_representation` ("Skip 'Axis', 'Curve2D', 'FootPrint'"). So a
+/// Revit/ArchiCAD type carrying a 2D 'FootPrint'/'Annotation' map handed the
+/// router `IfcAnnotationFillArea` / `IfcGeometricCurveSet`, which have no
+/// processor and are CORRECTLY absent from a 3D view — and every one of them was
+/// counted as a dropped representation item. A door type with an annotation map,
+/// instantiated across a building, produced "N representation items dropped …
+/// these elements are missing or incomplete" on a model with nothing wrong,
+/// which is precisely the false positive that trains users to ignore the warning.
+///
+/// GREEN: a non-Body representation records NOTHING. The wall below is meshed
+/// through a 'FootPrint' mapped representation whose only item has no processor;
+/// the geometry outcome is unchanged (no mesh — there is no 3D content), but the
+/// drop counter must stay empty so `GeometryDiagnostics::is_empty()` still
+/// reports this model as clean.
+#[test]
+fn a_non_body_representations_unsupported_item_is_not_counted_as_content_loss() {
+    let footprint = r#"
+#1=IFCCARTESIANPOINT((0.,0.));
+#8=IFCANNOTATIONFILLAREA(#1,());
+#9=IFCSHAPEREPRESENTATION($,'FootPrint','Annotation2D',(#8));
+#10=IFCREPRESENTATIONMAP($,#9);
+#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,$,$,$);
+#12=IFCMAPPEDITEM(#10,#11);
+#13=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#12));
+#14=IFCPRODUCTDEFINITIONSHAPE($,$,(#13));
+#15=IFCWALL('guid',$,$,$,$,$,#14,$);
+"#;
+    let mut decoder = EntityDecoder::new(footprint);
+    let router = GeometryRouter::new();
+    let wall = decoder.decode_by_id(15).unwrap();
+    let _ = router.process_element(&wall, &mut decoder);
+
+    let unsupported = router.take_unsupported_items();
+    assert!(
+        unsupported.is_empty(),
+        "a 2D 'FootPrint' representation carries no 3D content to lose, so nothing may be \
+         reported as dropped — a clean model must not warn: {unsupported:?}"
+    );
+}
+
+/// The other half of the gate, so it cannot be satisfied by simply never
+/// counting: the SAME unsupported item under a 'Body' representation IS a real
+/// content loss and must still be counted. Without this, a fix for the false
+/// positive above could silently reintroduce the original silent-drop bug.
+#[test]
+fn the_same_unsupported_item_under_a_body_representation_is_still_counted() {
+    let body = r#"
+#1=IFCCARTESIANPOINT((0.,0.));
+#8=IFCANNOTATIONFILLAREA(#1,());
+#9=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#8));
+#10=IFCREPRESENTATIONMAP($,#9);
+#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,$,$,$);
+#12=IFCMAPPEDITEM(#10,#11);
+#13=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#12));
+#14=IFCPRODUCTDEFINITIONSHAPE($,$,(#13));
+#15=IFCWALL('guid',$,$,$,$,$,#14,$);
+"#;
+    let mut decoder = EntityDecoder::new(body);
+    let router = GeometryRouter::new();
+    let wall = decoder.decode_by_id(15).unwrap();
+    let _ = router.process_element(&wall, &mut decoder);
+
+    let unsupported = router.take_unsupported_items();
+    assert_eq!(
+        unsupported.values().sum::<u64>(),
+        1,
+        "the identical item under a Body representation IS missing 3D content and must be \
+         counted — the gate keys on the representation, not on the item type: {unsupported:?}"
+    );
+}

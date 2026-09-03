@@ -294,6 +294,17 @@ export function CesiumOverlay({
               if (!cancelled) {
                 viewer.scene.primitives.add(tileset);
                 tilesetRef.current = tileset;
+              } else {
+                // `fromUrl` already resolved a real tileset by the time the
+                // effect was cancelled -- it is never added to any scene's
+                // primitives, so nothing else will ever call `.destroy()` on
+                // it. Cesium3DTileset's own docs are explicit that this is
+                // required "for the explicit release of WebGL resources,
+                // instead of relying on the garbage collector"; skipping it
+                // here leaked the tileset's in-flight requests and any
+                // resources already allocated for its root tile on every
+                // source switch made before a slow custom URL resolved.
+                tileset.destroy();
               }
             } catch (e) {
               console.warn('[CesiumOverlay] Custom 3D Tiles URL failed to load:', customTilesetUrl, e);

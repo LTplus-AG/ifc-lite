@@ -124,7 +124,8 @@ describe('CesiumOverlay — custom 3D Tiles URL (#3607)', () => {
     // the custom XYZ basemap in CesiumOverlay.teardown.test.tsx.
     act(() => { useViewerStore.setState({ cesiumDataSource: 'osm-map' } as never); });
 
-    const fakeTileset = { shadows: undefined };
+    let destroyCalls = 0;
+    const fakeTileset = { shadows: undefined, destroy: () => { destroyCalls += 1; } };
     act(() => { staleRequest.resolve(fakeTileset); });
     await settle();
 
@@ -132,6 +133,17 @@ describe('CesiumOverlay — custom 3D Tiles URL (#3607)', () => {
     assert.equal(
       viewersWithTileset.length, 0,
       'a tileset that resolves after the user switched away must not be added to any viewer',
+    );
+    // Cesium3DTileset's own docs require an explicit `.destroy()` "for the
+    // explicit release of WebGL resources, instead of relying on the garbage
+    // collector" -- a tileset that resolves post-cancellation is never added
+    // to any scene's primitives, so nothing else will ever call it. Without
+    // this, every source switch made before a slow custom tileset URL
+    // resolved leaked that tileset's in-flight requests and any resources
+    // already allocated for its root tile.
+    assert.equal(
+      destroyCalls, 1,
+      'a stale tileset that is discarded (never added to a scene) must be explicitly destroyed, not leaked',
     );
   });
 });

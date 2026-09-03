@@ -697,3 +697,72 @@ fn unsupported_mapped_source_item_is_dropped_and_counted_not_silent() {
         "exactly one item was unsupported — a reporter firing for supported items too is as wrong as one firing for none: {unsupported:?}"
     );
 }
+
+/// RED (pre-fix): the SAME unsupported-item drop as
+/// `unsupported_body_item_is_dropped_and_counted_not_silent`, but reached
+/// through `process_representation_map_with_texture` — the type-geometry
+/// (orphan `IfcRepresentationMap`) channel used by
+/// `ifc_lite_processing::element::produce_type_geometry` for `IfcTypeProduct`
+/// jobs (the annex-E "tessellated shape with style" sample ships exactly this
+/// shape: geometry hung off a type via `RepresentationMaps`, no occurrence).
+/// Both call sites this test drives had zero counter before this fix:
+/// `textured.rs:109` discarded `process_mapped_item_cached`'s `Err` wholesale
+/// (a malformed nested `IfcMappedItem`), and the item loop around `textured.rs:129`
+/// had the same no-`else` shape as the already-fixed `collect_submeshes_from_item_inner`
+/// / `process_mapped_item_cached_inner` loops for a `None` processor or an `Err`.
+/// A mixed source — a supported `IfcExtrudedAreaSolid` alongside an unsupported
+/// `IfcGeometricSet` AND a malformed `IfcMappedItem` (missing `MappingSource`,
+/// attr 0) — catches the permissive direction too: a reporter firing for the
+/// supported solid would be exactly as wrong as one firing for nothing.
+/// GREEN (post-fix): both drops are counted and attributable by IFC type,
+/// without changing the mesh output.
+#[test]
+fn unsupported_textured_representation_map_items_are_dropped_and_counted_not_silent() {
+    let content = r#"
+#1=IFCCARTESIANPOINT((0.,0.));
+#2=IFCAXIS2PLACEMENT2D(#1,$);
+#3=IFCRECTANGLEPROFILEDEF(.AREA.,'P',#2,1000.,1000.);
+#4=IFCDIRECTION((0.,0.,1.));
+#5=IFCCARTESIANPOINT((0.,0.,0.));
+#6=IFCAXIS2PLACEMENT3D(#5,$,$);
+#7=IFCEXTRUDEDAREASOLID(#3,#6,#4,1000.);
+#8=IFCGEOMETRICSET(());
+#9=IFCMAPPEDITEM($,$);
+#10=IFCSHAPEREPRESENTATION($,'Body','Tessellation',(#7,#8,#9));
+#11=IFCREPRESENTATIONMAP($,#10);
+"#;
+    let mut decoder = EntityDecoder::new(content);
+    let router = GeometryRouter::new();
+    let rep_map = decoder.decode_by_id(11).unwrap();
+    let texture_index = rustc_hash::FxHashMap::default();
+
+    let parts = router
+        .process_representation_map_with_texture(&rep_map, &mut decoder, &texture_index)
+        .expect("router walks the representation map without erroring the whole map");
+    assert!(
+        parts.iter().any(|(mesh, _, _)| !mesh.is_empty()),
+        "the supported solid in the representation map must still mesh normally (behavior unchanged)"
+    );
+
+    let unsupported = router.take_unsupported_items();
+    assert_eq!(
+        unsupported.get("IfcGeometricSet"),
+        Some(&1),
+        "the direct-item drop must be attributable through the textured representation-map path too, not merely silent: {unsupported:?}"
+    );
+    assert_eq!(
+        unsupported.get("IfcMappedItem"),
+        Some(&1),
+        "the malformed nested IfcMappedItem's drop must be attributable too, not silently discarded: {unsupported:?}"
+    );
+    assert_eq!(
+        unsupported.get("IfcExtrudedAreaSolid"),
+        None,
+        "the supported solid must NOT be recorded as dropped: {unsupported:?}"
+    );
+    assert_eq!(
+        unsupported.values().sum::<u64>(),
+        2,
+        "exactly two items were unsupported — a reporter firing for the supported item too is as wrong as one firing for none: {unsupported:?}"
+    );
+}

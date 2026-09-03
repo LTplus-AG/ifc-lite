@@ -106,8 +106,22 @@ impl GeometryRouter {
             // A nested IfcMappedItem inside a type's own representation: process
             // it (applies its MappingTarget) rather than dropping its geometry.
             if item.ifc_type == IfcType::IfcMappedItem {
-                if let Ok(sub_mesh) = self.process_mapped_item_cached(&item, decoder) {
-                    untextured.merge(&sub_mesh); // already scaled inside the cached path
+                match self.process_mapped_item_cached(&item, decoder) {
+                    Ok(sub_mesh) => untextured.merge(&sub_mesh), // already scaled inside the cached path
+                    Err(_e) => {
+                        self.record_unsupported_item(item.ifc_type);
+                        crate::diag::diag_debug!(
+                            { item_id = item.id, error = %_e,
+                              "skipping unsupported nested IfcMappedItem in representation map" }
+                            else {
+                                #[cfg(debug_assertions)]
+                                eprintln!(
+                                    "[ifc-lite] Skipping unsupported nested IfcMappedItem #{} in representation map: {}",
+                                    item.id, _e
+                                );
+                            }
+                        );
+                    }
                 }
                 continue;
             }
@@ -126,13 +140,46 @@ impl GeometryRouter {
                 }
             }
 
-            if let Some(processor) = self.processors.get(&item.ifc_type) {
-                if let Ok(mut sub_mesh) =
-                    processor.process(&item, decoder, &self.schema, self.tessellation_quality)
-                {
-                    sub_mesh.validate_indices();
-                    self.scale_mesh(&mut sub_mesh);
-                    untextured.merge(&sub_mesh);
+            match self.processors.get(&item.ifc_type) {
+                Some(processor) => match processor.process(
+                    &item,
+                    decoder,
+                    &self.schema,
+                    self.tessellation_quality,
+                ) {
+                    Ok(mut sub_mesh) => {
+                        sub_mesh.validate_indices();
+                        self.scale_mesh(&mut sub_mesh);
+                        untextured.merge(&sub_mesh);
+                    }
+                    Err(_e) => {
+                        self.record_unsupported_item(item.ifc_type);
+                        crate::diag::diag_debug!(
+                            { item_id = item.id, ifc_type = ?item.ifc_type,
+                              error = %_e, "skipping unsupported representation-map item" }
+                            else {
+                                #[cfg(debug_assertions)]
+                                eprintln!(
+                                    "[ifc-lite] Skipping unsupported representation-map item #{} ({:?}): {}",
+                                    item.id, item.ifc_type, _e
+                                );
+                            }
+                        );
+                    }
+                },
+                None => {
+                    self.record_unsupported_item(item.ifc_type);
+                    crate::diag::diag_debug!(
+                        { item_id = item.id, ifc_type = ?item.ifc_type,
+                          "skipping unsupported representation-map item (no processor)" }
+                        else {
+                            #[cfg(debug_assertions)]
+                            eprintln!(
+                                "[ifc-lite] Skipping unsupported representation-map item #{} ({:?}): no processor",
+                                item.id, item.ifc_type
+                            );
+                        }
+                    );
                 }
             }
         }

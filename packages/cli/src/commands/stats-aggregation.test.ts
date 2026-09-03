@@ -277,6 +277,7 @@ describe('computeMaterialSummary', () => {
   });
 });
 
+describe('computeStoreyNames', () => {
   /**
    * Regression: `storeys.map(s => s.name).filter(Boolean)` drops a plain
    * empty-string Name (falsy) but keeps a whitespace-only one
@@ -354,6 +355,20 @@ describe('filterBuildingElements', () => {
     const entities = [{ type: 'IfcWall', name: 'Wall 1' }, { type: 'IfcExternalSpatialElement', name: undefined }];
     expect(filterBuildingElements(entities).map(e => e.type)).toEqual(['IfcWall']);
   });
+
+  // Regression: the exclusion set was a hand-written copy of the spatial
+  // type list and had drifted from `@ifc-lite/data`'s authority — it named
+  // IfcFacilityPart/IfcBridgePart/IfcRoadPart/IfcRailwayPart but not the
+  // IFC4X3 siblings IfcFacilityPartCommon and IfcMarinePart, so an unnamed
+  // instance of either still counted as an unnamed building element. The
+  // filter now asks that authority instead of restating the list.
+  it.each(['IfcFacilityPartCommon', 'IfcMarinePart', 'IfcFacilityPart', 'IfcMarineFacility', 'IfcRoadPart'])(
+    'excludes the IFC4X3 spatial container %s',
+    type => {
+      const entities = [{ type: 'IfcWall', name: 'Wall 1' }, { type, name: undefined }];
+      expect(filterBuildingElements(entities).map(e => e.type)).toEqual(['IfcWall']);
+    },
+  );
 });
 
 describe('computeValidation', () => {

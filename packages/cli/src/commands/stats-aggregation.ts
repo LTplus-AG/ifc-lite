@@ -9,6 +9,7 @@
  * these to the SDK's `BimContext`.
  */
 
+import { isSpatialStructureTypeName } from '@ifc-lite/data';
 import { findPropertyInSets } from '@ifc-lite/query';
 import { firstNonBlank, isBlank } from '../output.js';
 
@@ -239,12 +240,19 @@ export function computeMaterialSummary<R>(
  * validation counts with entities a user would never call a "building
  * element" (e.g. an `IfcAnnotation` dimension line never carries a Name
  * and isn't a modeling defect).
+ *
+ * The spatial-structure half of that population is not restated here: it is
+ * read off `@ifc-lite/data`'s `isSpatialStructureTypeName`, the repo's single
+ * authority for that list, so an IFC4X3 facility-part class it already covers
+ * (`IfcFacilityPartCommon`, `IfcMarinePart`) is not left counted as a building
+ * element by a stale copy in this file. Only what that authority does not
+ * cover is listed below: `IfcExternalSpatialElement` (the
+ * `IfcExternalSpatialStructureElement` branch, deliberately outside the
+ * spatial-structure list), the grouping classes, and annotations.
  */
 const NON_ELEMENT_TYPES = new Set([
-  'IfcProject', 'IfcSite', 'IfcBuilding', 'IfcBuildingStorey', 'IfcSpace',
-  'IfcSpatialZone', 'IfcExternalSpatialElement', 'IfcZone', 'IfcSystem', 'IfcDistributionSystem',
-  'IfcFacility', 'IfcFacilityPart', 'IfcBridge', 'IfcBridgePart',
-  'IfcRoad', 'IfcRoadPart', 'IfcRailway', 'IfcRailwayPart', 'IfcMarineFacility',
+  'IfcExternalSpatialElement',
+  'IfcZone', 'IfcSystem', 'IfcDistributionSystem',
   'IfcAnnotation',
 ]);
 
@@ -253,7 +261,7 @@ const NON_ELEMENT_TYPES = new Set([
  * building elements, for the material summary and validation stats.
  */
 export function filterBuildingElements<T extends { type: string }>(entities: T[]): T[] {
-  return entities.filter(e => !NON_ELEMENT_TYPES.has(e.type));
+  return entities.filter(e => !NON_ELEMENT_TYPES.has(e.type) && !isSpatialStructureTypeName(e.type));
 }
 
 export interface ValidationSummary {

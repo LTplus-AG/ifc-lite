@@ -38,6 +38,7 @@ import {
   lineIsAdded,
   quotableLines,
   quoteAppearsIn,
+  quotedLineFailureMessage,
   sanitizeBody,
   sanitizeLabel,
   sanitizePath,
@@ -889,6 +890,37 @@ test('quoteAppearsIn enforces its minimum length in both directions', () => {
   assert.equal(quoteAppearsIn(PATCH_A, '   ', 3), false);
   assert.equal(quoteAppearsIn(PATCH_A, 'return n;', 3), true);
   assert.equal(quoteAppearsIn(PATCH_A, 'return n;', 20), false, 'the floor is what rejects it, not the patch');
+});
+
+test('#3769: a rejected proof quote names the other reviewed file that contains it', () => {
+  const moved = 'const movedImplementation = buildCanonicalResult();';
+  const files = new Map([
+    ['packages/old.ts', { patch: '@@ -1 +1 @@\n+const replacement = true;' }],
+    ['packages/new.ts', { patch: `@@ -1 +1 @@\n+${moved}` }],
+  ]);
+  const message = quotedLineFailureMessage(files, 'packages/old.ts', moved, 8);
+  assert.match(message, /file attribution is wrong/);
+  assert.match(message, /correct `riskiest_change\.path` is `packages\/new\.ts`/);
+});
+
+test('#3769: the wrong-file diagnostic never self-matches an equivalent path spelling', () => {
+  const quote = 'const substantiveProofLine = true;';
+  const files = new Map([['packages/a.ts', { patch: `@@ -1 +1 @@\n+${quote}` }]]);
+  const message = quotedLineFailureMessage(files, './packages\\a.ts', quote, 8);
+  assert.doesNotMatch(message, /file attribution is wrong/);
+  assert.match(message, /model that quit early cannot fake/);
+});
+
+test('#3769: an ambiguous wrong-file quote names every candidate instead of guessing one', () => {
+  const quote = 'return sharedSubstantiveValue;';
+  const files = new Map([
+    ['claimed.ts', { patch: '@@ -1 +1 @@\n+return somethingElse;' }],
+    ['first.ts', { patch: `@@ -1 +1 @@\n+${quote}` }],
+    ['second.ts', { patch: `@@ -1 +1 @@\n+${quote}` }],
+  ]);
+  const message = quotedLineFailureMessage(files, 'claimed.ts', quote, 8);
+  assert.match(message, /2 other reviewed files/);
+  assert.match(message, /`first\.ts`, `second\.ts`/);
 });
 
 test('stripFence removes one fence and refuses to guess at anything else', () => {

@@ -153,7 +153,7 @@ import { ValidateFindingsError } from './lib/validate-findings-error.mjs';
 // quotableLines/quoteAppearsIn/lineIsAdded/addedLinesMatching moved to
 // ./quote-line-coupling.mjs (module-size budget). Re-exported below so every
 // existing import of them from this file keeps working unchanged.
-import { quotableLines, quoteAppearsIn, lineIsAdded, addedLinesMatching } from './quote-line-coupling.mjs';
+import { quotableLines, quoteAppearsIn, lineIsAdded, addedLinesMatching, quotedLineFailureMessage } from './quote-line-coupling.mjs';
 // readText/stripFence/parseRaw/readInput moved to ./lib/review-input-reader.mjs
 // (module-size budget, #3795). Imported (not `export ... from`) because
 // main() below calls `readInput` and `parseRaw` itself, and re-exported so
@@ -230,7 +230,7 @@ export function parseArgs(argv) {
 }
 
 
-export { quotableLines, quoteAppearsIn, lineIsAdded, addedLinesMatching };
+export { quotableLines, quoteAppearsIn, lineIsAdded, addedLinesMatching, quotedLineFailureMessage };
 
 export { ValidateFindingsError };
 export { stripFence, readInput };

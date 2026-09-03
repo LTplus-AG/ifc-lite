@@ -11,7 +11,7 @@
  */
 
 import { ValidateFindingsError } from './validate-findings-error.mjs';
-import { quoteAppearsIn } from '../quote-line-coupling.mjs';
+import { quoteAppearsIn, quotedLineFailureMessage } from '../quote-line-coupling.mjs';
 
 /** @param {unknown} v */
 const isNonEmptyString = (v) => typeof v === 'string' && v.trim() !== '';
@@ -74,12 +74,7 @@ export function checkProofOfWork({ response, input }) {
   if (!quoteAppearsIn(file.patch, rc.quoted_line, MIN_PROOF_QUOTE_CHARS)) {
     throw new ValidateFindingsError(
       'PROOF_OF_WORK_FAILED',
-      `\`riskiest_change.quoted_line\` is not a line of \`${rc.path}\`'s patch (or is shorter than ` +
-        `${MIN_PROOF_QUOTE_CHARS} characters, which would not be evidence of anything): ` +
-        `${JSON.stringify(String(rc.quoted_line).slice(0, 120))}. This is the one thing a model that ` +
-        'quit early cannot fake. REMEDY: re-run. Quote a WHOLE line, not a fragment; and if the ' +
-        'line you nominated is too long to reproduce exactly, nominate a SHORTER line from the ' +
-        'same file instead -- any real line of the diff proves you read it.',
+      quotedLineFailureMessage(input.files, rc.path, rc.quoted_line, MIN_PROOF_QUOTE_CHARS),
     );
   }
 }

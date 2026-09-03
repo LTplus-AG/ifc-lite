@@ -131,6 +131,16 @@ export function addedLinesMatching(patch, quote) {
  * to a retry than "try again", and #3769 itself notes a same-prompt retry
  * has no particular reason to fix an attribution it was never told was wrong.
  *
+ * HARDENING, not a bug fix: today `claimedPath` always arrives as a literal
+ * `Map` key (`checkProofOfWork` does `input.files.get(rc.path)` before this
+ * function is ever called, so a spelling mismatch is already caught by that
+ * `!file` branch). The naked `path === claimedPath` this replaced was
+ * therefore safe in practice, but only by that implicit contract with its
+ * one caller -- standalone, it fails on a `./`-prefixed or backslash-separated
+ * spelling of the same file, producing the nonsensical self-referential
+ * message this comment is attached to. Normalising makes the function correct
+ * on its own terms for any future caller, not just this one.
+ *
  * @param {Map<string, {patch: string}>} files every file sent to the model
  * @param {string} claimedPath the file `riskiest_change.path` named
  * @param {string} quote `riskiest_change.quoted_line`
@@ -138,22 +148,31 @@ export function addedLinesMatching(patch, quote) {
  * @returns {string}
  */
 export function quotedLineFailureMessage(files, claimedPath, quote, minChars) {
-  let elsewhere = null;
+  const claimedKey = normalizePathForSelfMatch(claimedPath);
+  const elsewhere = [];
   for (const [path, file] of files) {
-    if (path === claimedPath) continue;
-    if (quoteAppearsIn(file.patch, quote, minChars)) {
-      elsewhere = path;
-      break;
-    }
+    if (normalizePathForSelfMatch(path) === claimedKey) continue;
+    if (quoteAppearsIn(file.patch, quote, minChars)) elsewhere.push(path);
   }
   const base =
     `\`riskiest_change.quoted_line\` is not a line of \`${claimedPath}\`'s patch (or is shorter than ` +
     `${minChars} characters, which would not be evidence of anything): ` +
     `${JSON.stringify(String(quote).slice(0, 120))}.`;
-  if (elsewhere) {
+  if (elsewhere.length === 1) {
     return (
-      `${base} This exact line IS in \`${elsewhere}\`'s patch instead -- the file attribution is wrong, ` +
-      `not the quote. REMEDY: re-run; the correct \`riskiest_change.path\` is \`${elsewhere}\`.`
+      `${base} This exact line IS in \`${elsewhere[0]}\`'s patch instead -- the file attribution is wrong, ` +
+      `not the quote. REMEDY: re-run; the correct \`riskiest_change.path\` is \`${elsewhere[0]}\`.`
+    );
+  }
+  if (elsewhere.length > 1) {
+    // AMBIGUOUS: naming only the first Map-iteration-order match would be a
+    // confident-sounding but unearned single answer -- disclose the spread
+    // instead of picking one for the model.
+    const named = elsewhere.map((p) => `\`${p}\``).join(', ');
+    return (
+      `${base} This exact line IS in ${elsewhere.length} other reviewed files' patches instead (${named}) ` +
+      '-- the file attribution is wrong, but which of these it belongs to cannot be told from the quote ' +
+      'alone. REMEDY: re-run and name the specific file the quote came from.'
     );
   }
   return (
@@ -163,3 +182,21 @@ export function quotedLineFailureMessage(files, claimedPath, quote, minChars) {
   );
 }
 
+/**
+ * Same-file check for `quotedLineFailureMessage`'s self-match guard ONLY --
+ * not a general path resolver. Strips a leading `./` and folds `\` to `/`, so
+ * `./a/b.ts`, `a/b.ts` and `a\b.ts` compare equal.
+ *
+ * Case is deliberately NOT folded. Paths here are POSIX diff paths
+ * (`+++ b/path`) and case-SENSITIVE on the Linux CI this runs in, so two
+ * distinctly-cased paths are, on that filesystem, two different files; folding
+ * case would make a real other file compare equal to `claimedPath` and get
+ * silently excluded from the "elsewhere" search -- the opposite failure mode,
+ * a false self-match hiding a genuine wrong-file finding.
+ *
+ * @param {string} path
+ * @returns {string}
+ */
+function normalizePathForSelfMatch(path) {
+  return String(path).replace(/\\/g, '/').replace(/^\.\//, '');
+}

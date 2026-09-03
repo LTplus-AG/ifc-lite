@@ -1108,6 +1108,59 @@ test('quotedLineFailureMessage: direct unit coverage of the lookup, both outcome
   assert.doesNotMatch(selfMatch, new RegExp(`IS in \`${PATH_A}\`'s patch instead`));
 });
 
+// HARDENING (not a live-bug fix -- see the function's own doc comment):
+// `checkProofOfWork` always calls this with a `claimedPath` that is already a
+// literal `Map` key, so a spelling mismatch here is unreachable through that
+// caller today. These tests call the exported function directly, the same way
+// #3769's own scratch script did, to pin the guard's behaviour on its own
+// terms rather than through that one caller's contract.
+test('quotedLineFailureMessage: self-match guard survives a ./-prefixed or backslash spelling of the same file', () => {
+  const files = new Map([[PATH_A, { patch: PATCH_A }]]);
+  for (const spelling of [`./${PATH_A}`, PATH_A.replace(/\//g, '\\')]) {
+    const msg = quotedLineFailureMessage(files, spelling, PROOF_LINE, 8);
+    assert.doesNotMatch(
+      msg,
+      /This exact line IS in/,
+      `claimedPath ${JSON.stringify(spelling)} should self-match ${JSON.stringify(PATH_A)}`,
+    );
+  }
+});
+
+test('quotedLineFailureMessage: self-match guard does NOT fold case (paths are case-sensitive here)', () => {
+  // The mirror of the test above: two DIFFERENT files that happen to differ
+  // only by case must NOT be treated as the same file. A case-folding
+  // normalisation would make this wrongly "self-match" and hide a real
+  // wrong-file attribution.
+  const files = new Map([[PATH_A, { patch: PATCH_A }]]);
+  const msg = quotedLineFailureMessage(files, PATH_A.toUpperCase(), PROOF_LINE, 8);
+  assert.match(msg, new RegExp(`This exact line IS in \`${PATH_A}\`'s patch instead`));
+});
+
+test('quotedLineFailureMessage: several matching files are disclosed together, not just the first by iteration order', () => {
+  const files = new Map([
+    [PATH_A, { patch: PATCH_B }],
+    [PATH_B, { patch: PATCH_B }],
+    [UNREVIEWABLE, { patch: PATCH_A }],
+  ]);
+  const msg = quotedLineFailureMessage(files, UNREVIEWABLE, 'registry.set("wall", parseWall);', 8);
+  assert.match(msg, /IS in 2 other reviewed files' patches instead/);
+  assert.match(msg, new RegExp(`\`${PATH_A}\`.*\`${PATH_B}\`|\`${PATH_B}\`.*\`${PATH_A}\``));
+  assert.doesNotMatch(msg, /the correct `riskiest_change\.path` is/);
+});
+
+test('quotedLineFailureMessage: the no-other-file fallback stays byte-identical', () => {
+  const files = new Map([[PATH_A, { patch: PATCH_A }]]);
+  const msg = quotedLineFailureMessage(files, PATH_A, 'nowhere at all in either patch', 8);
+  assert.strictEqual(
+    msg,
+    '`riskiest_change.quoted_line` is not a line of `packages/x/y.ts`\'s patch (or is shorter than 8 ' +
+      'characters, which would not be evidence of anything): "nowhere at all in either patch". This is the ' +
+      'one thing a model that quit early cannot fake. REMEDY: re-run. Quote a WHOLE line, not a fragment; ' +
+      'and if the line you nominated is too long to reproduce exactly, nominate a SHORTER line from the ' +
+      'same file instead -- any real line of the diff proves you read it.',
+  );
+});
+
 test('RED, shape 4 (#3769): a real quote attributed to the wrong file is still refused, and names the right one', () => {
   const input = { headSha: SHA, files: new Map([[PATH_A, { path: PATH_A, patch: PATCH_A, addedLineRanges: addedLineRanges(PATCH_A) }], [PATH_B, { path: PATH_B, patch: PATCH_B, addedLineRanges: addedLineRanges(PATCH_B) }]]), unreviewable: [] };
   // The quote is real and whole -- it is PATCH_B's added line -- but attributed

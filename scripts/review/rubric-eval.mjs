@@ -42,6 +42,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { buildPack, retrievalFailed, retrievalFailedMessage } from './build-context-pack.mjs';
+import { validateWithOneRetry, validatorReason, REVIEWER_FAULT } from './eval-validation.mjs';
 import { MAX_POSTED_FINDINGS } from './post-review.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -76,33 +77,7 @@ const CASE_DIR = join(HERE, 'eval-cases');
  * requires every reason to be classified exactly once. So a reason added there
  * cannot be silently scored as "the reviewer found nothing".
  */
-export const REVIEWER_FAULT = new Set([
-  'RAW_UNPARSEABLE',
-  'RESPONSE_TRUNCATED',
-  'SCHEMA_INVALID',
-  'VERDICT_CONTRADICTS_FINDINGS',
-  'PROOF_OF_WORK_FAILED',
-  'VALIDATION_EMPTY',
-]);
-
-export const INSTRUMENT_FAULT = new Set([
-  'BAD_ARGS',
-  'NO_RAW',
-  'NO_INPUT',
-  'NO_OUT',
-  'RAW_UNREADABLE',
-  'RAW_EMPTY',
-  'INPUT_UNREADABLE',
-  'INPUT_INVALID',
-  'OUT_UNWRITABLE',
-]);
-
-export function validatorReason(said) {
-  // [A-Z0-9_] to match the reason alphabet. Narrower here, a reason with a
-  // digit parsed as null at run time while the guard test happily classified it
-  // -- the eval would abort every case blaming the harness, with green tests.
-  return /(?:^|\n)\u274c ([A-Z0-9_]+):/.exec(String(said))?.[1] ?? null;
-}
+export { validatorReason, REVIEWER_FAULT, INSTRUMENT_FAULT } from './eval-validation.mjs';
 
 
 /**
@@ -322,15 +297,29 @@ function main() {
       // the reviewer for findings that would have been dropped for quoting a line
       // that is not in the diff.
       const findingsPath = join(tmp, `${f}.findings.json`);
-      const v = spawnSync(
-        process.execPath,
-        [join(HERE, 'validate-findings.mjs'), '--raw', outPath, '--input', inputPath, '--out', findingsPath],
-        { encoding: 'utf8' },
-      );
+      const validation = validateWithOneRetry({
+        reviewer,
+        rubric,
+        inputPath,
+        outPath,
+        findingsPath,
+        model,
+        validatePath: join(HERE, 'validate-findings.mjs'),
+        retryLogPath: join(tmp, `${f}.validate.log`),
+      });
+      const v = validation.processResult;
       // A non-zero exit is not one thing: see REVIEWER_FAULT above for which
       // refusals are the model answering badly (scored zero, the eval carries on)
       // and which mean the harness broke (stop).
-      const said = `${v.stdout || ''}${v.stderr || ''}`.trim();
+      const said = validation.said;
+      if (validation.attempts === 2) {
+        console.log(`  ${f}: ${validatorReason(validation.said) ?? 'validation failure'} on the first attempt; corrective retry ran once.`);
+      }
+      if (validation.reviewerFailure) {
+        const failed = validation.reviewerFailure;
+        console.error(`${failed.stdout || ''}${failed.stderr || ''}`.trim());
+        throw new Error(`Case ${f} corrective retry did not run; the score is not computable.`);
+      }
       if (v.status !== 0) {
         // FROM STDERR ONLY. `said` concatenates stdout, and stdout carries the
         // per-finding DROPPED warnings, which interpolate the model's own `path`
@@ -338,7 +327,7 @@ function main() {
         // line ahead of the real one, and `.exec` takes the first match -- turning
         // a reviewer fault into a fabricated instrument fault that aborts the run.
         // validate-findings prints exactly one reason line, always on stderr.
-        const reason = validatorReason(v.stderr || '');
+        const reason = validation.reason;
         if (!REVIEWER_FAULT.has(reason)) {
           console.error(said);
           throw new Error(

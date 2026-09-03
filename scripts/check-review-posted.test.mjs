@@ -83,9 +83,23 @@ function run(payload, extra = [...ENFORCING], sha = SHA) {
 
 const comments = (...cs) => ({ issueComments: cs.map(([user, body]) => ({ user: { login: user }, body })) });
 
-/** Inline review comments, which is the surface a FINDING lives on and the one #1679 drops. */
+/**
+ * Inline review comments, which is the surface a FINDING lives on and the one
+ * #1679 drops.
+ *
+ * TWO ANCHORS, NOT ONE (#3729). `writtenAt` is `original_commit_id`, which is
+ * frozen and is what the gate counts; `claims` is `commit_id`, which GitHub
+ * relocates onto a later head and which the gate must ignore. They default to
+ * the same value because that is what a freshly posted row looks like; a test
+ * that means to model a relocated row passes them apart.
+ */
 const inline = (...cs) => ({
-  reviewComments: cs.map(([user, body, commit_id = SHA]) => ({ user: { login: user }, body, commit_id })),
+  reviewComments: cs.map(([user, body, writtenAt = SHA, claims = writtenAt]) => ({
+    user: { login: user },
+    body,
+    commit_id: claims,
+    original_commit_id: writtenAt,
+  })),
 });
 
 // ============================================================ the core verdicts
@@ -129,6 +143,47 @@ test('FAIL: findings anchored to an EARLIER head do not cover this one', () => {
   assert.match(r.out, /FINDINGS_NOT_POSTED/);
 });
 
+test('#3729: a RELOCATED finding reports this head and must NOT cover it', () => {
+  // RED BEFORE THE FIX, GREEN AFTER, AND THE TWO INPUTS BELOW DIFFER IN EXACTLY
+  // ONE FIELD -- the one the gate used to ignore. GitHub relocates `commit_id`
+  // on `pulls/{n}/comments` onto a later head (the measurement and the raw rows
+  // are in scripts/lib/review-provenance.mjs), so under the old predicate
+  // (`commit_id === headSha`) the first case here PASSED and printed
+  // "findings verdict ... with 1 finding": a marker claiming a finding on this
+  // head, confirmed by a finding from a tree that no longer exists. That is the
+  // #1679 shape wearing the gate's own tick.
+  //
+  // The pair is one test on purpose. Split, the negative half is satisfied by
+  // "reject everything" and the positive half is the pre-existing PASS case
+  // above with different literals; together they pin the FIELD.
+  const summary = comments([REVIEWER, `Summary.\n${marker(SHA, 'findings', 1)}`]);
+  const body = 'a finding from the previous head';
+
+  //                                      written at   claims
+  const relocated = run({ ...summary, ...inline([REVIEWER, body, OTHER_SHA, SHA]) });
+  assert.equal(relocated.code, 1, relocated.out);
+  assert.match(relocated.out, /FINDINGS_NOT_POSTED/);
+
+  const written = run({ ...summary, ...inline([REVIEWER, body, SHA, SHA]) });
+  assert.equal(written.code, 0, written.out);
+  assert.match(written.out, /findings verdict.*with 1 finding/);
+});
+
+test('FAIL CLOSED (#3729): an inline row with no `original_commit_id` refuses', () => {
+  // The ONLY frozen provenance on this surface. Absent, there is nothing left
+  // that says which commit was read -- and both fallbacks are wrong in a way
+  // nobody would see: "treat as not-at-head" silently stops counting real
+  // findings, "treat as at-head" restores the bug. All 75 inline comments on
+  // this repository's open PRs carry it, so an absent one is a payload change.
+  const r = run({
+    ...comments([REVIEWER, `Summary.\n${marker(SHA, 'findings', 1)}`]),
+    reviewComments: [{ user: { login: REVIEWER }, body: 'x', commit_id: SHA }],
+  });
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /UNREADABLE_ANCHOR/);
+  assert.doesNotMatch(r.out, /findings verdict/);
+});
+
 test('FAIL: a findings verdict with NO finding posted is the #1679 shape', () => {
   // The summary posts, the inline comments drop, the run logs `Posted 0/N`, and
   // the job exits 0. The count in the marker is the reviewer's own claim; this is
@@ -164,7 +219,12 @@ test('FAIL: STALE_REVIEW when the marker names a different commit', () => {
   const r = run(comments([REVIEWER, marker(OTHER_SHA)]));
   assert.equal(r.code, 1, r.out);
   assert.match(r.out, /STALE_REVIEW/);
-  assert.match(r.out, /force-push re-anchors/);
+  // #3729, AND louistrue's correction to it: the remedy must not be pinned to
+  // force-push. The same relocation was observed with no force-push, no rebase
+  // and no amend, so a reader told "force-push hazard" would conclude they are
+  // unaffected. The gate says the field moves, not what moves it.
+  assert.match(r.out, /relocates that field onto a later head \(#3729\), with or without/);
+  assert.match(r.out, /a force-push/);
 });
 
 test('FAIL: MARKER_MALFORMED is reported separately from absence', () => {

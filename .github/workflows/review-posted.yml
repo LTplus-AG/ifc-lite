@@ -103,8 +103,13 @@ jobs:
       # No `pnpm install`: the gate and its harness import node builtins only and
       # shell out to `gh`, preinstalled on runners. A gate that decides whether a
       # review happened must not be able to fail because a registry was slow.
+      #
+      # `review-provenance` is named here for the same reason: the gate's
+      # "was this finding written at the head" predicate now lives in that
+      # module (#3729), so leaving its tests to the scripts/ glob would put the
+      # half that decides the verdict behind a filter this workflow refuses.
       - name: Unit-test the gate itself
-        run: node --test scripts/check-review-posted.test.mjs
+        run: node --test scripts/check-review-posted.test.mjs scripts/lib/review-provenance.test.mjs
 
       # CLEARED FIRST, BEFORE THE GATE WAITS. This is a race, not a tidy-up.
       #

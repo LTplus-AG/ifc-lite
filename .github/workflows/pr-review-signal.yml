@@ -165,8 +165,15 @@ jobs:
       # policy scopings are asserted only on a developer's machine is a gate
       # nobody is checking, which is the shape this whole workflow exists to
       # reject. Same job, no `pnpm install` -- node builtins only, like the gate.
+      # `review-provenance` joined the list with #3729: part 3's clock and its
+      # NO_HEAD_COMMIT_TIME refusal live there, so a change that breaks it
+      # breaks this gate's verdict, and this step must be the thing that says so.
       - name: Unit-test the gate itself
-        run: node --test scripts/check-pr-review-signal.test.mjs scripts/lib/pr-review-signal.test.mjs
+        run: |
+          node --test \
+            scripts/check-pr-review-signal.test.mjs \
+            scripts/lib/pr-review-signal.test.mjs \
+            scripts/lib/review-provenance.test.mjs
 
       - name: Check required lanes ran and reviews produced a verdict
         env:

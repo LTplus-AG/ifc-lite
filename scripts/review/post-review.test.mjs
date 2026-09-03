@@ -118,6 +118,10 @@ if (method === 'GET' && /^pulls\\/\\d+$/.test(rel)) {
     id: nextId(),
     user: { login: st.author },
     commit_id: fields.commit_id,
+    // GitHub mints BOTH on creation and only ever moves the first (#3729). A
+    // fake emitting commit_id alone would let the poster read back a field the
+    // real API relocates onto a later head.
+    original_commit_id: fields.commit_id,
     path: fields.path,
     line: Number(fields.line),
     side: fields.side,
@@ -274,7 +278,14 @@ test('PASS: a findings run posts every finding with the fields GitHub requires',
   assert.equal(r.code, 0, r.out);
   assert.equal(r.state.reviewComments.length, 3);
   for (const [i, c] of r.state.reviewComments.entries()) {
-    assert.equal(c.commit_id, SHA, 'a finding not anchored to this head is invisible to the gate');
+    assert.equal(c.commit_id, SHA);
+    // THE FIELD THE GATE COUNTS (#3729). `commit_id` relocates onto a later
+    // head; `original_commit_id` is what says the row was WRITTEN here.
+    assert.equal(
+      c.original_commit_id,
+      SHA,
+      'a finding not WRITTEN at this head is invisible to the gate',
+    );
     assert.equal(c.side, 'RIGHT');
     assert.equal(c.path, findings[i].path);
     assert.equal(c.line, findings[i].line);
@@ -400,6 +411,7 @@ test('the marker count is what the READ-BACK sees, even when it EXCEEDS the find
     id: 800,
     user: { login: REVIEWER },
     commit_id: SHA,
+    original_commit_id: SHA,
     path: 'packages/a/src/older.ts',
     line: 7,
     side: 'RIGHT',
@@ -470,6 +482,7 @@ test('a finding already present on this head is not posted twice', () => {
     id: 900,
     user: { login: REVIEWER },
     commit_id: SHA,
+    original_commit_id: SHA,
     path: findings[1].path,
     line: findings[1].line,
     side: 'RIGHT',
@@ -483,6 +496,73 @@ test('a finding already present on this head is not posted twice', () => {
   assert.match(r.state.issueComments[0].body, /count=3 -->/, 'the marker counts what is THERE, not what it sent');
 });
 
+test('#3729: a RELOCATED stale row does not swallow the finding, nor confirm it', () => {
+  // THREE DEFECTS IN ONE ROW, all from `commit_id === sha`. GitHub relocates
+  // that field onto a later head (#3729; the measured rows are in
+  // scripts/lib/review-provenance.mjs), so a row from an earlier head that
+  // still fingerprints the same finding used to:
+  //   STEP 2 -- read as "already present at this head", so the finding was
+  //            SKIPPED and never posted; and
+  //   STEP 3 -- be counted as the read-back confirmation that it HAD been.
+  // The two cancel: the marker claims a finding that is not on this head, which
+  // is exactly the #1679 shape the read-back exists to catch.
+  const findings = [finding(1)];
+  const relocated = {
+    id: 950,
+    user: { login: REVIEWER },
+    // Claims this head...
+    commit_id: SHA,
+    // ...and was written against the previous one.
+    original_commit_id: 'c'.repeat(40),
+    path: findings[0].path,
+    line: findings[0].line,
+    side: 'RIGHT',
+    body: posted(findings[0]),
+  };
+  const r = runPoster({ findings, state: { reviewComments: [relocated] } });
+  assert.equal(r.code, 0, r.out);
+  // The finding is POSTED rather than deduped away against a stale row.
+  assert.equal(r.state.inlinePostCount, 1, 'a relocated row is not "already present"');
+  assert.match(r.out, /posted 1, already present 0/);
+  // And the marker counts the row written HERE, not the relocated one.
+  assert.match(r.state.issueComments[0].body, /count=1 -->/);
+  const written = r.state.reviewComments.filter((c) => c.original_commit_id === SHA);
+  assert.equal(written.length, 1);
+});
+
+test('#3729: a RELOCATED finding does not contradict a clean run; one WRITTEN here does', () => {
+  // THE FALSE POSITIVE THE SAME FIELD CAUSED, in the other direction: a
+  // genuinely clean run was contradicted because a stale finding had been
+  // relocated onto its head. The contradiction must count evidence WRITTEN
+  // here and only that. (#3761 turned the contradiction from a throw into a
+  // standing `findings` marker, so both halves exit 0 and differ in the
+  // marker's verdict.)
+  const relocated = {
+    id: 951,
+    user: { login: REVIEWER },
+    commit_id: SHA,
+    original_commit_id: 'c'.repeat(40),
+    path: 'packages/a/src/x.ts',
+    line: 3,
+    side: 'RIGHT',
+    body: 'An earlier head\'s finding, relocated onto this one.',
+  };
+  const r = runPoster({ findings: [], state: { reviewComments: [relocated] } });
+  assert.equal(r.code, 0, r.out);
+  assert.doesNotMatch(r.out, /CONTRADICTED/);
+  assert.match(allBodies(r.state), /verdict=clean/);
+  // ANTI-VACUITY: the same row WRITTEN at this head still contradicts. The only
+  // difference between the two inputs is `original_commit_id`.
+  const real = runPoster({
+    findings: [],
+    state: { reviewComments: [{ ...relocated, original_commit_id: SHA }] },
+  });
+  assert.equal(real.code, 0, real.out);
+  assert.match(real.out, /CONTRADICTED/);
+  assert.match(allBodies(real.state), /verdict=findings count=1/);
+  assert.doesNotMatch(allBodies(real.state), /verdict=clean/);
+});
+
 test('a finding whose body already exists at ANOTHER line or path is still posted', () => {
   // A body-only fingerprint would silently drop these, and a dropped finding is
   // indistinguishable from a finding that was never made.
@@ -494,7 +574,16 @@ test('a finding whose body already exists at ANOTHER line or path is still poste
   // caught it: hashing the body alone survived the whole suite. The collision
   // has to be against something already on the PR to be observable at all.
   const body = 'Same wording, two places.';
-  const seed = (id, path, line) => ({ id, user: { login: REVIEWER }, commit_id: SHA, path, line, side: 'RIGHT', body });
+  const seed = (id, path, line) => ({
+    id,
+    user: { login: REVIEWER },
+    commit_id: SHA,
+    original_commit_id: SHA,
+    path,
+    line,
+    side: 'RIGHT',
+    body,
+  });
 
   const otherLine = runPoster({
     findings: [{ path: 'packages/a/src/x.ts', line: 91, body }],
@@ -566,6 +655,7 @@ test('a clean run over our OWN standing findings records them instead of deadloc
     id: 901,
     user: { login: REVIEWER },
     commit_id: SHA,
+    original_commit_id: SHA,
     path: 'packages/a/src/x.ts',
     line: 3,
     side: 'RIGHT',

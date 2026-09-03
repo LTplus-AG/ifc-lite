@@ -718,24 +718,29 @@ function longKeyFixture(n) {
   // One file per key so `searchKeys`'s own 12-per-file cap cannot suppress the
   // fixture, and MAX_SEARCH_KEYS (150) is never approached at n <= 40. The raw
   // token is well past MAX_KEY_LENGTH so every key here exercises `capKey`'s
-  // truncation branch; `cappedKey` mirrors that truncation so the grep mock
-  // matches on the SAME key `buildPack` actually searches and renders with.
+  // truncation branch. The sibling source below embeds `rawKey` -- the REAL,
+  // un-truncated identifier, never `…`-marked -- because that is what a real
+  // sibling file contains; a real source file can never contain a literal `…`
+  // marker. `grepOut` mimics `git grep --fixed-strings` itself: a hit only if
+  // the pattern `buildPack` actually passed is a substring of that real source
+  // line. A capped-with-marker search string is therefore NOT a substring and
+  // must produce no hit -- this is what makes the test non-circular: it fails
+  // if `siblingSites` ever again sends the `…`-marked key to grep.
   const files = Array.from({ length: n }, (_, i) => {
     const rawKey = `overlongIdentifierToken${i}` + 'Z'.repeat(4_000);
-    const cappedKey = `${rawKey.slice(0, MAX_KEY_LENGTH - 1)}…`;
     return {
       path: `packages/a/f${i}.ts`,
       patch: `@@ -1,1 +1,2 @@\n-  const ${rawKey} = 1;\n+  const ${rawKey} = 2;\n`,
-      cappedKey,
+      rawKey,
     };
   });
   const grepOut = (args) => {
-    const key = args[args.length - 2]; // `git grep -n --fixed-strings --no-color -I -e <key> <ref>`
-    const file = files.find((f) => f.cappedKey === key);
-    return file ? `HEAD:packages/z/sibling-${file.path.split('/').pop()}:1:  use(${file.cappedKey});` : '';
+    const pattern = args[args.length - 2]; // `git grep -n --fixed-strings --no-color -I -e <pattern> <ref>`
+    const file = files.find((f) => `  use(${f.rawKey});`.includes(pattern));
+    return file ? `HEAD:packages/z/sibling-${file.path.split('/').pop()}:1:  use(${file.rawKey});` : '';
   };
   return buildPack(
-    { headSha: 'a'.repeat(40), files: files.map(({ cappedKey: _k, ...f }) => f) },
+    { headSha: 'a'.repeat(40), files: files.map(({ rawKey: _k, ...f }) => f) },
     { baseRef: 'HEAD', body: null, exec: (_cmd, args) => (args[0] === 'grep' ? grepOut(args) : '') },
   );
 }

@@ -155,6 +155,12 @@ describe('the mutation tools over an express id the model does not hold', () => 
     expect(steps[0].ok).toBe(true);
     expect(steps[1].ok).toBe(false);
     expect(steps[1].error).toMatch(/999999/);
+
+    // And the batch is PARTIAL, not atomic: step 1 stays queued. Pinned here
+    // because the tool's own prose used to promise atomicity, so a reader had
+    // to choose between the description and the loop. This is the loop.
+    const diff = await call('mutation_diff', {});
+    expect(diff.structuredContent?.count).toBe(1);
   });
 
   it('leaves the session untouched when a write is refused', async () => {

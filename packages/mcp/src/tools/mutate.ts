@@ -12,13 +12,19 @@
  *   - entity_set_property / entity_delete_property — Pset edits
  *   - entity_set_attribute                         — direct IFC attributes
  *   - entity_create / entity_delete                — STEP-level entity ops
- *   - mutation_batch                               — apply N ops atomically
+ *   - mutation_batch                               — apply N ops in order
  *   - mutation_undo                                — pop last N entries
  *   - mutation_diff                                — pending changes summary
  *
  * The actual save lives in `tools/export.ts::export_ifc` (and the
  * convenience `model_save` alias) so the user can preview a diff before
  * writing the .ifc file.
+ *
+ * `mutation_batch` is NOT atomic and does not claim to be: it runs the
+ * operations in order and records each one's outcome in `results[]`. A failing
+ * operation is reported there and the ones before it stay queued; nothing is
+ * rolled back. Callers that need all-or-nothing have to check `results[]` and
+ * undo themselves.
  */
 
 import { writeFile } from 'node:fs/promises';
@@ -259,7 +265,7 @@ const entityDelete: Tool = {
 
 const mutationBatch: Tool = {
   name: 'mutation_batch',
-  description: 'Apply N mutation operations as a single batch. Each item names a sub-tool and its arguments. Returns per-step results in order.',
+  description: 'Apply N mutation operations in order. Each item names a sub-tool and its arguments. Returns per-step results in order. Not atomic: a failing operation is reported in results[] and does not roll back the ones before it.',
   scope: 'mutate',
   inputSchema: {
     type: 'object',

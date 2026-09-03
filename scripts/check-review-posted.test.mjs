@@ -631,6 +631,67 @@ test('THE RACE: the shared producer/consumer budget rejects either side shrinkin
 // the very race this module exists to prevent comes back the moment someone
 // edits one number. Bind the copies to the authority here -- this is a gate on
 // the duplication the design cannot remove, not a restatement of the module.
+const GATE_STEP = 'Check a review was actually posted for this head';
+
+/** The wiring the gate step's shell must actually execute. */
+const WIRED_POLL =
+  /poll_seconds="\$\([\s\S]*?review-lane-budget\.mjs[\s\S]*?\)"[\s\S]*?--timeout-seconds "\$poll_seconds"/;
+
+/**
+ * The EXECUTED shell of one workflow step: its `run:` block scalar with comment
+ * lines removed. `null` when the step is absent, `''` when it has no `run:`.
+ *
+ * Matching the raw YAML of the step instead let COMMENT TEXT satisfy the pin --
+ * a step hard-coding `--timeout-seconds 600` passes as long as some comment
+ * above it happens to name the module and the variable. Raised by CodeRabbit on
+ * PR #3610; the fixture below is that exact shape.
+ */
+function stepRunScript(text, stepName) {
+  const start = text.indexOf(`- name: ${stepName}`);
+  if (start === -1) return null;
+  const after = text.slice(start + 1);
+  const nextStep = after.search(/\n {6}- /);
+  const step = nextStep === -1 ? after : after.slice(0, nextStep);
+  const lines = step.split('\n');
+  const runAt = lines.findIndex((line) => /^ {8}run: \|/.test(line));
+  if (runAt === -1) return '';
+  return lines
+    .slice(runAt + 1)
+    .filter((line) => !/^\s*#/.test(line))
+    .join('\n');
+}
+
+// Anti-vacuity for the pin below: prove the matcher reads the SHELL, not the
+// prose around it. Without this the strengthening is untested, and the weaker
+// raw-YAML form it replaces would pass every assertion in THE COPIES.
+test('THE COPIES: a COMMENT naming the module cannot satisfy the wiring pin', () => {
+  const unwired = [
+    'jobs:',
+    '  gate:',
+    '    timeout-minutes: 30',
+    '    steps:',
+    `      - name: ${GATE_STEP}`,
+    '        run: |',
+    '          # poll_seconds="$(node scripts/review-lane-budget.mjs --poll-seconds)"',
+    '          # node scripts/check-review-posted.mjs --timeout-seconds "$poll_seconds"',
+    '          node scripts/check-review-posted.mjs --timeout-seconds 600',
+    '      - name: something after',
+    '        run: echo done',
+    '',
+  ].join('\n');
+
+  assert.doesNotMatch(
+    stepRunScript(unwired, GATE_STEP),
+    WIRED_POLL,
+    'a hard-coded --timeout-seconds must stay red however faithfully a COMMENT describes ' +
+      'the wiring: a comment is not what CI runs',
+  );
+  // The same file with those two lines uncommented IS wired, so the assertion
+  // above fails on the comments and not on some unrelated difference.
+  assert.match(stepRunScript(unwired.replaceAll('          # ', '          '), GATE_STEP), WIRED_POLL);
+  assert.equal(stepRunScript(unwired, 'a step that is not there'), null);
+});
+
 test('THE COPIES: both workflows carry the job caps the budget module assumes', () => {
   const workflow = (name) => readFileSync(join(HERE, '..', '.github/workflows', name), 'utf8');
   const jobTimeoutSeconds = (name, text) => {
@@ -665,29 +726,27 @@ test('THE COPIES: both workflows carry the job caps the budget module assumes', 
   );
 
   // The gate reads its poll budget from the module rather than from a literal.
-  // Pin PRODUCER TO CONSUMER, and pin them WITHIN ONE STEP. Both weaker forms
-  // were shown green against a broken workflow: asserting the two halves
-  // separately passed with the module fully unwired (`poll_seconds=1500` plus a
-  // comment naming both symbols), and a whole-file match passed with the
-  // substitution moved into its own preceding step -- where a shell variable
-  // does not survive, so `$poll_seconds` expands to empty and the gate exits
-  // BAD_ARGS on every PR.
-  const STEP = 'Check a review was actually posted for this head';
-  const start = gateText.indexOf(`- name: ${STEP}`);
+  // Pin PRODUCER TO CONSUMER, and pin them WITHIN ONE STEP, and pin them in the
+  // EXECUTED shell. All three weaker forms were shown green against a broken
+  // workflow: asserting the two halves separately passed with the module fully
+  // unwired (`poll_seconds=1500` plus a comment naming both symbols); a
+  // whole-file match passed with the substitution moved into its own preceding
+  // step -- where a shell variable does not survive, so `$poll_seconds` expands
+  // to empty and the gate exits BAD_ARGS on every PR; and matching the raw YAML
+  // of the step passed on COMMENT TEXT alone, next to a hard-coded
+  // `--timeout-seconds 600`. The third is why `stepRunScript` strips comments.
+  const runScript = stepRunScript(gateText, GATE_STEP);
   assert.notEqual(
-    start,
-    -1,
-    `review-posted.yml must carry the step '${STEP}'. REMEDY: restore that step by name. ` +
+    runScript,
+    null,
+    `review-posted.yml must carry the step '${GATE_STEP}'. REMEDY: restore that step by name. ` +
       'The budget contract is asserted against THAT step, so renaming it silently detaches ' +
       'the contract from the thing it governs rather than failing loudly.',
   );
-  const after = gateText.slice(start + 1);
-  const nextStep = after.search(/\n {6}- /);
-  const step = nextStep === -1 ? after : after.slice(0, nextStep);
   assert.match(
-    step,
-    /poll_seconds="\$\([\s\S]*?review-lane-budget\.mjs[\s\S]*?\)"[\s\S]*?--timeout-seconds "\$poll_seconds"/,
-    `the '${STEP}' step must pass --timeout-seconds the value it read, in that same step, ` +
+    runScript,
+    WIRED_POLL,
+    `the '${GATE_STEP}' step must pass --timeout-seconds the value it read, in that same step, ` +
       'from review-lane-budget.mjs. REMEDY: inside that one step, set ' +
       '`poll_seconds="$(node scripts/review-lane-budget.mjs --poll-seconds)"` and pass ' +
       '`--timeout-seconds "$poll_seconds"`. IN THAT SAME STEP is the whole point: a shell ' +

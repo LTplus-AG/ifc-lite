@@ -199,14 +199,23 @@ export function postNothingToReview({ repo, pr, sha, author, reason, allFindings
   // FINDINGS_NOT_POSTED cross-check that exists to catch exactly that gap.
   // Reachable only if the exclusion outcome flipped for one head, which needs
   // dedup to have failed; narrow, and a downgrade this file must never make.
+  //
+  // `dropped` IS ONE OF THE VERDICTS THAT OUTRANKS THIS ONE (#3775). It reads
+  // `covered=false` at the gate, `nothing-to-review` reads `covered=true`, so
+  // letting the second overwrite the first would flip the head from "nobody
+  // reviewed this, come back" to "the lane decided, skip it" with nothing
+  // reviewed in between -- the sealing #3775 exists to prevent, arriving through
+  // this guard instead of through the verdict. The two paths are chosen by
+  // DIFFERENT inputs for the same head (the exclusion outcome depends on config
+  // read from the BASE branch, which can change while the sha does not), so this
+  // is not merely theoretical ordering.
+  //
+  // Only `nothing-to-review` is overwritable, which also makes a repeat of THIS
+  // path a no-op rather than a rewrite: a second all-dropped run finds its own
+  // marker, reports below, and leaves it alone.
   const existing = fetchSurface(repo, pr, `issues/${pr}/comments`).find((c) => {
     const m = MARKER_RE.exec(String(c?.body ?? ''));
-    return (
-      normaliseLogin(c?.user?.login) === author &&
-      m?.[1] === sha &&
-      m[2] !== 'nothing-to-review' &&
-      m[2] !== 'dropped'
-    );
+    return normaliseLogin(c?.user?.login) === author && m?.[1] === sha && m[2] !== 'nothing-to-review';
   });
   if (existing) {
     // REPORTED, AND EXIT 0. The refusal is right -- overwriting a real verdict
@@ -216,11 +225,18 @@ export function postNothingToReview({ repo, pr, sha, author, reason, allFindings
     // ever clear it. That is precisely the unclearable-red class this branch
     // exists to remove, reintroduced by its own guard. Raised by CodeRabbit on
     // PR #3587.
+    const standingVerdict = MARKER_RE.exec(existing.body)[2];
     console.log(
-      `WOULD_DOWNGRADE_VERDICT: a \`${MARKER_RE.exec(existing.body)[2]}\` marker already stands for ` +
-        `${sha.slice(0, 9)}. Overwriting it with \`${verdictToken}\` would retract a real ` +
-        'verdict and orphan any inline findings under it, so nothing was posted. This head IS ' +
-        'covered and the gate reads it; there is nothing to do.',
+      `WOULD_DOWNGRADE_VERDICT: a \`${standingVerdict}\` marker already stands for ` +
+        `${sha.slice(0, 9)}. Overwriting it with \`${verdictToken}\` would retract that ` +
+        'verdict and orphan any inline findings under it, so nothing was posted.' +
+        // NOT "this head IS covered" unconditionally: `dropped` is deliberately
+        // NOT covered, and saying otherwise would tell the reader the opposite of
+        // what the gate is about to do.
+        (standingVerdict === 'dropped'
+          ? ' The standing marker says every finding was dropped, so this head is NOT covered and the' +
+            ' lane will review it again; there is nothing to do here.'
+          : ' This head IS covered and the gate reads it; there is nothing to do.'),
     );
     process.exit(0);
   }

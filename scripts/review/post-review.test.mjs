@@ -1738,3 +1738,37 @@ test('#3775 THE WIRING: a refused RETRY reaches the marker path instead of faili
     assert.match(s2, /steps\.validate\.outputs\.uncovered != 'true'/, `${other} must be excluded on the uncovered path`);
   }
 });
+
+test('#3775: a `dropped` marker is NOT downgraded by a later nothing-to-review run', () => {
+  // `dropped` is covered=FALSE; `nothing-to-review` is covered=TRUE. Letting the
+  // second overwrite the first flips the head from "nobody reviewed this, come
+  // back" to "the lane decided, skip it" with nothing reviewed in between -- the
+  // exact sealing #3775 exists to prevent, arriving through the downgrade guard
+  // instead of through the verdict.
+  //
+  // Reachable because the two paths read DIFFERENT inputs for the same head: the
+  // nothing-to-review path is chosen by build-review-input's exclusion outcome,
+  // which depends on config read from the BASE branch and can change while the
+  // head sha does not.
+  const first = runNothingToReview({ args: ['--all-findings-dropped', '--reason', 'everything dropped'], ntr: false });
+  assert.equal(first.code, 0, first.out);
+  assert.match(allBodies(first.state), /verdict=dropped count=0/);
+  const before = JSON.stringify(first.state.issueComments);
+
+  const second = runNothingToReview({ state: first.state });
+  assert.equal(second.code, 0, second.out);
+  assert.match(second.out, /WOULD_DOWNGRADE_VERDICT/);
+  assert.deepEqual(second.state.issueComments, JSON.parse(before), 'the marker must be left exactly as it was');
+  assert.match(allBodies(second.state), /verdict=dropped count=0/);
+  assert.doesNotMatch(allBodies(second.state), /verdict=nothing-to-review/);
+});
+
+test('#3775: re-running the dropped path over its own marker is a no-op, not a rewrite', () => {
+  // The other direction of the same guard. A second all-dropped run on the same
+  // head has nothing to add, and must not churn the comment.
+  const first = runNothingToReview({ args: ['--all-findings-dropped', '--reason', 'everything dropped'], ntr: false });
+  const before = JSON.stringify(first.state.issueComments);
+  const second = runNothingToReview({ state: first.state, args: ['--all-findings-dropped', '--reason', 'again'], ntr: false });
+  assert.equal(second.code, 0, second.out);
+  assert.deepEqual(second.state.issueComments, JSON.parse(before));
+});

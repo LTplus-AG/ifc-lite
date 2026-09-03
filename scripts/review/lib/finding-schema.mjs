@@ -199,7 +199,12 @@ export function validate({ response, input, onWarn = null }) {
   }
 
   checkSchema(response);
-  checkProofOfWork({ response, input, warn });
+  // NO `warn` HERE. An earlier draft of #3769 passed one so checkProofOfWork
+  // could announce a mis-attributed riskiest-change path; #3825 answered that
+  // case with a better FAILURE MESSAGE instead, so there is no warning left to
+  // emit and the callee never destructured the argument. A parameter nothing
+  // reads is a claim that something happens.
+  checkProofOfWork({ response, input });
 
   let kept = validateFindings({ response, input, warn });
   const survived = kept.length;

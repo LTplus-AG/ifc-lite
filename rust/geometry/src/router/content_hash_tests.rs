@@ -115,3 +115,46 @@ fn item_signature_reports_no_refusals_for_a_ref_at_exactly_u32_max() {
     item_signature(&mut decoder, 2, &mut memo, &mut refused);
     assert_eq!(refused, 0, "a ref at exactly u32::MAX must not be counted as refused");
 }
+
+/// RED for issue #3752, exercised through the real router entry point
+/// (`GeometryRouter::geometry_routing_key`, not `item_signature` directly):
+/// an oversized child ref hit while computing an element's routing key must
+/// reach `GeometryRouter::take_content_hash_oversized_ref_drops`, and a
+/// second drain must return zero — proving the counter is a real accumulator
+/// that resets, not a value the accessor recomputes or discards.
+#[test]
+fn geometry_routing_key_feeds_take_content_hash_oversized_ref_drops() {
+    use ifc_lite_core::{AttributeValue, DecodedEntity, IfcType};
+
+    // #2's representation item has one child ref above `u32::MAX` (#3421).
+    let content = b"#2=IFCEXTRUDEDAREASOLID(#4294967297);\n";
+    let mut decoder = EntityDecoder::new(content);
+    let element = DecodedEntity::new(
+        1,
+        IfcType::IfcWall,
+        vec![
+            AttributeValue::Null,
+            AttributeValue::Null,
+            AttributeValue::Null,
+            AttributeValue::Null,
+            AttributeValue::Null,
+            AttributeValue::Null,
+            AttributeValue::EntityRef(2), // index 6: representation
+        ],
+    );
+
+    let router = crate::GeometryRouter::new();
+    let key = router.geometry_routing_key(&element, &mut decoder);
+    assert!(key.is_some(), "an element with a representation must still get a routing key");
+
+    assert_eq!(
+        router.take_content_hash_oversized_ref_drops(),
+        1,
+        "the oversized child ref hit while routing must be counted (#3752)"
+    );
+    assert_eq!(
+        router.take_content_hash_oversized_ref_drops(),
+        0,
+        "a second drain must return zero — the counter resets, it isn't recomputed"
+    );
+}

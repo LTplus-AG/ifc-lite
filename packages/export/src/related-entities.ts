@@ -130,6 +130,24 @@ export function collectRelatedEntities(
     return group;
   };
 
+  // Nothing in EXPRESS forbids two `IfcRel*` instances from naming the same
+  // triple (#3760); `RelationshipGraphBuilder.addEdge` collapses the repeat
+  // to one edge and keeps the extra express ids on `shadowedRelationshipIds`
+  // rather than dropping them. Each one is still a real STEP record in the
+  // source file — closing over only `edge.relationshipId` would silently
+  // drop the shadowed `IfcRel*` entity from the anonymized subset even
+  // though nothing else in this walk ever reaches it (#3782 review).
+  const addRelIds = (group: MutableGroup, edge: { relationshipId: number; shadowedRelationshipIds?: number[] }): void => {
+    group.relationshipIds.add(edge.relationshipId);
+    all.add(edge.relationshipId);
+    if (edge.shadowedRelationshipIds) {
+      for (const id of edge.shadowedRelationshipIds) {
+        group.relationshipIds.add(id);
+        all.add(id);
+      }
+    }
+  };
+
   // IfcProject is always in the result regardless of every other toggle — a
   // STEP file with no project is not a valid reproduction of anything.
   for (const id of store.entityIndex.byType.get('IFCPROJECT') ?? []) all.add(id);
@@ -229,8 +247,7 @@ export function collectRelatedEntities(
           continue;
         }
         const group = groupFor(rule.relationship, rule.role);
-        group.relationshipIds.add(edge.relationshipId);
-        all.add(edge.relationshipId);
+        addRelIds(group, edge);
         if (rule.includeTargets) {
           group.expressIds.add(edge.target);
           enqueue(edge.target);
@@ -259,9 +276,8 @@ export function collectRelatedEntities(
             : store.relationships.inverse.getEdges(id, RelationshipType.ConnectsPathElements);
           for (const edge of edges) {
             const group = groupFor('IfcRelConnectsPathElements', 'connected');
-            group.relationshipIds.add(edge.relationshipId);
+            addRelIds(group, edge);
             group.expressIds.add(edge.target);
-            all.add(edge.relationshipId);
             enqueue(edge.target);
             if (!seen.has(edge.target)) {
               seen.add(edge.target);

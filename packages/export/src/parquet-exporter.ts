@@ -7,7 +7,7 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { IfcTypeEnum, EntityFlags, RelationshipType, IFC_ENTITY_NAMES, exactTypeName } from '@ifc-lite/data';
+import { IfcTypeEnum, EntityFlags, RelationshipType, IFC_ENTITY_NAMES, exactTypeName, flattenRelationshipEdges } from '@ifc-lite/data';
 import { getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
 import { columnsToParquet } from './columns-to-parquet.js';
 import { PARQUET_UINT32_COLUMNS } from './parquet-uint32-columns.js';
@@ -239,28 +239,25 @@ export class ParquetExporter {
 
     private async writeRelationships(): Promise<Uint8Array> {
         const { relationships } = this.store;
-        const edges = relationships.forward;
         const effective = this.getEffective();
 
-        // Flatten CSR format to row-based
+        // One row per `IfcRel*` STEP record, including any collapsed into
+        // an edge's `shadowedRelationshipIds` (#3760/#3782) — not one row
+        // per deduped edge; see `flattenRelationshipEdges`'s doc comment.
         const sourceIds: number[] = [];
         const targetIds: number[] = [];
         const relTypes: string[] = [];
         const relIds: number[] = [];
 
-        for (const [sourceId, offset] of edges.offsets) {
-            const count = edges.counts.get(sourceId)!;
-            for (let i = offset; i < offset + count; i++) {
-                const targetId = edges.edgeTargets[i];
-                // An edge naming a tombstoned entity on either end no longer
-                // has a live entity to relate — drop the row rather than
-                // leave a dangling SourceId/TargetId in the export.
-                if (effective && (effective.isDeleted(sourceId) || effective.isDeleted(targetId))) continue;
-                sourceIds.push(sourceId);
-                targetIds.push(targetId);
-                relTypes.push(RelationshipTypeToString(edges.edgeTypes[i]));
-                relIds.push(edges.edgeRelIds[i]);
-            }
+        for (const row of flattenRelationshipEdges(relationships.forward)) {
+            // An edge naming a tombstoned entity on either end no longer
+            // has a live entity to relate — drop the row rather than
+            // leave a dangling SourceId/TargetId in the export.
+            if (effective && (effective.isDeleted(row.sourceId) || effective.isDeleted(row.targetId))) continue;
+            sourceIds.push(row.sourceId);
+            targetIds.push(row.targetId);
+            relTypes.push(RelationshipTypeToString(row.type));
+            relIds.push(row.relationshipId);
         }
 
         return this.toParquet({

@@ -8,7 +8,7 @@
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { IfcTypeEnumToString, PropertyValueType, QuantityType, RelationshipType } from '@ifc-lite/data';
+import { IfcTypeEnumToString, PropertyValueType, QuantityType, RelationshipType, flattenRelationshipEdges } from '@ifc-lite/data';
 
 export interface SQLResult {
   columns: string[];
@@ -341,7 +341,6 @@ export class DuckDBIntegration {
     `);
 
     const { relationships } = store;
-    const edges = relationships.forward;
     const batchSize = 1000;
 
     const relTypeNames: Record<number, string> = {
@@ -361,20 +360,15 @@ export class DuckDBIntegration {
       [RelationshipType.ReferencedInSpatialStructure]: 'ReferencedInSpatialStructure',
     };
 
-    // Flatten CSR format to rows
-    const rows: { sourceId: number; targetId: number; relType: string; relId: number }[] = [];
-
-    for (const [sourceId, offset] of edges.offsets) {
-      const count = edges.counts.get(sourceId) || 0;
-      for (let i = offset; i < offset + count; i++) {
-        rows.push({
-          sourceId,
-          targetId: edges.edgeTargets[i],
-          relType: relTypeNames[edges.edgeTypes[i]] || 'Unknown',
-          relId: edges.edgeRelIds[i],
-        });
-      }
-    }
+    // One row per `IfcRel*` STEP record, including any collapsed into an
+    // edge's `shadowedRelationshipIds` (#3760/#3782) — not one row per
+    // deduped edge; see `flattenRelationshipEdges`'s doc comment.
+    const rows = flattenRelationshipEdges(relationships.forward).map((row) => ({
+      sourceId: row.sourceId,
+      targetId: row.targetId,
+      relType: relTypeNames[row.type] || 'Unknown',
+      relId: row.relationshipId,
+    }));
 
     // Insert in batches
     for (let i = 0; i < rows.length; i += batchSize) {

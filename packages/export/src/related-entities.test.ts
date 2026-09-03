@@ -274,4 +274,37 @@ END-ISO-10303-21;`;
     // does.
     expect(result.all.has(NODE_BASE + CHAIN_LEN - 1)).toBe(false);
   }, 30_000);
+
+  // Nothing in EXPRESS forbids two `IfcRelVoidsElement` instances from
+  // naming the same (host, opening) pair (#3760). The graph dedupes the
+  // edge to one, keeping the second `IfcRel*`'s express id on
+  // `shadowedRelationshipIds` instead of dropping it — a real STEP record
+  // in the source file. `collectRelatedEntities` must still put it in `all`
+  // and in the group's `relationshipIds`, or the anonymized subset export
+  // silently drops that entity (#3782 review).
+  it('includes a shadowed (duplicate) IfcRel id in both the group and `all`', async () => {
+    const model = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('duplicate-rel-fixture.ifc','2024-01-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('${guid(1)}',$,'Project',$,$,$,$,$,$);
+#5=IFCWALL('${guid(5)}',$,'Wall A',$,$,$,$,$);
+#6=IFCOPENINGELEMENT('${guid(6)}',$,'Opening',$,$,$,$,$);
+#24=IFCRELVOIDSELEMENT('${guid(24)}',$,$,$,#5,#6);
+#29=IFCRELVOIDSELEMENT('${guid(29)}',$,$,$,#5,#6);
+ENDSEC;
+END-ISO-10303-21;`;
+    const store = await parse(model);
+    const result = collectRelatedEntities(store, [5]);
+
+    expect(result.all).toEqual(new Set([1, 5, 6, 24, 29]));
+    // Seeded from the host wall, so the forward `IfcRelVoidsElement` rule
+    // (host -> opening) is the one that fires.
+    expect(group(result, 'IfcRelVoidsElement', 'opening')).toEqual({
+      relationship: 'IfcRelVoidsElement', role: 'opening', expressIds: [6], relationshipIds: [24, 29],
+    });
+  });
 });

@@ -32,6 +32,35 @@ test('topLevelTriggerNames: blank and comment lines between triggers do not trun
   ]);
 });
 
+test('topLevelTriggerNames: a scalar `on:` value is a single trigger', () => {
+  assert.deepEqual(topLevelTriggerNames('on: push\njobs:\n  scan:\n    runs-on: ubuntu-latest\n'), ['push']);
+});
+
+test('topLevelTriggerNames: a flow-sequence `on:` value lists every trigger', () => {
+  assert.deepEqual(topLevelTriggerNames('on: [push, workflow_dispatch]\njobs:\n'), ['push', 'workflow_dispatch']);
+});
+
+test('topLevelTriggerNames: a quoted `"on":` key is still recognized', () => {
+  assert.deepEqual(topLevelTriggerNames('"on":\n  push:\n    branches: [main]\n  workflow_dispatch:\njobs:\n'), [
+    'push',
+    'workflow_dispatch',
+  ]);
+});
+
+test('topLevelTriggerNames: 4-space indentation is read by its own width, not a hardcoded 2', () => {
+  assert.deepEqual(
+    topLevelTriggerNames('on:\n    push:\n        branches: [main]\n    workflow_dispatch:\njobs:\n'),
+    ['push', 'workflow_dispatch'],
+  );
+});
+
+test('topLevelTriggerNames: tab-indented triggers parse the same as space-indented ones', () => {
+  assert.deepEqual(
+    topLevelTriggerNames('on:\n\tpush:\n\t\tbranches: [main]\n\tworkflow_dispatch:\njobs:\n'),
+    ['push', 'workflow_dispatch'],
+  );
+});
+
 test('topLevelTriggerNames: fails closed on a workflow with no `on:` block', () => {
   assert.throws(() => topLevelTriggerNames('jobs:\n  scan:\n    runs-on: ubuntu-latest\n'), (err) => {
     assert.ok(err instanceof DirtyPrScanError);

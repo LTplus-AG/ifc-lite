@@ -21,6 +21,15 @@ import { DirtyPrScanError } from './dirty-pr-scan.mjs';
  * predicate directly; this function stays pure and is exercised with literal
  * fixture text in `scripts/lib/workflow-triggers.test.mjs`.
  *
+ * Handles every shape YAML allows for the `on:` key and its value: block
+ * mapping (`on:\n  push:\n  workflow_dispatch:`), scalar (`on: push`), flow
+ * sequence (`on: [push, workflow_dispatch]`), and a quoted key (`"on":` /
+ * `'on':` -- unquoted `on` parses as the boolean `true` in YAML 1.1, so some
+ * workflows quote it). For the block-mapping form, the indent of the FIRST
+ * child line is what determines a sibling trigger versus a nested key (e.g.
+ * `branches:` under `push:`) -- not a hardcoded two spaces, so 4-space or
+ * tab-indented workflows parse the same as 2-space ones.
+ *
  * @param {string} text - a GitHub Actions workflow file's contents.
  * @returns {string[]} the trigger keys under `on:`, in file order.
  */
@@ -30,25 +39,69 @@ export function topLevelTriggerNames(text) {
   }
   const lines = text.split(/\r?\n/);
 
-  const start = lines.findIndex((l) => /^on:\s*(#.*)?$/.test(l));
+  const onLineRe = /^(?:"on"|'on'|on):(.*)$/;
+  const start = lines.findIndex((l) => onLineRe.test(l));
   if (start === -1) {
-    throw new DirtyPrScanError('NO_ON_BLOCK', 'The workflow has no top-level `on:` block, so its triggers cannot be read.');
+    throw new DirtyPrScanError('NO_ON_BLOCK', 'The workflow has no top-level `on:` key, so its triggers cannot be read.');
   }
 
+  const inline = stripComment(onLineRe.exec(lines[start])[1]).trim();
+  if (inline !== '') {
+    const names = inline.startsWith('[') ? splitFlowList(inline.slice(1, inline.indexOf(']') === -1 ? undefined : inline.indexOf(']'))) : [stripQuotes(inline)];
+    const filtered = names.filter((n) => n !== '');
+    if (filtered.length === 0) {
+      throw new DirtyPrScanError('NO_TRIGGERS', 'The workflow`s `on:` value declares no trigger keys.');
+    }
+    return filtered;
+  }
+
+  // Block-mapping form: learn the child indent from the first non-blank,
+  // non-comment line after `on:`, rather than assuming any particular width.
+  let i = start + 1;
+  while (i < lines.length && (lines[i].trim() === '' || /^\s*#/.test(lines[i]))) i += 1;
+  const first = lines[i];
+  if (i >= lines.length || first === undefined || !/^\s+\S/.test(first)) {
+    throw new DirtyPrScanError('NO_TRIGGERS', 'The workflow`s `on:` block declares no trigger keys.');
+  }
+  const indent = first.length - first.trimStart().length;
+
   const names = [];
-  for (let i = start + 1; i < lines.length; i += 1) {
+  for (; i < lines.length; i += 1) {
     const line = lines[i];
     if (line.trim() === '' || /^\s*#/.test(line)) continue;
-    // A line back at column 0 is the next top-level workflow key (`jobs:`,
-    // `concurrency:`, ...), which ends the `on:` block.
-    if (/^\S/.test(line)) break;
-    const m = /^\s{2}([A-Za-z_][\w-]*):/.exec(line);
-    if (m) names.push(m[1]);
+    const lineIndent = line.length - line.trimStart().length;
+    // Shallower than the first child: the next top-level workflow key
+    // (`jobs:`, `concurrency:`, ...) ends the `on:` block.
+    if (lineIndent < indent) break;
+    // Deeper than the first child: a nested key (e.g. `branches:`) belonging
+    // to the trigger just collected, not a sibling trigger.
+    if (lineIndent > indent) continue;
+    const m = /^\s*(?:"([\w-]+)"|'([\w-]+)'|([A-Za-z_][\w-]*)):/.exec(line);
+    if (m) names.push(m[1] ?? m[2] ?? m[3]);
   }
   if (names.length === 0) {
     throw new DirtyPrScanError('NO_TRIGGERS', 'The workflow`s `on:` block declares no trigger keys.');
   }
   return names;
+}
+
+/** Drops a trailing `# comment`, but only one preceded by whitespace or the string start, so a `#` inside a quoted value (e.g. a cron string) survives. */
+function stripComment(s) {
+  const m = /(^|\s)#.*$/.exec(s);
+  return m ? s.slice(0, m.index) : s;
+}
+
+/** @param {string} raw */
+function splitFlowList(raw) {
+  return raw
+    .split(',')
+    .map((v) => stripQuotes(v.trim()))
+    .filter((v) => v !== '');
+}
+
+/** @param {string} v */
+function stripQuotes(v) {
+  return v.trim().replace(/^['"]|['"]$/g, '');
 }
 
 /**

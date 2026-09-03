@@ -109,7 +109,12 @@ export class HeadlessLikeBackend implements BimBackend {
       () => this.getOrCreateMutationView(),
       createEffectiveEntityCheck({
         acceptedModelIds: this.acceptedModelIds,
-        hasSourceEntity: id => this.dataStore.entityIndex.byId.has(id),
+        // Both halves of the source index, the union every other "is it in
+        // the source model" site takes: on a huge file the parser keeps
+        // property atoms out of `byId` and in `deferredEntityIndex`, and they
+        // are exported like any other entity.
+        hasSourceEntity: id => this.dataStore.entityIndex.byId.has(id)
+          || this.dataStore.deferredEntityIndex?.has(id) === true,
         overlay: () => this.mutationView,
       }),
     );

@@ -80,4 +80,28 @@ describe('appendSetsFromSecondSource', () => {
 
         expect(into).toHaveLength(1);
     });
+
+    it('does not append the same second-source instance twice when its id appears twice in candidateIds', () => {
+        // `onDemandPropertyMap`/`onDemandQuantityMap` (columnar-parser.ts) push
+        // `relatingDef` once per `IfcRelDefinesByProperties` relationship that
+        // reaches the object, so a redundant/duplicated export with two rels
+        // pointing the SAME pset/qset id at the same object yields a
+        // `candidateIds` array containing that id twice (PRRT_kwDOQ3UF-86e-cOQ,
+        // #3606). `firstSourceIds`/`firstSourceKeys` only guard against a clash
+        // with the FIRST source -- nothing so far tracked ids already accepted
+        // from this second-source pass, so both copies used to survive.
+        const into: Set_[] = [];
+        const firstSourceIds = new Set<number>();
+        const firstSourceKeys = new Set<string>();
+        const candidateIds = [200, 200]; // same express id reached via two rels
+
+        appendSetsFromSecondSource(into, firstSourceIds, firstSourceKeys, candidateIds, (ids) =>
+            // extractPsetsFromIds/extractQsetsFromIds have no internal dedup --
+            // they map ids 1:1 to extracted sets, so a duplicated id produces a
+            // duplicated entry here too.
+            ids.map(() => set('Qto_X', '1QSW1i7cmDDeutJc0G3Q3l', 'Length=5')),
+        );
+
+        expect(into).toHaveLength(1);
+    });
 });

@@ -201,8 +201,13 @@ export function appendSetsFromSecondSource<T extends { name: string; globalId?: 
 ): void {
     const fresh = candidateIds.filter((id) => !firstSourceIds.has(id));
     if (fresh.length === 0) return;
+    const acceptedKeys = new Set<string>();
     for (const set of extract(fresh)) {
-        if (set.name && firstSourceKeys.has(setIdentityKey(set))) continue;
+        if (set.name) {
+            const key = setIdentityKey(set);
+            if (firstSourceKeys.has(key) || acceptedKeys.has(key)) continue;
+            acceptedKeys.add(key);
+        }
         into.push(set);
     }
 }

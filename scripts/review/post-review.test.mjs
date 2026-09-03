@@ -530,11 +530,13 @@ test('#3729: a RELOCATED stale row does not swallow the finding, nor confirm it'
   assert.equal(written.length, 1);
 });
 
-test('#3729: CLEAN_CONTRADICTED does not fire on someone else\'s RELOCATED finding', () => {
+test('#3729: a RELOCATED finding does not contradict a clean run; one WRITTEN here does', () => {
   // THE FALSE POSITIVE THE SAME FIELD CAUSED, in the other direction: a
-  // genuinely clean run threw because a stale finding had been relocated onto
-  // its head. `CLEAN_CONTRADICTED` must fire on evidence WRITTEN here and only
-  // on that.
+  // genuinely clean run was contradicted because a stale finding had been
+  // relocated onto its head. The contradiction must count evidence WRITTEN
+  // here and only that. (#3761 turned the contradiction from a throw into a
+  // standing `findings` marker, so both halves exit 0 and differ in the
+  // marker's verdict.)
   const relocated = {
     id: 951,
     user: { login: REVIEWER },
@@ -547,16 +549,18 @@ test('#3729: CLEAN_CONTRADICTED does not fire on someone else\'s RELOCATED findi
   };
   const r = runPoster({ findings: [], state: { reviewComments: [relocated] } });
   assert.equal(r.code, 0, r.out);
-  assert.doesNotMatch(r.out, /CLEAN_CONTRADICTED/);
+  assert.doesNotMatch(r.out, /CONTRADICTED/);
   assert.match(allBodies(r.state), /verdict=clean/);
-  // ANTI-VACUITY: the same row WRITTEN at this head still refuses. The only
+  // ANTI-VACUITY: the same row WRITTEN at this head still contradicts. The only
   // difference between the two inputs is `original_commit_id`.
   const real = runPoster({
     findings: [],
     state: { reviewComments: [{ ...relocated, original_commit_id: SHA }] },
   });
-  assert.equal(real.code, 1, real.out);
-  assert.match(real.out, /CLEAN_CONTRADICTED/);
+  assert.equal(real.code, 0, real.out);
+  assert.match(real.out, /CONTRADICTED/);
+  assert.match(allBodies(real.state), /verdict=findings count=1/);
+  assert.doesNotMatch(allBodies(real.state), /verdict=clean/);
 });
 
 test('a finding whose body already exists at ANOTHER line or path is still posted', () => {

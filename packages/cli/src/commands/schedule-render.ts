@@ -65,9 +65,41 @@ function subtotalLabel(data: SubtotalRowData): string {
 }
 
 /**
- * A subtotal/total row as a full-width cell array. The label sits in the first
- * group column (column 0 for the grand total); each numeric aggregation fills
- * its target column; every other column is blank.
+ * Pick the column that carries the subtotal/total label. A forced choice
+ * (the first group column, or column 0 for the grand total) can collide with
+ * a `--subtotals` aggregation targeting that same column — `sum:Area` when
+ * `Area` is the first declared column, or the first group-by header — and a
+ * fixed-width row array has no spare slot to hold both a text label and a
+ * numeric value in the same cell. Prefer, in order: the first group column
+ * that is not itself an aggregation target (keeps the label meaningfully
+ * tied to a group value), then the first column overall that is not a
+ * target, and only when every column is a target — no free slot exists at
+ * all — fall back to the historical group/0 choice (that one column's
+ * aggregation is what the label displaces; every other aggregation still
+ * lands in its own column).
+ */
+function chooseLabelCol(columns: ScheduleColumn[], data: SubtotalRowData): number {
+  const targetIdx = new Set<number>();
+  for (const v of data.values) {
+    if (v.spec === 'count') continue;
+    const header = v.spec.slice(v.spec.indexOf(':') + 1);
+    const idx = columns.findIndex(c => c.header === header);
+    if (idx !== -1) targetIdx.add(idx);
+  }
+  for (const g of data.groupValues) {
+    if (!targetIdx.has(g.index)) return g.index;
+  }
+  for (let i = 0; i < columns.length; i++) {
+    if (!targetIdx.has(i)) return i;
+  }
+  return data.groupValues.length > 0 ? data.groupValues[0].index : 0;
+}
+
+/**
+ * A subtotal/total row as a full-width cell array. The label sits in a
+ * column none of this row's aggregations target (see `chooseLabelCol`); each
+ * numeric aggregation fills its own target column; every other column is
+ * blank.
  *
  * `--subtotals` allows more than one aggregation on the same `--columns`
  * header (`sum:Area,avg:Area` is a reasonable request, and the JSON renderer
@@ -84,7 +116,7 @@ function subtotalLabel(data: SubtotalRowData): string {
  */
 export function subtotalCells(columns: ScheduleColumn[], data: SubtotalRowData): unknown[] {
   const cells: unknown[] = columns.map(() => '');
-  const labelCol = data.groupValues.length > 0 ? data.groupValues[0].index : 0;
+  const labelCol = chooseLabelCol(columns, data);
   cells[labelCol] = subtotalLabel(data);
 
   // Group every non-count aggregation by its target column index so a
@@ -94,7 +126,7 @@ export function subtotalCells(columns: ScheduleColumn[], data: SubtotalRowData):
     if (v.spec === 'count') continue;
     const header = v.spec.slice(v.spec.indexOf(':') + 1);
     const idx = columns.findIndex(c => c.header === header);
-    if (idx === -1 || idx === labelCol) continue; // label column keeps the label
+    if (idx === -1 || idx === labelCol) continue; // no free column existed — the label wins this one cell
     const bucket = byIdx.get(idx);
     if (bucket) bucket.push(v);
     else byIdx.set(idx, [v]);

@@ -444,6 +444,41 @@ describe('group-by + subtotals over a real fixture', () => {
     expect(json.filter(r => r.__row === 'subtotal')).toHaveLength(0);
     expect(json[json.length - 1]).toEqual({ __row: 'total', count: 4, 'sum:Area': 7 });
   });
+
+  /**
+   * Bug: the grand-total label is forced into column 0 whenever there is no
+   * --group-by. When --subtotals aggregates column 0 itself (Area here),
+   * `idx === labelCol` in subtotalCells silently skips writing the
+   * aggregated value there — the sum vanishes from CSV/Markdown/HTML while
+   * JSON (which builds the row from `data.values` directly, not fixed
+   * column slots) still reports it correctly. CSV and JSON must agree.
+   */
+  it('CSV/MD do not drop a subtotal whose target column is column 0 — they agree with JSON', async () => {
+    const colsAreaFirst = [
+      { header: 'Area', path: 'Qto_DoorBaseQuantities.Area' },
+      { header: 'Name', path: 'Name' },
+    ];
+    const { bim } = await makeBim(IFC_GROUPS);
+    const doors = bim.query().byType('IfcDoor').toArray();
+    const rows = doors.map((e: any) => colsAreaFirst.map(c => resolveScheduleValue(e, c.path, bim)));
+    const aggs = parseSubtotalsSpec('sum:Area', colsAreaFirst);
+    const plan = buildSubtotalPlan(rows, [], aggs);
+
+    const json = renderScheduleJsonWithSubtotals(colsAreaFirst, plan);
+    const jsonTotal = json[json.length - 1] as Record<string, unknown>;
+    expect(jsonTotal['sum:Area']).toBe(7);
+
+    const csvLines = renderScheduleCsvWithSubtotals(colsAreaFirst, plan).split('\n');
+    const csvTotal = csvLines[csvLines.length - 1].split(',');
+    // Area's own column must carry the sum, exactly like JSON — wherever the
+    // label ends up, it must not be the column an aggregation targets.
+    expect(Number(csvTotal[0])).toBe(7);
+    expect(csvTotal[0]).not.toBe('Total');
+
+    const mdLines = renderScheduleMarkdownWithSubtotals(colsAreaFirst, plan).split('\n');
+    const mdTotal = mdLines[mdLines.length - 1];
+    expect(mdTotal).toContain('7');
+  });
 });
 
 describe('two --subtotals aggregations targeting the same column do not collide', () => {

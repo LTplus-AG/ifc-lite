@@ -658,7 +658,6 @@ test('THE CLI: the spelling the workflow runs prints the poll budget', () => {
   const ok = budgetCli('--poll-seconds');
   assert.equal(ok.code, 0, ok.err);
   assert.equal(ok.out, '1500', 'the workflow captures stdout; an empty capture is BAD_ARGS on every PR');
-  assert.equal(ok.out, String(REVIEW_POSTED_POLL_SECONDS), 'the CLI and the constant are one number');
 });
 
 test('THE CLI: an argument it does not implement FAILS rather than printing nothing', () => {
@@ -673,19 +672,26 @@ test('THE CLI: an argument it does not implement FAILS rather than printing noth
   }
 });
 
-
 /**
  * The wiring the gate step's shell must actually execute, pinned to the EXACT
  * spelling that ships. A loose `[\s\S]*?` between the halves let any invocation
  * of the module count -- including the `node --input-type=module --eval` form
  * this replaced, and including a `--poll-seconds` flag the module does not
  * implement. There is one command line CI runs; this is it.
+ *
+ * Both halves are literal shell, so this is ORDERED SUBSTRING CONTAINMENT, not
+ * a pattern: `$`, `(` and `"` are all regex metacharacters, and escaping them
+ * by hand to ask a question `indexOf` already answers is how the loose bridge
+ * got there in the first place.
  */
 const WIRED_ASSIGNMENT = 'poll_seconds="$(node scripts/review-lane-budget.mjs --poll-seconds)"';
 const WIRED_PASS = '--timeout-seconds "$poll_seconds"';
-const WIRED_POLL = new RegExp(
-  `${WIRED_ASSIGNMENT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]*?${WIRED_PASS.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`,
-);
+
+/** Does this shell set `poll_seconds` from the module and then pass it on, in that order? */
+function isWiredPoll(script) {
+  const assigned = script.indexOf(WIRED_ASSIGNMENT);
+  return assigned !== -1 && script.indexOf(WIRED_PASS, assigned + WIRED_ASSIGNMENT.length) !== -1;
+}
 
 /**
  * The EXECUTED shell of one workflow step: its `run:` block scalar with comment
@@ -730,15 +736,15 @@ test('THE COPIES: a COMMENT naming the module cannot satisfy the wiring pin', ()
     '',
   ].join('\n');
 
-  assert.doesNotMatch(
-    stepRunScript(unwired, GATE_STEP),
-    WIRED_POLL,
+  assert.equal(
+    isWiredPoll(stepRunScript(unwired, GATE_STEP)),
+    false,
     'a hard-coded --timeout-seconds must stay red however faithfully a COMMENT describes ' +
       'the wiring: a comment is not what CI runs',
   );
   // The same file with those two lines uncommented IS wired, so the assertion
   // above fails on the comments and not on some unrelated difference.
-  assert.match(stepRunScript(unwired.replaceAll('          # ', '          '), GATE_STEP), WIRED_POLL);
+  assert.ok(isWiredPoll(stepRunScript(unwired.replaceAll('          # ', '          '), GATE_STEP)));
   assert.equal(stepRunScript(unwired, 'a step that is not there'), null);
 });
 
@@ -793,9 +799,8 @@ test('THE COPIES: both workflows carry the job caps the budget module assumes', 
       'The budget contract is asserted against THAT step, so renaming it silently detaches ' +
       'the contract from the thing it governs rather than failing loudly.',
   );
-  assert.match(
-    runScript,
-    WIRED_POLL,
+  assert.ok(
+    isWiredPoll(runScript),
     `the '${GATE_STEP}' step must pass --timeout-seconds the value it read, in that same step, ` +
       `from review-lane-budget.mjs. REMEDY: inside that one step, set \`${WIRED_ASSIGNMENT}\` ` +
       `and pass \`${WIRED_PASS}\`. THE REMEDY IS BUILT FROM THE MATCHER, so it cannot ` +

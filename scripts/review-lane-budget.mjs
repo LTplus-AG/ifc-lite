@@ -68,7 +68,7 @@ const USAGE = 'usage: node scripts/review-lane-budget.mjs --poll-seconds';
  * That is exactly the shape this module was written to prevent, so: print, or
  * fail loudly.
  */
-export function runCli(argv) {
+function runCli(argv) {
   if (argv.length !== 1 || argv[0] !== '--poll-seconds') {
     console.error(`${USAGE} (got: ${argv.join(' ') || 'no arguments'})`);
     return 2;

@@ -1186,26 +1186,37 @@ fn build_gltf(
     // tier groups (rotation-normalized, env-gated and OFF by default) substitute a
     // congruent-but-not-identical template, so they fall to the flat remainder.
     let mut flat: Vec<usize> = collated.flat_indices.clone();
-    let mut instanced: Vec<(&InstanceTemplate, [f64; 16])> =
+    let mut instanced: Vec<(&InstanceTemplate, Vec<usize>, [f64; 16])> =
         Vec::with_capacity(collated.templates.len());
     for template in &collated.templates {
-        let rigid = template.occurrences.iter().any(|o| {
-            visible[o.mesh_index]
-                .instance
-                .and_then(|m| m.canonical_transform)
-                .is_some()
-        });
+        // PER OCCURRENCE, matching the collator: a rigid-tier member is congruent
+        // to the template but not bit-identical, so instancing it would change the
+        // exported geometry — but one such member no longer costs its exact-tier
+        // siblings their shared mesh. The template's own occurrence is exact
+        // against itself whatever tier it was grouped under.
+        let (keep, drop): (Vec<usize>, Vec<usize>) = (0..template.occurrences.len())
+            .partition(|&oi| {
+                let mi = template.occurrences[oi].mesh_index;
+                mi == template.template_index
+                    || visible[mi].instance.and_then(|m| m.canonical_transform).is_none()
+            });
         // Precompute the template's inverse world placement (f64) ONCE per group;
         // every occurrence's node matrix reuses it. A missing instance side-channel
         // or a singular/degenerate template placement routes the whole group to the
-        // flat path (still correct, just not instanced).
-        let m_ref_inv = (!rigid)
+        // flat path (still correct, just not instanced), as does a group left with
+        // fewer than two occurrences to share.
+        let m_ref_inv = (keep.len() >= 2)
             .then(|| visible[template.template_index].instance)
             .flatten()
-            .filter(|_| template.occurrences.iter().all(|o| visible[o.mesh_index].instance.is_some()))
+            .filter(|_| {
+                keep.iter().all(|&oi| visible[template.occurrences[oi].mesh_index].instance.is_some())
+            })
             .and_then(|ti| affine_inverse(&compose_world_meta(ti)));
         match m_ref_inv {
-            Some(inv) => instanced.push((template, inv)),
+            Some(inv) => {
+                flat.extend(drop.iter().map(|&oi| template.occurrences[oi].mesh_index));
+                instanced.push((template, keep, inv));
+            }
             None => flat.extend(template.occurrences.iter().map(|o| o.mesh_index)),
         }
     }
@@ -1299,7 +1310,7 @@ fn build_gltf(
     }
 
     // ── Pass 2: instanced templates ─────────────────────────────────────────────
-    for (template, m_ref_inv) in instanced {
+    for (template, keep, m_ref_inv) in instanced {
         // glTF materials ride the mesh primitive, not the node, but the collator
         // groups by geometry only (`rep_identity` excludes colour). Split the
         // occurrences by colour so same-shape/different-colour occurrences get
@@ -1310,8 +1321,8 @@ fn build_gltf(
         // ordering deterministic (HashMap iteration order is not).
         let mut bucket_order: Vec<(i32, i32, i32, i32)> = Vec::new();
         let mut by_color: FxHashMap<(i32, i32, i32, i32), Vec<usize>> = FxHashMap::default();
-        for (oi, occ) in template.occurrences.iter().enumerate() {
-            let ck = color_key(visible[occ.mesh_index].color);
+        for &oi in &keep {
+            let ck = color_key(visible[template.occurrences[oi].mesh_index].color);
             by_color
                 .entry(ck)
                 .or_insert_with(|| {

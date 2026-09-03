@@ -2265,3 +2265,112 @@ fn a_georeferenced_rotated_sibling_still_instances() {
         }
     }
 }
+
+/// A rep group holding two exact-tier occurrences and one RIGID-tier member.
+///
+/// The collator decides the rigid-tier exemption per member, so it hands back
+/// one template whose occurrences are mixed. The exporter decided it per GROUP
+/// (`.any()`), so a single rigid member sent the whole group to the flat path
+/// and the two exact occurrences lost their shared mesh. The two now agree:
+/// the exact members instance, the rigid one is flattened on its own.
+#[test]
+fn a_mixed_group_instances_its_exact_members_and_flattens_the_rigid_one() {
+    use ifc_lite_geometry::Vector3;
+
+    const CANON: [f64; 12] = [0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 1.5];
+    let indices: Vec<u32> = vec![0, 1, 2, 0, 1, 3, 0, 2, 3, 1, 2, 3];
+    let row_major = |m: &Matrix4<f64>| {
+        let mut out = [0.0f64; 16];
+        for r in 0..4 {
+            for c in 0..4 {
+                out[r * 4 + c] = m[(r, c)];
+            }
+        }
+        out
+    };
+    // Baked Y-up positions, exactly as `to_yup_in_place` leaves them.
+    let bake_yup = |m: &Matrix4<f64>, canon: &[f64]| {
+        let mut out = Vec::with_capacity(canon.len());
+        for v in canon.chunks_exact(3) {
+            let w = [
+                m[(0, 0)] * v[0] + m[(0, 1)] * v[1] + m[(0, 2)] * v[2] + m[(0, 3)],
+                m[(1, 0)] * v[0] + m[(1, 1)] * v[1] + m[(1, 2)] * v[2] + m[(1, 3)],
+                m[(2, 0)] * v[0] + m[(2, 1)] * v[1] + m[(2, 2)] * v[2] + m[(2, 3)],
+            ];
+            out.push(w[0] as f32);
+            out.push(w[2] as f32);
+            out.push(-w[1] as f32);
+        }
+        out
+    };
+    let m_a = Matrix4::new_translation(&Vector3::new(10.0, 5.0, 1.0));
+    let m_b = Matrix4::new_translation(&Vector3::new(-6.0, 4.0, 2.0));
+    let m_r = Matrix4::new_translation(&Vector3::new(20.0, -8.0, 3.0));
+    let exact_meta = |m: &Matrix4<f64>| InstanceMeta {
+        transform: row_major(m),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 71_717,
+        instanceable: true,
+    };
+    // The rigid member: congruent, NOT bit-identical, so it carries a
+    // `canonical_transform` and a different raw vertex count (5, not 4).
+    let rigid_canon: [f64; 15] =
+        [0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 1.5, 1.0, 1.0, 1.0];
+    let rigid_meta = InstanceMeta {
+        transform: row_major(&m_r),
+        local_transform: None,
+        canonical_transform: Some(row_major(&Matrix4::identity())),
+        rep_identity: 71_717,
+        instanceable: true,
+    };
+    let (pos_a, pos_b) = (bake_yup(&m_a, &CANON), bake_yup(&m_b, &CANON));
+    let pos_r = bake_yup(&m_r, &rigid_canon);
+    let (norm4, norm5) = (vec![0.0f32; 12], vec![0.0f32; 15]);
+    let rigid_indices: Vec<u32> = vec![0, 1, 2, 0, 1, 3, 0, 2, 4, 1, 2, 4];
+    let (meta_a, meta_b) = (exact_meta(&m_a), exact_meta(&m_b));
+    fn view<'a>(
+        id: u32,
+        p: &'a [f32],
+        n: &'a [f32],
+        i: &'a [u32],
+        im: &'a InstanceMeta,
+    ) -> MeshView<'a> {
+        MeshView {
+            express_id: id,
+            ifc_type: "IfcWall",
+            global_id: None,
+            positions: p,
+            normals: n,
+            indices: i,
+            color: [0.5, 0.5, 0.5, 1.0],
+            origin: [0.0, 0.0, 0.0],
+            instance: Some(im),
+        }
+    }
+    let views = vec![
+        view(1, &pos_a, &norm4, &indices, &meta_a),
+        view(2, &pos_b, &norm4, &indices, &meta_b),
+        view(3, &pos_r, &norm5, &rigid_indices, &rigid_meta),
+    ];
+
+    let mut ch = Chunker::new(12, usize::MAX, None);
+    let (gltf, _stats) =
+        build_gltf(&views, false, None, true, false, [0.0, 0.0, 0.0], None, false, &mut ch);
+
+    assert_eq!(
+        gltf.meshes.len(),
+        2,
+        "one shared template mesh for the exact pair, one flat mesh for the rigid member"
+    );
+    assert_eq!(
+        gltf.nodes.iter().filter(|n| n.matrix.is_some()).count(),
+        2,
+        "both exact occurrences are placed by a node matrix"
+    );
+    assert_eq!(
+        gltf.nodes.iter().filter(|n| n.mesh.is_some()).count(),
+        3,
+        "all three occurrences are still drawn"
+    );
+}
